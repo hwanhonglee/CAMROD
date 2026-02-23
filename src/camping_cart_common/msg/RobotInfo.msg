@@ -1,6 +1,0 @@
-camping_cart_common/RobotSpecifications robot_specifications
-camping_cart_common/SensorPose imu
-camping_cart_common/SensorPose gnss
-camping_cart_common/SensorPose lidar_front
-camping_cart_common/SensorPose lidar_rear
-
