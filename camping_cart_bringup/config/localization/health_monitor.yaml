@@ -1,0 +1,6 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# HH_260112 Align node parameter keys with /localization namespace + short names.
+/localization/health_monitor:
+  ros__parameters:
+    gnss_timeout_sec: 1.0
+    imu_timeout_sec: 0.5

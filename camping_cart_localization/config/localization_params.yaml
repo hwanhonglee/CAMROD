@@ -1,0 +1,16 @@
+/**:
+  ros__parameters:
+    map_frame_id: map
+    base_frame_id: robot_base_link
+    publish_rate_hz: 20.0
+    position_alpha: 0.35
+    use_imu_orientation: true
+    use_imu_angular_velocity: true
+    gnss_timeout_sec: 2.0
+    imu_timeout_sec: 2.0
+    ground_z_offset: 0.05
+    initial_covariance:
+      pos_xy: 0.5
+      pos_z: 0.3
+      yaw: 0.2
+    status_timeout_sec: 1.0

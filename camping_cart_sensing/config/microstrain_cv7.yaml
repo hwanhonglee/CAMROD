@@ -1,0 +1,160 @@
+microstrain_inertial_driver:
+  ros__parameters:
+
+    # ============================================================
+    # General / Connection
+    # ============================================================
+
+    # Main device communication port.
+    # CV7-AHRS typically appears as /dev/ttyACM0 on Linux.
+    port: "/dev/ttyACM0"
+
+    # Baudrate for the main port.
+    # For USB ACM devices, this usually does not change actual USB throughput,
+    # but the driver still requires a value that matches the device setting.
+    baudrate: 115200
+
+    # (Optional) Enable/disable driver debug behavior.
+    # Keep this false for normal operation to reduce console spam.
+    debug: false
+
+    # If true, the driver will attempt to set the device baudrate(s).
+    # Recommended: keep false unless you explicitly need to reconfigure baud on the device.
+    set_baud: false
+
+    # Device setup control:
+    # - true  : driver pushes these settings to the device on startup (recommended for reproducibility)
+    # - false : driver leaves device as-is and only streams what is already configured
+    device_setup: true
+
+    # Persist settings in non-volatile memory:
+    # - false : changes are NOT saved (recommended for testing; power cycle resets device)
+    # - true  : saves to device flash (use only when you are confident)
+    save_settings: false
+
+    # Timestamp source for ROS messages:
+    # 0 = ROS receive time (simple, less accurate)
+    # 1 = device GPS time (most accurate but jumps when GPS lock appears; AHRS has no GNSS -> not useful)
+    # 2 = Hybrid (recommended; stable UTC-like timestamps with close device dt)
+    timestamp_source: 2
+
+
+    # ============================================================
+    # Frame / TF
+    # ============================================================
+
+    # Frame ID stamped into most published messages (e.g., sensor_msgs/Imu).
+    # Use a URDF static transform if your IMU is mounted offset from base_link.
+    frame_id: "imu_link"
+
+    # Transform publishing mode:
+    # 0 = publish no dynamic transforms (recommended for AHRS-only; keep TF clean)
+    # 1/2 modes are mainly for navigation/INS use-cases with position outputs.
+    tf_mode: 0
+
+    # Parent frame used when publishing the static transform to frame_id.
+    # This is the frame you want as the TF parent of imu_link.
+    mount_frame_id: "sensor_kit_base_link"
+
+    # HH_260220: imu_link TF is owned by sensor_kit URDF; disable duplicate static TF.
+    publish_mount_to_frame_id_transform: false
+
+    # Static transform as quaternion [x, y, z, qi, qj, qk, qw].
+    # Keep identity if IMU is co-located; otherwise fill real offset/rotation.
+    mount_to_frame_id_transform: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+
+    # Publish data in ENU convention:
+    # true  = ENU (recommended in ROS ecosystems)
+    # false = NED (native device convention; can confuse downstream ROS tools)
+    use_enu_frame: true
+
+
+    # ============================================================
+    # CV7-AHRS specific “must-set” items (prevents startup/config errors)
+    # ============================================================
+
+    # Declination source:
+    # 1 = None (recommended for AHRS-only / when you do NOT want magnetic model)
+    # 3 = Manual (set a fixed declination angle below if needed)
+    #
+    # IMPORTANT: CV7 devices do NOT allow declination_source=2 (magnetic model),
+    # and the node may fail to start if you leave it at 2.
+    filter_declination_source: 1
+    # filter_declination_source: 3
+    # filter_declination: 0.0  # degrees, used only when source=3
+
+    # PPS source:
+    # 0 = Disabled (recommended for CV7-AHRS; avoids “Invalid Parameter” errors)
+    # Other values are GNSS/INS oriented and often unsupported on AHRS configs.
+    filter_pps_source: 0
+
+
+    # ============================================================
+    # Filter aiding (AHRS-only: disable anything GNSS-related to avoid warnings)
+    # ============================================================
+
+    # CV7-AHRS does not provide GNSS position/velocity/heading aiding.
+    # Leaving these true makes the driver request features the device can't do,
+    # which causes warnings like “not supported, but requested”.
+    filter_enable_gnss_pos_vel_aiding: false
+    filter_enable_gnss_heading_aiding: false
+
+    # These aiding sources are typically not used for basic AHRS streaming.
+    # Keep disabled unless you specifically integrate those sensors and the device supports them.
+    filter_enable_altimeter_aiding: false
+    filter_enable_odometer_aiding: false
+    filter_enable_magnetometer_aiding: false
+    filter_enable_external_heading_aiding: false
+
+
+    # ============================================================
+    # Filter lifecycle behavior
+    # ============================================================
+
+    # Auto initialization:
+    # true  = device filter initializes automatically (recommended)
+    # false = requires manual init sequence (advanced)
+    filter_auto_init: true
+
+    # Reset filter after configuration is applied.
+    # Recommended true so you start from a clean state after parameter push.
+    filter_reset_after_config: true
+
+    # Adaptive filter settings:
+    # 0 = off, 1 = conservative, 2 = moderate (default-ish), 3 = aggressive
+    filter_adaptive_level: 2
+    filter_adaptive_time_limit_ms: 15000
+
+
+    # ============================================================
+    # Publisher rates (set to 0 to disable publishing/streaming)
+    # ============================================================
+
+    # The “main” IMU topic most stacks consume:
+    # /imu/data (sensor_msgs/Imu) with orientation + angular vel + linear accel (filter-based)
+    imu_data_rate: 100
+
+    # Raw IMU measurements (/imu/data_raw). Turn on only if you need raw accel/gyro for your own filtering.
+    imu_data_raw_rate: 0
+
+    # Magnetometer/pressure/wheel speed are not needed for minimal AHRS usage.
+    imu_mag_data_rate: 0
+    imu_pressure_data_rate: 0
+    imu_wheel_speed_data_rate: 0
+
+
+    # ============================================================
+    # IMU covariance (optional but recommended for downstream filters)
+    # ============================================================
+
+    # If your downstream pipeline uses covariances (e.g., robot_localization),
+    # you can set reasonable fixed values here.
+    imu_orientation_cov: [0.01, 0.0, 0.0,
+                          0.0, 0.01, 0.0,
+                          0.0, 0.0, 0.01]
+    imu_linear_cov:      [0.01, 0.0, 0.0,
+                          0.0, 0.01, 0.0,
+                          0.0, 0.0, 0.01]
+    imu_angular_cov:     [0.01, 0.0, 0.0,
+                          0.0, 0.01, 0.0,
+                          0.0, 0.0, 0.01]

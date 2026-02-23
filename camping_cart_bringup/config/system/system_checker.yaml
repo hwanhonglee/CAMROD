@@ -1,0 +1,19 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# HH_260112 Default system checker configuration.
+/system/system_checker:
+  ros__parameters:
+    check_period_s: 1.0
+    required_nodes:
+      - /map/lanelet_cost_grid
+      - /planning/goal_snapper
+      - /planning/planner_server
+      - /planning/controller_server
+      - /planning/bt_navigator
+      - /localization/ekf_filter
+    required_topics:
+      - /localization/pose
+      - /sensing/imu/data
+      - /sensing/gnss/navsatfix
+      - /platform/wheel/odometry
+      - /localization/vio/odometry
+      - /map/lanelet_cost_grid

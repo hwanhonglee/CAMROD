@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<!-- HH_251215: camping cart sensor kit URDF -->
+<robot name="camping_cart_sensor_kit" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="base_link" default="robot_base_link"/>
+  <!-- HH_260220: Introduce a dedicated sensor kit anchor frame under robot_base_link. -->
+  <xacro:arg name="sensor_kit_base_link" default="sensor_kit_base_link"/>
+  <xacro:arg name="base_length" default="1.4"/>
+  <xacro:arg name="base_width" default="0.7"/>
+  <xacro:arg name="base_height" default="1.2"/>
+
+  <xacro:arg name="imu_xyz" default="0.1 0.0 0.4"/>
+  <xacro:arg name="imu_rpy" default="0.0 0.0 0.0"/>
+  <xacro:arg name="gnss_xyz" default="0.2 0.0 1.0"/>
+  <xacro:arg name="gnss_rpy" default="0.0 0.0 0.0"/>
+  <xacro:arg name="lidar_xyz" default="0.5 0.0 0.5"/>
+  <xacro:arg name="lidar_rpy" default="0.0 0.0 0.0"/>
+  <xacro:arg name="camera_front_xyz" default="0.45 0.0 0.8"/>
+  <xacro:arg name="camera_front_rpy" default="-0.087266 0.0 0.0"/>
+
+  <xacro:property name="base_link_name" value="$(arg base_link)"/>
+  <xacro:property name="sensor_kit_base_link_name" value="$(arg sensor_kit_base_link)"/>
+  <xacro:property name="base_length_val" value="$(arg base_length)"/>
+  <xacro:property name="base_width_val" value="$(arg base_width)"/>
+  <xacro:property name="base_height_val" value="$(arg base_height)"/>
+
+  <xacro:macro name="sensor_link" params="name parent xyz rpy color_rgba">
+    <link name="${name}">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.04" length="0.08"/>
+        </geometry>
+        <material name="${name}_mat">
+          <color rgba="${color_rgba}"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.04" length="0.08"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="0.1"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <inertia ixx="1e-4" ixy="0" ixz="0" iyy="1e-4" iyz="0" izz="1e-4"/>
+      </inertial>
+    </link>
+    <joint name="${name}_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${name}"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+    </joint>
+  </xacro:macro>
+
+  <link name="${base_link_name}">
+    <visual>
+      <origin xyz="0 0 ${base_height_val/2}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${base_length_val} ${base_width_val} ${base_height_val}"/>
+      </geometry>
+      <material name="body_color">
+        <color rgba="0.1 0.6 0.9 0.2"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${base_height_val/2}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${base_length_val} ${base_width_val} ${base_height_val}"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="25.0"/>
+      <origin xyz="0 0 ${base_height_val/2}" rpy="0 0 0"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <link name="${sensor_kit_base_link_name}"/>
+  <joint name="${base_link_name}_to_${sensor_kit_base_link_name}" type="fixed">
+    <parent link="${base_link_name}"/>
+    <child link="${sensor_kit_base_link_name}"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- HH_260220: Keep only the active sensing stack frames on the sensor kit tree. -->
+  <xacro:sensor_link name="imu_link" parent="${sensor_kit_base_link_name}" xyz="$(arg imu_xyz)" rpy="$(arg imu_rpy)" color_rgba="1.0 0.8 0.2 1.0"/>
+  <xacro:sensor_link name="gnss_link" parent="${sensor_kit_base_link_name}" xyz="$(arg gnss_xyz)" rpy="$(arg gnss_rpy)" color_rgba="0.6 0.9 0.4 1.0"/>
+  <xacro:sensor_link name="lidar_link" parent="${sensor_kit_base_link_name}" xyz="$(arg lidar_xyz)" rpy="$(arg lidar_rpy)" color_rgba="0.9 0.3 0.3 1.0"/>
+  <xacro:sensor_link name="camera_front_link" parent="${sensor_kit_base_link_name}" xyz="$(arg camera_front_xyz)" rpy="$(arg camera_front_rpy)" color_rgba="0.3 0.7 0.95 1.0"/>
+</robot>

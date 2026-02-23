@@ -1,0 +1,34 @@
+# HH_260112 Align node parameter keys with /sensing namespace + short names.
+/sensing/lidar_preprocessor:
+  ros__parameters:
+    input_topic: "/sensing/lidar/points"
+    filtered_topic: "/sensing/lidar/points_filtered"
+    min_range: 0.3
+    max_range: 35.0
+    min_z: -1.0
+    max_z: 2.0
+    # HH_260220: Normalize LiDAR output frame to the sensor_kit TF frame.
+    frame_id_override: "lidar_link"
+    publish_filtered: true
+    # HH_260109 Basic LiDAR preprocessing defaults for forest trail obstacles.
+
+/sensing/camera_preprocessor:
+  ros__parameters:
+    input_image_topic: "/sensing/camera/image_raw"
+    input_camera_info_topic: "/sensing/camera/camera_info"
+    output_image_topic: "/sensing/camera/processed/image"
+    output_camera_info_topic: "/sensing/camera/processed/camera_info"
+    # HH_260220: Align camera frame with sensor_kit TF tree (camera_front_link).
+    frame_id_override: "camera_front_link"
+    require_camera_info: false
+    # HH_260109 Camera preprocessing (raw -> processed) and frame overrides.
+
+/sensing/platform_velocity_converter:
+  ros__parameters:
+    velocity_topic: "/platform/status/velocity"
+    imu_topic: "/sensing/imu/data"
+    output_topic: "/sensing/platform_velocity_converter/twist_with_covariance"
+    require_imu: true
+    linear_variance: [0.05, 0.05, 0.1]
+    angular_variance: [0.2, 0.2, 0.2]
+    # HH_260109 Combine platform velocity and IMU into twist_with_covariance.

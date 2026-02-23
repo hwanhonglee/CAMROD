@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<package format="3">
+  <!-- HH_260114 Package metadata -->
+  <name>camping_cart_map</name>
+  <version>0.0.1</version>
+  <description>Lanelet2-based map loader and visualization for the camping cart robot.</description>
+
+  <maintainer email="hwanhong57@gmail.com">hong</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- HH_260114 Build tool -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- HH_260114 Build dependencies -->
+  <build_depend>rclcpp</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>visualization_msgs</build_depend>
+  <build_depend>geometry_msgs</build_depend>
+  <build_depend>tf2</build_depend>
+  <build_depend>tf2_ros</build_depend>
+
+  <!-- HH_260114 Lanelet2 build dependencies -->
+  <build_depend>lanelet2_core</build_depend>
+  <build_depend>lanelet2_io</build_depend>
+  <build_depend>lanelet2_projection</build_depend>
+
+  <!-- HH_260114 Runtime dependencies -->
+  <exec_depend>rclcpp</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>tf2</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+
+  <!-- HH_260114 Lanelet2 runtime dependencies -->
+  <exec_depend>lanelet2_core</exec_depend>
+  <exec_depend>lanelet2_io</exec_depend>
+  <exec_depend>lanelet2_projection</exec_depend>
+
+  <!-- HH_260114 Export build type to downstream packages -->
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+</package>

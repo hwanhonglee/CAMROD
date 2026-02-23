@@ -1,0 +1,74 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# 2026-01-30 Update map path/origin for new_lanelet2_maps.osm.
+# HH_260128 Parameters for planning path-focused lanelet cost grids
+
+/planning/lanelet_cost_grid_global_path:
+  ros__parameters:
+    map_path: "/home/hong/cart_test_ws/src/new_lanelet2_maps.osm"
+    map_frame_id: "map"
+    offset_lat: 36.8436194
+    offset_lon: 128.0925490
+    offset_alt: 0.0
+    # 2026-02-02: Finer grid for clearer path cost visualization.
+    resolution: 0.1
+    # 2026-01-30: Use full map bounds for global path grid (avoid drifting window).
+    width: 0
+    height: 0
+    centerline_half_width: 1.5
+    free_value: 0
+    lethal_value: 100
+    # 2026-02-02 11:55: Path mode = low cost on path, high cost elsewhere.
+    cost_mode: "path"
+    # 2026-02-06 21:26: Let path-mode logic control default fill so planners can compute
+    # the first path (free until path, lethal after). Use -1 to disable override.
+    outside_value: -1
+    # 2026-02-11: Render path grid only inside lanelet geometry (no rectangular background).
+    path_use_lanelet_mask: true
+    path_lane_base_value: 100
+    # 2026-02-11: Visualization path layer should not add extra heading penalties.
+    direction_penalty: 0
+    backward_penalty: 0
+    gradient_range: 30.0
+    grid_yaw: 0.0
+    use_path_bbox: false
+    lock_window: true
+    use_map_bbox: true
+    pose_topic: "/localization/pose"
+    path_topic: "/planning/global_path"
+    republish_period: 1.0
+    output_topic: "/planning/global_costmap/lanelet_cost_grid_path"
+
+/planning/lanelet_cost_grid_local_path:
+  ros__parameters:
+    map_path: "/home/hong/cart_test_ws/src/new_lanelet2_maps.osm"
+    map_frame_id: "map"
+    offset_lat: 36.8436194
+    offset_lon: 128.0925490
+    offset_alt: 0.0
+    # 2026-02-02: Finer cells; keep ~100m window by scaling cells.
+    resolution: 0.1
+    width: 1000
+    height: 1000
+    centerline_half_width: 1.5
+    free_value: 0
+    lethal_value: 100
+    # 2026-02-02 11:55: Path mode = low cost on path, high cost elsewhere.
+    cost_mode: "path"
+    # 2026-02-06 21:26: Let path-mode logic control default fill so planners can compute
+    # the first path (free until path, lethal after). Use -1 to disable override.
+    outside_value: -1
+    # 2026-02-11: Render path grid only inside lanelet geometry (no rectangular background).
+    path_use_lanelet_mask: true
+    path_lane_base_value: 100
+    # 2026-02-11: Visualization path layer should not add extra heading penalties.
+    direction_penalty: 0
+    backward_penalty: 0
+    gradient_range: 30.0
+    grid_yaw: 0.0
+    use_path_bbox: false   # local: robot-centered rolling window
+    lock_window: false
+    pose_topic: "/localization/pose"
+    # HH_260127 Align local path topic naming with /planning/local_path.
+    path_topic: "/planning/local_path"
+    republish_period: 1.0
+    output_topic: "/planning/local_costmap/lanelet_cost_grid_path"

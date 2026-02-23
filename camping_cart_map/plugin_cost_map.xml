@@ -1,0 +1,9 @@
+<!-- HH_251230: plugin registration for lanelet_cost_layer -->
+<!-- 2026-01-29 19:29: Match the actual shared library name (liblanelet_cost_layer.so). -->
+<library path="lanelet_cost_layer">
+  <class name="camping_cart_map::cost_map::LaneletCostLayer"
+         type="camping_cart_map::cost_map::LaneletCostLayer"
+         base_class_type="nav2_costmap_2d::Layer">
+    <description>Lanelet cost OccupancyGrid layer</description>
+  </class>
+</library>

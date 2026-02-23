@@ -1,0 +1,56 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+/**:
+  ros__parameters:
+    robot:
+      wheelbase: 2.0
+      track_width: 3.2
+      length: 0.8
+      width: 0.8
+      height: 1.20
+
+      wheel_radius: 0.15
+      encoder_resolution: 2048
+      drive_type: "ackermann"
+
+    ground_z_offset: 5.3
+
+    base_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+
+    imu:
+      x: 0.10
+      y: 0.0
+      z: 0.40
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+
+    gnss:
+      x: 0.20
+      y: 0.0
+      z: 1.00
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+
+    # HH_260220: Single LiDAR frame under sensor_kit_base_link.
+    lidar:
+      x: 0.50
+      y: 0.0
+      z: 0.50
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+
+    camera_front:
+      x: 0.45
+      y: 0.0
+      z: 0.80
+      roll: 0.0
+      pitch: -5.0
+      yaw: 0.0

@@ -1,0 +1,31 @@
+﻿# HH_251231: Example nav2 params to register lanelet_cost_layer
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      plugins: [obstacle_layer, inflation_layer, lanelet_cost_layer]
+      footprint: [[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]  # HH_251231 robot footprint default
+      robot_radius: 0.0  # HH_251231 set >0 if footprint empty
+      resolution: 0.25  # HH_251231 costmap resolution
+      width: 50.0       # HH_251231 local window width (meters)
+      height: 50.0      # HH_251231 local window height (meters)
+      lanelet_cost_layer:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        # HH_260109 Use map-prefixed lanelet cost grid topic.
+        source_topic: "/map/lanelet_cost_grid"
+        lethal_threshold: 65
+        unknown_value: 255
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      plugins: [obstacle_layer, inflation_layer, lanelet_cost_layer]
+      footprint: [[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]
+      robot_radius: 0.0
+      resolution: 0.5   # HH_251231 coarser global resolution
+      width: 200.0
+      height: 200.0
+      lanelet_cost_layer:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        source_topic: "/map/lanelet_cost_grid"
+        lethal_threshold: 65
+        unknown_value: 255

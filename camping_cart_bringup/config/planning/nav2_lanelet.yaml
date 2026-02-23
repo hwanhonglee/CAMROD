@@ -1,0 +1,273 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# HH_260129 Nav2 config (planning namespace)
+# Costmaps: lanelet base grid + lanelet path grid + lidar obstacle + inflation
+
+planner_server:
+  ros__parameters:
+    use_sim_time: False
+    expected_planner_frequency: 5.0
+    # HH_260127 Support both NavFn and Smac; default selected in BT (PlannerSelector).
+    # 2026-02-04: Prefer Smac2D so unsmoothed_plan is published by default.
+    planner_plugins: ["Smac2D", "GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      tolerance: 0.5
+      use_astar: True
+      # 2026-02-11: Keep path strictly inside known lanelet-cost area.
+      allow_unknown: False
+    Smac2D:
+      plugin: "nav2_smac_planner/SmacPlanner2D"
+      # 2026-02-11: Keep path strictly inside known lanelet-cost area.
+      allow_unknown: False
+      tolerance: 0.5
+      downsample_costmap: False
+      downsampling_factor: 1
+      use_astar: True
+      motion_model_for_search: "DUBIN"
+      angle_quantization_bins: 64
+      # 2026-02-11: Smaller radius for tighter lanelet turns in parking-scale map.
+      minimum_turning_radius: 1.2
+      cost_travel_multiplier: 1.0
+      cost_penalty: 1.3
+      lethal_cost: 253
+      neutral_cost: 66
+      change_penalty: 0.0
+      reverse_penalty: 0.0
+      non_straight_penalty: 1.1
+      final_turn_penalty: 0.5
+      lookup_table_size: 20.0
+
+controller_server:
+  ros__parameters:
+    use_sim_time: False
+    controller_frequency: 20.0
+    odom_topic: /localization/odometry/filtered
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath", "DwbController"]
+    default_controller: FollowPath
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+
+    general_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.3
+      yaw_goal_tolerance: 0.25
+      stateful: False
+
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 1.4
+      max_linear_vel: 1.4
+      min_linear_vel: 0.0
+      max_linear_accel: 1.5
+      max_angular_vel: 1.2
+      max_angular_accel: 3.0
+      lookahead_dist: 1.2
+      min_lookahead_dist: 0.5
+      max_lookahead_dist: 2.5
+      lookahead_time: 1.5
+      rotate_to_heading_angular_vel: 1.2
+      transform_tolerance: 0.2
+      use_velocity_scaled_lookahead_dist: True
+      min_approach_linear_velocity: 0.15
+      approach_velocity_scaling_dist: 0.6
+      use_collision_detection: False
+      max_allowed_time_to_collision: 1.0
+      use_regulated_linear_velocity_scaling: True
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.5
+      use_cost_regulated_linear_velocity_scaling: True
+      cost_scaling_dist: 0.6
+      cost_scaling_gain: 1.0
+
+    DwbController:
+      plugin: "dwb_core::DWBLocalPlanner"
+      critics:
+        - RotateToGoal
+        - Oscillation
+        - ObstacleFootprint
+        - PathAlign
+        - PathDist
+        - GoalAlign
+        - GoalDist
+      debug_trajectory_details: False
+      min_vel_x: 0.0
+      max_vel_x: 1.4
+      acc_lim_x: 1.5
+      decel_lim_x: -2.0
+      min_vel_theta: -1.2
+      max_vel_theta: 1.2
+      acc_lim_theta: 3.0
+      decel_lim_theta: -3.0
+      vx_samples: 20
+      vy_samples: 1
+      vtheta_samples: 20
+      sim_time: 1.5
+      linear_granularity: 0.05
+      angular_granularity: 0.02
+      transform_tolerance: 0.2
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: False
+      global_frame: map
+      robot_base_frame: robot_base_link
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      rolling_window: True
+      # HH_260126 width/height as int to match nav2 param type (avoid type mismatch)
+      width: 50
+      height: 50
+      # 2026-02-02: Match lanelet grids with finer resolution.
+      resolution: 0.1
+      footprint: "[[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]"
+      robot_radius: 0.0
+      track_unknown_space: True
+      plugins:
+        - lanelet_cost_layer_base
+        - lidar_obstacle_layer
+        - proximity_layer
+        - inflation_layer
+
+      lanelet_cost_layer_base:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        source_topic: "/map/lanelet_cost_grid"
+        lethal_threshold: 65
+        unknown_value: 255
+
+      lidar_obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: "lidar_objects"
+        lidar_objects:
+          topic: "/perception/obstacles/lidar"
+          max_obstacle_height: 2.5
+          min_obstacle_height: -1.0
+          obstacle_range: 25.0
+          raytrace_range: 30.0
+          clearing: True
+          marking: True
+          data_type: "PointCloud2"
+
+      proximity_layer:
+        plugin: "nav2_costmap_2d::RangeSensorLayer"
+        enabled: True
+        # 2026-02-02: Near-range proximity sensors (sonar/IR).
+        topics: ["/sensing/proximity/range"]
+        no_reading_timeout: 1.0
+        clear_on_max_reading: True
+        mark_threshold: 0.6
+        clear_threshold: 0.2
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 1.0
+        cost_scaling_factor: 5.0
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: False
+      global_frame: map
+      robot_base_frame: robot_base_link
+      update_frequency: 1.0
+      publish_frequency: 0.5
+      rolling_window: False
+      # 2026-02-04: Align global costmap bounds to lanelet map bbox (meters, int).
+      width: 165
+      height: 100
+      resolution: 0.1
+      origin_x: -82.5
+      origin_y: -34.2
+      footprint: "[[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]"
+      robot_radius: 0.0
+      track_unknown_space: True
+      plugins:
+        - lanelet_cost_layer_base
+        - lidar_obstacle_layer
+        - proximity_layer
+        - inflation_layer
+
+      lanelet_cost_layer_base:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        source_topic: "/map/lanelet_cost_grid"
+        lethal_threshold: 65
+        unknown_value: 255
+
+      lidar_obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: "lidar_objects"
+        lidar_objects:
+          topic: "/perception/obstacles/lidar"
+          max_obstacle_height: 2.5
+          min_obstacle_height: -1.0
+          obstacle_range: 25.0
+          raytrace_range: 30.0
+          clearing: True
+          marking: True
+          data_type: "PointCloud2"
+
+      proximity_layer:
+        plugin: "nav2_costmap_2d::RangeSensorLayer"
+        enabled: True
+        # 2026-02-02: Near-range proximity sensors (sonar/IR).
+        topics: ["/sensing/proximity/range"]
+        no_reading_timeout: 1.0
+        clear_on_max_reading: True
+        mark_threshold: 0.6
+        clear_threshold: 0.2
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 1.5
+        cost_scaling_factor: 3.0
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: False
+    # HH_260127 PlannerSelector BT for NavFn/Smac switching.
+    default_nav_to_pose_bt_xml: "/home/hong/cart_test_ws/install/camping_cart_planning/share/camping_cart_planning/config/bt/navigate_to_pose_w_planner_selector.xml"
+    default_nav_through_poses_bt_xml: "/opt/ros/humble/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"
+    # HH_260127 Ensure PlannerSelector BT node library is available.
+    # 2026-01-29 19:29: Match Humble-installed BT plugin library names (action_* variants).
+    plugin_lib_names:
+      # 2026-02-02 11:55: Add through-poses BT plugin for NavigateThroughPoses.
+      - nav2_compute_path_through_poses_action_bt_node
+      - nav2_compute_path_to_pose_action_bt_node
+      - nav2_follow_path_action_bt_node
+      - nav2_back_up_action_bt_node
+      - nav2_spin_action_bt_node
+      - nav2_wait_action_bt_node
+      - nav2_clear_costmap_service_bt_node
+      - nav2_is_stuck_condition_bt_node
+      - nav2_goal_reached_condition_bt_node
+      - nav2_goal_updated_condition_bt_node
+      - nav2_initial_pose_received_condition_bt_node
+      - nav2_reinitialize_global_localization_service_bt_node
+      - nav2_rate_controller_bt_node
+      - nav2_distance_controller_bt_node
+      - nav2_speed_controller_bt_node
+      - nav2_truncate_path_action_bt_node
+      - nav2_remove_passed_goals_action_bt_node
+      - nav2_goal_updater_node_bt_node
+      - nav2_recovery_node_bt_node
+      - nav2_pipeline_sequence_bt_node
+      - nav2_round_robin_node_bt_node
+      - nav2_transform_available_condition_bt_node
+      - nav2_time_expired_condition_bt_node
+      - nav2_controller_selector_bt_node
+      - nav2_planner_selector_bt_node
+      - nav2_goal_checker_selector_bt_node
+      - nav2_controller_cancel_bt_node
+      - nav2_path_longer_on_approach_bt_node
+      - nav2_wait_cancel_bt_node
+      - nav2_spin_cancel_bt_node
+      - nav2_back_up_cancel_bt_node
+      - nav2_drive_on_heading_bt_node
+      - nav2_assisted_teleop_action_bt_node

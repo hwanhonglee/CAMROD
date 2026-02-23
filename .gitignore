@@ -1,18 +1,22 @@
-# ROS2 / colcon
 build/
 install/
 log/
 
-# Python
-__pycache__/
-*.pyc
+**/__pycache__/
+**/*.pyc
+**/*.pyo
 
-# CMake
-CMakeFiles/
-CMakeCache.txt
-
-# IDE
 .vscode/
+.idea/
 
-# OS
+*.db3
+*.bag
+*.bag_*
+*.sqlite3
+
+*.so
+*.o
+*.a
+*.out
+
 .DS_Store

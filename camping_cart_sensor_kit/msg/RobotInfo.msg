@@ -1,0 +1,5 @@
+camping_cart_sensor_kit/RobotSpecifications robot_specifications
+camping_cart_sensor_kit/SensorPose imu
+camping_cart_sensor_kit/SensorPose gnss
+camping_cart_sensor_kit/SensorPose lidar
+camping_cart_sensor_kit/SensorPose camera_front

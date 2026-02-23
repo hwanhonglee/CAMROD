@@ -1,0 +1,18 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# HH_260123 Localization supervisor thresholds.
+/localization/supervisor:
+  ros__parameters:
+    diag_topic: "/localization/eskf/diagnostics"
+    gnss_topic: "/sensing/gnss/pose_with_covariance"
+    imu_topic: "/sensing/imu/data"
+    wheel_topic: "/platform/wheel/odometry"
+
+    gnss_timeout_sec: 1.0
+    imu_timeout_sec: 0.5
+    wheel_timeout_sec: 0.5
+    gnss_innovation_warn: 3.0
+    gnss_innovation_fail: 6.0
+    # 2026-02-09: GNSS instability gates for VIO fallback switching.
+    gnss_cov_trace_fail: 0.3
+    gnss_jump_fail_m: 1.0
+    gnss_min_hz: 2.0

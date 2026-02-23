@@ -1,0 +1,125 @@
+microstrain_inertial_driver:
+  ros__parameters:
+
+    # ============================================================
+    # General / Connection
+    # ============================================================
+
+    # Main USB serial port for the GQ7.
+    # IMPORTANT:
+    #   The GQ7 exposes two USB ACM ports (main + aux). Use udev symlinks if possible.
+    #   If you see "configured main port appears to actually be the aux port",
+    #   swap port/aux_port or use stable /dev/serial/by-id paths.
+    port: "/dev/ttyACM0"
+    aux_port: "/dev/ttyACM1"
+
+    # Driver baudrate setting (still required even on USB ACM devices).
+    baudrate: 115200
+
+    # Keep false for normal operation (less console noise).
+    debug: false
+
+    # If true, the driver tries to change device baudrate.
+    # Usually keep false unless you intentionally reconfigure serial settings.
+    set_baud: false
+
+    # Push this YAML configuration to the device at startup.
+    # Recommended for reproducibility.
+    device_setup: true
+
+    # Save settings to device flash memory.
+    # Keep false while tuning/testing; set true only after everything is finalized.
+    save_settings: false
+
+    # Timestamp source:
+    #   0 = ROS time
+    #   1 = GPS time
+    #   2 = Hybrid (recommended)
+    timestamp_source: 2
+
+
+    # ============================================================
+    # Frame / TF
+    # ============================================================
+
+    # Frame ID used in published IMU/INS messages.
+    frame_id: "imu_link"
+
+    # Parent frame for the device mount transform.
+    # Use your robot base frame here.
+    mount_frame_id: "sensor_kit_base_link"
+
+    # HH_260220: imu_link TF is owned by sensor_kit URDF; disable duplicate static TF.
+    publish_mount_to_frame_id_transform: false
+
+    # TF mode:
+    #   0 = no dynamic TF (recommended if you manage TF elsewhere)
+    tf_mode: 0
+
+    # Publish data in ENU convention (recommended for ROS).
+    use_enu_frame: true
+
+
+    # ============================================================
+    # GQ7 Filter / INS Settings
+    # ============================================================
+
+    # Declination source:
+    #   2 = Magnetic model (recommended for GQ7)
+    #   3 = Manual (requires filter_declination value)
+    #   1 = None
+    filter_declination_source: 2
+    # filter_declination_source: 3
+    # filter_declination: 0.0   # degrees (only used when source=3)
+
+    # PPS source:
+    #   1 is commonly used for GNSS timing on GQ7
+    filter_pps_source: 1
+
+    # GNSS aiding for INS filter (recommended ON for GQ7 GNSS/INS).
+    filter_enable_gnss_pos_vel_aiding: true
+    filter_enable_gnss_heading_aiding: true
+
+    # Disable unused aiding sources unless you actually use them.
+    filter_enable_altimeter_aiding: false
+    filter_enable_odometer_aiding: false
+    filter_enable_magnetometer_aiding: false
+    filter_enable_external_heading_aiding: false
+
+    # Filter initialization / reset behavior
+    filter_auto_init: true
+    filter_reset_after_config: true
+
+    # Adaptive filter tuning
+    filter_adaptive_level: 2
+    filter_adaptive_time_limit_ms: 15000
+
+
+    # ============================================================
+    # Publisher Rates
+    # ============================================================
+
+    # Main IMU / processed IMU rate
+    imu_data_rate: 100
+
+    # Raw IMU rate
+    imu_data_raw_rate: 100
+
+    # Unused streams (set 0 to disable)
+    imu_mag_data_rate: 0
+    imu_pressure_data_rate: 0
+    imu_wheel_speed_data_rate: 0
+
+
+    # ============================================================
+    # RTCM / NTRIP Interface (GQ7 RTK corrections via ROS topic)
+    # ============================================================
+
+    # Enable driver-side RTCM input interface.
+    # The driver subscribes to /rtcm and forwards corrections to the device (via aux port).
+    ntrip_interface_enable: true
+
+    # RTK dongle accessory mode:
+    #   false = use standard RTCM injection path (recommended for your setup)
+    #   true  = only if you actually use the MicroStrain RTK dongle accessory
+    rtk_dongle_enable: false

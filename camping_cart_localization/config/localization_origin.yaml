@@ -1,0 +1,15 @@
+origin:
+  # 52S-CF0 - VMB
+  # lat: 36.12491471
+  # lon: 126.77473954
+  # alt: 84.0
+  # yaw_offset_deg: 0.0
+  # 52S-CF60 - VMB
+  lat: 36.7292921
+  lon: 127.4429577
+  alt: 84.0
+  yaw_offset_deg: 0.0
+utm_origin:
+  easting: 360965.99
+  northing: 4065972.49
+  alt: 84.0

@@ -1,0 +1,12 @@
+# HH_260112 Align node parameter keys with /perception namespace + short names.
+/perception/obstacle_fusion:
+  ros__parameters:
+    input_cloud_topic: "/sensing/lidar/points_filtered"
+    detection_topic: "/perception/camera/detections_2d"
+    camera_info_topic: "/sensing/camera/processed/camera_info"
+    output_topic: "/perception/obstacles"
+    # HH_260220: Use sensor_kit static TF frame; calibration broadcaster removed.
+    camera_frame: "camera_front_link"
+    use_camera_filter: true
+    keep_lidar_when_no_detections: true
+    # HH_260109 Perception obstacle fusion (camera detections + LiDAR).

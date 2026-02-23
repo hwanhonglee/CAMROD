@@ -1,0 +1,24 @@
+# 2026-02-09: Bringup defaults for Kimera CSV fallback bridge.
+/localization/kimera_csv_bridge:
+  ros__parameters:
+    publish_abs: true
+    publish_local: true
+    poll_hz: 30.0
+
+    # HH_260209: Update paths if Kimera output directory differs.
+    abs_csv_path: "/home/hong/vio_bridge/Kimera-VIO/output/zed_live/traj_abs.csv"
+    local_csv_path: "/home/hong/vio_bridge/Kimera-VIO/output/zed_live/traj_local.csv"
+
+    map_frame_id: "map"
+    local_frame_id: "vio_local"
+    base_frame_id: "robot_base_link"
+
+    abs_pose_topic: "/localization/kimera_vio/pose"
+    abs_pose_cov_topic: "/localization/kimera_vio/pose_with_covariance"
+    abs_odom_topic: "/localization/kimera_vio/odometry"
+    local_pose_topic: "/localization/kimera_vio/local_pose"
+    local_odom_topic: "/localization/kimera_vio/local_odometry"
+    source_topic: "/localization/kimera_vio/source"
+
+    position_stddev_m: 0.5
+    orientation_stddev_rad: 0.35

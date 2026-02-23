@@ -1,0 +1,30 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# HH_260123 ESKF parameters (IMU prediction + GNSS + wheel).
+/localization/eskf_filter:
+  ros__parameters:
+    map_frame_id: "map"
+    odom_frame_id: "odom"
+    base_frame_id: "robot_base_link"
+    imu_topic: "/sensing/imu/data"
+    gnss_topic: "/sensing/gnss/pose_with_covariance"
+    wheel_topic: "/platform/wheel/odometry"
+    pose_topic: "/localization/pose"
+    pose_cov_topic: "/localization/pose_with_covariance"
+    odom_topic: "/localization/odometry/filtered"
+    twist_topic: "/localization/twist"
+    diag_topic: "/localization/eskf/diagnostics"
+    publish_tf: true
+
+    gnss_gate_mahalanobis: 9.0
+    wheel_gate_mahalanobis: 9.0
+    # 2026-02-02: Reinit filter if GNSS is too far (recover from drift).
+    reinit_on_gnss_reject: true
+    reinit_distance_threshold: 50.0
+    gyro_noise: 0.015
+    accel_noise: 0.15
+    gyro_bias_walk: 0.0005
+    accel_bias_walk: 0.01
+    gnss_position_noise: 1.5
+    wheel_speed_noise: 0.2
+    min_imu_dt: 0.0001
+    max_imu_dt: 0.2

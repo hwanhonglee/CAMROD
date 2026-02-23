@@ -1,0 +1,17 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# 2026-01-30 Update map path/origin for new_lanelet2_maps.osm.
+# HH_260112 Default params for lanelet goal snapping.
+/planning/goal_snapper:
+  ros__parameters:
+    map_path: "/home/hong/cart_test_ws/src/new_lanelet2_maps.osm"
+    offset_lat: 36.8436194
+    offset_lon: 128.0925490
+    offset_alt: 0.0
+    input_goal_topic: "/goal_pose"
+    output_goal_topic: "/planning/goal_pose"
+    # 2026-02-09: Enforce lanelet-contained goals to keep planned path on lanelet map.
+    max_search_radius: 30.0
+    require_lanelet_containment: true
+    use_map_z: true
+    flatten_to_ground: true
+    map_z_offset: 0.0

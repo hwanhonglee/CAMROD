@@ -1,0 +1,19 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# 2026-01-30 Update map path/origin for new_lanelet2_maps.osm.
+# HH_260126 Default params for lanelet centerline snapping.
+/planning/centerline_snapper:
+  ros__parameters:
+    map_path: "/home/hong/cart_test_ws/src/new_lanelet2_maps.osm"
+    offset_lat: 36.8436194
+    offset_lon: 128.0925490
+    offset_alt: 0.0
+    input_pose_topic: "/localization/pose"
+    output_pose_topic: "/planning/lanelet_pose"
+    # HH_260126 Expand search radius to handle map/pose offsets during sim.
+    max_search_radius: 120.0
+    longitudinal_stddev: 0.5
+    lateral_stddev: 0.3
+    yaw_stddev: 0.2
+    use_map_z: true
+    map_z_offset: 0.0
+    flatten_to_ground: false

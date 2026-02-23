@@ -1,0 +1,25 @@
+# 2026-02-09: Kimera CSV bridge defaults for fallback localization integration.
+/localization/kimera_csv_bridge:
+  ros__parameters:
+    publish_abs: true
+    publish_local: true
+    poll_hz: 30.0
+
+    # HH_260209: Set to zedLiveVIO CSV paths when enabling this bridge.
+    abs_csv_path: ""
+    local_csv_path: ""
+
+    map_frame_id: "map"
+    local_frame_id: "vio_local"
+    base_frame_id: "robot_base_link"
+
+    abs_pose_topic: "/localization/kimera_vio/pose"
+    abs_pose_cov_topic: "/localization/kimera_vio/pose_with_covariance"
+    abs_odom_topic: "/localization/kimera_vio/odometry"
+    local_pose_topic: "/localization/kimera_vio/local_pose"
+    local_odom_topic: "/localization/kimera_vio/local_odometry"
+    source_topic: "/localization/kimera_vio/source"
+
+    # HH_260209: Fixed covariance used for bridged fallback pose.
+    position_stddev_m: 0.5
+    orientation_stddev_rad: 0.35

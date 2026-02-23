@@ -1,0 +1,14 @@
+local_pose:
+  frame_id: map
+  position: [10.0, 5.0, 0.2]
+  yaw_deg: 30.0
+
+navsat_fix:
+  latitude: 36.7292921
+  longitude: 127.4429577
+  altitude: 25.0
+
+utm_like_pose:
+  frame_id: map
+  position: [360965.99, 4065972.49, 0.5]
+  yaw_deg: 90.0

@@ -1,0 +1,27 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# 2026-01-30 Update map path/origin for new_lanelet2_maps.osm.
+# HH_260112 Align node parameter keys with /map namespace + short names.
+/map/lanelet2_map:
+  ros__parameters:
+    map_path: "/home/hong/cart_test_ws/src/new_lanelet2_maps.osm"
+
+    # HH_260114 WGS84 origin used as LocalCartesian projector reference.
+    
+    # 52S-CF0 - VMB
+    # offset_lat: 36.12491471
+    # offset_lon: 126.77473954
+    # offset_alt: 84.0
+
+    # 52S-CF60 - VMB
+    offset_lat: 36.8436194
+    offset_lon: 128.0925490
+    offset_alt: 0.0
+
+    world_frame_id: "world"
+    map_frame_id: "map"
+    
+    # HH_260103 arrow scaling knobs (lanelet direction markers)
+    dir_body_scale: 0.55
+    dir_head_scale: 0.35
+    dir_width_scale: 0.18
+    dir_stride: 30

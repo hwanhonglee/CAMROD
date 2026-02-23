@@ -1,0 +1,21 @@
+# 2026-02-09: ESKF/Kimera pose selector defaults.
+/localization/pose_selector:
+  ros__parameters:
+    primary_pose_cov_topic: "/localization/eskf/pose_with_covariance"
+    primary_odom_topic: "/localization/eskf/odometry"
+    fallback_pose_cov_topic: "/localization/kimera_vio/pose_with_covariance"
+    fallback_odom_topic: "/localization/kimera_vio/odometry"
+    mode_topic: "/localization/mode"
+
+    selected_pose_topic: "/localization/pose"
+    selected_pose_cov_topic: "/localization/pose_with_covariance"
+    selected_odom_topic: "/localization/odometry/filtered"
+    selected_source_topic: "/localization/pose_source"
+    base_frame_id: "robot_base_link"
+
+    # LocalizationMode: NORMAL=0, DEGRADED=1, DR_ONLY=2, INVALID=3
+    fallback_on_mode_at_or_above: 2
+    primary_timeout_sec: 0.5
+    fallback_timeout_sec: 0.5
+    switch_hysteresis_sec: 0.5
+

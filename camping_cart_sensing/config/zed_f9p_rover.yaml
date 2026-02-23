@@ -1,0 +1,41 @@
+ublox_gps_node:
+  ros__parameters:
+    device: /dev/ttyACM2
+    frame_id: gps
+    debug: 1 # 4 is logging data
+
+    # Rover mode: disable TMODE3 (Survey-In / Base Station mode)
+    # - tmode3=1 is for Survey-In (base/reference station)
+    # - tmode3=0 is for normal rover operation (vehicle receiver) # Rover mode
+    tmode3: 0 
+
+    # If you use only USB (ttyACM*), you typically don't need UART settings.
+    # Keeping UART blocks can cause unnecessary configuration attempts.
+    # uart1:
+    #   baudrate: 9600
+
+    # Publish only what we need to reduce CFG-MSG configuration and avoid NACKs.
+    # NAV-PVT is the key message for:
+    # - lat/lon/height
+    # - fix type
+    # - RTK status (carrSoln: none/float/fix)
+    # - accuracy estimates (hAcc/vAcc)
+    publish:
+      all: false
+      
+      # Keep NMEA ON only if you want quick RTK status via GGA fix quality
+      nmea: true
+      
+      nav:
+        all: false
+        pvt: true          # Publish UBX-NAV-PVT (position/velocity/time + RTK state)
+        relposned: false   # Enable only for dual-F9P moving-baseline heading
+        heading: true      # Publish heading-related output (often COG-based unless moving-baseline is used)
+      rxm:
+        all: false
+        rtcm: true         # publish /rxmrtcm so you can confirm RTCM is being received
+
+    # Optional: disable printing all INF messages to keep logs clean
+    inf:
+      all: false
+

@@ -1,0 +1,14 @@
+ntrip_client:
+  ros__parameters:
+    host: www.gnssdata.or.kr
+    port: 2101
+    mountpoint: CNJU-RTCM31
+    authenticate: true
+    username: hwanhong57@gmail.com
+    password: gnss
+
+    # Force rtcm_msgs (avoid mavros_msgs dependency)
+    rtcm_message_package: rtcm_msgs
+
+    # Ensure topic name (some versions use 'rtcm_topic')
+    rtcm_topic: /rtcm

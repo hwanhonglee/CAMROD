@@ -1,0 +1,37 @@
+# 2026-01-30 Update map path/origin for new_lanelet2_maps.osm.
+# HH_260102 Default parameters for lanelet_cost_grid_node (OccupancyGrid for path-focused cost)
+# HH_260112 Align with /map namespace + short node name.
+# HH_260112 Align node parameter keys with /map namespace + short names.
+/map/lanelet_cost_grid:
+  ros__parameters:
+    map_path: "/home/hong/cart_test_ws/src/new_lanelet2_maps.osm"  # HH_260102 override via launch
+    map_frame_id: "map"
+    offset_lat: 36.8436194
+    offset_lon: 128.0925490
+    offset_alt: 0.0
+    # 2026-02-02: Finer grid for clearer lanelet boundaries in RViz.
+    resolution: 0.1
+    width: 0
+    height: 0
+    # 2026-02-11: Lane-only corridor width (meters). Increase if lane coverage is too narrow.
+    centerline_half_width: 2.0
+    free_value: 0
+    lethal_value: 100
+    # 2026-02-11: Keep static base layer neutral to heading; dynamic bias belongs to path layer.
+    direction_penalty: 0
+    backward_penalty: 0
+    gradient_range: 30.0
+    centerline_use_distance_gradient: false
+    grid_yaw: 0.0
+    # 2026-02-02 11:55: Static map grid uses only left/right bounds.
+    # 2026-02-11: Base map = lane corridor drivable, outside lanelet corridor is lethal.
+    cost_mode: "centerline"
+    boundary_half_width: 0.2
+    outside_value: 100
+    use_path_bbox: false        # HH_260102 keep grid window robot-centered to avoid size flicker
+    lock_window: true
+    use_map_bbox: true
+    # HH_260109 Drive cost grid from fused localization pose.
+    pose_topic: "/localization/pose"
+    path_topic: "/planning/global_path"
+    republish_period: 1.0

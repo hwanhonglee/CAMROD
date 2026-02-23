@@ -1,0 +1,32 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# 2026-01-30 Update map path/origin for new_lanelet2_maps.osm.
+# HH_260112 Align node parameter keys with /bringup namespace + short names.
+/bringup/fake_sensor_publisher:
+  ros__parameters:
+    map_path: "/home/hong/cart_test_ws/src/new_lanelet2_maps.osm"
+    origin_lat: 36.8436194
+    origin_lon: 128.0925490
+    origin_alt: 0.0
+    lanelet_id: -1
+    speed_mps: 1.4
+    publish_rate_hz: 20.0
+    loop: true
+    # 2026-02-05 14:37: Skip crosswalk lanelets to prevent stitching jumps.
+    exclude_crosswalk: true
+    # 2026-02-05 14:37: Optional start pose snapping (enable + set start_x/start_y).
+    use_start_pose: false
+    start_x: 0.0
+    start_y: 0.0
+    # 2026-02-02: Traverse all lanelet centerlines for a full-lap path.
+    use_all_centerlines: true
+    centerline_connect_max_gap: 5.0
+    # 2026-02-02: Close near-loop centerlines for continuous laps.
+    close_loop: true
+    close_loop_max_gap: 3.0
+    frame_id: "map"
+    base_frame_id: "robot_base_link"
+    obstacle_offset: 5.0
+    obstacle_height: 0.5
+    # 2026-02-02 11:05 Centerline resample step (m) when synthesizing from bounds.
+    centerline_step: 1.0
+    # HH_260109 Fake sensors follow lanelet centerline in map frame.

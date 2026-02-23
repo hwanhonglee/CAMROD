@@ -1,0 +1,16 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
+# 2026-02-02 Drop zone matcher configuration (initial localization OK gate).
+/localization/drop_zone_matcher:
+  ros__parameters:
+    drop_zones_yaml: "/home/hong/cart_test_ws/src/camping_cart_map/config/drop_zones.yaml"
+    pose_topic: "/localization/pose_with_covariance"
+    match_radius: 2.0
+    stable_count: 10
+    publish_initialpose3d: true
+    publish_once: true
+    use_corners_center: true
+    use_zone_yaw: true
+    initialpose3d_topic: "/localization/initialpose3d"
+    status_topic: "/localization/initial_match_ok"
+    match_id_topic: "/localization/initial_match_id"
+    match_distance_topic: "/localization/initial_match_distance"
