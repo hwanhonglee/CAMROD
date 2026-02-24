@@ -11,7 +11,9 @@ find_package(rclcpp REQUIRED)
 
 # HH_260109 Install fake sensor publisher for simulation.
 install(
-  PROGRAMS scripts/fake_sensor_publisher.py
+  PROGRAMS
+    scripts/fake_sensor_publisher.py
+    scripts/check_config_sync.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 

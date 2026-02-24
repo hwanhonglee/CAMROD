@@ -1,5 +1,12 @@
+"""Top-level orchestrator for camping_cart runtime.
+
+Design rule:
+- Bringup owns only cross-package wiring (sim/rviz toggles, shared map origin/path, module includes).
+- Each package launch owns node composition and detailed per-node params.
+"""
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, GroupAction, TimerAction, LogInfo
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, GroupAction, TimerAction
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
@@ -10,16 +17,16 @@ import yaml
 
 
 def generate_launch_description():
-    # HH_260112 Allow optional cleanup of stale nodes before launching.
+    # -------------------------------------------------------------------------
+    # [Bringup Core] top-level runtime toggles
+    # -------------------------------------------------------------------------
     clean_before_launch = LaunchConfiguration('clean_before_launch')
     sim = LaunchConfiguration('sim')
     use_rviz = LaunchConfiguration('rviz')
     use_eskf = LaunchConfiguration('use_eskf')
 
-    # ✅ FIX: expose controller_mode at top-level bringup launch
-    # 이유: bringup.launch.py에서 DeclareLaunchArgument로 정의되지 않으면
-    #      CLI에서 controller_mode:=dwb 를 줘도 LaunchConfiguration이 존재하지 않아
-    #      "name 'controller_mode' is not defined" 혹은 하위 include로 전달 불가 문제가 발생함.
+    # [planning package passthrough] controller plugin selector.
+    # options: "rpp" (RegulatedPurePursuit) | "dwb" (DWB local planner)
     controller_mode = LaunchConfiguration('controller_mode')
 
     def pkg_path(pkg, rel):
@@ -27,28 +34,36 @@ def generate_launch_description():
 
     bringup_cfg = lambda rel: pkg_path('camping_cart_bringup', os.path.join('config', rel))
 
-    # HH_260114 Avoid param arg name collisions across included launches.
+    # -------------------------------------------------------------------------
+    # [Config roots] bringup-level config defaults
+    # -------------------------------------------------------------------------
     map_param_file = bringup_cfg('map/map_info.yaml')
     sensing_param_file = bringup_cfg('sensing/sensing_params.yaml')
     perception_param_file = bringup_cfg('perception/perception_params.yaml')
     nav2_param_file = pkg_path('camping_cart_bringup', os.path.join('config', 'planning', 'nav2_lanelet.yaml'))
     fake_sensors_param_file = pkg_path('camping_cart_bringup', 'config/sim/fake_sensors.yaml')
 
-    # HH_260114 Expose map path args at top-level to satisfy nested includes.
+    # -------------------------------------------------------------------------
+    # [Cross-package shared map origin/path]
+    # used by map + localization + fake_sensors
+    # -------------------------------------------------------------------------
     map_path_arg = LaunchConfiguration('map_path')
     origin_lat_arg = LaunchConfiguration('origin_lat')
     origin_lon_arg = LaunchConfiguration('origin_lon')
     origin_alt_arg = LaunchConfiguration('origin_alt')
-    lanelet_id_arg = LaunchConfiguration('lanelet_id')
-    speed_mps_arg = LaunchConfiguration('speed_mps')
-    publish_rate_arg = LaunchConfiguration('publish_rate_hz')
-    loop_arg = LaunchConfiguration('loop')
-    frame_id_arg = LaunchConfiguration('frame_id')
-    base_frame_arg = LaunchConfiguration('base_frame_id')
-    obstacle_offset_arg = LaunchConfiguration('obstacle_offset')
-    obstacle_height_arg = LaunchConfiguration('obstacle_height')
+
+    # -------------------------------------------------------------------------
+    # [Per-package parameter-file overrides]
+    # Note: bringup passes file paths only; each package launch decides how to apply them.
+    # -------------------------------------------------------------------------
     map_param = LaunchConfiguration('map_param_file')
+    map_visualization_param = LaunchConfiguration('map_visualization_param_file')
+    robot_visualization_param = LaunchConfiguration('robot_visualization_param_file')
     sensing_param = LaunchConfiguration('sensing_param_file')
+    radar_param = LaunchConfiguration('radar_param_file')
+    radar_cost_grid_param = LaunchConfiguration('radar_cost_grid_param_file')
+    enable_radar = LaunchConfiguration('enable_radar')
+    enable_radar_cost_grid = LaunchConfiguration('enable_radar_cost_grid')
     perception_param = LaunchConfiguration('perception_param_file')
     nav2_param = LaunchConfiguration('nav2_param_file')
     fake_sensors_param = LaunchConfiguration('fake_sensors_param_file')
@@ -59,17 +74,15 @@ def generate_launch_description():
     kimera_bridge_param = LaunchConfiguration('kimera_bridge_param_file')
     pose_selector_enable = LaunchConfiguration('pose_selector_enable')
     pose_selector_param = LaunchConfiguration('pose_selector_param_file')
-    # 2026-02-03: Disable wheel bridge in sim to avoid duplicate /platform/wheel/odometry.
-    # PythonExpression expects valid Python literals; compare string values explicitly.
+    # [localization package] disable wheel bridge in sim to avoid duplicate odometry.
     wheel_bridge_enable_sim_safe = PythonExpression([
         "'", wheel_bridge_enable, "' == 'true' and '", sim, "' == 'false'"
     ])
     drop_zone_param = LaunchConfiguration('drop_zone_param_file')
-    vio_config = pkg_path(
-        'camping_cart_localization',
-        os.path.join('config', 'open_vins', 'camping_cart', 'estimator_config.yaml'))
 
-    # HH_260114 Load shared map parameters from map_info.yaml for offsets/map path.
+    # -------------------------------------------------------------------------
+    # [map package] read default map_path/origin from map_info.yaml once
+    # -------------------------------------------------------------------------
     with open(map_param_file, 'r') as f:
         map_cfg = yaml.safe_load(f)
     map_params = map_cfg.get('/map/lanelet2_map', {}).get('ros__parameters', {})
@@ -78,7 +91,9 @@ def generate_launch_description():
     offset_lon_default = float(map_params.get('offset_lon', 0.0))
     offset_alt_default = float(map_params.get('offset_alt', 0.0))
 
-    # HH_260121 Platform stack (sensor kit + TF).
+    # -------------------------------------------------------------------------
+    # [platform package] sensor kit + robot visualization
+    # -------------------------------------------------------------------------
     platform_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(pkg_path('camping_cart_platform', 'launch/platform.launch.py')),
         launch_arguments={
@@ -86,10 +101,13 @@ def generate_launch_description():
             'base_frame_id': 'robot_base_link',
             'sensor_kit_base_frame_id': 'sensor_kit_base_link',
             'params_file': bringup_cfg('sensor_kit/robot_params.yaml'),
+            'robot_visualization_param_file': robot_visualization_param,
         }.items(),
     )
 
-    # HH_260121 Map stack (map + cost grid + snappers).
+    # -------------------------------------------------------------------------
+    # [map package] lanelet map + base cost grid + map-side visualization
+    # -------------------------------------------------------------------------
     map_stack = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(pkg_path('camping_cart_map', 'launch/map.launch.py')),
         launch_arguments={
@@ -98,29 +116,28 @@ def generate_launch_description():
             'origin_lat': origin_lat_arg,
             'origin_lon': origin_lon_arg,
             'origin_alt': origin_alt_arg,
+            'map_visualization_param_file': map_visualization_param,
         }.items(),
     )
 
-    # HH_260121 Visualization nodes launched separately.
-    visualizer_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(pkg_path('camping_cart_visualizer', 'launch/visualizer.launch.py')),
-        launch_arguments={
-            'visualizer_params': bringup_cfg('visualizer/visualizer_params.yaml'),
-            'map_info': map_param_file,
-            'robot_params': bringup_cfg('sensor_kit/robot_params.yaml'),
-        }.items(),
-    )
-
-    # HH_260121 Sensing pipeline (LiDAR/Camera preprocessing + velocity conversion).
+    # -------------------------------------------------------------------------
+    # [sensing package] preprocess + optional radar + radar cost grid
+    # -------------------------------------------------------------------------
     sensing_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(pkg_path('camping_cart_sensing', 'launch/sensing.launch.py')),
         launch_arguments={
             'sensing_param_file': sensing_param,
+            'radar_param_file': radar_param,
+            'radar_cost_grid_param_file': radar_cost_grid_param,
+            'enable_radar': enable_radar,
+            'enable_radar_cost_grid': enable_radar_cost_grid,
         }.items(),
         condition=UnlessCondition(sim),
     )
 
-    # HH_260121 Perception pipeline (obstacle fusion -> /perception/obstacles).
+    # -------------------------------------------------------------------------
+    # [perception package] obstacle fusion
+    # -------------------------------------------------------------------------
     perception_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(pkg_path('camping_cart_perception', 'launch/perception.launch.py')),
         launch_arguments={
@@ -129,7 +146,10 @@ def generate_launch_description():
         condition=UnlessCondition(sim),
     )
 
-    # HH_260112 Fake sensors for simulation mode.
+    # -------------------------------------------------------------------------
+    # [bringup package] fake sensors (sim only)
+    # keep fake-specific tuning inside fake_sensors.launch.py / config/sim/fake_sensors.yaml
+    # -------------------------------------------------------------------------
     fake_sensors_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(pkg_path('camping_cart_bringup', 'launch/fake_sensors.launch.py')),
         launch_arguments={
@@ -138,19 +158,13 @@ def generate_launch_description():
             'origin_lat': origin_lat_arg,
             'origin_lon': origin_lon_arg,
             'origin_alt': origin_alt_arg,
-            'lanelet_id': lanelet_id_arg,
-            'speed_mps': speed_mps_arg,
-            'publish_rate_hz': publish_rate_arg,
-            'loop': loop_arg,
-            'frame_id': frame_id_arg,
-            'base_frame_id': base_frame_arg,
-            'obstacle_offset': obstacle_offset_arg,
-            'obstacle_height': obstacle_height_arg,
         }.items(),
         condition=IfCondition(sim),
     )
 
-    # HH_260121 Localization stack (GNSS → pose + EKF).
+    # -------------------------------------------------------------------------
+    # [localization package] navsat->pose + ESKF/EKF + supervisor/selector
+    # -------------------------------------------------------------------------
     localization_stack = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(pkg_path('camping_cart_localization', 'launch/localization.launch.py')),
         launch_arguments={
@@ -175,7 +189,9 @@ def generate_launch_description():
         }.items(),
     )
 
-    # HH_260121 Nav2 stack wrapper with controller_mode passthrough.
+    # -------------------------------------------------------------------------
+    # [planning package] nav2 + goal snapper + replanner + path bridge
+    # -------------------------------------------------------------------------
     nav2_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(pkg_path('camping_cart_planning', 'launch/planning.launch.py')),
         launch_arguments={
@@ -184,7 +200,9 @@ def generate_launch_description():
         }.items(),
     )
 
-    # HH_260114 Optional RViz using camping_cart_map dark theme stylesheet.
+    # -------------------------------------------------------------------------
+    # [rviz] optional visualization
+    # -------------------------------------------------------------------------
     rviz_config = pkg_path('camping_cart_map', 'rviz/camping_cart_dark.rviz')
     qss_path = pkg_path('camping_cart_map', 'rviz/dark_theme.qss')
     rviz_node = Node(
@@ -203,16 +221,16 @@ def generate_launch_description():
         description='Kill existing camping_cart processes before launching',
     )
 
-    # ✅ FIX: controller_mode launch arg 선언 (CLI에서 controller_mode:=dwb 를 주기 위함)
+    # [planning package]
     controller_mode_arg = DeclareLaunchArgument(
         'controller_mode',
         default_value='rpp',
-        description='Controller mode selector: rpp / dwb',
+        description='Controller mode selector (options: rpp, dwb)',
     )
     use_eskf_arg = DeclareLaunchArgument(
         'use_eskf',
         default_value='true',
-        description='Use ESKF (true) or legacy EKF (false)',
+        description='Localization filter selector (options: true=ESKF, false=legacy EKF)',
     )
     eskf_param_arg = DeclareLaunchArgument(
         'eskf_param_file',
@@ -246,7 +264,8 @@ def generate_launch_description():
     )
     pose_selector_enable_arg = DeclareLaunchArgument(
         'pose_selector_enable',
-        default_value='true',
+        # 2026-02-24: Direct ESKF output by default for faster, deterministic startup.
+        default_value='false',
         description='Enable localization pose selector (ESKF primary, Kimera fallback)',
     )
     pose_selector_param_arg = DeclareLaunchArgument(
@@ -260,6 +279,17 @@ def generate_launch_description():
         default_value=map_param_file,
         description='Map info YAML (kept for overrides; default used for offsets)',
     )
+    map_visualization_param_arg = DeclareLaunchArgument(
+        'map_visualization_param_file',
+        default_value=bringup_cfg('map/map_visualization.yaml'),
+        description='Map module visualization parameter file',
+    )
+    robot_visualization_param_arg = DeclareLaunchArgument(
+        'robot_visualization_param_file',
+        default_value=bringup_cfg('platform/robot_visualization.yaml'),
+        description='Platform module robot visualization parameter file',
+    )
+    # [shared map args] consumed by map/localization/fake_sensors launches.
     map_path_decl = DeclareLaunchArgument(
         'map_path',
         default_value=str(map_path_default),
@@ -280,46 +310,9 @@ def generate_launch_description():
         default_value=str(offset_alt_default),
         description='Map origin altitude (propagated to fake sensors and localization)',
     )
-    lanelet_id_decl = DeclareLaunchArgument(
-        'lanelet_id',
-        default_value='-1',
-        description='Lanelet ID to follow for fake sensors (-1 = first valid centerline)',
-    )
-    speed_mps_decl = DeclareLaunchArgument(
-        'speed_mps',
-        default_value='1.4',
-        description='Fake vehicle speed (m/s, exposed to avoid missing config)',
-    )
-    publish_rate_decl = DeclareLaunchArgument(
-        'publish_rate_hz',
-        default_value='20.0',
-        description='Fake sensor publish rate (Hz)',
-    )
-    loop_decl = DeclareLaunchArgument(
-        'loop',
-        default_value='true',
-        description='Loop the lanelet route when reaching the end',
-    )
-    frame_id_decl = DeclareLaunchArgument(
-        'frame_id',
-        default_value='map',
-        description='Global frame id for fake sensors',
-    )
-    base_frame_decl = DeclareLaunchArgument(
-        'base_frame_id',
-        default_value='robot_base_link',
-        description='Vehicle base frame id for fake sensors',
-    )
-    obstacle_offset_decl = DeclareLaunchArgument(
-        'obstacle_offset',
-        default_value='5.0',
-        description='Obstacle offset ahead of vehicle (m)',
-    )
-    obstacle_height_decl = DeclareLaunchArgument(
-        'obstacle_height',
-        default_value='0.5',
-        description='Obstacle height (m)',
-    )
+    # NOTE:
+    # fake sensor fine-grained args (lanelet_id/speed/rate/loop/obstacle...) are managed
+    # inside fake_sensors.launch.py and config/sim/fake_sensors.yaml.
     fake_sensors_param_arg = DeclareLaunchArgument(
         'fake_sensors_param_file',
         default_value=fake_sensors_param_file,
@@ -329,6 +322,26 @@ def generate_launch_description():
         'sensing_param_file',
         default_value=sensing_param_file,
         description='Sensing param file override (preprocess nodes)',
+    )
+    radar_param_arg = DeclareLaunchArgument(
+        'radar_param_file',
+        default_value=bringup_cfg('sensing/sen0592_radar.yaml'),
+        description='SEN0592 radar parameter file',
+    )
+    radar_cost_grid_param_arg = DeclareLaunchArgument(
+        'radar_cost_grid_param_file',
+        default_value=bringup_cfg('sensing/radar_cost_grid.yaml'),
+        description='Radar near-range cost grid parameter file',
+    )
+    enable_radar_arg = DeclareLaunchArgument(
+        'enable_radar',
+        default_value='false',
+        description='Enable SEN0592 radar serial node (options: true, false)',
+    )
+    enable_radar_cost_grid_arg = DeclareLaunchArgument(
+        'enable_radar_cost_grid',
+        default_value='true',
+        description='Enable radar near-range cost grid node (options: true, false)',
     )
     perception_param_arg = DeclareLaunchArgument(
         'perception_param_file',
@@ -343,12 +356,12 @@ def generate_launch_description():
     sim_arg = DeclareLaunchArgument(
         'sim',
         default_value='true',
-        description='Enable simulation mode (launch fake sensors, skip real sensing/VIO)',
+        description='Simulation mode switch (options: true, false)',
     )
     rviz_arg = DeclareLaunchArgument(
         'rviz',
         default_value='true',
-        description='Launch RViz2 (disable to keep terminal alive for debugging)',
+        description='RViz launch switch (options: true, false)',
     )
 
     # 2026-02-02: Use bracketed pkill patterns to avoid killing the cleanup shell itself.
@@ -357,6 +370,8 @@ def generate_launch_description():
         'pkill -f "[l]idar_preprocessor_node" || true; '
         'pkill -f "[s]ensor_calibration_broadcaster_node" || true; '
         'pkill -f "[p]latform_velocity_converter_node" || true; '
+        'pkill -f "[s]en0592_radar_node" || true; '
+        'pkill -f "[r]adar_cost_grid_node" || true; '
         'pkill -f "[o]bstacle_fusion_node" || true; '
         'pkill -f "[n]avsat_to_pose_node" || true; '
         'pkill -f "[p]ose_cov_bridge_node" || true; '
@@ -369,6 +384,8 @@ def generate_launch_description():
         'pkill -f "[c]ost_field_marker_node" || true; '
         'pkill -f "[c]ost_field_node" || true; '
         'pkill -f "[g]oal_snapper_node" || true; '
+        'pkill -f "[g]oal_replanner_node" || true; '
+        'pkill -f "[c]ompute_path_bridge_node" || true; '
         'pkill -f "[e]kf_node" || true; '
         'pkill -f "[n]avsat_transform_node" || true; '
         'pkill -f "[r]obot_state_publisher" || true; '
@@ -391,7 +408,6 @@ def generate_launch_description():
         platform_launch,
         map_stack,
         fake_sensors_launch,
-        visualizer_launch,
         sensing_launch,
         perception_launch,
         localization_stack,
@@ -425,17 +441,15 @@ def generate_launch_description():
         origin_lat_decl,
         origin_lon_decl,
         origin_alt_decl,
-        lanelet_id_decl,
-        speed_mps_decl,
-        publish_rate_decl,
-        loop_decl,
-        frame_id_decl,
-        base_frame_decl,
-        obstacle_offset_decl,
-        obstacle_height_decl,
         map_param_arg,
+        map_visualization_param_arg,
+        robot_visualization_param_arg,
         fake_sensors_param_arg,
         sensing_param_arg,
+        radar_param_arg,
+        radar_cost_grid_param_arg,
+        enable_radar_arg,
+        enable_radar_cost_grid_arg,
         perception_param_arg,
         nav2_param_arg,
         sim_arg,

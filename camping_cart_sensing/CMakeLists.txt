@@ -10,6 +10,10 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
 add_executable(lidar_preprocessor_node src/lidar_preprocessor_node.cpp)
 ament_target_dependencies(lidar_preprocessor_node
@@ -29,11 +33,22 @@ ament_target_dependencies(platform_velocity_converter_node
 add_executable(sen0592_radar_node src/sen0592_radar_node.cpp)
 ament_target_dependencies(sen0592_radar_node rclcpp sensor_msgs)
 
+add_executable(radar_cost_grid_node src/radar_cost_grid_node.cpp)
+ament_target_dependencies(radar_cost_grid_node
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  nav_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs)
+
 install(TARGETS
   lidar_preprocessor_node
   camera_preprocessor_node
   platform_velocity_converter_node
   sen0592_radar_node # HH_260220
+  radar_cost_grid_node
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY config launch

@@ -1,0 +1,22 @@
+/sensing/radar_cost_grid:
+  ros__parameters:
+    output_topic: "/sensing/radar/near_cost_grid"
+    base_frame_id: "robot_base_link"
+    resolution: 0.10
+    width: 120
+    height: 120
+    origin_x: -6.0
+    origin_y: -6.0
+    free_value: 0
+    obstacle_value: 100
+    unknown_value: 0
+    obstacle_radius_m: 0.30
+    max_message_age_sec: 0.35
+    publish_rate_hz: 10.0
+    input_topics:
+      - "/sensing/radar/front/range"
+      - "/sensing/radar/right1/range"
+      - "/sensing/radar/right2/range"
+      - "/sensing/radar/left1/range"
+      - "/sensing/radar/left2/range"
+      - "/sensing/radar/rear/range"

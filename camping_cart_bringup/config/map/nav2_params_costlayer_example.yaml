@@ -12,7 +12,7 @@ local_costmap:
       lanelet_cost_layer:
         plugin: "camping_cart_map::cost_map::LaneletCostLayer"
         # HH_260109 Use map-prefixed lanelet cost grid topic.
-        source_topic: "/map/lanelet_cost_grid"
+        source_topic: "/map/cost_grid/lanelet"
         lethal_threshold: 65
         unknown_value: 255
 
@@ -27,6 +27,6 @@ global_costmap:
       height: 200.0
       lanelet_cost_layer:
         plugin: "camping_cart_map::cost_map::LaneletCostLayer"
-        source_topic: "/map/lanelet_cost_grid"
+        source_topic: "/map/cost_grid/lanelet"
         lethal_threshold: 65
         unknown_value: 255

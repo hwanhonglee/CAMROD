@@ -96,7 +96,7 @@ def _launch_setup(context, *args, **kwargs):
     output="screen",
   )
 
-  # HH_260109 Visualization moved to camping_cart_visualizer package.
+  # HH_260224 Visualization moved to camping_cart_platform/map packages.
   _ = map_frame
   _ = base_pose_cfg
   return [rsp_node]

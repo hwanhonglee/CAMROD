@@ -117,6 +117,18 @@ def generate_launch_description():
         ],
     )
 
+    # 2026-02-23: Keep ComputePathToPose action updated as goal/current pose changes.
+    goal_replanner = Node(
+        package='camping_cart_planning',
+        executable='goal_replanner_node',
+        name='goal_replanner',
+        namespace='planning',
+        output='screen',
+        parameters=[
+            pkg_share('camping_cart_bringup', os.path.join('config', 'planning', 'goal_replanner.yaml')),
+        ],
+    )
+
     return LaunchDescription([
         nav2_param_arg,
         controller_mode_arg,
@@ -127,5 +139,6 @@ def generate_launch_description():
         goal_snapper,
         centerline_snapper,
         compute_path_bridge,
+        goal_replanner,
         nav2_launch,
     ])

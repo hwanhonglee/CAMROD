@@ -9,8 +9,10 @@
     input_goal_topic: "/goal_pose"
     output_goal_topic: "/planning/goal_pose"
     # 2026-02-09: Enforce lanelet-contained goals to keep planned path on lanelet map.
-    max_search_radius: 30.0
+    max_search_radius: 120.0
     require_lanelet_containment: true
+    # 2026-02-23: If clicked outside lanelet polygon, still snap to nearest lanelet centerline.
+    fallback_uncontained: true
     use_map_z: true
     flatten_to_ground: true
     map_z_offset: 0.0

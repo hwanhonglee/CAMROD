@@ -1,9 +1,8 @@
-# 2026-02-02 10:32 Sync from package config into bringup/config
 # 2026-01-30 Update map path/origin for new_lanelet2_maps.osm.
 # HH_260102 Default parameters for lanelet_cost_grid_node (OccupancyGrid for path-focused cost)
 # HH_260112 Align with /map namespace + short node name.
 # HH_260112 Align node parameter keys with /map namespace + short names.
-/map/lanelet_cost_grid:
+/map/cost_grid_map:
   ros__parameters:
     map_path: "/home/hong/cart_test_ws/src/new_lanelet2_maps.osm"  # HH_260102 override via launch
     map_frame_id: "map"
@@ -11,11 +10,11 @@
     offset_lon: 128.0925490
     offset_alt: 0.0
     # 2026-02-02: Finer grid for clearer lanelet boundaries in RViz.
-    resolution: 0.1
+    resolution: 0.08
     width: 0
     height: 0
     # 2026-02-11: Lane-only corridor width (meters). Increase if lane coverage is too narrow.
-    centerline_half_width: 2.0
+    centerline_half_width: 2.2
     free_value: 0
     lethal_value: 100
     # 2026-02-11: Keep static base layer neutral to heading; dynamic bias belongs to path layer.
@@ -24,10 +23,21 @@
     gradient_range: 30.0
     centerline_use_distance_gradient: false
     grid_yaw: 0.0
-    # 2026-02-11: Base map = lane corridor drivable, outside lanelet corridor is lethal.
-    cost_mode: "centerline"
+    # 2026-02-02 11:55: Static map grid uses only left/right bounds.
+    # cost_mode options:
+    #   "centerline" : narrow corridor around lanelet centerlines
+    #   "bounds"     : left/right boundary lines only (thin lethal strips)
+    #   "lanelet"    : full lanelet polygon area
+    #   "path"       : path strip based on /planning/global_path
+    # 2026-02-24: Base map = full lanelet polygons drivable, outside lanelets unknown.
+    cost_mode: "lanelet"
     boundary_half_width: 0.2
-    outside_value: 100
+    # 2026-02-24: Keep outside lanelets unknown so RViz and inflation overlay stay lanelet-shaped.
+    # outside_value options:
+    #   -1  : unknown outside lanelets (recommended)
+    #   0   : free outside lanelets
+    #   100 : lethal outside lanelets
+    outside_value: -1
     use_path_bbox: false        # HH_260102 keep grid window robot-centered to avoid size flicker
     lock_window: true
     use_map_bbox: true

@@ -38,6 +38,39 @@ using namespace std::chrono_literals;
 using rcl_interfaces::msg::ParameterType;
 using std::placeholders::_1;
 
+namespace
+{
+double dist2d(
+  const geometry_msgs::msg::Point & a,
+  const geometry_msgs::msg::Point & b)
+{
+  const double dx = a.x - b.x;
+  const double dy = a.y - b.y;
+  return std::hypot(dx, dy);
+}
+
+void orientPathStartToGoal(
+  const geometry_msgs::msg::PoseStamped & start,
+  const geometry_msgs::msg::PoseStamped & goal,
+  nav_msgs::msg::Path & path)
+{
+  if (path.poses.size() < 2) {
+    return;
+  }
+
+  const auto & first = path.poses.front().pose.position;
+  const auto & last = path.poses.back().pose.position;
+  const double normal_score =
+    dist2d(first, start.pose.position) + dist2d(last, goal.pose.position);
+  const double reversed_score =
+    dist2d(last, start.pose.position) + dist2d(first, goal.pose.position);
+
+  if (reversed_score + 1e-3 < normal_score) {
+    std::reverse(path.poses.begin(), path.poses.end());
+  }
+}
+}  // namespace
+
 namespace nav2_planner
 {
 
@@ -417,6 +450,7 @@ PlannerServer::computePlanThroughPoses()
 
       // Get plan from start -> goal
       nav_msgs::msg::Path curr_path = getPlan(curr_start, curr_goal, goal->planner_id);
+      orientPathStartToGoal(curr_start, curr_goal, curr_path);
 
       // check path for validity
       if (!validatePath(action_server_poses_, curr_goal, curr_path, goal->planner_id)) {
@@ -487,6 +521,7 @@ PlannerServer::computePlan()
     }
 
     result->path = getPlan(start, goal_pose, goal->planner_id);
+    orientPathStartToGoal(start, goal_pose, result->path);
 
     if (!validatePath(action_server_pose_, goal_pose, result->path, goal->planner_id)) {
       return;

@@ -2,6 +2,59 @@
 
 <!-- HH_260109 Initialize bringup work log. -->
 
+## Runtime Structure (2026-02-24)
+- `camping_cart_bringup/launch/bringup.launch.py` only orchestrates module launches.
+- Platform nodes are launched from `camping_cart_platform/launch/platform.launch.py`.
+- Map and map-visualization nodes are launched from `camping_cart_map/launch/map.launch.py`.
+- Sensing/perception/localization/planning are launched from each package launch file.
+
+## Bringup Arg Boundary
+- bringup should expose only cross-module knobs:
+  - shared map origin/path (`map_path`, `origin_lat/lon/alt`)
+  - runtime toggles (`sim`, `rviz`, `controller_mode`, `use_eskf`)
+  - per-module param file override paths
+- module-specific node-level params should live in each package launch/config:
+  - map internals in `camping_cart_map/*`
+  - planning internals in `camping_cart_planning/*`
+  - localization internals in `camping_cart_localization/*`
+  - sensing internals in `camping_cart_sensing/*`
+
+## Costmap Shape Reality
+- `nav2_costmap_2d` master maps are always rectangular OccupancyGrid buffers by design.
+- lanelet-shaped rendering is achieved by keeping non-lanelet cells unknown/high and visualizing lanelet/path masks:
+  - `/map/cost_grid/lanelet`
+  - `/planning/cost_grid/global_path`
+  - `/planning/cost_grid/local_path`
+- if RViz shows a full rectangle, check:
+  - Map display topic is path/lanelet grid topic (not just `/planning/*/costmap`)
+  - `outside_value=-1`
+  - `path_use_lanelet_mask=true`
+  - `path_lanelet_only=true`
+
+## Cost Grid Modes / High-Cost Rules
+- Base map grid (`/map/cost_grid/lanelet`, `cost_mode: lanelet`)
+  - low: inside lanelet polygons
+  - high/unknown: outside lanelet polygons
+- Global path grid (`/planning/cost_grid/global_path`, `cost_mode: path`)
+  - low: active global path strip
+  - high: non-path lanelet cells
+- Local path grid (`/planning/cost_grid/local_path`, `cost_mode: path`)
+  - low: active global path strip near robot
+  - high: non-path lanelet cells near robot
+- Lidar obstacle layer (`nav2 ObstacleLayer`)
+  - high: occupied obstacle points from `/perception/obstacles/lidar`
+- Radar proximity layer (`nav2 RangeSensorLayer`)
+  - high: near-range occupied sectors from `/sensing/radar/*/range`
+
+## Config Sync Check
+- Keep these pairs identical:
+  - `camping_cart_map/config/lanelet_cost_grid.yaml` == `camping_cart_bringup/config/map/lanelet_cost_grid.yaml`
+  - `camping_cart_planning/config/path_cost_grids.yaml` == `camping_cart_bringup/config/planning/path_cost_grids.yaml`
+  - `camping_cart_planning/config/nav2_lanelet.yaml` == `camping_cart_bringup/config/planning/nav2_lanelet.yaml`
+- Quick check:
+  - `diff -u <pkg-config> <bringup-config>`
+  - `ros2 run camping_cart_bringup check_config_sync.sh`
+
 ## 2026-02-06 21:26
 - Path cost grid no longer forces outside_value (set to -1) so planners can compute the first path before any path is available.
 
@@ -84,7 +137,7 @@
 - HH_260127: Switch bringup Nav2 params to camping_cart_bringup/config/planning/nav2_lanelet.yaml (planning config now mirrored here).
 
 ## 2026-01-26 16:15
-- HH_260126: Remove OpenVINS note (no longer used); Kimera-VIO will be vendor-added under localization/external when available.
+- HH_260126: VIO reference stack consolidated to Kimera-VIO path under localization/external.
 
 ## 2026-01-23 13:07
 - HH_260123: Wire ESKF/supervisor launch args (use_eskf, eskf/supervisor params, wheel bridge) into bringup.

@@ -76,7 +76,7 @@ ament_target_dependencies(odometry_to_pose_node
   nav_msgs
 )
 
-# HH_260109 cost_field_node moved to camping_cart_visualizer.
+# HH_260224 cost_field_node moved to camping_cart_map.
 
 add_executable(localization_health_monitor_node
   src/localization_health_monitor_node.cpp

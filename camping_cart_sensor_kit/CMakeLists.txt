@@ -49,7 +49,7 @@ target_include_directories(camping_cart_sensor_kit_lib PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
-# HH_260109 Robot visualization node moved to camping_cart_visualizer package.
+# HH_260224 Robot visualization node moved to camping_cart_platform package.
 
 ###############################################
 # 5. Install

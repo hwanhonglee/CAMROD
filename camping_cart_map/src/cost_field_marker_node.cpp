@@ -1,5 +1,5 @@
-// HH_260109 Cost field marker publisher (visualizer package).
-// Subscribes to a nav_msgs/OccupancyGrid (e.g., /map/lanelet_cost_grid) and publishes
+// 2026-02-24: Cost field marker publisher under map package.
+// Subscribes to a nav_msgs/OccupancyGrid (e.g., /planning/global_costmap/costmap) and publishes
 // a MarkerArray that visualizes cell costs with a red→yellow→green gradient.
 
 #include <rclcpp/rclcpp.hpp>
@@ -18,12 +18,14 @@ CostFieldMarkerNode() : Node("cost_field_marker")
     // 2026-02-02 11:10: Default to combined (inflation-applied) Nav2 costmap output.
     grid_topic_ = declare_parameter<std::string>("grid_topic", "/planning/global_costmap/costmap");
     marker_topic_ = declare_parameter<std::string>(
-      "marker_topic", "/visualizer/map/inflation_cost_grid_markers");
+      "marker_topic", "/map/cost_grid/inflation_markers");
     marker_scale_ = declare_parameter<double>("marker_scale", 0.2);  // HH_260101 configurable size
     min_value_ = declare_parameter<int>("min_value", 0);
     max_value_ = declare_parameter<int>("max_value", 100);
     alpha_ = declare_parameter<double>("alpha", 0.35);  // HH_260102 softer opacity
     z_offset_ = declare_parameter<double>("z_offset", 0.05);  // HH_260101 lift markers above map
+    palette_ = declare_parameter<std::string>("palette", "pastel");
+    show_unknown_ = declare_parameter<bool>("show_unknown", false);
     param_cb_handle_ = add_on_set_parameters_callback(
       std::bind(&CostFieldMarkerNode::onParamChange, this, std::placeholders::_1));
 
@@ -49,7 +51,7 @@ private:
     m.header = header;
     m.ns = "inflation_cost_grid";
     m.id = 0;
-    m.type = visualization_msgs::msg::Marker::POINTS;
+    m.type = visualization_msgs::msg::Marker::CUBE_LIST;
     m.action = visualization_msgs::msg::Marker::ADD;
     m.pose.orientation.w = 1.0;
     m.scale.x = marker_scale_;  // default; will be overridden by resolution
@@ -64,14 +66,21 @@ private:
     std_msgs::msg::ColorRGBA c;
     c.a = static_cast<float>(alpha_);
     if (v < 0) {  // unknown
-      c.r = c.g = c.b = 0.2f;
+      if (palette_ == "pastel") {
+        c.r = 0.85f; c.g = 0.85f; c.b = 0.88f;
+      } else {
+        c.r = c.g = c.b = 0.2f;
+      }
       return c;
     }
     const float denom = static_cast<float>(std::max(1, max_value_ - min_value_));
     const float norm = std::clamp(static_cast<float>(v - min_value_) / denom, 0.0f, 1.0f);
-    // HH_260102 gradient: low cost = teal, high cost = muted red
-    const float low_r = 0.2f, low_g = 0.8f, low_b = 0.8f;
-    const float high_r = 0.8f, high_g = 0.2f, high_b = 0.2f;
+    float low_r = 0.2f, low_g = 0.8f, low_b = 0.8f;
+    float high_r = 0.8f, high_g = 0.2f, high_b = 0.2f;
+    if (palette_ == "pastel") {
+      low_r = 0.72f; low_g = 0.86f; low_b = 0.95f;   // pastel blue
+      high_r = 0.95f; high_g = 0.80f; high_b = 0.86f; // pastel pink
+    }
     c.r = high_r * norm + low_r * (1.0f - norm);
     c.g = high_g * norm + low_g * (1.0f - norm);
     c.b = high_b * norm + low_b * (1.0f - norm);
@@ -92,6 +101,10 @@ private:
         alpha_ = p.as_double();
       } else if (p.get_name() == "z_offset") {
         z_offset_ = p.as_double();
+      } else if (p.get_name() == "palette") {
+        palette_ = p.as_string();
+      } else if (p.get_name() == "show_unknown") {
+        show_unknown_ = p.as_bool();
       }
     }
     rcl_interfaces::msg::SetParametersResult r;
@@ -125,7 +138,7 @@ private:
       for (size_t x = 0; x < width; ++x) {
         const size_t idx = y * width + x;
         const int8_t v = msg->data[idx];
-        if (v < 0) {
+        if (v < 0 && !show_unknown_) {
           continue;  // skip unknown to reduce clutter
         }
         geometry_msgs::msg::Point p;
@@ -159,6 +172,8 @@ private:
   int max_value_{100};
   double alpha_{0.35};
   double z_offset_{0.05};
+  std::string palette_{"pastel"};
+  bool show_unknown_{false};
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_handle_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr grid_sub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;

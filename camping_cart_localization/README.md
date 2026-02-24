@@ -30,7 +30,7 @@
 - HH_260127: Remove HH tags from runtime logs and demote startup logs to DEBUG (ESKF/navsat/bridges/snapper/supervisor).
 
 ## 2026-01-26 16:15
-- HH_260126: Removed OpenVINS configs/docs; planning to vendor Kimera-VIO under localization/external (ESKF remains default, EKF optional).
+- HH_260126: VIO integration path standardized to Kimera-VIO (ESKF remains default, EKF optional).
 
 ## 2026-01-25 14:25
 - HH_260125: ESKF publishes pose/pose_with_covariance with map frame headers (map->odom TF still identity) to keep cost grids/nav2 inputs aligned without frame drift.

@@ -15,7 +15,7 @@ void LaneletCostLayer::onInitialize()
 {
   auto node = node_.lock();
   // HH_260109 Default to map-prefixed cost grid topic.
-  declareParameter("source_topic", rclcpp::ParameterValue(std::string("/map/lanelet_cost_grid")));
+  declareParameter("source_topic", rclcpp::ParameterValue(std::string("/map/cost_grid/lanelet")));
   declareParameter("lethal_threshold", rclcpp::ParameterValue(65));
   declareParameter("unknown_value", rclcpp::ParameterValue(static_cast<int>(nav2_costmap_2d::NO_INFORMATION)));
 

@@ -2,18 +2,10 @@
 
 <!-- HH_260109 Track VIO references, install notes, and topic wiring. -->
 
-## OpenVINS (Recommended)
-- Paper: "OpenVINS: A Research Platform for Visual-Inertial Estimation"
-  - Venue: ICRA 2020
-  - Link: https://github.com/rpng/open_vins
-  - Paper PDF: https://pgeneva.com/downloads/papers/Geneva2020ICRA.pdf
-- Branch used (ROS2): develop_v2.7
-- Workspace location: `camping_cart_localization/external/open_vins`
-- Local config: `camping_cart_localization/config/open_vins/camping_cart/estimator_config.yaml`
-- Install (ROS2):
-  1) Clone `open_vins` into workspace src.
-  2) Build with `colcon build --packages-select open_vins` (or package list inside repo).
-  3) Provide camera + IMU topics and calibration YAML.
+## Kimera-VIO
+- Repository: https://github.com/MIT-SPARK/Kimera-VIO
+- Workspace location: `camping_cart_localization/external/Kimera-VIO`
+- Current integration: CSV bridge (`kimera_csv_bridge_node`) into `/localization/kimera_vio/*`
 - Topic wiring (target):
   - Input: `/sensing/camera/processed/image`, `/sensing/imu/data`
   - Output (desired): `/localization/vio/odometry`
@@ -39,6 +31,6 @@
   - Output (desired): `/localization/vio/odometry`
 
 ## Decision Notes
-- OpenVINS: stable, maintainable, ROS2-friendly.
+- Kimera-VIO: current project reference implementation.
 - VINS-Fusion: strong performance but ROS2 integration effort.
 - ORB-SLAM3: highest accuracy, heavier integration and compute.

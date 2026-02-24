@@ -55,12 +55,18 @@ def generate_launch_description():
         default_value=default_alt,
         description='Map origin altitude',
     )
+    map_viz_param_arg = DeclareLaunchArgument(
+        'map_visualization_param_file',
+        default_value=pkg_share('camping_cart_bringup', os.path.join('config', 'map', 'map_visualization.yaml')),
+        description='Map visualization parameters (cost markers/field)',
+    )
 
     map_param = LaunchConfiguration('map_param_file')
     map_path = LaunchConfiguration('map_path')
     origin_lat = LaunchConfiguration('origin_lat')
     origin_lon = LaunchConfiguration('origin_lon')
     origin_alt = LaunchConfiguration('origin_alt')
+    map_viz_param = LaunchConfiguration('map_visualization_param_file')
 
     # HH_260121 Map server (Lanelet2) loads OSM and static TF world->map.
     map_launch = IncludeLaunchDescription(
@@ -70,12 +76,12 @@ def generate_launch_description():
         }.items(),
     )
 
-    # HH_260121 Lanelet cost grid for Nav2 custom cost layer (/map/lanelet_cost_grid).
+    # HH_260121 Lanelet cost grid for Nav2 custom cost layer (/map/cost_grid/lanelet).
     cost_grid_param = pkg_share('camping_cart_bringup', os.path.join('config', 'map', 'lanelet_cost_grid.yaml'))
     lanelet_cost_grid = Node(
         package='camping_cart_map',
         executable='lanelet_cost_grid_node',
-        name='lanelet_cost_grid',
+        name='cost_grid_map',
         namespace='map',
         output='screen',
         parameters=[
@@ -86,9 +92,36 @@ def generate_launch_description():
                 'offset_lon': origin_lon,
                 'offset_alt': origin_alt,
                 'map_frame_id': 'map',
-                # HH_260123 Base grid uses raw GNSS pose to be available before localization.
-                'pose_topic': '/sensing/gnss/pose',
-                'output_topic': '/map/lanelet_cost_grid',
+                # 2026-02-23: Align base grid pose reference with planning/localization start frame.
+                'pose_topic': '/localization/pose',
+                'output_topic': '/map/cost_grid/lanelet',
+            },
+        ],
+    )
+
+    # 2026-02-24: Move map cost visualizers under map module ownership.
+    inflation_cost_marker = Node(
+        package='camping_cart_map',
+        executable='cost_field_marker_node',
+        name='inflation_cost_marker',
+        namespace='map',
+        output='screen',
+        parameters=[map_viz_param],
+    )
+
+    lanelet_cost_field = Node(
+        package='camping_cart_map',
+        executable='cost_field_node',
+        name='lanelet_cost_field',
+        namespace='map',
+        output='screen',
+        parameters=[
+            map_viz_param,
+            {
+                'map_path': map_path,
+                'offset_lat': origin_lat,
+                'offset_lon': origin_lon,
+                'offset_alt': origin_alt,
             },
         ],
     )
@@ -99,6 +132,9 @@ def generate_launch_description():
         origin_lat_arg,
         origin_lon_arg,
         origin_alt_arg,
+        map_viz_param_arg,
         map_launch,
         lanelet_cost_grid,
+        inflation_cost_marker,
+        lanelet_cost_field,
     ])

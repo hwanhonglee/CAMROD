@@ -151,8 +151,8 @@ public:
 
     topics_ = this->declare_parameter<std::vector<std::string>>(
       "topics", {
-        "/radar/rear/range", "/radar/left2/range", "/radar/left1/range",
-        "/radar/right2/range", "/radar/right1/range", "/radar/front/range"
+        "/sensing/radar/rear/range", "/sensing/radar/left2/range", "/sensing/radar/left1/range",
+        "/sensing/radar/right2/range", "/sensing/radar/right1/range", "/sensing/radar/front/range"
       });
 
     const auto n = ports_.size();

@@ -17,6 +17,7 @@
 #include <vector>
 #include <memory>
 #include <filesystem>
+#include <unordered_set>
 
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2/exceptions.h>
@@ -62,6 +63,9 @@ public:
     path_use_lanelet_mask_ = declare_parameter<bool>("path_use_lanelet_mask", true);
     // 2026-02-11: Base cost inside lanelet area before path strip overlay in path mode.
     path_lane_base_value_ = declare_parameter<int>("path_lane_base_value", 100);
+    // 2026-02-24: Local path mode can mask only lanelets that the path traverses.
+    path_lanelet_only_ = declare_parameter<bool>("path_lanelet_only", false);
+    path_lanelet_match_max_dist_ = declare_parameter<double>("path_lanelet_match_max_dist", 5.0);
     grid_yaw_ = declare_parameter<double>("grid_yaw", 0.0);  // HH_260103 manual yaw (rad) for OccupancyGrid orientation
     use_path_bbox_ = declare_parameter<bool>("use_path_bbox", false);  // HH_260103 false -> robot-centered window, true -> path bbox window
     lock_window_ = declare_parameter<bool>("lock_window", false);  // HH_260126 keep grid window fixed (use origin_x/y + width/height)
@@ -72,7 +76,7 @@ public:
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
     path_topic_ = declare_parameter<std::string>("path_topic", "/planning/global_path");  // HH_260103 focus cost along planned path
     republish_period_ = declare_parameter<double>("republish_period", 1.0);  // HH_260103 RViz toggle refresh
-    output_topic_ = declare_parameter<std::string>("output_topic", "/map/lanelet_cost_grid");  // HH_260123 allow multiple cost grids
+    output_topic_ = declare_parameter<std::string>("output_topic", "/map/cost_grid/lanelet");  // HH_260123 allow multiple cost grids
 
     // HH_260109 Publish lanelet cost grid under /map prefix.
     grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
@@ -227,6 +231,10 @@ private:
         path_use_lanelet_mask_ = p.as_bool();
       } else if (p.get_name() == "path_lane_base_value") {
         path_lane_base_value_ = p.as_int();
+      } else if (p.get_name() == "path_lanelet_only") {
+        path_lanelet_only_ = p.as_bool();
+      } else if (p.get_name() == "path_lanelet_match_max_dist") {
+        path_lanelet_match_max_dist_ = p.as_double();
       } else if (p.get_name() == "backward_penalty") {
         backward_penalty_ = p.as_int();
       } else if (p.get_name() == "direction_penalty") {
@@ -359,8 +367,14 @@ private:
     if (cost_mode_ == "path") {
       if (path_use_lanelet_mask_) {
         const int lane_cost = std::clamp(path_lane_base_value_, free_value_, lethal_value_);
-        for (const auto & ll : map_->laneletLayer) {
-          fillLaneletArea(ll, lane_cost, grid);
+        if (path_lanelet_only_ && path_received_ && path_.poses.size() > 1) {
+          for (const auto & ll : collectPathLanelets()) {
+            fillLaneletArea(ll, lane_cost, grid);
+          }
+        } else {
+          for (const auto & ll : map_->laneletLayer) {
+            fillLaneletArea(ll, lane_cost, grid);
+          }
         }
       }
       if (path_received_ && path_.poses.size() > 1) {
@@ -401,6 +415,10 @@ private:
             fillBoundaryStrip(right[i], right[i + 1], grid);
           }
         }
+      }
+    } else if (cost_mode_ == "lanelet") {
+      for (const auto & ll : map_->laneletLayer) {
+        fillLaneletArea(ll, free_value_, grid);
       }
     } else {  // centerline (default)
       for (const auto & ll : map_->laneletLayer) {
@@ -537,6 +555,34 @@ private:
       poly.emplace_back(p.x(), p.y());
     }
     fillPolygonConst(poly, value, grid);
+  }
+
+  std::vector<lanelet::ConstLanelet> collectPathLanelets() const
+  {
+    std::vector<lanelet::ConstLanelet> result;
+    if (!map_ || path_.poses.empty()) {
+      return result;
+    }
+
+    std::unordered_set<lanelet::Id> ids;
+    for (const auto & ps : path_.poses) {
+      const lanelet::BasicPoint2d p(ps.pose.position.x, ps.pose.position.y);
+      const auto nearest = lanelet::geometry::findNearest(map_->laneletLayer, p, 1);
+      if (nearest.empty()) {
+        continue;
+      }
+      if (nearest.front().first <= path_lanelet_match_max_dist_) {
+        ids.insert(nearest.front().second.id());
+      }
+    }
+
+    result.reserve(ids.size());
+    for (const auto & ll : map_->laneletLayer) {
+      if (ids.find(ll.id()) != ids.end()) {
+        result.emplace_back(ll);
+      }
+    }
+    return result;
   }
 
   void fillPathStrip(
@@ -691,6 +737,8 @@ private:
   bool centerline_use_distance_gradient_;
   bool path_use_lanelet_mask_;
   int path_lane_base_value_;
+  bool path_lanelet_only_;
+  double path_lanelet_match_max_dist_;
   double grid_yaw_;
   std::string cost_mode_;
   bool use_path_bbox_;

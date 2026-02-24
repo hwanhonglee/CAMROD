@@ -21,7 +21,6 @@
   <exec_depend>camping_cart_planning</exec_depend>
   <exec_depend>camping_cart_sensing</exec_depend>
   <exec_depend>camping_cart_platform</exec_depend>
-  <exec_depend>camping_cart_visualizer</exec_depend>
   <exec_depend>robot_localization</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>

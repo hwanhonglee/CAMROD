@@ -74,6 +74,14 @@ def generate_launch_description():
                 'robot_base_frame': 'robot_base_link',
             }
         },
+        'bt_navigator': {
+            'ros__parameters': {
+                'global_frame': 'map',
+                'robot_base_frame': 'robot_base_link',
+                'odom_topic': '/localization/odometry/filtered',
+                'transform_tolerance': 0.2,
+            }
+        },
         'nav2_velocity_smoother': {
             'ros__parameters': {
                 'robot_base_frame': 'robot_base_link',

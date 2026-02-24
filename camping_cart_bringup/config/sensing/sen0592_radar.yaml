@@ -1,19 +1,13 @@
-sen0592_radar_node:
+/sensing/sen0592_radar:
   ros__parameters:
     baud: 115200
     slave_id: 1
-
-    # Polling / communication tuning
     poll_period_s: 0.06
     response_deadline_s: 0.20
     inter_frame_sleep_s: 0.003
-
-    # Range message settings
     min_range_m: 0.02
     max_range_m: 4.50
     field_of_view_rad: 0.26
-
-    # Sensor mapping (ultra_0~5 -> physical positions)
     sensor_names: ["REAR", "LEFT2", "LEFT1", "RIGHT2", "RIGHT1", "FRONT"]
     frame_ids:
       - "radar_rear_link"
@@ -22,18 +16,13 @@ sen0592_radar_node:
       - "radar_right2_link"
       - "radar_right1_link"
       - "radar_front_link"
-
-    # IMPORTANT:
-    # Replace these with your actual Linux device paths.
-    # Recommended: use /dev/serial/by-id/* via udev for stable mapping.
     ports:
-      - "/dev/ttyCH9344USB2"   # ultra_0 -> REAR   (was COM8) A3 B3
-      - "/dev/ttyCH9344USB3"   # ultra_1 -> LEFT2  (was COM9) A4 B4
-      - "/dev/ttyCH9344USB4"   # ultra_2 -> LEFT1  (was COM10) A5 B5
-      - "/dev/ttyCH9344USB5"   # ultra_3 -> RIGHT2 (was COM11) A6 B6
-      - "/dev/ttyCH9344USB6"   # ultra_4 -> RIGHT1 (was COM12) A7 B7
-      - "/dev/ttyCH9344USB7"   # ultra_5 -> FRONT  (was COM13) A8 B8
-
+      - "/dev/ttyCH9344USB2"
+      - "/dev/ttyCH9344USB3"
+      - "/dev/ttyCH9344USB4"
+      - "/dev/ttyCH9344USB5"
+      - "/dev/ttyCH9344USB6"
+      - "/dev/ttyCH9344USB7"
     topics:
       - "/sensing/radar/rear/range"
       - "/sensing/radar/left2/range"

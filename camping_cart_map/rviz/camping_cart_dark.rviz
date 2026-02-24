@@ -19,8 +19,7 @@ Panels:
         - /Planning1/Global_Path_Planner1/Global_Path_Marker1
         - /Planning1/Global_Path_Planner1/Global_Path_Marker1/Namespaces1
         - /Control1
-        - /Map2
-        - /Map3
+        - /Path1
       Splitter Ratio: 0.4794776141643524
     Tree Height: 1145
   - Class: rviz_common/Selection
@@ -91,7 +90,7 @@ Visualization Manager:
             Durability Policy: Volatile
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /visualizer/robot/markers
+            Value: /platform/robot/markers
           Value: true
         - Alpha: 1
           Class: rviz_default_plugins/Polygon
@@ -104,7 +103,7 @@ Visualization Manager:
             Filter size: 10
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /visualizer/robot/planning_boundary
+            Value: /platform/robot/planning_boundary
           Value: true
       Enabled: true
       Name: Vehicle
@@ -130,11 +129,11 @@ Visualization Manager:
             Reliability Policy: Reliable
             Value: /map/markers
           Value: true
-        - Alpha: 0.30000001192092896
+        - Alpha: 0.07999999821186066
           Class: rviz_default_plugins/Map
           Color Scheme: costmap
           Draw Behind: false
-          Enabled: true
+          Enabled: false
           Name: Lanelet_Cost_Map_Grid
           Topic:
             Depth: 5
@@ -142,15 +141,15 @@ Visualization Manager:
             Filter size: 10
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /map/lanelet_cost_grid
+            Value: /map/cost_grid/lanelet
           Update Topic:
             Depth: 5
             Durability Policy: Volatile
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /map/lanelet_cost_grid_updates
+            Value: /map/cost_grid/lanelet_updates
           Use Timestamp: false
-          Value: true
+          Value: false
         - Class: rviz_default_plugins/MarkerArray
           Enabled: true
           Name: Inflation_Cost_Marker
@@ -161,7 +160,7 @@ Visualization Manager:
             Durability Policy: Volatile
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /visualizer/map/inflation_cost_grid_markers
+            Value: /map/cost_grid/inflation_markers
           Value: true
       Enabled: true
       Name: Map
@@ -237,7 +236,7 @@ Visualization Manager:
             - Alpha: 1
               Buffer Length: 1
               Class: rviz_default_plugins/Path
-              Color: 255; 25; 0
+              Color: 132; 194; 255
               Enabled: true
               Head Diameter: 0.20000000298023224
               Head Length: 0.20000000298023224
@@ -249,7 +248,7 @@ Visualization Manager:
                 X: 0
                 Y: 0
                 Z: 0
-              Pose Color: 255; 85; 255
+              Pose Color: 255; 224; 241
               Pose Style: Arrows
               Radius: 0.029999999329447746
               Shaft Diameter: 0.10000000149011612
@@ -265,7 +264,7 @@ Visualization Manager:
             - Alpha: 1
               Buffer Length: 1
               Class: rviz_default_plugins/Path
-              Color: 25; 255; 0
+              Color: 168; 226; 196
               Enabled: true
               Head Diameter: 0.30000001192092896
               Head Length: 0.20000000298023224
@@ -277,7 +276,7 @@ Visualization Manager:
                 X: 0
                 Y: 0
                 Z: 0
-              Pose Color: 255; 85; 255
+              Pose Color: 255; 224; 241
               Pose Style: None
               Radius: 0.029999999329447746
               Shaft Diameter: 0.10000000149011612
@@ -305,14 +304,70 @@ Visualization Manager:
           Enabled: true
           Name: Global_Path_Planner
         - Class: rviz_common/Group
-          Displays: ~
+          Displays:
+            - Alpha: 1
+              Buffer Length: 1
+              Class: rviz_default_plugins/Path
+              Color: 255; 236; 179
+              Enabled: true
+              Head Diameter: 0.20000000298023224
+              Head Length: 0.20000000298023224
+              Length: 0.30000001192092896
+              Line Style: Lines
+              Line Width: 0.03999999910593033
+              Name: Local_Path
+              Offset:
+                X: 0
+                Y: 0
+                Z: 0
+              Pose Color: 255; 236; 179
+              Pose Style: None
+              Radius: 0.029999999329447746
+              Shaft Diameter: 0.10000000149011612
+              Shaft Length: 0.10000000149011612
+              Topic:
+                Depth: 5
+                Durability Policy: Volatile
+                Filter size: 10
+                History Policy: Keep Last
+                Reliability Policy: Reliable
+                Value: /planning/local_path
+              Value: true
+            - Alpha: 1
+              Buffer Length: 1
+              Class: rviz_default_plugins/Path
+              Color: 255; 204; 188
+              Enabled: true
+              Head Diameter: 0.20000000298023224
+              Head Length: 0.20000000298023224
+              Length: 0.30000001192092896
+              Line Style: Lines
+              Line Width: 0.03999999910593033
+              Name: Local_Plan
+              Offset:
+                X: 0
+                Y: 0
+                Z: 0
+              Pose Color: 255; 204; 188
+              Pose Style: None
+              Radius: 0.029999999329447746
+              Shaft Diameter: 0.10000000149011612
+              Shaft Length: 0.10000000149011612
+              Topic:
+                Depth: 5
+                Durability Policy: Volatile
+                Filter size: 10
+                History Policy: Keep Last
+                Reliability Policy: Reliable
+                Value: /planning/local_plan
+              Value: true
           Enabled: true
           Name: Local_Path_Planner
         - Alpha: 1
           Axes Length: 1
           Axes Radius: 0.20000000298023224
           Class: rviz_default_plugins/Pose
-          Color: 255; 25; 0
+          Color: 255; 176; 142
           Enabled: true
           Head Length: 0.30000001192092896
           Head Radius: 0.10000000149011612
@@ -334,47 +389,75 @@ Visualization Manager:
       Displays: ~
       Enabled: true
       Name: Control
-    - Alpha: 0.699999988079071
+    - Alpha: 0.20000000298023224
       Class: rviz_default_plugins/Map
-      Color Scheme: raw
+      Color Scheme: costmap
       Draw Behind: false
-      Enabled: true
-      Name: Map
+      Enabled: false
+      Name: Global_Path_CostGrid
       Topic:
         Depth: 5
         Durability Policy: Volatile
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /planning/global_costmap/lanelet_cost_grid_path
+        Value: /planning/cost_grid/global_path
       Update Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /planning/global_costmap/lanelet_cost_grid_path_updates
+        Value: /planning/cost_grid/global_path_updates
       Use Timestamp: false
-      Value: true
-    - Alpha: 0.699999988079071
+      Value: false
+    - Alpha: 0.20000000298023224
       Class: rviz_default_plugins/Map
-      Color Scheme: raw
+      Color Scheme: costmap
       Draw Behind: false
-      Enabled: true
-      Name: Map
+      Enabled: false
+      Name: Local_Path_CostGrid
       Topic:
         Depth: 5
         Durability Policy: Volatile
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /planning/local_costmap/lanelet_cost_grid_path
+        Value: /planning/cost_grid/local_path
       Update Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /planning/local_costmap/lanelet_cost_grid_path_updates
+        Value: /planning/cost_grid/local_path_updates
       Use Timestamp: false
+      Value: false
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 25; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /planning/local_path
       Value: true
   Enabled: true
   Global Options:
@@ -421,7 +504,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: -6.230000972747803
+      Angle: 2.8949997425079346
       Class: rviz_default_plugins/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -431,11 +514,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 29.495317459106445
+      Scale: 21.893571853637695
       Target Frame: robot_base_link
       Value: TopDownOrtho (rviz_default_plugins)
-      X: -7.216953754425049
-      Y: 53.44090270996094
+      X: 6.431448936462402
+      Y: 10.085609436035156
     Saved: ~
 Window Geometry:
   Displays:

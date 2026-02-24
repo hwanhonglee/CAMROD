@@ -79,8 +79,10 @@ public:
     params_ = loadRobotParams(this);
     map_frame_id_ = declare_parameter<std::string>("map_frame_id", "map");
     base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_base_link");
-    // HH_260109 Visualizer topics use /visualizer prefix.
-    marker_topic_ = declare_parameter<std::string>("marker_topic", "/visualizer/robot/markers");
+    // 2026-02-24: Platform ownership uses /platform/robot/* topics by default.
+    marker_topic_ = declare_parameter<std::string>("marker_topic", "/platform/robot/markers");
+    boundary_topic_ = declare_parameter<std::string>(
+      "boundary_topic", "/platform/robot/planning_boundary");
     // 2026-02-04: Visualizer should not publish TF unless explicitly requested.
     publish_tf_ = declare_parameter<bool>("publish_tf", false);
     const double publish_rate_hz = declare_parameter<double>("publish_rate_hz", 1.0);
@@ -99,8 +101,7 @@ public:
 
     auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
     marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(marker_topic_, qos);
-    boundary_pub_ = create_publisher<geometry_msgs::msg::PolygonStamped>(
-      "/visualizer/robot/planning_boundary", qos);
+    boundary_pub_ = create_publisher<geometry_msgs::msg::PolygonStamped>(boundary_topic_, qos);
     if (publish_tf_) {
       tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
     }
@@ -447,6 +448,7 @@ private:
   std::string map_frame_id_;
   std::string base_frame_id_;
   std::string marker_topic_;
+  std::string boundary_topic_;
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr boundary_pub_;

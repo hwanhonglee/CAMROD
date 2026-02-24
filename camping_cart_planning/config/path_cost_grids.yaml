@@ -9,20 +9,38 @@
     offset_lon: 128.0925490
     offset_alt: 0.0
     # 2026-02-02: Finer grid for clearer path cost visualization.
-    resolution: 0.1
+    resolution: 0.08
     # 2026-01-30: Use full map bounds for global path grid (avoid drifting window).
     width: 0
     height: 0
-    centerline_half_width: 1.5
+    centerline_half_width: 2.0
     free_value: 0
     lethal_value: 100
+    # cost_mode options:
+    #   "path"       : (recommended here) low on path strip, high outside path
+    #   "lanelet"    : full lanelet polygon cost map
+    #   "centerline" : centerline corridor map
+    #   "bounds"     : lane boundaries only
     # 2026-02-02 11:55: Path mode = low cost on path, high cost elsewhere.
     cost_mode: "path"
     # 2026-02-06 21:26: Let path-mode logic control default fill so planners can compute
     # the first path (free until path, lethal after). Use -1 to disable override.
+    # outside_value options:
+    #   -1  : unknown outside lanelet/path (recommended with lanelet mask)
+    #   0   : force free outside
+    #   100 : force lethal outside
     outside_value: -1
     # 2026-02-11: Render path grid only inside lanelet geometry (no rectangular background).
+    # path_use_lanelet_mask options:
+    #   true  : paint only lanelet area
+    #   false : allow rectangular path window fill
     path_use_lanelet_mask: true
+    # 2026-02-24: global path grid also restricted to lanelets touched by active global path.
+    # path_lanelet_only options:
+    #   true  : only lanelets matched by active path
+    #   false : all lanelets in map
+    path_lanelet_only: true
+    path_lanelet_match_max_dist: 8.0
     path_lane_base_value: 100
     # 2026-02-11: Visualization path layer should not add extra heading penalties.
     direction_penalty: 0
@@ -35,7 +53,7 @@
     pose_topic: "/localization/pose"
     path_topic: "/planning/global_path"
     republish_period: 1.0
-    output_topic: "/planning/global_costmap/lanelet_cost_grid_path"
+    output_topic: "/planning/cost_grid/global_path"
 
 /planning/lanelet_cost_grid_local_path:
   ros__parameters:
@@ -45,19 +63,37 @@
     offset_lon: 128.0925490
     offset_alt: 0.0
     # 2026-02-02: Finer cells; keep ~100m window by scaling cells.
-    resolution: 0.1
-    width: 1000
-    height: 1000
-    centerline_half_width: 1.5
+    resolution: 0.08
+    width: 625
+    height: 625
+    centerline_half_width: 2.0
     free_value: 0
     lethal_value: 100
+    # cost_mode options:
+    #   "path"       : (recommended here) low on path strip, high outside path
+    #   "lanelet"    : full lanelet polygon cost map
+    #   "centerline" : centerline corridor map
+    #   "bounds"     : lane boundaries only
     # 2026-02-02 11:55: Path mode = low cost on path, high cost elsewhere.
     cost_mode: "path"
     # 2026-02-06 21:26: Let path-mode logic control default fill so planners can compute
     # the first path (free until path, lethal after). Use -1 to disable override.
+    # outside_value options:
+    #   -1  : unknown outside lanelet/path (recommended with lanelet mask)
+    #   0   : force free outside
+    #   100 : force lethal outside
     outside_value: -1
     # 2026-02-11: Render path grid only inside lanelet geometry (no rectangular background).
+    # path_use_lanelet_mask options:
+    #   true  : paint only lanelet area
+    #   false : allow rectangular path window fill
     path_use_lanelet_mask: true
+    # 2026-02-24: Local path grid should show only lanelets on the active route.
+    # path_lanelet_only options:
+    #   true  : only lanelets matched by active path
+    #   false : all lanelets in map
+    path_lanelet_only: true
+    path_lanelet_match_max_dist: 8.0
     path_lane_base_value: 100
     # 2026-02-11: Visualization path layer should not add extra heading penalties.
     direction_penalty: 0
@@ -67,7 +103,7 @@
     use_path_bbox: false   # local: robot-centered rolling window
     lock_window: false
     pose_topic: "/localization/pose"
-    # HH_260127 Align local path topic naming with /planning/local_path.
-    path_topic: "/planning/local_path"
+    # 2026-02-24: Keep local lanelet mask tied to global route (current -> goal), not controller short horizon.
+    path_topic: "/planning/global_path"
     republish_period: 1.0
-    output_topic: "/planning/local_costmap/lanelet_cost_grid_path"
+    output_topic: "/planning/cost_grid/local_path"

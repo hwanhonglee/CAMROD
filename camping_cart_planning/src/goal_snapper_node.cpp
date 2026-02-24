@@ -81,6 +81,7 @@ public:
     output_goal_topic_ = declare_parameter<std::string>("output_goal_topic", "/planning/goal_pose");
     max_search_radius_ = declare_parameter<double>("max_search_radius", 30.0);
     require_lanelet_containment_ = declare_parameter<bool>("require_lanelet_containment", true);
+    fallback_uncontained_ = declare_parameter<bool>("fallback_uncontained", true);
     use_map_z_ = declare_parameter<bool>("use_map_z", true);
     flatten_to_ground_ = declare_parameter<bool>("flatten_to_ground", true);
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);
@@ -135,7 +136,15 @@ private:
     const double py = msg->pose.position.y;
     const double pz = msg->pose.position.z;
 
-    const auto nearest = findNearestCenterline(px, py);
+    auto nearest = findNearestCenterline(px, py, require_lanelet_containment_);
+    if (!nearest.valid && require_lanelet_containment_ && fallback_uncontained_) {
+      nearest = findNearestCenterline(px, py, false);
+      if (nearest.valid) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Goal is outside lanelet polygon; snapped to nearest centerline");
+      }
+    }
     if (!nearest.valid) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
@@ -156,12 +165,13 @@ private:
     pub_goal_->publish(out);
   }
 
-  NearestResult findNearestCenterline(double x, double y) const
+  NearestResult findNearestCenterline(
+    double x, double y, bool require_lanelet_containment) const
   {
     NearestResult best;
     const double max_sq = max_search_radius_ * max_search_radius_;
     for (const auto & ll : map_->laneletLayer) {
-      if (require_lanelet_containment_ && !pointInsideLanelet(ll, x, y)) {
+      if (require_lanelet_containment && !pointInsideLanelet(ll, x, y)) {
         continue;
       }
       const auto & cl = ll.centerline();
@@ -234,6 +244,7 @@ private:
   std::string output_goal_topic_;
   double max_search_radius_{30.0};
   bool require_lanelet_containment_{true};
+  bool fallback_uncontained_{true};
   bool use_map_z_{true};
   bool flatten_to_ground_{true};
   double map_z_offset_{0.0};

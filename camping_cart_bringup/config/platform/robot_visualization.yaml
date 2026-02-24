@@ -1,0 +1,13 @@
+/platform/robot_visualization:
+  ros__parameters:
+    map_frame_id: "map"
+    base_frame_id: "robot_base_link"
+    marker_topic: "/platform/robot/markers"
+    boundary_topic: "/platform/robot/planning_boundary"
+    publish_tf: false
+    use_map_ground_z: true
+    ground_z_offset: 0.0
+    publish_rate_hz: 20.0
+    body_scale_factor: 1.0
+    planning_boundary_margin: 0.3
+    range_ring_radii: [2.0, 4.0, 6.0, 8.0]

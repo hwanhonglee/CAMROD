@@ -74,6 +74,8 @@ CostFieldNode() : Node("cost_field")
     config_.mgrs_grid = declare_parameter<std::string>("mgrs_grid", "");
     config_.max_draw_distance = declare_parameter<double>("max_draw_distance", 0.0);  // 0 -> unlimited
     config_.percentile_clip = declare_parameter<double>("percentile_clip", 0.95);     // 0.0~1.0
+    config_.output_topic = declare_parameter<std::string>(
+      "output_topic", "/map/cost_grid/lanelet_field_markers");
     weights_.distance = declare_parameter<double>("weights.distance", 1.0);
     weights_.curvature = declare_parameter<double>("weights.curvature", 0.5);
     weights_.lane_preference = declare_parameter<double>("weights.lane_preference", 0.0);
@@ -91,7 +93,7 @@ CostFieldNode() : Node("cost_field")
 
     // HH_260109 Visualizer topic prefix for cost field markers.
     pub_markers_ = create_publisher<visualization_msgs::msg::MarkerArray>(
-      "/visualizer/localization/cost_field", rclcpp::QoS(1).transient_local());
+      config_.output_topic, rclcpp::QoS(1).transient_local());
 
     using namespace std::chrono_literals;
     timer_ = create_wall_timer(1s, std::bind(&CostFieldNode::publishMarkers, this));
@@ -237,6 +239,7 @@ private:
     std::string mgrs_grid;
     double max_draw_distance{0.0};
     double percentile_clip{0.95};
+    std::string output_topic{"/map/cost_grid/lanelet_field_markers"};
   } config_;
 
   CostWeights weights_;

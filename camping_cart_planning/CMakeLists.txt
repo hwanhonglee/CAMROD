@@ -10,6 +10,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
@@ -55,8 +56,16 @@ ament_target_dependencies(compute_path_bridge_node
   action_msgs
 )
 
+add_executable(goal_replanner_node src/goal_replanner_node.cpp)
+ament_target_dependencies(goal_replanner_node
+  rclcpp
+  rclcpp_action
+  geometry_msgs
+  nav2_msgs
+)
+
 install(
-  TARGETS goal_snapper_node centerline_snapper_node compute_path_bridge_node
+  TARGETS goal_snapper_node centerline_snapper_node compute_path_bridge_node goal_replanner_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

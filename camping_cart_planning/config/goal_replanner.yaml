@@ -1,0 +1,17 @@
+# 2026-02-23: Auto replan trigger so global path updates as robot pose / goal changes.
+/planning/goal_replanner:
+  ros__parameters:
+    enabled: true
+    goal_topic: "/planning/goal_pose"
+    # 2026-02-24: Use lanelet-snapped pose as planning start to keep path inside lanelets.
+    start_topic: "/planning/lanelet_pose"
+    action_name: "/planning/compute_path_to_pose"
+    planner_id: "Smac2D"
+    frame_id: "map"
+    replan_rate_hz: 3.0
+    request_timeout_sec: 2.0
+    # 2026-02-24: Global path should update on new goal, not continuously on vehicle motion.
+    replan_on_start_change: false
+    start_replan_distance: 0.15
+    start_replan_yaw_deg: 3.0
+    goal_replan_distance: 0.05

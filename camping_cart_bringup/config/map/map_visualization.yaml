@@ -1,0 +1,23 @@
+/map/inflation_cost_marker:
+  ros__parameters:
+    # 2026-02-24: Visualize final Nav2 inflation result as markers in map module.
+    grid_topic: "/planning/global_costmap/costmap"
+    marker_topic: "/map/cost_grid/inflation_markers"
+    marker_scale: 0.1
+    min_value: 0
+    max_value: 100
+    alpha: 0.18
+    z_offset: 0.05
+    palette: "pastel"
+    show_unknown: false
+
+/map/lanelet_cost_field:
+  ros__parameters:
+    map_frame_id: "map"
+    projector_type: "LocalCartesianUTM"
+    max_draw_distance: 0.0
+    percentile_clip: 0.95
+    weights.distance: 1.0
+    weights.curvature: 0.5
+    weights.lane_preference: 0.0
+    output_topic: "/map/cost_grid/lanelet_field_markers"

@@ -1,10 +1,18 @@
 # 2026-02-02: Publish planner_server plan to /planning/global_path for RViz.
 /planning/compute_path_bridge:
   ros__parameters:
-    # 2026-02-02: Use unsmoothed_plan by default; keep plan as fallback.
-    input_topic: "/planning/unsmoothed_plan"
-    fallback_input_topic: "/planning/plan"
+    # 2026-02-23: Prefer smoothed plan for cleaner RViz path.
+    input_topic: "/planning/plan"
+    fallback_input_topic: "/planning/unsmoothed_plan"
     output_topic: "/planning/global_path"
     frame_id: "map"
+    enforce_forward_from_start: true
+    # 2026-02-24: Use lanelet-snapped pose for direction check.
+    start_pose_topic: "/planning/lanelet_pose"
+    goal_pose_topic: "/planning/goal_pose"
+    # 2026-02-24: Keep planner path untouched (do not inject straight start/goal segments off-lanelet).
+    anchor_path_endpoints: false
+    start_anchor_distance: 1.0
+    goal_anchor_distance: 1.0
     # 2026-02-03: Republish last path (Hz) so RViz can latch even if plan is sporadic.
     republish_rate_hz: 1.0

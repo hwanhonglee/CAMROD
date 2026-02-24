@@ -3,7 +3,7 @@
   ros__parameters:
     check_period_s: 1.0
     required_nodes:
-      - /map/lanelet_cost_grid
+      - /map/cost_grid/lanelet
       - /planning/goal_snapper
       - /planning/planner_server
       - /planning/controller_server
@@ -15,4 +15,4 @@
       - /sensing/gnss/navsatfix
       - /platform/wheel/odometry
       - /localization/vio/odometry
-      - /map/lanelet_cost_grid
+      - /map/cost_grid/lanelet

@@ -16,8 +16,10 @@
   <build_depend>std_msgs</build_depend>
   <build_depend>visualization_msgs</build_depend>
   <build_depend>geometry_msgs</build_depend>
+  <build_depend>nav_msgs</build_depend>
   <build_depend>tf2</build_depend>
   <build_depend>tf2_ros</build_depend>
+  <build_depend>tf2_geometry_msgs</build_depend>
 
   <!-- HH_260114 Lanelet2 build dependencies -->
   <build_depend>lanelet2_core</build_depend>
@@ -29,8 +31,10 @@
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
   <exec_depend>tf2</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>tf2_geometry_msgs</exec_depend>
 
   <!-- HH_260114 Lanelet2 runtime dependencies -->
   <exec_depend>lanelet2_core</exec_depend>

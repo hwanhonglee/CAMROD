@@ -126,7 +126,27 @@ target_link_libraries(drop_zone_exporter_node
   camping_cart_map_lib
 )
 
-# HH_260109 cost_field_marker_node moved to camping_cart_visualizer.
+# 2026-02-24: Visualization nodes are owned by map/platform modules (no visualizer package).
+add_executable(cost_field_marker_node
+  src/cost_field_marker_node.cpp
+)
+ament_target_dependencies(cost_field_marker_node
+  rclcpp
+  nav_msgs
+  visualization_msgs
+)
+
+add_executable(cost_field_node
+  src/cost_field_node.cpp
+)
+ament_target_dependencies(cost_field_node
+  rclcpp
+  geometry_msgs
+  visualization_msgs
+  lanelet2_core
+  lanelet2_io
+  lanelet2_projection
+)
 
 #---------------------------------------------
 # HH_260114 Install executables and libraries.
@@ -137,6 +157,8 @@ install(TARGETS
   lanelet_cost_layer
   lanelet_cost_grid_node
   drop_zone_exporter_node
+  cost_field_marker_node
+  cost_field_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

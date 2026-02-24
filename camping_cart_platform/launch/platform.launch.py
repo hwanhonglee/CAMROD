@@ -3,6 +3,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
 
@@ -32,6 +33,11 @@ def generate_launch_description():
         default_value=pkg_share('camping_cart_bringup', os.path.join('config', 'sensor_kit', 'robot_params.yaml')),
         description='Sensor kit robot params',
     )
+    robot_viz_params_arg = DeclareLaunchArgument(
+        'robot_visualization_param_file',
+        default_value=pkg_share('camping_cart_bringup', os.path.join('config', 'platform', 'robot_visualization.yaml')),
+        description='Robot visualization parameters (platform namespace)',
+    )
 
     sensor_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(pkg_share('camping_cart_sensor_kit', 'launch/sensor_kit.launch.py')),
@@ -43,10 +49,29 @@ def generate_launch_description():
         }.items(),
     )
 
+    # 2026-02-24: Launch robot visualization under platform module ownership.
+    robot_visualization = Node(
+        package='camping_cart_platform',
+        executable='robot_visualization_node',
+        name='robot_visualization',
+        namespace='platform',
+        output='screen',
+        parameters=[
+            LaunchConfiguration('params_file'),
+            LaunchConfiguration('robot_visualization_param_file'),
+            {
+                'map_frame_id': LaunchConfiguration('map_frame_id'),
+                'base_frame_id': LaunchConfiguration('base_frame_id'),
+            },
+        ],
+    )
+
     return LaunchDescription([
         map_frame_arg,
         base_frame_arg,
         sensor_kit_base_frame_arg,
         params_arg,
+        robot_viz_params_arg,
         sensor_launch,
+        robot_visualization,
     ])
