@@ -1,0 +1,6 @@
+builtin_interfaces/Time stamp
+avg_msgs/ModuleHealth health
+
+sensor_msgs/PointCloud2 obstacles
+sensor_msgs/CameraInfo camera_info
+vision_msgs/Detection2DArray detections

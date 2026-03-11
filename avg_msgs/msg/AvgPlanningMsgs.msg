@@ -1,0 +1,18 @@
+builtin_interfaces/Time stamp
+avg_msgs/ModuleHealth health
+
+geometry_msgs/PoseStamped goal_pose
+geometry_msgs/PoseStamped lanelet_pose
+action_msgs/GoalStatusArray navigate_to_pose_status
+
+nav_msgs/Path global_path
+nav_msgs/Path local_path
+nav_msgs/Path local_plan_raw
+nav_msgs/Path local_path_controller
+nav_msgs/Path local_path_dwb
+
+nav_msgs/OccupancyGrid global_costmap
+nav_msgs/OccupancyGrid local_costmap
+
+visualization_msgs/MarkerArray global_path_cost_markers
+visualization_msgs/MarkerArray local_path_cost_markers

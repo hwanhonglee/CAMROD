@@ -43,13 +43,29 @@ ament_target_dependencies(radar_cost_grid_node
   tf2_ros
   tf2_geometry_msgs)
 
+add_executable(lidar_cost_grid_node src/lidar_cost_grid_node.cpp)
+ament_target_dependencies(lidar_cost_grid_node
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  nav_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs)
+
 install(TARGETS
   lidar_preprocessor_node
   camera_preprocessor_node
   platform_velocity_converter_node
   sen0592_radar_node # HH_260220
   radar_cost_grid_node
+  lidar_cost_grid_node
   DESTINATION lib/${PROJECT_NAME})
+
+install(PROGRAMS
+  scripts/sensing_diagnostic_node.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 install(DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME})

@@ -20,6 +20,10 @@
   <depend>lanelet2_io</depend>
   <depend>lanelet2_projection</depend>
   <depend>camping_cart_map</depend>
+  <depend>rclpy</depend>
+  <depend>avg_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>diagnostic_msgs</depend>
 
   <!-- HH_260105: Nav2 runtime components used by nav2_lanelet.launch.py -->
   <!-- Nav2 runtime components used by nav2_lanelet.launch.py -->

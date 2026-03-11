@@ -70,14 +70,22 @@ class FakeSensorPublisher(Node):
         self.origin_lat = self.declare_parameter("origin_lat", 0.0).value
         self.origin_lon = self.declare_parameter("origin_lon", 0.0).value
         self.origin_alt = self.declare_parameter("origin_alt", 0.0).value
-        self.lanelet_id = self.declare_parameter("lanelet_id", -1).value
+        # 2026-02-25: lanelet selector (canonical + legacy alias).
+        canonical_lanelet_id = int(self.declare_parameter("lanelet_id", -1).value)
+        legacy_lanelet_id = int(self.declare_parameter("fake_lanelet_id", -1).value)
+        self.lanelet_id = legacy_lanelet_id if legacy_lanelet_id >= 0 else canonical_lanelet_id
         self.speed_mps = self.declare_parameter("speed_mps", 1.4).value
         self.publish_rate_hz = self.declare_parameter("publish_rate_hz", 20.0).value
         self.loop = self.declare_parameter("loop", True).value
         # 2026-02-05 14:37: Skip crosswalk lanelets to prevent centerline jumps.
         self.exclude_crosswalk = self.declare_parameter("exclude_crosswalk", True).value
-        # 2026-02-05 14:37: Optionally snap the start position to the nearest path point.
-        self.use_start_pose = self.declare_parameter("use_start_pose", False).value
+        # 2026-02-25: clearer alias for initial path anchor.
+        # - start_from_pose=true : anchor path traversal from nearest point to (start_x, start_y)
+        # - false                : start from beginning of stitched centerline path
+        legacy_use_start_pose = bool(self.declare_parameter("use_start_pose", False).value)
+        self.start_from_pose = bool(
+            self.declare_parameter("start_from_pose", legacy_use_start_pose).value
+        )
         self.start_x = self.declare_parameter("start_x", 0.0).value
         self.start_y = self.declare_parameter("start_y", 0.0).value
         # 2026-02-02: Use all lanelet centerlines to traverse the full loop.
@@ -89,6 +97,11 @@ class FakeSensorPublisher(Node):
         self.close_loop = self.declare_parameter("close_loop", True).value
         self.close_loop_max_gap = float(
             self.declare_parameter("close_loop_max_gap", 3.0).value
+        )
+        # 2026-03-03: Keep the robot stationary for a short warm-up so the
+        # initial GNSS/IMU fusion settles before wheel motion begins.
+        self.startup_hold_sec = float(
+            self.declare_parameter("startup_hold_sec", 4.0).value
         )
         self.frame_id = self.declare_parameter("frame_id", "map").value
         self.base_frame_id = self.declare_parameter("base_frame_id", "robot_base_link").value
@@ -122,11 +135,12 @@ class FakeSensorPublisher(Node):
         self._distances = self._build_cumulative_distances(self._path)
         self._total_length = self._distances[-1]
         self._start_distance = 0.0
-        if self.use_start_pose:
+        if self.start_from_pose:
             self._start_distance = self._nearest_distance_on_path(self.start_x, self.start_y)
         self._t0 = time.time()
         self._last_yaw = None
         self._last_yaw_time = None
+        self._was_holding = True
 
         # HH_260109 Publish fake sensors with module-prefixed topics.
         self.pub_navsat = self.create_publisher(NavSatFix, "/sensing/gnss/navsatfix", 10)
@@ -435,7 +449,9 @@ class FakeSensorPublisher(Node):
     def _on_timer(self):
         now = self.get_clock().now().to_msg()
         elapsed = time.time() - self._t0
-        dist = elapsed * self.speed_mps
+        holding = elapsed < self.startup_hold_sec
+        motion_elapsed = max(0.0, elapsed - self.startup_hold_sec)
+        dist = motion_elapsed * self.speed_mps
         (x, y, z, lat, lon), yaw = self._sample_path(dist)
 
         # HH_260112 Create a pose message for downstream odometry/cloud outputs.
@@ -464,12 +480,14 @@ class FakeSensorPublisher(Node):
         # 2026-02-02 11:55: Provide yaw rate so ESKF can integrate heading.
         now_sec = time.time()
         yaw_rate = 0.0
-        if self._last_yaw is not None and self._last_yaw_time is not None:
+        if (not holding and not self._was_holding and
+                self._last_yaw is not None and self._last_yaw_time is not None):
             dt = max(1e-3, now_sec - self._last_yaw_time)
             dyaw = normalize_angle(yaw - self._last_yaw)
             yaw_rate = dyaw / dt
         self._last_yaw = yaw
         self._last_yaw_time = now_sec
+        self._was_holding = holding
         imu_msg.angular_velocity.z = yaw_rate
         imu_msg.linear_acceleration.x = 0.0
         imu_msg.linear_acceleration.y = 0.0
@@ -480,7 +498,8 @@ class FakeSensorPublisher(Node):
         wheel_msg.header.stamp = now
         wheel_msg.header.frame_id = "odom"
         wheel_msg.child_frame_id = self.base_frame_id
-        wheel_msg.twist.twist.linear.x = self.speed_mps
+        wheel_speed = 0.0 if holding else self.speed_mps
+        wheel_msg.twist.twist.linear.x = wheel_speed
         wheel_msg.twist.twist.angular.z = 0.0
         self.pub_wheel.publish(wheel_msg)
 
@@ -489,7 +508,7 @@ class FakeSensorPublisher(Node):
         vio_msg.header.frame_id = self.frame_id
         vio_msg.child_frame_id = self.base_frame_id
         vio_msg.pose.pose = pose_msg.pose
-        vio_msg.twist.twist.linear.x = self.speed_mps
+        vio_msg.twist.twist.linear.x = wheel_speed
         vio_msg.twist.twist.angular.z = 0.0
         self.pub_vio.publish(vio_msg)
 

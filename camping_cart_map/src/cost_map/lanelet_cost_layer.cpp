@@ -32,7 +32,7 @@ void LaneletCostLayer::onInitialize()
   RCLCPP_DEBUG(node->get_logger(), "lanelet_cost_layer subscribing %s", source_topic_.c_str());
 
   sub_ = node->create_subscription<nav_msgs::msg::OccupancyGrid>(
-    source_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
+    source_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local(),
     std::bind(&LaneletCostLayer::gridCallback, this, std::placeholders::_1));
 
   enabled_ = true;

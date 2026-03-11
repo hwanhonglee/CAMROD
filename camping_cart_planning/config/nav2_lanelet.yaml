@@ -1,5 +1,10 @@
-# HH_260129 Nav2 config (planning namespace)
-# Costmaps: lanelet base grid + lanelet path grid + lidar obstacle + inflation
+# [LEGACY - not loaded by default launch]
+# This monolithic file is kept only for reference/backward compatibility.
+# Active bringup path loads split overlays in this order:
+#   1) camping_cart_bringup/config/planning/nav2_base.yaml
+#   2) camping_cart_bringup/config/planning/nav2_vehicle.yaml
+#   3) camping_cart_bringup/config/planning/nav2_lanelet_overlay.yaml
+#   4) camping_cart_bringup/config/planning/nav2_behavior.yaml
 
 planner_server:
   ros__parameters:
@@ -23,11 +28,12 @@ planner_server:
       downsampling_factor: 1
       use_astar: True
       motion_model_for_search: "REEDS_SHEPP"
-      angle_quantization_bins: 64
-      # 2026-02-11: Smaller radius for tighter lanelet turns in parking-scale map.
-      minimum_turning_radius: 1.2
+      angle_quantization_bins: 128
+      # 2026-02-24: Allow tighter turns for sharp lanelet bends.
+      minimum_turning_radius: 0.6
       cost_travel_multiplier: 1.0
-      cost_penalty: 1.3
+      # 2026-02-24: Increase cost adherence so planner stays near lower-cost centerline corridor.
+      cost_penalty: 2.0
       lethal_cost: 253
       neutral_cost: 66
       change_penalty: 0.0
@@ -38,8 +44,9 @@ planner_server:
       # 2026-02-23: Extra smoothing to reduce zig-zag artifacts in narrow lanelets.
       smoother:
         max_iterations: 2000
-        w_data: 0.15
-        w_smooth: 0.45
+        # 2026-02-24: Keep path closer to searched route; reduce lateral overshoot on curves.
+        w_data: 0.30
+        w_smooth: 0.30
         tolerance: 1.0e-10
         do_refinement: true
 
@@ -50,7 +57,7 @@ controller_server:
     odom_topic: /localization/odometry/filtered
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["general_goal_checker"]
-    controller_plugins: ["FollowPath", "DwbController"]
+    controller_plugins: ["FollowPath"]
     default_controller: FollowPath
 
     progress_checker:
@@ -72,9 +79,10 @@ controller_server:
       max_linear_accel: 1.5
       max_angular_vel: 1.2
       max_angular_accel: 3.0
-      lookahead_dist: 1.2
-      min_lookahead_dist: 0.5
-      max_lookahead_dist: 2.5
+      # 2026-02-24: Shorter lookahead for tight corner tracking.
+      lookahead_dist: 0.6
+      min_lookahead_dist: 0.25
+      max_lookahead_dist: 1.2
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 1.2
       transform_tolerance: 0.2
@@ -89,33 +97,6 @@ controller_server:
       use_cost_regulated_linear_velocity_scaling: True
       cost_scaling_dist: 0.6
       cost_scaling_gain: 1.0
-
-    DwbController:
-      plugin: "dwb_core::DWBLocalPlanner"
-      critics:
-        - RotateToGoal
-        - Oscillation
-        - ObstacleFootprint
-        - PathAlign
-        - PathDist
-        - GoalAlign
-        - GoalDist
-      debug_trajectory_details: False
-      min_vel_x: 0.0
-      max_vel_x: 1.4
-      acc_lim_x: 1.5
-      decel_lim_x: -2.0
-      min_vel_theta: -1.2
-      max_vel_theta: 1.2
-      acc_lim_theta: 3.0
-      decel_lim_theta: -3.0
-      vx_samples: 20
-      vy_samples: 1
-      vtheta_samples: 20
-      sim_time: 1.5
-      linear_granularity: 0.05
-      angular_granularity: 0.02
-      transform_tolerance: 0.2
 
 local_costmap:
   local_costmap:
@@ -135,7 +116,7 @@ local_costmap:
       robot_radius: 0.0
       track_unknown_space: True
       # Costmap plugin options:
-      # - lanelet_cost_layer_base: static lanelet drivable mask from /map/cost_grid/lanelet
+      # - lanelet_cost_layer_base: planner base mask from /map/cost_grid/planning_base
       # - lanelet_cost_layer_path: optional path-bias layer from /planning/cost_grid/local_path
       # - lidar_obstacle_layer: lidar obstacles
       # - proximity_layer: near-range radar ranges
@@ -148,8 +129,9 @@ local_costmap:
 
       lanelet_cost_layer_base:
         plugin: "camping_cart_map::cost_map::LaneletCostLayer"
-        source_topic: "/map/cost_grid/lanelet"
-        lethal_threshold: 65
+        # 2026-02-24: Planner uses centerline-gradient base grid for center-biased global path.
+        source_topic: "/map/cost_grid/planning_base"
+        lethal_threshold: 100
         unknown_value: 255
 
       lidar_obstacle_layer:
@@ -206,7 +188,7 @@ global_costmap:
       robot_radius: 0.0
       track_unknown_space: True
       # Costmap plugin options:
-      # - lanelet_cost_layer_base: static lanelet drivable mask from /map/cost_grid/lanelet
+      # - lanelet_cost_layer_base: planner base mask from /map/cost_grid/planning_base
       # - lanelet_cost_layer_path: optional path-bias layer from /planning/cost_grid/global_path
       # - lidar_obstacle_layer: lidar obstacles
       # - proximity_layer: near-range radar ranges
@@ -219,8 +201,9 @@ global_costmap:
 
       lanelet_cost_layer_base:
         plugin: "camping_cart_map::cost_map::LaneletCostLayer"
-        source_topic: "/map/cost_grid/lanelet"
-        lethal_threshold: 65
+        # 2026-02-24: Planner uses centerline-gradient base grid for center-biased global path.
+        source_topic: "/map/cost_grid/planning_base"
+        lethal_threshold: 100
         unknown_value: 255
 
       lidar_obstacle_layer:

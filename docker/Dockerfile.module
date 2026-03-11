@@ -1,0 +1,18 @@
+ARG BASE_IMAGE=camping_cart/base:humble
+FROM ${BASE_IMAGE}
+
+ARG MODULE=camping_cart_bringup
+ARG ROS_DISTRO=humble
+
+SHELL ["/bin/bash", "-lc"]
+WORKDIR /workspaces/cart_test_ws
+
+COPY . /workspaces/cart_test_ws/src
+
+RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
+    rosdep install --from-paths src --ignore-src -r -y || true
+
+RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
+    colcon build --symlink-install --packages-up-to ${MODULE}
+
+CMD ["bash"]

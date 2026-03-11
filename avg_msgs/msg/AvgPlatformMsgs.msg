@@ -1,0 +1,8 @@
+builtin_interfaces/Time stamp
+avg_msgs/ModuleHealth health
+
+avg_msgs/AvgRobotInfo robot_info
+visualization_msgs/MarkerArray robot_markers
+geometry_msgs/PolygonStamped planning_boundary
+geometry_msgs/PoseStamped localization_pose
+geometry_msgs/PoseWithCovarianceStamped localization_pose_cov

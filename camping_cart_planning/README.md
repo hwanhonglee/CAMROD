@@ -30,22 +30,30 @@ camping_cart_planning/
 ## 2026-02-06 21:26
 - Path cost grid no longer forces outside_value (set to -1) so planners can compute the first path before any path is available.
 
+## 2026-02-25 16:30
+- Remove `compute_path_bridge_node`.
+- Planner server now publishes canonical path directly on `/planning/global_path` via remap (`plan -> /planning/global_path`).
+- Add 4-stage Nav2 overlay loading order in launch: `base -> vehicle -> lanelet -> behavior`.
+- Goal replanner start selector now supports intuitive names:
+  `planning_start_source: lanelet_pose | robot_base_link | localization_pose | start_topic`
+  (legacy `start_reference/start_mode/start_source` still supported).
+
 ## 2026-02-05 14:37
-- Keep planner_server output on `/planning/plan`; rely on compute_path_bridge for `/planning/global_path` to avoid duplicate publishers.
+- (legacy) Previously used `/planning/plan` + compute_path_bridge for `/planning/global_path`.
 
 ## 2026-02-04 19:45
-- Prefer Smac2D planner by default to ensure /planning/unsmoothed_plan is published.
+- Prefer Smac2D planner by default.
 - Fix global costmap width/height type mismatch by keeping width/height as integers (meters).
 - Align global costmap origin/size to lanelet map bounds for consistent planning coverage.
 
 ## 2026-02-03 18:05
-- Compute path bridge republishes last path (republish_rate_hz) and latches output for RViz.
+- (legacy) Compute path bridge republished planner output for RViz.
 
 ## 2026-02-02 17:40
-- Compute path bridge now prefers `/planning/unsmoothed_plan` with `/planning/plan` fallback.
+- (legacy) Compute path bridge preferred `/planning/unsmoothed_plan` with `/planning/plan` fallback.
 
 ## 2026-02-02 15:50
-- Add plan-to-global_path bridge (/planning/plan -> /planning/global_path) for RViz.
+- (legacy) Added plan-to-global_path bridge for RViz.
 - Add proximity RangeSensorLayer to costmap plugin list (bringup/planning configs).
 - Sync path grid resolution updates for clearer visualization.
 

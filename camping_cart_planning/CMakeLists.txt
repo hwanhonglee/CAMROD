@@ -11,10 +11,10 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(action_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
-find_package(action_msgs REQUIRED)
 find_package(camping_cart_map REQUIRED)
 find_package(lanelet2_core REQUIRED)
 find_package(lanelet2_io REQUIRED)
@@ -47,25 +47,31 @@ target_include_directories(centerline_snapper_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../camping_cart_map/include>
 )
 
-# 2026-02-02: Bridge ComputePathToPose results to /planning/global_path for RViz.
-add_executable(compute_path_bridge_node src/compute_path_bridge_node.cpp)
-ament_target_dependencies(compute_path_bridge_node
-  rclcpp
-  nav_msgs
-  nav2_msgs
-  action_msgs
-)
-
 add_executable(goal_replanner_node src/goal_replanner_node.cpp)
 ament_target_dependencies(goal_replanner_node
   rclcpp
   rclcpp_action
+  action_msgs
   geometry_msgs
   nav2_msgs
 )
 
+add_executable(local_path_extractor_node src/local_path_extractor_node.cpp)
+ament_target_dependencies(local_path_extractor_node
+  rclcpp
+  geometry_msgs
+  nav_msgs
+)
+
 install(
-  TARGETS goal_snapper_node centerline_snapper_node compute_path_bridge_node goal_replanner_node
+  TARGETS goal_snapper_node centerline_snapper_node goal_replanner_node local_path_extractor_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  PROGRAMS
+    scripts/planning_diagnostic_node.py
+    scripts/planning_state_machine_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

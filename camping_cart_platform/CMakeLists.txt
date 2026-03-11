@@ -36,6 +36,10 @@ install(TARGETS
   robot_visualization_node
   DESTINATION lib/${PROJECT_NAME}
 )
+install(PROGRAMS
+  scripts/platform_diagnostic_node.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 install(DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME})
 

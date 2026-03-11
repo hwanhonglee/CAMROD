@@ -1,0 +1,90 @@
+# Nav2 lanelet profile: map/costmap semantics and lanelet-specific planner tuning.
+
+planner_server:
+  ros__parameters:
+    Smac2D:
+      minimum_turning_radius: 0.6
+      # 2026-02-25: Keep center bias but reduce grid-quantized "kinks" at bends.
+      cost_travel_multiplier: 8.0
+      lethal_cost: 253
+      neutral_cost: 66
+      change_penalty: 0.0
+      # 2026-02-26: Prefer forward-like paths around corners unless reverse is truly required.
+      reverse_penalty: 2.2
+      non_straight_penalty: 1.1
+      final_turn_penalty: 0.5
+      lookup_table_size: 20.0
+      smooth_path: true
+      smoother:
+        # HH_260304-00:00 Restore the smoother that previously produced the stable curved path.
+        max_iterations: 4000
+        w_data: 0.30
+        w_smooth: 0.30
+        tolerance: 1.0e-8
+        do_refinement: true
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      lanelet_cost_layer_base:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        source_topic: "/map/cost_grid/planning_base"
+        lethal_threshold: 100
+        # HH_260306-00:00 Treat unknown as free for planner hint layers.
+        # Planner-base now provides explicit outside lethal cells, so unknown should not block start.
+        unknown_value: 0
+
+      lanelet_cost_layer_local_path:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        source_topic: "/planning/cost_grid/local_path"
+        lethal_threshold: 100
+        # HH_260306-00:00 Local path grid is a soft routing hint.
+        # Unknown cells should not hard-block controller costmap start cells.
+        unknown_value: 0
+
+      lidar_cost_layer:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        source_topic: "/sensing/lidar/near_cost_grid"
+        lethal_threshold: 100
+        # HH_260306-00:00 Treat unknown cells from rolling sensor grids as free in master costmap.
+        # Otherwise, no-data regions can turn start cells non-traversable and block replanning.
+        unknown_value: 0
+
+      radar_cost_layer:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        source_topic: "/sensing/radar/near_cost_grid"
+        lethal_threshold: 100
+        # HH_260306-00:00 Keep radar no-data as free for planning stability.
+        unknown_value: 0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 1.0
+        cost_scaling_factor: 5.0
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      lanelet_cost_layer_base:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        source_topic: "/map/cost_grid/planning_base"
+        lethal_threshold: 100
+        # HH_260306-00:00 Same rationale as local_costmap planner-base layer.
+        unknown_value: 0
+
+      lidar_cost_layer:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        source_topic: "/sensing/lidar/near_cost_grid"
+        lethal_threshold: 100
+        unknown_value: 0
+
+      radar_cost_layer:
+        plugin: "camping_cart_map::cost_map::LaneletCostLayer"
+        source_topic: "/sensing/radar/near_cost_grid"
+        lethal_threshold: 100
+        unknown_value: 0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 1.5
+        cost_scaling_factor: 3.0

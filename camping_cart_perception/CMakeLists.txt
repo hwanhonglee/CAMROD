@@ -33,6 +33,11 @@ install(TARGETS
   obstacle_fusion_node
   DESTINATION lib/${PROJECT_NAME})
 
+install(PROGRAMS
+  scripts/perception_diagnostic_node.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME})
 

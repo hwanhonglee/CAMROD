@@ -59,6 +59,8 @@ public:
     input_pose_topic_ = declare_parameter<std::string>("input_pose_topic", "/localization/pose");
     output_pose_topic_ = declare_parameter<std::string>(
       "output_pose_topic", "/localization/lanelet_pose");
+    output_pose_cov_topic_ = declare_parameter<std::string>(
+      "output_pose_cov_topic", output_pose_topic_ + "_with_covariance");
     max_search_radius_ = declare_parameter<double>("max_search_radius", 30.0);
     longitudinal_stddev_ = declare_parameter<double>("longitudinal_stddev", 0.5);
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
@@ -73,17 +75,30 @@ public:
       return;
     }
 
-    pub_pose_cov_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
+    if (output_pose_cov_topic_ == output_pose_topic_) {
+      output_pose_cov_topic_ = output_pose_topic_ + "_with_covariance";
+      RCLCPP_WARN(
+        get_logger(),
+        "output_pose_cov_topic matched output_pose_topic. Using '%s' for covariance output instead.",
+        output_pose_cov_topic_.c_str());
+    }
+
+    pub_pose_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       output_pose_topic_, rclcpp::QoS(10));
+    pub_pose_cov_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
+      output_pose_cov_topic_, rclcpp::QoS(10));
+    // HH_260305-00:00 Use reliable/latest-only pose QoS.
+    // Best-effort drop under load makes snapped pose lag and causes downstream local-path jitter.
     sub_pose_ = create_subscription<geometry_msgs::msg::PoseStamped>(
-      input_pose_topic_, rclcpp::SensorDataQoS(),
+      input_pose_topic_, rclcpp::QoS(1).reliable(),
       std::bind(&CenterlineSnapperNode::onPose, this, std::placeholders::_1));
 
     // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
     RCLCPP_DEBUG(
       get_logger(),
-      "centerline snapper ready. map=%s, input=%s, output=%s",
-      cfg_.map_path.c_str(), input_pose_topic_.c_str(), output_pose_topic_.c_str());
+      "centerline snapper ready. map=%s, input=%s, output=%s, output_cov=%s",
+      cfg_.map_path.c_str(), input_pose_topic_.c_str(), output_pose_topic_.c_str(),
+      output_pose_cov_topic_.c_str());
   }
 
 private:
@@ -127,30 +142,35 @@ private:
         max_search_radius_);
       return;
     }
-    geometry_msgs::msg::PoseWithCovarianceStamped out;
-    out.header = msg->header;
-    out.pose.pose.position.x = nearest.nearest_point.x();
-    out.pose.pose.position.y = nearest.nearest_point.y();
+    geometry_msgs::msg::PoseStamped out_pose;
+    out_pose.header = msg->header;
+    out_pose.pose.position.x = nearest.nearest_point.x();
+    out_pose.pose.position.y = nearest.nearest_point.y();
     // HH_260114 Adjust z to lanelet centerline height or keep input z.
     double snapped_z = use_map_z_ ? (nearest.nearest_point.z() + map_z_offset_) : pz;
     if (flatten_to_ground_) {
       snapped_z = map_ground_z_ + map_z_offset_;
     }
-    out.pose.pose.position.z = snapped_z;
-    out.pose.pose.orientation = yawToQuat(nearest.heading);
+    out_pose.pose.position.z = snapped_z;
+    out_pose.pose.orientation = yawToQuat(nearest.heading);
+
+    geometry_msgs::msg::PoseWithCovarianceStamped out_cov;
+    out_cov.header = out_pose.header;
+    out_cov.pose.pose = out_pose.pose;
 
     // Fill covariance: longitudinal, lateral, yaw
-    for (auto & c : out.pose.covariance) {
+    for (auto & c : out_cov.pose.covariance) {
       c = 0.0;
     }
-    out.pose.covariance[0] = longitudinal_stddev_ * longitudinal_stddev_;
-    out.pose.covariance[7] = lateral_stddev_ * lateral_stddev_;
-    out.pose.covariance[14] = 9999.0;  // z not observed
-    out.pose.covariance[21] = 9999.0;
-    out.pose.covariance[28] = 9999.0;
-    out.pose.covariance[35] = yaw_stddev_ * yaw_stddev_;
+    out_cov.pose.covariance[0] = longitudinal_stddev_ * longitudinal_stddev_;
+    out_cov.pose.covariance[7] = lateral_stddev_ * lateral_stddev_;
+    out_cov.pose.covariance[14] = 9999.0;  // z not observed
+    out_cov.pose.covariance[21] = 9999.0;
+    out_cov.pose.covariance[28] = 9999.0;
+    out_cov.pose.covariance[35] = yaw_stddev_ * yaw_stddev_;
 
-    pub_pose_cov_->publish(out);
+    pub_pose_->publish(out_pose);
+    pub_pose_cov_->publish(out_cov);
   }
 
   NearestResult findNearestCenterline(double x, double y) const
@@ -194,6 +214,7 @@ private:
 
   std::string input_pose_topic_;
   std::string output_pose_topic_;
+  std::string output_pose_cov_topic_;
   double max_search_radius_{30.0};
   double longitudinal_stddev_{0.5};
   double lateral_stddev_{0.3};
@@ -217,6 +238,7 @@ private:
     return zs[zs.size() / 2];
   }
 
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose_;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_pose_cov_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_pose_;
 };

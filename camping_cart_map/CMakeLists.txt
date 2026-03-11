@@ -148,6 +148,14 @@ ament_target_dependencies(cost_field_node
   lanelet2_projection
 )
 
+add_executable(marker_array_aggregator_node
+  src/marker_array_aggregator_node.cpp
+)
+ament_target_dependencies(marker_array_aggregator_node
+  rclcpp
+  visualization_msgs
+)
+
 #---------------------------------------------
 # HH_260114 Install executables and libraries.
 #---------------------------------------------
@@ -159,6 +167,12 @@ install(TARGETS
   drop_zone_exporter_node
   cost_field_marker_node
   cost_field_node
+  marker_array_aggregator_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  scripts/map_diagnostic_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -21,34 +21,10 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(lanelet2_core REQUIRED)
 find_package(lanelet2_io REQUIRED)
 find_package(lanelet2_projection REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_package(yaml-cpp REQUIRED)
-
-# HH_260123 Force legacy PYTHON_EXECUTABLE for rosidl_find_python interp checks.
-set(PYTHON_EXECUTABLE ${Python3_EXECUTABLE} CACHE FILEPATH "Python executable for rosidl" FORCE)
-
-# ------------------------------------------------------------------------------
-# Messages
-# ------------------------------------------------------------------------------
-set(msg_files
-  "msg/LocalizationMode.msg"
-  "msg/LocalizationDiagnostics.msg"
-  "msg/LocalizationStatus.msg"
-)
-
-# HH_260123 Explicitly mark rosidl interface group to satisfy rosidl_generate_interfaces check.
-set(${PROJECT_NAME}_MEMBER_OF_GROUPS "rosidl_interface_packages")
-
-rosidl_generate_interfaces(${PROJECT_NAME}
-  ${msg_files}
-  DEPENDENCIES std_msgs
-)
-ament_export_dependencies(rosidl_default_runtime)
-
-# HH_260123 Typesupport handle for linking custom message users.
-rosidl_get_typesupport_target(${PROJECT_NAME}__rosidl_typesupport_cpp ${PROJECT_NAME} "rosidl_typesupport_cpp")
+find_package(avg_msgs REQUIRED)
 
 # ------------------------------------------------------------------------------
 # Executables
@@ -101,16 +77,12 @@ ament_target_dependencies(localization_eskf_node
   std_msgs
   tf2
   tf2_ros
+  avg_msgs
 )
 target_include_directories(localization_eskf_node PRIVATE
   ${EIGEN3_INCLUDE_DIR}
-  ${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp
 )
-target_link_libraries(localization_eskf_node
-  Eigen3::Eigen
-  ${${PROJECT_NAME}__rosidl_typesupport_cpp}
-)
-add_dependencies(localization_eskf_node ${PROJECT_NAME}__rosidl_generator_cpp)
+target_link_libraries(localization_eskf_node Eigen3::Eigen)
 
 add_executable(localization_supervisor_node
   src/localization_supervisor_node.cpp
@@ -121,14 +93,8 @@ ament_target_dependencies(localization_supervisor_node
   nav_msgs
   sensor_msgs
   std_msgs
+  avg_msgs
 )
-target_include_directories(localization_supervisor_node PRIVATE
-  ${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp
-)
-target_link_libraries(localization_supervisor_node
-  ${${PROJECT_NAME}__rosidl_typesupport_cpp}
-)
-add_dependencies(localization_supervisor_node ${PROJECT_NAME}__rosidl_generator_cpp)
 
 add_executable(localization_pose_selector_node
   src/localization_pose_selector_node.cpp
@@ -138,14 +104,8 @@ ament_target_dependencies(localization_pose_selector_node
   geometry_msgs
   nav_msgs
   std_msgs
+  avg_msgs
 )
-target_include_directories(localization_pose_selector_node PRIVATE
-  ${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp
-)
-target_link_libraries(localization_pose_selector_node
-  ${${PROJECT_NAME}__rosidl_typesupport_cpp}
-)
-add_dependencies(localization_pose_selector_node ${PROJECT_NAME}__rosidl_generator_cpp)
 
 add_executable(wheel_odometry_bridge_node
   src/wheel_odometry_bridge_node.cpp
@@ -204,8 +164,12 @@ install(TARGETS
 install(DIRECTORY
   launch
   config
-  msg
   DESTINATION share/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  scripts/localization_diagnostic_node.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 # HH_260113 Rely on default ament_cmake environment hooks (manual package.dsv override removed).

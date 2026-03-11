@@ -8,9 +8,9 @@
     map_frame_id: "map"
     offset_lat: 36.8436194
     offset_lon: 128.0925490
-    offset_alt: 0.0
+    offset_alt: 299.425
     # 2026-02-02: Finer grid for clearer lanelet boundaries in RViz.
-    resolution: 0.08
+    resolution: 0.05
     width: 0
     height: 0
     # 2026-02-11: Lane-only corridor width (meters). Increase if lane coverage is too narrow.
@@ -29,9 +29,20 @@
     #   "bounds"     : left/right boundary lines only (thin lethal strips)
     #   "lanelet"    : full lanelet polygon area
     #   "path"       : path strip based on /planning/global_path
-    # 2026-02-24: Base map = full lanelet polygons drivable, outside lanelets unknown.
-    cost_mode: "lanelet"
-    boundary_half_width: 0.2
+    # 2026-03-03: User-facing lanelet layer = boundary cost grid only.
+    cost_mode: "bounds"
+    boundary_half_width: 0.05
+    # HH_260305-00:00 Stricter inside-cell test to reduce outward boundary bleed.
+    cell_inside_min_hits: 7
+    cell_inside_min_hits_path: 5
+    cell_inside_min_hits_boundary: 9
+    # 2026-02-26: In lanelet mode, also paint left/right boundaries as high cost.
+    # -1 disables boundary overlay.
+    lanelet_boundary_value: 100
+    # 2026-02-27: Keep boundary overlay inside lane polygon (avoid outward bleed).
+    boundary_clip_to_lanelet: true
+    # 2026-02-27: Enable to print boundary candidate/written/clipped statistics.
+    debug_boundary_stats: false
     # 2026-02-24: Keep outside lanelets unknown so RViz and inflation overlay stay lanelet-shaped.
     # outside_value options:
     #   -1  : unknown outside lanelets (recommended)
@@ -41,7 +52,11 @@
     use_path_bbox: false        # HH_260102 keep grid window robot-centered to avoid size flicker
     lock_window: true
     use_map_bbox: true
+    # 2026-02-27: Static lanelet base grid does not need per-pose/path rebuild.
+    rebuild_on_pose: false
+    rebuild_on_path: false
+    min_rebuild_period_sec: 0.2
     # HH_260109 Drive cost grid from fused localization pose.
-    pose_topic: "/localization/pose"
+    pose_topic: "/planning/lanelet_pose"
     path_topic: "/planning/global_path"
-    republish_period: 1.0
+    republish_period: 0.0

@@ -1,0 +1,22 @@
+/sensing/lidar_cost_grid:
+  ros__parameters:
+    input_topic: "/perception/obstacles"
+    output_topic: "/sensing/lidar/near_cost_grid"
+    base_frame_id: "robot_base_link"
+    output_frame_id: "map"
+    resolution: 0.08
+    width: 150
+    height: 150
+    origin_x: -6.0
+    origin_y: -6.0
+    free_value: 0
+    unknown_value: -1
+    min_cost: 30
+    max_cost: 95
+    cost_range_min_m: 0.4
+    cost_range_max_m: 7.5
+    obstacle_radius_m: 0.20
+    # HH_260306-00:00 Keep ego footprint free so planner start cell is not lethal.
+    ego_clear_radius_m: 0.90
+    max_message_age_sec: 0.50
+    publish_rate_hz: 10.0

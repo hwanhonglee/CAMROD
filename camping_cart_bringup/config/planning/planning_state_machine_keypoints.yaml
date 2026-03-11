@@ -1,0 +1,15 @@
+keypoints:
+  # HH_260309-00:00 Initial safe position after startup checks.
+  drop_zone:
+    frame_id: "map"
+    x: 21.1829
+    y: 2.6052
+    z: -2.1467
+
+  # HH_260309-00:00 Recovery parking/garage target for WARN-level degradation.
+  # TODO(HH_260309-00:00): replace with verified garage waypoint for deployment map.
+  garage:
+    frame_id: "map"
+    x: 21.1829
+    y: 2.6052
+    z: -2.1467

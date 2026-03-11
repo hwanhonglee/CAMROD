@@ -10,7 +10,10 @@ find_package(rclpy REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 
 install(
-  PROGRAMS scripts/system_checker_node.py
+  PROGRAMS
+    scripts/system_checker_node.py
+    scripts/module_checker_node.py
+    scripts/module_status_aggregator_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

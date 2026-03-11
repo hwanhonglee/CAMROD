@@ -4,6 +4,7 @@ from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
 from pyproj import Transformer
+import math
 
 
 class EcefToUtmLocal(Node):
@@ -24,6 +25,8 @@ class EcefToUtmLocal(Node):
 
         # z 처리
         self.declare_parameter('use_altitude', False)
+        # HH_260307-00:00 Optional XY yaw alignment (deg) between map projection axes and lanelet map axes.
+        self.declare_parameter('yaw_offset_deg', 0.0)
 
         self.input_topic = self.get_parameter('input_topic').value
         self.output_topic = self.get_parameter('output_topic').value
@@ -34,6 +37,8 @@ class EcefToUtmLocal(Node):
         self.origin_z = float(self.get_parameter('origin_z').value)
         self.map_epsg = int(self.get_parameter('map_epsg').value)
         self.use_altitude = bool(self.get_parameter('use_altitude').value)
+        self.yaw_offset_deg = float(self.get_parameter('yaw_offset_deg').value)
+        self.yaw_offset_rad = math.radians(self.yaw_offset_deg)
 
         # ECEF <-> LLH(WGS84)
         self.ecef_to_llh = Transformer.from_crs("EPSG:4978", "EPSG:4326", always_xy=True)
@@ -48,6 +53,7 @@ class EcefToUtmLocal(Node):
         self.get_logger().info(f'Output: {self.output_topic}')
         self.get_logger().info(f'Map EPSG: {self.map_epsg}')
         self.get_logger().info(f'Origin : ({self.origin_x}, {self.origin_y})')
+        self.get_logger().info(f'Yaw offset (deg): {self.yaw_offset_deg}')
 
     def cb(self, msg: Odometry):
         x_ecef = msg.pose.pose.position.x
@@ -62,6 +68,10 @@ class EcefToUtmLocal(Node):
 
         local_x = map_x - self.origin_x
         local_y = map_y - self.origin_y
+        if abs(self.yaw_offset_rad) > 1e-12:
+            c = math.cos(self.yaw_offset_rad)
+            s = math.sin(self.yaw_offset_rad)
+            local_x, local_y = (c * local_x - s * local_y, s * local_x + c * local_y)
         local_z = (alt - self.origin_z) if self.use_altitude else 0.0
 
         out = PoseStamped()

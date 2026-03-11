@@ -1,0 +1,11 @@
+keypoints:
+  drop_zone:
+    frame_id: "map"
+    x: 21.1829
+    y: 2.6052
+    z: -2.1467
+  garage:
+    frame_id: "map"
+    x: 21.1829
+    y: 2.6052
+    z: -2.1467

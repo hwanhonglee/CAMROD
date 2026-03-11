@@ -12,6 +12,17 @@ from rclpy.parameter_type import ParameterType
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 
 
+def _diag_level(value):
+    # HH_260311-00:00 Humble DiagnosticStatus constants may be bytes; normalize safely.
+    if isinstance(value, (bytes, bytearray)):
+        if len(value) == 1:
+            return bytes(value)
+        if len(value) > 1:
+            return bytes([value[0]])
+        return b"\x00"
+    return bytes([int(value) & 0xFF])
+
+
 def _normalize_name(name: str) -> str:
     if not name:
         return name
@@ -56,9 +67,11 @@ class SystemChecker(Node):
         if missing_nodes or missing_topics:
             if now - self._last_report > 2.0:
                 self.get_logger().warn(
-                    "HH_260112 system check missing nodes=%s topics=%s",
-                    ",".join(missing_nodes) if missing_nodes else "-",
-                    ",".join(missing_topics) if missing_topics else "-",
+                    "HH_260112 system check missing nodes=%s topics=%s"
+                    % (
+                        ",".join(missing_nodes) if missing_nodes else "-",
+                        ",".join(missing_topics) if missing_topics else "-",
+                    )
                 )
                 self._last_report = now
 
@@ -73,11 +86,11 @@ class SystemChecker(Node):
         status = DiagnosticStatus()
         status.name = name
         if missing:
-            status.level = DiagnosticStatus.WARN
+            status.level = _diag_level(DiagnosticStatus.WARN)
             status.message = "missing"
             status.values.append(KeyValue(key="missing", value=",".join(missing)))
         else:
-            status.level = DiagnosticStatus.OK
+            status.level = _diag_level(DiagnosticStatus.OK)
             status.message = "ok"
         return status
 
