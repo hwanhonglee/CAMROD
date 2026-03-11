@@ -13,13 +13,13 @@
 
 #include <Eigen/Dense>
 
-#include "camping_cart_localization/msg/localization_diagnostics.hpp"
+#include "avg_msgs/msg/avg_localization_diagnostics.hpp"
 
 #include <chrono>
 #include <string>
 #include <optional>
 
-using camping_cart_localization::msg::LocalizationDiagnostics;
+using avg_msgs::msg::AvgLocalizationDiagnostics;
 
 namespace
 {
@@ -97,7 +97,7 @@ public:
     pose_cov_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
       pose_cov_topic_, rclcpp::QoS(10));
     twist_pub_ = create_publisher<geometry_msgs::msg::TwistStamped>(twist_topic_, rclcpp::QoS(10));
-    diag_pub_ = create_publisher<LocalizationDiagnostics>(diag_topic_, rclcpp::QoS(10));
+    diag_pub_ = create_publisher<AvgLocalizationDiagnostics>(diag_topic_, rclcpp::QoS(10));
 
     // TF broadcaster
     if (publish_tf_) {
@@ -186,7 +186,7 @@ private:
       covariance_(1, 1) = R(1, 1);
 
       initialized_ = true;
-      LocalizationDiagnostics diag;
+      AvgLocalizationDiagnostics diag;
       diag.header.stamp = msg->header.stamp;
       diag.gnss_innovation_norm = 0.0;
       diag.gnss_update_accepted = true;
@@ -204,7 +204,7 @@ private:
     const double pos_error = innov.norm();
     Eigen::Matrix2d S = H * covariance_ * H.transpose() + R;
     double mahal = innov.transpose() * S.inverse() * innov;
-    LocalizationDiagnostics diag;
+    AvgLocalizationDiagnostics diag;
     diag.header.stamp = msg->header.stamp;
     diag.gnss_innovation_norm = std::sqrt(std::max(0.0, mahal));
 
@@ -265,13 +265,33 @@ private:
     H(0, 3) = sin_yaw;
     H(0, 4) = -sin_yaw * state_(2) + cos_yaw * state_(3);
 
+    // 2026-02-26: Initialize velocity state from first wheel measurement.
+    // Without this, filter can stay near zero-velocity while GNSS moves, causing
+    // repeated GNSS gate rejections and apparent localization "fly away".
+    if (!wheel_initialized_) {
+      state_(2) = v_meas * cos_yaw;
+      state_(3) = v_meas * sin_yaw;
+      covariance_(2, 2) = std::max(covariance_(2, 2), wheel_speed_noise_ * wheel_speed_noise_);
+      covariance_(3, 3) = std::max(covariance_(3, 3), wheel_speed_noise_ * wheel_speed_noise_);
+
+      AvgLocalizationDiagnostics init_diag;
+      init_diag.header.stamp = msg->header.stamp;
+      init_diag.wheel_innovation_norm = 0.0;
+      init_diag.wheel_update_accepted = true;
+      init_diag.covariance_trace = covariance_.trace();
+      last_diag_ = init_diag;
+      diag_pub_->publish(init_diag);
+      wheel_initialized_ = true;
+      return;
+    }
+
     const double v_pred = cos_yaw * state_(2) + sin_yaw * state_(3);
     const double innov = v_meas - v_pred;
     const double R_meas = wheel_speed_noise_ * wheel_speed_noise_;
     const double S = (H * covariance_ * H.transpose())(0, 0) + R_meas;
     const double mahal = (innov * innov) / std::max(1e-6, S);
 
-    LocalizationDiagnostics diag;
+    AvgLocalizationDiagnostics diag;
     diag.header.stamp = msg->header.stamp;
     diag.wheel_innovation_norm = std::sqrt(std::max(0.0, mahal));
     if (mahal > wheel_gate_mahalanobis_) {
@@ -347,6 +367,11 @@ private:
 
   void publishOutputs(const rclcpp::Time & stamp)
   {
+    // Do not publish a floating pose before the first GNSS-based initialization.
+    if (init_on_first_gnss_ && !initialized_) {
+      return;
+    }
+
     nav_msgs::msg::Odometry odom;
     odom.header.stamp = stamp;
     odom.header.frame_id = odom_frame_;
@@ -467,11 +492,12 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
   rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr twist_pub_;
-  rclcpp::Publisher<LocalizationDiagnostics>::SharedPtr diag_pub_;
+  rclcpp::Publisher<AvgLocalizationDiagnostics>::SharedPtr diag_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
-  LocalizationDiagnostics last_diag_;
+  AvgLocalizationDiagnostics last_diag_;
   bool initialized_{false};
+  bool wheel_initialized_{false};
 };
 
 int main(int argc, char ** argv)

@@ -57,6 +57,20 @@ geometry_msgs::msg::Point ecefToEnu(
   enu.z = cos_lat * cos_lon * dx + cos_lat * sin_lon * dy + sin_lat * dz;
   return enu;
 }
+
+geometry_msgs::msg::Point rotatePointXY(
+  const geometry_msgs::msg::Point & in, const double yaw_rad)
+{
+  geometry_msgs::msg::Point out = in;
+  if (std::abs(yaw_rad) < 1e-12) {
+    return out;
+  }
+  const double c = std::cos(yaw_rad);
+  const double s = std::sin(yaw_rad);
+  out.x = c * in.x - s * in.y;
+  out.y = s * in.x + c * in.y;
+  return out;
+}
 }  // namespace
 
 namespace camping_cart::localization
@@ -88,6 +102,9 @@ public:
     origin_lon_deg_ = declare_parameter<double>("origin_lon", 0.0);
     origin_alt_ = declare_parameter<double>("origin_alt", 0.0);
     yaw_offset_rad_ = deg2rad(declare_parameter<double>("yaw_offset_deg", 0.0));
+    // HH_260307-00:00 Optional XY rotation to align local ENU with lanelet map yaw.
+    rotate_latlon_xy_by_yaw_offset_ = declare_parameter<bool>(
+      "rotate_latlon_xy_by_yaw_offset", true);
 
     utm_origin_easting_ = declare_parameter<double>("utm_origin_easting", 0.0);
     utm_origin_northing_ = declare_parameter<double>("utm_origin_northing", 0.0);
@@ -134,7 +151,10 @@ private:
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "invalid NavSatFix");
       return;
     }
-    const auto enu = convertLatLon(msg->latitude, msg->longitude, msg->altitude);
+    auto enu = convertLatLon(msg->latitude, msg->longitude, msg->altitude);
+    if (rotate_latlon_xy_by_yaw_offset_) {
+      enu = rotatePointXY(enu, yaw_offset_rad_);
+    }
     publishEnuPose(msg->header.stamp, enu, yaw_offset_rad_);
   }
 
@@ -146,7 +166,10 @@ private:
       return;
     }
     if (type == InputType::LAT_LON) {
-      const auto enu = convertLatLon(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
+      auto enu = convertLatLon(msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
+      if (rotate_latlon_xy_by_yaw_offset_) {
+        enu = rotatePointXY(enu, yaw_offset_rad_);
+      }
       publishEnuPose(msg->header.stamp, enu, yawFromMsg(*msg));
       return;
     }
@@ -244,6 +267,7 @@ private:
   double origin_lon_rad_{0.0};
   double origin_alt_{0.0};
   double yaw_offset_rad_{0.0};
+  bool rotate_latlon_xy_by_yaw_offset_{true};
 
   double utm_origin_easting_{0.0};
   double utm_origin_northing_{0.0};

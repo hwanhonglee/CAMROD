@@ -9,15 +9,6 @@
   <!-- HH_260114 Set explicit Apache license. -->
   <license>Apache-2.0</license>
 
-  <!-- HH_251126 --> <!-- For msg -->
-  <buildtool_depend>rosidl_default_generators</buildtool_depend>
-  <build_depend>rosidl_default_generators</build_depend>
-  <build_depend>rosidl_default_runtime</build_depend>
-  <exec_depend>rosidl_default_runtime</exec_depend>
-
-  <member_of_group>rosidl_interface_packages</member_of_group>
-
-  
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>

@@ -5,13 +5,13 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <std_msgs/msg/string.hpp>
 
-#include "camping_cart_localization/msg/localization_mode.hpp"
+#include "avg_msgs/msg/avg_localization_mode.hpp"
 
 #include <array>
 #include <chrono>
 #include <string>
 
-using camping_cart_localization::msg::LocalizationMode;
+using avg_msgs::msg::AvgLocalizationMode;
 
 namespace
 {
@@ -65,7 +65,7 @@ public:
     switch_hysteresis_sec_ = declare_parameter<double>("switch_hysteresis_sec", 0.5);
     fallback_on_mode_at_or_above_ = declare_parameter<int>(
       "fallback_on_mode_at_or_above",
-      static_cast<int>(LocalizationMode::DR_ONLY));
+      static_cast<int>(AvgLocalizationMode::DR_ONLY));
 
     primary_timeout_sec_ = std::max(0.05, primary_timeout_sec_);
     fallback_timeout_sec_ = std::max(0.05, fallback_timeout_sec_);
@@ -96,7 +96,7 @@ public:
     fallback_odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       fallback_odom_topic_, fallback_qos,
       std::bind(&LocalizationPoseSelectorNode::onFallbackOdom, this, _1));
-    mode_sub_ = create_subscription<LocalizationMode>(
+    mode_sub_ = create_subscription<AvgLocalizationMode>(
       mode_topic_, rclcpp::QoS(20),
       std::bind(&LocalizationPoseSelectorNode::onMode, this, _1));
 
@@ -124,7 +124,7 @@ private:
     return (a.nanoseconds() >= b.nanoseconds()) ? a : b;
   }
 
-  void onMode(const LocalizationMode::ConstSharedPtr msg)
+  void onMode(const AvgLocalizationMode::ConstSharedPtr msg)
   {
     mode_value_ = static_cast<int>(msg->value);
     evaluateAndPublish(this->now());
@@ -342,7 +342,7 @@ private:
   int fallback_on_mode_at_or_above_{2};
 
   // State
-  int mode_value_{static_cast<int>(LocalizationMode::INVALID)};
+  int mode_value_{static_cast<int>(AvgLocalizationMode::INVALID)};
   bool selected_initialized_{false};
   Source selected_source_{Source::kPrimary};
   rclcpp::Time last_switch_time_{0, 0, RCL_ROS_TIME};
@@ -365,7 +365,7 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr primary_odom_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr fallback_pose_cov_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr fallback_odom_sub_;
-  rclcpp::Subscription<LocalizationMode>::SharedPtr mode_sub_;
+  rclcpp::Subscription<AvgLocalizationMode>::SharedPtr mode_sub_;
 
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;

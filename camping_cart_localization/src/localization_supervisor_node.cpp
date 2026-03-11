@@ -6,18 +6,18 @@
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32.hpp>
 
-#include "camping_cart_localization/msg/localization_mode.hpp"
-#include "camping_cart_localization/msg/localization_status.hpp"
-#include "camping_cart_localization/msg/localization_diagnostics.hpp"
+#include "avg_msgs/msg/avg_localization_mode.hpp"
+#include "avg_msgs/msg/avg_localization_status.hpp"
+#include "avg_msgs/msg/avg_localization_diagnostics.hpp"
 
 #include <algorithm>
 #include <string>
 #include <chrono>
 #include <cmath>
 
-using camping_cart_localization::msg::LocalizationDiagnostics;
-using camping_cart_localization::msg::LocalizationMode;
-using camping_cart_localization::msg::LocalizationStatus;
+using avg_msgs::msg::AvgLocalizationDiagnostics;
+using avg_msgs::msg::AvgLocalizationMode;
+using avg_msgs::msg::AvgLocalizationStatus;
 
 class LocalizationSupervisorNode : public rclcpp::Node
 {
@@ -44,15 +44,15 @@ public:
     gnss_jump_fail_m_ = declare_parameter<double>("gnss_jump_fail_m", 1.0);
     gnss_min_hz_ = declare_parameter<double>("gnss_min_hz", 2.0);
 
-    mode_pub_ = create_publisher<LocalizationMode>("/localization/mode", rclcpp::QoS(10));
-    status_pub_ = create_publisher<LocalizationStatus>("/localization/status", rclcpp::QoS(10));
+    mode_pub_ = create_publisher<AvgLocalizationMode>("/localization/mode", rclcpp::QoS(10));
+    status_pub_ = create_publisher<AvgLocalizationStatus>("/localization/status", rclcpp::QoS(10));
     confidence_pub_ = create_publisher<std_msgs::msg::Float32>(
       "/localization/confidence", rclcpp::QoS(10));
     health_pub_ = create_publisher<std_msgs::msg::Bool>(
       "/localization/health", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 
     using std::placeholders::_1;
-    diag_sub_ = create_subscription<LocalizationDiagnostics>(
+    diag_sub_ = create_subscription<AvgLocalizationDiagnostics>(
       diag_topic_, rclcpp::QoS(20),
       std::bind(&LocalizationSupervisorNode::onDiag, this, _1));
     gnss_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
@@ -75,7 +75,7 @@ public:
   }
 
 private:
-  void onDiag(const LocalizationDiagnostics::ConstSharedPtr msg)
+  void onDiag(const AvgLocalizationDiagnostics::ConstSharedPtr msg)
   {
     last_diag_ = *msg;
     last_diag_time_ = msg->header.stamp;
@@ -111,9 +111,9 @@ private:
     last_wheel_time_ = msg->header.stamp;
   }
 
-  LocalizationMode makeMode(uint8_t value, const std::string & label)
+  AvgLocalizationMode makeMode(uint8_t value, const std::string & label)
   {
-    LocalizationMode m;
+    AvgLocalizationMode m;
     m.value = value;
     m.label = label;
     return m;
@@ -147,26 +147,26 @@ private:
     if (!gnss_rate_ok) confidence -= 0.1;
     confidence = std::clamp(confidence, 0.0, 1.0);
 
-    LocalizationMode mode_msg;
+    AvgLocalizationMode mode_msg;
     if (!imu_ok) {
-      mode_msg = makeMode(LocalizationMode::INVALID, "INVALID");
+      mode_msg = makeMode(AvgLocalizationMode::INVALID, "INVALID");
     } else if (!gnss_good && wheel_ok) {
-      mode_msg = makeMode(LocalizationMode::DR_ONLY, "DR_ONLY");
+      mode_msg = makeMode(AvgLocalizationMode::DR_ONLY, "DR_ONLY");
     } else if (gnss_good && wheel_good &&
       last_diag_.gnss_innovation_norm <= gnss_innov_warn_) {
-      mode_msg = makeMode(LocalizationMode::NORMAL, "NORMAL");
+      mode_msg = makeMode(AvgLocalizationMode::NORMAL, "NORMAL");
     } else if (gnss_good || wheel_ok) {
-      mode_msg = makeMode(LocalizationMode::DEGRADED, "DEGRADED");
+      mode_msg = makeMode(AvgLocalizationMode::DEGRADED, "DEGRADED");
     } else {
-      mode_msg = makeMode(LocalizationMode::INVALID, "INVALID");
+      mode_msg = makeMode(AvgLocalizationMode::INVALID, "INVALID");
     }
 
     // If innovation too high, flag degraded even if GNSS fresh.
     if (last_diag_.gnss_innovation_norm > gnss_innov_fail_) {
-      mode_msg = makeMode(LocalizationMode::DEGRADED, "DEGRADED");
+      mode_msg = makeMode(AvgLocalizationMode::DEGRADED, "DEGRADED");
     }
 
-    LocalizationStatus status;
+    AvgLocalizationStatus status;
     status.header.stamp = now;
     status.mode = mode_msg;
     status.confidence = static_cast<float>(confidence);
@@ -177,8 +177,8 @@ private:
     status.wheel_innovation_norm = last_diag_.wheel_innovation_norm;
 
     std_msgs::msg::Bool health_msg;
-    health_msg.data = (mode_msg.value == LocalizationMode::NORMAL) ||
-      (mode_msg.value == LocalizationMode::DEGRADED);
+    health_msg.data = (mode_msg.value == AvgLocalizationMode::NORMAL) ||
+      (mode_msg.value == AvgLocalizationMode::DEGRADED);
 
     std_msgs::msg::Float32 conf_msg;
     conf_msg.data = static_cast<float>(confidence);
@@ -204,7 +204,7 @@ private:
   double gnss_min_hz_{2.0};
 
   // State
-  LocalizationDiagnostics last_diag_{};
+  AvgLocalizationDiagnostics last_diag_{};
   rclcpp::Time last_diag_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_gnss_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_imu_time_{0, 0, RCL_ROS_TIME};
@@ -218,12 +218,12 @@ private:
   double last_gnss_hz_{0.0};
 
   // ROS interfaces
-  rclcpp::Subscription<LocalizationDiagnostics>::SharedPtr diag_sub_;
+  rclcpp::Subscription<AvgLocalizationDiagnostics>::SharedPtr diag_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr gnss_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr wheel_sub_;
-  rclcpp::Publisher<LocalizationMode>::SharedPtr mode_pub_;
-  rclcpp::Publisher<LocalizationStatus>::SharedPtr status_pub_;
+  rclcpp::Publisher<AvgLocalizationMode>::SharedPtr mode_pub_;
+  rclcpp::Publisher<AvgLocalizationStatus>::SharedPtr status_pub_;
   rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr confidence_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr health_pub_;
   rclcpp::TimerBase::SharedPtr timer_;

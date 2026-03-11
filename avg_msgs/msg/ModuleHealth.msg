@@ -1,0 +1,10 @@
+builtin_interfaces/Time stamp
+string module_name
+uint8 level
+uint8 OK=0
+uint8 WARN=1
+uint8 ERROR=2
+string message
+string[] missing_nodes
+string[] missing_topics
+string[] missing_lifecycle_nodes

@@ -79,11 +79,11 @@ public:
     params_ = loadRobotParams(this);
     map_frame_id_ = declare_parameter<std::string>("map_frame_id", "map");
     base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_base_link");
-    // 2026-02-24: Platform ownership uses /platform/robot/* topics by default.
+    // HH_260304-00:00 // Platform ownership uses /platform/robot/* topics by default.
     marker_topic_ = declare_parameter<std::string>("marker_topic", "/platform/robot/markers");
     boundary_topic_ = declare_parameter<std::string>(
       "boundary_topic", "/platform/robot/planning_boundary");
-    // 2026-02-04: Visualizer should not publish TF unless explicitly requested.
+    // HH_260304-00:00 // Visualizer should not publish TF unless explicitly requested.
     publish_tf_ = declare_parameter<bool>("publish_tf", false);
     const double publish_rate_hz = declare_parameter<double>("publish_rate_hz", 1.0);
     body_scale_factor_ = declare_parameter<double>("body_scale_factor", 1.0);
@@ -128,7 +128,7 @@ public:
       std::chrono::duration_cast<std::chrono::nanoseconds>(period),
       std::bind(&RobotVisualizationNode::publishMarkers, this));
 
-    // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
+    // HH_260304-00:00 // Keep startup logs quiet by default.
     RCLCPP_DEBUG(
       get_logger(),
       "robot visualization ready. Marker topic '%s', base frame '%s', map frame '%s'.",
@@ -383,10 +383,7 @@ private:
     base_pose_.yaw = yaw;
     publishBaseTransform();
     publishMarkers();
-    RCLCPP_INFO(
-      get_logger(),
-      "initial pose set to (%.2f, %.2f, %.2f, yaw %.1f deg)",
-      base_pose_.x, base_pose_.y, base_pose_.z, yaw * 180.0 / M_PI);
+    // HH_260304-00:00 Suppress per-fix initial-pose spam while GNSS pose is streaming.
   }
 
   void onGnssPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)

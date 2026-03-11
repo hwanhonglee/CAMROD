@@ -60,12 +60,17 @@ void orientPathStartToGoal(
 
   const auto & first = path.poses.front().pose.position;
   const auto & last = path.poses.back().pose.position;
-  const double normal_score =
-    dist2d(first, start.pose.position) + dist2d(last, goal.pose.position);
-  const double reversed_score =
-    dist2d(last, start.pose.position) + dist2d(first, goal.pose.position);
+  const double start_to_first = dist2d(first, start.pose.position);
+  const double start_to_last = dist2d(last, start.pose.position);
+  const double goal_to_last = dist2d(last, goal.pose.position);
+  const double goal_to_first = dist2d(first, goal.pose.position);
 
-  if (reversed_score + 1e-3 < normal_score) {
+  // 2026-02-25: Reverse only when BOTH endpoints are clearly swapped.
+  // This avoids accidental flips on loop-like maps where distances are similar.
+  const double decision_margin = 0.25;
+  const bool start_endpoint_swapped = (start_to_last + decision_margin) < start_to_first;
+  const bool goal_endpoint_swapped = (goal_to_first + decision_margin) < goal_to_last;
+  if (start_endpoint_swapped && goal_endpoint_swapped) {
     std::reverse(path.poses.begin(), path.poses.end());
   }
 }
@@ -176,7 +181,10 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   }
 
   // Initialize pubs & subs
-  plan_publisher_ = create_publisher<nav_msgs::msg::Path>("plan", 1);
+  // 2026-02-25: Keep latest path visible for late subscribers (RViz/CLI)
+  // and avoid "no path shown" when subscriber starts after planning response.
+  auto plan_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
+  plan_publisher_ = create_publisher<nav_msgs::msg::Path>("plan", plan_qos);
 
   // Create the action servers for path planning to a pose and through poses
   action_server_pose_ = std::make_unique<ActionServerToPose>(
@@ -585,7 +593,7 @@ void
 PlannerServer::publishPlan(const nav_msgs::msg::Path & path)
 {
   auto msg = std::make_unique<nav_msgs::msg::Path>(path);
-  if (plan_publisher_->is_activated() && plan_publisher_->get_subscription_count() > 0) {
+  if (plan_publisher_->is_activated()) {
     plan_publisher_->publish(std::move(msg));
   }
 }

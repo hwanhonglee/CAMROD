@@ -6,7 +6,14 @@ Design rule:
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, GroupAction, TimerAction
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    IncludeLaunchDescription,
+    GroupAction,
+    SetLaunchConfiguration,
+    TimerAction,
+)
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
@@ -24,10 +31,11 @@ def generate_launch_description():
     sim = LaunchConfiguration('sim')
     use_rviz = LaunchConfiguration('rviz')
     use_eskf = LaunchConfiguration('use_eskf')
+    enable_goal_replanner = LaunchConfiguration('enable_goal_replanner')
+    enable_state_machine = LaunchConfiguration('enable_state_machine')
+    enable_module_checkers = LaunchConfiguration('enable_module_checkers')
 
-    # [planning package passthrough] controller plugin selector.
-    # options: "rpp" (RegulatedPurePursuit) | "dwb" (DWB local planner)
-    controller_mode = LaunchConfiguration('controller_mode')
+    enable_path_cost_grids = LaunchConfiguration('enable_path_cost_grids')
 
     def pkg_path(pkg, rel):
         return os.path.join(get_package_share_directory(pkg), rel)
@@ -40,7 +48,12 @@ def generate_launch_description():
     map_param_file = bringup_cfg('map/map_info.yaml')
     sensing_param_file = bringup_cfg('sensing/sensing_params.yaml')
     perception_param_file = bringup_cfg('perception/perception_params.yaml')
-    nav2_param_file = pkg_path('camping_cart_bringup', os.path.join('config', 'planning', 'nav2_lanelet.yaml'))
+    nav2_base_param_file = pkg_path('camping_cart_bringup', os.path.join('config', 'planning', 'nav2_base.yaml'))
+    nav2_vehicle_param_file = pkg_path('camping_cart_bringup', os.path.join('config', 'planning', 'nav2_vehicle.yaml'))
+    nav2_vehicle_dwb_param_file = pkg_path(
+        'camping_cart_bringup', os.path.join('config', 'planning', 'nav2_vehicle_dwb.yaml'))
+    nav2_lanelet_param_file = pkg_path('camping_cart_bringup', os.path.join('config', 'planning', 'nav2_lanelet_overlay.yaml'))
+    nav2_behavior_param_file = pkg_path('camping_cart_bringup', os.path.join('config', 'planning', 'nav2_behavior.yaml'))
     fake_sensors_param_file = pkg_path('camping_cart_bringup', 'config/sim/fake_sensors.yaml')
 
     # -------------------------------------------------------------------------
@@ -51,6 +64,12 @@ def generate_launch_description():
     origin_lat_arg = LaunchConfiguration('origin_lat')
     origin_lon_arg = LaunchConfiguration('origin_lon')
     origin_alt_arg = LaunchConfiguration('origin_alt')
+    yaw_offset_deg_arg = LaunchConfiguration('yaw_offset_deg')
+    # [sim fake sensors] lanelet selector:
+    # - lanelet_id: canonical arg
+    # - fake_lanelet_id: legacy alias
+    lanelet_id = LaunchConfiguration('lanelet_id')
+    fake_lanelet_id = LaunchConfiguration('fake_lanelet_id')
 
     # -------------------------------------------------------------------------
     # [Per-package parameter-file overrides]
@@ -62,10 +81,16 @@ def generate_launch_description():
     sensing_param = LaunchConfiguration('sensing_param_file')
     radar_param = LaunchConfiguration('radar_param_file')
     radar_cost_grid_param = LaunchConfiguration('radar_cost_grid_param_file')
+    lidar_cost_grid_param = LaunchConfiguration('lidar_cost_grid_param_file')
     enable_radar = LaunchConfiguration('enable_radar')
     enable_radar_cost_grid = LaunchConfiguration('enable_radar_cost_grid')
+    enable_lidar_cost_grid = LaunchConfiguration('enable_lidar_cost_grid')
     perception_param = LaunchConfiguration('perception_param_file')
-    nav2_param = LaunchConfiguration('nav2_param_file')
+    nav2_base_param = LaunchConfiguration('nav2_base_param_file')
+    nav2_vehicle_param = LaunchConfiguration('nav2_vehicle_param_file')
+    use_dwb_controller = LaunchConfiguration('use_dwb_controller')
+    nav2_lanelet_param = LaunchConfiguration('nav2_lanelet_param_file')
+    nav2_behavior_param = LaunchConfiguration('nav2_behavior_param_file')
     fake_sensors_param = LaunchConfiguration('fake_sensors_param_file')
     eskf_param = LaunchConfiguration('eskf_param_file')
     supervisor_param = LaunchConfiguration('supervisor_param_file')
@@ -90,6 +115,16 @@ def generate_launch_description():
     offset_lat_default = float(map_params.get('offset_lat', 0.0))
     offset_lon_default = float(map_params.get('offset_lon', 0.0))
     offset_alt_default = float(map_params.get('offset_alt', 0.0))
+    # HH_260307-00:00 Localization yaw alignment default from localization_origin.yaml.
+    localization_origin_default = 0.0
+    localization_origin_file = bringup_cfg('localization/localization_origin.yaml')
+    try:
+        with open(localization_origin_file, 'r') as f:
+            loc_cfg = yaml.safe_load(f) or {}
+        origin_cfg = loc_cfg.get('origin', {}) or {}
+        localization_origin_default = float(origin_cfg.get('yaw_offset_deg', 0.0))
+    except Exception:
+        localization_origin_default = 0.0
 
     # -------------------------------------------------------------------------
     # [platform package] sensor kit + robot visualization
@@ -102,7 +137,22 @@ def generate_launch_description():
             'sensor_kit_base_frame_id': 'sensor_kit_base_link',
             'params_file': bringup_cfg('sensor_kit/robot_params.yaml'),
             'robot_visualization_param_file': robot_visualization_param,
+            # HH_260311-00:00 Use system/module_checkers.launch as single checker source.
+            'enable_module_checker': 'false',
+            # HH_260307-00:00 Force legacy alias for Nav2 recovery behaviors that still query base_link.
+            'publish_base_link_alias': 'true',
         }.items(),
+    )
+
+    # HH_260309-00:00 Hard fallback alias for legacy Nav2 behaviors still requesting "base_link".
+    # Keep in bringup as well (not only platform.launch) so TF alias is guaranteed even if
+    # older installed platform launch is used.
+    bringup_base_link_alias = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='bringup_base_link_alias_publisher',
+        arguments=['0', '0', '0', '0', '0', '0', 'robot_base_link', 'base_link'],
+        output='screen',
     )
 
     # -------------------------------------------------------------------------
@@ -117,6 +167,8 @@ def generate_launch_description():
             'origin_lon': origin_lon_arg,
             'origin_alt': origin_alt_arg,
             'map_visualization_param_file': map_visualization_param,
+            # HH_260311-00:00 Use system/module_checkers.launch as single checker source.
+            'enable_module_checker': 'false',
         }.items(),
     )
 
@@ -129,8 +181,12 @@ def generate_launch_description():
             'sensing_param_file': sensing_param,
             'radar_param_file': radar_param,
             'radar_cost_grid_param_file': radar_cost_grid_param,
+            'lidar_cost_grid_param_file': lidar_cost_grid_param,
             'enable_radar': enable_radar,
             'enable_radar_cost_grid': enable_radar_cost_grid,
+            'enable_lidar_cost_grid': enable_lidar_cost_grid,
+            # HH_260311-00:00 Use system/module_checkers.launch as single checker source.
+            'enable_module_checker': 'false',
         }.items(),
         condition=UnlessCondition(sim),
     )
@@ -142,6 +198,8 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(pkg_path('camping_cart_perception', 'launch/perception.launch.py')),
         launch_arguments={
             'perception_param_file': perception_param,
+            # HH_260311-00:00 Use system/module_checkers.launch as single checker source.
+            'enable_module_checker': 'false',
         }.items(),
         condition=UnlessCondition(sim),
     )
@@ -158,6 +216,10 @@ def generate_launch_description():
             'origin_lat': origin_lat_arg,
             'origin_lon': origin_lon_arg,
             'origin_alt': origin_alt_arg,
+            # 2026-02-25: Pass canonical+legacy values directly.
+            # The included launch resolves alias precedence internally.
+            'lanelet_id': lanelet_id,
+            'fake_lanelet_id': fake_lanelet_id,
         }.items(),
         condition=IfCondition(sim),
     )
@@ -174,6 +236,7 @@ def generate_launch_description():
             'origin_lat': origin_lat_arg,
             'origin_lon': origin_lon_arg,
             'origin_alt': origin_alt_arg,
+            'yaw_offset_deg': yaw_offset_deg_arg,
             'use_eskf': use_eskf,
             'eskf_param_file': eskf_param,
             'supervisor_param_file': supervisor_param,
@@ -186,18 +249,40 @@ def generate_launch_description():
             # 2026-02-09: Optional ESKF/Kimera pose selector passthrough.
             'pose_selector_enable': pose_selector_enable,
             'pose_selector_param_file': pose_selector_param,
+            # HH_260311-00:00 Use system/module_checkers.launch as single checker source.
+            'enable_module_checker': 'false',
         }.items(),
     )
 
     # -------------------------------------------------------------------------
-    # [planning package] nav2 + goal snapper + replanner + path bridge
+    # [planning package] nav2 + goal snapper + replanner
     # -------------------------------------------------------------------------
     nav2_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(pkg_path('camping_cart_planning', 'launch/planning.launch.py')),
         launch_arguments={
-            'nav2_param_file': nav2_param,
-            'controller_mode': controller_mode,
+            'nav2_base_param_file': nav2_base_param,
+            'nav2_vehicle_param_file': nav2_vehicle_param,
+            'nav2_lanelet_param_file': nav2_lanelet_param,
+            'nav2_behavior_param_file': nav2_behavior_param,
+            'enable_path_cost_grids': enable_path_cost_grids,
+            'enable_goal_replanner': enable_goal_replanner,
+            'enable_state_machine': enable_state_machine,
+            # HH_260311-00:00 Use system/module_checkers.launch as single checker source.
+            'enable_module_checker': 'false',
         }.items(),
+    )
+
+    # -------------------------------------------------------------------------
+    # [system package] per-module health checkers + aggregator
+    # -------------------------------------------------------------------------
+    module_checkers_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(pkg_path('camping_cart_system', 'launch/module_checkers.launch.py')),
+        launch_arguments={
+            # HH_260311-00:00 Enable unified module checkers for all modules including sensing/perception.
+            'enable_checkers': 'true',
+            'enable_aggregator': 'true',
+        }.items(),
+        condition=IfCondition(enable_module_checkers),
     )
 
     # -------------------------------------------------------------------------
@@ -222,10 +307,27 @@ def generate_launch_description():
     )
 
     # [planning package]
-    controller_mode_arg = DeclareLaunchArgument(
-        'controller_mode',
-        default_value='rpp',
-        description='Controller mode selector (options: rpp, dwb)',
+    enable_path_cost_grids_arg = DeclareLaunchArgument(
+        'enable_path_cost_grids',
+        default_value='true',
+        description='Enable planning path-cost-grid helper nodes (/planning/cost_grid/*)',
+    )
+    enable_goal_replanner_arg = DeclareLaunchArgument(
+        'enable_goal_replanner',
+        # HH_260309-00:00 Default-on to keep goal->global/local cost-grid refresh immediate
+        # in standard bringup runs. Can still be disabled explicitly when needed.
+        default_value='true',
+        description='Enable /planning/goal_replanner (ComputePathToPose helper; options: true, false)',
+    )
+    enable_state_machine_arg = DeclareLaunchArgument(
+        'enable_state_machine',
+        default_value='true',
+        description='Enable /planning/planning_state_machine (system-status driven planning policy)',
+    )
+    enable_module_checkers_arg = DeclareLaunchArgument(
+        'enable_module_checkers',
+        default_value='true',
+        description='Enable per-module checker and system health aggregator',
     )
     use_eskf_arg = DeclareLaunchArgument(
         'use_eskf',
@@ -310,9 +412,24 @@ def generate_launch_description():
         default_value=str(offset_alt_default),
         description='Map origin altitude (propagated to fake sensors and localization)',
     )
+    yaw_offset_deg_decl = DeclareLaunchArgument(
+        'yaw_offset_deg',
+        default_value=str(localization_origin_default),
+        description='Yaw alignment offset in degrees for GNSS->map conversion',
+    )
     # NOTE:
     # fake sensor fine-grained args (lanelet_id/speed/rate/loop/obstacle...) are managed
     # inside fake_sensors.launch.py and config/sim/fake_sensors.yaml.
+    lanelet_id_arg = DeclareLaunchArgument(
+        'lanelet_id',
+        default_value='-1',
+        description='Fake sensor lanelet id (options: -1=auto, >=0=specific lanelet id)',
+    )
+    fake_lanelet_id_arg = DeclareLaunchArgument(
+        'fake_lanelet_id',
+        default_value='-1',
+        description='[Legacy alias] fake sensor lanelet id override',
+    )
     fake_sensors_param_arg = DeclareLaunchArgument(
         'fake_sensors_param_file',
         default_value=fake_sensors_param_file,
@@ -333,6 +450,11 @@ def generate_launch_description():
         default_value=bringup_cfg('sensing/radar_cost_grid.yaml'),
         description='Radar near-range cost grid parameter file',
     )
+    lidar_cost_grid_param_arg = DeclareLaunchArgument(
+        'lidar_cost_grid_param_file',
+        default_value=bringup_cfg('sensing/lidar_cost_grid.yaml'),
+        description='LiDAR near-range cost grid parameter file',
+    )
     enable_radar_arg = DeclareLaunchArgument(
         'enable_radar',
         default_value='false',
@@ -343,15 +465,40 @@ def generate_launch_description():
         default_value='true',
         description='Enable radar near-range cost grid node (options: true, false)',
     )
+    enable_lidar_cost_grid_arg = DeclareLaunchArgument(
+        'enable_lidar_cost_grid',
+        default_value='true',
+        description='Enable LiDAR near-range cost grid node (options: true, false)',
+    )
     perception_param_arg = DeclareLaunchArgument(
         'perception_param_file',
         default_value=perception_param_file,
         description='Perception param file override (obstacle fusion)',
     )
-    nav2_param_arg = DeclareLaunchArgument(
-        'nav2_param_file',
-        default_value=nav2_param_file,
-        description='Nav2 param file override (planner/controller/BT)',
+    nav2_base_param_arg = DeclareLaunchArgument(
+        'nav2_base_param_file',
+        default_value=nav2_base_param_file,
+        description='Nav2 base profile parameter file',
+    )
+    nav2_vehicle_param_arg = DeclareLaunchArgument(
+        'nav2_vehicle_param_file',
+        default_value=nav2_vehicle_param_file,
+        description='Nav2 vehicle profile parameter file',
+    )
+    use_dwb_controller_arg = DeclareLaunchArgument(
+        'use_dwb_controller',
+        default_value='false',
+        description='Enable DWB profile (options: false=FollowPath only, true=FollowPath+DWB)',
+    )
+    nav2_lanelet_param_arg = DeclareLaunchArgument(
+        'nav2_lanelet_param_file',
+        default_value=nav2_lanelet_param_file,
+        description='Nav2 lanelet profile parameter file',
+    )
+    nav2_behavior_param_arg = DeclareLaunchArgument(
+        'nav2_behavior_param_file',
+        default_value=nav2_behavior_param_file,
+        description='Nav2 behavior profile parameter file',
     )
     sim_arg = DeclareLaunchArgument(
         'sim',
@@ -366,26 +513,41 @@ def generate_launch_description():
 
     # 2026-02-02: Use bracketed pkill patterns to avoid killing the cleanup shell itself.
     clean_cmd = (
+        # 2026-02-27: Prevent duplicate graph by terminating older bringup launch parents first.
+        # Exclude current launch parent PID (this bringup invocation).
+        'CURRENT_LAUNCH_PID="$PPID"; '
+        'for pid in $(ps -eo pid=,cmd= | awk \'/[r]os2 launch camping_cart_bringup bringup.launch.py/ {print $1}\'); do '
+        '  if [ "$pid" != "$CURRENT_LAUNCH_PID" ]; then kill -TERM "$pid" 2>/dev/null || true; fi; '
+        'done; '
+        'sleep 0.2; '
+        'for pid in $(ps -eo pid=,cmd= | awk \'/[r]os2 launch camping_cart_bringup bringup.launch.py/ {print $1}\'); do '
+        '  if [ "$pid" != "$CURRENT_LAUNCH_PID" ]; then kill -KILL "$pid" 2>/dev/null || true; fi; '
+        'done; '
+        'pkill -f "[l]ocal_path_extractor_node" || true; '
+        'pkill -f "[c]ompute_path_bridge_node" || true; '
         'pkill -f "[c]amera_preprocessor_node" || true; '
         'pkill -f "[l]idar_preprocessor_node" || true; '
         'pkill -f "[s]ensor_calibration_broadcaster_node" || true; '
         'pkill -f "[p]latform_velocity_converter_node" || true; '
         'pkill -f "[s]en0592_radar_node" || true; '
         'pkill -f "[r]adar_cost_grid_node" || true; '
+        'pkill -f "[l]idar_cost_grid_node" || true; '
         'pkill -f "[o]bstacle_fusion_node" || true; '
         'pkill -f "[n]avsat_to_pose_node" || true; '
         'pkill -f "[p]ose_cov_bridge_node" || true; '
+        'pkill -f "[l]ocalization_supervisor_node" || true; '
+        'pkill -f "[d]rop_zone_matcher_node" || true; '
         'pkill -f "[c]enterline_snapper_node" || true; '
         'pkill -f "[o]dometry_to_pose_node" || true; '
         'pkill -f "[l]ocalization_health_monitor_node" || true; '
         'pkill -f "[l]anelet2_map_node" || true; '
         'pkill -f "[l]anelet_cost_grid_node" || true; '
+        'pkill -f "[m]arker_array_aggregator_node" || true; '
         'pkill -f "[r]obot_visualization_node" || true; '
         'pkill -f "[c]ost_field_marker_node" || true; '
         'pkill -f "[c]ost_field_node" || true; '
         'pkill -f "[g]oal_snapper_node" || true; '
         'pkill -f "[g]oal_replanner_node" || true; '
-        'pkill -f "[c]ompute_path_bridge_node" || true; '
         'pkill -f "[e]kf_node" || true; '
         'pkill -f "[n]avsat_transform_node" || true; '
         'pkill -f "[r]obot_state_publisher" || true; '
@@ -403,15 +565,25 @@ def generate_launch_description():
         condition=IfCondition(clean_before_launch),
     )
 
+    # 2026-02-26: Optional controller-profile switch without manual file path override.
+    # When enabled, replace nav2_vehicle_param_file with nav2_vehicle_dwb.yaml.
+    apply_dwb_profile = SetLaunchConfiguration(
+        'nav2_vehicle_param_file',
+        nav2_vehicle_dwb_param_file,
+        condition=IfCondition(use_dwb_controller),
+    )
+
     # HH_260109 Delay launch so cleanup finishes before nodes start.
     launch_stack = GroupAction([
         platform_launch,
+        bringup_base_link_alias,
         map_stack,
         fake_sensors_launch,
         sensing_launch,
         perception_launch,
         localization_stack,
         nav2_launch,
+        module_checkers_launch,
         rviz_node,
     ])
     delayed_stack = TimerAction(
@@ -425,8 +597,10 @@ def generate_launch_description():
     return LaunchDescription([
         clean_arg,
 
-        # ✅ FIX: controller_mode argument 등록 (상위 bringup에서 받아야 CLI override가 먹음)
-        controller_mode_arg,
+        enable_path_cost_grids_arg,
+        enable_goal_replanner_arg,
+        enable_state_machine_arg,
+        enable_module_checkers_arg,
         use_eskf_arg,
         eskf_param_arg,
         supervisor_param_arg,
@@ -441,6 +615,9 @@ def generate_launch_description():
         origin_lat_decl,
         origin_lon_decl,
         origin_alt_decl,
+        yaw_offset_deg_decl,
+        lanelet_id_arg,
+        fake_lanelet_id_arg,
         map_param_arg,
         map_visualization_param_arg,
         robot_visualization_param_arg,
@@ -448,12 +625,19 @@ def generate_launch_description():
         sensing_param_arg,
         radar_param_arg,
         radar_cost_grid_param_arg,
+        lidar_cost_grid_param_arg,
         enable_radar_arg,
         enable_radar_cost_grid_arg,
+        enable_lidar_cost_grid_arg,
         perception_param_arg,
-        nav2_param_arg,
+        nav2_base_param_arg,
+        nav2_vehicle_param_arg,
+        use_dwb_controller_arg,
+        nav2_lanelet_param_arg,
+        nav2_behavior_param_arg,
         sim_arg,
         rviz_arg,
         clean_action,
+        apply_dwb_profile,
         delayed_stack,
     ])

@@ -1,15 +1,24 @@
 /map/inflation_cost_marker:
   ros__parameters:
-    # 2026-02-24: Visualize final Nav2 inflation result as markers in map module.
+    # 2026-03-05: This node visualizes Nav2 master costmap (debug only).
+    # Final user-facing combined marker is /map/cost_grid/inflation_markers
+    # from marker_array_aggregator_node.
     grid_topic: "/planning/global_costmap/costmap"
-    marker_topic: "/map/cost_grid/inflation_markers"
+    marker_topic: "/map/cost_grid/inflation_nav2_markers"
     marker_scale: 0.1
+    # 2026-02-26: Show full safety gradient (low=blue/green, high=red) on drivable area.
+    # Unknown cells remain hidden via show_unknown=false.
     min_value: 0
     max_value: 100
     alpha: 0.18
     z_offset: 0.05
-    palette: "pastel"
+    # 2026-02-27: Keep CUBE_LIST cells visually inside lane boundaries.
+    cell_scale_ratio: 0.60
+    palette: "safety"
     show_unknown: false
+    min_publish_period_sec: 0.20
+    sample_stride: 2
+    republish_period_sec: 0.0
 
 /map/lanelet_cost_field:
   ros__parameters:

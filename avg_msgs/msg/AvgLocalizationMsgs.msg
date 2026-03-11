@@ -1,0 +1,20 @@
+builtin_interfaces/Time stamp
+avg_msgs/ModuleHealth health
+
+geometry_msgs/PoseStamped localization_pose
+geometry_msgs/PoseWithCovarianceStamped localization_pose_cov
+nav_msgs/Odometry localization_odom
+geometry_msgs/TwistStamped localization_twist
+avg_msgs/AvgLocalizationMode localization_mode
+avg_msgs/AvgLocalizationStatus localization_status
+avg_msgs/AvgLocalizationDiagnostics localization_diagnostics
+geometry_msgs/PoseWithCovarianceStamped gnss_pose_cov
+sensor_msgs/NavSatFix gnss_navsatfix
+sensor_msgs/Imu imu_data
+nav_msgs/Odometry wheel_odometry
+
+bool gnss_update_accepted
+float32 gnss_innovation_norm
+bool wheel_update_accepted
+float32 wheel_innovation_norm
+float32 covariance_trace

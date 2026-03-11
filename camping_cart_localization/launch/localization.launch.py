@@ -27,6 +27,11 @@ def generate_launch_description():
     origin_lat_arg = DeclareLaunchArgument('origin_lat', default_value='0.0', description='Map origin latitude')
     origin_lon_arg = DeclareLaunchArgument('origin_lon', default_value='0.0', description='Map origin longitude')
     origin_alt_arg = DeclareLaunchArgument('origin_alt', default_value='0.0', description='Map origin altitude')
+    yaw_offset_arg = DeclareLaunchArgument(
+        'yaw_offset_deg',
+        default_value='0.0',
+        description='Yaw offset (deg) to align GNSS local ENU with map/lanelet heading',
+    )
     use_eskf_arg = DeclareLaunchArgument(
         'use_eskf',
         default_value='true',
@@ -82,6 +87,21 @@ def generate_launch_description():
             'config', 'pose_selector.yaml'),
         description='Pose selector parameter file',
     )
+    module_checker_enable_arg = DeclareLaunchArgument(
+        'enable_module_checker',
+        default_value='true',
+        description='Enable localization module checker/diagnostics publisher',
+    )
+    diagnostic_enable_arg = DeclareLaunchArgument(
+        'localization_enable_diagnostic',
+        default_value='true',
+        description='Enable /localization/diagnostic publisher',
+    )
+    diagnostic_period_arg = DeclareLaunchArgument(
+        'localization_diagnostic_publish_period_s',
+        default_value='0.2',
+        description='Publish period for /localization/diagnostic',
+    )
 
     navsat_topic = LaunchConfiguration('navsat_topic')
     gnss_pose = LaunchConfiguration('gnss_pose_topic')
@@ -89,6 +109,7 @@ def generate_launch_description():
     origin_lat = LaunchConfiguration('origin_lat')
     origin_lon = LaunchConfiguration('origin_lon')
     origin_alt = LaunchConfiguration('origin_alt')
+    yaw_offset_deg = LaunchConfiguration('yaw_offset_deg')
     use_eskf = LaunchConfiguration('use_eskf')
     eskf_param = LaunchConfiguration('eskf_param_file')
     supervisor_param = LaunchConfiguration('supervisor_param_file')
@@ -98,6 +119,9 @@ def generate_launch_description():
     kimera_bridge_param = LaunchConfiguration('kimera_bridge_param_file')
     pose_selector_enable = LaunchConfiguration('pose_selector_enable')
     pose_selector_param = LaunchConfiguration('pose_selector_param_file')
+    enable_module_checker = LaunchConfiguration('enable_module_checker')
+    enable_diagnostic = LaunchConfiguration('localization_enable_diagnostic')
+    diagnostic_publish_period = LaunchConfiguration('localization_diagnostic_publish_period_s')
 
     # HH_260121 GNSS -> UTM pose + world->map static TF. Publishes Pose and PoseWithCovariance.
     navsat_to_pose = Node(
@@ -114,6 +138,7 @@ def generate_launch_description():
             'origin_lat': origin_lat,
             'origin_lon': origin_lon,
             'origin_alt': origin_alt,
+            'yaw_offset_deg': yaw_offset_deg,
             'publish_covariance': True,
         }],
     )
@@ -248,6 +273,45 @@ def generate_launch_description():
         parameters=[os.path.join(get_pkg_share('camping_cart_bringup'), 'config', 'localization', 'health_monitor.yaml')],
     )
 
+    localization_checker = Node(
+        package='camping_cart_system',
+        executable='module_checker_node.py',
+        name='localization_checker',
+        namespace='system',
+        output='screen',
+        condition=IfCondition(enable_module_checker),
+        parameters=[{
+            'module_name': 'localization',
+            'required_nodes': [
+                '/localization/navsat_to_pose',
+                '/localization/supervisor',
+                '/localization/health_monitor',
+            ],
+            'required_topics': [
+                '/localization/pose',
+                '/localization/pose_with_covariance',
+            ],
+            'health_topic': '/localization/healthchecker',
+            'check_period_s': 0.5,
+            'warn_throttle_sec': 2.0,
+            'publish_ok': True,
+        }],
+    )
+
+    localization_diagnostic = Node(
+        package='camping_cart_localization',
+        executable='localization_diagnostic_node.py',
+        name='localization_diagnostic',
+        namespace='localization',
+        output='screen',
+        condition=IfCondition(enable_diagnostic),
+        parameters=[{
+            'msgs_topic': '/localization/messages',
+            'diagnostic_topic': '/localization/diagnostic',
+            'publish_period_s': diagnostic_publish_period,
+        }],
+    )
+
     return LaunchDescription([
         navsat_topic_arg,
         gnss_pose_arg,
@@ -255,6 +319,7 @@ def generate_launch_description():
         origin_lat_arg,
         origin_lon_arg,
         origin_alt_arg,
+        yaw_offset_arg,
         use_eskf_arg,
         eskf_param_arg,
         supervisor_param_arg,
@@ -264,6 +329,9 @@ def generate_launch_description():
         kimera_bridge_param_arg,
         pose_selector_enable_arg,
         pose_selector_param_arg,
+        module_checker_enable_arg,
+        diagnostic_enable_arg,
+        diagnostic_period_arg,
         navsat_to_pose,
         ekf,
         eskf_direct,
@@ -275,6 +343,8 @@ def generate_launch_description():
         drop_zone_matcher,
         kimera_csv_bridge,
         pose_selector,
+        localization_checker,
+        localization_diagnostic,
     ])
 
 

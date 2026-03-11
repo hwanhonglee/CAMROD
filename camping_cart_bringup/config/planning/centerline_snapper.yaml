@@ -9,6 +9,7 @@
     offset_alt: 0.0
     input_pose_topic: "/localization/pose"
     output_pose_topic: "/planning/lanelet_pose"
+    output_pose_cov_topic: "/planning/lanelet_pose_with_covariance"
     # HH_260126 Expand search radius to handle map/pose offsets during sim.
     max_search_radius: 120.0
     longitudinal_stddev: 0.5

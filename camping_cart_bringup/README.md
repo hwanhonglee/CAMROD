@@ -50,7 +50,12 @@
 - Keep these pairs identical:
   - `camping_cart_map/config/lanelet_cost_grid.yaml` == `camping_cart_bringup/config/map/lanelet_cost_grid.yaml`
   - `camping_cart_planning/config/path_cost_grids.yaml` == `camping_cart_bringup/config/planning/path_cost_grids.yaml`
-  - `camping_cart_planning/config/nav2_lanelet.yaml` == `camping_cart_bringup/config/planning/nav2_lanelet.yaml`
+  - (legacy reference only) `camping_cart_planning/config/nav2_lanelet.yaml` == `camping_cart_bringup/config/planning/nav2_lanelet.yaml`
+  - active runtime overlays:
+    - `camping_cart_bringup/config/planning/nav2_base.yaml`
+    - `camping_cart_bringup/config/planning/nav2_vehicle.yaml`
+    - `camping_cart_bringup/config/planning/nav2_lanelet_overlay.yaml`
+    - `camping_cart_bringup/config/planning/nav2_behavior.yaml`
 - Quick check:
   - `diff -u <pkg-config> <bringup-config>`
   - `ros2 run camping_cart_bringup check_config_sync.sh`
@@ -69,7 +74,7 @@
 - Tighten goal snapping to lanelet-contained goals (`require_lanelet_containment=true`) to keep planned path on lanelet map.
 
 ## 2026-02-04 19:45
-- Prefer Smac2D planner by default to ensure /planning/unsmoothed_plan is published.
+- Prefer Smac2D planner by default for lanelet-constrained planning.
 - Fix global costmap width/height type mismatch by keeping width/height as integers (meters).
 - Align global costmap origin/size to lanelet map bounds for consistent planning coverage.
 

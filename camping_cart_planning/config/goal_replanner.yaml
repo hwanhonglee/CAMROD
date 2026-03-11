@@ -1,17 +1,54 @@
-# 2026-02-23: Auto replan trigger so global path updates as robot pose / goal changes.
+# 2026-03-03:
+# Global path policy:
+# - recompute only when a new snapped goal arrives
+# - do not continuously replan on vehicle motion
+# - use lanelet-snapped start pose so the global plan begins on the lanelet centerline corridor
 /planning/goal_replanner:
   ros__parameters:
     enabled: true
     goal_topic: "/planning/goal_pose"
-    # 2026-02-24: Use lanelet-snapped pose as planning start to keep path inside lanelets.
+    # Primary selector (recommended):
+    # - "lanelet_pose"      : /planning/lanelet_pose as explicit start (best for lane-bound path)
+    # - "robot_base_link"   : map->robot_base_link TF as explicit start
+    # - "localization_pose" : /localization/pose as explicit start
+    # - "start_topic"       : use start_topic value as explicit start
+    planning_start_source: "lanelet_pose"
+    # Used only when planning_start_source == "start_topic".
     start_topic: "/planning/lanelet_pose"
+    # If topic-start is selected but start_topic has no data yet:
+    # - true  -> fallback to TF start (map->robot_base_link)
+    # - false -> wait until topic start is available
+    # HH_260306-00:00 If snapped start is briefly unavailable/stale, allow TF fallback.
+    start_topic_fallback_to_tf: true
     action_name: "/planning/compute_path_to_pose"
     planner_id: "Smac2D"
     frame_id: "map"
-    replan_rate_hz: 3.0
-    request_timeout_sec: 2.0
-    # 2026-02-24: Global path should update on new goal, not continuously on vehicle motion.
+    # HH_260309-00:00 Avoid ComputePath contention with NavigateToPose BT.
+    pause_when_navigate_active: true
+    navigate_status_topic: "/planning/navigate_to_pose/_action/status"
+    navigate_inactive_grace_sec: 0.8
+    # HH_260309-00:00 Ignore repeated equivalent goal republishes from upstream relays.
+    ignore_duplicate_goal_messages: true
+    duplicate_goal_xy_epsilon_m: 0.05
+    duplicate_goal_yaw_epsilon_deg: 4.0
+    min_request_interval_sec: 0.25
+    # HH_260306-00:00 Event-driven mode:
+    # - new goal        -> immediate request
+    # - first start fix -> immediate request
+    # Disable periodic timer retries to prevent request storms.
+    replan_rate_hz: 0.0
+    # HH_260306-00:00 Disable timeout cancellation; only cancel when new goal/start update arrives.
+    request_timeout_sec: 0.0
+    # HH_260306-00:00 Prevent retry storm when planner reports ABORTED.
+    retry_after_failure_sec: 0.8
+    # Trigger ComputePath immediately on new goal and on first valid snapped start pose.
+    immediate_replan_on_goal: true
+    immediate_replan_on_start: true
+    # Keep global path fixed after initial solve. Only a new goal may replace it.
     replan_on_start_change: false
+    # HH_260306-00:00 After goal is reached, pause replanning until a new goal arrives.
+    stop_replan_after_goal_reached: true
+    goal_reached_distance_m: 0.8
     start_replan_distance: 0.15
     start_replan_yaw_deg: 3.0
     goal_replan_distance: 0.05
