@@ -1,0 +1,98 @@
+# HH_260317-00:00
+# Bringup process cleanup list used by camrod_bringup/launch/bringup.launch.py.
+#
+# Ordering rule:
+# 1) grouped by module startup order in bringup
+# 2) within module, from core runtime nodes to diagnostics/checkers
+#
+# Pattern rule:
+# - Prefer ROS node-name token match (`__node:=<name>`) instead of script filename.
+# - Keep executable-name patterns only for C++ binaries/drivers.
+#
+# Startup order reference:
+# platform -> map -> fake_sensors(sim) -> sensing -> perception
+# -> localization -> planning -> system -> bringup -> rviz
+
+patterns:
+  # [platform]
+  - robot_state_publisher
+  - robot_visualization_node
+  - base_link_alias_publisher
+  - bringup_base_link_alias_publisher
+  - __node:=sensor_kit_diagnostic
+  - __node:=platform_diagnostic
+
+  # [map]
+  - lanelet2_map_node
+  - lanelet_cost_grid_node
+  - cost_field_node
+  - cost_field_marker_node
+  - marker_array_aggregator_node
+  - __node:=map_diagnostic
+
+  # [fake_sensors] (sim only)
+  - __node:=fake_sensor_publisher
+
+  # [sensing]
+  - camera_preprocessor_node
+  - lidar_preprocessor_node
+  - vanjee_lidar_sdk_node
+  - vanjee_lidar_node_only
+  - sensor_calibration_broadcaster_node
+  - platform_velocity_converter_node
+  - sen0592_radar_node
+  - ublox_gps_node
+  - __node:=ntrip_client
+  - radar_cost_grid_node
+  - lidar_cost_grid_node
+
+  # [perception]
+  - obstacle_fusion_node
+  - obstacle_lidar_node
+  - __node:=perception_diagnostic
+
+  # [localization]
+  - navsat_to_pose_node
+  - pose_cov_bridge_node
+  - ekf_node
+  - navsat_transform_node
+  - localization_supervisor_node
+  - drop_zone_matcher_node
+  - odometry_to_pose_node
+  - localization_health_monitor_node
+  - __node:=localization_diagnostic
+
+  # [planning]
+  - centerline_snapper_node
+  - goal_snapper_node
+  - goal_replanner_node
+  - local_path_extractor_node
+  - __node:=nav2_lifecycle_startup_retry
+  - compute_path_bridge_node
+  - __node:=planning_state_machine
+  - planner_server
+  - controller_server
+  - behavior_server
+  - bt_navigator
+  - nav2_costmap_2d
+  - lifecycle_manager
+  - __node:=planning_diagnostic
+
+  # [system]
+  - __node:=map_checker
+  - __node:=sensing_checker
+  - __node:=localization_checker
+  - __node:=planning_checker
+  - __node:=platform_checker
+  - __node:=perception_checker
+  - __node:=sensor_kit_checker
+  - __node:=bringup_checker
+  - __node:=system_checker
+  - __node:=module_status_aggregator
+  - __node:=system_diagnostic
+
+  # [bringup]
+  - __node:=bringup_diagnostic
+
+  # [visualization]
+  - rviz2

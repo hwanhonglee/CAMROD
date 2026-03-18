@@ -1,0 +1,124 @@
+# Nav2 lanelet profile: map/costmap semantics and lanelet-specific planner tuning.
+
+planner_server:
+  ros__parameters:
+    Smac2D:
+      minimum_turning_radius: 0.6
+      # 2026-02-25: Keep center bias but reduce grid-quantized "kinks" at bends.
+      cost_travel_multiplier: 12.0
+      # HH_260316-00:00 Strengthen low-cost preference so planner follows
+      # centerline-biased lanelet costs first, then deviates only for high-risk cells.
+      # HH_260316-00:00 Increase centerline-biased cost adherence.
+      # HH_260317-00:00 Strengthen low-cost preference to keep route closer
+      # to centerline-biased planner base costs.
+      cost_penalty: 20.0
+      lethal_cost: 253
+      neutral_cost: 55
+      change_penalty: 0.0
+      # 2026-02-26: Prefer forward-like paths around corners unless reverse is truly required.
+      reverse_penalty: 2.2
+      non_straight_penalty: 1.1
+      final_turn_penalty: 0.5
+      lookup_table_size: 20.0
+      smooth_path: true
+      smoother:
+        # HH_260316-00:00 Keep smoothed curvature but prevent corner-cutting off centerline.
+        max_iterations: 4000
+        # HH_260317-00:00 Reduce corner-cutting: preserve planner data term more.
+        w_data: 0.96
+        w_smooth: 0.04
+        tolerance: 1.0e-8
+        do_refinement: true
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      lanelet_cost_layer_base:
+        plugin: "camrod_map::cost_map::LaneletCostLayer"
+        source_topic: "/map/cost_grid/planning_base"
+        lethal_threshold: 100
+        # HH_260316-00:00 Keep lanelet-boundary discipline:
+        # unknown/outside cells from planning_base must stay non-traversable so
+        # local planning cannot shortcut across non-lanelet space.
+        unknown_value: 255
+        # HH_260316-00:00 Base layer publishes explicit known costs;
+        # keep unknown writes disabled to avoid accidental master overwrites.
+        write_unknown: false
+
+      lanelet_cost_layer_local_path:
+        plugin: "camrod_map::cost_map::LaneletCostLayer"
+        source_topic: "/planning/cost_grid/local_path"
+        # HH_260315-00:00 Local path layer is a soft bias, not a hard obstacle mask.
+        lethal_threshold: 101
+        # HH_260306-00:00 Local path grid is a soft routing hint.
+        # Unknown cells should not hard-block controller costmap start cells.
+        unknown_value: 0
+        # HH_260316-00:00 Do not overwrite master with unknown from path helper grid.
+        write_unknown: false
+
+      lidar_cost_layer:
+        plugin: "camrod_map::cost_map::LaneletCostLayer"
+        source_topic: "/sensing/lidar/near_cost_grid"
+        # HH_260315-00:00 Sensor near-cost should influence routing cost,
+        # but must not directly make start cells non-traversable.
+        lethal_threshold: 101
+        # HH_260306-00:00 Treat unknown cells from rolling sensor grids as free in master costmap.
+        # Otherwise, no-data regions can turn start cells non-traversable and block replanning.
+        unknown_value: 0
+        # HH_260316-00:00 Keep no-data cells from clearing base lanelet costs.
+        write_unknown: false
+
+      radar_cost_layer:
+        plugin: "camrod_map::cost_map::LaneletCostLayer"
+        source_topic: "/sensing/radar/near_cost_grid"
+        # HH_260315-00:00 Sensor near-cost should influence routing cost,
+        # but must not directly make start cells non-traversable.
+        lethal_threshold: 101
+        # HH_260306-00:00 Keep radar no-data as free for planning stability.
+        unknown_value: 0
+        # HH_260316-00:00 Keep no-data cells from clearing base lanelet costs.
+        write_unknown: false
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 1.0
+        cost_scaling_factor: 5.0
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      lanelet_cost_layer_base:
+        plugin: "camrod_map::cost_map::LaneletCostLayer"
+        source_topic: "/map/cost_grid/planning_base"
+        lethal_threshold: 100
+        # HH_260316-00:00 Keep lanelet-boundary discipline for global planning as well.
+        unknown_value: 255
+        # HH_260316-00:00 Base layer publishes explicit known costs;
+        # keep unknown writes disabled to avoid accidental master overwrites.
+        write_unknown: false
+
+      # HH_260316-00:00 Do not inject /planning/cost_grid/global_path into global planner master.
+      # Reason: this creates a circular dependency
+      #   planner -> global_path -> global_path_cost_grid -> planner master
+      # and causes intermittent no-path / oscillating replans.
+
+      lidar_cost_layer:
+        plugin: "camrod_map::cost_map::LaneletCostLayer"
+        source_topic: "/sensing/lidar/near_cost_grid"
+        lethal_threshold: 101
+        unknown_value: 0
+        # HH_260316-00:00 Keep no-data cells from clearing base lanelet costs.
+        write_unknown: false
+
+      radar_cost_layer:
+        plugin: "camrod_map::cost_map::LaneletCostLayer"
+        source_topic: "/sensing/radar/near_cost_grid"
+        lethal_threshold: 101
+        unknown_value: 0
+        # HH_260316-00:00 Keep no-data cells from clearing base lanelet costs.
+        write_unknown: false
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 1.5
+        cost_scaling_factor: 3.0

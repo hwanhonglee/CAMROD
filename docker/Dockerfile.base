@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN rosdep init 2>/dev/null || true
 RUN rosdep update || true
 
-WORKDIR /workspaces/cart_test_ws
+WORKDIR /workspaces/camrod_ws
 
 # HH_260309 This image is GPU-ready when launched with:
 #   docker run --gpus all ...

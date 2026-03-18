@@ -1,0 +1,257 @@
+# HH_260304-00:00 Update map path/origin for lanelet2_maps.osm.
+# HH_260304-00:00 Parameters for planning path-focused lanelet cost grids
+
+/planning/lanelet_cost_grid_global_path:
+  ros__parameters:
+    map_path: "/home/hong/camrod_ws/src/lanelet2_maps.osm"
+    map_frame_id: "map"
+    offset_lat: 36.8436194
+    offset_lon: 128.0925490
+    offset_alt: 0.0
+    # HH_260316-00:00 Keep lanelet projector aligned with map loader/snapper nodes.
+    projector_type: "local_cartesian"
+    # HH_260305-00:00 Align resolution with map lanelet grid to reduce raster/marker mismatch.
+    resolution: 0.08
+    # HH_260304-00:00 Use full map bounds for global path grid (avoid drifting window).
+    width: 0
+    height: 0
+    centerline_half_width: 1.50
+    free_value: 0
+    lethal_value: 100
+    # cost_mode options:
+    #   "path"       : (recommended here) low on path strip, high outside path
+    #   "lanelet"    : full lanelet polygon cost map
+    #   "centerline" : centerline corridor map
+    #   "bounds"     : lane boundaries only
+    # HH_260304-00:00 Path mode = low cost on path, high cost elsewhere.
+    cost_mode: "path"
+    # HH_260304-00:00 Let path-mode logic control default fill so planners can compute
+    # the first path (free until path, lethal after). Use -1 to disable override.
+    # outside_value options:
+    #   -1  : unknown outside lanelet/path (recommended with lanelet mask)
+    #   0   : force free outside
+    #   100 : force lethal outside
+    outside_value: -1
+    # HH_260304-00:00 Render path grid only inside lanelet geometry (no rectangular background).
+    # path_use_lanelet_mask options:
+    #   true  : paint only lanelet area
+    #   false : allow rectangular path window fill
+    path_use_lanelet_mask: true
+    # HH_260304-00:00 Global path grid also restricted to lanelets touched by active global path.
+    # path_lanelet_only options:
+    #   true  : only lanelets matched by active path
+    #   false : all lanelets in map
+    # HH_260304-00:00 Show only lanelets touched by active route to avoid whole-map red fill.
+    path_lanelet_only: true
+    # HH_260304-00:00 Clamp path strip cells to lanelet polygons to prevent boundary spill.
+    path_clip_to_lanelet: true
+    # HH_260304-00:00 Keep lanelet matching robust on sparse/curved path updates.
+    # HH_260305-00:00 Tighten nearest-lanelet fallback so unrelated lanelets are not attached.
+    # HH_260313-00:00 Tighten nearest-lanelet match distance to reduce boundary spill.
+    # HH_260317-00:00 Tighten lanelet matching on global route so cost strip
+    # stays strictly on the snapped centerline corridor.
+    # HH_260318-00:00 Slightly relax lanelet matching so new-goal global routes
+    # are not dropped at curved/offset endpoints.
+    path_lanelet_match_max_dist: 0.45
+    # HH_260318-00:00 Allow nearest-lanelet fallback as a temporary bridge when
+    # exact polygon containment fails on sparse/quantized path samples.
+    path_lanelet_allow_nearest_fallback: true
+    # HH_260305-00:00 Keep sample density balanced for realtime updates.
+    # HH_260317-00:00 Densify global route sampling to reduce sparse/cut strip cells.
+    path_lanelet_sample_step: 0.05
+    # HH_260315-00:00 Keep global-path layer non-lethal and planner-safe.
+    # Values stay in a soft-cost range while preserving near/far contrast.
+    # HH_260317-00:00 Keep global lanelet base in soft range so centerline
+    # preference dominates and red patches are reduced.
+    path_lane_base_value: 75
+    path_use_pose_distance_gradient: true
+    # HH_260313-00:00 Keep centerline as the lowest-cost route inside the path strip.
+    path_use_lateral_gradient: true
+    # HH_260316-00:00 Centerline-first tuning:
+    # prioritize lateral(centerline) term over pose-distance term.
+    path_pose_cost_weight: 0.05
+    path_lateral_cost_weight: 0.95
+    # HH_260304-00:00 Visualization path layer should not add extra heading penalties.
+    direction_penalty: 0
+    backward_penalty: 0
+    # HH_260311-00:00 Slightly tighter range so high-cost segment becomes visible sooner.
+    gradient_range: 35.0
+    grid_yaw: 0.0
+    use_path_bbox: true
+    lock_window: false
+    use_map_bbox: false
+    # HH_260311-00:00 Use lanelet-snapped pose for stable in-lane realtime refresh.
+    # This prevents temporary off-lane localization jitter from shifting path-cost windows.
+    pose_topic: "/planning/lanelet_pose"
+    path_topic: "/planning/global_path"
+    # HH_260316-00:00 Clear/rebuild against snapped goals only.
+    goal_topic: "/planning/goal_pose_snapped"
+    # HH_260304-00:00 Clear stale global-path cost immediately when the goal changes.
+    goal_fallback_holdoff_sec: 0.0
+    # HH_260311-00:00 Avoid transient empty-route clears between sparse global-path updates.
+    # HH_260311-00:00 Keep route while planner publishes sparsely (goal-event driven).
+    # Too-small timeout caused global marker drop/blink between valid plans.
+    primary_path_timeout_sec: 6.0
+    # HH_260307-00:00 Keep last valid global path through transient empty updates.
+    # This avoids marker blinking when planner briefly publishes an empty/intermediate path.
+    ignore_empty_path: true
+    # HH_260317-00:00 Clear immediately on goal change.
+    # This guarantees old global route strips do not remain after new goal input.
+    clear_path_on_goal: true
+    # HH_260318-00:00 Robustness-first:
+    # strict fresh-path filtering can reject valid replans when goal/path stamps
+    # are slightly skewed, causing global-path markers to stop updating.
+    drop_stale_path_after_goal: false
+    path_goal_stamp_slack_sec: 0.20
+    # Keep stale-route filter strict enough so goal updates do not reuse
+    # previous-route strips that happen to end "near enough" on the same map.
+    fresh_path_goal_match_tolerance_m: 4.0
+    # Keep last valid global route cost grid until next global path arrives.
+    stale_path_timeout_sec: 0.0
+    # HH_260311-00:00 Rebuild on pose to make global-path cost react in realtime
+    # to vehicle motion (distance gradient update).
+    rebuild_on_pose: true
+    rebuild_on_path: true
+    # HH_260311-00:00 Realtime, but throttled to avoid full-map rebuild backlog.
+    min_rebuild_period_sec: 0.02
+    # HH_260311-00:00 Force periodic rebuild for stable realtime gradient updates.
+    rebuild_on_timer: true
+    # HH_260316-00:00 Keep publisher active through brief planner gaps
+    # to reduce marker flicker/empty intervals.
+    allow_build_without_path: false
+    # HH_260305-00:00 Split inside-cell thresholds:
+    # - path strip: relaxed (reduce curve holes)
+    # - boundary strip: strict (reduce outward bleed)
+    cell_inside_min_hits: 7
+    cell_inside_min_hits_path: 6
+    cell_inside_min_hits_boundary: 9
+    # HH_260316-00:00 Disabled by default to reduce CPU/log load during realtime runs.
+    # Enable temporarily for raster-debug sessions only.
+    debug_coverage_stats: false
+    debug_coverage_stride: 2
+    debug_coverage_min_value: 0
+    # HH_260305-00:00 /planning/global_path publisher is VOLATILE.
+    # Keep subscriber durability VOLATILE to avoid QoS mismatch/drop.
+    path_qos_transient_local: false
+    # HH_260311-00:00 Keep marker heartbeat smooth without saturating CPU.
+    republish_period: 0.03
+    output_topic: "/planning/cost_grid/global_path"
+
+/planning/lanelet_cost_grid_local_path:
+  ros__parameters:
+    map_path: "/home/hong/camrod_ws/src/lanelet2_maps.osm"
+    map_frame_id: "map"
+    offset_lat: 36.8436194
+    offset_lon: 128.0925490
+    offset_alt: 0.0
+    # HH_260316-00:00 Keep lanelet projector aligned with map loader/snapper nodes.
+    projector_type: "local_cartesian"
+    # HH_260305-00:00 Align resolution with map lanelet grid to reduce raster/marker mismatch.
+    resolution: 0.08
+    # HH_260305-00:00 Local window size (cells). At 0.08m this is ~20.8m x ~20.8m.
+    # Keeps local computation bounded near current vehicle pose.
+    width: 220
+    height: 220
+    centerline_half_width: 1.50
+    free_value: 0
+    lethal_value: 100
+    # cost_mode options:
+    #   "path"       : (recommended here) low on path strip, high outside path
+    #   "lanelet"    : full lanelet polygon cost map
+    #   "centerline" : centerline corridor map
+    #   "bounds"     : lane boundaries only
+    # HH_260304-00:00 Path mode = low cost on path, high cost elsewhere.
+    cost_mode: "path"
+    # HH_260304-00:00 Let path-mode logic control default fill so planners can compute
+    # the first path (free until path, lethal after). Use -1 to disable override.
+    # outside_value options:
+    #   -1  : unknown outside lanelet/path (recommended with lanelet mask)
+    #   0   : force free outside
+    #   100 : force lethal outside
+    outside_value: -1
+    # HH_260304-00:00 Render path grid only inside lanelet geometry (no rectangular background).
+    # path_use_lanelet_mask options:
+    #   true  : paint only lanelet area
+    #   false : allow rectangular path window fill
+    path_use_lanelet_mask: true
+    # HH_260304-00:00 Local path grid should show only lanelets on the active route.
+    # path_lanelet_only options:
+    #   true  : only lanelets matched by active path
+    #   false : all lanelets in map
+    # HH_260304-00:00 Show only lanelets touched by active route to avoid whole-map red fill.
+    path_lanelet_only: true
+    # HH_260304-00:00 Clamp path strip cells to lanelet polygons to prevent boundary spill.
+    path_clip_to_lanelet: true
+    # HH_260304-00:00 Keep lanelet matching robust on sparse/curved path updates.
+    # HH_260305-00:00 Tighten nearest-lanelet fallback so remote lanelets are not attached.
+    # HH_260313-00:00 Tighten nearest-lanelet match distance to reduce boundary spill.
+    path_lanelet_match_max_dist: 0.35
+    # HH_260305-00:00 Strict mode: do not attach nearest lanelet when sample is outside polygons.
+    path_lanelet_allow_nearest_fallback: false
+    # HH_260305-00:00 Keep sample density balanced for realtime updates.
+    path_lanelet_sample_step: 0.06
+    # HH_260315-00:00 Keep local-path layer in soft-cost range to avoid start-cell lockups.
+    path_lane_base_value: 80
+    # HH_260311-00:00 Enable pose-distance gradient so local cost changes in realtime.
+    path_use_pose_distance_gradient: true
+    # HH_260313-00:00 Keep centerline as the lowest-cost route inside the path strip.
+    path_use_lateral_gradient: true
+    # HH_260316-00:00 Centerline-first tuning:
+    # local path should stay near lane center unless obstacle costs force avoidance.
+    path_pose_cost_weight: 0.20
+    path_lateral_cost_weight: 0.80
+    # HH_260304-00:00 Visualization path layer should not add extra heading penalties.
+    direction_penalty: 0
+    backward_penalty: 0
+    # HH_260311-00:00 Tighter range on local map to highlight near/far difference quickly.
+    gradient_range: 20.0
+    grid_yaw: 0.0
+    # HH_260305-00:00 Local window is pose-centered (not path-bbox) to prevent stale far patches.
+    use_path_bbox: false
+    lock_window: false
+    # HH_260311-00:00 Use lanelet-snapped pose for stable in-lane local updates.
+    pose_topic: "/planning/lanelet_pose"
+    # HH_260304-00:00 Canonical local trajectory topic published by controller_server remap.
+    path_topic: "/planning/local_path"
+    # HH_260304-00:00 Keep local path strictly tied to local_path extractor output (no global fallback bleed).
+    path_fallback_topic: ""
+    # HH_260316-00:00 Clear/rebuild against snapped goals only.
+    goal_topic: "/planning/goal_pose_snapped"
+    # HH_260304-00:00 Clear stale local-path cost as soon as the local path is replaced.
+    goal_fallback_holdoff_sec: 0.0
+    # HH_260311-00:00 Keep local-path cost stable across short extractor gaps.
+    # HH_260311-00:00 Avoid local-route flicker during short controller/extractor stalls.
+    primary_path_timeout_sec: 2.5
+    # HH_260311-00:00 Do not clear local grid for transient empty local-path messages.
+    ignore_empty_path: true
+    # HH_260316-00:00 Switch local strip immediately when goal changes.
+    clear_path_on_goal: true
+    # Local-path endpoint is near current pose (not goal), so stale-goal
+    # geometric rejection must be disabled for local path-cost updates.
+    drop_stale_path_after_goal: false
+    # HH_260315-00:00 Keep only short local hold to prevent flicker.
+    stale_path_timeout_sec: 0.6
+    # HH_260305-00:00 Rebuild local cost on pose motion + path updates.
+    rebuild_on_pose: true
+    rebuild_on_path: true
+    # HH_260311-00:00 Increase local rebuild rate for smoother realtime updates.
+    min_rebuild_period_sec: 0.01
+    # HH_260311-00:00 Timer-driven rebuild removes local-route lag on sparse callbacks.
+    rebuild_on_timer: true
+    # HH_260316-00:00 Keep publisher active through short local-path gaps.
+    allow_build_without_path: true
+    # HH_260305-00:00 Split inside-cell thresholds:
+    # - path strip: relaxed (reduce curve holes)
+    # - boundary strip: strict (reduce outward bleed)
+    cell_inside_min_hits: 7
+    cell_inside_min_hits_path: 6
+    cell_inside_min_hits_boundary: 9
+    # HH_260316-00:00 Disabled by default to reduce CPU/log load during realtime runs.
+    # Enable temporarily for raster-debug sessions only.
+    debug_coverage_stats: false
+    debug_coverage_stride: 2
+    debug_coverage_min_value: 0
+    path_qos_transient_local: false
+    # HH_260311-00:00 Faster heartbeat for local marker stability.
+    republish_period: 0.015
+    output_topic: "/planning/cost_grid/local_path"

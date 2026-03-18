@@ -4,7 +4,7 @@
 
 ## Kimera-VIO
 - Repository: https://github.com/MIT-SPARK/Kimera-VIO
-- Workspace location: `camping_cart_localization/external/Kimera-VIO`
+- Workspace location: `camrod_localization/external/Kimera-VIO`
 - Current integration: CSV bridge (`kimera_csv_bridge_node`) into `/localization/kimera_vio/*`
 - Topic wiring (target):
   - Input: `/sensing/camera/processed/image`, `/sensing/imu/data`

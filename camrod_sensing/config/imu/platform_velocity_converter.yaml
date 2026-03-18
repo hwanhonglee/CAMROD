@@ -1,0 +1,10 @@
+/sensing/platform_velocity_converter:
+  ros__parameters:
+    velocity_topic: "/platform/status/velocity"
+    imu_topic: "/sensing/imu/data"
+    output_topic: "/sensing/platform_velocity_converter/twist_with_covariance"
+    imu_diagnostic_topic: "/sensing/imu/diagnostic"
+    publish_imu_diagnostic: false
+    require_imu: true
+    linear_variance: [0.05, 0.05, 0.1]
+    angular_variance: [0.2, 0.2, 0.2]

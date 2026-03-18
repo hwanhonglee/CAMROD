@@ -1,0 +1,10 @@
+/sensing/camera_preprocessor:
+  ros__parameters:
+    input_image_topic: "/sensing/camera/image_raw"
+    input_camera_info_topic: "/sensing/camera/camera_info"
+    output_image_topic: "/sensing/camera/processed/image"
+    output_camera_info_topic: "/sensing/camera/processed/camera_info"
+    camera_diagnostic_topic: "/sensing/camera/diagnostic"
+    publish_camera_diagnostic: false
+    frame_id_override: "camera_front_link"
+    require_camera_info: false

@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>camrod_common</name>
+  <version>0.1.0</version>
+  <description>Common message facade package for Camrod stack (re-export of avg_msgs interfaces).</description>
+
+  <maintainer email="hwanhong57@gmail.com">hong</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>avg_msgs</depend>
+  <depend>nav2_msgs</depend>
+
+  <exec_depend>python3</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
