@@ -19,6 +19,12 @@
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
+  <!-- 2026-03-18: Required for in-workspace lanelet2 source build order in Docker.
+       CMakeLists already calls find_package(lanelet2_*), so package.xml must
+       declare these to let colcon schedule lanelet2 before localization. -->
+  <depend>lanelet2_core</depend>
+  <depend>lanelet2_io</depend>
+  <depend>lanelet2_projection</depend>
   <depend>yaml-cpp</depend>
   <depend>rclpy</depend>
   <depend>avg_msgs</depend>
