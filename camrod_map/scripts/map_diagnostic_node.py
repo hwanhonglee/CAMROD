@@ -50,6 +50,10 @@ class MapDiagnosticNode(Node):
         )
         self.publish_period_s = float(self.declare_parameter("publish_period_s", 0.2).value)
         self.stale_timeout_s = float(self.declare_parameter("stale_timeout_s", 2.0).value)
+        # 2026-03-18: Inflation markers are RViz/debug-only and can be disabled by launch.
+        self.require_inflation_markers = bool(
+            self.declare_parameter("require_inflation_markers", False).value
+        )
 
         self.topic_lanelet_grid = str(
             self.declare_parameter("topic_lanelet_grid", "/map/cost_grid/lanelet").value
@@ -95,8 +99,9 @@ class MapDiagnosticNode(Node):
         self._state: Dict[str, StampState] = {
             "lanelet_grid": StampState(),
             "planning_base_grid": StampState(),
-            "inflation_markers": StampState(),
         }
+        if self.require_inflation_markers:
+            self._state["inflation_markers"] = StampState()
 
         self.create_subscription(
             OccupancyGrid, self.topic_lanelet_grid, self._on_lanelet_grid, latched_qos
@@ -151,11 +156,14 @@ class MapDiagnosticNode(Node):
     # Implements `_on_inflation_markers` behavior.
     def _on_inflation_markers(self, msg: MarkerArray) -> None:
         self._msg_inflation_markers = msg
-        self._set_stamp("inflation_markers")
+        if "inflation_markers" in self._state:
+            self._set_stamp("inflation_markers")
 
     # Implements `_health` behavior.
     def _health(self, now: Time) -> ModuleHealth:
-        required = ("lanelet_grid", "planning_base_grid", "inflation_markers")
+        required = ["lanelet_grid", "planning_base_grid"]
+        if self.require_inflation_markers:
+            required.append("inflation_markers")
         missing = []
         for key in required:
             st = self._state[key].stamp

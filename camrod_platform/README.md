@@ -1,12 +1,50 @@
-# Package Work Log
+# camrod_platform
 
-<!-- HH_260109 Initialize platform package work log. -->
+Platform module for robot-side visualization and frame compatibility helpers.
 
-## 2026-01-19
-- HH_260119: Add vehicle_params.yaml (wheelbase, velocity/accel limits) for planners/controllers.
+## Purpose
+- Launch platform visualization nodes
+- Include `camrod_sensor_kit` for URDF/TF publication
+- Optionally publish `robot_base_link -> base_link` static alias for legacy consumers
 
-## 2026-01-14 14:45
-- HH_260114: Set maintainer email to hwanhong57@gmail.com and license to Apache-2.0.
+## Entry Point
+```bash
+ros2 launch camrod_platform platform.launch.py
+```
 
-## 2026-01-09 17:55
-- HH_260109: Create camrod_platform for CAN/vehicle data integration.
+## Runtime Structure
+```text
+platform.launch.py
+  -> include camrod_sensor_kit/sensor_kit.launch.py
+  -> robot_visualization_node
+  -> static_transform_publisher (optional base_link alias)
+```
+
+## Main Launch Arguments
+- Frames:
+  - `map_frame_id` (default `map`)
+  - `base_frame_id` (default `robot_base_link`)
+  - `sensor_kit_base_frame_id` (default `sensor_kit_base_link`)
+- Params:
+  - `params_file`
+  - `robot_visualization_param_file`
+- Toggles:
+  - `publish_base_link_alias`
+  - `enable_module_checker`
+- Namespaces:
+  - `module_namespace` (default `platform`)
+  - `sensor_kit_namespace` (default `sensor_kit`)
+  - `system_namespace` (default `system`)
+
+## Key Topics
+- Visualization:
+  - `/platform/robot/markers`
+  - `/platform/robot/planning_boundary`
+- TF:
+  - `/tf`
+  - `/tf_static`
+
+## Diagnostics
+- Module-local topic: `/platform/diagnostic`
+- Aggregated topic: `/diagnostics`
+

@@ -1,30 +1,48 @@
-# Package Work Log
+# camrod_perception
 
-<!-- HH_260109 Initialize perception package work log. -->
+Perception module for obstacle generation from LiDAR and camera-assisted fusion.
 
-## 2026-02-02 10:32
-- Use `camrod_bringup/config/perception/perception_params.yaml` as the default launch param (centralized config).
+## Purpose
+- Build obstacle outputs for planning/cost layers
+- Fuse camera detections with LiDAR point clouds
+- Provide LiDAR clustering fallback stream
 
-## 2026-02-20 14:20
-- HH_260220: Default camera TF frame changed to `camera_front_link` to match sensor kit URDF static TF ownership.
+## Entry Point
+```bash
+ros2 launch camrod_perception perception.launch.py
+```
 
-## 2026-01-27 17:45
-- HH_260127: Remove HH tags from runtime logs and demote startup logs to DEBUG (obstacle fusion).
+## Runtime Structure
+```text
+/sensing/lidar/points_filtered
+    + /perception/camera/detections_2d
+    + /sensing/camera/processed/camera_info
+        -> obstacle_fusion -> /perception/obstacles
 
-## 2026-01-19
-- HH_260119: Review README ordering/architecture; no change to perception pipeline (doc only).
+/sensing/lidar/points_filtered
+        -> obstacle_lidar  -> /perception/lidar/bboxes
+```
 
-## 2026-01-14 14:45
-- HH_260114: Set maintainer email to hwanhong57@gmail.com and license to Apache-2.0.
+## Main Launch Arguments
+- `perception_param_file`
+- `enable_lidar_obstacle`
+- `enable_module_checker`
+- `module_namespace` (default `perception`)
+- `system_namespace` (default `system`)
 
-## 2026-01-12 12:45
-- HH_260112: Rename obstacle fusion node to a short default name for namespaced runs.
+## Key Topics
+- Inputs:
+  - `/sensing/lidar/points_filtered`
+  - `/perception/camera/detections_2d`
+  - `/sensing/camera/processed/camera_info`
+- Outputs:
+  - `/perception/obstacles`
+  - `/perception/lidar/bboxes`
 
-## 2026-01-12 10:40
-- HH_260112: Namespace perception nodes under /perception and align parameter keys to match.
+## Configuration
+- `camrod_bringup/config/perception/perception_params.yaml`
 
-## 2026-01-09 20:30
-- HH_260109: Add obstacle fusion node (camera detections + LiDAR) and perception launch/config.
+## Diagnostics
+- Module-local topic: `/perception/diagnostic`
+- Aggregated topic: `/diagnostics`
 
-## 2026-01-09 15:46
-- HH_260109: Initialized work log; perception implementation pending.

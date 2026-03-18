@@ -1,43 +1,71 @@
-# Package Work Log
+# camrod_sensing
 
-<!-- HH_260109 Initialize sensing package work log. -->
+Sensing module for LiDAR, camera, IMU, GNSS, and radar pipelines.
 
-## 2026-03-15
-- HH_260315: Use `camrod_sensing/config/sensing_params.yaml` as the canonical sensing module parameter file.
-- HH_260315: Keep sensor-specific algorithm parameters split under `config/lidar`, `config/camera`, `config/imu`, `config/radar`.
+## Purpose
+- Sensor input normalization into module namespaces
+- LiDAR/camera preprocessing
+- GNSS and optional NTRIP integration
+- Near-range cost grid generation (`lidar`, `radar`)
 
-## 2026-02-20 14:20
-- HH_260220: Removed `sensor_calibration_broadcaster_node`; static sensor TF is now owned by `camrod_sensor_kit`.
-- HH_260220: Updated sensing frame overrides to `camera_front_link` (camera) and `lidar_link` (LiDAR).
-- HH_260220: Updated MicroStrain mount frame to `sensor_kit_base_link` and disabled duplicate mount-to-frame static TF publishing.
+## Launch Entry Points
+- Main module:
+  - `ros2 launch camrod_sensing sensing.launch.py`
+- Sensor-specific:
+  - `ros2 launch camrod_sensing lidar.launch.py`
+  - `ros2 launch camrod_sensing gnss.launch.py`
+  - `ros2 launch camrod_sensing camera.launch.py`
+  - `ros2 launch camrod_sensing imu.launch.py`
+  - `ros2 launch camrod_sensing radar.launch.py`
 
-## 2026-01-27 17:45
-- HH_260127: Remove HH tags from runtime logs and demote startup logs to DEBUG (LiDAR/camera preprocessing, calibration, velocity converter).
+## Namespace Behavior
+- Standalone sensor launch uses sensor-centric defaults:
+  - LiDAR: `/lidar/...`
+  - GNSS: `/gnss/...`
+  - Camera: `/camera/...`
+  - IMU: `/imu/...`
+  - Radar: `/radar/...`
+- `sensing.launch.py` normalizes to module namespace:
+  - `/sensing/lidar/...`
+  - `/sensing/gnss/...`
+  - `/sensing/camera/...`
+  - `/sensing/imu/...` (or configured equivalent)
+  - `/sensing/radar/...`
 
-## 2026-01-19
-- HH_260119: Review README ordering/architecture; no functional changes (doc only).
+## Core Topic Layout (Default via `sensing.launch.py`)
+- LiDAR:
+  - raw: `/sensing/lidar/vanjee/points_raw`
+  - filtered: `/sensing/lidar/points_filtered`
+  - diagnostic: `/sensing/lidar/diagnostic` (or module diagnostic stream)
+- GNSS:
+  - fix: `/sensing/gnss/navsatfix`
+  - correction: `/sensing/gnss/rtcm`
+- Camera:
+  - input: `/sensing/camera/image_raw`, `/sensing/camera/camera_info`
+  - processed: `/sensing/camera/processed/image`, `/sensing/camera/processed/camera_info`
+- IMU conversion:
+  - output twist: `/sensing/platform_velocity_converter/twist_with_covariance`
+- Near-range grids:
+  - `/sensing/lidar/near_cost_grid`
+  - `/sensing/radar/near_cost_grid`
 
-## 2026-01-14 14:45
-- HH_260114: Set maintainer email to hwanhong57@gmail.com and license to Apache-2.0.
+## Important Launch Arguments (`sensing.launch.py`)
+- `enable_lidar_driver`, `enable_lidar_cost_grid`
+- `enable_gnss`, `enable_ntrip`
+- `enable_radar`, `enable_radar_cost_grid`
+- `module_namespace`, `system_namespace`, `gnss_namespace`
+- `lidar_raw_topic`, `lidar_filtered_topic`
+- `gnss_navsatfix_topic`, `gnss_rtcm_topic`
 
-## 2026-01-12 12:45
-- HH_260112: Rename sensing nodes to short names for namespace-friendly defaults.
+## Configuration Files
+- `config/sensing_params.yaml` (module-level compatibility overlay)
+- `config/lidar/*` (preprocess, cost grid, Vanjee config)
+- `config/camera/*` (preprocess)
+- `config/imu/*` (MicroStrain and converter)
+- `config/gnss/*` (u-blox F9P, NTRIP)
+- `config/radar/*` (driver and cost grid)
 
-## 2026-01-12 10:40
-- HH_260112: Namespace sensing nodes under /sensing and align parameter keys to match.
+## Diagnostics
+- Module-local topic: `/sensing/diagnostic`
+- Aggregated topic: `/diagnostics`
 
-## 2026-01-09 20:30
-- HH_260109: Keep sensing for raw/preprocessed data only (LiDAR/camera preprocessing + calibration).
-- HH_260109: Add platform velocity converter for twist_with_covariance output.
-
-## 2026-01-09 18:37
-- HH_260109: Move sensing topics under /sensing prefix.
-
-## 2026-01-09 16:48
-- HH_260109: Add robust center access for Pose2D variants with position fields.
-
-## 2026-01-09 16:40
-- HH_260109: Fix Detection2D center access to handle pointer/value variants.
-
-## 2026-01-09 15:46
-- HH_260109: Add LiDAR preprocessing node and camera-guided obstacle fusion node.

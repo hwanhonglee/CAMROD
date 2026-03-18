@@ -68,6 +68,11 @@ def generate_launch_description():
         default_value='false',
         description='Enable heavy debug marker from /planning/global_costmap/costmap',
     )
+    enable_inflation_markers_arg = DeclareLaunchArgument(
+        'enable_inflation_markers',
+        default_value='false',
+        description='Enable contributor-merged inflation marker topic for RViz debug',
+    )
     enable_module_checker_arg = DeclareLaunchArgument(
         'enable_module_checker',
         default_value='true',
@@ -91,6 +96,7 @@ def generate_launch_description():
     origin_alt = LaunchConfiguration('origin_alt')
     map_viz_param = LaunchConfiguration('map_visualization_param_file')
     enable_nav2_inflation_debug_marker = LaunchConfiguration('enable_nav2_inflation_debug_marker')
+    enable_inflation_markers = LaunchConfiguration('enable_inflation_markers')
     enable_module_checker = LaunchConfiguration('enable_module_checker')
     module_namespace = LaunchConfiguration('module_namespace')
     system_namespace = LaunchConfiguration('system_namespace')
@@ -318,6 +324,7 @@ def generate_launch_description():
         name='inflation_marker_aggregator',
         namespace=module_namespace,
         output='screen',
+        condition=IfCondition(enable_inflation_markers),
         parameters=[{
             # 2026-03-05: User-facing final inflation marker = contributor-combined cost layers.
             'output_topic': '/map/cost_grid/inflation_markers',
@@ -375,7 +382,6 @@ def generate_launch_description():
             'required_topics': [
                 '/map/cost_grid/lanelet',
                 '/map/cost_grid/planning_base',
-                '/map/cost_grid/inflation_markers',
             ],
             'diagnostic_topic': '/diagnostics',
             'status_name': 'map/checker',
@@ -402,6 +408,9 @@ def generate_launch_description():
             'topic_lidar_markers': '/map/cost_grid/lidar_markers',
             'topic_radar_markers': '/map/cost_grid/radar_markers',
             'topic_inflation_markers': '/map/cost_grid/inflation_markers',
+            # 2026-03-18: Inflation marker stream is optional debug visualization.
+            # Core map health depends on lanelet/planning-base grids only.
+            'require_inflation_markers': enable_inflation_markers,
         }],
     )
 
@@ -413,6 +422,7 @@ def generate_launch_description():
         origin_alt_arg,
         map_viz_param_arg,
         enable_nav2_inflation_debug_marker_arg,
+        enable_inflation_markers_arg,
         enable_module_checker_arg,
         module_namespace_arg,
         system_namespace_arg,
