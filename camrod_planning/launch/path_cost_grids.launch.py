@@ -48,14 +48,17 @@ def generate_launch_description():
                 # HH_260311-00:00 Hard overrides for stable realtime global path-cost refresh.
                 # Keep this in launch so behavior is deterministic even with stale YAML installs.
                 'pose_topic': '/planning/lanelet_pose',
+                # Consume canonical Nav2 global route topic.
                 'path_topic': '/planning/global_path',
                 'goal_topic': '/planning/goal_pose_snapped',
-                # HH_260317-00:00 Switch global-path cost immediately on goal update.
-                # Do not retain stale previous-route strips after a new target is selected.
-                'clear_path_on_goal': True,
+                # Keep last valid global-path strip until a new valid path arrives.
+                # Clearing immediately on goal update causes marker blink/disappear
+                # when planner response is delayed or temporarily invalid.
+                'clear_path_on_goal': False,
                 'ignore_empty_path': True,
-                # Do not build lane-wide fallback when no valid global path is available.
-                'allow_build_without_path': False,
+                # Build baseline lane-mask even when path is temporarily unavailable.
+                # This prevents empty-grid publish and RViz marker disappearance.
+                'allow_build_without_path': True,
                 'path_use_lateral_gradient': True,
                 # HH_260316-00:00 Centerline-first tuning:
                 # lateral(centerline) term must dominate pose-distance term.
@@ -161,19 +164,21 @@ def generate_launch_description():
                 'cell_scale_ratio': 0.70,
                 'palette': 'pastel_purple_red',
                 'show_unknown': False,
-                # Clear immediately when global path grid is cleared on new goal.
-                'clear_on_empty_grid': True,
-                # Keep short stale timeout to prevent long-lived stale global strips.
-                'stale_timeout_sec': 0.3,
+                # Keep previous marker set on transient empty input to prevent blink.
+                'clear_on_empty_grid': False,
+                # Do not stale-clear marker cache; grid publisher heartbeat keeps freshness.
+                'stale_timeout_sec': 0.0,
             # 2026-02-27: Path cost grids are transient_local; consume latched path immediately.
             'grid_qos_transient_local': True,
             # HH_260305-00:00 Keep full resolution to avoid sparse-looking global markers.
             'sample_stride': 1,
-            # HH_260311-00:00 Faster marker conversion for smoother realtime color updates.
-            'min_publish_period_sec': 0.01,
-            # HH_260305-00:00 Publisher is transient_local; periodic republish not needed.
-            # HH_260311-00:00 Match faster global-path grid heartbeat.
-            'republish_period_sec': 0.06,
+            # HH_260318-00:00 Always convert the latest incoming global-path grid immediately.
+            # Throttle+periodic cache-republish can keep stale markers and look like flicker/no-refresh
+            # when goals are updated quickly.
+            'min_publish_period_sec': 0.0,
+            # HH_260318-00:00 Disable periodic stale-cache republish.
+            # Keep marker updates purely input-driven from /planning/cost_grid/global_path.
+            'republish_period_sec': 0.0,
         }],
     )
 
@@ -203,11 +208,10 @@ def generate_launch_description():
             'grid_qos_transient_local': True,
             # HH_260305-00:00 Keep curvature/edge continuity (no decimation holes).
             'sample_stride': 1,
-            # HH_260311-00:00 Slightly faster local marker refresh.
-            'min_publish_period_sec': 0.008,
-            # HH_260305-00:00 Publisher is transient_local; periodic republish not needed.
-            # HH_260311-00:00 Match faster local-path grid heartbeat.
-            'republish_period_sec': 0.03,
+            # HH_260318-00:00 Keep local path markers input-driven as well.
+            # Avoid stale-cache republish behavior across rapid path transitions.
+            'min_publish_period_sec': 0.0,
+            'republish_period_sec': 0.0,
         }],
     )
 

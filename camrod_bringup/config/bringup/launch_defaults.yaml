@@ -12,7 +12,8 @@ bringup:
 
   planning:
     enable_path_cost_grids: true
-    enable_goal_replanner: true
+    # HH_260318-00:00 Keep OFF by default to avoid duplicate ComputePath requests.
+    enable_goal_replanner: false
     enable_nav2_lifecycle_retry: false
     enable_state_machine: false
     use_dwb_controller: false

@@ -60,11 +60,11 @@ def generate_launch_description():
     )
     enable_goal_replanner_arg = DeclareLaunchArgument(
         'enable_goal_replanner',
-        # HH_260317-00:00 Default ON:
-        # Users issue goals from RViz expecting lanelet-snapped planning output.
-        # Keep goal_replanner enabled by default so /goal_pose -> /planning/goal_pose_snapped
-        # flow always produces a snapped ComputePath request.
-        default_value='true',
+        # Default OFF:
+        # Nav2 planner already computes /planning/global_path from snapped goal input.
+        # Keeping goal_replanner ON by default can create duplicate ComputePath action requests
+        # and intermittent abort/preemption races.
+        default_value='false',
         description='Enable /planning/goal_replanner (ComputePathToPose helper)',
     )
     enable_module_checker_arg = DeclareLaunchArgument(
@@ -220,6 +220,7 @@ def generate_launch_description():
                 # HH_260316-00:00 Hard-pin core topics to lanelet-snapped flow.
                 # This prevents stale/partial YAML installs from falling back to
                 # /localization/pose and producing branch/shortcut local paths.
+                # Use Nav2 planner output directly as global route source.
                 'global_path_topic': '/planning/global_path',
                 'pose_topic': '/planning/lanelet_pose',
                 'output_topic': '/planning/local_path',
@@ -250,15 +251,15 @@ def generate_launch_description():
                 # HH_260317-00:00 Keep goal-snap ComputePath available even when
                 # NavigateToPose action is active, so newly clicked goals can refresh
                 # the snapped planning path immediately.
-                'pause_when_navigate_active': False,
+                # HH_260318-00:00 Avoid ComputePath action contention with bt_navigator.
+                'pause_when_navigate_active': True,
                 'navigate_status_topic': '/planning/navigate_to_pose/_action/status',
                 'min_request_interval_sec': 0.25,
                 'enable_periodic_replan': False,
-                # HH_260317-00:00 Always publish ComputePath result so /planning/global_path
-                # is available even when NavigateToPose action flow is not active or is preempted.
-                # This stabilizes local/global path-cost-grid updates from goal clicks.
+                # Keep replanner output on a dedicated topic.
+                # Canonical /planning/global_path is owned by Nav2 planner_server.
                 'publish_result_path': True,
-                'output_path_topic': '/planning/global_path',
+                'output_path_topic': '/planning/global_path_replanner',
                 # HH_260311-00:00 Allow one-step TF fallback when snapped start is temporarily unavailable.
                 'start_topic_fallback_to_tf': True,
             },

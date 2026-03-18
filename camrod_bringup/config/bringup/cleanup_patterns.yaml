@@ -14,6 +14,10 @@
 # -> localization -> planning -> system -> bringup -> rviz
 
 patterns:
+  # [orchestrator]
+  # Kill stale previous bringup launch parent process first.
+  - ros2 launch camrod_bringup bringup.launch.py
+
   # [platform]
   - robot_state_publisher
   - robot_visualization_node
@@ -45,6 +49,7 @@ patterns:
   - __node:=ntrip_client
   - radar_cost_grid_node
   - lidar_cost_grid_node
+  - __node:=sensing_diagnostic
 
   # [perception]
   - obstacle_fusion_node
@@ -55,11 +60,16 @@ patterns:
   - navsat_to_pose_node
   - pose_cov_bridge_node
   - ekf_node
+  - localization_eskf_node
+  - __node:=eskf_filter
   - navsat_transform_node
-  - localization_supervisor_node
-  - drop_zone_matcher_node
+  - wheel_odometry_bridge_node
   - odometry_to_pose_node
+  - localization_supervisor_node
+  - __node:=supervisor
+  - drop_zone_matcher_node
   - localization_health_monitor_node
+  - __node:=health_monitor
   - __node:=localization_diagnostic
 
   # [planning]
@@ -76,6 +86,7 @@ patterns:
   - bt_navigator
   - nav2_costmap_2d
   - lifecycle_manager
+  - __node:=lifecycle_manager_planning
   - __node:=planning_diagnostic
 
   # [system]

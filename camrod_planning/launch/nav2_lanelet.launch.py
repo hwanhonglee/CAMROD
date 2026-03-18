@@ -174,10 +174,9 @@ def generate_launch_description():
         namespace=module_namespace,
         output='screen',
         parameters=nav2_param_chain,
-        # Keep Nav2-native plan topic separate from avg/global_path streams.
-        # This prevents mixed message-type publishers on a single topic.
+        # Keep canonical global route topic stable for downstream modules.
         remappings=[
-            ('plan', '/planning/plan'),
+            ('plan', '/planning/global_path'),
         ],
     )
 

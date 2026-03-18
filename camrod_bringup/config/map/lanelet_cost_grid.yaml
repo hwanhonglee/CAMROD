@@ -103,8 +103,10 @@
     # -1 disables lanelet fill.
     # HH_260317-00:00 Raise lanelet base fill cost so centerline strip stays
     # the lowest-cost route inside each lanelet.
-    centerline_lanelet_fill_value: 92
-    outside_value: -1
+    centerline_lanelet_fill_value: 85
+    # HH_260318-00:00 Keep outside high-cost but traversable to avoid
+    # planner start-cell hard-failure when pose is slightly outside lanelet.
+    outside_value: 99
     lanelet_boundary_value: -1
     boundary_half_width: 0.05
     # HH_260313-00:00 Validate planner-base raster cells against lanelet polygons.

@@ -19,7 +19,7 @@ public:
     z_min_ = -0.25;
     z_max_ =  0.25;
 
-    voxel_leaf_ = 0.20;
+    voxel_leaf_ = 0.10;
     ransac_dist_thresh_ = 0.12;
     ransac_max_iter_ = 120;
 
@@ -77,7 +77,7 @@ private:
 
       if (inliers->indices.empty())
       {
-        *nonground = *cloud;
+        *nonground = *ds;   // 또는 cloud
       }
       else
       {
@@ -87,7 +87,7 @@ private:
         const double d = coeff->values[3];
         const double denom = std::sqrt(a*a + b*b + c*c);
 
-        for (const auto &p : cloud->points)
+        for (const auto &p : ds->points)   // 🔥 ds 기준 추천
         {
           double dist = std::fabs(a*p.x + b*p.y + c*p.z + d) / (denom + 1e-9);
           if (dist > ransac_dist_thresh_)

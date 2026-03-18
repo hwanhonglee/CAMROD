@@ -18,6 +18,12 @@ find_package(vision_msgs REQUIRED)
 find_package(image_geometry REQUIRED)
 find_package(avg_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(PCL REQUIRED)
+find_package(pcl_conversions REQUIRED)
+
+include_directories(
+  ${PCL_INCLUDE_DIRS}
+)
 
 add_executable(obstacle_fusion_node src/obstacle_fusion_node.cpp)
 ament_target_dependencies(obstacle_fusion_node
@@ -39,6 +45,11 @@ ament_target_dependencies(obstacle_lidar_node
   sensor_msgs
   visualization_msgs
   geometry_msgs
+  pcl_conversions
+)
+
+target_link_libraries(obstacle_lidar_node
+  ${PCL_LIBRARIES}
 )
 
 install(TARGETS

@@ -95,9 +95,9 @@
     # HH_260307-00:00 Keep last valid global path through transient empty updates.
     # This avoids marker blinking when planner briefly publishes an empty/intermediate path.
     ignore_empty_path: true
-    # HH_260317-00:00 Clear immediately on goal change.
-    # This guarantees old global route strips do not remain after new goal input.
-    clear_path_on_goal: true
+    # Do not clear immediately on goal change.
+    # Keep previous valid strip until new global path arrives to avoid marker blink.
+    clear_path_on_goal: false
     # HH_260318-00:00 Robustness-first:
     # strict fresh-path filtering can reject valid replans when goal/path stamps
     # are slightly skewed, causing global-path markers to stop updating.
@@ -116,9 +116,9 @@
     min_rebuild_period_sec: 0.02
     # HH_260311-00:00 Force periodic rebuild for stable realtime gradient updates.
     rebuild_on_timer: true
-    # HH_260316-00:00 Keep publisher active through brief planner gaps
-    # to reduce marker flicker/empty intervals.
-    allow_build_without_path: false
+    # Keep publisher active through brief planner gaps.
+    # When path is temporarily unavailable, publish lane-mask baseline instead of empty grid.
+    allow_build_without_path: true
     # HH_260305-00:00 Split inside-cell thresholds:
     # - path strip: relaxed (reduce curve holes)
     # - boundary strip: strict (reduce outward bleed)
