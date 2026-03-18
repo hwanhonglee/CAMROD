@@ -1,0 +1,137 @@
+# 2026-01-30 Update map path/origin for lanelet2_maps.osm.
+# HH_260102 Default parameters for lanelet_cost_grid_node (OccupancyGrid for path-focused cost)
+# HH_260112 Align with /map namespace + short node name.
+# HH_260112 Align node parameter keys with /map namespace + short names.
+/map/cost_grid_map:
+  ros__parameters:
+    map_path: "/home/hong/camrod_ws/src/lanelet2_maps.osm"  # HH_260102 override via launch
+    map_frame_id: "map"
+    offset_lat: 36.8436194
+    offset_lon: 128.0925490
+    offset_alt: 0.0
+    # HH_260316-00:00 Keep lanelet projector aligned with map loader/snapper nodes.
+    projector_type: "local_cartesian"
+    # 2026-02-02: Finer grid for clearer lanelet boundaries in RViz.
+    resolution: 0.05
+    width: 0
+    height: 0
+    # 2026-02-11: Lane-only corridor width (meters). Increase if lane coverage is too narrow.
+    centerline_half_width: 2.2
+    free_value: 0
+    lethal_value: 100
+    # 2026-02-11: Keep static base layer neutral to heading; dynamic bias belongs to path layer.
+    direction_penalty: 0
+    backward_penalty: 0
+    gradient_range: 30.0
+    centerline_use_distance_gradient: false
+    grid_yaw: 0.0
+    # 2026-02-02 11:55: Static map grid uses only left/right bounds.
+    # cost_mode options:
+    #   "centerline" : narrow corridor around lanelet centerlines
+    #   "bounds"     : left/right boundary lines only (thin lethal strips)
+    #   "lanelet"    : full lanelet polygon area
+    #   "path"       : path strip based on /planning/global_path
+    # 2026-03-03: User-facing lanelet layer = boundary cost grid only.
+    cost_mode: "bounds"
+    # HH_260305-00:00 Narrow boundary strip to reduce outward spill at sharp corners.
+    boundary_half_width: 0.05
+    # HH_260305-00:00 Split inside-cell thresholds:
+    # - path/centerline strips: relaxed (reduce curve holes)
+    # - boundary strips: strict (reduce outward bleed)
+    cell_inside_min_hits: 7
+    cell_inside_min_hits_path: 5
+    cell_inside_min_hits_boundary: 9
+    # 2026-02-26: In lanelet mode, also paint left/right boundaries as high cost.
+    # -1 disables boundary overlay.
+    lanelet_boundary_value: 100
+    # 2026-02-27: Keep boundary overlay inside lane polygon (avoid outward bleed).
+    boundary_clip_to_lanelet: true
+    # 2026-02-27: Enable to print boundary candidate/written/clipped statistics.
+    debug_boundary_stats: false
+    # HH_260313-00:00 Validate lanelet-grid raster cells against lanelet polygons.
+    # Logs warning if known cells are detected outside lanelet bounds.
+    debug_coverage_stats: true
+    debug_coverage_stride: 2
+    debug_coverage_min_value: 0
+    # 2026-02-24: Keep outside lanelets unknown so RViz and inflation overlay stay lanelet-shaped.
+    # outside_value options:
+    #   -1  : unknown outside lanelets (recommended)
+    #   0   : free outside lanelets
+    #   100 : lethal outside lanelets
+    outside_value: -1
+    use_path_bbox: false        # HH_260102 keep grid window robot-centered to avoid size flicker
+    lock_window: true
+    use_map_bbox: true
+    # 2026-02-27: Static lanelet base grid does not need per-pose/path rebuild.
+    rebuild_on_pose: false
+    rebuild_on_path: false
+    min_rebuild_period_sec: 0.2
+    # HH_260109 Drive cost grid from fused localization pose.
+    pose_topic: "/planning/lanelet_pose"
+    path_topic: "/planning/global_path"
+    republish_period: 0.0
+
+/map/cost_grid_planning_base:
+  ros__parameters:
+    map_path: "/home/hong/camrod_ws/src/lanelet2_maps.osm"
+    map_frame_id: "map"
+    offset_lat: 36.8436194
+    offset_lon: 128.0925490
+    offset_alt: 0.0
+    # HH_260316-00:00 Keep lanelet projector aligned with map loader/snapper nodes.
+    projector_type: "local_cartesian"
+    # 2026-02-26: Keep planner-base resolution identical to map lanelet grid
+    # so Smac sees smooth lane curvature instead of coarse quantized strips.
+    resolution: 0.05
+    width: 0
+    height: 0
+    # HH_260317-00:00 Keep centerline corridor tighter so planner tracks
+    # lanelet centerline more strongly before considering side offsets.
+    centerline_half_width: 1.0
+    free_value: 0
+    lethal_value: 100
+    # HH_260316-00:00 Planner-base for Nav2:
+    # - centerline-biased corridor as primary traversable region
+    # - robust corner connectivity (avoid polygon raster micro-gaps)
+    # - outside unknown so non-lanelet area remains non-traversable
+    # This setup is intentionally aligned with Smac2D stability.
+    cost_mode: "centerline"
+    # HH_260316-00:00 Keep centerline strips inside lane bounds.
+    centerline_clip_to_lanelet: true
+    # HH_260316-00:00 Fill lanelet interior with soft base cost to keep
+    # route connectivity robust while centerline remains the lowest-cost band.
+    # -1 disables lanelet fill.
+    # HH_260317-00:00 Raise lanelet base fill cost so centerline strip stays
+    # the lowest-cost route inside each lanelet.
+    centerline_lanelet_fill_value: 92
+    outside_value: -1
+    lanelet_boundary_value: -1
+    boundary_half_width: 0.05
+    # HH_260313-00:00 Validate planner-base raster cells against lanelet polygons.
+    debug_coverage_stats: false
+    debug_coverage_stride: 2
+    debug_coverage_min_value: 0
+    # HH_260305-00:00 Split inside-cell thresholds:
+    # - path/centerline strips: relaxed (reduce curve holes)
+    # - boundary strips: strict (reduce outward bleed)
+    # HH_260316-00:00 Keep centerline strip sampling permissive
+    # to avoid micro-gaps at sharp corners.
+    cell_inside_min_hits: 6
+    cell_inside_min_hits_path: 5
+    cell_inside_min_hits_boundary: 8
+    # 2026-03-04: Keep planner-base pose-independent; vehicle-relative gradients
+    # belong to path-cost layers, not the planner base map.
+    centerline_use_distance_gradient: false
+    direction_penalty: 0
+    backward_penalty: 0
+    gradient_range: 30.0
+    grid_yaw: 0.0
+    use_path_bbox: false
+    lock_window: true
+    use_map_bbox: true
+    rebuild_on_pose: false
+    rebuild_on_path: false
+    min_rebuild_period_sec: 0.2
+    pose_topic: "/planning/lanelet_pose"
+    path_topic: "/planning/global_path"
+    republish_period: 0.0

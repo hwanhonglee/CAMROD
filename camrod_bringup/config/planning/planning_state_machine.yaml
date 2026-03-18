@@ -1,0 +1,35 @@
+/planning/planning_state_machine:
+  ros__parameters:
+    enabled: true
+    # HH_260312-00:00 Subscribe to consolidated diagnostics stream.
+    health_diagnostic_topic: "/diagnostics"
+    pose_topic: "/planning/lanelet_pose"
+    # HH_260316-00:00 State machine tracks snapped goal stream only.
+    goal_topic: "/planning/goal_pose_snapped"
+    state_topic: "/planning/state_machine/state"
+    estop_topic: "/planning/state_machine/estop"
+    # HH_260313-00:00 User return trigger (Bool true edge) -> publish drop-zone goal.
+    return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
+    return_goal_key: "drop_zone"
+    diagnostics_topic: "/diagnostics"
+
+    # Keypoint map for state-based auto goals.
+    # Supported formats:
+    # 1) keypoints: {name: {x,y,z,frame_id}}
+    # 2) drop_zones: [{x,y,z,...}] (fallback for drop_zone)
+    keypoints_yaml: "/home/hong/camrod_ws/src/camrod_bringup/config/planning/planning_state_machine_keypoints.yaml"
+    startup_goal_key: "drop_zone"
+    warn_goal_key: "garage"
+
+    # Policies:
+    # - system OK at startup: publish startup_goal_key once
+    # - system WARN: publish warn_goal_key (rate-limited)
+    # - system ERROR: estop true
+    auto_startup_goal: true
+    auto_warn_recovery_goal: true
+    auto_estop_on_error: true
+
+    # Runtime tuning
+    min_goal_publish_interval_s: 1.0
+    goal_reached_distance_m: 0.8
+    loop_rate_hz: 5.0

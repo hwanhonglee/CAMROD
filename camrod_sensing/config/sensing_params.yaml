@@ -1,0 +1,48 @@
+# HH_260112 Align node parameter keys with /sensing namespace + short names.
+/sensing/lidar_preprocessor:
+  ros__parameters:
+    # HH_260311-00:00 Raw cloud comes from Vanjee SDK driver node.
+    input_topic: "/sensing/lidar/vanjee/points_raw"
+    filtered_topic: "/sensing/lidar/points_filtered"
+    # HH_260317-00:00 Keep naming domain-oriented (no avg_* wording in params/topics).
+    lidar_diagnostic_topic: "/sensing/lidar/diagnostic"
+    publish_lidar_diagnostic: false
+    min_range: 0.3
+    max_range: 35.0
+    min_z: -1.0
+    max_z: 2.0
+    ground_filter_mode: "z"
+    ground_z_min: -0.25
+    ground_z_max: 0.25
+    stamp_with_now: true
+    # HH_260220: Normalize LiDAR output frame to the sensor_kit TF frame.
+    frame_id_override: "lidar_link"
+    publish_filtered: true
+    # HH_260109 Basic LiDAR preprocessing defaults for forest trail obstacles.
+
+/sensing/camera_preprocessor:
+  ros__parameters:
+    input_image_topic: "/sensing/camera/image_raw"
+    input_camera_info_topic: "/sensing/camera/camera_info"
+    output_image_topic: "/sensing/camera/processed/image"
+    output_camera_info_topic: "/sensing/camera/processed/camera_info"
+    # HH_260317-00:00 Keep naming domain-oriented (no avg_* wording in params/topics).
+    camera_diagnostic_topic: "/sensing/camera/diagnostic"
+    publish_camera_diagnostic: false
+    # HH_260220: Align camera frame with sensor_kit TF tree (camera_front_link).
+    frame_id_override: "camera_front_link"
+    require_camera_info: false
+    # HH_260109 Camera preprocessing (raw -> processed) and frame overrides.
+
+/sensing/platform_velocity_converter:
+  ros__parameters:
+    velocity_topic: "/platform/status/velocity"
+    imu_topic: "/sensing/imu/data"
+    output_topic: "/sensing/platform_velocity_converter/twist_with_covariance"
+    # HH_260317-00:00 Keep naming domain-oriented (no avg_* wording in params/topics).
+    imu_diagnostic_topic: "/sensing/imu/diagnostic"
+    publish_imu_diagnostic: false
+    require_imu: true
+    linear_variance: [0.05, 0.05, 0.1]
+    angular_variance: [0.2, 0.2, 0.2]
+    # HH_260109 Combine platform velocity and IMU into twist_with_covariance.

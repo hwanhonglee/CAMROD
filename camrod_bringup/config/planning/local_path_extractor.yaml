@@ -1,0 +1,42 @@
+/planning/local_path_extractor:
+  ros__parameters:
+    enabled: true
+    frame_id: "map"
+    global_path_topic: "/planning/global_path"
+    # HH_260305-00:00 planner_server /planning/global_path is VOLATILE.
+    # Keep subscriber durability VOLATILE for guaranteed matching.
+    global_path_qos_transient_local: false
+    # HH_260316-00:00 Use lanelet-snapped pose so extracted local path stays
+    # centered on lanelet centerline by construction.
+    pose_topic: "/planning/lanelet_pose"
+    output_topic: "/planning/local_path"
+    # Local path is a continuously updated slice of the fixed global path around current lanelet pose.
+    # HH_260305-00:00 Balance responsiveness and CPU load.
+    publish_rate_hz: 20.0
+    # Also publish once immediately when pose/global path updates (removes first-response delay).
+    publish_on_input_update: true
+    # Slice current global path around closest pose.
+    lookahead_distance_m: 30.0
+    lookbehind_distance_m: 3.0
+    min_points: 12
+    max_points: 320
+    # HH_260304-00:00 Keep local path anchored near the previous closest index so
+    # looped lanelets do not jump to another branch that happens to be nearby.
+    nearest_search_window: 180
+    nearest_backtrack_window: 16
+    # HH_260305-00:00 Keep full reacquire conservative to avoid jumping to nearby parallel branches.
+    full_reacquire_distance_m: 4.0
+    full_reacquire_heading_deg: 85.0
+    # HH_260316-00:00 Cut local-path output at discontinuous jumps to avoid
+    # straight bridge artifacts when upstream path has transient discontinuity.
+    max_segment_jump_m: 3.0
+    # HH_260306-00:00 Stop local path after route completion (until next global path update).
+    stop_after_goal_reached: true
+    goal_reached_distance_m: 0.8
+    goal_reached_index_margin: 3
+    # HH_260311-00:00 Relax timeout to tolerate brief TF/pose hiccups under load.
+    pose_timeout_sec: 2.5
+    # HH_260311-00:00 Do not emit empty-path on transient invalid frames.
+    # Empty publishes were causing local cost-grid marker flicker.
+    publish_empty_on_invalid: false
+    empty_republish_period_sec: 0.3

@@ -1,13 +1,13 @@
-ARG BASE_IMAGE=camping_cart/base:humble
+ARG BASE_IMAGE=camrod/base:humble
 FROM ${BASE_IMAGE}
 
-ARG MODULE=camping_cart_bringup
+ARG MODULE=camrod_bringup
 ARG ROS_DISTRO=humble
 
 SHELL ["/bin/bash", "-lc"]
-WORKDIR /workspaces/cart_test_ws
+WORKDIR /workspaces/camrod_ws
 
-COPY . /workspaces/cart_test_ws/src
+COPY . /workspaces/camrod_ws/src
 
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
     rosdep install --from-paths src --ignore-src -r -y || true

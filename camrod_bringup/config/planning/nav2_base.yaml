@@ -1,0 +1,121 @@
+# Nav2 base profile: framework defaults and common node wiring.
+
+planner_server:
+  ros__parameters:
+    use_sim_time: False
+    expected_planner_frequency: 5.0
+    planner_plugins: ["Smac2D", "GridBased"]
+
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      # Keep final solve tight; goal_snapper already maps user goal into lanelet.
+      tolerance: 0.5
+      use_astar: True
+      allow_unknown: False
+
+    Smac2D:
+      plugin: "nav2_smac_planner/SmacPlanner2D"
+      allow_unknown: False
+      # Keep final solve tight; goal_snapper already maps user goal into lanelet.
+      tolerance: 0.5
+      downsample_costmap: False
+      downsampling_factor: 1
+      use_astar: True
+      motion_model_for_search: "REEDS_SHEPP"
+      # 2026-02-25: Finer heading discretization for smoother corner geometry.
+      angle_quantization_bins: 128
+
+controller_server:
+  ros__parameters:
+    use_sim_time: False
+    controller_frequency: 20.0
+    odom_topic: /localization/odometry/filtered
+    # HH_260315-00:00 Explicit speed-limit channel for planning namespace users.
+    speed_limit_topic: /planning/speed_limit
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    # 2026-02-25: Use a single active controller by default to avoid
+    # duplicate debug topics (/planning/cost_cloud, /planning/evaluation)
+    # from unused DWB plugin loading.
+    controller_plugins: ["FollowPath"]
+    default_controller: FollowPath
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+
+    general_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.3
+      yaw_goal_tolerance: 0.25
+      stateful: False
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: False
+      global_frame: map
+      # Keep Nav2 base frame aligned with platform/localization TF.
+      robot_base_frame: robot_base_link
+      # HH_260305-00:00 Faster local updates for more responsive local-path/grid overlays.
+      update_frequency: 8.0
+      publish_frequency: 5.0
+      rolling_window: True
+      width: 50
+      height: 50
+      resolution: 0.08
+      track_unknown_space: True
+      plugins:
+        - lanelet_cost_layer_base
+        - lanelet_cost_layer_local_path
+        - lidar_cost_layer
+        - radar_cost_layer
+        - inflation_layer
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: False
+      global_frame: map
+      # Keep Nav2 base frame aligned with platform/localization TF.
+      robot_base_frame: robot_base_link
+      # HH_260313-00:00 Raise global master refresh so goal updates are reflected faster.
+      update_frequency: 6.0
+      publish_frequency: 4.0
+      rolling_window: False
+      # HH_260315-00:00 Expand static global bounds to avoid
+      # "Robot is out of bounds of the costmap" near map edges.
+      width: 200
+      height: 140
+      resolution: 0.08
+      origin_x: -100.0
+      origin_y: -50.0
+      track_unknown_space: True
+      # HH_260316-00:00 Keep global planner master independent from
+      # /planning/cost_grid/global_path guidance layer.
+      # Using a path-guidance layer in the same costmap that generates that path
+      # creates circular dependence and can produce intermittent no-path failures.
+      plugins:
+        - lanelet_cost_layer_base
+        - lidar_cost_layer
+        - radar_cost_layer
+        - inflation_layer
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: False
+    global_frame: map
+    # HH_260316-00:00 Keep BT transform helpers aligned with lanelet-snapped base frame.
+    robot_base_frame: robot_base_link
+    odom_topic: /localization/odometry/filtered
+    transform_tolerance: 0.2
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: False
+    global_frame: map
+    local_frame: odom
+    # HH_260316-00:00 Keep recovery behaviors aligned with lanelet-snapped base frame.
+    robot_base_frame: robot_base_link
+    transform_tolerance: 0.2

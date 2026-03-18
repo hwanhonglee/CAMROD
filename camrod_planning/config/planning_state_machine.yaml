@@ -1,0 +1,23 @@
+/planning/planning_state_machine:
+  ros__parameters:
+    enabled: true
+    # HH_260312-00:00 Subscribe to consolidated diagnostics stream.
+    health_diagnostic_topic: "/diagnostics"
+    pose_topic: "/planning/lanelet_pose"
+    # HH_260316-00:00 State machine tracks snapped goal stream only.
+    goal_topic: "/planning/goal_pose_snapped"
+    state_topic: "/planning/state_machine/state"
+    estop_topic: "/planning/state_machine/estop"
+    diagnostics_topic: "/diagnostics"
+
+    keypoints_yaml: "/home/hong/camrod_ws/src/camrod_planning/config/planning_state_machine_keypoints.yaml"
+    startup_goal_key: "drop_zone"
+    warn_goal_key: "garage"
+
+    auto_startup_goal: true
+    auto_warn_recovery_goal: true
+    auto_estop_on_error: true
+
+    min_goal_publish_interval_s: 1.0
+    goal_reached_distance_m: 0.8
+    loop_rate_hz: 5.0

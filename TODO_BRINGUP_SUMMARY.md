@@ -3,23 +3,23 @@
 <!-- HH_260109: Add bringup summary so current system usage is not forgotten. -->
 
 ## Launch Entry
-- `camping_cart_bringup/launch/bringup.launch.py`
+- `camrod_bringup/launch/bringup.launch.py`
 
 ## Launches Included
-- `camping_cart_platform/launch/platform.launch.py`
-- `camping_cart_map/launch/map.launch.py`
-- `camping_cart_sensing/launch/sensing.launch.py`
-- `camping_cart_perception/launch/perception.launch.py`
-- `camping_cart_localization/launch/localization.launch.py`
-- `camping_cart_planning/launch/planning.launch.py`
+- `camrod_platform/launch/platform.launch.py`
+- `camrod_map/launch/map.launch.py`
+- `camrod_sensing/launch/sensing.launch.py`
+- `camrod_perception/launch/perception.launch.py`
+- `camrod_localization/launch/localization.launch.py`
+- `camrod_planning/launch/planning.launch.py`
 - RViz2 (from bringup)
 
 ## Nodes Started Directly (inside bringup.launch.py)
 - None (bringup delegates to module launch files)
 
 ## Optional (Separate) Launches
-- `camping_cart_bringup/launch/fake_sensors.launch.py`
-  - `camping_cart_bringup/scripts/fake_sensor_publisher.py`
+- `camrod_bringup/launch/fake_sensors.launch.py`
+  - `camrod_bringup/scripts/fake_sensor_publisher.py`
 
 ## Current Runtime Inputs (Expected)
 - `/sensing/gnss/navsatfix`
@@ -40,8 +40,8 @@
 - `/map/cost_grid/*`
 
 ## Not Used by Bringup (As of Now)
-- `camping_cart_localization/random_centerline_pose_node` (test-only)
-- `camping_cart_platform` package (CAN integration pending)
+- `camrod_localization/random_centerline_pose_node` (test-only)
+- `camrod_platform` package (CAN integration pending)
 
 ## Not Implemented Yet
 - VIO producer node (real `/localization/vio/odometry`)

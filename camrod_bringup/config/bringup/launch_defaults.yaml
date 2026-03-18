@@ -1,0 +1,60 @@
+bringup:
+  runtime:
+    clean_before_launch: true
+    sim: true
+    rviz: true
+
+  localization:
+    use_eskf: true
+    wheel_bridge_enable: true
+    kimera_bridge_enable: false
+    pose_selector_enable: false
+
+  planning:
+    enable_path_cost_grids: true
+    enable_goal_replanner: true
+    enable_nav2_lifecycle_retry: false
+    enable_state_machine: false
+    use_dwb_controller: false
+
+  sensing:
+    enable_radar: false
+    enable_radar_cost_grid: true
+    enable_lidar_cost_grid: true
+    enable_lidar_driver: false
+    enable_gnss: false
+    enable_ntrip: false
+
+  system:
+    enable_module_checkers: true
+
+  namespaces:
+    map: map
+    sensing: sensing
+    localization: localization
+    planning: planning
+    platform: platform
+    perception: perception
+    sensor_kit: sensor_kit
+    bringup: bringup
+    system: system
+    gnss: sensing/gnss
+
+  topics:
+    gnss_navsatfix: /sensing/gnss/navsatfix
+    gnss_pose: /sensing/gnss/pose
+    gnss_pose_cov: /sensing/gnss/pose_with_covariance
+    gnss_rtcm: /sensing/gnss/rtcm
+
+  map:
+    # Keep explicit defaults here so top-level bringup remains deterministic
+    # even if map_info.yaml is edited or temporarily unavailable.
+    map_path: /home/hong/camrod_ws/src/lanelet2_maps.osm
+    origin_lat: 36.8436194
+    origin_lon: 128.0925490
+    origin_alt: 299.425
+    yaw_offset_deg: 0.0
+
+  sim:
+    lanelet_id: -1
+    fake_lanelet_id: -1

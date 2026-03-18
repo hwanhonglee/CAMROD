@@ -1,28 +1,76 @@
-# Module Docker Workflow (GPU-ready)
+# CAMROD Docker (Bringup, Multi-Arch)
 
-## 1) Build base image
+This folder provides a full-workspace Docker image for:
+- `ros2 launch camrod_bringup bringup.launch.py`
+- amd64 + arm64 multi-arch publish to Docker Hub: `lehong/camrod`
+
+## 1) Build and Push Multi-Arch Image
+
 ```bash
-cd /home/hong/cart_test_ws/src/docker
-docker build -f Dockerfile.base -t camping_cart/base:humble ..
+cd /home/hong/camrod_ws/src/docker
+chmod +x buildx_camrod.sh
+./buildx_camrod.sh
 ```
 
-## 2) Build one module image
+Default target:
+- image: `lehong/camrod`
+- tags: `latest` and `YYYYMMDD`
+- platforms: `linux/amd64,linux/arm64`
+
+## 2) Optional Custom Build Parameters
+
 ```bash
-./build_module.sh camping_cart_planning camping_cart_planning:humble
+IMAGE_REPO=lehong/camrod \
+IMAGE_TAG=v1.0.0 \
+PLATFORMS=linux/amd64,linux/arm64 \
+WORKSPACE_ROOT=/home/hong/camrod_ws \
+./buildx_camrod.sh
 ```
 
-## 3) Run one module
+## 3) Run Bringup Container
+
 ```bash
-./run_module.sh camping_cart_planning:humble \
-  ros2 launch camping_cart_planning planning.launch.py
+docker run --rm -it \
+  --network host \
+  --ipc host \
+  --gpus all \
+  -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+  -e ROS_DOMAIN_ID=0 \
+  lehong/camrod:latest
 ```
 
-## 4) Compose multi-module
+Default container command:
 ```bash
-docker compose -f compose.modules.yaml up planning map sensing
+ros2 launch camrod_bringup bringup.launch.py
 ```
 
-## Notes
-- GPU exposure uses `--gpus all` / `gpus: all`.
-- Runtime host networking is used to keep ROS2 DDS discovery simple.
-- For production, pin package versions and split build/runtime stages.
+## 4) Login Requirement
+
+Before push:
+```bash
+docker login
+```
+
+## 5) Notes
+
+- Build context is workspace root: `/home/hong/camrod_ws`.
+- Dockerfile path is: `src/docker/Dockerfile.camrod`.
+- Runtime dependencies are installed via `rosdep` during image build.
+- The script auto-installs `binfmt` (`tonistiigi/binfmt`) for arm64 emulation.
+
+## 6) If you see `Invalid ELF image for this architecture`
+
+Symptom:
+```text
+.buildkit_qemu_emulator: /bin/bash: Invalid ELF image for this architecture
+```
+
+Fix:
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install all
+```
+
+Then rebuild with a clean builder:
+```bash
+RESET_BUILDER=1 ./buildx_camrod.sh
+```
