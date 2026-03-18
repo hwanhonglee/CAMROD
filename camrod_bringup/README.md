@@ -1,193 +1,52 @@
-# Package Work Log
+# camrod_bringup
 
-<!-- HH_260109 Initialize bringup work log. -->
+Top-level runtime orchestrator for CAMROD modules.
 
-## Runtime Structure (2026-02-24)
-- `camrod_bringup/launch/bringup.launch.py` only orchestrates module launches.
-- Platform nodes are launched from `camrod_platform/launch/platform.launch.py`.
-- Map and map-visualization nodes are launched from `camrod_map/launch/map.launch.py`.
-- Sensing/perception/localization/planning are launched from each package launch file.
+## Role
+- Includes all module launches in a controlled order
+- Applies cross-module runtime toggles and shared arguments
+- Loads defaults from a single config file
+- Optionally runs pre-launch cleanup for stale processes
 
-## Bringup Arg Boundary
-- bringup should expose only cross-module knobs:
-  - shared map origin/path (`map_path`, `origin_lat/lon/alt`)
-  - runtime toggles (`sim`, `rviz`, `controller_mode`, `use_eskf`)
-  - per-module param file override paths
-- module-specific node-level params should live in each package launch/config:
-  - map internals in `camrod_map/*`
-  - planning internals in `camrod_planning/*`
-  - localization internals in `camrod_localization/*`
-  - sensing internals in `camrod_sensing/*`
+## Entry Point
+```bash
+ros2 launch camrod_bringup bringup.launch.py
+```
 
-## Costmap Shape Reality
-- `nav2_costmap_2d` master maps are always rectangular OccupancyGrid buffers by design.
-- lanelet-shaped rendering is achieved by keeping non-lanelet cells unknown/high and visualizing lanelet/path masks:
-  - `/map/cost_grid/lanelet`
-  - `/planning/cost_grid/global_path`
-  - `/planning/cost_grid/local_path`
-- if RViz shows a full rectangle, check:
-  - Map display topic is path/lanelet grid topic (not just `/planning/*/costmap`)
-  - `outside_value=-1`
-  - `path_use_lanelet_mask=true`
-  - `path_lanelet_only=true`
+## Architecture (Orchestration Layer)
+```text
+bringup.launch.py
+  -> camrod_platform
+  -> camrod_map
+  -> camrod_sensing
+  -> camrod_localization
+  -> camrod_perception
+  -> camrod_planning
+  -> camrod_system (module checkers / diagnostics)
+  -> RViz (optional)
+```
 
-## Cost Grid Modes / High-Cost Rules
-- Base map grid (`/map/cost_grid/lanelet`, `cost_mode: lanelet`)
-  - low: inside lanelet polygons
-  - high/unknown: outside lanelet polygons
-- Global path grid (`/planning/cost_grid/global_path`, `cost_mode: path`)
-  - low: active global path strip
-  - high: non-path lanelet cells
-- Local path grid (`/planning/cost_grid/local_path`, `cost_mode: path`)
-  - low: active global path strip near robot
-  - high: non-path lanelet cells near robot
-- Lidar obstacle layer (`nav2 ObstacleLayer`)
-  - high: occupied obstacle points from `/perception/obstacles/lidar`
-- Radar proximity layer (`nav2 RangeSensorLayer`)
-  - high: near-range occupied sectors from `/sensing/radar/*/range`
+## Main Launch Arguments
+- Runtime: `clean_before_launch`, `sim`, `rviz`
+- Localization toggles: `use_eskf`, `wheel_bridge_enable`, `kimera_bridge_enable`, `pose_selector_enable`
+- Planning toggles: `enable_path_cost_grids`, `enable_goal_replanner`, `enable_nav2_lifecycle_retry`, `enable_state_machine`, `use_dwb_controller`
+- Sensing toggles: `enable_lidar_driver`, `enable_lidar_cost_grid`, `enable_radar`, `enable_radar_cost_grid`, `enable_gnss`, `enable_ntrip`
+- Shared map/origin: `map_path`, `origin_lat`, `origin_lon`, `origin_alt`, `yaw_offset_deg`
+- Namespaces: `map_namespace`, `sensing_namespace`, `localization_namespace`, `planning_namespace`, `platform_namespace`, `perception_namespace`, `sensor_kit_namespace`, `bringup_namespace`, `system_namespace`, `gnss_namespace`
 
-## Config Sync Check
-- Keep these pairs identical:
-  - `camrod_map/config/lanelet_cost_grid.yaml` == `camrod_bringup/config/map/lanelet_cost_grid.yaml`
-  - `camrod_planning/config/path_cost_grids.yaml` == `camrod_bringup/config/planning/path_cost_grids.yaml`
-  - (legacy reference only) `camrod_planning/config/nav2_lanelet.yaml` == `camrod_bringup/config/planning/nav2_lanelet.yaml`
-  - active runtime overlays:
-    - `camrod_bringup/config/planning/nav2_base.yaml`
-    - `camrod_bringup/config/planning/nav2_vehicle.yaml`
-    - `camrod_bringup/config/planning/nav2_lanelet_overlay.yaml`
-    - `camrod_bringup/config/planning/nav2_behavior.yaml`
-- Quick check:
-  - `diff -u <pkg-config> <bringup-config>`
-  - `ros2 run camrod_bringup check_config_sync.sh`
+## Default Configuration
+- `config/bringup/launch_defaults.yaml`: global defaults
+- `config/bringup/cleanup_patterns.yaml`: process cleanup patterns
 
-## 2026-02-06 21:26
-- Path cost grid no longer forces outside_value (set to -1) so planners can compute the first path before any path is available.
+## Diagnostics
+- Module-local diagnostic publishers remain namespaced (for example `/map/diagnostic`)
+- Aggregated system stream: `/diagnostics`
+- Bringup diagnostic node: `/bringup/bringup_diagnostic`
 
-## 2026-02-20 14:20
-- HH_260220: Pass `sensor_kit_base_frame_id` (`sensor_kit_base_link`) from bringup to platform/sensor_kit launch.
-- HH_260220: Remove sensing calibration broadcaster usage; sensor extrinsic TF now comes from sensor kit URDF only.
-- HH_260220: Align perception camera frame to `camera_front_link`.
+## Example Overrides
+```bash
+ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
+ros2 launch camrod_bringup bringup.launch.py enable_gnss:=true enable_ntrip:=true
+ros2 launch camrod_bringup bringup.launch.py map_path:=/home/hong/camrod_ws/src/lanelet2_maps.osm
+```
 
-## 2026-02-09 16:30
-- Enable localization pose selector defaults (ESKF primary, Kimera-VIO fallback) via bringup launch passthrough args.
-- Add bringup selector config `config/localization/pose_selector.yaml`.
-- Tighten goal snapping to lanelet-contained goals (`require_lanelet_containment=true`) to keep planned path on lanelet map.
-
-## 2026-02-04 19:45
-- Prefer Smac2D planner by default for lanelet-constrained planning.
-- Fix global costmap width/height type mismatch by keeping width/height as integers (meters).
-- Align global costmap origin/size to lanelet map bounds for consistent planning coverage.
-
-## 2026-02-05 14:37
-- Fake sensor now excludes crosswalk lanelets and supports optional start snapping to nearest path point.
-
-## 2026-02-04 16:05
-- Disable visualizer TF publishing by default to avoid duplicate map->base_link transforms.
-
-## 2026-02-03 18:10
-- Disable wheel_odometry_bridge in sim to avoid duplicate /platform/wheel/odometry (fake sensor already publishes).
-
-## 2026-02-03 10:25
-- Add ESKF GNSS reinit params in bringup config (reinit_on_gnss_reject / reinit_distance_threshold).
-
-## 2026-02-02 15:40
-- Stitch all lanelet centerlines for full-lap fake sensor motion; add loop connection controls.
-- Add proximity (RangeSensorLayer) to Nav2 costmap plugins for near-range sensors.
-- Increase lanelet/path grid resolution for finer visualization (0.1m cells).
-
-## 2026-02-02 15:10
-- Add fake sensor loop-closure parameters for continuous centerline laps (close_loop, close_loop_max_gap).
-
-## 2026-02-02 14:30
-- Prevent cleanup pkill from self-terminating; avoids stale duplicate nodes (e.g., /map/lanelet_cost_grid).
-
-## 2026-02-02 11:55
-- Base map cost grid now rasterizes only lanelet bounds; path grids mark non-path cells as high cost.
-- Fake IMU now publishes yaw rate so ESKF heading follows the path.
-- Add BT plugin lib for ComputePathThroughPoses to prevent bt_navigator activation failure.
-
-## 2026-02-02 11:10
-- Switch cost field markers to visualize combined inflation costmap output.
-- Reduce lanelet grid resolutions and fit base grid to map bounds.
-
-## 2026-02-02 11:05
-- Synthesize centerline from left/right lanelet bounds when explicit centerline is absent.
-
-## 2026-02-02 10:36
-- Enforce fake sensor path to follow lanelet centerline only (no fallback to first way).
-
-## 2026-02-02 10:35
-- 2026-02-02: Add drop_zone_matcher config for initial localization OK gate.
-
-## 2026-02-02 10:32
-- Centralize all package configs under `camrod_bringup/config/*` and sync from package configs.
-- Wire bringup launch defaults to use bringup config copies (sensing/perception/planning/visualizer).
-- Add drop_zone_matcher param arg to bringup localization include.
-
-## 2026-01-30 16:05
-- 2026-01-30: Add RemovePassedGoals BT plugin library to bringup nav2 config for navigate_through_poses BT.
-- 2026-01-30: Update bringup map/sim configs to new_lanelet2_maps.osm origin.
-
-## 2026-01-29 22:13
-- HH_260129: Fix nav2 costmap plugin class names to use '::' (Obstacle/Inflation) for pluginlib lookup.
-
-## 2026-01-29 19:29
-- HH_260129: Align bt_navigator plugin library names with Humble action BT libraries in bringup nav2 config.
-- HH_260129: Remove missing BT plugin names (follow_waypoints) and use assisted_teleop action variant.
-
-## 2026-01-27 17:45
-- HH_260127: Remove HH tags from runtime logs and suppress bringup/fake sensor startup logs by default.
-
-## 2026-01-27 14:05
-- HH_260127: Switch bringup Nav2 params to camrod_bringup/config/planning/nav2_lanelet.yaml (planning config now mirrored here).
-
-## 2026-01-26 16:15
-- HH_260126: VIO reference stack consolidated to Kimera-VIO path under localization/external.
-
-## 2026-01-23 13:07
-- HH_260123: Wire ESKF/supervisor launch args (use_eskf, eskf/supervisor params, wheel bridge) into bringup.
-- HH_260123: Add ESKF and supervisor parameter files for localization stack defaults.
-
-## 2026-01-19
-- HH_260119: Review README ordering/architecture and confirm launch arg defaults; documentation-only update.
-
-## 2026-01-14 14:20
-- HH_260114: Declare/forward all fake sensor launch arguments (map path, origin, lanelet, speed) to avoid missing LaunchConfiguration errors in sim.
-- HH_260114: Add sim static TF publishers for map->base_link to stabilize Nav2 in simulation.
-- HH_260114: Update bringup license to Apache-2.0 and convert remaining bringup comments to English.
-
-## 2026-01-12 15:41
-- HH_260112: Add sim/RViz toggles and wire fake GNSS output for simulation bringup.
-- HH_260112: Align EKF parameters and map paths with namespaced bringup configs.
-
-## 2026-01-12 12:45
-- HH_260112: Refresh cleanup list to cover renamed nodes and new goal snapper.
-
-## 2026-01-12 10:40
-- HH_260112: Namespace camping_cart nodes (map/sensing/perception/localization/visualizer/bringup) with short names.
-- HH_260112: Add planning goal snapper node and wire /planning/goal_pose input.
-
-## 2026-01-11 20:10
-- HH_260109: Normalize EKF process_noise_covariance floats for ROS2 YAML parsing.
-- HH_260109: Apply EKF parameters under /localization namespace in bringup config.
-- HH_260109: Make EKF parameters node-agnostic to ensure namespaced launch loads all inputs.
-- HH_260109: Add optional clean_before_launch to stop stale nodes before launching.
-- HH_260109: Add explicit fake sensor launch defaults for map and publishing parameters.
-- HH_260109: Delay bringup/fake launch by 1s after cleanup to avoid killing new nodes.
-
-## 2026-01-09 20:30
-- HH_260109: Add perception launch wiring and route obstacle input to /perception/obstacles.
-
-## 2026-01-09 20:20
-- HH_260109: Remove unused robot_info launch entry from bringup package.
-
-## 2026-01-09 18:37
-- HH_260109: Rename sensor kit package and wire visualizer/platform packages into bringup.
-- HH_260109: Update GNSS/IMU/VIO/Wheel topic prefixes and map cost grid topic names.
-
-## 2026-01-09 15:52
-- HH_260109: Add fake sensor publisher + launch/config for lanelet-guided simulation.
-
-## 2026-01-09 15:46
-- HH_260109: Integrate EKF-based localization and sensing launch wiring in bringup.
-- HH_260109: Add obstacle layer and 5 kph tuning in Nav2 parameters.

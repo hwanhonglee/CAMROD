@@ -1,3 +1,4 @@
+# 2026-02-02 10:32 Sync from package config into bringup/config
 # HH_260112 Align node parameter keys with /perception namespace + short names.
 /perception/obstacle_fusion:
   ros__parameters:

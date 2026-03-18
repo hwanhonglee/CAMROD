@@ -65,7 +65,6 @@ def generate_launch_description():
         required_topics=[
             '/map/cost_grid/lanelet',
             '/map/cost_grid/planning_base',
-            '/map/cost_grid/inflation_markers',
         ],
         condition=IfCondition(enable_checkers),
         namespace=system_namespace,

@@ -22,10 +22,15 @@ if [[ -z "${WS_ROOT}" ]]; then
 fi
 WS_SRC="${WS_ROOT}/src"
 
+# Source-of-truth policy (2026-03-18):
+# - Runtime defaults are owned by camrod_bringup/config.
+# - Package-level config mirrors below are kept identical for standalone runs.
+# - nav2_lanelet.yaml is intentionally excluded because layered runtime now uses:
+#     nav2_base + nav2_vehicle + nav2_lanelet_overlay + nav2_behavior.
 pairs=(
   "camrod_map/config/lanelet_cost_grid.yaml camrod_bringup/config/map/lanelet_cost_grid.yaml"
   "camrod_planning/config/path_cost_grids.yaml camrod_bringup/config/planning/path_cost_grids.yaml"
-  "camrod_planning/config/nav2_lanelet.yaml camrod_bringup/config/planning/nav2_lanelet.yaml"
+  "camrod_perception/config/perception_params.yaml camrod_bringup/config/perception/perception_params.yaml"
 )
 
 status=0
@@ -43,6 +48,11 @@ for pair in "${pairs[@]}"; do
   echo
   rm -f /tmp/camrod_cfg_diff.$$ || true
 done
+
+echo "[INFO] intentionally excluded from strict sync check:"
+echo "  - camrod_planning/config/nav2_lanelet.yaml (legacy reference)"
+echo "  - camrod_localization/config/kimera_bridge.yaml (site/environment-specific paths)"
+echo
 
 if [[ ${status} -ne 0 ]]; then
   echo "Config sync check FAILED"
