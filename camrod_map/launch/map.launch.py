@@ -171,7 +171,7 @@ def generate_launch_description():
                 'centerline_half_width': 0.8,
                 'centerline_clip_to_lanelet': True,
                 # Keep non-centerline lane interior higher cost than centerline strip.
-                'centerline_lanelet_fill_value': 96,
+                'centerline_lanelet_fill_value': 85,
                 'lanelet_boundary_value': -1,
                 'boundary_half_width': 0.05,
                 'direction_penalty': 0,
@@ -180,7 +180,10 @@ def generate_launch_description():
                 'lethal_value': 100,
                 # HH_260316-00:00 Keep outside unknown; local/global costmap base layer
                 # treats unknown as non-traversable without forcing immediate lethal writes.
-                'outside_value': -1,
+                # HH_260318-00:00 Use high (but non-lethal) outside cost.
+                # This prevents Smac start-cell hard-fail when localization is slightly off-lane,
+                # while still strongly biasing paths back into lanelet centerline corridor.
+                'outside_value': 99,
                 'use_path_bbox': False,
                 'lock_window': True,
                 'use_map_bbox': True,

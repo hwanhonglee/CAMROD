@@ -2,6 +2,7 @@
   ros__parameters:
     enabled: true
     frame_id: "map"
+    # Use Nav2 planner native output as global path source.
     global_path_topic: "/planning/global_path"
     # HH_260305-00:00 planner_server /planning/global_path is VOLATILE.
     # Keep subscriber durability VOLATILE for guaranteed matching.
