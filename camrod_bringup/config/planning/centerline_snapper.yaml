@@ -11,8 +11,8 @@
     output_pose_topic: "/planning/lanelet_pose"
     output_pose_topic_ros: "/planning/lanelet_pose_ros"
     output_pose_cov_topic: "/planning/lanelet_pose_with_covariance"
-    # HH_260126 Expand search radius to handle map/pose offsets during sim.
-    max_search_radius: 120.0
+    # Limit nearest-centerline search to reduce branch jumps on nearby parallel lanelets.
+    max_search_radius: 35.0
     longitudinal_stddev: 0.5
     lateral_stddev: 0.3
     yaw_stddev: 0.2

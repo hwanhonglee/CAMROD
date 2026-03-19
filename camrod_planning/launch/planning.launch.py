@@ -115,6 +115,11 @@ def generate_launch_description():
         default_value='planning',
         description='Namespace for planning module nodes',
     )
+    centerline_input_pose_topic_arg = DeclareLaunchArgument(
+        'centerline_input_pose_topic',
+        default_value='/localization/pose',
+        description='Input pose topic for centerline snapper',
+    )
     system_namespace_arg = DeclareLaunchArgument(
         'system_namespace',
         default_value='system',
@@ -138,6 +143,7 @@ def generate_launch_description():
     enable_state_machine = LaunchConfiguration('enable_state_machine')
     planning_state_machine_param = LaunchConfiguration('planning_state_machine_param_file')
     module_namespace = LaunchConfiguration('module_namespace')
+    centerline_input_pose_topic = LaunchConfiguration('centerline_input_pose_topic')
     system_namespace = LaunchConfiguration('system_namespace')
 
     nav2_launch = IncludeLaunchDescription(
@@ -199,7 +205,7 @@ def generate_launch_description():
                 'offset_lat': origin_lat,
                 'offset_lon': origin_lon,
                 'offset_alt': origin_alt,
-                'input_pose_topic': '/localization/pose',
+                'input_pose_topic': centerline_input_pose_topic,
                 'output_pose_topic': '/planning/lanelet_pose',
                 'output_pose_topic_ros': '/planning/lanelet_pose_ros',
             },
@@ -224,6 +230,10 @@ def generate_launch_description():
                 'global_path_topic': '/planning/global_path',
                 'pose_topic': '/planning/lanelet_pose',
                 'output_topic': '/planning/local_path',
+                # Use controller-local trajectory as primary local path source.
+                'local_path_source': 'controller_then_slice',
+                'controller_path_topic': '/planning/local_path_controller',
+                'controller_path_timeout_sec': 0.8,
             },
         ],
     )
@@ -374,6 +384,7 @@ def generate_launch_description():
         origin_alt_arg,
         nav2_robot_base_frame_arg,
         module_namespace_arg,
+        centerline_input_pose_topic_arg,
         system_namespace_arg,
         goal_snapper,
         centerline_snapper,

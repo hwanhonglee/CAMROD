@@ -14,6 +14,10 @@
     lanelet_id: -1
     fake_lanelet_id: -1
     speed_mps: 1.4
+    # Debug:
+    # - true  : keep fake sensor position fixed on the path anchor
+    # - false : move along centerline by speed_mps
+    freeze_motion: false
     publish_rate_hz: 20.0
     loop: true
     # 2026-02-05 14:37: Skip crosswalk lanelets to prevent stitching jumps.
@@ -36,6 +40,25 @@
     base_frame_id: "robot_base_link"
     obstacle_offset: 5.0
     obstacle_height: 0.5
+    # Align incoming /localization/pose yaw to nearest global-path tangent.
+    # Position is preserved; only yaw is replaced and published to output topic.
+    localization_pose_yaw_align_enable: true
+    localization_pose_input_topic: "/localization/pose"
+    localization_pose_output_topic: "/localization/pose_yaw_aligned"
+    localization_pose_yaw_path_topic: "/planning/global_path"
+    localization_pose_yaw_min_segment_length: 0.1
+    # Yaw stabilization for pose_yaw_aligned:
+    # - alpha=1.0 means no smoothing
+    # - max_rate limits abrupt orientation jumps when nearest segment changes
+    localization_pose_yaw_smoothing_alpha: 0.35
+    localization_pose_yaw_max_rate_deg_s: 120.0
+    # Optional debug mode to isolate yaw-only behavior:
+    # keeps aligned pose position fixed while still updating yaw.
+    localization_pose_lock_position: false
+    localization_pose_lock_on_first_msg: true
+    localization_pose_lock_x: 0.0
+    localization_pose_lock_y: 0.0
+    localization_pose_lock_z: 0.0
     # 2026-02-02 11:05 Centerline resample step (m) when synthesizing from bounds.
     centerline_step: 1.0
     # 2026-03-03: Hold vehicle still at startup so GNSS/ESKF can settle before motion begins.

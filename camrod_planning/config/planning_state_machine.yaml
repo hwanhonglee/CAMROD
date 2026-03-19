@@ -6,6 +6,8 @@
     pose_topic: "/planning/lanelet_pose"
     # HH_260316-00:00 State machine tracks snapped goal stream only.
     goal_topic: "/planning/goal_pose_snapped"
+    # HH_260319-00:00 Mirror auto-goals to Nav2 ROS-facing goal topic as well.
+    goal_topic_ros: "/planning/goal_pose_snapped_ros"
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"

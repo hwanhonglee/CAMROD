@@ -4,6 +4,11 @@
     frame_id: "map"
     # Use Nav2 planner native output as global path source.
     global_path_topic: "/planning/global_path"
+    # Prefer controller-generated local plan first.
+    # If unavailable, extractor falls back to slicing the global path.
+    local_path_source: "controller_then_slice"
+    controller_path_topic: "/planning/local_path_controller"
+    controller_path_timeout_sec: 0.8
     # HH_260305-00:00 planner_server /planning/global_path is VOLATILE.
     # Keep subscriber durability VOLATILE for guaranteed matching.
     global_path_qos_transient_local: false
@@ -11,7 +16,7 @@
     # centered on lanelet centerline by construction.
     pose_topic: "/planning/lanelet_pose"
     output_topic: "/planning/local_path"
-    # Local path is a continuously updated slice of the fixed global path around current lanelet pose.
+    # Local path is controller-local plan first; global-slice is fallback for continuity.
     # HH_260305-00:00 Balance responsiveness and CPU load.
     publish_rate_hz: 20.0
     # Also publish once immediately when pose/global path updates (removes first-response delay).

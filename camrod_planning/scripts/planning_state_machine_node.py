@@ -52,6 +52,13 @@ class PlanningStateMachineNode(Node):
         )
         self.pose_topic = str(self.declare_parameter("pose_topic", "/planning/lanelet_pose").value)
         self.goal_topic = str(self.declare_parameter("goal_topic", "/planning/goal_pose").value)
+        # HH_260319-00:00 Optional ROS-goal mirror topic for Nav2 BT input.
+        # State-machine auto goals are published to both:
+        # - goal_topic       : internal snapped-goal stream
+        # - goal_topic_ros   : Nav2-facing goal stream (if configured)
+        self.goal_topic_ros = str(
+            self.declare_parameter("goal_topic_ros", "/planning/goal_pose_snapped_ros").value
+        )
         self.state_topic = str(
             self.declare_parameter("state_topic", "/planning/state_machine/state").value
         )
@@ -124,6 +131,9 @@ class PlanningStateMachineNode(Node):
         self._last_self_goal: Optional[PoseStamped] = None
 
         self.pub_goal = self.create_publisher(PoseStamped, self.goal_topic, 10)
+        self.pub_goal_ros = None
+        if self.goal_topic_ros and self.goal_topic_ros != self.goal_topic:
+            self.pub_goal_ros = self.create_publisher(PoseStamped, self.goal_topic_ros, 10)
         self.pub_state = self.create_publisher(String, self.state_topic, 10)
         self.pub_estop = self.create_publisher(Bool, self.estop_topic, 10)
         self.pub_diag = self.create_publisher(DiagnosticArray, self.diag_topic, 10)
@@ -149,6 +159,7 @@ class PlanningStateMachineNode(Node):
             f"health={self.health_diagnostic_topic} "
             f"pose={self.pose_topic} "
             f"goal={self.goal_topic} "
+            f"goal_ros={self.goal_topic_ros} "
             f"return={self.return_topic} "
             f"goal_key_topic={self.goal_key_topic} "
             f"request_goal_service={self.request_goal_service} "
@@ -320,9 +331,20 @@ class PlanningStateMachineNode(Node):
 
     # Implements `_on_return_to_drop_zone` behavior.
     def _on_return_to_drop_zone(self, msg: Bool) -> None:
-        # HH_260313-00:00 Rising-edge trigger only.
-        if msg.data and not self._last_return_cmd:
+        # HH_260319-00:00 Treat any `true` command as a valid return request.
+        # This avoids missed triggers when upstream does not publish a falling edge.
+        if msg.data:
             self.return_requested = True
+            # HH_260319-00:00 Return request must work even when health level is ERROR.
+            # Publish return goal immediately on rising edge; if throttled/failed,
+            # keep `return_requested` latched so `_tick` can retry.
+            if self._publish_auto_goal(self.return_goal_key, "return_request", force=True):
+                self.return_requested = False
+                self.startup_goal_sent = True
+                self.warn_goal_sent = False
+                self.get_logger().info(
+                    f"published return goal from topic trigger: {self.return_goal_key}"
+                )
         self._last_return_cmd = bool(msg.data)
 
     # Implements `_health_level` behavior.
@@ -358,6 +380,8 @@ class PlanningStateMachineNode(Node):
         msg.pose.position.z = kp.z
         msg.pose.orientation.w = 1.0
         self.pub_goal.publish(msg)
+        if self.pub_goal_ros is not None:
+            self.pub_goal_ros.publish(msg)
 
         self._last_self_goal = msg
         self._last_goal_publish_time = now
