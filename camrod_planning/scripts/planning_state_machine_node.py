@@ -10,6 +10,7 @@ from typing import Dict, Optional
 
 import rclpy
 import yaml
+from avg_msgs.srv import RequestGoalByKey
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
@@ -65,11 +66,24 @@ class PlanningStateMachineNode(Node):
         self.return_goal_key = str(
             self.declare_parameter("return_goal_key", "drop_zone").value
         )
+        self.goal_key_topic = str(
+            self.declare_parameter(
+                "goal_key_topic", "/planning/state_machine/goal_key"
+            ).value
+        )
+        self.request_goal_service = str(
+            self.declare_parameter(
+                "request_goal_service", "/planning/state_machine/request_goal"
+            ).value
+        )
         self.diag_topic = str(
             # HH_260311-00:00 Single consolidated ROS diagnostic stream.
             self.declare_parameter("diagnostics_topic", "/diagnostics").value
         )
         self.keypoints_yaml = str(self.declare_parameter("keypoints_yaml", "").value)
+        self.camping_sites_yaml = str(
+            self.declare_parameter("camping_sites_yaml", "").value
+        )
         self.startup_goal_key = str(self.declare_parameter("startup_goal_key", "drop_zone").value)
         self.warn_goal_key = str(self.declare_parameter("warn_goal_key", "garage").value)
         self.auto_startup_goal = bool(self.declare_parameter("auto_startup_goal", True).value)
@@ -120,6 +134,12 @@ class PlanningStateMachineNode(Node):
         self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
         self.create_subscription(PoseStamped, self.goal_topic, self._on_goal, 10)
         self.create_subscription(Bool, self.return_topic, self._on_return_to_drop_zone, 10)
+        self.create_subscription(String, self.goal_key_topic, self._on_goal_key_request, 10)
+        self.create_service(
+            RequestGoalByKey,
+            self.request_goal_service,
+            self._on_goal_key_service,
+        )
 
         period = 1.0 / max(0.5, self.loop_rate_hz)
         self.create_timer(period, self._tick)
@@ -130,6 +150,8 @@ class PlanningStateMachineNode(Node):
             f"pose={self.pose_topic} "
             f"goal={self.goal_topic} "
             f"return={self.return_topic} "
+            f"goal_key_topic={self.goal_key_topic} "
+            f"request_goal_service={self.request_goal_service} "
             f"keypoints={','.join(sorted(self.keypoints.keys()))}"
         )
 
@@ -178,6 +200,27 @@ class PlanningStateMachineNode(Node):
                         z=float(first.get("z", 0.0)),
                     )
 
+        # Allow direct reuse of camping-site map export when it is colocated
+        # with keypoints YAML.
+        self._merge_camping_sites(data)
+
+        # Optionally merge camping sites from a dedicated YAML file exported by
+        # map area exporter.
+        if self.camping_sites_yaml:
+            if not os.path.exists(self.camping_sites_yaml):
+                self.get_logger().warn(
+                    f"camping_sites_yaml not found: {self.camping_sites_yaml}"
+                )
+            else:
+                try:
+                    with open(self.camping_sites_yaml, "r", encoding="utf-8") as f:
+                        camping_data = yaml.safe_load(f) or {}
+                    self._merge_camping_sites(camping_data)
+                except Exception as e:  # noqa: BLE001
+                    self.get_logger().error(
+                        f"failed to read camping_sites_yaml {self.camping_sites_yaml}: {e}"
+                    )
+
         # If garage is missing, keep a deterministic fallback.
         if "garage" not in self.keypoints and "drop_zone" in self.keypoints:
             dz = self.keypoints["drop_zone"]
@@ -187,6 +230,30 @@ class PlanningStateMachineNode(Node):
                 x=dz.x,
                 y=dz.y,
                 z=dz.z,
+            )
+
+    # Implements `_merge_camping_sites` behavior.
+    def _merge_camping_sites(self, data: dict) -> None:
+        # Each camping site entry becomes a keypoint:
+        # - prefer semantic "type" name (e.g. camping_site_1)
+        # - fallback to deterministic camping_site_<index>
+        raw_sites = data.get("camping_sites", [])
+        if not isinstance(raw_sites, list):
+            return
+        for index, site in enumerate(raw_sites, start=1):
+            if not isinstance(site, dict):
+                continue
+            key_name = str(site.get("type", "")).strip()
+            if not key_name:
+                key_name = f"camping_site_{index}"
+            if key_name in self.keypoints:
+                continue
+            self.keypoints[key_name] = Keypoint(
+                name=key_name,
+                frame_id=str(site.get("frame_id", "map")),
+                x=float(site.get("x", 0.0)),
+                y=float(site.get("y", 0.0)),
+                z=float(site.get("z", 0.0)),
             )
 
     @staticmethod
@@ -273,14 +340,14 @@ class PlanningStateMachineNode(Node):
         return max(self.module_levels.values())
 
     # Implements `_publish_auto_goal` behavior.
-    def _publish_auto_goal(self, key_name: str, source: str) -> bool:
+    def _publish_auto_goal(self, key_name: str, source: str, force: bool = False) -> bool:
         kp = self.keypoints.get(key_name)
         if kp is None:
             self.get_logger().warn(f"keypoint '{key_name}' not found")
             return False
         now = self.get_clock().now()
         dt = (now - self._last_goal_publish_time).nanoseconds / 1e9
-        if dt < self.min_goal_publish_interval_s:
+        if not force and dt < self.min_goal_publish_interval_s:
             return False
 
         msg = PoseStamped()
@@ -296,7 +363,55 @@ class PlanningStateMachineNode(Node):
         self._last_goal_publish_time = now
         self.active_goal = msg
         self.active_goal_source = source
+        self.startup_goal_sent = True
         return True
+
+    # Implements `_on_goal_key_request` behavior.
+    def _on_goal_key_request(self, msg: String) -> None:
+        key_name = msg.data.strip()
+        if not key_name:
+            self.get_logger().warn("received empty goal-key request on topic")
+            return
+        if self._publish_auto_goal(key_name, f"key_topic:{key_name}", force=True):
+            self.return_requested = False
+            self.warn_goal_sent = False
+            self.get_logger().info(f"published goal from key request topic: {key_name}")
+
+    # Implements `_on_goal_key_service` behavior.
+    def _on_goal_key_service(
+        self, request: RequestGoalByKey.Request, response: RequestGoalByKey.Response
+    ) -> RequestGoalByKey.Response:
+        key_name = request.key.strip()
+        if not key_name:
+            response.accepted = False
+            response.message = "empty key"
+            return response
+
+        keypoint = self.keypoints.get(key_name)
+        if keypoint is None:
+            response.accepted = False
+            response.message = f"unknown key: {key_name}"
+            return response
+
+        goal_pose = PoseStamped()
+        goal_pose.header.stamp = self.get_clock().now().to_msg()
+        goal_pose.header.frame_id = keypoint.frame_id
+        goal_pose.pose.position.x = keypoint.x
+        goal_pose.pose.position.y = keypoint.y
+        goal_pose.pose.position.z = keypoint.z
+        goal_pose.pose.orientation.w = 1.0
+
+        published = self._publish_auto_goal(key_name, f"key_service:{key_name}", force=True)
+        response.accepted = bool(published)
+        if published:
+            self.return_requested = False
+            self.warn_goal_sent = False
+            response.message = f"goal published for key: {key_name}"
+            response.goal_pose = goal_pose
+            self.get_logger().info(f"published goal from key request service: {key_name}")
+        else:
+            response.message = f"goal publish throttled for key: {key_name}"
+        return response
 
     # Implements `_goal_reached` behavior.
     def _goal_reached(self) -> bool:

@@ -42,10 +42,15 @@ set(msg_files
   "msg/AvgSystemMsgs.msg"
 )
 
+set(srv_files
+  "srv/RequestGoalByKey.srv"
+)
+
 set(${PROJECT_NAME}_MEMBER_OF_GROUPS "rosidl_interface_packages")
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files}
+  ${srv_files}
   DEPENDENCIES
     builtin_interfaces
     action_msgs

@@ -48,6 +48,14 @@ def generate_launch_description():
         ),
         description="Output YAML path for drop zones",
     )
+    camping_output_yaml_arg = DeclareLaunchArgument(
+        "camping_sites_output_yaml_path",
+        default_value=os.path.join(
+            "/home/hong/camrod_ws/src/camrod_bringup/config/planning",
+            "camping_sites.yaml",
+        ),
+        description="Output YAML path for camping sites",
+    )
 
     # Implements `_to_float` behavior.
     def _to_float(value, fallback):
@@ -81,8 +89,8 @@ def generate_launch_description():
         return [
             Node(
                 package="camrod_map",
-                executable="drop_zone_exporter_node",
-                name="drop_zone_exporter",
+                executable="area_exporter_node",
+                name="area_exporter",
                 output="screen",
                 parameters=[
                     {
@@ -93,6 +101,9 @@ def generate_launch_description():
                         "output_yaml_path": LaunchConfiguration("output_yaml_path").perform(
                             context
                         ),
+                        "camping_sites_output_yaml_path": LaunchConfiguration(
+                            "camping_sites_output_yaml_path"
+                        ).perform(context),
                     }
                 ],
             )
@@ -106,6 +117,7 @@ def generate_launch_description():
             origin_lon_arg,
             origin_alt_arg,
             output_yaml_arg,
+            camping_output_yaml_arg,
             OpaqueFunction(function=_launch_nodes),
         ]
     )

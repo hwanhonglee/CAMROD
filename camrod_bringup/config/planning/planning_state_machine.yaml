@@ -11,6 +11,10 @@
     # HH_260313-00:00 User return trigger (Bool true edge) -> publish drop-zone goal.
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     return_goal_key: "drop_zone"
+    # String request topic (e.g. "camping_site_3") -> publish mapped goal pose.
+    goal_key_topic: "/planning/state_machine/goal_key"
+    # Service request for keypoint goal publish.
+    request_goal_service: "/planning/state_machine/request_goal"
     diagnostics_topic: "/diagnostics"
 
     # Keypoint map for state-based auto goals.
@@ -18,6 +22,8 @@
     # 1) keypoints: {name: {x,y,z,frame_id}}
     # 2) drop_zones: [{x,y,z,...}] (fallback for drop_zone)
     keypoints_yaml: "/home/hong/camrod_ws/src/camrod_bringup/config/planning/planning_state_machine_keypoints.yaml"
+    # 3) camping_sites: [{type, x, y, z, ...}] exported by map area exporter.
+    camping_sites_yaml: "/home/hong/camrod_ws/src/camrod_bringup/config/planning/camping_sites.yaml"
     startup_goal_key: "drop_zone"
     warn_goal_key: "garage"
 

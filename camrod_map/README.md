@@ -45,7 +45,7 @@ lanelet2_map.launch
 
 ## Utility Launches
 - `lanelet2_map.launch.py`: map-only launcher
-- `drop_zone_export.launch.py`: exports drop-zone metadata from Lanelet2 map
+- `area_export.launch.py`: exports semantic area metadata (drop_zone, camping_site_*) from Lanelet2 map
 
 ## Configuration
 - `camrod_bringup/config/map/map_info.yaml`
@@ -55,4 +55,3 @@ lanelet2_map.launch
 ## Diagnostics
 - Module-local topic: `/map/diagnostic`
 - Aggregated topic: `/diagnostics`
-

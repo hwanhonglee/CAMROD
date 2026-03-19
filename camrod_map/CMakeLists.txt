@@ -117,18 +117,18 @@ target_include_directories(lanelet_cost_grid_node PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
-# 2026-01-30: Drop zone exporter (Lanelet type -> YAML list).
-add_executable(drop_zone_exporter_node
-  src/drop_zone_exporter_node.cpp
+# 2026-01-30: Area exporter (Lanelet semantic areas -> YAML lists).
+add_executable(area_exporter_node
+  src/area_exporter_node.cpp
 )
-ament_target_dependencies(drop_zone_exporter_node
+ament_target_dependencies(area_exporter_node
   avg_msgs
   rclcpp
   lanelet2_core
   lanelet2_io
   lanelet2_projection
 )
-target_link_libraries(drop_zone_exporter_node
+target_link_libraries(area_exporter_node
   camrod_map_lib
 )
 
@@ -173,7 +173,7 @@ install(TARGETS
   lanelet2_map_node
   lanelet_cost_layer
   lanelet_cost_grid_node
-  drop_zone_exporter_node
+  area_exporter_node
   cost_field_marker_node
   cost_field_node
   marker_array_aggregator_node
