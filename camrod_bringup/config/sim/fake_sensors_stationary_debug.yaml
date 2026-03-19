@@ -1,0 +1,11 @@
+/bringup/fake_sensor_publisher:
+  ros__parameters:
+    # Debug profile:
+    # - freeze fake-sensor motion to isolate yaw behavior
+    # - lock output position so only yaw changes are visible
+    freeze_motion: true
+    localization_pose_lock_position: true
+    localization_pose_lock_on_first_msg: true
+    # Conservative yaw stabilization for segment-switch spikes.
+    localization_pose_yaw_smoothing_alpha: 0.20
+    localization_pose_yaw_max_rate_deg_s: 60.0
