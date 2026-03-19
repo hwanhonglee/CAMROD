@@ -15,10 +15,11 @@ source install/setup.bash
 
 Build (recommended before run):
 ```bash
-# If GNSS ublox source stack is used, include external ublox base path.
+# Include nested sensing external stacks explicitly.
+# (They are not auto-discovered with plain `--base-paths src`.)
 colcon build --symlink-install \
-  --base-paths src src/camrod_sensing/external/ublox \
-  --packages-up-to camrod_bringup ublox_gps
+  --base-paths src src/camrod_sensing/external/ublox src/camrod_sensing/external/vanjee_lidar \
+  --packages-up-to camrod_bringup ublox_gps vanjee_lidar_sdk
 source install/setup.bash
 ```
 

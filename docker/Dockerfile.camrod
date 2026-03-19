@@ -17,6 +17,7 @@ src/camrod_sensing \
 src/camrod_sensor_kit \
 src/camrod_system \
 src/camrod_sensing/external/ublox \
+src/camrod_sensing/external/vanjee_lidar \
 src/external/lanelet2 \
 src/external/mrt_cmake_modules \
 src/external/vision_msgs"
@@ -40,6 +41,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-navigation2 \
     ros-humble-nav2-bringup \
     ros-humble-robot-localization \
+    ros-humble-xacro \
+    ros-humble-rmw-cyclonedds-cpp \
     ros-humble-ntrip-client \
     && rm -rf /var/lib/apt/lists/*
 
@@ -89,13 +92,11 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
       --ignore-src \
       -r -y
 
-# Build bringup stack plus ublox source packages used by GNSS launch.
+# Build the full CAMROD runtime workspace.
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
     colcon build \
-      --symlink-install \
       --event-handlers console_direct+ \
-      --base-paths ${CAMROD_SOURCE_PATHS} \
-      --packages-up-to camrod_bringup ublox_gps
+      --base-paths ${CAMROD_SOURCE_PATHS}
 
 
 FROM osrf/ros:humble-desktop AS runtime
@@ -117,6 +118,7 @@ src/camrod_sensing \
 src/camrod_sensor_kit \
 src/camrod_system \
 src/camrod_sensing/external/ublox \
+src/camrod_sensing/external/vanjee_lidar \
 src/external/lanelet2 \
 src/external/mrt_cmake_modules \
 src/external/vision_msgs"
@@ -128,6 +130,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-navigation2 \
     ros-humble-nav2-bringup \
     ros-humble-robot-localization \
+    ros-humble-xacro \
+    ros-humble-rmw-cyclonedds-cpp \
     ros-humble-ntrip-client \
     && rm -rf /var/lib/apt/lists/*
 

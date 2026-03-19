@@ -55,6 +55,9 @@ docker login
 
 - Build context is workspace root: `/home/hong/camrod_ws`.
 - Dockerfile path is: `src/docker/Dockerfile.camrod`.
+- Docker build includes nested sensing external stacks:
+  - `src/camrod_sensing/external/ublox`
+  - `src/camrod_sensing/external/vanjee_lidar`
 - Runtime dependencies are installed via `rosdep` during image build.
 - The script auto-installs `binfmt` (`tonistiigi/binfmt`) for arm64 emulation.
 
