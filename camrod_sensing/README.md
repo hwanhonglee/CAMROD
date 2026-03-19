@@ -7,6 +7,21 @@ Sensing module for LiDAR, camera, IMU, GNSS, and radar pipelines.
 - LiDAR/camera preprocessing
 - GNSS and optional NTRIP integration
 - Near-range cost grid generation (`lidar`, `radar`)
+- External source stacks under this module:
+  - `external/ublox` (GNSS)
+  - `external/vanjee_lidar` (LiDAR SDK + custom msgs)
+
+## Build Note (Important)
+- `colcon` does not auto-discover nested packages under another package directory.
+- Build with explicit base paths when you need external sensing stacks:
+```bash
+cd /home/hong/camrod_ws
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install \
+  --base-paths src src/camrod_sensing/external/ublox src/camrod_sensing/external/vanjee_lidar \
+  --packages-up-to camrod_sensing ublox_gps vanjee_lidar_sdk
+source install/setup.bash
+```
 
 ## Launch Entry Points
 - Main module:
@@ -68,4 +83,3 @@ Sensing module for LiDAR, camera, IMU, GNSS, and radar pipelines.
 ## Diagnostics
 - Module-local topic: `/sensing/diagnostic`
 - Aggregated topic: `/diagnostics`
-

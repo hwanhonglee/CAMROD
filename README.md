@@ -43,7 +43,12 @@ This is the integrated ROS 2 Humble workspace for CAMROD runtime.
 ```bash
 cd ~/camrod_ws
 rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install
+# NOTE:
+# `camrod_sensing/external/*` packages are nested under another package tree,
+# so include those base paths explicitly when building.
+colcon build --symlink-install \
+  --base-paths src src/camrod_sensing/external/ublox src/camrod_sensing/external/vanjee_lidar \
+  --packages-up-to camrod_bringup ublox_gps vanjee_lidar_sdk
 source install/setup.bash
 ```
 
@@ -84,4 +89,3 @@ map -> robot_base_link -> sensor_kit_base_link
                                    -> lidar_link
                                    -> camera_front_link
 ```
-
