@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <osm generator="VMB">
-  <MetaInfo format_version="1" map_version="21" validation_version="1"/>
+  <MetaInfo format_version="1" map_version="22" validation_version="1"/>
   <node id="1" lat="36.73011815844" lon="127.439640243">
     <tag k="local_x" v="-296.2169"/>
     <tag k="local_y" v="91.6383"/>
@@ -65882,6 +65882,66 @@
     <tag k="ele" v="6.892"/>
     <tag k="color" v="red"/>
   </node>
+  <node id="36110" lat="36.72825235865" lon="127.443122266">
+    <tag k="local_x" v="14.6917"/>
+    <tag k="local_y" v="-115.3366"/>
+    <tag k="ele" v="-13.7351"/>
+  </node>
+  <node id="36111" lat="36.72825200697" lon="127.44318198264">
+    <tag k="local_x" v="20.0239"/>
+    <tag k="local_y" v="-115.3756"/>
+    <tag k="ele" v="-13.8939"/>
+  </node>
+  <node id="36112" lat="36.72820663887" lon="127.44318260518">
+    <tag k="local_x" v="20.0795"/>
+    <tag k="local_y" v="-120.4082"/>
+    <tag k="ele" v="-13.8667"/>
+  </node>
+  <node id="36114" lat="36.72820715462" lon="127.44312352918">
+    <tag k="local_x" v="14.8045"/>
+    <tag k="local_y" v="-120.351"/>
+    <tag k="ele" v="-13.7338"/>
+  </node>
+  <node id="36115" lat="36.72846259288" lon="127.44278250384">
+    <tag k="local_x" v="-15.6462"/>
+    <tag k="local_y" v="-92.0157"/>
+    <tag k="ele" v="-12.8503"/>
+  </node>
+  <node id="36116" lat="36.72846259288" lon="127.44278250384">
+    <tag k="local_x" v="-15.6462"/>
+    <tag k="local_y" v="-92.0157"/>
+    <tag k="ele" v="-12.8503"/>
+  </node>
+  <node id="36117" lat="36.72846259288" lon="127.44278250384">
+    <tag k="local_x" v="-15.6462"/>
+    <tag k="local_y" v="-92.0157"/>
+    <tag k="ele" v="-12.8503"/>
+  </node>
+  <node id="36118" lat="36.72846259288" lon="127.44278250384">
+    <tag k="local_x" v="-15.6462"/>
+    <tag k="local_y" v="-92.0157"/>
+    <tag k="ele" v="-12.8503"/>
+  </node>
+  <node id="36120" lat="36.72843968082" lon="127.44282935494">
+    <tag k="local_x" v="-11.4628"/>
+    <tag k="local_y" v="-94.5573"/>
+    <tag k="ele" v="-12.9544"/>
+  </node>
+  <node id="36121" lat="36.72843967534" lon="127.44278068177">
+    <tag k="local_x" v="-15.8089"/>
+    <tag k="local_y" v="-94.5579"/>
+    <tag k="ele" v="-12.8392"/>
+  </node>
+  <node id="36122" lat="36.72847407058" lon="127.44278140516">
+    <tag k="local_x" v="-15.7443"/>
+    <tag k="local_y" v="-90.7425"/>
+    <tag k="ele" v="-12.9091"/>
+  </node>
+  <node id="36124" lat="36.72847442041" lon="127.44282964046">
+    <tag k="local_x" v="-11.4373"/>
+    <tag k="local_y" v="-90.7037"/>
+    <tag k="ele" v="-13.0183"/>
+  </node>
   <way id="3">
     <nd ref="1"/>
     <nd ref="2"/>
@@ -85385,6 +85445,24 @@
     <tag k="type" v="light_bulbs"/>
     <tag k="subtype" v="solid"/>
   </way>
+  <way id="36125">
+    <nd ref="36120"/>
+    <nd ref="36121"/>
+    <nd ref="36122"/>
+    <nd ref="36124"/>
+    <nd ref="36120"/>
+    <tag k="type" v="line_thin"/>
+    <tag k="subtype" v="solid"/>
+  </way>
+  <way id="36127">
+    <nd ref="36110"/>
+    <nd ref="36111"/>
+    <nd ref="36112"/>
+    <nd ref="36114"/>
+    <nd ref="36110"/>
+    <tag k="type" v="line_thin"/>
+    <tag k="subtype" v="solid"/>
+  </way>
   <way id="33100">
     <nd ref="33094"/>
     <nd ref="33095"/>
@@ -85429,6 +85507,13 @@
     <nd ref="36022"/>
     <nd ref="36023"/>
     <tag k="type" v="speed_bump"/>
+    <tag k="area" v="yes"/>
+  </way>
+  <way id="36119">
+    <nd ref="36115"/>
+    <nd ref="36118"/>
+    <nd ref="36117"/>
+    <nd ref="36116"/>
     <tag k="area" v="yes"/>
   </way>
   <relation id="7">
@@ -90711,6 +90796,16 @@
     <member type="way" role="outer" ref="7909"/>
     <tag k="type" v="multipolygon"/>
     <tag k="subtype" v="speed bump"/>
+  </relation>
+  <relation id="36126">
+    <member type="way" role="outer" ref="36125"/>
+    <tag k="type" v="multipolygon"/>
+    <tag k="subtype" v="camping_site_1"/>
+  </relation>
+  <relation id="36128">
+    <member type="way" role="outer" ref="36127"/>
+    <tag k="type" v="multipolygon"/>
+    <tag k="subtype" v="drop_zone"/>
   </relation>
   <relation id="3289">
     <member type="way" role="refers" ref="3288"/>

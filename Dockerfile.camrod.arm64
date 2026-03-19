@@ -4,7 +4,7 @@
 # images are both truly native userlands. `osrf/ros:humble-desktop` is not
 # published for arm64 and causes mislabeled arm64 manifests.
 #
-FROM ros:humble AS builder
+FROM --platform=linux/arm64 ros:humble AS builder
 
 SHELL ["/bin/bash", "-lc"]
 ENV DEBIAN_FRONTEND=noninteractive

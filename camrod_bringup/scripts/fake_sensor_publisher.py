@@ -10,7 +10,7 @@ import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import PoseStamped, Quaternion
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, Path
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from sensor_msgs.msg import Imu, PointCloud2, PointField
 from sensor_msgs_py import point_cloud2
@@ -81,6 +81,10 @@ class FakeSensorPublisher(Node):
         legacy_lanelet_id = int(self.declare_parameter("fake_lanelet_id", -1).value)
         self.lanelet_id = legacy_lanelet_id if legacy_lanelet_id >= 0 else canonical_lanelet_id
         self.speed_mps = self.declare_parameter("speed_mps", 1.4).value
+        # Debug option:
+        # - true  : keep fake sensor pose fixed on the path start anchor
+        # - false : move along centerline path with `speed_mps`
+        self.freeze_motion = bool(self.declare_parameter("freeze_motion", False).value)
         self.publish_rate_hz = self.declare_parameter("publish_rate_hz", 20.0).value
         self.loop = self.declare_parameter("loop", True).value
         # 2026-02-05 14:37: Skip crosswalk lanelets to prevent centerline jumps.
@@ -113,6 +117,57 @@ class FakeSensorPublisher(Node):
         self.base_frame_id = self.declare_parameter("base_frame_id", "robot_base_link").value
         self.obstacle_offset = self.declare_parameter("obstacle_offset", 5.0).value
         self.obstacle_height = self.declare_parameter("obstacle_height", 0.5).value
+        # Optional helper: align localization pose yaw to nearest active path tangent.
+        # Position is kept from incoming /localization/pose, only orientation(yaw) is replaced.
+        self.localization_pose_yaw_align_enable = bool(
+            self.declare_parameter("localization_pose_yaw_align_enable", True).value
+        )
+        self.localization_pose_input_topic = str(
+            self.declare_parameter("localization_pose_input_topic", "/localization/pose").value
+        )
+        self.localization_pose_output_topic = str(
+            self.declare_parameter(
+                "localization_pose_output_topic", "/localization/pose_yaw_aligned"
+            ).value
+        )
+        self.localization_pose_yaw_path_topic = str(
+            self.declare_parameter(
+                "localization_pose_yaw_path_topic", "/planning/global_path"
+            ).value
+        )
+        self.localization_pose_yaw_min_segment_length = float(
+            self.declare_parameter("localization_pose_yaw_min_segment_length", 0.10).value
+        )
+        # Optional stabilization for /localization/pose_yaw_aligned.
+        # Keeps yaw continuous when nearest path segments change.
+        self.localization_pose_yaw_smoothing_alpha = float(
+            self.declare_parameter("localization_pose_yaw_smoothing_alpha", 1.0).value
+        )
+        self.localization_pose_yaw_max_rate_deg_s = float(
+            self.declare_parameter("localization_pose_yaw_max_rate_deg_s", 180.0).value
+        )
+        # Optional debug mode: lock aligned pose position to one fixed point.
+        # This is useful to isolate yaw-only behavior while keeping localization pipeline alive.
+        self.localization_pose_lock_position = bool(
+            self.declare_parameter("localization_pose_lock_position", False).value
+        )
+        self.localization_pose_lock_on_first_msg = bool(
+            self.declare_parameter("localization_pose_lock_on_first_msg", True).value
+        )
+        self.localization_pose_lock_x = float(
+            self.declare_parameter("localization_pose_lock_x", 0.0).value
+        )
+        self.localization_pose_lock_y = float(
+            self.declare_parameter("localization_pose_lock_y", 0.0).value
+        )
+        self.localization_pose_lock_z = float(
+            self.declare_parameter("localization_pose_lock_z", 0.0).value
+        )
+        self._yaw_path_points = []
+        self._yaw_path_ready = False
+        self._last_aligned_yaw = None
+        self._last_aligned_yaw_time = None
+        self._lock_position_initialized = False
         # 2026-02-02 11:05: Resample centerline from bounds when explicit centerline is missing.
         self.centerline_step = self.declare_parameter("centerline_step", 1.0).value
 
@@ -154,6 +209,44 @@ class FakeSensorPublisher(Node):
         self.pub_wheel = self.create_publisher(Odometry, "/platform/wheel/odometry", 10)
         self.pub_vio = self.create_publisher(Odometry, "/localization/vio/odometry", 10)
         self.pub_obstacles = self.create_publisher(PointCloud2, "/perception/obstacles", 10)
+
+        # Optional pose-yaw align bridge for fake/sim mode.
+        self.pub_localization_pose_yaw_aligned = None
+        self.sub_localization_pose_input = None
+        self.sub_localization_pose_path = None
+        if self.localization_pose_yaw_align_enable:
+            if self.localization_pose_input_topic == self.localization_pose_output_topic:
+                self.get_logger().error(
+                    "localization pose yaw align disabled: input_topic equals output_topic "
+                    "(would create feedback loop)."
+                )
+            else:
+                self.pub_localization_pose_yaw_aligned = self.create_publisher(
+                    PoseStamped, self.localization_pose_output_topic, 10
+                )
+                self.sub_localization_pose_input = self.create_subscription(
+                    PoseStamped,
+                    self.localization_pose_input_topic,
+                    self._on_localization_pose_input,
+                    10,
+                )
+                self.sub_localization_pose_path = self.create_subscription(
+                    Path,
+                    self.localization_pose_yaw_path_topic,
+                    self._on_localization_pose_yaw_path,
+                    10,
+                )
+                self.get_logger().info(
+                    "localization yaw align enabled: "
+                    f"input={self.localization_pose_input_topic} "
+                    f"output={self.localization_pose_output_topic} "
+                    f"path={self.localization_pose_yaw_path_topic}"
+                )
+                if self.localization_pose_lock_position:
+                    self.get_logger().warn(
+                        "localization pose lock-position is enabled "
+                        "(debug mode; aligned pose position is fixed)."
+                    )
 
         period = 1.0 / max(self.publish_rate_hz, 1.0)
         self.timer = self.create_timer(period, self._on_timer)
@@ -465,13 +558,102 @@ class FakeSensorPublisher(Node):
         yaw = math.atan2(p1[1] - p0[1], p1[0] - p0[0])
         return (x, y, z, lat, lon), yaw
 
+    # Handles the `_on_localization_pose_yaw_path` callback.
+    def _on_localization_pose_yaw_path(self, msg: Path):
+        if not msg or len(msg.poses) < 2:
+            self._yaw_path_points = []
+            self._yaw_path_ready = False
+            return
+        points = []
+        for ps in msg.poses:
+            points.append((ps.pose.position.x, ps.pose.position.y))
+        self._yaw_path_points = points
+        self._yaw_path_ready = len(points) >= 2
+
+    # Computes `NearestPathYaw` values.
+    def _nearest_path_yaw(self, x: float, y: float):
+        if not self._yaw_path_ready or len(self._yaw_path_points) < 2:
+            return None
+        best_dist2 = float("inf")
+        best_yaw = None
+        min_seg_len = max(1e-6, float(self.localization_pose_yaw_min_segment_length))
+        for i in range(len(self._yaw_path_points) - 1):
+            x0, y0 = self._yaw_path_points[i]
+            x1, y1 = self._yaw_path_points[i + 1]
+            dx = x1 - x0
+            dy = y1 - y0
+            seg_len2 = dx * dx + dy * dy
+            if seg_len2 < min_seg_len * min_seg_len:
+                continue
+            # project current pose to segment
+            t = ((x - x0) * dx + (y - y0) * dy) / seg_len2
+            t = max(0.0, min(1.0, t))
+            px = x0 + t * dx
+            py = y0 + t * dy
+            dist2 = (x - px) * (x - px) + (y - py) * (y - py)
+            if dist2 < best_dist2:
+                best_dist2 = dist2
+                best_yaw = math.atan2(dy, dx)
+        return best_yaw
+
+    # Handles the `_on_localization_pose_input` callback.
+    def _on_localization_pose_input(self, msg: PoseStamped):
+        if self.pub_localization_pose_yaw_aligned is None:
+            return
+        out = PoseStamped()
+        out.header = msg.header
+        out.pose = msg.pose
+
+        x = msg.pose.position.x
+        y = msg.pose.position.y
+        z = msg.pose.position.z
+        if self.localization_pose_lock_position:
+            if self.localization_pose_lock_on_first_msg and not self._lock_position_initialized:
+                self.localization_pose_lock_x = x
+                self.localization_pose_lock_y = y
+                self.localization_pose_lock_z = z
+                self._lock_position_initialized = True
+            x = self.localization_pose_lock_x
+            y = self.localization_pose_lock_y
+            z = self.localization_pose_lock_z
+            out.pose.position.x = x
+            out.pose.position.y = y
+            out.pose.position.z = z
+
+        yaw = self._nearest_path_yaw(x, y)
+        if yaw is not None:
+            now_sec = time.time()
+            if self._last_aligned_yaw is not None and self._last_aligned_yaw_time is not None:
+                # 1) unwrap to nearest equivalent angle around previous yaw
+                dyaw = normalize_angle(yaw - self._last_aligned_yaw)
+                # 2) optional yaw-rate limit
+                max_rate = max(0.0, float(self.localization_pose_yaw_max_rate_deg_s)) * math.pi / 180.0
+                dt = max(1e-3, now_sec - self._last_aligned_yaw_time)
+                if max_rate > 0.0:
+                    max_step = max_rate * dt
+                    if dyaw > max_step:
+                        dyaw = max_step
+                    elif dyaw < -max_step:
+                        dyaw = -max_step
+                yaw = self._last_aligned_yaw + dyaw
+                # 3) optional smoothing (1.0 = no smoothing)
+                alpha = min(1.0, max(0.0, float(self.localization_pose_yaw_smoothing_alpha)))
+                yaw = self._last_aligned_yaw + alpha * normalize_angle(yaw - self._last_aligned_yaw)
+            self._last_aligned_yaw = yaw
+            self._last_aligned_yaw_time = now_sec
+            out.pose.orientation = yaw_to_quat(yaw)
+        self.pub_localization_pose_yaw_aligned.publish(out)
+
     # Implements `_on_timer` behavior.
     def _on_timer(self):
         now = self.get_clock().now().to_msg()
         elapsed = time.time() - self._t0
         holding = elapsed < self.startup_hold_sec
         motion_elapsed = max(0.0, elapsed - self.startup_hold_sec)
-        dist = motion_elapsed * self.speed_mps
+        if self.freeze_motion:
+            dist = 0.0
+        else:
+            dist = motion_elapsed * self.speed_mps
         (x, y, z, lat, lon), yaw = self._sample_path(dist)
 
         # HH_260112 Create a pose message for downstream odometry/cloud outputs.

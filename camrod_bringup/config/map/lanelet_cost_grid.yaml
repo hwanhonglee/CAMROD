@@ -85,9 +85,9 @@
     resolution: 0.05
     width: 0
     height: 0
-    # HH_260317-00:00 Keep centerline corridor tighter so planner tracks
-    # lanelet centerline more strongly before considering side offsets.
-    centerline_half_width: 1.0
+    # HH_260319-00:00 Tighten corridor so global planner cannot drift
+    # too far from lanelet centerline while still tolerating small pose noise.
+    centerline_half_width: 0.75
     free_value: 0
     lethal_value: 100
     # HH_260316-00:00 Planner-base for Nav2:
@@ -101,9 +101,9 @@
     # HH_260316-00:00 Fill lanelet interior with soft base cost to keep
     # route connectivity robust while centerline remains the lowest-cost band.
     # -1 disables lanelet fill.
-    # HH_260317-00:00 Raise lanelet base fill cost so centerline strip stays
-    # the lowest-cost route inside each lanelet.
-    centerline_lanelet_fill_value: 85
+    # HH_260319-00:00 Increase lanelet fill cost so centerline strip
+    # remains the preferred route unless dynamic obstacle costs require detour.
+    centerline_lanelet_fill_value: 92
     # HH_260318-00:00 Keep outside high-cost but traversable to avoid
     # planner start-cell hard-failure when pose is slightly outside lanelet.
     outside_value: 99
@@ -121,9 +121,9 @@
     cell_inside_min_hits: 6
     cell_inside_min_hits_path: 5
     cell_inside_min_hits_boundary: 8
-    # 2026-03-04: Keep planner-base pose-independent; vehicle-relative gradients
-    # belong to path-cost layers, not the planner base map.
-    centerline_use_distance_gradient: false
+    # HH_260319-00:00 Enable lateral gradient inside centerline strip:
+    # exact centerline is lowest cost, strip edge is higher cost.
+    centerline_use_distance_gradient: true
     direction_penalty: 0
     backward_penalty: 0
     gradient_range: 30.0
