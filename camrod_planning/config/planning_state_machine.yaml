@@ -8,9 +8,14 @@
     goal_topic: "/planning/goal_pose_snapped"
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
+    return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
+    return_goal_key: "drop_zone"
+    goal_key_topic: "/planning/state_machine/goal_key"
+    request_goal_service: "/planning/state_machine/request_goal"
     diagnostics_topic: "/diagnostics"
 
     keypoints_yaml: "/home/hong/camrod_ws/src/camrod_planning/config/planning_state_machine_keypoints.yaml"
+    camping_sites_yaml: "/home/hong/camrod_ws/src/camrod_bringup/config/planning/camping_sites.yaml"
     startup_goal_key: "drop_zone"
     warn_goal_key: "garage"
 

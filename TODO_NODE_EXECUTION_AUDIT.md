@@ -43,8 +43,8 @@ Auto-generated static audit from CMake + launch files.
   - from `camrod_planning/launch/path_cost_grids.launch.py`
 - `cost_field_node`
   - from `camrod_map/launch/map.launch.py`
-- `drop_zone_exporter_node`
-  - from `camrod_map/launch/drop_zone_export.launch.py`
+- `area_exporter_node`
+  - from `camrod_map/launch/area_export.launch.py`
 - `lanelet2_map_node`
   - from `camrod_map/launch/lanelet2_map.launch.py`
 - `lanelet_cost_grid_node`

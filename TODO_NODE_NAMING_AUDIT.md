@@ -39,7 +39,7 @@ Scope: `camrod_*/launch/*.py` Node actions only.
 - `health_monitor` -> `localization_health_monitor_node` (camrod_localization/launch/localization.launch.py)
 - `localization_checker` -> `module_checker_node.py` (camrod_localization/launch/localization.launch.py)
 - `localization_diagnostic` -> `localization_diagnostic_node.py` (camrod_localization/launch/localization.launch.py)
-- `drop_zone_exporter` -> `drop_zone_exporter_node` (camrod_map/launch/drop_zone_export.launch.py)
+- `area_exporter` -> `area_exporter_node` (camrod_map/launch/area_export.launch.py)
 - `lanelet2_map` -> `lanelet2_map_node` (camrod_map/launch/lanelet2_map.launch.py)
 - `cost_grid_map` -> `lanelet_cost_grid_node` (camrod_map/launch/map.launch.py)
 - `cost_grid_planning_base` -> `lanelet_cost_grid_node` (camrod_map/launch/map.launch.py)

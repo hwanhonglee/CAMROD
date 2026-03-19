@@ -53,12 +53,25 @@ Pose alignment flow:
 - Inputs:
   - `/goal_pose`
   - `/localization/pose`
+  - `/planning/state_machine/goal_key` (`std_msgs/String`, e.g. `camping_site_3`)
 - Main outputs:
   - `/planning/global_path`
   - `/planning/local_path`
 - Cost-grid marker outputs:
   - `/planning/cost_grid/global_path_markers`
   - `/planning/cost_grid/local_path_markers`
+
+## Keypoint Goal Request (Camping Sites)
+- Topic request:
+  - publish `std_msgs/String` to `/planning/state_machine/goal_key`
+  - payload example: `camping_site_7`
+- Service request:
+  - call `/planning/state_machine/request_goal`
+  - type: `avg_msgs/srv/RequestGoalByKey`
+  - request field: `key` (e.g. `camping_site_7`)
+- Keypoint sources:
+  - `keypoints_yaml` (static keypoints like `drop_zone`, `garage`)
+  - `camping_sites_yaml` (exported by map area exporter)
 
 ## Related Launch Files
 - `nav2_lanelet.launch.py`: Nav2 wrapper with overlay chain
@@ -76,4 +89,3 @@ Pose alignment flow:
 ## Diagnostics
 - Module-local topic: `/planning/diagnostic`
 - Aggregated topic: `/diagnostics`
-

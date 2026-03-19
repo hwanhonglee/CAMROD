@@ -103,7 +103,7 @@ ros2 launch camrod_map lanelet2_map.launch.py
 
 Drop-zone export utility:
 ```bash
-ros2 launch camrod_map drop_zone_export.launch.py \
+ros2 launch camrod_map area_export.launch.py \
   map_path:=/home/hong/camrod_ws/src/lanelet2_maps.osm \
   output_yaml_path:=/home/hong/camrod_ws/src/camrod_bringup/config/localization/drop_zones.yaml
 ```
