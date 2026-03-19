@@ -17,10 +17,13 @@ from launch.actions import (
     ExecuteProcess,
     GroupAction,
     IncludeLaunchDescription,
+    RegisterEventHandler,
     SetLaunchConfiguration,
     TimerAction,
 )
 from launch.conditions import IfCondition
+from launch.conditions import UnlessCondition
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -141,6 +144,15 @@ def generate_launch_description():
 
         ('lanelet_id', cfg_get(launch_cfg, 'sim/lanelet_id', -1), 'Fake sensor lanelet id'),
         ('fake_lanelet_id', cfg_get(launch_cfg, 'sim/fake_lanelet_id', -1), 'Legacy fake lanelet id alias'),
+        (
+            'fake_sensors_param_file',
+            cfg_get(
+                launch_cfg,
+                'sim/fake_sensors_param_file',
+                bringup_cfg('sim/fake_sensors.yaml'),
+            ),
+            'Fake sensor parameter file path',
+        ),
     ]
 
     args = [
@@ -156,7 +168,6 @@ def generate_launch_description():
     nav2_vehicle_dwb = pkg_path('camrod_bringup', os.path.join('config', 'planning', 'nav2_vehicle_dwb.yaml'))
     nav2_lanelet = pkg_path('camrod_bringup', os.path.join('config', 'planning', 'nav2_lanelet_overlay.yaml'))
     nav2_behavior = pkg_path('camrod_bringup', os.path.join('config', 'planning', 'nav2_behavior.yaml'))
-    fake_sensors_param = pkg_path('camrod_bringup', os.path.join('config', 'sim', 'fake_sensors.yaml'))
     eskf_param = pkg_path('camrod_bringup', os.path.join('config', 'localization', 'eskf.yaml'))
     supervisor_param = pkg_path('camrod_bringup', os.path.join('config', 'localization', 'supervisor.yaml'))
     kimera_param = pkg_path('camrod_bringup', os.path.join('config', 'localization', 'kimera_bridge.yaml'))
@@ -196,7 +207,8 @@ def generate_launch_description():
         include('camrod_bringup', 'fake_sensors.launch.py', {
             'bringup_namespace': lc['bringup_namespace'],
             'sensing_namespace': lc['sensing_namespace'],
-            'fake_sensors_param_file': fake_sensors_param,
+            # Keep fake-sensor profile selectable from top-level bringup.
+            'fake_sensors_param_file': lc['fake_sensors_param_file'],
             'fake_enable_cost_grids': 'false',
             'map_path': lc['map_path'],
             'origin_lat': lc['origin_lat'],
@@ -316,6 +328,9 @@ def generate_launch_description():
         condition=IfCondition(lc['clean_before_launch']),
     )
 
+    # HH_260319-01: Sequence launch deterministically.
+    # Do not start module stack until cleanup process exits; otherwise cleanup
+    # can kill freshly launched nodes (race between pkill and stack bringup).
     init_nav2_vehicle_profile = SetLaunchConfiguration('nav2_vehicle_param_file', nav2_vehicle)
     apply_dwb_profile = SetLaunchConfiguration(
         'nav2_vehicle_param_file', nav2_vehicle_dwb, condition=IfCondition(lc['use_dwb_controller'])
@@ -323,11 +338,24 @@ def generate_launch_description():
 
     launch_stack = GroupAction([*modules, bringup_diagnostic, rviz_node])
     delayed_stack = TimerAction(period=1.0, actions=[launch_stack])
+    start_stack_actions = [init_nav2_vehicle_profile, apply_dwb_profile, delayed_stack]
+
+    start_after_cleanup = RegisterEventHandler(
+        OnProcessExit(
+            target_action=clean_action,
+            on_exit=start_stack_actions,
+        ),
+        condition=IfCondition(lc['clean_before_launch']),
+    )
+
+    start_without_cleanup = GroupAction(
+        actions=start_stack_actions,
+        condition=UnlessCondition(lc['clean_before_launch']),
+    )
 
     return LaunchDescription([
         *args,
         clean_action,
-        init_nav2_vehicle_profile,
-        apply_dwb_profile,
-        delayed_stack,
+        start_after_cleanup,
+        start_without_cleanup,
     ])
