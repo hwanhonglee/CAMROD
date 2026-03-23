@@ -6,9 +6,8 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
-find_package(rclpy REQUIRED)
-find_package(diagnostic_msgs REQUIRED)
-find_package(avg_msgs REQUIRED)
+# Python-only package: runtime dependencies are declared in package.xml.
+# Avoid pulling message package CMake exports here to keep container builds stable.
 
 install(
   PROGRAMS

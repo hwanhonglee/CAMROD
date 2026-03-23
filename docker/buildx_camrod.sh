@@ -12,7 +12,7 @@ for kv in "$@"; do
   fi
 done
 
-WORKSPACE_ROOT="${WORKSPACE_ROOT:-/home/hong/camrod_ws}"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-/home/camrod_ws}"
 DOCKERFILE_REL="${DOCKERFILE_REL:-src/docker/Dockerfile.camrod}"
 IMAGE_REPO="${IMAGE_REPO:-lehong/camrod}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"

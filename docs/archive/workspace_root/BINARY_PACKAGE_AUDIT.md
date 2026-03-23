@@ -1,0 +1,92 @@
+# Binary Package Audit (CAMROD)
+
+- Workspace packages scanned: 30
+- External dependencies (not in workspace): 78
+- Resolved ROS packages from `/opt/ros/*`: 66
+- Resolved ROS packages from other prefixes: 0
+- Unresolved as ROS package (likely system/rosdep keys): 12
+
+## 1) Binary ROS packages used from /opt/ros
+- `action_msgs` -> `/opt/ros/humble`
+- `ament_cmake` -> `/opt/ros/humble`
+- `ament_cmake_core` -> `/opt/ros/humble`
+- `ament_cmake_gtest` -> `/opt/ros/humble`
+- `ament_cmake_pytest` -> `/opt/ros/humble`
+- `ament_cmake_python` -> `/opt/ros/humble`
+- `ament_cmake_ros` -> `/opt/ros/humble`
+- `ament_lint_auto` -> `/opt/ros/humble`
+- `ament_lint_common` -> `/opt/ros/humble`
+- `angles` -> `/opt/ros/humble`
+- `behaviortree_cpp_v3` -> `/opt/ros/humble`
+- `bond` -> `/opt/ros/humble`
+- `bondcpp` -> `/opt/ros/humble`
+- `builtin_interfaces` -> `/opt/ros/humble`
+- `diagnostic_msgs` -> `/opt/ros/humble`
+- `diagnostic_updater` -> `/opt/ros/humble`
+- `eigen3_cmake_module` -> `/opt/ros/humble`
+- `geographic_msgs` -> `/opt/ros/humble`
+- `geometry_msgs` -> `/opt/ros/humble`
+- `image_geometry` -> `/opt/ros/humble`
+- `lanelet2_core` -> `/opt/ros/humble`
+- `lanelet2_io` -> `/opt/ros/humble`
+- `lanelet2_projection` -> `/opt/ros/humble`
+- `laser_geometry` -> `/opt/ros/humble`
+- `launch` -> `/opt/ros/humble`
+- `launch_ros` -> `/opt/ros/humble`
+- `launch_testing` -> `/opt/ros/humble`
+- `launch_testing_ament_cmake` -> `/opt/ros/humble`
+- `launch_testing_ros` -> `/opt/ros/humble`
+- `lifecycle_msgs` -> `/opt/ros/humble`
+- `map_msgs` -> `/opt/ros/humble`
+- `message_filters` -> `/opt/ros/humble`
+- `nav2_map_server` -> `/opt/ros/humble`
+- `nav_2d_msgs` -> `/opt/ros/humble`
+- `nav_2d_utils` -> `/opt/ros/humble`
+- `nav_msgs` -> `/opt/ros/humble`
+- `nmea_msgs` -> `/opt/ros/humble`
+- `ompl` -> `/opt/ros/humble`
+- `osrf_pycommon` -> `/opt/ros/humble`
+- `pcl_conversions` -> `/opt/ros/humble`
+- `pluginlib` -> `/opt/ros/humble`
+- `rcl_interfaces` -> `/opt/ros/humble`
+- `rclcpp` -> `/opt/ros/humble`
+- `rclcpp_action` -> `/opt/ros/humble`
+- `rclcpp_components` -> `/opt/ros/humble`
+- `rclcpp_lifecycle` -> `/opt/ros/humble`
+- `rclpy` -> `/opt/ros/humble`
+- `rcutils` -> `/opt/ros/humble`
+- `ros2launch` -> `/opt/ros/humble`
+- `rosidl_default_generators` -> `/opt/ros/humble`
+- `rosidl_default_runtime` -> `/opt/ros/humble`
+- `rtcm_msgs` -> `/opt/ros/humble`
+- `sensor_msgs` -> `/opt/ros/humble`
+- `sensor_msgs_py` -> `/opt/ros/humble`
+- `std_msgs` -> `/opt/ros/humble`
+- `std_srvs` -> `/opt/ros/humble`
+- `test_msgs` -> `/opt/ros/humble`
+- `tf2` -> `/opt/ros/humble`
+- `tf2_eigen` -> `/opt/ros/humble`
+- `tf2_geometry_msgs` -> `/opt/ros/humble`
+- `tf2_msgs` -> `/opt/ros/humble`
+- `tf2_ros` -> `/opt/ros/humble`
+- `tf2_sensor_msgs` -> `/opt/ros/humble`
+- `vision_msgs` -> `/opt/ros/humble`
+- `visualization_msgs` -> `/opt/ros/humble`
+- `yaml_cpp_vendor` -> `/opt/ros/humble`
+
+## 2) ROS packages resolved from non-/opt prefixes
+- (none)
+
+## 3) Not a ROS package name (system/rosdep keys likely)
+- `asio`
+- `eigen`
+- `geographiclib`
+- `libboost-dev`
+- `libboost-program-options`
+- `libboost-program-options-dev`
+- `libpcl-all-dev`
+- `nlohmann-json-dev`
+- `python3`
+- `python3-dev`
+- `python3-yaml`
+- `yaml-cpp`

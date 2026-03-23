@@ -1,33 +1,79 @@
-# CAMROD Docker (Bringup, Multi-Arch)
+# CAMROD Docker Guide
 
-This folder provides a full-workspace Docker image for:
-- `ros2 launch camrod_bringup bringup.launch.py`
-- amd64 + arm64 multi-arch publish to Docker Hub: `lehong/camrod`
+This folder is now intentionally minimal and focused on one production path:
+**build and run the full CAMROD bringup image**.
 
-## 1) Build and Push Multi-Arch Image
+## Why There Were Many Similar Files
+
+Historically, this folder had mixed experiments:
+
+- full-stack image drafts
+- per-module image drafts
+- local run helper scripts
+- compose variants
+
+Those overlapped in responsibility and made maintenance confusing.
+
+This has been consolidated into one supported flow:
+
+- one main Dockerfile (`Dockerfile.camrod`)
+- one entrypoint (`entrypoint.camrod.sh`)
+- one build/push helper (`buildx_camrod.sh`)
+
+## Removed Legacy Files
+
+The following files were removed because they were no longer part of the active build/deploy path:
+
+- `Dockerfile.base`
+- `Dockerfile.module`
+- `build_module.sh`
+- `run_module.sh`
+- `compose.modules.yaml`
+
+## Files and Roles
+
+- `Dockerfile.camrod`
+  - Multi-stage Dockerfile for the full workspace runtime image.
+  - Builds on ROS 2 Humble (`ros:humble`) and supports amd64/arm64 via Buildx.
+  - Installs dependencies with `rosdep`, builds CAMROD packages, and sets default command:
+    - `ros2 launch camrod_bringup bringup.launch.py`
+  - `rosdep` is constrained to runtime/build dependency types only:
+    - `build, buildtool, exec` (test/doc dependencies excluded for faster CI/container builds)
+
+- `buildx_camrod.sh`
+  - Build/push helper script for Docker Buildx.
+  - Supports single-arch (`linux/arm64`) or multi-arch (`linux/amd64,linux/arm64`) publishing.
+  - Default image repo: `lehong/camrod`.
+
+- `entrypoint.camrod.sh`
+  - Container entrypoint.
+  - Sources ROS/workspace setup and executes the container command.
+
+## Build and Push
+
+### A) Push arm64 only (quick)
 
 ```bash
-cd /home/hong/camrod_ws/src/docker
-chmod +x buildx_camrod.sh
-./buildx_camrod.sh
-```
-
-Default target:
-- image: `lehong/camrod`
-- tags: `latest` and `YYYYMMDD`
-- platforms: `linux/amd64,linux/arm64`
-
-## 2) Optional Custom Build Parameters
-
-```bash
+cd /home/camrod_ws/src/docker
 IMAGE_REPO=lehong/camrod \
-IMAGE_TAG=v1.0.0 \
-PLATFORMS=linux/amd64,linux/arm64 \
-WORKSPACE_ROOT=/home/hong/camrod_ws \
+IMAGE_TAG=v1.1-arm64 \
+PLATFORMS=linux/arm64 \
+WORKSPACE_ROOT=/home/camrod_ws \
 ./buildx_camrod.sh
 ```
 
-## 3) Run Bringup Container
+### B) Push multi-arch (amd64 + arm64)
+
+```bash
+cd /home/camrod_ws/src/docker
+IMAGE_REPO=lehong/camrod \
+IMAGE_TAG=v1.1 \
+PLATFORMS=linux/amd64,linux/arm64 \
+WORKSPACE_ROOT=/home/camrod_ws \
+./buildx_camrod.sh
+```
+
+## Run
 
 ```bash
 docker run --rm -it \
@@ -36,44 +82,15 @@ docker run --rm -it \
   --gpus all \
   -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
   -e ROS_DOMAIN_ID=0 \
-  lehong/camrod:latest
+  lehong/camrod:v1.1
 ```
 
-Default container command:
-```bash
-ros2 launch camrod_bringup bringup.launch.py
-```
+## Notes
 
-## 4) Login Requirement
+- Build context must be workspace root (`/home/camrod_ws`).
+- Dockerfile path is `src/docker/Dockerfile.camrod`.
+- If arm64 build fails with binfmt/qemu issues, retry with:
 
-Before push:
-```bash
-docker login
-```
-
-## 5) Notes
-
-- Build context is workspace root: `/home/hong/camrod_ws`.
-- Dockerfile path is: `src/docker/Dockerfile.camrod`.
-- Docker build includes nested sensing external stacks:
-  - `src/camrod_sensing/external/ublox`
-  - `src/camrod_sensing/external/vanjee_lidar`
-- Runtime dependencies are installed via `rosdep` during image build.
-- The script auto-installs `binfmt` (`tonistiigi/binfmt`) for arm64 emulation.
-
-## 6) If you see `Invalid ELF image for this architecture`
-
-Symptom:
-```text
-.buildkit_qemu_emulator: /bin/bash: Invalid ELF image for this architecture
-```
-
-Fix:
-```bash
-docker run --privileged --rm tonistiigi/binfmt --install all
-```
-
-Then rebuild with a clean builder:
 ```bash
 RESET_BUILDER=1 ./buildx_camrod.sh
 ```

@@ -9,7 +9,7 @@ FROM --platform=linux/arm64 ros:humble AS builder
 SHELL ["/bin/bash", "-lc"]
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=humble
-ENV WS_DIR=/home/hong/camrod_ws
+ENV WS_DIR=/home/camrod_ws
 ENV CAMROD_SOURCE_PATHS="\
 src/camrod_common/avg_msgs \
 src/camrod_bringup \
@@ -51,14 +51,14 @@ RUN rosdep update --rosdistro ${ROS_DISTRO}
 
 WORKDIR ${WS_DIR}
 
-# Build context is workspace root (`/home/hong/camrod_ws`) where packages live
+# Build context is workspace root (`/home/camrod_ws`) where packages live
 # under `src/`.
 COPY . ${WS_DIR}
 
 # Fail fast with clear guidance when wrong build context is used.
 RUN test -d src/camrod_bringup || ( \
     echo "ERROR: build context must be workspace root containing src/"; \
-    echo "       expected path: /home/hong/camrod_ws/src/camrod_bringup"; \
+    echo "       expected path: /home/camrod_ws/src/camrod_bringup"; \
     ls -la; \
     exit 1 )
 
@@ -107,7 +107,7 @@ FROM builder AS runtime
 SHELL ["/bin/bash", "-lc"]
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=humble
-ENV WS_DIR=/home/hong/camrod_ws
+ENV WS_DIR=/home/camrod_ws
 WORKDIR ${WS_DIR}
 
 COPY src/docker/entrypoint.camrod.sh /entrypoint.camrod.sh

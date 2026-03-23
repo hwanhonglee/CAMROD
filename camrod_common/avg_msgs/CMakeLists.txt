@@ -6,6 +6,12 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
+# NOTE:
+# On some arm64 Docker builds, rcutils package discovery can resolve through an
+# unexpected prefix and fail library probing. Resolve rcutils explicitly first
+# so downstream rosidl_* packages inherit a stable rcutils_DIR.
+find_package(rcutils REQUIRED)
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 find_package(rosidl_default_generators REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(action_msgs REQUIRED)
@@ -16,6 +22,19 @@ find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(vision_msgs REQUIRED)
+
+# NOTE:
+# rosidl_generator_py still relies on legacy `FindPythonLibs` variables on
+# some environments. Bridge modern Python3 discovery to legacy names so
+# multi-arch Docker builds (especially arm64 under qemu) resolve consistently.
+set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}" CACHE FILEPATH "Python executable" FORCE)
+set(PYTHON_INCLUDE_DIR "${Python3_INCLUDE_DIRS}" CACHE PATH "Python include dir" FORCE)
+set(PYTHON_INCLUDE_DIRS "${Python3_INCLUDE_DIRS}" CACHE STRING "Python include dirs" FORCE)
+if(Python3_LIBRARIES)
+  list(GET Python3_LIBRARIES 0 _python3_primary_lib)
+  set(PYTHON_LIBRARY "${_python3_primary_lib}" CACHE FILEPATH "Python library" FORCE)
+  set(PYTHON_LIBRARIES "${Python3_LIBRARIES}" CACHE STRING "Python libraries" FORCE)
+endif()
 
 set(msg_files
   "msg/ModuleHealth.msg"

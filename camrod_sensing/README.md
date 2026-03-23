@@ -15,7 +15,7 @@ Sensing module for LiDAR, camera, IMU, GNSS, and radar pipelines.
 - `colcon` does not auto-discover nested packages under another package directory.
 - Build with explicit base paths when you need external sensing stacks:
 ```bash
-cd /home/hong/camrod_ws
+cd /home/camrod_ws
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install \
   --base-paths src src/camrod_sensing/external/ublox src/camrod_sensing/external/vanjee_lidar \

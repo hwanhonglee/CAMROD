@@ -2,7 +2,7 @@
 # HH_260112 Align node parameter keys with /map namespace + short names.
 /map/lanelet2_map:
   ros__parameters:
-    map_path: "/home/hong/camrod_ws/src/lanelet2_maps.osm"
+    map_path: "/home/camrod_ws/src/lanelet2_maps.osm"
 
     # HH_260114 WGS84 origin used as LocalCartesian projector reference.
     

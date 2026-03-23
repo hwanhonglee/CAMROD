@@ -5,7 +5,7 @@
 set -eo pipefail
 
 ROS_DISTRO="${ROS_DISTRO:-humble}"
-WS_DIR="${WS_DIR:-/home/hong/camrod_ws}"
+WS_DIR="${WS_DIR:-/home/camrod_ws}"
 
 source "/opt/ros/${ROS_DISTRO}/setup.bash"
 

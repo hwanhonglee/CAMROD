@@ -16,7 +16,8 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common filters segmentation)
+find_package(Eigen3 REQUIRED)
+find_package(PCL REQUIRED COMPONENTS common filters segmentation sample_consensus search kdtree)
 
 # PCL exports optional compile definitions (e.g., Eigen alignment flags).
 if(PCL_DEFINITIONS)
@@ -27,7 +28,19 @@ add_executable(lidar_preprocessor_node src/lidar_preprocessor_node.cpp)
 ament_target_dependencies(lidar_preprocessor_node
   rclcpp sensor_msgs geometry_msgs avg_msgs pcl_conversions)
 target_include_directories(lidar_preprocessor_node PRIVATE ${PCL_INCLUDE_DIRS})
-target_link_libraries(lidar_preprocessor_node ${PCL_LIBRARIES})
+target_include_directories(lidar_preprocessor_node PRIVATE ${EIGEN3_INCLUDE_DIRS})
+# Explicitly link PCL component libraries used by the preprocessor.
+# On some ARM64 images, `${PCL_LIBRARIES}` may miss transitive pieces and
+# cause undefined references for PCLBase/SACSegmentation/VoxelGrid symbols.
+target_link_libraries(lidar_preprocessor_node
+  ${PCL_LIBRARIES}
+  pcl_common
+  pcl_filters
+  pcl_sample_consensus
+  pcl_segmentation
+  pcl_search
+  pcl_kdtree
+)
 
 # HH_260109 Add camera preprocessor for raw-to-processed image streams.
 add_executable(camera_preprocessor_node src/camera_preprocessor_node.cpp)

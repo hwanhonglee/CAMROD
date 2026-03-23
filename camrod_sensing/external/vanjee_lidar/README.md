@@ -12,7 +12,7 @@ Source origin:
 ## Build
 
 ```bash
-cd /home/hong/camrod_ws
+cd /home/camrod_ws
 source /opt/ros/humble/setup.bash
 colcon build --symlink-install \
   --base-paths src src/camrod_sensing/external/vanjee_lidar \

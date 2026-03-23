@@ -40,16 +40,28 @@ This is the integrated ROS 2 Humble workspace for CAMROD runtime.
 - `camrod_common/avg_msgs`: shared interface package (`avg_msgs`)
 
 ## Build
+
+### A) Source-tree root (`~/CAMROD`)
+```bash
+cd ~/CAMROD
+./bootstrap_module_externals.sh          # clone/update vendored externals
+./build_camrod_all.sh --packages-up-to camrod_bringup
+source install/setup.bash
+```
+
+### B) Workspace root (`~/camrod_ws`)
 ```bash
 cd ~/camrod_ws
-rosdep install --from-paths src --ignore-src -r -y
-# NOTE:
-# `camrod_sensing/external/*` packages are nested under another package tree,
-# so include those base paths explicitly when building.
-colcon build --symlink-install \
-  --base-paths src src/camrod_sensing/external/ublox src/camrod_sensing/external/vanjee_lidar \
-  --packages-up-to camrod_bringup ublox_gps vanjee_lidar_sdk
+./src/bootstrap_module_externals.sh      # clone/update vendored externals
+./build_with_external.sh --packages-up-to camrod_bringup
 source install/setup.bash
+```
+
+### System dependencies (once)
+```bash
+# in ~/camrod_ws
+source /opt/ros/humble/setup.bash
+rosdep install --from-paths src --ignore-src -r -y
 ```
 
 ## Run Full Stack

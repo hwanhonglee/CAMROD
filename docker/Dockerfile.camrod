@@ -9,9 +9,8 @@ FROM ros:humble AS builder
 SHELL ["/bin/bash", "-lc"]
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=humble
-ENV WS_DIR=/home/hong/camrod_ws
+ENV WS_DIR=/home/camrod_ws
 ENV CAMROD_SOURCE_PATHS="\
-src/camrod_common/avg_msgs \
 src/camrod_bringup \
 src/camrod_common \
 src/camrod_localization \
@@ -34,6 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     ca-certificates \
+    libpython3-dev \
+    python3-dev \
+    python3.10-dev \
     python3-pip \
     python3-rosdep \
     python3-vcstool \
@@ -44,6 +46,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-numpy \
     python3-yaml \
     libeigen3-dev \
+    libpugixml-dev \
+    libssl-dev \
+    ros-humble-rcutils \
     && rm -rf /var/lib/apt/lists/*
 
 RUN rosdep init 2>/dev/null || true
@@ -51,14 +56,17 @@ RUN rosdep update --rosdistro ${ROS_DISTRO}
 
 WORKDIR ${WS_DIR}
 
-# Build context is workspace root (`/home/hong/camrod_ws`) where packages live
+# Build context is workspace root (`/home/camrod_ws`) where packages live
 # under `src/`.
 COPY . ${WS_DIR}
+
+# Ensure host-side build artifacts never affect container colcon resolution.
+RUN rm -rf build install log src/log
 
 # Fail fast with clear guidance when wrong build context is used.
 RUN test -d src/camrod_bringup || ( \
     echo "ERROR: build context must be workspace root containing src/"; \
-    echo "       expected path: /home/hong/camrod_ws/src/camrod_bringup"; \
+    echo "       expected path: /home/camrod_ws/src/camrod_bringup"; \
     ls -la; \
     exit 1 )
 
@@ -89,6 +97,9 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
     rosdep install \
       --rosdistro ${ROS_DISTRO} \
       --from-paths ${CAMROD_SOURCE_PATHS} \
+      --dependency-types build \
+      --dependency-types buildtool \
+      --dependency-types exec \
       --ignore-src \
       -r -y
 
@@ -96,8 +107,10 @@ RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
 RUN source /opt/ros/${ROS_DISTRO}/setup.bash && \
     colcon build \
       --event-handlers console_direct+ \
+      --parallel-workers 2 \
       --base-paths ${CAMROD_SOURCE_PATHS} \
-      --cmake-args -DBUILD_TESTING=OFF
+      --cmake-args \
+      -DBUILD_TESTING=OFF
 
 
 # Reuse builder as runtime to avoid duplicating rosdep/apt resolution and to
@@ -107,7 +120,7 @@ FROM builder AS runtime
 SHELL ["/bin/bash", "-lc"]
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ROS_DISTRO=humble
-ENV WS_DIR=/home/hong/camrod_ws
+ENV WS_DIR=/home/camrod_ws
 WORKDIR ${WS_DIR}
 
 COPY src/docker/entrypoint.camrod.sh /entrypoint.camrod.sh
