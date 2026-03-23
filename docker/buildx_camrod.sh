@@ -13,7 +13,7 @@ for kv in "$@"; do
 done
 
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-/home/camrod_ws}"
-DOCKERFILE_REL="${DOCKERFILE_REL:-src/docker/Dockerfile.camrod}"
+DOCKERFILE_REL="${DOCKERFILE_REL:-docker/Dockerfile.camrod}"
 IMAGE_REPO="${IMAGE_REPO:-lehong/camrod}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 DATE_TAG="$(date +%Y%m%d)"
