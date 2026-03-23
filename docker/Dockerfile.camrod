@@ -46,6 +46,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libeigen3-dev \
     libpugixml-dev \
     libssl-dev \
+    ros-humble-xacro \
+    ros-humble-rmw-fastrtps-cpp \
     ros-humble-rcutils \
     && rm -rf /var/lib/apt/lists/*
 
@@ -103,7 +105,9 @@ WORKDIR ${WS_DIR}
 COPY docker/entrypoint.camrod.sh /entrypoint.camrod.sh
 RUN chmod +x /entrypoint.camrod.sh
 
-ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# Keep Fast DDS as default in container runtime so launch works out-of-the-box
+# without requiring extra CycloneDDS runtime packages.
+ENV RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 ENV ROS_LOCALHOST_ONLY=0
 
 ENTRYPOINT ["/entrypoint.camrod.sh"]
