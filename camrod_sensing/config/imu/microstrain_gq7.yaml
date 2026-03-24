@@ -10,7 +10,8 @@ microstrain_inertial_driver:
     #   The GQ7 exposes two USB ACM ports (main + aux). Use udev symlinks if possible.
     #   If you see "configured main port appears to actually be the aux port",
     #   swap port/aux_port or use stable /dev/serial/by-id paths.
-    port: "/dev/ttyACM0"
+    # port: "/dev/ttyACM0"
+    port: "/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6286.226900-if00"    
     aux_port: "/dev/ttyACM1"
 
     # Driver baudrate setting (still required even on USB ACM devices).

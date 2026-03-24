@@ -14,7 +14,7 @@ def generate_launch_description():
         'config', 'planning', 'path_cost_grids.yaml')
     map_path_arg = DeclareLaunchArgument(
         'map_path',
-        default_value='/home/camrod_ws/lanelet2_maps.osm',
+        default_value='/home/nvidia/camrod_ws/src/lanelet2_maps.osm',
         description='Lanelet2 map path for path-cost-grid helpers',
     )
     module_namespace_arg = DeclareLaunchArgument(

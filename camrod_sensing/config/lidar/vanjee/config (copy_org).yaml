@@ -60,7 +60,7 @@ lidar:
       yaw: 0                                        # 航向角偏移量 °
     use_vlan: false                                 # PCAP文件中的Packet是否包含VLAN层
     ros:
-      ros_frame_id: lidar_link                                                  # Frame id of packet message and point cloud message
+      ros_frame_id: vanjee_lidar                                                  # Frame id of packet message and point cloud message
       ros_send_point_cloud_topic: /lidar/vanjee/points_raw                               # Topic used to send point cloud through ROS
       ros_send_imu_packet_topic: /lidar/vanjee/imu_packets                        # Topic used to send imu through ROS 
       ros_send_device_ctrl_state_topic: /vanjee_lidar_device_ctrl_state           # Topic used to send device ctrl state through ROS 

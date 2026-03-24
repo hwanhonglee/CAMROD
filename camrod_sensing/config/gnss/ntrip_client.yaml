@@ -1,4 +1,4 @@
-ntrip_client:
+/**:
   ros__parameters:
     host: www.gnssdata.or.kr
     port: 2101
@@ -12,3 +12,14 @@ ntrip_client:
 
     # Ensure topic name (some versions use 'rtcm_topic')
     rtcm_topic: /rtcm
+    
+    ntrip_version: "None"
+    ssl: false
+    cert: "None"
+    key: "None"
+    ca_cert: "None"
+
+    rtcm_frame_id: "gps"
+    rtcm_timeout_seconds: 4
+    reconnect_attempt_max: 10
+    reconnect_attempt_wait_seconds: 5

@@ -16,8 +16,8 @@
     request_goal_service: "/planning/state_machine/request_goal"
     diagnostics_topic: "/diagnostics"
 
-    keypoints_yaml: "/home/camrod_ws/camrod_planning/config/planning_state_machine_keypoints.yaml"
-    camping_sites_yaml: "/home/camrod_ws/camrod_bringup/config/planning/camping_sites.yaml"
+    keypoints_yaml: "/home/nvidia/camrod_ws/src/camrod_planning/config/planning_state_machine_keypoints.yaml"
+    camping_sites_yaml: "/home/nvidia/camrod_ws/src/camrod_bringup/config/planning/camping_sites.yaml"
     startup_goal_key: "drop_zone"
     warn_goal_key: "garage"
 

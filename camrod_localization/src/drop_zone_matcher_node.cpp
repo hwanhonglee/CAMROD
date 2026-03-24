@@ -81,7 +81,7 @@ public:
   : Node("drop_zone_matcher")
   {
     drop_zones_yaml_ = declare_parameter<std::string>(
-      "drop_zones_yaml", "/home/camrod_ws/camrod_map/config/drop_zones.yaml");
+      "drop_zones_yaml", "/home/nvidia/camrod_ws/src/camrod_map/config/drop_zones.yaml");
     pose_topic_ = declare_parameter<std::string>(
       "pose_topic", "/localization/pose_with_covariance");
     match_radius_ = declare_parameter<double>("match_radius", 2.0);

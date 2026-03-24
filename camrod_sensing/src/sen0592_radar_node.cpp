@@ -434,8 +434,9 @@ private:
       row2 += c2;
     }
 
-    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "%s", row1.c_str());
-    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "%s", row2.c_str());
+    // DEBUG: You can adjust the throttle duration or remove it to see every update, but it may be too verbose.
+    // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "%s", row1.c_str());
+    // RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "%s", row2.c_str());
   }
 
 private:

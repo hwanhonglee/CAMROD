@@ -43,7 +43,7 @@ def generate_launch_description():
     output_yaml_arg = DeclareLaunchArgument(
         "output_yaml_path",
         default_value=os.path.join(
-            "/home/camrod_ws/camrod_bringup/config/localization",
+            "/home/nvidia/camrod_ws/src/camrod_bringup/config/localization",
             "drop_zones.yaml",
         ),
         description="Output YAML path for drop zones",
@@ -51,7 +51,7 @@ def generate_launch_description():
     camping_output_yaml_arg = DeclareLaunchArgument(
         "camping_sites_output_yaml_path",
         default_value=os.path.join(
-            "/home/camrod_ws/camrod_bringup/config/planning",
+            "/home/nvidia/camrod_ws/src/camrod_bringup/config/planning",
             "camping_sites.yaml",
         ),
         description="Output YAML path for camping sites",
@@ -74,7 +74,7 @@ def generate_launch_description():
         map_cfg = map_info.get("/map/lanelet2_map", {}).get("ros__parameters", {})
 
         map_path = LaunchConfiguration("map_path").perform(context) or map_cfg.get(
-            "map_path", "/home/camrod_ws/lanelet2_maps.osm"
+            "map_path", "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
         )
         origin_lat = _to_float(
             LaunchConfiguration("origin_lat").perform(context), map_cfg.get("offset_lat", 0.0)

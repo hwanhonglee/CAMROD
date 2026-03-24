@@ -1,7 +1,7 @@
 bringup:
   runtime:
     clean_before_launch: true
-    sim: true
+    sim: false
     rviz: true
 
   localization:
@@ -13,18 +13,18 @@ bringup:
   planning:
     enable_path_cost_grids: true
     # HH_260318-00:00 Keep OFF by default to avoid duplicate ComputePath requests.
-    enable_goal_replanner: false
-    enable_nav2_lifecycle_retry: false
-    enable_state_machine: false
-    use_dwb_controller: false
+    enable_goal_replanner: true
+    enable_nav2_lifecycle_retry: true
+    enable_state_machine: true
+    use_dwb_controller: true
 
   sensing:
-    enable_radar: false
+    enable_radar: true
     enable_radar_cost_grid: true
     enable_lidar_cost_grid: true
-    enable_lidar_driver: false
-    enable_gnss: false
-    enable_ntrip: false
+    enable_lidar_driver: true
+    enable_gnss: true
+    enable_ntrip: true
 
   system:
     enable_module_checkers: true
@@ -50,7 +50,7 @@ bringup:
   map:
     # Keep explicit defaults here so top-level bringup remains deterministic
     # even if map_info.yaml is edited or temporarily unavailable.
-    map_path: /home/camrod_ws/lanelet2_maps.osm
+    map_path: /home/nvidia/camrod_ws/src/lanelet2_maps.osm
     origin_lat: 36.8436194
     origin_lon: 128.0925490
     origin_alt: 299.425

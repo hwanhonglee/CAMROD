@@ -6,8 +6,8 @@
     poll_hz: 30.0
 
     # HH_260209: Update paths if Kimera output directory differs.
-    abs_csv_path: "/home/camrod_ws/vio_bridge/Kimera-VIO/output/zed_live/traj_abs.csv"
-    local_csv_path: "/home/camrod_ws/vio_bridge/Kimera-VIO/output/zed_live/traj_local.csv"
+    abs_csv_path: "/home/nvidia/camrod_ws/vio_bridge/Kimera-VIO/output/zed_live/traj_abs.csv"
+    local_csv_path: "/home/nvidia/camrod_ws/vio_bridge/Kimera-VIO/output/zed_live/traj_local.csv"
 
     map_frame_id: "map"
     local_frame_id: "vio_local"

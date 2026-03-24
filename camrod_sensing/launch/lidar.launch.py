@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-# HH_260311-00:00 Launch LiDAR raw driver (Vanjee SDK) + LiDAR preprocessor pipeline.
 
 import os
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
-from ament_index_python.packages import get_package_share_directory
 
 
-# Implements `_resolve_vanjee_config_and_presence` behavior.
 def _resolve_vanjee_config_and_presence() -> tuple[str, bool]:
-    # HH_260313-00:00 Always prefer project-owned driver config for reproducible behavior.
     sensing_share = get_package_share_directory("camrod_sensing")
-    default_config = os.path.join(sensing_share, "config", "lidar", "vanjee", "config.yaml")
-    # HH_260313-00:00 Detect only SDK package availability for executable presence.
+    default_config = os.path.join(
+        sensing_share, "config", "lidar", "vanjee", "config.yaml"
+    )
+
     try:
         get_package_share_directory("vanjee_lidar_sdk")
         return default_config, True
@@ -24,9 +23,9 @@ def _resolve_vanjee_config_and_presence() -> tuple[str, bool]:
         return default_config, False
 
 
-# Implements `generate_launch_description` behavior.
 def generate_launch_description():
     sensing_share = get_package_share_directory("camrod_sensing")
+
     default_sensing_param = os.path.join(
         sensing_share, "config", "sensing_params.yaml"
     )
@@ -37,67 +36,22 @@ def generate_launch_description():
     enable_driver_default = "true" if has_vanjee_driver_pkg else "false"
 
     declare_args = [
-        DeclareLaunchArgument(
-            "sensing_param_file",
-            default_value=default_sensing_param,
-            description="Legacy monolithic sensing parameter file (kept for compatibility)",
-        ),
-        DeclareLaunchArgument(
-            "lidar_preprocess_param_file",
-            default_value=default_lidar_preprocess_param,
-            description="LiDAR preprocessor node parameter file",
-        ),
-        DeclareLaunchArgument(
-            "enable_lidar_driver",
-            # HH_260311-00:00 If vanjee_lidar_sdk package is not installed in current overlay,
-            # force disabled by default to avoid bringup hard failure.
-            default_value=enable_driver_default,
-            description="Enable Vanjee LiDAR raw driver node (auto false when vanjee_lidar_sdk is unavailable)",
-        ),
-        DeclareLaunchArgument(
-            "vanjee_config_path",
-            default_value=default_vanjee_config,
-            description="Vanjee SDK config file path",
-        ),
-        DeclareLaunchArgument(
-            "vanjee_driver_namespace",
-            default_value="lidar/vanjee",
-            description="Namespace for Vanjee SDK node",
-        ),
-        DeclareLaunchArgument(
-            "module_namespace",
-            # HH_260317-00:00 Standalone LiDAR stack defaults to /lidar/*.
-            # sensing.launch.py overrides this to /sensing/*.
-            default_value="lidar",
-            description="Namespace for LiDAR preprocessing nodes",
-        ),
-        DeclareLaunchArgument(
-            "lidar_raw_topic",
-            # HH_260317-00:00 Relative default under module namespace:
-            #   namespace=lidar + vanjee/points_raw -> /lidar/vanjee/points_raw
-            default_value="vanjee/points_raw",
-            description="Target raw LiDAR topic name (relative to module namespace)",
-        ),
-        DeclareLaunchArgument(
-            "lidar_filtered_topic",
-            default_value="points_filtered",
-            description="Filtered LiDAR point cloud topic (relative to module namespace)",
-        ),
-        DeclareLaunchArgument(
-            "lidar_imu_packets_topic",
-            default_value="vanjee/imu_packets",
-            description="Raw LiDAR IMU packet topic from driver (relative to module namespace)",
-        ),
-        DeclareLaunchArgument(
-            "lidar_diagnostic_topic",
-            default_value="diagnostic",
-            description="LiDAR diagnostic topic (relative to module namespace)",
-        ),
-        DeclareLaunchArgument(
-            "enable_vanjee_static_tf",
-            default_value="false",
-            description="Publish static TF robot_base_link -> vanjee_lidar",
-        ),
+        DeclareLaunchArgument("sensing_param_file", default_value=default_sensing_param),
+        DeclareLaunchArgument("lidar_preprocess_param_file", default_value=default_lidar_preprocess_param),
+        DeclareLaunchArgument("vanjee_config_path", default_value=default_vanjee_config),
+
+        DeclareLaunchArgument("enable_lidar_driver", default_value=enable_driver_default),
+        DeclareLaunchArgument("enable_vanjee_static_tf", default_value="false"),
+
+        # relative namespace structure
+        DeclareLaunchArgument("module_namespace", default_value="lidar"),
+        DeclareLaunchArgument("vanjee_driver_namespace", default_value="vanjee"),
+
+        # preprocessor-relative topics
+        DeclareLaunchArgument("preprocessor_input_topic", default_value="vanjee/points_raw"),
+        DeclareLaunchArgument("lidar_filtered_topic", default_value="points_filtered"),
+        DeclareLaunchArgument("lidar_diagnostic_topic", default_value="diagnostic"),
+
         DeclareLaunchArgument("vanjee_tf_x", default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_y", default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_z", default_value="0.9"),
@@ -112,31 +66,41 @@ def generate_launch_description():
     lidar_preprocess_param_file = LaunchConfiguration("lidar_preprocess_param_file")
     enable_lidar_driver = LaunchConfiguration("enable_lidar_driver")
     vanjee_config_path = LaunchConfiguration("vanjee_config_path")
-    vanjee_driver_namespace = LaunchConfiguration("vanjee_driver_namespace")
+
     module_namespace = LaunchConfiguration("module_namespace")
-    lidar_raw_topic = LaunchConfiguration("lidar_raw_topic")
+    vanjee_driver_namespace = LaunchConfiguration("vanjee_driver_namespace")
+
+    preprocessor_input_topic = LaunchConfiguration("preprocessor_input_topic")
     lidar_filtered_topic = LaunchConfiguration("lidar_filtered_topic")
-    lidar_imu_packets_topic = LaunchConfiguration("lidar_imu_packets_topic")
     lidar_diagnostic_topic = LaunchConfiguration("lidar_diagnostic_topic")
     enable_vanjee_static_tf = LaunchConfiguration("enable_vanjee_static_tf")
 
     optional_driver_actions = []
+
     if has_vanjee_driver_pkg:
         vanjee_driver_node = Node(
             package="vanjee_lidar_sdk",
             executable="vanjee_lidar_sdk_node",
             name="vanjee_driver",
-            namespace=vanjee_driver_namespace,
+            namespace=[module_namespace, "/", vanjee_driver_namespace],
             output="screen",
-            parameters=[{"config_path": vanjee_config_path}],
+            parameters=[
+                {"config_path": vanjee_config_path}
+            ],
             remappings=[
-                # HH_260313-00:00 Normalize raw cloud to requested convention.
-                ("/vanjee_points722", lidar_raw_topic),
-                ("vanjee_points722", lidar_raw_topic),
-                ("/lidar/vanjee/points_raw", lidar_raw_topic),
-                ("lidar/vanjee/points_raw", lidar_raw_topic),
-                ("/vanjee_lidar_imu_packets", lidar_imu_packets_topic),
-                ("vanjee_lidar_imu_packets", lidar_imu_packets_topic),
+                # SDK source names -> relative targets
+                # target "points_raw" becomes:
+                #   standalone -> /lidar/vanjee/points_raw
+                #   sensing    -> /sensing/lidar/vanjee/points_raw
+                ("/vanjee_points722", "points_raw"),
+                ("vanjee_points722", "points_raw"),
+
+                ("/vanjee_lidar_imu_packets", "imu_packets"),
+                ("vanjee_lidar_imu_packets", "imu_packets"),
+
+                # if SDK is actually publishing these absolute names internally
+                ("/lidar/vanjee/points_raw", "points_raw"),
+                ("/lidar/vanjee/imu_packets", "imu_packets"),
             ],
             condition=IfCondition(enable_lidar_driver),
         )
@@ -144,10 +108,7 @@ def generate_launch_description():
     else:
         optional_driver_actions.append(
             LogInfo(
-                msg=(
-                    "[sensing.lidar.launch] package 'vanjee_lidar_sdk' not found; "
-                    "skipping raw driver node and keeping lidar_preprocessor only."
-                )
+                msg="[lidar.launch] package 'vanjee_lidar_sdk' not found; skipping raw driver node."
             )
         )
 
@@ -157,12 +118,11 @@ def generate_launch_description():
         name="lidar_preprocessor",
         namespace=module_namespace,
         output="screen",
-        # HH_260314-00:00 Layered params: legacy monolithic file + lidar-specific override.
         parameters=[
             sensing_param_file,
             lidar_preprocess_param_file,
             {
-                "input_topic": lidar_raw_topic,
+                "input_topic": preprocessor_input_topic,
                 "filtered_topic": lidar_filtered_topic,
                 "lidar_diagnostic_topic": lidar_diagnostic_topic,
             },
@@ -186,23 +146,17 @@ def generate_launch_description():
             ],
             output="screen",
             condition=IfCondition(
-                PythonExpression(
-                    [
-                        "'",
-                        enable_lidar_driver,
-                        "' == 'true' and '",
-                        enable_vanjee_static_tf,
-                        "' == 'true'",
-                    ]
-                )
+                PythonExpression([
+                    "'",
+                    enable_lidar_driver,
+                    "' == 'true' and '",
+                    enable_vanjee_static_tf,
+                    "' == 'true'"
+                ])
             ),
         )
         optional_driver_actions.append(vanjee_static_tf)
 
     return LaunchDescription(
-        declare_args
-        + [
-            lidar_preprocessor_node,
-        ]
-        + optional_driver_actions
+        declare_args + [lidar_preprocessor_node] + optional_driver_actions
     )

@@ -10,7 +10,7 @@ Output:
 
 Usage:
   python3 util/generate_module_param_contract.py
-  python3 util/generate_module_param_contract.py --root /home/camrod_ws/src
+  python3 util/generate_module_param_contract.py --root /home/nvidia/camrod_ws/src
 """
 
 from __future__ import annotations

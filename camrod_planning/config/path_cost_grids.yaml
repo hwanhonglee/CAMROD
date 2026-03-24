@@ -3,7 +3,7 @@
 
 /planning/lanelet_cost_grid_global_path:
   ros__parameters:
-    map_path: "/home/camrod_ws/lanelet2_maps.osm"
+    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
     map_frame_id: "map"
     offset_lat: 36.8436194
     offset_lon: 128.0925490
@@ -139,7 +139,7 @@
 
 /planning/lanelet_cost_grid_local_path:
   ros__parameters:
-    map_path: "/home/camrod_ws/lanelet2_maps.osm"
+    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
     map_frame_id: "map"
     offset_lat: 36.8436194
     offset_lon: 128.0925490

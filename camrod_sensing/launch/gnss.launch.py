@@ -32,7 +32,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "enable_ntrip",
-            default_value="false",
+            default_value="true",
             description="Enable NTRIP client for RTCM corrections",
         ),
         DeclareLaunchArgument(
@@ -41,13 +41,6 @@ def generate_launch_description():
             # sensing.launch.py overrides this to /sensing/gnss/*.
             default_value="gnss",
             description="GNSS stack namespace",
-        ),
-        DeclareLaunchArgument(
-            "navsatfix_topic",
-            # HH_260317-00:00 Relative default under gnss namespace:
-            #   namespace=gnss + navsatfix -> /gnss/navsatfix
-            default_value="navsatfix",
-            description="Canonical NavSatFix topic used by localization (relative to gnss namespace)",
         ),
         DeclareLaunchArgument(
             "rtcm_topic",
@@ -62,7 +55,6 @@ def generate_launch_description():
     ntrip_param_file = LaunchConfiguration("ntrip_param_file")
     enable_ntrip = LaunchConfiguration("enable_ntrip")
     gnss_namespace = LaunchConfiguration("gnss_namespace")
-    navsatfix_topic = LaunchConfiguration("navsatfix_topic")
     rtcm_topic = LaunchConfiguration("rtcm_topic")
 
     ublox_node = Node(
@@ -73,10 +65,6 @@ def generate_launch_description():
         output="screen",
         parameters=[ublox_param_file],
         remappings=[
-            # HH_260317-00:00 Canonical localization input topic.
-            ("fix", navsatfix_topic),
-            ("/fix", navsatfix_topic),
-            # HH_260317-00:00 Keep correction stream namespaced by sensor model.
             ("rtcm", rtcm_topic),
             ("/rtcm", rtcm_topic),
         ],
@@ -97,9 +85,9 @@ def generate_launch_description():
         remappings=[
             ("rtcm", rtcm_topic),
             ("/rtcm", rtcm_topic),
-            # HH_260317-00:00 NTRIP GGA source aligns with canonical GNSS fix stream.
-            ("fix", navsatfix_topic),
-            ("/fix", navsatfix_topic),
+
+            ("fix", "ublox_gps_node/fix"),
+            ("/fix", "ublox_gps_node/fix"),
         ],
         condition=IfCondition(enable_ntrip),
     )
