@@ -1,7 +1,7 @@
 # Nav2 vehicle profile (optional): enable DWB alongside FollowPath.
 # Usage:
 #   ros2 launch camrod_bringup bringup.launch.py \
-#     nav2_vehicle_param_file:=/home/camrod_ws/src/camrod_bringup/config/planning/nav2_vehicle_dwb.yaml
+#     nav2_vehicle_param_file:=/home/camrod_ws/camrod_bringup/config/planning/nav2_vehicle_dwb.yaml
 #
 # Notes:
 # - Default profile remains nav2_vehicle.yaml (FollowPath only).

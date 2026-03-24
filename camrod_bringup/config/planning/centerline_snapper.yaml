@@ -3,7 +3,7 @@
 # HH_260126 Default params for lanelet centerline snapping.
 /planning/centerline_snapper:
   ros__parameters:
-    map_path: "/home/camrod_ws/src/lanelet2_maps.osm"
+    map_path: "/home/camrod_ws/lanelet2_maps.osm"
     offset_lat: 36.8436194
     offset_lon: 128.0925490
     offset_alt: 0.0

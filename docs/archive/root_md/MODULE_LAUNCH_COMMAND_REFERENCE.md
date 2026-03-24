@@ -54,7 +54,7 @@ Example:
 ```bash
 ros2 launch camrod_bringup bringup.launch.py \
   sim:=false rviz:=true use_eskf:=true \
-  map_path:=/home/camrod_ws/src/lanelet2_maps.osm \
+  map_path:=/home/camrod_ws/lanelet2_maps.osm \
   enable_goal_replanner:=true enable_state_machine:=false
 ```
 
@@ -104,8 +104,8 @@ ros2 launch camrod_map lanelet2_map.launch.py
 Drop-zone export utility:
 ```bash
 ros2 launch camrod_map area_export.launch.py \
-  map_path:=/home/camrod_ws/src/lanelet2_maps.osm \
-  output_yaml_path:=/home/camrod_ws/src/camrod_bringup/config/localization/drop_zones.yaml
+  map_path:=/home/camrod_ws/lanelet2_maps.osm \
+  output_yaml_path:=/home/camrod_ws/camrod_bringup/config/localization/drop_zones.yaml
 ```
 
 ---
@@ -277,7 +277,7 @@ Path cost-grid helper only:
 ```bash
 ros2 launch camrod_planning path_cost_grids.launch.py \
   module_namespace:=planning \
-  map_path:=/home/camrod_ws/src/lanelet2_maps.osm
+  map_path:=/home/camrod_ws/lanelet2_maps.osm
 ```
 
 ---
@@ -374,7 +374,7 @@ Main options:
 Fake sensors:
 ```bash
 ros2 launch camrod_bringup fake_sensors.launch.py \
-  map_path:=/home/camrod_ws/src/lanelet2_maps.osm \
+  map_path:=/home/camrod_ws/lanelet2_maps.osm \
   lanelet_id:=-1 speed_mps:=1.4 publish_rate_hz:=20.0
 ```
 

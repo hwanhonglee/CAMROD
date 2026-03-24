@@ -29,7 +29,7 @@ def generate_launch_description():
     )
     map_path_arg = DeclareLaunchArgument(
         'map_path',
-        default_value='/home/camrod_ws/src/lanelet2_maps.osm',
+        default_value='/home/camrod_ws/lanelet2_maps.osm',
         description='Lanelet2 map path for fake trajectory generation',
     )
     origin_lat_arg = DeclareLaunchArgument(

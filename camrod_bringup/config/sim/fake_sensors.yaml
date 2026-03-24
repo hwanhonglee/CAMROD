@@ -3,7 +3,7 @@
 # HH_260112 Align node parameter keys with /bringup namespace + short names.
 /bringup/fake_sensor_publisher:
   ros__parameters:
-    map_path: "/home/camrod_ws/src/lanelet2_maps.osm"
+    map_path: "/home/camrod_ws/lanelet2_maps.osm"
     origin_lat: 36.8436194
     origin_lon: 128.0925490
     origin_alt: 0.0

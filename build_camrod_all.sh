@@ -70,6 +70,10 @@ sanitize_colon_path_var() {
 
 sanitize_colon_path_var AMENT_PREFIX_PATH
 sanitize_colon_path_var CMAKE_PREFIX_PATH
+# Keep COLCON_PREFIX_PATH aligned with current workspace + /opt/ros only.
+# This prevents stale paths from other workspaces (e.g. cart_test_ws/ros2_ws)
+# from leaking into package discovery and causing confusing build warnings.
+sanitize_colon_path_var COLCON_PREFIX_PATH
 
 echo "[build_camrod_all] ws_root=${WS_ROOT}"
 echo "[build_camrod_all] source_root=${SOURCE_ROOT}"

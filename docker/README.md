@@ -54,7 +54,7 @@ The following files were removed because they were no longer part of the active 
 ### A) Push arm64 only (quick)
 
 ```bash
-cd /home/camrod_ws/src/docker
+cd /home/camrod_ws/docker
 IMAGE_REPO=lehong/camrod \
 IMAGE_TAG=v1.1-arm64 \
 PLATFORMS=linux/arm64 \
@@ -65,7 +65,7 @@ WORKSPACE_ROOT=/home/camrod_ws \
 ### B) Push multi-arch (amd64 + arm64)
 
 ```bash
-cd /home/camrod_ws/src/docker
+cd /home/camrod_ws/docker
 IMAGE_REPO=lehong/camrod \
 IMAGE_TAG=v1.1 \
 PLATFORMS=linux/amd64,linux/arm64 \

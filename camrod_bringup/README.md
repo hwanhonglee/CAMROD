@@ -47,6 +47,6 @@ bringup.launch.py
 ```bash
 ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
 ros2 launch camrod_bringup bringup.launch.py enable_gnss:=true enable_ntrip:=true
-ros2 launch camrod_bringup bringup.launch.py map_path:=/home/camrod_ws/src/lanelet2_maps.osm
+ros2 launch camrod_bringup bringup.launch.py map_path:=/home/camrod_ws/lanelet2_maps.osm
 ```
 

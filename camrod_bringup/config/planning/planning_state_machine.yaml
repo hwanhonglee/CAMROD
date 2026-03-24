@@ -23,9 +23,9 @@
     # Supported formats:
     # 1) keypoints: {name: {x,y,z,frame_id}}
     # 2) drop_zones: [{x,y,z,...}] (fallback for drop_zone)
-    keypoints_yaml: "/home/camrod_ws/src/camrod_bringup/config/planning/planning_state_machine_keypoints.yaml"
+    keypoints_yaml: "/home/camrod_ws/camrod_bringup/config/planning/planning_state_machine_keypoints.yaml"
     # 3) camping_sites: [{type, x, y, z, ...}] exported by map area exporter.
-    camping_sites_yaml: "/home/camrod_ws/src/camrod_bringup/config/planning/camping_sites.yaml"
+    camping_sites_yaml: "/home/camrod_ws/camrod_bringup/config/planning/camping_sites.yaml"
     startup_goal_key: "drop_zone"
     warn_goal_key: "garage"
 

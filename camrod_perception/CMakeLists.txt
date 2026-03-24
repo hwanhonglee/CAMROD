@@ -18,6 +18,7 @@ find_package(vision_msgs REQUIRED)
 find_package(image_geometry REQUIRED)
 find_package(avg_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_conversions REQUIRED)
 
@@ -50,6 +51,7 @@ ament_target_dependencies(obstacle_lidar_node
 
 target_link_libraries(obstacle_lidar_node
   ${PCL_LIBRARIES}
+  Eigen3::Eigen
 )
 
 install(TARGETS
