@@ -19,12 +19,18 @@ find_package(image_geometry REQUIRED)
 find_package(avg_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(PCL REQUIRED)
+find_package(PCL REQUIRED COMPONENTS common kdtree search filters segmentation)
 find_package(pcl_conversions REQUIRED)
 
 include_directories(
   ${PCL_INCLUDE_DIRS}
 )
+
+link_directories(
+  ${PCL_LIBRARY_DIRS}
+)
+
+add_definitions(${PCL_DEFINITIONS})
 
 add_executable(obstacle_fusion_node src/obstacle_fusion_node.cpp)
 ament_target_dependencies(obstacle_fusion_node
@@ -50,6 +56,11 @@ ament_target_dependencies(obstacle_lidar_node
 )
 
 target_link_libraries(obstacle_lidar_node
+  pcl_common
+  pcl_kdtree
+  pcl_search
+  pcl_filters
+  pcl_segmentation
   ${PCL_LIBRARIES}
   Eigen3::Eigen
 )
