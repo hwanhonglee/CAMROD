@@ -6,9 +6,10 @@
 #include <vector>
 
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
 #include <avg_msgs/msg/quaternion.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_io/Io.h>
@@ -87,7 +88,7 @@ class GoalSnapperNode : public rclcpp::Node
 {
 public:
   using AvgPlanningMsgs = avg_msgs::msg::AvgPlanningMsgs;
-  using ModuleHealth = avg_msgs::msg::ModuleHealth;
+  using ModuleState = avg_msgs::msg::ModuleState;
 
   GoalSnapperNode()
   // HH_260112 Use short node name; namespace applies the module prefix.
@@ -103,15 +104,20 @@ public:
     // HH_260317-00:00 Publish ROS-native snapped goal for Nav2 topic compatibility.
     output_goal_topic_ros_ = declare_parameter<std::string>(
       "output_goal_topic_ros", "/planning/goal_pose_snapped_ros");
-    publish_planning_diagnostic_ = declare_parameter<bool>("publish_planning_diagnostic", false);
-    planning_diagnostic_topic_ =
-      declare_parameter<std::string>("planning_diagnostic_topic", "/planning/diagnostic");
+    publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
+    planning_status_topic_ =
+      declare_parameter<std::string>("planning_status_topic", "/planning/status");
     max_search_radius_ = declare_parameter<double>("max_search_radius", 30.0);
     require_lanelet_containment_ = declare_parameter<bool>("require_lanelet_containment", true);
     fallback_uncontained_ = declare_parameter<bool>("fallback_uncontained", true);
     use_map_z_ = declare_parameter<bool>("use_map_z", true);
     flatten_to_ground_ = declare_parameter<bool>("flatten_to_ground", true);
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);
+    // HH_260329: Debounce duplicate goal callbacks when the same topic is
+    // subscribed by both avg_msgs and geometry_msgs interfaces.
+    duplicate_goal_xy_eps_m_ = declare_parameter<double>("duplicate_goal_xy_eps_m", 0.05);
+    duplicate_goal_z_eps_m_ = declare_parameter<double>("duplicate_goal_z_eps_m", 0.10);
+    duplicate_goal_time_window_s_ = declare_parameter<double>("duplicate_goal_time_window_s", 0.25);
 
     if (!loadMap()) {
       RCLCPP_FATAL(get_logger(), "goal snapper: failed to load map. exiting.");
@@ -123,9 +129,9 @@ public:
       output_goal_topic_, rclcpp::QoS(10));
     pub_goal_ros_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       output_goal_topic_ros_, rclcpp::QoS(10));
-    if (publish_planning_diagnostic_) {
+    if (publish_planning_status_) {
       pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
-        planning_diagnostic_topic_, rclcpp::QoS(10));
+        planning_status_topic_, rclcpp::QoS(10));
     }
     sub_goal_ = create_subscription<avg_msgs::msg::PoseStamped>(
       input_goal_topic_, rclcpp::QoS(10),
@@ -173,6 +179,13 @@ private:
     const double px = msg->pose.position.x;
     const double py = msg->pose.position.y;
     const double pz = msg->pose.position.z;
+    if (shouldSkipDuplicateGoal(msg->header.frame_id, msg->header.stamp, px, py, pz)) {
+      RCLCPP_DEBUG_THROTTLE(
+        get_logger(), *get_clock(), 500,
+        "goal_snapper: skipped duplicate avg goal in frame=%s",
+        msg->header.frame_id.c_str());
+      return;
+    }
 
     NearestResult nearest;
     double snapped_z = 0.0;
@@ -205,6 +218,13 @@ private:
     const double px = msg->pose.position.x;
     const double py = msg->pose.position.y;
     const double pz = msg->pose.position.z;
+    if (shouldSkipDuplicateGoal(msg->header.frame_id, msg->header.stamp, px, py, pz)) {
+      RCLCPP_DEBUG_THROTTLE(
+        get_logger(), *get_clock(), 500,
+        "goal_snapper: skipped duplicate ros goal in frame=%s",
+        msg->header.frame_id.c_str());
+      return;
+    }
 
     NearestResult nearest;
     double snapped_z = 0.0;
@@ -286,17 +306,49 @@ private:
   // Publishes `AvgPlanning` output.
   void publishAvgPlanning(const avg_msgs::msg::PoseStamped & goal_pose)
   {
-    if (!publish_planning_diagnostic_ || !pub_avg_planning_) {
+    if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
     }
     AvgPlanningMsgs msg;
     msg.stamp = now();
-    msg.health.stamp = msg.stamp;
-    msg.health.module_name = "planning";
-    msg.health.level = ModuleHealth::OK;
-    msg.health.message = "goal_snapper";
+    msg.state.stamp = msg.stamp;
+    msg.state.module_name = "planning";
+    msg.state.level = ModuleState::OK;
+    msg.state.message = "goal_snapper";
     msg.goal_pose = goal_pose;
     pub_avg_planning_->publish(msg);
+  }
+
+  // Skips duplicate goals that arrive from dual subscriptions on the same topic.
+  bool shouldSkipDuplicateGoal(
+    const std::string & frame_id,
+    const builtin_interfaces::msg::Time & stamp,
+    double x, double y, double z)
+  {
+    const double now_sec = this->get_clock()->now().seconds();
+    if (has_last_goal_) {
+      const bool same_frame = (frame_id == last_goal_frame_id_);
+      const double dxy = std::hypot(x - last_goal_x_, y - last_goal_y_);
+      const double dz = std::fabs(z - last_goal_z_);
+      const bool close_pose =
+        (dxy <= duplicate_goal_xy_eps_m_) && (dz <= duplicate_goal_z_eps_m_);
+      const bool same_stamp =
+        (stamp.sec == last_goal_stamp_sec_) && (stamp.nanosec == last_goal_stamp_nanosec_);
+      const bool near_time = (now_sec - last_goal_received_sec_) <= duplicate_goal_time_window_s_;
+      if (same_frame && close_pose && (same_stamp || near_time)) {
+        return true;
+      }
+    }
+
+    has_last_goal_ = true;
+    last_goal_frame_id_ = frame_id;
+    last_goal_stamp_sec_ = stamp.sec;
+    last_goal_stamp_nanosec_ = stamp.nanosec;
+    last_goal_x_ = x;
+    last_goal_y_ = y;
+    last_goal_z_ = z;
+    last_goal_received_sec_ = now_sec;
+    return false;
   }
 
   // Implements `findNearestCenterline` behavior.
@@ -380,7 +432,7 @@ private:
   std::string input_goal_topic_;
   std::string output_goal_topic_;
   std::string output_goal_topic_ros_;
-  std::string planning_diagnostic_topic_;
+  std::string planning_status_topic_;
   double max_search_radius_{30.0};
   bool require_lanelet_containment_{true};
   bool fallback_uncontained_{true};
@@ -388,13 +440,24 @@ private:
   bool flatten_to_ground_{true};
   double map_z_offset_{0.0};
   double map_ground_z_{0.0};
+  double duplicate_goal_xy_eps_m_{0.05};
+  double duplicate_goal_z_eps_m_{0.10};
+  double duplicate_goal_time_window_s_{0.25};
+  bool has_last_goal_{false};
+  std::string last_goal_frame_id_;
+  int32_t last_goal_stamp_sec_{0};
+  uint32_t last_goal_stamp_nanosec_{0};
+  double last_goal_x_{0.0};
+  double last_goal_y_{0.0};
+  double last_goal_z_{0.0};
+  double last_goal_received_sec_{0.0};
 
   rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr pub_goal_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_goal_ros_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_goal_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_;
-  bool publish_planning_diagnostic_{false};
+  bool publish_planning_status_{false};
 };
 
 // Entry point for this executable.

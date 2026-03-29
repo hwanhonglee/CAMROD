@@ -1,12 +1,12 @@
 builtin_interfaces/Time stamp
-avg_msgs/ModuleHealth health
+avg_msgs/ModuleState state
 
 bool sim
 bool rviz
 bool use_eskf
 bool enable_goal_replanner
 bool enable_state_machine
-bool enable_module_checkers
+bool enable_module_validators
 
 string map_path
 float64 origin_lat

@@ -19,7 +19,7 @@ robot_base_link
       -> imu_link
       -> gnss_link
       -> lidar_link
-      -> camera_front_link
+      -> camera_link
 ```
 
 ## Main Launch Arguments
@@ -28,12 +28,11 @@ robot_base_link
 - `base_frame_id` (default `robot_base_link`)
 - `sensor_kit_base_frame_id` (default `sensor_kit_base_link`)
 - `map_frame_id` (default `map`)
-- `enable_diagnostic`
+- `enable_status`
 
 ## Configuration
 - `camrod_bringup/config/sensor_kit/robot_params.yaml`
 
-## Diagnostics
-- Module-local topic: `/sensor_kit/diagnostic`
-- Aggregated topic: `/diagnostics`
-
+## StatusStream
+- Module-local topic: `/sensor_kit/status`
+- Aggregated topic: `/status_stream`

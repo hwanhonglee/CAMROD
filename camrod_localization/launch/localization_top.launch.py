@@ -26,11 +26,11 @@ def generate_launch_description():
     system_namespace_arg = DeclareLaunchArgument(
         "system_namespace",
         default_value="system",
-        description="System checker namespace",
+        description="System validator namespace",
     )
     navsat_topic_arg = DeclareLaunchArgument(
         "navsat_topic",
-        default_value="/sensing/gnss/navsatfix",
+        default_value="/sensing/gnss/ublox_gps_node/fix",
         description="GNSS NavSatFix topic",
     )
     use_eskf_arg = DeclareLaunchArgument(
@@ -38,10 +38,10 @@ def generate_launch_description():
         default_value="true",
         description="Use ESKF or legacy EKF",
     )
-    enable_module_checker_arg = DeclareLaunchArgument(
-        "enable_module_checker",
+    enable_module_validator_arg = DeclareLaunchArgument(
+        "enable_module_validator",
         default_value="true",
-        description="Enable localization module checker",
+        description="Enable localization module validator",
     )
 
     include_full = IncludeLaunchDescription(
@@ -54,7 +54,7 @@ def generate_launch_description():
             "system_namespace": LaunchConfiguration("system_namespace"),
             "navsat_topic": LaunchConfiguration("navsat_topic"),
             "use_eskf": LaunchConfiguration("use_eskf"),
-            "enable_module_checker": LaunchConfiguration("enable_module_checker"),
+            "enable_module_validator": LaunchConfiguration("enable_module_validator"),
         }.items(),
     )
 
@@ -65,7 +65,7 @@ def generate_launch_description():
             system_namespace_arg,
             navsat_topic_arg,
             use_eskf_arg,
-            enable_module_checker_arg,
+            enable_module_validator_arg,
             include_full,
         ]
     )

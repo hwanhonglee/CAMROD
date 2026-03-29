@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HH_260312-00:00 Planning state machine with keypoint mapping based on /diagnostic.
+# HH_260312-00:00 Planning state machine with keypoint mapping based on /status.
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Dict, Optional
 import rclpy
 import yaml
 from avg_msgs.srv import RequestGoalByKey
-from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+from status_msgs.msg import StatusArray, StatusStatus, KeyValue
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
 from std_msgs.msg import Bool, String
@@ -19,7 +19,7 @@ from std_msgs.msg import Bool, String
 
 # Implements `_diag_level` behavior.
 def _diag_level(value: object) -> bytes:
-    # HH_260311-00:00 Humble DiagnosticStatus constants may be bytes; normalize safely.
+    # HH_260311-00:00 Humble StatusStatus constants may be bytes; normalize safely.
     if isinstance(value, (bytes, bytearray)):
         if len(value) == 1:
             return bytes(value)
@@ -44,11 +44,11 @@ class PlanningStateMachineNode(Node):
         super().__init__("planning_state_machine")
 
         self.enabled = bool(self.declare_parameter("enabled", True).value)
-        self.health_diagnostic_topic = str(
-            self.declare_parameter("health_diagnostic_topic", "/diagnostics").value
+        self.state_status_topic = str(
+            self.declare_parameter("state_status_topic", "/status_stream").value
         )
-        self.health_stale_timeout_s = float(
-            self.declare_parameter("health_stale_timeout_s", 3.0).value
+        self.state_stale_timeout_s = float(
+            self.declare_parameter("state_stale_timeout_s", 3.0).value
         )
         self.pose_topic = str(self.declare_parameter("pose_topic", "/planning/lanelet_pose").value)
         self.goal_topic = str(self.declare_parameter("goal_topic", "/planning/goal_pose").value)
@@ -84,8 +84,8 @@ class PlanningStateMachineNode(Node):
             ).value
         )
         self.diag_topic = str(
-            # HH_260311-00:00 Single consolidated ROS diagnostic stream.
-            self.declare_parameter("diagnostics_topic", "/diagnostics").value
+            # HH_260311-00:00 Single consolidated ROS status stream.
+            self.declare_parameter("status_stream_topic", "/status_stream").value
         )
         self.keypoints_yaml = str(self.declare_parameter("keypoints_yaml", "").value)
         self.camping_sites_yaml = str(
@@ -109,7 +109,7 @@ class PlanningStateMachineNode(Node):
         self.keypoints: Dict[str, Keypoint] = {}
         self._load_keypoints()
 
-        self.last_health_stamp: Optional[rclpy.time.Time] = None
+        self.last_state_stamp: Optional[rclpy.time.Time] = None
         self.module_levels: Dict[str, int] = {}
         self.last_pose: Optional[PoseStamped] = None
         self.last_manual_goal: Optional[PoseStamped] = None
@@ -122,10 +122,10 @@ class PlanningStateMachineNode(Node):
         # HH_260313-00:00 Manual return request latch (drop-zone recovery button).
         self.return_requested = False
         self._last_return_cmd = False
-        self.prev_health_level: Optional[int] = None
-        self._ok_level = self._status_level_int(DiagnosticStatus.OK)
-        self._warn_level = self._status_level_int(DiagnosticStatus.WARN)
-        self._error_level = self._status_level_int(DiagnosticStatus.ERROR)
+        self.prev_state_level: Optional[int] = None
+        self._ok_level = self._status_level_int(StatusStatus.OK)
+        self._warn_level = self._status_level_int(StatusStatus.WARN)
+        self._error_level = self._status_level_int(StatusStatus.ERROR)
 
         self._last_goal_publish_time = self.get_clock().now()
         self._last_self_goal: Optional[PoseStamped] = None
@@ -136,10 +136,10 @@ class PlanningStateMachineNode(Node):
             self.pub_goal_ros = self.create_publisher(PoseStamped, self.goal_topic_ros, 10)
         self.pub_state = self.create_publisher(String, self.state_topic, 10)
         self.pub_estop = self.create_publisher(Bool, self.estop_topic, 10)
-        self.pub_diag = self.create_publisher(DiagnosticArray, self.diag_topic, 10)
+        self.pub_diag = self.create_publisher(StatusArray, self.diag_topic, 10)
 
         self.create_subscription(
-            DiagnosticArray, self.health_diagnostic_topic, self._on_health, 10
+            StatusArray, self.state_status_topic, self._on_state, 10
         )
         self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
         self.create_subscription(PoseStamped, self.goal_topic, self._on_goal, 10)
@@ -156,7 +156,7 @@ class PlanningStateMachineNode(Node):
 
         self.get_logger().info(
             "planning_state_machine: "
-            f"health={self.health_diagnostic_topic} "
+            f"state={self.state_status_topic} "
             f"pose={self.pose_topic} "
             f"goal={self.goal_topic} "
             f"goal_ros={self.goal_topic_ros} "
@@ -273,12 +273,12 @@ class PlanningStateMachineNode(Node):
         if isinstance(level_value, (bytes, bytearray)):
             if len(level_value) > 0:
                 return int(level_value[0])
-            return int(DiagnosticStatus.OK)
+            return int(StatusStatus.OK)
         return int(level_value)
 
     @staticmethod
     # Implements `_extract_module` behavior.
-    def _extract_module(st: DiagnosticStatus) -> str:
+    def _extract_module(st: StatusStatus) -> str:
         for kv in st.values:
             if kv.key == "category" and kv.value:
                 return kv.value
@@ -290,9 +290,9 @@ class PlanningStateMachineNode(Node):
             return st.hardware_id
         return ""
 
-    # Implements `_on_health` behavior.
-    def _on_health(self, msg: DiagnosticArray) -> None:
-        self.last_health_stamp = self.get_clock().now()
+    # Implements `_on_state` behavior.
+    def _on_state(self, msg: StatusArray) -> None:
+        self.last_state_stamp = self.get_clock().now()
         current_levels: Dict[str, int] = {}
         for st in msg.status:
             module = self._extract_module(st)
@@ -335,7 +335,7 @@ class PlanningStateMachineNode(Node):
         # This avoids missed triggers when upstream does not publish a falling edge.
         if msg.data:
             self.return_requested = True
-            # HH_260319-00:00 Return request must work even when health level is ERROR.
+            # HH_260319-00:00 Return request must work even when state level is ERROR.
             # Publish return goal immediately on rising edge; if throttled/failed,
             # keep `return_requested` latched so `_tick` can retry.
             if self._publish_auto_goal(self.return_goal_key, "return_request", force=True):
@@ -347,14 +347,14 @@ class PlanningStateMachineNode(Node):
                 )
         self._last_return_cmd = bool(msg.data)
 
-    # Implements `_health_level` behavior.
-    def _health_level(self) -> int:
-        if self.last_health_stamp is None:
-            # HH_260312-00:00 Do not force WARN before any diagnostic arrives.
+    # Implements `_state_level` behavior.
+    def _state_level(self) -> int:
+        if self.last_state_stamp is None:
+            # HH_260312-00:00 Do not force WARN before any status arrives.
             return self._ok_level
 
-        age = (self.get_clock().now() - self.last_health_stamp).nanoseconds / 1e9
-        if age > self.health_stale_timeout_s:
+        age = (self.get_clock().now() - self.last_state_stamp).nanoseconds / 1e9
+        if age > self.state_stale_timeout_s:
             return self._warn_level
 
         if not self.module_levels:
@@ -456,17 +456,17 @@ class PlanningStateMachineNode(Node):
         b.data = bool(estop)
         self.pub_estop.publish(b)
 
-        diag = DiagnosticArray()
+        diag = StatusArray()
         diag.header.stamp = self.get_clock().now().to_msg()
-        st = DiagnosticStatus()
+        st = StatusStatus()
         st.name = "planning/state_machine"
         st.hardware_id = "planning"
-        st.level = _diag_level(DiagnosticStatus.OK)
+        st.level = _diag_level(StatusStatus.OK)
         if estop:
-            st.level = _diag_level(DiagnosticStatus.ERROR)
+            st.level = _diag_level(StatusStatus.ERROR)
             st.message = "estop_asserted"
         elif self.state.startswith("WARN"):
-            st.level = _diag_level(DiagnosticStatus.WARN)
+            st.level = _diag_level(StatusStatus.WARN)
             st.message = "warn_recovery"
         else:
             st.message = self.state.lower()
@@ -492,9 +492,9 @@ class PlanningStateMachineNode(Node):
         if not self.enabled:
             return
 
-        level = self._health_level()
+        level = self._state_level()
         estop = False
-        if self.prev_health_level != self._warn_level and level == self._warn_level:
+        if self.prev_state_level != self._warn_level and level == self._warn_level:
             self.warn_goal_sent = False
         if level != self._warn_level:
             self.warn_goal_sent = False
@@ -525,7 +525,7 @@ class PlanningStateMachineNode(Node):
             else:
                 self.state = "READY"
 
-        self.prev_health_level = level
+        self.prev_state_level = level
         self._publish_state_outputs(estop)
 
 

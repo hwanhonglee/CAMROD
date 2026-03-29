@@ -26,7 +26,7 @@ ros2 launch camrod_perception perception.launch.py
 ## Main Launch Arguments
 - `perception_param_file`
 - `enable_lidar_obstacle`
-- `enable_module_checker`
+- `enable_module_validator`
 - `module_namespace` (default `perception`)
 - `system_namespace` (default `system`)
 
@@ -42,7 +42,7 @@ ros2 launch camrod_perception perception.launch.py
 ## Configuration
 - `camrod_bringup/config/perception/perception_params.yaml`
 
-## Diagnostics
-- Module-local topic: `/perception/diagnostic`
-- Aggregated topic: `/diagnostics`
+## StatusStream
+- Module-local topic: `/perception/status`
+- Aggregated topic: `/status_stream`
 

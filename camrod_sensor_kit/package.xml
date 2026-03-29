@@ -14,7 +14,6 @@
   <depend>rclcpp</depend>
   <depend>rclpy</depend>
   <depend>avg_msgs</depend>
-  <depend>diagnostic_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>tf2</depend>

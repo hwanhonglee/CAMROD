@@ -3,7 +3,9 @@
 planner_server:
   ros__parameters:
     use_sim_time: False
-    expected_planner_frequency: 5.0
+    # HH_260327: Relax planner loop target to reduce sustained missed-rate warnings
+    # under full-stack (map+sensing+perception+planning) runtime load.
+    expected_planner_frequency: 3.0
     planner_plugins: ["Smac2D", "GridBased"]
 
     GridBased:
@@ -11,10 +13,13 @@ planner_server:
       # Keep final solve tight; goal_snapper already maps user goal into lanelet.
       tolerance: 0.5
       use_astar: True
+      # HH_260327: Enforce in-map/in-lane planning.
+      # Allowing unknown made free-space shortcuts possible outside designated lanelet region.
       allow_unknown: False
 
     Smac2D:
       plugin: "nav2_smac_planner/SmacPlanner2D"
+      # HH_260327: Enforce in-map/in-lane planning.
       allow_unknown: False
       # Keep final solve tight; goal_snapper already maps user goal into lanelet.
       tolerance: 0.5
@@ -23,29 +28,35 @@ planner_server:
       use_astar: True
       motion_model_for_search: "REEDS_SHEPP"
       # 2026-02-25: Finer heading discretization for smoother corner geometry.
-      angle_quantization_bins: 128
+      # HH_260327: Reduce heading-bin density to lower planner CPU without
+      # changing topology or plugin structure.
+      angle_quantization_bins: 96
 
 controller_server:
   ros__parameters:
     use_sim_time: False
-    controller_frequency: 20.0
+    # HH_260327: Keep controller responsive while reducing loop overrun frequency.
+    controller_frequency: 12.0
     odom_topic: /localization/odometry/filtered
     # HH_260315-00:00 Explicit speed-limit channel for planning namespace users.
     speed_limit_topic: /planning/speed_limit
+    # HH_260326: Restore canonical Nav2 checker parameter names.
+    # Nav2 controller server reads *_checker_* keys; validator keys are ignored.
     progress_checker_plugin: "progress_checker"
-    goal_checker_plugins: ["general_goal_checker"]
+    goal_checker_plugins: ["goal_checker"]
     # 2026-02-25: Use a single active controller by default to avoid
     # duplicate debug topics (/planning/cost_cloud, /planning/evaluation)
     # from unused DWB plugin loading.
     controller_plugins: ["FollowPath"]
     default_controller: FollowPath
 
+    # HH_260326: Restore Humble plugin class names required by nav2_controller.
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.5
       movement_time_allowance: 10.0
 
-    general_goal_checker:
+    goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.3
       yaw_goal_tolerance: 0.25
@@ -59,14 +70,19 @@ local_costmap:
       # Keep Nav2 base frame aligned with platform/localization TF.
       robot_base_frame: robot_base_link
       # HH_260305-00:00 Faster local updates for more responsive local-path/grid overlays.
-      update_frequency: 8.0
-      publish_frequency: 5.0
+      # HH_260327: Lower local costmap rates to reduce CPU pressure from layered costmap updates.
+      update_frequency: 6.0
+      publish_frequency: 3.0
       rolling_window: True
-      width: 50
-      height: 50
-      resolution: 0.08
-      track_unknown_space: True
+      # HH_260327: Coarsen local rolling window grid slightly for stability.
+      width: 45
+      height: 45
+      resolution: 0.10
+      # HH_260326: Start from free-space master so controller is not blocked by unknown-only map state.
+      track_unknown_space: False
       plugins:
+        # HH_260326: Keep local planning tied to lanelet drivable region.
+        # Without base lanelet layer, local/global plans can jump to wrong-side lanes.
         - lanelet_cost_layer_base
         - lanelet_cost_layer_local_path
         - lidar_cost_layer
@@ -81,22 +97,30 @@ global_costmap:
       # Keep Nav2 base frame aligned with platform/localization TF.
       robot_base_frame: robot_base_link
       # HH_260313-00:00 Raise global master refresh so goal updates are reflected faster.
-      update_frequency: 6.0
-      publish_frequency: 4.0
-      rolling_window: False
-      # HH_260315-00:00 Expand static global bounds to avoid
-      # "Robot is out of bounds of the costmap" near map edges.
-      width: 200
-      height: 140
-      resolution: 0.08
+      # HH_260327: Lower global costmap update pressure for planner stability.
+      update_frequency: 4.0
+      publish_frequency: 2.0
+      # HH_260326: Keep planner global costmap centered on robot to prevent
+      # startup failures when localization origin drifts from legacy fixed bounds.
+      rolling_window: True
+      # HH_260326: Match global rolling window to planning_base source window.
+      # Reason: keep planner solve horizon bounded for responsive ComputePath results.
+      # HH_260327: Coarsen global rolling window grid to reduce planning-side CPU load.
+      width: 45
+      height: 45
+      resolution: 0.10
+      # HH_260326: origin_* retained for backward compatibility; ignored in rolling window mode.
       origin_x: -100.0
       origin_y: -50.0
-      track_unknown_space: True
+      # HH_260326: Start from free-space master so planner is not blocked before map layers settle.
+      track_unknown_space: False
       # HH_260316-00:00 Keep global planner master independent from
       # /planning/cost_grid/global_path guidance layer.
       # Using a path-guidance layer in the same costmap that generates that path
       # creates circular dependence and can produce intermittent no-path failures.
       plugins:
+        # HH_260326: Enforce lanelet drivable-space constraints for global planning.
+        # Without this layer, Smac can output free-space shortcuts on the wrong side.
         - lanelet_cost_layer_base
         - lidar_cost_layer
         - radar_cost_layer

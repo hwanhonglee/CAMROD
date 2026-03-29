@@ -6,7 +6,7 @@
 #include <vector>
 
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/point.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
 #include <avg_msgs/msg/quaternion.hpp>
@@ -20,7 +20,7 @@ class LocalPathExtractorNode : public rclcpp::Node
 {
 public:
   using AvgPlanningMsgs = avg_msgs::msg::AvgPlanningMsgs;
-  using ModuleHealth = avg_msgs::msg::ModuleHealth;
+  using ModuleState = avg_msgs::msg::ModuleState;
 
   // Implements `LocalPathExtractorNode` behavior.
   LocalPathExtractorNode()
@@ -43,9 +43,9 @@ public:
       "controller_path_topic", "/planning/local_path_controller");
     controller_path_timeout_sec_ = declare_parameter<double>(
       "controller_path_timeout_sec", 0.8);
-    publish_planning_diagnostic_ = declare_parameter<bool>("publish_planning_diagnostic", false);
-    planning_diagnostic_topic_ =
-      declare_parameter<std::string>("planning_diagnostic_topic", "/planning/diagnostic");
+    publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
+    planning_status_topic_ =
+      declare_parameter<std::string>("planning_status_topic", "/planning/status");
     // HH_260305-00:00 QoS durability for /planning/global_path subscriber.
     // Keep false by default because planner_server publishes VOLATILE.
     global_path_qos_transient_local_ =
@@ -93,9 +93,9 @@ public:
       controller_path_topic_, rclcpp::QoS(1).reliable(),
       std::bind(&LocalPathExtractorNode::onControllerPath, this, std::placeholders::_1));
     pub_local_path_ = create_publisher<avg_msgs::msg::Path>(output_topic_, local_path_qos);
-    if (publish_planning_diagnostic_) {
+    if (publish_planning_status_) {
       pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
-        planning_diagnostic_topic_, rclcpp::QoS(10));
+        planning_status_topic_, rclcpp::QoS(10));
     }
 
     if (publish_rate_hz_ > 0.0) {
@@ -615,15 +615,15 @@ private:
   // Publishes `AvgPlanning` output.
   void publishAvgPlanning(const avg_msgs::msg::Path & local_path, bool is_empty)
   {
-    if (!publish_planning_diagnostic_ || !pub_avg_planning_) {
+    if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
     }
     AvgPlanningMsgs msg;
     msg.stamp = now();
-    msg.health.stamp = msg.stamp;
-    msg.health.module_name = "planning";
-    msg.health.level = ModuleHealth::OK;
-    msg.health.message = is_empty ? "local_path_extractor.empty" : "local_path_extractor";
+    msg.state.stamp = msg.stamp;
+    msg.state.module_name = "planning";
+    msg.state.level = ModuleState::OK;
+    msg.state.message = is_empty ? "local_path_extractor.empty" : "local_path_extractor";
     msg.local_path = local_path;
     pub_avg_planning_->publish(msg);
   }
@@ -635,7 +635,7 @@ private:
   std::string output_topic_;
   std::string local_path_source_;
   std::string controller_path_topic_;
-  std::string planning_diagnostic_topic_;
+  std::string planning_status_topic_;
   double publish_rate_hz_{15.0};
   bool publish_on_input_update_{true};
   double lookahead_distance_m_{25.0};
@@ -676,7 +676,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::Path>::SharedPtr pub_local_path_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::TimerBase::SharedPtr timer_;
-  bool publish_planning_diagnostic_{false};
+  bool publish_planning_status_{false};
 };
 
 }  // namespace camrod_planning

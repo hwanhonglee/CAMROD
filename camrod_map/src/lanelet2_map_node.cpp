@@ -9,7 +9,7 @@
 #include <avg_msgs/msg/transform_stamped.hpp>
 #include <avg_msgs/msg/color_rgba.hpp>
 
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
@@ -119,9 +119,9 @@ Lanelet2MapNode::Lanelet2MapNode()
   // HH_260109 Publish map markers under /map prefix.
   viz_pub_ = this->create_publisher<avg_msgs::msg::MarkerArray>(
     "/map/markers", qos);
-  if (publish_map_diagnostic_) {
+  if (publish_map_status_) {
     avg_map_pub_ = this->create_publisher<avg_msgs::msg::AvgMapMsgs>(
-      map_diagnostic_topic_, rclcpp::QoS(10));
+      map_status_topic_, rclcpp::QoS(10));
   }
 
   tf_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
@@ -154,8 +154,8 @@ void Lanelet2MapNode::loadParameters()
   config_.dir_stride = static_cast<std::size_t>(this->declare_parameter<int>("dir_stride", 30));
   // HH_260114 Default keeps source z; enable to flatten to ground.
   align_z_to_ground_ = this->declare_parameter<bool>("align_z_to_ground", false);
-  publish_map_diagnostic_ = this->declare_parameter<bool>("publish_map_diagnostic", false);
-  map_diagnostic_topic_ = this->declare_parameter<std::string>("map_diagnostic_topic", "/map/diagnostic");
+  publish_map_status_ = this->declare_parameter<bool>("publish_map_status", false);
+  map_status_topic_ = this->declare_parameter<std::string>("map_status_topic", "/map/status");
 }
 
 // Loads `Map` data or configuration.
@@ -999,16 +999,16 @@ void Lanelet2MapNode::publishAvgMapMessage(
   const avg_msgs::msg::MarkerArray & markers,
   const rclcpp::Time & stamp)
 {
-  if (!publish_map_diagnostic_ || !avg_map_pub_) {
+  if (!publish_map_status_ || !avg_map_pub_) {
     return;
   }
 
   avg_msgs::msg::AvgMapMsgs msg;
   msg.stamp = stamp;
-  msg.health.stamp = stamp;
-  msg.health.module_name = "map";
-  msg.health.level = avg_msgs::msg::ModuleHealth::OK;
-  msg.health.message = "lanelet markers published";
+  msg.state.stamp = stamp;
+  msg.state.module_name = "map";
+  msg.state.level = avg_msgs::msg::ModuleState::OK;
+  msg.state.message = "lanelet markers published";
   msg.lanelet_markers = markers;
   avg_map_pub_->publish(msg);
 }

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Sequence
 
 import yaml
 
@@ -15,14 +15,12 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
-# Implements `_load_params` behavior.
 def _load_params(params_path: str) -> Dict[str, Any]:
   with open(params_path, "r", encoding="utf-8") as f:
     data = yaml.safe_load(f) or {}
   return data.get("/**", {}).get("ros__parameters", {})
 
 
-# Implements `_sensor_pose` behavior.
 def _sensor_pose(sensor_cfg: Dict[str, Any]) -> Tuple[str, str]:
   xyz = [
     float(sensor_cfg.get("x", 0.0)),
@@ -40,23 +38,52 @@ def _sensor_pose(sensor_cfg: Dict[str, Any]) -> Tuple[str, str]:
   )
 
 
-# Implements `_launch_setup` behavior.
+def _nested_sensor_cfg(root: Dict[str, Any], path: Sequence[str]) -> Dict[str, Any]:
+  value: Any = root
+  for key in path:
+    if not isinstance(value, dict) or key not in value:
+      return {}
+    value = value[key]
+  return value if isinstance(value, dict) else {}
+
+
+def _sensor_cfg_compat(root: Dict[str, Any], nested_path: Sequence[str], flat_key: str) -> Dict[str, Any]:
+  # HH_260326: Support both nested keys and legacy flat keys.
+  nested = _nested_sensor_cfg(root, nested_path)
+  if nested:
+    return nested
+  flat = root.get(flat_key, {})
+  return flat if isinstance(flat, dict) else {}
+
+
 def _launch_setup(context, *args, **kwargs):
-  # HH_260109 Sensor kit launch (URDF/TF) renamed package.
   pkg_share = Path(get_package_share_directory("camrod_sensor_kit"))
   params_file = LaunchConfiguration("params_file").perform(context)
   module_namespace = LaunchConfiguration("module_namespace").perform(context)
   base_frame = LaunchConfiguration("base_frame_id").perform(context)
   sensor_kit_base_frame = LaunchConfiguration("sensor_kit_base_frame_id").perform(context)
   map_frame = LaunchConfiguration("map_frame_id").perform(context)
+
   params = _load_params(params_file)
   robot_cfg = params.get("robot", {})
   base_pose_cfg = params.get("base_pose", {})
 
   sensors = {}
-  # HH_260220: Keep only active sensor frames under sensor_kit_base_link.
-  for name in ["imu", "gnss", "lidar", "camera_front"]:
+
+  # ---------------------------------------------------------
+  # 1. Flat sensors
+  # ---------------------------------------------------------
+  for name in ["imu", "gnss", "lidar", "camera"]:
     sensors[name] = _sensor_pose(params.get(name, {}))
+
+  # ---------------------------------------------------------
+  # 2. Nested radar sensors
+  # ---------------------------------------------------------
+  # HH_260326: Radar aggregate frame + child sensors.
+  sensors["radar"] = _sensor_pose(_sensor_cfg_compat(params, ("radar", "base"), "radar_base"))
+  for radar_name in ["front", "left1", "left2", "right1", "right2", "rear"]:
+    key = f"radar_{radar_name}"
+    sensors[key] = _sensor_pose(_sensor_cfg_compat(params, ("radar", radar_name), key))
 
   base_length = float(robot_cfg.get("length", 1.4))
   base_width = float(robot_cfg.get("width", 0.7))
@@ -77,6 +104,7 @@ def _launch_setup(context, *args, **kwargs):
     " base_height:=",
     f"{base_height}",
   ]
+
   for sensor_name, (xyz_str, rpy_str) in sensors.items():
     command_args.extend([
       " ",
@@ -91,7 +119,6 @@ def _launch_setup(context, *args, **kwargs):
 
   robot_description = ParameterValue(Command(command_args), value_type=str)
 
-  # HH_260112 Namespace sensor kit nodes under /sensor_kit with short names.
   rsp_node = Node(
     package="robot_state_publisher",
     executable="robot_state_publisher",
@@ -101,33 +128,14 @@ def _launch_setup(context, *args, **kwargs):
     output="screen",
   )
 
-  # HH_260224 Visualization moved to camrod_platform/map packages.
   _ = map_frame
   _ = base_pose_cfg
-  sensor_kit_diag_node = Node(
-    package="camrod_sensor_kit",
-    executable="sensor_kit_diagnostic_node.py",
-    name="sensor_kit_diagnostic",
-    namespace=module_namespace,
-    output="screen",
-    condition=IfCondition(LaunchConfiguration("enable_diagnostic")),
-    parameters=[{
-      # HH_260318-00:00 Module-local diagnostic topic (namespaced).
-      "diagnostic_topic": "diagnostic",
-      "publish_period_s": 0.5,
-      "stale_timeout_s": 3.0,
-      "base_frame_id": base_frame,
-      "sensor_kit_base_frame_id": sensor_kit_base_frame,
-      "topic_tf": "/tf",
-      "topic_tf_static": "/tf_static",
-    }],
-  )
-  return [rsp_node, sensor_kit_diag_node]
+
+  # HH_260326: Removed sensor_kit status runtime node as requested.
+  return [rsp_node]
 
 
-# Implements `generate_launch_description` behavior.
 def generate_launch_description():
-  # 2026-02-02 10:32: Use centralized bringup config (synced from package config).
   default_params = Path(
     get_package_share_directory("camrod_bringup"),
     "config",
@@ -161,9 +169,9 @@ def generate_launch_description():
       description="Fixed world frame connected to the base frame",
     ),
     DeclareLaunchArgument(
-      "enable_diagnostic",
-      default_value="true",
-      description="Enable sensor_kit diagnostic-only publisher",
+      "enable_status",
+      default_value="false",
+      description="Deprecated (status node removed)",
     ),
     OpaqueFunction(function=_launch_setup),
   ])

@@ -4,6 +4,12 @@
     base_frame_id: "robot_base_link"
     marker_topic: "/platform/robot/markers"
     boundary_topic: "/platform/robot/planning_boundary"
+    # HH_260327: Follow localization pose as primary platform visualization anchor.
+    localization_pose_topic: "/localization/pose"
+    # HH_260327: GNSS is fallback-only (used only if localization is stale/missing).
+    gnss_pose_topic: "/sensing/gnss/pose"
+    use_gnss_fallback: true
+    localization_pose_timeout_sec: 1.0
     publish_tf: false
     use_map_ground_z: true
     ground_z_offset: 0.0

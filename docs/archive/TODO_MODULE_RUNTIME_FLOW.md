@@ -93,7 +93,7 @@ Runtime nodes (depending on args):
 
 Key topic flow:
 - GNSS:
-  `/sensing/gnss/navsatfix`
+  `/sensing/gnss/ublox_gps_node/fix`
   -> `navsat_to_pose_node`
   -> `/sensing/gnss/pose`, `/sensing/gnss/pose_with_covariance`
 - Fusion:

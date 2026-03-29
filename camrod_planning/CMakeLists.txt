@@ -73,11 +73,11 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# HH_260312-00:00 Install planning diagnostics + state machine scripts.
+# HH_260312-00:00 Install planning status_stream + state machine scripts.
 install(
   PROGRAMS
     scripts/planning_state_machine_node.py
-    scripts/planning_diagnostic_node.py
+    scripts/planning_status_node.py
     scripts/nav2_lifecycle_startup_retry_node.py
   DESTINATION lib/${PROJECT_NAME}
 )

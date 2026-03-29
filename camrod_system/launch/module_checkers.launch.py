@@ -5,7 +5,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-# Implements `_checker` behavior.
+# HH_260327: Generic module checker launcher used by bringup.
 def _checker(
     module_name,
     required_nodes,
@@ -40,19 +40,31 @@ def _checker(
     )
 
 
-# Implements `generate_launch_description` behavior.
 def generate_launch_description():
     enable_checkers_arg = DeclareLaunchArgument(
         'enable_checkers',
         default_value='true',
         description='Launch per-module checker nodes',
     )
+    enable_diagnostics_aggregator_arg = DeclareLaunchArgument(
+        'enable_diagnostics_aggregator',
+        default_value='true',
+        description='Launch diagnostics aggregator (/diagnostics -> /diagnostics_agg)',
+    )
+    enable_system_diagnostic_arg = DeclareLaunchArgument(
+        'enable_system_diagnostic',
+        default_value='false',
+        description='Launch system diagnostic summary node',
+    )
     system_namespace_arg = DeclareLaunchArgument(
         'system_namespace',
         default_value='system',
         description='Namespace for system checker/diagnostic nodes',
     )
+
     enable_checkers = LaunchConfiguration('enable_checkers')
+    enable_diagnostics_aggregator = LaunchConfiguration('enable_diagnostics_aggregator')
+    enable_system_diagnostic = LaunchConfiguration('enable_system_diagnostic')
     system_namespace = LaunchConfiguration('system_namespace')
 
     map_checker = _checker(
@@ -73,9 +85,9 @@ def generate_launch_description():
     sensing_checker = _checker(
         module_name='sensing',
         required_nodes=[
-            '/sensing/lidar_preprocessor',
-            '/sensing/camera_preprocessor',
-            '/sensing/platform_velocity_converter',
+            '/sensing/lidar/lidar_preprocessor',
+            '/sensing/camera/camera_preprocessor',
+            '/sensing/imu/platform_velocity_converter',
         ],
         required_topics=[
             '/sensing/lidar/near_cost_grid',
@@ -89,8 +101,7 @@ def generate_launch_description():
         module_name='localization',
         required_nodes=[
             '/localization/navsat_to_pose',
-            '/localization/supervisor',
-            '/localization/health_monitor',
+            '/localization/drop_zone_matcher',
         ],
         required_topics=[
             '/localization/pose',
@@ -108,6 +119,8 @@ def generate_launch_description():
             '/planning/behavior_server',
             '/planning/bt_navigator',
             '/planning/local_path_extractor',
+            '/planning/goal_snapper',
+            '/planning/centerline_snapper',
         ],
         required_topics=[
             '/planning/global_path',
@@ -128,9 +141,12 @@ def generate_launch_description():
     platform_checker = _checker(
         module_name='platform',
         required_nodes=[
+            '/platform/robot_visualization',
+            '/platform/cmd_vel_gate',
             '/sensor_kit/robot_state_publisher',
         ],
         required_topics=[
+            '/platform/drive_enabled',
             '/tf',
             '/tf_static',
         ],
@@ -149,33 +165,25 @@ def generate_launch_description():
 
     sensor_kit_checker = _checker(
         module_name='sensor_kit',
-        required_nodes=[
-            '/sensor_kit/robot_state_publisher',
-            '/sensor_kit/sensor_kit_diagnostic',
-        ],
-        required_topics=[
-            '/tf_static',
-        ],
+        required_nodes=['/sensor_kit/robot_state_publisher'],
+        required_topics=['/tf_static'],
         condition=IfCondition(enable_checkers),
         namespace=system_namespace,
     )
 
-    bringup_checker = _checker(
-        module_name='bringup',
-        required_nodes=['/bringup/bringup_diagnostic'],
-        required_topics=[
-            '/diagnostics',
-        ],
-        condition=IfCondition(enable_checkers),
+    diagnostics_aggregator = Node(
+        package='camrod_system',
+        executable='diagnostics_aggregator_node.py',
+        name='diagnostics_aggregator',
         namespace=system_namespace,
-    )
-
-    system_checker = _checker(
-        module_name='system',
-        required_nodes=['/system/system_diagnostic'],
-        required_topics=['/diagnostics'],
-        condition=IfCondition(enable_checkers),
-        namespace=system_namespace,
+        output='screen',
+        condition=IfCondition(enable_diagnostics_aggregator),
+        parameters=[{
+            'source_topic': '/diagnostics',
+            'output_topic': '/diagnostics_agg',
+            'publish_period_s': 1.0,
+            'stale_timeout_s': 3.0,
+        }],
     )
 
     system_diagnostic = Node(
@@ -184,7 +192,7 @@ def generate_launch_description():
         name='system_diagnostic',
         namespace=system_namespace,
         output='screen',
-        condition=IfCondition(enable_checkers),
+        condition=IfCondition(enable_system_diagnostic),
         parameters=[{
             'diagnostic_topic': '/diagnostics',
             'source_diagnostic_topic': '/diagnostics',
@@ -197,7 +205,6 @@ def generate_launch_description():
                 'platform',
                 'perception',
                 'sensor_kit',
-                'bringup',
                 'system',
             ],
         }],
@@ -205,6 +212,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         enable_checkers_arg,
+        enable_diagnostics_aggregator_arg,
+        enable_system_diagnostic_arg,
         system_namespace_arg,
         map_checker,
         sensing_checker,
@@ -213,7 +222,6 @@ def generate_launch_description():
         platform_checker,
         perception_checker,
         sensor_kit_checker,
-        bringup_checker,
-        system_checker,
+        diagnostics_aggregator,
         system_diagnostic,
     ])

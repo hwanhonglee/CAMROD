@@ -42,9 +42,9 @@ RobotParams loadRobotParams(rclcpp::Node * node)
 
   load_pose("imu", params.imu);
   load_pose("gnss", params.gnss);
-  // HH_260220: Keep the sensor kit model limited to lidar + camera_front.
+  // HH_260326: Canonical camera pose.
+  load_pose("camera", params.camera);
   load_pose("lidar", params.lidar);
-  load_pose("camera_front", params.camera_front);
 
   return params;
 }

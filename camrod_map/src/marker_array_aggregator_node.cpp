@@ -12,7 +12,7 @@
 #include <avg_msgs/msg/marker_array.hpp>
 
 #include <avg_msgs/msg/avg_map_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/marker.hpp>
 
 namespace camrod_map
@@ -38,17 +38,17 @@ public:
     republish_period_sec_ = declare_parameter<double>("republish_period_sec", 0.0);
     min_publish_period_sec_ = declare_parameter<double>("min_publish_period_sec", 0.05);
     stale_timeout_sec_ = declare_parameter<double>("stale_timeout_sec", 0.0);
-    publish_map_diagnostic_ = declare_parameter<bool>("publish_map_diagnostic", false);
-    map_diagnostic_topic_ = declare_parameter<std::string>("map_diagnostic_topic", "/map/diagnostic");
+    publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
+    map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
     stale_timeout_topics_ = declare_parameter<std::vector<std::string>>(
       "stale_timeout_topics", std::vector<std::string>{});
     timer_mode_ = republish_period_sec_ > 0.0;
 
     auto marker_qos = rclcpp::QoS(1).transient_local().reliable();
     pub_ = create_publisher<avg_msgs::msg::MarkerArray>(output_topic_, marker_qos);
-    if (publish_map_diagnostic_) {
+    if (publish_map_status_) {
       avg_map_pub_ = create_publisher<avg_msgs::msg::AvgMapMsgs>(
-        map_diagnostic_topic_, rclcpp::QoS(10));
+        map_status_topic_, rclcpp::QoS(10));
     }
 
     sources_.reserve(input_topics_.size());
@@ -216,16 +216,16 @@ private:
   // Publishes `AvgMapMessage` output.
   void publishAvgMapMessage(const avg_msgs::msg::MarkerArray & markers)
   {
-    if (!publish_map_diagnostic_ || !avg_map_pub_) {
+    if (!publish_map_status_ || !avg_map_pub_) {
       return;
     }
     avg_msgs::msg::AvgMapMsgs msg;
     const auto stamp = now();
     msg.stamp = stamp;
-    msg.health.stamp = stamp;
-    msg.health.module_name = "map";
-    msg.health.level = avg_msgs::msg::ModuleHealth::OK;
-    msg.health.message = "contributor markers published";
+    msg.state.stamp = stamp;
+    msg.state.module_name = "map";
+    msg.state.level = avg_msgs::msg::ModuleState::OK;
+    msg.state.message = "contributor markers published";
     msg.inflation_markers = markers;
     avg_map_pub_->publish(msg);
   }
@@ -259,8 +259,8 @@ private:
   std::vector<std::string> stale_timeout_topics_;
   double republish_period_sec_{0.1};
   double stale_timeout_sec_{0.0};
-  bool publish_map_diagnostic_{false};
-  std::string map_diagnostic_topic_{"/map/diagnostic"};
+  bool publish_map_status_{false};
+  std::string map_status_topic_{"/map/status"};
   bool timer_mode_{false};
   bool dirty_{true};
   std::vector<Source> sources_;

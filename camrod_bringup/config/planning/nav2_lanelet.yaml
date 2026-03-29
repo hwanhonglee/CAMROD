@@ -1,12 +1,10 @@
-# Legacy single-file Nav2 config (kept for reference/backward diff only).
-# Runtime now uses layered overlays in this order:
-#   1) nav2_base.yaml
-#   2) nav2_vehicle.yaml
-#   3) nav2_lanelet_overlay.yaml
-#   4) nav2_behavior.yaml
-# via camrod_planning/launch/nav2_lanelet.launch.py
-# HH_260129 Nav2 config (planning namespace)
-# Costmaps: lanelet base grid + lanelet path grid + lidar obstacle + inflation
+# [LEGACY - not loaded by default launch]
+# This monolithic file is kept only for reference/backward compatibility.
+# Active bringup path loads split overlays in this order:
+#   1) camrod_bringup/config/planning/nav2_base.yaml
+#   2) camrod_bringup/config/planning/nav2_vehicle.yaml
+#   3) camrod_bringup/config/planning/nav2_lanelet_overlay.yaml
+#   4) camrod_bringup/config/planning/nav2_behavior.yaml
 
 planner_server:
   ros__parameters:
@@ -17,9 +15,7 @@ planner_server:
     planner_plugins: ["Smac2D", "GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
-      # HH_260317-00:00 Allow nearest reachable cell solve when clicked goal is slightly
-      # outside lanelet corridor (prevents frequent no-path aborts in RViz goal workflow).
-      tolerance: 1.5
+      tolerance: 0.5
       use_astar: True
       # 2026-02-11: Keep path strictly inside known lanelet-cost area.
       allow_unknown: False
@@ -27,20 +23,18 @@ planner_server:
       plugin: "nav2_smac_planner/SmacPlanner2D"
       # 2026-02-11: Keep path strictly inside known lanelet-cost area.
       allow_unknown: False
-      # HH_260317-00:00 Keep lanelet-constrained planning but relax goal feasibility tolerance
-      # so centerline path is still produced near boundary/off-lane clicks.
-      tolerance: 1.5
+      tolerance: 0.5
       downsample_costmap: False
       downsampling_factor: 1
       use_astar: True
       motion_model_for_search: "REEDS_SHEPP"
-      angle_quantization_bins: 96
+      angle_quantization_bins: 128
       # 2026-02-24: Allow tighter turns for sharp lanelet bends.
       minimum_turning_radius: 0.6
       cost_travel_multiplier: 1.0
       # HH_260316-00:00 Strengthen low-cost preference so planner follows
       # centerline-biased lanelet costs first, then deviates only for high-risk cells.
-      cost_penalty: 4.5
+      cost_penalty: 7.5
       lethal_cost: 253
       neutral_cost: 66
       change_penalty: 0.0
@@ -51,9 +45,9 @@ planner_server:
       # 2026-02-23: Extra smoothing to reduce zig-zag artifacts in narrow lanelets.
       smoother:
         max_iterations: 2000
-        # 2026-02-24: Keep path closer to searched route; reduce lateral overshoot on curves.
-        w_data: 0.30
-        w_smooth: 0.30
+        # HH_260316-00:00 Keep smoothed curvature while preserving centerline adherence.
+        w_data: 0.85
+        w_smooth: 0.15
         tolerance: 1.0e-10
         do_refinement: true
 
@@ -62,17 +56,22 @@ controller_server:
     use_sim_time: False
     controller_frequency: 20.0
     odom_topic: /localization/odometry/filtered
+    # HH_260315-00:00 Explicit speed-limit channel for planning namespace users.
+    speed_limit_topic: /planning/speed_limit
+    # HH_260326: Restore canonical Nav2 checker parameter names.
+    # Nav2 controller server reads *_checker_* keys; validator keys are ignored.
     progress_checker_plugin: "progress_checker"
-    goal_checker_plugins: ["general_goal_checker"]
+    goal_checker_plugins: ["goal_checker"]
     controller_plugins: ["FollowPath"]
     default_controller: FollowPath
 
+    # HH_260326: Restore Humble plugin class names required by nav2_controller.
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.5
       movement_time_allowance: 10.0
 
-    general_goal_checker:
+    goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.3
       yaw_goal_tolerance: 0.25
@@ -184,13 +183,17 @@ global_costmap:
       robot_base_frame: robot_base_link
       update_frequency: 1.0
       publish_frequency: 0.5
-      rolling_window: False
-      # 2026-02-04: Align global costmap bounds to lanelet map bbox (meters, int).
-      width: 165
-      height: 100
+      # HH_260326: Keep planner global costmap centered on robot to prevent
+      # startup failures when localization origin drifts from legacy fixed bounds.
+      rolling_window: True
+      # HH_260326: Keep rolling bounds moderate to avoid planner starvation
+      # from very large layered costmap updates.
+      width: 120
+      height: 120
       resolution: 0.08
-      origin_x: -82.5
-      origin_y: -34.2
+      # HH_260326: origin_* retained for backward compatibility; ignored in rolling window mode.
+      origin_x: -100.0
+      origin_y: -50.0
       footprint: "[[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]"
       robot_radius: 0.0
       track_unknown_space: True
@@ -288,6 +291,8 @@ bt_navigator:
       - nav2_time_expired_condition_bt_node
       - nav2_controller_selector_bt_node
       - nav2_planner_selector_bt_node
+      # HH_260326: Nav2 Humble ships goal_checker_selector BT plugin library name.
+      # Using goal_validator_selector causes bt_navigator configure failure.
       - nav2_goal_checker_selector_bt_node
       - nav2_controller_cancel_bt_node
       - nav2_path_longer_on_approach_bt_node

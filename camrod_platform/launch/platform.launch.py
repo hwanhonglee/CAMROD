@@ -41,15 +41,10 @@ def generate_launch_description():
         default_value=pkg_share('camrod_bringup', os.path.join('config', 'platform', 'robot_visualization.yaml')),
         description='Robot visualization parameters (platform namespace)',
     )
-    base_link_alias_arg = DeclareLaunchArgument(
-        'publish_base_link_alias',
+    enable_module_validator_arg = DeclareLaunchArgument(
+        'enable_module_validator',
         default_value='true',
-        description='Publish static TF alias robot_base_link -> base_link for legacy consumers',
-    )
-    enable_module_checker_arg = DeclareLaunchArgument(
-        'enable_module_checker',
-        default_value='true',
-        description='Enable platform module checker publisher',
+        description='Enable platform module validator publisher',
     )
     module_namespace_arg = DeclareLaunchArgument(
         'module_namespace',
@@ -59,14 +54,63 @@ def generate_launch_description():
     system_namespace_arg = DeclareLaunchArgument(
         'system_namespace',
         default_value='system',
-        description='Namespace for system checker nodes',
+        description='Namespace for system validator nodes',
     )
     sensor_kit_namespace_arg = DeclareLaunchArgument(
         'sensor_kit_namespace',
         default_value='sensor_kit',
         description='Namespace for sensor_kit launch include',
     )
-
+    cmd_vel_gate_enable_arg = DeclareLaunchArgument(
+        'cmd_vel_gate_enable',
+        default_value='true',
+        description='Enable planning cmd_vel -> platform cmd_vel gate',
+    )
+    cmd_vel_in_topic_arg = DeclareLaunchArgument(
+        'cmd_vel_in_topic',
+        default_value='/planning/cmd_vel',
+        description='Input cmd_vel topic from planning',
+    )
+    cmd_vel_out_topic_arg = DeclareLaunchArgument(
+        'cmd_vel_out_topic',
+        default_value='/platform/cmd_vel',
+        description='Gated output cmd_vel topic for platform actuation',
+    )
+    drive_enable_topic_arg = DeclareLaunchArgument(
+        'drive_enable_topic',
+        default_value='/platform/drive_enable',
+        description='Bool trigger topic to enable drive commands',
+    )
+    planning_engage_topic_arg = DeclareLaunchArgument(
+        'planning_engage_topic',
+        default_value='/planning/engage',
+        description='Planning engage bool topic (alias of drive enable)',
+    )
+    use_planning_engage_topic_arg = DeclareLaunchArgument(
+        'use_planning_engage_topic',
+        default_value='true',
+        description='Subscribe to planning engage topic for cmd_vel gating',
+    )
+    drive_state_topic_arg = DeclareLaunchArgument(
+        'drive_state_topic',
+        default_value='/platform/drive_enabled',
+        description='Bool state topic published by cmd_vel_gate',
+    )
+    use_estop_topic_arg = DeclareLaunchArgument(
+        'use_estop_topic',
+        default_value='true',
+        description='Use estop topic to force cmd_vel block',
+    )
+    estop_topic_arg = DeclareLaunchArgument(
+        'estop_topic',
+        default_value='/planning/state_machine/estop',
+        description='Bool estop topic consumed by cmd_vel_gate',
+    )
+    drive_allow_on_start_arg = DeclareLaunchArgument(
+        'drive_allow_on_start',
+        default_value='false',
+        description='Allow cmd_vel pass-through at startup before explicit enable',
+    )
     module_namespace = LaunchConfiguration('module_namespace')
     system_namespace = LaunchConfiguration('system_namespace')
 
@@ -78,7 +122,8 @@ def generate_launch_description():
             'sensor_kit_base_frame_id': LaunchConfiguration('sensor_kit_base_frame_id'),
             'params_file': LaunchConfiguration('params_file'),
             'module_namespace': LaunchConfiguration('sensor_kit_namespace'),
-            'enable_diagnostic': 'true',
+            # HH_260326: Disable sensor_kit status publisher from platform launch.
+            'enable_status': 'false',
         }.items(),
     )
 
@@ -99,61 +144,26 @@ def generate_launch_description():
         ],
     )
 
-    # HH_260307-00:00 Compatibility alias for Nav2 recovery / plugins that still request "base_link".
-    # Keeps the canonical frame as robot_base_link while preventing lookup failures.
-    base_link_alias = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='base_link_alias_publisher',
-        arguments=[
-            '--x', '0', '--y', '0', '--z', '0',
-            '--roll', '0', '--pitch', '0', '--yaw', '0',
-            '--frame-id', 'robot_base_link',
-            '--child-frame-id', 'base_link',
-        ],
-        output='screen',
-        condition=IfCondition(LaunchConfiguration('publish_base_link_alias')),
-    )
-
-    platform_checker = Node(
-        package='camrod_system',
-        executable='module_checker_node.py',
-        name='platform_checker',
-        namespace=system_namespace,
-        output='screen',
-        condition=IfCondition(LaunchConfiguration('enable_module_checker')),
-        parameters=[{
-            'module_name': 'platform',
-            'required_nodes': [
-                '/platform/robot_visualization',
-                '/sensor_kit/robot_state_publisher',
-            ],
-            'required_topics': [
-                '/tf',
-                '/tf_static',
-            ],
-            'diagnostic_topic': '/diagnostics',
-            'status_name': 'platform/checker',
-            'check_period_s': 0.5,
-            'warn_throttle_sec': 2.0,
-            'publish_ok': True,
-        }],
-    )
-
-    platform_diagnostic = Node(
+    # HH_260326: Removed platform status/validator runtime nodes as requested.
+    cmd_vel_gate = Node(
         package='camrod_platform',
-        executable='platform_diagnostic_node.py',
-        name='platform_diagnostic',
+        executable='cmd_vel_gate_node.py',
+        name='cmd_vel_gate',
         namespace=module_namespace,
         output='screen',
         parameters=[{
-            # HH_260318-00:00 Module-local diagnostic topic (namespaced).
-            'diagnostic_topic': 'diagnostic',
-            'publish_period_s': 0.2,
-            'stale_timeout_s': 2.0,
-            'topic_robot_markers': '/platform/robot/markers',
-            'topic_planning_boundary': '/platform/robot/planning_boundary',
+            'input_cmd_vel_topic': LaunchConfiguration('cmd_vel_in_topic'),
+            'output_cmd_vel_topic': LaunchConfiguration('cmd_vel_out_topic'),
+            'enable_topic': LaunchConfiguration('drive_enable_topic'),
+            'engage_topic': LaunchConfiguration('planning_engage_topic'),
+            'use_engage_topic': LaunchConfiguration('use_planning_engage_topic'),
+            'state_topic': LaunchConfiguration('drive_state_topic'),
+            'use_estop_topic': LaunchConfiguration('use_estop_topic'),
+            'estop_topic': LaunchConfiguration('estop_topic'),
+            'allow_on_start': LaunchConfiguration('drive_allow_on_start'),
+            'publish_zero_when_blocked': True,
         }],
+        condition=IfCondition(LaunchConfiguration('cmd_vel_gate_enable')),
     )
 
     return LaunchDescription([
@@ -162,14 +172,24 @@ def generate_launch_description():
         sensor_kit_base_frame_arg,
         params_arg,
         robot_viz_params_arg,
-        base_link_alias_arg,
-        enable_module_checker_arg,
+        enable_module_validator_arg,
         module_namespace_arg,
         system_namespace_arg,
         sensor_kit_namespace_arg,
-        sensor_launch,
+        cmd_vel_gate_enable_arg,
+        cmd_vel_in_topic_arg,
+        cmd_vel_out_topic_arg,
+        drive_enable_topic_arg,
+        planning_engage_topic_arg,
+        use_planning_engage_topic_arg,
+        drive_state_topic_arg,
+        use_estop_topic_arg,
+        estop_topic_arg,
+        drive_allow_on_start_arg,
         robot_visualization,
-        base_link_alias,
-        platform_diagnostic,
-        platform_checker,
+        cmd_vel_gate,
+        # HH_260327: Launch platform-owned nodes before sensor_kit include.
+        # `sensor_kit.launch.py` also uses `module_namespace` argument name and can
+        # overwrite LaunchConfiguration context for subsequent actions.
+        sensor_launch,
     ])

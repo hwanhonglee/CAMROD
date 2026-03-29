@@ -21,7 +21,7 @@ def generate_launch_description():
     system_namespace_arg = DeclareLaunchArgument(
         "system_namespace",
         default_value="system",
-        description="System checker namespace",
+        description="System validator namespace",
     )
     map_path_arg = DeclareLaunchArgument(
         "map_path",
@@ -38,10 +38,10 @@ def generate_launch_description():
         default_value="false",
         description="Enable planning state machine",
     )
-    enable_module_checker_arg = DeclareLaunchArgument(
-        "enable_module_checker",
+    enable_module_validator_arg = DeclareLaunchArgument(
+        "enable_module_validator",
         default_value="true",
-        description="Enable planning module checker",
+        description="Enable planning module validator",
     )
 
     include_full = IncludeLaunchDescription(
@@ -54,7 +54,7 @@ def generate_launch_description():
             "map_path": LaunchConfiguration("map_path"),
             "enable_goal_replanner": LaunchConfiguration("enable_goal_replanner"),
             "enable_state_machine": LaunchConfiguration("enable_state_machine"),
-            "enable_module_checker": LaunchConfiguration("enable_module_checker"),
+            "enable_module_validator": LaunchConfiguration("enable_module_validator"),
         }.items(),
     )
 
@@ -65,7 +65,7 @@ def generate_launch_description():
             map_path_arg,
             enable_goal_replanner_arg,
             enable_state_machine_arg,
-            enable_module_checker_arg,
+            enable_module_validator_arg,
             include_full,
         ]
     )

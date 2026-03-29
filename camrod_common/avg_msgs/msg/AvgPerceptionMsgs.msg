@@ -1,5 +1,5 @@
 builtin_interfaces/Time stamp
-avg_msgs/ModuleHealth health
+avg_msgs/ModuleState state
 
 sensor_msgs/PointCloud2 obstacles
 sensor_msgs/CameraInfo camera_info

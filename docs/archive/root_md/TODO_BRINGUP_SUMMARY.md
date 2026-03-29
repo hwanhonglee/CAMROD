@@ -22,7 +22,7 @@
   - `camrod_bringup/scripts/fake_sensor_publisher.py`
 
 ## Current Runtime Inputs (Expected)
-- `/sensing/gnss/navsatfix`
+- `/sensing/gnss/ublox_gps_node/fix`
 - `/sensing/imu/data`
 - `/platform/wheel/odometry`
 - `/localization/vio/odometry`

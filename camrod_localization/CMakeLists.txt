@@ -56,10 +56,10 @@ ament_target_dependencies(odometry_to_pose_node
 
 # HH_260224 cost_field_node moved to camrod_map.
 
-add_executable(localization_health_monitor_node
-  src/localization_health_monitor_node.cpp
+add_executable(localization_state_watcher_node
+  src/localization_state_watcher_node.cpp
 )
-ament_target_dependencies(localization_health_monitor_node
+ament_target_dependencies(localization_state_watcher_node
   rclcpp
   geometry_msgs
   nav_msgs
@@ -104,6 +104,7 @@ add_executable(localization_pose_selector_node
 )
 ament_target_dependencies(localization_pose_selector_node
   rclcpp
+  tf2_ros
   geometry_msgs
   nav_msgs
   std_msgs
@@ -157,7 +158,7 @@ ament_target_dependencies(kimera_csv_bridge_node
 install(TARGETS
   navsat_to_pose_node
   odometry_to_pose_node
-  localization_health_monitor_node
+  localization_state_watcher_node
   localization_eskf_node
   localization_supervisor_node
   localization_pose_selector_node
@@ -175,7 +176,7 @@ install(DIRECTORY
 
 install(
   PROGRAMS
-    scripts/localization_diagnostic_node.py
+    scripts/localization_status_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

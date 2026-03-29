@@ -7,13 +7,13 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(avg_msgs REQUIRED)  # HH_260326: enforce avg_msgs availability for bringup scripts.
 find_package(rclcpp REQUIRED)
 
 # HH_260109 Install fake sensor publisher for simulation.
 install(
   PROGRAMS
     scripts/fake_sensor_publisher.py
-    scripts/bringup_diagnostic_node.py
     scripts/check_config_sync.sh
   DESTINATION lib/${PROJECT_NAME}
 )

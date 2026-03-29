@@ -40,7 +40,8 @@ install(TARGETS
 )
 install(
   PROGRAMS
-    scripts/platform_diagnostic_node.py
+    scripts/cmd_vel_gate_node.py
+    scripts/platform_status_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

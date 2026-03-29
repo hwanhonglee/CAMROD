@@ -182,7 +182,7 @@ install(TARGETS
 
 install(
   PROGRAMS
-    scripts/map_diagnostic_node.py
+    scripts/map_status_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

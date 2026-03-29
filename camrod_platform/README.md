@@ -30,7 +30,7 @@ platform.launch.py
   - `robot_visualization_param_file`
 - Toggles:
   - `publish_base_link_alias`
-  - `enable_module_checker`
+  - `enable_module_validator`
 - Namespaces:
   - `module_namespace` (default `platform`)
   - `sensor_kit_namespace` (default `sensor_kit`)
@@ -44,7 +44,7 @@ platform.launch.py
   - `/tf`
   - `/tf_static`
 
-## Diagnostics
-- Module-local topic: `/platform/diagnostic`
-- Aggregated topic: `/diagnostics`
+## StatusStream
+- Module-local topic: `/platform/status`
+- Aggregated topic: `/status_stream`
 

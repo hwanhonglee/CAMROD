@@ -7,7 +7,7 @@
 #include <std_msgs/msg/string.hpp>
 
 #include <avg_msgs/msg/avg_localization_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 
 #include <array>
 #include <chrono>
@@ -233,11 +233,11 @@ public:
       "local_odom_topic", "/localization/kimera_vio/local_odometry");
     source_topic_ = declare_parameter<std::string>(
       "source_topic", "/localization/kimera_vio/source");
-    // HH_260317-00:00 Keep parameter names domain-oriented (no avg_* naming).
-    publish_localization_diagnostic_ = declare_parameter<bool>(
-      "publish_localization_diagnostic", false);
-    localization_diagnostic_topic_ = declare_parameter<std::string>(
-      "localization_diagnostic_topic", "/localization/diagnostic");
+    // HH_260326: Use status/state parameter names consistently.
+    publish_localization_status_ = declare_parameter<bool>(
+      "publish_localization_status", false);
+    localization_status_topic_ = declare_parameter<std::string>(
+      "localization_status_topic", "/localization/status");
 
     position_stddev_m_ = declare_parameter<double>("position_stddev_m", 0.5);
     orientation_stddev_rad_ = declare_parameter<double>("orientation_stddev_rad", 0.35);
@@ -258,9 +258,9 @@ public:
     local_pose_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(local_pose_topic_, latched_qos);
     local_odom_pub_ = create_publisher<nav_msgs::msg::Odometry>(local_odom_topic_, latched_qos);
     source_pub_ = create_publisher<std_msgs::msg::String>(source_topic_, latched_qos);
-    if (publish_localization_diagnostic_) {
-      localization_diagnostic_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(
-        localization_diagnostic_topic_, rclcpp::QoS(10));
+    if (publish_localization_status_) {
+      localization_status_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(
+        localization_status_topic_, rclcpp::QoS(10));
     }
 
     timer_ = create_wall_timer(
@@ -349,17 +349,17 @@ private:
       local_odom_pub_->publish(odom_msg);
     }
 
-    if (publish_localization_diagnostic_ && localization_diagnostic_pub_) {
+    if (publish_localization_status_ && localization_status_pub_) {
       avg_msgs::msg::AvgLocalizationMsgs avg_msg;
       avg_msg.stamp = pose_msg.header.stamp;
       avg_msg.localization_pose = pose_msg;
       avg_msg.localization_pose_cov = pose_cov_msg;
       avg_msg.localization_odom = odom_msg;
-      avg_msg.health.stamp = pose_msg.header.stamp;
-      avg_msg.health.module_name = "localization";
-      avg_msg.health.level = avg_msgs::msg::ModuleHealth::OK;
-      avg_msg.health.message = absolute_pose ? "kimera_csv_abs" : "kimera_csv_local";
-      localization_diagnostic_pub_->publish(avg_msg);
+      avg_msg.state.stamp = pose_msg.header.stamp;
+      avg_msg.state.module_name = "localization";
+      avg_msg.state.level = avg_msgs::msg::ModuleState::OK;
+      avg_msg.state.message = absolute_pose ? "kimera_csv_abs" : "kimera_csv_local";
+      localization_status_pub_->publish(avg_msg);
     }
   }
 
@@ -412,10 +412,10 @@ private:
   std::string local_pose_topic_;
   std::string local_odom_topic_;
   std::string source_topic_;
-  std::string localization_diagnostic_topic_;
+  std::string localization_status_topic_;
   double position_stddev_m_{0.5};
   double orientation_stddev_rad_{0.35};
-  bool publish_localization_diagnostic_{false};
+  bool publish_localization_status_{false};
 
   // Readers/state
   CsvTailReader abs_reader_;
@@ -433,7 +433,7 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr local_pose_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr local_odom_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr source_pub_;
-  rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr localization_diagnostic_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr localization_status_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

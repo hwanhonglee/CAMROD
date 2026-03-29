@@ -1,5 +1,5 @@
 builtin_interfaces/Time stamp
-avg_msgs/ModuleHealth health
+avg_msgs/ModuleState state
 
 avg_msgs/AvgRobotInfo robot_info
 visualization_msgs/MarkerArray robot_markers

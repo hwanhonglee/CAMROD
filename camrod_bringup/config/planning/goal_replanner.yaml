@@ -9,8 +9,8 @@
     # HH_260316-00:00 Consume snapped goal only.
     goal_topic: "/planning/goal_pose_snapped"
     # Primary selector (recommended):
+    # - "lanelet_pose"      : /planning/lanelet_pose as explicit start (best for lane-bound path)
     # - "robot_base_link"   : map->robot_base_link TF as explicit start
-    # - "lanelet_pose"      : /planning/lanelet_pose as explicit start
     # - "localization_pose" : /localization/pose as explicit start
     # - "start_topic"       : use start_topic value as explicit start
     planning_start_source: "lanelet_pose"
@@ -26,11 +26,10 @@
     frame_id: "map"
     output_path_topic: "/planning/global_path"
     # HH_260317-00:00 Keep avg global path stream always available for
-    # local/global path-cost-grid builders (they subscribe to avg_msgs::Path).
+    # local/global path-cost-grid builders (avg_msgs::Path).
     publish_result_path: true
-    enable_periodic_replan: false
-    # HH_260317-00:00 Do not pause ComputePath helper while NavigateToPose is active.
-    # This keeps /planning/global_path refresh responsive on each new snapped goal.
+    # HH_260317-00:00 Keep ComputePath helper active during NavigateToPose
+    # so snapped-goal updates refresh global path immediately.
     pause_when_navigate_active: false
     navigate_status_topic: "/planning/navigate_to_pose/_action/status"
     navigate_inactive_grace_sec: 0.8
@@ -50,8 +49,7 @@
     retry_after_failure_sec: 0.8
     # Trigger ComputePath immediately on new goal and on first valid snapped start pose.
     immediate_replan_on_goal: true
-    # HH_260311-00:00 Global path should refresh on new goal, not on every start-pose update.
-    immediate_replan_on_start: false
+    immediate_replan_on_start: true
     # Keep global path fixed after initial solve. Only a new goal may replace it.
     replan_on_start_change: false
     # HH_260306-00:00 After goal is reached, pause replanning until a new goal arrives.

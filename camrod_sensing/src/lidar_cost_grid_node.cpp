@@ -49,16 +49,16 @@ public:
     ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.90);
     max_message_age_sec_ = declare_parameter<double>("max_message_age_sec", 0.50);
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);
-    lidar_diagnostic_topic_ = declare_parameter<std::string>(
-      "lidar_diagnostic_topic", "/sensing/lidar/diagnostic");
-    publish_lidar_diagnostic_ = declare_parameter<bool>("publish_lidar_diagnostic", false);
+    lidar_status_topic_ = declare_parameter<std::string>(
+      "lidar_status_topic", "/sensing/lidar/status");
+    publish_lidar_status_ = declare_parameter<bool>("publish_lidar_status", false);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     pub_grid_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
       output_topic_, rclcpp::QoS(1).transient_local().reliable());
-    avg_lidar_pub_ = create_publisher<AvgSensingLidar>(lidar_diagnostic_topic_, rclcpp::QoS(10));
+    avg_lidar_pub_ = create_publisher<AvgSensingLidar>(lidar_status_topic_, rclcpp::QoS(10));
     sub_cloud_ = create_subscription<avg_msgs::msg::PointCloud2>(
       input_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LidarCostGridNode::onCloud, this, std::placeholders::_1));
@@ -315,7 +315,7 @@ private:
   // Publishes `AvgLidar` output.
   void publishAvgLidar(const avg_msgs::msg::OccupancyGrid & grid)
   {
-    if (!publish_lidar_diagnostic_ || !avg_lidar_pub_) {
+    if (!publish_lidar_status_ || !avg_lidar_pub_) {
       return;
     }
     AvgSensingLidar avg_msg;
@@ -328,7 +328,7 @@ private:
 
   std::string input_topic_;
   std::string output_topic_;
-  std::string lidar_diagnostic_topic_;
+  std::string lidar_status_topic_;
   std::string base_frame_id_;
   std::string output_frame_id_;
   double resolution_{0.10};
@@ -346,7 +346,7 @@ private:
   double ego_clear_radius_m_{0.90};
   double max_message_age_sec_{0.50};
   double publish_rate_hz_{10.0};
-  bool publish_lidar_diagnostic_{false};
+  bool publish_lidar_status_{false};
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;

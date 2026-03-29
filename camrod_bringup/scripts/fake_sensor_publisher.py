@@ -204,7 +204,7 @@ class FakeSensorPublisher(Node):
         self._was_holding = True
 
         # HH_260109 Publish fake sensors with module-prefixed topics.
-        self.pub_navsat = self.create_publisher(NavSatFix, "/sensing/gnss/navsatfix", 10)
+        self.pub_navsat = self.create_publisher(NavSatFix, "/sensing/gnss/ublox_gps_node/fix", 10)
         self.pub_imu = self.create_publisher(Imu, "/sensing/imu/data", 10)
         self.pub_wheel = self.create_publisher(Odometry, "/platform/wheel/odometry", 10)
         self.pub_vio = self.create_publisher(Odometry, "/localization/vio/odometry", 10)

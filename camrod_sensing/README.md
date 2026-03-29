@@ -51,9 +51,9 @@ source install/setup.bash
 - LiDAR:
   - raw: `/sensing/lidar/vanjee/points_raw`
   - filtered: `/sensing/lidar/points_filtered`
-  - diagnostic: `/sensing/lidar/diagnostic` (or module diagnostic stream)
+  - status: `/sensing/lidar/status` (or module status stream)
 - GNSS:
-  - fix: `/sensing/gnss/navsatfix`
+  - fix: `/sensing/gnss/ublox_gps_node/fix`
   - correction: `/sensing/gnss/rtcm`
 - Camera:
   - input: `/sensing/camera/image_raw`, `/sensing/camera/camera_info`
@@ -80,6 +80,6 @@ source install/setup.bash
 - `config/gnss/*` (u-blox F9P, NTRIP)
 - `config/radar/*` (driver and cost grid)
 
-## Diagnostics
-- Module-local topic: `/sensing/diagnostic`
-- Aggregated topic: `/diagnostics`
+## StatusStream
+- Module-local topic: `/sensing/status`
+- Aggregated topic: `/status_stream`

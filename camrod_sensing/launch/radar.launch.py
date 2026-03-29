@@ -48,7 +48,7 @@ def generate_launch_description():
                         "right1/range",
                         "front/range",
                     ],
-                    "radar_diagnostic_topic": "diagnostic",
+                    "radar_status_topic": "status",
                 },
             ],
         ),

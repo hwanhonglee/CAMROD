@@ -65,9 +65,9 @@ def generate_launch_description():
         description="Output twist_with_covariance topic (relative to module namespace)",
     )
     declare_diag_topic = DeclareLaunchArgument(
-        "imu_diagnostic_topic",
-        default_value="diagnostic",
-        description="IMU diagnostic topic (relative to module namespace)",
+        "imu_status_topic",
+        default_value="status",
+        description="IMU status topic (relative to module namespace)",
     )
 
     velocity_converter_node = Node(
@@ -82,7 +82,7 @@ def generate_launch_description():
                 "velocity_topic": LaunchConfiguration("velocity_topic"),
                 "imu_topic": LaunchConfiguration("imu_topic"),
                 "output_topic": LaunchConfiguration("output_topic"),
-                "imu_diagnostic_topic": LaunchConfiguration("imu_diagnostic_topic"),
+                "imu_status_topic": LaunchConfiguration("imu_status_topic"),
             },
         ],
     )

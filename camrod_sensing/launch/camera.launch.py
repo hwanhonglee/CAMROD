@@ -24,7 +24,7 @@ def generate_launch_description():
     input_camera_info_topic = LaunchConfiguration("input_camera_info_topic")
     output_image_topic = LaunchConfiguration("output_image_topic")
     output_camera_info_topic = LaunchConfiguration("output_camera_info_topic")
-    camera_diagnostic_topic = LaunchConfiguration("camera_diagnostic_topic")
+    camera_status_topic = LaunchConfiguration("camera_status_topic")
 
     declare_args = [
         DeclareLaunchArgument(
@@ -63,9 +63,9 @@ def generate_launch_description():
             description="Output processed camera_info topic (relative to module namespace)",
         ),
         DeclareLaunchArgument(
-            "camera_diagnostic_topic",
-            default_value="diagnostic",
-            description="Camera diagnostic topic (relative to module namespace)",
+            "camera_status_topic",
+            default_value="status",
+            description="Camera status topic (relative to module namespace)",
         ),
     ]
 
@@ -86,7 +86,7 @@ def generate_launch_description():
                 "input_camera_info_topic": input_camera_info_topic,
                 "output_image_topic": output_image_topic,
                 "output_camera_info_topic": output_camera_info_topic,
-                "camera_diagnostic_topic": camera_diagnostic_topic,
+                "camera_status_topic": camera_status_topic,
             },
         ],
     )

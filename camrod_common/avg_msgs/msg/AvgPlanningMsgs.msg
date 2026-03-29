@@ -1,5 +1,5 @@
 builtin_interfaces/Time stamp
-avg_msgs/ModuleHealth health
+avg_msgs/ModuleState state
 
 geometry_msgs/PoseStamped goal_pose
 geometry_msgs/PoseStamped lanelet_pose

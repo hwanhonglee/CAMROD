@@ -7,7 +7,7 @@
 #include <avg_msgs/msg/nav_sat_fix.hpp>
 
 #include <avg_msgs/msg/avg_localization_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/point.hpp>
 
 namespace
@@ -90,7 +90,7 @@ public:
   : Node("navsat_to_pose")
   {
     // HH_260109 Use sensing-prefixed GNSS topics.
-    navsat_topic_ = declare_parameter<std::string>("navsat_topic", "/sensing/gnss/navsatfix");
+    navsat_topic_ = declare_parameter<std::string>("navsat_topic", "/sensing/gnss/ublox_gps_node/fix");
     // 2026-01-30: Default to no raw/UTM subscriptions unless explicitly configured.
     raw_pose_topic_ = declare_parameter<std::string>("raw_pose_topic", "");
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/sensing/gnss/pose");
@@ -99,9 +99,9 @@ public:
     map_frame_id_ = declare_parameter<std::string>("map_frame_id", "map");
     publish_covariance_ = declare_parameter<bool>("publish_covariance", true);
     // HH_260312-00:00 Publish consolidated localization module message from C++ nodes.
-    publish_localization_diagnostic_ = declare_parameter<bool>("publish_localization_diagnostic", false);
-    localization_diagnostic_topic_ = declare_parameter<std::string>(
-      "localization_diagnostic_topic", "/localization/diagnostic");
+    publish_localization_status_ = declare_parameter<bool>("publish_localization_status", false);
+    localization_status_topic_ = declare_parameter<std::string>(
+      "localization_status_topic", "/localization/status");
     const auto cov = declare_parameter<std::vector<double>>(
       "position_covariance_diagonal", std::vector<double>{1.0, 1.0, 1.0, 999.0, 999.0, 1.0});
     covariance_.fill(0.0);
@@ -130,9 +130,9 @@ public:
       pose_cov_pub_ = create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(
         pose_cov_topic_, rclcpp::QoS(10));
     }
-    if (publish_localization_diagnostic_) {
+    if (publish_localization_status_) {
       avg_localization_pub_ =
-        create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(localization_diagnostic_topic_, rclcpp::QoS(10));
+        create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(localization_status_topic_, rclcpp::QoS(10));
     }
     navsat_sub_ = create_subscription<avg_msgs::msg::NavSatFix>(
       navsat_topic_, rclcpp::SensorDataQoS(),
@@ -275,7 +275,7 @@ private:
       pose_cov_pub_->publish(cov_msg);
     }
 
-    if (publish_localization_diagnostic_ && avg_localization_pub_) {
+    if (publish_localization_status_ && avg_localization_pub_) {
       avg_msgs::msg::AvgLocalizationMsgs avg_msg;
       avg_msg.stamp = out.header.stamp;
       avg_msg.gnss_pose_cov.header = out.header;
@@ -284,10 +284,10 @@ private:
       if (has_navsatfix_) {
         avg_msg.gnss_navsatfix = last_navsatfix_;
       }
-      avg_msg.health.stamp = out.header.stamp;
-      avg_msg.health.module_name = "localization";
-      avg_msg.health.level = avg_msgs::msg::ModuleHealth::OK;
-      avg_msg.health.message = "navsat_to_pose";
+      avg_msg.state.stamp = out.header.stamp;
+      avg_msg.state.module_name = "localization";
+      avg_msg.state.level = avg_msgs::msg::ModuleState::OK;
+      avg_msg.state.message = "navsat_to_pose";
       avg_localization_pub_->publish(avg_msg);
     }
   }
@@ -299,10 +299,10 @@ private:
   std::string pose_cov_topic_;
   std::string map_frame_id_;
   bool publish_covariance_{true};
-  bool publish_localization_diagnostic_{false};
+  bool publish_localization_status_{false};
   bool has_navsatfix_{false};
   std::array<double, 36> covariance_{};
-  std::string localization_diagnostic_topic_;
+  std::string localization_status_topic_;
 
   double origin_lat_deg_{0.0};
   double origin_lon_deg_{0.0};

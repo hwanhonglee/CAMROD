@@ -1,4 +1,3 @@
-# 2026-02-02 10:32 Sync from package config into bringup/config
 drop_zones:
   - id: "dz_way_2048"
     type: "drop_zone"

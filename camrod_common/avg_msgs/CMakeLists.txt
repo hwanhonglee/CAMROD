@@ -37,10 +37,10 @@ if(Python3_LIBRARIES)
 endif()
 
 set(msg_files
-  "msg/ModuleHealth.msg"
-  "msg/SystemDiagnostic.msg"
+  "msg/ModuleState.msg"
+  "msg/SystemStatus.msg"
   "msg/AvgLocalizationMode.msg"
-  "msg/AvgLocalizationDiagnostics.msg"
+  "msg/AvgLocalizationStatusStream.msg"
   "msg/AvgLocalizationStatus.msg"
   "msg/AvgSensorPose.msg"
   "msg/AvgRobotSpecifications.msg"
@@ -50,6 +50,7 @@ set(msg_files
   "msg/AvgSensingImu.msg"
   "msg/AvgSensingGnss.msg"
   "msg/AvgSensingRadar.msg"
+  "msg/AvgGnssPose.msg" # HH_260326: custom GNSS pose message type
   "msg/AvgSensingMsgs.msg"
   "msg/AvgLocalizationMsgs.msg"
   "msg/AvgPlanningMsgs.msg"

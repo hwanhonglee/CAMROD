@@ -236,7 +236,7 @@ Topics repeated in many files are not automatically wrong, but are good cleanup 
 - `/perception/messages`: 6 references
 - `/planning/navigate_to_pose/_action/status`: 6 references
 - `/platform/messages`: 6 references
-- `/sensing/gnss/navsatfix`: 6 references
+- `/sensing/gnss/ublox_gps_node/fix`: 6 references
 - `/sensor_kit/messages`: 6 references
 - `/goal_pose`: 5 references
 - `/localization/kimera_vio/odometry`: 5 references

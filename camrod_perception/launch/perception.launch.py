@@ -20,10 +20,10 @@ def generate_launch_description():
         default_value=default_param,
         description='Perception parameter file (obstacle fusion)',
     )
-    enable_module_checker_arg = DeclareLaunchArgument(
-        'enable_module_checker',
+    enable_module_validator_arg = DeclareLaunchArgument(
+        'enable_module_validator',
         default_value='true',
-        description='Enable perception module checker publisher',
+        description='Enable perception module validator publisher',
     )
     enable_lidar_obstacle_arg = DeclareLaunchArgument(
         'enable_lidar_obstacle',
@@ -38,10 +38,10 @@ def generate_launch_description():
     system_namespace_arg = DeclareLaunchArgument(
         'system_namespace',
         default_value='system',
-        description='Namespace for system checker nodes',
+        description='Namespace for system validator nodes',
     )
     param_file = LaunchConfiguration('perception_param_file')
-    enable_module_checker = LaunchConfiguration('enable_module_checker')
+    enable_module_validator = LaunchConfiguration('enable_module_validator')
     enable_lidar_obstacle = LaunchConfiguration('enable_lidar_obstacle')
     module_namespace = LaunchConfiguration('module_namespace')
     system_namespace = LaunchConfiguration('system_namespace')
@@ -66,50 +66,14 @@ def generate_launch_description():
         condition=IfCondition(enable_lidar_obstacle),
     )
 
-    perception_checker = Node(
-        package='camrod_system',
-        executable='module_checker_node.py',
-        name='perception_checker',
-        namespace=system_namespace,
-        output='screen',
-        condition=IfCondition(enable_module_checker),
-        parameters=[{
-            'module_name': 'perception',
-            'required_nodes': ['/perception/obstacle_fusion', '/perception/obstacle_lidar'],
-            'required_topics': ['/perception/obstacles', '/perception/lidar/bboxes'],
-            'diagnostic_topic': '/diagnostics',
-            'status_name': 'perception/checker',
-            'check_period_s': 0.5,
-            'warn_throttle_sec': 2.0,
-            'publish_ok': True,
-        }],
-    )
-
-    perception_diagnostic = Node(
-        package='camrod_perception',
-        executable='perception_diagnostic_node.py',
-        name='perception_diagnostic',
-        namespace=module_namespace,
-        output='screen',
-        parameters=[{
-            # HH_260318-00:00 Module-local diagnostic topic (namespaced).
-            'diagnostic_topic': 'diagnostic',
-            'publish_period_s': 0.2,
-            'stale_timeout_s': 2.0,
-            'topic_obstacles': '/perception/obstacles',
-            'topic_lidar_bboxes': '/perception/lidar/bboxes',
-            'topic_detections': '/perception/camera/detections_2d',
-        }],
-    )
+    # HH_260326: Removed perception status/validator runtime nodes as requested.
 
     return LaunchDescription([
         param_file_arg,
-        enable_module_checker_arg,
+        enable_module_validator_arg,
         enable_lidar_obstacle_arg,
         module_namespace_arg,
         system_namespace_arg,
         obstacle_fusion,
         obstacle_lidar,
-        perception_diagnostic,
-        perception_checker,
     ])

@@ -211,7 +211,7 @@ ros2 launch camrod_localization localization.launch.py
 | `module_namespace` | `localization` | localization namespace |
 | `platform_namespace` | `platform` | platform namespace |
 | `system_namespace` | `system` | checker namespace |
-| `navsat_topic` | `/sensing/gnss/navsatfix` | navsat input |
+| `navsat_topic` | `/sensing/gnss/ublox_gps_node/fix` | navsat input |
 | `use_eskf` | `true` | use ESKF or legacy EKF |
 | `enable_module_checker` | `true` | checker |
 
@@ -229,7 +229,7 @@ ros2 launch camrod_localization localization.launch.py
 Example (real GNSS):
 ```bash
 ros2 launch camrod_localization localization_top.launch.py \
-  navsat_topic:=/sensing/gnss/navsatfix use_eskf:=true
+  navsat_topic:=/sensing/gnss/ublox_gps_node/fix use_eskf:=true
 ```
 
 ---

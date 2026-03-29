@@ -5,7 +5,8 @@ origin:
   # lon: 126.77473954
   # alt: 84.0
   # yaw_offset_deg: 0.0
-  # 52S-CF60 - VMB
+  # HH_260327: Active localization origin (52S-CF60 - VMB).
+  # Park reference is annotation only.
   lat: 36.7292921
   lon: 127.4429577
   alt: 84.0

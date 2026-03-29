@@ -8,7 +8,7 @@
 #include <avg_msgs/msg/marker_array.hpp>
 
 #include <avg_msgs/msg/avg_map_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 
 #include <lanelet2_io/Io.h>
 #include <lanelet2_projection/LocalCartesian.h>
@@ -86,8 +86,8 @@ public:
     config_.percentile_clip = declare_parameter<double>("percentile_clip", 0.95);     // 0.0~1.0
     config_.output_topic = declare_parameter<std::string>(
       "output_topic", "/map/cost_grid/lanelet_field_markers");
-    publish_map_diagnostic_ = declare_parameter<bool>("publish_map_diagnostic", false);
-    map_diagnostic_topic_ = declare_parameter<std::string>("map_diagnostic_topic", "/map/diagnostic");
+    publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
+    map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
     weights_.distance = declare_parameter<double>("weights.distance", 1.0);
     weights_.curvature = declare_parameter<double>("weights.curvature", 0.5);
     weights_.lane_preference = declare_parameter<double>("weights.lane_preference", 0.0);
@@ -106,9 +106,9 @@ public:
     // HH_260109 Visualizer topic prefix for cost field markers.
     pub_markers_ = create_publisher<avg_msgs::msg::MarkerArray>(
       config_.output_topic, rclcpp::QoS(1).transient_local());
-    if (publish_map_diagnostic_) {
+    if (publish_map_status_) {
       avg_map_pub_ = create_publisher<avg_msgs::msg::AvgMapMsgs>(
-        map_diagnostic_topic_, rclcpp::QoS(10));
+        map_status_topic_, rclcpp::QoS(10));
     }
 
     using namespace std::chrono_literals;
@@ -211,15 +211,15 @@ private:
   // Publishes `AvgMapMessage` output.
   void publishAvgMapMessage(const avg_msgs::msg::MarkerArray & markers, const rclcpp::Time & stamp)
   {
-    if (!publish_map_diagnostic_ || !avg_map_pub_) {
+    if (!publish_map_status_ || !avg_map_pub_) {
       return;
     }
     avg_msgs::msg::AvgMapMsgs msg;
     msg.stamp = stamp;
-    msg.health.stamp = stamp;
-    msg.health.module_name = "map";
-    msg.health.level = avg_msgs::msg::ModuleHealth::OK;
-    msg.health.message = "lanelet field markers published";
+    msg.state.stamp = stamp;
+    msg.state.module_name = "map";
+    msg.state.level = avg_msgs::msg::ModuleState::OK;
+    msg.state.message = "lanelet field markers published";
     msg.lanelet_markers = markers;
     avg_map_pub_->publish(msg);
   }
@@ -279,8 +279,8 @@ private:
   } config_;
 
   CostWeights weights_;
-  bool publish_map_diagnostic_{false};
-  std::string map_diagnostic_topic_{"/map/diagnostic"};
+  bool publish_map_status_{false};
+  std::string map_status_topic_{"/map/status"};
   lanelet::LaneletMapPtr map_;
   rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;

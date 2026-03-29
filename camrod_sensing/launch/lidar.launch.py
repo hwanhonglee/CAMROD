@@ -50,7 +50,7 @@ def generate_launch_description():
         # preprocessor-relative topics
         DeclareLaunchArgument("preprocessor_input_topic", default_value="vanjee/points_raw"),
         DeclareLaunchArgument("lidar_filtered_topic", default_value="points_filtered"),
-        DeclareLaunchArgument("lidar_diagnostic_topic", default_value="diagnostic"),
+        DeclareLaunchArgument("lidar_status_topic", default_value="status"),
 
         DeclareLaunchArgument("vanjee_tf_x", default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_y", default_value="0.0"),
@@ -72,7 +72,7 @@ def generate_launch_description():
 
     preprocessor_input_topic = LaunchConfiguration("preprocessor_input_topic")
     lidar_filtered_topic = LaunchConfiguration("lidar_filtered_topic")
-    lidar_diagnostic_topic = LaunchConfiguration("lidar_diagnostic_topic")
+    lidar_status_topic = LaunchConfiguration("lidar_status_topic")
     enable_vanjee_static_tf = LaunchConfiguration("enable_vanjee_static_tf")
 
     optional_driver_actions = []
@@ -124,7 +124,7 @@ def generate_launch_description():
             {
                 "input_topic": preprocessor_input_topic,
                 "filtered_topic": lidar_filtered_topic,
-                "lidar_diagnostic_topic": lidar_diagnostic_topic,
+                "lidar_status_topic": lidar_status_topic,
             },
         ],
     )

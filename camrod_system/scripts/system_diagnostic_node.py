@@ -9,7 +9,7 @@ from typing import Dict, List
 import rclpy
 from rclpy.node import Node
 
-from avg_msgs.msg import AvgSystemMsgs, ModuleHealth, SystemDiagnostic
+from avg_msgs.msg import AvgSystemMsgs, ModuleState, SystemStatus
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 
 
@@ -29,14 +29,14 @@ def _diag_level(value: object) -> bytes:
 def _to_int_level(value: object) -> int:
     if isinstance(value, (bytes, bytearray)):
         if len(value) == 0:
-            return int(ModuleHealth.OK)
+            return int(ModuleState.OK)
         return int(value[0])
     return int(value)
 
 
 @dataclass
 class ModuleSnapshot:
-    level: int = int(ModuleHealth.OK)
+    level: int = int(ModuleState.OK)
     message: str = "no status yet"
     stamp_sec: float = 0.0
 
@@ -74,7 +74,7 @@ class SystemDiagnosticNode(Node):
         self._diag_pub = self.create_publisher(DiagnosticArray, self.diagnostic_topic, 10)
 
         self._snapshots: Dict[str, ModuleSnapshot] = {
-            module: ModuleSnapshot(level=int(ModuleHealth.WARN), message="no status yet")
+            module: ModuleSnapshot(level=int(ModuleState.WARN), message="no status yet")
             for module in self.known_modules
         }
 
@@ -110,7 +110,7 @@ class SystemDiagnosticNode(Node):
                 continue
             if category not in self._snapshots:
                 self._snapshots[category] = ModuleSnapshot(
-                    level=int(ModuleHealth.WARN),
+                    level=int(ModuleState.WARN),
                     message="discovered dynamically",
                 )
             level = _to_int_level(status.level)
@@ -120,30 +120,30 @@ class SystemDiagnosticNode(Node):
             snap.stamp_sec = self.get_clock().now().nanoseconds * 1e-9
 
     # Implements `_build_modules` behavior.
-    def _build_modules(self, stamp_msg) -> List[ModuleHealth]:
-        modules: List[ModuleHealth] = []
+    def _build_modules(self, stamp_msg) -> List[ModuleState]:
+        modules: List[ModuleState] = []
         now_sec = self.get_clock().now().nanoseconds * 1e-9
         for module_name in sorted(self._snapshots.keys()):
             snap = self._snapshots[module_name]
-            mh = ModuleHealth()
+            mh = ModuleState()
             mh.stamp = stamp_msg
             mh.module_name = module_name
             if snap.stamp_sec <= 0.0:
-                mh.level = ModuleHealth.WARN
+                mh.level = ModuleState.WARN
                 mh.message = "no status yet"
                 mh.missing_topics = [f"{module_name}/diagnostic"]
             elif (now_sec - snap.stamp_sec) > self.stale_timeout_s:
-                mh.level = ModuleHealth.WARN
+                mh.level = ModuleState.WARN
                 mh.message = f"stale status ({now_sec - snap.stamp_sec:.2f}s)"
                 mh.missing_topics = [f"{module_name}/diagnostic(stale)"]
-            elif snap.level <= int(ModuleHealth.OK):
-                mh.level = ModuleHealth.OK
+            elif snap.level <= int(ModuleState.OK):
+                mh.level = ModuleState.OK
                 mh.message = snap.message
-            elif snap.level == int(ModuleHealth.WARN):
-                mh.level = ModuleHealth.WARN
+            elif snap.level == int(ModuleState.WARN):
+                mh.level = ModuleState.WARN
                 mh.message = snap.message
             else:
-                mh.level = ModuleHealth.ERROR
+                mh.level = ModuleState.ERROR
                 mh.message = snap.message
             modules.append(mh)
         return modules
@@ -153,10 +153,10 @@ class SystemDiagnosticNode(Node):
         now_msg = self.get_clock().now().to_msg()
         modules = self._build_modules(now_msg)
 
-        errors = [m for m in modules if int(m.level) >= int(ModuleHealth.ERROR)]
-        warns = [m for m in modules if int(m.level) == int(ModuleHealth.WARN)]
+        errors = [m for m in modules if int(m.level) >= int(ModuleState.ERROR)]
+        warns = [m for m in modules if int(m.level) == int(ModuleState.WARN)]
 
-        sys_diag = SystemDiagnostic()
+        sys_diag = SystemStatus()
         sys_diag.stamp = now_msg
         sys_diag.system_ok = len(errors) == 0
         if errors:
@@ -169,31 +169,31 @@ class SystemDiagnosticNode(Node):
 
         msg = AvgSystemMsgs()
         msg.stamp = now_msg
-        msg.system_diagnostic = sys_diag
+        msg.system_status = sys_diag
         msg.active_modules = [m.module_name for m in modules]
         msg.status_count = len(modules)
 
-        msg.health.stamp = now_msg
-        msg.health.module_name = "system"
+        msg.state.stamp = now_msg
+        msg.state.module_name = "system"
         if errors:
-            msg.health.level = ModuleHealth.ERROR
-            msg.health.message = "one or more modules in ERROR"
-            msg.health.missing_topics = [m.module_name for m in errors]
+            msg.state.level = ModuleState.ERROR
+            msg.state.message = "one or more modules in ERROR"
+            msg.state.missing_topics = [m.module_name for m in errors]
         elif warns:
-            msg.health.level = ModuleHealth.WARN
-            msg.health.message = "one or more modules in WARN"
-            msg.health.missing_topics = [m.module_name for m in warns]
+            msg.state.level = ModuleState.WARN
+            msg.state.message = "one or more modules in WARN"
+            msg.state.missing_topics = [m.module_name for m in warns]
         else:
-            msg.health.level = ModuleHealth.OK
-            msg.health.message = "system healthy"
+            msg.state.level = ModuleState.OK
+            msg.state.message = "system healthy"
 
         diag = DiagnosticArray()
         diag.header.stamp = now_msg
         st = DiagnosticStatus()
         st.name = "system/diagnostic"
         st.hardware_id = "system"
-        st.level = _diag_level(msg.health.level)
-        st.message = msg.health.message
+        st.level = _diag_level(msg.state.level)
+        st.message = msg.state.message
         st.values.append(KeyValue(key="category", value="system"))
         st.values.append(KeyValue(key="status_count", value=str(msg.status_count)))
         st.values.append(KeyValue(key="active_modules", value=",".join(msg.active_modules)))

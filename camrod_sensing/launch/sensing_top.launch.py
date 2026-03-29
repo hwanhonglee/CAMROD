@@ -21,7 +21,7 @@ def generate_launch_description():
     system_namespace_arg = DeclareLaunchArgument(
         "system_namespace",
         default_value="system",
-        description="System checker namespace",
+        description="System validator namespace",
     )
     gnss_namespace_arg = DeclareLaunchArgument(
         "gnss_namespace",
@@ -48,10 +48,10 @@ def generate_launch_description():
         default_value="true",
         description="Enable NTRIP client",
     )
-    enable_module_checker_arg = DeclareLaunchArgument(
-        "enable_module_checker",
+    enable_module_validator_arg = DeclareLaunchArgument(
+        "enable_module_validator",
         default_value="true",
-        description="Enable sensing module checker",
+        description="Enable sensing module validator",
     )
 
     include_full = IncludeLaunchDescription(
@@ -66,7 +66,7 @@ def generate_launch_description():
             "enable_radar": LaunchConfiguration("enable_radar"),
             "enable_gnss": LaunchConfiguration("enable_gnss"),
             "enable_ntrip": LaunchConfiguration("enable_ntrip"),
-            "enable_module_checker": LaunchConfiguration("enable_module_checker"),
+            "enable_module_validator": LaunchConfiguration("enable_module_validator"),
         }.items(),
     )
 
@@ -79,7 +79,7 @@ def generate_launch_description():
             enable_radar_arg,
             enable_gnss_arg,
             enable_ntrip_arg,
-            enable_module_checker_arg,
+            enable_module_validator_arg,
             include_full,
         ]
     )

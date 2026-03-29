@@ -1,0 +1,39 @@
+# Ranger Platform Checker 설정 파일
+# ranger_ros2 가 발행하는 섀시 토픽 기반 플랫폼 진단
+
+ranger_platform_checker:
+  ros__parameters:
+    publish_rate: 1.0              # 진단 발행 주기 (Hz)
+
+    # 구독 토픽
+    system_state_topic:   "/system_state"
+    battery_state_topic:  "/battery_state"
+    actuator_state_topic: "/actuator_state"
+    odom_topic:           "/odom"
+
+    # system_state / actuator_state STALE 판정 타임아웃 (초)
+    stale_timeout: 1.0
+
+    # 오도메트리 체크
+    odom_expected_hz:    50.0      # ranger_ros2 기본 update_rate
+    odom_hz_warn_ratio:  0.7       # actual/expected < 이 값 → WARN
+    odom_hz_error_ratio: 0.4       # actual/expected < 이 값 → ERROR
+    odom_stale_timeout:  1.0       # 이 시간(초) 이상 무응답 → STALE
+
+    # 배터리 임계값 (Ranger 공칭 전압: 46~50V)
+    battery:
+      voltage_warn:  43.0          # V 이하 → WARN
+      voltage_error: 41.0          # V 이하 → ERROR
+      soc_warn:      20.0          # % 이하 → WARN
+      soc_error:     10.0          # % 이하 → ERROR
+      temp_warn:     45.0          # °C 이상 → WARN
+      temp_error:    55.0          # °C 이상 → ERROR
+
+    # 액추에이터 임계값
+    actuator:
+      driver_temp_warn:    60.0    # °C 이상 → WARN
+      driver_temp_error:   75.0    # °C 이상 → ERROR
+      motor_temp_warn:     70.0    # °C 이상 → WARN
+      motor_temp_error:    85.0    # °C 이상 → ERROR
+      driver_voltage_warn: 40.0    # V 이하 → WARN
+      driver_voltage_error: 38.0   # V 이하 → ERROR

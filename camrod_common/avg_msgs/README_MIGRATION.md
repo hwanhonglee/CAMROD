@@ -15,20 +15,20 @@ This document tracks module-level message consolidation to `avg_msgs`.
 - `/bringup/diag_payload` -> `avg_msgs/AvgBringupMsgs`
 
 ## Cross-Module Subscription Migration (Completed)
-- `camrod_platform/platform_diagnostic_node.py`
+- `camrod_platform/platform_status_node.py`
   - before: direct `/localization/*` subscriptions
-  - now: direct health/diagnostic aggregation on `/diagnostic`
-- `camrod_perception/perception_diagnostic_node.py`
+  - now: direct state/status aggregation on `/status`
+- `camrod_perception/perception_status_node.py`
   - before: direct sensing topic checks only
-  - now: consolidated module diagnostics via `/diagnostic`
-- `camrod_localization/localization_diagnostic_node.py`
+  - now: consolidated module status_stream via `/status`
+- `camrod_localization/localization_status_node.py`
   - before: direct sensing/localization topic checks only
-  - now: consolidated module diagnostics via `/diagnostic`
+  - now: consolidated module status_stream via `/status`
 
-## Diagnostic Stream Policy
-- consolidated diagnostic topic: `/diagnostic`
-- checker status naming convention: `<module>/checker`
-- module diagnostic status naming convention: `<module>/diagnostic`
+## Status Stream Policy
+- consolidated status topic: `/status`
+- validator status naming convention: `<module>/validator`
+- module status status naming convention: `<module>/status`
 
 ## Remaining Full-Migration Work
 - internal computational nodes (planner/controller/costmap/localization filters) still consume ROS core message types (`nav_msgs`, `sensor_msgs`, `geometry_msgs`) by design.

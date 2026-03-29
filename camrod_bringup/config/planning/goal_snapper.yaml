@@ -1,4 +1,3 @@
-# 2026-02-02 10:32 Sync from package config into bringup/config
 # 2026-01-30 Update map path/origin for lanelet2_maps.osm.
 # HH_260112 Default params for lanelet goal snapping.
 /planning/goal_snapper:
@@ -9,12 +8,10 @@
     offset_alt: 0.0
     input_goal_topic: "/goal_pose"
     # HH_260316-00:00 Publish only snapped goal on dedicated topic.
-    # This prevents accidental bypass (raw goal injected directly into /planning/goal_pose).
     output_goal_topic: "/planning/goal_pose_snapped"
-    # HH_260317-00:00 ROS-native snapped goal for Nav2 simple-goal compatibility.
-    output_goal_topic_ros: "/planning/goal_pose_snapped_ros"
-    # Limit snap range to avoid selecting far lanelets that create irregular route jumps.
-    max_search_radius: 35.0
+    # HH_260327: Restore practical search radius for multi-goal operation.
+    # 30 m often rejects valid second goals (no new snapped goal => no replanning).
+    max_search_radius: 120.0
     require_lanelet_containment: true
     # 2026-02-23: If clicked outside lanelet polygon, still snap to nearest lanelet centerline.
     fallback_uncontained: true

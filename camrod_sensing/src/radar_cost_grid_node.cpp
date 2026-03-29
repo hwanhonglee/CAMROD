@@ -46,9 +46,9 @@ public:
     ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.90);
     max_message_age_sec_ = declare_parameter<double>("max_message_age_sec", 0.35);
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);
-    radar_diagnostic_topic_ = declare_parameter<std::string>(
-      "radar_diagnostic_topic", "/sensing/radar/diagnostic");
-    publish_radar_diagnostic_ = declare_parameter<bool>("publish_radar_diagnostic", false);
+    radar_status_topic_ = declare_parameter<std::string>(
+      "radar_status_topic", "/sensing/radar/status");
+    publish_radar_status_ = declare_parameter<bool>("publish_radar_status", false);
     input_topics_ = declare_parameter<std::vector<std::string>>(
       "input_topics",
       std::vector<std::string>{
@@ -64,7 +64,7 @@ public:
 
     pub_grid_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
       output_topic_, rclcpp::QoS(1).transient_local().reliable());
-    avg_radar_pub_ = create_publisher<AvgSensingRadar>(radar_diagnostic_topic_, rclcpp::QoS(10));
+    avg_radar_pub_ = create_publisher<AvgSensingRadar>(radar_status_topic_, rclcpp::QoS(10));
 
     samples_.resize(input_topics_.size());
     for (std::size_t i = 0; i < input_topics_.size(); ++i) {
@@ -325,7 +325,7 @@ private:
   // Publishes `AvgRadar` output.
   void publishAvgRadar(const avg_msgs::msg::OccupancyGrid & grid)
   {
-    if (!publish_radar_diagnostic_ || !avg_radar_pub_) {
+    if (!publish_radar_status_ || !avg_radar_pub_) {
       return;
     }
     AvgSensingRadar avg_msg;
@@ -340,7 +340,7 @@ private:
   }
 
   std::string output_topic_;
-  std::string radar_diagnostic_topic_;
+  std::string radar_status_topic_;
   std::string base_frame_id_;
   std::string output_frame_id_;
   double resolution_{0.10};
@@ -358,7 +358,7 @@ private:
   double ego_clear_radius_m_{0.90};
   double max_message_age_sec_{0.35};
   double publish_rate_hz_{10.0};
-  bool publish_radar_diagnostic_{false};
+  bool publish_radar_status_{false};
   std::vector<std::string> input_topics_;
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;

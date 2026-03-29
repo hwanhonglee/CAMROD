@@ -1,12 +1,12 @@
 # camrod_localization
 
-Localization module for GNSS-to-pose conversion, filtering, supervision, and health reporting.
+Localization module for GNSS-to-pose conversion, filtering, supervision, and state reporting.
 
 ## Purpose
 - Convert GNSS (`NavSatFix`) into map-frame pose inputs
 - Run ESKF (default) or EKF path
 - Publish canonical localization outputs
-- Provide supervisor/health monitoring and drop-zone alignment support
+- Provide supervisor/state watchering and drop-zone alignment support
 
 ## Entry Point
 ```bash
@@ -15,7 +15,7 @@ ros2 launch camrod_localization localization.launch.py
 
 ## Runtime Structure
 ```text
-/sensing/gnss/navsatfix
+/sensing/gnss/ublox_gps_node/fix
     -> navsat_to_pose
     -> (ESKF/EKF)
     -> /localization/pose
@@ -31,7 +31,7 @@ Optional branches:
 
 ## Main Launch Arguments
 - Input topics:
-  - `navsat_topic` (default `/sensing/gnss/navsatfix`)
+  - `navsat_topic` (default `/sensing/gnss/ublox_gps_node/fix`)
   - `gnss_pose_topic`
   - `gnss_pose_cov_topic`
 - Map alignment:
@@ -51,7 +51,7 @@ Optional branches:
   - `/localization/pose`
   - `/localization/pose_with_covariance`
   - `/localization/odometry/filtered`
-  - `/localization/health`
+  - `/localization/state`
 - Internal/auxiliary:
   - `/localization/initialpose3d`
   - `/localization/drop_zone/*`
@@ -66,7 +66,7 @@ Optional branches:
 Bringup-level defaults are mirrored in:
 - `camrod_bringup/config/localization/*`
 
-## Diagnostics
-- Module-local topic: `/localization/diagnostic`
-- Aggregated topic: `/diagnostics`
+## StatusStream
+- Module-local topic: `/localization/status`
+- Aggregated topic: `/status_stream`
 

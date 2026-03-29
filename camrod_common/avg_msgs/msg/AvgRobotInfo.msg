@@ -3,4 +3,4 @@ avg_msgs/AvgRobotSpecifications robot_specifications
 avg_msgs/AvgSensorPose imu
 avg_msgs/AvgSensorPose gnss
 avg_msgs/AvgSensorPose lidar
-avg_msgs/AvgSensorPose camera_front
+avg_msgs/AvgSensorPose camera

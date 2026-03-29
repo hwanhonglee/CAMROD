@@ -1,5 +1,5 @@
 builtin_interfaces/Time stamp
-avg_msgs/ModuleHealth health
+avg_msgs/ModuleState state
 
 string base_frame_id
 string sensor_kit_base_frame_id

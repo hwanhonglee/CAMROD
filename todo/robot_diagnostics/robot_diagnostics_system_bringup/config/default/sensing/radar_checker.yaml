@@ -1,0 +1,99 @@
+# Radar Checker 설정 파일 (SEN0592 Modbus RTU 레이다 6채널)
+#
+# 진단 태스크 이름 형식: "radar_checker: /sensor/radar/<NAME>"
+# (diagnostic_updater 가 "<node_name>: <task_name>" 으로 자동 생성)
+
+radar_checker:
+  ros__parameters:
+    publish_rate: 1.0          # 진단 발행 주기 (Hz)
+
+    # 모니터링할 레이다 이름 목록 (sen0592_radar_node 의 sensor_names 와 일치)
+    radar_names: ["REAR", "LEFT2", "LEFT1", "RIGHT2", "RIGHT1", "FRONT"]
+
+    # ── 각 센서 설정 ──────────────────────────────────────────────────────
+    #
+    # stuck_min_*  : range 가 최솟값 근처에 고착 → 센서 전방 차폐·물리 충격 의심
+    #   예) SEN0592 최솟값 0.02 m 근처에서 벗어나지 않으면 전면이 막힌 것
+    #
+    # stuck_max_*  : range 가 최댓값 근처에 고착 → 센서 무감지·케이블 불량 의심
+    #   예) 4.4 m 이상에 고착되면 센서가 아무것도 감지하지 못하는 상태
+    #
+    # 0.0 = 해당 체크 비활성화
+
+    REAR:
+      topic: "/sensing/radar/rear/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7     # 11.2 Hz 미만이면 WARN
+      hz_error_ratio:     0.4     #  6.4 Hz 미만이면 ERROR
+      stale_timeout:      1.0
+      min_range_m:        0.02    # 센서 측정 하한 (m)
+      max_range_m:        4.5     # 센서 측정 상한 (m)
+      stuck_min_warn_m:   0.05    # 0.05 m 이하 고착 → WARN  (전방 차폐 의심)
+      stuck_min_error_m:  0.03    # 0.03 m 이하 고착 → ERROR (전방 차폐 확실)
+      stuck_max_warn_m:   4.4     # 4.4 m 이상 고착 → WARN  (무감지 의심)
+      stuck_max_error_m:  0.0     # 비활성화
+
+    LEFT2:
+      topic: "/sensing/radar/left2/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0
+
+    LEFT1:
+      topic: "/sensing/radar/left1/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0
+
+    RIGHT2:
+      topic: "/sensing/radar/right2/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0
+
+    RIGHT1:
+      topic: "/sensing/radar/right1/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0
+
+    FRONT:
+      topic: "/sensing/radar/front/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0

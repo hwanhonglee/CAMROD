@@ -12,7 +12,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <avg_msgs/msg/avg_map_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 
 #include <lanelet2_core/primitives/Area.h>
 #include <lanelet2_core/primitives/LineString.h>
@@ -279,10 +279,10 @@ public:
       "dropzone_types", std::vector<std::string>{"drop_zone"});
     camping_site_prefixes_ = declare_parameter<std::vector<std::string>>(
       "camping_site_prefixes", std::vector<std::string>{"camping_site_"});
-    publish_map_diagnostic_ = declare_parameter<bool>("publish_map_diagnostic", false);
-    map_diagnostic_topic_ = declare_parameter<std::string>("map_diagnostic_topic", "/map/diagnostic");
-    if (publish_map_diagnostic_) {
-      avg_map_pub_ = create_publisher<avg_msgs::msg::AvgMapMsgs>(map_diagnostic_topic_, rclcpp::QoS(10));
+    publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
+    map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
+    if (publish_map_status_) {
+      avg_map_pub_ = create_publisher<avg_msgs::msg::AvgMapMsgs>(map_status_topic_, rclcpp::QoS(10));
     }
   }
 
@@ -291,7 +291,7 @@ public:
   {
     if (map_path_.empty()) {
       RCLCPP_ERROR(get_logger(), "map_path is empty.");
-      publishStatus(avg_msgs::msg::ModuleHealth::ERROR, "map_path is empty");
+      publishStatus(avg_msgs::msg::ModuleState::ERROR, "map_path is empty");
       return 1;
     }
 
@@ -303,7 +303,7 @@ public:
     auto map = loader.load(map_path_);
     if (!map) {
       RCLCPP_ERROR(get_logger(), "failed to load map: %s", map_path_.c_str());
-      publishStatus(avg_msgs::msg::ModuleHealth::ERROR, "failed to load map");
+      publishStatus(avg_msgs::msg::ModuleState::ERROR, "failed to load map");
       return 1;
     }
 
@@ -506,7 +506,7 @@ public:
       RCLCPP_INFO(
         get_logger(), "found %zu drop zones and %zu camping sites (no output paths set)",
         drop_zones.size(), camping_sites.size());
-      publishStatus(avg_msgs::msg::ModuleHealth::OK, "drop zone scan completed");
+      publishStatus(avg_msgs::msg::ModuleState::OK, "drop zone scan completed");
       return 0;
     }
 
@@ -514,7 +514,7 @@ public:
       std::ofstream out(output_yaml_path_);
       if (!out.is_open()) {
         RCLCPP_ERROR(get_logger(), "failed to open output_yaml_path: %s", output_yaml_path_.c_str());
-        publishStatus(avg_msgs::msg::ModuleHealth::ERROR, "failed to open drop-zone yaml path");
+        publishStatus(avg_msgs::msg::ModuleState::ERROR, "failed to open drop-zone yaml path");
         return 1;
       }
 
@@ -546,7 +546,7 @@ public:
         RCLCPP_ERROR(
           get_logger(), "failed to open camping_sites_output_yaml_path: %s",
           camping_sites_output_yaml_path_.c_str());
-        publishStatus(avg_msgs::msg::ModuleHealth::ERROR, "failed to open camping-sites yaml path");
+        publishStatus(avg_msgs::msg::ModuleState::ERROR, "failed to open camping-sites yaml path");
         return 1;
       }
 
@@ -574,7 +574,7 @@ public:
         camping_sites_output_yaml_path_.c_str());
     }
 
-    publishStatus(avg_msgs::msg::ModuleHealth::OK, "drop-zone/camping-site yaml export completed");
+    publishStatus(avg_msgs::msg::ModuleState::OK, "drop-zone/camping-site yaml export completed");
     return 0;
   }
 
@@ -582,16 +582,16 @@ private:
   // Publishes `Status` output.
   void publishStatus(uint8_t level, const std::string & message)
   {
-    if (!publish_map_diagnostic_ || !avg_map_pub_) {
+    if (!publish_map_status_ || !avg_map_pub_) {
       return;
     }
     const auto stamp = now();
     avg_msgs::msg::AvgMapMsgs msg;
     msg.stamp = stamp;
-    msg.health.stamp = stamp;
-    msg.health.module_name = "map";
-    msg.health.level = level;
-    msg.health.message = message;
+    msg.state.stamp = stamp;
+    msg.state.module_name = "map";
+    msg.state.level = level;
+    msg.state.message = message;
     avg_map_pub_->publish(msg);
   }
 
@@ -774,8 +774,8 @@ private:
   double default_yaw_deg_{0.0};
   std::vector<std::string> dropzone_types_;
   std::vector<std::string> camping_site_prefixes_;
-  bool publish_map_diagnostic_{false};
-  std::string map_diagnostic_topic_{"/map/diagnostic"};
+  bool publish_map_status_{false};
+  std::string map_status_topic_{"/map/status"};
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;
 };
 }  // namespace map

@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot_sensing_checkers_bringup</name>
+  <version>0.0.0</version>
+  <description>Bringup launch for sensing diagnostic checker nodes (GNSS/IMU/LiDAR/Radar/Camera/Wheel/CostGrid/VelocityConverter)</description>
+  <maintainer email="avg@todo.todo">avg</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>robot_gnss_checker</exec_depend>
+  <exec_depend>robot_imu_checker</exec_depend>
+  <exec_depend>robot_lidar_checker</exec_depend>
+  <exec_depend>robot_radar_checker</exec_depend>
+  <exec_depend>robot_camera_checker</exec_depend>
+  <exec_depend>robot_wheel_odometry_checker</exec_depend>
+  <exec_depend>robot_cost_grid_checker</exec_depend>
+  <exec_depend>robot_velocity_converter_checker</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

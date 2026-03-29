@@ -73,10 +73,10 @@ def generate_launch_description():
         default_value='false',
         description='Enable contributor-merged inflation marker topic for RViz debug',
     )
-    enable_module_checker_arg = DeclareLaunchArgument(
-        'enable_module_checker',
+    enable_module_validator_arg = DeclareLaunchArgument(
+        'enable_module_validator',
         default_value='true',
-        description='Enable map module checker publisher',
+        description='Enable map module validator publisher',
     )
     module_namespace_arg = DeclareLaunchArgument(
         'module_namespace',
@@ -86,7 +86,7 @@ def generate_launch_description():
     system_namespace_arg = DeclareLaunchArgument(
         'system_namespace',
         default_value='system',
-        description='Namespace for system checker nodes',
+        description='Namespace for system validator nodes',
     )
 
     map_param = LaunchConfiguration('map_param_file')
@@ -97,7 +97,7 @@ def generate_launch_description():
     map_viz_param = LaunchConfiguration('map_visualization_param_file')
     enable_nav2_inflation_debug_marker = LaunchConfiguration('enable_nav2_inflation_debug_marker')
     enable_inflation_markers = LaunchConfiguration('enable_inflation_markers')
-    enable_module_checker = LaunchConfiguration('enable_module_checker')
+    enable_module_validator = LaunchConfiguration('enable_module_validator')
     module_namespace = LaunchConfiguration('module_namespace')
     system_namespace = LaunchConfiguration('system_namespace')
 
@@ -131,13 +131,22 @@ def generate_launch_description():
                 # 2026-02-23: Align base grid pose reference with planning/localization start frame.
                 'pose_topic': '/planning/lanelet_pose',
                 'output_topic': '/map/cost_grid/lanelet',
-                # 2026-02-27: Static lanelet map grid should not rebuild on every pose callback.
-                'rebuild_on_pose': False,
+                # HH_260326: Limit lanelet grid to a bounded local window.
+                # Reason: full-map raster at fine resolution can exceed 100M cells and stall startup.
+                'resolution': 0.10,
+                'width': 500,
+                'height': 500,
+                'use_path_bbox': False,
+                'lock_window': False,
+                'use_map_bbox': False,
+                # HH_260326: Keep map grid updating with pose at a bounded rate for stable runtime CPU.
+                'rebuild_on_pose': True,
                 'rebuild_on_path': False,
-                'min_rebuild_period_sec': 0.2,
+                'min_rebuild_period_sec': 2.0,
                 # HH_260313-00:00 Boundary-coverage verifier.
                 # Warn when known cells are outside lanelet polygons.
-                'debug_coverage_stats': True,
+                # HH_260326: Disable runtime coverage logs in default run to reduce rebuild overhead.
+                'debug_coverage_stats': False,
                 'debug_coverage_stride': 2,
                 'debug_coverage_min_value': 0,
                 # HH_260305-00:00 Keep static lanelet grid latched; avoid periodic full-grid republish load.
@@ -191,17 +200,24 @@ def generate_launch_description():
                 # while still strongly biasing paths back into lanelet centerline corridor.
                 'outside_value': 99,
                 'use_path_bbox': False,
-                'lock_window': True,
-                'use_map_bbox': True,
-                'resolution': 0.05,
+                # HH_260326: Use robot-centered bounded window for planning_base.
+                # Reason: full-map (use_map_bbox=true, 0.05 m) delayed publish and left Nav2 on unknown map.
+                'lock_window': False,
+                'use_map_bbox': False,
+                'width': 500,
+                'height': 500,
+                'resolution': 0.10,
+                # HH_260326: Remove pose-distance dependency so first valid pose can trigger fast build.
+                'centerline_use_distance_gradient': False,
                 # HH_260316-00:00 Keep centerline strip sampling permissive
                 # to avoid micro-gaps at sharp corners.
                 'cell_inside_min_hits': 7,
                 'cell_inside_min_hits_path': 6,
                 'cell_inside_min_hits_boundary': 8,
-                'rebuild_on_pose': False,
+                # HH_260326: Rebuild on pose so planning_base follows robot and keeps Nav2 rolling window fed.
+                'rebuild_on_pose': True,
                 'rebuild_on_path': False,
-                'min_rebuild_period_sec': 0.2,
+                'min_rebuild_period_sec': 2.0,
                 # HH_260316-00:00 Disable heavy coverage logs on planner base.
                 # Enable temporarily only for raster-debug sessions.
                 'debug_coverage_stats': False,
@@ -365,54 +381,7 @@ def generate_launch_description():
         ],
     )
 
-    map_checker = Node(
-        package='camrod_system',
-        executable='module_checker_node.py',
-        name='map_checker',
-        namespace=system_namespace,
-        output='screen',
-        condition=IfCondition(enable_module_checker),
-        parameters=[{
-            'module_name': 'map',
-            'required_nodes': [
-                '/map/lanelet2_map',
-                '/map/cost_grid_map',
-                '/map/cost_grid_planning_base',
-            ],
-            'required_topics': [
-                '/map/cost_grid/lanelet',
-                '/map/cost_grid/planning_base',
-            ],
-            'diagnostic_topic': '/diagnostics',
-            'status_name': 'map/checker',
-            'check_period_s': 0.5,
-            'warn_throttle_sec': 2.0,
-            'publish_ok': True,
-        }],
-    )
-
-    map_diagnostic = Node(
-        package='camrod_map',
-        executable='map_diagnostic_node.py',
-        name='map_diagnostic',
-        namespace=module_namespace,
-        output='screen',
-        parameters=[{
-            # HH_260318-00:00 Module-local diagnostic topic (namespaced).
-            'diagnostic_topic': 'diagnostic',
-            'publish_period_s': 0.2,
-            'stale_timeout_s': 2.0,
-            'topic_lanelet_grid': '/map/cost_grid/lanelet',
-            'topic_planning_base_grid': '/map/cost_grid/planning_base',
-            'topic_lanelet_markers': '/map/cost_grid/lanelet_markers',
-            'topic_lidar_markers': '/map/cost_grid/lidar_markers',
-            'topic_radar_markers': '/map/cost_grid/radar_markers',
-            'topic_inflation_markers': '/map/cost_grid/inflation_markers',
-            # 2026-03-18: Inflation marker stream is optional debug visualization.
-            # Core map health depends on lanelet/planning-base grids only.
-            'require_inflation_markers': enable_inflation_markers,
-        }],
-    )
+    # HH_260326: Removed map status/validator runtime nodes as requested.
 
     return LaunchDescription([
         map_param_arg,
@@ -423,7 +392,7 @@ def generate_launch_description():
         map_viz_param_arg,
         enable_nav2_inflation_debug_marker_arg,
         enable_inflation_markers_arg,
-        enable_module_checker_arg,
+        enable_module_validator_arg,
         module_namespace_arg,
         system_namespace_arg,
         map_launch,
@@ -435,6 +404,4 @@ def generate_launch_description():
         radar_cost_marker,
         inflation_marker_aggregator,
         lanelet_cost_field,
-        map_diagnostic,
-        map_checker,
     ])

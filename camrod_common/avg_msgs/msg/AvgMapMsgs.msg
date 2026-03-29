@@ -1,5 +1,5 @@
 builtin_interfaces/Time stamp
-avg_msgs/ModuleHealth health
+avg_msgs/ModuleState state
 
 nav_msgs/OccupancyGrid lanelet_cost_grid
 nav_msgs/OccupancyGrid planning_base_grid

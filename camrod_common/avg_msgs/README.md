@@ -3,7 +3,7 @@
 Shared interface package for CAMROD modules.
 
 ## Purpose
-- Provide module-level message contracts (`Avg*Msgs`, diagnostics/health payloads)
+- Provide module-level message contracts (`Avg*Msgs`, status_stream/state payloads)
 - Provide compatibility wrappers for selected frequently-used message types
 - Keep interface ownership centralized and versionable
 
@@ -18,10 +18,10 @@ Shared interface package for CAMROD modules.
   - `AvgSensorKitMsgs`
   - `AvgSystemMsgs`
   - `AvgBringupMsgs`
-- Health/diagnostics:
-  - `ModuleHealth`
-  - `SystemDiagnostic`
-  - `AvgLocalizationDiagnostics`
+- State/status_stream:
+  - `ModuleState`
+  - `SystemStatus`
+  - `AvgLocalizationStatusStream`
 
 ## Build
 ```bash
@@ -33,12 +33,12 @@ source install/setup.bash
 ## C++ Usage
 ```cpp
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 ```
 
 ## Python Usage
 ```python
-from avg_msgs.msg import AvgPlanningMsgs, ModuleHealth
+from avg_msgs.msg import AvgPlanningMsgs, ModuleState
 ```
 
 ## Dependency Snippet (`package.xml`)

@@ -5,7 +5,7 @@
 #include <vector>
 
 #include <avg_msgs/msg/avg_platform_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/polygon_stamped.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
 #include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
@@ -82,7 +82,7 @@ class RobotVisualizationNode : public rclcpp::Node
 {
 public:
   using AvgPlatformMsgs = avg_msgs::msg::AvgPlatformMsgs;
-  using ModuleHealth = avg_msgs::msg::ModuleHealth;
+  using ModuleState = avg_msgs::msg::ModuleState;
 
   RobotVisualizationNode()
   // HH_260112 Use short node name; namespace applies the module prefix.
@@ -95,11 +95,20 @@ public:
     marker_topic_ = declare_parameter<std::string>("marker_topic", "/platform/robot/markers");
     boundary_topic_ = declare_parameter<std::string>(
       "boundary_topic", "/platform/robot/planning_boundary");
-    publish_platform_diagnostic_ = declare_parameter<bool>("publish_platform_diagnostic", false);
-    platform_diagnostic_topic_ =
-      declare_parameter<std::string>("platform_diagnostic_topic", "/platform/diagnostic");
+    publish_platform_status_ = declare_parameter<bool>("publish_platform_status", false);
+    platform_status_topic_ =
+      declare_parameter<std::string>("platform_status_topic", "/platform/status");
     // HH_260304-00:00 // Visualizer should not publish TF unless explicitly requested.
     publish_tf_ = declare_parameter<bool>("publish_tf", false);
+    // HH_260327: Platform marker follows localization pose by default.
+    // GNSS is optional fallback when localization pose is stale/missing.
+    localization_pose_topic_ = declare_parameter<std::string>(
+      "localization_pose_topic", "/localization/pose");
+    gnss_pose_topic_ = declare_parameter<std::string>(
+      "gnss_pose_topic", "/sensing/gnss/pose");
+    use_gnss_fallback_ = declare_parameter<bool>("use_gnss_fallback", true);
+    localization_pose_timeout_sec_ = declare_parameter<double>(
+      "localization_pose_timeout_sec", 1.0);
     const double publish_rate_hz = declare_parameter<double>("publish_rate_hz", 1.0);
     body_scale_factor_ = declare_parameter<double>("body_scale_factor", 1.0);
     planning_boundary_margin_ = declare_parameter<double>("planning_boundary_margin", 0.3);
@@ -117,8 +126,8 @@ public:
     auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
     marker_pub_ = create_publisher<avg_msgs::msg::MarkerArray>(marker_topic_, qos);
     boundary_pub_ = create_publisher<avg_msgs::msg::PolygonStamped>(boundary_topic_, qos);
-    if (publish_platform_diagnostic_) {
-      avg_platform_pub_ = create_publisher<AvgPlatformMsgs>(platform_diagnostic_topic_, qos);
+    if (publish_platform_status_) {
+      avg_platform_pub_ = create_publisher<AvgPlatformMsgs>(platform_status_topic_, qos);
     }
     if (publish_tf_) {
       tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
@@ -126,8 +135,11 @@ public:
     initialpose_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
       "/localization/initialpose", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
       std::bind(&RobotVisualizationNode::onInitialPose, this, std::placeholders::_1));
+    localization_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+      localization_pose_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
+      std::bind(&RobotVisualizationNode::onLocalizationPose, this, std::placeholders::_1));
     gnss_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
-      "/sensing/gnss/pose", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
+      gnss_pose_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
       std::bind(&RobotVisualizationNode::onGnssPose, this, std::placeholders::_1));
     if (use_map_ground_z_) {
       map_marker_sub_ = create_subscription<avg_msgs::msg::MarkerArray>(
@@ -415,15 +427,15 @@ private:
     const avg_msgs::msg::PolygonStamped & planning_boundary,
     const rclcpp::Time & stamp)
   {
-    if (!publish_platform_diagnostic_ || !avg_platform_pub_) {
+    if (!publish_platform_status_ || !avg_platform_pub_) {
       return;
     }
     AvgPlatformMsgs msg;
     msg.stamp = stamp;
-    msg.health.stamp = stamp;
-    msg.health.module_name = "platform";
-    msg.health.level = ModuleHealth::OK;
-    msg.health.message = "robot_visualization";
+    msg.state.stamp = stamp;
+    msg.state.module_name = "platform";
+    msg.state.level = ModuleState::OK;
+    msg.state.message = "robot_visualization";
     msg.robot_markers = markers;
     msg.planning_boundary = planning_boundary;
     msg.localization_pose = makeBasePoseStamped(stamp);
@@ -447,7 +459,8 @@ private:
     set_sensor_pose(params_.imu, msg.robot_info.imu);
     set_sensor_pose(params_.gnss, msg.robot_info.gnss);
     set_sensor_pose(params_.lidar, msg.robot_info.lidar);
-    set_sensor_pose(params_.camera_front, msg.robot_info.camera_front);
+    // HH_260326: Canonical camera sensor pose.
+    set_sensor_pose(params_.camera, msg.robot_info.camera);
     avg_platform_pub_->publish(msg);
   }
 
@@ -458,7 +471,7 @@ private:
       {"imu", params_.imu},
       {"gnss", params_.gnss},
       {"lidar", params_.lidar},
-      {"camera_front", params_.camera_front}
+      {"camera", params_.camera}
     };
   }
 
@@ -481,9 +494,31 @@ private:
     // HH_260304-00:00 Suppress per-fix initial-pose spam while GNSS pose is streaming.
   }
 
+  // Handles the `onLocalizationPose` callback.
+  void onLocalizationPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  {
+    auto converted = std::make_shared<avg_msgs::msg::PoseWithCovarianceStamped>();
+    converted->header = msg->header;
+    converted->pose.pose = msg->pose;
+    onInitialPose(converted);
+    last_localization_pose_stamp_ = this->get_clock()->now();
+    has_localization_pose_ = true;
+  }
+
   // Handles the `onGnssPose` callback.
   void onGnssPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
+    // HH_260327: GNSS is fallback-only input for platform marker alignment.
+    // If localization pose is fresh, keep marker anchored to localization.
+    if (!use_gnss_fallback_) {
+      return;
+    }
+    if (has_localization_pose_) {
+      const auto age_sec = (this->get_clock()->now() - last_localization_pose_stamp_).seconds();
+      if (age_sec <= localization_pose_timeout_sec_) {
+        return;
+      }
+    }
     auto converted = std::make_shared<avg_msgs::msg::PoseWithCovarianceStamped>();
     converted->header = msg->header;
     converted->pose.pose = msg->pose;
@@ -543,7 +578,13 @@ private:
   std::string base_frame_id_;
   std::string marker_topic_;
   std::string boundary_topic_;
-  std::string platform_diagnostic_topic_;
+  std::string platform_status_topic_;
+  std::string localization_pose_topic_;
+  std::string gnss_pose_topic_;
+  bool use_gnss_fallback_{true};
+  double localization_pose_timeout_sec_{1.0};
+  bool has_localization_pose_{false};
+  rclcpp::Time last_localization_pose_stamp_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::Publisher<avg_msgs::msg::PolygonStamped>::SharedPtr boundary_pub_;
@@ -551,6 +592,7 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose_sub_;
+  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr localization_pose_sub_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr gnss_sub_;
   rclcpp::Subscription<avg_msgs::msg::MarkerArray>::SharedPtr map_marker_sub_;
 
@@ -558,7 +600,7 @@ private:
   double map_ground_sum_{0.0};
   size_t map_ground_samples_{0};
   bool map_ground_ready_{false};
-  bool publish_platform_diagnostic_{false};
+  bool publish_platform_status_{false};
 
   // Implements `composeOrientation` behavior.
   avg_msgs::msg::Quaternion composeOrientation(double roll, double pitch, double yaw) const

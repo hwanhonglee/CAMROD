@@ -37,7 +37,8 @@ struct RobotParams
   SensorPose imu;
   SensorPose gnss;
   SensorPose lidar;
-  SensorPose camera_front;
+  // HH_260326: Canonical camera pose.
+  SensorPose camera;
 };
 
 // Robot Parameter Loading Function (YAML → RobotParams)

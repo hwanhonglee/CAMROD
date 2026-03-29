@@ -3,31 +3,61 @@ bringup:
     clean_before_launch: true
     sim: false
     rviz: true
+    # HH_260327: Stagger module startup to reduce bringup burst load.
+    module_launch_gap_sec: 0.8
 
   localization:
-    use_eskf: true
+    # HH_260327: Match standalone localization.launch.py default behavior.
+    # Keep bringup baseline on EKF so runtime result is consistent with module-by-module launch.
+    use_eskf: false
+    filter_type: ekf
     wheel_bridge_enable: true
+    # HH_260326: Wheel source selection for unified /platform/wheel/odometry bridge.
+    wheel_input_topic: /platform/status/wheel
+    wheel_input_type: twist
+    wheel_output_topic: /platform/wheel/odometry
+    wheel_nav_output_topic: /platform/wheel/nav_odometry
+    # HH_260326: Temporary ESKF fallback source.
+    eskf_force_rmp401_odom: true
+    eskf_rmp401_odom_topic: /rmp401/odom
     kimera_bridge_enable: false
     pose_selector_enable: false
 
   planning:
     enable_path_cost_grids: true
-    # HH_260318-00:00 Keep OFF by default to avoid duplicate ComputePath requests.
-    enable_goal_replanner: true
-    enable_nav2_lifecycle_retry: true
-    enable_state_machine: true
-    use_dwb_controller: true
+    # HH_260327: Match standalone planning.launch.py defaults.
+    enable_goal_replanner: false
+    enable_nav2_lifecycle_retry: false
+    # HH_260327: Allow Nav2 startup by default even when initial_match_ok is false.
+    # This keeps /planning/cmd_vel and path generation available during bringup debugging.
+    require_localization_ready: false
+    # HH_260326: Keep OFF by default; current state machine requires status_msgs runtime dependency.
+    enable_state_machine: false
+    # HH_260327: Local path pose anchor (set /sensing/gnss/pose if GNSS-direct mode is desired).
+    local_path_pose_topic: /planning/lanelet_pose
+    # HH_260327: Prefer global-path slicing for robust local-path refresh on new goals.
+    local_path_source: slice_only
+    use_dwb_controller: false
 
   sensing:
     enable_radar: true
     enable_radar_cost_grid: true
     enable_lidar_cost_grid: true
     enable_lidar_driver: true
+    enable_imu: true
     enable_gnss: true
     enable_ntrip: true
 
   system:
-    enable_module_checkers: true
+    # HH_260326: Keep system validators off by default.
+    # Current camrod_system diagnostics still import removed legacy avg_msgs symbols.
+    enable_module_validators: false
+    # HH_260327: Keep plugin API bridge enabled by default.
+    enable_plugin_api: true
+    # HH_260327: Lightweight HTTP UI backend for API/state monitoring.
+    enable_api_ui: true
+    api_ui_host: 0.0.0.0
+    api_ui_port: 8010
 
   namespaces:
     map: map
@@ -39,21 +69,21 @@ bringup:
     sensor_kit: sensor_kit
     bringup: bringup
     system: system
-    gnss: sensing/gnss
+    # HH_260326: sensing.launch.py already pushes /sensing namespace.
+    # Keep GNSS sub-namespace as `gnss` to avoid duplicated /sensing/sensing/gnss paths.
+    gnss: gnss
 
   topics:
-    gnss_navsatfix: /sensing/gnss/navsatfix
+    gnss_navsatfix: /sensing/gnss/ublox_gps_node/fix
     gnss_pose: /sensing/gnss/pose
     gnss_pose_cov: /sensing/gnss/pose_with_covariance
     gnss_rtcm: /sensing/gnss/rtcm
 
   map:
-    # Keep explicit defaults here so top-level bringup remains deterministic
-    # even if map_info.yaml is edited or temporarily unavailable.
+    # HH_260327: Map origin defaults are loaded from config/map/map_info.yaml.
+    # launch_defaults keeps only explicit bringup-level overrides.
+    # Keep only explicit map path / yaw override knobs here.
     map_path: /home/nvidia/camrod_ws/src/lanelet2_maps.osm
-    origin_lat: 36.8436194
-    origin_lon: 128.0925490
-    origin_alt: 299.425
     yaw_offset_deg: 0.0
 
   sim:

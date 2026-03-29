@@ -9,7 +9,6 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(avg_msgs REQUIRED)
-find_package(diagnostic_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
@@ -78,11 +77,7 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-install(
-  PROGRAMS
-    scripts/sensor_kit_diagnostic_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
+# HH_260326: Removed status-node install from default runtime path.
 ###############################################
 ament_export_targets(camrod_sensor_kit_lib_targets)  # HH_260109 expose export set.
 ament_package()

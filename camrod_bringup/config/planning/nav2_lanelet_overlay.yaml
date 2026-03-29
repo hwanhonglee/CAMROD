@@ -41,9 +41,9 @@ local_costmap:
         # unknown/outside cells from planning_base must stay non-traversable so
         # local planning cannot shortcut across non-lanelet space.
         unknown_value: 255
-        # HH_260316-00:00 Base layer publishes explicit known costs;
-        # keep unknown writes disabled to avoid accidental master overwrites.
-        write_unknown: false
+        # HH_260327: Write unknown for base lanelet mask so non-lanelet cells
+        # remain non-traversable in master costmap.
+        write_unknown: true
 
       lanelet_cost_layer_local_path:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
@@ -93,9 +93,9 @@ global_costmap:
         lethal_threshold: 100
         # HH_260316-00:00 Keep lanelet-boundary discipline for global planning as well.
         unknown_value: 255
-        # HH_260316-00:00 Base layer publishes explicit known costs;
-        # keep unknown writes disabled to avoid accidental master overwrites.
-        write_unknown: false
+        # HH_260327: Write unknown for base lanelet mask so non-lanelet cells
+        # remain non-traversable in master costmap.
+        write_unknown: true
 
       # HH_260316-00:00 Do not inject /planning/cost_grid/global_path into global planner master.
       # Reason: this creates a circular dependency

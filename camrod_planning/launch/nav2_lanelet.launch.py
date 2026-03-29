@@ -72,6 +72,11 @@ def generate_launch_description():
         default_value='planning',
         description='Namespace for planning/Nav2 nodes',
     )
+    nav2_autostart_arg = DeclareLaunchArgument(
+        'nav2_autostart',
+        default_value='true',
+        description='Nav2 lifecycle_manager autostart flag',
+    )
 
     # -------------------------------------------------------------------------
     # LaunchConfigurations
@@ -87,6 +92,7 @@ def generate_launch_description():
     origin_alt = LaunchConfiguration('origin_alt')
     nav2_robot_base_frame = LaunchConfiguration('nav2_robot_base_frame')
     module_namespace = LaunchConfiguration('module_namespace')
+    nav2_autostart = LaunchConfiguration('nav2_autostart')
     # 2026-02-25: Apply Nav2 params in deterministic overlay order:
     # base -> vehicle -> lanelet -> behavior.
     nav2_base_params = RewrittenYaml(
@@ -244,7 +250,8 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': False,
-            'autostart': True,
+            # HH_260327: allow launch-level localization gate to control activation timing.
+            'autostart': nav2_autostart,
             'node_names': [
                 'planner_server',
                 'controller_server',
@@ -281,6 +288,7 @@ def generate_launch_description():
         origin_alt_arg,
         nav2_robot_base_frame_arg,
         module_namespace_arg,
+        nav2_autostart_arg,
 
         planner_server,
         controller_server,

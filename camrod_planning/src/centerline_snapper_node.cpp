@@ -2,7 +2,7 @@
 #include <string>
 
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
 #include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <avg_msgs/msg/quaternion.hpp>
@@ -51,7 +51,7 @@ class CenterlineSnapperNode : public rclcpp::Node
 {
 public:
   using AvgPlanningMsgs = avg_msgs::msg::AvgPlanningMsgs;
-  using ModuleHealth = avg_msgs::msg::ModuleHealth;
+  using ModuleState = avg_msgs::msg::ModuleState;
 
   CenterlineSnapperNode()
   // HH_260112 Use short node name; namespace applies the module prefix.
@@ -71,9 +71,9 @@ public:
       "output_pose_topic_ros", "/planning/lanelet_pose_ros");
     output_pose_cov_topic_ = declare_parameter<std::string>(
       "output_pose_cov_topic", output_pose_topic_ + "_with_covariance");
-    publish_planning_diagnostic_ = declare_parameter<bool>("publish_planning_diagnostic", false);
-    planning_diagnostic_topic_ =
-      declare_parameter<std::string>("planning_diagnostic_topic", "/planning/diagnostic");
+    publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
+    planning_status_topic_ =
+      declare_parameter<std::string>("planning_status_topic", "/planning/status");
     max_search_radius_ = declare_parameter<double>("max_search_radius", 30.0);
     longitudinal_stddev_ = declare_parameter<double>("longitudinal_stddev", 0.5);
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
@@ -102,9 +102,9 @@ public:
       output_pose_topic_ros_, rclcpp::QoS(10));
     pub_pose_cov_ = create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(
       output_pose_cov_topic_, rclcpp::QoS(10));
-    if (publish_planning_diagnostic_) {
+    if (publish_planning_status_) {
       pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
-        planning_diagnostic_topic_, rclcpp::QoS(10));
+        planning_status_topic_, rclcpp::QoS(10));
     }
     // HH_260305-00:00 Use reliable/latest-only pose QoS.
     // Best-effort drop under load makes snapped pose lag and causes downstream local-path jitter.
@@ -223,15 +223,15 @@ private:
   // Publishes `AvgPlanning` output.
   void publishAvgPlanning(const avg_msgs::msg::PoseStamped & lanelet_pose)
   {
-    if (!publish_planning_diagnostic_ || !pub_avg_planning_) {
+    if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
     }
     AvgPlanningMsgs msg;
     msg.stamp = now();
-    msg.health.stamp = msg.stamp;
-    msg.health.module_name = "planning";
-    msg.health.level = ModuleHealth::OK;
-    msg.health.message = "centerline_snapper";
+    msg.state.stamp = msg.stamp;
+    msg.state.module_name = "planning";
+    msg.state.level = ModuleState::OK;
+    msg.state.message = "centerline_snapper";
     msg.lanelet_pose = lanelet_pose;
     pub_avg_planning_->publish(msg);
   }
@@ -280,7 +280,7 @@ private:
   std::string output_pose_topic_;
   std::string output_pose_topic_ros_;
   std::string output_pose_cov_topic_;
-  std::string planning_diagnostic_topic_;
+  std::string planning_status_topic_;
   double max_search_radius_{30.0};
   double longitudinal_stddev_{0.5};
   double lateral_stddev_{0.3};
@@ -310,7 +310,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_pose_cov_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_pose_;
-  bool publish_planning_diagnostic_{false};
+  bool publish_planning_status_{false};
 };
 
 // Entry point for this executable.

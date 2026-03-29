@@ -12,7 +12,7 @@
     required_topics:
       - /localization/pose
       - /sensing/imu/data
-      - /sensing/gnss/navsatfix
+      - /sensing/gnss/ublox_gps_node/fix
       - /platform/wheel/odometry
       - /localization/vio/odometry
       - /map/cost_grid/lanelet

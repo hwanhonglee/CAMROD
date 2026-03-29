@@ -2,8 +2,8 @@
 #include <memory>
 #include <string>
 
+#include <avg_msgs/msg/point_cloud2.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/point_types.h>
@@ -17,7 +17,7 @@ public:
   {
     this->declare_parameter<std::string>("input_topic", "vanjee/points_raw");
     this->declare_parameter<std::string>("filtered_topic", "points_filtered");
-    this->declare_parameter<std::string>("lidar_diagnostic_topic", "diagnostic");
+    this->declare_parameter<std::string>("lidar_status_topic", "status");
 
     this->declare_parameter<std::string>("method", "ransac");
     this->declare_parameter<double>("z_min", -0.25);
@@ -28,7 +28,7 @@ public:
 
     this->get_parameter("input_topic", input_topic_);
     this->get_parameter("filtered_topic", filtered_topic_);
-    this->get_parameter("lidar_diagnostic_topic", lidar_diagnostic_topic_);
+    this->get_parameter("lidar_status_topic", lidar_status_topic_);
 
     this->get_parameter("method", method_);
     this->get_parameter("z_min", z_min_);
@@ -39,13 +39,14 @@ public:
 
     auto qos = rclcpp::SensorDataQoS().keep_last(1);
 
-    sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+    // HH_260326: Keep intra-stack lidar transport aligned on avg_msgs aliases.
+    sub_ = this->create_subscription<avg_msgs::msg::PointCloud2>(
       input_topic_,
       qos,
       std::bind(&GroundFilterNode::cb, this, std::placeholders::_1)
     );
 
-    pub_filtered_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+    pub_filtered_ = this->create_publisher<avg_msgs::msg::PointCloud2>(
       filtered_topic_,
       qos
     );
@@ -57,7 +58,7 @@ public:
   }
 
 private:
-  void cb(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+  void cb(const avg_msgs::msg::PointCloud2::SharedPtr msg)
   {
     pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>());
     pcl::fromROSMsg(*msg, *cloud);
@@ -120,7 +121,7 @@ private:
       }
     }
 
-    sensor_msgs::msg::PointCloud2 out;
+    avg_msgs::msg::PointCloud2 out;
     pcl::toROSMsg(*filtered, out);
     out.header = msg->header;
     out.header.stamp = this->get_clock()->now();
@@ -130,7 +131,7 @@ private:
 
   std::string input_topic_;
   std::string filtered_topic_;
-  std::string lidar_diagnostic_topic_;
+  std::string lidar_status_topic_;
 
   std::string method_;
   double z_min_;
@@ -139,8 +140,8 @@ private:
   double ransac_dist_thresh_;
   int ransac_max_iter_;
 
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_filtered_;
+  rclcpp::Subscription<avg_msgs::msg::PointCloud2>::SharedPtr sub_;
+  rclcpp::Publisher<avg_msgs::msg::PointCloud2>::SharedPtr pub_filtered_;
 };
 
 int main(int argc, char ** argv)

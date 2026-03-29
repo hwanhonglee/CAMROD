@@ -26,11 +26,11 @@ public:
       declare_parameter<std::string>("output_image_topic", "/sensing/camera/processed/image");
     output_camera_info_topic_ =
       declare_parameter<std::string>("output_camera_info_topic", "/sensing/camera/processed/camera_info");
-    camera_diagnostic_topic_ = declare_parameter<std::string>(
-      "camera_diagnostic_topic", "/sensing/camera/diagnostic");
-    publish_camera_diagnostic_ = declare_parameter<bool>("publish_camera_diagnostic", false);
-    // HH_260220: Keep camera messages on the sensor_kit TF frame by default.
-    frame_id_override_ = declare_parameter<std::string>("frame_id_override", "camera_front_link");
+    camera_status_topic_ = declare_parameter<std::string>(
+      "camera_status_topic", "/sensing/camera/status");
+    publish_camera_status_ = declare_parameter<bool>("publish_camera_status", false);
+    // HH_260326: Use camera_link as the canonical camera TF frame.
+    frame_id_override_ = declare_parameter<std::string>("frame_id_override", "camera_link");
     require_camera_info_ = declare_parameter<bool>("require_camera_info", false);
 
     using std::placeholders::_1;
@@ -44,7 +44,7 @@ public:
     image_pub_ = create_publisher<avg_msgs::msg::Image>(output_image_topic_, rclcpp::QoS(10));
     camera_info_pub_ = create_publisher<avg_msgs::msg::CameraInfo>(
       output_camera_info_topic_, rclcpp::QoS(10));
-    avg_camera_pub_ = create_publisher<AvgSensingCamera>(camera_diagnostic_topic_, rclcpp::QoS(10));
+    avg_camera_pub_ = create_publisher<AvgSensingCamera>(camera_status_topic_, rclcpp::QoS(10));
 
     // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
     RCLCPP_DEBUG(
@@ -64,7 +64,7 @@ private:
     }
     camera_info_ready_ = true;
     camera_info_pub_->publish(last_camera_info_);
-    if (publish_camera_diagnostic_ && avg_camera_pub_) {
+    if (publish_camera_status_ && avg_camera_pub_) {
       AvgSensingCamera avg_msg;
       avg_msg.camera_info = last_camera_info_;
       avg_camera_pub_->publish(avg_msg);
@@ -90,13 +90,13 @@ private:
     if (camera_info_ready_) {
       std::lock_guard<std::mutex> lock(mutex_);
       camera_info_pub_->publish(last_camera_info_);
-      if (publish_camera_diagnostic_ && avg_camera_pub_) {
+      if (publish_camera_status_ && avg_camera_pub_) {
         AvgSensingCamera avg_msg;
         avg_msg.image = out;
         avg_msg.camera_info = last_camera_info_;
         avg_camera_pub_->publish(avg_msg);
       }
-    } else if (publish_camera_diagnostic_ && avg_camera_pub_) {
+    } else if (publish_camera_status_ && avg_camera_pub_) {
       AvgSensingCamera avg_msg;
       avg_msg.image = out;
       avg_camera_pub_->publish(avg_msg);
@@ -107,10 +107,10 @@ private:
   std::string input_camera_info_topic_;
   std::string output_image_topic_;
   std::string output_camera_info_topic_;
-  std::string camera_diagnostic_topic_;
+  std::string camera_status_topic_;
   std::string frame_id_override_;
   bool require_camera_info_{false};
-  bool publish_camera_diagnostic_{false};
+  bool publish_camera_status_{false};
 
   rclcpp::Subscription<avg_msgs::msg::Image>::SharedPtr image_sub_;
   rclcpp::Subscription<avg_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;

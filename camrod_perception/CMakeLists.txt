@@ -72,7 +72,7 @@ install(TARGETS
 
 install(
   PROGRAMS
-    scripts/perception_diagnostic_node.py
+    scripts/perception_status_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

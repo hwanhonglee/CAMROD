@@ -3,7 +3,7 @@ import yaml
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
 from launch.conditions import IfCondition
@@ -67,10 +67,10 @@ def generate_launch_description():
         default_value='false',
         description='Enable /planning/goal_replanner (ComputePathToPose helper)',
     )
-    enable_module_checker_arg = DeclareLaunchArgument(
-        'enable_module_checker',
+    enable_module_validator_arg = DeclareLaunchArgument(
+        'enable_module_validator',
         default_value='true',
-        description='Enable planning module checker publisher',
+        description='Enable planning module validator publisher',
     )
     enable_nav2_lifecycle_retry_arg = DeclareLaunchArgument(
         'enable_nav2_lifecycle_retry',
@@ -78,6 +78,13 @@ def generate_launch_description():
         # Enable only when you explicitly want retry behavior in unstable environments.
         default_value='false',
         description='Enable Nav2 lifecycle startup retry helper',
+    )
+    require_localization_ready_arg = DeclareLaunchArgument(
+        'require_localization_ready',
+        # HH_260327: Default OFF so Nav2 can activate during field debugging
+        # even when /localization/initial_match_ok stays false.
+        default_value='false',
+        description='Wait for localization readiness before Nav2 lifecycle STARTUP',
     )
     enable_state_machine_arg = DeclareLaunchArgument(
         'enable_state_machine',
@@ -120,10 +127,21 @@ def generate_launch_description():
         default_value='/localization/pose',
         description='Input pose topic for centerline snapper',
     )
+    local_path_pose_topic_arg = DeclareLaunchArgument(
+        'local_path_pose_topic',
+        default_value='/planning/lanelet_pose',
+        description='Pose topic consumed by /planning/local_path_extractor',
+    )
+    local_path_source_arg = DeclareLaunchArgument(
+        'local_path_source',
+        # HH_260327: Default to global-path slice for stable path updates on successive goals.
+        default_value='slice_only',
+        description='Local path source policy: controller_then_slice|controller_only|slice_only',
+    )
     system_namespace_arg = DeclareLaunchArgument(
         'system_namespace',
         default_value='system',
-        description='Namespace for system checker nodes',
+        description='Namespace for system validator nodes',
     )
 
     nav2_base_param = LaunchConfiguration('nav2_base_param_file')
@@ -138,12 +156,15 @@ def generate_launch_description():
     origin_lon = LaunchConfiguration('origin_lon')
     origin_alt = LaunchConfiguration('origin_alt')
     nav2_robot_base_frame = LaunchConfiguration('nav2_robot_base_frame')
-    enable_module_checker = LaunchConfiguration('enable_module_checker')
+    enable_module_validator = LaunchConfiguration('enable_module_validator')
     enable_nav2_lifecycle_retry = LaunchConfiguration('enable_nav2_lifecycle_retry')
+    require_localization_ready = LaunchConfiguration('require_localization_ready')
     enable_state_machine = LaunchConfiguration('enable_state_machine')
     planning_state_machine_param = LaunchConfiguration('planning_state_machine_param_file')
     module_namespace = LaunchConfiguration('module_namespace')
     centerline_input_pose_topic = LaunchConfiguration('centerline_input_pose_topic')
+    local_path_pose_topic = LaunchConfiguration('local_path_pose_topic')
+    local_path_source = LaunchConfiguration('local_path_source')
     system_namespace = LaunchConfiguration('system_namespace')
 
     nav2_launch = IncludeLaunchDescription(
@@ -160,6 +181,11 @@ def generate_launch_description():
             'origin_alt': origin_alt,
             'nav2_robot_base_frame': nav2_robot_base_frame,
             'module_namespace': module_namespace,
+            # HH_260327: Disable lifecycle autostart when localization-ready gating is enabled.
+            'nav2_autostart': PythonExpression([
+                "'false' if ('", require_localization_ready,
+                "' in ['true', 'True', '1']) else 'true'"
+            ]),
         }.items(),
     )
     # HH_260317-00:00 Start Nav2 directly.
@@ -228,10 +254,13 @@ def generate_launch_description():
                 # /localization/pose and producing branch/shortcut local paths.
                 # Use Nav2 planner output directly as global route source.
                 'global_path_topic': '/planning/global_path',
-                'pose_topic': '/planning/lanelet_pose',
+                # HH_260327: Use localization-driven lanelet pose as local-path anchor.
+                # This keeps a single map-frame trajectory source for planning while
+                # GNSS remains a reference input inside localization filters.
+                'pose_topic': local_path_pose_topic,
                 'output_topic': '/planning/local_path',
-                # Use controller-local trajectory as primary local path source.
-                'local_path_source': 'controller_then_slice',
+                # HH_260327: Launch-configurable local path source policy.
+                'local_path_source': local_path_source,
                 'controller_path_topic': '/planning/local_path_controller',
                 'controller_path_timeout_sec': 0.8,
             },
@@ -289,67 +318,7 @@ def generate_launch_description():
         condition=IfCondition(enable_state_machine),
     )
 
-    planning_checker = Node(
-        package='camrod_system',
-        executable='module_checker_node.py',
-        name='planning_checker',
-        namespace=system_namespace,
-        output='screen',
-        condition=IfCondition(enable_module_checker),
-        parameters=[{
-            'module_name': 'planning',
-            'required_nodes': [
-                '/planning/planner_server',
-                '/planning/controller_server',
-                '/planning/behavior_server',
-                '/planning/bt_navigator',
-                '/planning/local_path_extractor',
-            ],
-            'required_topics': [
-                '/planning/global_path',
-                '/planning/local_path',
-                '/planning/cost_grid/global_path_markers',
-                '/planning/cost_grid/local_path_markers',
-            ],
-            'required_lifecycle_nodes': [
-                '/planning/planner_server',
-                '/planning/controller_server',
-                '/planning/behavior_server',
-                '/planning/bt_navigator',
-            ],
-            'diagnostic_topic': '/diagnostics',
-            'status_name': 'planning/checker',
-            'check_period_s': 0.5,
-            'warn_throttle_sec': 2.0,
-            'publish_ok': True,
-        }],
-    )
-
-    planning_diagnostic = Node(
-        package='camrod_planning',
-        executable='planning_diagnostic_node.py',
-        name='planning_diagnostic',
-        namespace=module_namespace,
-        output='screen',
-        parameters=[{
-            # HH_260318-00:00 Module-local diagnostic topic (namespaced).
-            'diagnostic_topic': 'diagnostic',
-            'publish_period_s': 0.2,
-            'stale_timeout_s': 2.0,
-            'topic_goal': '/planning/goal_pose_snapped',
-            'topic_lanelet_pose': '/planning/lanelet_pose',
-            'topic_global_path': '/planning/global_path',
-            'topic_navigate_status': '/planning/navigate_to_pose/_action/status',
-            'topic_local_path': '/planning/local_path',
-            'topic_local_plan_raw': '/planning/local_plan',
-            'topic_local_path_controller': '/planning/local_path_controller',
-            'topic_local_path_dwb': '/planning/local_path_dwb',
-            'topic_global_costmap': '/planning/global_costmap/costmap',
-            'topic_local_costmap': '/planning/local_costmap/costmap',
-            'topic_global_cost_markers': '/planning/cost_grid/global_path_markers',
-            'topic_local_cost_markers': '/planning/cost_grid/local_path_markers',
-        }],
-    )
+    # HH_260326: Removed planning status/validator runtime nodes as requested.
 
     nav2_lifecycle_retry = Node(
         package='camrod_planning',
@@ -357,12 +326,22 @@ def generate_launch_description():
         name='nav2_lifecycle_startup_retry',
         namespace=module_namespace,
         output='screen',
-        condition=IfCondition(enable_nav2_lifecycle_retry),
+        condition=IfCondition(PythonExpression([
+            "('", enable_nav2_lifecycle_retry, "' in ['true', 'True', '1']) or "
+            "('", require_localization_ready, "' in ['true', 'True', '1'])"
+        ])),
         parameters=[{
             'manager_service': '/planning/lifecycle_manager_planning/manage_nodes',
             'is_active_service': '/planning/lifecycle_manager_planning/is_active',
             'retry_period_s': 0.5,
             'startup_cooldown_s': 1.0,
+            # HH_260327: Localize planning startup to localization readiness signals.
+            'require_localization_ready': require_localization_ready,
+            'localization_ready_topic': '/localization/initial_match_ok',
+            'localization_pose_cov_topic': '/localization/pose_with_covariance',
+            'localization_pose_timeout_s': 1.0,
+            'max_position_variance': 9.0,
+            'max_yaw_variance': 1.0,
         }],
     )
 
@@ -373,8 +352,9 @@ def generate_launch_description():
         nav2_behavior_param_arg,
         enable_path_cost_grids_arg,
         enable_goal_replanner_arg,
-        enable_module_checker_arg,
+        enable_module_validator_arg,
         enable_nav2_lifecycle_retry_arg,
+        require_localization_ready_arg,
         enable_state_machine_arg,
         local_path_extractor_param_arg,
         planning_state_machine_param_arg,
@@ -385,14 +365,14 @@ def generate_launch_description():
         nav2_robot_base_frame_arg,
         module_namespace_arg,
         centerline_input_pose_topic_arg,
+        local_path_pose_topic_arg,
+        local_path_source_arg,
         system_namespace_arg,
         goal_snapper,
         centerline_snapper,
         local_path_extractor,
         goal_replanner,
         planning_state_machine,
-        planning_diagnostic,
         nav2_lifecycle_retry,
-        planning_checker,
         nav2_launch_delayed,
     ])

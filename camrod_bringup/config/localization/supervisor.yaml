@@ -2,7 +2,7 @@
 # HH_260123 Localization supervisor thresholds.
 /localization/supervisor:
   ros__parameters:
-    diag_topic: "/localization/eskf/diagnostic"
+    diag_topic: "/localization/eskf/status"
     gnss_topic: "/sensing/gnss/pose_with_covariance"
     imu_topic: "/sensing/imu/data"
     wheel_topic: "/platform/wheel/odometry"

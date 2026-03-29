@@ -21,17 +21,17 @@ def generate_launch_description():
     system_namespace_arg = DeclareLaunchArgument(
         "system_namespace",
         default_value="system",
-        description="System checker namespace",
+        description="System validator namespace",
     )
     map_path_arg = DeclareLaunchArgument(
         "map_path",
         default_value="",
         description="Lanelet2 map path override (empty: use defaults from config/map/map_info.yaml)",
     )
-    enable_module_checker_arg = DeclareLaunchArgument(
-        "enable_module_checker",
+    enable_module_validator_arg = DeclareLaunchArgument(
+        "enable_module_validator",
         default_value="true",
-        description="Enable map module checker",
+        description="Enable map module validator",
     )
 
     include_full = IncludeLaunchDescription(
@@ -42,7 +42,7 @@ def generate_launch_description():
             "module_namespace": LaunchConfiguration("module_namespace"),
             "system_namespace": LaunchConfiguration("system_namespace"),
             "map_path": LaunchConfiguration("map_path"),
-            "enable_module_checker": LaunchConfiguration("enable_module_checker"),
+            "enable_module_validator": LaunchConfiguration("enable_module_validator"),
         }.items(),
     )
 
@@ -51,7 +51,7 @@ def generate_launch_description():
             module_namespace_arg,
             system_namespace_arg,
             map_path_arg,
-            enable_module_checker_arg,
+            enable_module_validator_arg,
             include_full,
         ]
     )

@@ -25,9 +25,10 @@ def launch_setup(context, *args, **kwargs):
         "enable_radar_cost_grid": LaunchConfiguration("enable_radar_cost_grid"),
         "enable_lidar_cost_grid": LaunchConfiguration("enable_lidar_cost_grid"),
         "enable_lidar_driver": LaunchConfiguration("enable_lidar_driver"),
+        "enable_imu": LaunchConfiguration("enable_imu"),
         "vanjee_config_path": LaunchConfiguration("vanjee_config_path"),
         "enable_vanjee_static_tf": LaunchConfiguration("enable_vanjee_static_tf"),
-        "enable_module_checker": LaunchConfiguration("enable_module_checker"),
+        "enable_module_validator": LaunchConfiguration("enable_module_validator"),
         "sensing_namespace": LaunchConfiguration("sensing_namespace"),
         "system_namespace": LaunchConfiguration("system_namespace"),
         "enable_gnss": LaunchConfiguration("enable_gnss"),
@@ -41,10 +42,10 @@ def launch_setup(context, *args, **kwargs):
         "camera_input_camera_info_topic": LaunchConfiguration("camera_input_camera_info_topic"),
         "camera_output_image_topic": LaunchConfiguration("camera_output_image_topic"),
         "camera_output_camera_info_topic": LaunchConfiguration("camera_output_camera_info_topic"),
-        "camera_diagnostic_topic": LaunchConfiguration("camera_diagnostic_topic"),
+        "camera_status_topic": LaunchConfiguration("camera_status_topic"),
         "imu_input_topic": LaunchConfiguration("imu_input_topic"),
         "imu_output_topic": LaunchConfiguration("imu_output_topic"),
-        "imu_diagnostic_topic": LaunchConfiguration("imu_diagnostic_topic"),
+        "imu_status_topic": LaunchConfiguration("imu_status_topic"),
     }
 
     # ---------------------------------------------------------------------
@@ -74,7 +75,7 @@ def launch_setup(context, *args, **kwargs):
                     # preprocessor relative topic
                     "preprocessor_input_topic": "vanjee/points_raw",
                     "lidar_filtered_topic": "points_filtered",
-                    "lidar_diagnostic_topic": "diagnostic",
+                    "lidar_status_topic": "status",
 
                     "enable_vanjee_static_tf": cfg["enable_vanjee_static_tf"],
                 }.items(),
@@ -127,7 +128,7 @@ def launch_setup(context, *args, **kwargs):
                         "input_camera_info_topic": cfg["camera_input_camera_info_topic"],
                         "output_image_topic": cfg["camera_output_image_topic"],
                         "output_camera_info_topic": cfg["camera_output_camera_info_topic"],
-                        "camera_diagnostic_topic": cfg["camera_diagnostic_topic"],
+                        "camera_status_topic": cfg["camera_status_topic"],
                     },
                 ],
             ),
@@ -152,7 +153,8 @@ def launch_setup(context, *args, **kwargs):
                     "namespace": "imu",
                 }.items(),
             ),
-        ]
+        ],
+        condition=IfCondition(cfg["enable_imu"]),
     )    
     
     velocity_converter = GroupAction(
@@ -170,11 +172,12 @@ def launch_setup(context, *args, **kwargs):
                     {
                         "imu_topic": cfg["imu_input_topic"],
                         "output_topic": cfg["imu_output_topic"],
-                        "imu_diagnostic_topic": cfg["imu_diagnostic_topic"],
+                        "imu_status_topic": cfg["imu_status_topic"],
                     },
                 ],
             ),
-        ]
+        ],
+        condition=IfCondition(cfg["enable_imu"]),
     )
 
     # ---------------------------------------------------------------------
@@ -227,70 +230,7 @@ def launch_setup(context, *args, **kwargs):
         ]
     )
 
-    # ---------------------------------------------------------------------
-    # Diagnostics
-    # ---------------------------------------------------------------------
-    sensing_diagnostic = GroupAction(
-        actions=[
-            PushRosNamespace(cfg["sensing_namespace"]),
-            Node(
-                package="camrod_sensing",
-                executable="sensing_diagnostic_node.py",
-                name="sensing_diagnostic",
-                output="screen",
-                parameters=[{
-                    "diagnostic_topic": "diagnostic",
-                    "publish_period_s": 0.2,
-                    "stale_timeout_s": 1.5,
-                    "topic_lidar_filtered": "lidar/points_filtered",
-                    "topic_camera_image": "camera/processed/image",
-                    "topic_camera_info": "camera/processed/camera_info",
-                    "topic_twist_cov": "imu/platform_velocity_converter/twist_with_covariance",
-                    "topic_imu": "imu/data",
-                    "topic_gnss_navsat": "gnss/navsatfix",
-                    "topic_gnss_pose_cov": "gnss/pose_with_covariance",
-                    "topic_lidar_cost": "lidar/near_cost_grid",
-                    "topic_radar_cost": "radar/near_cost_grid",
-                    "topic_radar_front": "radar/front/range",
-                    "topic_radar_right1": "radar/right1/range",
-                    "topic_radar_right2": "radar/right2/range",
-                    "topic_radar_left1": "radar/left1/range",
-                    "topic_radar_left2": "radar/left2/range",
-                    "topic_radar_rear": "radar/rear/range",
-                }],
-            ),
-        ]
-    )
-
-    # ---------------------------------------------------------------------
-    # System checker
-    # ---------------------------------------------------------------------
-    sensing_checker = Node(
-        package="camrod_system",
-        executable="module_checker_node.py",
-        name="sensing_checker",
-        namespace=cfg["system_namespace"],
-        output="screen",
-        condition=IfCondition(cfg["enable_module_checker"]),
-        parameters=[{
-            "module_name": "sensing",
-            "required_nodes": [
-                "/sensing/lidar/lidar_preprocessor",
-                "/sensing/camera/camera_preprocessor",
-                "/sensing/imu/platform_velocity_converter",
-            ],
-            "required_topics": [
-                "/sensing/lidar/vanjee/points_raw",
-                "/sensing/lidar/near_cost_grid",
-                "/sensing/radar/near_cost_grid",
-            ],
-            "diagnostic_topic": "/diagnostics",
-            "status_name": "sensing/checker",
-            "check_period_s": 0.5,
-            "warn_throttle_sec": 2.0,
-            "publish_ok": True,
-        }],
-    )
+    # HH_260326: Removed sensing status/validator runtime nodes as requested.
 
     return [
         lidar_stack,
@@ -301,8 +241,6 @@ def launch_setup(context, *args, **kwargs):
         radar_stack,
         radar_cost_grid,
         lidar_cost_grid,
-        sensing_diagnostic,
-        sensing_checker,
     ]
 
 def generate_launch_description():
@@ -441,8 +379,9 @@ def generate_launch_description():
     add_launch_arg("enable_radar_cost_grid", "true", "Enable radar cost grid node")
     add_launch_arg("enable_lidar_cost_grid", "true", "Enable LiDAR cost grid node")
     add_launch_arg("enable_lidar_driver", "true", "Enable Vanjee LiDAR driver node")
+    add_launch_arg("enable_imu", "true", "Enable IMU driver and velocity converter")
     add_launch_arg("enable_vanjee_static_tf", "false", "Enable Vanjee static TF")
-    add_launch_arg("enable_module_checker", "true", "Enable sensing module checker")
+    add_launch_arg("enable_module_validator", "true", "Enable sensing module validator")
     add_launch_arg("enable_gnss", "true", "Enable GNSS stack")
     add_launch_arg("enable_ntrip", "true", "Enable NTRIP client")
 
@@ -450,7 +389,7 @@ def generate_launch_description():
     # Namespaces
     # ---------------------------------------------------------------------
     add_launch_arg("sensing_namespace", "sensing", "Top-level sensing namespace")
-    add_launch_arg("system_namespace", "system", "Namespace for system checker nodes")
+    add_launch_arg("system_namespace", "system", "Namespace for system validator nodes")
     add_launch_arg("gnss_namespace", "gnss", "Namespace for GNSS nodes under /sensing")
 
     # ---------------------------------------------------------------------
@@ -478,7 +417,7 @@ def generate_launch_description():
         "processed/camera_info",
         "Camera processed camera_info topic",
     )
-    add_launch_arg("camera_diagnostic_topic", "diagnostic", "Camera diagnostic topic")
+    add_launch_arg("camera_status_topic", "status", "Camera status topic")
 
     # ---------------------------------------------------------------------
     # IMU topics
@@ -489,7 +428,7 @@ def generate_launch_description():
         "platform_velocity_converter/twist_with_covariance",
         "Velocity converter output topic",
     )
-    add_launch_arg("imu_diagnostic_topic", "diagnostic", "IMU diagnostic topic")
+    add_launch_arg("imu_status_topic", "status", "IMU status topic")
 
     return LaunchDescription(
         launch_arguments + [OpaqueFunction(function=launch_setup)]

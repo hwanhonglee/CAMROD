@@ -89,9 +89,25 @@ def generate_launch_description():
     bringup_cfg = lambda rel: pkg_path('camrod_bringup', os.path.join('config', rel))
 
     launch_cfg = read_yaml(bringup_cfg('bringup/launch_defaults.yaml')).get('bringup', {})
-    map_params = read_yaml(bringup_cfg('map/map_info.yaml')).get('/map/lanelet2_map', {}).get('ros__parameters', {})
+    map_info = read_yaml(bringup_cfg('map/map_info.yaml'))
+    map_params = map_info.get('/map/lanelet2_map', {}).get('ros__parameters', {})
+    # HH_260327: Read unified map/localization reference from ros__parameters
+    # to keep map_info.yaml ROS2-param-parser compatible.
+    map_ref_llh = {
+        'lat': map_params.get('reference_lat', map_params.get('offset_lat', 0.0)),
+        'lon': map_params.get('reference_lon', map_params.get('offset_lon', 0.0)),
+        'alt': map_params.get('reference_alt', map_params.get('offset_alt', 0.0)),
+    }
+    map_ref_utm = {
+        'easting': map_params.get('reference_utm_easting', 0.0),
+        'northing': map_params.get('reference_utm_northing', 0.0),
+        'alt': map_params.get('reference_utm_alt', map_ref_llh['alt']),
+    }
     yaw_default = float(
-        read_yaml(bringup_cfg('localization/localization_origin.yaml')).get('origin', {}).get('yaw_offset_deg', 0.0)
+        map_params.get(
+            'yaw_offset_deg',
+            read_yaml(bringup_cfg('localization/localization_origin.yaml')).get('origin', {}).get('yaw_offset_deg', 0.0),
+        )
     )
 
     # High-level arguments only.
@@ -99,24 +115,55 @@ def generate_launch_description():
         ('clean_before_launch', cfg_get(launch_cfg, 'runtime/clean_before_launch', True), 'Kill stale processes first'),
         ('sim', cfg_get(launch_cfg, 'runtime/sim', True), 'Simulation mode'),
         ('rviz', cfg_get(launch_cfg, 'runtime/rviz', True), 'Enable RViz'),
+        # HH_260327: Stagger module includes to reduce startup CPU/memory spikes.
+        ('module_launch_gap_sec', cfg_get(launch_cfg, 'runtime/module_launch_gap_sec', 0.8), 'Gap (seconds) between module launch includes'),
 
         ('use_eskf', cfg_get(launch_cfg, 'localization/use_eskf', True), 'Localization filter selector'),
+        # HH_260326: New explicit selector for localization.launch.py (ekf/eskf).
+        # Keep 'auto' to preserve backward compatibility with legacy use_eskf toggle.
+        ('filter_type', cfg_get(launch_cfg, 'localization/filter_type', 'auto'), 'Localization filter type: auto|ekf|eskf'),
         ('wheel_bridge_enable', cfg_get(launch_cfg, 'localization/wheel_bridge_enable', True), 'Enable wheel bridge'),
+        # HH_260326: Bringup-level wheel source wiring for unified wheel bridge.
+        ('wheel_input_topic', cfg_get(launch_cfg, 'localization/wheel_input_topic', '/platform/status/wheel'), 'Wheel bridge input topic'),
+        ('wheel_input_type', cfg_get(launch_cfg, 'localization/wheel_input_type', 'twist'), 'Wheel bridge input type: twist|avg_odom|nav_odom'),
+        ('wheel_output_topic', cfg_get(launch_cfg, 'localization/wheel_output_topic', '/platform/wheel/odometry'), 'Unified wheel odometry topic (avg_msgs/Odometry)'),
+        ('wheel_nav_output_topic', cfg_get(launch_cfg, 'localization/wheel_nav_output_topic', '/platform/wheel/nav_odometry'), 'Unified wheel odometry topic (nav_msgs/Odometry)'),
+        ('eskf_force_rmp401_odom', cfg_get(launch_cfg, 'localization/eskf_force_rmp401_odom', True), 'Force ESKF wheel source to /rmp401/odom'),
+        ('eskf_rmp401_odom_topic', cfg_get(launch_cfg, 'localization/eskf_rmp401_odom_topic', '/rmp401/odom'), 'Temporary ESKF wheel source topic'),
         ('kimera_bridge_enable', cfg_get(launch_cfg, 'localization/kimera_bridge_enable', False), 'Enable Kimera bridge'),
         ('pose_selector_enable', cfg_get(launch_cfg, 'localization/pose_selector_enable', False), 'Enable pose selector'),
 
         ('enable_path_cost_grids', cfg_get(launch_cfg, 'planning/enable_path_cost_grids', True), 'Enable path cost-grid helpers'),
         ('enable_goal_replanner', cfg_get(launch_cfg, 'planning/enable_goal_replanner', True), 'Enable goal replanner'),
         ('enable_nav2_lifecycle_retry', cfg_get(launch_cfg, 'planning/enable_nav2_lifecycle_retry', True), 'Enable Nav2 lifecycle retry'),
+        # HH_260327: Hold Nav2 STARTUP until localization reports ready.
+        ('require_localization_ready', cfg_get(launch_cfg, 'planning/require_localization_ready', True), 'Gate Nav2 STARTUP on localization readiness'),
         ('enable_state_machine', cfg_get(launch_cfg, 'planning/enable_state_machine', False), 'Enable planning state machine'),
+        ('local_path_pose_topic', cfg_get(launch_cfg, 'planning/local_path_pose_topic', '/planning/lanelet_pose'), 'Pose topic for local_path_extractor'),
+        ('local_path_source', cfg_get(launch_cfg, 'planning/local_path_source', 'slice_only'), 'Local path source policy: controller_then_slice|controller_only|slice_only'),
         ('use_dwb_controller', cfg_get(launch_cfg, 'planning/use_dwb_controller', False), 'Use Nav2 DWB profile'),
+        # HH_260326: Declare explicitly so include-time LaunchConfiguration always exists.
+        ('nav2_vehicle_param_file', cfg_get(
+            launch_cfg,
+            'planning/nav2_vehicle_param_file',
+            bringup_cfg('planning/nav2_vehicle.yaml'),
+        ), 'Nav2 vehicle profile param file'),
 
-        ('enable_module_checkers', cfg_get(launch_cfg, 'system/enable_module_checkers', True), 'Enable module checkers'),
+        ('enable_module_validators', cfg_get(launch_cfg, 'system/enable_module_validators', True), 'Enable module validators'),
+        (
+            'enable_plugin_api',
+            cfg_get(launch_cfg, 'system/enable_plugin_api', True),
+            'Enable plugin API bridge',
+        ),
+        ('enable_api_ui', cfg_get(launch_cfg, 'system/enable_api_ui', True), 'Enable API UI backend node'),
+        ('api_ui_host', cfg_get(launch_cfg, 'system/api_ui_host', '0.0.0.0'), 'API UI backend bind host'),
+        ('api_ui_port', cfg_get(launch_cfg, 'system/api_ui_port', 8010), 'API UI backend bind port'),
 
         ('enable_radar', cfg_get(launch_cfg, 'sensing/enable_radar', False), 'Enable serial radar'),
         ('enable_radar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_radar_cost_grid', True), 'Enable radar cost-grid'),
         ('enable_lidar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_lidar_cost_grid', True), 'Enable lidar cost-grid'),
         ('enable_lidar_driver', cfg_get(launch_cfg, 'sensing/enable_lidar_driver', False), 'Enable lidar driver'),
+        ('enable_imu', cfg_get(launch_cfg, 'sensing/enable_imu', True), 'Enable IMU driver + velocity converter'),
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
         ('enable_ntrip', cfg_get(launch_cfg, 'sensing/enable_ntrip', False), 'Enable GNSS NTRIP client'),
 
@@ -131,16 +178,64 @@ def generate_launch_description():
         ('system_namespace', cfg_get(launch_cfg, 'namespaces/system', 'system'), 'System namespace'),
         ('gnss_namespace', cfg_get(launch_cfg, 'namespaces/gnss', 'sensing/gnss'), 'GNSS namespace'),
 
-        ('gnss_navsatfix_topic', cfg_get(launch_cfg, 'topics/gnss_navsatfix', '/sensing/gnss/navsatfix'), 'GNSS navsatfix topic'),
+        ('gnss_navsatfix_topic', cfg_get(launch_cfg, 'topics/gnss_navsatfix', '/sensing/gnss/ublox_gps_node/fix'), 'GNSS navsatfix topic'),
         ('gnss_pose_topic', cfg_get(launch_cfg, 'topics/gnss_pose', '/sensing/gnss/pose'), 'GNSS pose topic'),
         ('gnss_pose_cov_topic', cfg_get(launch_cfg, 'topics/gnss_pose_cov', '/sensing/gnss/pose_with_covariance'), 'GNSS pose-with-cov topic'),
         ('gnss_rtcm_topic', cfg_get(launch_cfg, 'topics/gnss_rtcm', '/sensing/gnss/rtcm'), 'GNSS RTCM topic'),
 
         ('map_path', cfg_get(launch_cfg, 'map/map_path', str(map_params.get('map_path', ''))), 'Lanelet2 map path'),
-        ('origin_lat', cfg_get(launch_cfg, 'map/origin_lat', float(map_params.get('offset_lat', 0.0))), 'Map origin latitude'),
-        ('origin_lon', cfg_get(launch_cfg, 'map/origin_lon', float(map_params.get('offset_lon', 0.0))), 'Map origin longitude'),
-        ('origin_alt', cfg_get(launch_cfg, 'map/origin_alt', float(map_params.get('offset_alt', 0.0))), 'Map origin altitude'),
+        (
+            'origin_lat',
+            cfg_get(
+                launch_cfg,
+                'map/origin_lat',
+                float(map_ref_llh.get('lat', map_params.get('offset_lat', 0.0))),
+            ),
+            'Map origin latitude',
+        ),
+        (
+            'origin_lon',
+            cfg_get(
+                launch_cfg,
+                'map/origin_lon',
+                float(map_ref_llh.get('lon', map_params.get('offset_lon', 0.0))),
+            ),
+            'Map origin longitude',
+        ),
+        (
+            'origin_alt',
+            cfg_get(
+                launch_cfg,
+                'map/origin_alt',
+                float(map_ref_llh.get('alt', map_params.get('offset_alt', 0.0))),
+            ),
+            'Map origin altitude',
+        ),
         ('yaw_offset_deg', cfg_get(launch_cfg, 'map/yaw_offset_deg', yaw_default), 'GNSS->map yaw offset deg'),
+        (
+            'utm_origin_easting',
+            cfg_get(launch_cfg, 'map/utm_origin_easting', float(map_ref_utm.get('easting', 0.0))),
+            'UTM origin easting [m] for localization',
+        ),
+        (
+            'utm_origin_northing',
+            cfg_get(launch_cfg, 'map/utm_origin_northing', float(map_ref_utm.get('northing', 0.0))),
+            'UTM origin northing [m] for localization',
+        ),
+        (
+            'utm_origin_alt',
+            cfg_get(launch_cfg, 'map/utm_origin_alt', float(map_ref_utm.get('alt', map_ref_llh.get('alt', 0.0)))),
+            'UTM origin altitude [m] for localization',
+        ),
+        (
+            'rotate_latlon_xy_by_yaw_offset',
+            cfg_get(
+                launch_cfg,
+                'map/rotate_latlon_xy_by_yaw_offset',
+                bool(map_params.get('rotate_latlon_xy_by_yaw_offset', True)),
+            ),
+            'Rotate LLH ENU XY by yaw_offset_deg',
+        ),
 
         ('lanelet_id', cfg_get(launch_cfg, 'sim/lanelet_id', -1), 'Fake sensor lanelet id'),
         ('fake_lanelet_id', cfg_get(launch_cfg, 'sim/fake_lanelet_id', -1), 'Legacy fake lanelet id alias'),
@@ -169,10 +264,20 @@ def generate_launch_description():
     nav2_lanelet = pkg_path('camrod_bringup', os.path.join('config', 'planning', 'nav2_lanelet_overlay.yaml'))
     nav2_behavior = pkg_path('camrod_bringup', os.path.join('config', 'planning', 'nav2_behavior.yaml'))
     eskf_param = pkg_path('camrod_bringup', os.path.join('config', 'localization', 'eskf.yaml'))
-    supervisor_param = pkg_path('camrod_bringup', os.path.join('config', 'localization', 'supervisor.yaml'))
     kimera_param = pkg_path('camrod_bringup', os.path.join('config', 'localization', 'kimera_bridge.yaml'))
     selector_param = pkg_path('camrod_bringup', os.path.join('config', 'localization', 'pose_selector.yaml'))
-    drop_zone_param = pkg_path('camrod_bringup', os.path.join('config', 'localization', 'drop_zone_matcher.yaml'))
+    # HH_260326: drop_zone_matcher node expects raw zone list YAML, not matcher param YAML.
+    drop_zone_param = pkg_path('camrod_bringup', os.path.join('config', 'localization', 'drop_zones.yaml'))
+
+    # HH_260326: Resolve filter_type with runtime backward compatibility.
+    # Priority:
+    # 1) filter_type=ekf|eskf
+    # 2) filter_type=auto(or invalid) -> legacy use_eskf toggle
+    resolved_filter_type = PythonExpression([
+        "'ekf' if '", lc['filter_type'], "' == 'ekf' else "
+        "('eskf' if '", lc['filter_type'], "' == 'eskf' else "
+        "('eskf' if '", lc['use_eskf'], "' == 'true' else 'ekf'))"
+    ])
 
     def include(pkg: str, launch_file: str, launch_args: dict, condition=None):
         kwargs = {
@@ -192,7 +297,7 @@ def generate_launch_description():
             'module_namespace': lc['platform_namespace'],
             'system_namespace': lc['system_namespace'],
             'sensor_kit_namespace': lc['sensor_kit_namespace'],
-            'enable_module_checker': 'false',
+            'enable_module_validator': 'false',
             'publish_base_link_alias': 'true',
         }),
         include('camrod_map', 'map.launch.py', {
@@ -202,7 +307,7 @@ def generate_launch_description():
             'origin_alt': lc['origin_alt'],
             'module_namespace': lc['map_namespace'],
             'system_namespace': lc['system_namespace'],
-            'enable_module_checker': 'false',
+            'enable_module_validator': 'false',
         }),
         include('camrod_bringup', 'fake_sensors.launch.py', {
             'bringup_namespace': lc['bringup_namespace'],
@@ -218,7 +323,9 @@ def generate_launch_description():
             'fake_lanelet_id': lc['fake_lanelet_id'],
         }, condition=IfCondition(lc['sim'])),
         include('camrod_sensing', 'sensing.launch.py', {
-            'module_namespace': lc['sensing_namespace'],
+            # HH_260326: sensing.launch.py declares `sensing_namespace` (not `module_namespace`).
+            # Keep key aligned so bringup namespace override is actually applied.
+            'sensing_namespace': lc['sensing_namespace'],
             'system_namespace': lc['system_namespace'],
             'gnss_namespace': lc['gnss_namespace'],
             'gnss_navsatfix_topic': lc['gnss_navsatfix_topic'],
@@ -228,13 +335,17 @@ def generate_launch_description():
             'enable_radar_cost_grid': lc['enable_radar_cost_grid'],
             'enable_lidar_cost_grid': lc['enable_lidar_cost_grid'],
             'enable_lidar_driver': lc['enable_lidar_driver'],
+            # HH_260327: In sim mode, disable hardware IMU driver to avoid serial-port contention.
+            'enable_imu': PythonExpression([
+                "'false' if '", lc['sim'], "' == 'true' else '", lc['enable_imu'], "'"
+            ]),
             'enable_gnss': lc['enable_gnss'],
-            'enable_module_checker': 'false',
+            'enable_module_validator': 'false',
         }),
         include('camrod_perception', 'perception.launch.py', {
             'module_namespace': lc['perception_namespace'],
             'system_namespace': lc['system_namespace'],
-            'enable_module_checker': 'false',
+            'enable_module_validator': 'false',
         }),
         include('camrod_localization', 'localization.launch.py', {
             'module_namespace': lc['localization_namespace'],
@@ -247,25 +358,37 @@ def generate_launch_description():
             'origin_lon': lc['origin_lon'],
             'origin_alt': lc['origin_alt'],
             'yaw_offset_deg': lc['yaw_offset_deg'],
-            'use_eskf': lc['use_eskf'],
+            'utm_origin_easting': lc['utm_origin_easting'],
+            'utm_origin_northing': lc['utm_origin_northing'],
+            'utm_origin_alt': lc['utm_origin_alt'],
+            'rotate_latlon_xy_by_yaw_offset': lc['rotate_latlon_xy_by_yaw_offset'],
+            # HH_260326: Pass concrete filter type expected by localization.launch.py.
+            'filter_type': resolved_filter_type,
             'eskf_param_file': eskf_param,
-            'supervisor_param_file': supervisor_param,
             'wheel_bridge_enable': wheel_bridge_enable_sim_safe,
-            'drop_zone_param_file': drop_zone_param,
+            'wheel_input_topic': lc['wheel_input_topic'],
+            'wheel_input_type': lc['wheel_input_type'],
+            'wheel_output_topic': lc['wheel_output_topic'],
+            'wheel_nav_output_topic': lc['wheel_nav_output_topic'],
+            'eskf_force_rmp401_odom': lc['eskf_force_rmp401_odom'],
+            'eskf_rmp401_odom_topic': lc['eskf_rmp401_odom_topic'],
+            # HH_260326: localization.launch.py expects drop_zones_yaml.
+            'drop_zones_yaml': drop_zone_param,
             'kimera_bridge_enable': lc['kimera_bridge_enable'],
             'kimera_bridge_param_file': kimera_param,
             'pose_selector_enable': lc['pose_selector_enable'],
             'pose_selector_param_file': selector_param,
-            'enable_module_checker': 'false',
+            'enable_module_validator': 'false',
         }),
         include('camrod_planning', 'planning.launch.py', {
             'nav2_base_param_file': nav2_base,
-            'nav2_vehicle_param_file': LaunchConfiguration('nav2_vehicle_param_file'),
+            'nav2_vehicle_param_file': lc['nav2_vehicle_param_file'],
             'nav2_lanelet_param_file': nav2_lanelet,
             'nav2_behavior_param_file': nav2_behavior,
             'enable_path_cost_grids': lc['enable_path_cost_grids'],
             'enable_goal_replanner': lc['enable_goal_replanner'],
             'enable_nav2_lifecycle_retry': lc['enable_nav2_lifecycle_retry'],
+            'require_localization_ready': lc['require_localization_ready'],
             'enable_state_machine': lc['enable_state_machine'],
             'map_path': lc['map_path'],
             'origin_lat': lc['origin_lat'],
@@ -277,42 +400,29 @@ def generate_launch_description():
                 "'/localization/pose_yaw_aligned' if '", lc['sim'],
                 "' == 'true' else '/localization/pose'"
             ]),
+            'local_path_pose_topic': lc['local_path_pose_topic'],
+            'local_path_source': lc['local_path_source'],
             'module_namespace': lc['planning_namespace'],
             'system_namespace': lc['system_namespace'],
-            'enable_module_checker': 'false',
+            'enable_module_validator': 'false',
         }),
+        # HH_260326: camrod_system provides module_checkers.launch.py (not module_validators.launch.py).
+        # HH_260327: Keep include always-on so diagnostics_agg can run even when checkers are disabled.
         include('camrod_system', 'module_checkers.launch.py', {
-            'enable_checkers': 'true',
+            'enable_checkers': lc['enable_module_validators'],
+            'enable_diagnostics_aggregator': 'true',
+            'enable_system_diagnostic': 'false',
             'system_namespace': lc['system_namespace'],
-        }, condition=IfCondition(lc['enable_module_checkers'])),
+        }),
+        include('camrod_api', 'api.launch.py', {
+            'enable_plugin_api': lc['enable_plugin_api'],
+            'enable_ui_backend': lc['enable_api_ui'],
+            'ui_host': lc['api_ui_host'],
+            'ui_port': lc['api_ui_port'],
+        }),
     ]
 
-    bringup_diagnostic = Node(
-        package='camrod_bringup',
-        executable='bringup_diagnostic_node.py',
-        name='bringup_diagnostic',
-        namespace=lc['bringup_namespace'],
-        output='screen',
-        parameters=[{
-            # HH_260318-00:00 Module-local diagnostic topic (namespaced).
-            'diagnostic_topic': 'diagnostic',
-            # Keep consolidated checker/system stream on /diagnostics.
-            'source_diagnostic_topic': '/diagnostics',
-            'publish_period_s': 0.5,
-            'stale_timeout_s': 2.5,
-            'sim': lc['sim'],
-            'rviz': lc['rviz'],
-            'use_eskf': lc['use_eskf'],
-            'enable_goal_replanner': lc['enable_goal_replanner'],
-            'enable_nav2_lifecycle_retry': lc['enable_nav2_lifecycle_retry'],
-            'enable_state_machine': lc['enable_state_machine'],
-            'enable_module_checkers': lc['enable_module_checkers'],
-            'map_path': lc['map_path'],
-            'origin_lat': lc['origin_lat'],
-            'origin_lon': lc['origin_lon'],
-            'origin_alt': lc['origin_alt'],
-        }],
-    )
+    # HH_260326: Removed bringup_status runtime node from default launch path.
 
     rviz_node = Node(
         package='rviz2',
@@ -342,7 +452,15 @@ def generate_launch_description():
         'nav2_vehicle_param_file', nav2_vehicle_dwb, condition=IfCondition(lc['use_dwb_controller'])
     )
 
-    launch_stack = GroupAction([*modules, bringup_diagnostic, rviz_node])
+    # HH_260327: Start includes sequentially with configurable gap.
+    staged_modules = [
+        TimerAction(
+            period=PythonExpression([str(idx), " * ", lc['module_launch_gap_sec']]),
+            actions=[module_action],
+        )
+        for idx, module_action in enumerate(modules)
+    ]
+    launch_stack = GroupAction([*staged_modules, rviz_node])
     delayed_stack = TimerAction(period=1.0, actions=[launch_stack])
     start_stack_actions = [init_nav2_vehicle_profile, apply_dwb_profile, delayed_stack]
 

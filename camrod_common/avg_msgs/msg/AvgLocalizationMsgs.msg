@@ -1,5 +1,5 @@
 builtin_interfaces/Time stamp
-avg_msgs/ModuleHealth health
+avg_msgs/ModuleState state
 
 geometry_msgs/PoseStamped localization_pose
 geometry_msgs/PoseWithCovarianceStamped localization_pose_cov
@@ -7,7 +7,7 @@ nav_msgs/Odometry localization_odom
 geometry_msgs/TwistStamped localization_twist
 avg_msgs/AvgLocalizationMode localization_mode
 avg_msgs/AvgLocalizationStatus localization_status
-avg_msgs/AvgLocalizationDiagnostics localization_diagnostics
+avg_msgs/AvgLocalizationStatusStream localization_status_stream
 geometry_msgs/PoseWithCovarianceStamped gnss_pose_cov
 sensor_msgs/NavSatFix gnss_navsatfix
 sensor_msgs/Imu imu_data

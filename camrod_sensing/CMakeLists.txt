@@ -92,7 +92,7 @@ install(TARGETS
 
 install(
   PROGRAMS
-    scripts/sensing_diagnostic_node.py
+    scripts/sensing_status_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

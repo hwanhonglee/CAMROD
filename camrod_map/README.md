@@ -52,6 +52,6 @@ lanelet2_map.launch
 - `camrod_bringup/config/map/lanelet_cost_grid.yaml`
 - `camrod_bringup/config/map/map_visualization.yaml`
 
-## Diagnostics
-- Module-local topic: `/map/diagnostic`
-- Aggregated topic: `/diagnostics`
+## StatusStream
+- Module-local topic: `/map/status`
+- Aggregated topic: `/status_stream`

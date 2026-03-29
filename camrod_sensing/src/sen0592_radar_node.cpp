@@ -144,8 +144,8 @@ public:
     this->declare_parameter<double>("min_range_m", 0.02);
     this->declare_parameter<double>("max_range_m", 4.5);
     this->declare_parameter<double>("field_of_view_rad", 0.26);
-    this->declare_parameter<std::string>("radar_diagnostic_topic", "/sensing/radar/diagnostic");
-    this->declare_parameter<bool>("publish_radar_diagnostic", false);
+    this->declare_parameter<std::string>("radar_status_topic", "/sensing/radar/status");
+    this->declare_parameter<bool>("publish_radar_status", false);
 
     // Sensor definitions (name, frame_id, port, topic)
     // Default values are Linux examples; replace with your actual /dev paths or udev symlinks.
@@ -181,9 +181,9 @@ public:
     min_range_m_ = this->get_parameter("min_range_m").as_double();
     max_range_m_ = this->get_parameter("max_range_m").as_double();
     fov_rad_ = this->get_parameter("field_of_view_rad").as_double();
-    radar_diagnostic_topic_ = this->get_parameter("radar_diagnostic_topic").as_string();
-    publish_radar_diagnostic_ = this->get_parameter("publish_radar_diagnostic").as_bool();
-    avg_radar_pub_ = this->create_publisher<AvgSensingRadar>(radar_diagnostic_topic_, 10);
+    radar_status_topic_ = this->get_parameter("radar_status_topic").as_string();
+    publish_radar_status_ = this->get_parameter("publish_radar_status").as_bool();
+    avg_radar_pub_ = this->create_publisher<AvgSensingRadar>(radar_status_topic_, 10);
 
     sensors_.resize(n);
     pubs_.resize(n);
@@ -327,13 +327,13 @@ private:
     }
 
     pubs_[idx]->publish(msg);
-    publish_radar_diagnostic(idx, msg);
+    publish_radar_status(idx, msg);
   }
 
   // Publishes `_avg_radar` output.
-  void publish_radar_diagnostic(size_t idx, const avg_msgs::msg::Range & msg)
+  void publish_radar_status(size_t idx, const avg_msgs::msg::Range & msg)
   {
-    if (!publish_radar_diagnostic_ || !avg_radar_pub_) {
+    if (!publish_radar_status_ || !avg_radar_pub_) {
       return;
     }
     {
@@ -453,8 +453,8 @@ private:
   double min_range_m_{0.02};
   double max_range_m_{4.5};
   double fov_rad_{0.26};
-  std::string radar_diagnostic_topic_;
-  bool publish_radar_diagnostic_{false};
+  std::string radar_status_topic_;
+  bool publish_radar_status_{false};
 
   std::vector<SensorRuntime> sensors_;
   std::vector<rclcpp::Publisher<avg_msgs::msg::Range>::SharedPtr> pubs_;

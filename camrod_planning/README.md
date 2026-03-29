@@ -86,6 +86,6 @@ Pose alignment flow:
 - `camrod_bringup/config/planning/local_path_extractor.yaml`
 - `camrod_bringup/config/planning/path_cost_grids.yaml`
 
-## Diagnostics
-- Module-local topic: `/planning/diagnostic`
-- Aggregated topic: `/diagnostics`
+## StatusStream
+- Module-local topic: `/planning/status`
+- Aggregated topic: `/status_stream`

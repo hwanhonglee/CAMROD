@@ -5,7 +5,7 @@
 #include <vector>
 
 #include <avg_msgs/msg/avg_perception_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/camera_info.hpp>
 #include <avg_msgs/msg/point_cloud2.hpp>
 #include <avg_msgs/point_cloud2_iterator.hpp>
@@ -99,7 +99,7 @@ class ObstacleFusionNode : public rclcpp::Node
 {
 public:
   using AvgPerceptionMsgs = avg_msgs::msg::AvgPerceptionMsgs;
-  using ModuleHealth = avg_msgs::msg::ModuleHealth;
+  using ModuleState = avg_msgs::msg::ModuleState;
 
   ObstacleFusionNode()
   // HH_260112 Use short node name; namespace applies the module prefix.
@@ -115,11 +115,11 @@ public:
     camera_info_topic_ = declare_parameter<std::string>(
       "camera_info_topic", "/sensing/camera/processed/camera_info");
     output_topic_ = declare_parameter<std::string>("output_topic", "/perception/obstacles");
-    publish_perception_diagnostic_ = declare_parameter<bool>("publish_perception_diagnostic", false);
-    perception_diagnostic_topic_ =
-      declare_parameter<std::string>("perception_diagnostic_topic", "/perception/diagnostic");
-    // HH_260220: camera_front_link is provided by sensor_kit URDF (/tf_static).
-    camera_frame_ = declare_parameter<std::string>("camera_frame", "camera_front_link");
+    publish_perception_status_ = declare_parameter<bool>("publish_perception_status", false);
+    perception_status_topic_ =
+      declare_parameter<std::string>("perception_status_topic", "/perception/status");
+    // HH_260326: Use camera_link as the canonical camera TF frame.
+    camera_frame_ = declare_parameter<std::string>("camera_frame", "camera_link");
     use_camera_filter_ = declare_parameter<bool>("use_camera_filter", true);
     keep_lidar_when_no_detections_ =
       declare_parameter<bool>("keep_lidar_when_no_detections", true);
@@ -135,8 +135,8 @@ public:
       camera_info_topic_, rclcpp::QoS(5),
       std::bind(&ObstacleFusionNode::onCameraInfo, this, _1));
     out_pub_ = create_publisher<avg_msgs::msg::PointCloud2>(output_topic_, rclcpp::QoS(10));
-    if (publish_perception_diagnostic_) {
-      avg_pub_ = create_publisher<AvgPerceptionMsgs>(perception_diagnostic_topic_, rclcpp::QoS(10));
+    if (publish_perception_status_) {
+      avg_pub_ = create_publisher<AvgPerceptionMsgs>(perception_status_topic_, rclcpp::QoS(10));
     }
 
     // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
@@ -281,16 +281,16 @@ private:
   // Publishes `AvgPerception` output.
   void publishAvgPerception(const avg_msgs::msg::PointCloud2 & obstacles)
   {
-    if (!publish_perception_diagnostic_ || !avg_pub_) {
+    if (!publish_perception_status_ || !avg_pub_) {
       return;
     }
 
     AvgPerceptionMsgs msg;
     msg.stamp = now();
-    msg.health.stamp = msg.stamp;
-    msg.health.module_name = "perception";
-    msg.health.level = ModuleHealth::OK;
-    msg.health.message = "obstacle_fusion";
+    msg.state.stamp = msg.stamp;
+    msg.state.module_name = "perception";
+    msg.state.level = ModuleState::OK;
+    msg.state.message = "obstacle_fusion";
     msg.obstacles = obstacles;
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -304,11 +304,11 @@ private:
   std::string detection_topic_;
   std::string camera_info_topic_;
   std::string output_topic_;
-  std::string perception_diagnostic_topic_;
+  std::string perception_status_topic_;
   std::string camera_frame_;
   bool use_camera_filter_{true};
   bool keep_lidar_when_no_detections_{true};
-  bool publish_perception_diagnostic_{false};
+  bool publish_perception_status_{false};
 
   rclcpp::Subscription<avg_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
   rclcpp::Subscription<avg_msgs::msg::Detection2DArray>::SharedPtr detection_sub_;

@@ -4,15 +4,13 @@
     frame_id: gps
     debug: 1 # 4 is logging data
 
-    # Skip sending configuration commands at startup.
-    # Useful when the receiver already has valid settings or when a CFG step fails
-    # (for example "Failed to disable SBAS").
-    config_on_startup: false
+    # HH_260326: Apply YAML rate/nav_rate to receiver on startup.
+    # If false, ublox_gps_node skips configRate() and runtime Hz tuning won't take effect.
+    config_on_startup: true
 
-    # Keep measurement/nav rate conservative for F9P startup stability.
-    # The ublox driver documentation notes 1 Hz for HPG Reference handling,
-    # and your log shows the device is currently being treated that way.
-    rate: 1.0
+    # HH_260326: Increase GNSS fix rate for localization consistency validation.
+    # Keep nav_rate=1 and raise measurement rate from 1 Hz -> 10 Hz.
+    rate: 5.0
     nav_rate: 1
     # Rover mode: disable TMODE3 (Survey-In / Base Station mode)
     # - tmode3=1 is for Survey-In (base/reference station)

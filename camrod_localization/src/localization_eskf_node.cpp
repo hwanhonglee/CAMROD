@@ -13,14 +13,14 @@
 #include <avg_msgs/msg/imu.hpp>
 #include <avg_msgs/msg/float32.hpp>
 
-#include <avg_msgs/msg/avg_localization_diagnostics.hpp>
+#include <avg_msgs/msg/avg_localization_status_stream.hpp>
 #include <avg_msgs/msg/avg_localization_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/transform_broadcaster.h>
 
-using avg_msgs::msg::AvgLocalizationDiagnostics;
+using avg_msgs::msg::AvgLocalizationStatusStream;
 
 namespace
 {
@@ -67,6 +67,9 @@ public:
     wheel_topic_ = declare_parameter<std::string>(
       "wheel_topic", "/platform/wheel/odometry");
     publish_tf_ = declare_parameter<bool>("publish_tf", true);
+    // HH_260327: Keep map->odom TF authority in launch-level static publisher to
+    // avoid duplicated map->odom broadcasters when switching filters.
+    publish_map_to_odom_tf_ = declare_parameter<bool>("publish_map_to_odom_tf", true);
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
     pose_cov_topic_ = declare_parameter<std::string>(
       "pose_cov_topic", "/localization/pose_with_covariance");
@@ -75,10 +78,10 @@ public:
     twist_topic_ = declare_parameter<std::string>(
       "twist_topic", "/localization/twist");
     diag_topic_ = declare_parameter<std::string>(
-      "diag_topic", "/localization/eskf/diagnostic");
-    publish_localization_diagnostic_ = declare_parameter<bool>("publish_localization_diagnostic", false);
-    localization_diagnostic_topic_ = declare_parameter<std::string>(
-      "localization_diagnostic_topic", "/localization/diagnostic");
+      "diag_topic", "/localization/eskf/status");
+    publish_localization_status_ = declare_parameter<bool>("publish_localization_status", false);
+    localization_status_topic_ = declare_parameter<std::string>(
+      "localization_status_topic", "/localization/status");
 
     gnss_gate_mahalanobis_ = declare_parameter<double>("gnss_gate_mahalanobis", 9.0);
     wheel_gate_mahalanobis_ = declare_parameter<double>("wheel_gate_mahalanobis", 9.0);
@@ -104,10 +107,10 @@ public:
     pose_cov_pub_ = create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(
       pose_cov_topic_, rclcpp::QoS(10));
     twist_pub_ = create_publisher<avg_msgs::msg::TwistStamped>(twist_topic_, rclcpp::QoS(10));
-    diag_pub_ = create_publisher<AvgLocalizationDiagnostics>(diag_topic_, rclcpp::QoS(10));
-    if (publish_localization_diagnostic_) {
+    diag_pub_ = create_publisher<AvgLocalizationStatusStream>(diag_topic_, rclcpp::QoS(10));
+    if (publish_localization_status_) {
       avg_localization_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(
-        localization_diagnostic_topic_, rclcpp::QoS(10));
+        localization_status_topic_, rclcpp::QoS(10));
     }
 
     // TF broadcaster
@@ -199,7 +202,7 @@ private:
       covariance_(1, 1) = R(1, 1);
 
       initialized_ = true;
-      AvgLocalizationDiagnostics diag;
+      AvgLocalizationStatusStream diag;
       diag.header.stamp = msg->header.stamp;
       diag.gnss_innovation_norm = 0.0;
       diag.gnss_update_accepted = true;
@@ -217,7 +220,7 @@ private:
     const double pos_error = innov.norm();
     Eigen::Matrix2d S = H * covariance_ * H.transpose() + R;
     double mahal = innov.transpose() * S.inverse() * innov;
-    AvgLocalizationDiagnostics diag;
+    AvgLocalizationStatusStream diag;
     diag.header.stamp = msg->header.stamp;
     diag.gnss_innovation_norm = std::sqrt(std::max(0.0, mahal));
 
@@ -288,7 +291,7 @@ private:
       covariance_(2, 2) = std::max(covariance_(2, 2), wheel_speed_noise_ * wheel_speed_noise_);
       covariance_(3, 3) = std::max(covariance_(3, 3), wheel_speed_noise_ * wheel_speed_noise_);
 
-      AvgLocalizationDiagnostics init_diag;
+      AvgLocalizationStatusStream init_diag;
       init_diag.header.stamp = msg->header.stamp;
       init_diag.wheel_innovation_norm = 0.0;
       init_diag.wheel_update_accepted = true;
@@ -305,7 +308,7 @@ private:
     const double S = (H * covariance_ * H.transpose())(0, 0) + R_meas;
     const double mahal = (innov * innov) / std::max(1e-6, S);
 
-    AvgLocalizationDiagnostics diag;
+    AvgLocalizationStatusStream diag;
     diag.header.stamp = msg->header.stamp;
     diag.wheel_innovation_norm = std::sqrt(std::max(0.0, mahal));
     if (mahal > wheel_gate_mahalanobis_) {
@@ -435,25 +438,25 @@ private:
     twist_msg.twist = odom.twist.twist;
     twist_pub_->publish(twist_msg);
 
-    if (publish_localization_diagnostic_ && avg_localization_pub_) {
+    if (publish_localization_status_ && avg_localization_pub_) {
       avg_msgs::msg::AvgLocalizationMsgs avg_msg;
       avg_msg.stamp = odom.header.stamp;
       avg_msg.localization_odom = odom;
       avg_msg.localization_pose = pose_msg;
       avg_msg.localization_pose_cov = pose_cov_msg;
       avg_msg.localization_twist = twist_msg;
-      avg_msg.localization_diagnostics = last_diag_;
+      avg_msg.localization_status_stream = last_diag_;
       avg_msg.gnss_update_accepted = last_diag_.gnss_update_accepted;
       avg_msg.gnss_innovation_norm = last_diag_.gnss_innovation_norm;
       avg_msg.wheel_update_accepted = last_diag_.wheel_update_accepted;
       avg_msg.wheel_innovation_norm = last_diag_.wheel_innovation_norm;
       avg_msg.covariance_trace = static_cast<float>(covariance_.trace());
-      avg_msg.health.stamp = odom.header.stamp;
-      avg_msg.health.module_name = "localization";
-      avg_msg.health.level = initialized_ ?
-        avg_msgs::msg::ModuleHealth::OK :
-        avg_msgs::msg::ModuleHealth::WARN;
-      avg_msg.health.message = initialized_ ? "eskf_running" : "eskf_waiting_init";
+      avg_msg.state.stamp = odom.header.stamp;
+      avg_msg.state.module_name = "localization";
+      avg_msg.state.level = initialized_ ?
+        avg_msgs::msg::ModuleState::OK :
+        avg_msgs::msg::ModuleState::WARN;
+      avg_msg.state.message = initialized_ ? "eskf_running" : "eskf_waiting_init";
       avg_localization_pub_->publish(avg_msg);
     }
 
@@ -467,16 +470,8 @@ private:
   // Publishes `Tf` output.
   void publishTf(const avg_msgs::msg::Odometry & odom)
   {
-    // map->odom (identity) and odom->base_link
-    avg_msgs::msg::TransformStamped map_to_odom;
-    map_to_odom.header.stamp = odom.header.stamp;
-    map_to_odom.header.frame_id = map_frame_;
-    map_to_odom.child_frame_id = odom_frame_;
-    map_to_odom.transform.translation.x = 0.0;
-    map_to_odom.transform.translation.y = 0.0;
-    map_to_odom.transform.translation.z = 0.0;
-    map_to_odom.transform.rotation.w = 1.0;
-
+    // Publish only odom->base by default. map->odom is handled by a single
+    // launch-level static publisher for EKF/ESKF consistency.
     avg_msgs::msg::TransformStamped odom_to_base;
     odom_to_base.header = odom.header;
     odom_to_base.child_frame_id = odom.child_frame_id;
@@ -485,7 +480,19 @@ private:
     odom_to_base.transform.translation.z = odom.pose.pose.position.z;
     odom_to_base.transform.rotation = odom.pose.pose.orientation;
 
-    std::vector<avg_msgs::msg::TransformStamped> tfs{map_to_odom, odom_to_base};
+    std::vector<avg_msgs::msg::TransformStamped> tfs;
+    if (publish_map_to_odom_tf_) {
+      avg_msgs::msg::TransformStamped map_to_odom;
+      map_to_odom.header.stamp = odom.header.stamp;
+      map_to_odom.header.frame_id = map_frame_;
+      map_to_odom.child_frame_id = odom_frame_;
+      map_to_odom.transform.translation.x = 0.0;
+      map_to_odom.transform.translation.y = 0.0;
+      map_to_odom.transform.translation.z = 0.0;
+      map_to_odom.transform.rotation.w = 1.0;
+      tfs.push_back(map_to_odom);
+    }
+    tfs.push_back(odom_to_base);
     tf_broadcaster_->sendTransform(tfs);
   }
 
@@ -501,9 +508,10 @@ private:
   std::string odom_topic_;
   std::string twist_topic_;
   std::string diag_topic_;
-  std::string localization_diagnostic_topic_;
+  std::string localization_status_topic_;
   bool publish_tf_{true};
-  bool publish_localization_diagnostic_{false};
+  bool publish_map_to_odom_tf_{true};
+  bool publish_localization_status_{false};
 
   double gnss_gate_mahalanobis_{9.0};
   bool reinit_on_gnss_reject_{true};
@@ -533,11 +541,11 @@ private:
   rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
   rclcpp::Publisher<avg_msgs::msg::TwistStamped>::SharedPtr twist_pub_;
-  rclcpp::Publisher<AvgLocalizationDiagnostics>::SharedPtr diag_pub_;
+  rclcpp::Publisher<AvgLocalizationStatusStream>::SharedPtr diag_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
-  AvgLocalizationDiagnostics last_diag_;
+  AvgLocalizationStatusStream last_diag_;
   bool initialized_{false};
   bool wheel_initialized_{false};
 };

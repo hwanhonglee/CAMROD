@@ -6,7 +6,7 @@
 
 #include <avg_msgs/msg/goal_status_array.hpp>
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
 #include <avg_msgs/msg/path.hpp>
 #include <avg_msgs/action/compute_path_to_pose.hpp>
@@ -20,7 +20,7 @@ class GoalReplannerNode : public rclcpp::Node
 {
 public:
   using AvgPlanningMsgs = avg_msgs::msg::AvgPlanningMsgs;
-  using ModuleHealth = avg_msgs::msg::ModuleHealth;
+  using ModuleState = avg_msgs::msg::ModuleState;
   using ComputePathToPose = nav2_msgs::action::ComputePathToPose;
   using GoalHandleComputePathToPose = rclcpp_action::ClientGoalHandle<ComputePathToPose>;
 
@@ -105,9 +105,9 @@ public:
     output_path_topic_ = declare_parameter<std::string>(
       "output_path_topic", "/planning/global_path");
     publish_result_path_ = declare_parameter<bool>("publish_result_path", true);
-    publish_planning_diagnostic_ = declare_parameter<bool>("publish_planning_diagnostic", false);
-    planning_diagnostic_topic_ =
-      declare_parameter<std::string>("planning_diagnostic_topic", "/planning/diagnostic");
+    publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
+    planning_status_topic_ =
+      declare_parameter<std::string>("planning_status_topic", "/planning/status");
     enable_periodic_replan_ = declare_parameter<bool>("enable_periodic_replan", false);
     // HH_260309-00:00 Prevent compute-path request storms.
     min_request_interval_sec_ = declare_parameter<double>("min_request_interval_sec", 0.25);
@@ -150,9 +150,9 @@ public:
       path_pub_ = create_publisher<avg_msgs::msg::Path>(
         output_path_topic_, rclcpp::QoS(1).transient_local().reliable());
     }
-    if (publish_planning_diagnostic_) {
+    if (publish_planning_status_) {
       pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
-        planning_diagnostic_topic_, rclcpp::QoS(10));
+        planning_status_topic_, rclcpp::QoS(10));
     }
 
     sub_goal_ = create_subscription<avg_msgs::msg::PoseStamped>(
@@ -686,15 +686,15 @@ private:
     const std::optional<avg_msgs::msg::GoalStatusArray> & navigate_status,
     const std::optional<avg_msgs::msg::PoseStamped> & goal_pose)
   {
-    if (!publish_planning_diagnostic_ || !pub_avg_planning_) {
+    if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
     }
     AvgPlanningMsgs msg;
     msg.stamp = now();
-    msg.health.stamp = msg.stamp;
-    msg.health.module_name = "planning";
-    msg.health.level = ModuleHealth::OK;
-    msg.health.message = "goal_replanner";
+    msg.state.stamp = msg.stamp;
+    msg.state.module_name = "planning";
+    msg.state.level = ModuleState::OK;
+    msg.state.message = "goal_replanner";
     if (global_path.has_value()) {
       msg.global_path = global_path.value();
     }
@@ -726,10 +726,10 @@ private:
   std::string planner_id_;
   std::string frame_id_;
   std::string output_path_topic_;
-  std::string planning_diagnostic_topic_;
+  std::string planning_status_topic_;
   std::string navigate_status_topic_;
   bool publish_result_path_{true};
-  bool publish_planning_diagnostic_{false};
+  bool publish_planning_status_{false};
   bool enable_periodic_replan_{false};
 
   double min_request_interval_sec_{0.25};

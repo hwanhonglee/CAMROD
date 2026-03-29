@@ -1,0 +1,24 @@
+# GNSS Checker 설정 파일
+# 센서 레벨: GNSS 수신기가 살아있는가? (fix 여부, 수신율)
+
+gnss_checker:
+  ros__parameters:
+    publish_rate: 1.0          # 진단 발행 주기 (Hz)
+
+    # 모니터링할 GNSS 이름 목록
+    gnss_names: ["main"]
+
+    main:
+      topic: "/sensing/gnss/navsatfix"
+      expected_hz: 5.0         # 기대 수신 속도 (Hz)
+      hz_warn_ratio: 0.8       # actual_hz / expected_hz 비율이 이 값 미만이면 WARN
+      hz_error_ratio: 0.5      # actual_hz / expected_hz 비율이 이 값 미만이면 ERROR
+      stale_timeout: 2.0       # 이 시간(초) 이상 메시지 없으면 STALE
+
+    # GNSS 추가 예시:
+    # sub:
+    #   topic: "/sensing/gnss/sub/navsatfix"
+    #   expected_hz: 5.0
+    #   hz_warn_ratio: 0.8
+    #   hz_error_ratio: 0.5
+    #   stale_timeout: 2.0

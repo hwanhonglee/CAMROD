@@ -1,0 +1,8 @@
+planning_nav_status_checker:
+  ros__parameters:
+    publish_rate: 1.0          # 진단 발행 주기 (Hz)
+
+    nav_status_topic: "/planning/navigate_to_pose/_action/status"
+    stale_timeout: 5.0         # 이 시간(초) 이상 토픽 없으면 STALE
+    abort_warn: 2              # 60s 내 abort 횟수 > 이 값 → WARN
+    abort_error: 5             # 60s 내 abort 횟수 > 이 값 → ERROR

@@ -22,7 +22,7 @@ bringup.launch.py
   -> camrod_localization
   -> camrod_perception
   -> camrod_planning
-  -> camrod_system (module checkers / diagnostics)
+  -> camrod_system (module validators / status_stream)
   -> RViz (optional)
 ```
 
@@ -38,10 +38,10 @@ bringup.launch.py
 - `config/bringup/launch_defaults.yaml`: global defaults
 - `config/bringup/cleanup_patterns.yaml`: process cleanup patterns
 
-## Diagnostics
-- Module-local diagnostic publishers remain namespaced (for example `/map/diagnostic`)
-- Aggregated system stream: `/diagnostics`
-- Bringup diagnostic node: `/bringup/bringup_diagnostic`
+## StatusStream
+- Module-local status publishers remain namespaced (for example `/map/status`)
+- Aggregated system stream: `/status_stream`
+- Bringup status node: `/bringup/bringup_status`
 
 ## Example Overrides
 ```bash

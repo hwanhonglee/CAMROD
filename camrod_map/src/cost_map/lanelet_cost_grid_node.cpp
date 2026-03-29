@@ -20,7 +20,7 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <avg_msgs/msg/avg_map_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 
 #include <lanelet2_core/Forward.h>
 #include <lanelet2_core/geometry/Lanelet.h>
@@ -84,7 +84,7 @@ public:
     boundary_clip_to_lanelet_ = declare_parameter<bool>("boundary_clip_to_lanelet", true);
     // 2026-02-27: Debug counters for boundary rasterization quality.
     debug_boundary_stats_ = declare_parameter<bool>("debug_boundary_stats", false);
-    // 2026-02-27: Optional diagnostics for known-cost cells outside lanelet polygons.
+    // 2026-02-27: Optional status_stream for known-cost cells outside lanelet polygons.
     debug_coverage_stats_ = declare_parameter<bool>("debug_coverage_stats", false);
     debug_coverage_stride_ = declare_parameter<int>("debug_coverage_stride", 3);
     debug_coverage_min_value_ = declare_parameter<int>("debug_coverage_min_value", 0);
@@ -185,15 +185,15 @@ public:
     // Enables deterministic realtime gradient refresh even when path/pose callbacks are sparse.
     rebuild_on_timer_ = declare_parameter<bool>("rebuild_on_timer", false);
     output_topic_ = declare_parameter<std::string>("output_topic", "/map/cost_grid/lanelet");  // HH_260123 allow multiple cost grids
-    publish_map_diagnostic_ = declare_parameter<bool>("publish_map_diagnostic", false);
-    map_diagnostic_topic_ = declare_parameter<std::string>("map_diagnostic_topic", "/map/diagnostic");
+    publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
+    map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
 
     // HH_260109 Publish lanelet cost grid under /map prefix.
     grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
       output_topic_, rclcpp::QoS(1).transient_local());
-    if (publish_map_diagnostic_) {
+    if (publish_map_status_) {
       avg_map_pub_ = create_publisher<avg_msgs::msg::AvgMapMsgs>(
-        map_diagnostic_topic_, rclcpp::QoS(10));
+        map_status_topic_, rclcpp::QoS(10));
     }
     param_cb_handle_ = add_on_set_parameters_callback(
       std::bind(&LaneletCostGridNode::onParamChange, this, std::placeholders::_1));
@@ -1048,15 +1048,15 @@ private:
   // Publishes `AvgMapGrid` output.
   void publishAvgMapGrid(const avg_msgs::msg::OccupancyGrid & grid, const std::string & message)
   {
-    if (!publish_map_diagnostic_ || !avg_map_pub_) {
+    if (!publish_map_status_ || !avg_map_pub_) {
       return;
     }
     avg_msgs::msg::AvgMapMsgs msg;
     msg.stamp = grid.header.stamp;
-    msg.health.stamp = grid.header.stamp;
-    msg.health.module_name = "map";
-    msg.health.level = avg_msgs::msg::ModuleHealth::OK;
-    msg.health.message = message;
+    msg.state.stamp = grid.header.stamp;
+    msg.state.module_name = "map";
+    msg.state.level = avg_msgs::msg::ModuleState::OK;
+    msg.state.message = message;
     msg.lanelet_cost_grid = grid;
     avg_map_pub_->publish(msg);
   }
@@ -1876,8 +1876,8 @@ private:
   double stale_path_timeout_sec_{0.0};
   double republish_period_;
   std::string output_topic_;
-  bool publish_map_diagnostic_{false};
-  std::string map_diagnostic_topic_{"/map/diagnostic"};
+  bool publish_map_status_{false};
+  std::string map_status_topic_{"/map/status"};
 
   bool map_bounds_valid_{false};
   double map_min_x_{0.0};

@@ -9,7 +9,7 @@
 #include <avg_msgs/msg/string.hpp>
 
 #include <avg_msgs/msg/avg_localization_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 
 #include <yaml-cpp/yaml.h>
 #include <avg_msgs/msg/quaternion.hpp>
@@ -98,9 +98,9 @@ public:
       "match_id_topic", "/localization/initial_match_id");
     match_distance_topic_ = declare_parameter<std::string>(
       "match_distance_topic", "/localization/initial_match_distance");
-    publish_localization_diagnostic_ = declare_parameter<bool>("publish_localization_diagnostic", false);
-    localization_diagnostic_topic_ = declare_parameter<std::string>(
-      "localization_diagnostic_topic", "/localization/diagnostic");
+    publish_localization_status_ = declare_parameter<bool>("publish_localization_status", false);
+    localization_status_topic_ = declare_parameter<std::string>(
+      "localization_status_topic", "/localization/status");
 
     loadDropZones();
 
@@ -114,9 +114,9 @@ public:
     match_distance_pub_ = create_publisher<avg_msgs::msg::Float32>(match_distance_topic_, rclcpp::QoS(1));
     initialpose3d_pub_ = create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(
       initialpose3d_topic_, rclcpp::QoS(1));
-    if (publish_localization_diagnostic_) {
+    if (publish_localization_status_) {
       avg_localization_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(
-        localization_diagnostic_topic_, rclcpp::QoS(10));
+        localization_status_topic_, rclcpp::QoS(10));
     }
   }
 
@@ -229,14 +229,14 @@ private:
     out.pose.covariance = src.pose.covariance;
     initialpose3d_pub_->publish(out);
 
-    if (publish_localization_diagnostic_ && avg_localization_pub_) {
+    if (publish_localization_status_ && avg_localization_pub_) {
       avg_msgs::msg::AvgLocalizationMsgs avg_msg;
       avg_msg.stamp = out.header.stamp;
       avg_msg.localization_pose_cov = out;
-      avg_msg.health.stamp = out.header.stamp;
-      avg_msg.health.module_name = "localization";
-      avg_msg.health.level = avg_msgs::msg::ModuleHealth::OK;
-      avg_msg.health.message = "drop_zone_initialpose3d_published";
+      avg_msg.state.stamp = out.header.stamp;
+      avg_msg.state.module_name = "localization";
+      avg_msg.state.level = avg_msgs::msg::ModuleState::OK;
+      avg_msg.state.message = "drop_zone_initialpose3d_published";
       avg_localization_pub_->publish(avg_msg);
     }
   }
@@ -256,20 +256,20 @@ private:
     dist_msg.data = dist;
     match_distance_pub_->publish(dist_msg);
 
-    if (publish_localization_diagnostic_ && avg_localization_pub_) {
+    if (publish_localization_status_ && avg_localization_pub_) {
       avg_msgs::msg::AvgLocalizationMsgs avg_msg;
       const auto stamp = now();
       avg_msg.stamp = stamp;
-      avg_msg.health.stamp = stamp;
-      avg_msg.health.module_name = "localization";
-      avg_msg.health.level = ok ?
-        avg_msgs::msg::ModuleHealth::OK :
-        avg_msgs::msg::ModuleHealth::WARN;
-      avg_msg.health.message = ok ?
+      avg_msg.state.stamp = stamp;
+      avg_msg.state.module_name = "localization";
+      avg_msg.state.level = ok ?
+        avg_msgs::msg::ModuleState::OK :
+        avg_msgs::msg::ModuleState::WARN;
+      avg_msg.state.message = ok ?
         std::string("drop_zone_match_ok:") + id :
         "drop_zone_match_not_ready";
       if (!ok) {
-        avg_msg.health.missing_topics.push_back(pose_topic_);
+        avg_msg.state.missing_topics.push_back(pose_topic_);
       }
       avg_localization_pub_->publish(avg_msg);
     }
@@ -287,8 +287,8 @@ private:
   std::string status_topic_;
   std::string match_id_topic_;
   std::string match_distance_topic_;
-  bool publish_localization_diagnostic_{false};
-  std::string localization_diagnostic_topic_{"/localization/diagnostic"};
+  bool publish_localization_status_{false};
+  std::string localization_status_topic_{"/localization/status"};
 
   std::vector<DropZone> zones_;
   std::string best_id_;

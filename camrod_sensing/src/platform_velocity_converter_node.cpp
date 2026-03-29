@@ -26,9 +26,9 @@ public:
     imu_topic_ = declare_parameter<std::string>("imu_topic", "/sensing/imu/data");
     output_topic_ = declare_parameter<std::string>(
       "output_topic", "/sensing/platform_velocity_converter/twist_with_covariance");
-    imu_diagnostic_topic_ = declare_parameter<std::string>(
-      "imu_diagnostic_topic", "/sensing/imu/diagnostic");
-    publish_imu_diagnostic_ = declare_parameter<bool>("publish_imu_diagnostic", false);
+    imu_status_topic_ = declare_parameter<std::string>(
+      "imu_status_topic", "/sensing/imu/status");
+    publish_imu_status_ = declare_parameter<bool>("publish_imu_status", false);
     require_imu_ = declare_parameter<bool>("require_imu", true);
     linear_variance_ = declare_parameter<std::vector<double>>(
       "linear_variance", std::vector<double>{0.05, 0.05, 0.1});
@@ -44,7 +44,7 @@ public:
       std::bind(&PlatformVelocityConverterNode::onImu, this, _1));
     output_pub_ = create_publisher<avg_msgs::msg::TwistWithCovarianceStamped>(
       output_topic_, rclcpp::QoS(10));
-    avg_imu_pub_ = create_publisher<AvgSensingImu>(imu_diagnostic_topic_, rclcpp::QoS(10));
+    avg_imu_pub_ = create_publisher<AvgSensingImu>(imu_status_topic_, rclcpp::QoS(10));
 
     // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
     RCLCPP_DEBUG(
@@ -107,7 +107,7 @@ private:
 
     std::copy(cov.begin(), cov.end(), out.twist.covariance.begin());
     output_pub_->publish(out);
-    if (publish_imu_diagnostic_ && avg_imu_pub_) {
+    if (publish_imu_status_ && avg_imu_pub_) {
       AvgSensingImu avg_msg;
       avg_msg.platform_twist_cov = out;
       if (imu_ready_) {
@@ -131,9 +131,9 @@ private:
   std::string velocity_topic_;
   std::string imu_topic_;
   std::string output_topic_;
-  std::string imu_diagnostic_topic_;
+  std::string imu_status_topic_;
   bool require_imu_{true};
-  bool publish_imu_diagnostic_{false};
+  bool publish_imu_status_{false};
   std::vector<double> linear_variance_;
   std::vector<double> angular_variance_;
 

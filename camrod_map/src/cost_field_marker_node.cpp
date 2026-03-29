@@ -10,7 +10,7 @@
 #include <avg_msgs/msg/marker_array.hpp>
 
 #include <avg_msgs/msg/avg_map_msgs.hpp>
-#include <avg_msgs/msg/module_health.hpp>
+#include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/header.hpp>
 #include <avg_msgs/msg/marker.hpp>
 #include <avg_msgs/msg/color_rgba.hpp>
@@ -31,8 +31,8 @@ public:
     grid_topic_ = declare_parameter<std::string>("grid_topic", "/planning/global_costmap/costmap");
     marker_topic_ = declare_parameter<std::string>(
       "marker_topic", "/map/cost_grid/inflation_markers");
-    publish_map_diagnostic_ = declare_parameter<bool>("publish_map_diagnostic", false);
-    map_diagnostic_topic_ = declare_parameter<std::string>("map_diagnostic_topic", "/map/diagnostic");
+    publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
+    map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
     marker_scale_ = declare_parameter<double>("marker_scale", 0.2);  // HH_260101 configurable size
     min_value_ = declare_parameter<int>("min_value", 0);
     max_value_ = declare_parameter<int>("max_value", 100);
@@ -60,9 +60,9 @@ public:
       std::bind(&CostFieldMarkerNode::onGrid, this, std::placeholders::_1));
     marker_pub_ = create_publisher<avg_msgs::msg::MarkerArray>(
       marker_topic_, rclcpp::QoS(1).transient_local().reliable());
-    if (publish_map_diagnostic_) {
+    if (publish_map_status_) {
       avg_map_pub_ = create_publisher<avg_msgs::msg::AvgMapMsgs>(
-        map_diagnostic_topic_, rclcpp::QoS(10));
+        map_status_topic_, rclcpp::QoS(10));
     }
 
     // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
@@ -165,15 +165,15 @@ private:
     const builtin_interfaces::msg::Time & stamp,
     const std::string & message)
   {
-    if (!publish_map_diagnostic_ || !avg_map_pub_) {
+    if (!publish_map_status_ || !avg_map_pub_) {
       return;
     }
     avg_msgs::msg::AvgMapMsgs msg;
     msg.stamp = stamp;
-    msg.health.stamp = stamp;
-    msg.health.module_name = "map";
-    msg.health.level = avg_msgs::msg::ModuleHealth::OK;
-    msg.health.message = message;
+    msg.state.stamp = stamp;
+    msg.state.module_name = "map";
+    msg.state.level = avg_msgs::msg::ModuleState::OK;
+    msg.state.message = message;
     msg.inflation_markers = markers;
     avg_map_pub_->publish(msg);
   }
@@ -389,8 +389,8 @@ private:
 
   std::string grid_topic_;
   std::string marker_topic_;
-  bool publish_map_diagnostic_{false};
-  std::string map_diagnostic_topic_{"/map/diagnostic"};
+  bool publish_map_status_{false};
+  std::string map_status_topic_{"/map/status"};
   double marker_scale_{0.2};
   int min_value_{0};
   int max_value_{100};

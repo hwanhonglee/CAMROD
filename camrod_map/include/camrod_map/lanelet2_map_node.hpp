@@ -120,8 +120,8 @@ private:
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
   rclcpp::TimerBase::SharedPtr viz_timer_;
   bool logged_marker_stats_{false};
-  bool publish_map_diagnostic_{false};
-  std::string map_diagnostic_topic_{"/map/diagnostic"};
+  bool publish_map_status_{false};
+  std::string map_status_topic_{"/map/status"};
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;
 };
