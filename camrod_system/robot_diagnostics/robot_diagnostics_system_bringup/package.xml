@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot_diagnostics_system_bringup</name>
+  <version>0.0.0</version>
+  <description>
+    System-level bringup for all robot diagnostic checkers.
+    Centralizes config management under config/default/ with per-robot override
+    support via config/robots/{robot_name}/.
+  </description>
+  <maintainer email="avg@todo.todo">avg</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- aggregator -->
+  <exec_depend>robot_diagnostics_agg</exec_depend>
+
+  <!-- hw -->
+  <exec_depend>robot_hw_gpu_checker</exec_depend>
+  <exec_depend>robot_network_checker</exec_depend>
+
+  <!-- sensing -->
+  <exec_depend>robot_gnss_checker</exec_depend>
+  <exec_depend>robot_imu_checker</exec_depend>
+  <exec_depend>robot_lidar_checker</exec_depend>
+  <exec_depend>robot_radar_checker</exec_depend>
+  <exec_depend>robot_camera_checker</exec_depend>
+  <exec_depend>robot_wheel_odometry_checker</exec_depend>
+  <exec_depend>robot_cost_grid_checker</exec_depend>
+  <exec_depend>robot_velocity_converter_checker</exec_depend>
+
+  <!-- localization -->
+  <exec_depend>robot_localization_gnss_checker</exec_depend>
+  <exec_depend>robot_localization_mode_checker</exec_depend>
+  <exec_depend>robot_localization_pose_checker</exec_depend>
+  <exec_depend>robot_localization_init_checker</exec_depend>
+  <exec_depend>robot_localization_source_checker</exec_depend>
+  <exec_depend>robot_localization_lanelet_checker</exec_depend>
+
+  <!-- map -->
+  <exec_depend>robot_map_cost_grid_checker</exec_depend>
+
+  <!-- perception -->
+  <exec_depend>robot_perception_obstacle_checker</exec_depend>
+
+  <!-- planning -->
+  <exec_depend>robot_planning_lifecycle_checker</exec_depend>
+  <exec_depend>robot_planning_costmap_checker</exec_depend>
+  <exec_depend>robot_planning_nav_status_checker</exec_depend>
+  <exec_depend>robot_planning_path_checker</exec_depend>
+
+  <!-- platform -->
+  <exec_depend>robot_ranger_platform_checker</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

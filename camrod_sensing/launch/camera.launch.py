@@ -14,6 +14,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     sensing_share = get_package_share_directory("camrod_sensing")
 
+    # HH_260330: Standalone sensing launch uses package-local config by default.
     default_sensing_param = os.path.join(sensing_share, "config", "sensing_params.yaml")
     default_camera_param = os.path.join(sensing_share, "config", "camera", "preprocessor.yaml")
 

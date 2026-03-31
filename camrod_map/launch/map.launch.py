@@ -14,10 +14,33 @@ def pkg_share(pkg, rel):
     return os.path.join(get_package_share_directory(pkg), rel)
 
 
+def extract_map_ros_params(map_info_cfg: dict) -> dict:
+    # HH_260330: Keep map_info parser tolerant to key style differences.
+    if not isinstance(map_info_cfg, dict):
+        return {}
+    for key in (
+        '/map/lanelet2_map',
+        'map/lanelet2_map',
+        'lanelet2_map',
+        '/lanelet2_map',
+    ):
+        val = map_info_cfg.get(key)
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    for val in map_info_cfg.values():
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    return {}
+
+
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
     # HH_260128 Load defaults from map_info.yaml so map_path/offset are populated without extra args.
-    default_map_info = pkg_share('camrod_bringup', os.path.join('config', 'map', 'map_info.yaml'))
+    default_map_info = pkg_share('camrod_map', os.path.join('config', 'map_info.yaml'))
     default_map_path = ''
     default_lat = '0.0'
     default_lon = '0.0'
@@ -25,7 +48,7 @@ def generate_launch_description():
     try:
         with open(default_map_info, 'r') as f:
             data = yaml.safe_load(f) or {}
-        params = data.get('/map/lanelet2_map', {}).get('ros__parameters', {})
+        params = extract_map_ros_params(data)
         default_map_path = str(params.get('map_path', default_map_path))
         default_lat = str(params.get('offset_lat', default_lat))
         default_lon = str(params.get('offset_lon', default_lon))
@@ -35,7 +58,7 @@ def generate_launch_description():
 
     map_param_arg = DeclareLaunchArgument(
         'map_param_file',
-        default_value=pkg_share('camrod_bringup', os.path.join('config', 'map', 'map_info.yaml')),
+        default_value=pkg_share('camrod_map', os.path.join('config', 'map_info.yaml')),
         description='Map info YAML for lanelet2_map_node',
     )
     map_path_arg = DeclareLaunchArgument(
@@ -60,7 +83,7 @@ def generate_launch_description():
     )
     map_viz_param_arg = DeclareLaunchArgument(
         'map_visualization_param_file',
-        default_value=pkg_share('camrod_bringup', os.path.join('config', 'map', 'map_visualization.yaml')),
+        default_value=pkg_share('camrod_map', os.path.join('config', 'map_visualization.yaml')),
         description='Map visualization parameters (cost markers/field)',
     )
     enable_nav2_inflation_debug_marker_arg = DeclareLaunchArgument(
@@ -72,6 +95,21 @@ def generate_launch_description():
         'enable_inflation_markers',
         default_value='false',
         description='Enable contributor-merged inflation marker topic for RViz debug',
+    )
+    enable_map_cost_markers_arg = DeclareLaunchArgument(
+        'enable_map_cost_markers',
+        default_value='true',
+        description='Enable lanelet/lidar/radar marker publishers',
+    )
+    enable_cost_field_arg = DeclareLaunchArgument(
+        'enable_cost_field',
+        default_value='true',
+        description='Enable map cost_field node',
+    )
+    enable_cost_grids_arg = DeclareLaunchArgument(
+        'enable_cost_grids',
+        default_value='true',
+        description='Enable map lanelet/planning cost-grid publishers',
     )
     enable_module_validator_arg = DeclareLaunchArgument(
         'enable_module_validator',
@@ -97,6 +135,9 @@ def generate_launch_description():
     map_viz_param = LaunchConfiguration('map_visualization_param_file')
     enable_nav2_inflation_debug_marker = LaunchConfiguration('enable_nav2_inflation_debug_marker')
     enable_inflation_markers = LaunchConfiguration('enable_inflation_markers')
+    enable_map_cost_markers = LaunchConfiguration('enable_map_cost_markers')
+    enable_cost_field = LaunchConfiguration('enable_cost_field')
+    enable_cost_grids = LaunchConfiguration('enable_cost_grids')
     enable_module_validator = LaunchConfiguration('enable_module_validator')
     module_namespace = LaunchConfiguration('module_namespace')
     system_namespace = LaunchConfiguration('system_namespace')
@@ -111,13 +152,14 @@ def generate_launch_description():
     )
 
     # HH_260121 Lanelet cost grid for Nav2 custom cost layer (/map/cost_grid/lanelet).
-    cost_grid_param = pkg_share('camrod_bringup', os.path.join('config', 'map', 'lanelet_cost_grid.yaml'))
+    cost_grid_param = pkg_share('camrod_map', os.path.join('config', 'lanelet_cost_grid.yaml'))
     lanelet_cost_grid = Node(
         package='camrod_map',
         executable='lanelet_cost_grid_node',
         name='cost_grid_map',
         namespace=module_namespace,
         output='screen',
+        condition=IfCondition(enable_cost_grids),
         parameters=[
             cost_grid_param,
             {
@@ -163,6 +205,7 @@ def generate_launch_description():
         name='cost_grid_planning_base',
         namespace=module_namespace,
         output='screen',
+        condition=IfCondition(enable_cost_grids),
         parameters=[
             cost_grid_param,
             {
@@ -259,6 +302,7 @@ def generate_launch_description():
         name='lanelet_cost_marker',
         namespace=module_namespace,
         output='screen',
+        condition=IfCondition(enable_map_cost_markers),
         parameters=[
             {
                 'grid_topic': '/map/cost_grid/lanelet',
@@ -288,6 +332,7 @@ def generate_launch_description():
         name='radar_cost_marker',
         namespace=module_namespace,
         output='screen',
+        condition=IfCondition(enable_map_cost_markers),
         parameters=[
             {
                 'grid_topic': '/sensing/radar/near_cost_grid',
@@ -314,6 +359,7 @@ def generate_launch_description():
         name='lidar_cost_marker',
         namespace=module_namespace,
         output='screen',
+        condition=IfCondition(enable_map_cost_markers),
         parameters=[
             {
                 'grid_topic': '/sensing/lidar/near_cost_grid',
@@ -370,6 +416,7 @@ def generate_launch_description():
         name='lanelet_cost_field',
         namespace=module_namespace,
         output='screen',
+        condition=IfCondition(enable_cost_field),
         parameters=[
             map_viz_param,
             {
@@ -392,6 +439,9 @@ def generate_launch_description():
         map_viz_param_arg,
         enable_nav2_inflation_debug_marker_arg,
         enable_inflation_markers_arg,
+        enable_map_cost_markers_arg,
+        enable_cost_field_arg,
+        enable_cost_grids_arg,
         enable_module_validator_arg,
         module_namespace_arg,
         system_namespace_arg,

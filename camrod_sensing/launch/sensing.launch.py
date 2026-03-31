@@ -425,6 +425,7 @@ def generate_launch_description():
     add_launch_arg("imu_input_topic", "data", "IMU input topic")
     add_launch_arg(
         "imu_output_topic",
+        # HH_260331: Keep IMU-derived platform velocity topic under /sensing/imu/*.
         "platform_velocity_converter/twist_with_covariance",
         "Velocity converter output topic",
     )

@@ -8,9 +8,9 @@ import os
 
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
-    # 2026-02-02 10:32: Use centralized bringup config (synced from package config).
-    config_dir = FindPackageShare('camrod_bringup').find('camrod_bringup')
-    default_map_info = os.path.join(config_dir, 'config', 'map', 'map_info.yaml')
+    # HH_260330: Standalone map launch uses package-local config by default.
+    config_dir = FindPackageShare('camrod_map').find('camrod_map')
+    default_map_info = os.path.join(config_dir, 'config', 'map_info.yaml')
 
     return LaunchDescription([
         DeclareLaunchArgument(

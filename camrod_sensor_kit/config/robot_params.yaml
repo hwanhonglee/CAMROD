@@ -1,12 +1,12 @@
 /**:
   ros__parameters:
     robot:
-      wheelbase: 2.0
+      wheelbase: 0.5
       track_width: 3.2
       length: 0.8
-      width: 0.8
-      height: 1.20
-      wheel_radius: 0.15
+      width: 0.4
+      height: 0.8
+      wheel_radius: 0.08
       encoder_resolution: 2048
       drive_type: "ackermann"
 
@@ -21,34 +21,34 @@
       yaw: 0.0
 
     imu:
-      x: 0.10
+      x: 0.28
       y: 0.0
-      z: 0.40
+      z: 0.2
       roll: 0.0
       pitch: 0.0
       yaw: 0.0
 
     gnss:
-      x: 0.20
+      x: 0.0
       y: 0.0
-      z: 1.00
+      z: 0.0
       roll: 0.0
       pitch: 0.0
       yaw: 0.0
 
     lidar:
-      x: 0.50
+      x: 0.68
       y: 0.0
-      z: 0.50
+      z: 0.45
       roll: 0.0
-      pitch: 0.0
+      pitch: 0.4
       yaw: 0.0
 
     camera:
       # HH_260326: Canonical camera pose.
-      x: 0.35
+      x: 0.68
       y: 0.0
-      z: 0.80
+      z: 0.2
       roll: 0.0
       pitch: 0.0
       yaw: 0.0
@@ -63,42 +63,42 @@
         pitch: 0.0
         yaw: 0.0
       front:
-        x: 0.55
+        x: 0.64
         y: 0.0
         z: 0.45
         roll: 0.0
         pitch: 0.0
         yaw: 0.0
       left1:
-        x: 0.20
-        y: 0.45
+        x: 0.5
+        y: 0.2
         z: 0.45
         roll: 0.0
         pitch: 0.0
         yaw: 90.0
       left2:
-        x: -0.20
-        y: 0.45
+        x: -0.1
+        y: 0.2
         z: 0.45
         roll: 0.0
         pitch: 0.0
-        yaw: 135.0
+        yaw: 90.0
       right1:
-        x: 0.20
-        y: -0.45
+        x: 0.5
+        y: -0.2
         z: 0.45
         roll: 0.0
         pitch: 0.0
         yaw: -90.0
       right2:
-        x: -0.20
-        y: -0.45
+        x: -0.1
+        y: -0.2
         z: 0.45
         roll: 0.0
         pitch: 0.0
-        yaw: -135.0
+        yaw: -90.0
       rear:
-        x: -0.55
+        x: -0.1
         y: 0.0
         z: 0.45
         roll: 0.0

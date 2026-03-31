@@ -137,9 +137,8 @@ def _launch_setup(context, *args, **kwargs):
 
 def generate_launch_description():
   default_params = Path(
-    get_package_share_directory("camrod_bringup"),
+    get_package_share_directory("camrod_sensor_kit"),
     "config",
-    "sensor_kit",
     "robot_params.yaml",
   )
   return LaunchDescription([

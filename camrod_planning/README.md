@@ -76,7 +76,6 @@ Pose alignment flow:
 ## Related Launch Files
 - `nav2_lanelet.launch.py`: Nav2 wrapper with overlay chain
 - `path_cost_grids.launch.py`: path-grid marker helpers
-- `planning_top.launch.py`: compatibility launcher (not required by bringup)
 
 ## Configuration
 - `camrod_bringup/config/planning/nav2_base.yaml`

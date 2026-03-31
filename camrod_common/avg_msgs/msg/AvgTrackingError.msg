@@ -1,0 +1,17 @@
+builtin_interfaces/Time stamp
+string frame_id
+
+bool local_valid
+float64 local_lateral_deviation
+float64 local_heading_error
+float64 local_distance_to_path
+
+bool global_valid
+float64 global_lateral_deviation
+float64 global_heading_error
+float64 global_distance_to_path
+
+string active_path_source
+float64 active_lateral_deviation
+float64 active_heading_error
+float64 active_distance_to_path

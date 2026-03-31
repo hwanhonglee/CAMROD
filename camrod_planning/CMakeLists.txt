@@ -68,14 +68,22 @@ ament_target_dependencies(local_path_extractor_node
   nav_msgs
 )
 
+# HH_260330: Publish lateral/heading tracking error against local/global path.
+add_executable(path_tracking_error_node src/path_tracking_error_node.cpp)
+ament_target_dependencies(path_tracking_error_node
+  avg_msgs
+  rclcpp
+)
+
 install(
-  TARGETS goal_snapper_node centerline_snapper_node goal_replanner_node local_path_extractor_node
+  TARGETS goal_snapper_node centerline_snapper_node goal_replanner_node local_path_extractor_node path_tracking_error_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
 # HH_260312-00:00 Install planning status_stream + state machine scripts.
 install(
   PROGRAMS
+    scripts/planning_cmd_vel_gate_node.py
     scripts/planning_state_machine_node.py
     scripts/planning_status_node.py
     scripts/nav2_lifecycle_startup_retry_node.py

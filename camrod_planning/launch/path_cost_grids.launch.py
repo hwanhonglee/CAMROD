@@ -8,10 +8,10 @@ from ament_index_python.packages import get_package_share_directory
 
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
-    # 2026-02-02 10:32: Use centralized bringup config (synced from package config).
+    # HH_260330: Standalone planning launch uses package-local config by default.
     cost_grid_param = os.path.join(
-        get_package_share_directory('camrod_bringup'),
-        'config', 'planning', 'path_cost_grids.yaml')
+        get_package_share_directory('camrod_planning'),
+        'config', 'path_cost_grids.yaml')
     map_path_arg = DeclareLaunchArgument(
         'map_path',
         default_value='/home/nvidia/camrod_ws/src/lanelet2_maps.osm',
@@ -80,11 +80,18 @@ def generate_launch_description():
                 'drop_stale_path_after_goal': False,
                 'path_goal_stamp_slack_sec': 0.20,
                 'fresh_path_goal_match_tolerance_m': 4.0,
-                'rebuild_on_pose': True,
+                # HH_260330: Global-path helper grid is visualization/constraint aid.
+                # Rebuild only on path updates to avoid continuous full-map CPU load.
+                'rebuild_on_pose': False,
                 'rebuild_on_path': True,
-                'rebuild_on_timer': True,
-                'min_rebuild_period_sec': 0.02,
-                'republish_period': 0.03,
+                'rebuild_on_timer': False,
+                'min_rebuild_period_sec': 0.15,
+                'republish_period': 0.15,
+                # HH_260330: Bound global helper grid window around pose to keep
+                # CPU predictable and prevent planner/controller starvation.
+                'width': 600,
+                'height': 600,
+                'use_path_bbox': False,
                 'debug_coverage_stats': False,
                 'debug_coverage_stride': 2,
                 'debug_coverage_min_value': 0,
@@ -134,9 +141,11 @@ def generate_launch_description():
                 'drop_stale_path_after_goal': False,
                 'rebuild_on_pose': True,
                 'rebuild_on_path': True,
-                'rebuild_on_timer': True,
-                'min_rebuild_period_sec': 0.01,
-                'republish_period': 0.015,
+                # HH_260330: Disable timer-only rebuild loop to reduce controller
+                # contention; pose/path callbacks remain the primary trigger.
+                'rebuild_on_timer': False,
+                'min_rebuild_period_sec': 0.05,
+                'republish_period': 0.05,
                 'debug_coverage_stats': False,
                 'debug_coverage_stride': 2,
                 'debug_coverage_min_value': 0,

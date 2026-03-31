@@ -15,6 +15,8 @@
     require_lanelet_containment: true
     # 2026-02-23: If clicked outside lanelet polygon, still snap to nearest lanelet centerline.
     fallback_uncontained: true
-    use_map_z: true
-    flatten_to_ground: true
+    # HH_260331: Keep snapped-goal Z at input goal Z (typically 0 in RViz).
+    # Map Z can be offset in some maps, making goal markers invisible in RViz.
+    use_map_z: false
+    flatten_to_ground: false
     map_z_offset: 0.0

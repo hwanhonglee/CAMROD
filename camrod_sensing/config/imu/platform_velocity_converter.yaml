@@ -2,6 +2,7 @@
   ros__parameters:
     velocity_topic: "/platform/status/velocity"
     imu_topic: "/sensing/imu/data"
+    # HH_260331: Standardize sensing velocity topic naming.
     output_topic: "/sensing/platform_velocity_converter/twist_with_covariance"
     imu_status_topic: "/sensing/imu/status"
     publish_imu_status: false

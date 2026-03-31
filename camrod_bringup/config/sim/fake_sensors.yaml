@@ -14,6 +14,15 @@
     lanelet_id: -1
     fake_lanelet_id: -1
     speed_mps: 1.4
+    # HH_260330: Use cmd_vel-driven motion for realistic closed-loop simulation.
+    # When enabled, fake pose advances only from /platform/cmd_vel linear.x.
+    use_cmd_vel_for_motion: true
+    cmd_vel_motion_topic: "/platform/cmd_vel"
+    cmd_vel_timeout_sec: 0.5
+    max_cmd_speed_mps: 2.5
+    # HH_260330: Feed wheel_odometry_bridge input in sim so localization wheel
+    # stream is available even without real /rmp401/odom hardware source.
+    wheel_bridge_input_topic: "/rmp401/odom"
     # Debug:
     # - true  : keep fake sensor position fixed on the path anchor
     # - false : move along centerline by speed_mps

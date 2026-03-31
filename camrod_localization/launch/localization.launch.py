@@ -13,17 +13,40 @@ def get_pkg_share(pkg: str) -> str:
     return get_package_share_directory(pkg)
 
 
+def extract_map_ros_params(map_info_cfg: dict) -> dict:
+    # HH_260330: Keep map_info parsing tolerant to key layout changes.
+    if not isinstance(map_info_cfg, dict):
+        return {}
+    for key in (
+        '/map/lanelet2_map',
+        'map/lanelet2_map',
+        'lanelet2_map',
+        '/lanelet2_map',
+    ):
+        val = map_info_cfg.get(key)
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    for val in map_info_cfg.values():
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    return {}
+
+
 def generate_launch_description():
     loc_cfg_dir = os.path.join(get_pkg_share('camrod_localization'), 'config')
-    # HH_260327: Single-source defaults from bringup map_info.yaml.
-    map_info_path = os.path.join(get_pkg_share('camrod_bringup'), 'config', 'map', 'map_info.yaml')
+    # HH_260330: Standalone localization launch uses package-local map config by default.
+    map_info_path = os.path.join(get_pkg_share('camrod_map'), 'config', 'map_info.yaml')
     map_info_cfg = {}
     try:
         with open(map_info_path, 'r', encoding='utf-8') as f:
             map_info_cfg = yaml.safe_load(f) or {}
     except Exception:
         map_info_cfg = {}
-    map_params = map_info_cfg.get('/map/lanelet2_map', {}).get('ros__parameters', {})
+    map_params = extract_map_ros_params(map_info_cfg)
     # HH_260327: Read unified reference from ros__parameters so map_info.yaml
     # stays compatible with ROS2 params parser used by lanelet2_map_node.
     map_ref_llh = {
@@ -105,14 +128,14 @@ def generate_launch_description():
 
     ekf_param_arg = DeclareLaunchArgument(
         'ekf_param_file',
-        # HH_260326: Fix default path to existing EKF config.
+        # HH_260330: Standalone localization launch uses package-local config by default.
         default_value=os.path.join(loc_cfg_dir, 'filter', 'ekf.yaml'),
         description='EKF parameter file',
     )
 
     eskf_param_arg = DeclareLaunchArgument(
         'eskf_param_file',
-        # HH_260326: Fix default path to existing ESKF config.
+        # HH_260330: Standalone localization launch uses package-local config by default.
         default_value=os.path.join(loc_cfg_dir, 'filter', 'eskf.yaml'),
         description='ESKF parameter file',
     )
@@ -165,7 +188,7 @@ def generate_launch_description():
 
     drop_zone_yaml_arg = DeclareLaunchArgument(
         'drop_zones_yaml',
-        # HH_260326: Use existing drop zones YAML directly.
+        # HH_260330: Standalone localization launch uses package-local config by default.
         default_value=os.path.join(loc_cfg_dir, 'drop_zones.yaml'),
         description='Drop zone definition YAML for drop_zone_matcher',
     )
@@ -178,6 +201,7 @@ def generate_launch_description():
 
     kimera_bridge_param_arg = DeclareLaunchArgument(
         'kimera_bridge_param_file',
+        # HH_260330: Standalone localization launch uses package-local config by default.
         default_value=os.path.join(loc_cfg_dir, 'kimera_bridge.yaml'),
         description='Kimera bridge parameter file',
     )
@@ -190,7 +214,8 @@ def generate_launch_description():
 
     pose_selector_param_arg = DeclareLaunchArgument(
         'pose_selector_param_file',
-        default_value=os.path.join(loc_cfg_dir, 'pose_selector.yaml'),
+        # HH_260330: Standalone localization launch uses package-local config by default.
+        default_value=os.path.join(loc_cfg_dir, 'filter', 'pose_selector.yaml'),
         description='Pose selector parameter file',
     )
 

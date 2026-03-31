@@ -1,0 +1,28 @@
+network_checker:
+  ros__parameters:
+
+    # 모니터링할 WiFi 인터페이스 이름
+    # ip link show 또는 iw dev 로 확인
+    interface: "wlan0"
+
+    # ── 연결 상태 ─────────────────────────────────────────────────────────
+    connection:
+      enabled: true
+
+    # ── 신호 세기 ─────────────────────────────────────────────────────────
+    # RSSI (dBm) 는 음수이며, 값이 낮을수록 신호가 약함
+    #   -50 dBm ~  0 dBm : 매우 강함
+    #   -70 dBm ~ -50 dBm: 양호
+    #   -85 dBm ~ -70 dBm: 약함 (WARN)
+    #   -85 dBm 이하       : 매우 약함 (ERROR)
+    signal:
+      enabled: true
+      rssi_warn:  -70.0   # dBm — 이 값보다 낮으면 WARN
+      rssi_error: -85.0   # dBm — 이 값보다 낮으면 ERROR
+
+    # ── 패킷 품질 ─────────────────────────────────────────────────────────
+    # rx/tx drop rate = delta_drop / delta_packets × 100 (%)
+    quality:
+      enabled: true
+      drop_rate_warn:  1.0   # % — 이 값보다 높으면 WARN
+      drop_rate_error: 5.0   # % — 이 값보다 높으면 ERROR

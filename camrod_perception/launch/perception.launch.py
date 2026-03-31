@@ -10,9 +10,9 @@ import os
 
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
-    # 2026-02-02 10:32: Use centralized bringup config (synced from package config).
-    bringup_share = get_package_share_directory('camrod_bringup')
-    default_param = os.path.join(bringup_share, 'config', 'perception', 'perception_params.yaml')
+    # HH_260330: Standalone perception launch uses package-local config by default.
+    pkg_share = get_package_share_directory('camrod_perception')
+    default_param = os.path.join(pkg_share, 'config', 'perception_params.yaml')
 
     # HH_260114 Unique param arg to avoid collisions across includes.
     param_file_arg = DeclareLaunchArgument(

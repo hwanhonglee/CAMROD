@@ -12,9 +12,9 @@
     projector_type: "local_cartesian"
     # HH_260305-00:00 Align resolution with map lanelet grid to reduce raster/marker mismatch.
     resolution: 0.08
-    # HH_260304-00:00 Use full map bounds for global path grid (avoid drifting window).
-    width: 0
-    height: 0
+    # HH_260330: Bound helper grid window to reduce CPU spikes from full-map rebuild.
+    width: 600
+    height: 600
     centerline_half_width: 1.50
     free_value: 0
     lethal_value: 100
@@ -77,7 +77,7 @@
     # HH_260311-00:00 Slightly tighter range so high-cost segment becomes visible sooner.
     gradient_range: 35.0
     grid_yaw: 0.0
-    use_path_bbox: true
+    use_path_bbox: false
     lock_window: false
     use_map_bbox: false
     # HH_260311-00:00 Use lanelet-snapped pose for stable in-lane realtime refresh.
@@ -108,14 +108,12 @@
     fresh_path_goal_match_tolerance_m: 4.0
     # Keep last valid global route cost grid until next global path arrives.
     stale_path_timeout_sec: 0.0
-    # HH_260311-00:00 Rebuild on pose to make global-path cost react in realtime
-    # to vehicle motion (distance gradient update).
-    rebuild_on_pose: true
+    # HH_260330: Rebuild global helper primarily on path updates.
+    rebuild_on_pose: false
     rebuild_on_path: true
-    # HH_260311-00:00 Realtime, but throttled to avoid full-map rebuild backlog.
-    min_rebuild_period_sec: 0.02
-    # HH_260311-00:00 Force periodic rebuild for stable realtime gradient updates.
-    rebuild_on_timer: true
+    # HH_260330: Throttle rebuild and disable timer-loop to prevent planner starvation.
+    min_rebuild_period_sec: 0.15
+    rebuild_on_timer: false
     # Keep publisher active through brief planner gaps.
     # When path is temporarily unavailable, publish lane-mask baseline instead of empty grid.
     allow_build_without_path: true
@@ -133,8 +131,8 @@
     # HH_260305-00:00 /planning/global_path publisher is VOLATILE.
     # Keep subscriber durability VOLATILE to avoid QoS mismatch/drop.
     path_qos_transient_local: false
-    # HH_260311-00:00 Keep marker heartbeat smooth without saturating CPU.
-    republish_period: 0.03
+    # HH_260330: Slower republish keeps marker updates visible with lower load.
+    republish_period: 0.15
     output_topic: "/planning/cost_grid/global_path"
 
 /planning/lanelet_cost_grid_local_path:
@@ -234,10 +232,9 @@
     # HH_260305-00:00 Rebuild local cost on pose motion + path updates.
     rebuild_on_pose: true
     rebuild_on_path: true
-    # HH_260311-00:00 Increase local rebuild rate for smoother realtime updates.
-    min_rebuild_period_sec: 0.01
-    # HH_260311-00:00 Timer-driven rebuild removes local-route lag on sparse callbacks.
-    rebuild_on_timer: true
+    # HH_260330: Keep local updates responsive but avoid timer-driven hot loop.
+    min_rebuild_period_sec: 0.05
+    rebuild_on_timer: false
     # HH_260316-00:00 Keep publisher active through short local-path gaps.
     allow_build_without_path: true
     # HH_260305-00:00 Split inside-cell thresholds:
@@ -252,6 +249,6 @@
     debug_coverage_stride: 2
     debug_coverage_min_value: 0
     path_qos_transient_local: false
-    # HH_260311-00:00 Faster heartbeat for local marker stability.
-    republish_period: 0.015
+    # HH_260330: Reduce local marker heartbeat load while preserving visibility.
+    republish_period: 0.05
     output_topic: "/planning/cost_grid/local_path"

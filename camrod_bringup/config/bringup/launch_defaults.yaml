@@ -12,9 +12,10 @@ bringup:
     use_eskf: false
     filter_type: ekf
     wheel_bridge_enable: true
-    # HH_260326: Wheel source selection for unified /platform/wheel/odometry bridge.
-    wheel_input_topic: /platform/status/wheel
-    wheel_input_type: twist
+    # HH_260330: /platform/status/wheel is not published on current platform stack.
+    # Use /rmp401/odom(nav_msgs/Odometry) as the default real-sensor wheel source.
+    wheel_input_topic: /rmp401/odom
+    wheel_input_type: nav_odom
     wheel_output_topic: /platform/wheel/odometry
     wheel_nav_output_topic: /platform/wheel/nav_odometry
     # HH_260326: Temporary ESKF fallback source.
@@ -22,6 +23,13 @@ bringup:
     eskf_rmp401_odom_topic: /rmp401/odom
     kimera_bridge_enable: false
     pose_selector_enable: false
+    # HH_260331: bringup은 기본적으로 모듈 기본 config를 사용.
+    # 값이 비어있거나 __module_default__ 이면 override를 전달하지 않음.
+    ekf_param_file: __module_default__
+    eskf_param_file: __module_default__
+    drop_zones_yaml: __module_default__
+    kimera_bridge_param_file: __module_default__
+    pose_selector_param_file: __module_default__
 
   planning:
     enable_path_cost_grids: true
@@ -33,11 +41,29 @@ bringup:
     require_localization_ready: false
     # HH_260326: Keep OFF by default; current state machine requires status_msgs runtime dependency.
     enable_state_machine: false
-    # HH_260327: Local path pose anchor (set /sensing/gnss/pose if GNSS-direct mode is desired).
-    local_path_pose_topic: /planning/lanelet_pose
-    # HH_260327: Prefer global-path slicing for robust local-path refresh on new goals.
-    local_path_source: slice_only
+    # HH_260331: local path 기준 pose는 localization.launch 단독 실행과 동일하게 유지.
+    local_path_pose_topic: /localization/pose
+    # HH_260331: Prefer controller-local path first so /planning/local_path differs
+    # from pure global slicing and reflects local costmap reactions in real time.
+    local_path_source: controller_then_slice
+    # HH_260331: Require explicit /planning/engage trigger for final /planning/cmd_vel.
+    cmd_vel_gate_enable: true
+    cmd_vel_raw_topic: /planning/cmd_vel_raw
+    cmd_vel_topic: /planning/cmd_vel
+    engage_topic: /planning/engage
+    engaged_state_topic: /planning/engaged
+    cmd_vel_gate_use_estop_topic: true
+    cmd_vel_gate_estop_topic: /planning/state_machine/estop
+    cmd_vel_gate_allow_on_start: false
     use_dwb_controller: false
+    # HH_260331: 기본은 planning 패키지 launch 내부 기본 config 사용.
+    nav2_base_param_file: __module_default__
+    nav2_vehicle_param_file: __module_default__
+    nav2_vehicle_dwb_param_file: __module_default__
+    nav2_lanelet_param_file: __module_default__
+    nav2_behavior_param_file: __module_default__
+    local_path_extractor_param_file: __module_default__
+    planning_state_machine_param_file: __module_default__
 
   sensing:
     enable_radar: true
@@ -47,11 +73,38 @@ bringup:
     enable_imu: true
     enable_gnss: true
     enable_ntrip: true
+    # HH_260331: 기본은 sensing 패키지 launch 내부 기본 config 사용.
+    sensing_param_file: __module_default__
+    lidar_preprocess_param_file: __module_default__
+    camera_preprocess_param_file: __module_default__
+    imu_converter_param_file: __module_default__
+    radar_sensor_param_file: __module_default__
+    radar_cost_grid_param_file: __module_default__
+    lidar_cost_grid_param_file: __module_default__
+    gnss_param_file: __module_default__
+    ntrip_param_file: __module_default__
+    vanjee_config_path: __module_default__
+
+  platform:
+    # HH_260331: 기본은 platform 패키지 launch 내부 기본 config 사용.
+    params_file: __module_default__
+    robot_visualization_param_file: __module_default__
+    # HH_260331: Real platform defaults to direct planning cmd_vel usage.
+    # Keep cmd_vel gate ON in sim mode via bringup.launch.py runtime override.
+    cmd_vel_gate_enable: false
+    cmd_vel_in_topic: /planning/cmd_vel
+    cmd_vel_out_topic: /platform/cmd_vel
+
+  perception:
+    # HH_260331: 기본은 perception 패키지 launch 내부 기본 config 사용.
+    perception_param_file: __module_default__
 
   system:
-    # HH_260326: Keep system validators off by default.
-    # Current camrod_system diagnostics still import removed legacy avg_msgs symbols.
-    enable_module_validators: false
+    # HH_260331: bringup에서 camrod_system 전체 diagnostics launch를 기본 활성화.
+    enable_module_validators: true
+    diagnostics_profile: default
+    # platform checker는 ranger_msgs 의존성 있을 때만 true 권장.
+    enable_platform_checker: false
     # HH_260327: Keep plugin API bridge enabled by default.
     enable_plugin_api: true
     # HH_260327: Lightweight HTTP UI backend for API/state monitoring.
@@ -85,6 +138,9 @@ bringup:
     # Keep only explicit map path / yaw override knobs here.
     map_path: /home/nvidia/camrod_ws/src/lanelet2_maps.osm
     yaw_offset_deg: 0.0
+    # HH_260331: 기본은 map 패키지 launch 내부 기본 config 사용.
+    map_param_file: __module_default__
+    map_visualization_param_file: __module_default__
 
   sim:
     lanelet_id: -1

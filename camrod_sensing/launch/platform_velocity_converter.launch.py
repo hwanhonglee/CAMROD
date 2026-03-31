@@ -25,14 +25,6 @@ from launch_ros.actions import Node
 
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
-    # NOTE:
-    # If your sensing_params.yaml is stored in camrod_bringup,
-    # use camrod_bringup package share instead.
-    #
-    # Example:
-    # bringup_share = get_package_share_directory("camrod_bringup")
-    # default_params_file = os.path.join(bringup_share, "config", "sensing", "sensing_params.yaml")
-
     sensing_share = get_package_share_directory("camrod_sensing")
     default_params_file = os.path.join(
         sensing_share, "config", "imu", "platform_velocity_converter.yaml"

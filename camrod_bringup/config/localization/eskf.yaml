@@ -17,9 +17,10 @@
 
     gnss_gate_mahalanobis: 9.0
     wheel_gate_mahalanobis: 9.0
-    # 2026-02-02: Reinit filter if GNSS is too far (recover from drift).
+    # HH_260331: Reinit earlier on large GNSS divergence to recover before
+    # planner start pose leaves lanelet drivable region.
     reinit_on_gnss_reject: true
-    reinit_distance_threshold: 50.0
+    reinit_distance_threshold: 12.0
     gyro_noise: 0.015
     accel_noise: 0.15
     gyro_bias_walk: 0.0005

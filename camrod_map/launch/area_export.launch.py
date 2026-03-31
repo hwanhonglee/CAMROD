@@ -11,9 +11,9 @@ from ament_index_python.packages import get_package_share_directory
 
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
-    # 2026-02-02 10:32: Use centralized bringup config (synced from package config).
-    bringup_share = get_package_share_directory("camrod_bringup")
-    default_map_info = os.path.join(bringup_share, "config", "map", "map_info.yaml")
+    # HH_260330: Standalone map launch uses package-local config by default.
+    map_share = get_package_share_directory("camrod_map")
+    default_map_info = os.path.join(map_share, "config", "map_info.yaml")
 
     map_info_arg = DeclareLaunchArgument(
         "map_info_file",
@@ -43,7 +43,7 @@ def generate_launch_description():
     output_yaml_arg = DeclareLaunchArgument(
         "output_yaml_path",
         default_value=os.path.join(
-            "/home/nvidia/camrod_ws/src/camrod_bringup/config/localization",
+            "/home/nvidia/camrod_ws/src/camrod_map/config",
             "drop_zones.yaml",
         ),
         description="Output YAML path for drop zones",
@@ -51,7 +51,7 @@ def generate_launch_description():
     camping_output_yaml_arg = DeclareLaunchArgument(
         "camping_sites_output_yaml_path",
         default_value=os.path.join(
-            "/home/nvidia/camrod_ws/src/camrod_bringup/config/planning",
+            "/home/nvidia/camrod_ws/src/camrod_planning/config",
             "camping_sites.yaml",
         ),
         description="Output YAML path for camping sites",

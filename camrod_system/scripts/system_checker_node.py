@@ -6,21 +6,17 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.parameter import Parameter
-from rclpy.parameter_descriptor import ParameterDescriptor
-from rclpy.parameter_type import ParameterType
 
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 
 
 # Implements `_diag_level` behavior.
 def _diag_level(value):
-    # Humble DiagnosticStatus constants may be bytes; normalize safely.
+    # HH_260330: Keep DiagnosticStatus level as single-byte payload.
     if isinstance(value, (bytes, bytearray)):
-        if len(value) == 1:
-            return bytes(value)
-        if len(value) > 1:
-            return bytes([value[0]])
-        return b"\x00"
+        if len(value) == 0:
+            return b"\x00"
+        return bytes([int(value[0]) & 0xFF])
     return bytes([int(value) & 0xFF])
 
 
@@ -37,9 +33,9 @@ class SystemChecker(Node):
         super().__init__("system_checker")
         self.check_period_s = self.declare_parameter("check_period_s", 1.0).value
         self.startup_grace_sec = float(self.declare_parameter("startup_grace_sec", 6.0).value)
-        array_desc = ParameterDescriptor(type=ParameterType.PARAMETER_STRING_ARRAY)
-        self.declare_parameter("required_nodes", Parameter.Type.STRING_ARRAY, array_desc)
-        self.declare_parameter("required_topics", Parameter.Type.STRING_ARRAY, array_desc)
+        # HH_260330: Humble-safe typed declaration for string arrays.
+        self.declare_parameter("required_nodes", Parameter.Type.STRING_ARRAY)
+        self.declare_parameter("required_topics", Parameter.Type.STRING_ARRAY)
         self.required_nodes = [
             _normalize_name(n)
             for n in self.get_parameter("required_nodes").get_parameter_value().string_array_value

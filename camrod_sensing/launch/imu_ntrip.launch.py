@@ -47,6 +47,7 @@ def generate_launch_description():
     declare_args = [
         DeclareLaunchArgument(
             "microstrain_params",
+            # HH_260330: Standalone sensing launch uses package-local config by default.
             default_value=os.path.join(pkg_share, "config", "imu", "microstrain_gq7.yaml"),
             description="ROS 2 parameter YAML for microstrain_inertial_driver (GQ7).",
         ),
@@ -62,6 +63,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "ntrip_params",
+            # HH_260330: Standalone sensing launch uses package-local config by default.
             default_value=os.path.join(pkg_share, "config", "gnss", "ntrip_client.yaml"),
             description="ROS 2 parameter YAML for ntrip_client.",
         ),

@@ -25,6 +25,7 @@ public:
     velocity_topic_ = declare_parameter<std::string>("velocity_topic", "/platform/status/velocity");
     imu_topic_ = declare_parameter<std::string>("imu_topic", "/sensing/imu/data");
     output_topic_ = declare_parameter<std::string>(
+      // HH_260331: Keep IMU-derived platform velocity topic under /sensing/imu/*.
       "output_topic", "/sensing/platform_velocity_converter/twist_with_covariance");
     imu_status_topic_ = declare_parameter<std::string>(
       "imu_status_topic", "/sensing/imu/status");

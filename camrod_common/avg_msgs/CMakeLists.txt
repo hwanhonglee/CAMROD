@@ -51,6 +51,7 @@ set(msg_files
   "msg/AvgSensingGnss.msg"
   "msg/AvgSensingRadar.msg"
   "msg/AvgGnssPose.msg" # HH_260326: custom GNSS pose message type
+  "msg/AvgTrackingError.msg" # HH_260330: local/global path tracking error stream
   "msg/AvgSensingMsgs.msg"
   "msg/AvgLocalizationMsgs.msg"
   "msg/AvgPlanningMsgs.msg"

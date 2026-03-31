@@ -16,6 +16,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     pkg_share = get_package_share_directory("camrod_sensing")
 
+    # HH_260330: Standalone sensing launch uses package-local config by default.
     default_ublox_yaml = os.path.join(pkg_share, "config", "gnss", "zed_f9p_rover.yaml")
     default_ntrip_yaml = os.path.join(pkg_share, "config", "gnss", "ntrip_client.yaml")
 
@@ -63,6 +64,10 @@ def generate_launch_description():
         name="ublox_gps_node",
         namespace=gnss_namespace,
         output="screen",
+        # HH_260330: USB GNSS bringup can fail transiently at startup.
+        # Auto-respawn prevents full GNSS stack loss in bringup.
+        respawn=True,
+        respawn_delay=2.0,
         parameters=[ublox_param_file],
         remappings=[
             ("rtcm", rtcm_topic),
@@ -76,6 +81,10 @@ def generate_launch_description():
         name="ntrip_client",
         namespace=gnss_namespace,
         output="screen",
+        # HH_260330: NTRIP server/network can drop periodically.
+        # Auto-respawn keeps RTCM feed alive without full stack restart.
+        respawn=True,
+        respawn_delay=2.0,
         parameters=[
             ntrip_param_file,
             {

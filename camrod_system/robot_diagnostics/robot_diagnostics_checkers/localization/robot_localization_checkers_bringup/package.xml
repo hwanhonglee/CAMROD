@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot_localization_checkers_bringup</name>
+  <version>0.0.0</version>
+  <description>Bringup launch for localization diagnostic checker nodes (GNSS/Mode/Pose/Init/Source/Lanelet)</description>
+  <maintainer email="avg@todo.todo">avg</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>robot_localization_gnss_checker</exec_depend>
+  <exec_depend>robot_localization_mode_checker</exec_depend>
+  <exec_depend>robot_localization_pose_checker</exec_depend>
+  <exec_depend>robot_localization_init_checker</exec_depend>
+  <exec_depend>robot_localization_source_checker</exec_depend>
+  <exec_depend>robot_localization_lanelet_checker</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

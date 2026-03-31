@@ -1,21 +1,9 @@
+# HH_260330: Regenerated for current map reference via camrod_map/area_exporter.
 drop_zones:
-  - id: "dz_way_2048"
+  - id: "dz_area_36128"
     type: "drop_zone"
-    source: "osm_area"
-    x: 21.1829
-    y: 2.60515
-    z: -2.14672
-    yaw_deg: -3.04126
-    corners:
-      - x: 23.5037
-        y: 0.937
-        z: -2.3119
-      - x: 18.7656
-        y: 1.1922
-        z: -2.0102
-      - x: 18.8182
-        y: 4.2739
-        z: -1.9666
-      - x: 23.6441
-        y: 4.0175
-        z: -2.2982
+    source: "area"
+    x: 16.8676
+    y: -117.408
+    z: -97.794
+    yaw_deg: -0.41903

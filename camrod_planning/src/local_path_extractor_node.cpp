@@ -343,6 +343,61 @@ private:
     return out.poses.size() >= 2;
   }
 
+  // Implements `closestGlobalIndexForPoint` behavior.
+  size_t closestGlobalIndexForPoint(const avg_msgs::msg::Point & p) const
+  {
+    if (global_path_.poses.empty()) {
+      return 0;
+    }
+    size_t best_idx = 0;
+    double best_d2 = std::numeric_limits<double>::infinity();
+    for (size_t i = 0; i < global_path_.poses.size(); ++i) {
+      const double d2 = dist2(global_path_.poses[i].pose.position, p);
+      if (d2 < best_d2) {
+        best_d2 = d2;
+        best_idx = i;
+      }
+    }
+    return best_idx;
+  }
+
+  // Implements `enforceControllerPathDirection` behavior.
+  void enforceControllerPathDirection(avg_msgs::msg::Path & path)
+  {
+    if (!has_pose_ || global_path_.poses.size() < 2 || path.poses.size() < 2) {
+      return;
+    }
+
+    const auto & robot_pos = latest_pose_.pose.position;
+    const auto & first_pos = path.poses.front().pose.position;
+    const auto & last_pos = path.poses.back().pose.position;
+    const double d_first = std::hypot(first_pos.x - robot_pos.x, first_pos.y - robot_pos.y);
+    const double d_last = std::hypot(last_pos.x - robot_pos.x, last_pos.y - robot_pos.y);
+
+    const size_t first_idx = closestGlobalIndexForPoint(first_pos);
+    const size_t last_idx = closestGlobalIndexForPoint(last_pos);
+
+    const bool reversed_by_index = (last_idx + 2U) < first_idx;
+    const bool reversed_by_robot_distance = (d_last + 0.7) < d_first;
+    if (!reversed_by_index && !reversed_by_robot_distance) {
+      return;
+    }
+
+    std::reverse(path.poses.begin(), path.poses.end());
+    for (size_t i = 0; i + 1 < path.poses.size(); ++i) {
+      const auto & a = path.poses[i].pose.position;
+      const auto & b = path.poses[i + 1].pose.position;
+      path.poses[i].pose.orientation = quatFromYaw(std::atan2(b.y - a.y, b.x - a.x));
+    }
+    if (path.poses.size() >= 2) {
+      path.poses.back().pose.orientation = path.poses[path.poses.size() - 2].pose.orientation;
+    }
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 2000,
+      "HH_260331: local controller path direction corrected (first_idx=%zu last_idx=%zu d_first=%.2f d_last=%.2f)",
+      first_idx, last_idx, d_first, d_last);
+  }
+
   // Implements `findBestIndexInRange` behavior.
   SearchResult findBestIndexInRange(
     size_t begin, size_t end, bool continuity_bias) const
@@ -502,6 +557,7 @@ private:
           filtered.poses.push_back(out.poses[i]);
         }
         if (filtered.poses.size() >= 2) {
+          enforceControllerPathDirection(filtered);
           pub_local_path_->publish(filtered);
           publishAvgPlanning(filtered, false);
           last_output_empty_ = false;

@@ -14,10 +14,33 @@ def pkg_share(pkg, rel):
     return os.path.join(get_package_share_directory(pkg), rel)
 
 
+def extract_map_ros_params(map_info_cfg: dict) -> dict:
+    # HH_260330: Robust map_info parser for bringup/module key-layout differences.
+    if not isinstance(map_info_cfg, dict):
+        return {}
+    for key in (
+        '/map/lanelet2_map',
+        'map/lanelet2_map',
+        'lanelet2_map',
+        '/lanelet2_map',
+    ):
+        val = map_info_cfg.get(key)
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    for val in map_info_cfg.values():
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    return {}
+
+
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
-    # HH_260126 Load defaults from bringup map_info.yaml for map_path/offsets.
-    map_info_path = pkg_share('camrod_bringup', os.path.join('config', 'map', 'map_info.yaml'))
+    # HH_260330: Standalone planning launch uses package-local map config by default.
+    map_info_path = pkg_share('camrod_map', os.path.join('config', 'map_info.yaml'))
     map_path_default = ''
     origin_lat_default = '0.0'
     origin_lon_default = '0.0'
@@ -25,7 +48,7 @@ def generate_launch_description():
     try:
         with open(map_info_path, 'r') as f:
             data = yaml.safe_load(f) or {}
-        params = data.get('/map/lanelet2_map', {}).get('ros__parameters', {})
+        params = extract_map_ros_params(data)
         map_path_default = str(params.get('map_path', map_path_default))
         origin_lat_default = str(params.get('offset_lat', origin_lat_default))
         origin_lon_default = str(params.get('offset_lon', origin_lon_default))
@@ -35,22 +58,22 @@ def generate_launch_description():
 
     nav2_base_param_arg = DeclareLaunchArgument(
         'nav2_base_param_file',
-        default_value=pkg_share('camrod_bringup', os.path.join('config', 'planning', 'nav2_base.yaml')),
+        default_value=pkg_share('camrod_planning', os.path.join('config', 'nav2_base.yaml')),
         description='Nav2 base profile parameter file',
     )
     nav2_vehicle_param_arg = DeclareLaunchArgument(
         'nav2_vehicle_param_file',
-        default_value=pkg_share('camrod_bringup', os.path.join('config', 'planning', 'nav2_vehicle.yaml')),
+        default_value=pkg_share('camrod_planning', os.path.join('config', 'nav2_vehicle.yaml')),
         description='Nav2 vehicle profile parameter file',
     )
     nav2_lanelet_param_arg = DeclareLaunchArgument(
         'nav2_lanelet_param_file',
-        default_value=pkg_share('camrod_bringup', os.path.join('config', 'planning', 'nav2_lanelet_overlay.yaml')),
+        default_value=pkg_share('camrod_planning', os.path.join('config', 'nav2_lanelet_overlay.yaml')),
         description='Nav2 lanelet profile parameter file',
     )
     nav2_behavior_param_arg = DeclareLaunchArgument(
         'nav2_behavior_param_file',
-        default_value=pkg_share('camrod_bringup', os.path.join('config', 'planning', 'nav2_behavior.yaml')),
+        default_value=pkg_share('camrod_planning', os.path.join('config', 'nav2_behavior.yaml')),
         description='Nav2 behavior profile parameter file',
     )
     enable_path_cost_grids_arg = DeclareLaunchArgument(
@@ -95,12 +118,12 @@ def generate_launch_description():
     )
     local_path_extractor_param_arg = DeclareLaunchArgument(
         'local_path_extractor_param_file',
-        default_value=pkg_share('camrod_bringup', os.path.join('config', 'planning', 'local_path_extractor.yaml')),
+        default_value=pkg_share('camrod_planning', os.path.join('config', 'local_path_extractor.yaml')),
         description='Parameters for /planning/local_path_extractor',
     )
     planning_state_machine_param_arg = DeclareLaunchArgument(
         'planning_state_machine_param_file',
-        default_value=pkg_share('camrod_bringup', os.path.join('config', 'planning', 'planning_state_machine.yaml')),
+        default_value=pkg_share('camrod_planning', os.path.join('config', 'planning_state_machine.yaml')),
         description='Parameters for /planning/planning_state_machine',
     )
     map_path_arg = DeclareLaunchArgument(
@@ -129,14 +152,69 @@ def generate_launch_description():
     )
     local_path_pose_topic_arg = DeclareLaunchArgument(
         'local_path_pose_topic',
-        default_value='/planning/lanelet_pose',
+        # HH_260331: Use fused localization pose by default to keep controller-local
+        # path transform aligned with actual vehicle heading.
+        default_value='/localization/pose',
         description='Pose topic consumed by /planning/local_path_extractor',
     )
     local_path_source_arg = DeclareLaunchArgument(
         'local_path_source',
-        # HH_260327: Default to global-path slice for stable path updates on successive goals.
-        default_value='slice_only',
+        # HH_260331: Default to controller-local trajectory first so local path
+        # reflects real-time local costmap behavior (with global-slice fallback).
+        default_value='controller_then_slice',
         description='Local path source policy: controller_then_slice|controller_only|slice_only',
+    )
+    enable_tracking_error_arg = DeclareLaunchArgument(
+        'enable_tracking_error',
+        default_value='true',
+        description='Enable /planning/path_tracking_error (lateral/heading deviation publisher)',
+    )
+    tracking_error_topic_arg = DeclareLaunchArgument(
+        'tracking_error_topic',
+        # HH_260330: Keep requested topic name for compatibility with current tooling.
+        default_value='/planning/ltracking_error',
+        description='Tracking error output topic',
+    )
+    cmd_vel_gate_enable_arg = DeclareLaunchArgument(
+        'cmd_vel_gate_enable',
+        # HH_260331: Require explicit engage trigger before publishing /planning/cmd_vel.
+        default_value='true',
+        description='Enable planning cmd_vel gate node',
+    )
+    cmd_vel_raw_topic_arg = DeclareLaunchArgument(
+        'cmd_vel_raw_topic',
+        default_value='/planning/cmd_vel_raw',
+        description='Raw cmd_vel topic from Nav2 controller',
+    )
+    cmd_vel_output_topic_arg = DeclareLaunchArgument(
+        'cmd_vel_output_topic',
+        default_value='/planning/cmd_vel',
+        description='Final gated cmd_vel topic for platform',
+    )
+    planning_engage_topic_arg = DeclareLaunchArgument(
+        'planning_engage_topic',
+        default_value='/planning/engage',
+        description='Planning engage trigger topic (std_msgs/Bool)',
+    )
+    planning_engaged_state_topic_arg = DeclareLaunchArgument(
+        'planning_engaged_state_topic',
+        default_value='/planning/engaged',
+        description='Planning engage state output topic (std_msgs/Bool)',
+    )
+    cmd_vel_gate_use_estop_topic_arg = DeclareLaunchArgument(
+        'cmd_vel_gate_use_estop_topic',
+        default_value='true',
+        description='Use estop topic in planning cmd_vel gate',
+    )
+    cmd_vel_gate_estop_topic_arg = DeclareLaunchArgument(
+        'cmd_vel_gate_estop_topic',
+        default_value='/planning/state_machine/estop',
+        description='Planning estop topic (std_msgs/Bool)',
+    )
+    cmd_vel_gate_allow_on_start_arg = DeclareLaunchArgument(
+        'cmd_vel_gate_allow_on_start',
+        default_value='false',
+        description='If true, planning cmd_vel gate starts enabled without engage trigger',
     )
     system_namespace_arg = DeclareLaunchArgument(
         'system_namespace',
@@ -165,6 +243,16 @@ def generate_launch_description():
     centerline_input_pose_topic = LaunchConfiguration('centerline_input_pose_topic')
     local_path_pose_topic = LaunchConfiguration('local_path_pose_topic')
     local_path_source = LaunchConfiguration('local_path_source')
+    enable_tracking_error = LaunchConfiguration('enable_tracking_error')
+    tracking_error_topic = LaunchConfiguration('tracking_error_topic')
+    cmd_vel_gate_enable = LaunchConfiguration('cmd_vel_gate_enable')
+    cmd_vel_raw_topic = LaunchConfiguration('cmd_vel_raw_topic')
+    cmd_vel_output_topic = LaunchConfiguration('cmd_vel_output_topic')
+    planning_engage_topic = LaunchConfiguration('planning_engage_topic')
+    planning_engaged_state_topic = LaunchConfiguration('planning_engaged_state_topic')
+    cmd_vel_gate_use_estop_topic = LaunchConfiguration('cmd_vel_gate_use_estop_topic')
+    cmd_vel_gate_estop_topic = LaunchConfiguration('cmd_vel_gate_estop_topic')
+    cmd_vel_gate_allow_on_start = LaunchConfiguration('cmd_vel_gate_allow_on_start')
     system_namespace = LaunchConfiguration('system_namespace')
 
     nav2_launch = IncludeLaunchDescription(
@@ -201,7 +289,7 @@ def generate_launch_description():
         namespace=module_namespace,
         output='screen',
         parameters=[
-            pkg_share('camrod_bringup', os.path.join('config', 'planning', 'goal_snapper.yaml')),
+            pkg_share('camrod_planning', os.path.join('config', 'goal_snapper.yaml')),
             {
                 'map_path': map_path,
                 'offset_lat': origin_lat,
@@ -213,6 +301,10 @@ def generate_launch_description():
                 'output_goal_topic': '/planning/goal_pose_snapped',
                 # HH_260317-00:00 ROS-native snapped goal for Nav2 simple-goal input.
                 'output_goal_topic_ros': '/planning/goal_pose_snapped_ros',
+                # HH_260331: Keep snapped-goal Z aligned with RViz goal input (z=0)
+                # so goal markers remain visible in 2D map view.
+                'use_map_z': False,
+                'flatten_to_ground': False,
             },
         ],
     )
@@ -225,7 +317,7 @@ def generate_launch_description():
         namespace=module_namespace,
         output='screen',
         parameters=[
-            pkg_share('camrod_bringup', os.path.join('config', 'planning', 'centerline_snapper.yaml')),
+            pkg_share('camrod_planning', os.path.join('config', 'centerline_snapper.yaml')),
             {
                 'map_path': map_path,
                 'offset_lat': origin_lat,
@@ -267,6 +359,46 @@ def generate_launch_description():
         ],
     )
 
+    # HH_260330: Publish pose-vs-path lateral/heading deviation for debugging and control monitoring.
+    path_tracking_error = Node(
+        package='camrod_planning',
+        executable='path_tracking_error_node',
+        name='path_tracking_error',
+        namespace=module_namespace,
+        output='screen',
+        parameters=[{
+            'pose_topic': local_path_pose_topic,
+            'local_path_topic': '/planning/local_path',
+            'global_path_topic': '/planning/global_path',
+            'output_topic': tracking_error_topic,
+            'prefer_local_path': True,
+            'pose_timeout_sec': 1.0,
+            'publish_rate_hz': 15.0,
+            'publish_on_input_update': True,
+        }],
+        condition=IfCondition(enable_tracking_error),
+    )
+
+    # HH_260331: Gate Nav2 raw cmd_vel by explicit /planning/engage trigger.
+    planning_cmd_vel_gate = Node(
+        package='camrod_planning',
+        executable='planning_cmd_vel_gate_node.py',
+        name='cmd_vel_gate',
+        namespace=module_namespace,
+        output='screen',
+        parameters=[{
+            'input_topic': cmd_vel_raw_topic,
+            'output_topic': cmd_vel_output_topic,
+            'engage_topic': planning_engage_topic,
+            'state_topic': planning_engaged_state_topic,
+            'use_estop_topic': cmd_vel_gate_use_estop_topic,
+            'estop_topic': cmd_vel_gate_estop_topic,
+            'allow_on_start': cmd_vel_gate_allow_on_start,
+            'publish_zero_when_blocked': True,
+        }],
+        condition=IfCondition(cmd_vel_gate_enable),
+    )
+
     # 2026-02-23: Keep ComputePathToPose action updated as goal/current pose changes.
     goal_replanner = Node(
         package='camrod_planning',
@@ -275,7 +407,7 @@ def generate_launch_description():
         namespace=module_namespace,
         output='screen',
         parameters=[
-            pkg_share('camrod_bringup', os.path.join('config', 'planning', 'goal_replanner.yaml')),
+            pkg_share('camrod_planning', os.path.join('config', 'goal_replanner.yaml')),
             {
                 # HH_260306-00:00 Launch-level hard override for stable event-driven behavior.
                 # This prevents stale installed YAML/default mismatches from re-enabling timeout/retry storms.
@@ -367,10 +499,22 @@ def generate_launch_description():
         centerline_input_pose_topic_arg,
         local_path_pose_topic_arg,
         local_path_source_arg,
+        enable_tracking_error_arg,
+        tracking_error_topic_arg,
+        cmd_vel_gate_enable_arg,
+        cmd_vel_raw_topic_arg,
+        cmd_vel_output_topic_arg,
+        planning_engage_topic_arg,
+        planning_engaged_state_topic_arg,
+        cmd_vel_gate_use_estop_topic_arg,
+        cmd_vel_gate_estop_topic_arg,
+        cmd_vel_gate_allow_on_start_arg,
         system_namespace_arg,
         goal_snapper,
         centerline_snapper,
         local_path_extractor,
+        path_tracking_error,
+        planning_cmd_vel_gate,
         goal_replanner,
         planning_state_machine,
         nav2_lifecycle_retry,

@@ -8,13 +8,9 @@ System health and diagnostic aggregation module.
 - Publish unified diagnostic stream for the full stack
 
 ## Entry Points
-- Full checker set:
+- Integrated diagnostics stack:
   ```bash
-  ros2 launch camrod_system module_checkers.launch.py
-  ```
-- System checker only:
-  ```bash
-  ros2 launch camrod_system system_checker.launch.py
+  ros2 launch camrod_system system_diagnostics.launch.py
   ```
 
 ## Runtime Structure
@@ -29,9 +25,9 @@ system_diagnostic_node.py
 ```
 
 ## Main Launch Arguments
-- `enable_checkers` (module checker launcher)
-- `param_file` (system checker config)
-- `system_namespace` (default `system`)
+- `config_profile` (default `default`)
+- `enable_checkers` (`true`/`false`)
+- `enable_platform` (`true`/`false`, ranger_msgs 필요)
 
 ## Key Topics
 - Aggregated diagnostics: `/diagnostics`
@@ -48,4 +44,3 @@ system_diagnostic_node.py
 
 ## Configuration
 - `camrod_bringup/config/system/system_checker.yaml`
-

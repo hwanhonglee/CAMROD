@@ -22,6 +22,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             "radar_params",
+            # HH_260330: Standalone sensing launch uses package-local config by default.
             default_value=os.path.join(pkg_share, "config", "radar", "sen0592_radar.yaml"),
             description="ROS2 params YAML for SEN0592 radar node",
         ),

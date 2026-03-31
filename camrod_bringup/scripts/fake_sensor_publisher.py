@@ -10,6 +10,7 @@ import rclpy
 from rclpy.node import Node
 
 from geometry_msgs.msg import PoseStamped, Quaternion
+from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry, Path
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from sensor_msgs.msg import Imu, PointCloud2, PointField
@@ -87,6 +88,20 @@ class FakeSensorPublisher(Node):
         self.freeze_motion = bool(self.declare_parameter("freeze_motion", False).value)
         self.publish_rate_hz = self.declare_parameter("publish_rate_hz", 20.0).value
         self.loop = self.declare_parameter("loop", True).value
+        # HH_260330: In sim mode, drive fake motion from cmd_vel to mirror
+        # planning/controller behavior instead of constant-speed advancement.
+        self.use_cmd_vel_for_motion = bool(
+            self.declare_parameter("use_cmd_vel_for_motion", True).value
+        )
+        self.cmd_vel_motion_topic = str(
+            self.declare_parameter("cmd_vel_motion_topic", "/platform/cmd_vel").value
+        )
+        self.cmd_vel_timeout_sec = float(
+            self.declare_parameter("cmd_vel_timeout_sec", 0.5).value
+        )
+        self.max_cmd_speed_mps = float(
+            self.declare_parameter("max_cmd_speed_mps", 2.5).value
+        )
         # 2026-02-05 14:37: Skip crosswalk lanelets to prevent centerline jumps.
         self.exclude_crosswalk = self.declare_parameter("exclude_crosswalk", True).value
         # 2026-02-25: clearer alias for initial path anchor.
@@ -117,6 +132,11 @@ class FakeSensorPublisher(Node):
         self.base_frame_id = self.declare_parameter("base_frame_id", "robot_base_link").value
         self.obstacle_offset = self.declare_parameter("obstacle_offset", 5.0).value
         self.obstacle_height = self.declare_parameter("obstacle_height", 0.5).value
+        # HH_260330: In sim mode, also publish nav_msgs/Odometry to the wheel bridge
+        # input topic so localization wheel pipeline can run without real /rmp401/odom.
+        self.wheel_bridge_input_topic = str(
+            self.declare_parameter("wheel_bridge_input_topic", "/rmp401/odom").value
+        )
         # Optional helper: align localization pose yaw to nearest active path tangent.
         # Position is kept from incoming /localization/pose, only orientation(yaw) is replaced.
         self.localization_pose_yaw_align_enable = bool(
@@ -202,13 +222,23 @@ class FakeSensorPublisher(Node):
         self._last_yaw = None
         self._last_yaw_time = None
         self._was_holding = True
+        self._motion_distance = 0.0
+        self._last_timer_time = time.time()
+        self._cmd_linear_x = 0.0
+        self._last_cmd_time = None
 
         # HH_260109 Publish fake sensors with module-prefixed topics.
         self.pub_navsat = self.create_publisher(NavSatFix, "/sensing/gnss/ublox_gps_node/fix", 10)
         self.pub_imu = self.create_publisher(Imu, "/sensing/imu/data", 10)
         self.pub_wheel = self.create_publisher(Odometry, "/platform/wheel/odometry", 10)
+        self.pub_wheel_bridge_in = self.create_publisher(Odometry, self.wheel_bridge_input_topic, 10)
         self.pub_vio = self.create_publisher(Odometry, "/localization/vio/odometry", 10)
         self.pub_obstacles = self.create_publisher(PointCloud2, "/perception/obstacles", 10)
+        self.sub_cmd_vel = None
+        if self.use_cmd_vel_for_motion:
+            self.sub_cmd_vel = self.create_subscription(
+                Twist, self.cmd_vel_motion_topic, self._on_cmd_vel, 10
+            )
 
         # Optional pose-yaw align bridge for fake/sim mode.
         self.pub_localization_pose_yaw_aligned = None
@@ -253,6 +283,17 @@ class FakeSensorPublisher(Node):
         self.get_logger().debug(
             f"Fake sensors ready. lanelet_id={self.lanelet_id} speed={self.speed_mps} m/s"
         )
+
+    # Handles the `_on_cmd_vel` callback.
+    def _on_cmd_vel(self, msg: Twist):
+        # HH_260330: Track forward command for motion integration.
+        # Keep only linear.x to remain lanelet-path constrained.
+        vx = float(msg.linear.x)
+        vmax = max(0.0, float(self.max_cmd_speed_mps))
+        if vmax > 0.0:
+            vx = max(-vmax, min(vmax, vx))
+        self._cmd_linear_x = vx
+        self._last_cmd_time = time.time()
 
     # Implements `_load_centerline_path` behavior.
     def _load_centerline_path(self):
@@ -647,13 +688,26 @@ class FakeSensorPublisher(Node):
     # Implements `_on_timer` behavior.
     def _on_timer(self):
         now = self.get_clock().now().to_msg()
-        elapsed = time.time() - self._t0
+        now_sec = time.time()
+        elapsed = now_sec - self._t0
+        dt = max(1e-3, now_sec - self._last_timer_time)
+        self._last_timer_time = now_sec
         holding = elapsed < self.startup_hold_sec
-        motion_elapsed = max(0.0, elapsed - self.startup_hold_sec)
-        if self.freeze_motion:
-            dist = 0.0
+        if self.freeze_motion or holding:
+            motion_speed = 0.0
+        elif self.use_cmd_vel_for_motion:
+            if (self._last_cmd_time is None or
+                    (now_sec - self._last_cmd_time) > max(0.01, self.cmd_vel_timeout_sec)):
+                motion_speed = 0.0
+            else:
+                motion_speed = self._cmd_linear_x
         else:
-            dist = motion_elapsed * self.speed_mps
+            motion_speed = self.speed_mps
+
+        self._motion_distance += motion_speed * dt
+        if not self.loop:
+            self._motion_distance = max(0.0, self._motion_distance)
+        dist = self._motion_distance
         (x, y, z, lat, lon), yaw = self._sample_path(dist)
 
         # HH_260112 Create a pose message for downstream odometry/cloud outputs.
@@ -680,7 +734,6 @@ class FakeSensorPublisher(Node):
         imu_msg.header.frame_id = self.base_frame_id
         imu_msg.orientation = yaw_to_quat(yaw)
         # 2026-02-02 11:55: Provide yaw rate so ESKF can integrate heading.
-        now_sec = time.time()
         yaw_rate = 0.0
         if (not holding and not self._was_holding and
                 self._last_yaw is not None and self._last_yaw_time is not None):
@@ -700,10 +753,13 @@ class FakeSensorPublisher(Node):
         wheel_msg.header.stamp = now
         wheel_msg.header.frame_id = "odom"
         wheel_msg.child_frame_id = self.base_frame_id
-        wheel_speed = 0.0 if holding else self.speed_mps
+        wheel_speed = motion_speed
         wheel_msg.twist.twist.linear.x = wheel_speed
         wheel_msg.twist.twist.angular.z = 0.0
         self.pub_wheel.publish(wheel_msg)
+        # HH_260330: Mirror wheel odometry onto wheel-bridge input topic for
+        # sim-time localization/TF/controller reproducibility.
+        self.pub_wheel_bridge_in.publish(wheel_msg)
 
         vio_msg = Odometry()
         vio_msg.header.stamp = now

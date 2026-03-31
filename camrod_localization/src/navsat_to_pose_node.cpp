@@ -116,6 +116,10 @@ public:
     // HH_260307-00:00 Optional XY rotation to align local ENU with lanelet map yaw.
     rotate_latlon_xy_by_yaw_offset_ = declare_parameter<bool>(
       "rotate_latlon_xy_by_yaw_offset", true);
+    // HH_260331: Reject GNSS position spikes that cause sudden map-frame jumps.
+    max_position_jump_m_ = declare_parameter<double>("max_position_jump_m", 8.0);
+    jump_reject_max_speed_mps_ = declare_parameter<double>("jump_reject_max_speed_mps", 20.0);
+    jump_reject_reset_sec_ = declare_parameter<double>("jump_reject_reset_sec", 2.0);
 
     utm_origin_easting_ = declare_parameter<double>("utm_origin_easting", 0.0);
     utm_origin_northing_ = declare_parameter<double>("utm_origin_northing", 0.0);
@@ -254,8 +258,27 @@ private:
 
   // Publishes `EnuPose` output.
   void publishEnuPose(
-    const rclcpp::Time & stamp, const avg_msgs::msg::Point & enu, double yaw) const
+    const rclcpp::Time & stamp, const avg_msgs::msg::Point & enu, double yaw)
   {
+    if (max_position_jump_m_ > 0.0 && has_last_enu_) {
+      const double age = (stamp - last_enu_stamp_).seconds();
+      const bool allow_relock = jump_reject_reset_sec_ > 0.0 && age > jump_reject_reset_sec_;
+      if (!allow_relock) {
+        const double dx = enu.x - last_enu_.x;
+        const double dy = enu.y - last_enu_.y;
+        const double jump_dist = std::hypot(dx, dy);
+        const double dt = std::max(0.0, age);
+        const double jump_limit = max_position_jump_m_ + jump_reject_max_speed_mps_ * dt;
+        if (jump_dist > jump_limit) {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "HH_260331: GNSS jump rejected (dist=%.2fm limit=%.2fm dt=%.3fs)",
+            jump_dist, jump_limit, dt);
+          return;
+        }
+      }
+    }
+
     avg_msgs::msg::PoseStamped out;
     out.header.stamp = stamp;
     out.header.frame_id = map_frame_id_;
@@ -290,6 +313,10 @@ private:
       avg_msg.state.message = "navsat_to_pose";
       avg_localization_pub_->publish(avg_msg);
     }
+
+    last_enu_ = enu;
+    last_enu_stamp_ = stamp;
+    has_last_enu_ = true;
   }
 
   std::string navsat_topic_;
@@ -301,6 +328,7 @@ private:
   bool publish_covariance_{true};
   bool publish_localization_status_{false};
   bool has_navsatfix_{false};
+  bool has_last_enu_{false};
   std::array<double, 36> covariance_{};
   std::string localization_status_topic_;
 
@@ -311,12 +339,17 @@ private:
   double origin_alt_{0.0};
   double yaw_offset_rad_{0.0};
   bool rotate_latlon_xy_by_yaw_offset_{true};
+  double max_position_jump_m_{8.0};
+  double jump_reject_max_speed_mps_{20.0};
+  double jump_reject_reset_sec_{2.0};
 
   double utm_origin_easting_{0.0};
   double utm_origin_northing_{0.0};
   double utm_origin_alt_{0.0};
 
   Ecef reference_ecef_{};
+  avg_msgs::msg::Point last_enu_{};
+  rclcpp::Time last_enu_stamp_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;

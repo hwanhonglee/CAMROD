@@ -33,12 +33,14 @@ def generate_launch_description():
     )
     params_arg = DeclareLaunchArgument(
         'params_file',
-        default_value=pkg_share('camrod_bringup', os.path.join('config', 'sensor_kit', 'robot_params.yaml')),
+        # HH_260330: Standalone platform launch uses package-local sensor_kit config by default.
+        default_value=pkg_share('camrod_sensor_kit', os.path.join('config', 'robot_params.yaml')),
         description='Sensor kit robot params',
     )
     robot_viz_params_arg = DeclareLaunchArgument(
         'robot_visualization_param_file',
-        default_value=pkg_share('camrod_bringup', os.path.join('config', 'platform', 'robot_visualization.yaml')),
+        # HH_260330: Standalone platform launch uses package-local platform config by default.
+        default_value=pkg_share('camrod_platform', os.path.join('config', 'robot_visualization.yaml')),
         description='Robot visualization parameters (platform namespace)',
     )
     enable_module_validator_arg = DeclareLaunchArgument(

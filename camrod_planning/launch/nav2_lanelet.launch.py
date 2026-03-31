@@ -15,15 +15,15 @@ import os
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
     pkg_share = get_package_share_directory('camrod_planning')
-    bringup_share = get_package_share_directory('camrod_bringup')
 
     # -------------------------------------------------------------------------
     # 기본 파일 경로 (4-stage overlay)
     # -------------------------------------------------------------------------
-    default_base_param = os.path.join(bringup_share, 'config', 'planning', 'nav2_base.yaml')
-    default_vehicle_param = os.path.join(bringup_share, 'config', 'planning', 'nav2_vehicle.yaml')
-    default_lanelet_param = os.path.join(bringup_share, 'config', 'planning', 'nav2_lanelet_overlay.yaml')
-    default_behavior_param = os.path.join(bringup_share, 'config', 'planning', 'nav2_behavior.yaml')
+    # HH_260330: Standalone planning launch uses package-local config by default.
+    default_base_param = os.path.join(pkg_share, 'config', 'nav2_base.yaml')
+    default_vehicle_param = os.path.join(pkg_share, 'config', 'nav2_vehicle.yaml')
+    default_lanelet_param = os.path.join(pkg_share, 'config', 'nav2_lanelet_overlay.yaml')
+    default_behavior_param = os.path.join(pkg_share, 'config', 'nav2_behavior.yaml')
 
     # -------------------------------------------------------------------------
     # Launch Arguments
@@ -145,7 +145,8 @@ def generate_launch_description():
                 'global_frame': 'map',
                 'local_frame': 'odom',
                 'robot_base_frame': nav2_robot_base_frame,
-                'transform_tolerance': 0.2,
+                # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
+                'transform_tolerance': 0.5,
             }
         },
         'bt_navigator': {
@@ -153,7 +154,8 @@ def generate_launch_description():
                 'global_frame': 'map',
                 'robot_base_frame': nav2_robot_base_frame,
                 'odom_topic': '/localization/odometry/filtered',
-                'transform_tolerance': 0.2,
+                # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
+                'transform_tolerance': 0.5,
             }
         },
         'nav2_velocity_smoother': {
@@ -198,6 +200,9 @@ def generate_launch_description():
         # HH_260304-00:00 overlay it on top of /planning/local_path and make the local plan
         # HH_260304-00:00 look duplicated or branch to a wrong loop segment.
         remappings=[
+            # HH_260331: Route controller output to raw topic.
+            # Final /planning/cmd_vel is published by planning cmd_vel gate after engage trigger.
+            ('cmd_vel', '/planning/cmd_vel_raw'),
             ('received_global_plan', '/planning/local_path_controller'),
             ('transformed_global_plan', '/planning/local_path_dwb'),
         ],
@@ -215,9 +220,13 @@ def generate_launch_description():
             'global_frame': 'map',
             'local_frame': 'odom',
             'robot_base_frame': nav2_robot_base_frame,
-            'transform_tolerance': 0.2,
+            # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
+            'transform_tolerance': 0.5,
         }],
         remappings=[
+            # HH_260331: Keep /planning/cmd_vel as controller-only stream.
+            # Recovery behaviors publish to a separate topic for clearer runtime control/debug.
+            ('cmd_vel', '/planning/cmd_vel_recovery'),
         ],
     )
 
@@ -231,7 +240,8 @@ def generate_launch_description():
             # HH_260306-00:00 Keep BT transform helpers pinned to configured Nav2 base frame.
             'global_frame': 'map',
             'robot_base_frame': nav2_robot_base_frame,
-            'transform_tolerance': 0.2,
+            # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
+            'transform_tolerance': 0.5,
         }],
         remappings=[
             # HH_260316-00:00 Consume snapped goal topic only.

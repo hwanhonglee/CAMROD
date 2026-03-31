@@ -17,7 +17,7 @@
     # offset_alt: 299.425
     
     # HH_260327: Active map reference origin (52S-CF60 - VMB).
-    # Park reference is kept above as annotation only.
+    # Keep this file aligned with camrod_bringup/config/map/map_info.yaml.
     # Degree LLH: 36.7292921, 127.4429577
     # UTM (meter): 52S 360965.99E 4065972.49N
     # MGRS: 52SCF6096565972
