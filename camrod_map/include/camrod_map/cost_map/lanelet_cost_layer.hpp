@@ -10,7 +10,7 @@
 
 namespace camrod_map::cost_map
 {
-// Implements `OccupancyGrid` behavior.
+// Nav2 layer that consumes an OccupancyGrid (map frame) and writes lanelet-aware costs.
 // HH_251230: Simple layer that consumes an OccupancyGrid (map frame) and writes costs
 class LaneletCostLayer : public nav2_costmap_2d::Layer
 {
@@ -21,7 +21,7 @@ public:
   void updateBounds(double, double, double, double *, double *, double *, double *) override;
   void updateCosts(nav2_costmap_2d::Costmap2D &, int, int, int, int) override;
   bool isClearable() override {return false;}
-  // Resets `reset` state.
+  // Reset helper reset: clears runtime state to the safe default behavior.
   void reset() override {}
 
 private:

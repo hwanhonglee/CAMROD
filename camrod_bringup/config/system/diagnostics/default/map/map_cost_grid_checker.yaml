@@ -1,0 +1,18 @@
+map_cost_grid_checker:
+  ros__parameters:
+    publish_rate: 1.0
+
+    cost_grid_topic: "/map/cost_grid/lanelet"
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    expected_hz:    1.0    # Expected message update rate (Hz).
+    hz_warn_ratio:  0.4    # WARN threshold for actual_hz/expected_hz ratio.
+    hz_error_ratio: 0.1    # ERROR threshold for actual_hz/expected_hz ratio.
+
+    stale_timeout:  3.0    # Mark STALE when no update is received within this duration (s).
+                           # Section note: tune thresholds based on expected stream behavior and safety policy.
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    unknown_ratio_warn:  0.8    # 80% unknown → WARN
+    unknown_ratio_error: 0.98   # ERROR threshold for unknown-cell ratio in occupancy grids.

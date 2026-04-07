@@ -10,20 +10,64 @@ from launch_ros.actions import Node
 from nav2_common.launch import RewrittenYaml
 from ament_index_python.packages import get_package_share_directory
 import os
+import yaml
+
+
+def extract_map_ros_params(map_info_cfg: dict) -> dict:
+    # HH_260406: Robust map_info parser for key-layout differences.
+    if not isinstance(map_info_cfg, dict):
+        return {}
+    for key in (
+        '/map/lanelet2_map',
+        'map/lanelet2_map',
+        'lanelet2_map',
+        '/lanelet2_map',
+    ):
+        val = map_info_cfg.get(key)
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    for val in map_info_cfg.values():
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    return {}
 
 
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
     pkg_share = get_package_share_directory('camrod_planning')
+    map_info_path = os.path.join(
+        get_package_share_directory('camrod_map'),
+        'config',
+        'map_info.yaml',
+    )
+    map_path_default = ''
+    origin_lat_default = '0.0'
+    origin_lon_default = '0.0'
+    origin_alt_default = '0.0'
+    try:
+        with open(map_info_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+        params = extract_map_ros_params(data)
+        map_path_default = str(params.get('map_path', map_path_default))
+        origin_lat_default = str(params.get('offset_lat', origin_lat_default))
+        origin_lon_default = str(params.get('offset_lon', origin_lon_default))
+        origin_alt_default = str(params.get('offset_alt', origin_alt_default))
+    except Exception:
+        pass
 
     # -------------------------------------------------------------------------
-    # 기본 파일 경로 (4-stage overlay)
+    # Default config file paths (4-stage overlay)
     # -------------------------------------------------------------------------
     # HH_260330: Standalone planning launch uses package-local config by default.
     default_base_param = os.path.join(pkg_share, 'config', 'nav2_base.yaml')
     default_vehicle_param = os.path.join(pkg_share, 'config', 'nav2_vehicle.yaml')
     default_lanelet_param = os.path.join(pkg_share, 'config', 'nav2_lanelet_overlay.yaml')
     default_behavior_param = os.path.join(pkg_share, 'config', 'nav2_behavior.yaml')
+    default_path_cost_grids_param = os.path.join(pkg_share, 'config', 'path_cost_grids.yaml')
 
     # -------------------------------------------------------------------------
     # Launch Arguments
@@ -53,14 +97,19 @@ def generate_launch_description():
         default_value='true',
         description='Enable planning path-cost-grid helper nodes (/planning/cost_grid/*)',
     )
+    path_cost_grids_param_arg = DeclareLaunchArgument(
+        'path_cost_grids_param_file',
+        default_value=default_path_cost_grids_param,
+        description='Parameter file for planning path-cost-grid helper nodes',
+    )
     map_path_arg = DeclareLaunchArgument(
         'map_path',
-        default_value='/home/nvidia/camrod_ws/src/lanelet2_maps.osm',
+        default_value=map_path_default,
         description='Lanelet2 map path for path-cost-grid helpers',
     )
-    origin_lat_arg = DeclareLaunchArgument('origin_lat', default_value='36.8436194')
-    origin_lon_arg = DeclareLaunchArgument('origin_lon', default_value='128.0925490')
-    origin_alt_arg = DeclareLaunchArgument('origin_alt', default_value='0.0')
+    origin_lat_arg = DeclareLaunchArgument('origin_lat', default_value=origin_lat_default)
+    origin_lon_arg = DeclareLaunchArgument('origin_lon', default_value=origin_lon_default)
+    origin_alt_arg = DeclareLaunchArgument('origin_alt', default_value=origin_alt_default)
     nav2_robot_base_frame_arg = DeclareLaunchArgument(
         'nav2_robot_base_frame',
         # Keep Nav2 base frame aligned with platform/localization TF.
@@ -86,6 +135,7 @@ def generate_launch_description():
     nav2_lanelet_param_file = LaunchConfiguration('nav2_lanelet_param_file')
     nav2_behavior_param_file = LaunchConfiguration('nav2_behavior_param_file')
     enable_path_cost_grids = LaunchConfiguration('enable_path_cost_grids')
+    path_cost_grids_param_file = LaunchConfiguration('path_cost_grids_param_file')
     map_path = LaunchConfiguration('map_path')
     origin_lat = LaunchConfiguration('origin_lat')
     origin_lon = LaunchConfiguration('origin_lon')
@@ -121,9 +171,9 @@ def generate_launch_description():
     )
 
     # -------------------------------------------------------------------------
-    # ★가장 중요한 방어막: costmap/behavior/smoother의 robot_base_frame을 "구조 그대로" 강제
-    # - 이 dict는 ROS2 파라미터 트리에 맞는 형태라서 깨질 일이 없음
-    # - 여기서 base_link로 떨어지는 문제를 확실히 차단
+    # Critical safety guard:
+    # Force robot_base_frame in costmap/behavior/smoother using canonical
+    # ROS2 parameter-tree structure. This prevents silent fallback to base_link.
     # -------------------------------------------------------------------------
     force_robot_base_link_overrides = {
         'global_costmap': {
@@ -277,6 +327,7 @@ def generate_launch_description():
     path_cost_grids = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(pkg_share, 'launch', 'path_cost_grids.launch.py')),
         launch_arguments={
+            'path_cost_grids_param_file': path_cost_grids_param_file,
             'map_path': map_path,
             'origin_lat': origin_lat,
             'origin_lon': origin_lon,
@@ -292,6 +343,7 @@ def generate_launch_description():
         nav2_lanelet_param_arg,
         nav2_behavior_param_arg,
         enable_path_cost_grids_arg,
+        path_cost_grids_param_arg,
         map_path_arg,
         origin_lat_arg,
         origin_lon_arg,

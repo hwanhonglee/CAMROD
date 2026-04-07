@@ -113,7 +113,6 @@ endif()
 install(
   PROGRAMS
     scripts/system_checker_node.py
-    scripts/module_checker_node.py
     scripts/system_diagnostic_node.py
     scripts/diagnostics_aggregator_node.py
   DESTINATION lib/${PROJECT_NAME}

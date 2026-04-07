@@ -12,13 +12,13 @@
 namespace camping_cart {
 namespace map {
 
-// Implements `Lanelet2MapLoader` behavior.
+// Initializes loader with geodetic origin offsets used by projector creation.
 Lanelet2MapLoader::Lanelet2MapLoader(const LoaderConfig & cfg)
 : cfg_(cfg)
 {
 }
 
-// Loads `load` data or configuration.
+// Loads Lanelet2 map from OSM file using the configured map origin/projector.
 lanelet::LaneletMapPtr Lanelet2MapLoader::load(const std::string & map_path)
 {
   map_.reset();
@@ -57,7 +57,7 @@ lanelet::LaneletMapPtr Lanelet2MapLoader::load(const std::string & map_path)
   return map_;
 }
 
-// Implements `getMapStats` behavior.
+// Returns compact layer-size statistics for debug logging.
 std::string Lanelet2MapLoader::getMapStats() const
 {
   if (!map_) {

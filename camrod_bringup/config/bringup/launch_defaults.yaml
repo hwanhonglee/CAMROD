@@ -4,9 +4,13 @@ bringup:
     sim: false
     rviz: true
     # HH_260327: Stagger module startup to reduce bringup burst load.
-    module_launch_gap_sec: 0.8
+    module_launch_gap_sec: 1.0
 
   localization:
+    enable_adapter: true
+    enable_filter: true
+    enable_monitor: true
+    enable_map_helper: true
     # HH_260327: Match standalone localization.launch.py default behavior.
     # Keep bringup baseline on EKF so runtime result is consistent with module-by-module launch.
     use_eskf: false
@@ -23,11 +27,18 @@ bringup:
     eskf_rmp401_odom_topic: /rmp401/odom
     kimera_bridge_enable: false
     pose_selector_enable: false
-    # HH_260331: bringup은 기본적으로 모듈 기본 config를 사용.
-    # 값이 비어있거나 __module_default__ 이면 override를 전달하지 않음.
+    # HH_260407: Localization launch refactor - explicit override keys per sub-launch.
+    adapter_param_file: __module_default__
+    filter_eskf_param_file: __module_default__
+    filter_pose_selector_param_file: __module_default__
+    filter_kimera_param_file: __module_default__
+    monitor_param_file: __module_default__
+    map_helper_param_file: __module_default__
+    map_info_file: __module_default__
+    drop_zones_yaml: __module_default__
+    # HH_260407: legacy keys (fallback only).
     ekf_param_file: __module_default__
     eskf_param_file: __module_default__
-    drop_zones_yaml: __module_default__
     kimera_bridge_param_file: __module_default__
     pose_selector_param_file: __module_default__
 
@@ -41,7 +52,10 @@ bringup:
     require_localization_ready: false
     # HH_260326: Keep OFF by default; current state machine requires status_msgs runtime dependency.
     enable_state_machine: false
-    # HH_260331: local path 기준 pose는 localization.launch 단독 실행과 동일하게 유지.
+    # HH_260401: Resolve drop_zone from map-exported semantic area YAML.
+    state_machine_keypoints_yaml: map/drop_zones.yaml
+    state_machine_camping_sites_yaml: planning/camping_sites.yaml
+    # HH_260331: Keep local-path pose topic aligned with standalone localization.launch.py behavior.
     local_path_pose_topic: /localization/pose
     # HH_260331: Prefer controller-local path first so /planning/local_path differs
     # from pure global slicing and reflects local costmap reactions in real time.
@@ -56,12 +70,16 @@ bringup:
     cmd_vel_gate_estop_topic: /planning/state_machine/estop
     cmd_vel_gate_allow_on_start: false
     use_dwb_controller: false
-    # HH_260331: 기본은 planning 패키지 launch 내부 기본 config 사용.
+    # HH_260331: By default, use internal config defaults declared by planning launch files.
     nav2_base_param_file: __module_default__
     nav2_vehicle_param_file: __module_default__
     nav2_vehicle_dwb_param_file: __module_default__
     nav2_lanelet_param_file: __module_default__
     nav2_behavior_param_file: __module_default__
+    path_cost_grids_param_file: __module_default__
+    goal_snapper_param_file: __module_default__
+    centerline_snapper_param_file: __module_default__
+    goal_replanner_param_file: __module_default__
     local_path_extractor_param_file: __module_default__
     planning_state_machine_param_file: __module_default__
 
@@ -73,7 +91,7 @@ bringup:
     enable_imu: true
     enable_gnss: true
     enable_ntrip: true
-    # HH_260331: 기본은 sensing 패키지 launch 내부 기본 config 사용.
+    # HH_260331: By default, use internal config defaults declared by sensing launch files.
     sensing_param_file: __module_default__
     lidar_preprocess_param_file: __module_default__
     camera_preprocess_param_file: __module_default__
@@ -83,10 +101,12 @@ bringup:
     lidar_cost_grid_param_file: __module_default__
     gnss_param_file: __module_default__
     ntrip_param_file: __module_default__
+    cv7_param_file: __module_default__
+    gq7_param_file: __module_default__
     vanjee_config_path: __module_default__
 
   platform:
-    # HH_260331: 기본은 platform 패키지 launch 내부 기본 config 사용.
+    # HH_260331: By default, use internal config defaults declared by platform launch files.
     params_file: __module_default__
     robot_visualization_param_file: __module_default__
     # HH_260331: Real platform defaults to direct planning cmd_vel usage.
@@ -96,14 +116,15 @@ bringup:
     cmd_vel_out_topic: /platform/cmd_vel
 
   perception:
-    # HH_260331: 기본은 perception 패키지 launch 내부 기본 config 사용.
+    enable_lidar_obstacle: true
+    # HH_260331: By default, use internal config defaults declared by perception launch files.
     perception_param_file: __module_default__
 
   system:
-    # HH_260331: bringup에서 camrod_system 전체 diagnostics launch를 기본 활성화.
+    # HH_260331: Enable full camrod_system diagnostics launch by default in bringup.
     enable_module_validators: true
     diagnostics_profile: default
-    # platform checker는 ranger_msgs 의존성 있을 때만 true 권장.
+    # Set true only when ranger_msgs-dependent platform checker is available.
     enable_platform_checker: false
     # HH_260327: Keep plugin API bridge enabled by default.
     enable_plugin_api: true
@@ -136,10 +157,12 @@ bringup:
     # HH_260327: Map origin defaults are loaded from config/map/map_info.yaml.
     # launch_defaults keeps only explicit bringup-level overrides.
     # Keep only explicit map path / yaw override knobs here.
-    map_path: /home/nvidia/camrod_ws/src/lanelet2_maps.osm
+    map_path: ""
     yaw_offset_deg: 0.0
-    # HH_260331: 기본은 map 패키지 launch 내부 기본 config 사용.
+    # HH_260331: By default, use internal config defaults declared by map launch files.
+    map_info_file: __module_default__
     map_param_file: __module_default__
+    lanelet_cost_grid_param_file: __module_default__
     map_visualization_param_file: __module_default__
 
   sim:

@@ -1,0 +1,204 @@
+# ============================================================
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# ============================================================
+#
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+#       → name = "gnss_checker: /sensor/gnss/main"
+#
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+#
+# ============================================================
+
+global:
+  timeout_sec: 5.0
+  publish_rate: 1.0
+
+topics:
+
+  # ── Hardware ──────────────────────────────────────────────────────────
+  - name: "hw_checker: /hardware/cpu"
+    group: hardware
+    timeout_sec: 5.0
+
+  - name: "hw_checker: /hardware/memory"
+    group: hardware
+    timeout_sec: 5.0
+
+  - name: "hw_checker: /hardware/disk"
+    group: hardware
+    timeout_sec: 5.0
+
+  - name: "hw_checker: /hardware/cpu_temp"
+    group: hardware
+    timeout_sec: 5.0
+
+  - name: "gpu_checker: /hardware/gpu0"
+    group: hardware
+    timeout_sec: 5.0
+
+  # ── Hardware: Network ─────────────────────────────────────────────────
+  - name: "network_checker: /hardware/network/connection"
+    group: hardware
+    timeout_sec: 5.0
+
+  - name: "network_checker: /hardware/network/signal"
+    group: hardware
+    timeout_sec: 5.0
+
+  - name: "network_checker: /hardware/network/quality"
+    group: hardware
+    timeout_sec: 5.0
+
+  # ── Sensing: GNSS ─────────────────────────────────────────────────────
+  - name: "gnss_checker: /sensor/gnss/main"
+    group: sensing/gnss
+    timeout_sec: 3.0
+
+  # ── Sensing: IMU ──────────────────────────────────────────────────────
+  - name: "imu_checker: /sensor/imu/main"
+    group: sensing/imu
+    timeout_sec: 2.0
+
+  # ── Sensing: LiDAR ────────────────────────────────────────────────────
+  - name: "lidar_checker: /sensor/lidar/main"
+    group: sensing/lidar
+    timeout_sec: 3.0
+
+  - name: "lidar_checker: /sensor/lidar/filtered"
+    group: sensing/lidar
+    timeout_sec: 3.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "radar_checker: /sensor/radar/REAR"
+    group: sensing/radar
+    timeout_sec: 3.0
+
+  - name: "radar_checker: /sensor/radar/LEFT2"
+    group: sensing/radar
+    timeout_sec: 3.0
+
+  - name: "radar_checker: /sensor/radar/LEFT1"
+    group: sensing/radar
+    timeout_sec: 3.0
+
+  - name: "radar_checker: /sensor/radar/RIGHT2"
+    group: sensing/radar
+    timeout_sec: 3.0
+
+  - name: "radar_checker: /sensor/radar/RIGHT1"
+    group: sensing/radar
+    timeout_sec: 3.0
+
+  - name: "radar_checker: /sensor/radar/FRONT"
+    group: sensing/radar
+    timeout_sec: 3.0
+
+  # ── Sensing: Camera ───────────────────────────────────────────────────
+  - name: "camera_checker: /sensor/camera/front"
+    group: sensing/camera
+    timeout_sec: 3.0
+
+  - name: "camera_checker: /sensor/camera/processed"
+    group: sensing/camera
+    timeout_sec: 3.0
+
+  # ── Sensing: Wheel Odometry ───────────────────────────────────────────
+  - name: "wheel_odometry_checker: /sensor/wheel/main"
+    group: sensing/wheel
+    timeout_sec: 3.0
+
+  # ── Sensing: Cost Grid (Perception) ───────────────────────────────────
+  - name: "cost_grid_checker: /perception/lidar/cost_grid"
+    group: sensing/perception
+    timeout_sec: 5.0
+
+  # ── Sensing: Velocity Converter ───────────────────────────────────────
+  - name: "velocity_converter_checker: /sensing/velocity_converter"
+    group: sensing/velocity
+    timeout_sec: 3.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "localization_gnss_checker: /localization/gnss/main"
+    group: localization/gnss
+    timeout_sec: 5.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "localization_mode_checker: /localization/mode"
+    group: localization/mode
+    timeout_sec: 5.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "localization_pose_checker: /localization/pose"
+    group: localization/pose
+    timeout_sec: 3.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "localization_init_checker: /localization/init"
+    group: localization/init
+    timeout_sec: 10.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "localization_source_checker: /localization/source"
+    group: localization/source
+    timeout_sec: 5.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "localization_lanelet_checker: /localization/lanelet"
+    group: localization/lanelet
+    timeout_sec: 3.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "perception_obstacle_checker: /perception/obstacles/camera_detections"
+    group: perception/detections
+    timeout_sec: 5.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "perception_obstacle_checker: /perception/obstacles/fused_obstacles"
+    group: perception/obstacles
+    timeout_sec: 5.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "planning_path_checker: /planning/path/global_path"
+    group: planning/path
+    timeout_sec: 5.0
+
+  - name: "planning_path_checker: /planning/path/local_path"
+    group: planning/path
+    timeout_sec: 5.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "planning_costmap_checker: /planning/global_costmap"
+    group: planning/costmap
+    timeout_sec: 5.0
+
+  - name: "planning_costmap_checker: /planning/local_costmap"
+    group: planning/costmap
+    timeout_sec: 5.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "planning_nav_status_checker: /planning/nav_status"
+    group: planning/nav_status
+    timeout_sec: 8.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "planning_lifecycle_checker: /planning/lifecycle/planning/planner_server"
+    group: planning/lifecycle
+    timeout_sec: 8.0
+
+  - name: "planning_lifecycle_checker: /planning/lifecycle/planning/controller_server"
+    group: planning/lifecycle
+    timeout_sec: 8.0
+
+  - name: "planning_lifecycle_checker: /planning/lifecycle/planning/bt_navigator"
+    group: planning/lifecycle
+    timeout_sec: 8.0
+
+  - name: "planning_lifecycle_checker: /planning/lifecycle/planning/behavior_server"
+    group: planning/lifecycle
+    timeout_sec: 8.0
+
+  # Section note: tune thresholds based on expected stream behavior and safety policy.
+  - name: "map_cost_grid_checker: /map/cost_grid"
+    group: map/cost_grid
+    timeout_sec: 5.0

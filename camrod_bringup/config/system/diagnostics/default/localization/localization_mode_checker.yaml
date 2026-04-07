@@ -1,0 +1,20 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+localization_mode_checker:
+  ros__parameters:
+    publish_rate: 1.0                        # Diagnostic publish rate (Hz).
+
+    status_topic: "/localization/status"     # Input topic monitored by this checker.
+    health_topic: "/localization/state"      # Input topic monitored by this checker.
+
+    stale_timeout: 2.0                       # Mark STALE when no update is received within this duration (s).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    conf_warn:  0.6                          # Parameter note: tune this value for your platform profile.
+    conf_error: 0.3                          # Parameter note: tune this value for your platform profile.
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    innov_warn:  3.0                         # Parameter note: tune this value for your platform profile.
+    innov_error: 6.0                         # Parameter note: tune this value for your platform profile.

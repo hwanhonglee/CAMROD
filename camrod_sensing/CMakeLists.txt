@@ -5,16 +5,19 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# HH_260109 Build sensing nodes for LiDAR/camera preprocessing and velocity conversion.
+# Core build system
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(nav_msgs REQUIRED)
+
+# Project message layer
 find_package(avg_msgs REQUIRED)
+
+# TF / geometry helpers used in cost-grid nodes
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+
+# Point cloud processing
 find_package(pcl_conversions REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common filters segmentation sample_consensus search kdtree)
@@ -24,15 +27,20 @@ if(PCL_DEFINITIONS)
   add_definitions(${PCL_DEFINITIONS})
 endif()
 
+# ------------------------------------------------------------------------------
+# LiDAR preprocessor
+# ------------------------------------------------------------------------------
 add_executable(lidar_preprocessor_node src/lidar_preprocessor_node.cpp)
-ament_target_dependencies(lidar_preprocessor_node
-  rclcpp sensor_msgs geometry_msgs avg_msgs pcl_conversions)
+ament_target_dependencies(
+  lidar_preprocessor_node
+  rclcpp
+  avg_msgs
+  pcl_conversions
+)
 target_include_directories(lidar_preprocessor_node PRIVATE ${PCL_INCLUDE_DIRS})
 target_include_directories(lidar_preprocessor_node PRIVATE ${EIGEN3_INCLUDE_DIRS})
-# Explicitly link PCL component libraries used by the preprocessor.
-# On some ARM64 images, `${PCL_LIBRARIES}` may miss transitive pieces and
-# cause undefined references for PCLBase/SACSegmentation/VoxelGrid symbols.
-target_link_libraries(lidar_preprocessor_node
+target_link_libraries(
+  lidar_preprocessor_node
   ${PCL_LIBRARIES}
   pcl_common
   pcl_filters
@@ -42,61 +50,76 @@ target_link_libraries(lidar_preprocessor_node
   pcl_kdtree
 )
 
-# HH_260109 Add camera preprocessor for raw-to-processed image streams.
+# ------------------------------------------------------------------------------
+# Camera preprocessor
+# ------------------------------------------------------------------------------
 add_executable(camera_preprocessor_node src/camera_preprocessor_node.cpp)
-ament_target_dependencies(camera_preprocessor_node
-  rclcpp sensor_msgs avg_msgs)
-
-# HH_260109 Convert platform velocity + IMU into twist_with_covariance for downstream checks.
-add_executable(platform_velocity_converter_node src/platform_velocity_converter_node.cpp)
-ament_target_dependencies(platform_velocity_converter_node
-  rclcpp geometry_msgs sensor_msgs avg_msgs)
-
-# HH_260220
-add_executable(sen0592_radar_node src/sen0592_radar_node.cpp)
-ament_target_dependencies(sen0592_radar_node
-  rclcpp
-  sensor_msgs
-  avg_msgs)
-
-add_executable(radar_cost_grid_node src/radar_cost_grid_node.cpp)
-ament_target_dependencies(radar_cost_grid_node
-  rclcpp
-  sensor_msgs
-  geometry_msgs
-  nav_msgs
-  avg_msgs
-  tf2
-  tf2_ros
-  tf2_geometry_msgs)
-
-add_executable(lidar_cost_grid_node src/lidar_cost_grid_node.cpp)
-ament_target_dependencies(lidar_cost_grid_node
-  rclcpp
-  sensor_msgs
-  geometry_msgs
-  nav_msgs
-  avg_msgs
-  tf2
-  tf2_ros
-  tf2_geometry_msgs)
-
-install(TARGETS
-  lidar_preprocessor_node
+ament_target_dependencies(
   camera_preprocessor_node
+  rclcpp
+  avg_msgs
+)
+
+# ------------------------------------------------------------------------------
+# Platform velocity converter
+# ------------------------------------------------------------------------------
+add_executable(platform_velocity_converter_node src/platform_velocity_converter_node.cpp)
+ament_target_dependencies(
   platform_velocity_converter_node
-  sen0592_radar_node # HH_260220
+  rclcpp
+  avg_msgs
+)
+
+# ------------------------------------------------------------------------------
+# Radar sensor node
+# ------------------------------------------------------------------------------
+add_executable(sen0592_radar_node src/sen0592_radar_node.cpp)
+ament_target_dependencies(
+  sen0592_radar_node
+  rclcpp
+  avg_msgs
+)
+
+# ------------------------------------------------------------------------------
+# Radar cost grid
+# ------------------------------------------------------------------------------
+add_executable(radar_cost_grid_node src/radar_cost_grid_node.cpp)
+ament_target_dependencies(
   radar_cost_grid_node
+  rclcpp
+  avg_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+)
+
+# ------------------------------------------------------------------------------
+# LiDAR cost grid
+# ------------------------------------------------------------------------------
+add_executable(lidar_cost_grid_node src/lidar_cost_grid_node.cpp)
+ament_target_dependencies(
   lidar_cost_grid_node
-  DESTINATION lib/${PROJECT_NAME})
+  rclcpp
+  avg_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+)
 
 install(
-  PROGRAMS
-    scripts/sensing_status_node.py
+  TARGETS
+    lidar_preprocessor_node
+    camera_preprocessor_node
+    platform_velocity_converter_node
+    sen0592_radar_node
+    radar_cost_grid_node
+    lidar_cost_grid_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY config launch
-  DESTINATION share/${PROJECT_NAME})
+install(
+  DIRECTORY config launch
+  DESTINATION share/${PROJECT_NAME}
+)
 
 ament_package()

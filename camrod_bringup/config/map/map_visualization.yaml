@@ -1,4 +1,4 @@
-/map/inflation_cost_marker:
+/map/nav2_costmap_debug_marker:
   ros__parameters:
     # 2026-03-05: This node visualizes Nav2 master costmap (debug only).
     # Final user-facing combined marker is /map/cost_grid/inflation_markers
@@ -20,10 +20,40 @@
     sample_stride: 2
     republish_period_sec: 0.0
 
-/map/lanelet_cost_field:
+/map/cost_grid_multi_marker:
+  ros__parameters:
+    # Aggregated marker conversion for lanelet/lidar/radar near-cost grids.
+    # Replaces three separate cost_field_marker_node instances.
+    grid_topics:
+      - "/map/cost_grid/lanelet"
+      - "/sensing/lidar/near_cost_grid"
+      - "/sensing/radar/near_cost_grid"
+    marker_topics:
+      - "/map/cost_grid/lanelet_markers"
+      - "/map/cost_grid/lidar_markers"
+      - "/map/cost_grid/radar_markers"
+    marker_scales: [0.08, 0.08, 0.10]
+    min_values: [0, 0, 0]
+    max_values: [100, 100, 100]
+    alphas: [0.12, 0.40, 0.42]
+    z_offsets: [0.02, 0.035, 0.04]
+    cell_scale_ratios: [0.70, 0.70, 0.70]
+    palettes:
+      - "pastel_blue_red"
+      - "pastel_green_red"
+      - "pastel_orange_red"
+    show_unknowns: [false, false, false]
+    grid_qos_transient_locals: [true, true, true]
+    sample_strides: [1, 2, 2]
+    min_publish_period_secs: [0.02, 0.03, 0.03]
+    republish_period_secs: [0.20, 0.12, 0.12]
+    stale_timeout_secs: [0.0, 0.0, 0.0]
+    clear_on_empty_grids: [true, true, true]
+
+/map/lanelet_cost_field_visualizer:
   ros__parameters:
     map_frame_id: "map"
-    projector_type: "LocalCartesianUTM"
+    projector_type: "local_cartesian"
     max_draw_distance: 0.0
     percentile_clip: 0.95
     weights.distance: 1.0

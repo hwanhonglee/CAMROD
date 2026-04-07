@@ -74,7 +74,7 @@ public:
   }
 
 private:
-  // Checks `canPublishNow` condition.
+  // Guard check canPublishNow: verifies whether publish/build conditions are currently satisfied.
   bool canPublishNow() const
   {
     if (min_publish_period_sec_ <= 0.0 || last_publish_time_.nanoseconds() <= 0) {
@@ -84,7 +84,7 @@ private:
     return dt >= min_publish_period_sec_;
   }
 
-  // Publishes `FromGrid` output.
+  // Publish helper FromGrid: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishFromGrid(const avg_msgs::msg::OccupancyGrid & grid_msg)
   {
     avg_msgs::msg::MarkerArray arr;
@@ -159,7 +159,7 @@ private:
     pending_grid_update_ = false;
   }
 
-  // Publishes `AvgMapMessage` output.
+  // Publish helper AvgMapMessage: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishAvgMapMessage(
     const avg_msgs::msg::MarkerArray & markers,
     const builtin_interfaces::msg::Time & stamp,
@@ -178,7 +178,7 @@ private:
     avg_map_pub_->publish(msg);
   }
 
-  // Initializes `Marker` state.
+  // Initialization helper Marker: initializes message defaults before frame-specific fields are filled.
   avg_msgs::msg::Marker initMarker(const avg_msgs::msg::Header & header) const
   {
     avg_msgs::msg::Marker m;
@@ -195,7 +195,7 @@ private:
     return m;
   }
 
-  // Implements `colorFromValue` behavior.
+  // colorFromValue: Utility helper used for string parsing, math conversion, or styling.
   avg_msgs::msg::ColorRGBA colorFromValue(int8_t v) const
   {
     avg_msgs::msg::ColorRGBA c;
@@ -257,7 +257,7 @@ private:
     return c;
   }
 
-  // Handles the `onParamChange` callback.
+  // Callback onParamChange: handles incoming ROS data or timer events and updates internal cache/publish state.
   avg_msgs::msg::SetParametersResult onParamChange(
     const std::vector<rclcpp::Parameter> & params)
   {
@@ -299,7 +299,7 @@ private:
     return r;
   }
 
-  // Updates `RepublishTimer` state.
+  // State update RepublishTimer: updates cached runtime state used by the next build/publish cycle.
   void updateRepublishTimer()
   {
     republish_timer_.reset();
@@ -313,7 +313,7 @@ private:
       std::bind(&CostFieldMarkerNode::onRepublishTimer, this));
   }
 
-  // Handles the `onGrid` callback.
+  // Callback onGrid: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onGrid(const avg_msgs::msg::OccupancyGrid::ConstSharedPtr msg)
   {
     if (!msg) {
@@ -336,7 +336,7 @@ private:
     publishFromGrid(*msg);
   }
 
-  // Handles the `onRepublishTimer` callback.
+  // Callback onRepublishTimer: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onRepublishTimer()
   {
     if (stale_timeout_sec_ > 0.0 && last_grid_rx_.nanoseconds() > 0) {
@@ -372,7 +372,7 @@ private:
     }
   }
 
-  // Publishes `DeleteAll` output.
+  // Publish helper DeleteAll: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishDeleteAll(const avg_msgs::msg::Header & header)
   {
     avg_msgs::msg::MarkerArray arr;

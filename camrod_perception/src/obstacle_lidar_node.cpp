@@ -22,14 +22,49 @@ struct AABB
 class EuclideanBBoxNode : public rclcpp::Node
 {
 public:
+  // Initializes clustering parameters and ROS interfaces for LiDAR obstacle box extraction.
   EuclideanBBoxNode() : Node("obstacle_lidar_node")
   {
     input_topic_  = this->declare_parameter<std::string>("input_topic", "/sensing/lidar/points");
     bbox_topic_   = this->declare_parameter<std::string>("bbox_topic", "/perception/lidar/bboxes");
 
-    cluster_tolerance_ = this->declare_parameter<double>("cluster_tolerance", 0.4);
-    min_cluster_size_  = this->declare_parameter<int>("min_cluster_size", 10);
-    max_cluster_size_  = this->declare_parameter<int>("max_cluster_size", 5000);
+    constexpr double kClusterToleranceDefault = 0.4;
+    constexpr int kMinClusterSizeDefault = 10;
+    constexpr int kMaxClusterSizeDefault = 5000;
+    cluster_tolerance_ = this->declare_parameter<double>(
+      "cluster_tolerance", kClusterToleranceDefault);
+    min_cluster_size_ = this->declare_parameter<int>(
+      "min_cluster_size", kMinClusterSizeDefault);
+    max_cluster_size_ = this->declare_parameter<int>(
+      "max_cluster_size", kMaxClusterSizeDefault);
+
+    // HH_260406: Backward compatibility for legacy parameter names.
+    const double legacy_eps = this->declare_parameter<double>("eps", kClusterToleranceDefault);
+    const int legacy_min_pts = this->declare_parameter<int>("min_pts", kMinClusterSizeDefault);
+    const int legacy_min_cluster_points = this->declare_parameter<int>(
+      "min_cluster_points", kMinClusterSizeDefault);
+    const int legacy_max_points = this->declare_parameter<int>(
+      "max_points", kMaxClusterSizeDefault);
+
+    if (
+      std::abs(cluster_tolerance_ - kClusterToleranceDefault) < 1e-9 &&
+      std::abs(legacy_eps - kClusterToleranceDefault) > 1e-9)
+    {
+      cluster_tolerance_ = legacy_eps;
+    }
+    if (min_cluster_size_ == kMinClusterSizeDefault) {
+      if (legacy_min_cluster_points != kMinClusterSizeDefault) {
+        min_cluster_size_ = legacy_min_cluster_points;
+      } else if (legacy_min_pts != kMinClusterSizeDefault) {
+        min_cluster_size_ = legacy_min_pts;
+      }
+    }
+    if (
+      max_cluster_size_ == kMaxClusterSizeDefault &&
+      legacy_max_points != kMaxClusterSizeDefault)
+    {
+      max_cluster_size_ = legacy_max_points;
+    }
 
     use_box_ = this->declare_parameter<bool>("use_box", true);
     x_min_   = this->declare_parameter<double>("x_min", 0.0);
@@ -57,6 +92,7 @@ public:
   }
 
 private:
+  // Runs ROI filtering + Euclidean clustering and publishes bounding box markers.
   void cb(const avg_msgs::msg::PointCloud2::SharedPtr msg)
   {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
@@ -64,7 +100,7 @@ private:
 
     if (cloud->empty()) return;
 
-    // ROI 필터
+    // ROI filter to keep only points within configured spatial bounds.
     pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>());
     for (const auto &p : cloud->points)
     {
@@ -81,11 +117,11 @@ private:
 
     if (filtered->empty()) return;
 
-    // KD-Tree
+    // Build KD-tree for Euclidean cluster extraction.
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>());
     tree->setInputCloud(filtered);
 
-    // Euclidean Clustering
+    // Run Euclidean clustering on filtered points.
     std::vector<pcl::PointIndices> cluster_indices;
 
     pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
@@ -126,7 +162,7 @@ private:
 
         b.count++;
 
-        // 🔥 최소 거리 계산 (핵심)
+        // Track minimum radial distance for per-cluster text diagnostics.
         float d = std::sqrt(p.x*p.x + p.y*p.y);
         if (d < min_dists[i]) min_dists[i] = d;
       }
@@ -199,7 +235,7 @@ private:
         text.scale.z = 0.20;
         text.color.a = 1.0;
 
-        float dist = min_dists[c];  // 🔥 핵심 변경
+        float dist = min_dists[c];
         text.text =
           "id=" + std::to_string(c) +
           " n=" + std::to_string(b.count) +
@@ -212,6 +248,7 @@ private:
     pub_bbox_->publish(arr);
   }
 
+  // Clears previous markers when no valid cluster exists in the current frame.
   void publishDeleteAll(const std::string &frame_id,
                         const rclcpp::Time &stamp)
   {
@@ -244,6 +281,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr pub_bbox_;
 };
 
+// Entrypoint that runs the LiDAR clustering node.
 int main(int argc, char **argv)
 {
   rclcpp::init(argc, argv);

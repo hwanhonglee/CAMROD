@@ -1,0 +1,8 @@
+planning_nav_status_checker:
+  ros__parameters:
+    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+
+    nav_status_topic: "/planning/navigate_to_pose/_action/status"
+    stale_timeout: 5.0         # Mark STALE when no update is received within this duration (s).
+    abort_warn: 2              # WARN threshold for abort count inside the checker window.
+    abort_error: 5             # ERROR threshold for abort count inside the checker window.

@@ -1,19 +1,19 @@
 /platform/robot_visualization:
   ros__parameters:
-    map_frame_id: "map"
-    base_frame_id: "robot_base_link"
-    marker_topic: "/platform/robot/markers"
-    boundary_topic: "/platform/robot/planning_boundary"
+    map_frame_id: "map"                          # Global frame used to publish all robot markers.
+    base_frame_id: "robot_base_link"             # Robot body frame visualized and optionally broadcast via TF.
+    marker_topic: "/platform/robot/markers"      # MarkerArray output topic containing body/sensor/axes/ring markers.
+    boundary_topic: "/platform/robot/planning_boundary"  # PolygonStamped output used as planning safety boundary.
     # HH_260327: Follow localization pose as primary platform visualization anchor.
-    localization_pose_topic: "/localization/pose"
+    localization_pose_topic: "/localization/pose"  # Primary pose source for robot marker alignment.
     # HH_260327: GNSS is fallback-only (used only if localization is stale/missing).
-    gnss_pose_topic: "/sensing/gnss/pose"
-    use_gnss_fallback: true
-    localization_pose_timeout_sec: 1.0
-    publish_tf: false
-    use_map_ground_z: true
-    ground_z_offset: 0.0
-    publish_rate_hz: 20.0
-    body_scale_factor: 1.0
-    planning_boundary_margin: 0.3
-    range_ring_radii: [2.0, 4.0, 6.0, 8.0]
+    gnss_pose_topic: "/sensing/gnss/pose"        # Secondary pose source used only when localization becomes stale.
+    use_gnss_fallback: true                      # Enables GNSS fallback behavior for marker anchoring.
+    localization_pose_timeout_sec: 1.0           # Maximum accepted localization age before GNSS fallback [s].
+    publish_tf: false                            # If true, publishes map->base TF from visualization pose.
+    use_map_ground_z: true                       # If true, estimates ground Z from `/map/markers` lanelet samples.
+    ground_z_offset: 0.0                         # Additional Z offset applied on top of estimated ground height [m].
+    publish_rate_hz: 20.0                        # Marker and boundary publish frequency [Hz].
+    body_scale_factor: 1.0                       # Uniform scale multiplier for body footprint visuals.
+    planning_boundary_margin: 0.3                # Extra margin added around body footprint for boundary polygon [m].
+    range_ring_radii: [2.0, 4.0, 6.0, 8.0]       # Concentric debug rings around base frame [m].

@@ -1,5 +1,0 @@
-# HH_260112 Align node parameter keys with /localization namespace + short names.
-/localization/state_watcher:
-  ros__parameters:
-    gnss_timeout_sec: 1.0
-    imu_timeout_sec: 0.5

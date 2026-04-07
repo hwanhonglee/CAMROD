@@ -1,0 +1,65 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+hw_checker:
+  ros__parameters:
+    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+
+    cpu:
+      enabled: true           # Parameter note: tune this value for your platform profile.
+      warn_threshold: 70.0    # Parameter note: tune this value for your platform profile.
+      error_threshold: 90.0   # Parameter note: tune this value for your platform profile.
+
+    memory:
+      enabled: true           # Parameter note: tune this value for your platform profile.
+      warn_threshold: 75.0    # Parameter note: tune this value for your platform profile.
+      error_threshold: 90.0   # Parameter note: tune this value for your platform profile.
+
+    disk:
+      enabled: true           # Parameter note: tune this value for your platform profile.
+      warn_threshold: 80.0    # Parameter note: tune this value for your platform profile.
+      error_threshold: 95.0   # Parameter note: tune this value for your platform profile.
+      path: "/"               # Parameter note: tune this value for your platform profile.
+                              # Section note: tune thresholds based on expected stream behavior and safety policy.
+                              # Section note: tune thresholds based on expected stream behavior and safety policy.
+                              # Section note: tune thresholds based on expected stream behavior and safety policy.
+
+    cpu_temp:
+      enabled: true           # Parameter note: tune this value for your platform profile.
+                              # Section note: tune thresholds based on expected stream behavior and safety policy.
+      warn_threshold: 75.0    # Parameter note: tune this value for your platform profile.
+      error_threshold: 90.0   # Parameter note: tune this value for your platform profile.
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    #
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    #   docker run ... \
+    #     -v /proc:/host/proc:ro \
+    #     -v /sys:/host/sys:ro   \
+    #     -v /:/host/rootfs:ro
+    #
+    container:
+      host_proc_path: ""      # Parameter note: tune this value for your platform profile.
+      host_sys_path: ""       # Parameter note: tune this value for your platform profile.
+      host_rootfs_path: ""    # Parameter note: tune this value for your platform profile.
+
+gpu_checker:
+  ros__parameters:
+    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+
+    gpu:
+      util_warn_threshold: 85.0   # Parameter note: tune this value for your platform profile.
+      util_error_threshold: 95.0  # Parameter note: tune this value for your platform profile.
+      mem_warn_threshold: 80.0    # Parameter note: tune this value for your platform profile.
+      mem_error_threshold: 95.0   # Parameter note: tune this value for your platform profile.
+      temp_warn_threshold: 75.0   # Parameter note: tune this value for your platform profile.
+      temp_error_threshold: 85.0  # Parameter note: tune this value for your platform profile.
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    #
+    container:
+      nvidia_smi_path: ""     # Parameter note: tune this value for your platform profile.

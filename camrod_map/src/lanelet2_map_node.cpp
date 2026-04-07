@@ -34,11 +34,10 @@ struct SemanticTags
   std::string subtype;
 };
 
-// Implements `toLowerCopy` behavior.
+// toLowerCopy: Utility helper used for string parsing, math conversion, or styling.
 std::string toLowerCopy(const std::string & value)
 {
   std::string lower = value;
-  // Implements `transform` behavior.
   std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
@@ -46,7 +45,7 @@ std::string toLowerCopy(const std::string & value)
 }
 
 template<typename PrimitiveT>
-// Implements `getAttributeCaseInsensitive` behavior.
+// getAttributeCaseInsensitive: Utility helper used for string parsing, math conversion, or styling.
 std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std::string & key)
 {
   std::string value = primitive.attributeOr(key.c_str(), "");
@@ -54,7 +53,6 @@ std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std:
     return value;
   }
   std::string lower = key;
-  // Implements `transform` behavior.
   std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
@@ -63,7 +61,6 @@ std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std:
     return value;
   }
   std::string upper = key;
-  // Implements `transform` behavior.
   std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) {
     return static_cast<char>(std::toupper(c));
   });
@@ -71,7 +68,7 @@ std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std:
 }
 
 template<typename PrimitiveT>
-// Implements `getSemanticType` behavior.
+// getSemanticType: Utility helper used for string parsing, math conversion, or styling.
 std::string getSemanticType(const PrimitiveT & primitive)
 {
   auto value = getAttributeCaseInsensitive(primitive, "Subtype");
@@ -82,7 +79,7 @@ std::string getSemanticType(const PrimitiveT & primitive)
 }
 
 template<typename PrimitiveT>
-// Implements `extractSemanticTags` behavior.
+// Extracts normalized semantic type/subtype tags from lanelet attributes.
 SemanticTags extractSemanticTags(const PrimitiveT & primitive)
 {
   SemanticTags tags;
@@ -137,7 +134,7 @@ Lanelet2MapNode::Lanelet2MapNode()
     std::bind(&Lanelet2MapNode::onParameterChange, this, std::placeholders::_1));
 }
 
-// Loads `Parameters` data or configuration.
+// Configuration loader Parameters: loads configuration values and applies safe runtime defaults.
 void Lanelet2MapNode::loadParameters()
 {
   config_.map_path = this->declare_parameter<std::string>("map_path", "");
@@ -158,7 +155,7 @@ void Lanelet2MapNode::loadParameters()
   map_status_topic_ = this->declare_parameter<std::string>("map_status_topic", "/map/status");
 }
 
-// Loads `Map` data or configuration.
+// Configuration loader Map: loads configuration values and applies safe runtime defaults.
 bool Lanelet2MapNode::loadMap()
 {
   loaded_map_ = loader_.load(config_.map_path);
@@ -172,7 +169,7 @@ bool Lanelet2MapNode::loadMap()
   return true;
 }
 
-// Publishes `Visualization` output.
+// Publish helper Visualization: builds and publishes ROS outputs for downstream consumers and RViz overlays.
 void Lanelet2MapNode::publishVisualization()
 {
   if (!loaded_map_) {
@@ -211,7 +208,7 @@ void Lanelet2MapNode::publishVisualization()
   publishAvgMapMessage(markers, stamp);
 }
 
-// Handles the `onParameterChange` callback.
+// Callback onParameterChange: handles incoming ROS data or timer events and updates internal cache/publish state.
 avg_msgs::msg::SetParametersResult Lanelet2MapNode::onParameterChange(
   const std::vector<rclcpp::Parameter> & params)
 {
@@ -313,7 +310,7 @@ avg_msgs::msg::SetParametersResult Lanelet2MapNode::onParameterChange(
   return result;
 }
 
-// Implements `reloadMapWithConfig` behavior.
+// Rebuilds loader/map objects when projection/path parameters change.
 bool Lanelet2MapNode::reloadMapWithConfig(const Lanelet2MapNodeConfig & new_config)
 {
   LoaderConfig loader_cfg;
@@ -335,7 +332,7 @@ bool Lanelet2MapNode::reloadMapWithConfig(const Lanelet2MapNodeConfig & new_conf
   return true;
 }
 
-// Implements `addLaneletCenterlines` behavior.
+// addLaneletCenterlines: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addLaneletCenterlines(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -357,7 +354,7 @@ std::size_t Lanelet2MapNode::addLaneletCenterlines(
   return count;
 }
 
-// Implements `addLaneletBounds` behavior.
+// addLaneletBounds: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addLaneletBounds(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -387,7 +384,7 @@ std::size_t Lanelet2MapNode::addLaneletBounds(
   return count;
 }
 
-// Implements `addAreas` behavior.
+// addAreas: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addAreas(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -417,7 +414,7 @@ std::size_t Lanelet2MapNode::addAreas(
   return count;
 }
 
-// Implements `addLineStrings` behavior.
+// addLineStrings: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addLineStrings(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -448,7 +445,7 @@ std::size_t Lanelet2MapNode::addLineStrings(
   return count;
 }
 
-// Implements `addPoints` behavior.
+// addPoints: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addPoints(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -481,7 +478,7 @@ std::size_t Lanelet2MapNode::addPoints(
   return count;
 }
 
-// Implements `addLaneletDirections` behavior.
+// addLaneletDirections: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addLaneletDirections(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -530,7 +527,7 @@ std::size_t Lanelet2MapNode::addLaneletDirections(
   return count;
 }
 
-// Implements `addLaneletIds` behavior.
+// addLaneletIds: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addLaneletIds(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -565,7 +562,7 @@ std::size_t Lanelet2MapNode::addLaneletIds(
   return count;
 }
 
-// Implements `addSemanticMarkers` behavior.
+// addSemanticMarkers: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addSemanticMarkers(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -713,7 +710,7 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
   return count;
 }
 
-// Initializes `LineMarker` state.
+// Initialization helper LineMarker: initializes message defaults before frame-specific fields are filled.
 avg_msgs::msg::Marker Lanelet2MapNode::initLineMarker(
   const std::string & ns, int32_t id, const std::string & frame_id,
   const avg_msgs::msg::ColorRGBA & color, double width, const rclcpp::Time & stamp)
@@ -730,7 +727,7 @@ avg_msgs::msg::Marker Lanelet2MapNode::initLineMarker(
   return marker;
 }
 
-// Implements `makeColor` behavior.
+// makeColor: Constructs and returns a helper message/value object.
 avg_msgs::msg::ColorRGBA Lanelet2MapNode::makeColor(float r, float g, float b, float a)
 {
   avg_msgs::msg::ColorRGBA c;
@@ -741,7 +738,7 @@ avg_msgs::msg::ColorRGBA Lanelet2MapNode::makeColor(float r, float g, float b, f
   return c;
 }
 
-// Implements `makePoint` behavior.
+// makePoint: Constructs and returns a helper message/value object.
 avg_msgs::msg::Point Lanelet2MapNode::makePoint(double x, double y, double z) const
 {
   avg_msgs::msg::Point p;
@@ -774,7 +771,7 @@ avg_msgs::msg::Point Lanelet2MapNode::computeCentroid(
   return centroid;
 }
 
-// Implements `addTrafficLightBulbs` behavior.
+// addTrafficLightBulbs: Appends visualization elements to the outgoing marker set.
 void Lanelet2MapNode::addTrafficLightBulbs(  // HH_260114 Autoware-style tri-color bulbs.
   const avg_msgs::msg::Point & base_center,
   const std::string & bulb_namespace,
@@ -782,7 +779,6 @@ void Lanelet2MapNode::addTrafficLightBulbs(  // HH_260114 Autoware-style tri-col
   int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
-  // Implements `layout` behavior.
   // HH_251215: emulate Autoware bulb layout (red/amber/green row)
   struct BulbStyle
   {
@@ -817,7 +813,7 @@ void Lanelet2MapNode::addTrafficLightBulbs(  // HH_260114 Autoware-style tri-col
   }
 }
 
-// Computes `FlatArrow` values.
+// Math helper FlatArrow: computes derived geometric values used by mapping logic.
 bool Lanelet2MapNode::computeFlatArrow(
   const lanelet::ConstLineString3d & centerline, const std::size_t tail_idx, const std::size_t head_idx,
   double lane_width,
@@ -878,7 +874,7 @@ bool Lanelet2MapNode::computeFlatArrow(
   return true;
 }
 
-// Implements `laneWidthAt` behavior.
+// Estimates local lane width from left/right bound point pairs.
 double Lanelet2MapNode::laneWidthAt(const lanelet::ConstLanelet & lanelet, std::size_t idx) const
 {
   // HH_260103 lane width estimation using left/right bounds at the same index
@@ -899,7 +895,7 @@ double Lanelet2MapNode::laneWidthAt(const lanelet::ConstLanelet & lanelet, std::
   return width > 0.1 ? width : 3.0;
 }
 
-// Implements `colorFromSubtype` behavior.
+// colorFromSubtype: Utility helper used for string parsing, math conversion, or styling.
 avg_msgs::msg::ColorRGBA Lanelet2MapNode::colorFromSubtype(
   const std::string & subtype, const avg_msgs::msg::ColorRGBA & fallback) const
 {
@@ -933,7 +929,7 @@ avg_msgs::msg::ColorRGBA Lanelet2MapNode::colorFromSubtype(
   return fallback;
 }
 
-// Implements `lineWidthFromSubtype` behavior.
+// lineWidthFromSubtype: Utility helper used for string parsing, math conversion, or styling.
 double Lanelet2MapNode::lineWidthFromSubtype(const std::string & subtype) const
 {
   // HH_260114 Autoware-style line thickness.
@@ -952,7 +948,7 @@ double Lanelet2MapNode::lineWidthFromSubtype(const std::string & subtype) const
   return 0.1;
 }
 
-// Implements `sanitizeNamespace` behavior.
+// sanitizeNamespace: Utility helper used for string parsing, math conversion, or styling.
 std::string Lanelet2MapNode::sanitizeNamespace(
   const std::string & prefix, const std::string & subtype)
 {
@@ -964,7 +960,7 @@ std::string Lanelet2MapNode::sanitizeNamespace(
   return prefix + "_" + sanitized;
 }
 
-// Implements `groupedNamespace` behavior.
+// groupedNamespace: Utility helper used for string parsing, math conversion, or styling.
 std::string Lanelet2MapNode::groupedNamespace(
   const std::string & group, const std::string & subtype)
 {
@@ -976,7 +972,7 @@ std::string Lanelet2MapNode::groupedNamespace(
   return group + "/" + sanitized;
 }
 
-// Publishes `StaticTF` output.
+// Publish helper StaticTF: builds and publishes ROS outputs for downstream consumers and RViz overlays.
 void Lanelet2MapNode::publishStaticTF()
 {
   avg_msgs::msg::TransformStamped tf_msg;
@@ -994,7 +990,7 @@ void Lanelet2MapNode::publishStaticTF()
   tf_broadcaster_->sendTransform(tf_msg);
 }
 
-// Publishes `AvgMapMessage` output.
+// Publish helper AvgMapMessage: builds and publishes ROS outputs for downstream consumers and RViz overlays.
 void Lanelet2MapNode::publishAvgMapMessage(
   const avg_msgs::msg::MarkerArray & markers,
   const rclcpp::Time & stamp)

@@ -30,6 +30,7 @@ bringup.launch.py
 - Runtime: `clean_before_launch`, `sim`, `rviz`
 - Localization toggles: `use_eskf`, `wheel_bridge_enable`, `kimera_bridge_enable`, `pose_selector_enable`
 - Planning toggles: `enable_path_cost_grids`, `enable_goal_replanner`, `enable_nav2_lifecycle_retry`, `enable_state_machine`, `use_dwb_controller`
+- Planning state-machine sources: `planning_state_machine_keypoints_yaml`, `planning_state_machine_camping_sites_yaml`
 - Sensing toggles: `enable_lidar_driver`, `enable_lidar_cost_grid`, `enable_radar`, `enable_radar_cost_grid`, `enable_gnss`, `enable_ntrip`
 - Shared map/origin: `map_path`, `origin_lat`, `origin_lon`, `origin_alt`, `yaw_offset_deg`
 - Namespaces: `map_namespace`, `sensing_namespace`, `localization_namespace`, `planning_namespace`, `platform_namespace`, `perception_namespace`, `sensor_kit_namespace`, `bringup_namespace`, `system_namespace`, `gnss_namespace`
@@ -49,4 +50,3 @@ ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
 ros2 launch camrod_bringup bringup.launch.py enable_gnss:=true enable_ntrip:=true
 ros2 launch camrod_bringup bringup.launch.py map_path:=/home/camrod_ws/lanelet2_maps.osm
 ```
-

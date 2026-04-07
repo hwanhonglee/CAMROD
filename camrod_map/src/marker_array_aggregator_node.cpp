@@ -21,7 +21,7 @@ namespace camrod_map
 class MarkerArrayAggregatorNode : public rclcpp::Node
 {
 public:
-  // Implements `MarkerArrayAggregatorNode` behavior.
+  // Configures marker-source subscriptions and merged output publish policy.
   MarkerArrayAggregatorNode()
   : Node("marker_array_aggregator")
   {
@@ -87,7 +87,7 @@ private:
     rclcpp::Subscription<avg_msgs::msg::MarkerArray>::SharedPtr sub;
   };
 
-  // Implements `containsDeleteAll` behavior.
+  // containsDeleteAll: Predicate/helper used to decide branch behavior safely.
   static bool containsDeleteAll(const avg_msgs::msg::MarkerArray & msg)
   {
     return std::any_of(
@@ -97,13 +97,13 @@ private:
       });
   }
 
-  // Implements `markerId` behavior.
+  // markerId: Utility helper used for string parsing, math conversion, or styling.
   static int32_t markerId(size_t source_index, size_t marker_index)
   {
     return static_cast<int32_t>(source_index * 10000 + marker_index);
   }
 
-  // Implements `makeDeleteMarker` behavior.
+  // makeDeleteMarker: Constructs and returns a helper message/value object.
   avg_msgs::msg::Marker makeDeleteMarker(
     const std::string & frame_id, const std::string & ns,
     size_t source_index, size_t marker_index) const
@@ -117,7 +117,7 @@ private:
     return marker;
   }
 
-  // Handles the `onMarkers` callback.
+  // Callback onMarkers: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onMarkers(size_t source_index, avg_msgs::msg::MarkerArray::ConstSharedPtr msg)
   {
     auto & source = sources_.at(source_index);
@@ -139,7 +139,7 @@ private:
     }
   }
 
-  // Publishes `Combined` output.
+  // Publish helper Combined: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishCombined()
   {
     if (expireStaleSources()) {
@@ -213,7 +213,7 @@ private:
     dirty_ = false;
   }
 
-  // Publishes `AvgMapMessage` output.
+  // Publish helper AvgMapMessage: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishAvgMapMessage(const avg_msgs::msg::MarkerArray & markers)
   {
     if (!publish_map_status_ || !avg_map_pub_) {
@@ -230,7 +230,7 @@ private:
     avg_map_pub_->publish(msg);
   }
 
-  // Implements `expireStaleSources` behavior.
+  // Clears cached source markers when stream-specific stale timeout is exceeded.
   bool expireStaleSources()
   {
     if (stale_timeout_sec_ <= 0.0) {

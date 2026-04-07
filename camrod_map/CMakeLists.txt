@@ -143,6 +143,16 @@ ament_target_dependencies(cost_field_marker_node
   visualization_msgs
 )
 
+add_executable(multi_cost_field_marker_node
+  src/multi_cost_field_marker_node.cpp
+)
+ament_target_dependencies(multi_cost_field_marker_node
+  avg_msgs
+  rclcpp
+  nav_msgs
+  visualization_msgs
+)
+
 add_executable(cost_field_node
   src/cost_field_node.cpp
 )
@@ -175,14 +185,9 @@ install(TARGETS
   lanelet_cost_grid_node
   area_exporter_node
   cost_field_marker_node
+  multi_cost_field_marker_node
   cost_field_node
   marker_array_aggregator_node
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(
-  PROGRAMS
-    scripts/map_status_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

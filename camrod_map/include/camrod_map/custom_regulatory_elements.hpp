@@ -13,7 +13,7 @@ class SpeedBumpRegulatoryElement : public lanelet::RegulatoryElement
 public:
   static constexpr char RuleName[] = "speed_bump";
 
-  // Implements `SpeedBumpRegulatoryElement` behavior.
+  // Wraps parsed regulatory-element data for Lanelet2 "speed_bump" rules.
   explicit SpeedBumpRegulatoryElement(const lanelet::RegulatoryElementDataPtr & data)
   : lanelet::RegulatoryElement(data)
   {
@@ -22,7 +22,7 @@ public:
   using Ptr = std::shared_ptr<SpeedBumpRegulatoryElement>;
   using ConstPtr = std::shared_ptr<const SpeedBumpRegulatoryElement>;
 
-  // Implements `make` behavior.
+  // Factory helper used by Lanelet2 registry during map deserialization.
   static Ptr make(const lanelet::RegulatoryElementDataPtr & data)
   {
     return Ptr(new SpeedBumpRegulatoryElement(data));

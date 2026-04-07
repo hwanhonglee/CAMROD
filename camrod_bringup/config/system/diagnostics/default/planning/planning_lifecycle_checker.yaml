@@ -1,0 +1,11 @@
+planning_lifecycle_checker:
+  ros__parameters:
+    publish_rate: 1.0           # Diagnostic publish rate (Hz).
+    poll_rate: 2.0              # Polling rate for lifecycle or health checks (Hz).
+    stale_timeout: 5.0          # Mark STALE when no update is received within this duration (s).
+
+    node_names:
+      - "/planning/planner_server"
+      - "/planning/controller_server"
+      - "/planning/bt_navigator"
+      - "/planning/behavior_server"

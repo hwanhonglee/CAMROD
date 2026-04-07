@@ -1,0 +1,43 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+camera_checker:
+  ros__parameters:
+    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    camera_names: ["front", "processed"]
+
+    front:
+      image_topic: "/sensing/camera/front/image_raw"
+      camera_info_topic: "/sensing/camera/front/camera_info"
+      expected_fps: 30.0         # Parameter note: tune this value for your platform profile.
+      fps_warn_ratio: 0.8        # Parameter note: tune this value for your platform profile.
+      fps_error_ratio: 0.5       # Parameter note: tune this value for your platform profile.
+      stale_timeout: 2.0         # Mark STALE when no update is received within this duration (s).
+      expected_width: 0          # Parameter note: tune this value for your platform profile.
+      expected_height: 0         # Parameter note: tune this value for your platform profile.
+      expected_encoding: ""      # Parameter note: tune this value for your platform profile.
+
+    processed:
+      image_topic: "/sensing/camera/processed/image"
+      camera_info_topic: "/sensing/camera/processed/camera_info"
+      expected_fps: 30.0
+      fps_warn_ratio: 0.8
+      fps_error_ratio: 0.5
+      stale_timeout: 2.0
+      expected_width: 0
+      expected_height: 0
+      expected_encoding: ""
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # rear:
+    #   image_topic: "/sensing/camera/rear/image_raw"
+    #   camera_info_topic: "/sensing/camera/rear/camera_info"
+    #   expected_fps: 15.0
+    #   fps_warn_ratio: 0.8
+    #   fps_error_ratio: 0.5
+    #   stale_timeout: 2.0
+    #   expected_width: 1280
+    #   expected_height: 720
+    #   expected_encoding: "rgb8"

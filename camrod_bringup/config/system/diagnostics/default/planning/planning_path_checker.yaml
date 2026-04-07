@@ -1,0 +1,26 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+#
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+planning_path_checker:
+  ros__parameters:
+    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+
+    nav_status_topic: "/planning/navigate_to_pose/_action/status"
+
+    path_names:
+      - "global_path"
+      - "local_path"
+
+    global_path:
+      topic: "/planning/global_path"
+      stale_timeout: 3.0       # Mark STALE when no update is received within this duration (s).
+      min_points_warn: 5       # WARN when path point count is below this threshold.
+      min_points_error: 2      # ERROR when path point count is below this threshold.
+
+    local_path:
+      topic: "/planning/local_path"
+      stale_timeout: 2.0       # Mark STALE when no update is received within this duration (s).
+      min_points_warn: 8       # WARN when path point count is below this threshold.
+      min_points_error: 3

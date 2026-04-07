@@ -1,23 +1,24 @@
 # 2026-01-30 Update map path/origin for lanelet2_maps.osm.
 # HH_260112 Align node parameter keys with /map namespace + short names.
-/map/lanelet2_map:
+/**:
   ros__parameters:
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
+    # Prefer launch-level override (bringup or package launch).
+    # Keep empty here if the actual OSM lives outside this package.
+    map_path: ""
 
     # HH_260114 WGS84 origin used as LocalCartesian projector reference.
-    
-    # 52S-CF0, C-track - VMB
-    # offset_lat: 36.12491471
-    # offset_lon: 126.77473954
-    # offset_alt: 84.0
 
     # 52S-CF60, Park - VMB
     # offset_lat: 36.8436194
     # offset_lon: 128.0925490
     # offset_alt: 299.425
-    
-    # HH_260327: Active map reference origin (52S-CF60 - VMB).
-    # Keep this file aligned with camrod_bringup/config/map/map_info.yaml.
+
+    # 52S-CF0, C-track - VMB
+    # offset_lat: 36.12491471
+    # offset_lon: 126.77473954
+    # offset_alt: 84.0
+
+    # 52S-CF60, C-track - VMB
     # Degree LLH: 36.7292921, 127.4429577
     # UTM (meter): 52S 360965.99E 4065972.49N
     # MGRS: 52SCF6096565972
@@ -25,22 +26,16 @@
     offset_lon: 127.4429577
     offset_alt: 84.0
 
-    # HH_260327: Keep map/localization reference inside ros__parameters
-    # so this file remains a valid ROS2 parameter file for lanelet2_map_node.
-    reference_lat: 36.7292921
-    reference_lon: 127.4429577
-    reference_alt: 84.0
-    reference_utm_zone: "52S"
-    reference_utm_easting: 360965.99
-    reference_utm_northing: 4065972.49
-    reference_utm_alt: 84.0
-    reference_mgrs: "52SCF6096565972"
+    offset_utm_easting: 360965.99
+    offset_utm_northing: 4065972.49
+    offset_utm_alt: 84.0
+
     yaw_offset_deg: 0.0
     rotate_latlon_xy_by_yaw_offset: true
 
     world_frame_id: "world"
     map_frame_id: "map"
-    
+
     # HH_260103 arrow scaling knobs (lanelet direction markers)
     dir_body_scale: 0.55
     dir_head_scale: 0.35

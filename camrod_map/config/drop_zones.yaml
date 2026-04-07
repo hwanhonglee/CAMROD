@@ -1,9 +1,14 @@
 # HH_260330: Regenerated for current map reference via camrod_map/area_exporter.
 drop_zones:
+  # Each entry is an extracted drop-zone pose candidate from lanelet map data.
   - id: "dz_area_36128"
+    # Semantic label used by mission/dispatcher logic.
     type: "drop_zone"
+    # Extraction source primitive type from lanelet map parser.
     source: "area"
+    # Position in map frame (meters).
     x: 16.8676
     y: -117.408
     z: -97.794
+    # Preferred heading at this drop-zone location (degrees).
     yaw_deg: -0.41903

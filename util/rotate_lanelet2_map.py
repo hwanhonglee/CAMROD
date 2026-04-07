@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
 """
-Rotate Lanelet2 OSM geometry in XY plane.
+Transform Lanelet2 OSM geometry in local/map XY, PCD-style.
 
-This utility updates:
-- node lat/lon (via projection inverse transform)
-- node local_x/local_y tags (if present, or created with --write-local-tags)
+Behavior:
+- Convert node lat/lon -> projected XY
+- Convert projected XY -> local XY using given origin
+- Apply rigid transform directly in local XY:
+      p' = R * p + t
+- Convert local XY -> projected XY -> lat/lon
+- Optionally update/create local_x/local_y tags
+
+This is intentionally similar to the pointcloud transform style:
+no center-mode, no centroid rotation, just direct transform.
 """
 
 from __future__ import annotations
@@ -33,32 +40,31 @@ def _as_float(value: Optional[str], default: float = 0.0) -> float:
         return default
 
 
-def _rotate_xy(x: float, y: float, cx: float, cy: float, yaw_rad: float) -> Tuple[float, float]:
+def make_2d_transform(yaw_deg: float, tx: float, ty: float) -> Tuple[float, float, float, float]:
+    yaw_rad = math.radians(yaw_deg)
     c = math.cos(yaw_rad)
     s = math.sin(yaw_rad)
-    dx = x - cx
-    dy = y - cy
-    rx = c * dx - s * dy + cx
-    ry = s * dx + c * dy + cy
+    return c, s, tx, ty
+
+
+def apply_2d_transform(x: float, y: float, c: float, s: float, tx: float, ty: float) -> Tuple[float, float]:
+    rx = c * x - s * y + tx
+    ry = s * x + c * y + ty
     return rx, ry
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Rotate Lanelet2 OSM in local/map XY.")
+    parser = argparse.ArgumentParser(
+        description="Transform Lanelet2 OSM in local/map XY (PCD-style rigid transform)."
+    )
     parser.add_argument("--input", required=True, help="Input lanelet2 .osm path")
     parser.add_argument("--output", required=True, help="Output lanelet2 .osm path")
     parser.add_argument("--origin-lat", type=float, required=True, help="Map projector origin latitude")
     parser.add_argument("--origin-lon", type=float, required=True, help="Map projector origin longitude")
     parser.add_argument("--map-epsg", type=int, default=32652, help="Projected EPSG (default: 32652)")
-    parser.add_argument("--yaw-deg", type=float, required=True, help="Rotation yaw in degrees (+CCW)")
-    parser.add_argument(
-        "--center-mode",
-        choices=["origin", "centroid", "custom"],
-        default="origin",
-        help="Rotation center in local coordinates",
-    )
-    parser.add_argument("--center-x", type=float, default=0.0, help="Custom center local_x (m)")
-    parser.add_argument("--center-y", type=float, default=0.0, help="Custom center local_y (m)")
+    parser.add_argument("--yaw-deg", type=float, default=0.0, help="Yaw in degrees (+CCW)")
+    parser.add_argument("--tx", type=float, default=0.0, help="Translation X in local XY")
+    parser.add_argument("--ty", type=float, default=0.0, help="Translation Y in local XY")
     parser.add_argument(
         "--write-local-tags",
         action="store_true",
@@ -73,54 +79,59 @@ def main() -> None:
     map_to_llh = Transformer.from_crs(f"EPSG:{args.map_epsg}", "EPSG:4326", always_xy=True)
 
     origin_x, origin_y = llh_to_map.transform(args.origin_lon, args.origin_lat)
-    yaw_rad = math.radians(args.yaw_deg)
+    c, s, tx, ty = make_2d_transform(args.yaw_deg, args.tx, args.ty)
 
-    nodes: List[Tuple[ET.Element, float, float]] = []
-    for n in root.findall("node"):
-        lat = _as_float(n.get("lat"))
-        lon = _as_float(n.get("lon"))
+    node_count = 0
+
+    for node_elem in root.findall("node"):
+        lat = _as_float(node_elem.get("lat"))
+        lon = _as_float(node_elem.get("lon"))
+
+        # lat/lon -> projected map XY
         mx, my = llh_to_map.transform(lon, lat)
+
+        # projected XY -> local XY
         lx = mx - origin_x
         ly = my - origin_y
-        nodes.append((n, lx, ly))
 
-    if not nodes:
-        raise RuntimeError("No <node> elements found in OSM.")
+        # apply direct rigid transform in local XY
+        tlx, tly = apply_2d_transform(lx, ly, c, s, tx, ty)
 
-    if args.center_mode == "origin":
-        cx, cy = 0.0, 0.0
-    elif args.center_mode == "custom":
-        cx, cy = args.center_x, args.center_y
-    else:
-        cx = sum(lx for _, lx, _ in nodes) / float(len(nodes))
-        cy = sum(ly for _, _, ly in nodes) / float(len(nodes))
+        # local XY -> projected XY
+        tmx = origin_x + tlx
+        tmy = origin_y + tly
 
-    for node_elem, lx, ly in nodes:
-        rlx, rly = _rotate_xy(lx, ly, cx, cy, yaw_rad)
-        rmx = origin_x + rlx
-        rmy = origin_y + rly
-        rlon, rlat = map_to_llh.transform(rmx, rmy)
+        # projected XY -> lat/lon
+        tlon, tlat = map_to_llh.transform(tmx, tmy)
 
-        node_elem.set("lat", f"{rlat:.11f}")
-        node_elem.set("lon", f"{rlon:.11f}")
+        node_elem.set("lat", f"{tlat:.11f}")
+        node_elem.set("lon", f"{tlon:.11f}")
 
         lx_tag = _find_tag(node_elem, "local_x")
         ly_tag = _find_tag(node_elem, "local_y")
+
         if lx_tag is not None or args.write_local_tags:
             if lx_tag is None:
                 lx_tag = ET.SubElement(node_elem, "tag", {"k": "local_x", "v": "0.0"})
-            lx_tag.set("v", f"{rlx:.4f}")
+            lx_tag.set("v", f"{tlx:.4f}")
+
         if ly_tag is not None or args.write_local_tags:
             if ly_tag is None:
                 ly_tag = ET.SubElement(node_elem, "tag", {"k": "local_y", "v": "0.0"})
-            ly_tag.set("v", f"{rly:.4f}")
+            ly_tag.set("v", f"{tly:.4f}")
+
+        node_count += 1
+
+    if node_count == 0:
+        raise RuntimeError("No <node> elements found in OSM.")
 
     tree.write(args.output, encoding="UTF-8", xml_declaration=True)
-    print(
-        "Rotated map written:",
-        args.output,
-        f"(yaw_deg={args.yaw_deg:.6f}, center_mode={args.center_mode}, center=({cx:.3f},{cy:.3f}))",
-    )
+
+    print(f"[OK] Saved: {args.output}")
+    print(f"     yaw_deg={args.yaw_deg}")
+    print(f"     tx={args.tx}, ty={args.ty}")
+    print(f"     origin=({args.origin_lat}, {args.origin_lon}), epsg={args.map_epsg}")
+    print(f"     nodes={node_count}")
 
 
 if __name__ == "__main__":

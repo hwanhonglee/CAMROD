@@ -1,16 +1,17 @@
 /**:
   ros__parameters:
-    device: /dev/ttyACM1
+    device: /dev/ttyACM0
     frame_id: gps
     debug: 1 # 4 is logging data
 
-    # HH_260326: Apply YAML rate/nav_rate to receiver on startup.
-    # If false, ublox_gps_node skips configRate() and runtime Hz tuning won't take effect.
-    config_on_startup: true
+    # HH_260330: Avoid startup abort on some F9P units reporting
+    # "Failed to read the GNSS config" during CFG polling.
+    # Keep receiver running even if runtime CFG read/write is flaky.
+    config_on_startup: false
 
     # HH_260326: Increase GNSS fix rate for localization consistency validation.
     # Keep nav_rate=1 and raise measurement rate from 1 Hz -> 10 Hz.
-    rate: 10.0
+    rate: 5.0
     nav_rate: 1
     # Rover mode: disable TMODE3 (Survey-In / Base Station mode)
     # - tmode3=1 is for Survey-In (base/reference station)

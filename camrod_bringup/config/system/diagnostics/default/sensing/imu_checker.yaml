@@ -1,0 +1,18 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+imu_checker:
+  ros__parameters:
+    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    imu_names: ["main"]
+
+    main:
+      topic: "/sensing/imu/data"
+      expected_hz: 100.0         # Expected message update rate (Hz).
+      hz_warn_ratio: 0.7         # WARN threshold for actual_hz/expected_hz ratio.
+      hz_error_ratio: 0.4        # ERROR threshold for actual_hz/expected_hz ratio.
+      stale_timeout: 0.5         # Mark STALE when no update is received within this duration (s).
+      accel_magnitude_warn: 30.0  # Parameter note: tune this value for your platform profile.
+      accel_magnitude_error: 50.0 # Parameter note: tune this value for your platform profile.

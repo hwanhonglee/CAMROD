@@ -38,11 +38,10 @@ struct DropZone
   std::vector<lanelet::BasicPoint3d> corners;
 };
 
-// Implements `toLowerCopy` behavior.
+// toLowerCopy: Utility helper used for string parsing, math conversion, or styling.
 std::string toLowerCopy(const std::string & value)
 {
   std::string lower = value;
-  // Implements `transform` behavior.
   std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
@@ -50,7 +49,7 @@ std::string toLowerCopy(const std::string & value)
 }
 
 template<typename PrimitiveT>
-// Implements `getAttributeCaseInsensitive` behavior.
+// getAttributeCaseInsensitive: Utility helper used for string parsing, math conversion, or styling.
 std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std::string & key)
 {
   std::string value = primitive.attributeOr(key.c_str(), "");
@@ -58,7 +57,6 @@ std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std:
     return value;
   }
   std::string lower = key;
-  // Implements `transform` behavior.
   std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
@@ -67,7 +65,6 @@ std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std:
     return value;
   }
   std::string upper = key;
-  // Implements `transform` behavior.
   std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) {
     return static_cast<char>(std::toupper(c));
   });
@@ -75,7 +72,7 @@ std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std:
 }
 
 template<typename PrimitiveT>
-// Implements `getSemanticType` behavior.
+// getSemanticType: Utility helper used for string parsing, math conversion, or styling.
 std::string getSemanticType(const PrimitiveT & primitive)
 {
   auto subtype = getAttributeCaseInsensitive(primitive, "Subtype");
@@ -86,13 +83,13 @@ std::string getSemanticType(const PrimitiveT & primitive)
   return toLowerCopy(type);
 }
 
-// Implements `startsWith` behavior.
+// startsWith: Utility helper used for string parsing, math conversion, or styling.
 bool startsWith(const std::string & value, const std::string & prefix)
 {
   return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
 }
 
-// Implements `extractSuffixNumber` behavior.
+// extractSuffixNumber: Utility helper used for string parsing, math conversion, or styling.
 std::optional<int> extractSuffixNumber(const std::string & value, const std::string & prefix)
 {
   if (!startsWith(value, prefix)) {
@@ -110,13 +107,13 @@ std::optional<int> extractSuffixNumber(const std::string & value, const std::str
   return std::stoi(suffix);
 }
 
-// Implements `rad2deg` behavior.
+// rad2deg: Utility helper used for string parsing, math conversion, or styling.
 double rad2deg(double rad)
 {
   return rad * 180.0 / M_PI;
 }
 
-// Implements `deg2rad` behavior.
+// deg2rad: Utility helper used for string parsing, math conversion, or styling.
 double deg2rad(double deg)
 {
   return deg * M_PI / 180.0;
@@ -129,7 +126,7 @@ struct Ecef
   double z;
 };
 
-// Implements `llhToEcef` behavior.
+// llhToEcef: Utility helper used for string parsing, math conversion, or styling.
 Ecef llhToEcef(double lat_rad, double lon_rad, double alt)
 {
   const double sin_lat = std::sin(lat_rad);
@@ -143,7 +140,7 @@ Ecef llhToEcef(double lat_rad, double lon_rad, double alt)
     (N * (1.0 - WGS84_E2) + alt) * sin_lat};
 }
 
-// Implements `ecefToEnu` behavior.
+// ecefToEnu: Utility helper used for string parsing, math conversion, or styling.
 lanelet::BasicPoint3d ecefToEnu(
   const Ecef & ref, const Ecef & cur, double lat_ref, double lon_ref)
 {
@@ -160,7 +157,7 @@ lanelet::BasicPoint3d ecefToEnu(
   return lanelet::BasicPoint3d(east, north, up);
 }
 
-// Computes `YawDegFromPoints` values.
+// Math helper YawDegFromPoints: computes derived geometric values used by mapping logic.
 double computeYawDegFromPoints(
   const std::vector<lanelet::BasicPoint3d> & pts, double default_yaw_deg)
 {
@@ -181,7 +178,7 @@ double computeYawDegFromPoints(
   return rad2deg(best_yaw);
 }
 
-// Computes `Centroid` values.
+// Math helper Centroid: computes derived geometric values used by mapping logic.
 lanelet::BasicPoint3d computeCentroid(const std::vector<lanelet::BasicPoint3d> & pts)
 {
   if (pts.empty()) {
@@ -199,7 +196,7 @@ lanelet::BasicPoint3d computeCentroid(const std::vector<lanelet::BasicPoint3d> &
   return lanelet::BasicPoint3d(sx * inv, sy * inv, sz * inv);
 }
 
-// Computes `PolygonCentroid` values.
+// Math helper PolygonCentroid: computes derived geometric values used by mapping logic.
 lanelet::BasicPoint3d computePolygonCentroid(
   const std::vector<lanelet::BasicPoint3d> & pts)
 {
@@ -231,14 +228,14 @@ lanelet::BasicPoint3d computePolygonCentroid(
 }
 
 template<typename PrimitiveT>
-// Implements `attributeIsTrue` behavior.
+// attributeIsTrue: Utility helper used for string parsing, math conversion, or styling.
 bool attributeIsTrue(const PrimitiveT & primitive, const std::string & key)
 {
   const auto value = toLowerCopy(getAttributeCaseInsensitive(primitive, key));
   return value == "yes" || value == "true" || value == "1";
 }
 
-// Implements `getAttr` behavior.
+// getAttr: Utility helper used for string parsing, math conversion, or styling.
 std::string getAttr(const std::string & line, const std::string & key)
 {
   const std::string pattern = key + "=\"";
@@ -262,7 +259,7 @@ namespace map
 class AreaExporterNode : public rclcpp::Node
 {
 public:
-  // Implements `AreaExporterNode` behavior.
+  // Declares map/origin/output parameters for drop-zone and camping-site export.
   AreaExporterNode()
   // 2026-01-30: Export drop-zone candidates from Lanelet2 map into YAML.
   : Node("area_exporter")
@@ -286,7 +283,7 @@ public:
     }
   }
 
-  // Implements `run` behavior.
+  // Loads map, extracts semantic zones, and writes YAML outputs.
   int run()
   {
     if (map_path_.empty()) {
@@ -579,7 +576,7 @@ public:
   }
 
 private:
-  // Publishes `Status` output.
+  // Publish helper Status: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishStatus(uint8_t level, const std::string & message)
   {
     if (!publish_map_status_ || !avg_map_pub_) {
@@ -614,7 +611,7 @@ private:
     bool area{false};
   };
 
-  // Implements `parseDropZonesFromOsm` behavior.
+  // Fallback parser for extracting drop-zone hints directly from raw OSM XML.
   std::vector<DropZone> parseDropZonesFromOsm(
     const std::string & path,
     const std::function<std::string(const std::string &)> & classifySemanticType) const

@@ -1,32 +1,91 @@
-/map/inflation_cost_marker:
+/map/nav2_costmap_debug_marker:
   ros__parameters:
-    # 2026-03-05: This node visualizes Nav2 master costmap (debug only).
-    # Final user-facing combined marker is /map/cost_grid/inflation_markers
-    # from marker_array_aggregator_node.
+    # Debug input OccupancyGrid from Nav2 master/global costmap.
     grid_topic: "/planning/global_costmap/costmap"
+    # Debug output marker topic for Nav2 grid visualization only.
     marker_topic: "/map/cost_grid/inflation_nav2_markers"
+    # Base marker cube scale (overridden by occupancy-grid resolution at runtime).
     marker_scale: 0.1
-    # 2026-02-26: Show full safety gradient (low=blue/green, high=red) on drivable area.
-    # Unknown cells remain hidden via show_unknown=false.
+    # Cost normalization lower bound.
     min_value: 0
+    # Cost normalization upper bound.
     max_value: 100
+    # Marker transparency [0.0..1.0].
     alpha: 0.18
+    # Vertical lift above map plane (meters).
     z_offset: 0.05
-    # 2026-02-27: Keep CUBE_LIST cells visually inside lane boundaries.
+    # Cell size multiplier relative to grid resolution (use < 1.0 to avoid overlap).
     cell_scale_ratio: 0.60
+    # Color palette: safety, pastel, pastel_blue_red, pastel_green_red, pastel_orange_red, ...
     palette: "safety"
+    # Whether to render unknown(-1) grid cells.
     show_unknown: false
+    # Minimum interval between publishes to throttle heavy marker streams.
     min_publish_period_sec: 0.20
+    # Sampling stride in grid indices (2 means every other cell).
     sample_stride: 2
+    # Periodic republish interval in seconds (0 disables timer republish).
     republish_period_sec: 0.0
 
-/map/lanelet_cost_field:
+/map/cost_grid_multi_marker:
   ros__parameters:
+    # Input OccupancyGrid topics for each stream index.
+    grid_topics:
+      - "/map/cost_grid/lanelet"
+      - "/sensing/lidar/near_cost_grid"
+      - "/sensing/radar/near_cost_grid"
+    # Output MarkerArray topics matched by index to grid_topics.
+    marker_topics:
+      - "/map/cost_grid/lanelet_markers"
+      - "/map/cost_grid/lidar_markers"
+      - "/map/cost_grid/radar_markers"
+    # Per-stream marker base scales (index-matched).
+    marker_scales: [0.08, 0.08, 0.10]
+    # Per-stream cost normalization lower bounds.
+    min_values: [0, 0, 0]
+    # Per-stream cost normalization upper bounds.
+    max_values: [100, 100, 100]
+    # Per-stream marker transparency values.
+    alphas: [0.12, 0.40, 0.42]
+    # Per-stream z-offsets (meters) to prevent marker z-fighting.
+    z_offsets: [0.02, 0.035, 0.04]
+    # Per-stream cell size multipliers relative to source grid resolution.
+    cell_scale_ratios: [0.70, 0.70, 0.70]
+    # Per-stream color palettes.
+    palettes:
+      - "pastel_blue_red"
+      - "pastel_green_red"
+      - "pastel_orange_red"
+    # Per-stream unknown-cell rendering flags.
+    show_unknowns: [false, false, false]
+    # Per-stream transient_local QoS flags for grid subscribers.
+    grid_qos_transient_locals: [true, true, true]
+    # Per-stream sampling strides.
+    sample_strides: [1, 2, 2]
+    # Per-stream minimum publish intervals (seconds).
+    min_publish_period_secs: [0.02, 0.03, 0.03]
+    # Per-stream periodic republish intervals (seconds).
+    republish_period_secs: [0.20, 0.12, 0.12]
+    # Per-stream stale timeouts (seconds). 0 disables stale clear.
+    stale_timeout_secs: [0.0, 0.0, 0.0]
+    # Per-stream behavior on empty input grids.
+    clear_on_empty_grids: [true, true, true]
+
+/map/lanelet_cost_field_visualizer:
+  ros__parameters:
+    # Output frame for generated line markers.
     map_frame_id: "map"
-    projector_type: "LocalCartesianUTM"
+    # Projection mode used when loading lanelet geometry.
+    projector_type: "local_cartesian"
+    # Optional radial clipping distance (meters). 0 means unlimited.
     max_draw_distance: 0.0
+    # Percentile clipping factor for robust cost normalization.
     percentile_clip: 0.95
+    # Weight for segment distance contribution in cost.
     weights.distance: 1.0
+    # Weight for local curvature contribution in cost.
     weights.curvature: 0.5
+    # Reserved lane-preference term for future tuning.
     weights.lane_preference: 0.0
+    # Output marker topic for lanelet cost-field lines.
     output_topic: "/map/cost_grid/lanelet_field_markers"

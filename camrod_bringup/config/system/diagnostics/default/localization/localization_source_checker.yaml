@@ -1,0 +1,17 @@
+localization_source_checker:
+  ros__parameters:
+    publish_rate: 1.0
+
+    source_topic:    "/localization/pose_source"
+    primary_source:  "primary_eskf"
+    fallback_source: "kimera_vio"
+
+    stale_timeout:      3.0    # Mark STALE when no update is received within this duration (s).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    fallback_warn_sec:  10.0   # WARN threshold for fallback duration (s).
+    fallback_error_sec: 60.0   # ERROR threshold for fallback duration (s).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    switch_warn:  3             # WARN threshold for source-switch count in the monitoring window.
+    switch_error: 10            # ERROR threshold for source-switch count in the monitoring window.

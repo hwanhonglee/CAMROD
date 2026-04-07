@@ -16,6 +16,11 @@
   ros__parameters:
     input_topic: "/sensing/lidar/points_filtered"
     bbox_topic: "/perception/lidar/bboxes"
+    # HH_260406: Canonical DBSCAN/Euclidean clustering params.
+    cluster_tolerance: 0.25
+    min_cluster_size: 12
+    max_cluster_size: 8000
+    # HH_260406: Keep legacy aliases for backward compatibility.
     eps: 0.25
     min_pts: 12
     max_points: 8000
@@ -26,7 +31,7 @@
     y_max: 3.0
     z_min: -3.0
     z_max: 5.0
-    min_cluster_points: 25
+    min_cluster_points: 12
     min_size_x: 0.10
     min_size_y: 0.10
     min_size_z: 0.10

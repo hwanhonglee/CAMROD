@@ -1,4 +1,4 @@
-// Implements `implementation` behavior.
+// Nav2 costmap plugin that injects external lanelet occupancy-grid costs.
 // HH_251231: Lanelet-based cost layer implementation (OccupancyGrid input)
 
 #include "camrod_map/cost_map/lanelet_cost_layer.hpp"
@@ -8,13 +8,13 @@
 
 namespace camrod_map::cost_map
 {
-// Implements `LaneletCostLayer` behavior.
+// Constructor keeps defaults; runtime wiring happens in onInitialize().
 LaneletCostLayer::LaneletCostLayer()
 {
   // HH_251231: default constructor
 }
 
-// Handles the `onInitialize` callback.
+// Reads plugin parameters and subscribes to the configured source OccupancyGrid.
 void LaneletCostLayer::onInitialize()
 {
   auto node = node_.lock();
@@ -50,7 +50,7 @@ void LaneletCostLayer::onInitialize()
   enabled_ = true;
 }
 
-// Implements `gridCallback` behavior.
+// Stores the latest incoming occupancy grid for the next costmap update cycle.
 void LaneletCostLayer::gridCallback(const avg_msgs::msg::OccupancyGrid::ConstSharedPtr msg)
 {
   latest_grid_ = msg;
@@ -59,7 +59,7 @@ void LaneletCostLayer::gridCallback(const avg_msgs::msg::OccupancyGrid::ConstSha
   current_ = true;
 }
 
-// Updates `Bounds` state.
+// Expands master update bounds so shifted input windows do not shrink costmap bounds.
 void LaneletCostLayer::updateBounds(
   double /*origin_x*/, double /*origin_y*/, double /*origin_yaw*/,
   double * min_x, double * min_y, double * max_x, double * max_y)
@@ -82,7 +82,7 @@ void LaneletCostLayer::updateBounds(
   *max_y = std::max(*max_y, grid_max_y);
 }
 
-// Updates `Costs` state.
+// Projects source OccupancyGrid cell values into Nav2 master-grid costs.
 void LaneletCostLayer::updateCosts(
   nav2_costmap_2d::Costmap2D & master_grid,
   int min_i, int min_j, int max_i, int max_j)

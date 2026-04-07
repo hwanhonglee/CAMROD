@@ -4,10 +4,10 @@
 namespace camping_cart
 {
 
-// Degree to Radians Conversion
+// Converts degree-based YAML values into radians for runtime math.
 static double deg2rad(double d) { return d * M_PI / 180.0; }
 
-// Loads `RobotParams` data or configuration.
+// Declares and loads robot geometry/sensor parameters from the current node.
 RobotParams loadRobotParams(rclcpp::Node * node)
 {
   RobotParams params;
@@ -23,7 +23,7 @@ RobotParams loadRobotParams(rclcpp::Node * node)
   params.encoder_resolution = node->declare_parameter<int>("robot.encoder_resolution", 2048);
   params.drive_type = node->declare_parameter<std::string>("robot.drive_type", "ackermann");
 
-  // Helper lambda for sensor pose loading
+  // Shared loader for sensor pose groups such as `imu.*`, `gnss.*`, `camera.*`, and `lidar.*`.
   auto load_pose = [&](const std::string & prefix, SensorPose & p)
   {
     p.x = node->declare_parameter<double>(prefix + ".x", 0.0);

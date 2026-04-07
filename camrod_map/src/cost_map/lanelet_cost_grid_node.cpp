@@ -185,12 +185,57 @@ public:
     // Enables deterministic realtime gradient refresh even when path/pose callbacks are sparse.
     rebuild_on_timer_ = declare_parameter<bool>("rebuild_on_timer", false);
     output_topic_ = declare_parameter<std::string>("output_topic", "/map/cost_grid/lanelet");  // HH_260123 allow multiple cost grids
+    // 2026-04-06: Secondary profile parameters.
+    // One process/node publishes:
+    // - primary profile   -> output_topic_               (typically /map/cost_grid/lanelet)
+    // - secondary profile -> secondary_output_topic_     (typically /map/cost_grid/planning_base)
+    // so we can reduce node count while preserving two output topics.
+    secondary_enable_ = declare_parameter<bool>("secondary.enable", false);
+    secondary_output_topic_ = declare_parameter<std::string>(
+      "secondary.output_topic", "/map/cost_grid/planning_base");
+    secondary_cost_mode_ = declare_parameter<std::string>("secondary.cost_mode", "centerline");
+    secondary_resolution_ = declare_parameter<double>("secondary.resolution", 0.10);
+    secondary_window_width_ = declare_parameter<int>("secondary.width", 500);
+    secondary_window_height_ = declare_parameter<int>("secondary.height", 500);
+    secondary_use_path_bbox_ = declare_parameter<bool>("secondary.use_path_bbox", false);
+    secondary_lock_window_ = declare_parameter<bool>("secondary.lock_window", false);
+    secondary_use_map_bbox_ = declare_parameter<bool>("secondary.use_map_bbox", false);
+    secondary_centerline_half_width_ = declare_parameter<double>("secondary.centerline_half_width", 0.8);
+    secondary_centerline_clip_to_lanelet_ = declare_parameter<bool>(
+      "secondary.centerline_clip_to_lanelet", true);
+    secondary_centerline_lanelet_fill_value_ = declare_parameter<int>(
+      "secondary.centerline_lanelet_fill_value", 85);
+    secondary_centerline_use_distance_gradient_ = declare_parameter<bool>(
+      "secondary.centerline_use_distance_gradient", false);
+    secondary_lanelet_boundary_value_ = declare_parameter<int>("secondary.lanelet_boundary_value", -1);
+    secondary_boundary_half_width_ = declare_parameter<double>("secondary.boundary_half_width", 0.05);
+    secondary_direction_penalty_ = declare_parameter<int>("secondary.direction_penalty", 0);
+    secondary_backward_penalty_ = declare_parameter<int>("secondary.backward_penalty", 0);
+    secondary_free_value_ = declare_parameter<int>("secondary.free_value", 0);
+    secondary_lethal_value_ = declare_parameter<int>("secondary.lethal_value", 100);
+    secondary_outside_value_ = declare_parameter<int>("secondary.outside_value", 99);
+    secondary_cell_inside_min_hits_ = std::clamp(
+      static_cast<int>(declare_parameter<int>("secondary.cell_inside_min_hits", 7)), 1, 9);
+    secondary_cell_inside_min_hits_path_ = std::clamp(
+      static_cast<int>(declare_parameter<int>("secondary.cell_inside_min_hits_path", 6)), 1, 9);
+    secondary_cell_inside_min_hits_boundary_ = std::clamp(
+      static_cast<int>(declare_parameter<int>("secondary.cell_inside_min_hits_boundary", 8)), 1, 9);
+    secondary_debug_coverage_stats_ = declare_parameter<bool>("secondary.debug_coverage_stats", false);
+    secondary_debug_coverage_stride_ = std::max(
+      1, static_cast<int>(declare_parameter<int>("secondary.debug_coverage_stride", 2)));
+    secondary_debug_coverage_min_value_ = declare_parameter<int>(
+      "secondary.debug_coverage_min_value", 0);
     publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
     map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
 
-    // HH_260109 Publish lanelet cost grid under /map prefix.
+    // HH_260109 Primary profile publisher.
     grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
       output_topic_, rclcpp::QoS(1).transient_local());
+    if (secondary_enable_) {
+      // Secondary profile publisher (same node, different topic/profile).
+      secondary_grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+        secondary_output_topic_, rclcpp::QoS(1).transient_local());
+    }
     if (publish_map_status_) {
       avg_map_pub_ = create_publisher<avg_msgs::msg::AvgMapMsgs>(
         map_status_topic_, rclcpp::QoS(10));
@@ -275,7 +320,7 @@ public:
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   }
 
-  // Handles the `onRepublishTimer` callback.
+  // Callback onRepublishTimer: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onRepublishTimer()
   {
     if (debug_rebuild_stats_) {
@@ -309,10 +354,16 @@ public:
       grid_pub_->publish(last_grid_);
       publishAvgMapGrid(last_grid_, "lanelet cost grid republished");
     }
+    if (secondary_enable_ && secondary_grid_pub_ && !secondary_last_grid_.data.empty()) {
+      // Republish secondary profile snapshot to keep late subscribers in sync.
+      secondary_last_grid_.header.stamp = now();
+      secondary_grid_pub_->publish(secondary_last_grid_);
+      publishAvgMapGrid(secondary_last_grid_, "lanelet secondary cost grid republished");
+    }
   }
 
 private:
-  // Implements `toLower` behavior.
+  // toLower: Utility helper used for string parsing, math conversion, or styling.
   static std::string toLower(std::string value)
   {
     std::transform(
@@ -321,7 +372,7 @@ private:
     return value;
   }
 
-  // Computes `MapBounds` values.
+  // Math helper MapBounds: computes derived geometric values used by mapping logic.
   void computeMapBounds()
   {
     if (!map_) {
@@ -355,7 +406,7 @@ private:
     }
   }
 
-  // Handles the `onPose` callback.
+  // Callback onPose: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     ++pose_cb_count_;
@@ -383,7 +434,7 @@ private:
     }
   }
 
-  // Handles the `onPathPrimary` callback.
+  // Callback onPathPrimary: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onPathPrimary(const avg_msgs::msg::Path::ConstSharedPtr msg)
   {
     if (onPathCommon(msg)) {
@@ -391,7 +442,7 @@ private:
     }
   }
 
-  // Handles the `onPathFallback` callback.
+  // Callback onPathFallback: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onPathFallback(const avg_msgs::msg::Path::ConstSharedPtr msg)
   {
     if (fallback_holdoff_until_.nanoseconds() > 0 && now() < fallback_holdoff_until_) {
@@ -407,7 +458,7 @@ private:
     (void)onPathCommon(msg);
   }
 
-  // Handles the `onPathCommon` callback.
+  // Callback onPathCommon: handles incoming ROS data or timer events and updates internal cache/publish state.
   bool onPathCommon(const avg_msgs::msg::Path::ConstSharedPtr msg)
   {
     ++path_cb_count_;
@@ -500,7 +551,7 @@ private:
     return true;
   }
 
-  // Handles the `onGoal` callback.
+  // Callback onGoal: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onGoal(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     if (msg && (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0)) {
@@ -541,7 +592,7 @@ private:
     }
   }
 
-  // Handles the `onParamChange` callback.
+  // Callback onParamChange: handles incoming ROS data or timer events and updates internal cache/publish state.
   avg_msgs::msg::SetParametersResult onParamChange(
     const std::vector<rclcpp::Parameter> & params)
   {
@@ -646,6 +697,67 @@ private:
         cell_inside_min_hits_path_ = std::clamp(static_cast<int>(p.as_int()), 1, 9);
       } else if (p.get_name() == "cell_inside_min_hits_boundary") {
         cell_inside_min_hits_boundary_ = std::clamp(static_cast<int>(p.as_int()), 1, 9);
+      // Secondary profile dynamic parameters.
+      } else if (p.get_name() == "secondary.enable") {
+        secondary_enable_ = p.as_bool();
+        if (secondary_enable_ && !secondary_grid_pub_) {
+          secondary_grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+            secondary_output_topic_, rclcpp::QoS(1).transient_local());
+        }
+      } else if (p.get_name() == "secondary.output_topic") {
+        secondary_output_topic_ = p.as_string();
+        if (secondary_enable_) {
+          secondary_grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+            secondary_output_topic_, rclcpp::QoS(1).transient_local());
+        }
+      } else if (p.get_name() == "secondary.cost_mode") {
+        secondary_cost_mode_ = p.as_string();
+      } else if (p.get_name() == "secondary.resolution") {
+        secondary_resolution_ = p.as_double();
+      } else if (p.get_name() == "secondary.width") {
+        secondary_window_width_ = p.as_int();
+      } else if (p.get_name() == "secondary.height") {
+        secondary_window_height_ = p.as_int();
+      } else if (p.get_name() == "secondary.use_path_bbox") {
+        secondary_use_path_bbox_ = p.as_bool();
+      } else if (p.get_name() == "secondary.lock_window") {
+        secondary_lock_window_ = p.as_bool();
+      } else if (p.get_name() == "secondary.use_map_bbox") {
+        secondary_use_map_bbox_ = p.as_bool();
+      } else if (p.get_name() == "secondary.centerline_half_width") {
+        secondary_centerline_half_width_ = p.as_double();
+      } else if (p.get_name() == "secondary.centerline_clip_to_lanelet") {
+        secondary_centerline_clip_to_lanelet_ = p.as_bool();
+      } else if (p.get_name() == "secondary.centerline_lanelet_fill_value") {
+        secondary_centerline_lanelet_fill_value_ = p.as_int();
+      } else if (p.get_name() == "secondary.centerline_use_distance_gradient") {
+        secondary_centerline_use_distance_gradient_ = p.as_bool();
+      } else if (p.get_name() == "secondary.lanelet_boundary_value") {
+        secondary_lanelet_boundary_value_ = p.as_int();
+      } else if (p.get_name() == "secondary.boundary_half_width") {
+        secondary_boundary_half_width_ = p.as_double();
+      } else if (p.get_name() == "secondary.direction_penalty") {
+        secondary_direction_penalty_ = p.as_int();
+      } else if (p.get_name() == "secondary.backward_penalty") {
+        secondary_backward_penalty_ = p.as_int();
+      } else if (p.get_name() == "secondary.free_value") {
+        secondary_free_value_ = p.as_int();
+      } else if (p.get_name() == "secondary.lethal_value") {
+        secondary_lethal_value_ = p.as_int();
+      } else if (p.get_name() == "secondary.outside_value") {
+        secondary_outside_value_ = p.as_int();
+      } else if (p.get_name() == "secondary.cell_inside_min_hits") {
+        secondary_cell_inside_min_hits_ = std::clamp(static_cast<int>(p.as_int()), 1, 9);
+      } else if (p.get_name() == "secondary.cell_inside_min_hits_path") {
+        secondary_cell_inside_min_hits_path_ = std::clamp(static_cast<int>(p.as_int()), 1, 9);
+      } else if (p.get_name() == "secondary.cell_inside_min_hits_boundary") {
+        secondary_cell_inside_min_hits_boundary_ = std::clamp(static_cast<int>(p.as_int()), 1, 9);
+      } else if (p.get_name() == "secondary.debug_coverage_stats") {
+        secondary_debug_coverage_stats_ = p.as_bool();
+      } else if (p.get_name() == "secondary.debug_coverage_stride") {
+        secondary_debug_coverage_stride_ = std::max(1, static_cast<int>(p.as_int()));
+      } else if (p.get_name() == "secondary.debug_coverage_min_value") {
+        secondary_debug_coverage_min_value_ = static_cast<int>(p.as_int());
       } else if (p.get_name() == "use_map_bbox") {
         use_map_bbox_ = p.as_bool();
       } else if (p.get_name() == "republish_period") {
@@ -665,8 +777,8 @@ private:
     return res;
   }
 
-  // Implements `buildGrid` behavior.
-  void buildGrid()
+  // Builds/publishes one active profile grid (using current member parameters).
+  void buildSingleGrid()
   {
     if (!map_) return;
     if (!has_pose_ && requiresPoseForBuild()) {
@@ -975,7 +1087,110 @@ private:
       grid.info.width, grid.info.height, grid.info.resolution, grid.header.frame_id.c_str());
   }
 
-  // Implements `requestBuild` behavior.
+  // Builds/publishes all configured profiles (primary + optional secondary).
+  void buildGrid()
+  {
+    // 1) Always publish primary profile first with currently active runtime members.
+    buildSingleGrid();
+    if (!secondary_enable_ || !secondary_grid_pub_) {
+      return;
+    }
+
+    // 2) Save primary runtime members so we can temporarily swap to secondary.
+    const double saved_resolution = resolution_;
+    const int saved_window_width = window_width_;
+    const int saved_window_height = window_height_;
+    const double saved_centerline_half_width = centerline_half_width_;
+    const double saved_boundary_half_width = boundary_half_width_;
+    const int saved_lanelet_boundary_value = lanelet_boundary_value_;
+    const bool saved_boundary_clip_to_lanelet = boundary_clip_to_lanelet_;
+    const bool saved_debug_coverage_stats = debug_coverage_stats_;
+    const int saved_debug_coverage_stride = debug_coverage_stride_;
+    const int saved_debug_coverage_min_value = debug_coverage_min_value_;
+    const int saved_free_value = free_value_;
+    const int saved_lethal_value = lethal_value_;
+    const int saved_outside_value = outside_value_;
+    const int saved_direction_penalty = direction_penalty_;
+    const int saved_backward_penalty = backward_penalty_;
+    const bool saved_centerline_use_distance_gradient = centerline_use_distance_gradient_;
+    const bool saved_centerline_clip_to_lanelet = centerline_clip_to_lanelet_;
+    const int saved_centerline_lanelet_fill_value = centerline_lanelet_fill_value_;
+    const int saved_cell_inside_min_hits = cell_inside_min_hits_;
+    const int saved_cell_inside_min_hits_path = cell_inside_min_hits_path_;
+    const int saved_cell_inside_min_hits_boundary = cell_inside_min_hits_boundary_;
+    const bool saved_use_path_bbox = use_path_bbox_;
+    const bool saved_lock_window = lock_window_;
+    const bool saved_use_map_bbox = use_map_bbox_;
+    const std::string saved_cost_mode = cost_mode_;
+    const std::string saved_output_topic = output_topic_;
+    const auto saved_grid_pub = grid_pub_;
+    const auto saved_last_grid = last_grid_;
+
+    // 3) Apply secondary profile members and redirect publisher/topic.
+    resolution_ = secondary_resolution_;
+    window_width_ = secondary_window_width_;
+    window_height_ = secondary_window_height_;
+    centerline_half_width_ = secondary_centerline_half_width_;
+    boundary_half_width_ = secondary_boundary_half_width_;
+    lanelet_boundary_value_ = secondary_lanelet_boundary_value_;
+    boundary_clip_to_lanelet_ = true;
+    debug_coverage_stats_ = secondary_debug_coverage_stats_;
+    debug_coverage_stride_ = secondary_debug_coverage_stride_;
+    debug_coverage_min_value_ = secondary_debug_coverage_min_value_;
+    free_value_ = secondary_free_value_;
+    lethal_value_ = secondary_lethal_value_;
+    outside_value_ = secondary_outside_value_;
+    direction_penalty_ = secondary_direction_penalty_;
+    backward_penalty_ = secondary_backward_penalty_;
+    centerline_use_distance_gradient_ = secondary_centerline_use_distance_gradient_;
+    centerline_clip_to_lanelet_ = secondary_centerline_clip_to_lanelet_;
+    centerline_lanelet_fill_value_ = secondary_centerline_lanelet_fill_value_;
+    cell_inside_min_hits_ = secondary_cell_inside_min_hits_;
+    cell_inside_min_hits_path_ = secondary_cell_inside_min_hits_path_;
+    cell_inside_min_hits_boundary_ = secondary_cell_inside_min_hits_boundary_;
+    use_path_bbox_ = secondary_use_path_bbox_;
+    lock_window_ = secondary_lock_window_;
+    use_map_bbox_ = secondary_use_map_bbox_;
+    cost_mode_ = secondary_cost_mode_;
+    output_topic_ = secondary_output_topic_;
+    grid_pub_ = secondary_grid_pub_;
+
+    // 4) Build/publish secondary profile and cache last grid for timer republish.
+    buildSingleGrid();
+    secondary_last_grid_ = last_grid_;
+
+    // 5) Restore primary runtime members exactly.
+    resolution_ = saved_resolution;
+    window_width_ = saved_window_width;
+    window_height_ = saved_window_height;
+    centerline_half_width_ = saved_centerline_half_width;
+    boundary_half_width_ = saved_boundary_half_width;
+    lanelet_boundary_value_ = saved_lanelet_boundary_value;
+    boundary_clip_to_lanelet_ = saved_boundary_clip_to_lanelet;
+    debug_coverage_stats_ = saved_debug_coverage_stats;
+    debug_coverage_stride_ = saved_debug_coverage_stride;
+    debug_coverage_min_value_ = saved_debug_coverage_min_value;
+    free_value_ = saved_free_value;
+    lethal_value_ = saved_lethal_value;
+    outside_value_ = saved_outside_value;
+    direction_penalty_ = saved_direction_penalty;
+    backward_penalty_ = saved_backward_penalty;
+    centerline_use_distance_gradient_ = saved_centerline_use_distance_gradient;
+    centerline_clip_to_lanelet_ = saved_centerline_clip_to_lanelet;
+    centerline_lanelet_fill_value_ = saved_centerline_lanelet_fill_value;
+    cell_inside_min_hits_ = saved_cell_inside_min_hits;
+    cell_inside_min_hits_path_ = saved_cell_inside_min_hits_path;
+    cell_inside_min_hits_boundary_ = saved_cell_inside_min_hits_boundary;
+    use_path_bbox_ = saved_use_path_bbox;
+    lock_window_ = saved_lock_window;
+    use_map_bbox_ = saved_use_map_bbox;
+    cost_mode_ = saved_cost_mode;
+    output_topic_ = saved_output_topic;
+    grid_pub_ = saved_grid_pub;
+    last_grid_ = saved_last_grid;
+  }
+
+  // Requests a cost-grid rebuild, honoring throttle/no-path guards unless forced.
   void requestBuild(bool force)
   {
     if (!map_ || (!has_pose_ && requiresPoseForBuild())) {
@@ -1013,7 +1228,7 @@ private:
     last_build_time_ = now();
   }
 
-  // Updates `RepublishTimer` state.
+  // State update RepublishTimer: updates cached runtime state used by the next build/publish cycle.
   void updateRepublishTimer()
   {
     republish_timer_.reset();
@@ -1026,7 +1241,7 @@ private:
       std::bind(&LaneletCostGridNode::onRepublishTimer, this));
   }
 
-  // Implements `clearPublishedGrid` behavior.
+  // clearPublishedGrid: Clears cached outputs and publishes a safe empty/reset state.
   void clearPublishedGrid()
   {
     avg_msgs::msg::OccupancyGrid empty;
@@ -1043,9 +1258,18 @@ private:
     has_built_grid_ = true;
     grid_pub_->publish(last_grid_);
     publishAvgMapGrid(last_grid_, "lanelet cost grid cleared");
+
+    if (secondary_enable_ && secondary_grid_pub_) {
+      // Keep both topics consistent when we clear due to stale/empty path state.
+      avg_msgs::msg::OccupancyGrid secondary_empty = empty;
+      secondary_empty.info.resolution = secondary_resolution_;
+      secondary_last_grid_ = secondary_empty;
+      secondary_grid_pub_->publish(secondary_last_grid_);
+      publishAvgMapGrid(secondary_last_grid_, "lanelet secondary cost grid cleared");
+    }
   }
 
-  // Publishes `AvgMapGrid` output.
+  // Publish helper AvgMapGrid: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishAvgMapGrid(const avg_msgs::msg::OccupancyGrid & grid, const std::string & message)
   {
     if (!publish_map_status_ || !avg_map_pub_) {
@@ -1061,26 +1285,56 @@ private:
     avg_map_pub_->publish(msg);
   }
 
-  // Implements `requiresPoseForBuild` behavior.
+  // requiresPoseForBuild: Predicate/helper used to decide branch behavior safely.
   bool requiresPoseForBuild() const
   {
-    const bool window_requires_pose = !lock_window_ && !use_path_bbox_;
-    bool pose_dependent_cost = false;
-    if (cost_mode_ == "path") {
-      pose_dependent_cost =
-        direction_penalty_ != 0 ||
-        backward_penalty_ != 0 ||
-        path_use_pose_distance_gradient_;
-    } else if (cost_mode_ == "centerline") {
-      pose_dependent_cost =
-        direction_penalty_ != 0 ||
-        backward_penalty_ != 0 ||
-        centerline_use_distance_gradient_;
+    const auto profile_requires_pose = [](
+      bool lock_window, bool use_path_bbox,
+      const std::string & mode,
+      int direction_penalty, int backward_penalty,
+      bool path_use_pose_distance_gradient,
+      bool centerline_use_distance_gradient) {
+        const bool window_requires_pose = !lock_window && !use_path_bbox;
+        bool pose_dependent_cost = false;
+        if (mode == "path") {
+          pose_dependent_cost =
+            direction_penalty != 0 ||
+            backward_penalty != 0 ||
+            path_use_pose_distance_gradient;
+        } else if (mode == "centerline") {
+          pose_dependent_cost =
+            direction_penalty != 0 ||
+            backward_penalty != 0 ||
+            centerline_use_distance_gradient;
+        }
+        return window_requires_pose || pose_dependent_cost;
+      };
+
+    const bool primary_requires = profile_requires_pose(
+      lock_window_,
+      use_path_bbox_,
+      cost_mode_,
+      direction_penalty_,
+      backward_penalty_,
+      path_use_pose_distance_gradient_,
+      centerline_use_distance_gradient_);
+    if (!secondary_enable_) {
+      return primary_requires;
     }
-    return window_requires_pose || pose_dependent_cost;
+
+    const bool secondary_requires = profile_requires_pose(
+      secondary_lock_window_,
+      secondary_use_path_bbox_,
+      secondary_cost_mode_,
+      secondary_direction_penalty_,
+      secondary_backward_penalty_,
+      false,
+      secondary_centerline_use_distance_gradient_);
+
+    return primary_requires || secondary_requires;
   }
 
-  // Computes `RasterPadding` values.
+  // Math helper RasterPadding: computes derived geometric values used by mapping logic.
   double computeRasterPadding() const
   {
     if (cost_mode_ == "bounds") {
@@ -1092,7 +1346,7 @@ private:
     return std::max(0.5 * resolution_, 0.01);
   }
 
-  // Implements `fillPolygon` behavior.
+  // fillPolygon: Rasterizes lane/path geometry into cost-grid cells.
   void fillPolygon(
     const lanelet::BasicPolygon2d & poly, bool opposite_heading,
     double robot_cos, double robot_sin,
@@ -1147,7 +1401,7 @@ private:
     }
   }
 
-  // Implements `fillBoundaryStrip` behavior.
+  // fillBoundaryStrip: Rasterizes lane/path geometry into cost-grid cells.
   void fillBoundaryStrip(
     const lanelet::ConstPoint3d & p0,
     const lanelet::ConstPoint3d & p1,
@@ -1204,7 +1458,7 @@ private:
     }
   }
 
-  // Implements `fillLaneletArea` behavior.
+  // fillLaneletArea: Rasterizes lane/path geometry into cost-grid cells.
   void fillLaneletArea(
     const lanelet::ConstLanelet & ll, int value,
     avg_msgs::msg::OccupancyGrid & grid)
@@ -1217,7 +1471,7 @@ private:
     fillPolygonConst(poly, value, grid, false);
   }
 
-  // Implements `buildLaneletPolygon` behavior.
+  // buildLaneletPolygon: Builds precomputed structures used by fast runtime updates.
   bool buildLaneletPolygon(const lanelet::ConstLanelet & ll, lanelet::BasicPolygon2d & poly) const
   {
     // HH_260317-00:00 Use lanelet-native polygon2d() instead of manual
@@ -1249,7 +1503,7 @@ private:
     return true;
   }
 
-  // Implements `buildAllLaneletPolygons` behavior.
+  // buildAllLaneletPolygons: Builds precomputed structures used by fast runtime updates.
   void buildAllLaneletPolygons()
   {
     all_lanelets_.clear();
@@ -1285,7 +1539,7 @@ private:
     invalidatePathLaneletCache();
   }
 
-  // Implements `collectPathLanelets` behavior.
+  // Extracts lanelets intersecting or nearest to sampled path points.
   std::vector<lanelet::ConstLanelet> collectPathLanelets() const
   {
     std::vector<lanelet::ConstLanelet> result;
@@ -1342,7 +1596,7 @@ private:
     return result;
   }
 
-  // Implements `ensurePathLaneletCache` behavior.
+  // Rebuilds cached path-lanelet/polygon sets when cache is invalid.
   void ensurePathLaneletCache()
   {
     if (cached_path_lanelets_valid_) {
@@ -1357,7 +1611,7 @@ private:
     cached_path_lanelets_valid_ = true;
   }
 
-  // Implements `invalidatePathLaneletCache` behavior.
+  // Clears cached path-lanelet associations after path/goal updates.
   void invalidatePathLaneletCache()
   {
     cached_path_lanelets_valid_ = false;
@@ -1365,7 +1619,7 @@ private:
     cached_path_lanelet_polys_.clear();
   }
 
-  // Implements `fillPathStrip` behavior.
+  // fillPathStrip: Rasterizes lane/path geometry into cost-grid cells.
   void fillPathStrip(
     const lanelet::BasicPolygon2d & poly,
     const avg_msgs::msg::Point & p0,
@@ -1455,7 +1709,7 @@ private:
     }
   }
 
-  // Implements `fillPolygonPoseGradient` behavior.
+  // fillPolygonPoseGradient: Rasterizes lane/path geometry into cost-grid cells.
   void fillPolygonPoseGradient(
     const lanelet::BasicPolygon2d & poly, int max_value,
     avg_msgs::msg::OccupancyGrid & grid,
@@ -1502,7 +1756,7 @@ private:
     }
   }
 
-  // Implements `fillCenterlineStrip` behavior.
+  // fillCenterlineStrip: Rasterizes lane/path geometry into cost-grid cells.
   void fillCenterlineStrip(
     const lanelet::BasicPolygon2d & poly,
     const lanelet::ConstPoint3d & p0,
@@ -1575,7 +1829,7 @@ private:
     }
   }
 
-  // Implements `toLaneletPolygons` behavior.
+  // Converts lanelet list into polygons for clipping and inside tests.
   std::vector<lanelet::BasicPolygon2d> toLaneletPolygons(
     const std::vector<lanelet::ConstLanelet> & lanelets) const
   {
@@ -1591,7 +1845,7 @@ private:
     return polys;
   }
 
-  // Implements `fillPolygonConst` behavior.
+  // fillPolygonConst: Rasterizes lane/path geometry into cost-grid cells.
   void fillPolygonConst(
     const lanelet::BasicPolygon2d & poly, int value,
     avg_msgs::msg::OccupancyGrid & grid,
@@ -1627,7 +1881,7 @@ private:
     }
   }
 
-  // Implements `withinAnyPolygon` behavior.
+  // withinAnyPolygon: Predicate/helper used to decide branch behavior safely.
   bool withinAnyPolygon(
     const lanelet::BasicPoint2d & p,
     const std::vector<lanelet::BasicPolygon2d> & polys) const
@@ -1640,7 +1894,7 @@ private:
     return false;
   }
 
-  // Implements `cellMostlyInsideAnyPolygon` behavior.
+  // cellMostlyInsideAnyPolygon: Predicate/helper used to decide branch behavior safely.
   bool cellMostlyInsideAnyPolygon(
     double cx, double cy,
     const std::vector<lanelet::BasicPolygon2d> & polys,
@@ -1654,7 +1908,7 @@ private:
     return false;
   }
 
-  // Implements `logCoverageStats` behavior.
+  // Logs sampled known-cell ratio outside lanelet polygons for debug validation.
   void logCoverageStats(const avg_msgs::msg::OccupancyGrid & grid)
   {
     if (all_lanelet_polys_.empty()) {
@@ -1702,7 +1956,7 @@ private:
     }
   }
 
-  // Implements `cellIntersectsPolygon` behavior.
+  // cellIntersectsPolygon: Predicate/helper used to decide branch behavior safely.
   bool cellIntersectsPolygon(
     const lanelet::BasicPolygon2d & poly, double cx, double cy) const
   {
@@ -1722,7 +1976,7 @@ private:
     return false;
   }
 
-  // Implements `cellMostlyInsidePolygon` behavior.
+  // cellMostlyInsidePolygon: Predicate/helper used to decide branch behavior safely.
   bool cellMostlyInsidePolygon(
     const lanelet::BasicPolygon2d & poly, double cx, double cy, int min_hits = -1) const
   {
@@ -1751,7 +2005,7 @@ private:
     return inside >= min_hits;
   }
 
-  // Implements `yawFromPose` behavior.
+  // Converts pose quaternion to yaw angle (radians).
   double yawFromPose(const avg_msgs::msg::PoseStamped & pose) const
   {
     const auto & q = pose.pose.orientation;
@@ -1876,6 +2130,32 @@ private:
   double stale_path_timeout_sec_{0.0};
   double republish_period_;
   std::string output_topic_;
+  bool secondary_enable_{false};
+  std::string secondary_output_topic_{"/map/cost_grid/planning_base"};
+  std::string secondary_cost_mode_{"centerline"};
+  double secondary_resolution_{0.10};
+  int secondary_window_width_{500};
+  int secondary_window_height_{500};
+  bool secondary_use_path_bbox_{false};
+  bool secondary_lock_window_{false};
+  bool secondary_use_map_bbox_{false};
+  double secondary_centerline_half_width_{0.8};
+  bool secondary_centerline_clip_to_lanelet_{true};
+  int secondary_centerline_lanelet_fill_value_{85};
+  bool secondary_centerline_use_distance_gradient_{false};
+  int secondary_lanelet_boundary_value_{-1};
+  double secondary_boundary_half_width_{0.05};
+  int secondary_direction_penalty_{0};
+  int secondary_backward_penalty_{0};
+  int secondary_free_value_{0};
+  int secondary_lethal_value_{100};
+  int secondary_outside_value_{99};
+  int secondary_cell_inside_min_hits_{7};
+  int secondary_cell_inside_min_hits_path_{6};
+  int secondary_cell_inside_min_hits_boundary_{8};
+  bool secondary_debug_coverage_stats_{false};
+  int secondary_debug_coverage_stride_{2};
+  int secondary_debug_coverage_min_value_{0};
   bool publish_map_status_{false};
   std::string map_status_topic_{"/map/status"};
 
@@ -1899,12 +2179,14 @@ private:
   bool path_received_{false};
   bool has_built_grid_{false};
   avg_msgs::msg::OccupancyGrid last_grid_;
+  avg_msgs::msg::OccupancyGrid secondary_last_grid_;
   rclcpp::Time last_build_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
   rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr path_fallback_sub_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
   rclcpp::Publisher<avg_msgs::msg::OccupancyGrid>::SharedPtr grid_pub_;
+  rclcpp::Publisher<avg_msgs::msg::OccupancyGrid>::SharedPtr secondary_grid_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_handle_;
   rclcpp::TimerBase::SharedPtr republish_timer_;

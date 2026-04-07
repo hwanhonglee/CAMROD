@@ -3,10 +3,11 @@
 
 /planning/lanelet_cost_grid_global_path:
   ros__parameters:
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
+    # HH_260406: Prefer launch-level override from map_info.yaml/bringup.
+    map_path: ""
     map_frame_id: "map"
-    offset_lat: 36.8436194
-    offset_lon: 128.0925490
+    offset_lat: 0.0
+    offset_lon: 0.0
     offset_alt: 0.0
     # HH_260316-00:00 Keep lanelet projector aligned with map loader/snapper nodes.
     projector_type: "local_cartesian"
@@ -137,10 +138,11 @@
 
 /planning/lanelet_cost_grid_local_path:
   ros__parameters:
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
+    # HH_260406: Prefer launch-level override from map_info.yaml/bringup.
+    map_path: ""
     map_frame_id: "map"
-    offset_lat: 36.8436194
-    offset_lon: 128.0925490
+    offset_lat: 0.0
+    offset_lon: 0.0
     offset_alt: 0.0
     # HH_260316-00:00 Keep lanelet projector aligned with map loader/snapper nodes.
     projector_type: "local_cartesian"

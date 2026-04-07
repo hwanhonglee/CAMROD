@@ -37,6 +37,10 @@ if(Python3_LIBRARIES)
 endif()
 
 set(msg_files
+  "msg/AvgAprilTagPoint.msg"
+  "msg/AvgAprilTagDetection.msg"
+  "msg/AvgAprilTagDetectionArray.msg"
+  "msg/AvgAprilTagPose.msg" 
   "msg/ModuleState.msg"
   "msg/SystemStatus.msg"
   "msg/AvgLocalizationMode.msg"

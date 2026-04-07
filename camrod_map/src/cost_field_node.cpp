@@ -14,11 +14,11 @@
 #include <lanelet2_projection/LocalCartesian.h>
 #include <lanelet2_projection/UTM.h>
 
-#include "camrod_map/custom_regulatory_elements.hpp"  // HH_251231 ensure speed_bump rule is registered
+#include "camrod_map/custom_regulatory_elements.hpp"
 #include <avg_msgs/msg/marker.hpp>
 
-namespace {
-// Implements `makePoint` behavior.
+namespace
+{
 avg_msgs::msg::Point makePoint(double x, double y, double z)
 {
   avg_msgs::msg::Point p;
@@ -28,8 +28,10 @@ avg_msgs::msg::Point makePoint(double x, double y, double z)
   return p;
 }
 
-// Implements `curvature3p` behavior.
-double curvature3p(const lanelet::ConstPoint3d & p0, const lanelet::ConstPoint3d & p1, const lanelet::ConstPoint3d & p2)
+double curvature3p(
+  const lanelet::ConstPoint3d & p0,
+  const lanelet::ConstPoint3d & p1,
+  const lanelet::ConstPoint3d & p2)
 {
   const double x1 = p1.x() - p0.x();
   const double y1 = p1.y() - p0.y();
@@ -45,10 +47,8 @@ double curvature3p(const lanelet::ConstPoint3d & p0, const lanelet::ConstPoint3d
   return cross / denom;
 }
 
-// Implements `colorFromCost` behavior.
 std::array<float, 4> colorFromCost(double cost)
 {
-  // HH_251230: lower cost -> green, higher cost -> red (gradient)
   const double c = std::clamp(cost, 0.0, 1.0);
   float r = static_cast<float>(c);
   float g = static_cast<float>(1.0 - c);
@@ -56,9 +56,18 @@ std::array<float, 4> colorFromCost(double cost)
   float a = 0.8f;
   return {r, g, b, a};
 }
+
+std::string normalizeProjectorType(const std::string & value)
+{
+  std::string out = value;
+  std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return out;
+}
 }  // namespace
 
-namespace camping_cart::localization
+namespace camrod_map
 {
 
 struct CostWeights
@@ -71,7 +80,6 @@ struct CostWeights
 class CostFieldNode : public rclcpp::Node
 {
 public:
-  // HH_260112 Use short node name; namespace applies the module prefix.
   CostFieldNode()
   : Node("cost_field")
   {
@@ -80,10 +88,10 @@ public:
     config_.offset_lon = declare_parameter<double>("offset_lon", 0.0);
     config_.offset_alt = declare_parameter<double>("offset_alt", 0.0);
     config_.map_frame_id = declare_parameter<std::string>("map_frame_id", "map");
-    config_.projector_type = declare_parameter<std::string>("projector_type", "LocalCartesianUTM");
+    config_.projector_type = declare_parameter<std::string>("projector_type", "local_cartesian");
     config_.mgrs_grid = declare_parameter<std::string>("mgrs_grid", "");
-    config_.max_draw_distance = declare_parameter<double>("max_draw_distance", 0.0);  // 0 -> unlimited
-    config_.percentile_clip = declare_parameter<double>("percentile_clip", 0.95);     // 0.0~1.0
+    config_.max_draw_distance = declare_parameter<double>("max_draw_distance", 0.0);
+    config_.percentile_clip = declare_parameter<double>("percentile_clip", 0.95);
     config_.output_topic = declare_parameter<std::string>(
       "output_topic", "/map/cost_grid/lanelet_field_markers");
     publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
@@ -103,7 +111,6 @@ public:
       return;
     }
 
-    // HH_260109 Visualizer topic prefix for cost field markers.
     pub_markers_ = create_publisher<avg_msgs::msg::MarkerArray>(
       config_.output_topic, rclcpp::QoS(1).transient_local());
     if (publish_map_status_) {
@@ -118,7 +125,6 @@ public:
   }
 
 private:
-  // Publishes `Markers` output.
   void publishMarkers()
   {
     avg_msgs::msg::MarkerArray arr;
@@ -127,8 +133,13 @@ private:
     const rclcpp::Time stamp = this->now();
     int32_t id = 0;
 
-    // HH_251230: first collect all segment costs to normalize (avoid all-red near vehicle)
-    struct Seg { avg_msgs::msg::Point p0; avg_msgs::msg::Point p1; double cost; };
+    struct Seg
+    {
+      avg_msgs::msg::Point p0;
+      avg_msgs::msg::Point p1;
+      double cost;
+    };
+
     std::vector<Seg> segments;
     segments.reserve(loadedPointCount());
 
@@ -137,16 +148,19 @@ private:
     double sum_cost = 0.0;
     size_t cnt_cost = 0;
     std::vector<double> cost_samples;
+
     for (const auto & ll : map_->laneletLayer) {
       const auto & cl = ll.centerline();
-      if (cl.size() < 2) continue;
+      if (cl.size() < 2) {
+        continue;
+      }
       for (size_t i = 0; i + 1 < cl.size(); ++i) {
         const auto & p0 = cl[i];
         const auto & p1 = cl[i + 1];
-        // HH_251230: ignore Z so height does not affect cost
         const double dist = std::hypot(p1.x() - p0.x(), p1.y() - p0.y());
         const double curv = (i + 2 < cl.size()) ? curvature3p(p0, p1, cl[i + 2]) : 0.0;
-        double cost = weights_.distance * dist + weights_.curvature * curv;
+        const double cost = weights_.distance * dist + weights_.curvature * curv;
+
         max_cost = std::max(max_cost, cost);
         min_cost = std::min(min_cost, cost);
         sum_cost += cost;
@@ -156,7 +170,6 @@ private:
       }
     }
 
-    // HH_251231: optional percentile clipping to tame extremes
     double clip_cost = max_cost;
     if (!cost_samples.empty()) {
       const double pct = std::clamp(config_.percentile_clip, 0.0, 1.0);
@@ -168,7 +181,7 @@ private:
     }
 
     for (auto & seg : segments) {
-      const double norm = std::clamp(seg.cost / clip_cost, 0.0, 1.0);  // 0~1
+      const double norm = std::clamp(seg.cost / clip_cost, 0.0, 1.0);
       auto color = colorFromCost(norm);
 
       avg_msgs::msg::Marker line;
@@ -183,7 +196,7 @@ private:
       line.color.g = color[1];
       line.color.b = color[2];
       line.color.a = color[3];
-      // HH_251231: optional draw radius limit (0 => no limit)
+
       if (config_.max_draw_distance > 1e-3) {
         const double d0 = std::hypot(seg.p0.x, seg.p0.y);
         const double d1 = std::hypot(seg.p1.x, seg.p1.y);
@@ -191,6 +204,7 @@ private:
           continue;
         }
       }
+
       line.points.push_back(seg.p0);
       line.points.push_back(seg.p1);
       arr.markers.emplace_back(std::move(line));
@@ -208,7 +222,6 @@ private:
     publishAvgMapMessage(arr, stamp);
   }
 
-  // Publishes `AvgMapMessage` output.
   void publishAvgMapMessage(const avg_msgs::msg::MarkerArray & markers, const rclcpp::Time & stamp)
   {
     if (!publish_map_status_ || !avg_map_pub_) {
@@ -224,7 +237,6 @@ private:
     avg_map_pub_->publish(msg);
   }
 
-  // Loads `edPointCount` data or configuration.
   size_t loadedPointCount() const
   {
     size_t sum = 0;
@@ -236,26 +248,23 @@ private:
     return sum;
   }
 
-  // Loads `Map` data or configuration.
   bool loadMap()
   {
     lanelet::GPSPoint gps{config_.offset_lat, config_.offset_lon, config_.offset_alt};
     lanelet::Origin origin(gps);
     std::unique_ptr<lanelet::Projector> projector;
 
-    const auto proj_type = config_.projector_type;
-    if (proj_type == "UTM" || proj_type == "LocalCartesianUTM" || proj_type == "TransverseMercator" || proj_type == "MGRS") {
+    const auto proj_type = normalizeProjectorType(config_.projector_type);
+    if (proj_type == "utm" || proj_type == "transversemercator" || proj_type == "mgrs") {
       projector = std::make_unique<lanelet::projection::UtmProjector>(origin, false);
-    } else {  // default LocalCartesian
+    } else {
       projector = std::make_unique<lanelet::projection::LocalCartesianProjector>(origin);
     }
 
     lanelet::ErrorMessages errs;
     map_ = lanelet::load(config_.map_path, *projector, &errs);
-    if (!errs.empty()) {
-      for (const auto & e : errs) {
-        RCLCPP_WARN(get_logger(), "lanelet load warning: %s", e.c_str());
-      }
+    for (const auto & e : errs) {
+      RCLCPP_WARN(get_logger(), "lanelet load warning: %s", e.c_str());
     }
     if (!map_) {
       RCLCPP_FATAL(get_logger(), "Failed to load map: %s", config_.map_path.c_str());
@@ -271,7 +280,7 @@ private:
     double offset_lon{0.0};
     double offset_alt{0.0};
     std::string map_frame_id{"map"};
-    std::string projector_type{"LocalCartesianUTM"};
+    std::string projector_type{"local_cartesian"};
     std::string mgrs_grid;
     double max_draw_distance{0.0};
     double percentile_clip{0.95};
@@ -287,13 +296,12 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
-}  // namespace camping_cart::localization
+}  // namespace camrod_map
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<camping_cart::localization::CostFieldNode>());
+  rclcpp::spin(std::make_shared<camrod_map::CostFieldNode>());
   rclcpp::shutdown();
   return 0;
 }

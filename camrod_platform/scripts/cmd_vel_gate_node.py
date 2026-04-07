@@ -13,7 +13,7 @@ from std_srvs.srv import SetBool
 
 
 class CmdVelGateNode(Node):
-    # Implements `__init__` behavior.
+    # Initializes gate parameters, I/O endpoints, and runtime state publishers/subscribers.
     def __init__(self) -> None:
         super().__init__("cmd_vel_gate")
 
@@ -88,22 +88,22 @@ class CmdVelGateNode(Node):
             f"allow_on_start={'true' if self.allow_on_start else 'false'}"
         )
 
-    # Implements `_effective_enabled` behavior.
+    # Returns the final drive-enable state after applying e-stop override.
     def _effective_enabled(self) -> bool:
         return self._enabled and not self._estop
 
-    # Implements `_publish_state` behavior.
+    # Publishes current gate state so downstream modules can observe effective enable.
     def _publish_state(self) -> None:
         msg = Bool()
         msg.data = self._effective_enabled()
         self.pub_state.publish(msg)
 
-    # Implements `_publish_zero` behavior.
+    # Sends a zero-velocity command when the gate blocks motion.
     def _publish_zero(self) -> None:
         zero = Twist()
         self.pub_cmd.publish(zero)
 
-    # Handles the `_on_cmd_vel` callback.
+    # Passes through or blocks incoming velocity commands based on gate state.
     def _on_cmd_vel(self, msg: Twist) -> None:
         self._last_input = msg
         if self._effective_enabled():
@@ -117,7 +117,7 @@ class CmdVelGateNode(Node):
             f"estop={str(self._estop).lower()}"
         )
 
-    # Handles the `_on_enable` callback.
+    # Updates gate state from `/platform/drive_enable` style control topic.
     def _on_enable(self, msg: Bool) -> None:
         self._enabled = bool(msg.data)
         self._publish_state()
@@ -129,7 +129,7 @@ class CmdVelGateNode(Node):
             f"effective={'true' if self._effective_enabled() else 'false'}"
         )
 
-    # Handles the `_on_engage` callback.
+    # Mirrors planning engage signal into the same gate state used by enable topic.
     def _on_engage(self, msg: Bool) -> None:
         # HH_260327: Mirror planning engage bool into platform drive-enable gate.
         self._enabled = bool(msg.data)
@@ -142,7 +142,7 @@ class CmdVelGateNode(Node):
             f"effective={'true' if self._effective_enabled() else 'false'}"
         )
 
-    # Handles the `_on_estop` callback.
+    # Applies emergency-stop state and forces zero command when configured.
     def _on_estop(self, msg: Bool) -> None:
         self._estop = bool(msg.data)
         self._publish_state()
@@ -153,7 +153,7 @@ class CmdVelGateNode(Node):
             f"effective_enabled={'true' if self._effective_enabled() else 'false'}"
         )
 
-    # Handles the `_on_set_enabled` callback.
+    # Service callback for external tools to toggle gate state at runtime.
     def _on_set_enabled(
         self, request: SetBool.Request, response: SetBool.Response
     ) -> SetBool.Response:
@@ -169,6 +169,7 @@ class CmdVelGateNode(Node):
 
 
 def main(args=None) -> None:
+    # Entrypoint that spins the gate node until shutdown.
     rclpy.init(args=args)
     node = CmdVelGateNode()
     try:

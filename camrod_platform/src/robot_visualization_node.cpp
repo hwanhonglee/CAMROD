@@ -32,7 +32,7 @@ namespace
 // HH_260114 Keep a single label scale so every TF text marker is consistent across sensors.
 constexpr double kLabelScale = 0.22;
 
-// Implements `makeColor` behavior.
+// Builds an avg_msgs color object using RGBA components in [0.0, 1.0].
 avg_msgs::msg::ColorRGBA makeColor(float r, float g, float b, float a)
 {
   avg_msgs::msg::ColorRGBA color;
@@ -43,7 +43,7 @@ avg_msgs::msg::ColorRGBA makeColor(float r, float g, float b, float a)
   return color;
 }
 
-// Implements `makePoint` behavior.
+// Builds a 3D point helper object.
 avg_msgs::msg::Point makePoint(double x, double y, double z)
 {
   avg_msgs::msg::Point point;
@@ -53,7 +53,7 @@ avg_msgs::msg::Point makePoint(double x, double y, double z)
   return point;
 }
 
-// Implements `quaternionFromRPY` behavior.
+// Converts roll/pitch/yaw (rad) to quaternion.
 avg_msgs::msg::Quaternion quaternionFromRPY(double roll, double pitch, double yaw)
 {
   tf2::Quaternion q;
@@ -166,7 +166,7 @@ public:
   }
 
 private:
-  // Publishes `BaseTransform` output.
+  // Broadcasts map->base transform when TF publishing is enabled.
   void publishBaseTransform()
   {
     if (!publish_tf_ || !tf_broadcaster_) {
@@ -183,7 +183,7 @@ private:
     tf_broadcaster_->sendTransform(base_tf);
   }
 
-  // Publishes `Markers` output.
+  // Rebuilds and publishes all robot/sensor visualization markers and planning boundary polygon.
   void publishMarkers()
   {
     publishBaseTransform();
@@ -391,7 +391,7 @@ private:
     publishAvgPlatform(markers, polygon_msg, now);
   }
 
-  // Implements `makeBasePoseStamped` behavior.
+  // Creates a PoseStamped message from the current base pose state.
   avg_msgs::msg::PoseStamped makeBasePoseStamped(const rclcpp::Time & stamp) const
   {
     avg_msgs::msg::PoseStamped pose;
@@ -404,7 +404,7 @@ private:
     return pose;
   }
 
-  // Implements `makeBasePoseCov` behavior.
+  // Creates a PoseWithCovarianceStamped wrapper around the base pose for status outputs.
   avg_msgs::msg::PoseWithCovarianceStamped makeBasePoseCov(const rclcpp::Time & stamp) const
   {
     avg_msgs::msg::PoseWithCovarianceStamped pose_cov;
@@ -421,7 +421,7 @@ private:
     return pose_cov;
   }
 
-  // Publishes `AvgPlatform` output.
+  // Publishes consolidated platform status payload for system-level consumers.
   void publishAvgPlatform(
     const avg_msgs::msg::MarkerArray & markers,
     const avg_msgs::msg::PolygonStamped & planning_boundary,
@@ -464,7 +464,7 @@ private:
     avg_platform_pub_->publish(msg);
   }
 
-  // Implements `getSensorDictionary` behavior.
+  // Exposes known sensor poses as a name->pose map for marker generation.
   std::unordered_map<std::string, SensorPose> getSensorDictionary() const
   {
     return {
@@ -475,7 +475,7 @@ private:
     };
   }
 
-  // Handles the `onInitialPose` callback.
+  // Updates base pose from `/localization/initialpose` and republishes markers immediately.
   void onInitialPose(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     const auto & pose = msg->pose.pose;
@@ -494,7 +494,7 @@ private:
     // HH_260304-00:00 Suppress per-fix initial-pose spam while GNSS pose is streaming.
   }
 
-  // Handles the `onLocalizationPose` callback.
+  // Adapts localization pose topic into initialpose-format handling and freshness tracking.
   void onLocalizationPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     auto converted = std::make_shared<avg_msgs::msg::PoseWithCovarianceStamped>();
@@ -505,7 +505,7 @@ private:
     has_localization_pose_ = true;
   }
 
-  // Handles the `onGnssPose` callback.
+  // Uses GNSS pose only as fallback when localization is stale or unavailable.
   void onGnssPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     // HH_260327: GNSS is fallback-only input for platform marker alignment.
@@ -525,13 +525,13 @@ private:
     onInitialPose(converted);
   }
 
-  // Implements `mapGroundOffset` behavior.
+  // Returns map-derived ground Z offset when available, otherwise zero.
   double mapGroundOffset() const
   {
     return use_map_ground_z_ && map_ground_ready_ ? map_ground_z_ : 0.0;
   }
 
-  // HH_260109 Use const shared pointer to avoid deprecated subscription callback warnings.
+  // Samples lanelet map marker heights once to estimate ground Z for visualization placement.
   void onMapMarkers(const avg_msgs::msg::MarkerArray::ConstSharedPtr msg)
   {
     if (!use_map_ground_z_ || map_ground_ready_) {
@@ -602,7 +602,7 @@ private:
   bool map_ground_ready_{false};
   bool publish_platform_status_{false};
 
-  // Implements `composeOrientation` behavior.
+  // Composes base orientation with local sensor offset orientation.
   avg_msgs::msg::Quaternion composeOrientation(double roll, double pitch, double yaw) const
   {
     tf2::Quaternion base_q;
@@ -614,7 +614,7 @@ private:
     return tf2::toMsg(q);
   }
 
-  // Creates `AxesMarker` resources.
+  // Creates an RGB axis marker (X=red, Y=green, Z=blue) anchored at a point/orientation.
   avg_msgs::msg::Marker createAxesMarker(
     const std::string & ns, int32_t id,
     const avg_msgs::msg::Point & origin,

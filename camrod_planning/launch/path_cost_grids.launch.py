@@ -1,4 +1,5 @@
 import os
+import yaml
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
@@ -6,26 +7,75 @@ from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
 
+def extract_map_ros_params(map_info_cfg: dict) -> dict:
+    # HH_260406: Robust map_info parser for key-layout differences.
+    if not isinstance(map_info_cfg, dict):
+        return {}
+    for key in (
+        '/map/lanelet2_map',
+        'map/lanelet2_map',
+        'lanelet2_map',
+        '/lanelet2_map',
+    ):
+        val = map_info_cfg.get(key)
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    for val in map_info_cfg.values():
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    return {}
+
+
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
     # HH_260330: Standalone planning launch uses package-local config by default.
-    cost_grid_param = os.path.join(
+    default_cost_grid_param = os.path.join(
         get_package_share_directory('camrod_planning'),
         'config', 'path_cost_grids.yaml')
+    map_info_path = os.path.join(
+        get_package_share_directory('camrod_map'),
+        'config',
+        'map_info.yaml',
+    )
+    map_path_default = ''
+    origin_lat_default = '0.0'
+    origin_lon_default = '0.0'
+    origin_alt_default = '0.0'
+    try:
+        with open(map_info_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+        params = extract_map_ros_params(data)
+        map_path_default = str(params.get('map_path', map_path_default))
+        origin_lat_default = str(params.get('offset_lat', origin_lat_default))
+        origin_lon_default = str(params.get('offset_lon', origin_lon_default))
+        origin_alt_default = str(params.get('offset_alt', origin_alt_default))
+    except Exception:
+        pass
+
     map_path_arg = DeclareLaunchArgument(
         'map_path',
-        default_value='/home/nvidia/camrod_ws/src/lanelet2_maps.osm',
+        default_value=map_path_default,
         description='Lanelet2 map path for path-cost-grid helpers',
+    )
+    path_cost_grids_param_arg = DeclareLaunchArgument(
+        'path_cost_grids_param_file',
+        default_value=default_cost_grid_param,
+        description='Parameter file for planning path-cost-grid helper nodes',
     )
     module_namespace_arg = DeclareLaunchArgument(
         'module_namespace',
         default_value='planning',
         description='Namespace for planning path-cost-grid helper nodes',
     )
-    origin_lat_arg = DeclareLaunchArgument('origin_lat', default_value='36.8436194')
-    origin_lon_arg = DeclareLaunchArgument('origin_lon', default_value='128.0925490')
-    origin_alt_arg = DeclareLaunchArgument('origin_alt', default_value='0.0')
+    origin_lat_arg = DeclareLaunchArgument('origin_lat', default_value=origin_lat_default)
+    origin_lon_arg = DeclareLaunchArgument('origin_lon', default_value=origin_lon_default)
+    origin_alt_arg = DeclareLaunchArgument('origin_alt', default_value=origin_alt_default)
     map_path = LaunchConfiguration('map_path')
+    path_cost_grids_param_file = LaunchConfiguration('path_cost_grids_param_file')
     origin_lat = LaunchConfiguration('origin_lat')
     origin_lon = LaunchConfiguration('origin_lon')
     origin_alt = LaunchConfiguration('origin_alt')
@@ -39,7 +89,7 @@ def generate_launch_description():
         namespace=module_namespace,
         output='screen',
         parameters=[
-            cost_grid_param,
+            path_cost_grids_param_file,
             {
                 'map_path': map_path,
                 'offset_lat': origin_lat,
@@ -107,7 +157,7 @@ def generate_launch_description():
         namespace=module_namespace,
         output='screen',
         parameters=[
-            cost_grid_param,
+            path_cost_grids_param_file,
             {
                 'map_path': map_path,
                 'offset_lat': origin_lat,
@@ -226,6 +276,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         map_path_arg,
+        path_cost_grids_param_arg,
         module_namespace_arg,
         origin_lat_arg,
         origin_lon_arg,

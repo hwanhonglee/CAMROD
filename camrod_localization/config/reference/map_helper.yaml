@@ -1,0 +1,39 @@
+/**:
+  ros__parameters:
+    publish_localization_status: false
+    localization_status_topic: "/localization/status"
+
+    # --------------------------------------------------------------------------
+    # Centerline snapper
+    # --------------------------------------------------------------------------
+    enable_centerline_snapper: true
+
+    centerline_input_pose_topic: "/localization/pose"
+    centerline_output_pose_topic: "/localization/lanelet_pose"
+
+    max_search_radius: 30.0
+    longitudinal_stddev: 0.5
+    lateral_stddev: 0.3
+    yaw_stddev: 0.2
+    use_map_z: true
+    map_z_offset: 0.0
+    flatten_to_ground: false
+
+    # --------------------------------------------------------------------------
+    # Drop zone matcher
+    # --------------------------------------------------------------------------
+    enable_drop_zone_matcher: true
+    drop_zones_yaml: ""
+    drop_zone_pose_topic: "/localization/pose_with_covariance"
+
+    match_radius: 2.0
+    stable_count: 10
+    publish_initialpose3d: true
+    publish_once: true
+    use_corners_center: true
+    use_zone_yaw: true
+
+    initialpose3d_topic: "/localization/initialpose3d"
+    status_topic: "/localization/initial_match_ok"
+    match_id_topic: "/localization/initial_match_id"
+    match_distance_topic: "/localization/initial_match_distance"

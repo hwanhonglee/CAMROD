@@ -1,0 +1,12 @@
+localization_init_checker:
+  ros__parameters:
+    publish_rate: 1.0
+
+    ok_topic:       "/localization/initial_match_ok"
+    distance_topic: "/localization/initial_match_distance"
+    id_topic:       "/localization/initial_match_id"
+
+    stale_timeout:    5.0    # Mark STALE when no update is received within this duration (s).
+    grace_period_sec: 30.0   # Grace period after startup before escalating initialization failures.
+    dist_warn_m:      3.0    # WARN threshold for initialization distance error (m).
+    dist_error_m:     8.0    # ERROR threshold for initialization distance error (m).

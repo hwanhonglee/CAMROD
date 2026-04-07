@@ -39,13 +39,11 @@ template <typename T>
 struct HasMemberPosition<T, std::void_t<decltype(std::declval<T>().position.x)>> : std::true_type {};
 
 template <typename CenterT>
-// Implements `centerX` behavior.
+// Extracts X center coordinate from different Detection2D center layouts.
 double centerX(const CenterT & center)
 {
-  // Implements `constexpr` behavior.
   if constexpr (HasMemberX<CenterT>::value) {
     return center.x;
-  // Implements `constexpr` behavior.
   } else if constexpr (HasMemberPosition<CenterT>::value) {
     return center.position.x;
   }
@@ -53,13 +51,11 @@ double centerX(const CenterT & center)
 }
 
 template <typename CenterT>
-// Implements `centerY` behavior.
+// Extracts Y center coordinate from different Detection2D center layouts.
 double centerY(const CenterT & center)
 {
-  // Implements `constexpr` behavior.
   if constexpr (HasMemberX<CenterT>::value) {
     return center.y;
-  // Implements `constexpr` behavior.
   } else if constexpr (HasMemberPosition<CenterT>::value) {
     return center.position.y;
   }
@@ -67,7 +63,7 @@ double centerY(const CenterT & center)
 }
 
 template <typename CenterT>
-// Implements `centerX` behavior.
+// Pointer-safe overload that falls back to zero when center is null.
 double centerX(const CenterT * center)
 {
   if (!center) {
@@ -77,7 +73,7 @@ double centerX(const CenterT * center)
 }
 
 template <typename CenterT>
-// Implements `centerY` behavior.
+// Pointer-safe overload that falls back to zero when center is null.
 double centerY(const CenterT * center)
 {
   if (!center) {
@@ -146,7 +142,7 @@ public:
   }
 
 private:
-  // Handles the `onCameraInfo` callback.
+  // Updates camera projection model used to project LiDAR points into image coordinates.
   void onCameraInfo(const avg_msgs::msg::CameraInfo::ConstSharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -155,7 +151,7 @@ private:
     camera_info_ready_ = true;
   }
 
-  // Handles the `onDetections` callback.
+  // Caches latest camera detection boxes for LiDAR gating during cloud callback processing.
   void onDetections(const avg_msgs::msg::Detection2DArray::ConstSharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -179,7 +175,7 @@ private:
     }
   }
 
-  // Handles the `onCloud` callback.
+  // Filters LiDAR cloud by projecting points into camera image and keeping points inside detections.
   void onCloud(const avg_msgs::msg::PointCloud2::ConstSharedPtr msg)
   {
     std::vector<BBox2D> boxes;
@@ -278,7 +274,7 @@ private:
     publishAvgPerception(out);
   }
 
-  // Publishes `AvgPerception` output.
+  // Publishes unified perception status payload when status publication is enabled.
   void publishAvgPerception(const avg_msgs::msg::PointCloud2 & obstacles)
   {
     if (!publish_perception_status_ || !avg_pub_) {

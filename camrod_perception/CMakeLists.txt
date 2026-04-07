@@ -70,12 +70,6 @@ install(TARGETS
   obstacle_lidar_node
   DESTINATION lib/${PROJECT_NAME})
 
-install(
-  PROGRAMS
-    scripts/perception_status_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
 install(DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME})
 

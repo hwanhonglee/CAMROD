@@ -1,0 +1,60 @@
+/* camrod operator UI theme */
+QWidget {
+  background-color: #0f141a;
+  color: #d8e3ee;
+}
+QToolTip {
+  background-color: #1a232d;
+  color: #e8f2ff;
+  border: 1px solid #2f465d;
+}
+QTreeView, QListView, QTableView {
+  background-color: #0f141a;
+  alternate-background-color: #141c24;
+  color: #d8e3ee;
+  selection-background-color: #1f3448;
+  selection-color: #eff7ff;
+}
+QHeaderView::section {
+  background-color: #151f29;
+  color: #cfe1f4;
+  padding: 4px;
+}
+QToolBar, QMenuBar, QMenu {
+  background-color: #101820;
+  color: #d8e3ee;
+}
+QPushButton {
+  background-color: #17222e;
+  color: #d8e3ee;
+  border: 1px solid #2f465d;
+  border-radius: 5px;
+  padding: 4px 8px;
+}
+QPushButton:hover {
+  background-color: #213243;
+}
+QPushButton:pressed {
+  background-color: #0f1821;
+}
+QLineEdit, QComboBox, QTextEdit {
+  background-color: #131c24;
+  color: #d8e3ee;
+  border: 1px solid #2f465d;
+}
+QScrollBar:vertical, QScrollBar:horizontal {
+  background: #0f141a;
+  width: 12px;
+  margin: 0px;
+}
+QScrollBar::handle {
+  background: #2a3f53;
+  border-radius: 5px;
+}
+QScrollBar::handle:hover {
+  background: #3b5b78;
+}
+QStatusBar {
+  background-color: #0f141a;
+  color: #d8e3ee;
+}

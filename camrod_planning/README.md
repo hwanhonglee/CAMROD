@@ -41,6 +41,9 @@ Pose alignment flow:
   - `enable_goal_replanner`
   - `enable_nav2_lifecycle_retry`
   - `enable_state_machine`
+- State-machine keypoint sources:
+  - `planning_state_machine_keypoints_yaml` (default: map `drop_zones.yaml`)
+  - `planning_state_machine_camping_sites_yaml` (default: `camping_sites.yaml`)
 - Map/origin:
   - `map_path`, `origin_lat`, `origin_lon`, `origin_alt`
 - Frame:

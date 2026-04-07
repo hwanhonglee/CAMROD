@@ -1,0 +1,29 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+lidar_checker:
+  ros__parameters:
+    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    lidar_names: ["main", "filtered"]
+
+    main:
+      topic: "/sensing/lidar/points"
+      expected_hz: 10.0        # Expected message update rate (Hz).
+      hz_warn_ratio: 0.8       # WARN threshold for actual_hz/expected_hz ratio.
+      hz_error_ratio: 0.5      # ERROR threshold for actual_hz/expected_hz ratio.
+      stale_timeout: 2.0       # Mark STALE when no update is received within this duration (s).
+      min_point_count: 100     # Minimum point count threshold (0 disables this check).
+      max_point_count: 0       # Maximum point count threshold (0 disables this check).
+      max_nan_ratio: 0.1       # Maximum allowed NaN/Inf ratio (0 disables this check).
+
+    filtered:
+      topic: "/sensing/lidar/points_filtered"
+      expected_hz: 10.0
+      hz_warn_ratio: 0.8
+      hz_error_ratio: 0.5
+      stale_timeout: 2.0
+      min_point_count: 50      # Minimum point count threshold (0 disables this check).
+      max_point_count: 0
+      max_nan_ratio: 0.0       # Maximum allowed NaN/Inf ratio (0 disables this check).

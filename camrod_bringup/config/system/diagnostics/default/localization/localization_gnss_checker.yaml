@@ -1,0 +1,19 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+localization_gnss_checker:
+  ros__parameters:
+    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    gnss_names: ["main"]
+
+    main:
+      topic: "/sensing/gnss/pose_with_covariance"
+      expected_hz: 5.0         # Expected message update rate (Hz).
+      hz_warn_ratio: 0.8       # WARN threshold for actual_hz/expected_hz ratio.
+      hz_error_ratio: 0.5      # ERROR threshold for actual_hz/expected_hz ratio.
+      stale_timeout: 2.0       # Mark STALE when no update is received within this duration (s).
+      cov_warn_threshold: 4.0  # WARN threshold for XY covariance trace.
+      cov_error_threshold: 25.0 # ERROR threshold for XY covariance trace.
+      max_jump_m: 5.0          # Maximum allowed inter-frame position jump before ERROR (m).

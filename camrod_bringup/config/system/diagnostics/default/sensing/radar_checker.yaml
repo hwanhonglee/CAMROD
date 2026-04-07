@@ -1,0 +1,99 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+#
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+radar_checker:
+  ros__parameters:
+    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    radar_names: ["REAR", "LEFT2", "LEFT1", "RIGHT2", "RIGHT1", "FRONT"]
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    #
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    #
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    #
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+
+    REAR:
+      topic: "/sensing/radar/rear/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7     # WARN threshold for actual_hz/expected_hz ratio.
+      hz_error_ratio:     0.4     # ERROR threshold for actual_hz/expected_hz ratio.
+      stale_timeout:      1.0
+      min_range_m:        0.02    # Parameter note: tune this value for your platform profile.
+      max_range_m:        4.5     # Parameter note: tune this value for your platform profile.
+      stuck_min_warn_m:   0.05    # Parameter note: tune this value for your platform profile.
+      stuck_min_error_m:  0.03    # Parameter note: tune this value for your platform profile.
+      stuck_max_warn_m:   4.4     # Parameter note: tune this value for your platform profile.
+      stuck_max_error_m:  0.0     # Parameter note: tune this value for your platform profile.
+
+    LEFT2:
+      topic: "/sensing/radar/left2/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0
+
+    LEFT1:
+      topic: "/sensing/radar/left1/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0
+
+    RIGHT2:
+      topic: "/sensing/radar/right2/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0
+
+    RIGHT1:
+      topic: "/sensing/radar/right1/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0
+
+    FRONT:
+      topic: "/sensing/radar/front/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0

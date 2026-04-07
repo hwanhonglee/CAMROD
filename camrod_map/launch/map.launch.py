@@ -1,457 +1,247 @@
+#!/usr/bin/env python3
+
 import os
 import yaml
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
-from ament_index_python.packages import get_package_share_directory
 
 
-# Implements `pkg_share` behavior.
-def pkg_share(pkg, rel):
+def pkg_share(pkg: str, rel: str) -> str:
     return os.path.join(get_package_share_directory(pkg), rel)
 
 
 def extract_map_ros_params(map_info_cfg: dict) -> dict:
-    # HH_260330: Keep map_info parser tolerant to key style differences.
     if not isinstance(map_info_cfg, dict):
         return {}
+    wildcard = map_info_cfg.get("/**", None)
+    if isinstance(wildcard, dict):
+        params = wildcard.get("ros__parameters")
+        if isinstance(params, dict):
+            return params
     for key in (
-        '/map/lanelet2_map',
-        'map/lanelet2_map',
-        'lanelet2_map',
-        '/lanelet2_map',
+        "/map/lanelet2_map",
+        "map/lanelet2_map",
+        "lanelet2_map",
+        "/lanelet2_map",
     ):
         val = map_info_cfg.get(key)
         if isinstance(val, dict):
-            params = val.get('ros__parameters')
+            params = val.get("ros__parameters")
             if isinstance(params, dict):
                 return params
     for val in map_info_cfg.values():
         if isinstance(val, dict):
-            params = val.get('ros__parameters')
+            params = val.get("ros__parameters")
             if isinstance(params, dict):
                 return params
     return {}
 
 
-# Implements `generate_launch_description` behavior.
-def generate_launch_description():
-    # HH_260128 Load defaults from map_info.yaml so map_path/offset are populated without extra args.
-    default_map_info = pkg_share('camrod_map', os.path.join('config', 'map_info.yaml'))
-    default_map_path = ''
-    default_lat = '0.0'
-    default_lon = '0.0'
-    default_alt = '0.0'
+def load_defaults(default_map_info: str) -> dict:
+    defaults = {
+        "map_path": "",
+        "origin_lat": "",
+        "origin_lon": "",
+        "origin_alt": "",
+    }
     try:
-        with open(default_map_info, 'r') as f:
+        with open(default_map_info, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         params = extract_map_ros_params(data)
-        default_map_path = str(params.get('map_path', default_map_path))
-        default_lat = str(params.get('offset_lat', default_lat))
-        default_lon = str(params.get('offset_lon', default_lon))
-        default_alt = str(params.get('offset_alt', default_alt))
+        defaults["map_path"] = str(params.get("map_path", "")).strip()
+        defaults["origin_lat"] = str(params.get("offset_lat", "")).strip()
+        defaults["origin_lon"] = str(params.get("offset_lon", "")).strip()
+        defaults["origin_alt"] = str(params.get("offset_alt", "")).strip()
     except Exception:
         pass
+    return defaults
 
-    map_param_arg = DeclareLaunchArgument(
-        'map_param_file',
-        default_value=pkg_share('camrod_map', os.path.join('config', 'map_info.yaml')),
-        description='Map info YAML for lanelet2_map_node',
-    )
-    map_path_arg = DeclareLaunchArgument(
-        'map_path',
-        default_value=default_map_path,
-        description='Lanelet2 map path override (empty uses map_info.yaml)',
-    )
-    origin_lat_arg = DeclareLaunchArgument(
-        'origin_lat',
-        default_value=default_lat,
-        description='Map origin latitude',
-    )
-    origin_lon_arg = DeclareLaunchArgument(
-        'origin_lon',
-        default_value=default_lon,
-        description='Map origin longitude',
-    )
-    origin_alt_arg = DeclareLaunchArgument(
-        'origin_alt',
-        default_value=default_alt,
-        description='Map origin altitude',
-    )
-    map_viz_param_arg = DeclareLaunchArgument(
-        'map_visualization_param_file',
-        default_value=pkg_share('camrod_map', os.path.join('config', 'map_visualization.yaml')),
-        description='Map visualization parameters (cost markers/field)',
-    )
-    enable_nav2_inflation_debug_marker_arg = DeclareLaunchArgument(
-        'enable_nav2_inflation_debug_marker',
-        default_value='false',
-        description='Enable heavy debug marker from /planning/global_costmap/costmap',
-    )
-    enable_inflation_markers_arg = DeclareLaunchArgument(
-        'enable_inflation_markers',
-        default_value='false',
-        description='Enable contributor-merged inflation marker topic for RViz debug',
-    )
-    enable_map_cost_markers_arg = DeclareLaunchArgument(
-        'enable_map_cost_markers',
-        default_value='true',
-        description='Enable lanelet/lidar/radar marker publishers',
-    )
-    enable_cost_field_arg = DeclareLaunchArgument(
-        'enable_cost_field',
-        default_value='true',
-        description='Enable map cost_field node',
-    )
-    enable_cost_grids_arg = DeclareLaunchArgument(
-        'enable_cost_grids',
-        default_value='true',
-        description='Enable map lanelet/planning cost-grid publishers',
-    )
-    enable_module_validator_arg = DeclareLaunchArgument(
-        'enable_module_validator',
-        default_value='true',
-        description='Enable map module validator publisher',
-    )
-    module_namespace_arg = DeclareLaunchArgument(
-        'module_namespace',
-        default_value='map',
-        description='Namespace for map module nodes',
-    )
-    system_namespace_arg = DeclareLaunchArgument(
-        'system_namespace',
-        default_value='system',
-        description='Namespace for system validator nodes',
+
+def _first_existing_path(candidates: list[str]) -> str:
+    seen = set()
+    for candidate in candidates:
+        normalized = os.path.abspath(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if os.path.isfile(normalized):
+            return normalized
+    return ""
+
+
+def discover_map_path(map_share: str, map_info_file: str, map_path_from_info: str) -> str:
+    configured = str(map_path_from_info or "").strip()
+    if configured:
+        configured_path = (
+            configured
+            if os.path.isabs(configured)
+            else os.path.abspath(os.path.join(os.path.dirname(map_info_file), configured))
+        )
+        if os.path.isfile(configured_path):
+            return configured_path
+
+    candidates = [
+        os.path.join(os.path.expanduser("~"), "camrod_ws", "src", "lanelet2_maps.osm"),
+        os.path.join(os.getcwd(), "lanelet2_maps.osm"),
+        os.path.join(os.getcwd(), "src", "lanelet2_maps.osm"),
+    ]
+
+    # HH_260407: Relative lookup around package share / config path.
+    for anchor in (map_share, os.path.dirname(map_info_file)):
+        cur = os.path.abspath(anchor)
+        for _ in range(8):
+            candidates.append(os.path.join(cur, "lanelet2_maps.osm"))
+            candidates.append(os.path.join(cur, "src", "lanelet2_maps.osm"))
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+
+    discovered = _first_existing_path(candidates)
+    return discovered if discovered else configured
+
+
+def generate_launch_description():
+    map_share = get_package_share_directory("camrod_map")
+
+    default_map_info = os.path.join(map_share, "config", "map_info.yaml")
+    defaults = load_defaults(default_map_info)
+    defaults["map_path"] = discover_map_path(
+        map_share,
+        default_map_info,
+        defaults["map_path"],
     )
 
-    map_param = LaunchConfiguration('map_param_file')
-    map_path = LaunchConfiguration('map_path')
-    origin_lat = LaunchConfiguration('origin_lat')
-    origin_lon = LaunchConfiguration('origin_lon')
-    origin_alt = LaunchConfiguration('origin_alt')
-    map_viz_param = LaunchConfiguration('map_visualization_param_file')
-    enable_nav2_inflation_debug_marker = LaunchConfiguration('enable_nav2_inflation_debug_marker')
-    enable_inflation_markers = LaunchConfiguration('enable_inflation_markers')
-    enable_map_cost_markers = LaunchConfiguration('enable_map_cost_markers')
-    enable_cost_field = LaunchConfiguration('enable_cost_field')
-    enable_cost_grids = LaunchConfiguration('enable_cost_grids')
-    enable_module_validator = LaunchConfiguration('enable_module_validator')
-    module_namespace = LaunchConfiguration('module_namespace')
-    system_namespace = LaunchConfiguration('system_namespace')
-
-    # HH_260121 Map server (Lanelet2) loads OSM and static TF world->map.
-    map_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(pkg_share('camrod_map', 'launch/lanelet2_map.launch.py')),
-        launch_arguments={
-            'map_param_file': map_param,
-            'module_namespace': module_namespace,
-        }.items(),
-    )
-
-    # HH_260121 Lanelet cost grid for Nav2 custom cost layer (/map/cost_grid/lanelet).
-    cost_grid_param = pkg_share('camrod_map', os.path.join('config', 'lanelet_cost_grid.yaml'))
-    lanelet_cost_grid = Node(
-        package='camrod_map',
-        executable='lanelet_cost_grid_node',
-        name='cost_grid_map',
-        namespace=module_namespace,
-        output='screen',
-        condition=IfCondition(enable_cost_grids),
-        parameters=[
-            cost_grid_param,
-            {
-                'map_path': map_path,
-                'offset_lat': origin_lat,
-                'offset_lon': origin_lon,
-                'offset_alt': origin_alt,
-                # HH_260316-00:00 Match projector with map loader/snapper nodes.
-                'projector_type': 'local_cartesian',
-                'map_frame_id': 'map',
-                # 2026-02-23: Align base grid pose reference with planning/localization start frame.
-                'pose_topic': '/planning/lanelet_pose',
-                'output_topic': '/map/cost_grid/lanelet',
-                # HH_260326: Limit lanelet grid to a bounded local window.
-                # Reason: full-map raster at fine resolution can exceed 100M cells and stall startup.
-                'resolution': 0.10,
-                'width': 500,
-                'height': 500,
-                'use_path_bbox': False,
-                'lock_window': False,
-                'use_map_bbox': False,
-                # HH_260326: Keep map grid updating with pose at a bounded rate for stable runtime CPU.
-                'rebuild_on_pose': True,
-                'rebuild_on_path': False,
-                'min_rebuild_period_sec': 2.0,
-                # HH_260313-00:00 Boundary-coverage verifier.
-                # Warn when known cells are outside lanelet polygons.
-                # HH_260326: Disable runtime coverage logs in default run to reduce rebuild overhead.
-                'debug_coverage_stats': False,
-                'debug_coverage_stride': 2,
-                'debug_coverage_min_value': 0,
-                # HH_260305-00:00 Keep static lanelet grid latched; avoid periodic full-grid republish load.
-                'republish_period': 0.0,
-            },
-        ],
-    )
-
-    # 2026-02-24: Separate planner base grid with centerline gradient to keep global path centered
-    # while preserving lanelet-shaped visualization grid above.
-    lanelet_planning_grid = Node(
-        package='camrod_map',
-        executable='lanelet_cost_grid_node',
-        name='cost_grid_planning_base',
-        namespace=module_namespace,
-        output='screen',
-        condition=IfCondition(enable_cost_grids),
-        parameters=[
-            cost_grid_param,
-            {
-                'map_path': map_path,
-                'offset_lat': origin_lat,
-                'offset_lon': origin_lon,
-                'offset_alt': origin_alt,
-                # HH_260316-00:00 Match projector with map loader/snapper nodes.
-                'projector_type': 'local_cartesian',
-                'map_frame_id': 'map',
-                'pose_topic': '/planning/lanelet_pose',
-                'output_topic': '/map/cost_grid/planning_base',
-                # HH_260316-00:00 Planner base policy:
-                # 1) keep centerline as primary traversable corridor
-                # 2) preserve lane-following preference
-                # 3) avoid disconnected corner artifacts in lanelet-polygon raster.
-                # This directly addresses intermittent Smac2D "no valid path found"
-                # observed when lanelet polygon rasterization was too strict.
-                'cost_mode': 'centerline',
-                # Keep planner-base corridor tight so paths remain centerline-biased.
-                'centerline_half_width': 0.8,
-                'centerline_clip_to_lanelet': True,
-                # Keep non-centerline lane interior higher cost than centerline strip.
-                'centerline_lanelet_fill_value': 85,
-                'lanelet_boundary_value': -1,
-                'boundary_half_width': 0.05,
-                'direction_penalty': 0,
-                'backward_penalty': 0,
-                'free_value': 0,
-                'lethal_value': 100,
-                # HH_260316-00:00 Keep outside unknown; local/global costmap base layer
-                # treats unknown as non-traversable without forcing immediate lethal writes.
-                # HH_260318-00:00 Use high (but non-lethal) outside cost.
-                # This prevents Smac start-cell hard-fail when localization is slightly off-lane,
-                # while still strongly biasing paths back into lanelet centerline corridor.
-                'outside_value': 99,
-                'use_path_bbox': False,
-                # HH_260326: Use robot-centered bounded window for planning_base.
-                # Reason: full-map (use_map_bbox=true, 0.05 m) delayed publish and left Nav2 on unknown map.
-                'lock_window': False,
-                'use_map_bbox': False,
-                'width': 500,
-                'height': 500,
-                'resolution': 0.10,
-                # HH_260326: Remove pose-distance dependency so first valid pose can trigger fast build.
-                'centerline_use_distance_gradient': False,
-                # HH_260316-00:00 Keep centerline strip sampling permissive
-                # to avoid micro-gaps at sharp corners.
-                'cell_inside_min_hits': 7,
-                'cell_inside_min_hits_path': 6,
-                'cell_inside_min_hits_boundary': 8,
-                # HH_260326: Rebuild on pose so planning_base follows robot and keeps Nav2 rolling window fed.
-                'rebuild_on_pose': True,
-                'rebuild_on_path': False,
-                'min_rebuild_period_sec': 2.0,
-                # HH_260316-00:00 Disable heavy coverage logs on planner base.
-                # Enable temporarily only for raster-debug sessions.
-                'debug_coverage_stats': False,
-                'debug_coverage_stride': 2,
-                'debug_coverage_min_value': 0,
-                # HH_260305-00:00 Keep static planning-base grid latched; avoid periodic full-grid republish load.
-                'republish_period': 0.0,
-            },
-        ],
-    )
-
-    # 2026-02-24: Move map cost visualizers under map module ownership.
-    inflation_cost_marker = Node(
-        package='camrod_map',
-        executable='cost_field_marker_node',
-        name='inflation_nav2_cost_marker',
-        namespace=module_namespace,
-        output='screen',
-        condition=IfCondition(enable_nav2_inflation_debug_marker),
-        parameters=[
-            map_viz_param,
-            {
-                # 2026-03-05: Keep nav2-master visualization as a lightweight debug-only stream.
-                # Final contributor-combined visualization is published on /map/cost_grid/inflation_markers.
-                'marker_topic': '/map/cost_grid/inflation_nav2_markers',
-                'min_value': 40,
-                'palette': 'safety',
-                'sample_stride': 6,
-                'min_publish_period_sec': 1.00,
-                'republish_period_sec': 0.0,
-            },
-        ],
-    )
-
-    # 2026-02-25: Marker-only visualization for lanelet base cost grid.
-    lanelet_cost_marker = Node(
-        package='camrod_map',
-        executable='cost_field_marker_node',
-        name='lanelet_cost_marker',
-        namespace=module_namespace,
-        output='screen',
-        condition=IfCondition(enable_map_cost_markers),
-        parameters=[
-            {
-                'grid_topic': '/map/cost_grid/lanelet',
-                'marker_topic': '/map/cost_grid/lanelet_markers',
-                'marker_scale': 0.08,
-                'min_value': 0,
-                'max_value': 100,
-                'alpha': 0.12,
-                'z_offset': 0.02,
-                # HH_260313-00:00 Shrink cubes so boundary markers stay visibly inside lane bounds.
-                'cell_scale_ratio': 0.70,
-                'palette': 'pastel_blue_red',
-                'show_unknown': False,
-                'grid_qos_transient_local': True,
-                # HH_260305-00:00 Preserve boundary detail (avoid corner underfill).
-                'sample_stride': 1,
-                'min_publish_period_sec': 0.02,
-                # HH_260305-00:00 Publisher is transient_local; periodic republish not needed.
-                'republish_period_sec': 0.20,
-            },
-        ],
-    )
-
-    radar_cost_marker = Node(
-        package='camrod_map',
-        executable='cost_field_marker_node',
-        name='radar_cost_marker',
-        namespace=module_namespace,
-        output='screen',
-        condition=IfCondition(enable_map_cost_markers),
-        parameters=[
-            {
-                'grid_topic': '/sensing/radar/near_cost_grid',
-                'marker_topic': '/map/cost_grid/radar_markers',
-                'marker_scale': 0.10,
-                'min_value': 0,
-                'max_value': 100,
-                'alpha': 0.42,
-                'z_offset': 0.04,
-                'cell_scale_ratio': 0.70,
-                'palette': 'pastel_orange_red',
-                'show_unknown': False,
-                'grid_qos_transient_local': True,
-                'sample_stride': 2,
-                'min_publish_period_sec': 0.03,
-                'republish_period_sec': 0.12,
-            },
-        ],
-    )
-
-    lidar_cost_marker = Node(
-        package='camrod_map',
-        executable='cost_field_marker_node',
-        name='lidar_cost_marker',
-        namespace=module_namespace,
-        output='screen',
-        condition=IfCondition(enable_map_cost_markers),
-        parameters=[
-            {
-                'grid_topic': '/sensing/lidar/near_cost_grid',
-                'marker_topic': '/map/cost_grid/lidar_markers',
-                'marker_scale': 0.08,
-                'min_value': 0,
-                'max_value': 100,
-                'alpha': 0.40,
-                'z_offset': 0.035,
-                'cell_scale_ratio': 0.70,
-                'palette': 'pastel_green_red',
-                'show_unknown': False,
-                'grid_qos_transient_local': True,
-                'sample_stride': 2,
-                'min_publish_period_sec': 0.03,
-                'republish_period_sec': 0.12,
-            },
-        ],
-    )
-
-    inflation_marker_aggregator = Node(
-        package='camrod_map',
-        executable='marker_array_aggregator_node',
-        name='inflation_marker_aggregator',
-        namespace=module_namespace,
-        output='screen',
-        condition=IfCondition(enable_inflation_markers),
-        parameters=[{
-            # 2026-03-05: User-facing final inflation marker = contributor-combined cost layers.
-            'output_topic': '/map/cost_grid/inflation_markers',
-            'input_topics': [
-                '/map/cost_grid/lanelet_markers',
-                '/map/cost_grid/lidar_markers',
-                '/map/cost_grid/radar_markers',
-                '/planning/cost_grid/global_path_markers',
-                '/planning/cost_grid/local_path_markers',
-            ],
-            # HH_260305-00:00 Keep lightweight timer so stale contributor patches are purged quickly.
-            'republish_period_sec': 0.05,
-            # HH_260305-00:00 Low-latency merge with light throttling.
-            'min_publish_period_sec': 0.01,
-            # HH_260305-00:00 Purge only dynamic inputs when they stop updating.
-            'stale_timeout_sec': 1.2,
-            'stale_timeout_topics': [
-                '/map/cost_grid/lidar_markers',
-                '/map/cost_grid/radar_markers',
-            ],
-        }],
-    )
-
-    lanelet_cost_field = Node(
-        package='camrod_map',
-        executable='cost_field_node',
-        name='lanelet_cost_field',
-        namespace=module_namespace,
-        output='screen',
-        condition=IfCondition(enable_cost_field),
-        parameters=[
-            map_viz_param,
-            {
-                'map_path': map_path,
-                'offset_lat': origin_lat,
-                'offset_lon': origin_lon,
-                'offset_alt': origin_alt,
-            },
-        ],
-    )
-
-    # HH_260326: Removed map status/validator runtime nodes as requested.
+    lanelet2_map_launch = os.path.join(map_share, "launch", "lanelet2_map.launch.py")
+    cost_grid_launch = os.path.join(map_share, "launch", "cost_grid.launch.py")
+    visualization_launch = os.path.join(map_share, "launch", "visualization.launch.py")
 
     return LaunchDescription([
-        map_param_arg,
-        map_path_arg,
-        origin_lat_arg,
-        origin_lon_arg,
-        origin_alt_arg,
-        map_viz_param_arg,
-        enable_nav2_inflation_debug_marker_arg,
-        enable_inflation_markers_arg,
-        enable_map_cost_markers_arg,
-        enable_cost_field_arg,
-        enable_cost_grids_arg,
-        enable_module_validator_arg,
-        module_namespace_arg,
-        system_namespace_arg,
-        map_launch,
-        lanelet_cost_grid,
-        lanelet_planning_grid,
-        inflation_cost_marker,
-        lanelet_cost_marker,
-        lidar_cost_marker,
-        radar_cost_marker,
-        inflation_marker_aggregator,
-        lanelet_cost_field,
+        DeclareLaunchArgument(
+            "map_info_file",
+            default_value=default_map_info,
+            description="Shared map info YAML (single source of map/origin defaults)",
+        ),
+        DeclareLaunchArgument(
+            "map_param_file",
+            default_value=LaunchConfiguration("map_info_file"),
+            description="Alias for map_info_file (lanelet2_map.launch.py compatibility)",
+        ),
+        DeclareLaunchArgument(
+            "lanelet_cost_grid_param_file",
+            default_value=pkg_share("camrod_map", os.path.join("config", "lanelet_cost_grid.yaml")),
+            description="Lanelet cost-grid node parameters",
+        ),
+        DeclareLaunchArgument(
+            "map_visualization_param_file",
+            default_value=pkg_share("camrod_map", os.path.join("config", "map_visualization.yaml")),
+            description="Map visualization parameters",
+        ),
+        DeclareLaunchArgument(
+            "map_path",
+            default_value=defaults["map_path"],
+            description="Lanelet2 map path override (empty: use map_info.yaml value)",
+        ),
+        DeclareLaunchArgument(
+            "origin_lat",
+            default_value=defaults["origin_lat"],
+            description="Map origin latitude override (empty: use map_info.yaml value)",
+        ),
+        DeclareLaunchArgument(
+            "origin_lon",
+            default_value=defaults["origin_lon"],
+            description="Map origin longitude override (empty: use map_info.yaml value)",
+        ),
+        DeclareLaunchArgument(
+            "origin_alt",
+            default_value=defaults["origin_alt"],
+            description="Map origin altitude override (empty: use map_info.yaml value)",
+        ),
+        DeclareLaunchArgument(
+            "enable_nav2_inflation_debug_marker",
+            default_value="false",
+            description="Enable debug marker stream from /planning/global_costmap/costmap",
+        ),
+        DeclareLaunchArgument(
+            "enable_inflation_markers",
+            default_value="false",
+            description="Enable contributor-merged inflation markers",
+        ),
+        DeclareLaunchArgument(
+            "enable_map_cost_markers",
+            default_value="true",
+            description="Enable lanelet/lidar/radar marker publishers",
+        ),
+        DeclareLaunchArgument(
+            "enable_cost_field",
+            default_value="false",
+            description="Enable lanelet cost field node",
+        ),
+        DeclareLaunchArgument(
+            "enable_cost_grids",
+            default_value="true",
+            description="Enable lanelet/planning base cost-grid publishers",
+        ),
+        DeclareLaunchArgument(
+            "enable_module_validator",
+            default_value="true",
+            description="Reserved for bringup compatibility",
+        ),
+        DeclareLaunchArgument(
+            "module_namespace",
+            default_value="map",
+            description="Namespace for map module nodes",
+        ),
+        DeclareLaunchArgument(
+            "system_namespace",
+            default_value="system",
+            description="Reserved for bringup compatibility",
+        ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(lanelet2_map_launch),
+            launch_arguments={
+                "map_param_file": LaunchConfiguration("map_param_file"),
+                "map_path": LaunchConfiguration("map_path"),
+                "origin_lat": LaunchConfiguration("origin_lat"),
+                "origin_lon": LaunchConfiguration("origin_lon"),
+                "origin_alt": LaunchConfiguration("origin_alt"),
+                "module_namespace": LaunchConfiguration("module_namespace"),
+            }.items(),
+        ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(cost_grid_launch),
+            launch_arguments={
+                "module_namespace": LaunchConfiguration("module_namespace"),
+                "enable_cost_grids": LaunchConfiguration("enable_cost_grids"),
+                "map_info_file": LaunchConfiguration("map_info_file"),
+                "lanelet_cost_grid_param_file": LaunchConfiguration("lanelet_cost_grid_param_file"),
+                "map_path": LaunchConfiguration("map_path"),
+                "origin_lat": LaunchConfiguration("origin_lat"),
+                "origin_lon": LaunchConfiguration("origin_lon"),
+                "origin_alt": LaunchConfiguration("origin_alt"),
+            }.items(),
+        ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(visualization_launch),
+            launch_arguments={
+                "module_namespace": LaunchConfiguration("module_namespace"),
+                "map_info_file": LaunchConfiguration("map_info_file"),
+                "map_visualization_param_file": LaunchConfiguration("map_visualization_param_file"),
+                "enable_nav2_inflation_debug_marker": LaunchConfiguration("enable_nav2_inflation_debug_marker"),
+                "enable_inflation_markers": LaunchConfiguration("enable_inflation_markers"),
+                "enable_map_cost_markers": LaunchConfiguration("enable_map_cost_markers"),
+                "enable_cost_field": LaunchConfiguration("enable_cost_field"),
+                "map_path": LaunchConfiguration("map_path"),
+                "origin_lat": LaunchConfiguration("origin_lat"),
+                "origin_lon": LaunchConfiguration("origin_lon"),
+                "origin_alt": LaunchConfiguration("origin_alt"),
+            }.items(),
+        ),
     ])

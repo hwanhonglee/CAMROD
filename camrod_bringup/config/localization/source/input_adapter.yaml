@@ -1,0 +1,48 @@
+/**:
+  ros__parameters:
+    publish_localization_status: false
+    localization_status_topic: "/localization/status"
+
+    # --------------------------------------------------------------------------
+    # NavSatFix -> Pose / PoseWithCovariance
+    # --------------------------------------------------------------------------
+    enable_navsat_to_pose: true
+    navsat_topic: "/sensing/gnss/ublox_gps_node/fix"
+    raw_pose_topic: ""
+    utm_pose_topic: ""
+    gnss_pose_topic: "/sensing/gnss/pose"
+    gnss_pose_cov_topic: "/sensing/gnss/pose_with_covariance"
+    map_frame_id: "map"
+    publish_gnss_covariance: true
+
+    max_position_jump_m: 8.0
+    jump_reject_max_speed_mps: 20.0
+    jump_reject_reset_sec: 2.0
+
+    # --------------------------------------------------------------------------
+    # Pose -> PoseWithCovariance
+    # --------------------------------------------------------------------------
+    enable_pose_cov_bridge: true
+    pose_cov_input_topic: "/sensing/gnss/pose"
+    pose_cov_output_topic: "/sensing/gnss/pose_with_covariance"
+    pose_covariance_diagonal: [1.0, 1.0, 1.0, 999.0, 999.0, 1.0]
+
+    # --------------------------------------------------------------------------
+    # Odometry -> Pose / PoseWithCovariance
+    # --------------------------------------------------------------------------
+    enable_odometry_to_pose: true
+    odom_input_topic: "/localization/odometry/filtered"
+    odom_pose_topic: "/localization/pose"
+    odom_pose_cov_topic: "/localization/pose_with_covariance"
+    odom_output_frame_id: ""
+
+    # --------------------------------------------------------------------------
+    # Wheel input -> unified wheel odometry
+    # --------------------------------------------------------------------------
+    enable_wheel_odometry_bridge: true
+    wheel_input_topic: "/platform/status/wheel"
+    wheel_output_topic: "/platform/wheel/odometry"
+    wheel_nav_output_topic: "/platform/wheel/nav_odometry"
+    wheel_odom_frame_id: "odom"
+    wheel_base_frame_id: "robot_base_link"
+    wheel_input_type: "twist"

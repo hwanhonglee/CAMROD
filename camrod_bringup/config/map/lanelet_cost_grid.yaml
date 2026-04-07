@@ -2,13 +2,11 @@
 # HH_260102 Default parameters for lanelet_cost_grid_node (OccupancyGrid for path-focused cost)
 # HH_260112 Align with /map namespace + short node name.
 # HH_260112 Align node parameter keys with /map namespace + short names.
-/map/cost_grid_map:
+/map/lanelet_boundary_cost_grid:
   ros__parameters:
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"  # HH_260102 override via launch
+    # map_path / origin are intentionally injected from launch(map_info.yaml shared defaults).
+    # Keep them out of this file to avoid duplicate reference sources.
     map_frame_id: "map"
-    offset_lat: 36.8436194
-    offset_lon: 128.0925490
-    offset_alt: 0.0
     # HH_260316-00:00 Keep lanelet projector aligned with map loader/snapper nodes.
     projector_type: "local_cartesian"
     # 2026-02-02: Finer grid for clearer lanelet boundaries in RViz.
@@ -70,70 +68,31 @@
     pose_topic: "/planning/lanelet_pose"
     path_topic: "/planning/global_path"
     republish_period: 0.0
-
-/map/cost_grid_planning_base:
-  ros__parameters:
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
-    map_frame_id: "map"
-    offset_lat: 36.8436194
-    offset_lon: 128.0925490
-    offset_alt: 0.0
-    # HH_260316-00:00 Keep lanelet projector aligned with map loader/snapper nodes.
-    projector_type: "local_cartesian"
-    # 2026-02-26: Keep planner-base resolution identical to map lanelet grid
-    # so Smac sees smooth lane curvature instead of coarse quantized strips.
-    resolution: 0.05
-    width: 0
-    height: 0
-    # HH_260319-00:00 Tighten corridor so global planner cannot drift
-    # too far from lanelet centerline while still tolerating small pose noise.
-    centerline_half_width: 0.75
-    free_value: 0
-    lethal_value: 100
-    # HH_260316-00:00 Planner-base for Nav2:
-    # - centerline-biased corridor as primary traversable region
-    # - robust corner connectivity (avoid polygon raster micro-gaps)
-    # - outside unknown so non-lanelet area remains non-traversable
-    # This setup is intentionally aligned with Smac2D stability.
-    cost_mode: "centerline"
-    # HH_260316-00:00 Keep centerline strips inside lane bounds.
-    centerline_clip_to_lanelet: true
-    # HH_260316-00:00 Fill lanelet interior with soft base cost to keep
-    # route connectivity robust while centerline remains the lowest-cost band.
-    # -1 disables lanelet fill.
-    # HH_260319-00:00 Increase lanelet fill cost so centerline strip
-    # remains the preferred route unless dynamic obstacle costs require detour.
-    centerline_lanelet_fill_value: 92
-    # HH_260318-00:00 Keep outside high-cost but traversable to avoid
-    # planner start-cell hard-failure when pose is slightly outside lanelet.
-    outside_value: 99
-    lanelet_boundary_value: -1
-    boundary_half_width: 0.05
-    # HH_260313-00:00 Validate planner-base raster cells against lanelet polygons.
-    debug_coverage_stats: false
-    debug_coverage_stride: 2
-    debug_coverage_min_value: 0
-    # HH_260305-00:00 Split inside-cell thresholds:
-    # - path/centerline strips: relaxed (reduce curve holes)
-    # - boundary strips: strict (reduce outward bleed)
-    # HH_260316-00:00 Keep centerline strip sampling permissive
-    # to avoid micro-gaps at sharp corners.
-    cell_inside_min_hits: 6
-    cell_inside_min_hits_path: 5
-    cell_inside_min_hits_boundary: 8
-    # HH_260319-00:00 Enable lateral gradient inside centerline strip:
-    # exact centerline is lowest cost, strip edge is higher cost.
-    centerline_use_distance_gradient: true
-    direction_penalty: 0
-    backward_penalty: 0
-    gradient_range: 30.0
-    grid_yaw: 0.0
-    use_path_bbox: false
-    lock_window: true
-    use_map_bbox: true
-    rebuild_on_pose: false
-    rebuild_on_path: false
-    min_rebuild_period_sec: 0.2
-    pose_topic: "/planning/lanelet_pose"
-    path_topic: "/planning/global_path"
-    republish_period: 0.0
+    # 2026-04-06: Secondary profile published from the same node.
+    # Keeps planning_base behavior while reducing node count.
+    secondary.enable: true
+    secondary.output_topic: "/map/cost_grid/planning_base"
+    secondary.cost_mode: "centerline"
+    secondary.resolution: 0.05
+    secondary.width: 0
+    secondary.height: 0
+    secondary.centerline_half_width: 0.75
+    secondary.free_value: 0
+    secondary.lethal_value: 100
+    secondary.centerline_clip_to_lanelet: true
+    secondary.centerline_lanelet_fill_value: 92
+    secondary.outside_value: 99
+    secondary.lanelet_boundary_value: -1
+    secondary.boundary_half_width: 0.05
+    secondary.debug_coverage_stats: false
+    secondary.debug_coverage_stride: 2
+    secondary.debug_coverage_min_value: 0
+    secondary.cell_inside_min_hits: 6
+    secondary.cell_inside_min_hits_path: 5
+    secondary.cell_inside_min_hits_boundary: 8
+    secondary.centerline_use_distance_gradient: true
+    secondary.direction_penalty: 0
+    secondary.backward_penalty: 0
+    secondary.use_path_bbox: false
+    secondary.lock_window: true
+    secondary.use_map_bbox: true

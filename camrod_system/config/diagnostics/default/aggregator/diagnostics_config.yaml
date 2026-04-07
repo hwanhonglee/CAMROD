@@ -37,6 +37,19 @@ topics:
     group: hardware
     timeout_sec: 5.0
 
+  # ── Hardware: Network ─────────────────────────────────────────────────
+  - name: "network_checker: /hardware/network/connection"
+    group: hardware
+    timeout_sec: 5.0
+
+  - name: "network_checker: /hardware/network/signal"
+    group: hardware
+    timeout_sec: 5.0
+
+  - name: "network_checker: /hardware/network/quality"
+    group: hardware
+    timeout_sec: 5.0
+
   # ── Sensing: GNSS ─────────────────────────────────────────────────────
   - name: "gnss_checker: /sensor/gnss/main"
     group: sensing/gnss

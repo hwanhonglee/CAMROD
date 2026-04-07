@@ -1,0 +1,28 @@
+network_checker:
+  ros__parameters:
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    interface: "wlan0"
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    connection:
+      enabled: true
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    signal:
+      enabled: true
+      rssi_warn:  -70.0   # WARN threshold for RSSI signal strength (dBm).
+      rssi_error: -85.0   # ERROR threshold for RSSI signal strength (dBm).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # rx/tx drop rate = delta_drop / delta_packets × 100 (%)
+    quality:
+      enabled: true
+      drop_rate_warn:  1.0   # WARN threshold for packet drop rate (%).
+      drop_rate_error: 5.0   # ERROR threshold for packet drop rate (%).

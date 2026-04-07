@@ -24,7 +24,7 @@
  * 파라미터 구성
  * -------------
  *   status_topic:      "/localization/status"
- *   health_topic:      "/localization/health"
+ *   health_topic:      "/localization/state"
  *   stale_timeout:     2.0
  *   conf_warn:         0.6    # confidence < 이 값 → WARN
  *   conf_error:        0.3    # confidence < 이 값 → ERROR
@@ -92,7 +92,7 @@ protected:
   void declare_parameters_() override
   {
     declare_parameter("status_topic",  std::string("/localization/status"));
-    declare_parameter("health_topic",  std::string("/localization/health"));
+    declare_parameter("health_topic",  std::string("/localization/state"));
     declare_parameter("stale_timeout", 2.0);
     declare_parameter("conf_warn",     0.6);
     declare_parameter("conf_error",    0.3);

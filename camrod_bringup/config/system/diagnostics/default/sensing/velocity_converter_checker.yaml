@@ -1,0 +1,24 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+#
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+#
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+velocity_converter_checker:
+  ros__parameters:
+    publish_rate: 1.0
+
+    velocity_topic: "/platform/status/velocity"
+    imu_topic:      "/sensing/imu/data"
+    output_topic:   "/sensing/platform_velocity_converter/twist_with_covariance"
+
+    velocity_stale_timeout:  1.0   # Mark STALE when no update is received within this duration (s).
+    imu_stale_timeout:       1.0   # Mark STALE when no update is received within this duration (s).
+    output_stale_timeout:    1.0   # Mark STALE when no update is received within this duration (s).
+
+    expected_output_hz:  10.0
+    hz_warn_ratio:       0.7       # WARN threshold for actual_hz/expected_hz ratio.
+    hz_error_ratio:      0.4       # ERROR threshold for actual_hz/expected_hz ratio.

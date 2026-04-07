@@ -1,7 +1,8 @@
 /**:
 # HH_260109 Use node-agnostic parameters so launch applies them regardless of namespace.
   ros__parameters:
-    # HH_260327: Keep bringup EKF profile aligned with localization package EKF loop target.
+    # HH_260327: Reduce EKF loop target to avoid startup overload under full bringup.
+    # 30 Hz budget (33.3 ms) caused periodic missed-rate warnings; 20 Hz gives 50 ms budget.
     frequency: 20.0
     sensor_timeout: 0.2
     two_d_mode: true
@@ -48,7 +49,7 @@
     odom0_relative: false
     odom0_queue_size: 20
 
-    # HH_260128 VIO odometry (kimera-vio 등에서 나오는 odom). 토픽명만 실제에 맞게 교체.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
     odom1: /localization/vio/odometry
     odom1_config: [true,  true,  false,
                   false, false, true,

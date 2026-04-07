@@ -1,0 +1,24 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+gnss_checker:
+  ros__parameters:
+    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    gnss_names: ["main"]
+
+    main:
+      topic: "/sensing/gnss/navsatfix"
+      expected_hz: 5.0         # Expected message update rate (Hz).
+      hz_warn_ratio: 0.8       # WARN threshold for actual_hz/expected_hz ratio.
+      hz_error_ratio: 0.5      # ERROR threshold for actual_hz/expected_hz ratio.
+      stale_timeout: 2.0       # Mark STALE when no update is received within this duration (s).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # sub:
+    #   topic: "/sensing/gnss/sub/navsatfix"
+    #   expected_hz: 5.0
+    #   hz_warn_ratio: 0.8
+    #   hz_error_ratio: 0.5
+    #   stale_timeout: 2.0

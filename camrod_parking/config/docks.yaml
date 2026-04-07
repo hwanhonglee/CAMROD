@@ -1,0 +1,5 @@
+docks:
+  - id: home_dock
+    type: apriltag_dock
+    frame: map
+    pose: [10.0, 5.0, 3.14159]

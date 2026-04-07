@@ -49,7 +49,7 @@
     odom0_relative: false
     odom0_queue_size: 20
 
-    # HH_260128 VIO odometry (kimera-vio 등에서 나오는 odom). 토픽명만 실제에 맞게 교체.
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
     odom1: /localization/vio/odometry
     odom1_config: [true,  true,  false,
                   false, false, true,

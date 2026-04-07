@@ -1,0 +1,39 @@
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Section note: tune thresholds based on expected stream behavior and safety policy.
+
+ranger_platform_checker:
+  ros__parameters:
+    publish_rate: 1.0              # Diagnostic publish rate (Hz).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    system_state_topic:   "/system_state"
+    battery_state_topic:  "/battery_state"
+    actuator_state_topic: "/actuator_state"
+    odom_topic:           "/odom"
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    stale_timeout: 1.0
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    odom_expected_hz:    50.0      # Expected message update rate (Hz).
+    odom_hz_warn_ratio:  0.7       # WARN threshold for actual_hz/expected_hz ratio.
+    odom_hz_error_ratio: 0.4       # ERROR threshold for actual_hz/expected_hz ratio.
+    odom_stale_timeout:  1.0       # Mark STALE when no update is received within this duration (s).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    battery:
+      voltage_warn:  43.0          # WARN battery voltage threshold (V).
+      voltage_error: 41.0          # ERROR battery voltage threshold (V).
+      soc_warn:      20.0          # WARN battery state-of-charge threshold (%).
+      soc_error:     10.0          # ERROR battery state-of-charge threshold (%).
+      temp_warn:     45.0          # WARN temperature threshold (degC).
+      temp_error:    55.0          # ERROR temperature threshold (degC).
+
+    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    actuator:
+      driver_temp_warn:    60.0    # WARN temperature threshold (degC).
+      driver_temp_error:   75.0    # ERROR temperature threshold (degC).
+      motor_temp_warn:     70.0    # WARN temperature threshold (degC).
+      motor_temp_error:    85.0    # ERROR temperature threshold (degC).
+      driver_voltage_warn: 40.0    # WARN battery voltage threshold (V).
+      driver_voltage_error: 38.0   # ERROR battery voltage threshold (V).

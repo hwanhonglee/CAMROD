@@ -1,0 +1,8 @@
+planning_costmap_checker:
+  ros__parameters:
+    publish_rate: 1.0           # Diagnostic publish rate (Hz).
+
+    global_costmap_topic: "/planning/global_costmap/costmap"
+    local_costmap_topic: "/planning/local_costmap/costmap"
+    global_stale_timeout: 3.0   # Mark STALE when no update is received within this duration (s).
+    local_stale_timeout: 1.0    # Mark STALE when no update is received within this duration (s).

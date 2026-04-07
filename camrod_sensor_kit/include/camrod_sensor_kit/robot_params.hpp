@@ -6,7 +6,8 @@
 namespace camping_cart
 {
 
-// each sensor pose & structure
+// Pose container used by each sensor mount relative to `sensor_kit_base_link`.
+// Angles are stored in radians inside runtime structures.
 struct SensorPose
 {
   double x{0.0};
@@ -18,7 +19,7 @@ struct SensorPose
   double yaw{0.0};     // rad
 };
 
-// Robot Overall Specifications Structure
+// Full robot geometry and sensor mount specification used across packages.
 struct RobotParams
 {
   // --- Robot Geometry ---
@@ -41,7 +42,7 @@ struct RobotParams
   SensorPose camera;
 };
 
-// Robot Parameter Loading Function (YAML → RobotParams)
+// Loads declared ROS parameters into a `RobotParams` snapshot.
 RobotParams loadRobotParams(rclcpp::Node * node);
 
 } // namespace camping_cart

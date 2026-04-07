@@ -9,19 +9,20 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from launch.conditions import IfCondition
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _load_params(params_path: str) -> Dict[str, Any]:
+  # Loads root ROS parameter dictionary from a YAML file.
   with open(params_path, "r", encoding="utf-8") as f:
     data = yaml.safe_load(f) or {}
   return data.get("/**", {}).get("ros__parameters", {})
 
 
 def _sensor_pose(sensor_cfg: Dict[str, Any]) -> Tuple[str, str]:
+  # Converts pose fields into xacro-ready xyz/rpy strings.
   xyz = [
     float(sensor_cfg.get("x", 0.0)),
     float(sensor_cfg.get("y", 0.0)),
@@ -39,6 +40,7 @@ def _sensor_pose(sensor_cfg: Dict[str, Any]) -> Tuple[str, str]:
 
 
 def _nested_sensor_cfg(root: Dict[str, Any], path: Sequence[str]) -> Dict[str, Any]:
+  # Safely resolves nested dictionaries while tolerating missing keys.
   value: Any = root
   for key in path:
     if not isinstance(value, dict) or key not in value:
@@ -57,16 +59,15 @@ def _sensor_cfg_compat(root: Dict[str, Any], nested_path: Sequence[str], flat_ke
 
 
 def _launch_setup(context, *args, **kwargs):
+  # Expands sensor parameters into xacro arguments and builds runtime nodes.
   pkg_share = Path(get_package_share_directory("camrod_sensor_kit"))
   params_file = LaunchConfiguration("params_file").perform(context)
   module_namespace = LaunchConfiguration("module_namespace").perform(context)
   base_frame = LaunchConfiguration("base_frame_id").perform(context)
   sensor_kit_base_frame = LaunchConfiguration("sensor_kit_base_frame_id").perform(context)
-  map_frame = LaunchConfiguration("map_frame_id").perform(context)
 
   params = _load_params(params_file)
   robot_cfg = params.get("robot", {})
-  base_pose_cfg = params.get("base_pose", {})
 
   sensors = {}
 
@@ -128,14 +129,12 @@ def _launch_setup(context, *args, **kwargs):
     output="screen",
   )
 
-  _ = map_frame
-  _ = base_pose_cfg
-
   # HH_260326: Removed sensor_kit status runtime node as requested.
   return [rsp_node]
 
 
 def generate_launch_description():
+  # Declares launch arguments and defers runtime node creation to `_launch_setup`.
   default_params = Path(
     get_package_share_directory("camrod_sensor_kit"),
     "config",

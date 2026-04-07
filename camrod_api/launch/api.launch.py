@@ -9,8 +9,11 @@ from launch_ros.actions import Node
 
 
 def _resolve_default_frontend_dir() -> str:
-    """Select frontend directory with legacy UI preference and package fallback."""
+    """Select frontend directory from env/legacy path with package fallback."""
     share_dir = get_package_share_directory('camrod_api')
+    env_frontend_dir = os.environ.get('CAMROD_API_FRONTEND_DIR', '').strip()
+    if env_frontend_dir and os.path.isdir(env_frontend_dir):
+        return env_frontend_dir
     legacy_frontend_dir = os.path.expanduser('~/camrod_ws/src/todo/camroad_ui/frontend/build')
     if os.path.isdir(legacy_frontend_dir):
         return legacy_frontend_dir

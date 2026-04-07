@@ -85,7 +85,6 @@ install(
   PROGRAMS
     scripts/planning_cmd_vel_gate_node.py
     scripts/planning_state_machine_node.py
-    scripts/planning_status_node.py
     scripts/nav2_lifecycle_startup_retry_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
