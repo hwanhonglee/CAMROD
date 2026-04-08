@@ -6,13 +6,13 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[lanelet2_map_node] --> B[/map/markers]
-  A --> C[/map/status]
-  D[lanelet_cost_grid_node] --> E[/map/cost_grid/lanelet]
-  D --> F[/map/cost_grid/planning_base]
-  G[multi_cost_field_marker_node] --> H[/map/cost_grid/*_markers]
-  I[marker_array_aggregator_node] --> J[/map/cost_grid/inflation_markers]
-  K[cost_field_node optional] --> L[/map/cost_grid/lanelet_field_markers]
+  MAPNODE[Lanelet Map Node] --> MARKERS[Map Markers]
+  MAPNODE --> STATUS[Map Status]
+  GRID[Lanelet Cost Grid Node] --> BASEGRID[Lanelet Cost Grid]
+  GRID --> PLANBASE[Planning Base Grid]
+  MULTI[Multi Cost Marker Node] --> COSTMARK[Cost Marker Streams]
+  AGGR[Marker Aggregator Node] --> INFLATE[Inflation Markers]
+  FIELD[Cost Field Node Optional] --> FIELDMARK[Lanelet Field Markers]
 ```
 
 ## Node Data Flow

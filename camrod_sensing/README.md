@@ -6,16 +6,16 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[camera_preprocessor_node] --> A1[/sensing/camera/processed/*]
-  B[ublox_gps_node + ntrip_client] --> B1[/sensing/gnss/*]
-  C[microstrain IMU + velocity converter] --> C1[/sensing/imu/data]
-  C --> C2[/sensing/platform_velocity_converter/twist_with_covariance]
-  D[vanjee driver + lidar_preprocessor_node] --> D1[/sensing/lidar/points_filtered]
-  D1 --> D2[lidar_cost_grid_node]
-  D2 --> D3[/sensing/lidar/near_cost_grid]
-  E[sen0592_radar_node] --> E1[range topics]
-  E1 --> E2[radar_cost_grid_node]
-  E2 --> E3[/sensing/radar/near_cost_grid]
+  CAM[Camera Preprocessor] --> CAMOUT[Camera Processed Topics]
+  GNSS[Ublox Plus Ntrip] --> GNSSOUT[Gnss Topics]
+  IMU[Imu Driver Plus Converter] --> IMUOUT[Imu Data]
+  IMU --> VEL[Velocity Converter Output]
+  LDRV[Lidar Driver Plus Preprocessor] --> LRAW[Lidar Filtered Points]
+  LRAW --> LGRID[Lidar Cost Grid Node]
+  LGRID --> LOUT[Lidar Near Grid]
+  RADAR[Radar Sensor Node] --> RRANGE[Radar Range Topics]
+  RRANGE --> RGRID[Radar Cost Grid Node]
+  RGRID --> ROUT[Radar Near Grid]
 ```
 
 ## Node Data Flow

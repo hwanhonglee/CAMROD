@@ -6,12 +6,12 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[input_adapter] --> B[eskf_filter]
-  C[kimera_csv_bridge optional] --> D[pose_selector]
-  B --> D
-  D --> E[monitor]
-  D --> F[map_helper]
-  F --> G[/localization/initial_match_ok]
+  ADAPT[Input Adapter] --> ESKF[Eskf Filter]
+  KIMERA[Kimera Bridge Optional] --> SELECT[Pose Selector]
+  ESKF --> SELECT
+  SELECT --> MON[Monitor]
+  SELECT --> HELPER[Map Helper]
+  HELPER --> READY[Initial Match Ready]
 ```
 
 ## Node Data Flow

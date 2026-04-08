@@ -6,13 +6,13 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[apriltag_ros/apriltag_node] --> B[/parking/docking/apriltag/detections_raw]
-  C[parking_apriltag_bridge] <-- B
-  C --> D[/parking/docking/apriltag/detections]
-  C --> E[/parking/docking/apriltag/pose]
-  C --> F[/parking/docking/detected_dock_pose]
-  G[opennav_docking] --> H[docking actions/services]
-  I[nav2_lifecycle_manager] --> G
+  TAG[Apriltag Node] --> RAW[Raw Tag Detections]
+  BRIDGE[Parking Apriltag Bridge] <-- RAW
+  BRIDGE --> DET[Avg Tag Detections]
+  BRIDGE --> POSE[Avg Tag Pose]
+  BRIDGE --> DOCK[Detected Dock Pose]
+  OPN[Open Nav Docking] --> ACT[Docking Actions]
+  LIFE[Lifecycle Manager] --> OPN
 ```
 
 ## Node Data Flow
@@ -26,9 +26,9 @@ graph TD
 ## Inter-Package Connections
 ```mermaid
 graph LR
-  SENSING[Camera stream source] --> PARK[camrod_parking]
-  PARK --> PLANNING[nav2/opennav_docking flow]
-  BRINGUP[camrod_bringup] --> PARK
+  CAM[Camera Stream] --> PARK[Camrod Parking]
+  PARK --> NAV[Nav Docking Flow]
+  BR[Camrod Bringup] --> PARK
 ```
 
 ## Topic Summary

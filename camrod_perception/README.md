@@ -6,12 +6,12 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[/sensing/lidar/points_filtered] --> B[obstacle_fusion_node]
-  C[/perception/camera/detections_2d] --> B
-  D[/sensing/camera/processed/camera_info] --> B
-  B --> E[/perception/obstacles]
-  A --> F[obstacle_lidar_node]
-  F --> G[/perception/lidar/bboxes]
+  LIDAR[Lidar Filtered Points] --> FUSION[Obstacle Fusion Node]
+  CAMDET[Camera Detections] --> FUSION
+  CAMINFO[Camera Info] --> FUSION
+  FUSION --> OBS[Fused Obstacles]
+  LIDAR --> LCLUSTER[Lidar Obstacle Node]
+  LCLUSTER --> BBOX[Lidar Bounding Boxes]
 ```
 
 ## Node Data Flow

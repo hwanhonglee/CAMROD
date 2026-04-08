@@ -6,9 +6,9 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[component checker nodes] --> B[/system/diagnostics]
-  C[aggregator_node] <-- B
-  C --> D[/system/diagnostics_agg]
+  CHECK[Component Checker Nodes] --> DIAG[Diagnostics Stream]
+  DIAG --> AGG[Aggregator Node]
+  AGG --> DIAGAGG[Diagnostics Aggregated]
 ```
 
 ## Node Data Flow

@@ -6,19 +6,19 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[bringup.launch.py (thin)] --> B[_bringup_impl.py]
-  B --> C[launch_defaults.yaml]
-  B --> D[map_info.yaml]
-  B --> E[staged module includes]
-  E --> P[camrod_platform]
-  E --> M[camrod_map]
-  E --> S[camrod_sensing]
-  E --> L[camrod_localization]
-  E --> PE[camrod_perception]
-  E --> PL[camrod_planning]
-  E --> SY[camrod_system]
-  E --> API[camrod_api]
-  E --> RV[rviz2 optional]
+  TOP[Bringup Top Launch] --> IMPL[Bringup Impl]
+  IMPL --> DEF[Launch Defaults]
+  IMPL --> MAPINFO[Map Info]
+  IMPL --> MOD[Module Includes]
+  MOD --> PLAT[Platform]
+  MOD --> MAP[Map]
+  MOD --> SEN[Sensing]
+  MOD --> LOC[Localization]
+  MOD --> PER[Perception]
+  MOD --> PLN[Planning]
+  MOD --> SYS[System]
+  MOD --> API[Api]
+  MOD --> RVIZ[Rviz Optional]
 ```
 
 ## Node / Process Data Flow

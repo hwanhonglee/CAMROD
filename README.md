@@ -4,30 +4,42 @@ Integrated ROS 2 Humble workspace for the CAMROD autonomous platform stack.
 
 ## 1) Workspace Architecture
 ```mermaid
-graph LR
-  BR[camrod_bringup] --> MAP[camrod_map]
-  BR --> SENS[camrod_sensing]
-  BR --> LOC[camrod_localization]
-  BR --> PER[camrod_perception]
-  BR --> PLAN[camrod_planning]
-  BR --> PLAT[camrod_platform]
-  BR --> SK[camrod_sensor_kit]
-  BR --> SYS[camrod_system]
-  BR --> API[camrod_api]
+graph TD
+  BR[Bringup]
+  AVG[Avg Msgs]
+  MAP[Map]
+  SEN[Sensing]
+  LOC[Localization]
+  PER[Perception]
+  PLN[Planning]
+  PLT[Platform]
+  KIT[Sensor Kit]
+  SYS[System]
+  API[Api Ui]
+
+  BR --> MAP
+  BR --> SEN
+  BR --> LOC
+  BR --> PER
+  BR --> PLN
+  BR --> PLT
+  BR --> KIT
+  BR --> SYS
+  BR --> API
 
   MAP --> LOC
-  MAP --> PLAN
-  SENS --> LOC
-  SENS --> PER
-  LOC --> PLAN
-  PLAN --> PLAT
+  MAP --> PLN
+  SEN --> LOC
+  SEN --> PER
+  LOC --> PLN
+  PLN --> PLT
 
-  AVG[camrod_common/avg_msgs] --> MAP
-  AVG --> SENS
+  AVG --> MAP
+  AVG --> SEN
   AVG --> LOC
   AVG --> PER
-  AVG --> PLAN
-  AVG --> PLAT
+  AVG --> PLN
+  AVG --> PLT
   AVG --> SYS
   AVG --> API
 ```
@@ -35,20 +47,19 @@ graph LR
 ## 2) End-to-End Runtime Flow
 ```mermaid
 graph TD
-  A[Sensors: camera/lidar/radar/imu/gnss] --> B[camrod_sensing]
-  B --> C[camrod_localization]
-  B --> D[camrod_perception]
-  E[camrod_map] --> C
-  E --> F[camrod_planning]
-  C --> F
-  D --> F
-  F --> G[/planning/cmd_vel_raw]
-  H[/planning/engage + estop conditions] --> I[planning/platform cmd_vel gate]
-  G --> I
-  I --> J[/platform/cmd_vel]
-  J --> K[Vehicle motion]
-  L[camrod_system diagnostics] --> M[/system/diagnostics_agg]
-  M --> N[camrod_api / UI]
+  SRC[Sensor Inputs] --> SEN[Camrod Sensing]
+  SEN --> LOC[Camrod Localization]
+  SEN --> PER[Camrod Perception]
+  MAP[Camrod Map] --> LOC
+  MAP --> PLN[Camrod Planning]
+  LOC --> PLN
+  PER --> PLN
+  PLN --> RAW[Planning Cmd Vel Raw]
+  RAW --> GATE[Engage Estop Gate]
+  GATE --> CMD[Platform Cmd Vel]
+  CMD --> VEH[Vehicle Motion]
+  SYS[Camrod System] --> AGG[Diagnostics Aggregated]
+  AGG --> API[Camrod Api Ui]
 ```
 
 ## 3) Main Operational Scenario

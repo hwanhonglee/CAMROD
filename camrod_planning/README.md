@@ -6,15 +6,15 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[/goal_pose] --> B[goal_snapper_node]
-  B --> C[/planning/goal_pose_snapped_ros]
-  C --> D[bt_navigator]
-  D --> E[/planning/global_path]
-  E --> F[local_path_extractor_node]
-  F --> G[/planning/local_path]
-  H[planning_cmd_vel_gate_node] <-- I[/planning/cmd_vel_raw]
-  J[/planning/engage] --> H
-  H --> K[/planning/cmd_vel]
+  GOAL[Goal Pose Input] --> SNAP[Goal Snapper Node]
+  SNAP --> SGOAL[Snapped Goal]
+  SGOAL --> NAV[Nav2 Navigator]
+  NAV --> GPATH[Global Path]
+  GPATH --> LEXT[Local Path Extractor]
+  LEXT --> LPATH[Local Path]
+  RAW[Cmd Vel Raw] --> GATE[Planning Cmd Vel Gate]
+  ENG[Engage Signal] --> GATE
+  GATE --> CMD[Cmd Vel Output]
 ```
 
 ## Node Data Flow

@@ -6,14 +6,23 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[plugin_api_bridge_node] --> B[/api/plugin/get/* topics]
-  A --> C[/planning/engage]
-  A <-- D[/platform/drive_enabled]
-  A <-- E[/diagnostics]
-  F[ui_backend_node] <-- B
-  F <-- G[/diagnostics_agg]
-  F --> H[HTTP /api/*]
-  H --> I[Web UI / external client]
+  BRIDGE[Plugin Api Bridge]
+  TOPICS[Api State Topics]
+  ENGAGE[Planning Engage]
+  DRIVE[Platform Drive Enabled]
+  DIAG[System Diagnostics]
+  UI[Ui Backend]
+  HTTP[Http Api]
+  CLIENT[External Client]
+
+  BRIDGE --> TOPICS
+  BRIDGE --> ENGAGE
+  DRIVE --> BRIDGE
+  DIAG --> BRIDGE
+  TOPICS --> UI
+  DIAG --> UI
+  UI --> HTTP
+  HTTP --> CLIENT
 ```
 
 ## Node Data Flow

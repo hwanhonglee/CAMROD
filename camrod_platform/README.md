@@ -6,14 +6,14 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[/planning/cmd_vel] --> B[cmd_vel_gate_node]
-  C[/planning/engage] --> B
-  D[/planning/state_machine/estop] --> B
-  B --> E[/platform/cmd_vel]
-  B --> F[/platform/drive_enabled]
-  G[robot_visualization_node] --> H[/platform/robot/markers]
-  G --> I[/platform/robot/planning_boundary]
-  J[sensor_kit.launch include] --> K[/tf,/tf_static]
+  PCMD[Planning Cmd Vel] --> GATE[Cmd Vel Gate Node]
+  ENG[Planning Engage] --> GATE
+  ESTOP[Planning Estop] --> GATE
+  GATE --> OUTCMD[Platform Cmd Vel]
+  GATE --> STATE[Drive Enabled State]
+  RVIZ[Robot Visualization Node] --> PMARK[Platform Markers]
+  RVIZ --> PBOUND[Planning Boundary]
+  SK[Sensor Kit Include] --> TF[Frame Transforms]
 ```
 
 ## Node Data Flow

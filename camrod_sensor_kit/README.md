@@ -6,11 +6,11 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  A[robot_params.yaml] --> B[sensor_kit.launch.py]
-  B --> C[xacro expansion]
-  C --> D[robot_state_publisher]
-  D --> E[/tf]
-  D --> F[/tf_static]
+  PARAM[Robot Params File] --> LAUNCH[Sensor Kit Launch]
+  LAUNCH --> XACRO[Xacro Expansion]
+  XACRO --> RSP[Robot State Publisher]
+  RSP --> TF[Tf Topic]
+  RSP --> TFS[Static Tf Topic]
 ```
 
 ## Node Data Flow

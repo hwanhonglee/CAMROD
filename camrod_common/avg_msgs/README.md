@@ -6,9 +6,9 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  DEF[msg/srv definitions] --> GEN[ROS 2 interface generation]
-  GEN --> PUB[publisher nodes in each module]
-  GEN --> SUB[subscriber nodes in each module]
+  DEF[Message And Service Definitions] --> GEN[Ros Interface Generation]
+  GEN --> PUB[Publisher Nodes]
+  GEN --> SUB[Subscriber Nodes]
 ```
 
 ## Runtime Node/Data Flow
