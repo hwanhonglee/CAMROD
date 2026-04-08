@@ -1,48 +1,52 @@
 # camrod_perception
 
-Perception module for obstacle generation from LiDAR and camera-assisted fusion.
+## Role
+`camrod_perception` generates obstacle outputs from LiDAR-only and camera+LiDAR fused paths.
 
-## Purpose
-- Build obstacle outputs for planning/cost layers
-- Fuse camera detections with LiDAR point clouds
-- Provide LiDAR clustering fallback stream
+## Package Diagram
+```mermaid
+graph TD
+  A[/sensing/lidar/points_filtered] --> B[obstacle_fusion_node]
+  C[/perception/camera/detections_2d] --> B
+  D[/sensing/camera/processed/camera_info] --> B
+  B --> E[/perception/obstacles]
+  A --> F[obstacle_lidar_node]
+  F --> G[/perception/lidar/bboxes]
+```
 
-## Entry Point
+## Node Data Flow
+| Node | Main Inputs | Main Outputs |
+|---|---|---|
+| `obstacle_fusion_node` | `/sensing/lidar/points_filtered`, `/perception/camera/detections_2d`, `/sensing/camera/processed/camera_info`, TF (`camera_link`) | `/perception/obstacles` |
+| `obstacle_lidar_node` | LiDAR cloud (`input_topic` from params; default `/sensing/lidar/points`) | `/perception/lidar/bboxes` |
+
+## Inter-Package Connections
+```mermaid
+graph LR
+  SENSING[camrod_sensing] --> PER[camrod_perception]
+  PER --> MAP[camrod_map]
+  PER --> PLANNING[camrod_planning]
+  PER --> SYSTEM[camrod_system]
+```
+
+## Topic Summary
+| Direction | Topic | Purpose |
+|---|---|---|
+| In | `/sensing/lidar/points_filtered` | base obstacle cloud input |
+| In | `/perception/camera/detections_2d` | 2D detection gates for fusion |
+| In | `/sensing/camera/processed/camera_info` | camera model for projection |
+| Out | `/perception/obstacles` | fused obstacle cloud |
+| Out | `/perception/lidar/bboxes` | LiDAR cluster boxes |
+
+## Practical Usage
 ```bash
 ros2 launch camrod_perception perception.launch.py
 ```
 
-## Runtime Structure
-```text
-/sensing/lidar/points_filtered
-    + /perception/camera/detections_2d
-    + /sensing/camera/processed/camera_info
-        -> obstacle_fusion -> /perception/obstacles
-
-/sensing/lidar/points_filtered
-        -> obstacle_lidar  -> /perception/lidar/bboxes
+Optional:
+```bash
+ros2 launch camrod_perception perception.launch.py enable_lidar_obstacle:=false
 ```
 
-## Main Launch Arguments
-- `perception_param_file`
-- `enable_lidar_obstacle`
-- `enable_module_validator`
-- `module_namespace` (default `perception`)
-- `system_namespace` (default `system`)
-
-## Key Topics
-- Inputs:
-  - `/sensing/lidar/points_filtered`
-  - `/perception/camera/detections_2d`
-  - `/sensing/camera/processed/camera_info`
-- Outputs:
-  - `/perception/obstacles`
-  - `/perception/lidar/bboxes`
-
-## Configuration
-- `camrod_bringup/config/perception/perception_params.yaml`
-
-## StatusStream
-- Module-local topic: `/perception/status`
-- Aggregated topic: `/status_stream`
-
+## Config Files
+- `config/perception_params.yaml`

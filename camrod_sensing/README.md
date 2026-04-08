@@ -1,85 +1,83 @@
 # camrod_sensing
 
-Sensing module for LiDAR, camera, IMU, GNSS, and radar pipelines.
+## Role
+`camrod_sensing` runs camera/GNSS/IMU/LiDAR/radar acquisition and preprocessing pipelines, and publishes sensor outputs used by localization/perception/planning/system.
 
-## Purpose
-- Sensor input normalization into module namespaces
-- LiDAR/camera preprocessing
-- GNSS and optional NTRIP integration
-- Near-range cost grid generation (`lidar`, `radar`)
-- External source stacks under this module:
-  - `external/ublox` (GNSS)
-  - `external/vanjee_lidar` (LiDAR SDK + custom msgs)
+## Package Diagram
+```mermaid
+graph TD
+  A[camera_preprocessor_node] --> A1[/sensing/camera/processed/*]
+  B[ublox_gps_node + ntrip_client] --> B1[/sensing/gnss/*]
+  C[microstrain IMU + velocity converter] --> C1[/sensing/imu/data]
+  C --> C2[/sensing/platform_velocity_converter/twist_with_covariance]
+  D[vanjee driver + lidar_preprocessor_node] --> D1[/sensing/lidar/points_filtered]
+  D1 --> D2[lidar_cost_grid_node]
+  D2 --> D3[/sensing/lidar/near_cost_grid]
+  E[sen0592_radar_node] --> E1[range topics]
+  E1 --> E2[radar_cost_grid_node]
+  E2 --> E3[/sensing/radar/near_cost_grid]
+```
 
-## Build Note (Important)
-- `colcon` does not auto-discover nested packages under another package directory.
-- Build with explicit base paths when you need external sensing stacks:
+## Node Data Flow
+| Node / Group | Main Inputs | Main Outputs |
+|---|---|---|
+| `camera_preprocessor_node` | camera raw image/camera_info | `/sensing/camera/processed/image`, `/sensing/camera/processed/camera_info` |
+| `ublox_gps_node` | GNSS device + optional RTCM | `/sensing/gnss/ublox_gps_node/fix` and GNSS stack outputs |
+| `ntrip_client` (optional) | NTRIP caster | `/sensing/gnss/rtcm` |
+| IMU driver (`imu_cv7` or `imu_gq7_ntrip`) | IMU device | `/sensing/imu/data` |
+| `platform_velocity_converter_node` | `/platform/status/velocity`, IMU topic | `/sensing/platform_velocity_converter/twist_with_covariance` |
+| `lidar_preprocessor_node` | `/sensing/lidar/vanjee/points_raw` | `/sensing/lidar/points_filtered` |
+| `lidar_cost_grid_node` | LiDAR/perception obstacles (by config) | `/sensing/lidar/near_cost_grid` |
+| `sen0592_radar_node` | serial radar sensors | `/sensing/radar/*/range` |
+| `radar_cost_grid_node` | radar range topics | `/sensing/radar/near_cost_grid` |
+
+## Inter-Package Connections
+```mermaid
+graph LR
+  SENSOR[camrod_sensing] --> LOC[camrod_localization]
+  SENSOR --> PER[camrod_perception]
+  SENSOR --> PLAN[camrod_planning]
+  SENSOR --> SYSTEM[camrod_system]
+  PLATFORM[camrod_platform] --> SENSOR
+```
+
+## Topic Summary
+| Direction | Topic | Purpose |
+|---|---|---|
+| Out | `/sensing/gnss/ublox_gps_node/fix` | GNSS fix for localization |
+| Out | `/sensing/imu/data` | IMU for localization/filtering |
+| Out | `/sensing/lidar/points_filtered` | LiDAR for perception/planning |
+| Out | `/sensing/camera/processed/*` | camera stream for perception |
+| Out | `/sensing/radar/near_cost_grid` | radar near obstacle grid |
+| Out | `/sensing/lidar/near_cost_grid` | lidar near obstacle grid |
+| Out | `/sensing/platform_velocity_converter/twist_with_covariance` | converted platform velocity |
+
+## Practical Usage
 ```bash
-cd /home/camrod_ws
-source /opt/ros/humble/setup.bash
+ros2 launch camrod_sensing sensing.launch.py
+```
+
+Sub-launch examples:
+```bash
+ros2 launch camrod_sensing lidar.launch.py
+ros2 launch camrod_sensing gnss.launch.py
+ros2 launch camrod_sensing imu.launch.py
+ros2 launch camrod_sensing camera.launch.py
+ros2 launch camrod_sensing radar.launch.py
+```
+
+Build note for nested external stacks:
+```bash
+cd ~/camrod_ws
 colcon build --symlink-install \
   --base-paths src src/camrod_sensing/external/ublox src/camrod_sensing/external/vanjee_lidar \
   --packages-up-to camrod_sensing ublox_gps vanjee_lidar_sdk
-source install/setup.bash
 ```
 
-## Launch Entry Points
-- Main module:
-  - `ros2 launch camrod_sensing sensing.launch.py`
-- Sensor-specific:
-  - `ros2 launch camrod_sensing lidar.launch.py`
-  - `ros2 launch camrod_sensing gnss.launch.py`
-  - `ros2 launch camrod_sensing camera.launch.py`
-  - `ros2 launch camrod_sensing imu.launch.py`
-  - `ros2 launch camrod_sensing radar.launch.py`
-
-## Namespace Behavior
-- Standalone sensor launch uses sensor-centric defaults:
-  - LiDAR: `/lidar/...`
-  - GNSS: `/gnss/...`
-  - Camera: `/camera/...`
-  - IMU: `/imu/...`
-  - Radar: `/radar/...`
-- `sensing.launch.py` normalizes to module namespace:
-  - `/sensing/lidar/...`
-  - `/sensing/gnss/...`
-  - `/sensing/camera/...`
-  - `/sensing/imu/...` (or configured equivalent)
-  - `/sensing/radar/...`
-
-## Core Topic Layout (Default via `sensing.launch.py`)
-- LiDAR:
-  - raw: `/sensing/lidar/vanjee/points_raw`
-  - filtered: `/sensing/lidar/points_filtered`
-  - status: `/sensing/lidar/status` (or module status stream)
-- GNSS:
-  - fix: `/sensing/gnss/ublox_gps_node/fix`
-  - correction: `/sensing/gnss/rtcm`
-- Camera:
-  - input: `/sensing/camera/image_raw`, `/sensing/camera/camera_info`
-  - processed: `/sensing/camera/processed/image`, `/sensing/camera/processed/camera_info`
-- IMU conversion:
-  - output twist: `/sensing/platform_velocity_converter/twist_with_covariance`
-- Near-range grids:
-  - `/sensing/lidar/near_cost_grid`
-  - `/sensing/radar/near_cost_grid`
-
-## Important Launch Arguments (`sensing.launch.py`)
-- `enable_lidar_driver`, `enable_lidar_cost_grid`
-- `enable_gnss`, `enable_ntrip`
-- `enable_radar`, `enable_radar_cost_grid`
-- `module_namespace`, `system_namespace`, `gnss_namespace`
-- `lidar_raw_topic`, `lidar_filtered_topic`
-- `gnss_navsatfix_topic`, `gnss_rtcm_topic`
-
-## Configuration Files
-- `config/sensing_params.yaml` (module-level compatibility overlay)
-- `config/lidar/*` (preprocess, cost grid, Vanjee config)
-- `config/camera/*` (preprocess)
-- `config/imu/*` (MicroStrain and converter)
-- `config/gnss/*` (u-blox F9P, NTRIP)
-- `config/radar/*` (driver and cost grid)
-
-## StatusStream
-- Module-local topic: `/sensing/status`
-- Aggregated topic: `/status_stream`
+## Config Files
+- `config/sensing_params.yaml`
+- `config/camera/preprocessor.yaml`
+- `config/gnss/zed_f9p_rover.yaml`, `config/gnss/ntrip_client.yaml`
+- `config/imu/microstrain_cv7.yaml`, `config/imu/microstrain_gq7.yaml`, `config/imu/platform_velocity_converter.yaml`
+- `config/lidar/preprocessor.yaml`, `config/lidar/cost_grid.yaml`, `config/lidar/vanjee/config.yaml`
+- `config/radar/sen0592_radar.yaml`, `config/radar/cost_grid.yaml`
