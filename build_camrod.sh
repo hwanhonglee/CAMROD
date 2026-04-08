@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Unified CAMROD workspace setup/build entrypoint.
+# - Works when executed from either camrod_ws or camrod_ws/src
+# - Always writes build/install/log under camrod_ws
+# - Bootstraps missing external repositories (and submodules)
+# - Runs rosdep for all discovered package.xml files
+# - Builds with nested external directories through --base-paths
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./build_camrod.sh [options] [colcon build args...]
+
+Common:
+  ./build_camrod.sh
+  ./build_camrod.sh --packages-up-to camrod_bringup
+  ./build_camrod.sh --update-externals --packages-select camrod_map
+
+Modes:
+  --bootstrap-only     Bootstrap external repositories only (no rosdep/build)
+  --build-only         Build only (skip bootstrap and rosdep)
+  --no-bootstrap       Skip bootstrap step
+  --no-rosdep          Skip rosdep install step
+  --no-build           Skip colcon build step
+  --update-externals   Update git-based externals (also accepts --update)
+  -h, --help           Show this help
+
+Notes:
+  - Unknown arguments are passed through to `colcon build`.
+  - tf2_ros / message_filters are ROS core packages, not module externals.
+    Install with rosdep/apt, do not vendor under package external directories.
+EOF
+}
+
+log() {
+  echo "[build_camrod] $*"
+}
+
+resolve_ws_root() {
+  local probe="$1"
+  while [[ "${probe}" != "/" ]]; do
+    if [[ -d "${probe}/src/camrod_bringup" ]]; then
+      echo "${probe}"
+      return 0
+    fi
+    probe="$(dirname "${probe}")"
+  done
+  return 1
+}
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
+
+WS_ROOT="$(resolve_ws_root "${SCRIPT_DIR}" || true)"
+if [[ -z "${WS_ROOT}" ]]; then
+  WS_ROOT="$(resolve_ws_root "$(pwd)" || true)"
+fi
+if [[ -z "${WS_ROOT}" ]]; then
+  echo "[build_camrod] failed to locate workspace root (expected <ws>/src/camrod_bringup)." >&2
+  exit 1
+fi
+
+SRC_ROOT="${WS_ROOT}/src"
+
+DO_BOOTSTRAP=1
+DO_ROSDEP=1
+DO_BUILD=1
+UPDATE_EXTERNALS=0
+COLCON_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --bootstrap-only)
+      DO_BOOTSTRAP=1
+      DO_ROSDEP=0
+      DO_BUILD=0
+      shift
+      ;;
+    --build-only)
+      DO_BOOTSTRAP=0
+      DO_ROSDEP=0
+      DO_BUILD=1
+      shift
+      ;;
+    --no-bootstrap)
+      DO_BOOTSTRAP=0
+      shift
+      ;;
+    --no-rosdep)
+      DO_ROSDEP=0
+      shift
+      ;;
+    --no-build)
+      DO_BUILD=0
+      shift
+      ;;
+    --update-externals|--update)
+      UPDATE_EXTERNALS=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      COLCON_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ "${DO_BOOTSTRAP}" -eq 0 && "${DO_ROSDEP}" -eq 0 && "${DO_BUILD}" -eq 0 ]]; then
+  echo "[build_camrod] nothing to do (all steps disabled)." >&2
+  exit 1
+fi
+
+mkdir -p "${WS_ROOT}/build" "${WS_ROOT}/install" "${WS_ROOT}/log"
+cd "${WS_ROOT}"
+
+# shellcheck disable=SC1091
+set +u
+source /opt/ros/humble/setup.bash
+set -u
+
+clone_or_update_repo() {
+  local url="$1"
+  local ref="$2"
+  local target_rel="$3"
+  local target_abs="${SRC_ROOT}/${target_rel}"
+
+  mkdir -p "$(dirname "${target_abs}")"
+  if [[ ! -d "${target_abs}" ]]; then
+    log "clone ${url} (${ref}) -> ${target_rel}"
+    git clone --branch "${ref}" --depth 1 "${url}" "${target_abs}"
+    return
+  fi
+
+  if [[ -d "${target_abs}/.git" || -f "${target_abs}/.git" ]]; then
+    if [[ "${UPDATE_EXTERNALS}" -eq 1 ]]; then
+      log "update ${target_rel} (${ref})"
+      git -C "${target_abs}" fetch --depth 1 origin "${ref}"
+      git -C "${target_abs}" checkout -f FETCH_HEAD
+    else
+      log "keep existing git external ${target_rel}"
+    fi
+  else
+    log "keep existing non-git external ${target_rel}"
+  fi
+}
+
+if [[ "${DO_BOOTSTRAP}" -eq 1 ]]; then
+  log "workspace root: ${WS_ROOT}"
+  log "bootstrap externals (missing repos are cloned)"
+
+  if [[ -f "${SRC_ROOT}/.gitmodules" ]] && git -C "${SRC_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if [[ "${UPDATE_EXTERNALS}" -eq 1 ]]; then
+      log "sync/update git submodules in src"
+      git -C "${SRC_ROOT}" submodule sync --recursive
+      git -C "${SRC_ROOT}" submodule update --init --recursive --remote
+    else
+      log "init submodules in src"
+      git -C "${SRC_ROOT}" submodule update --init --recursive
+    fi
+  fi
+
+  # Non-submodule externals that should exist for full workspace build.
+  clone_or_update_repo "https://github.com/KumarRobotics/ublox.git" "master" \
+    "camrod_sensing/external/ublox"
+  clone_or_update_repo "https://github.com/cra-ros-pkg/robot_localization.git" "humble-devel" \
+    "camrod_localization/external/robot_localization"
+  clone_or_update_repo "https://github.com/fzi-forschungszentrum-informatik/Lanelet2.git" "master" \
+    "camrod_map/external/lanelet2"
+  clone_or_update_repo "https://github.com/ros-perception/vision_opencv.git" "humble" \
+    "camrod_perception/external/vision_opencv"
+  clone_or_update_repo "https://github.com/ros-perception/vision_msgs.git" "ros2" \
+    "camrod_common/external/vision_msgs"
+  clone_or_update_repo "https://github.com/ros-perception/perception_pcl.git" "humble" \
+    "camrod_sensing/external/perception_pcl"
+  clone_or_update_repo "https://github.com/ros-perception/laser_geometry.git" "ros2" \
+    "camrod_planning/external/laser_geometry"
+fi
+
+if [[ "${DO_ROSDEP}" -eq 1 ]]; then
+  log "rosdep install (all package.xml under src)"
+  mapfile -t ROSDEP_PATHS < <(
+    find "${SRC_ROOT}" -name package.xml -type f -print \
+      | xargs -r -n1 dirname \
+      | while read -r p; do readlink -f "${p}"; done \
+      | sort -u
+  )
+  rosdep install --from-paths "${ROSDEP_PATHS[@]}" --ignore-src -r -y
+fi
+
+sanitize_colon_path_var() {
+  local var_name="$1"
+  local raw="${!var_name:-}"
+  local out=""
+  local item=""
+  local pkg_name=""
+  local expected_manifest=""
+
+  IFS=':' read -r -a parts <<< "${raw}"
+  for item in "${parts[@]}"; do
+    [[ -z "${item}" ]] && continue
+    [[ -d "${item}" ]] || continue
+    if [[ "${item}" != /opt/ros/* && "${item}" != "${WS_ROOT}/install/"* ]]; then
+      continue
+    fi
+    if [[ "${item}" == "${WS_ROOT}/install/"* ]]; then
+      pkg_name="$(basename "${item}")"
+      expected_manifest="${item}/share/${pkg_name}/package.xml"
+      [[ -f "${expected_manifest}" ]] || continue
+    fi
+    if [[ -z "${out}" ]]; then
+      out="${item}"
+    else
+      out="${out}:${item}"
+    fi
+  done
+
+  export "${var_name}=${out}"
+}
+
+if [[ "${DO_BUILD}" -eq 1 ]]; then
+  mapfile -t EXTERNAL_BASES < <(cd "${WS_ROOT}" && find src -type d -name external | sort)
+  BASE_PATHS=("src")
+  BASE_PATHS+=("${EXTERNAL_BASES[@]}")
+
+  sanitize_colon_path_var AMENT_PREFIX_PATH
+  sanitize_colon_path_var CMAKE_PREFIX_PATH
+  sanitize_colon_path_var COLCON_PREFIX_PATH
+
+  log "colcon build --symlink-install"
+  log "base-paths: ${BASE_PATHS[*]}"
+  colcon --log-base "${WS_ROOT}/log" build \
+    --symlink-install \
+    --base-paths "${BASE_PATHS[@]}" \
+    --build-base "${WS_ROOT}/build" \
+    --install-base "${WS_ROOT}/install" \
+    "${COLCON_ARGS[@]}"
+fi
+
+log "done. source ${WS_ROOT}/install/setup.bash"

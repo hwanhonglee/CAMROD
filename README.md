@@ -91,26 +91,34 @@ graph TD
 
 ## 5) Build
 
-### 5.1 Bootstrap external dependencies (from `src`)
+### 5.1 Unified build (bootstrap + rosdep + external-aware colcon)
+```bash
+cd ~/camrod_ws
+./src/build_camrod.sh --packages-up-to camrod_bringup
+```
+
+Equivalent execution from `src`:
 ```bash
 cd ~/camrod_ws/src
-./bootstrap_module_externals.sh
+./build_camrod.sh --packages-up-to camrod_bringup
 ```
 
-### 5.2 Install system dependencies
+### 5.2 Build-only mode (skip bootstrap/rosdep)
 ```bash
 cd ~/camrod_ws
-source /opt/ros/humble/setup.bash
-rosdep install --from-paths src --ignore-src -r -y
+./src/build_camrod.sh --build-only --packages-up-to camrod_bringup
 ```
 
-### 5.3 Build workspace
+### 5.3 Bootstrap-only mode (clone/init missing externals)
 ```bash
 cd ~/camrod_ws
-source /opt/ros/humble/setup.bash
-colcon build --symlink-install \
-  --base-paths src src/camrod_sensing/external/ublox src/camrod_sensing/external/vanjee_lidar src/camrod_map/external/lanelet2 \
-  --packages-up-to camrod_bringup
+./src/build_camrod.sh --bootstrap-only
+./src/build_camrod.sh --bootstrap-only --update-externals
+```
+
+### 5.4 Source workspace
+```bash
+cd ~/camrod_ws
 source install/setup.bash
 ```
 
