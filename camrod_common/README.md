@@ -7,15 +7,17 @@ Current primary shared package: `avg_msgs`.
 ## Package Diagram
 ```mermaid
 graph LR
-  COMMON[camrod_common] --> AVG[avg_msgs]
-  AVG --> MAP[camrod_map]
-  AVG --> SENSING[camrod_sensing]
-  AVG --> LOC[camrod_localization]
-  AVG --> PLAN[camrod_planning]
-  AVG --> PLATFORM[camrod_platform]
-  AVG --> PERCEPTION[camrod_perception]
-  AVG --> SYSTEM[camrod_system]
+  COMMON[[camrod_common]] --> AVG[(avg_msgs interface package)]
+  AVG -. interface types .-> MAP[[camrod_map]]
+  AVG -. interface types .-> SENSING[[camrod_sensing]]
+  AVG -. interface types .-> LOC[[camrod_localization]]
+  AVG -. interface types .-> PLAN[[camrod_planning]]
+  AVG -. interface types .-> PLATFORM[[camrod_platform]]
+  AVG -. interface types .-> PERCEPTION[[camrod_perception]]
+  AVG -. interface types .-> SYSTEM[[camrod_system]]
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`.
 
 ## Node Data Flow
 `camrod_common` itself has no runtime node.

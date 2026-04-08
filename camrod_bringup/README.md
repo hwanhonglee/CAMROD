@@ -6,20 +6,22 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  TOP[Bringup Top Launch] --> IMPL[Bringup Impl]
-  IMPL --> DEF[Launch Defaults]
-  IMPL --> MAPINFO[Map Info]
-  IMPL --> MOD[Module Includes]
-  MOD --> PLAT[Platform]
-  MOD --> MAP[Map]
-  MOD --> SEN[Sensing]
-  MOD --> LOC[Localization]
-  MOD --> PER[Perception]
-  MOD --> PLN[Planning]
-  MOD --> SYS[System]
-  MOD --> API[Api]
-  MOD --> RVIZ[Rviz Optional]
+  TOP[bringup launch entrypoint] --> IMPL[bringup implementation launcher]
+  DEF[(launch defaults config)] --> IMPL
+  MAPINFO[(map info config)] --> IMPL
+
+  IMPL --> MAP[[camrod_map launch]]
+  IMPL --> SEN[[camrod_sensing launch]]
+  IMPL --> LOC[[camrod_localization launch]]
+  IMPL --> PER[[camrod_perception launch]]
+  IMPL --> PLN[[camrod_planning launch]]
+  IMPL --> PLAT[[camrod_platform launch]]
+  IMPL --> SYS[[camrod_system launch]]
+  IMPL --> API[[camrod_api launch]]
+  IMPL --> RVIZ[rviz process optional]
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`.
 
 ## Node / Process Data Flow
 | Process | Main Inputs | Main Outputs |

@@ -6,10 +6,14 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  DEF[Message And Service Definitions] --> GEN[Ros Interface Generation]
-  GEN --> PUB[Publisher Nodes]
-  GEN --> SUB[Subscriber Nodes]
+  MSG[(msg interface files)] --> GEN[[rosidl generation]]
+  SRV[(srv interface files)] --> GEN
+  GEN -. used by .-> RUNTIME[[camrod runtime packages]]
+  NOEXEC[no executable runtime node in avg_msgs]
+  GEN --> NOEXEC
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`, dashed arrow = dependency only.
 
 ## Runtime Node/Data Flow
 `avg_msgs` has no executable node.
@@ -22,14 +26,14 @@ graph TD
 ## Inter-Package Connections
 ```mermaid
 graph LR
-  AVG[avg_msgs] --> MAP[camrod_map]
-  AVG --> SENSING[camrod_sensing]
-  AVG --> LOCALIZATION[camrod_localization]
-  AVG --> PLANNING[camrod_planning]
-  AVG --> PLATFORM[camrod_platform]
-  AVG --> PERCEPTION[camrod_perception]
-  AVG --> SYSTEM[camrod_system]
-  AVG --> API[camrod_api]
+  AVG[(avg_msgs interface package)] -. interface types .-> MAP[[camrod_map]]
+  AVG -. interface types .-> SENSING[[camrod_sensing]]
+  AVG -. interface types .-> LOCALIZATION[[camrod_localization]]
+  AVG -. interface types .-> PLANNING[[camrod_planning]]
+  AVG -. interface types .-> PLATFORM[[camrod_platform]]
+  AVG -. interface types .-> PERCEPTION[[camrod_perception]]
+  AVG -. interface types .-> SYSTEM[[camrod_system]]
+  AVG -. interface types .-> API[[camrod_api]]
 ```
 
 ## Typical Interface Groups

@@ -5,17 +5,17 @@ Integrated ROS 2 Humble workspace for the CAMROD autonomous platform stack.
 ## 1) Workspace Architecture
 ```mermaid
 graph TD
-  BR[Bringup]
-  AVG[Avg Msgs]
-  MAP[Map]
-  SEN[Sensing]
-  LOC[Localization]
-  PER[Perception]
-  PLN[Planning]
-  PLT[Platform]
-  KIT[Sensor Kit]
-  SYS[System]
-  API[Api Ui]
+  BR[[camrod_bringup]]
+  MAP[[camrod_map]]
+  SEN[[camrod_sensing]]
+  LOC[[camrod_localization]]
+  PER[[camrod_perception]]
+  PLN[[camrod_planning]]
+  PLT[[camrod_platform]]
+  KIT[[camrod_sensor_kit]]
+  SYS[[camrod_system]]
+  API[[camrod_api]]
+  AVG[(avg_msgs interface package)]
 
   BR --> MAP
   BR --> SEN
@@ -34,32 +34,34 @@ graph TD
   LOC --> PLN
   PLN --> PLT
 
-  AVG --> MAP
-  AVG --> SEN
-  AVG --> LOC
-  AVG --> PER
-  AVG --> PLN
-  AVG --> PLT
-  AVG --> SYS
-  AVG --> API
+  AVG -. interface types .-> MAP
+  AVG -. interface types .-> SEN
+  AVG -. interface types .-> LOC
+  AVG -. interface types .-> PER
+  AVG -. interface types .-> PLN
+  AVG -. interface types .-> PLT
+  AVG -. interface types .-> SYS
+  AVG -. interface types .-> API
 ```
+
+Diagram legend: `[[...]]` package, `[(...)]` config or interface asset, `[ ... ]` node/process, `((...))` topic stream, `{{...}}` hardware source, dashed arrow = non-runtime dependency.
 
 ## 2) End-to-End Runtime Flow
 ```mermaid
 graph TD
-  SRC[Sensor Inputs] --> SEN[Camrod Sensing]
-  SEN --> LOC[Camrod Localization]
-  SEN --> PER[Camrod Perception]
-  MAP[Camrod Map] --> LOC
-  MAP --> PLN[Camrod Planning]
+  SRC{{Sensor Devices}} --> SEN[[camrod_sensing]]
+  SEN --> LOC[[camrod_localization]]
+  SEN --> PER[[camrod_perception]]
+  MAP[[camrod_map]] --> LOC
+  MAP --> PLN[[camrod_planning]]
   LOC --> PLN
   PER --> PLN
-  PLN --> RAW[Planning Cmd Vel Raw]
-  RAW --> GATE[Engage Estop Gate]
-  GATE --> CMD[Platform Cmd Vel]
-  CMD --> VEH[Vehicle Motion]
-  SYS[Camrod System] --> AGG[Diagnostics Aggregated]
-  AGG --> API[Camrod Api Ui]
+  PLN --> RAW((planning cmd vel raw))
+  RAW --> GATE[planning cmd vel gate]
+  GATE --> CMD((platform cmd vel))
+  CMD --> VEH{{vehicle motion}}
+  SYS[[camrod_system]] --> AGG((diagnostics aggregated))
+  AGG --> API[[camrod_api]]
 ```
 
 ## 3) Main Operational Scenario

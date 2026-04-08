@@ -6,16 +6,26 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  GOAL[Goal Pose Input] --> SNAP[Goal Snapper Node]
-  SNAP --> SGOAL[Snapped Goal]
-  SGOAL --> NAV[Nav2 Navigator]
-  NAV --> GPATH[Global Path]
-  GPATH --> LEXT[Local Path Extractor]
-  LEXT --> LPATH[Local Path]
-  RAW[Cmd Vel Raw] --> GATE[Planning Cmd Vel Gate]
-  ENG[Engage Signal] --> GATE
-  GATE --> CMD[Cmd Vel Output]
+  GOAL((Goal Pose Topic)) --> SNAP[goal_snapper_node]
+  LOCALPOSE((Localization Pose Topic)) --> CENTER[centerline_snapper_node]
+  SNAP --> SGOAL((Snapped Goal Topic))
+  CENTER --> LANELETPOSE((Lanelet Pose Topic))
+
+  SGOAL --> NAV[Nav2 planner and controller]
+  NAV --> GPATH((Global Path Topic))
+  NAV --> RAW((Cmd Vel Raw Topic))
+
+  GPATH --> LEXT[local_path_extractor_node]
+  NAV --> LEXT
+  LEXT --> LPATH((Local Path Topic))
+
+  RAW --> GATE[planning_cmd_vel_gate_node]
+  ENG((Engage Topic)) --> GATE
+  ESTOP((Estop Topic)) --> GATE
+  GATE --> CMD((Cmd Vel Topic))
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`.
 
 ## Node Data Flow
 | Node | Main Inputs | Main Outputs |
@@ -44,16 +54,21 @@ graph LR
 ```
 
 ## Topic Summary
-| Direction | Topic | Purpose |
-|---|---|---|
-| In | `/goal_pose` | external navigation goal |
-| In | `/localization/pose` | current pose for snapping/local path |
-| In | `/planning/state_machine/goal_key` | keypoint-based goal request (`camping_site_*`, `drop_zone`) |
-| Out | `/planning/global_path` | global plan |
-| Out | `/planning/local_path` | local driving path |
-| Out | `/planning/cmd_vel_raw` | raw Nav2 controller velocity |
-| Out | `/planning/cmd_vel` | gated velocity for platform |
-| Out | `/planning/engaged` | planning gate state |
+### Input Topics
+| Input Topic | Purpose |
+|---|---|
+| `/goal_pose` | External navigation goal |
+| `/localization/pose` | Current pose for snapping/local path |
+| `/planning/state_machine/goal_key` | Keypoint-based goal request (`camping_site_*`, `drop_zone`) |
+
+### Output Topics
+| Output Topic | Purpose |
+|---|---|
+| `/planning/global_path` | Global plan |
+| `/planning/local_path` | Local driving path |
+| `/planning/cmd_vel_raw` | Raw Nav2 controller velocity |
+| `/planning/cmd_vel` | Gated velocity for platform |
+| `/planning/engaged` | Planning gate state |
 
 ## Practical Usage
 ```bash

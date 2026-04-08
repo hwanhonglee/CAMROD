@@ -6,14 +6,21 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  TAG[Apriltag Node] --> RAW[Raw Tag Detections]
-  BRIDGE[Parking Apriltag Bridge] <-- RAW
-  BRIDGE --> DET[Avg Tag Detections]
-  BRIDGE --> POSE[Avg Tag Pose]
-  BRIDGE --> DOCK[Detected Dock Pose]
-  OPN[Open Nav Docking] --> ACT[Docking Actions]
-  LIFE[Lifecycle Manager] --> OPN
+  IMG((Camera Image Topic)) --> TAG[apriltag_node]
+  CAMINFO((Camera Info Topic)) --> TAG
+  TAG --> RAW((Raw Tag Detection Topic))
+
+  RAW --> BRIDGE[parking_apriltag_bridge]
+  BRIDGE --> DET((Avg Tag Detection Topic))
+  BRIDGE --> POSE((Avg Tag Pose Topic))
+  BRIDGE --> DOCK((Detected Dock Pose Topic))
+
+  LIFE[nav2_lifecycle_manager] --> OPN[opennav_docking]
+  DOCK --> OPN
+  OPN --> ACT((Docking Action Interfaces))
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`.
 
 ## Node Data Flow
 | Node | Main Inputs | Main Outputs |
@@ -32,13 +39,19 @@ graph LR
 ```
 
 ## Topic Summary
-| Direction | Topic | Purpose |
-|---|---|---|
-| In | `/camera/color/image_rect`, `/camera/color/camera_info` | AprilTag detection input |
-| In | `/parking/docking/apriltag/detections_raw` | bridge conversion input |
-| Out | `/parking/docking/apriltag/detections` | avg_msgs-style detection output |
-| Out | `/parking/docking/apriltag/pose` | tag pose output |
-| Out | `/parking/docking/detected_dock_pose` | docking target pose output |
+### Input Topics
+| Input Topic | Purpose |
+|---|---|
+| `/camera/color/image_rect` | AprilTag image input |
+| `/camera/color/camera_info` | AprilTag camera model input |
+| `/parking/docking/apriltag/detections_raw` | Bridge conversion input |
+
+### Output Topics
+| Output Topic | Purpose |
+|---|---|
+| `/parking/docking/apriltag/detections` | avg_msgs-style detection output |
+| `/parking/docking/apriltag/pose` | Tag pose output |
+| `/parking/docking/detected_dock_pose` | Docking target pose output |
 
 ## Practical Usage
 ```bash

@@ -6,15 +6,20 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  PCMD[Planning Cmd Vel] --> GATE[Cmd Vel Gate Node]
-  ENG[Planning Engage] --> GATE
-  ESTOP[Planning Estop] --> GATE
-  GATE --> OUTCMD[Platform Cmd Vel]
-  GATE --> STATE[Drive Enabled State]
-  RVIZ[Robot Visualization Node] --> PMARK[Platform Markers]
-  RVIZ --> PBOUND[Planning Boundary]
-  SK[Sensor Kit Include] --> TF[Frame Transforms]
+  PCMD((Planning Cmd Vel Topic)) --> GATE[cmd_vel_gate_node]
+  ENG((Planning Engage Topic)) --> GATE
+  ESTOP((Planning Estop Topic)) --> GATE
+  GATE --> OUTCMD((Platform Cmd Vel Topic))
+  GATE --> STATE((Drive Enabled Topic))
+
+  POSE((Localization Pose Topic)) --> RVIZ[robot_visualization_node]
+  RVIZ --> PMARK((Platform Marker Topic))
+  RVIZ --> PBOUND((Planning Boundary Topic))
+
+  SK[[sensor_kit launch include]] --> TF((Tf Topics))
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`.
 
 ## Node Data Flow
 | Node | Main Inputs | Main Outputs |
@@ -34,15 +39,20 @@ graph LR
 ```
 
 ## Topic Summary
-| Direction | Topic | Purpose |
-|---|---|---|
-| In | `/planning/cmd_vel` | planner velocity command |
-| In | `/planning/engage` | engage trigger |
-| In | `/planning/state_machine/estop` | emergency stop signal |
-| Out | `/platform/cmd_vel` | final vehicle command |
-| Out | `/platform/drive_enabled` | gate state |
-| Out | `/platform/robot/markers` | RViz robot overlays |
-| Out | `/platform/robot/planning_boundary` | planning boundary polygon |
+### Input Topics
+| Input Topic | Purpose |
+|---|---|
+| `/planning/cmd_vel` | Planner velocity command |
+| `/planning/engage` | Engage trigger |
+| `/planning/state_machine/estop` | Emergency stop signal |
+
+### Output Topics
+| Output Topic | Purpose |
+|---|---|
+| `/platform/cmd_vel` | Final vehicle command |
+| `/platform/drive_enabled` | Gate state |
+| `/platform/robot/markers` | RViz robot overlays |
+| `/platform/robot/planning_boundary` | Planning boundary polygon |
 
 ## Practical Usage
 ```bash

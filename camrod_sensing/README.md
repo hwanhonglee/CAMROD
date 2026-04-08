@@ -6,17 +6,29 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  CAM[Camera Preprocessor] --> CAMOUT[Camera Processed Topics]
-  GNSS[Ublox Plus Ntrip] --> GNSSOUT[Gnss Topics]
-  IMU[Imu Driver Plus Converter] --> IMUOUT[Imu Data]
-  IMU --> VEL[Velocity Converter Output]
-  LDRV[Lidar Driver Plus Preprocessor] --> LRAW[Lidar Filtered Points]
-  LRAW --> LGRID[Lidar Cost Grid Node]
-  LGRID --> LOUT[Lidar Near Grid]
-  RADAR[Radar Sensor Node] --> RRANGE[Radar Range Topics]
-  RRANGE --> RGRID[Radar Cost Grid Node]
-  RGRID --> ROUT[Radar Near Grid]
+  HW{{Sensor Devices}} --> CAM[camera_preprocessor_node]
+  CAM --> CAMOUT((Camera Processed Topics))
+
+  HW --> GNSS[ublox and ntrip stack]
+  GNSS --> GNSSOUT((Gnss Topics))
+
+  HW --> IMU[imu driver nodes]
+  IMU --> IMUOUT((Imu Data Topic))
+  IMU --> VEL[platform_velocity_converter_node]
+  VEL --> VELOUT((Velocity Converter Topic))
+
+  HW --> LDRV[lidar_preprocessor_node]
+  LDRV --> LRAW((Lidar Filtered Points Topic))
+  LRAW --> LGRID[lidar_cost_grid_node]
+  LGRID --> LOUT((Lidar Near Grid Topic))
+
+  HW --> RADAR[sen0592_radar_node]
+  RADAR --> RRANGE((Radar Range Topics))
+  RRANGE --> RGRID[radar_cost_grid_node]
+  RGRID --> ROUT((Radar Near Grid Topic))
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`, `{{hardware source}}`.
 
 ## Node Data Flow
 | Node / Group | Main Inputs | Main Outputs |
@@ -42,15 +54,21 @@ graph LR
 ```
 
 ## Topic Summary
-| Direction | Topic | Purpose |
-|---|---|---|
-| Out | `/sensing/gnss/ublox_gps_node/fix` | GNSS fix for localization |
-| Out | `/sensing/imu/data` | IMU for localization/filtering |
-| Out | `/sensing/lidar/points_filtered` | LiDAR for perception/planning |
-| Out | `/sensing/camera/processed/*` | camera stream for perception |
-| Out | `/sensing/radar/near_cost_grid` | radar near obstacle grid |
-| Out | `/sensing/lidar/near_cost_grid` | lidar near obstacle grid |
-| Out | `/sensing/platform_velocity_converter/twist_with_covariance` | converted platform velocity |
+### Input Topics
+| Input Topic | Purpose |
+|---|---|
+| (none: primary inputs are hardware/device interfaces) | Camera, GNSS, IMU, LiDAR, and radar drivers ingest physical sensor streams |
+
+### Output Topics
+| Output Topic | Purpose |
+|---|---|
+| `/sensing/gnss/ublox_gps_node/fix` | GNSS fix for localization |
+| `/sensing/imu/data` | IMU for localization/filtering |
+| `/sensing/lidar/points_filtered` | LiDAR for perception/planning |
+| `/sensing/camera/processed/*` | Camera stream for perception |
+| `/sensing/radar/near_cost_grid` | Radar near obstacle grid |
+| `/sensing/lidar/near_cost_grid` | LiDAR near obstacle grid |
+| `/sensing/platform_velocity_converter/twist_with_covariance` | Converted platform velocity |
 
 ## Practical Usage
 ```bash

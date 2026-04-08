@@ -6,24 +6,19 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  BRIDGE[Plugin Api Bridge]
-  TOPICS[Api State Topics]
-  ENGAGE[Planning Engage]
-  DRIVE[Platform Drive Enabled]
-  DIAG[System Diagnostics]
-  UI[Ui Backend]
-  HTTP[Http Api]
-  CLIENT[External Client]
+  DRIVE((Drive Enabled Topic)) --> BRIDGE[plugin_api_bridge_node]
+  DIAG((Diagnostics Topics)) --> BRIDGE
+  SET[(Plugin Set Services)] --> BRIDGE
+  BRIDGE --> ENGAGE((Planning Engage Topic))
+  BRIDGE --> GET((Plugin Get Topics))
 
-  BRIDGE --> TOPICS
-  BRIDGE --> ENGAGE
-  DRIVE --> BRIDGE
-  DIAG --> BRIDGE
-  TOPICS --> UI
+  GET --> UI[ui_backend_node]
   DIAG --> UI
-  UI --> HTTP
-  HTTP --> CLIENT
+  UI --> HTTP[(Http Api Endpoints)]
+  HTTP --> CLIENT[[External Client]]
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or client]]`.
 
 ## Node Data Flow
 | Node | Main Inputs | Main Outputs |
@@ -41,14 +36,28 @@ graph LR
 ```
 
 ## Topic Summary
-| Direction | Topic / Endpoint | Purpose |
-|---|---|---|
-| In | `/platform/drive_enabled` | Current drive-enabled state from platform gate |
-| In | `/diagnostics`, `/diagnostics_agg` | Module/system health used for API readiness |
-| Out | `/planning/engage` | Engage command forwarded to planning gate |
-| Out | `/api/plugin/get/*` | Plugin-compatible state topics |
-| In/Out | `/api/plugin/set/*` (services) | External control path (engage/mode) |
-| HTTP | `/api/*` | UI/API access for web client |
+### Input Topics
+| Input Topic | Purpose |
+|---|---|
+| `/platform/drive_enabled` | Current drive-enabled state from platform gate |
+| `/diagnostics` | Module diagnostics used for API readiness/state sync |
+| `/diagnostics_agg` | Aggregated diagnostics used by UI readiness reporting |
+
+### Output Topics
+| Output Topic | Purpose |
+|---|---|
+| `/planning/engage` | Engage command forwarded to planning gate |
+| `/api/plugin/get/engage` | Plugin-facing engage state |
+| `/api/plugin/get/ready` | Plugin-facing readiness state |
+| `/api/plugin/get/operation_mode` | Plugin-facing operation mode |
+| `/api/plugin/get/module_states` | Plugin-facing module state summary |
+| `/api/plugin/get/ready_message` | Plugin-facing readiness detail message |
+
+### Service and HTTP Interfaces
+| Interface | Purpose |
+|---|---|
+| `/api/plugin/set/*` (services) | External control path (engage/mode) |
+| `/api/*` (HTTP) | UI/API access for web client |
 
 ## Practical Usage
 ```bash

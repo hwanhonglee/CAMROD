@@ -6,10 +6,13 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  CHECK[Component Checker Nodes] --> DIAG[Diagnostics Stream]
-  DIAG --> AGG[Aggregator Node]
-  AGG --> DIAGAGG[Diagnostics Aggregated]
+  RUNTIME((Module Runtime Topics)) --> CHECK[diagnostic checker nodes]
+  CHECK --> DIAG((Diagnostics Topic))
+  DIAG --> AGG[aggregator_node]
+  AGG --> DIAGAGG((Diagnostics Aggregated Topic))
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`.
 
 ## Node Data Flow
 | Node / Group | Main Inputs | Main Outputs |
@@ -36,11 +39,17 @@ graph LR
 ```
 
 ## Topic Summary
-| Direction | Topic | Purpose |
-|---|---|---|
-| In | module runtime topics (map/sensing/localization/perception/planning/platform) | health checks |
-| Out | `/system/diagnostics` | raw diagnostics stream |
-| Out | `/system/diagnostics_agg` | aggregated diagnostics stream |
+### Input Topics
+| Input Topic | Purpose |
+|---|---|
+| map/localization/planning/perception/platform/sensing runtime topics | Health checks for module status and freshness |
+
+### Output Topics
+| Output Topic | Purpose |
+|---|---|
+| `/diagnostics` (package-only default) | Raw diagnostics stream |
+| `/diagnostics_agg` (package-only default) | Aggregated diagnostics stream |
+| `/system/diagnostics`, `/system/diagnostics_agg` (bringup namespace) | Same diagnostics streams when launched under `/system` namespace |
 
 ## Practical Usage
 ```bash

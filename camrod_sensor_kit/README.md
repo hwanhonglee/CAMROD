@@ -6,12 +6,14 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  PARAM[Robot Params File] --> LAUNCH[Sensor Kit Launch]
-  LAUNCH --> XACRO[Xacro Expansion]
-  XACRO --> RSP[Robot State Publisher]
-  RSP --> TF[Tf Topic]
-  RSP --> TFS[Static Tf Topic]
+  PARAM[(robot_params yaml)] --> XACRO[xacro expansion]
+  XACRO --> DESC[(robot description text)]
+  DESC --> RSP[robot_state_publisher]
+  RSP --> TF((tf topic))
+  RSP --> TFS((tf static topic))
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`.
 
 ## Node Data Flow
 | Node | Main Inputs | Main Outputs |
@@ -28,10 +30,16 @@ graph LR
 ```
 
 ## Topic Summary
-| Direction | Topic | Purpose |
-|---|---|---|
-| Out | `/tf` | dynamic frame tree publication |
-| Out | `/tf_static` | static frame tree publication |
+### Input Topics
+| Input Topic | Purpose |
+|---|---|
+| (none: input is generated `robot_description` from xacro/params) | `robot_state_publisher` consumes URDF description rather than runtime ROS topics |
+
+### Output Topics
+| Output Topic | Purpose |
+|---|---|
+| `/tf` | Dynamic frame tree publication |
+| `/tf_static` | Static frame tree publication |
 
 ## Practical Usage
 ```bash

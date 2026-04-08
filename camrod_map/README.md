@@ -6,14 +6,27 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  MAPNODE[Lanelet Map Node] --> MARKERS[Map Markers]
-  MAPNODE --> STATUS[Map Status]
-  GRID[Lanelet Cost Grid Node] --> BASEGRID[Lanelet Cost Grid]
-  GRID --> PLANBASE[Planning Base Grid]
-  MULTI[Multi Cost Marker Node] --> COSTMARK[Cost Marker Streams]
-  AGGR[Marker Aggregator Node] --> INFLATE[Inflation Markers]
-  FIELD[Cost Field Node Optional] --> FIELDMARK[Lanelet Field Markers]
+  MAPREF[(map_info config and map path)] --> MAPNODE[lanelet2_map_node]
+  MAPNODE --> MAPMARK((Map Marker Topic))
+  MAPNODE --> MAPSTAT((Map Status Topic))
+
+  LOCALPOSE((Localization Pose Topic)) --> GRID[lanelet_cost_grid_node]
+  GLOBALPATH((Planning Global Path Topic)) --> GRID
+  GRID --> BASEGRID((Lanelet Cost Grid Topic))
+  GRID --> PLANBASE((Planning Base Grid Topic))
+  GRID --> MAPSTAT
+
+  BASEGRID --> MULTI[multi_cost_field_marker_node]
+  MULTI --> COSTMARK((Cost Marker Topics))
+
+  COSTSRC((Cost Marker Inputs)) --> AGGR[marker_array_aggregator_node]
+  AGGR --> INFLATE((Inflation Marker Topic))
+
+  MAPREF --> FIELD[cost_field_node optional]
+  FIELD --> FIELDMARK((Lanelet Field Marker Topic))
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`.
 
 ## Node Data Flow
 | Node | Main Inputs | Main Outputs |
@@ -37,14 +50,19 @@ graph LR
 ```
 
 ## Topic Summary
-| Direction | Topic | Purpose |
-|---|---|---|
-| In | `/localization/pose` | center pose for dynamic lanelet grid focus |
-| In | `/planning/global_path` | path-aware cost shaping |
-| Out | `/map/cost_grid/lanelet` | base lanelet occupancy/cost grid |
-| Out | `/map/cost_grid/planning_base` | planning-oriented secondary grid |
-| Out | `/map/cost_grid/inflation_markers` | merged visualization markers |
-| Out | `/map/status` | module status payload |
+### Input Topics
+| Input Topic | Purpose |
+|---|---|
+| `/localization/pose` | Center pose for dynamic lanelet grid focus |
+| `/planning/global_path` | Path-aware cost shaping |
+
+### Output Topics
+| Output Topic | Purpose |
+|---|---|
+| `/map/cost_grid/lanelet` | Base lanelet occupancy/cost grid |
+| `/map/cost_grid/planning_base` | Planning-oriented secondary grid |
+| `/map/cost_grid/inflation_markers` | Merged visualization markers |
+| `/map/status` | Module status payload |
 
 ## Practical Usage
 ```bash

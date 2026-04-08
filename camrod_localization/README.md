@@ -6,13 +6,24 @@
 ## Package Diagram
 ```mermaid
 graph TD
-  ADAPT[Input Adapter] --> ESKF[Eskf Filter]
-  KIMERA[Kimera Bridge Optional] --> SELECT[Pose Selector]
-  ESKF --> SELECT
-  SELECT --> MON[Monitor]
-  SELECT --> HELPER[Map Helper]
-  HELPER --> READY[Initial Match Ready]
+  GNSS((Gnss Fix Topic)) --> ADAPT[localization_input_adapter_node]
+  WHEEL((Wheel Odometry Topic)) --> ADAPT
+  ADAPT --> ESKF[localization_eskf_node]
+  IMU((Imu Data Topic)) --> ESKF
+
+  ESKF --> SELECT[localization_pose_selector_node]
+  KIMERA[kimera_csv_bridge_node optional] --> SELECT
+  SELECT --> POSE((Localization Pose Topics))
+
+  SELECT --> MON[localization_monitor_node]
+  MON --> MODE((Localization State Topics))
+
+  SELECT --> HELPER[localization_map_helper_node]
+  MAPREF[(map_info and drop_zones config)] --> HELPER
+  HELPER --> READY((Initial Match Topic))
 ```
+
+Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`, `[[external package or launch]]`.
 
 ## Node Data Flow
 | Node | Main Inputs | Main Outputs |
@@ -35,15 +46,20 @@ graph LR
 ```
 
 ## Topic Summary
-| Direction | Topic | Purpose |
-|---|---|---|
-| In | `/sensing/gnss/ublox_gps_node/fix` | GNSS raw position source |
-| In | `/sensing/imu/data` | IMU source for filter |
-| In | `/platform/wheel/odometry` | wheel odometry source |
-| Out | `/localization/pose` | canonical pose for planning/platform |
-| Out | `/localization/pose_with_covariance` | covariance-aware pose |
-| Out | `/localization/odometry/filtered` | fused odometry |
-| Out | `/localization/initial_match_ok` | initialization readiness used by planning lifecycle gate |
+### Input Topics
+| Input Topic | Purpose |
+|---|---|
+| `/sensing/gnss/ublox_gps_node/fix` | GNSS raw position source |
+| `/sensing/imu/data` | IMU source for filter |
+| `/platform/wheel/odometry` | Wheel odometry source |
+
+### Output Topics
+| Output Topic | Purpose |
+|---|---|
+| `/localization/pose` | Canonical pose for planning/platform |
+| `/localization/pose_with_covariance` | Covariance-aware pose |
+| `/localization/odometry/filtered` | Fused odometry |
+| `/localization/initial_match_ok` | Initialization readiness used by planning lifecycle gate |
 
 ## Practical Usage
 ```bash
