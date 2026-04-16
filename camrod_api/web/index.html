@@ -15,6 +15,7 @@
 <body>
   <h2>CAMROD API Panel</h2>
   <div class="row">상태: <span id="mode" class="badge">-</span></div>
+  <div class="row">Health: <span id="health" class="badge">-</span></div>
   <div class="row">Ready: <span id="ready" class="badge">-</span></div>
   <div class="row">Engaged: <span id="engaged" class="badge">-</span></div>
   <div class="row" id="ready_msg">ready_message: -</div>
@@ -36,14 +37,20 @@
 
     async function refresh() {
       try {
-        const r = await fetch('/api/state');
-        const s = await r.json();
+        const [stateRes, healthRes] = await Promise.all([
+          fetch('/api/state'),
+          fetch('/api/health'),
+        ]);
+        const s = await stateRes.json();
+        const h = await healthRes.json();
         document.getElementById('mode').textContent = s.operation_mode;
+        document.getElementById('health').textContent = String(Boolean(h.ok));
         document.getElementById('ready').textContent = String(s.ready);
         document.getElementById('engaged').textContent = String(s.engaged);
         document.getElementById('ready_msg').textContent = 'ready_message: ' + (s.ready_message || '');
         document.getElementById('modules').textContent = JSON.stringify(s.module_states, null, 2);
       } catch (e) {
+        document.getElementById('health').textContent = 'false';
         document.getElementById('ready_msg').textContent = 'backend 연결 실패: ' + e;
       }
     }

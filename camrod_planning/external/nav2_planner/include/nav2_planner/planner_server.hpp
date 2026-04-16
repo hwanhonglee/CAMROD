@@ -128,10 +128,10 @@ protected:
   bool isCancelRequested(std::unique_ptr<nav2_util::SimpleActionServer<T>> & action_server);
 
   /**
-   * @brief Wait for costmap to be valid with updated sensor data or repopulate after a
-   * clearing recovery. Blocks until true without timeout.
+   * @brief Wait for costmap to become current.
+   * @return true if costmap became current, false on timeout/interruption.
    */
-  void waitForCostmap();
+  bool waitForCostmap();
 
   /**
    * @brief Check if an action server has a preemption request and replaces the goal
@@ -236,6 +236,9 @@ protected:
   std::vector<std::string> planner_ids_;
   std::vector<std::string> planner_types_;
   double max_planner_duration_;
+  // HH_260412: Avoid infinite hang in ComputePath when costmap remains non-current.
+  // 0.0 keeps legacy "wait forever" behavior; >0 applies timeout seconds.
+  double costmap_wait_timeout_sec_{2.0};
   std::string planner_ids_concat_;
 
   // TF buffer

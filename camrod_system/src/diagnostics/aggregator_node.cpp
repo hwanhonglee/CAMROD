@@ -48,7 +48,10 @@ public:
   : rclcpp::Node("diagnostics_agg")
   {
     declare_parameter("config_file", std::string(""));
+    // HH_260408: Keep aggregated status in topic by default, without periodic console spam.
+    declare_parameter("enable_summary_log", false);
     std::string config_path = get_parameter("config_file").as_string();
+    enable_summary_log_ = get_parameter("enable_summary_log").as_bool();
 
     double publish_rate = 1.0;
 
@@ -183,16 +186,18 @@ private:
 
     pub_->publish(agg_msg);
 
-    // 그룹별 요약 로그
-    std::ostringstream summary;
-    bool first = true;
-    for (const auto & [g, lvl] : group_worst) {
-      if (!first) summary << " | ";
-      summary << g << "=" << level_name(lvl);
-      first = false;
+    if (enable_summary_log_) {
+      // 그룹별 요약 로그 (optional)
+      std::ostringstream summary;
+      bool first = true;
+      for (const auto & [g, lvl] : group_worst) {
+        if (!first) summary << " | ";
+        summary << g << "=" << level_name(lvl);
+        first = false;
+      }
+      RCLCPP_INFO(get_logger(), "[AGG] total=%zu | %s",
+        agg_msg.status.size(), summary.str().c_str());
     }
-    RCLCPP_INFO(get_logger(), "[AGG] total=%zu | %s",
-      agg_msg.status.size(), summary.str().c_str());
   }
 
   // 상태 엔트리
@@ -204,6 +209,7 @@ private:
   std::unordered_map<std::string, TopicConfig>    topic_configs_;
   std::unordered_map<std::string, StatusEntry>    status_map_;
   double                                           default_timeout_{5.0};
+  bool                                             enable_summary_log_{false};
 
   rclcpp::Subscription<DiagnosticArray>::SharedPtr sub_;
   rclcpp::Publisher<DiagnosticArray>::SharedPtr    pub_;

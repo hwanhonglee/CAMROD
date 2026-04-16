@@ -40,7 +40,8 @@ class CmdVelGateNode(Node):
             self.declare_parameter("use_estop_topic", True).value
         )
         self.estop_topic = str(
-            self.declare_parameter("estop_topic", "/planning/state_machine/estop").value
+            # HH_260409: Default e-stop source moved to platform status topic.
+            self.declare_parameter("estop_topic", "/platform/status/estop").value
         )
         self.allow_on_start = bool(
             self.declare_parameter("allow_on_start", False).value
@@ -119,7 +120,10 @@ class CmdVelGateNode(Node):
 
     # Updates gate state from `/platform/drive_enable` style control topic.
     def _on_enable(self, msg: Bool) -> None:
-        self._enabled = bool(msg.data)
+        new_enabled = bool(msg.data)
+        if new_enabled == self._enabled:
+            return
+        self._enabled = new_enabled
         self._publish_state()
         if not self._effective_enabled() and self.publish_zero_when_blocked:
             self._publish_zero()
@@ -132,7 +136,10 @@ class CmdVelGateNode(Node):
     # Mirrors planning engage signal into the same gate state used by enable topic.
     def _on_engage(self, msg: Bool) -> None:
         # HH_260327: Mirror planning engage bool into platform drive-enable gate.
-        self._enabled = bool(msg.data)
+        new_enabled = bool(msg.data)
+        if new_enabled == self._enabled:
+            return
+        self._enabled = new_enabled
         self._publish_state()
         if not self._effective_enabled() and self.publish_zero_when_blocked:
             self._publish_zero()
@@ -144,7 +151,10 @@ class CmdVelGateNode(Node):
 
     # Applies emergency-stop state and forces zero command when configured.
     def _on_estop(self, msg: Bool) -> None:
-        self._estop = bool(msg.data)
+        new_estop = bool(msg.data)
+        if new_estop == self._estop:
+            return
+        self._estop = new_estop
         self._publish_state()
         if self._estop and self.publish_zero_when_blocked:
             self._publish_zero()

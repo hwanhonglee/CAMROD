@@ -19,6 +19,11 @@ def lc_dict(*names: str) -> dict:
 def extract_map_ros_params(map_info_cfg: dict) -> dict:
     if not isinstance(map_info_cfg, dict):
         return {}
+    wildcard = map_info_cfg.get('/**')
+    if isinstance(wildcard, dict):
+        params = wildcard.get('ros__parameters')
+        if isinstance(params, dict):
+            return params
     for key in (
         '/map/lanelet2_map',
         'map/lanelet2_map',
@@ -39,6 +44,7 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
 
 
 def generate_launch_description():
+    # Top-level planning launch (Nav2 + lanelet tools + cmd_vel gate).
     map_info_path = pkg_share('camrod_map', os.path.join('config', 'map_info.yaml'))
     map_path_default = ''
     origin_lat_default = '0.0'
@@ -54,6 +60,17 @@ def generate_launch_description():
         origin_alt_default = str(params.get('offset_alt', origin_alt_default))
     except Exception:
         pass
+    # HH_260409: Keep planning standalone launch usable even when map_info.yaml
+    # leaves map_path empty (discover common workspace map path candidates).
+    if not str(map_path_default).strip():
+        for candidate in (
+            os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src', 'lanelet2_maps.osm'),
+            os.path.join(os.getcwd(), 'lanelet2_maps.osm'),
+            os.path.join(os.getcwd(), 'src', 'lanelet2_maps.osm'),
+        ):
+            if os.path.isfile(candidate):
+                map_path_default = os.path.abspath(candidate)
+                break
 
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace', default_value='planning'),
@@ -81,8 +98,21 @@ def generate_launch_description():
         DeclareLaunchArgument('planning_engage_topic', default_value='/planning/engage'),
         DeclareLaunchArgument('planning_engaged_state_topic', default_value='/planning/engaged'),
         DeclareLaunchArgument('cmd_vel_gate_use_estop_topic', default_value='true'),
-        DeclareLaunchArgument('cmd_vel_gate_estop_topic', default_value='/planning/state_machine/estop'),
+        # HH_260409: Use platform-originated e-stop by default.
+        DeclareLaunchArgument('cmd_vel_gate_estop_topic', default_value='/platform/status/estop'),
         DeclareLaunchArgument('cmd_vel_gate_allow_on_start', default_value='false'),
+        # HH_260413: Optional cost-based stop in front of the platform.
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_enable', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_grid_topic', default_value='/planning/local_costmap/costmap'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_pose_topic', default_value='/localization/pose'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_threshold', default_value='200'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_lookahead_m', default_value='2.0'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_width_m', default_value='1.0'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_hold_sec', default_value='1.0'),
+        DeclareLaunchArgument('cmd_vel_gate_unavoidable_stop_enable', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_unavoidable_lethal_threshold', default_value='253'),
+        DeclareLaunchArgument('cmd_vel_gate_unavoidable_cluster_min_cells', default_value='25'),
+        DeclareLaunchArgument('cmd_vel_gate_unavoidable_cluster_min_ratio', default_value='0.25'),
 
         DeclareLaunchArgument(
             'nav2_base_param_file',
@@ -169,35 +199,94 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 pkg_share('camrod_planning', os.path.join('launch', 'lanelet_tools.launch.py'))
             ),
+            launch_arguments=lc_dict(
+                'module_namespace',
+                'map_path',
+                'origin_lat',
+                'origin_lon',
+                'origin_alt',
+                'centerline_input_pose_topic',
+                'goal_snapper_param_file',
+                'centerline_snapper_param_file',
+            ).items(),
         ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 pkg_share('camrod_planning', os.path.join('launch', 'local_path.launch.py'))
             ),
+            # HH_260409: Propagate local-path args to child launch so bringup overrides
+            # are applied consistently (fixes hidden default fallback behavior).
+            launch_arguments=lc_dict(
+                'module_namespace',
+                'local_path_extractor_param_file',
+                'local_path_pose_topic',
+                'local_path_source',
+                'enable_tracking_error',
+                'tracking_error_topic',
+            ).items(),
         ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 pkg_share('camrod_planning', os.path.join('launch', 'cmd_vel_gate.launch.py'))
             ),
+            launch_arguments=lc_dict(
+                'module_namespace',
+                'cmd_vel_gate_enable',
+                'cmd_vel_raw_topic',
+                'cmd_vel_output_topic',
+                'planning_engage_topic',
+                'planning_engaged_state_topic',
+                'cmd_vel_gate_use_estop_topic',
+                'cmd_vel_gate_estop_topic',
+                'cmd_vel_gate_allow_on_start',
+                'cmd_vel_gate_cost_stop_enable',
+                'cmd_vel_gate_cost_grid_topic',
+                'cmd_vel_gate_cost_pose_topic',
+                'cmd_vel_gate_cost_threshold',
+                'cmd_vel_gate_cost_lookahead_m',
+                'cmd_vel_gate_cost_width_m',
+                'cmd_vel_gate_cost_hold_sec',
+                'cmd_vel_gate_unavoidable_stop_enable',
+                'cmd_vel_gate_unavoidable_lethal_threshold',
+                'cmd_vel_gate_unavoidable_cluster_min_cells',
+                'cmd_vel_gate_unavoidable_cluster_min_ratio',
+            ).items(),
         ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 pkg_share('camrod_planning', os.path.join('launch', 'goal_replanner.launch.py'))
             ),
+            launch_arguments=lc_dict(
+                'module_namespace',
+                'enable_goal_replanner',
+                'goal_replanner_param_file',
+            ).items(),
         ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 pkg_share('camrod_planning', os.path.join('launch', 'state_machine.launch.py'))
             ),
+            launch_arguments=lc_dict(
+                'module_namespace',
+                'enable_state_machine',
+                'planning_state_machine_param_file',
+                'planning_state_machine_keypoints_yaml',
+                'planning_state_machine_camping_sites_yaml',
+            ).items(),
         ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 pkg_share('camrod_planning', os.path.join('launch', 'lifecycle_retry.launch.py'))
             ),
+            launch_arguments=lc_dict(
+                'module_namespace',
+                'enable_nav2_lifecycle_retry',
+                'require_localization_ready',
+            ).items(),
         ),
     ])

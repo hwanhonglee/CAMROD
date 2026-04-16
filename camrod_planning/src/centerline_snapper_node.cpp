@@ -1,3 +1,4 @@
+#include <cmath>
 #include <limits>
 #include <string>
 
@@ -81,6 +82,9 @@ public:
     use_map_z_ = declare_parameter<bool>("use_map_z", true);           // HH_260114 Snap z to map elevation.
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);    // HH_260114 Extra z offset applied to map elevation.
     flatten_to_ground_ = declare_parameter<bool>("flatten_to_ground", false);  // HH_260114 Force z to ground plane.
+    // HH_260413: Throttle nearest-centerline search under high-rate localization streams.
+    min_update_period_sec_ = declare_parameter<double>("min_update_period_sec", 0.05);
+    min_input_displacement_m_ = declare_parameter<double>("min_input_displacement_m", 0.05);
 
     if (!loadMap()) {
       RCLCPP_FATAL(get_logger(), "centerline snapper: failed to load map. exiting.");
@@ -154,6 +158,26 @@ private:
     const double px = msg->pose.position.x;
     const double py = msg->pose.position.y;
     const double pz = msg->pose.position.z;
+    const rclcpp::Time stamp =
+      (msg->header.stamp.sec == 0 && msg->header.stamp.nanosec == 0) ?
+      get_clock()->now() :
+      rclcpp::Time(msg->header.stamp);
+
+    // HH_260413: Skip map projection when both time and displacement thresholds are not met.
+    if (has_last_publish_) {
+      const double dt = (stamp - last_publish_stamp_).seconds();
+      const double moved = std::hypot(px - last_input_x_, py - last_input_y_);
+      const bool use_period = min_update_period_sec_ > 0.0;
+      const bool use_distance = min_input_displacement_m_ > 0.0;
+      const bool skip_by_period = use_period && dt < min_update_period_sec_;
+      const bool skip_by_distance = use_distance && moved < min_input_displacement_m_;
+      if ((use_period || use_distance) &&
+        (!use_period || skip_by_period) &&
+        (!use_distance || skip_by_distance))
+      {
+        return;
+      }
+    }
 
     const auto nearest = findNearestCenterline(px, py);
     if (!nearest.valid) {
@@ -199,6 +223,10 @@ private:
       "centerline_snapper: in=(%.2f, %.2f) out=(%.2f, %.2f) dist=%.2f",
       px, py, out_pose.pose.position.x, out_pose.pose.position.y, std::sqrt(nearest.sq_dist));
     publishAvgPlanning(out_pose);
+    last_publish_stamp_ = stamp;
+    last_input_x_ = px;
+    last_input_y_ = py;
+    has_last_publish_ = true;
   }
 
   // Publishes `RosPose` output.
@@ -288,6 +316,12 @@ private:
   bool use_map_z_{true};
   double map_z_offset_{0.0};
   bool flatten_to_ground_{false};
+  double min_update_period_sec_{0.05};
+  double min_input_displacement_m_{0.05};
+  rclcpp::Time last_publish_stamp_{0, 0, RCL_ROS_TIME};
+  double last_input_x_{0.0};
+  double last_input_y_{0.0};
+  bool has_last_publish_{false};
   double map_ground_z_{0.0};
 
   // Computes `GroundZ` values.

@@ -1,0 +1,24 @@
+[package]
+name = "autoware_vehicle_msgs"
+version = "1.11.0"
+edition = "2021"
+
+[dependencies]
+rosidl_runtime_rs = "0.6"
+serde = { version = "1", optional = true, features = ["derive"] }
+serde-big-array = { version = "0.5.1", optional = true }
+
+# ROS Dependencies
+autoware_common_msgs = "*"
+nav_msgs = "*"
+unique_identifier_msgs = "*"
+builtin_interfaces = "*"
+std_msgs = "*"
+geometry_msgs = "*"
+autoware_planning_msgs = "*"
+
+[features]
+serde = ['dep:serde', 'dep:serde-big-array', 'rosidl_runtime_rs/serde', 'autoware_common_msgs/serde', 'nav_msgs/serde', 'unique_identifier_msgs/serde', 'builtin_interfaces/serde', 'std_msgs/serde', 'geometry_msgs/serde', 'autoware_planning_msgs/serde']
+
+[package.metadata.rclrs]
+reexport = true

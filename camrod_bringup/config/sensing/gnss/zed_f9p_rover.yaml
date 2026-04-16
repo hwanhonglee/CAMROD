@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    device: /dev/ttyACM0
+    device: /dev/ttyACM1
     frame_id: gps
     debug: 1 # 4 is logging data
 

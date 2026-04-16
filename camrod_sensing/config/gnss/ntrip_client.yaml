@@ -2,7 +2,8 @@
   ros__parameters:
     host: www.gnssdata.or.kr
     port: 2101
-    mountpoint: CNJU-RTCM32 # CNJU-RTCM31 # CNJU-RTCM23 # CNJU-RTCM32 # CNJU-BINEX
+    # mountpoint: CNJU-RTCM32 # CNJU-RTCM31 # CNJU-RTCM23 # CNJU-RTCM32 # CNJU-BINEX
+    mountpoint: JECH-RTCM32 # JECH-RTCM31 # JECH-RTCM23 # JECH-RTCM32 # JECH-BINEX
     authenticate: true
     username: hwanhong57@gmail.com
     password: gnss

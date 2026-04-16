@@ -17,7 +17,7 @@
  *   wheel_names: ["main"]
  *
  *   main:
- *     topic:              "/platform/wheel/odometry"
+ *     topic:              "/platform/status/wheel_odometry"
  *     expected_hz:        20.0
  *     hz_warn_ratio:      0.7
  *     hz_error_ratio:     0.4
@@ -104,7 +104,7 @@ protected:
       auto wheel = std::make_shared<WheelState>();
       wheel->name = name;
 
-      declare_parameter(name + ".topic",               std::string("/platform/wheel/odometry"));
+      declare_parameter(name + ".topic",               std::string("/platform/status/wheel_odometry"));
       declare_parameter(name + ".expected_hz",         20.0);
       declare_parameter(name + ".hz_warn_ratio",       0.7);
       declare_parameter(name + ".hz_error_ratio",      0.4);

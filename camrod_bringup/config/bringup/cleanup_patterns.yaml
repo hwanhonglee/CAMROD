@@ -38,6 +38,11 @@ patterns:
   - __node:=fake_sensor_publisher
 
   # [sensing]
+  # HH_260415: Ensure stale IMU driver process is terminated before bringup.
+  # Missing this pattern can leave /dev/ttyACM0 occupied and cause
+  # "MIP SDK: Unable to open port (16): Device or resource busy" at startup.
+  - microstrain_inertial_driver_node
+  - __node:=microstrain_inertial_driver
   - camera_preprocessor_node
   - lidar_preprocessor_node
   - vanjee_lidar_sdk_node
@@ -105,5 +110,15 @@ patterns:
   # [bringup]
   - __node:=bringup_status
 
+  # [api]
+  # HH_260415: Prevent UI backend port conflicts on rapid relaunch.
+  # Without these patterns, stale api nodes can keep TCP port 8010 bound.
+  - __node:=plugin_api_bridge
+  - __node:=ui_backend
+  - plugin_api_bridge_node
+  - ui_backend_node
+
   # [visualization]
+  # HH_260414: Remove stale static TF publishers left after interrupted sessions.
+  - static_transform_publisher
   - rviz2

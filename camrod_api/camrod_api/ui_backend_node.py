@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import errno
 import threading
 import time
 from dataclasses import dataclass, field
@@ -42,9 +43,14 @@ class UiBackendNode(Node):
     def __init__(self) -> None:
         super().__init__("ui_backend")
 
-        self.host = str(self.declare_parameter("host", "0.0.0.0").value)
+        # HH_260415: Localhost-first default to avoid unintended external exposure.
+        self.host = str(self.declare_parameter("host", "127.0.0.1").value)
         self.port = int(self.declare_parameter("port", 8010).value)
         self.enable_http_server = bool(self.declare_parameter("enable_http_server", True).value)
+        # HH_260415: Avoid fatal crash when bringup is relaunched while old UI backend still holds the port.
+        self.port_auto_increment = bool(self.declare_parameter("port_auto_increment", True).value)
+        self.port_search_max = int(self.declare_parameter("port_search_max", 20).value)
+        self.fail_on_bind_error = bool(self.declare_parameter("fail_on_bind_error", False).value)
         self.frontend_dir = Path(
             str(self.declare_parameter("frontend_dir", "").value)
         )
@@ -268,6 +274,10 @@ class UiBackendNode(Node):
     def _start_http_server(self) -> None:
         node = self
 
+        # HH_260415: Reusable TCP server reduces bind failures after rapid restart.
+        class ReusableThreadingHTTPServer(ThreadingHTTPServer):
+            allow_reuse_address = True
+
         class Handler(BaseHTTPRequestHandler):
             # Redirects default HTTP access log into ROS debug logger.
             def log_message(self, fmt: str, *args) -> None:  # noqa: A003
@@ -308,12 +318,12 @@ class UiBackendNode(Node):
 
                 base_dir = node.frontend_dir if node.frontend_dir and node.frontend_dir.exists() else (Path(__file__).resolve().parent.parent / "web")
                 rel_path = parsed.path.lstrip("/") or "index.html"
-                candidate = (base_dir / rel_path).resolve()
-                try:
-                    candidate.relative_to(base_dir.resolve())
-                except Exception:
+                rel_parts = Path(rel_path).parts
+                # HH_260415: Reject traversal while allowing symlink-install frontend files.
+                if any(part == ".." for part in rel_parts):
                     self.send_error(403, "Forbidden")
                     return
+                candidate = base_dir / rel_path
                 if not candidate.exists() and rel_path != "index.html":
                     candidate = base_dir / "index.html"
                 self._send_file(candidate)
@@ -349,7 +359,36 @@ class UiBackendNode(Node):
 
                 self.send_error(404, "Not Found")
 
-        self._server = ThreadingHTTPServer((self.host, self.port), Handler)
+        bind_error: Exception | None = None
+        base_port = int(self.port)
+        max_tries = max(1, int(self.port_search_max) + 1) if self.port_auto_increment else 1
+        for offset in range(max_tries):
+            try_port = base_port + offset
+            try:
+                self._server = ReusableThreadingHTTPServer((self.host, try_port), Handler)
+                self.port = try_port
+                bind_error = None
+                break
+            except OSError as exc:
+                bind_error = exc
+                if exc.errno == errno.EADDRINUSE and self.port_auto_increment and offset + 1 < max_tries:
+                    self.get_logger().warn(
+                        f"ui backend port busy: {self.host}:{try_port}, retrying next port"
+                    )
+                    continue
+                break
+
+        if self._server is None:
+            message = (
+                f"ui backend http bind failed on {self.host}:{base_port}"
+                + (f" ({bind_error})" if bind_error else "")
+            )
+            if self.fail_on_bind_error:
+                raise RuntimeError(message) from bind_error
+            self.get_logger().error(message)
+            self.get_logger().warn("ui backend will keep ROS bridge alive without embedded HTTP server")
+            return
+
         self._server_thread = threading.Thread(
             target=self._server.serve_forever,
             name="camrod_api_http",

@@ -17,3 +17,6 @@
     use_map_z: true
     map_z_offset: 0.0
     flatten_to_ground: false
+    # HH_260413: Throttle nearest-centerline projection for CPU stability.
+    min_update_period_sec: 0.05
+    min_input_displacement_m: 0.05

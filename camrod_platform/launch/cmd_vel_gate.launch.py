@@ -16,7 +16,8 @@ def generate_launch_description():
         DeclareLaunchArgument('use_planning_engage_topic', default_value='true'),
         DeclareLaunchArgument('drive_state_topic', default_value='/platform/drive_enabled'),
         DeclareLaunchArgument('use_estop_topic', default_value='true'),
-        DeclareLaunchArgument('estop_topic', default_value='/planning/state_machine/estop'),
+        # HH_260409: Default e-stop source is platform status bridge from CAN/system_state.
+        DeclareLaunchArgument('estop_topic', default_value='/platform/status/estop'),
         DeclareLaunchArgument('drive_allow_on_start', default_value='false'),
 
         Node(

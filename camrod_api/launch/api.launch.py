@@ -53,7 +53,8 @@ def generate_launch_description():
     )
     ui_host_arg = DeclareLaunchArgument(
         'ui_host',
-        default_value='0.0.0.0',
+        # HH_260415: Use localhost first by default; open externally only when requested.
+        default_value='127.0.0.1',
         description='UI backend bind host',
     )
     ui_port_arg = DeclareLaunchArgument(

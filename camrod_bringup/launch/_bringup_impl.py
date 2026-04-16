@@ -6,6 +6,7 @@ HH_260317-00:00
 """
 
 import os
+import subprocess
 import sys
 from typing import Any
 
@@ -18,12 +19,13 @@ from launch.actions import (
     ExecuteProcess,
     GroupAction,
     IncludeLaunchDescription,
+    OpaqueFunction,
     RegisterEventHandler,
     TimerAction,
 )
 from launch.conditions import IfCondition
 from launch.conditions import UnlessCondition
-from launch.event_handlers import OnProcessExit
+from launch.event_handlers import OnProcessExit, OnShutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -57,6 +59,11 @@ def cfg_get(cfg: dict, key_path: str, default: Any) -> Any:
 def extract_map_ros_params(map_info_cfg: dict) -> dict:
     if not isinstance(map_info_cfg, dict):
         return {}
+    wildcard = map_info_cfg.get('/**')
+    if isinstance(wildcard, dict):
+        params = wildcard.get('ros__parameters')
+        if isinstance(params, dict):
+            return params
     for key in (
         '/map/lanelet2_map',
         'map/lanelet2_map',
@@ -107,6 +114,23 @@ def build_cleanup_cmd(patterns: list[str]) -> str:
             f'done'
         )
     return '; '.join(parts)
+
+
+# Runs cleanup command synchronously in launch context.
+def run_cleanup_sync(cmd: str) -> None:
+    if not isinstance(cmd, str) or not cmd.strip():
+        return
+    try:
+        print('[HH_260408] bringup cleanup: terminating stale matching processes')
+        subprocess.run(['bash', '-lc', cmd], check=False)
+    except Exception:
+        pass
+
+
+# HH_260408: On Ctrl+C, execute one more cleanup pass to avoid stale duplicate nodes.
+def run_cleanup_on_shutdown(_context: Any, cmd: str):
+    run_cleanup_sync(cmd)
+    return []
 
 
 # Reads CLI launch arg value from `name:=value` form.
@@ -279,6 +303,8 @@ def generate_launch_description():
         ('config_root', config_root_default, 'Root directory for bringup YAML configs'),
         ('launch_defaults_file', launch_defaults_file_default, 'Top-level launch defaults YAML file'),
         ('clean_before_launch', cfg_get(launch_cfg, 'runtime/clean_before_launch', True), 'Kill stale processes first'),
+        # HH_260408: Ensure stale duplicate processes are also cleaned on Ctrl+C shutdown.
+        ('clean_on_shutdown', cfg_get(launch_cfg, 'runtime/clean_on_shutdown', True), 'Kill stale processes on bringup shutdown'),
         ('sim', cfg_get(launch_cfg, 'runtime/sim', True), 'Simulation mode'),
         ('rviz', cfg_get(launch_cfg, 'runtime/rviz', True), 'Enable RViz'),
         # HH_260327: Stagger module includes to reduce startup CPU/memory spikes.
@@ -290,11 +316,15 @@ def generate_launch_description():
         ('filter_type', cfg_get(launch_cfg, 'localization/filter_type', 'auto'), 'Localization filter type: auto|ekf|eskf'),
         ('wheel_bridge_enable', cfg_get(launch_cfg, 'localization/wheel_bridge_enable', True), 'Enable wheel bridge'),
         # HH_260326: Bringup-level wheel source wiring for unified wheel bridge.
-        ('wheel_input_topic', cfg_get(launch_cfg, 'localization/wheel_input_topic', '/platform/status/wheel'), 'Wheel bridge input topic'),
-        ('wheel_input_type', cfg_get(launch_cfg, 'localization/wheel_input_type', 'twist'), 'Wheel bridge input type: twist|avg_odom|nav_odom'),
-        ('wheel_output_topic', cfg_get(launch_cfg, 'localization/wheel_output_topic', '/platform/wheel/odometry'), 'Unified wheel odometry topic (avg_msgs/Odometry)'),
+        ('wheel_input_topic', cfg_get(launch_cfg, 'localization/wheel_input_topic', '/platform/status/odometry'), 'Wheel bridge primary input topic'),
+        ('wheel_input_type', cfg_get(launch_cfg, 'localization/wheel_input_type', 'nav_odom'), 'Wheel bridge primary input type: twist|avg_odom|nav_odom'),
+        ('wheel_fallback_input_topic', cfg_get(launch_cfg, 'localization/wheel_fallback_input_topic', '/rmp401/odom'), 'Wheel bridge fallback input topic'),
+        ('wheel_fallback_input_type', cfg_get(launch_cfg, 'localization/wheel_fallback_input_type', 'nav_odom'), 'Wheel bridge fallback input type: twist|avg_odom|nav_odom'),
+        ('wheel_primary_timeout_sec', cfg_get(launch_cfg, 'localization/wheel_primary_timeout_sec', 0.7), 'Primary wheel timeout before fallback (sec)'),
+        # HH_260410: Keep unified wheel output in /platform/status namespace.
+        ('wheel_output_topic', cfg_get(launch_cfg, 'localization/wheel_output_topic', '/platform/status/wheel_odometry'), 'Unified wheel odometry topic (avg_msgs/Odometry)'),
         ('wheel_nav_output_topic', cfg_get(launch_cfg, 'localization/wheel_nav_output_topic', '/platform/wheel/nav_odometry'), 'Unified wheel odometry topic (nav_msgs/Odometry)'),
-        ('eskf_force_rmp401_odom', cfg_get(launch_cfg, 'localization/eskf_force_rmp401_odom', True), 'Force ESKF wheel source to /rmp401/odom'),
+        ('eskf_force_rmp401_odom', cfg_get(launch_cfg, 'localization/eskf_force_rmp401_odom', False), 'Force ESKF wheel source to /rmp401/odom'),
         ('eskf_rmp401_odom_topic', cfg_get(launch_cfg, 'localization/eskf_rmp401_odom_topic', '/rmp401/odom'), 'Temporary ESKF wheel source topic'),
         ('kimera_bridge_enable', cfg_get(launch_cfg, 'localization/kimera_bridge_enable', False), 'Enable Kimera bridge'),
         ('pose_selector_enable', cfg_get(launch_cfg, 'localization/pose_selector_enable', False), 'Enable pose selector'),
@@ -328,8 +358,21 @@ def generate_launch_description():
         ('planning_engage_topic', cfg_get(launch_cfg, 'planning/engage_topic', '/planning/engage'), 'Planning engage trigger topic'),
         ('planning_engaged_state_topic', cfg_get(launch_cfg, 'planning/engaged_state_topic', '/planning/engaged'), 'Planning engage state topic'),
         ('planning_cmd_vel_gate_use_estop_topic', cfg_get(launch_cfg, 'planning/cmd_vel_gate_use_estop_topic', True), 'Use estop topic in planning cmd_vel gate'),
-        ('planning_cmd_vel_gate_estop_topic', cfg_get(launch_cfg, 'planning/cmd_vel_gate_estop_topic', '/planning/state_machine/estop'), 'Planning estop topic'),
+        # HH_260409: Default planning gate e-stop source is platform status topic.
+        ('planning_cmd_vel_gate_estop_topic', cfg_get(launch_cfg, 'planning/cmd_vel_gate_estop_topic', '/platform/status/estop'), 'Planning estop topic'),
         ('planning_cmd_vel_gate_allow_on_start', cfg_get(launch_cfg, 'planning/cmd_vel_gate_allow_on_start', False), 'Allow planning cmd_vel on startup without engage'),
+        # HH_260413: Cost-based stop parameters for planning cmd_vel gate.
+        ('planning_cmd_vel_gate_cost_stop_enable', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_enable', True), 'Enable cost-based stop in cmd_vel gate'),
+        ('planning_cmd_vel_gate_cost_grid_topic', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_grid_topic', '/planning/local_costmap/costmap'), 'Cost grid topic for cost-stop'),
+        ('planning_cmd_vel_gate_cost_pose_topic', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_pose_topic', '/localization/pose'), 'Pose topic for cost-stop'),
+        ('planning_cmd_vel_gate_cost_threshold', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_threshold', 200), 'Cost threshold for stop'),
+        ('planning_cmd_vel_gate_cost_lookahead_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_lookahead_m', 2.0), 'Lookahead distance for cost-stop'),
+        ('planning_cmd_vel_gate_cost_width_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_width_m', 1.0), 'Corridor width for cost-stop'),
+        ('planning_cmd_vel_gate_cost_hold_sec', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_hold_sec', 1.0), 'Hold duration for cost-stop'),
+        ('planning_cmd_vel_gate_unavoidable_stop_enable', cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_stop_enable', True), 'Enable unavoidable stop cluster check'),
+        ('planning_cmd_vel_gate_unavoidable_lethal_threshold', cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_lethal_threshold', 253), 'Lethal cost threshold for unavoidable stop'),
+        ('planning_cmd_vel_gate_unavoidable_cluster_min_cells', cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_cluster_min_cells', 25), 'Min cluster cells for unavoidable stop'),
+        ('planning_cmd_vel_gate_unavoidable_cluster_min_ratio', cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_cluster_min_ratio', 0.25), 'Min cluster ratio for unavoidable stop'),
 
         ('enable_module_validators', cfg_get(launch_cfg, 'system/enable_module_validators', True), 'Enable module validators'),
         (
@@ -348,7 +391,7 @@ def generate_launch_description():
             'Enable plugin API bridge',
         ),
         ('enable_api_ui', cfg_get(launch_cfg, 'system/enable_api_ui', True), 'Enable API UI backend node'),
-        ('api_ui_host', cfg_get(launch_cfg, 'system/api_ui_host', '0.0.0.0'), 'API UI backend bind host'),
+        ('api_ui_host', cfg_get(launch_cfg, 'system/api_ui_host', '127.0.0.1'), 'API UI backend bind host'),
         ('api_ui_port', cfg_get(launch_cfg, 'system/api_ui_port', 8010), 'API UI backend bind port'),
 
         ('enable_radar', cfg_get(launch_cfg, 'sensing/enable_radar', False), 'Enable serial radar'),
@@ -379,6 +422,15 @@ def generate_launch_description():
         ('platform_cmd_vel_gate_enable', cfg_get(launch_cfg, 'platform/cmd_vel_gate_enable', False), 'Enable cmd_vel gate in platform module'),
         ('platform_cmd_vel_in_topic', cfg_get(launch_cfg, 'platform/cmd_vel_in_topic', '/planning/cmd_vel'), 'Platform cmd_vel gate input topic'),
         ('platform_cmd_vel_out_topic', cfg_get(launch_cfg, 'platform/cmd_vel_out_topic', '/platform/cmd_vel'), 'Platform cmd_vel gate output topic'),
+        # HH_260410: Ranger base node is the single source for /platform/status/* outputs.
+        ('platform_estop_topic', cfg_get(launch_cfg, 'platform/estop_topic', '/platform/status/estop'), 'Platform e-stop status topic'),
+        # HH_260410: Keep platform top launch lean. Ranger detailed params are in ranger_params_file.
+        ('platform_ranger_driver_enable', cfg_get(launch_cfg, 'platform/ranger_driver_enable', True), 'Enable camrod_platform ranger wrapper include'),
+        (
+            'platform_ranger_params_file',
+            cfg_get(launch_cfg, 'platform/ranger_params_file', '__module_default__'),
+            'Ranger parameter YAML passed to camrod_platform/launch/ranger.launch.py',
+        ),
 
         ('map_path', map_path_default, 'Lanelet2 map path'),
         ('map_info_file', map_info_launch_default, 'Map info YAML path used by map/localization'),
@@ -450,6 +502,10 @@ def generate_launch_description():
     # Bringup passes file paths only when an explicit override is configured.
     localization_adapter_override = resolve_cfg_override(
         config_root_default, cfg_get(launch_cfg, 'localization/adapter_param_file', ''))
+    localization_filter_ekf_override = resolve_cfg_override(
+        config_root_default,
+        cfg_get(launch_cfg, 'localization/filter_ekf_param_file', cfg_get(launch_cfg, 'localization/ekf_param_file', '')),
+    )
     localization_filter_eskf_override = resolve_cfg_override(
         config_root_default,
         cfg_get(launch_cfg, 'localization/filter_eskf_param_file', cfg_get(launch_cfg, 'localization/eskf_param_file', '')),
@@ -528,6 +584,8 @@ def generate_launch_description():
         config_root_default, cfg_get(launch_cfg, 'platform/params_file', ''))
     platform_robot_viz_override = resolve_cfg_override(
         config_root_default, cfg_get(launch_cfg, 'platform/robot_visualization_param_file', ''))
+    platform_ranger_params_override = resolve_cfg_override(
+        config_root_default, cfg_get(launch_cfg, 'platform/ranger_params_file', ''))
     map_info_override = resolve_cfg_override(
         config_root_default, cfg_get(launch_cfg, 'map/map_info_file', ''))
     map_param_override = resolve_cfg_override(
@@ -560,9 +618,15 @@ def generate_launch_description():
         ]),
         'cmd_vel_in_topic': lc['platform_cmd_vel_in_topic'],
         'cmd_vel_out_topic': lc['platform_cmd_vel_out_topic'],
+        'estop_topic': lc['platform_estop_topic'],
+        # HH_260410: In sim, disable external CAN driver by default.
+        'ranger_driver_enable': PythonExpression([
+            "'false' if '", lc['sim'], "' == 'true' else '", lc['platform_ranger_driver_enable'], "'"
+        ]),
     }
     set_if_not_empty(platform_args, 'params_file', platform_params_override)
     set_if_not_empty(platform_args, 'robot_visualization_param_file', platform_robot_viz_override)
+    set_if_not_empty(platform_args, 'ranger_params_file', platform_ranger_params_override)
 
     map_args = {
         'map_info_file': lc['map_info_file'],
@@ -627,16 +691,68 @@ def generate_launch_description():
     }
     set_if_not_empty(perception_args, 'perception_param_file', perception_param_override)
 
+    # HH_260409: Legacy escape hatch for forced ESKF source.
+    # HH_260413: Also auto-force /rmp401/odom when ranger driver is disabled.
+    # This keeps wheel input valid in no-platform(real CAN absent) bringup runs.
+    eskf_force_rmp401_effective = PythonExpression([
+        "'true' if (('",
+        lc['eskf_force_rmp401_odom'],
+        "' == 'true') or ('",
+        lc['platform_ranger_driver_enable'],
+        "' != 'true')) else 'false'"
+    ])
+
+    # Default path is primary /platform/status/* + runtime fallback /rmp401/odom.
+    wheel_input_topic_for_filter = PythonExpression([
+        "'",
+        lc['eskf_rmp401_odom_topic'],
+        "' if (('",
+        eskf_force_rmp401_effective,
+        "' == 'true') and (('",
+        lc['filter_type'],
+        "' == 'eskf') or (('",
+        lc['filter_type'],
+        "' == 'auto') and ('",
+        lc['use_eskf'],
+        "' == 'true')))) else '",
+        lc['wheel_input_topic'],
+        "'",
+    ])
+    wheel_input_type_for_filter = PythonExpression([
+        "'nav_odom' if (('",
+        eskf_force_rmp401_effective,
+        "' == 'true') and (('",
+        lc['filter_type'],
+        "' == 'eskf') or (('",
+        lc['filter_type'],
+        "' == 'auto') and ('",
+        lc['use_eskf'],
+        "' == 'true')))) else '",
+        lc['wheel_input_type'],
+        "'",
+    ])
+
     localization_args = {
         'module_namespace': lc['localization_namespace'],
         'enable_adapter': lc['localization_enable_adapter'],
         'enable_filter': lc['localization_enable_filter'],
         'enable_monitor': lc['localization_enable_monitor'],
         'enable_map_helper': lc['localization_enable_map_helper'],
-        'kimera_bridge_enable': lc['kimera_bridge_enable'],
+        'enable_kimera_bridge': lc['kimera_bridge_enable'],
+        'filter_type': lc['filter_type'],
+        'use_eskf': lc['use_eskf'],
+        'wheel_bridge_enable': lc['wheel_bridge_enable'],
+        'wheel_input_topic': wheel_input_topic_for_filter,
+        'wheel_input_type': wheel_input_type_for_filter,
+        'wheel_fallback_input_topic': lc['wheel_fallback_input_topic'],
+        'wheel_fallback_input_type': lc['wheel_fallback_input_type'],
+        'wheel_primary_timeout_sec': lc['wheel_primary_timeout_sec'],
+        'wheel_output_topic': lc['wheel_output_topic'],
+        'wheel_nav_output_topic': lc['wheel_nav_output_topic'],
         'map_path': lc['map_path'],
     }
     set_if_not_empty(localization_args, 'adapter_param_file', localization_adapter_override)
+    set_if_not_empty(localization_args, 'filter_ekf_param_file', localization_filter_ekf_override)
     set_if_not_empty(localization_args, 'filter_eskf_param_file', localization_filter_eskf_override)
     set_if_not_empty(localization_args, 'filter_pose_selector_param_file', localization_filter_pose_selector_override)
     set_if_not_empty(localization_args, 'filter_kimera_param_file', localization_filter_kimera_override)
@@ -669,6 +785,17 @@ def generate_launch_description():
         'cmd_vel_gate_use_estop_topic': lc['planning_cmd_vel_gate_use_estop_topic'],
         'cmd_vel_gate_estop_topic': lc['planning_cmd_vel_gate_estop_topic'],
         'cmd_vel_gate_allow_on_start': lc['planning_cmd_vel_gate_allow_on_start'],
+        'cmd_vel_gate_cost_stop_enable': lc['planning_cmd_vel_gate_cost_stop_enable'],
+        'cmd_vel_gate_cost_grid_topic': lc['planning_cmd_vel_gate_cost_grid_topic'],
+        'cmd_vel_gate_cost_pose_topic': lc['planning_cmd_vel_gate_cost_pose_topic'],
+        'cmd_vel_gate_cost_threshold': lc['planning_cmd_vel_gate_cost_threshold'],
+        'cmd_vel_gate_cost_lookahead_m': lc['planning_cmd_vel_gate_cost_lookahead_m'],
+        'cmd_vel_gate_cost_width_m': lc['planning_cmd_vel_gate_cost_width_m'],
+        'cmd_vel_gate_cost_hold_sec': lc['planning_cmd_vel_gate_cost_hold_sec'],
+        'cmd_vel_gate_unavoidable_stop_enable': lc['planning_cmd_vel_gate_unavoidable_stop_enable'],
+        'cmd_vel_gate_unavoidable_lethal_threshold': lc['planning_cmd_vel_gate_unavoidable_lethal_threshold'],
+        'cmd_vel_gate_unavoidable_cluster_min_cells': lc['planning_cmd_vel_gate_unavoidable_cluster_min_cells'],
+        'cmd_vel_gate_unavoidable_cluster_min_ratio': lc['planning_cmd_vel_gate_unavoidable_cluster_min_ratio'],
         'module_namespace': lc['planning_namespace'],
     }
     set_if_not_empty(planning_args, 'nav2_base_param_file', planning_nav2_base_override)
@@ -720,13 +847,17 @@ def generate_launch_description():
             '-stylesheet', pkg_path('camrod_map', 'rviz/operator_theme.qss'),
         ],
         output='screen',
+        # HH_260415: Auto-restart RViz when plugin/TF race causes transient crash.
+        respawn=True,
+        respawn_delay=2.0,
         additional_env={'QT_STYLE_OVERRIDE': 'Fusion'},
         condition=IfCondition(lc['rviz']),
     )
 
     cleanup_patterns = read_yaml(bringup_cfg('bringup/cleanup_patterns.yaml')).get('patterns', [])
+    cleanup_cmd = build_cleanup_cmd(cleanup_patterns)
     clean_action = ExecuteProcess(
-        cmd=['bash', '-lc', build_cleanup_cmd(cleanup_patterns)],
+        cmd=['bash', '-lc', cleanup_cmd],
         output='screen',
         condition=IfCondition(lc['clean_before_launch']),
     )
@@ -759,9 +890,17 @@ def generate_launch_description():
         condition=UnlessCondition(lc['clean_before_launch']),
     )
 
+    shutdown_cleanup = RegisterEventHandler(
+        OnShutdown(
+            on_shutdown=[OpaqueFunction(function=run_cleanup_on_shutdown, args=[cleanup_cmd])],
+        ),
+        condition=IfCondition(lc['clean_on_shutdown']),
+    )
+
     return LaunchDescription([
         *args,
         clean_action,
         start_after_cleanup,
         start_without_cleanup,
+        shutdown_cleanup,
     ])

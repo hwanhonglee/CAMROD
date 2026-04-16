@@ -7,6 +7,9 @@
     offset_lon: 128.0925490
     offset_alt: 0.0
     input_goal_topic: "/goal_pose"
+    # HH_260412: Also accept RViz default 2D Goal Pose topic.
+    input_goal_topic_fallback: "/move_base_simple/goal"
+    enable_fallback_goal_topic: true
     # HH_260316-00:00 Publish only snapped goal on dedicated topic.
     output_goal_topic: "/planning/goal_pose_snapped"
     # HH_260327: Restore practical search radius for multi-goal operation.

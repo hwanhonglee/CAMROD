@@ -13,6 +13,7 @@
       - /localization/pose
       - /sensing/imu/data
       - /sensing/gnss/ublox_gps_node/fix
-      - /platform/wheel/odometry
+      # HH_260410: Unified wheel odometry topic required for localization readiness.
+      - /platform/status/wheel_odometry
       - /localization/vio/odometry
       - /map/cost_grid/lanelet

@@ -1,0 +1,26 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from autoware_planning_msgs/msg/RouteState.msg
+// generated code does not contain a copyright notice
+
+#include "builtin_interfaces/msg/Time.idl"
+
+module autoware_planning_msgs {
+  module msg {
+    module RouteState_Constants {
+      const uint8 UNKNOWN = 0;
+      const uint8 INITIALIZING = 1;
+      const uint8 UNSET = 2;
+      const uint8 ROUTING = 3;
+      const uint8 SET = 4;
+      const uint8 REROUTING = 5;
+      const uint8 ARRIVED = 6;
+      const uint8 ABORTED = 7;
+      const uint8 INTERRUPTED = 8;
+    };
+    struct RouteState {
+      builtin_interfaces::msg::Time stamp;
+
+      uint8 state;
+    };
+  };
+};

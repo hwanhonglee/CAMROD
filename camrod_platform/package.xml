@@ -23,6 +23,10 @@
   <depend>camrod_sensor_kit</depend>
   <depend>rclpy</depend>
   <depend>avg_msgs</depend>
+  <!-- HH_260410: Platform status topics are published directly from ranger_base_node. -->
+  <depend>ranger_msgs</depend>
+  <!-- HH_260409: platform.launch.py can optionally include ranger_bringup/ranger.launch.py. -->
+  <exec_depend>ranger_bringup</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

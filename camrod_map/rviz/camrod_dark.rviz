@@ -1,3 +1,4 @@
+# HH_260414: Reduce message filter queue depth to mitigate TF extrapolation flicker/crashes in real-sensor runs.
 Panels:
   - Class: rviz_common/Displays
     Help Height: 78
@@ -29,11 +30,15 @@ Panels:
     Splitter Ratio: 0.380952388048172
   - Class: nav2_rviz_plugins/Navigation 2
     Name: Navigation 2
+  - Class: tier4_adapi_rviz_plugins::RoutePanel
+    Name: Route Panel
   - Class: rviz_common/Time
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: PointCloud2
+    # HH_260413: Keep sync source on always-visible map display to avoid RViz close when
+    # toggling Localization group displays.
+    SyncSource: Lanelet2_Map
 Visualization Manager:
   Class: ""
   Displays:
@@ -94,7 +99,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /platform/robot/planning_boundary
@@ -171,7 +176,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /localization/pose
@@ -206,7 +211,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /localization/initialpose3d
@@ -241,7 +246,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /localization/lanelet_pose
@@ -297,11 +302,11 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/lidar/vanjee/points_raw
-              Use Fixed Frame: true
+              Use Fixed Frame: false
               Use rainbow: true
               Value: true
             - Alpha: 1
@@ -331,11 +336,11 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/lidar/points_filtered
-              Use Fixed Frame: true
+              Use Fixed Frame: false
               Use rainbow: true
               Value: true
           Enabled: false
@@ -357,7 +362,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/gnss/pose
@@ -392,7 +397,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/gnss/pose_with_covariance
@@ -410,7 +415,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/front/range
@@ -424,7 +429,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/left1/range
@@ -438,7 +443,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/left2/range
@@ -452,7 +457,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/rear/range
@@ -466,7 +471,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/right1/range
@@ -480,7 +485,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/right2/range
@@ -503,7 +508,7 @@ Visualization Manager:
           Color: 255; 255; 255
           Color Transformer: Intensity
           Decay Time: 0
-          Enabled: true
+          Enabled: false
           Invert Rainbow: false
           Max Color: 255; 255; 255
           Max Intensity: 123.44444274902344
@@ -518,7 +523,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /perception/obstacles
@@ -567,7 +572,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /planning/global_path
@@ -611,7 +616,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /planning/local_path
@@ -645,7 +650,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /goal_pose
@@ -665,7 +670,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /planning/goal_pose_snapped_ros
@@ -688,7 +693,8 @@ Visualization Manager:
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: map
-    Frame Rate: 30
+    # HH_260413: Lower default render FPS to reduce RViz CPU load on embedded PC.
+    Frame Rate: 20
   Name: root
   Tools:
     - Class: rviz_default_plugins/Interact

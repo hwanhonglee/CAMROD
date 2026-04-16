@@ -36,6 +36,50 @@ def generate_launch_description():
             default_value="localization",
             description="Namespace for localization adapter node",
         ),
+        # HH_260409: Expose wheel bridge wiring at launch level so bringup overrides are applied.
+        DeclareLaunchArgument(
+            "wheel_bridge_enable",
+            default_value="true",
+            description="Enable wheel odometry bridge path",
+        ),
+        DeclareLaunchArgument(
+            "wheel_input_topic",
+            # HH_260410: Prefer platform status odometry as primary wheel source.
+            default_value="/platform/status/odometry",
+            description="Wheel bridge input topic",
+        ),
+        DeclareLaunchArgument(
+            "wheel_input_type",
+            default_value="nav_odom",
+            description="Wheel bridge input type: twist|avg_odom|nav_odom",
+        ),
+        DeclareLaunchArgument(
+            "wheel_fallback_input_topic",
+            # HH_260410: Use /rmp401/odom only as fallback when status topic is stale/missing.
+            default_value="/rmp401/odom",
+            description="Wheel bridge fallback input topic",
+        ),
+        DeclareLaunchArgument(
+            "wheel_fallback_input_type",
+            default_value="nav_odom",
+            description="Wheel bridge fallback input type: twist|avg_odom|nav_odom",
+        ),
+        DeclareLaunchArgument(
+            "wheel_primary_timeout_sec",
+            default_value="0.7",
+            description="Primary wheel input timeout before fallback activation (sec)",
+        ),
+        DeclareLaunchArgument(
+            "wheel_output_topic",
+            # HH_260410: Use status namespace for unified wheel odometry output.
+            default_value="/platform/status/wheel_odometry",
+            description="Unified wheel odometry output topic (avg_msgs/msg/Odometry alias)",
+        ),
+        DeclareLaunchArgument(
+            "wheel_nav_output_topic",
+            default_value="/platform/wheel/nav_odometry",
+            description="Unified wheel odometry output topic (nav_msgs/msg/Odometry)",
+        ),
 
         Node(
             package="camrod_localization",
@@ -46,6 +90,16 @@ def generate_launch_description():
             parameters=[
                 LaunchConfiguration("map_info_file"),
                 LaunchConfiguration("params_file"),
+                {
+                    "enable_wheel_odometry_bridge": LaunchConfiguration("wheel_bridge_enable"),
+                    "wheel_input_topic": LaunchConfiguration("wheel_input_topic"),
+                    "wheel_input_type": LaunchConfiguration("wheel_input_type"),
+                    "wheel_fallback_input_topic": LaunchConfiguration("wheel_fallback_input_topic"),
+                    "wheel_fallback_input_type": LaunchConfiguration("wheel_fallback_input_type"),
+                    "wheel_primary_timeout_sec": LaunchConfiguration("wheel_primary_timeout_sec"),
+                    "wheel_output_topic": LaunchConfiguration("wheel_output_topic"),
+                    "wheel_nav_output_topic": LaunchConfiguration("wheel_nav_output_topic"),
+                },
             ],
         ),
     ])

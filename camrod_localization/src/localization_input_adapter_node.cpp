@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <memory>
 #include <stdexcept>
@@ -83,6 +85,18 @@ avg_msgs::msg::Point rotatePointXY(const avg_msgs::msg::Point & in, double yaw_r
   return out;
 }
 
+std::string normalizeWheelInputType(std::string type)
+{
+  std::transform(
+    type.begin(), type.end(), type.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  // HH_260410: Keep backward compatibility for legacy "odom" alias.
+  if (type == "odom") {
+    return "avg_odom";
+  }
+  return type;
+}
+
 }  // namespace
 
 namespace camrod::localization
@@ -113,6 +127,10 @@ public:
       "gnss_pose_cov_topic", "/sensing/gnss/pose_with_covariance");
     map_frame_id_ = declare_parameter<std::string>("map_frame_id", "map");
     publish_gnss_covariance_ = declare_parameter<bool>("publish_gnss_covariance", true);
+    // HH_260415: Clamp NavSat covariance so ESKF does not over-trust noisy GNSS bursts.
+    use_navsat_position_covariance_ = declare_parameter<bool>("use_navsat_position_covariance", true);
+    gnss_covariance_floor_xy_ = declare_parameter<double>("gnss_covariance_floor_xy", 0.25);
+    gnss_covariance_floor_z_ = declare_parameter<double>("gnss_covariance_floor_z", 1.0);
 
     offset_lat_deg_ = declare_parameter<double>("offset_lat", 0.0);
     offset_lon_deg_ = declare_parameter<double>("offset_lon", 0.0);
@@ -146,14 +164,24 @@ public:
     odom_output_frame_id_ = declare_parameter<std::string>("odom_output_frame_id", "");
 
     wheel_input_topic_ = declare_parameter<std::string>(
-      "wheel_input_topic", "/platform/status/wheel");
+      // HH_260410: Prefer platform status odometry as the primary wheel source.
+      "wheel_input_topic", "/platform/status/odometry");
     wheel_output_topic_ = declare_parameter<std::string>(
-      "wheel_output_topic", "/platform/wheel/odometry");
+      // HH_260410: Keep unified wheel output under /platform/status namespace.
+      "wheel_output_topic", "/platform/status/wheel_odometry");
     wheel_nav_output_topic_ = declare_parameter<std::string>(
       "wheel_nav_output_topic", "/platform/wheel/nav_odometry");
     wheel_odom_frame_ = declare_parameter<std::string>("wheel_odom_frame_id", "odom");
     wheel_base_frame_ = declare_parameter<std::string>("wheel_base_frame_id", "robot_base_link");
-    wheel_input_type_ = declare_parameter<std::string>("wheel_input_type", "twist");
+    wheel_input_type_ = normalizeWheelInputType(
+      declare_parameter<std::string>("wheel_input_type", "nav_odom"));
+    // HH_260410: Runtime fallback input. Prefer primary /platform/status/*
+    // and only consume fallback when primary becomes stale/missing.
+    wheel_fallback_input_topic_ = declare_parameter<std::string>(
+      "wheel_fallback_input_topic", "/rmp401/odom");
+    wheel_fallback_input_type_ = normalizeWheelInputType(
+      declare_parameter<std::string>("wheel_fallback_input_type", "nav_odom"));
+    wheel_primary_timeout_sec_ = declare_parameter<double>("wheel_primary_timeout_sec", 0.7);
 
     yaw_offset_rad_ = deg2rad(yaw_offset_deg_);
     offset_lat_rad_ = deg2rad(offset_lat_deg_);
@@ -235,7 +263,7 @@ public:
         wheel_twist_sub_ = create_subscription<avg_msgs::msg::TwistStamped>(
           wheel_input_topic_, rclcpp::SensorDataQoS(),
           std::bind(&LocalizationInputAdapterNode::onWheelTwist, this, _1));
-      } else if (wheel_input_type_ == "avg_odom" || wheel_input_type_ == "odom") {
+      } else if (wheel_input_type_ == "avg_odom") {
         wheel_avg_odom_sub_ = create_subscription<avg_msgs::msg::Odometry>(
           wheel_input_topic_, rclcpp::SensorDataQoS(),
           std::bind(&LocalizationInputAdapterNode::onWheelAvgOdom, this, _1));
@@ -244,12 +272,52 @@ public:
           wheel_input_topic_, rclcpp::SensorDataQoS(),
           std::bind(&LocalizationInputAdapterNode::onWheelNavOdom, this, _1));
       } else {
-        throw std::runtime_error("Unsupported wheel_input_type");
+        throw std::runtime_error(
+                "Unsupported wheel_input_type. Supported: twist|avg_odom|nav_odom");
       }
+
+      if (!wheel_fallback_input_topic_.empty() && !wheel_fallback_input_type_.empty()) {
+        if (wheel_fallback_input_topic_ == wheel_input_topic_ &&
+            wheel_fallback_input_type_ == wheel_input_type_) {
+          RCLCPP_WARN(
+            get_logger(),
+            "wheel_fallback_input_topic/type is same as primary. Skip fallback subscription.");
+        } else if (wheel_fallback_input_type_ == "twist") {
+          wheel_twist_fallback_sub_ = create_subscription<avg_msgs::msg::TwistStamped>(
+            wheel_fallback_input_topic_, rclcpp::SensorDataQoS(),
+            std::bind(&LocalizationInputAdapterNode::onWheelTwistFallback, this, _1));
+        } else if (wheel_fallback_input_type_ == "avg_odom") {
+          wheel_avg_odom_fallback_sub_ = create_subscription<avg_msgs::msg::Odometry>(
+            wheel_fallback_input_topic_, rclcpp::SensorDataQoS(),
+            std::bind(&LocalizationInputAdapterNode::onWheelAvgOdomFallback, this, _1));
+        } else if (wheel_fallback_input_type_ == "nav_odom") {
+          wheel_nav_odom_fallback_sub_ = create_subscription<nav_msgs::msg::Odometry>(
+            wheel_fallback_input_topic_, rclcpp::SensorDataQoS(),
+            std::bind(&LocalizationInputAdapterNode::onWheelNavOdomFallback, this, _1));
+        } else {
+          throw std::runtime_error(
+                  "Unsupported wheel_fallback_input_type. Supported: twist|avg_odom|nav_odom");
+        }
+      }
+
+      // HH_260413: Explicit startup summary for primary/fallback wheel wiring.
+      RCLCPP_INFO(
+        get_logger(),
+        "wheel bridge configured: primary=(%s,%s) fallback=(%s,%s) timeout=%.2fs output=%s",
+        wheel_input_topic_.c_str(), wheel_input_type_.c_str(),
+        wheel_fallback_input_topic_.c_str(), wheel_fallback_input_type_.c_str(),
+        wheel_primary_timeout_sec_, wheel_output_topic_.c_str());
     }
   }
 
 private:
+  enum class WheelSource
+  {
+    kNone,
+    kPrimary,
+    kFallback
+  };
+
   void onNavSatFix(const avg_msgs::msg::NavSatFix::ConstSharedPtr msg)
   {
     const double lat_rad = deg2rad(msg->latitude);
@@ -302,10 +370,25 @@ private:
       pose_cov.pose.pose = pose.pose;
       pose_cov.pose.covariance = pose_covariance_;
 
-      if (msg->position_covariance_type != 0) {
-        pose_cov.pose.covariance[0] = msg->position_covariance[0];
-        pose_cov.pose.covariance[7] = msg->position_covariance[4];
-        pose_cov.pose.covariance[14] = msg->position_covariance[8];
+      if (use_navsat_position_covariance_ && msg->position_covariance_type != 0) {
+        // HH_260415: Protect filter stability by applying minimum GNSS covariance floors.
+        const double nav_x = msg->position_covariance[0];
+        const double nav_y = msg->position_covariance[4];
+        const double nav_z = msg->position_covariance[8];
+
+        const double var_x = (std::isfinite(nav_x) && nav_x > 0.0)
+          ? std::max(nav_x, gnss_covariance_floor_xy_)
+          : pose_cov.pose.covariance[0];
+        const double var_y = (std::isfinite(nav_y) && nav_y > 0.0)
+          ? std::max(nav_y, gnss_covariance_floor_xy_)
+          : pose_cov.pose.covariance[7];
+        const double var_z = (std::isfinite(nav_z) && nav_z > 0.0)
+          ? std::max(nav_z, gnss_covariance_floor_z_)
+          : pose_cov.pose.covariance[14];
+
+        pose_cov.pose.covariance[0] = var_x;
+        pose_cov.pose.covariance[7] = var_y;
+        pose_cov.pose.covariance[14] = var_z;
       }
       gnss_pose_cov_pub_->publish(pose_cov);
     }
@@ -393,40 +476,150 @@ private:
 
   void onWheelTwist(const avg_msgs::msg::TwistStamped::ConstSharedPtr msg)
   {
-    avg_msgs::msg::Odometry odom;
-    odom.header = msg->header;
-    odom.header.frame_id = wheel_odom_frame_;
-    odom.child_frame_id = wheel_base_frame_;
-    odom.twist.twist = msg->twist;
-    wheel_odom_pub_->publish(odom);
-    wheel_nav_odom_pub_->publish(toNavOdometry(odom));
-    publishLocalizationStatus("wheel_twist_bridge", msg->header.stamp);
+    markPrimaryWheelRx();
+    setActiveWheelSource(WheelSource::kPrimary, "primary_twist");
+    publishWheelFromTwist(*msg, "wheel_twist_bridge");
+  }
+
+  void onWheelTwistFallback(const avg_msgs::msg::TwistStamped::ConstSharedPtr msg)
+  {
+    if (!shouldUseFallback()) {
+      return;
+    }
+    markFallbackWheelRx();
+    setActiveWheelSource(WheelSource::kFallback, "fallback_twist");
+    publishWheelFromTwist(*msg, "wheel_twist_fallback_bridge");
   }
 
   void onWheelAvgOdom(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
   {
-    avg_msgs::msg::Odometry odom = *msg;
-    if (odom.header.frame_id.empty()) {
-      odom.header.frame_id = wheel_odom_frame_;
+    markPrimaryWheelRx();
+    setActiveWheelSource(WheelSource::kPrimary, "primary_avg_odom");
+    publishWheelFromAvgOdom(*msg, "wheel_avg_odom_bridge");
+  }
+
+  void onWheelAvgOdomFallback(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
+  {
+    if (!shouldUseFallback()) {
+      return;
     }
-    if (odom.child_frame_id.empty()) {
-      odom.child_frame_id = wheel_base_frame_;
-    }
-    wheel_odom_pub_->publish(odom);
-    wheel_nav_odom_pub_->publish(toNavOdometry(odom));
-    publishLocalizationStatus("wheel_avg_odom_bridge", msg->header.stamp);
+    markFallbackWheelRx();
+    setActiveWheelSource(WheelSource::kFallback, "fallback_avg_odom");
+    publishWheelFromAvgOdom(*msg, "wheel_avg_odom_fallback_bridge");
   }
 
   void onWheelNavOdom(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
   {
+    markPrimaryWheelRx();
+    setActiveWheelSource(WheelSource::kPrimary, "primary_nav_odom");
+    publishWheelFromNavOdom(*msg, "wheel_nav_odom_bridge");
+  }
+
+  void onWheelNavOdomFallback(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
+  {
+    if (!shouldUseFallback()) {
+      return;
+    }
+    markFallbackWheelRx();
+    setActiveWheelSource(WheelSource::kFallback, "fallback_nav_odom");
+    publishWheelFromNavOdom(*msg, "wheel_nav_odom_fallback_bridge");
+  }
+
+  void publishWheelFromTwist(
+    const avg_msgs::msg::TwistStamped & msg,
+    const std::string & status_source)
+  {
     avg_msgs::msg::Odometry odom;
-    odom.header = msg->header;
-    odom.child_frame_id = msg->child_frame_id;
-    odom.pose = msg->pose;
-    odom.twist = msg->twist;
+    odom.header = msg.header;
+    odom.header.frame_id = wheel_odom_frame_;
+    odom.child_frame_id = wheel_base_frame_;
+    odom.twist.twist = msg.twist;
     wheel_odom_pub_->publish(odom);
-    wheel_nav_odom_pub_->publish(*msg);
-    publishLocalizationStatus("wheel_nav_odom_bridge", msg->header.stamp);
+    wheel_nav_odom_pub_->publish(toNavOdometry(odom));
+    publishLocalizationStatus(status_source, msg.header.stamp);
+  }
+
+  void publishWheelFromAvgOdom(
+    const avg_msgs::msg::Odometry & msg,
+    const std::string & status_source)
+  {
+    avg_msgs::msg::Odometry odom = msg;
+    if (odom.header.frame_id.empty()) {
+      odom.header.frame_id = wheel_odom_frame_;
+    }
+    // HH_260413: Force wheel child_frame to configured base frame to avoid
+    // HH_260413: Normalize child frame to robot_base_link to avoid base_link TF duplication.
+    odom.child_frame_id = wheel_base_frame_;
+    wheel_odom_pub_->publish(odom);
+    wheel_nav_odom_pub_->publish(toNavOdometry(odom));
+    publishLocalizationStatus(status_source, msg.header.stamp);
+  }
+
+  void publishWheelFromNavOdom(
+    const nav_msgs::msg::Odometry & msg,
+    const std::string & status_source)
+  {
+    avg_msgs::msg::Odometry odom;
+    odom.header = msg.header;
+    // HH_260410: Keep configured fallback frame handling when incoming nav odom
+    // does not carry frame IDs.
+    if (odom.header.frame_id.empty()) {
+      odom.header.frame_id = wheel_odom_frame_;
+    }
+    // HH_260413: Force child frame to configured base frame to keep TF consistent.
+    odom.child_frame_id = wheel_base_frame_;
+    odom.pose = msg.pose;
+    odom.twist = msg.twist;
+    wheel_odom_pub_->publish(odom);
+    nav_msgs::msg::Odometry nav_out = msg;
+    nav_out.child_frame_id = wheel_base_frame_;
+    if (nav_out.header.frame_id.empty()) {
+      nav_out.header.frame_id = wheel_odom_frame_;
+    }
+    wheel_nav_odom_pub_->publish(nav_out);
+    publishLocalizationStatus(status_source, msg.header.stamp);
+  }
+
+  bool shouldUseFallback() const
+  {
+    if (!seen_primary_wheel_) {
+      return true;
+    }
+    if (wheel_primary_timeout_sec_ <= 0.0) {
+      return false;
+    }
+    const double age = (this->now() - last_primary_wheel_rx_time_).seconds();
+    return age > wheel_primary_timeout_sec_;
+  }
+
+  void markPrimaryWheelRx()
+  {
+    seen_primary_wheel_ = true;
+    last_primary_wheel_rx_time_ = this->now();
+  }
+
+  void markFallbackWheelRx()
+  {
+    seen_fallback_wheel_ = true;
+    last_fallback_wheel_rx_time_ = this->now();
+  }
+
+  void setActiveWheelSource(WheelSource source, const std::string & reason)
+  {
+    if (active_wheel_source_ == source) {
+      return;
+    }
+    active_wheel_source_ = source;
+    last_wheel_source_switch_time_ = this->now();
+    const char * label = (source == WheelSource::kPrimary) ? "primary" :
+      (source == WheelSource::kFallback ? "fallback" : "none");
+    // HH_260413: Log actual message-driven source switching for debugging.
+    RCLCPP_INFO(
+      get_logger(),
+      "wheel source switched to %s (%s) primary_seen=%s fallback_seen=%s",
+      label, reason.c_str(),
+      seen_primary_wheel_ ? "true" : "false",
+      seen_fallback_wheel_ ? "true" : "false");
   }
 
   nav_msgs::msg::Odometry toNavOdometry(const avg_msgs::msg::Odometry & msg) const
@@ -467,6 +660,9 @@ private:
   std::string navsat_topic_, raw_pose_topic_, utm_pose_topic_;
   std::string gnss_pose_topic_, gnss_pose_cov_topic_, map_frame_id_;
   bool publish_gnss_covariance_{true};
+  bool use_navsat_position_covariance_{true};
+  double gnss_covariance_floor_xy_{0.25};
+  double gnss_covariance_floor_z_{1.0};
 
   double offset_lat_deg_{0.0};
   double offset_lon_deg_{0.0};
@@ -511,11 +707,22 @@ private:
 
   std::string wheel_input_topic_, wheel_output_topic_, wheel_nav_output_topic_;
   std::string wheel_odom_frame_, wheel_base_frame_, wheel_input_type_;
+  std::string wheel_fallback_input_topic_, wheel_fallback_input_type_;
+  double wheel_primary_timeout_sec_{0.7};
+  bool seen_primary_wheel_{false};
+  rclcpp::Time last_primary_wheel_rx_time_{0, 0, RCL_ROS_TIME};
+  bool seen_fallback_wheel_{false};
+  rclcpp::Time last_fallback_wheel_rx_time_{0, 0, RCL_ROS_TIME};
+  WheelSource active_wheel_source_{WheelSource::kNone};
+  rclcpp::Time last_wheel_source_switch_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Publisher<avg_msgs::msg::Odometry>::SharedPtr wheel_odom_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr wheel_nav_odom_pub_;
   rclcpp::Subscription<avg_msgs::msg::TwistStamped>::SharedPtr wheel_twist_sub_;
   rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr wheel_avg_odom_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr wheel_nav_odom_sub_;
+  rclcpp::Subscription<avg_msgs::msg::TwistStamped>::SharedPtr wheel_twist_fallback_sub_;
+  rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr wheel_avg_odom_fallback_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr wheel_nav_odom_fallback_sub_;
 };
 
 }  // namespace camrod::localization

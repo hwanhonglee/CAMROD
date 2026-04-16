@@ -1,0 +1,28 @@
+# HH_260409: Alternate round-trip scenario for leaderboard runner.
+scenario:
+  name: roundtrip_extended
+  steps:
+    - id: drop_zone_start
+      goal:
+        x: 16.8676
+        y: -117.408
+        z: -97.794
+        yaw_deg: -0.41903
+    - id: camping_site_1
+      goal:
+        x: -13.1858
+        y: -93.0608
+        z: -96.9358
+        yaw_deg: -179.992
+    - id: midpoint_recheck
+      goal:
+        x: 2.5000
+        y: -105.0000
+        z: -97.3000
+        yaw_deg: -90.0
+    - id: drop_zone_return
+      goal:
+        x: 16.8676
+        y: -117.408
+        z: -97.794
+        yaw_deg: -0.41903

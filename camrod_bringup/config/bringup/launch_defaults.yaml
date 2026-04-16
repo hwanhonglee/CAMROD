@@ -1,6 +1,8 @@
 bringup:
   runtime:
     clean_before_launch: true
+    # HH_260408: Run one more cleanup pass on Ctrl+C shutdown to prevent duplicate nodes.
+    clean_on_shutdown: true
     sim: false
     rviz: true
     # HH_260327: Stagger module startup to reduce bringup burst load.
@@ -11,18 +13,23 @@ bringup:
     enable_filter: true
     enable_monitor: true
     enable_map_helper: true
-    # HH_260327: Match standalone localization.launch.py default behavior.
-    # Keep bringup baseline on EKF so runtime result is consistent with module-by-module launch.
-    use_eskf: false
-    filter_type: ekf
+    # HH_260410: Real-sensor bringup baseline uses ESKF for better robustness under
+    # temporary wheel/ranger odometry instability.
+    use_eskf: true
+    filter_type: eskf
     wheel_bridge_enable: true
-    # HH_260330: /platform/status/wheel is not published on current platform stack.
-    # Use /rmp401/odom(nav_msgs/Odometry) as the default real-sensor wheel source.
-    wheel_input_topic: /rmp401/odom
+    # HH_260410: Use platform status odometry as primary source.
+    wheel_input_topic: /platform/status/odometry
     wheel_input_type: nav_odom
-    wheel_output_topic: /platform/wheel/odometry
+    # HH_260410: Keep /rmp401/odom as fallback-only source.
+    wheel_fallback_input_topic: /rmp401/odom
+    wheel_fallback_input_type: nav_odom
+    wheel_primary_timeout_sec: 0.7
+    # HH_260410: Unified wheel output topic used by EKF/ESKF.
+    wheel_output_topic: /platform/status/wheel_odometry
     wheel_nav_output_topic: /platform/wheel/nav_odometry
-    # HH_260326: Temporary ESKF fallback source.
+    # HH_260413: No-ranger baseline.
+    # Keep manual escape hatch enabled so ESKF wheel input can be pinned to /rmp401/odom.
     eskf_force_rmp401_odom: true
     eskf_rmp401_odom_topic: /rmp401/odom
     kimera_bridge_enable: false
@@ -46,7 +53,8 @@ bringup:
     enable_path_cost_grids: true
     # HH_260327: Match standalone planning.launch.py defaults.
     enable_goal_replanner: false
-    enable_nav2_lifecycle_retry: false
+    # HH_260410: Recover from intermittent lifecycle startup race on resource-limited targets.
+    enable_nav2_lifecycle_retry: true
     # HH_260327: Allow Nav2 startup by default even when initial_match_ok is false.
     # This keeps /planning/cmd_vel and path generation available during bringup debugging.
     require_localization_ready: false
@@ -67,8 +75,22 @@ bringup:
     engage_topic: /planning/engage
     engaged_state_topic: /planning/engaged
     cmd_vel_gate_use_estop_topic: true
-    cmd_vel_gate_estop_topic: /planning/state_machine/estop
+    # HH_260409: e-stop source is platform CAN->status bridge by default.
+    cmd_vel_gate_estop_topic: /platform/status/estop
     cmd_vel_gate_allow_on_start: false
+    # HH_260413: Optional cost-based stop from local-path cost grid.
+    cmd_vel_gate_cost_stop_enable: true
+    cmd_vel_gate_cost_grid_topic: /planning/local_costmap/costmap
+    cmd_vel_gate_cost_pose_topic: /localization/pose
+    cmd_vel_gate_cost_threshold: 200
+    cmd_vel_gate_cost_lookahead_m: 2.0
+    cmd_vel_gate_cost_width_m: 1.0
+    cmd_vel_gate_cost_hold_sec: 1.0
+    # HH_260413: Unavoidable-stop cluster detection for lethal costs.
+    cmd_vel_gate_unavoidable_stop_enable: true
+    cmd_vel_gate_unavoidable_lethal_threshold: 253
+    cmd_vel_gate_unavoidable_cluster_min_cells: 25
+    cmd_vel_gate_unavoidable_cluster_min_ratio: 0.25
     use_dwb_controller: false
     # HH_260331: By default, use internal config defaults declared by planning launch files.
     nav2_base_param_file: __module_default__
@@ -114,6 +136,14 @@ bringup:
     cmd_vel_gate_enable: false
     cmd_vel_in_topic: /planning/cmd_vel
     cmd_vel_out_topic: /platform/cmd_vel
+    # HH_260410: Ranger base node directly publishes /platform/status/*.
+    estop_topic: /platform/status/estop
+    # HH_260413: Current baseline is no physical ranger CAN platform.
+    # Use /rmp401/odom fallback path unless this is explicitly set true.
+    ranger_driver_enable: false
+    # HH_260410: Keep platform.launch.py lean and route Ranger params through
+    # bringup override profile when using bringup.launch.py.
+    ranger_params_file: platform/ranger_params.yaml
 
   perception:
     enable_lidar_obstacle: true
@@ -130,7 +160,8 @@ bringup:
     enable_plugin_api: true
     # HH_260327: Lightweight HTTP UI backend for API/state monitoring.
     enable_api_ui: true
-    api_ui_host: 0.0.0.0
+    # HH_260415: Bind API UI locally by default; expose externally only when explicitly requested.
+    api_ui_host: 127.0.0.1
     api_ui_port: 8010
 
   namespaces:

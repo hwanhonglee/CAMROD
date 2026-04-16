@@ -36,7 +36,8 @@ lidar:
       wait_for_difop: true                          # 是否等角度标定表参数导入
       min_distance: 0.05                            # 点云最小距离
       max_distance: 70                              # 点云最大距离
-      use_lidar_clock: true                         # true: 使用雷达时间作为消息时间戳
+      # HH_260415: Use host ROS clock to avoid TF extrapolation caused by sensor-clock skew.
+      use_lidar_clock: false                        # true: 使用雷达时间作为消息时间戳
                                                     # false: 使用电脑主机时间作为消息时间戳
       pcap_path:                                    # pcap文件绝对路径
       pcap_repeat: true                             # 是否循环播放pcap
@@ -61,7 +62,8 @@ lidar:
     use_vlan: false                                 # PCAP文件中的Packet是否包含VLAN层
     ros:
       ros_frame_id: lidar_link                                                  # Frame id of packet message and point cloud message
-      ros_send_point_cloud_topic: /lidar/vanjee/points_raw                               # Topic used to send point cloud through ROS
-      ros_send_imu_packet_topic: /lidar/vanjee/imu_packets                        # Topic used to send imu through ROS 
+      # HH_260415: Keep topic names relative so launch namespace decides final absolute topic.
+      ros_send_point_cloud_topic: points_raw                               # Topic used to send point cloud through ROS
+      ros_send_imu_packet_topic: imu_packets                        # Topic used to send imu through ROS 
       ros_send_device_ctrl_state_topic: /vanjee_lidar_device_ctrl_state           # Topic used to send device ctrl state through ROS 
       ros_recv_device_ctrl_cmd_topic: /vanjee_lidar_device_ctrl_cmd               # Topic used to recv device ctrl command through ROS 

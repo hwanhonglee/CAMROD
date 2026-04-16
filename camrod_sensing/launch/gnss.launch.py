@@ -64,10 +64,8 @@ def generate_launch_description():
         name="ublox_gps_node",
         namespace=gnss_namespace,
         output="screen",
-        # HH_260330: USB GNSS bringup can fail transiently at startup.
-        # Auto-respawn prevents full GNSS stack loss in bringup.
-        respawn=True,
-        respawn_delay=2.0,
+        # HH_260408: Disable auto-respawn to ensure clean Ctrl+C shutdown
+        # and prevent duplicate GNSS nodes across relaunches.
         parameters=[ublox_param_file],
         remappings=[
             ("rtcm", rtcm_topic),
@@ -81,10 +79,8 @@ def generate_launch_description():
         name="ntrip_client",
         namespace=gnss_namespace,
         output="screen",
-        # HH_260330: NTRIP server/network can drop periodically.
-        # Auto-respawn keeps RTCM feed alive without full stack restart.
-        respawn=True,
-        respawn_delay=2.0,
+        # HH_260408: Disable auto-respawn to ensure clean Ctrl+C shutdown
+        # and prevent duplicate NTRIP nodes across relaunches.
         parameters=[
             ntrip_param_file,
             {

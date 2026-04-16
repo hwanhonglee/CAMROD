@@ -11,6 +11,11 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
     # HH_260406: Robust map_info parser for key-layout differences.
     if not isinstance(map_info_cfg, dict):
         return {}
+    wildcard = map_info_cfg.get('/**')
+    if isinstance(wildcard, dict):
+        params = wildcard.get('ros__parameters')
+        if isinstance(params, dict):
+            return params
     for key in (
         '/map/lanelet2_map',
         'map/lanelet2_map',
@@ -55,6 +60,16 @@ def generate_launch_description():
         origin_alt_default = str(params.get('offset_alt', origin_alt_default))
     except Exception:
         pass
+    # HH_260409: Keep helper launch resilient when map_info map_path is empty.
+    if not str(map_path_default).strip():
+        for candidate in (
+            os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src', 'lanelet2_maps.osm'),
+            os.path.join(os.getcwd(), 'lanelet2_maps.osm'),
+            os.path.join(os.getcwd(), 'src', 'lanelet2_maps.osm'),
+        ):
+            if os.path.isfile(candidate):
+                map_path_default = os.path.abspath(candidate)
+                break
 
     map_path_arg = DeclareLaunchArgument(
         'map_path',

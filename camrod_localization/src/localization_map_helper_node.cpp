@@ -119,6 +119,11 @@ public:
     use_map_z_ = declare_parameter<bool>("use_map_z", true);
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);
     flatten_to_ground_ = declare_parameter<bool>("flatten_to_ground", false);
+    // HH_260413: Throttle heavy nearest-centerline search under high-rate localization input.
+    centerline_min_update_period_sec_ = declare_parameter<double>(
+      "centerline_min_update_period_sec", 0.05);
+    centerline_min_displacement_m_ = declare_parameter<double>(
+      "centerline_min_displacement_m", 0.05);
 
     drop_zones_yaml_ = declare_parameter<std::string>("drop_zones_yaml", "");
     drop_zone_pose_topic_ = declare_parameter<std::string>(
@@ -247,6 +252,26 @@ private:
     const double px = msg->pose.position.x;
     const double py = msg->pose.position.y;
     const double pz = msg->pose.position.z;
+    const rclcpp::Time stamp =
+      (msg->header.stamp.sec == 0 && msg->header.stamp.nanosec == 0) ?
+      get_clock()->now() :
+      rclcpp::Time(msg->header.stamp);
+
+    // HH_260413: Skip map-nearest search when both time and displacement are below thresholds.
+    if (has_last_centerline_publish_) {
+      const double dt = (stamp - last_centerline_publish_stamp_).seconds();
+      const double moved = std::hypot(px - last_centerline_input_x_, py - last_centerline_input_y_);
+      const bool use_period = centerline_min_update_period_sec_ > 0.0;
+      const bool use_distance = centerline_min_displacement_m_ > 0.0;
+      const bool skip_by_period = use_period && dt < centerline_min_update_period_sec_;
+      const bool skip_by_distance = use_distance && moved < centerline_min_displacement_m_;
+      if ((use_period || use_distance) &&
+        (!use_period || skip_by_period) &&
+        (!use_distance || skip_by_distance))
+      {
+        return;
+      }
+    }
 
     const auto nearest = findNearestCenterline(px, py);
     if (!nearest.valid) {
@@ -279,6 +304,10 @@ private:
     out.pose.covariance[35] = yaw_stddev_ * yaw_stddev_;
 
     centerline_pub_->publish(out);
+    last_centerline_publish_stamp_ = stamp;
+    last_centerline_input_x_ = px;
+    last_centerline_input_y_ = py;
+    has_last_centerline_publish_ = true;
   }
 
   void loadDropZones()
@@ -417,6 +446,12 @@ private:
   bool use_map_z_{true};
   double map_z_offset_{0.0};
   bool flatten_to_ground_{false};
+  double centerline_min_update_period_sec_{0.05};
+  double centerline_min_displacement_m_{0.05};
+  rclcpp::Time last_centerline_publish_stamp_{0, 0, RCL_ROS_TIME};
+  double last_centerline_input_x_{0.0};
+  double last_centerline_input_y_{0.0};
+  bool has_last_centerline_publish_{false};
   double map_ground_z_{0.0};
   lanelet::LaneletMapPtr map_;
   rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr centerline_pub_;

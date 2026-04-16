@@ -94,7 +94,7 @@ def _launch_setup(context, *args, **kwargs):
   command_args = [
     "xacro ",
     xacro_file,
-    " base_link:=",
+    " robot_base_link:=",
     base_frame,
     " sensor_kit_base_link:=",
     sensor_kit_base_frame,

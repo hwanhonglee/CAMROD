@@ -4,7 +4,8 @@
   ros__parameters:
     # Absolute or relative Lanelet2 OSM path.
     # Recommended flow: override from launch/bringup instead of hardcoding.
-    map_path: ""
+    # Absolute path to the lanelet2 map used by map/localization/planning modules.
+    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
 
     # WGS84 origin used by LocalCartesian/UTM projectors.
     # Keep these values aligned with the source map generation reference.
@@ -47,3 +48,5 @@
     dir_width_scale: 0.18
     # Number of centerline points skipped between arrow markers.
     dir_stride: 30
+    # HH_260413: 0 keeps one-shot static marker publish (transient_local for late RViz joiners).
+    visualization_republish_period_sec: 0.0

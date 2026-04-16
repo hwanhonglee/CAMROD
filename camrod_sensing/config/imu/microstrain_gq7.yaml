@@ -35,8 +35,9 @@ microstrain_inertial_driver:
     # Timestamp source:
     #   0 = ROS time
     #   1 = GPS time
-    #   2 = Hybrid (recommended)
-    timestamp_source: 2
+    # HH_260415: Keep ROS timeline coherent across sensors to prevent TF extrapolation in RViz.
+    #   2 = Hybrid may diverge from host time when PPS/GNSS timing is unstable.
+    timestamp_source: 0
 
 
     # ============================================================

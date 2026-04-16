@@ -91,6 +91,9 @@ PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
   // Declare this node's parameters
   declare_parameter("planner_plugins", default_ids_);
   declare_parameter("expected_planner_frequency", 1.0);
+  // HH_260412: Prevent planner actions from hanging forever when costmap
+  // current-state is blocked by temporary sensor/topic staleness.
+  declare_parameter("costmap_wait_timeout_sec", 2.0);
 
   get_parameter("planner_plugins", planner_ids_);
   if (planner_ids_ == default_ids_) {
@@ -179,6 +182,15 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       " than 0.0 to turn on duration overrrun warning messages", expected_planner_frequency);
     max_planner_duration_ = 0.0;
   }
+
+  get_parameter("costmap_wait_timeout_sec", costmap_wait_timeout_sec_);
+  if (costmap_wait_timeout_sec_ < 0.0) {
+    costmap_wait_timeout_sec_ = 0.0;
+  }
+  RCLCPP_INFO(
+    get_logger(),
+    "planner costmap wait timeout: %.2fs (0.0 means wait forever)",
+    costmap_wait_timeout_sec_);
 
   // Initialize pubs & subs
   // 2026-02-25: Keep latest path visible for late subscribers (RViz/CLI)
@@ -312,13 +324,29 @@ bool PlannerServer::isServerInactive(
   return false;
 }
 
-void PlannerServer::waitForCostmap()
+bool PlannerServer::waitForCostmap()
 {
-  // Don't compute a plan until costmap is valid (after clear costmap)
+  // Don't compute a plan until costmap is valid (after clear costmap).
+  // HH_260412: Add timeout escape to avoid infinite action hang.
   rclcpp::Rate r(100);
+  const auto t0 = now();
   while (!costmap_ros_->isCurrent()) {
+    if (!rclcpp::ok()) {
+      return false;
+    }
+    if (costmap_wait_timeout_sec_ > 0.0) {
+      const auto waited = (now() - t0).seconds();
+      if (waited >= costmap_wait_timeout_sec_) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Costmap did not become current within %.2fs. Continuing planning with latest available costmap.",
+          costmap_wait_timeout_sec_);
+        return false;
+      }
+    }
     r.sleep();
   }
+  return true;
 }
 
 template<typename T>
@@ -420,7 +448,7 @@ PlannerServer::computePlanThroughPoses()
       return;
     }
 
-    waitForCostmap();
+    (void)waitForCostmap();
 
     getPreemptedGoalIfRequested(action_server_poses_, goal);
 
@@ -512,7 +540,7 @@ PlannerServer::computePlan()
       return;
     }
 
-    waitForCostmap();
+    (void)waitForCostmap();
 
     getPreemptedGoalIfRequested(action_server_pose_, goal);
 

@@ -17,6 +17,11 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
     # HH_260406: Robust map_info parser for key-layout differences.
     if not isinstance(map_info_cfg, dict):
         return {}
+    wildcard = map_info_cfg.get('/**')
+    if isinstance(wildcard, dict):
+        params = wildcard.get('ros__parameters')
+        if isinstance(params, dict):
+            return params
     for key in (
         '/map/lanelet2_map',
         'map/lanelet2_map',
@@ -58,6 +63,16 @@ def generate_launch_description():
         origin_alt_default = str(params.get('offset_alt', origin_alt_default))
     except Exception:
         pass
+    # HH_260409: Keep nav2_lanelet launch resilient when map_info map_path is empty.
+    if not str(map_path_default).strip():
+        for candidate in (
+            os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src', 'lanelet2_maps.osm'),
+            os.path.join(os.getcwd(), 'lanelet2_maps.osm'),
+            os.path.join(os.getcwd(), 'src', 'lanelet2_maps.osm'),
+        ):
+            if os.path.isfile(candidate):
+                map_path_default = os.path.abspath(candidate)
+                break
 
     # -------------------------------------------------------------------------
     # Default config file paths (4-stage overlay)
@@ -173,9 +188,9 @@ def generate_launch_description():
     # -------------------------------------------------------------------------
     # Critical safety guard:
     # Force robot_base_frame in costmap/behavior/smoother using canonical
-    # ROS2 parameter-tree structure. This prevents silent fallback to base_link.
+    # ROS2 parameter-tree structure. This prevents silent fallback to robot_base_link.
     # -------------------------------------------------------------------------
-    force_robot_base_link_overrides = {
+    force_base_link_overrides = {
         'global_costmap': {
             'global_costmap': {
                 'ros__parameters': {
@@ -219,7 +234,7 @@ def generate_launch_description():
         nav2_vehicle_params,
         nav2_lanelet_params,
         nav2_behavior_params,
-        force_robot_base_link_overrides,
+        force_base_link_overrides,
     ]
 
     # -------------------------------------------------------------------------
@@ -265,7 +280,7 @@ def generate_launch_description():
         namespace=module_namespace,
         output='screen',
         parameters=nav2_param_chain + [{
-            # HH_260306-00:00 Hard-override to block fallback to default "base_link"
+            # HH_260306-00:00 Hard-override to block fallback to default "robot_base_link"
             # during recovery behavior pose transforms.
             'global_frame': 'map',
             'local_frame': 'odom',
@@ -312,6 +327,12 @@ def generate_launch_description():
             'use_sim_time': False,
             # HH_260327: allow launch-level localization gate to control activation timing.
             'autostart': nav2_autostart,
+            # HH_260410: Increase bond/service windows to avoid false startup abort
+            # on heavy bringup (planner_server may respond later under load).
+            'bond_timeout': 20.0,
+            'service_timeout': 10000,
+            'attempt_respawn_reconnection': True,
+            'bond_respawn_max_duration': 30.0,
             'node_names': [
                 'planner_server',
                 'controller_server',

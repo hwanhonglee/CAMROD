@@ -21,6 +21,7 @@
   <depend>lanelet2_projection</depend>
   <depend>camrod_map</depend>
   <depend>rclpy</depend>
+  <depend>tf2_ros</depend>
   <depend>avg_msgs</depend>
   <depend>std_msgs</depend>
   <depend>status_msgs</depend>

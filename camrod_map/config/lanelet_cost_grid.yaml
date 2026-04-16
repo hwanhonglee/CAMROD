@@ -9,13 +9,11 @@
     map_frame_id: "map"
     # HH_260316-00:00 Keep lanelet projector aligned with map loader/snapper nodes.
     projector_type: "local_cartesian"
-    # 2026-02-02: Finer grid for clearer lanelet boundaries in RViz.
-    # Grid cell resolution (meters).
-    resolution: 0.05
-    # Grid width in cells (0 means auto-size from map/path window logic).
-    width: 0
-    # Grid height in cells (0 means auto-size from map/path window logic).
-    height: 0
+    # HH_260412: Bound map lanelet-grid compute size.
+    # Use a coarse 120 m window (0.20 m * 600 cells) for predictable startup latency.
+    resolution: 0.20
+    width: 600
+    height: 600
     # 2026-02-11: Lane-only corridor width (meters). Increase if lane coverage is too narrow.
     centerline_half_width: 2.2
     # Lowest cost value assigned to traversable regions.
@@ -53,7 +51,8 @@
     debug_boundary_stats: false
     # HH_260313-00:00 Validate lanelet-grid raster cells against lanelet polygons.
     # Logs warning if known cells are detected outside lanelet bounds.
-    debug_coverage_stats: true
+    # HH_260413: Disable by default to reduce realtime CPU pressure in full bringup.
+    debug_coverage_stats: false
     debug_coverage_stride: 2
     debug_coverage_min_value: 0
     # 2026-02-24: Keep outside lanelets unknown so RViz and inflation overlay stay lanelet-shaped.
@@ -63,10 +62,9 @@
     #   100 : lethal outside lanelets
     outside_value: -1
     use_path_bbox: false        # HH_260102 keep grid window robot-centered to avoid size flicker
-    # Keep the computed grid window fixed after initialization.
-    lock_window: true
-    # Expand fixed window to full map bounds when true.
-    use_map_bbox: true
+    # HH_260412: Keep grid centered on current pose instead of full-map bbox.
+    lock_window: false
+    use_map_bbox: false
     # 2026-02-27: Static lanelet base grid does not need per-pose/path rebuild.
     rebuild_on_pose: false
     rebuild_on_path: false
@@ -81,17 +79,19 @@
     secondary.enable: true
     secondary.output_topic: "/map/cost_grid/planning_base"
     secondary.cost_mode: "centerline"
-    # Secondary profile cell resolution (meters).
-    secondary.resolution: 0.05
-    # Secondary grid width in cells (0 means auto-size).
-    secondary.width: 0
-    # Secondary grid height in cells (0 means auto-size).
-    secondary.height: 0
+    # HH_260412: Apply the same bounded window policy to planning_base output.
+    secondary.resolution: 0.20
+    secondary.width: 600
+    secondary.height: 600
     secondary.centerline_half_width: 0.75
     secondary.free_value: 0
     secondary.lethal_value: 100
     secondary.centerline_clip_to_lanelet: true
-    secondary.centerline_lanelet_fill_value: 92
+    # HH_260415: Centerline-first planning bias.
+    # Keep off-lane cells traversable-but-expensive so that when start pose is
+    # temporarily outside lanelet, planner first reconnects to nearest lane and
+    # then continues along lane center corridor.
+    secondary.centerline_lanelet_fill_value: 35
     secondary.outside_value: 99
     secondary.lanelet_boundary_value: -1
     secondary.boundary_half_width: 0.05
@@ -101,9 +101,11 @@
     secondary.cell_inside_min_hits: 6
     secondary.cell_inside_min_hits_path: 5
     secondary.cell_inside_min_hits_boundary: 8
+    # HH_260415: Re-enable centerline distance gradient so center cells remain
+    # the lowest-cost route and free-space shortcuts outside lane are disfavored.
     secondary.centerline_use_distance_gradient: true
     secondary.direction_penalty: 0
     secondary.backward_penalty: 0
     secondary.use_path_bbox: false
-    secondary.lock_window: true
-    secondary.use_map_bbox: true
+    secondary.lock_window: false
+    secondary.use_map_bbox: false

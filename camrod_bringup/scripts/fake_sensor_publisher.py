@@ -230,7 +230,8 @@ class FakeSensorPublisher(Node):
         # HH_260109 Publish fake sensors with module-prefixed topics.
         self.pub_navsat = self.create_publisher(NavSatFix, "/sensing/gnss/ublox_gps_node/fix", 10)
         self.pub_imu = self.create_publisher(Imu, "/sensing/imu/data", 10)
-        self.pub_wheel = self.create_publisher(Odometry, "/platform/wheel/odometry", 10)
+        # HH_260410: Keep fake wheel output aligned with unified wheel_odometry topic.
+        self.pub_wheel = self.create_publisher(Odometry, "/platform/status/wheel_odometry", 10)
         self.pub_wheel_bridge_in = self.create_publisher(Odometry, self.wheel_bridge_input_topic, 10)
         self.pub_vio = self.create_publisher(Odometry, "/localization/vio/odometry", 10)
         self.pub_obstacles = self.create_publisher(PointCloud2, "/perception/obstacles", 10)

@@ -1,4 +1,7 @@
-docking_server:
+# HH_260410: Apply parameters regardless of runtime namespace (`/parking/docking/docking_server` etc.).
+# Without wildcard root, namespaced launch can miss this file and docking_server fails with
+# "Charging dock plugins not given!".
+/**:
   ros__parameters:
     controller_frequency: 20.0
     initial_perception_timeout: 5.0
@@ -15,7 +18,10 @@ docking_server:
     dock_prestaging_tolerance: 0.5
 
     dock_plugins: ["apriltag_dock"]
-    dock_database: "/home/hong/camrod_ws/src/camrod_parking/config/docks.yaml"
+    # HH_260410: Launch overrides this with package-share path to avoid user-home hardcoding.
+    dock_database: "/home/nvidia/camrod_ws/src/camrod_parking/config/docks.yaml"
+    # HH_260410: Docking navigator uses planning NavigateToPose with this BT.
+    navigator_bt_xml: "/home/nvidia/camrod_ws/src/camrod_planning/config/bt/navigate_to_pose_w_planner_selector_grid.xml"
 
     apriltag_dock:
       plugin: "opennav_docking::SimpleChargingDock"
@@ -42,8 +48,9 @@ docking_server:
       v_linear_min: 0.05
       v_linear_max: 0.15
       use_collision_detection: true
-      costmap_topic: /local_costmap/costmap_raw
-      footprint_topic: /local_costmap/published_footprint
+      # HH_260410: Docking collision checker should consume active Nav2 planning costmap.
+      costmap_topic: /planning/local_costmap/costmap_raw
+      footprint_topic: /planning/local_costmap/published_footprint
       transform_tolerance: 0.1
       projection_time: 5.0
       simulation_time_step: 0.1

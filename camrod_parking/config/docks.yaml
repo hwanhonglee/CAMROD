@@ -1,5 +1,7 @@
 docks:
-  - id: home_dock
+  # HH_260410: opennav_docking external DB expects map-style entries under `docks`.
+  # List-style (`- id: ...`) causes YAML parse/runtime error (`invalid node`).
+  home_dock:
     type: apriltag_dock
     frame: map
     pose: [10.0, 5.0, 3.14159]

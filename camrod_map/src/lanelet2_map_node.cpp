@@ -126,9 +126,14 @@ Lanelet2MapNode::Lanelet2MapNode()
   publishVisualization();
   publishStaticTF();
 
-  using namespace std::chrono_literals;
-  viz_timer_ = this->create_wall_timer(
-    1s, std::bind(&Lanelet2MapNode::publishVisualization, this));
+  // HH_260413: Keep static map marker computation one-shot by default.
+  // Recompute on timer only when explicitly requested through parameter.
+  if (visualization_republish_period_sec_ > 0.0) {
+    viz_timer_ = this->create_wall_timer(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::duration<double>(visualization_republish_period_sec_)),
+      std::bind(&Lanelet2MapNode::publishCachedVisualization, this));
+  }
 
   param_callback_handle_ = this->add_on_set_parameters_callback(
     std::bind(&Lanelet2MapNode::onParameterChange, this, std::placeholders::_1));
@@ -151,6 +156,8 @@ void Lanelet2MapNode::loadParameters()
   config_.dir_stride = static_cast<std::size_t>(this->declare_parameter<int>("dir_stride", 30));
   // HH_260114 Default keeps source z; enable to flatten to ground.
   align_z_to_ground_ = this->declare_parameter<bool>("align_z_to_ground", false);
+  visualization_republish_period_sec_ = this->declare_parameter<double>(
+    "visualization_republish_period_sec", 0.0);
   publish_map_status_ = this->declare_parameter<bool>("publish_map_status", false);
   map_status_topic_ = this->declare_parameter<std::string>("map_status_topic", "/map/status");
 }
@@ -204,8 +211,19 @@ void Lanelet2MapNode::publishVisualization()
     RCLCPP_WARN(get_logger(), "Loaded map contains no lanelets to visualize.");
   }
 
-  viz_pub_->publish(markers);
+  cached_markers_ = markers;
+  viz_pub_->publish(cached_markers_);
   publishAvgMapMessage(markers, stamp);
+}
+
+// Publish helper CachedVisualization: republishes already-built static marker arrays.
+void Lanelet2MapNode::publishCachedVisualization()
+{
+  if (cached_markers_.markers.empty()) {
+    publishVisualization();
+    return;
+  }
+  viz_pub_->publish(cached_markers_);
 }
 
 // Callback onParameterChange: handles incoming ROS data or timer events and updates internal cache/publish state.

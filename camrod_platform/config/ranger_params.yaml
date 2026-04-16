@@ -1,0 +1,21 @@
+/**:
+  ros__parameters:
+    # HH_260410: Platform-owned default Ranger driver parameters.
+    # bringup may override this file via platform/ranger_params_file.
+    use_sim_time: false
+    port_name: "can0"
+    robot_model: "ranger"
+    odom_frame: "odom"
+    base_frame: "robot_base_link"
+    odom_topic_name: "/rmp401/odom"
+    simulated_robot: false
+    publish_odom_tf: false
+    update_rate: 50
+
+    publish_platform_status_topics: true
+    status_odom_topic: "/platform/status/odometry"
+    status_velocity_topic: "/platform/status/velocity"
+    status_wheel_topic: "/platform/status/wheel"
+    status_estop_topic: "/platform/status/estop"
+    estop_on_exception_state: true
+    estop_on_error_code: false

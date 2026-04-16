@@ -26,7 +26,8 @@
       z: 0.2                  # IMU mount Z offset from sensor_kit_base_link [m].
       roll: 0.0               # IMU mount roll offset [deg].
       pitch: 0.0              # IMU mount pitch offset [deg].
-      yaw: 0.0                # IMU mount yaw offset [deg].
+      # HH_260413: Align IMU frame to robot_base_link heading (mount calibration).
+      yaw: -84.4              # IMU mount yaw offset [deg].
 
     gnss:
       x: 0.0                  # GNSS antenna X offset from sensor_kit_base_link [m].

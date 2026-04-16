@@ -1,0 +1,28 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from autoware_planning_msgs/srv/SetLaneletRoute.srv
+// generated code does not contain a copyright notice
+
+#include "autoware_common_msgs/msg/ResponseStatus.idl"
+#include "autoware_planning_msgs/msg/LaneletSegment.idl"
+#include "geometry_msgs/msg/Pose.idl"
+#include "std_msgs/msg/Header.idl"
+#include "unique_identifier_msgs/msg/UUID.idl"
+
+module autoware_planning_msgs {
+  module srv {
+    struct SetLaneletRoute_Request {
+      std_msgs::msg::Header header;
+
+      geometry_msgs::msg::Pose goal_pose;
+
+      sequence<autoware_planning_msgs::msg::LaneletSegment> segments;
+
+      unique_identifier_msgs::msg::UUID uuid;
+
+      boolean allow_modification;
+    };
+    struct SetLaneletRoute_Response {
+      autoware_common_msgs::msg::ResponseStatus status;
+    };
+  };
+};

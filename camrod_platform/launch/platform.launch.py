@@ -3,7 +3,9 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 
 
 def pkg_share(pkg: str, rel: str) -> str:
@@ -38,24 +40,71 @@ def generate_launch_description():
         DeclareLaunchArgument('use_planning_engage_topic', default_value='true'),
         DeclareLaunchArgument('drive_state_topic', default_value='/platform/drive_enabled'),
         DeclareLaunchArgument('use_estop_topic', default_value='true'),
-        DeclareLaunchArgument('estop_topic', default_value='/planning/state_machine/estop'),
+        # HH_260410: Use Ranger CAN derived /platform/status/estop as the default gate source.
+        DeclareLaunchArgument('estop_topic', default_value='/platform/status/estop'),
         DeclareLaunchArgument('drive_allow_on_start', default_value='false'),
+        # HH_260410: Keep top-level launch lean.
+        # Ranger detailed parameters live in camrod_platform/launch/ranger.launch.py + params YAML.
+        DeclareLaunchArgument('ranger_driver_enable', default_value='true'),
+        DeclareLaunchArgument(
+            'ranger_params_file',
+            # HH_260410: Keep Ranger defaults in this package so bringup overrides
+            # can consistently reference camrod_platform/config first.
+            default_value=pkg_share('camrod_platform', os.path.join('config', 'ranger_params.yaml')),
+        ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 pkg_share('camrod_platform', os.path.join('launch', 'robot_visualization.launch.py'))
             ),
+            launch_arguments={
+                'module_namespace': LaunchConfiguration('module_namespace'),
+                'map_frame_id': LaunchConfiguration('map_frame_id'),
+                'base_frame_id': LaunchConfiguration('base_frame_id'),
+                'params_file': LaunchConfiguration('params_file'),
+                'robot_visualization_param_file': LaunchConfiguration('robot_visualization_param_file'),
+            }.items(),
         ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 pkg_share('camrod_platform', os.path.join('launch', 'cmd_vel_gate.launch.py'))
             ),
+            launch_arguments={
+                'module_namespace': LaunchConfiguration('module_namespace'),
+                'cmd_vel_gate_enable': LaunchConfiguration('cmd_vel_gate_enable'),
+                'cmd_vel_in_topic': LaunchConfiguration('cmd_vel_in_topic'),
+                'cmd_vel_out_topic': LaunchConfiguration('cmd_vel_out_topic'),
+                'drive_enable_topic': LaunchConfiguration('drive_enable_topic'),
+                'planning_engage_topic': LaunchConfiguration('planning_engage_topic'),
+                'use_planning_engage_topic': LaunchConfiguration('use_planning_engage_topic'),
+                'drive_state_topic': LaunchConfiguration('drive_state_topic'),
+                'use_estop_topic': LaunchConfiguration('use_estop_topic'),
+                'estop_topic': LaunchConfiguration('estop_topic'),
+                'drive_allow_on_start': LaunchConfiguration('drive_allow_on_start'),
+            }.items(),
+        ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                pkg_share('camrod_platform', os.path.join('launch', 'ranger.launch.py'))
+            ),
+            launch_arguments={
+                'params_file': LaunchConfiguration('ranger_params_file'),
+            }.items(),
+            condition=IfCondition(LaunchConfiguration('ranger_driver_enable')),
         ),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 pkg_share('camrod_platform', os.path.join('launch', 'sensor_kit_bridge.launch.py'))
             ),
+            launch_arguments={
+                'map_frame_id': LaunchConfiguration('map_frame_id'),
+                'base_frame_id': LaunchConfiguration('base_frame_id'),
+                'sensor_kit_base_frame_id': LaunchConfiguration('sensor_kit_base_frame_id'),
+                'params_file': LaunchConfiguration('params_file'),
+                'sensor_kit_namespace': LaunchConfiguration('sensor_kit_namespace'),
+            }.items(),
         ),
     ])

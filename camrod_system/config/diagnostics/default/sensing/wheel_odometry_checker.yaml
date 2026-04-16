@@ -9,7 +9,8 @@ wheel_odometry_checker:
     wheel_names: ["main"]
 
     main:
-      topic: "/platform/wheel/odometry"
+      # HH_260410: Unified wheel odometry topic consumed by localization filters.
+      topic: "/platform/status/wheel_odometry"
       expected_hz: 20.0          # 기대 수신 속도 (Hz)
       hz_warn_ratio: 0.7         # actual_hz / expected_hz 비율이 이 값 미만이면 WARN
       hz_error_ratio: 0.4        # actual_hz / expected_hz 비율이 이 값 미만이면 ERROR

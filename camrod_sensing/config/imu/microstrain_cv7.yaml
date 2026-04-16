@@ -36,8 +36,9 @@
     # Timestamp source for ROS messages:
     # 0 = ROS receive time (simple, less accurate)
     # 1 = device GPS time (most accurate but jumps when GPS lock appears; AHRS has no GNSS -> not useful)
-    # 2 = Hybrid (recommended; stable UTC-like timestamps with close device dt)
-    timestamp_source: 2
+    # HH_260415: Use ROS receive time to keep IMU/TF timeline aligned with lidar/map in bringup.
+    # 2 = Hybrid can drift against host clock in this platform and trigger TF extrapolation.
+    timestamp_source: 0
 
 
     # ============================================================
@@ -45,7 +46,7 @@
     # ============================================================
 
     # Frame ID stamped into most published messages (e.g., sensor_msgs/Imu).
-    # Use a URDF static transform if your IMU is mounted offset from base_link.
+    # Use a URDF static transform if your IMU is mounted offset from robot_base_link.
     frame_id: "imu_link"
 
     # Transform publishing mode:

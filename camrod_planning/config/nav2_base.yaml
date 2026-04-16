@@ -6,8 +6,20 @@ planner_server:
     # HH_260330: Further relax planner loop target for full-stack bringup.
     # This reduces planner-loop starvation under heavy CPU load and keeps
     # replanning stable during iterative goal updates.
-    expected_planner_frequency: 2.0
-    planner_plugins: ["Smac2D", "GridBased"]
+    # HH_260412: Align expected loop with practical realtime throughput to
+    # reduce repeated "planner loop missed rate" warnings under full load.
+    # HH_260413: Match practical planner throughput under full real-sensor load.
+    expected_planner_frequency: 0.5
+    # HH_260412: Prevent planner action hang when costmap current-state is delayed.
+    # 0.0 = wait forever (legacy), >0 = timeout seconds.
+    # HH_260412: Give global costmap more settle time before timeout warning.
+    # HH_260413: Allow extra settle time for layered global costmap current-state.
+    # HH_260413: Further extend timeout for heavy real-sensor bringup phases.
+    costmap_wait_timeout_sec: 12.0
+    # HH_260415: Use GridBased as the only default planner for runtime stability.
+    # Smac2D remains defined below for future re-enable, but it is not selected
+    # in the default production profile to avoid planner_server segfault regression.
+    planner_plugins: ["GridBased"]
 
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
@@ -35,16 +47,24 @@ planner_server:
       # HH_260327: Reduce heading-bin density to lower planner CPU without
       # changing topology or plugin structure.
       angle_quantization_bins: 96
+      # HH_260412: Bound Smac2D solve time so ComputePath action does not stay
+      # indefinitely in EXECUTING when map/cost constraints are difficult.
+      max_iterations: 100000
+      max_on_approach_iterations: 500
+      max_planning_time: 0.5
 
 controller_server:
   ros__parameters:
     use_sim_time: False
-    # HH_260331: Control cmd stream target for real platform driving.
-    # /planning/cmd_vel_raw and /planning/cmd_vel should follow this loop rate.
-    controller_frequency: 40.0
+    # HH_260412: Tune controller loop for real stack load.
+    # 40Hz caused repeated "control loop missed rate" in full bringup;
+    # 30Hz keeps cmd stream responsive while reducing scheduler starvation.
+    controller_frequency: 30.0
     # HH_260330: Allow longer transient control failures while local TF/costmap
     # synchronizes, so cmd_vel stream can recover instead of immediate abort.
-    failure_tolerance: 8.0
+    # HH_260412: Increase tolerance to avoid frequent FollowPath abort/recovery
+    # loops during transient sensor/costmap jitter.
+    failure_tolerance: 20.0
     odom_topic: /localization/odometry/filtered
     # HH_260330: Keep deadband thresholds permissive so low-speed commands are
     # not quantized to zero during startup alignment.
@@ -68,8 +88,10 @@ controller_server:
       plugin: "nav2_controller::SimpleProgressChecker"
       # HH_260330: Relax progress checks to avoid false abort during TF/costmap
       # warm-up right after new goal acceptance.
-      required_movement_radius: 0.05
-      movement_time_allowance: 60.0
+      # HH_260412: Further relax progress thresholds for real-sensor startup
+      # where odometry progress can be intermittent.
+      required_movement_radius: 0.03
+      movement_time_allowance: 120.0
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
@@ -86,9 +108,10 @@ local_costmap:
       global_frame: odom
       # Keep Nav2 base frame aligned with platform/localization TF.
       robot_base_frame: robot_base_link
-      # HH_260330: Further lower local costmap rates to prevent controller loop miss.
-      update_frequency: 4.0
-      publish_frequency: 2.0
+      # HH_260415: Raise local costmap cycle to improve real-time local-path reaction
+      # to multi-layer costs while preserving controller stability at 30Hz.
+      update_frequency: 6.0
+      publish_frequency: 3.0
       rolling_window: True
       # HH_260327: Coarsen local rolling window grid slightly for stability.
       width: 45
@@ -116,8 +139,9 @@ global_costmap:
       robot_base_frame: robot_base_link
       # HH_260313-00:00 Raise global master refresh so goal updates are reflected faster.
       # HH_260327: Lower global costmap update pressure for planner stability.
-      update_frequency: 4.0
-      publish_frequency: 2.0
+      # HH_260413: Lower global costmap refresh pressure to stabilize current-state availability.
+      update_frequency: 2.0
+      publish_frequency: 1.0
       # HH_260326: Keep planner global costmap centered on robot to prevent
       # startup failures when localization origin drifts from legacy fixed bounds.
       rolling_window: True

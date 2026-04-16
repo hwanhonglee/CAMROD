@@ -14,7 +14,8 @@ find_package(rclcpp REQUIRED)
 install(
   PROGRAMS
     scripts/fake_sensor_publisher.py
-    scripts/check_config_sync.sh
+    scripts/planning_scenario_leaderboard.py
+    scripts/sync_package_configs_to_bringup.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -45,18 +45,18 @@ public:
     // Compatibility:
     //   start_reference, start_mode, start_source, use_start_pose, use_topic_start_pose
     // Legacy:
-    //   start_source: "tf_robot_base_link" | "topic_pose"
+    //   start_source: "tf_base_link" | "topic_pose"
     //   use_start_pose / use_topic_start_pose (bool)
     const bool legacy_use_start_pose = declare_parameter<bool>("use_start_pose", false);
     const bool legacy_use_topic_start_pose =
       declare_parameter<bool>("use_topic_start_pose", legacy_use_start_pose);
     const std::string legacy_start_source = declare_parameter<std::string>(
       "start_source",
-      legacy_use_topic_start_pose ? "topic_pose" : "tf_robot_base_link");
+      legacy_use_topic_start_pose ? "topic_pose" : "tf_base_link");
     const std::string start_mode = declare_parameter<std::string>(
       "start_mode",
       (legacy_start_source == "topic_pose" || legacy_use_topic_start_pose) ?
-      "start_topic_pose" : "robot_base_link_tf");
+      "start_topic_pose" : "base_link_tf");
     const std::string start_reference = declare_parameter<std::string>("start_reference", "");
     const std::string planning_start_source = declare_parameter<std::string>(
       "planning_start_source", "");
@@ -79,7 +79,7 @@ public:
         start_topic_ = "/localization/pose";
       }
     } else if (
-      selected_mode == "robot_base_link_tf" || selected_mode == "tf_robot_base_link" ||
+      selected_mode == "base_link_tf" || selected_mode == "tf_base_link" ||
       selected_mode == "robot_tf" || selected_mode == "tf" ||
       selected_mode == "robot_base_link" || selected_mode == "start_from_tf")
     {
@@ -87,14 +87,14 @@ public:
     } else {
       if (legacy_start_source == "topic_pose") {
         use_topic_start_pose_ = true;
-      } else if (legacy_start_source == "tf_robot_base_link") {
+      } else if (legacy_start_source == "tf_base_link") {
         use_topic_start_pose_ = false;
       } else {
         use_topic_start_pose_ = legacy_use_topic_start_pose;
       }
       RCLCPP_WARN(get_logger(),
         "Unknown start mode '%s'. Use one of: "
-        "robot_base_link_tf | robot_base_link | start_topic_pose | start_topic. "
+        "base_link_tf | robot_base_link | start_topic_pose | start_topic. "
         "Fallback legacy start_source='%s' -> topic_start=%s.",
         selected_mode.c_str(), legacy_start_source.c_str(),
         use_topic_start_pose_ ? "true" : "false");
@@ -204,7 +204,7 @@ public:
     if (!use_topic_start_pose_) {
       RCLCPP_INFO(
         get_logger(),
-        "start_mode=robot_base_link_tf: ComputePathToPose uses map->robot_base_link as start");
+        "start_mode=base_link_tf: ComputePathToPose uses map->robot_base_link as start");
     } else {
       RCLCPP_INFO(
         get_logger(),

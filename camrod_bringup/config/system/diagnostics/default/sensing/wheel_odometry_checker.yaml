@@ -9,7 +9,8 @@ wheel_odometry_checker:
     wheel_names: ["main"]
 
     main:
-      topic: "/platform/wheel/odometry"
+      # HH_260410: Unified wheel odometry topic consumed by localization filters.
+      topic: "/platform/status/wheel_odometry"
       expected_hz: 20.0          # Expected message update rate (Hz).
       hz_warn_ratio: 0.7         # WARN threshold for actual_hz/expected_hz ratio.
       hz_error_ratio: 0.4        # ERROR threshold for actual_hz/expected_hz ratio.

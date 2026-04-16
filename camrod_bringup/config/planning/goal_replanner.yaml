@@ -22,7 +22,8 @@
     # HH_260306-00:00 If snapped start is briefly unavailable/stale, allow TF fallback.
     start_topic_fallback_to_tf: true
     action_name: "/planning/compute_path_to_pose"
-    planner_id: "Smac2D"
+    # HH_260415: Keep goal-replan requests aligned with stabilized planner profile.
+    planner_id: "GridBased"
     frame_id: "map"
     output_path_topic: "/planning/global_path"
     # HH_260317-00:00 Keep avg global path stream always available for
@@ -38,11 +39,9 @@
     duplicate_goal_xy_epsilon_m: 0.05
     duplicate_goal_yaw_epsilon_deg: 4.0
     min_request_interval_sec: 0.25
-    # HH_260306-00:00 Event-driven mode:
-    # - new goal        -> immediate request
-    # - first start fix -> immediate request
-    # Disable periodic timer retries to prevent request storms.
-    replan_rate_hz: 0.0
+    # HH_260415: Keep global path refreshed periodically from lanelet-snapped start
+    # so centerline-following global route is regenerated multiple times in runtime.
+    replan_rate_hz: 1.0
     # HH_260306-00:00 Disable timeout cancellation; only cancel when new goal/start update arrives.
     request_timeout_sec: 0.0
     # HH_260306-00:00 Prevent retry storm when planner reports ABORTED.
@@ -50,8 +49,8 @@
     # Trigger ComputePath immediately on new goal and on first valid snapped start pose.
     immediate_replan_on_goal: true
     immediate_replan_on_start: true
-    # Keep global path fixed after initial solve. Only a new goal may replace it.
-    replan_on_start_change: false
+    # HH_260415: When lanelet start changes, allow immediate global replan update.
+    replan_on_start_change: true
     # HH_260306-00:00 After goal is reached, pause replanning until a new goal arrives.
     stop_replan_after_goal_reached: true
     goal_reached_distance_m: 0.8

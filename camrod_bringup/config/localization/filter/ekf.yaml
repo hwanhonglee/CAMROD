@@ -38,8 +38,9 @@
     pose0_relative: false
     pose0_queue_size: 10
 
-    # HH_260109 Wheel odometry (twist only).
-    odom0: /platform/wheel/odometry
+    # HH_260109 Wheel odometry input for EKF.
+    # HH_260410 Topic renamed for consistent /platform/status/* naming.
+    odom0: /platform/status/wheel_odometry
     odom0_config: [false, false, false,
                    false, false, false,
                    true,  false, false,
@@ -62,8 +63,11 @@
 
     # HH_260109 Lanelet2 soft constraint pose (snap-to-lane).
     pose1: /localization/lanelet_pose
+    # HH_260408: Do not fuse lanelet yaw directly.
+    # Keep heading from IMU/wheel to prevent vehicle facing direction from being
+    # forcibly aligned to nearest centerline direction in RViz/planning.
     pose1_config: [true,  true,  false,
-                  false, false, true,
+                  false, false, false,
                   false, false, false,
                   false, false, false,
                   false, false, false]

@@ -313,7 +313,7 @@ private:
     // Controller debug plans are often emitted in robot frame.
     // Convert them to map by applying current lanelet pose transform.
     const bool is_robot_frame =
-      source_frame == "robot_base_link" || source_frame == "base_link";
+      source_frame == "robot_base_link";
     if (!is_robot_frame || pose_frame != target_frame) {
       return false;
     }

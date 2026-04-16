@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 import os
+import yaml
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, GroupAction
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.actions import DeclareLaunchArgument, GroupAction
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import SetRemap
+from launch_ros.actions import Node, SetRemap
 
 
 def generate_launch_description():
     sensing_share = get_package_share_directory("camrod_sensing")
     microstrain_share = get_package_share_directory("microstrain_inertial_driver")
+    microstrain_default_params_file = os.path.join(
+        microstrain_share, "microstrain_inertial_driver_common", "config", "params.yml"
+    )
 
     default_params_file = os.path.join(
         sensing_share, "config", "imu", "microstrain_cv7.yaml"
-    )
-
-    microstrain_launch_file = os.path.join(
-        microstrain_share, "launch", "microstrain_launch.py"
     )
 
     declare_port = DeclareLaunchArgument(
@@ -39,19 +38,28 @@ def generate_launch_description():
         description="Namespace for standalone IMU launch",
     )
 
-    include_microstrain = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(microstrain_launch_file),
-        launch_arguments={
-            "port": LaunchConfiguration("port"),
-            "params_file": LaunchConfiguration("params_file"),
-            "namespace": LaunchConfiguration("namespace"),
-        }.items(),
+    # HH_260415: Launch driver node directly with respawn.
+    # This recovers from intermittent startup-time serial lock contention
+    # ("Device or resource busy") without requiring full bringup restart.
+    microstrain_node = Node(
+        package="microstrain_inertial_driver",
+        executable="microstrain_inertial_driver_node",
+        name="microstrain_inertial_driver",
+        namespace=LaunchConfiguration("namespace"),
+        output="screen",
+        parameters=[
+            yaml.safe_load(open(microstrain_default_params_file, "r", encoding="utf-8")),
+            LaunchConfiguration("params_file"),
+            {"port": LaunchConfiguration("port")},
+        ],
+        respawn=True,
+        respawn_delay=2.0,
     )
 
     imu_group = GroupAction([
         SetRemap(src="/ekf/status", dst="ekf/status"),
         SetRemap(src="imu/data", dst="data"),
-        include_microstrain,
+        microstrain_node,
     ])
 
     return LaunchDescription([

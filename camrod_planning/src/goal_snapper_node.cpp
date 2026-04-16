@@ -100,6 +100,10 @@ public:
     cfg_.offset_lon = declare_parameter<double>("offset_lon", 0.0);
     cfg_.offset_alt = declare_parameter<double>("offset_alt", 0.0);
     input_goal_topic_ = declare_parameter<std::string>("input_goal_topic", "/goal_pose");
+    // HH_260412: Accept RViz default 2D goal topic as fallback input.
+    input_goal_topic_fallback_ = declare_parameter<std::string>(
+      "input_goal_topic_fallback", "/move_base_simple/goal");
+    enable_fallback_goal_topic_ = declare_parameter<bool>("enable_fallback_goal_topic", true);
     output_goal_topic_ = declare_parameter<std::string>("output_goal_topic", "/planning/goal_pose");
     // HH_260317-00:00 Publish ROS-native snapped goal for Nav2 topic compatibility.
     output_goal_topic_ros_ = declare_parameter<std::string>(
@@ -139,11 +143,21 @@ public:
     sub_goal_ros_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       input_goal_topic_, rclcpp::QoS(10),
       std::bind(&GoalSnapperNode::onGoalRos, this, std::placeholders::_1));
+    if (
+      enable_fallback_goal_topic_ &&
+      !input_goal_topic_fallback_.empty() &&
+      input_goal_topic_fallback_ != input_goal_topic_)
+    {
+      sub_goal_ros_fallback_ = create_subscription<geometry_msgs::msg::PoseStamped>(
+        input_goal_topic_fallback_, rclcpp::QoS(10),
+        std::bind(&GoalSnapperNode::onGoalRos, this, std::placeholders::_1));
+    }
 
     RCLCPP_INFO(
       get_logger(),
-      "goal_snapper ready: map=%s input=%s output(avg)=%s output(ros)=%s",
+      "goal_snapper ready: map=%s input=%s fallback=%s output(avg)=%s output(ros)=%s",
       cfg_.map_path.c_str(), input_goal_topic_.c_str(),
+      input_goal_topic_fallback_.c_str(),
       output_goal_topic_.c_str(), output_goal_topic_ros_.c_str());
   }
 
@@ -430,6 +444,7 @@ private:
   lanelet::LaneletMapPtr map_;
 
   std::string input_goal_topic_;
+  std::string input_goal_topic_fallback_;
   std::string output_goal_topic_;
   std::string output_goal_topic_ros_;
   std::string planning_status_topic_;
@@ -457,6 +472,8 @@ private:
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_goal_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_fallback_;
+  bool enable_fallback_goal_topic_{true};
   bool publish_planning_status_{false};
 };
 

@@ -1,3 +1,4 @@
+# HH_260414: Reduce message filter queue depth to mitigate TF extrapolation flicker/crashes in real-sensor runs.
 Panels:
   - Class: rviz_common/Displays
     Help Height: 78
@@ -8,13 +9,12 @@ Panels:
         - /Map1
         - /Map1/Lane_Map1/Namespaces1
         - /Map1/Inflation_Overlay1/Namespaces1
-        - /Localization1/Pose1
         - /Sensing1
         - /Sensing1/Lidar1
         - /Perception1
         - /Planning1
       Splitter Ratio: 0.5904255509376526
-    Tree Height: 1145
+    Tree Height: 368
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -30,15 +30,13 @@ Panels:
     Splitter Ratio: 0.380952388048172
   - Class: nav2_rviz_plugins/Navigation 2
     Name: Navigation 2
+  - Class: tier4_adapi_rviz_plugins::RoutePanel
+    Name: Route Panel
   - Class: rviz_common/Time
     Experimental: false
     Name: Time
     SyncMode: 0
     SyncSource: ""
-  - Class: tier4_adapi_rviz_plugins::StatePanel
-    Name: StatePanel
-  - Class: rviz_plugins::AutowareAutomaticGoalPanel
-    Name: AutowareAutomaticGoalPanel
 Visualization Manager:
   Class: ""
   Displays:
@@ -66,7 +64,24 @@ Visualization Manager:
           Enabled: true
           Name: Chassis_Markers
           Namespaces:
-            {}
+            range_rings: true
+            robot_base_link: true
+            robot_base_link/axes: true
+            robot_body: true
+            robot_footprint: true
+            robot_planning_boundary: true
+            sensor/camera/axes: true
+            sensor/camera/label: true
+            sensor/gnss/axes: true
+            sensor/gnss/label: true
+            sensor/imu/axes: true
+            sensor/imu/label: true
+            sensor/lidar/axes: true
+            sensor/lidar/label: true
+            tf/map_axes: true
+            tf/map_label: true
+            tf/world_axes: true
+            tf/world_label: true
           Topic:
             Depth: 5
             Durability Policy: Volatile
@@ -82,7 +97,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /platform/robot/planning_boundary
@@ -98,7 +113,7 @@ Visualization Manager:
             lanelet/area: true
             lanelet/centerline: true
             lanelet/direction: true
-            lanelet/id: true
+            lanelet/id: false
             lanelet/left_bound: true
             lanelet/right_bound: true
             line/dashed: true
@@ -159,7 +174,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /localization/pose
@@ -194,7 +209,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /localization/initialpose3d
@@ -219,7 +234,7 @@ Visualization Manager:
               Scale: 1
               Value: true
             Value: true
-          Enabled: true
+          Enabled: false
           Head Length: 0.30000001192092896
           Head Radius: 0.10000000149011612
           Name: lanelet_pose
@@ -229,11 +244,11 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /localization/lanelet_pose
-          Value: true
+          Value: false
       Enabled: true
       Name: Localization
     - Class: rviz_common/Group
@@ -275,7 +290,7 @@ Visualization Manager:
               Max Color: 210; 230; 255
               Max Intensity: 254
               Min Color: 10; 20; 30
-              Min Intensity: 1
+              Min Intensity: 3
               Name: Lidar_Raw
               Position Transformer: XYZ
               Selectable: true
@@ -285,11 +300,11 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/lidar/vanjee/points_raw
-              Use Fixed Frame: true
+              Use Fixed Frame: false
               Use rainbow: false
               Value: true
             - Alpha: 0.30000001192092896
@@ -319,11 +334,11 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/lidar/points_filtered
-              Use Fixed Frame: true
+              Use Fixed Frame: false
               Use rainbow: false
               Value: true
           Enabled: true
@@ -345,7 +360,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/gnss/pose
@@ -380,7 +395,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/gnss/pose_with_covariance
@@ -398,7 +413,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/front/range
@@ -412,7 +427,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/left1/range
@@ -426,7 +441,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/left2/range
@@ -440,7 +455,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/rear/range
@@ -454,7 +469,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/right1/range
@@ -468,7 +483,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /sensing/radar/right2/range
@@ -491,12 +506,12 @@ Visualization Manager:
           Color: 255; 255; 255
           Color Transformer: Intensity
           Decay Time: 0
-          Enabled: true
+          Enabled: false
           Invert Rainbow: false
           Max Color: 255; 255; 255
-          Max Intensity: 123.44444274902344
+          Max Intensity: 118.13440704345703
           Min Color: 0; 0; 0
-          Min Intensity: 1
+          Min Intensity: 8.833333015441895
           Name: Obstacle_Cloud
           Position Transformer: XYZ
           Selectable: true
@@ -506,13 +521,13 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /perception/obstacles
           Use Fixed Frame: true
           Use rainbow: false
-          Value: true
+          Value: false
         - Class: rviz_default_plugins/MarkerArray
           Enabled: true
           Name: Obstacle_Boxes
@@ -554,7 +569,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /planning/global_path
@@ -563,7 +578,7 @@ Visualization Manager:
               Enabled: true
               Name: Global_Path_Cost_Marker
               Namespaces:
-                {}
+                inflation_cost_grid: true
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
@@ -598,7 +613,7 @@ Visualization Manager:
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
-                Filter size: 10
+                Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /planning/local_path
@@ -607,7 +622,7 @@ Visualization Manager:
               Enabled: true
               Name: Local_Path_Cost_Marker
               Namespaces:
-                {}
+                inflation_cost_grid: true
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
@@ -632,7 +647,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /goal_pose
@@ -652,7 +667,7 @@ Visualization Manager:
           Topic:
             Depth: 5
             Durability Policy: Volatile
-            Filter size: 10
+            Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /planning/goal_pose_snapped_ros
@@ -667,7 +682,7 @@ Visualization Manager:
   Global Options:
     Background Color: 15; 20; 23
     Fixed Frame: map
-    Frame Rate: 60
+    Frame Rate: 30
   Name: root
   Tools:
     - Class: rviz_default_plugins/Interact
@@ -708,7 +723,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: -1.554999828338623
+      Angle: 0
       Class: rviz_default_plugins/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -718,28 +733,26 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 286.20428466796875
+      Scale: 50.220001220703125
       Target Frame: map
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 39.51093292236328
-      Y: -116.76868438720703
+      X: 0
+      Y: 0
     Saved: ~
 Window Geometry:
-  AutowareAutomaticGoalPanel:
-    collapsed: false
   Camera_View:
     collapsed: false
   Displays:
     collapsed: false
-  Height: 1376
+  Height: 1016
   Hide Left Dock: false
   Hide Right Dock: false
   Navigation 2:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd0000000400000000000001eb00000506fc020000000dfb000000100044006900730070006c006100790073010000003d000005060000007300fffffffb0000001200530065006c0065006300740069006f006e00000001e10000009b0000003000fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb00000018004e0061007600690067006100740069006f006e00200032000000029c0000013f0000013f00fffffffb0000002000430061006d006500720061005f0049006d006100670065005f0072006100770000000310000000cb0000000000000000fb0000001600430061006d006500720061005f005600690065007700000004290000011a0000002800fffffffb000000140053007400610074006500500061006e0065006c00000003360000020d0000017b00fffffffb00000034004100750074006f0077006100720065004100750074006f006d00610074006900630047006f0061006c00500061006e0065006c00000003e60000015d0000015d00ffffff00000001000001d000000506fc0200000003fb0000000a00560069006500770073010000003d000005060000007c00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b2000000000000000000000002000009ba000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000009ba0000003efc0100000002fb0000000800540069006d00650000000000000009ba000002fb00fffffffb0000000800540069006d00650100000000000004500000000000000000000005f30000050600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
-  Selection:
+  QMainWindow State: 000000ff00000000fd0000000400000000000001eb0000039efc020000000efb000000100044006900730070006c006100790073010000003d000001fb000000c900fffffffb0000001200530065006c0065006300740069006f006e00000001e10000009b0000005c00fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007302000001ed000001df00000185000000a3fb000000120056006900650077007300200054006f006f02000001df000002110000018500000122fb000000200054006f006f006c002000500072006f0070006500720074006900650073003203000002880000011d000002210000017afb0000002000730065006c0065006300740069006f006e00200062007500660066006500720200000138000000aa0000023a00000294fb00000014005700690064006500530074006500720065006f02000000e6000000d2000003ee0000030bfb0000000c004b0069006e0065006300740200000186000001060000030c00000261fb00000018004e0061007600690067006100740069006f006e00200032000000029c0000013f0000013900fffffffb0000002000430061006d006500720061005f0049006d006100670065005f0072006100770000000310000000cb0000000000000000fb0000001600430061006d006500720061005f005600690065007700000004290000011a0000002800fffffffb000000140053007400610074006500500061006e0065006c00000003360000020d0000000000000000fb00000034004100750074006f0077006100720065004100750074006f006d00610074006900630047006f0061006c00500061006e0065006c00000003e60000015d0000000000000000fb000000160052006f007500740065002000500061006e0065006c010000023e0000019d0000019700ffffff00000001000001d00000039efc0200000003fb0000000a00560069006500770073010000003d0000039e000000a400fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000041000000780000000000000000fb0000001200530065006c0065006300740069006f006e010000025a000000b2000000000000000000000002000009ba000000a9fc0100000001fb0000000a00560069006500770073030000004e00000080000002e10000019700000003000009ba0000003efc0100000002fb0000000800540069006d00650000000000000009ba000002fb00fffffffb0000000800540069006d00650100000000000004500000000000000000000003730000039e00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Route Panel:
     collapsed: false
-  StatePanel:
+  Selection:
     collapsed: false
   Time:
     collapsed: false
@@ -747,6 +760,6 @@ Window Geometry:
     collapsed: false
   Views:
     collapsed: false
-  Width: 2490
+  Width: 1850
   X: 70
   Y: 27

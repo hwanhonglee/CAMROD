@@ -235,7 +235,8 @@
     rebuild_on_pose: true
     rebuild_on_path: true
     # HH_260330: Keep local updates responsive but avoid timer-driven hot loop.
-    min_rebuild_period_sec: 0.05
+    # HH_260413: Limit local path-cost rebuild rate to reduce costmap starvation.
+    min_rebuild_period_sec: 0.10
     rebuild_on_timer: false
     # HH_260316-00:00 Keep publisher active through short local-path gaps.
     allow_build_without_path: true
@@ -252,5 +253,6 @@
     debug_coverage_min_value: 0
     path_qos_transient_local: false
     # HH_260330: Reduce local marker heartbeat load while preserving visibility.
-    republish_period: 0.05
+    # HH_260413: Keep marker refresh responsive but lighter.
+    republish_period: 0.10
     output_topic: "/planning/cost_grid/local_path"

@@ -4,7 +4,8 @@
   ros__parameters:
     # Prefer launch-level override (bringup or package launch).
     # Keep empty here if the actual OSM lives outside this package.
-    map_path: ""
+    # Absolute path to the lanelet2 map used by map/localization/planning modules.
+    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
 
     # HH_260114 WGS84 origin used as LocalCartesian projector reference.
 
@@ -41,3 +42,5 @@
     dir_head_scale: 0.35
     dir_width_scale: 0.18
     dir_stride: 30
+    # HH_260413: 0 keeps one-shot static marker publish (transient_local for late RViz joiners).
+    visualization_republish_period_sec: 0.0

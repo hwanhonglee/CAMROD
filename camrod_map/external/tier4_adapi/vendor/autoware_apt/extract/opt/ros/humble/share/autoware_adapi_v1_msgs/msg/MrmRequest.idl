@@ -1,0 +1,25 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from autoware_adapi_v1_msgs/system/msg/MrmRequest.msg
+// generated code does not contain a copyright notice
+
+
+module autoware_adapi_v1_msgs {
+  module msg {
+    module MrmRequest_Constants {
+      const uint16 UNKNOWN = 0;
+      @verbatim (language="comment", text=
+        "Cancel the MRM request.")
+      const uint16 CANCEL = 1;
+      @verbatim (language="comment", text=
+        "Delegate the selection of MRM behavior to Autoware.")
+      const uint16 DELEGATE = 2;
+    };
+    struct MrmRequest {
+      @verbatim (language="comment", text=
+        "The identifier of the request sender.")
+      string sender;
+
+      uint16 strategy;
+    };
+  };
+};

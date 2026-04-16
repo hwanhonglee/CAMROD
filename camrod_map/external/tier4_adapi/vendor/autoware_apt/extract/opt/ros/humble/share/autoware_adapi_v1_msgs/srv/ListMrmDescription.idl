@@ -1,0 +1,19 @@
+// generated from rosidl_adapter/resource/srv.idl.em
+// with input from autoware_adapi_v1_msgs/system/srv/ListMrmDescription.srv
+// generated code does not contain a copyright notice
+
+#include "autoware_adapi_v1_msgs/msg/MrmDescription.idl"
+#include "autoware_adapi_v1_msgs/msg/ResponseStatus.idl"
+
+module autoware_adapi_v1_msgs {
+  module srv {
+    struct ListMrmDescription_Request {
+      uint8 structure_needs_at_least_one_member;
+    };
+    struct ListMrmDescription_Response {
+      sequence<autoware_adapi_v1_msgs::msg::MrmDescription> descriptions;
+
+      autoware_adapi_v1_msgs::msg::ResponseStatus status;
+    };
+  };
+};

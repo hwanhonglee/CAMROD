@@ -254,7 +254,7 @@ global_costmap:
 bt_navigator:
   ros__parameters:
     use_sim_time: False
-    # 2026-02-23: Prevent fallback to default "base_link" in BT transform helpers.
+    # 2026-02-23: Prevent fallback to default "robot_base_link" in BT transform helpers.
     global_frame: map
     robot_base_frame: robot_base_link
     odom_topic: /localization/odometry/filtered

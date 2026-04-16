@@ -26,6 +26,7 @@
       z: 0.2
       roll: 0.0
       pitch: 0.0
+      # HH_260413: Align IMU frame to robot_base_link heading (mount calibration).
       yaw: 0.0
 
     gnss:

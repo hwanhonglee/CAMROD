@@ -13,8 +13,12 @@
   <depend>rclcpp</depend>
   <depend>ros2launch</depend>
   <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
   <!-- HH_260326: avg_msgs is used across module interfaces at build/runtime. -->
   <depend>avg_msgs</depend>
+  <exec_depend>rosidl_runtime_py</exec_depend>
   <exec_depend>sensor_msgs_py</exec_depend>
   <!-- HH_260109 Launch-time dependencies for fused localization and sensing pipeline. -->
   <exec_depend>camrod_sensor_kit</exec_depend>

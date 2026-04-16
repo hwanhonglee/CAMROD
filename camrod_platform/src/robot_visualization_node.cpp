@@ -66,6 +66,18 @@ avg_msgs::msg::Quaternion quaternionFromRPY(double roll, double pitch, double ya
   return quat;
 }
 
+// Normalizes yaw to [-pi, pi].
+double normalizeAngle(double angle)
+{
+  while (angle > M_PI) {
+    angle -= 2.0 * M_PI;
+  }
+  while (angle < -M_PI) {
+    angle += 2.0 * M_PI;
+  }
+  return angle;
+}
+
 }  // namespace
 
 struct PoseRPY
@@ -109,6 +121,10 @@ public:
     use_gnss_fallback_ = declare_parameter<bool>("use_gnss_fallback", true);
     localization_pose_timeout_sec_ = declare_parameter<double>(
       "localization_pose_timeout_sec", 1.0);
+    // HH_260409: Optional heading offset for platform visualization alignment.
+    // Negative value rotates clockwise in ROS yaw convention.
+    heading_yaw_offset_deg_ = declare_parameter<double>("heading_yaw_offset_deg", 0.0);
+    heading_yaw_offset_rad_ = heading_yaw_offset_deg_ * M_PI / 180.0;
     const double publish_rate_hz = declare_parameter<double>("publish_rate_hz", 1.0);
     body_scale_factor_ = declare_parameter<double>("body_scale_factor", 1.0);
     planning_boundary_margin_ = declare_parameter<double>("planning_boundary_margin", 0.3);
@@ -122,6 +138,8 @@ public:
     base_pose_.roll = declare_parameter<double>("base_pose.roll", 0.0);
     base_pose_.pitch = declare_parameter<double>("base_pose.pitch", 0.0);
     base_pose_.yaw = declare_parameter<double>("base_pose.yaw", 0.0);
+    // HH_260409: Keep startup base yaw aligned with configured heading offset.
+    base_pose_.yaw = normalizeAngle(base_pose_.yaw + heading_yaw_offset_rad_);
 
     auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
     marker_pub_ = create_publisher<avg_msgs::msg::MarkerArray>(marker_topic_, qos);
@@ -197,7 +215,7 @@ private:
     const avg_msgs::msg::Quaternion base_orientation = tf2::toMsg(base_tf);
     const avg_msgs::msg::Point base_translation =
       makePoint(base_pose_.x, base_pose_.y, base_pose_.z);
-    // HH_260114 Reusable map->base_link transform lambda shared by sensors/bounds/rings.
+    // HH_260114 Reusable map->robot_base_link transform lambda shared by sensors/bounds/rings.
     const auto transformLocal = [&](double x, double y, double z) {
       const tf2::Vector3 rotated = base_rot * tf2::Vector3(x, y, z);
       return makePoint(
@@ -488,7 +506,8 @@ private:
     tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
     base_pose_.roll = roll;
     base_pose_.pitch = pitch;
-    base_pose_.yaw = yaw;
+    // HH_260409: Apply configurable platform heading offset (e.g., -90deg clockwise).
+    base_pose_.yaw = normalizeAngle(yaw + heading_yaw_offset_rad_);
     publishBaseTransform();
     publishMarkers();
     // HH_260304-00:00 Suppress per-fix initial-pose spam while GNSS pose is streaming.
@@ -500,6 +519,10 @@ private:
     auto converted = std::make_shared<avg_msgs::msg::PoseWithCovarianceStamped>();
     converted->header = msg->header;
     converted->pose.pose = msg->pose;
+    // HH_260408: Preserve latest localization yaw for GNSS fallback path.
+    // GNSS pose often has identity orientation, so keep IMU/localization heading.
+    last_localization_orientation_ = msg->pose.orientation;
+    has_localization_orientation_ = true;
     onInitialPose(converted);
     last_localization_pose_stamp_ = this->get_clock()->now();
     has_localization_pose_ = true;
@@ -522,6 +545,11 @@ private:
     auto converted = std::make_shared<avg_msgs::msg::PoseWithCovarianceStamped>();
     converted->header = msg->header;
     converted->pose.pose = msg->pose;
+    // HH_260408: Keep heading stable while using GNSS position fallback.
+    // Without this, marker yaw can snap back to identity orientation.
+    if (has_localization_orientation_) {
+      converted->pose.pose.orientation = last_localization_orientation_;
+    }
     onInitialPose(converted);
   }
 
@@ -583,8 +611,12 @@ private:
   std::string gnss_pose_topic_;
   bool use_gnss_fallback_{true};
   double localization_pose_timeout_sec_{1.0};
+  double heading_yaw_offset_deg_{0.0};
+  double heading_yaw_offset_rad_{0.0};
   bool has_localization_pose_{false};
   rclcpp::Time last_localization_pose_stamp_{0, 0, RCL_ROS_TIME};
+  avg_msgs::msg::Quaternion last_localization_orientation_{};
+  bool has_localization_orientation_{false};
 
   rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::Publisher<avg_msgs::msg::PolygonStamped>::SharedPtr boundary_pub_;

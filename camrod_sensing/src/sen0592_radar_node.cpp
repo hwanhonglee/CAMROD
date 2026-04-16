@@ -187,13 +187,20 @@ public:
 
     sensors_.resize(n);
     pubs_.resize(n);
+    // HH_260414: Keep per-sensor publish stamps monotonic to avoid TF extrapolation
+    // bursts when system time jitters backwards briefly.
+    last_range_pub_stamp_.assign(n, rclcpp::Time(0, 0, this->get_clock()->get_clock_type()));
+
+    // HH_260414: SensorDataQoS (best-effort, shallow queue) reduces stale backlog
+    // delivery to RViz/message_filters and helps suppress flicker/extrapolation spikes.
+    auto range_qos = rclcpp::SensorDataQoS().keep_last(5);
 
     for (size_t i = 0; i < n; ++i) {
       sensors_[i].name = sensor_names_[i];
       sensors_[i].frame_id = frame_ids_[i];
       sensors_[i].port = ports_[i];
       sensors_[i].fd = -1;
-      pubs_[i] = this->create_publisher<avg_msgs::msg::Range>(topics_[i], 10);
+      pubs_[i] = this->create_publisher<avg_msgs::msg::Range>(topics_[i], range_qos);
     }
 
     stop_.store(false);
@@ -309,7 +316,14 @@ private:
   void publish_range(size_t idx, int mm)
   {
     auto msg = avg_msgs::msg::Range();
-    msg.header.stamp = this->now();
+    auto stamp = this->get_clock()->now();
+    if (idx < last_range_pub_stamp_.size() && stamp <= last_range_pub_stamp_[idx]) {
+      stamp = last_range_pub_stamp_[idx] + rclcpp::Duration::from_nanoseconds(1);
+    }
+    if (idx < last_range_pub_stamp_.size()) {
+      last_range_pub_stamp_[idx] = stamp;
+    }
+    msg.header.stamp = stamp;
     msg.header.frame_id = sensors_[idx].frame_id;
 
     // Ultrasonic
@@ -458,6 +472,7 @@ private:
 
   std::vector<SensorRuntime> sensors_;
   std::vector<rclcpp::Publisher<avg_msgs::msg::Range>::SharedPtr> pubs_;
+  std::vector<rclcpp::Time> last_range_pub_stamp_;
   rclcpp::Publisher<AvgSensingRadar>::SharedPtr avg_radar_pub_;
   AvgSensingRadar avg_radar_msg_;
 

@@ -35,7 +35,8 @@ public:
     gnss_pose_cov_topic_ = declare_parameter<std::string>(
       "gnss_pose_cov_topic", "/sensing/gnss/pose_with_covariance");
     imu_topic_ = declare_parameter<std::string>("imu_topic", "/sensing/imu/data");
-    wheel_topic_ = declare_parameter<std::string>("wheel_topic", "/platform/wheel/odometry");
+    // HH_260410: Monitor uses the same unified wheel topic as EKF/ESKF.
+    wheel_topic_ = declare_parameter<std::string>("wheel_topic", "/platform/status/wheel_odometry");
 
     gnss_timeout_sec_ = declare_parameter<double>("gnss_timeout_sec", 1.0);
     imu_timeout_sec_ = declare_parameter<double>("imu_timeout_sec", 0.5);

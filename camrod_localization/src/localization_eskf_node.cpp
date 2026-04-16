@@ -1,9 +1,11 @@
 #include <chrono>
+#include <cmath>
 #include <optional>
 #include <string>
 
 #include <Eigen/Dense>
 
+#include <builtin_interfaces/msg/time.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
 #include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <avg_msgs/msg/transform_stamped.hpp>
@@ -48,6 +50,14 @@ tf2::Quaternion yawToQuat(double yaw)
   q.setRPY(0.0, 0.0, yaw);
   return q;
 }
+
+// Converts quaternion to yaw (rad).
+double yawFromQuat(const geometry_msgs::msg::Quaternion & q)
+{
+  const double siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
+  const double cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+  return std::atan2(siny_cosp, cosy_cosp);
+}
 }  // namespace
 
 class LocalizationEskfNode : public rclcpp::Node
@@ -64,12 +74,15 @@ public:
     imu_topic_ = declare_parameter<std::string>("imu_topic", "/sensing/imu/data");
     gnss_topic_ = declare_parameter<std::string>(
       "gnss_topic", "/sensing/gnss/pose_with_covariance");
+    // HH_260410: Keep wheel source naming consistent under /platform/status namespace.
     wheel_topic_ = declare_parameter<std::string>(
-      "wheel_topic", "/platform/wheel/odometry");
+      "wheel_topic", "/platform/status/wheel_odometry");
     publish_tf_ = declare_parameter<bool>("publish_tf", true);
     // HH_260327: Keep map->odom TF authority in launch-level static publisher to
     // avoid duplicated map->odom broadcasters when switching filters.
     publish_map_to_odom_tf_ = declare_parameter<bool>("publish_map_to_odom_tf", true);
+    // HH_260415: Stamp TF with node ROS time to avoid TF extrapolation when sensor clocks drift.
+    tf_use_node_time_ = declare_parameter<bool>("tf_use_node_time", true);
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
     pose_cov_topic_ = declare_parameter<std::string>(
       "pose_cov_topic", "/localization/pose_with_covariance");
@@ -82,6 +95,18 @@ public:
     publish_localization_status_ = declare_parameter<bool>("publish_localization_status", false);
     localization_status_topic_ = declare_parameter<std::string>(
       "localization_status_topic", "/localization/status");
+    // HH_260413: Separate IMU mount-frame yaw alignment from visualization offset.
+    // This parameter corrects filter math (not RViz marker orientation).
+    imu_to_base_yaw_deg_ = declare_parameter<double>("imu_to_base_yaw_deg", 0.0);
+    imu_to_base_yaw_rad_ = imu_to_base_yaw_deg_ * M_PI / 180.0;
+    // HH_260416: IMU sign correction knobs for mirrored axis cases.
+    // +1.0 keeps direction, -1.0 inverts direction.
+    imu_accel_x_sign_ = declare_parameter<double>("imu_accel_x_sign", 1.0);
+    imu_accel_y_sign_ = declare_parameter<double>("imu_accel_y_sign", 1.0);
+    imu_gyro_z_sign_ = declare_parameter<double>("imu_gyro_z_sign", 1.0);
+    imu_yaw_sign_ = declare_parameter<double>("imu_yaw_sign", 1.0);
+    use_imu_orientation_for_yaw_init_ = declare_parameter<bool>(
+      "use_imu_orientation_for_yaw_init", true);
 
     gnss_gate_mahalanobis_ = declare_parameter<double>("gnss_gate_mahalanobis", 9.0);
     wheel_gate_mahalanobis_ = declare_parameter<double>("wheel_gate_mahalanobis", 9.0);
@@ -100,6 +125,28 @@ public:
 
     min_imu_dt_ = declare_parameter<double>("min_imu_dt", 1e-4);
     max_imu_dt_ = declare_parameter<double>("max_imu_dt", 0.2);
+    // HH_260413: Freeze yaw integration when platform is stopped to reduce gyro drift.
+    freeze_yaw_when_stopped_ = declare_parameter<bool>("freeze_yaw_when_stopped", true);
+    // HH_260415: When stopped, align filter yaw to IMU absolute orientation instead of freezing.
+    align_yaw_to_imu_when_stopped_ = declare_parameter<bool>(
+      "align_yaw_to_imu_when_stopped", true);
+    stop_speed_threshold_ = declare_parameter<double>("stop_speed_threshold", 0.05);
+    stop_hold_sec_ = declare_parameter<double>("stop_hold_sec", 1.0);
+
+    // HH_260413: GNSS profile auto-switch (normal <-> unstable) for realtime jitter.
+    gnss_profile_mode_ = declare_parameter<std::string>("gnss_profile_mode", "auto");
+    gnss_profile_switch_reject_count_ = declare_parameter<int>("gnss_profile_switch_reject_count", 5);
+    gnss_profile_switch_accept_count_ = declare_parameter<int>("gnss_profile_switch_accept_count", 8);
+    gnss_profile_normal_gate_ = declare_parameter<double>(
+      "gnss_profile_normal_gate_mahalanobis", gnss_gate_mahalanobis_);
+    gnss_profile_unstable_gate_ = declare_parameter<double>(
+      "gnss_profile_unstable_gate_mahalanobis", gnss_gate_mahalanobis_);
+    gnss_profile_normal_noise_ = declare_parameter<double>(
+      "gnss_profile_normal_position_noise", gnss_pos_noise_);
+    gnss_profile_unstable_noise_ = declare_parameter<double>(
+      "gnss_profile_unstable_position_noise", gnss_pos_noise_);
+
+    initGnssProfile();
 
     // Publishers
     odom_pub_ = create_publisher<avg_msgs::msg::Odometry>(odom_topic_, rclcpp::QoS(10));
@@ -152,6 +199,22 @@ private:
     Eigen::Vector3d gyro(msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z);
     ImuSample sample{stamp, acc, gyro};
 
+    if (use_imu_orientation_for_yaw_init_) {
+      const auto & q = msg->orientation;
+      const double norm2 = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+      if (norm2 > 1e-12) {
+        const double inv_norm = 1.0 / std::sqrt(norm2);
+        geometry_msgs::msg::Quaternion qn;
+        qn.x = q.x * inv_norm;
+        qn.y = q.y * inv_norm;
+        qn.z = q.z * inv_norm;
+        qn.w = q.w * inv_norm;
+        last_imu_base_yaw_ = normalizeYaw(
+          imu_yaw_sign_ * yawFromQuat(qn) + imu_to_base_yaw_rad_);
+        has_imu_base_yaw_ = true;
+      }
+    }
+
     if (!last_imu_) {
       last_imu_ = sample;
       last_pub_stamp_ = stamp;
@@ -194,7 +257,7 @@ private:
       state_.setZero();
       state_(0) = z.x();
       state_(1) = z.y();
-      state_(4) = normalizeYaw(state_(4));
+      state_(4) = yawForInitialization();
 
       covariance_.setIdentity();
       covariance_ *= 10.0;
@@ -230,7 +293,7 @@ private:
         state_.setZero();
         state_(0) = z.x();
         state_(1) = z.y();
-        state_(4) = normalizeYaw(state_(4));
+        state_(4) = yawForInitialization();
 
         covariance_.setIdentity();
         covariance_ *= 10.0;
@@ -248,6 +311,7 @@ private:
       diag.gnss_update_accepted = false;
       last_diag_ = diag;
       diag_pub_->publish(diag);
+      updateGnssProfile(false);
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
         "GNSS rejected (mahal=%.2f > gate=%.2f)", mahal, gnss_gate_mahalanobis_);
       return;
@@ -264,6 +328,7 @@ private:
     diag.covariance_trace = covariance_.trace();
     last_diag_ = diag;
     diag_pub_->publish(diag);
+    updateGnssProfile(true);
   }
 
   // Handles the `onWheelOdom` callback.
@@ -273,6 +338,7 @@ private:
       return;
     }
     const double v_meas = msg->twist.twist.linear.x;
+    updateStopState(v_meas, msg->header.stamp);
     Eigen::Matrix<double, 1, 8> H = Eigen::Matrix<double, 1, 8>::Zero();
     const double yaw = state_(4);
     const double cos_yaw = std::cos(yaw);
@@ -335,10 +401,18 @@ private:
     const double yaw = state_(4);
     const double cos_yaw = std::cos(yaw);
     const double sin_yaw = std::sin(yaw);
+    const double mount_cos = std::cos(imu_to_base_yaw_rad_);
+    const double mount_sin = std::sin(imu_to_base_yaw_rad_);
 
-    const double gyro_z = sample.gyro.z() - state_(5);
-    const double ax = sample.acc.x() - state_(6);
-    const double ay = sample.acc.y() - state_(7);
+    double gyro_z = imu_gyro_z_sign_ * sample.gyro.z() - state_(5);
+    if (freeze_yaw_when_stopped_ && is_stopped_) {
+      gyro_z = 0.0;
+    }
+    const double imu_ax = imu_accel_x_sign_ * sample.acc.x() - state_(6);
+    const double imu_ay = imu_accel_y_sign_ * sample.acc.y() - state_(7);
+    // HH_260413: Rotate IMU XY acceleration into robot-base frame before world projection.
+    const double ax = mount_cos * imu_ax - mount_sin * imu_ay;
+    const double ay = mount_sin * imu_ax + mount_cos * imu_ay;
 
     Eigen::Vector2d acc_world;
     acc_world.x() = cos_yaw * ax - sin_yaw * ay;
@@ -353,7 +427,13 @@ private:
     state_(1) = pos_new.y();
     state_(2) = vel_new.x();
     state_(3) = vel_new.y();
-    state_(4) = normalizeYaw(state_(4) + gyro_z * dt);
+    double yaw_new = normalizeYaw(state_(4) + gyro_z * dt);
+    if (freeze_yaw_when_stopped_ && is_stopped_ &&
+        align_yaw_to_imu_when_stopped_ && has_imu_base_yaw_) {
+      // HH_260415: Keep yaw synchronized with IMU quaternion while platform is stationary.
+      yaw_new = last_imu_base_yaw_;
+    }
+    state_(4) = yaw_new;
 
     // Covariance propagation (simple linearized model).
     Matrix8d F = Matrix8d::Identity();
@@ -405,7 +485,8 @@ private:
     odom.pose.pose.orientation.w = q.w();
     odom.twist.twist.linear.x = state_(2);
     odom.twist.twist.linear.y = state_(3);
-    odom.twist.twist.angular.z = last_imu_ ? (last_imu_->gyro.z() - state_(5)) : 0.0;
+    odom.twist.twist.angular.z =
+      last_imu_ ? (imu_gyro_z_sign_ * last_imu_->gyro.z() - state_(5)) : 0.0;
 
     // Fill 6x6 covariance (position x/y, yaw).
     for (double & c : odom.pose.covariance) c = 0.0;
@@ -470,10 +551,16 @@ private:
   // Publishes `Tf` output.
   void publishTf(const avg_msgs::msg::Odometry & odom)
   {
+    builtin_interfaces::msg::Time tf_stamp = odom.header.stamp;
+    if (tf_use_node_time_) {
+      const rclcpp::Time now_time = this->get_clock()->now();
+      tf_stamp = now_time;
+    }
     // Publish only odom->base by default. map->odom is handled by a single
     // launch-level static publisher for EKF/ESKF consistency.
     avg_msgs::msg::TransformStamped odom_to_base;
     odom_to_base.header = odom.header;
+    odom_to_base.header.stamp = tf_stamp;
     odom_to_base.child_frame_id = odom.child_frame_id;
     odom_to_base.transform.translation.x = odom.pose.pose.position.x;
     odom_to_base.transform.translation.y = odom.pose.pose.position.y;
@@ -483,7 +570,7 @@ private:
     std::vector<avg_msgs::msg::TransformStamped> tfs;
     if (publish_map_to_odom_tf_) {
       avg_msgs::msg::TransformStamped map_to_odom;
-      map_to_odom.header.stamp = odom.header.stamp;
+      map_to_odom.header.stamp = tf_stamp;
       map_to_odom.header.frame_id = map_frame_;
       map_to_odom.child_frame_id = odom_frame_;
       map_to_odom.transform.translation.x = 0.0;
@@ -494,6 +581,94 @@ private:
     }
     tfs.push_back(odom_to_base);
     tf_broadcaster_->sendTransform(tfs);
+  }
+
+  // Chooses yaw seed for GNSS-based initialization/re-initialization.
+  double yawForInitialization() const
+  {
+    if (use_imu_orientation_for_yaw_init_ && has_imu_base_yaw_) {
+      return last_imu_base_yaw_;
+    }
+    return normalizeYaw(state_(4));
+  }
+
+  // Updates stop-state based on wheel speed so we can clamp yaw drift at standstill.
+  void updateStopState(double v_meas, const rclcpp::Time & stamp)
+  {
+    if (std::abs(v_meas) >= stop_speed_threshold_) {
+      last_motion_time_ = stamp;
+      is_stopped_ = false;
+      return;
+    }
+    const double stopped_for = (stamp - last_motion_time_).seconds();
+    if (stopped_for >= stop_hold_sec_) {
+      is_stopped_ = true;
+    }
+  }
+
+  enum class GnssProfile
+  {
+    kNormal,
+    kUnstable
+  };
+
+  // Initializes GNSS profile selection (normal/unstable/auto).
+  void initGnssProfile()
+  {
+    if (gnss_profile_mode_ == "normal") {
+      applyGnssProfile(GnssProfile::kNormal, "manual_normal");
+      return;
+    }
+    if (gnss_profile_mode_ == "unstable") {
+      applyGnssProfile(GnssProfile::kUnstable, "manual_unstable");
+      return;
+    }
+    applyGnssProfile(GnssProfile::kNormal, "auto_init");
+  }
+
+  // Applies GNSS profile parameters for gate/noise tuning.
+  void applyGnssProfile(GnssProfile profile, const std::string & reason)
+  {
+    if (gnss_profile_ == profile) {
+      return;
+    }
+    gnss_profile_ = profile;
+    if (profile == GnssProfile::kNormal) {
+      gnss_gate_mahalanobis_ = gnss_profile_normal_gate_;
+      gnss_pos_noise_ = gnss_profile_normal_noise_;
+    } else {
+      gnss_gate_mahalanobis_ = gnss_profile_unstable_gate_;
+      gnss_pos_noise_ = gnss_profile_unstable_noise_;
+    }
+    // HH_260413: Log live GNSS profile changes for debugging in real-sensor runs.
+    RCLCPP_INFO(
+      get_logger(),
+      "GNSS profile switched to %s (%s): gate=%.2f noise=%.2f",
+      (profile == GnssProfile::kNormal) ? "normal" : "unstable",
+      reason.c_str(), gnss_gate_mahalanobis_, gnss_pos_noise_);
+  }
+
+  // Updates GNSS profile based on consecutive accept/reject streaks.
+  void updateGnssProfile(bool accepted)
+  {
+    if (gnss_profile_mode_ != "auto") {
+      return;
+    }
+    if (accepted) {
+      gnss_accept_streak_++;
+      gnss_reject_streak_ = 0;
+      if (gnss_profile_ == GnssProfile::kUnstable &&
+          gnss_accept_streak_ >= gnss_profile_switch_accept_count_) {
+        applyGnssProfile(GnssProfile::kNormal, "auto_accept_streak");
+      }
+      return;
+    }
+    gnss_reject_streak_++;
+    gnss_accept_streak_ = 0;
+    if (gnss_profile_ == GnssProfile::kNormal &&
+        gnss_reject_streak_ >= gnss_profile_switch_reject_count_) {
+      applyGnssProfile(GnssProfile::kUnstable, "auto_reject_streak");
+    }
   }
 
   // Parameters / topics
@@ -511,7 +686,15 @@ private:
   std::string localization_status_topic_;
   bool publish_tf_{true};
   bool publish_map_to_odom_tf_{true};
+  bool tf_use_node_time_{true};
   bool publish_localization_status_{false};
+  double imu_to_base_yaw_deg_{0.0};
+  double imu_to_base_yaw_rad_{0.0};
+  double imu_accel_x_sign_{1.0};
+  double imu_accel_y_sign_{1.0};
+  double imu_gyro_z_sign_{1.0};
+  double imu_yaw_sign_{1.0};
+  bool use_imu_orientation_for_yaw_init_{true};
 
   double gnss_gate_mahalanobis_{9.0};
   bool reinit_on_gnss_reject_{true};
@@ -526,6 +709,23 @@ private:
   double wheel_speed_noise_{0.2};
   double min_imu_dt_{1e-4};
   double max_imu_dt_{0.2};
+  bool freeze_yaw_when_stopped_{true};
+  bool align_yaw_to_imu_when_stopped_{true};
+  double stop_speed_threshold_{0.05};
+  double stop_hold_sec_{1.0};
+  bool is_stopped_{false};
+  rclcpp::Time last_motion_time_{0, 0, RCL_ROS_TIME};
+
+  std::string gnss_profile_mode_{"auto"};
+  int gnss_profile_switch_reject_count_{5};
+  int gnss_profile_switch_accept_count_{8};
+  double gnss_profile_normal_gate_{9.0};
+  double gnss_profile_unstable_gate_{9.0};
+  double gnss_profile_normal_noise_{1.5};
+  double gnss_profile_unstable_noise_{1.5};
+  int gnss_reject_streak_{0};
+  int gnss_accept_streak_{0};
+  GnssProfile gnss_profile_{GnssProfile::kNormal};
 
   // State: [px, py, vx, vy, yaw, b_gz, b_ax, b_ay]
   Vector8d state_;
@@ -548,6 +748,8 @@ private:
   AvgLocalizationStatusStream last_diag_;
   bool initialized_{false};
   bool wheel_initialized_{false};
+  bool has_imu_base_yaw_{false};
+  double last_imu_base_yaw_{0.0};
 };
 
 // Entry point for this executable.

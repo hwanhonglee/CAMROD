@@ -52,6 +52,7 @@ private:
   void loadParameters();
   bool loadMap();
   void publishVisualization();
+  void publishCachedVisualization();
   void publishAvgMapMessage(
     const avg_msgs::msg::MarkerArray & markers,
     const rclcpp::Time & stamp);
@@ -120,6 +121,10 @@ private:
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
   rclcpp::TimerBase::SharedPtr viz_timer_;
   bool logged_marker_stats_{false};
+  // HH_260413: Optional periodic re-publish period for static map markers.
+  // 0.0 disables timer and publishes once (transient_local keeps late subscribers synced).
+  double visualization_republish_period_sec_{0.0};
+  avg_msgs::msg::MarkerArray cached_markers_;
   bool publish_map_status_{false};
   std::string map_status_topic_{"/map/status"};
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
