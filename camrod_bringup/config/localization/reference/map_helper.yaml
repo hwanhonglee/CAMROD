@@ -19,7 +19,7 @@
     map_z_offset: 0.0
     flatten_to_ground: false
     # HH_260413: Throttle nearest-centerline lookup to reduce CPU under high-rate pose input.
-    centerline_min_update_period_sec: 0.05
+    centerline_min_update_period_s: 0.05
     centerline_min_displacement_m: 0.05
 
     # --------------------------------------------------------------------------

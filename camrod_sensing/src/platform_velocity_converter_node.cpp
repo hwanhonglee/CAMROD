@@ -9,7 +9,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <avg_msgs/msg/imu.hpp>
 
-namespace camping_cart::sensing
+namespace camrod::sensing
 {
 
 class PlatformVelocityConverterNode : public rclcpp::Node
@@ -148,13 +148,13 @@ private:
   bool imu_ready_{false};
 };
 
-}  // namespace camping_cart::sensing
+}  // namespace camrod::sensing
 
 // Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<camping_cart::sensing::PlatformVelocityConverterNode>());
+  rclcpp::spin(std::make_shared<camrod::sensing::PlatformVelocityConverterNode>());
   rclcpp::shutdown();
   return 0;
 }

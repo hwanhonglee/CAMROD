@@ -50,7 +50,7 @@ graph LR
   SENSING[camrod_sensing] --> PLAN
   PLAN --> PLATFORM[camrod_platform]
   PLAN --> SYSTEM[camrod_system]
-  PLAN --> API[camrod_api]
+  PLAN --> API[camrod_ui]
 ```
 
 ## Topic Summary

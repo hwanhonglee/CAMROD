@@ -145,7 +145,8 @@ public:
 
     max_position_jump_m_ = declare_parameter<double>("max_position_jump_m", 8.0);
     jump_reject_max_speed_mps_ = declare_parameter<double>("jump_reject_max_speed_mps", 20.0);
-    jump_reject_reset_sec_ = declare_parameter<double>("jump_reject_reset_sec", 2.0);
+    jump_reject_reset_s_ = declareDurationWithLegacy(
+      "jump_reject_reset_s", "jump_reject_reset_sec", 2.0);
 
     pose_cov_input_topic_ = declare_parameter<std::string>(
       "pose_cov_input_topic", "/sensing/gnss/pose");
@@ -181,7 +182,8 @@ public:
       "wheel_fallback_input_topic", "/rmp401/odom");
     wheel_fallback_input_type_ = normalizeWheelInputType(
       declare_parameter<std::string>("wheel_fallback_input_type", "nav_odom"));
-    wheel_primary_timeout_sec_ = declare_parameter<double>("wheel_primary_timeout_sec", 0.7);
+    wheel_primary_timeout_s_ = declareDurationWithLegacy(
+      "wheel_primary_timeout_s", "wheel_primary_timeout_sec", 0.7);
 
     yaw_offset_rad_ = deg2rad(yaw_offset_deg_);
     offset_lat_rad_ = deg2rad(offset_lat_deg_);
@@ -306,11 +308,31 @@ public:
         "wheel bridge configured: primary=(%s,%s) fallback=(%s,%s) timeout=%.2fs output=%s",
         wheel_input_topic_.c_str(), wheel_input_type_.c_str(),
         wheel_fallback_input_topic_.c_str(), wheel_fallback_input_type_.c_str(),
-        wheel_primary_timeout_sec_, wheel_output_topic_.c_str());
+        wheel_primary_timeout_s_, wheel_output_topic_.c_str());
     }
   }
 
 private:
+  double declareDurationWithLegacy(
+    const std::string & canonical_name,
+    const std::string & legacy_name,
+    const double default_value)
+  {
+    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
+    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
+    if (std::abs(canonical_value - default_value) > 1e-9) {
+      return canonical_value;
+    }
+    if (std::abs(legacy_value - default_value) > 1e-9) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter '%s' is deprecated. Use '%s' instead.",
+        legacy_name.c_str(), canonical_name.c_str());
+      return legacy_value;
+    }
+    return canonical_value;
+  }
+
   enum class WheelSource
   {
     kNone,
@@ -343,7 +365,7 @@ private:
       if (dt > 1e-3) {
         const double speed = dist / dt;
         if (dist > max_position_jump_m_ && speed > jump_reject_max_speed_mps_ &&
-            dt < jump_reject_reset_sec_) {
+            dt < jump_reject_reset_s_) {
           RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 2000,
             "Reject GNSS jump dist=%.3f speed=%.3f", dist, speed);
@@ -585,11 +607,11 @@ private:
     if (!seen_primary_wheel_) {
       return true;
     }
-    if (wheel_primary_timeout_sec_ <= 0.0) {
+    if (wheel_primary_timeout_s_ <= 0.0) {
       return false;
     }
     const double age = (this->now() - last_primary_wheel_rx_time_).seconds();
-    return age > wheel_primary_timeout_sec_;
+    return age > wheel_primary_timeout_s_;
   }
 
   void markPrimaryWheelRx()
@@ -681,7 +703,7 @@ private:
 
   double max_position_jump_m_{8.0};
   double jump_reject_max_speed_mps_{20.0};
-  double jump_reject_reset_sec_{2.0};
+  double jump_reject_reset_s_{2.0};
 
   bool has_last_position_{false};
   avg_msgs::msg::Point last_position_;
@@ -708,7 +730,7 @@ private:
   std::string wheel_input_topic_, wheel_output_topic_, wheel_nav_output_topic_;
   std::string wheel_odom_frame_, wheel_base_frame_, wheel_input_type_;
   std::string wheel_fallback_input_topic_, wheel_fallback_input_type_;
-  double wheel_primary_timeout_sec_{0.7};
+  double wheel_primary_timeout_s_{0.7};
   bool seen_primary_wheel_{false};
   rclcpp::Time last_primary_wheel_rx_time_{0, 0, RCL_ROS_TIME};
   bool seen_fallback_wheel_{false};

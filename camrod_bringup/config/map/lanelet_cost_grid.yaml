@@ -4,6 +4,9 @@
 # HH_260112 Align node parameter keys with /map namespace + short names.
 /map/lanelet_boundary_cost_grid:
   ros__parameters:
+    # HH_260424: Primary output disabled (primary_enable=false).
+    #   Secondary (centerline, /map/cost_grid/lanelet) handles all planning cost.
+    primary_enable: false
     # map_path / origin are intentionally injected from launch(map_info.yaml shared defaults).
     # Keep them out of this file to avoid duplicate reference sources.
     map_frame_id: "map"
@@ -16,7 +19,9 @@
     height: 600
     # 2026-02-11: Lane-only corridor width (meters). Increase if lane coverage is too narrow.
     centerline_half_width: 2.2
+    # Lowest cost value assigned to traversable regions.
     free_value: 0
+    # Highest obstacle cost value (interpreted as lethal by costmap layers).
     lethal_value: 100
     # 2026-02-11: Keep static base layer neutral to heading; dynamic bias belongs to path layer.
     direction_penalty: 0
@@ -66,15 +71,16 @@
     # 2026-02-27: Static lanelet base grid does not need per-pose/path rebuild.
     rebuild_on_pose: false
     rebuild_on_path: false
-    min_rebuild_period_sec: 0.2
+    min_rebuild_period_s: 0.2
     # HH_260109 Drive cost grid from fused localization pose.
     pose_topic: "/planning/lanelet_pose"
     path_topic: "/planning/global_path"
+    # Periodic republish interval in seconds (0 disables periodic republish).
     republish_period: 0.0
     # 2026-04-06: Secondary profile published from the same node.
     # Keeps planning_base behavior while reducing node count.
     secondary.enable: true
-    secondary.output_topic: "/map/cost_grid/planning_base"
+    secondary.output_topic: "/map/cost_grid/lanelet"
     secondary.cost_mode: "centerline"
     # HH_260412: Apply the same bounded window policy to planning_base output.
     secondary.resolution: 0.20

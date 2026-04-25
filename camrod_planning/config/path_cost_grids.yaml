@@ -26,13 +26,13 @@
     #   "bounds"     : lane boundaries only
     # HH_260304-00:00 Path mode = low cost on path, high cost elsewhere.
     cost_mode: "path"
-    # HH_260304-00:00 Let path-mode logic control default fill so planners can compute
-    # the first path (free until path, lethal after). Use -1 to disable override.
+    # HH_260424: High cost outside path strip — robot prefers staying on planned route.
     # outside_value options:
-    #   -1  : unknown outside lanelet/path (recommended with lanelet mask)
+    #   -1  : unknown (→ 0=free; path strip is MORE expensive than off-strip — wrong)
     #   0   : force free outside
+    #   80  : soft-lethal outside — off-route expensive, on-route preferred
     #   100 : force lethal outside
-    outside_value: -1
+    outside_value: 80
     # HH_260304-00:00 Render path grid only inside lanelet geometry (no rectangular background).
     # path_use_lanelet_mask options:
     #   true  : paint only lanelet area
@@ -88,11 +88,11 @@
     # HH_260316-00:00 Clear/rebuild against snapped goals only.
     goal_topic: "/planning/goal_pose_snapped"
     # HH_260304-00:00 Clear stale global-path cost immediately when the goal changes.
-    goal_fallback_holdoff_sec: 0.0
+    goal_fallback_holdoff_s: 0.0
     # HH_260311-00:00 Avoid transient empty-route clears between sparse global-path updates.
     # HH_260311-00:00 Keep route while planner publishes sparsely (goal-event driven).
     # Too-small timeout caused global marker drop/blink between valid plans.
-    primary_path_timeout_sec: 6.0
+    primary_path_timeout_s: 6.0
     # HH_260307-00:00 Keep last valid global path through transient empty updates.
     # This avoids marker blinking when planner briefly publishes an empty/intermediate path.
     ignore_empty_path: true
@@ -103,17 +103,17 @@
     # strict fresh-path filtering can reject valid replans when goal/path stamps
     # are slightly skewed, causing global-path markers to stop updating.
     drop_stale_path_after_goal: false
-    path_goal_stamp_slack_sec: 0.20
+    path_goal_stamp_slack_s: 0.20
     # Keep stale-route filter strict enough so goal updates do not reuse
     # previous-route strips that happen to end "near enough" on the same map.
     fresh_path_goal_match_tolerance_m: 4.0
     # Keep last valid global route cost grid until next global path arrives.
-    stale_path_timeout_sec: 0.0
+    stale_path_timeout_s: 0.0
     # HH_260330: Rebuild global helper primarily on path updates.
     rebuild_on_pose: false
     rebuild_on_path: true
     # HH_260330: Throttle rebuild and disable timer-loop to prevent planner starvation.
-    min_rebuild_period_sec: 0.15
+    min_rebuild_period_s: 0.15
     rebuild_on_timer: false
     # Keep publisher active through brief planner gaps.
     # When path is temporarily unavailable, publish lane-mask baseline instead of empty grid.
@@ -218,10 +218,10 @@
     # HH_260316-00:00 Clear/rebuild against snapped goals only.
     goal_topic: "/planning/goal_pose_snapped"
     # HH_260304-00:00 Clear stale local-path cost as soon as the local path is replaced.
-    goal_fallback_holdoff_sec: 0.0
+    goal_fallback_holdoff_s: 0.0
     # HH_260311-00:00 Keep local-path cost stable across short extractor gaps.
     # HH_260311-00:00 Avoid local-route flicker during short controller/extractor stalls.
-    primary_path_timeout_sec: 2.5
+    primary_path_timeout_s: 2.5
     # HH_260311-00:00 Do not clear local grid for transient empty local-path messages.
     ignore_empty_path: true
     # HH_260316-00:00 Switch local strip immediately when goal changes.
@@ -230,13 +230,13 @@
     # geometric rejection must be disabled for local path-cost updates.
     drop_stale_path_after_goal: false
     # HH_260315-00:00 Keep only short local hold to prevent flicker.
-    stale_path_timeout_sec: 0.6
+    stale_path_timeout_s: 0.6
     # HH_260305-00:00 Rebuild local cost on pose motion + path updates.
     rebuild_on_pose: true
     rebuild_on_path: true
     # HH_260330: Keep local updates responsive but avoid timer-driven hot loop.
     # HH_260413: Limit local path-cost rebuild rate to reduce costmap starvation.
-    min_rebuild_period_sec: 0.10
+    min_rebuild_period_s: 0.10
     rebuild_on_timer: false
     # HH_260316-00:00 Keep publisher active through short local-path gaps.
     allow_build_without_path: true

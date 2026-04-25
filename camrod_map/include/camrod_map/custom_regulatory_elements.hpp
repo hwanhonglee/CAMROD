@@ -4,7 +4,7 @@
 #include <lanelet2_core/primitives/Lanelet.h>
 #include <lanelet2_core/primitives/LineString.h>
 
-namespace camping_cart::map
+namespace camrod::map
 {
 
 // HH_251217 Minimal stub so that Lanelet parser accepts speed_bump regulatory elements.
@@ -29,8 +29,8 @@ public:
   }
 };
 
-}  // namespace camping_cart::map
+}  // namespace camrod::map
 
 // HH_251231: Register globally so Lanelet2 loader can construct "speed_bump".
-using SpeedBumpElement = camping_cart::map::SpeedBumpRegulatoryElement;
+using SpeedBumpElement = camrod::map::SpeedBumpRegulatoryElement;
 inline const lanelet::RegisterRegulatoryElement<SpeedBumpElement> reg_speed_bump{};

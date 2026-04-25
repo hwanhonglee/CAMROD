@@ -3,7 +3,8 @@
 # HH_260112 Align node parameter keys with /bringup namespace + short names.
 /bringup/fake_sensor_publisher:
   ros__parameters:
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
+    # Launch passes resolved map_path; keep YAML default empty to avoid host-specific hardcoding.
+    map_path: ""
     origin_lat: 36.8436194
     origin_lon: 128.0925490
     origin_alt: 0.0
@@ -18,7 +19,7 @@
     # When enabled, fake pose advances only from /platform/cmd_vel linear.x.
     use_cmd_vel_for_motion: true
     cmd_vel_motion_topic: "/platform/cmd_vel"
-    cmd_vel_timeout_sec: 0.5
+    cmd_vel_timeout_s: 0.5
     max_cmd_speed_mps: 2.5
     # HH_260330: Feed wheel_odometry_bridge input in sim so localization wheel
     # stream is available even without real /rmp401/odom hardware source.
@@ -34,11 +35,13 @@
     # Optional initial anchor on centerline path (better naming alias):
     # - start_from_pose=true  -> nearest point to (start_x,start_y)
     # - start_from_pose=false -> first point of stitched centerline path
-    start_from_pose: false
+    # HH_260423: Start near drop_zone for scenario validation (bringup sim).
+    start_from_pose: true
     # Legacy alias (kept for compatibility with older launch/scripts).
     use_start_pose: false
-    start_x: 0.0
-    start_y: 0.0
+    # HH_260423: Keep initial anchor near drop_zone from bringup map/drop_zones.yaml.
+    start_x: 16.8676
+    start_y: -117.408
     # 2026-02-02: Traverse all lanelet centerlines for a full-lap path.
     use_all_centerlines: true
     centerline_connect_max_gap: 5.0
@@ -49,6 +52,10 @@
     base_frame_id: "robot_base_link"
     obstacle_offset: 5.0
     obstacle_height: 0.5
+    # HH_260421: Publish synthetic obstacle cloud to both perception and
+    # filtered-lidar topics so sensing cost-grid can consume filtered points.
+    obstacle_cloud_topic: "/perception/obstacles"
+    lidar_filtered_topic: "/sensing/lidar/points_filtered"
     # Align incoming /localization/pose yaw to nearest global-path tangent.
     # Position is preserved; only yaw is replaced and published to output topic.
     localization_pose_yaw_align_enable: true
@@ -71,5 +78,11 @@
     # 2026-02-02 11:05 Centerline resample step (m) when synthesizing from bounds.
     centerline_step: 1.0
     # 2026-03-03: Hold vehicle still at startup so GNSS/ESKF can settle before motion begins.
-    startup_hold_sec: 5.0
+    startup_hold_s: 5.0
+    # HH_260422: GNSS failure simulation for DR fallback testing.
+    # gnss_failure_after_s: seconds from startup when GNSS NavSatFix stops. -1 = never.
+    # gnss_recovery_after_s: seconds from startup when GNSS resumes. -1 = never recovers.
+    # Example: failure_after=15, recovery_after=45 -> GNSS off for 30s then back on.
+    gnss_failure_after_s: 25.0
+    gnss_recovery_after_s: 55.0
     # HH_260109 Fake sensors follow lanelet centerline in map frame.

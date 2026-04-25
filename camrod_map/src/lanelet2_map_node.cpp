@@ -20,7 +20,7 @@
 #include <avg_msgs/msg/marker.hpp>
 #include <avg_msgs/msg/marker_array.hpp>
 
-namespace camping_cart
+namespace camrod
 {
 namespace map
 {
@@ -128,10 +128,10 @@ Lanelet2MapNode::Lanelet2MapNode()
 
   // HH_260413: Keep static map marker computation one-shot by default.
   // Recompute on timer only when explicitly requested through parameter.
-  if (visualization_republish_period_sec_ > 0.0) {
+  if (visualization_republish_period_s_ > 0.0) {
     viz_timer_ = this->create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::duration<double>(visualization_republish_period_sec_)),
+        std::chrono::duration<double>(visualization_republish_period_s_)),
       std::bind(&Lanelet2MapNode::publishCachedVisualization, this));
   }
 
@@ -156,8 +156,20 @@ void Lanelet2MapNode::loadParameters()
   config_.dir_stride = static_cast<std::size_t>(this->declare_parameter<int>("dir_stride", 30));
   // HH_260114 Default keeps source z; enable to flatten to ground.
   align_z_to_ground_ = this->declare_parameter<bool>("align_z_to_ground", false);
-  visualization_republish_period_sec_ = this->declare_parameter<double>(
+  visualization_republish_period_s_ = this->declare_parameter<double>(
+    "visualization_republish_period_s", 0.0);
+  const double legacy_visualization_republish_period_sec = this->declare_parameter<double>(
     "visualization_republish_period_sec", 0.0);
+  if (
+    std::abs(visualization_republish_period_s_ - 0.0) < 1e-9 &&
+    std::abs(legacy_visualization_republish_period_sec - 0.0) > 1e-9)
+  {
+    RCLCPP_WARN(
+      get_logger(),
+      "Parameter 'visualization_republish_period_sec' is deprecated. "
+      "Use 'visualization_republish_period_s' instead.");
+    visualization_republish_period_s_ = legacy_visualization_republish_period_sec;
+  }
   publish_map_status_ = this->declare_parameter<bool>("publish_map_status", false);
   map_status_topic_ = this->declare_parameter<std::string>("map_status_topic", "/map/status");
 }
@@ -1028,13 +1040,13 @@ void Lanelet2MapNode::publishAvgMapMessage(
 }
 
 }  // namespace map
-}  // namespace camping_cart
+}  // namespace camrod
 
 // Entry point for this executable.
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<camping_cart::map::Lanelet2MapNode>());
+  rclcpp::spin(std::make_shared<camrod::map::Lanelet2MapNode>());
   rclcpp::shutdown();
   return 0;
 }

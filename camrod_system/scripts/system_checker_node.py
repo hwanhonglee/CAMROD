@@ -5,7 +5,6 @@ import time
 
 import rclpy
 from rclpy.node import Node
-from rclpy.parameter import Parameter
 
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 
@@ -32,10 +31,21 @@ class SystemChecker(Node):
     def __init__(self):
         super().__init__("system_checker")
         self.check_period_s = self.declare_parameter("check_period_s", 1.0).value
-        self.startup_grace_sec = float(self.declare_parameter("startup_grace_sec", 6.0).value)
-        # HH_260330: Humble-safe typed declaration for string arrays.
-        self.declare_parameter("required_nodes", Parameter.Type.STRING_ARRAY)
-        self.declare_parameter("required_topics", Parameter.Type.STRING_ARRAY)
+        # Canonical: startup_grace_s / Legacy: startup_grace_sec
+        startup_grace_s = float(self.declare_parameter("startup_grace_s", 6.0).value)
+        startup_grace_sec_legacy = float(
+            self.declare_parameter("startup_grace_sec", 6.0).value
+        )
+        if startup_grace_s == 6.0 and startup_grace_sec_legacy != 6.0:
+            self.get_logger().warn(
+                "Parameter 'startup_grace_sec' is deprecated. Use 'startup_grace_s'."
+            )
+            startup_grace_s = startup_grace_sec_legacy
+        self.startup_grace_s = startup_grace_s
+        # HH_260424: Use empty-array defaults so standalone execution works
+        # even when no parameter file is provided.
+        self.declare_parameter("required_nodes", [])
+        self.declare_parameter("required_topics", [])
         self.required_nodes = [
             _normalize_name(n)
             for n in self.get_parameter("required_nodes").get_parameter_value().string_array_value
@@ -69,7 +79,7 @@ class SystemChecker(Node):
 
         missing_nodes = [n for n in self.required_nodes if n not in node_names]
         missing_topics = [t for t in self.required_topics if t not in topic_names]
-        in_startup_grace = (time.time() - self._start_t) < self.startup_grace_sec
+        in_startup_grace = (time.time() - self._start_t) < self.startup_grace_s
 
         now = time.time()
         if (missing_nodes or missing_topics) and not in_startup_grace:

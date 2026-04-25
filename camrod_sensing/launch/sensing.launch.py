@@ -8,7 +8,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, Grou
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import PushRosNamespace
+from launch_ros.actions import Node, PushRosNamespace
 
 
 def generate_launch_description():
@@ -32,6 +32,7 @@ def generate_launch_description():
         "lidar_cost_grid_param_file": os.path.join(sensing_share, "config", "lidar", "cost_grid.yaml"),
         "radar_sensor_param_file": os.path.join(sensing_share, "config", "radar", "sen0592_radar.yaml"),
         "radar_cost_grid_param_file": os.path.join(sensing_share, "config", "radar", "cost_grid.yaml"),
+        "inflation_cost_grid_param_file": os.path.join(sensing_share, "config", "inflation_cost_grid.yaml"),
         "vanjee_config_path": os.path.join(sensing_share, "config", "lidar", "vanjee", "config.yaml"),
     }
 
@@ -47,6 +48,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_radar_cost_grid", default_value="true"),
         DeclareLaunchArgument("enable_lidar_driver", default_value="true"),
         DeclareLaunchArgument("enable_lidar_cost_grid", default_value="true"),
+        DeclareLaunchArgument("enable_inflation_cost_grid", default_value="true"),
         DeclareLaunchArgument("enable_vanjee_static_tf", default_value="false"),
         DeclareLaunchArgument("enable_ntrip", default_value="true"),
 
@@ -63,6 +65,7 @@ def generate_launch_description():
         DeclareLaunchArgument("lidar_cost_grid_param_file", default_value=default_paths["lidar_cost_grid_param_file"]),
         DeclareLaunchArgument("radar_sensor_param_file", default_value=default_paths["radar_sensor_param_file"]),
         DeclareLaunchArgument("radar_cost_grid_param_file", default_value=default_paths["radar_cost_grid_param_file"]),
+        DeclareLaunchArgument("inflation_cost_grid_param_file", default_value=default_paths["inflation_cost_grid_param_file"]),
         DeclareLaunchArgument("vanjee_config_path", default_value=default_paths["vanjee_config_path"]),
 
         DeclareLaunchArgument("camera_input_image_topic", default_value="image_raw"),
@@ -166,6 +169,18 @@ def generate_launch_description():
                     "radar_sensor_param_file": LaunchConfiguration("radar_sensor_param_file"),
                     "radar_cost_grid_param_file": LaunchConfiguration("radar_cost_grid_param_file"),
                 }.items(),
+            ),
+
+            # HH_260424: inflation_cost_grid fuses lanelet + LiDAR + Radar + global_path into
+            #   /planning/cost_grid/inflation. Used by Nav2 local costmap and cmd_vel_gate.
+            Node(
+                package="camrod_sensing",
+                executable="inflation_cost_grid_node",
+                name="inflation_cost_grid",
+                namespace=LaunchConfiguration("sensing_namespace"),
+                output="screen",
+                parameters=[LaunchConfiguration("inflation_cost_grid_param_file")],
+                condition=IfCondition(LaunchConfiguration("enable_inflation_cost_grid")),
             ),
         ]),
     ])

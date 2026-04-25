@@ -41,8 +41,14 @@ public:
       "local_path_source", "controller_then_slice");
     controller_path_topic_ = declare_parameter<std::string>(
       "controller_path_topic", "/planning/local_path_controller");
-    controller_path_timeout_sec_ = declare_parameter<double>(
-      "controller_path_timeout_sec", 0.8);
+    controller_path_timeout_s_ = declare_parameter<double>("controller_path_timeout_s", 0.8);
+    {
+      const double legacy = declare_parameter<double>("controller_path_timeout_sec", 0.8);
+      if (std::abs(controller_path_timeout_s_ - 0.8) < 1e-9 && std::abs(legacy - 0.8) > 1e-9) {
+        RCLCPP_WARN(get_logger(), "Parameter 'controller_path_timeout_sec' is deprecated. Use 'controller_path_timeout_s'.");
+        controller_path_timeout_s_ = legacy;
+      }
+    }
     publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
     planning_status_topic_ =
       declare_parameter<std::string>("planning_status_topic", "/planning/status");
@@ -69,9 +75,22 @@ public:
     stop_after_goal_reached_ = declare_parameter<bool>("stop_after_goal_reached", true);
     goal_reached_distance_m_ = declare_parameter<double>("goal_reached_distance_m", 0.8);
     goal_reached_index_margin_ = declare_parameter<int>("goal_reached_index_margin", 2);
-    pose_timeout_sec_ = declare_parameter<double>("pose_timeout_sec", 1.0);
-    empty_republish_period_sec_ =
-      declare_parameter<double>("empty_republish_period_sec", 0.5);
+    pose_timeout_s_ = declare_parameter<double>("pose_timeout_s", 1.0);
+    {
+      const double legacy = declare_parameter<double>("pose_timeout_sec", 1.0);
+      if (std::abs(pose_timeout_s_ - 1.0) < 1e-9 && std::abs(legacy - 1.0) > 1e-9) {
+        RCLCPP_WARN(get_logger(), "Parameter 'pose_timeout_sec' is deprecated. Use 'pose_timeout_s'.");
+        pose_timeout_s_ = legacy;
+      }
+    }
+    empty_republish_period_s_ = declare_parameter<double>("empty_republish_period_s", 0.5);
+    {
+      const double legacy = declare_parameter<double>("empty_republish_period_sec", 0.5);
+      if (std::abs(empty_republish_period_s_ - 0.5) < 1e-9 && std::abs(legacy - 0.5) > 1e-9) {
+        RCLCPP_WARN(get_logger(), "Parameter 'empty_republish_period_sec' is deprecated. Use 'empty_republish_period_s'.");
+        empty_republish_period_s_ = legacy;
+      }
+    }
     // HH_260305-00:00 Clear stale local-path consumers immediately when inputs go invalid.
     publish_empty_on_invalid_ = declare_parameter<bool>("publish_empty_on_invalid", true);
 
@@ -280,9 +299,9 @@ private:
     if (!has_controller_path_ || latest_controller_path_.poses.size() < 2) {
       return false;
     }
-    if (controller_path_timeout_sec_ > 0.0 && last_controller_path_rx_.nanoseconds() > 0) {
+    if (controller_path_timeout_s_ > 0.0 && last_controller_path_rx_.nanoseconds() > 0) {
       const double dt = (now() - last_controller_path_rx_).seconds();
-      if (dt > controller_path_timeout_sec_) {
+      if (dt > controller_path_timeout_s_) {
         return false;
       }
     }
@@ -521,9 +540,9 @@ private:
       publishEmptyPath();
       return;
     }
-    if (pose_timeout_sec_ > 0.0) {
+    if (pose_timeout_s_ > 0.0) {
       const double dt = (now() - last_pose_rx_).seconds();
-      if (dt > pose_timeout_sec_) {
+      if (dt > pose_timeout_s_) {
         publishEmptyPath();
         return;
       }
@@ -652,9 +671,9 @@ private:
     }
     const auto stamp = now();
     if (
-      last_output_empty_ && empty_republish_period_sec_ > 0.0 &&
+      last_output_empty_ && empty_republish_period_s_ > 0.0 &&
       last_empty_publish_time_.nanoseconds() > 0 &&
-      (stamp - last_empty_publish_time_).seconds() < empty_republish_period_sec_)
+      (stamp - last_empty_publish_time_).seconds() < empty_republish_period_s_)
     {
       return;
     }
@@ -706,9 +725,9 @@ private:
   bool stop_after_goal_reached_{true};
   double goal_reached_distance_m_{0.8};
   int goal_reached_index_margin_{2};
-  double pose_timeout_sec_{1.0};
-  double empty_republish_period_sec_{0.5};
-  double controller_path_timeout_sec_{0.8};
+  double pose_timeout_s_{1.0};
+  double empty_republish_period_s_{0.5};
+  double controller_path_timeout_s_{0.8};
   bool publish_empty_on_invalid_{true};
   bool global_path_qos_transient_local_{false};
 

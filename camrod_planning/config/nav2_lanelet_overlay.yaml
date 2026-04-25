@@ -33,48 +33,16 @@ planner_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      lanelet_cost_layer_base:
+      # HH_260424: combined_cost_layer — reads /planning/cost_grid/inflation (pre-merged by
+      #   inflation_cost_grid_node: lanelet + LiDAR + Radar + global_path, cell-wise max).
+      #   Does NOT spread costs; Nav2 inflation_layer handles the radial safety expansion.
+      combined_cost_layer:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
-        source_topic: "/map/cost_grid/planning_base"
-        # HH_260330: Keep local controller recoverable when the initial
-        # localization pose is slightly off-lane at startup.
-        # Global planner remains lane-constrained in global_costmap.
-        lethal_threshold: 101
+        source_topic: "/planning/cost_grid/inflation"
+        # HH_260422: Lethal at 100 (off-lane=99 stays sub-lethal for controller recovery).
+        lethal_threshold: 100
+        # HH_260306-00:00 Cells outside the 12m grid window treated as free.
         unknown_value: 0
-        write_unknown: false
-
-      lanelet_cost_layer_local_path:
-        plugin: "camrod_map::cost_map::LaneletCostLayer"
-        source_topic: "/planning/cost_grid/local_path"
-        # HH_260315-00:00 Local path layer is a soft bias, not a hard obstacle mask.
-        lethal_threshold: 101
-        # HH_260306-00:00 Local path grid is a soft routing hint.
-        # Unknown cells should not hard-block controller costmap start cells.
-        unknown_value: 0
-        # HH_260316-00:00 Do not overwrite master with unknown from path helper grid.
-        write_unknown: false
-
-      lidar_cost_layer:
-        plugin: "camrod_map::cost_map::LaneletCostLayer"
-        source_topic: "/sensing/lidar/near_cost_grid"
-        # HH_260315-00:00 Sensor near-cost should influence routing cost,
-        # but must not directly make start cells non-traversable.
-        lethal_threshold: 101
-        # HH_260306-00:00 Treat unknown cells from rolling sensor grids as free in master costmap.
-        # Otherwise, no-data regions can turn start cells non-traversable and block replanning.
-        unknown_value: 0
-        # HH_260316-00:00 Keep no-data cells from clearing base lanelet costs.
-        write_unknown: false
-
-      radar_cost_layer:
-        plugin: "camrod_map::cost_map::LaneletCostLayer"
-        source_topic: "/sensing/radar/near_cost_grid"
-        # HH_260315-00:00 Sensor near-cost should influence routing cost,
-        # but must not directly make start cells non-traversable.
-        lethal_threshold: 101
-        # HH_260306-00:00 Keep radar no-data as free for planning stability.
-        unknown_value: 0
-        # HH_260316-00:00 Keep no-data cells from clearing base lanelet costs.
         write_unknown: false
 
       inflation_layer:
@@ -87,7 +55,7 @@ global_costmap:
     ros__parameters:
       lanelet_cost_layer_base:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
-        source_topic: "/map/cost_grid/planning_base"
+        source_topic: "/map/cost_grid/lanelet"
         lethal_threshold: 100
         # HH_260316-00:00 Keep lanelet-boundary discipline for global planning as well.
         unknown_value: 255
@@ -102,7 +70,7 @@ global_costmap:
 
       lidar_cost_layer:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
-        source_topic: "/sensing/lidar/near_cost_grid"
+        source_topic: "/sensing/cost_grid/lidar"
         lethal_threshold: 101
         unknown_value: 0
         # HH_260316-00:00 Keep no-data cells from clearing base lanelet costs.
@@ -110,7 +78,7 @@ global_costmap:
 
       radar_cost_layer:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
-        source_topic: "/sensing/radar/near_cost_grid"
+        source_topic: "/sensing/cost_grid/radar"
         lethal_threshold: 101
         unknown_value: 0
         # HH_260316-00:00 Keep no-data cells from clearing base lanelet costs.

@@ -2,10 +2,10 @@
  * Localization Source Checker Node
  *
  * localization_pose_selector_node 가 발행하는 소스 토픽을 구독하여
- * 현재 로컬라이제이션 소스가 정상 경로(ESKF)인지 폴백(Kimera-VIO)인지를
+ * 현재 로컬라이제이션 소스가 정상 경로(ESKF)인지 폴백 소스인지를
  * /diagnostics 토픽으로 발행한다.
  *
- * Primary = ESKF (정상), Fallback = Kimera-VIO (폴백)
+ * Primary = ESKF (정상), Fallback = fallback source (폴백)
  * 폴백 활성화는 곧 ESKF 이상 또는 GNSS/IMU 품질 저하를 의미한다.
  *
  * 진단 항목
@@ -13,7 +13,7 @@
  *   /localization/source
  *     - Staleness            : 토픽 미수신 경과 시간
  *     - Source OK            : "primary_eskf" → OK
- *                              "kimera_vio"   → WARN (폴백 활성)
+ *                              "fallback_source" → WARN (폴백 활성)
  *                              그 외 값       → ERROR (알 수 없는 소스)
  *     - Fallback duration    : 폴백 활성 지속 시간
  *                              > fallback_warn_sec  → WARN
@@ -26,7 +26,7 @@
  * -------------
  *   source_topic:          "/localization/pose_source"
  *   primary_source:        "primary_eskf"
- *   fallback_source:       "kimera_vio"
+ *   fallback_source:       "fallback_source"
  *   stale_timeout:         3.0
  *   fallback_warn_sec:     10.0   # 폴백 지속 > 이 값 → WARN
  *   fallback_error_sec:    60.0   # 폴백 지속 > 이 값 → ERROR
@@ -88,10 +88,10 @@ protected:
   {
     declare_parameter("source_topic",       std::string("/localization/pose_source"));
     declare_parameter("primary_source",     std::string("primary_eskf"));
-    declare_parameter("fallback_source",    std::string("kimera_vio"));
-    declare_parameter("stale_timeout",      3.0);
-    declare_parameter("fallback_warn_sec",  10.0);
-    declare_parameter("fallback_error_sec", 60.0);
+    declare_parameter("fallback_source",    std::string("fallback_source"));
+    declare_parameter("stale_timeout_s",      3.0);
+    declare_parameter("fallback_warn_s",  10.0);
+    declare_parameter("fallback_error_s", 60.0);
     declare_parameter("switch_warn",        3);
     declare_parameter("switch_error",       10);
   }
@@ -101,9 +101,11 @@ protected:
     source_topic_       = get_parameter("source_topic").as_string();
     primary_source_     = get_parameter("primary_source").as_string();
     fallback_source_    = get_parameter("fallback_source").as_string();
-    stale_timeout_      = get_parameter("stale_timeout").as_double();
-    fallback_warn_sec_  = get_parameter("fallback_warn_sec").as_double();
-    fallback_error_sec_ = get_parameter("fallback_error_sec").as_double();
+    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
+    fallback_warn_sec_  = get_param_with_alias<double>(
+      "fallback_warn_s", fallback_warn_sec_, {"fallback_warn_sec"});
+    fallback_error_sec_ = get_param_with_alias<double>(
+      "fallback_error_s", fallback_error_sec_, {"fallback_error_sec"});
     switch_warn_        = get_parameter("switch_warn").as_int();
     switch_error_       = get_parameter("switch_error").as_int();
   }
@@ -192,7 +194,7 @@ private:
       msg_str = "Primary ESKF 사용 중";
     } else if (state_.current_source == fallback_source_) {
       lvl     = DiagnosticStatus::WARN;
-      msg_str = "폴백(Kimera-VIO) 활성화 — ESKF 이상";
+      msg_str = "폴백(Fallback source) 활성화 — ESKF 이상";
     } else {
       lvl     = DiagnosticStatus::ERROR;
       msg_str = "알 수 없는 소스: " + state_.current_source;
@@ -258,7 +260,7 @@ private:
   // 파라미터
   std::string source_topic_;
   std::string primary_source_{"primary_eskf"};
-  std::string fallback_source_{"kimera_vio"};
+  std::string fallback_source_{"fallback_source"};
   double stale_timeout_{3.0};
   double fallback_warn_sec_{10.0};
   double fallback_error_sec_{60.0};

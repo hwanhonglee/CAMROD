@@ -15,16 +15,21 @@ namespace camrod_map::cost_map
 class LaneletCostLayer : public nav2_costmap_2d::Layer
 {
 public:
+  // Default constructor; runtime wiring is done in onInitialize().
   LaneletCostLayer();
 
+  // Nav2 lifecycle hook used to declare params and create subscriptions.
   void onInitialize() override;
+  // Expands update bounds to include the active source occupancy-grid region.
   void updateBounds(double, double, double, double *, double *, double *, double *) override;
+  // Writes converted source-grid costs into the master Nav2 costmap.
   void updateCosts(nav2_costmap_2d::Costmap2D &, int, int, int, int) override;
   bool isClearable() override {return false;}
   // Reset helper reset: clears runtime state to the safe default behavior.
   void reset() override {}
 
 private:
+  // Receives and caches the latest external occupancy-grid update.
   void gridCallback(const avg_msgs::msg::OccupancyGrid::ConstSharedPtr msg);
 
   rclcpp::Subscription<avg_msgs::msg::OccupancyGrid>::SharedPtr sub_;

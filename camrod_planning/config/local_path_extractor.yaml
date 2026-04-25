@@ -8,7 +8,7 @@
     # real-time local costmap/obstacle reactions; fallback to global slice for continuity.
     local_path_source: "controller_then_slice"
     controller_path_topic: "/planning/local_path_controller"
-    controller_path_timeout_sec: 0.8
+    controller_path_timeout_s: 0.8
     # HH_260305-00:00 planner_server /planning/global_path is VOLATILE.
     # Keep subscriber durability VOLATILE for guaranteed matching.
     global_path_qos_transient_local: false
@@ -43,8 +43,8 @@
     goal_reached_distance_m: 0.8
     goal_reached_index_margin: 3
     # HH_260311-00:00 Relax timeout to tolerate brief TF/pose hiccups under load.
-    pose_timeout_sec: 2.5
+    pose_timeout_s: 2.5
     # HH_260311-00:00 Do not emit empty-path on transient invalid frames.
     # Empty publishes were causing local cost-grid marker flicker.
     publish_empty_on_invalid: false
-    empty_republish_period_sec: 0.3
+    empty_republish_period_s: 0.3

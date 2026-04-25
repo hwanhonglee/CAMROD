@@ -76,7 +76,7 @@ protected:
   {
     declare_parameter("nav_status_topic",
       std::string("/planning/navigate_to_pose/_action/status"));
-    declare_parameter("stale_timeout", 5.0);
+    declare_parameter("stale_timeout_s", 5.0);
     declare_parameter("abort_warn",    2);
     declare_parameter("abort_error",   5);
   }
@@ -84,7 +84,7 @@ protected:
   void load_parameters_() override
   {
     nav_status_topic_ = get_parameter("nav_status_topic").as_string();
-    stale_timeout_    = get_parameter("stale_timeout").as_double();
+    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
     abort_warn_       = get_parameter("abort_warn").as_int();
     abort_error_      = get_parameter("abort_error").as_int();
   }

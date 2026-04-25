@@ -1,20 +1,20 @@
-# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Cost Grid Checker 설정 파일
 #
-# Section note: tune thresholds based on expected stream behavior and safety policy.
+# 진단 태스크 이름: "cost_grid_checker: /perception/lidar/cost_grid"
 #
-# Section note: tune thresholds based on expected stream behavior and safety policy.
-# Section note: tune thresholds based on expected stream behavior and safety policy.
-# Section note: tune thresholds based on expected stream behavior and safety policy.
-# Section note: tune thresholds based on expected stream behavior and safety policy.
+# unknown_ratio: OccupancyGrid 에서 unknown(-1) 셀의 비율
+#   - 입력 PointCloud2 가 오지 않으면 그리드가 모두 unknown 으로 초기화된 상태로 발행됨
+#   - TF 변환 실패 시에도 동일하게 unknown 상태 유지
+#   → 90% 이상이면 파이프라인 입력 문제 의심
 
 cost_grid_checker:
   ros__parameters:
-    publish_rate: 1.0
+    publish_rate_hz: 1.0
 
-    output_topic:        "/sensing/lidar/near_cost_grid"
+    output_topic:        "/sensing/cost_grid/lidar"
     expected_hz:         10.0
-    hz_warn_ratio:       0.7     # WARN threshold for actual_hz/expected_hz ratio.
-    hz_error_ratio:      0.4     # ERROR threshold for actual_hz/expected_hz ratio.
-    stale_timeout:       2.0
-    unknown_ratio_warn:  0.9     # WARN threshold for unknown-cell ratio in occupancy grids.
-    unknown_ratio_error: 1.0     # ERROR threshold for unknown-cell ratio in occupancy grids.
+    hz_warn_ratio:       0.7     # 7 Hz 미만이면 WARN
+    hz_error_ratio:      0.4     # 4 Hz 미만이면 ERROR
+    stale_timeout_s:       2.0
+    unknown_ratio_warn:  0.9     # unknown 90% 이상 → WARN  (입력 부족 의심)
+    unknown_ratio_error: 1.0     # unknown 100%     → ERROR (입력 없음 또는 TF 실패)

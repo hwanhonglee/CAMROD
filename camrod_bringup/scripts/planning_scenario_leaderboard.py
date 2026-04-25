@@ -62,12 +62,29 @@ class PlanningScenarioLeaderboard(Node):
         self.estop_topic = str(
             self.declare_parameter("estop_topic", "/platform/status/estop").value
         )
-        self.step_timeout_sec = float(
+        self.step_timeout_s = float(
+            self.declare_parameter("step_timeout_s", 25.0).value
+        )
+        step_timeout_sec_legacy = float(
             self.declare_parameter("step_timeout_sec", 25.0).value
         )
-        self.wait_for_topics_sec = float(
+        if self.step_timeout_s == 25.0 and step_timeout_sec_legacy != 25.0:
+            self.get_logger().warn(
+                "Parameter 'step_timeout_sec' is deprecated. Use 'step_timeout_s'."
+            )
+            self.step_timeout_s = step_timeout_sec_legacy
+
+        self.wait_for_topics_s = float(
+            self.declare_parameter("wait_for_topics_s", 30.0).value
+        )
+        wait_for_topics_sec_legacy = float(
             self.declare_parameter("wait_for_topics_sec", 30.0).value
         )
+        if self.wait_for_topics_s == 30.0 and wait_for_topics_sec_legacy != 30.0:
+            self.get_logger().warn(
+                "Parameter 'wait_for_topics_sec' is deprecated. Use 'wait_for_topics_s'."
+            )
+            self.wait_for_topics_s = wait_for_topics_sec_legacy
         self.min_path_points = int(self.declare_parameter("min_path_points", 3).value)
         self.require_cmd_vel = bool(
             self.declare_parameter("require_cmd_vel", True).value
@@ -137,8 +154,8 @@ class PlanningScenarioLeaderboard(Node):
 
     # Lazily creates dynamic subscriptions for path topics that can differ by message type.
     def setup_dynamic_path_subscriptions(self) -> bool:
-        global_cls = self._resolve_topic_class(self.global_path_topic, self.wait_for_topics_sec)
-        local_cls = self._resolve_topic_class(self.local_path_topic, self.wait_for_topics_sec)
+        global_cls = self._resolve_topic_class(self.global_path_topic, self.wait_for_topics_s)
+        local_cls = self._resolve_topic_class(self.local_path_topic, self.wait_for_topics_s)
         if global_cls is None or local_cls is None:
             self.get_logger().error(
                 "failed to resolve path topic types: "
@@ -217,7 +234,7 @@ class PlanningScenarioLeaderboard(Node):
         reason = "timeout"
         success = False
 
-        while (time.monotonic() - start) <= self.step_timeout_sec and rclpy.ok():
+        while (time.monotonic() - start) <= self.step_timeout_s and rclpy.ok():
             rclpy.spin_once(self, timeout_sec=0.05)
             now = time.monotonic()
 
@@ -249,7 +266,7 @@ class PlanningScenarioLeaderboard(Node):
                 reason = "ok"
                 break
 
-            if now - start > self.step_timeout_sec:
+            if now - start > self.step_timeout_s:
                 break
 
         elapsed = time.monotonic() - start

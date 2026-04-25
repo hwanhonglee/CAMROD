@@ -101,12 +101,12 @@ protected:
       src->name = name;
 
       declare_parameter(name + ".topic",            std::string(""));
-      declare_parameter(name + ".stale_timeout",    3.0);
+      declare_parameter(name + ".stale_timeout_s",    3.0);
       declare_parameter(name + ".min_points_warn",  int64_t(5));
       declare_parameter(name + ".min_points_error", int64_t(2));
 
       src->topic            = get_parameter(name + ".topic").as_string();
-      src->stale_timeout    = get_parameter(name + ".stale_timeout").as_double();
+      src->stale_timeout = get_param_with_alias<double>(name + ".stale_timeout_s", src->stale_timeout, {name + ".stale_timeout"});
       src->min_points_warn  = static_cast<std::size_t>(
         get_parameter(name + ".min_points_warn").as_int());
       src->min_points_error = static_cast<std::size_t>(

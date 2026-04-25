@@ -14,7 +14,7 @@ graph TD
   PLT[[camrod_platform]]
   KIT[[camrod_sensor_kit]]
   SYS[[camrod_system]]
-  API[[camrod_api]]
+  API[[camrod_ui]]
   AVG[(avg_msgs interface package)]
 
   BR --> MAP
@@ -61,7 +61,7 @@ graph TD
   GATE --> CMD((platform cmd vel))
   CMD --> VEH{{vehicle motion}}
   SYS[[camrod_system]] --> AGG((diagnostics aggregated))
-  AGG --> API[[camrod_api]]
+  AGG --> API[[camrod_ui]]
 ```
 
 ## 3) Main Operational Scenario
@@ -86,7 +86,7 @@ graph TD
 | `camrod_platform` | final cmd_vel gate, robot visualization, sensor kit launch include |
 | `camrod_sensor_kit` | URDF/xacro and TF backbone publication |
 | `camrod_system` | module diagnostics checkers and diagnostics aggregation |
-| `camrod_api` | API bridge and lightweight UI backend |
+| `camrod_ui` | API bridge and lightweight UI backend |
 | `camrod_common/avg_msgs` | shared ROS interfaces used across modules |
 
 ## 5) Build

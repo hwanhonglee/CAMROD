@@ -1,11 +1,11 @@
-# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Planning Path Checker 설정 파일
 #
-# Section note: tune thresholds based on expected stream behavior and safety policy.
-# Section note: tune thresholds based on expected stream behavior and safety policy.
+# navigation 실행 중 경로 토픽들의 품질을 통합 모니터링한다.
+# path_names 목록에 이름을 추가하고, 같은 이름의 섹션을 추가한다.
 
 planning_path_checker:
   ros__parameters:
-    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+    publish_rate_hz: 1.0          # 진단 발행 주기 (Hz)
 
     nav_status_topic: "/planning/navigate_to_pose/_action/status"
 
@@ -15,12 +15,12 @@ planning_path_checker:
 
     global_path:
       topic: "/planning/global_path"
-      stale_timeout: 3.0       # Mark STALE when no update is received within this duration (s).
-      min_points_warn: 5       # WARN when path point count is below this threshold.
-      min_points_error: 2      # ERROR when path point count is below this threshold.
+      stale_timeout_s: 3.0       # navigation 중 이 시간(초) 이상 path 없으면 ERROR
+      min_points_warn: 5       # path point 수 이 값 미만이면 WARN
+      min_points_error: 2      # path point 수 이 값 미만이면 ERROR
 
     local_path:
       topic: "/planning/local_path"
-      stale_timeout: 2.0       # Mark STALE when no update is received within this duration (s).
-      min_points_warn: 8       # WARN when path point count is below this threshold.
+      stale_timeout_s: 2.0       # local_path_extractor publish_rate 20Hz 기준
+      min_points_warn: 8       # local path 는 controller 가 즉시 사용하므로 기준 높음
       min_points_error: 3

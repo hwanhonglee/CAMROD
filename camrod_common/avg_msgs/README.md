@@ -33,7 +33,7 @@ graph LR
   AVG -. interface types .-> PLATFORM[[camrod_platform]]
   AVG -. interface types .-> PERCEPTION[[camrod_perception]]
   AVG -. interface types .-> SYSTEM[[camrod_system]]
-  AVG -. interface types .-> API[[camrod_api]]
+  AVG -. interface types .-> API[[camrod_ui]]
 ```
 
 ## Typical Interface Groups

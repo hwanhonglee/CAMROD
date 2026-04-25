@@ -3,8 +3,8 @@
     primary_pose_cov_topic: "/localization/primary/pose_with_covariance"
     primary_odom_topic: "/localization/primary/odometry"
 
-    fallback_pose_cov_topic: "/localization/kimera_vio/pose_with_covariance"
-    fallback_odom_topic: "/localization/kimera_vio/odometry"
+    fallback_pose_cov_topic: "/localization/fallback/pose_with_covariance"
+    fallback_odom_topic: "/localization/fallback/odometry"
 
     mode_topic: "/localization/mode"
 
@@ -14,7 +14,7 @@
     selected_source_topic: "/localization/pose_source"
 
     primary_source_label: "primary_filter"
-    fallback_source_label: "kimera_vio"
+    fallback_source_label: "fallback_source"
 
     base_frame_id: "robot_base_link"
 
@@ -22,11 +22,13 @@
     publish_selected_tf: true
 
     # LocalizationMode: NORMAL=0, DEGRADED=1, DR_ONLY=2, INVALID=3
-    fallback_on_mode_at_or_above: 2
+    # HH_260422: Changed 2→3 to keep ESKF DR_ONLY pose as primary source when GNSS fails,
+    # avoiding fallback switching to the external VIO source.
+    fallback_on_mode_at_or_above: 3
 
-    primary_timeout_sec: 0.5
-    fallback_timeout_sec: 0.5
-    switch_hysteresis_sec: 0.5
+    primary_timeout_s: 0.5
+    fallback_timeout_s: 0.5
+    switch_hysteresis_s: 0.5
 
     publish_localization_status: false
     localization_status_topic: "/localization/status"

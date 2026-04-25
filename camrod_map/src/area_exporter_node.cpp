@@ -252,7 +252,7 @@ std::string getAttr(const std::string & line, const std::string & key)
 }
 }  // namespace
 
-namespace camping_cart
+namespace camrod
 {
 namespace map
 {
@@ -776,13 +776,13 @@ private:
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;
 };
 }  // namespace map
-}  // namespace camping_cart
+}  // namespace camrod
 
 // Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<camping_cart::map::AreaExporterNode>();
+  auto node = std::make_shared<camrod::map::AreaExporterNode>();
   const int rc = node->run();
   rclcpp::shutdown();
   return rc;

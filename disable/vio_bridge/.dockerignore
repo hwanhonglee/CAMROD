@@ -1,0 +1,41 @@
+.git
+**/.git
+**/.idea
+**/.vscode
+**/__pycache__
+**/*.pyc
+
+# Build and outputs
+**/build
+**/build/*
+**/cmake-build-*
+**/output
+**/output/*
+**/output_logs
+**/output_logs/*
+
+# Local artifacts not needed for image build context
+**/Log
+**/Log/*
+**/*.core
+**/core.*
+
+# Dataset can be mounted at runtime instead of baked in image
+Kimera-VIO/dataset
+Kimera-VIO/dataset/**
+Kimera-VIO/output
+Kimera-VIO/output/**
+Kimera-VIO/output_logs
+Kimera-VIO/output_logs/**
+
+# Large local mirrors/caches are not needed for Docker build context.
+# Dockerfile clones/builds dependencies in-image.
+third_party
+third_party/**
+
+# Keep only the SDK installer files actually consumed by Dockerfiles.
+sdk_installers/*
+!sdk_installers/ZED_SDK_Ubuntu22_cuda12.8_tensorrt10.9_v5.1.2.zstd.run
+!sdk_installers/ZED_SDK_Tegra_L4T36.4_v5.2.1.zstd.run
+!sdk_installers/OrbbecSDK_v2.7.6_amd64.deb
+!sdk_installers/OrbbecSDK_v2.7.6_arm64.deb

@@ -19,6 +19,7 @@
 
 namespace
 {
+// Builds avg_msgs::Point helper objects for marker generation.
 avg_msgs::msg::Point makePoint(double x, double y, double z)
 {
   avg_msgs::msg::Point p;
@@ -28,6 +29,7 @@ avg_msgs::msg::Point makePoint(double x, double y, double z)
   return p;
 }
 
+// Approximates local path curvature magnitude from three consecutive points.
 double curvature3p(
   const lanelet::ConstPoint3d & p0,
   const lanelet::ConstPoint3d & p1,
@@ -47,6 +49,7 @@ double curvature3p(
   return cross / denom;
 }
 
+// Maps normalized cost [0,1] into an RGB color for RViz line markers.
 std::array<float, 4> colorFromCost(double cost)
 {
   const double c = std::clamp(cost, 0.0, 1.0);
@@ -57,6 +60,7 @@ std::array<float, 4> colorFromCost(double cost)
   return {r, g, b, a};
 }
 
+// Normalizes projector type strings for robust parameter parsing.
 std::string normalizeProjectorType(const std::string & value)
 {
   std::string out = value;
@@ -80,6 +84,7 @@ struct CostWeights
 class CostFieldNode : public rclcpp::Node
 {
 public:
+  // Declares parameters, loads map geometry, and starts periodic marker publishing.
   CostFieldNode()
   : Node("cost_field")
   {
@@ -125,6 +130,7 @@ public:
   }
 
 private:
+  // Builds lanelet-segment cost markers and publishes the latest marker array.
   void publishMarkers()
   {
     avg_msgs::msg::MarkerArray arr;
@@ -222,6 +228,7 @@ private:
     publishAvgMapMessage(arr, stamp);
   }
 
+  // Publishes unified avg_msgs map status payload for cost-field outputs.
   void publishAvgMapMessage(const avg_msgs::msg::MarkerArray & markers, const rclcpp::Time & stamp)
   {
     if (!publish_map_status_ || !avg_map_pub_) {
@@ -237,6 +244,7 @@ private:
     avg_map_pub_->publish(msg);
   }
 
+  // Returns total centerline segment count used for reserve sizing.
   size_t loadedPointCount() const
   {
     size_t sum = 0;
@@ -248,6 +256,7 @@ private:
     return sum;
   }
 
+  // Loads lanelet map data with the selected projector configuration.
   bool loadMap()
   {
     lanelet::GPSPoint gps{config_.offset_lat, config_.offset_lon, config_.offset_alt};
@@ -298,6 +307,7 @@ private:
 
 }  // namespace camrod_map
 
+// Entrypoint that spins the lanelet cost-field visualizer node.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

@@ -66,9 +66,9 @@ protected:
       std::string("/sensing/imu/data"));
     declare_parameter("output_topic",
       std::string("/sensing/platform_velocity_converter/twist_with_covariance"));
-    declare_parameter("velocity_stale_timeout", 1.0);
-    declare_parameter("imu_stale_timeout",      1.0);
-    declare_parameter("output_stale_timeout",   1.0);
+    declare_parameter("velocity_stale_timeout_s", 1.0);
+    declare_parameter("imu_stale_timeout_s",      1.0);
+    declare_parameter("output_stale_timeout_s",   1.0);
     declare_parameter("expected_output_hz",     10.0);
     declare_parameter("hz_warn_ratio",          0.7);
     declare_parameter("hz_error_ratio",         0.4);
@@ -79,9 +79,9 @@ protected:
     velocity_topic_          = get_parameter("velocity_topic").as_string();
     imu_topic_               = get_parameter("imu_topic").as_string();
     output_topic_            = get_parameter("output_topic").as_string();
-    velocity_stale_timeout_  = get_parameter("velocity_stale_timeout").as_double();
-    imu_stale_timeout_       = get_parameter("imu_stale_timeout").as_double();
-    output_stale_timeout_    = get_parameter("output_stale_timeout").as_double();
+    velocity_stale_timeout_ = get_param_with_alias<double>("velocity_stale_timeout_s", velocity_stale_timeout_, {"velocity_stale_timeout"});
+    imu_stale_timeout_ = get_param_with_alias<double>("imu_stale_timeout_s", imu_stale_timeout_, {"imu_stale_timeout"});
+    output_stale_timeout_ = get_param_with_alias<double>("output_stale_timeout_s", output_stale_timeout_, {"output_stale_timeout"});
     expected_output_hz_      = get_parameter("expected_output_hz").as_double();
     hz_warn_ratio_           = get_parameter("hz_warn_ratio").as_double();
     hz_error_ratio_          = get_parameter("hz_error_ratio").as_double();

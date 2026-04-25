@@ -9,9 +9,9 @@
     # HH_260410 Monitor uses the same unified wheel topic as EKF/ESKF.
     wheel_topic: "/platform/status/wheel_odometry"
 
-    gnss_timeout_sec: 1.0
-    imu_timeout_sec: 0.5
-    wheel_timeout_sec: 0.5
+    gnss_timeout_s: 1.0
+    imu_timeout_s: 0.5
+    wheel_timeout_s: 0.5
 
     gnss_innovation_warn: 3.0
     gnss_innovation_fail: 6.0

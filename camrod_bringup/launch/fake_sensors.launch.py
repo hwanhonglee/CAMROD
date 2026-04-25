@@ -6,6 +6,79 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
 import os
+import yaml
+
+
+def extract_map_ros_params(map_info_cfg: dict) -> dict:
+    if not isinstance(map_info_cfg, dict):
+        return {}
+    wildcard = map_info_cfg.get('/**')
+    if isinstance(wildcard, dict):
+        params = wildcard.get('ros__parameters')
+        if isinstance(params, dict):
+            return params
+    for key in (
+        '/map/lanelet2_map',
+        'map/lanelet2_map',
+        'lanelet2_map',
+        '/lanelet2_map',
+    ):
+        val = map_info_cfg.get(key)
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    for val in map_info_cfg.values():
+        if isinstance(val, dict):
+            params = val.get('ros__parameters')
+            if isinstance(params, dict):
+                return params
+    return {}
+
+
+def load_map_defaults() -> dict:
+    defaults = {
+        'map_path': '',
+        'origin_lat': '0.0',
+        'origin_lon': '0.0',
+        'origin_alt': '0.0',
+    }
+    map_info_path = os.path.join(
+        get_package_share_directory('camrod_map'),
+        'config',
+        'map_info.yaml',
+    )
+    try:
+        with open(map_info_path, 'r', encoding='utf-8') as f:
+            data = yaml.safe_load(f) or {}
+        params = extract_map_ros_params(data)
+        defaults['map_path'] = str(params.get('map_path', '')).strip()
+        defaults['origin_lat'] = str(params.get('offset_lat', defaults['origin_lat']))
+        defaults['origin_lon'] = str(params.get('offset_lon', defaults['origin_lon']))
+        defaults['origin_alt'] = str(params.get('offset_alt', defaults['origin_alt']))
+    except Exception:
+        pass
+
+    configured = defaults['map_path']
+    if configured:
+        configured_path = (
+            configured
+            if os.path.isabs(configured)
+            else os.path.abspath(os.path.join(os.path.dirname(map_info_path), configured))
+        )
+        if os.path.isfile(configured_path):
+            defaults['map_path'] = configured_path
+
+    if not defaults['map_path']:
+        for candidate in (
+            os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src', 'lanelet2_maps.osm'),
+            os.path.join(os.getcwd(), 'lanelet2_maps.osm'),
+            os.path.join(os.getcwd(), 'src', 'lanelet2_maps.osm'),
+        ):
+            if os.path.isfile(candidate):
+                defaults['map_path'] = os.path.abspath(candidate)
+                break
+    return defaults
 
 
 # HH_260109 Launch fake sensor publisher for simulation without real hardware.
@@ -13,6 +86,7 @@ def generate_launch_description():
     pkg_share = get_package_share_directory('camrod_bringup')
     sensing_share = get_package_share_directory('camrod_sensing')
     default_param = os.path.join(pkg_share, 'config', 'sim', 'fake_sensors.yaml')
+    map_defaults = load_map_defaults()
     default_lidar_grid_param = os.path.join(
         sensing_share, 'config', 'lidar', 'cost_grid.yaml')
     default_radar_grid_param = os.path.join(
@@ -29,22 +103,22 @@ def generate_launch_description():
     )
     map_path_arg = DeclareLaunchArgument(
         'map_path',
-        default_value='/home/nvidia/camrod_ws/src/lanelet2_maps.osm',
+        default_value=map_defaults['map_path'],
         description='Lanelet2 map path for fake trajectory generation',
     )
     origin_lat_arg = DeclareLaunchArgument(
         'origin_lat',
-        default_value='36.8435737',
+        default_value=map_defaults['origin_lat'],
         description='Map origin latitude',
     )
     origin_lon_arg = DeclareLaunchArgument(
         'origin_lon',
-        default_value='128.0925646',
+        default_value=map_defaults['origin_lon'],
         description='Map origin longitude',
     )
     origin_alt_arg = DeclareLaunchArgument(
         'origin_alt',
-        default_value='299.425',
+        default_value=map_defaults['origin_alt'],
         description='Map origin altitude',
     )
     lanelet_id_arg = DeclareLaunchArgument(
@@ -185,8 +259,9 @@ def generate_launch_description():
 
     # 2026-03-03: In sim mode, still launch numeric lidar/radar cost-grid nodes
     # so the planning stack sees the same topic graph as hardware mode.
-    # Lidar cost grid uses fake /perception/obstacles directly. Radar cost grid
-    # will remain empty until /sensing/radar/*/range sources are provided.
+    # HH_260421: fake_sensor_publisher also mirrors obstacle cloud to
+    # /sensing/lidar/points_filtered for lidar-cost-grid input consistency.
+    # Radar cost grid will remain empty until /sensing/radar/*/range sources are provided.
     lidar_cost_grid = Node(
         package='camrod_sensing',
         executable='lidar_cost_grid_node',

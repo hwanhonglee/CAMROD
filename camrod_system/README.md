@@ -35,7 +35,7 @@ graph LR
   PER[camrod_perception] --> SYS
   PLAN[camrod_planning] --> SYS
   PLATFORM[camrod_platform] --> SYS
-  API[camrod_api] --> SYS
+  API[camrod_ui] --> SYS
 ```
 
 ## Topic Summary

@@ -3,7 +3,7 @@
 
 ranger_platform_checker:
   ros__parameters:
-    publish_rate: 1.0              # 진단 발행 주기 (Hz)
+    publish_rate_hz: 1.0              # 진단 발행 주기 (Hz)
 
     # 구독 토픽
     system_state_topic:   "/system_state"
@@ -12,13 +12,13 @@ ranger_platform_checker:
     odom_topic:           "/odom"
 
     # system_state / actuator_state STALE 판정 타임아웃 (초)
-    stale_timeout: 1.0
+    stale_timeout_s: 1.0
 
     # 오도메트리 체크
     odom_expected_hz:    50.0      # ranger_ros2 기본 update_rate
     odom_hz_warn_ratio:  0.7       # actual/expected < 이 값 → WARN
     odom_hz_error_ratio: 0.4       # actual/expected < 이 값 → ERROR
-    odom_stale_timeout:  1.0       # 이 시간(초) 이상 무응답 → STALE
+    odom_stale_timeout_s:  1.0       # 이 시간(초) 이상 무응답 → STALE
 
     # 배터리 임계값 (Ranger 공칭 전압: 46~50V)
     battery:

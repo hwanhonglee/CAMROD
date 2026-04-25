@@ -22,12 +22,17 @@
 
     max_position_jump_m: 8.0
     jump_reject_max_speed_mps: 20.0
-    jump_reject_reset_sec: 2.0
+    jump_reject_reset_s: 2.0
 
     # --------------------------------------------------------------------------
     # Pose -> PoseWithCovariance
     # --------------------------------------------------------------------------
-    enable_pose_cov_bridge: true
+    # HH_260422: Disabled — navsat_to_pose already publishes PoseWithCov with
+    # proper NavSatFix covariance to /sensing/gnss/pose_with_covariance.
+    # Enabling this bridge alongside navsat_to_pose overwrites the correct
+    # covariance (0.08 trace) with this fixed diagonal (2.0 trace), causing
+    # localization_monitor's gnss_cov_trace_fail (0.3) to reject GNSS.
+    enable_pose_cov_bridge: false
     pose_cov_input_topic: "/sensing/gnss/pose"
     pose_cov_output_topic: "/sensing/gnss/pose_with_covariance"
     pose_covariance_diagonal: [1.0, 1.0, 1.0, 999.0, 999.0, 1.0]
@@ -52,7 +57,7 @@
     # HH_260410: /rmp401/odom is fallback-only when primary stream is stale/missing.
     wheel_fallback_input_topic: "/rmp401/odom"
     wheel_fallback_input_type: "nav_odom"
-    wheel_primary_timeout_sec: 0.7
+    wheel_primary_timeout_s: 0.7
     # HH_260410: Unified wheel odometry output consumed by EKF/ESKF.
     wheel_output_topic: "/platform/status/wheel_odometry"
     wheel_nav_output_topic: "/platform/wheel/nav_odometry"

@@ -12,7 +12,6 @@ graph TD
   IMU((Imu Data Topic)) --> ESKF
 
   ESKF --> SELECT[localization_pose_selector_node]
-  KIMERA[kimera_csv_bridge_node optional] --> SELECT
   SELECT --> POSE((Localization Pose Topics))
 
   SELECT --> MON[localization_monitor_node]
@@ -33,7 +32,6 @@ Diagram legend: `[node/process]`, `((topic stream))`, `[(config or interface)]`,
 | `localization_pose_selector_node` | primary/fallback pose+odom + `/localization/mode` | selected `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry/filtered`, `/localization/pose_source` |
 | `localization_monitor_node` | `/localization/eskf/status`, GNSS/IMU/wheel topics | `/localization/mode`, `/localization/status`, `/localization/confidence`, `/localization/state`, `/localization/state/degraded` |
 | `localization_map_helper_node` | `/localization/pose`, `/localization/pose_with_covariance`, `map_info.yaml`, `drop_zones.yaml` | `/localization/lanelet_pose`, `/localization/initialpose3d`, `/localization/initial_match_ok`, `/localization/initial_match_id`, `/localization/initial_match_distance` |
-| `kimera_csv_bridge_node` (optional) | Kimera CSV trajectory source | `/localization/kimera_vio/*` topics |
 
 ## Inter-Package Connections
 ```mermaid
@@ -68,7 +66,6 @@ ros2 launch camrod_localization localization.launch.py
 
 Examples:
 ```bash
-ros2 launch camrod_localization localization.launch.py enable_kimera_bridge:=true
 ros2 launch camrod_localization localization.launch.py map_path:=/absolute/path/lanelet2_maps.osm
 ```
 

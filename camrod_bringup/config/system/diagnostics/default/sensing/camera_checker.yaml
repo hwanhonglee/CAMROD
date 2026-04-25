@@ -1,23 +1,23 @@
-# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Camera Checker 설정 파일
 
 camera_checker:
   ros__parameters:
-    publish_rate: 1.0          # Diagnostic publish rate (Hz).
+    publish_rate_hz: 1.0          # 진단 발행 주기 (Hz)
 
-    # Section note: tune thresholds based on expected stream behavior and safety policy.
-    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # 모니터링할 카메라 이름 목록
+    # 각 이름은 아래 섹션의 키로 사용됩니다.
     camera_names: ["front", "processed"]
 
     front:
       image_topic: "/sensing/camera/front/image_raw"
       camera_info_topic: "/sensing/camera/front/camera_info"
-      expected_fps: 30.0         # Parameter note: tune this value for your platform profile.
-      fps_warn_ratio: 0.8        # Parameter note: tune this value for your platform profile.
-      fps_error_ratio: 0.5       # Parameter note: tune this value for your platform profile.
-      stale_timeout: 2.0         # Mark STALE when no update is received within this duration (s).
-      expected_width: 0          # Parameter note: tune this value for your platform profile.
-      expected_height: 0         # Parameter note: tune this value for your platform profile.
-      expected_encoding: ""      # Parameter note: tune this value for your platform profile.
+      expected_fps: 30.0         # 기대 FPS
+      fps_warn_ratio: 0.8        # actual/expected 비율이 이 값 미만이면 WARN
+      fps_error_ratio: 0.5       # actual/expected 비율이 이 값 미만이면 ERROR
+      stale_timeout_s: 2.0         # 이 시간(초) 이상 메시지 없으면 STALE
+      expected_width: 0          # 0 = 체크 안 함
+      expected_height: 0         # 0 = 체크 안 함
+      expected_encoding: ""      # "" = 체크 안 함  (예: "rgb8", "bgr8")
 
     processed:
       image_topic: "/sensing/camera/processed/image"
@@ -25,19 +25,19 @@ camera_checker:
       expected_fps: 30.0
       fps_warn_ratio: 0.8
       fps_error_ratio: 0.5
-      stale_timeout: 2.0
+      stale_timeout_s: 2.0
       expected_width: 0
       expected_height: 0
       expected_encoding: ""
 
-    # Section note: tune thresholds based on expected stream behavior and safety policy.
+    # 카메라 추가 예시:
     # rear:
     #   image_topic: "/sensing/camera/rear/image_raw"
     #   camera_info_topic: "/sensing/camera/rear/camera_info"
     #   expected_fps: 15.0
     #   fps_warn_ratio: 0.8
     #   fps_error_ratio: 0.5
-    #   stale_timeout: 2.0
+    #   stale_timeout_s: 2.0
     #   expected_width: 1280
     #   expected_height: 720
     #   expected_encoding: "rgb8"

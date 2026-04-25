@@ -132,18 +132,21 @@ public:
     // 2026-02-26: Optional goal topic to clear stale path visualization immediately on new goal.
     goal_topic_ = declare_parameter<std::string>("goal_topic", "");
     // 2026-02-26: Ignore fallback path while primary path is fresh.
-    primary_path_timeout_sec_ = declare_parameter<double>("primary_path_timeout_sec", 1.0);
+    primary_path_timeout_s_ = declareDurationWithLegacy(
+      "primary_path_timeout_s", "primary_path_timeout_sec", 1.0);
     // 2026-02-26: Ignore fallback path briefly after goal update to avoid old-path flash.
-    goal_fallback_holdoff_sec_ = declare_parameter<double>("goal_fallback_holdoff_sec", 0.6);
+    goal_fallback_holdoff_s_ = declareDurationWithLegacy(
+      "goal_fallback_holdoff_s", "goal_fallback_holdoff_sec", 0.6);
     // 2026-02-26: Optional stale path auto-clear (<=0 disables).
-    stale_path_timeout_sec_ = declare_parameter<double>("stale_path_timeout_sec", 0.0);
+    stale_path_timeout_s_ = declareDurationWithLegacy(
+      "stale_path_timeout_s", "stale_path_timeout_sec", 0.0);
     // HH_260317-00:00 Guard against stale route reuse after a new goal is received.
     // When enabled, path messages older than latest goal timestamp are ignored.
     drop_stale_path_after_goal_ =
       declare_parameter<bool>("drop_stale_path_after_goal", true);
     // HH_260317-00:00 Allow small timestamp skew between goal/path publishers.
-    path_goal_stamp_slack_sec_ =
-      declare_parameter<double>("path_goal_stamp_slack_sec", 0.10);
+    path_goal_stamp_slack_s_ = declareDurationWithLegacy(
+      "path_goal_stamp_slack_s", "path_goal_stamp_slack_sec", 0.10);
     // HH_260317-00:00 Prefer geometric freshness check:
     // accept only paths that terminate near the latest goal.
     // This is more robust than header-stamp-only checks across mixed publishers.
@@ -156,7 +159,8 @@ public:
     // 2026-02-27: Rebuild throttling controls to prevent path/cost lag under high CPU load.
     rebuild_on_pose_ = declare_parameter<bool>("rebuild_on_pose", true);
     rebuild_on_path_ = declare_parameter<bool>("rebuild_on_path", true);
-    min_rebuild_period_sec_ = declare_parameter<double>("min_rebuild_period_sec", 0.0);
+    min_rebuild_period_s_ = declareDurationWithLegacy(
+      "min_rebuild_period_s", "min_rebuild_period_sec", 0.0);
     // HH_260305-00:00 Allow path-mode grid baseline build (lanelet mask + pose gradient)
     // even when no valid path has been received yet.
     allow_build_without_path_ = declare_parameter<bool>("allow_build_without_path", false);
@@ -185,14 +189,13 @@ public:
     // Enables deterministic realtime gradient refresh even when path/pose callbacks are sparse.
     rebuild_on_timer_ = declare_parameter<bool>("rebuild_on_timer", false);
     output_topic_ = declare_parameter<std::string>("output_topic", "/map/cost_grid/lanelet");  // HH_260123 allow multiple cost grids
+    // HH_260424: primary_enable=false by default — secondary (centerline) carries all planning cost.
+    // Primary (bounds mode) was unused; disabling saves one full raster build per cycle.
+    primary_enable_ = declare_parameter<bool>("primary_enable", false);
     // 2026-04-06: Secondary profile parameters.
-    // One process/node publishes:
-    // - primary profile   -> output_topic_               (typically /map/cost_grid/lanelet)
-    // - secondary profile -> secondary_output_topic_     (typically /map/cost_grid/planning_base)
-    // so we can reduce node count while preserving two output topics.
     secondary_enable_ = declare_parameter<bool>("secondary.enable", false);
     secondary_output_topic_ = declare_parameter<std::string>(
-      "secondary.output_topic", "/map/cost_grid/planning_base");
+      "secondary.output_topic", "/map/cost_grid/lanelet");
     secondary_cost_mode_ = declare_parameter<std::string>("secondary.cost_mode", "centerline");
     secondary_resolution_ = declare_parameter<double>("secondary.resolution", 0.10);
     secondary_window_width_ = declare_parameter<int>("secondary.width", 500);
@@ -228,9 +231,10 @@ public:
     publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
     map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
 
-    // HH_260109 Primary profile publisher.
-    grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
-      output_topic_, rclcpp::QoS(1).transient_local());
+    if (primary_enable_) {
+      grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+        output_topic_, rclcpp::QoS(1).transient_local());
+    }
     if (secondary_enable_) {
       // Secondary profile publisher (same node, different topic/profile).
       secondary_grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
@@ -330,9 +334,9 @@ public:
         pose_cb_count_, path_cb_count_, build_ok_count_,
         skip_no_path_count_, skip_throttle_count_);
     }
-    if (stale_path_timeout_sec_ > 0.0 && path_received_ && last_any_path_rx_.nanoseconds() > 0) {
+    if (stale_path_timeout_s_ > 0.0 && path_received_ && last_any_path_rx_.nanoseconds() > 0) {
       const double dt = (now() - last_any_path_rx_).seconds();
-      if (dt > stale_path_timeout_sec_) {
+      if (dt > stale_path_timeout_s_) {
         path_received_ = false;
         path_.poses.clear();
         invalidatePathLaneletCache();
@@ -349,7 +353,7 @@ public:
     if (rebuild_on_timer_) {
       requestBuild(false);
     }
-    if (!last_grid_.data.empty()) {
+    if (primary_enable_ && grid_pub_ && !last_grid_.data.empty()) {
       last_grid_.header.stamp = now();
       grid_pub_->publish(last_grid_);
       publishAvgMapGrid(last_grid_, "lanelet cost grid republished");
@@ -363,6 +367,26 @@ public:
   }
 
 private:
+  double declareDurationWithLegacy(
+    const std::string & canonical_name,
+    const std::string & legacy_name,
+    const double default_value)
+  {
+    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
+    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
+    if (std::abs(canonical_value - default_value) > 1e-9) {
+      return canonical_value;
+    }
+    if (std::abs(legacy_value - default_value) > 1e-9) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter '%s' is deprecated. Use '%s' instead.",
+        legacy_name.c_str(), canonical_name.c_str());
+      return legacy_value;
+    }
+    return canonical_value;
+  }
+
   // toLower: Utility helper used for string parsing, math conversion, or styling.
   static std::string toLower(std::string value)
   {
@@ -451,7 +475,7 @@ private:
     // Fallback keeps the grid informative when the primary path topic is idle.
     if (last_primary_path_rx_.nanoseconds() > 0) {
       const double dt = (now() - last_primary_path_rx_).seconds();
-      if (dt < primary_path_timeout_sec_) {
+      if (dt < primary_path_timeout_s_) {
         return;
       }
     }
@@ -530,7 +554,7 @@ private:
       {
         const rclcpp::Time path_stamp(msg->header.stamp);
         const auto slack = rclcpp::Duration::from_seconds(
-          std::max(0.0, path_goal_stamp_slack_sec_));
+          std::max(0.0, path_goal_stamp_slack_s_));
         if (path_stamp + slack < last_goal_rx_) {
           RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 1000,
@@ -581,8 +605,8 @@ private:
         clearPublishedGrid();
       }
     }
-    if (goal_fallback_holdoff_sec_ > 0.0) {
-      fallback_holdoff_until_ = now() + rclcpp::Duration::from_seconds(goal_fallback_holdoff_sec_);
+    if (goal_fallback_holdoff_s_ > 0.0) {
+      fallback_holdoff_until_ = now() + rclcpp::Duration::from_seconds(goal_fallback_holdoff_s_);
     }
 
     // HH_260306-00:00 Rebuild immediately on goal updates so path-cost markers
@@ -655,14 +679,20 @@ private:
         rebuild_on_pose_ = p.as_bool();
       } else if (p.get_name() == "rebuild_on_path") {
         rebuild_on_path_ = p.as_bool();
-      } else if (p.get_name() == "min_rebuild_period_sec") {
-        min_rebuild_period_sec_ = std::max(0.0, p.as_double());
+      } else if (
+        p.get_name() == "min_rebuild_period_s" ||
+        p.get_name() == "min_rebuild_period_sec")
+      {
+        min_rebuild_period_s_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "allow_build_without_path") {
         allow_build_without_path_ = p.as_bool();
       } else if (p.get_name() == "drop_stale_path_after_goal") {
         drop_stale_path_after_goal_ = p.as_bool();
-      } else if (p.get_name() == "path_goal_stamp_slack_sec") {
-        path_goal_stamp_slack_sec_ = std::max(0.0, p.as_double());
+      } else if (
+        p.get_name() == "path_goal_stamp_slack_s" ||
+        p.get_name() == "path_goal_stamp_slack_sec")
+      {
+        path_goal_stamp_slack_s_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "fresh_path_goal_match_tolerance_m") {
         fresh_path_goal_match_tolerance_m_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "backward_penalty") {
@@ -1090,8 +1120,10 @@ private:
   // Builds/publishes all configured profiles (primary + optional secondary).
   void buildGrid()
   {
-    // 1) Always publish primary profile first with currently active runtime members.
-    buildSingleGrid();
+    // 1) Primary profile — skipped by default (primary_enable=false).
+    if (primary_enable_) {
+      buildSingleGrid();
+    }
     if (!secondary_enable_ || !secondary_grid_pub_) {
       return;
     }
@@ -1204,9 +1236,9 @@ private:
       ++skip_no_path_count_;
       return;
     }
-    if (!force && min_rebuild_period_sec_ > 0.0 && last_build_time_.nanoseconds() > 0) {
+    if (!force && min_rebuild_period_s_ > 0.0 && last_build_time_.nanoseconds() > 0) {
       const double dt = (now() - last_build_time_).seconds();
-      if (dt < min_rebuild_period_sec_) {
+      if (dt < min_rebuild_period_s_) {
         ++skip_throttle_count_;
         return;
       }
@@ -1256,9 +1288,10 @@ private:
     empty.info.origin.orientation.w = 1.0;
     last_grid_ = empty;
     has_built_grid_ = true;
-    grid_pub_->publish(last_grid_);
-    publishAvgMapGrid(last_grid_, "lanelet cost grid cleared");
-
+    if (primary_enable_ && grid_pub_) {
+      grid_pub_->publish(last_grid_);
+      publishAvgMapGrid(last_grid_, "lanelet cost grid cleared");
+    }
     if (secondary_enable_ && secondary_grid_pub_) {
       // Keep both topics consistent when we clear due to stale/empty path state.
       avg_msgs::msg::OccupancyGrid secondary_empty = empty;
@@ -2092,10 +2125,10 @@ private:
   bool rebuild_on_pose_{true};
   bool rebuild_on_path_{true};
   bool rebuild_on_timer_{false};
-  double min_rebuild_period_sec_{0.0};
+  double min_rebuild_period_s_{0.0};
   bool allow_build_without_path_{false};
   bool drop_stale_path_after_goal_{true};
-  double path_goal_stamp_slack_sec_{0.10};
+  double path_goal_stamp_slack_s_{0.10};
   double fresh_path_goal_match_tolerance_m_{2.0};
   bool debug_rebuild_stats_{false};
   bool debug_build_timing_{false};
@@ -2125,13 +2158,14 @@ private:
   std::string path_topic_;
   std::string path_fallback_topic_;
   std::string goal_topic_;
-  double primary_path_timeout_sec_{1.0};
-  double goal_fallback_holdoff_sec_{0.6};
-  double stale_path_timeout_sec_{0.0};
+  double primary_path_timeout_s_{1.0};
+  double goal_fallback_holdoff_s_{0.6};
+  double stale_path_timeout_s_{0.0};
   double republish_period_;
   std::string output_topic_;
+  bool primary_enable_{false};
   bool secondary_enable_{false};
-  std::string secondary_output_topic_{"/map/cost_grid/planning_base"};
+  std::string secondary_output_topic_{"/map/cost_grid/lanelet"};
   std::string secondary_cost_mode_{"centerline"};
   double secondary_resolution_{0.10};
   int secondary_window_width_{500};

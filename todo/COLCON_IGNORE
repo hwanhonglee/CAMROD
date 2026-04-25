@@ -1,0 +1,2 @@
+# HH_260424: Archive/work-in-progress backup tree.
+# Exclude from colcon package discovery to avoid duplicate package names.

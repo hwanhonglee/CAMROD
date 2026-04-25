@@ -2,38 +2,38 @@
 # HH_260112 Align node parameter keys with /perception namespace + short names.
 /perception/obstacle_fusion:
   ros__parameters:
-    input_cloud_topic: "/sensing/lidar/points_filtered"
-    detection_topic: "/perception/camera/detections_2d"
-    camera_info_topic: "/sensing/camera/processed/camera_info"
-    output_topic: "/perception/obstacles"
+    input_cloud_topic: "/sensing/lidar/points_filtered"           # LiDAR cloud input used as raw obstacle candidates.
+    detection_topic: "/perception/camera/detections_2d"           # 2D detection boxes used to gate LiDAR points.
+    camera_info_topic: "/sensing/camera/processed/camera_info"    # Camera intrinsics used for 3D->2D projection.
+    output_topic: "/perception/obstacles"                         # Filtered obstacle point-cloud output topic.
     # HH_260326: Use camera_link as the canonical camera TF frame.
-    camera_frame: "camera_link"
-    use_camera_filter: true
-    keep_lidar_when_no_detections: true
+    camera_frame: "camera_link"                                   # Camera TF frame used in transform lookup.
+    use_camera_filter: true                                       # Enables camera-box gating of LiDAR points.
+    keep_lidar_when_no_detections: true                           # If true, passes through LiDAR cloud when detections are empty.
     # HH_260109 Perception obstacle fusion (camera detections + LiDAR).
 
 /perception/obstacle_lidar:
   ros__parameters:
-    input_topic: "/sensing/lidar/points_filtered"
-    bbox_topic: "/perception/lidar/bboxes"
+    input_topic: "/sensing/lidar/points_filtered"                 # LiDAR cloud input for Euclidean clustering.
+    bbox_topic: "/perception/lidar/bboxes"                        # MarkerArray output topic for cluster AABB results.
     # HH_260406: Canonical DBSCAN/Euclidean clustering params.
-    cluster_tolerance: 0.25
-    min_cluster_size: 12
-    max_cluster_size: 8000
+    cluster_tolerance: 0.25                                       # Neighbor distance threshold for cluster growth [m].
+    min_cluster_size: 12                                          # Minimum number of points required for a valid cluster.
+    max_cluster_size: 8000                                        # Maximum number of points allowed for a valid cluster.
     # HH_260406: Keep legacy aliases for backward compatibility.
-    eps: 0.25
-    min_pts: 12
-    max_points: 8000
-    use_box: true
-    x_min: 0.0
-    x_max: 5.0
-    y_min: -3.0
-    y_max: 3.0
-    z_min: -3.0
-    z_max: 5.0
-    min_cluster_points: 12
-    min_size_x: 0.10
-    min_size_y: 0.10
-    min_size_z: 0.10
-    marker_lifetime_sec: 0.15
-    draw_text: true
+    eps: 0.25                                                     # Legacy alias for `cluster_tolerance`.
+    min_pts: 12                                                   # Legacy alias for minimum cluster points.
+    max_points: 8000                                              # Legacy alias for maximum cluster points.
+    use_box: true                                                 # Enables axis-aligned ROI pre-filtering before clustering.
+    x_min: 0.0                                                    # ROI minimum X bound [m].
+    x_max: 5.0                                                    # ROI maximum X bound [m].
+    y_min: -3.0                                                   # ROI minimum Y bound [m].
+    y_max: 3.0                                                    # ROI maximum Y bound [m].
+    z_min: -3.0                                                   # ROI minimum Z bound [m].
+    z_max: 5.0                                                    # ROI maximum Z bound [m].
+    min_cluster_points: 12                                        # Legacy alias for `min_cluster_size`.
+    min_size_x: 0.10                                              # Reserved threshold for minimum box length in X [m].
+    min_size_y: 0.10                                              # Reserved threshold for minimum box width in Y [m].
+    min_size_z: 0.10                                              # Reserved threshold for minimum box height in Z [m].
+    marker_lifetime_s: 0.15                                       # Marker lifetime before auto-expire [s].
+    draw_text: true                                               # Enables per-cluster text marker (id/points/distance).

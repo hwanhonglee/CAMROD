@@ -7,10 +7,12 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+# Resolves a package-relative file path via package share directory.
 def pkg_share(pkg: str, rel: str) -> str:
     return os.path.join(get_package_share_directory(pkg), rel)
 
 
+# Declares robot-visualization arguments and launches marker/polygon publisher node.
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace', default_value='platform'),

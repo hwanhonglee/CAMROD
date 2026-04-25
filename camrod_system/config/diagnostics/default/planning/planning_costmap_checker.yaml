@@ -1,8 +1,8 @@
 planning_costmap_checker:
   ros__parameters:
-    publish_rate: 1.0           # 진단 발행 주기 (Hz)
+    publish_rate_hz: 1.0           # 진단 발행 주기 (Hz)
 
     global_costmap_topic: "/planning/global_costmap/costmap"
     local_costmap_topic: "/planning/local_costmap/costmap"
-    global_stale_timeout: 3.0   # global costmap (publish 1.5 Hz) 미갱신 허용 시간 (주기 0.67s의 약 4.5배)
-    local_stale_timeout: 1.0    # local costmap  (publish 5.0 Hz) 미갱신 허용 시간 (주기 0.2s의 약 5배)
+    global_stale_timeout_s: 3.0   # global costmap (publish 1.5 Hz) 미갱신 허용 시간 (주기 0.67s의 약 4.5배)
+    local_stale_timeout_s: 1.0    # local costmap  (publish 5.0 Hz) 미갱신 허용 시간 (주기 0.2s의 약 5배)

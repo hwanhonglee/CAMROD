@@ -44,6 +44,7 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
 # Implements `generate_launch_description` behavior.
 def generate_launch_description():
     pkg_share = get_package_share_directory('camrod_planning')
+    nav2_bt_share = get_package_share_directory('nav2_bt_navigator')
     map_info_path = os.path.join(
         get_package_share_directory('camrod_map'),
         'config',
@@ -83,6 +84,14 @@ def generate_launch_description():
     default_lanelet_param = os.path.join(pkg_share, 'config', 'nav2_lanelet_overlay.yaml')
     default_behavior_param = os.path.join(pkg_share, 'config', 'nav2_behavior.yaml')
     default_path_cost_grids_param = os.path.join(pkg_share, 'config', 'path_cost_grids.yaml')
+    default_nav_to_pose_bt_xml = os.path.join(
+        pkg_share, 'config', 'bt', 'navigate_to_pose_w_planner_selector_grid.xml'
+    )
+    default_nav_through_poses_bt_xml = os.path.join(
+        nav2_bt_share,
+        'behavior_trees',
+        'navigate_through_poses_w_replanning_and_recovery.xml',
+    )
 
     # -------------------------------------------------------------------------
     # Launch Arguments
@@ -141,6 +150,16 @@ def generate_launch_description():
         default_value='true',
         description='Nav2 lifecycle_manager autostart flag',
     )
+    nav2_bt_xml_nav_to_pose_arg = DeclareLaunchArgument(
+        'nav2_bt_xml_nav_to_pose',
+        default_value=default_nav_to_pose_bt_xml,
+        description='BT XML path for NavigateToPose',
+    )
+    nav2_bt_xml_nav_through_poses_arg = DeclareLaunchArgument(
+        'nav2_bt_xml_nav_through_poses',
+        default_value=default_nav_through_poses_bt_xml,
+        description='BT XML path for NavigateThroughPoses',
+    )
 
     # -------------------------------------------------------------------------
     # LaunchConfigurations
@@ -158,6 +177,8 @@ def generate_launch_description():
     nav2_robot_base_frame = LaunchConfiguration('nav2_robot_base_frame')
     module_namespace = LaunchConfiguration('module_namespace')
     nav2_autostart = LaunchConfiguration('nav2_autostart')
+    nav2_bt_xml_nav_to_pose = LaunchConfiguration('nav2_bt_xml_nav_to_pose')
+    nav2_bt_xml_nav_through_poses = LaunchConfiguration('nav2_bt_xml_nav_through_poses')
     # 2026-02-25: Apply Nav2 params in deterministic overlay order:
     # base -> vehicle -> lanelet -> behavior.
     nav2_base_params = RewrittenYaml(
@@ -181,7 +202,11 @@ def generate_launch_description():
     nav2_behavior_params = RewrittenYaml(
         source_file=nav2_behavior_param_file,
         root_key='planning',
-        param_rewrites={},
+        param_rewrites={
+            # HH_260421: Replace host-specific absolute BT XML paths from YAML.
+            'default_nav_to_pose_bt_xml': nav2_bt_xml_nav_to_pose,
+            'default_nav_through_poses_bt_xml': nav2_bt_xml_nav_through_poses,
+        },
         convert_types=True,
     )
 
@@ -219,6 +244,10 @@ def generate_launch_description():
                 'global_frame': 'map',
                 'robot_base_frame': nav2_robot_base_frame,
                 'odom_topic': '/localization/odometry/filtered',
+                # HH_260421: Force package-share-resolved BT XML paths to avoid
+                # host-specific absolute-path breakage.
+                'default_nav_to_pose_bt_xml': nav2_bt_xml_nav_to_pose,
+                'default_nav_through_poses_bt_xml': nav2_bt_xml_nav_through_poses,
                 # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
                 'transform_tolerance': 0.5,
             }
@@ -305,6 +334,9 @@ def generate_launch_description():
             # HH_260306-00:00 Keep BT transform helpers pinned to configured Nav2 base frame.
             'global_frame': 'map',
             'robot_base_frame': nav2_robot_base_frame,
+            # HH_260421: Override host-specific absolute BT XML paths from YAML.
+            'default_nav_to_pose_bt_xml': nav2_bt_xml_nav_to_pose,
+            'default_nav_through_poses_bt_xml': nav2_bt_xml_nav_through_poses,
             # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
             'transform_tolerance': 0.5,
         }],
@@ -372,6 +404,8 @@ def generate_launch_description():
         nav2_robot_base_frame_arg,
         module_namespace_arg,
         nav2_autostart_arg,
+        nav2_bt_xml_nav_to_pose_arg,
+        nav2_bt_xml_nav_through_poses_arg,
 
         planner_server,
         controller_server,

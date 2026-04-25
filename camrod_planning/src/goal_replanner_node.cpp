@@ -110,7 +110,14 @@ public:
       declare_parameter<std::string>("planning_status_topic", "/planning/status");
     enable_periodic_replan_ = declare_parameter<bool>("enable_periodic_replan", false);
     // HH_260309-00:00 Prevent compute-path request storms.
-    min_request_interval_sec_ = declare_parameter<double>("min_request_interval_sec", 0.25);
+    min_request_interval_s_ = declare_parameter<double>("min_request_interval_s", 0.25);
+    {
+      const double legacy = declare_parameter<double>("min_request_interval_sec", 0.25);
+      if (std::abs(min_request_interval_s_ - 0.25) < 1e-9 && std::abs(legacy - 0.25) > 1e-9) {
+        RCLCPP_WARN(get_logger(), "Parameter 'min_request_interval_sec' is deprecated. Use 'min_request_interval_s'.");
+        min_request_interval_s_ = legacy;
+      }
+    }
     // HH_260309-00:00 When NavigateToPose BT is running, planner_server already computes paths.
     // Pause this helper to avoid action contention/abort storms.
     pause_when_navigate_active_ = declare_parameter<bool>("pause_when_navigate_active", true);
@@ -119,9 +126,23 @@ public:
     // HH_260306-00:00 Default to event-driven mode.
     replan_rate_hz_ = declare_parameter<double>("replan_rate_hz", 0.0);
     // HH_260306-00:00 Set <=0 to disable timeout-based cancellation.
-    request_timeout_sec_ = declare_parameter<double>("request_timeout_sec", 0.0);
+    request_timeout_s_ = declare_parameter<double>("request_timeout_s", 0.0);
+    {
+      const double legacy = declare_parameter<double>("request_timeout_sec", 0.0);
+      if (std::abs(request_timeout_s_) < 1e-9 && std::abs(legacy) > 1e-9) {
+        RCLCPP_WARN(get_logger(), "Parameter 'request_timeout_sec' is deprecated. Use 'request_timeout_s'.");
+        request_timeout_s_ = legacy;
+      }
+    }
     // HH_260306-00:00 Backoff interval after failed/canceled planner result.
-    retry_after_failure_sec_ = declare_parameter<double>("retry_after_failure_sec", 0.8);
+    retry_after_failure_s_ = declare_parameter<double>("retry_after_failure_s", 0.8);
+    {
+      const double legacy = declare_parameter<double>("retry_after_failure_sec", 0.8);
+      if (std::abs(retry_after_failure_s_ - 0.8) < 1e-9 && std::abs(legacy - 0.8) > 1e-9) {
+        RCLCPP_WARN(get_logger(), "Parameter 'retry_after_failure_sec' is deprecated. Use 'retry_after_failure_s'.");
+        retry_after_failure_s_ = legacy;
+      }
+    }
     start_replan_distance_ = declare_parameter<double>("start_replan_distance", 0.4);
     goal_replan_distance_ = declare_parameter<double>("goal_replan_distance", 0.1);
     // HH_260309-00:00 Ignore repeated equivalent goal messages (same XY/yaw) to avoid
@@ -133,8 +154,14 @@ public:
     duplicate_goal_yaw_epsilon_deg_ =
       declare_parameter<double>("duplicate_goal_yaw_epsilon_deg", 4.0);
     // HH_260309-00:00 Debounce transient inactive blips from navigate status topic.
-    navigate_inactive_grace_sec_ =
-      declare_parameter<double>("navigate_inactive_grace_sec", 0.8);
+    navigate_inactive_grace_s_ = declare_parameter<double>("navigate_inactive_grace_s", 0.8);
+    {
+      const double legacy = declare_parameter<double>("navigate_inactive_grace_sec", 0.8);
+      if (std::abs(navigate_inactive_grace_s_ - 0.8) < 1e-9 && std::abs(legacy - 0.8) > 1e-9) {
+        RCLCPP_WARN(get_logger(), "Parameter 'navigate_inactive_grace_sec' is deprecated. Use 'navigate_inactive_grace_s'.");
+        navigate_inactive_grace_s_ = legacy;
+      }
+    }
     start_replan_yaw_deg_ = declare_parameter<double>("start_replan_yaw_deg", 10.0);
     replan_on_start_change_ = declare_parameter<bool>("replan_on_start_change", false);
     // HH_260306-00:00 Stop replanning after reaching goal until a new goal is received.
@@ -189,12 +216,12 @@ public:
       get_logger(),
       "replan config: rate=%.2fHz timeout=%.2fs retry_after_failure=%.2fs "
       "replan_on_start_change=%s immediate(goal/start)=%s/%s pause_on_nav=%s min_req_int=%.2fs",
-      replan_rate_hz_, request_timeout_sec_, retry_after_failure_sec_,
+      replan_rate_hz_, request_timeout_s_, retry_after_failure_s_,
       replan_on_start_change_ ? "true" : "false",
       immediate_replan_on_goal_ ? "true" : "false",
       immediate_replan_on_start_ ? "true" : "false",
       pause_when_navigate_active_ ? "true" : "false",
-      min_request_interval_sec_);
+      min_request_interval_s_);
     if (publish_result_path_) {
       RCLCPP_INFO(
         get_logger(),
@@ -272,9 +299,9 @@ private:
     if (active) {
       last_navigate_active_time_ = now();
     } else if (
-      navigate_active_ && navigate_inactive_grace_sec_ > 0.0 &&
+      navigate_active_ && navigate_inactive_grace_s_ > 0.0 &&
       last_navigate_active_time_.nanoseconds() > 0 &&
-      (now() - last_navigate_active_time_).seconds() < navigate_inactive_grace_sec_)
+      (now() - last_navigate_active_time_).seconds() < navigate_inactive_grace_s_)
     {
       return;
     }
@@ -489,9 +516,9 @@ private:
     {
       return;
     }
-    if (min_request_interval_sec_ > 0.0 && last_request_sent_time_.nanoseconds() > 0) {
+    if (min_request_interval_s_ > 0.0 && last_request_sent_time_.nanoseconds() > 0) {
       const double dt_req = (now() - last_request_sent_time_).seconds();
-      if (dt_req < min_request_interval_sec_) {
+      if (dt_req < min_request_interval_s_) {
         return;
       }
     }
@@ -509,11 +536,11 @@ private:
         has_last_submitted_ = false;
         RCLCPP_INFO(get_logger(), "Canceled in-flight plan request due to updated goal/start");
       } else {
-        if (request_timeout_sec_ <= 0.0) {
+        if (request_timeout_s_ <= 0.0) {
           return;
         }
         const auto dt = (now() - request_sent_time_).seconds();
-        if (dt <= request_timeout_sec_) {
+        if (dt <= request_timeout_s_) {
           return;
         }
 
@@ -643,8 +670,8 @@ private:
           return;
         }
         has_last_submitted_ = false;
-        if (retry_after_failure_sec_ > 0.0) {
-          next_allowed_request_time_ = now() + rclcpp::Duration::from_seconds(retry_after_failure_sec_);
+        if (retry_after_failure_s_ > 0.0) {
+          next_allowed_request_time_ = now() + rclcpp::Duration::from_seconds(retry_after_failure_s_);
         }
         RCLCPP_WARN(
           get_logger(), "ComputePathToPose finished with code %d",
@@ -732,16 +759,16 @@ private:
   bool publish_planning_status_{false};
   bool enable_periodic_replan_{false};
 
-  double min_request_interval_sec_{0.25};
+  double min_request_interval_s_{0.25};
   double replan_rate_hz_{0.0};
-  double request_timeout_sec_{0.0};
-  double retry_after_failure_sec_{0.8};
+  double request_timeout_s_{0.0};
+  double retry_after_failure_s_{0.8};
   double start_replan_distance_{0.4};
   double goal_replan_distance_{0.1};
   bool ignore_duplicate_goal_messages_{true};
   double duplicate_goal_xy_epsilon_m_{0.05};
   double duplicate_goal_yaw_epsilon_deg_{4.0};
-  double navigate_inactive_grace_sec_{0.8};
+  double navigate_inactive_grace_s_{0.8};
   double start_replan_yaw_deg_{10.0};
   bool replan_on_start_change_{false};
   bool stop_replan_after_goal_reached_{true};

@@ -106,6 +106,19 @@ ament_target_dependencies(
   tf2_geometry_msgs
 )
 
+# ------------------------------------------------------------------------------
+# Inflation cost grid (lanelet + LiDAR + Radar + global_path → /planning/cost_grid/inflation)
+# ------------------------------------------------------------------------------
+add_executable(inflation_cost_grid_node src/inflation_cost_grid_node.cpp)
+ament_target_dependencies(
+  inflation_cost_grid_node
+  rclcpp
+  avg_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+)
+
 install(
   TARGETS
     lidar_preprocessor_node
@@ -114,6 +127,7 @@ install(
     sen0592_radar_node
     radar_cost_grid_node
     lidar_cost_grid_node
+    inflation_cost_grid_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

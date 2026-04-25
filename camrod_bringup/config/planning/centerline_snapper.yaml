@@ -2,7 +2,8 @@
 # HH_260126 Default params for lanelet centerline snapping.
 /planning/centerline_snapper:
   ros__parameters:
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
+    # Launch passes resolved map_path; keep YAML default empty to avoid host-specific hardcoding.
+    map_path: ""
     offset_lat: 36.8436194
     offset_lon: 128.0925490
     offset_alt: 0.0
@@ -18,5 +19,5 @@
     map_z_offset: 0.0
     flatten_to_ground: false
     # HH_260413: Throttle nearest-centerline projection for CPU stability.
-    min_update_period_sec: 0.05
+    min_update_period_s: 0.05
     min_input_displacement_m: 0.05

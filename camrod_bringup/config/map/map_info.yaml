@@ -1,13 +1,14 @@
-# 2026-01-30 Update map path/origin for lanelet2_maps.osm.
-# HH_260112 Align node parameter keys with /map namespace + short names.
+# Shared map reference parameters for map/localization/planning modules.
+# This file is the single source of truth for map path + origin offsets.
 /**:
   ros__parameters:
-    # Prefer launch-level override (bringup or package launch).
-    # Keep empty here if the actual OSM lives outside this package.
-    # Absolute path to the lanelet2 map used by map/localization/planning modules.
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
+    # Lanelet2 OSM path.
+    # Keep empty by default and let launch resolve via package-share/workspace search.
+    # (bringup/map/planning launch files already provide this resolution path.)
+    map_path: ""
 
-    # HH_260114 WGS84 origin used as LocalCartesian projector reference.
+    # WGS84 origin used by LocalCartesian/UTM projectors.
+    # Keep these values aligned with the source map generation reference.
 
     # 52S-CF60, Park - VMB
     # offset_lat: 36.8436194
@@ -27,20 +28,25 @@
     offset_lon: 127.4429577
     offset_alt: 84.0
 
+    # Optional UTM-origin metadata for downstream tools that prefer metric origin fields.
     offset_utm_easting: 360965.99
     offset_utm_northing: 4065972.49
     offset_utm_alt: 84.0
 
+    # Optional map yaw correction (degrees).
+    # If enabled, lat/lon->xy conversion can be rotated by this offset.
     yaw_offset_deg: 0.0
     rotate_latlon_xy_by_yaw_offset: true
 
+    # Canonical frame IDs shared by map/localization/planning.
     world_frame_id: "world"
     map_frame_id: "map"
 
-    # HH_260103 arrow scaling knobs (lanelet direction markers)
+    # Lane-direction marker styling (RViz visualization only).
     dir_body_scale: 0.55
     dir_head_scale: 0.35
     dir_width_scale: 0.18
+    # Number of centerline points skipped between arrow markers.
     dir_stride: 30
     # HH_260413: 0 keeps one-shot static marker publish (transient_local for late RViz joiners).
-    visualization_republish_period_sec: 0.0
+    visualization_republish_period_s: 0.0

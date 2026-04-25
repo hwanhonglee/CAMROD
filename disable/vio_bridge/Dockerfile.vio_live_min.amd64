@@ -1,0 +1,329 @@
+ARG BASE_IMAGE=nvidia/cuda:12.8.0-devel-ubuntu22.04
+FROM ${BASE_IMAGE}
+LABEL io.lehong.profile="live_min"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Seoul
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+
+# ===============================
+# Build switches
+# ===============================
+ARG KIMERA_VIO_USE_ZED=ON
+ARG KIMERA_VIO_USE_ORBBEC=ON
+ARG KIMERA_VIO_USE_ROS2=ON
+ARG INSTALL_ZED_SDK=ON
+ARG INSTALL_ORBBEC_SDK=ON
+ARG INSTALL_ROS2=ON
+
+# ===============================
+# Versions / paths
+# ===============================
+ARG ROS_DISTRO=humble
+ARG ORBBEC_SDK_DEB_FILE=OrbbecSDK_v2.7.6_amd64.deb
+ARG ORBBEC_SDK_DEB_URL=https://github.com/orbbec/OrbbecSDK_v2/releases/download/v2.7.6/OrbbecSDK_v2.7.6_amd64.deb
+ARG ZED_SDK_RUN_FILE=ZED_SDK_Ubuntu22_cuda12.8_tensorrt10.9_v5.1.2.zstd.run
+ARG ZED_SDK_RUN_URL=
+ARG ZED_SDK_RELEASE_PAGE_URL=https://www.stereolabs.com/en-fr/developers/release#868673d43af5
+
+ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
+ENV ZED_SDK_ROOT=/usr/local/zed
+ENV ORBBEC_SDK_ROOT=/usr/local/OrbbecSDK
+ENV CMAKE_PREFIX_PATH=/usr/local:${ROS_ROOT}
+
+# ===============================
+# 1. basic + build tools
+# ===============================
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    curl \
+    pkg-config \
+    software-properties-common \
+    ca-certificates \
+    tzdata \
+    gnupg2 \
+    lsb-release \
+    locales \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# ===============================
+# 2. Public dependencies (Kimera / GTSAM / OpenCV / viz VTK)
+# ===============================
+RUN apt-get update && apt-get install -y \
+    libeigen3-dev \
+    libboost-all-dev \
+    libgoogle-glog-dev \
+    libgflags-dev \
+    libyaml-cpp-dev \
+    libyaml-dev \
+    libtbb-dev \
+    libvtk9-dev \
+    vtk9 \
+    libomp-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libtiff-dev \
+    libopenexr-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    libxvidcore-dev \
+    libx264-dev \
+    libgtk-3-dev \
+    libcanberra-gtk3-dev \
+    libatlas-base-dev \
+    gfortran \
+    libusb-1.0-0 \
+    libusb-1.0-0-dev \
+    libssl-dev \
+    libspdlog-dev \
+    python3 \
+    python3-dev \
+    python3-pip \
+    python3-packaging \
+    python3-netifaces \
+    python3-yaml \
+    python3-argcomplete \
+    python3-lark \
+    zstd \
+    udev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ===============================
+# 3. ROS2 runtime + cli (optional)
+# ===============================
+RUN if [ "${INSTALL_ROS2}" = "ON" ]; then \
+      locale-gen en_US en_US.UTF-8; \
+      update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8; \
+      mkdir -p /etc/apt/keyrings; \
+      curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+        | gpg --dearmor -o /etc/apt/keyrings/ros-archive-keyring.gpg; \
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo ${UBUNTU_CODENAME}) main" \
+        > /etc/apt/sources.list.d/ros2.list; \
+      apt-get update && apt-get install -y \
+        ros-${ROS_DISTRO}-ros-base \
+        ros-${ROS_DISTRO}-ament-cmake \
+        ros-${ROS_DISTRO}-rclcpp \
+        ros-${ROS_DISTRO}-sensor-msgs; \
+      echo "/opt/ros/${ROS_DISTRO}/lib" > /etc/ld.so.conf.d/ros2.conf; \
+      ldconfig; \
+      grep -q "source /opt/ros/${ROS_DISTRO}/setup.bash" /root/.bashrc || \
+        echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc; \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# ===============================
+# 4. Optional SDK install (Orbbec / ZED)
+# ===============================
+COPY ./sdk_installers/ /tmp/sdk_installers/
+
+RUN if [ "${INSTALL_ORBBEC_SDK}" = "ON" ]; then \
+      if [ -f "/tmp/sdk_installers/${ORBBEC_SDK_DEB_FILE}" ]; then \
+        cp "/tmp/sdk_installers/${ORBBEC_SDK_DEB_FILE}" /tmp/orbbec.deb; \
+      else \
+        wget -O /tmp/orbbec.deb "${ORBBEC_SDK_DEB_URL}"; \
+      fi; \
+      apt-get update && apt-get install -y /tmp/orbbec.deb; \
+      rm -f /tmp/orbbec.deb; \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
+RUN if [ "${INSTALL_ZED_SDK}" = "ON" ]; then \
+      if [ -f "/tmp/sdk_installers/${ZED_SDK_RUN_FILE}" ]; then \
+        cp "/tmp/sdk_installers/${ZED_SDK_RUN_FILE}" /tmp/ZED_SDK.run; \
+      else \
+        if [ -n "${ZED_SDK_RUN_URL}" ]; then \
+          wget -O /tmp/ZED_SDK.run "${ZED_SDK_RUN_URL}"; \
+        else \
+          CANDIDATE="$(curl -L "${ZED_SDK_RELEASE_PAGE_URL}" | tr '"' '\n' | grep -E 'https://download\\.stereolabs\\.com/[^[:space:]]+\\.run' | head -n 1 || true)"; \
+          test -n "${CANDIDATE}" || (echo "[ERROR] Could not auto-discover ZED .run URL." && exit 1); \
+          wget -O /tmp/ZED_SDK.run "${CANDIDATE}"; \
+        fi; \
+      fi; \
+      chmod +x /tmp/ZED_SDK.run; \
+      /tmp/ZED_SDK.run -- silent skip_tools skip_drivers; \
+      rm -f /tmp/ZED_SDK.run; \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# ===============================
+# 5. OpenCV
+# ===============================
+WORKDIR /opt
+RUN git clone --branch 4.8.0 --depth 1 https://github.com/opencv/opencv.git && \
+    git clone --branch 4.8.0 --depth 1 https://github.com/opencv/opencv_contrib.git
+
+RUN mkdir -p /opt/opencv/build && cd /opt/opencv/build && \
+    cmake .. \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_INSTALL_PREFIX=/usr/local \
+      -DOPENCV_EXTRA_MODULES_PATH=/opt/opencv_contrib/modules \
+      -DWITH_VTK=ON \
+      -DBUILD_opencv_viz=ON \
+      -DBUILD_TESTS=OFF \
+      -DBUILD_PERF_TESTS=OFF \
+      -DBUILD_EXAMPLES=OFF && \
+    make -j6 && \
+    make install && \
+    ldconfig
+
+# ===============================
+# 6. GTSAM
+# ===============================
+WORKDIR /opt
+RUN git clone --branch 4.2a9 --depth 1 https://github.com/borglab/gtsam.git
+
+RUN mkdir -p /opt/gtsam/build && cd /opt/gtsam/build && \
+    cmake .. \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DGTSAM_BUILD_TESTS=OFF \
+      -DGTSAM_BUILD_EXAMPLES=OFF \
+      -DGTSAM_USE_SYSTEM_EIGEN=ON \
+      -DGTSAM_TANGENT_PREINTEGRATION=OFF && \
+    make -j6 && \
+    make install && \
+    ldconfig
+
+# ===============================
+# 7. opengv / DBoW2 / KimeraRPGO
+# ===============================
+RUN git clone --depth 1 https://github.com/laurentkneip/opengv.git /opt/opengv && \
+    cd /opt/opengv && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make -j6 && make install && ldconfig
+
+RUN git clone --depth 1 https://github.com/dorian3d/DBoW2.git /opt/DBoW2 && \
+    cd /opt/DBoW2 && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make -j6 && make install && ldconfig
+
+RUN git clone --depth 1 https://github.com/MIT-SPARK/Kimera-RPGO.git /opt/Kimera-RPGO && \
+    cd /opt/Kimera-RPGO && mkdir -p build && cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DKIMERA_RPGO_BUILD_TESTS=OFF && \
+    make -j6 && make install && ldconfig
+
+# ===============================
+# 8. Copy current workspace sources
+# ===============================
+WORKDIR /kimera_ws
+COPY . /kimera_ws
+
+# ===============================
+# 9. Build Kimera-VIO (live)
+# ===============================
+WORKDIR /kimera_ws/Kimera-VIO
+RUN rm -rf build && mkdir -p build
+
+RUN if [ "${KIMERA_VIO_USE_ZED}" = "ON" ] && [ ! -d "${ZED_SDK_ROOT}" ]; then \
+      echo "[ERROR] KIMERA_VIO_USE_ZED=ON but ${ZED_SDK_ROOT} is missing."; \
+      exit 1; \
+    fi
+
+RUN if [ "${KIMERA_VIO_USE_ZED}" = "ON" ] && [ ! -f "/usr/include/cuda.h" ] && [ ! -f "/usr/local/cuda/include/cuda.h" ]; then \
+      echo "[ERROR] KIMERA_VIO_USE_ZED=ON but CUDA headers are missing (cuda.h)."; \
+      exit 1; \
+    fi
+
+RUN if [ "${KIMERA_VIO_USE_ORBBEC}" = "ON" ]; then \
+      ORBBEC_OPT_ROOT="$(ls -d /opt/OrbbecSDK_v* 2>/dev/null | sort -V | tail -n 1 || true)"; \
+      if [ ! -e "${ORBBEC_SDK_ROOT}" ] && [ -n "${ORBBEC_OPT_ROOT}" ] && [ -d "${ORBBEC_OPT_ROOT}" ]; then \
+        ln -s "${ORBBEC_OPT_ROOT}" "${ORBBEC_SDK_ROOT}"; \
+      fi; \
+    fi
+
+RUN if [ "${KIMERA_VIO_USE_ROS2}" = "ON" ] && [ ! -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]; then \
+      echo "[ERROR] KIMERA_VIO_USE_ROS2=ON but /opt/ros/${ROS_DISTRO}/setup.bash is missing."; \
+      exit 1; \
+    fi
+RUN if [ "${KIMERA_VIO_USE_ROS2}" = "ON" ] && [ ! -f "/opt/ros/${ROS_DISTRO}/share/rclcpp/cmake/rclcppConfig.cmake" ]; then \
+      echo "[ERROR] ROS2 rclcpp CMake config missing under /opt/ros/${ROS_DISTRO}."; \
+      echo "        Ensure ros-${ROS_DISTRO}-rclcpp is installed."; \
+      exit 1; \
+    fi
+RUN if [ "${KIMERA_VIO_USE_ROS2}" = "ON" ] && [ ! -f "/opt/ros/${ROS_DISTRO}/share/sensor_msgs/cmake/sensor_msgsConfig.cmake" ]; then \
+      echo "[ERROR] ROS2 sensor_msgs CMake config missing under /opt/ros/${ROS_DISTRO}."; \
+      echo "        Ensure ros-${ROS_DISTRO}-sensor-msgs is installed."; \
+      exit 1; \
+    fi
+
+WORKDIR /kimera_ws/Kimera-VIO/build
+RUN bash -lc 'set -euo pipefail; \
+    if [ "${KIMERA_VIO_USE_ROS2}" = "ON" ]; then \
+      export AMENT_TRACE_SETUP_FILES="${AMENT_TRACE_SETUP_FILES:-}"; \
+      set +u; source /opt/ros/${ROS_DISTRO}/setup.bash; set -u; \
+    fi; \
+    export CMAKE_PREFIX_PATH="/usr/local:/opt/ros/${ROS_DISTRO}:${CMAKE_PREFIX_PATH:-}"; \
+    cmake .. \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DKIMERA_BUILD_TESTS=OFF \
+      -DKIMERA_VERIFY_GTSAM_CONFIG=OFF \
+      -DKIMERA_VIO_USE_ZED=${KIMERA_VIO_USE_ZED} \
+      -DKIMERA_VIO_USE_ORBBEC=${KIMERA_VIO_USE_ORBBEC} \
+      -DKIMERA_VIO_USE_ROS2=${KIMERA_VIO_USE_ROS2} \
+      -DZED_SDK_ROOT=${ZED_SDK_ROOT} \
+      -DORBBEC_SDK_ROOT=${ORBBEC_SDK_ROOT} || { \
+        echo "[ERROR] Kimera-VIO CMake configure failed."; \
+        [ -f CMakeFiles/CMakeError.log ] && { echo "----- CMakeError.log -----"; cat CMakeFiles/CMakeError.log; }; \
+        [ -f CMakeFiles/CMakeOutput.log ] && { echo "----- CMakeOutput.log (tail) -----"; tail -n 200 CMakeFiles/CMakeOutput.log; }; \
+        exit 1; \
+      }; \
+    cmake --build . -j6; \
+    cmake --install .; \
+    ldconfig'
+
+# ===============================
+# 10. Build sensor_inspection_tools
+# ===============================
+WORKDIR /kimera_ws/sensor_inspection_tools
+RUN rm -rf build && mkdir -p build
+RUN cmake -S . -B build \
+      -DSENSOR_TOOLS_USE_ZED=${KIMERA_VIO_USE_ZED} \
+      -DSENSOR_TOOLS_USE_ORBBEC=${KIMERA_VIO_USE_ORBBEC} \
+      -DZED_SDK_ROOT=${ZED_SDK_ROOT} \
+      -DORBBEC_SDK_ROOT=${ORBBEC_SDK_ROOT} && \
+    cmake --build build -j6
+
+# ===============================
+# 11. Runtime footprint trim (live_min)
+# ===============================
+RUN rm -rf \
+      /opt/opencv \
+      /opt/opencv_contrib \
+      /opt/gtsam \
+      /opt/opengv \
+      /opt/DBoW2 \
+      /opt/Kimera-RPGO \
+      /tmp/sdk_installers \
+      /var/lib/apt/lists/* \
+      /root/.cache && \
+    rm -rf \
+      /kimera_ws/Kimera-VIO/tests \
+      /kimera_ws/Kimera-VIO/docs \
+      /kimera_ws/Kimera-VIO/dev_tools \
+      /kimera_ws/Kimera-VIO/.github \
+      /kimera_ws/Kimera-VIO/output_logs \
+      /kimera_ws/Kimera-VIO/dataset && \
+    rm -rf \
+      /kimera_ws/Kimera-VIO/build/CMakeFiles \
+      /kimera_ws/Kimera-VIO/build/Testing \
+      /kimera_ws/Kimera-VIO/build/Log \
+      /kimera_ws/sensor_inspection_tools/build/CMakeFiles && \
+    find /kimera_ws/Kimera-VIO/build -type f \( -name '*.o' -o -name '*.a' \) -delete || true
+
+# ===============================
+# 12. Runtime setup
+# ===============================
+WORKDIR /kimera_ws
+RUN chmod +x \
+    /kimera_ws/sensor_inspection_tools/save_sensor_yaml.sh \
+    /kimera_ws/docker/build_live.sh \
+    /kimera_ws/docker/run_live.sh
+
+CMD ["/bin/bash"]

@@ -8,11 +8,13 @@ Panels:
         - /Global Options1
         - /Map1
         - /Map1/Lane_Map1/Namespaces1
-        - /Map1/Inflation_Overlay1/Namespaces1
+        - /Map1/Lidar_Cost1/Namespaces1
+        - /Map1/Radar_Cost1/Namespaces1
         - /Sensing1
         - /Sensing1/Lidar1
         - /Perception1
         - /Planning1
+        - /Planning1/Inflation_Grid1
       Splitter Ratio: 0.5904255509376526
     Tree Height: 368
   - Class: rviz_common/Selection
@@ -145,7 +147,7 @@ Visualization Manager:
           Value: true
         - Class: rviz_default_plugins/MarkerArray
           Enabled: true
-          Name: Inflation_Overlay
+          Name: Lidar_Cost
           Namespaces:
             {}
           Topic:
@@ -153,7 +155,19 @@ Visualization Manager:
             Durability Policy: Transient Local
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /map/cost_grid/inflation_markers
+            Value: /map/cost_grid/lidar_markers
+          Value: true
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: true
+          Name: Radar_Cost
+          Namespaces:
+            {}
+          Topic:
+            Depth: 5
+            Durability Policy: Transient Local
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /map/cost_grid/radar_markers
           Value: true
       Enabled: true
       Name: Map
@@ -632,6 +646,20 @@ Visualization Manager:
               Value: true
           Enabled: true
           Name: Local_Path_Planner
+        - Alpha: 0.6000000238418579
+          Class: rviz_default_plugins/Map
+          Color Scheme: costmap
+          Draw Behind: false
+          Enabled: true
+          Name: Inflation_Grid
+          Topic:
+            Depth: 1
+            Durability Policy: Transient Local
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /planning/cost_grid/inflation
+          Use Timestamp: false
+          Value: true
         - Alpha: 1
           Axes Length: 1
           Axes Radius: 0.20000000298023224

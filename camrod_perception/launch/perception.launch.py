@@ -6,10 +6,12 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 
+# Resolves a package-relative file path via package share directory.
 def pkg_share(pkg: str, rel: str) -> str:
     return os.path.join(get_package_share_directory(pkg), rel)
 
 
+# Thin top-level perception launcher that composes obstacle_fusion + obstacle_lidar.
 def generate_launch_description():
     default_param = pkg_share('camrod_perception', os.path.join('config', 'perception_params.yaml'))
 

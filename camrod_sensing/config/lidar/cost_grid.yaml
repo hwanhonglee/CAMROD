@@ -1,8 +1,9 @@
 /sensing/lidar_cost_grid:
   ros__parameters:
-    # HH_260315-00:00 Source obstacle stream after perception filtering/fusion.
-    input_topic: "/perception/obstacles"
-    output_topic: "/sensing/lidar/near_cost_grid"
+    # HH_260421: Consume filtered lidar cloud so near-cost grid reflects
+    # obstacle-only points instead of full raw returns.
+    input_topic: "/sensing/lidar/points_filtered"
+    output_topic: "/sensing/cost_grid/lidar"
     base_frame_id: "robot_base_link"
     output_frame_id: "map"
 
@@ -25,7 +26,7 @@
     ego_clear_radius_m: 0.90
 
     # Runtime
-    max_message_age_sec: 0.50
+    max_message_age_s: 0.50
     publish_rate_hz: 10.0
     publish_lidar_status: false
     lidar_status_topic: "/sensing/lidar/status"

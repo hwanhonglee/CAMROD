@@ -3,7 +3,7 @@
 #include <string>
 #include <rclcpp/rclcpp.hpp>
 
-namespace camping_cart
+namespace camrod
 {
 
 // Pose container used by each sensor mount relative to `sensor_kit_base_link`.
@@ -45,4 +45,4 @@ struct RobotParams
 // Loads declared ROS parameters into a `RobotParams` snapshot.
 RobotParams loadRobotParams(rclcpp::Node * node);
 
-} // namespace camping_cart
+} // namespace camrod

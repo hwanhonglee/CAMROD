@@ -1,9 +1,0 @@
-# HH_260330: Regenerated for current map reference via camrod_map/area_exporter.
-camping_sites:
-  - id: "dz_area_36126"
-    type: "camping_site_1"
-    source: "area"
-    x: -13.1858
-    y: -93.0608
-    z: -96.9358
-    yaw_deg: -179.992

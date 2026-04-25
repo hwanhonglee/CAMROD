@@ -20,7 +20,14 @@ using namespace std::chrono_literals;
 namespace
 {
 constexpr uint16_t kRegRealtimeValue = 0x0101;   // DFRobot SEN0592 real-time distance (mm)
+// HH_260422: Detection angle register. Values 1–5 map to 15°–75° on SEN0592.
+constexpr uint16_t kRegAngleConfig    = 0x0208;
+// HH_260422: Detection range register (mm). Hardware-level filter — sensor does not report
+//   objects beyond this value. Set per direction based on stopping-distance physics:
+//   FRONT 1500mm (5km/h wet-road stop), SIDE 800mm, REAR 500mm (3km/h reverse stop).
+constexpr uint16_t kRegRangeConfig    = 0x021F;
 constexpr uint8_t  kFunctionReadHolding = 0x03;
+constexpr uint8_t  kFunctionWriteSingle = 0x06;  // Modbus FC 0x06: write single register
 constexpr size_t   kRespLen = 7;                 // [id][fc][len][hi][lo][crc_lo][crc_hi]
 
 // Implements `modbus_crc` behavior.
@@ -49,8 +56,25 @@ std::vector<uint8_t> make_read_req(uint8_t slave_id, uint16_t reg, uint16_t coun
     static_cast<uint8_t>(count & 0xFF)
   };
   uint16_t crc = modbus_crc(p);
-  p.push_back(static_cast<uint8_t>(crc & 0xFF));         // CRC low
-  p.push_back(static_cast<uint8_t>((crc >> 8) & 0xFF));  // CRC high
+  p.push_back(static_cast<uint8_t>(crc & 0xFF));
+  p.push_back(static_cast<uint8_t>((crc >> 8) & 0xFF));
+  return p;
+}
+
+// Builds a Modbus FC 0x06 (write single register) request frame.
+std::vector<uint8_t> make_write_req(uint8_t slave_id, uint16_t reg, uint16_t value)
+{
+  std::vector<uint8_t> p = {
+    slave_id,
+    kFunctionWriteSingle,
+    static_cast<uint8_t>((reg >> 8) & 0xFF),
+    static_cast<uint8_t>(reg & 0xFF),
+    static_cast<uint8_t>((value >> 8) & 0xFF),
+    static_cast<uint8_t>(value & 0xFF)
+  };
+  uint16_t crc = modbus_crc(p);
+  p.push_back(static_cast<uint8_t>(crc & 0xFF));
+  p.push_back(static_cast<uint8_t>((crc >> 8) & 0xFF));
   return p;
 }
 
@@ -146,6 +170,20 @@ public:
     this->declare_parameter<double>("field_of_view_rad", 0.26);
     this->declare_parameter<std::string>("radar_status_topic", "/sensing/radar/status");
     this->declare_parameter<bool>("publish_radar_status", false);
+    // HH_260422: write_angle_config=true sends FC 0x06 to register 0x0208 once per port-open.
+    //   angle_config_value: 1=15° 2=30° 3=45° 4=60° 5=75° on DFRobot SEN0592.
+    //   Set write_angle_config=false if sensors are pre-configured or share a bus with other devices.
+    this->declare_parameter<bool>("write_angle_config", true);
+    this->declare_parameter<int>("angle_config_value", 5);
+    // HH_260422: sensor_max_ranges_m: per-sensor max range (m), ordered identically to sensor_names.
+    //   Carried in Range.max_range for software-side filtering in cost_grid_node.
+    this->declare_parameter<std::vector<double>>(
+      "sensor_max_ranges_m", std::vector<double>{});
+    // HH_260422: sensor_range_config_mm: hardware detection range per sensor (mm) written to 0x021F.
+    //   Order: REAR=500, LEFT2=800, LEFT1=800, RIGHT2=800, RIGHT1=800, FRONT=1500.
+    //   Basis: wet-road stopping distance + reaction time + margin at operating speed per direction.
+    this->declare_parameter<std::vector<int>>(
+      "sensor_range_config_mm", std::vector<int>{500, 800, 800, 800, 800, 1500});
 
     // Sensor definitions (name, frame_id, port, topic)
     // Default values are Linux examples; replace with your actual /dev paths or udev symlinks.
@@ -183,6 +221,10 @@ public:
     fov_rad_ = this->get_parameter("field_of_view_rad").as_double();
     radar_status_topic_ = this->get_parameter("radar_status_topic").as_string();
     publish_radar_status_ = this->get_parameter("publish_radar_status").as_bool();
+    write_angle_config_ = this->get_parameter("write_angle_config").as_bool();
+    angle_config_value_ = static_cast<uint16_t>(this->get_parameter("angle_config_value").as_int());
+    const auto sensor_max_ranges = this->get_parameter("sensor_max_ranges_m").as_double_array();
+    const auto sensor_range_config_mm = this->get_parameter("sensor_range_config_mm").as_integer_array();
     avg_radar_pub_ = this->create_publisher<AvgSensingRadar>(radar_status_topic_, 10);
 
     sensors_.resize(n);
@@ -200,6 +242,14 @@ public:
       sensors_[i].frame_id = frame_ids_[i];
       sensors_[i].port = ports_[i];
       sensors_[i].fd = -1;
+      // HH_260422: Use per-sensor max range when provided; fall back to global max_range_m_.
+      sensors_[i].max_range_m =
+        (i < sensor_max_ranges.size() && sensor_max_ranges[i] > 0.0)
+        ? sensor_max_ranges[i] : max_range_m_;
+      // HH_260422: Hardware range limit per sensor (mm). Written to 0x021F at port open.
+      sensors_[i].range_config_mm =
+        (i < sensor_range_config_mm.size() && sensor_range_config_mm[i] > 0)
+        ? static_cast<int>(sensor_range_config_mm[i]) : 1500;
       pubs_[i] = this->create_publisher<avg_msgs::msg::Range>(topics_[i], range_qos);
     }
 
@@ -238,6 +288,14 @@ private:
 
     int fd{-1};
 
+    // HH_260422: Per-sensor max detection range in metres (carried in Range.max_range).
+    //   Populated from sensor_max_ranges_m; falls back to global max_range_m_.
+    double max_range_m{4.5};
+    // HH_260422: Hardware detection range written to register 0x021F (mm).
+    //   Stops the sensor from reporting objects beyond this distance at the hardware level.
+    //   Default values match stopping-distance physics per direction.
+    int range_config_mm{1500};
+
     int last_mm{-1};
     double last_dt_ms{0.0};
     uint64_t ok{0};
@@ -245,6 +303,38 @@ private:
     rclcpp::Time last_update;
     bool ever_received{false};
   };
+
+  // Sends a single Modbus FC 0x06 write and waits for the echo response. Returns true on success.
+  bool write_single_register(SensorRuntime& s, uint16_t reg, uint16_t value, const char* label)
+  {
+    if (s.fd < 0) return false;
+    auto req = make_write_req(slave_id_, reg, value);
+    drain_serial_rx(s.fd);
+    ssize_t wn = ::write(s.fd, req.data(), req.size());
+    if (wn != static_cast<ssize_t>(req.size())) {
+      RCLCPP_WARN(this->get_logger(), "[%s] %s write send failed", s.name.c_str(), label);
+      return false;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    uint8_t resp[8] = {0};
+    if (!read_exact_with_deadline(s.fd, resp, 8, std::chrono::milliseconds(200))) {
+      RCLCPP_WARN(this->get_logger(),
+        "[%s] %s write timed out (continuing anyway)", s.name.c_str(), label);
+      return false;
+    }
+    RCLCPP_INFO(this->get_logger(),
+      "[%s] reg 0x%04X = %u (%s)", s.name.c_str(), reg, value, label);
+    return true;
+  }
+
+  // HH_260422: Writes detection angle (0x0208) and hardware range limit (0x021F) on port open.
+  void write_angle_config_register(SensorRuntime& s)
+  {
+    if (!write_angle_config_ || s.fd < 0) return;
+    write_single_register(s, kRegAngleConfig, angle_config_value_, "angle_config");
+    write_single_register(s, kRegRangeConfig,
+      static_cast<uint16_t>(s.range_config_mm), "range_config");
+  }
 
   // Implements `open_sensor_port` behavior.
   bool open_sensor_port(SensorRuntime& s)
@@ -267,6 +357,8 @@ private:
 
     s.fd = fd;
     RCLCPP_INFO(this->get_logger(), "[%s] Opened %s @ %d", s.name.c_str(), s.port.c_str(), baud_);
+    // HH_260422: Configure detection angle on first open.
+    write_angle_config_register(s);
     return true;
   }
 
@@ -330,7 +422,8 @@ private:
     msg.radiation_type = avg_msgs::msg::Range::ULTRASOUND;
     msg.field_of_view = static_cast<float>(fov_rad_);
     msg.min_range = static_cast<float>(min_range_m_);
-    msg.max_range = static_cast<float>(max_range_m_);
+    // HH_260422: Use per-sensor max_range so cost grid node filters per direction automatically.
+    msg.max_range = static_cast<float>(sensors_[idx].max_range_m);
     msg.range = static_cast<float>(mm) / 1000.0f;  // mm -> m
 
     // clamp/invalid handling (optional)
@@ -469,6 +562,10 @@ private:
   double fov_rad_{0.26};
   std::string radar_status_topic_;
   bool publish_radar_status_{false};
+  // HH_260422: write_angle_config_=true → write kRegAngleConfig on port open.
+  //   angle_config_value_: detection angle index sent to 0x0208 (1=15° … 5=75°).
+  bool write_angle_config_{true};
+  uint16_t angle_config_value_{5};
 
   std::vector<SensorRuntime> sensors_;
   std::vector<rclcpp::Publisher<avg_msgs::msg::Range>::SharedPtr> pubs_;

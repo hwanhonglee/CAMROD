@@ -101,7 +101,7 @@ protected:
       declare_parameter(name + ".expected_fps",      30.0);
       declare_parameter(name + ".fps_warn_ratio",    0.8);
       declare_parameter(name + ".fps_error_ratio",   0.5);
-      declare_parameter(name + ".stale_timeout",     2.0);
+      declare_parameter(name + ".stale_timeout_s",     2.0);
       declare_parameter(name + ".expected_width",    int64_t(0));
       declare_parameter(name + ".expected_height",   int64_t(0));
       declare_parameter(name + ".expected_encoding", std::string(""));
@@ -111,7 +111,7 @@ protected:
       cam->expected_fps      = get_parameter(name + ".expected_fps").as_double();
       cam->fps_warn_ratio    = get_parameter(name + ".fps_warn_ratio").as_double();
       cam->fps_error_ratio   = get_parameter(name + ".fps_error_ratio").as_double();
-      cam->stale_timeout     = get_parameter(name + ".stale_timeout").as_double();
+      cam->stale_timeout = get_param_with_alias<double>(name + ".stale_timeout_s", cam->stale_timeout, {name + ".stale_timeout"});
       cam->expected_width    = static_cast<uint32_t>(
         get_parameter(name + ".expected_width").as_int());
       cam->expected_height   = static_cast<uint32_t>(

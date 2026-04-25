@@ -1,0 +1,14 @@
+%YAML:1.0
+camera_id: left_cam
+
+T_BS:
+  cols: 4
+  rows: 4
+  data: [0.999994, 0.00309656, -0.0015269, -0.0230632, -0.0030948, 0.999995, 0.00114855, 0.000290665, 0.00153045, -0.00114382, 0.999998, 0.00196445, 0, 0, 0, 1]
+
+rate_hz: 30
+resolution: [1280, 720]
+camera_model: pinhole
+intrinsics: [534.12, 534.35, 644.385, 332.028]
+distortion_model: radial-tangential
+distortion_coefficients: [-1.16697, 2.41998, 5.99201e-05, -0.000123166]

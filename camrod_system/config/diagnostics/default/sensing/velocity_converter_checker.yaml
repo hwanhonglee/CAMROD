@@ -9,15 +9,15 @@
 
 velocity_converter_checker:
   ros__parameters:
-    publish_rate: 1.0
+    publish_rate_hz: 1.0
 
     velocity_topic: "/platform/status/velocity"
     imu_topic:      "/sensing/imu/data"
     output_topic:   "/sensing/platform_velocity_converter/twist_with_covariance"
 
-    velocity_stale_timeout:  1.0   # velocity 입력 timeout (s)
-    imu_stale_timeout:       1.0   # IMU 입력 timeout (s)
-    output_stale_timeout:    1.0   # 출력 timeout (s)
+    velocity_stale_timeout_s:  1.0   # velocity 입력 timeout (s)
+    imu_stale_timeout_s:       1.0   # IMU 입력 timeout (s)
+    output_stale_timeout_s:    1.0   # 출력 timeout (s)
 
     expected_output_hz:  10.0
     hz_warn_ratio:       0.7       # 7 Hz 미만이면 WARN

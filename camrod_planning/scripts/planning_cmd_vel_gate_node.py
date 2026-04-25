@@ -8,13 +8,36 @@ import math
 
 import rclpy
 from geometry_msgs.msg import PoseStamped, Twist
-from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid, Odometry
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rclpy.time import Time
 from std_msgs.msg import Bool
 from tf2_ros import Buffer, TransformException, TransformListener
+
+
+def _declare_with_alias(node: Node, canonical_name: str, default_value, *legacy_names):
+    """Read canonical parameter with optional legacy-name fallback."""
+    value = node.declare_parameter(canonical_name, default_value).value
+    canonical_is_default = value == default_value
+    for legacy_name in legacy_names:
+        legacy_value = node.declare_parameter(legacy_name, default_value).value
+        if legacy_value == default_value:
+            continue
+        if canonical_is_default:
+            node.get_logger().warn(
+                f"Parameter '{legacy_name}' is deprecated. Use '{canonical_name}' instead."
+            )
+            value = legacy_value
+            canonical_is_default = False
+            continue
+        if legacy_value != value:
+            node.get_logger().warn(
+                f"Both '{canonical_name}' and deprecated '{legacy_name}' are set with "
+                f"different values. Using '{canonical_name}'."
+            )
+    return value
 
 
 class PlanningCmdVelGateNode(Node):
@@ -52,36 +75,96 @@ class PlanningCmdVelGateNode(Node):
         self.enable_cost_stop = bool(
             self.declare_parameter("enable_cost_stop", True).value
         )
+        # HH_260424: Unified inflation cost grid (lanelet + LiDAR + Radar + global_path).
         self.cost_grid_topic = str(
             self.declare_parameter(
-                "cost_grid_topic", "/planning/local_costmap/costmap"
+                "cost_grid_topic", "/planning/cost_grid/inflation"
             ).value
         )
         self.pose_topic = str(
             self.declare_parameter("pose_topic", "/localization/pose").value
         )
+        self.odometry_topic = str(
+            self.declare_parameter("odometry_topic", "/localization/vio/odometry").value
+        )
+        self.pose_source_preference = str(
+            self.declare_parameter("pose_source_preference", "odometry").value
+        )
+        self.enable_pose_raw_fallback = bool(
+            self.declare_parameter("enable_pose_raw_fallback", False).value
+        )
         self.robot_base_frame = str(
             self.declare_parameter("robot_base_frame", "robot_base_link").value
         )
         self.cost_stop_threshold = int(
-            self.declare_parameter("cost_stop_threshold", 200).value
+            self.declare_parameter("cost_stop_threshold", 85).value
         )
         self.cost_stop_lookahead_m = float(
+            # HH_260422: Legacy fixed lookahead; used only when enable_speed_dependent_lookahead=false.
             self.declare_parameter("cost_stop_lookahead_m", 2.0).value
         )
         self.cost_stop_width_m = float(
             self.declare_parameter("cost_stop_width_m", 1.0).value
         )
-        self.cost_stop_hold_sec = float(
-            self.declare_parameter("cost_stop_hold_sec", 1.0).value
+        self.cost_stop_hold_s = float(
+            _declare_with_alias(self, "cost_stop_hold_s", 1.0, "cost_stop_hold_sec")
         )
 
-        # Unavoidable-cluster stop options.
+        # HH_260422: Speed-dependent front lookahead.
+        #   lookahead = clamp(v²/(2·g·mu) + reaction_time·v + margin, min, max)
+        #   where v = |forward speed| from odometry, g=9.8, mu=front_lookahead_friction.
+        self.enable_speed_dependent_lookahead = bool(
+            self.declare_parameter("enable_speed_dependent_lookahead", True).value
+        )
+        self.front_lookahead_min_m = float(
+            self.declare_parameter("front_lookahead_min_m", 0.4).value
+        )
+        self.front_lookahead_max_m = float(
+            self.declare_parameter("front_lookahead_max_m", 3.0).value
+        )
+        self.front_lookahead_friction = float(
+            # Wet road kinetic friction coefficient for braking distance calc.
+            self.declare_parameter("front_lookahead_friction", 0.4).value
+        )
+        self.front_reaction_time_s = float(
+            # Sensor/compute latency budget added to braking distance.
+            self.declare_parameter("front_reaction_time_s", 0.15).value
+        )
+        self.front_lookahead_margin_m = float(
+            # Static safety buffer added on top of braking+reaction distance.
+            self.declare_parameter("front_lookahead_margin_m", 0.3).value
+        )
+
+        # HH_260422: Side and rear cost-stop — uses the same merged cost grid as front.
+        #   enable_side_rear_cost_stop=false keeps only the forward corridor check active.
+        self.enable_side_rear_cost_stop = bool(
+            self.declare_parameter("enable_side_rear_cost_stop", True).value
+        )
+        self.side_cost_threshold = int(
+            self.declare_parameter("side_cost_threshold", 85).value
+        )
+        self.side_lookahead_m = float(
+            self.declare_parameter("side_lookahead_m", 1.2).value
+        )
+        self.side_corridor_width_m = float(
+            self.declare_parameter("side_corridor_width_m", 0.6).value
+        )
+        self.rear_cost_threshold = int(
+            self.declare_parameter("rear_cost_threshold", 85).value
+        )
+        self.rear_lookahead_m = float(
+            self.declare_parameter("rear_lookahead_m", 0.8).value
+        )
+        self.rear_corridor_width_m = float(
+            self.declare_parameter("rear_corridor_width_m", 0.9).value
+        )
+
+        # Unavoidable-cluster stop options (front only).
         self.enable_unavoidable_stop = bool(
             self.declare_parameter("enable_unavoidable_stop", True).value
         )
         self.unavoidable_lethal_threshold = int(
-            self.declare_parameter("unavoidable_lethal_threshold", 253).value
+            self.declare_parameter("unavoidable_lethal_threshold", 90).value
         )
         self.unavoidable_cluster_min_cells = int(
             self.declare_parameter("unavoidable_cluster_min_cells", 25).value
@@ -90,16 +173,32 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("unavoidable_cluster_min_ratio", 0.25).value
         )
 
+        # HH_260422: _enabled becomes True when /planning/engage publishes True.
+        #   True + _estop==False -> passes /planning/cmd_vel_raw through to /planning/cmd_vel.
+        #   False -> blocks nav2 cmd_vel; publish_zero_when_blocked=True sends zero Twist downstream.
+        #   allow_on_start=True enables gate at startup without an explicit engage signal (default: False).
         self._enabled = self.allow_on_start
+
+        # HH_260422: _estop becomes True when /platform/status/estop publishes True.
+        #   True -> blocks cmd_vel regardless of _enabled state; zero Twist is sent immediately.
         self._estop = False
+
+        # HH_260422: _cost_blocked_until is the monotonic timestamp until which cost-stop keeps the gate closed.
+        #   Gate remains blocked while time.monotonic() < _cost_blocked_until (cost_stop_hold_s duration).
         self._cost_blocked_until = 0.0
         self._last_unavoidable_cluster_cells = 0
         self._last_unavoidable_cluster_ratio = 0.0
         self._last_tf_warn_sec = 0.0
         self._last_empty_corridor_warn_sec = 0.0
 
+        # HH_260422: _current_speed holds the latest forward body velocity (m/s) from odometry.
+        #   Used to compute speed-dependent front lookahead. Stays 0.0 until first odometry arrives.
+        self._current_speed = 0.0
+
+        # HH_260422: Single merged cost grid (LiDAR + Radar) used for all directional checks.
         self._last_grid = None
         self._last_pose = None
+        self._last_odom = None
 
         self.pub_cmd = self.create_publisher(Twist, self.output_topic, 10)
         self.pub_state = self.create_publisher(Bool, self.state_topic, 10)
@@ -123,8 +222,9 @@ class PlanningCmdVelGateNode(Node):
 
         self.sub_cost_grid = None
         self.sub_pose = None
+        self.sub_odom = None
         if self.enable_cost_stop:
-            # HH_260415: Match local_costmap durability to avoid missed updates.
+            # HH_260422: Merged cost grid — single subscription for all directional checks.
             cost_qos = QoSProfile(depth=10)
             cost_qos.reliability = QoSReliabilityPolicy.RELIABLE
             cost_qos.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
@@ -134,6 +234,9 @@ class PlanningCmdVelGateNode(Node):
             # Pose topic is kept as fallback when TF lookup is temporarily unavailable.
             self.sub_pose = self.create_subscription(
                 PoseStamped, self.pose_topic, self._on_pose, 10
+            )
+            self.sub_odom = self.create_subscription(
+                Odometry, self.odometry_topic, self._on_odom, 10
             )
 
         self._state_timer = self.create_timer(0.5, self._publish_state)
@@ -147,8 +250,10 @@ class PlanningCmdVelGateNode(Node):
             f"estop_topic={self.estop_topic if self.use_estop_topic else '(disabled)'} "
             f"allow_on_start={'true' if self.allow_on_start else 'false'} "
             f"cost_stop={'true' if self.enable_cost_stop else 'false'} "
-            f"cost_grid={self.cost_grid_topic} pose_topic={self.pose_topic} "
-            f"robot_base_frame={self.robot_base_frame} "
+            f"inflation_grid={self.cost_grid_topic} "
+            f"speed_dependent={'true' if self.enable_speed_dependent_lookahead else 'false'} "
+            f"front_lookahead=[{self.front_lookahead_min_m:.1f},{self.front_lookahead_max_m:.1f}]m "
+            f"side_rear={'true' if self.enable_side_rear_cost_stop else 'false'} "
             f"unavoidable_stop={'true' if self.enable_unavoidable_stop else 'false'}"
         )
 
@@ -159,12 +264,41 @@ class PlanningCmdVelGateNode(Node):
                 self.enable_cost_stop = bool(p.value)
             elif p.name == "cost_stop_threshold":
                 self.cost_stop_threshold = int(p.value)
+            elif p.name == "cost_stop_hold_s":
+                self.cost_stop_hold_s = float(p.value)
             elif p.name == "cost_stop_hold_sec":
-                self.cost_stop_hold_sec = float(p.value)
+                # Legacy runtime parameter alias.
+                self.cost_stop_hold_s = float(p.value)
             elif p.name == "cost_stop_lookahead_m":
                 self.cost_stop_lookahead_m = float(p.value)
             elif p.name == "cost_stop_width_m":
                 self.cost_stop_width_m = float(p.value)
+            elif p.name == "enable_speed_dependent_lookahead":
+                self.enable_speed_dependent_lookahead = bool(p.value)
+            elif p.name == "front_lookahead_min_m":
+                self.front_lookahead_min_m = float(p.value)
+            elif p.name == "front_lookahead_max_m":
+                self.front_lookahead_max_m = float(p.value)
+            elif p.name == "front_lookahead_friction":
+                self.front_lookahead_friction = float(p.value)
+            elif p.name == "front_reaction_time_s":
+                self.front_reaction_time_s = float(p.value)
+            elif p.name == "front_lookahead_margin_m":
+                self.front_lookahead_margin_m = float(p.value)
+            elif p.name == "enable_side_rear_cost_stop":
+                self.enable_side_rear_cost_stop = bool(p.value)
+            elif p.name == "side_cost_threshold":
+                self.side_cost_threshold = int(p.value)
+            elif p.name == "side_lookahead_m":
+                self.side_lookahead_m = float(p.value)
+            elif p.name == "side_corridor_width_m":
+                self.side_corridor_width_m = float(p.value)
+            elif p.name == "rear_cost_threshold":
+                self.rear_cost_threshold = int(p.value)
+            elif p.name == "rear_lookahead_m":
+                self.rear_lookahead_m = float(p.value)
+            elif p.name == "rear_corridor_width_m":
+                self.rear_corridor_width_m = float(p.value)
             elif p.name == "enable_unavoidable_stop":
                 self.enable_unavoidable_stop = bool(p.value)
             elif p.name == "unavoidable_lethal_threshold":
@@ -244,7 +378,7 @@ class PlanningCmdVelGateNode(Node):
             f"effective={'true' if self._effective_enabled() else 'false'}"
         )
 
-    # Stores latest local costmap.
+    # Stores latest merged near_cost_grid (all directions).
     def _on_cost_grid(self, msg: OccupancyGrid) -> None:
         self._last_grid = msg
 
@@ -252,97 +386,152 @@ class PlanningCmdVelGateNode(Node):
     def _on_pose(self, msg: PoseStamped) -> None:
         self._last_pose = msg
 
-    # Checks forward corridor in cost grid and triggers stop when blocked.
+    # Stores latest odometry; extracts forward speed for lookahead computation.
+    def _on_odom(self, msg: Odometry) -> None:
+        self._last_odom = msg
+        # HH_260422: twist.twist.linear.x is robot-frame forward speed (m/s).
+        self._current_speed = float(msg.twist.twist.linear.x)
+
+    # Computes speed-dependent front lookahead distance using wet-road braking physics.
+    def _compute_front_lookahead(self) -> float:
+        speed = abs(self._current_speed)
+        if not self.enable_speed_dependent_lookahead:
+            return self.cost_stop_lookahead_m
+        mu = max(0.05, self.front_lookahead_friction)
+        braking = speed * speed / (2.0 * 9.8 * mu)
+        reaction = self.front_reaction_time_s * speed
+        raw = braking + reaction + self.front_lookahead_margin_m
+        return max(self.front_lookahead_min_m, min(self.front_lookahead_max_m, raw))
+
+    # Checks all directional corridors and triggers stop when any is blocked.
     def _should_stop_for_cost(self) -> bool:
-        grid = self._last_grid
-        if grid is None:
-            return False
-        if not grid.data or grid.info.resolution <= 0.0:
-            return False
+        now_ns = self.get_clock().now().nanoseconds
+        now_sec = now_ns * 1e-9
 
-        target_frame = str(grid.header.frame_id).strip()
-        pose_candidates = self._resolve_pose_candidates(target_frame)
-        if not pose_candidates:
-            return False
+        # --- Front stop (LiDAR grid, speed-dependent lookahead) ---
+        lidar_grid = self._last_grid
+        if lidar_grid is not None and lidar_grid.data and lidar_grid.info.resolution > 0.0:
+            front_lookahead = self._compute_front_lookahead()
+            target_frame = str(lidar_grid.header.frame_id).strip()
+            pose_candidates = self._resolve_pose_candidates(target_frame)
 
-        best_total_cells = -1
-        best_label = ""
-        best_lethal_cells: list[tuple[int, int]] = []
-        for label, pose in pose_candidates:
-            blocked, total_cells, lethal_cells = self._sample_cost_corridor(grid, pose)
-            if blocked:
-                self._cost_blocked_until = (
-                    self.get_clock().now().nanoseconds * 1e-9 + self.cost_stop_hold_sec
-                )
-                self.get_logger().warn(
-                    # HH_260415: rclpy logger does not support printf-style variadic args.
-                    f"planning cost-stop: source={label} "
-                    f"threshold={self.cost_stop_threshold} hold={self.cost_stop_hold_sec:.2f}s"
-                )
-                return True
-            if total_cells > best_total_cells:
-                best_total_cells = total_cells
-                best_label = label
-                best_lethal_cells = lethal_cells
+            if not pose_candidates:
+                if (now_sec - self._last_empty_corridor_warn_sec) >= 2.0:
+                    self._last_empty_corridor_warn_sec = now_sec
+                    self.get_logger().warn(
+                        "cost-stop front: no pose candidates; "
+                        "check pose/costmap frame alignment"
+                    )
+            else:
+                best_total = -1
+                best_label = ""
+                best_lethal: list[tuple[int, int]] = []
+                for label, pose in pose_candidates:
+                    blocked, total_cells, lethal_cells = self._sample_cost_corridor(
+                        lidar_grid, pose,
+                        yaw_offset=0.0,
+                        lookahead=front_lookahead,
+                        width=self.cost_stop_width_m,
+                        threshold=self.cost_stop_threshold,
+                    )
+                    if blocked:
+                        self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                        self.get_logger().warn(
+                            f"cost-stop FRONT: source={label} "
+                            f"lookahead={front_lookahead:.2f}m "
+                            f"speed={self._current_speed:.2f}m/s "
+                            f"hold={self.cost_stop_hold_s:.2f}s"
+                        )
+                        return True
+                    if total_cells > best_total:
+                        best_total = total_cells
+                        best_label = label
+                        best_lethal = lethal_cells
 
-        if best_total_cells <= 0:
-            now_sec = self.get_clock().now().nanoseconds * 1e-9
-            if (now_sec - self._last_empty_corridor_warn_sec) >= 2.0:
-                self._last_empty_corridor_warn_sec = now_sec
-                self.get_logger().warn(
-                    "planning cost-stop: sampled corridor outside costmap; "
-                    "check pose/costmap frame alignment"
-                )
-            return False
+                if self.enable_unavoidable_stop and best_lethal:
+                    if self._is_unavoidable_cluster(best_lethal, max(1, best_total)):
+                        self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                        self.get_logger().warn(
+                            f"cost-stop FRONT (unavoidable): source={best_label} "
+                            f"lethal={self._last_unavoidable_cluster_cells} "
+                            f"ratio={self._last_unavoidable_cluster_ratio:.2f} "
+                            f"hold={self.cost_stop_hold_s:.2f}s"
+                        )
+                        return True
 
-        if self.enable_unavoidable_stop and best_lethal_cells:
-            if self._is_unavoidable_cluster(best_lethal_cells, best_total_cells):
-                self._cost_blocked_until = (
-                    self.get_clock().now().nanoseconds * 1e-9
-                    + self.cost_stop_hold_sec
-                )
-                self.get_logger().warn(
-                    # HH_260415: Include selected pose source to debug frame alignment.
-                    f"planning cost-stop (unavoidable): source={best_label} "
-                    f"lethal={self._last_unavoidable_cluster_cells} "
-                    f"ratio={self._last_unavoidable_cluster_ratio:.2f} "
-                    f"hold={self.cost_stop_hold_sec:.2f}s"
-                )
-                return True
+        # --- Side / Rear stop (same merged grid, fixed short lookaheads) ---
+        if self.enable_side_rear_cost_stop:
+            merged_grid = self._last_grid
+            if merged_grid is not None and merged_grid.data and merged_grid.info.resolution > 0.0:
+                target_frame = str(merged_grid.header.frame_id).strip()
+                pose_candidates = self._resolve_pose_candidates(target_frame)
+                if pose_candidates:
+                    label, pose = pose_candidates[0]
+                    for direction, yaw_off, la, wd, thr in (
+                        ("LEFT",  math.pi / 2,  self.side_lookahead_m, self.side_corridor_width_m, self.side_cost_threshold),
+                        ("RIGHT", -math.pi / 2, self.side_lookahead_m, self.side_corridor_width_m, self.side_cost_threshold),
+                        ("REAR",  math.pi,      self.rear_lookahead_m, self.rear_corridor_width_m, self.rear_cost_threshold),
+                    ):
+                        blocked, _, _ = self._sample_cost_corridor(
+                            merged_grid, pose,
+                            yaw_offset=yaw_off,
+                            lookahead=la,
+                            width=wd,
+                            threshold=thr,
+                        )
+                        if blocked:
+                            self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                            self.get_logger().warn(
+                                f"cost-stop {direction}: source={label} "
+                                f"lookahead={la:.2f}m "
+                                f"hold={self.cost_stop_hold_s:.2f}s"
+                            )
+                            return True
 
         return False
 
-    # Samples forward corridor for one pose candidate and returns stop decision/statistics.
+    # Samples a corridor in the direction (yaw + yaw_offset) for one pose candidate.
     def _sample_cost_corridor(
-        self, grid: OccupancyGrid, pose: tuple[float, float, float]
+        self,
+        grid: OccupancyGrid,
+        pose: tuple[float, float, float],
+        *,
+        yaw_offset: float = 0.0,
+        lookahead: float | None = None,
+        width: float | None = None,
+        threshold: int | None = None,
     ) -> tuple[bool, int, list[tuple[int, int]]]:
         pose_x, pose_y, yaw = pose
-        lookahead = max(0.1, self.cost_stop_lookahead_m)
-        width = max(0.1, self.cost_stop_width_m)
+        effective_yaw = yaw + yaw_offset
+        scan_lookahead = max(0.05, lookahead if lookahead is not None else self.cost_stop_lookahead_m)
+        scan_width = max(0.05, width if width is not None else self.cost_stop_width_m)
+        stop_threshold = threshold if threshold is not None else self.cost_stop_threshold
         res = grid.info.resolution
         origin_x = grid.info.origin.position.x
         origin_y = grid.info.origin.position.y
         w = int(grid.info.width)
         h = int(grid.info.height)
+        cos_y = self._cos(effective_yaw)
+        sin_y = self._sin(effective_yaw)
 
         step = res
         x = 0.0
-        half_w = width * 0.5
+        half_w = scan_width * 0.5
         total_cells = 0
         lethal_cells: list[tuple[int, int]] = []
 
-        while x <= lookahead:
+        while x <= scan_lookahead:
             y = -half_w
             while y <= half_w:
-                wx = pose_x + x * self._cos(yaw) - y * self._sin(yaw)
-                wy = pose_y + x * self._sin(yaw) + y * self._cos(yaw)
+                wx = pose_x + x * cos_y - y * sin_y
+                wy = pose_y + x * sin_y + y * cos_y
                 mx = int((wx - origin_x) / res)
                 my = int((wy - origin_y) / res)
                 if 0 <= mx < w and 0 <= my < h:
                     idx = my * w + mx
                     cost = int(grid.data[idx])
                     total_cells += 1
-                    if cost >= self.cost_stop_threshold:
+                    if cost >= stop_threshold:
                         return True, total_cells, lethal_cells
                     if cost >= self.unavoidable_lethal_threshold:
                         lethal_cells.append((mx, my))
@@ -358,25 +547,77 @@ class PlanningCmdVelGateNode(Node):
         if not target_frame:
             return []
 
-        candidates: list[tuple[str, tuple[float, float, float]]] = []
+        source_candidates: dict[str, list[tuple[str, tuple[float, float, float]]]] = {
+            "tf_robot_base": [],
+            "odometry": [],
+            "pose_topic": [],
+        }
 
-        # HH_260415: Primary path: TF(target <- robot_base_frame).
         tf_pose = self._lookup_tf_pose(target_frame, self.robot_base_frame)
         if tf_pose is not None:
-            candidates.append(("tf_robot_base", tf_pose))
+            source_candidates["tf_robot_base"].append(("tf_robot_base", tf_pose))
 
-        # Fallback path: transform pose_topic data if available.
-        pose_msg = self._last_pose
-        if pose_msg is None:
-            return candidates
+        source_candidates["odometry"] = self._resolve_odometry_candidates(target_frame)
+        source_candidates["pose_topic"] = self._resolve_pose_topic_candidates(target_frame)
 
-        source_frame = str(pose_msg.header.frame_id).strip()
-        px = float(pose_msg.pose.position.x)
-        py = float(pose_msg.pose.position.y)
-        pyaw = self._yaw_from_quat(pose_msg.pose.orientation)
+        preference = self.pose_source_preference.strip().lower()
+        ordered_sources = {
+            "tf_robot_base": ["tf_robot_base", "odometry", "pose_topic"],
+            "odometry": ["odometry", "tf_robot_base", "pose_topic"],
+            "pose_topic": ["pose_topic", "tf_robot_base", "odometry"],
+        }.get(preference, ["odometry", "tf_robot_base", "pose_topic"])
 
+        candidates: list[tuple[str, tuple[float, float, float]]] = []
+        for source in ordered_sources:
+            candidates.extend(source_candidates.get(source, []))
+        return candidates
+
+    # Resolves pose-topic candidates in target frame.
+    def _resolve_pose_topic_candidates(
+        self, target_frame: str
+    ) -> list[tuple[str, tuple[float, float, float]]]:
+        msg = self._last_pose
+        if msg is None:
+            return []
+        return self._resolve_stamped_pose_candidates(
+            label_prefix="pose",
+            source_frame=str(msg.header.frame_id).strip(),
+            x=float(msg.pose.position.x),
+            y=float(msg.pose.position.y),
+            yaw=self._yaw_from_quat(msg.pose.orientation),
+            target_frame=target_frame,
+        )
+
+    # Resolves odometry candidates in target frame.
+    def _resolve_odometry_candidates(
+        self, target_frame: str
+    ) -> list[tuple[str, tuple[float, float, float]]]:
+        msg = self._last_odom
+        if msg is None:
+            return []
+        return self._resolve_stamped_pose_candidates(
+            label_prefix="odom",
+            source_frame=str(msg.header.frame_id).strip(),
+            x=float(msg.pose.pose.position.x),
+            y=float(msg.pose.pose.position.y),
+            yaw=self._yaw_from_quat(msg.pose.pose.orientation),
+            target_frame=target_frame,
+        )
+
+    # Converts a stamped 2D pose candidate to target frame.
+    def _resolve_stamped_pose_candidates(
+        self,
+        *,
+        label_prefix: str,
+        source_frame: str,
+        x: float,
+        y: float,
+        yaw: float,
+        target_frame: str,
+    ) -> list[tuple[str, tuple[float, float, float]]]:
+        candidates: list[tuple[str, tuple[float, float, float]]] = []
         if not source_frame or source_frame == target_frame:
-            candidates.append(("pose_raw", (px, py, pyaw)))
+            candidates.append((f"{label_prefix}_raw", (x, y, yaw)))
             return candidates
 
         tf_msg = self._lookup_transform(target_frame, source_frame)
@@ -384,13 +625,14 @@ class PlanningCmdVelGateNode(Node):
             tx = float(tf_msg.transform.translation.x)
             ty = float(tf_msg.transform.translation.y)
             tyaw = self._yaw_from_quat(tf_msg.transform.rotation)
-            rx, ry = self._rotate_xy(px, py, tyaw)
+            rx, ry = self._rotate_xy(x, y, tyaw)
             candidates.append(
-                ("pose_tf", (tx + rx, ty + ry, self._normalize_yaw(tyaw + pyaw)))
+                (f"{label_prefix}_tf", (tx + rx, ty + ry, self._normalize_yaw(tyaw + yaw)))
             )
+            return candidates
 
-        # HH_260415: Keep raw pose as last fallback when TF frame alignment is unstable.
-        candidates.append(("pose_raw", (px, py, pyaw)))
+        if self.enable_pose_raw_fallback:
+            candidates.append((f"{label_prefix}_raw_fallback", (x, y, yaw)))
         return candidates
 
     # Looks up transform target<-source at latest available time.

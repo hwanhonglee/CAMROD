@@ -9,7 +9,7 @@
 
 #include "camrod_map/custom_regulatory_elements.hpp"
 
-namespace camping_cart {
+namespace camrod {
 namespace map {
 
 // Initializes loader with geodetic origin offsets used by projector creation.
@@ -74,4 +74,4 @@ std::string Lanelet2MapLoader::getMapStats() const
 }
 
 }  // namespace map
-}  // namespace camping_cart
+}  // namespace camrod

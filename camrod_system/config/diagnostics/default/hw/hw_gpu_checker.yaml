@@ -2,7 +2,7 @@
 
 hw_checker:
   ros__parameters:
-    publish_rate: 1.0          # 발행 주기 (Hz)
+    publish_rate_hz: 1.0          # 발행 주기 (Hz)
 
     cpu:
       enabled: true           # CPU 모니터링 활성화 여부
@@ -46,7 +46,7 @@ hw_checker:
 
 gpu_checker:
   ros__parameters:
-    publish_rate: 1.0          # 발행 주기 (Hz)
+    publish_rate_hz: 1.0          # 발행 주기 (Hz)
 
     gpu:
       util_warn_threshold: 85.0   # GPU 사용률 WARN 기준 (%)

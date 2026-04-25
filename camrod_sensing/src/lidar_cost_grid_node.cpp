@@ -18,7 +18,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
-namespace camping_cart::sensing
+namespace camrod::sensing
 {
 
 class LidarCostGridNode : public rclcpp::Node
@@ -30,8 +30,9 @@ public:
   LidarCostGridNode()
   : Node("lidar_cost_grid")
   {
-    input_topic_ = declare_parameter<std::string>("input_topic", "/perception/obstacles");
-    output_topic_ = declare_parameter<std::string>("output_topic", "/sensing/lidar/near_cost_grid");
+    // HH_260421: Use filtered lidar points as default cost-grid input.
+    input_topic_ = declare_parameter<std::string>("input_topic", "/sensing/lidar/points_filtered");
+    output_topic_ = declare_parameter<std::string>("output_topic", "/sensing/cost_grid/lidar");
     base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_base_link");
     output_frame_id_ = declare_parameter<std::string>("output_frame_id", "map");
     resolution_ = declare_parameter<double>("resolution", 0.10);
@@ -47,7 +48,18 @@ public:
     cost_range_max_m_ = declare_parameter<double>("cost_range_max_m", 8.0);
     obstacle_radius_m_ = declare_parameter<double>("obstacle_radius_m", 0.20);
     ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.90);
-    max_message_age_sec_ = declare_parameter<double>("max_message_age_sec", 0.50);
+    max_message_age_s_ = declare_parameter<double>("max_message_age_s", 0.50);
+    const double legacy_max_message_age_sec =
+      declare_parameter<double>("max_message_age_sec", 0.50);
+    if (
+      std::abs(max_message_age_s_ - 0.50) < 1e-9 &&
+      std::abs(legacy_max_message_age_sec - 0.50) > 1e-9)
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter 'max_message_age_sec' is deprecated. Use 'max_message_age_s' instead.");
+      max_message_age_s_ = legacy_max_message_age_sec;
+    }
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);
     lidar_status_topic_ = declare_parameter<std::string>(
       "lidar_status_topic", "/sensing/lidar/status");
@@ -259,7 +271,7 @@ private:
       unknown_value_ : free_value_;
     grid.data.assign(static_cast<std::size_t>(width_ * height_), static_cast<int8_t>(initial_value));
 
-    if (!latest_cloud_ || (now() - latest_cloud_rx_).seconds() > max_message_age_sec_) {
+    if (!latest_cloud_ || (now() - latest_cloud_rx_).seconds() > max_message_age_s_) {
       pub_grid_->publish(grid);
       return;
     }
@@ -344,7 +356,7 @@ private:
   double cost_range_max_m_{8.0};
   double obstacle_radius_m_{0.20};
   double ego_clear_radius_m_{0.90};
-  double max_message_age_sec_{0.50};
+  double max_message_age_s_{0.50};
   double publish_rate_hz_{10.0};
   bool publish_lidar_status_{false};
 
@@ -359,13 +371,13 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
-}  // namespace camping_cart::sensing
+}  // namespace camrod::sensing
 
 // Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<camping_cart::sensing::LidarCostGridNode>();
+  auto node = std::make_shared<camrod::sensing::LidarCostGridNode>();
   rclcpp::spin(node);
   rclcpp::shutdown();
   return 0;

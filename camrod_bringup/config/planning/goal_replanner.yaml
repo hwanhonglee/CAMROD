@@ -33,19 +33,19 @@
     # so snapped-goal updates refresh global path immediately.
     pause_when_navigate_active: false
     navigate_status_topic: "/planning/navigate_to_pose/_action/status"
-    navigate_inactive_grace_sec: 0.8
+    navigate_inactive_grace_s: 0.8
     # HH_260309-00:00 Ignore repeated equivalent goal republishes from upstream relays.
     ignore_duplicate_goal_messages: true
     duplicate_goal_xy_epsilon_m: 0.05
     duplicate_goal_yaw_epsilon_deg: 4.0
-    min_request_interval_sec: 0.25
+    min_request_interval_s: 0.25
     # HH_260415: Keep global path refreshed periodically from lanelet-snapped start
     # so centerline-following global route is regenerated multiple times in runtime.
     replan_rate_hz: 1.0
     # HH_260306-00:00 Disable timeout cancellation; only cancel when new goal/start update arrives.
-    request_timeout_sec: 0.0
+    request_timeout_s: 0.0
     # HH_260306-00:00 Prevent retry storm when planner reports ABORTED.
-    retry_after_failure_sec: 0.8
+    retry_after_failure_s: 0.8
     # Trigger ComputePath immediately on new goal and on first valid snapped start pose.
     immediate_replan_on_goal: true
     immediate_replan_on_start: true

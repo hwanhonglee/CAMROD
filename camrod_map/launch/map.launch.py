@@ -10,10 +10,12 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
 
+# Resolves a package-relative file path via package share directory.
 def pkg_share(pkg: str, rel: str) -> str:
     return os.path.join(get_package_share_directory(pkg), rel)
 
 
+# Extracts a ROS parameter dictionary from flexible YAML root layouts.
 def extract_map_ros_params(map_info_cfg: dict) -> dict:
     if not isinstance(map_info_cfg, dict):
         return {}
@@ -41,6 +43,7 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
     return {}
 
 
+# Loads map/origin defaults from map_info.yaml without failing launch on parse errors.
 def load_defaults(default_map_info: str) -> dict:
     defaults = {
         "map_path": "",
@@ -61,6 +64,7 @@ def load_defaults(default_map_info: str) -> dict:
     return defaults
 
 
+# Returns the first existing file path from a candidate list (de-duplicated).
 def _first_existing_path(candidates: list[str]) -> str:
     seen = set()
     for candidate in candidates:
@@ -73,6 +77,7 @@ def _first_existing_path(candidates: list[str]) -> str:
     return ""
 
 
+# Discovers a practical lanelet2 map path when map_info map_path is empty/stale.
 def discover_map_path(map_share: str, map_info_file: str, map_path_from_info: str) -> str:
     configured = str(map_path_from_info or "").strip()
     if configured:
@@ -105,6 +110,7 @@ def discover_map_path(map_share: str, map_info_file: str, map_path_from_info: st
     return discovered if discovered else configured
 
 
+# Top-level thin launcher that wires map core/cost/visualization sub-launches.
 def generate_launch_description():
     map_share = get_package_share_directory("camrod_map")
 

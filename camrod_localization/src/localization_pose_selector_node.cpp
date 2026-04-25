@@ -1,5 +1,6 @@
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <string>
 
@@ -54,9 +55,9 @@ public:
     primary_odom_topic_ = declare_parameter<std::string>(
       "primary_odom_topic", "/localization/primary/odometry");
     fallback_pose_cov_topic_ = declare_parameter<std::string>(
-      "fallback_pose_cov_topic", "/localization/kimera_vio/pose_with_covariance");
+      "fallback_pose_cov_topic", "/localization/fallback/pose_with_covariance");
     fallback_odom_topic_ = declare_parameter<std::string>(
-      "fallback_odom_topic", "/localization/kimera_vio/odometry");
+      "fallback_odom_topic", "/localization/fallback/odometry");
     mode_topic_ = declare_parameter<std::string>(
       "mode_topic", "/localization/mode");
 
@@ -72,7 +73,7 @@ public:
     primary_source_label_ = declare_parameter<std::string>(
       "primary_source_label", "primary_filter");
     fallback_source_label_ = declare_parameter<std::string>(
-      "fallback_source_label", "kimera_vio");
+      "fallback_source_label", "fallback_source");
 
     publish_localization_status_ =
       declare_parameter<bool>("publish_localization_status", false);
@@ -82,16 +83,19 @@ public:
     base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_base_link");
     publish_selected_tf_ = declare_parameter<bool>("publish_selected_tf", true);
 
-    primary_timeout_sec_ = declare_parameter<double>("primary_timeout_sec", 0.5);
-    fallback_timeout_sec_ = declare_parameter<double>("fallback_timeout_sec", 0.5);
-    switch_hysteresis_sec_ = declare_parameter<double>("switch_hysteresis_sec", 0.5);
+    primary_timeout_s_ = declareDurationWithLegacy(
+      "primary_timeout_s", "primary_timeout_sec", 0.5);
+    fallback_timeout_s_ = declareDurationWithLegacy(
+      "fallback_timeout_s", "fallback_timeout_sec", 0.5);
+    switch_hysteresis_s_ = declareDurationWithLegacy(
+      "switch_hysteresis_s", "switch_hysteresis_sec", 0.5);
     fallback_on_mode_at_or_above_ = declare_parameter<int>(
       "fallback_on_mode_at_or_above",
       static_cast<int>(AvgLocalizationMode::DR_ONLY));
 
-    primary_timeout_sec_ = std::max(0.05, primary_timeout_sec_);
-    fallback_timeout_sec_ = std::max(0.05, fallback_timeout_sec_);
-    switch_hysteresis_sec_ = std::max(0.0, switch_hysteresis_sec_);
+    primary_timeout_s_ = std::max(0.05, primary_timeout_s_);
+    fallback_timeout_s_ = std::max(0.05, fallback_timeout_s_);
+    switch_hysteresis_s_ = std::max(0.0, switch_hysteresis_s_);
     fallback_on_mode_at_or_above_ = std::max(0, std::min(3, fallback_on_mode_at_or_above_));
 
     rclcpp::QoS latched_qos(rclcpp::KeepLast(1));
@@ -148,6 +152,26 @@ public:
   }
 
 private:
+  double declareDurationWithLegacy(
+    const std::string & canonical_name,
+    const std::string & legacy_name,
+    const double default_value)
+  {
+    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
+    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
+    if (std::abs(canonical_value - default_value) > 1e-9) {
+      return canonical_value;
+    }
+    if (std::abs(legacy_value - default_value) > 1e-9) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter '%s' is deprecated. Use '%s' instead.",
+        legacy_name.c_str(), canonical_name.c_str());
+      return legacy_value;
+    }
+    return canonical_value;
+  }
+
   static rclcpp::Time stampFromHeader(const avg_msgs::msg::Header & header)
   {
     return rclcpp::Time(header.stamp);
@@ -229,10 +253,10 @@ private:
   {
     if (source == Source::kPrimary) {
       if (!sourceHasData(source)) return false;
-      return (now - last_primary_msg_time_).seconds() <= primary_timeout_sec_;
+      return (now - last_primary_msg_time_).seconds() <= primary_timeout_s_;
     }
     if (!sourceHasData(source)) return false;
-    return (now - last_fallback_msg_time_).seconds() <= fallback_timeout_sec_;
+    return (now - last_fallback_msg_time_).seconds() <= fallback_timeout_s_;
   }
 
   bool wantFallback(const rclcpp::Time & now) const
@@ -276,7 +300,7 @@ private:
           return;
         }
       } else if (desired != selected_source_ && sourceFresh(desired, now)) {
-        if ((now - last_switch_time_).seconds() >= switch_hysteresis_sec_) {
+        if ((now - last_switch_time_).seconds() >= switch_hysteresis_s_) {
           selected_source_ = desired;
           last_switch_time_ = now;
           switched = true;
@@ -425,15 +449,21 @@ private:
   std::string localization_status_topic_;
   std::string base_frame_id_;
 
-  double primary_timeout_sec_{0.5};
-  double fallback_timeout_sec_{0.5};
-  double switch_hysteresis_sec_{0.5};
+  double primary_timeout_s_{0.5};
+  double fallback_timeout_s_{0.5};
+  double switch_hysteresis_s_{0.5};
   int fallback_on_mode_at_or_above_{2};
 
-  bool publish_localization_status_{false};
-  bool publish_selected_tf_{true};
+  bool publish_localization_status_{false}; // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs)
+  bool publish_selected_tf_{true};          // HH_260422: true -> broadcast selected pose as TF transform
 
+  // HH_260422: mode_value_ holds the latest enum received from /localization/mode (published by localization_monitor).
+  //   When mode_value_ >= fallback_on_mode_at_or_above_ (default DR_ONLY=2), selector switches to fallback source.
+  //   Data flow: localization_monitor -> /localization/mode -> pose_selector (source switch).
   int mode_value_{static_cast<int>(AvgLocalizationMode::INVALID)};
+
+  // HH_260422: selected_initialized_ becomes true after the first source selection completes.
+  //   While false: evaluateAndPublish() skips all source-switching logic.
   bool selected_initialized_{false};
   Source selected_source_{Source::kPrimary};
   rclcpp::Time last_switch_time_{0, 0, RCL_ROS_TIME};
@@ -442,8 +472,13 @@ private:
   rclcpp::Time last_published_stamp_{0, 0, RCL_ROS_TIME};
   std::string last_source_label_;
 
+  // HH_260422: primary_has_pose_cov_ / primary_has_odom_ become true once the primary source (ESKF) publishes data.
+  //   sourceHasData(kPrimary) = primary_has_pose_cov_ || primary_has_odom_.
+  //   If both are false, primary cannot be selected and fallback is forced regardless of mode.
   bool primary_has_pose_cov_{false};
   bool primary_has_odom_{false};
+  // HH_260422: fallback_has_pose_cov_ / fallback_has_odom_ become true once the fallback source publishes data.
+  //   A mode_bad or primary_bad condition only switches to fallback if fallback data is actually available.
   bool fallback_has_pose_cov_{false};
   bool fallback_has_odom_{false};
 

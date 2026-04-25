@@ -42,10 +42,12 @@ public:
     palette_ = declare_parameter<std::string>("palette", "safety");
     show_unknown_ = declare_parameter<bool>("show_unknown", false);
     clear_on_empty_grid_ = declare_parameter<bool>("clear_on_empty_grid", true);
-    stale_timeout_sec_ = declare_parameter<double>("stale_timeout_sec", 0.0);
+    stale_timeout_s_ = declareDurationWithLegacy("stale_timeout_s", "stale_timeout_sec", 0.0);
     grid_qos_transient_local_ = declare_parameter<bool>("grid_qos_transient_local", false);
-    min_publish_period_sec_ = declare_parameter<double>("min_publish_period_sec", 0.0);
-    republish_period_sec_ = declare_parameter<double>("republish_period_sec", 0.0);
+    min_publish_period_s_ = declareDurationWithLegacy(
+      "min_publish_period_s", "min_publish_period_sec", 0.0);
+    republish_period_s_ = declareDurationWithLegacy(
+      "republish_period_s", "republish_period_sec", 0.0);
     sample_stride_ = std::max<int>(
       1, static_cast<int>(declare_parameter<int>("sample_stride", 1)));
     param_cb_handle_ = add_on_set_parameters_callback(
@@ -74,14 +76,34 @@ public:
   }
 
 private:
+  double declareDurationWithLegacy(
+    const std::string & canonical_name,
+    const std::string & legacy_name,
+    const double default_value)
+  {
+    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
+    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
+    if (std::abs(canonical_value - default_value) > 1e-9) {
+      return canonical_value;
+    }
+    if (std::abs(legacy_value - default_value) > 1e-9) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter '%s' is deprecated. Use '%s' instead.",
+        legacy_name.c_str(), canonical_name.c_str());
+      return legacy_value;
+    }
+    return canonical_value;
+  }
+
   // Guard check canPublishNow: verifies whether publish/build conditions are currently satisfied.
   bool canPublishNow() const
   {
-    if (min_publish_period_sec_ <= 0.0 || last_publish_time_.nanoseconds() <= 0) {
+    if (min_publish_period_s_ <= 0.0 || last_publish_time_.nanoseconds() <= 0) {
       return true;
     }
     const double dt = (now() - last_publish_time_).seconds();
-    return dt >= min_publish_period_sec_;
+    return dt >= min_publish_period_s_;
   }
 
   // Publish helper FromGrid: builds and publishes ROS outputs for downstream consumers and RViz overlays.
@@ -280,14 +302,20 @@ private:
         show_unknown_ = p.as_bool();
       } else if (p.get_name() == "clear_on_empty_grid") {
         clear_on_empty_grid_ = p.as_bool();
-      } else if (p.get_name() == "stale_timeout_sec") {
-        stale_timeout_sec_ = p.as_double();
+      } else if (p.get_name() == "stale_timeout_s" || p.get_name() == "stale_timeout_sec") {
+        stale_timeout_s_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "grid_qos_transient_local") {
         grid_qos_transient_local_ = p.as_bool();
-      } else if (p.get_name() == "min_publish_period_sec") {
-        min_publish_period_sec_ = std::max(0.0, p.as_double());
-      } else if (p.get_name() == "republish_period_sec") {
-        republish_period_sec_ = std::max(0.0, p.as_double());
+      } else if (
+        p.get_name() == "min_publish_period_s" ||
+        p.get_name() == "min_publish_period_sec")
+      {
+        min_publish_period_s_ = std::max(0.0, p.as_double());
+      } else if (
+        p.get_name() == "republish_period_s" ||
+        p.get_name() == "republish_period_sec")
+      {
+        republish_period_s_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "sample_stride") {
         sample_stride_ = std::max(1, static_cast<int>(p.as_int()));
       }
@@ -303,13 +331,13 @@ private:
   void updateRepublishTimer()
   {
     republish_timer_.reset();
-    if (republish_period_sec_ <= 0.0) {
+    if (republish_period_s_ <= 0.0) {
       return;
     }
 
     republish_timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::duration<double>(republish_period_sec_)),
+        std::chrono::duration<double>(republish_period_s_)),
       std::bind(&CostFieldMarkerNode::onRepublishTimer, this));
   }
 
@@ -339,9 +367,9 @@ private:
   // Callback onRepublishTimer: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onRepublishTimer()
   {
-    if (stale_timeout_sec_ > 0.0 && last_grid_rx_.nanoseconds() > 0) {
+    if (stale_timeout_s_ > 0.0 && last_grid_rx_.nanoseconds() > 0) {
       const double dt = (now() - last_grid_rx_).seconds();
-      if (dt > stale_timeout_sec_ && !last_markers_.markers.empty()) {
+      if (dt > stale_timeout_s_ && !last_markers_.markers.empty()) {
         publishDeleteAll(last_markers_.markers.front().header);
         latest_grid_.reset();
         pending_grid_update_ = false;
@@ -400,10 +428,10 @@ private:
   std::string palette_{"pastel"};
   bool show_unknown_{false};
   bool clear_on_empty_grid_{true};
-  double stale_timeout_sec_{0.0};
+  double stale_timeout_s_{0.0};
   bool grid_qos_transient_local_{false};
-  double min_publish_period_sec_{0.0};
-  double republish_period_sec_{0.0};
+  double min_publish_period_s_{0.0};
+  double republish_period_s_{0.0};
   int sample_stride_{1};
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_handle_;
   rclcpp::Subscription<avg_msgs::msg::OccupancyGrid>::SharedPtr grid_sub_;

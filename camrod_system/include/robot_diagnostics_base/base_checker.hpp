@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -68,10 +69,13 @@ public:
     const std::string & hardware_id = "none")
   : rclcpp::Node(node_name), hardware_id_(hardware_id)
   {
-    // publish_rate 는 여기서 선언. 나머지 초기화는 base_init() 에서.
+    // Declare both canonical and legacy publish-rate parameters.
+    // Canonical: publish_rate_hz
+    // Legacy:    publish_rate
     // ⚠️ C++ 제약: 기본 클래스 생성자에서 순수 가상 함수(setup_tasks_)를 호출하면
     //    vtable 이 파생 클래스로 완성되기 전이므로 링커 오류가 발생한다.
     //    → 서브클래스 생성자 마지막에 base_init() 을 반드시 호출한다.
+    declare_parameter("publish_rate_hz", 1.0);
     declare_parameter("publish_rate", 1.0);
   }
 
@@ -132,6 +136,65 @@ public:
     return S::ERROR;
   }
 
+  /**
+   * Read a canonical parameter while keeping backward compatibility with
+   * legacy parameter names.
+   *
+   * Resolution policy:
+   * 1) Canonical name is preferred.
+   * 2) If canonical remains default but a legacy name is explicitly set,
+   *    use legacy value and print a deprecation warning.
+   * 3) If both are explicitly set and conflict, canonical wins.
+   */
+  template<typename T>
+  T get_param_with_alias(
+    const std::string & canonical_name,
+    const T & default_value,
+    const std::vector<std::string> & legacy_names = {})
+  {
+    if (!has_parameter(canonical_name)) {
+      declare_parameter(canonical_name, default_value);
+    }
+    T canonical_value = get_parameter(canonical_name).template get_value<T>();
+    bool canonical_is_default = (canonical_value == default_value);
+    T selected_value = canonical_value;
+
+    for (const auto & legacy_name : legacy_names) {
+      if (!has_parameter(legacy_name)) {
+        declare_parameter(legacy_name, default_value);
+      }
+
+      const T legacy_value = get_parameter(legacy_name).template get_value<T>();
+      const bool legacy_is_default = (legacy_value == default_value);
+      if (legacy_is_default) {
+        continue;
+      }
+
+      if (canonical_is_default) {
+        selected_value = legacy_value;
+        canonical_is_default = false;
+        RCLCPP_WARN(
+          get_logger(),
+          "Parameter '%s' is deprecated. Use '%s' instead.",
+          legacy_name.c_str(),
+          canonical_name.c_str());
+        continue;
+      }
+
+      if (legacy_value != selected_value) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Both '%s' and deprecated '%s' are set with different values. "
+          "Using '%s'.",
+          canonical_name.c_str(),
+          legacy_name.c_str(),
+          canonical_name.c_str());
+      }
+    }
+
+    return selected_value;
+  }
+
 protected:
   // ── Template Method 훅 ────────────────────────────────────────────────
 
@@ -154,8 +217,15 @@ protected:
   {
     declare_parameters_();
 
-    double rate = get_parameter("publish_rate").as_double();
-    updater_ = std::make_unique<diagnostic_updater::Updater>(this, 1.0 / rate);
+    double rate_hz = get_param_with_alias<double>(
+      "publish_rate_hz", 1.0, {"publish_rate"});
+    if (rate_hz <= 1e-6) {
+      RCLCPP_WARN(
+        get_logger(),
+        "publish_rate_hz must be > 0. Clamping to 1.0 Hz.");
+      rate_hz = 1.0;
+    }
+    updater_ = std::make_unique<diagnostic_updater::Updater>(this, 1.0 / rate_hz);
     updater_->setHardwareID(hardware_id_);
 
     load_parameters_();

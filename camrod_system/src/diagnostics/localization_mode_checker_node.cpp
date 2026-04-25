@@ -93,7 +93,7 @@ protected:
   {
     declare_parameter("status_topic",  std::string("/localization/status"));
     declare_parameter("health_topic",  std::string("/localization/state"));
-    declare_parameter("stale_timeout", 2.0);
+    declare_parameter("stale_timeout_s", 2.0);
     declare_parameter("conf_warn",     0.6);
     declare_parameter("conf_error",    0.3);
     declare_parameter("innov_warn",    3.0);
@@ -104,7 +104,7 @@ protected:
   {
     status_topic_  = get_parameter("status_topic").as_string();
     health_topic_  = get_parameter("health_topic").as_string();
-    stale_timeout_ = get_parameter("stale_timeout").as_double();
+    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
     conf_warn_     = get_parameter("conf_warn").as_double();
     conf_error_    = get_parameter("conf_error").as_double();
     innov_warn_    = get_parameter("innov_warn").as_double();

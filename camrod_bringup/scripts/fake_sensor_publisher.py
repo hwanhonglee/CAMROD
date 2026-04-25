@@ -8,6 +8,7 @@ from bisect import bisect_left
 
 import rclpy
 from rclpy.node import Node
+from rcl_interfaces.msg import SetParametersResult
 
 from geometry_msgs.msg import PoseStamped, Quaternion
 from geometry_msgs.msg import Twist
@@ -96,9 +97,17 @@ class FakeSensorPublisher(Node):
         self.cmd_vel_motion_topic = str(
             self.declare_parameter("cmd_vel_motion_topic", "/platform/cmd_vel").value
         )
-        self.cmd_vel_timeout_sec = float(
+        self.cmd_vel_timeout_s = float(
+            self.declare_parameter("cmd_vel_timeout_s", 0.5).value
+        )
+        cmd_vel_timeout_sec_legacy = float(
             self.declare_parameter("cmd_vel_timeout_sec", 0.5).value
         )
+        if self.cmd_vel_timeout_s == 0.5 and cmd_vel_timeout_sec_legacy != 0.5:
+            self.get_logger().warn(
+                "Parameter 'cmd_vel_timeout_sec' is deprecated. Use 'cmd_vel_timeout_s'."
+            )
+            self.cmd_vel_timeout_s = cmd_vel_timeout_sec_legacy
         self.max_cmd_speed_mps = float(
             self.declare_parameter("max_cmd_speed_mps", 2.5).value
         )
@@ -125,13 +134,30 @@ class FakeSensorPublisher(Node):
         )
         # 2026-03-03: Keep the robot stationary for a short warm-up so the
         # initial GNSS/IMU fusion settles before wheel motion begins.
-        self.startup_hold_sec = float(
+        self.startup_hold_s = float(
+            self.declare_parameter("startup_hold_s", 4.0).value
+        )
+        startup_hold_sec_legacy = float(
             self.declare_parameter("startup_hold_sec", 4.0).value
         )
+        if self.startup_hold_s == 4.0 and startup_hold_sec_legacy != 4.0:
+            self.get_logger().warn(
+                "Parameter 'startup_hold_sec' is deprecated. Use 'startup_hold_s'."
+            )
+            self.startup_hold_s = startup_hold_sec_legacy
         self.frame_id = self.declare_parameter("frame_id", "map").value
         self.base_frame_id = self.declare_parameter("base_frame_id", "robot_base_link").value
         self.obstacle_offset = self.declare_parameter("obstacle_offset", 5.0).value
         self.obstacle_height = self.declare_parameter("obstacle_height", 0.5).value
+        # HH_260421: Publish the same synthetic obstacle cloud to both
+        # perception obstacle stream and filtered-lidar stream so cost-grid
+        # source can be switched without breaking sim.
+        self.obstacle_cloud_topic = str(
+            self.declare_parameter("obstacle_cloud_topic", "/perception/obstacles").value
+        )
+        self.lidar_filtered_topic = str(
+            self.declare_parameter("lidar_filtered_topic", "/sensing/lidar/points_filtered").value
+        )
         # HH_260330: In sim mode, also publish nav_msgs/Odometry to the wheel bridge
         # input topic so localization wheel pipeline can run without real /rmp401/odom.
         self.wheel_bridge_input_topic = str(
@@ -190,6 +216,36 @@ class FakeSensorPublisher(Node):
         self._lock_position_initialized = False
         # 2026-02-02 11:05: Resample centerline from bounds when explicit centerline is missing.
         self.centerline_step = self.declare_parameter("centerline_step", 1.0).value
+        # HH_260422: GNSS failure simulation for DR fallback testing.
+        # When gnss_failure_after_s > 0, NavSatFix publishing stops at that elapsed time,
+        # triggering DR_ONLY mode in localization_monitor. Resumes at gnss_recovery_after_s.
+        # Both default to -1 (disabled) so existing runs are unaffected.
+        self.gnss_failure_after_s = float(
+            self.declare_parameter("gnss_failure_after_s", -1.0).value
+        )
+        gnss_failure_after_sec_legacy = float(
+            self.declare_parameter("gnss_failure_after_sec", -1.0).value
+        )
+        if self.gnss_failure_after_s == -1.0 and gnss_failure_after_sec_legacy != -1.0:
+            self.get_logger().warn(
+                "Parameter 'gnss_failure_after_sec' is deprecated. Use 'gnss_failure_after_s'."
+            )
+            self.gnss_failure_after_s = gnss_failure_after_sec_legacy
+
+        self.gnss_recovery_after_s = float(
+            self.declare_parameter("gnss_recovery_after_s", -1.0).value
+        )
+        gnss_recovery_after_sec_legacy = float(
+            self.declare_parameter("gnss_recovery_after_sec", -1.0).value
+        )
+        if self.gnss_recovery_after_s == -1.0 and gnss_recovery_after_sec_legacy != -1.0:
+            self.get_logger().warn(
+                "Parameter 'gnss_recovery_after_sec' is deprecated. Use 'gnss_recovery_after_s'."
+            )
+            self.gnss_recovery_after_s = gnss_recovery_after_sec_legacy
+        self._gnss_active = True
+        # Keep selected simulation controls adjustable at runtime via ros2 param set.
+        self.add_on_set_parameters_callback(self._on_set_parameters)
 
         if not self.map_path:
             # 2026-01-27 17:45: Remove HH tags from runtime logs.
@@ -234,7 +290,10 @@ class FakeSensorPublisher(Node):
         self.pub_wheel = self.create_publisher(Odometry, "/platform/status/wheel_odometry", 10)
         self.pub_wheel_bridge_in = self.create_publisher(Odometry, self.wheel_bridge_input_topic, 10)
         self.pub_vio = self.create_publisher(Odometry, "/localization/vio/odometry", 10)
-        self.pub_obstacles = self.create_publisher(PointCloud2, "/perception/obstacles", 10)
+        self.pub_obstacles = self.create_publisher(PointCloud2, self.obstacle_cloud_topic, 10)
+        self.pub_lidar_filtered = self.create_publisher(
+            PointCloud2, self.lidar_filtered_topic, 10
+        )
         self.sub_cmd_vel = None
         if self.use_cmd_vel_for_motion:
             self.sub_cmd_vel = self.create_subscription(
@@ -693,12 +752,12 @@ class FakeSensorPublisher(Node):
         elapsed = now_sec - self._t0
         dt = max(1e-3, now_sec - self._last_timer_time)
         self._last_timer_time = now_sec
-        holding = elapsed < self.startup_hold_sec
+        holding = elapsed < self.startup_hold_s
         if self.freeze_motion or holding:
             motion_speed = 0.0
         elif self.use_cmd_vel_for_motion:
             if (self._last_cmd_time is None or
-                    (now_sec - self._last_cmd_time) > max(0.01, self.cmd_vel_timeout_sec)):
+                    (now_sec - self._last_cmd_time) > max(0.01, self.cmd_vel_timeout_s)):
                 motion_speed = 0.0
             else:
                 motion_speed = self._cmd_linear_x
@@ -728,7 +787,29 @@ class FakeSensorPublisher(Node):
         navsat.latitude = lat
         navsat.longitude = lon
         navsat.altitude = self.origin_alt
-        self.pub_navsat.publish(navsat)
+        # HH_260422: Set realistic RTK-quality covariance so localization_monitor's
+        # gnss_cov_trace_fail (0.3 m^2) accepts the fake GNSS (trace = 0.08 < 0.3).
+        # COVARIANCE_TYPE_DIAGONAL_KNOWN = 2; without this the adapter falls back to
+        # pose_covariance_diagonal=[1,1,...] giving trace=2.0 which fails the monitor.
+        navsat.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
+        navsat.position_covariance[0] = 0.04   # σ_x = 0.2 m
+        navsat.position_covariance[4] = 0.04   # σ_y = 0.2 m
+        navsat.position_covariance[8] = 0.10   # σ_z = 0.32 m
+        # HH_260422: Gate NavSatFix on simulated GNSS failure window.
+        gnss_should_publish = True
+        if self.gnss_failure_after_s > 0.0 and elapsed >= self.gnss_failure_after_s:
+            if self.gnss_recovery_after_s <= 0.0 or elapsed < self.gnss_recovery_after_s:
+                gnss_should_publish = False
+        if gnss_should_publish != self._gnss_active:
+            self._gnss_active = gnss_should_publish
+            if gnss_should_publish:
+                self.get_logger().warn(f"[GNSS SIM] RECOVERED at t={elapsed:.1f}s")
+            else:
+                self.get_logger().warn(
+                    f"[GNSS SIM] FAILURE at t={elapsed:.1f}s — NavSatFix publishing stopped"
+                )
+        if self._gnss_active:
+            self.pub_navsat.publish(navsat)
 
         imu_msg = Imu()
         imu_msg.header.stamp = now
@@ -771,10 +852,18 @@ class FakeSensorPublisher(Node):
         vio_msg.twist.twist.angular.z = 0.0
         self.pub_vio.publish(vio_msg)
 
+        # HH_260421: Place fake obstacle cloud in vehicle-forward coordinates
+        # so local cost-stop can validate "obstacle ahead" behavior reliably.
+        forward_x = math.cos(yaw)
+        forward_y = math.sin(yaw)
+        left_x = -forward_y
+        left_y = forward_x
+        center_x = x + self.obstacle_offset * forward_x
+        center_y = y + self.obstacle_offset * forward_y
         obstacle_points = [
-            (x + self.obstacle_offset, y, self.obstacle_height),
-            (x + self.obstacle_offset, y + 1.0, self.obstacle_height),
-            (x + self.obstacle_offset, y - 1.0, self.obstacle_height),
+            (center_x, center_y, self.obstacle_height),
+            (center_x + left_x, center_y + left_y, self.obstacle_height),
+            (center_x - left_x, center_y - left_y, self.obstacle_height),
         ]
         fields = [
             PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
@@ -783,6 +872,30 @@ class FakeSensorPublisher(Node):
         ]
         cloud_msg = point_cloud2.create_cloud(pose_msg.header, fields, obstacle_points)
         self.pub_obstacles.publish(cloud_msg)
+        self.pub_lidar_filtered.publish(cloud_msg)
+
+    # Applies selected runtime parameter updates without node restart.
+    def _on_set_parameters(self, params):
+        for p in params:
+            if p.name == "obstacle_offset":
+                self.obstacle_offset = float(p.value)
+            elif p.name == "obstacle_height":
+                self.obstacle_height = float(p.value)
+            elif p.name == "speed_mps":
+                self.speed_mps = float(p.value)
+            elif p.name == "publish_rate_hz":
+                self.publish_rate_hz = float(p.value)
+            elif p.name == "freeze_motion":
+                self.freeze_motion = bool(p.value)
+            elif p.name == "gnss_failure_after_s":
+                self.gnss_failure_after_s = float(p.value)
+            elif p.name == "gnss_failure_after_sec":
+                self.gnss_failure_after_s = float(p.value)
+            elif p.name == "gnss_recovery_after_s":
+                self.gnss_recovery_after_s = float(p.value)
+            elif p.name == "gnss_recovery_after_sec":
+                self.gnss_recovery_after_s = float(p.value)
+        return SetParametersResult(successful=True)
 
 
 # Entry point for this executable.

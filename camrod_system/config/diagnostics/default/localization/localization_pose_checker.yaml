@@ -4,14 +4,14 @@
 
 localization_pose_checker:
   ros__parameters:
-    publish_rate: 1.0                                    # 진단 발행 주기 (Hz)
+    publish_rate_hz: 1.0                                    # 진단 발행 주기 (Hz)
 
     pose_topic: "/localization/pose_with_covariance"     # 구독 토픽
 
     expected_hz: 30.0          # 기대 출력 속도 (Hz) — ESKF 기본 30Hz
     hz_warn_ratio: 0.7         # actual_hz / expected_hz 비율이 이 값 미만이면 WARN
     hz_error_ratio: 0.4        # actual_hz / expected_hz 비율이 이 값 미만이면 ERROR
-    stale_timeout: 1.0         # 이 시간(초) 이상 메시지 없으면 STALE
+    stale_timeout_s: 1.0         # 이 시간(초) 이상 메시지 없으면 STALE
 
     # XY 위치 공분산 trace 임계값 (출력 불확실도)
     # trace = var_x + var_y = cov[0] + cov[7]

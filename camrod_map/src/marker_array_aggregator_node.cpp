@@ -3,6 +3,7 @@
 // actual Nav2 master costmap marker topic.
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -35,14 +36,15 @@ public:
         "/map/cost_grid/radar_markers",
         "/planning/cost_grid/global_path_markers",
         "/planning/cost_grid/local_path_markers"});
-    republish_period_sec_ = declare_parameter<double>("republish_period_sec", 0.0);
-    min_publish_period_sec_ = declare_parameter<double>("min_publish_period_sec", 0.05);
-    stale_timeout_sec_ = declare_parameter<double>("stale_timeout_sec", 0.0);
+    republish_period_s_ = declareDurationWithLegacy("republish_period_s", "republish_period_sec", 0.0);
+    min_publish_period_s_ = declareDurationWithLegacy(
+      "min_publish_period_s", "min_publish_period_sec", 0.05);
+    stale_timeout_s_ = declareDurationWithLegacy("stale_timeout_s", "stale_timeout_sec", 0.0);
     publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
     map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
     stale_timeout_topics_ = declare_parameter<std::vector<std::string>>(
       "stale_timeout_topics", std::vector<std::string>{});
-    timer_mode_ = republish_period_sec_ > 0.0;
+    timer_mode_ = republish_period_s_ > 0.0;
 
     auto marker_qos = rclcpp::QoS(1).transient_local().reliable();
     pub_ = create_publisher<avg_msgs::msg::MarkerArray>(output_topic_, marker_qos);
@@ -69,15 +71,35 @@ public:
       sources_.push_back(std::move(source));
     }
 
-    if (republish_period_sec_ > 0.0) {
+    if (republish_period_s_ > 0.0) {
       republish_timer_ = create_wall_timer(
         std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::duration<double>(republish_period_sec_)),
+          std::chrono::duration<double>(republish_period_s_)),
         std::bind(&MarkerArrayAggregatorNode::publishCombined, this));
     }
   }
 
 private:
+  double declareDurationWithLegacy(
+    const std::string & canonical_name,
+    const std::string & legacy_name,
+    const double default_value)
+  {
+    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
+    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
+    if (std::abs(canonical_value - default_value) > 1e-9) {
+      return canonical_value;
+    }
+    if (std::abs(legacy_value - default_value) > 1e-9) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter '%s' is deprecated. Use '%s' instead.",
+        legacy_name.c_str(), canonical_name.c_str());
+      return legacy_value;
+    }
+    return canonical_value;
+  }
+
   struct Source
   {
     std::string topic;
@@ -148,9 +170,9 @@ private:
     if (!dirty_) {
       return;
     }
-    if (min_publish_period_sec_ > 0.0 && last_publish_time_.nanoseconds() > 0) {
+    if (min_publish_period_s_ > 0.0 && last_publish_time_.nanoseconds() > 0) {
       const double dt = (now() - last_publish_time_).seconds();
-      if (dt < min_publish_period_sec_) {
+      if (dt < min_publish_period_s_) {
         return;
       }
     }
@@ -233,7 +255,7 @@ private:
   // Clears cached source markers when stream-specific stale timeout is exceeded.
   bool expireStaleSources()
   {
-    if (stale_timeout_sec_ <= 0.0) {
+    if (stale_timeout_s_ <= 0.0) {
       return false;
     }
     const auto now_t = now();
@@ -246,7 +268,7 @@ private:
         continue;
       }
       const double dt = (now_t - source.last_rx).seconds();
-      if (dt > stale_timeout_sec_) {
+      if (dt > stale_timeout_s_) {
         source.latest.markers.clear();
         changed = true;
       }
@@ -257,8 +279,8 @@ private:
   std::string output_topic_;
   std::vector<std::string> input_topics_;
   std::vector<std::string> stale_timeout_topics_;
-  double republish_period_sec_{0.1};
-  double stale_timeout_sec_{0.0};
+  double republish_period_s_{0.1};
+  double stale_timeout_s_{0.0};
   bool publish_map_status_{false};
   std::string map_status_topic_{"/map/status"};
   bool timer_mode_{false};
@@ -266,7 +288,7 @@ private:
   std::vector<Source> sources_;
   std::vector<size_t> prev_counts_;
   std::vector<std::vector<std::string>> prev_namespaces_;
-  double min_publish_period_sec_{0.05};
+  double min_publish_period_s_{0.05};
   rclcpp::Time last_publish_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;

@@ -79,15 +79,15 @@ protected:
       "/planning/bt_navigator",
       "/planning/behavior_server",
     });
-    declare_parameter("poll_rate",    2.0);
-    declare_parameter("stale_timeout", 5.0);
+    declare_parameter("poll_rate_hz",    2.0);
+    declare_parameter("stale_timeout_s", 5.0);
   }
 
   void load_parameters_() override
   {
     node_names_    = get_parameter("node_names").as_string_array();
-    poll_rate_     = get_parameter("poll_rate").as_double();
-    stale_timeout_ = get_parameter("stale_timeout").as_double();
+    poll_rate_ = get_param_with_alias<double>("poll_rate_hz", poll_rate_, {"poll_rate"});
+    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
   }
 
   void setup_tasks_() override

@@ -112,7 +112,7 @@ protected:
       declare_parameter(name + ".expected_hz",       16.0);
       declare_parameter(name + ".hz_warn_ratio",     0.7);
       declare_parameter(name + ".hz_error_ratio",    0.4);
-      declare_parameter(name + ".stale_timeout",     1.0);
+      declare_parameter(name + ".stale_timeout_s",     1.0);
       declare_parameter(name + ".min_range_m",       0.02);
       declare_parameter(name + ".max_range_m",       4.5);
       declare_parameter(name + ".stuck_min_warn_m",  0.0);
@@ -124,7 +124,7 @@ protected:
       radar->expected_hz       = get_parameter(name + ".expected_hz").as_double();
       radar->hz_warn_ratio     = get_parameter(name + ".hz_warn_ratio").as_double();
       radar->hz_error_ratio    = get_parameter(name + ".hz_error_ratio").as_double();
-      radar->stale_timeout     = get_parameter(name + ".stale_timeout").as_double();
+      radar->stale_timeout = get_param_with_alias<double>(name + ".stale_timeout_s", radar->stale_timeout, {name + ".stale_timeout"});
       radar->min_range_m       = static_cast<float>(get_parameter(name + ".min_range_m").as_double());
       radar->max_range_m       = static_cast<float>(get_parameter(name + ".max_range_m").as_double());
       radar->stuck_min_warn_m  = get_parameter(name + ".stuck_min_warn_m").as_double();

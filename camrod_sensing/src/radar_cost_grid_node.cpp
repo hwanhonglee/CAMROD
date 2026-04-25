@@ -15,7 +15,7 @@
 #include <tf2_ros/transform_listener.h>
 #include <avg_msgs/msg/point.hpp>
 
-namespace camping_cart::sensing
+namespace camrod::sensing
 {
 
 class RadarCostGridNode : public rclcpp::Node
@@ -28,7 +28,7 @@ public:
   : Node("radar_cost_grid")
   {
     output_topic_ = declare_parameter<std::string>(
-      "output_topic", "/sensing/radar/near_cost_grid");
+      "output_topic", "/sensing/cost_grid/radar");
     base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_base_link");
     output_frame_id_ = declare_parameter<std::string>("output_frame_id", "map");
     resolution_ = declare_parameter<double>("resolution", 0.10);
@@ -41,10 +41,25 @@ public:
     min_cost_ = declare_parameter<int>("min_cost", 35);
     max_cost_ = declare_parameter<int>("max_cost", 100);
     cost_range_min_m_ = declare_parameter<double>("cost_range_min_m", 0.3);
-    cost_range_max_m_ = declare_parameter<double>("cost_range_max_m", 6.0);
+    // HH_260422: Default lowered to 2.0m — radar is near-field only; per-sensor max_range in Range
+    //   message limits detections before they reach the cost mapping stage.
+    cost_range_max_m_ = declare_parameter<double>("cost_range_max_m", 2.0);
     obstacle_radius_m_ = declare_parameter<double>("obstacle_radius_m", 0.30);
-    ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.90);
-    max_message_age_sec_ = declare_parameter<double>("max_message_age_sec", 0.35);
+    // HH_260422: Reduced from 0.90 to 0.50 so near-field side/rear radar readings
+    //   (0.5–0.9 m from centre) are not erased by the ego-footprint clear disk.
+    ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.50);
+    max_message_age_s_ = declare_parameter<double>("max_message_age_s", 0.35);
+    const double legacy_max_message_age_sec =
+      declare_parameter<double>("max_message_age_sec", 0.35);
+    if (
+      std::abs(max_message_age_s_ - 0.35) < 1e-9 &&
+      std::abs(legacy_max_message_age_sec - 0.35) > 1e-9)
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter 'max_message_age_sec' is deprecated. Use 'max_message_age_s' instead.");
+      max_message_age_s_ = legacy_max_message_age_sec;
+    }
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);
     radar_status_topic_ = declare_parameter<std::string>(
       "radar_status_topic", "/sensing/radar/status");
@@ -274,7 +289,7 @@ private:
       if (!sample.valid) {
         continue;
       }
-      if ((now_time - sample.recv_time).seconds() > max_message_age_sec_) {
+      if ((now_time - sample.recv_time).seconds() > max_message_age_s_) {
         continue;
       }
 
@@ -353,10 +368,10 @@ private:
   int min_cost_{35};
   int max_cost_{100};
   double cost_range_min_m_{0.3};
-  double cost_range_max_m_{6.0};
+  double cost_range_max_m_{2.0};
   double obstacle_radius_m_{0.30};
-  double ego_clear_radius_m_{0.90};
-  double max_message_age_sec_{0.35};
+  double ego_clear_radius_m_{0.50};
+  double max_message_age_s_{0.35};
   double publish_rate_hz_{10.0};
   bool publish_radar_status_{false};
   std::vector<std::string> input_topics_;
@@ -371,13 +386,13 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
-}  // namespace camping_cart::sensing
+}  // namespace camrod::sensing
 
 // Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<camping_cart::sensing::RadarCostGridNode>());
+  rclcpp::spin(std::make_shared<camrod::sensing::RadarCostGridNode>());
   rclcpp::shutdown();
   return 0;
 }

@@ -38,9 +38,9 @@ public:
     // HH_260410: Monitor uses the same unified wheel topic as EKF/ESKF.
     wheel_topic_ = declare_parameter<std::string>("wheel_topic", "/platform/status/wheel_odometry");
 
-    gnss_timeout_sec_ = declare_parameter<double>("gnss_timeout_sec", 1.0);
-    imu_timeout_sec_ = declare_parameter<double>("imu_timeout_sec", 0.5);
-    wheel_timeout_sec_ = declare_parameter<double>("wheel_timeout_sec", 0.5);
+    gnss_timeout_s_ = declareDurationWithLegacy("gnss_timeout_s", "gnss_timeout_sec", 1.0);
+    imu_timeout_s_ = declareDurationWithLegacy("imu_timeout_s", "imu_timeout_sec", 0.5);
+    wheel_timeout_s_ = declareDurationWithLegacy("wheel_timeout_s", "wheel_timeout_sec", 0.5);
 
     gnss_innov_warn_ = declare_parameter<double>("gnss_innovation_warn", 3.0);
     gnss_innov_fail_ = declare_parameter<double>("gnss_innovation_fail", 6.0);
@@ -96,6 +96,26 @@ public:
   }
 
 private:
+  double declareDurationWithLegacy(
+    const std::string & canonical_name,
+    const std::string & legacy_name,
+    const double default_value)
+  {
+    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
+    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
+    if (std::abs(canonical_value - default_value) > 1e-9) {
+      return canonical_value;
+    }
+    if (std::abs(legacy_value - default_value) > 1e-9) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter '%s' is deprecated. Use '%s' instead.",
+        legacy_name.c_str(), canonical_name.c_str());
+      return legacy_value;
+    }
+    return canonical_value;
+  }
+
   void onGnssPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     last_gnss_pose_time_ = rclcpp::Time(msg->header.stamp);
@@ -167,11 +187,11 @@ private:
   {
     const rclcpp::Time now = this->now();
 
-    const bool imu_ok = (now - last_imu_time_).seconds() <= imu_timeout_sec_;
-    const bool gnss_pose_fresh = (now - last_gnss_pose_time_).seconds() <= gnss_timeout_sec_;
-    const bool gnss_cov_fresh = (now - last_gnss_cov_time_).seconds() <= gnss_timeout_sec_;
+    const bool imu_ok = (now - last_imu_time_).seconds() <= imu_timeout_s_;
+    const bool gnss_pose_fresh = (now - last_gnss_pose_time_).seconds() <= gnss_timeout_s_;
+    const bool gnss_cov_fresh = (now - last_gnss_cov_time_).seconds() <= gnss_timeout_s_;
     const bool gnss_fresh = gnss_pose_fresh || gnss_cov_fresh;
-    const bool wheel_ok = (now - last_wheel_time_).seconds() <= wheel_timeout_sec_;
+    const bool wheel_ok = (now - last_wheel_time_).seconds() <= wheel_timeout_s_;
 
     const bool gnss_cov_ok =
       (gnss_cov_trace_fail_ <= 0.0) || (last_gnss_cov_trace_ <= gnss_cov_trace_fail_);
@@ -260,6 +280,9 @@ private:
   }
 
   std::string diag_topic_;
+  // HH_260422: true -> subscribe to diag_topic_ and factor gnss_update_accepted / wheel_update_accepted
+  //   into the gnss_good / wheel_good decision.
+  //   false -> decide mode from sensor freshness and covariance only (ignores ESKF internal acceptance state).
   bool use_filter_status_{true};
 
   std::string gnss_pose_topic_;
@@ -267,9 +290,9 @@ private:
   std::string imu_topic_;
   std::string wheel_topic_;
 
-  double gnss_timeout_sec_{1.0};
-  double imu_timeout_sec_{0.5};
-  double wheel_timeout_sec_{0.5};
+  double gnss_timeout_s_{1.0};
+  double imu_timeout_s_{0.5};
+  double wheel_timeout_s_{0.5};
 
   double gnss_innov_warn_{3.0};
   double gnss_innov_fail_{6.0};
@@ -277,7 +300,7 @@ private:
   double gnss_jump_fail_m_{1.0};
   double gnss_min_hz_{2.0};
 
-  bool publish_localization_status_{false};
+  bool publish_localization_status_{false}; // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs)
   std::string localization_status_topic_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMode>::SharedPtr mode_pub_;
@@ -299,6 +322,9 @@ private:
   rclcpp::Time last_imu_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_wheel_time_{0, 0, RCL_ROS_TIME};
 
+  // HH_260422: has_prev_gnss_ becomes true after the first GNSS pose message is received.
+  //   While false: jump distance and rate calculations are skipped (no previous position to compare against).
+  //   Once true: last_gnss_jump_m_ and last_gnss_hz_ are updated and feed into gnss_jump_ok / gnss_rate_ok.
   bool has_prev_gnss_{false};
   double last_gnss_x_{0.0};
   double last_gnss_y_{0.0};

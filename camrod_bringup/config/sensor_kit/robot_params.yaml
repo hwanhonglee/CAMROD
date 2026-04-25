@@ -1,107 +1,107 @@
 /**:
   ros__parameters:
     robot:
-      wheelbase: 0.5
-      track_width: 3.2
-      length: 0.8
-      width: 0.4
-      height: 0.8
-      wheel_radius: 0.08
-      encoder_resolution: 2048
-      drive_type: "ackermann"
+      wheelbase: 0.5          # Distance between front and rear axle centers [m].
+      track_width: 3.2        # Lateral distance between left/right wheel centers [m].
+      length: 0.8             # Physical vehicle body length [m].
+      width: 0.4              # Physical vehicle body width [m].
+      height: 0.8             # Physical vehicle body height [m].
+      wheel_radius: 0.08      # Effective rolling radius used by kinematic helpers [m].
+      encoder_resolution: 2048  # Encoder ticks per wheel revolution.
+      drive_type: "ackermann" # Platform drive model identifier consumed by downstream logic.
 
-    ground_z_offset: 5.3
+    ground_z_offset: 5.3      # Base Z offset added when map-ground estimation is unavailable [m].
 
     base_pose:
-      x: 0.0
-      y: 0.0
-      z: 0.0
-      roll: 0.0
-      pitch: 0.0
-      yaw: 0.0
+      x: 0.0                  # Initial base position X in map/world frame [m].
+      y: 0.0                  # Initial base position Y in map/world frame [m].
+      z: 0.0                  # Initial base position Z in map/world frame [m].
+      roll: 0.0               # Initial base roll angle [deg].
+      pitch: 0.0              # Initial base pitch angle [deg].
+      yaw: 0.0                # Initial base yaw angle [deg].
 
     imu:
-      x: 0.28
-      y: 0.0
-      z: 0.2
-      roll: 0.0
-      pitch: 0.0
+      x: 0.28                 # IMU mount X offset from sensor_kit_base_link [m].
+      y: 0.0                  # IMU mount Y offset from sensor_kit_base_link [m].
+      z: 0.2                  # IMU mount Z offset from sensor_kit_base_link [m].
+      roll: 0.0               # IMU mount roll offset [deg].
+      pitch: 0.0              # IMU mount pitch offset [deg].
       # HH_260413: Align IMU frame to robot_base_link heading (mount calibration).
-      yaw: 0.0
+      yaw: -84.4              # IMU mount yaw offset [deg].
 
     gnss:
-      x: 0.0
-      y: 0.0
-      z: 0.0
-      roll: 0.0
-      pitch: 0.0
-      yaw: 0.0
+      x: 0.0                  # GNSS antenna X offset from sensor_kit_base_link [m].
+      y: 0.0                  # GNSS antenna Y offset from sensor_kit_base_link [m].
+      z: 0.0                  # GNSS antenna Z offset from sensor_kit_base_link [m].
+      roll: 0.0               # GNSS antenna roll offset [deg].
+      pitch: 0.0              # GNSS antenna pitch offset [deg].
+      yaw: 0.0                # GNSS antenna yaw offset [deg].
 
     lidar:
-      x: 0.68
-      y: 0.0
-      z: 0.45
-      roll: 0.0
-      pitch: 0.4
-      yaw: 0.0
+      x: 0.68                 # LiDAR mount X offset from sensor_kit_base_link [m].
+      y: 0.0                  # LiDAR mount Y offset from sensor_kit_base_link [m].
+      z: 0.45                 # LiDAR mount Z offset from sensor_kit_base_link [m].
+      roll: 0.0               # LiDAR mount roll offset [deg].
+      pitch: 0.4              # LiDAR mount pitch offset [deg].
+      yaw: 0.0                # LiDAR mount yaw offset [deg].
 
     camera:
       # HH_260326: Canonical camera pose.
-      x: 0.68
-      y: 0.0
-      z: 0.2
-      roll: 0.0
-      pitch: 0.0
-      yaw: 0.0
+      x: 0.68                 # Camera optical rig X offset from sensor_kit_base_link [m].
+      y: 0.0                  # Camera optical rig Y offset from sensor_kit_base_link [m].
+      z: 0.2                  # Camera optical rig Z offset from sensor_kit_base_link [m].
+      roll: 0.0               # Camera optical rig roll offset [deg].
+      pitch: 0.0              # Camera optical rig pitch offset [deg].
+      yaw: 0.0                # Camera optical rig yaw offset [deg].
 
     radar:
       # HH_260326: Parent radar frame (radar_link) offset from sensor_kit_base_link.
       base:
-        x: 0.0
-        y: 0.0
-        z: 0.0
-        roll: 0.0
-        pitch: 0.0
-        yaw: 0.0
+        x: 0.0                # Radar aggregate frame X offset from sensor_kit_base_link [m].
+        y: 0.0                # Radar aggregate frame Y offset from sensor_kit_base_link [m].
+        z: 0.0                # Radar aggregate frame Z offset from sensor_kit_base_link [m].
+        roll: 0.0             # Radar aggregate frame roll offset [deg].
+        pitch: 0.0            # Radar aggregate frame pitch offset [deg].
+        yaw: 0.0              # Radar aggregate frame yaw offset [deg].
       front:
-        x: 0.64
-        y: 0.0
-        z: 0.45
-        roll: 0.0
-        pitch: 0.0
-        yaw: 0.0
+        x: 0.64               # Front radar X offset from radar base frame [m].
+        y: 0.0                # Front radar Y offset from radar base frame [m].
+        z: 0.45               # Front radar Z offset from radar base frame [m].
+        roll: 0.0             # Front radar roll offset [deg].
+        pitch: 0.0            # Front radar pitch offset [deg].
+        yaw: 0.0              # Front radar yaw offset [deg].
       left1:
-        x: 0.5
-        y: 0.2
-        z: 0.45
-        roll: 0.0
-        pitch: 0.0
-        yaw: 90.0
+        x: 0.5                # Front-left radar #1 X offset from radar base frame [m].
+        y: 0.2                # Front-left radar #1 Y offset from radar base frame [m].
+        z: 0.45               # Front-left radar #1 Z offset from radar base frame [m].
+        roll: 0.0             # Front-left radar #1 roll offset [deg].
+        pitch: 0.0            # Front-left radar #1 pitch offset [deg].
+        yaw: 90.0             # Front-left radar #1 yaw offset [deg].
       left2:
-        x: -0.1
-        y: 0.2
-        z: 0.45
-        roll: 0.0
-        pitch: 0.0
-        yaw: 90.0
+        x: -0.1               # Rear-left radar #2 X offset from radar base frame [m].
+        y: 0.2                # Rear-left radar #2 Y offset from radar base frame [m].
+        z: 0.45               # Rear-left radar #2 Z offset from radar base frame [m].
+        roll: 0.0             # Rear-left radar #2 roll offset [deg].
+        pitch: 0.0            # Rear-left radar #2 pitch offset [deg].
+        yaw: 90.0             # Rear-left radar #2 yaw offset [deg].
       right1:
-        x: 0.5
-        y: -0.2
-        z: 0.45
-        roll: 0.0
-        pitch: 0.0
-        yaw: -90.0
+        x: 0.5                # Front-right radar #1 X offset from radar base frame [m].
+        y: -0.2               # Front-right radar #1 Y offset from radar base frame [m].
+        z: 0.45               # Front-right radar #1 Z offset from radar base frame [m].
+        roll: 0.0             # Front-right radar #1 roll offset [deg].
+        pitch: 0.0            # Front-right radar #1 pitch offset [deg].
+        yaw: -90.0            # Front-right radar #1 yaw offset [deg].
       right2:
-        x: -0.1
-        y: -0.2
-        z: 0.45
-        roll: 0.0
-        pitch: 0.0
-        yaw: -90.0
+        x: -0.1               # Rear-right radar #2 X offset from radar base frame [m].
+        y: -0.2               # Rear-right radar #2 Y offset from radar base frame [m].
+        z: 0.45               # Rear-right radar #2 Z offset from radar base frame [m].
+        roll: 0.0             # Rear-right radar #2 roll offset [deg].
+        pitch: 0.0            # Rear-right radar #2 pitch offset [deg].
+        yaw: -90.0            # Rear-right radar #2 yaw offset [deg].
       rear:
-        x: -0.1
-        y: 0.0
-        z: 0.45
-        roll: 0.0
-        pitch: 0.0
-        yaw: 180.0
+        x: -0.1               # Rear radar X offset from radar base frame [m].
+        y: 0.0                # Rear radar Y offset from radar base frame [m].
+        z: 0.45               # Rear radar Z offset from radar base frame [m].
+        roll: 0.0             # Rear radar roll offset [deg].
+        pitch: 0.0            # Rear radar pitch offset [deg].
+        yaw: 180.0            # Rear radar yaw offset [deg].

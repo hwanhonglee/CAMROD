@@ -22,18 +22,24 @@
 #include <avg_msgs/msg/color_rgba.hpp>
 #include <avg_msgs/msg/point.hpp>
 
-namespace camping_cart
+namespace camrod
 {
 namespace map
 {
 
 struct Lanelet2MapNodeConfig
 {
+  // Lanelet2 OSM path.
   std::string map_path;
+  // WGS84 latitude origin for projector.
   double offset_lat{0.0};
+  // WGS84 longitude origin for projector.
   double offset_lon{0.0};
+  // WGS84 altitude origin for projector.
   double offset_alt{0.0};
+  // Parent world frame for static transform publication.
   std::string world_frame_id{"world"};
+  // Lanelet map frame used by all map markers.
   std::string map_frame_id{"map"};
   // HH_260103 arrow scaling parameters
   double dir_body_scale{0.55};
@@ -123,7 +129,7 @@ private:
   bool logged_marker_stats_{false};
   // HH_260413: Optional periodic re-publish period for static map markers.
   // 0.0 disables timer and publishes once (transient_local keeps late subscribers synced).
-  double visualization_republish_period_sec_{0.0};
+  double visualization_republish_period_s_{0.0};
   avg_msgs::msg::MarkerArray cached_markers_;
   bool publish_map_status_{false};
   std::string map_status_topic_{"/map/status"};
@@ -132,6 +138,6 @@ private:
 };
 
 }  // namespace map
-}  // namespace camping_cart
+}  // namespace camrod
 
 #endif  // CAMROD_MAP__LANELET2_MAP_NODE_HPP_

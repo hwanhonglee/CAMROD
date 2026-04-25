@@ -82,8 +82,8 @@ protected:
     declare_parameter("ok_topic",        std::string("/localization/initial_match_ok"));
     declare_parameter("distance_topic",  std::string("/localization/initial_match_distance"));
     declare_parameter("id_topic",        std::string("/localization/initial_match_id"));
-    declare_parameter("stale_timeout",   5.0);
-    declare_parameter("grace_period_sec", 30.0);
+    declare_parameter("stale_timeout_s",   5.0);
+    declare_parameter("grace_period_s", 30.0);
     declare_parameter("dist_warn_m",     3.0);
     declare_parameter("dist_error_m",    8.0);
   }
@@ -93,8 +93,9 @@ protected:
     ok_topic_         = get_parameter("ok_topic").as_string();
     distance_topic_   = get_parameter("distance_topic").as_string();
     id_topic_         = get_parameter("id_topic").as_string();
-    stale_timeout_    = get_parameter("stale_timeout").as_double();
-    grace_period_sec_ = get_parameter("grace_period_sec").as_double();
+    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
+    grace_period_sec_ = get_param_with_alias<double>(
+      "grace_period_s", grace_period_sec_, {"grace_period_sec"});
     dist_warn_m_      = get_parameter("dist_warn_m").as_double();
     dist_error_m_     = get_parameter("dist_error_m").as_double();
   }

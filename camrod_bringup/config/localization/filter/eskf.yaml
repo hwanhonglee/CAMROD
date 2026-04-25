@@ -39,6 +39,12 @@
     gnss_profile_normal_gate_mahalanobis: 64.0
     gnss_profile_unstable_gate_mahalanobis: 400.0
     wheel_gate_mahalanobis: 9.0
+    # 2026-04-22: Use wheel odometry yaw-rate (angular.z) to correct IMU yaw bias.
+    # Ranger odometry already embeds steering geometry, so this stabilizes DR heading.
+    use_wheel_yaw_rate_update: true
+    wheel_yaw_rate_noise: 0.25
+    wheel_yaw_rate_gate_mahalanobis: 9.0
+    wheel_yaw_rate_min_speed_mps: 0.10
     # 2026-02-02: Reinit filter if GNSS is too far (recover from drift).
     reinit_on_gnss_reject: true
     # HH_260413: Reinitialize earlier when GNSS and state diverge in no-ranger fallback runs.
@@ -60,4 +66,16 @@
     # HH_260415: At standstill, use IMU quaternion yaw so heading follows real sensor rotation.
     align_yaw_to_imu_when_stopped: true
     stop_speed_threshold: 0.05
-    stop_hold_sec: 1.0
+    stop_hold_s: 1.0
+
+    # HH_260422: Non-Holonomic Constraint — lateral body velocity ≈ 0 for wheeled robot.
+    # nhc_lateral_noise > 0 allows residual slip for skid-steer (Ranger).
+    use_nhc: true
+    nhc_lateral_noise: 0.05
+    nhc_gate_mahalanobis: 9.0
+
+    # HH_260422: Zero Velocity Update — inject v=[0,0] when confirmed stopped.
+    # Prevents IMU accel bias drift accumulating into position error at standstill.
+    use_zupt: true
+    zupt_vel_noise: 0.02
+    zupt_gate_mahalanobis: 9.0

@@ -25,7 +25,7 @@
 #include <avg_msgs/msg/point.hpp>
 #include <avg_msgs/msg/point32.hpp>
 
-namespace camping_cart
+namespace camrod
 {
 namespace
 {
@@ -119,8 +119,20 @@ public:
     gnss_pose_topic_ = declare_parameter<std::string>(
       "gnss_pose_topic", "/sensing/gnss/pose");
     use_gnss_fallback_ = declare_parameter<bool>("use_gnss_fallback", true);
-    localization_pose_timeout_sec_ = declare_parameter<double>(
+    localization_pose_timeout_s_ = declare_parameter<double>(
+      "localization_pose_timeout_s", 1.0);
+    const double legacy_localization_pose_timeout_sec = declare_parameter<double>(
       "localization_pose_timeout_sec", 1.0);
+    if (
+      std::abs(localization_pose_timeout_s_ - 1.0) < 1e-9 &&
+      std::abs(legacy_localization_pose_timeout_sec - 1.0) > 1e-9)
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter 'localization_pose_timeout_sec' is deprecated. "
+        "Use 'localization_pose_timeout_s' instead.");
+      localization_pose_timeout_s_ = legacy_localization_pose_timeout_sec;
+    }
     // HH_260409: Optional heading offset for platform visualization alignment.
     // Negative value rotates clockwise in ROS yaw convention.
     heading_yaw_offset_deg_ = declare_parameter<double>("heading_yaw_offset_deg", 0.0);
@@ -538,7 +550,7 @@ private:
     }
     if (has_localization_pose_) {
       const auto age_sec = (this->get_clock()->now() - last_localization_pose_stamp_).seconds();
-      if (age_sec <= localization_pose_timeout_sec_) {
+      if (age_sec <= localization_pose_timeout_s_) {
         return;
       }
     }
@@ -610,7 +622,7 @@ private:
   std::string localization_pose_topic_;
   std::string gnss_pose_topic_;
   bool use_gnss_fallback_{true};
-  double localization_pose_timeout_sec_{1.0};
+  double localization_pose_timeout_s_{1.0};
   double heading_yaw_offset_deg_{0.0};
   double heading_yaw_offset_rad_{0.0};
   bool has_localization_pose_{false};
@@ -698,13 +710,13 @@ private:
   }
 };
 
-}  // namespace camping_cart
+}  // namespace camrod
 
 // Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<camping_cart::RobotVisualizationNode>());
+  rclcpp::spin(std::make_shared<camrod::RobotVisualizationNode>());
   rclcpp::shutdown();
   return 0;
 }

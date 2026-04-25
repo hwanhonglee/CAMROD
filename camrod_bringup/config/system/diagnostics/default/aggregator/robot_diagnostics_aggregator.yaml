@@ -1,10 +1,10 @@
 # ============================================================
-# Section note: tune thresholds based on expected stream behavior and safety policy.
+# Robot Diagnostics Aggregator 설정
 # ============================================================
 #
-# Section note: tune thresholds based on expected stream behavior and safety policy.
+# /diagnostics 토픽의 개별 항목들을 도메인 트리로 집계한다.
 #
-# Section note: tune thresholds based on expected stream behavior and safety policy.
+# 집계 트리 구조
 # --------------
 # Robot
 # ├── Hardware
@@ -115,85 +115,85 @@ diagnostic_aggregator:
         path: 'Sensing/Velocity'
         contains: ['/sensing/velocity_converter']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Localization: GNSS 입력 품질 ──────────────────────────────────
       localization_gnss:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Localization/GNSS Quality'
         contains: ['/localization/gnss/']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Localization: 모드·신뢰도 ─────────────────────────────────────
       localization_mode:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Localization/Mode'
         contains: ['/localization/mode']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Localization: 위치 추정 출력 품질 ─────────────────────────────
       localization_pose:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Localization/Pose'
         contains: ['/localization/pose']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Localization: Drop zone 초기화 ────────────────────────────────
       localization_init:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Localization/Init'
         contains: ['/localization/init']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Localization: ESKF / Fallback 소스 전환 ───────────────────────
       localization_source:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Localization/Source'
         contains: ['/localization/source']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Localization: Lanelet 맵 범위 ─────────────────────────────────
       localization_lanelet:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Localization/Lanelet'
         contains: ['/localization/lanelet']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Perception: 카메라 객체 검출 ──────────────────────────────────
       perception_detections:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Perception/Detections'
         contains: ['/perception/obstacles/camera_detections']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Perception: 장애물 융합 출력 ──────────────────────────────────
       perception_obstacles:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Perception/Obstacles'
         contains: ['/perception/obstacles/fused_obstacles']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Planning: 경로 품질 ───────────────────────────────────────────
       planning_path:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Planning/Path'
         contains: ['/planning/path/']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Planning: Costmap 신선도 ──────────────────────────────────────
       planning_costmap:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Planning/Costmap'
         contains: ['/planning/global_costmap', '/planning/local_costmap']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Planning: Nav2 액션 abort 빈도 ────────────────────────────────
       planning_nav_status:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Planning/NavStatus'
         contains: ['/planning/nav_status']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Planning: Nav2 노드 lifecycle 상태 ────────────────────────────
       planning_lifecycle:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Planning/Lifecycle'
         contains: ['/planning/lifecycle/']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Map: Lanelet 레인 제약 격자 ───────────────────────────────────
       map_cost_grid:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Map/CostGrid'
         contains: ['/map/cost_grid']
 
-      # Section note: tune thresholds based on expected stream behavior and safety policy.
+      # ── Platform: Ranger 섀시 ─────────────────────────────────────────
       platform_ranger:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Platform/Ranger'

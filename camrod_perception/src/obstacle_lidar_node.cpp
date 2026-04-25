@@ -12,6 +12,7 @@
 #include <limits>
 #include <cmath>
 
+// Axis-aligned bounding box summary for one LiDAR point cluster.
 struct AABB
 {
   float min_x, min_y, min_z;
@@ -74,7 +75,18 @@ public:
     z_min_   = this->declare_parameter<double>("z_min", -3.0);
     z_max_   = this->declare_parameter<double>("z_max",  5.0);
 
-    marker_lifetime_sec_ = this->declare_parameter<double>("marker_lifetime_sec", 0.15);
+    marker_lifetime_s_ = this->declare_parameter<double>("marker_lifetime_s", 0.15);
+    const double legacy_marker_lifetime_sec =
+      this->declare_parameter<double>("marker_lifetime_sec", 0.15);
+    if (
+      std::abs(marker_lifetime_s_ - 0.15) < 1e-9 &&
+      std::abs(legacy_marker_lifetime_sec - 0.15) > 1e-9)
+    {
+      RCLCPP_WARN(
+        this->get_logger(),
+        "Parameter 'marker_lifetime_sec' is deprecated. Use 'marker_lifetime_s' instead.");
+      marker_lifetime_s_ = legacy_marker_lifetime_sec;
+    }
     draw_text_ = this->declare_parameter<bool>("draw_text", true);
 
     // HH_260326: Use avg_msgs aliases so perception interfaces stay consistent.
@@ -179,7 +191,7 @@ private:
 
     int marker_id = 1;
     const rclcpp::Duration life =
-      rclcpp::Duration::from_seconds(marker_lifetime_sec_);
+      rclcpp::Duration::from_seconds(marker_lifetime_s_);
 
     for (size_t c = 0; c < boxes.size(); ++c)
     {
@@ -274,7 +286,7 @@ private:
   bool use_box_;
   double x_min_, x_max_, y_min_, y_max_, z_min_, z_max_;
 
-  double marker_lifetime_sec_;
+  double marker_lifetime_s_;
   bool draw_text_;
 
   rclcpp::Subscription<avg_msgs::msg::PointCloud2>::SharedPtr sub_;

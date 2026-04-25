@@ -260,7 +260,11 @@ if [[ "${DO_BUILD}" -eq 1 ]]; then
 
   # HH_260409: Ignore git metadata trees (e.g. src/.git/modules/*/external).
   mapfile -t EXTERNAL_BASES < <(
-    cd "${WS_ROOT}" && find src -type d -name external -not -path '*/.git/*' | sort
+    cd "${WS_ROOT}" && find src -type d -name external \
+      -not -path '*/.git/*' \
+      -not -path '*/build/*' \
+      -not -path '*/install/*' \
+      -not -path '*/log/*' | sort
   )
   BASE_PATHS=("src")
   BASE_PATHS+=("${EXTERNAL_BASES[@]}")

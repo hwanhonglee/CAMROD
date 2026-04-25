@@ -20,7 +20,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
-namespace camping_cart::perception
+namespace camrod::perception
 {
 
 namespace
@@ -83,6 +83,7 @@ double centerY(const CenterT * center)
 }
 }  // namespace
 
+// Pixel-space 2D box bounds derived from Detection2D messages.
 struct BBox2D
 {
   double min_x{0.0};
@@ -323,13 +324,13 @@ private:
   avg_msgs::msg::Detection2DArray latest_detections_;
 };
 
-}  // namespace camping_cart::perception
+}  // namespace camrod::perception
 
 // Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<camping_cart::perception::ObstacleFusionNode>());
+  rclcpp::spin(std::make_shared<camrod::perception::ObstacleFusionNode>());
   rclcpp::shutdown();
   return 0;
 }

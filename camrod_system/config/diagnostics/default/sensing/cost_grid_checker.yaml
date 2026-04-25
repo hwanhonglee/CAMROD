@@ -9,12 +9,12 @@
 
 cost_grid_checker:
   ros__parameters:
-    publish_rate: 1.0
+    publish_rate_hz: 1.0
 
     output_topic:        "/sensing/lidar/near_cost_grid"
     expected_hz:         10.0
     hz_warn_ratio:       0.7     # 7 Hz 미만이면 WARN
     hz_error_ratio:      0.4     # 4 Hz 미만이면 ERROR
-    stale_timeout:       2.0
+    stale_timeout_s:       2.0
     unknown_ratio_warn:  0.9     # unknown 90% 이상 → WARN  (입력 부족 의심)
     unknown_ratio_error: 1.0     # unknown 100%     → ERROR (입력 없음 또는 TF 실패)

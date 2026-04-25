@@ -4,12 +4,12 @@
 
 localization_mode_checker:
   ros__parameters:
-    publish_rate: 1.0                        # 진단 발행 주기 (Hz)
+    publish_rate_hz: 1.0                        # 진단 발행 주기 (Hz)
 
     status_topic: "/localization/status"     # AvgLocalizationStatus 토픽
     health_topic: "/localization/state"      # std_msgs/Bool health alias from localization monitor
 
-    stale_timeout: 2.0                       # 이 시간(초) 이상 status 없으면 STALE
+    stale_timeout_s: 2.0                       # 이 시간(초) 이상 status 없으면 STALE
 
     # 신뢰도 임계값
     conf_warn:  0.6                          # confidence < 이 값 → WARN

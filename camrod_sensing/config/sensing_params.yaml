@@ -73,6 +73,13 @@
     max_range_m: 4.50
     field_of_view_rad: 0.26
 
+    # HH_260422: Write detection angle register 0x0208 at startup (5 = 75°, max for SEN0592).
+    write_angle_config: true
+    angle_config_value: 5
+
+    # HH_260422: Per-sensor max range (order: REAR, LEFT2, LEFT1, RIGHT2, RIGHT1, FRONT).
+    sensor_max_ranges_m: [0.50, 0.80, 0.80, 0.80, 0.80, 1.50]
+
     publish_radar_status: false
     radar_status_topic: "/sensing/radar/status"
 
@@ -110,4 +117,8 @@
       - "/sensing/radar/left1/range"
       - "/sensing/radar/left2/range"
       - "/sensing/radar/rear/range"
-    output_topic: "/sensing/radar/near_cost_grid"
+    output_topic: "/sensing/cost_grid/radar"
+    # HH_260422: Near-field only; per-sensor Range.max_range limits detections before cost mapping.
+    cost_range_max_m: 2.0
+    # HH_260422: Reduced so near-field side/rear readings are not erased by ego-footprint clear disk.
+    ego_clear_radius_m: 0.50

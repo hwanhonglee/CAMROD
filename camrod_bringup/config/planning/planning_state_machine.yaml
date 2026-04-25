@@ -16,9 +16,10 @@
     request_goal_service: "/planning/state_machine/request_goal"
     status_stream_topic: "/status_stream"
 
-    keypoints_yaml: "/home/nvidia/camrod_ws/src/camrod_planning/config/planning_state_machine_keypoints.yaml"
-    # HH_260330: Standalone planning launch uses package-local config by default.
-    camping_sites_yaml: "/home/nvidia/camrod_ws/src/camrod_planning/config/camping_sites.yaml"
+    # Launch passes resolved keypoints/camping YAML paths; keep defaults empty
+    # to avoid host-specific absolute path hardcoding.
+    keypoints_yaml: ""
+    camping_sites_yaml: ""
     startup_goal_key: "drop_zone"
     warn_goal_key: "garage"
 

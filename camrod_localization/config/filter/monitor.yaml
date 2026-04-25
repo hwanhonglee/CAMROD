@@ -1,7 +1,11 @@
 /**:
   ros__parameters:
     diag_topic: "/localization/eskf/status"
-    use_filter_status: true
+    # HH_260422: Temporarily disabled for sim — ESKF diagnostic mixing caused
+    # gnss_update_accepted to oscillate, masking a stable GNSS lock. The root
+    # cause (shared last_diag_ between GNSS/wheel callbacks) was fixed in the
+    # ESKF node; re-enable after confirming stability in hardware runs.
+    use_filter_status: false
 
     gnss_pose_topic: "/sensing/gnss/pose"
     gnss_pose_cov_topic: "/sensing/gnss/pose_with_covariance"
@@ -9,9 +13,9 @@
     # HH_260410 Monitor uses the same unified wheel topic as EKF/ESKF.
     wheel_topic: "/platform/status/wheel_odometry"
 
-    gnss_timeout_sec: 1.0
-    imu_timeout_sec: 0.5
-    wheel_timeout_sec: 0.5
+    gnss_timeout_s: 1.0
+    imu_timeout_s: 0.5
+    wheel_timeout_s: 0.5
 
     gnss_innovation_warn: 3.0
     gnss_innovation_fail: 6.0

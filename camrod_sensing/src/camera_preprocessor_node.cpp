@@ -6,7 +6,7 @@
 #include <avg_msgs/msg/camera_info.hpp>
 #include <avg_msgs/msg/image.hpp>
 
-namespace camping_cart::sensing
+namespace camrod::sensing
 {
 
 class CameraPreprocessorNode : public rclcpp::Node
@@ -123,13 +123,13 @@ private:
   bool camera_info_ready_{false};
 };
 
-}  // namespace camping_cart::sensing
+}  // namespace camrod::sensing
 
 // Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<camping_cart::sensing::CameraPreprocessorNode>());
+  rclcpp::spin(std::make_shared<camrod::sensing::CameraPreprocessorNode>());
   rclcpp::shutdown();
   return 0;
 }

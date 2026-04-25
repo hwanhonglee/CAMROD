@@ -131,20 +131,6 @@ ament_target_dependencies(localization_pose_selector_node
 )
 
 # ------------------------------------------------------------------------------
-# Optional external bridge kept as separate executable
-# ------------------------------------------------------------------------------
-add_executable(kimera_csv_bridge_node
-  external/kimera_vio_bridge/kimera_csv_bridge_node.cpp
-)
-ament_target_dependencies(kimera_csv_bridge_node
-  rclcpp
-  avg_msgs
-  geometry_msgs
-  nav_msgs
-  std_msgs
-)
-
-# ------------------------------------------------------------------------------
 # Install
 # ------------------------------------------------------------------------------
 install(TARGETS
@@ -153,7 +139,6 @@ install(TARGETS
   localization_map_helper_node
   localization_eskf_node
   localization_pose_selector_node
-  kimera_csv_bridge_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -1,6 +1,6 @@
 map_cost_grid_checker:
   ros__parameters:
-    publish_rate: 1.0
+    publish_rate_hz: 1.0
 
     cost_grid_topic: "/map/cost_grid/lanelet"
 
@@ -9,7 +9,7 @@ map_cost_grid_checker:
     hz_warn_ratio:  0.4    # actual/expected < 이 값 → WARN
     hz_error_ratio: 0.1    # actual/expected < 이 값 → ERROR
 
-    stale_timeout:  3.0    # 이 시간(초) 이상 메시지 없으면 STALE
+    stale_timeout_s:  3.0    # 이 시간(초) 이상 메시지 없으면 STALE
                            # → 맵 로드 실패 또는 pose/path 입력 없음
 
     # unknown(-1) 셀 비율 임계값

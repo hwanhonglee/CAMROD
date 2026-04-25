@@ -65,9 +65,14 @@ def generate_launch_description():
             description="Wheel bridge fallback input type: twist|avg_odom|nav_odom",
         ),
         DeclareLaunchArgument(
+            "wheel_primary_timeout_s",
+            default_value="0.7",
+            description="Primary wheel input timeout before fallback activation (seconds)",
+        ),
+        DeclareLaunchArgument(
             "wheel_primary_timeout_sec",
             default_value="0.7",
-            description="Primary wheel input timeout before fallback activation (sec)",
+            description="Legacy alias. Use wheel_primary_timeout_s.",
         ),
         DeclareLaunchArgument(
             "wheel_output_topic",
@@ -96,6 +101,7 @@ def generate_launch_description():
                     "wheel_input_type": LaunchConfiguration("wheel_input_type"),
                     "wheel_fallback_input_topic": LaunchConfiguration("wheel_fallback_input_topic"),
                     "wheel_fallback_input_type": LaunchConfiguration("wheel_fallback_input_type"),
+                    "wheel_primary_timeout_s": LaunchConfiguration("wheel_primary_timeout_s"),
                     "wheel_primary_timeout_sec": LaunchConfiguration("wheel_primary_timeout_sec"),
                     "wheel_output_topic": LaunchConfiguration("wheel_output_topic"),
                     "wheel_nav_output_topic": LaunchConfiguration("wheel_nav_output_topic"),

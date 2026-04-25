@@ -50,7 +50,15 @@ class CmdVelGateNode(Node):
             self.declare_parameter("publish_zero_when_blocked", True).value
         )
 
+        # HH_260422: _enabled becomes True when /platform/drive_enable or /planning/engage publishes True.
+        #   True + _estop==False -> passes /planning/cmd_vel through to /platform/cmd_vel.
+        #   False -> blocks cmd_vel; publish_zero_when_blocked=True sends zero Twist to platform.
+        #   allow_on_start=True enables gate at startup (default: False — explicit enable required).
         self._enabled = self.allow_on_start
+
+        # HH_260422: _estop becomes True when /platform/status/estop publishes True.
+        #   True -> overrides _enabled and blocks all cmd_vel immediately + sends zero Twist.
+        #   Effective gate state: _enabled AND NOT _estop  (see _effective_enabled()).
         self._estop = False
         self._last_input: Optional[Twist] = None
 

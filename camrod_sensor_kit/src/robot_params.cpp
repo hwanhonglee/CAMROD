@@ -1,7 +1,7 @@
 #include "camrod_sensor_kit/robot_params.hpp"  // HH_260109 renamed package
 #include <cmath>
 
-namespace camping_cart
+namespace camrod
 {
 
 // Converts degree-based YAML values into radians for runtime math.
@@ -49,4 +49,4 @@ RobotParams loadRobotParams(rclcpp::Node * node)
   return params;
 }
 
-} // namespace camping_cart
+} // namespace camrod

@@ -55,7 +55,7 @@ protected:
     declare_parameter("expected_hz",         10.0);
     declare_parameter("hz_warn_ratio",       0.7);
     declare_parameter("hz_error_ratio",      0.4);
-    declare_parameter("stale_timeout",       2.0);
+    declare_parameter("stale_timeout_s",       2.0);
     declare_parameter("unknown_ratio_warn",  0.9);
     declare_parameter("unknown_ratio_error", 1.0);
   }
@@ -66,7 +66,7 @@ protected:
     expected_hz_          = get_parameter("expected_hz").as_double();
     hz_warn_ratio_        = get_parameter("hz_warn_ratio").as_double();
     hz_error_ratio_       = get_parameter("hz_error_ratio").as_double();
-    stale_timeout_        = get_parameter("stale_timeout").as_double();
+    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
     unknown_ratio_warn_   = get_parameter("unknown_ratio_warn").as_double();
     unknown_ratio_error_  = get_parameter("unknown_ratio_error").as_double();
   }

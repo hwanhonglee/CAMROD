@@ -1,0 +1,14 @@
+# Local external build outputs
+build/
+install/
+
+# Runtime outputs
+Kimera-VIO/output/
+Kimera-VIO/output_logs/
+Kimera-VIO/dataset/
+Log/
+sensor_inspection_tools/Log/
+
+# Local tool build trees
+sensor_inspection_tools/build/
+third_party/DBoW2/build/

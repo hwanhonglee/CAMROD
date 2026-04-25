@@ -21,19 +21,19 @@
     # Whether to render unknown(-1) grid cells.
     show_unknown: false
     # Minimum interval between publishes to throttle heavy marker streams.
-    min_publish_period_sec: 0.20
+    min_publish_period_s: 0.20
     # Sampling stride in grid indices (2 means every other cell).
     sample_stride: 2
     # Periodic republish interval in seconds (0 disables timer republish).
-    republish_period_sec: 0.0
+    republish_period_s: 0.0
 
 /map/cost_grid_multi_marker:
   ros__parameters:
     # Input OccupancyGrid topics for each stream index.
     grid_topics:
       - "/map/cost_grid/lanelet"
-      - "/sensing/lidar/near_cost_grid"
-      - "/sensing/radar/near_cost_grid"
+      - "/sensing/cost_grid/lidar"
+      - "/sensing/cost_grid/radar"
     # Output MarkerArray topics matched by index to grid_topics.
     marker_topics:
       - "/map/cost_grid/lanelet_markers"
@@ -63,11 +63,11 @@
     # Per-stream sampling strides.
     sample_strides: [1, 2, 2]
     # Per-stream minimum publish intervals (seconds).
-    min_publish_period_secs: [0.02, 0.03, 0.03]
+    min_publish_periods_s: [0.02, 0.03, 0.03]
     # Per-stream periodic republish intervals (seconds).
-    republish_period_secs: [0.20, 0.12, 0.12]
+    republish_periods_s: [0.20, 0.12, 0.12]
     # Per-stream stale timeouts (seconds). 0 disables stale clear.
-    stale_timeout_secs: [0.0, 0.0, 0.0]
+    stale_timeouts_s: [0.0, 0.0, 0.0]
     # Per-stream behavior on empty input grids.
     clear_on_empty_grids: [true, true, true]
 

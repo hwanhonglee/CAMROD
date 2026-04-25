@@ -1,0 +1,2 @@
+# This external workspace is intentionally not a ROS/colcon package tree.
+# Build Kimera-VIO and helper libraries with provided shell scripts instead.

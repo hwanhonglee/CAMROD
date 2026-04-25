@@ -1,6 +1,6 @@
 /sensing/radar_cost_grid:
   ros__parameters:
-    output_topic: "/sensing/radar/near_cost_grid"
+    output_topic: "/sensing/cost_grid/radar"
     base_frame_id: "robot_base_link"
     output_frame_id: "map"
 
@@ -17,13 +17,14 @@
     min_cost: 35
     max_cost: 95
     cost_range_min_m: 0.3
-    cost_range_max_m: 6.0
+    # HH_260422: Near-field only; per-sensor max_range limits detections before cost mapping.
+    cost_range_max_m: 2.0
     obstacle_radius_m: 0.30
-    # Keep ego footprint free so planner start cell is not lethal.
-    ego_clear_radius_m: 0.90
+    # HH_260422: Reduced from 0.90 so near-field side/rear readings are not cleared by ego disk.
+    ego_clear_radius_m: 0.50
 
     # Runtime
-    max_message_age_sec: 0.35
+    max_message_age_s: 0.35
     publish_rate_hz: 10.0
     publish_radar_status: false
     radar_status_topic: "/sensing/radar/status"

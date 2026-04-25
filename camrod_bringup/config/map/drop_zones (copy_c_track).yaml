@@ -1,0 +1,8 @@
+drop_zones:
+  - id: "dz_area_36128"
+    type: "drop_zone"
+    source: "area"
+    x: 16.8676
+    y: -117.408
+    z: -97.794
+    yaw_deg: -0.41903

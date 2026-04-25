@@ -17,7 +17,8 @@ bt_navigator:
     bt_loop_duration: 80
     # HH_260415: Default to GridBased selector BT to keep planner_id consistent
     # with the stabilized planner profile and avoid Smac2D runtime selection.
-    default_nav_to_pose_bt_xml: "/home/nvidia/camrod_ws/install/camrod_planning/share/camrod_planning/config/bt/navigate_to_pose_w_planner_selector_grid.xml"
+    # Launch rewrites this value to a package-share-resolved XML path.
+    default_nav_to_pose_bt_xml: ""
     default_nav_through_poses_bt_xml: "/opt/ros/humble/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"
     plugin_lib_names:
       - nav2_compute_path_through_poses_action_bt_node

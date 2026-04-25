@@ -17,7 +17,7 @@ graph TD
   IMPL --> PLN[[camrod_planning launch]]
   IMPL --> PLAT[[camrod_platform launch]]
   IMPL --> SYS[[camrod_system launch]]
-  IMPL --> API[[camrod_api launch]]
+  IMPL --> API[[camrod_ui launch]]
   IMPL --> RVIZ[rviz process optional]
 ```
 
@@ -41,7 +41,7 @@ graph LR
   BR --> PLAN[camrod_planning]
   BR --> PLAT[camrod_platform]
   BR --> SYS[camrod_system]
-  BR --> API[camrod_api]
+  BR --> API[camrod_ui]
 ```
 
 ## Topic / Argument Summary

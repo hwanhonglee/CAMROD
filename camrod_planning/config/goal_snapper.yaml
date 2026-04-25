@@ -2,7 +2,8 @@
 # HH_260112 Default params for lanelet goal snapping.
 /planning/goal_snapper:
   ros__parameters:
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
+    # Launch passes resolved map_path; keep YAML default empty to avoid host-specific hardcoding.
+    map_path: ""
     offset_lat: 36.8436194
     offset_lon: 128.0925490
     offset_alt: 0.0

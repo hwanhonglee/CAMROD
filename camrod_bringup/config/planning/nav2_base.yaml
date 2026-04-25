@@ -120,14 +120,9 @@ local_costmap:
       # HH_260326: Start from free-space master so controller is not blocked by unknown-only map state.
       track_unknown_space: False
       plugins:
-        # HH_260326: Keep local planning tied to lanelet drivable region.
-        # Without base lanelet layer, local/global plans can jump to wrong-side lanes.
-        - lanelet_cost_layer_base
-        # HH_260330: Temporarily disable local_path helper layer from controller
-        # master costmap to prevent FollowPath abort loops from stale/empty
-        # local-path grids during goal updates.
-        - lidar_cost_layer
-        - radar_cost_layer
+        # HH_260424: combined_cost_layer: reads pre-merged /planning/cost_grid/inflation into master.
+        # HH_260424: inflation_layer: Nav2 built-in — spreads lethal cells radially (safety margin).
+        - combined_cost_layer
         - inflation_layer
 
 global_costmap:
@@ -145,7 +140,7 @@ global_costmap:
       # HH_260326: Keep planner global costmap centered on robot to prevent
       # startup failures when localization origin drifts from legacy fixed bounds.
       rolling_window: True
-      # HH_260326: Match global rolling window to planning_base source window.
+      # HH_260326: Match global rolling window to lanelet cost grid source window.
       # Reason: keep planner solve horizon bounded for responsive ComputePath results.
       # HH_260329: 45m window was too small for practical goal distances in
       # map-frame testing, causing repeated "no valid path found".

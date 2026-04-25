@@ -6,7 +6,7 @@ bringup:
     sim: false
     rviz: true
     # HH_260327: Stagger module startup to reduce bringup burst load.
-    module_launch_gap_sec: 1.0
+    module_launch_gap_s: 1.0
 
   localization:
     enable_adapter: true
@@ -24,21 +24,19 @@ bringup:
     # HH_260410: Keep /rmp401/odom as fallback-only source.
     wheel_fallback_input_topic: /rmp401/odom
     wheel_fallback_input_type: nav_odom
-    wheel_primary_timeout_sec: 0.7
+    wheel_primary_timeout_s: 0.7
     # HH_260410: Unified wheel output topic used by EKF/ESKF.
     wheel_output_topic: /platform/status/wheel_odometry
     wheel_nav_output_topic: /platform/wheel/nav_odometry
-    # HH_260413: No-ranger baseline.
-    # Keep manual escape hatch enabled so ESKF wheel input can be pinned to /rmp401/odom.
-    eskf_force_rmp401_odom: true
+    # 2026-04-22: Keep explicit-only escape hatch.
+    # Set true only when you intentionally want ESKF primary input fixed to /rmp401/odom.
+    eskf_force_rmp401_odom: false
     eskf_rmp401_odom_topic: /rmp401/odom
-    kimera_bridge_enable: false
     pose_selector_enable: false
     # HH_260407: Localization launch refactor - explicit override keys per sub-launch.
     adapter_param_file: __module_default__
     filter_eskf_param_file: __module_default__
     filter_pose_selector_param_file: __module_default__
-    filter_kimera_param_file: __module_default__
     monitor_param_file: __module_default__
     map_helper_param_file: __module_default__
     map_info_file: __module_default__
@@ -46,7 +44,6 @@ bringup:
     # HH_260407: legacy keys (fallback only).
     ekf_param_file: __module_default__
     eskf_param_file: __module_default__
-    kimera_bridge_param_file: __module_default__
     pose_selector_param_file: __module_default__
 
   planning:
@@ -78,17 +75,37 @@ bringup:
     # HH_260409: e-stop source is platform CAN->status bridge by default.
     cmd_vel_gate_estop_topic: /platform/status/estop
     cmd_vel_gate_allow_on_start: false
-    # HH_260413: Optional cost-based stop from local-path cost grid.
+    # HH_260424: Cost-based stop uses combined inflation grid (lanelet+LiDAR+Radar+global_path).
     cmd_vel_gate_cost_stop_enable: true
-    cmd_vel_gate_cost_grid_topic: /planning/local_costmap/costmap
+    cmd_vel_gate_cost_grid_topic: /planning/cost_grid/inflation
     cmd_vel_gate_cost_pose_topic: /localization/pose
-    cmd_vel_gate_cost_threshold: 200
+    cmd_vel_gate_cost_odometry_topic: /localization/vio/odometry
+    cmd_vel_gate_pose_source_preference: odometry
+    cmd_vel_gate_enable_pose_raw_fallback: false
+    cmd_vel_gate_cost_threshold: 85
+    # HH_260422: Legacy fixed lookahead; used only when enable_speed_dependent_lookahead=false.
     cmd_vel_gate_cost_lookahead_m: 2.0
     cmd_vel_gate_cost_width_m: 1.0
-    cmd_vel_gate_cost_hold_sec: 1.0
-    # HH_260413: Unavoidable-stop cluster detection for lethal costs.
+    cmd_vel_gate_cost_hold_s: 1.0
+    # HH_260422: Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
+    cmd_vel_gate_speed_dependent_lookahead: true
+    cmd_vel_gate_front_lookahead_min_m: 0.4
+    cmd_vel_gate_front_lookahead_max_m: 3.0
+    cmd_vel_gate_front_lookahead_friction: 0.4
+    cmd_vel_gate_front_reaction_time_s: 0.15
+    cmd_vel_gate_front_lookahead_margin_m: 0.3
+    # HH_260422: Side/rear cost-stop — uses same merged grid as front.
+    cmd_vel_gate_side_rear_cost_stop: true
+    cmd_vel_gate_side_cost_threshold: 85
+    cmd_vel_gate_side_lookahead_m: 1.2
+    cmd_vel_gate_side_corridor_width_m: 0.6
+    cmd_vel_gate_rear_cost_threshold: 85
+    cmd_vel_gate_rear_lookahead_m: 0.8
+    cmd_vel_gate_rear_corridor_width_m: 0.9
+    # HH_260413: Unavoidable-stop cluster detection for lethal costs (front only).
     cmd_vel_gate_unavoidable_stop_enable: true
-    cmd_vel_gate_unavoidable_lethal_threshold: 253
+    # HH_260422: Fixed from 253 (OccupancyGrid max is 100; 253 never triggers).
+    cmd_vel_gate_unavoidable_lethal_threshold: 90
     cmd_vel_gate_unavoidable_cluster_min_cells: 25
     cmd_vel_gate_unavoidable_cluster_min_ratio: 0.25
     use_dwb_controller: false
@@ -109,6 +126,7 @@ bringup:
     enable_radar: true
     enable_radar_cost_grid: true
     enable_lidar_cost_grid: true
+    enable_inflation_cost_grid: true
     enable_lidar_driver: true
     enable_imu: true
     enable_gnss: true
@@ -121,6 +139,7 @@ bringup:
     radar_sensor_param_file: __module_default__
     radar_cost_grid_param_file: __module_default__
     lidar_cost_grid_param_file: __module_default__
+    inflation_cost_grid_param_file: __module_default__
     gnss_param_file: __module_default__
     ntrip_param_file: __module_default__
     cv7_param_file: __module_default__

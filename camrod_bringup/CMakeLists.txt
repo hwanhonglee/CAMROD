@@ -11,11 +11,13 @@ find_package(avg_msgs REQUIRED)  # HH_260326: enforce avg_msgs availability for 
 find_package(rclcpp REQUIRED)
 
 # HH_260109 Install fake sensor publisher for simulation.
+# HH_260422: Added gnss_dr_test_node.py for GNSS DR fallback integration test.
 install(
   PROGRAMS
     scripts/fake_sensor_publisher.py
     scripts/planning_scenario_leaderboard.py
     scripts/sync_package_configs_to_bringup.sh
+    scripts/gnss_dr_test_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

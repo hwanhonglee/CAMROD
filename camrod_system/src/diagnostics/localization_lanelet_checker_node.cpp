@@ -85,7 +85,7 @@ protected:
     declare_parameter("expected_hz",         20.0);
     declare_parameter("hz_warn_ratio",       0.7);
     declare_parameter("hz_error_ratio",      0.4);
-    declare_parameter("stale_timeout",       1.0);
+    declare_parameter("stale_timeout_s",       1.0);
     declare_parameter("cov_warn_threshold",  1.0);
     declare_parameter("cov_error_threshold", 9.0);
   }
@@ -96,7 +96,7 @@ protected:
     expected_hz_           = get_parameter("expected_hz").as_double();
     hz_warn_ratio_         = get_parameter("hz_warn_ratio").as_double();
     hz_error_ratio_        = get_parameter("hz_error_ratio").as_double();
-    stale_timeout_         = get_parameter("stale_timeout").as_double();
+    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
     cov_warn_threshold_    = get_parameter("cov_warn_threshold").as_double();
     cov_error_threshold_   = get_parameter("cov_error_threshold").as_double();
   }

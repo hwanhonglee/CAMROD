@@ -5,6 +5,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+# Declares cmd_vel gate arguments and launches the platform velocity gate node.
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace', default_value='platform'),

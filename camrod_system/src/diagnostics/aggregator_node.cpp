@@ -36,7 +36,7 @@ static std::string level_name(uint8_t lvl)
 struct TopicConfig {
   std::string name;
   std::string group;
-  double      timeout_sec{5.0};
+  double      timeout_s{5.0};
 };
 
 // ── DiagnosticsAggregator ─────────────────────────────────────────────────
@@ -53,10 +53,10 @@ public:
     std::string config_path = get_parameter("config_file").as_string();
     enable_summary_log_ = get_parameter("enable_summary_log").as_bool();
 
-    double publish_rate = 1.0;
+    double publish_rate_hz = 1.0;
 
     if (!config_path.empty()) {
-      publish_rate = load_config(config_path);
+      publish_rate_hz = load_config(config_path);
     } else {
       RCLCPP_WARN(get_logger(), "config_file 파라미터가 설정되지 않았습니다. 기본값으로 동작합니다.");
     }
@@ -68,7 +68,7 @@ public:
     pub_   = create_publisher<DiagnosticArray>("/diagnostics_agg", 10);
     timer_ = create_timer(
       this, get_clock(),
-      std::chrono::duration<double>(1.0 / publish_rate),
+      std::chrono::duration<double>(1.0 / publish_rate_hz),
       [this]() { publish_aggregated(); });
 
     RCLCPP_INFO(
@@ -88,11 +88,21 @@ private:
 
     YAML::Node cfg = YAML::LoadFile(config_path);
 
-    double publish_rate = 1.0;
+    double publish_rate_hz = 1.0;
     if (cfg["global"]) {
       auto g = cfg["global"];
-      if (g["timeout_sec"])  default_timeout_ = g["timeout_sec"].as<double>();
-      if (g["publish_rate"]) publish_rate      = g["publish_rate"].as<double>();
+      if (g["timeout_s"])  default_timeout_ = g["timeout_s"].as<double>();
+      // Canonical key: publish_rate_hz
+      // Legacy key:    publish_rate
+      if (g["publish_rate_hz"]) {
+        publish_rate_hz = g["publish_rate_hz"].as<double>();
+      } else if (g["publish_rate"]) {
+        publish_rate_hz = g["publish_rate"].as<double>();
+        RCLCPP_WARN(
+          get_logger(),
+          "Deprecated key 'global.publish_rate' detected. "
+          "Use 'global.publish_rate_hz' instead.");
+      }
     }
 
     if (cfg["topics"]) {
@@ -100,7 +110,7 @@ private:
         TopicConfig tc;
         tc.name        = t["name"].as<std::string>();
         tc.group       = t["group"] ? t["group"].as<std::string>() : "unknown";
-        tc.timeout_sec = t["timeout_sec"] ? t["timeout_sec"].as<double>() : default_timeout_;
+        tc.timeout_s = t["timeout_s"] ? t["timeout_s"].as<double>() : default_timeout_;
         topic_configs_[tc.name] = tc;
       }
     }
@@ -108,10 +118,14 @@ private:
     RCLCPP_INFO(get_logger(), "config 로드 완료: %s", config_path.c_str());
     for (const auto & [name, tc] : topic_configs_) {
       RCLCPP_INFO(get_logger(), "  [%s] %s  timeout=%.1fs",
-        tc.group.c_str(), name.c_str(), tc.timeout_sec);
+        tc.group.c_str(), name.c_str(), tc.timeout_s);
     }
 
-    return publish_rate;
+    if (publish_rate_hz <= 1e-6) {
+      RCLCPP_WARN(get_logger(), "publish_rate_hz must be > 0. Clamping to 1.0 Hz.");
+      publish_rate_hz = 1.0;
+    }
+    return publish_rate_hz;
   }
 
   void diagnostics_callback(const DiagnosticArray::SharedPtr msg)
@@ -130,7 +144,7 @@ private:
   double get_timeout(const std::string & name) const
   {
     auto it = topic_configs_.find(name);
-    return it != topic_configs_.end() ? it->second.timeout_sec : default_timeout_;
+    return it != topic_configs_.end() ? it->second.timeout_s : default_timeout_;
   }
 
   std::string get_group(const std::string & name) const

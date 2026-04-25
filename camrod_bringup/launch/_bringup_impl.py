@@ -308,7 +308,7 @@ def generate_launch_description():
         ('sim', cfg_get(launch_cfg, 'runtime/sim', True), 'Simulation mode'),
         ('rviz', cfg_get(launch_cfg, 'runtime/rviz', True), 'Enable RViz'),
         # HH_260327: Stagger module includes to reduce startup CPU/memory spikes.
-        ('module_launch_gap_sec', cfg_get(launch_cfg, 'runtime/module_launch_gap_sec', 1.0), 'Gap (seconds) between module launch includes'),
+        ('module_launch_gap_s', cfg_get(launch_cfg, 'runtime/module_launch_gap_s', 1.0), 'Gap (seconds) between module launch includes'),
 
         ('use_eskf', cfg_get(launch_cfg, 'localization/use_eskf', True), 'Localization filter selector'),
         # HH_260326: New explicit selector for localization.launch.py (ekf/eskf).
@@ -320,13 +320,29 @@ def generate_launch_description():
         ('wheel_input_type', cfg_get(launch_cfg, 'localization/wheel_input_type', 'nav_odom'), 'Wheel bridge primary input type: twist|avg_odom|nav_odom'),
         ('wheel_fallback_input_topic', cfg_get(launch_cfg, 'localization/wheel_fallback_input_topic', '/rmp401/odom'), 'Wheel bridge fallback input topic'),
         ('wheel_fallback_input_type', cfg_get(launch_cfg, 'localization/wheel_fallback_input_type', 'nav_odom'), 'Wheel bridge fallback input type: twist|avg_odom|nav_odom'),
-        ('wheel_primary_timeout_sec', cfg_get(launch_cfg, 'localization/wheel_primary_timeout_sec', 0.7), 'Primary wheel timeout before fallback (sec)'),
+        (
+            'wheel_primary_timeout_s',
+            cfg_get(
+                launch_cfg,
+                'localization/wheel_primary_timeout_s',
+                cfg_get(launch_cfg, 'localization/wheel_primary_timeout_sec', 0.7),
+            ),
+            'Primary wheel timeout before fallback (seconds)',
+        ),
+        (
+            'wheel_primary_timeout_sec',
+            cfg_get(
+                launch_cfg,
+                'localization/wheel_primary_timeout_sec',
+                cfg_get(launch_cfg, 'localization/wheel_primary_timeout_s', 0.7),
+            ),
+            'Legacy alias. Use wheel_primary_timeout_s.',
+        ),
         # HH_260410: Keep unified wheel output in /platform/status namespace.
         ('wheel_output_topic', cfg_get(launch_cfg, 'localization/wheel_output_topic', '/platform/status/wheel_odometry'), 'Unified wheel odometry topic (avg_msgs/Odometry)'),
         ('wheel_nav_output_topic', cfg_get(launch_cfg, 'localization/wheel_nav_output_topic', '/platform/wheel/nav_odometry'), 'Unified wheel odometry topic (nav_msgs/Odometry)'),
         ('eskf_force_rmp401_odom', cfg_get(launch_cfg, 'localization/eskf_force_rmp401_odom', False), 'Force ESKF wheel source to /rmp401/odom'),
         ('eskf_rmp401_odom_topic', cfg_get(launch_cfg, 'localization/eskf_rmp401_odom_topic', '/rmp401/odom'), 'Temporary ESKF wheel source topic'),
-        ('kimera_bridge_enable', cfg_get(launch_cfg, 'localization/kimera_bridge_enable', False), 'Enable Kimera bridge'),
         ('pose_selector_enable', cfg_get(launch_cfg, 'localization/pose_selector_enable', False), 'Enable pose selector'),
         ('localization_enable_adapter', cfg_get(launch_cfg, 'localization/enable_adapter', True), 'Enable localization adapter launch'),
         ('localization_enable_filter', cfg_get(launch_cfg, 'localization/enable_filter', True), 'Enable localization filter launch'),
@@ -363,14 +379,33 @@ def generate_launch_description():
         ('planning_cmd_vel_gate_allow_on_start', cfg_get(launch_cfg, 'planning/cmd_vel_gate_allow_on_start', False), 'Allow planning cmd_vel on startup without engage'),
         # HH_260413: Cost-based stop parameters for planning cmd_vel gate.
         ('planning_cmd_vel_gate_cost_stop_enable', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_enable', True), 'Enable cost-based stop in cmd_vel gate'),
-        ('planning_cmd_vel_gate_cost_grid_topic', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_grid_topic', '/planning/local_costmap/costmap'), 'Cost grid topic for cost-stop'),
+        ('planning_cmd_vel_gate_cost_grid_topic', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_grid_topic', '/planning/cost_grid/inflation'), 'Cost grid topic for cost-stop'),
         ('planning_cmd_vel_gate_cost_pose_topic', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_pose_topic', '/localization/pose'), 'Pose topic for cost-stop'),
-        ('planning_cmd_vel_gate_cost_threshold', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_threshold', 200), 'Cost threshold for stop'),
+        ('planning_cmd_vel_gate_cost_odometry_topic', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_odometry_topic', '/localization/vio/odometry'), 'Odometry topic for cost-stop pose source'),
+        ('planning_cmd_vel_gate_pose_source_preference', cfg_get(launch_cfg, 'planning/cmd_vel_gate_pose_source_preference', 'odometry'), 'Cost-stop pose source preference: odometry|tf_robot_base|pose_topic'),
+        ('planning_cmd_vel_gate_enable_pose_raw_fallback', cfg_get(launch_cfg, 'planning/cmd_vel_gate_enable_pose_raw_fallback', False), 'Allow raw pose fallback without TF frame transform'),
+        ('planning_cmd_vel_gate_cost_threshold', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_threshold', 85), 'Cost threshold for stop'),
         ('planning_cmd_vel_gate_cost_lookahead_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_lookahead_m', 2.0), 'Lookahead distance for cost-stop'),
         ('planning_cmd_vel_gate_cost_width_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_width_m', 1.0), 'Corridor width for cost-stop'),
-        ('planning_cmd_vel_gate_cost_hold_sec', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_hold_sec', 1.0), 'Hold duration for cost-stop'),
+        ('planning_cmd_vel_gate_cost_hold_s', cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_hold_s', 1.0), 'Hold duration for cost-stop'),
+        # HH_260422: Speed-dependent front lookahead.
+        ('planning_cmd_vel_gate_speed_dependent_lookahead', cfg_get(launch_cfg, 'planning/cmd_vel_gate_speed_dependent_lookahead', True), 'Enable speed-dependent front lookahead'),
+        ('planning_cmd_vel_gate_front_lookahead_min_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_min_m', 0.4), 'Min front lookahead (m)'),
+        ('planning_cmd_vel_gate_front_lookahead_max_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_max_m', 3.0), 'Max front lookahead (m)'),
+        ('planning_cmd_vel_gate_front_lookahead_friction', cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_friction', 0.4), 'Wet road friction for braking distance'),
+        ('planning_cmd_vel_gate_front_reaction_time_s', cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_reaction_time_s', 0.15), 'Latency budget for front lookahead (s)'),
+        ('planning_cmd_vel_gate_front_lookahead_margin_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_margin_m', 0.3), 'Static safety margin for front lookahead (m)'),
+        # HH_260422: Side/rear cost-stop — uses same merged grid as front.
+        ('planning_cmd_vel_gate_side_rear_cost_stop', cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_rear_cost_stop', True), 'Enable side/rear cost-stop'),
+        ('planning_cmd_vel_gate_side_cost_threshold', cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_cost_threshold', 85), 'Cost threshold for side stop'),
+        ('planning_cmd_vel_gate_side_lookahead_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_lookahead_m', 1.2), 'Side lookahead distance (m)'),
+        ('planning_cmd_vel_gate_side_corridor_width_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_corridor_width_m', 0.6), 'Side corridor width (m)'),
+        ('planning_cmd_vel_gate_rear_cost_threshold', cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_cost_threshold', 85), 'Cost threshold for rear stop'),
+        ('planning_cmd_vel_gate_rear_lookahead_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_lookahead_m', 0.8), 'Rear lookahead distance (m)'),
+        ('planning_cmd_vel_gate_rear_corridor_width_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_corridor_width_m', 0.9), 'Rear corridor width (m)'),
         ('planning_cmd_vel_gate_unavoidable_stop_enable', cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_stop_enable', True), 'Enable unavoidable stop cluster check'),
-        ('planning_cmd_vel_gate_unavoidable_lethal_threshold', cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_lethal_threshold', 253), 'Lethal cost threshold for unavoidable stop'),
+        # HH_260422: Fixed from 253 (OccupancyGrid max is 100; 253 never triggers).
+        ('planning_cmd_vel_gate_unavoidable_lethal_threshold', cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_lethal_threshold', 90), 'Lethal cost threshold for unavoidable stop'),
         ('planning_cmd_vel_gate_unavoidable_cluster_min_cells', cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_cluster_min_cells', 25), 'Min cluster cells for unavoidable stop'),
         ('planning_cmd_vel_gate_unavoidable_cluster_min_ratio', cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_cluster_min_ratio', 0.25), 'Min cluster ratio for unavoidable stop'),
 
@@ -397,6 +432,7 @@ def generate_launch_description():
         ('enable_radar', cfg_get(launch_cfg, 'sensing/enable_radar', False), 'Enable serial radar'),
         ('enable_radar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_radar_cost_grid', True), 'Enable radar cost-grid'),
         ('enable_lidar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_lidar_cost_grid', True), 'Enable lidar cost-grid'),
+        ('enable_inflation_cost_grid', cfg_get(launch_cfg, 'sensing/enable_inflation_cost_grid', True), 'Enable inflation cost-grid (lanelet+lidar+radar+global_path merger)'),
         ('enable_lidar_driver', cfg_get(launch_cfg, 'sensing/enable_lidar_driver', False), 'Enable lidar driver'),
         ('enable_imu', cfg_get(launch_cfg, 'sensing/enable_imu', True), 'Enable IMU driver + velocity converter'),
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
@@ -512,10 +548,6 @@ def generate_launch_description():
     )
     localization_drop_zones_override = resolve_cfg_override(
         config_root_default, cfg_get(launch_cfg, 'localization/drop_zones_yaml', ''))
-    localization_filter_kimera_override = resolve_cfg_override(
-        config_root_default,
-        cfg_get(launch_cfg, 'localization/filter_kimera_param_file', cfg_get(launch_cfg, 'localization/kimera_bridge_param_file', '')),
-    )
     localization_filter_pose_selector_override = resolve_cfg_override(
         config_root_default,
         cfg_get(launch_cfg, 'localization/filter_pose_selector_param_file', cfg_get(launch_cfg, 'localization/pose_selector_param_file', '')),
@@ -569,6 +601,8 @@ def generate_launch_description():
         config_root_default, cfg_get(launch_cfg, 'sensing/radar_cost_grid_param_file', ''))
     sensing_lidar_cost_grid_override = resolve_cfg_override(
         config_root_default, cfg_get(launch_cfg, 'sensing/lidar_cost_grid_param_file', ''))
+    sensing_inflation_cost_grid_override = resolve_cfg_override(
+        config_root_default, cfg_get(launch_cfg, 'sensing/inflation_cost_grid_param_file', ''))
     sensing_gnss_override = resolve_cfg_override(
         config_root_default, cfg_get(launch_cfg, 'sensing/gnss_param_file', ''))
     sensing_ntrip_override = resolve_cfg_override(
@@ -667,6 +701,7 @@ def generate_launch_description():
         'enable_radar': lc['enable_radar'],
         'enable_radar_cost_grid': lc['enable_radar_cost_grid'],
         'enable_lidar_cost_grid': lc['enable_lidar_cost_grid'],
+        'enable_inflation_cost_grid': lc['enable_inflation_cost_grid'],
         'enable_lidar_driver': lc['enable_lidar_driver'],
         'enable_imu': lc['enable_imu'],
         'enable_gnss': lc['enable_gnss'],
@@ -679,6 +714,7 @@ def generate_launch_description():
     set_if_not_empty(sensing_args, 'radar_sensor_param_file', sensing_radar_sensor_override)
     set_if_not_empty(sensing_args, 'radar_cost_grid_param_file', sensing_radar_cost_grid_override)
     set_if_not_empty(sensing_args, 'lidar_cost_grid_param_file', sensing_lidar_cost_grid_override)
+    set_if_not_empty(sensing_args, 'inflation_cost_grid_param_file', sensing_inflation_cost_grid_override)
     set_if_not_empty(sensing_args, 'gnss_param_file', sensing_gnss_override)
     set_if_not_empty(sensing_args, 'ntrip_param_file', sensing_ntrip_override)
     set_if_not_empty(sensing_args, 'cv7_param_file', sensing_cv7_override)
@@ -692,15 +728,9 @@ def generate_launch_description():
     set_if_not_empty(perception_args, 'perception_param_file', perception_param_override)
 
     # HH_260409: Legacy escape hatch for forced ESKF source.
-    # HH_260413: Also auto-force /rmp401/odom when ranger driver is disabled.
-    # This keeps wheel input valid in no-platform(real CAN absent) bringup runs.
-    eskf_force_rmp401_effective = PythonExpression([
-        "'true' if (('",
-        lc['eskf_force_rmp401_odom'],
-        "' == 'true') or ('",
-        lc['platform_ranger_driver_enable'],
-        "' != 'true')) else 'false'"
-    ])
+    # 2026-04-22: Keep this explicit-only so non-Ranger platforms can use their
+    # own DR topics without unintended /rmp401/odom override.
+    eskf_force_rmp401_effective = lc['eskf_force_rmp401_odom']
 
     # Default path is primary /platform/status/* + runtime fallback /rmp401/odom.
     wheel_input_topic_for_filter = PythonExpression([
@@ -738,7 +768,6 @@ def generate_launch_description():
         'enable_filter': lc['localization_enable_filter'],
         'enable_monitor': lc['localization_enable_monitor'],
         'enable_map_helper': lc['localization_enable_map_helper'],
-        'enable_kimera_bridge': lc['kimera_bridge_enable'],
         'filter_type': lc['filter_type'],
         'use_eskf': lc['use_eskf'],
         'wheel_bridge_enable': lc['wheel_bridge_enable'],
@@ -746,6 +775,7 @@ def generate_launch_description():
         'wheel_input_type': wheel_input_type_for_filter,
         'wheel_fallback_input_topic': lc['wheel_fallback_input_topic'],
         'wheel_fallback_input_type': lc['wheel_fallback_input_type'],
+        'wheel_primary_timeout_s': lc['wheel_primary_timeout_s'],
         'wheel_primary_timeout_sec': lc['wheel_primary_timeout_sec'],
         'wheel_output_topic': lc['wheel_output_topic'],
         'wheel_nav_output_topic': lc['wheel_nav_output_topic'],
@@ -755,7 +785,6 @@ def generate_launch_description():
     set_if_not_empty(localization_args, 'filter_ekf_param_file', localization_filter_ekf_override)
     set_if_not_empty(localization_args, 'filter_eskf_param_file', localization_filter_eskf_override)
     set_if_not_empty(localization_args, 'filter_pose_selector_param_file', localization_filter_pose_selector_override)
-    set_if_not_empty(localization_args, 'filter_kimera_param_file', localization_filter_kimera_override)
     set_if_not_empty(localization_args, 'monitor_param_file', localization_monitor_override)
     set_if_not_empty(localization_args, 'map_helper_param_file', localization_map_helper_override)
     set_if_not_empty(localization_args, 'map_info_file', localization_map_info_override)
@@ -788,10 +817,26 @@ def generate_launch_description():
         'cmd_vel_gate_cost_stop_enable': lc['planning_cmd_vel_gate_cost_stop_enable'],
         'cmd_vel_gate_cost_grid_topic': lc['planning_cmd_vel_gate_cost_grid_topic'],
         'cmd_vel_gate_cost_pose_topic': lc['planning_cmd_vel_gate_cost_pose_topic'],
+        'cmd_vel_gate_cost_odometry_topic': lc['planning_cmd_vel_gate_cost_odometry_topic'],
+        'cmd_vel_gate_pose_source_preference': lc['planning_cmd_vel_gate_pose_source_preference'],
+        'cmd_vel_gate_enable_pose_raw_fallback': lc['planning_cmd_vel_gate_enable_pose_raw_fallback'],
         'cmd_vel_gate_cost_threshold': lc['planning_cmd_vel_gate_cost_threshold'],
         'cmd_vel_gate_cost_lookahead_m': lc['planning_cmd_vel_gate_cost_lookahead_m'],
         'cmd_vel_gate_cost_width_m': lc['planning_cmd_vel_gate_cost_width_m'],
-        'cmd_vel_gate_cost_hold_sec': lc['planning_cmd_vel_gate_cost_hold_sec'],
+        'cmd_vel_gate_cost_hold_s': lc['planning_cmd_vel_gate_cost_hold_s'],
+        'cmd_vel_gate_speed_dependent_lookahead': lc['planning_cmd_vel_gate_speed_dependent_lookahead'],
+        'cmd_vel_gate_front_lookahead_min_m': lc['planning_cmd_vel_gate_front_lookahead_min_m'],
+        'cmd_vel_gate_front_lookahead_max_m': lc['planning_cmd_vel_gate_front_lookahead_max_m'],
+        'cmd_vel_gate_front_lookahead_friction': lc['planning_cmd_vel_gate_front_lookahead_friction'],
+        'cmd_vel_gate_front_reaction_time_s': lc['planning_cmd_vel_gate_front_reaction_time_s'],
+        'cmd_vel_gate_front_lookahead_margin_m': lc['planning_cmd_vel_gate_front_lookahead_margin_m'],
+        'cmd_vel_gate_side_rear_cost_stop': lc['planning_cmd_vel_gate_side_rear_cost_stop'],
+        'cmd_vel_gate_side_cost_threshold': lc['planning_cmd_vel_gate_side_cost_threshold'],
+        'cmd_vel_gate_side_lookahead_m': lc['planning_cmd_vel_gate_side_lookahead_m'],
+        'cmd_vel_gate_side_corridor_width_m': lc['planning_cmd_vel_gate_side_corridor_width_m'],
+        'cmd_vel_gate_rear_cost_threshold': lc['planning_cmd_vel_gate_rear_cost_threshold'],
+        'cmd_vel_gate_rear_lookahead_m': lc['planning_cmd_vel_gate_rear_lookahead_m'],
+        'cmd_vel_gate_rear_corridor_width_m': lc['planning_cmd_vel_gate_rear_corridor_width_m'],
         'cmd_vel_gate_unavoidable_stop_enable': lc['planning_cmd_vel_gate_unavoidable_stop_enable'],
         'cmd_vel_gate_unavoidable_lethal_threshold': lc['planning_cmd_vel_gate_unavoidable_lethal_threshold'],
         'cmd_vel_gate_unavoidable_cluster_min_cells': lc['planning_cmd_vel_gate_unavoidable_cluster_min_cells'],
@@ -821,6 +866,9 @@ def generate_launch_description():
         'enable_ui_backend': lc['enable_api_ui'],
         'ui_host': lc['api_ui_host'],
         'ui_port': lc['api_ui_port'],
+        # HH_260423: Share bringup camping-sites YAML with UI backend so
+        # /ui/selected_destination can dispatch exact goal_pose coordinates.
+        'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
     }
 
     modules = [
@@ -833,7 +881,7 @@ def generate_launch_description():
         include('camrod_planning', 'planning.launch.py', planning_args),
         # HH_260407: Launch unified diagnostics stack via top-level system.launch.py.
         include('camrod_system', 'system.launch.py', system_args),
-        include('camrod_api', 'api.launch.py', api_args),
+        include('camrod_ui', 'ui.launch.py', api_args),
     ]
 
     # HH_260326: Removed bringup_status runtime node from default launch path.
@@ -868,7 +916,7 @@ def generate_launch_description():
     # HH_260327: Start includes sequentially with configurable gap.
     staged_modules = [
         TimerAction(
-            period=PythonExpression([str(idx), " * ", lc['module_launch_gap_sec']]),
+            period=PythonExpression([str(idx), " * ", lc['module_launch_gap_s']]),
             actions=[module_action],
         )
         for idx, module_action in enumerate(modules)

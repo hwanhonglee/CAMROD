@@ -35,5 +35,5 @@
     min_size_x: 0.10                                              # Reserved threshold for minimum box length in X [m].
     min_size_y: 0.10                                              # Reserved threshold for minimum box width in Y [m].
     min_size_z: 0.10                                              # Reserved threshold for minimum box height in Z [m].
-    marker_lifetime_sec: 0.15                                     # Marker lifetime before auto-expire [s].
+    marker_lifetime_s: 0.15                                       # Marker lifetime before auto-expire [s].
     draw_text: true                                               # Enables per-cluster text marker (id/points/distance).

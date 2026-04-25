@@ -10,10 +10,12 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+# Resolves a package-relative file path via package share directory.
 def pkg_share(pkg: str, rel: str) -> str:
     return os.path.join(get_package_share_directory(pkg), rel)
 
 
+# Parses optional numeric launch arguments and returns None on empty/invalid input.
 def _optional_float(value: str):
     if value is None:
         return None
@@ -26,6 +28,7 @@ def _optional_float(value: str):
         return None
 
 
+# Builds visualization/debug map nodes with shared map-info overrides.
 def _launch_nodes(context, *_args, **_kwargs):
     lanelet_cost_field_params = [
         LaunchConfiguration("map_info_file"),
@@ -90,9 +93,9 @@ def _launch_nodes(context, *_args, **_kwargs):
                     "/planning/cost_grid/global_path_markers",
                     "/planning/cost_grid/local_path_markers",
                 ],
-                "republish_period_sec": 0.05,
-                "min_publish_period_sec": 0.01,
-                "stale_timeout_sec": 1.2,
+                "republish_period_s": 0.05,
+                "min_publish_period_s": 0.01,
+                "stale_timeout_s": 1.2,
                 "stale_timeout_topics": [
                     "/map/cost_grid/lidar_markers",
                     "/map/cost_grid/radar_markers",
@@ -112,6 +115,7 @@ def _launch_nodes(context, *_args, **_kwargs):
     ]
 
 
+# Declares visualization launch arguments and defers node creation to runtime context.
 def generate_launch_description():
     module_namespace_arg = DeclareLaunchArgument(
         "module_namespace",

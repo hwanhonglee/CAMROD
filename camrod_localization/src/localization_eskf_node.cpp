@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <string>
 
@@ -110,6 +111,24 @@ public:
 
     gnss_gate_mahalanobis_ = declare_parameter<double>("gnss_gate_mahalanobis", 9.0);
     wheel_gate_mahalanobis_ = declare_parameter<double>("wheel_gate_mahalanobis", 9.0);
+    // 2026-04-22: Optional wheel yaw-rate correction using odometry angular.z.
+    // Ranger odometry already reflects steering geometry, so this helps keep
+    // IMU yaw bias and DR heading consistent with real platform motion.
+    use_wheel_yaw_rate_update_ = declare_parameter<bool>("use_wheel_yaw_rate_update", true);
+    wheel_yaw_rate_noise_ = declare_parameter<double>("wheel_yaw_rate_noise", 0.25);
+    wheel_yaw_rate_gate_mahalanobis_ = declare_parameter<double>(
+      "wheel_yaw_rate_gate_mahalanobis", 9.0);
+    wheel_yaw_rate_min_speed_mps_ = declare_parameter<double>("wheel_yaw_rate_min_speed_mps", 0.10);
+    // HH_260422: NHC suppresses lateral drift using the no-sideslip constraint.
+    // nhc_lateral_noise >0 allows some slip for skid-steer robots like Ranger.
+    use_nhc_ = declare_parameter<bool>("use_nhc", true);
+    nhc_lateral_noise_ = declare_parameter<double>("nhc_lateral_noise", 0.05);
+    nhc_gate_mahalanobis_ = declare_parameter<double>("nhc_gate_mahalanobis", 9.0);
+    // HH_260422: ZUPT injects v=[0,0] when the robot is confirmed stopped,
+    // preventing IMU accel bias from drifting position during standstill.
+    use_zupt_ = declare_parameter<bool>("use_zupt", true);
+    zupt_vel_noise_ = declare_parameter<double>("zupt_vel_noise", 0.02);
+    zupt_gate_mahalanobis_ = declare_parameter<double>("zupt_gate_mahalanobis", 9.0);
     // 2026-01-30: Initialize state on first GNSS to avoid huge innovation rejection.
     init_on_first_gnss_ = declare_parameter<bool>("init_on_first_gnss", true);
     // 2026-02-02: Allow reinit if GNSS is far from current state (recover from drift).
@@ -131,7 +150,14 @@ public:
     align_yaw_to_imu_when_stopped_ = declare_parameter<bool>(
       "align_yaw_to_imu_when_stopped", true);
     stop_speed_threshold_ = declare_parameter<double>("stop_speed_threshold", 0.05);
-    stop_hold_sec_ = declare_parameter<double>("stop_hold_sec", 1.0);
+    stop_hold_s_ = declare_parameter<double>("stop_hold_s", 1.0);
+    const double legacy_stop_hold_sec = declare_parameter<double>("stop_hold_sec", 1.0);
+    if (std::abs(stop_hold_s_ - 1.0) < 1e-9 && std::abs(legacy_stop_hold_sec - 1.0) > 1e-9) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter 'stop_hold_sec' is deprecated. Use 'stop_hold_s' instead.");
+      stop_hold_s_ = legacy_stop_hold_sec;
+    }
 
     // HH_260413: GNSS profile auto-switch (normal <-> unstable) for realtime jitter.
     gnss_profile_mode_ = declare_parameter<std::string>("gnss_profile_mode", "auto");
@@ -265,7 +291,10 @@ private:
       covariance_(1, 1) = R(1, 1);
 
       initialized_ = true;
+      // HH_260422: Preserve wheel status so monitor's wheel_update_accepted is not zeroed.
       AvgLocalizationStatusStream diag;
+      diag.wheel_update_accepted = last_diag_.wheel_update_accepted;
+      diag.wheel_innovation_norm = last_diag_.wheel_innovation_norm;
       diag.header.stamp = msg->header.stamp;
       diag.gnss_innovation_norm = 0.0;
       diag.gnss_update_accepted = true;
@@ -283,7 +312,10 @@ private:
     const double pos_error = innov.norm();
     Eigen::Matrix2d S = H * covariance_ * H.transpose() + R;
     double mahal = innov.transpose() * S.inverse() * innov;
+    // HH_260422: Preserve wheel status so monitor's wheel_update_accepted is not zeroed.
     AvgLocalizationStatusStream diag;
+    diag.wheel_update_accepted = last_diag_.wheel_update_accepted;
+    diag.wheel_innovation_norm = last_diag_.wheel_innovation_norm;
     diag.header.stamp = msg->header.stamp;
     diag.gnss_innovation_norm = std::sqrt(std::max(0.0, mahal));
 
@@ -357,7 +389,10 @@ private:
       covariance_(2, 2) = std::max(covariance_(2, 2), wheel_speed_noise_ * wheel_speed_noise_);
       covariance_(3, 3) = std::max(covariance_(3, 3), wheel_speed_noise_ * wheel_speed_noise_);
 
+      // HH_260422: Preserve GNSS status so monitor's gnss_update_accepted is not zeroed.
       AvgLocalizationStatusStream init_diag;
+      init_diag.gnss_update_accepted = last_diag_.gnss_update_accepted;
+      init_diag.gnss_innovation_norm = last_diag_.gnss_innovation_norm;
       init_diag.header.stamp = msg->header.stamp;
       init_diag.wheel_innovation_norm = 0.0;
       init_diag.wheel_update_accepted = true;
@@ -369,30 +404,83 @@ private:
     }
 
     const double v_pred = cos_yaw * state_(2) + sin_yaw * state_(3);
-    const double innov = v_meas - v_pred;
-    const double R_meas = wheel_speed_noise_ * wheel_speed_noise_;
-    const double S = (H * covariance_ * H.transpose())(0, 0) + R_meas;
-    const double mahal = (innov * innov) / std::max(1e-6, S);
+    const bool can_use_yaw_rate_update =
+      use_wheel_yaw_rate_update_ &&
+      std::isfinite(msg->twist.twist.angular.z) &&
+      std::abs(v_meas) >= wheel_yaw_rate_min_speed_mps_;
+    const double wheel_yaw_rate_meas = msg->twist.twist.angular.z;
+    const double imu_yaw_rate_pred = imu_gyro_z_sign_ * last_imu_->gyro.z() - state_(5);
+    double mahal = 0.0;
+    bool accepted = false;
 
+    if (can_use_yaw_rate_update) {
+      // 2026-04-22:
+      // Measurement vector z = [v_body_x, yaw_rate_from_wheel_odom]
+      // h(x) = [R(yaw)*v_world, imu_gyro_z - bias_gz]
+      // This lets wheel yaw-rate anchor IMU yaw-bias drift without changing state size.
+      Eigen::Matrix<double, 2, 8> H2 = Eigen::Matrix<double, 2, 8>::Zero();
+      Eigen::Matrix2d R2 = Eigen::Matrix2d::Zero();
+      Eigen::Vector2d innov2 = Eigen::Vector2d::Zero();
+      H2.row(0) = H;
+      H2(1, 5) = -1.0;
+      innov2(0) = v_meas - v_pred;
+      innov2(1) = wheel_yaw_rate_meas - imu_yaw_rate_pred;
+      R2(0, 0) = wheel_speed_noise_ * wheel_speed_noise_;
+      R2(1, 1) = wheel_yaw_rate_noise_ * wheel_yaw_rate_noise_;
+
+      const Eigen::Matrix2d S2 = H2 * covariance_ * H2.transpose() + R2;
+      const double det = S2.determinant();
+      if (std::isfinite(det) && std::abs(det) > 1e-12) {
+        mahal = innov2.transpose() * S2.inverse() * innov2;
+      } else {
+        mahal = std::numeric_limits<double>::infinity();
+      }
+
+      if (mahal <= wheel_yaw_rate_gate_mahalanobis_) {
+        const Eigen::Matrix<double, 8, 2> K2 = covariance_ * H2.transpose() * S2.inverse();
+        state_ += K2 * innov2;
+        state_(4) = normalizeYaw(state_(4));
+        covariance_ = (Matrix8d::Identity() - K2 * H2) * covariance_;
+        accepted = true;
+      }
+    } else {
+      const double innov = v_meas - v_pred;
+      const double R_meas = wheel_speed_noise_ * wheel_speed_noise_;
+      const double S = (H * covariance_ * H.transpose())(0, 0) + R_meas;
+      mahal = (innov * innov) / std::max(1e-6, S);
+
+      if (mahal <= wheel_gate_mahalanobis_) {
+        Eigen::Matrix<double, 8, 1> K = covariance_ * H.transpose() * (1.0 / S);
+        state_ += K * innov;
+        state_(4) = normalizeYaw(state_(4));
+        covariance_ = (Matrix8d::Identity() - K * H) * covariance_;
+        accepted = true;
+      }
+    }
+
+    // HH_260422: Preserve GNSS status so monitor's gnss_update_accepted is not zeroed.
     AvgLocalizationStatusStream diag;
+    diag.gnss_update_accepted = last_diag_.gnss_update_accepted;
+    diag.gnss_innovation_norm = last_diag_.gnss_innovation_norm;
     diag.header.stamp = msg->header.stamp;
     diag.wheel_innovation_norm = std::sqrt(std::max(0.0, mahal));
-    if (mahal > wheel_gate_mahalanobis_) {
+    if (!accepted) {
       diag.wheel_update_accepted = false;
       last_diag_ = diag;
       diag_pub_->publish(diag);
+      // HH_260422: Apply kinematic constraints even when wheel speed update is rejected.
+      applyNhc();
+      applyZupt();
       return;
     }
-
-    Eigen::Matrix<double, 8, 1> K = covariance_ * H.transpose() * (1.0 / S);
-    state_ += K * innov;
-    state_(4) = normalizeYaw(state_(4));
-    covariance_ = (Matrix8d::Identity() - K * H) * covariance_;
 
     diag.wheel_update_accepted = true;
     diag.covariance_trace = covariance_.trace();
     last_diag_ = diag;
     diag_pub_->publish(diag);
+    // HH_260422: NHC and ZUPT applied after successful wheel update.
+    applyNhc();
+    applyZupt();
   }
 
   // Implements `predict` behavior.
@@ -592,6 +680,74 @@ private:
     return normalizeYaw(state_(4));
   }
 
+  // HH_260422: Non-Holonomic Constraint pseudo-measurement.
+  // Applies lateral body velocity = 0 constraint to suppress DR sideways drift.
+  // nhc_lateral_noise allows residual slip (important for skid-steer like Ranger).
+  void applyNhc()
+  {
+    if (!use_nhc_) {
+      return;
+    }
+    const double yaw = state_(4);
+    const double cos_yaw = std::cos(yaw);
+    const double sin_yaw = std::sin(yaw);
+
+    // h(x) = -sin(yaw)*vx + cos(yaw)*vy  (lateral body-frame velocity)
+    const double v_lat = -sin_yaw * state_(2) + cos_yaw * state_(3);
+    const double innov = -v_lat;  // z - h(x) = 0 - v_lat
+
+    Eigen::Matrix<double, 1, 8> H_nhc = Eigen::Matrix<double, 1, 8>::Zero();
+    H_nhc(0, 2) = -sin_yaw;
+    H_nhc(0, 3) = cos_yaw;
+    H_nhc(0, 4) = -cos_yaw * state_(2) - sin_yaw * state_(3);
+
+    const double R_nhc = nhc_lateral_noise_ * nhc_lateral_noise_;
+    const double S_nhc = (H_nhc * covariance_ * H_nhc.transpose())(0, 0) + R_nhc;
+    const double mahal_nhc = (innov * innov) / std::max(1e-12, S_nhc);
+
+    if (mahal_nhc > nhc_gate_mahalanobis_) {
+      return;
+    }
+    const Eigen::Matrix<double, 8, 1> K_nhc = covariance_ * H_nhc.transpose() / S_nhc;
+    state_ += K_nhc * innov;
+    state_(4) = normalizeYaw(state_(4));
+    covariance_ = (Matrix8d::Identity() - K_nhc * H_nhc) * covariance_;
+  }
+
+  // HH_260422: Zero Velocity Update — inject [vx, vy] = [0, 0] when robot is stopped.
+  // Prevents IMU accel bias from accumulating into position drift at standstill.
+  void applyZupt()
+  {
+    if (!use_zupt_ || !is_stopped_) {
+      return;
+    }
+    // h(x) = [vx, vy],  z = [0, 0]
+    Eigen::Matrix<double, 2, 8> H_zupt = Eigen::Matrix<double, 2, 8>::Zero();
+    H_zupt(0, 2) = 1.0;
+    H_zupt(1, 3) = 1.0;
+
+    const Eigen::Vector2d innov_zupt(-state_(2), -state_(3));
+    const double R_zupt = zupt_vel_noise_ * zupt_vel_noise_;
+    const Eigen::Matrix2d S_zupt =
+      H_zupt * covariance_ * H_zupt.transpose() +
+      Eigen::Matrix2d::Identity() * R_zupt;
+
+    const double det = S_zupt.determinant();
+    if (!std::isfinite(det) || std::abs(det) < 1e-12) {
+      return;
+    }
+    const double mahal_zupt =
+      innov_zupt.transpose() * S_zupt.inverse() * innov_zupt;
+    if (mahal_zupt > zupt_gate_mahalanobis_) {
+      return;
+    }
+    const Eigen::Matrix<double, 8, 2> K_zupt =
+      covariance_ * H_zupt.transpose() * S_zupt.inverse();
+    state_ += K_zupt * innov_zupt;
+    state_(4) = normalizeYaw(state_(4));
+    covariance_ = (Matrix8d::Identity() - K_zupt * H_zupt) * covariance_;
+  }
+
   // Updates stop-state based on wheel speed so we can clamp yaw drift at standstill.
   void updateStopState(double v_meas, const rclcpp::Time & stamp)
   {
@@ -601,7 +757,7 @@ private:
       return;
     }
     const double stopped_for = (stamp - last_motion_time_).seconds();
-    if (stopped_for >= stop_hold_sec_) {
+    if (stopped_for >= stop_hold_s_) {
       is_stopped_ = true;
     }
   }
@@ -684,22 +840,38 @@ private:
   std::string twist_topic_;
   std::string diag_topic_;
   std::string localization_status_topic_;
-  bool publish_tf_{true};
-  bool publish_map_to_odom_tf_{true};
-  bool tf_use_node_time_{true};
-  bool publish_localization_status_{false};
+  bool publish_tf_{true};                   // HH_260422: true -> broadcast odom->base TF (required by nav2 and rviz)
+  bool publish_map_to_odom_tf_{true};       // HH_260422: true -> also broadcast map->odom TF (replaces static publisher)
+  bool tf_use_node_time_{true};             // HH_260422: true -> stamp TF with node ROS time, not sensor stamp (prevents TF extrapolation)
+  bool publish_localization_status_{false}; // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs)
   double imu_to_base_yaw_deg_{0.0};
   double imu_to_base_yaw_rad_{0.0};
   double imu_accel_x_sign_{1.0};
   double imu_accel_y_sign_{1.0};
   double imu_gyro_z_sign_{1.0};
   double imu_yaw_sign_{1.0};
+  // HH_260422: true -> seed yaw from IMU quaternion on GNSS init/reinit instead of current state_(4)
   bool use_imu_orientation_for_yaw_init_{true};
 
   double gnss_gate_mahalanobis_{9.0};
+  // HH_260422: true -> hard-reinit filter to GNSS when position error exceeds reinit_distance_threshold_
   bool reinit_on_gnss_reject_{true};
   double reinit_distance_threshold_{50.0};
   double wheel_gate_mahalanobis_{9.0};
+  // HH_260422: true -> use wheel angular.z as yaw-rate measurement; corrects b_gz (gyro Z bias) during driving
+  bool use_wheel_yaw_rate_update_{true};
+  double wheel_yaw_rate_noise_{0.25};
+  double wheel_yaw_rate_gate_mahalanobis_{9.0};
+  double wheel_yaw_rate_min_speed_mps_{0.10};
+  // HH_260422: true -> apply lateral body velocity = 0 pseudo-measurement; suppresses sideways DR drift
+  bool use_nhc_{true};
+  double nhc_lateral_noise_{0.05};
+  double nhc_gate_mahalanobis_{9.0};
+  // HH_260422: true -> inject [vx,vy]=[0,0] when confirmed stopped; prevents accel bias accumulating into position error
+  bool use_zupt_{true};
+  double zupt_vel_noise_{0.02};
+  double zupt_gate_mahalanobis_{9.0};
+  // HH_260422: true -> suppress all pose/odom/TF output until first GNSS snap completes (avoids publishing floating initial state)
   bool init_on_first_gnss_{true};
   double gyro_noise_{0.015};
   double accel_noise_{0.15};
@@ -709,10 +881,15 @@ private:
   double wheel_speed_noise_{0.2};
   double min_imu_dt_{1e-4};
   double max_imu_dt_{0.2};
+  // HH_260422: true -> halt gyro integration in predict() while stopped (prevents gyro drift accumulation)
   bool freeze_yaw_when_stopped_{true};
+  // HH_260422: true -> pin yaw to IMU quaternion while stopped (overrides frozen integration with absolute heading)
   bool align_yaw_to_imu_when_stopped_{true};
   double stop_speed_threshold_{0.05};
-  double stop_hold_sec_{1.0};
+  double stop_hold_s_{1.0};
+  // HH_260422: is_stopped_ becomes true when wheel speed < stop_speed_threshold_ for >= stop_hold_s_ seconds.
+  //   When true: freeze_yaw_when_stopped, align_yaw_to_imu_when_stopped, and applyZupt() all activate.
+  //   Clears immediately when speed >= stop_speed_threshold_ (no hold-off on motion resume).
   bool is_stopped_{false};
   rclcpp::Time last_motion_time_{0, 0, RCL_ROS_TIME};
 
@@ -746,8 +923,16 @@ private:
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   AvgLocalizationStatusStream last_diag_;
+  // HH_260422: initialized_ becomes true on first GNSS snap (or at startup if init_on_first_gnss_=false).
+  //   While false: publishOutputs() suppresses all pose/odom/TF output.
   bool initialized_{false};
+  // HH_260422: wheel_initialized_ becomes true on the first wheel odometry message.
+  //   On that message vx/vy are seeded directly from wheel speed to prevent GNSS innovation
+  //   gate rejections caused by a near-zero velocity state while the robot is already moving.
   bool wheel_initialized_{false};
+  // HH_260422: has_imu_base_yaw_ becomes true once a valid IMU orientation quaternion is received.
+  //   While false: yawForInitialization() returns current state_(4) instead of IMU heading.
+  //   When true: GNSS init/reinit uses last_imu_base_yaw_, and align_yaw_to_imu_when_stopped is permitted.
   bool has_imu_base_yaw_{false};
   double last_imu_base_yaw_{0.0};
 };

@@ -120,8 +120,20 @@ public:
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);
     flatten_to_ground_ = declare_parameter<bool>("flatten_to_ground", false);
     // HH_260413: Throttle heavy nearest-centerline search under high-rate localization input.
-    centerline_min_update_period_sec_ = declare_parameter<double>(
+    centerline_min_update_period_s_ = declare_parameter<double>(
+      "centerline_min_update_period_s", 0.05);
+    const double legacy_centerline_min_update_period_sec = declare_parameter<double>(
       "centerline_min_update_period_sec", 0.05);
+    if (
+      std::abs(centerline_min_update_period_s_ - 0.05) < 1e-9 &&
+      std::abs(legacy_centerline_min_update_period_sec - 0.05) > 1e-9)
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Parameter 'centerline_min_update_period_sec' is deprecated. "
+        "Use 'centerline_min_update_period_s' instead.");
+      centerline_min_update_period_s_ = legacy_centerline_min_update_period_sec;
+    }
     centerline_min_displacement_m_ = declare_parameter<double>(
       "centerline_min_displacement_m", 0.05);
 
@@ -261,9 +273,9 @@ private:
     if (has_last_centerline_publish_) {
       const double dt = (stamp - last_centerline_publish_stamp_).seconds();
       const double moved = std::hypot(px - last_centerline_input_x_, py - last_centerline_input_y_);
-      const bool use_period = centerline_min_update_period_sec_ > 0.0;
+      const bool use_period = centerline_min_update_period_s_ > 0.0;
       const bool use_distance = centerline_min_displacement_m_ > 0.0;
-      const bool skip_by_period = use_period && dt < centerline_min_update_period_sec_;
+      const bool skip_by_period = use_period && dt < centerline_min_update_period_s_;
       const bool skip_by_distance = use_distance && moved < centerline_min_displacement_m_;
       if ((use_period || use_distance) &&
         (!use_period || skip_by_period) &&
@@ -446,7 +458,7 @@ private:
   bool use_map_z_{true};
   double map_z_offset_{0.0};
   bool flatten_to_ground_{false};
-  double centerline_min_update_period_sec_{0.05};
+  double centerline_min_update_period_s_{0.05};
   double centerline_min_displacement_m_{0.05};
   rclcpp::Time last_centerline_publish_stamp_{0, 0, RCL_ROS_TIME};
   double last_centerline_input_x_{0.0};
