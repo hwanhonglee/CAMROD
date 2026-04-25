@@ -11,15 +11,28 @@ from typing import Dict, Optional
 import rclpy
 import yaml
 from avg_msgs.srv import RequestGoalByKey
-from status_msgs.msg import StatusArray, StatusStatus, KeyValue
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
 from std_msgs.msg import Bool, String
 
+# Prefer status_msgs when available, but fall back to diagnostic_msgs.
+# This keeps the state machine runnable even when status_msgs is removed.
+try:
+    from status_msgs.msg import KeyValue, StatusArray, StatusStatus
+    _USING_STATUS_MSGS = True
+except Exception:  # noqa: BLE001
+    from diagnostic_msgs.msg import (
+        DiagnosticArray as StatusArray,
+        DiagnosticStatus as StatusStatus,
+        KeyValue,
+    )
+    _USING_STATUS_MSGS = False
+
 
 # Implements `_diag_level` behavior.
-def _diag_level(value: object) -> bytes:
-    # HH_260311-00:00 Humble StatusStatus constants may be bytes; normalize safely.
+def _diag_level(value: object) -> object:
+    # HH_260425-00:00 In Humble Python bindings, uint8 message fields are exposed
+    # as 1-byte bytes objects. Normalize every input into exactly one byte.
     if isinstance(value, (bytes, bytearray)):
         if len(value) == 1:
             return bytes(value)
@@ -45,7 +58,7 @@ class PlanningStateMachineNode(Node):
 
         self.enabled = bool(self.declare_parameter("enabled", True).value)
         self.state_status_topic = str(
-            self.declare_parameter("state_status_topic", "/status_stream").value
+            self.declare_parameter("state_status_topic", "/diagnostics_agg").value
         )
         self.state_stale_timeout_s = float(
             self.declare_parameter("state_stale_timeout_s", 3.0).value

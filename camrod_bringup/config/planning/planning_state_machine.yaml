@@ -1,8 +1,8 @@
 /planning/planning_state_machine:
   ros__parameters:
     enabled: true
-    # HH_260312-00:00 Subscribe to consolidated status_stream stream.
-    state_status_topic: "/status_stream"
+    # HH_260425-00:00 Consume aggregated diagnostics for module health state.
+    state_status_topic: "/diagnostics_agg"
     pose_topic: "/planning/lanelet_pose"
     # HH_260316-00:00 State machine tracks snapped goal stream only.
     goal_topic: "/planning/goal_pose_snapped"
