@@ -1,4 +1,4 @@
-# HH_260409: Default real-sensor planning scenario for CAMROD leaderboard-style verification.
+# Default real-sensor planning scenario for CAMROD leaderboard-style verification.
 scenario:
   name: real_sensor_default
   steps:

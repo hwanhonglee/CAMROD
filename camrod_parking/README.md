@@ -94,6 +94,8 @@ Key launch arguments:
 | `docking_param_file` | `config/docking_server.yaml` | opennav_docking parameters |
 | `docks_file` | `config/docks.yaml` | Dock location database |
 | `navigator_bt_xml` | (planning BT XML) | BT used during dock approach navigation |
+| `controller_costmap_topic` | `/planning/local_costmap/costmap_raw` | Costmap topic for collision checking during docking |
+| `controller_footprint_topic` | `/planning/local_costmap/published_footprint` | Footprint topic for collision checking during docking |
 
 ## Config Files
 

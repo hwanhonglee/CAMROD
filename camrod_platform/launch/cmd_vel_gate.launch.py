@@ -23,7 +23,7 @@ def generate_launch_description():
 
         Node(
             package='camrod_platform',
-            executable='cmd_vel_gate_node.py',
+            executable='cmd_vel_gate_node',
             name='cmd_vel_gate',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',

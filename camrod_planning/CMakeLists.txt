@@ -16,6 +16,7 @@ find_package(avg_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(camrod_map REQUIRED)
 find_package(lanelet2_core REQUIRED)
 find_package(lanelet2_io REQUIRED)
@@ -75,8 +76,17 @@ ament_target_dependencies(path_tracking_error_node
   rclcpp
 )
 
+add_executable(nav2_lifecycle_startup_retry_node src/nav2_lifecycle_startup_retry_node.cpp)
+ament_target_dependencies(nav2_lifecycle_startup_retry_node
+  rclcpp
+  geometry_msgs
+  nav2_msgs
+  std_msgs
+  std_srvs
+)
+
 install(
-  TARGETS goal_snapper_node centerline_snapper_node goal_replanner_node local_path_extractor_node path_tracking_error_node
+  TARGETS goal_snapper_node centerline_snapper_node goal_replanner_node local_path_extractor_node path_tracking_error_node nav2_lifecycle_startup_retry_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -85,7 +95,7 @@ install(
   PROGRAMS
     scripts/planning_cmd_vel_gate_node.py
     scripts/planning_state_machine_node.py
-    scripts/nav2_lifecycle_startup_retry_node.py
+    scripts/planning_progress_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

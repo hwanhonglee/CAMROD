@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# HH_260409: Unified config sync/check script for package <-> bringup mirrors.
+# Unified config sync/check script for package <-> bringup mirrors.
 # - Sync mode: copies package config YAML into camrod_bringup/config/<module>.
 # - Check mode: verifies source YAML and mirrored YAML are identical.
 # - Keeps bringup-only extra files (does not delete mirror-only files).

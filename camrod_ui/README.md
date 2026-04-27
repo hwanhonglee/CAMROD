@@ -33,7 +33,7 @@ The node maintains an in-memory `ApiState` snapshot updated at each ROS callback
 | Field | Source | Description |
 |---|---|---|
 | `engaged` | `/planning/engaged` | Current robot engagement state |
-| `ready` | `/localization/initial_match_ok` | System initialization readiness |
+| `ready` | `/diagnostics_agg` | System readiness: true when diagnostics_agg has entries and zero errors |
 | `operation_mode` | engaged + ready | `AUTO` / `WAITING_FOR_READY` / `STOP` |
 | `module_states` | `/diagnostics_agg` | Per-module diagnostic status |
 | `destination` | `/ui/selected_destination` | Currently selected destination |

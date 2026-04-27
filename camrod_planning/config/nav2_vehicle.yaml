@@ -4,7 +4,7 @@ controller_server:
   ros__parameters:
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      # HH_260330: Moderate nominal speed for stable iterative-goal tracking
+      # Moderate nominal speed for stable iterative-goal tracking
       # under full bringup CPU load.
       desired_linear_vel: 1.0
       max_linear_vel: 1.0
@@ -17,17 +17,19 @@ controller_server:
       max_lookahead_dist: 1.2
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 1.2
-      # HH_260330: Align controller TF tolerance with Nav2 server tolerance.
+      # Align controller TF tolerance with Nav2 server tolerance.
       transform_tolerance: 0.5
       use_velocity_scaled_lookahead_dist: True
-      # HH_260330: Keep controller in forward-drive mode; global planner is
+      # Keep controller in forward-drive mode; global planner is
       # aligned to DUBIN (forward-only) in nav2_base.yaml.
       allow_reversing: False
-      # HH_260331: Avoid persistent angular-only cmd_vel output when heading
+      # Avoid persistent angular-only cmd_vel output when heading
       # mismatch/jitter is present at path start. Track with linear+angular together.
       use_rotate_to_heading: False
-      min_approach_linear_velocity: 0.10
-      approach_velocity_scaling_dist: 0.6
+      # Decelerate from 1.0 m/s starting 1.0 m before goal.
+      # min velocity 0.05 m/s for precise final approach (tighten tolerance after probing).
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 1.0
       use_collision_detection: False
       max_allowed_time_to_collision: 1.0
       use_regulated_linear_velocity_scaling: True

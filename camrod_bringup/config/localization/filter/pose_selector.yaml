@@ -23,7 +23,7 @@
 
     # LocalizationMode: NORMAL=0, DEGRADED=1, DR_ONLY=2, INVALID=3
     # HH_260422: Changed 2→3 to keep ESKF DR_ONLY pose as primary source when GNSS fails,
-    # avoiding fallback switching to the external VIO source.
+    # avoiding unnecessary switching to an external fallback source.
     fallback_on_mode_at_or_above: 3
 
     primary_timeout_s: 0.5

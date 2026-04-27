@@ -4,8 +4,10 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch_ros.actions import Node
 
 
 def pkg_share(pkg: str, rel: str) -> str:
@@ -85,6 +87,7 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_nav2_lifecycle_retry', default_value='false'),
         DeclareLaunchArgument('require_localization_ready', default_value='false'),
         DeclareLaunchArgument('enable_state_machine', default_value='false'),
+        DeclareLaunchArgument('enable_progress', default_value='true'),
         DeclareLaunchArgument('enable_tracking_error', default_value='true'),
 
         DeclareLaunchArgument('centerline_input_pose_topic', default_value='/localization/pose'),
@@ -101,11 +104,20 @@ def generate_launch_description():
         # HH_260409: Use platform-originated e-stop by default.
         DeclareLaunchArgument('cmd_vel_gate_estop_topic', default_value='/platform/status/estop'),
         DeclareLaunchArgument('cmd_vel_gate_allow_on_start', default_value='false'),
+        # HH_260427: Short hold window after DR_ONLY->NORMAL localization recovery.
+        DeclareLaunchArgument('cmd_vel_gate_enable_gnss_recovery_hold', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_localization_mode_topic', default_value='/localization/mode'),
+        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_hold_s', default_value='2.0'),
+        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_source_mode_min', default_value='2'),
+        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_target_mode', default_value='0'),
         # HH_260413: Optional cost-based stop in front of the platform.
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_enable', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_cost_grid_topic', default_value='/planning/cost_grid/inflation'),
         DeclareLaunchArgument('cmd_vel_gate_cost_pose_topic', default_value='/localization/pose'),
-        DeclareLaunchArgument('cmd_vel_gate_cost_odometry_topic', default_value='/localization/vio/odometry'),
+        # HH_260426: VIO stack is disabled; use localization fallback odometry.
+        DeclareLaunchArgument('cmd_vel_gate_cost_odometry_topic', default_value='/localization/fallback/odometry'),
+        # HH_260425: Keep odometry as default pose source for cost-stop corridor heading.
+        # In current sim validation, odometry-based heading produced reliable front-stop behavior.
         DeclareLaunchArgument('cmd_vel_gate_pose_source_preference', default_value='odometry'),
         DeclareLaunchArgument('cmd_vel_gate_enable_pose_raw_fallback', default_value='false'),
         DeclareLaunchArgument('cmd_vel_gate_cost_threshold', default_value='85'),
@@ -121,67 +133,44 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_margin_m', default_value='0.3'),
         # HH_260422: Side/rear cost-stop — uses same merged grid as front.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
-        DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='85'),
-        DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='1.2'),
-        DeclareLaunchArgument('cmd_vel_gate_side_corridor_width_m', default_value='0.6'),
-        DeclareLaunchArgument('cmd_vel_gate_rear_cost_threshold', default_value='85'),
-        DeclareLaunchArgument('cmd_vel_gate_rear_lookahead_m', default_value='0.8'),
-        DeclareLaunchArgument('cmd_vel_gate_rear_corridor_width_m', default_value='0.9'),
+        DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='92'),
+        DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='0.8'),
+        DeclareLaunchArgument('cmd_vel_gate_side_corridor_width_m', default_value='0.45'),
+        DeclareLaunchArgument('cmd_vel_gate_rear_cost_threshold', default_value='92'),
+        DeclareLaunchArgument('cmd_vel_gate_rear_lookahead_m', default_value='0.6'),
+        DeclareLaunchArgument('cmd_vel_gate_rear_corridor_width_m', default_value='0.6'),
         DeclareLaunchArgument('cmd_vel_gate_unavoidable_stop_enable', default_value='true'),
         # HH_260422: Fixed from 253 (OccupancyGrid max is 100; 253 never triggers).
         DeclareLaunchArgument('cmd_vel_gate_unavoidable_lethal_threshold', default_value='90'),
         DeclareLaunchArgument('cmd_vel_gate_unavoidable_cluster_min_cells', default_value='25'),
         DeclareLaunchArgument('cmd_vel_gate_unavoidable_cluster_min_ratio', default_value='0.25'),
+        # Optional yaw-alignment zone gate based on map keypoints.
+        DeclareLaunchArgument('cmd_vel_gate_yaw_alignment_enable', default_value='false'),
+        DeclareLaunchArgument('cmd_vel_gate_yaw_alignment_frame_id', default_value='map'),
+        DeclareLaunchArgument(
+            'cmd_vel_gate_yaw_alignment_zones_file',
+            default_value=pkg_share('camrod_planning', os.path.join('config', 'yaw_alignment_zones.yaml')),
+        ),
+        DeclareLaunchArgument('cmd_vel_gate_yaw_alignment_exit_margin_m', default_value='0.3'),
 
-        DeclareLaunchArgument(
-            'nav2_base_param_file',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'nav2_base.yaml')),
-        ),
-        DeclareLaunchArgument(
-            'nav2_vehicle_param_file',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'nav2_vehicle.yaml')),
-        ),
-        DeclareLaunchArgument(
-            'nav2_lanelet_param_file',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'nav2_lanelet_overlay.yaml')),
-        ),
-        DeclareLaunchArgument(
-            'nav2_behavior_param_file',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'nav2_behavior.yaml')),
-        ),
+        *[DeclareLaunchArgument(k, default_value=pkg_share('camrod_planning', os.path.join('config', v)))
+          for k, v in {
+              'nav2_base_param_file':              'nav2_base.yaml',
+              'nav2_vehicle_param_file':           'nav2_vehicle.yaml',
+              'nav2_lanelet_param_file':           'nav2_lanelet_overlay.yaml',
+              'nav2_behavior_param_file':          'nav2_behavior.yaml',
+              'local_path_extractor_param_file':   'local_path_extractor.yaml',
+              'path_cost_grids_param_file':        'path_cost_grids.yaml',
+              'goal_snapper_param_file':           'goal_snapper.yaml',
+              'centerline_snapper_param_file':     'centerline_snapper.yaml',
+              'goal_replanner_param_file':         'goal_replanner.yaml',
+              'planning_state_machine_param_file': 'planning_state_machine.yaml',
+              'planning_state_machine_camping_sites_yaml': 'camping_sites.yaml',
+          }.items()],
         DeclareLaunchArgument('nav2_robot_base_frame', default_value='robot_base_link'),
-
-        DeclareLaunchArgument(
-            'local_path_extractor_param_file',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'local_path_extractor.yaml')),
-        ),
-        DeclareLaunchArgument(
-            'path_cost_grids_param_file',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'path_cost_grids.yaml')),
-        ),
-        DeclareLaunchArgument(
-            'goal_snapper_param_file',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'goal_snapper.yaml')),
-        ),
-        DeclareLaunchArgument(
-            'centerline_snapper_param_file',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'centerline_snapper.yaml')),
-        ),
-        DeclareLaunchArgument(
-            'goal_replanner_param_file',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'goal_replanner.yaml')),
-        ),
-        DeclareLaunchArgument(
-            'planning_state_machine_param_file',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'planning_state_machine.yaml')),
-        ),
         DeclareLaunchArgument(
             'planning_state_machine_keypoints_yaml',
             default_value=pkg_share('camrod_map', os.path.join('config', 'drop_zones.yaml')),
-        ),
-        DeclareLaunchArgument(
-            'planning_state_machine_camping_sites_yaml',
-            default_value=pkg_share('camrod_planning', os.path.join('config', 'camping_sites.yaml')),
         ),
 
         # HH_260407: backward compatibility (no-op)
@@ -260,6 +249,11 @@ def generate_launch_description():
                 'cmd_vel_gate_use_estop_topic',
                 'cmd_vel_gate_estop_topic',
                 'cmd_vel_gate_allow_on_start',
+                'cmd_vel_gate_enable_gnss_recovery_hold',
+                'cmd_vel_gate_localization_mode_topic',
+                'cmd_vel_gate_gnss_recovery_hold_s',
+                'cmd_vel_gate_gnss_recovery_source_mode_min',
+                'cmd_vel_gate_gnss_recovery_target_mode',
                 'cmd_vel_gate_cost_stop_enable',
                 'cmd_vel_gate_cost_grid_topic',
                 'cmd_vel_gate_cost_pose_topic',
@@ -287,6 +281,10 @@ def generate_launch_description():
                 'cmd_vel_gate_unavoidable_lethal_threshold',
                 'cmd_vel_gate_unavoidable_cluster_min_cells',
                 'cmd_vel_gate_unavoidable_cluster_min_ratio',
+                'cmd_vel_gate_yaw_alignment_enable',
+                'cmd_vel_gate_yaw_alignment_frame_id',
+                'cmd_vel_gate_yaw_alignment_zones_file',
+                'cmd_vel_gate_yaw_alignment_exit_margin_m',
             ).items(),
         ),
 
@@ -312,6 +310,15 @@ def generate_launch_description():
                 'planning_state_machine_keypoints_yaml',
                 'planning_state_machine_camping_sites_yaml',
             ).items(),
+        ),
+
+        Node(
+            package='camrod_planning',
+            executable='planning_progress_node.py',
+            name='planning_progress',
+            namespace=LaunchConfiguration('module_namespace'),
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('enable_progress')),
         ),
 
         IncludeLaunchDescription(

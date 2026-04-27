@@ -86,6 +86,18 @@ class PlanningStateMachineNode(Node):
         self.return_goal_key = str(
             self.declare_parameter("return_goal_key", "drop_zone").value
         )
+        self.recall_topic = str(
+            self.declare_parameter(
+                "camping_site_recall_topic",
+                "/planning/state_machine/camping_site_recall",
+            ).value
+        )
+        self.mission_source_topic = str(
+            self.declare_parameter(
+                "mission_source_topic",
+                "/planning/state_machine/mission_source",
+            ).value
+        )
         self.goal_key_topic = str(
             self.declare_parameter(
                 "goal_key_topic", "/planning/state_machine/goal_key"
@@ -111,6 +123,23 @@ class PlanningStateMachineNode(Node):
             self.declare_parameter("auto_warn_recovery_goal", True).value
         )
         self.auto_estop_on_error = bool(self.declare_parameter("auto_estop_on_error", True).value)
+        # HH_260425: Optional site scenario behavior.
+        # When enabled and a site goal (e.g. camping_site_*) is reached, the state machine
+        # waits goal_reached_dwell_s and then automatically publishes return_goal_key.
+        self.enable_auto_return_on_site_goal = bool(
+            self.declare_parameter("enable_auto_return_on_site_goal", False).value
+        )
+        self.site_goal_key_prefix = str(
+            self.declare_parameter("site_goal_key_prefix", "camping_site_").value
+        )
+        self.goal_reached_dwell_s = float(
+            self.declare_parameter("goal_reached_dwell_s", 10.0).value
+        )
+        # HH_260425: Manual /goal_pose updates are matched to nearest known keypoint
+        # for auto-return eligibility decisions.
+        self.goal_key_match_distance_m = float(
+            self.declare_parameter("goal_key_match_distance_m", 1.5).value
+        )
         self.min_goal_publish_interval_s = float(
             self.declare_parameter("min_goal_publish_interval_s", 1.0).value
         )
@@ -128,12 +157,16 @@ class PlanningStateMachineNode(Node):
         self.last_manual_goal: Optional[PoseStamped] = None
         self.active_goal: Optional[PoseStamped] = None
         self.active_goal_source: str = "none"
+        self.active_goal_key: str = ""
         self.state: str = "INIT"
         self.startup_goal_sent = False
         # HH_260309-00:00 Warn recovery goal should be one-shot per WARN epoch.
         self.warn_goal_sent = False
         # HH_260313-00:00 Manual return request latch (drop-zone recovery button).
         self.return_requested = False
+        # HH_260425: Separate latch for camping-site recall → RECALLED state.
+        self.recall_requested = False
+        self.recall_target_key: str = ""   # site key to go to on recall (not return_goal_key)
         self._last_return_cmd = False
         self.prev_state_level: Optional[int] = None
         self._ok_level = self._status_level_int(StatusStatus.OK)
@@ -142,6 +175,8 @@ class PlanningStateMachineNode(Node):
 
         self._last_goal_publish_time = self.get_clock().now()
         self._last_self_goal: Optional[PoseStamped] = None
+        self._goal_reached_since: Optional[rclpy.time.Time] = None
+        self._goal_reached_latched = False
 
         self.pub_goal = self.create_publisher(PoseStamped, self.goal_topic, 10)
         self.pub_goal_ros = None
@@ -150,6 +185,7 @@ class PlanningStateMachineNode(Node):
         self.pub_state = self.create_publisher(String, self.state_topic, 10)
         self.pub_estop = self.create_publisher(Bool, self.estop_topic, 10)
         self.pub_diag = self.create_publisher(StatusArray, self.diag_topic, 10)
+        self.pub_mission_source = self.create_publisher(String, self.mission_source_topic, 10)
 
         self.create_subscription(
             StatusArray, self.state_status_topic, self._on_state, 10
@@ -157,6 +193,7 @@ class PlanningStateMachineNode(Node):
         self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
         self.create_subscription(PoseStamped, self.goal_topic, self._on_goal, 10)
         self.create_subscription(Bool, self.return_topic, self._on_return_to_drop_zone, 10)
+        self.create_subscription(String, self.recall_topic, self._on_camping_site_recall, 10)
         self.create_subscription(String, self.goal_key_topic, self._on_goal_key_request, 10)
         self.create_service(
             RequestGoalByKey,
@@ -174,9 +211,13 @@ class PlanningStateMachineNode(Node):
             f"goal={self.goal_topic} "
             f"goal_ros={self.goal_topic_ros} "
             f"return={self.return_topic} "
+            f"recall={self.recall_topic} "
+            f"mission_source={self.mission_source_topic} "
             f"goal_key_topic={self.goal_key_topic} "
             f"request_goal_service={self.request_goal_service} "
-            f"keypoints={','.join(sorted(self.keypoints.keys()))}"
+            f"keypoints={','.join(sorted(self.keypoints.keys()))} "
+            f"auto_return_on_site_goal={'true' if self.enable_auto_return_on_site_goal else 'false'} "
+            f"dwell={self.goal_reached_dwell_s:.1f}s"
         )
 
     # Implements `_load_keypoints` behavior.
@@ -261,6 +302,8 @@ class PlanningStateMachineNode(Node):
         # Each camping site entry becomes a keypoint:
         # - prefer semantic "type" name (e.g. camping_site_1)
         # - fallback to deterministic camping_site_<index>
+        # If recall_x/y/z are present, a separate "<name>_road" keypoint is registered
+        # for recall navigation (nearest lanelet road position, not area centroid).
         raw_sites = data.get("camping_sites", [])
         if not isinstance(raw_sites, list):
             return
@@ -270,15 +313,24 @@ class PlanningStateMachineNode(Node):
             key_name = str(site.get("type", "")).strip()
             if not key_name:
                 key_name = f"camping_site_{index}"
-            if key_name in self.keypoints:
-                continue
-            self.keypoints[key_name] = Keypoint(
-                name=key_name,
-                frame_id=str(site.get("frame_id", "map")),
-                x=float(site.get("x", 0.0)),
-                y=float(site.get("y", 0.0)),
-                z=float(site.get("z", 0.0)),
-            )
+            frame_id = str(site.get("frame_id", "map"))
+            if key_name not in self.keypoints:
+                self.keypoints[key_name] = Keypoint(
+                    name=key_name,
+                    frame_id=frame_id,
+                    x=float(site.get("x", 0.0)),
+                    y=float(site.get("y", 0.0)),
+                    z=float(site.get("z", 0.0)),
+                )
+            road_key = f"{key_name}_road"
+            if road_key not in self.keypoints and "recall_x" in site:
+                self.keypoints[road_key] = Keypoint(
+                    name=road_key,
+                    frame_id=frame_id,
+                    x=float(site["recall_x"]),
+                    y=float(site["recall_y"]),
+                    z=float(site.get("recall_z", 0.0)),
+                )
 
     @staticmethod
     # Implements `_status_level_int` behavior.
@@ -331,6 +383,7 @@ class PlanningStateMachineNode(Node):
 
     # Implements `_on_goal` behavior.
     def _on_goal(self, msg: PoseStamped) -> None:
+        prev_source = self.active_goal_source
         # Ignore immediate self-loopback on our own auto goal publish.
         if self._last_self_goal is not None:
             if self._dist_xy(self._last_self_goal, msg) < 0.02:
@@ -338,9 +391,18 @@ class PlanningStateMachineNode(Node):
         self.last_manual_goal = msg
         self.active_goal = msg
         self.active_goal_source = "manual"
+        matched_key = self._match_goal_key(msg)
+        if matched_key:
+            self.active_goal_key = matched_key
+        elif not prev_source.startswith("key_"):
+            self.active_goal_key = ""
         self.startup_goal_sent = True
-        # HH_260313-00:00 A new manual goal cancels pending return-request latch.
+        self._goal_reached_since = None
+        self._goal_reached_latched = False
+        # HH_260313-00:00 A new manual goal cancels pending return/recall latches.
         self.return_requested = False
+        self.recall_requested = False
+        self.recall_target_key = ""
 
     # Implements `_on_return_to_drop_zone` behavior.
     def _on_return_to_drop_zone(self, msg: Bool) -> None:
@@ -359,6 +421,46 @@ class PlanningStateMachineNode(Node):
                     f"published return goal from topic trigger: {self.return_goal_key}"
                 )
         self._last_return_cmd = bool(msg.data)
+
+    def _on_camping_site_recall(self, msg: String) -> None:
+        site_name = msg.data.strip()
+
+        site_kp = self.keypoints.get(site_name) if site_name else None
+        if site_name and site_kp is None:
+            self.get_logger().warn(
+                f"camping_site_recall: unknown site '{site_name}', falling back to {self.return_goal_key}"
+            )
+
+        # Prefer the lanelet road-snap position for recall (cargo blocks area centroid entry).
+        # Falls back to area centroid, then return_goal_key if nothing is known.
+        road_key = f"{site_name}_road" if site_name else ""
+        if road_key and road_key in self.keypoints:
+            target_key = road_key
+        elif site_kp is not None:
+            target_key = site_name
+        else:
+            target_key = self.return_goal_key
+
+        nearest_info = "lanelet_pose=unknown"
+        if self.last_pose is not None:
+            lx = self.last_pose.pose.position.x
+            ly = self.last_pose.pose.position.y
+            nearest_info = f"nearest_lanelet=({lx:.2f},{ly:.2f})"
+            if site_kp is not None:
+                d = math.hypot(lx - site_kp.x, ly - site_kp.y)
+                nearest_info += f" dist_to_site={d:.2f}m"
+
+        self.get_logger().info(
+            f"camping_site_recall from '{site_name or '(unspecified)'}': "
+            f"{nearest_info} -> go to '{target_key}' then auto-return to '{self.return_goal_key}'"
+        )
+
+        self.recall_target_key = target_key
+        self.recall_requested = True
+        if self._publish_auto_goal(target_key, f"recall:{site_name or 'unspecified'}", force=True):
+            self.recall_requested = False
+            self.startup_goal_sent = True
+            self.warn_goal_sent = False
 
     # Implements `_state_level` behavior.
     def _state_level(self) -> int:
@@ -400,8 +502,34 @@ class PlanningStateMachineNode(Node):
         self._last_goal_publish_time = now
         self.active_goal = msg
         self.active_goal_source = source
+        self.active_goal_key = key_name
         self.startup_goal_sent = True
+        self._goal_reached_since = None
+        self._goal_reached_latched = False
         return True
+
+    # Matches a pose to the nearest known keypoint name within threshold.
+    def _match_goal_key(self, goal: PoseStamped) -> str:
+        best_name = ""
+        best_dist = float("inf")
+        goal_frame = str(goal.header.frame_id).strip()
+        for name, kp in self.keypoints.items():
+            kp_frame = str(kp.frame_id).strip()
+            if goal_frame and kp_frame and goal_frame != kp_frame:
+                continue
+            d = math.hypot(goal.pose.position.x - kp.x, goal.pose.position.y - kp.y)
+            if d < best_dist:
+                best_dist = d
+                best_name = name
+        if best_name and best_dist <= self.goal_key_match_distance_m:
+            return best_name
+        return ""
+
+    # Returns true if the active goal is a site goal candidate.
+    def _is_active_site_goal(self) -> bool:
+        if not self.active_goal_key:
+            return False
+        return self.active_goal_key.startswith(self.site_goal_key_prefix)
 
     # Implements `_on_goal_key_request` behavior.
     def _on_goal_key_request(self, msg: String) -> None:
@@ -411,6 +539,8 @@ class PlanningStateMachineNode(Node):
             return
         if self._publish_auto_goal(key_name, f"key_topic:{key_name}", force=True):
             self.return_requested = False
+            self.recall_requested = False
+            self.recall_target_key = ""
             self.warn_goal_sent = False
             self.get_logger().info(f"published goal from key request topic: {key_name}")
 
@@ -442,6 +572,8 @@ class PlanningStateMachineNode(Node):
         response.accepted = bool(published)
         if published:
             self.return_requested = False
+            self.recall_requested = False
+            self.recall_target_key = ""
             self.warn_goal_sent = False
             response.message = f"goal published for key: {key_name}"
             response.goal_pose = goal_pose
@@ -465,6 +597,10 @@ class PlanningStateMachineNode(Node):
         s.data = self.state
         self.pub_state.publish(s)
 
+        ms = String()
+        ms.data = self.active_goal_source
+        self.pub_mission_source.publish(ms)
+
         b = Bool()
         b.data = bool(estop)
         self.pub_estop.publish(b)
@@ -485,7 +621,10 @@ class PlanningStateMachineNode(Node):
             st.message = self.state.lower()
         st.values.append(KeyValue(key="state", value=self.state))
         st.values.append(KeyValue(key="active_goal_source", value=self.active_goal_source))
+        st.values.append(KeyValue(key="active_goal_key", value=self.active_goal_key))
+        st.values.append(KeyValue(key="goal_reached_latched", value=str(self._goal_reached_latched).lower()))
         st.values.append(KeyValue(key="return_requested", value=str(self.return_requested).lower()))
+        st.values.append(KeyValue(key="recall_requested", value=str(self.recall_requested).lower()))
         st.values.append(KeyValue(key="return_goal_key", value=self.return_goal_key))
         st.values.append(
             KeyValue(
@@ -504,6 +643,7 @@ class PlanningStateMachineNode(Node):
     def _tick(self) -> None:
         if not self.enabled:
             return
+        now = self.get_clock().now()
 
         level = self._state_level()
         estop = False
@@ -515,6 +655,13 @@ class PlanningStateMachineNode(Node):
         if level >= self._error_level:
             self.state = "ERROR_STOP"
             estop = self.auto_estop_on_error
+        elif self.recall_requested:
+            self.state = "RECALLED"
+            recall_target = self.recall_target_key or self.return_goal_key
+            if self._publish_auto_goal(recall_target, self.active_goal_source):
+                self.recall_requested = False
+                self.startup_goal_sent = True
+                self.warn_goal_sent = False
         elif self.return_requested:
             self.state = "RETURNING"
             if self._publish_auto_goal(self.return_goal_key, "return_request"):
@@ -532,11 +679,37 @@ class PlanningStateMachineNode(Node):
                 if self._publish_auto_goal(self.startup_goal_key, "startup"):
                     self.startup_goal_sent = True
             if self._goal_reached():
+                if not self._goal_reached_latched:
+                    self._goal_reached_latched = True
+                if self._goal_reached_since is None:
+                    self._goal_reached_since = now
+            if self._goal_reached_latched:
                 self.state = "GOAL_REACHED"
+                if (
+                    self.enable_auto_return_on_site_goal and
+                    self._is_active_site_goal() and
+                    self.active_goal_key != self.return_goal_key
+                ):
+                    if self._goal_reached_since is None:
+                        self._goal_reached_since = now
+                    reached_elapsed_s = (now - self._goal_reached_since).nanoseconds / 1e9
+                    if reached_elapsed_s >= self.goal_reached_dwell_s:
+                        site_key = self.active_goal_key
+                        if self._publish_auto_goal(self.return_goal_key, "auto_return"):
+                            self.warn_goal_sent = False
+                            self.state = "RETURNING"
+                            self.get_logger().info(
+                                f"auto-return after dwell: key={site_key} "
+                                f"dwell={self.goal_reached_dwell_s:.1f}s -> {self.return_goal_key}"
+                            )
             elif self.active_goal is not None:
                 self.state = "RUNNING"
+                self._goal_reached_since = None
+                self._goal_reached_latched = False
             else:
                 self.state = "READY"
+                self._goal_reached_since = None
+                self._goal_reached_latched = False
 
         self.prev_state_level = level
         self._publish_state_outputs(estop)

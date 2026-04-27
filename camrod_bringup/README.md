@@ -69,7 +69,30 @@ ros2 launch camrod_bringup bringup.launch.py \
 # Reduce module stagger for fast machines
 ros2 launch camrod_bringup bringup.launch.py \
   module_launch_gap_s:=0.5
+
+# GNSS outage → DR mode → recovery integration test (sim)
+ros2 launch camrod_bringup gnss_dr_test.launch.py
 ```
+
+### gnss_dr_test.launch.py
+
+Full-stack simulation test that verifies the GNSS DR fallback scenario end-to-end:
+
+1. Starts `bringup.launch.py` in `sim:=true` mode (no hardware drivers).
+2. Launches `gnss_dr_test_node` after a 1 s delay to allow stack startup.
+3. Test node sends a camping-site goal, engages planning, then monitors:
+   - Normal driving phase
+   - GNSS failure → `DR_ONLY` mode (dead reckoning on IMU + wheel)
+   - GNSS recovery → `NORMAL` mode with `gnss_recovery_hold_s` cmd_vel pause
+   - Resumed driving after hold
+4. Prints a `PASS / FAIL` summary for each phase check.
+
+GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
+
+| Parameter | Description |
+|---|---|
+| `gnss_failure_after_s` | Seconds from fake-sensor start when GNSS stops |
+| `gnss_recovery_after_s` | Seconds from fake-sensor start when GNSS resumes |
 
 Key launch arguments:
 
@@ -86,8 +109,11 @@ Key launch arguments:
 | `enable_nav2_lifecycle_retry` | `true` | Recover Nav2 lifecycle on startup race |
 | `require_localization_ready` | `false` | Gate Nav2 on drop zone match |
 | `enable_state_machine` | `false` | Planning mission state machine |
+| `enable_progress` | `true` | Remaining distance/time/completion% publisher |
 | `cmd_vel_gate_cost_stop_enable` | `true` | Cost-based obstacle stop |
 | `cmd_vel_gate_speed_dependent_lookahead` | `true` | Physics-based braking distance |
+| `enable_yaw_alignment_zone` | `false` | Heading alignment enforcement at named map zones |
+| `yaw_alignment_zones_file` | `""` | Manual zone YAML path |
 | `enable_plugin_api` | `true` | Plugin API bridge node |
 | `enable_api_ui` | `true` | HTTP UI backend |
 | `api_ui_host` | `127.0.0.1` | UI bind address |
@@ -118,6 +144,8 @@ Key launch arguments:
 | `config/sensor_kit/robot_params.yaml` | Robot geometry overrides |
 | `config/system/diagnostics/default/` | Full diagnostics config profile (mirrors camrod_system) |
 | `config/sim/fake_sensors.yaml` | Fake sensor publisher parameters (sim mode) |
+| `config/planning/camping_sites.yaml` | Camping-site goal positions; sites 1–12 include `recall_x/y/z/yaw_deg` for road-snap navigation on recall; site 13 uses site 12's road snap for both normal and recall navigation |
+| `config/map/drop_zones.yaml` | Drop zone positions (exported from lanelet2 map, used for localization initialization and state machine startup goal) |
 
 ### Config Override Sentinel
 

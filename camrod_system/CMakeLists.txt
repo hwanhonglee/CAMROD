@@ -92,6 +92,34 @@ target_link_libraries(aggregator_node ${CAMROD_SYSTEM_YAML_LIB})
 install(TARGETS aggregator_node
   DESTINATION lib/${PROJECT_NAME})
 
+add_executable(system_checker_node src/system_checker_node.cpp)
+target_compile_features(system_checker_node PUBLIC cxx_std_17)
+ament_target_dependencies(system_checker_node
+  rclcpp
+  diagnostic_msgs
+)
+install(TARGETS system_checker_node
+  DESTINATION lib/${PROJECT_NAME})
+
+add_executable(system_diagnostic_node src/system_diagnostic_node.cpp)
+target_compile_features(system_diagnostic_node PUBLIC cxx_std_17)
+ament_target_dependencies(system_diagnostic_node
+  rclcpp
+  diagnostic_msgs
+  avg_msgs
+)
+install(TARGETS system_diagnostic_node
+  DESTINATION lib/${PROJECT_NAME})
+
+add_executable(diagnostics_aggregator_node src/diagnostics_aggregator_node.cpp)
+target_compile_features(diagnostics_aggregator_node PUBLIC cxx_std_17)
+ament_target_dependencies(diagnostics_aggregator_node
+  rclcpp
+  diagnostic_msgs
+)
+install(TARGETS diagnostics_aggregator_node
+  DESTINATION lib/${PROJECT_NAME})
+
 if(ranger_msgs_FOUND)
   add_executable(ranger_platform_checker_node src/diagnostics/ranger_platform_checker_node.cpp)
   target_compile_features(ranger_platform_checker_node PUBLIC cxx_std_17)
@@ -109,14 +137,6 @@ if(ranger_msgs_FOUND)
 else()
   message(STATUS "HH_260326: ranger_msgs not found. ranger_platform_checker_node will not be built.")
 endif()
-
-install(
-  PROGRAMS
-    scripts/system_checker_node.py
-    scripts/system_diagnostic_node.py
-    scripts/diagnostics_aggregator_node.py
-  DESTINATION lib/${PROJECT_NAME}
-)
 
 install(
   DIRECTORY launch

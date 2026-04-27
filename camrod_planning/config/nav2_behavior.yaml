@@ -2,20 +2,20 @@
 
 bt_navigator:
   ros__parameters:
-    # HH_260316-00:00 Keep BT transform helpers pinned to lanelet-snapped base frame.
+    # Keep BT transform helpers pinned to lanelet-snapped base frame.
     global_frame: map
     robot_base_frame: robot_base_link
-    # HH_260330: Tolerate EKF/TF jitter during full bringup runtime.
+    # Tolerate EKF/TF jitter during full bringup runtime.
     transform_tolerance: 0.5
-    # HH_260330: Stabilize repeated goal updates by relaxing BT server/service
+    # Stabilize repeated goal updates by relaxing BT server/service
     # call timeouts under high runtime load.
     default_server_timeout: 5000
     wait_for_service_timeout: 5000
-    # HH_260330: Reduce BT tick pressure (50 Hz -> 20 Hz equivalent).
-    # HH_260412: Further reduce tick pressure to limit planner/controller churn
+    # Reduce BT tick pressure (50 Hz -> 20 Hz equivalent).
+    # Further reduce tick pressure to limit planner/controller churn
     # when full-stack bringup is CPU-constrained.
     bt_loop_duration: 80
-    # HH_260415: Default to GridBased selector BT to keep planner_id consistent
+    # Default to GridBased selector BT to keep planner_id consistent
     # with the stabilized planner profile and avoid Smac2D runtime selection.
     # Launch rewrites this value to a package-share-resolved XML path.
     default_nav_to_pose_bt_xml: ""
@@ -46,7 +46,7 @@ bt_navigator:
       - nav2_time_expired_condition_bt_node
       - nav2_controller_selector_bt_node
       - nav2_planner_selector_bt_node
-      # HH_260326: Nav2 Humble ships goal_checker_selector BT plugin library name.
+      # Nav2 Humble ships goal_checker_selector BT plugin library name.
       # Using goal_validator_selector causes bt_navigator configure failure.
       - nav2_goal_checker_selector_bt_node
       - nav2_controller_cancel_bt_node
@@ -59,9 +59,9 @@ bt_navigator:
 
 behavior_server:
   ros__parameters:
-    # HH_260316-00:00 Recovery behaviors use lanelet-snapped base frame.
+    # Recovery behaviors use lanelet-snapped base frame.
     global_frame: map
     local_frame: odom
     robot_base_frame: robot_base_link
-    # HH_260330: Keep recovery transforms aligned with relaxed BT tolerance.
+    # Keep recovery transforms aligned with relaxed BT tolerance.
     transform_tolerance: 0.5

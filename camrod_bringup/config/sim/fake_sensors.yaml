@@ -1,6 +1,6 @@
 # 2026-02-02 10:32 Sync from package config into bringup/config
 # 2026-01-30 Update map path/origin for lanelet2_maps.osm.
-# HH_260112 Align node parameter keys with /bringup namespace + short names.
+# Align node parameter keys with /bringup namespace + short names.
 /bringup/fake_sensor_publisher:
   ros__parameters:
     # Launch passes resolved map_path; keep YAML default empty to avoid host-specific hardcoding.
@@ -15,15 +15,20 @@
     lanelet_id: -1
     fake_lanelet_id: -1
     speed_mps: 1.4
-    # HH_260330: Use cmd_vel-driven motion for realistic closed-loop simulation.
+    # Use cmd_vel-driven motion for realistic closed-loop simulation.
     # When enabled, fake pose advances only from /platform/cmd_vel linear.x.
     use_cmd_vel_for_motion: true
     cmd_vel_motion_topic: "/platform/cmd_vel"
     cmd_vel_timeout_s: 0.5
     max_cmd_speed_mps: 2.5
-    # HH_260330: Feed wheel_odometry_bridge input in sim so localization wheel
+    # Feed wheel_odometry_bridge input in sim so localization wheel
     # stream is available even without real /rmp401/odom hardware source.
     wheel_bridge_input_topic: "/rmp401/odom"
+    # VIO stack is disabled. Publish DR odometry to fallback stream.
+    dr_odometry_topic: "/localization/fallback/odometry"
+    # Optional compatibility bridge for legacy consumers still using VIO topic.
+    publish_legacy_vio_odometry: false
+    legacy_vio_odometry_topic: "/localization/vio/odometry"
     # Debug:
     # - true  : keep fake sensor position fixed on the path anchor
     # - false : move along centerline by speed_mps
@@ -35,11 +40,11 @@
     # Optional initial anchor on centerline path (better naming alias):
     # - start_from_pose=true  -> nearest point to (start_x,start_y)
     # - start_from_pose=false -> first point of stitched centerline path
-    # HH_260423: Start near drop_zone for scenario validation (bringup sim).
+    # Start near drop_zone for scenario validation (bringup sim).
     start_from_pose: true
     # Legacy alias (kept for compatibility with older launch/scripts).
     use_start_pose: false
-    # HH_260423: Keep initial anchor near drop_zone from bringup map/drop_zones.yaml.
+    # Keep initial anchor near drop_zone from bringup map/drop_zones.yaml.
     start_x: 16.8676
     start_y: -117.408
     # 2026-02-02: Traverse all lanelet centerlines for a full-lap path.
@@ -50,9 +55,16 @@
     close_loop_max_gap: 3.0
     frame_id: "map"
     base_frame_id: "robot_base_link"
-    obstacle_offset: 5.0
+    # Keep synthetic obstacle outside default stop corridor.
+    # Use ros2 param set at runtime (e.g. 1.0~3.0) when explicitly testing cost-stop.
+    obstacle_offset: 12.0
     obstacle_height: 0.5
-    # HH_260421: Publish synthetic obstacle cloud to both perception and
+    # Synthetic obstacle direction for cost-stop validation.
+    # Supported values: front | left | right | rear
+    obstacle_direction: "front"
+    # Additional shift in vehicle-left axis (m). Keep 0.0 for centered tests.
+    obstacle_lateral_offset: 0.0
+    # Publish synthetic obstacle cloud to both perception and
     # filtered-lidar topics so sensing cost-grid can consume filtered points.
     obstacle_cloud_topic: "/perception/obstacles"
     lidar_filtered_topic: "/sensing/lidar/points_filtered"
@@ -79,10 +91,10 @@
     centerline_step: 1.0
     # 2026-03-03: Hold vehicle still at startup so GNSS/ESKF can settle before motion begins.
     startup_hold_s: 5.0
-    # HH_260422: GNSS failure simulation for DR fallback testing.
+    # GNSS failure simulation for DR fallback testing.
     # gnss_failure_after_s: seconds from startup when GNSS NavSatFix stops. -1 = never.
     # gnss_recovery_after_s: seconds from startup when GNSS resumes. -1 = never recovers.
     # Example: failure_after=15, recovery_after=45 -> GNSS off for 30s then back on.
     gnss_failure_after_s: 25.0
     gnss_recovery_after_s: 55.0
-    # HH_260109 Fake sensors follow lanelet centerline in map frame.
+    # Fake sensors follow lanelet centerline in map frame.

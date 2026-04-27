@@ -100,4 +100,8 @@ if __name__ == '__main__':
         raise e
     finally:
         node.stop()
-        rclpy.shutdown()
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass

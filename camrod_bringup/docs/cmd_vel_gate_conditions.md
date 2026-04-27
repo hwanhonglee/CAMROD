@@ -1,5 +1,5 @@
 # cmd_vel Output Gate Conditions
-<!-- HH_260422: Reference for all boolean states that must hold for /platform/cmd_vel to be published. -->
+<!-- Reference for all boolean states that must hold for /platform/cmd_vel to be published. -->
 
 ## Full Pipeline
 

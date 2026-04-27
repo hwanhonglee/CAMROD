@@ -1,5 +1,5 @@
 # 2026-01-30 Update map path/origin for lanelet2_maps.osm.
-# HH_260126 Default params for lanelet centerline snapping.
+# Default params for lanelet centerline snapping.
 /planning/centerline_snapper:
   ros__parameters:
     # Launch passes resolved map_path; keep YAML default empty to avoid host-specific hardcoding.
@@ -10,7 +10,7 @@
     input_pose_topic: "/localization/pose"
     output_pose_topic: "/planning/lanelet_pose"
     output_pose_cov_topic: "/planning/lanelet_pose_with_covariance"
-    # HH_260126 Expand search radius to handle map/pose offsets during sim.
+    # Expand search radius to handle map/pose offsets during sim.
     max_search_radius: 120.0
     longitudinal_stddev: 0.5
     lateral_stddev: 0.3
@@ -18,6 +18,6 @@
     use_map_z: true
     map_z_offset: 0.0
     flatten_to_ground: false
-    # HH_260413: Throttle nearest-centerline projection for CPU stability.
+    # Throttle nearest-centerline projection for CPU stability.
     min_update_period_s: 0.05
     min_input_displacement_m: 0.05

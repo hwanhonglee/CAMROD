@@ -1,5 +1,5 @@
 # 2026-01-30 Update map path/origin for lanelet2_maps.osm.
-# HH_260112 Default params for lanelet goal snapping.
+# Default params for lanelet goal snapping.
 /planning/goal_snapper:
   ros__parameters:
     # Launch passes resolved map_path; keep YAML default empty to avoid host-specific hardcoding.
@@ -8,18 +8,18 @@
     offset_lon: 128.0925490
     offset_alt: 0.0
     input_goal_topic: "/goal_pose"
-    # HH_260412: Also accept RViz default 2D Goal Pose topic.
+    # Also accept RViz default 2D Goal Pose topic.
     input_goal_topic_fallback: "/move_base_simple/goal"
     enable_fallback_goal_topic: true
-    # HH_260316-00:00 Publish only snapped goal on dedicated topic.
+    # Publish only snapped goal on dedicated topic.
     output_goal_topic: "/planning/goal_pose_snapped"
-    # HH_260327: Restore practical search radius for multi-goal operation.
+    # Restore practical search radius for multi-goal operation.
     # 30 m often rejects valid second goals (no new snapped goal => no replanning).
     max_search_radius: 120.0
     require_lanelet_containment: true
     # 2026-02-23: If clicked outside lanelet polygon, still snap to nearest lanelet centerline.
     fallback_uncontained: true
-    # HH_260331: Keep snapped-goal Z at input goal Z (typically 0 in RViz).
+    # Keep snapped-goal Z at input goal Z (typically 0 in RViz).
     # Map Z can be offset in some maps, making goal markers invisible in RViz.
     use_map_z: false
     flatten_to_ground: false

@@ -3,20 +3,20 @@
 planner_server:
   ros__parameters:
     use_sim_time: False
-    # HH_260330: Further relax planner loop target for full-stack bringup.
+    # Further relax planner loop target for full-stack bringup.
     # This reduces planner-loop starvation under heavy CPU load and keeps
     # replanning stable during iterative goal updates.
-    # HH_260412: Align expected loop with practical realtime throughput to
+    # Align expected loop with practical realtime throughput to
     # reduce repeated "planner loop missed rate" warnings under full load.
-    # HH_260413: Match practical planner throughput under full real-sensor load.
+    # Match practical planner throughput under full real-sensor load.
     expected_planner_frequency: 0.5
-    # HH_260412: Prevent planner action hang when costmap current-state is delayed.
+    # Prevent planner action hang when costmap current-state is delayed.
     # 0.0 = wait forever (legacy), >0 = timeout seconds.
-    # HH_260412: Give global costmap more settle time before timeout warning.
-    # HH_260413: Allow extra settle time for layered global costmap current-state.
-    # HH_260413: Further extend timeout for heavy real-sensor bringup phases.
+    # Give global costmap more settle time before timeout warning.
+    # Allow extra settle time for layered global costmap current-state.
+    # Further extend timeout for heavy real-sensor bringup phases.
     costmap_wait_timeout_sec: 12.0
-    # HH_260415: Use GridBased as the only default planner for runtime stability.
+    # Use GridBased as the only default planner for runtime stability.
     # Smac2D remains defined below for future re-enable, but it is not selected
     # in the default production profile to avoid planner_server segfault regression.
     planner_plugins: ["GridBased"]
@@ -26,28 +26,28 @@ planner_server:
       # Keep final solve tight; goal_snapper already maps user goal into lanelet.
       tolerance: 0.5
       use_astar: True
-      # HH_260327: Enforce in-map/in-lane planning.
+      # Enforce in-map/in-lane planning.
       # Allowing unknown made free-space shortcuts possible outside designated lanelet region.
       allow_unknown: False
 
     Smac2D:
       plugin: "nav2_smac_planner/SmacPlanner2D"
-      # HH_260327: Enforce in-map/in-lane planning.
+      # Enforce in-map/in-lane planning.
       allow_unknown: False
       # Keep final solve tight; goal_snapper already maps user goal into lanelet.
       tolerance: 0.5
       downsample_costmap: False
       downsampling_factor: 1
       use_astar: True
-      # HH_260330: Use forward-only motion model for controller compatibility.
+      # Use forward-only motion model for controller compatibility.
       # REEDS_SHEPP reverse segments were causing repeated FollowPath aborts
       # with the current pure-pursuit controller setup.
       motion_model_for_search: "DUBIN"
       # 2026-02-25: Finer heading discretization for smoother corner geometry.
-      # HH_260327: Reduce heading-bin density to lower planner CPU without
+      # Reduce heading-bin density to lower planner CPU without
       # changing topology or plugin structure.
       angle_quantization_bins: 96
-      # HH_260412: Bound Smac2D solve time so ComputePath action does not stay
+      # Bound Smac2D solve time so ComputePath action does not stay
       # indefinitely in EXECUTING when map/cost constraints are difficult.
       max_iterations: 100000
       max_on_approach_iterations: 500
@@ -56,24 +56,24 @@ planner_server:
 controller_server:
   ros__parameters:
     use_sim_time: False
-    # HH_260412: Tune controller loop for real stack load.
+    # Tune controller loop for real stack load.
     # 40Hz caused repeated "control loop missed rate" in full bringup;
     # 30Hz keeps cmd stream responsive while reducing scheduler starvation.
     controller_frequency: 30.0
-    # HH_260330: Allow longer transient control failures while local TF/costmap
+    # Allow longer transient control failures while local TF/costmap
     # synchronizes, so cmd_vel stream can recover instead of immediate abort.
-    # HH_260412: Increase tolerance to avoid frequent FollowPath abort/recovery
+    # Increase tolerance to avoid frequent FollowPath abort/recovery
     # loops during transient sensor/costmap jitter.
     failure_tolerance: 20.0
     odom_topic: /localization/odometry/filtered
-    # HH_260330: Keep deadband thresholds permissive so low-speed commands are
+    # Keep deadband thresholds permissive so low-speed commands are
     # not quantized to zero during startup alignment.
     min_x_velocity_threshold: 0.0001
     min_y_velocity_threshold: 0.0001
     min_theta_velocity_threshold: 0.0001
-    # HH_260315-00:00 Explicit speed-limit channel for planning namespace users.
+    # Explicit speed-limit channel for planning namespace users.
     speed_limit_topic: /planning/speed_limit
-    # HH_260326: Restore canonical Nav2 checker parameter names.
+    # Restore canonical Nav2 checker parameter names.
     # Nav2 controller server reads *_checker_* keys; validator keys are ignored.
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["goal_checker"]
@@ -83,45 +83,49 @@ controller_server:
     controller_plugins: ["FollowPath"]
     default_controller: FollowPath
 
-    # HH_260326: Restore Humble plugin class names required by nav2_controller.
+    # Restore Humble plugin class names required by nav2_controller.
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      # HH_260330: Relax progress checks to avoid false abort during TF/costmap
+      # Relax progress checks to avoid false abort during TF/costmap
       # warm-up right after new goal acceptance.
-      # HH_260412: Further relax progress thresholds for real-sensor startup
+      # Further relax progress thresholds for real-sensor startup
       # where odometry progress can be intermittent.
       required_movement_radius: 0.03
       movement_time_allowance: 120.0
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.3
-      yaw_goal_tolerance: 0.25
-      stateful: False
+      # Start at 15 cm; tighten after measuring actual stopping error with
+      # goal_tolerance_probe_node. Practical floor is ~2× worst-case GNSS noise.
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 0.20
+      # stateful=True: goal checker remembers progress so momentary overshoot
+      # does not reset the check — reduces false restarts near tight tolerances.
+      stateful: True
 
 local_costmap:
   local_costmap:
     ros__parameters:
       use_sim_time: False
-      # HH_260330: Use odom for local costmap to reduce map<->odom transform
+      # Use odom for local costmap to reduce map<->odom transform
       # sensitivity in controller loop and improve FollowPath stability.
       global_frame: odom
       # Keep Nav2 base frame aligned with platform/localization TF.
       robot_base_frame: robot_base_link
-      # HH_260415: Raise local costmap cycle to improve real-time local-path reaction
+      # Raise local costmap cycle to improve real-time local-path reaction
       # to multi-layer costs while preserving controller stability at 30Hz.
       update_frequency: 6.0
       publish_frequency: 3.0
       rolling_window: True
-      # HH_260327: Coarsen local rolling window grid slightly for stability.
+      # Coarsen local rolling window grid slightly for stability.
       width: 45
       height: 45
       resolution: 0.10
-      # HH_260326: Start from free-space master so controller is not blocked by unknown-only map state.
+      # Start from free-space master so controller is not blocked by unknown-only map state.
       track_unknown_space: False
       plugins:
-        # HH_260424: combined_cost_layer: reads pre-merged /planning/cost_grid/inflation into master.
-        # HH_260424: inflation_layer: Nav2 built-in — spreads lethal cells radially (safety margin).
+        # combined_cost_layer: reads pre-merged /planning/cost_grid/inflation into master.
+        # inflation_layer: Nav2 built-in — spreads lethal cells radially (safety margin).
         - combined_cost_layer
         - inflation_layer
 
@@ -132,33 +136,35 @@ global_costmap:
       global_frame: map
       # Keep Nav2 base frame aligned with platform/localization TF.
       robot_base_frame: robot_base_link
-      # HH_260313-00:00 Raise global master refresh so goal updates are reflected faster.
-      # HH_260327: Lower global costmap update pressure for planner stability.
-      # HH_260413: Lower global costmap refresh pressure to stabilize current-state availability.
+      # Raise global master refresh so goal updates are reflected faster.
+      # Lower global costmap update pressure for planner stability.
+      # Lower global costmap refresh pressure to stabilize current-state availability.
       update_frequency: 2.0
       publish_frequency: 1.0
-      # HH_260326: Keep planner global costmap centered on robot to prevent
+      # Keep planner global costmap centered on robot to prevent
       # startup failures when localization origin drifts from legacy fixed bounds.
       rolling_window: True
-      # HH_260326: Match global rolling window to lanelet cost grid source window.
+      # Match global rolling window to lanelet cost grid source window.
       # Reason: keep planner solve horizon bounded for responsive ComputePath results.
-      # HH_260329: 45m window was too small for practical goal distances in
+      # 45m window was too small for practical goal distances in
       # map-frame testing, causing repeated "no valid path found".
       # Expand rolling bounds to recover stable global-path generation.
-      width: 120
-      height: 120
+      # enlarge global rolling window margin to reduce
+      # near-edge planner aborts on long map-frame goals.
+      width: 160
+      height: 160
       resolution: 0.10
-      # HH_260326: origin_* retained for backward compatibility; ignored in rolling window mode.
+      # origin_* retained for backward compatibility; ignored in rolling window mode.
       origin_x: -100.0
       origin_y: -50.0
-      # HH_260326: Start from free-space master so planner is not blocked before map layers settle.
+      # Start from free-space master so planner is not blocked before map layers settle.
       track_unknown_space: False
-      # HH_260316-00:00 Keep global planner master independent from
+      # Keep global planner master independent from
       # /planning/cost_grid/global_path guidance layer.
       # Using a path-guidance layer in the same costmap that generates that path
       # creates circular dependence and can produce intermittent no-path failures.
       plugins:
-        # HH_260326: Enforce lanelet drivable-space constraints for global planning.
+        # Enforce lanelet drivable-space constraints for global planning.
         # Without this layer, Smac can output free-space shortcuts on the wrong side.
         - lanelet_cost_layer_base
         - lidar_cost_layer
@@ -169,10 +175,10 @@ bt_navigator:
   ros__parameters:
     use_sim_time: False
     global_frame: map
-    # HH_260316-00:00 Keep BT transform helpers aligned with lanelet-snapped base frame.
+    # Keep BT transform helpers aligned with lanelet-snapped base frame.
     robot_base_frame: robot_base_link
     odom_topic: /localization/odometry/filtered
-    # HH_260330: Tolerate EKF/TF jitter observed during full bringup load.
+    # Tolerate EKF/TF jitter observed during full bringup load.
     transform_tolerance: 0.5
 
 behavior_server:
@@ -180,7 +186,7 @@ behavior_server:
     use_sim_time: False
     global_frame: map
     local_frame: odom
-    # HH_260316-00:00 Keep recovery behaviors aligned with lanelet-snapped base frame.
+    # Keep recovery behaviors aligned with lanelet-snapped base frame.
     robot_base_frame: robot_base_link
-    # HH_260330: Match Nav2 TF tolerance across BT/recovery nodes.
+    # Match Nav2 TF tolerance across BT/recovery nodes.
     transform_tolerance: 0.5

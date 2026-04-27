@@ -5,7 +5,7 @@
   <version>0.0.0</version>
   <description>TODO: Package description</description>
   <maintainer email="hwanhong57@gmail.com">hong</maintainer>
-  <!-- HH_260114 Set explicit Apache license. -->
+  <!-- Set explicit Apache license. -->
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
@@ -16,11 +16,11 @@
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>std_msgs</depend>
-  <!-- HH_260326: avg_msgs is used across module interfaces at build/runtime. -->
+  <!-- avg_msgs is used across module interfaces at build/runtime. -->
   <depend>avg_msgs</depend>
   <exec_depend>rosidl_runtime_py</exec_depend>
   <exec_depend>sensor_msgs_py</exec_depend>
-  <!-- HH_260109 Launch-time dependencies for fused localization and sensing pipeline. -->
+  <!-- Launch-time dependencies for fused localization and sensing pipeline. -->
   <exec_depend>camrod_sensor_kit</exec_depend>
   <exec_depend>camrod_localization</exec_depend>
   <exec_depend>camrod_map</exec_depend>

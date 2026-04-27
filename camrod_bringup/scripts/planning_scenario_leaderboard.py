@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-# HH_260409: Leaderboard-style real-sensor scenario runner for planning pipeline verification.
+# Leaderboard-style real-sensor scenario runner for planning pipeline verification.
 
 from __future__ import annotations
 
+import json
 import math
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +17,7 @@ from ament_index_python.packages import get_package_share_directory
 from geometry_msgs.msg import PoseStamped, Quaternion, Twist
 from rclpy.node import Node
 from rosidl_runtime_py.utilities import get_message
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 
 
 @dataclass
@@ -24,11 +26,18 @@ class StepResult:
     success: bool
     reason: str
     elapsed_sec: float
+    timeout_sec: float
     global_latency_sec: float | None
     local_latency_sec: float | None
     cmd_latency_sec: float | None
     global_path_points: int
     local_path_points: int
+    expected_state_sequence: list[str]
+    expected_mission_source_sequence: list[str]
+    observed_state_sequence: list[str]
+    observed_mission_source_sequence: list[str]
+    state_sequence_ok: bool
+    mission_source_sequence_ok: bool
 
 
 class PlanningScenarioLeaderboard(Node):
@@ -50,6 +59,11 @@ class PlanningScenarioLeaderboard(Node):
             self.declare_parameter("engage_topic", "/planning/engage").value
         )
         self.goal_topic = str(self.declare_parameter("goal_topic", "/goal_pose").value)
+        self.goal_key_topic = str(
+            self.declare_parameter(
+                "goal_key_topic", "/planning/state_machine/goal_key"
+            ).value
+        )
         self.global_path_topic = str(
             self.declare_parameter("global_path_topic", "/planning/global_path").value
         )
@@ -61,6 +75,14 @@ class PlanningScenarioLeaderboard(Node):
         )
         self.estop_topic = str(
             self.declare_parameter("estop_topic", "/platform/status/estop").value
+        )
+        self.state_topic = str(
+            self.declare_parameter("state_topic", "/planning/state_machine/state").value
+        )
+        self.mission_source_topic = str(
+            self.declare_parameter(
+                "mission_source_topic", "/planning/state_machine/mission_source"
+            ).value
         )
         self.step_timeout_s = float(
             self.declare_parameter("step_timeout_s", 25.0).value
@@ -95,12 +117,23 @@ class PlanningScenarioLeaderboard(Node):
         self.engage_before_each_step = bool(
             self.declare_parameter("engage_before_each_step", True).value
         )
+        # Print a fixed PASS/FAIL report block for CI/log scraping.
+        self.print_fixed_report = bool(
+            self.declare_parameter("print_fixed_report", True).value
+        )
+        # Optional JSON report output path.
+        self.report_file = str(self.declare_parameter("report_file", "").value)
 
         self.pub_goal = self.create_publisher(PoseStamped, self.goal_topic, 10)
+        self.pub_goal_key = self.create_publisher(String, self.goal_key_topic, 10)
         self.pub_engage = self.create_publisher(Bool, self.engage_topic, 10)
 
         self.create_subscription(Twist, self.cmd_vel_topic, self._on_cmd_vel, 10)
         self.create_subscription(Bool, self.estop_topic, self._on_estop, 10)
+        self.create_subscription(String, self.state_topic, self._on_state, 10)
+        self.create_subscription(
+            String, self.mission_source_topic, self._on_mission_source, 10
+        )
 
         self._global_sub = None
         self._local_sub = None
@@ -112,6 +145,8 @@ class PlanningScenarioLeaderboard(Node):
         self._local_last_recv = 0.0
         self._last_nonzero_cmd_recv = 0.0
         self._estop = False
+        self._state_history: list[tuple[float, str]] = []
+        self._mission_source_history: list[tuple[float, str]] = []
 
     # Handles cmd_vel callbacks and tracks non-zero command activity timing.
     def _on_cmd_vel(self, msg: Twist) -> None:
@@ -129,6 +164,14 @@ class PlanningScenarioLeaderboard(Node):
     # Handles estop callbacks.
     def _on_estop(self, msg: Bool) -> None:
         self._estop = bool(msg.data)
+
+    # Handles planning state-machine state topic updates.
+    def _on_state(self, msg: String) -> None:
+        self._state_history.append((time.monotonic(), str(msg.data)))
+
+    # Handles planning state-machine mission-source topic updates.
+    def _on_mission_source(self, msg: String) -> None:
+        self._mission_source_history.append((time.monotonic(), str(msg.data)))
 
     # Handles global-path callbacks.
     def _on_global_path(self, msg: Any) -> None:
@@ -194,29 +237,77 @@ class PlanningScenarioLeaderboard(Node):
         goal.pose.position.y = float(y)
         goal.pose.position.z = float(z)
         goal.pose.orientation = q
-        # HH_260409: Publish twice to reduce one-shot RViz drop risk under load.
+        # Publish twice to reduce one-shot RViz drop risk under load.
         self.pub_goal.publish(goal)
         rclpy.spin_once(self, timeout_sec=0.05)
         self.pub_goal.publish(goal)
 
-    # Loads scenario steps from YAML file.
-    def load_scenario_steps(self) -> list[dict[str, Any]]:
+    # Publishes a state-machine goal key (e.g. camping_site_1, drop_zone).
+    def publish_goal_key(self, goal_key: str) -> None:
+        msg = String()
+        msg.data = str(goal_key).strip()
+        if not msg.data:
+            return
+        self.pub_goal_key.publish(msg)
+        rclpy.spin_once(self, timeout_sec=0.05)
+        self.pub_goal_key.publish(msg)
+
+    # Loads scenario YAML and returns normalized dict with name + steps.
+    def load_scenario(self) -> dict[str, Any]:
         with open(self.scenario_file, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         scenario = data.get("scenario", {})
+        if not isinstance(scenario, dict):
+            raise RuntimeError(f"invalid scenario file: {self.scenario_file}")
         steps = scenario.get("steps", [])
         if not isinstance(steps, list) or not steps:
             raise RuntimeError(f"invalid scenario file: {self.scenario_file}")
-        return steps
+        return {
+            "name": str(scenario.get("name", "unnamed_scenario")),
+            "steps": steps,
+        }
+
+    @staticmethod
+    # Converts YAML list/tuple values into stripped string list.
+    def _normalize_str_list(raw_value: Any) -> list[str]:
+        if not isinstance(raw_value, (list, tuple)):
+            return []
+        out: list[str] = []
+        for item in raw_value:
+            text = str(item).strip()
+            if text:
+                out.append(text)
+        return out
+
+    @staticmethod
+    # Returns true when expected tokens appear in order as substring matches.
+    def _sequence_seen_in_order(observed_values: list[str], expected_tokens: list[str]) -> bool:
+        if not expected_tokens:
+            return True
+        cursor = 0
+        for value in observed_values:
+            if expected_tokens[cursor] in value:
+                cursor += 1
+                if cursor >= len(expected_tokens):
+                    return True
+        return False
 
     # Executes one scenario step and returns measured latencies and success state.
     def run_step(self, step: dict[str, Any]) -> StepResult:
         step_id = str(step.get("id", "unnamed_step"))
         goal = step.get("goal", {})
+        goal_key = str(step.get("goal_key", "")).strip()
         x = float(goal.get("x", 0.0))
         y = float(goal.get("y", 0.0))
         z = float(goal.get("z", 0.0))
         yaw_deg = float(goal.get("yaw_deg", 0.0))
+        step_timeout_s = float(step.get("timeout_s", self.step_timeout_s))
+        expected_state_sequence = self._normalize_str_list(
+            step.get("expect_state_sequence", [])
+        )
+        expected_mission_sequence = self._normalize_str_list(
+            step.get("expect_mission_source_sequence", [])
+        )
 
         if self.engage_before_each_step:
             self.publish_engage(True)
@@ -224,17 +315,26 @@ class PlanningScenarioLeaderboard(Node):
 
         base_global_count = self._global_count
         base_local_count = self._local_count
+        base_state_count = len(self._state_history)
+        base_mission_count = len(self._mission_source_history)
         start = time.monotonic()
 
-        self.publish_goal(x, y, z, yaw_deg)
+        if goal_key:
+            # Prefer key dispatch for state-machine-driven scenarios.
+            self.publish_goal_key(goal_key)
+        else:
+            self.publish_goal(x, y, z, yaw_deg)
 
         global_latency = None
         local_latency = None
         cmd_latency = None
         reason = "timeout"
         success = False
+        pipeline_ok = False
+        state_sequence_ok = False
+        mission_sequence_ok = False
 
-        while (time.monotonic() - start) <= self.step_timeout_s and rclpy.ok():
+        while (time.monotonic() - start) <= step_timeout_s and rclpy.ok():
             rclpy.spin_once(self, timeout_sec=0.05)
             now = time.monotonic()
 
@@ -262,24 +362,58 @@ class PlanningScenarioLeaderboard(Node):
                 cmd_latency = max(0.0, self._last_nonzero_cmd_recv - start)
 
             if global_ok and local_ok and cmd_ok:
-                success = True
-                reason = "ok"
-                break
+                pipeline_ok = True
+                observed_states = [v for _, v in self._state_history[base_state_count:]]
+                observed_missions = [
+                    v for _, v in self._mission_source_history[base_mission_count:]
+                ]
+                state_sequence_ok = self._sequence_seen_in_order(
+                    observed_states, expected_state_sequence
+                )
+                mission_sequence_ok = self._sequence_seen_in_order(
+                    observed_missions, expected_mission_sequence
+                )
+                if state_sequence_ok and mission_sequence_ok:
+                    success = True
+                    reason = "ok"
+                    break
 
-            if now - start > self.step_timeout_s:
+            if now - start > step_timeout_s:
                 break
 
         elapsed = time.monotonic() - start
+        observed_states = [v for _, v in self._state_history[base_state_count:]]
+        observed_missions = [v for _, v in self._mission_source_history[base_mission_count:]]
+        state_sequence_ok = self._sequence_seen_in_order(
+            observed_states, expected_state_sequence
+        )
+        mission_sequence_ok = self._sequence_seen_in_order(
+            observed_missions, expected_mission_sequence
+        )
+        if not success and pipeline_ok:
+            if not state_sequence_ok and not mission_sequence_ok:
+                reason = "state_and_mission_sequence_timeout"
+            elif not state_sequence_ok:
+                reason = "state_sequence_timeout"
+            elif not mission_sequence_ok:
+                reason = "mission_sequence_timeout"
         return StepResult(
             step_id=step_id,
             success=success,
             reason=reason,
             elapsed_sec=elapsed,
+            timeout_sec=step_timeout_s,
             global_latency_sec=global_latency,
             local_latency_sec=local_latency,
             cmd_latency_sec=cmd_latency,
             global_path_points=self._global_last_points,
             local_path_points=self._local_last_points,
+            expected_state_sequence=expected_state_sequence,
+            expected_mission_source_sequence=expected_mission_sequence,
+            observed_state_sequence=observed_states,
+            observed_mission_source_sequence=observed_missions,
+            state_sequence_ok=state_sequence_ok,
+            mission_source_sequence_ok=mission_sequence_ok,
         )
 
 
@@ -289,16 +423,88 @@ def _fmt_latency(value: float | None) -> str:
     return f"{value:.2f}s"
 
 
+def _build_report_dict(
+    scenario_name: str, scenario_file: str, results: list[StepResult], overall_pass: bool
+) -> dict[str, Any]:
+    return {
+        "scenario_name": scenario_name,
+        "scenario_file": scenario_file,
+        "overall_pass": bool(overall_pass),
+        "total_steps": len(results),
+        "passed_steps": sum(1 for r in results if r.success),
+        "failed_steps": sum(1 for r in results if not r.success),
+        "steps": [
+            {
+                "id": r.step_id,
+                "success": r.success,
+                "reason": r.reason,
+                "elapsed_sec": round(r.elapsed_sec, 3),
+                "timeout_sec": round(r.timeout_sec, 3),
+                "global_latency_sec": None
+                if r.global_latency_sec is None
+                else round(r.global_latency_sec, 3),
+                "local_latency_sec": None
+                if r.local_latency_sec is None
+                else round(r.local_latency_sec, 3),
+                "cmd_latency_sec": None
+                if r.cmd_latency_sec is None
+                else round(r.cmd_latency_sec, 3),
+                "global_path_points": r.global_path_points,
+                "local_path_points": r.local_path_points,
+                "state_sequence_ok": r.state_sequence_ok,
+                "mission_source_sequence_ok": r.mission_source_sequence_ok,
+                "expected_state_sequence": r.expected_state_sequence,
+                "expected_mission_source_sequence": r.expected_mission_source_sequence,
+                "observed_state_sequence": r.observed_state_sequence,
+                "observed_mission_source_sequence": r.observed_mission_source_sequence,
+            }
+            for r in results
+        ],
+    }
+
+
+def _print_fixed_report(
+    scenario_name: str, scenario_file: str, results: list[StepResult], overall_pass: bool
+) -> None:
+    total_steps = len(results)
+    passed_steps = sum(1 for r in results if r.success)
+    failed_steps = total_steps - passed_steps
+    print("\n=== CAMROD_SCENARIO_REPORT ===")
+    print(f"SCENARIO_FILE={scenario_file}")
+    print(f"SCENARIO_NAME={scenario_name}")
+    print(f"OVERALL={'PASS' if overall_pass else 'FAIL'}")
+    print(f"TOTAL_STEPS={total_steps}")
+    print(f"PASSED_STEPS={passed_steps}")
+    print(f"FAILED_STEPS={failed_steps}")
+    for idx, result in enumerate(results, start=1):
+        prefix = f"STEP_{idx:02d}"
+        print(f"{prefix}_ID={result.step_id}")
+        print(f"{prefix}_RESULT={'PASS' if result.success else 'FAIL'}")
+        print(f"{prefix}_REASON={result.reason}")
+        print(f"{prefix}_ELAPSED_SEC={result.elapsed_sec:.3f}")
+        print(f"{prefix}_TIMEOUT_SEC={result.timeout_sec:.3f}")
+        print(f"{prefix}_STATE_SEQUENCE_OK={'true' if result.state_sequence_ok else 'false'}")
+        print(
+            f"{prefix}_MISSION_SEQUENCE_OK="
+            f"{'true' if result.mission_source_sequence_ok else 'false'}"
+        )
+    print("=== CAMROD_SCENARIO_REPORT_END ===")
+
+
 def main(args=None) -> None:
     # Entrypoint for scenario leaderboard execution.
     rclpy.init(args=args)
     node = PlanningScenarioLeaderboard()
     results: list[StepResult] = []
     rc = 0
+    scenario_name = "unknown_scenario"
+    runner_exception: Exception | None = None
     try:
         if not node.setup_dynamic_path_subscriptions():
             raise RuntimeError("failed to subscribe path topics")
-        steps = node.load_scenario_steps()
+        scenario = node.load_scenario()
+        scenario_name = str(scenario.get("name", "unnamed_scenario"))
+        steps = scenario["steps"]
         node.get_logger().info(
             f"scenario start: file={node.scenario_file} steps={len(steps)} "
             f"require_cmd_vel={'true' if node.require_cmd_vel else 'false'}"
@@ -310,7 +516,9 @@ def main(args=None) -> None:
                 f"[{result.step_id}] success={result.success} reason={result.reason} "
                 f"elapsed={result.elapsed_sec:.2f}s global={_fmt_latency(result.global_latency_sec)} "
                 f"local={_fmt_latency(result.local_latency_sec)} cmd={_fmt_latency(result.cmd_latency_sec)} "
-                f"points(g/l)=({result.global_path_points}/{result.local_path_points})"
+                f"points(g/l)=({result.global_path_points}/{result.local_path_points}) "
+                f"state_seq_ok={result.state_sequence_ok} "
+                f"mission_seq_ok={result.mission_source_sequence_ok}"
             )
             if not result.success:
                 rc = 2
@@ -325,11 +533,50 @@ def main(args=None) -> None:
             )
     except Exception as exc:
         rc = 2
+        runner_exception = exc
         node.get_logger().error(f"scenario runner failed: {exc}")
+        if not results:
+            results.append(
+                StepResult(
+                    step_id="__runner__",
+                    success=False,
+                    reason=f"runner_exception:{type(exc).__name__}",
+                    elapsed_sec=0.0,
+                    timeout_sec=0.0,
+                    global_latency_sec=None,
+                    local_latency_sec=None,
+                    cmd_latency_sec=None,
+                    global_path_points=0,
+                    local_path_points=0,
+                    expected_state_sequence=[],
+                    expected_mission_source_sequence=[],
+                    observed_state_sequence=[],
+                    observed_mission_source_sequence=[],
+                    state_sequence_ok=False,
+                    mission_source_sequence_ok=False,
+                )
+            )
     finally:
+        overall_pass = rc == 0 and runner_exception is None
+        if node.print_fixed_report:
+            _print_fixed_report(scenario_name, node.scenario_file, results, overall_pass)
+        if node.report_file.strip():
+            report_path = os.path.abspath(node.report_file.strip())
+            report_dir = os.path.dirname(report_path)
+            if report_dir:
+                os.makedirs(report_dir, exist_ok=True)
+            report_obj = _build_report_dict(
+                scenario_name, node.scenario_file, results, overall_pass
+            )
+            with open(report_path, "w", encoding="utf-8") as f:
+                json.dump(report_obj, f, indent=2, ensure_ascii=False)
+            node.get_logger().info(f"scenario report saved: {report_path}")
         node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
     raise SystemExit(rc)
 
 

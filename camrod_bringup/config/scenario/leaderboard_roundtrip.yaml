@@ -1,4 +1,4 @@
-# HH_260409: Alternate round-trip scenario for leaderboard runner.
+# Alternate round-trip scenario for leaderboard runner.
 scenario:
   name: roundtrip_extended
   steps:

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Thin top launch for bringup orchestration.
+"""Entry point for camrod_bringup.
 
-HH_260407
-- Keep top launch minimal.
-- Delegate full wiring/default logic to _bringup_impl.py.
+Thin wrapper that loads _bringup_impl.py at runtime so YAML edits in the
+source tree apply immediately without rebuilding the package.
 """
 
 import importlib.util

@@ -1,14 +1,11 @@
-# HH_260317-00:00
+# 00
 # Bringup process cleanup list used by camrod_bringup/launch/bringup.launch.py.
-#
 # Ordering rule:
 # 1) grouped by module startup order in bringup
 # 2) within module, from core runtime nodes to status_stream/validators
-#
 # Pattern rule:
 # - Prefer ROS node-name token match (`__node:=<name>`) instead of script filename.
 # - Keep executable-name patterns only for C++ binaries/drivers.
-#
 # Startup order reference:
 # platform -> map -> fake_sensors(sim) -> sensing -> perception
 # -> localization -> planning -> system -> bringup -> rviz
@@ -38,7 +35,7 @@ patterns:
   - __node:=fake_sensor_publisher
 
   # [sensing]
-  # HH_260415: Ensure stale IMU driver process is terminated before bringup.
+  # Ensure stale IMU driver process is terminated before bringup.
   # Missing this pattern can leave /dev/ttyACM0 occupied and cause
   # "MIP SDK: Unable to open port (16): Device or resource busy" at startup.
   - microstrain_inertial_driver_node
@@ -111,7 +108,7 @@ patterns:
   - __node:=bringup_status
 
   # [api]
-  # HH_260415: Prevent UI backend port conflicts on rapid relaunch.
+  # Prevent UI backend port conflicts on rapid relaunch.
   # Without these patterns, stale api nodes can keep TCP port 8010 bound.
   - __node:=plugin_api_bridge
   - __node:=ui_backend
@@ -119,6 +116,6 @@ patterns:
   - ui_backend_node
 
   # [visualization]
-  # HH_260414: Remove stale static TF publishers left after interrupted sessions.
+  # Remove stale static TF publishers left after interrupted sessions.
   - static_transform_publisher
   - rviz2

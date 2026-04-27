@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HH_260109 Generate fake GNSS/IMU/Wheel/VIO/Obstacle topics from lanelet centerline.
+# Generate fake GNSS/IMU/Wheel/DR/Obstacle topics from lanelet centerline.
 
 import math
 import time
@@ -8,6 +8,7 @@ from bisect import bisect_left
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rcl_interfaces.msg import SetParametersResult
 
 from geometry_msgs.msg import PoseStamped, Quaternion
@@ -89,7 +90,7 @@ class FakeSensorPublisher(Node):
         self.freeze_motion = bool(self.declare_parameter("freeze_motion", False).value)
         self.publish_rate_hz = self.declare_parameter("publish_rate_hz", 20.0).value
         self.loop = self.declare_parameter("loop", True).value
-        # HH_260330: In sim mode, drive fake motion from cmd_vel to mirror
+        # In sim mode, drive fake motion from cmd_vel to mirror
         # planning/controller behavior instead of constant-speed advancement.
         self.use_cmd_vel_for_motion = bool(
             self.declare_parameter("use_cmd_vel_for_motion", True).value
@@ -147,9 +148,20 @@ class FakeSensorPublisher(Node):
             self.startup_hold_s = startup_hold_sec_legacy
         self.frame_id = self.declare_parameter("frame_id", "map").value
         self.base_frame_id = self.declare_parameter("base_frame_id", "robot_base_link").value
-        self.obstacle_offset = self.declare_parameter("obstacle_offset", 5.0).value
+        # Default keeps synthetic obstacle outside stop corridor.
+        # Lower at runtime when validating cost-stop behavior.
+        self.obstacle_offset = self.declare_parameter("obstacle_offset", 12.0).value
         self.obstacle_height = self.declare_parameter("obstacle_height", 0.5).value
-        # HH_260421: Publish the same synthetic obstacle cloud to both
+        # Synthetic obstacle placement direction relative to vehicle heading.
+        # Supported values: front | left | right | rear
+        self.obstacle_direction = self._normalize_obstacle_direction(
+            str(self.declare_parameter("obstacle_direction", "front").value)
+        )
+        # Additional lateral shift in vehicle-left axis (meters).
+        self.obstacle_lateral_offset = float(
+            self.declare_parameter("obstacle_lateral_offset", 0.0).value
+        )
+        # Publish the same synthetic obstacle cloud to both
         # perception obstacle stream and filtered-lidar stream so cost-grid
         # source can be switched without breaking sim.
         self.obstacle_cloud_topic = str(
@@ -158,10 +170,23 @@ class FakeSensorPublisher(Node):
         self.lidar_filtered_topic = str(
             self.declare_parameter("lidar_filtered_topic", "/sensing/lidar/points_filtered").value
         )
-        # HH_260330: In sim mode, also publish nav_msgs/Odometry to the wheel bridge
+        # In sim mode, also publish nav_msgs/Odometry to the wheel bridge
         # input topic so localization wheel pipeline can run without real /rmp401/odom.
         self.wheel_bridge_input_topic = str(
             self.declare_parameter("wheel_bridge_input_topic", "/rmp401/odom").value
+        )
+        # VIO stack is disabled in this workspace. Publish localization
+        # fallback odometry as DR reference instead of a VIO-only stream.
+        self.dr_odometry_topic = str(
+            self.declare_parameter("dr_odometry_topic", "/localization/fallback/odometry").value
+        )
+        # Optional compatibility bridge for old consumers still expecting
+        # /localization/vio/odometry. Keep disabled by default.
+        self.publish_legacy_vio_odometry = bool(
+            self.declare_parameter("publish_legacy_vio_odometry", False).value
+        )
+        self.legacy_vio_odometry_topic = str(
+            self.declare_parameter("legacy_vio_odometry_topic", "/localization/vio/odometry").value
         )
         # Optional helper: align localization pose yaw to nearest active path tangent.
         # Position is kept from incoming /localization/pose, only orientation(yaw) is replaced.
@@ -216,7 +241,7 @@ class FakeSensorPublisher(Node):
         self._lock_position_initialized = False
         # 2026-02-02 11:05: Resample centerline from bounds when explicit centerline is missing.
         self.centerline_step = self.declare_parameter("centerline_step", 1.0).value
-        # HH_260422: GNSS failure simulation for DR fallback testing.
+        # GNSS failure simulation for DR fallback testing.
         # When gnss_failure_after_s > 0, NavSatFix publishing stops at that elapsed time,
         # triggering DR_ONLY mode in localization_monitor. Resumes at gnss_recovery_after_s.
         # Both default to -1 (disabled) so existing runs are unaffected.
@@ -283,13 +308,25 @@ class FakeSensorPublisher(Node):
         self._cmd_linear_x = 0.0
         self._last_cmd_time = None
 
-        # HH_260109 Publish fake sensors with module-prefixed topics.
+        # Publish fake sensors with module-prefixed topics.
         self.pub_navsat = self.create_publisher(NavSatFix, "/sensing/gnss/ublox_gps_node/fix", 10)
         self.pub_imu = self.create_publisher(Imu, "/sensing/imu/data", 10)
-        # HH_260410: Keep fake wheel output aligned with unified wheel_odometry topic.
+        # Keep fake wheel output aligned with unified wheel_odometry topic.
         self.pub_wheel = self.create_publisher(Odometry, "/platform/status/wheel_odometry", 10)
         self.pub_wheel_bridge_in = self.create_publisher(Odometry, self.wheel_bridge_input_topic, 10)
-        self.pub_vio = self.create_publisher(Odometry, "/localization/vio/odometry", 10)
+        # Use transient-local QoS for fallback odometry so late-joining
+        # consumers (e.g. pose selector) can subscribe without durability mismatch.
+        odom_qos = QoSProfile(
+            depth=10,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.pub_dr_odom = self.create_publisher(Odometry, self.dr_odometry_topic, odom_qos)
+        self.pub_legacy_vio_odom = None
+        if self.publish_legacy_vio_odometry:
+            self.pub_legacy_vio_odom = self.create_publisher(
+                Odometry, self.legacy_vio_odometry_topic, 10
+            )
         self.pub_obstacles = self.create_publisher(PointCloud2, self.obstacle_cloud_topic, 10)
         self.pub_lidar_filtered = self.create_publisher(
             PointCloud2, self.lidar_filtered_topic, 10
@@ -346,7 +383,7 @@ class FakeSensorPublisher(Node):
 
     # Handles the `_on_cmd_vel` callback.
     def _on_cmd_vel(self, msg: Twist):
-        # HH_260330: Track forward command for motion integration.
+        # Track forward command for motion integration.
         # Keep only linear.x to remain lanelet-path constrained.
         vx = float(msg.linear.x)
         vmax = max(0.0, float(self.max_cmd_speed_mps))
@@ -357,7 +394,7 @@ class FakeSensorPublisher(Node):
 
     # Implements `_load_centerline_path` behavior.
     def _load_centerline_path(self):
-        # HH_260109 Parse Lanelet2 OSM and extract centerline ways.
+        # Parse Lanelet2 OSM and extract centerline ways.
         tree = ET.parse(self.map_path)
         root = tree.getroot()
 
@@ -770,7 +807,7 @@ class FakeSensorPublisher(Node):
         dist = self._motion_distance
         (x, y, z, lat, lon), yaw = self._sample_path(dist)
 
-        # HH_260112 Create a pose message for downstream odometry/cloud outputs.
+        # Create a pose message for downstream odometry/cloud outputs.
         pose_msg = PoseStamped()
         pose_msg.header.stamp = now
         pose_msg.header.frame_id = self.frame_id
@@ -787,7 +824,7 @@ class FakeSensorPublisher(Node):
         navsat.latitude = lat
         navsat.longitude = lon
         navsat.altitude = self.origin_alt
-        # HH_260422: Set realistic RTK-quality covariance so localization_monitor's
+        # Set realistic RTK-quality covariance so localization_monitor's
         # gnss_cov_trace_fail (0.3 m^2) accepts the fake GNSS (trace = 0.08 < 0.3).
         # COVARIANCE_TYPE_DIAGONAL_KNOWN = 2; without this the adapter falls back to
         # pose_covariance_diagonal=[1,1,...] giving trace=2.0 which fails the monitor.
@@ -795,7 +832,7 @@ class FakeSensorPublisher(Node):
         navsat.position_covariance[0] = 0.04   # σ_x = 0.2 m
         navsat.position_covariance[4] = 0.04   # σ_y = 0.2 m
         navsat.position_covariance[8] = 0.10   # σ_z = 0.32 m
-        # HH_260422: Gate NavSatFix on simulated GNSS failure window.
+        # Gate NavSatFix on simulated GNSS failure window.
         gnss_should_publish = True
         if self.gnss_failure_after_s > 0.0 and elapsed >= self.gnss_failure_after_s:
             if self.gnss_recovery_after_s <= 0.0 or elapsed < self.gnss_recovery_after_s:
@@ -839,31 +876,56 @@ class FakeSensorPublisher(Node):
         wheel_msg.twist.twist.linear.x = wheel_speed
         wheel_msg.twist.twist.angular.z = 0.0
         self.pub_wheel.publish(wheel_msg)
-        # HH_260330: Mirror wheel odometry onto wheel-bridge input topic for
+        # Mirror wheel odometry onto wheel-bridge input topic for
         # sim-time localization/TF/controller reproducibility.
         self.pub_wheel_bridge_in.publish(wheel_msg)
 
-        vio_msg = Odometry()
-        vio_msg.header.stamp = now
-        vio_msg.header.frame_id = self.frame_id
-        vio_msg.child_frame_id = self.base_frame_id
-        vio_msg.pose.pose = pose_msg.pose
-        vio_msg.twist.twist.linear.x = wheel_speed
-        vio_msg.twist.twist.angular.z = 0.0
-        self.pub_vio.publish(vio_msg)
+        dr_msg = Odometry()
+        dr_msg.header.stamp = now
+        dr_msg.header.frame_id = self.frame_id
+        dr_msg.child_frame_id = self.base_frame_id
+        dr_msg.pose.pose = pose_msg.pose
+        dr_msg.twist.twist.linear.x = wheel_speed
+        dr_msg.twist.twist.angular.z = 0.0
+        self.pub_dr_odom.publish(dr_msg)
+        if self.pub_legacy_vio_odom is not None:
+            self.pub_legacy_vio_odom.publish(dr_msg)
 
-        # HH_260421: Place fake obstacle cloud in vehicle-forward coordinates
-        # so local cost-stop can validate "obstacle ahead" behavior reliably.
+        # Place fake obstacle cloud in vehicle-forward coordinates
+        # so local cost-stop can validate front/side/rear stop behavior reliably.
         forward_x = math.cos(yaw)
         forward_y = math.sin(yaw)
         left_x = -forward_y
         left_y = forward_x
-        center_x = x + self.obstacle_offset * forward_x
-        center_y = y + self.obstacle_offset * forward_y
+        obstacle_dir_x = forward_x
+        obstacle_dir_y = forward_y
+        if self.obstacle_direction == "left":
+            obstacle_dir_x = left_x
+            obstacle_dir_y = left_y
+        elif self.obstacle_direction == "right":
+            obstacle_dir_x = -left_x
+            obstacle_dir_y = -left_y
+        elif self.obstacle_direction == "rear":
+            obstacle_dir_x = -forward_x
+            obstacle_dir_y = -forward_y
+
+        center_x = (
+            x
+            + self.obstacle_offset * obstacle_dir_x
+            + self.obstacle_lateral_offset * left_x
+        )
+        center_y = (
+            y
+            + self.obstacle_offset * obstacle_dir_y
+            + self.obstacle_lateral_offset * left_y
+        )
+        # Keep 3 points spread perpendicular to obstacle direction.
+        obstacle_perp_x = -obstacle_dir_y
+        obstacle_perp_y = obstacle_dir_x
         obstacle_points = [
             (center_x, center_y, self.obstacle_height),
-            (center_x + left_x, center_y + left_y, self.obstacle_height),
-            (center_x - left_x, center_y - left_y, self.obstacle_height),
+            (center_x + obstacle_perp_x, center_y + obstacle_perp_y, self.obstacle_height),
+            (center_x - obstacle_perp_x, center_y - obstacle_perp_y, self.obstacle_height),
         ]
         fields = [
             PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
@@ -874,6 +936,16 @@ class FakeSensorPublisher(Node):
         self.pub_obstacles.publish(cloud_msg)
         self.pub_lidar_filtered.publish(cloud_msg)
 
+    # Normalizes obstacle_direction parameter and falls back safely.
+    def _normalize_obstacle_direction(self, value):
+        direction = str(value).strip().lower()
+        if direction in ("front", "left", "right", "rear"):
+            return direction
+        self.get_logger().warn(
+            f"Invalid obstacle_direction '{value}'. Falling back to 'front'."
+        )
+        return "front"
+
     # Applies selected runtime parameter updates without node restart.
     def _on_set_parameters(self, params):
         for p in params:
@@ -881,6 +953,10 @@ class FakeSensorPublisher(Node):
                 self.obstacle_offset = float(p.value)
             elif p.name == "obstacle_height":
                 self.obstacle_height = float(p.value)
+            elif p.name == "obstacle_direction":
+                self.obstacle_direction = self._normalize_obstacle_direction(p.value)
+            elif p.name == "obstacle_lateral_offset":
+                self.obstacle_lateral_offset = float(p.value)
             elif p.name == "speed_mps":
                 self.speed_mps = float(p.value)
             elif p.name == "publish_rate_hz":

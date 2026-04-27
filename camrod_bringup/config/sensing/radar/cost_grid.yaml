@@ -17,12 +17,10 @@
     min_cost: 35
     max_cost: 95
     cost_range_min_m: 0.3
-    # HH_260422: Near-field only; per-sensor max_range in Range messages limits
-    #   detections before they reach cost mapping, so 2.0 m is a safe cap.
+    # HH_260422: Near-field only; per-sensor max_range limits detections before cost mapping.
     cost_range_max_m: 2.0
     obstacle_radius_m: 0.30
-    # HH_260422: Reduced from 0.90 to 0.50 so near-field side/rear radar readings
-    #   (0.5–0.9 m from centre) are not erased by the ego-footprint clear disk.
+    # HH_260422: Reduced from 0.90 so near-field side/rear readings are not cleared by ego disk.
     ego_clear_radius_m: 0.50
 
     # Runtime

@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -34,13 +35,19 @@ target_link_libraries(robot_visualization_node
   camrod_sensor_kit::camrod_sensor_kit_lib
 )
 
+add_executable(cmd_vel_gate_node
+  src/cmd_vel_gate_node.cpp
+)
+ament_target_dependencies(cmd_vel_gate_node
+  rclcpp
+  geometry_msgs
+  std_msgs
+  std_srvs
+)
+
 install(TARGETS
   robot_visualization_node
-  DESTINATION lib/${PROJECT_NAME}
-)
-install(
-  PROGRAMS
-    scripts/cmd_vel_gate_node.py
+  cmd_vel_gate_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

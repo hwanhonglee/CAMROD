@@ -79,6 +79,17 @@ Diagram legend: `[node]`, `((topic))`, `{{hardware}}`.
 |---|---|---|---|
 | `aggregator_node` | `/diagnostics` | `/diagnostics_agg` | config_file: diagnostics_config.yaml, timeout_s: 5.0, publish_rate_hz: 1.0 |
 
+### System Tools (`system_tools.launch.py`)
+
+A lightweight second diagnostics track launched by `system.launch.py` (`enable_system_tools: true`).
+Checks that required ROS2 nodes and topics are live and produces a consolidated system-level health summary separate from the per-sensor module checkers.
+
+| Node | Inputs | Outputs | Key Params |
+|---|---|---|---|
+| `system_checker_node` | ROS2 graph (`get_topic_names_and_types`, node list) | `/system/diagnostics` | required_nodes, required_topics, check_period_s: 1.0, startup_grace_s: 6.0 |
+| `system_diagnostic_node` | `/system/diagnostics` | `/system/diagnostics_agg_tools` | publish_period_s: 0.5, stale_timeout_s: 2.0, known_modules list |
+| `diagnostics_aggregator_node` | `/system/diagnostics` | `/system/diagnostics_agg_tools` | source_topic, output_topic (tools-only channel) |
+
 ## Inter-Package Connections
 ```mermaid
 graph LR
@@ -125,8 +136,9 @@ Key launch arguments:
 |---|---|---|
 | `module_namespace` | `system` | ROS2 node namespace |
 | `config_profile` | `default` | Diagnostics config profile directory |
-| `enable_checkers` | `true` | Enable all checker nodes |
+| `enable_checkers` | `true` | Enable all module checker nodes |
 | `enable_platform` | `false` | Enable Ranger-specific platform checker |
+| `enable_system_tools` | `true` | Enable system_checker + system_diagnostic nodes |
 
 ## Config Files
 

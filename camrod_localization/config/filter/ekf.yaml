@@ -51,7 +51,8 @@
     odom0_queue_size: 20
 
     # Section note: tune thresholds based on expected stream behavior and safety policy.
-    odom1: /localization/vio/odometry
+    # HH_260426: VIO disabled. Use wheel-bridge nav odometry as EKF odom input.
+    odom1: /platform/wheel/nav_odometry
     odom1_config: [true,  true,  false,
                   false, false, true,
                   true,  true,  false,

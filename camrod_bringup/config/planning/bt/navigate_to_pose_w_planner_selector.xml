@@ -1,5 +1,4 @@
-<!--
-  HH_260127: PlannerSelector-enabled BT.
+<!-- PlannerSelector-enabled BT.
   - Default planner: Smac2D
   - Switch planner by publishing std_msgs/String to /planning/planner_selector
 -->
@@ -8,10 +7,10 @@
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
       <PipelineSequence name="NavigateWithReplanning">
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
-        <!-- HH_260330: Real-mode default planner restored to Smac2D.
+        <!-- Real-mode default planner restored to Smac2D.
              Sim mode uses a separate BT XML with GridBased default. -->
         <PlannerSelector selected_planner="{selected_planner}" default_planner="Smac2D" topic_name="/planning/planner_selector"/>
-        <!-- HH_260413: Match planning-default BT replanning rate to reduce
+        <!-- Match planning-default BT replanning rate to reduce
              planner/costmap current-timeout pressure under real sensor load. -->
         <RateController hz="1.5">
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">

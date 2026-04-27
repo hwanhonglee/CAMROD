@@ -65,14 +65,27 @@ graph TD
 ```
 
 ## 3) Main Operational Scenario
-1. System starts and required module nodes launch automatically.
-2. Localization initializes using map reference (`camrod_map/config/map_info.yaml`).
-3. Robot can move to `drop_zone` keypoint and wait.
-4. When a target key (for example `camping_site_3`) is requested, planning generates global/local path.
-5. `/planning/cmd_vel` is allowed only when gate conditions are valid (engage true, estop false).
-6. Platform consumes command and moves to target.
-7. At destination, robot waits or returns to `drop_zone` by return command.
-8. Manual goal navigation through `/goal_pose` is also supported.
+
+**Base delivery loop:**
+1. System starts; all modules launch with a configurable stagger gap.
+2. Localization initializes using `camrod_map/config/map_info.yaml` as the single reference source.
+3. State machine sends robot to `drop_zone` (startup goal).
+4. Operator selects `camping_site_N` via UI → `/planning/state_machine/goal_key` published.
+5. Nav2 generates global path; `/planning/cmd_vel` is gated by engage, e-stop, and cost-stop.
+6. Robot arrives at camping site; waits `goal_reached_dwell_s` (default 600 s) or until return button.
+7. Robot auto-returns or is sent back to `drop_zone`.
+
+**Camping-site recall extension:**
+8. Camping site publishes `/planning/state_machine/camping_site_recall` → state transitions to `RECALLED`.
+9. Robot navigates to the site's nearest-lanelet coordinate for loading (mission_source: `recall:camping_site_N`).
+10. After another dwell, robot auto-returns to `drop_zone` (mission_source: `auto_return`).
+
+**GNSS outage handling:**
+- GNSS loss → localization switches to `DR_ONLY`; robot continues on IMU + wheel odometry.
+- GNSS recovery → `/localization/mode` transitions `DR_ONLY → NORMAL`; cmd_vel gate applies
+  a `gnss_recovery_hold_s` (2.0 s) stop to let Nav2 and the costmap settle on the recovered pose.
+
+Manual goal navigation through `/goal_pose` (RViz 2D Nav Goal) is also supported at any time.
 
 ## 4) Package Responsibilities
 | Package | Role |
@@ -160,16 +173,19 @@ ros2 launch camrod_system system.launch.py
 |---|---|
 | `/planning/global_path` | global route from planner |
 | `/planning/local_path` | local route for tracking |
-| `/planning/cmd_vel_raw` | raw controller velocity |
-| `/planning/cmd_vel` | gated velocity command for platform |
-| `/platform/cmd_vel` | final platform command |
-| `/map/cost_grid/lanelet` | lanelet-based base cost grid |
-| `/map/cost_grid/planning_base` | planning-oriented secondary cost grid |
-| `/map/cost_grid/inflation_markers` | merged map/planning/sensing marker visualization |
-| `/localization/pose` | canonical fused pose |
-| `/localization/initial_match_ok` | localization readiness signal used by planning startup gate |
-| `/system/diagnostics` | raw system diagnostics stream |
-| `/system/diagnostics_agg` | aggregated diagnostics stream |
+| `/planning/cmd_vel_raw` | raw controller velocity (Nav2 output) |
+| `/planning/cmd_vel` | gated velocity command (engage + estop + cost-stop + GNSS hold) |
+| `/platform/cmd_vel` | final platform command to Ranger CAN driver |
+| `/map/cost_grid/lanelet` | lanelet traversability cost grid |
+| `/planning/cost_grid/inflation` | merged near-range cost grid (LiDAR + radar + lanelet) |
+| `/localization/pose` | canonical fused pose (ESKF output) |
+| `/localization/mode` | localization health: NORMAL / DEGRADED / DR_ONLY / INVALID |
+| `/localization/initial_match_ok` | drop-zone match readiness used by planning startup gate |
+| `/planning/state_machine/state` | current mission state (INIT / RUNNING / GOAL_REACHED / …) |
+| `/planning/state_machine/mission_source` | why the current goal was sent (startup / recall:… / auto_return / …) |
+| `/planning/state_machine/camping_site_recall` | camping site → robot recall trigger |
+| `/system/diagnostics` | raw per-module diagnostics |
+| `/system/diagnostics_agg` | aggregated diagnostics (consumed by UI) |
 
 ## 8) Shared Map Reference Rule
 `camrod_map/config/map_info.yaml` is the shared reference source for map and localization alignment.

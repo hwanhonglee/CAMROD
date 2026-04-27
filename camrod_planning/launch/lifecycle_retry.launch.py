@@ -13,7 +13,7 @@ def generate_launch_description():
 
         Node(
             package='camrod_planning',
-            executable='nav2_lifecycle_startup_retry_node.py',
+            executable='nav2_lifecycle_startup_retry_node',
             name='nav2_lifecycle_startup_retry',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',

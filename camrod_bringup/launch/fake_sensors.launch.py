@@ -81,7 +81,7 @@ def load_map_defaults() -> dict:
     return defaults
 
 
-# HH_260109 Launch fake sensor publisher for simulation without real hardware.
+# Launch fake sensor publisher for simulation without real hardware.
 def generate_launch_description():
     pkg_share = get_package_share_directory('camrod_bringup')
     sensing_share = get_package_share_directory('camrod_sensing')
@@ -95,7 +95,7 @@ def generate_launch_description():
     # 2026-02-25: Keep fake-only cleanup independent from top-level bringup cleanup
     # to avoid pkill/start race when included by bringup.
     clean_before_launch = LaunchConfiguration('fake_clean_before_launch')
-    # HH_260114 Use unique arg name to avoid param collisions with other includes.
+    # Use unique arg name to avoid param collisions with other includes.
     param_file_arg = DeclareLaunchArgument(
         'fake_sensors_param_file',
         default_value=default_param,
@@ -158,13 +158,23 @@ def generate_launch_description():
     )
     obstacle_offset_arg = DeclareLaunchArgument(
         'obstacle_offset',
-        default_value='5.0',
-        description='Obstacle offset ahead of vehicle (m)',
+        default_value='12.0',
+        description='Obstacle offset distance from vehicle along obstacle_direction (m)',
     )
     obstacle_height_arg = DeclareLaunchArgument(
         'obstacle_height',
         default_value='0.5',
         description='Obstacle height (m)',
+    )
+    obstacle_direction_arg = DeclareLaunchArgument(
+        'obstacle_direction',
+        default_value='front',
+        description='Synthetic obstacle direction: front|left|right|rear',
+    )
+    obstacle_lateral_offset_arg = DeclareLaunchArgument(
+        'obstacle_lateral_offset',
+        default_value='0.0',
+        description='Additional obstacle shift along vehicle-left axis (m)',
     )
     clean_arg = DeclareLaunchArgument(
         'fake_clean_before_launch',
@@ -212,6 +222,8 @@ def generate_launch_description():
     base_frame_id = LaunchConfiguration('base_frame_id')
     obstacle_offset = LaunchConfiguration('obstacle_offset')
     obstacle_height = LaunchConfiguration('obstacle_height')
+    obstacle_direction = LaunchConfiguration('obstacle_direction')
+    obstacle_lateral_offset = LaunchConfiguration('obstacle_lateral_offset')
     bringup_namespace = LaunchConfiguration('bringup_namespace')
     sensing_namespace = LaunchConfiguration('sensing_namespace')
 
@@ -229,7 +241,7 @@ def generate_launch_description():
         output='screen',
         condition=IfCondition(clean_before_launch),
     )
-    # HH_260112 Namespace bringup utilities under /bringup with short names.
+    # Namespace bringup utilities under /bringup with short names.
     fake_node = Node(
         package='camrod_bringup',
         executable='fake_sensor_publisher.py',
@@ -239,7 +251,7 @@ def generate_launch_description():
         parameters=[
             param_file,
             {
-                # HH_260109 Default fake sensor settings (overridable via launch args).
+                # Default fake sensor settings (overridable via launch args).
                 'map_path': map_path,
                 'origin_lat': ParameterValue(origin_lat, value_type=float),
                 'origin_lon': ParameterValue(origin_lon, value_type=float),
@@ -253,13 +265,15 @@ def generate_launch_description():
                 'base_frame_id': base_frame_id,
                 'obstacle_offset': ParameterValue(obstacle_offset, value_type=float),
                 'obstacle_height': ParameterValue(obstacle_height, value_type=float),
+                'obstacle_direction': obstacle_direction,
+                'obstacle_lateral_offset': ParameterValue(obstacle_lateral_offset, value_type=float),
             },
         ],
     )
 
     # 2026-03-03: In sim mode, still launch numeric lidar/radar cost-grid nodes
     # so the planning stack sees the same topic graph as hardware mode.
-    # HH_260421: fake_sensor_publisher also mirrors obstacle cloud to
+    # fake_sensor_publisher also mirrors obstacle cloud to
     # /sensing/lidar/points_filtered for lidar-cost-grid input consistency.
     # Radar cost grid will remain empty until /sensing/radar/*/range sources are provided.
     lidar_cost_grid = Node(
@@ -302,6 +316,8 @@ def generate_launch_description():
         base_frame_arg,
         obstacle_offset_arg,
         obstacle_height_arg,
+        obstacle_direction_arg,
+        obstacle_lateral_offset_arg,
         fake_node,
         lidar_cost_grid,
         radar_cost_grid,

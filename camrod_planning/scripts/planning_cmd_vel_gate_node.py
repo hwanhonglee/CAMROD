@@ -5,8 +5,11 @@
 from __future__ import annotations
 
 import math
+import os
+from dataclasses import dataclass
 
 import rclpy
+from avg_msgs.msg import AvgLocalizationMode
 from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import OccupancyGrid, Odometry
 from rcl_interfaces.msg import SetParametersResult
@@ -15,6 +18,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rclpy.time import Time
 from std_msgs.msg import Bool
 from tf2_ros import Buffer, TransformException, TransformListener
+import yaml
 
 
 def _declare_with_alias(node: Node, canonical_name: str, default_value, *legacy_names):
@@ -38,6 +42,26 @@ def _declare_with_alias(node: Node, canonical_name: str, default_value, *legacy_
                 f"different values. Using '{canonical_name}'."
             )
     return value
+
+
+@dataclass
+class YawAlignmentZone:
+    """Per-zone yaw alignment policy."""
+
+    zone_id: str
+    x: float
+    y: float
+    z: float
+    target_yaw_rad: float
+    activation_radius_m: float
+    lock_radius_m: float
+    position_tolerance_m: float
+    yaw_tolerance_deg: float
+    yaw_tolerance_per_meter_deg: float
+    hold_s: float
+    angular_kp: float
+    max_angular_z: float
+    max_approach_linear_x: float
 
 
 class PlanningCmdVelGateNode(Node):
@@ -70,6 +94,30 @@ class PlanningCmdVelGateNode(Node):
         self.publish_zero_when_blocked = bool(
             self.declare_parameter("publish_zero_when_blocked", True).value
         )
+        # HH_260427: When localization recovers from DR_ONLY to NORMAL, force
+        # a short stop-hold window so downstream stack can settle the recovered pose.
+        self.enable_gnss_recovery_hold = bool(
+            self.declare_parameter("enable_gnss_recovery_hold", True).value
+        )
+        self.localization_mode_topic = str(
+            self.declare_parameter("localization_mode_topic", "/localization/mode").value
+        )
+        self.gnss_recovery_hold_s = float(
+            _declare_with_alias(self, "gnss_recovery_hold_s", 2.0, "gnss_recovery_hold_sec")
+        )
+        # Default transition condition: DR_ONLY(2)+ -> NORMAL(1).
+        self.gnss_recovery_source_mode_min = int(
+            self.declare_parameter(
+                "gnss_recovery_source_mode_min",
+                int(AvgLocalizationMode.DR_ONLY),
+            ).value
+        )
+        self.gnss_recovery_target_mode = int(
+            self.declare_parameter(
+                "gnss_recovery_target_mode",
+                int(AvgLocalizationMode.NORMAL),
+            ).value
+        )
 
         # Costmap-based stop options.
         self.enable_cost_stop = bool(
@@ -85,7 +133,8 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("pose_topic", "/localization/pose").value
         )
         self.odometry_topic = str(
-            self.declare_parameter("odometry_topic", "/localization/vio/odometry").value
+            # HH_260426: VIO stack is disabled; use localization fallback odometry.
+            self.declare_parameter("odometry_topic", "/localization/fallback/odometry").value
         )
         self.pose_source_preference = str(
             self.declare_parameter("pose_source_preference", "odometry").value
@@ -173,6 +222,23 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("unavoidable_cluster_min_ratio", 0.25).value
         )
 
+        # Yaw-alignment zone options.
+        # When enabled, robot entering configured map zone must align heading
+        # before full cmd_vel passthrough. Zone coordinates/yaw should be
+        # lanelet2-derived keypoints for deterministic behavior.
+        self.enable_yaw_alignment_zone = bool(
+            self.declare_parameter("enable_yaw_alignment_zone", False).value
+        )
+        self.yaw_alignment_frame_id = str(
+            self.declare_parameter("yaw_alignment_frame_id", "map").value
+        )
+        self.yaw_alignment_zones_file = str(
+            self.declare_parameter("yaw_alignment_zones_file", "").value
+        )
+        self.yaw_alignment_exit_margin_m = float(
+            self.declare_parameter("yaw_alignment_exit_margin_m", 0.3).value
+        )
+
         # HH_260422: _enabled becomes True when /planning/engage publishes True.
         #   True + _estop==False -> passes /planning/cmd_vel_raw through to /planning/cmd_vel.
         #   False -> blocks nav2 cmd_vel; publish_zero_when_blocked=True sends zero Twist downstream.
@@ -186,10 +252,14 @@ class PlanningCmdVelGateNode(Node):
         # HH_260422: _cost_blocked_until is the monotonic timestamp until which cost-stop keeps the gate closed.
         #   Gate remains blocked while time.monotonic() < _cost_blocked_until (cost_stop_hold_s duration).
         self._cost_blocked_until = 0.0
+        # HH_260427: Recovery hold timestamp after DR_ONLY -> NORMAL transition.
+        self._gnss_recovery_blocked_until = 0.0
+        self._last_localization_mode_value: int | None = None
         self._last_unavoidable_cluster_cells = 0
         self._last_unavoidable_cluster_ratio = 0.0
         self._last_tf_warn_sec = 0.0
         self._last_empty_corridor_warn_sec = 0.0
+        self._last_yaw_align_log_sec = 0.0
 
         # HH_260422: _current_speed holds the latest forward body velocity (m/s) from odometry.
         #   Used to compute speed-dependent front lookahead. Stays 0.0 until first odometry arrives.
@@ -199,6 +269,13 @@ class PlanningCmdVelGateNode(Node):
         self._last_grid = None
         self._last_pose = None
         self._last_odom = None
+
+        # Runtime state for yaw-alignment gate.
+        self._yaw_alignment_zones: list[YawAlignmentZone] = []
+        self._active_yaw_zone_id: str | None = None
+        self._active_yaw_zone_hold_start_sec: float | None = None
+        self._active_yaw_zone_locked = False
+        self._load_yaw_alignment_zones()
 
         self.pub_cmd = self.create_publisher(Twist, self.output_topic, 10)
         self.pub_state = self.create_publisher(Bool, self.state_topic, 10)
@@ -213,6 +290,14 @@ class PlanningCmdVelGateNode(Node):
         self.sub_engage = self.create_subscription(
             Bool, self.engage_topic, self._on_engage, 10
         )
+        self.sub_localization_mode = None
+        if self.enable_gnss_recovery_hold:
+            self.sub_localization_mode = self.create_subscription(
+                AvgLocalizationMode,
+                self.localization_mode_topic,
+                self._on_localization_mode,
+                20,
+            )
 
         self.sub_estop = None
         if self.use_estop_topic:
@@ -224,14 +309,16 @@ class PlanningCmdVelGateNode(Node):
         self.sub_pose = None
         self.sub_odom = None
         if self.enable_cost_stop:
-            # HH_260422: Merged cost grid — single subscription for all directional checks.
+            # Merged cost grid for front/side/rear cost-stop checks.
             cost_qos = QoSProfile(depth=10)
             cost_qos.reliability = QoSReliabilityPolicy.RELIABLE
             cost_qos.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
             self.sub_cost_grid = self.create_subscription(
                 OccupancyGrid, self.cost_grid_topic, self._on_cost_grid, cost_qos
             )
-            # Pose topic is kept as fallback when TF lookup is temporarily unavailable.
+        if self.enable_cost_stop or self.enable_yaw_alignment_zone:
+            # Pose/odometry are also required by yaw-alignment zone logic.
+            # Keep pose topic as fallback when TF lookup is temporarily unavailable.
             self.sub_pose = self.create_subscription(
                 PoseStamped, self.pose_topic, self._on_pose, 10
             )
@@ -249,16 +336,20 @@ class PlanningCmdVelGateNode(Node):
             f"engage_topic={self.engage_topic} "
             f"estop_topic={self.estop_topic if self.use_estop_topic else '(disabled)'} "
             f"allow_on_start={'true' if self.allow_on_start else 'false'} "
+            f"gnss_recovery_hold={'true' if self.enable_gnss_recovery_hold else 'false'} "
+            f"gnss_recovery_hold_s={self.gnss_recovery_hold_s:.2f}s "
             f"cost_stop={'true' if self.enable_cost_stop else 'false'} "
             f"inflation_grid={self.cost_grid_topic} "
             f"speed_dependent={'true' if self.enable_speed_dependent_lookahead else 'false'} "
             f"front_lookahead=[{self.front_lookahead_min_m:.1f},{self.front_lookahead_max_m:.1f}]m "
             f"side_rear={'true' if self.enable_side_rear_cost_stop else 'false'} "
+            f"yaw_zone_align={'true' if self.enable_yaw_alignment_zone else 'false'} "
             f"unavoidable_stop={'true' if self.enable_unavoidable_stop else 'false'}"
         )
 
     # Applies runtime parameter updates for gate/cost-stop tuning.
     def _on_set_parameters(self, params) -> SetParametersResult:
+        reload_yaw_zone_cfg = False
         for p in params:
             if p.name == "enable_cost_stop":
                 self.enable_cost_stop = bool(p.value)
@@ -311,6 +402,29 @@ class PlanningCmdVelGateNode(Node):
                 self.allow_on_start = bool(p.value)
             elif p.name == "publish_zero_when_blocked":
                 self.publish_zero_when_blocked = bool(p.value)
+            elif p.name == "enable_gnss_recovery_hold":
+                self.enable_gnss_recovery_hold = bool(p.value)
+            elif p.name == "gnss_recovery_hold_s":
+                self.gnss_recovery_hold_s = float(p.value)
+            elif p.name == "gnss_recovery_hold_sec":
+                # Legacy runtime parameter alias.
+                self.gnss_recovery_hold_s = float(p.value)
+            elif p.name == "gnss_recovery_source_mode_min":
+                self.gnss_recovery_source_mode_min = int(p.value)
+            elif p.name == "gnss_recovery_target_mode":
+                self.gnss_recovery_target_mode = int(p.value)
+            elif p.name == "enable_yaw_alignment_zone":
+                self.enable_yaw_alignment_zone = bool(p.value)
+                reload_yaw_zone_cfg = True
+            elif p.name == "yaw_alignment_frame_id":
+                self.yaw_alignment_frame_id = str(p.value)
+            elif p.name == "yaw_alignment_zones_file":
+                self.yaw_alignment_zones_file = str(p.value)
+                reload_yaw_zone_cfg = True
+            elif p.name == "yaw_alignment_exit_margin_m":
+                self.yaw_alignment_exit_margin_m = float(p.value)
+        if reload_yaw_zone_cfg:
+            self._load_yaw_alignment_zones()
         return SetParametersResult(successful=True)
 
     # Returns whether cmd passthrough is currently allowed.
@@ -318,6 +432,8 @@ class PlanningCmdVelGateNode(Node):
         if not (self._enabled and not self._estop):
             return False
         if self._cost_blocked_until > self.get_clock().now().nanoseconds * 1e-9:
+            return False
+        if self._gnss_recovery_blocked_until > self.get_clock().now().nanoseconds * 1e-9:
             return False
         return True
 
@@ -338,6 +454,17 @@ class PlanningCmdVelGateNode(Node):
                 self._publish_zero()
             return
         if self._effective_enabled():
+            # Keep callback robust for lightweight unit-test doubles that may
+            # bypass __init__ and not populate newly added yaw-zone fields.
+            yaw_alignment_enabled = bool(
+                getattr(self, "enable_yaw_alignment_zone", False)
+            )
+            yaw_alignment_zones = getattr(self, "_yaw_alignment_zones", [])
+            if yaw_alignment_enabled and yaw_alignment_zones:
+                override_cmd = self._apply_yaw_alignment_gate(msg)
+                if override_cmd is not None:
+                    self.pub_cmd.publish(override_cmd)
+                    return
             self.pub_cmd.publish(msg)
             return
         if self.publish_zero_when_blocked:
@@ -362,6 +489,37 @@ class PlanningCmdVelGateNode(Node):
     # Handles engage messages.
     def _on_engage(self, msg: Bool) -> None:
         self._set_enabled(msg.data)
+
+    # Handles localization mode updates and applies DR->NORMAL recovery hold.
+    def _on_localization_mode(self, msg: AvgLocalizationMode) -> None:
+        current_mode = int(msg.value)
+        prev_mode = self._last_localization_mode_value
+        self._last_localization_mode_value = current_mode
+        if prev_mode is None or not self.enable_gnss_recovery_hold:
+            return
+        if self.gnss_recovery_hold_s <= 0.0:
+            return
+
+        recovered = (
+            prev_mode >= int(self.gnss_recovery_source_mode_min)
+            and current_mode == int(self.gnss_recovery_target_mode)
+        )
+        if not recovered:
+            return
+
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        self._gnss_recovery_blocked_until = max(
+            self._gnss_recovery_blocked_until,
+            now_sec + self.gnss_recovery_hold_s,
+        )
+        self.get_logger().warn(
+            "cmd_vel hold after localization recovery: "
+            f"mode {prev_mode}->{current_mode}, "
+            f"hold={self.gnss_recovery_hold_s:.2f}s"
+        )
+        self._publish_state()
+        if self.publish_zero_when_blocked:
+            self._publish_zero()
 
     # Handles e-stop messages.
     def _on_estop(self, msg: Bool) -> None:
@@ -490,6 +648,239 @@ class PlanningCmdVelGateNode(Node):
 
         return False
 
+    # Loads yaw-alignment zones from YAML (if enabled).
+    def _load_yaw_alignment_zones(self) -> None:
+        self._yaw_alignment_zones = []
+        self._active_yaw_zone_id = None
+        self._active_yaw_zone_hold_start_sec = None
+        self._active_yaw_zone_locked = False
+
+        if not self.enable_yaw_alignment_zone:
+            return
+
+        cfg = self.yaw_alignment_zones_file.strip()
+        if not cfg:
+            self.get_logger().warn(
+                "yaw alignment zone is enabled but yaw_alignment_zones_file is empty; "
+                "feature remains inactive"
+            )
+            return
+        if not os.path.isfile(cfg):
+            self.get_logger().error(f"yaw alignment zones file not found: {cfg}")
+            return
+
+        try:
+            with open(cfg, "r", encoding="utf-8") as f:
+                raw = yaml.safe_load(f) or {}
+        except Exception as exc:
+            self.get_logger().error(
+                f"failed to load yaw alignment zones yaml ({cfg}): {exc}"
+            )
+            return
+
+        container = raw.get("yaw_alignment_zones", raw)
+        if not isinstance(container, dict):
+            self.get_logger().error(f"invalid yaw alignment zones format: {cfg}")
+            return
+
+        frame_override = str(container.get("frame_id", "")).strip()
+        if frame_override:
+            self.yaw_alignment_frame_id = frame_override
+        zones = container.get("zones", [])
+        if not isinstance(zones, list):
+            self.get_logger().error(f"invalid zones list in {cfg}")
+            return
+
+        loaded: list[YawAlignmentZone] = []
+        for idx, zone_cfg in enumerate(zones):
+            if not isinstance(zone_cfg, dict):
+                continue
+            try:
+                zone_id = str(zone_cfg.get("id", f"zone_{idx+1}")).strip()
+                if not zone_id:
+                    zone_id = f"zone_{idx+1}"
+                x = float(zone_cfg.get("x", 0.0))
+                y = float(zone_cfg.get("y", 0.0))
+                z = float(zone_cfg.get("z", 0.0))
+                if "yaw_deg" in zone_cfg:
+                    yaw_rad = math.radians(float(zone_cfg.get("yaw_deg", 0.0)))
+                elif "next_x" in zone_cfg and "next_y" in zone_cfg:
+                    # Optional tangent-style yaw: from zone center to next waypoint.
+                    yaw_rad = math.atan2(
+                        float(zone_cfg["next_y"]) - y,
+                        float(zone_cfg["next_x"]) - x,
+                    )
+                else:
+                    self.get_logger().warn(
+                        f"yaw zone '{zone_id}' skipped: yaw_deg or next_x/next_y required"
+                    )
+                    continue
+
+                position_tolerance_m = max(
+                    0.05, float(zone_cfg.get("position_tolerance_m", 0.10))
+                )
+                activation_radius_m = max(
+                    position_tolerance_m + 0.05,
+                    float(zone_cfg.get("activation_radius_m", 1.2)),
+                )
+                lock_radius_default = max(
+                    position_tolerance_m + 0.15,
+                    activation_radius_m * 0.6,
+                )
+                lock_radius_m = max(
+                    position_tolerance_m,
+                    float(zone_cfg.get("lock_radius_m", lock_radius_default)),
+                )
+
+                loaded.append(
+                    YawAlignmentZone(
+                        zone_id=zone_id,
+                        x=x,
+                        y=y,
+                        z=z,
+                        target_yaw_rad=self._normalize_yaw(yaw_rad),
+                        activation_radius_m=activation_radius_m,
+                        lock_radius_m=lock_radius_m,
+                        position_tolerance_m=position_tolerance_m,
+                        yaw_tolerance_deg=max(
+                            1.0, float(zone_cfg.get("yaw_tolerance_deg", 8.0))
+                        ),
+                        yaw_tolerance_per_meter_deg=max(
+                            0.0,
+                            float(zone_cfg.get("yaw_tolerance_per_meter_deg", 4.0)),
+                        ),
+                        hold_s=max(0.0, float(zone_cfg.get("hold_s", 0.5))),
+                        angular_kp=max(0.1, float(zone_cfg.get("angular_kp", 1.8))),
+                        max_angular_z=max(
+                            0.05, float(zone_cfg.get("max_angular_z", 0.8))
+                        ),
+                        max_approach_linear_x=max(
+                            0.0,
+                            float(zone_cfg.get("max_approach_linear_x", 0.25)),
+                        ),
+                    )
+                )
+            except Exception as exc:
+                self.get_logger().warn(
+                    f"failed to parse yaw zone index={idx}: {exc}"
+                )
+
+        self._yaw_alignment_zones = loaded
+        self.get_logger().info(
+            "yaw alignment zones loaded: "
+            f"count={len(self._yaw_alignment_zones)} "
+            f"frame={self.yaw_alignment_frame_id} file={cfg}"
+        )
+
+    # Applies yaw-alignment gate and returns override cmd when lock is active.
+    def _apply_yaw_alignment_gate(self, cmd_in: Twist) -> Twist | None:
+        pose_candidates = self._resolve_pose_candidates(self.yaw_alignment_frame_id)
+        if not pose_candidates:
+            return None
+        source_label, pose = pose_candidates[0]
+        pose_x, pose_y, pose_yaw = pose
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+
+        zone = self._select_active_yaw_zone(pose_x, pose_y)
+        if zone is None:
+            self._active_yaw_zone_id = None
+            self._active_yaw_zone_hold_start_sec = None
+            self._active_yaw_zone_locked = False
+            return None
+
+        if zone.zone_id != self._active_yaw_zone_id:
+            self._active_yaw_zone_id = zone.zone_id
+            self._active_yaw_zone_hold_start_sec = None
+            self._active_yaw_zone_locked = False
+
+        # Once zone requirement is satisfied, keep unlocked passthrough until
+        # robot exits the zone + margin to avoid re-lock oscillation.
+        if self._active_yaw_zone_locked:
+            return None
+
+        dist_m = math.hypot(pose_x - zone.x, pose_y - zone.y)
+        if dist_m > zone.lock_radius_m:
+            # Track zone entry in activation ring but only enforce inside lock radius.
+            self._active_yaw_zone_hold_start_sec = None
+            return None
+
+        yaw_error_rad = self._normalize_yaw(zone.target_yaw_rad - pose_yaw)
+        yaw_error_deg = abs(math.degrees(yaw_error_rad))
+        pos_error_m = max(0.0, dist_m - zone.position_tolerance_m)
+        yaw_tol_deg_eff = (
+            zone.yaw_tolerance_deg
+            + zone.yaw_tolerance_per_meter_deg * pos_error_m
+        )
+
+        yaw_ok = yaw_error_deg <= yaw_tol_deg_eff
+        pos_ok = dist_m <= zone.position_tolerance_m
+        if yaw_ok and pos_ok:
+            if self._active_yaw_zone_hold_start_sec is None:
+                self._active_yaw_zone_hold_start_sec = now_sec
+            hold_elapsed = now_sec - self._active_yaw_zone_hold_start_sec
+            if hold_elapsed >= zone.hold_s:
+                self._active_yaw_zone_locked = True
+                self.get_logger().info(
+                    f"yaw alignment satisfied: zone={zone.zone_id} source={source_label} "
+                    f"dist={dist_m:.2f}m yaw_err={yaw_error_deg:.2f}deg hold={hold_elapsed:.2f}s"
+                )
+                return None
+        else:
+            self._active_yaw_zone_hold_start_sec = None
+
+        cmd = Twist()
+        gain_scale = 1.0 + min(1.0, pos_error_m)
+        cmd.angular.z = self._clamp(
+            zone.angular_kp * gain_scale * yaw_error_rad,
+            -zone.max_angular_z,
+            zone.max_angular_z,
+        )
+        if dist_m > zone.position_tolerance_m:
+            # Position-aware coupling: large yaw error suppresses approach speed.
+            yaw_stop_deg = max(1.0, zone.yaw_tolerance_deg * 2.5)
+            yaw_scale = max(0.0, 1.0 - (yaw_error_deg / yaw_stop_deg))
+            cmd.linear.x = self._clamp(
+                float(cmd_in.linear.x),
+                -zone.max_approach_linear_x,
+                zone.max_approach_linear_x,
+            ) * yaw_scale
+        else:
+            cmd.linear.x = 0.0
+        cmd.linear.y = 0.0
+        cmd.linear.z = 0.0
+
+        if (now_sec - self._last_yaw_align_log_sec) >= 1.0:
+            self._last_yaw_align_log_sec = now_sec
+            self.get_logger().warn(
+                f"yaw alignment active: zone={zone.zone_id} source={source_label} "
+                f"dist={dist_m:.2f}m yaw_err={yaw_error_deg:.2f}deg "
+                f"yaw_tol={yaw_tol_deg_eff:.2f}deg"
+            )
+        return cmd
+
+    # Selects currently active zone by nearest-distance rule with exit hysteresis.
+    def _select_active_yaw_zone(self, x: float, y: float) -> YawAlignmentZone | None:
+        if not self._yaw_alignment_zones:
+            return None
+
+        zones_by_id = {z.zone_id: z for z in self._yaw_alignment_zones}
+        if self._active_yaw_zone_id in zones_by_id:
+            active = zones_by_id[self._active_yaw_zone_id]
+            active_dist = math.hypot(x - active.x, y - active.y)
+            if active_dist <= (active.activation_radius_m + self.yaw_alignment_exit_margin_m):
+                return active
+
+        nearest: YawAlignmentZone | None = None
+        nearest_dist = float("inf")
+        for zone in self._yaw_alignment_zones:
+            dist = math.hypot(x - zone.x, y - zone.y)
+            if dist > zone.activation_radius_m:
+                continue
+            if dist < nearest_dist:
+                nearest = zone
+                nearest_dist = dist
+        return nearest
+
     # Samples a corridor in the direction (yaw + yaw_offset) for one pose candidate.
     def _sample_cost_corridor(
         self,
@@ -514,19 +905,23 @@ class PlanningCmdVelGateNode(Node):
         cos_y = self._cos(effective_yaw)
         sin_y = self._sin(effective_yaw)
 
-        step = res
-        x = 0.0
         half_w = scan_width * 0.5
+        # Use integer-counted steps (ix * res / iy * res) to avoid floating-point
+        # accumulation drift from repeated addition; drift can cause systematic
+        # cell misses that break 4-connectivity in the BFS cluster check.
+        n_x = int(math.floor(scan_lookahead / res + 1e-9)) + 1
+        n_y = int(math.floor(scan_width / res + 1e-9)) + 1
         total_cells = 0
         lethal_cells: list[tuple[int, int]] = []
 
-        while x <= scan_lookahead:
-            y = -half_w
-            while y <= half_w:
+        for ix in range(n_x):
+            x = ix * res
+            for iy in range(n_y):
+                y = -half_w + iy * res
                 wx = pose_x + x * cos_y - y * sin_y
                 wy = pose_y + x * sin_y + y * cos_y
-                mx = int((wx - origin_x) / res)
-                my = int((wy - origin_y) / res)
+                mx = int(round((wx - origin_x) / res))
+                my = int(round((wy - origin_y) / res))
                 if 0 <= mx < w and 0 <= my < h:
                     idx = my * w + mx
                     cost = int(grid.data[idx])
@@ -535,8 +930,6 @@ class PlanningCmdVelGateNode(Node):
                         return True, total_cells, lethal_cells
                     if cost >= self.unavoidable_lethal_threshold:
                         lethal_cells.append((mx, my))
-                y += step
-            x += step
 
         return False, total_cells, lethal_cells
 
@@ -553,14 +946,26 @@ class PlanningCmdVelGateNode(Node):
             "pose_topic": [],
         }
 
-        tf_pose = self._lookup_tf_pose(target_frame, self.robot_base_frame)
-        if tf_pose is not None:
-            source_candidates["tf_robot_base"].append(("tf_robot_base", tf_pose))
-
         source_candidates["odometry"] = self._resolve_odometry_candidates(target_frame)
         source_candidates["pose_topic"] = self._resolve_pose_topic_candidates(target_frame)
 
         preference = self.pose_source_preference.strip().lower()
+        # HH_260426: Accept legacy launch value alias.
+        if preference == "odometry_topic":
+            preference = "odometry"
+        # Avoid unnecessary TF lookup warnings when odom/pose candidates are already available.
+        need_tf_lookup = (
+            preference == "tf_robot_base"
+            or (
+                not source_candidates["odometry"]
+                and not source_candidates["pose_topic"]
+            )
+        )
+        if need_tf_lookup:
+            tf_pose = self._lookup_tf_pose(target_frame, self.robot_base_frame)
+            if tf_pose is not None:
+                source_candidates["tf_robot_base"].append(("tf_robot_base", tf_pose))
+
         ordered_sources = {
             "tf_robot_base": ["tf_robot_base", "odometry", "pose_topic"],
             "odometry": ["odometry", "tf_robot_base", "pose_topic"],
@@ -696,6 +1101,9 @@ class PlanningCmdVelGateNode(Node):
             and ratio >= self.unavoidable_cluster_min_ratio
         )
 
+    def _clamp(self, value: float, lo: float, hi: float) -> float:
+        return max(lo, min(hi, value))
+
     def _yaw_from_quat(self, q) -> float:
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
@@ -725,10 +1133,15 @@ def main(args=None) -> None:
     node = PlanningCmdVelGateNode()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
         node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

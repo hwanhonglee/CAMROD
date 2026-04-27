@@ -16,22 +16,12 @@
 
     # HH_260422: Write register 0x0208 at startup to configure max detection angle.
     #   angle_config_value 5 = 75° on DFRobot SEN0592 (1=15° 2=30° 3=45° 4=60° 5=75°).
-    #   Set write_angle_config: false if sensors are already pre-configured.
     write_angle_config: true
     angle_config_value: 5
 
-    # HH_260422: Per-sensor max detection range (m), ordered to match sensor_names below.
-    #   Carried in Range.max_range for software filtering in cost_grid_node.
-    #   FRONT 1.5m / SIDE 0.8m / REAR 0.5m — see sensor_range_config_mm for physics basis.
+    # HH_260422: Per-sensor max detection range (m). Order: REAR, LEFT2, LEFT1, RIGHT2, RIGHT1, FRONT.
     sensor_max_ranges_m: [0.50, 0.80, 0.80, 0.80, 0.80, 1.50]
-
-    # HH_260422: Hardware detection range per sensor written to register 0x021F (mm).
-    #   Stops the sensor from even reporting objects beyond this distance.
-    #   Stopping-distance basis (wet road, μ=0.4, 150ms reaction, 0.3m margin):
-    #     FRONT 1500mm: covers 5km/h stop (0.76m) + LiDAR blind zone (0–0.3m from bumper)
-    #     SIDE  800mm:  near-field lateral proximity while traversing (~0.4m robot edge + 0.4m)
-    #     REAR  500mm:  covers 3km/h reverse stop (0.51m)
-    #   Order: REAR, LEFT2, LEFT1, RIGHT2, RIGHT1, FRONT
+    # HH_260422: Hardware range limit (mm) written to register 0x021F. Same order as above.
     sensor_range_config_mm: [500, 800, 800, 800, 800, 1500]
 
     # Aggregated sensing message output

@@ -67,14 +67,10 @@ graph LR
 ## Launch
 
 ```bash
-# Full perception stack
+# Full stack (fusion + lidar clustering)
 ros2 launch camrod_perception perception.launch.py
 
-# LiDAR clustering only (no fusion)
-ros2 launch camrod_perception perception.launch.py \
-  enable_lidar_obstacle:=true
-
-# Disable LiDAR clustering
+# Disable LiDAR clustering (fusion only)
 ros2 launch camrod_perception perception.launch.py \
   enable_lidar_obstacle:=false
 ```
