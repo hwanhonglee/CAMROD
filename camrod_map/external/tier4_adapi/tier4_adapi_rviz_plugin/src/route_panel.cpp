@@ -41,10 +41,13 @@ RoutePanel::RoutePanel(QWidget * parent) : rviz_common::Panel(parent)
   planning_enable_state_ = new QLabel("engaged: false");
   planning_estop_state_ = new QLabel("e-stop: false");
   planning_cmd_vel_state_ = new QLabel("cmd_vel active: false");
+  // HH_260428: Shortcut to send the robot back to the drop zone via the state machine.
+  drop_zone_btn_ = new QPushButton("go to drop zone");
 
   planning_enable_->setCheckable(true);
   connect(
     planning_enable_, &QPushButton::clicked, this, &RoutePanel::onPlanningEnableToggled);
+  connect(drop_zone_btn_, &QPushButton::clicked, this, &RoutePanel::onGoToDropZone);
 
   waypoints_mode_->setCheckable(true);
   waypoints_reset_->setDisabled(true);
@@ -114,6 +117,8 @@ RoutePanel::RoutePanel(QWidget * parent) : rviz_common::Panel(parent)
     local->addWidget(planning_enable_state_, 1, 0);
     local->addWidget(planning_estop_state_, 1, 1);
     local->addWidget(planning_cmd_vel_state_, 2, 0, 1, 2);
+    // HH_260428: Drop zone shortcut — triggers state machine return-to-drop-zone.
+    local->addWidget(drop_zone_btn_, 3, 0, 1, 2);
     group->setLayout(local);
     layout->addWidget(group);
   }
@@ -130,6 +135,9 @@ void RoutePanel::onInitialize()
 
   // HH_260409: Use a single engage trigger topic for planning gate control.
   pub_engage_ = node->create_publisher<std_msgs::msg::Bool>("/planning/engage", rclcpp::QoS(10));
+  // HH_260428: Drop zone return publisher — state machine sends robot to drop_zone keypoint.
+  pub_return_to_drop_zone_ = node->create_publisher<std_msgs::msg::Bool>(
+    "/planning/state_machine/return_to_drop_zone", rclcpp::QoS(10));
   sub_engaged_ = node->create_subscription<std_msgs::msg::Bool>(
     "/planning/engaged", rclcpp::QoS(10),
     std::bind(&RoutePanel::onPlanningEngaged, this, std::placeholders::_1));
@@ -297,6 +305,14 @@ void RoutePanel::onPlanningEnableToggled(bool enabled)
   msg.data = enabled;
   pub_engage_->publish(msg);
   planning_enable_->setText(enabled ? "planning engage: true" : "planning engage: false");
+}
+
+// HH_260428: Publish return-to-drop-zone trigger to the planning state machine.
+void RoutePanel::onGoToDropZone()
+{
+  std_msgs::msg::Bool msg;
+  msg.data = true;
+  pub_return_to_drop_zone_->publish(msg);
 }
 
 }  // namespace tier4_adapi_rviz_plugins

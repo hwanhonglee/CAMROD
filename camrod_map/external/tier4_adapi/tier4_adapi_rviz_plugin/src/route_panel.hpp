@@ -26,6 +26,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/panel.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
 
@@ -61,12 +62,15 @@ private:
   QLabel * planning_enable_state_;
   QLabel * planning_estop_state_;
   QLabel * planning_cmd_vel_state_;
+  // HH_260428: Go-to-drop-zone shortcut button for simulation / manual testing.
+  QPushButton * drop_zone_btn_;
 
   rclcpp::Subscription<PoseStamped>::SharedPtr sub_pose_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_engaged_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_estop_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_cmd_vel_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_engage_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_return_to_drop_zone_;
   rclcpp::TimerBase::SharedPtr planning_status_timer_;
 
   bool planning_engaged_{false};
@@ -96,6 +100,8 @@ private slots:
   void onWaypointsReset();
   void onWaypointsApply();
   void onPlanningEnableToggled(bool enabled);
+  // HH_260428: Trigger state machine return-to-drop-zone.
+  void onGoToDropZone();
 };
 
 }  // namespace tier4_adapi_rviz_plugins

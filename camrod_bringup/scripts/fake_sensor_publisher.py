@@ -112,6 +112,13 @@ class FakeSensorPublisher(Node):
         self.max_cmd_speed_mps = float(
             self.declare_parameter("max_cmd_speed_mps", 2.5).value
         )
+        # HH_260428: Free navigation sim mode — integrates cmd_vel (linear.x + angular.z)
+        # as a unicycle model instead of constraining position to the centerline.
+        # Required for camping site navigation testing where the robot must leave the
+        # lanelet centerline. When false (default), behavior is unchanged (centerline-only).
+        self.use_free_nav_sim = bool(
+            self.declare_parameter("use_free_nav_sim", False).value
+        )
         # 2026-02-05 14:37: Skip crosswalk lanelets to prevent centerline jumps.
         self.exclude_crosswalk = self.declare_parameter("exclude_crosswalk", True).value
         # 2026-02-25: clearer alias for initial path anchor.
@@ -306,7 +313,18 @@ class FakeSensorPublisher(Node):
         self._motion_distance = 0.0
         self._last_timer_time = time.time()
         self._cmd_linear_x = 0.0
+        self._cmd_angular_z = 0.0
         self._last_cmd_time = None
+        # HH_260428: Free nav state — initialized from the path start point so the
+        # robot begins at the same location regardless of mode.
+        self._free_nav_x = 0.0
+        self._free_nav_y = 0.0
+        self._free_nav_yaw = 0.0
+        if self.use_free_nav_sim:
+            (x0, y0, _, _, _), yaw0 = self._sample_path(0.0)
+            self._free_nav_x = x0
+            self._free_nav_y = y0
+            self._free_nav_yaw = yaw0
 
         # Publish fake sensors with module-prefixed topics.
         self.pub_navsat = self.create_publisher(NavSatFix, "/sensing/gnss/ublox_gps_node/fix", 10)
@@ -383,13 +401,13 @@ class FakeSensorPublisher(Node):
 
     # Handles the `_on_cmd_vel` callback.
     def _on_cmd_vel(self, msg: Twist):
-        # Track forward command for motion integration.
-        # Keep only linear.x to remain lanelet-path constrained.
         vx = float(msg.linear.x)
         vmax = max(0.0, float(self.max_cmd_speed_mps))
         if vmax > 0.0:
             vx = max(-vmax, min(vmax, vx))
         self._cmd_linear_x = vx
+        # HH_260428: Track angular.z for free nav mode (unicycle steering).
+        self._cmd_angular_z = float(msg.angular.z)
         self._last_cmd_time = time.time()
 
     # Implements `_load_centerline_path` behavior.
@@ -569,6 +587,14 @@ class FakeSensorPublisher(Node):
             if selected_left is not None and selected_right is not None:
                 break
         return selected_left, selected_right
+
+    # HH_260428: Convert ENU map coordinates (x=east, y=north) to lat/lon.
+    # Uses flat-earth approximation; accurate to ~cm within a few km of origin.
+    def _xy_to_latlon(self, x, y):
+        lat = self.origin_lat + (y / WGS84_A) * (180.0 / math.pi)
+        cos_lat = math.cos(deg2rad(self.origin_lat))
+        lon = self.origin_lon + (x / (WGS84_A * cos_lat)) * (180.0 / math.pi)
+        return lat, lon
 
     # Implements `_build_path_from_way` behavior.
     def _build_path_from_way(self, way_nodes, nodes):
@@ -801,11 +827,26 @@ class FakeSensorPublisher(Node):
         else:
             motion_speed = self.speed_mps
 
-        self._motion_distance += motion_speed * dt
-        if not self.loop:
-            self._motion_distance = max(0.0, self._motion_distance)
-        dist = self._motion_distance
-        (x, y, z, lat, lon), yaw = self._sample_path(dist)
+        if self.use_free_nav_sim:
+            # HH_260428: Free nav mode — unicycle kinematics from cmd_vel.
+            # Integrates both linear.x and angular.z so Nav2 can steer the
+            # simulated robot off the lanelet centerline to reach camping sites.
+            if not holding and not self.freeze_motion and motion_speed != 0.0:
+                omega = self._cmd_angular_z if self.use_cmd_vel_for_motion else 0.0
+                self._free_nav_yaw += omega * dt
+                self._free_nav_x += motion_speed * math.cos(self._free_nav_yaw) * dt
+                self._free_nav_y += motion_speed * math.sin(self._free_nav_yaw) * dt
+            x = self._free_nav_x
+            y = self._free_nav_y
+            z = 0.0
+            yaw = self._free_nav_yaw
+            lat, lon = self._xy_to_latlon(x, y)
+        else:
+            self._motion_distance += motion_speed * dt
+            if not self.loop:
+                self._motion_distance = max(0.0, self._motion_distance)
+            dist = self._motion_distance
+            (x, y, z, lat, lon), yaw = self._sample_path(dist)
 
         # Create a pose message for downstream odometry/cloud outputs.
         pose_msg = PoseStamped()
