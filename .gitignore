@@ -6,3 +6,9 @@
 # Python cache artifacts.
 __pycache__/
 *.pyc
+
+# HH_260428: SDK installer binaries — download via setup scripts, not stored in git.
+# ZED SDK: https://www.stereolabs.com/developers/release
+# Orbbec SDK: https://github.com/orbbec/OrbbecSDK/releases
+disable/vio_bridge/sdk_installers/*.run
+disable/vio_bridge/sdk_installers/*.deb

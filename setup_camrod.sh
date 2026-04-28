@@ -115,6 +115,19 @@ clone_ext "https://github.com/open-navigation/opennav_docking.git"           "0.
 clone_ext "https://github.com/christianrauch/apriltag_ros.git"               "3.3.0"        "camrod_parking/external/apriltag_ros"
 clone_ext "https://github.com/christianrauch/apriltag_msgs.git"              "2.0.1"        "camrod_parking/external/apriltag_msgs"
 
+# ── VIO bridge SDK installers (disable/vio_bridge — not built by default) ────
+# HH_260428: These large SDK binaries are NOT stored in git. Download manually
+# only if you intend to enable the vio_bridge package.
+#
+#   ZED SDK (Ubuntu 22, CUDA 12.x):
+#     https://www.stereolabs.com/developers/release
+#     -> place .run file in disable/vio_bridge/sdk_installers/ and run it
+#
+#   Orbbec SDK (amd64 / arm64):
+#     https://github.com/orbbec/OrbbecSDK/releases
+#     -> place .deb file in disable/vio_bridge/sdk_installers/ and run:
+#        sudo dpkg -i OrbbecSDK_*.deb
+
 # ── rosdep ───────────────────────────────────────────────────────────────────
 if [[ "${DO_ROSDEP}" -eq 1 ]]; then
   log "rosdep install"
