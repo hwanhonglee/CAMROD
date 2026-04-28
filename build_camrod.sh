@@ -153,6 +153,29 @@ clone_or_update_repo() {
 # HH_260409: Some externals include prebuilt apt extraction trees
 # (e.g. tier4_adapi/vendor/*/extract/opt/ros/humble/share/*).
 # These are NOT source packages and must be skipped by colcon recursion.
+# System apt packages that rosdep does not automatically resolve but are required
+# for a full workspace build. Checked before every build; installed only if missing.
+REQUIRED_SYSTEM_PKGS=(
+  ros-humble-nav2-graceful-controller
+)
+
+ensure_system_packages() {
+  local missing=()
+  local pkg
+  for pkg in "${REQUIRED_SYSTEM_PKGS[@]}"; do
+    if ! dpkg -l "${pkg}" 2>/dev/null | grep -q "^ii"; then
+      missing+=("${pkg}")
+    fi
+  done
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    return 0
+  fi
+  log "install missing system packages: ${missing[*]}"
+  if ! sudo apt-get install -y "${missing[@]}"; then
+    log "WARN: apt-get install failed (no sudo or no network). Build may fail if packages are absent."
+  fi
+}
+
 mark_non_source_extract_trees() {
   local root
   mapfile -t roots < <(
@@ -173,18 +196,7 @@ if [[ "${DO_BOOTSTRAP}" -eq 1 ]]; then
   log "workspace root: ${WS_ROOT}"
   log "bootstrap externals (missing repos are cloned)"
 
-  if [[ -f "${SRC_ROOT}/.gitmodules" ]] && git -C "${SRC_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    if [[ "${UPDATE_EXTERNALS}" -eq 1 ]]; then
-      log "sync/update git submodules in src"
-      git -C "${SRC_ROOT}" submodule sync --recursive
-      git -C "${SRC_ROOT}" submodule update --init --recursive --remote
-    else
-      log "init submodules in src"
-      git -C "${SRC_ROOT}" submodule update --init --recursive
-    fi
-  fi
-
-  # Non-submodule externals that should exist for full workspace build.
+  # Externals that should exist for full workspace build.
   clone_or_update_repo "https://github.com/KumarRobotics/ublox.git" "master" \
     "camrod_sensing/external/ublox"
   clone_or_update_repo "https://github.com/cra-ros-pkg/robot_localization.git" "humble-devel" \
@@ -199,6 +211,18 @@ if [[ "${DO_BOOTSTRAP}" -eq 1 ]]; then
     "camrod_sensing/external/perception_pcl"
   clone_or_update_repo "https://github.com/ros-perception/laser_geometry.git" "ros2" \
     "camrod_planning/external/laser_geometry"
+  clone_or_update_repo "https://github.com/agilexrobotics/ugv_sdk.git" "main" \
+    "camrod_platform/external/ugv_sdk"
+  clone_or_update_repo "https://github.com/agilexrobotics/ranger_ros2.git" "humble" \
+    "camrod_platform/external/ranger_ros2"
+  clone_or_update_repo "https://github.com/open-navigation/opennav_docking.git" "0.0.2" \
+    "camrod_parking/external/opennav_docking"
+  clone_or_update_repo "https://github.com/christianrauch/apriltag_ros.git" "3.3.0" \
+    "camrod_parking/external/apriltag_ros"
+  clone_or_update_repo "https://github.com/christianrauch/apriltag_msgs.git" "2.0.1" \
+    "camrod_parking/external/apriltag_msgs"
+
+  ensure_system_packages
 fi
 
 if [[ "${DO_ROSDEP}" -eq 1 ]]; then
@@ -264,7 +288,8 @@ if [[ "${DO_BUILD}" -eq 1 ]]; then
       -not -path '*/.git/*' \
       -not -path '*/build/*' \
       -not -path '*/install/*' \
-      -not -path '*/log/*' | sort
+      -not -path '*/log/*' \
+      -not -path '*/disable/*' | sort
   )
   BASE_PATHS=("src")
   BASE_PATHS+=("${EXTERNAL_BASES[@]}")
@@ -272,6 +297,41 @@ if [[ "${DO_BUILD}" -eq 1 ]]; then
   sanitize_colon_path_var AMENT_PREFIX_PATH
   sanitize_colon_path_var CMAKE_PREFIX_PATH
   sanitize_colon_path_var COLCON_PREFIX_PATH
+
+  # tier4_adapi vendor env and packages are arch-specific (extracted aarch64 debs).
+  # On non-aarch64 hosts, mark the three packages that depend on the aarch64-only
+  # vendor libs so colcon skips them (no CAMROD package depends on them).
+  _TIER4_ADAPI="${SRC_ROOT}/camrod_map/external/tier4_adapi"
+  _HOST_ARCH="$(uname -m)"
+  if [[ -d "${_TIER4_ADAPI}" ]]; then
+    if [[ "${_HOST_ARCH}" == "aarch64" ]]; then
+      # shellcheck disable=SC1090,SC1091
+      set +u
+      source "${_TIER4_ADAPI}/setup_vendor_env.bash" 2>/dev/null || true
+      set -u
+      log "sourced tier4_adapi vendor env (aarch64)"
+    else
+      log "skip tier4_adapi vendor env on ${_HOST_ARCH}; marking arch-only packages COLCON_IGNORE"
+      for _pkg in tier4_system_msgs autoware_component_interface_utils tier4_adapi_rviz_plugin; do
+        _ci="${_TIER4_ADAPI}/${_pkg}/COLCON_IGNORE"
+        if [[ ! -e "${_ci}" ]]; then
+          echo "# auto: aarch64-only vendor dep, not buildable on ${_HOST_ARCH}" > "${_ci}"
+        fi
+      done
+      unset _pkg _ci
+    fi
+  fi
+  unset _TIER4_ADAPI _HOST_ARCH
+
+  # nova_carter_docking is an NVIDIA Isaac ROS example inside opennav_docking.
+  # It requires isaac_ros_apriltag_interfaces (Jetson-only); no camrod package depends on it.
+  _NCD="${SRC_ROOT}/camrod_parking/external/opennav_docking/nova_carter_docking"
+  if [[ -d "${_NCD}" && ! -e "${_NCD}/COLCON_IGNORE" ]]; then
+    echo "# auto: NVIDIA Isaac ROS example, not buildable without isaac_ros_apriltag_interfaces" \
+      > "${_NCD}/COLCON_IGNORE"
+    log "marked nova_carter_docking COLCON_IGNORE (Isaac ROS not available)"
+  fi
+  unset _NCD
 
   log "colcon build --symlink-install"
   log "base-paths: ${BASE_PATHS[*]}"

@@ -18,6 +18,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(camrod_sensor_kit REQUIRED)
 find_package(avg_msgs REQUIRED)
+find_package(ranger_msgs QUIET)
 
 add_executable(robot_visualization_node
   src/robot_visualization_node.cpp
@@ -50,6 +51,29 @@ install(TARGETS
   cmd_vel_gate_node
   DESTINATION lib/${PROJECT_NAME}
 )
+
+# HH_260428: ranger_platform_bridge_node — built only when ranger_msgs is available
+# (ranger_ros2 external cloned by build_camrod.sh). Bridges CAN-derived ranger topics
+# to /platform/status/* with primary/fallback odom, id-based actuator state extraction,
+# and comprehensive AvgPlatformStatus aggregation (avg_msgs, all DBC fields).
+if(ranger_msgs_FOUND)
+  add_executable(ranger_platform_bridge_node
+    src/ranger_platform_bridge_node.cpp
+  )
+  ament_target_dependencies(ranger_platform_bridge_node
+    rclcpp
+    nav_msgs
+    geometry_msgs
+    std_msgs
+    ranger_msgs
+    avg_msgs
+  )
+  install(TARGETS ranger_platform_bridge_node
+    DESTINATION lib/${PROJECT_NAME}
+  )
+else()
+  message(STATUS "ranger_msgs not found — ranger_platform_bridge_node will not be built")
+endif()
 
 install(DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME})

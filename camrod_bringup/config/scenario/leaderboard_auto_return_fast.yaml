@@ -1,0 +1,25 @@
+# Fast auto-return validation scenario.
+#
+# Intended with planning_state_machine_auto_return_fast.yaml
+# (goal_reached_dwell_s=15.0) so CI/dev runs complete quickly.
+scenario:
+  name: auto_return_fast_validation
+  steps:
+    - id: camping_site_1_auto_return_fast
+      timeout_s: 220.0
+      # Trigger via state-machine goal-key input so mission_source sequence
+      # includes "key_topic:*" deterministically.
+      goal_key: camping_site_1
+      goal:
+        x: -13.1858
+        y: -93.0608
+        z: -96.9358
+        yaw_deg: -179.992
+      # Validate state-machine transition chain:
+      # key_topic:* -> GOAL_REACHED -> auto_return -> RETURNING.
+      expect_mission_source_sequence:
+        - "key_topic:camping_site_1"
+        - "auto_return"
+      expect_state_sequence:
+        - "GOAL_REACHED"
+        - "RETURNING"

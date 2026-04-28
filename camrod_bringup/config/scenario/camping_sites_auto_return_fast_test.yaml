@@ -1,0 +1,19 @@
+# Fast auto-return validation camping-site set.
+#
+# Test intent:
+# - deterministically trigger GOAL_REACHED quickly in simulation
+# - validate state-machine dwell -> auto_return transition logic
+#   independent from long-route navigation variability.
+#
+# NOTE:
+# - This file is for test launch only.
+# - Runtime/production should keep using config/planning/camping_sites.yaml.
+camping_sites:
+  - id: "test_fast_site_1"
+    type: "camping_site_1"
+    source: "test_profile"
+    # Place test site close to drop_zone so GOAL_REACHED can be reached quickly.
+    x: 16.95
+    y: -117.45
+    z: -97.79
+    yaw_deg: -0.42

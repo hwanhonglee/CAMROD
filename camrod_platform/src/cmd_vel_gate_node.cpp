@@ -1,0 +1,231 @@
+#include <memory>
+#include <string>
+
+#include "geometry_msgs/msg/twist.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/bool.hpp"
+#include "std_srvs/srv/set_bool.hpp"
+
+namespace camrod_platform
+{
+
+class CmdVelGateNode : public rclcpp::Node
+{
+public:
+  CmdVelGateNode()
+  : Node("cmd_vel_gate")
+  {
+    input_cmd_vel_topic_ =
+      declare_parameter<std::string>("input_cmd_vel_topic", "/planning/cmd_vel");
+    output_cmd_vel_topic_ =
+      declare_parameter<std::string>("output_cmd_vel_topic", "/platform/cmd_vel");
+    enable_topic_ =
+      declare_parameter<std::string>("enable_topic", "/platform/drive_enable");
+    engage_topic_ =
+      declare_parameter<std::string>("engage_topic", "/planning/engage");
+    use_engage_topic_ =
+      declare_parameter<bool>("use_engage_topic", true);
+    state_topic_ =
+      declare_parameter<std::string>("state_topic", "/platform/drive_enabled");
+    use_estop_topic_ =
+      declare_parameter<bool>("use_estop_topic", true);
+    estop_topic_ =
+      declare_parameter<std::string>("estop_topic", "/platform/status/estop");
+    allow_on_start_ =
+      declare_parameter<bool>("allow_on_start", false);
+    publish_zero_when_blocked_ =
+      declare_parameter<bool>("publish_zero_when_blocked", true);
+
+    enabled_ = allow_on_start_;
+    estop_ = false;
+
+    pub_cmd_ = create_publisher<geometry_msgs::msg::Twist>(output_cmd_vel_topic_, 10);
+    pub_state_ = create_publisher<std_msgs::msg::Bool>(state_topic_, 10);
+
+    sub_cmd_ = create_subscription<geometry_msgs::msg::Twist>(
+      input_cmd_vel_topic_, 10,
+      std::bind(&CmdVelGateNode::on_cmd_vel, this, std::placeholders::_1));
+    sub_enable_ = create_subscription<std_msgs::msg::Bool>(
+      enable_topic_, 10,
+      std::bind(&CmdVelGateNode::on_enable, this, std::placeholders::_1));
+    if (use_engage_topic_) {
+      sub_engage_ = create_subscription<std_msgs::msg::Bool>(
+        engage_topic_, 10,
+        std::bind(&CmdVelGateNode::on_engage, this, std::placeholders::_1));
+    }
+    if (use_estop_topic_) {
+      sub_estop_ = create_subscription<std_msgs::msg::Bool>(
+        estop_topic_, 10,
+        std::bind(&CmdVelGateNode::on_estop, this, std::placeholders::_1));
+    }
+
+    srv_set_enabled_ = create_service<std_srvs::srv::SetBool>(
+      "set_enabled",
+      std::bind(
+        &CmdVelGateNode::on_set_enabled, this, std::placeholders::_1,
+        std::placeholders::_2));
+
+    state_timer_ = create_wall_timer(
+      std::chrono::milliseconds(500),
+      std::bind(&CmdVelGateNode::publish_state, this));
+
+    publish_state();
+    RCLCPP_INFO(
+      get_logger(),
+      "cmd_vel_gate ready: in=%s out=%s enable_topic=%s engage_topic=%s "
+      "estop_topic=%s allow_on_start=%s",
+      input_cmd_vel_topic_.c_str(), output_cmd_vel_topic_.c_str(),
+      enable_topic_.c_str(),
+      use_engage_topic_ ? engage_topic_.c_str() : "(disabled)",
+      use_estop_topic_ ? estop_topic_.c_str() : "(disabled)",
+      allow_on_start_ ? "true" : "false");
+  }
+
+private:
+  // Returns effective gate state after e-stop override.
+  bool effective_enabled() const
+  {
+    return enabled_ && !estop_;
+  }
+
+  // Publishes effective drive state for downstream modules.
+  void publish_state()
+  {
+    std_msgs::msg::Bool msg;
+    msg.data = effective_enabled();
+    pub_state_->publish(msg);
+  }
+
+  // Emits explicit zero Twist while the gate is blocking commands.
+  void publish_zero()
+  {
+    geometry_msgs::msg::Twist zero;
+    pub_cmd_->publish(zero);
+  }
+
+  // Passes through or blocks cmd_vel based on gate/e-stop state.
+  void on_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg)
+  {
+    if (effective_enabled()) {
+      pub_cmd_->publish(*msg);
+      return;
+    }
+
+    if (publish_zero_when_blocked_) {
+      publish_zero();
+    }
+    RCLCPP_DEBUG(
+      get_logger(), "cmd_vel blocked: enabled=%s estop=%s",
+      enabled_ ? "true" : "false", estop_ ? "true" : "false");
+  }
+
+  // Updates gate state from /platform/drive_enable.
+  void on_enable(const std_msgs::msg::Bool::SharedPtr msg)
+  {
+    const bool new_enabled = static_cast<bool>(msg->data);
+    if (new_enabled == enabled_) {
+      return;
+    }
+    enabled_ = new_enabled;
+    publish_state();
+    if (!effective_enabled() && publish_zero_when_blocked_) {
+      publish_zero();
+    }
+    RCLCPP_INFO(
+      get_logger(),
+      "drive enable topic update: enabled=%s estop=%s effective=%s",
+      enabled_ ? "true" : "false",
+      estop_ ? "true" : "false",
+      effective_enabled() ? "true" : "false");
+  }
+
+  // Mirrors /planning/engage into the same gate state latch.
+  void on_engage(const std_msgs::msg::Bool::SharedPtr msg)
+  {
+    const bool new_enabled = static_cast<bool>(msg->data);
+    if (new_enabled == enabled_) {
+      return;
+    }
+    enabled_ = new_enabled;
+    publish_state();
+    if (!effective_enabled() && publish_zero_when_blocked_) {
+      publish_zero();
+    }
+    RCLCPP_INFO(
+      get_logger(),
+      "planning engage update: enabled=%s estop=%s effective=%s",
+      enabled_ ? "true" : "false",
+      estop_ ? "true" : "false",
+      effective_enabled() ? "true" : "false");
+  }
+
+  // Applies e-stop override and forces zero command when active.
+  void on_estop(const std_msgs::msg::Bool::SharedPtr msg)
+  {
+    const bool new_estop = static_cast<bool>(msg->data);
+    if (new_estop == estop_) {
+      return;
+    }
+    estop_ = new_estop;
+    publish_state();
+    if (estop_ && publish_zero_when_blocked_) {
+      publish_zero();
+    }
+    RCLCPP_WARN(
+      get_logger(),
+      "estop update: estop=%s effective_enabled=%s",
+      estop_ ? "true" : "false",
+      effective_enabled() ? "true" : "false");
+  }
+
+  // Service API to toggle gate state at runtime.
+  void on_set_enabled(
+    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+    std::shared_ptr<std_srvs::srv::SetBool::Response> response)
+  {
+    enabled_ = static_cast<bool>(request->data);
+    publish_state();
+    if (!effective_enabled() && publish_zero_when_blocked_) {
+      publish_zero();
+    }
+    response->success = true;
+    response->message =
+      "enabled=" + std::string(enabled_ ? "true" : "false") +
+      " estop=" + std::string(estop_ ? "true" : "false") +
+      " effective=" + std::string(effective_enabled() ? "true" : "false");
+  }
+
+private:
+  std::string input_cmd_vel_topic_;
+  std::string output_cmd_vel_topic_;
+  std::string enable_topic_;
+  std::string engage_topic_;
+  std::string state_topic_;
+  std::string estop_topic_;
+  bool use_engage_topic_{true};
+  bool use_estop_topic_{true};
+  bool allow_on_start_{false};
+  bool publish_zero_when_blocked_{true};
+  bool enabled_{false};
+  bool estop_{false};
+
+  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_cmd_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_state_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_cmd_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_enable_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_engage_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_estop_;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr srv_set_enabled_;
+  rclcpp::TimerBase::SharedPtr state_timer_;
+};
+
+}  // namespace camrod_platform
+
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<camrod_platform::CmdVelGateNode>());
+  rclcpp::shutdown();
+  return 0;
+}
+
