@@ -800,6 +800,15 @@ def generate_launch_description():
         "'",
     ])
 
+    # HH_260428: In sim mode, override the ESKF param file to remove hardware-specific
+    # sign inversions (imu_yaw_sign / imu_gyro_z_sign = -1 for physically inverted IMU)
+    # and disable wheel yaw-rate correction (fake wheel always has angular.z = 0).
+    # Without this, ESKF negates the fake IMU yaw → local path points ~180° wrong,
+    # and the wheel zero-angular.z fights IMU yaw rate → orientation shakes.
+    _eskf_sim_cfg = os.path.join(config_root_default, 'localization', 'filter', 'eskf_sim.yaml')
+    _eskf_real_cfg = localization_overrides.get('filter_eskf_param_file', '')
+    _eskf_cfg = sim_switch(lc['sim'], _eskf_sim_cfg, _eskf_real_cfg or '')
+
     localization_args = {
         'module_namespace': lc['localization_namespace'],
         'enable_adapter': lc['localization_enable_adapter'],
@@ -820,6 +829,9 @@ def generate_launch_description():
         'map_path': lc['map_path'],
     }
     apply_cfg_overrides(localization_args, localization_overrides)
+    # HH_260428: Apply sim ESKF override after apply_cfg_overrides so it is not
+    # overwritten by user-level localization/filter_eskf_param_file entries.
+    localization_args['filter_eskf_param_file'] = _eskf_cfg
 
     planning_args = {
         'enable_path_cost_grids': lc['enable_path_cost_grids'],
