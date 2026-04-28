@@ -1,0 +1,1 @@
+# auto: aarch64-only vendor dep, not buildable on x86_64

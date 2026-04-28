@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# HH_260428: Pure colcon build wrapper — no downloads, no external repo changes.
+# Safe to run repeatedly for incremental development.
+#
+# Usage:
+#   ./colcon_build.sh                                    # full workspace build
+#   ./colcon_build.sh --packages-select camrod_platform  # single package
+#   ./colcon_build.sh --packages-up-to camrod_bringup    # package + deps
+#   ./colcon_build.sh --packages-select camrod_platform --cmake-args -DCMAKE_BUILD_TYPE=Debug
+#
+# All unknown arguments are forwarded directly to `colcon build`.
+# Run setup_camrod.sh first if external/ directories are missing.
+
+set -euo pipefail
+
+log() { echo "[colcon_build] $*"; }
+
+resolve_ws_root() {
+  local probe="$1"
+  while [[ "${probe}" != "/" ]]; do
+    if [[ -d "${probe}/src/camrod_bringup" ]]; then echo "${probe}"; return 0; fi
+    probe="$(dirname "${probe}")"
+  done
+  return 1
+}
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+WS_ROOT="$(resolve_ws_root "${SCRIPT_DIR}" || resolve_ws_root "$(pwd)" || true)"
+if [[ -z "${WS_ROOT}" ]]; then
+  echo "[colcon_build] ERROR: cannot find workspace root (expected <ws>/src/camrod_bringup)" >&2
+  exit 1
+fi
+SRC_ROOT="${WS_ROOT}/src"
+
+mkdir -p "${WS_ROOT}/build" "${WS_ROOT}/install" "${WS_ROOT}/log"
+cd "${WS_ROOT}"
+
+# shellcheck disable=SC1091
+set +u; source /opt/ros/humble/setup.bash; set -u
+
+# HH_260428: Sanitize stale install paths from prefix vars to avoid picking up
+# packages from a previous build that no longer exists on disk.
+sanitize_path_var() {
+  local var_name="$1"
+  local raw="${!var_name:-}" out="" item pkg_name manifest
+  IFS=':' read -r -a parts <<< "${raw}"
+  for item in "${parts[@]}"; do
+    [[ -z "${item}" ]] && continue
+    [[ -d "${item}" ]] || continue
+    if [[ "${item}" != /opt/ros/* && "${item}" != "${WS_ROOT}/install/"* ]]; then continue; fi
+    if [[ "${item}" == "${WS_ROOT}/install/"* ]]; then
+      pkg_name="$(basename "${item}")"
+      manifest="${item}/share/${pkg_name}/package.xml"
+      [[ -f "${manifest}" ]] || continue
+    fi
+    out="${out:+${out}:}${item}"
+  done
+  export "${var_name}=${out}"
+}
+sanitize_path_var AMENT_PREFIX_PATH
+sanitize_path_var CMAKE_PREFIX_PATH
+sanitize_path_var COLCON_PREFIX_PATH
+
+# HH_260428: Collect all external/ base directories for colcon --base-paths.
+# Excludes .git internals, build/install/log artifacts, and disabled packages.
+mapfile -t EXTERNAL_BASES < <(
+  cd "${WS_ROOT}" && find src -type d -name external \
+    -not -path '*/.git/*' \
+    -not -path '*/build/*' \
+    -not -path '*/install/*' \
+    -not -path '*/log/*' \
+    -not -path '*/disable/*' | sort
+)
+BASE_PATHS=("src" "${EXTERNAL_BASES[@]}")
+
+# HH_260428: Mark extracted vendor binary trees (e.g. tier4_adapi) so colcon
+# does not try to build them as source packages.
+_mark_vendor_trees() {
+  local root
+  mapfile -t roots < <(find "${SRC_ROOT}" -type d -path '*/vendor/*/extract' | sort -u)
+  for root in "${roots[@]}"; do
+    if [[ ! -e "${root}/COLCON_IGNORE" ]]; then
+      printf '# auto: extracted vendor binary tree\n' > "${root}/COLCON_IGNORE"
+      log "marked vendor extract: ${root}"
+    fi
+  done
+}
+_mark_vendor_trees
+
+# HH_260428: tier4_adapi ships aarch64-only vendor libs.
+# On x86_64 mark the three arch-specific packages so colcon skips them.
+_TIER4="${SRC_ROOT}/camrod_map/external/tier4_adapi"
+_ARCH="$(uname -m)"
+if [[ -d "${_TIER4}" ]]; then
+  if [[ "${_ARCH}" == "aarch64" ]]; then
+    set +u
+    source "${_TIER4}/setup_vendor_env.bash" 2>/dev/null || true
+    set -u
+    log "sourced tier4_adapi vendor env (aarch64)"
+  else
+    log "skip tier4_adapi vendor env on ${_ARCH}; marking arch-only packages COLCON_IGNORE"
+    for _pkg in tier4_system_msgs autoware_component_interface_utils tier4_adapi_rviz_plugin; do
+      _ci="${_TIER4}/${_pkg}/COLCON_IGNORE"
+      [[ -e "${_ci}" ]] || echo "# auto: aarch64-only vendor dep" > "${_ci}"
+    done
+    unset _pkg _ci
+  fi
+fi
+unset _TIER4 _ARCH
+
+# HH_260428: nova_carter_docking is an NVIDIA Isaac ROS example; not buildable
+# without isaac_ros_apriltag_interfaces (Jetson-only). No CAMROD package depends on it.
+_NCD="${SRC_ROOT}/camrod_parking/external/opennav_docking/nova_carter_docking"
+if [[ -d "${_NCD}" && ! -e "${_NCD}/COLCON_IGNORE" ]]; then
+  echo "# auto: NVIDIA Isaac ROS example (requires isaac_ros_apriltag_interfaces)" \
+    > "${_NCD}/COLCON_IGNORE"
+  log "marked nova_carter_docking COLCON_IGNORE"
+fi
+unset _NCD
+
+log "colcon build  base-paths: ${BASE_PATHS[*]}"
+colcon --log-base "${WS_ROOT}/log" build \
+  --symlink-install \
+  --base-paths "${BASE_PATHS[@]}" \
+  --build-base  "${WS_ROOT}/build" \
+  --install-base "${WS_ROOT}/install" \
+  "$@"
+
+log "done.  source ${WS_ROOT}/install/setup.bash"
