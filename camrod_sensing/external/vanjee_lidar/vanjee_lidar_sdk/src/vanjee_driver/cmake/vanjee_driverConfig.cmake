@@ -20,8 +20,11 @@ if(${ENABLE_TRANSFORM})
   add_definitions("-DENABLE_TRANSFORM")
 endif(${ENABLE_TRANSFORM})
 
-set(vanjee_driver_INCLUDE_DIRS "/home/nvidia/camrod_ws/src/camrod_sensing/external/vanjee_lidar/vanjee_lidar_sdk/src/vanjee_driver/src;/usr/local/vanjee_lidar_sdk/include")
-set(VANJEE_DRIVER_INCLUDE_DIRS "/home/nvidia/camrod_ws/src/camrod_sensing/external/vanjee_lidar/vanjee_lidar_sdk/src/vanjee_driver/src;/usr/local/vanjee_lidar_sdk/include")
+# HH_260428: Use CMAKE_CURRENT_LIST_DIR to avoid machine-specific absolute paths.
+get_filename_component(_vanjee_driver_root "${CMAKE_CURRENT_LIST_DIR}/../src" ABSOLUTE)
+set(vanjee_driver_INCLUDE_DIRS "${_vanjee_driver_root};/usr/local/vanjee_lidar_sdk/include")
+set(VANJEE_DRIVER_INCLUDE_DIRS "${_vanjee_driver_root};/usr/local/vanjee_lidar_sdk/include")
+unset(_vanjee_driver_root)
 
 set(vanjee_driver_LIBRARIES "pthread")
 set(VANJEE_DRIVER_LIBRARIES "pthread")
