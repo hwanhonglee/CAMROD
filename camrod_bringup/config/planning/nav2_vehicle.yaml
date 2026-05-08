@@ -6,15 +6,16 @@ controller_server:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       # Moderate nominal speed for stable iterative-goal tracking
       # under full bringup CPU load.
-      desired_linear_vel: 1.0
-      max_linear_vel: 1.0
+      # HH_260507: Reverted to original values (0.7 change was ineffective at vehicle level).
+      desired_linear_vel: 1.4
+      max_linear_vel: 1.4
       min_linear_vel: 0.0
       max_linear_accel: 1.5
       max_angular_vel: 1.2
       max_angular_accel: 3.0
       lookahead_dist: 0.6
       min_lookahead_dist: 0.25
-      max_lookahead_dist: 1.2
+      max_lookahead_dist: 1.8 
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 1.2
       # Align controller TF tolerance with Nav2 server tolerance.

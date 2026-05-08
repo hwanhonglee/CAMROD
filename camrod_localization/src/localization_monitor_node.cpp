@@ -48,6 +48,11 @@ public:
     gnss_jump_fail_m_ = declare_parameter<double>("gnss_jump_fail_m", 1.0);
     gnss_min_hz_ = declare_parameter<double>("gnss_min_hz", 2.0);
 
+    // HH_260507: DR timeout — stop robot if DR continues too long or covariance grows too large.
+    // 0 disables each check independently.
+    dr_max_duration_s_ = declare_parameter<double>("dr_max_duration_s", 0.0);
+    dr_max_cov_trace_ = declare_parameter<double>("dr_max_cov_trace", 0.0);
+
     publish_localization_status_ =
       declare_parameter<bool>("publish_localization_status", false);
     localization_status_topic_ =
@@ -60,6 +65,9 @@ public:
       "/localization/state", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
     degraded_pub_ = create_publisher<avg_msgs::msg::Bool>(
       "/localization/state/degraded", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
+    // HH_260507: DR timeout publisher — true when DR exceeds time or covariance limit.
+    dr_timeout_pub_ = create_publisher<avg_msgs::msg::Bool>(
+      "/localization/state/dr_timeout", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 
     if (publish_localization_status_) {
       avg_localization_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(
@@ -229,11 +237,12 @@ private:
 
     avg_msgs::msg::AvgLocalizationMode mode;
     std::string status_label = "NORMAL";
+    const bool in_dr = !gnss_good && wheel_good;
 
     if (!imu_ok) {
       mode = makeMode(avg_msgs::msg::AvgLocalizationMode().INVALID, "INVALID");
       status_label = "IMU_TIMEOUT";
-    } else if (!gnss_good && wheel_good) {
+    } else if (in_dr) {
       mode = makeMode(avg_msgs::msg::AvgLocalizationMode().DR_ONLY, "DR_ONLY");
       status_label = "DEAD_RECKONING";
     } else if (!gnss_good && !wheel_good) {
@@ -246,6 +255,36 @@ private:
       mode = makeMode(avg_msgs::msg::AvgLocalizationMode().NORMAL, "NORMAL");
       status_label = "OK";
     }
+
+    // HH_260507: DR duration tracking and timeout detection.
+    if (in_dr) {
+      if (dr_start_time_.nanoseconds() == 0) {
+        dr_start_time_ = now;
+      }
+    } else {
+      dr_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+      dr_timeout_ = false;
+    }
+    const double cov_trace =
+      diag_available ? last_diag_.covariance_trace : 0.0;
+    if (in_dr && !dr_timeout_) {
+      const double dr_elapsed =
+        (dr_start_time_.nanoseconds() > 0) ? (now - dr_start_time_).seconds() : 0.0;
+      const bool time_exceeded =
+        (dr_max_duration_s_ > 0.0) && (dr_elapsed >= dr_max_duration_s_);
+      const bool cov_exceeded =
+        (dr_max_cov_trace_ > 0.0) && (cov_trace >= dr_max_cov_trace_);
+      if (time_exceeded || cov_exceeded) {
+        dr_timeout_ = true;
+        RCLCPP_WARN(
+          get_logger(),
+          "DR timeout: elapsed=%.1fs cov_trace=%.2f (time_limit=%.1fs cov_limit=%.2f)",
+          dr_elapsed, cov_trace, dr_max_duration_s_, dr_max_cov_trace_);
+      }
+    }
+    avg_msgs::msg::Bool dr_timeout_msg;
+    dr_timeout_msg.data = dr_timeout_;
+    dr_timeout_pub_->publish(dr_timeout_msg);
 
     avg_msgs::msg::AvgLocalizationStatus status;
     status.mode = mode;
@@ -300,6 +339,12 @@ private:
   double gnss_jump_fail_m_{1.0};
   double gnss_min_hz_{2.0};
 
+  // HH_260507: DR timeout — 0 = disabled.
+  double dr_max_duration_s_{0.0};
+  double dr_max_cov_trace_{0.0};
+  rclcpp::Time dr_start_time_{0, 0, RCL_ROS_TIME};
+  bool dr_timeout_{false};
+
   bool publish_localization_status_{false}; // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs)
   std::string localization_status_topic_;
 
@@ -308,6 +353,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::Float32>::SharedPtr confidence_pub_;
   rclcpp::Publisher<avg_msgs::msg::Bool>::SharedPtr state_pub_;
   rclcpp::Publisher<avg_msgs::msg::Bool>::SharedPtr degraded_pub_;
+  rclcpp::Publisher<avg_msgs::msg::Bool>::SharedPtr dr_timeout_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
 
   rclcpp::Subscription<avg_msgs::msg::AvgLocalizationStatusStream>::SharedPtr diag_sub_;

@@ -69,6 +69,8 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_yaw_alignment_frame_id', default_value='map'),
         DeclareLaunchArgument('cmd_vel_gate_yaw_alignment_zones_file', default_value=default_yaw_zone_file),
         DeclareLaunchArgument('cmd_vel_gate_yaw_alignment_exit_margin_m', default_value='0.3'),
+        # HH_260507: Speed scale for cmd_vel output (applied in planning_cmd_vel_gate_node).
+        DeclareLaunchArgument('cmd_vel_gate_speed_scale', default_value='1.0'),
 
         Node(
             package='camrod_planning',
@@ -121,6 +123,7 @@ def generate_launch_description():
                 'yaw_alignment_frame_id': LaunchConfiguration('cmd_vel_gate_yaw_alignment_frame_id'),
                 'yaw_alignment_zones_file': LaunchConfiguration('cmd_vel_gate_yaw_alignment_zones_file'),
                 'yaw_alignment_exit_margin_m': LaunchConfiguration('cmd_vel_gate_yaw_alignment_exit_margin_m'),
+                'speed_scale': LaunchConfiguration('cmd_vel_gate_speed_scale'),
             }],
             condition=IfCondition(LaunchConfiguration('cmd_vel_gate_enable')),
         ),

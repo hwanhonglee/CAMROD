@@ -17,5 +17,6 @@
     status_velocity_topic: "/platform/status/velocity" # Normalized velocity status output topic.
     status_wheel_topic: "/platform/status/wheel"       # Wheel-state status output topic.
     status_estop_topic: "/platform/status/estop"       # Derived e-stop status output topic.
+    status_frame_id: "robot_base_link"         # Frame id used in /platform/status header.
     estop_on_exception_state: true              # Forces estop=true when driver exception state is detected.
     estop_on_error_code: false                  # Forces estop=true on non-zero driver error codes if enabled.

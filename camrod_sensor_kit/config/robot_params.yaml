@@ -27,7 +27,7 @@
       roll: 0.0               # IMU mount roll offset [deg].
       pitch: 0.0              # IMU mount pitch offset [deg].
       # HH_260413: Align IMU frame to robot_base_link heading (mount calibration).
-      yaw: -84.4              # IMU mount yaw offset [deg].
+      yaw: 0.0                # IMU mount yaw offset [deg].
 
     gnss:
       x: 0.0                  # GNSS antenna X offset from sensor_kit_base_link [m].
@@ -55,53 +55,45 @@
       yaw: 0.0                # Camera optical rig yaw offset [deg].
 
     radar:
-      # HH_260326: Parent radar frame (radar_link) offset from sensor_kit_base_link.
-      base:
-        x: 0.0                # Radar aggregate frame X offset from sensor_kit_base_link [m].
-        y: 0.0                # Radar aggregate frame Y offset from sensor_kit_base_link [m].
-        z: 0.0                # Radar aggregate frame Z offset from sensor_kit_base_link [m].
-        roll: 0.0             # Radar aggregate frame roll offset [deg].
-        pitch: 0.0            # Radar aggregate frame pitch offset [deg].
-        yaw: 0.0              # Radar aggregate frame yaw offset [deg].
       front:
-        x: 0.64               # Front radar X offset from radar base frame [m].
-        y: 0.0                # Front radar Y offset from radar base frame [m].
-        z: 0.45               # Front radar Z offset from radar base frame [m].
+        x: 0.64               # Front radar X offset from sensor_kit_base_link [m].
+        y: 0.0                # Front radar Y offset from sensor_kit_base_link [m].
+        z: 0.45               # Front radar Z offset from sensor_kit_base_link [m].
         roll: 0.0             # Front radar roll offset [deg].
         pitch: 0.0            # Front radar pitch offset [deg].
         yaw: 0.0              # Front radar yaw offset [deg].
       left1:
-        x: 0.5                # Front-left radar #1 X offset from radar base frame [m].
-        y: 0.2                # Front-left radar #1 Y offset from radar base frame [m].
-        z: 0.45               # Front-left radar #1 Z offset from radar base frame [m].
-        roll: 0.0             # Front-left radar #1 roll offset [deg].
-        pitch: 0.0            # Front-left radar #1 pitch offset [deg].
-        yaw: 90.0             # Front-left radar #1 yaw offset [deg].
+        x: -0.1               # Rear-left radar #1 X offset from sensor_kit_base_link [m].
+        y: 0.2                # Rear-left radar #1 Y offset from sensor_kit_base_link [m].
+        z: 0.45               # Rear-left radar #1 Z offset from sensor_kit_base_link [m].
+        roll: 0.0             # Rear-left radar #1 roll offset [deg].
+        pitch: 0.0            # Rear-left radar #1 pitch offset [deg].
+        yaw: 90.0             # Rear-left radar #1 yaw offset [deg].
       left2:
-        x: -0.1               # Rear-left radar #2 X offset from radar base frame [m].
-        y: 0.2                # Rear-left radar #2 Y offset from radar base frame [m].
-        z: 0.45               # Rear-left radar #2 Z offset from radar base frame [m].
-        roll: 0.0             # Rear-left radar #2 roll offset [deg].
-        pitch: 0.0            # Rear-left radar #2 pitch offset [deg].
-        yaw: 90.0             # Rear-left radar #2 yaw offset [deg].
+        x: 0.5                # Front-left radar #2 X offset from sensor_kit_base_link [m].
+        y: 0.2                # Front-left radar #2 Y offset from sensor_kit_base_link [m].
+        z: 0.45               # Front-left radar #2 Z offset from sensor_kit_base_link [m].
+        roll: 0.0             # Front-left radar #2 roll offset [deg].
+        pitch: 0.0            # Front-left radar #2 pitch offset [deg].
+        yaw: 90.0             # Front-left radar #2 yaw offset [deg].
       right1:
-        x: 0.5                # Front-right radar #1 X offset from radar base frame [m].
-        y: -0.2               # Front-right radar #1 Y offset from radar base frame [m].
-        z: 0.45               # Front-right radar #1 Z offset from radar base frame [m].
-        roll: 0.0             # Front-right radar #1 roll offset [deg].
-        pitch: 0.0            # Front-right radar #1 pitch offset [deg].
-        yaw: -90.0            # Front-right radar #1 yaw offset [deg].
+        x: -0.1               # Rear-right radar #1 X offset from sensor_kit_base_link [m].
+        y: -0.2               # Rear-right radar #1 Y offset from sensor_kit_base_link [m].
+        z: 0.45               # Rear-right radar #1 Z offset from sensor_kit_base_link [m].
+        roll: 0.0             # Rear-right radar #1 roll offset [deg].
+        pitch: 0.0            # Rear-right radar #1 pitch offset [deg].
+        yaw: -90.0            # Rear-right radar #1 yaw offset [deg].
       right2:
-        x: -0.1               # Rear-right radar #2 X offset from radar base frame [m].
-        y: -0.2               # Rear-right radar #2 Y offset from radar base frame [m].
-        z: 0.45               # Rear-right radar #2 Z offset from radar base frame [m].
-        roll: 0.0             # Rear-right radar #2 roll offset [deg].
-        pitch: 0.0            # Rear-right radar #2 pitch offset [deg].
-        yaw: -90.0            # Rear-right radar #2 yaw offset [deg].
+        x: 0.5                # Front-right radar #2 X offset from sensor_kit_base_link [m].
+        y: -0.2               # Front-right radar #2 Y offset from sensor_kit_base_link [m].
+        z: 0.45               # Front-right radar #2 Z offset from sensor_kit_base_link [m].
+        roll: 0.0             # Front-right radar #2 roll offset [deg].
+        pitch: 0.0            # Front-right radar #2 pitch offset [deg].
+        yaw: -90.0            # Front-right radar #2 yaw offset [deg].
       rear:
-        x: -0.1               # Rear radar X offset from radar base frame [m].
-        y: 0.0                # Rear radar Y offset from radar base frame [m].
-        z: 0.45               # Rear radar Z offset from radar base frame [m].
+        x: -0.1               # Rear radar X offset from sensor_kit_base_link [m].
+        y: 0.0                # Rear radar Y offset from sensor_kit_base_link [m].
+        z: 0.45               # Rear radar Z offset from sensor_kit_base_link [m].
         roll: 0.0             # Rear radar roll offset [deg].
         pitch: 0.0            # Rear radar pitch offset [deg].
         yaw: 180.0            # Rear radar yaw offset [deg].

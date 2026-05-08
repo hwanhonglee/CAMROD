@@ -69,6 +69,12 @@ public:
   void onGoalPoseReceived(const geometry_msgs::msg::PoseStamped::SharedPtr pose);
 
   /**
+   * @brief Caches the latest lanelet-snapped start pose for planner start override
+   * @param pose Latest snapped pose message
+   */
+  void onStartPoseReceived(const geometry_msgs::msg::PoseStamped::SharedPtr pose);
+
+  /**
    * @brief Get action name for this navigator
    * @return string Name of action server
    */
@@ -122,10 +128,18 @@ protected:
   rclcpp::Time start_time_;
 
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr start_pose_sub_;
   rclcpp_action::Client<ActionT>::SharedPtr self_client_;
 
   std::string goal_blackboard_id_;
   std::string path_blackboard_id_;
+  std::string start_blackboard_id_;
+  std::string start_pose_topic_;
+  double start_pose_timeout_s_{1.0};
+  bool use_start_pose_override_{true};
+  bool has_start_pose_{false};
+  geometry_msgs::msg::PoseStamped latest_start_pose_;
+  rclcpp::Time latest_start_pose_time_;
 
   // Odometry smoother object
   std::shared_ptr<nav2_util::OdomSmoother> odom_smoother_;

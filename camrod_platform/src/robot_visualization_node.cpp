@@ -137,6 +137,10 @@ public:
     // Negative value rotates clockwise in ROS yaw convention.
     heading_yaw_offset_deg_ = declare_parameter<double>("heading_yaw_offset_deg", 0.0);
     heading_yaw_offset_rad_ = heading_yaw_offset_deg_ * M_PI / 180.0;
+    // HH_260506: Keep RViz marker list compact and optionally hide body cube marker.
+    show_chassis_marker_ = declare_parameter<bool>("show_chassis_marker", true);
+    group_robot_marker_namespaces_ = declare_parameter<bool>(
+      "group_robot_marker_namespaces", true);
     const double publish_rate_hz = declare_parameter<double>("publish_rate_hz", 1.0);
     body_scale_factor_ = declare_parameter<double>("body_scale_factor", 1.0);
     planning_boundary_margin_ = declare_parameter<double>("planning_boundary_margin", 0.3);
@@ -227,6 +231,19 @@ private:
     const avg_msgs::msg::Quaternion base_orientation = tf2::toMsg(base_tf);
     const avg_msgs::msg::Point base_translation =
       makePoint(base_pose_.x, base_pose_.y, base_pose_.z);
+    const std::string base_label_ns = group_robot_marker_namespaces_
+      ? "robot/base"
+      : "robot_base_link";
+    const std::string base_axes_ns = base_label_ns;
+    const std::string body_ns = group_robot_marker_namespaces_
+      ? "robot/chassis"
+      : "robot_body";
+    const std::string footprint_ns = group_robot_marker_namespaces_
+      ? "robot/chassis"
+      : "robot_footprint";
+    const std::string boundary_ns = group_robot_marker_namespaces_
+      ? "robot/chassis"
+      : "robot_planning_boundary";
     // HH_260114 Reusable map->robot_base_link transform lambda shared by sensors/bounds/rings.
     const auto transformLocal = [&](double x, double y, double z) {
       const tf2::Vector3 rotated = base_rot * tf2::Vector3(x, y, z);
@@ -239,12 +256,12 @@ private:
     const avg_msgs::msg::Quaternion identity_orientation = quaternionFromRPY(0.0, 0.0, 0.0);
     markers.markers.emplace_back(
       createAxesMarker(
-        "tf/world_axes", marker_id++, makePoint(0.0, 0.0, 0.0),
+        "tf/world", marker_id++, makePoint(0.0, 0.0, 0.0),
         identity_orientation, 2.0, now, "world"));
     avg_msgs::msg::Marker world_label;
     world_label.header.frame_id = "world";
     world_label.header.stamp = now;
-    world_label.ns = "tf/world_label";
+    world_label.ns = "tf/world";
     world_label.id = marker_id++;
     world_label.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
     world_label.action = avg_msgs::msg::Marker::ADD;
@@ -256,12 +273,12 @@ private:
 
     markers.markers.emplace_back(
       createAxesMarker(
-        "tf/map_axes", marker_id++, makePoint(0.0, 0.0, 0.0),
+        "tf/map", marker_id++, makePoint(0.0, 0.0, 0.0),
         identity_orientation, 1.5, now, map_frame_id_));
     avg_msgs::msg::Marker map_label;
     map_label.header.frame_id = map_frame_id_;
     map_label.header.stamp = now;
-    map_label.ns = "tf/map_label";
+    map_label.ns = "tf/map";
     map_label.id = marker_id++;
     map_label.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
     map_label.action = avg_msgs::msg::Marker::ADD;
@@ -272,32 +289,34 @@ private:
     markers.markers.emplace_back(map_label);
 
     // Vehicle bounding box (assume base frame is geometric center)
-    avg_msgs::msg::Marker body_marker;
-    body_marker.header.frame_id = map_frame_id_;
-    body_marker.header.stamp = now;
-    body_marker.ns = "robot_body";
-    body_marker.id = marker_id++;
-    body_marker.type = avg_msgs::msg::Marker::CUBE;
-    body_marker.action = avg_msgs::msg::Marker::ADD;
-    body_marker.pose.position = transformLocal(0.0, 0.0, params_.height * 0.5);
-    body_marker.pose.orientation = base_orientation;
-    body_marker.scale.x = params_.length * body_scale_factor_;
-    body_marker.scale.y = params_.width * body_scale_factor_;
-    body_marker.scale.z = params_.height * body_scale_factor_;
-    body_marker.color = makeColor(0.1f, 0.65f, 0.9f, 0.25f);
-    markers.markers.emplace_back(body_marker);
+    if (show_chassis_marker_) {
+      avg_msgs::msg::Marker body_marker;
+      body_marker.header.frame_id = map_frame_id_;
+      body_marker.header.stamp = now;
+      body_marker.ns = body_ns;
+      body_marker.id = marker_id++;
+      body_marker.type = avg_msgs::msg::Marker::CUBE;
+      body_marker.action = avg_msgs::msg::Marker::ADD;
+      body_marker.pose.position = transformLocal(0.0, 0.0, params_.height * 0.5);
+      body_marker.pose.orientation = base_orientation;
+      body_marker.scale.x = params_.length * body_scale_factor_;
+      body_marker.scale.y = params_.width * body_scale_factor_;
+      body_marker.scale.z = params_.height * body_scale_factor_;
+      body_marker.color = makeColor(0.1f, 0.65f, 0.9f, 0.25f);
+      markers.markers.emplace_back(body_marker);
+    }
 
     const double axis_length = 0.8;
     avg_msgs::msg::Point base_origin = base_translation;
     markers.markers.emplace_back(
       createAxesMarker(
-        "robot_base_link/axes", marker_id++, base_origin, base_orientation, axis_length, now,
+        base_axes_ns, marker_id++, base_origin, base_orientation, axis_length, now,
         map_frame_id_));
 
     avg_msgs::msg::Marker base_label;
     base_label.header.frame_id = map_frame_id_;
     base_label.header.stamp = now;
-    base_label.ns = "robot_base_link";
+    base_label.ns = base_label_ns;
     base_label.id = marker_id++;
     base_label.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
     base_label.action = avg_msgs::msg::Marker::ADD;
@@ -311,7 +330,7 @@ private:
     avg_msgs::msg::Marker footprint_marker;
     footprint_marker.header.frame_id = map_frame_id_;
     footprint_marker.header.stamp = now;
-    footprint_marker.ns = "robot_footprint";
+    footprint_marker.ns = footprint_ns;
     footprint_marker.id = marker_id++;
     footprint_marker.type = avg_msgs::msg::Marker::LINE_STRIP;
     footprint_marker.action = avg_msgs::msg::Marker::ADD;
@@ -331,7 +350,7 @@ private:
     avg_msgs::msg::Marker boundary_marker;
     boundary_marker.header.frame_id = map_frame_id_;
     boundary_marker.header.stamp = now;
-    boundary_marker.ns = "robot_planning_boundary";
+    boundary_marker.ns = boundary_ns;
     boundary_marker.id = marker_id++;
     boundary_marker.type = avg_msgs::msg::Marker::LINE_STRIP;
     boundary_marker.action = avg_msgs::msg::Marker::ADD;
@@ -371,16 +390,16 @@ private:
       const auto sensor_position = transformLocal(pose.x, pose.y, pose.z);
       const auto sensor_orientation = composeOrientation(pose.roll, pose.pitch, pose.yaw);
 
-      // HH_260114 Keep per-sensor toggles to axes/label only.
+      // HH_260507: Keep one namespace row per sensor in RViz by sharing ns for axes+label.
       markers.markers.emplace_back(
         createAxesMarker(
-          sensor_ns + "/axes", marker_id++, sensor_position, sensor_orientation, 0.5, now,
+          sensor_ns, marker_id++, sensor_position, sensor_orientation, 0.5, now,
           map_frame_id_));
 
       avg_msgs::msg::Marker text_marker;
       text_marker.header.frame_id = map_frame_id_;
       text_marker.header.stamp = now;
-      text_marker.ns = sensor_ns + "/label";
+      text_marker.ns = sensor_ns;
       text_marker.id = marker_id++;
       text_marker.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
       text_marker.action = avg_msgs::msg::Marker::ADD;
@@ -625,6 +644,8 @@ private:
   double localization_pose_timeout_s_{1.0};
   double heading_yaw_offset_deg_{0.0};
   double heading_yaw_offset_rad_{0.0};
+  bool show_chassis_marker_{true};
+  bool group_robot_marker_namespaces_{true};
   bool has_localization_pose_{false};
   rclcpp::Time last_localization_pose_stamp_{0, 0, RCL_ROS_TIME};
   avg_msgs::msg::Quaternion last_localization_orientation_{};

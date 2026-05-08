@@ -11,7 +11,7 @@
 
     # HH_260326: Increase GNSS fix rate for localization consistency validation.
     # Keep nav_rate=1 and raise measurement rate from 1 Hz -> 10 Hz.
-    rate: 5.0
+    rate: 10.0
     nav_rate: 1
     # Rover mode: disable TMODE3 (Survey-In / Base Station mode)
     # - tmode3=1 is for Survey-In (base/reference station)

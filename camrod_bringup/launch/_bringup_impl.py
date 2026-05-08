@@ -535,6 +535,8 @@ def generate_launch_description():
         ('planning_cmd_vel_gate_yaw_alignment_enable', cfg_get(launch_cfg, 'planning/cmd_vel_gate_yaw_alignment_enable', False), 'Enable yaw alignment gate in cmd_vel gate'),
         ('planning_cmd_vel_gate_yaw_alignment_frame_id', cfg_get(launch_cfg, 'planning/cmd_vel_gate_yaw_alignment_frame_id', 'map'), 'Frame id for yaw alignment zones'),
         ('planning_cmd_vel_gate_yaw_alignment_exit_margin_m', cfg_get(launch_cfg, 'planning/cmd_vel_gate_yaw_alignment_exit_margin_m', 0.3), 'Exit hysteresis margin for yaw alignment zones (m)'),
+        # HH_260507: Speed scale for all cmd_vel output in planning gate.
+        ('planning_cmd_vel_gate_speed_scale', cfg_get(launch_cfg, 'planning/cmd_vel_gate_speed_scale', 1.0), 'Speed scale applied to all cmd_vel output (0.0-1.0)'),
 
         ('enable_module_validators', cfg_get(launch_cfg, 'system/enable_module_validators', True), 'Enable module validators'),
         (

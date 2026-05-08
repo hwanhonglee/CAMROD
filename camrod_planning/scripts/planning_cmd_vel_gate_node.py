@@ -88,11 +88,22 @@ class PlanningCmdVelGateNode(Node):
             # HH_260409: Use platform status e-stop as default shared source.
             self.declare_parameter("estop_topic", "/platform/status/estop").value
         )
+        # HH_260507: Block cmd_vel when DR timeout published by localization_monitor.
+        self.use_dr_timeout_topic = bool(
+            self.declare_parameter("use_dr_timeout_topic", True).value
+        )
+        self.dr_timeout_topic = str(
+            self.declare_parameter("dr_timeout_topic", "/localization/state/dr_timeout").value
+        )
         self.allow_on_start = bool(
             self.declare_parameter("allow_on_start", False).value
         )
         self.publish_zero_when_blocked = bool(
             self.declare_parameter("publish_zero_when_blocked", True).value
+        )
+        # HH_260507: Speed scale applied to all cmd_vel output before publishing.
+        self.speed_scale = float(
+            self.declare_parameter("speed_scale", 1.0).value
         )
         # HH_260427: When localization recovers from DR_ONLY to NORMAL, force
         # a short stop-hold window so downstream stack can settle the recovered pose.
@@ -248,6 +259,8 @@ class PlanningCmdVelGateNode(Node):
         # HH_260422: _estop becomes True when /platform/status/estop publishes True.
         #   True -> blocks cmd_vel regardless of _enabled state; zero Twist is sent immediately.
         self._estop = False
+        # HH_260507: _dr_timeout becomes True when DR exceeds time/covariance limit.
+        self._dr_timeout = False
 
         # HH_260422: _cost_blocked_until is the monotonic timestamp until which cost-stop keeps the gate closed.
         #   Gate remains blocked while time.monotonic() < _cost_blocked_until (cost_stop_hold_s duration).
@@ -304,6 +317,11 @@ class PlanningCmdVelGateNode(Node):
             self.sub_estop = self.create_subscription(
                 Bool, self.estop_topic, self._on_estop, 10
             )
+        self.sub_dr_timeout = None
+        if self.use_dr_timeout_topic:
+            self.sub_dr_timeout = self.create_subscription(
+                Bool, self.dr_timeout_topic, self._on_dr_timeout, 10
+            )
 
         self.sub_cost_grid = None
         self.sub_pose = None
@@ -336,6 +354,7 @@ class PlanningCmdVelGateNode(Node):
             f"engage_topic={self.engage_topic} "
             f"estop_topic={self.estop_topic if self.use_estop_topic else '(disabled)'} "
             f"allow_on_start={'true' if self.allow_on_start else 'false'} "
+            f"speed_scale={self.speed_scale:.2f} "
             f"gnss_recovery_hold={'true' if self.enable_gnss_recovery_hold else 'false'} "
             f"gnss_recovery_hold_s={self.gnss_recovery_hold_s:.2f}s "
             f"cost_stop={'true' if self.enable_cost_stop else 'false'} "
@@ -402,6 +421,8 @@ class PlanningCmdVelGateNode(Node):
                 self.allow_on_start = bool(p.value)
             elif p.name == "publish_zero_when_blocked":
                 self.publish_zero_when_blocked = bool(p.value)
+            elif p.name == "speed_scale":
+                self.speed_scale = float(p.value)
             elif p.name == "enable_gnss_recovery_hold":
                 self.enable_gnss_recovery_hold = bool(p.value)
             elif p.name == "gnss_recovery_hold_s":
@@ -430,6 +451,9 @@ class PlanningCmdVelGateNode(Node):
     # Returns whether cmd passthrough is currently allowed.
     def _effective_enabled(self) -> bool:
         if not (self._enabled and not self._estop):
+            return False
+        # HH_260507: Block when DR timeout (accumulated error too large).
+        if self._dr_timeout:
             return False
         if self._cost_blocked_until > self.get_clock().now().nanoseconds * 1e-9:
             return False
@@ -463,9 +487,9 @@ class PlanningCmdVelGateNode(Node):
             if yaw_alignment_enabled and yaw_alignment_zones:
                 override_cmd = self._apply_yaw_alignment_gate(msg)
                 if override_cmd is not None:
-                    self.pub_cmd.publish(override_cmd)
+                    self.pub_cmd.publish(self._scale_twist(override_cmd))
                     return
-            self.pub_cmd.publish(msg)
+            self.pub_cmd.publish(self._scale_twist(msg))
             return
         if self.publish_zero_when_blocked:
             self._publish_zero()
@@ -520,6 +544,23 @@ class PlanningCmdVelGateNode(Node):
         self._publish_state()
         if self.publish_zero_when_blocked:
             self._publish_zero()
+
+    # HH_260507: Blocks cmd_vel when DR timeout (covariance or time limit exceeded).
+    # Clears automatically when localization_monitor resets (GNSS recovered).
+    def _on_dr_timeout(self, msg: Bool) -> None:
+        new_timeout = bool(msg.data)
+        if new_timeout == self._dr_timeout:
+            return
+        self._dr_timeout = new_timeout
+        self._publish_state()
+        if self._dr_timeout and self.publish_zero_when_blocked:
+            self._publish_zero()
+        level = "WARN" if self._dr_timeout else "INFO"
+        log_fn = self.get_logger().warn if self._dr_timeout else self.get_logger().info
+        log_fn(
+            f"DR timeout update: dr_timeout={'true' if self._dr_timeout else 'false'} "
+            f"effective={'true' if self._effective_enabled() else 'false'}"
+        )
 
     # Handles e-stop messages.
     def _on_estop(self, msg: Bool) -> None:
@@ -1100,6 +1141,17 @@ class PlanningCmdVelGateNode(Node):
             max_cluster >= self.unavoidable_cluster_min_cells
             and ratio >= self.unavoidable_cluster_min_ratio
         )
+
+    # HH_260507: Apply speed_scale to linear and angular components.
+    def _scale_twist(self, msg: Twist) -> Twist:
+        if self.speed_scale == 1.0:
+            return msg
+        scaled = Twist()
+        scaled.linear.x = msg.linear.x * self.speed_scale
+        scaled.linear.y = msg.linear.y * self.speed_scale
+        scaled.linear.z = msg.linear.z * self.speed_scale
+        scaled.angular.z = msg.angular.z * self.speed_scale
+        return scaled
 
     def _clamp(self, value: float, lo: float, hi: float) -> float:
         return max(lo, min(hi, value))

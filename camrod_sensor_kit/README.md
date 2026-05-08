@@ -30,13 +30,12 @@ world
             ├── gnss_link
             ├── lidar_link
             ├── camera_link
-            └── radar_base_link
-                ├── radar_front_link
-                ├── radar_left1_link
-                ├── radar_left2_link
-                ├── radar_right1_link
-                ├── radar_right2_link
-                └── radar_rear_link
+            ├── radar_front_link
+            ├── radar_left1_link
+            ├── radar_left2_link
+            ├── radar_right1_link
+            ├── radar_right2_link
+            └── radar_rear_link
 ```
 
 All joints are fixed. Poses are fully parameterized from `robot_params.yaml`.
@@ -99,7 +98,7 @@ Key launch arguments:
 | Argument | Default | Description |
 |---|---|---|
 | `params_file` | `config/robot_params.yaml` | Robot geometry and sensor pose definitions |
-| `base_frame_id` | `robot_base_link` | Base link frame name |
+| `base_frame_id` | `robot_base_link` | Parent robot body frame name for sensor kit |
 | `sensor_kit_base_frame_id` | `sensor_kit_base_link` | Sensor kit base frame name |
 | `map_frame_id` | `map` | Fixed world frame |
 | `module_namespace` | `sensor_kit` | ROS2 node namespace |
@@ -108,5 +107,5 @@ Key launch arguments:
 
 | File | Purpose |
 |---|---|
-| `config/robot_params.yaml` | Robot dimensions (wheelbase, track width, length, width, height) and all sensor mount poses (x, y, z, roll, pitch, yaw) relative to sensor_kit_base_link |
+| `config/robot_params.yaml` | Robot dimensions (wheelbase, track width, length, width, height) and all sensor mount poses (x, y, z, roll, pitch, yaw) relative to sensor_kit_base_link. |
 | `urdf/camrod_sensor_kit.xacro` | Parameterized URDF: robot_base_link body, sensor_kit joints, per-sensor link macros |

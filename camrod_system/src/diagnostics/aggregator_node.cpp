@@ -135,7 +135,7 @@ private:
       if (!topic_configs_.empty() && topic_configs_.find(status.name) == topic_configs_.end()) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 10000,
-          "config에 없는 토픽 수신: \"%s\" → unknown 그룹으로 처리", status.name.c_str());
+          "config에 없는 진단 항목(name) 수신: \"%s\" → unknown 그룹으로 처리", status.name.c_str());
       }
       status_map_[status.name] = {status, now};
     }

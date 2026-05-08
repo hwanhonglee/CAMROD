@@ -18,8 +18,9 @@
 
     base_frame_id: "robot_base_link"
 
-    # Selector Publish Final Result reference TF 
-    publish_selected_tf: true
+    # HH_260506: Keep odom->base TF single-sourced from EKF/ESKF.
+    # Avoid dual-parent / conflicting TF publications from pose_selector.
+    publish_selected_tf: false
 
     # LocalizationMode: NORMAL=0, DEGRADED=1, DR_ONLY=2, INVALID=3
     # HH_260422: Changed 2→3 to keep ESKF DR_ONLY pose as primary source when GNSS fails,

@@ -80,8 +80,8 @@ def _launch_setup(context, *args, **kwargs):
   # ---------------------------------------------------------
   # 2. Nested radar sensors
   # ---------------------------------------------------------
-  # HH_260326: Radar aggregate frame + child sensors.
-  sensors["radar"] = _sensor_pose(_sensor_cfg_compat(params, ("radar", "base"), "radar_base"))
+  # HH_260507: Radar sensors are directly attached to sensor_kit_base_link.
+  # There is no intermediate radar base frame anymore.
   for radar_name in ["front", "left1", "left2", "right1", "right2", "rear"]:
     key = f"radar_{radar_name}"
     sensors[key] = _sensor_pose(_sensor_cfg_compat(params, ("radar", radar_name), key))

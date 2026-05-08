@@ -26,3 +26,9 @@
 
     publish_localization_status: false
     localization_status_topic: "/localization/status"
+
+    # HH_260507: DR timeout — stop robot if DR continues too long or covariance grows too large.
+    # 0.0 disables each check independently.
+    # covariance_trace = P(x,x) + P(y,y) + P(yaw,yaw) from ESKF status stream.
+    dr_max_duration_s: 30.0
+    dr_max_cov_trace: 50.0

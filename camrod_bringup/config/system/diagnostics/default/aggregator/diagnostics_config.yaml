@@ -202,3 +202,17 @@ topics:
   - name: "map_cost_grid_checker: /map/cost_grid"
     group: map/cost_grid
     timeout_s: 5.0
+
+  # ── System: tools 채널(system_checker/system_diagnostic) ───────────────
+  # NOTE: 여기의 name은 ROS topic 이름이 아니라 DiagnosticStatus.name 문자열.
+  - name: "system/diagnostic"
+    group: system/health
+    timeout_s: 5.0
+
+  - name: "system_checker/nodes"
+    group: system/checker
+    timeout_s: 5.0
+
+  - name: "system_checker/topics"
+    group: system/checker
+    timeout_s: 5.0

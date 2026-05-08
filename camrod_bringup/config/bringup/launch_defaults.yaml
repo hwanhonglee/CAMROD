@@ -35,7 +35,7 @@ bringup:
     pose_selector_enable: false
     # Localization launch refactor - explicit override keys per sub-launch.
     adapter_param_file: __module_default__
-    filter_eskf_param_file: __module_default__
+    filter_eskf_param_file: localization/filter/eskf.yaml
     filter_pose_selector_param_file: __module_default__
     monitor_param_file: __module_default__
     map_helper_param_file: __module_default__
@@ -126,6 +126,8 @@ bringup:
     cmd_vel_gate_yaw_alignment_exit_margin_m: 0.3
     # Keep module default unless bringup-level override is required.
     cmd_vel_gate_yaw_alignment_zones_file: __module_default__
+    # HH_260507: Scale all cmd_vel output by this factor before sending to /planning/cmd_vel.
+    cmd_vel_gate_speed_scale: 0.5
     use_dwb_controller: false
     # By default, use internal config defaults declared by planning launch files.
     nav2_base_param_file: __module_default__
@@ -166,7 +168,9 @@ bringup:
 
   platform:
     # By default, use internal config defaults declared by platform launch files.
-    params_file: __module_default__
+    # HH_260506: Route sensor_kit TF geometry through bringup config so mount offsets
+    # edited in camrod_bringup/config/sensor_kit/robot_params.yaml are applied.
+    params_file: sensor_kit/robot_params.yaml
     robot_visualization_param_file: __module_default__
     # Real platform defaults to direct planning cmd_vel usage.
     # Keep cmd_vel gate ON in sim mode via bringup.launch.py runtime override.

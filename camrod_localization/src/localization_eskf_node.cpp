@@ -11,6 +11,7 @@
 #include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <avg_msgs/msg/transform_stamped.hpp>
 #include <avg_msgs/msg/twist_stamped.hpp>
+#include <avg_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <avg_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <avg_msgs/msg/imu.hpp>
@@ -42,6 +43,12 @@ double normalizeYaw(double yaw)
   while (yaw > M_PI) yaw -= two_pi;
   while (yaw < -M_PI) yaw += two_pi;
   return yaw;
+}
+
+// Converts radian angle to degrees.
+double radToDeg(double rad)
+{
+  return rad * 180.0 / M_PI;
 }
 
 // Implements `yawToQuat` behavior.
@@ -82,6 +89,7 @@ public:
     // HH_260327: Keep map->odom TF authority in launch-level static publisher to
     // avoid duplicated map->odom broadcasters when switching filters.
     publish_map_to_odom_tf_ = declare_parameter<bool>("publish_map_to_odom_tf", true);
+    publish_uninitialized_tf_ = declare_parameter<bool>("publish_uninitialized_tf", false);
     // HH_260415: Stamp TF with node ROS time to avoid TF extrapolation when sensor clocks drift.
     tf_use_node_time_ = declare_parameter<bool>("tf_use_node_time", true);
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
@@ -98,8 +106,19 @@ public:
       "localization_status_topic", "/localization/status");
     // HH_260413: Separate IMU mount-frame yaw alignment from visualization offset.
     // This parameter corrects filter math (not RViz marker orientation).
+    // IMPORTANT: this is the PHYSICAL mount angle used only for acceleration rotation in predict().
+    // Do NOT inflate this to fix heading display — use imu_yaw_init_offset_deg for that.
     imu_to_base_yaw_deg_ = declare_parameter<double>("imu_to_base_yaw_deg", 0.0);
     imu_to_base_yaw_rad_ = imu_to_base_yaw_deg_ * M_PI / 180.0;
+    // HH_260506: Separate offset added ONLY to heading initialization (not acceleration rotation).
+    // CV7 without magnetometer boots at arbitrary yaw=0 reference — this corrects that offset
+    // so that IMU yaw + mount_angle + init_offset = correct robot world heading at first GNSS lock.
+    // Tune independently: imu_to_base_yaw_deg for stable forward/backward yaw,
+    //                     imu_yaw_init_offset_deg for correct initial heading display.
+    {
+      const double deg = declare_parameter<double>("imu_yaw_init_offset_deg", 0.0);
+      imu_yaw_init_offset_rad_ = deg * M_PI / 180.0;
+    }
     // HH_260416: IMU sign correction knobs for mirrored axis cases.
     // +1.0 keeps direction, -1.0 inverts direction.
     imu_accel_x_sign_ = declare_parameter<double>("imu_accel_x_sign", 1.0);
@@ -108,6 +127,12 @@ public:
     imu_yaw_sign_ = declare_parameter<double>("imu_yaw_sign", 1.0);
     use_imu_orientation_for_yaw_init_ = declare_parameter<bool>(
       "use_imu_orientation_for_yaw_init", true);
+    // HH_260507: Optional startup diagnostics for IMU yaw -> initial yaw path.
+    debug_yaw_init_ = declare_parameter<bool>("debug_yaw_init", false);
+    // HH_260507: Apply NHC/ZUPT also on IMU predict loop while stopped.
+    // This reduces standstill drift between wheel callback intervals.
+    apply_constraints_on_imu_when_stopped_ = declare_parameter<bool>(
+      "apply_constraints_on_imu_when_stopped", true);
 
     gnss_gate_mahalanobis_ = declare_parameter<double>("gnss_gate_mahalanobis", 9.0);
     wheel_gate_mahalanobis_ = declare_parameter<double>("wheel_gate_mahalanobis", 9.0);
@@ -174,6 +199,22 @@ public:
 
     initGnssProfile();
 
+    // HH_260506: GNSS COG (Course Over Ground) heading update.
+    // Subscribes to ublox fix_velocity (TwistWithCovarianceStamped in ENU) and uses
+    // atan2(vel_n, vel_e) as a direct yaw measurement when speed exceeds threshold.
+    // Eliminates need for manual imu_yaw_init_offset_deg calibration:
+    // heading self-corrects within seconds of first motion.
+    gnss_cog_topic_ = declare_parameter<std::string>("gnss_cog_topic", "");
+    gnss_cog_min_speed_mps_ = declare_parameter<double>("gnss_cog_min_speed_mps", 0.5);
+    gnss_cog_noise_rad_ = declare_parameter<double>("gnss_cog_noise_deg", 15.0) * M_PI / 180.0;
+    gnss_cog_gate_mahalanobis_ = declare_parameter<double>("gnss_cog_gate_mahalanobis", 9.0);
+    gnss_cog_yaw_offset_rad_ =
+      declare_parameter<double>("gnss_cog_yaw_offset_deg", 0.0) * M_PI / 180.0;
+    // HH_260508: On first valid COG measurement, hard-reset yaw instead of Kalman update.
+    // Eliminates the need for imu_yaw_init_offset_deg calibration — heading self-calibrates
+    // from GNSS velocity direction as soon as robot moves at gnss_cog_min_speed_mps.
+    gnss_cog_force_init_ = declare_parameter<bool>("gnss_cog_force_init", true);
+
     // Publishers
     odom_pub_ = create_publisher<avg_msgs::msg::Odometry>(odom_topic_, rclcpp::QoS(10));
     pose_pub_ = create_publisher<avg_msgs::msg::PoseStamped>(pose_topic_, rclcpp::QoS(10));
@@ -190,6 +231,11 @@ public:
     if (publish_tf_) {
       // HH_260123 Avoid shared_from_this() in ctor; use node handle constructor.
       tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
+      if (publish_uninitialized_tf_) {
+        using namespace std::chrono_literals;
+        uninitialized_tf_timer_ = create_wall_timer(
+          100ms, std::bind(&LocalizationEskfNode::publishUninitializedTf, this));
+      }
     }
 
     using std::placeholders::_1;
@@ -202,6 +248,13 @@ public:
     wheel_sub_ = create_subscription<avg_msgs::msg::Odometry>(
       wheel_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationEskfNode::onWheelOdom, this, _1));
+    if (!gnss_cog_topic_.empty()) {
+      gnss_cog_sub_ = create_subscription<avg_msgs::msg::TwistWithCovarianceStamped>(
+        gnss_cog_topic_, rclcpp::SensorDataQoS(),
+        std::bind(&LocalizationEskfNode::onGnssCog, this, _1));
+      RCLCPP_INFO(get_logger(), "GNSS COG heading enabled: topic=%s min_speed=%.2f m/s",
+        gnss_cog_topic_.c_str(), gnss_cog_min_speed_mps_);
+    }
 
     state_.setZero();
     covariance_.setIdentity();
@@ -211,6 +264,16 @@ public:
     RCLCPP_DEBUG(get_logger(),
       "ESKF started. imu=%s gnss=%s wheel=%s",
       imu_topic_.c_str(), gnss_topic_.c_str(), wheel_topic_.c_str());
+    if (debug_yaw_init_) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Yaw debug ON: use_imu_orientation_for_yaw_init=%s imu_yaw_sign=%.1f "
+        "imu_to_base_yaw_deg=%.3f align_yaw_to_imu_when_stopped=%s",
+        use_imu_orientation_for_yaw_init_ ? "true" : "false",
+        imu_yaw_sign_,
+        imu_to_base_yaw_deg_,
+        align_yaw_to_imu_when_stopped_ ? "true" : "false");
+    }
   }
 
 private:
@@ -235,9 +298,21 @@ private:
         qn.y = q.y * inv_norm;
         qn.z = q.z * inv_norm;
         qn.w = q.w * inv_norm;
+        const double imu_yaw_raw = normalizeYaw(yawFromQuat(qn));
         last_imu_base_yaw_ = normalizeYaw(
-          imu_yaw_sign_ * yawFromQuat(qn) + imu_to_base_yaw_rad_);
+          imu_yaw_sign_ * imu_yaw_raw + imu_to_base_yaw_rad_ + imu_yaw_init_offset_rad_);
         has_imu_base_yaw_ = true;
+        if (debug_yaw_init_) {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "Yaw debug IMU: raw=%.2f deg -> corrected=%.2f deg "
+            "(sign=%.1f, mount=%.2f deg, init_offset=%.2f deg)",
+            radToDeg(imu_yaw_raw),
+            radToDeg(last_imu_base_yaw_),
+            imu_yaw_sign_,
+            imu_to_base_yaw_deg_,
+            imu_yaw_init_offset_rad_ * 180.0 / M_PI);
+        }
       }
     }
 
@@ -258,6 +333,10 @@ private:
     }
 
     predict(sample, dt);
+    if (apply_constraints_on_imu_when_stopped_ && is_stopped_) {
+      applyNhc();
+      applyZupt();
+    }
     last_imu_ = sample;
     publishOutputs(stamp);
   }
@@ -280,10 +359,19 @@ private:
 
     if (init_on_first_gnss_ && !initialized_) {
       // 2026-01-30: Snap initial state to GNSS position and reset covariance.
+      const double yaw_seed = yawForInitialization();
       state_.setZero();
       state_(0) = z.x();
       state_(1) = z.y();
-      state_(4) = yawForInitialization();
+      state_(4) = yaw_seed;
+      if (debug_yaw_init_) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Yaw debug GNSS init: seeded yaw=%.2f deg from %s",
+          radToDeg(yaw_seed),
+          (use_imu_orientation_for_yaw_init_ && has_imu_base_yaw_) ? "IMU orientation" :
+          "state yaw");
+      }
 
       covariance_.setIdentity();
       covariance_ *= 10.0;
@@ -322,10 +410,20 @@ private:
     if (mahal > gnss_gate_mahalanobis_) {
       if (reinit_on_gnss_reject_ && pos_error > reinit_distance_threshold_) {
         // 2026-02-02: Hard reset to GNSS if drifted too far.
+        // On re-init, always preserve current filter yaw (state_(4)) — IMU quaternion yaw
+        // has drifted (CV7 has no magnetometer, pure gyro-integrated heading) so using it
+        // here would corrupt a valid heading estimate built up during prior driving.
+        const double yaw_seed = normalizeYaw(state_(4));
         state_.setZero();
         state_(0) = z.x();
         state_(1) = z.y();
-        state_(4) = yawForInitialization();
+        state_(4) = yaw_seed;
+        if (debug_yaw_init_) {
+          RCLCPP_WARN(
+            get_logger(),
+            "Yaw debug GNSS reinit: seeded yaw=%.2f deg from current filter state (pos_error=%.2fm)",
+            radToDeg(yaw_seed), pos_error);
+        }
 
         covariance_.setIdentity();
         covariance_ *= 10.0;
@@ -350,11 +448,13 @@ private:
     }
 
     Eigen::Matrix<double, 8, 2> K = covariance_ * H.transpose() * S.inverse();
-    Vector8d dx = K * innov;
-    state_ += dx;
+    // HH_260507: Freeze yaw row so GNSS position updates don't rotate heading when stopped.
+    if (freeze_yaw_when_stopped_ && is_stopped_) {
+      K.row(4).setZero();
+    }
+    state_ += K * innov;
     state_(4) = normalizeYaw(state_(4));
-    Eigen::Matrix2d I2 = Eigen::Matrix2d::Identity();
-    covariance_ = (Matrix8d::Identity() - K * H) * covariance_;
+    applyJosephUpdate<2>(K, H, R);
 
     diag.gnss_update_accepted = true;
     diag.covariance_trace = covariance_.trace();
@@ -369,6 +469,7 @@ private:
     if (!last_imu_) {
       return;
     }
+    last_wheel_odom_time_ = msg->header.stamp;
     const double v_meas = msg->twist.twist.linear.x;
     updateStopState(v_meas, msg->header.stamp);
     Eigen::Matrix<double, 1, 8> H = Eigen::Matrix<double, 1, 8>::Zero();
@@ -409,7 +510,7 @@ private:
       std::isfinite(msg->twist.twist.angular.z) &&
       std::abs(v_meas) >= wheel_yaw_rate_min_speed_mps_;
     const double wheel_yaw_rate_meas = msg->twist.twist.angular.z;
-    const double imu_yaw_rate_pred = imu_gyro_z_sign_ * last_imu_->gyro.z() - state_(5);
+    const double imu_yaw_rate_pred = imu_gyro_z_sign_ * (last_imu_->gyro.z() - state_(5));
     double mahal = 0.0;
     bool accepted = false;
 
@@ -440,7 +541,7 @@ private:
         const Eigen::Matrix<double, 8, 2> K2 = covariance_ * H2.transpose() * S2.inverse();
         state_ += K2 * innov2;
         state_(4) = normalizeYaw(state_(4));
-        covariance_ = (Matrix8d::Identity() - K2 * H2) * covariance_;
+        applyJosephUpdate<2>(K2, H2, R2);
         accepted = true;
       }
     } else {
@@ -453,7 +554,8 @@ private:
         Eigen::Matrix<double, 8, 1> K = covariance_ * H.transpose() * (1.0 / S);
         state_ += K * innov;
         state_(4) = normalizeYaw(state_(4));
-        covariance_ = (Matrix8d::Identity() - K * H) * covariance_;
+        Eigen::Matrix<double, 1, 1> R1; R1 << R_meas;
+        applyJosephUpdate<1>(K, H, R1);
         accepted = true;
       }
     }
@@ -492,12 +594,13 @@ private:
     const double mount_cos = std::cos(imu_to_base_yaw_rad_);
     const double mount_sin = std::sin(imu_to_base_yaw_rad_);
 
-    double gyro_z = imu_gyro_z_sign_ * sample.gyro.z() - state_(5);
+    // Bias is estimated in raw-sensor space so sign changes don't corrupt the estimate.
+    double gyro_z = imu_gyro_z_sign_ * (sample.gyro.z() - state_(5));
     if (freeze_yaw_when_stopped_ && is_stopped_) {
       gyro_z = 0.0;
     }
-    const double imu_ax = imu_accel_x_sign_ * sample.acc.x() - state_(6);
-    const double imu_ay = imu_accel_y_sign_ * sample.acc.y() - state_(7);
+    const double imu_ax = imu_accel_x_sign_ * (sample.acc.x() - state_(6));
+    const double imu_ay = imu_accel_y_sign_ * (sample.acc.y() - state_(7));
     // HH_260413: Rotate IMU XY acceleration into robot-base frame before world projection.
     const double ax = mount_cos * imu_ax - mount_sin * imu_ay;
     const double ay = mount_sin * imu_ax + mount_cos * imu_ay;
@@ -528,13 +631,17 @@ private:
     F(0, 2) = dt;
     F(1, 3) = dt;
 
-    // Position sensitivity to accel bias
+    // Jacobians for bias states: bias is in raw-sensor space, so signs and mount rotation apply.
     Eigen::Matrix2d R_yaw;
     R_yaw << cos_yaw, -sin_yaw,
              sin_yaw, cos_yaw;
-    F.block<2, 2>(2, 6) = -R_yaw * dt;
-    F(4, 5) = -dt;
-    F.block<2, 2>(0, 6) = -0.5 * R_yaw * dt * dt;
+    // Mount rotation + accel sign: d(acc_base)/d(accel_bias_raw) = -sign * R_mount
+    Eigen::Matrix2d M_bias;
+    M_bias << imu_accel_x_sign_ * mount_cos, imu_accel_y_sign_ * (-mount_sin),
+              imu_accel_x_sign_ * mount_sin, imu_accel_y_sign_ * mount_cos;
+    F.block<2, 2>(2, 6) = -R_yaw * M_bias * dt;
+    F(4, 5) = -imu_gyro_z_sign_ * dt;
+    F.block<2, 2>(0, 6) = -0.5 * R_yaw * M_bias * dt * dt;
 
     Matrix8d Q = Matrix8d::Zero();
     const double q_acc = accel_noise_ * accel_noise_;
@@ -708,10 +815,15 @@ private:
     if (mahal_nhc > nhc_gate_mahalanobis_) {
       return;
     }
-    const Eigen::Matrix<double, 8, 1> K_nhc = covariance_ * H_nhc.transpose() / S_nhc;
+    Eigen::Matrix<double, 8, 1> K_nhc = covariance_ * H_nhc.transpose() / S_nhc;
+    // HH_260507: Don't let NHC update rotate yaw when stopped.
+    if (freeze_yaw_when_stopped_ && is_stopped_) {
+      K_nhc(4) = 0.0;
+    }
     state_ += K_nhc * innov;
     state_(4) = normalizeYaw(state_(4));
-    covariance_ = (Matrix8d::Identity() - K_nhc * H_nhc) * covariance_;
+    Eigen::Matrix<double, 1, 1> R_nhc_mat; R_nhc_mat << R_nhc;
+    applyJosephUpdate<1>(K_nhc, H_nhc, R_nhc_mat);
   }
 
   // HH_260422: Zero Velocity Update — inject [vx, vy] = [0, 0] when robot is stopped.
@@ -741,11 +853,132 @@ private:
     if (mahal_zupt > zupt_gate_mahalanobis_) {
       return;
     }
-    const Eigen::Matrix<double, 8, 2> K_zupt =
+    Eigen::Matrix<double, 8, 2> K_zupt =
       covariance_ * H_zupt.transpose() * S_zupt.inverse();
+    // HH_260507: Freeze yaw row so ZUPT covariance cross-terms don't rotate heading.
+    if (freeze_yaw_when_stopped_ && is_stopped_) {
+      K_zupt.row(4).setZero();
+    }
     state_ += K_zupt * innov_zupt;
     state_(4) = normalizeYaw(state_(4));
-    covariance_ = (Matrix8d::Identity() - K_zupt * H_zupt) * covariance_;
+    Eigen::Matrix2d R_zupt_mat = Eigen::Matrix2d::Identity() * R_zupt;
+    applyJosephUpdate<2>(K_zupt, H_zupt, R_zupt_mat);
+  }
+
+  // HH_260506: GNSS COG heading callback.
+  // Uses ENU velocity (x=East, y=North) from ublox fix_velocity topic to compute
+  // course-over-ground heading and apply it as a direct yaw measurement.
+  // Replaces manual imu_yaw_init_offset_deg — heading self-calibrates during motion.
+  void onGnssCog(
+    const avg_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr msg)
+  {
+    if (!initialized_) {
+      return;
+    }
+    // HH_260507: Block COG when wheel odom confirms stopped.
+    // HH_260508: If wheel odom is stale (ranger disabled), skip the is_stopped_ check and rely
+    // on the speed threshold below to filter standstill GNSS velocity noise.
+    const bool wheel_fresh = last_wheel_odom_time_.nanoseconds() > 0 &&
+      (this->now() - last_wheel_odom_time_).seconds() < kWheelOdomStaleSec;
+    if (wheel_fresh && is_stopped_) {
+      return;
+    }
+    const double vel_e = msg->twist.twist.linear.x;  // East velocity (m/s)
+    const double vel_n = msg->twist.twist.linear.y;  // North velocity (m/s)
+    const double speed = std::sqrt(vel_e * vel_e + vel_n * vel_n);
+    if (speed < gnss_cog_min_speed_mps_) {
+      return;
+    }
+    // COG in ENU: angle from East axis CCW. Same convention as filter yaw.
+    const double cog = normalizeYaw(std::atan2(vel_n, vel_e) + gnss_cog_yaw_offset_rad_);
+    applyGnssCogHeading(cog, speed, msg->twist.covariance[0]);
+  }
+
+  void publishUninitializedTf()
+  {
+    if (initialized_ || !publish_tf_ || !tf_broadcaster_) {
+      if (uninitialized_tf_timer_) {
+        uninitialized_tf_timer_->cancel();
+      }
+      return;
+    }
+
+    avg_msgs::msg::Odometry odom;
+    odom.header.stamp = this->get_clock()->now();
+    odom.header.frame_id = odom_frame_;
+    odom.child_frame_id = base_frame_;
+    odom.pose.pose.position.x = state_(0);
+    odom.pose.pose.position.y = state_(1);
+    odom.pose.pose.position.z = 0.0;
+    const auto q = yawToQuat(yawForInitialization());
+    odom.pose.pose.orientation.x = q.x();
+    odom.pose.pose.orientation.y = q.y();
+    odom.pose.pose.orientation.z = q.z();
+    odom.pose.pose.orientation.w = q.w();
+    publishTf(odom);
+  }
+
+  // HH_260508: Joseph form P = (I-KH)P(I-KH)^T + K*R*K^T + symmetrize.
+  // Maintains positive semi-definiteness even with zero rows in K (yaw freeze).
+  // The simple form (I-KH)P drifts negative after repeated asymmetric updates.
+  template<int MeasDim>
+  void applyJosephUpdate(
+    const Eigen::Matrix<double, 8, MeasDim> & K,
+    const Eigen::Matrix<double, MeasDim, 8> & H,
+    const Eigen::Matrix<double, MeasDim, MeasDim> & R)
+  {
+    const Matrix8d IKH = Matrix8d::Identity() - K * H;
+    covariance_ = IKH * covariance_ * IKH.transpose() + K * R * K.transpose();
+    covariance_ = (covariance_ + covariance_.transpose()) * 0.5;
+    for (int i = 0; i < 8; i++) {
+      covariance_(i, i) = std::max(covariance_(i, i), 1e-9);
+    }
+  }
+
+  void applyGnssCogHeading(double cog, double speed, double speed_cov_xx)
+  {
+    // HH_260508: Hard-reset yaw from first valid COG instead of Kalman update.
+    // IMU has no absolute heading reference, so the initial yaw seed is arbitrary.
+    // First COG measurement gives the ground-truth heading — just set it directly.
+    if (gnss_cog_force_init_ && !gnss_cog_heading_initialized_) {
+      RCLCPP_INFO(get_logger(),
+        "GNSS COG heading init: yaw %.1f deg -> %.1f deg (speed=%.2f m/s)",
+        state_(4) * 180.0 / M_PI, cog * 180.0 / M_PI, speed);
+      state_(4) = cog;
+      covariance_(4, 4) = gnss_cog_noise_rad_ * gnss_cog_noise_rad_;
+      gnss_cog_heading_initialized_ = true;
+      return;
+    }
+
+    const double innov = normalizeYaw(cog - state_(4));
+
+    // Heading noise from velocity noise via error propagation: σ_ψ ≈ σ_v / speed.
+    // Use whichever is larger: propagated noise or the fixed minimum.
+    double R_cog = gnss_cog_noise_rad_ * gnss_cog_noise_rad_;
+    if (speed_cov_xx > 0.0) {
+      const double sigma_heading = std::sqrt(speed_cov_xx) / speed;
+      R_cog = std::max(R_cog, sigma_heading * sigma_heading);
+    }
+
+    const double S = covariance_(4, 4) + R_cog;
+    const double mahal = (innov * innov) / std::max(1e-12, S);
+    if (mahal > gnss_cog_gate_mahalanobis_) {
+      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+        "GNSS COG heading rejected (mahal=%.2f > gate=%.2f, cog=%.1f deg)",
+        mahal, gnss_cog_gate_mahalanobis_, cog * 180.0 / M_PI);
+      return;
+    }
+
+    Eigen::Matrix<double, 1, 8> H = Eigen::Matrix<double, 1, 8>::Zero();
+    H(0, 4) = 1.0;
+    const Eigen::Matrix<double, 8, 1> K = covariance_ * H.transpose() / S;
+    state_ += K * innov;
+    state_(4) = normalizeYaw(state_(4));
+    Eigen::Matrix<double, 1, 1> R_cog_mat; R_cog_mat << R_cog;
+    applyJosephUpdate<1>(K, H, R_cog_mat);
+    RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
+      "GNSS COG heading applied: cog=%.1f deg speed=%.2f m/s innov=%.1f deg",
+      cog * 180.0 / M_PI, speed, innov * 180.0 / M_PI);
   }
 
   // Updates stop-state based on wheel speed so we can clamp yaw drift at standstill.
@@ -842,16 +1075,31 @@ private:
   std::string localization_status_topic_;
   bool publish_tf_{true};                   // HH_260422: true -> broadcast odom->base TF (required by nav2 and rviz)
   bool publish_map_to_odom_tf_{true};       // HH_260422: true -> also broadcast map->odom TF (replaces static publisher)
+  bool publish_uninitialized_tf_{false};
   bool tf_use_node_time_{true};             // HH_260422: true -> stamp TF with node ROS time, not sensor stamp (prevents TF extrapolation)
   bool publish_localization_status_{false}; // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs)
   double imu_to_base_yaw_deg_{0.0};
   double imu_to_base_yaw_rad_{0.0};
+  double imu_yaw_init_offset_rad_{0.0};  // heading-init only offset (not applied in predict())
+  std::string gnss_cog_topic_;
+  double gnss_cog_min_speed_mps_{0.5};
+  double gnss_cog_noise_rad_{0.262};  // ~15 deg default
+  double gnss_cog_gate_mahalanobis_{9.0};
+  double gnss_cog_yaw_offset_rad_{0.0};
+  // HH_260508: force-init from first COG — eliminates imu_yaw_init_offset_deg calibration.
+  bool gnss_cog_force_init_{true};
+  bool gnss_cog_heading_initialized_{false};
+  rclcpp::Subscription<avg_msgs::msg::TwistWithCovarianceStamped>::SharedPtr gnss_cog_sub_;
   double imu_accel_x_sign_{1.0};
   double imu_accel_y_sign_{1.0};
   double imu_gyro_z_sign_{1.0};
   double imu_yaw_sign_{1.0};
   // HH_260422: true -> seed yaw from IMU quaternion on GNSS init/reinit instead of current state_(4)
   bool use_imu_orientation_for_yaw_init_{true};
+  // HH_260507: true -> print IMU->yaw seed path for startup/debug diagnosis.
+  bool debug_yaw_init_{false};
+  // HH_260507: true -> run NHC/ZUPT on IMU callbacks while stop-state is active.
+  bool apply_constraints_on_imu_when_stopped_{true};
 
   double gnss_gate_mahalanobis_{9.0};
   // HH_260422: true -> hard-reinit filter to GNSS when position error exceeds reinit_distance_threshold_
@@ -890,8 +1138,15 @@ private:
   // HH_260422: is_stopped_ becomes true when wheel speed < stop_speed_threshold_ for >= stop_hold_s_ seconds.
   //   When true: freeze_yaw_when_stopped, align_yaw_to_imu_when_stopped, and applyZupt() all activate.
   //   Clears immediately when speed >= stop_speed_threshold_ (no hold-off on motion resume).
+  // HH_260508: Default false — wheel odom staleness check in onGnssCog() already blocks COG
+  //   when wheel odom hasn't arrived (wheel_age > kWheelOdomStaleSec). Keeping true here
+  //   caused permanent yaw freeze when ranger driver is disabled (no wheel odom ever arrives).
   bool is_stopped_{false};
   rclcpp::Time last_motion_time_{0, 0, RCL_ROS_TIME};
+  // HH_260507: Track last wheel odom arrival; treat as stopped if stale > 1s
+  //   (covers the case where ranger driver is disabled or wheel odom drops out).
+  rclcpp::Time last_wheel_odom_time_{0, 0, RCL_ROS_TIME};
+  static constexpr double kWheelOdomStaleSec = 1.0;
 
   std::string gnss_profile_mode_{"auto"};
   int gnss_profile_switch_reject_count_{5};
@@ -921,6 +1176,7 @@ private:
   rclcpp::Publisher<AvgLocalizationStatusStream>::SharedPtr diag_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+  rclcpp::TimerBase::SharedPtr uninitialized_tf_timer_;
 
   AvgLocalizationStatusStream last_diag_;
   // HH_260422: initialized_ becomes true on first GNSS snap (or at startup if init_on_first_gnss_=false).

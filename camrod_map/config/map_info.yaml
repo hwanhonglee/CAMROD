@@ -11,9 +11,9 @@
     # Keep these values aligned with the source map generation reference.
 
     # 52S-CF60, Park - VMB
-    offset_lat: 36.8436194
-    offset_lon: 128.0925490
-    offset_alt: 299.425
+    # offset_lat: 36.8436194
+    # offset_lon: 128.0925490
+    # offset_alt: 299.425
 
     # 52S-CF0, C-track - VMB
     # offset_lat: 36.12491471
@@ -24,9 +24,9 @@
     # Degree LLH: 36.7292921, 127.4429577
     # UTM (meter): 52S 360965.99E 4065972.49N
     # MGRS: 52SCF6096565972
-    # offset_lat: 36.7292921
-    # offset_lon: 127.4429577
-    # offset_alt: 84.0
+    offset_lat: 36.7292921
+    offset_lon: 127.4429577
+    offset_alt: 84.0
 
     # Optional UTM-origin metadata for downstream tools that prefer metric origin fields.
     offset_utm_easting: 360965.99

@@ -32,10 +32,6 @@
   <xacro:arg name="camera_xyz" default="0.35 0.0 0.8"/>
   <xacro:arg name="camera_rpy" default="0.0 0.0 0.0"/>
 
-  <!-- HH_260326: Optional aggregate radar frame under sensor_kit_base_link. -->
-  <xacro:arg name="radar_xyz" default="0.0 0.0 0.0"/>
-  <xacro:arg name="radar_rpy" default="0.0 0.0 0.0"/>
-
   <!-- ========================================================= -->
   <!-- 4. Radar transform arguments                              -->
   <!--    yaw examples:                                          -->
@@ -199,17 +195,11 @@
   <!-- ========================================================= -->
   <!-- 10. Radar sensors                                         -->
   <!-- ========================================================= -->
-  <!-- HH_260326: Group radar sensors under radar_link frame. -->
-  <link name="radar_link"/>
-  <joint name="radar_link_joint" type="fixed">
-    <parent link="${sensor_kit_base_link_name}"/>
-    <child link="radar_link"/>
-    <origin xyz="$(arg radar_xyz)" rpy="$(arg radar_rpy)"/>
-  </joint>
+  <!-- HH_260507: Radar sensors are attached directly under sensor_kit_base_link. -->
 
   <xacro:sensor_link
     name="radar_front_link"
-    parent="radar_link"
+    parent="${sensor_kit_base_link_name}"
     xyz="$(arg radar_front_xyz)"
     rpy="$(arg radar_front_rpy)"
     color_rgba="0.95 0.65 0.20 1.0"
@@ -219,7 +209,7 @@
 
   <xacro:sensor_link
     name="radar_left1_link"
-    parent="radar_link"
+    parent="${sensor_kit_base_link_name}"
     xyz="$(arg radar_left1_xyz)"
     rpy="$(arg radar_left1_rpy)"
     color_rgba="0.95 0.65 0.20 1.0"
@@ -229,7 +219,7 @@
 
   <xacro:sensor_link
     name="radar_left2_link"
-    parent="radar_link"
+    parent="${sensor_kit_base_link_name}"
     xyz="$(arg radar_left2_xyz)"
     rpy="$(arg radar_left2_rpy)"
     color_rgba="0.95 0.65 0.20 1.0"
@@ -239,7 +229,7 @@
 
   <xacro:sensor_link
     name="radar_right1_link"
-    parent="radar_link"
+    parent="${sensor_kit_base_link_name}"
     xyz="$(arg radar_right1_xyz)"
     rpy="$(arg radar_right1_rpy)"
     color_rgba="0.95 0.65 0.20 1.0"
@@ -249,7 +239,7 @@
 
   <xacro:sensor_link
     name="radar_right2_link"
-    parent="radar_link"
+    parent="${sensor_kit_base_link_name}"
     xyz="$(arg radar_right2_xyz)"
     rpy="$(arg radar_right2_rpy)"
     color_rgba="0.95 0.65 0.20 1.0"
@@ -259,7 +249,7 @@
 
   <xacro:sensor_link
     name="radar_rear_link"
-    parent="radar_link"
+    parent="${sensor_kit_base_link_name}"
     xyz="$(arg radar_rear_xyz)"
     rpy="$(arg radar_rear_rpy)"
     color_rgba="0.95 0.65 0.20 1.0"

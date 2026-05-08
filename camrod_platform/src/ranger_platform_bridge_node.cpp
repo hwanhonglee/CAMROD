@@ -62,6 +62,9 @@ public:
     // HH_260428: Comprehensive aggregated DBC status topic (AvgPlatformStatus).
     platform_status_topic_ = declare_parameter<std::string>(
       "platform_status_topic",  "/platform/status");
+    // HH_260506: Frame id used by aggregated AvgPlatformStatus header.
+    status_frame_id_      = declare_parameter<std::string>(
+      "status_frame_id", "robot_base_link");
     estop_on_exception_    = declare_parameter<bool>("estop_on_exception_state", true);
     estop_on_error_code_   = declare_parameter<bool>("estop_on_error_code",      false);
 
@@ -118,12 +121,12 @@ public:
       get_logger(),
       "ranger_platform_bridge ready: "
       "odom=%s fallback=%s (%.1fs) actuator=%s system_state=%s"
-      " -> odom=%s vel=%s wheel=%s estop=%s status=%s",
+      " -> odom=%s vel=%s wheel=%s estop=%s status=%s frame=%s",
       odom_input_topic_.c_str(), odom_fallback_topic_.c_str(), odom_fallback_timeout_,
       actuator_state_topic_.c_str(), system_state_topic_.c_str(),
       status_odom_topic_.c_str(), status_velocity_topic_.c_str(),
       status_wheel_topic_.c_str(), status_estop_topic_.c_str(),
-      platform_status_topic_.c_str());
+      platform_status_topic_.c_str(), status_frame_id_.c_str());
   }
 
 private:
@@ -299,7 +302,7 @@ private:
   {
     avg_msgs::msg::AvgPlatformStatus s;
     s.header.stamp = stamp;
-    s.header.frame_id = "base_link";
+    s.header.frame_id = status_frame_id_;
 
     // Odom and velocity from latest odom source
     if (latest_odom_) {
@@ -363,6 +366,7 @@ private:
   std::string  status_wheel_topic_;
   std::string  status_estop_topic_;
   std::string  platform_status_topic_;
+  std::string  status_frame_id_;
   bool         publish_topics_{true};
   bool         estop_on_exception_{true};
   bool         estop_on_error_code_{false};

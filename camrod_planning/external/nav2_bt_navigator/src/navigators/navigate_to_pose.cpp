@@ -42,6 +42,28 @@ NavigateToPoseNavigator::configure(
 
   path_blackboard_id_ = node->get_parameter("path_blackboard_id").as_string();
 
+  if (!node->has_parameter("start_blackboard_id")) {
+    node->declare_parameter("start_blackboard_id", std::string("start"));
+  }
+  start_blackboard_id_ = node->get_parameter("start_blackboard_id").as_string();
+
+  if (!node->has_parameter("use_start_pose_override")) {
+    node->declare_parameter("use_start_pose_override", true);
+  }
+  use_start_pose_override_ = node->get_parameter("use_start_pose_override").as_bool();
+
+  if (!node->has_parameter("start_pose_topic")) {
+    node->declare_parameter("start_pose_topic", std::string("/planning/lanelet_pose_ros"));
+  }
+  start_pose_topic_ = node->get_parameter("start_pose_topic").as_string();
+
+  if (!node->has_parameter("start_pose_timeout")) {
+    node->declare_parameter("start_pose_timeout", 1.0);
+  }
+  start_pose_timeout_s_ = node->get_parameter("start_pose_timeout").as_double();
+  has_start_pose_ = false;
+  latest_start_pose_time_ = rclcpp::Time(0, 0, node->get_clock()->get_clock_type());
+
   // Odometry smoother object for getting current speed
   odom_smoother_ = odom_smoother;
 
@@ -51,6 +73,19 @@ NavigateToPoseNavigator::configure(
     "goal_pose",
     rclcpp::SystemDefaultsQoS(),
     std::bind(&NavigateToPoseNavigator::onGoalPoseReceived, this, std::placeholders::_1));
+
+  if (use_start_pose_override_ && !start_pose_topic_.empty()) {
+    start_pose_sub_ = node->create_subscription<geometry_msgs::msg::PoseStamped>(
+      start_pose_topic_,
+      rclcpp::QoS(1).reliable(),
+      std::bind(&NavigateToPoseNavigator::onStartPoseReceived, this, std::placeholders::_1));
+    RCLCPP_INFO(
+      logger_,
+      "start pose override enabled: topic=%s timeout=%.2fs bb_key=%s",
+      start_pose_topic_.c_str(), start_pose_timeout_s_, start_blackboard_id_.c_str());
+  } else {
+    RCLCPP_INFO(logger_, "start pose override disabled (planner start uses current robot pose)");
+  }
   return true;
 }
 
@@ -79,6 +114,7 @@ bool
 NavigateToPoseNavigator::cleanup()
 {
   goal_sub_.reset();
+  start_pose_sub_.reset();
   self_client_.reset();
   return true;
 }
@@ -215,6 +251,48 @@ NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
     current_pose.pose.position.x, current_pose.pose.position.y,
     goal->pose.pose.position.x, goal->pose.pose.position.y);
 
+  geometry_msgs::msg::PoseStamped start_for_planner = current_pose;
+  bool using_override = false;
+  if (use_start_pose_override_ && has_start_pose_) {
+    const auto now = clock_->now();
+    const bool has_stamp = latest_start_pose_time_.nanoseconds() > 0;
+    const bool stale =
+      start_pose_timeout_s_ > 0.0 &&
+      has_stamp &&
+      (now - latest_start_pose_time_).seconds() > start_pose_timeout_s_;
+    if (!stale) {
+      auto candidate = latest_start_pose_;
+      if (candidate.header.frame_id.empty()) {
+        candidate.header.frame_id = feedback_utils_.global_frame;
+      }
+      geometry_msgs::msg::PoseStamped transformed;
+      if (candidate.header.frame_id == feedback_utils_.global_frame) {
+        transformed = candidate;
+      } else if (
+        nav2_util::transformPoseInTargetFrame(
+          candidate, transformed, *feedback_utils_.tf,
+          feedback_utils_.global_frame, feedback_utils_.transform_tolerance))
+      {
+        // transformed now populated in global frame.
+      } else {
+        RCLCPP_WARN(
+          logger_,
+          "Failed to transform start override pose (%s -> %s). Fallback to current pose.",
+          candidate.header.frame_id.c_str(), feedback_utils_.global_frame.c_str());
+        transformed = current_pose;
+      }
+
+      if (transformed.header.frame_id == feedback_utils_.global_frame) {
+        start_for_planner = transformed;
+        using_override = true;
+      }
+    } else {
+      RCLCPP_WARN(
+        logger_, "Start override pose stale (timeout %.2fs). Fallback to current pose.",
+        start_pose_timeout_s_);
+    }
+  }
+
   // Reset state for new action feedback
   start_time_ = clock_->now();
   auto blackboard = bt_action_server_->getBlackboard();
@@ -222,6 +300,14 @@ NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
 
   // Update the goal pose on the blackboard
   blackboard->set<geometry_msgs::msg::PoseStamped>(goal_blackboard_id_, goal->pose);
+  blackboard->set<geometry_msgs::msg::PoseStamped>(start_blackboard_id_, start_for_planner);
+  if (using_override) {
+    RCLCPP_INFO(
+      logger_,
+      "Planner start override: using snapped start (%.2f, %.2f) from %s",
+      start_for_planner.pose.position.x, start_for_planner.pose.position.y,
+      start_pose_topic_.c_str());
+  }
 }
 
 void
@@ -230,6 +316,23 @@ NavigateToPoseNavigator::onGoalPoseReceived(const geometry_msgs::msg::PoseStampe
   ActionT::Goal goal;
   goal.pose = *pose;
   self_client_->async_send_goal(goal);
+}
+
+void
+NavigateToPoseNavigator::onStartPoseReceived(
+  const geometry_msgs::msg::PoseStamped::SharedPtr pose)
+{
+  if (!pose) {
+    return;
+  }
+  latest_start_pose_ = *pose;
+  if (latest_start_pose_.header.stamp.sec == 0 && latest_start_pose_.header.stamp.nanosec == 0) {
+    latest_start_pose_time_ = clock_->now();
+  } else {
+    latest_start_pose_time_ = rclcpp::Time(
+      latest_start_pose_.header.stamp, clock_->get_clock_type());
+  }
+  has_start_pose_ = true;
 }
 
 }  // namespace nav2_bt_navigator
