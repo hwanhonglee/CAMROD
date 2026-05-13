@@ -87,6 +87,10 @@ private:
       pcl::PointCloud<pcl::PointXYZI>::Ptr ds(new pcl::PointCloud<pcl::PointXYZI>());
       vg.filter(*ds);
 
+      if (ds->empty()) {
+        return;
+      }
+
       pcl::SACSegmentation<pcl::PointXYZI> seg;
       seg.setOptimizeCoefficients(true);
       seg.setModelType(pcl::SACMODEL_PLANE);

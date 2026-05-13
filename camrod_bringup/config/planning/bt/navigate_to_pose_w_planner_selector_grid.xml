@@ -14,6 +14,8 @@
             <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
           </RecoveryNode>
         </RateController>
+        <!-- HH_260513: Smooth GridBased staircase path before handing to FollowPath. -->
+        <SmoothPath path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">
           <FollowPath path="{path}" controller_id="FollowPath"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>

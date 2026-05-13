@@ -403,6 +403,15 @@ class PlanningStateMachineNode(Node):
         self.return_requested = False
         self.recall_requested = False
         self.recall_target_key = ""
+        # HH_260513: Always relay manual goal to Nav2 so the latest goal preempts any
+        # in-flight navigation, regardless of prior state (GOAL_REACHED or not).
+        # This ensures heading-mismatch recovery and RViz '2D Nav Goal' preemption both work.
+        if self.pub_goal_ros is not None:
+            self.pub_goal_ros.publish(msg)
+            self.get_logger().info(
+                "manual goal relayed to Nav2: "
+                f"xy=({msg.pose.position.x:.2f},{msg.pose.position.y:.2f})"
+            )
 
     # Implements `_on_return_to_drop_zone` behavior.
     def _on_return_to_drop_zone(self, msg: Bool) -> None:

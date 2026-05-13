@@ -282,6 +282,7 @@ class PlanningCmdVelGateNode(Node):
         self._last_grid = None
         self._last_pose = None
         self._last_odom = None
+        self._last_block_reason_log_sec = 0.0
 
         # Runtime state for yaw-alignment gate.
         self._yaw_alignment_zones: list[YawAlignmentZone] = []
@@ -493,6 +494,29 @@ class PlanningCmdVelGateNode(Node):
             return
         if self.publish_zero_when_blocked:
             self._publish_zero()
+        self._log_block_reason()
+
+    # Emits a throttled log identifying which gate condition is blocking cmd_vel.
+    def _log_block_reason(self) -> None:
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        if (now_sec - self._last_block_reason_log_sec) < 2.0:
+            return
+        self._last_block_reason_log_sec = now_sec
+        now_ns = self.get_clock().now().nanoseconds
+        reasons = []
+        if not self._enabled:
+            reasons.append("engage=False")
+        if self._estop:
+            reasons.append("estop=True")
+        if self._dr_timeout:
+            reasons.append("dr_timeout=True")
+        if self._cost_blocked_until > now_ns * 1e-9:
+            reasons.append(f"cost_hold({self._cost_blocked_until - now_ns * 1e-9:.1f}s left)")
+        if self._gnss_recovery_blocked_until > now_ns * 1e-9:
+            reasons.append(f"gnss_recovery_hold({self._gnss_recovery_blocked_until - now_ns * 1e-9:.1f}s left)")
+        self.get_logger().warn(
+            "cmd_vel BLOCKED: " + (", ".join(reasons) if reasons else "unknown")
+        )
 
     # Updates engage latch from /planning/engage.
     def _set_enabled(self, enabled: bool) -> None:

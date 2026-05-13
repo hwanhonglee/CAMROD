@@ -13,9 +13,11 @@ controller_server:
       max_linear_accel: 1.5
       max_angular_vel: 1.2
       max_angular_accel: 3.0
-      lookahead_dist: 0.6
-      min_lookahead_dist: 0.25
-      max_lookahead_dist: 1.8 
+      # HH_260513: Increased lookahead to suppress straight-line oscillation.
+      # Short min_lookahead caused micro-jitter in path to produce large angular cmds.
+      lookahead_dist: 0.8
+      min_lookahead_dist: 0.5
+      max_lookahead_dist: 2.0
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 1.2
       # Align controller TF tolerance with Nav2 server tolerance.

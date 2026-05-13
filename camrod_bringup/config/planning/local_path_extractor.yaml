@@ -19,13 +19,13 @@
     # Local path is controller-local plan first; global-slice is fallback for continuity.
     # Balance responsiveness and CPU load.
     # Keep realtime behavior while reducing high-frequency republish load.
-    publish_rate_hz: 15.0
-    # Also publish once immediately when pose/global path updates (removes first-response delay).
-    # Timer-driven publish avoids bursty >100Hz output during controller updates.
-    publish_on_input_update: false
+    publish_rate_hz: 20.0
+    # HH_260513: Publish immediately on new global path so path updates snap
+    # to current robot position right after new goal, not at next timer tick.
+    publish_on_input_update: true
     # Slice current global path around closest pose.
     lookahead_distance_m: 30.0
-    lookbehind_distance_m: 3.0
+    lookbehind_distance_m: 0.5
     min_points: 12
     max_points: 320
     # Keep local path anchored near the previous closest index so
@@ -48,3 +48,7 @@
     # Empty publishes were causing local cost-grid marker flicker.
     publish_empty_on_invalid: false
     empty_republish_period_s: 0.3
+    # HH_260513: Moving-average window applied to local path XY before publishing.
+    # Reduces high-frequency jitter from SMAC/NavFn planner output.
+    # 0 or 1 disables smoothing. Odd values (3, 5, 7) recommended; 5 is a good default.
+    smooth_window: 5

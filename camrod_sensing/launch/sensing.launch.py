@@ -153,5 +153,6 @@ def generate_launch_description():
                 parameters=[LaunchConfiguration("inflation_cost_grid_param_file")],
                 condition=IfCondition(LaunchConfiguration("enable_inflation_cost_grid")),
             ),
+
         ]),
     ])

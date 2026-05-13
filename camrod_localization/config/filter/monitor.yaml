@@ -13,7 +13,9 @@
     # HH_260410 Monitor uses the same unified wheel topic as EKF/ESKF.
     wheel_topic: "/platform/status/wheel_odometry"
 
-    gnss_timeout_s: 1.0
+    # HH_260511: GPS hardware runs at ~1Hz (config_on_startup: false keeps stored device rate).
+    # Set timeout >= 2s to avoid spurious GNSS-lost detection at 1Hz.
+    gnss_timeout_s: 2.0
     imu_timeout_s: 0.5
     wheel_timeout_s: 0.5
 
@@ -22,7 +24,15 @@
 
     gnss_cov_trace_fail: 0.3
     gnss_jump_fail_m: 1.0
-    gnss_min_hz: 2.0
+    # HH_260511: GPS at ~1Hz; lower from 2.0 to 0.8 so gnss_rate_ok passes at 1Hz.
+    gnss_min_hz: 0.8
 
     publish_localization_status: false
     localization_status_topic: "/localization/status"
+
+    # HH_260507: DR timeout — stop robot if DR continues too long or covariance grows too large.
+    # 0.0 disables each check independently.
+    # covariance_trace = sum of ESKF state diagonal (x,y + bias states); at 1Hz GPS input
+    # this stabilizes around 80-110. Set to 200 to allow normal 1Hz GPS operation.
+    dr_max_duration_s: 30.0
+    dr_max_cov_trace: 200.0

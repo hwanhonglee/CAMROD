@@ -127,34 +127,38 @@ local_costmap:
       robot_radius: 0.0
       track_unknown_space: True
       # Costmap plugin options:
-      # - lanelet_cost_layer_base: planner base mask from /map/cost_grid/lanelet
-      # - lanelet_cost_layer_path: optional path-bias layer from /planning/cost_grid/local_path
-      # - lidar_obstacle_layer: lidar obstacles
+      # - combined_cost_layer: merged sensing cost grid (LiDAR+Radar+Lanelet+path)
+      # - perception_obstacle_layer: camera+LiDAR fusion objects from perception
+      #   HH_260513: Active when /perception/fusion/objects is published.
+      #   ObstacleLayer auto-disables until perception fusion package is ready.
       # - proximity_layer: near-range radar ranges
       # - inflation_layer: final safety inflation
       plugins:
-        - lanelet_cost_layer_base
-        - lidar_obstacle_layer
+        - combined_cost_layer
+        - perception_obstacle_layer
         - proximity_layer
         - inflation_layer
 
-      lanelet_cost_layer_base:
+      combined_cost_layer:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
-        # 2026-02-24: Planner uses centerline-gradient base grid for center-biased global path.
-        source_topic: "/map/cost_grid/lanelet"
+        source_topic: "/planning/cost_grid/inflation"
         lethal_threshold: 100
-        unknown_value: 255
+        unknown_value: 0
+        write_unknown: false
 
-      lidar_obstacle_layer:
+      # HH_260513: Perception fusion objects → dynamic obstacle marking in local costmap.
+      # Topic /perception/fusion/objects published by camera+LiDAR fusion package.
+      # ObstacleLayer auto-disables when topic has no publisher (no timeout error).
+      perception_obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        observation_sources: "lidar_objects"
-        lidar_objects:
-          topic: "/perception/obstacles/lidar"
+        observation_sources: "fused_objects"
+        fused_objects:
+          topic: "/perception/fusion/objects"
           max_obstacle_height: 2.5
-          min_obstacle_height: -1.0
-          obstacle_range: 25.0
-          raytrace_range: 30.0
+          min_obstacle_height: -0.5
+          obstacle_range: 20.0
+          raytrace_range: 25.0
           clearing: True
           marking: True
           data_type: "PointCloud2"
@@ -206,33 +210,35 @@ global_costmap:
       track_unknown_space: True
       # Costmap plugin options:
       # - lanelet_cost_layer_base: planner base mask from /map/cost_grid/lanelet
-      # - lanelet_cost_layer_path: optional path-bias layer from /planning/cost_grid/global_path
-      # - lidar_obstacle_layer: lidar obstacles
+      # - perception_obstacle_layer: camera+LiDAR fusion objects from perception
+      #   HH_260513: Uses /perception/fusion/objects from camera+LiDAR fusion package.
+      #   ObstacleLayer auto-disables until perception fusion package is ready.
       # - proximity_layer: near-range radar ranges
       # - inflation_layer: final safety inflation
       plugins:
         - lanelet_cost_layer_base
-        - lidar_obstacle_layer
+        - perception_obstacle_layer
         - proximity_layer
         - inflation_layer
 
       lanelet_cost_layer_base:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
-        # 2026-02-24: Planner uses centerline-gradient base grid for center-biased global path.
         source_topic: "/map/cost_grid/lanelet"
         lethal_threshold: 100
         unknown_value: 255
 
-      lidar_obstacle_layer:
+      # HH_260513: Perception fusion objects → dynamic obstacle marking in global costmap.
+      # Enables Smac2D to replan around detected objects within lanelets.
+      perception_obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        observation_sources: "lidar_objects"
-        lidar_objects:
-          topic: "/perception/obstacles/lidar"
+        observation_sources: "fused_objects"
+        fused_objects:
+          topic: "/perception/fusion/objects"
           max_obstacle_height: 2.5
-          min_obstacle_height: -1.0
-          obstacle_range: 25.0
-          raytrace_range: 30.0
+          min_obstacle_height: -0.5
+          obstacle_range: 20.0
+          raytrace_range: 25.0
           clearing: True
           marking: True
           data_type: "PointCloud2"

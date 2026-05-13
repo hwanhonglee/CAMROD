@@ -16,10 +16,8 @@ planner_server:
     # Allow extra settle time for layered global costmap current-state.
     # Further extend timeout for heavy real-sensor bringup phases.
     costmap_wait_timeout_sec: 12.0
-    # Use GridBased as the only default planner for runtime stability.
-    # Smac2D remains defined below for future re-enable, but it is not selected
-    # in the default production profile to avoid planner_server segfault regression.
-    planner_plugins: ["GridBased"]
+    # HH_260513: Re-enable Smac2D. GridBased kept as fallback for PlannerSelector.
+    planner_plugins: ["GridBased", "Smac2D"]
 
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
@@ -36,22 +34,18 @@ planner_server:
       allow_unknown: False
       # Keep final solve tight; goal_snapper already maps user goal into lanelet.
       tolerance: 0.5
-      downsample_costmap: False
-      downsampling_factor: 1
+      # HH_260513: 2x downsample (0.10m→0.20m) → 4x fewer cells → ~4x faster.
+      # Sufficient for lanelet-width (~2-3m) path accuracy.
+      downsample_costmap: True
+      downsampling_factor: 2
       use_astar: True
       # Use forward-only motion model for controller compatibility.
-      # REEDS_SHEPP reverse segments were causing repeated FollowPath aborts
-      # with the current pure-pursuit controller setup.
       motion_model_for_search: "DUBIN"
-      # 2026-02-25: Finer heading discretization for smoother corner geometry.
-      # Reduce heading-bin density to lower planner CPU without
-      # changing topology or plugin structure.
-      angle_quantization_bins: 96
-      # Bound Smac2D solve time so ComputePath action does not stay
-      # indefinitely in EXECUTING when map/cost constraints are difficult.
-      max_iterations: 100000
-      max_on_approach_iterations: 500
-      max_planning_time: 0.5
+      # HH_260513: Reduced 96→16 bins. At 0.20m resolution 22.5° steps is enough.
+      angle_quantization_bins: 16
+      max_iterations: 500000
+      max_on_approach_iterations: 1000
+      max_planning_time: 1.5
 
 controller_server:
   ros__parameters:

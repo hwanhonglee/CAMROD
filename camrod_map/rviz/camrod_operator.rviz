@@ -10,7 +10,6 @@ Panels:
         - /Map1/Lidar_Cost1/Namespaces1
         - /Map1/Radar_Cost1/Namespaces1
         - /Sensing1
-        - /Sensing1/Lidar1
         - /Perception1
         - /Planning1
       Splitter Ratio: 0.5904255509376526
@@ -36,7 +35,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: Lidar_Raw
+    SyncSource: ""
 Visualization Manager:
   Class: ""
   Displays:
@@ -65,23 +64,14 @@ Visualization Manager:
           Name: Chassis_Markers
           Namespaces:
             range_rings: true
-            robot_base_link: true
-            robot_base_link/axes: true
-            robot_body: true
-            robot_footprint: true
-            robot_planning_boundary: true
-            sensor/camera/axes: true
-            sensor/camera/label: true
-            sensor/gnss/axes: true
-            sensor/gnss/label: true
-            sensor/imu/axes: true
-            sensor/imu/label: true
-            sensor/lidar/axes: true
-            sensor/lidar/label: true
-            tf/map_axes: true
-            tf/map_label: true
-            tf/world_axes: true
-            tf/world_label: true
+            robot/base: true
+            robot/chassis: true
+            sensor/camera: true
+            sensor/gnss: true
+            sensor/imu: true
+            sensor/lidar: true
+            tf/map: true
+            tf/world: true
           Topic:
             Depth: 5
             Durability Policy: Volatile
@@ -297,12 +287,12 @@ Visualization Manager:
               Color: 255; 255; 255
               Color Transformer: Intensity
               Decay Time: 0
-              Enabled: true
+              Enabled: false
               Invert Rainbow: false
               Max Color: 210; 230; 255
-              Max Intensity: 254
+              Max Intensity: 65
               Min Color: 10; 20; 30
-              Min Intensity: 2
+              Min Intensity: 7
               Name: Lidar_Raw
               Position Transformer: XYZ
               Selectable: true
@@ -318,7 +308,7 @@ Visualization Manager:
                 Value: /sensing/lidar/vanjee/points_raw
               Use Fixed Frame: false
               Use rainbow: false
-              Value: true
+              Value: false
             - Alpha: 0.30000001192092896
               Autocompute Intensity Bounds: true
               Autocompute Value Bounds:
@@ -649,7 +639,7 @@ Visualization Manager:
           Class: rviz_default_plugins/Map
           Color Scheme: costmap
           Draw Behind: false
-          Enabled: false
+          Enabled: true
           Name: Inflation_Grid
           Topic:
             Depth: 1
@@ -665,7 +655,7 @@ Visualization Manager:
             Reliability Policy: Reliable
             Value: /planning/cost_grid/inflation_updates
           Use Timestamp: false
-          Value: false
+          Value: true
         - Alpha: 1
           Axes Length: 1
           Axes Radius: 0.20000000298023224
@@ -757,7 +747,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: -0.02500024065375328
+      Angle: -0.050000350922346115
       Class: rviz_default_plugins/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -767,11 +757,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: -64.06375122070312
+      Scale: -52.5930061340332
       Target Frame: sensor_kit_base_link
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 0.02285091206431389
-      Y: -1.6013540029525757
+      X: -1.0425831079483032
+      Y: -1.4586795568466187
     Saved: ~
 Window Geometry:
   Camera_View:

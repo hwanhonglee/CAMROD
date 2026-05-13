@@ -8,7 +8,13 @@
     body { font-family: sans-serif; margin: 1.2rem; background: #111; color: #eee; }
     .row { margin: 0.6rem 0; }
     .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 0.3rem; background: #333; }
-    button { margin-right: 0.4rem; padding: 0.4rem 0.8rem; }
+    button { margin-right: 0.4rem; margin-bottom: 0.4rem; padding: 0.4rem 0.8rem; cursor: pointer; border: none; border-radius: 0.3rem; color: #fff; background: #444; }
+    button:hover { filter: brightness(1.2); }
+    #engageBtn { padding: 0.5rem 1.4rem; font-size: 1rem; font-weight: bold; min-width: 140px; }
+    #engageBtn.on  { background: #1f7a1f; }
+    #engageBtn.off { background: #7a1f1f; }
+    .site-grid { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; }
+    .site-grid button { margin: 0; min-width: 4.5rem; }
     pre { background: #1b1b1b; padding: 0.8rem; border-radius: 0.4rem; overflow: auto; }
   </style>
 </head>
@@ -19,20 +25,35 @@
   <div class="row">Ready: <span id="ready" class="badge">-</span></div>
   <div class="row">Engaged: <span id="engaged" class="badge">-</span></div>
   <div class="row" id="ready_msg">ready_message: -</div>
+
   <div class="row">
-    <button onclick="post('/ui/engage?value=true')">Engage ON</button>
-    <button onclick="post('/ui/engage?value=false')">Engage OFF</button>
-    <button onclick="post('/ui/auto')">AUTO</button>
-    <button onclick="post('/ui/stop')">STOP</button>
+    <button id="engageBtn" class="off" onclick="toggleEngage()">Engage OFF</button>
+    <button onclick="post('/ui/stop')" style="background:#555;">STOP</button>
   </div>
-  <div class="row">
-    <button onclick="post('/ui/destination?site=B1&run=true')">B1 Run</button>
-    <button onclick="post('/ui/destination?site=B1&run=false')">B1 Stop</button>
-  </div>
+
+  <div class="row"><strong>Camping Site</strong></div>
+  <div class="site-grid" id="siteGrid"></div>
+
   <pre id="modules">[]</pre>
   <pre id="destination">{"site":"","run":false}</pre>
 
   <script>
+    // Build camping site buttons B1-B13.
+    const grid = document.getElementById('siteGrid');
+    for (let i = 1; i <= 13; i++) {
+      const site = 'B' + i;
+      const btn = document.createElement('button');
+      btn.textContent = site;
+      btn.onclick = () => post('/ui/destination?site=' + site + '&run=true');
+      grid.appendChild(btn);
+    }
+
+    function toggleEngage() {
+      const btn = document.getElementById('engageBtn');
+      const nowOn = btn.dataset.engaged === 'true';
+      post('/ui/engage?value=' + (!nowOn).toString());
+    }
+
     async function post(path) {
       const r = await fetch(path, { method: 'POST' });
       const j = await r.json();
@@ -55,6 +76,11 @@
         document.getElementById('ready_msg').textContent = 'ready_message: ' + (s.ready_message || '');
         document.getElementById('modules').textContent = JSON.stringify(s.module_states, null, 2);
         document.getElementById('destination').textContent = JSON.stringify(s.destination || {}, null, 2);
+
+        const btn = document.getElementById('engageBtn');
+        btn.dataset.engaged = String(s.engaged);
+        btn.textContent = s.engaged ? 'Engage ON' : 'Engage OFF';
+        btn.className = s.engaged ? 'on' : 'off';
       } catch (e) {
         document.getElementById('health').textContent = 'false';
         document.getElementById('ready_msg').textContent = 'backend 연결 실패: ' + e;

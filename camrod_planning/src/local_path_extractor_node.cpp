@@ -93,6 +93,10 @@ public:
     }
     // HH_260305-00:00 Clear stale local-path consumers immediately when inputs go invalid.
     publish_empty_on_invalid_ = declare_parameter<bool>("publish_empty_on_invalid", true);
+    // HH_260513: Moving-average window applied to local path XY before publishing.
+    // Reduces high-frequency jitter from the global planner without shifting path centerline.
+    // 0 or 1 disables smoothing. Odd values (3, 5, 7) recommended.
+    smooth_window_ = declare_parameter<int>("smooth_window", 5);
 
     auto global_path_qos = rclcpp::QoS(1).reliable();
     if (global_path_qos_transient_local_) {
@@ -577,6 +581,7 @@ private:
         }
         if (filtered.poses.size() >= 2) {
           enforceControllerPathDirection(filtered);
+          smoothPath(filtered);
           pub_local_path_->publish(filtered);
           publishAvgPlanning(filtered, false);
           last_output_empty_ = false;
@@ -655,12 +660,59 @@ private:
       publishEmptyPath();
       return;
     }
+    smoothPath(out);
     pub_local_path_->publish(out);
     publishAvgPlanning(out, false);
     last_output_empty_ = false;
     last_empty_publish_time_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
     last_closest_idx_ = closest;
     force_full_reacquire_ = false;
+  }
+
+  // HH_260513: Applies symmetric moving-average to path XY and recomputes orientations.
+  // End points are clamped (not padded) so orientation at start/end is preserved.
+  void smoothPath(avg_msgs::msg::Path & path) const
+  {
+    const int w = smooth_window_;
+    if (w <= 1 || static_cast<int>(path.poses.size()) < 2) {
+      return;
+    }
+    const int n = static_cast<int>(path.poses.size());
+    const int half = w / 2;
+
+    std::vector<double> sx(n), sy(n);
+    for (int i = 0; i < n; ++i) {
+      int lo = std::max(0, i - half);
+      int hi = std::min(n - 1, i + half);
+      double sum_x = 0.0, sum_y = 0.0;
+      for (int j = lo; j <= hi; ++j) {
+        sum_x += path.poses[j].pose.position.x;
+        sum_y += path.poses[j].pose.position.y;
+      }
+      const double cnt = static_cast<double>(hi - lo + 1);
+      sx[i] = sum_x / cnt;
+      sy[i] = sum_y / cnt;
+    }
+
+    for (int i = 0; i < n; ++i) {
+      path.poses[i].pose.position.x = sx[i];
+      path.poses[i].pose.position.y = sy[i];
+    }
+
+    // Recompute tangent orientations from smoothed XY.
+    for (int i = 0; i < n; ++i) {
+      const int prev = std::max(0, i - 1);
+      const int next = std::min(n - 1, i + 1);
+      if (prev == next) {
+        continue;
+      }
+      const double dx = sx[next] - sx[prev];
+      const double dy = sy[next] - sy[prev];
+      if (dx * dx + dy * dy < 1e-9) {
+        continue;
+      }
+      path.poses[i].pose.orientation = quatFromYaw(std::atan2(dy, dx));
+    }
   }
 
   // Publishes `EmptyPath` output.
@@ -752,6 +804,7 @@ private:
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::TimerBase::SharedPtr timer_;
   bool publish_planning_status_{false};
+  int smooth_window_{5};
 };
 
 }  // namespace camrod_planning

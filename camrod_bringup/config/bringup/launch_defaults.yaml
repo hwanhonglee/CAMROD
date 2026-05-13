@@ -37,7 +37,7 @@ bringup:
     adapter_param_file: __module_default__
     filter_eskf_param_file: localization/filter/eskf.yaml
     filter_pose_selector_param_file: __module_default__
-    monitor_param_file: __module_default__
+    monitor_param_file: localization/filter/monitor.yaml
     map_helper_param_file: __module_default__
     map_info_file: __module_default__
     drop_zones_yaml: __module_default__
@@ -131,9 +131,9 @@ bringup:
     use_dwb_controller: false
     # By default, use internal config defaults declared by planning launch files.
     nav2_base_param_file: __module_default__
-    nav2_vehicle_param_file: __module_default__
+    nav2_vehicle_param_file: planning/nav2_vehicle.yaml
     nav2_vehicle_dwb_param_file: __module_default__
-    nav2_lanelet_param_file: __module_default__
+    nav2_lanelet_param_file: planning/nav2_lanelet.yaml
     nav2_behavior_param_file: __module_default__
     path_cost_grids_param_file: __module_default__
     goal_snapper_param_file: __module_default__
@@ -160,9 +160,9 @@ bringup:
     radar_cost_grid_param_file: __module_default__
     lidar_cost_grid_param_file: __module_default__
     inflation_cost_grid_param_file: __module_default__
-    gnss_param_file: __module_default__
-    ntrip_param_file: __module_default__
-    cv7_param_file: __module_default__
+    gnss_param_file: sensing/gnss/zed_f9p_rover.yaml
+    ntrip_param_file: sensing/gnss/ntrip_client.yaml
+    cv7_param_file: sensing/imu/microstrain_cv7.yaml
     gq7_param_file: __module_default__
     vanjee_config_path: __module_default__
 

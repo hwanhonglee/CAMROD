@@ -16,6 +16,7 @@
 
     # HH_260422: Write register 0x0208 at startup to configure max detection angle.
     #   angle_config_value 5 = 75° on DFRobot SEN0592 (1=15° 2=30° 3=45° 4=60° 5=75°).
+    #   Global fallback used when sensor_angle_config_values is empty.
     write_angle_config: true
     angle_config_value: 5
 
@@ -23,6 +24,11 @@
     sensor_max_ranges_m: [0.50, 0.80, 0.80, 0.80, 0.80, 1.50]
     # HH_260422: Hardware range limit (mm) written to register 0x021F. Same order as above.
     sensor_range_config_mm: [500, 800, 800, 800, 800, 1500]
+    # HH_260513: Per-sensor detection angle written to register 0x0208. Same order as above.
+    #   REAR keeps 75° (wide rear coverage). LEFT/RIGHT/FRONT reduced to 45° to avoid
+    #   ground detection from sensors mounted near floor level.
+    #   Values: 1=15° 2=30° 3=45° 4=60° 5=75°
+    sensor_angle_config_values: [5, 3, 3, 3, 3, 3]
 
     # Aggregated sensing message output
     publish_radar_status: false

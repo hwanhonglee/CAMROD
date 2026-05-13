@@ -10,10 +10,15 @@
     # WGS84 origin used by LocalCartesian/UTM projectors.
     # Keep these values aligned with the source map generation reference.
 
-    # 52S-CF60, Park - VMB
-    # offset_lat: 36.8436194
+    # 52S-CF60, Park - VMB (map v8, back-calculated from OSM local_x/y vs lat/lon)
+    # offset_lat: 36.8436194   # v1 origin
     # offset_lon: 128.0925490
     # offset_alt: 299.425
+    # offset_lat: 36.84357266  # incorrect partial average
+    # offset_lon: 128.09256443
+    # offset_lat: 36.84395344
+    # offset_lon: 128.09243413
+    # offset_alt: 293.119
 
     # 52S-CF0, C-track - VMB
     # offset_lat: 36.12491471

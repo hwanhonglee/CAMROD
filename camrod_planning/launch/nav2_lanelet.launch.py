@@ -84,8 +84,10 @@ def generate_launch_description():
     default_lanelet_param = os.path.join(pkg_share, 'config', 'nav2_lanelet_overlay.yaml')
     default_behavior_param = os.path.join(pkg_share, 'config', 'nav2_behavior.yaml')
     default_path_cost_grids_param = os.path.join(pkg_share, 'config', 'path_cost_grids.yaml')
+    # HH_260513: Switched default BT to Smac2D profile (was _grid.xml / GridBased default).
+    # _grid.xml remains available for runtime override via nav2_bt_xml_nav_to_pose launch arg.
     default_nav_to_pose_bt_xml = os.path.join(
-        pkg_share, 'config', 'bt', 'navigate_to_pose_w_planner_selector_grid.xml'
+        pkg_share, 'config', 'bt', 'navigate_to_pose_w_planner_selector.xml'
     )
     default_nav_through_poses_bt_xml = os.path.join(
         nav2_bt_share,
@@ -324,6 +326,16 @@ def generate_launch_description():
         ],
     )
 
+    # HH_260513: SimpleSmoother server for BT SmoothPath node.
+    smoother_server = Node(
+        package='nav2_smoother',
+        executable='smoother_server',
+        name='smoother_server',
+        namespace=module_namespace,
+        output='screen',
+        parameters=nav2_param_chain,
+    )
+
     bt_navigator = Node(
         package='nav2_bt_navigator',
         executable='bt_navigator',
@@ -368,6 +380,9 @@ def generate_launch_description():
             'node_names': [
                 'planner_server',
                 'controller_server',
+                # HH_260513: smoother_server must be activated before bt_navigator to avoid
+                # SmoothPath action server not-found errors at BT startup.
+                'smoother_server',
                 'behavior_server',
                 'bt_navigator',
                 # 2026-01-30 14:32: Let planner/controller manage internal costmap lifecycles (avoid duplicate configure).
@@ -409,6 +424,7 @@ def generate_launch_description():
 
         planner_server,
         controller_server,
+        smoother_server,
         behavior_server,
         bt_navigator,
         lifecycle_mgr,
