@@ -52,21 +52,21 @@ graph LR
 
   subgraph UP ["📥 Upstream"]
     direction TB
-    SENS[[📦 camrod_sensing]]
-    PLAT[[📦 camrod_platform]]
-    MAP[[📦 camrod_map]]
+    SENS([📦 camrod_sensing])
+    PLAT([📦 camrod_platform])
+    MAP([📦 camrod_map])
   end
 
   subgraph LOC_PKG ["📍 camrod_localization"]
     direction TB
-    LOC[🧩 localization_stack]
+    LOC(🧩 localization_stack)
   end
 
   subgraph DOWN ["📤 Downstream"]
     direction TB
-    PLAN[[📦 camrod_planning]]
-    PPLAT[[📦 camrod_platform]]
-    SYS[[📦 camrod_system]]
+    PLAN([📦 camrod_planning])
+    PPLAT([📦 camrod_platform])
+    SYS([📦 camrod_system])
   end
 
   SENS ==>|"`/sensing/gnss/ublox_gps_node/fix\n/sensing/imu/data`"| LOC
@@ -118,14 +118,14 @@ graph TD
 
   subgraph ADAPTER_SG ["🔄 Adapter"]
     direction TB
-    ADAPT[🧩 localization_input_adapter_node]
+    ADAPT(🧩 localization_input_adapter_node)
     GNSSPOSE((📡 /sensing/gnss/pose_with_covariance))
     WHEELOUT((📡 /platform/status/wheel_odometry))
   end
 
   subgraph ESKF_SG ["🧮 ESKF"]
     direction TB
-    ESKF[🧩 localization_eskf_node]
+    ESKF(🧩 localization_eskf_node)
     POSE((📡 /localization/pose))
     POSECOV((📡 /localization/pose_with_covariance))
     ODO((📡 /localization/odometry/filtered))
@@ -136,7 +136,7 @@ graph TD
   subgraph MAPHELP_SG ["🗺️ Map Helper"]
     direction TB
     DZFILE[(⚙️ drop_zones.yaml)]
-    MAPHELP[🧩 localization_map_helper_node]
+    MAPHELP(🧩 localization_map_helper_node)
     LPOSE((📡 /localization/lanelet_pose))
     INITPOSE((📡 /localization/initialpose3d))
     MATCHOK((📡 /localization/initial_match_ok))
@@ -144,7 +144,7 @@ graph TD
 
   subgraph MON_SG ["📊 Monitor"]
     direction TB
-    MON[🧩 localization_monitor_node]
+    MON(🧩 localization_monitor_node)
     MODE((📡 /localization/mode))
     STATE((📡 /localization/state))
     CONF((📡 /localization/confidence))
@@ -152,7 +152,7 @@ graph TD
 
   subgraph SEL_SG ["🎚️ Pose Selector"]
     direction TB
-    SEL[🧩 localization_pose_selector_node]
+    SEL(🧩 localization_pose_selector_node)
     SELPOSE((📡 /localization/pose))
     SELPOSECOV((📡 /localization/pose_with_covariance))
     SELODO((📡 /localization/odometry/filtered))

@@ -24,22 +24,22 @@
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
   subgraph SENS_GRP["📷 Camera (sensing)"]
-    SENS[[📦 camrod_sensing]]
+    SENS([📦 camrod_sensing])
   end
 
   subgraph PLAN_GRP["🧭 Planning (costmap)"]
-    PLAN[[📦 camrod_planning]]
+    PLAN([📦 camrod_planning])
   end
 
   subgraph PARK_GRP["🅿️ camrod_parking"]
-    PARK[🧩 camrod_parking]
+    PARK([🧩 camrod_parking])
     APTAG[[📦 apriltag_ros]] -.->|external dep| PARK
     OPNAV[[📦 opennav_docking]] -.->|external dep| PARK
   end
 
   subgraph ACT_GRP["🔔 Action clients"]
-    UI[[📦 camrod_ui / BT client]]
-    PLAT[[📦 camrod_platform]]
+    UI([📦 camrod_ui / BT client])
+    PLAT([📦 camrod_platform])
   end
 
   SENS -->|image_rect\ncamera_info| PARK
@@ -76,23 +76,23 @@ graph TD
   end
 
   subgraph TAG_GRP["🏷️ AprilTag detection"]
-    TAG[🧩 apriltag_ros/apriltag_node]
+    TAG[[🧩 apriltag_ros/apriltag_node]]
     RAW(("/parking/docking/\napriltag/detections_raw"))
     TF(("TF: odom → dock_tag"))
   end
 
   subgraph BRIDGE_GRP["🌉 Bridge node"]
-    BRIDGE[🧩 parking_apriltag_bridge_node]
+    BRIDGE(🧩 parking_apriltag_bridge_node)
     DET(("/parking/docking/\napriltag/detections"))
     AVGPOSE(("/parking/docking/\napriltag/pose"))
     DOCKPOSE(("/parking/docking/\ndetected_dock_pose"))
   end
 
   subgraph SVR_GRP["🅿️ Docking server"]
-    DOCKSVR[🧩 opennav_docking\ndocking_server]
+    DOCKSVR[[🧩 opennav_docking\ndocking_server]]
     COSTMAP(("/planning/local_costmap/\ncostmap_raw"))
     FOOTPRINT(("/planning/local_costmap/\npublished_footprint"))
-    LMAN[🧩 nav2_lifecycle_manager]
+    LMAN[[🧩 nav2_lifecycle_manager]]
   end
 
   subgraph ACT_GRP["🔔 Action interface"]

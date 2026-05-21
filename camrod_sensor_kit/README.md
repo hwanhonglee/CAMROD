@@ -53,11 +53,11 @@ graph LR
     SKIT[🧩 sensor_kit\nfoundation]:::system
   end
 
-  SKIT -.->|/tf_static| PLAT[🤖 camrod_platform]:::platform
-  SKIT -.->|/tf_static| SENS[📡 camrod_sensing]:::sensing
-  SKIT -.->|/tf_static| LOC[📍 camrod_localization]:::localization
-  SKIT -.->|/tf_static| PLAN[🧭 camrod_planning]:::planning
-  SKIT -.->|/tf_static| PARK[🅿️ camrod_parking]:::parking
+  SKIT -.->|/tf_static| PLAT([🤖 camrod_platform]):::platform
+  SKIT -.->|/tf_static| SENS([📡 camrod_sensing]):::sensing
+  SKIT -.->|/tf_static| LOC([📍 camrod_localization]):::localization
+  SKIT -.->|/tf_static| PLAN([🧭 camrod_planning]):::planning
+  SKIT -.->|/tf_static| PARK([🅿️ camrod_parking]):::parking
   SKIT -.->|loadRobotParams| PLAT
   SKIT -.->|loadRobotParams| SENS
 
@@ -118,13 +118,13 @@ graph TD
   end
 
   LAUNCH -->|xacro expansion| DESC[📦 robot_description\nstring]:::system
-  DESC --> RSP[🧩 robot_state_publisher]:::system
+  DESC --> RSP(🧩 robot_state_publisher):::system
   RSP --> TFSTATIC((📡 /tf_static)):::topic
   RSP --> URDESC((📡 /robot_description)):::topic
 
   YAML -. loadRobotParams .-> LIB[📦 camrod_sensor_kit_lib]:::system
-  LIB -. RobotParams struct .-> PLAT[[🤖 camrod_platform nodes]]:::platform
-  LIB -. RobotParams struct .-> SENS[[📡 camrod_sensing nodes]]:::sensing
+  LIB -. RobotParams struct .-> PLAT([🤖 camrod_platform nodes]):::platform
+  LIB -. RobotParams struct .-> SENS([📡 camrod_sensing nodes]):::sensing
 
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;

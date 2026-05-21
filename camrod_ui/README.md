@@ -46,13 +46,13 @@ curl http://localhost:8010/ui/health
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#FFF7ED', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#F97316', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  BROWSER[🌐 Browser\nexternal actor]:::hardware
+  BROWSER{{🌐 Browser\nexternal actor}}:::hardware
 
-  SYS[🩺 camrod_system]:::system    -->|/diagnostics_agg| UI
-  PLAN[🧭 camrod_planning]:::planning -->|/planning/engaged| UI
+  SYS([🩺 camrod_system]):::system    -->|/diagnostics_agg| UI
+  PLAN([🧭 camrod_planning]):::planning -->|/planning/engaged| UI
 
   subgraph UI_BOX["🖥️ camrod_ui"]
-    UI[🖥️ ui_backend_node\nFastAPI + uvicorn]:::ui
+    UI(🖥️ ui_backend_node\nFastAPI + uvicorn):::ui
   end
 
   BROWSER <-->|HTTP :8010\nWebSocket /ws| UI
@@ -60,7 +60,7 @@ graph LR
   UI -->|/planning/engage| PLAN
   UI -->|/planning/state_machine/goal_key| PLAN
   UI -->|/goal_pose| PLAN
-  PARK[🅿️ camrod_parking]:::parking -.->|destination sites| UI
+  PARK([🅿️ camrod_parking]):::parking -.->|destination sites| UI
 
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
@@ -79,7 +79,7 @@ graph TD
   BROWSER{{🌐 Operator Browser}}:::hardware -->|HTTP GET/POST :8010| BACKEND
 
   subgraph BACKEND_BOX["🖥️ ui_backend_node"]
-    BACKEND[🖥️ FastAPI+uvicorn\n+ ROS 2 spin thread]:::ui
+    BACKEND(🖥️ FastAPI+uvicorn\n+ ROS 2 spin thread):::ui
     NOTE[🔒 threading.Lock\non ApiState]:::ui
   end
 

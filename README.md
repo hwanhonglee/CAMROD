@@ -97,31 +97,96 @@ CAMROD is a supervised-autonomy delivery platform designed for controlled outdoo
 > Each package has a detailed README — see the [Documentation Map](#documentation-map) above.
 
 ```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'fontFamily': 'ui-sans-serif, system-ui, sans-serif',
+    'fontSize': '14px',
+    'primaryColor': '#EEF2FF',
+    'primaryTextColor': '#0F172A',
+    'primaryBorderColor': '#6366F1',
+    'lineColor': '#475569'
+  },
+  'flowchart': { 'curve': 'basis', 'htmlLabels': true, 'padding': 12 }
+}}%%
 graph TD
-  BR[[camrod_bringup]]
-  MAP[[camrod_map]]
-  SEN[[camrod_sensing]]
-  LOC[[camrod_localization]]
-  PER[[camrod_perception]]
-  PLN[[camrod_planning]]
-  PLT[[camrod_platform]]
-  KIT[[camrod_sensor_kit]]
-  SYS[[camrod_system]]
-  UI[[camrod_ui]]
-  PARK[[camrod_parking]]
-  AVG[(avg_msgs)]
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef iface        fill:#F0FDFA,stroke:#14B8A6,stroke-width:1.5px,color:#115E59;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  subgraph ORCH ["🚀 Orchestration"]
+    BR([🚀 camrod_bringup])
+  end
+
+  subgraph PERC ["🌐 Perception & Map stack"]
+    SEN([🎯 camrod_sensing])
+    PER([👁️ camrod_perception])
+    MAP([🗺️ camrod_map])
+  end
+
+  subgraph STATE ["📍 State & Planning"]
+    LOC([📍 camrod_localization])
+    PLN([🧭 camrod_planning])
+  end
+
+  subgraph ACT ["🤖 Actuation"]
+    PLT([🤖 camrod_platform])
+    KIT([🔧 camrod_sensor_kit])
+    PARK([🅿️ camrod_parking])
+  end
+
+  subgraph OPS ["🩺 Ops & UI"]
+    SYS([🩺 camrod_system])
+    UI([🖥️ camrod_ui])
+  end
+
+  subgraph IF ["📨 Interfaces"]
+    AVG[(📨 avg_msgs)]
+  end
 
   BR --> MAP & SEN & LOC & PER & PLN & PLT & KIT & SYS & UI & PARK
-
   MAP --> LOC & PLN
-  SEN --> LOC & PER & PARK
-  LOC --> PLN
+  SEN ==> LOC
+  LOC ==> PLN
+  PLN ==> PLT
+  SEN --> PER & PARK
   PER --> PLN
-  PLN --> PLT & PARK
+  PLN --> PARK
   PLT --> PARK
+  SYS --> UI
 
-  AVG -. interfaces .-> MAP & SEN & LOC & PER & PLN & PLT & SYS & UI & PARK
+  AVG -.-> MAP & SEN & LOC & PER & PLN & PLT & SYS & UI & PARK
+
+  class BR highlight
+  class SEN sensing
+  class MAP mapping
+  class LOC localization
+  class PER perception
+  class PLN planning
+  class PLT platform
+  class KIT system
+  class PARK parking
+  class SYS system
+  class UI ui
+  class AVG iface
+
+  linkStyle 5,6,7 stroke:#6366F1,stroke-width:2.5px;
 ```
+
+> **Diagram legend**
+> 📦 Package (stadium) · 🧩 ROS node (round-rect) · 📡 Topic (circle) · ⚙️ Config · 🛠️ Hardware · 📨 Interface
+> Solid `-->` runtime dependency · `==>` critical path · `-.->` interface-only dependency
+> Color = package/layer — see [docs/templates/DIAGRAM_PALETTE.md](docs/templates/DIAGRAM_PALETTE.md)
+
+*Figure 1 — CAMROD workspace architecture. The `==>` chain (sensing → localization → planning → platform) is the safety-critical runtime path. Dashed arrows mark interface-only dependencies on `avg_msgs`.*
 
 ### Package Responsibilities
 
@@ -145,19 +210,90 @@ graph TD
 ## 4. Runtime Data Flow
 
 ```mermaid
+%%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'fontFamily': 'ui-sans-serif, system-ui, sans-serif',
+    'fontSize': '14px',
+    'primaryColor': '#EEF2FF',
+    'primaryTextColor': '#0F172A',
+    'primaryBorderColor': '#6366F1',
+    'lineColor': '#475569'
+  },
+  'flowchart': { 'curve': 'basis', 'htmlLabels': true, 'padding': 12 }
+}}%%
 graph LR
-  HW{{Sensors}} --> SEN[[sensing]]
-  SEN --> LOC[[localization]]
-  SEN --> PER[[perception]]
-  MAP[[map]] --> LOC & PLN[[planning]]
-  LOC --> PLN
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  subgraph SRC ["🛠️ Hardware"]
+    HW{{🛠️ Sensors}}
+    VEH{{🚗 Ranger CAN}}
+  end
+
+  subgraph SENSE ["🎯 Sensing & Map"]
+    SEN([🎯 camrod_sensing])
+    MAP([🗺️ camrod_map])
+  end
+
+  subgraph EST ["📍 State Estimation"]
+    LOC([📍 camrod_localization])
+  end
+
+  subgraph OBS ["👁️ Perception"]
+    PER([👁️ camrod_perception])
+  end
+
+  subgraph NAV ["🧭 Planning & Control"]
+    PLN([🧭 camrod_planning])
+    GATE(🚦 cmd_vel_gate)
+  end
+
+  subgraph MON ["🩺 Monitoring & UI"]
+    SYS([🩺 camrod_system])
+    AGG((diag_agg))
+    UI([🖥️ camrod_ui])
+  end
+
+  HW --> SEN
+  SEN ==> LOC
+  MAP --> LOC & PLN
+  SEN --> PER
+  LOC ==> PLN
   PER --> PLN
-  PLN --> GATE[cmd_vel_gate]
-  GATE --> VEH{{Ranger CAN}}
-  SYS[[system]] --> AGG((diagnostics_agg))
-  AGG --> UI[[operator UI :8010]]
+  PLN ==> GATE
+  GATE ==> VEH
+  SYS --> AGG
+  AGG --> UI
   UI --> PLN
+
+  class HW hardware
+  class VEH hardware
+  class SEN sensing
+  class MAP mapping
+  class LOC localization
+  class PER perception
+  class PLN planning
+  class GATE highlight
+  class SYS system
+  class AGG topic
+  class UI ui
 ```
+
+> **Diagram legend**
+> `([...])` Package (stadium) · `(...)` ROS node (round-rect) · `((...))` Topic (circle) · `{{...}}` Hardware
+> Solid `-->` runtime data flow · `==>` safety-critical path · `-.->` interface/config dependency
+> Color = package/layer — see [docs/templates/DIAGRAM_PALETTE.md](docs/templates/DIAGRAM_PALETTE.md)
+
+*Figure 2 — Runtime data flow. The `==>` chain (sensing → localization → planning → cmd\_vel\_gate → Ranger CAN) is the control-critical path. `cmd_vel_gate` is highlighted because it is the final safety interlock before wheel commands reach the vehicle.*
 
 **Nominal mission loop:**
 

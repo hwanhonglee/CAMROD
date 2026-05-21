@@ -55,16 +55,16 @@ graph TD
     AVG[(📨 avg_msgs\ninterface package)]:::iface
   end
 
-  AVG -. msg/srv types .-> MAP[[🗺️ camrod_map]]:::mapping
-  AVG -. msg/srv types .-> SENSING[[📡 camrod_sensing]]:::sensing
-  AVG -. msg/srv types .-> LOC[[📍 camrod_localization]]:::localization
-  AVG -. msg/srv types .-> PLAN[[🧭 camrod_planning]]:::planning
-  AVG -. msg/srv types .-> PLAT[[🤖 camrod_platform]]:::platform
-  AVG -. msg/srv types .-> PER[[👁️ camrod_perception]]:::perception
-  AVG -. msg/srv types .-> SYS[[🩺 camrod_system]]:::system
-  AVG -. msg/srv types .-> UI[[🖥️ camrod_ui]]:::ui
-  AVG -. msg/srv types .-> SKIT[[🔧 camrod_sensor_kit]]:::system
-  AVG -. msg/srv types .-> PARK[[🅿️ camrod_parking]]:::parking
+  AVG -. msg/srv types .-> MAP([🗺️ camrod_map]):::mapping
+  AVG -. msg/srv types .-> SENSING([📡 camrod_sensing]):::sensing
+  AVG -. msg/srv types .-> LOC([📍 camrod_localization]):::localization
+  AVG -. msg/srv types .-> PLAN([🧭 camrod_planning]):::planning
+  AVG -. msg/srv types .-> PLAT([🤖 camrod_platform]):::platform
+  AVG -. msg/srv types .-> PER([👁️ camrod_perception]):::perception
+  AVG -. msg/srv types .-> SYS([🩺 camrod_system]):::system
+  AVG -. msg/srv types .-> UI([🖥️ camrod_ui]):::ui
+  AVG -. msg/srv types .-> SKIT([🔧 camrod_sensor_kit]):::system
+  AVG -. msg/srv types .-> PARK([🅿️ camrod_parking]):::parking
 
   classDef iface        fill:#F0FDFA,stroke:#14B8A6,stroke-width:1.5px,color:#115E59;
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
@@ -87,16 +87,16 @@ graph TD
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F0FDFA', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#14B8A6', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  SKIT[🔧 camrod_sensor_kit]:::system       -.-> AVG
-  MAP[🗺️ camrod_map]:::mapping              -.-> AVG
-  SENS[📡 camrod_sensing]:::sensing         -.-> AVG
-  LOC[📍 camrod_localization]:::localization -.-> AVG
-  PER[👁️ camrod_perception]:::perception   -.-> AVG
-  PLAN[🧭 camrod_planning]:::planning       -.-> AVG
-  PLAT[🤖 camrod_platform]:::platform       -.-> AVG
-  SYS[🩺 camrod_system]:::system            -.-> AVG
-  UI[🖥️ camrod_ui]:::ui                    -.-> AVG
-  PARK[🅿️ camrod_parking]:::parking        -.-> AVG
+  SKIT([🔧 camrod_sensor_kit]):::system       -.-> AVG
+  MAP([🗺️ camrod_map]):::mapping              -.-> AVG
+  SENS([📡 camrod_sensing]):::sensing         -.-> AVG
+  LOC([📍 camrod_localization]):::localization -.-> AVG
+  PER([👁️ camrod_perception]):::perception   -.-> AVG
+  PLAN([🧭 camrod_planning]):::planning       -.-> AVG
+  PLAT([🤖 camrod_platform]):::platform       -.-> AVG
+  SYS([🩺 camrod_system]):::system            -.-> AVG
+  UI([🖥️ camrod_ui]):::ui                    -.-> AVG
+  PARK([🅿️ camrod_parking]):::parking        -.-> AVG
 
   AVG[(📨 avg_msgs)]:::iface
 

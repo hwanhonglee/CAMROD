@@ -53,17 +53,17 @@ graph LR
   classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  PLAN[🧭 camrod_planning] ==>|/planning/cmd_vel\n/planning/engage| PLAT
-  LOC[📍 camrod_localization] -->|/localization/pose| PLAT
-  SENS[📡 camrod_sensing] -->|/sensing/gnss/pose| PLAT
-  MAP[🗺️ camrod_map] -.->|/map/markers| PLAT
+  PLAN([🧭 camrod_planning]) ==>|/planning/cmd_vel\n/planning/engage| PLAT
+  LOC([📍 camrod_localization]) -->|/localization/pose| PLAT
+  SENS([📡 camrod_sensing]) -->|/sensing/gnss/pose| PLAT
+  MAP([🗺️ camrod_map]) -.->|/map/markers| PLAT
 
-  PLAT[🤖 camrod_platform] ==>|/platform/cmd_vel| HW{{🛠️ Ranger CAN Driver}}
+  PLAT([🤖 camrod_platform]) ==>|/platform/cmd_vel| HW{{🛠️ Ranger CAN Driver}}
   PLAT -->|/platform/status/*\nTF static| HW
   PLAT -->|/platform/status/odometry\n/platform/status/wheel_odometry| LOC
   PLAT -->|/platform/status/velocity| SENS
-  PLAT -->|/platform/drive_enabled\n/platform/status/estop| SYS[🔧 camrod_system]
-  PLAT -->|TF static sensor frames\n/robot_description| ALL[📦 All Packages]
+  PLAT -->|/platform/drive_enabled\n/platform/status/estop| SYS([🔧 camrod_system])
+  PLAT -->|TF static sensor frames\n/robot_description| ALL([📦 All Packages])
 
   class PLAN planning
   class LOC localization
@@ -107,16 +107,16 @@ graph TD
 
   subgraph PLAT_PKG [🤖 camrod_platform]
     subgraph GATE_SG [🚦 cmd_vel_gate_node]
-      GATE[🧩 cmd_vel_gate_node\ncmd_vel_gate.launch.py]
+      GATE(🧩 cmd_vel_gate_node\ncmd_vel_gate.launch.py)
     end
 
     subgraph VIZ_SG [🎨 robot_visualization_node]
-      VIZ[🧩 robot_visualization_node\nrobot_visualization.launch.py]
+      VIZ(🧩 robot_visualization_node\nrobot_visualization.launch.py)
     end
 
     subgraph BRIDGE_SG [🔧 sensor_kit_bridge]
-      BRIDGE[🧩 sensor_kit_bridge\nsensor_kit_bridge.launch.py]
-      RANGER[🛠️ ranger.launch.py\nranger_driver_enable:=true]
+      BRIDGE(🧩 sensor_kit_bridge\nsensor_kit_bridge.launch.py)
+      RANGER[[🛠️ ranger.launch.py\nranger_driver_enable:=true]]
     end
   end
 
@@ -128,7 +128,7 @@ graph TD
   VIZ --> MARKERS((📡 /platform/robot/markers))
   VIZ --> BOUNDARY((📡 /platform/robot/planning_boundary))
 
-  BRIDGE --> TF[TF static\n/robot_description]
+  BRIDGE --> TF(TF static\n/robot_description)
 
   class GATE platform
   class VIZ platform
@@ -201,10 +201,10 @@ flowchart TD
   classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
 
   IN((📡 /planning/cmd_vel)) ==> A
-  A[🧩 Receive /planning/cmd_vel] --> B{❓ gate enabled?\ncmd_vel_gate_enable}
-  B -- No --> Z[Pass through unchanged]
+  A(🧩 Receive /planning/cmd_vel) --> B{❓ gate enabled?\ncmd_vel_gate_enable}
+  B -- No --> Z(Pass through unchanged)
   B -- Yes --> C{❓ drive_enabled?}
-  C -- No --> ZERO[Publish zero Twist]
+  C -- No --> ZERO(Publish zero Twist)
   C -- Yes --> D{❓ estop active?\n/platform/status/estop}
   D -- Yes --> ZERO
   D -- No --> E{❓ engage active?\n/planning/engage}

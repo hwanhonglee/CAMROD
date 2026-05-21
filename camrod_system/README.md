@@ -42,19 +42,19 @@ ros2 topic echo /system/diagnostics
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  MAP[🗺️ camrod_map]:::mapping      -->|/map/...| SYS
-  SENS[📡 camrod_sensing]:::sensing  -->|/sensing/...| SYS
-  LOC[📍 camrod_localization]:::localization -->|/localization/...| SYS
-  PER[👁️ camrod_perception]:::perception -->|/perception/...| SYS
-  PLAN[🧭 camrod_planning]:::planning -->|/planning/...| SYS
-  PLAT[🤖 camrod_platform]:::platform -->|/platform/...| SYS
+  MAP([🗺️ camrod_map]):::mapping      -->|/map/...| SYS
+  SENS([📡 camrod_sensing]):::sensing  -->|/sensing/...| SYS
+  LOC([📍 camrod_localization]):::localization -->|/localization/...| SYS
+  PER([👁️ camrod_perception]):::perception -->|/perception/...| SYS
+  PLAN([🧭 camrod_planning]):::planning -->|/planning/...| SYS
+  PLAT([🤖 camrod_platform]):::platform -->|/platform/...| SYS
   HW{{🖥️ CPU / GPU / Network}}:::hardware -->|metrics| SYS
 
   subgraph SYS_BOX["🩺 camrod_system"]
-    SYS[🩺 aggregator\n+ checkers]:::system
+    SYS(🩺 aggregator\n+ checkers):::system
   end
 
-  SYS -->|/diagnostics_agg| UI[🖥️ camrod_ui]:::ui
+  SYS -->|/diagnostics_agg| UI([🖥️ camrod_ui]):::ui
 
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
   classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
@@ -76,22 +76,22 @@ graph LR
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F1F5F9', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#64748B', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph TD
-  HW{{🖥️ CPU / GPU / Network}}:::hardware --> HWCHK[🧩 hw_checker\ngpu_checker\nnetwork_checker]:::system
-  SENS((📡 /sensing/*)):::topic --> SENSCHK[🧩 gnss/imu/lidar/radar/camera\nwheel_odometry/cost_grid\nvelocity_converter checkers]:::sensing
-  LOC((📍 /localization/*)):::topic --> LOCCHK[🧩 localization_gnss/mode/pose\ninit/source/lanelet checkers]:::localization
-  PER((👁️ /perception/*)):::topic --> PERCHK[🧩 perception_obstacle_checker]:::perception
-  MAP((🗺️ /map/cost_grid/lanelet)):::topic --> MAPCHK[🧩 map_cost_grid_checker]:::mapping
-  PLAN((🧭 /planning/*)):::topic --> PLANCHK[🧩 planning_lifecycle/costmap\nnav_status/path checkers]:::planning
-  PLAT((🤖 /platform/*)):::topic --> PLATOP[🧩 ranger_platform_checker\n⚠️ optional]:::platform
+  HW{{🖥️ CPU / GPU / Network}}:::hardware --> HWCHK(🧩 hw_checker\ngpu_checker\nnetwork_checker):::system
+  SENS((📡 /sensing/*)):::topic --> SENSCHK(🧩 gnss/imu/lidar/radar/camera\nwheel_odometry/cost_grid\nvelocity_converter checkers):::sensing
+  LOC((📍 /localization/*)):::topic --> LOCCHK(🧩 localization_gnss/mode/pose\ninit/source/lanelet checkers):::localization
+  PER((👁️ /perception/*)):::topic --> PERCHK(🧩 perception_obstacle_checker):::perception
+  MAP((🗺️ /map/cost_grid/lanelet)):::topic --> MAPCHK(🧩 map_cost_grid_checker):::mapping
+  PLAN((🧭 /planning/*)):::topic --> PLANCHK(🧩 planning_lifecycle/costmap\nnav_status/path checkers):::planning
+  PLAT((🤖 /platform/*)):::topic --> PLATOP(🧩 ranger_platform_checker\n⚠️ optional):::platform
 
   HWCHK & SENSCHK & LOCCHK & PERCHK & MAPCHK & PLANCHK & PLATOP --> DIAG((📡 /diagnostics)):::topic
 
-  DIAG --> AGG[🩺 aggregator_node]:::system
+  DIAG --> AGG(🩺 aggregator_node):::system
   AGG --> DIAGAGG((📡 /diagnostics_agg)):::topic
 
-  DIAG --> SYSCHK[🩺 system_checker_node]:::system
+  DIAG --> SYSCHK(🩺 system_checker_node):::system
   SYSCHK --> SYSDIAG((📡 /system/diagnostics)):::topic
-  SYSDIAG --> SYSAGG[🩺 diagnostics_aggregator_node]:::system
+  SYSDIAG --> SYSAGG(🩺 diagnostics_aggregator_node):::system
   SYSAGG --> TOOLS((📡 /system/diagnostics_agg_tools)):::topic
 
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;

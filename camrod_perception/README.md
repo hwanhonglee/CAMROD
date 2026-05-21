@@ -24,7 +24,7 @@
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
   subgraph SENS_GRP["📷 Sensing"]
-    SENS[[📦 camrod_sensing]]
+    SENS([📦 camrod_sensing])
   end
 
   subgraph EXT_GRP["🤖 External inference"]
@@ -32,12 +32,12 @@ graph LR
   end
 
   subgraph PER_GRP["👁️ camrod_perception"]
-    PER[🧩 camrod_perception]
+    PER([🧩 camrod_perception])
   end
 
   subgraph CONS_GRP["🗺️ Consumers"]
-    SYS[[📦 camrod_system]]
-    PLAN[[📦 camrod_planning\ncostmap]]
+    SYS([📦 camrod_system])
+    PLAN([📦 camrod_planning\ncostmap])
     VIZ{{🛠️ RViz}}
   end
 
@@ -78,9 +78,9 @@ graph TD
     DET_A(("/perception/camera/\ndetections_2d"))
     BBOX_A(("/perception/lidar/\nbboxes"))
 
-    CLUSTER_A[🧩 obstacle_lidar_node]
+    CLUSTER_A(🧩 obstacle_lidar_node)
     YOLO_A[[📦 yolov9mit_ros]]
-    FUSION_A[🧩 obstacle_fusion_node]
+    FUSION_A(🧩 obstacle_fusion_node)
 
     OBS_A(("/perception/obstacles\n(bbox-filtered cloud)"))
     FUSED_IMG_A(("/perception/camera_lidar/\nimage"))
@@ -111,8 +111,8 @@ graph TD
     IMAGE_B(("/sensing/camera/processed/\nimage"))
     CAMINFO_B(("/sensing/camera/processed/\ncamera_info"))
 
-    CLUSTER_B[🧩 obstacle_lidar_node]
-    FUSION_B[🧩 obstacle_fusion_node\n(pass-through)]
+    CLUSTER_B(🧩 obstacle_lidar_node)
+    FUSION_B(🧩 obstacle_fusion_node\n(pass-through))
 
     OBS_B(("/perception/obstacles\n(full cloud pass-through)"))
     FUSED_IMG_B(("/perception/camera_lidar/\nimage"))
@@ -148,10 +148,10 @@ In **Mode B**, `obstacle_fusion_node` receives no `detections_2d` and publishes 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  ODOM[🧩 odom]
-  BASE[🧩 base_link]
-  LIDAR[🧩 lidar_link\n published by lidar_preprocessor / URDF]
-  CAM[🧩 camera_link\n required static or continuous]
+  ODOM(🧩 odom)
+  BASE(🧩 base_link)
+  LIDAR(🧩 lidar_link\n published by lidar_preprocessor / URDF)
+  CAM(🧩 camera_link\n required static or continuous)
 
   ODOM --> BASE --> LIDAR --> CAM
 

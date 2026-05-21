@@ -55,22 +55,22 @@ graph LR
 
   subgraph UP ["📥 Upstream"]
     direction TB
-    LOC[[📦 camrod_localization]]
-    MAP[[📦 camrod_map]]
-    SENS[[📦 camrod_sensing]]
-    UI[[📦 camrod_ui]]
+    LOC([📦 camrod_localization])
+    MAP([📦 camrod_map])
+    SENS([📦 camrod_sensing])
+    UI([📦 camrod_ui])
   end
 
   subgraph PLAN_PKG ["🧭 camrod_planning"]
     direction TB
-    PLAN[🧩 planning_stack]
+    PLAN(🧩 planning_stack)
   end
 
   subgraph DOWN ["📤 Downstream"]
     direction TB
-    PLAT[[📦 camrod_platform]]
-    SYS[[📦 camrod_system]]
-    PARK[[📦 camrod_parking]]
+    PLAT([📦 camrod_platform])
+    SYS([📦 camrod_system])
+    PARK([📦 camrod_parking])
   end
 
   LOC ==>|"`/localization/pose\n/localization/mode`"| PLAN
@@ -133,25 +133,25 @@ graph TD
 
   subgraph NAV2_BT ["🧠 Nav2 BT + Controllers"]
     direction TB
-    GSNAP[🧩 goal_snapper_node]
-    CSNAP[🧩 centerline_snapper_node]
+    GSNAP(🧩 goal_snapper_node)
+    CSNAP(🧩 centerline_snapper_node)
     GSNAPPED((📡 /planning/goal_pose_snapped_ros))
     LANEPOSE((📡 /planning/lanelet_pose))
     NAV2[[📦 Nav2 Stack]]
     GPATH((📡 /planning/global_path))
     CTRLPATH((📡 /planning/local_path_controller))
     CMDRAW((📡 /planning/cmd_vel_raw))
-    LPATH[🧩 local_path_extractor_node]
+    LPATH(🧩 local_path_extractor_node)
     LOCALPATH((📡 /planning/local_path))
-    TERR[🧩 path_tracking_error_node]
+    TERR(🧩 path_tracking_error_node)
     TERROR((📡 /planning/ltracking_error))
-    PCOST[🧩 path_cost_grids_node]
-    PROG[🧩 planning_progress_node]
+    PCOST(🧩 path_cost_grids_node)
+    PROG(🧩 planning_progress_node)
   end
 
   subgraph GATE_SG ["🚦 cmd_vel gate"]
     direction TB
-    GATE[🧩 planning_cmd_vel_gate_node]
+    GATE(🧩 planning_cmd_vel_gate_node)
   end
 
   subgraph OUT_SG ["📤 Outputs"]
@@ -207,7 +207,7 @@ graph TD
   GATE ==> CMDOUT
   GATE --> ENGAGED
 
-  DIAGAGG((📡 /system/diagnostics_agg)) --> SM[🧩 planning_state_machine_node]
+  DIAGAGG((📡 /system/diagnostics_agg)) --> SM(🧩 planning_state_machine_node)
   RECALL((📡 /planning/state_machine/camping_site_recall)) --> SM
   GOALKEY((📡 /planning/state_machine/goal_key)) --> SM
   SM --> SMGOAL((📡 /planning/goal_pose_snapped))

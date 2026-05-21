@@ -53,20 +53,20 @@ graph LR
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
   subgraph UP["⬆️ Upstream"]
-    LOC[🧩 camrod_localization]:::localization
-    SENS[🧩 camrod_sensing]:::sensing
-    PLAN_IN[🧩 camrod_planning]:::planning
+    LOC([🧩 camrod_localization]):::localization
+    SENS([🧩 camrod_sensing]):::sensing
+    PLAN_IN([🧩 camrod_planning]):::planning
   end
 
   subgraph CM["🗺️ camrod_map"]
-    MAP[🧩 camrod_map]:::highlight
+    MAP([🧩 camrod_map]):::highlight
   end
 
   subgraph DN["⬇️ Downstream"]
-    SENS_OUT[🧩 camrod_sensing]:::sensing
-    PLAN_OUT[🧩 camrod_planning]:::planning
-    PLAT[🧩 camrod_platform]:::platform
-    ALL[🧩 all packages]:::system
+    SENS_OUT([🧩 camrod_sensing]):::sensing
+    PLAN_OUT([🧩 camrod_planning]):::planning
+    PLAT([🧩 camrod_platform]):::platform
+    ALL([🧩 all packages]):::system
   end
 
   LOC  ==>|📡 /planning/lanelet_pose| MAP
@@ -110,7 +110,7 @@ graph TD
 
   subgraph STATIC["🗂️ Static Map"]
     OSM{{🛠️ Lanelet2 .osm}}:::hardware
-    LMAP[🧩 lanelet_map_provider]:::mapping
+    LMAP(🧩 lanelet_map_provider):::mapping
     MVIS((📡 /map/markers)):::topic
     TF((📡 TF world→map)):::topic
     OSM ==> LMAP
@@ -119,7 +119,7 @@ graph TD
   end
 
   subgraph GRID["🧮 Cost Grids"]
-    LGRID[🧩 lanelet_boundary_cost_grid]:::mapping
+    LGRID(🧩 lanelet_boundary_cost_grid):::mapping
     POSE((📡 /planning/lanelet_pose)):::topic
     GPATH((📡 /planning/global_path)):::topic
     LCOST((📡 /map/cost_grid/lanelet)):::topic
@@ -131,16 +131,16 @@ graph TD
   end
 
   subgraph VIZ["🎨 Visualization"]
-    MCFM[🧩 cost_grid_multi_marker]:::mapping
+    MCFM(🧩 cost_grid_multi_marker):::mapping
     LIDAR((📡 /sensing/cost_grid/lidar)):::topic
     RADAR((📡 /sensing/cost_grid/radar)):::topic
     LMRK((📡 lanelet_markers)):::topic
     LIMRK((📡 lidar_markers)):::topic
     RMRK((📡 radar_markers)):::topic
-    AGG[🧩 cost_grid_marker_aggregator]:::mapping
+    AGG(🧩 cost_grid_marker_aggregator):::mapping
     CONTRIB((📡 /map/cost_grid/inflation_markers)):::topic
     INFGRID((📡 /planning/global_costmap/costmap)):::topic
-    CFMRK[🧩 nav2_costmap_debug_marker]:::mapping
+    CFMRK(🧩 nav2_costmap_debug_marker):::mapping
     INFLMRK((📡 inflation_nav2_markers)):::topic
     LIDAR --> MCFM
     RADAR --> MCFM
@@ -156,9 +156,9 @@ graph TD
   end
 
   subgraph EXPORT["📤 Exports"]
-    CFN[🧩 lanelet_cost_field_visualizer]:::mapping
+    CFN(🧩 lanelet_cost_field_visualizer):::mapping
     CFIELD((📡 lanelet_field_markers)):::topic
-    AEX[🧩 area_exporter]:::mapping
+    AEX(🧩 area_exporter):::mapping
     DZ[(⚙️ drop_zones.yaml)]:::config
     CS[(⚙️ camping_sites.yaml)]:::config
     CFN -.-> CFIELD
@@ -213,13 +213,13 @@ graph LR
   classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  NODE[🧩 lanelet_boundary_cost_grid]:::mapping
+  NODE(🧩 lanelet_boundary_cost_grid):::mapping
 
   subgraph MODES["📐 Four Cost Modes"]
-    CL["🎯 centerline\ncost: 0→35→99\nhalf-width 0.75 m\n✅ ACTIVE"]:::highlight
-    BD["🚧 bounds\nlethal strips at\nlane edges\n⛔ disabled"]:::mapping
-    LL["🗺️ lanelet\nuniform fill\ninside lanes"]:::mapping
-    PT["🛤️ path\nroute-strip bias\nalong global path"]:::mapping
+    CL("🎯 centerline\ncost: 0→35→99\nhalf-width 0.75 m\n✅ ACTIVE"):::highlight
+    BD("🚧 bounds\nlethal strips at\nlane edges\n⛔ disabled"):::mapping
+    LL("🗺️ lanelet\nuniform fill\ninside lanes"):::mapping
+    PT("🛤️ path\nroute-strip bias\nalong global path"):::mapping
   end
 
   NODE ==>|secondary output| CL
