@@ -1,110 +1,253 @@
 # camrod_sensing
 
-## Role
-Sensor acquisition, preprocessing, and obstacle cost-grid generation. Converts raw hardware streams (LiDAR, radar, camera, IMU, GNSS) into filtered topics and robot-centred occupancy grids consumed by localization, perception, and planning.
+## 1. Summary
 
-## Package Diagram
+`camrod_sensing` acquires raw data from all physical sensors (LiDAR, radar, camera, IMU, GNSS), preprocesses the streams, and produces the filtered topics and obstacle cost grids consumed by localization, perception, and planning. It also fuses the map lanelet cost grid with real-time sensor grids into a single inflation grid for the Nav2 local costmap.
+
+**Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 ultrasonic radar ×6 (CH9344 USB serial), V4L2 camera (ISX031 / `/dev/video0`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial), u-blox ZED-F9P GNSS (USB), NTRIP RTK correction stream.
+
+## 2. Quick Start
+
+```bash
+# Full sensing stack (all sensors enabled)
+ros2 launch camrod_sensing sensing.launch.py
+
+# Disable sensors not present on the platform
+ros2 launch camrod_sensing sensing.launch.py \
+  enable_gnss:=false \
+  enable_ntrip:=false
+
+# Switch IMU hardware
+ros2 launch camrod_sensing sensing.launch.py imu_mode:=gq7_ntrip
+
+# Sub-stacks (for isolated bringup or debug)
+ros2 launch camrod_sensing lidar.launch.py
+ros2 launch camrod_sensing radar.launch.py
+ros2 launch camrod_sensing gnss.launch.py
+ros2 launch camrod_sensing imu.launch.py
+ros2 launch camrod_sensing camera.launch.py
+```
+
+Verify: `ros2 topic hz /sensing/lidar/points_filtered` should show ~10 Hz; `ros2 topic echo /sensing/gnss/ublox_gps_node/fix --once` should return a `NavSatFix` with `status.status >= 0`.
+
+## 3. System Position
+
+```
+camrod_platform ──/platform/status/velocity──> camrod_sensing
+camrod_map ──/map/cost_grid/lanelet──> camrod_sensing
+camrod_planning ──/planning/cost_grid/global_path──> camrod_sensing
+
+camrod_sensing ──/sensing/lidar/points_filtered──> camrod_perception, camrod_planning
+camrod_sensing ──/sensing/imu/data──> camrod_localization
+camrod_sensing ──/sensing/gnss/ublox_gps_node/fix──> camrod_localization
+camrod_sensing ──/sensing/gnss/pose, /sensing/gnss/pose_with_covariance──> camrod_localization
+camrod_sensing ──/sensing/platform_velocity_converter/twist_with_covariance──> camrod_localization
+camrod_sensing ──/sensing/cost_grid/lidar──> camrod_map (visualization), camrod_planning (Nav2 global costmap)
+camrod_sensing ──/sensing/cost_grid/radar──> camrod_map (visualization), camrod_planning (Nav2 global costmap)
+camrod_sensing ──/planning/cost_grid/inflation──> camrod_planning (Nav2 local costmap, cmd_vel_gate)
+camrod_sensing ──camera/image_rect/compressed──> camrod_parking (apriltag_node)
+camrod_sensing ──camera/image_rect/compressed──> camrod_perception (YOLOv9)
+```
+
+## 4. Runtime Architecture
+
 ```mermaid
 graph TD
-  HW{{Sensor Devices}} --> LDRV[lidar_preprocessor_node]
+  HW{{Vanjee LiDAR}} --> LDRV[lidar_preprocessor]
   LDRV --> LFLT(("/sensing/lidar/points_filtered"))
-  LFLT --> LGRID[lidar_cost_grid_node]
+  LFLT --> LGRID[lidar_cost_grid]
   LGRID --> LOUT(("/sensing/cost_grid/lidar"))
 
-  HW --> RADAR[sen0592_radar_node]
-  RADAR --> RRANGE(("/sensing/radar/*/range  ×6"))
-  RRANGE --> RGRID[radar_cost_grid_node]
+  HW2{{SEN0592 ×6 via CH9344}} --> RADAR[sen0592_radar_node]
+  RADAR --> RRANGE(("/sensing/radar/{front,rear,left1,left2,right1,right2}/range"))
+  RRANGE --> RGRID[radar_cost_grid]
   RGRID --> ROUT(("/sensing/cost_grid/radar"))
 
-  LOUT --> INFGRID[inflation_cost_grid_node]
+  LOUT --> INFGRID[inflation_cost_grid]
   ROUT --> INFGRID
   LANELET(("/map/cost_grid/lanelet")) --> INFGRID
   GPATH(("/planning/cost_grid/global_path")) --> INFGRID
   INFGRID --> MERGED(("/planning/cost_grid/inflation"))
 
-  HW --> CAM[camera_preprocessor_node]
-  CAM --> CAMOUT(("/sensing/camera/processed/*"))
+  HW3{{V4L2 camera /dev/video0}} --> CAM[camera_publisher]
+  CAM --> CAMRECT(("camera/image_rect/compressed"))
+  CAM --> CAMINFO(("camera/camera_info"))
 
-  HW --> GNSS[[ublox + ntrip stack]]
-  GNSS --> GNSSOUT(("/sensing/gnss/*"))
+  HW4{{u-blox ZED-F9P /dev/ttyACM1}} --> GNSS[[ublox_gps_node]]
+  NTRIP[[ntrip_client]] --> GNSS
+  GNSS --> FIX(("/sensing/gnss/ublox_gps_node/fix"))
+  FIX --> ADAPT[localization_input_adapter]
+  ADAPT --> GNSSPOSE(("/sensing/gnss/pose"))
+  ADAPT --> GNSSCOV(("/sensing/gnss/pose_with_covariance"))
 
-  HW --> IMU[[imu driver  cv7 / gq7]]
-  IMU --> IMUOUT(("/sensing/imu/data"))
-  IMUOUT --> VEL[platform_velocity_converter_node]
+  HW5{{CV7 or GQ7 IMU}} --> IMUDRV[[microstrain_inertial_driver]]
+  IMUDRV --> IMUOUT(("/sensing/imu/data"))
+  IMUOUT --> VEL[platform_velocity_converter]
   PLATVEL(("/platform/status/velocity")) --> VEL
   VEL --> VELOUT(("/sensing/platform_velocity_converter/twist_with_covariance"))
 ```
 
-Diagram legend: `[node]`, `((topic))`, `[[external stack]]`, `{{hardware}}`.
+Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = hardware device, `[[stack]]` = external package.
 
-## Node Data Flow
+## 5. Interface Contract
 
-| Node | Inputs | Outputs | Key Params |
-|---|---|---|---|
-| `lidar_preprocessor_node` | `/sensing/lidar/vanjee/points_raw` | `/sensing/lidar/points_filtered` | method: ransac, voxel_leaf: 0.10 m |
-| `lidar_cost_grid_node` | `/sensing/lidar/points_filtered` | `/sensing/cost_grid/lidar` | 150×150 @ 0.08 m, cost range 0.4–7.5 m |
-| `sen0592_radar_node` | Serial (CH9344 USB, 6 sensors) | `/sensing/radar/{front,left1,left2,right1,right2,rear}/range` | poll_period_s: 0.06, max ranges 0.5–1.5 m |
-| `radar_cost_grid_node` | `/sensing/radar/*/range` ×6 | `/sensing/cost_grid/radar` | 120×120 @ 0.10 m, cost range 0.3–2.0 m |
-| `inflation_cost_grid_node` | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`, `/planning/cost_grid/global_path` | `/planning/cost_grid/inflation` | 120×120 @ 0.10 m, cell-wise max merge, 10 Hz |
-| `camera_preprocessor_node` | `/sensing/camera/image_raw`, `/sensing/camera/camera_info` | `/sensing/camera/processed/image`, `/sensing/camera/processed/camera_info` | frame_id_override: camera_link |
-| `platform_velocity_converter_node` | `/platform/status/velocity`, `/sensing/imu/data` | `/sensing/platform_velocity_converter/twist_with_covariance` | linear_variance: [0.05, 0.05, 0.1] |
-| `ublox_gps_node` | GNSS device + RTCM | `/sensing/gnss/ublox_gps_node/fix` | — |
-| `ntrip_client` (optional) | NTRIP caster | `/sensing/gnss/rtcm` | — |
-| IMU driver (`cv7` / `gq7`) | IMU device | `/sensing/imu/data` | imu_mode: cv7 or gq7 |
+### Inputs (from other packages)
 
-### Cost Grid Architecture
+| Topic | Type | Required | Producer | Rate | Meaning |
+|---|---|---|---|---|---|
+| `/platform/status/velocity` | `geometry_msgs/TwistStamped` | Yes | camrod_platform | ~20 Hz | Forward speed used by `platform_velocity_converter` to project odometric velocity |
+| `/map/cost_grid/lanelet` | `nav_msgs/OccupancyGrid` | Yes (stale ≤ 5 s) | camrod_map | Static (transient_local) | Lanelet centerline cost layer merged into inflation grid |
+| `/planning/cost_grid/global_path` | `nav_msgs/OccupancyGrid` | No (stale ≤ 10 s) | camrod_planning | On replan | Route-strip bias merged into inflation grid |
 
-All grids are robot-centred and transform-stamped to the `map` frame via TF2.
+### Outputs (consumed by other packages)
 
-| Grid | Size | Resolution | Cost Range | Staleness Limit |
+| Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
-| `/sensing/cost_grid/lidar` | 150×150 | 0.08 m | 30–95 | 0.50 s |
-| `/sensing/cost_grid/radar` | 120×120 | 0.10 m | 35–95 | 0.35 s |
-| `/planning/cost_grid/inflation` (merged) | 120×120 | 0.10 m | 0–100 | per-input (see below) |
+| `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | camrod_perception, camrod_planning | ~10 Hz | Ground-filtered, voxel-downsampled LiDAR points in `lidar_link` frame |
+| `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning (Nav2 global costmap), camrod_map (visualization) | 10 Hz | 150×150 @ 0.08 m robot-centred obstacle grid from LiDAR |
+| `/sensing/cost_grid/radar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning (Nav2 global costmap), camrod_map (visualization) | 10 Hz | 120×120 @ 0.10 m robot-centred near-field obstacle grid from radar |
+| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | camrod_planning (Nav2 local costmap, `cmd_vel_gate`) | 10 Hz | 120×120 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
+| `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz | Raw GNSS fix with RTK status |
+| `/sensing/gnss/pose` | `geometry_msgs/PoseStamped` | camrod_localization (`localization_monitor_node`) | 10 Hz | GNSS-derived pose in `map` frame (no covariance) |
+| `/sensing/gnss/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | camrod_localization (ESKF) | 10 Hz | GNSS-derived pose with position covariance for filter fusion |
+| `/sensing/imu/data` | `sensor_msgs/Imu` | camrod_localization (ESKF), `platform_velocity_converter` | 100 Hz | Filtered orientation + angular velocity + linear acceleration in `imu_link` frame |
+| `/sensing/platform_velocity_converter/twist_with_covariance` | `geometry_msgs/TwistWithCovarianceStamped` | camrod_localization (ESKF) | ~20 Hz | Platform forward velocity with fixed covariance for wheel-odometry fusion |
+| `camera/image_rect/compressed` | `sensor_msgs/CompressedImage` | camrod_perception (YOLOv9), camrod_parking (`apriltag_node`) | 10 Hz | Rectified 1920×1080 JPEG-compressed image in `camera_link` frame |
+| `camera/camera_info` | `sensor_msgs/CameraInfo` | camrod_perception, camrod_parking | 10 Hz | Calibrated intrinsics (equidistant distortion model) |
+
+## 6. Key Behaviors
+
+### LiDAR — ground filter and voxel downsample
+
+| Field | Detail |
+|---|---|
+| Trigger | Each incoming PointCloud2 from `vanjee/points_raw` |
+| Internal logic | `lidar_preprocessor_node` applies range clipping (0.3–35 m), Z-band filter (−1.0 to 2.0 m), then RANSAC ground plane removal. Points within Z −0.25 to 0.25 m of the estimated ground plane are discarded. Remaining points are re-stamped with the current ROS clock and re-framed to `lidar_link`. |
+| Output effect | `/sensing/lidar/points_filtered` contains obstacle-only returns. |
+| Operator-visible symptom | If the topic is empty, verify the Vanjee driver is publishing on `/sensing/lidar/vanjee/points_raw`. If points look like the ground plane is still present, the RANSAC plane fit may have failed — check that the robot is on reasonably flat ground at startup. |
+| Related params | `method`, `min_range`, `max_range`, `min_z`, `max_z`, `z_min`, `z_max`, `frame_id_override` |
+| Related topics | `/sensing/lidar/vanjee/points_raw` → `/sensing/lidar/points_filtered` |
+
+### LiDAR cost grid
+
+| Field | Detail |
+|---|---|
+| Trigger | Each `/sensing/lidar/points_filtered` message |
+| Internal logic | `lidar_cost_grid_node` projects each filtered point into the `map` frame via TF2 and increments the corresponding cell. Cost is linearly scaled between `min_cost` (30) and `max_cost` (95) over the distance range 0.4–7.5 m. An ego-clear disk of radius 0.90 m around the robot base is always set to free. Grid is published at 10 Hz. Messages older than 0.50 s are discarded. |
+| Output effect | `/sensing/cost_grid/lidar`: 150×150 @ 0.08 m (12 m square centred on robot). |
+| Operator-visible symptom | Silent topic → LiDAR not publishing filtered points. Grid frozen → TF `robot_base_link → map` is stale (localization not running). |
+| Related params | `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
+| Related topics | `/sensing/lidar/points_filtered` → `/sensing/cost_grid/lidar` |
+
+### Radar (SEN0592 ×6)
+
+| Field | Detail |
+|---|---|
+| Trigger | `poll_period_s` timer (60 ms cycle) |
+| Internal logic | `sen0592_radar_node` polls six DFRobot SEN0592 sensors over six CH9344 USB serial ports at 115200 baud. Detection angle is configured to 75° (register 0x0208, value 5) at startup. Per-sensor max ranges are written to register 0x021F: REAR 0.50 m, LEFT1/LEFT2/RIGHT1/RIGHT2 0.80 m, FRONT 1.50 m. Each sensor publishes one `sensor_msgs/Range` message per poll cycle. |
+| Output effect | Six topics: `/sensing/radar/{front,rear,left1,left2,right1,right2}/range`. |
+| Operator-visible symptom | If any topic is silent, the corresponding CH9344 port may not be enumerated. Run `ls /dev/ttyCH9344USB*` to verify all six ports exist. |
+| Related params | `ports`, `sensor_names`, `frame_ids`, `sensor_max_ranges_m`, `poll_period_s`, `baud`, `angle_config_value` |
+| Related topics | `/sensing/radar/{front,rear,left1,left2,right1,right2}/range` |
+
+### Radar cost grid
+
+| Field | Detail |
+|---|---|
+| Trigger | Each incoming Range message (async per sensor) |
+| Internal logic | `radar_cost_grid_node` projects each Range into the `map` frame using the sensor's TF frame ID (`radar_*_link`). Cost is linearly scaled between `min_cost` (35) and `max_cost` (95) over 0.3–2.0 m. Ego-clear disk radius is 0.50 m (reduced from LiDAR's 0.90 m to preserve near-field side/rear readings). Messages older than 0.35 s are discarded. |
+| Output effect | `/sensing/cost_grid/radar`: 120×120 @ 0.10 m (12 m square centred on robot), published at 10 Hz. |
+| Operator-visible symptom | Empty grid → serial port permission denied or CH9344 driver not loaded. Near-field obstacles missing → ego_clear_radius_m is too large; current value 0.50 m is already minimal. |
+| Related params | `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
+| Related topics | `/sensing/radar/*/range` → `/sensing/cost_grid/radar` |
+
+### Camera (V4L2, ISX031)
+
+| Field | Detail |
+|---|---|
+| Trigger | Continuous V4L2 capture at configured fps |
+| Internal logic | `camera_publisher_node` opens `/dev/video0`, captures 1920×1080 MJPEG frames at 10 fps with `exposure_time_us: 25000`. Undistortion uses the calibrated equidistant model (4-coefficient: k1–k4). The rectified image is JPEG-compressed (quality 90) and published on `~/image_rect/compressed` (remapped to `camera/image_rect/compressed`). CameraInfo uses the calibrated intrinsics matrix. Zero-copy DDS transport is enabled via Iceoryx (`iox-roudi` started 1 s before the camera node). |
+| Output effect | `camera/image_rect/compressed`, `camera/camera_info` at 10 Hz. |
+| Operator-visible symptom | Node crash at startup → `iox-roudi` not running (check `ps aux | grep iox-roudi`). Black or distorted image → wrong `device_path` or stale calibration in `camera_params.yaml`. |
+| Related params | `device_path`, `image_width`, `image_height`, `fps`, `exposure_time_us`, `jpeg_quality`, `camera_matrix`, `distortion_coefficients`, `use_custom_intrinsics` |
+| Related topics | `camera/image_rect/compressed`, `camera/camera_info` |
+
+### IMU (CV7-AHRS or GQ7, selectable)
+
+| Field | Detail |
+|---|---|
+| Trigger | Node startup; `imu_mode` launch argument selects `cv7` (default) or `gq7_ntrip` |
+| Internal logic | **cv7 mode:** `microstrain_inertial_driver` connects to the CV7-AHRS via USB serial (identified by `by-id` path). Filter output rate is 100 Hz. GNSS aiding is disabled (`filter_enable_gnss_pos_vel_aiding: false`). ENU frame is used (`use_enu_frame: true`). Timestamps use ROS receive time (`timestamp_source: 0`). **gq7_ntrip mode:** GQ7 with NTRIP aiding for heading; connected on `/dev/ttyACM1`. |
+| Output effect | `/sensing/imu/data` (sensor_msgs/Imu) at 100 Hz in `imu_link` frame. |
+| Operator-visible symptom | `imu_mode` mismatch (e.g., `cv7` selected but GQ7 hardware present) → driver connects on wrong port and publishes zeroed or noisy orientation. Check port existence: `ls /dev/serial/by-id/usb-Lord_Microstrain*`. |
+| Related params | `imu_mode`, `cv7_port`, `gq7_port`, `imu_data_rate`, `use_enu_frame`, `timestamp_source`, `frame_id` |
+| Related topics | `/sensing/imu/data` |
+
+### GNSS (u-blox ZED-F9P + NTRIP)
+
+| Field | Detail |
+|---|---|
+| Trigger | Node startup; `enable_ntrip` controls whether the NTRIP client is also started |
+| Internal logic | `ublox_gps_node` opens `/dev/ttyACM1` and configures the F9P for 10 Hz measurement output (`rate: 10.0`, `nav_rate: 1`). TMODE3 is set to 0 (rover mode). UBX-NAV-PVT and NMEA are published. The `ntrip_client` subscribes to the RTCM caster at `www.gnssdata.or.kr:2101`, mountpoint `CNJU-RTCM32`, and forwards RTCM3.2 corrections to the F9P. The fix is expected to converge from no-fix → float → RTK-fixed over ~60 s under open sky with a stable NTRIP connection. `localization_input_adapter_node` (in camrod_localization) converts `NavSatFix` to `PoseStamped` and `PoseWithCovarianceStamped` in the `map` frame. |
+| Output effect | `/sensing/gnss/ublox_gps_node/fix` at 10 Hz; downstream adapter produces `/sensing/gnss/pose` and `/sensing/gnss/pose_with_covariance`. |
+| Operator-visible symptom | GNSS stays in float → NTRIP connection not delivering RTCM (check `/sensing/gnss/rtcm` rate). No fix at all → check USB device at `/dev/ttyACM1` and that `config_on_startup: false` is set (some F9P units reject CFG polling). |
+| Related params | `device` (`/dev/ttyACM1`), `rate`, `nav_rate`, `tmode3`, `enable_ntrip`, NTRIP: `host`, `port`, `mountpoint`, `authenticate`, `rtcm_timeout_seconds`, `reconnect_attempt_max` |
+| Related topics | `/sensing/gnss/ublox_gps_node/fix`, `/sensing/gnss/rtcm` |
+
+### NTRIP/RTK operating conditions
+
+| Field | Detail |
+|---|---|
+| Trigger | `ntrip_client` node startup (if `enable_ntrip:=true`) |
+| Internal logic | The NTRIP client connects to `www.gnssdata.or.kr:2101` (Korean CORS network) with authenticated credentials. It sends a GGA sentence (up to 96 chars) to the caster and receives a continuous RTCM 3.2 stream. The stream is relayed to `ublox_gps_node` via the `rtcm` topic. If the connection drops, the client retries up to 10 times with an 8 s wait between attempts (`reconnect_attempt_max: 10`, `reconnect_attempt_wait_seconds: 8`). The F9P transitions to RTK-float when RTCM is first received and to RTK-fixed after resolving carrier-phase ambiguity (typically < 60 s under open sky). |
+| Output effect | F9P `carrSoln` field in NAV-PVT: 0 = none, 1 = float, 2 = fixed. `NavSatFix.status.status`: 0 = fix, 2 = RTK-float, 3 (SBAS) or higher = RTK-fixed depending on ublox_gps driver version. |
+| Operator-visible symptom | `carrSoln` stays at 1 (float) for > 5 min under clear sky → base corrections are received but ambiguity resolution is failing. Common causes: multipath environment, rover antenna quality, or RTCM stream has gaps. |
+| Required conditions | Active internet connection, CORS network reachable, open-sky GNSS antenna with good ground plane, F9P firmware ≥ HPG 1.13. |
+| Related params | `host`, `port`, `mountpoint`, `username`, `password`, `rtcm_timeout_seconds`, `reconnect_attempt_max`, `reconnect_attempt_wait_seconds` |
+| Related topics | `/sensing/gnss/ublox_gps_node/fix`, `/sensing/gnss/rtcm` |
+
+### Velocity converter
+
+| Field | Detail |
+|---|---|
+| Trigger | Each `/platform/status/velocity` message |
+| Internal logic | `platform_velocity_converter_node` combines the platform forward speed (from camrod_platform) with the IMU angular rate (from `/sensing/imu/data`) and emits a `TwistWithCovarianceStamped`. Fixed covariances: linear [0.05, 0.05, 0.10] m²/s², angular [0.2, 0.2, 0.2] rad²/s². |
+| Output effect | `/sensing/platform_velocity_converter/twist_with_covariance` — the primary odometric input to the ESKF in camrod_localization. |
+| Operator-visible symptom | Topic silent → either platform velocity or IMU is not publishing. The node requires IMU (`require_imu: true`). |
+| Related params | `linear_variance`, `angular_variance`, `require_imu` |
+| Related topics | `/platform/status/velocity`, `/sensing/imu/data` → `/sensing/platform_velocity_converter/twist_with_covariance` |
+
+### Inflation cost grid (sensor fusion)
+
+| Field | Detail |
+|---|---|
+| Trigger | Any updated input grid; publishes at 10 Hz |
+| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (0.50 s), radar cost (0.50 s), global_path cost (10.0 s). The output is a 120×120 @ 0.10 m grid (12 m square centred on robot). An ego-clear disk of radius 0.50 m is always free. Messages older than their per-input limit are treated as absent. |
+| Output effect | `/planning/cost_grid/inflation` at 10 Hz; consumed by Nav2 local costmap and `cmd_vel_gate`. |
+| Operator-visible symptom | If inflation grid stops updating at 10 Hz, check each input: lidar/radar grids must arrive within 0.50 s; lanelet grid arrives once (transient_local) and is valid for 5.0 s after last receipt. |
+| Related params | `resolution`, `width`, `height`, `ego_clear_radius_m`, `publish_rate_hz`, `input_topics`, `input_max_ages_s` |
+| Related topics | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`, `/planning/cost_grid/global_path` → `/planning/cost_grid/inflation` |
+
+## 7. Cost Grid Reference
+
+All cost grids are robot-centred and published in the `map` frame via TF2.
+
+| Grid | Size | Resolution | Cost range | Max staleness | Ego clear radius |
+|---|---|---|---|---|---|
+| `/sensing/cost_grid/lidar` | 150×150 | 0.08 m | 30–95 | 0.50 s | 0.90 m |
+| `/sensing/cost_grid/radar` | 120×120 | 0.10 m | 35–95 | 0.35 s | 0.50 m |
+| `/planning/cost_grid/inflation` | 120×120 | 0.10 m | 0–100 | per-input (below) | 0.50 m |
 
 `inflation_cost_grid_node` per-input staleness limits:
 
-| Input | Limit |
+| Input | Staleness limit |
 |---|---|
 | `/map/cost_grid/lanelet` | 5.0 s |
 | `/sensing/cost_grid/lidar` | 0.50 s |
 | `/sensing/cost_grid/radar` | 0.50 s |
 | `/planning/cost_grid/global_path` | 10.0 s |
 
-## Inter-Package Connections
-```mermaid
-graph LR
-  SENSOR[camrod_sensing] --> LOC[camrod_localization]
-  SENSOR --> PER[camrod_perception]
-  SENSOR --> PLAN[camrod_planning]
-  SENSOR --> SYS[camrod_system]
-  PLATFORM[camrod_platform] --> SENSOR
-  MAP[camrod_map] --> SENSOR
-```
-
-## Topic Summary
-
-### Inputs (from other packages)
-| Topic | Type | Source |
-|---|---|---|
-| `/platform/status/velocity` | TwistStamped | camrod_platform |
-| `/map/cost_grid/lanelet` | OccupancyGrid | camrod_map |
-| `/planning/cost_grid/global_path` | OccupancyGrid | camrod_planning |
-
-### Outputs (consumed by other packages)
-| Topic | Type | Consumers |
-|---|---|---|
-| `/sensing/gnss/ublox_gps_node/fix` | NavSatFix | camrod_localization |
-| `/sensing/gnss/pose` | PoseStamped | camrod_localization |
-| `/sensing/gnss/pose_with_covariance` | PoseWithCovarianceStamped | camrod_localization |
-| `/sensing/imu/data` | Imu | camrod_localization |
-| `/sensing/lidar/points_filtered` | PointCloud2 | camrod_perception, camrod_planning (via cost grid) |
-| `/sensing/platform_velocity_converter/twist_with_covariance` | TwistWithCovarianceStamped | camrod_localization |
-| `/sensing/cost_grid/lidar` | OccupancyGrid | inflation_cost_grid_node, camrod_planning (Nav2 global costmap) |
-| `/sensing/cost_grid/radar` | OccupancyGrid | inflation_cost_grid_node, camrod_planning (Nav2 global costmap) |
-| `/planning/cost_grid/inflation` | OccupancyGrid | camrod_planning (Nav2 local costmap, cmd_vel_gate) |
-
-## Launch
+## 8. Launch
 
 ```bash
 # Full sensing stack
@@ -118,31 +261,168 @@ ros2 launch camrod_sensing imu.launch.py
 ros2 launch camrod_sensing camera.launch.py
 ```
 
-Key launch arguments:
+### Launch arguments for `sensing.launch.py`
 
 | Argument | Default | Description |
 |---|---|---|
-| `enable_lidar_driver` | `true` | LiDAR preprocessor |
-| `enable_lidar_cost_grid` | `true` | LiDAR obstacle grid |
-| `enable_radar` | `true` | Ultrasonic radar driver |
-| `enable_radar_cost_grid` | `true` | Radar obstacle grid |
-| `enable_inflation_cost_grid` | `true` | Merged planning grid |
-| `enable_gnss` | `true` | GNSS driver |
-| `enable_ntrip` | `true` | NTRIP RTK corrections |
-| `enable_imu` | `true` | IMU driver |
-| `imu_mode` | `cv7` | `cv7` or `gq7` |
+| `sensing_namespace` | `sensing` | ROS 2 namespace for all sensing nodes |
+| `enable_lidar_driver` | `true` | Vanjee LiDAR driver + preprocessor |
+| `enable_lidar_cost_grid` | `true` | LiDAR obstacle cost grid |
+| `enable_radar` | `true` | SEN0592 radar driver |
+| `enable_radar_cost_grid` | `true` | Radar obstacle cost grid |
+| `enable_inflation_cost_grid` | `true` | Merged inflation cost grid |
+| `enable_camera` | `true` | V4L2 camera driver |
+| `enable_gnss` | `true` | u-blox F9P GNSS driver |
+| `enable_ntrip` | `true` | NTRIP RTK correction client |
+| `enable_imu` | `true` | MicroStrain IMU driver |
+| `imu_mode` | `cv7` | `cv7` (CV7-AHRS) or `gq7_ntrip` (GQ7 with NTRIP heading) |
+| `camera_device_path` | `/dev/video0` | V4L2 camera device |
+| `cv7_port` | `/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6286.226900-if00` | CV7 USB serial port |
+| `gq7_port` | `/dev/ttyACM1` | GQ7 serial port |
+| `imu_velocity_topic` | `/platform/status/velocity` | Platform velocity input to velocity converter |
+| `imu_output_topic` | `/sensing/platform_velocity_converter/twist_with_covariance` | Velocity converter output (fixed) |
+| `gnss_namespace` | `gnss` | Sub-namespace for GNSS nodes (resolves to `/sensing/gnss/`) |
 
-## Config Files
+## 9. Config
 
 | File | Purpose |
 |---|---|
-| `config/lidar/preprocessor.yaml` | Ground filter (RANSAC), voxel size, frame ID |
+| `config/sensing_params.yaml` | Monolithic fallback parameters aligned to `/sensing/*` namespace; overridden by per-sensor files below |
+| `config/lidar/preprocessor.yaml` | Ground filter (RANSAC), range limits, voxel size, frame ID override |
 | `config/lidar/cost_grid.yaml` | LiDAR grid geometry, cost thresholds, ego clear radius |
-| `config/radar/sen0592_radar.yaml` | Serial ports, per-sensor range limits, angle config |
+| `config/lidar/vanjee/config.yaml` | Vanjee LiDAR driver hardware config |
+| `config/radar/sen0592_radar.yaml` | Serial ports, per-sensor range limits, detection angle config |
 | `config/radar/cost_grid.yaml` | Radar grid geometry, near-field cost range |
 | `config/inflation_cost_grid.yaml` | Merged grid geometry, per-input staleness limits |
-| `config/sensing_params.yaml` | Radar output topic, sensing-level overrides |
+| `config/camera/camera_params.yaml` | Resolution, fps, exposure, calibrated intrinsics, distortion coefficients |
+| `config/imu/microstrain_cv7.yaml` | CV7-AHRS driver: port, rates, frame, filter aiding flags |
+| `config/imu/microstrain_gq7.yaml` | GQ7 driver config (used with `imu_mode:=gq7_ntrip`) |
 | `config/imu/platform_velocity_converter.yaml` | Velocity/IMU fusion covariance |
-| `config/camera/preprocessor.yaml` | Frame override, camera_info requirement |
-| `config/gnss/zed_f9p_rover.yaml` | ublox GNSS driver parameters |
-| `config/gnss/ntrip_client.yaml` | NTRIP caster connection |
+| `config/gnss/zed_f9p_rover.yaml` | u-blox F9P: device, measurement rate, rover mode, publish flags |
+| `config/gnss/ntrip_client.yaml` | NTRIP caster host/port/mountpoint, authentication, retry policy |
+
+### Key params by sensor
+
+#### LiDAR preprocessor (`config/lidar/preprocessor.yaml`)
+
+| Param | Value | Meaning |
+|---|---|---|
+| `min_range` | `0.3` m | Minimum valid point range |
+| `max_range` | `35.0` m | Maximum valid point range |
+| `min_z` / `max_z` | `−1.0` / `2.0` m | Z-axis band filter |
+| `method` | `ransac` | Ground segmentation algorithm |
+| `z_min` / `z_max` | `−0.25` / `0.25` m | Ground plane inlier Z window |
+| `frame_id_override` | `lidar_link` | Frame stamped into output cloud |
+
+#### Radar driver (`config/radar/sen0592_radar.yaml`)
+
+| Param | Value | Meaning |
+|---|---|---|
+| `poll_period_s` | `0.06` s | Sensor polling interval (≈16.7 Hz cycle) |
+| `angle_config_value` | `5` | Detection angle: 5 = 75° (max for SEN0592) |
+| `sensor_max_ranges_m` | `[0.50, 0.80, 0.80, 0.80, 0.80, 1.50]` | Per-sensor max range (REAR, L2, L1, R2, R1, FRONT) |
+| `ports` | `/dev/ttyCH9344USB2` – `USB7` | CH9344 serial port assignments |
+
+#### Inflation cost grid (`config/inflation_cost_grid.yaml`)
+
+| Param | Value | Meaning |
+|---|---|---|
+| `resolution` | `0.10` m | Grid cell size |
+| `width` / `height` | `120` cells | 12 m square window |
+| `ego_clear_radius_m` | `0.50` m | Always-free disk around robot |
+| `publish_rate_hz` | `10.0` Hz | Output rate |
+| `input_max_ages_s` | `[5.0, 0.50, 0.50, 10.0]` | Per-input staleness limits (lanelet, lidar, radar, path) |
+
+## 10. Validation
+
+```bash
+# LiDAR pipeline
+ros2 topic hz /sensing/lidar/points_filtered          # expect ~10 Hz
+ros2 topic hz /sensing/cost_grid/lidar                # expect 10 Hz
+
+# Radar
+ros2 topic hz /sensing/radar/front/range              # expect ~16 Hz
+ros2 topic hz /sensing/cost_grid/radar                # expect 10 Hz
+
+# GNSS
+ros2 topic echo /sensing/gnss/ublox_gps_node/fix --once
+# Check status.status: 2 = RTK-float, check carrSoln field in NavSatFix header
+
+# IMU
+ros2 topic hz /sensing/imu/data                       # expect 100 Hz
+
+# Velocity converter
+ros2 topic hz /sensing/platform_velocity_converter/twist_with_covariance
+
+# Inflation grid
+ros2 topic hz /planning/cost_grid/inflation           # expect 10 Hz
+
+# Camera
+ros2 topic hz /sensing/camera/image_rect/compressed   # expect 10 Hz
+```
+
+## 11. Troubleshooting
+
+### LiDAR topic silent
+
+`/sensing/lidar/points_filtered` has no messages.
+
+1. Check that the Vanjee LiDAR driver is running and publishing on `/sensing/lidar/vanjee/points_raw`: `ros2 topic hz /sensing/lidar/vanjee/points_raw`.
+2. Confirm `enable_lidar_driver:=true` and `enable_lidar_cost_grid:=true` in the launch command.
+3. Check the preprocessor node is alive: `ros2 node list | grep lidar_preprocessor`.
+4. If raw points arrive but filtered points don't, the RANSAC ground filter may be failing — this can happen if the robot is not on a flat surface at startup. Try restarting the preprocessor after placing the robot on flat ground.
+
+### GNSS stays in float
+
+`NavSatFix.status.status` does not reach RTK-fixed after > 5 minutes under open sky.
+
+1. Confirm RTCM stream is arriving: `ros2 topic hz /sensing/gnss/rtcm`. If silent, the NTRIP client is not connected.
+2. Check network reachability: `ping www.gnssdata.or.kr`. Firewall or mobile data restrictions can block port 2101.
+3. Check the NTRIP node log for authentication errors: `ros2 node info /sensing/gnss/ntrip_client`.
+4. If RTCM is arriving but float persists, the antenna may have poor sky view or multipath. Try a different antenna location.
+5. Verify the mountpoint `CNJU-RTCM32` is appropriate for the site (use an NTRIP browser to confirm the nearest base station).
+
+### Radar serial port not found
+
+One or more `/sensing/radar/*/range` topics are silent.
+
+1. Verify all six CH9344 ports exist: `ls /dev/ttyCH9344USB*`. Expect USB2–USB7. If fewer ports appear, the CH9344 kernel module may not be loaded: `sudo modprobe ch9344`.
+2. Check port permissions: `ls -l /dev/ttyCH9344USB*`. The user must be in the `dialout` group.
+3. Identify which sensor maps to which port by checking `sensor_names` and `ports` arrays in `config/radar/sen0592_radar.yaml` (order: REAR, LEFT2, LEFT1, RIGHT2, RIGHT1, FRONT → USB2–USB7).
+4. If a specific sensor is silent after hardware check, try swapping its USB cable/port.
+
+### Inflation grid stops updating
+
+`/planning/cost_grid/inflation` drops below 10 Hz or freezes.
+
+1. Check each input: `ros2 topic hz /sensing/cost_grid/lidar` and `ros2 topic hz /sensing/cost_grid/radar`. Both must be at 10 Hz.
+2. The lanelet grid (`/map/cost_grid/lanelet`) is published once with `transient_local` QoS. It is valid for 5 s after last receipt. If camrod_map has not been launched, the inflation node will hold indefinitely waiting for this input.
+3. Check `max_message_age_s: 0.50` in `inflation_cost_grid.yaml` — if the inflation node itself is lagging (CPU overload), its own timer may expire before it can publish.
+4. Restart `inflation_cost_grid` node: `ros2 lifecycle set /sensing/inflation_cost_grid configure` (if managed) or kill and re-launch.
+
+### IMU mode mismatch
+
+`/sensing/imu/data` is silent or produces constant-zero orientation.
+
+1. Confirm the physical hardware matches `imu_mode`. Default `cv7` expects the CV7-AHRS device at `/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6286.226900-if00`. Check: `ls /dev/serial/by-id/ | grep Microstrain`.
+2. For GQ7 hardware, launch with `imu_mode:=gq7_ntrip` and ensure `/dev/ttyACM1` is the GQ7 (not the F9P GNSS — both appear as `ttyACM*`).
+3. Check the driver log for `Invalid Parameter` errors. This typically means `filter_pps_source` or `filter_declination_source` is set to a value unsupported by the connected model.
+
+### Camera image not reaching `apriltag_node`
+
+`camrod_parking` does not detect dock markers even when the dock is in view.
+
+1. Confirm the camera is publishing: `ros2 topic hz /sensing/camera/image_rect/compressed`.
+2. The `apriltag_node` in `camrod_parking` subscribes to `/camera/color/image_rect`. Verify the topic remapping in `camrod_parking/launch/docking.launch.py` matches the actual camera namespace (remapping: `image_rect → /camera/color/image_rect`, `camera_info → /camera/color/camera_info`).
+3. Iceoryx zero-copy: if `iox-roudi` is not running, the `camera_publisher_node` may crash or stall. Check: `ps aux | grep iox-roudi`. If absent, it was not started (the camera launch starts it automatically, but it may have exited).
+4. Check exposure: if the environment is very dark, increase `exposure_time_us` in `camera_params.yaml` (max ~25000 for stable 10 fps).
+
+## 12. Related Docs
+
+- [../README.md](../README.md) — monorepo overview and inter-package data flow
+- [../camrod_localization/README.md](../camrod_localization/README.md) — consumes IMU, GNSS, velocity converter outputs from this package
+- [../camrod_perception/README.md](../camrod_perception/README.md) — consumes `/sensing/lidar/points_filtered` and `camera/image_rect/compressed`
+- [../camrod_planning/README.md](../camrod_planning/README.md) — consumes `/planning/cost_grid/inflation`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`
+- [../camrod_platform/README.md](../camrod_platform/README.md) — produces `/platform/status/velocity` consumed by velocity converter
+- [../camrod_parking/README.md](../camrod_parking/README.md) — consumes `camera/image_rect/compressed` for AprilTag-based dock detection
+- [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions used across the stack

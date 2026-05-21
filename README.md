@@ -7,22 +7,45 @@ Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground site
 
 ---
 
+## Documentation Map
+
+| Package | Role | README |
+|---------|------|--------|
+| `camrod_bringup` | Top-level orchestrator | [README](camrod_bringup/README.md) |
+| `camrod_map` | Lanelet2 map + cost grids + markers | [README](camrod_map/README.md) |
+| `camrod_sensing` | Camera/LiDAR/radar/IMU/GNSS + near-range cost grids | [README](camrod_sensing/README.md) |
+| `camrod_localization` | GNSS/IMU/wheel fusion (ESKF) + map helper | [README](camrod_localization/README.md) |
+| `camrod_perception` | LiDAR obstacles + optional YOLOv9 camera fusion | [README](camrod_perception/README.md) |
+| `camrod_planning` | Nav2 runtime + cmd\_vel gating + state machine | [README](camrod_planning/README.md) |
+| `camrod_parking` | AprilTag dock detection + opennav\_docking | [README](camrod_parking/README.md) |
+| `camrod_platform` | Final cmd\_vel gate + robot visualization | [README](camrod_platform/README.md) |
+| `camrod_sensor_kit` | URDF + static TF tree + RobotParams lib | [README](camrod_sensor_kit/README.md) |
+| `camrod_system` | Diagnostic checkers + aggregator | [README](camrod_system/README.md) |
+| `camrod_ui` | HTTP backend + operator web UI | [README](camrod_ui/README.md) |
+| `avg_msgs` | Shared ROS 2 message/service interfaces | [README](camrod_common/avg_msgs/README.md) |
+
+---
+
 ## Table of Contents
 
 1. [System Overview](#1-system-overview)
-2. [Hardware](#2-hardware)
+2. [Hardware & Software Requirements](#2-hardware--software-requirements)
 3. [Package Architecture](#3-package-architecture)
 4. [Runtime Data Flow](#4-runtime-data-flow)
 5. [External Dependencies](#5-external-dependencies)
-6. [Build](#6-build)
-7. [Run](#7-run)
-8. [Key Topics & Signals](#8-key-topics--signals)
-9. [Planning Profiles](#9-planning-profiles)
-10. [Operator UI](#10-operator-ui)
-11. [Camping Sites Configuration](#11-camping-sites-configuration)
-12. [Map Reference](#12-map-reference)
-13. [Diagnostics](#13-diagnostics)
-14. [Disabled / Optional Packages](#14-disabled--optional-packages)
+6. [First Run Guide](#6-first-run-guide)
+7. [Build](#7-build)
+8. [Docker](#8-docker)
+9. [Run](#9-run)
+10. [Key Topics & Signals](#10-key-topics--signals)
+11. [Planning Profiles](#11-planning-profiles)
+12. [Operator UI](#12-operator-ui)
+13. [Camping Sites Configuration](#13-camping-sites-configuration)
+14. [Map Reference](#14-map-reference)
+15. [Diagnostics](#15-diagnostics)
+16. [Glossary](#16-glossary)
+17. [Documentation Standards](#17-documentation-standards)
+18. [Disabled / Optional Packages](#18-disabled--optional-packages)
 
 ---
 
@@ -40,7 +63,7 @@ CAMROD is a supervised-autonomy delivery platform designed for controlled outdoo
 
 ---
 
-## 2. Hardware
+## 2. Hardware & Software Requirements
 
 | Component | Model / Notes |
 |-----------|---------------|
@@ -49,12 +72,29 @@ CAMROD is a supervised-autonomy delivery platform designed for controlled outdoo
 | IMU | Microstrain CV7 or GQ7 (9-axis; GQ7 has embedded GNSS) |
 | LiDAR | Vanjee 3D LiDAR |
 | Camera | USB camera (V4L2, UYVY → ROS Image) |
-| Radar | SEN0592 mmWave (near-range obstacle detection) |
+| Radar | SEN0592 mmWave (near-range obstacle detection, ×6) |
+| Dock markers | AprilTag 36h11 family (autonomous docking) |
 | Compute | Onboard Linux x86\_64 / ARM64, Ubuntu 22.04 + ROS 2 Humble |
+
+**Software requirements:**
+
+| Requirement | Version / Notes |
+|-------------|----------------|
+| OS | Ubuntu 22.04 LTS |
+| ROS 2 | Humble Hawksbill |
+| Nav2 | Humble release (included in `camrod_planning/external/`) |
+| opennav\_docking | Included in `camrod_parking/external/` |
+| apriltag\_ros | Included in `camrod_parking/external/` |
+| robot\_localization | Included in `camrod_localization/external/` |
+| Python | 3.10+ (FastAPI, uvicorn for camrod\_ui) |
+| Node.js | 18+ (frontend build only) |
+| Tested architectures | `amd64`, `arm64` (see Dockerfiles) |
 
 ---
 
 ## 3. Package Architecture
+
+> Each package has a detailed README — see the [Documentation Map](#documentation-map) above.
 
 ```mermaid
 graph TD
@@ -68,19 +108,19 @@ graph TD
   KIT[[camrod_sensor_kit]]
   SYS[[camrod_system]]
   UI[[camrod_ui]]
-  PKG[[camrod_parking]]
+  PARK[[camrod_parking]]
   AVG[(avg_msgs)]
 
-  BR --> MAP & SEN & LOC & PER & PLN & PLT & KIT & SYS & UI
+  BR --> MAP & SEN & LOC & PER & PLN & PLT & KIT & SYS & UI & PARK
 
   MAP --> LOC & PLN
-  SEN --> LOC & PER
+  SEN --> LOC & PER & PARK
   LOC --> PLN
   PER --> PLN
-  PLN --> PLT
-  PLT --> PKG
+  PLN --> PLT & PARK
+  PLT --> PARK
 
-  AVG -. interfaces .-> MAP & SEN & LOC & PER & PLN & PLT & SYS & UI & PKG
+  AVG -. interfaces .-> MAP & SEN & LOC & PER & PLN & PLT & SYS & UI & PARK
 ```
 
 ### Package Responsibilities
@@ -159,7 +199,39 @@ graph LR
 
 ---
 
-## 6. Build
+## 6. First Run Guide
+
+Step-by-step from a fresh clone to a running simulation.
+
+```bash
+# 1. Clone and enter workspace
+git clone https://github.com/hwanhonglee/CAMROD.git ~/camrod_ws/src
+cd ~/camrod_ws/src
+
+# 2. Bootstrap externals + install system deps
+./setup_camrod.sh
+
+# 3. Build
+cd ~/camrod_ws
+colcon build --symlink-install --packages-up-to camrod_bringup
+
+# 4. Source workspace
+source install/setup.bash
+
+# 5. Launch simulation with RViz
+ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
+
+# 6. Open operator UI
+# http://127.0.0.1:8010
+
+# 7. Send a goal via UI dropdown or RViz 2D Nav Goal
+#    → select "B1" from the site picker
+#    → or click the 2D Nav Goal button in RViz
+```
+
+---
+
+## 7. Build
 
 ### 6.1 First-time setup (clone externals + rosdep)
 
@@ -213,7 +285,23 @@ source ~/camrod_ws/install/setup.bash
 
 ---
 
-## 7. Run
+## 8. Docker
+
+Build and run CAMROD in a container.
+
+```bash
+# Build for amd64
+docker build -f Dockerfile.camrod.amd64 -t camrod:amd64 .
+
+# Build for arm64 (cross-compile or on ARM host)
+docker build -f Dockerfile.camrod.arm64 -t camrod:arm64 .
+```
+
+<!-- TODO: verify exact docker run command with CAN, USB, and GPU device mounts -->
+
+---
+
+## 9. Run
 
 ### 7.1 Full stack
 
@@ -269,7 +357,7 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 
 ---
 
-## 8. Key Topics & Signals
+## 10. Key Topics & Signals
 
 | Topic | Type | Direction | Purpose |
 |-------|------|-----------|---------|
@@ -300,7 +388,7 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 
 ---
 
-## 9. Planning Profiles
+## 11. Planning Profiles
 
 Nav2 planner × controller combinations are managed as standalone YAML overrides in:
 
@@ -331,7 +419,7 @@ Key tuning parameters per controller:
 
 ---
 
-## 10. Operator UI
+## 12. Operator UI
 
 The web UI runs at **http://\<robot-ip\>:8010** (default bind: `127.0.0.1:8010`).
 
@@ -360,7 +448,7 @@ DISABLE_ESLINT_PLUGIN=true npm run build
 
 ---
 
-## 11. Camping Sites Configuration
+## 13. Camping Sites Configuration
 
 Site coordinates are defined in:
 
@@ -388,7 +476,7 @@ Then update `site_names` in `camrod_ui/launch/ui.launch.py`:
 
 ---
 
-## 12. Map Reference
+## 14. Map Reference
 
 `camrod_map/config/map_info.yaml` is the **single source of truth** for coordinate frames.
 
@@ -417,7 +505,7 @@ See `system_network_setting.md` for network / SIM card setup.
 
 ---
 
-## 13. Diagnostics
+## 15. Diagnostics
 
 The system health pipeline:
 
@@ -441,7 +529,38 @@ ros2 topic echo /diagnostics_agg
 
 ---
 
-## 14. Disabled / Optional Packages
+## 16. Glossary
+
+Key terms used across all CAMROD packages.
+
+| Term | Definition |
+|------|-----------|
+| **drop zone** | Fixed startup/return waypoint where the robot begins and ends every mission |
+| **camping site** | Named delivery destination (e.g. "B3") defined in `camping_sites.yaml` |
+| **recall** | Operator-triggered return to a camping site for a second delivery or pickup |
+| **engage** | Boolean signal (`/planning/engage`) that enables the cmd\_vel gate to pass velocity commands to the platform |
+| **cost-stop** | Safety behavior: robot stops when the inflation cost grid exceeds a threshold along its path |
+| **DR\_ONLY** | Dead-reckoning-only localization mode (GNSS lost, running on IMU + wheel odometry) |
+| **mission source** | String tag attached to each Nav2 goal describing why it was sent (`startup`, `recall:B3`, `auto_return`, `manual`) |
+| **inflation cost grid** | Merged occupancy grid combining LiDAR, radar, lanelet, and path-proximity cost layers |
+| **lanelet** | A directed road segment with left/right boundaries in the Lanelet2 map format |
+| **road snap** | Projection of a goal or path onto the nearest lanelet centerline |
+| **dwell** | Wait period at a camping site before auto-return triggers (`goal_reached_dwell_s`) |
+| **dock** | Charging/loading station identified by an AprilTag marker |
+| **staging offset** | Pre-approach waypoint in front of the dock, used before final alignment |
+
+---
+
+## 17. Documentation Standards
+
+- Style guide: [docs/templates/README_STYLE_GUIDE.md](docs/templates/README_STYLE_GUIDE.md)
+- Package template: [docs/templates/PACKAGE_README_TEMPLATE.md](docs/templates/PACKAGE_README_TEMPLATE.md)
+- Parameter naming: [PARAMETER_NAMING_STANDARD.md](PARAMETER_NAMING_STANDARD.md)
+- Docs changelog: [docs/DOCS_CHANGELOG.md](docs/DOCS_CHANGELOG.md)
+
+---
+
+## 18. Disabled / Optional Packages
 
 Located in `disable/` (marked with `COLCON_IGNORE` — not built by default):
 

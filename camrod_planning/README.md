@@ -1,9 +1,59 @@
 # camrod_planning
 
-## Role
-Nav2-based autonomous path planning and velocity control. Snaps RViz goals to Lanelet2 centerlines, runs the Nav2 planner/controller stack, extracts a robot-centred local path, and gates the final velocity command behind an explicit engage signal, e-stop, cost-grid obstacle check, and GNSS recovery hold. Optionally manages mission goals through a state machine with named keypoints and a camping-site recall scenario.
+## 1. Summary
 
-## Package Diagram
+`camrod_planning` is the Nav2-based autonomous path planning and velocity control package. It snaps operator or UI goals to the nearest Lanelet2 centerline, runs the Nav2 planner/controller stack to produce a global path and raw velocity command, extracts a robot-centred local path for diagnostics, and gates the final velocity command behind an explicit engage signal, e-stop, cost-grid obstacle check, and GNSS recovery hold. An optional mission state machine manages named keypoint goals and the camping-site recall scenario.
+
+**Upstream dependencies:** camrod_localization, camrod_map, camrod_sensing, camrod_ui
+
+**Downstream consumers:** camrod_platform, camrod_system, camrod_parking
+
+---
+
+## 2. Quick Start
+
+```bash
+# Minimal: Nav2 + cmd_vel_gate + lanelet tools
+ros2 launch camrod_planning planning.launch.py \
+  map_path:=/path/to/lanelet2_maps.osm
+
+# With mission state machine
+ros2 launch camrod_planning planning.launch.py \
+  map_path:=/path/to/lanelet2_maps.osm \
+  enable_state_machine:=true
+
+# Send a goal by keypoint name (state machine must be enabled)
+ros2 topic pub /planning/state_machine/goal_key std_msgs/msg/String \
+  "{data: camping_site_1}" -1
+
+# Trigger camping-site recall (navigate robot to road-snap position)
+ros2 topic pub /planning/state_machine/camping_site_recall std_msgs/msg/String \
+  "{data: camping_site_1}" -1
+
+# Standalone gate logic unit test (no ROS 2 runtime needed, 29 assertions)
+python3 camrod_planning/test/test_cmd_vel_gate_logic.py
+```
+
+---
+
+## 3. System Position
+
+```mermaid
+graph LR
+  LOC[[camrod_localization]] -->|/localization/pose\n/localization/mode| PLAN[camrod_planning]
+  MAP[[camrod_map]] -->|/map/cost_grid/lanelet\nLanelet2 map| PLAN
+  SENS[[camrod_sensing]] -->|/planning/cost_grid/inflation| PLAN
+  UI[[camrod_ui]] -->|/goal_pose\n/planning/state_machine/goal_key| PLAN
+  PLAN -->|/planning/cmd_vel| PLAT[[camrod_platform]]
+  PLAN -->|/planning/engaged\n/planning/state_machine/state| SYS[[camrod_system]]
+  PLAN -->|/planning/global_path| MAP
+  PLAN -->|/planning/state_machine/state| PARK[[camrod_parking]]
+```
+
+---
+
+## 4. Runtime Architecture
+
 ```mermaid
 graph TD
   RVIZ{{RViz / UI Goal}} --> GSNAP[goal_snapper_node]
@@ -28,7 +78,7 @@ graph TD
   LOCALPATH --> TERR[path_tracking_error_node]
   TERR --> TERROR(("/planning/ltracking_error"))
 
-  GPATH --> PCOST[path_cost_grids]
+  GPATH --> PCOST[path_cost_grids_node]
   LOCALPATH --> PCOST
   PCOST --> GPCOST(("/planning/cost_grid/global_path"))
 
@@ -45,7 +95,7 @@ graph TD
   INFCOST(("/planning/cost_grid/inflation")) --> GATE
   LOCMODE(("/localization/mode")) --> GATE
   LOCODO --> GATE
-  YAMLZONES{{yaw_alignment_zones.yaml}} --> GATE
+  YAMLZONES{{yaw_alignment_zones.yaml}} -.-> GATE
   GATE --> CMDOUT(("/planning/cmd_vel"))
   GATE --> ENGAGED(("/planning/engaged"))
 
@@ -57,317 +107,332 @@ graph TD
   SM --> SMSOURCE(("/planning/state_machine/mission_source"))
 ```
 
-Diagram legend: `[node]`, `((topic))`, `[[external stack]]`, `{{source}}`.
+Diagram legend: `[node]`, `((topic))`, `[[external stack]]`, `{{external file/hw}}`, dashed = non-runtime dep.
 
-## Node Data Flow
+### Node Summary
 
-| Node | Inputs | Outputs | Key Params |
+| Node | Key Inputs | Key Outputs | Notable Params |
 |---|---|---|---|
-| `goal_snapper_node` | `/goal_pose` (RViz / UI), Lanelet2 map | `/planning/goal_pose_snapped_ros` | max_search_radius: 120 m, require_lanelet_containment, fallback_uncontained |
-| `centerline_snapper_node` | `/localization/pose` | `/planning/lanelet_pose` | max_search_radius: 120 m, lateral_stddev: 0.3, min_update_period_s: 0.05 |
-| `local_path_extractor_node` | `/planning/global_path`, `/planning/lanelet_pose`, `/planning/local_path_controller` | `/planning/local_path` | local_path_source: controller_then_slice, lookahead: 30 m, lookbehind: 3 m, publish_rate_hz: 15 |
-| `path_tracking_error_node` | `/planning/local_path`, `/planning/global_path`, `/planning/lanelet_pose` | `/planning/ltracking_error` | prefer_local_path: true, publish_rate_hz: 15, pose_timeout_s: 1.0 |
-| `goal_replanner_node` | `/planning/goal_pose`, `/planning/lanelet_pose`, Nav2 action | replanning triggers | min_request_interval_s, retry_after_failure_s, navigate_inactive_grace_s |
-| `planning_progress_node` | `/planning/global_path`, `/localization/pose`, `/localization/odometry/filtered` | `/planning/progress/remaining_distance_m`, `/planning/progress/remaining_time_s`, `/planning/progress/completion_pct` | publish_rate_hz: 2.0, speed_ema_alpha: 0.2, speed_floor_mps: 0.1 |
-| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/platform/status/estop`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/fallback/odometry` | `/planning/cmd_vel`, `/planning/engaged` | see Cost-Stop, GNSS Recovery Hold, and Yaw Alignment Zone sections below |
-| `planning_state_machine_node` | `/system/diagnostics_agg`, `/planning/lanelet_pose`, `/planning/state_machine/camping_site_recall`, `/planning/state_machine/goal_key` | `/planning/goal_pose_snapped`, `/planning/state_machine/state`, `/planning/state_machine/mission_source` | keypoints_yaml, camping_sites_yaml, startup_goal_key, goal_reached_dwell_s, enable_auto_return_on_site_goal |
-| Nav2 `planner_server` | `/planning/goal_pose_snapped_ros`, costmaps | `/planning/global_path` | SmacPlanner |
-| Nav2 `controller_server` | `/planning/global_path`, costmaps | `/planning/cmd_vel_raw`, `/planning/local_path_controller` | RegulatedPurePursuit, xy_goal_tolerance: 0.15 m |
+| `goal_snapper_node` | `/goal_pose`, Lanelet2 map | `/planning/goal_pose_snapped_ros` | `max_search_radius`: 120 m, `require_lanelet_containment`, `fallback_uncontained` |
+| `centerline_snapper_node` | `/localization/pose` | `/planning/lanelet_pose` | `max_search_radius`: 120 m, `lateral_stddev`: 0.3, `min_update_period_s`: 0.05 |
+| `local_path_extractor_node` | `/planning/global_path`, `/planning/lanelet_pose`, `/planning/local_path_controller` | `/planning/local_path` | `local_path_source`: `controller_then_slice`, lookahead 30 m, lookbehind 3 m, 15 Hz |
+| `path_tracking_error_node` | `/planning/local_path`, `/planning/lanelet_pose` | `/planning/ltracking_error` | `prefer_local_path`: true, `publish_rate_hz`: 15, `pose_timeout_s`: 1.0 |
+| `goal_replanner_node` | `/planning/goal_pose`, `/planning/lanelet_pose`, Nav2 action | replanning triggers | `min_request_interval_s`, `retry_after_failure_s`, `navigate_inactive_grace_s` |
+| `planning_progress_node` | `/planning/global_path`, `/localization/pose`, `/localization/odometry/filtered` | `/planning/progress/*` | `publish_rate_hz`: 2.0, `speed_ema_alpha`: 0.2, `speed_floor_mps`: 0.1 |
+| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/platform/status/estop`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/fallback/odometry` | `/planning/cmd_vel`, `/planning/engaged` | see Key Behaviors |
+| `planning_state_machine_node` | `/system/diagnostics_agg`, `/planning/lanelet_pose`, `/planning/state_machine/camping_site_recall`, `/planning/state_machine/goal_key` | `/planning/goal_pose_snapped`, `/planning/state_machine/state`, `/planning/state_machine/mission_source` | `keypoints_yaml`, `camping_sites_yaml`, `startup_goal_key`, `goal_reached_dwell_s` |
+| Nav2 `planner_server` | `/planning/goal_pose_snapped_ros`, costmaps | `/planning/global_path` | SmacHybrid / Smac2D / NavFn / ThetaStar / SmacLattice |
+| Nav2 `controller_server` | `/planning/global_path`, costmaps | `/planning/cmd_vel_raw`, `/planning/local_path_controller` | RPP / DWB / MPPI / Graceful / RotationShim; `xy_goal_tolerance`: 0.15 m |
 
-### planning_progress_node
+---
 
-Finds the closest point on the current global path to the robot pose, then sums segment lengths from that index to the goal to compute remaining path distance. Speed is tracked with an EMA (α=0.2) with a floor of 0.1 m/s so that time estimates remain finite even when the robot is stationary.
+## 5. Interface Contract
 
-| Topic | Type | Description |
-|---|---|---|
-| `/planning/progress/remaining_distance_m` | Float32 | Path length from robot's closest point to goal [m] |
-| `/planning/progress/remaining_time_s` | Float32 | Estimated travel time at current EMA speed [s] |
-| `/planning/progress/completion_pct` | Float32 | Fraction of total path already traversed [0–100 %] |
+### Inputs
 
-### cmd_vel_gate: Cost-Stop Zones
+| Topic | Type | Required | Producer | Rate | Meaning |
+|---|---|---|---|---|---|
+| `/localization/pose` | `geometry_msgs/PoseStamped` | Yes | camrod_localization | ~50 Hz | Map-frame robot pose used by centerline snapper and progress |
+| `/localization/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | Yes | camrod_localization | ~50 Hz | Covariance-bearing pose for Nav2 costmap initialization |
+| `/localization/odometry/filtered` | `nav_msgs/Odometry` | Yes | camrod_localization | ~50 Hz | Filtered odometry for Nav2 and cmd_vel_gate corridor heading |
+| `/localization/fallback/odometry` | `nav_msgs/Odometry` | No | camrod_localization | ~50 Hz | Fallback odometry for cost-stop corridor heading when VIO is unavailable |
+| `/localization/mode` | `AvgLocalizationMode` | Yes | camrod_localization | ~5 Hz | NORMAL / DEGRADED / DR_ONLY / INVALID; triggers GNSS recovery hold |
+| `/map/cost_grid/lanelet` | `nav_msgs/OccupancyGrid` | Yes | camrod_map | ~1 Hz | Lanelet drivable-space constraints for global costmap |
+| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | Yes | camrod_sensing | ~10 Hz | Inflation-layer obstacle grid for local costmap and cmd_vel_gate cost-stop |
+| `/goal_pose` | `geometry_msgs/PoseStamped` | Yes | RViz / camrod_ui | on demand | Operator navigation goal; snapped to nearest lanelet centerline |
+| `/planning/state_machine/goal_key` | `std_msgs/String` | No | camrod_ui | on demand | Named keypoint goal (e.g. `camping_site_1`) sent to state machine |
+| `/planning/state_machine/camping_site_recall` | `std_msgs/String` | No | camrod_ui / external | on demand | Recall request; `data` = camping site name; triggers road-snap navigation |
+| `/planning/engage` | `std_msgs/Bool` | Yes | camrod_system / operator | on demand | Gate open (`true`) / closed (`false`) for velocity passthrough |
+| `/platform/status/estop` | `std_msgs/Bool` | Yes | camrod_platform | ~10 Hz | Hardware e-stop; immediately zeroes cmd_vel when `true` |
+| `/system/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | No | camrod_system | ~1 Hz | System-level health; drives WARN_RECOVERY / ERROR_STOP state transitions |
 
-| Zone | Cost Threshold | Lookahead | Corridor Width |
+### Outputs
+
+| Topic | Type | Consumer | Rate | Meaning |
+|---|---|---|---|---|
+| `/planning/global_path` | `nav_msgs/Path` | camrod_map, camrod_sensing, RViz | on replan | Full global path from current position to goal |
+| `/planning/local_path` | `nav_msgs/Path` | camrod_system (diagnostic), RViz | 15 Hz | Robot-centred local path window (lookahead 30 m, lookbehind 3 m) |
+| `/planning/cmd_vel_raw` | `geometry_msgs/Twist` | planning_cmd_vel_gate_node | 30 Hz | Raw controller velocity before gating |
+| `/planning/cmd_vel` | `geometry_msgs/Twist` | camrod_platform | 30 Hz | Gated velocity command; zeroed on e-stop, cost-stop, disengaged, or hold |
+| `/planning/engaged` | `std_msgs/Bool` | camrod_system, camrod_platform | 30 Hz | Current gate state after all checks |
+| `/planning/cost_grid/global_path` | `nav_msgs/OccupancyGrid` | camrod_map, camrod_sensing, Nav2 | ~2 Hz | Path-corridor cost layer for global planner guidance |
+| `/planning/ltracking_error` | `AvgTrackingError` | camrod_system | 15 Hz | Lateral and heading tracking error against local path |
+| `/planning/state_machine/state` | `std_msgs/String` | camrod_system, camrod_ui | on change | Mission FSM state: INIT / RUNNING / GOAL_REACHED / RECALLED / RETURNING / WARN_RECOVERY / ERROR_STOP |
+| `/planning/state_machine/mission_source` | `std_msgs/String` | camrod_ui, logging | on new goal | Reason for current goal: `startup` / `return_request` / `recall:*` / `auto_return` / `key_topic:*` |
+| `/planning/progress/remaining_distance_m` | `std_msgs/Float32` | camrod_ui, logging | 2 Hz | Path length from closest point to goal [m] |
+| `/planning/progress/remaining_time_s` | `std_msgs/Float32` | camrod_ui, logging | 2 Hz | Estimated travel time at current EMA speed [s] |
+| `/planning/progress/completion_pct` | `std_msgs/Float32` | camrod_ui, logging | 2 Hz | Fraction of total path already traversed [0–100] |
+
+---
+
+## 6. Key Behaviors
+
+### 6.1 Cost-Stop
+
+**Trigger:** `planning_cmd_vel_gate_node` receives an `/planning/cost_grid/inflation` update while the gate is engaged.
+
+**Internal logic:** The gate scans rectangular corridors in front, on both sides, and behind the robot using the merged inflation cost grid. The front corridor uses a speed-dependent lookahead: `d = v²/(2μg) + t_react × v + margin`, clamped to [`front_lookahead_min_m`, `front_lookahead_max_m`]. A BFS cluster check additionally detects unavoidable lethal obstacles (≥ `unavoidable_cluster_min_cells` cells with cost ≥ `unavoidable_lethal_threshold` covering ≥ `unavoidable_cluster_min_ratio` of the corridor).
+
+| Zone | Cost Threshold | Lookahead | Corridor Half-Width |
 |---|---|---|---|
-| Front (speed-dependent) | 85 | v²/(2μg) + t_react·v + margin, clamped [0.4, 3.0] m | 1.0 m |
-| Side (left + right) | 85 | 1.2 m (fixed) | 0.6 m |
-| Rear | 85 | 0.8 m (fixed) | 0.9 m |
-| Unavoidable cluster | 90 (lethal floor) | front corridor only | ≥ 25 cells covering ≥ 25 % of corridor |
+| Front (speed-dependent) | 85 | `v²/(2×0.4×9.81) + 0.15v + 0.3`, clamped [0.4, 3.0] m | 0.5 m |
+| Side left / right | 92 | 0.8 m | 0.225 m |
+| Rear | 92 | 0.6 m | 0.3 m |
+| Unavoidable cluster | 90 (lethal floor) | front corridor | ≥ 25 cells / ≥ 25% coverage |
 
-Front lookahead physics: μ = 0.4 (wet-road friction), t_react = 0.15 s, margin = 0.3 m.
+**Output effect:** `/planning/cmd_vel` is zeroed; `/planning/engaged` reflects `false`. The stop is held for `cmd_vel_gate_cost_hold_s` (default 1.0 s) after the obstacle clears.
 
-The corridor scan uses integer-counted steps (`ix * resolution`) and `round()` for grid-cell index
-calculation to avoid floating-point accumulation that would otherwise cause systematic cell misses
-in the BFS cluster check.
+**Operator-visible symptom:** Robot stops abruptly without Nav2 abort. RViz inflation grid shows high-cost cells in the stopped direction.
 
-### cmd_vel_gate: GNSS Recovery Hold
+**Related params:** `cmd_vel_gate_cost_stop_enable`, `cmd_vel_gate_cost_threshold`, `cmd_vel_gate_speed_dependent_lookahead`, `cmd_vel_gate_front_lookahead_min_m`, `cmd_vel_gate_front_lookahead_max_m`, `cmd_vel_gate_front_lookahead_friction`, `cmd_vel_gate_front_reaction_time_s`, `cmd_vel_gate_cost_hold_s`, `cmd_vel_gate_side_cost_threshold`, `cmd_vel_gate_rear_cost_threshold`, `cmd_vel_gate_unavoidable_lethal_threshold`, `cmd_vel_gate_unavoidable_cluster_min_cells`, `cmd_vel_gate_unavoidable_cluster_min_ratio`
 
-When `/localization/mode` transitions from `DR_ONLY (2)` → `NORMAL (0)`, the gate blocks
-`/planning/cmd_vel` for `gnss_recovery_hold_s` (default 2.0 s) to let Nav2 and the costmap
-settle on the recovered pose before resuming motion.
+**Related topics:** `/planning/cost_grid/inflation`, `/planning/cmd_vel`, `/planning/engaged`
 
-| Parameter | Default | Description |
-|---|---|---|
-| `enable_gnss_recovery_hold` | `true` | Enable the hold mechanism |
-| `gnss_recovery_hold_s` | `2.0 s` | Block duration after DR_ONLY → NORMAL |
-| `gnss_recovery_source_mode_min` | `2` (DR_ONLY) | Minimum previous mode to trigger hold |
-| `gnss_recovery_target_mode` | `0` (NORMAL) | Target mode that triggers hold |
+---
 
-### cmd_vel_gate: Yaw Alignment Zone
+### 6.2 GNSS Recovery Hold
 
-When approaching a named map zone (e.g. a gateway or narrow passage), the robot must align its
-heading to the configured target yaw before full `cmd_vel` passthrough resumes. The feature is
-**disabled by default** — it activates only when `enable_yaw_alignment_zone: true` and
-`yaw_alignment_zones_file` points to a valid YAML.
+**Trigger:** `/localization/mode` transitions from `DR_ONLY (2)` to `NORMAL (0)`.
 
-**Gate pipeline order:** `e-stop → cost-stop → effective_enabled → yaw alignment → passthrough`
+**Internal logic:** The gate records the transition timestamp and blocks `/planning/cmd_vel` passthrough for `gnss_recovery_hold_s` (default 2.0 s). During the hold window, all velocity output is zeroed regardless of engage state or cost-stop state.
 
-**3-layer safety system:**
+**Output effect:** `/planning/cmd_vel` is zeroed for up to 2 s after GNSS re-acquisition; robot is briefly stationary even if the engage signal is active.
+
+**Operator-visible symptom:** Robot pauses for ~2 s each time GNSS lock is recovered after a DR_ONLY period. Nav2 costmap typically re-settles within this window.
+
+**Related params:** `cmd_vel_gate_enable_gnss_recovery_hold`, `cmd_vel_gate_gnss_recovery_hold_s`, `cmd_vel_gate_gnss_recovery_source_mode_min` (default 2), `cmd_vel_gate_gnss_recovery_target_mode` (default 0)
+
+**Related topics:** `/localization/mode`, `/planning/cmd_vel`
+
+---
+
+### 6.3 Yaw Alignment Zone
+
+**Trigger:** Robot pose enters `activation_radius_m` (default 1.2 m) of a configured zone center; feature is **disabled by default** (`cmd_vel_gate_yaw_alignment_enable: false`).
+
+**Internal logic (gate pipeline order: e-stop → cost-stop → effective_enabled → yaw alignment → passthrough):**
 
 | Layer | Radius | Behavior |
 |---|---|---|
-| Layer 1: Activation ring | `activation_radius_m` (default **1.2 m**) | Zone tracking begins; cmd_vel unchanged |
-| Layer 2: Lock ring | `lock_radius_m` (default **0.72 m** = 60% of activation) | Nav2 cmd_vel overridden with alignment command |
-| Layer 3: Adaptive tolerance | `yaw_tolerance_deg + yaw_tolerance_per_meter_deg × pos_error_m` | Tolerance widens farther from zone center |
+| 1: Activation ring | `activation_radius_m` (1.2 m) | Zone tracking begins; cmd_vel unchanged |
+| 2: Lock ring | `lock_radius_m` (0.72 m, 60% of activation) | Nav2 cmd_vel overridden with alignment twist |
+| 3: Adaptive tolerance | `yaw_tolerance_deg + yaw_tolerance_per_meter_deg × pos_error_m` | Tolerance widens farther from zone center |
 
-While inside the lock ring the node injects an override `Twist`:
+Inside the lock ring the node injects: `angular.z = kp × gain_scale × yaw_error_rad` (clamped ±`max_angular_z`); `linear.x` is suppressed by `yaw_scale = max(0, 1 − yaw_error_deg / (yaw_tolerance_deg × 2.5))` and zeroed within `position_tolerance_m` (0.10 m) of zone center. Unlock requires holding `yaw_ok AND pos_ok` for `hold_s` (default 0.5 s).
 
-- **`angular.z`** — `kp × gain_scale × yaw_error_rad`, clamped to ±`max_angular_z`
-  - `gain_scale = 1.0 + min(1.0, pos_error_m)` — higher gain when farther from center
-- **`linear.x`** — suppressed by `yaw_scale = max(0, 1 − yaw_error_deg / (yaw_tolerance_deg × 2.5))`;
-  zeroed completely once within `position_tolerance_m` (0.10 m) of zone center
-- **Unlock** — robot must hold `yaw_ok AND pos_ok` for `hold_s` (default 0.5 s);
-  full passthrough resumes until robot exits `activation_radius + exit_margin_m` (1.2 + 0.3 = **1.5 m**)
+**Output effect:** Robot rotates in place within the lock ring until heading matches zone yaw within tolerance, then resumes normal path following.
 
-**Node parameters (set at launch):**
+**Operator-visible symptom:** Robot appears to pause and rotate at a configured gate or passage entrance before proceeding.
 
-| Parameter | Default | Description |
-|---|---|---|
-| `enable_yaw_alignment_zone` | `false` | Enable the feature globally |
-| `yaw_alignment_zones_file` | `""` | Path to manual zone YAML |
-| `yaw_alignment_frame_id` | `"map"` | TF frame for zone coordinates |
-| `yaw_alignment_exit_margin_m` | `0.3 m` | Hysteresis beyond activation ring |
+**Related params:** `cmd_vel_gate_yaw_alignment_enable`, `cmd_vel_gate_yaw_alignment_zones_file`, `cmd_vel_gate_yaw_alignment_frame_id`, `cmd_vel_gate_yaw_alignment_exit_margin_m`
 
-**Per-zone parameters (YAML defaults when using manual zone file):**
+**Related topics:** `/localization/pose`, `/planning/cmd_vel`
 
-| Parameter | Default | Description |
-|---|---|---|
-| `activation_radius_m` | `1.2 m` | Zone detection radius |
-| `lock_radius_m` | `0.72 m` | Enforcement inner radius |
-| `position_tolerance_m` | `0.10 m` | "At center" threshold (linear.x = 0) |
-| `yaw_tolerance_deg` | `8.0°` | Base yaw tolerance at zone center |
-| `yaw_tolerance_per_meter_deg` | `4.0°/m` | Adaptive tolerance per meter from center |
-| `hold_s` | `0.5 s` | Alignment hold duration before unlock |
-| `angular_kp` | `1.8` | P-gain for yaw correction |
-| `max_angular_z` | `0.8 rad/s` | Angular velocity cap |
-| `max_approach_linear_x` | `0.25 m/s` | Forward speed cap during alignment |
+---
 
-**Manual zone YAML format** (supports `yaw_deg` or `next_x/next_y` tangent-style):
+## 7. Mission State Machine
 
-```yaml
-yaw_alignment_zones:
-  frame_id: "map"
-  zones:
-    - id: "gate_entrance"
-      x: 10.5
-      y: -3.2
-      yaw_deg: -90.0          # or: next_x/next_y to derive yaw from path tangent
-      activation_radius_m: 1.2
-      lock_radius_m: 0.20
-      position_tolerance_m: 0.10
-      yaw_tolerance_deg: 8.0
-      yaw_tolerance_per_meter_deg: 4.0
-      hold_s: 0.5
-      angular_kp: 1.8
-      max_angular_z: 0.8
-      max_approach_linear_x: 0.25
-```
-
-### State Machine: Mission States
+### 7.1 Mission States
 
 ```mermaid
 stateDiagram-v2
   [*] --> INIT
-  INIT --> RUNNING : startup_goal (drop_zone)
-  RUNNING --> GOAL_REACHED : within goal_reached_distance_m
-  GOAL_REACHED --> RETURNING : return command\nor dwell timeout
+  INIT --> RUNNING : startup_goal_key (drop_zone)
+  RUNNING --> GOAL_REACHED : within goal_reached_distance_m (0.8 m)
+  GOAL_REACHED --> RETURNING : return_to_drop_zone command\nor dwell timeout (goal_reached_dwell_s)
   GOAL_REACHED --> RECALLED : camping_site_recall received
-  RECALLED --> RUNNING : robot reaches recall road position
-  RETURNING --> RUNNING : returning to drop_zone
-  RUNNING --> WARN_RECOVERY : diagnostics WARN
-  RUNNING --> ERROR_STOP : diagnostics ERROR
+  RECALLED --> RUNNING : robot reaches road-snap position
+  RETURNING --> RUNNING : navigating back to drop_zone
+  RUNNING --> WARN_RECOVERY : /system/diagnostics_agg WARN
+  RUNNING --> ERROR_STOP : /system/diagnostics_agg ERROR
   WARN_RECOVERY --> RUNNING : condition cleared
   ERROR_STOP --> [*] : e-stop applied
 ```
 
-### State Machine: Camping Site Recall and Road Snap
-
-`camping_sites.yaml` supports an optional `recall_x/y/z/yaw_deg` entry per site. When present,
-`_merge_camping_sites` registers a second keypoint `"camping_site_N_road"` pointing to the nearest
-drivable lanelet centerline position. On recall, the state machine navigates to the road position
-instead of the area centroid, since the camping area may be blocked by cargo.
-
-Sites that are physically inaccessible (e.g. `camping_site_13`) use the road snap of the nearest
-accessible site as their primary `x/y` coordinates. Both normal navigation and recall for such
-sites use the same road position.
-
-```yaml
-# camping_sites.yaml example
-camping_sites:
-  - id: "dz_area_1233"
-    type: "camping_site_12"
-    source: "area"
-    x: 18.4901          # area centroid — used for drop_zone→site navigation
-    y: -24.5589
-    z: -298.913
-    yaw_deg: -69.3089
-    recall_x: 22.8171   # nearest lanelet road snap — used when robot is recalled from site
-    recall_y: -23.7892
-    recall_z: -299.2243
-    recall_yaw_deg: -79.9136
-```
-
-### State Machine: Mission Source Topic
-
-`/planning/state_machine/mission_source` (String) is published whenever the state machine sends a
-new goal. It identifies why the goal was sent, which lets external nodes (e.g. UI, logging) trace
-the current mission context:
+### 7.2 Mission Source Values
 
 | Value | Trigger |
 |---|---|
-| `"startup"` | Initial goal at boot (startup_goal_key) |
-| `"return_request"` | Operator pressed return button |
-| `"recall:camping_site_N"` | Camping site requested recall |
-| `"auto_return"` | Dwell timeout expired at camping site |
-| `"key_topic:camping_site_N"` | Goal key received on goal_key_topic |
+| `startup` | Initial goal at boot (`startup_goal_key`) |
+| `return_request` | Operator pressed return button |
+| `recall:camping_site_N` | Camping site requested recall |
+| `auto_return` | Dwell timeout expired at camping site |
+| `key_topic:camping_site_N` | Goal key received on `goal_key_topic` |
 
-### State Machine: Full Camping-Site Recall Scenario
+### 7.3 Camping-Site Recall Sequence
 
-1. Robot starts at `drop_zone` (startup_goal).
-2. Operator selects `camping_site_3` via UI → robot navigates to area centroid.
-3. Robot arrives; waits `goal_reached_dwell_s` (default 600 s for bringup) or until return button.
-4. **Recall path**: `camping_site_3` node publishes to `/planning/state_machine/camping_site_recall`.
-   - State transitions `GOAL_REACHED → RECALLED`.
-   - If `camping_site_3_road` keypoint exists (from `recall_x/y` in YAML), robot navigates there.
-   - Otherwise falls back to area centroid (`camping_site_3`).
-5. Robot arrives at road snap position; waits `goal_reached_dwell_s` for cargo loading.
-6. `enable_auto_return_on_site_goal: true` → auto-returns to `drop_zone` (`source: auto_return`).
-
-### Nav2 Costmap Layers
-
-| Layer | Source Topic | Costmap |
-|---|---|---|
-| `combined_cost_layer` | `/planning/cost_grid/inflation` | local |
-| `combined_cost_layer` | `/map/cost_grid/lanelet` + `/planning/cost_grid/global_path` | global |
-
-## Inter-Package Connections
 ```mermaid
-graph LR
-  LOC[camrod_localization] --> PLAN[camrod_planning]
-  MAP[camrod_map] --> PLAN
-  SENS[camrod_sensing] --> PLAN
-  PLAN --> PLAT[camrod_platform]
-  PLAN --> SYS[camrod_system]
-  PLAN --> MAP
+sequenceDiagram
+  participant UI
+  participant StateMachine as planning_state_machine_node
+  participant Nav2
+  participant CmdVelGate as planning_cmd_vel_gate_node
+  participant Platform as camrod_platform
+
+  UI->>StateMachine: /planning/state_machine/camping_site_recall (camping_site_1)
+  StateMachine-->>StateMachine: GOAL_REACHED → RECALLED
+  StateMachine->>Nav2: /planning/goal_pose_snapped (camping_site_1_road)
+  StateMachine->>UI: /planning/state_machine/mission_source = "recall:camping_site_1"
+  Nav2->>CmdVelGate: /planning/cmd_vel_raw
+  CmdVelGate->>Platform: /planning/cmd_vel (gated)
+  Nav2-->>StateMachine: goal reached (goal_reached_distance_m)
+  StateMachine-->>StateMachine: RECALLED → GOAL_REACHED (road snap position)
+  Note over StateMachine: dwell for goal_reached_dwell_s (cargo load)
+  StateMachine->>Nav2: /planning/goal_pose_snapped (drop_zone)
+  StateMachine->>UI: /planning/state_machine/mission_source = "auto_return"
+  Nav2->>CmdVelGate: /planning/cmd_vel_raw
+  CmdVelGate->>Platform: /planning/cmd_vel (gated)
 ```
 
-## Topic Summary
+**Road-snap logic:** When `camping_sites.yaml` includes a `recall_x/y/z/yaw_deg` entry, the state machine registers a second keypoint `<site_id>_road` pointing to the road-snap position. On recall, the robot navigates to this road position rather than the area centroid (which may be blocked by cargo). Sites without `recall_x/y` fall back to the area centroid.
 
-### Inputs (from other packages)
-| Topic | Type | Source |
-|---|---|---|
-| `/localization/pose` | PoseStamped | camrod_localization |
-| `/localization/pose_with_covariance` | PoseWithCovarianceStamped | camrod_localization |
-| `/localization/fallback/odometry` | Odometry | camrod_localization |
-| `/localization/odometry/filtered` | Odometry | camrod_localization |
-| `/localization/mode` | AvgLocalizationMode | camrod_localization |
-| `/map/cost_grid/lanelet` | OccupancyGrid | camrod_map |
-| `/planning/cost_grid/inflation` | OccupancyGrid | camrod_sensing (inflation_cost_grid_node) |
-| `/platform/status/estop` | Bool | camrod_platform (ranger driver) |
-| `/system/diagnostics_agg` | DiagnosticArray | camrod_system (aggregator) |
+---
 
-### Outputs (consumed by other packages)
-| Topic | Type | Consumers |
-|---|---|---|
-| `/planning/cmd_vel` | Twist | camrod_platform |
-| `/planning/engaged` | Bool | camrod_system, camrod_platform |
-| `/planning/global_path` | Path | camrod_map (lanelet_cost_grid), camrod_sensing (inflation_cost_grid_node) |
-| `/planning/local_path` | Path | camrod_system (diagnostic), RViz |
-| `/planning/cost_grid/global_path` | OccupancyGrid | camrod_map, camrod_sensing, Nav2 |
-| `/planning/ltracking_error` | AvgTrackingError | camrod_system (diagnostic) |
-| `/planning/state_machine/state` | String | camrod_system, UI |
-| `/planning/state_machine/mission_source` | String | logging, UI context |
-| `/planning/progress/remaining_distance_m` | Float32 | UI, logging |
-| `/planning/progress/remaining_time_s` | Float32 | UI, logging |
-| `/planning/progress/completion_pct` | Float32 | UI, logging |
-
-## Launch
+## 8. Launch
 
 ```bash
 # Full planning stack (Nav2 + cmd_vel_gate + lanelet tools)
 ros2 launch camrod_planning planning.launch.py \
-  map_path:=/path/to/map.osm
+  map_path:=/path/to/lanelet2_maps.osm
 
 # Enable mission state machine
 ros2 launch camrod_planning planning.launch.py \
+  map_path:=/path/to/lanelet2_maps.osm \
   enable_state_machine:=true
 
-# Enable path progress publisher
+# Enable goal replanner (automatic goal retry on Nav2 failure)
 ros2 launch camrod_planning planning.launch.py \
-  enable_progress:=true
+  enable_goal_replanner:=true
 
-# Request a goal by keypoint name
-ros2 topic pub /planning/state_machine/goal_key std_msgs/msg/String \
-  "{data: camping_site_3}" -1
-
-# Trigger camping-site recall (robot navigates to road snap position)
-ros2 topic pub /planning/state_machine/camping_site_recall std_msgs/msg/String \
-  "{data: camping_site_3}" -1
+# Delay Nav2 autostart until localization is ready
+ros2 launch camrod_planning planning.launch.py \
+  require_localization_ready:=true
 ```
 
 Key launch arguments:
 
 | Argument | Default | Description |
 |---|---|---|
-| `map_path` | (from map_info.yaml) | Lanelet2 .osm file |
-| `enable_path_cost_grids` | `true` | Global/local path cost grids |
-| `enable_goal_replanner` | `false` | Automatic goal replanning |
+| `map_path` | (from `camrod_map/config/map_info.yaml`) | Lanelet2 `.osm` file path |
+| `enable_path_cost_grids` | `true` | Global/local path cost grid publisher |
+| `enable_goal_replanner` | `false` | Automatic goal replanning on Nav2 failure |
 | `enable_state_machine` | `false` | Mission state machine |
 | `enable_tracking_error` | `true` | Path tracking error publisher |
-| `enable_progress` | `true` | Remaining distance/time/completion publisher |
+| `enable_progress` | `true` | Remaining distance / time / completion publisher |
 | `enable_nav2_lifecycle_retry` | `false` | Nav2 lifecycle startup retry |
-| `require_localization_ready` | `false` | Wait for initial_match_ok before Nav2 start |
+| `require_localization_ready` | `false` | Wait for `/localization/initial_match_ok` before Nav2 start |
 | `cmd_vel_gate_enable` | `true` | Velocity gate node |
 | `cmd_vel_gate_cost_stop_enable` | `true` | Cost-based obstacle stop |
-| `cmd_vel_gate_speed_dependent_lookahead` | `true` | Physics-based braking distance |
-| `local_path_source` | `controller_then_slice` | Local path: controller output or global slice |
+| `cmd_vel_gate_speed_dependent_lookahead` | `true` | Physics-based braking distance for front corridor |
+| `cmd_vel_gate_enable_gnss_recovery_hold` | `true` | Hold velocity for 2 s after DR_ONLY → NORMAL |
+| `cmd_vel_gate_yaw_alignment_enable` | `false` | Yaw alignment zone enforcement |
+| `local_path_source` | `controller_then_slice` | `controller_then_slice` or global-path slice |
+| `nav2_combo_param_file` | `config/nav2_combo_profiles/disabled.yaml` | Planner+controller profile overlay |
 
-## Config Files
+---
+
+## 9. Config
 
 | File | Purpose |
 |---|---|
-| `config/nav2_base.yaml` | Nav2 planner (SmacPlanner), controller (RegulatedPurePursuit), costmap base config; xy_goal_tolerance: 0.15 m |
-| `config/nav2_vehicle.yaml` | Robot footprint, max velocity/acceleration, turning constraints; approach_velocity_scaling_dist: 1.0 m |
+| `config/nav2_base.yaml` | Nav2 planner plugins (NavFn, Smac2D, SmacHybrid, SmacLattice, ThetaStar), controller plugins (RPP, DWB, MPPI, Graceful, RotationShim), costmap base config; `xy_goal_tolerance`: 0.15 m |
+| `config/nav2_vehicle.yaml` | Robot footprint (`[[0.9,0.4],…]`), RPP velocity/acceleration limits, `approach_velocity_scaling_dist`: 0.6 m |
 | `config/nav2_lanelet_overlay.yaml` | Lanelet-specific cost weights and regulatory element handling |
 | `config/nav2_behavior.yaml` | Recovery behaviors, BT timeouts, transform tolerance |
+| `config/nav2_combo_profiles/` | Planner+controller profile overlays (e.g. `smachybrid_graceful.yaml`, `smac2d_dwb.yaml`) |
 | `config/goal_snapper.yaml` | Goal snap search radius, containment check, Z handling |
 | `config/centerline_snapper.yaml` | Pose projection covariance, update throttle period |
-| `config/local_path_extractor.yaml` | Lookahead/lookbehind distances, jump guard (3 m), publish rate 15 Hz |
+| `config/local_path_extractor.yaml` | Lookahead 30 m / lookbehind 3 m, jump guard 3 m, publish rate 15 Hz |
 | `config/path_cost_grids.yaml` | Global/local path grid geometry, cost weights, rebuild triggers |
 | `config/goal_replanner.yaml` | Replan intervals, timeout, failure retry backoff |
-| `config/planning_state_machine.yaml` | State machine topics, startup/warn goal keys, dwell time, recall config |
+| `config/planning_state_machine.yaml` | State machine topics, startup/warn goal keys, dwell time 10 s, recall config |
 | `config/planning_state_machine_keypoints.yaml` | Named keypoint coordinates (drop_zone, etc.) |
-| `config/camping_sites.yaml` | Named camping-site goal positions; `recall_x/y/z/yaw_deg` for road snap on recall |
-| `config/bt/*.xml` | Nav2 behavior tree XML files for navigate_to_pose |
+| `config/camping_sites.yaml` | Named camping-site goal positions; optional `recall_x/y/z/yaw_deg` for road snap |
+| `config/yaw_alignment_zones.yaml` | Manual yaw alignment zone definitions |
+| `config/bt/*.xml` | Nav2 behavior tree XML files for `navigate_to_pose` |
 
-## Tests
+---
+
+## 10. Validation
 
 ```bash
-# Standalone gate logic unit test (no ROS2 needed, 29 assertions)
+# Standalone gate logic unit test (no ROS 2 runtime needed)
 python3 camrod_planning/test/test_cmd_vel_gate_logic.py
+# 29 assertions covering: front/side/rear cost-stop, unavoidable cluster,
+# GNSS recovery hold trigger and expiry, e-stop, engage gate,
+# cost-stop hold, speed-dependent lookahead calculation.
+
+# Verify Nav2 lifecycle is active
+ros2 lifecycle get /planner_server
+ros2 lifecycle get /controller_server
+
+# Check gate output is flowing
+ros2 topic hz /planning/cmd_vel
+
+# Monitor state machine state
+ros2 topic echo /planning/state_machine/state
+ros2 topic echo /planning/state_machine/mission_source
+
+# Inspect progress
+ros2 topic echo /planning/progress/remaining_distance_m
 ```
 
-Covers: front/side/rear cost-stop, unavoidable cluster, GNSS recovery hold trigger and expiry,
-e-stop, engage gate, cost-stop hold, speed-dependent lookahead calculation.
+---
 
-Yaw alignment zone integration tests are not yet included in the standalone suite; the feature
-requires a live ROS2 node with TF and pose topics for end-to-end validation.
+## 11. Troubleshooting
+
+### Engage true but no motion
+
+1. Check `/platform/status/estop` — if `true`, e-stop is active.
+2. Check `/planning/engaged` — if `false` while `/planning/engage` is `true`, the gate is blocking.
+3. Check for cost-stop: `ros2 topic echo /planning/cost_grid/inflation` — look for high-cost cells near the robot footprint.
+4. Check for GNSS recovery hold: `ros2 topic echo /localization/mode` — if it recently transitioned from `DR_ONLY (2)` to `NORMAL (0)`, the 2 s hold may still be active.
+5. Verify Nav2 lifecycle: `ros2 lifecycle get /controller_server` — must be `active`.
+
+---
+
+### Robot keeps cost-stopping
+
+1. Inspect the inflation grid for persistent high-cost cells: `ros2 topic echo /planning/cost_grid/inflation --no-arr` (check `info.width`, `data` max).
+2. Reduce `cmd_vel_gate_cost_threshold` from 85 to a higher value to require denser obstacles.
+3. Check `cmd_vel_gate_cost_hold_s` — default 1.0 s; if the obstacle is intermittent, shorten the hold.
+4. Verify that the `combined_cost_layer` in the local costmap is receiving the correct inflation grid (check `/planning/cost_grid/inflation` topic rate).
+
+---
+
+### Goal reached but dwell never ends
+
+1. Confirm `enable_auto_return_on_site_goal` is `true` in `config/planning_state_machine.yaml` or bringup override.
+2. Check `goal_reached_dwell_s` — default 10.0 s (bringup may set 600 s).
+3. Verify the goal keypoint matches the `site_goal_key_prefix` (`camping_site_`) prefix; non-matching keys do not start the dwell timer.
+4. Check `goal_key_match_distance_m` (default 1.5 m) — robot must arrive within this distance of the keypoint coordinates for dwell to trigger.
+
+---
+
+### Nav2 lifecycle not active
+
+1. Check if `require_localization_ready` is `true` — Nav2 autostart is deferred until `/localization/initial_match_ok` publishes `true`.
+2. If `enable_nav2_lifecycle_retry` is `false` and lifecycle startup failed once, it will not retry.
+3. Inspect Nav2 node logs: `ros2 lifecycle list` to see current states.
+4. Verify `map_path` resolves to a valid `.osm` file — an invalid map path prevents the Lanelet2 costmap layers from initialising.
+
+---
+
+### Recall published but no transition
+
+1. Verify `enable_state_machine` is `true` and `planning_state_machine_node` is running.
+2. Check the current state: `ros2 topic echo /planning/state_machine/state` — recall is only processed in `GOAL_REACHED` state.
+3. Confirm the camping site name in the recall message exactly matches an entry in `config/camping_sites.yaml`.
+4. Check `camping_site_recall_topic` in `config/planning_state_machine.yaml` matches the topic being published.
+
+---
+
+## 12. Related Docs
+
+- [../README.md](../README.md) — CAMROD monorepo overview
+- [../camrod_localization/README.md](../camrod_localization/README.md) — ESKF fusion, localization modes
+- [../camrod_map/README.md](../camrod_map/README.md) — Lanelet2 map, cost grid layers
+- [../camrod_platform/README.md](../camrod_platform/README.md) — cmd_vel consumer, e-stop source
+- [../camrod_ui/README.md](../camrod_ui/README.md) — Goal and recall command source
+- [../camrod_parking/README.md](../camrod_parking/README.md) — Parking state consumer
+- [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — Canonical param naming conventions
