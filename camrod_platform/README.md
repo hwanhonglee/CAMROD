@@ -53,17 +53,17 @@ graph LR
   classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  PLAN([🧭 camrod_planning]) ==>|/planning/cmd_vel\n/planning/engage| PLAT
+  PLAN([🧭 camrod_planning]) ==>|/planning/cmd_vel| PLAT
   LOC([📍 camrod_localization]) -->|/localization/pose| PLAT
-  SENS([📡 camrod_sensing]) -->|/sensing/gnss/pose| PLAT
+  SENS([🎯 camrod_sensing]) -->|/sensing/gnss/pose| PLAT
   MAP([🗺️ camrod_map]) -.->|/map/markers| PLAT
 
   PLAT([🤖 camrod_platform]) ==>|/platform/cmd_vel| HW{{🛠️ Ranger CAN Driver}}
-  PLAT -->|/platform/status/*\nTF static| HW
-  PLAT -->|/platform/status/odometry\n/platform/status/wheel_odometry| LOC
+  PLAT -->|/platform/status/*| HW
+  PLAT -->|odometry| LOC
   PLAT -->|/platform/status/velocity| SENS
-  PLAT -->|/platform/drive_enabled\n/platform/status/estop| SYS([🔧 camrod_system])
-  PLAT -->|TF static sensor frames\n/robot_description| ALL([📦 All Packages])
+  PLAT -->|drive_enabled| SYS([🩺 camrod_system])
+  PLAT -->|TF + robot_description| ALL([📦 All Packages])
 
   class PLAN planning
   class LOC localization
@@ -100,33 +100,33 @@ graph TD
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
   classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
 
-  PLAN_IN((📡 /planning/cmd_vel)) ==> GATE
-  ENGAGE((📡 /planning/engage)) ==> GATE
-  DRIVE_EN((📡 /platform/drive_enable)) ==> GATE
-  ESTOP((📡 /platform/status/estop)) ==> GATE
+  PLAN_IN((/planning/cmd_vel)) ==> GATE
+  ENGAGE((/planning/engage)) ==> GATE
+  DRIVE_EN((/platform/drive_enable)) ==> GATE
+  ESTOP((/platform/status/estop)) ==> GATE
 
   subgraph PLAT_PKG [🤖 camrod_platform]
     subgraph GATE_SG [🚦 cmd_vel_gate_node]
-      GATE(🧩 cmd_vel_gate_node\ncmd_vel_gate.launch.py)
+      GATE(cmd_vel_gate_node\ncmd_vel_gate.launch.py)
     end
 
     subgraph VIZ_SG [🎨 robot_visualization_node]
-      VIZ(🧩 robot_visualization_node\nrobot_visualization.launch.py)
+      VIZ(robot_visualization_node\nrobot_visualization.launch.py)
     end
 
     subgraph BRIDGE_SG [🔧 sensor_kit_bridge]
-      BRIDGE(🧩 sensor_kit_bridge\nsensor_kit_bridge.launch.py)
-      RANGER[[🛠️ ranger.launch.py\nranger_driver_enable:=true]]
+      BRIDGE(sensor_kit_bridge\nsensor_kit_bridge.launch.py)
+      RANGER[[ranger.launch.py\nranger_driver_enable:=true]]
     end
   end
 
-  GATE ==>|always active| CMDVEL_OUT((📡 /platform/cmd_vel))
+  GATE ==>|always active| CMDVEL_OUT((/platform/cmd_vel))
   CMDVEL_OUT ==> HW{{🛠️ Ranger CAN Driver}}
 
-  LOCPOSE((📡 /localization/pose)) --> VIZ
-  GNSSPOSE((📡 /sensing/gnss/pose)) -.->|fallback| VIZ
-  VIZ --> MARKERS((📡 /platform/robot/markers))
-  VIZ --> BOUNDARY((📡 /platform/robot/planning_boundary))
+  LOCPOSE((/localization/pose)) --> VIZ
+  GNSSPOSE((/sensing/gnss/pose)) -.->|fallback| VIZ
+  VIZ --> MARKERS((/platform/robot/markers))
+  VIZ --> BOUNDARY((/platform/robot/planning_boundary))
 
   BRIDGE --> TF(TF static\n/robot_description)
 
@@ -200,8 +200,8 @@ flowchart TD
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
   classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
 
-  IN((📡 /planning/cmd_vel)) ==> A
-  A(🧩 Receive /planning/cmd_vel) --> B{❓ gate enabled?\ncmd_vel_gate_enable}
+  IN((/planning/cmd_vel)) ==> A
+  A(Receive /planning/cmd_vel) --> B{❓ gate enabled?\ncmd_vel_gate_enable}
   B -- No --> Z(Pass through unchanged)
   B -- Yes --> C{❓ drive_enabled?}
   C -- No --> ZERO(Publish zero Twist)
@@ -211,16 +211,16 @@ flowchart TD
   E -- No --> ZERO
   E -- Yes --> Z
 
-  Z ==> OUT((📡 /platform/cmd_vel → Ranger CAN))
+  Z ==> OUT((/platform/cmd_vel → Ranger CAN))
   ZERO -.->|publish_zero_when_blocked| OUT
 
   subgraph ARMING [drive_enabled becomes True when ALL:]
-    E1((📡 /platform/drive_enable == true))
-    E2((📡 /planning/engage == true\nuse_planning_engage_topic=true))
+    E1((/platform/drive_enable == true))
+    E2((/planning/engage == true\nuse_planning_engage_topic=true))
   end
 
   subgraph ESTOP_SG [estop becomes True when:]
-    F1((📡 /platform/status/estop == true\nuse_estop_topic=true))
+    F1((/platform/status/estop == true\nuse_estop_topic=true))
   end
 
   class A,B,C,D,E system

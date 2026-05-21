@@ -60,20 +60,20 @@ graph LR
   classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  CLI{{🛠️ CLI args}} --> IMPL(🚀 _bringup_impl.py)
-  DEF[(⚙️ launch_defaults.yaml)] --> IMPL
-  MAPINFO[(⚙️ map_info.yaml)] --> IMPL
+  CLI{{🛠️ CLI args}} --> IMPL(_bringup_impl.py)
+  DEF[(launch_defaults.yaml)] --> IMPL
+  MAPINFO[(map_info.yaml)] --> IMPL
 
   IMPL ==> PLAT([🤖 camrod_platform])
   IMPL ==> MAP([🗺️ camrod_map])
-  IMPL --> SIM(🔬 fake_sensors — sim only)
-  IMPL ==> SENS([📡 camrod_sensing])
+  IMPL --> SIM(fake_sensors — sim only)
+  IMPL ==> SENS([🎯 camrod_sensing])
   IMPL ==> PER([👁️ camrod_perception])
   IMPL ==> LOC([📍 camrod_localization])
   IMPL ==> PLAN([🧭 camrod_planning])
-  IMPL ==> SYS([🔧 camrod_system])
+  IMPL ==> SYS([🩺 camrod_system])
   IMPL ==> UIPKG([🖥️ camrod_ui])
-  IMPL -.->|rviz:=true| RVIZ(🖼️ rviz2)
+  IMPL -.->|rviz:=true| RVIZ(rviz2)
   IMPL -.->|separate launch| PARK([🅿️ camrod_parking])
 
   class PLAT platform
@@ -112,18 +112,18 @@ graph TD
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  LAUNCH(🚀 ros2 launch bringup.launch.py) ==> CFG
-  CFG(📖 Config resolution\nlunch_defaults + map_info) ==> CLEAN
-  CLEAN(🧹 Cleanup\nclean_before_launch pkill) ==> S0
+  LAUNCH(ros2 launch bringup.launch.py) ==> CFG
+  CFG(Config resolution\nlaunch_defaults + map_info) ==> CLEAN
+  CLEAN(Cleanup\nclean_before_launch pkill) ==> S0
 
-  S0([🤖 Slot 0 · camrod_platform\nTF + /platform/status/*]) ==>|+ module_launch_gap_s| S1
+  S0(["🤖 Slot 0 · camrod_platform\nTF + /platform/status/*"]) ==>|+ module_launch_gap_s| S1
   S1([🗺️ Slot 1 · camrod_map\nlanelet2 map load]) ==>|+ module_launch_gap_s| S2
   S2([🔬 Slot 2 · fake_sensors\nsim only]) ==>|+ module_launch_gap_s| S3
-  S3([📡 Slot 3 · camrod_sensing\nhardware drivers + cost grids]) ==>|+ module_launch_gap_s| S4
+  S3([🎯 Slot 3 · camrod_sensing\nhardware drivers + cost grids]) ==>|+ module_launch_gap_s| S4
   S4([👁️ Slot 4 · camrod_perception\nLiDAR + YOLO obstacles]) ==>|+ module_launch_gap_s| S5
   S5([📍 Slot 5 · camrod_localization\nGNSS + IMU + wheel fusion]) ==>|+ module_launch_gap_s| S6
   S6([🧭 Slot 6 · camrod_planning\nNav2 stack]) ==>|+ module_launch_gap_s| S7
-  S7([🅿️ Slot 7 · camrod_system\ndiagnostics validators]) ==>|+ module_launch_gap_s| S8
+  S7([🩺 Slot 7 · camrod_system\ndiagnostics validators]) ==>|+ module_launch_gap_s| S8
   S8([🖥️ Slot 8 · camrod_ui\nHTTP API + plugin bridge])
 
   class S0 platform
@@ -225,7 +225,7 @@ flowchart TD
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
 
-  A(⚙️ Read launch_defaults.yaml key) --> B{❓ value == __module_default__\nor empty?}
+  A(Read launch_defaults.yaml key) --> B{❓ value == __module_default__\nor empty?}
   B -- Yes --> C(resolve_cfg_override returns empty string)
   B -- No --> D{❓ Is absolute path?}
   D -- Yes --> E(Use path as-is)
@@ -233,8 +233,8 @@ flowchart TD
   C --> G(set_if_not_empty: key NOT forwarded)
   E --> H(set_if_not_empty: key forwarded)
   F --> H
-  G --> I(🧩 Module uses its own\npackage-internal default)
-  H --> J(🧩 Module receives\nbringup-level override)
+  G --> I(Module uses its own\npackage-internal default)
+  H --> J(Module receives\nbringup-level override)
 
   class C,G,I mapping
   class E,F,H,J highlight

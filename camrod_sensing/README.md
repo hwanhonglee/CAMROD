@@ -54,35 +54,35 @@ graph LR
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
   subgraph UP["⬆️ Upstream"]
-    PLAT([🧩 camrod_platform]):::platform
-    MAP([🧩 camrod_map]):::mapping
-    PLAN_IN([🧩 camrod_planning]):::planning
+    PLAT([🤖 camrod_platform]):::platform
+    MAP([🗺️ camrod_map]):::mapping
+    PLAN_IN([🧭 camrod_planning]):::planning
   end
 
   subgraph CS["🎯 camrod_sensing"]
-    SENS([🧩 camrod_sensing]):::highlight
+    SENS([🎯 camrod_sensing]):::highlight
   end
 
   subgraph DN["⬇️ Downstream"]
-    LOC([🧩 camrod_localization]):::localization
-    PERC([🧩 camrod_perception]):::perception
-    PLAN_OUT([🧩 camrod_planning]):::planning
-    MAP_VIZ([🧩 camrod_map]):::mapping
-    PARK([🧩 camrod_parking]):::parking
+    LOC([📍 camrod_localization]):::localization
+    PERC([👁️ camrod_perception]):::perception
+    PLAN_OUT([🧭 camrod_planning]):::planning
+    MAP_VIZ([🗺️ camrod_map]):::mapping
+    PARK([🅿️ camrod_parking]):::parking
   end
 
-  PLAT  ==>|📡 /platform/status/velocity| SENS
-  MAP   ==>|📡 /map/cost_grid/lanelet| SENS
-  PLAN_IN -->|📡 /planning/cost_grid/global_path| SENS
+  PLAT  ==>|/platform/status/velocity| SENS
+  MAP   ==>|/map/cost_grid/lanelet| SENS
+  PLAN_IN -->|/planning/cost_grid/global_path| SENS
 
-  SENS ==>|📡 /sensing/imu/data| LOC
-  SENS ==>|📡 /sensing/gnss/pose_with_covariance| LOC
-  SENS ==>|📡 twist_with_covariance| LOC
-  SENS ==>|📡 /sensing/lidar/points_filtered| PERC
-  SENS ==>|📡 /planning/cost_grid/inflation| PLAN_OUT
-  SENS -->|📡 lidar/radar cost grids| MAP_VIZ
-  SENS -->|📡 camera/image_rect/compressed| PARK
-  SENS -->|📡 camera/image_rect/compressed| PERC
+  SENS ==>|/sensing/imu/data| LOC
+  SENS ==>|/sensing/gnss/pose_with_covariance| LOC
+  SENS ==>|twist_with_covariance| LOC
+  SENS ==>|/sensing/lidar/points_filtered| PERC
+  SENS ==>|/planning/cost_grid/inflation| PLAN_OUT
+  SENS -->|lidar/radar cost grids| MAP_VIZ
+  SENS -->|camera/image_rect/compressed| PARK
+  SENS -->|camera/image_rect/compressed| PERC
 
   linkStyle 0,1,3,4,5,6,7 stroke:#06B6D4,stroke-width:2.5px;
 ```
@@ -114,27 +114,27 @@ graph TD
 
   subgraph LIDAR["📡 LiDAR"]
     HW1{{🛠️ Vanjee LiDAR\nEthernet}}:::hardware
-    LDRV(🧩 lidar_preprocessor):::sensing
-    LFLT((📡 /sensing/lidar/points_filtered)):::topic
-    LGRID(🧩 lidar_cost_grid):::sensing
-    LOUT((📡 /sensing/cost_grid/lidar)):::topic
+    LDRV(lidar_preprocessor):::sensing
+    LFLT((/sensing/lidar/points_filtered)):::topic
+    LGRID(lidar_cost_grid):::sensing
+    LOUT((/sensing/cost_grid/lidar)):::topic
     HW1 ==> LDRV ==> LFLT ==> LGRID ==> LOUT
   end
 
   subgraph RADAR["📶 Radar ×6"]
     HW2{{🛠️ SEN0592 ×6\nCH9344 USB serial}}:::hardware
-    RDRV(🧩 sen0592_radar_node):::sensing
-    RRANGE((📡 /sensing/radar/\nfront,rear,left1,left2\nright1,right2/range)):::topic
-    RGRID(🧩 radar_cost_grid):::sensing
-    ROUT((📡 /sensing/cost_grid/radar)):::topic
+    RDRV(sen0592_radar_node):::sensing
+    RRANGE((/sensing/radar/\nfront,rear,left1,left2\nright1,right2/range)):::topic
+    RGRID(radar_cost_grid):::sensing
+    ROUT((/sensing/cost_grid/radar)):::topic
     HW2 ==> RDRV ==> RRANGE ==> RGRID ==> ROUT
   end
 
   subgraph CAM["📷 Camera"]
     HW3{{🛠️ ISX031\n/dev/video0}}:::hardware
-    CAMDRV(🧩 camera_publisher):::sensing
-    CAMRECT((📡 camera/image_rect\n/compressed)):::topic
-    CAMINFO((📡 camera/camera_info)):::topic
+    CAMDRV(camera_publisher):::sensing
+    CAMRECT((camera/image_rect\n/compressed)):::topic
+    CAMINFO((camera/camera_info)):::topic
     HW3 ==> CAMDRV
     CAMDRV ==> CAMRECT
     CAMDRV --> CAMINFO
@@ -142,19 +142,19 @@ graph TD
 
   subgraph IMU["🧭 IMU"]
     HW5{{🛠️ CV7-AHRS or GQ7\nUSB serial}}:::hardware
-    IMUDRV[[📦 microstrain_inertial_driver]]:::system
-    IMUOUT((📡 /sensing/imu/data)):::topic
+    IMUDRV[[microstrain_inertial_driver]]:::system
+    IMUOUT((/sensing/imu/data)):::topic
     HW5 ==> IMUDRV ==> IMUOUT
   end
 
   subgraph GNSS["🛰️ GNSS"]
     HW4{{🛠️ u-blox ZED-F9P\n/dev/ttyACM1}}:::hardware
-    NTRIP[[📦 ntrip_client]]:::system
-    GNSSDRV[[📦 ublox_gps_node]]:::system
-    FIX((📡 /sensing/gnss\n/ublox_gps_node/fix)):::topic
-    ADAPT(🧩 localization_input_adapter):::sensing
-    GNSSPOSE((📡 /sensing/gnss/pose)):::topic
-    GNSSCOV((📡 /sensing/gnss\n/pose_with_covariance)):::topic
+    NTRIP[[ntrip_client]]:::system
+    GNSSDRV[[ublox_gps_node]]:::system
+    FIX((/sensing/gnss\n/ublox_gps_node/fix)):::topic
+    ADAPT(localization_input_adapter):::sensing
+    GNSSPOSE((/sensing/gnss/pose)):::topic
+    GNSSCOV((/sensing/gnss\n/pose_with_covariance)):::topic
     NTRIP ==> GNSSDRV
     HW4 ==> GNSSDRV ==> FIX ==> ADAPT
     ADAPT ==> GNSSCOV
@@ -162,19 +162,19 @@ graph TD
   end
 
   subgraph VELCONV["🔁 Velocity Converter"]
-    PLATVEL((📡 /platform/status/velocity)):::topic
-    VEL(🧩 platform_velocity_converter):::sensing
-    VELOUT((📡 twist_with_covariance)):::topic
+    PLATVEL((/platform/status/velocity)):::topic
+    VEL(platform_velocity_converter):::sensing
+    VELOUT((twist_with_covariance)):::topic
     PLATVEL ==> VEL
     IMUOUT --> VEL
     VEL ==> VELOUT
   end
 
   subgraph INFLATE["🧮 Cost Grids"]
-    LANELET((📡 /map/cost_grid/lanelet)):::topic
-    GPATH((📡 /planning/cost_grid/global_path)):::topic
-    INFGRID(🧩 inflation_cost_grid):::sensing
-    MERGED((📡 /planning/cost_grid/inflation)):::topic
+    LANELET((/map/cost_grid/lanelet)):::topic
+    GPATH((/planning/cost_grid/global_path)):::topic
+    INFGRID(inflation_cost_grid):::sensing
+    MERGED((/planning/cost_grid/inflation)):::topic
     LOUT ==> INFGRID
     ROUT ==> INFGRID
     LANELET ==> INFGRID
@@ -210,14 +210,14 @@ graph TD
   classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  L1((📡 /sensing/cost_grid/lidar\n150×150 @ 0.08m\nstale: 0.50s)):::sensing
-  L2((📡 /sensing/cost_grid/radar\n120×120 @ 0.10m\nstale: 0.35s)):::sensing
-  L3((📡 /map/cost_grid/lanelet\n600×600 @ 0.20m\nstale: 5.0s)):::mapping
-  L4((📡 /planning/cost_grid/global_path\nroute-strip bias\nstale: 10.0s)):::planning
+  L1((/sensing/cost_grid/lidar\n150×150 @ 0.08m\nstale: 0.50s)):::sensing
+  L2((/sensing/cost_grid/radar\n120×120 @ 0.10m\nstale: 0.35s)):::sensing
+  L3((/map/cost_grid/lanelet\n600×600 @ 0.20m\nstale: 5.0s)):::mapping
+  L4((/planning/cost_grid/global_path\nroute-strip bias\nstale: 10.0s)):::planning
 
-  FUSE(🧩 inflation_cost_grid\ncell-wise MAX merge\nego clear: 0.50m radius):::highlight
+  FUSE(inflation_cost_grid\ncell-wise MAX merge\nego clear: 0.50m radius):::highlight
 
-  OUT((📡 /planning/cost_grid/inflation\n120×120 @ 0.10m · 10 Hz\nconsumed by Nav2 local costmap)):::topic
+  OUT((/planning/cost_grid/inflation\n120×120 @ 0.10m · 10 Hz\nconsumed by Nav2 local costmap)):::topic
 
   L1 ==> FUSE
   L2 ==> FUSE

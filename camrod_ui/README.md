@@ -52,7 +52,7 @@ graph LR
   PLAN([🧭 camrod_planning]):::planning -->|/planning/engaged| UI
 
   subgraph UI_BOX["🖥️ camrod_ui"]
-    UI(🖥️ ui_backend_node\nFastAPI + uvicorn):::ui
+    UI(ui_backend_node\nFastAPI + uvicorn):::ui
   end
 
   BROWSER <-->|HTTP :8010\nWebSocket /ws| UI
@@ -79,21 +79,21 @@ graph TD
   BROWSER{{🌐 Operator Browser}}:::hardware -->|HTTP GET/POST :8010| BACKEND
 
   subgraph BACKEND_BOX["🖥️ ui_backend_node"]
-    BACKEND(🖥️ FastAPI+uvicorn\n+ ROS 2 spin thread):::ui
-    NOTE[🔒 threading.Lock\non ApiState]:::ui
+    BACKEND(FastAPI+uvicorn\n+ ROS 2 spin thread):::ui
+    NOTE[threading.Lock\non ApiState]:::ui
   end
 
-  DIAGAGG((📡 /diagnostics_agg)):::topic     --> BACKEND
-  ENGAGED((📡 /planning/engaged)):::topic    --> BACKEND
-  DEST((📡 /ui/selected_destination)):::topic --> BACKEND
-  BATTERY((📡 /battery_percentage)):::topic  --> BACKEND
-  ARRIVE((📡 /AMR_arrive)):::topic           --> BACKEND
+  DIAGAGG((/diagnostics_agg)):::topic     --> BACKEND
+  ENGAGED((/planning/engaged)):::topic    --> BACKEND
+  DEST((/ui/selected_destination)):::topic --> BACKEND
+  BATTERY((/battery_percentage)):::topic  --> BACKEND
+  ARRIVE((/AMR_arrive)):::topic           --> BACKEND
 
   BACKEND -->|HTTP/WS responses| BROWSER
-  BACKEND --> ENGAGE((📡 /planning/engage)):::topic
-  BACKEND --> GOALKEY((📡 /planning/state_machine/goal_key)):::topic
-  BACKEND --> GOALPOSE((📡 /goal_pose)):::topic
-  BACKEND --> DEST2((📡 /ui/selected_destination)):::topic
+  BACKEND --> ENGAGE((/planning/engage)):::topic
+  BACKEND --> GOALKEY((/planning/state_machine/goal_key)):::topic
+  BACKEND --> GOALPOSE((/goal_pose)):::topic
+  BACKEND --> DEST2((/ui/selected_destination)):::topic
 
   classDef ui       fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef hardware fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
@@ -150,11 +150,11 @@ stateDiagram-v2
   classDef stop    fill:#FEE2E2,stroke:#EF4444,stroke-width:2px,color:#B91C1C
 
   [*] --> STOP
-  STOP --> WAITING_FOR_READY : engage published (true)\nready = false
-  STOP --> AUTO : engage published (true)\nready = true
+  STOP --> WAITING_FOR_READY : engage=true, not ready
+  STOP --> AUTO : engage=true, ready
   WAITING_FOR_READY --> AUTO : /diagnostics_agg clears all errors
   WAITING_FOR_READY --> STOP : engage published (false)
-  AUTO --> STOP : engage published (false)\nOR /AMR_arrive = true
+  AUTO --> STOP : engage=false or arrived
   AUTO --> WAITING_FOR_READY : new ERROR in /diagnostics_agg
 
   AUTO:::auto
@@ -174,21 +174,21 @@ stateDiagram-v2
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#FFF7ED', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#F97316', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 flowchart TD
-  A([🚀 Start: resolve frontend_dir]):::ui
+  A([Start: resolve frontend_dir]):::ui
 
-  A --> B{"1️⃣ CAMROD_UI_FRONTEND_DIR\nset and exists?"}:::ui
-  B -->|yes| Z[✅ Use env var path]:::localization
+  A --> B{"CAMROD_UI_FRONTEND_DIR\nset and exists?"}:::ui
+  B -->|yes| Z[Use env var path]:::localization
 
-  B -->|no| C{"2️⃣ CAMROD_API_FRONTEND_DIR\nset and exists?"}:::ui
+  B -->|no| C{"CAMROD_API_FRONTEND_DIR\nset and exists?"}:::ui
   C -->|yes| Z
 
-  C -->|no| D{"3️⃣ source tree\nruntime/assets/frontend/build\nexists?"}:::ui
+  C -->|no| D{"source tree\nruntime/assets/frontend/build\nexists?"}:::ui
   D -->|yes| Z
 
-  D -->|no| E{"4️⃣ installed share\ncamrod_ui/assets/frontend/build\nexists?"}:::ui
+  D -->|no| E{"installed share\ncamrod_ui/assets/frontend/build\nexists?"}:::ui
   E -->|yes| Z
 
-  E -->|no| F["5️⃣ Fallback:\nshare/camrod_ui/assets/web"]:::highlight
+  E -->|no| F["Fallback:\nshare/camrod_ui/assets/web"]:::highlight
   F --> Z
 
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;

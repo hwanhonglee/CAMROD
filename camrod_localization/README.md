@@ -59,7 +59,7 @@ graph LR
 
   subgraph LOC_PKG ["📍 camrod_localization"]
     direction TB
-    LOC(🧩 localization_stack)
+    LOC(localization_stack)
   end
 
   subgraph DOWN ["📤 Downstream"]
@@ -110,52 +110,52 @@ graph TD
 
   subgraph INPUTS ["📥 Inputs"]
     direction LR
-    GNSS((📡 /sensing/gnss/ublox_gps_node/fix))
-    IMU((📡 /sensing/imu/data))
-    WHEEL((📡 /platform/status/odometry))
-    WFBACK((📡 /rmp401/odom))
+    GNSS((/sensing/gnss/ublox_gps_node/fix))
+    IMU((/sensing/imu/data))
+    WHEEL((/platform/status/odometry))
+    WFBACK((/rmp401/odom))
   end
 
   subgraph ADAPTER_SG ["🔄 Adapter"]
     direction TB
-    ADAPT(🧩 localization_input_adapter_node)
-    GNSSPOSE((📡 /sensing/gnss/pose_with_covariance))
-    WHEELOUT((📡 /platform/status/wheel_odometry))
+    ADAPT(localization_input_adapter_node)
+    GNSSPOSE((/sensing/gnss/pose_with_covariance))
+    WHEELOUT((/platform/status/wheel_odometry))
   end
 
   subgraph ESKF_SG ["🧮 ESKF"]
     direction TB
-    ESKF(🧩 localization_eskf_node)
-    POSE((📡 /localization/pose))
-    POSECOV((📡 /localization/pose_with_covariance))
-    ODO((📡 /localization/odometry/filtered))
-    TF((📡 TF: map→odom→robot_base_link))
-    ESTAT((📡 /localization/eskf/status))
+    ESKF(localization_eskf_node)
+    POSE((/localization/pose))
+    POSECOV((/localization/pose_with_covariance))
+    ODO((/localization/odometry/filtered))
+    TF((TF: map→odom→robot_base_link))
+    ESTAT((/localization/eskf/status))
   end
 
   subgraph MAPHELP_SG ["🗺️ Map Helper"]
     direction TB
-    DZFILE[(⚙️ drop_zones.yaml)]
-    MAPHELP(🧩 localization_map_helper_node)
-    LPOSE((📡 /localization/lanelet_pose))
-    INITPOSE((📡 /localization/initialpose3d))
-    MATCHOK((📡 /localization/initial_match_ok))
+    DZFILE[(drop_zones.yaml)]
+    MAPHELP(localization_map_helper_node)
+    LPOSE((/localization/lanelet_pose))
+    INITPOSE((/localization/initialpose3d))
+    MATCHOK((/localization/initial_match_ok))
   end
 
   subgraph MON_SG ["📊 Monitor"]
     direction TB
-    MON(🧩 localization_monitor_node)
-    MODE((📡 /localization/mode))
-    STATE((📡 /localization/state))
-    CONF((📡 /localization/confidence))
+    MON(localization_monitor_node)
+    MODE((/localization/mode))
+    STATE((/localization/state))
+    CONF((/localization/confidence))
   end
 
   subgraph SEL_SG ["🎚️ Pose Selector"]
     direction TB
-    SEL(🧩 localization_pose_selector_node)
-    SELPOSE((📡 /localization/pose))
-    SELPOSECOV((📡 /localization/pose_with_covariance))
-    SELODO((📡 /localization/odometry/filtered))
+    SEL(localization_pose_selector_node)
+    SELPOSE((/localization/pose))
+    SELPOSECOV((/localization/pose_with_covariance))
+    SELODO((/localization/odometry/filtered))
   end
 
   GNSS ==> ADAPT
@@ -261,11 +261,11 @@ stateDiagram-v2
 
   [*] --> INVALID : startup (no GNSS / filter not converged)
   INVALID --> NORMAL : GNSS valid, IMU and wheel healthy, filter converged
-  NORMAL --> DEGRADED : one or more sensors degraded\n(GNSS innovation warn, low rate, or covariance high)
+  NORMAL --> DEGRADED : GNSS degraded (innovation / rate / cov)
   DEGRADED --> NORMAL : all sensors recover
-  DEGRADED --> DR_ONLY : GNSS timeout (> gnss_timeout_s = 2.0 s)\nor gnss_jump_fail_m exceeded
-  DR_ONLY --> NORMAL : GNSS re-acquired and accepted by filter\n(gnss_recovery_hold_s in planning gate)
-  DR_ONLY --> INVALID : dr_max_duration_s (30 s) exceeded\nor dr_max_cov_trace (200.0) exceeded
+  DEGRADED --> DR_ONLY : GNSS timeout or jump fail
+  DR_ONLY --> NORMAL : GNSS re-acquired
+  DR_ONLY --> INVALID : DR duration / cov limit exceeded
   DEGRADED --> INVALID : dr_max_duration_s or dr_max_cov_trace exceeded
 
   class NORMAL normal
@@ -385,7 +385,7 @@ sequenceDiagram
   MapHelper->>ESKF: /localization/initialpose3d (reinit ESKF at drop zone yaw)
   MapHelper->>Planning: /localization/initial_match_ok = true
 
-  Note over Planning: Robot considered ready — Nav2 lifecycle transitions to active\n(if require_localization_ready = true)
+  Note over Planning: Ready — Nav2 lifecycle goes active
 ```
 
 *Figure 4 — Drop zone initialization sequence. ESKF is re-initialized at the matched drop zone yaw before Nav2 is unblocked.*

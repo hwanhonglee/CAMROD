@@ -24,28 +24,28 @@
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
   subgraph SENS_GRP["📷 Camera (sensing)"]
-    SENS([📦 camrod_sensing])
+    SENS([🎯 camrod_sensing])
   end
 
   subgraph PLAN_GRP["🧭 Planning (costmap)"]
-    PLAN([📦 camrod_planning])
+    PLAN([🧭 camrod_planning])
   end
 
   subgraph PARK_GRP["🅿️ camrod_parking"]
-    PARK([🧩 camrod_parking])
-    APTAG[[📦 apriltag_ros]] -.->|external dep| PARK
-    OPNAV[[📦 opennav_docking]] -.->|external dep| PARK
+    PARK([🅿️ camrod_parking])
+    APTAG[[apriltag_ros]] -.->|external dep| PARK
+    OPNAV[[opennav_docking]] -.->|external dep| PARK
   end
 
   subgraph ACT_GRP["🔔 Action clients"]
-    UI([📦 camrod_ui / BT client])
-    PLAT([📦 camrod_platform])
+    UI([🖥️ camrod_ui])
+    PLAT([🤖 camrod_platform])
   end
 
-  SENS -->|image_rect\ncamera_info| PARK
-  PLAN -->|local_costmap\nfootprint| PARK
+  SENS -->|image_rect| PARK
+  PLAN -->|local_costmap| PARK
   PLAN -->|navigate_to_pose action| PARK
-  PARK ==>|DockRobot\nUndockRobot actions| UI
+  PARK ==>|DockRobot action| UI
   PARK ==>|/platform/cmd_vel| PLAT
 
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
@@ -76,28 +76,28 @@ graph TD
   end
 
   subgraph TAG_GRP["🏷️ AprilTag detection"]
-    TAG[[🧩 apriltag_ros/apriltag_node]]
+    TAG[[apriltag_ros/apriltag_node]]
     RAW(("/parking/docking/\napriltag/detections_raw"))
     TF(("TF: odom → dock_tag"))
   end
 
   subgraph BRIDGE_GRP["🌉 Bridge node"]
-    BRIDGE(🧩 parking_apriltag_bridge_node)
+    BRIDGE(parking_apriltag_bridge_node)
     DET(("/parking/docking/\napriltag/detections"))
     AVGPOSE(("/parking/docking/\napriltag/pose"))
     DOCKPOSE(("/parking/docking/\ndetected_dock_pose"))
   end
 
   subgraph SVR_GRP["🅿️ Docking server"]
-    DOCKSVR[[🧩 opennav_docking\ndocking_server]]
+    DOCKSVR[[opennav_docking\ndocking_server]]
     COSTMAP(("/planning/local_costmap/\ncostmap_raw"))
     FOOTPRINT(("/planning/local_costmap/\npublished_footprint"))
-    LMAN[[🧩 nav2_lifecycle_manager]]
+    LMAN[[nav2_lifecycle_manager]]
   end
 
   subgraph ACT_GRP["🔔 Action interface"]
     CMDVEL(("/platform/cmd_vel"))
-    ACT(["/🔔 DockRobot /\nUndockRobot actions/"])
+    ACT([DockRobot / UndockRobot actions])
   end
 
   IMG ==> TAG
@@ -145,17 +145,17 @@ stateDiagram-v2
 
   [*] --> IDLE
 
-  IDLE --> APPROACH : DockRobot goal\n(navigate_to_staging_pose=true)
-  IDLE --> STAGE    : DockRobot goal\n(navigate_to_staging_pose=false)
+  IDLE --> APPROACH : DockRobot (with staging)
+  IDLE --> STAGE    : DockRobot (no staging)
 
-  APPROACH --> STAGE   : Nav2 NavigateToPose\nsucceeded
-  APPROACH --> FAILURE : approach timeout\nor Nav2 abort
+  APPROACH --> STAGE   : Nav2 succeeded
+  APPROACH --> FAILURE : timeout or abort
 
   STAGE --> DOCK    : within dock_prestaging_tolerance
   STAGE --> FAILURE : staging timeout
 
   DOCK --> DOCKED  : distance < docking_threshold (0.05 m)
-  DOCK --> RETRY   : perception_timeout\nor collision detected
+  DOCK --> RETRY   : timeout or collision
   RETRY --> STAGE  : retry_count < max_retries (3)
   RETRY --> FAILURE: retry_count ≥ max_retries
 
@@ -191,7 +191,7 @@ sequenceDiagram
   participant CTRL    as 🚦 Controller
   participant PLAT    as 🤖 Platform
 
-  Client->>DS: DockRobot.SendGoal(dock_id="home_dock",\nnavigate_to_staging_pose=true)
+  Client->>DS: DockRobot.SendGoal(dock_id, navigate_to_staging_pose=true)
   DS->>DS: Lookup staging_pose from dock database
   DS->>PLAT: NavigateToPose(staging_pose) via planning action
   PLAT-->>DS: NavigateToPose SUCCEEDED
@@ -202,7 +202,7 @@ sequenceDiagram
   Note over DS,PLAT: Precision docking control loop @ 20 Hz
   loop Dock approach
     BRIDGE-->>DS: PoseStamped (odom frame, 10 Hz)
-    DS->>CTRL: computeVelocity(current_pose, dock_pose,\nk_phi=3.0, k_delta=2.0)
+    DS->>CTRL: computeVelocity(current_pose, dock_pose)
     CTRL->>PLAT: Twist (v ≤ 0.15 m/s)
   end
 

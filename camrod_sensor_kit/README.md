@@ -47,14 +47,14 @@ ros2 run tf2_ros tf2_echo robot_base_link lidar_link
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  YAML[(⚙️ robot_params.yaml)]:::config --> SKIT
+  YAML[(robot_params.yaml)]:::config --> SKIT
 
   subgraph SKIT_BOX["🔧 camrod_sensor_kit"]
-    SKIT[🧩 sensor_kit\nfoundation]:::system
+    SKIT[sensor_kit\nfoundation]:::system
   end
 
   SKIT -.->|/tf_static| PLAT([🤖 camrod_platform]):::platform
-  SKIT -.->|/tf_static| SENS([📡 camrod_sensing]):::sensing
+  SKIT -.->|/tf_static| SENS([🎯 camrod_sensing]):::sensing
   SKIT -.->|/tf_static| LOC([📍 camrod_localization]):::localization
   SKIT -.->|/tf_static| PLAN([🧭 camrod_planning]):::planning
   SKIT -.->|/tf_static| PARK([🅿️ camrod_parking]):::parking
@@ -79,7 +79,7 @@ graph LR
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F1F5F9', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#64748B', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 flowchart TD
-  START([🚀 Launch sensor_kit?]):::system
+  START([Launch sensor_kit?]):::system
 
   START --> Q1{Launched by\nparent bringup?}:::system
   Q1 -->|No — standalone| SA["`**Standalone Mode**
@@ -91,7 +91,7 @@ flowchart TD
     camrod_platform launch
   namespace: may be overridden`"]:::platform
 
-  SA --> OUT([📡 robot_state_publisher\npublishes /tf_static\n+ /robot_description]):::system
+  SA --> OUT([robot_state_publisher\npublishes /tf_static\n+ /robot_description]):::system
   SB --> OUT
 
   classDef system   fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
@@ -110,21 +110,21 @@ flowchart TD
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F1F5F9', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#64748B', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph TD
-  YAML[(⚙️ robot_params.yaml)]:::config  --> LAUNCH
-  XACRO[(⚙️ camrod_sensor_kit.xacro)]:::config --> LAUNCH
+  YAML[(robot_params.yaml)]:::config  --> LAUNCH
+  XACRO[(camrod_sensor_kit.xacro)]:::config --> LAUNCH
 
   subgraph LAUNCH_BOX["sensor_kit.launch.py"]
     LAUNCH[🛠️ launch\nprocessing]:::system
   end
 
   LAUNCH -->|xacro expansion| DESC[📦 robot_description\nstring]:::system
-  DESC --> RSP(🧩 robot_state_publisher):::system
-  RSP --> TFSTATIC((📡 /tf_static)):::topic
-  RSP --> URDESC((📡 /robot_description)):::topic
+  DESC --> RSP(robot_state_publisher):::system
+  RSP --> TFSTATIC((/tf_static)):::topic
+  RSP --> URDESC((/robot_description)):::topic
 
   YAML -. loadRobotParams .-> LIB[📦 camrod_sensor_kit_lib]:::system
   LIB -. RobotParams struct .-> PLAT([🤖 camrod_platform nodes]):::platform
-  LIB -. RobotParams struct .-> SENS([📡 camrod_sensing nodes]):::sensing
+  LIB -. RobotParams struct .-> SENS([🎯 camrod_sensing nodes]):::sensing
 
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;

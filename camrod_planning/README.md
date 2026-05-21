@@ -63,7 +63,7 @@ graph LR
 
   subgraph PLAN_PKG ["🧭 camrod_planning"]
     direction TB
-    PLAN(🧩 planning_stack)
+    PLAN(planning_stack)
   end
 
   subgraph DOWN ["📤 Downstream"]
@@ -73,15 +73,15 @@ graph LR
     PARK([📦 camrod_parking])
   end
 
-  LOC ==>|"`/localization/pose\n/localization/mode`"| PLAN
-  MAP -->|"`/map/cost_grid/lanelet\nLanelet2 map`"| PLAN
-  SENS -->|"`/planning/cost_grid/inflation`"| PLAN
-  UI -->|"`/goal_pose\n/planning/state_machine/goal_key`"| PLAN
+  LOC ==>|/localization/pose| PLAN
+  MAP -->|/map/cost_grid/lanelet| PLAN
+  SENS -->|/planning/cost_grid/inflation| PLAN
+  UI -->|/goal_pose| PLAN
 
-  PLAN ==>|"`/planning/cmd_vel`"| PLAT
-  PLAN -->|"`/planning/engaged\n/planning/state_machine/state`"| SYS
-  PLAN -->|"`/planning/global_path`"| MAP
-  PLAN -.->|"`/planning/state_machine/state`"| PARK
+  PLAN ==>|/planning/cmd_vel| PLAT
+  PLAN -->|/planning/engaged| SYS
+  PLAN -->|/planning/global_path| MAP
+  PLAN -.->|/planning/state_machine/state| PARK
 
   class LOC localization
   class MAP mapping
@@ -120,49 +120,49 @@ graph TD
   subgraph INP ["🛂 Inputs"]
     direction LR
     RVIZ{{🛠️ RViz / UI Goal}}
-    LOCPOSE((📡 /localization/pose))
-    LCOST((📡 /map/cost_grid/lanelet))
-    GCOST((📡 /planning/cost_grid/global_path))
-    ENGAGE((📡 /planning/engage))
-    ESTOP((📡 /platform/status/estop))
-    INFCOST((📡 /planning/cost_grid/inflation))
-    LOCMODE((📡 /localization/mode))
-    LOCODO((📡 /localization/odometry/filtered))
-    YAMLZONES[(⚙️ yaw_alignment_zones.yaml)]
+    LOCPOSE((/localization/pose))
+    LCOST((/map/cost_grid/lanelet))
+    GCOST((/planning/cost_grid/global_path))
+    ENGAGE((/planning/engage))
+    ESTOP((/platform/status/estop))
+    INFCOST((/planning/cost_grid/inflation))
+    LOCMODE((/localization/mode))
+    LOCODO((/localization/odometry/filtered))
+    YAMLZONES[(yaw_alignment_zones.yaml)]
   end
 
   subgraph NAV2_BT ["🧠 Nav2 BT + Controllers"]
     direction TB
-    GSNAP(🧩 goal_snapper_node)
-    CSNAP(🧩 centerline_snapper_node)
-    GSNAPPED((📡 /planning/goal_pose_snapped_ros))
-    LANEPOSE((📡 /planning/lanelet_pose))
-    NAV2[[📦 Nav2 Stack]]
-    GPATH((📡 /planning/global_path))
-    CTRLPATH((📡 /planning/local_path_controller))
-    CMDRAW((📡 /planning/cmd_vel_raw))
-    LPATH(🧩 local_path_extractor_node)
-    LOCALPATH((📡 /planning/local_path))
-    TERR(🧩 path_tracking_error_node)
-    TERROR((📡 /planning/ltracking_error))
-    PCOST(🧩 path_cost_grids_node)
-    PROG(🧩 planning_progress_node)
+    GSNAP(goal_snapper_node)
+    CSNAP(centerline_snapper_node)
+    GSNAPPED((/planning/goal_pose_snapped_ros))
+    LANEPOSE((/planning/lanelet_pose))
+    NAV2[[Nav2 Stack]]
+    GPATH((/planning/global_path))
+    CTRLPATH((/planning/local_path_controller))
+    CMDRAW((/planning/cmd_vel_raw))
+    LPATH(local_path_extractor_node)
+    LOCALPATH((/planning/local_path))
+    TERR(path_tracking_error_node)
+    TERROR((/planning/ltracking_error))
+    PCOST(path_cost_grids_node)
+    PROG(planning_progress_node)
   end
 
   subgraph GATE_SG ["🚦 cmd_vel gate"]
     direction TB
-    GATE(🧩 planning_cmd_vel_gate_node)
+    GATE(planning_cmd_vel_gate_node)
   end
 
   subgraph OUT_SG ["📤 Outputs"]
     direction TB
-    CMDOUT((📡 /planning/cmd_vel))
-    ENGAGED((📡 /planning/engaged))
-    RDIST((📡 /planning/progress/remaining_distance_m))
-    RTIME((📡 /planning/progress/remaining_time_s))
-    RPCT((📡 /planning/progress/completion_pct))
-    SMSTATE((📡 /planning/state_machine/state))
-    SMSOURCE((📡 /planning/state_machine/mission_source))
+    CMDOUT((/planning/cmd_vel))
+    ENGAGED((/planning/engaged))
+    RDIST((/planning/progress/remaining_distance_m))
+    RTIME((/planning/progress/remaining_time_s))
+    RPCT((/planning/progress/completion_pct))
+    SMSTATE((/planning/state_machine/state))
+    SMSOURCE((/planning/state_machine/mission_source))
   end
 
   RVIZ --> GSNAP
@@ -207,10 +207,10 @@ graph TD
   GATE ==> CMDOUT
   GATE --> ENGAGED
 
-  DIAGAGG((📡 /system/diagnostics_agg)) --> SM(🧩 planning_state_machine_node)
-  RECALL((📡 /planning/state_machine/camping_site_recall)) --> SM
-  GOALKEY((📡 /planning/state_machine/goal_key)) --> SM
-  SM --> SMGOAL((📡 /planning/goal_pose_snapped))
+  DIAGAGG((/system/diagnostics_agg)) --> SM(planning_state_machine_node)
+  RECALL((/planning/state_machine/camping_site_recall)) --> SM
+  GOALKEY((/planning/state_machine/goal_key)) --> SM
+  SM --> SMGOAL((/planning/goal_pose_snapped))
   SM --> SMSTATE
   SM --> SMSOURCE
 
@@ -220,9 +220,8 @@ graph TD
   class RVIZ ui
   class YAMLZONES config
   class CMDRAW,GATE,CMDOUT highlight
+  linkStyle 10,26,33 stroke:#6366F1,stroke-width:2.5px;
 ```
-
-linkStyle 18,19,20 stroke:#6366F1,stroke-width:2.5px;
 
 *Figure 2 — Runtime node graph. Critical path: `/planning/cmd_vel_raw` ==> gate ==> `/planning/cmd_vel`.*
 
@@ -365,7 +364,7 @@ stateDiagram-v2
   [*] --> INIT
   INIT --> RUNNING : startup_goal_key (drop_zone)
   RUNNING --> GOAL_REACHED : within goal_reached_distance_m (0.8 m)
-  GOAL_REACHED --> RETURNING : return_to_drop_zone command\nor dwell timeout (goal_reached_dwell_s)
+  GOAL_REACHED --> RETURNING : recall or dwell timeout
   GOAL_REACHED --> RECALLED : camping_site_recall received
   RECALLED --> RUNNING : robot reaches road-snap position
   RETURNING --> RUNNING : navigating back to drop_zone
