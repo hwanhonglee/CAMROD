@@ -1,6 +1,6 @@
 # Combo Profile: Smac2D + DWB
 # 2026-05-21 sim 20s sweep observation: P=Y/C=Y/M=N, displacement=0.000m
-# Tuning intent: recovery-biased preset (encourage initial movement on this combo).
+# Tuning intent: stabilized baseline (align with known-good DWB defaults).
 planner_server:
   ros__parameters:
     Smac2D:
@@ -16,11 +16,11 @@ planner_server:
 controller_server:
   ros__parameters:
     DWB:
-      min_vel_x: 0.05
-      min_speed_xy: 0.08
-      sim_time: 1.2
-      PathAlign.scale: 16.0
-      GoalAlign.scale: 12.0
-      PathDist.scale: 18.0
-      GoalDist.scale: 12.0
-      RotateToGoal.scale: 14.0
+      min_vel_x: 0.0
+      min_speed_xy: 0.0
+      sim_time: 1.7
+      PathAlign.scale: 24.0
+      GoalAlign.scale: 18.0
+      PathDist.scale: 24.0
+      GoalDist.scale: 18.0
+      RotateToGoal.scale: 24.0

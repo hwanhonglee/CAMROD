@@ -1,6 +1,6 @@
 # Combo Profile: SmacHybrid + MPPI
 # 2026-05-21 sim 20s sweep observation: P=Y/C=Y/M=N, displacement=0.000m
-# Tuning intent: recovery-biased preset (encourage initial movement on this combo).
+# Tuning intent: stabilized baseline (align with known-good MPPI defaults).
 planner_server:
   ros__parameters:
     SmacHybrid:
@@ -17,9 +17,9 @@ planner_server:
 controller_server:
   ros__parameters:
     MPPI:
-      vx_min: 0.05
-      vx_max: 1.2
-      prune_distance: 1.5
-      temperature: 0.2
-      gamma: 0.01
+      vx_min: 0.0
+      vx_max: 1.4
+      prune_distance: 2.0
+      temperature: 0.3
+      gamma: 0.015
       model_dt: 0.05
