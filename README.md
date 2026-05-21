@@ -1,8 +1,61 @@
-# CAMROD Workspace (`camrod_ws/src`)
+# CAMROD — Autonomous Camping Delivery Robot
 
-Integrated ROS 2 Humble workspace for the CAMROD autonomous platform stack.
+ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
+Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-## 1) Workspace Architecture
+> Current release: **v1.10**
+
+---
+
+## Table of Contents
+
+1. [System Overview](#1-system-overview)
+2. [Hardware](#2-hardware)
+3. [Package Architecture](#3-package-architecture)
+4. [Runtime Data Flow](#4-runtime-data-flow)
+5. [External Dependencies](#5-external-dependencies)
+6. [Build](#6-build)
+7. [Run](#7-run)
+8. [Key Topics & Signals](#8-key-topics--signals)
+9. [Planning Profiles](#9-planning-profiles)
+10. [Operator UI](#10-operator-ui)
+11. [Camping Sites Configuration](#11-camping-sites-configuration)
+12. [Map Reference](#12-map-reference)
+13. [Diagnostics](#13-diagnostics)
+14. [Disabled / Optional Packages](#14-disabled--optional-packages)
+
+---
+
+## 1. System Overview
+
+CAMROD is a supervised-autonomy delivery platform designed for controlled outdoor environments (campgrounds, parks, warehouses).
+
+**Core capabilities:**
+- Autonomous point-to-point navigation via pre-surveyed Lanelet2 maps
+- Multi-sensor obstacle detection (LiDAR + camera + mmWave radar)
+- GNSS/RTK localization with IMU + wheel dead-reckoning fallback
+- AprilTag-based autonomous docking
+- Web operator UI for site selection, diagnostics, and manual override
+- Mission state machine: deliver → dwell → recall → return
+
+---
+
+## 2. Hardware
+
+| Component | Model / Notes |
+|-----------|---------------|
+| Mobile base | Agilex Ranger (4WD skid-steer, CAN bus) |
+| GNSS | u-blox ZED-F9P (RTK via NTRIP) |
+| IMU | Microstrain CV7 or GQ7 (9-axis; GQ7 has embedded GNSS) |
+| LiDAR | Vanjee 3D LiDAR |
+| Camera | USB camera (V4L2, UYVY → ROS Image) |
+| Radar | SEN0592 mmWave (near-range obstacle detection) |
+| Compute | Onboard Linux x86\_64 / ARM64, Ubuntu 22.04 + ROS 2 Humble |
+
+---
+
+## 3. Package Architecture
+
 ```mermaid
 graph TD
   BR[[camrod_bringup]]
@@ -14,193 +67,399 @@ graph TD
   PLT[[camrod_platform]]
   KIT[[camrod_sensor_kit]]
   SYS[[camrod_system]]
-  API[[camrod_ui]]
-  AVG[(avg_msgs interface package)]
+  UI[[camrod_ui]]
+  PKG[[camrod_parking]]
+  AVG[(avg_msgs)]
 
-  BR --> MAP
-  BR --> SEN
-  BR --> LOC
-  BR --> PER
-  BR --> PLN
-  BR --> PLT
-  BR --> KIT
-  BR --> SYS
-  BR --> API
+  BR --> MAP & SEN & LOC & PER & PLN & PLT & KIT & SYS & UI
 
-  MAP --> LOC
-  MAP --> PLN
-  SEN --> LOC
-  SEN --> PER
-  LOC --> PLN
-  PLN --> PLT
-
-  AVG -. interface types .-> MAP
-  AVG -. interface types .-> SEN
-  AVG -. interface types .-> LOC
-  AVG -. interface types .-> PER
-  AVG -. interface types .-> PLN
-  AVG -. interface types .-> PLT
-  AVG -. interface types .-> SYS
-  AVG -. interface types .-> API
-```
-
-Diagram legend: `[[...]]` package, `[(...)]` config or interface asset, `[ ... ]` node/process, `((...))` topic stream, `{{...}}` hardware source, dashed arrow = non-runtime dependency.
-
-## 2) End-to-End Runtime Flow
-```mermaid
-graph TD
-  SRC{{Sensor Devices}} --> SEN[[camrod_sensing]]
-  SEN --> LOC[[camrod_localization]]
-  SEN --> PER[[camrod_perception]]
-  MAP[[camrod_map]] --> LOC
-  MAP --> PLN[[camrod_planning]]
+  MAP --> LOC & PLN
+  SEN --> LOC & PER
   LOC --> PLN
   PER --> PLN
-  PLN --> RAW((planning cmd vel raw))
-  RAW --> GATE[planning cmd vel gate]
-  GATE --> CMD((platform cmd vel))
-  CMD --> VEH{{vehicle motion}}
-  SYS[[camrod_system]] --> AGG((diagnostics aggregated))
-  AGG --> API[[camrod_ui]]
+  PLN --> PLT
+  PLT --> PKG
+
+  AVG -. interfaces .-> MAP & SEN & LOC & PER & PLN & PLT & SYS & UI & PKG
 ```
 
-## 3) Main Operational Scenario
+### Package Responsibilities
 
-**Base delivery loop:**
-1. System starts; all modules launch with a configurable stagger gap.
-2. Localization initializes using `camrod_map/config/map_info.yaml` as the single reference source.
-3. State machine sends robot to `drop_zone` (startup goal).
-4. Operator selects `camping_site_N` via UI → `/planning/state_machine/goal_key` published.
-5. Nav2 generates global path; `/planning/cmd_vel` is gated by engage, e-stop, and cost-stop.
-6. Robot arrives at camping site; waits `goal_reached_dwell_s` (default 600 s) or until return button.
-7. Robot auto-returns or is sent back to `drop_zone`.
-
-**Camping-site recall extension:**
-8. Camping site publishes `/planning/state_machine/camping_site_recall` → state transitions to `RECALLED`.
-9. Robot navigates to the site's nearest-lanelet coordinate for loading (mission_source: `recall:camping_site_N`).
-10. After another dwell, robot auto-returns to `drop_zone` (mission_source: `auto_return`).
-
-**GNSS outage handling:**
-- GNSS loss → localization switches to `DR_ONLY`; robot continues on IMU + wheel odometry.
-- GNSS recovery → `/localization/mode` transitions `DR_ONLY → NORMAL`; cmd_vel gate applies
-  a `gnss_recovery_hold_s` (2.0 s) stop to let Nav2 and the costmap settle on the recovered pose.
-
-Manual goal navigation through `/goal_pose` (RViz 2D Nav Goal) is also supported at any time.
-
-## 4) Package Responsibilities
 | Package | Role |
-|---|---|
-| `camrod_bringup` | top-level orchestration and cross-package argument/config wiring |
-| `camrod_map` | lanelet map load, map cost grids, map markers, map reference source |
-| `camrod_sensing` | camera/lidar/radar/imu/gnss pipelines + near-range cost grids |
-| `camrod_localization` | GNSS/IMU/wheel fusion, localization state, map helper |
-| `camrod_perception` | obstacle outputs from lidar-only and camera+lidar fusion |
-| `camrod_planning` | Nav2 runtime, snapping, global/local path, cmd_vel gating, state machine |
-| `camrod_platform` | final cmd_vel gate, robot visualization, sensor kit launch include |
-| `camrod_sensor_kit` | URDF/xacro and TF backbone publication |
-| `camrod_system` | module diagnostics checkers and diagnostics aggregation |
-| `camrod_ui` | API bridge and lightweight UI backend |
-| `camrod_common/avg_msgs` | shared ROS interfaces used across modules |
+|---------|------|
+| `camrod_bringup` | Top-level orchestrator; cross-package argument and config wiring |
+| `camrod_map` | Lanelet2 map loading, lane cost grids, RViz markers |
+| `camrod_sensing` | Camera / LiDAR / GNSS / IMU / radar drivers + near-range cost grids |
+| `camrod_localization` | GNSS+IMU+wheel ESKF fusion; DR-mode fallback; drop-zone init |
+| `camrod_perception` | LiDAR obstacle clustering, YOLOv9 camera detection, obstacle fusion |
+| `camrod_planning` | Nav2 runtime, Lanelet2 goal/path snapping, cmd\_vel safety gate, mission state machine |
+| `camrod_platform` | Final cmd\_vel gate, Ranger CAN bridge, URDF/TF publisher |
+| `camrod_sensor_kit` | Robot URDF/xacro and static TF backbone |
+| `camrod_system` | Per-module diagnostic checkers + aggregator (20+ checkers) |
+| `camrod_ui` | FastAPI HTTP backend (port 8010) + React operator web UI |
+| `camrod_parking` | AprilTag detection bridge + opennav\_docking integration |
+| `camrod_common/avg_msgs` | Shared ROS 2 message/service/action definitions |
 
-## 5) Build
+---
 
-### 5.1 Unified build (bootstrap + rosdep + external-aware colcon)
+## 4. Runtime Data Flow
+
+```mermaid
+graph LR
+  HW{{Sensors}} --> SEN[[sensing]]
+  SEN --> LOC[[localization]]
+  SEN --> PER[[perception]]
+  MAP[[map]] --> LOC & PLN[[planning]]
+  LOC --> PLN
+  PER --> PLN
+  PLN --> GATE[cmd_vel_gate]
+  GATE --> VEH{{Ranger CAN}}
+  SYS[[system]] --> AGG((diagnostics_agg))
+  AGG --> UI[[operator UI :8010]]
+  UI --> PLN
+```
+
+**Nominal mission loop:**
+
+1. System starts; all modules launch with staggered delays.
+2. Localization initializes from `camrod_map/config/map_info.yaml` (single map reference source).
+3. State machine sends robot to `drop_zone` (startup goal).
+4. Operator selects a camping site via UI → `/planning/state_machine/goal_key` published.
+5. Nav2 generates global path; cmd\_vel gate enforces engage / e-stop / cost-stop / GNSS-recovery hold.
+6. Robot arrives; waits `goal_reached_dwell_s` (default 600 s) or until recall trigger.
+7. On recall: navigates to site's lanelet coordinate for loading, then auto-returns to `drop_zone`.
+
+**GNSS outage:**
+- Localization switches to `DR_ONLY`; robot continues on IMU + wheel odometry.
+- On GNSS recovery: 2 s `gnss_recovery_hold_s` stop lets Nav2 and costmap settle.
+
+**Manual override:** `/goal_pose` (RViz 2D Nav Goal) works at any time.
+
+---
+
+## 5. External Dependencies
+
+| Package group | Location | Purpose |
+|---------------|----------|---------|
+| `ublox` | `camrod_sensing/external/` | u-blox GNSS driver |
+| `vanjee_lidar_sdk` | `camrod_sensing/external/` | Vanjee LiDAR driver |
+| `ntrip_client` | `camrod_sensing/external/` | RTK correction client |
+| `perception_pcl` | `camrod_sensing/external/` | PCL ↔ ROS 2 bridge |
+| `robot_localization` | `camrod_localization/external/` | EKF / ESKF state estimator |
+| `lanelet2` | `camrod_localization/external/` | Lanelet2 map library core |
+| `yolov9mit` | `camrod_perception/external/` | YOLOv9 TensorRT inference library |
+| `yolov9mit_ros` | `camrod_perception/external/` | YOLOv9 ROS 2 wrapper node |
+| `vision_opencv` | `camrod_perception/external/` | cv\_bridge / image\_transport |
+| `nav2_*` (10 pkgs) | `camrod_planning/external/` | Nav2 navigation stack |
+| `ranger_ros2` | `camrod_platform/external/` | Agilex Ranger CAN driver |
+| `ugv_sdk` | `camrod_platform/external/` | Agilex UGV CAN SDK |
+| `opennav_docking` | `camrod_parking/external/` | Docking station manager |
+| `apriltag_ros` | `camrod_parking/external/` | AprilTag marker detection |
+| `lanelet2` | `camrod_map/external/` | Map utilities |
+
+---
+
+## 6. Build
+
+### 6.1 First-time setup (clone externals + rosdep)
+
+```bash
+cd ~/camrod_ws/src
+./setup_camrod.sh
+```
+
+To update existing externals:
+
+```bash
+./setup_camrod.sh --update
+```
+
+### 6.2 Build (all packages)
+
 ```bash
 cd ~/camrod_ws
+colcon build --symlink-install
+```
+
+Or use the project wrapper (handles multi-base-paths for `external/` dirs):
+
+```bash
+./src/build_camrod.sh
+```
+
+Build a specific package and its dependencies:
+
+```bash
 ./src/build_camrod.sh --packages-up-to camrod_bringup
 ```
 
-Equivalent execution from `src`:
-```bash
-cd ~/camrod_ws/src
-./build_camrod.sh --packages-up-to camrod_bringup
-```
+Build only (skip rosdep / bootstrap):
 
-### 5.2 Build-only mode (skip bootstrap/rosdep)
 ```bash
-cd ~/camrod_ws
 ./src/build_camrod.sh --build-only --packages-up-to camrod_bringup
 ```
 
-### 5.3 Bootstrap-only mode (clone/init missing externals)
+Bootstrap only (no build):
+
 ```bash
-cd ~/camrod_ws
 ./src/build_camrod.sh --bootstrap-only
-./src/build_camrod.sh --bootstrap-only --update-externals
 ```
 
-### 5.4 Source workspace
+### 6.3 Source workspace
+
 ```bash
-cd ~/camrod_ws
-source install/setup.bash
+source ~/camrod_ws/install/setup.bash
 ```
 
-## 6) Run
+---
 
-### 6.1 Full stack (recommended)
+## 7. Run
+
+### 7.1 Full stack
+
 ```bash
 ros2 launch camrod_bringup bringup.launch.py
 ```
 
-### 6.2 Simulation mode
+### 7.2 Simulation mode (fake sensors + RViz)
+
 ```bash
 ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
 ```
 
-### 6.3 Real-data mode (no fake sensors)
+### 7.3 Real hardware
+
 ```bash
 ros2 launch camrod_bringup bringup.launch.py sim:=false
 ```
 
-### 6.4 Override map path from bringup
+### 7.4 Override map
+
 ```bash
 ros2 launch camrod_bringup bringup.launch.py \
-  map_path:=/home/hong/camrod_ws/src/lanelet2_maps.osm
+  map_path:=/path/to/lanelet2_maps.osm
 ```
 
-### 6.5 Standalone module launches
+### 7.5 Individual module launches
+
 ```bash
-ros2 launch camrod_map map.launch.py
-ros2 launch camrod_sensing sensing.launch.py
+ros2 launch camrod_map         map.launch.py
+ros2 launch camrod_sensing     sensing.launch.py
 ros2 launch camrod_localization localization.launch.py
-ros2 launch camrod_planning planning.launch.py
-ros2 launch camrod_platform platform.launch.py
-ros2 launch camrod_system system.launch.py
+ros2 launch camrod_perception  perception.launch.py
+ros2 launch camrod_planning    planning.launch.py
+ros2 launch camrod_platform    platform.launch.py
+ros2 launch camrod_system      system.launch.py
+ros2 launch camrod_ui          ui.launch.py
 ```
 
-## 7) Key Topics and Signals
-| Topic | Purpose |
-|---|---|
-| `/planning/global_path` | global route from planner |
-| `/planning/local_path` | local route for tracking |
-| `/planning/cmd_vel_raw` | raw controller velocity (Nav2 output) |
-| `/planning/cmd_vel` | gated velocity command (engage + estop + cost-stop + GNSS hold) |
-| `/platform/cmd_vel` | final platform command to Ranger CAN driver |
-| `/map/cost_grid/lanelet` | lanelet traversability cost grid |
-| `/planning/cost_grid/inflation` | merged near-range cost grid (LiDAR + radar + lanelet) |
-| `/localization/pose` | canonical fused pose (ESKF output) |
-| `/localization/mode` | localization health: NORMAL / DEGRADED / DR_ONLY / INVALID |
-| `/localization/initial_match_ok` | drop-zone match readiness used by planning startup gate |
-| `/planning/state_machine/state` | current mission state (INIT / RUNNING / GOAL_REACHED / …) |
-| `/planning/state_machine/mission_source` | why the current goal was sent (startup / recall:… / auto_return / …) |
-| `/planning/state_machine/camping_site_recall` | camping site → robot recall trigger |
-| `/system/diagnostics` | raw per-module diagnostics |
-| `/system/diagnostics_agg` | aggregated diagnostics (consumed by UI) |
+### 7.6 UI only
 
-## 8) Shared Map Reference Rule
-`camrod_map/config/map_info.yaml` is the shared reference source for map and localization alignment.
+```bash
+ros2 launch camrod_ui ui.launch.py ui_host:=0.0.0.0 ui_port:=8010
+# Open http://<robot-ip>:8010
+```
 
-Main fields include:
-- `map_path`
-- `offset_lat`, `offset_lon`, `offset_alt`
-- `offset_utm_easting`, `offset_utm_northing`, `offset_utm_alt`
-- `yaw_offset_deg`
-- `rotate_latlon_xy_by_yaw_offset`
-- `world_frame_id`, `map_frame_id`
+### 7.7 RViz
 
-Launch-level overrides (for example `map_path:=...`) are still supported from `bringup.launch.py` and module launches.
+```bash
+rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
+  --stylesheet ~/camrod_ws/src/camrod_map/rviz/operator_theme.qss
+```
 
-## 9) RViz
-Default operator-style RViz used in bringup:
-- config: `camrod_map/rviz/camrod_operator.rviz`
-- stylesheet: `camrod_map/rviz/operator_theme.qss`
+---
+
+## 8. Key Topics & Signals
+
+| Topic | Type | Direction | Purpose |
+|-------|------|-----------|---------|
+| `/sensing/lidar/points_filtered` | `PointCloud2` | sensing → perception/planning | Processed LiDAR cloud |
+| `/sensing/gnss/fix` | `NavSatFix` | sensing → localization | GNSS position |
+| `/sensing/imu/data` | `Imu` | sensing → localization | 9-axis inertial data |
+| `/sensing/camera/color/image_rect` | `Image` | sensing → perception | Camera feed for YOLO |
+| `/localization/pose` | `PoseStamped` | localization → planning | Canonical fused pose (ESKF) |
+| `/localization/mode` | `AvgLocalizationMode` | localization → planning gate | NORMAL / DEGRADED / DR\_ONLY / INVALID |
+| `/localization/initial_match_ok` | `Bool` | localization → planning | Drop-zone match readiness |
+| `/perception/obstacles` | `PointCloud2` | perception → planning costmap | Fused obstacle cloud |
+| `/planning/cost_grid/inflation` | `OccupancyGrid` | sensing/map → planning | Merged near-range cost grid |
+| `/map/cost_grid/lanelet` | `OccupancyGrid` | map → sensing inflation | Lane traversability layer |
+| `/planning/global_path` | `Path` | planning → RViz / diagnostics | Global Nav2 route |
+| `/planning/local_path` | `Path` | planning → cmd\_vel\_gate | Active trajectory segment |
+| `/planning/cmd_vel_raw` | `Twist` | Nav2 controller → gate | Raw controller output |
+| `/planning/cmd_vel` | `Twist` | gate → platform | Gated velocity (safe to send) |
+| `/platform/cmd_vel` | `Twist` | platform gate → Ranger | Final vehicle command |
+| `/platform/status/estop` | `Bool` | Ranger CAN → gates | Hardware emergency stop |
+| `/platform/status/odometry` | `Odometry` | Ranger CAN → localization | Wheel odometry |
+| `/planning/engage` | `Bool` | UI / state machine → gate | Drive enable signal |
+| `/planning/state_machine/state` | `String` | state machine → all | INIT / RUNNING / GOAL\_REACHED / … |
+| `/planning/state_machine/goal_key` | `String` | UI → state machine | Named site selector (e.g. "B3") |
+| `/planning/state_machine/mission_source` | `String` | state machine → diagnostics | startup / recall:B3 / auto\_return |
+| `/goal_pose` | `PoseStamped` | UI / RViz → Nav2 | Manual 2D Nav Goal |
+| `/ui/selected_destination` | `String` | UI → backend | Operator site selection |
+| `/diagnostics_agg` | `DiagnosticArray` | system → UI | Aggregated health status |
+
+---
+
+## 9. Planning Profiles
+
+Nav2 planner × controller combinations are managed as standalone YAML overrides in:
+
+```
+camrod_planning/config/nav2_combo_profiles/
+```
+
+Each file encodes one `[planner]_[controller].yaml` pair (e.g. `smachybrid_graceful.yaml`) and overrides only the relevant Nav2 parameters on top of `nav2_base.yaml`.
+
+**Available planners:** `navfn`, `smac2d`, `smachybrid`, `smaclattice`, `thetastar`  
+**Available controllers:** `dwb`, `graceful`, `mppi`, `rotationshim`, `rpp`
+
+Switch profile at launch:
+
+```bash
+ros2 launch camrod_planning planning.launch.py \
+  nav2_combo_profile:=smachybrid_graceful
+```
+
+Key tuning parameters per controller:
+
+| Controller | Key params |
+|------------|-----------|
+| Graceful | `v_linear_max`, `initial_rotation_min_angle`, `rotation_scaling_factor`, `allow_backward` |
+| RotationShim | `angular_dist_threshold`, `max_angular_accel`, `rotate_to_goal_heading` |
+| DWB | `sim_time`, `PathAlign.scale`, `GoalDist.scale`, `RotateToGoal.scale` |
+| MPPI | `vx_max`, `prune_distance`, `temperature`, `gamma` |
+
+---
+
+## 10. Operator UI
+
+The web UI runs at **http://\<robot-ip\>:8010** (default bind: `127.0.0.1:8010`).
+
+**Features:**
+- Camping site selection dropdown → dispatches goal to state machine
+- System health dashboard (from `/diagnostics_agg`)
+- Engage / stop button
+- Real-time robot status (localization mode, planning state, battery)
+
+**Backend architecture:**  
+FastAPI (Python) in `camrod_ui/runtime/python/camrod_ui/ui_backend_node.py`  
+React frontend built in `camrod_ui/runtime/assets/frontend/`
+
+**Launch with external access:**
+
+```bash
+ros2 launch camrod_ui ui.launch.py ui_host:=0.0.0.0
+```
+
+**Rebuild frontend** (after editing `src/App.js`):
+
+```bash
+cd camrod_ui/runtime/assets/frontend
+DISABLE_ESLINT_PLUGIN=true npm run build
+```
+
+---
+
+## 11. Camping Sites Configuration
+
+Site coordinates are defined in:
+
+```
+camrod_planning/config/camping_sites.yaml
+```
+
+Each entry maps a site key (e.g. `B1`) to a WGS84 lat/lon pose.  
+The UI backend pre-loads this file and dispatches the corresponding `goal_pose` or `goal_key` when the operator selects a site.
+
+Add a new site:
+
+```yaml
+B14:
+  latitude: 37.123456
+  longitude: 127.654321
+  yaw_deg: 90.0
+```
+
+Then update `site_names` in `camrod_ui/launch/ui.launch.py`:
+
+```python
+'site_names': [f'B{i}' for i in range(1, 15)],
+```
+
+---
+
+## 12. Map Reference
+
+`camrod_map/config/map_info.yaml` is the **single source of truth** for coordinate frames.
+
+Key fields:
+
+```yaml
+map_path:               # absolute path to .osm Lanelet2 file
+offset_lat:             # WGS84 origin latitude
+offset_lon:             # WGS84 origin longitude
+offset_utm_easting:     # UTM easting offset
+offset_utm_northing:    # UTM northing offset
+yaw_offset_deg:         # map → world rotation
+world_frame_id:         # typically "map"
+map_frame_id:           # typically "map"
+```
+
+Override map path without editing the YAML:
+
+```bash
+ros2 launch camrod_bringup bringup.launch.py \
+  map_path:=/data/maps/site_v2.osm
+```
+
+**GNSS RTK (NTRIP):** configured in `camrod_sensing/config/gnss/ntrip_client.yaml`.  
+See `system_network_setting.md` for network / SIM card setup.
+
+---
+
+## 13. Diagnostics
+
+The system health pipeline:
+
+```
+[per-module checker nodes]  →  /diagnostics
+  ↓
+diagnostics_aggregator  →  /diagnostics_agg
+  ↓
+camrod_ui dashboard
+```
+
+Checker categories: `hw`, `sensing` (GNSS, IMU, LiDAR, camera, radar, wheel), `localization` (pose, mode, GNSS, init, lanelet, source), `perception` (obstacles), `planning` (lifecycle, costmap, nav\_status, path), `map` (cost\_grid), `platform` (velocity\_converter).
+
+View live diagnostics:
+
+```bash
+ros2 run rqt_robot_monitor rqt_robot_monitor
+# or
+ros2 topic echo /diagnostics_agg
+```
+
+---
+
+## 14. Disabled / Optional Packages
+
+Located in `disable/` (marked with `COLCON_IGNORE` — not built by default):
+
+| Package | Description |
+|---------|-------------|
+| `vio_bridge` | Visual-Inertial Odometry (ZED SDK / Orbbec SDK) |
+| `kimera_vio_bridge` | Kimera VIO integration |
+| `config_archive` | Legacy configuration snapshots |
+
+To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
+
+---
+
+## Versioning
+
+| Tag | Date | Summary |
+|-----|------|---------|
+| v1.10 | 2026-05-21 | Camera sensing refactor (V4L2 publisher), YOLOv9 perception, UI symlink fix, nav2 combo profiles, planning parameter stabilization |
+| v1.9 | 2026-05-13 | Planning stability, radar angle fix, Smac2D re-enable |
+| v1.8 | 2026-05-08 | ESKF stability, GNSS COG auto-init, DR timeout, platform fixes |
+| v1.7 | 2026-04-28 | Ranger platform bridge, DBC status aggregation, planning/system nodes |
