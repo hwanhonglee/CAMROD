@@ -96,7 +96,6 @@ def generate_launch_description():
             'site_names': [f'B{i}' for i in range(1, 14)],
             'ui_destination_topic': '/ui/selected_destination',
             'planning_engage_topic': '/planning/engage',
-            'planning_engaged_state_topic': '/planning/engaged',
             'planning_goal_key_topic': '/planning/state_machine/goal_key',
             'planning_goal_pose_topic': '/goal_pose',
             'publish_goal_key': True,

@@ -31,7 +31,7 @@ def generate_launch_description():
 
     default_paths = {
         "sensing_param_file":             os.path.join(sensing_share, "config", "sensing_params.yaml"),
-        "camera_preprocess_param_file":   os.path.join(sensing_share, "config", "camera", "preprocessor.yaml"),
+        "camera_params_file":             os.path.join(sensing_share, "config", "camera", "camera_params.yaml"),
         "gnss_param_file":                os.path.join(sensing_share, "config", "gnss", "zed_f9p_rover.yaml"),
         "ntrip_param_file":               os.path.join(sensing_share, "config", "gnss", "ntrip_client.yaml"),
         "cv7_param_file":                 os.path.join(sensing_share, "config", "imu", "microstrain_cv7.yaml"),
@@ -64,11 +64,7 @@ def generate_launch_description():
 
         *[DeclareLaunchArgument(k, default_value=v) for k, v in default_paths.items()],
 
-        DeclareLaunchArgument("camera_input_image_topic",        default_value="image_raw"),
-        DeclareLaunchArgument("camera_input_camera_info_topic",  default_value="camera_info"),
-        DeclareLaunchArgument("camera_output_image_topic",       default_value="processed/image"),
-        DeclareLaunchArgument("camera_output_camera_info_topic", default_value="processed/camera_info"),
-        DeclareLaunchArgument("camera_status_topic",             default_value="status"),
+        DeclareLaunchArgument("camera_device_path", default_value="/dev/video0"),
 
         DeclareLaunchArgument("gnss_namespace",   default_value="gnss"),
         DeclareLaunchArgument("gnss_rtcm_topic",  default_value="rtcm"),
@@ -91,13 +87,10 @@ def generate_launch_description():
             PushRosNamespace(sensing_namespace),
 
             _inc(camera_launch,
-                 "sensing_param_file", "camera_preprocess_param_file", "camera_status_topic",
                  condition=IfCondition(LaunchConfiguration("enable_camera")),
+                 camera_params_file=LaunchConfiguration("camera_params_file"),
+                 device_path=LaunchConfiguration("camera_device_path"),
                  module_namespace="camera",
-                 input_image_topic=LaunchConfiguration("camera_input_image_topic"),
-                 input_camera_info_topic=LaunchConfiguration("camera_input_camera_info_topic"),
-                 output_image_topic=LaunchConfiguration("camera_output_image_topic"),
-                 output_camera_info_topic=LaunchConfiguration("camera_output_camera_info_topic"),
             ),
 
             _inc(gnss_launch,
@@ -153,6 +146,5 @@ def generate_launch_description():
                 parameters=[LaunchConfiguration("inflation_cost_grid_param_file")],
                 condition=IfCondition(LaunchConfiguration("enable_inflation_cost_grid")),
             ),
-
         ]),
     ])

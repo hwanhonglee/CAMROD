@@ -7,8 +7,47 @@
 __pycache__/
 *.pyc
 
+# environment param / key 
+.env
+.env.local
+*.pem
+*.key
+
+# ROS 2 bag file (large storage - MB ~ GB)
+*.bag
+*.db3
+*.mcap
+
+# virtual env
+.venv/
+venv/
+env/
+
+# package/test cache
+*.egg-info/
+.pytest_cache/
+.coverage
+.mypy_cache/
+
+# colcon cache
+.colcon/
+
+# OS
+.DS_Store        # macOS
+Thumbs.db        # Windows
+
+# IDE
+.vscode/
+.idea/
+*.swp            # vim
+
 # HH_260428: SDK installer binaries — download via setup scripts, not stored in git.
 # ZED SDK: https://www.stereolabs.com/developers/release
 # Orbbec SDK: https://github.com/orbbec/OrbbecSDK/releases
 disable/vio_bridge/sdk_installers/*.run
 disable/vio_bridge/sdk_installers/*.deb
+
+# Node.js / frontend build artifacts
+node_modules/
+camrod_ui/runtime/assets/frontend/install/
+camrod_ui/runtime/assets/frontend/log/

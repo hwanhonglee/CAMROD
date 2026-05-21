@@ -1,0 +1,19 @@
+# Combo Profile: NavFn + RPP
+# 2026-05-21 sim 20s sweep observation: P=Y/C=Y/M=Y, displacement=7.196m
+# Tuning intent: keep current stable behavior for this combo.
+planner_server:
+  ros__parameters:
+    NavFn:
+      tolerance: 0.5
+      use_astar: True
+      allow_unknown: False
+
+controller_server:
+  ros__parameters:
+    RPP:
+      desired_linear_vel: 1.3
+      lookahead_dist: 0.8
+      min_lookahead_dist: 0.4
+      max_lookahead_dist: 2.0
+      use_rotate_to_heading: False
+      allow_reversing: False

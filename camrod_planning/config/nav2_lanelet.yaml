@@ -17,8 +17,8 @@ planner_server:
     expected_planner_frequency: 5.0
     # Support both NavFn and Smac; default selected in BT (PlannerSelector).
     # 2026-02-04: Prefer Smac2D so unsmoothed_plan is published by default.
-    planner_plugins: ["Smac2D", "GridBased"]
-    GridBased:
+    planner_plugins: ["Smac2D", "NavFn"]
+    NavFn:
       plugin: "nav2_navfn_planner/NavfnPlanner"
       tolerance: 0.5
       use_astar: True
@@ -67,8 +67,8 @@ controller_server:
     # Nav2 controller server reads *_checker_* keys; validator keys are ignored.
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["goal_checker"]
-    controller_plugins: ["FollowPath"]
-    default_controller: FollowPath
+    controller_plugins: ["RPP", "DWB"]
+    default_controller: RPP
 
     # Restore Humble plugin class names required by nav2_controller.
     progress_checker:
@@ -82,7 +82,7 @@ controller_server:
       yaw_goal_tolerance: 0.25
       stateful: False
 
-    FollowPath:
+    RPP:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       # HH_260507: Reverted to original values (0.7 change was ineffective at vehicle level).
       desired_linear_vel: 1.4
@@ -109,6 +109,46 @@ controller_server:
       use_cost_regulated_linear_velocity_scaling: True
       cost_scaling_dist: 0.6
       cost_scaling_gain: 1.0
+
+    DWB:
+      plugin: "dwb_core::DWBLocalPlanner"
+      debug_trajectory_details: False
+      min_vel_x: 0.0
+      min_vel_y: 0.0
+      max_vel_x: 1.4
+      max_vel_y: 0.0
+      max_vel_theta: 1.2
+      min_speed_xy: 0.0
+      max_speed_xy: 1.4
+      min_speed_theta: 0.0
+      acc_lim_x: 1.5
+      acc_lim_y: 0.0
+      acc_lim_theta: 3.0
+      decel_lim_x: -1.5
+      decel_lim_y: 0.0
+      decel_lim_theta: -3.0
+      vx_samples: 20
+      vy_samples: 1
+      vtheta_samples: 24
+      sim_time: 1.7
+      linear_granularity: 0.05
+      angular_granularity: 0.025
+      transform_tolerance: 0.2
+      xy_goal_tolerance: 0.3
+      trans_stopped_velocity: 0.10
+      short_circuit_trajectory_evaluation: True
+      stateful: True
+      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
+      BaseObstacle.scale: 0.02
+      PathAlign.scale: 24.0
+      PathAlign.forward_point_distance: 0.1
+      GoalAlign.scale: 18.0
+      GoalAlign.forward_point_distance: 0.1
+      PathDist.scale: 24.0
+      GoalDist.scale: 18.0
+      RotateToGoal.scale: 24.0
+      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.lookahead_time: -1.0
 
 local_costmap:
   local_costmap:

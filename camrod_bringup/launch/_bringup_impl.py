@@ -51,6 +51,7 @@ OVERRIDE_SPECS = {
         'nav2_vehicle_dwb_param_file': ('planning/nav2_vehicle_dwb_param_file',),
         'nav2_lanelet_param_file': ('planning/nav2_lanelet_param_file',),
         'nav2_behavior_param_file': ('planning/nav2_behavior_param_file',),
+        'nav2_combo_param_file': ('planning/nav2_combo_param_file',),
         'local_path_extractor_param_file': ('planning/local_path_extractor_param_file',),
         'path_cost_grids_param_file': ('planning/path_cost_grids_param_file',),
         'goal_snapper_param_file': ('planning/goal_snapper_param_file',),
@@ -61,7 +62,9 @@ OVERRIDE_SPECS = {
     'sensing': {
         'sensing_param_file': ('sensing/sensing_param_file',),
         'lidar_preprocess_param_file': ('sensing/lidar_preprocess_param_file',),
-        'camera_preprocess_param_file': ('sensing/camera_preprocess_param_file',),
+        # camera_preprocess_param_file is legacy. sensing.launch.py now uses camera_params_file.
+        'camera_params_file': ('sensing/camera_params_file', 'sensing/camera_preprocess_param_file'),
+        'camera_device_path': ('sensing/camera_device_path',),
         'imu_converter_param_file': ('sensing/imu_converter_param_file',),
         'radar_sensor_param_file': ('sensing/radar_sensor_param_file',),
         'radar_cost_grid_param_file': ('sensing/radar_cost_grid_param_file',),
@@ -559,6 +562,7 @@ def generate_launch_description():
         ('api_ui_port', cfg_get(launch_cfg, 'system/api_ui_port', 8010), 'API UI backend bind port'),
 
         ('enable_radar', cfg_get(launch_cfg, 'sensing/enable_radar', False), 'Enable serial radar'),
+        ('enable_camera', cfg_get(launch_cfg, 'sensing/enable_camera', True), 'Enable camera publisher stack'),
         ('enable_radar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_radar_cost_grid', True), 'Enable radar cost-grid'),
         ('enable_lidar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_lidar_cost_grid', True), 'Enable lidar cost-grid'),
         ('enable_inflation_cost_grid', cfg_get(launch_cfg, 'sensing/enable_inflation_cost_grid', True), 'Enable inflation cost-grid (lanelet+lidar+radar+global_path merger)'),
@@ -567,6 +571,8 @@ def generate_launch_description():
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
         ('enable_ntrip', cfg_get(launch_cfg, 'sensing/enable_ntrip', False), 'Enable GNSS NTRIP client'),
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
+        ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),
+        ('camera_device_path', cfg_get(launch_cfg, 'sensing/camera_device_path', '/dev/video0'), 'Camera device path'),
 
         ('map_namespace', cfg_get(launch_cfg, 'namespaces/map', 'map'), 'Map namespace'),
         ('sensing_namespace', cfg_get(launch_cfg, 'namespaces/sensing', 'sensing'), 'Sensing namespace'),
@@ -749,6 +755,7 @@ def generate_launch_description():
         'gnss_rtcm_topic': lc['gnss_rtcm_topic'],
         # In sim mode, fake_sensors.launch.py already publishes synthetic
         # GNSS/IMU/wheel data and obstacle cloud, so keep hardware drivers off.
+        'enable_camera': sim_switch(lc['sim'], 'false', lc['enable_camera']),
         'enable_ntrip': sim_switch(lc['sim'], 'false', lc['enable_ntrip']),
         'enable_radar': sim_switch(lc['sim'], 'false', lc['enable_radar']),
         'enable_radar_cost_grid': lc['enable_radar_cost_grid'],
@@ -757,6 +764,7 @@ def generate_launch_description():
         'enable_lidar_driver': sim_switch(lc['sim'], 'false', lc['enable_lidar_driver']),
         'enable_imu': sim_switch(lc['sim'], 'false', lc['enable_imu']),
         'enable_gnss': sim_switch(lc['sim'], 'false', lc['enable_gnss']),
+        'camera_device_path': lc['camera_device_path'],
         'enable_module_validator': 'false',
     }
     apply_cfg_overrides(sensing_args, sensing_overrides)
@@ -764,6 +772,8 @@ def generate_launch_description():
     perception_args = {
         'module_namespace': lc['perception_namespace'],
         'enable_lidar_obstacle': lc['perception_enable_lidar_obstacle'],
+        # In sim mode, default to LiDAR-only perception to avoid GPU/TensorRT dependency.
+        'enable_yolo': sim_switch(lc['sim'], 'false', lc['perception_enable_yolo']),
     }
     apply_cfg_overrides(perception_args, perception_overrides)
 
@@ -866,6 +876,7 @@ def generate_launch_description():
     set_if_not_empty(planning_args, 'nav2_vehicle_param_file', selected_nav2_vehicle_override)
     set_if_not_empty(planning_args, 'nav2_lanelet_param_file', planning_overrides['nav2_lanelet_param_file'])
     set_if_not_empty(planning_args, 'nav2_behavior_param_file', planning_overrides['nav2_behavior_param_file'])
+    set_if_not_empty(planning_args, 'nav2_combo_param_file', planning_overrides['nav2_combo_param_file'])
     set_if_not_empty(planning_args, 'path_cost_grids_param_file', planning_overrides['path_cost_grids_param_file'])
     set_if_not_empty(planning_args, 'goal_snapper_param_file', planning_overrides['goal_snapper_param_file'])
     set_if_not_empty(planning_args, 'centerline_snapper_param_file', planning_overrides['centerline_snapper_param_file'])

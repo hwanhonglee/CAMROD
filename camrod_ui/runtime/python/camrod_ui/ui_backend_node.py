@@ -1,34 +1,38 @@
 #!/usr/bin/env python3
 # HH_260421: UI backend simplified to direct destination-driven engage/goal dispatch.
+# HH_260520: Migrated HTTP server to FastAPI+uvicorn with WebSocket support.
+#            Added /battery_percentage and /AMR_arrive subscriptions.
 
 from __future__ import annotations
 
-import errno
+import asyncio
 import json
 import math
-import mimetypes
+import os
 import threading
-import time
 from dataclasses import dataclass, field
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List
-from urllib.parse import parse_qs, urlparse
+from typing import Any, Dict, List, Optional, Set
 
 import rclpy
 import yaml
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
-from std_msgs.msg import Bool, String
+from std_msgs.msg import Bool, Int32, String
+
+import uvicorn
 
 from camrod_ui.api_common import to_diag_level_int
 
 
 @dataclass
 class ApiState:
-    """In-memory snapshot exposed by the HTTP API."""
+    """In-memory snapshot exposed by the HTTP/WebSocket API."""
 
     engaged: bool = False
     ready: bool = False
@@ -41,6 +45,8 @@ class ApiState:
     destination: Dict[str, Any] = field(
         default_factory=lambda: {"site": "", "run": False}
     )
+    battery_percentage: int = -1
+    ws_site_states: Dict[str, bool] = field(default_factory=dict)
 
 
 @dataclass
@@ -56,22 +62,16 @@ class GoalKeypoint:
 
 
 class UiBackendNode(Node):
-    """HTTP backend that bridges UI destination commands to planning topics."""
+    """FastAPI backend that bridges UI destination commands to planning topics."""
 
-    # Initializes ROS interfaces and optional embedded HTTP server.
     def __init__(self) -> None:
         super().__init__("ui_backend")
 
         # HTTP server parameters.
-        self.host = str(self.declare_parameter("host", "127.0.0.1").value)
-        self.port = int(self.declare_parameter("port", 8010).value)
+        self.host = str(self.declare_parameter("host", "0.0.0.0").value)
+        self.port = int(self.declare_parameter("port", 8000).value)
         self.enable_http_server = bool(self.declare_parameter("enable_http_server", True).value)
-        # Avoid fatal crash when UI backend is relaunched while previous process still holds the port.
-        self.port_auto_increment = bool(self.declare_parameter("port_auto_increment", True).value)
-        self.port_search_max = int(self.declare_parameter("port_search_max", 20).value)
-        self.fail_on_bind_error = bool(self.declare_parameter("fail_on_bind_error", False).value)
         self.frontend_dir = Path(str(self.declare_parameter("frontend_dir", "").value))
-        self.web_fallback_dir = self._resolve_web_fallback_dir()
 
         # Topic and destination dispatch parameters.
         self.ui_destination_topic = str(
@@ -80,14 +80,17 @@ class UiBackendNode(Node):
         self.planning_engage_topic = str(
             self.declare_parameter("planning_engage_topic", "/planning/engage").value
         )
-        self.planning_engaged_state_topic = str(
-            self.declare_parameter("planning_engaged_state_topic", "/planning/engaged").value
-        )
         self.planning_goal_key_topic = str(
             self.declare_parameter("planning_goal_key_topic", "/planning/state_machine/goal_key").value
         )
         self.planning_goal_pose_topic = str(
             self.declare_parameter("planning_goal_pose_topic", "/goal_pose").value
+        )
+        self.battery_topic = str(
+            self.declare_parameter("battery_topic", "/battery_percentage").value
+        )
+        self.amr_arrive_topic = str(
+            self.declare_parameter("amr_arrive_topic", "/AMR_arrive").value
         )
         self.publish_goal_key = bool(self.declare_parameter("publish_goal_key", True).value)
         self.publish_goal_pose = bool(self.declare_parameter("publish_goal_pose", True).value)
@@ -117,15 +120,16 @@ class UiBackendNode(Node):
 
         self._keypoints_by_goal_key = self._load_camping_site_keypoints(self.camping_sites_yaml)
         self._lock = threading.Lock()
-        self._state = ApiState()
+        self._state = ApiState(
+            ws_site_states={s: False for s in self.site_names}
+        )
+
+        # WebSocket client management.
+        self._ws_clients: Set[WebSocket] = set()
+        self._ws_clients_lock = threading.Lock()
+        self._main_loop: Optional[asyncio.AbstractEventLoop] = None
 
         # Subscriptions.
-        self.sub_engaged = self.create_subscription(
-            Bool,
-            self.planning_engaged_state_topic,
-            self._on_engaged_state,
-            10,
-        )
         self.sub_destination = self.create_subscription(
             String,
             self.ui_destination_topic,
@@ -138,6 +142,18 @@ class UiBackendNode(Node):
             self._on_diagnostics_agg,
             10,
         )
+        self.sub_battery = self.create_subscription(
+            Int32,
+            self.battery_topic,
+            self._on_battery,
+            10,
+        )
+        self.sub_amr_arrive = self.create_subscription(
+            Bool,
+            self.amr_arrive_topic,
+            self._on_amr_arrive,
+            10,
+        )
 
         # Publishers.
         self.pub_destination = self.create_publisher(String, self.ui_destination_topic, 10)
@@ -145,10 +161,9 @@ class UiBackendNode(Node):
         self.pub_goal_key = self.create_publisher(String, self.planning_goal_key_topic, 10)
         self.pub_goal_pose = self.create_publisher(PoseStamped, self.planning_goal_pose_topic, 10)
 
-        self._server: ThreadingHTTPServer | None = None
-        self._server_thread: threading.Thread | None = None
+        self._server_thread: Optional[threading.Thread] = None
         if self.enable_http_server:
-            self._start_http_server()
+            self._start_fastapi_server()
 
         self.get_logger().info(
             "ui_backend ready: "
@@ -161,19 +176,6 @@ class UiBackendNode(Node):
             f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'}"
         )
 
-    # Resolves fallback static-web directory when frontend build path is absent.
-    def _resolve_web_fallback_dir(self) -> Path:
-        try:
-            package_share = Path(get_package_share_directory("camrod_ui"))
-            packaged_web = package_share / "assets" / "web"
-            if packaged_web.exists():
-                return packaged_web
-        except PackageNotFoundError:
-            pass
-        source_web = Path(__file__).resolve().parents[2] / "assets" / "web"
-        return source_web
-
-    # Parses optional site-to-goal-key remap parameter.
     def _parse_site_goal_map(self, raw_value: object) -> Dict[str, str]:
         parsed: Dict[str, str] = {}
         if not isinstance(raw_value, list):
@@ -189,7 +191,6 @@ class UiBackendNode(Node):
                 parsed[site] = goal_key
         return parsed
 
-    # Loads camping-site keypoints used to build goal_pose from site selection.
     def _load_camping_site_keypoints(self, yaml_path: str) -> Dict[str, GoalKeypoint]:
         keypoints: Dict[str, GoalKeypoint] = {}
         path = Path(yaml_path).expanduser() if yaml_path else None
@@ -235,12 +236,9 @@ class UiBackendNode(Node):
         )
         return keypoints
 
-    # Ensures HTTP server is terminated before ROS node shutdown.
     def destroy_node(self) -> bool:
-        self._shutdown_http_server()
         return super().destroy_node()
 
-    # Derives operation-mode text from engaged/ready state.
     def _compute_operation_mode(self, engaged: bool, ready: bool) -> str:
         if engaged and ready:
             return "AUTO"
@@ -248,7 +246,6 @@ class UiBackendNode(Node):
             return "WAITING_FOR_READY"
         return "STOP"
 
-    # Extracts logical module name from a diagnostic status entry.
     def _extract_module_name(self, status: DiagnosticStatus) -> str:
         for kv in status.values:
             if kv.key == "category" and kv.value:
@@ -261,22 +258,32 @@ class UiBackendNode(Node):
                 return parts[0]
         return "unknown"
 
-    # Converts yaw in degrees to quaternion components.
     def _yaw_deg_to_quaternion(self, yaw_deg: float) -> tuple[float, float, float, float]:
         yaw_rad = math.radians(float(yaw_deg))
         half = yaw_rad * 0.5
         return (0.0, 0.0, math.sin(half), math.cos(half))
 
-    # Updates engage state cache from planning engaged-state topic.
-    def _on_engaged_state(self, msg: Bool) -> None:
-        with self._lock:
-            self._state.engaged = bool(msg.data)
-            self._state.operation_mode = self._compute_operation_mode(
-                self._state.engaged,
-                self._state.ready,
+    # ── WebSocket broadcast helpers ──────────────────────────────────────────
+
+    def _schedule_broadcast(self, payload: dict) -> None:
+        """Schedule a broadcast from a ROS2 callback thread into the asyncio loop."""
+        if self._main_loop is not None:
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast(payload), self._main_loop
             )
 
-    # Updates diagnostics cache and derives ready/module states.
+    async def _broadcast(self, payload: dict) -> None:
+        with self._ws_clients_lock:
+            clients = list(self._ws_clients)
+        for client in clients:
+            try:
+                await client.send_json(payload)
+            except Exception:
+                with self._ws_clients_lock:
+                    self._ws_clients.discard(client)
+
+    # ── ROS2 subscription callbacks ─────────────────────────────────────────
+
     def _on_diagnostics_agg(self, msg: DiagnosticArray) -> None:
         diagnostics: List[Dict[str, Any]] = []
         module_levels: Dict[str, int] = {}
@@ -335,8 +342,39 @@ class UiBackendNode(Node):
                 self._state.ready,
             )
 
-    # Resolves goal key for a selected UI site.
-    def _resolve_goal_key_for_site(self, site: str) -> str | None:
+    def _on_battery(self, msg: Int32) -> None:
+        pct = max(0, min(100, int(msg.data)))
+        with self._lock:
+            self._state.battery_percentage = pct
+        self._schedule_broadcast({"battery": pct})
+
+    def _on_amr_arrive(self, msg: Bool) -> None:
+        if not msg.data:
+            return
+        with self._lock:
+            site = self._state.destination.get("site", "")
+            self._state.ws_site_states = {s: False for s in self.site_names}
+        if site:
+            self._schedule_broadcast({"arrived": site})
+            self._schedule_broadcast({"site": site, "state": False})
+        self._publish_engage(False, source="amr_arrive")
+
+    def _on_destination_command(self, msg: String) -> None:
+        parsed = self._parse_destination_payload(msg.data)
+        if parsed is None:
+            return
+        site, run = parsed
+        result = self._apply_destination_command(site=site, run=run, source="destination_topic")
+        self.get_logger().info(
+            "destination dispatch summary: "
+            f"site={site} run={str(run).lower()} "
+            f"goal_key={result.get('goal_key', '')} "
+            f"goal_pose={str(bool(result.get('goal_pose_published', False))).lower()}"
+        )
+
+    # ── Goal and engage publishing ────────────────────────────────────────────
+
+    def _resolve_goal_key_for_site(self, site: str) -> Optional[str]:
         if site in self.site_to_goal_key_map:
             mapped = self.site_to_goal_key_map[site]
             if mapped in self._keypoints_by_goal_key:
@@ -361,19 +399,16 @@ class UiBackendNode(Node):
             )
             return fallback
 
-        # If no keypoint is available, still allow key-name-only dispatch for state-machine users.
         if site_text.startswith("B") and site_text[1:].isdigit():
             return f"camping_site_{int(site_text[1:])}"
         return None
 
-    # Publishes direct engage command.
     def _publish_engage(self, enabled: bool, source: str) -> None:
         msg = Bool()
         msg.data = bool(enabled)
         self.pub_engage.publish(msg)
 
         with self._lock:
-            # Optimistic UI state update; topic feedback from /planning/engaged will refresh this.
             self._state.engaged = bool(enabled)
             self._state.operation_mode = self._compute_operation_mode(
                 self._state.engaged,
@@ -385,7 +420,6 @@ class UiBackendNode(Node):
             f"{str(bool(enabled)).lower()}"
         )
 
-    # Publishes goal key and optional goal pose derived from keypoint YAML.
     def _publish_goal_for_site(self, site: str, source: str) -> Dict[str, Any]:
         goal_key = self._resolve_goal_key_for_site(site)
         if not goal_key:
@@ -435,8 +469,7 @@ class UiBackendNode(Node):
             "message": "ok",
         }
 
-    # Parses destination JSON payload from /ui/selected_destination.
-    def _parse_destination_payload(self, raw: str) -> tuple[str, bool] | None:
+    def _parse_destination_payload(self, raw: str) -> Optional[tuple[str, bool]]:
         text = str(raw).strip()
         if not text:
             return None
@@ -462,12 +495,10 @@ class UiBackendNode(Node):
 
         return (site, run)
 
-    # Applies destination command semantics: engage + goal dispatch.
     def _apply_destination_command(self, site: str, run: bool, source: str) -> Dict[str, Any]:
         if self.publish_engage_from_destination:
             self._publish_engage(run, source=f"{source}:destination")
 
-        # Only dispatch target goals when run=true.
         if not run:
             return {
                 "site": site,
@@ -486,21 +517,6 @@ class UiBackendNode(Node):
             "message": str(goal_result.get("message", "ok")),
         }
 
-    # Handles /ui/selected_destination messages and relays to planning topics.
-    def _on_destination_command(self, msg: String) -> None:
-        parsed = self._parse_destination_payload(msg.data)
-        if parsed is None:
-            return
-        site, run = parsed
-        result = self._apply_destination_command(site=site, run=run, source="destination_topic")
-        self.get_logger().info(
-            "destination dispatch summary: "
-            f"site={site} run={str(run).lower()} "
-            f"goal_key={result.get('goal_key', '')} "
-            f"goal_pose={str(bool(result.get('goal_pose_published', False))).lower()}"
-        )
-
-    # Publishes the unified destination selection topic with site and run state only.
     def _publish_destination_command(self, site: str, run: bool, source: str) -> Dict[str, Any]:
         payload = {"site": site, "run": bool(run)}
 
@@ -517,7 +533,6 @@ class UiBackendNode(Node):
         )
         return payload
 
-    # Returns an atomic copy of current API/UI state.
     def _snapshot(self) -> Dict[str, Any]:
         with self._lock:
             return {
@@ -530,34 +545,35 @@ class UiBackendNode(Node):
                 "diagnostics_agg_count": self._state.diagnostics_agg_count,
                 "diagnostics_agg_error_count": self._state.diagnostics_agg_error_count,
                 "destination": dict(self._state.destination),
+                "battery_percentage": self._state.battery_percentage,
             }
 
-    # Publishes engage command from HTTP action.
+    # ── Public API methods (called by HTTP handlers) ──────────────────────────
+
     def set_engage(self, value: bool) -> Dict[str, Any]:
         self._publish_engage(bool(value), source="http")
+        self._schedule_broadcast({"engage": bool(value)})
         return {"success": True, "message": "engage command published", "value": bool(value)}
 
-    # Publishes operation-mode command from HTTP action.
     def set_operation_mode(self, value: bool) -> Dict[str, Any]:
-        # In this stack, operation-mode bool is equivalent to engage command.
         self._publish_engage(bool(value), source="http_operation_mode")
+        self._schedule_broadcast({"engage": bool(value)})
         return {
             "success": True,
             "message": "operation_mode command forwarded as engage",
             "auto": bool(value),
         }
 
-    # Publishes AUTO shortcut from HTTP action.
     def set_auto(self) -> Dict[str, Any]:
         self._publish_engage(True, source="http_auto")
+        self._schedule_broadcast({"engage": True})
         return {"success": True, "message": "auto command published"}
 
-    # Publishes STOP shortcut from HTTP action.
     def set_stop(self) -> Dict[str, Any]:
         self._publish_engage(False, source="http_stop")
+        self._schedule_broadcast({"engage": False})
         return {"success": True, "message": "stop command published"}
 
-    # Publishes destination selection from UI as a single site/run message.
     def set_destination(self, site: str, run: bool) -> Dict[str, Any]:
         normalized_site = str(site).strip()
         if not normalized_site:
@@ -569,6 +585,12 @@ class UiBackendNode(Node):
                 "valid_sites": list(self.site_names),
             }
 
+        with self._lock:
+            self._state.ws_site_states = {s: (s == normalized_site and run) for s in self.site_names}
+        self._schedule_broadcast({
+            "states": {s: (s == normalized_site and run) for s in self.site_names}
+        })
+
         payload = self._publish_destination_command(
             site=normalized_site,
             run=bool(run),
@@ -576,178 +598,194 @@ class UiBackendNode(Node):
         )
         return {"success": True, "destination": payload}
 
-    # Starts embedded HTTP server and binds request handlers.
-    def _start_http_server(self) -> None:
-        node = self
+    # ── FastAPI server ────────────────────────────────────────────────────────
 
-        # Reusable TCP server reduces bind failures after rapid restart.
-        class ReusableThreadingHTTPServer(ThreadingHTTPServer):
-            allow_reuse_address = True
+    def _resolve_frontend_dir(self) -> Optional[Path]:
+        def realdir(p: Path) -> Path:
+            # Resolve symlinks so Starlette's security check (commonprefix) passes.
+            return Path(os.path.realpath(str(p)))
 
-        class Handler(BaseHTTPRequestHandler):
-            # Redirects default HTTP access log into ROS debug logger.
-            def log_message(self, fmt: str, *args) -> None:  # noqa: A003
-                node.get_logger().debug("http: " + (fmt % args))
-
-            # Writes JSON response with UTF-8 payload.
-            def _send_json(self, code: int, payload: Dict[str, Any]) -> None:
-                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-                self.send_response(code)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-
-            # Serves static file from frontend directory.
-            def _send_file(self, file_path: Path) -> None:
-                if not file_path.exists() or not file_path.is_file():
-                    self.send_error(404, "Not Found")
-                    return
-                mime, _ = mimetypes.guess_type(str(file_path))
-                mime = mime or "application/octet-stream"
-                data = file_path.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", mime)
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-
-            # Handles UI API state/health endpoints and static frontend GET requests.
-            def do_GET(self) -> None:  # noqa: N802
-                parsed = urlparse(self.path)
-                if parsed.path == "/ui/state":
-                    self._send_json(200, node._snapshot())
-                    return
-                if parsed.path == "/ui/health":
-                    self._send_json(200, {"ok": True, "node": node.get_name()})
-                    return
-                if parsed.path == "/ui/destination":
-                    snapshot = node._snapshot()
-                    self._send_json(
-                        200,
-                        {
-                            "destination": snapshot.get("destination", {"site": "", "run": False}),
-                            "valid_sites": list(node.site_names),
-                        },
-                    )
-                    return
-                if parsed.path == "/ui/diagnostics":
-                    snapshot = node._snapshot()
-                    self._send_json(
-                        200,
-                        {"status": snapshot.get("diagnostics", [])},
-                    )
-                    return
-
-                base_dir = (
-                    node.frontend_dir
-                    if node.frontend_dir and node.frontend_dir.exists()
-                    else node.web_fallback_dir
-                )
-                rel_path = parsed.path.lstrip("/") or "index.html"
-                rel_parts = Path(rel_path).parts
-                # Reject traversal while allowing symlink-install frontend files.
-                if any(part == ".." for part in rel_parts):
-                    self.send_error(403, "Forbidden")
-                    return
-                candidate = base_dir / rel_path
-                if not candidate.exists() and rel_path != "index.html":
-                    candidate = base_dir / "index.html"
-                self._send_file(candidate)
-
-            # Handles UI command POST requests.
-            def do_POST(self) -> None:  # noqa: N802
-                parsed = urlparse(self.path)
-                query = parse_qs(parsed.query)
-
-                if parsed.path == "/ui/engage":
-                    value_raw = query.get("value", ["false"])[0]
-                    value = str(value_raw).lower() in {"1", "true", "yes", "on"}
-                    result = node.set_engage(value)
-                    self._send_json(200 if result.get("success") else 503, result)
-                    return
-
-                if parsed.path == "/ui/operation_mode":
-                    value_raw = query.get("auto", ["false"])[0]
-                    value = str(value_raw).lower() in {"1", "true", "yes", "on"}
-                    result = node.set_operation_mode(value)
-                    self._send_json(200 if result.get("success") else 503, result)
-                    return
-
-                if parsed.path == "/ui/auto":
-                    result = node.set_auto()
-                    self._send_json(200 if result.get("success") else 503, result)
-                    return
-
-                if parsed.path == "/ui/stop":
-                    result = node.set_stop()
-                    self._send_json(200 if result.get("success") else 503, result)
-                    return
-
-                if parsed.path == "/ui/destination":
-                    site = str(query.get("site", [""])[0]).strip()
-                    run_raw = query.get("run", query.get("value", ["false"]))[0]
-                    run = str(run_raw).lower() in {"1", "true", "yes", "on"}
-                    result = node.set_destination(site=site, run=run)
-                    self._send_json(200 if result.get("success") else 400, result)
-                    return
-
-                self.send_error(404, "Not Found")
-
-        bind_error: Exception | None = None
-        base_port = int(self.port)
-        max_tries = max(1, int(self.port_search_max) + 1) if self.port_auto_increment else 1
-        for offset in range(max_tries):
-            try_port = base_port + offset
-            try:
-                self._server = ReusableThreadingHTTPServer((self.host, try_port), Handler)
-                self.port = try_port
-                bind_error = None
-                break
-            except OSError as exc:
-                bind_error = exc
-                if exc.errno == errno.EADDRINUSE and self.port_auto_increment and offset + 1 < max_tries:
-                    self.get_logger().warn(
-                        f"ui backend port busy: {self.host}:{try_port}, retrying next port"
-                    )
-                    continue
-                break
-
-        if self._server is None:
-            message = (
-                f"ui backend http bind failed on {self.host}:{base_port}"
-                + (f" ({bind_error})" if bind_error else "")
-            )
-            if self.fail_on_bind_error:
-                raise RuntimeError(message) from bind_error
-            self.get_logger().error(message)
-            self.get_logger().warn("ui backend will keep ROS bridge alive without embedded HTTP server")
-            return
-
-        self._server_thread = threading.Thread(
-            target=self._server.serve_forever,
-            name="camrod_ui_http",
-            daemon=True,
-        )
-        self._server_thread.start()
-        self.get_logger().info(f"ui backend http listening: http://{self.host}:{self.port}")
-
-    # Stops embedded HTTP server if running.
-    def _shutdown_http_server(self) -> None:
-        if self._server is None:
-            return
+        if self.frontend_dir and self.frontend_dir.exists():
+            return realdir(self.frontend_dir)
         try:
-            self._server.shutdown()
-            self._server.server_close()
-        except Exception:  # noqa: BLE001
+            share = Path(get_package_share_directory("camrod_ui"))
+            candidate = share / "assets" / "frontend" / "build"
+            if candidate.exists():
+                return realdir(candidate)
+        except PackageNotFoundError:
             pass
-        self._server = None
-        if self._server_thread is not None:
-            self._server_thread.join(timeout=1.0)
-            self._server_thread = None
+        source_candidate = Path(__file__).resolve().parents[2] / "assets" / "frontend" / "build"
+        if source_candidate.exists():
+            return realdir(source_candidate)
+        return None
+
+    def _start_fastapi_server(self) -> None:
+        node = self
+        app = FastAPI(title="camrod_ui_backend")
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        # ── WebSocket endpoint ────────────────────────────────────────────────
+
+        @app.websocket("/ws")
+        async def websocket_endpoint(ws: WebSocket) -> None:
+            await ws.accept()
+            with node._ws_clients_lock:
+                node._ws_clients.add(ws)
+
+            # Send initial state on connect.
+            with node._lock:
+                states = dict(node._state.ws_site_states)
+                engage = node._state.engaged
+                battery = node._state.battery_percentage
+            await ws.send_json({"states": states})
+            await ws.send_json({"engage": engage})
+            if battery >= 0:
+                await ws.send_json({"battery": battery})
+
+            try:
+                while True:
+                    data = await ws.receive_text()
+                    payload = json.loads(data)
+
+                    # {"site": "B1", "state": true/false}
+                    if "site" in payload and "state" in payload:
+                        site = str(payload["site"])
+                        new_state = bool(payload["state"])
+                        if new_state:
+                            # Deactivate all other sites, activate this one.
+                            with node._lock:
+                                node._state.ws_site_states = {
+                                    s: (s == site) for s in node.site_names
+                                }
+                            node._publish_destination_command(site, run=True, source="ws")
+                            node._apply_destination_command(site=site, run=True, source="ws")
+                            await node._broadcast(
+                                {"states": {s: (s == site) for s in node.site_names}}
+                            )
+                            await node._broadcast({"engage": True})
+                        else:
+                            with node._lock:
+                                node._state.ws_site_states[site] = False
+                            node._publish_engage(False, source="ws_toggle_off")
+                            await node._broadcast({"site": site, "state": False})
+                            await node._broadcast({"engage": False})
+
+                    # {"engage": true/false}
+                    if "engage" in payload:
+                        new_engage = bool(payload["engage"])
+                        node._publish_engage(new_engage, source="ws_engage")
+                        await node._broadcast({"engage": new_engage})
+
+            except WebSocketDisconnect:
+                pass
+            finally:
+                with node._ws_clients_lock:
+                    node._ws_clients.discard(ws)
+
+        # ── REST API endpoints ────────────────────────────────────────────────
+
+        @app.get("/ui/state")
+        async def get_state() -> JSONResponse:
+            return JSONResponse(node._snapshot())
+
+        @app.get("/ui/health")
+        async def get_health() -> JSONResponse:
+            return JSONResponse({"ok": True, "node": node.get_name()})
+
+        @app.get("/ui/destination")
+        async def get_destination() -> JSONResponse:
+            snap = node._snapshot()
+            return JSONResponse({
+                "destination": snap.get("destination", {"site": "", "run": False}),
+                "valid_sites": list(node.site_names),
+            })
+
+        @app.get("/ui/diagnostics")
+        async def get_diagnostics() -> JSONResponse:
+            snap = node._snapshot()
+            return JSONResponse({"status": snap.get("diagnostics", [])})
+
+        @app.get("/api/diagnostics")
+        async def get_api_diagnostics() -> JSONResponse:
+            with node._lock:
+                diags = list(node._state.diagnostics)
+            return JSONResponse({"status": diags})
+
+        @app.post("/ui/engage")
+        async def post_engage(value: str = "false") -> JSONResponse:
+            enabled = value.lower() in {"1", "true", "yes", "on"}
+            result = node.set_engage(enabled)
+            return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
+        @app.post("/ui/operation_mode")
+        async def post_operation_mode(auto: str = "false") -> JSONResponse:
+            enabled = auto.lower() in {"1", "true", "yes", "on"}
+            result = node.set_operation_mode(enabled)
+            return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
+        @app.post("/ui/auto")
+        async def post_auto() -> JSONResponse:
+            result = node.set_auto()
+            return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
+        @app.post("/ui/stop")
+        async def post_stop() -> JSONResponse:
+            result = node.set_stop()
+            return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
+        @app.post("/ui/destination")
+        async def post_destination(site: str = "", run: str = "false") -> JSONResponse:
+            run_bool = run.lower() in {"1", "true", "yes", "on"}
+            result = node.set_destination(site=site, run=run_bool)
+            return JSONResponse(result, status_code=200 if result.get("success") else 400)
+
+        # ── Static frontend serving ───────────────────────────────────────────
+        # Starlette 0.18 StaticFiles rejects symlinked files (commonprefix check
+        # fails when realpath(file) points outside realpath(directory) due to
+        # --symlink-install chains).  Serve all static assets manually so symlinks
+        # are followed transparently.
+
+        frontend_dir = node._resolve_frontend_dir()
+        if frontend_dir and frontend_dir.exists():
+            index_html = frontend_dir / "index.html"
+
+            @app.get("/{full_path:path}")
+            async def serve_spa(full_path: str) -> FileResponse:
+                candidate = frontend_dir / full_path
+                real = Path(os.path.realpath(str(candidate)))
+                if real.is_file():
+                    return FileResponse(str(real))
+                return FileResponse(str(os.path.realpath(str(index_html))))
+        else:
+            @app.get("/")
+            async def serve_fallback() -> JSONResponse:
+                return JSONResponse({"message": "frontend not available"}, status_code=503)
+
+        # ── Server thread ─────────────────────────────────────────────────────
+
+        def _run() -> None:
+            loop = asyncio.new_event_loop()
+            node._main_loop = loop
+            config = uvicorn.Config(
+                app,
+                host=node.host,
+                port=node.port,
+                log_level="warning",
+                loop="asyncio",
+            )
+            server = uvicorn.Server(config)
+            node.get_logger().info(f"ui backend fastapi listening: http://{node.host}:{node.port}")
+            loop.run_until_complete(server.serve())
+
+        self._server_thread = threading.Thread(target=_run, name="camrod_ui_fastapi", daemon=True)
+        self._server_thread.start()
 
 
-# Spins the UI backend node.
 def main() -> None:
     rclpy.init()
     node = UiBackendNode()

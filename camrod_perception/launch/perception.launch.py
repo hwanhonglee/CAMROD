@@ -27,10 +27,14 @@ def generate_launch_description():
         DeclareLaunchArgument('module_namespace',       default_value='perception'),
         DeclareLaunchArgument('perception_param_file',  default_value=default_param),
         DeclareLaunchArgument('enable_lidar_obstacle',  default_value='true'),
+        DeclareLaunchArgument('enable_yolo',            default_value='true'),
 
         _inc(pkg_share('camrod_perception', os.path.join('launch', 'obstacle_fusion.launch.py')),
              'module_namespace', 'perception_param_file'),
 
         _inc(pkg_share('camrod_perception', os.path.join('launch', 'obstacle_lidar.launch.py')),
              'module_namespace', 'perception_param_file', 'enable_lidar_obstacle'),
+
+        _inc(pkg_share('camrod_perception', os.path.join('launch', 'yolo.launch.py')),
+             'module_namespace', 'perception_param_file', 'enable_yolo'),
     ])

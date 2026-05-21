@@ -184,11 +184,6 @@ public:
     //   Basis: wet-road stopping distance + reaction time + margin at operating speed per direction.
     this->declare_parameter<std::vector<int>>(
       "sensor_range_config_mm", std::vector<int>{500, 800, 800, 800, 800, 1500});
-    // HH_260513: sensor_angle_config_values: per-sensor detection angle written to 0x0208.
-    //   Same order as sensor_names. Falls back to global angle_config_value when empty.
-    //   Values: 1=15° 2=30° 3=45° 4=60° 5=75°.
-    this->declare_parameter<std::vector<int>>(
-      "sensor_angle_config_values", std::vector<int>{});
 
     // Sensor definitions (name, frame_id, port, topic)
     // Default values are Linux examples; replace with your actual /dev paths or udev symlinks.
@@ -230,7 +225,6 @@ public:
     angle_config_value_ = static_cast<uint16_t>(this->get_parameter("angle_config_value").as_int());
     const auto sensor_max_ranges = this->get_parameter("sensor_max_ranges_m").as_double_array();
     const auto sensor_range_config_mm = this->get_parameter("sensor_range_config_mm").as_integer_array();
-    const auto sensor_angle_configs = this->get_parameter("sensor_angle_config_values").as_integer_array();
     avg_radar_pub_ = this->create_publisher<AvgSensingRadar>(radar_status_topic_, 10);
 
     sensors_.resize(n);
@@ -256,10 +250,6 @@ public:
       sensors_[i].range_config_mm =
         (i < sensor_range_config_mm.size() && sensor_range_config_mm[i] > 0)
         ? static_cast<int>(sensor_range_config_mm[i]) : 1500;
-      // HH_260513: Per-sensor angle config. Written to 0x0208 at port open.
-      sensors_[i].angle_config_value =
-        (i < sensor_angle_configs.size() && sensor_angle_configs[i] > 0)
-        ? static_cast<uint16_t>(sensor_angle_configs[i]) : angle_config_value_;
       pubs_[i] = this->create_publisher<avg_msgs::msg::Range>(topics_[i], range_qos);
     }
 
@@ -305,9 +295,6 @@ private:
     //   Stops the sensor from reporting objects beyond this distance at the hardware level.
     //   Default values match stopping-distance physics per direction.
     int range_config_mm{1500};
-    // HH_260513: Per-sensor detection angle written to register 0x0208 (1=15°…5=75°).
-    //   Populated from sensor_angle_config_values; falls back to global angle_config_value_.
-    uint16_t angle_config_value{5};
 
     int last_mm{-1};
     double last_dt_ms{0.0};
@@ -341,11 +328,10 @@ private:
   }
 
   // HH_260422: Writes detection angle (0x0208) and hardware range limit (0x021F) on port open.
-  // HH_260513: Uses per-sensor angle_config_value (from sensor_angle_config_values array).
   void write_angle_config_register(SensorRuntime& s)
   {
     if (!write_angle_config_ || s.fd < 0) return;
-    write_single_register(s, kRegAngleConfig, s.angle_config_value, "angle_config");
+    write_single_register(s, kRegAngleConfig, angle_config_value_, "angle_config");
     write_single_register(s, kRegRangeConfig,
       static_cast<uint16_t>(s.range_config_mm), "range_config");
   }

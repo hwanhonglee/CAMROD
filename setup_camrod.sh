@@ -86,7 +86,13 @@ clone_ext() {
 }
 
 # ── System packages required before rosdep ──────────────────────────────────
-REQUIRED_SYS_PKGS=(ros-humble-nav2-graceful-controller)
+# Keep critical runtime deps here so a fresh machine can launch core stacks
+# even when rosdep is skipped or partially unresolved.
+REQUIRED_SYS_PKGS=(
+  ros-humble-nav2-graceful-controller
+  python3-fastapi
+  python3-uvicorn
+)
 _missing=()
 for _pkg in "${REQUIRED_SYS_PKGS[@]}"; do
   dpkg -l "${_pkg}" 2>/dev/null | grep -q "^ii" || _missing+=("${_pkg}")

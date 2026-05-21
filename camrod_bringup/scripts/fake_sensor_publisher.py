@@ -11,7 +11,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rcl_interfaces.msg import SetParametersResult
 
-from geometry_msgs.msg import PoseStamped, Quaternion
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Quaternion
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry, Path
 from sensor_msgs.msg import NavSatFix, NavSatStatus
@@ -60,6 +60,14 @@ def ecef_to_enu(ref_ecef, cur_ecef, lat_ref, lon_ref):
 def yaw_to_quat(yaw):
     half = yaw * 0.5
     return Quaternion(x=0.0, y=0.0, z=math.sin(half), w=math.cos(half))
+
+
+# Implements `quat_to_yaw` behavior.
+def quat_to_yaw(quat):
+    # Standard yaw extraction from quaternion.
+    siny_cosp = 2.0 * (quat.w * quat.z + quat.x * quat.y)
+    cosy_cosp = 1.0 - 2.0 * (quat.y * quat.y + quat.z * quat.z)
+    return math.atan2(siny_cosp, cosy_cosp)
 
 # Implements `normalize_angle` behavior.
 def normalize_angle(angle):
@@ -111,6 +119,10 @@ class FakeSensorPublisher(Node):
             self.cmd_vel_timeout_s = cmd_vel_timeout_sec_legacy
         self.max_cmd_speed_mps = float(
             self.declare_parameter("max_cmd_speed_mps", 2.5).value
+        )
+        # Accept RViz "2D Pose Estimate" reset input.
+        self.initialpose_topic = str(
+            self.declare_parameter("initialpose_topic", "/localization/initialpose").value
         )
         # HH_260428: Free navigation sim mode — integrates cmd_vel (linear.x + angular.z)
         # as a unicycle model instead of constraining position to the centerline.
@@ -354,6 +366,12 @@ class FakeSensorPublisher(Node):
             self.sub_cmd_vel = self.create_subscription(
                 Twist, self.cmd_vel_motion_topic, self._on_cmd_vel, 10
             )
+        self.sub_initialpose = self.create_subscription(
+            PoseWithCovarianceStamped,
+            self.initialpose_topic,
+            self._on_initialpose,
+            10,
+        )
 
         # Optional pose-yaw align bridge for fake/sim mode.
         self.pub_localization_pose_yaw_aligned = None
@@ -409,6 +427,37 @@ class FakeSensorPublisher(Node):
         # HH_260428: Track angular.z for free nav mode (unicycle steering).
         self._cmd_angular_z = float(msg.angular.z)
         self._last_cmd_time = time.time()
+
+    # Handles external initial-pose reset requests (e.g., RViz `P` tool).
+    def _on_initialpose(self, msg: PoseWithCovarianceStamped):
+        pose = msg.pose.pose
+        x = float(pose.position.x)
+        y = float(pose.position.y)
+        yaw = normalize_angle(quat_to_yaw(pose.orientation))
+
+        now_sec = time.time()
+        if self.use_free_nav_sim:
+            self._free_nav_x = x
+            self._free_nav_y = y
+            self._free_nav_yaw = yaw
+            mode_label = "free_nav"
+        else:
+            # Centerline mode cannot leave lanelet path. Snap to nearest point.
+            self._start_distance = self._nearest_distance_on_path(x, y)
+            self._motion_distance = 0.0
+            mode_label = "centerline_snap"
+
+        # Reset derived motion states to avoid a one-cycle yaw-rate spike.
+        self._last_yaw = yaw
+        self._last_yaw_time = now_sec
+        self._last_timer_time = now_sec
+        self._cmd_linear_x = 0.0
+        self._cmd_angular_z = 0.0
+        self._last_cmd_time = None
+
+        self.get_logger().info(
+            f"initialpose applied ({mode_label}): x={x:.2f}, y={y:.2f}, yaw={yaw:.2f} rad"
+        )
 
     # Implements `_load_centerline_path` behavior.
     def _load_centerline_path(self):

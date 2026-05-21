@@ -8,6 +8,8 @@ endif()
 # Core build system
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 # Project message layer
 find_package(avg_msgs REQUIRED)
@@ -21,6 +23,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common filters segmentation sample_consensus search kdtree)
+option(CAMROD_ENABLE_CAMERA_PUBLISHER "Build Jetson camera publisher node" ON)
 
 # PCL exports optional compile definitions (e.g., Eigen alignment flags).
 if(PCL_DEFINITIONS)
@@ -50,15 +53,72 @@ target_link_libraries(
   pcl_kdtree
 )
 
-# ------------------------------------------------------------------------------
-# Camera preprocessor
-# ------------------------------------------------------------------------------
-add_executable(camera_preprocessor_node src/camera_preprocessor_node.cpp)
-ament_target_dependencies(
-  camera_preprocessor_node
-  rclcpp
-  avg_msgs
+set(SENSING_NODE_TARGETS
+  lidar_preprocessor_node
+  platform_velocity_converter_node
+  sen0592_radar_node
+  radar_cost_grid_node
+  lidar_cost_grid_node
+  inflation_cost_grid_node
 )
+
+# ------------------------------------------------------------------------------
+# Camera publisher (Jetson only: ARM + OpenCV + CUDA + VPI)
+# ------------------------------------------------------------------------------
+if(CAMROD_ENABLE_CAMERA_PUBLISHER)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+    find_package(OpenCV REQUIRED)
+    find_package(CUDAToolkit REQUIRED)
+    find_package(vpi REQUIRED
+      PATHS
+        /opt/nvidia/vpi3/lib/aarch64-linux-gnu/cmake
+        /opt/nvidia/vpi2/lib/aarch64-linux-gnu/cmake
+    )
+
+    find_library(NVJPEG_LIB nvjpeg
+      HINTS
+        ${CUDAToolkit_LIBRARY_DIR}
+        /usr/local/cuda/targets/aarch64-linux/lib
+        /usr/local/cuda/targets/x86_64-linux/lib
+      REQUIRED
+    )
+
+    add_library(camera_publisher_component SHARED src/camera_publisher_node.cpp)
+    target_include_directories(camera_publisher_component PRIVATE include)
+    target_include_directories(camera_publisher_component PRIVATE ${OpenCV_INCLUDE_DIRS})
+    ament_target_dependencies(
+      camera_publisher_component
+      rclcpp
+      rclcpp_components
+      sensor_msgs
+      avg_msgs
+    )
+    target_link_libraries(
+      camera_publisher_component
+      ${OpenCV_LIBRARIES}
+      vpi
+      CUDA::cudart
+      ${NVJPEG_LIB}
+    )
+
+    rclcpp_components_register_node(
+      camera_publisher_component
+      PLUGIN "camrod::sensing::CameraPublisherNode"
+      EXECUTABLE camera_publisher_node
+    )
+
+    list(APPEND SENSING_NODE_TARGETS camera_publisher_node)
+
+    install(
+      TARGETS camera_publisher_component
+      ARCHIVE DESTINATION lib
+      LIBRARY DESTINATION lib
+      RUNTIME DESTINATION bin
+    )
+  else()
+    message(WARNING "Skipping camera_publisher_node: non-ARM architecture (${CMAKE_SYSTEM_PROCESSOR})")
+  endif()
+endif()
 
 # ------------------------------------------------------------------------------
 # Platform velocity converter
@@ -120,15 +180,13 @@ ament_target_dependencies(
 )
 
 install(
-  TARGETS
-    lidar_preprocessor_node
-    camera_preprocessor_node
-    platform_velocity_converter_node
-    sen0592_radar_node
-    radar_cost_grid_node
-    lidar_cost_grid_node
-    inflation_cost_grid_node
+  TARGETS ${SENSING_NODE_TARGETS}
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY include/
+  DESTINATION include
 )
 
 install(

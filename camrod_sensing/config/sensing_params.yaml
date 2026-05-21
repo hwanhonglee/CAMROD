@@ -22,9 +22,9 @@
     min_z: -1.0
     max_z: 2.0
 
-    ground_filter_mode: "z"
-    ground_z_min: -0.25
-    ground_z_max: 0.25
+    method: "ransac"
+    z_min: -0.25
+    z_max: 0.25
 
     stamp_with_now: true
     frame_id_override: "lidar_link"

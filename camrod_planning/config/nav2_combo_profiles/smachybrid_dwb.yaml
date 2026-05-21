@@ -1,0 +1,27 @@
+# Combo Profile: SmacHybrid + DWB
+# 2026-05-21 sim 20s sweep observation: P=Y/C=Y/M=N, displacement=0.009m
+# Tuning intent: recovery-biased preset (encourage initial movement on this combo).
+planner_server:
+  ros__parameters:
+    SmacHybrid:
+      tolerance: 0.5
+      allow_unknown: False
+      motion_model_for_search: "DUBIN"
+      angle_quantization_bins: 32
+      minimum_turning_radius: 0.6
+      max_iterations: 2000000
+      max_planning_time: 3.0
+      reverse_penalty: 2.0
+      non_straight_penalty: 1.1
+
+controller_server:
+  ros__parameters:
+    DWB:
+      min_vel_x: 0.05
+      min_speed_xy: 0.08
+      sim_time: 1.2
+      PathAlign.scale: 16.0
+      GoalAlign.scale: 12.0
+      PathDist.scale: 18.0
+      GoalDist.scale: 12.0
+      RotateToGoal.scale: 14.0

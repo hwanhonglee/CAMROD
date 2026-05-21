@@ -1,95 +1,70 @@
-#!/usr/bin/env python3
-"""Launch camera preprocessor with module-level and camera-specific param overlays."""
-
+from launch import LaunchDescription
+from launch_ros.actions import Node
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
+from launch.substitutions import LaunchConfiguration
+from ament_index_python.packages import get_package_share_directory
 import os
 
-from ament_index_python.packages import get_package_share_directory
-from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
 
-
-# Implements `generate_launch_description` behavior.
 def generate_launch_description():
-    sensing_share = get_package_share_directory("camrod_sensing")
+    pkg_dir = get_package_share_directory('camrod_sensing')
 
-    # HH_260330: Standalone sensing launch uses package-local config by default.
-    default_sensing_param = os.path.join(sensing_share, "config", "sensing_params.yaml")
-    default_camera_param = os.path.join(sensing_share, "config", "camera", "preprocessor.yaml")
+    default_config_file = os.path.join(pkg_dir, 'config', 'camera', 'camera_params.yaml')
+    cyclonedds_config = os.path.join(pkg_dir, 'config', 'camera', 'cyclonedds.xml')
 
-    sensing_param_file = LaunchConfiguration("sensing_param_file")
-    camera_preprocess_param_file = LaunchConfiguration("camera_preprocess_param_file")
-    module_namespace = LaunchConfiguration("module_namespace")
-    input_image_topic = LaunchConfiguration("input_image_topic")
-    input_camera_info_topic = LaunchConfiguration("input_camera_info_topic")
-    output_image_topic = LaunchConfiguration("output_image_topic")
-    output_camera_info_topic = LaunchConfiguration("output_camera_info_topic")
-    camera_status_topic = LaunchConfiguration("camera_status_topic")
+    config_file_arg = DeclareLaunchArgument(
+        'camera_params_file',
+        default_value=default_config_file,
+        description='Path to camera configuration file'
+    )
+    device_path_arg = DeclareLaunchArgument(
+        'device_path',
+        default_value='/dev/video0',
+        description='Camera device path'
+    )
+    module_namespace_arg = DeclareLaunchArgument(
+        'module_namespace',
+        default_value='camera',
+        description='Camera module namespace'
+    )
+    roudi_config = os.path.join(pkg_dir, 'config', 'camera', 'roudi_config.toml')
 
-    declare_args = [
-        DeclareLaunchArgument(
-            "sensing_param_file",
-            default_value=default_sensing_param,
-            description="Monolithic sensing parameter file (compatibility overlay)",
-        ),
-        DeclareLaunchArgument(
-            "camera_preprocess_param_file",
-            default_value=default_camera_param,
-            description="Camera preprocessor algorithm parameters",
-        ),
-        DeclareLaunchArgument(
-            "module_namespace",
-            default_value="camera",
-            description="Namespace for camera preprocessor node",
-        ),
-        DeclareLaunchArgument(
-            "input_image_topic",
-            default_value="image_raw",
-            description="Input image topic (relative to module namespace)",
-        ),
-        DeclareLaunchArgument(
-            "input_camera_info_topic",
-            default_value="camera_info",
-            description="Input camera_info topic (relative to module namespace)",
-        ),
-        DeclareLaunchArgument(
-            "output_image_topic",
-            default_value="processed/image",
-            description="Output processed image topic (relative to module namespace)",
-        ),
-        DeclareLaunchArgument(
-            "output_camera_info_topic",
-            default_value="processed/camera_info",
-            description="Output processed camera_info topic (relative to module namespace)",
-        ),
-        DeclareLaunchArgument(
-            "camera_status_topic",
-            default_value="status",
-            description="Camera status topic (relative to module namespace)",
-        ),
-    ]
-
-    camera_preprocessor = Node(
-        package="camrod_sensing",
-        executable="camera_preprocessor_node",
-        name="camera_preprocessor",
-        namespace=module_namespace,
-        output="screen",
-        # HH_260315-00:00 Keep deterministic override order:
-        #   1) module default
-        #   2) camera algorithm-specific parameters
-        parameters=[
-            sensing_param_file,
-            camera_preprocess_param_file,
-            {
-                "input_image_topic": input_image_topic,
-                "input_camera_info_topic": input_camera_info_topic,
-                "output_image_topic": output_image_topic,
-                "output_camera_info_topic": output_camera_info_topic,
-                "camera_status_topic": camera_status_topic,
-            },
-        ],
+    # Iceoryx shared memory daemon — enables zero-copy DDS for same-machine subscribers
+    # Custom config adds 8MB mempool for 1920x1080 BGR images (~6.2MB each)
+    iox_roudi = ExecuteProcess(
+        cmd=['iox-roudi', '-l', 'warning', '-c', roudi_config],
+        output='screen',
+        name='iox-roudi',
     )
 
-    return LaunchDescription(declare_args + [camera_preprocessor])
+    camera_node = Node(
+        package='camrod_sensing',
+        executable='camera_publisher_node',
+        name='camera_publisher',
+        namespace=LaunchConfiguration('module_namespace'),
+        output='screen',
+        parameters=[
+            LaunchConfiguration('camera_params_file'),
+            {
+                'device_path': LaunchConfiguration('device_path'),
+            }
+        ],
+        remappings=[
+            ('~/image_rect/compressed', 'image_rect/compressed'),
+            ('~/camera_info', 'camera_info'),
+        ],
+        additional_env={
+            'CYCLONEDDS_URI': cyclonedds_config,
+        },
+    )
+
+    # Give iox-roudi 1s to initialize before starting the camera node
+    delayed_camera = TimerAction(period=1.0, actions=[camera_node])
+
+    return LaunchDescription([
+        config_file_arg,
+        device_path_arg,
+        module_namespace_arg,
+        iox_roudi,
+        delayed_camera,
+    ])

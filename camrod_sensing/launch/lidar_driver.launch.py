@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
 import os
+import tempfile
 
+import yaml
 from ament_index_python.packages import get_package_share_directory
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -21,6 +24,40 @@ def _resolve_vanjee_config_and_presence() -> tuple[str, bool]:
         return default_config, True
     except Exception:
         return default_config, False
+
+
+def _inject_calibration_paths(context, *args, **kwargs):
+    """Resolve 750C calibration CSV paths from vanjee_lidar_sdk share and patch config.yaml."""
+    try:
+        sdk_share = get_package_share_directory("vanjee_lidar_sdk")
+        va_csv = os.path.join(sdk_share, "param", "Vanjee_750C_VA.csv")
+        ha_csv = os.path.join(sdk_share, "param", "Vanjee_750C_HA.csv")
+    except Exception:
+        va_csv = ""
+        ha_csv = ""
+
+    config_path = context.launch_configurations.get("vanjee_config_path", "")
+    if not config_path or not os.path.isfile(config_path):
+        return []
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+
+        driver = cfg.get("lidar", [{}])[0].get("driver", {})
+        driver["angle_path_ver"] = va_csv if os.path.isfile(va_csv) else ""
+        driver["angle_path_hor"] = ha_csv if os.path.isfile(ha_csv) else ""
+
+        tmp = tempfile.NamedTemporaryFile(
+            mode="w", suffix="_vanjee_750.yaml", delete=False, encoding="utf-8"
+        )
+        yaml.dump(cfg, tmp, allow_unicode=True, default_flow_style=False)
+        tmp.close()
+        context.launch_configurations["vanjee_config_path"] = tmp.name
+    except Exception as exc:
+        print(f"[lidar_driver] WARNING: could not patch calibration paths: {exc}")
+
+    return []
 
 
 def generate_launch_description():
@@ -43,11 +80,9 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_lidar_driver", default_value=enable_driver_default),
         DeclareLaunchArgument("enable_vanjee_static_tf", default_value="false"),
 
-        # relative namespace structure
         DeclareLaunchArgument("module_namespace", default_value="lidar"),
         DeclareLaunchArgument("vanjee_driver_namespace", default_value="vanjee"),
 
-        # preprocessor-relative topics
         DeclareLaunchArgument("preprocessor_input_topic", default_value="vanjee/points_raw"),
         DeclareLaunchArgument("lidar_filtered_topic", default_value="points_filtered"),
         DeclareLaunchArgument("lidar_status_topic", default_value="status"),
@@ -88,19 +123,12 @@ def generate_launch_description():
                 {"config_path": vanjee_config_path}
             ],
             remappings=[
-                # SDK source names -> relative targets
-                # target "points_raw" becomes:
-                #   standalone -> /lidar/vanjee/points_raw
-                #   sensing    -> /sensing/lidar/vanjee/points_raw
-                ("/vanjee_points722", "points_raw"),
-                ("vanjee_points722", "points_raw"),
+                # WLR-750 SDK publishes on /vanjee_points750
+                ("/vanjee_points750", "points_raw"),
+                ("vanjee_points750", "points_raw"),
 
                 ("/vanjee_lidar_imu_packets", "imu_packets"),
                 ("vanjee_lidar_imu_packets", "imu_packets"),
-
-                # if SDK is actually publishing these absolute names internally
-                ("/lidar/vanjee/points_raw", "points_raw"),
-                ("/lidar/vanjee/imu_packets", "imu_packets"),
             ],
             condition=IfCondition(enable_lidar_driver),
         )
@@ -158,5 +186,9 @@ def generate_launch_description():
         optional_driver_actions.append(vanjee_static_tf)
 
     return LaunchDescription(
-        declare_args + [lidar_preprocessor_node] + optional_driver_actions
+        declare_args + [
+            # Patch calibration paths into config before driver node reads it
+            OpaqueFunction(function=_inject_calibration_paths),
+            lidar_preprocessor_node,
+        ] + optional_driver_actions
     )

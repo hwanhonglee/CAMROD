@@ -1,5 +1,8 @@
 <!-- PlannerSelector-enabled BT.
   - Default planner: Smac2D
+  - Optional planner: NavFn
+  - Default controller: RPP
+  - Optional controller: DWB
   - Switch planner by publishing std_msgs/String to /planning/planner_selector
 -->
 <root main_tree_to_execute="MainTree">
@@ -8,8 +11,9 @@
       <PipelineSequence name="NavigateWithReplanning">
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
         <!-- Real-mode default planner restored to Smac2D.
-             Sim mode uses a separate BT XML with GridBased default. -->
+             Sim mode uses a separate BT XML with NavFn default. -->
         <PlannerSelector selected_planner="{selected_planner}" default_planner="Smac2D" topic_name="/planning/planner_selector"/>
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector"/>
         <!-- Match planning-default BT replanning rate to reduce
              planner/costmap current-timeout pressure under real sensor load. -->
         <!-- HH_260513: Increased 1.5→3.0Hz. Faster replan reduces path-behind-robot offset. -->
@@ -21,9 +25,9 @@
           </RecoveryNode>
         </RateController>
         <!-- HH_260513: Smooth planner path before handing to FollowPath. -->
-        <SmoothPath path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
+        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <FollowPath path="{path}" controller_id="{selected_controller}"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
         </RecoveryNode>
       </PipelineSequence>

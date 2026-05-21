@@ -21,6 +21,9 @@ find_package(visualization_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common kdtree search filters segmentation)
 find_package(pcl_conversions REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+find_package(message_filters REQUIRED)
 
 include_directories(
   ${PCL_INCLUDE_DIRS}
@@ -39,11 +42,12 @@ ament_target_dependencies(obstacle_fusion_node
   sensor_msgs
   geometry_msgs
   vision_msgs
-  tf2
-  tf2_ros
-  tf2_geometry_msgs
-  image_geometry
+  visualization_msgs
+  cv_bridge
+  message_filters
 )
+target_include_directories(obstacle_fusion_node PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(obstacle_fusion_node ${OpenCV_LIBS})
 
 add_executable(obstacle_lidar_node src/obstacle_lidar_node.cpp)
 ament_target_dependencies(obstacle_lidar_node

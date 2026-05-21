@@ -1,336 +1,699 @@
-#include <cmath>
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <cstdio>
 #include <mutex>
-#include <string>
-#include <type_traits>
 #include <vector>
 
-#include <avg_msgs/msg/avg_perception_msgs.hpp>
-#include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/camera_info.hpp>
-#include <avg_msgs/msg/point_cloud2.hpp>
-#include <avg_msgs/point_cloud2_iterator.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <avg_msgs/msg/camera_info.hpp>
 #include <avg_msgs/msg/detection2_d_array.hpp>
-#include <avg_msgs/msg/transform_stamped.hpp>
+#include <avg_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <vision_msgs/msg/detection3_d_array.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
-#include <image_geometry/pinhole_camera_model.h>
+#include <cv_bridge/cv_bridge.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <message_filters/synchronizer.h>
+#include <opencv2/opencv.hpp>
+#include <opencv2/calib3d.hpp>
 
-#include <tf2/LinearMath/Transform.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
+// Coordinate frames
+//   LiDAR (vanjee_lidar_750): raw X forward, Y left, Z up
+//     lidar_preprocessor sets frame_id="lidar_link" but does NOT rotate points,
+//     so raw Vanjee axes are preserved in points_filtered.
+//   CCW-90° around Z: eff_X = -raw_Y (right), eff_Y = raw_X (fwd), eff_Z = raw_Z (up)
+//   Camera: X right, Y down, Z forward
+//
+// Extrinsic R (LiDAR eff → camera):
+//   R = [[1, 0,  0],   cam_X =  eff_X
+//        [0, 0, -1],   cam_Y = -eff_Z
+//        [0, 1,  0]]   cam_Z =  eff_Y
+//   t = -R * [extrinsic_x, extrinsic_y, extrinsic_z]^T
+//   default: extrinsic_z = -0.075 (camera 7.5 cm below LiDAR)
 
-namespace camrod::perception
+class CameraLidarFusionNode : public rclcpp::Node
 {
+  using SyncPolicy = message_filters::sync_policies::ApproximateTime<
+    avg_msgs::msg::PointCloud2,
+    sensor_msgs::msg::Image>;
 
-namespace
-{
-// HH_260109 Support multiple BoundingBox2D center definitions across vision_msgs variants.
-template <typename T, typename = void>
-struct HasMemberX : std::false_type {};
-
-template <typename T>
-struct HasMemberX<T, std::void_t<decltype(std::declval<T>().x)>> : std::true_type {};
-
-template <typename T, typename = void>
-struct HasMemberPosition : std::false_type {};
-
-template <typename T>
-struct HasMemberPosition<T, std::void_t<decltype(std::declval<T>().position.x)>> : std::true_type {};
-
-template <typename CenterT>
-// Extracts X center coordinate from different Detection2D center layouts.
-double centerX(const CenterT & center)
-{
-  if constexpr (HasMemberX<CenterT>::value) {
-    return center.x;
-  } else if constexpr (HasMemberPosition<CenterT>::value) {
-    return center.position.x;
-  }
-  return 0.0;
-}
-
-template <typename CenterT>
-// Extracts Y center coordinate from different Detection2D center layouts.
-double centerY(const CenterT & center)
-{
-  if constexpr (HasMemberX<CenterT>::value) {
-    return center.y;
-  } else if constexpr (HasMemberPosition<CenterT>::value) {
-    return center.position.y;
-  }
-  return 0.0;
-}
-
-template <typename CenterT>
-// Pointer-safe overload that falls back to zero when center is null.
-double centerX(const CenterT * center)
-{
-  if (!center) {
-    return 0.0;
-  }
-  return centerX(*center);
-}
-
-template <typename CenterT>
-// Pointer-safe overload that falls back to zero when center is null.
-double centerY(const CenterT * center)
-{
-  if (!center) {
-    return 0.0;
-  }
-  return centerY(*center);
-}
-}  // namespace
-
-// Pixel-space 2D box bounds derived from Detection2D messages.
-struct BBox2D
-{
-  double min_x{0.0};
-  double max_x{0.0};
-  double min_y{0.0};
-  double max_y{0.0};
-};
-
-class ObstacleFusionNode : public rclcpp::Node
-{
 public:
-  using AvgPerceptionMsgs = avg_msgs::msg::AvgPerceptionMsgs;
-  using ModuleState = avg_msgs::msg::ModuleState;
-
-  ObstacleFusionNode()
-  // HH_260112 Use short node name; namespace applies the module prefix.
-  : rclcpp::Node("obstacle_fusion"),
-    tf_buffer_(this->get_clock()),
-    tf_listener_(tf_buffer_)
+  CameraLidarFusionNode()
+  : Node("obstacle_fusion"), cam_ready_(false)
   {
+    // Clustering / tracking parameters
+    n_closest_  = declare_parameter<int>   ("n_closest",       5);
+    min_pts_    = declare_parameter<int>   ("min_pts_in_bbox", 3);
+    ema_alpha_  = declare_parameter<double>("ema_alpha",       0.4);
+    assoc_dist_ = declare_parameter<double>("assoc_dist",      1.0);
+    max_miss_   = declare_parameter<int>   ("max_miss",        5);
+
+    // Extrinsic translation: camera position relative to LiDAR effective frame [m]
+    extrinsic_x_ = declare_parameter<double>("extrinsic_x",  0.0);
+    extrinsic_y_ = declare_parameter<double>("extrinsic_y",  0.0);
+    extrinsic_z_ = declare_parameter<double>("extrinsic_z", -0.075);
+
+    // Topic parameters
     input_cloud_topic_ = declare_parameter<std::string>(
       "input_cloud_topic", "/sensing/lidar/points_filtered");
-    // HH_260109 Perception-level camera detections (e.g., YOLO) gate LiDAR obstacles.
     detection_topic_ = declare_parameter<std::string>(
       "detection_topic", "/perception/camera/detections_2d");
     camera_info_topic_ = declare_parameter<std::string>(
       "camera_info_topic", "/sensing/camera/processed/camera_info");
-    output_topic_ = declare_parameter<std::string>("output_topic", "/perception/obstacles");
-    publish_perception_status_ = declare_parameter<bool>("publish_perception_status", false);
-    perception_status_topic_ =
-      declare_parameter<std::string>("perception_status_topic", "/perception/status");
-    // HH_260326: Use camera_link as the canonical camera TF frame.
-    camera_frame_ = declare_parameter<std::string>("camera_frame", "camera_link");
-    use_camera_filter_ = declare_parameter<bool>("use_camera_filter", true);
-    keep_lidar_when_no_detections_ =
-      declare_parameter<bool>("keep_lidar_when_no_detections", true);
+    image_topic_ = declare_parameter<std::string>(
+      "image_topic", "/sensing/camera/processed/image");
+    bbox_topic_ = declare_parameter<std::string>(
+      "bbox_topic", "/perception/lidar/bboxes");
+    output_topic_ = declare_parameter<std::string>(
+      "output_topic", "/perception/obstacles");
+    out_image_topic_ = declare_parameter<std::string>(
+      "out_image_topic", "/perception/camera_lidar/image");
+    out_det3d_topic_ = declare_parameter<std::string>(
+      "out_det3d_topic", "/perception/camera_lidar/detections_3d");
+    out_markers_topic_ = declare_parameter<std::string>(
+      "out_markers_topic", "/perception/camera_lidar/markers");
+    out_euclidean_topic_ = declare_parameter<std::string>(
+      "out_euclidean_topic", "/perception/camera_lidar/euclidean_markers");
 
-    using std::placeholders::_1;
-    cloud_sub_ = create_subscription<avg_msgs::msg::PointCloud2>(
-      input_cloud_topic_, rclcpp::SensorDataQoS(),
-      std::bind(&ObstacleFusionNode::onCloud, this, _1));
-    detection_sub_ = create_subscription<avg_msgs::msg::Detection2DArray>(
-      detection_topic_, rclcpp::QoS(5),
-      std::bind(&ObstacleFusionNode::onDetections, this, _1));
+    param_cb_ = add_on_set_parameters_callback(
+      [this](const std::vector<rclcpp::Parameter> & params) {
+        for (const auto & p : params) {
+          if (p.get_name() == "n_closest")       n_closest_  = p.as_int();
+          if (p.get_name() == "min_pts_in_bbox") min_pts_    = p.as_int();
+          if (p.get_name() == "ema_alpha")       ema_alpha_  = p.as_double();
+          if (p.get_name() == "assoc_dist")      assoc_dist_ = p.as_double();
+          if (p.get_name() == "max_miss")        max_miss_   = p.as_int();
+        }
+        rcl_interfaces::msg::SetParametersResult result;
+        result.successful = true;
+        return result;
+      });
+
+    initExtrinsic();
+    initColorLut();
+
     camera_info_sub_ = create_subscription<avg_msgs::msg::CameraInfo>(
-      camera_info_topic_, rclcpp::QoS(5),
-      std::bind(&ObstacleFusionNode::onCameraInfo, this, _1));
-    out_pub_ = create_publisher<avg_msgs::msg::PointCloud2>(output_topic_, rclcpp::QoS(10));
-    if (publish_perception_status_) {
-      avg_pub_ = create_publisher<AvgPerceptionMsgs>(perception_status_topic_, rclcpp::QoS(10));
-    }
+      camera_info_topic_, rclcpp::SensorDataQoS(),
+      [this](const avg_msgs::msg::CameraInfo::ConstSharedPtr & msg) {
+        if (cam_ready_) return;
+        P_ = (cv::Mat_<double>(3, 3) <<
+          msg->p[0], msg->p[1],  msg->p[2],
+          msg->p[4], msg->p[5],  msg->p[6],
+          msg->p[8], msg->p[9],  msg->p[10]);
+        D_zero_ = cv::Mat::zeros(4, 1, CV_64F);
+        cam_ready_ = true;
+        RCLCPP_INFO(get_logger(),
+          "Camera info received — fx=%.1f fy=%.1f cx=%.1f cy=%.1f",
+          msg->p[0], msg->p[5], msg->p[2], msg->p[6]);
+      });
 
-    // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
-    RCLCPP_DEBUG(get_logger(),
-      "Obstacle fusion ready. cloud=%s detections=%s output=%s",
-      input_cloud_topic_.c_str(), detection_topic_.c_str(), output_topic_.c_str());
+    const auto reliable_qos = rclcpp::QoS(10).get_rmw_qos_profile();
+
+    det_sub_cache_ = create_subscription<avg_msgs::msg::Detection2DArray>(
+      detection_topic_, rclcpp::QoS(10),
+      [this](const avg_msgs::msg::Detection2DArray::ConstSharedPtr & msg) {
+        std::lock_guard<std::mutex> lock(det_mutex_);
+        latest_det_ = msg;
+      });
+
+    euclidean_sub_ = create_subscription<visualization_msgs::msg::MarkerArray>(
+      bbox_topic_, rclcpp::QoS(10),
+      [this](const visualization_msgs::msg::MarkerArray::ConstSharedPtr & msg) {
+        std::lock_guard<std::mutex> lock(euclidean_mutex_);
+        latest_euclidean_ = msg;
+      });
+
+    lidar_sub_.subscribe(this, input_cloud_topic_, reliable_qos);
+    image_sub_.subscribe(this, image_topic_, reliable_qos);
+
+    sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
+      SyncPolicy(30), lidar_sub_, image_sub_);
+    sync_->registerCallback(
+      std::bind(&CameraLidarFusionNode::callback, this,
+        std::placeholders::_1, std::placeholders::_2));
+
+    pub_obstacles_  = create_publisher<avg_msgs::msg::PointCloud2>(output_topic_, 10);
+    pub_image_      = create_publisher<sensor_msgs::msg::Image>(out_image_topic_, 10);
+    pub_det3d_      = create_publisher<vision_msgs::msg::Detection3DArray>(out_det3d_topic_, 10);
+    pub_markers_    = create_publisher<visualization_msgs::msg::MarkerArray>(out_markers_topic_, 10);
+    pub_euclidean_  = create_publisher<visualization_msgs::msg::MarkerArray>(out_euclidean_topic_, 10);
+
+    RCLCPP_INFO(get_logger(),
+      "obstacle_fusion started — cloud=%s det=%s bbox=%s",
+      input_cloud_topic_.c_str(), detection_topic_.c_str(), bbox_topic_.c_str());
+    RCLCPP_INFO(get_logger(),
+      "extrinsic t=[%.3f, %.3f, %.3f]",
+      extrinsic_x_, extrinsic_y_, extrinsic_z_);
   }
 
 private:
-  // Updates camera projection model used to project LiDAR points into image coordinates.
-  void onCameraInfo(const avg_msgs::msg::CameraInfo::ConstSharedPtr msg)
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    camera_model_.fromCameraInfo(msg);
-    latest_camera_info_ = *msg;
-    camera_info_ready_ = true;
-  }
+  struct ProjPt {
+    cv::Point2f uv;
+    float x, y, z;    // camera frame [m]
+    float lx, ly, lz; // raw LiDAR frame [m]
+  };
 
-  // Caches latest camera detection boxes for LiDAR gating during cloud callback processing.
-  void onDetections(const avg_msgs::msg::Detection2DArray::ConstSharedPtr msg)
+  struct Track {
+    std::string label;
+    float lx, ly, lz;
+    int miss_count;
+    int id;
+  };
+
+  void initColorLut()
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    // HH_260109 Cache 2D detection boxes for LiDAR gating.
-    detections_.clear();
-    detections_.reserve(msg->detections.size());
-    latest_detections_ = *msg;
-    for (const auto & det : msg->detections) {
-      const auto & bbox = det.bbox;
-      const auto & center = bbox.center;
-      const double center_x = centerX(center);
-      const double center_y = centerY(center);
-      const double half_w = bbox.size_x * 0.5;
-      const double half_h = bbox.size_y * 0.5;
-      BBox2D box;
-      box.min_x = center_x - half_w;
-      box.max_x = center_x + half_w;
-      box.min_y = center_y - half_h;
-      box.max_y = center_y + half_h;
-      detections_.push_back(box);
+    for (int i = 0; i <= 120; ++i) {
+      cv::Mat hsv(1, 1, CV_8UC3, cv::Scalar(i, 255, 255));
+      cv::Mat bgr;
+      cv::cvtColor(hsv, bgr, cv::COLOR_HSV2BGR);
+      color_lut_[i] = cv::Scalar(bgr.data[0], bgr.data[1], bgr.data[2]);
     }
   }
 
-  // Filters LiDAR cloud by projecting points into camera image and keeping points inside detections.
-  void onCloud(const avg_msgs::msg::PointCloud2::ConstSharedPtr msg)
+  void initExtrinsic()
   {
-    std::vector<BBox2D> boxes;
-    image_geometry::PinholeCameraModel camera_model;
-    bool camera_ready = false;
+    cv::Mat R = (cv::Mat_<double>(3, 3) <<
+       1,  0,  0,
+       0,  0, -1,
+       0,  1,  0);
+    cv::Mat p = (cv::Mat_<double>(3, 1) << extrinsic_x_, extrinsic_y_, extrinsic_z_);
+    tvec_ = -R * p;
+    cv::Rodrigues(R, rvec_);
+  }
+
+  void callback(
+    const avg_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg,
+    const sensor_msgs::msg::Image::ConstSharedPtr & img_msg)
+  {
+    if (!cam_ready_) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+        "Waiting for camera_info on %s…", camera_info_topic_.c_str());
+      return;
+    }
+
+    cloud_msg_frame_ = cloud_msg->header.frame_id;
+
+    avg_msgs::msg::Detection2DArray::ConstSharedPtr det_msg;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      boxes = detections_;
-      camera_model = camera_model_;
-      camera_ready = camera_info_ready_;
+      std::lock_guard<std::mutex> lock(det_mutex_);
+      det_msg = latest_det_;
     }
 
-    // HH_260109 When no camera constraints are available, fall back to LiDAR-only obstacles.
-    if (!use_camera_filter_ || !camera_ready || (boxes.empty() && keep_lidar_when_no_detections_)) {
-      out_pub_->publish(*msg);
-      publishAvgPerception(*msg);
-      return;
+    cv::Mat img = cv_bridge::toCvCopy(img_msg, "bgr8")->image;
+
+    const auto proj = projectCloud(cloud_msg, img.cols, img.rows);
+    drawPoints(img, proj);
+
+    visualization_msgs::msg::MarkerArray markers;
+    vision_msgs::msg::Detection3DArray out3d;
+    if (det_msg) {
+      out3d = associateDetections(proj, det_msg, img, markers);
     }
-    if (boxes.empty() && !keep_lidar_when_no_detections_) {
-      publishAvgPerception(avg_msgs::msg::PointCloud2{});
-      return;
-    }
+    out3d.header.stamp    = cloud_msg->header.stamp;
+    out3d.header.frame_id = cloud_msg_frame_;
 
-    avg_msgs::msg::TransformStamped tf_msg;
-    try {
-      tf_msg = tf_buffer_.lookupTransform(
-        camera_frame_, msg->header.frame_id, msg->header.stamp,
-        rclcpp::Duration::from_seconds(0.05));
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
-        "TF lookup failed (%s->%s): %s",
-        msg->header.frame_id.c_str(), camera_frame_.c_str(), ex.what());
-      out_pub_->publish(*msg);
-      publishAvgPerception(*msg);
-      return;
-    }
+    publishObstacleCloud(proj, det_msg, cloud_msg->header);
 
-    tf2::Transform tf_cam_from_lidar;
-    tf2::fromMsg(tf_msg.transform, tf_cam_from_lidar);
+    pub_det3d_->publish(out3d);
+    pub_markers_->publish(markers);
 
-    std::vector<std::array<float, 3>> kept;
-    kept.reserve(msg->width * msg->height);
+    fuseEuclideanClusters(det_msg, cloud_msg->header.stamp, img);
 
-    sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
-    sensor_msgs::PointCloud2ConstIterator<float> iter_y(*msg, "y");
-    sensor_msgs::PointCloud2ConstIterator<float> iter_z(*msg, "z");
+    pub_image_->publish(
+      *cv_bridge::CvImage(img_msg->header, "bgr8", img).toImageMsg());
+  }
 
-    for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
-      const float x = *iter_x;
-      const float y = *iter_y;
-      const float z = *iter_z;
-      if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
-        continue;
-      }
+  // Collects YOLO-bbox-filtered LiDAR points and publishes to output_topic_ for Nav2 costmap.
+  void publishObstacleCloud(
+    const std::vector<ProjPt> & proj,
+    const avg_msgs::msg::Detection2DArray::ConstSharedPtr & det_msg,
+    const std_msgs::msg::Header & header)
+  {
+    avg_msgs::msg::PointCloud2 out;
+    out.header = header;
+    out.header.stamp = this->get_clock()->now();
 
-      const tf2::Vector3 p_lidar(x, y, z);
-      const tf2::Vector3 p_cam = tf_cam_from_lidar * p_lidar;
-      if (p_cam.z() <= 0.01) {
-        continue;
-      }
+    sensor_msgs::PointCloud2Modifier mod(out);
+    mod.setPointCloud2FieldsByString(1, "xyz");
 
-      // HH_260109 Project LiDAR points into the camera image and keep points inside detections.
-      const auto uv = camera_model.project3dToPixel(
-        cv::Point3d(p_cam.x(), p_cam.y(), p_cam.z()));
-      const double u = uv.x;
-      const double v = uv.y;
-      bool in_box = false;
-      for (const auto & box : boxes) {
-        if (u >= box.min_x && u <= box.max_x && v >= box.min_y && v <= box.max_y) {
-          in_box = true;
-          break;
+    std::vector<std::array<float, 3>> pts;
+    if (det_msg) {
+      for (const auto & d2 : det_msg->detections) {
+        const float x0 = static_cast<float>(d2.bbox.center.position.x - d2.bbox.size_x / 2.0);
+        const float x1 = static_cast<float>(d2.bbox.center.position.x + d2.bbox.size_x / 2.0);
+        const float y0 = static_cast<float>(d2.bbox.center.position.y - d2.bbox.size_y / 2.0);
+        const float y1 = static_cast<float>(d2.bbox.center.position.y + d2.bbox.size_y / 2.0);
+        for (const auto & pp : proj) {
+          if (pp.uv.x >= x0 && pp.uv.x <= x1 && pp.uv.y >= y0 && pp.uv.y <= y1) {
+            pts.push_back({pp.lx, pp.ly, pp.lz});
+          }
         }
       }
-      if (in_box) {
-        kept.push_back({x, y, z});
+    }
+
+    mod.resize(pts.size());
+    sensor_msgs::PointCloud2Iterator<float> ix(out, "x");
+    sensor_msgs::PointCloud2Iterator<float> iy(out, "y");
+    sensor_msgs::PointCloud2Iterator<float> iz(out, "z");
+    for (const auto & p : pts) {
+      *ix = p[0]; ++ix;
+      *iy = p[1]; ++iy;
+      *iz = p[2]; ++iz;
+    }
+    out.is_dense = true;
+    pub_obstacles_->publish(out);
+  }
+
+  std::vector<ProjPt> projectCloud(
+    const avg_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg,
+    int img_w, int img_h)
+  {
+    scratch_obj_.clear();
+    scratch_obj_.reserve(cloud_msg->width * cloud_msg->height);
+
+    sensor_msgs::PointCloud2ConstIterator<float> iter_x(*cloud_msg, "x");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_y(*cloud_msg, "y");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_z(*cloud_msg, "z");
+
+    for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+      if (!std::isfinite(*iter_x)) continue;
+      // CCW 90° around Z: Vanjee 750 raw (X fwd, Y left) → eff (X right, Y fwd)
+      const float lx = -(*iter_y);
+      const float ly =  (*iter_x);
+      const float lz =  (*iter_z);
+      if (ly < 0.3f) continue;
+      scratch_obj_.push_back({lx, ly, lz});
+    }
+    if (scratch_obj_.empty()) return {};
+
+    scratch_uv_.clear();
+    cv::projectPoints(scratch_obj_, rvec_, tvec_, P_, D_zero_, scratch_uv_);
+
+    std::vector<ProjPt> result;
+    result.reserve(scratch_obj_.size());
+    for (size_t i = 0; i < scratch_uv_.size(); ++i) {
+      if (scratch_uv_[i].x < 0 || scratch_uv_[i].x >= img_w ||
+          scratch_uv_[i].y < 0 || scratch_uv_[i].y >= img_h) continue;
+      const auto & o = scratch_obj_[i];
+      // o is in effective frame: eff_X=-raw_Y, eff_Y=raw_X, eff_Z=raw_Z
+      // lx/ly/lz store raw sensor coords (raw_X=eff_Y, raw_Y=-eff_X, raw_Z=eff_Z)
+      result.push_back({scratch_uv_[i],
+        o.x,
+        static_cast<float>(-o.z + extrinsic_z_),
+        o.y,
+        o.y, -o.x, o.z});
+    }
+    return result;
+  }
+
+  void drawPoints(cv::Mat & img, const std::vector<ProjPt> & pts)
+  {
+    constexpr float kMinD = 1.0f, kMaxD = 50.0f;
+    for (const auto & pp : pts) {
+      float t = std::clamp((pp.z - kMinD) / (kMaxD - kMinD), 0.0f, 1.0f);
+      cv::circle(img, pp.uv, 2,
+        color_lut_[static_cast<int>((1.0f - t) * 120.0f)], cv::FILLED);
+    }
+  }
+
+  vision_msgs::msg::Detection3DArray associateDetections(
+    const std::vector<ProjPt> & proj,
+    const avg_msgs::msg::Detection2DArray::ConstSharedPtr & det_msg,
+    cv::Mat & img,
+    visualization_msgs::msg::MarkerArray & markers)
+  {
+    const int kMinPts = min_pts_;
+    const int kNClose = std::max(1, n_closest_);
+    vision_msgs::msg::Detection3DArray out;
+
+    visualization_msgs::msg::Marker del_all;
+    del_all.action = visualization_msgs::msg::Marker::DELETEALL;
+    markers.markers.push_back(del_all);
+
+    std::vector<bool> matched(tracks_.size(), false);
+
+    for (const auto & d2 : det_msg->detections) {
+      const double cx = d2.bbox.center.position.x;
+      const double cy = d2.bbox.center.position.y;
+      const double bw = d2.bbox.size_x;
+      const double bh = d2.bbox.size_y;
+      const float  x0 = static_cast<float>(cx - bw / 2);
+      const float  x1 = static_cast<float>(cx + bw / 2);
+      const float  y0 = static_cast<float>(cy - bh / 2);
+      const float  y1 = static_cast<float>(cy + bh / 2);
+
+      const std::string label =
+        d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id;
+
+      struct BboxPt { float z, lx, ly, lz; };
+      std::vector<BboxPt> bbox_pts;
+      for (const auto & pp : proj) {
+        if (pp.uv.x >= x0 && pp.uv.x <= x1 &&
+            pp.uv.y >= y0 && pp.uv.y <= y1) {
+          bbox_pts.push_back({pp.z, pp.lx, pp.ly, pp.lz});
+        }
+      }
+
+      const cv::Rect rect(
+        static_cast<int>(x0), static_cast<int>(y0),
+        static_cast<int>(bw), static_cast<int>(bh));
+
+      if (static_cast<int>(bbox_pts.size()) < kMinPts) {
+        cv::rectangle(img, rect, {0, 165, 255}, 2);
+        cv::putText(img, label,
+          {static_cast<int>(x0), static_cast<int>(y0) - 5},
+          cv::FONT_HERSHEY_SIMPLEX, 0.55, {0, 165, 255}, 2);
+        continue;
+      }
+
+      std::sort(bbox_pts.begin(), bbox_pts.end(),
+        [](const BboxPt & a, const BboxPt & b) { return a.z < b.z; });
+      const size_t n_use = std::min(static_cast<size_t>(kNClose), bbox_pts.size());
+
+      float lsx = 0, lsy = 0, lsz = 0;
+      for (size_t i = 0; i < n_use; ++i) {
+        lsx += bbox_pts[i].lx;
+        lsy += bbox_pts[i].ly;
+        lsz += bbox_pts[i].lz;
+      }
+      float lpos_x = lsx / static_cast<float>(n_use);
+      float lpos_y = lsy / static_cast<float>(n_use);
+      float lpos_z = lsz / static_cast<float>(n_use);
+
+      int best_idx = -1;
+      float best_dist2 = static_cast<float>(assoc_dist_ * assoc_dist_);
+      for (size_t ti = 0; ti < tracks_.size(); ++ti) {
+        if (matched[ti] || tracks_[ti].label != label) continue;
+        float dx = tracks_[ti].lx - lpos_x;
+        float dy = tracks_[ti].ly - lpos_y;
+        float dz = tracks_[ti].lz - lpos_z;
+        float d2t = dx*dx + dy*dy + dz*dz;
+        if (d2t < best_dist2) { best_dist2 = d2t; best_idx = static_cast<int>(ti); }
+      }
+
+      int marker_id;
+      if (best_idx >= 0) {
+        Track & tk = tracks_[best_idx];
+        const float a = static_cast<float>(ema_alpha_);
+        tk.lx = a * lpos_x + (1.0f - a) * tk.lx;
+        tk.ly = a * lpos_y + (1.0f - a) * tk.ly;
+        tk.lz = a * lpos_z + (1.0f - a) * tk.lz;
+        tk.miss_count = 0;
+        matched[best_idx] = true;
+        lpos_x = tk.lx; lpos_y = tk.ly; lpos_z = tk.lz;
+        marker_id = tk.id * 2;
+      } else {
+        tracks_.push_back({label, lpos_x, lpos_y, lpos_z, 0, next_track_id_++});
+        matched.push_back(true);
+        marker_id = tracks_.back().id * 2;
+      }
+
+      // Convert back from effective frame to camera frame for Detection3D
+      const float pos_x = -lpos_y;
+      const float pos_y = static_cast<float>(-lpos_z + extrinsic_z_);
+      const float pos_z =  lpos_x;
+
+      vision_msgs::msg::Detection3D d3;
+      d3.header.frame_id = cloud_msg_frame_;
+      if (!d2.results.empty()) {
+        auto res = d2.results[0];
+        res.pose.pose.position.x = pos_x;
+        res.pose.pose.position.y = pos_y;
+        res.pose.pose.position.z = pos_z;
+        res.pose.pose.orientation.w = 1.0;
+        d3.results.push_back(res);
+      }
+      out.detections.push_back(d3);
+
+      const rclcpp::Time stamp = det_msg->header.stamp;
+      const float lidar_dist =
+        std::sqrt(lpos_x*lpos_x + lpos_y*lpos_y + lpos_z*lpos_z);
+
+      visualization_msgs::msg::Marker sphere;
+      sphere.header.frame_id = cloud_msg_frame_;
+      sphere.header.stamp    = stamp;
+      sphere.ns              = "fusion_det";
+      sphere.id              = marker_id;
+      sphere.type            = visualization_msgs::msg::Marker::SPHERE;
+      sphere.action          = visualization_msgs::msg::Marker::ADD;
+      sphere.pose.position.x = lpos_x;
+      sphere.pose.position.y = lpos_y;
+      sphere.pose.position.z = lpos_z;
+      sphere.pose.orientation.w = 1.0;
+      sphere.scale.x = sphere.scale.y = sphere.scale.z = 0.4;
+      sphere.color.r = 0.0f; sphere.color.g = 1.0f;
+      sphere.color.b = 0.0f; sphere.color.a = 0.8f;
+      sphere.lifetime = rclcpp::Duration::from_seconds(0.2);
+      markers.markers.push_back(sphere);
+
+      char buf[64];
+      std::snprintf(buf, sizeof(buf), "%s\n%.2f m", label.c_str(), lidar_dist);
+      visualization_msgs::msg::Marker text;
+      text.header.frame_id = cloud_msg_frame_;
+      text.header.stamp    = stamp;
+      text.ns              = "fusion_det";
+      text.id              = marker_id + 1;
+      text.type            = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+      text.action          = visualization_msgs::msg::Marker::ADD;
+      text.pose.position.x = lpos_x;
+      text.pose.position.y = lpos_y;
+      text.pose.position.z = lpos_z + 0.5;
+      text.pose.orientation.w = 1.0;
+      text.scale.z         = 0.3;
+      text.color.r = 1.0f; text.color.g = 1.0f;
+      text.color.b = 1.0f; text.color.a = 1.0f;
+      text.text            = buf;
+      text.lifetime        = rclcpp::Duration::from_seconds(0.2);
+      markers.markers.push_back(text);
+
+      cv::rectangle(img, rect, {0, 255, 0}, 2);
+      std::snprintf(buf, sizeof(buf), "%s %.2fm (%zu pts)",
+        label.c_str(), lidar_dist, bbox_pts.size());
+      cv::putText(img, buf,
+        {static_cast<int>(x0), static_cast<int>(y0) - 5},
+        cv::FONT_HERSHEY_SIMPLEX, 0.55, {0, 255, 0}, 2);
+    }
+
+    for (size_t ti = 0; ti < tracks_.size(); ++ti) {
+      if (!matched[ti]) ++tracks_[ti].miss_count;
+    }
+    tracks_.erase(
+      std::remove_if(tracks_.begin(), tracks_.end(),
+        [this](const Track & t) { return t.miss_count > max_miss_; }),
+      tracks_.end());
+
+    return out;
+  }
+
+  void fuseEuclideanClusters(
+    const avg_msgs::msg::Detection2DArray::ConstSharedPtr & det_msg,
+    const rclcpp::Time & stamp,
+    cv::Mat & img)
+  {
+    visualization_msgs::msg::MarkerArray::ConstSharedPtr euc_msg;
+    {
+      std::lock_guard<std::mutex> lock(euclidean_mutex_);
+      euc_msg = latest_euclidean_;
+    }
+    if (!euc_msg || euc_msg->markers.empty()) return;
+
+    struct ClusterInfo {
+      float raw_x, raw_y, raw_z, dist;
+      cv::Point2f uv;
+      bool in_image;
+    };
+    std::vector<ClusterInfo> cls;
+    cls.reserve(euc_msg->markers.size());
+
+    for (const auto & mk : euc_msg->markers) {
+      if (mk.action != visualization_msgs::msg::Marker::ADD) continue;
+      if (mk.type   != visualization_msgs::msg::Marker::CUBE) continue;
+
+      const float raw_x = static_cast<float>(mk.pose.position.x);
+      const float raw_y = static_cast<float>(mk.pose.position.y);
+      const float raw_z = static_cast<float>(mk.pose.position.z);
+      // Apply same CCW-90° rotation to convert cluster centroid to effective frame
+      const float lx = -raw_y, ly = raw_x, lz = raw_z;
+
+      ClusterInfo ci;
+      ci.raw_x = raw_x; ci.raw_y = raw_y; ci.raw_z = raw_z;
+      ci.dist  = std::sqrt(raw_x*raw_x + raw_y*raw_y + raw_z*raw_z);
+      ci.in_image = false;
+
+      if (ly >= 0.3f) {
+        std::vector<cv::Point3f> obj_pt = {{lx, ly, lz}};
+        std::vector<cv::Point2f> img_pt;
+        cv::projectPoints(obj_pt, rvec_, tvec_, P_, D_zero_, img_pt);
+        ci.uv = img_pt[0];
+        ci.in_image = (ci.uv.x >= 0 && ci.uv.x < img.cols &&
+                       ci.uv.y >= 0 && ci.uv.y < img.rows);
+      }
+      cls.push_back(ci);
+    }
+
+    std::vector<std::string> labels(cls.size(), "unknown");
+
+    if (det_msg) {
+      std::vector<bool> used(cls.size(), false);
+
+      for (const auto & d2 : det_msg->detections) {
+        const float cx = static_cast<float>(d2.bbox.center.position.x);
+        const float cy = static_cast<float>(d2.bbox.center.position.y);
+        const float hw = static_cast<float>(d2.bbox.size_x) * 0.5f;
+        const float hh = static_cast<float>(d2.bbox.size_y) * 0.5f;
+        const std::string lbl = d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id;
+
+        int   best   = -1;
+        float best_d = std::numeric_limits<float>::max();
+
+        for (size_t i = 0; i < cls.size(); ++i) {
+          if (!cls[i].in_image || used[i]) continue;
+          const float mx = hw * 0.1f, my = hh * 0.1f;
+          if (cls[i].uv.x < cx - hw - mx || cls[i].uv.x > cx + hw + mx) continue;
+          if (cls[i].uv.y < cy - hh - my || cls[i].uv.y > cy + hh + my) continue;
+          const float dx = cls[i].uv.x - cx, dy = cls[i].uv.y - cy;
+          const float d  = dx*dx + dy*dy;
+          if (d < best_d) { best_d = d; best = static_cast<int>(i); }
+        }
+
+        if (best >= 0) { labels[best] = lbl; used[best] = true; }
       }
     }
 
-    avg_msgs::msg::PointCloud2 out;
-    out.header = msg->header;
-    sensor_msgs::PointCloud2Modifier modifier(out);
-    modifier.setPointCloud2FieldsByString(1, "xyz");
-    modifier.resize(kept.size());
+    visualization_msgs::msg::MarkerArray out;
+    visualization_msgs::msg::Marker del_all;
+    del_all.action = visualization_msgs::msg::Marker::DELETEALL;
+    out.markers.push_back(del_all);
 
-    sensor_msgs::PointCloud2Iterator<float> out_x(out, "x");
-    sensor_msgs::PointCloud2Iterator<float> out_y(out, "y");
-    sensor_msgs::PointCloud2Iterator<float> out_z(out, "z");
-    for (const auto & p : kept) {
-      *out_x = p[0];
-      *out_y = p[1];
-      *out_z = p[2];
-      ++out_x; ++out_y; ++out_z;
+    next_euclidean_id_ = 0;
+
+    for (size_t i = 0; i < cls.size(); ++i) {
+      const auto & ci      = cls[i];
+      const bool is_matched = (labels[i] != "unknown");
+      const int base_id    = (next_euclidean_id_++) * 2;
+
+      visualization_msgs::msg::Marker sphere;
+      sphere.header.frame_id    = cloud_msg_frame_;
+      sphere.header.stamp       = stamp;
+      sphere.ns                 = "euclidean_fusion";
+      sphere.id                 = base_id;
+      sphere.type               = visualization_msgs::msg::Marker::SPHERE;
+      sphere.action             = visualization_msgs::msg::Marker::ADD;
+      sphere.pose.position.x    = ci.raw_x;
+      sphere.pose.position.y    = ci.raw_y;
+      sphere.pose.position.z    = ci.raw_z;
+      sphere.pose.orientation.w = 1.0;
+      sphere.scale.x = sphere.scale.y = sphere.scale.z = 0.4;
+      sphere.color.r = is_matched ? 0.0f : 0.5f;
+      sphere.color.g = is_matched ? 1.0f : 0.5f;
+      sphere.color.b = is_matched ? 0.0f : 0.5f;
+      sphere.color.a = is_matched ? 0.8f : 0.6f;
+      sphere.lifetime = rclcpp::Duration::from_seconds(0.2);
+      out.markers.push_back(sphere);
+
+      char buf[64];
+      std::snprintf(buf, sizeof(buf), "%s\n%.2f m", labels[i].c_str(), ci.dist);
+      visualization_msgs::msg::Marker text;
+      text.header.frame_id    = cloud_msg_frame_;
+      text.header.stamp       = stamp;
+      text.ns                 = "euclidean_fusion";
+      text.id                 = base_id + 1;
+      text.type               = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+      text.action             = visualization_msgs::msg::Marker::ADD;
+      text.pose.position.x    = ci.raw_x;
+      text.pose.position.y    = ci.raw_y;
+      text.pose.position.z    = ci.raw_z + 0.5f;
+      text.pose.orientation.w = 1.0;
+      text.scale.z            = 0.3;
+      text.color.r = 1.0f; text.color.g = 1.0f;
+      text.color.b = 1.0f; text.color.a = 1.0f;
+      text.text               = buf;
+      text.lifetime           = rclcpp::Duration::from_seconds(0.2);
+      out.markers.push_back(text);
+
+      if (ci.in_image) {
+        const cv::Point pt(static_cast<int>(ci.uv.x), static_cast<int>(ci.uv.y));
+        const cv::Scalar color = is_matched
+          ? cv::Scalar(0, 255, 255)
+          : cv::Scalar(128, 128, 128);
+        cv::circle(img, pt, 8, color, 2);
+        cv::drawMarker(img, pt, color, cv::MARKER_CROSS, 14, 2);
+        char lbuf[64];
+        std::snprintf(lbuf, sizeof(lbuf), "%s %.1fm", labels[i].c_str(), ci.dist);
+        cv::putText(img, lbuf, {pt.x + 10, pt.y - 5},
+          cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 2);
+      }
     }
 
-    out_pub_->publish(out);
-    publishAvgPerception(out);
+    pub_euclidean_->publish(out);
   }
 
-  // Publishes unified perception status payload when status publication is enabled.
-  void publishAvgPerception(const avg_msgs::msg::PointCloud2 & obstacles)
-  {
-    if (!publish_perception_status_ || !avg_pub_) {
-      return;
-    }
+  // --- parameters ---
+  int    n_closest_;
+  int    min_pts_;
+  double ema_alpha_;
+  double assoc_dist_;
+  int    max_miss_;
+  double extrinsic_x_, extrinsic_y_, extrinsic_z_;
 
-    AvgPerceptionMsgs msg;
-    msg.stamp = now();
-    msg.state.stamp = msg.stamp;
-    msg.state.module_name = "perception";
-    msg.state.level = ModuleState::OK;
-    msg.state.message = "obstacle_fusion";
-    msg.obstacles = obstacles;
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      msg.camera_info = latest_camera_info_;
-      msg.detections = latest_detections_;
-    }
-    avg_pub_->publish(msg);
-  }
+  std::string input_cloud_topic_, detection_topic_, camera_info_topic_;
+  std::string image_topic_, bbox_topic_, output_topic_;
+  std::string out_image_topic_, out_det3d_topic_, out_markers_topic_, out_euclidean_topic_;
 
-  std::string input_cloud_topic_;
-  std::string detection_topic_;
-  std::string camera_info_topic_;
-  std::string output_topic_;
-  std::string perception_status_topic_;
-  std::string camera_frame_;
-  bool use_camera_filter_{true};
-  bool keep_lidar_when_no_detections_{true};
-  bool publish_perception_status_{false};
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_;
 
-  rclcpp::Subscription<avg_msgs::msg::PointCloud2>::SharedPtr cloud_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Detection2DArray>::SharedPtr detection_sub_;
-  rclcpp::Subscription<avg_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
-  rclcpp::Publisher<avg_msgs::msg::PointCloud2>::SharedPtr out_pub_;
-  rclcpp::Publisher<AvgPerceptionMsgs>::SharedPtr avg_pub_;
+  // Cached frame_id from the most recent LiDAR message (used for marker headers).
+  std::string cloud_msg_frame_{"lidar_link"};
 
-  tf2_ros::Buffer tf_buffer_;
-  tf2_ros::TransformListener tf_listener_;
+  // --- EMA tracks ---
+  std::vector<Track> tracks_;
+  int next_track_id_     = 0;
+  int next_euclidean_id_ = 0;
 
-  std::mutex mutex_;
-  image_geometry::PinholeCameraModel camera_model_;
-  bool camera_info_ready_{false};
-  std::vector<BBox2D> detections_;
-  avg_msgs::msg::CameraInfo latest_camera_info_;
-  avg_msgs::msg::Detection2DArray latest_detections_;
+  // --- calibration ---
+  cv::Mat rvec_, tvec_;
+  cv::Mat P_;
+  cv::Mat D_zero_;
+  std::atomic<bool> cam_ready_;
+
+  std::array<cv::Scalar, 121> color_lut_;
+
+  // --- scratch buffers (reused per frame) ---
+  std::vector<cv::Point3f> scratch_obj_;
+  std::vector<cv::Point2f> scratch_uv_;
+
+  // --- detection cache ---
+  avg_msgs::msg::Detection2DArray::ConstSharedPtr latest_det_;
+  std::mutex det_mutex_;
+
+  // --- Euclidean cluster cache ---
+  visualization_msgs::msg::MarkerArray::ConstSharedPtr latest_euclidean_;
+  std::mutex euclidean_mutex_;
+
+  // --- subscribers ---
+  rclcpp::Subscription<avg_msgs::msg::CameraInfo>::SharedPtr            camera_info_sub_;
+  rclcpp::Subscription<avg_msgs::msg::Detection2DArray>::SharedPtr      det_sub_cache_;
+  rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr euclidean_sub_;
+  message_filters::Subscriber<avg_msgs::msg::PointCloud2>               lidar_sub_;
+  message_filters::Subscriber<sensor_msgs::msg::Image>                  image_sub_;
+  std::shared_ptr<message_filters::Synchronizer<SyncPolicy>>            sync_;
+
+  // --- publishers ---
+  rclcpp::Publisher<avg_msgs::msg::PointCloud2>::SharedPtr              pub_obstacles_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr                 pub_image_;
+  rclcpp::Publisher<vision_msgs::msg::Detection3DArray>::SharedPtr      pub_det3d_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr    pub_markers_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr    pub_euclidean_;
 };
 
-}  // namespace camrod::perception
-
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<camrod::perception::ObstacleFusionNode>());
+  rclcpp::spin(std::make_shared<CameraLidarFusionNode>());
   rclcpp::shutdown();
   return 0;
 }

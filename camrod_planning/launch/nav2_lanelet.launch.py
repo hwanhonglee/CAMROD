@@ -83,6 +83,9 @@ def generate_launch_description():
     default_vehicle_param = os.path.join(pkg_share, 'config', 'nav2_vehicle.yaml')
     default_lanelet_param = os.path.join(pkg_share, 'config', 'nav2_lanelet_overlay.yaml')
     default_behavior_param = os.path.join(pkg_share, 'config', 'nav2_behavior.yaml')
+    default_combo_param = os.path.join(
+        pkg_share, 'config', 'nav2_combo_profiles', 'disabled.yaml'
+    )
     default_path_cost_grids_param = os.path.join(pkg_share, 'config', 'path_cost_grids.yaml')
     # HH_260513: Switched default BT to Smac2D profile (was _grid.xml / GridBased default).
     # _grid.xml remains available for runtime override via nav2_bt_xml_nav_to_pose launch arg.
@@ -117,6 +120,11 @@ def generate_launch_description():
         'nav2_behavior_param_file',
         default_value=default_behavior_param,
         description='Nav2 behavior profile (BT XML/plugins)',
+    )
+    nav2_combo_param_arg = DeclareLaunchArgument(
+        'nav2_combo_param_file',
+        default_value=default_combo_param,
+        description='Optional planner/controller combo override profile',
     )
     enable_path_cost_grids_arg = DeclareLaunchArgument(
         'enable_path_cost_grids',
@@ -170,6 +178,7 @@ def generate_launch_description():
     nav2_vehicle_param_file = LaunchConfiguration('nav2_vehicle_param_file')
     nav2_lanelet_param_file = LaunchConfiguration('nav2_lanelet_param_file')
     nav2_behavior_param_file = LaunchConfiguration('nav2_behavior_param_file')
+    nav2_combo_param_file = LaunchConfiguration('nav2_combo_param_file')
     enable_path_cost_grids = LaunchConfiguration('enable_path_cost_grids')
     path_cost_grids_param_file = LaunchConfiguration('path_cost_grids_param_file')
     map_path = LaunchConfiguration('map_path')
@@ -209,6 +218,12 @@ def generate_launch_description():
             'default_nav_to_pose_bt_xml': nav2_bt_xml_nav_to_pose,
             'default_nav_through_poses_bt_xml': nav2_bt_xml_nav_through_poses,
         },
+        convert_types=True,
+    )
+    nav2_combo_params = RewrittenYaml(
+        source_file=nav2_combo_param_file,
+        root_key='planning',
+        param_rewrites={},
         convert_types=True,
     )
 
@@ -265,6 +280,7 @@ def generate_launch_description():
         nav2_vehicle_params,
         nav2_lanelet_params,
         nav2_behavior_params,
+        nav2_combo_params,
         force_base_link_overrides,
     ]
 
@@ -410,6 +426,7 @@ def generate_launch_description():
         nav2_vehicle_param_arg,
         nav2_lanelet_param_arg,
         nav2_behavior_param_arg,
+        nav2_combo_param_arg,
         enable_path_cost_grids_arg,
         path_cost_grids_param_arg,
         map_path_arg,

@@ -23,7 +23,7 @@
     start_topic_fallback_to_tf: true
     action_name: "/planning/compute_path_to_pose"
     # Keep goal-replan requests aligned with stabilized planner profile.
-    planner_id: "GridBased"
+    planner_id: "NavFn"
     frame_id: "map"
     output_path_topic: "/planning/global_path"
     # Keep avg global path stream always available for

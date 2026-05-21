@@ -1,0 +1,19 @@
+# Combo Profile: NavFn + Graceful
+# 2026-05-21 sim 20s sweep observation: P=Y/C=Y/M=N, displacement=0.000m
+# Tuning intent: recovery-biased preset (encourage initial movement on this combo).
+planner_server:
+  ros__parameters:
+    NavFn:
+      tolerance: 0.5
+      use_astar: True
+      allow_unknown: False
+
+controller_server:
+  ros__parameters:
+    Graceful:
+      v_linear_max: 1.0
+      v_linear_max_initial: 0.6
+      initial_rotation: True
+      initial_rotation_min_angle: 0.35
+      rotation_scaling_factor: 0.8
+      allow_backward: True

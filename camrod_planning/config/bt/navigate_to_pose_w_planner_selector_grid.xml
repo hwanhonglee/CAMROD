@@ -1,5 +1,7 @@
 <!-- PlannerSelector-enabled BT (SIM profile).
-  - Default planner: GridBased
+  - Default planner: NavFn
+  - Default controller: RPP
+  - Optional controller: DWB
   - Switch planner by publishing std_msgs/String to /planning/planner_selector
 -->
 <root main_tree_to_execute="MainTree">
@@ -7,15 +9,17 @@
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
       <PipelineSequence name="NavigateWithReplanning">
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
-        <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="/planning/planner_selector"/>
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="NavFn" topic_name="/planning/planner_selector"/>
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector"/>
         <RateController hz="3.0">
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
             <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="{selected_planner}"/>
             <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
           </RecoveryNode>
         </RateController>
+        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <FollowPath path="{path}" controller_id="{selected_controller}"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
         </RecoveryNode>
       </PipelineSequence>

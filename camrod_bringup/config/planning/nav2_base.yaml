@@ -16,12 +16,11 @@ planner_server:
     # Allow extra settle time for layered global costmap current-state.
     # Further extend timeout for heavy real-sensor bringup phases.
     costmap_wait_timeout_sec: 12.0
-    # HH_260513: Switched to Smac2D as primary planner (Hybrid-A* + DUBIN + built-in smoother).
-    # GridBased (NavFN) kept as fallback; PlannerSelector BT node allows runtime switching
-    # via /planning/planner_selector topic without restart.
-    planner_plugins: ["GridBased", "Smac2D"]
+    # Runtime-selectable planner IDs (published to /planning/planner_selector):
+    # NavFn | Smac2D | ThetaStar | SmacHybrid | SmacLattice
+    planner_plugins: ["NavFn", "Smac2D", "ThetaStar", "SmacHybrid", "SmacLattice"]
 
-    GridBased:
+    NavFn:
       plugin: "nav2_navfn_planner/NavfnPlanner"
       # Keep final solve tight; goal_snapper already maps user goal into lanelet.
       tolerance: 0.5
@@ -54,6 +53,48 @@ planner_server:
       max_on_approach_iterations: 1000
       max_planning_time: 3.0
 
+    ThetaStar:
+      plugin: "nav2_theta_star_planner/ThetaStarPlanner"
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      w_traversal_cost: 2.0
+      allow_unknown: False
+
+    SmacHybrid:
+      plugin: "nav2_smac_planner/SmacPlannerHybrid"
+      allow_unknown: False
+      tolerance: 0.5
+      downsample_costmap: False
+      downsampling_factor: 1
+      motion_model_for_search: "DUBIN"
+      angle_quantization_bins: 32
+      minimum_turning_radius: 0.6
+      analytic_expansion_ratio: 3.5
+      max_iterations: 2000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 3.0
+      reverse_penalty: 2.0
+      change_penalty: 0.0
+      non_straight_penalty: 1.1
+      cost_penalty: 2.0
+      retrospective_penalty: 0.015
+      lookup_table_size: 20.0
+      smooth_path: True
+
+    SmacLattice:
+      plugin: "nav2_smac_planner/SmacPlannerLattice"
+      allow_unknown: False
+      tolerance: 0.5
+      downsample_costmap: False
+      downsampling_factor: 1
+      minimum_turning_radius: 0.6
+      max_iterations: 2000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 3.0
+      lookup_table_size: 20.0
+      lattice_filepath: "/opt/ros/humble/share/nav2_smac_planner/sample_primitives/5cm_resolution/1m_turning_radius/ackermann/output.json"
+      smooth_path: True
+
 controller_server:
   ros__parameters:
     use_sim_time: False
@@ -78,11 +119,10 @@ controller_server:
     # Nav2 controller server reads *_checker_* keys; validator keys are ignored.
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["goal_checker"]
-    # 2026-02-25: Use a single active controller by default to avoid
-    # duplicate debug topics (/planning/cost_cloud, /planning/evaluation)
-    # from unused DWB plugin loading.
-    controller_plugins: ["FollowPath"]
-    default_controller: FollowPath
+    # Runtime-selectable controller IDs (published to /planning/controller_selector):
+    # RPP | DWB | MPPI | Graceful | RotationShim
+    controller_plugins: ["RPP", "DWB", "MPPI", "Graceful", "RotationShim"]
+    default_controller: RPP
 
     # Restore Humble plugin class names required by nav2_controller.
     progress_checker:
@@ -99,6 +139,120 @@ controller_server:
       xy_goal_tolerance: 0.3
       yaw_goal_tolerance: 0.25
       stateful: False
+
+    # DWB controller profile. Runtime selection is done by
+    # /planning/controller_selector topic (std_msgs/String: "RPP" or "DWB").
+    DWB:
+      plugin: "dwb_core::DWBLocalPlanner"
+      debug_trajectory_details: False
+      min_vel_x: 0.0
+      min_vel_y: 0.0
+      max_vel_x: 1.4
+      max_vel_y: 0.0
+      max_vel_theta: 1.2
+      min_speed_xy: 0.0
+      max_speed_xy: 1.4
+      min_speed_theta: 0.0
+      acc_lim_x: 1.5
+      acc_lim_y: 0.0
+      acc_lim_theta: 3.0
+      decel_lim_x: -1.5
+      decel_lim_y: 0.0
+      decel_lim_theta: -3.0
+      vx_samples: 20
+      vy_samples: 1
+      vtheta_samples: 24
+      sim_time: 1.7
+      linear_granularity: 0.05
+      angular_granularity: 0.025
+      transform_tolerance: 0.2
+      xy_goal_tolerance: 0.3
+      trans_stopped_velocity: 0.10
+      short_circuit_trajectory_evaluation: True
+      stateful: True
+      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
+      BaseObstacle.scale: 0.02
+      PathAlign.scale: 24.0
+      PathAlign.forward_point_distance: 0.1
+      GoalAlign.scale: 18.0
+      GoalAlign.forward_point_distance: 0.1
+      PathDist.scale: 24.0
+      GoalDist.scale: 18.0
+      RotateToGoal.scale: 24.0
+      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.lookahead_time: -1.0
+
+    MPPI:
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 56
+      model_dt: 0.05
+      batch_size: 1200
+      iteration_count: 1
+      prune_distance: 2.0
+      transform_tolerance: 0.2
+      vx_max: 1.4
+      vx_min: 0.0
+      vy_max: 0.0
+      wz_max: 1.2
+      vx_std: 0.2
+      vy_std: 0.0
+      wz_std: 0.4
+      ax_max: 1.5
+      ax_min: -1.5
+      ay_max: 0.0
+      az_max: 3.0
+      temperature: 0.3
+      gamma: 0.015
+      motion_model: "DiffDrive"
+      regenerate_noises: False
+      visualize: False
+      critics: [
+        "ConstraintCritic",
+        "CostCritic",
+        "GoalCritic",
+        "GoalAngleCritic",
+        "PathAlignCritic",
+        "PathFollowCritic",
+        "PathAngleCritic",
+        "PreferForwardCritic"
+      ]
+      ConstraintCritic.enabled: True
+      CostCritic.enabled: True
+      GoalCritic.enabled: True
+      GoalAngleCritic.enabled: True
+      PathAlignCritic.enabled: True
+      PathFollowCritic.enabled: True
+      PathAngleCritic.enabled: True
+      PreferForwardCritic.enabled: True
+
+    Graceful:
+      plugin: "nav2_graceful_controller::GracefulController"
+      transform_tolerance: 0.2
+      k_phi: 2.0
+      k_delta: 1.0
+      beta: 0.4
+      lambda: 2.0
+      v_linear_min: 0.0
+      v_linear_max: 1.4
+      v_linear_max_initial: 0.8
+      v_angular_max: 1.2
+      v_angular_max_initial: 1.2
+      slowdown_radius: 1.5
+      initial_rotation: True
+      initial_rotation_min_angle: 0.78
+      final_rotation: True
+      rotation_scaling_factor: 1.0
+      allow_backward: False
+
+    RotationShim:
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      angular_dist_threshold: 0.785
+      forward_sampling_distance: 0.5
+      rotate_to_heading_angular_vel: 1.2
+      max_angular_accel: 3.0
+      simulate_ahead_time: 1.0
+      rotate_to_goal_heading: True
 
 local_costmap:
   local_costmap:

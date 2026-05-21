@@ -1,0 +1,7 @@
+# Disabled combo profile.
+# This file is intentionally minimal and applies no planner/controller tuning overrides.
+planner_server:
+  ros__parameters: {}
+
+controller_server:
+  ros__parameters: {}
