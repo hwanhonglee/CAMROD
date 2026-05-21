@@ -1,6 +1,8 @@
-# camrod_perception
+# 👁️ camrod_perception — LiDAR obstacles & camera-LiDAR fusion
 
-## 1. Summary
+---
+
+## 1. 📋 Summary
 
 `camrod_perception` converts raw sensor streams from `camrod_sensing` into obstacle representations consumed by `camrod_planning` and `camrod_system`. It contains two independent nodes and optionally integrates an external YOLOv9 camera detector.
 
@@ -10,102 +12,199 @@
 | `obstacle_lidar_node` | Runs Euclidean cluster extraction (PCL) on the same filtered cloud after an axis-aligned ROI filter; publishes AABB markers for RViz visualization |
 | `yolov9mit_ros` (external) | YOLOv9 TensorRT inference node providing 2D bounding boxes; started by `yolo.launch.py`; can be disabled with `enable_yolo:=false` |
 
-**Non-goals:** This package does not run AprilTag detection (see `camrod_parking`), object tracking with persistent IDs across restarts, or semantic mapping.
+**Non-goals:** Object tracking with persistent IDs across restarts, semantic mapping.
 
-> **External Dependency — camera detections**
-> `obstacle_fusion_node` subscribes to `/perception/camera/detections_2d`
-> (`avg_msgs/Detection2DArray`). This topic is produced by the `yolov9mit_ros`
-> node started by `yolo.launch.py`. If this topic is absent or `enable_yolo:=false`,
-> the fusion node falls back to pass-through mode and publishes the full LiDAR cloud
-> to `/perception/obstacles` without camera filtering.
+> 📌 **Note** — AprilTag detection lives in `camrod_parking`, NOT here. This package handles only LiDAR obstacles and camera-LiDAR fusion for general obstacle detection.
 
 ---
 
-## 2. Quick Start
-
-```bash
-# Full stack: fusion + lidar clustering + YOLO detector
-ros2 launch camrod_perception perception.launch.py
-
-# Fusion + clustering only (no YOLO)
-ros2 launch camrod_perception perception.launch.py enable_yolo:=false
-
-# Fusion only (no clustering, no YOLO)
-ros2 launch camrod_perception perception.launch.py \
-  enable_yolo:=false enable_lidar_obstacle:=false
-
-# Override parameter file
-ros2 launch camrod_perception perception.launch.py \
-  perception_param_file:=/path/to/custom_params.yaml
-```
-
-Prerequisites:
-- `camrod_sensing` lidar pipeline must be publishing `/sensing/lidar/points_filtered`
-- For camera fusion: `camrod_sensing` camera pipeline must publish `/sensing/camera/processed/image` and `/sensing/camera/processed/camera_info`
-- TF `lidar_link → camera_optical_frame` must be broadcasting
-
----
-
-## 3. System Position
+## 2. 🗺️ System Position
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  SENS[[camrod_sensing]] -->|points_filtered\ncamera_info\nimage| PER[camrod_perception]
-  YOLO{{yolov9mit_ros\nexternal TensorRT}} -.->|detections_2d| PER
-  PER -->|/perception/obstacles| SYS[[camrod_system]]
-  PER -->|/perception/obstacles| PLAN[[camrod_planning\ncostmap]]
-  PER -->|/perception/lidar/bboxes\n/perception/camera_lidar/*| VIZ{{RViz}}
+  subgraph SENS_GRP["📷 Sensing"]
+    SENS[[📦 camrod_sensing]]
+  end
 
-  style PER fill:#d4eaff,stroke:#336699
+  subgraph EXT_GRP["🤖 External inference"]
+    YOLO{{🛠️ yolov9mit_ros\nexternal TensorRT}}
+  end
+
+  subgraph PER_GRP["👁️ camrod_perception"]
+    PER[🧩 camrod_perception]
+  end
+
+  subgraph CONS_GRP["🗺️ Consumers"]
+    SYS[[📦 camrod_system]]
+    PLAN[[📦 camrod_planning\ncostmap]]
+    VIZ{{🛠️ RViz}}
+  end
+
+  SENS -->|points_filtered\ncamera_info\nimage| PER
+  YOLO -.->|detections_2d\n(optional)| PER
+  PER ==>|/perception/obstacles| SYS
+  PER ==>|/perception/obstacles| PLAN
+  PER -->|/perception/lidar/bboxes\n/perception/camera_lidar/*| VIZ
+
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  class SENS sensing
+  class PER highlight
+  class YOLO,VIZ hardware
+  class SYS,PLAN planning
 ```
 
-Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `[[stack]]` = external package, `{{file/hw}}` = external process or visualization, dashed = optional/non-runtime dependency.
+> 📌 **External dependency** — `/perception/camera/detections_2d` must be provided by a separate detector (e.g. YOLO). This package does **NOT** run detection itself. If this topic is absent or `enable_yolo:=false`, `obstacle_fusion_node` falls back to **pass-through mode** and publishes the full LiDAR cloud to `/perception/obstacles` without camera filtering.
 
 ---
 
-## 4. Runtime Architecture
-
-### Mode A: Camera-LiDAR Fusion (enable_yolo=true)
+## 3. ⚙️ Runtime Architecture
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph TD
-  LIDAR(( /sensing/lidar/\npoints_filtered )) --> FUSION[obstacle_fusion_node]
-  IMAGE(( /sensing/camera/processed/\nimage )) --> FUSION
-  CAMINFO(( /sensing/camera/processed/\ncamera_info )) --> FUSION
-  DET(( /perception/camera/\ndetections_2d )) --> FUSION
-  BBOX(( /perception/lidar/\nbboxes )) --> FUSION
-  FUSION --> OBS(( /perception/obstacles ))
-  FUSION --> FUSED_IMG(( /perception/camera_lidar/\nimage ))
-  FUSION --> DET3D(( /perception/camera_lidar/\ndetections_3d ))
-  FUSION --> MARKERS(( /perception/camera_lidar/\nmarkers ))
-  FUSION --> EUC_MARKERS(( /perception/camera_lidar/\neuclidean_markers ))
+  subgraph MODE_A["🎭 Mode A — Fusion (LiDAR ∩ 2D detections)"]
+    style MODE_A fill:#FCE7F3,stroke:#EC4899,stroke-width:2px,color:#9D174D
 
-  LIDAR --> CLUSTER[obstacle_lidar_node]
-  CLUSTER --> BBOX
+    LIDAR_A(("/sensing/lidar/\npoints_filtered"))
+    IMAGE_A(("/sensing/camera/processed/\nimage"))
+    CAMINFO_A(("/sensing/camera/processed/\ncamera_info"))
+    DET_A(("/perception/camera/\ndetections_2d"))
+    BBOX_A(("/perception/lidar/\nbboxes"))
 
-  YOLO[[yolov9mit_ros]] -->|subscribes| IMAGE
-  YOLO --> DET
+    CLUSTER_A[🧩 obstacle_lidar_node]
+    YOLO_A[[📦 yolov9mit_ros]]
+    FUSION_A[🧩 obstacle_fusion_node]
+
+    OBS_A(("/perception/obstacles\n(bbox-filtered cloud)"))
+    FUSED_IMG_A(("/perception/camera_lidar/\nimage"))
+    DET3D_A(("/perception/camera_lidar/\ndetections_3d"))
+    MARKERS_A(("/perception/camera_lidar/\nmarkers"))
+    EUC_A(("/perception/camera_lidar/\neuclidean_markers"))
+
+    LIDAR_A --> CLUSTER_A
+    CLUSTER_A --> BBOX_A
+    LIDAR_A ==> FUSION_A
+    IMAGE_A ==> FUSION_A
+    CAMINFO_A --> FUSION_A
+    DET_A ==> FUSION_A
+    BBOX_A --> FUSION_A
+    YOLO_A -.->|subscribes| IMAGE_A
+    YOLO_A ==> DET_A
+    FUSION_A ==> OBS_A
+    FUSION_A --> FUSED_IMG_A
+    FUSION_A --> DET3D_A
+    FUSION_A --> MARKERS_A
+    FUSION_A --> EUC_A
+  end
+
+  subgraph MODE_B["🎭 Mode B — LiDAR-only clustering (enable_yolo=false)"]
+    style MODE_B fill:#FDF2F8,stroke:#F472B6,stroke-width:1.5px,color:#BE185D
+
+    LIDAR_B(("/sensing/lidar/\npoints_filtered"))
+    IMAGE_B(("/sensing/camera/processed/\nimage"))
+    CAMINFO_B(("/sensing/camera/processed/\ncamera_info"))
+
+    CLUSTER_B[🧩 obstacle_lidar_node]
+    FUSION_B[🧩 obstacle_fusion_node\n(pass-through)]
+
+    OBS_B(("/perception/obstacles\n(full cloud pass-through)"))
+    FUSED_IMG_B(("/perception/camera_lidar/\nimage"))
+    BBOX_B(("/perception/lidar/bboxes"))
+
+    LIDAR_B --> CLUSTER_B
+    CLUSTER_B --> BBOX_B
+    LIDAR_B ==> FUSION_B
+    IMAGE_B --> FUSION_B
+    CAMINFO_B --> FUSION_B
+    FUSION_B ==> OBS_B
+    FUSION_B --> FUSED_IMG_B
+  end
+
+  classDef topic      fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef perception fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef highlight  fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  class LIDAR_A,IMAGE_A,CAMINFO_A,DET_A,BBOX_A,OBS_A,FUSED_IMG_A,DET3D_A,MARKERS_A,EUC_A topic
+  class LIDAR_B,IMAGE_B,CAMINFO_B,OBS_B,FUSED_IMG_B,BBOX_B topic
+  class CLUSTER_A,FUSION_A,CLUSTER_B,FUSION_B perception
+  class YOLO_A highlight
 ```
 
-### Mode B: LiDAR-only (enable_yolo=false or /perception/camera/detections_2d absent)
+> 💡 **Legend** — `[🧩 node]` = ROS node &nbsp;|&nbsp; `((topic))` = ROS topic &nbsp;|&nbsp; `==>` critical data path &nbsp;|&nbsp; `-.->` optional
 
-```mermaid
-graph TD
-  LIDAR(( /sensing/lidar/\npoints_filtered )) --> FUSION[obstacle_fusion_node]
-  IMAGE(( /sensing/camera/processed/\nimage )) --> FUSION
-  CAMINFO(( /sensing/camera/processed/\ncamera_info )) --> FUSION
-  FUSION -->|full cloud pass-through| OBS(( /perception/obstacles ))
-  FUSION --> FUSED_IMG(( /perception/camera_lidar/\nimage ))
-
-  LIDAR --> CLUSTER[obstacle_lidar_node]
-  CLUSTER --> BBOX(( /perception/lidar/bboxes ))
-```
-
-In Mode B, `obstacle_fusion_node` receives no `detections_2d`; it publishes the full forward-projected LiDAR cloud to `/perception/obstacles` without camera-based filtering. `obstacle_lidar_node` operates identically in both modes.
+In **Mode B**, `obstacle_fusion_node` receives no `detections_2d` and publishes the full forward-projected LiDAR cloud to `/perception/obstacles` without camera-based filtering. `obstacle_lidar_node` operates identically in both modes.
 
 ---
 
-## 5. Interface Contract
+## 4. 🔗 Frame and Calibration
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+graph LR
+  ODOM[🧩 odom]
+  BASE[🧩 base_link]
+  LIDAR[🧩 lidar_link\n published by lidar_preprocessor / URDF]
+  CAM[🧩 camera_link\n required static or continuous]
+
+  ODOM --> BASE --> LIDAR --> CAM
+
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+
+  class ODOM,BASE localization
+  class LIDAR sensing
+  class CAM perception
+```
+
+> 📌 `obstacle_fusion_node` does **not** call `tf_buffer_.lookupTransform` at runtime. It uses the fixed extrinsic rotation matrix for the Vanjee 750C mounting (CCW-90° around Z) plus the `extrinsic_z` offset. The TF tree is still required by downstream consumers (RViz, Nav2 costmap) to correctly place the obstacle cloud in the map frame.
+
+### Required TF Chain
+
+```
+odom
+  └── base_link
+        └── lidar_link          ← published by lidar_preprocessor / URDF
+              └── camera_link   ← required for projection; must be static or published continuously
+```
+
+### Vanjee 750C Axis Convention
+
+| Frame | X | Y | Z |
+|---|---|---|---|
+| Vanjee 750 raw (sensor native) | forward | left | up |
+| Effective frame (after CCW-90° around Z) | right | forward | up |
+| Camera frame (optical) | right | down | forward |
+
+Extrinsic rotation (effective → camera) is hardcoded as:
+
+```
+R = [[1,  0,  0],
+     [0,  0, -1],
+     [0,  1,  0]]
+t = -R * [extrinsic_x, extrinsic_y, extrinsic_z]
+```
+
+Default `extrinsic_z = -0.075` (camera is 7.5 cm below LiDAR). Adjust in `perception_params.yaml` if the physical mounting changes.
+
+### `camera_info` Requirement
+
+`obstacle_fusion_node` subscribes to `/sensing/camera/processed/camera_info` and extracts the `P` matrix (3×3 projection) from the first message. Fusion is **blocked** until this message arrives. If `camera_info` never arrives, a throttled warning is logged:
+
+```
+[obstacle_fusion]: Waiting for camera_info on /sensing/camera/processed/camera_info…
+```
+
+---
+
+## 5. 📡 Interface Contract
 
 ### Inputs
 
@@ -132,9 +231,9 @@ In Mode B, `obstacle_fusion_node` receives no `detections_2d`; it publishes the 
 
 ---
 
-## 6. Key Behaviors
+## 6. 🔑 Key Behaviors
 
-### LiDAR Clustering (obstacle_lidar_node)
+### 📦 LiDAR Clustering (`obstacle_lidar_node`)
 
 | Field | Detail |
 |---|---|
@@ -145,7 +244,7 @@ In Mode B, `obstacle_fusion_node` receives no `detections_2d`; it publishes the 
 | Related params | `cluster_tolerance`, `min_cluster_size`, `max_cluster_size`, `x_min/x_max`, `y_min/y_max`, `z_min/z_max`, `marker_lifetime_s`, `draw_text` |
 | Related topics | `/sensing/lidar/points_filtered` → `/perception/lidar/bboxes` |
 
-### Camera-LiDAR Fusion (obstacle_fusion_node)
+### 🔀 Camera-LiDAR Fusion (`obstacle_fusion_node`)
 
 | Field | Detail |
 |---|---|
@@ -158,49 +257,32 @@ In Mode B, `obstacle_fusion_node` receives no `detections_2d`; it publishes the 
 
 ---
 
-## 7. Frame and Calibration
+## 7. 🚀 Quick Start
 
-### Required TF Chain
+```bash
+# Full stack: fusion + lidar clustering + YOLO detector
+ros2 launch camrod_perception perception.launch.py
 
-```
-odom
-  └── base_link
-        └── lidar_link          ← published by lidar_preprocessor / URDF
-              └── camera_link   ← required for projection; must be static or published continuously
-```
+# Fusion + clustering only (no YOLO)
+ros2 launch camrod_perception perception.launch.py enable_yolo:=false
 
-`obstacle_fusion_node` does **not** call `tf_buffer_.lookupTransform` at runtime. Instead it uses the fixed extrinsic rotation matrix for the Vanjee 750C mounting (CCW-90° around Z) plus the `extrinsic_z` offset. The TF tree is still required by downstream consumers (RViz, Nav2 costmap) to correctly place the obstacle cloud in the map frame.
+# Fusion only (no clustering, no YOLO)
+ros2 launch camrod_perception perception.launch.py \
+  enable_yolo:=false enable_lidar_obstacle:=false
 
-### Vanjee 750C Axis Convention
-
-| Frame | X | Y | Z |
-|---|---|---|---|
-| Vanjee 750 raw (sensor native) | forward | left | up |
-| Effective frame (after CCW-90° around Z) | right | forward | up |
-| Camera frame (optical) | right | down | forward |
-
-Extrinsic rotation (effective → camera) is hardcoded as:
-
-```
-R = [[1,  0,  0],
-     [0,  0, -1],
-     [0,  1,  0]]
-t = -R * [extrinsic_x, extrinsic_y, extrinsic_z]
+# Override parameter file
+ros2 launch camrod_perception perception.launch.py \
+  perception_param_file:=/path/to/custom_params.yaml
 ```
 
-Default `extrinsic_z = -0.075` (camera is 7.5 cm below LiDAR). Adjust in `perception_params.yaml` if the physical mounting changes.
-
-### camera_info Requirement
-
-`obstacle_fusion_node` subscribes to `/sensing/camera/processed/camera_info` and extracts the `P` matrix (3×3 projection) from the first message. Fusion is **blocked** until this message arrives. If `camera_info` never arrives, a throttled warning is logged:
-
-```
-[obstacle_fusion]: Waiting for camera_info on /sensing/camera/processed/camera_info…
-```
+**Prerequisites:**
+- `camrod_sensing` lidar pipeline must be publishing `/sensing/lidar/points_filtered`
+- For camera fusion: `camrod_sensing` camera pipeline must publish `/sensing/camera/processed/image` and `/sensing/camera/processed/camera_info`
+- TF `lidar_link → camera_optical_frame` must be broadcasting
 
 ---
 
-## 8. Launch
+## 8. 🛠️ Launch
 
 ### Launch Files
 
@@ -224,7 +306,7 @@ Default `extrinsic_z = -0.075` (camera is 7.5 cm below LiDAR). Adjust in `percep
 
 ---
 
-## 9. Config
+## 9. ⚙️ Config
 
 ### `config/perception_params.yaml`
 
@@ -256,7 +338,7 @@ All three nodes share this file. Sections are keyed by full node namespace:
 
 ---
 
-## 10. Validation
+## 10. ✅ Validation
 
 ```bash
 # 1. Confirm all three nodes are running
@@ -285,13 +367,12 @@ ros2 topic hz /perception/lidar/bboxes
 
 ---
 
-## 11. Troubleshooting
+## 11. 🔧 Troubleshooting
 
 ### /perception/obstacles is empty
 
-**Symptoms:** `ros2 topic hz /perception/obstacles` shows 0 Hz or topic not found.
+> ⚠️ **Symptoms** — `ros2 topic hz /perception/obstacles` shows 0 Hz or topic not found.
 
-**Checks:**
 1. Verify `obstacle_fusion_node` is running: `ros2 node list | grep obstacle_fusion`
 2. Check that `/sensing/lidar/points_filtered` is publishing: `ros2 topic hz /sensing/lidar/points_filtered`
 3. Check logs for camera_info wait message — fusion node does not process until camera_info arrives
@@ -301,9 +382,8 @@ ros2 topic hz /perception/lidar/bboxes
 
 ### Detections present but no fused output
 
-**Symptoms:** `/perception/camera/detections_2d` is publishing, but `/perception/obstacles` has very few or no points.
+> ⚠️ **Symptoms** — `/perception/camera/detections_2d` is publishing, but `/perception/obstacles` has very few or no points.
 
-**Checks:**
 1. Confirm `min_pts_in_bbox` is not too high relative to lidar density at the target distance; default is `3`
 2. Check the camera-LiDAR extrinsic: view `/perception/camera_lidar/image` in RViz and confirm LiDAR points overlay on real objects (not shifted off-screen)
 3. If projected points are misaligned, verify `extrinsic_z` in `perception_params.yaml` matches the physical camera-LiDAR vertical offset
@@ -313,9 +393,8 @@ ros2 topic hz /perception/lidar/bboxes
 
 ### Cluster bboxes shifted
 
-**Symptoms:** `/perception/lidar/bboxes` markers appear correct in count but are laterally or longitudinally offset from real obstacles in RViz.
+> ⚠️ **Symptoms** — `/perception/lidar/bboxes` markers appear correct in count but are laterally or longitudinally offset from real obstacles in RViz.
 
-**Checks:**
 1. The ROI filter uses the raw Vanjee 750 sensor frame (X forward, Y left). Confirm the LiDAR is physically mounted with the sensor X-axis pointing forward
 2. Check the static TF between `lidar_link` and `base_link` in the URDF/static TF publisher — an incorrect mount orientation shifts all clusters
 3. If only the Z height is wrong, adjust `z_min` / `z_max` to exclude ground reflections
@@ -324,16 +403,15 @@ ros2 topic hz /perception/lidar/bboxes
 
 ### Camera info missing — fusion disabled
 
-**Symptoms:** Log repeatedly shows: `[obstacle_fusion]: Waiting for camera_info on /sensing/camera/processed/camera_info…`
+> ⚠️ **Symptoms** — Log repeatedly shows: `[obstacle_fusion]: Waiting for camera_info on /sensing/camera/processed/camera_info…`
 
-**Checks:**
 1. `ros2 topic hz /sensing/camera/processed/camera_info` — if 0 Hz, the camrod_sensing camera pipeline is not running
 2. Verify `camera_info_topic` param in `perception_params.yaml` matches the actual topic name published by `camrod_sensing`
 3. If running in lidar-only mode intentionally, consider setting `enable_yolo:=false` and relying on pass-through mode — camera_info is still required by `obstacle_fusion_node` before it will process any cloud messages
 
 ---
 
-## 12. Related Docs
+## 12. 📚 Related Docs
 
 | Document | Notes |
 |---|---|

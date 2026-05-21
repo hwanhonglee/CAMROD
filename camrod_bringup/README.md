@@ -1,6 +1,6 @@
-# camrod_bringup
+# 🚀 camrod_bringup — Top-level orchestrator
 
-## 1. Summary
+## 1. 📋 Summary
 
 `camrod_bringup` is the single top-level launch orchestrator for the CAMROD stack. Its only job is to read two YAML files — `config/bringup/launch_defaults.yaml` and `camrod_map/config/map_info.yaml` — resolve all shared parameters (map path, WGS84 origin, module-level config overrides), and then start every package-level launch file in a deterministic, staggered sequence.
 
@@ -17,9 +17,7 @@
 
 ---
 
-## 2. Quick Start
-
-### Common Use Cases
+## 2. ⚡ Quick Start
 
 ```bash
 # Real robot bringup (default: ESKF on, RViz on, all hardware drivers)
@@ -45,33 +43,109 @@ ros2 launch camrod_bringup gnss_dr_test.launch.py
 
 ---
 
-## 3. System Position
+## 3. 🗺️ System Position
 
 ```mermaid
-graph TD
-  CLI{{CLI args}} --> IMPL[_bringup_impl.py]
-  DEF{{"config/bringup/launch_defaults.yaml"}} --> IMPL
-  MAPINFO{{"camrod_map/config/map_info.yaml"}} --> IMPL
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+graph LR
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  IMPL --> PLAT[[camrod_platform]]
-  IMPL --> MAP[[camrod_map]]
-  IMPL --> SIM[[fake_sensors — sim only]]
-  IMPL --> SENS[[camrod_sensing]]
-  IMPL --> PER[[camrod_perception]]
-  IMPL --> LOC[[camrod_localization]]
-  IMPL --> PLAN[[camrod_planning]]
-  IMPL --> SYS[[camrod_system]]
-  IMPL --> UI[[camrod_ui]]
-  IMPL -.->|rviz:=true| RVIZ[rviz2]
+  CLI{{🛠️ CLI args}} --> IMPL[🚀 _bringup_impl.py]
+  DEF[(⚙️ launch_defaults.yaml)] --> IMPL
+  MAPINFO[(⚙️ map_info.yaml)] --> IMPL
+
+  IMPL ==> PLAT[🤖 camrod_platform]
+  IMPL ==> MAP[🗺️ camrod_map]
+  IMPL --> SIM[🔬 fake_sensors — sim only]
+  IMPL ==> SENS[📡 camrod_sensing]
+  IMPL ==> PER[👁️ camrod_perception]
+  IMPL ==> LOC[📍 camrod_localization]
+  IMPL ==> PLAN[🧭 camrod_planning]
+  IMPL ==> SYS[🔧 camrod_system]
+  IMPL ==> UIPKG[🖥️ camrod_ui]
+  IMPL -.->|rviz:=true| RVIZ[🖼️ rviz2]
+  IMPL -.->|separate launch| PARK[🅿️ camrod_parking]
+
+  class PLAT platform
+  class MAP mapping
+  class SENS sensing
+  class PER perception
+  class LOC localization
+  class PLAN planning
+  class SYS system
+  class UIPKG ui
+  class PARK parking
+  class IMPL highlight
 ```
 
-Legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = external file or hardware, `[[stack]]` = external package, dashed = non-runtime / conditional dep.
+> **Diagram legend** 🧩 ROS node · ⚙️ Config · 🛠️ Hardware · ==> critical · -.-> optional/conditional
 
 `bringup.launch.py` is a thin wrapper that hot-loads `_bringup_impl.py` at runtime so YAML edits apply immediately without rebuilding.
 
+*Figure 1 — CAMROD stack system position. `camrod_bringup` is the single entry point that orchestrates every downstream package.*
+
 ---
 
-## 4. Runtime Architecture
+## 4. ⏱️ Launch Sequence
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+graph TD
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  LAUNCH[🚀 ros2 launch bringup.launch.py] ==> CFG
+  CFG[📖 Config resolution\nlunch_defaults + map_info] ==> CLEAN
+  CLEAN[🧹 Cleanup\nclean_before_launch pkill] ==> S0
+
+  S0[🤖 Slot 0 · camrod_platform\nTF + /platform/status/*] ==>|+ module_launch_gap_s| S1
+  S1[🗺️ Slot 1 · camrod_map\nlanelet2 map load] ==>|+ module_launch_gap_s| S2
+  S2[🔬 Slot 2 · fake_sensors\nsim only] ==>|+ module_launch_gap_s| S3
+  S3[📡 Slot 3 · camrod_sensing\nhardware drivers + cost grids] ==>|+ module_launch_gap_s| S4
+  S4[👁️ Slot 4 · camrod_perception\nLiDAR + YOLO obstacles] ==>|+ module_launch_gap_s| S5
+  S5[📍 Slot 5 · camrod_localization\nGNSS + IMU + wheel fusion] ==>|+ module_launch_gap_s| S6
+  S6[🧭 Slot 6 · camrod_planning\nNav2 stack] ==>|+ module_launch_gap_s| S7
+  S7[🅿️ Slot 7 · camrod_system\ndiagnostics validators] ==>|+ module_launch_gap_s| S8
+  S8[🖥️ Slot 8 · camrod_ui\nHTTP API + plugin bridge]
+
+  class S0 platform
+  class S1 mapping
+  class S2 sensing
+  class S3 sensing
+  class S4 perception
+  class S5 localization
+  class S6 planning
+  class S7 system
+  class S8 ui
+```
+
+> ⚠️ **`module_launch_gap_s` too short can cause lifecycle failures.** On ARM targets or slow storage, values below `0.8 s` may cause Nav2 lifecycle manager to log `ERROR: Failed to get state for node`. Use `1.5` or `2.0` on constrained hardware. See Troubleshooting §11.
+
+> 📌 **`camrod_parking`** is not launched by `bringup.launch.py`. Launch it separately with `ros2 launch camrod_parking parking.launch.py` when docking capability is needed.
+
+*Figure 2 — Staggered module launch sequence. Each slot starts at `N × module_launch_gap_s` seconds after cleanup exits. `camrod_parking` sits logically between planning and system but requires a separate launch.*
+
+---
+
+## 5. ⚙️ Runtime Architecture
 
 `_bringup_impl.py` executes in four stages at launch time:
 
@@ -84,7 +158,7 @@ No bringup-owned ROS nodes run at steady state. RViz is the only direct node lau
 
 ---
 
-## 5. Interface Contract
+## 6. 🔌 Interface Contract
 
 ### Inputs to bringup
 
@@ -100,9 +174,9 @@ Bringup itself produces no ROS topics. Its outputs are the launched subprocess t
 
 ---
 
-## 6. Module Launch Order
+## 7. 📦 Module Launch Order
 
-Modules start with `module_launch_gap_s` (default 1.0 s) stagger. The timer index starts at 0 and increments by 1 per slot, so actual start time for slot `N` is `N * module_launch_gap_s` seconds after cleanup exits.
+Modules start with `module_launch_gap_s` (default `1.0 s`) stagger. The timer index starts at 0 and increments by 1 per slot, so actual start time for slot `N` is `N × module_launch_gap_s` seconds after cleanup exits.
 
 | Order | Module | Launch file | Why this order |
 |---|---|---|---|
@@ -116,11 +190,11 @@ Modules start with `module_launch_gap_s` (default 1.0 s) stagger. The timer inde
 | 7 | camrod_system | `system.launch.py` | Diagnostics validators; monitors all modules after they are up |
 | 8 | camrod_ui | `ui.launch.py` | HTTP API and plugin bridge; last because it depends on all other module services |
 
-> **camrod_parking** is not launched by `bringup.launch.py`. Launch it separately with `ros2 launch camrod_parking parking.launch.py` when docking capability is needed.
+> 📌 **camrod_parking** is not launched by `bringup.launch.py`. Launch it separately with `ros2 launch camrod_parking parking.launch.py` when docking capability is needed.
 
 ---
 
-## 7. Key Behaviors
+## 8. 🔑 Key Behaviors
 
 ### Module Stagger Gap
 
@@ -128,7 +202,7 @@ Modules start with `module_launch_gap_s` (default 1.0 s) stagger. The timer inde
 
 **Internal logic:** `_bringup_impl.py` wraps each module `IncludeLaunchDescription` in `TimerAction(period=idx * module_launch_gap_s)`. All timers are grouped inside a single `GroupAction` that is itself delayed by 1 s after the cleanup process exits.
 
-**Output effect:** Module `N` starts at wall time `≈ 1 + N * module_launch_gap_s` seconds after launch command.
+**Output effect:** Module `N` starts at wall time `≈ 1 + N × module_launch_gap_s` seconds after launch command.
 
 **Operator-visible symptom:** On fast machines with SSD, `module_launch_gap_s:=0.5` is sufficient. On ARM targets or slow storage, values below `0.8` may cause lifecycle race conditions in Nav2.
 
@@ -145,24 +219,37 @@ Modules start with `module_launch_gap_s` (default 1.0 s) stagger. The timer inde
 **Internal logic:**
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 flowchart TD
-  A["Read launch_defaults.yaml key"] --> B{"value == '__module_default__'\nor empty?"}
-  B -- Yes --> C["resolve_cfg_override returns ''"]
-  B -- No --> D{"Is absolute path?"}
-  D -- Yes --> E["Use as-is"]
-  D -- No --> F["Join with config_root"]
-  C --> G["set_if_not_empty: key NOT forwarded to module launch"]
-  E --> H["set_if_not_empty: key forwarded"]
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+
+  A[⚙️ Read launch_defaults.yaml key] --> B{❓ value == __module_default__\nor empty?}
+  B -- Yes --> C[resolve_cfg_override returns empty string]
+  B -- No --> D{❓ Is absolute path?}
+  D -- Yes --> E[Use path as-is]
+  D -- No --> F[Join with config_root]
+  C --> G[set_if_not_empty: key NOT forwarded]
+  E --> H[set_if_not_empty: key forwarded]
   F --> H
-  G --> I["Module uses its own package-internal default"]
-  H --> J["Module receives bringup-level override"]
+  G --> I[🧩 Module uses its own\npackage-internal default]
+  H --> J[🧩 Module receives\nbringup-level override]
+
+  class C,G,I mapping
+  class E,F,H,J highlight
+  class A,B,D system
 ```
+
+> **Diagram legend** 🧩 ROS node · ⚙️ Config · {❓} Decision · Yellow = package-default path · Gold = bringup-override path
 
 **Output effect:** When a key resolves to empty, bringup does NOT pass the argument to the module launch. The module then uses its own `DeclareLaunchArgument` default — typically a path inside the module's `config/` directory. This ensures bringup overrides are strictly opt-in; a new field added to a module is not accidentally nulled by bringup.
 
 **Operator-visible symptom:** `ros2 launch camrod_bringup bringup.launch.py filter_eskf_param_file:=/tmp/test.yaml` overrides ESKF params. Omitting the argument (or leaving it as `__module_default__` in YAML) silently uses the module default.
 
 **Related params:** All `*_param_file` and `*_yaml` keys in `launch_defaults.yaml`.
+
+*Figure 3 — `__module_default__` sentinel resolution. Blank/sentinel values keep module-internal defaults; explicit paths are forwarded as overrides.*
 
 ---
 
@@ -180,7 +267,7 @@ flowchart TD
 
 ---
 
-## 8. Launch
+## 9. 🚀 Launch Arguments
 
 ### bringup.launch.py arguments
 
@@ -237,18 +324,16 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 
 ---
 
-## 9. Config
+## 10. ⚙️ Config Files
 
-### Config Files by Category
-
-#### Bringup / Runtime
+### Bringup / Runtime
 
 | File | Purpose |
 |---|---|
 | `config/bringup/launch_defaults.yaml` | Single source of truth: default values for every launch argument, grouped by module |
 | `config/bringup/cleanup_patterns.yaml` | 125+ process kill patterns for `clean_before_launch` and `clean_on_shutdown` |
 
-#### Localization
+### Localization
 
 | File | Purpose |
 |---|---|
@@ -259,7 +344,10 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 | `config/localization/filter/pose_selector.yaml` | Pose selector overrides |
 | `config/localization/source/input_adapter.yaml` | Input adapter overrides |
 
-#### Planning
+### Planning
+
+<details>
+<summary>Planning config files (expand)</summary>
 
 | File | Purpose |
 |---|---|
@@ -277,7 +365,12 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 | `config/planning/local_path_extractor.yaml` | Local path extractor overrides |
 | `config/planning/yaw_alignment_zones.yaml` | Manual yaw-alignment zone definitions |
 
-#### Sensing
+</details>
+
+### Sensing
+
+<details>
+<summary>Sensing config files (expand)</summary>
 
 | File | Purpose |
 |---|---|
@@ -290,7 +383,9 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 | `config/sensing/imu/microstrain_cv7.yaml` | Microstrain CV7 IMU driver params |
 | `config/sensing/imu/microstrain_gq7.yaml` | Microstrain GQ7 IMU driver params |
 
-#### Platform
+</details>
+
+### Platform
 
 | File | Purpose |
 |---|---|
@@ -298,34 +393,24 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 | `config/bringup/robot_visualization.yaml` | Robot visualization node overrides applied via `platform/robot_visualization_param_file` |
 | `config/bringup/vehicle_params.yaml` | Vehicle kinematics reference (read-only reference; not passed as a launch override) |
 
-#### Sensor Kit
+### Sensor Kit
 
 | File | Purpose |
 |---|---|
 | `config/sensor_kit/robot_params.yaml` | Robot geometry (TF mount offsets) passed to `camrod_platform` and `camrod_sensor_kit` |
 
-#### System
+### System / Sim / Map
 
 | File | Purpose |
 |---|---|
 | `config/system/diagnostics/default/` | Full diagnostics config profile (mirrors `camrod_system` defaults) |
-
-#### Sim
-
-| File | Purpose |
-|---|---|
 | `config/sim/fake_sensors.yaml` | Fake sensor publisher parameters: speed, lanelet selection, GNSS failure timing, sim obstacle |
-
-#### Map
-
-| File | Purpose |
-|---|---|
 | `config/map/map_info.yaml` | Bringup-level map origin override (mirrors `camrod_map/config/map_info.yaml`) |
 | `config/map/drop_zones.yaml` | Drop zone positions (from lanelet2 map; used by state machine and localization init) |
 
 ---
 
-## 10. Validation
+## 11. ✅ Validation
 
 After `ros2 launch camrod_bringup bringup.launch.py`:
 
@@ -351,7 +436,7 @@ ros2 node list | grep rviz2
 
 ---
 
-## 11. Troubleshooting
+## 12. 🔧 Troubleshooting
 
 ### A module did not start
 
@@ -377,7 +462,7 @@ ros2 node list | grep rviz2
 
 ### `module_launch_gap_s` too short
 
-**Symptom:** Nav2 lifecycle manager logs `ERROR: Failed to get state for node`, or localization EKF reports missing input immediately after startup.
+> ⚠️ **Symptom:** Nav2 lifecycle manager logs `ERROR: Failed to get state for node`, or localization EKF reports missing input immediately after startup.
 
 **Fix:** Increase `module_launch_gap_s` to `1.5` or `2.0`:
 ```bash
@@ -399,7 +484,7 @@ If the issue recurs, check `config/bringup/cleanup_patterns.yaml` and add the mi
 
 ---
 
-## 12. Related Docs
+## 13. 📚 Related Docs
 
 | Document | Location |
 |---|---|

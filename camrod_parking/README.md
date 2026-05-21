@@ -1,6 +1,10 @@
-# camrod_parking
+# 🅿️ camrod_parking — AprilTag dock detection & autonomous docking
 
-## 1. Summary
+> 📌 **NEW in v1.10** — Camera sensing refactor aligned `camrod_sensing` topic names; `parking_apriltag_bridge` updated to consume the new rectified image and camera_info namespaces. No external interface changes.
+
+---
+
+## 1. 📋 Summary
 
 `camrod_parking` provides AprilTag-based dock detection and autonomous docking for CAMROD. It bundles three cooperating subsystems inside a single ROS 2 package:
 
@@ -10,133 +14,207 @@
 | AprilTag bridge | `camrod_parking/parking_apriltag_bridge` | Converts raw `apriltag_msgs` detections to `avg_msgs` format; extracts `geometry_msgs/PoseStamped` dock pose from TF at a configurable publish rate |
 | Docking server | `opennav_docking/opennav_docking` (external) | Lifecycle-managed action server that executes staged approach + precision docking using the detected dock pose and Nav2 local costmap collision checking |
 
-Non-goals: perception for general obstacles (see `camrod_perception`), fleet scheduling, charging management.
+**Non-goals:** perception for general obstacles (see `camrod_perception`), fleet scheduling, charging management.
 
 ---
 
-## 2. Quick Start
-
-```bash
-# Full docking pipeline — AprilTag detector + bridge + docking server
-ros2 launch camrod_parking docking.launch.py
-
-# Same pipeline via the parking wrapper
-ros2 launch camrod_parking parking.launch.py
-
-# Override dock database at runtime
-ros2 launch camrod_parking docking.launch.py \
-  docks_file:=/path/to/docks.yaml
-
-# Send a dock goal (example — replace dock_id with a key from docks.yaml)
-ros2 action send_goal /parking/docking/docking_server/dock_robot \
-  opennav_docking_msgs/action/DockRobot \
-  "{dock_id: 'home_dock', navigate_to_staging_pose: true}"
-```
-
-Prerequisites:
-- `camrod_sensing` camera pipeline must be running (`/sensing/camera/color/image_rect`, `/sensing/camera/color/camera_info`)
-- `camrod_planning` Nav2 local costmap must be active (`/planning/local_costmap/costmap_raw`, `/planning/local_costmap/published_footprint`)
-- TF chain `odom → base_link → ... → camera_optical_frame` must be publishing
-- Physical AprilTag (family `36h11`, ID 0, 0.120 m side) must be mounted at the dock
-
----
-
-## 3. System Position
+## 2. 🗺️ System Position
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  SENS[[camrod_sensing]] -->|image_rect\ncamera_info| PARK[camrod_parking]
-  PLAN[[camrod_planning]] -->|local_costmap\nfootprint| PARK
-  PLAN -->|navigate_to_pose action| PARK
-  PARK -->|DockRobot\nUndockRobot actions| UI[[camrod_ui / BT client]]
-  PARK -->|/platform/cmd_vel| PLAT[[camrod_platform]]
+  subgraph SENS_GRP["📷 Camera (sensing)"]
+    SENS[[📦 camrod_sensing]]
+  end
 
-  style PARK fill:#d4eaff,stroke:#336699
+  subgraph PLAN_GRP["🧭 Planning (costmap)"]
+    PLAN[[📦 camrod_planning]]
+  end
+
+  subgraph PARK_GRP["🅿️ camrod_parking"]
+    PARK[🧩 camrod_parking]
+    APTAG[[📦 apriltag_ros]] -.->|external dep| PARK
+    OPNAV[[📦 opennav_docking]] -.->|external dep| PARK
+  end
+
+  subgraph ACT_GRP["🔔 Action clients"]
+    UI[[📦 camrod_ui / BT client]]
+    PLAT[[📦 camrod_platform]]
+  end
+
+  SENS -->|image_rect\ncamera_info| PARK
+  PLAN -->|local_costmap\nfootprint| PARK
+  PLAN -->|navigate_to_pose action| PARK
+  PARK ==>|DockRobot\nUndockRobot actions| UI
+  PARK ==>|/platform/cmd_vel| PLAT
+
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  class SENS sensing
+  class PLAN planning
+  class PARK highlight
+  class APTAG,OPNAV parking
+  class UI,PLAT platform
 ```
 
 `camrod_parking` is a **terminal consumer** of sensing and planning output. It does not republish to other perception or planning packages.
 
 ---
 
-## 4. Runtime Architecture
+## 3. ⚙️ Runtime Architecture
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph TD
-  IMG((  /sensing/camera/\ncolor/image_rect  )) --> TAG[[apriltag_ros/apriltag_node]]
-  CAMINFO(( /sensing/camera/\ncolor/camera_info )) --> TAG
-  TAG --> RAW(( /parking/docking/\napriltag/detections_raw ))
+  subgraph IMG_GRP["📷 Image input"]
+    IMG(("/sensing/camera/\ncolor/image_rect"))
+    CAMINFO(("/sensing/camera/\ncolor/camera_info"))
+  end
 
-  RAW --> BRIDGE[parking_apriltag_bridge_node]
-  TF(( TF: odom→dock_tag )) --> BRIDGE
-  BRIDGE --> DET(( /parking/docking/\napriltag/detections ))
-  BRIDGE --> AVGPOSE(( /parking/docking/\napriltag/pose ))
-  BRIDGE --> DOCKPOSE(( /parking/docking/\ndetected_dock_pose ))
+  subgraph TAG_GRP["🏷️ AprilTag detection"]
+    TAG[🧩 apriltag_ros/apriltag_node]
+    RAW(("/parking/docking/\napriltag/detections_raw"))
+    TF(("TF: odom → dock_tag"))
+  end
 
-  DOCKPOSE --> DOCKSVR[[opennav_docking\ndocking_server]]
-  COSTMAP(( /planning/local_costmap/\ncostmap_raw )) --> DOCKSVR
-  FOOTPRINT(( /planning/local_costmap/\npublished_footprint )) --> DOCKSVR
-  LMAN[[nav2_lifecycle_manager]] -.->|activates| DOCKSVR
-  DOCKSVR --> CMDVEL(( /platform/cmd_vel ))
-  DOCKSVR --> ACT(( DockRobot /\nUndockRobot actions ))
+  subgraph BRIDGE_GRP["🌉 Bridge node"]
+    BRIDGE[🧩 parking_apriltag_bridge_node]
+    DET(("/parking/docking/\napriltag/detections"))
+    AVGPOSE(("/parking/docking/\napriltag/pose"))
+    DOCKPOSE(("/parking/docking/\ndetected_dock_pose"))
+  end
+
+  subgraph SVR_GRP["🅿️ Docking server"]
+    DOCKSVR[🧩 opennav_docking\ndocking_server]
+    COSTMAP(("/planning/local_costmap/\ncostmap_raw"))
+    FOOTPRINT(("/planning/local_costmap/\npublished_footprint"))
+    LMAN[🧩 nav2_lifecycle_manager]
+  end
+
+  subgraph ACT_GRP["🔔 Action interface"]
+    CMDVEL(("/platform/cmd_vel"))
+    ACT(["/🔔 DockRobot /\nUndockRobot actions/"])
+  end
+
+  IMG ==> TAG
+  CAMINFO ==> TAG
+  TAG ==> RAW
+  RAW ==> BRIDGE
+  TF ==> BRIDGE
+  BRIDGE --> DET
+  BRIDGE --> AVGPOSE
+  BRIDGE ==> DOCKPOSE
+  DOCKPOSE ==> DOCKSVR
+  COSTMAP --> DOCKSVR
+  FOOTPRINT --> DOCKSVR
+  LMAN -.->|activates| DOCKSVR
+  DOCKSVR ==> CMDVEL
+  DOCKSVR ==> ACT
+
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  class TAG,BRIDGE,DOCKSVR,LMAN parking
+  class IMG,CAMINFO,RAW,TF,DET,AVGPOSE,DOCKPOSE,COSTMAP,FOOTPRINT,CMDVEL,ACT topic
 ```
 
-Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `[[stack]]` = external package, dashed = non-runtime (lifecycle) dependency.
+> 💡 **Legend** — `[🧩 node]` = ROS node &nbsp;|&nbsp; `((topic))` = ROS topic &nbsp;|&nbsp; `==>` critical data path &nbsp;|&nbsp; `-.->` lifecycle / optional
 
-### Docking Lifecycle State Machine
+---
+
+## 4. 🔄 Docking Lifecycle
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}}}%%
 stateDiagram-v2
+  direction LR
+
+  classDef idle        fill:#F8FAFC,stroke:#94A3B8,color:#475569;
+  classDef active      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef success     fill:#ECFDF5,stroke:#10B981,stroke-width:2px,color:#047857;
+  classDef error       fill:#FEE2E2,stroke:#EF4444,stroke-width:2px,color:#B91C1C;
+  classDef retry       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
+
   [*] --> IDLE
 
-  IDLE --> APPROACH : DockRobot goal received\n(navigate_to_staging_pose=true)
-  IDLE --> STAGE    : DockRobot goal received\n(navigate_to_staging_pose=false)
+  IDLE --> APPROACH : DockRobot goal\n(navigate_to_staging_pose=true)
+  IDLE --> STAGE    : DockRobot goal\n(navigate_to_staging_pose=false)
 
-  APPROACH --> STAGE   : Nav2 NavigateToPose succeeded
-  APPROACH --> FAILURE : approach timeout or Nav2 abort
+  APPROACH --> STAGE   : Nav2 NavigateToPose\nsucceeded
+  APPROACH --> FAILURE : approach timeout\nor Nav2 abort
 
-  STAGE --> DOCK       : robot within dock_prestaging_tolerance
-  STAGE --> FAILURE    : staging timeout
+  STAGE --> DOCK    : within dock_prestaging_tolerance
+  STAGE --> FAILURE : staging timeout
 
-  DOCK --> DOCKED      : distance < docking_threshold (0.05 m)
-  DOCK --> RETRY       : perception_timeout or collision detected
-  RETRY --> STAGE      : retry_count < max_retries (3)
-  RETRY --> FAILURE    : retry_count >= max_retries
+  DOCK --> DOCKED  : distance < docking_threshold (0.05 m)
+  DOCK --> RETRY   : perception_timeout\nor collision detected
+  RETRY --> STAGE  : retry_count < max_retries (3)
+  RETRY --> FAILURE: retry_count ≥ max_retries
 
-  DOCKED --> [*]       : DockRobot action succeeded
+  DOCKED --> [*]   : DockRobot action SUCCEEDED
 
-  DOCKED --> UNDOCK    : UndockRobot goal received
-  UNDOCK --> IDLE      : undock linear/angular tolerance met
-  UNDOCK --> FAILURE   : undock timeout
+  DOCKED --> UNDOCK : UndockRobot goal received
+  UNDOCK --> IDLE   : linear/angular tolerance met
+  UNDOCK --> FAILURE: undock timeout
 
-  FAILURE --> IDLE     : action result returned (ABORTED)
+  FAILURE --> IDLE  : action result ABORTED
+
+  class IDLE idle
+  class APPROACH,STAGE,DOCK,UNDOCK active
+  class DOCKED success
+  class FAILURE error
+  class RETRY retry
 ```
 
-### Docking Sequence
+> ⚠️ **Fallback** — when `perception_timeout` fires inside `DOCK`, the server retries up to `max_retries=3` times before returning `ABORTED`. Increase `initial_perception_timeout` (default `5.0 s`) if tag detection is slow to converge.
+
+---
+
+## 5. 🔀 Docking Mission Sequence
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}}}%%
 sequenceDiagram
-  participant Client as UI / BT Client
-  participant DS as DockingServer\n(opennav_docking)
-  participant NAV as planning/navigate_to_pose
-  participant BRIDGE as parking_apriltag_bridge
-  participant CTRL as DockController
-  participant PLAT as /platform/cmd_vel
+  autonumber
+  participant Client  as 🖥️ Client
+  participant DS      as 🅿️ DockingServer
+  participant BRIDGE  as 🌉 Bridge
+  participant APTAG   as 🏷️ AprilTag
+  participant CTRL    as 🚦 Controller
+  participant PLAT    as 🤖 Platform
 
-  Client->>DS: DockRobot.SendGoal(dock_id="home_dock")
-  DS->>NAV: NavigateToPose(staging_pose)
-  NAV-->>DS: SUCCEEDED
-  DS->>BRIDGE: subscribe /parking/docking/detected_dock_pose
-  loop Dock approach control @ 20 Hz
-    BRIDGE-->>DS: PoseStamped (odom frame)
-    DS->>CTRL: computeVelocity(current_pose, dock_pose)
+  Client->>DS: DockRobot.SendGoal(dock_id="home_dock",\nnavigate_to_staging_pose=true)
+  DS->>DS: Lookup staging_pose from dock database
+  DS->>PLAT: NavigateToPose(staging_pose) via planning action
+  PLAT-->>DS: NavigateToPose SUCCEEDED
+  DS->>BRIDGE: Subscribe /parking/docking/detected_dock_pose
+  APTAG-->>BRIDGE: TF odom→dock_tag (tag visible)
+  BRIDGE-->>DS: PoseStamped (first pose, odom frame)
+
+  Note over DS,PLAT: Precision docking control loop @ 20 Hz
+  loop Dock approach
+    BRIDGE-->>DS: PoseStamped (odom frame, 10 Hz)
+    DS->>CTRL: computeVelocity(current_pose, dock_pose,\nk_phi=3.0, k_delta=2.0)
     CTRL->>PLAT: Twist (v ≤ 0.15 m/s)
   end
+
+  Note over DS: distance < docking_threshold (0.05 m)
   DS-->>Client: DockRobot.Result(SUCCEEDED)
+
+  Note over DS,BRIDGE: fallback on perception_timeout → RETRY → STAGE
 ```
 
 ---
 
-## 5. Interface Contract
+## 6. 📡 Interface Contract
 
 ### Inputs
 
@@ -161,9 +239,9 @@ sequenceDiagram
 
 ---
 
-## 6. Key Behaviors
+## 7. 🔑 Key Behaviors
 
-### AprilTag Detection
+### 🏷️ AprilTag Detection
 
 | Field | Detail |
 |---|---|
@@ -174,7 +252,7 @@ sequenceDiagram
 | Related params | `family: 36h11`, `size: 0.120`, `tag.ids: [0]`, `tag.frames: ["dock_tag"]` |
 | Related topics | `/sensing/camera/color/image_rect`, `/parking/docking/apriltag/detections_raw` |
 
-### Bridge: Pose Extraction from TF
+### 🌉 Bridge: Pose Extraction from TF
 
 | Field | Detail |
 |---|---|
@@ -185,7 +263,7 @@ sequenceDiagram
 | Related params | `fixed_frame: odom`, `tag_frame: dock_tag`, `target_tag_id: 0`, `publish_rate_hz: 10.0` |
 | Related topics | `/parking/docking/detected_dock_pose`, `/parking/docking/apriltag/pose` |
 
-### Docking Server: Staged Approach + Precision Docking
+### 🅿️ Docking Server: Staged Approach + Precision Docking
 
 | Field | Detail |
 |---|---|
@@ -198,7 +276,7 @@ sequenceDiagram
 
 ---
 
-## 7. AprilTag Calibration and Setup
+## 8. 🏷️ AprilTag Calibration and Setup
 
 ### Tag Physical Requirements
 
@@ -221,15 +299,18 @@ odom
 
 The bridge node reads `odom → dock_tag` from the TF tree. If this transform is unavailable, `/parking/docking/detected_dock_pose` will not publish and docking will abort on `initial_perception_timeout`.
 
-### camera_info Requirement
+### `camera_info` Requirement
 
 `apriltag_ros` requires a valid `sensor_msgs/CameraInfo` message on `/sensing/camera/color/camera_info` at the same frame rate as the image. The `K` matrix (intrinsics) must be calibrated; the default `camrod_sensing` camera calibration is used automatically when the sensing pipeline is active.
 
 ---
 
-## 8. Dock Database
+## 9. 🗄️ Dock Database
 
 The dock database is a YAML file referenced at launch via `docks_file`. It defines named dock locations used by the `DockRobot` action.
+
+<details>
+<summary>📋 docks.yaml schema</summary>
 
 ### Schema
 
@@ -253,9 +334,40 @@ docks:
 
 Add additional docks as sibling keys under `docks:`. The dock ID used in `DockRobot` goals must match a key in this file exactly.
 
+</details>
+
+> 📌 The dock ID in `DockRobot` action goals must exactly match a key under `docks:`. A mismatch causes the docking server to fail activation with `Charging dock plugins not given!`.
+
 ---
 
-## 9. Launch
+## 10. 🚀 Quick Start
+
+```bash
+# Full docking pipeline — AprilTag detector + bridge + docking server
+ros2 launch camrod_parking docking.launch.py
+
+# Same pipeline via the parking wrapper
+ros2 launch camrod_parking parking.launch.py
+
+# Override dock database at runtime
+ros2 launch camrod_parking docking.launch.py \
+  docks_file:=/path/to/docks.yaml
+
+# Send a dock goal (replace dock_id with a key from docks.yaml)
+ros2 action send_goal /parking/docking/docking_server/dock_robot \
+  opennav_docking_msgs/action/DockRobot \
+  "{dock_id: 'home_dock', navigate_to_staging_pose: true}"
+```
+
+**Prerequisites:**
+- `camrod_sensing` camera pipeline must be running (`/sensing/camera/color/image_rect`, `/sensing/camera/color/camera_info`)
+- `camrod_planning` Nav2 local costmap must be active (`/planning/local_costmap/costmap_raw`, `/planning/local_costmap/published_footprint`)
+- TF chain `odom → base_link → ... → camera_optical_frame` must be publishing
+- Physical AprilTag (family `36h11`, ID 0, 0.120 m side) must be mounted at the dock
+
+---
+
+## 11. 🛠️ Launch
 
 ### Launch Files
 
@@ -280,7 +392,7 @@ Nodes run under the composed namespace `/<parking_ns>/<docking_ns>/`. The `navig
 
 ---
 
-## 10. Config
+## 12. ⚙️ Config
 
 | File | Purpose |
 |---|---|
@@ -305,7 +417,7 @@ Nodes run under the composed namespace `/<parking_ns>/<docking_ns>/`. The `navig
 
 ---
 
-## 11. Validation
+## 13. ✅ Validation
 
 ```bash
 # 1. Confirm apriltag detector is running
@@ -331,13 +443,12 @@ ros2 action send_goal /parking/docking/docking_server/dock_robot \
 
 ---
 
-## 12. Troubleshooting
+## 14. 🔧 Troubleshooting
 
 ### AprilTag not detected
 
-**Symptoms:** `/parking/docking/apriltag/detections_raw` is empty; no `dock_tag` in TF tree.
+> ⚠️ **Symptoms** — `/parking/docking/apriltag/detections_raw` is empty; no `dock_tag` in TF tree.
 
-**Checks:**
 1. Verify camera images are arriving: `ros2 topic hz /sensing/camera/color/image_rect`
 2. Check lighting: tag requires a minimum of ~50 lux at the tag surface
 3. Confirm `config/apriltag.yaml` specifies the correct `family: 36h11` and `tag.ids: [0]`
@@ -347,9 +458,8 @@ ros2 action send_goal /parking/docking/docking_server/dock_robot \
 
 ### Detection present but no dock pose
 
-**Symptoms:** `detections_raw` has entries, but `/parking/docking/detected_dock_pose` is silent or `ros2 topic hz` shows 0 Hz.
+> ⚠️ **Symptoms** — `detections_raw` has entries, but `/parking/docking/detected_dock_pose` is silent or `ros2 topic hz` shows 0 Hz.
 
-**Checks:**
 1. `ros2 run tf2_tools view_frames` — confirm `dock_tag` frame appears in the TF tree
 2. Check bridge logs for TF lookup warnings:
    ```
@@ -362,9 +472,8 @@ ros2 action send_goal /parking/docking/docking_server/dock_robot \
 
 ### Docking aborts on perception_timeout
 
-**Symptoms:** `DockRobot` action returns ABORTED after ~5 s with reason `Timed out waiting for dock pose`.
+> ⚠️ **Symptoms** — `DockRobot` action returns ABORTED after ~5 s with reason `Timed out waiting for dock pose`.
 
-**Checks:**
 1. Confirm `/parking/docking/detected_dock_pose` is publishing before sending the goal
 2. Tag must be within camera FoV at the staging pose — adjust `staging_x_offset` if the tag is not visible from the staging position
 3. Increase `initial_perception_timeout` in `docking_server.yaml` if tag detection is slow to converge
@@ -374,9 +483,8 @@ ros2 action send_goal /parking/docking/docking_server/dock_robot \
 
 ### Robot collides during approach
 
-**Symptoms:** Docking action aborts with collision warning; robot stops before reaching dock.
+> ⚠️ **Symptoms** — Docking action aborts with collision warning; robot stops before reaching dock.
 
-**Checks:**
 1. Confirm Nav2 local costmap is running: `ros2 topic hz /planning/local_costmap/costmap_raw`
 2. Verify `controller.costmap_topic` and `controller.footprint_topic` params match the active Nav2 topics
 3. Increase `dock_collision_threshold` (default `0.3` m) only if the dock structure itself is inflating the costmap — never disable collision checking in production
@@ -386,19 +494,17 @@ ros2 action send_goal /parking/docking/docking_server/dock_robot \
 
 ### Wrong tag accepted
 
-**Symptoms:** Robot docks at an unintended location; `/parking/docking/apriltag/detections` shows a tag ID other than 0.
+> ⚠️ **Symptoms** — Robot docks at an unintended location; `/parking/docking/apriltag/detections` shows a tag ID other than 0.
 
-**Checks:**
-1. `config/apriltag.yaml` `tag.ids: [0]` — the detector only broadcasts this ID into TF, but confirm no additional IDs have been added
+1. `config/apriltag.yaml` `tag.ids: [0]` — the detector only broadcasts this ID into TF; confirm no additional IDs have been added
 2. Bridge param `target_tag_id: 0` — the bridge only publishes dock pose for the matching ID; confirm it has not been changed
 
 ---
 
 ### Docking server lifecycle not active
 
-**Symptoms:** `ros2 action list` does not show `dock_robot` / `undock_robot`; logs show `Not activating …`.
+> ⚠️ **Symptoms** — `ros2 action list` does not show `dock_robot` / `undock_robot`; logs show `Not activating …`.
 
-**Checks:**
 1. `ros2 lifecycle get /parking/docking/docking_server` — expected state `active`
 2. `nav2_lifecycle_manager` (`lifecycle_manager_docking`) starts with `autostart: true`; check its logs for activation errors
 3. If `dock_database` param is empty or path does not exist, docking server fails to activate with `Charging dock plugins not given!`. Verify `docks_file` argument resolves to a readable YAML file
@@ -406,7 +512,7 @@ ros2 action send_goal /parking/docking/docking_server/dock_robot \
 
 ---
 
-## 13. Related Docs
+## 15. 📚 Related Docs
 
 | Document | Notes |
 |---|---|

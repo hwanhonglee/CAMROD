@@ -1,12 +1,14 @@
-# camrod_map
+# 🗺️ camrod_map — Lanelet2 map, cost grids & semantic areas
 
-## 1. Summary
+## 1. 📋 Summary
 
 `camrod_map` is the map layer of the CAMROD stack. It loads a Lanelet2 `.osm` file, projects all primitives into the `map` frame using a `local_cartesian` projector, and serves a traversability cost grid (`/map/cost_grid/lanelet`) that drives every planning and sensing cost layer downstream. It also publishes the authoritative TF `world→map` static transform, exports semantic areas (drop zones, camping sites) to YAML, and provides multi-source MarkerArray visualization for RViz.
 
-**Single source of truth:** `config/map_info.yaml` — all other packages read their `map_path`, `offset_lat/lon/alt`, and frame IDs from this file via launch argument forwarding.
+> 📌 **Single source of truth:** `config/map_info.yaml` — all other packages read their `map_path`, `offset_lat/lon/alt`, and frame IDs from this file via launch argument forwarding.
 
-## 2. Quick Start
+---
+
+## 2. 🚀 Quick Start
 
 ```bash
 # 1. Set the map path and WGS84 origin in config/map_info.yaml (once per deployment).
@@ -27,77 +29,217 @@ ros2 launch camrod_map area_export.launch.py \
   camping_sites_output_yaml_path:=/home/hong/camrod_ws/src/camrod_planning/config/camping_sites.yaml
 ```
 
-Verify in RViz: add topics `/map/markers` (MarkerArray) and `/map/cost_grid/lanelet` (OccupancyGrid). Both should appear within 3 s of launch.
+> 💡 Verify in RViz: add topics `/map/markers` (MarkerArray) and `/map/cost_grid/lanelet` (OccupancyGrid). Both should appear within 3 s of launch.
 
-## 3. System Position
+---
 
-```
-camrod_localization ──pose──> camrod_map <──global_path── camrod_planning
-camrod_sensing ──lidar/radar cost grids──> camrod_map
-camrod_map ──/map/cost_grid/lanelet──> camrod_sensing (inflation)
-camrod_map ──/map/cost_grid/lanelet──> camrod_planning (Nav2 costmap)
-camrod_map ──/map/markers──> camrod_platform (ground Z estimation)
-camrod_map ──TF world→map──> all packages
-camrod_map ──drop_zones.yaml──> camrod_localization, camrod_planning
-camrod_map ──camping_sites.yaml──> camrod_planning
-```
-
-`camrod_map` is the only package that publishes the static `world→map` TF and the canonical lanelet cost grid. All navigation decisions are ultimately shaped by these outputs.
-
-## 4. Runtime Architecture
+## 3. 🗺️ System Position
 
 ```mermaid
-graph TD
-  OSM{{Lanelet2 .osm file}} --> LMAP[lanelet_map_provider]
-  LMAP --> MVIS(("/map/markers"))
-  LMAP --> TF(("TF: world→map"))
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+graph LR
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  OSM --> LGRID[lanelet_boundary_cost_grid]
-  POSE(("/planning/lanelet_pose")) --> LGRID
-  GPATH(("/planning/global_path")) --> LGRID
-  LGRID --> LCOST(("/map/cost_grid/lanelet"))
-  LGRID --> LBASE(("/map/cost_grid/planning_base"))
+  subgraph UP["⬆️ Upstream"]
+    LOC[🧩 camrod_localization]:::localization
+    SENS[🧩 camrod_sensing]:::sensing
+    PLAN_IN[🧩 camrod_planning]:::planning
+  end
 
-  LCOST --> MCFM[cost_grid_multi_marker]
-  LIDAR(("/sensing/cost_grid/lidar")) --> MCFM
-  RADAR(("/sensing/cost_grid/radar")) --> MCFM
-  MCFM --> LMRK(("/map/cost_grid/lanelet_markers"))
-  MCFM --> LIMRK(("/map/cost_grid/lidar_markers"))
-  MCFM --> RMRK(("/map/cost_grid/radar_markers"))
+  subgraph CM["🗺️ camrod_map"]
+    MAP[🧩 camrod_map]:::highlight
+  end
 
-  INFGRID(("/planning/global_costmap/costmap")) --> CFMRK[nav2_costmap_debug_marker]
-  CFMRK --> INFLMRK(("/map/cost_grid/inflation_nav2_markers"))
+  subgraph DN["⬇️ Downstream"]
+    SENS_OUT[🧩 camrod_sensing]:::sensing
+    PLAN_OUT[🧩 camrod_planning]:::planning
+    PLAT[🧩 camrod_platform]:::platform
+    ALL[🧩 all packages]:::system
+  end
 
-  LMRK --> AGG[cost_grid_marker_aggregator]
-  LIMRK --> AGG
-  RMRK --> AGG
-  GPMRK(("/planning/cost_grid/global_path_markers")) --> AGG
-  LPMRK(("/planning/cost_grid/local_path_markers")) --> AGG
-  AGG --> CONTRIB(("/map/cost_grid/inflation_markers"))
+  LOC  ==>|📡 /planning/lanelet_pose| MAP
+  SENS ==>|📡 lidar/radar cost grids| MAP
+  PLAN_IN -->|📡 /planning/global_path| MAP
 
-  OSM --> CFN[lanelet_cost_field_visualizer]
-  CFN --> CFIELD(("/map/cost_grid/lanelet_field_markers"))
+  MAP ==>|📡 /map/cost_grid/lanelet| SENS_OUT
+  MAP ==>|📡 /map/cost_grid/lanelet| PLAN_OUT
+  MAP -->|📡 /map/markers| PLAT
+  MAP -->|TF world→map| ALL
+  MAP -.->|⚙️ drop_zones.yaml| PLAN_OUT
+  MAP -.->|⚙️ camping_sites.yaml| PLAN_OUT
 
-  OSM --> AEX[area_exporter]
-  AEX --> DZ{{drop_zones.yaml}}
-  AEX --> CS{{camping_sites.yaml}}
+  linkStyle 0,1,4,5 stroke:#F59E0B,stroke-width:2.5px;
 ```
 
-Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = external file or hardware, `[[stack]]` = external package, dashed = non-runtime dependency.
+> **Diagram legend** 🧩 ROS node · 📡 Topic · ⚙️ Config · 🛠️ Hardware · 📦 External · ==> critical path · -.-> optional
+
+*Figure 1 — camrod_map is the only package that publishes the static `world→map` TF and the canonical lanelet cost grid; all navigation decisions are ultimately shaped by these outputs.*
+
+---
+
+## 4. 🏗️ Runtime Architecture
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+graph TD
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  subgraph STATIC["🗂️ Static Map"]
+    OSM{{🛠️ Lanelet2 .osm}}:::hardware
+    LMAP[🧩 lanelet_map_provider]:::mapping
+    MVIS((📡 /map/markers)):::topic
+    TF((📡 TF world→map)):::topic
+    OSM ==> LMAP
+    LMAP ==> MVIS
+    LMAP ==> TF
+  end
+
+  subgraph GRID["🧮 Cost Grids"]
+    LGRID[🧩 lanelet_boundary_cost_grid]:::mapping
+    POSE((📡 /planning/lanelet_pose)):::topic
+    GPATH((📡 /planning/global_path)):::topic
+    LCOST((📡 /map/cost_grid/lanelet)):::topic
+    LBASE((📡 /map/cost_grid/planning_base)):::topic
+    POSE --> LGRID
+    GPATH --> LGRID
+    LGRID ==> LCOST
+    LGRID -.-> LBASE
+  end
+
+  subgraph VIZ["🎨 Visualization"]
+    MCFM[🧩 cost_grid_multi_marker]:::mapping
+    LIDAR((📡 /sensing/cost_grid/lidar)):::topic
+    RADAR((📡 /sensing/cost_grid/radar)):::topic
+    LMRK((📡 lanelet_markers)):::topic
+    LIMRK((📡 lidar_markers)):::topic
+    RMRK((📡 radar_markers)):::topic
+    AGG[🧩 cost_grid_marker_aggregator]:::mapping
+    CONTRIB((📡 /map/cost_grid/inflation_markers)):::topic
+    INFGRID((📡 /planning/global_costmap/costmap)):::topic
+    CFMRK[🧩 nav2_costmap_debug_marker]:::mapping
+    INFLMRK((📡 inflation_nav2_markers)):::topic
+    LIDAR --> MCFM
+    RADAR --> MCFM
+    MCFM --> LMRK
+    MCFM --> LIMRK
+    MCFM --> RMRK
+    LMRK --> AGG
+    LIMRK --> AGG
+    RMRK --> AGG
+    AGG --> CONTRIB
+    INFGRID -.-> CFMRK
+    CFMRK -.-> INFLMRK
+  end
+
+  subgraph EXPORT["📤 Exports"]
+    CFN[🧩 lanelet_cost_field_visualizer]:::mapping
+    CFIELD((📡 lanelet_field_markers)):::topic
+    AEX[🧩 area_exporter]:::mapping
+    DZ[(⚙️ drop_zones.yaml)]:::config
+    CS[(⚙️ camping_sites.yaml)]:::config
+    CFN -.-> CFIELD
+    AEX --> DZ
+    AEX --> CS
+  end
+
+  OSM --> LGRID
+  OSM -.-> CFN
+  OSM --> AEX
+  LCOST --> MCFM
+  GPMRK((📡 global_path_markers)):::topic --> AGG
+  LPMRK((📡 local_path_markers)):::topic --> AGG
+
+  linkStyle 3,6 stroke:#F59E0B,stroke-width:2.5px;
+```
+
+> **Diagram legend** 🧩 ROS node · 📡 Topic · ⚙️ Config · 🛠️ Hardware · ==> critical path · -.-> optional (debug/disabled)
+
+*Figure 2 — Full runtime node graph. Dashed edges indicate nodes/topics disabled by default or used only for debug.*
 
 ### Node summary
 
 | Node (executable) | Inputs | Outputs | Key params |
 |---|---|---|---|
 | `lanelet2_map_node` (`lanelet_map_provider`) | Lanelet2 .osm | `/map/markers`, TF `world→map` | `map_path`, `offset_lat/lon/alt`, `world_frame_id`, `map_frame_id` |
-| `lanelet_cost_grid_node` (`lanelet_boundary_cost_grid`) | .osm, `/planning/lanelet_pose`, `/planning/global_path` | `/map/cost_grid/lanelet` (secondary, centerline mode, **active**); primary output (`/map/cost_grid/planning_base`, bounds mode) is currently **disabled** (`primary_enable: false`) | `cost_mode`, `resolution`, `width`, `height`, `centerline_half_width`, `outside_value`, `primary_enable`, `secondary.output_topic` |
-| `multi_cost_field_marker_node` (`cost_grid_multi_marker`) | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar` | `/map/cost_grid/lanelet_markers`, `/map/cost_grid/lidar_markers`, `/map/cost_grid/radar_markers` | `palettes`, `alphas`, `marker_scales`, `z_offsets` |
+| `lanelet_cost_grid_node` (`lanelet_boundary_cost_grid`) | .osm, `/planning/lanelet_pose`, `/planning/global_path` | `/map/cost_grid/lanelet` (secondary, centerline, **active**); `/map/cost_grid/planning_base` (primary, bounds, **disabled**) | `cost_mode`, `resolution`, `width`, `height`, `centerline_half_width`, `outside_value`, `primary_enable`, `secondary.output_topic` |
+| `multi_cost_field_marker_node` (`cost_grid_multi_marker`) | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar` | `/map/cost_grid/lanelet_markers`, `lidar_markers`, `radar_markers` | `palettes`, `alphas`, `marker_scales`, `z_offsets` |
 | `cost_field_marker_node` (`nav2_costmap_debug_marker`) | `/planning/global_costmap/costmap` | `/map/cost_grid/inflation_nav2_markers` | `palette`, `alpha`, `marker_scale` (off by default) |
 | `marker_array_aggregator_node` (`cost_grid_marker_aggregator`) | All cost marker topics | `/map/cost_grid/inflation_markers` | `stale_timeout_s`, `republish_period_s` (off by default) |
 | `cost_field_node` (`lanelet_cost_field_visualizer`) | .osm | `/map/cost_grid/lanelet_field_markers` | `weights.distance/curvature`, `percentile_clip` (off by default) |
 | `area_exporter_node` (`area_exporter`) | .osm | `drop_zones.yaml`, `camping_sites.yaml` | `output_yaml_path`, `camping_sites_output_yaml_path`, `default_yaw_deg` |
 
-## 5. Interface Contract
+---
+
+## 5. 🧮 Cost Grid Modes
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+graph LR
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  NODE[🧩 lanelet_boundary_cost_grid]:::mapping
+
+  subgraph MODES["📐 Four Cost Modes"]
+    CL["🎯 centerline\ncost: 0→35→99\nhalf-width 0.75 m\n✅ ACTIVE"]:::highlight
+    BD["🚧 bounds\nlethal strips at\nlane edges\n⛔ disabled"]:::mapping
+    LL["🗺️ lanelet\nuniform fill\ninside lanes"]:::mapping
+    PT["🛤️ path\nroute-strip bias\nalong global path"]:::mapping
+  end
+
+  NODE ==>|secondary output| CL
+  NODE -.->|primary output\nprimary_enable: false| BD
+  NODE -.->|alt mode| LL
+  NODE -.->|alt mode| PT
+
+  CL ==>|📡 /map/cost_grid/lanelet| OUT1((📡 active output)):::topic
+  BD -.->|📡 /map/cost_grid/planning_base| OUT2((📡 disabled)):::topic
+
+  linkStyle 0,4 stroke:#F59E0B,stroke-width:2.5px;
+```
+
+> **Diagram legend** 🧩 ROS node · 📡 Topic · ==> active path · -.-> disabled/optional
+
+*Figure 3 — The `lanelet_boundary_cost_grid` node supports four cost modes; only `centerline` (secondary profile) is currently active.*
+
+---
+
+## 6. 🔌 Interface Contract
 
 ### Inputs
 
@@ -116,8 +258,8 @@ Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = ex
 |---|---|---|---|---|
 | `/map/markers` | `visualization_msgs/MarkerArray` | camrod_platform, RViz | Once (transient_local) | Lanelet geometry: centerlines, boundaries, lane-direction arrows |
 | TF `world→map` | `tf2_msgs/TFMessage` | All packages | Static | Fixed transform anchoring the metric map frame to WGS84 world |
-| `/map/cost_grid/lanelet` | `nav_msgs/OccupancyGrid` | camrod_sensing (`inflation_cost_grid_node`), camrod_planning (Nav2 costmap) | Static (transient_local) | Centerline-gradient cost grid: 0=centerline, 35=in-lane, 99=off-lane |
-| `/map/cost_grid/planning_base` | `nav_msgs/OccupancyGrid` | camrod_planning (Nav2 secondary costmap) | Static (transient_local) | Boundary-strips-only cost grid (lethal at lane edges). **Currently disabled** (`primary_enable: false` in `lanelet_cost_grid.yaml`). |
+| `/map/cost_grid/lanelet` | `nav_msgs/OccupancyGrid` | camrod_sensing, camrod_planning | Static (transient_local) | Centerline-gradient cost grid: 0=centerline, 35=in-lane, 99=off-lane |
+| `/map/cost_grid/planning_base` | `nav_msgs/OccupancyGrid` | camrod_planning | Static (transient_local) | Boundary-strips-only cost grid. **Currently disabled** (`primary_enable: false`) |
 | `/map/cost_grid/lanelet_markers` | `visualization_msgs/MarkerArray` | RViz | ~5 Hz | Colored cubes for lanelet cost visualization |
 | `/map/cost_grid/lidar_markers` | `visualization_msgs/MarkerArray` | RViz | ~8 Hz | Colored cubes for LiDAR cost visualization |
 | `/map/cost_grid/radar_markers` | `visualization_msgs/MarkerArray` | RViz | ~8 Hz | Colored cubes for radar cost visualization |
@@ -131,7 +273,9 @@ Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = ex
 | `config/drop_zones.yaml` | camrod_localization (drop-zone matcher), camrod_planning (state machine) | id, x/y/z (map frame), yaw_deg, corner polygon |
 | `config/camping_sites.yaml` | camrod_planning (state machine goal targets) | id, x/y/z (map frame), yaw_deg |
 
-## 6. Key Behaviors
+---
+
+## 7. ⚙️ Key Behaviors
 
 ### Map loading
 
@@ -166,7 +310,9 @@ Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = ex
 | Related params | `world_frame_id` (default: `world`), `map_frame_id` (default: `map`), `offset_lat`, `offset_lon`, `offset_alt` |
 | Related topics | TF `world→map` |
 
-## 7. Launch
+---
+
+## 8. 🚀 Launch
 
 ```bash
 # Full map stack (recommended)
@@ -199,11 +345,15 @@ ros2 launch camrod_map area_export.launch.py \
 | `module_namespace` | `map` | ROS 2 namespace for all map nodes |
 | `system_namespace` | `system` | Namespace for system-level diagnostics |
 
-## 8. Config
+---
+
+## 9. 🔧 Config
 
 ### `config/map_info.yaml` — field reference
 
-This file is the **single source of truth** for map path and WGS84 origin. Edit it once per deployment; all launch files read it automatically.
+> 📌 This file is the **single source of truth** for map path and WGS84 origin. Edit it once per deployment; all launch files read it automatically.
+
+<details><summary>Full field reference (click to expand)</summary>
 
 | Field | Unit | Required | Default | Meaning | Used by |
 |---|---|---|---|---|---|
@@ -223,6 +373,8 @@ This file is the **single source of truth** for map path and WGS84 origin. Edit 
 | `dir_width_scale` | m | No | `0.18` | Arrow width scale for lane-direction markers (RViz only) | `lanelet_map_provider` |
 | `dir_stride` | — | No | `30` | Number of centerline points skipped between direction arrows | `lanelet_map_provider` |
 | `visualization_republish_period_s` | s | No | `0.0` | Periodic republish interval for map markers (0 = once, transient_local only) | `lanelet_map_provider` |
+
+</details>
 
 ### `config/lanelet_cost_grid.yaml` — key params
 
@@ -258,7 +410,9 @@ This file is the **single source of truth** for map path and WGS84 origin. Edit 
 | `config/drop_zones.yaml` | Generated drop-zone list (id, x/y/z, yaw_deg, corners) |
 | `config/nav2_params_costlayer_example.yaml` | Reference Nav2 costmap layer config |
 
-## 9. Validation
+---
+
+## 10. ✅ Validation
 
 ```bash
 # Confirm TF world→map is published
@@ -277,15 +431,19 @@ ros2 topic echo /map/cost_grid/lanelet --once | head -20
 python3 -c "import yaml; d=yaml.safe_load(open('/home/hong/camrod_ws/src/camrod_map/config/drop_zones.yaml')); print(len(d['drop_zones']), 'drop zones')"
 ```
 
-Expected healthy state: TF echo returns a valid transform, `/map/markers` has > 0 markers, `/map/cost_grid/lanelet` shows a 600×600 OccupancyGrid.
+> 💡 **Expected healthy state:** TF echo returns a valid transform, `/map/markers` has > 0 markers, `/map/cost_grid/lanelet` shows a 600×600 OccupancyGrid.
 
-## 10. Troubleshooting
+---
+
+## 11. 🔍 Troubleshooting
 
 ### Map rotated or offset in RViz
 
 The robot position appears to float off the displayed lane geometry.
 
-1. Confirm `offset_lat/lon/alt` in `map_info.yaml` exactly matches the reference origin used when the `.osm` file was generated. Even a 1 arcsecond error causes a ~30 m position offset.
+> ⚠️ Even a 1 arcsecond error in `offset_lat/lon` causes a ~30 m position offset.
+
+1. Confirm `offset_lat/lon/alt` in `map_info.yaml` exactly matches the reference origin used when the `.osm` file was generated.
 2. Check `yaw_offset_deg`. If non-zero, the entire map is rotated. Set to `0.0` unless the `.osm` was generated with a deliberate heading correction.
 3. Verify all consumers (camrod_localization, camrod_planning) are reading the same `map_info.yaml` — mismatched origins produce consistent-looking maps that are shifted relative to sensor data.
 
@@ -293,7 +451,10 @@ The robot position appears to float off the displayed lane geometry.
 
 `/map/cost_grid/lanelet` is received but every cell is −1 or 99.
 
-1. Check that the `.osm` file path in `map_info.yaml` points to an existing file. Verify: `ls -lh $(python3 -c "import yaml; p=yaml.safe_load(open('/home/hong/camrod_ws/src/camrod_map/config/map_info.yaml')); print(p['/**']['ros__parameters']['map_path'])")`.
+1. Check that the `.osm` file path in `map_info.yaml` points to an existing file. Verify:
+   ```bash
+   ls -lh $(python3 -c "import yaml; p=yaml.safe_load(open('/home/hong/camrod_ws/src/camrod_map/config/map_info.yaml')); print(p['/**']['ros__parameters']['map_path'])")
+   ```
 2. If the file path is empty, the launch auto-discover search walks up from `~/camrod_ws/src`; place `lanelet2_maps.osm` there or set `map_path` explicitly.
 3. If the grid is all 99 (off-lane fill), the `offset_lat/lon/alt` places the map far from the lanelet geometry. Re-check the origin against the OSM file.
 
@@ -311,7 +472,9 @@ The `area_exporter` node runs once at launch and exits. If the output file is em
 2. Verify `output_yaml_path` points to a writable location. The launch file defaults to `camrod_map/config/drop_zones.yaml` in the workspace source tree.
 3. Re-run: `ros2 launch camrod_map area_export.launch.py` and observe stdout for "Exported N drop zones".
 
-## 11. Related Docs
+---
+
+## 12. 📚 Related Docs
 
 - [../README.md](../README.md) — monorepo overview and inter-package data flow
 - [../camrod_localization/README.md](../camrod_localization/README.md) — consumes `world→map` TF, `/sensing/gnss/pose_with_covariance`, produces `/localization/pose`

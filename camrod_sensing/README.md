@@ -1,12 +1,14 @@
-# camrod_sensing
+# 🎯 camrod_sensing — Sensors, preprocessing & near-range cost grids
 
-## 1. Summary
+## 1. 📋 Summary
 
 `camrod_sensing` acquires raw data from all physical sensors (LiDAR, radar, camera, IMU, GNSS), preprocesses the streams, and produces the filtered topics and obstacle cost grids consumed by localization, perception, and planning. It also fuses the map lanelet cost grid with real-time sensor grids into a single inflation grid for the Nav2 local costmap.
 
-**Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 ultrasonic radar ×6 (CH9344 USB serial), V4L2 camera (ISX031 / `/dev/video0`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial), u-blox ZED-F9P GNSS (USB), NTRIP RTK correction stream.
+> 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 ultrasonic radar ×6 (CH9344 USB serial), V4L2 camera (ISX031 / `/dev/video0`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial), u-blox ZED-F9P GNSS (USB), NTRIP RTK correction stream.
 
-## 2. Quick Start
+---
+
+## 2. 🚀 Quick Start
 
 ```bash
 # Full sensing stack (all sensors enabled)
@@ -28,68 +30,211 @@ ros2 launch camrod_sensing imu.launch.py
 ros2 launch camrod_sensing camera.launch.py
 ```
 
-Verify: `ros2 topic hz /sensing/lidar/points_filtered` should show ~10 Hz; `ros2 topic echo /sensing/gnss/ublox_gps_node/fix --once` should return a `NavSatFix` with `status.status >= 0`.
+> 💡 Verify: `ros2 topic hz /sensing/lidar/points_filtered` should show ~10 Hz; `ros2 topic echo /sensing/gnss/ublox_gps_node/fix --once` should return a `NavSatFix` with `status.status >= 0`.
 
-## 3. System Position
+---
 
-```
-camrod_platform ──/platform/status/velocity──> camrod_sensing
-camrod_map ──/map/cost_grid/lanelet──> camrod_sensing
-camrod_planning ──/planning/cost_grid/global_path──> camrod_sensing
-
-camrod_sensing ──/sensing/lidar/points_filtered──> camrod_perception, camrod_planning
-camrod_sensing ──/sensing/imu/data──> camrod_localization
-camrod_sensing ──/sensing/gnss/ublox_gps_node/fix──> camrod_localization
-camrod_sensing ──/sensing/gnss/pose, /sensing/gnss/pose_with_covariance──> camrod_localization
-camrod_sensing ──/sensing/platform_velocity_converter/twist_with_covariance──> camrod_localization
-camrod_sensing ──/sensing/cost_grid/lidar──> camrod_map (visualization), camrod_planning (Nav2 global costmap)
-camrod_sensing ──/sensing/cost_grid/radar──> camrod_map (visualization), camrod_planning (Nav2 global costmap)
-camrod_sensing ──/planning/cost_grid/inflation──> camrod_planning (Nav2 local costmap, cmd_vel_gate)
-camrod_sensing ──camera/image_rect/compressed──> camrod_parking (apriltag_node)
-camrod_sensing ──camera/image_rect/compressed──> camrod_perception (YOLOv9)
-```
-
-## 4. Runtime Architecture
+## 3. 🗺️ System Position
 
 ```mermaid
-graph TD
-  HW{{Vanjee LiDAR}} --> LDRV[lidar_preprocessor]
-  LDRV --> LFLT(("/sensing/lidar/points_filtered"))
-  LFLT --> LGRID[lidar_cost_grid]
-  LGRID --> LOUT(("/sensing/cost_grid/lidar"))
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+graph LR
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  HW2{{SEN0592 ×6 via CH9344}} --> RADAR[sen0592_radar_node]
-  RADAR --> RRANGE(("/sensing/radar/{front,rear,left1,left2,right1,right2}/range"))
-  RRANGE --> RGRID[radar_cost_grid]
-  RGRID --> ROUT(("/sensing/cost_grid/radar"))
+  subgraph UP["⬆️ Upstream"]
+    PLAT[🧩 camrod_platform]:::platform
+    MAP[🧩 camrod_map]:::mapping
+    PLAN_IN[🧩 camrod_planning]:::planning
+  end
 
-  LOUT --> INFGRID[inflation_cost_grid]
-  ROUT --> INFGRID
-  LANELET(("/map/cost_grid/lanelet")) --> INFGRID
-  GPATH(("/planning/cost_grid/global_path")) --> INFGRID
-  INFGRID --> MERGED(("/planning/cost_grid/inflation"))
+  subgraph CS["🎯 camrod_sensing"]
+    SENS[🧩 camrod_sensing]:::highlight
+  end
 
-  HW3{{V4L2 camera /dev/video0}} --> CAM[camera_publisher]
-  CAM --> CAMRECT(("camera/image_rect/compressed"))
-  CAM --> CAMINFO(("camera/camera_info"))
+  subgraph DN["⬇️ Downstream"]
+    LOC[🧩 camrod_localization]:::localization
+    PERC[🧩 camrod_perception]:::perception
+    PLAN_OUT[🧩 camrod_planning]:::planning
+    MAP_VIZ[🧩 camrod_map]:::mapping
+    PARK[🧩 camrod_parking]:::parking
+  end
 
-  HW4{{u-blox ZED-F9P /dev/ttyACM1}} --> GNSS[[ublox_gps_node]]
-  NTRIP[[ntrip_client]] --> GNSS
-  GNSS --> FIX(("/sensing/gnss/ublox_gps_node/fix"))
-  FIX --> ADAPT[localization_input_adapter]
-  ADAPT --> GNSSPOSE(("/sensing/gnss/pose"))
-  ADAPT --> GNSSCOV(("/sensing/gnss/pose_with_covariance"))
+  PLAT  ==>|📡 /platform/status/velocity| SENS
+  MAP   ==>|📡 /map/cost_grid/lanelet| SENS
+  PLAN_IN -->|📡 /planning/cost_grid/global_path| SENS
 
-  HW5{{CV7 or GQ7 IMU}} --> IMUDRV[[microstrain_inertial_driver]]
-  IMUDRV --> IMUOUT(("/sensing/imu/data"))
-  IMUOUT --> VEL[platform_velocity_converter]
-  PLATVEL(("/platform/status/velocity")) --> VEL
-  VEL --> VELOUT(("/sensing/platform_velocity_converter/twist_with_covariance"))
+  SENS ==>|📡 /sensing/imu/data| LOC
+  SENS ==>|📡 /sensing/gnss/pose_with_covariance| LOC
+  SENS ==>|📡 twist_with_covariance| LOC
+  SENS ==>|📡 /sensing/lidar/points_filtered| PERC
+  SENS ==>|📡 /planning/cost_grid/inflation| PLAN_OUT
+  SENS -->|📡 lidar/radar cost grids| MAP_VIZ
+  SENS -->|📡 camera/image_rect/compressed| PARK
+  SENS -->|📡 camera/image_rect/compressed| PERC
+
+  linkStyle 0,1,3,4,5,6,7 stroke:#06B6D4,stroke-width:2.5px;
 ```
 
-Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = hardware device, `[[stack]]` = external package.
+> **Diagram legend** 🧩 ROS node · 📡 Topic · ==> critical path · -.-> optional
 
-## 5. Interface Contract
+*Figure 1 — camrod_sensing is the hub between all physical hardware and the rest of the CAMROD stack.*
+
+---
+
+## 4. 🏗️ Runtime Architecture
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+graph TD
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  subgraph LIDAR["📡 LiDAR"]
+    HW1{{🛠️ Vanjee LiDAR\nEthernet}}:::hardware
+    LDRV[🧩 lidar_preprocessor]:::sensing
+    LFLT((📡 /sensing/lidar/points_filtered)):::topic
+    LGRID[🧩 lidar_cost_grid]:::sensing
+    LOUT((📡 /sensing/cost_grid/lidar)):::topic
+    HW1 ==> LDRV ==> LFLT ==> LGRID ==> LOUT
+  end
+
+  subgraph RADAR["📶 Radar ×6"]
+    HW2{{🛠️ SEN0592 ×6\nCH9344 USB serial}}:::hardware
+    RDRV[🧩 sen0592_radar_node]:::sensing
+    RRANGE((📡 /sensing/radar/\nfront,rear,left1,left2\nright1,right2/range)):::topic
+    RGRID[🧩 radar_cost_grid]:::sensing
+    ROUT((📡 /sensing/cost_grid/radar)):::topic
+    HW2 ==> RDRV ==> RRANGE ==> RGRID ==> ROUT
+  end
+
+  subgraph CAM["📷 Camera"]
+    HW3{{🛠️ ISX031\n/dev/video0}}:::hardware
+    CAMDRV[🧩 camera_publisher]:::sensing
+    CAMRECT((📡 camera/image_rect\n/compressed)):::topic
+    CAMINFO((📡 camera/camera_info)):::topic
+    HW3 ==> CAMDRV
+    CAMDRV ==> CAMRECT
+    CAMDRV --> CAMINFO
+  end
+
+  subgraph IMU["🧭 IMU"]
+    HW5{{🛠️ CV7-AHRS or GQ7\nUSB serial}}:::hardware
+    IMUDRV[[📦 microstrain_inertial_driver]]:::system
+    IMUOUT((📡 /sensing/imu/data)):::topic
+    HW5 ==> IMUDRV ==> IMUOUT
+  end
+
+  subgraph GNSS["🛰️ GNSS"]
+    HW4{{🛠️ u-blox ZED-F9P\n/dev/ttyACM1}}:::hardware
+    NTRIP[[📦 ntrip_client]]:::system
+    GNSSDRV[[📦 ublox_gps_node]]:::system
+    FIX((📡 /sensing/gnss\n/ublox_gps_node/fix)):::topic
+    ADAPT[🧩 localization_input_adapter]:::sensing
+    GNSSPOSE((📡 /sensing/gnss/pose)):::topic
+    GNSSCOV((📡 /sensing/gnss\n/pose_with_covariance)):::topic
+    NTRIP ==> GNSSDRV
+    HW4 ==> GNSSDRV ==> FIX ==> ADAPT
+    ADAPT ==> GNSSCOV
+    ADAPT --> GNSSPOSE
+  end
+
+  subgraph VELCONV["🔁 Velocity Converter"]
+    PLATVEL((📡 /platform/status/velocity)):::topic
+    VEL[🧩 platform_velocity_converter]:::sensing
+    VELOUT((📡 twist_with_covariance)):::topic
+    PLATVEL ==> VEL
+    IMUOUT --> VEL
+    VEL ==> VELOUT
+  end
+
+  subgraph INFLATE["🧮 Cost Grids"]
+    LANELET((📡 /map/cost_grid/lanelet)):::topic
+    GPATH((📡 /planning/cost_grid/global_path)):::topic
+    INFGRID[🧩 inflation_cost_grid]:::sensing
+    MERGED((📡 /planning/cost_grid/inflation)):::topic
+    LOUT ==> INFGRID
+    ROUT ==> INFGRID
+    LANELET ==> INFGRID
+    GPATH -.-> INFGRID
+    INFGRID ==> MERGED
+  end
+
+  linkStyle 0,1,2,3,4,5,6,7,8,9,10,11,12,14,15,18,19,20,21,22,24,25 stroke:#06B6D4,stroke-width:2px;
+```
+
+> **Diagram legend** 🧩 ROS node · 📡 Topic · 🛠️ Hardware · 📦 External pkg · ==> critical path · -.-> optional
+
+*Figure 2 — Full runtime architecture with one subgraph per sensor pipeline plus the inflation cost grid fusion.*
+
+---
+
+## 5. 🧮 Cost Grid Strategy
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+graph TD
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  L1((📡 /sensing/cost_grid/lidar\n150×150 @ 0.08m\nstale: 0.50s)):::sensing
+  L2((📡 /sensing/cost_grid/radar\n120×120 @ 0.10m\nstale: 0.35s)):::sensing
+  L3((📡 /map/cost_grid/lanelet\n600×600 @ 0.20m\nstale: 5.0s)):::mapping
+  L4((📡 /planning/cost_grid/global_path\nroute-strip bias\nstale: 10.0s)):::planning
+
+  FUSE[🧩 inflation_cost_grid\ncell-wise MAX merge\nego clear: 0.50m radius]:::highlight
+
+  OUT((📡 /planning/cost_grid/inflation\n120×120 @ 0.10m · 10 Hz\nconsumed by Nav2 local costmap)):::topic
+
+  L1 ==> FUSE
+  L2 ==> FUSE
+  L3 ==> FUSE
+  L4 -.-> FUSE
+  FUSE ==> OUT
+
+  linkStyle 0,1,2,4 stroke:#06B6D4,stroke-width:2.5px;
+```
+
+> **Diagram legend** 📡 Topic · 🧩 ROS node · ==> required input · -.-> optional input
+
+*Figure 3 — Four input grids are merged by cell-wise MAX into the single inflation grid consumed by Nav2 local costmap and `cmd_vel_gate`.*
+
+---
+
+## 6. 🔌 Interface Contract
 
 ### Inputs (from other packages)
 
@@ -104,8 +249,8 @@ Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = ha
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
 | `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | camrod_perception, camrod_planning | ~10 Hz | Ground-filtered, voxel-downsampled LiDAR points in `lidar_link` frame |
-| `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning (Nav2 global costmap), camrod_map (visualization) | 10 Hz | 150×150 @ 0.08 m robot-centred obstacle grid from LiDAR |
-| `/sensing/cost_grid/radar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning (Nav2 global costmap), camrod_map (visualization) | 10 Hz | 120×120 @ 0.10 m robot-centred near-field obstacle grid from radar |
+| `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 150×150 @ 0.08 m robot-centred obstacle grid from LiDAR |
+| `/sensing/cost_grid/radar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 120×120 @ 0.10 m robot-centred near-field obstacle grid from radar |
 | `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | camrod_planning (Nav2 local costmap, `cmd_vel_gate`) | 10 Hz | 120×120 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
 | `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz | Raw GNSS fix with RTK status |
 | `/sensing/gnss/pose` | `geometry_msgs/PoseStamped` | camrod_localization (`localization_monitor_node`) | 10 Hz | GNSS-derived pose in `map` frame (no covariance) |
@@ -115,7 +260,9 @@ Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = ha
 | `camera/image_rect/compressed` | `sensor_msgs/CompressedImage` | camrod_perception (YOLOv9), camrod_parking (`apriltag_node`) | 10 Hz | Rectified 1920×1080 JPEG-compressed image in `camera_link` frame |
 | `camera/camera_info` | `sensor_msgs/CameraInfo` | camrod_perception, camrod_parking | 10 Hz | Calibrated intrinsics (equidistant distortion model) |
 
-## 6. Key Behaviors
+---
+
+## 7. ⚙️ Key Behaviors
 
 ### LiDAR — ground filter and voxel downsample
 
@@ -200,7 +347,7 @@ Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = ha
 |---|---|
 | Trigger | `ntrip_client` node startup (if `enable_ntrip:=true`) |
 | Internal logic | The NTRIP client connects to `www.gnssdata.or.kr:2101` (Korean CORS network) with authenticated credentials. It sends a GGA sentence (up to 96 chars) to the caster and receives a continuous RTCM 3.2 stream. The stream is relayed to `ublox_gps_node` via the `rtcm` topic. If the connection drops, the client retries up to 10 times with an 8 s wait between attempts (`reconnect_attempt_max: 10`, `reconnect_attempt_wait_seconds: 8`). The F9P transitions to RTK-float when RTCM is first received and to RTK-fixed after resolving carrier-phase ambiguity (typically < 60 s under open sky). |
-| Output effect | F9P `carrSoln` field in NAV-PVT: 0 = none, 1 = float, 2 = fixed. `NavSatFix.status.status`: 0 = fix, 2 = RTK-float, 3 (SBAS) or higher = RTK-fixed depending on ublox_gps driver version. |
+| Output effect | F9P `carrSoln` field in NAV-PVT: 0 = none, 1 = float, 2 = fixed. `NavSatFix.status.status`: 0 = fix, 2 = RTK-float, 3+ = RTK-fixed (depending on ublox_gps driver version). |
 | Operator-visible symptom | `carrSoln` stays at 1 (float) for > 5 min under clear sky → base corrections are received but ambiguity resolution is failing. Common causes: multipath environment, rover antenna quality, or RTCM stream has gaps. |
 | Required conditions | Active internet connection, CORS network reachable, open-sky GNSS antenna with good ground plane, F9P firmware ≥ HPG 1.13. |
 | Related params | `host`, `port`, `mountpoint`, `username`, `password`, `rtcm_timeout_seconds`, `reconnect_attempt_max`, `reconnect_attempt_wait_seconds` |
@@ -228,7 +375,9 @@ Diagram legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = ha
 | Related params | `resolution`, `width`, `height`, `ego_clear_radius_m`, `publish_rate_hz`, `input_topics`, `input_max_ages_s` |
 | Related topics | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`, `/planning/cost_grid/global_path` → `/planning/cost_grid/inflation` |
 
-## 7. Cost Grid Reference
+---
+
+## 8. 📊 Cost Grid Reference
 
 All cost grids are robot-centred and published in the `map` frame via TF2.
 
@@ -247,7 +396,9 @@ All cost grids are robot-centred and published in the `map` frame via TF2.
 | `/sensing/cost_grid/radar` | 0.50 s |
 | `/planning/cost_grid/global_path` | 10.0 s |
 
-## 8. Launch
+---
+
+## 9. 🚀 Launch
 
 ```bash
 # Full sensing stack
@@ -283,7 +434,9 @@ ros2 launch camrod_sensing camera.launch.py
 | `imu_output_topic` | `/sensing/platform_velocity_converter/twist_with_covariance` | Velocity converter output (fixed) |
 | `gnss_namespace` | `gnss` | Sub-namespace for GNSS nodes (resolves to `/sensing/gnss/`) |
 
-## 9. Config
+---
+
+## 10. 🔧 Config
 
 | File | Purpose |
 |---|---|
@@ -303,7 +456,7 @@ ros2 launch camrod_sensing camera.launch.py
 
 ### Key params by sensor
 
-#### LiDAR preprocessor (`config/lidar/preprocessor.yaml`)
+<details><summary>LiDAR preprocessor — <code>config/lidar/preprocessor.yaml</code></summary>
 
 | Param | Value | Meaning |
 |---|---|---|
@@ -314,7 +467,9 @@ ros2 launch camrod_sensing camera.launch.py
 | `z_min` / `z_max` | `−0.25` / `0.25` m | Ground plane inlier Z window |
 | `frame_id_override` | `lidar_link` | Frame stamped into output cloud |
 
-#### Radar driver (`config/radar/sen0592_radar.yaml`)
+</details>
+
+<details><summary>Radar driver — <code>config/radar/sen0592_radar.yaml</code></summary>
 
 | Param | Value | Meaning |
 |---|---|---|
@@ -323,7 +478,9 @@ ros2 launch camrod_sensing camera.launch.py
 | `sensor_max_ranges_m` | `[0.50, 0.80, 0.80, 0.80, 0.80, 1.50]` | Per-sensor max range (REAR, L2, L1, R2, R1, FRONT) |
 | `ports` | `/dev/ttyCH9344USB2` – `USB7` | CH9344 serial port assignments |
 
-#### Inflation cost grid (`config/inflation_cost_grid.yaml`)
+</details>
+
+<details><summary>Inflation cost grid — <code>config/inflation_cost_grid.yaml</code></summary>
 
 | Param | Value | Meaning |
 |---|---|---|
@@ -333,7 +490,11 @@ ros2 launch camrod_sensing camera.launch.py
 | `publish_rate_hz` | `10.0` Hz | Output rate |
 | `input_max_ages_s` | `[5.0, 0.50, 0.50, 10.0]` | Per-input staleness limits (lanelet, lidar, radar, path) |
 
-## 10. Validation
+</details>
+
+---
+
+## 11. ✅ Validation
 
 ```bash
 # LiDAR pipeline
@@ -361,7 +522,9 @@ ros2 topic hz /planning/cost_grid/inflation           # expect 10 Hz
 ros2 topic hz /sensing/camera/image_rect/compressed   # expect 10 Hz
 ```
 
-## 11. Troubleshooting
+---
+
+## 12. 🔍 Troubleshooting
 
 ### LiDAR topic silent
 
@@ -375,6 +538,8 @@ ros2 topic hz /sensing/camera/image_rect/compressed   # expect 10 Hz
 ### GNSS stays in float
 
 `NavSatFix.status.status` does not reach RTK-fixed after > 5 minutes under open sky.
+
+> ⚠️ If `carrSoln` stays at 1 (float) for > 5 min under clear sky, ambiguity resolution is failing — check for multipath, antenna quality, or RTCM stream gaps.
 
 1. Confirm RTCM stream is arriving: `ros2 topic hz /sensing/gnss/rtcm`. If silent, the NTRIP client is not connected.
 2. Check network reachability: `ping www.gnssdata.or.kr`. Firewall or mobile data restrictions can block port 2101.
@@ -417,7 +582,9 @@ One or more `/sensing/radar/*/range` topics are silent.
 3. Iceoryx zero-copy: if `iox-roudi` is not running, the `camera_publisher_node` may crash or stall. Check: `ps aux | grep iox-roudi`. If absent, it was not started (the camera launch starts it automatically, but it may have exited).
 4. Check exposure: if the environment is very dark, increase `exposure_time_us` in `camera_params.yaml` (max ~25000 for stable 10 fps).
 
-## 12. Related Docs
+---
+
+## 13. 📚 Related Docs
 
 - [../README.md](../README.md) — monorepo overview and inter-package data flow
 - [../camrod_localization/README.md](../camrod_localization/README.md) — consumes IMU, GNSS, velocity converter outputs from this package

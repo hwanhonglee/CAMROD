@@ -1,16 +1,17 @@
-# camrod_localization
+# 📍 camrod_localization — GNSS/IMU/wheel fusion (ESKF) & localization state
 
-## 1. Summary
+## 1. 📋 Summary
 
 `camrod_localization` is the state estimation pipeline for the CAMROD robot. It fuses GNSS (NavSatFix), IMU, and wheel odometry into a consistent `map`-frame pose using an Extended Schmidt–Kalman Filter (ESKF). A Non-Holonomic Constraint (NHC) and Zero Velocity Update (ZUPT) provide additional robustness. A map helper node snaps poses to the Lanelet2 centerline and matches the robot to a configured drop zone at startup for automatic pose initialization.
 
-**Upstream dependencies:** camrod_sensing, camrod_platform, camrod_map
-
-**Downstream consumers:** camrod_planning, camrod_platform, camrod_system
+| | |
+|---|---|
+| **Upstream dependencies** | `camrod_sensing`, `camrod_platform`, `camrod_map` |
+| **Downstream consumers** | `camrod_planning`, `camrod_platform`, `camrod_system` |
 
 ---
 
-## 2. Quick Start
+## 2. 🚀 Quick Start
 
 ```bash
 # Full localization stack (ESKF + adapter + monitor + map helper)
@@ -36,64 +37,173 @@ ros2 topic echo /localization/initial_match_ok
 
 ---
 
-## 3. System Position
+## 🧭 System Position
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#ECFDF5', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#10B981', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  SENS[[camrod_sensing]] -->|/sensing/gnss/ublox_gps_node/fix\n/sensing/imu/data| LOC[camrod_localization]
-  PLAT[[camrod_platform]] -->|/platform/status/odometry\n/rmp401/odom| LOC
-  MAP[[camrod_map]] -->|Lanelet2 map\nmap_info.yaml| LOC
-  LOC -->|/localization/pose\n/localization/mode\n/localization/initial_match_ok\nTF map→odom→robot_base_link| PLAN[[camrod_planning]]
-  LOC -->|/localization/pose\n/localization/mode| PPLAT[[camrod_platform]]
-  LOC -->|/localization/mode\n/localization/initial_match_ok\n/localization/confidence| SYS[[camrod_system]]
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+
+  subgraph UP ["📥 Upstream"]
+    direction TB
+    SENS[[📦 camrod_sensing]]
+    PLAT[[📦 camrod_platform]]
+    MAP[[📦 camrod_map]]
+  end
+
+  subgraph LOC_PKG ["📍 camrod_localization"]
+    direction TB
+    LOC[🧩 localization_stack]
+  end
+
+  subgraph DOWN ["📤 Downstream"]
+    direction TB
+    PLAN[[📦 camrod_planning]]
+    PPLAT[[📦 camrod_platform]]
+    SYS[[📦 camrod_system]]
+  end
+
+  SENS ==>|"`/sensing/gnss/ublox_gps_node/fix\n/sensing/imu/data`"| LOC
+  PLAT -->|"`/platform/status/odometry\n/rmp401/odom`"| LOC
+  MAP -.->|"`Lanelet2 map\nmap_info.yaml`"| LOC
+
+  LOC ==>|"`/localization/pose\n/localization/mode\n/localization/initial_match_ok\nTF map→odom→robot_base_link`"| PLAN
+  LOC -->|"`/localization/pose\n/localization/mode`"| PPLAT
+  LOC -->|"`/localization/mode\n/localization/initial_match_ok\n/localization/confidence`"| SYS
+
+  class SENS sensing
+  class PLAT,PPLAT platform
+  class MAP mapping
+  class LOC localization
+  class PLAN planning
+  class SYS system
 ```
+
+> **Diagram legend**
+> 🧩 ROS node · 📡 Topic · ⚙️ Config · 🛠️ Hardware · 📦 External · 🔔 Service/Action
+> Solid → runtime · ==> critical path · -.-> optional
+
+*Figure 1 — camrod_localization system context: sensor inputs from upstream, the localization package, and downstream pose consumers.*
 
 ---
 
-## 4. Runtime Architecture
+## 🏗️ Runtime Architecture
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#ECFDF5', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#10B981', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph TD
-  GNSS(("/sensing/gnss/ublox_gps_node/fix")) --> ADAPT[localization_input_adapter_node]
-  WHEEL(("/platform/status/odometry")) --> ADAPT
-  WFBACK(("/rmp401/odom")) --> ADAPT
-  ADAPT --> GNSSPOSE(("/sensing/gnss/pose_with_covariance"))
-  ADAPT --> WHEELOUT(("/platform/status/wheel_odometry"))
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  IMU(("/sensing/imu/data")) --> ESKF[localization_eskf_node]
-  GNSSPOSE --> ESKF
+  subgraph INPUTS ["📥 Inputs"]
+    direction LR
+    GNSS((📡 /sensing/gnss/ublox_gps_node/fix))
+    IMU((📡 /sensing/imu/data))
+    WHEEL((📡 /platform/status/odometry))
+    WFBACK((📡 /rmp401/odom))
+  end
+
+  subgraph ADAPTER_SG ["🔄 Adapter"]
+    direction TB
+    ADAPT[🧩 localization_input_adapter_node]
+    GNSSPOSE((📡 /sensing/gnss/pose_with_covariance))
+    WHEELOUT((📡 /platform/status/wheel_odometry))
+  end
+
+  subgraph ESKF_SG ["🧮 ESKF"]
+    direction TB
+    ESKF[🧩 localization_eskf_node]
+    POSE((📡 /localization/pose))
+    POSECOV((📡 /localization/pose_with_covariance))
+    ODO((📡 /localization/odometry/filtered))
+    TF((📡 TF: map→odom→robot_base_link))
+    ESTAT((📡 /localization/eskf/status))
+  end
+
+  subgraph MAPHELP_SG ["🗺️ Map Helper"]
+    direction TB
+    DZFILE[(⚙️ drop_zones.yaml)]
+    MAPHELP[🧩 localization_map_helper_node]
+    LPOSE((📡 /localization/lanelet_pose))
+    INITPOSE((📡 /localization/initialpose3d))
+    MATCHOK((📡 /localization/initial_match_ok))
+  end
+
+  subgraph MON_SG ["📊 Monitor"]
+    direction TB
+    MON[🧩 localization_monitor_node]
+    MODE((📡 /localization/mode))
+    STATE((📡 /localization/state))
+    CONF((📡 /localization/confidence))
+  end
+
+  subgraph SEL_SG ["🎚️ Pose Selector"]
+    direction TB
+    SEL[🧩 localization_pose_selector_node]
+    SELPOSE((📡 /localization/pose))
+    SELPOSECOV((📡 /localization/pose_with_covariance))
+    SELODO((📡 /localization/odometry/filtered))
+  end
+
+  GNSS ==> ADAPT
+  WHEEL --> ADAPT
+  WFBACK -.-> ADAPT
+  ADAPT --> GNSSPOSE
+  ADAPT --> WHEELOUT
+
+  IMU ==> ESKF
+  GNSSPOSE ==> ESKF
   WHEELOUT --> ESKF
-  ESKF --> POSE(("/localization/pose"))
-  ESKF --> POSECOV(("/localization/pose_with_covariance"))
-  ESKF --> ODO(("/localization/odometry/filtered"))
-  ESKF --> TF(("TF: map→odom→robot_base_link"))
-  ESKF --> ESTAT(("/localization/eskf/status"))
+  ESKF ==> POSE
+  ESKF --> POSECOV
+  ESKF --> ODO
+  ESKF --> TF
+  ESKF --> ESTAT
 
-  POSE --> MAPHELP[localization_map_helper_node]
+  POSE --> MAPHELP
   POSECOV --> MAPHELP
-  DZFILE{{drop_zones.yaml}} -.-> MAPHELP
-  MAPHELP --> LPOSE(("/localization/lanelet_pose"))
-  MAPHELP --> INITPOSE(("/localization/initialpose3d"))
-  MAPHELP --> MATCHOK(("/localization/initial_match_ok"))
+  DZFILE -.-> MAPHELP
+  MAPHELP --> LPOSE
+  MAPHELP --> INITPOSE
+  MAPHELP ==> MATCHOK
 
-  GNSSPOSE --> MON[localization_monitor_node]
+  GNSSPOSE --> MON
   IMU --> MON
   WHEELOUT --> MON
   ESTAT --> MON
-  MON --> MODE(("/localization/mode"))
-  MON --> STATE(("/localization/state"))
-  MON --> CONF(("/localization/confidence"))
+  MON ==> MODE
+  MON --> STATE
+  MON --> CONF
 
-  POSE --> SEL[localization_pose_selector_node]
+  POSE --> SEL
   POSECOV --> SEL
   ODO --> SEL
   MODE --> SEL
-  SEL --> SELPOSE(("/localization/pose"))
-  SEL --> SELPOSECOV(("/localization/pose_with_covariance"))
-  SEL --> SELODO(("/localization/odometry/filtered"))
+  SEL --> SELPOSE
+  SEL --> SELPOSECOV
+  SEL --> SELODO
+
+  class GNSS,IMU,WHEEL,WFBACK sensing
+  class ADAPT,ESKF,MAPHELP,MON,SEL localization
+  class DZFILE config
+  class GNSSPOSE,WHEELOUT,POSE,POSECOV,ODO,TF,ESTAT,LPOSE,INITPOSE,MATCHOK,MODE,STATE,CONF,SELPOSE,SELPOSECOV,SELODO topic
+  class POSE,ESKF,MATCHOK highlight
 ```
 
-Diagram legend: `[node]`, `((topic))`, `{{external file/hw}}`, dashed = non-runtime dep.
+*Figure 2 — Runtime node graph. Critical path: sensing ==> ESKF ==> `/localization/pose`; map helper publishes `/localization/initial_match_ok` to unblock Nav2.*
 
 ### Node Summary
 
@@ -107,7 +217,7 @@ Diagram legend: `[node]`, `((topic))`, `{{external file/hw}}`, dashed = non-runt
 
 ---
 
-## 5. Interface Contract
+## 🔌 Interface Contract
 
 ### Inputs
 
@@ -136,12 +246,19 @@ Diagram legend: `[node]`, `((topic))`, `{{external file/hw}}`, dashed = non-runt
 
 ---
 
-## 6. Localization Modes
+## ⚙️ Localization Modes
 
 ### 6.1 Mode State Diagram
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#ECFDF5', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#10B981', 'lineColor': '#475569'}}}%%
 stateDiagram-v2
+  direction LR
+  classDef normal   fill:#ECFDF5,stroke:#10B981,color:#047857
+  classDef degraded fill:#FEF3C7,stroke:#F59E0B,color:#B45309
+  classDef dronly   fill:#FEE2E2,stroke:#F97316,color:#C2410C
+  classDef invalid  fill:#FEE2E2,stroke:#EF4444,color:#B91C1C
+
   [*] --> INVALID : startup (no GNSS / filter not converged)
   INVALID --> NORMAL : GNSS valid, IMU and wheel healthy, filter converged
   NORMAL --> DEGRADED : one or more sensors degraded\n(GNSS innovation warn, low rate, or covariance high)
@@ -150,7 +267,14 @@ stateDiagram-v2
   DR_ONLY --> NORMAL : GNSS re-acquired and accepted by filter\n(gnss_recovery_hold_s in planning gate)
   DR_ONLY --> INVALID : dr_max_duration_s (30 s) exceeded\nor dr_max_cov_trace (200.0) exceeded
   DEGRADED --> INVALID : dr_max_duration_s or dr_max_cov_trace exceeded
+
+  class NORMAL normal
+  class DEGRADED degraded
+  class DR_ONLY dronly
+  class INVALID invalid
 ```
+
+*Figure 3 — Localization mode FSM. Green = fully healthy, yellow = degraded, orange = dead-reckoning, red = invalid.*
 
 | Mode | Value | Description |
 |---|---|---|
@@ -171,7 +295,7 @@ stateDiagram-v2
 
 ---
 
-## 7. Key Behaviors
+## 🔑 Key Behaviors
 
 ### 7.1 GNSS Loss
 
@@ -179,11 +303,11 @@ stateDiagram-v2
 
 **Internal logic:** The monitor transitions mode from NORMAL → DEGRADED → DR_ONLY. The ESKF continues prediction using IMU and wheel odometry (NHC + ZUPT active). If DR continues beyond `dr_max_duration_s` (30 s) or covariance trace exceeds `dr_max_cov_trace` (200.0), mode becomes INVALID. The cmd_vel gate in camrod_planning imposes a 2 s hold when GNSS recovers (DR_ONLY → NORMAL).
 
-**Output effect:** `/localization/mode` changes to `DR_ONLY`; planning gate blocks motion 2 s on re-acquisition.
+> ⚠️ **Warning** `/localization/mode` changes to `DR_ONLY`; planning gate blocks motion 2 s on re-acquisition.
 
 **Operator-visible symptom:** Pose drifts slowly; no immediate stop unless DR timeout triggers INVALID. After recovery, brief 2 s pause.
 
-**Related params:** `gnss_timeout_s`, `dr_max_duration_s`, `dr_max_cov_trace`, `max_position_jump_m`, `reinit_on_gnss_reject`, `reinit_distance_threshold`
+> 🔧 **Debug hint** Related params: `gnss_timeout_s`, `dr_max_duration_s`, `dr_max_cov_trace`, `max_position_jump_m`, `reinit_on_gnss_reject`, `reinit_distance_threshold`
 
 **Related topics:** `/localization/mode`, `/sensing/gnss/pose_with_covariance`, `/localization/eskf/status`
 
@@ -195,11 +319,11 @@ stateDiagram-v2
 
 **Internal logic:** The ESKF prediction step stalls. Monitor transitions mode to DEGRADED or INVALID depending on remaining sensor health. Without IMU prediction, the filter cannot maintain continuous odom-frame integration.
 
-**Output effect:** `/localization/mode` transitions to DEGRADED; TF output may become stale.
+> ⚠️ **Warning** `/localization/mode` transitions to DEGRADED; TF output may become stale.
 
 **Operator-visible symptom:** Pose update rate drops; Nav2 may log TF extrapolation warnings.
 
-**Related params:** `imu_timeout_s`, `max_imu_dt` (0.5 s clamp), `gyro_noise`, `accel_noise`
+> 🔧 **Debug hint** Related params: `imu_timeout_s`, `max_imu_dt` (0.5 s clamp), `gyro_noise`, `accel_noise`
 
 **Related topics:** `/sensing/imu/data`, `/localization/mode`, TF `map→odom→robot_base_link`
 
@@ -211,11 +335,11 @@ stateDiagram-v2
 
 **Internal logic:** The adapter switches to the fallback source `/rmp401/odom`. If the fallback also times out, the wheel correction update is suspended. The ESKF continues with IMU prediction only; NHC still provides lateral constraint but speed becomes uncertain. Monitor transitions mode to DEGRADED.
 
-**Output effect:** `/localization/mode` may move to DEGRADED; wheel-speed and yaw-rate updates cease.
+> ⚠️ **Warning** `/localization/mode` may move to DEGRADED; wheel-speed and yaw-rate updates cease.
 
 **Operator-visible symptom:** Heading drift increases, especially in DR_ONLY mode where wheel yaw-rate is the primary heading reference.
 
-**Related params:** `wheel_primary_timeout_s`, `wheel_fallback_input_topic`, `wheel_speed_noise`, `wheel_yaw_rate_noise`, `use_wheel_yaw_rate_update`
+> 🔧 **Debug hint** Related params: `wheel_primary_timeout_s`, `wheel_fallback_input_topic`, `wheel_speed_noise`, `wheel_yaw_rate_noise`, `use_wheel_yaw_rate_update`
 
 **Related topics:** `/platform/status/odometry`, `/rmp401/odom`, `/platform/status/wheel_odometry`, `/localization/mode`
 
@@ -227,39 +351,48 @@ stateDiagram-v2
 
 **Internal logic:** The node waits for `stable_count` (10) consecutive poses within `match_radius` before publishing the initialpose. If no match is found, `/localization/initial_match_ok` remains `false`. Planning waits for this signal if `require_localization_ready: true` is set.
 
-**Output effect:** `/localization/initial_match_ok` stays `false`; Nav2 does not auto-start if `require_localization_ready` is active.
+> ⚠️ **Warning** `/localization/initial_match_ok` stays `false`; Nav2 does not auto-start if `require_localization_ready` is active.
 
 **Operator-visible symptom:** Robot does not start navigating; `ros2 topic echo /localization/initial_match_ok` returns `false`. Nav2 lifecycle stays in `inactive` if `require_localization_ready` is set.
 
-**Related params:** `match_radius`, `stable_count`, `use_zone_yaw`, `use_corners_center`, `publish_once`
+> 🔧 **Debug hint** Related params: `match_radius`, `stable_count`, `use_zone_yaw`, `use_corners_center`, `publish_once`
 
 **Related topics:** `/localization/initial_match_ok`, `/localization/initialpose3d`, `/localization/initial_match_id`, `/localization/initial_match_distance`
 
 ---
 
-## 8. Drop Zone Initialization Sequence
+## 🗓️ Drop Zone Initialization Sequence
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#ECFDF5', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#10B981', 'lineColor': '#475569'}}}%%
 sequenceDiagram
-  participant GNSS as /sensing/gnss/ublox_gps_node/fix
-  participant Adapter as localization_input_adapter_node
-  participant ESKF as localization_eskf_node
-  participant MapHelper as localization_map_helper_node
-  participant Planning as camrod_planning
+  autonumber
+  participant GNSS as 📡 GNSS
+  participant Adapter as 🔄 Adapter
+  participant ESKF as 🧮 ESKF
+  participant MapHelper as 🗺️ MapHelper
+  participant Planning as 🧭 Planning
 
+  Note over GNSS,Adapter: Sensor data streams start at boot
   GNSS->>Adapter: NavSatFix (UTM conversion)
   Adapter->>ESKF: /sensing/gnss/pose_with_covariance
+  Note over ESKF: Filter begins prediction with IMU + wheel
   ESKF->>MapHelper: /localization/pose_with_covariance
-  Note over MapHelper: search drop_zones.yaml within match_radius=2.0m
-  Note over MapHelper: accumulate stable_count=10 matching poses
+
+  Note over MapHelper: Search drop_zones.yaml within match_radius = 2.0 m
+  Note over MapHelper: Accumulate stable_count = 10 matching poses
+
   MapHelper->>ESKF: /localization/initialpose3d (reinit ESKF at drop zone yaw)
   MapHelper->>Planning: /localization/initial_match_ok = true
-  Note over Planning: Nav2 lifecycle transitions to active\n(if require_localization_ready=true)
+
+  Note over Planning: Robot considered ready — Nav2 lifecycle transitions to active\n(if require_localization_ready = true)
 ```
+
+*Figure 4 — Drop zone initialization sequence. ESKF is re-initialized at the matched drop zone yaw before Nav2 is unblocked.*
 
 ---
 
-## 9. Launch
+## 🚀 Launch
 
 ```bash
 # Full localization stack
@@ -299,7 +432,7 @@ Key launch arguments:
 
 ---
 
-## 10. Config
+## 🛠️ Config
 
 | File | Purpose |
 |---|---|
@@ -313,7 +446,31 @@ Key launch arguments:
 
 ---
 
-## 11. Troubleshooting
+## ✅ Validation
+
+```bash
+# Monitor localization mode (should reach NORMAL quickly after GNSS lock)
+ros2 topic echo /localization/mode
+
+# Verify filter output rate (~50 Hz)
+ros2 topic hz /localization/pose
+
+# Check initial match state
+ros2 topic echo /localization/initial_match_ok
+
+# Inspect ESKF internal status (innovation, covariance trace)
+ros2 topic echo /localization/eskf/status
+
+# Check confidence score
+ros2 topic echo /localization/confidence
+
+# Verify TF tree is complete
+ros2 run tf2_tools view_frames
+```
+
+---
+
+## 🚑 Troubleshooting
 
 ### Pose drifts after GNSS recovery
 
@@ -351,7 +508,7 @@ Key launch arguments:
 
 ---
 
-## 12. Related Docs
+## 🔗 Related Docs
 
 - [../README.md](../README.md) — CAMROD monorepo overview
 - [../camrod_sensing/README.md](../camrod_sensing/README.md) — GNSS, IMU, and sensor pipeline

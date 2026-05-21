@@ -1,16 +1,17 @@
-# camrod_planning
+# 🧭 camrod_planning — Nav2 runtime, cmd_vel gating & mission state machine
 
-## 1. Summary
+## 1. 📋 Summary
 
 `camrod_planning` is the Nav2-based autonomous path planning and velocity control package. It snaps operator or UI goals to the nearest Lanelet2 centerline, runs the Nav2 planner/controller stack to produce a global path and raw velocity command, extracts a robot-centred local path for diagnostics, and gates the final velocity command behind an explicit engage signal, e-stop, cost-grid obstacle check, and GNSS recovery hold. An optional mission state machine manages named keypoint goals and the camping-site recall scenario.
 
-**Upstream dependencies:** camrod_localization, camrod_map, camrod_sensing, camrod_ui
-
-**Downstream consumers:** camrod_platform, camrod_system, camrod_parking
+| | |
+|---|---|
+| **Upstream dependencies** | `camrod_localization`, `camrod_map`, `camrod_sensing`, `camrod_ui` |
+| **Downstream consumers** | `camrod_platform`, `camrod_system`, `camrod_parking` |
 
 ---
 
-## 2. Quick Start
+## 2. 🚀 Quick Start
 
 ```bash
 # Minimal: Nav2 + cmd_vel_gate + lanelet tools
@@ -36,78 +37,194 @@ python3 camrod_planning/test/test_cmd_vel_gate_logic.py
 
 ---
 
-## 3. System Position
+## 🧭 System Position
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  LOC[[camrod_localization]] -->|/localization/pose\n/localization/mode| PLAN[camrod_planning]
-  MAP[[camrod_map]] -->|/map/cost_grid/lanelet\nLanelet2 map| PLAN
-  SENS[[camrod_sensing]] -->|/planning/cost_grid/inflation| PLAN
-  UI[[camrod_ui]] -->|/goal_pose\n/planning/state_machine/goal_key| PLAN
-  PLAN -->|/planning/cmd_vel| PLAT[[camrod_platform]]
-  PLAN -->|/planning/engaged\n/planning/state_machine/state| SYS[[camrod_system]]
-  PLAN -->|/planning/global_path| MAP
-  PLAN -->|/planning/state_machine/state| PARK[[camrod_parking]]
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+
+  subgraph UP ["📥 Upstream"]
+    direction TB
+    LOC[[📦 camrod_localization]]
+    MAP[[📦 camrod_map]]
+    SENS[[📦 camrod_sensing]]
+    UI[[📦 camrod_ui]]
+  end
+
+  subgraph PLAN_PKG ["🧭 camrod_planning"]
+    direction TB
+    PLAN[🧩 planning_stack]
+  end
+
+  subgraph DOWN ["📤 Downstream"]
+    direction TB
+    PLAT[[📦 camrod_platform]]
+    SYS[[📦 camrod_system]]
+    PARK[[📦 camrod_parking]]
+  end
+
+  LOC ==>|"`/localization/pose\n/localization/mode`"| PLAN
+  MAP -->|"`/map/cost_grid/lanelet\nLanelet2 map`"| PLAN
+  SENS -->|"`/planning/cost_grid/inflation`"| PLAN
+  UI -->|"`/goal_pose\n/planning/state_machine/goal_key`"| PLAN
+
+  PLAN ==>|"`/planning/cmd_vel`"| PLAT
+  PLAN -->|"`/planning/engaged\n/planning/state_machine/state`"| SYS
+  PLAN -->|"`/planning/global_path`"| MAP
+  PLAN -.->|"`/planning/state_machine/state`"| PARK
+
+  class LOC localization
+  class MAP mapping
+  class SENS sensing
+  class UI ui
+  class PLAN planning
+  class PLAT platform
+  class SYS system
+  class PARK parking
 ```
+
+> **Diagram legend**
+> 🧩 ROS node · 📡 Topic · ⚙️ Config · 🛠️ Hardware · 📦 External · 🔔 Service/Action
+> Solid → runtime · ==> critical path · -.-> optional
+
+*Figure 1 — camrod_planning system context: upstream providers, the planning package, and downstream consumers.*
 
 ---
 
-## 4. Runtime Architecture
+## 🏗️ Runtime Architecture
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph TD
-  RVIZ{{RViz / UI Goal}} --> GSNAP[goal_snapper_node]
-  GSNAP --> GSNAPPED(("/planning/goal_pose_snapped_ros"))
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  LOCPOSE(("/localization/pose")) --> CSNAP[centerline_snapper_node]
-  CSNAP --> LANEPOSE(("/planning/lanelet_pose"))
+  subgraph INP ["🛂 Inputs"]
+    direction LR
+    RVIZ{{🛠️ RViz / UI Goal}}
+    LOCPOSE((📡 /localization/pose))
+    LCOST((📡 /map/cost_grid/lanelet))
+    GCOST((📡 /planning/cost_grid/global_path))
+    ENGAGE((📡 /planning/engage))
+    ESTOP((📡 /platform/status/estop))
+    INFCOST((📡 /planning/cost_grid/inflation))
+    LOCMODE((📡 /localization/mode))
+    LOCODO((📡 /localization/odometry/filtered))
+    YAMLZONES[(⚙️ yaw_alignment_zones.yaml)]
+  end
 
-  GSNAPPED --> NAV2[[Nav2 Stack]]
+  subgraph NAV2_BT ["🧠 Nav2 BT + Controllers"]
+    direction TB
+    GSNAP[🧩 goal_snapper_node]
+    CSNAP[🧩 centerline_snapper_node]
+    GSNAPPED((📡 /planning/goal_pose_snapped_ros))
+    LANEPOSE((📡 /planning/lanelet_pose))
+    NAV2[[📦 Nav2 Stack]]
+    GPATH((📡 /planning/global_path))
+    CTRLPATH((📡 /planning/local_path_controller))
+    CMDRAW((📡 /planning/cmd_vel_raw))
+    LPATH[🧩 local_path_extractor_node]
+    LOCALPATH((📡 /planning/local_path))
+    TERR[🧩 path_tracking_error_node]
+    TERROR((📡 /planning/ltracking_error))
+    PCOST[🧩 path_cost_grids_node]
+    PROG[🧩 planning_progress_node]
+  end
+
+  subgraph GATE_SG ["🚦 cmd_vel gate"]
+    direction TB
+    GATE[🧩 planning_cmd_vel_gate_node]
+  end
+
+  subgraph OUT_SG ["📤 Outputs"]
+    direction TB
+    CMDOUT((📡 /planning/cmd_vel))
+    ENGAGED((📡 /planning/engaged))
+    RDIST((📡 /planning/progress/remaining_distance_m))
+    RTIME((📡 /planning/progress/remaining_time_s))
+    RPCT((📡 /planning/progress/completion_pct))
+    SMSTATE((📡 /planning/state_machine/state))
+    SMSOURCE((📡 /planning/state_machine/mission_source))
+  end
+
+  RVIZ --> GSNAP
+  GSNAP --> GSNAPPED
+  LOCPOSE --> CSNAP
+  CSNAP --> LANEPOSE
+
+  GSNAPPED --> NAV2
   LANEPOSE --> NAV2
-  LCOST(("/map/cost_grid/lanelet")) --> NAV2
-  GCOST(("/planning/cost_grid/global_path")) --> NAV2
-  NAV2 --> GPATH(("/planning/global_path"))
-  NAV2 --> CTRLPATH(("/planning/local_path_controller"))
-  NAV2 --> CMDRAW(("/planning/cmd_vel_raw"))
+  LCOST --> NAV2
+  GCOST --> NAV2
+  NAV2 --> GPATH
+  NAV2 --> CTRLPATH
+  NAV2 ==> CMDRAW
 
-  LANEPOSE --> LPATH[local_path_extractor_node]
+  LANEPOSE --> LPATH
   GPATH --> LPATH
   CTRLPATH --> LPATH
-  LPATH --> LOCALPATH(("/planning/local_path"))
+  LPATH --> LOCALPATH
 
-  LOCALPATH --> TERR[path_tracking_error_node]
-  TERR --> TERROR(("/planning/ltracking_error"))
+  LOCALPATH --> TERR
+  TERR --> TERROR
 
-  GPATH --> PCOST[path_cost_grids_node]
+  GPATH --> PCOST
   LOCALPATH --> PCOST
-  PCOST --> GPCOST(("/planning/cost_grid/global_path"))
+  PCOST --> GCOST
 
-  GPATH --> PROG[planning_progress_node]
+  GPATH --> PROG
   LOCPOSE --> PROG
-  LOCODO(("/localization/odometry/filtered")) --> PROG
-  PROG --> RDIST(("/planning/progress/remaining_distance_m"))
-  PROG --> RTIME(("/planning/progress/remaining_time_s"))
-  PROG --> RPCT(("/planning/progress/completion_pct"))
+  LOCODO --> PROG
+  PROG --> RDIST
+  PROG --> RTIME
+  PROG --> RPCT
 
-  CMDRAW --> GATE[planning_cmd_vel_gate_node]
-  ENGAGE(("/planning/engage")) --> GATE
-  ESTOP(("/platform/status/estop")) --> GATE
-  INFCOST(("/planning/cost_grid/inflation")) --> GATE
-  LOCMODE(("/localization/mode")) --> GATE
+  CMDRAW ==> GATE
+  ENGAGE --> GATE
+  ESTOP --> GATE
+  INFCOST --> GATE
+  LOCMODE --> GATE
   LOCODO --> GATE
-  YAMLZONES{{yaw_alignment_zones.yaml}} -.-> GATE
-  GATE --> CMDOUT(("/planning/cmd_vel"))
-  GATE --> ENGAGED(("/planning/engaged"))
+  YAMLZONES -.-> GATE
+  GATE ==> CMDOUT
+  GATE --> ENGAGED
 
-  DIAGAGG(("/system/diagnostics_agg")) --> SM[planning_state_machine_node]
-  RECALL(("/planning/state_machine/camping_site_recall")) --> SM
-  GOALKEY(("/planning/state_machine/goal_key")) --> SM
-  SM --> SMGOAL(("/planning/goal_pose_snapped"))
-  SM --> SMSTATE(("/planning/state_machine/state"))
-  SM --> SMSOURCE(("/planning/state_machine/mission_source"))
+  DIAGAGG((📡 /system/diagnostics_agg)) --> SM[🧩 planning_state_machine_node]
+  RECALL((📡 /planning/state_machine/camping_site_recall)) --> SM
+  GOALKEY((📡 /planning/state_machine/goal_key)) --> SM
+  SM --> SMGOAL((📡 /planning/goal_pose_snapped))
+  SM --> SMSTATE
+  SM --> SMSOURCE
+
+  class LOCPOSE,LANEPOSE,GSNAPPED,CMDRAW,GPATH,CTRLPATH,LOCALPATH,TERROR,GCOST,RDIST,RTIME,RPCT,ENGAGE,ESTOP,INFCOST,LOCMODE,LOCODO,DIAGAGG,RECALL,GOALKEY,SMGOAL,SMSTATE,SMSOURCE,CMDOUT,ENGAGED,LCOST topic
+  class GSNAP,CSNAP,LPATH,TERR,PCOST,PROG,GATE,SM planning
+  class NAV2 system
+  class RVIZ ui
+  class YAMLZONES config
+  class CMDRAW,GATE,CMDOUT highlight
 ```
 
-Diagram legend: `[node]`, `((topic))`, `[[external stack]]`, `{{external file/hw}}`, dashed = non-runtime dep.
+linkStyle 18,19,20 stroke:#6366F1,stroke-width:2.5px;
+
+*Figure 2 — Runtime node graph. Critical path: `/planning/cmd_vel_raw` ==> gate ==> `/planning/cmd_vel`.*
 
 ### Node Summary
 
@@ -119,14 +236,14 @@ Diagram legend: `[node]`, `((topic))`, `[[external stack]]`, `{{external file/hw
 | `path_tracking_error_node` | `/planning/local_path`, `/planning/lanelet_pose` | `/planning/ltracking_error` | `prefer_local_path`: true, `publish_rate_hz`: 15, `pose_timeout_s`: 1.0 |
 | `goal_replanner_node` | `/planning/goal_pose`, `/planning/lanelet_pose`, Nav2 action | replanning triggers | `min_request_interval_s`, `retry_after_failure_s`, `navigate_inactive_grace_s` |
 | `planning_progress_node` | `/planning/global_path`, `/localization/pose`, `/localization/odometry/filtered` | `/planning/progress/*` | `publish_rate_hz`: 2.0, `speed_ema_alpha`: 0.2, `speed_floor_mps`: 0.1 |
-| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/platform/status/estop`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/fallback/odometry` | `/planning/cmd_vel`, `/planning/engaged` | see Key Behaviors |
+| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/platform/status/estop`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/fallback/odometry` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors |
 | `planning_state_machine_node` | `/system/diagnostics_agg`, `/planning/lanelet_pose`, `/planning/state_machine/camping_site_recall`, `/planning/state_machine/goal_key` | `/planning/goal_pose_snapped`, `/planning/state_machine/state`, `/planning/state_machine/mission_source` | `keypoints_yaml`, `camping_sites_yaml`, `startup_goal_key`, `goal_reached_dwell_s` |
 | Nav2 `planner_server` | `/planning/goal_pose_snapped_ros`, costmaps | `/planning/global_path` | SmacHybrid / Smac2D / NavFn / ThetaStar / SmacLattice |
 | Nav2 `controller_server` | `/planning/global_path`, costmaps | `/planning/cmd_vel_raw`, `/planning/local_path_controller` | RPP / DWB / MPPI / Graceful / RotationShim; `xy_goal_tolerance`: 0.15 m |
 
 ---
 
-## 5. Interface Contract
+## 🔌 Interface Contract
 
 ### Inputs
 
@@ -165,11 +282,11 @@ Diagram legend: `[node]`, `((topic))`, `[[external stack]]`, `{{external file/hw
 
 ---
 
-## 6. Key Behaviors
+## ⚙️ Key Behaviors
 
 ### 6.1 Cost-Stop
 
-**Trigger:** `planning_cmd_vel_gate_node` receives an `/planning/cost_grid/inflation` update while the gate is engaged.
+**Trigger:** `planning_cmd_vel_gate_node` receives a `/planning/cost_grid/inflation` update while the gate is engaged.
 
 **Internal logic:** The gate scans rectangular corridors in front, on both sides, and behind the robot using the merged inflation cost grid. The front corridor uses a speed-dependent lookahead: `d = v²/(2μg) + t_react × v + margin`, clamped to [`front_lookahead_min_m`, `front_lookahead_max_m`]. A BFS cluster check additionally detects unavoidable lethal obstacles (≥ `unavoidable_cluster_min_cells` cells with cost ≥ `unavoidable_lethal_threshold` covering ≥ `unavoidable_cluster_min_ratio` of the corridor).
 
@@ -180,11 +297,11 @@ Diagram legend: `[node]`, `((topic))`, `[[external stack]]`, `{{external file/hw
 | Rear | 92 | 0.6 m | 0.3 m |
 | Unavoidable cluster | 90 (lethal floor) | front corridor | ≥ 25 cells / ≥ 25% coverage |
 
-**Output effect:** `/planning/cmd_vel` is zeroed; `/planning/engaged` reflects `false`. The stop is held for `cmd_vel_gate_cost_hold_s` (default 1.0 s) after the obstacle clears.
+> ⚠️ **Warning** `/planning/cmd_vel` is zeroed and `/planning/engaged` reflects `false`. The stop is held for `cmd_vel_gate_cost_hold_s` (default 1.0 s) after the obstacle clears.
 
 **Operator-visible symptom:** Robot stops abruptly without Nav2 abort. RViz inflation grid shows high-cost cells in the stopped direction.
 
-**Related params:** `cmd_vel_gate_cost_stop_enable`, `cmd_vel_gate_cost_threshold`, `cmd_vel_gate_speed_dependent_lookahead`, `cmd_vel_gate_front_lookahead_min_m`, `cmd_vel_gate_front_lookahead_max_m`, `cmd_vel_gate_front_lookahead_friction`, `cmd_vel_gate_front_reaction_time_s`, `cmd_vel_gate_cost_hold_s`, `cmd_vel_gate_side_cost_threshold`, `cmd_vel_gate_rear_cost_threshold`, `cmd_vel_gate_unavoidable_lethal_threshold`, `cmd_vel_gate_unavoidable_cluster_min_cells`, `cmd_vel_gate_unavoidable_cluster_min_ratio`
+> 🔧 **Debug hint** Related params: `cmd_vel_gate_cost_stop_enable`, `cmd_vel_gate_cost_threshold`, `cmd_vel_gate_speed_dependent_lookahead`, `cmd_vel_gate_front_lookahead_min_m`, `cmd_vel_gate_front_lookahead_max_m`, `cmd_vel_gate_front_lookahead_friction`, `cmd_vel_gate_front_reaction_time_s`, `cmd_vel_gate_cost_hold_s`, `cmd_vel_gate_side_cost_threshold`, `cmd_vel_gate_rear_cost_threshold`, `cmd_vel_gate_unavoidable_lethal_threshold`, `cmd_vel_gate_unavoidable_cluster_min_cells`, `cmd_vel_gate_unavoidable_cluster_min_ratio`
 
 **Related topics:** `/planning/cost_grid/inflation`, `/planning/cmd_vel`, `/planning/engaged`
 
@@ -196,11 +313,11 @@ Diagram legend: `[node]`, `((topic))`, `[[external stack]]`, `{{external file/hw
 
 **Internal logic:** The gate records the transition timestamp and blocks `/planning/cmd_vel` passthrough for `gnss_recovery_hold_s` (default 2.0 s). During the hold window, all velocity output is zeroed regardless of engage state or cost-stop state.
 
-**Output effect:** `/planning/cmd_vel` is zeroed for up to 2 s after GNSS re-acquisition; robot is briefly stationary even if the engage signal is active.
+> 📌 **Note** `/planning/cmd_vel` is zeroed for up to 2 s after GNSS re-acquisition; robot is briefly stationary even if the engage signal is active.
 
 **Operator-visible symptom:** Robot pauses for ~2 s each time GNSS lock is recovered after a DR_ONLY period. Nav2 costmap typically re-settles within this window.
 
-**Related params:** `cmd_vel_gate_enable_gnss_recovery_hold`, `cmd_vel_gate_gnss_recovery_hold_s`, `cmd_vel_gate_gnss_recovery_source_mode_min` (default 2), `cmd_vel_gate_gnss_recovery_target_mode` (default 0)
+> 🔧 **Debug hint** Related params: `cmd_vel_gate_enable_gnss_recovery_hold`, `cmd_vel_gate_gnss_recovery_hold_s`, `cmd_vel_gate_gnss_recovery_source_mode_min` (default 2), `cmd_vel_gate_gnss_recovery_target_mode` (default 0)
 
 **Related topics:** `/localization/mode`, `/planning/cmd_vel`
 
@@ -224,18 +341,27 @@ Inside the lock ring the node injects: `angular.z = kp × gain_scale × yaw_erro
 
 **Operator-visible symptom:** Robot appears to pause and rotate at a configured gate or passage entrance before proceeding.
 
-**Related params:** `cmd_vel_gate_yaw_alignment_enable`, `cmd_vel_gate_yaw_alignment_zones_file`, `cmd_vel_gate_yaw_alignment_frame_id`, `cmd_vel_gate_yaw_alignment_exit_margin_m`
+> 🔧 **Debug hint** Related params: `cmd_vel_gate_yaw_alignment_enable`, `cmd_vel_gate_yaw_alignment_zones_file`, `cmd_vel_gate_yaw_alignment_frame_id`, `cmd_vel_gate_yaw_alignment_exit_margin_m`
 
 **Related topics:** `/localization/pose`, `/planning/cmd_vel`
 
 ---
 
-## 7. Mission State Machine
+## 🗺️ Mission State Machine
 
 ### 7.1 Mission States
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}}}%%
 stateDiagram-v2
+  direction LR
+  classDef normal  fill:#ECFDF5,stroke:#10B981,color:#047857
+  classDef running fill:#EEF2FF,stroke:#6366F1,color:#4338CA
+  classDef reached fill:#ECFEFF,stroke:#06B6D4,color:#0E7490
+  classDef recall  fill:#F5F3FF,stroke:#8B5CF6,color:#6D28D9
+  classDef warn    fill:#FEF3C7,stroke:#F59E0B,color:#B45309
+  classDef error   fill:#FEE2E2,stroke:#EF4444,color:#B91C1C
+
   [*] --> INIT
   INIT --> RUNNING : startup_goal_key (drop_zone)
   RUNNING --> GOAL_REACHED : within goal_reached_distance_m (0.8 m)
@@ -247,7 +373,17 @@ stateDiagram-v2
   RUNNING --> ERROR_STOP : /system/diagnostics_agg ERROR
   WARN_RECOVERY --> RUNNING : condition cleared
   ERROR_STOP --> [*] : e-stop applied
+
+  class INIT normal
+  class RUNNING running
+  class GOAL_REACHED reached
+  class RECALLED recall
+  class RETURNING running
+  class WARN_RECOVERY warn
+  class ERROR_STOP error
 ```
+
+*Figure 3 — Mission state machine. Green = nominal, blue = transit, yellow = degraded, red = fault.*
 
 ### 7.2 Mission Source Values
 
@@ -262,33 +398,43 @@ stateDiagram-v2
 ### 7.3 Camping-Site Recall Sequence
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}}}%%
 sequenceDiagram
-  participant UI
-  participant StateMachine as planning_state_machine_node
-  participant Nav2
-  participant CmdVelGate as planning_cmd_vel_gate_node
-  participant Platform as camrod_platform
+  autonumber
+  participant UI as 🖥️ UI
+  participant SM as 🧭 StateMachine
+  participant Nav2 as 🧠 Nav2
+  participant Gate as 🚦 CmdVelGate
+  participant Plat as 🤖 Platform
 
-  UI->>StateMachine: /planning/state_machine/camping_site_recall (camping_site_1)
-  StateMachine-->>StateMachine: GOAL_REACHED → RECALLED
-  StateMachine->>Nav2: /planning/goal_pose_snapped (camping_site_1_road)
-  StateMachine->>UI: /planning/state_machine/mission_source = "recall:camping_site_1"
-  Nav2->>CmdVelGate: /planning/cmd_vel_raw
-  CmdVelGate->>Platform: /planning/cmd_vel (gated)
-  Nav2-->>StateMachine: goal reached (goal_reached_distance_m)
-  StateMachine-->>StateMachine: RECALLED → GOAL_REACHED (road snap position)
-  Note over StateMachine: dwell for goal_reached_dwell_s (cargo load)
-  StateMachine->>Nav2: /planning/goal_pose_snapped (drop_zone)
-  StateMachine->>UI: /planning/state_machine/mission_source = "auto_return"
-  Nav2->>CmdVelGate: /planning/cmd_vel_raw
-  CmdVelGate->>Platform: /planning/cmd_vel (gated)
+  Note over UI,SM: Recall triggered from camping site UI button
+  UI->>SM: /planning/state_machine/camping_site_recall (camping_site_1)
+  SM-->>SM: GOAL_REACHED → RECALLED
+  SM->>Nav2: /planning/goal_pose_snapped (camping_site_1_road)
+  SM->>UI: /planning/state_machine/mission_source = "recall:camping_site_1"
+
+  Note over Nav2,Plat: Robot drives to road-snap position
+  Nav2->>Gate: /planning/cmd_vel_raw
+  Gate->>Plat: /planning/cmd_vel (gated)
+
+  Nav2-->>SM: goal reached (goal_reached_distance_m)
+  SM-->>SM: RECALLED → GOAL_REACHED (road snap position)
+  Note over SM: dwell for goal_reached_dwell_s (cargo load)
+
+  Note over Nav2,Plat: Auto-return to drop zone
+  SM->>Nav2: /planning/goal_pose_snapped (drop_zone)
+  SM->>UI: /planning/state_machine/mission_source = "auto_return"
+  Nav2->>Gate: /planning/cmd_vel_raw
+  Gate->>Plat: /planning/cmd_vel (gated)
 ```
 
-**Road-snap logic:** When `camping_sites.yaml` includes a `recall_x/y/z/yaw_deg` entry, the state machine registers a second keypoint `<site_id>_road` pointing to the road-snap position. On recall, the robot navigates to this road position rather than the area centroid (which may be blocked by cargo). Sites without `recall_x/y` fall back to the area centroid.
+*Figure 4 — Camping-site recall sequence. Road-snap position is used instead of area centroid to avoid cargo-blocked approach.*
+
+> 📌 **Note** **Road-snap logic:** When `camping_sites.yaml` includes a `recall_x/y/z/yaw_deg` entry, the state machine registers a second keypoint `<site_id>_road` pointing to the road-snap position. On recall, the robot navigates to this road position rather than the area centroid (which may be blocked by cargo). Sites without `recall_x/y` fall back to the area centroid.
 
 ---
 
-## 8. Launch
+## 🚀 Launch
 
 ```bash
 # Full planning stack (Nav2 + cmd_vel_gate + lanelet tools)
@@ -331,7 +477,7 @@ Key launch arguments:
 
 ---
 
-## 9. Config
+## 🛠️ Config
 
 | File | Purpose |
 |---|---|
@@ -353,7 +499,7 @@ Key launch arguments:
 
 ---
 
-## 10. Validation
+## ✅ Validation
 
 ```bash
 # Standalone gate logic unit test (no ROS 2 runtime needed)
@@ -379,7 +525,7 @@ ros2 topic echo /planning/progress/remaining_distance_m
 
 ---
 
-## 11. Troubleshooting
+## 🚑 Troubleshooting
 
 ### Engage true but no motion
 
@@ -427,7 +573,7 @@ ros2 topic echo /planning/progress/remaining_distance_m
 
 ---
 
-## 12. Related Docs
+## 🔗 Related Docs
 
 - [../README.md](../README.md) — CAMROD monorepo overview
 - [../camrod_localization/README.md](../camrod_localization/README.md) — ESKF fusion, localization modes

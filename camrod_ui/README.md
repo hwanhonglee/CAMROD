@@ -1,27 +1,20 @@
-# camrod_ui
+# 🖥️ camrod_ui — Operator HTTP backend & web UI
 
-## 1. Title
-
-**camrod_ui** — FastAPI HTTP backend (port 8010) and React operator web UI for the CAMROD robot.
+**camrod_ui** — FastAPI HTTP backend (port 8010) and React operator web UI for the CAMROD robot. Replaces the former `camrod_api` package.
 
 ---
 
-## 2. Summary
+## 📋 Summary
 
 `camrod_ui` provides the operator control interface for CAMROD. `ui_backend_node` runs a FastAPI + uvicorn HTTP server in a daemon thread alongside the ROS 2 spin loop. It serves the static React frontend and exposes REST endpoints (and a `/ws` WebSocket channel) for system state, destination selection, engage/disengage control, and battery status.
 
 On the ROS side it bridges operator intent to planning topics without making any autonomy decisions itself.
 
-**Non-goals:**
-- Makes no autonomy decisions. Only proxies operator intent.
-- Does not plan paths, monitor localization, or enforce safety constraints.
-- WebSocket is for real-time UI push only; it does not replace the REST API.
-
-Replaces the former `camrod_api` package.
+> **Non-goals:** Makes no autonomy decisions — only proxies operator intent. Does not plan paths, monitor localization, or enforce safety constraints. WebSocket is for real-time UI push only; it does not replace the REST API.
 
 ---
 
-## 3. Quick Start
+## 🚀 Quick Start
 
 ```bash
 # Build
@@ -48,39 +41,63 @@ curl http://localhost:8010/ui/health
 
 ---
 
-## 4. System Position
+## 🗺️ System Position
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#FFF7ED', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#F97316', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  SYS[camrod_system] -->|/diagnostics_agg| UI[camrod_ui]
-  PLAN[camrod_planning] -->|/planning/engaged| UI
-  PARK[camrod_parking] -. destination sites .-> UI
+  BROWSER[🌐 Browser\nexternal actor]:::hardware
+
+  SYS[🩺 camrod_system]:::system    -->|/diagnostics_agg| UI
+  PLAN[🧭 camrod_planning]:::planning -->|/planning/engaged| UI
+
+  subgraph UI_BOX["🖥️ camrod_ui"]
+    UI[🖥️ ui_backend_node\nFastAPI + uvicorn]:::ui
+  end
+
+  BROWSER <-->|HTTP :8010\nWebSocket /ws| UI
+
   UI -->|/planning/engage| PLAN
   UI -->|/planning/state_machine/goal_key| PLAN
   UI -->|/goal_pose| PLAN
-  BROWSER{{Operator Browser}} <-->|HTTP/WebSocket| UI
-```
+  PARK[🅿️ camrod_parking]:::parking -.->|destination sites| UI
 
-Legend: `[node]`, `((topic))`, `{{file/hw}}`, `[[stack]]`, dashed = non-runtime dependency.
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+```
 
 ---
 
-## 5. Runtime Architecture
+## 🏗️ Runtime Architecture
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#FFF7ED', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#F97316', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph TD
-  BROWSER{{Operator Browser}} -->|HTTP GET/POST :8010| BACKEND[ui_backend_node\nFastAPI+uvicorn]
-  DIAGAGG((/diagnostics_agg)) --> BACKEND
-  ENGAGED((/planning/engaged)) --> BACKEND
-  DEST((/ui/selected_destination)) --> BACKEND
-  BATTERY((/battery_percentage)) --> BACKEND
-  ARRIVE((/AMR_arrive)) --> BACKEND
+  BROWSER{{🌐 Operator Browser}}:::hardware -->|HTTP GET/POST :8010| BACKEND
+
+  subgraph BACKEND_BOX["🖥️ ui_backend_node"]
+    BACKEND[🖥️ FastAPI+uvicorn\n+ ROS 2 spin thread]:::ui
+    NOTE[🔒 threading.Lock\non ApiState]:::ui
+  end
+
+  DIAGAGG((📡 /diagnostics_agg)):::topic     --> BACKEND
+  ENGAGED((📡 /planning/engaged)):::topic    --> BACKEND
+  DEST((📡 /ui/selected_destination)):::topic --> BACKEND
+  BATTERY((📡 /battery_percentage)):::topic  --> BACKEND
+  ARRIVE((📡 /AMR_arrive)):::topic           --> BACKEND
 
   BACKEND -->|HTTP/WS responses| BROWSER
-  BACKEND --> ENGAGE((/planning/engage))
-  BACKEND --> GOALKEY((/planning/state_machine/goal_key))
-  BACKEND --> GOALPOSE((/goal_pose))
-  BACKEND --> DEST2((/ui/selected_destination))
+  BACKEND --> ENGAGE((📡 /planning/engage)):::topic
+  BACKEND --> GOALKEY((📡 /planning/state_machine/goal_key)):::topic
+  BACKEND --> GOALPOSE((📡 /goal_pose)):::topic
+  BACKEND --> DEST2((📡 /ui/selected_destination)):::topic
+
+  classDef ui       fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef hardware fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef topic    fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
 ```
 
 `ui_backend_node` runs two concurrent execution contexts:
@@ -91,7 +108,108 @@ Thread safety between the two contexts is managed by a `threading.Lock` on `ApiS
 
 ---
 
-## 6. Interface Contract
+## 🔑 Key Behaviors
+
+### Destination Dispatch Sequence
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#FFF7ED', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#F97316', 'lineColor': '#475569'}}}%%
+sequenceDiagram
+  autonumber
+  participant Browser as 🌐 Browser
+  participant Backend as 🖥️ UiBackend
+  participant SM as 🧭 StateMachine
+  participant Nav2 as 🧠 Nav2
+  participant Gate as 🚦 CmdVelGate
+  participant Dock as 🅿️ DockingServer
+
+  Browser->>Backend: POST /ui/destination?site=B3&run=true
+  Backend->>Backend: validate site B3 → camping_site_3
+  Backend->>SM: /ui/selected_destination {"site":"B3","run":true}
+  Backend->>SM: /planning/state_machine/goal_key "camping_site_3"
+  Backend->>Nav2: /goal_pose PoseStamped(x,y,z,yaw from camping_sites.yaml)
+  Backend->>Gate: /planning/engage Bool(true)
+  Gate-->>Nav2: cmd_vel gate opens → velocity flows
+
+  Note over Dock: Parallel docking branch
+  alt goal_key contains "dock"
+    SM->>Dock: send docking action goal
+    Dock-->>SM: docking result (succeeded/aborted)
+    Dock-->>Backend: /AMR_arrive Bool(true)
+    Backend->>Gate: /planning/engage Bool(false)
+  end
+```
+
+### Operator Mode State Machine
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#FFF7ED', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#F97316', 'lineColor': '#475569'}}}%%
+stateDiagram-v2
+  classDef auto    fill:#ECFDF5,stroke:#10B981,stroke-width:2px,color:#047857
+  classDef waiting fill:#FEF9C3,stroke:#CA8A04,stroke-width:2px,color:#713F12
+  classDef stop    fill:#FEE2E2,stroke:#EF4444,stroke-width:2px,color:#B91C1C
+
+  [*] --> STOP
+  STOP --> WAITING_FOR_READY : engage published (true)\nready = false
+  STOP --> AUTO : engage published (true)\nready = true
+  WAITING_FOR_READY --> AUTO : /diagnostics_agg clears all errors
+  WAITING_FOR_READY --> STOP : engage published (false)
+  AUTO --> STOP : engage published (false)\nOR /AMR_arrive = true
+  AUTO --> WAITING_FOR_READY : new ERROR in /diagnostics_agg
+
+  AUTO:::auto
+  WAITING_FOR_READY:::waiting
+  STOP:::stop
+```
+
+`operation_mode` is derived from `engaged AND ready`:
+- 🟢 `AUTO` — `engaged=true` AND `ready=true`
+- 🟡 `WAITING_FOR_READY` — `engaged=true` AND `ready=false`
+- 🔴 `STOP` — `engaged=false`
+
+`ready` is `true` when `/diagnostics_agg` has at least one entry and zero ERROR-level statuses.
+
+### Frontend Path Resolution
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#FFF7ED', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#F97316', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+flowchart TD
+  A([🚀 Start: resolve frontend_dir]):::ui
+
+  A --> B{"1️⃣ CAMROD_UI_FRONTEND_DIR\nset and exists?"}:::ui
+  B -->|yes| Z[✅ Use env var path]:::localization
+
+  B -->|no| C{"2️⃣ CAMROD_API_FRONTEND_DIR\nset and exists?"}:::ui
+  C -->|yes| Z
+
+  C -->|no| D{"3️⃣ source tree\nruntime/assets/frontend/build\nexists?"}:::ui
+  D -->|yes| Z
+
+  D -->|no| E{"4️⃣ installed share\ncamrod_ui/assets/frontend/build\nexists?"}:::ui
+  E -->|yes| Z
+
+  E -->|no| F["5️⃣ Fallback:\nshare/camrod_ui/assets/web"]:::highlight
+  F --> Z
+
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+```
+
+> Static files are served manually (not via Starlette `StaticFiles`) to support `--symlink-install` builds where symlinked files would otherwise fail the Starlette commonprefix security check. All paths not matching a real file fall back to `index.html` (SPA routing).
+
+### Goal Key Resolution for Sites
+
+When `set_destination(site="B3", ...)` is called:
+
+1. Check `site_to_goal_key_map` config for explicit mapping.
+2. Parse `B<N>` → `camping_site_<N>` and look up in loaded keypoints.
+3. Fallback to `fallback_goal_key` (default: `camping_site_1`) if no match found.
+4. Fallback to the lexicographically first known key if `fallback_to_first_known_goal=true`.
+
+---
+
+## 📡 Interface Contract
 
 ### Inputs
 
@@ -114,78 +232,7 @@ Thread safety between the two contexts is managed by a `threading.Lock` on `ApiS
 
 ---
 
-## 7. Key Behaviors
-
-### Destination Dispatch Flow
-
-```mermaid
-sequenceDiagram
-  participant Browser as Operator Browser
-  participant Backend as ui_backend_node
-  participant DestTopic as /ui/selected_destination
-  participant GoalKey as /planning/state_machine/goal_key
-  participant GoalPose as /goal_pose
-  participant Engage as /planning/engage
-  participant Gate as cmd_vel_gate
-
-  Browser->>Backend: POST /ui/destination?site=B3&run=true
-  Backend->>DestTopic: {"site": "B3", "run": true}
-  Backend->>Backend: resolve goal key for B3 → camping_site_3
-  Backend->>GoalKey: "camping_site_3"
-  Backend->>GoalPose: PoseStamped (x,y,z,yaw from camping_sites.yaml)
-  Backend->>Engage: Bool(true)
-  Engage->>Gate: gate opens → cmd_vel flows
-```
-
-### Operation Mode State Machine
-
-```mermaid
-stateDiagram-v2
-  [*] --> STOP
-  STOP --> WAITING_FOR_READY : engage published (true)\nready = false
-  STOP --> AUTO : engage published (true)\nready = true
-  WAITING_FOR_READY --> AUTO : /diagnostics_agg clears all errors
-  WAITING_FOR_READY --> STOP : engage published (false)
-  AUTO --> STOP : engage published (false)\nOR /AMR_arrive = true
-  AUTO --> WAITING_FOR_READY : new ERROR in /diagnostics_agg
-```
-
-`operation_mode` is derived from `engaged AND ready`:
-- `AUTO` — engaged=true AND ready=true
-- `WAITING_FOR_READY` — engaged=true AND ready=false
-- `STOP` — engaged=false
-
-`ready` is true when `/diagnostics_agg` has at least one entry and zero ERROR-level statuses.
-
-### Frontend Path Resolution Order
-
-```mermaid
-flowchart TD
-  A[Start: resolve frontend_dir] --> B{CAMROD_UI_FRONTEND_DIR set and exists?}
-  B -->|yes| Z[Use env var path]
-  B -->|no| C{CAMROD_API_FRONTEND_DIR set and exists?}
-  C -->|yes| Z
-  C -->|no| D{source tree runtime/assets/frontend/build exists?}
-  D -->|yes| Z
-  D -->|no| E{installed share/camrod_ui/assets/frontend/build exists?}
-  E -->|yes| Z
-  E -->|no| F[Fallback: share/camrod_ui/assets/web]
-  F --> Z
-```
-
-Static files are served manually (not via Starlette `StaticFiles`) to support `--symlink-install` builds where symlinked files would otherwise fail the Starlette commonprefix security check. All paths with `full_path` that do not match a real file fall back to `index.html` (SPA routing).
-
-### Goal Key Resolution for Sites
-
-When `set_destination(site="B3", ...)` is called:
-1. Check `site_to_goal_key_map` config for explicit mapping.
-2. Parse `B<N>` → `camping_site_<N>` and look up in loaded keypoints.
-3. Fallback to `fallback_goal_key` (default: `camping_site_1`) if no match found.
-4. Fallback to the lexicographically first known key if `fallback_to_first_known_goal=true`.
-
----
-
-## 8. Launch
+## 🚀 Launch Arguments
 
 ```bash
 ros2 launch camrod_ui ui.launch.py [ARG:=VALUE ...]
@@ -213,31 +260,30 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 
 ---
 
-## 9. Config
+## 🌐 REST API Reference
 
-### REST API Reference
+🟢 = GET &nbsp;&nbsp; 🔵 = POST &nbsp;&nbsp; 🔌 = WebSocket
 
 | Method | Path | Request params | Response | Description |
 |---|---|---|---|---|
-| `GET` | `/ui/state` | — | `ApiState` JSON snapshot | Full system state: engaged, ready, operation_mode, module_states, diagnostics, destination, battery_percentage |
-| `GET` | `/ui/health` | — | `{"ok": true, "node": "ui_backend"}` | Liveness check |
-| `GET` | `/ui/destination` | — | `{"destination": {…}, "valid_sites": […]}` | Current destination and valid site list |
-| `GET` | `/ui/diagnostics` | — | `{"status": […]}` | Diagnostics list from `/diagnostics_agg` |
-| `GET` | `/api/diagnostics` | — | `{"status": […]}` | Same as `/ui/diagnostics` (legacy path) |
-| `POST` | `/ui/engage` | `?value=true\|false` | `{"success": bool, "value": bool}` | Publish engage command directly |
-| `POST` | `/ui/operation_mode` | `?auto=true\|false` | `{"success": bool, "auto": bool}` | Alias for engage; forwards as Bool |
-| `POST` | `/ui/auto` | — | `{"success": true}` | Shortcut: engage=true |
-| `POST` | `/ui/stop` | — | `{"success": true}` | Shortcut: engage=false |
-| `POST` | `/ui/destination` | `?site=B1&run=true\|false` | `{"success": bool, "destination": {…}}` | Select destination and optionally dispatch goal+engage |
-| `WS` | `/ws` | — | JSON push messages | Real-time push: `{"states": {…}}`, `{"engage": bool}`, `{"battery": int}`, `{"arrived": site}` |
-| `GET` | `/{full_path}` | — | Static file or `index.html` | Serve React SPA |
+| 🟢 `GET` | `/ui/state` | — | `ApiState` JSON snapshot | Full system state: engaged, ready, operation_mode, module_states, diagnostics, destination, battery_percentage |
+| 🟢 `GET` | `/ui/health` | — | `{"ok": true, "node": "ui_backend"}` | Liveness check |
+| 🟢 `GET` | `/ui/destination` | — | `{"destination": {…}, "valid_sites": […]}` | Current destination and valid site list |
+| 🟢 `GET` | `/ui/diagnostics` | — | `{"status": […]}` | Diagnostics list from `/diagnostics_agg` |
+| 🟢 `GET` | `/api/diagnostics` | — | `{"status": […]}` | Same as `/ui/diagnostics` (legacy path) |
+| 🔵 `POST` | `/ui/engage` | `?value=true\|false` | `{"success": bool, "value": bool}` | Publish engage command directly |
+| 🔵 `POST` | `/ui/operation_mode` | `?auto=true\|false` | `{"success": bool, "auto": bool}` | Alias for engage; forwards as Bool |
+| 🔵 `POST` | `/ui/auto` | — | `{"success": true}` | Shortcut: engage=true |
+| 🔵 `POST` | `/ui/stop` | — | `{"success": true}` | Shortcut: engage=false |
+| 🔵 `POST` | `/ui/destination` | `?site=B1&run=true\|false` | `{"success": bool, "destination": {…}}` | Select destination and optionally dispatch goal+engage |
+| 🔌 `WS` | `/ws` | — | JSON push messages | Real-time push: `{"states": {…}}`, `{"engage": bool}`, `{"battery": int}`, `{"arrived": site}` |
+| 🟢 `GET` | `/{full_path}` | — | Static file or `index.html` | Serve React SPA |
 
-### Network and Security
-
-**Risk of `ui_host:=0.0.0.0`:**
-- Binds on all network interfaces. Any host on the same LAN can send engage commands, select destinations, and dispatch goal poses.
-- CORS is currently set to `allow_origins=["*"]`. There is no authentication.
-- **Recommended deployment:** bind to `127.0.0.1` (default) and use an SSH tunnel or VPN when remote access is required. Do not expose port 8010 directly on a public network.
+> ⚠️ **Security — `ui_host:=0.0.0.0` binding:**
+>
+> Binds on **all** network interfaces. Any host on the same LAN can send engage commands, select destinations, and dispatch goal poses. CORS is currently set to `allow_origins=["*"]` with **no authentication**.
+>
+> **Recommended deployment:** bind to `127.0.0.1` (default) and use an SSH tunnel or VPN when remote access is required. Do **not** expose port 8010 directly on a public or untrusted network.
 
 ### `camping_sites.yaml` Format
 
@@ -253,11 +299,11 @@ camping_sites:
     ...
 ```
 
-Site names `B1`–`B13` map to `camping_site_1`–`camping_site_13` by the `B<N>` convention. Custom mappings can be provided via `site_to_goal_key_map` node parameter.
+Site names `B1`–`B13` map to `camping_site_1`–`camping_site_13` by the `B<N>` convention. Custom mappings can be provided via the `site_to_goal_key_map` node parameter.
 
 ---
 
-## 10. Validation
+## 🔍 Validation
 
 ```bash
 # Check node is running
@@ -286,32 +332,47 @@ ros2 topic echo /planning/state_machine/goal_key
 
 ---
 
-## 11. Troubleshooting
+## 🩺 Troubleshooting
 
-**UI page loads but engage does nothing**
+<details>
+<summary><strong>UI page loads but engage does nothing</strong></summary>
+
 - Check `ros2 topic echo /planning/engage` while clicking the engage button. If no message appears, the backend may not be receiving HTTP requests (wrong host/port, firewall rule).
 - Verify `ui_host` and `ui_port` match the URL the browser is using.
 - If the message appears on `/planning/engage` but the robot does not move, the issue is downstream in `camrod_planning`'s `cmd_vel_gate`, not in `camrod_ui`.
 
-**Destination not in `camping_sites.yaml`**
-- `set_destination` validates against `site_names` (default: `B1`–`B13`). Unknown sites return `{"success": false, "message": "unknown site: X"}`.
-- Add the site to `site_names` via node parameter and ensure the corresponding entry exists in `camping_sites.yaml`.
-- If `camping_sites_yaml` is empty or missing, goal pose dispatch is skipped; only the goal key is published.
+</details>
 
-**WAITING_FOR_READY never clears**
-- The UI enters `WAITING_FOR_READY` when `engaged=true` but `ready=false`. `ready` is false when `/diagnostics_agg` has zero entries or at least one ERROR-level entry.
-- Run `ros2 topic echo /system/diagnostics_agg` and look for `level: 2` entries.
-- If `/diagnostics_agg` is empty, `camrod_system` may not be running; check `ros2 node list | grep diagnostics_agg`.
+<details>
+<summary><strong>Destination not in camping_sites.yaml</strong></summary>
 
-**Wrong frontend build served**
-- The resolution order is: `CAMROD_UI_FRONTEND_DIR` env → `CAMROD_API_FRONTEND_DIR` env → source tree `runtime/assets/frontend/build` → installed `share/camrod_ui/assets/frontend/build` → `share/camrod_ui/assets/web`.
-- After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the `build/` directory exists in the expected location.
-- Set `CAMROD_UI_FRONTEND_DIR=/absolute/path/to/build` to force a specific directory.
-- If the installed path is stale after `colcon build`, run `colcon build --packages-select camrod_ui` again to re-copy assets.
+`set_destination` validates against `site_names` (default: `B1`–`B13`). Unknown sites return `{"success": false, "message": "unknown site: X"}`.
+
+Add the site to `site_names` via node parameter and ensure the corresponding entry exists in `camping_sites.yaml`. If `camping_sites_yaml` is empty or missing, goal pose dispatch is skipped; only the goal key is published.
+
+</details>
+
+<details>
+<summary><strong>WAITING_FOR_READY never clears</strong></summary>
+
+The UI enters `WAITING_FOR_READY` when `engaged=true` but `ready=false`. `ready` is false when `/diagnostics_agg` has zero entries or at least one ERROR-level entry.
+
+Run `ros2 topic echo /system/diagnostics_agg` and look for `level: 2` entries. If `/diagnostics_agg` is empty, `camrod_system` may not be running: `ros2 node list | grep diagnostics_agg`.
+
+</details>
+
+<details>
+<summary><strong>Wrong frontend build served</strong></summary>
+
+Resolution order: `CAMROD_UI_FRONTEND_DIR` env → `CAMROD_API_FRONTEND_DIR` env → source tree `runtime/assets/frontend/build` → installed `share/camrod_ui/assets/frontend/build` → `share/camrod_ui/assets/web`.
+
+After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the `build/` directory exists in the expected location. Set `CAMROD_UI_FRONTEND_DIR=/absolute/path/to/build` to force a specific directory. If the installed path is stale after `colcon build`, run `colcon build --packages-select camrod_ui` again.
+
+</details>
 
 ---
 
-## Related Docs
+## 🔗 Related Docs
 
 - [`../README.md`](../README.md) — Top-level CAMROD workspace overview
 - [`../camrod_system/README.md`](../camrod_system/README.md) — produces `/diagnostics_agg`

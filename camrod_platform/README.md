@@ -1,6 +1,10 @@
-# camrod_platform
+# 🤖 camrod_platform — Final cmd_vel gate, visualization & sensor kit bridge
 
-## 1. Summary
+> ⚠️ **Safety boundary** — `/platform/cmd_vel` is the LAST topic before the robot moves. Verify `engage`, `drive_enable`, `estop`, and `cmd_vel` before debugging any motion issue. Do NOT disable the gate (`cmd_vel_gate_enable:=false`) on a live robot.
+
+---
+
+## 1. 📋 Summary
 
 `camrod_platform` is the **last safety boundary before hardware**. It sits between the planning stack and the Ranger CAN driver, and it is responsible for three distinct concerns:
 
@@ -8,19 +12,17 @@
 2. **`robot_visualization_node`** — renders the robot body, sensor frames, planning boundary, and debug range rings as RViz MarkerArray at 20 Hz.
 3. **`sensor_kit_bridge`** — includes `camrod_sensor_kit` to publish all static TF transforms and `/robot_description` (URDF) for every sensor frame.
 
-> **Safety Boundary**
->
-> `/platform/cmd_vel` is only published when ALL four conditions hold simultaneously:
-> - `/platform/drive_enable` has published `true`
-> - `/planning/engage` has published `true` (when `use_planning_engage_topic:=true`)
-> - `/platform/status/estop` is `false` (when `use_estop_topic:=true`)
-> - The gate node itself is running (`cmd_vel_gate_enable:=true`)
->
-> When any condition is not met, the gate publishes a zero `Twist` on `/platform/cmd_vel` (`publish_zero_when_blocked: true`). The gate never passes through a stale velocity from a previous engage cycle.
+**Safety interlock — `/platform/cmd_vel` is only published when ALL four conditions hold simultaneously:**
+- `/platform/drive_enable` has published `true`
+- `/planning/engage` has published `true` (when `use_planning_engage_topic:=true`)
+- `/platform/status/estop` is `false` (when `use_estop_topic:=true`)
+- The gate node itself is running (`cmd_vel_gate_enable:=true`)
+
+When any condition is not met, the gate publishes a zero `Twist` on `/platform/cmd_vel` (`publish_zero_when_blocked: true`). The gate never passes through a stale velocity from a previous engage cycle.
 
 ---
 
-## 2. Quick Start
+## 2. ⚡ Quick Start
 
 ```bash
 # Full platform stack (gate + visualization + Ranger CAN + sensor_kit TF)
@@ -35,32 +37,108 @@ ros2 launch camrod_platform platform.launch.py cmd_vel_gate_enable:=false
 
 ---
 
-## 3. System Position
+## 3. 🗺️ System Position
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  PLAN[camrod_planning] -->|/planning/cmd_vel\n/planning/engage| PLAT[camrod_platform]
-  LOC[camrod_localization] -->|/localization/pose| PLAT
-  SENS[camrod_sensing] -->|/sensing/gnss/pose| PLAT
-  MAP[camrod_map] -->|/map/markers| PLAT
-  PLAT -->|/platform/cmd_vel\n/platform/status/*\nTF static| HW{{Ranger CAN Driver}}
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+
+  PLAN[🧭 camrod_planning] ==>|/planning/cmd_vel\n/planning/engage| PLAT
+  LOC[📍 camrod_localization] -->|/localization/pose| PLAT
+  SENS[📡 camrod_sensing] -->|/sensing/gnss/pose| PLAT
+  MAP[🗺️ camrod_map] -.->|/map/markers| PLAT
+
+  PLAT[🤖 camrod_platform] ==>|/platform/cmd_vel| HW{{🛠️ Ranger CAN Driver}}
+  PLAT -->|/platform/status/*\nTF static| HW
   PLAT -->|/platform/status/odometry\n/platform/status/wheel_odometry| LOC
   PLAT -->|/platform/status/velocity| SENS
-  PLAT -->|/platform/drive_enabled\n/platform/status/estop| SYS[camrod_system]
-  PLAT -->|TF static (sensor frames)\n/robot_description| ALL[All Packages]
+  PLAT -->|/platform/drive_enabled\n/platform/status/estop| SYS[🔧 camrod_system]
+  PLAT -->|TF static sensor frames\n/robot_description| ALL[📦 All Packages]
+
+  class PLAN planning
+  class LOC localization
+  class SENS sensing
+  class MAP mapping
+  class SYS system
+  class HW hardware
+  class PLAT highlight
 ```
 
-Legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = external file or hardware, `[[stack]]` = external package.
+> **Diagram legend** 🧩 ROS node · 📡 Topic · 🛠️ Hardware · 📦 External · ==> critical · -.-> optional
 
 **Upstream:** camrod_planning, camrod_localization, camrod_sensing, camrod_map
 
 **Downstream (platform outputs consumed by):** camrod_localization (odometry), camrod_sensing (velocity), camrod_system (diagnostics), Ranger CAN hardware driver
 
+*Figure 1 — `camrod_platform` system position. The platform node is the sole choke-point between Nav2 cmd_vel and the physical drive motors.*
+
 ---
 
-## 4. Runtime Architecture
+## 4. 🏗️ Runtime Architecture
 
 `platform.launch.py` includes four sub-launches in parallel (no inter-launch stagger within platform):
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
+graph TD
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+
+  PLAN_IN((📡 /planning/cmd_vel)) ==> GATE
+  ENGAGE((📡 /planning/engage)) ==> GATE
+  DRIVE_EN((📡 /platform/drive_enable)) ==> GATE
+  ESTOP((📡 /platform/status/estop)) ==> GATE
+
+  subgraph PLAT_PKG [🤖 camrod_platform]
+    subgraph GATE_SG [🚦 cmd_vel_gate_node]
+      GATE[🧩 cmd_vel_gate_node\ncmd_vel_gate.launch.py]
+    end
+
+    subgraph VIZ_SG [🎨 robot_visualization_node]
+      VIZ[🧩 robot_visualization_node\nrobot_visualization.launch.py]
+    end
+
+    subgraph BRIDGE_SG [🔧 sensor_kit_bridge]
+      BRIDGE[🧩 sensor_kit_bridge\nsensor_kit_bridge.launch.py]
+      RANGER[🛠️ ranger.launch.py\nranger_driver_enable:=true]
+    end
+  end
+
+  GATE ==>|always active| CMDVEL_OUT((📡 /platform/cmd_vel))
+  CMDVEL_OUT ==> HW{{🛠️ Ranger CAN Driver}}
+
+  LOCPOSE((📡 /localization/pose)) --> VIZ
+  GNSSPOSE((📡 /sensing/gnss/pose)) -.->|fallback| VIZ
+  VIZ --> MARKERS((📡 /platform/robot/markers))
+  VIZ --> BOUNDARY((📡 /platform/robot/planning_boundary))
+
+  BRIDGE --> TF[TF static\n/robot_description]
+
+  class GATE platform
+  class VIZ platform
+  class BRIDGE system
+  class RANGER hardware
+  class CMDVEL_OUT highlight
+  class PLAN_IN,ENGAGE,DRIVE_EN,ESTOP,LOCPOSE,GNSSPOSE,MARKERS,BOUNDARY topic
+```
+
+> **Diagram legend** 🧩 ROS node · 📡 Topic · 🛠️ Hardware · ==> critical · -.-> optional/fallback
 
 | Sub-launch | File | Condition |
 |---|---|---|
@@ -69,9 +147,11 @@ Legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = external f
 | `ranger.launch.py` | `launch/ranger.launch.py` | `ranger_driver_enable:=true` (default) |
 | `sensor_kit_bridge.launch.py` | `launch/sensor_kit_bridge.launch.py` | Always |
 
+*Figure 2 — Platform runtime architecture. Three logical subsystems run in parallel; `/platform/cmd_vel` is the only critical output path.*
+
 ---
 
-## 5. Interface Contract
+## 5. 🔌 Interface Contract
 
 ### Inputs
 
@@ -103,33 +183,58 @@ Legend: `[node]` = ROS node, `((topic))` = ROS topic, `{{file/hw}}` = external f
 
 ---
 
-## 6. Sub-System Details
+## 6. 🔬 Sub-System Details
 
-### 6.1 cmd_vel_gate_node
+### 6.1 🚦 cmd_vel_gate_node
 
 The gate node (`camrod_platform/cmd_vel_gate_node`) subscribes to four signals and decides whether to forward or zero-out the incoming velocity command.
 
 #### Gate Logic
 
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 flowchart TD
-  A["Receive /planning/cmd_vel"] --> B{"gate enabled?"}
-  B -- No --> Z["Pass through unchanged → /platform/cmd_vel"]
-  B -- Yes --> C{"drive_enabled?"}
-  C -- No --> ZERO["Publish zero Twist → /platform/cmd_vel"]
-  C -- Yes --> D{"estop active?"}
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
+  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+
+  IN((📡 /planning/cmd_vel)) ==> A
+  A[🧩 Receive /planning/cmd_vel] --> B{❓ gate enabled?\ncmd_vel_gate_enable}
+  B -- No --> Z[Pass through unchanged]
+  B -- Yes --> C{❓ drive_enabled?}
+  C -- No --> ZERO[Publish zero Twist]
+  C -- Yes --> D{❓ estop active?\n/platform/status/estop}
   D -- Yes --> ZERO
-  D -- No --> Z
+  D -- No --> E{❓ engage active?\n/planning/engage}
+  E -- No --> ZERO
+  E -- Yes --> Z
 
-  subgraph "drive_enabled becomes True when:"
-    E1["/platform/drive_enable == true"]
-    E2["/planning/engage == true\n(use_planning_engage_topic=true)"]
+  Z ==> OUT((📡 /platform/cmd_vel → Ranger CAN))
+  ZERO -.->|publish_zero_when_blocked| OUT
+
+  subgraph ARMING [drive_enabled becomes True when ALL:]
+    E1((📡 /platform/drive_enable == true))
+    E2((📡 /planning/engage == true\nuse_planning_engage_topic=true))
   end
 
-  subgraph "estop becomes True when:"
-    F1["/platform/status/estop == true\n(use_estop_topic=true)"]
+  subgraph ESTOP_SG [estop becomes True when:]
+    F1((📡 /platform/status/estop == true\nuse_estop_topic=true))
   end
+
+  class A,B,C,D,E system
+  class Z planning
+  class ZERO platform
+  class OUT highlight
+  class IN,E1,E2,F1 topic
 ```
+
+> **Diagram legend** 🧩 ROS node · 📡 Topic · {❓} Decision · ==> critical path · -.-> zero/blocked path
+
+> ⚠️ **The zero path (`ZERO`) is actively published**, not just silence. Any consumer expecting the gate output to stop on disable will still see a `Twist` message — it will contain all zeros.
+
+*Figure 3 — cmd_vel gate logic. The gate has four independent trip conditions; any single failure zeros the output.*
 
 **Key node parameters** (set via `cmd_vel_gate.launch.py`):
 
@@ -148,7 +253,7 @@ flowchart TD
 
 ---
 
-### 6.2 robot_visualization_node
+### 6.2 🎨 robot_visualization_node
 
 Publishes a single `MarkerArray` on `/platform/robot/markers` at 20 Hz, anchored to the latest `/localization/pose`. Falls back to `/sensing/gnss/pose` if localization has been silent for longer than `localization_pose_timeout_s` (3.0 s default).
 
@@ -174,7 +279,7 @@ Publishes a single `MarkerArray` on `/platform/robot/markers` at 20 Hz, anchored
 
 ---
 
-### 6.3 sensor_kit_bridge
+### 6.3 🔧 sensor_kit_bridge
 
 Includes `camrod_sensor_kit/launch/sensor_kit.launch.py` with `enable_status:=false`. This publishes:
 
@@ -185,7 +290,21 @@ The geometry source file is controlled by the `params_file` argument, which defa
 
 ---
 
-## 7. Key Behaviors
+## 7. 🖥️ Hardware Dependency Matrix
+
+| Component | Real Robot | Simulation (`sim:=true`) | Bench (no CAN) |
+|---|:---:|:---:|:---:|
+| Ranger CAN driver (`ranger.launch.py`) | ✅ Required | ❌ Not launched | ⚠️ Optional (`ranger_driver_enable:=false`) |
+| cmd_vel_gate_node | ✅ Required | ✅ Active | ⚠️ Can disable (`cmd_vel_gate_enable:=false`) |
+| robot_visualization_node | ✅ Active | ✅ Active | ✅ Active |
+| sensor_kit_bridge (TF static) | ✅ Required | ✅ Required | ✅ Required |
+| `/platform/status/estop` (from CAN) | ✅ Live signal | ❌ Not present | ⚠️ Simulated or `use_estop_topic:=false` |
+| `/platform/status/odometry` (50 Hz) | ✅ Live signal | ✅ Fake sensor | ❌ Not available |
+| `/localization/pose` anchor for VIZ | ✅ Live | ✅ Fake | ⚠️ Falls back to GNSS after 3 s |
+
+---
+
+## 8. 🔑 Key Behaviors
 
 ### Robot Does Not Move at Startup (by Design)
 
@@ -235,7 +354,7 @@ The geometry source file is controlled by the `params_file` argument, which defa
 
 ---
 
-## 8. Launch
+## 9. 🚀 Launch Arguments
 
 ### platform.launch.py arguments
 
@@ -261,7 +380,7 @@ The geometry source file is controlled by the `params_file` argument, which defa
 
 ---
 
-## 9. Config
+## 10. ⚙️ Config Files
 
 | File | Purpose |
 |---|---|
@@ -271,7 +390,7 @@ The geometry source file is controlled by the `params_file` argument, which defa
 
 ---
 
-## 10. Validation
+## 11. ✅ Validation
 
 After `ros2 launch camrod_platform platform.launch.py`:
 
@@ -298,44 +417,44 @@ ros2 topic hz /platform/status/odometry  # expect ~50 Hz
 
 ---
 
-## 11. Troubleshooting
+## 12. 🔧 Troubleshooting
 
 ### Robot Does Not Move
 
-Work through this checklist in order:
+> ⚠️ Work through this checklist **in order** — each step rules out one gate trip condition.
 
-1. **Is the gate armed?**
-   ```bash
-   ros2 topic echo /platform/drive_enabled --once
-   ```
-   Expected: `data: true`. If `false`, continue.
+**1. Is the gate armed?**
+```bash
+ros2 topic echo /platform/drive_enabled --once
+```
+Expected: `data: true`. If `false`, continue.
 
-2. **Has `/planning/engage` been published?**
-   ```bash
-   ros2 topic echo /planning/engage --once
-   ```
-   If no message or `data: false`, the planning engage signal has not been sent. Use the UI or publish manually:
-   ```bash
-   ros2 topic pub /planning/engage std_msgs/Bool "data: true" --once
-   ```
+**2. Has `/planning/engage` been published?**
+```bash
+ros2 topic echo /planning/engage --once
+```
+If no message or `data: false`, the planning engage signal has not been sent. Use the UI or publish manually:
+```bash
+ros2 topic pub /planning/engage std_msgs/Bool "data: true" --once
+```
 
-3. **Has `/platform/drive_enable` been published?**
-   ```bash
-   ros2 topic echo /platform/drive_enable --once
-   ```
-   Same action as above if missing.
+**3. Has `/platform/drive_enable` been published?**
+```bash
+ros2 topic echo /platform/drive_enable --once
+```
+Same action as above if missing.
 
-4. **Is e-stop active?**
-   ```bash
-   ros2 topic echo /platform/status/estop --once
-   ```
-   If `data: true`, the Ranger CAN driver is reporting a hardware fault. Check CAN bus (`ip link show can0`) and `ranger_params.yaml` (`estop_on_exception_state`, `estop_on_error_code`).
+**4. Is e-stop active?**
+```bash
+ros2 topic echo /platform/status/estop --once
+```
+If `data: true`, the Ranger CAN driver is reporting a hardware fault. Check CAN bus (`ip link show can0`) and `ranger_params.yaml` (`estop_on_exception_state`, `estop_on_error_code`).
 
-5. **Is `/planning/cmd_vel` non-zero?**
-   ```bash
-   ros2 topic echo /planning/cmd_vel --once
-   ```
-   If the planning gate itself is outputting zeros, the problem is upstream in `camrod_planning`.
+**5. Is `/planning/cmd_vel` non-zero?**
+```bash
+ros2 topic echo /planning/cmd_vel --once
+```
+If the planning gate itself is outputting zeros, the problem is upstream in `camrod_planning`.
 
 ---
 
@@ -380,7 +499,7 @@ Or ensure `bringup/launch_defaults.yaml` has `platform/cmd_vel_gate_enable: fals
 
 ---
 
-## 12. Related Docs
+## 13. 📚 Related Docs
 
 | Document | Location |
 |---|---|
