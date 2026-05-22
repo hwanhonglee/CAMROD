@@ -24,28 +24,28 @@
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
   subgraph SENS_GRP["📷 Sensing"]
-    SENS([📦 camrod_sensing])
+    SENS([🎯 camrod_sensing])
   end
 
   subgraph EXT_GRP["🤖 External inference"]
-    YOLO{{🛠️ yolov9mit_ros\nexternal TensorRT}}
+    YOLO{{🛠️ yolov9mit_ros}}
   end
 
   subgraph PER_GRP["👁️ camrod_perception"]
-    PER([🧩 camrod_perception])
+    PER([👁️ camrod_perception])
   end
 
   subgraph CONS_GRP["🗺️ Consumers"]
-    SYS([📦 camrod_system])
-    PLAN([📦 camrod_planning\ncostmap])
+    SYS([🩺 camrod_system])
+    PLAN([🧭 camrod_planning])
     VIZ{{🛠️ RViz}}
   end
 
-  SENS -->|points_filtered\ncamera_info\nimage| PER
-  YOLO -.->|detections_2d\n(optional)| PER
+  SENS -->|points_filtered / camera_info / image| PER
+  YOLO -.->|detections_2d (optional)| PER
   PER ==>|/perception/obstacles| SYS
   PER ==>|/perception/obstacles| PLAN
-  PER -->|/perception/lidar/bboxes\n/perception/camera_lidar/*| VIZ
+  PER -->|/perception/lidar/bboxes| VIZ
 
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
