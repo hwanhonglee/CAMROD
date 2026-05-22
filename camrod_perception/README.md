@@ -42,7 +42,7 @@ graph LR
   end
 
   SENS -->|points_filtered / camera_info / image| PER
-  YOLO -.->|detections_2d (optional)| PER
+  YOLO -.->|detections_2d, optional| PER
   PER ==>|/perception/obstacles| SYS
   PER ==>|/perception/obstacles| PLAN
   PER -->|/perception/lidar/bboxes| VIZ
