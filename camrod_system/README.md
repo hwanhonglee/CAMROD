@@ -170,7 +170,7 @@ sequenceDiagram
   Note over DOCK,SYS: 📦 Docking checker — TODO: not yet implemented
 
   SYS->>UI: /diagnostics_agg with zero ERROR entries
-  UI->>UI: ready = true; if engaged → operation_mode = AUTO
+  UI->>UI: ready=true, engaged=true → operation_mode=AUTO
 ```
 
 ---

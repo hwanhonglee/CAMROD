@@ -1,23 +1,59 @@
-# camrod_common
+# 📦 camrod_common — Shared interfaces
 
-## Role
-Shared resource container for the CAMROD stack. Currently hosts `avg_msgs`, the custom ROS 2 interface package that provides message and service definitions used by every other CAMROD package. Has no runtime nodes.
+**camrod_common** — Shared resource container for the CAMROD stack. Hosts `avg_msgs`, the custom ROS 2 interface package that provides all message and service definitions used across every other CAMROD package. Has no runtime nodes.
 
-## Package Diagram
+---
+
+## 📋 Summary
+
+| | |
+|---|---|
+| **Contents** | `avg_msgs` (ROS 2 msg/srv definitions) |
+| **Runtime nodes** | None |
+| **Upstream** | — |
+| **Downstream** | All `camrod_*` packages (build-time dependency) |
+
+**Non-goals:** No runtime behavior. Does not publish topics, subscribe to sensors, or perform any robot control. `avg_msgs` is the only package inside `camrod_common`.
+
+---
+
+## 🗺️ System Position
+
 ```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F0FDFA', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#14B8A6', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
-  AVG[(avg_msgs)] -. msg/srv types .-> MAP[camrod_map]
-  AVG -. msg/srv types .-> SENS[camrod_sensing]
-  AVG -. msg/srv types .-> LOC[camrod_localization]
-  AVG -. msg/srv types .-> PLAN[camrod_planning]
-  AVG -. msg/srv types .-> PLAT[camrod_platform]
-  AVG -. msg/srv types .-> PER[camrod_perception]
-  AVG -. msg/srv types .-> SYS[camrod_system]
-  AVG -. msg/srv types .-> SKIT[camrod_sensor_kit]
-  AVG -. msg/srv types .-> DOCK[camrod_docking]
+  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
+  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
+  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
+  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
+  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
+  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
+  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
+  classDef iface        fill:#F0FDFA,stroke:#14B8A6,stroke-width:1.5px,color:#115E59;
+
+  subgraph COMMON["📦 camrod_common"]
+    AVG[(avg_msgs)]:::iface
+  end
+
+  AVG -. msg/srv types .-> MAP([🗺️ camrod_map]):::mapping
+  AVG -. msg/srv types .-> SENS([🎯 camrod_sensing]):::sensing
+  AVG -. msg/srv types .-> LOC([📍 camrod_localization]):::localization
+  AVG -. msg/srv types .-> PLAN([🧭 camrod_planning]):::planning
+  AVG -. msg/srv types .-> PLAT([🤖 camrod_platform]):::platform
+  AVG -. msg/srv types .-> PER([👁️ camrod_perception]):::perception
+  AVG -. msg/srv types .-> SYS([🩺 camrod_system]):::system
+  AVG -. msg/srv types .-> SKIT([🔧 camrod_sensor_kit]):::system
+  AVG -. msg/srv types .-> DOCK([🅿️ camrod_docking]):::docking
+  AVG -. msg/srv types .-> UI([🖥️ camrod_ui]):::ui
 ```
 
-## avg_msgs Interface Types
+> Dashed arrows = compile-time dependency only. No runtime data flows from `avg_msgs`.
+
+---
+
+## 📨 avg_msgs Interface Types
 
 ### Messages
 
@@ -39,7 +75,11 @@ graph LR
 
 Located in `avg_msgs/srv/`. Used by planning state machine and UI goal dispatch.
 
-## Build
+See [avg_msgs/README.md](avg_msgs/README.md) for the full interface catalog and dependency matrix.
+
+---
+
+## 🚀 Build
 
 ```bash
 # Build avg_msgs alone (required before other packages)
@@ -50,8 +90,18 @@ source install/setup.bash
 colcon build
 ```
 
-## Notes
+---
+
+## 📝 Notes
 
 - `camrod_common` itself contains no nodes, launch files, or config files.
 - All packages in the workspace declare `avg_msgs` as a build and runtime dependency.
-- Adding new shared message types: place `.msg` or `.srv` files in `avg_msgs/msg/` or `avg_msgs/srv/`, then add them to `avg_msgs/CMakeLists.txt` under `rosidl_generate_interfaces`.
+- Adding new shared message types: place `.msg` or `.srv` files in `avg_msgs/msg/` or `avg_msgs/srv/`, then register them in `avg_msgs/CMakeLists.txt` under `rosidl_generate_interfaces`.
+
+---
+
+## 🔗 Related Docs
+
+- [../README.md](../README.md) — CAMROD monorepo overview
+- [avg_msgs/README.md](avg_msgs/README.md) — Full interface catalog and dependency matrix
+- [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — Canonical parameter naming conventions

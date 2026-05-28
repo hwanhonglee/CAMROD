@@ -169,7 +169,7 @@ graph TD
   WORLD --> MAP
   MAP --> BASE
   BASE --> SKB
-  SKB --> IMU & GNSS & LIDAR & CAM
+  SKB --> IMU & GNSS & LIDAR & CAMF & CAMR
   SKB --> RF & RL1 & RL2 & RR1 & RR2 & RR
 
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
@@ -279,7 +279,8 @@ All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **de
 | `imu` | 0.28 | 0.0 | 0.2 | 0.0 | 0.0 | 0.0 |
 | `gnss` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
 | `lidar` | 0.68 | 0.0 | 0.45 | 0.0 | 0.4 | 0.0 |
-| `camera` | 0.68 | 0.0 | 0.2 | 0.0 | 0.0 | 0.0 |
+| `camera.front` | 0.40 | 0.0 | 0.46 | 0.0 | 0.0 | 0.0 |
+| `camera.rear` | 0.10 | 0.0 | 0.46 | 0.0 | 0.0 | 180.0 |
 | `radar.front` | 0.64 | 0.0 | 0.45 | 0.0 | 0.0 | 0.0 |
 | `radar.left1` | -0.1 | 0.2 | 0.45 | 0.0 | 0.0 | 90.0 |
 | `radar.left2` | 0.5 | 0.2 | 0.45 | 0.0 | 0.0 | 90.0 |
@@ -300,7 +301,7 @@ Parameterized URDF: `robot_base_link` body box, `sensor_kit_base_link` joint, an
 ros2 topic echo /tf_static --once | grep frame_id
 
 # Lookup each sensor frame from robot_base_link
-for frame in imu_link gnss_link lidar_link camera_link \
+for frame in imu_link gnss_link lidar_link camera_front_link camera_rear_link \
   radar_front_link radar_rear_link; do
   ros2 run tf2_ros tf2_echo robot_base_link $frame
 done

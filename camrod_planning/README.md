@@ -481,7 +481,7 @@ Key launch arguments:
 | File | Purpose |
 |---|---|
 | `config/nav2_base.yaml` | Nav2 planner plugins (NavFn, Smac2D, SmacHybrid, SmacLattice, ThetaStar), controller plugins (RPP, DWB, MPPI, Graceful, RotationShim), costmap base config; `xy_goal_tolerance`: 0.15 m |
-| `config/nav2_vehicle.yaml` | Robot footprint (`[[0.9,0.4],…]`), RPP velocity/acceleration limits, `approach_velocity_scaling_dist`: 0.6 m |
+| `config/nav2_vehicle.yaml` | Vehicle specs (Ranger: wheelbase 0.89 m, track 0.56 m, mass 100 kg), footprint `[[0.59, 0.375],…]` (body+margins), RPP limits (1.4 m/s, 1.2 rad/s, lookahead 0.8 m) |
 | `config/nav2_lanelet_overlay.yaml` | Lanelet-specific cost weights and regulatory element handling |
 | `config/nav2_behavior.yaml` | Recovery behaviors, BT timeouts, transform tolerance |
 | `config/nav2_combo_profiles/` | Planner+controller profile overlays (e.g. `smachybrid_graceful.yaml`, `smac2d_dwb.yaml`) |
