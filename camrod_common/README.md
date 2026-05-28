@@ -14,7 +14,7 @@ graph LR
   AVG -. msg/srv types .-> PER[camrod_perception]
   AVG -. msg/srv types .-> SYS[camrod_system]
   AVG -. msg/srv types .-> SKIT[camrod_sensor_kit]
-  AVG -. msg/srv types .-> PARK[camrod_parking]
+  AVG -. msg/srv types .-> DOCK[camrod_docking]
 ```
 
 ## avg_msgs Interface Types

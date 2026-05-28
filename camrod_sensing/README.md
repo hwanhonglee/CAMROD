@@ -45,7 +45,7 @@ graph LR
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
@@ -68,7 +68,7 @@ graph LR
     PERC([👁️ camrod_perception]):::perception
     PLAN_OUT([🧭 camrod_planning]):::planning
     MAP_VIZ([🗺️ camrod_map]):::mapping
-    PARK([🅿️ camrod_parking]):::parking
+    PARK([🅿️ camrod_docking]):::docking
   end
 
   PLAT  ==>|/platform/status/velocity| SENS
@@ -104,7 +104,7 @@ graph TD
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
@@ -204,7 +204,7 @@ graph TD
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
@@ -599,10 +599,10 @@ One or more `/sensing/radar/*/range` topics are silent.
 
 ### Camera image not reaching `apriltag_node`
 
-`camrod_parking` does not detect dock markers even when the dock is in view.
+`camrod_docking` does not detect dock markers even when the dock is in view.
 
 1. Confirm the camera is publishing: `ros2 topic hz /sensing/camera/image_rect/compressed`.
-2. The `apriltag_node` in `camrod_parking` subscribes to `/camera/color/image_rect`. Verify the topic remapping in `camrod_parking/launch/docking.launch.py` matches the actual camera namespace (remapping: `image_rect → /camera/color/image_rect`, `camera_info → /camera/color/camera_info`).
+2. The `apriltag_node` in `camrod_docking` subscribes to `/camera/color/image_rect`. Verify the topic remapping in `camrod_docking/launch/docking.launch.py` matches the actual camera namespace (remapping: `image_rect → /camera/color/image_rect`, `camera_info → /camera/color/camera_info`).
 3. Iceoryx zero-copy: if `iox-roudi` is not running, the `camera_publisher_node` may crash or stall. Check: `ps aux | grep iox-roudi`. If absent, it was not started (the camera launch starts it automatically, but it may have exited).
 4. Check exposure: if the environment is very dark, increase `exposure_time_us` in `camera_params.yaml` (max ~25000 for stable 10 fps).
 
@@ -615,5 +615,5 @@ One or more `/sensing/radar/*/range` topics are silent.
 - [../camrod_perception/README.md](../camrod_perception/README.md) — consumes `/sensing/lidar/points_filtered` and `camera/image_rect/compressed`
 - [../camrod_planning/README.md](../camrod_planning/README.md) — consumes `/planning/cost_grid/inflation`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`
 - [../camrod_platform/README.md](../camrod_platform/README.md) — produces `/platform/status/velocity` consumed by velocity converter
-- [../camrod_parking/README.md](../camrod_parking/README.md) — consumes `camera/image_rect/compressed` for AprilTag-based dock detection
+- [../camrod_docking/README.md](../camrod_docking/README.md) — consumes `camera/image_rect/compressed` for AprilTag-based dock detection
 - [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions used across the stack

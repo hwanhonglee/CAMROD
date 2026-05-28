@@ -10,7 +10,7 @@
 
 A separate lightweight system tools track (`enable_system_tools: true`) checks that required ROS 2 nodes and topics are alive and publishes a secondary summary to `/system/diagnostics_agg_tools`.
 
-> **Non-goals:** Reports health status only — does **not** enforce safety actions (e-stop, speed reduction, disengagement). Does not contain autonomous decision logic; consumers (e.g., `camrod_ui`) decide what to do with the health data. Does not check `camrod_parking` yet (TODO: parking checker category).
+> **Non-goals:** Reports health status only — does **not** enforce safety actions (e-stop, speed reduction, disengagement). Does not contain autonomous decision logic; consumers (e.g., `camrod_ui`) decide what to do with the health data. Does not check `camrod_docking` yet (TODO: docking checker category).
 
 ---
 
@@ -128,14 +128,14 @@ flowchart TD
   H -->|yes| I[✅ operation_mode = AUTO]:::localization
   H -->|no| J[⛔ operation_mode = STOP]:::platform
 
-  subgraph PARKING_NOTE["🅿️ Parking (TODO)"]
-    PTODO[parking checker\nnot yet implemented]:::parking
+  subgraph DOCKING_NOTE["📦 Docking (TODO)"]
+    PTODO[docking checker\nnot yet implemented]:::docking
   end
 
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
 ```
 
 ### System Readiness Sequence
@@ -147,7 +147,7 @@ sequenceDiagram
   participant SENS as 🎯 Sensing
   participant LOC as 📍 Localization
   participant PLAN as 🧭 Planning
-  participant PARK as 🅿️ Parking
+  participant DOCK as 📦 Docking
   participant PLAT as 🤖 Platform
   participant SYS as 🩺 System
   participant UI as 🖥️ UI
@@ -167,7 +167,7 @@ sequenceDiagram
   PLAT->>SYS: /platform/status/wheel_odometry arrives
   SYS->>SYS: wheel_odometry_checker → OK
 
-  Note over PARK,SYS: 🅿️ Parking checker — TODO: not yet implemented
+  Note over DOCK,SYS: 📦 Docking checker — TODO: not yet implemented
 
   SYS->>UI: /diagnostics_agg with zero ERROR entries
   UI->>UI: ready = true; if engaged → operation_mode = AUTO
@@ -186,7 +186,7 @@ sequenceDiagram
 | `map` | map_cost_grid | `config/diagnostics/default/map/` | — |
 | `planning` | planning_lifecycle, planning_costmap, planning_nav_status, planning_path | `config/diagnostics/default/planning/` | — |
 | `platform` | ranger_platform (optional) | `config/diagnostics/default/platform/` | — |
-| `parking` | — | — | **TODO**: not yet implemented |
+| `docking` | — | — | **TODO**: not yet implemented |
 
 ---
 
@@ -387,6 +387,6 @@ Verify: `ls $(ros2 pkg prefix camrod_system)/share/camrod_system/config/diagnost
 - [`../camrod_map/README.md`](../camrod_map/README.md)
 - [`../camrod_planning/README.md`](../camrod_planning/README.md)
 - [`../camrod_platform/README.md`](../camrod_platform/README.md)
-- [`../camrod_parking/README.md`](../camrod_parking/README.md)
+- [`../camrod_docking/README.md`](../camrod_docking/README.md)
 - [`../camrod_ui/README.md`](../camrod_ui/README.md) — consumes `/diagnostics_agg`
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions

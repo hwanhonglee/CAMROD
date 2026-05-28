@@ -57,7 +57,7 @@ graph LR
   SKIT -.->|/tf_static| SENS([🎯 camrod_sensing]):::sensing
   SKIT -.->|/tf_static| LOC([📍 camrod_localization]):::localization
   SKIT -.->|/tf_static| PLAN([🧭 camrod_planning]):::planning
-  SKIT -.->|/tf_static| PARK([🅿️ camrod_parking]):::parking
+  SKIT -.->|/tf_static| PARK([🅿️ camrod_docking]):::docking
   SKIT -.->|loadRobotParams| PLAT
   SKIT -.->|loadRobotParams| SENS
 
@@ -65,7 +65,7 @@ graph LR
   classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
 ```
@@ -353,5 +353,5 @@ If both `camrod_sensor_kit` standalone and a parent bringup launch start `robot_
 - [`../README.md`](../README.md) — Top-level CAMROD workspace overview
 - [`../camrod_platform/README.md`](../camrod_platform/README.md) — consumes `RobotParams` for footprint and drive model
 - [`../camrod_sensing/README.md`](../camrod_sensing/README.md) — consumes `/tf_static` for all sensor frame lookups
-- [`../camrod_parking/README.md`](../camrod_parking/README.md) — consumes `/tf_static` for parking geometry
+- [`../camrod_docking/README.md`](../camrod_docking/README.md) — consumes `/tf_static` for parking geometry
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions

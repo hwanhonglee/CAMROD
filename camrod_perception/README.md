@@ -14,7 +14,7 @@
 
 **Non-goals:** Object tracking with persistent IDs across restarts, semantic mapping.
 
-> 📌 **Note** — AprilTag detection lives in `camrod_parking`, NOT here. This package handles only LiDAR obstacles and camera-LiDAR fusion for general obstacle detection.
+> 📌 **Note** — AprilTag detection lives in `camrod_docking`, NOT here. This package handles only LiDAR obstacles and camera-LiDAR fusion for general obstacle detection.
 
 ---
 
@@ -418,6 +418,6 @@ ros2 topic hz /perception/lidar/bboxes
 | [../README.md](../README.md) | Monorepo overview, workspace build instructions |
 | [../camrod_sensing/README.md](../camrod_sensing/README.md) | LiDAR preprocessor, camera preprocessor, topic names |
 | [../camrod_planning/README.md](../camrod_planning/README.md) | Nav2 costmap that consumes `/perception/obstacles` |
-| [../camrod_parking/README.md](../camrod_parking/README.md) | AprilTag docking — separate perception pipeline, not this package |
+| [../camrod_docking/README.md](../camrod_docking/README.md) | AprilTag docking — separate perception pipeline, not this package |
 | [../camrod_system/README.md](../camrod_system/README.md) | `perception_obstacle_checker` that subscribes to `/perception/obstacles` |
 | [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) | Parameter naming conventions (`*_s`, `*_hz`) |

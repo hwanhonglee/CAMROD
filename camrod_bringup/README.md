@@ -54,7 +54,7 @@ graph LR
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
@@ -74,7 +74,7 @@ graph LR
   IMPL ==> SYS([🩺 camrod_system])
   IMPL ==> UIPKG([🖥️ camrod_ui])
   IMPL -.->|rviz:=true| RVIZ(rviz2)
-  IMPL -.->|separate launch| PARK([🅿️ camrod_parking])
+  IMPL -.->|separate launch| PARK([🅿️ camrod_docking])
 
   class PLAT platform
   class MAP mapping
@@ -84,7 +84,7 @@ graph LR
   class PLAN planning
   class SYS system
   class UIPKG ui
-  class PARK parking
+  class PARK docking
   class IMPL highlight
 ```
 
@@ -107,7 +107,7 @@ graph TD
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
@@ -139,9 +139,9 @@ graph TD
 
 > ⚠️ **`module_launch_gap_s` too short can cause lifecycle failures.** On ARM targets or slow storage, values below `0.8 s` may cause Nav2 lifecycle manager to log `ERROR: Failed to get state for node`. Use `1.5` or `2.0` on constrained hardware. See Troubleshooting §11.
 
-> 📌 **`camrod_parking`** is not launched by `bringup.launch.py`. Launch it separately with `ros2 launch camrod_parking parking.launch.py` when docking capability is needed.
+> 📌 **`camrod_docking`** is not launched by `bringup.launch.py`. Launch it separately with `ros2 launch camrod_docking docking.launch.py` when docking capability is needed.
 
-*Figure 2 — Staggered module launch sequence. Each slot starts at `N × module_launch_gap_s` seconds after cleanup exits. `camrod_parking` sits logically between planning and system but requires a separate launch.*
+*Figure 2 — Staggered module launch sequence. Each slot starts at `N × module_launch_gap_s` seconds after cleanup exits. `camrod_docking` sits logically between planning and system but requires a separate launch.*
 
 ---
 
@@ -190,7 +190,7 @@ Modules start with `module_launch_gap_s` (default `1.0 s`) stagger. The timer in
 | 7 | camrod_system | `system.launch.py` | Diagnostics validators; monitors all modules after they are up |
 | 8 | camrod_ui | `ui.launch.py` | HTTP API and plugin bridge; last because it depends on all other module services |
 
-> 📌 **camrod_parking** is not launched by `bringup.launch.py`. Launch it separately with `ros2 launch camrod_parking parking.launch.py` when docking capability is needed.
+> 📌 **camrod_docking** is not launched by `bringup.launch.py`. Launch it separately with `ros2 launch camrod_docking docking.launch.py` when docking capability is needed.
 
 ---
 
@@ -500,5 +500,5 @@ If the issue recurs, check `config/bringup/cleanup_patterns.yaml` and add the mi
 | camrod_planning | `../camrod_planning/README.md` |
 | camrod_system | `../camrod_system/README.md` |
 | camrod_ui | `../camrod_ui/README.md` |
-| camrod_parking | `../camrod_parking/README.md` |
+| camrod_docking | `../camrod_docking/README.md` |
 | camrod_sensor_kit | `../camrod_sensor_kit/README.md` |

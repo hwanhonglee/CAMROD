@@ -20,10 +20,9 @@ camrod_docking/
 │   └── manual_dock_server_node.hpp
 ├── launch/
 │   ├── docking.launch.py       # Main launch (AprilTag + DockingServer + ManualDockServer; camera TF is in camrod_sensor_kit)
-│   └── parking.launch.py       # Wrapper for docking.launch.py
 └── src/
     ├── camrod_docking_plugin.cpp       # ChargingDock plugin
-    ├── parking_apriltag_bridge.cpp     # AprilTag → PoseStamped conversion node
+    ├── docking_apriltag_bridge.cpp     # AprilTag → PoseStamped conversion node
     ├── manual_dock_server_node.cpp     # Manual docking action server
     ├── odom_yaw_corrector.cpp          # RMP401 odometry sign correction
     └── tag_distance_node.cpp           # Tag distance publisher node
@@ -47,7 +46,7 @@ econ_camera (rear or front)
 
 ## Nodes
 
-### `docking_apriltag_bridge` (parking_apriltag_bridge.cpp)
+### `docking_apriltag_bridge` (docking_apriltag_bridge.cpp)
 
 Subscribes to AprilTag detections, looks up the `dock_tag` frame from TF, and publishes it as a `PoseStamped` in the odom frame with EMA filtering.
 

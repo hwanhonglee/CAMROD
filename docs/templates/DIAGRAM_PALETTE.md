@@ -25,7 +25,7 @@ graph LR
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:2px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:2px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:2px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:2px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:2px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:2px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:2px,color:#C2410C;
   classDef iface        fill:#F0FDFA,stroke:#14B8A6,stroke-width:2px,color:#115E59;
@@ -40,7 +40,7 @@ graph LR
   PER["👁️ perception\n#FCE7F3 / #EC4899"]
   PLN["🧭 planning\n#EEF2FF / #6366F1"]
   PLT["🤖 platform\n#FEE2E2 / #EF4444"]
-  PKG["🅿️ parking\n#F5F3FF / #8B5CF6"]
+  PKG["🅿️ docking\n#F5F3FF / #8B5CF6"]
   SYS["🩺 system\n#F1F5F9 / #64748B"]
   UI["🖥️ ui\n#FFF7ED / #F97316"]
   IFC["📨 interface\n#F0FDFA / #14B8A6"]
@@ -58,7 +58,7 @@ graph LR
   class PER perception
   class PLN planning
   class PLT platform
-  class PKG parking
+  class PKG docking
   class SYS system
   class UI ui
   class IFC iface
@@ -82,7 +82,7 @@ graph LR
 | 👁️ Perception | `perception` | `#FCE7F3` | `#EC4899` | `#9D174D` | camrod\_perception nodes |
 | 🧭 Planning | `planning` | `#EEF2FF` | `#6366F1` | `#4338CA` | camrod\_planning nodes |
 | 🤖 Platform / Actuation | `platform` | `#FEE2E2` | `#EF4444` | `#B91C1C` | camrod\_platform nodes, safety boundary |
-| 🅿️ Parking / Docking | `parking` | `#F5F3FF` | `#8B5CF6` | `#6D28D9` | camrod\_parking nodes |
+| 🅿️ Docking | `docking` | `#F5F3FF` | `#8B5CF6` | `#6D28D9` | camrod\_docking nodes |
 | 🩺 System / Diagnostics | `system` | `#F1F5F9` | `#64748B` | `#334155` | camrod\_system, camrod\_sensor\_kit |
 | 🖥️ UI / External actor | `ui` | `#FFF7ED` | `#F97316` | `#C2410C` | camrod\_ui, browser clients |
 | 📨 Interface | `iface` | `#F0FDFA` | `#14B8A6` | `#115E59` | avg\_msgs, shared interfaces |
@@ -104,7 +104,7 @@ classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B453
 classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
 classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
 classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
 classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
 classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
 classDef iface        fill:#F0FDFA,stroke:#14B8A6,stroke-width:1.5px,color:#115E59;

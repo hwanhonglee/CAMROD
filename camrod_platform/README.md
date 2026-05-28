@@ -512,4 +512,4 @@ Or ensure `bringup/launch_defaults.yaml` has `platform/cmd_vel_gate_enable: fals
 | camrod_localization | `../camrod_localization/README.md` |
 | camrod_sensor_kit | `../camrod_sensor_kit/README.md` |
 | camrod_system | `../camrod_system/README.md` |
-| camrod_parking | `../camrod_parking/README.md` |
+| camrod_docking | `../camrod_docking/README.md` |

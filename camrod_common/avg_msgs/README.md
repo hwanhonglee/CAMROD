@@ -64,7 +64,7 @@ graph TD
   AVG -. msg/srv types .-> SYS([🩺 camrod_system]):::system
   AVG -. msg/srv types .-> UI([🖥️ camrod_ui]):::ui
   AVG -. msg/srv types .-> SKIT([🔧 camrod_sensor_kit]):::system
-  AVG -. msg/srv types .-> PARK([🅿️ camrod_parking]):::parking
+  AVG -. msg/srv types .-> PARK([🅿️ camrod_docking]):::docking
 
   classDef iface        fill:#F0FDFA,stroke:#14B8A6,stroke-width:1.5px,color:#115E59;
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
@@ -73,7 +73,7 @@ graph TD
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
 ```
@@ -96,7 +96,7 @@ graph LR
   PLAT([🤖 camrod_platform]):::platform       -.-> AVG
   SYS([🩺 camrod_system]):::system            -.-> AVG
   UI([🖥️ camrod_ui]):::ui                    -.-> AVG
-  PARK([🅿️ camrod_parking]):::parking        -.-> AVG
+  PARK([🅿️ camrod_docking]):::docking        -.-> AVG
 
   AVG[(avg_msgs)]:::iface
 
@@ -107,7 +107,7 @@ graph LR
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
 ```
@@ -161,22 +161,22 @@ graph LR
 | 📨 `AvgRobotSpecifications` | msg | `wheelbase`, `track_width`, `length`, `width`, `height`, `wheel_radius`, `encoder_resolution`, `drive_type` | camrod_sensor_kit | camrod_platform |
 | 📨 `AvgSensorPose` | msg | `x`, `y`, `z`, `roll`, `pitch`, `yaw` (float64) | camrod_sensor_kit | camrod_platform, camrod_sensing |
 | 📨 `AvgTrackingError` | msg | `stamp`, `frame_id`; local and global `lateral_deviation`, `heading_error`, `distance_to_path` (with valid flags); active path source and active deviations | camrod_planning | camrod_platform, monitoring tools |
-| 📨 `AvgAprilTagDetectionArray` | msg | `header`, `AvgAprilTagDetection[] detections` | camrod_perception | camrod_parking, camrod_localization |
-| 📨 `AvgAprilTagDetection` | msg | `family`, `id`, `hamming`, `goodness`, `decision_margin`, `centre/corners` (AvgAprilTagPoint), `float64[9] homography` | camrod_perception | camrod_parking |
-| 📨 `AvgAprilTagPose` | msg | `header`, `family`, `id`, `tag_frame`, `PoseStamped pose` | camrod_perception | camrod_parking |
+| 📨 `AvgAprilTagDetectionArray` | msg | `header`, `AvgAprilTagDetection[] detections` | camrod_perception | camrod_docking, camrod_localization |
+| 📨 `AvgAprilTagDetection` | msg | `family`, `id`, `hamming`, `goodness`, `decision_margin`, `centre/corners` (AvgAprilTagPoint), `float64[9] homography` | camrod_perception | camrod_docking |
+| 📨 `AvgAprilTagPose` | msg | `header`, `family`, `id`, `tag_frame`, `PoseStamped pose` | camrod_perception | camrod_docking |
 | 📨 `AvgAprilTagPoint` | msg | `x`, `y` (float64) | (sub-message) | (sub-message) |
 
 ### 📞 Services (`srv/`)
 
 | Name | Kind | Request fields | Response fields | Producer (server) | Consumers (client) |
 |---|---|---|---|---|---|
-| 📞 `RequestGoalByKey` | srv | `string key` | `bool accepted`, `string message`, `geometry_msgs/PoseStamped goal_pose` | camrod_planning | camrod_ui, camrod_parking |
+| 📞 `RequestGoalByKey` | srv | `string key` | `bool accepted`, `string message`, `geometry_msgs/PoseStamped goal_pose` | camrod_planning | camrod_ui, camrod_docking |
 
 ---
 
 ## 🔢 Dependency Matrix
 
-| Interface | sensor_kit | map | sensing | localization | perception | planning | platform | system | ui | parking |
+| Interface | sensor_kit | map | sensing | localization | perception | planning | platform | system | ui | docking |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `ModuleState` | P | P | P | P | P | P | P | P+C | C | P |
 | `SystemStatus` | — | — | — | — | — | — | — | P | C | — |
@@ -304,5 +304,5 @@ If a node crashes with `rcutils_logging` type errors or `rmw` deserialization fa
 - [`../../camrod_platform/README.md`](../../camrod_platform/README.md)
 - [`../../camrod_system/README.md`](../../camrod_system/README.md)
 - [`../../camrod_ui/README.md`](../../camrod_ui/README.md)
-- [`../../camrod_parking/README.md`](../../camrod_parking/README.md)
+- [`../../camrod_docking/README.md`](../../camrod_docking/README.md)
 - [`../../PARAMETER_NAMING_STANDARD.md`](../../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
