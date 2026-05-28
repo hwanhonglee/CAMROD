@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -25,6 +26,14 @@
 
 namespace
 {
+std::string normalizeModeToken(std::string value)
+{
+  std::transform(
+    value.begin(), value.end(), value.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return value;
+}
+
 struct Point3
 {
   double x{0.0};
@@ -111,29 +120,19 @@ public:
     centerline_input_pose_topic_ = declare_parameter<std::string>(
       "centerline_input_pose_topic", "/localization/pose");
     centerline_output_pose_topic_ = declare_parameter<std::string>(
-      "centerline_output_pose_topic", "/localization/lanelet_pose");
+      "centerline_output_pose_topic", "/localization/centerline_pose");
     max_search_radius_ = declare_parameter<double>("max_search_radius", 30.0);
     longitudinal_stddev_ = declare_parameter<double>("longitudinal_stddev", 0.5);
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
     yaw_stddev_ = declare_parameter<double>("yaw_stddev", 0.2);
-    use_map_z_ = declare_parameter<bool>("use_map_z", true);
+    // HH_260526: Replace use_map_z/flatten_to_ground toggles with one explicit mode.
+    // centerline_z_mode options: input | map | ground.
+    centerline_z_mode_ = normalizeModeToken(
+      declare_parameter<std::string>("centerline_z_mode", "map"));
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);
-    flatten_to_ground_ = declare_parameter<bool>("flatten_to_ground", false);
     // HH_260413: Throttle heavy nearest-centerline search under high-rate localization input.
     centerline_min_update_period_s_ = declare_parameter<double>(
       "centerline_min_update_period_s", 0.05);
-    const double legacy_centerline_min_update_period_sec = declare_parameter<double>(
-      "centerline_min_update_period_sec", 0.05);
-    if (
-      std::abs(centerline_min_update_period_s_ - 0.05) < 1e-9 &&
-      std::abs(legacy_centerline_min_update_period_sec - 0.05) > 1e-9)
-    {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter 'centerline_min_update_period_sec' is deprecated. "
-        "Use 'centerline_min_update_period_s' instead.");
-      centerline_min_update_period_s_ = legacy_centerline_min_update_period_sec;
-    }
     centerline_min_displacement_m_ = declare_parameter<double>(
       "centerline_min_displacement_m", 0.05);
 
@@ -142,18 +141,23 @@ public:
       "drop_zone_pose_topic", "/localization/pose_with_covariance");
     match_radius_ = declare_parameter<double>("match_radius", 2.0);
     stable_count_ = declare_parameter<int>("stable_count", 10);
-    publish_initialpose3d_ = declare_parameter<bool>("publish_initialpose3d", true);
+    publish_drop_zone_initial_pose_ = declare_parameter<bool>("publish_drop_zone_initial_pose", true);
     publish_once_ = declare_parameter<bool>("publish_once", true);
-    use_corners_center_ = declare_parameter<bool>("use_corners_center", true);
-    use_zone_yaw_ = declare_parameter<bool>("use_zone_yaw", true);
-    initialpose3d_topic_ = declare_parameter<std::string>(
-      "initialpose3d_topic", "/localization/initialpose3d");
+    // HH_260526: Replace boolean toggles with source modes for readability.
+    // drop_zone_center_mode: yaml_center | corners_mean.
+    // drop_zone_yaw_source: input | zone.
+    drop_zone_center_mode_ = normalizeModeToken(
+      declare_parameter<std::string>("drop_zone_center_mode", "corners_mean"));
+    drop_zone_yaw_source_ = normalizeModeToken(
+      declare_parameter<std::string>("drop_zone_yaw_source", "zone"));
+    drop_zone_initial_pose_topic_ = declare_parameter<std::string>(
+      "drop_zone_initial_pose_topic", "/localization/drop_zone/initial_pose");
     status_topic_ = declare_parameter<std::string>(
-      "status_topic", "/localization/initial_match_ok");
+      "status_topic", "/localization/drop_zone/match_ok");
     match_id_topic_ = declare_parameter<std::string>(
-      "match_id_topic", "/localization/initial_match_id");
+      "match_id_topic", "/localization/drop_zone/match_id");
     match_distance_topic_ = declare_parameter<std::string>(
-      "match_distance_topic", "/localization/initial_match_distance");
+      "match_distance_topic", "/localization/drop_zone/match_distance");
 
     if (enable_centerline_snapper_) {
       if (!loadLaneletMap()) {
@@ -172,8 +176,8 @@ public:
       status_pub_ = create_publisher<avg_msgs::msg::Bool>(status_topic_, rclcpp::QoS(1));
       match_id_pub_ = create_publisher<avg_msgs::msg::String>(match_id_topic_, rclcpp::QoS(1));
       match_distance_pub_ = create_publisher<avg_msgs::msg::Float32>(match_distance_topic_, rclcpp::QoS(1));
-      initialpose3d_pub_ =
-        create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(initialpose3d_topic_, rclcpp::QoS(1));
+      drop_zone_initial_pose_pub_ =
+        create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(drop_zone_initial_pose_topic_, rclcpp::QoS(1));
       drop_zone_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
         drop_zone_pose_topic_, rclcpp::SensorDataQoS(),
         std::bind(&LocalizationMapHelperNode::onDropZonePose, this, std::placeholders::_1));
@@ -182,6 +186,32 @@ public:
     if (publish_localization_status_) {
       avg_localization_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(
         localization_status_topic_, rclcpp::QoS(10));
+    }
+
+    if (
+      centerline_z_mode_ != "input" &&
+      centerline_z_mode_ != "map" &&
+      centerline_z_mode_ != "ground")
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid centerline_z_mode='%s'. Falling back to 'map'.",
+        centerline_z_mode_.c_str());
+      centerline_z_mode_ = "map";
+    }
+    if (drop_zone_center_mode_ != "yaml_center" && drop_zone_center_mode_ != "corners_mean") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid drop_zone_center_mode='%s'. Falling back to 'corners_mean'.",
+        drop_zone_center_mode_.c_str());
+      drop_zone_center_mode_ = "corners_mean";
+    }
+    if (drop_zone_yaw_source_ != "input" && drop_zone_yaw_source_ != "zone") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid drop_zone_yaw_source='%s'. Falling back to 'zone'.",
+        drop_zone_yaw_source_.c_str());
+      drop_zone_yaw_source_ = "zone";
     }
   }
 
@@ -298,8 +328,10 @@ private:
     out.pose.pose.position.x = nearest.nearest_point.x();
     out.pose.pose.position.y = nearest.nearest_point.y();
 
-    double snapped_z = use_map_z_ ? (nearest.nearest_point.z() + map_z_offset_) : pz;
-    if (flatten_to_ground_) {
+    double snapped_z = pz;
+    if (centerline_z_mode_ == "map") {
+      snapped_z = nearest.nearest_point.z() + map_z_offset_;
+    } else if (centerline_z_mode_ == "ground") {
       snapped_z = map_ground_z_ + map_z_offset_;
     }
     out.pose.pose.position.z = snapped_z;
@@ -357,7 +389,7 @@ private:
           }
         }
 
-        if (use_corners_center_ && !zone.corners.empty()) {
+        if (drop_zone_center_mode_ == "corners_mean" && !zone.corners.empty()) {
           zone.center = averagePoints(zone.corners);
         }
         zones_.push_back(zone);
@@ -411,18 +443,19 @@ private:
     match_id_pub_->publish(id_msg);
     match_distance_pub_->publish(dist_msg);
 
-    if (ok_msg.data && publish_initialpose3d_) {
+    if (ok_msg.data && publish_drop_zone_initial_pose_) {
       if (!publish_once_ || !published_initialpose_) {
         avg_msgs::msg::PoseWithCovarianceStamped out;
         out.header = msg->header;
         out.pose.pose.position.x = best_zone->center.x;
         out.pose.pose.position.y = best_zone->center.y;
         out.pose.pose.position.z = best_zone->center.z;
-        out.pose.pose.orientation = use_zone_yaw_
+        out.pose.pose.orientation =
+          (drop_zone_yaw_source_ == "zone")
           ? yawToQuat(best_zone->yaw_deg * M_PI / 180.0)
           : msg->pose.pose.orientation;
         out.pose.covariance = msg->pose.covariance;
-        initialpose3d_pub_->publish(out);
+        drop_zone_initial_pose_pub_->publish(out);
         published_initialpose_ = true;
       }
     }
@@ -455,9 +488,8 @@ private:
   double longitudinal_stddev_{0.5};
   double lateral_stddev_{0.3};
   double yaw_stddev_{0.2};
-  bool use_map_z_{true};
+  std::string centerline_z_mode_{"map"};
   double map_z_offset_{0.0};
-  bool flatten_to_ground_{false};
   double centerline_min_update_period_s_{0.05};
   double centerline_min_displacement_m_{0.05};
   rclcpp::Time last_centerline_publish_stamp_{0, 0, RCL_ROS_TIME};
@@ -474,23 +506,23 @@ private:
   double match_radius_{2.0};
   int stable_count_{10};
   int stable_match_count_{0};
-  bool publish_initialpose3d_{true};
+  bool publish_drop_zone_initial_pose_{true};
   bool publish_once_{true};
-  bool use_corners_center_{true};
-  bool use_zone_yaw_{true};
+  std::string drop_zone_center_mode_{"corners_mean"};
+  std::string drop_zone_yaw_source_{"zone"};
   bool published_initialpose_{false};
   std::string last_match_id_;
   double last_match_distance_{std::numeric_limits<double>::infinity()};
   std::vector<DropZone> zones_;
 
-  std::string initialpose3d_topic_;
+  std::string drop_zone_initial_pose_topic_;
   std::string status_topic_;
   std::string match_id_topic_;
   std::string match_distance_topic_;
   rclcpp::Publisher<avg_msgs::msg::Bool>::SharedPtr status_pub_;
   rclcpp::Publisher<avg_msgs::msg::String>::SharedPtr match_id_pub_;
   rclcpp::Publisher<avg_msgs::msg::Float32>::SharedPtr match_distance_pub_;
-  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose3d_pub_;
+  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr drop_zone_initial_pose_pub_;
   rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr drop_zone_sub_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;

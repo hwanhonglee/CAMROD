@@ -87,26 +87,10 @@ class PlanningScenarioLeaderboard(Node):
         self.step_timeout_s = float(
             self.declare_parameter("step_timeout_s", 25.0).value
         )
-        step_timeout_sec_legacy = float(
-            self.declare_parameter("step_timeout_sec", 25.0).value
-        )
-        if self.step_timeout_s == 25.0 and step_timeout_sec_legacy != 25.0:
-            self.get_logger().warn(
-                "Parameter 'step_timeout_sec' is deprecated. Use 'step_timeout_s'."
-            )
-            self.step_timeout_s = step_timeout_sec_legacy
 
         self.wait_for_topics_s = float(
             self.declare_parameter("wait_for_topics_s", 30.0).value
         )
-        wait_for_topics_sec_legacy = float(
-            self.declare_parameter("wait_for_topics_sec", 30.0).value
-        )
-        if self.wait_for_topics_s == 30.0 and wait_for_topics_sec_legacy != 30.0:
-            self.get_logger().warn(
-                "Parameter 'wait_for_topics_sec' is deprecated. Use 'wait_for_topics_s'."
-            )
-            self.wait_for_topics_s = wait_for_topics_sec_legacy
         self.min_path_points = int(self.declare_parameter("min_path_points", 3).value)
         self.require_cmd_vel = bool(
             self.declare_parameter("require_cmd_vel", True).value

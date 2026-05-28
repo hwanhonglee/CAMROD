@@ -72,7 +72,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'params_file',
             default_value=pkg_share(
-                'camrod_platform', os.path.join('config', 'ranger_params.yaml')),
+                'camrod_platform', os.path.join('config', 'ranger_driver.yaml')),
             description='YAML parameter file for ranger_base and platform bridge nodes',
         ),
         OpaqueFunction(function=_launch_setup),

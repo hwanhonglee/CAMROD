@@ -158,18 +158,6 @@ void Lanelet2MapNode::loadParameters()
   align_z_to_ground_ = this->declare_parameter<bool>("align_z_to_ground", false);
   visualization_republish_period_s_ = this->declare_parameter<double>(
     "visualization_republish_period_s", 0.0);
-  const double legacy_visualization_republish_period_sec = this->declare_parameter<double>(
-    "visualization_republish_period_sec", 0.0);
-  if (
-    std::abs(visualization_republish_period_s_ - 0.0) < 1e-9 &&
-    std::abs(legacy_visualization_republish_period_sec - 0.0) > 1e-9)
-  {
-    RCLCPP_WARN(
-      get_logger(),
-      "Parameter 'visualization_republish_period_sec' is deprecated. "
-      "Use 'visualization_republish_period_s' instead.");
-    visualization_republish_period_s_ = legacy_visualization_republish_period_sec;
-  }
   publish_map_status_ = this->declare_parameter<bool>("publish_map_status", false);
   map_status_topic_ = this->declare_parameter<std::string>("map_status_topic", "/map/status");
 }

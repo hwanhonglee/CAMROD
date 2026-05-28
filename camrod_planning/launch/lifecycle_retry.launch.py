@@ -27,7 +27,7 @@ def generate_launch_description():
                 'retry_period_s': 0.5,
                 'startup_cooldown_s': 1.0,
                 'require_localization_ready': LaunchConfiguration('require_localization_ready'),
-                'localization_ready_topic': '/localization/initial_match_ok',
+                'localization_ready_topic': '/localization/drop_zone/match_ok',
                 'localization_pose_cov_topic': '/localization/pose_with_covariance',
                 'localization_pose_timeout_s': 1.0,
                 'max_position_variance': 9.0,

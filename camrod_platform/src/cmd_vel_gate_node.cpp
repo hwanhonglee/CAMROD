@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cctype>
 #include <memory>
 #include <string>
 
@@ -23,12 +25,62 @@ public:
       declare_parameter<std::string>("enable_topic", "/platform/drive_enable");
     engage_topic_ =
       declare_parameter<std::string>("engage_topic", "/planning/engage");
-    use_engage_topic_ =
-      declare_parameter<bool>("use_engage_topic", true);
+    // HH_260522: unified source selector for engage signal.
+    //   planning_engage/topic/enabled/on: subscribe
+    //   disabled/off/none: ignore
+    engage_source_mode_ =
+      declare_parameter<std::string>("engage_source_mode", "planning_engage");
+    std::transform(
+      engage_source_mode_.begin(),
+      engage_source_mode_.end(),
+      engage_source_mode_.begin(),
+      [](unsigned char c) {return static_cast<char>(std::tolower(c));});
+    if (
+      engage_source_mode_ == "disabled" || engage_source_mode_ == "off" ||
+      engage_source_mode_ == "none")
+    {
+      enable_engage_topic_sub_ = false;
+    } else if (
+      engage_source_mode_ == "planning_engage" || engage_source_mode_ == "topic" ||
+      engage_source_mode_ == "enabled" || engage_source_mode_ == "on")
+    {
+      enable_engage_topic_sub_ = true;
+    } else {
+      enable_engage_topic_sub_ = true;
+      RCLCPP_WARN(
+        get_logger(),
+        "Unknown engage_source_mode '%s'. Using planning_engage mode.",
+        engage_source_mode_.c_str());
+    }
     state_topic_ =
       declare_parameter<std::string>("state_topic", "/platform/drive_enabled");
-    use_estop_topic_ =
-      declare_parameter<bool>("use_estop_topic", true);
+    // HH_260522: unified source selector for e-stop signal.
+    //   platform_status/topic/enabled/on: subscribe
+    //   disabled/off/none: ignore
+    estop_source_mode_ =
+      declare_parameter<std::string>("estop_source_mode", "platform_status");
+    std::transform(
+      estop_source_mode_.begin(),
+      estop_source_mode_.end(),
+      estop_source_mode_.begin(),
+      [](unsigned char c) {return static_cast<char>(std::tolower(c));});
+    if (
+      estop_source_mode_ == "disabled" || estop_source_mode_ == "off" ||
+      estop_source_mode_ == "none")
+    {
+      enable_estop_topic_sub_ = false;
+    } else if (
+      estop_source_mode_ == "platform_status" || estop_source_mode_ == "topic" ||
+      estop_source_mode_ == "enabled" || estop_source_mode_ == "on")
+    {
+      enable_estop_topic_sub_ = true;
+    } else {
+      enable_estop_topic_sub_ = true;
+      RCLCPP_WARN(
+        get_logger(),
+        "Unknown estop_source_mode '%s'. Using platform_status mode.",
+        estop_source_mode_.c_str());
+    }
     estop_topic_ =
       declare_parameter<std::string>("estop_topic", "/platform/status/estop");
     allow_on_start_ =
@@ -48,12 +100,12 @@ public:
     sub_enable_ = create_subscription<std_msgs::msg::Bool>(
       enable_topic_, 10,
       std::bind(&CmdVelGateNode::on_enable, this, std::placeholders::_1));
-    if (use_engage_topic_) {
+    if (enable_engage_topic_sub_) {
       sub_engage_ = create_subscription<std_msgs::msg::Bool>(
         engage_topic_, 10,
         std::bind(&CmdVelGateNode::on_engage, this, std::placeholders::_1));
     }
-    if (use_estop_topic_) {
+    if (enable_estop_topic_sub_) {
       sub_estop_ = create_subscription<std_msgs::msg::Bool>(
         estop_topic_, 10,
         std::bind(&CmdVelGateNode::on_estop, this, std::placeholders::_1));
@@ -76,8 +128,8 @@ public:
       "estop_topic=%s allow_on_start=%s",
       input_cmd_vel_topic_.c_str(), output_cmd_vel_topic_.c_str(),
       enable_topic_.c_str(),
-      use_engage_topic_ ? engage_topic_.c_str() : "(disabled)",
-      use_estop_topic_ ? estop_topic_.c_str() : "(disabled)",
+      enable_engage_topic_sub_ ? engage_topic_.c_str() : "(disabled)",
+      enable_estop_topic_sub_ ? estop_topic_.c_str() : "(disabled)",
       allow_on_start_ ? "true" : "false");
   }
 
@@ -200,10 +252,12 @@ private:
   std::string output_cmd_vel_topic_;
   std::string enable_topic_;
   std::string engage_topic_;
+  std::string engage_source_mode_;
   std::string state_topic_;
+  std::string estop_source_mode_;
   std::string estop_topic_;
-  bool use_engage_topic_{true};
-  bool use_estop_topic_{true};
+  bool enable_engage_topic_sub_{true};
+  bool enable_estop_topic_sub_{true};
   bool allow_on_start_{false};
   bool publish_zero_when_blocked_{true};
   bool enabled_{false};
@@ -228,4 +282,3 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
-

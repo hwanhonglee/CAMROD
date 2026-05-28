@@ -39,35 +39,28 @@ public:
     max_cluster_size_ = this->declare_parameter<int>(
       "max_cluster_size", kMaxClusterSizeDefault);
 
-    // HH_260406: Backward compatibility for legacy parameter names.
-    const double legacy_eps = this->declare_parameter<double>("eps", kClusterToleranceDefault);
-    const int legacy_min_pts = this->declare_parameter<int>("min_pts", kMinClusterSizeDefault);
-    const int legacy_min_cluster_points = this->declare_parameter<int>(
-      "min_cluster_points", kMinClusterSizeDefault);
-    const int legacy_max_points = this->declare_parameter<int>(
-      "max_points", kMaxClusterSizeDefault);
-
+    // HH_260522: unified ROI filter selector.
+    //   box/enabled/on: apply axis-aligned ROI bounds
+    //   disabled/off/none: skip ROI bounds
+    const std::string roi_filter_mode =
+      this->declare_parameter<std::string>("roi_filter_mode", "box");
     if (
-      std::abs(cluster_tolerance_ - kClusterToleranceDefault) < 1e-9 &&
-      std::abs(legacy_eps - kClusterToleranceDefault) > 1e-9)
+      roi_filter_mode == "disabled" || roi_filter_mode == "off" ||
+      roi_filter_mode == "none")
     {
-      cluster_tolerance_ = legacy_eps;
-    }
-    if (min_cluster_size_ == kMinClusterSizeDefault) {
-      if (legacy_min_cluster_points != kMinClusterSizeDefault) {
-        min_cluster_size_ = legacy_min_cluster_points;
-      } else if (legacy_min_pts != kMinClusterSizeDefault) {
-        min_cluster_size_ = legacy_min_pts;
-      }
-    }
-    if (
-      max_cluster_size_ == kMaxClusterSizeDefault &&
-      legacy_max_points != kMaxClusterSizeDefault)
+      roi_filter_enabled_ = false;
+    } else if (
+      roi_filter_mode == "box" || roi_filter_mode == "enabled" ||
+      roi_filter_mode == "on")
     {
-      max_cluster_size_ = legacy_max_points;
+      roi_filter_enabled_ = true;
+    } else {
+      roi_filter_enabled_ = true;
+      RCLCPP_WARN(
+        this->get_logger(),
+        "Unknown roi_filter_mode '%s'. Using default 'box' mode.",
+        roi_filter_mode.c_str());
     }
-
-    use_box_ = this->declare_parameter<bool>("use_box", true);
     x_min_   = this->declare_parameter<double>("x_min", 0.0);
     x_max_   = this->declare_parameter<double>("x_max", 5.0);
     y_min_   = this->declare_parameter<double>("y_min", -3.0);
@@ -76,17 +69,6 @@ public:
     z_max_   = this->declare_parameter<double>("z_max",  5.0);
 
     marker_lifetime_s_ = this->declare_parameter<double>("marker_lifetime_s", 0.15);
-    const double legacy_marker_lifetime_sec =
-      this->declare_parameter<double>("marker_lifetime_sec", 0.15);
-    if (
-      std::abs(marker_lifetime_s_ - 0.15) < 1e-9 &&
-      std::abs(legacy_marker_lifetime_sec - 0.15) > 1e-9)
-    {
-      RCLCPP_WARN(
-        this->get_logger(),
-        "Parameter 'marker_lifetime_sec' is deprecated. Use 'marker_lifetime_s' instead.");
-      marker_lifetime_s_ = legacy_marker_lifetime_sec;
-    }
     draw_text_ = this->declare_parameter<bool>("draw_text", true);
 
     // HH_260326: Use avg_msgs aliases so perception interfaces stay consistent.
@@ -118,7 +100,7 @@ private:
     {
       if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) continue;
 
-      if (use_box_)
+      if (roi_filter_enabled_)
       {
         if (p.x < x_min_ || p.x > x_max_) continue;
         if (p.y < y_min_ || p.y > y_max_) continue;
@@ -283,7 +265,7 @@ private:
   int min_cluster_size_;
   int max_cluster_size_;
 
-  bool use_box_;
+  bool roi_filter_enabled_{true};
   double x_min_, x_max_, y_min_, y_max_, z_min_, z_max_;
 
   double marker_lifetime_s_;

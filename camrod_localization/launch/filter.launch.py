@@ -18,6 +18,9 @@ def generate_launch_description():
     pose_selector_param_file = os.path.join(
         localization_share, "config", "filter", "pose_selector.yaml"
     )
+    gnss_reattach_param_file = os.path.join(
+        localization_share, "config", "filter", "gnss_reattach.yaml"
+    )
 
     return LaunchDescription(
         [
@@ -28,14 +31,10 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "filter_type",
-                default_value="auto",
-                description="Localization filter type: auto|ekf|eskf",
+                default_value="ekf",
+                description="Localization filter type: ekf|eskf",
             ),
-            DeclareLaunchArgument(
-                "use_eskf",
-                default_value="true",
-                description="Legacy selector used when filter_type=auto",
-            ),
+            # HH_260522: remove legacy dual-toggle behavior and keep explicit branch selection only.
             DeclareLaunchArgument(
                 "ekf_params_file",
                 default_value=ekf_param_file,
@@ -51,7 +50,12 @@ def generate_launch_description():
                 default_value=pose_selector_param_file,
                 description="Pose selector parameter file",
             ),
-            # Launch EKF when filter_type=ekf, or when filter_type=auto and use_eskf=false.
+            DeclareLaunchArgument(
+                "gnss_reattach_params_file",
+                default_value=gnss_reattach_param_file,
+                description="GNSS reattach helper parameter file",
+            ),
+            # HH_260522: launch EKF only when filter_type=ekf.
             Node(
                 package="robot_localization",
                 executable="ekf_node",
@@ -59,50 +63,34 @@ def generate_launch_description():
                 namespace=LaunchConfiguration("module_namespace"),
                 output="screen",
                 parameters=[LaunchConfiguration("ekf_params_file")],
+                # HH_260527: Feed pose_selector primary input directly from EKF output.
+                remappings=[
+                    ("odometry/filtered", "/localization/primary/odometry"),
+                ],
                 condition=IfCondition(
                     PythonExpression(
                         [
-                            "(",
                             "'",
                             LaunchConfiguration("filter_type"),
                             "' == 'ekf'",
-                            ") or (",
-                            "'",
-                            LaunchConfiguration("filter_type"),
-                            "' == 'auto'",
-                            " and ",
-                            "'",
-                            LaunchConfiguration("use_eskf"),
-                            "' != 'true'",
-                            ")",
                         ]
                     )
                 ),
             ),
-            # Launch ESKF when filter_type=eskf, or when filter_type=auto and use_eskf=true.
+            # HH_260522: launch ESKF only when filter_type=eskf.
             Node(
                 package="camrod_localization",
-                executable="localization_eskf_node",
-                name="eskf_filter",
+                executable="eskf",
+                name="eskf",
                 namespace=LaunchConfiguration("module_namespace"),
                 output="screen",
                 parameters=[LaunchConfiguration("eskf_params_file")],
                 condition=IfCondition(
                     PythonExpression(
                         [
-                            "(",
                             "'",
                             LaunchConfiguration("filter_type"),
                             "' == 'eskf'",
-                            ") or (",
-                            "'",
-                            LaunchConfiguration("filter_type"),
-                            "' == 'auto'",
-                            " and ",
-                            "'",
-                            LaunchConfiguration("use_eskf"),
-                            "' == 'true'",
-                            ")",
                         ]
                     )
                 ),
@@ -115,6 +103,13 @@ def generate_launch_description():
                 output="screen",
                 parameters=[LaunchConfiguration("pose_selector_params_file")],
             ),
+            Node(
+                package="camrod_localization",
+                executable="localization_gnss_reattach_node",
+                name="gnss_reattach",
+                namespace=LaunchConfiguration("module_namespace"),
+                output="screen",
+                parameters=[LaunchConfiguration("gnss_reattach_params_file")],
+            ),
         ]
     )
-

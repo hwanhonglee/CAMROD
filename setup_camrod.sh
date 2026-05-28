@@ -85,6 +85,48 @@ clone_ext() {
   fi
 }
 
+# HH_260522: camrod_sensing camera component needs nvjpeg.h + libnvjpeg.so.
+# Some Jetson images include runtime only; install matching dev packages when needed.
+has_nvjpeg_header() {
+  [[ -f /usr/include/nvjpeg.h ]] || \
+  [[ -f /usr/local/cuda/include/nvjpeg.h ]] || \
+  [[ -f /usr/local/cuda/targets/aarch64-linux/include/nvjpeg.h ]]
+}
+
+has_nvjpeg_library() {
+  ldconfig -p 2>/dev/null | grep -q "libnvjpeg\\.so"
+}
+
+apt_has_candidate() {
+  local pkg="$1" cand
+  cand="$(apt-cache policy "${pkg}" 2>/dev/null | awk '/Candidate:/ {print $2; exit}')"
+  [[ -n "${cand}" && "${cand}" != "(none)" ]]
+}
+
+select_nvjpeg_packages() {
+  local pair dev rt
+  local pairs=(
+    "libnvjpeg-dev-12-6 libnvjpeg-12-6"
+    "libnvjpeg-dev-12-5 libnvjpeg-12-5"
+    "libnvjpeg-dev-12-4 libnvjpeg-12-4"
+    "libnvjpeg-dev-12-3 libnvjpeg-12-3"
+    "libnvjpeg-dev libnvjpeg12"
+  )
+  for pair in "${pairs[@]}"; do
+    dev="${pair%% *}"
+    rt="${pair#* }"
+    if apt_has_candidate "${dev}"; then
+      if apt_has_candidate "${rt}"; then
+        echo "${dev} ${rt}"
+      else
+        echo "${dev}"
+      fi
+      return 0
+    fi
+  done
+  return 1
+}
+
 # ── System packages required before rosdep ──────────────────────────────────
 # Keep critical runtime deps here so a fresh machine can launch core stacks
 # even when rosdep is skipped or partially unresolved.
@@ -93,6 +135,49 @@ REQUIRED_SYS_PKGS=(
   python3-fastapi
   python3-uvicorn
 )
+
+# HH_260528: camrod_docking depends on Isaac ROS packages (GPU-accelerated AprilTag).
+# These are NOT available via apt on standard Ubuntu; they require the NVIDIA Isaac ROS
+# apt repository to be configured first.  On a fresh Jetson / NVIDIA machine:
+#
+#   Step 1 — Add Isaac ROS apt repo (one-time):
+#     sudo apt-get install -y curl
+#     curl -sSL https://isaac.download.nvidia.com/isaac-ros/repos.key | \
+#       sudo apt-key add -
+#     echo "deb https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release-3.2" | \
+#       sudo tee /etc/apt/sources.list.d/isaac-ros.list
+#     sudo apt-get update
+#
+#   Step 2 — Install Isaac ROS runtime packages:
+#     sudo apt-get install -y \
+#       ros-humble-isaac-ros-common \
+#       ros-humble-isaac-ros-nitros \
+#       ros-humble-isaac-ros-apriltag \
+#       ros-humble-isaac-ros-image-pipeline
+#
+#   If the apt repo is not available (e.g. x86_64 dev machine without JetPack),
+#   colcon will still build all other packages; only camrod_docking will fail to
+#   find isaac_ros_apriltag_interfaces.  In that case build with:
+#     ./colcon_build.sh --packages-skip camrod_docking
+
+# HH_260522: Add nvjpeg packages only when camrod_sensing exists and nvjpeg is missing.
+if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
+  _arch="$(uname -m)"
+  if [[ "${_arch}" == "aarch64" || "${_arch}" == "arm64" ]]; then
+    if ! has_nvjpeg_header || ! has_nvjpeg_library; then
+      if _nvjpeg_pkgs="$(select_nvjpeg_packages)"; then
+        # shellcheck disable=SC2206
+        _nvjpeg_arr=(${_nvjpeg_pkgs})
+        REQUIRED_SYS_PKGS+=("${_nvjpeg_arr[@]}")
+        log "nvjpeg missing; queued packages: ${_nvjpeg_pkgs}"
+      else
+        log "WARN: nvjpeg missing but no apt candidate package found (header/lib may stay unresolved)"
+      fi
+    fi
+  fi
+  unset _arch _nvjpeg_pkgs _nvjpeg_arr
+fi
+
 _missing=()
 for _pkg in "${REQUIRED_SYS_PKGS[@]}"; do
   dpkg -l "${_pkg}" 2>/dev/null | grep -q "^ii" || _missing+=("${_pkg}")
@@ -103,6 +188,15 @@ if [[ ${#_missing[@]} -gt 0 ]]; then
     log "WARN: apt-get install failed — build may fail if packages are absent"
 fi
 unset _pkg _missing
+
+if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
+  if ! has_nvjpeg_header; then
+    log "WARN: nvjpeg header (nvjpeg.h) is still missing after setup"
+  fi
+  if ! has_nvjpeg_library; then
+    log "WARN: nvjpeg library (libnvjpeg.so) is still missing after setup"
+  fi
+fi
 
 # ── External repositories ────────────────────────────────────────────────────
 log "bootstrapping external repositories (workspace: ${WS_ROOT})"
@@ -117,9 +211,18 @@ clone_ext "https://github.com/ros-perception/laser_geometry.git"             "ro
 # HH_260428: Agilex platform drivers — set CAMROD_AGILEX_BASE to use custom forks.
 clone_ext "${AGILEX_BASE}/ugv_sdk.git"                                        "main"         "camrod_platform/external/ugv_sdk"
 clone_ext "${AGILEX_BASE}/ranger_ros2.git"                                    "humble"       "camrod_platform/external/ranger_ros2"
-clone_ext "https://github.com/open-navigation/opennav_docking.git"           "0.0.2"        "camrod_parking/external/opennav_docking"
-clone_ext "https://github.com/christianrauch/apriltag_ros.git"               "3.3.0"        "camrod_parking/external/apriltag_ros"
-clone_ext "https://github.com/christianrauch/apriltag_msgs.git"              "2.0.1"        "camrod_parking/external/apriltag_msgs"
+# HH_260528: Replaced camrod_parking external repos with camrod_docking equivalents.
+# camrod_docking uses Isaac ROS AprilTag (GPU-accelerated) instead of cpu-based apriltag_ros.
+# opennav_docking/opennav_docking_core/opennav_docking_msgs/opencv4_vendor/yaml_cpp_vendor
+# are custom forks embedded in the CAMROD repo itself (camrod_docking/external/) and do not
+# need separate clone_ext calls — they are already present after git clone.
+clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git"         "release-3.2"  "camrod_docking/external/isaac_ros_common"
+clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros.git"         "release-3.2"  "camrod_docking/external/isaac_ros_nitros"
+clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_apriltag.git"       "release-3.2"  "camrod_docking/external/isaac_ros_apriltag"
+clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_pipeline.git" "release-3.2"  "camrod_docking/external/isaac_ros_image_pipeline"
+clone_ext "https://github.com/ros-perception/image_pipeline.git"             "humble"       "camrod_docking/external/image_pipeline"
+clone_ext "https://github.com/osrf/negotiated.git"                           "master"       "camrod_docking/external/negotiated"
+clone_ext "https://github.com/ros-perception/vision_opencv.git"              "3.2.1"        "camrod_docking/external/vision_opencv"
 
 # ── VIO bridge SDK installers (disable/vio_bridge — not built by default) ────
 # HH_260428: These large SDK binaries are NOT stored in git. Download manually

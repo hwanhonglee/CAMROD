@@ -90,10 +90,6 @@ std::string normalizeWheelInputType(std::string type)
   std::transform(
     type.begin(), type.end(), type.begin(),
     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  // HH_260410: Keep backward compatibility for legacy "odom" alias.
-  if (type == "odom") {
-    return "avg_odom";
-  }
   return type;
 }
 
@@ -109,7 +105,6 @@ public:
   : Node("localization_input_adapter")
   {
     enable_navsat_to_pose_ = declare_parameter<bool>("enable_navsat_to_pose", true);
-    enable_pose_cov_bridge_ = declare_parameter<bool>("enable_pose_cov_bridge", true);
     enable_odometry_to_pose_ = declare_parameter<bool>("enable_odometry_to_pose", true);
     enable_wheel_odometry_bridge_ = declare_parameter<bool>("enable_wheel_odometry_bridge", true);
 
@@ -120,17 +115,28 @@ public:
 
     navsat_topic_ = declare_parameter<std::string>(
       "navsat_topic", "/sensing/gnss/ublox_gps_node/fix");
-    raw_pose_topic_ = declare_parameter<std::string>("raw_pose_topic", "");
+    // HH_260527: Optional metric pose inputs.
+    // UTM/MGRS are both treated as metric XY sources and shifted by configured offsets.
     utm_pose_topic_ = declare_parameter<std::string>("utm_pose_topic", "");
+    mgrs_pose_topic_ = declare_parameter<std::string>("mgrs_pose_topic", "");
     gnss_pose_topic_ = declare_parameter<std::string>("gnss_pose_topic", "/sensing/gnss/pose");
     gnss_pose_cov_topic_ = declare_parameter<std::string>(
       "gnss_pose_cov_topic", "/sensing/gnss/pose_with_covariance");
     map_frame_id_ = declare_parameter<std::string>("map_frame_id", "map");
     publish_gnss_covariance_ = declare_parameter<bool>("publish_gnss_covariance", true);
-    // HH_260415: Clamp NavSat covariance so ESKF does not over-trust noisy GNSS bursts.
-    use_navsat_position_covariance_ = declare_parameter<bool>("use_navsat_position_covariance", true);
+    // HH_260526: Replace use_navsat_position_covariance toggle with explicit source mode.
+    // navsat_covariance_source options: navsat | fixed.
+    navsat_covariance_source_ = normalizeWheelInputType(
+      declare_parameter<std::string>("navsat_covariance_source", "navsat"));
     gnss_covariance_floor_xy_ = declare_parameter<double>("gnss_covariance_floor_xy", 0.25);
     gnss_covariance_floor_z_ = declare_parameter<double>("gnss_covariance_floor_z", 1.0);
+    if (navsat_covariance_source_ != "navsat" && navsat_covariance_source_ != "fixed") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid navsat_covariance_source='%s'. Falling back to 'navsat'.",
+        navsat_covariance_source_.c_str());
+      navsat_covariance_source_ = "navsat";
+    }
 
     offset_lat_deg_ = declare_parameter<double>("offset_lat", 0.0);
     offset_lon_deg_ = declare_parameter<double>("offset_lon", 0.0);
@@ -142,16 +148,14 @@ public:
     offset_utm_easting_ = declare_parameter<double>("offset_utm_easting", 0.0);
     offset_utm_northing_ = declare_parameter<double>("offset_utm_northing", 0.0);
     offset_utm_alt_ = declare_parameter<double>("offset_utm_alt", 0.0);
+    offset_mgrs_easting_ = declare_parameter<double>("offset_mgrs_easting", 0.0);
+    offset_mgrs_northing_ = declare_parameter<double>("offset_mgrs_northing", 0.0);
+    offset_mgrs_alt_ = declare_parameter<double>("offset_mgrs_alt", 0.0);
 
     max_position_jump_m_ = declare_parameter<double>("max_position_jump_m", 8.0);
     jump_reject_max_speed_mps_ = declare_parameter<double>("jump_reject_max_speed_mps", 20.0);
-    jump_reject_reset_s_ = declareDurationWithLegacy(
-      "jump_reject_reset_s", "jump_reject_reset_sec", 2.0);
+    jump_reject_reset_s_ = declare_parameter<double>("jump_reject_reset_s", 2.0);
 
-    pose_cov_input_topic_ = declare_parameter<std::string>(
-      "pose_cov_input_topic", "/sensing/gnss/pose");
-    pose_cov_output_topic_ = declare_parameter<std::string>(
-      "pose_cov_output_topic", "/sensing/gnss/pose_with_covariance");
     pose_cov_diag_ = declare_parameter<std::vector<double>>(
       "pose_covariance_diagonal",
       std::vector<double>{1.0, 1.0, 1.0, 999.0, 999.0, 1.0});
@@ -182,8 +186,7 @@ public:
       "wheel_fallback_input_topic", "/rmp401/odom");
     wheel_fallback_input_type_ = normalizeWheelInputType(
       declare_parameter<std::string>("wheel_fallback_input_type", "nav_odom"));
-    wheel_primary_timeout_s_ = declareDurationWithLegacy(
-      "wheel_primary_timeout_s", "wheel_primary_timeout_sec", 0.7);
+    wheel_primary_timeout_s_ = declare_parameter<double>("wheel_primary_timeout_s", 0.7);
 
     yaw_offset_rad_ = deg2rad(yaw_offset_deg_);
     offset_lat_rad_ = deg2rad(offset_lat_deg_);
@@ -202,11 +205,6 @@ public:
         gnss_pose_cov_pub_ =
           create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(gnss_pose_cov_topic_, rclcpp::QoS(10));
       }
-    }
-
-    if (enable_pose_cov_bridge_) {
-      pose_cov_pub_ =
-        create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(pose_cov_output_topic_, rclcpp::QoS(10));
     }
 
     if (enable_odometry_to_pose_) {
@@ -235,23 +233,16 @@ public:
         navsat_topic_, rclcpp::SensorDataQoS(),
         std::bind(&LocalizationInputAdapterNode::onNavSatFix, this, _1));
 
-      if (!raw_pose_topic_.empty()) {
-        raw_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
-          raw_pose_topic_, rclcpp::QoS(10),
-          std::bind(&LocalizationInputAdapterNode::onRawPose, this, _1));
-      }
-
       if (!utm_pose_topic_.empty()) {
         utm_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
           utm_pose_topic_, rclcpp::QoS(10),
           std::bind(&LocalizationInputAdapterNode::onUtmPose, this, _1));
       }
-    }
-
-    if (enable_pose_cov_bridge_) {
-      pose_cov_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
-        pose_cov_input_topic_, rclcpp::SensorDataQoS(),
-        std::bind(&LocalizationInputAdapterNode::onPoseForCov, this, _1));
+      if (!mgrs_pose_topic_.empty()) {
+        mgrs_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+          mgrs_pose_topic_, rclcpp::QoS(10),
+          std::bind(&LocalizationInputAdapterNode::onMgrsPose, this, _1));
+      }
     }
 
     if (enable_odometry_to_pose_) {
@@ -313,26 +304,6 @@ public:
   }
 
 private:
-  double declareDurationWithLegacy(
-    const std::string & canonical_name,
-    const std::string & legacy_name,
-    const double default_value)
-  {
-    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
-    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
-    if (std::abs(canonical_value - default_value) > 1e-9) {
-      return canonical_value;
-    }
-    if (std::abs(legacy_value - default_value) > 1e-9) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter '%s' is deprecated. Use '%s' instead.",
-        legacy_name.c_str(), canonical_name.c_str());
-      return legacy_value;
-    }
-    return canonical_value;
-  }
-
   enum class WheelSource
   {
     kNone,
@@ -392,7 +363,7 @@ private:
       pose_cov.pose.pose = pose.pose;
       pose_cov.pose.covariance = pose_covariance_;
 
-      if (use_navsat_position_covariance_ && msg->position_covariance_type != 0) {
+      if (navsat_covariance_source_ == "navsat" && msg->position_covariance_type != 0) {
         // HH_260415: Protect filter stability by applying minimum GNSS covariance floors.
         const double nav_x = msg->position_covariance[0];
         const double nav_y = msg->position_covariance[4];
@@ -418,36 +389,21 @@ private:
     publishLocalizationStatus("navsat_to_pose", msg->header.stamp);
   }
 
-  void onRawPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void publishMetricPose(
+    const avg_msgs::msg::PoseStamped::ConstSharedPtr msg,
+    double offset_easting,
+    double offset_northing,
+    double offset_alt,
+    const std::string & status_source)
   {
     if (!enable_navsat_to_pose_) {
       return;
     }
     avg_msgs::msg::PoseStamped out = *msg;
     out.header.frame_id = map_frame_id_;
-    gnss_pose_pub_->publish(out);
-
-    if (publish_gnss_covariance_) {
-      avg_msgs::msg::PoseWithCovarianceStamped cov;
-      cov.header = out.header;
-      cov.pose.pose = out.pose;
-      cov.pose.covariance = pose_covariance_;
-      gnss_pose_cov_pub_->publish(cov);
-    }
-    publishLocalizationStatus("raw_pose_bridge", msg->header.stamp);
-  }
-
-  void onUtmPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
-  {
-    if (!enable_navsat_to_pose_) {
-      return;
-    }
-
-    avg_msgs::msg::PoseStamped out = *msg;
-    out.header.frame_id = map_frame_id_;
-    out.pose.position.x -= offset_utm_easting_;
-    out.pose.position.y -= offset_utm_northing_;
-    out.pose.position.z -= offset_utm_alt_;
+    out.pose.position.x -= offset_easting;
+    out.pose.position.y -= offset_northing;
+    out.pose.position.z -= offset_alt;
 
     if (rotate_latlon_xy_by_yaw_offset_) {
       out.pose.position = rotatePointXY(out.pose.position, yaw_offset_rad_);
@@ -462,17 +418,27 @@ private:
       cov.pose.covariance = pose_covariance_;
       gnss_pose_cov_pub_->publish(cov);
     }
-    publishLocalizationStatus("utm_pose_bridge", msg->header.stamp);
+    publishLocalizationStatus(status_source, msg->header.stamp);
   }
 
-  void onPoseForCov(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onUtmPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
-    avg_msgs::msg::PoseWithCovarianceStamped out;
-    out.header = msg->header;
-    out.pose.pose = msg->pose;
-    out.pose.covariance = pose_covariance_;
-    pose_cov_pub_->publish(out);
-    publishLocalizationStatus("pose_cov_bridge", msg->header.stamp);
+    publishMetricPose(
+      msg,
+      offset_utm_easting_,
+      offset_utm_northing_,
+      offset_utm_alt_,
+      "utm_pose_bridge");
+  }
+
+  void onMgrsPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  {
+    publishMetricPose(
+      msg,
+      offset_mgrs_easting_,
+      offset_mgrs_northing_,
+      offset_mgrs_alt_,
+      "mgrs_pose_bridge");
   }
 
   void onOdom(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
@@ -671,7 +637,6 @@ private:
   }
 
   bool enable_navsat_to_pose_{true};
-  bool enable_pose_cov_bridge_{true};
   bool enable_odometry_to_pose_{true};
   bool enable_wheel_odometry_bridge_{true};
   bool publish_localization_status_{false};
@@ -679,10 +644,10 @@ private:
   std::string localization_status_topic_;
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
 
-  std::string navsat_topic_, raw_pose_topic_, utm_pose_topic_;
+  std::string navsat_topic_, utm_pose_topic_, mgrs_pose_topic_;
   std::string gnss_pose_topic_, gnss_pose_cov_topic_, map_frame_id_;
   bool publish_gnss_covariance_{true};
-  bool use_navsat_position_covariance_{true};
+  std::string navsat_covariance_source_{"navsat"};
   double gnss_covariance_floor_xy_{0.25};
   double gnss_covariance_floor_z_{1.0};
 
@@ -696,6 +661,9 @@ private:
   double offset_utm_easting_{0.0};
   double offset_utm_northing_{0.0};
   double offset_utm_alt_{0.0};
+  double offset_mgrs_easting_{0.0};
+  double offset_mgrs_northing_{0.0};
+  double offset_mgrs_alt_{0.0};
 
   double offset_lat_rad_{0.0};
   double offset_lon_rad_{0.0};
@@ -715,12 +683,8 @@ private:
   rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr gnss_pose_pub_;
   rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr gnss_pose_cov_pub_;
   rclcpp::Subscription<avg_msgs::msg::NavSatFix>::SharedPtr navsat_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr raw_pose_sub_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr utm_pose_sub_;
-
-  std::string pose_cov_input_topic_, pose_cov_output_topic_;
-  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr pose_cov_sub_;
+  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr mgrs_pose_sub_;
 
   std::string odom_input_topic_, odom_pose_topic_, odom_pose_cov_topic_, odom_output_frame_id_;
   rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr odom_pose_pub_;

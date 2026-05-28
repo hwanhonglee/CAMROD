@@ -8,42 +8,49 @@
     # --------------------------------------------------------------------------
     enable_navsat_to_pose: true
     navsat_topic: "/sensing/gnss/ublox_gps_node/fix"
-    raw_pose_topic: ""
+    # HH_260527: Optional metric pose sources (already in meter XY frame).
+    # Leave empty when using only NavSatFix.
     utm_pose_topic: ""
+    mgrs_pose_topic: ""
     gnss_pose_topic: "/sensing/gnss/pose"
     gnss_pose_cov_topic: "/sensing/gnss/pose_with_covariance"
     map_frame_id: "map"
     publish_gnss_covariance: true
-    # HH_260415: Use NavSat covariance but clamp to floor values to reduce ESKF GNSS reject bursts.
-    use_navsat_position_covariance: true
-    # HH_260415: RTK environment keeps very small covariance; floor is only a numerical guard.
-    gnss_covariance_floor_xy: 1.0e-6
-    gnss_covariance_floor_z: 1.0e-4
+    # HH_260527: navsat_covariance_source options:
+    #   navsat: use NavSatFix covariance (with floor clamp)
+    #   fixed: use pose_covariance_diagonal fixed values
+    navsat_covariance_source: navsat
+    # RTK fixed covariance is ~0.001 m² (1 mm²). Floor at 0.1 m² (≈32 cm) balances:
+    #   - Startup convergence: with initial_estimate_covariance[x,y]=5.0, K_init≈0.98 (fast attachment)
+    #   - Steady-state stability: with Q_xx=0.01, P_ss≈0.037, K_ss≈0.27 (27% GNSS influence per epoch)
+    #   - A single bad RTK epoch (0.5m error) shifts EKF by 0.5×0.27 = 0.14 m → acceptable.
+    # Pairs with pose0_rejection_threshold=3.0 in ekf.yaml (rejects jumps > 3σ ≈ 1.0 m from predicted).
+    # HH_260526: tuned 0.04→0.2→0.1 (0.04 caused instability, 0.2 caused slow startup convergence).
+    gnss_covariance_floor_xy: 0.1
+    gnss_covariance_floor_z: 0.25
 
     max_position_jump_m: 8.0
     jump_reject_max_speed_mps: 20.0
     jump_reject_reset_s: 2.0
 
-    # --------------------------------------------------------------------------
-    # Pose -> PoseWithCovariance
-    # --------------------------------------------------------------------------
-    # HH_260422: Disabled — navsat_to_pose already publishes PoseWithCov with
-    # proper NavSatFix covariance to /sensing/gnss/pose_with_covariance.
-    # Enabling this bridge alongside navsat_to_pose overwrites the correct
-    # covariance (0.08 trace) with this fixed diagonal (2.0 trace), causing
-    # localization_monitor's gnss_cov_trace_fail (0.3) to reject GNSS.
-    enable_pose_cov_bridge: false
-    pose_cov_input_topic: "/sensing/gnss/pose"
-    pose_cov_output_topic: "/sensing/gnss/pose_with_covariance"
+    # HH_260527: Metric source offsets (subtracted from incoming XY/Z).
+    offset_utm_easting: 0.0
+    offset_utm_northing: 0.0
+    offset_utm_alt: 0.0
+    offset_mgrs_easting: 0.0
+    offset_mgrs_northing: 0.0
+    offset_mgrs_alt: 0.0
+
     pose_covariance_diagonal: [1.0, 1.0, 1.0, 999.0, 999.0, 1.0]
 
     # --------------------------------------------------------------------------
     # Odometry -> Pose / PoseWithCovariance
     # --------------------------------------------------------------------------
     enable_odometry_to_pose: true
-    odom_input_topic: "/localization/odometry/filtered"
-    odom_pose_topic: "/localization/pose"
-    odom_pose_cov_topic: "/localization/pose_with_covariance"
+    # HH_260527: Bridge PRIMARY filter odometry to PRIMARY pose topics for pose_selector input.
+    odom_input_topic: "/localization/primary/odometry"
+    odom_pose_topic: "/localization/primary/pose"
+    odom_pose_cov_topic: "/localization/primary/pose_with_covariance"
     # HH_260410: Publish fused localization pose in map frame for map-based planning.
     odom_output_frame_id: "map"
 
@@ -53,9 +60,17 @@
     enable_wheel_odometry_bridge: true
     # HH_260410: Primary wheel source is platform status odometry.
     wheel_input_topic: "/platform/status/odometry"
+    # HH_260527: wheel_input_type options:
+    #   nav_odom: nav_msgs/Odometry input
+    #   avg_odom: avg_msgs/Odometry input
+    #   twist: avg_msgs/TwistStamped input
     wheel_input_type: "nav_odom"
     # HH_260410: /rmp401/odom is fallback-only when primary stream is stale/missing.
     wheel_fallback_input_topic: "/rmp401/odom"
+    # HH_260527: wheel_fallback_input_type options:
+    #   nav_odom: nav_msgs/Odometry input
+    #   avg_odom: avg_msgs/Odometry input
+    #   twist: avg_msgs/TwistStamped input
     wheel_fallback_input_type: "nav_odom"
     wheel_primary_timeout_s: 0.7
     # HH_260410: Unified wheel odometry output consumed by EKF/ESKF.

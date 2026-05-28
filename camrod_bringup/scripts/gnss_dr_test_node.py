@@ -64,20 +64,8 @@ class GnssDrTestNode(Node):
         self.goal_yaw_deg = float(self.declare_parameter("goal_yaw_deg", GOAL_YAW_DEG).value)
         # How long to wait from node start before publishing goal (allow bringup to settle).
         self.goal_delay_s = float(self.declare_parameter("goal_delay_s", 13.0).value)
-        goal_delay_sec_legacy = float(self.declare_parameter("goal_delay_sec", 13.0).value)
-        if self.goal_delay_s == 13.0 and goal_delay_sec_legacy != 13.0:
-            self.get_logger().warn(
-                "Parameter 'goal_delay_sec' is deprecated. Use 'goal_delay_s'."
-            )
-            self.goal_delay_s = goal_delay_sec_legacy
         # How long after goal to wait before publishing engage.
         self.engage_delay_s = float(self.declare_parameter("engage_delay_s", 3.0).value)
-        engage_delay_sec_legacy = float(self.declare_parameter("engage_delay_sec", 3.0).value)
-        if self.engage_delay_s == 3.0 and engage_delay_sec_legacy != 3.0:
-            self.get_logger().warn(
-                "Parameter 'engage_delay_sec' is deprecated. Use 'engage_delay_s'."
-            )
-            self.engage_delay_s = engage_delay_sec_legacy
         # GNSS recovery hold duration (must match planning_cmd_vel_gate gnss_recovery_hold_s).
         # Gate node blocks cmd_vel for this many seconds after DR_ONLY → NORMAL transition
         # so that Nav2 path and costmap can settle on the recovered pose.
@@ -86,12 +74,6 @@ class GnssDrTestNode(Node):
         )
         # Total test duration.
         self.test_duration_s = float(self.declare_parameter("test_duration_s", 85.0).value)
-        test_duration_sec_legacy = float(self.declare_parameter("test_duration_sec", 85.0).value)
-        if self.test_duration_s == 85.0 and test_duration_sec_legacy != 85.0:
-            self.get_logger().warn(
-                "Parameter 'test_duration_sec' is deprecated. Use 'test_duration_s'."
-            )
-            self.test_duration_s = test_duration_sec_legacy
         # cmd_vel rate threshold to consider "active" (Hz).
         self.cmd_vel_active_hz = float(self.declare_parameter("cmd_vel_active_hz", 5.0).value)
 

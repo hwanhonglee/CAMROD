@@ -9,14 +9,14 @@
       - /planning/planner_server
       - /planning/controller_server
       - /planning/bt_navigator
-      # localization refactor default filter node name
-      - /localization/eskf_filter
+      # Keep this filter-agnostic: pose_selector is always launched for both EKF/ESKF.
+      - /localization/pose_selector
     required_topics:
       - /localization/pose
       - /sensing/imu/data
       - /sensing/gnss/ublox_gps_node/fix
       # HH_260410: Unified wheel odometry topic required for localization readiness.
       - /platform/status/wheel_odometry
-      # HH_260426: VIO stack disabled. Track fallback odometry stream instead.
-      - /localization/fallback/odometry
+      # HH_260527: Primary-only selector default. Track selected odometry stream.
+      - /localization/odometry/filtered
       - /map/cost_grid/lanelet

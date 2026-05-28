@@ -13,16 +13,26 @@ bringup:
     enable_filter: true
     enable_monitor: true
     enable_map_helper: true
-    # Real-sensor bringup baseline uses ESKF for better robustness under
-    # temporary wheel/ranger odometry instability.
-    use_eskf: true
-    filter_type: eskf
+    # HH_260522: switch default localization backend to EKF for stability-first
+    # operation on real hardware (reduced standstill yaw drift sensitivity vs ESKF tuning).
+    # HH_260522: filter_type options:
+    #   ekf: robot_localization EKF backend
+    #   eskf: camrod localization ESKF backend
+    filter_type: ekf
     wheel_bridge_enable: true
     # Use platform status odometry as primary source.
     wheel_input_topic: /platform/status/odometry
+    # HH_260527: wheel_input_type options:
+    #   nav_odom: nav_msgs/Odometry input
+    #   avg_odom: avg_msgs/Odometry input
+    #   twist: avg_msgs/TwistStamped input
     wheel_input_type: nav_odom
     # Keep /rmp401/odom as fallback-only source.
     wheel_fallback_input_topic: /rmp401/odom
+    # HH_260527: wheel_fallback_input_type options:
+    #   nav_odom: nav_msgs/Odometry input
+    #   avg_odom: avg_msgs/Odometry input
+    #   twist: avg_msgs/TwistStamped input
     wheel_fallback_input_type: nav_odom
     wheel_primary_timeout_s: 0.7
     # Unified wheel output topic used by EKF/ESKF.
@@ -32,49 +42,62 @@ bringup:
     # Set true only when you intentionally want ESKF primary input fixed to /rmp401/odom.
     eskf_force_rmp401_odom: false
     eskf_rmp401_odom_topic: /rmp401/odom
-    pose_selector_enable: false
     # Localization launch refactor - explicit override keys per sub-launch.
-    adapter_param_file: __module_default__
+    adapter_param_file: localization/source/input_adapter.yaml
+    filter_ekf_param_file: localization/filter/ekf.yaml
     filter_eskf_param_file: localization/filter/eskf.yaml
-    filter_pose_selector_param_file: __module_default__
+    filter_gnss_reattach_param_file: localization/filter/gnss_reattach.yaml
+    filter_pose_selector_param_file: localization/filter/pose_selector.yaml
     monitor_param_file: localization/filter/monitor.yaml
-    map_helper_param_file: __module_default__
+    map_helper_param_file: localization/reference/map_helper.yaml
     map_info_file: __module_default__
-    drop_zones_yaml: __module_default__
-    # legacy keys (fallback only).
-    ekf_param_file: __module_default__
-    eskf_param_file: __module_default__
-    pose_selector_param_file: __module_default__
+    drop_zones_yaml: localization/drop_zones.yaml
 
   planning:
+    # ---- Planning core toggles ----
     enable_path_cost_grids: true
-    # Match standalone planning.launch.py defaults.
-    enable_goal_replanner: false
+    enable_goal_replanner: true
     # Recover from intermittent lifecycle startup race on resource-limited targets.
     enable_nav2_lifecycle_retry: true
-    # Allow Nav2 startup by default even when initial_match_ok is false.
-    # This keeps /planning/cmd_vel and path generation available during bringup debugging.
+    # false  → nav2_autostart=true: Nav2 activates immediately on bringup.
+    #          bt_navigator will start planning as soon as ANY goal arrives (RViz, UI, etc.).
+    #          Path follows lanelet centerline — looks like "auto driving" but cmd_vel gate
+    #          blocks actual movement until /planning/engage is published.
+    # true   → nav2_autostart=false: Nav2 waits for localization_ready before activating.
+    #          Use true for production runs to prevent premature path planning.
     require_localization_ready: false
-    # Keep OFF by default for conservative bringup. State machine can be enabled per scenario.
-    enable_state_machine: false
+    enable_state_machine: true
     enable_progress: true
     # Resolve drop_zone from map-exported semantic area YAML.
     state_machine_keypoints_yaml: map/drop_zones.yaml
     state_machine_camping_sites_yaml: planning/camping_sites.yaml
     # Keep local-path pose topic aligned with standalone localization.launch.py behavior.
     local_path_pose_topic: /localization/pose
-    # Prefer controller-local path first so /planning/local_path differs
-    # from pure global slicing and reflects local costmap reactions in real time.
+    # HH_260522: local path source options:
+    #   controller_then_slice: prefer controller path, fallback to global-path slice
+    #   controller_only: use controller-local path only
+    #   slice_only: always slice from global path
+    # Prefer controller-local path first so /planning/local_path differs from
+    # pure global slicing and reflects local costmap reactions in real time.
     local_path_source: controller_then_slice
+
+    # ---- Planning cmd_vel gate ----
     # Require explicit /planning/engage trigger for final /planning/cmd_vel.
     cmd_vel_gate_enable: true
     cmd_vel_raw_topic: /planning/cmd_vel_raw
     cmd_vel_topic: /planning/cmd_vel
     engage_topic: /planning/engage
     engaged_state_topic: /planning/engaged
-    cmd_vel_gate_use_estop_topic: true
+    # HH_260522: unified source selector for planning cmd_vel gate e-stop input.
+    #   platform_status/topic/enabled/on: subscribe /platform/status/estop
+    #   disabled/off/none: ignore e-stop topic
+    cmd_vel_gate_estop_source_mode: platform_status
     # e-stop source is platform CAN->status bridge by default.
     cmd_vel_gate_estop_topic: /platform/status/estop
+    # HH_260522: unified source selector for DR-timeout stop trigger.
+    #   localization_monitor/topic/enabled/on: subscribe /localization/state/dr_timeout
+    #   disabled/off/none: ignore DR-timeout trigger
+    cmd_vel_gate_dr_timeout_source_mode: localization_monitor
     cmd_vel_gate_allow_on_start: false
     # After localization mode recovers (DR_ONLY -> NORMAL), keep
     # cmd_vel blocked briefly so pose/TF consumers settle before re-accelerating.
@@ -88,8 +111,12 @@ bringup:
     cmd_vel_gate_cost_stop_enable: true
     cmd_vel_gate_cost_grid_topic: /planning/cost_grid/inflation
     cmd_vel_gate_cost_pose_topic: /localization/pose
-    # VIO stack is disabled; use localization fallback odometry.
-    cmd_vel_gate_cost_odometry_topic: /localization/fallback/odometry
+    # HH_260527: Primary-only selector default; use selected localization odometry.
+    cmd_vel_gate_cost_odometry_topic: /localization/odometry/filtered
+    # HH_260522: pose source preference options:
+    #   odometry: prefer /localization/odometry/filtered candidate first
+    #   tf_robot_base: prefer TF(map<-robot_base_link) first
+    #   pose_topic: prefer /localization/pose candidate first
     # Use odometry heading by default for stable cost-stop corridor checks.
     cmd_vel_gate_pose_source_preference: odometry
     cmd_vel_gate_enable_pose_raw_fallback: false
@@ -125,12 +152,17 @@ bringup:
     cmd_vel_gate_yaw_alignment_frame_id: map
     cmd_vel_gate_yaw_alignment_exit_margin_m: 0.3
     # Keep module default unless bringup-level override is required.
-    cmd_vel_gate_yaw_alignment_zones_file: __module_default__
+    cmd_vel_gate_yaw_alignment_zones_file: planning/yaw_alignment_zones.yaml
     # HH_260507: Scale all cmd_vel output by this factor before sending to /planning/cmd_vel.
     cmd_vel_gate_speed_scale: 0.5
-    use_dwb_controller: false
+
+    # ---- Nav2 profile selection ----
+    # HH_260522: unified controller selector.
+    #   rpp: use nav2_vehicle_param_file profile
+    #   dwb: use nav2_vehicle_dwb_param_file profile
+    controller_profile: rpp
     # By default, use internal config defaults declared by planning launch files.
-    nav2_base_param_file: __module_default__
+    nav2_base_param_file: planning/nav2_base.yaml
     nav2_vehicle_param_file: planning/nav2_vehicle.yaml
     nav2_vehicle_dwb_param_file: __module_default__
     nav2_lanelet_param_file: planning/nav2_lanelet_overlay.yaml
@@ -138,13 +170,24 @@ bringup:
     # stays consistent with bringup BT XML.
     nav2_behavior_param_file: planning/nav2_behavior.yaml
     # Optional combo override (planner/controller pair-specific tuning).
+    # HH_260522: combo choices live in camrod_planning/config/nav2_combo_profiles/*.yaml
+    # (example: disabled.yaml, navfn_rpp.yaml, smac2d_rpp.yaml, smachybrid_rpp.yaml, ...).
     # "__module_default__" resolves to camrod_planning/config/nav2_combo_profiles/disabled.yaml.
     nav2_combo_param_file: __module_default__
-    path_cost_grids_param_file: __module_default__
-    goal_snapper_param_file: __module_default__
-    centerline_snapper_param_file: __module_default__
-    goal_replanner_param_file: __module_default__
-    local_path_extractor_param_file: __module_default__
+    # HH_260528: Selector IDs for PlannerSelector/ControllerSelector.
+    # "__auto__" infers planner/controller from nav2_combo_param_file name.
+    # Examples:
+    # - navfn_rpp.yaml       -> planner=NavFn, controller=RPP
+    # - smac2d_dwb.yaml      -> planner=Smac2D, controller=DWB
+    nav2_selected_planner: __auto__
+    nav2_selected_controller: __auto__
+
+    # ---- Per-planning-node parameter file overrides ----
+    path_cost_grids_param_file: planning/path_cost_grids.yaml
+    goal_snapper_param_file: planning/goal_snapper.yaml
+    centerline_snapper_param_file: planning/centerline_snapper.yaml
+    goal_replanner_param_file: planning/goal_replanner.yaml
+    local_path_extractor_param_file: planning/local_path_extractor.yaml
     planning_state_machine_param_file: planning/planning_state_machine.yaml
 
   sensing:
@@ -158,33 +201,36 @@ bringup:
     enable_gnss: true
     enable_ntrip: true
     # By default, use internal config defaults declared by sensing launch files.
-    sensing_param_file: __module_default__
-    lidar_preprocess_param_file: __module_default__
-    camera_preprocess_param_file: __module_default__
+    lidar_preprocess_param_file: sensing/lidar/preprocessor.yaml
     camera_params_file: __module_default__
     camera_device_path: /dev/video0
-    imu_converter_param_file: __module_default__
-    radar_sensor_param_file: __module_default__
-    radar_cost_grid_param_file: __module_default__
-    lidar_cost_grid_param_file: __module_default__
-    inflation_cost_grid_param_file: __module_default__
+    imu_converter_param_file: sensing/imu/platform_velocity_converter.yaml
+    radar_sensor_param_file: sensing/radar/sen0592_radar.yaml
+    radar_cost_grid_param_file: sensing/radar/cost_grid.yaml
+    lidar_cost_grid_param_file: sensing/lidar/cost_grid.yaml
+    inflation_cost_grid_param_file: sensing/inflation_cost_grid.yaml
     gnss_param_file: sensing/gnss/zed_f9p_rover.yaml
     ntrip_param_file: sensing/gnss/ntrip_client.yaml
     cv7_param_file: sensing/imu/microstrain_cv7.yaml
     gq7_param_file: __module_default__
-    vanjee_config_path: __module_default__
+    vanjee_config_path: sensing/lidar/vanjee/config.yaml
 
   platform:
     # By default, use internal config defaults declared by platform launch files.
     # HH_260506: Route sensor_kit TF geometry through bringup config so mount offsets
     # edited in camrod_bringup/config/sensor_kit/robot_params.yaml are applied.
     params_file: sensor_kit/robot_params.yaml
-    robot_visualization_param_file: __module_default__
+    robot_visualization_param_file: platform/robot_visualization.yaml
     # Real platform defaults to direct planning cmd_vel usage.
     # Keep cmd_vel gate ON in sim mode via bringup.launch.py runtime override.
     cmd_vel_gate_enable: false
     cmd_vel_in_topic: /planning/cmd_vel
     cmd_vel_out_topic: /platform/cmd_vel
+    # HH_260522: unified source selectors for platform cmd_vel gate.
+    #   engage_source_mode: planning_engage/topic/enabled/on | disabled/off/none
+    #   estop_source_mode: platform_status/topic/enabled/on | disabled/off/none
+    engage_source_mode: planning_engage
+    estop_source_mode: platform_status
     # Ranger base node directly publishes /platform/status/*.
     estop_topic: /platform/status/estop
     # Current baseline is no physical ranger CAN platform.
@@ -192,16 +238,23 @@ bringup:
     ranger_driver_enable: false
     # Keep platform.launch.py lean and route Ranger params through
     # bringup override profile when using bringup.launch.py.
-    ranger_params_file: platform/ranger_params.yaml
+    ranger_params_file: platform/ranger_driver.yaml
 
   perception:
     enable_lidar_obstacle: true
     enable_yolo: true
+    # HH_260522: unified perception pipeline selector.
+    #   auto: camera if available, fallback to lidar_only
+    #   lidar_only: disable camera branches
+    #   camera_lidar: require camera branches (auto-fallback to lidar_only if camera missing)
+    mode: auto
     # By default, use internal config defaults declared by perception launch files.
-    perception_param_file: __module_default__
+    perception_param_file: perception/perception_params.yaml
 
   system:
     # Enable full camrod_system diagnostics launch by default in bringup.
+    # HH_260522: diagnostics profile choices are directory names under:
+    #   camrod_bringup/config/system/diagnostics/<profile_name>/
     enable_module_validators: true
     diagnostics_profile: default
     # Set true only when ranger_msgs-dependent platform checker is available.
@@ -229,9 +282,6 @@ bringup:
     gnss: gnss
 
   topics:
-    gnss_navsatfix: /sensing/gnss/ublox_gps_node/fix
-    gnss_pose: /sensing/gnss/pose
-    gnss_pose_cov: /sensing/gnss/pose_with_covariance
     gnss_rtcm: /sensing/gnss/rtcm
 
   map:
@@ -239,16 +289,16 @@ bringup:
     # launch_defaults keeps only explicit bringup-level overrides.
     # Keep only explicit map path / yaw override knobs here.
     map_path: ""
-    yaw_offset_deg: 0.0
-    # By default, use internal config defaults declared by map launch files.
-    map_info_file: __module_default__
+    # Point to bringup-local map_info.yaml so origin edits here take effect
+    # without touching camrod_map. (If __module_default__, bringup impl
+    # hardcodes camrod_map/config/map_info.yaml and ignores this file.)
+    map_info_file: map/map_info.yaml
     map_param_file: __module_default__
-    lanelet_cost_grid_param_file: __module_default__
-    map_visualization_param_file: __module_default__
+    lanelet_cost_grid_param_file: map/lanelet_cost_grid.yaml
+    map_visualization_param_file: map/map_visualization.yaml
 
   sim:
     lanelet_id: -1
-    fake_lanelet_id: -1
     # Synthetic obstacle controls for cost-stop scenario tests.
     obstacle_offset: 12.0
     obstacle_height: 0.5

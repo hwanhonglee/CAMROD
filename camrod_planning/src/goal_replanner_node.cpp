@@ -31,38 +31,14 @@ public:
     enabled_ = declare_parameter<bool>("enabled", true);
     goal_topic_ = declare_parameter<std::string>("goal_topic", "/planning/goal_pose");
     start_topic_ = declare_parameter<std::string>("start_topic", "/planning/lanelet_pose");
-    // 2026-02-25: clearer start-source selector with legacy compatibility.
-    // Preferred:
-    //   planning_start_source:
-    //     - "robot_base_link"  : use map->robot_base_link TF as start
-    //     - "lanelet_pose"     : use /planning/lanelet_pose as explicit start
-    //     - "localization_pose": use /localization/pose as explicit start
-    //     - "start_topic"      : use start_topic param as explicit start
-    //   start_topic_fallback_to_tf:
-    //     - true: if topic start is missing, fallback to TF start
-    //     - false: wait until topic start is received
-    //
-    // Compatibility:
-    //   start_reference, start_mode, start_source, use_start_pose, use_topic_start_pose
-    // Legacy:
-    //   start_source: "tf_base_link" | "topic_pose"
-    //   use_start_pose / use_topic_start_pose (bool)
-    const bool legacy_use_start_pose = declare_parameter<bool>("use_start_pose", false);
-    const bool legacy_use_topic_start_pose =
-      declare_parameter<bool>("use_topic_start_pose", legacy_use_start_pose);
-    const std::string legacy_start_source = declare_parameter<std::string>(
-      "start_source",
-      legacy_use_topic_start_pose ? "topic_pose" : "tf_base_link");
-    const std::string start_mode = declare_parameter<std::string>(
-      "start_mode",
-      (legacy_start_source == "topic_pose" || legacy_use_topic_start_pose) ?
-      "start_topic_pose" : "base_link_tf");
-    const std::string start_reference = declare_parameter<std::string>("start_reference", "");
-    const std::string planning_start_source = declare_parameter<std::string>(
-      "planning_start_source", "");
-    const std::string selected_mode = !planning_start_source.empty() ?
-      planning_start_source :
-      (start_reference.empty() ? start_mode : start_reference);
+    // HH_260522: Canonical start selector only.
+    // Supported values:
+    // - robot_base_link
+    // - lanelet_pose
+    // - localization_pose
+    // - start_topic
+    const std::string selected_mode = declare_parameter<std::string>(
+      "planning_start_source", "robot_base_link");
     start_topic_fallback_to_tf_ =
       declare_parameter<bool>("start_topic_fallback_to_tf", true);
 
@@ -85,22 +61,19 @@ public:
     {
       use_topic_start_pose_ = false;
     } else {
-      if (legacy_start_source == "topic_pose") {
-        use_topic_start_pose_ = true;
-      } else if (legacy_start_source == "tf_base_link") {
-        use_topic_start_pose_ = false;
-      } else {
-        use_topic_start_pose_ = legacy_use_topic_start_pose;
-      }
+      use_topic_start_pose_ = false;
       RCLCPP_WARN(get_logger(),
         "Unknown start mode '%s'. Use one of: "
-        "base_link_tf | robot_base_link | start_topic_pose | start_topic. "
-        "Fallback legacy start_source='%s' -> topic_start=%s.",
-        selected_mode.c_str(), legacy_start_source.c_str(),
-        use_topic_start_pose_ ? "true" : "false");
+        "robot_base_link | lanelet_pose | localization_pose | start_topic. "
+        "Fallback to robot_base_link TF start.",
+        selected_mode.c_str());
     }
     action_name_ = declare_parameter<std::string>("action_name", "/planning/compute_path_to_pose");
     planner_id_ = declare_parameter<std::string>("planner_id", "Smac2D");
+    // HH_260528: One-shot planner fallback for robust path generation on planner-specific failures.
+    fallback_planner_id_ = declare_parameter<std::string>("fallback_planner_id", "NavFn");
+    retry_with_fallback_planner_ =
+      declare_parameter<bool>("retry_with_fallback_planner", true);
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     output_path_topic_ = declare_parameter<std::string>(
       "output_path_topic", "/planning/global_path");
@@ -111,13 +84,6 @@ public:
     enable_periodic_replan_ = declare_parameter<bool>("enable_periodic_replan", false);
     // HH_260309-00:00 Prevent compute-path request storms.
     min_request_interval_s_ = declare_parameter<double>("min_request_interval_s", 0.25);
-    {
-      const double legacy = declare_parameter<double>("min_request_interval_sec", 0.25);
-      if (std::abs(min_request_interval_s_ - 0.25) < 1e-9 && std::abs(legacy - 0.25) > 1e-9) {
-        RCLCPP_WARN(get_logger(), "Parameter 'min_request_interval_sec' is deprecated. Use 'min_request_interval_s'.");
-        min_request_interval_s_ = legacy;
-      }
-    }
     // HH_260309-00:00 When NavigateToPose BT is running, planner_server already computes paths.
     // Pause this helper to avoid action contention/abort storms.
     pause_when_navigate_active_ = declare_parameter<bool>("pause_when_navigate_active", true);
@@ -127,22 +93,8 @@ public:
     replan_rate_hz_ = declare_parameter<double>("replan_rate_hz", 0.0);
     // HH_260306-00:00 Set <=0 to disable timeout-based cancellation.
     request_timeout_s_ = declare_parameter<double>("request_timeout_s", 0.0);
-    {
-      const double legacy = declare_parameter<double>("request_timeout_sec", 0.0);
-      if (std::abs(request_timeout_s_) < 1e-9 && std::abs(legacy) > 1e-9) {
-        RCLCPP_WARN(get_logger(), "Parameter 'request_timeout_sec' is deprecated. Use 'request_timeout_s'.");
-        request_timeout_s_ = legacy;
-      }
-    }
     // HH_260306-00:00 Backoff interval after failed/canceled planner result.
     retry_after_failure_s_ = declare_parameter<double>("retry_after_failure_s", 0.8);
-    {
-      const double legacy = declare_parameter<double>("retry_after_failure_sec", 0.8);
-      if (std::abs(retry_after_failure_s_ - 0.8) < 1e-9 && std::abs(legacy - 0.8) > 1e-9) {
-        RCLCPP_WARN(get_logger(), "Parameter 'retry_after_failure_sec' is deprecated. Use 'retry_after_failure_s'.");
-        retry_after_failure_s_ = legacy;
-      }
-    }
     start_replan_distance_ = declare_parameter<double>("start_replan_distance", 0.4);
     goal_replan_distance_ = declare_parameter<double>("goal_replan_distance", 0.1);
     // HH_260309-00:00 Ignore repeated equivalent goal messages (same XY/yaw) to avoid
@@ -155,13 +107,6 @@ public:
       declare_parameter<double>("duplicate_goal_yaw_epsilon_deg", 4.0);
     // HH_260309-00:00 Debounce transient inactive blips from navigate status topic.
     navigate_inactive_grace_s_ = declare_parameter<double>("navigate_inactive_grace_s", 0.8);
-    {
-      const double legacy = declare_parameter<double>("navigate_inactive_grace_sec", 0.8);
-      if (std::abs(navigate_inactive_grace_s_ - 0.8) < 1e-9 && std::abs(legacy - 0.8) > 1e-9) {
-        RCLCPP_WARN(get_logger(), "Parameter 'navigate_inactive_grace_sec' is deprecated. Use 'navigate_inactive_grace_s'.");
-        navigate_inactive_grace_s_ = legacy;
-      }
-    }
     start_replan_yaw_deg_ = declare_parameter<double>("start_replan_yaw_deg", 10.0);
     replan_on_start_change_ = declare_parameter<bool>("replan_on_start_change", false);
     // HH_260306-00:00 Stop replanning after reaching goal until a new goal is received.
@@ -209,9 +154,9 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "Goal replanner: enabled=%s, goal=%s, start=%s, action=%s, planner_id=%s",
+      "Goal replanner: enabled=%s, goal=%s, start=%s, action=%s, planner_id=%s, fallback=%s",
       enabled_ ? "true" : "false", goal_topic_.c_str(), start_topic_.c_str(),
-      action_name_.c_str(), planner_id_.c_str());
+      action_name_.c_str(), planner_id_.c_str(), fallback_planner_id_.c_str());
     RCLCPP_INFO(
       get_logger(),
       "replan config: rate=%.2fHz timeout=%.2fs retry_after_failure=%.2fs "
@@ -439,6 +384,9 @@ private:
     goal_reached_latched_ = false;
     force_tf_start_once_ = false;
     tf_start_fallback_used_for_goal_ = false;
+    force_fallback_planner_once_ = false;
+    fallback_planner_used_for_goal_ = false;
+    last_request_used_fallback_planner_ = false;
     next_allowed_request_time_ = now();
     // HH_260306-00:00 New goal must force a fresh request immediately.
     if (in_flight_) {
@@ -582,7 +530,13 @@ private:
       goal_msg.start = latest_start_;
     }
     goal_msg.goal = latest_goal_;
-    goal_msg.planner_id = planner_id_;
+    const bool use_fallback_planner_this_request =
+      retry_with_fallback_planner_ &&
+      force_fallback_planner_once_ &&
+      !fallback_planner_id_.empty() &&
+      fallback_planner_id_ != planner_id_;
+    goal_msg.planner_id = use_fallback_planner_this_request ?
+      fallback_planner_id_ : planner_id_;
     if (goal_msg.use_start) {
       goal_msg.start.header.frame_id = goal_msg.start.header.frame_id.empty()
         ? frame_id_ : goal_msg.start.header.frame_id;
@@ -638,8 +592,27 @@ private:
             get_logger(), *get_clock(), 2000,
             "ComputePathToPose success: path size=%zu",
             result.result->path.poses.size());
+          force_fallback_planner_once_ = false;
+          fallback_planner_used_for_goal_ = false;
+          last_request_used_fallback_planner_ = false;
           force_tf_start_once_ = false;
           tf_start_fallback_used_for_goal_ = false;
+          return;
+        }
+        // HH_260528: Retry once with fallback planner when primary planner fails.
+        if (retry_with_fallback_planner_ && !last_request_used_fallback_planner_ &&
+          !fallback_planner_used_for_goal_ && !fallback_planner_id_.empty() &&
+          fallback_planner_id_ != planner_id_ && has_goal_)
+        {
+          force_fallback_planner_once_ = true;
+          fallback_planner_used_for_goal_ = true;
+          has_last_submitted_ = false;
+          next_allowed_request_time_ = now();
+          RCLCPP_WARN(
+            get_logger(),
+            "ComputePathToPose failed with planner='%s' (code=%d). Retrying once with fallback='%s'.",
+            planner_id_.c_str(), static_cast<int>(result.code), fallback_planner_id_.c_str());
+          onTimer();
           return;
         }
         // HH_260306-00:00 If explicit topic-start is rejected (often due lethal/unknown start cell),
@@ -684,7 +657,9 @@ private:
     if (goal_msg.use_start) {
       last_submitted_start_ = latest_start_;
     }
+    last_request_used_fallback_planner_ = use_fallback_planner_this_request;
     last_request_used_tf_start_ = !goal_msg.use_start;
+    force_fallback_planner_once_ = false;
     force_tf_start_once_ = false;
     last_submitted_goal_ = latest_goal_;
     has_last_submitted_ = true;
@@ -751,6 +726,7 @@ private:
   rclcpp::Time last_navigate_active_time_{0, 0, RCL_ROS_TIME};
   std::string action_name_;
   std::string planner_id_;
+  std::string fallback_planner_id_;
   std::string frame_id_;
   std::string output_path_topic_;
   std::string planning_status_topic_;
@@ -775,7 +751,11 @@ private:
   bool goal_reached_latched_{false};
   bool immediate_replan_on_goal_{true};
   bool immediate_replan_on_start_{true};
+  bool retry_with_fallback_planner_{true};
   bool has_sent_any_request_{false};
+  bool force_fallback_planner_once_{false};
+  bool fallback_planner_used_for_goal_{false};
+  bool last_request_used_fallback_planner_{false};
   bool last_request_used_tf_start_{false};
   bool force_tf_start_once_{false};
   bool tf_start_fallback_used_for_goal_{false};

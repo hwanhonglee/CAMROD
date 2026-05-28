@@ -14,9 +14,15 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_out_topic', default_value='/platform/cmd_vel'),
         DeclareLaunchArgument('drive_enable_topic', default_value='/platform/drive_enable'),
         DeclareLaunchArgument('planning_engage_topic', default_value='/planning/engage'),
-        DeclareLaunchArgument('use_planning_engage_topic', default_value='true'),
+        # HH_260522: unified source selector for engage signal.
+        #   planning_engage/topic/enabled/on: subscribe /planning/engage
+        #   disabled/off/none: ignore engage topic
+        DeclareLaunchArgument('engage_source_mode', default_value='planning_engage'),
         DeclareLaunchArgument('drive_state_topic', default_value='/platform/drive_enabled'),
-        DeclareLaunchArgument('use_estop_topic', default_value='true'),
+        # HH_260522: unified source selector for e-stop signal.
+        #   platform_status/topic/enabled/on: subscribe /platform/status/estop
+        #   disabled/off/none: ignore e-stop topic
+        DeclareLaunchArgument('estop_source_mode', default_value='platform_status'),
         # HH_260409: Default e-stop source is platform status bridge from CAN/system_state.
         DeclareLaunchArgument('estop_topic', default_value='/platform/status/estop'),
         DeclareLaunchArgument('drive_allow_on_start', default_value='false'),
@@ -32,9 +38,9 @@ def generate_launch_description():
                 'output_cmd_vel_topic': LaunchConfiguration('cmd_vel_out_topic'),
                 'enable_topic': LaunchConfiguration('drive_enable_topic'),
                 'engage_topic': LaunchConfiguration('planning_engage_topic'),
-                'use_engage_topic': LaunchConfiguration('use_planning_engage_topic'),
+                'engage_source_mode': LaunchConfiguration('engage_source_mode'),
                 'state_topic': LaunchConfiguration('drive_state_topic'),
-                'use_estop_topic': LaunchConfiguration('use_estop_topic'),
+                'estop_source_mode': LaunchConfiguration('estop_source_mode'),
                 'estop_topic': LaunchConfiguration('estop_topic'),
                 'allow_on_start': LaunchConfiguration('drive_allow_on_start'),
                 'publish_zero_when_blocked': True,

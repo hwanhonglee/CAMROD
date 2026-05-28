@@ -1,4 +1,41 @@
 # Nav2 vehicle profile: footprint and vehicle dynamics.
+#
+# Platform: AgileX Ranger (skid-steer / 4WD off-road mobile robot)
+# Ref: https://global.agilex.ai/products/ranger
+#
+# Vehicle specs (reference — update footprint below when dimensions change):
+#
+#   --- Geometry ---
+#   wheelbase:       0.89 m   front-to-rear axle distance
+#                             lf = CG->front axle, lr = CG->rear axle (lf≈lr≈0.445 m if CG centered)
+#   track_width:     0.56 m   left-to-right wheel centerline distance
+#   tire_radius:     0.13 m   wheel radius (approx 260 mm dia / 2)
+#   body_length:    ~0.98 m   (nav2 footprint uses conservative 1.8 m incl. sensor overhang)
+#   body_width:     ~0.55 m   (nav2 footprint uses conservative 0.8 m incl. margin)
+#
+#   --- Inertia / Mass ---
+#   mass:            100.0 kg   vehicle dry weight (rated payload 150 kg, IP55)
+#   inertia_yaw:     ~35 kg·m²  yaw moment of inertia (Iz);
+#                               resistance to rotation about vertical (Z) axis.
+#                               Used in bicycle/lateral-dynamics models.
+#                               Rough estimate: Iz ≈ m*(lf²+lr²) ≈ 100*0.4 ≈ 35 kg·m²
+#
+#   --- Lateral Tire Dynamics (bicycle model reference) ---
+#   Cf / Cr:     ~8000 N/rad  front/rear cornering stiffness;
+#                             lateral tire force per unit side-slip angle [N/rad].
+#                             Higher = stiffer lateral response (less slip per force).
+#                             (Skid-steer: coupling is indirect; treat as soft reference.)
+#
+#   --- Performance Limits ---
+#   max_velocity:    1.4 m/s   operational speed cap (hardware max 2.6 m/s)
+#   max_accel:       1.5 m/s²  longitudinal acceleration limit
+#   max_decel:      -2.0 m/s²  braking decel limit (negative = opposing-motion force)
+#   max_jerk:        3.0 m/s³  rate of change of acceleration (smoothness / jerk limit)
+#   max_steer_angle: N/A       skid-steer platform; curvature commanded via angular cmd_vel
+#
+#   --- Aerodynamics (minor at low speed) ---
+#   drag_coeff:     0.3    aerodynamic drag coefficient Cd (shape-based air resistance)
+#   rolling_resist: 0.015  rolling resistance coefficient Crr (tire deformation energy loss)
 
 controller_server:
   ros__parameters:
@@ -20,6 +57,12 @@ controller_server:
       rotate_to_heading_angular_vel: 1.2
       # Align controller TF tolerance with Nav2 server tolerance.
       transform_tolerance: 0.5
+      # HH_260527: RPP toggle options (all boolean):
+      #   use_velocity_scaled_lookahead_dist: True=scale lookahead by speed, False=fixed lookahead only
+      #   use_rotate_to_heading: True=rotate-in-place heading alignment first, False=track with linear+angular together
+      #   use_collision_detection: True=controller-level collision check enabled, False=skip internal check
+      #   use_regulated_linear_velocity_scaling: True=curve-based linear speed scaling, False=disabled
+      #   use_cost_regulated_linear_velocity_scaling: True=costmap-based linear speed scaling, False=disabled
       use_velocity_scaled_lookahead_dist: True
       # Keep controller in forward-drive mode; global planner is
       # aligned to DUBIN (forward-only) in nav2_base.yaml.
@@ -43,11 +86,19 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      footprint: "[[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]"
+      # footprint derivation (Ranger actual body + explicit margins):
+      #   x (front/rear): 0.49 (body_half = 0.98 m / 2)  + 0.10 (sensor overhang) = 0.59 m
+      #   y (left/right): 0.275 (body_half = 0.55 m / 2) + 0.10 (safety margin)   = 0.375 m
+      #   original (oversized, pre-update): [[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]
+      footprint: "[[0.59, 0.375], [0.59, -0.375], [-0.59, -0.375], [-0.59, 0.375]]"
       robot_radius: 0.0
 
 global_costmap:
   global_costmap:
     ros__parameters:
-      footprint: "[[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]"
+      # footprint derivation (Ranger actual body + explicit margins):
+      #   x (front/rear): 0.49 (body_half = 0.98 m / 2)  + 0.10 (sensor overhang) = 0.59 m
+      #   y (left/right): 0.275 (body_half = 0.55 m / 2) + 0.10 (safety margin)   = 0.375 m
+      #   original (oversized, pre-update): [[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]
+      footprint: "[[0.59, 0.375], [0.59, -0.375], [-0.59, -0.375], [-0.59, 0.375]]"
       robot_radius: 0.0

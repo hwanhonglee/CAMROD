@@ -78,9 +78,12 @@
     # Slightly tighter range so high-cost segment becomes visible sooner.
     gradient_range: 35.0
     grid_yaw: 0.0
-    use_path_bbox: false
-    lock_window: false
-    use_map_bbox: false
+    # HH_260527: window_mode options:
+    #   robot_centered: window centered on current pose
+    #   path_bbox: window centered on active path bounding box
+    #   fixed: fixed-origin window from map_frame origin
+    #   map_bbox: use full lanelet map bounds
+    window_mode: "robot_centered"
     # Use lanelet-snapped pose for stable in-lane realtime refresh.
     # This prevents temporary off-lane localization jitter from shifting path-cost windows.
     pose_topic: "/planning/lanelet_pose"
@@ -206,9 +209,13 @@
     # Tighter range on local map to highlight near/far difference quickly.
     gradient_range: 20.0
     grid_yaw: 0.0
+    # HH_260527: window_mode options:
+    #   robot_centered: window centered on current pose
+    #   path_bbox: window centered on active path bounding box
+    #   fixed: fixed-origin window from map_frame origin
+    #   map_bbox: use full lanelet map bounds
     # Local window is pose-centered (not path-bbox) to prevent stale far patches.
-    use_path_bbox: false
-    lock_window: false
+    window_mode: "robot_centered"
     # Use lanelet-snapped pose for stable in-lane local updates.
     pose_topic: "/planning/lanelet_pose"
     # Canonical local trajectory topic published by controller_server remap.

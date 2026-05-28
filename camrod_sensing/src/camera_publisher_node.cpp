@@ -1,4 +1,6 @@
 #include "camrod_sensing/camera_publisher_node.hpp"
+#include <algorithm>
+#include <cctype>
 #include <fcntl.h>
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
@@ -6,6 +8,16 @@
 
 namespace camrod::sensing
 {
+namespace
+{
+std::string normalizeModeToken(std::string value)
+{
+  std::transform(
+    value.begin(), value.end(), value.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return value;
+}
+}  // namespace
 
 CameraPublisherNode::CameraPublisherNode(const rclcpp::NodeOptions & options)
 : Node("camera_publisher", options)
@@ -16,7 +28,9 @@ CameraPublisherNode::CameraPublisherNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<int>("image_width", 640);
   this->declare_parameter<int>("image_height", 480);
   this->declare_parameter<int>("fps", 30);
-  this->declare_parameter<bool>("use_custom_intrinsics", false);
+  // HH_260526: Replace use_custom_intrinsics toggle with explicit source mode.
+  // intrinsics_source options: none | custom.
+  this->declare_parameter<std::string>("intrinsics_source", "none");
   this->declare_parameter<std::vector<double>>("camera_matrix", std::vector<double>{});
   this->declare_parameter<std::vector<double>>("distortion_coefficients", std::vector<double>{});
   this->declare_parameter<int>("exposure_time_us", 25000);
@@ -29,12 +43,20 @@ CameraPublisherNode::CameraPublisherNode(const rclcpp::NodeOptions & options)
   this->get_parameter("image_width", image_width_);
   this->get_parameter("image_height", image_height_);
   this->get_parameter("fps", fps_);
-  this->get_parameter("use_custom_intrinsics", use_custom_intrinsics_);
+  intrinsics_source_ = normalizeModeToken(
+    this->get_parameter("intrinsics_source").as_string());
   this->get_parameter("camera_matrix", camera_matrix_);
   this->get_parameter("distortion_coefficients", distortion_coefficients_);
   int exposure_time_us;
   this->get_parameter("exposure_time_us", exposure_time_us);
   this->get_parameter("jpeg_quality", jpeg_quality_);
+  if (intrinsics_source_ != "none" && intrinsics_source_ != "custom") {
+    RCLCPP_WARN(
+      this->get_logger(),
+      "Invalid intrinsics_source='%s'. Falling back to 'none'.",
+      intrinsics_source_.c_str());
+    intrinsics_source_ = "none";
+  }
 
   RCLCPP_INFO(this->get_logger(), "Initializing camera: %s", camera_name.c_str());
   RCLCPP_INFO(this->get_logger(), "Device path: %s", device_path_.c_str());
@@ -261,7 +283,7 @@ void CameraPublisherNode::loadCameraInfo()
   camera_info_msg_.height = image_height_;
   camera_info_msg_.distortion_model = "equidistant";
 
-  if (use_custom_intrinsics_ && camera_matrix_.size() == 9) {
+  if (intrinsics_source_ == "custom" && camera_matrix_.size() == 9) {
     RCLCPP_INFO(this->get_logger(), "Using custom intrinsics (fisheye/equidistant)");
     for (int i = 0; i < 9; ++i) {
       camera_info_msg_.k[i] = camera_matrix_[i];
@@ -309,7 +331,7 @@ void CameraPublisherNode::loadCameraInfo()
 
 void CameraPublisherNode::initVpiRemap()
 {
-  if (!use_custom_intrinsics_ || camera_matrix_.size() < 9 ||
+  if (intrinsics_source_ != "custom" || camera_matrix_.size() < 9 ||
       distortion_coefficients_.size() < 4) {
     RCLCPP_WARN(this->get_logger(), "VPI remap skipped: no calibration");
     return;

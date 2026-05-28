@@ -95,12 +95,12 @@ target_link_libraries(localization_map_helper_node
 )
 
 # ------------------------------------------------------------------------------
-# 4. ESKF core (kept as-is)
+# 4. ESKF core
 # ------------------------------------------------------------------------------
-add_executable(localization_eskf_node
+add_executable(eskf
   src/localization_eskf_node.cpp
 )
-ament_target_dependencies(localization_eskf_node
+ament_target_dependencies(eskf
   rclcpp
   avg_msgs
   geometry_msgs
@@ -110,10 +110,10 @@ ament_target_dependencies(localization_eskf_node
   tf2
   tf2_ros
 )
-target_include_directories(localization_eskf_node PRIVATE
+target_include_directories(eskf PRIVATE
   ${EIGEN3_INCLUDE_DIR}
 )
-target_link_libraries(localization_eskf_node Eigen3::Eigen)
+target_link_libraries(eskf Eigen3::Eigen)
 
 # ------------------------------------------------------------------------------
 # 5. Pose selector (kept as-is)
@@ -131,14 +131,29 @@ ament_target_dependencies(localization_pose_selector_node
 )
 
 # ------------------------------------------------------------------------------
+# 6. GNSS reattach helper
+#   - Detect persistent localization<->GNSS divergence
+#   - Publish reset pose for EKF set_pose / optional avg initialpose path
+# ------------------------------------------------------------------------------
+add_executable(localization_gnss_reattach_node
+  src/localization_gnss_reattach_node.cpp
+)
+ament_target_dependencies(localization_gnss_reattach_node
+  rclcpp
+  avg_msgs
+  geometry_msgs
+)
+
+# ------------------------------------------------------------------------------
 # Install
 # ------------------------------------------------------------------------------
 install(TARGETS
   localization_input_adapter_node
   localization_monitor_node
   localization_map_helper_node
-  localization_eskf_node
+  eskf
   localization_pose_selector_node
+  localization_gnss_reattach_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

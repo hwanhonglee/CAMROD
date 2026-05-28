@@ -1,0 +1,39 @@
+/**:
+  ros__parameters:
+    # HH_260410: Platform-owned default Ranger driver parameters.
+    # bringup may override this file via platform/ranger_driver_file.
+    use_sim_time: false                         # Uses ROS simulated time if true.
+    port_name: "can0"                           # CAN interface device name used by ranger_base node.
+    robot_model: "ranger"                       # Ranger model identifier expected by upstream driver.
+    odom_frame: "odom"                          # Parent frame for wheel odometry output.
+    base_frame: "robot_base_link"               # Child/base frame for wheel odometry output.
+    simulated_robot: false                      # Enables internal simulation mode in ranger driver.
+    publish_odom_tf: false                      # Publishes odom->base TF directly from ranger driver if true.
+    update_rate: 50                             # Driver update and publish loop rate [Hz].
+
+    publish_platform_status_topics: true        # Enables bridged platform status topic publication.
+    status_odom_topic: "/platform/status/odometry"     # Normalized odometry status output topic.
+    status_velocity_topic: "/platform/status/velocity" # Normalized velocity status output topic.
+    status_wheel_topic: "/platform/status/wheel"       # Wheel-state status output topic.
+    status_estop_topic: "/platform/status/estop"       # Derived e-stop status output topic.
+    status_frame_id: "robot_base_link"         # Frame id used in /platform/status header.
+    actuator_state_topic: "/actuator_state"     # Actuator state topic from ranger_base (CAN 0x281/0x271).
+    # HH_260428: Comprehensive aggregated DBC status topic (AvgPlatformStatus).
+    # Aggregates all CAN fields: vehicle_state/control_mode/error_code/battery_voltage (0x211),
+    # motion_mode (0x291), motor_rpm[8] (0x251-0x258), motor_speed[4] (0x281), motor_angle[4] (0x271).
+    platform_status_topic: "/platform/status"   # Aggregated AvgPlatformStatus output topic.
+
+    # HH_260428: Odom input for the platform bridge.
+    # odom_topic_name  : primary source — ranger_base /odom (CAN 0x221/0x311/0x312).
+    #                    ranger.launch.py hardcodes ranger_base output to /odom.
+    # odom_fallback_topic : fallback when primary is absent — RMP401 substitute platform.
+    #                       Activated automatically after odom_fallback_timeout seconds of silence.
+    # To run on Ranger hardware: keep odom_topic_name as /odom (matches ranger_base output).
+    # To run with RMP401 only (no ranger_base): set odom_topic_name: /rmp401/odom and
+    #   odom_fallback_topic: "" to disable the fallback subscription.
+    odom_topic_name: "/odom"                    # Primary odom input (ranger_base output).
+    odom_fallback_topic: "/rmp401/odom"         # Fallback odom when primary is silent (RMP401 substitute).
+    odom_fallback_timeout: 1.0                  # Seconds of primary silence before activating fallback.
+
+    estop_on_exception_state: true              # Forces estop=true when driver exception state is detected.
+    estop_on_error_code: false                  # Forces estop=true on non-zero driver error codes if enabled.

@@ -100,9 +100,10 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_output_topic', default_value='/planning/cmd_vel'),
         DeclareLaunchArgument('planning_engage_topic', default_value='/planning/engage'),
         DeclareLaunchArgument('planning_engaged_state_topic', default_value='/planning/engaged'),
-        DeclareLaunchArgument('cmd_vel_gate_use_estop_topic', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_estop_source_mode', default_value='platform_status'),
         # HH_260409: Use platform-originated e-stop by default.
         DeclareLaunchArgument('cmd_vel_gate_estop_topic', default_value='/platform/status/estop'),
+        DeclareLaunchArgument('cmd_vel_gate_dr_timeout_source_mode', default_value='localization_monitor'),
         DeclareLaunchArgument('cmd_vel_gate_allow_on_start', default_value='false'),
         # HH_260427: Short hold window after DR_ONLY->NORMAL localization recovery.
         DeclareLaunchArgument('cmd_vel_gate_enable_gnss_recovery_hold', default_value='true'),
@@ -170,13 +171,20 @@ def generate_launch_description():
           }.items()],
         DeclareLaunchArgument('nav2_robot_base_frame', default_value='robot_base_link'),
         DeclareLaunchArgument(
+            'nav2_selected_planner',
+            default_value='__auto__',
+        ),
+        DeclareLaunchArgument(
+            'nav2_selected_controller',
+            default_value='__auto__',
+        ),
+        DeclareLaunchArgument(
             'planning_state_machine_keypoints_yaml',
             default_value=pkg_share('camrod_map', os.path.join('config', 'drop_zones.yaml')),
         ),
 
-        # HH_260407: backward compatibility (no-op)
-        DeclareLaunchArgument('system_namespace', default_value='system'),
-        DeclareLaunchArgument('enable_module_validator', default_value='false'),
+        # HH_260527: Removed unused compatibility args
+        # (system_namespace, enable_module_validator).
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -196,6 +204,8 @@ def generate_launch_description():
                     'origin_lon',
                     'origin_alt',
                     'nav2_robot_base_frame',
+                    'nav2_selected_planner',
+                    'nav2_selected_controller',
                     'module_namespace',
                 ),
                 'nav2_autostart': PythonExpression([
@@ -248,8 +258,9 @@ def generate_launch_description():
                 'cmd_vel_output_topic',
                 'planning_engage_topic',
                 'planning_engaged_state_topic',
-                'cmd_vel_gate_use_estop_topic',
+                'cmd_vel_gate_estop_source_mode',
                 'cmd_vel_gate_estop_topic',
+                'cmd_vel_gate_dr_timeout_source_mode',
                 'cmd_vel_gate_allow_on_start',
                 'cmd_vel_gate_enable_gnss_recovery_hold',
                 'cmd_vel_gate_localization_mode_topic',

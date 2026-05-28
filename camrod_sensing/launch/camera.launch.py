@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -58,13 +58,10 @@ def generate_launch_description():
         },
     )
 
-    # Give iox-roudi 1s to initialize before starting the camera node
-    delayed_camera = TimerAction(period=1.0, actions=[camera_node])
-
     return LaunchDescription([
         config_file_arg,
         device_path_arg,
         module_namespace_arg,
         iox_roudi,
-        delayed_camera,
+        camera_node,
     ])

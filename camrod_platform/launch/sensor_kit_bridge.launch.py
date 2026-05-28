@@ -15,7 +15,8 @@ def pkg_share(pkg: str, rel: str) -> str:
 # Includes camrod_sensor_kit launch with platform-selected frame/namespace wiring.
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('map_frame_id', default_value='map'),
+        # HH_260527: Removed unused pass-through args
+        # (map_frame_id, enable_status) from sensor_kit bridge.
         DeclareLaunchArgument('base_frame_id', default_value='robot_base_link'),
         DeclareLaunchArgument('sensor_kit_base_frame_id', default_value='sensor_kit_base_link'),
         DeclareLaunchArgument(
@@ -29,12 +30,10 @@ def generate_launch_description():
                 pkg_share('camrod_sensor_kit', os.path.join('launch', 'sensor_kit.launch.py'))
             ),
             launch_arguments={
-                'map_frame_id': LaunchConfiguration('map_frame_id'),
                 'base_frame_id': LaunchConfiguration('base_frame_id'),
                 'sensor_kit_base_frame_id': LaunchConfiguration('sensor_kit_base_frame_id'),
                 'params_file': LaunchConfiguration('params_file'),
                 'module_namespace': LaunchConfiguration('sensor_kit_namespace'),
-                'enable_status': 'false',
             }.items(),
         ),
     ])

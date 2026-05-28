@@ -164,17 +164,16 @@ public:
     this->declare_parameter<double>("poll_period_s", 0.06);
     this->declare_parameter<double>("response_deadline_s", 0.20);
     this->declare_parameter<double>("inter_frame_sleep_s", 0.003);
-    this->declare_parameter<bool>("use_range_msg", true);
     this->declare_parameter<double>("min_range_m", 0.02);
     this->declare_parameter<double>("max_range_m", 4.5);
     this->declare_parameter<double>("field_of_view_rad", 0.26);
     this->declare_parameter<std::string>("radar_status_topic", "/sensing/radar/status");
     this->declare_parameter<bool>("publish_radar_status", false);
-    // HH_260422: write_angle_config=true sends FC 0x06 to register 0x0208 once per port-open.
-    //   angle_config_value: 1=15° 2=30° 3=45° 4=60° 5=75° on DFRobot SEN0592.
-    //   Set write_angle_config=false if sensors are pre-configured or share a bus with other devices.
-    this->declare_parameter<bool>("write_angle_config", true);
-    this->declare_parameter<int>("angle_config_value", 5);
+    // HH_260527: Per-sensor detection angle written to register 0x0208 on port open.
+    //   Values: 1=15° 2=30° 3=45° 4=60° 5=75°. 0 = skip (sensor retains last hardware value).
+    //   Order must match sensor_names.
+    this->declare_parameter<std::vector<int>>(
+      "sensor_angle_config_values", std::vector<int>{});
     // HH_260422: sensor_max_ranges_m: per-sensor max range (m), ordered identically to sensor_names.
     //   Carried in Range.max_range for software-side filtering in cost_grid_node.
     this->declare_parameter<std::vector<double>>(
@@ -221,10 +220,9 @@ public:
     fov_rad_ = this->get_parameter("field_of_view_rad").as_double();
     radar_status_topic_ = this->get_parameter("radar_status_topic").as_string();
     publish_radar_status_ = this->get_parameter("publish_radar_status").as_bool();
-    write_angle_config_ = this->get_parameter("write_angle_config").as_bool();
-    angle_config_value_ = static_cast<uint16_t>(this->get_parameter("angle_config_value").as_int());
     const auto sensor_max_ranges = this->get_parameter("sensor_max_ranges_m").as_double_array();
     const auto sensor_range_config_mm = this->get_parameter("sensor_range_config_mm").as_integer_array();
+    const auto sensor_angle_config = this->get_parameter("sensor_angle_config_values").as_integer_array();
     avg_radar_pub_ = this->create_publisher<AvgSensingRadar>(radar_status_topic_, 10);
 
     sensors_.resize(n);
@@ -250,6 +248,10 @@ public:
       sensors_[i].range_config_mm =
         (i < sensor_range_config_mm.size() && sensor_range_config_mm[i] > 0)
         ? static_cast<int>(sensor_range_config_mm[i]) : 1500;
+      // HH_260527: Per-sensor detection angle written to 0x0208 on port open. 0=skip.
+      sensors_[i].angle_config_value =
+        (i < static_cast<size_t>(sensor_angle_config.size()) && sensor_angle_config[i] > 0)
+        ? static_cast<int>(sensor_angle_config[i]) : 0;
       pubs_[i] = this->create_publisher<avg_msgs::msg::Range>(topics_[i], range_qos);
     }
 
@@ -295,6 +297,8 @@ private:
     //   Stops the sensor from reporting objects beyond this distance at the hardware level.
     //   Default values match stopping-distance physics per direction.
     int range_config_mm{1500};
+    // HH_260527: Per-sensor detection angle (1=15°…5=75°). 0=skip angle write.
+    int angle_config_value{0};
 
     int last_mm{-1};
     double last_dt_ms{0.0};
@@ -327,11 +331,14 @@ private:
     return true;
   }
 
-  // HH_260422: Writes detection angle (0x0208) and hardware range limit (0x021F) on port open.
+  // HH_260527: Writes per-sensor detection angle (0x0208) and hardware range limit (0x021F) on port open.
   void write_angle_config_register(SensorRuntime& s)
   {
-    if (!write_angle_config_ || s.fd < 0) return;
-    write_single_register(s, kRegAngleConfig, angle_config_value_, "angle_config");
+    if (s.fd < 0) return;
+    if (s.angle_config_value > 0) {
+      write_single_register(s, kRegAngleConfig,
+        static_cast<uint16_t>(s.angle_config_value), "angle_config");
+    }
     write_single_register(s, kRegRangeConfig,
       static_cast<uint16_t>(s.range_config_mm), "range_config");
   }
@@ -562,10 +569,6 @@ private:
   double fov_rad_{0.26};
   std::string radar_status_topic_;
   bool publish_radar_status_{false};
-  // HH_260422: write_angle_config_=true → write kRegAngleConfig on port open.
-  //   angle_config_value_: detection angle index sent to 0x0208 (1=15° … 5=75°).
-  bool write_angle_config_{true};
-  uint16_t angle_config_value_{5};
 
   std::vector<SensorRuntime> sensors_;
   std::vector<rclcpp::Publisher<avg_msgs::msg::Range>::SharedPtr> pubs_;

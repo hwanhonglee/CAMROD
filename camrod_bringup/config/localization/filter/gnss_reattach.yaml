@@ -1,0 +1,53 @@
+/**:
+  ros__parameters:
+    localization_pose_cov_topic: "/localization/pose_with_covariance"
+    gnss_pose_cov_topic: "/sensing/gnss/pose_with_covariance"
+    wheel_odom_topic: "/platform/status/wheel_odometry"
+    localization_mode_topic: "/localization/mode"
+
+    # HH_260527: reset_target_mode options:
+    #   ekf_topic: publish geometry_msgs reset to /localization/set_pose
+    #   avg_pose_topic: publish avg_msgs reset to avg_pose_reset_topic
+    #   both: publish both outputs
+    reset_target_mode: "both"
+    # HH_260528: Match robot_localization ekf_node set_pose subscriber.
+    ekf_set_pose_topic: "/localization/set_pose"
+    avg_pose_reset_topic: "/localization/eskf/set_pose"
+
+    detach_distance_m: 3.0
+    attach_distance_m: 1.5
+    detach_hold_s: 0.5
+    reattach_cooldown_s: 3.0
+
+    require_motion_after_detach: true
+    motion_distance_threshold_m: 0.4
+    motion_step_clip_m: 5.0
+    wheel_motion_speed_threshold_mps: 0.12
+
+    # Optional mode gate (AvgLocalizationMode enum: NORMAL=0, DEGRADED=1, DR_ONLY=2, INVALID=3).
+    require_mode_gate: false
+    require_mode_at_or_above: 2
+
+    localization_timeout_s: 1.0
+    gnss_timeout_s: 2.0
+
+    max_gnss_cov_trace: 25.0
+    min_reset_cov_xy: 0.05
+    reset_cov_yaw: 0.5
+    use_localization_yaw: true
+
+    # HH_260527: Manual RViz 2D Pose Estimate (/localization/initialpose) bridge.
+    enable_initialpose_reset: true
+    initialpose_topic: "/localization/initialpose"
+    # HH_260528: Also accept RViz default initial pose topic.
+    enable_initialpose_fallback_topic: true
+    initialpose_topic_fallback: "/initialpose"
+    # HH_260528: Keep manual initialpose as authoritative by default.
+    # Set true only when you intentionally want far clicks to snap back to GNSS.
+    initialpose_snap_to_gnss: false
+    initialpose_snap_distance_m: 1.0
+    # HH_260527: initialpose_yaw_source options:
+    #   input: use RViz arrow yaw
+    #   localization: keep current filter yaw
+    #   gnss: use GNSS yaw when available
+    initialpose_yaw_source: "input"

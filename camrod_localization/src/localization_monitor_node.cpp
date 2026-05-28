@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -21,6 +22,16 @@
 
 namespace camrod::localization
 {
+namespace
+{
+std::string normalizeModeToken(std::string value)
+{
+  std::transform(
+    value.begin(), value.end(), value.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return value;
+}
+}  // namespace
 
 class LocalizationMonitorNode : public rclcpp::Node
 {
@@ -29,7 +40,10 @@ public:
   : Node("localization_monitor")
   {
     diag_topic_ = declare_parameter<std::string>("diag_topic", "/localization/eskf/status");
-    use_filter_status_ = declare_parameter<bool>("use_filter_status", true);
+    // HH_260526: Replace use_filter_status toggle with explicit mode.
+    // filter_status_mode options: stream | none.
+    filter_status_mode_ = normalizeModeToken(
+      declare_parameter<std::string>("filter_status_mode", "stream"));
 
     gnss_pose_topic_ = declare_parameter<std::string>("gnss_pose_topic", "/sensing/gnss/pose");
     gnss_pose_cov_topic_ = declare_parameter<std::string>(
@@ -38,9 +52,9 @@ public:
     // HH_260410: Monitor uses the same unified wheel topic as EKF/ESKF.
     wheel_topic_ = declare_parameter<std::string>("wheel_topic", "/platform/status/wheel_odometry");
 
-    gnss_timeout_s_ = declareDurationWithLegacy("gnss_timeout_s", "gnss_timeout_sec", 1.0);
-    imu_timeout_s_ = declareDurationWithLegacy("imu_timeout_s", "imu_timeout_sec", 0.5);
-    wheel_timeout_s_ = declareDurationWithLegacy("wheel_timeout_s", "wheel_timeout_sec", 0.5);
+    gnss_timeout_s_ = declare_parameter<double>("gnss_timeout_s", 1.0);
+    imu_timeout_s_ = declare_parameter<double>("imu_timeout_s", 0.5);
+    wheel_timeout_s_ = declare_parameter<double>("wheel_timeout_s", 0.5);
 
     gnss_innov_warn_ = declare_parameter<double>("gnss_innovation_warn", 3.0);
     gnss_innov_fail_ = declare_parameter<double>("gnss_innovation_fail", 6.0);
@@ -57,6 +71,13 @@ public:
       declare_parameter<bool>("publish_localization_status", false);
     localization_status_topic_ =
       declare_parameter<std::string>("localization_status_topic", "/localization/status");
+    if (filter_status_mode_ != "stream" && filter_status_mode_ != "none") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid filter_status_mode='%s'. Falling back to 'stream'.",
+        filter_status_mode_.c_str());
+      filter_status_mode_ = "stream";
+    }
 
     mode_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMode>("/localization/mode", rclcpp::QoS(10));
     status_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationStatus>("/localization/status", rclcpp::QoS(10));
@@ -76,7 +97,7 @@ public:
 
     using std::placeholders::_1;
 
-    if (use_filter_status_ && !diag_topic_.empty()) {
+    if (filter_status_mode_ == "stream" && !diag_topic_.empty()) {
       diag_sub_ = create_subscription<avg_msgs::msg::AvgLocalizationStatusStream>(
         diag_topic_, rclcpp::QoS(20),
         std::bind(&LocalizationMonitorNode::onDiag, this, _1));
@@ -104,26 +125,6 @@ public:
   }
 
 private:
-  double declareDurationWithLegacy(
-    const std::string & canonical_name,
-    const std::string & legacy_name,
-    const double default_value)
-  {
-    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
-    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
-    if (std::abs(canonical_value - default_value) > 1e-9) {
-      return canonical_value;
-    }
-    if (std::abs(legacy_value - default_value) > 1e-9) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter '%s' is deprecated. Use '%s' instead.",
-        legacy_name.c_str(), canonical_name.c_str());
-      return legacy_value;
-    }
-    return canonical_value;
-  }
-
   void onGnssPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     last_gnss_pose_time_ = rclcpp::Time(msg->header.stamp);
@@ -209,7 +210,7 @@ private:
       !has_prev_gnss_ || (gnss_min_hz_ <= 0.0) || (last_gnss_hz_ >= gnss_min_hz_);
 
     const bool diag_available =
-      use_filter_status_ && (last_diag_time_.nanoseconds() > 0);
+      (filter_status_mode_ == "stream") && (last_diag_time_.nanoseconds() > 0);
 
     const bool gnss_update_accepted =
       !diag_available || last_diag_.gnss_update_accepted;
@@ -322,7 +323,7 @@ private:
   // HH_260422: true -> subscribe to diag_topic_ and factor gnss_update_accepted / wheel_update_accepted
   //   into the gnss_good / wheel_good decision.
   //   false -> decide mode from sensor freshness and covariance only (ignores ESKF internal acceptance state).
-  bool use_filter_status_{true};
+  std::string filter_status_mode_{"stream"};
 
   std::string gnss_pose_topic_;
   std::string gnss_pose_cov_topic_;

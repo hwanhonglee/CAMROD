@@ -15,9 +15,12 @@
     longitudinal_stddev: 0.5
     lateral_stddev: 0.3
     yaw_stddev: 0.2
-    use_map_z: true
+    # HH_260527: centerline_z_mode options:
+    #   input: keep input pose Z
+    #   map: use lanelet centerline Z + map_z_offset
+    #   ground: force Z=0 + map_z_offset
+    centerline_z_mode: map
     map_z_offset: 0.0
-    flatten_to_ground: false
     # Throttle nearest-centerline projection for CPU stability.
     min_update_period_s: 0.05
     min_input_displacement_m: 0.05

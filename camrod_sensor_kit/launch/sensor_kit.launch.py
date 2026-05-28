@@ -161,15 +161,6 @@ def generate_launch_description():
       default_value="sensor_kit_base_link",
       description="Sensor kit frame under robot_base_link",
     ),
-    DeclareLaunchArgument(
-      "map_frame_id",
-      default_value="map",
-      description="Fixed world frame connected to the base frame",
-    ),
-    DeclareLaunchArgument(
-      "enable_status",
-      default_value="false",
-      description="Deprecated (status node removed)",
-    ),
+    # HH_260527: Removed unused args (map_frame_id, enable_status).
     OpaqueFunction(function=_launch_setup),
   ])

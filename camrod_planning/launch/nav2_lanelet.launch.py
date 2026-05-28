@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -39,6 +39,78 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
             if isinstance(params, dict):
                 return params
     return {}
+
+
+def infer_nav2_combo_ids(combo_param_file: str) -> tuple[str, str]:
+    """Infer planner/controller IDs from combo profile filename."""
+    name = os.path.basename(str(combo_param_file)).lower()
+    planner_id = 'NavFn'
+    controller_id = 'RPP'
+
+    # HH_260528: Keep mapping explicit so one combo file controls both selectors.
+    planner_tokens = (
+        ('smachybrid', 'SmacHybrid'),
+        ('smaclattice', 'SmacLattice'),
+        ('smac2d', 'Smac2D'),
+        ('thetastar', 'ThetaStar'),
+        ('navfn', 'NavFn'),
+    )
+    controller_tokens = (
+        ('rotationshim', 'RotationShim'),
+        ('graceful', 'Graceful'),
+        ('mppi', 'MPPI'),
+        ('dwb', 'DWB'),
+        ('rpp', 'RPP'),
+    )
+
+    for token, planner in planner_tokens:
+        if token in name:
+            planner_id = planner
+            break
+    for token, controller in controller_tokens:
+        if token in name:
+            controller_id = controller
+            break
+    return planner_id, controller_id
+
+
+def resolve_selector_choice(requested: str, inferred: str) -> str:
+    value = str(requested).strip()
+    if not value or value in ('__auto__', 'auto'):
+        return inferred
+    return value
+
+
+def build_nav2_selector_latch_node(context, *args, **kwargs):
+    del args, kwargs
+    combo_file = LaunchConfiguration('nav2_combo_param_file').perform(context)
+    requested_planner = LaunchConfiguration('nav2_selected_planner').perform(context)
+    requested_controller = LaunchConfiguration('nav2_selected_controller').perform(context)
+    module_ns = LaunchConfiguration('module_namespace').perform(context).strip('/')
+
+    inferred_planner, inferred_controller = infer_nav2_combo_ids(combo_file)
+    planner_id = resolve_selector_choice(requested_planner, inferred_planner)
+    controller_id = resolve_selector_choice(requested_controller, inferred_controller)
+
+    planner_topic = f"/{module_ns}/planner_selector" if module_ns else "/planner_selector"
+    controller_topic = f"/{module_ns}/controller_selector" if module_ns else "/controller_selector"
+
+    return [
+        Node(
+            package='camrod_planning',
+            executable='nav2_selector_latch_node.py',
+            name='nav2_selector_latch',
+            namespace=LaunchConfiguration('module_namespace'),
+            output='screen',
+            parameters=[{
+                'planner_id': planner_id,
+                'controller_id': controller_id,
+                'planner_topic': planner_topic,
+                'controller_topic': controller_topic,
+                'repeat_hz': 1.0,
+            }],
+        )
+    ]
 
 
 # Implements `generate_launch_description` behavior.
@@ -126,6 +198,16 @@ def generate_launch_description():
         default_value=default_combo_param,
         description='Optional planner/controller combo override profile',
     )
+    nav2_selected_planner_arg = DeclareLaunchArgument(
+        'nav2_selected_planner',
+        default_value='__auto__',
+        description='Planner selector ID (auto resolves from nav2_combo_param_file)',
+    )
+    nav2_selected_controller_arg = DeclareLaunchArgument(
+        'nav2_selected_controller',
+        default_value='__auto__',
+        description='Controller selector ID (auto resolves from nav2_combo_param_file)',
+    )
     enable_path_cost_grids_arg = DeclareLaunchArgument(
         'enable_path_cost_grids',
         default_value='true',
@@ -190,6 +272,7 @@ def generate_launch_description():
     nav2_autostart = LaunchConfiguration('nav2_autostart')
     nav2_bt_xml_nav_to_pose = LaunchConfiguration('nav2_bt_xml_nav_to_pose')
     nav2_bt_xml_nav_through_poses = LaunchConfiguration('nav2_bt_xml_nav_through_poses')
+    selector_latch = OpaqueFunction(function=build_nav2_selector_latch_node)
     # 2026-02-25: Apply Nav2 params in deterministic overlay order:
     # base -> vehicle -> lanelet -> behavior.
     nav2_base_params = RewrittenYaml(
@@ -427,6 +510,8 @@ def generate_launch_description():
         nav2_lanelet_param_arg,
         nav2_behavior_param_arg,
         nav2_combo_param_arg,
+        nav2_selected_planner_arg,
+        nav2_selected_controller_arg,
         enable_path_cost_grids_arg,
         path_cost_grids_param_arg,
         map_path_arg,
@@ -439,6 +524,7 @@ def generate_launch_description():
         nav2_bt_xml_nav_to_pose_arg,
         nav2_bt_xml_nav_through_poses_arg,
 
+        selector_latch,
         planner_server,
         controller_server,
         smoother_server,

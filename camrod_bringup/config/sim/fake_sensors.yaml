@@ -11,13 +11,11 @@
     # lanelet selector:
     # - lanelet_id >= 0      : follow one specific lanelet relation id
     # - lanelet_id == -1     : auto/all-centerline mode
-    # - fake_lanelet_id >= 0 : legacy alias override (takes priority if set)
     lanelet_id: -1
-    fake_lanelet_id: -1
     speed_mps: 1.4
-    # Use cmd_vel-driven motion for realistic closed-loop simulation.
-    # When enabled, fake pose advances only from /platform/cmd_vel linear.x.
-    use_cmd_vel_for_motion: true
+    # HH_260526: Motion source mode.
+    # motion_source: cmd_vel | constant_speed
+    motion_source: "cmd_vel"
     cmd_vel_motion_topic: "/platform/cmd_vel"
     cmd_vel_timeout_s: 0.5
     max_cmd_speed_mps: 2.5
@@ -26,9 +24,6 @@
     wheel_bridge_input_topic: "/rmp401/odom"
     # VIO stack is disabled. Publish DR odometry to fallback stream.
     dr_odometry_topic: "/localization/fallback/odometry"
-    # Optional compatibility bridge for legacy consumers still using VIO topic.
-    publish_legacy_vio_odometry: false
-    legacy_vio_odometry_topic: "/localization/vio/odometry"
     # Debug:
     # - true  : keep fake sensor position fixed on the path anchor
     # - false : move along centerline by speed_mps
@@ -42,13 +37,12 @@
     # - start_from_pose=false -> first point of stitched centerline path
     # Start near drop_zone for scenario validation (bringup sim).
     start_from_pose: true
-    # Legacy alias (kept for compatibility with older launch/scripts).
-    use_start_pose: false
     # Keep initial anchor near drop_zone from bringup map/drop_zones.yaml.
     start_x: 16.8676
     start_y: -117.408
-    # 2026-02-02: Traverse all lanelet centerlines for a full-lap path.
-    use_all_centerlines: true
+    # HH_260526: Centerline scope mode.
+    # centerline_scope: all | selected_lanelet
+    centerline_scope: "all"
     centerline_connect_max_gap: 5.0
     # 2026-02-02: Close near-loop centerlines for continuous laps.
     close_loop: true
@@ -97,11 +91,12 @@
     # Example: failure_after=15, recovery_after=45 -> GNSS off for 30s then back on.
     gnss_failure_after_s: 25.0
     gnss_recovery_after_s: 55.0
-    # HH_260428: Free navigation sim mode.
-    # When false (default): robot position constrained to lanelet centerline.
-    #   Use for general loop testing where the robot stays on the road.
-    # When true: cmd_vel (linear.x + angular.z) integrated as a unicycle model.
-    #   Use for camping site navigation testing where the robot must leave the road.
-    #   Enable via ros2 param set or set true here before launch.
-    use_free_nav_sim: false
+    # HH_260526: Navigation model mode.
+    # simulation_nav_mode: centerline | free_nav
+    # HH_260527: Default to free_nav so RViz initial pose (P) relocates
+    # the full fake-sensor stack exactly to the requested map pose.
+    simulation_nav_mode: "free_nav"
+    # HH_260528: Also accept RViz default /initialpose topic.
+    enable_initialpose_fallback_topic: true
+    initialpose_topic_fallback: "/initialpose"
     # Fake sensors follow lanelet centerline in map frame.

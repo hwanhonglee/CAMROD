@@ -144,7 +144,8 @@ def generate_launch_description():
             default_value=pkg_share('camrod_system', os.path.join('config', 'system_checker.yaml')),
         ),
 
-        # Main diagnostics stack (inline: no intermediate system_diagnostics.launch.py include).
+        # HH_260527: Main diagnostics stack is fully inline
+        # (legacy system_diagnostics/component launch files removed).
         OpaqueFunction(function=_build_diagnostics_inline),
 
         # ── System tools: node/topic liveness check + lightweight aggregator ────

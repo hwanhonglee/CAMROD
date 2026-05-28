@@ -1,7 +1,7 @@
 /**
  * Localization Lanelet Checker Node
  *
- * centerline_snapper_node 가 발행하는 /localization/lanelet_pose 를 구독하여
+ * centerline_snapper_node 가 발행하는 /localization/centerline_pose 를 구독하여
  * 로봇이 lanelet 맵 범위 안에 있는지를 /diagnostics 토픽으로 발행한다.
  *
  * centerline_snapper_node 는 로봇 위치가 max_search_radius 밖에 있으면
@@ -11,7 +11,7 @@
  * 진단 항목
  * ---------
  *   /localization/lanelet
- *     - Staleness      : lanelet_pose 미수신 경과 시간
+ *     - Staleness      : centerline_pose 미수신 경과 시간
  *                        → stale_timeout 초과 시 STALE
  *                        (= 로봇이 맵 밖으로 벗어났을 가능성)
  *     - Rate           : 2초 rolling window 기반 실제 Hz
@@ -23,7 +23,7 @@
  *
  * 파라미터 구성
  * -------------
- *   lanelet_topic:        "/localization/lanelet_pose"
+ *   lanelet_topic:        "/localization/centerline_pose"
  *   expected_hz:          20.0
  *   hz_warn_ratio:        0.7
  *   hz_error_ratio:       0.4
@@ -81,7 +81,7 @@ public:
 protected:
   void declare_parameters_() override
   {
-    declare_parameter("lanelet_topic",       std::string("/localization/lanelet_pose"));
+    declare_parameter("lanelet_topic",       std::string("/localization/centerline_pose"));
     declare_parameter("expected_hz",         20.0);
     declare_parameter("hz_warn_ratio",       0.7);
     declare_parameter("hz_error_ratio",      0.4);

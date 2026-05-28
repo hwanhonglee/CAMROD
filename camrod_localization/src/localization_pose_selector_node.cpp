@@ -58,6 +58,8 @@ public:
       "fallback_pose_cov_topic", "/localization/fallback/pose_with_covariance");
     fallback_odom_topic_ = declare_parameter<std::string>(
       "fallback_odom_topic", "/localization/fallback/odometry");
+    // HH_260527: Allow empty fallback topics to run primary-only selector mode.
+    fallback_enabled_ = !fallback_pose_cov_topic_.empty() || !fallback_odom_topic_.empty();
     mode_topic_ = declare_parameter<std::string>(
       "mode_topic", "/localization/mode");
 
@@ -83,12 +85,9 @@ public:
     base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_base_link");
     publish_selected_tf_ = declare_parameter<bool>("publish_selected_tf", true);
 
-    primary_timeout_s_ = declareDurationWithLegacy(
-      "primary_timeout_s", "primary_timeout_sec", 0.5);
-    fallback_timeout_s_ = declareDurationWithLegacy(
-      "fallback_timeout_s", "fallback_timeout_sec", 0.5);
-    switch_hysteresis_s_ = declareDurationWithLegacy(
-      "switch_hysteresis_s", "switch_hysteresis_sec", 0.5);
+    primary_timeout_s_ = declare_parameter<double>("primary_timeout_s", 0.5);
+    fallback_timeout_s_ = declare_parameter<double>("fallback_timeout_s", 0.5);
+    switch_hysteresis_s_ = declare_parameter<double>("switch_hysteresis_s", 0.5);
     fallback_on_mode_at_or_above_ = declare_parameter<int>(
       "fallback_on_mode_at_or_above",
       static_cast<int>(AvgLocalizationMode::DR_ONLY));
@@ -128,12 +127,16 @@ public:
     rclcpp::QoS fallback_qos(rclcpp::KeepLast(1));
     fallback_qos.transient_local().reliable();
 
-    fallback_pose_cov_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
-      fallback_pose_cov_topic_, fallback_qos,
-      std::bind(&LocalizationPoseSelectorNode::onFallbackPoseCov, this, _1));
-    fallback_odom_sub_ = create_subscription<avg_msgs::msg::Odometry>(
-      fallback_odom_topic_, fallback_qos,
-      std::bind(&LocalizationPoseSelectorNode::onFallbackOdom, this, _1));
+    if (!fallback_pose_cov_topic_.empty()) {
+      fallback_pose_cov_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+        fallback_pose_cov_topic_, fallback_qos,
+        std::bind(&LocalizationPoseSelectorNode::onFallbackPoseCov, this, _1));
+    }
+    if (!fallback_odom_topic_.empty()) {
+      fallback_odom_sub_ = create_subscription<avg_msgs::msg::Odometry>(
+        fallback_odom_topic_, fallback_qos,
+        std::bind(&LocalizationPoseSelectorNode::onFallbackOdom, this, _1));
+    }
     mode_sub_ = create_subscription<AvgLocalizationMode>(
       mode_topic_, rclcpp::QoS(20),
       std::bind(&LocalizationPoseSelectorNode::onMode, this, _1));
@@ -142,36 +145,24 @@ public:
       std::chrono::milliseconds(100),
       std::bind(&LocalizationPoseSelectorNode::onWatcherTimer, this));
 
-    RCLCPP_INFO(
-      get_logger(),
-      "pose_selector started. primary=(%s,%s) fallback=(%s,%s) output=(%s,%s,%s)",
-      primary_pose_cov_topic_.c_str(), primary_odom_topic_.c_str(),
-      fallback_pose_cov_topic_.c_str(), fallback_odom_topic_.c_str(),
-      selected_pose_topic_.c_str(), selected_pose_cov_topic_.c_str(),
-      selected_odom_topic_.c_str());
+    if (fallback_enabled_) {
+      RCLCPP_INFO(
+        get_logger(),
+        "pose_selector started. primary=(%s,%s) fallback=(%s,%s) output=(%s,%s,%s)",
+        primary_pose_cov_topic_.c_str(), primary_odom_topic_.c_str(),
+        fallback_pose_cov_topic_.c_str(), fallback_odom_topic_.c_str(),
+        selected_pose_topic_.c_str(), selected_pose_cov_topic_.c_str(),
+        selected_odom_topic_.c_str());
+    } else {
+      RCLCPP_INFO(
+        get_logger(),
+        "pose_selector started. primary-only mode enabled. output=(%s,%s,%s)",
+        selected_pose_topic_.c_str(), selected_pose_cov_topic_.c_str(),
+        selected_odom_topic_.c_str());
+    }
   }
 
 private:
-  double declareDurationWithLegacy(
-    const std::string & canonical_name,
-    const std::string & legacy_name,
-    const double default_value)
-  {
-    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
-    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
-    if (std::abs(canonical_value - default_value) > 1e-9) {
-      return canonical_value;
-    }
-    if (std::abs(legacy_value - default_value) > 1e-9) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter '%s' is deprecated. Use '%s' instead.",
-        legacy_name.c_str(), canonical_name.c_str());
-      return legacy_value;
-    }
-    return canonical_value;
-  }
-
   static rclcpp::Time stampFromHeader(const avg_msgs::msg::Header & header)
   {
     return rclcpp::Time(header.stamp);
@@ -225,6 +216,9 @@ private:
     if (source == Source::kPrimary) {
       return primary_has_pose_cov_ || primary_has_odom_;
     }
+    if (!fallback_enabled_) {
+      return false;
+    }
     return fallback_has_pose_cov_ || fallback_has_odom_;
   }
 
@@ -255,6 +249,7 @@ private:
       if (!sourceHasData(source)) return false;
       return (now - last_primary_msg_time_).seconds() <= primary_timeout_s_;
     }
+    if (!fallback_enabled_) return false;
     if (!sourceHasData(source)) return false;
     return (now - last_fallback_msg_time_).seconds() <= fallback_timeout_s_;
   }
@@ -456,6 +451,7 @@ private:
 
   bool publish_localization_status_{false}; // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs)
   bool publish_selected_tf_{true};          // HH_260422: true -> broadcast selected pose as TF transform
+  bool fallback_enabled_{true};             // HH_260527: false when fallback topics are intentionally left empty
 
   // HH_260422: mode_value_ holds the latest enum received from /localization/mode (published by localization_monitor).
   //   When mode_value_ >= fallback_on_mode_at_or_above_ (default DR_ONLY=2), selector switches to fallback source.

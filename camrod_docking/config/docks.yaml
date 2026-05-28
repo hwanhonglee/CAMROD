@@ -1,0 +1,12 @@
+# Manual docking 테스트용 설정 (Nav2/map 없음)
+# frame: odom — 로봇 시작 위치 기준 좌표계
+# pose: [x, y, yaw_rad]
+#   navigate_to_staging_pose: false 이므로 이 좌표는 staging 이동에 사용되지 않음.
+#   CamrodDockingPlugin이 AprilTag 검출 pose를 직접 사용하므로 실제 스테이션 좌표
+#   정확도보다 tag 검출 가능 거리(~0.7m 이내)에 로봇을 수동 배치하는 것이 중요.
+# TODO: 실제 도킹 스테이션 설치 위치 확정 후 측정값으로 교체
+docks:
+  home_dock:
+    type: apriltag_dock
+    frame: odom
+    pose: [1.0, 0.0, 0.0]  # TODO: 실제 odom 기준 스테이션 위치로 교체

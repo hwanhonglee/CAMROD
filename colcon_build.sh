@@ -110,7 +110,8 @@ unset _TIER4 _ARCH
 
 # HH_260428: nova_carter_docking is an NVIDIA Isaac ROS example; not buildable
 # without isaac_ros_apriltag_interfaces (Jetson-only). No CAMROD package depends on it.
-_NCD="${SRC_ROOT}/camrod_parking/external/opennav_docking/nova_carter_docking"
+# HH_260528: Path updated from camrod_parking to camrod_docking.
+_NCD="${SRC_ROOT}/camrod_docking/external/opennav_docking/nova_carter_docking"
 if [[ -d "${_NCD}" && ! -e "${_NCD}/COLCON_IGNORE" ]]; then
   echo "# auto: NVIDIA Isaac ROS example (requires isaac_ros_apriltag_interfaces)" \
     > "${_NCD}/COLCON_IGNORE"

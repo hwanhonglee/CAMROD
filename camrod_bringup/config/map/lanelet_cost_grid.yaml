@@ -64,10 +64,8 @@
     #   0   : free outside lanelets
     #   100 : lethal outside lanelets
     outside_value: -1
-    use_path_bbox: false        # HH_260102 keep grid window robot-centered to avoid size flicker
-    # HH_260412: Keep grid centered on current pose instead of full-map bbox.
-    lock_window: false
-    use_map_bbox: false
+    # HH_260526: Unified window mode (robot_centered | path_bbox | fixed | map_bbox).
+    window_mode: "robot_centered"
     # 2026-02-27: Static lanelet base grid does not need per-pose/path rebuild.
     rebuild_on_pose: false
     rebuild_on_path: false
@@ -81,6 +79,11 @@
     # Keeps planning_base behavior while reducing node count.
     secondary.enable: true
     secondary.output_topic: "/map/cost_grid/lanelet"
+    # HH_260527: secondary.cost_mode options:
+    #   centerline: narrow centerline corridor
+    #   bounds: boundary-only strip
+    #   lanelet: full lanelet polygon
+    #   path: path strip from path_topic
     secondary.cost_mode: "centerline"
     # HH_260412: Apply the same bounded window policy to planning_base output.
     secondary.resolution: 0.20
@@ -95,9 +98,15 @@
     # temporarily outside lanelet, planner first reconnects to nearest lane and
     # then continues along lane center corridor.
     secondary.centerline_lanelet_fill_value: 35
-    secondary.outside_value: 99
-    secondary.lanelet_boundary_value: -1
-    secondary.boundary_half_width: 0.05
+    # HH_260527: Enforce lanelet-bound global planning.
+    # 99 (sub-lethal) let the planner cut free-space diagonals across non-lanelet areas.
+    # 100 marks outside-lanelet cells as lethal in Nav2 global costmap.
+    secondary.outside_value: 100
+    # HH_260527: Lane-boundary margin for centerline planning profile.
+    # - lanelet_boundary_value: higher cost near lane edge (0..100, -1 disables)
+    # - boundary_half_width: boundary strip half-width in meters (margin control)
+    secondary.lanelet_boundary_value: 92
+    secondary.boundary_half_width: 0.30
     secondary.debug_coverage_stats: false
     secondary.debug_coverage_stride: 2
     secondary.debug_coverage_min_value: 0
@@ -109,6 +118,12 @@
     secondary.centerline_use_distance_gradient: true
     secondary.direction_penalty: 0
     secondary.backward_penalty: 0
+    # HH_260527: secondary.window_mode options:
+    #   robot_centered | path_bbox | fixed | map_bbox
+    # Use full-map window so planning-base coverage does not leave free shortcut
+    # bands near rolling-costmap edges for far/diagonal goals.
+    secondary.window_mode: "map_bbox"
+    # HH_260527: Backward-compatible window controls for older lanelet_cost_grid_node
+    # builds that still use boolean window selectors.
+    secondary.use_map_bbox: true
     secondary.use_path_bbox: false
-    secondary.lock_window: false
-    secondary.use_map_bbox: false

@@ -281,8 +281,7 @@ flowchart TD
 | `map_path` | *(auto-discovered)* | Lanelet2 `.osm` override path |
 | `origin_lat` / `origin_lon` / `origin_alt` | *(from map_info.yaml)* | WGS84 map origin override |
 | `utm_origin_easting` / `utm_origin_northing` | *(from map_info.yaml)* | UTM map origin override |
-| `use_eskf` | `true` | Use ESKF localization filter (false = EKF) |
-| `filter_type` | `eskf` | Explicit filter selector: `auto` \| `ekf` \| `eskf` |
+| `filter_type` | `ekf` | Explicit filter selector: `ekf` \| `eskf` |
 | `enable_nav2_lifecycle_retry` | `true` | Recover Nav2 lifecycle on startup race |
 | `require_localization_ready` | `false` | Gate Nav2 startup on localization readiness |
 | `enable_state_machine` | `false` | Enable planning mission state machine |

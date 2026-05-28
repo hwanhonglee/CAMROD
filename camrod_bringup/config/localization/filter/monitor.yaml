@@ -1,11 +1,14 @@
 /**:
   ros__parameters:
     diag_topic: "/localization/eskf/status"
+    # HH_260527: filter_status_mode options:
+    #   stream: subscribe/use filter status diagnostics from diag_topic
+    #   none: run monitor without filter status diagnostics input
     # HH_260422: Temporarily disabled for sim — ESKF diagnostic mixing caused
     # gnss_update_accepted to oscillate, masking a stable GNSS lock. The root
     # cause (shared last_diag_ between GNSS/wheel callbacks) was fixed in the
     # ESKF node; re-enable after confirming stability in hardware runs.
-    use_filter_status: false
+    filter_status_mode: none
 
     gnss_pose_topic: "/sensing/gnss/pose"
     gnss_pose_cov_topic: "/sensing/gnss/pose_with_covariance"

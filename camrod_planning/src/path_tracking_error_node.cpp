@@ -27,13 +27,6 @@ public:
     output_topic_ = declare_parameter<std::string>("output_topic", "/planning/ltracking_error");
     prefer_local_path_ = declare_parameter<bool>("prefer_local_path", true);
     pose_timeout_s_ = declare_parameter<double>("pose_timeout_s", 1.0);
-    {
-      const double legacy = declare_parameter<double>("pose_timeout_sec", 1.0);
-      if (std::abs(pose_timeout_s_ - 1.0) < 1e-9 && std::abs(legacy - 1.0) > 1e-9) {
-        RCLCPP_WARN(get_logger(), "Parameter 'pose_timeout_sec' is deprecated. Use 'pose_timeout_s'.");
-        pose_timeout_s_ = legacy;
-      }
-    }
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 15.0);
     publish_on_input_update_ = declare_parameter<bool>("publish_on_input_update", true);
 

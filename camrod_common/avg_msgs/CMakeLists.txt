@@ -72,11 +72,17 @@ set(srv_files
   "srv/RequestGoalByKey.srv"
 )
 
+# HH_260528: Added ManualDock action for camrod_docking manual_dock_server_node.
+set(action_files
+  "action/ManualDock.action"
+)
+
 set(${PROJECT_NAME}_MEMBER_OF_GROUPS "rosidl_interface_packages")
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files}
   ${srv_files}
+  ${action_files}
   DEPENDENCIES
     builtin_interfaces
     action_msgs

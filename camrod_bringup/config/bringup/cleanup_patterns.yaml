@@ -64,6 +64,9 @@ patterns:
   - ekf_node
   - localization_eskf_node
   - __node:=eskf_filter
+  # HH_260527: New ESKF runtime naming.
+  - eskf
+  - __node:=eskf
   - navsat_transform_node
   - wheel_odometry_bridge_node
   - odometry_to_pose_node

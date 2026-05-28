@@ -137,14 +137,10 @@ public:
   }
 
   /**
-   * Read a canonical parameter while keeping backward compatibility with
-   * legacy parameter names.
+   * Read a canonical parameter key.
    *
-   * Resolution policy:
-   * 1) Canonical name is preferred.
-   * 2) If canonical remains default but a legacy name is explicitly set,
-   *    use legacy value and print a deprecation warning.
-   * 3) If both are explicitly set and conflict, canonical wins.
+   * HH_260522: legacy aliases are intentionally ignored so diagnostics
+   * use one canonical naming scheme across modules.
    */
   template<typename T>
   T get_param_with_alias(
@@ -152,47 +148,11 @@ public:
     const T & default_value,
     const std::vector<std::string> & legacy_names = {})
   {
+    (void)legacy_names;
     if (!has_parameter(canonical_name)) {
       declare_parameter(canonical_name, default_value);
     }
-    T canonical_value = get_parameter(canonical_name).template get_value<T>();
-    bool canonical_is_default = (canonical_value == default_value);
-    T selected_value = canonical_value;
-
-    for (const auto & legacy_name : legacy_names) {
-      if (!has_parameter(legacy_name)) {
-        declare_parameter(legacy_name, default_value);
-      }
-
-      const T legacy_value = get_parameter(legacy_name).template get_value<T>();
-      const bool legacy_is_default = (legacy_value == default_value);
-      if (legacy_is_default) {
-        continue;
-      }
-
-      if (canonical_is_default) {
-        selected_value = legacy_value;
-        canonical_is_default = false;
-        RCLCPP_WARN(
-          get_logger(),
-          "Parameter '%s' is deprecated. Use '%s' instead.",
-          legacy_name.c_str(),
-          canonical_name.c_str());
-        continue;
-      }
-
-      if (legacy_value != selected_value) {
-        RCLCPP_WARN(
-          get_logger(),
-          "Both '%s' and deprecated '%s' are set with different values. "
-          "Using '%s'.",
-          canonical_name.c_str(),
-          legacy_name.c_str(),
-          canonical_name.c_str());
-      }
-    }
-
-    return selected_value;
+    return get_parameter(canonical_name).template get_value<T>();
   }
 
 protected:

@@ -32,22 +32,27 @@ def generate_launch_description():
         DeclareLaunchArgument("robot_visualization_param_file", default_value=plat(os.path.join("config", "robot_visualization.yaml"))),
         DeclareLaunchArgument("module_namespace",          default_value="platform"),
         DeclareLaunchArgument("sensor_kit_namespace",      default_value="sensor_kit"),
-        # HH_260407: Backward compatibility args (no-op).
-        DeclareLaunchArgument("enable_module_validator",   default_value="false"),
-        DeclareLaunchArgument("system_namespace",          default_value="system"),
+        # HH_260527: Removed unused compatibility args
+        # (enable_module_validator, system_namespace).
         DeclareLaunchArgument("cmd_vel_gate_enable",       default_value="true"),
         DeclareLaunchArgument("cmd_vel_in_topic",          default_value="/planning/cmd_vel"),
         DeclareLaunchArgument("cmd_vel_out_topic",         default_value="/platform/cmd_vel"),
         DeclareLaunchArgument("drive_enable_topic",        default_value="/platform/drive_enable"),
         DeclareLaunchArgument("planning_engage_topic",     default_value="/planning/engage"),
-        DeclareLaunchArgument("use_planning_engage_topic", default_value="true"),
+        # HH_260522: unified source selector for engage signal.
+        #   planning_engage/topic/enabled/on: subscribe /planning/engage
+        #   disabled/off/none: ignore engage topic
+        DeclareLaunchArgument("engage_source_mode",        default_value="planning_engage"),
         DeclareLaunchArgument("drive_state_topic",         default_value="/platform/drive_enabled"),
-        DeclareLaunchArgument("use_estop_topic",           default_value="true"),
+        # HH_260522: unified source selector for e-stop signal.
+        #   platform_status/topic/enabled/on: subscribe /platform/status/estop
+        #   disabled/off/none: ignore e-stop topic
+        DeclareLaunchArgument("estop_source_mode",         default_value="platform_status"),
         # HH_260410: Use Ranger CAN derived /platform/status/estop as the default gate source.
         DeclareLaunchArgument("estop_topic",               default_value="/platform/status/estop"),
         DeclareLaunchArgument("drive_allow_on_start",      default_value="false"),
         DeclareLaunchArgument("ranger_driver_enable",      default_value="true"),
-        DeclareLaunchArgument("ranger_params_file",        default_value=plat(os.path.join("config", "ranger_params.yaml"))),
+        DeclareLaunchArgument("ranger_params_file",        default_value=plat(os.path.join("config", "ranger_driver.yaml"))),
 
         _inc(plat(os.path.join("launch", "robot_visualization.launch.py")),
              "module_namespace", "map_frame_id", "base_frame_id",
@@ -56,14 +61,14 @@ def generate_launch_description():
         _inc(plat(os.path.join("launch", "cmd_vel_gate.launch.py")),
              "module_namespace", "cmd_vel_gate_enable",
              "cmd_vel_in_topic", "cmd_vel_out_topic",
-             "drive_enable_topic", "planning_engage_topic", "use_planning_engage_topic",
-             "drive_state_topic", "use_estop_topic", "estop_topic", "drive_allow_on_start"),
+             "drive_enable_topic", "planning_engage_topic", "engage_source_mode",
+             "drive_state_topic", "estop_source_mode", "estop_topic", "drive_allow_on_start"),
 
         _inc(plat(os.path.join("launch", "ranger.launch.py")),
              condition=IfCondition(LaunchConfiguration("ranger_driver_enable")),
              params_file=LaunchConfiguration("ranger_params_file")),
 
         _inc(plat(os.path.join("launch", "sensor_kit_bridge.launch.py")),
-             "map_frame_id", "base_frame_id", "sensor_kit_base_frame_id",
+             "base_frame_id", "sensor_kit_base_frame_id",
              "params_file", "sensor_kit_namespace"),
     ])

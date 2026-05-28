@@ -1,0 +1,20 @@
+# HH_260528: Added for camrod_docking manual_dock_server_node.
+# UI-triggered manual docking request delegated to opennav_docking DockRobot action.
+
+# Goal
+string dock_id                         # Dock name/ID to approach (must be in docks.yaml)
+float32 max_staging_time 1000.0        # Max time (s) for Nav2 staging navigation (forwarded to DockRobot)
+
+---
+# Result
+bool success                           # True if docking completed successfully
+uint16 error_code 0                    # DockRobot error code on failure (0 = none)
+string message                         # Human-readable status message
+float32 total_elapsed_sec 0.0          # Total time from goal accept to finish (s)
+
+---
+# Feedback — mirrors opennav_docking_msgs/DockRobot feedback
+uint16 state                           # Current docking state (matches DockRobot::Feedback constants)
+builtin_interfaces/Duration docking_time   # Time elapsed since docking started
+uint16 num_retries 0                   # Number of retries attempted so far
+string phase_label                     # Human-readable phase name (e.g. "DOCKING", "NAVIGATING_TO_STAGING")

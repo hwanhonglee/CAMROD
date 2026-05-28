@@ -79,6 +79,31 @@ public:
     out_euclidean_topic_ = declare_parameter<std::string>(
       "out_euclidean_topic", "/perception/camera_lidar/euclidean_markers");
 
+    // HH_260522: unified selector for camera-lidar fusion filter behavior.
+    //   camera_bbox/enabled/on: keep points inside camera detections
+    //   pass_through/disabled/off/none: bypass camera detection filtering
+    const std::string fusion_filter_mode =
+      declare_parameter<std::string>("fusion_filter_mode", "camera_bbox");
+    keep_lidar_when_no_detections_ =
+      declare_parameter<bool>("keep_lidar_when_no_detections", true);
+    if (
+      fusion_filter_mode == "pass_through" || fusion_filter_mode == "disabled" ||
+      fusion_filter_mode == "off" || fusion_filter_mode == "none")
+    {
+      camera_bbox_filter_enabled_ = false;
+    } else if (
+      fusion_filter_mode == "camera_bbox" || fusion_filter_mode == "enabled" ||
+      fusion_filter_mode == "on")
+    {
+      camera_bbox_filter_enabled_ = true;
+    } else {
+      camera_bbox_filter_enabled_ = true;
+      RCLCPP_WARN(
+        get_logger(),
+        "Unknown fusion_filter_mode '%s'. Using default 'camera_bbox' mode.",
+        fusion_filter_mode.c_str());
+    }
+
     param_cb_ = add_on_set_parameters_callback(
       [this](const std::vector<rclcpp::Parameter> & params) {
         for (const auto & p : params) {
@@ -241,7 +266,12 @@ private:
     mod.setPointCloud2FieldsByString(1, "xyz");
 
     std::vector<std::array<float, 3>> pts;
-    if (det_msg) {
+    if (!camera_bbox_filter_enabled_) {
+      pts.reserve(proj.size());
+      for (const auto & pp : proj) {
+        pts.push_back({pp.lx, pp.ly, pp.lz});
+      }
+    } else if (det_msg) {
       for (const auto & d2 : det_msg->detections) {
         const float x0 = static_cast<float>(d2.bbox.center.position.x - d2.bbox.size_x / 2.0);
         const float x1 = static_cast<float>(d2.bbox.center.position.x + d2.bbox.size_x / 2.0);
@@ -252,6 +282,17 @@ private:
             pts.push_back({pp.lx, pp.ly, pp.lz});
           }
         }
+      }
+      if (pts.empty() && keep_lidar_when_no_detections_) {
+        pts.reserve(proj.size());
+        for (const auto & pp : proj) {
+          pts.push_back({pp.lx, pp.ly, pp.lz});
+        }
+      }
+    } else if (keep_lidar_when_no_detections_) {
+      pts.reserve(proj.size());
+      for (const auto & pp : proj) {
+        pts.push_back({pp.lx, pp.ly, pp.lz});
       }
     }
 
@@ -639,6 +680,8 @@ private:
   double assoc_dist_;
   int    max_miss_;
   double extrinsic_x_, extrinsic_y_, extrinsic_z_;
+  bool   camera_bbox_filter_enabled_{true};
+  bool   keep_lidar_when_no_detections_{true};
 
   std::string input_cloud_topic_, detection_topic_, camera_info_topic_;
   std::string image_topic_, bbox_topic_, output_topic_;

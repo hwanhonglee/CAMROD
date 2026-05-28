@@ -21,29 +21,6 @@ from tf2_ros import Buffer, TransformException, TransformListener
 import yaml
 
 
-def _declare_with_alias(node: Node, canonical_name: str, default_value, *legacy_names):
-    """Read canonical parameter with optional legacy-name fallback."""
-    value = node.declare_parameter(canonical_name, default_value).value
-    canonical_is_default = value == default_value
-    for legacy_name in legacy_names:
-        legacy_value = node.declare_parameter(legacy_name, default_value).value
-        if legacy_value == default_value:
-            continue
-        if canonical_is_default:
-            node.get_logger().warn(
-                f"Parameter '{legacy_name}' is deprecated. Use '{canonical_name}' instead."
-            )
-            value = legacy_value
-            canonical_is_default = False
-            continue
-        if legacy_value != value:
-            node.get_logger().warn(
-                f"Both '{canonical_name}' and deprecated '{legacy_name}' are set with "
-                f"different values. Using '{canonical_name}'."
-            )
-    return value
-
-
 @dataclass
 class YawAlignmentZone:
     """Per-zone yaw alignment policy."""
@@ -81,17 +58,43 @@ class PlanningCmdVelGateNode(Node):
         self.state_topic = str(
             self.declare_parameter("state_topic", "/planning/engaged").value
         )
-        self.use_estop_topic = bool(
-            self.declare_parameter("use_estop_topic", True).value
-        )
+        # HH_260522: unified source selector for e-stop input.
+        #   platform_status/topic/enabled/on -> subscribe
+        #   disabled/off/none -> ignore
+        self.estop_source_mode = str(
+            self.declare_parameter("estop_source_mode", "platform_status").value
+        ).strip().lower()
+        if self.estop_source_mode in {"disabled", "off", "none"}:
+            self.estop_topic_enabled = False
+        elif self.estop_source_mode in {"platform_status", "topic", "enabled", "on"}:
+            self.estop_topic_enabled = True
+        else:
+            self.estop_topic_enabled = True
+            self.get_logger().warn(
+                "Unknown estop_source_mode='%s'. Using default platform_status mode."
+                % self.estop_source_mode
+            )
         self.estop_topic = str(
             # HH_260409: Use platform status e-stop as default shared source.
             self.declare_parameter("estop_topic", "/platform/status/estop").value
         )
         # HH_260507: Block cmd_vel when DR timeout published by localization_monitor.
-        self.use_dr_timeout_topic = bool(
-            self.declare_parameter("use_dr_timeout_topic", True).value
-        )
+        # HH_260522: unified source selector for DR-timeout trigger.
+        #   localization_monitor/topic/enabled/on -> subscribe
+        #   disabled/off/none -> ignore
+        self.dr_timeout_source_mode = str(
+            self.declare_parameter("dr_timeout_source_mode", "localization_monitor").value
+        ).strip().lower()
+        if self.dr_timeout_source_mode in {"disabled", "off", "none"}:
+            self.dr_timeout_topic_enabled = False
+        elif self.dr_timeout_source_mode in {"localization_monitor", "topic", "enabled", "on"}:
+            self.dr_timeout_topic_enabled = True
+        else:
+            self.dr_timeout_topic_enabled = True
+            self.get_logger().warn(
+                "Unknown dr_timeout_source_mode='%s'. Using default localization_monitor mode."
+                % self.dr_timeout_source_mode
+            )
         self.dr_timeout_topic = str(
             self.declare_parameter("dr_timeout_topic", "/localization/state/dr_timeout").value
         )
@@ -114,7 +117,7 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("localization_mode_topic", "/localization/mode").value
         )
         self.gnss_recovery_hold_s = float(
-            _declare_with_alias(self, "gnss_recovery_hold_s", 2.0, "gnss_recovery_hold_sec")
+            self.declare_parameter("gnss_recovery_hold_s", 2.0).value
         )
         # Default transition condition: DR_ONLY(2)+ -> NORMAL(1).
         self.gnss_recovery_source_mode_min = int(
@@ -147,6 +150,8 @@ class PlanningCmdVelGateNode(Node):
             # HH_260426: VIO stack is disabled; use localization fallback odometry.
             self.declare_parameter("odometry_topic", "/localization/fallback/odometry").value
         )
+        # HH_260522: pose source preference options:
+        #   odometry | tf_robot_base | pose_topic
         self.pose_source_preference = str(
             self.declare_parameter("pose_source_preference", "odometry").value
         )
@@ -167,7 +172,7 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("cost_stop_width_m", 1.0).value
         )
         self.cost_stop_hold_s = float(
-            _declare_with_alias(self, "cost_stop_hold_s", 1.0, "cost_stop_hold_sec")
+            self.declare_parameter("cost_stop_hold_s", 1.0).value
         )
 
         # HH_260422: Speed-dependent front lookahead.
@@ -314,12 +319,12 @@ class PlanningCmdVelGateNode(Node):
             )
 
         self.sub_estop = None
-        if self.use_estop_topic:
+        if self.estop_topic_enabled:
             self.sub_estop = self.create_subscription(
                 Bool, self.estop_topic, self._on_estop, 10
             )
         self.sub_dr_timeout = None
-        if self.use_dr_timeout_topic:
+        if self.dr_timeout_topic_enabled:
             self.sub_dr_timeout = self.create_subscription(
                 Bool, self.dr_timeout_topic, self._on_dr_timeout, 10
             )
@@ -353,7 +358,7 @@ class PlanningCmdVelGateNode(Node):
             "planning_cmd_vel_gate ready: "
             f"in={self.input_topic} out={self.output_topic} "
             f"engage_topic={self.engage_topic} "
-            f"estop_topic={self.estop_topic if self.use_estop_topic else '(disabled)'} "
+            f"estop_topic={self.estop_topic if self.estop_topic_enabled else '(disabled)'} "
             f"allow_on_start={'true' if self.allow_on_start else 'false'} "
             f"speed_scale={self.speed_scale:.2f} "
             f"gnss_recovery_hold={'true' if self.enable_gnss_recovery_hold else 'false'} "
@@ -376,9 +381,6 @@ class PlanningCmdVelGateNode(Node):
             elif p.name == "cost_stop_threshold":
                 self.cost_stop_threshold = int(p.value)
             elif p.name == "cost_stop_hold_s":
-                self.cost_stop_hold_s = float(p.value)
-            elif p.name == "cost_stop_hold_sec":
-                # Legacy runtime parameter alias.
                 self.cost_stop_hold_s = float(p.value)
             elif p.name == "cost_stop_lookahead_m":
                 self.cost_stop_lookahead_m = float(p.value)
@@ -427,9 +429,6 @@ class PlanningCmdVelGateNode(Node):
             elif p.name == "enable_gnss_recovery_hold":
                 self.enable_gnss_recovery_hold = bool(p.value)
             elif p.name == "gnss_recovery_hold_s":
-                self.gnss_recovery_hold_s = float(p.value)
-            elif p.name == "gnss_recovery_hold_sec":
-                # Legacy runtime parameter alias.
                 self.gnss_recovery_hold_s = float(p.value)
             elif p.name == "gnss_recovery_source_mode_min":
                 self.gnss_recovery_source_mode_min = int(p.value)
@@ -1015,9 +1014,6 @@ class PlanningCmdVelGateNode(Node):
         source_candidates["pose_topic"] = self._resolve_pose_topic_candidates(target_frame)
 
         preference = self.pose_source_preference.strip().lower()
-        # HH_260426: Accept legacy launch value alias.
-        if preference == "odometry_topic":
-            preference = "odometry"
         # Avoid unnecessary TF lookup warnings when odom/pose candidates are already available.
         need_tf_lookup = (
             preference == "tf_robot_base"

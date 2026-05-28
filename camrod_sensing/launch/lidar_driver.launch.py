@@ -63,9 +63,6 @@ def _inject_calibration_paths(context, *args, **kwargs):
 def generate_launch_description():
     sensing_share = get_package_share_directory("camrod_sensing")
 
-    default_sensing_param = os.path.join(
-        sensing_share, "config", "sensing_params.yaml"
-    )
     default_lidar_preprocess_param = os.path.join(
         sensing_share, "config", "lidar", "preprocessor.yaml"
     )
@@ -73,7 +70,6 @@ def generate_launch_description():
     enable_driver_default = "true" if has_vanjee_driver_pkg else "false"
 
     declare_args = [
-        DeclareLaunchArgument("sensing_param_file", default_value=default_sensing_param),
         DeclareLaunchArgument("lidar_preprocess_param_file", default_value=default_lidar_preprocess_param),
         DeclareLaunchArgument("vanjee_config_path", default_value=default_vanjee_config),
 
@@ -97,7 +93,6 @@ def generate_launch_description():
         DeclareLaunchArgument("vanjee_tf_child", default_value="vanjee_lidar"),
     ]
 
-    sensing_param_file = LaunchConfiguration("sensing_param_file")
     lidar_preprocess_param_file = LaunchConfiguration("lidar_preprocess_param_file")
     enable_lidar_driver = LaunchConfiguration("enable_lidar_driver")
     vanjee_config_path = LaunchConfiguration("vanjee_config_path")
@@ -147,7 +142,6 @@ def generate_launch_description():
         namespace=module_namespace,
         output="screen",
         parameters=[
-            sensing_param_file,
             lidar_preprocess_param_file,
             {
                 "input_topic": preprocessor_input_topic,

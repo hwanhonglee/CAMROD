@@ -11,7 +11,7 @@ Usage:
 
 Examples:
   ros2 launch camrod_sensing platform_velocity_converter.launch.py
-  ros2 launch camrod_sensing platform_velocity_converter.launch.py params_file:=/absolute/path/to/sensing_params.yaml
+  ros2 launch camrod_sensing platform_velocity_converter.launch.py params_file:=/path/to/platform_velocity_converter.yaml
 """
 
 import os

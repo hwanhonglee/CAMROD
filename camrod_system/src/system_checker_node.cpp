@@ -21,17 +21,7 @@ public:
   {
     check_period_s_ = declare_parameter<double>("check_period_s", 1.0);
 
-    // Canonical: startup_grace_s / Legacy: startup_grace_sec.
-    double startup_grace_s = declare_parameter<double>("startup_grace_s", 6.0);
-    const double startup_grace_sec_legacy =
-      declare_parameter<double>("startup_grace_sec", 6.0);
-    if (startup_grace_s == 6.0 && startup_grace_sec_legacy != 6.0) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter 'startup_grace_sec' is deprecated. Use 'startup_grace_s'.");
-      startup_grace_s = startup_grace_sec_legacy;
-    }
-    startup_grace_s_ = startup_grace_s;
+    startup_grace_s_ = declare_parameter<double>("startup_grace_s", 6.0);
 
     declare_parameter<std::vector<std::string>>(
       "required_nodes", std::vector<std::string>{});

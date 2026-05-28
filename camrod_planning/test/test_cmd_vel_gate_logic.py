@@ -256,10 +256,12 @@ def make_gate(
     n.output_topic = "/planning/cmd_vel"
     n.engage_topic = "/planning/engage"
     n.state_topic = "/planning/engaged"
-    n.use_estop_topic = True
+    n.estop_topic_enabled = True
+    n.dr_timeout_topic_enabled = True
     n.estop_topic = "/platform/status/estop"
     n.allow_on_start = False
     n.publish_zero_when_blocked = True
+    n.speed_scale = 1.0
 
     n.enable_gnss_recovery_hold = True
     n.localization_mode_topic = "/localization/mode"
@@ -302,6 +304,7 @@ def make_gate(
     # ── 내부 상태 ──
     n._enabled = False
     n._estop = False
+    n._dr_timeout = False
     n._cost_blocked_until = 0.0
     n._gnss_recovery_blocked_until = 0.0
     n._last_localization_mode_value = None
@@ -309,6 +312,7 @@ def make_gate(
     n._last_unavoidable_cluster_ratio = 0.0
     n._last_tf_warn_sec = 0.0
     n._last_empty_corridor_warn_sec = 0.0
+    n._last_block_reason_log_sec = 0.0
     n._current_speed = 0.0
     n._last_grid = None
     n._last_pose = None

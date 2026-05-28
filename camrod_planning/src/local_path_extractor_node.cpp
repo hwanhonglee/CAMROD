@@ -42,13 +42,6 @@ public:
     controller_path_topic_ = declare_parameter<std::string>(
       "controller_path_topic", "/planning/local_path_controller");
     controller_path_timeout_s_ = declare_parameter<double>("controller_path_timeout_s", 0.8);
-    {
-      const double legacy = declare_parameter<double>("controller_path_timeout_sec", 0.8);
-      if (std::abs(controller_path_timeout_s_ - 0.8) < 1e-9 && std::abs(legacy - 0.8) > 1e-9) {
-        RCLCPP_WARN(get_logger(), "Parameter 'controller_path_timeout_sec' is deprecated. Use 'controller_path_timeout_s'.");
-        controller_path_timeout_s_ = legacy;
-      }
-    }
     publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
     planning_status_topic_ =
       declare_parameter<std::string>("planning_status_topic", "/planning/status");
@@ -76,21 +69,7 @@ public:
     goal_reached_distance_m_ = declare_parameter<double>("goal_reached_distance_m", 0.8);
     goal_reached_index_margin_ = declare_parameter<int>("goal_reached_index_margin", 2);
     pose_timeout_s_ = declare_parameter<double>("pose_timeout_s", 1.0);
-    {
-      const double legacy = declare_parameter<double>("pose_timeout_sec", 1.0);
-      if (std::abs(pose_timeout_s_ - 1.0) < 1e-9 && std::abs(legacy - 1.0) > 1e-9) {
-        RCLCPP_WARN(get_logger(), "Parameter 'pose_timeout_sec' is deprecated. Use 'pose_timeout_s'.");
-        pose_timeout_s_ = legacy;
-      }
-    }
     empty_republish_period_s_ = declare_parameter<double>("empty_republish_period_s", 0.5);
-    {
-      const double legacy = declare_parameter<double>("empty_republish_period_sec", 0.5);
-      if (std::abs(empty_republish_period_s_ - 0.5) < 1e-9 && std::abs(legacy - 0.5) > 1e-9) {
-        RCLCPP_WARN(get_logger(), "Parameter 'empty_republish_period_sec' is deprecated. Use 'empty_republish_period_s'.");
-        empty_republish_period_s_ = legacy;
-      }
-    }
     // HH_260305-00:00 Clear stale local-path consumers immediately when inputs go invalid.
     publish_empty_on_invalid_ = declare_parameter<bool>("publish_empty_on_invalid", true);
     // HH_260513: Moving-average window applied to local path XY before publishing.

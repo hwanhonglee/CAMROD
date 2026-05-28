@@ -13,6 +13,37 @@ ros2 launch camrod_bringup bringup.launch.py sim:=true \
 
 Use `disabled.yaml` to apply no combo-specific overrides.
 
+## Auto Selector Behavior
+
+- HH_260528: `nav2_combo_param_file` now also auto-selects planner/controller IDs.
+- Mapping is inferred from combo filename tokens:
+  - planner: `navfn`, `smac2d`, `thetastar`, `smachybrid`, `smaclattice`
+  - controller: `rpp`, `dwb`, `mppi`, `graceful`, `rotationshim`
+- Override explicitly only when needed:
+  - `nav2_selected_planner:=NavFn|Smac2D|ThetaStar|SmacHybrid|SmacLattice`
+  - `nav2_selected_controller:=RPP|DWB|MPPI|Graceful|RotationShim`
+
+## Common `use_*` Toggles
+
+- `use_astar`:
+  - `True`: A* search (heuristic-guided)
+  - `False`: Dijkstra-style expansion
+- `use_rotate_to_heading` (RPP):
+  - `True`: rotate-in-place heading alignment before path tracking
+  - `False`: track with linear+angular together
+- `use_velocity_scaled_lookahead_dist` (RPP):
+  - `True`: lookahead scales with speed
+  - `False`: fixed lookahead distance only
+- `use_collision_detection` (RPP):
+  - `True`: enable controller-level collision check
+  - `False`: skip internal check (costmap/layers still apply)
+- `use_regulated_linear_velocity_scaling` (RPP):
+  - `True`: curvature-based speed regulation
+  - `False`: disabled
+- `use_cost_regulated_linear_velocity_scaling` (RPP):
+  - `True`: costmap-based speed regulation
+  - `False`: disabled
+
 ## Sweep Matrix (P/C/M)
 
 - `P`: global path observed

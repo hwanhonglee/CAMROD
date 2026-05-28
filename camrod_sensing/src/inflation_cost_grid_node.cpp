@@ -37,17 +37,6 @@ public:
     // HH_260422: ego_clear_radius clears the robot footprint so the planner start cell is never lethal.
     ego_clear_radius_m_  = declare_parameter<double>("ego_clear_radius_m", 0.50);
     max_message_age_s_ = declare_parameter<double>("max_message_age_s", 0.50);
-    const double legacy_max_message_age_sec =
-      declare_parameter<double>("max_message_age_sec", 0.50);
-    if (
-      std::abs(max_message_age_s_ - 0.50) < 1e-9 &&
-      std::abs(legacy_max_message_age_sec - 0.50) > 1e-9)
-    {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter 'max_message_age_sec' is deprecated. Use 'max_message_age_s' instead.");
-      max_message_age_s_ = legacy_max_message_age_sec;
-    }
     publish_rate_hz_     = declare_parameter<double>("publish_rate_hz", 10.0);
 
     // HH_260424: Default inputs — lanelet centerline, lidar, radar, global_path route bias.
@@ -64,15 +53,6 @@ public:
     input_max_ages_s_ = declare_parameter<std::vector<double>>(
       "input_max_ages_s",
       std::vector<double>{5.0, 0.50, 0.50, 10.0});
-    const auto legacy_input_max_ages_sec = declare_parameter<std::vector<double>>(
-      "input_max_ages_sec",
-      std::vector<double>{});
-    if (input_max_ages_s_.empty() && !legacy_input_max_ages_sec.empty()) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter 'input_max_ages_sec' is deprecated. Use 'input_max_ages_s' instead.");
-      input_max_ages_s_ = legacy_input_max_ages_sec;
-    }
 
     tf_buffer_   = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);

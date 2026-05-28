@@ -19,11 +19,15 @@
     # If topic-start is selected but start_topic has no data yet:
     # - true  -> fallback to TF start (map->robot_base_link)
     # - false -> wait until topic start is available
-    # If snapped start is briefly unavailable/stale, allow TF fallback.
-    start_topic_fallback_to_tf: true
+    # HH_260527: Keep start anchored to lanelet snap (disable TF fallback).
+    # This prevents occasional free-space diagonal plans when start_topic is stale.
+    start_topic_fallback_to_tf: false
     action_name: "/planning/compute_path_to_pose"
-    # Keep goal-replan requests aligned with stabilized planner profile.
-    planner_id: "NavFn"
+    # HH_260527: Smac2D follows lanelet-centered cost gradients more consistently than NavFn.
+    planner_id: "Smac2D"
+    # HH_260528: If Smac2D cannot solve, retry once with NavFn before reporting failure.
+    fallback_planner_id: "NavFn"
+    retry_with_fallback_planner: true
     frame_id: "map"
     output_path_topic: "/planning/global_path"
     # Keep avg global path stream always available for

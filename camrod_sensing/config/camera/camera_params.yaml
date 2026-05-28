@@ -19,7 +19,10 @@
     # NVJPEG encodes on GPU so quality has minimal CPU impact
     jpeg_quality: 90
 
-    use_custom_intrinsics: true
+    # HH_260527: intrinsics_source options:
+    #   none: publish CameraInfo from driver/default values only
+    #   custom: override CameraInfo with camera_matrix/distortion_coefficients below
+    intrinsics_source: "custom"
 
     # Calibrated 2026-04-27 (OpenCV, reprojection error: 0.0634)
     # K = [fx,  0, cx]

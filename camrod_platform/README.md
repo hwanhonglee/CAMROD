@@ -14,8 +14,8 @@
 
 **Safety interlock — `/platform/cmd_vel` is only published when ALL four conditions hold simultaneously:**
 - `/platform/drive_enable` has published `true`
-- `/planning/engage` has published `true` (when `use_planning_engage_topic:=true`)
-- `/platform/status/estop` is `false` (when `use_estop_topic:=true`)
+- `/planning/engage` has published `true` (when `engage_source_mode:=planning_engage`)
+- `/platform/status/estop` is `false` (when `estop_source_mode:=platform_status`)
 - The gate node itself is running (`cmd_vel_gate_enable:=true`)
 
 When any condition is not met, the gate publishes a zero `Twist` on `/platform/cmd_vel` (`publish_zero_when_blocked: true`). The gate never passes through a stale velocity from a previous engage cycle.
@@ -158,9 +158,9 @@ graph TD
 | Topic | Type | Required | Producer | Rate | Meaning |
 |---|---|---|---|---|---|
 | `/planning/cmd_vel` | `geometry_msgs/Twist` | Yes | camrod_planning | ~10–20 Hz | Velocity command from Nav2 controller or planning gate |
-| `/planning/engage` | `std_msgs/Bool` | Yes (if `use_planning_engage_topic:=true`) | camrod_planning | On change | Operator or state-machine engage signal; `true` arms the gate |
+| `/planning/engage` | `std_msgs/Bool` | Yes (if `engage_source_mode:=planning_engage`) | camrod_planning | On change | Operator or state-machine engage signal; `true` arms the gate |
 | `/platform/drive_enable` | `std_msgs/Bool` | Yes | External (UI / operator) | On change | Hardware drive-enable signal; `true` arms the gate |
-| `/platform/status/estop` | `std_msgs/Bool` | Yes (if `use_estop_topic:=true`) | Ranger CAN driver (via bridge) | ~50 Hz | E-stop status from CAN bus; `true` blocks the gate |
+| `/platform/status/estop` | `std_msgs/Bool` | Yes (if `estop_source_mode:=platform_status`) | Ranger CAN driver (via bridge) | ~50 Hz | E-stop status from CAN bus; `true` blocks the gate |
 | `/localization/pose` | `geometry_msgs/PoseStamped` | Yes | camrod_localization | ~20 Hz | Primary robot pose for visualization anchor |
 | `/sensing/gnss/pose` | `geometry_msgs/PoseStamped` | No (fallback) | camrod_sensing | ~10 Hz | GNSS pose used when localization is stale |
 | `/map/markers` | `visualization_msgs/MarkerArray` | No | camrod_map | On change | Lanelet markers; used to estimate ground Z for visualization |
@@ -216,11 +216,11 @@ flowchart TD
 
   subgraph ARMING [drive_enabled becomes True when ALL:]
     E1((/platform/drive_enable == true))
-    E2((/planning/engage == true\nuse_planning_engage_topic=true))
+    E2((/planning/engage == true\nengage_source_mode=planning_engage))
   end
 
   subgraph ESTOP_SG [estop becomes True when:]
-    F1((/platform/status/estop == true\nuse_estop_topic=true))
+    F1((/platform/status/estop == true\nestop_source_mode=platform_status))
   end
 
   class A,B,C,D,E system
@@ -244,9 +244,9 @@ flowchart TD
 | `output_cmd_vel_topic` | `/platform/cmd_vel` | Gate output topic |
 | `enable_topic` | `/platform/drive_enable` | Drive-enable signal topic |
 | `engage_topic` | `/planning/engage` | Planning engage signal topic |
-| `use_engage_topic` | `true` | Mirror `/planning/engage` to drive-enable logic |
+| `engage_source_mode` | `planning_engage` | Engage source selector (`planning_engage` or `disabled`) |
 | `state_topic` | `/platform/drive_enabled` | Published gate state |
-| `use_estop_topic` | `true` | Subscribe to e-stop topic |
+| `estop_source_mode` | `platform_status` | E-stop source selector (`platform_status` or `disabled`) |
 | `estop_topic` | `/platform/status/estop` | E-stop source topic |
 | `allow_on_start` | `false` | Arm gate at startup without explicit enable signal |
 | `publish_zero_when_blocked` | `true` | Actively publish zero Twist when gate is closed |
@@ -274,8 +274,8 @@ Publishes a single `MarkerArray` on `/platform/robot/markers` at 20 Hz, anchored
 | `planning_boundary_margin` | `0.3` | Extra margin around footprint for boundary polygon [m] |
 | `heading_yaw_offset_deg` | `0.0` | Heading correction [deg] applied to all markers |
 | `range_ring_radii` | `[2.0, 4.0, 6.0, 8.0]` | Debug ring radii [m] |
-| `use_gnss_fallback` | `true` | Enable GNSS fallback pose source |
-| `use_map_ground_z` | `true` | Estimate ground Z from `/map/markers` lanelet samples |
+| `pose_source_mode` | `localization_with_gnss_fallback` | `localization_only` or GNSS fallback mode when localization is stale |
+| `ground_z_source` | `lanelet_map` | `fixed_offset` or lanelet-map sampled ground Z |
 
 ---
 
@@ -298,7 +298,7 @@ The geometry source file is controlled by the `params_file` argument, which defa
 | cmd_vel_gate_node | ✅ Required | ✅ Active | ⚠️ Can disable (`cmd_vel_gate_enable:=false`) |
 | robot_visualization_node | ✅ Active | ✅ Active | ✅ Active |
 | sensor_kit_bridge (TF static) | ✅ Required | ✅ Required | ✅ Required |
-| `/platform/status/estop` (from CAN) | ✅ Live signal | ❌ Not present | ⚠️ Simulated or `use_estop_topic:=false` |
+| `/platform/status/estop` (from CAN) | ✅ Live signal | ❌ Not present | ⚠️ Simulated or `estop_source_mode:=disabled` |
 | `/platform/status/odometry` (50 Hz) | ✅ Live signal | ✅ Fake sensor | ❌ Not available |
 | `/localization/pose` anchor for VIZ | ✅ Live | ✅ Fake | ⚠️ Falls back to GNSS after 3 s |
 
@@ -332,7 +332,7 @@ The geometry source file is controlled by the `params_file` argument, which defa
 
 **Operator-visible symptom:** Robot decelerates and stops. `/platform/drive_enabled` transitions to `false`.
 
-**Related params:** `use_estop_topic`, `estop_topic`, `estop_on_exception_state`
+**Related params:** `estop_source_mode`, `estop_topic`, `estop_on_exception_state`
 
 **Related topics:** `/platform/status/estop`, `/platform/drive_enabled`, `/platform/cmd_vel`
 
@@ -348,7 +348,7 @@ The geometry source file is controlled by the `params_file` argument, which defa
 
 **Operator-visible symptom:** Robot marker does not freeze even if localization is restarting.
 
-**Related params:** `localization_pose_timeout_s`, `use_gnss_fallback`
+**Related params:** `localization_pose_timeout_s`, `pose_source_mode`
 
 **Related topics:** `/localization/pose`, `/sensing/gnss/pose`, `/platform/robot/markers`
 
@@ -365,9 +365,9 @@ The geometry source file is controlled by the `params_file` argument, which defa
 | `cmd_vel_out_topic` | `/platform/cmd_vel` | Gate output topic |
 | `drive_enable_topic` | `/platform/drive_enable` | Drive-enable signal topic |
 | `planning_engage_topic` | `/planning/engage` | Planning engage signal topic |
-| `use_planning_engage_topic` | `true` | Mirror `/planning/engage` to drive-enable logic |
+| `engage_source_mode` | `planning_engage` | Engage source selector (`planning_engage` or `disabled`) |
 | `drive_state_topic` | `/platform/drive_enabled` | Gate state output topic |
-| `use_estop_topic` | `true` | Subscribe to e-stop topic |
+| `estop_source_mode` | `platform_status` | E-stop source selector (`platform_status` or `disabled`) |
 | `estop_topic` | `/platform/status/estop` | E-stop source topic |
 | `drive_allow_on_start` | `false` | Arm gate at startup without explicit enable |
 | `ranger_driver_enable` | `true` | Launch Ranger CAN driver sub-launch |

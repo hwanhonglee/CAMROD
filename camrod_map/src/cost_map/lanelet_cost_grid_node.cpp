@@ -119,10 +119,9 @@ public:
     path_lateral_cost_weight_ = std::max(
       0.0, declare_parameter<double>("path_lateral_cost_weight", 0.3));
     grid_yaw_ = declare_parameter<double>("grid_yaw", 0.0);  // HH_260103 manual yaw (rad) for OccupancyGrid orientation
-    use_path_bbox_ = declare_parameter<bool>("use_path_bbox", false);  // HH_260103 false -> robot-centered window, true -> path bbox window
-    lock_window_ = declare_parameter<bool>("lock_window", false);  // HH_260126 keep grid window fixed (use origin_x/y + width/height)
-    // 2026-01-30: Allow fixed window to follow map bounds without hardcoding width/height.
-    use_map_bbox_ = declare_parameter<bool>("use_map_bbox", false);
+    // HH_260526: Replace use_path_bbox/lock_window/use_map_bbox booleans with one window mode.
+    // window_mode options: robot_centered | path_bbox | fixed | map_bbox.
+    window_mode_ = toLower(declare_parameter<std::string>("window_mode", "robot_centered"));
     ignore_invalid_map_ = declare_parameter<bool>("ignore_invalid_map", false);  // HH_260127 allow loading maps with OSM validation warnings
     // HH_260109 default to fused localization pose for lanelet-guided cost grid.
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
@@ -132,21 +131,17 @@ public:
     // 2026-02-26: Optional goal topic to clear stale path visualization immediately on new goal.
     goal_topic_ = declare_parameter<std::string>("goal_topic", "");
     // 2026-02-26: Ignore fallback path while primary path is fresh.
-    primary_path_timeout_s_ = declareDurationWithLegacy(
-      "primary_path_timeout_s", "primary_path_timeout_sec", 1.0);
+    primary_path_timeout_s_ = declare_parameter<double>("primary_path_timeout_s", 1.0);
     // 2026-02-26: Ignore fallback path briefly after goal update to avoid old-path flash.
-    goal_fallback_holdoff_s_ = declareDurationWithLegacy(
-      "goal_fallback_holdoff_s", "goal_fallback_holdoff_sec", 0.6);
+    goal_fallback_holdoff_s_ = declare_parameter<double>("goal_fallback_holdoff_s", 0.6);
     // 2026-02-26: Optional stale path auto-clear (<=0 disables).
-    stale_path_timeout_s_ = declareDurationWithLegacy(
-      "stale_path_timeout_s", "stale_path_timeout_sec", 0.0);
+    stale_path_timeout_s_ = declare_parameter<double>("stale_path_timeout_s", 0.0);
     // HH_260317-00:00 Guard against stale route reuse after a new goal is received.
     // When enabled, path messages older than latest goal timestamp are ignored.
     drop_stale_path_after_goal_ =
       declare_parameter<bool>("drop_stale_path_after_goal", true);
     // HH_260317-00:00 Allow small timestamp skew between goal/path publishers.
-    path_goal_stamp_slack_s_ = declareDurationWithLegacy(
-      "path_goal_stamp_slack_s", "path_goal_stamp_slack_sec", 0.10);
+    path_goal_stamp_slack_s_ = declare_parameter<double>("path_goal_stamp_slack_s", 0.10);
     // HH_260317-00:00 Prefer geometric freshness check:
     // accept only paths that terminate near the latest goal.
     // This is more robust than header-stamp-only checks across mixed publishers.
@@ -159,8 +154,7 @@ public:
     // 2026-02-27: Rebuild throttling controls to prevent path/cost lag under high CPU load.
     rebuild_on_pose_ = declare_parameter<bool>("rebuild_on_pose", true);
     rebuild_on_path_ = declare_parameter<bool>("rebuild_on_path", true);
-    min_rebuild_period_s_ = declareDurationWithLegacy(
-      "min_rebuild_period_s", "min_rebuild_period_sec", 0.0);
+    min_rebuild_period_s_ = declare_parameter<double>("min_rebuild_period_s", 0.0);
     // HH_260305-00:00 Allow path-mode grid baseline build (lanelet mask + pose gradient)
     // even when no valid path has been received yet.
     allow_build_without_path_ = declare_parameter<bool>("allow_build_without_path", false);
@@ -200,9 +194,8 @@ public:
     secondary_resolution_ = declare_parameter<double>("secondary.resolution", 0.10);
     secondary_window_width_ = declare_parameter<int>("secondary.width", 500);
     secondary_window_height_ = declare_parameter<int>("secondary.height", 500);
-    secondary_use_path_bbox_ = declare_parameter<bool>("secondary.use_path_bbox", false);
-    secondary_lock_window_ = declare_parameter<bool>("secondary.lock_window", false);
-    secondary_use_map_bbox_ = declare_parameter<bool>("secondary.use_map_bbox", false);
+    secondary_window_mode_ = toLower(
+      declare_parameter<std::string>("secondary.window_mode", "robot_centered"));
     secondary_centerline_half_width_ = declare_parameter<double>("secondary.centerline_half_width", 0.8);
     secondary_centerline_clip_to_lanelet_ = declare_parameter<bool>(
       "secondary.centerline_clip_to_lanelet", true);
@@ -230,6 +223,20 @@ public:
       "secondary.debug_coverage_min_value", 0);
     publish_map_status_ = declare_parameter<bool>("publish_map_status", false);
     map_status_topic_ = declare_parameter<std::string>("map_status_topic", "/map/status");
+    if (!isValidWindowMode(window_mode_)) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid window_mode='%s'. Falling back to 'robot_centered'.",
+        window_mode_.c_str());
+      window_mode_ = "robot_centered";
+    }
+    if (!isValidWindowMode(secondary_window_mode_)) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid secondary.window_mode='%s'. Falling back to 'robot_centered'.",
+        secondary_window_mode_.c_str());
+      secondary_window_mode_ = "robot_centered";
+    }
 
     if (primary_enable_) {
       grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
@@ -367,26 +374,6 @@ public:
   }
 
 private:
-  double declareDurationWithLegacy(
-    const std::string & canonical_name,
-    const std::string & legacy_name,
-    const double default_value)
-  {
-    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
-    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
-    if (std::abs(canonical_value - default_value) > 1e-9) {
-      return canonical_value;
-    }
-    if (std::abs(legacy_value - default_value) > 1e-9) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter '%s' is deprecated. Use '%s' instead.",
-        legacy_name.c_str(), canonical_name.c_str());
-      return legacy_value;
-    }
-    return canonical_value;
-  }
-
   // toLower: Utility helper used for string parsing, math conversion, or styling.
   static std::string toLower(std::string value)
   {
@@ -394,6 +381,15 @@ private:
       value.begin(), value.end(), value.begin(),
       [](unsigned char c) {return static_cast<char>(std::tolower(c));});
     return value;
+  }
+
+  static bool isValidWindowMode(const std::string & mode)
+  {
+    return
+      mode == "robot_centered" ||
+      mode == "path_bbox" ||
+      mode == "fixed" ||
+      mode == "map_bbox";
   }
 
   // Math helper MapBounds: computes derived geometric values used by mapping logic.
@@ -679,19 +675,13 @@ private:
         rebuild_on_pose_ = p.as_bool();
       } else if (p.get_name() == "rebuild_on_path") {
         rebuild_on_path_ = p.as_bool();
-      } else if (
-        p.get_name() == "min_rebuild_period_s" ||
-        p.get_name() == "min_rebuild_period_sec")
-      {
+      } else if (p.get_name() == "min_rebuild_period_s") {
         min_rebuild_period_s_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "allow_build_without_path") {
         allow_build_without_path_ = p.as_bool();
       } else if (p.get_name() == "drop_stale_path_after_goal") {
         drop_stale_path_after_goal_ = p.as_bool();
-      } else if (
-        p.get_name() == "path_goal_stamp_slack_s" ||
-        p.get_name() == "path_goal_stamp_slack_sec")
-      {
+      } else if (p.get_name() == "path_goal_stamp_slack_s") {
         path_goal_stamp_slack_s_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "fresh_path_goal_match_tolerance_m") {
         fresh_path_goal_match_tolerance_m_ = std::max(0.0, p.as_double());
@@ -748,12 +738,22 @@ private:
         secondary_window_width_ = p.as_int();
       } else if (p.get_name() == "secondary.height") {
         secondary_window_height_ = p.as_int();
-      } else if (p.get_name() == "secondary.use_path_bbox") {
-        secondary_use_path_bbox_ = p.as_bool();
-      } else if (p.get_name() == "secondary.lock_window") {
-        secondary_lock_window_ = p.as_bool();
-      } else if (p.get_name() == "secondary.use_map_bbox") {
-        secondary_use_map_bbox_ = p.as_bool();
+      } else if (p.get_name() == "window_mode") {
+        const std::string mode = toLower(p.as_string());
+        if (isValidWindowMode(mode)) {
+          window_mode_ = mode;
+        } else {
+          RCLCPP_WARN(
+            get_logger(), "Ignoring invalid window_mode update: '%s'", mode.c_str());
+        }
+      } else if (p.get_name() == "secondary.window_mode") {
+        const std::string mode = toLower(p.as_string());
+        if (isValidWindowMode(mode)) {
+          secondary_window_mode_ = mode;
+        } else {
+          RCLCPP_WARN(
+            get_logger(), "Ignoring invalid secondary.window_mode update: '%s'", mode.c_str());
+        }
       } else if (p.get_name() == "secondary.centerline_half_width") {
         secondary_centerline_half_width_ = p.as_double();
       } else if (p.get_name() == "secondary.centerline_clip_to_lanelet") {
@@ -788,8 +788,6 @@ private:
         secondary_debug_coverage_stride_ = std::max(1, static_cast<int>(p.as_int()));
       } else if (p.get_name() == "secondary.debug_coverage_min_value") {
         secondary_debug_coverage_min_value_ = static_cast<int>(p.as_int());
-      } else if (p.get_name() == "use_map_bbox") {
-        use_map_bbox_ = p.as_bool();
       } else if (p.get_name() == "republish_period") {
         republish_period_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "rebuild_on_timer") {
@@ -837,22 +835,26 @@ private:
     double max_x = current_pose_.pose.position.x;
     double min_y = current_pose_.pose.position.y;
     double max_y = current_pose_.pose.position.y;
-    if (lock_window_) {
-      if (use_map_bbox_ && map_bounds_valid_) {
-        // 2026-01-30: Use full map bounds with margin for a stable global window.
-        const double margin = computeRasterPadding();
-        min_x = map_min_x_ - margin;
-        min_y = map_min_y_ - margin;
-        max_x = map_max_x_ + margin;
-        max_y = map_max_y_ + margin;
-      } else {
-        // HH_260126 Fixed window anchored at configured origin/size (map frame).
-        min_x = origin_x_;
-        min_y = origin_y_;
-        max_x = origin_x_ + window_width_ * resolution_;
-        max_y = origin_y_ + window_height_ * resolution_;
-      }
-    } else if (use_path_bbox_ && path_received_ && path_.poses.size() > 1) {
+    if (window_mode_ == "fixed") {
+      // HH_260526: Fixed window anchored at configured origin/size (map frame).
+      min_x = origin_x_;
+      min_y = origin_y_;
+      max_x = origin_x_ + window_width_ * resolution_;
+      max_y = origin_y_ + window_height_ * resolution_;
+    } else if (window_mode_ == "map_bbox" && map_bounds_valid_) {
+      // HH_260526: Full map bounds with margin for stable global window.
+      const double margin = computeRasterPadding();
+      min_x = map_min_x_ - margin;
+      min_y = map_min_y_ - margin;
+      max_x = map_max_x_ + margin;
+      max_y = map_max_y_ + margin;
+    } else if (window_mode_ == "map_bbox" && !map_bounds_valid_) {
+      // HH_260526: Keep previous fallback behavior when map bounds are not ready.
+      min_x = origin_x_;
+      min_y = origin_y_;
+      max_x = origin_x_ + window_width_ * resolution_;
+      max_y = origin_y_ + window_height_ * resolution_;
+    } else if (window_mode_ == "path_bbox" && path_received_ && path_.poses.size() > 1) {
       // HH_260125 Fixed window: derive solely from path, not current pose, to avoid drift.
       min_x = path_.poses.front().pose.position.x;
       max_x = min_x;
@@ -1003,6 +1005,53 @@ private:
             path_clip_polys_ptr, centerline_half_width_);
         }
       }
+
+      // HH_260527: Optional lane-boundary margin overlay for path mode.
+      // This keeps route generation inside lanelet boundaries by adding a
+      // high-cost strip near left/right bounds while still allowing detours
+      // when obstacle costs force avoidance.
+      if (lanelet_boundary_value_ >= 0) {
+        const int boundary_cost = std::clamp(lanelet_boundary_value_, 0, 100);
+        auto paint_lanelet_boundaries = [&](const lanelet::ConstLanelet & ll) {
+            lanelet::BasicPolygon2d lane_poly;
+            if (!buildLaneletPolygon(ll, lane_poly)) {
+              return;
+            }
+            const auto & left = ll.leftBound();
+            const auto & right = ll.rightBound();
+            if (left.size() >= 2) {
+              for (size_t j = 0; j + 1 < left.size(); ++j) {
+                fillBoundaryStrip(
+                  left[j], left[j + 1], boundary_cost, grid,
+                  boundary_clip_to_lanelet_ ? &lane_poly : nullptr);
+              }
+            }
+            if (right.size() >= 2) {
+              for (size_t j = 0; j + 1 < right.size(); ++j) {
+                fillBoundaryStrip(
+                  right[j], right[j + 1], boundary_cost, grid,
+                  boundary_clip_to_lanelet_ ? &lane_poly : nullptr);
+              }
+            }
+          };
+
+        if (path_lanelet_only_ && path_received_ && path_.poses.size() > 1) {
+          ensurePathLaneletCache();
+          if (!cached_path_lanelets_.empty()) {
+            for (const auto & ll : cached_path_lanelets_) {
+              paint_lanelet_boundaries(ll);
+            }
+          } else {
+            for (const auto & ll : map_->laneletLayer) {
+              paint_lanelet_boundaries(ll);
+            }
+          }
+        } else {
+          for (const auto & ll : map_->laneletLayer) {
+            paint_lanelet_boundaries(ll);
+          }
+        }
+      }
     } else if (cost_mode_ == "bounds") {
       for (const auto & ll : map_->laneletLayer) {
         lanelet::BasicPolygon2d lane_poly;
@@ -1093,6 +1142,29 @@ private:
             centerline_use_distance_gradient_,
             (centerline_clip_to_lanelet_ && has_lane_poly) ? &lane_poly : nullptr);
         }
+
+        // HH_260527: Optional lane-boundary margin overlay for centerline mode.
+        // Higher boundary cost penalizes paths near lane edges and keeps
+        // nominal planning centered unless obstacle avoidance is required.
+        if (lanelet_boundary_value_ >= 0 && has_lane_poly) {
+          const int boundary_cost = std::clamp(lanelet_boundary_value_, 0, 100);
+          const auto & left = ll.leftBound();
+          const auto & right = ll.rightBound();
+          if (left.size() >= 2) {
+            for (size_t j = 0; j + 1 < left.size(); ++j) {
+              fillBoundaryStrip(
+                left[j], left[j + 1], boundary_cost, grid,
+                boundary_clip_to_lanelet_ ? &lane_poly : nullptr);
+            }
+          }
+          if (right.size() >= 2) {
+            for (size_t j = 0; j + 1 < right.size(); ++j) {
+              fillBoundaryStrip(
+                right[j], right[j + 1], boundary_cost, grid,
+                boundary_clip_to_lanelet_ ? &lane_poly : nullptr);
+            }
+          }
+        }
       }
     }
 
@@ -1150,9 +1222,7 @@ private:
     const int saved_cell_inside_min_hits = cell_inside_min_hits_;
     const int saved_cell_inside_min_hits_path = cell_inside_min_hits_path_;
     const int saved_cell_inside_min_hits_boundary = cell_inside_min_hits_boundary_;
-    const bool saved_use_path_bbox = use_path_bbox_;
-    const bool saved_lock_window = lock_window_;
-    const bool saved_use_map_bbox = use_map_bbox_;
+    const std::string saved_window_mode = window_mode_;
     const std::string saved_cost_mode = cost_mode_;
     const std::string saved_output_topic = output_topic_;
     const auto saved_grid_pub = grid_pub_;
@@ -1180,9 +1250,7 @@ private:
     cell_inside_min_hits_ = secondary_cell_inside_min_hits_;
     cell_inside_min_hits_path_ = secondary_cell_inside_min_hits_path_;
     cell_inside_min_hits_boundary_ = secondary_cell_inside_min_hits_boundary_;
-    use_path_bbox_ = secondary_use_path_bbox_;
-    lock_window_ = secondary_lock_window_;
-    use_map_bbox_ = secondary_use_map_bbox_;
+    window_mode_ = secondary_window_mode_;
     cost_mode_ = secondary_cost_mode_;
     output_topic_ = secondary_output_topic_;
     grid_pub_ = secondary_grid_pub_;
@@ -1213,9 +1281,7 @@ private:
     cell_inside_min_hits_ = saved_cell_inside_min_hits;
     cell_inside_min_hits_path_ = saved_cell_inside_min_hits_path;
     cell_inside_min_hits_boundary_ = saved_cell_inside_min_hits_boundary;
-    use_path_bbox_ = saved_use_path_bbox;
-    lock_window_ = saved_lock_window;
-    use_map_bbox_ = saved_use_map_bbox;
+    window_mode_ = saved_window_mode;
     cost_mode_ = saved_cost_mode;
     output_topic_ = saved_output_topic;
     grid_pub_ = saved_grid_pub;
@@ -1322,12 +1388,12 @@ private:
   bool requiresPoseForBuild() const
   {
     const auto profile_requires_pose = [](
-      bool lock_window, bool use_path_bbox,
+      const std::string & window_mode,
       const std::string & mode,
       int direction_penalty, int backward_penalty,
       bool path_use_pose_distance_gradient,
       bool centerline_use_distance_gradient) {
-        const bool window_requires_pose = !lock_window && !use_path_bbox;
+        const bool window_requires_pose = (window_mode == "robot_centered");
         bool pose_dependent_cost = false;
         if (mode == "path") {
           pose_dependent_cost =
@@ -1344,8 +1410,7 @@ private:
       };
 
     const bool primary_requires = profile_requires_pose(
-      lock_window_,
-      use_path_bbox_,
+      window_mode_,
       cost_mode_,
       direction_penalty_,
       backward_penalty_,
@@ -1356,8 +1421,7 @@ private:
     }
 
     const bool secondary_requires = profile_requires_pose(
-      secondary_lock_window_,
-      secondary_use_path_bbox_,
+      secondary_window_mode_,
       secondary_cost_mode_,
       secondary_direction_penalty_,
       secondary_backward_penalty_,
@@ -2150,9 +2214,7 @@ private:
   bool cached_path_lanelets_valid_{false};
   double grid_yaw_;
   std::string cost_mode_;
-  bool use_path_bbox_;
-  bool lock_window_;
-  bool use_map_bbox_;
+  std::string window_mode_{"robot_centered"};
   bool ignore_invalid_map_;
   std::string pose_topic_;
   std::string path_topic_;
@@ -2170,9 +2232,7 @@ private:
   double secondary_resolution_{0.10};
   int secondary_window_width_{500};
   int secondary_window_height_{500};
-  bool secondary_use_path_bbox_{false};
-  bool secondary_lock_window_{false};
-  bool secondary_use_map_bbox_{false};
+  std::string secondary_window_mode_{"robot_centered"};
   double secondary_centerline_half_width_{0.8};
   bool secondary_centerline_clip_to_lanelet_{true};
   int secondary_centerline_lanelet_fill_value_{85};

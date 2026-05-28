@@ -3,8 +3,10 @@
     primary_pose_cov_topic: "/localization/primary/pose_with_covariance"
     primary_odom_topic: "/localization/primary/odometry"
 
-    fallback_pose_cov_topic: "/localization/fallback/pose_with_covariance"
-    fallback_odom_topic: "/localization/fallback/odometry"
+    # HH_260527: Keep fallback topics empty by default (primary-only mode).
+    # Fill these only when an explicit external fallback source is introduced.
+    fallback_pose_cov_topic: ""
+    fallback_odom_topic: ""
 
     mode_topic: "/localization/mode"
 

@@ -8,14 +8,14 @@
     localization_pose_topic: "/localization/pose"  # Primary pose source for robot marker alignment.
     # HH_260327: GNSS is fallback-only (used only if localization is stale/missing).
     gnss_pose_topic: "/sensing/gnss/pose"        # Secondary pose source used only when localization becomes stale.
-    use_gnss_fallback: true                      # Enables GNSS fallback behavior for marker anchoring.
+    pose_source_mode: "localization_with_gnss_fallback"  # localization_only | localization_with_gnss_fallback
     # HH_260408: Relax timeout to avoid frequent fallback toggling during short localization stalls.
     localization_pose_timeout_s: 3.0             # Maximum accepted localization age before GNSS fallback [s].
     # HH_260412: Keep platform heading aligned directly with IMU/localization yaw.
     # Set offset to 0 so vehicle marker direction follows incoming pose orientation.
     heading_yaw_offset_deg: 0.0                  # [deg], negative=clockwise in ROS yaw convention.
     publish_tf: false                            # If true, publishes map->base TF from visualization pose.
-    use_map_ground_z: true                       # If true, estimates ground Z from `/map/markers` lanelet samples.
+    ground_z_source: "lanelet_map"               # fixed_offset | lanelet_map
     ground_z_offset: 0.0                         # Additional Z offset applied on top of estimated ground height [m].
     publish_rate_hz: 20.0                        # Marker and boundary publish frequency [Hz].
     show_chassis_marker: false                   # Shows translucent robot body cube marker when true.

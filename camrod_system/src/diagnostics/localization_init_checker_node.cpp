@@ -11,7 +11,7 @@
  * ---------
  *   /localization/init
  *     - Staleness         : 초기화 상태 토픽 미수신 경과 시간
- *     - Match OK          : initial_match_ok = false 일 때
+ *     - Match OK          : drop_zone/match_ok = false 일 때
  *                           → grace_period 이내  : WARN (아직 초기화 중)
  *                           → grace_period 초과  : ERROR (drop zone 매칭 실패)
  *     - Match distance    : 가장 가까운 zone 까지의 거리
@@ -20,9 +20,9 @@
  *
  * 파라미터 구성
  * -------------
- *   ok_topic:         "/localization/initial_match_ok"
- *   distance_topic:   "/localization/initial_match_distance"
- *   id_topic:         "/localization/initial_match_id"
+ *   ok_topic:         "/localization/drop_zone/match_ok"
+ *   distance_topic:   "/localization/drop_zone/match_distance"
+ *   id_topic:         "/localization/drop_zone/match_id"
  *   stale_timeout:    5.0    # drop_zone_matcher 가 늦게 뜰 수 있으므로 여유있게
  *   grace_period_sec: 30.0   # 시동 후 이 시간 이내 미매칭 → WARN (이후 → ERROR)
  *   dist_warn_m:      3.0    # 거리 > 이 값 → WARN
@@ -79,9 +79,9 @@ public:
 protected:
   void declare_parameters_() override
   {
-    declare_parameter("ok_topic",        std::string("/localization/initial_match_ok"));
-    declare_parameter("distance_topic",  std::string("/localization/initial_match_distance"));
-    declare_parameter("id_topic",        std::string("/localization/initial_match_id"));
+    declare_parameter("ok_topic",        std::string("/localization/drop_zone/match_ok"));
+    declare_parameter("distance_topic",  std::string("/localization/drop_zone/match_distance"));
+    declare_parameter("id_topic",        std::string("/localization/drop_zone/match_id"));
     declare_parameter("stale_timeout_s",   5.0);
     declare_parameter("grace_period_s", 30.0);
     declare_parameter("dist_warn_m",     3.0);

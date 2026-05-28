@@ -13,6 +13,9 @@
 
 planner_server:
   ros__parameters:
+    # HH_260527: use_sim_time options:
+    #   True: follow /clock (simulation/replay)
+    #   False: use system ROS time (real hardware default)
     use_sim_time: False
     expected_planner_frequency: 5.0
     # Support both NavFn and Smac; default selected in BT (PlannerSelector).
@@ -21,6 +24,9 @@ planner_server:
     NavFn:
       plugin: "nav2_navfn_planner/NavfnPlanner"
       tolerance: 0.5
+      # HH_260527: use_astar options:
+      #   True: A* search (heuristic-guided, usually faster/straighter)
+      #   False: Dijkstra-style expansion
       use_astar: True
       # 2026-02-11: Keep path strictly inside known lanelet-cost area.
       allow_unknown: False
@@ -98,6 +104,11 @@ controller_server:
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 1.2
       transform_tolerance: 0.2
+      # HH_260527: RPP toggle options (all boolean):
+      #   use_velocity_scaled_lookahead_dist: True=scale lookahead by speed, False=fixed lookahead only
+      #   use_collision_detection: True=controller-level collision check enabled, False=skip internal check
+      #   use_regulated_linear_velocity_scaling: True=curve-based linear speed scaling, False=disabled
+      #   use_cost_regulated_linear_velocity_scaling: True=costmap-based linear speed scaling, False=disabled
       use_velocity_scaled_lookahead_dist: True
       min_approach_linear_velocity: 0.15
       approach_velocity_scaling_dist: 0.6

@@ -17,6 +17,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <string>
 #include <vector>
 
 namespace camrod::sensing
@@ -47,7 +48,7 @@ private:
 
   sensor_msgs::msg::CameraInfo camera_info_msg_;
 
-  bool use_custom_intrinsics_;
+  std::string intrinsics_source_;
   std::vector<double> camera_matrix_;
   std::vector<double> distortion_coefficients_;
 

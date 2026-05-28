@@ -17,6 +17,9 @@ lidar:
       min_distance: 0.01                            # min point distance (m)
       max_distance: 30                              # max point distance (m)
       # HH_260415: Use host ROS clock to avoid TF extrapolation caused by sensor-clock skew.
+      # HH_260527: use_lidar_clock options:
+      #   true: use LiDAR device clock for message stamp
+      #   false: use host ROS clock (recommended for TF sync stability)
       use_lidar_clock: false
       pcap_path:
       pcap_repeat: true
@@ -30,6 +33,9 @@ lidar:
       imu_param_path:
       dense_points: false
       ts_first_point: true
+      # HH_260527: use_offset_timestamp options:
+      #   true: per-point timestamp is relative offset from packet/header time
+      #   false: per-point timestamp uses absolute UTC/device time
       use_offset_timestamp: true
       publish_mode: 0                               # 0: first return only
       group_address: 0.0.0.0
@@ -41,6 +47,9 @@ lidar:
       roll: 0
       pitch: 0
       yaw: 0
+    # HH_260527: use_vlan options:
+    #   true: parse VLAN tag in captured packets
+    #   false: parse packets without VLAN header (default)
     use_vlan: false
     ros:
       ros_frame_id: lidar_link

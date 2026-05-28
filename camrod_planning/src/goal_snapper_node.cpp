@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -21,6 +22,14 @@
 
 namespace
 {
+std::string normalizeModeToken(std::string value)
+{
+  std::transform(
+    value.begin(), value.end(), value.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return value;
+}
+
 struct LoaderConfig
 {
   std::string map_path;
@@ -114,14 +123,22 @@ public:
     max_search_radius_ = declare_parameter<double>("max_search_radius", 30.0);
     require_lanelet_containment_ = declare_parameter<bool>("require_lanelet_containment", true);
     fallback_uncontained_ = declare_parameter<bool>("fallback_uncontained", true);
-    use_map_z_ = declare_parameter<bool>("use_map_z", true);
-    flatten_to_ground_ = declare_parameter<bool>("flatten_to_ground", true);
+    // HH_260526: Replace use_map_z/flatten_to_ground booleans with one explicit mode.
+    // goal_z_mode options: input | map | ground.
+    goal_z_mode_ = normalizeModeToken(declare_parameter<std::string>("goal_z_mode", "ground"));
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);
     // HH_260329: Debounce duplicate goal callbacks when the same topic is
     // subscribed by both avg_msgs and geometry_msgs interfaces.
     duplicate_goal_xy_eps_m_ = declare_parameter<double>("duplicate_goal_xy_eps_m", 0.05);
     duplicate_goal_z_eps_m_ = declare_parameter<double>("duplicate_goal_z_eps_m", 0.10);
     duplicate_goal_time_window_s_ = declare_parameter<double>("duplicate_goal_time_window_s", 0.25);
+    if (goal_z_mode_ != "input" && goal_z_mode_ != "map" && goal_z_mode_ != "ground") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid goal_z_mode='%s'. Falling back to 'ground'.",
+        goal_z_mode_.c_str());
+      goal_z_mode_ = "ground";
+    }
 
     if (!loadMap()) {
       RCLCPP_FATAL(get_logger(), "goal snapper: failed to load map. exiting.");
@@ -291,8 +308,10 @@ private:
         px, py, max_search_radius_);
       return false;
     }
-    snapped_z = use_map_z_ ? (nearest.nearest_point.z() + map_z_offset_) : pz;
-    if (flatten_to_ground_) {
+    snapped_z = pz;
+    if (goal_z_mode_ == "map") {
+      snapped_z = nearest.nearest_point.z() + map_z_offset_;
+    } else if (goal_z_mode_ == "ground") {
       snapped_z = map_ground_z_ + map_z_offset_;
     }
     return true;
@@ -451,8 +470,7 @@ private:
   double max_search_radius_{30.0};
   bool require_lanelet_containment_{true};
   bool fallback_uncontained_{true};
-  bool use_map_z_{true};
-  bool flatten_to_ground_{true};
+  std::string goal_z_mode_{"ground"};
   double map_z_offset_{0.0};
   double map_ground_z_{0.0};
   double duplicate_goal_xy_eps_m_{0.05};

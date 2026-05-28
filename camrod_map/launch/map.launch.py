@@ -128,9 +128,9 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_map_cost_markers",            default_value="true"),
         DeclareLaunchArgument("enable_cost_field",                  default_value="false"),
         DeclareLaunchArgument("enable_cost_grids",                  default_value="true"),
-        DeclareLaunchArgument("enable_module_validator",            default_value="true"),
         DeclareLaunchArgument("module_namespace",                   default_value="map"),
-        DeclareLaunchArgument("system_namespace",                   default_value="system"),
+        # HH_260527: Removed unused compatibility args
+        # (enable_module_validator, system_namespace).
 
         _inc(lanelet2_map_launch,
              "map_param_file", "map_path", "origin_lat", "origin_lon", "origin_alt",

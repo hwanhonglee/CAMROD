@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <unordered_map>
@@ -29,6 +30,14 @@ namespace camrod
 {
 namespace
 {
+std::string normalizeModeToken(std::string value)
+{
+  std::transform(
+    value.begin(), value.end(), value.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return value;
+}
+
 // HH_260114 Keep a single label scale so every TF text marker is consistent across sensors.
 constexpr double kLabelScale = 0.22;
 
@@ -118,21 +127,14 @@ public:
       "localization_pose_topic", "/localization/pose");
     gnss_pose_topic_ = declare_parameter<std::string>(
       "gnss_pose_topic", "/sensing/gnss/pose");
-    use_gnss_fallback_ = declare_parameter<bool>("use_gnss_fallback", true);
+    // HH_260526: Replace use_gnss_fallback toggle with explicit pose source mode.
+    // pose_source_mode options:
+    //   localization_only
+    //   localization_with_gnss_fallback
+    pose_source_mode_ = normalizeModeToken(
+      declare_parameter<std::string>("pose_source_mode", "localization_with_gnss_fallback"));
     localization_pose_timeout_s_ = declare_parameter<double>(
       "localization_pose_timeout_s", 1.0);
-    const double legacy_localization_pose_timeout_sec = declare_parameter<double>(
-      "localization_pose_timeout_sec", 1.0);
-    if (
-      std::abs(localization_pose_timeout_s_ - 1.0) < 1e-9 &&
-      std::abs(legacy_localization_pose_timeout_sec - 1.0) > 1e-9)
-    {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter 'localization_pose_timeout_sec' is deprecated. "
-        "Use 'localization_pose_timeout_s' instead.");
-      localization_pose_timeout_s_ = legacy_localization_pose_timeout_sec;
-    }
     // HH_260409: Optional heading offset for platform visualization alignment.
     // Negative value rotates clockwise in ROS yaw convention.
     heading_yaw_offset_deg_ = declare_parameter<double>("heading_yaw_offset_deg", 0.0);
@@ -147,7 +149,10 @@ public:
     ground_z_offset_ = declare_parameter<double>("ground_z_offset", 0.0);
     range_ring_radii_ = declare_parameter<std::vector<double>>(
       "range_ring_radii", std::vector<double>{2.0, 4.0, 6.0, 8.0});
-    use_map_ground_z_ = declare_parameter<bool>("use_map_ground_z", true);
+    // HH_260526: Replace use_map_ground_z toggle with explicit source mode.
+    // ground_z_source options: fixed_offset | lanelet_map.
+    ground_z_source_ = normalizeModeToken(
+      declare_parameter<std::string>("ground_z_source", "lanelet_map"));
     base_pose_.x = declare_parameter<double>("base_pose.x", 0.0);
     base_pose_.y = declare_parameter<double>("base_pose.y", 0.0);
     base_pose_.z = declare_parameter<double>("base_pose.z", ground_z_offset_);
@@ -156,6 +161,23 @@ public:
     base_pose_.yaw = declare_parameter<double>("base_pose.yaw", 0.0);
     // HH_260409: Keep startup base yaw aligned with configured heading offset.
     base_pose_.yaw = normalizeAngle(base_pose_.yaw + heading_yaw_offset_rad_);
+    if (
+      pose_source_mode_ != "localization_only" &&
+      pose_source_mode_ != "localization_with_gnss_fallback")
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid pose_source_mode='%s'. Falling back to 'localization_with_gnss_fallback'.",
+        pose_source_mode_.c_str());
+      pose_source_mode_ = "localization_with_gnss_fallback";
+    }
+    if (ground_z_source_ != "fixed_offset" && ground_z_source_ != "lanelet_map") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid ground_z_source='%s'. Falling back to 'lanelet_map'.",
+        ground_z_source_.c_str());
+      ground_z_source_ = "lanelet_map";
+    }
 
     auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
     marker_pub_ = create_publisher<avg_msgs::msg::MarkerArray>(marker_topic_, qos);
@@ -175,7 +197,7 @@ public:
     gnss_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
       gnss_pose_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
       std::bind(&RobotVisualizationNode::onGnssPose, this, std::placeholders::_1));
-    if (use_map_ground_z_) {
+    if (ground_z_source_ == "lanelet_map") {
       map_marker_sub_ = create_subscription<avg_msgs::msg::MarkerArray>(
         "/map/markers", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable(),
         std::bind(&RobotVisualizationNode::onMapMarkers, this, std::placeholders::_1));
@@ -564,7 +586,7 @@ private:
   {
     // HH_260327: GNSS is fallback-only input for platform marker alignment.
     // If localization pose is fresh, keep marker anchored to localization.
-    if (!use_gnss_fallback_) {
+    if (pose_source_mode_ != "localization_with_gnss_fallback") {
       return;
     }
     if (has_localization_pose_) {
@@ -587,13 +609,13 @@ private:
   // Returns map-derived ground Z offset when available, otherwise zero.
   double mapGroundOffset() const
   {
-    return use_map_ground_z_ && map_ground_ready_ ? map_ground_z_ : 0.0;
+    return (ground_z_source_ == "lanelet_map" && map_ground_ready_) ? map_ground_z_ : 0.0;
   }
 
   // Samples lanelet map marker heights once to estimate ground Z for visualization placement.
   void onMapMarkers(const avg_msgs::msg::MarkerArray::ConstSharedPtr msg)
   {
-    if (!use_map_ground_z_ || map_ground_ready_) {
+    if (ground_z_source_ != "lanelet_map" || map_ground_ready_) {
       return;
     }
     constexpr size_t sample_limit = 1000;
@@ -630,7 +652,7 @@ private:
   double planning_boundary_margin_{0.3};
   double body_scale_factor_{1.0};
   double ground_z_offset_{0.0};
-  bool use_map_ground_z_{true};
+  std::string ground_z_source_{"lanelet_map"};
   bool publish_tf_{false};
   std::vector<double> range_ring_radii_;
   std::string map_frame_id_;
@@ -640,7 +662,7 @@ private:
   std::string platform_status_topic_;
   std::string localization_pose_topic_;
   std::string gnss_pose_topic_;
-  bool use_gnss_fallback_{true};
+  std::string pose_source_mode_{"localization_with_gnss_fallback"};
   double localization_pose_timeout_s_{1.0};
   double heading_yaw_offset_deg_{0.0};
   double heading_yaw_offset_rad_{0.0};

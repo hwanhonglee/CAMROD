@@ -49,17 +49,6 @@ public:
     obstacle_radius_m_ = declare_parameter<double>("obstacle_radius_m", 0.20);
     ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.90);
     max_message_age_s_ = declare_parameter<double>("max_message_age_s", 0.50);
-    const double legacy_max_message_age_sec =
-      declare_parameter<double>("max_message_age_sec", 0.50);
-    if (
-      std::abs(max_message_age_s_ - 0.50) < 1e-9 &&
-      std::abs(legacy_max_message_age_sec - 0.50) > 1e-9)
-    {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter 'max_message_age_sec' is deprecated. Use 'max_message_age_s' instead.");
-      max_message_age_s_ = legacy_max_message_age_sec;
-    }
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);
     lidar_status_topic_ = declare_parameter<std::string>(
       "lidar_status_topic", "/sensing/lidar/status");

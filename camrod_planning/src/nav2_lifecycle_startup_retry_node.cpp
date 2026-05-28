@@ -30,7 +30,7 @@ public:
 
     require_localization_ready_ = declare_parameter<bool>("require_localization_ready", false);
     localization_ready_topic_ = declare_parameter<std::string>(
-      "localization_ready_topic", "/localization/initial_match_ok");
+      "localization_ready_topic", "/localization/drop_zone/match_ok");
     localization_pose_cov_topic_ = declare_parameter<std::string>(
       "localization_pose_cov_topic", "/localization/pose_with_covariance");
     localization_pose_timeout_s_ = declare_parameter<double>("localization_pose_timeout_s", 1.0);
@@ -49,7 +49,7 @@ public:
       std::bind(&Nav2LifecycleStartupRetryNode::on_timer, this));
 
     if (require_localization_ready_) {
-      initial_match_sub_ = create_subscription<std_msgs::msg::Bool>(
+      localization_ready_sub_ = create_subscription<std_msgs::msg::Bool>(
         localization_ready_topic_, 10,
         std::bind(&Nav2LifecycleStartupRetryNode::on_localization_ready, this, std::placeholders::_1));
       pose_cov_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
@@ -67,10 +67,10 @@ public:
   }
 
 private:
-  // Updates initial-match latch used by startup gating.
+  // HH_260527: Updates drop-zone match latch used by startup gating.
   void on_localization_ready(const std_msgs::msg::Bool::SharedPtr msg)
   {
-    initial_match_ok_ = static_cast<bool>(msg->data);
+    localization_ready_ = static_cast<bool>(msg->data);
   }
 
   // Updates covariance sanity latch for localization readiness gating.
@@ -97,8 +97,8 @@ private:
     if (!require_localization_ready_) {
       return {true, "disabled"};
     }
-    if (!initial_match_ok_) {
-      return {false, "waiting_initial_match_ok"};
+    if (!localization_ready_) {
+      return {false, "waiting_drop_zone_match_ok"};
     }
     if (!pose_cov_received_ || !last_pose_cov_rx_time_.has_value()) {
       return {false, "waiting_pose_with_covariance"};
@@ -222,7 +222,7 @@ private:
   double max_yaw_variance_{1.0};
   bool require_covariance_sanity_{true};
 
-  bool initial_match_ok_{false};
+  bool localization_ready_{false};
   bool pose_cov_received_{false};
   bool pose_cov_sane_{false};
   std::optional<rclcpp::Time> last_pose_cov_rx_time_;
@@ -240,7 +240,7 @@ private:
   bool active_future_pending_{false};
   bool startup_future_pending_{false};
 
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr initial_match_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr localization_ready_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

@@ -78,8 +78,11 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
     find_library(NVJPEG_LIB nvjpeg
       HINTS
         ${CUDAToolkit_LIBRARY_DIR}
+        /usr/lib/aarch64-linux-gnu/nvidia # HH_260522 - can't find nvjpeg pkg, so add path
+        /usr/lib/aarch64-linux-gnu # HH_260522 - can't find nvjpeg pkg, so add path
         /usr/local/cuda/targets/aarch64-linux/lib
         /usr/local/cuda/targets/x86_64-linux/lib
+        /usr/local/cuda/lib64
       REQUIRED
     )
 

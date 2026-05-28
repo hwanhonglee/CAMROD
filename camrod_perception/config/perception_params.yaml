@@ -9,17 +9,16 @@
     cluster_tolerance: 0.25
     min_cluster_size: 12
     max_cluster_size: 8000
-    eps: 0.25
-    min_pts: 12
-    max_points: 8000
-    use_box: true
+    # HH_260522: unified ROI filter selector for obstacle_lidar_node.
+    #   box/enabled/on: apply ROI bounds (x/y/z min/max)
+    #   disabled/off/none: skip ROI bounds
+    roi_filter_mode: box
     x_min: 0.0
     x_max: 5.0
     y_min: -3.0
     y_max: 3.0
     z_min: -3.0
     z_max: 5.0
-    min_cluster_points: 12
     min_size_x: 0.10
     min_size_y: 0.10
     min_size_z: 0.10
@@ -53,6 +52,12 @@
     out_det3d_topic:     "/perception/camera_lidar/detections_3d"
     out_markers_topic:   "/perception/camera_lidar/markers"
     out_euclidean_topic: "/perception/camera_lidar/euclidean_markers"
+    # HH_260522: unified fusion filter selector.
+    #   camera_bbox/enabled/on: keep only points inside camera detections
+    #   pass_through/disabled/off/none: ignore camera detections and publish projected LiDAR points
+    fusion_filter_mode: "camera_bbox"
+    # If true, publish pass-through points when detections are missing/empty.
+    keep_lidar_when_no_detections: true
     # Extrinsic: camera position relative to LiDAR effective frame [m]
     # R (LiDAR eff→camera) is fixed by Vanjee 750 mounting: cam_X=eff_X, cam_Y=-eff_Z, cam_Z=eff_Y
     extrinsic_x: 0.0

@@ -1,4 +1,6 @@
+#include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <optional>
@@ -28,6 +30,14 @@ using avg_msgs::msg::AvgLocalizationStatusStream;
 
 namespace
 {
+std::string normalizeModeToken(std::string value)
+{
+  std::transform(
+    value.begin(), value.end(), value.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return value;
+}
+
 // HH_260123 Helper to keep timestamped IMU measurement.
 struct ImuSample
 {
@@ -85,6 +95,9 @@ public:
     // HH_260410: Keep wheel source naming consistent under /platform/status namespace.
     wheel_topic_ = declare_parameter<std::string>(
       "wheel_topic", "/platform/status/wheel_odometry");
+    // HH_260527: Optional external pose reset topic for ESKF.
+    // Empty string disables subscriber.
+    set_pose_topic_ = declare_parameter<std::string>("set_pose_topic", "");
     publish_tf_ = declare_parameter<bool>("publish_tf", true);
     // HH_260327: Keep map->odom TF authority in launch-level static publisher to
     // avoid duplicated map->odom broadcasters when switching filters.
@@ -125,8 +138,10 @@ public:
     imu_accel_y_sign_ = declare_parameter<double>("imu_accel_y_sign", 1.0);
     imu_gyro_z_sign_ = declare_parameter<double>("imu_gyro_z_sign", 1.0);
     imu_yaw_sign_ = declare_parameter<double>("imu_yaw_sign", 1.0);
-    use_imu_orientation_for_yaw_init_ = declare_parameter<bool>(
-      "use_imu_orientation_for_yaw_init", true);
+    // HH_260526: Replace use_imu_orientation_for_yaw_init toggle with explicit source.
+    // yaw_init_source options: imu_orientation | state.
+    yaw_init_source_ = normalizeModeToken(
+      declare_parameter<std::string>("yaw_init_source", "imu_orientation"));
     // HH_260507: Optional startup diagnostics for IMU yaw -> initial yaw path.
     debug_yaw_init_ = declare_parameter<bool>("debug_yaw_init", false);
     // HH_260507: Apply NHC/ZUPT also on IMU predict loop while stopped.
@@ -139,19 +154,24 @@ public:
     // 2026-04-22: Optional wheel yaw-rate correction using odometry angular.z.
     // Ranger odometry already reflects steering geometry, so this helps keep
     // IMU yaw bias and DR heading consistent with real platform motion.
-    use_wheel_yaw_rate_update_ = declare_parameter<bool>("use_wheel_yaw_rate_update", true);
+    // HH_260526: Replace use_wheel_yaw_rate_update with explicit wheel update mode.
+    // wheel_yaw_rate_mode options: fused | speed_only.
+    wheel_yaw_rate_mode_ = normalizeModeToken(
+      declare_parameter<std::string>("wheel_yaw_rate_mode", "fused"));
     wheel_yaw_rate_noise_ = declare_parameter<double>("wheel_yaw_rate_noise", 0.25);
     wheel_yaw_rate_gate_mahalanobis_ = declare_parameter<double>(
       "wheel_yaw_rate_gate_mahalanobis", 9.0);
     wheel_yaw_rate_min_speed_mps_ = declare_parameter<double>("wheel_yaw_rate_min_speed_mps", 0.10);
     // HH_260422: NHC suppresses lateral drift using the no-sideslip constraint.
     // nhc_lateral_noise >0 allows some slip for skid-steer robots like Ranger.
-    use_nhc_ = declare_parameter<bool>("use_nhc", true);
+    // HH_260526: Replace use_nhc/use_zupt with explicit per-constraint modes.
+    // nhc_mode/zupt_mode options: enabled | disabled.
+    nhc_mode_ = normalizeModeToken(declare_parameter<std::string>("nhc_mode", "enabled"));
     nhc_lateral_noise_ = declare_parameter<double>("nhc_lateral_noise", 0.05);
     nhc_gate_mahalanobis_ = declare_parameter<double>("nhc_gate_mahalanobis", 9.0);
     // HH_260422: ZUPT injects v=[0,0] when the robot is confirmed stopped,
     // preventing IMU accel bias from drifting position during standstill.
-    use_zupt_ = declare_parameter<bool>("use_zupt", true);
+    zupt_mode_ = normalizeModeToken(declare_parameter<std::string>("zupt_mode", "enabled"));
     zupt_vel_noise_ = declare_parameter<double>("zupt_vel_noise", 0.02);
     zupt_gate_mahalanobis_ = declare_parameter<double>("zupt_gate_mahalanobis", 9.0);
     // 2026-01-30: Initialize state on first GNSS to avoid huge innovation rejection.
@@ -176,13 +196,6 @@ public:
       "align_yaw_to_imu_when_stopped", true);
     stop_speed_threshold_ = declare_parameter<double>("stop_speed_threshold", 0.05);
     stop_hold_s_ = declare_parameter<double>("stop_hold_s", 1.0);
-    const double legacy_stop_hold_sec = declare_parameter<double>("stop_hold_sec", 1.0);
-    if (std::abs(stop_hold_s_ - 1.0) < 1e-9 && std::abs(legacy_stop_hold_sec - 1.0) > 1e-9) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter 'stop_hold_sec' is deprecated. Use 'stop_hold_s' instead.");
-      stop_hold_s_ = legacy_stop_hold_sec;
-    }
 
     // HH_260413: GNSS profile auto-switch (normal <-> unstable) for realtime jitter.
     gnss_profile_mode_ = declare_parameter<std::string>("gnss_profile_mode", "auto");
@@ -214,6 +227,34 @@ public:
     // Eliminates the need for imu_yaw_init_offset_deg calibration — heading self-calibrates
     // from GNSS velocity direction as soon as robot moves at gnss_cog_min_speed_mps.
     gnss_cog_force_init_ = declare_parameter<bool>("gnss_cog_force_init", true);
+    if (yaw_init_source_ != "imu_orientation" && yaw_init_source_ != "state") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid yaw_init_source='%s'. Falling back to 'imu_orientation'.",
+        yaw_init_source_.c_str());
+      yaw_init_source_ = "imu_orientation";
+    }
+    if (wheel_yaw_rate_mode_ != "fused" && wheel_yaw_rate_mode_ != "speed_only") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid wheel_yaw_rate_mode='%s'. Falling back to 'fused'.",
+        wheel_yaw_rate_mode_.c_str());
+      wheel_yaw_rate_mode_ = "fused";
+    }
+    if (nhc_mode_ != "enabled" && nhc_mode_ != "disabled") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid nhc_mode='%s'. Falling back to 'enabled'.",
+        nhc_mode_.c_str());
+      nhc_mode_ = "enabled";
+    }
+    if (zupt_mode_ != "enabled" && zupt_mode_ != "disabled") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid zupt_mode='%s'. Falling back to 'enabled'.",
+        zupt_mode_.c_str());
+      zupt_mode_ = "enabled";
+    }
 
     // Publishers
     odom_pub_ = create_publisher<avg_msgs::msg::Odometry>(odom_topic_, rclcpp::QoS(10));
@@ -248,6 +289,12 @@ public:
     wheel_sub_ = create_subscription<avg_msgs::msg::Odometry>(
       wheel_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationEskfNode::onWheelOdom, this, _1));
+    if (!set_pose_topic_.empty()) {
+      set_pose_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+        set_pose_topic_, rclcpp::QoS(10),
+        std::bind(&LocalizationEskfNode::onSetPose, this, _1));
+      RCLCPP_INFO(get_logger(), "ESKF external set_pose enabled: topic=%s", set_pose_topic_.c_str());
+    }
     if (!gnss_cog_topic_.empty()) {
       gnss_cog_sub_ = create_subscription<avg_msgs::msg::TwistWithCovarianceStamped>(
         gnss_cog_topic_, rclcpp::SensorDataQoS(),
@@ -267,9 +314,9 @@ public:
     if (debug_yaw_init_) {
       RCLCPP_WARN(
         get_logger(),
-        "Yaw debug ON: use_imu_orientation_for_yaw_init=%s imu_yaw_sign=%.1f "
+        "Yaw debug ON: yaw_init_source=%s imu_yaw_sign=%.1f "
         "imu_to_base_yaw_deg=%.3f align_yaw_to_imu_when_stopped=%s",
-        use_imu_orientation_for_yaw_init_ ? "true" : "false",
+        yaw_init_source_.c_str(),
         imu_yaw_sign_,
         imu_to_base_yaw_deg_,
         align_yaw_to_imu_when_stopped_ ? "true" : "false");
@@ -280,6 +327,72 @@ private:
   using Matrix8d = Eigen::Matrix<double, 8, 8>;
   using Vector8d = Eigen::Matrix<double, 8, 1>;
 
+  bool yawInitUsesImuOrientation() const
+  {
+    return yaw_init_source_ == "imu_orientation";
+  }
+
+  bool wheelYawRateFusionEnabled() const
+  {
+    return wheel_yaw_rate_mode_ == "fused";
+  }
+
+  bool nhcEnabled() const
+  {
+    return nhc_mode_ == "enabled";
+  }
+
+  bool zuptEnabled() const
+  {
+    return zupt_mode_ == "enabled";
+  }
+
+  void onSetPose(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  {
+    const auto & p = msg->pose.pose.position;
+    const auto & q = msg->pose.pose.orientation;
+    const double qn = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+    const double yaw = (qn > 1e-12) ? normalizeYaw(yawFromQuat(q)) : normalizeYaw(state_(4));
+
+    state_.setZero();
+    state_(0) = p.x;
+    state_(1) = p.y;
+    state_(4) = yaw;
+
+    covariance_.setIdentity();
+    covariance_ *= 10.0;
+    if (msg->pose.covariance[0] > 0.0) {
+      covariance_(0, 0) = msg->pose.covariance[0];
+    }
+    if (msg->pose.covariance[7] > 0.0) {
+      covariance_(1, 1) = msg->pose.covariance[7];
+    }
+    if (msg->pose.covariance[35] > 0.0) {
+      covariance_(4, 4) = msg->pose.covariance[35];
+    }
+
+    initialized_ = true;
+    wheel_initialized_ = false;
+    last_imu_.reset();
+    last_pub_stamp_ = rclcpp::Time(msg->header.stamp);
+
+    AvgLocalizationStatusStream diag;
+    diag.header.stamp = msg->header.stamp;
+    diag.gnss_update_accepted = true;
+    diag.gnss_innovation_norm = 0.0;
+    diag.wheel_update_accepted = true;
+    diag.wheel_innovation_norm = 0.0;
+    diag.covariance_trace = covariance_.trace();
+    last_diag_ = diag;
+    diag_pub_->publish(diag);
+    publishOutputs(msg->header.stamp);
+
+    RCLCPP_WARN(
+      get_logger(),
+      "ESKF external set_pose applied: x=%.2f y=%.2f yaw=%.1f deg",
+      state_(0), state_(1), radToDeg(state_(4)));
+  }
+
   // Handles the `onImu` callback.
   void onImu(const avg_msgs::msg::Imu::ConstSharedPtr msg)
   {
@@ -288,7 +401,7 @@ private:
     Eigen::Vector3d gyro(msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z);
     ImuSample sample{stamp, acc, gyro};
 
-    if (use_imu_orientation_for_yaw_init_) {
+    if (yawInitUsesImuOrientation()) {
       const auto & q = msg->orientation;
       const double norm2 = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
       if (norm2 > 1e-12) {
@@ -369,7 +482,7 @@ private:
           get_logger(),
           "Yaw debug GNSS init: seeded yaw=%.2f deg from %s",
           radToDeg(yaw_seed),
-          (use_imu_orientation_for_yaw_init_ && has_imu_base_yaw_) ? "IMU orientation" :
+          (yawInitUsesImuOrientation() && has_imu_base_yaw_) ? "IMU orientation" :
           "state yaw");
       }
 
@@ -506,7 +619,7 @@ private:
 
     const double v_pred = cos_yaw * state_(2) + sin_yaw * state_(3);
     const bool can_use_yaw_rate_update =
-      use_wheel_yaw_rate_update_ &&
+      wheelYawRateFusionEnabled() &&
       std::isfinite(msg->twist.twist.angular.z) &&
       std::abs(v_meas) >= wheel_yaw_rate_min_speed_mps_;
     const double wheel_yaw_rate_meas = msg->twist.twist.angular.z;
@@ -781,7 +894,7 @@ private:
   // Chooses yaw seed for GNSS-based initialization/re-initialization.
   double yawForInitialization() const
   {
-    if (use_imu_orientation_for_yaw_init_ && has_imu_base_yaw_) {
+    if (yawInitUsesImuOrientation() && has_imu_base_yaw_) {
       return last_imu_base_yaw_;
     }
     return normalizeYaw(state_(4));
@@ -792,7 +905,7 @@ private:
   // nhc_lateral_noise allows residual slip (important for skid-steer like Ranger).
   void applyNhc()
   {
-    if (!use_nhc_) {
+    if (!nhcEnabled()) {
       return;
     }
     const double yaw = state_(4);
@@ -830,7 +943,7 @@ private:
   // Prevents IMU accel bias from accumulating into position drift at standstill.
   void applyZupt()
   {
-    if (!use_zupt_ || !is_stopped_) {
+    if (!zuptEnabled() || !is_stopped_) {
       return;
     }
     // h(x) = [vx, vy],  z = [0, 0]
@@ -1067,6 +1180,7 @@ private:
   std::string imu_topic_;
   std::string gnss_topic_;
   std::string wheel_topic_;
+  std::string set_pose_topic_;
   std::string pose_topic_;
   std::string pose_cov_topic_;
   std::string odom_topic_;
@@ -1094,8 +1208,8 @@ private:
   double imu_accel_y_sign_{1.0};
   double imu_gyro_z_sign_{1.0};
   double imu_yaw_sign_{1.0};
-  // HH_260422: true -> seed yaw from IMU quaternion on GNSS init/reinit instead of current state_(4)
-  bool use_imu_orientation_for_yaw_init_{true};
+  // HH_260526: yaw_init_source controls initialization heading source (imu_orientation|state).
+  std::string yaw_init_source_{"imu_orientation"};
   // HH_260507: true -> print IMU->yaw seed path for startup/debug diagnosis.
   bool debug_yaw_init_{false};
   // HH_260507: true -> run NHC/ZUPT on IMU callbacks while stop-state is active.
@@ -1106,17 +1220,17 @@ private:
   bool reinit_on_gnss_reject_{true};
   double reinit_distance_threshold_{50.0};
   double wheel_gate_mahalanobis_{9.0};
-  // HH_260422: true -> use wheel angular.z as yaw-rate measurement; corrects b_gz (gyro Z bias) during driving
-  bool use_wheel_yaw_rate_update_{true};
+  // HH_260526: wheel_yaw_rate_mode controls wheel update model (fused|speed_only).
+  std::string wheel_yaw_rate_mode_{"fused"};
   double wheel_yaw_rate_noise_{0.25};
   double wheel_yaw_rate_gate_mahalanobis_{9.0};
   double wheel_yaw_rate_min_speed_mps_{0.10};
-  // HH_260422: true -> apply lateral body velocity = 0 pseudo-measurement; suppresses sideways DR drift
-  bool use_nhc_{true};
+  // HH_260526: nhc_mode controls NHC pseudo-measurement (enabled|disabled).
+  std::string nhc_mode_{"enabled"};
   double nhc_lateral_noise_{0.05};
   double nhc_gate_mahalanobis_{9.0};
-  // HH_260422: true -> inject [vx,vy]=[0,0] when confirmed stopped; prevents accel bias accumulating into position error
-  bool use_zupt_{true};
+  // HH_260526: zupt_mode controls zero-velocity update (enabled|disabled).
+  std::string zupt_mode_{"enabled"};
   double zupt_vel_noise_{0.02};
   double zupt_gate_mahalanobis_{9.0};
   // HH_260422: true -> suppress all pose/odom/TF output until first GNSS snap completes (avoids publishing floating initial state)
@@ -1169,6 +1283,7 @@ private:
   rclcpp::Subscription<avg_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr gnss_sub_;
   rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr wheel_sub_;
+  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr set_pose_sub_;
   rclcpp::Publisher<avg_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;

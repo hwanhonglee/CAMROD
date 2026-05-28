@@ -19,7 +19,6 @@ def generate_launch_description():
         sensing_share, "config", "lidar", "cost_grid.yaml"
     )
 
-    sensing_param_file = LaunchConfiguration("sensing_param_file")
     lidar_preprocess_param_file = LaunchConfiguration("lidar_preprocess_param_file")
     enable_lidar_driver = LaunchConfiguration("enable_lidar_driver")
     enable_lidar_cost_grid = LaunchConfiguration("enable_lidar_cost_grid")
@@ -34,10 +33,6 @@ def generate_launch_description():
     lidar_cost_grid_param_file = LaunchConfiguration("lidar_cost_grid_param_file")
 
     return LaunchDescription([
-        DeclareLaunchArgument(
-            "sensing_param_file",
-            default_value=os.path.join(sensing_share, "config", "sensing_params.yaml"),
-        ),
         DeclareLaunchArgument(
             "lidar_preprocess_param_file",
             default_value=os.path.join(sensing_share, "config", "lidar", "preprocessor.yaml"),
@@ -63,7 +58,6 @@ def generate_launch_description():
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(lidar_driver_launch),
             launch_arguments={
-                "sensing_param_file": sensing_param_file,
                 "lidar_preprocess_param_file": lidar_preprocess_param_file,
                 "enable_lidar_driver": enable_lidar_driver,
                 "vanjee_config_path": vanjee_config_path,

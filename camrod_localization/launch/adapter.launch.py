@@ -43,6 +43,11 @@ def generate_launch_description():
             description="Enable wheel odometry bridge path",
         ),
         DeclareLaunchArgument(
+            "enable_odometry_to_pose",
+            default_value="true",
+            description="Enable odometry->pose bridge path (typically true for EKF, false for ESKF)",
+        ),
+        DeclareLaunchArgument(
             "wheel_input_topic",
             # HH_260410: Prefer platform status odometry as primary wheel source.
             default_value="/platform/status/odometry",
@@ -70,11 +75,6 @@ def generate_launch_description():
             description="Primary wheel input timeout before fallback activation (seconds)",
         ),
         DeclareLaunchArgument(
-            "wheel_primary_timeout_sec",
-            default_value="0.7",
-            description="Legacy alias. Use wheel_primary_timeout_s.",
-        ),
-        DeclareLaunchArgument(
             "wheel_output_topic",
             # HH_260410: Use status namespace for unified wheel odometry output.
             default_value="/platform/status/wheel_odometry",
@@ -97,12 +97,12 @@ def generate_launch_description():
                 LaunchConfiguration("params_file"),
                 {
                     "enable_wheel_odometry_bridge": LaunchConfiguration("wheel_bridge_enable"),
+                    "enable_odometry_to_pose": LaunchConfiguration("enable_odometry_to_pose"),
                     "wheel_input_topic": LaunchConfiguration("wheel_input_topic"),
                     "wheel_input_type": LaunchConfiguration("wheel_input_type"),
                     "wheel_fallback_input_topic": LaunchConfiguration("wheel_fallback_input_topic"),
                     "wheel_fallback_input_type": LaunchConfiguration("wheel_fallback_input_type"),
                     "wheel_primary_timeout_s": LaunchConfiguration("wheel_primary_timeout_s"),
-                    "wheel_primary_timeout_sec": LaunchConfiguration("wheel_primary_timeout_sec"),
                     "wheel_output_topic": LaunchConfiguration("wheel_output_topic"),
                     "wheel_nav_output_topic": LaunchConfiguration("wheel_nav_output_topic"),
                 },

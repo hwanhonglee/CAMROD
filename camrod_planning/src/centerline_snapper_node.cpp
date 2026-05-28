@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <limits>
 #include <string>
@@ -18,6 +20,14 @@
 
 namespace
 {
+std::string normalizeModeToken(std::string value)
+{
+  std::transform(
+    value.begin(), value.end(), value.begin(),
+    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return value;
+}
+
 struct LoaderConfig
 {
   std::string map_path;
@@ -66,7 +76,7 @@ public:
     // HH_260109 Default to fused localization pose and publish lanelet constraint pose.
     input_pose_topic_ = declare_parameter<std::string>("input_pose_topic", "/localization/pose");
     output_pose_topic_ = declare_parameter<std::string>(
-      "output_pose_topic", "/localization/lanelet_pose");
+      "output_pose_topic", "/localization/centerline_pose");
     // HH_260317-00:00 Publish ROS-native lanelet pose for TF/Nav2 helpers.
     output_pose_topic_ros_ = declare_parameter<std::string>(
       "output_pose_topic_ros", "/planning/lanelet_pose_ros");
@@ -79,19 +89,25 @@ public:
     longitudinal_stddev_ = declare_parameter<double>("longitudinal_stddev", 0.5);
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
     yaw_stddev_ = declare_parameter<double>("yaw_stddev", 0.2);
-    use_map_z_ = declare_parameter<bool>("use_map_z", true);           // HH_260114 Snap z to map elevation.
+    // HH_260526: Replace use_map_z/flatten_to_ground booleans with one explicit mode.
+    // centerline_z_mode options: input | map | ground.
+    centerline_z_mode_ = normalizeModeToken(
+      declare_parameter<std::string>("centerline_z_mode", "map"));
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);    // HH_260114 Extra z offset applied to map elevation.
-    flatten_to_ground_ = declare_parameter<bool>("flatten_to_ground", false);  // HH_260114 Force z to ground plane.
     // HH_260413: Throttle nearest-centerline search under high-rate localization streams.
     min_update_period_s_ = declare_parameter<double>("min_update_period_s", 0.05);
-    {
-      const double legacy = declare_parameter<double>("min_update_period_sec", 0.05);
-      if (std::abs(min_update_period_s_ - 0.05) < 1e-9 && std::abs(legacy - 0.05) > 1e-9) {
-        RCLCPP_WARN(get_logger(), "Parameter 'min_update_period_sec' is deprecated. Use 'min_update_period_s'.");
-        min_update_period_s_ = legacy;
-      }
-    }
     min_input_displacement_m_ = declare_parameter<double>("min_input_displacement_m", 0.05);
+    if (
+      centerline_z_mode_ != "input" &&
+      centerline_z_mode_ != "map" &&
+      centerline_z_mode_ != "ground")
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid centerline_z_mode='%s'. Falling back to 'map'.",
+        centerline_z_mode_.c_str());
+      centerline_z_mode_ = "map";
+    }
 
     if (!loadMap()) {
       RCLCPP_FATAL(get_logger(), "centerline snapper: failed to load map. exiting.");
@@ -197,9 +213,11 @@ private:
     out_pose.header = msg->header;
     out_pose.pose.position.x = nearest.nearest_point.x();
     out_pose.pose.position.y = nearest.nearest_point.y();
-    // HH_260114 Adjust z to lanelet centerline height or keep input z.
-    double snapped_z = use_map_z_ ? (nearest.nearest_point.z() + map_z_offset_) : pz;
-    if (flatten_to_ground_) {
+    // HH_260526: Keep z-selection explicit by mode instead of coupled booleans.
+    double snapped_z = pz;
+    if (centerline_z_mode_ == "map") {
+      snapped_z = nearest.nearest_point.z() + map_z_offset_;
+    } else if (centerline_z_mode_ == "ground") {
       snapped_z = map_ground_z_ + map_z_offset_;
     }
     out_pose.pose.position.z = snapped_z;
@@ -320,9 +338,8 @@ private:
   double longitudinal_stddev_{0.5};
   double lateral_stddev_{0.3};
   double yaw_stddev_{0.2};
-  bool use_map_z_{true};
+  std::string centerline_z_mode_{"map"};
   double map_z_offset_{0.0};
-  bool flatten_to_ground_{false};
   double min_update_period_s_{0.05};
   double min_input_displacement_m_{0.05};
   rclcpp::Time last_publish_stamp_{0, 0, RCL_ROS_TIME};

@@ -63,7 +63,7 @@
     odom1_queue_size: 20
 
     # HH_260109 Lanelet2 soft constraint pose (snap-to-lane).
-    pose1: /localization/lanelet_pose
+    pose1: /localization/centerline_pose
     # HH_260408: Do not fuse lanelet yaw directly.
     # Keep heading from IMU/wheel to prevent vehicle facing direction from being
     # forcibly aligned to nearest centerline direction in RViz/planning.

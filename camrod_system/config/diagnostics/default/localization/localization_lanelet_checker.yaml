@@ -2,7 +2,7 @@ localization_lanelet_checker:
   ros__parameters:
     publish_rate_hz: 1.0
 
-    lanelet_topic: "/localization/lanelet_pose"
+    lanelet_topic: "/localization/centerline_pose"
 
     expected_hz:    20.0   # centerline_snapper 입력 포즈와 동일 주기
     hz_warn_ratio:  0.7    # actual / expected < 이 값 → WARN (간헐적 snapping 실패)

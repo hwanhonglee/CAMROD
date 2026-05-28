@@ -59,8 +59,10 @@ bt_navigator:
       - nav2_drive_on_heading_bt_node
       - nav2_assisted_teleop_action_bt_node
 
-# HH_260513: SimpleSmoother post-planner path smoothing.
-# Reduces NavFn staircase artifacts before controller tracking.
+# SimpleSmoother removes NavFn/Smac2D staircase artifacts before FollowPath.
+# w_data + w_smooth must sum to < 1.0.
+# Higher w_smooth = more bending toward neighbors (smoother but may cut corners).
+# Higher w_data  = more fidelity to original path.
 smoother_server:
   ros__parameters:
     smoother_plugins: ["SimpleSmoother"]
@@ -69,7 +71,8 @@ smoother_server:
       tolerance: 1.0e-10
       max_its: 1000
       w_data: 0.2
-      w_smooth: 0.3
+      # Raised from 0.3 → 0.5 for stronger staircase removal.
+      w_smooth: 0.5
       do_refinement: true
 
 behavior_server:

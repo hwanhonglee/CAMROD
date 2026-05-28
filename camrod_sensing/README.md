@@ -316,7 +316,7 @@ graph TD
 | Internal logic | `camera_publisher_node` opens `/dev/video0`, captures 1920×1080 MJPEG frames at 10 fps with `exposure_time_us: 25000`. Undistortion uses the calibrated equidistant model (4-coefficient: k1–k4). The rectified image is JPEG-compressed (quality 90) and published on `~/image_rect/compressed` (remapped to `camera/image_rect/compressed`). CameraInfo uses the calibrated intrinsics matrix. Zero-copy DDS transport is enabled via Iceoryx (`iox-roudi` started 1 s before the camera node). |
 | Output effect | `camera/image_rect/compressed`, `camera/camera_info` at 10 Hz. |
 | Operator-visible symptom | Node crash at startup → `iox-roudi` not running (check `ps aux | grep iox-roudi`). Black or distorted image → wrong `device_path` or stale calibration in `camera_params.yaml`. |
-| Related params | `device_path`, `image_width`, `image_height`, `fps`, `exposure_time_us`, `jpeg_quality`, `camera_matrix`, `distortion_coefficients`, `use_custom_intrinsics` |
+| Related params | `device_path`, `image_width`, `image_height`, `fps`, `exposure_time_us`, `jpeg_quality`, `camera_matrix`, `distortion_coefficients`, `intrinsics_source` |
 | Related topics | `camera/image_rect/compressed`, `camera/camera_info` |
 
 ### IMU (CV7-AHRS or GQ7, selectable)

@@ -87,10 +87,7 @@ class FakeSensorPublisher(Node):
         self.origin_lat = self.declare_parameter("origin_lat", 0.0).value
         self.origin_lon = self.declare_parameter("origin_lon", 0.0).value
         self.origin_alt = self.declare_parameter("origin_alt", 0.0).value
-        # 2026-02-25: lanelet selector (canonical + legacy alias).
-        canonical_lanelet_id = int(self.declare_parameter("lanelet_id", -1).value)
-        legacy_lanelet_id = int(self.declare_parameter("fake_lanelet_id", -1).value)
-        self.lanelet_id = legacy_lanelet_id if legacy_lanelet_id >= 0 else canonical_lanelet_id
+        self.lanelet_id = int(self.declare_parameter("lanelet_id", -1).value)
         self.speed_mps = self.declare_parameter("speed_mps", 1.4).value
         # Debug option:
         # - true  : keep fake sensor pose fixed on the path start anchor
@@ -98,25 +95,21 @@ class FakeSensorPublisher(Node):
         self.freeze_motion = bool(self.declare_parameter("freeze_motion", False).value)
         self.publish_rate_hz = self.declare_parameter("publish_rate_hz", 20.0).value
         self.loop = self.declare_parameter("loop", True).value
-        # In sim mode, drive fake motion from cmd_vel to mirror
-        # planning/controller behavior instead of constant-speed advancement.
-        self.use_cmd_vel_for_motion = bool(
-            self.declare_parameter("use_cmd_vel_for_motion", True).value
-        )
+        # HH_260526: Replace use_cmd_vel_for_motion with explicit motion source mode.
+        # motion_source options: cmd_vel | constant_speed
+        self.motion_source = str(self.declare_parameter("motion_source", "cmd_vel").value).strip().lower()
+        if self.motion_source not in {"cmd_vel", "constant_speed"}:
+            self.get_logger().warn(
+                f"Invalid motion_source='{self.motion_source}', fallback to 'cmd_vel'"
+            )
+            self.motion_source = "cmd_vel"
+        self.motion_uses_cmd_vel = self.motion_source == "cmd_vel"
         self.cmd_vel_motion_topic = str(
             self.declare_parameter("cmd_vel_motion_topic", "/platform/cmd_vel").value
         )
         self.cmd_vel_timeout_s = float(
             self.declare_parameter("cmd_vel_timeout_s", 0.5).value
         )
-        cmd_vel_timeout_sec_legacy = float(
-            self.declare_parameter("cmd_vel_timeout_sec", 0.5).value
-        )
-        if self.cmd_vel_timeout_s == 0.5 and cmd_vel_timeout_sec_legacy != 0.5:
-            self.get_logger().warn(
-                "Parameter 'cmd_vel_timeout_sec' is deprecated. Use 'cmd_vel_timeout_s'."
-            )
-            self.cmd_vel_timeout_s = cmd_vel_timeout_sec_legacy
         self.max_cmd_speed_mps = float(
             self.declare_parameter("max_cmd_speed_mps", 2.5).value
         )
@@ -124,26 +117,43 @@ class FakeSensorPublisher(Node):
         self.initialpose_topic = str(
             self.declare_parameter("initialpose_topic", "/localization/initialpose").value
         )
-        # HH_260428: Free navigation sim mode — integrates cmd_vel (linear.x + angular.z)
-        # as a unicycle model instead of constraining position to the centerline.
-        # Required for camping site navigation testing where the robot must leave the
-        # lanelet centerline. When false (default), behavior is unchanged (centerline-only).
-        self.use_free_nav_sim = bool(
-            self.declare_parameter("use_free_nav_sim", False).value
+        # HH_260528: Also listen to RViz default topic unless disabled.
+        self.enable_initialpose_fallback_topic = bool(
+            self.declare_parameter("enable_initialpose_fallback_topic", True).value
         )
+        self.initialpose_topic_fallback = str(
+            self.declare_parameter("initialpose_topic_fallback", "/initialpose").value
+        )
+        # HH_260526: Replace use_free_nav_sim with explicit navigation model mode.
+        # simulation_nav_mode options: centerline | free_nav
+        self.simulation_nav_mode = str(
+            self.declare_parameter("simulation_nav_mode", "centerline").value
+        ).strip().lower()
+        if self.simulation_nav_mode not in {"centerline", "free_nav"}:
+            self.get_logger().warn(
+                f"Invalid simulation_nav_mode='{self.simulation_nav_mode}', fallback to 'centerline'"
+            )
+            self.simulation_nav_mode = "centerline"
+        self.free_nav_mode_enabled = self.simulation_nav_mode == "free_nav"
         # 2026-02-05 14:37: Skip crosswalk lanelets to prevent centerline jumps.
         self.exclude_crosswalk = self.declare_parameter("exclude_crosswalk", True).value
-        # 2026-02-25: clearer alias for initial path anchor.
+        # HH_260522: Use a single canonical start anchor switch.
         # - start_from_pose=true : anchor path traversal from nearest point to (start_x, start_y)
         # - false                : start from beginning of stitched centerline path
-        legacy_use_start_pose = bool(self.declare_parameter("use_start_pose", False).value)
-        self.start_from_pose = bool(
-            self.declare_parameter("start_from_pose", legacy_use_start_pose).value
-        )
+        self.start_from_pose = bool(self.declare_parameter("start_from_pose", False).value)
         self.start_x = self.declare_parameter("start_x", 0.0).value
         self.start_y = self.declare_parameter("start_y", 0.0).value
-        # 2026-02-02: Use all lanelet centerlines to traverse the full loop.
-        self.use_all_centerlines = self.declare_parameter("use_all_centerlines", True).value
+        # HH_260526: Replace use_all_centerlines with explicit centerline scope.
+        # centerline_scope options: all | selected_lanelet
+        self.centerline_scope = str(
+            self.declare_parameter("centerline_scope", "all").value
+        ).strip().lower()
+        if self.centerline_scope not in {"all", "selected_lanelet"}:
+            self.get_logger().warn(
+                f"Invalid centerline_scope='{self.centerline_scope}', fallback to 'all'"
+            )
+            self.centerline_scope = "all"
+        self.centerline_scope_all = self.centerline_scope == "all"
         self.centerline_connect_max_gap = float(
             self.declare_parameter("centerline_connect_max_gap", 5.0).value
         )
@@ -157,14 +167,6 @@ class FakeSensorPublisher(Node):
         self.startup_hold_s = float(
             self.declare_parameter("startup_hold_s", 4.0).value
         )
-        startup_hold_sec_legacy = float(
-            self.declare_parameter("startup_hold_sec", 4.0).value
-        )
-        if self.startup_hold_s == 4.0 and startup_hold_sec_legacy != 4.0:
-            self.get_logger().warn(
-                "Parameter 'startup_hold_sec' is deprecated. Use 'startup_hold_s'."
-            )
-            self.startup_hold_s = startup_hold_sec_legacy
         self.frame_id = self.declare_parameter("frame_id", "map").value
         self.base_frame_id = self.declare_parameter("base_frame_id", "robot_base_link").value
         # Default keeps synthetic obstacle outside stop corridor.
@@ -198,14 +200,6 @@ class FakeSensorPublisher(Node):
         # fallback odometry as DR reference instead of a VIO-only stream.
         self.dr_odometry_topic = str(
             self.declare_parameter("dr_odometry_topic", "/localization/fallback/odometry").value
-        )
-        # Optional compatibility bridge for old consumers still expecting
-        # /localization/vio/odometry. Keep disabled by default.
-        self.publish_legacy_vio_odometry = bool(
-            self.declare_parameter("publish_legacy_vio_odometry", False).value
-        )
-        self.legacy_vio_odometry_topic = str(
-            self.declare_parameter("legacy_vio_odometry_topic", "/localization/vio/odometry").value
         )
         # Optional helper: align localization pose yaw to nearest active path tangent.
         # Position is kept from incoming /localization/pose, only orientation(yaw) is replaced.
@@ -267,26 +261,10 @@ class FakeSensorPublisher(Node):
         self.gnss_failure_after_s = float(
             self.declare_parameter("gnss_failure_after_s", -1.0).value
         )
-        gnss_failure_after_sec_legacy = float(
-            self.declare_parameter("gnss_failure_after_sec", -1.0).value
-        )
-        if self.gnss_failure_after_s == -1.0 and gnss_failure_after_sec_legacy != -1.0:
-            self.get_logger().warn(
-                "Parameter 'gnss_failure_after_sec' is deprecated. Use 'gnss_failure_after_s'."
-            )
-            self.gnss_failure_after_s = gnss_failure_after_sec_legacy
 
         self.gnss_recovery_after_s = float(
             self.declare_parameter("gnss_recovery_after_s", -1.0).value
         )
-        gnss_recovery_after_sec_legacy = float(
-            self.declare_parameter("gnss_recovery_after_sec", -1.0).value
-        )
-        if self.gnss_recovery_after_s == -1.0 and gnss_recovery_after_sec_legacy != -1.0:
-            self.get_logger().warn(
-                "Parameter 'gnss_recovery_after_sec' is deprecated. Use 'gnss_recovery_after_s'."
-            )
-            self.gnss_recovery_after_s = gnss_recovery_after_sec_legacy
         self._gnss_active = True
         # Keep selected simulation controls adjustable at runtime via ros2 param set.
         self.add_on_set_parameters_callback(self._on_set_parameters)
@@ -332,7 +310,7 @@ class FakeSensorPublisher(Node):
         self._free_nav_x = 0.0
         self._free_nav_y = 0.0
         self._free_nav_yaw = 0.0
-        if self.use_free_nav_sim:
+        if self.free_nav_mode_enabled:
             (x0, y0, _, _, _), yaw0 = self._sample_path(0.0)
             self._free_nav_x = x0
             self._free_nav_y = y0
@@ -352,17 +330,12 @@ class FakeSensorPublisher(Node):
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
         )
         self.pub_dr_odom = self.create_publisher(Odometry, self.dr_odometry_topic, odom_qos)
-        self.pub_legacy_vio_odom = None
-        if self.publish_legacy_vio_odometry:
-            self.pub_legacy_vio_odom = self.create_publisher(
-                Odometry, self.legacy_vio_odometry_topic, 10
-            )
         self.pub_obstacles = self.create_publisher(PointCloud2, self.obstacle_cloud_topic, 10)
         self.pub_lidar_filtered = self.create_publisher(
             PointCloud2, self.lidar_filtered_topic, 10
         )
         self.sub_cmd_vel = None
-        if self.use_cmd_vel_for_motion:
+        if self.motion_uses_cmd_vel:
             self.sub_cmd_vel = self.create_subscription(
                 Twist, self.cmd_vel_motion_topic, self._on_cmd_vel, 10
             )
@@ -372,6 +345,18 @@ class FakeSensorPublisher(Node):
             self._on_initialpose,
             10,
         )
+        self.sub_initialpose_fallback = None
+        if (
+            self.enable_initialpose_fallback_topic
+            and self.initialpose_topic_fallback
+            and self.initialpose_topic_fallback != self.initialpose_topic
+        ):
+            self.sub_initialpose_fallback = self.create_subscription(
+                PoseWithCovarianceStamped,
+                self.initialpose_topic_fallback,
+                self._on_initialpose,
+                10,
+            )
 
         # Optional pose-yaw align bridge for fake/sim mode.
         self.pub_localization_pose_yaw_aligned = None
@@ -436,7 +421,7 @@ class FakeSensorPublisher(Node):
         yaw = normalize_angle(quat_to_yaw(pose.orientation))
 
         now_sec = time.time()
-        if self.use_free_nav_sim:
+        if self.free_nav_mode_enabled:
             self._free_nav_x = x
             self._free_nav_y = y
             self._free_nav_yaw = yaw
@@ -522,7 +507,7 @@ class FakeSensorPublisher(Node):
             return []
 
         # Lanelet-specific request: return the single lanelet path.
-        if self.lanelet_id >= 0 or not self.use_all_centerlines:
+        if self.lanelet_id >= 0 or not self.centerline_scope_all:
             return segments[0]
 
         # 2026-02-02: Stitch all lanelet centerlines into one continuous loop.
@@ -711,17 +696,33 @@ class FakeSensorPublisher(Node):
 
     # Implements `_nearest_distance_on_path` behavior.
     def _nearest_distance_on_path(self, x, y):
-        # 2026-02-05 14:37: Snap start offset to nearest vertex on the path.
-        best_idx = 0
-        best_dist = float("inf")
-        for i, p in enumerate(self._path):
-            dx = p[0] - x
-            dy = p[1] - y
-            dist = dx * dx + dy * dy
-            if dist < best_dist:
-                best_dist = dist
-                best_idx = i
-        return self._distances[best_idx]
+        # HH_260527: Use nearest projection on each segment (not nearest vertex only)
+        # so RViz initialpose snaps to the geometrically closest path point.
+        if len(self._path) < 2:
+            return 0.0
+
+        best_dist2 = float("inf")
+        best_s = 0.0
+        for i in range(len(self._path) - 1):
+            p0 = self._path[i]
+            p1 = self._path[i + 1]
+            dx = p1[0] - p0[0]
+            dy = p1[1] - p0[1]
+            seg_len2 = dx * dx + dy * dy
+            if seg_len2 <= 1e-12:
+                continue
+
+            t = ((x - p0[0]) * dx + (y - p0[1]) * dy) / seg_len2
+            t = max(0.0, min(1.0, t))
+            px = p0[0] + t * dx
+            py = p0[1] + t * dy
+            dist2 = (x - px) * (x - px) + (y - py) * (y - py)
+            if dist2 < best_dist2:
+                best_dist2 = dist2
+                s0 = self._distances[i]
+                s1 = self._distances[i + 1]
+                best_s = s0 + t * (s1 - s0)
+        return best_s
 
     @staticmethod
     # Implements `_sample_polyline` behavior.
@@ -867,7 +868,7 @@ class FakeSensorPublisher(Node):
         holding = elapsed < self.startup_hold_s
         if self.freeze_motion or holding:
             motion_speed = 0.0
-        elif self.use_cmd_vel_for_motion:
+        elif self.motion_uses_cmd_vel:
             if (self._last_cmd_time is None or
                     (now_sec - self._last_cmd_time) > max(0.01, self.cmd_vel_timeout_s)):
                 motion_speed = 0.0
@@ -876,12 +877,12 @@ class FakeSensorPublisher(Node):
         else:
             motion_speed = self.speed_mps
 
-        if self.use_free_nav_sim:
+        if self.free_nav_mode_enabled:
             # HH_260428: Free nav mode — unicycle kinematics from cmd_vel.
             # Integrates both linear.x and angular.z so Nav2 can steer the
             # simulated robot off the lanelet centerline to reach camping sites.
             if not holding and not self.freeze_motion and motion_speed != 0.0:
-                omega = self._cmd_angular_z if self.use_cmd_vel_for_motion else 0.0
+                omega = self._cmd_angular_z if self.motion_uses_cmd_vel else 0.0
                 self._free_nav_yaw += omega * dt
                 self._free_nav_x += motion_speed * math.cos(self._free_nav_yaw) * dt
                 self._free_nav_y += motion_speed * math.sin(self._free_nav_yaw) * dt
@@ -978,8 +979,6 @@ class FakeSensorPublisher(Node):
         dr_msg.twist.twist.linear.x = wheel_speed
         dr_msg.twist.twist.angular.z = 0.0
         self.pub_dr_odom.publish(dr_msg)
-        if self.pub_legacy_vio_odom is not None:
-            self.pub_legacy_vio_odom.publish(dr_msg)
 
         # Place fake obstacle cloud in vehicle-forward coordinates
         # so local cost-stop can validate front/side/rear stop behavior reliably.
@@ -1055,11 +1054,7 @@ class FakeSensorPublisher(Node):
                 self.freeze_motion = bool(p.value)
             elif p.name == "gnss_failure_after_s":
                 self.gnss_failure_after_s = float(p.value)
-            elif p.name == "gnss_failure_after_sec":
-                self.gnss_failure_after_s = float(p.value)
             elif p.name == "gnss_recovery_after_s":
-                self.gnss_recovery_after_s = float(p.value)
-            elif p.name == "gnss_recovery_after_sec":
                 self.gnss_recovery_after_s = float(p.value)
         return SetParametersResult(successful=True)
 

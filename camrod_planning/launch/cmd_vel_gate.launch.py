@@ -22,9 +22,16 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_output_topic', default_value='/planning/cmd_vel'),
         DeclareLaunchArgument('planning_engage_topic', default_value='/planning/engage'),
         DeclareLaunchArgument('planning_engaged_state_topic', default_value='/planning/engaged'),
-        DeclareLaunchArgument('cmd_vel_gate_use_estop_topic', default_value='true'),
+        # HH_260522: unified source selector for planning e-stop input.
+        #   platform_status/topic/enabled/on: subscribe /platform/status/estop
+        #   disabled/off/none: ignore e-stop topic
+        DeclareLaunchArgument('cmd_vel_gate_estop_source_mode', default_value='platform_status'),
         # HH_260409: Use platform-originated e-stop by default.
         DeclareLaunchArgument('cmd_vel_gate_estop_topic', default_value='/platform/status/estop'),
+        # HH_260522: unified source selector for DR-timeout trigger.
+        #   localization_monitor/topic/enabled/on: subscribe /localization/state/dr_timeout
+        #   disabled/off/none: ignore DR-timeout trigger
+        DeclareLaunchArgument('cmd_vel_gate_dr_timeout_source_mode', default_value='localization_monitor'),
         DeclareLaunchArgument('cmd_vel_gate_allow_on_start', default_value='false'),
         # HH_260427: Short hold window after DR_ONLY->NORMAL localization recovery.
         DeclareLaunchArgument('cmd_vel_gate_enable_gnss_recovery_hold', default_value='true'),
@@ -38,6 +45,8 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_cost_pose_topic', default_value='/localization/pose'),
         # HH_260426: VIO stack is disabled; use localization fallback odometry.
         DeclareLaunchArgument('cmd_vel_gate_cost_odometry_topic', default_value='/localization/fallback/odometry'),
+        # HH_260522: pose source preference options:
+        #   odometry | tf_robot_base | pose_topic
         # HH_260425: Keep odometry as default pose source for cost-stop corridor heading.
         DeclareLaunchArgument('cmd_vel_gate_pose_source_preference', default_value='odometry'),
         DeclareLaunchArgument('cmd_vel_gate_enable_pose_raw_fallback', default_value='false'),
@@ -83,8 +92,9 @@ def generate_launch_description():
                 'output_topic': LaunchConfiguration('cmd_vel_output_topic'),
                 'engage_topic': LaunchConfiguration('planning_engage_topic'),
                 'state_topic': LaunchConfiguration('planning_engaged_state_topic'),
-                'use_estop_topic': LaunchConfiguration('cmd_vel_gate_use_estop_topic'),
+                'estop_source_mode': LaunchConfiguration('cmd_vel_gate_estop_source_mode'),
                 'estop_topic': LaunchConfiguration('cmd_vel_gate_estop_topic'),
+                'dr_timeout_source_mode': LaunchConfiguration('cmd_vel_gate_dr_timeout_source_mode'),
                 'allow_on_start': LaunchConfiguration('cmd_vel_gate_allow_on_start'),
                 'publish_zero_when_blocked': True,
                 'enable_gnss_recovery_hold': LaunchConfiguration('cmd_vel_gate_enable_gnss_recovery_hold'),

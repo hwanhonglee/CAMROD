@@ -50,10 +50,10 @@ Threshold is `fallback_on_mode_at_or_above` parameter (default: `2 = DR_ONLY`).
 **Monitor evaluates mode from:**
 ```
 gnss_good  = gnss_fresh && gnss_cov_ok && gnss_jump_ok && gnss_rate_ok
-             [&& gnss_update_accepted  if use_filter_status=true]
+             [&& gnss_update_accepted  if filter_status_mode=stream]
 
 wheel_good = wheel_fresh
-             [&& wheel_update_accepted  if use_filter_status=true]
+             [&& wheel_update_accepted  if filter_status_mode=stream]
 
 imu_ok     = imu_fresh
 

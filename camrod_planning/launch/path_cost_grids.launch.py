@@ -134,29 +134,29 @@ def generate_launch_description():
                 'path_lanelet_match_max_dist': 0.45,
                 'path_lanelet_allow_nearest_fallback': True,
                 'path_lanelet_sample_step': 0.05,
-                'primary_path_timeout_sec': 6.0,
+                'primary_path_timeout_s': 6.0,
                 # HH_260315-00:00 Problem fix:
                 # Keep latest global route cost strip until a new route is published.
-                'stale_path_timeout_sec': 0.0,
+                'stale_path_timeout_s': 0.0,
                 # HH_260318-00:00 Robustness-first:
                 # strict "fresh-path-after-goal" filtering can reject valid replans when
                 # goal/path publishers have small timing/frame mismatches. Disabling the
                 # filter prevents global-path marker freeze after a new goal.
                 'drop_stale_path_after_goal': False,
-                'path_goal_stamp_slack_sec': 0.20,
+                'path_goal_stamp_slack_s': 0.20,
                 'fresh_path_goal_match_tolerance_m': 4.0,
                 # HH_260330: Global-path helper grid is visualization/constraint aid.
                 # Rebuild only on path updates to avoid continuous full-map CPU load.
                 'rebuild_on_pose': False,
                 'rebuild_on_path': True,
                 'rebuild_on_timer': False,
-                'min_rebuild_period_sec': 0.15,
+                'min_rebuild_period_s': 0.15,
                 'republish_period': 0.15,
                 # HH_260330: Bound global helper grid window around pose to keep
                 # CPU predictable and prevent planner/controller starvation.
                 'width': 600,
                 'height': 600,
-                'use_path_bbox': False,
+                'window_mode': 'robot_centered',
                 'debug_coverage_stats': False,
                 'debug_coverage_stride': 2,
                 'debug_coverage_min_value': 0,
@@ -197,10 +197,10 @@ def generate_launch_description():
                 'path_lateral_cost_weight': 0.80,
                 'path_lanelet_match_max_dist': 0.35,
                 'path_lanelet_sample_step': 0.06,
-                'primary_path_timeout_sec': 2.5,
+                'primary_path_timeout_s': 2.5,
                 # HH_260315-00:00 Problem fix:
                 # Keep short hold to avoid blink but still purge stale local route quickly.
-                'stale_path_timeout_sec': 0.6,
+                'stale_path_timeout_s': 0.6,
                 # Local path endpoint is near current robot pose (not goal endpoint),
                 # so stale-goal geometric rejection must stay disabled.
                 'drop_stale_path_after_goal': False,
@@ -209,7 +209,7 @@ def generate_launch_description():
                 # HH_260330: Disable timer-only rebuild loop to reduce controller
                 # contention; pose/path callbacks remain the primary trigger.
                 'rebuild_on_timer': False,
-                'min_rebuild_period_sec': 0.05,
+                'min_rebuild_period_s': 0.05,
                 'republish_period': 0.05,
                 'debug_coverage_stats': False,
                 'debug_coverage_stride': 2,
@@ -241,7 +241,7 @@ def generate_launch_description():
                 # Keep previous marker set on transient empty input to prevent blink.
                 'clear_on_empty_grid': False,
                 # Do not stale-clear marker cache; grid publisher heartbeat keeps freshness.
-                'stale_timeout_sec': 0.0,
+                'stale_timeout_s': 0.0,
             # 2026-02-27: Path cost grids are transient_local; consume latched path immediately.
             'grid_qos_transient_local': True,
             # HH_260305-00:00 Keep full resolution to avoid sparse-looking global markers.
@@ -249,10 +249,10 @@ def generate_launch_description():
             # HH_260318-00:00 Always convert the latest incoming global-path grid immediately.
             # Throttle+periodic cache-republish can keep stale markers and look like flicker/no-refresh
             # when goals are updated quickly.
-            'min_publish_period_sec': 0.0,
+            'min_publish_period_s': 0.0,
             # HH_260318-00:00 Disable periodic stale-cache republish.
             # Keep marker updates purely input-driven from /planning/cost_grid/global_path.
-            'republish_period_sec': 0.0,
+            'republish_period_s': 0.0,
         }],
     )
 
@@ -277,15 +277,15 @@ def generate_launch_description():
             # HH_260311-00:00 Keep last valid marker set during transient empty local windows.
             'clear_on_empty_grid': False,
             # HH_260311-00:00 Disable stale clear to avoid flicker from brief extractor gaps.
-            'stale_timeout_sec': 0.0,
+            'stale_timeout_s': 0.0,
             # 2026-02-27: Path cost grids are transient_local; consume latched path immediately.
             'grid_qos_transient_local': True,
             # HH_260305-00:00 Keep curvature/edge continuity (no decimation holes).
             'sample_stride': 1,
             # HH_260318-00:00 Keep local path markers input-driven as well.
             # Avoid stale-cache republish behavior across rapid path transitions.
-            'min_publish_period_sec': 0.0,
-            'republish_period_sec': 0.0,
+            'min_publish_period_s': 0.0,
+            'republish_period_s': 0.0,
         }],
     )
 

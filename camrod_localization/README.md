@@ -210,7 +210,7 @@ graph TD
 | Node | Key Inputs | Key Outputs | Notable Params |
 |---|---|---|---|
 | `localization_input_adapter_node` | `/sensing/gnss/ublox_gps_node/fix`, `/platform/status/odometry`, `/rmp401/odom` | `/sensing/gnss/pose_with_covariance`, `/platform/status/wheel_odometry` | `gnss_covariance_floor_xy`: 1e-6 m², `wheel_primary_timeout_s`: 0.7 s, `max_position_jump_m`: 8.0 m |
-| `localization_eskf_node` | `/sensing/imu/data`, `/sensing/gnss/pose_with_covariance`, `/platform/status/wheel_odometry` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry/filtered`, TF, `/localization/eskf/status` | `use_nhc`: true, `use_zupt`: true, `gnss_gate_mahalanobis`: 64.0, `gyro_noise`: 0.015 rad/s, `gnss_position_noise`: 4.0 m, `reinit_distance_threshold`: 3.0 m |
+| `localization_eskf_node` | `/sensing/imu/data`, `/sensing/gnss/pose_with_covariance`, `/platform/status/wheel_odometry` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry/filtered`, TF, `/localization/eskf/status` | `nhc_mode`: enabled, `zupt_mode`: enabled, `gnss_gate_mahalanobis`: 64.0, `gyro_noise`: 0.015 rad/s, `gnss_position_noise`: 4.0 m, `reinit_distance_threshold`: 3.0 m |
 | `localization_monitor_node` | `/sensing/gnss/pose_with_covariance`, `/sensing/imu/data`, `/platform/status/wheel_odometry`, `/localization/eskf/status` | `/localization/mode`, `/localization/state`, `/localization/confidence` | `gnss_timeout_s`: 2.0, `imu_timeout_s`: 0.5, `wheel_timeout_s`: 0.5, `gnss_innovation_fail`: 6.0, `dr_max_duration_s`: 30.0 |
 | `localization_map_helper_node` | `/localization/pose`, `/localization/pose_with_covariance`, Lanelet2 map, `drop_zones.yaml` | `/localization/lanelet_pose`, `/localization/initialpose3d`, `/localization/initial_match_ok` | `max_search_radius`: 30 m, `lateral_stddev`: 0.3, `match_radius`: 2.0 m, `stable_count`: 10 |
 | `localization_pose_selector_node` | `/localization/primary/pose_with_covariance`, `/localization/fallback/*`, `/localization/mode` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry/filtered` | `primary_timeout_s`: 0.5 s, `fallback_on_mode_at_or_above`: 3 (INVALID) |
@@ -339,7 +339,7 @@ stateDiagram-v2
 
 **Operator-visible symptom:** Heading drift increases, especially in DR_ONLY mode where wheel yaw-rate is the primary heading reference.
 
-> 🔧 **Debug hint** Related params: `wheel_primary_timeout_s`, `wheel_fallback_input_topic`, `wheel_speed_noise`, `wheel_yaw_rate_noise`, `use_wheel_yaw_rate_update`
+> 🔧 **Debug hint** Related params: `wheel_primary_timeout_s`, `wheel_fallback_input_topic`, `wheel_speed_noise`, `wheel_yaw_rate_noise`, `wheel_yaw_rate_mode`
 
 **Related topics:** `/platform/status/odometry`, `/rmp401/odom`, `/platform/status/wheel_odometry`, `/localization/mode`
 
@@ -355,7 +355,7 @@ stateDiagram-v2
 
 **Operator-visible symptom:** Robot does not start navigating; `ros2 topic echo /localization/initial_match_ok` returns `false`. Nav2 lifecycle stays in `inactive` if `require_localization_ready` is set.
 
-> 🔧 **Debug hint** Related params: `match_radius`, `stable_count`, `use_zone_yaw`, `use_corners_center`, `publish_once`
+> 🔧 **Debug hint** Related params: `match_radius`, `stable_count`, `drop_zone_yaw_source`, `drop_zone_center_mode`, `publish_once`
 
 **Related topics:** `/localization/initial_match_ok`, `/localization/initialpose3d`, `/localization/initial_match_id`, `/localization/initial_match_distance`
 
@@ -417,11 +417,10 @@ Key launch arguments:
 | Argument | Default | Description |
 |---|---|---|
 | `enable_adapter` | `true` | GNSS/wheel input adapter |
-| `enable_filter` | `true` | ESKF state estimator |
+| `enable_filter` | `true` | Localization state estimator (EKF/ESKF) |
 | `enable_monitor` | `true` | Sensor health and mode monitor |
 | `enable_map_helper` | `true` | Lanelet centerline snapper + drop zone matcher |
-| `use_eskf` | `true` | `true` = ESKF; `false` = robot_localization EKF (legacy) |
-| `filter_type` | `auto` | `auto` selects based on `use_eskf`; `eskf` or `ekf` explicit |
+| `filter_type` | `ekf` | Explicit filter selector: `ekf` or `eskf` |
 | `wheel_input_topic` | `/platform/status/odometry` | Primary wheel odometry topic |
 | `wheel_fallback_input_topic` | `/rmp401/odom` | Fallback wheel odometry topic |
 | `wheel_primary_timeout_s` | `0.7` | Timeout before fallback switch [s] |
@@ -438,10 +437,10 @@ Key launch arguments:
 |---|---|
 | `config/source/input_adapter.yaml` | GNSS NavSatFix → PoseWithCovariance conversion, wheel topic bridging, covariance floors (`gnss_covariance_floor_xy`: 1e-6 m²), position jump rejection (`max_position_jump_m`: 8.0 m) |
 | `config/filter/eskf.yaml` | ESKF noise params (`gyro_noise`: 0.015 rad/s, `gnss_position_noise`: 4.0 m), Mahalanobis gates, NHC/ZUPT, IMU sign corrections, GNSS auto-profile switching, stop detection (`stop_speed_threshold`: 0.10 m/s) |
-| `config/filter/ekf.yaml` | robot_localization EKF parameters (legacy / fallback when `use_eskf: false`) |
+| `config/filter/ekf.yaml` | robot_localization EKF parameters (used when `filter_type:=ekf`) |
 | `config/filter/monitor.yaml` | Sensor timeout thresholds (`gnss_timeout_s`: 2.0, `imu_timeout_s`: 0.5, `wheel_timeout_s`: 0.5), GNSS innovation limits (`gnss_innovation_fail`: 6.0), DR timeout (`dr_max_duration_s`: 30.0), covariance trace limit (`dr_max_cov_trace`: 200.0) |
 | `config/filter/pose_selector.yaml` | Primary/fallback source topology, `fallback_on_mode_at_or_above`: 3 (INVALID), `primary_timeout_s`: 0.5 s |
-| `config/reference/map_helper.yaml` | Centerline snapper covariance (`lateral_stddev`: 0.3), drop zone match radius 2.0 m, `stable_count`: 10, `use_zone_yaw`: true |
+| `config/reference/map_helper.yaml` | Centerline snapper covariance (`lateral_stddev`: 0.3), drop zone match radius 2.0 m, `stable_count`: 10, `drop_zone_yaw_source`: zone |
 | `config/drop_zones.yaml` | Drop zone definitions (id, x, y, z, yaw_deg in map frame) used for initial pose matching |
 
 ---

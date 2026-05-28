@@ -38,11 +38,12 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_monitor",                   default_value="true"),
         DeclareLaunchArgument("enable_map_helper",                default_value="true"),
         DeclareLaunchArgument("adapter_param_file",               default_value=_lc("config/source/input_adapter.yaml")),
-        DeclareLaunchArgument("filter_type",                      default_value="auto"),
-        DeclareLaunchArgument("use_eskf",                         default_value="true"),
+        # HH_260522: Unified filter selection to a single explicit switch (ekf|eskf).
+        DeclareLaunchArgument("filter_type",                      default_value="ekf"),
         DeclareLaunchArgument("filter_ekf_param_file",            default_value=_lc("config/filter/ekf.yaml")),
         DeclareLaunchArgument("filter_eskf_param_file",           default_value=_lc("config/filter/eskf.yaml")),
         DeclareLaunchArgument("filter_pose_selector_param_file",  default_value=_lc("config/filter/pose_selector.yaml")),
+        DeclareLaunchArgument("filter_gnss_reattach_param_file",  default_value=_lc("config/filter/gnss_reattach.yaml")),
         DeclareLaunchArgument("monitor_param_file",               default_value=_lc("config/filter/monitor.yaml")),
         DeclareLaunchArgument("map_helper_param_file",            default_value=_lc("config/reference/map_helper.yaml")),
         DeclareLaunchArgument("map_info_file",                    default_value=os.path.join(map_share, "config", "map_info.yaml")),
@@ -57,7 +58,6 @@ def generate_launch_description():
         DeclareLaunchArgument("wheel_fallback_input_topic",       default_value="/rmp401/odom"),
         DeclareLaunchArgument("wheel_fallback_input_type",        default_value="nav_odom"),
         DeclareLaunchArgument("wheel_primary_timeout_s",          default_value="0.7"),
-        DeclareLaunchArgument("wheel_primary_timeout_sec",        default_value="0.7"),
         # HH_260410: Use status namespace for unified wheel odometry output.
         DeclareLaunchArgument("wheel_output_topic",               default_value="/platform/status/wheel_odometry"),
         DeclareLaunchArgument("wheel_nav_output_topic",           default_value="/platform/wheel/nav_odometry"),
@@ -67,19 +67,25 @@ def generate_launch_description():
              "module_namespace",
              "wheel_bridge_enable", "wheel_input_topic", "wheel_input_type",
              "wheel_fallback_input_topic", "wheel_fallback_input_type",
-             "wheel_primary_timeout_s", "wheel_primary_timeout_sec",
+             "wheel_primary_timeout_s",
              "wheel_output_topic", "wheel_nav_output_topic",
              condition=IfCondition(LaunchConfiguration("enable_adapter")),
              params_file=LaunchConfiguration("adapter_param_file"),
              map_info_file=LaunchConfiguration("map_info_file"),
+             # HH_260527: Avoid duplicate primary pose publishers in ESKF mode.
+             # EKF publishes odometry only, so keep bridge ON for EKF; OFF for ESKF.
+             enable_odometry_to_pose=PythonExpression([
+                 "'true' if '", LaunchConfiguration("filter_type"), "' == 'ekf' else 'false'"
+             ]),
         ),
 
         _inc(filter_launch,
-             "module_namespace", "filter_type", "use_eskf",
+             "module_namespace", "filter_type",
              condition=IfCondition(LaunchConfiguration("enable_filter")),
              ekf_params_file=LaunchConfiguration("filter_ekf_param_file"),
              eskf_params_file=LaunchConfiguration("filter_eskf_param_file"),
              pose_selector_params_file=LaunchConfiguration("filter_pose_selector_param_file"),
+             gnss_reattach_params_file=LaunchConfiguration("filter_gnss_reattach_param_file"),
         ),
 
         _inc(monitor_launch,
@@ -95,6 +101,7 @@ def generate_launch_description():
         ),
 
         # HH_260410: EKF mode only publishes odom->base; this static TF keeps the map TF tree connected.
+        # HH_260522: Publish this static TF only when filter_type is explicitly ekf.
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
@@ -102,10 +109,8 @@ def generate_launch_description():
             arguments=["0", "0", "0", "0", "0", "0", "map", "odom"],
             output="screen",
             condition=IfCondition(PythonExpression([
-                "'", LaunchConfiguration("ekf_publish_map_to_odom_static_tf"), "' == 'true' and ((",
-                "'", LaunchConfiguration("filter_type"), "' == 'ekf') or ((",
-                "'", LaunchConfiguration("filter_type"), "' == 'auto') and (",
-                "'", LaunchConfiguration("use_eskf"), "' != 'true')))",
+                "'", LaunchConfiguration("ekf_publish_map_to_odom_static_tf"),
+                "' == 'true' and '", LaunchConfiguration("filter_type"), "' == 'ekf'",
             ])),
         ),
     ])

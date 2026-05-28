@@ -1,6 +1,6 @@
 <!-- PlannerSelector-enabled BT.
-  - Default planner: Smac2D
-  - Optional planner: NavFn
+  - Default planner: NavFn
+  - Optional planner: Smac2D
   - Default controller: RPP
   - Optional controller: DWB
   - Switch planner by publishing std_msgs/String to /planning/planner_selector
@@ -10,14 +10,19 @@
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
       <PipelineSequence name="NavigateWithReplanning">
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
-        <PlannerSelector selected_planner="{selected_planner}" default_planner="Smac2D" topic_name="/planning/planner_selector"/>
+        <!-- HH_260528: Use NavFn as safe default for first plan while selector topic warms up. -->
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="NavFn" topic_name="/planning/planner_selector"/>
         <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector"/>
         <!-- HH_260513: Increased 1.5→3.0Hz to reduce path-behind-robot offset.
              At 1.4m/s: 1.5Hz→~0.93m lag, 3.0Hz→~0.46m lag. -->
         <RateController hz="3.0">
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
-            <!-- start port omitted: planner always queries current robot pose via TF. -->
-            <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}"/>
+            <!-- HH_260528: Try selected planner first, then immediate NavFn fallback. -->
+            <Fallback name="ComputePathPlannerFallback">
+              <!-- start port omitted: planner always queries current robot pose via TF. -->
+              <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}"/>
+              <ComputePathToPose goal="{goal}" path="{path}" planner_id="NavFn"/>
+            </Fallback>
             <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
           </RecoveryNode>
         </RateController>

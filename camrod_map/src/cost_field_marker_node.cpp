@@ -42,12 +42,10 @@ public:
     palette_ = declare_parameter<std::string>("palette", "safety");
     show_unknown_ = declare_parameter<bool>("show_unknown", false);
     clear_on_empty_grid_ = declare_parameter<bool>("clear_on_empty_grid", true);
-    stale_timeout_s_ = declareDurationWithLegacy("stale_timeout_s", "stale_timeout_sec", 0.0);
+    stale_timeout_s_ = declare_parameter<double>("stale_timeout_s", 0.0);
     grid_qos_transient_local_ = declare_parameter<bool>("grid_qos_transient_local", false);
-    min_publish_period_s_ = declareDurationWithLegacy(
-      "min_publish_period_s", "min_publish_period_sec", 0.0);
-    republish_period_s_ = declareDurationWithLegacy(
-      "republish_period_s", "republish_period_sec", 0.0);
+    min_publish_period_s_ = declare_parameter<double>("min_publish_period_s", 0.0);
+    republish_period_s_ = declare_parameter<double>("republish_period_s", 0.0);
     sample_stride_ = std::max<int>(
       1, static_cast<int>(declare_parameter<int>("sample_stride", 1)));
     param_cb_handle_ = add_on_set_parameters_callback(
@@ -76,26 +74,6 @@ public:
   }
 
 private:
-  double declareDurationWithLegacy(
-    const std::string & canonical_name,
-    const std::string & legacy_name,
-    const double default_value)
-  {
-    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
-    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
-    if (std::abs(canonical_value - default_value) > 1e-9) {
-      return canonical_value;
-    }
-    if (std::abs(legacy_value - default_value) > 1e-9) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter '%s' is deprecated. Use '%s' instead.",
-        legacy_name.c_str(), canonical_name.c_str());
-      return legacy_value;
-    }
-    return canonical_value;
-  }
-
   // Guard check canPublishNow: verifies whether publish/build conditions are currently satisfied.
   bool canPublishNow() const
   {
@@ -302,19 +280,13 @@ private:
         show_unknown_ = p.as_bool();
       } else if (p.get_name() == "clear_on_empty_grid") {
         clear_on_empty_grid_ = p.as_bool();
-      } else if (p.get_name() == "stale_timeout_s" || p.get_name() == "stale_timeout_sec") {
+      } else if (p.get_name() == "stale_timeout_s") {
         stale_timeout_s_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "grid_qos_transient_local") {
         grid_qos_transient_local_ = p.as_bool();
-      } else if (
-        p.get_name() == "min_publish_period_s" ||
-        p.get_name() == "min_publish_period_sec")
-      {
+      } else if (p.get_name() == "min_publish_period_s") {
         min_publish_period_s_ = std::max(0.0, p.as_double());
-      } else if (
-        p.get_name() == "republish_period_s" ||
-        p.get_name() == "republish_period_sec")
-      {
+      } else if (p.get_name() == "republish_period_s") {
         republish_period_s_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "sample_stride") {
         sample_stride_ = std::max(1, static_cast<int>(p.as_int()));

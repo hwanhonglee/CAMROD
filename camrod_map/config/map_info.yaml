@@ -11,9 +11,9 @@
     # Keep these values aligned with the source map generation reference.
 
     # 52S-CF60, Park - VMB (map v8, back-calculated from all 675 OSM nodes local_x/y vs lat/lon)
-    # offset_lat: 36.8436194   # v1 origin
-    # offset_lon: 128.0925490
-    # offset_alt: 299.425
+    offset_lat: 36.8436194   # v1 origin
+    offset_lon: 128.0925490
+    offset_alt: 299.425
     # offset_lat: 36.84357266  # incorrect partial average
     # offset_lon: 128.09256443
     # offset_lat: 36.84395344
@@ -29,10 +29,9 @@
     # Degree LLH: 36.7292921, 127.4429577
     # UTM (meter): 52S 360965.99E 4065972.49N
     # MGRS: 52SCF6096565972
-    # HH_260513: Switched to C-track origin; Park origin commented out above.
-    offset_lat: 36.7292921
-    offset_lon: 127.4429577
-    offset_alt: 84.0
+    # offset_lat: 36.7292921
+    # offset_lon: 127.4429577
+    # offset_alt: 84.0
 
     # Optional UTM-origin metadata for downstream tools that prefer metric origin fields.
     offset_utm_easting: 360965.99

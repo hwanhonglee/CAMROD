@@ -1,5 +1,5 @@
 # HH_260123 ESKF parameters (IMU prediction + GNSS + wheel).
-/localization/eskf_filter:
+/localization/eskf:
   ros__parameters:
     map_frame_id: "map"
     odom_frame_id: "odom"
@@ -8,9 +8,12 @@
     gnss_topic: "/sensing/gnss/pose_with_covariance"
     # HH_260410 Topic renamed for consistent /platform/status/* naming.
     wheel_topic: "/platform/status/wheel_odometry"
-    pose_topic: "/localization/pose"
-    pose_cov_topic: "/localization/pose_with_covariance"
-    odom_topic: "/localization/odometry/filtered"
+    # HH_260527: External reset topic used by GNSS reattach helper.
+    set_pose_topic: "/localization/eskf/set_pose"
+    # HH_260527: Publish ESKF output to PRIMARY topics; pose_selector owns /localization/* final outputs.
+    pose_topic: "/localization/primary/pose"
+    pose_cov_topic: "/localization/primary/pose_with_covariance"
+    odom_topic: "/localization/primary/odometry"
     twist_topic: "/localization/twist"
     diag_topic: "/localization/eskf/status"
     publish_tf: true
@@ -37,11 +40,18 @@
     imu_accel_y_sign: -1.0
     imu_gyro_z_sign: 1.0 # HJ_250430
     imu_yaw_sign: -1.0
-    use_imu_orientation_for_yaw_init: true
+    # HH_260527: yaw_init_source options:
+    #   imu_orientation: initialize yaw from IMU orientation
+    #   state: keep filter state yaw on initialization/reset
+    yaw_init_source: imu_orientation
 
     # HH_260413: Relax GNSS gate for real-sensor jitter and temporary wheel-source uncertainty.
     # Keep GNSS correction active instead of prolonged reject-only drift.
     gnss_gate_mahalanobis: 64.0
+    # HH_260527: gnss_profile_mode options:
+    #   auto: switch normal/unstable by reject/accept streaks
+    #   normal: force normal GNSS gate/noise profile
+    #   unstable: force unstable GNSS gate/noise profile
     # HH_260413: Auto-switch GNSS profile between normal/unstable based on reject streaks.
     gnss_profile_mode: auto
     # HH_260415: Switch to unstable profile faster when consecutive GNSS rejects occur.
@@ -50,9 +60,12 @@
     gnss_profile_normal_gate_mahalanobis: 64.0
     gnss_profile_unstable_gate_mahalanobis: 400.0
     wheel_gate_mahalanobis: 9.0
+    # HH_260527: wheel_yaw_rate_mode options:
+    #   fused: use wheel angular.z (yaw-rate) + speed together
+    #   speed_only: use wheel speed only (ignore wheel angular.z correction term)
     # 2026-04-22: Use wheel odometry yaw-rate (angular.z) to correct IMU yaw bias.
     # Ranger odometry already embeds steering geometry, so this stabilizes DR heading.
-    use_wheel_yaw_rate_update: true
+    wheel_yaw_rate_mode: fused
     wheel_yaw_rate_noise: 0.25
     wheel_yaw_rate_gate_mahalanobis: 9.0
     wheel_yaw_rate_min_speed_mps: 0.10
@@ -82,15 +95,17 @@
     stop_speed_threshold: 0.10
     stop_hold_s: 0.40
 
+    # HH_260527: nhc_mode options: enabled | disabled.
     # HH_260422: Non-Holonomic Constraint — lateral body velocity ≈ 0 for wheeled robot.
     # nhc_lateral_noise > 0 allows residual slip for skid-steer (Ranger).
-    use_nhc: true
+    nhc_mode: enabled
     nhc_lateral_noise: 0.05
     nhc_gate_mahalanobis: 9.0
 
+    # HH_260527: zupt_mode options: enabled | disabled.
     # HH_260422: Zero Velocity Update — inject v=[0,0] when confirmed stopped.
     # Prevents IMU accel bias drift accumulating into position error at standstill.
-    use_zupt: true
+    zupt_mode: enabled
     # HH_260507: Widen ZUPT acceptance so standstill correction keeps pulling drift back.
     zupt_vel_noise: 0.05
     zupt_gate_mahalanobis: 36.0

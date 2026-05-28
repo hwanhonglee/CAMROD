@@ -2,6 +2,9 @@
 
 planner_server:
   ros__parameters:
+    # HH_260527: use_sim_time options:
+    #   True: follow /clock (simulation/replay)
+    #   False: use system ROS time (real hardware default)
     use_sim_time: False
     # Further relax planner loop target for full-stack bringup.
     # This reduces planner-loop starvation under heavy CPU load and keeps
@@ -24,6 +27,9 @@ planner_server:
       plugin: "nav2_navfn_planner/NavfnPlanner"
       # Keep final solve tight; goal_snapper already maps user goal into lanelet.
       tolerance: 0.5
+      # HH_260527: use_astar options:
+      #   True: A* search (heuristic-guided, usually faster/straighter)
+      #   False: Dijkstra-style expansion
       use_astar: True
       # Enforce in-map/in-lane planning.
       # Allowing unknown made free-space shortcuts possible outside designated lanelet region.
@@ -308,8 +314,10 @@ global_costmap:
       # origin_* retained for backward compatibility; ignored in rolling window mode.
       origin_x: -100.0
       origin_y: -50.0
-      # Start from free-space master so planner is not blocked before map layers settle.
-      track_unknown_space: False
+      # HH_260527: Keep unknown as unknown in global master.
+      # This prevents implicit free-space shortcuts when a layer does not explicitly
+      # write cells (for example outside moving source windows).
+      track_unknown_space: True
       # Keep global planner master independent from
       # /planning/cost_grid/global_path guidance layer.
       # Using a path-guidance layer in the same costmap that generates that path

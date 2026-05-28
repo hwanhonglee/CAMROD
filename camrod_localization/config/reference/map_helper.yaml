@@ -9,15 +9,18 @@
     enable_centerline_snapper: true
 
     centerline_input_pose_topic: "/localization/pose"
-    centerline_output_pose_topic: "/localization/lanelet_pose"
+    centerline_output_pose_topic: "/localization/centerline_pose"
 
     max_search_radius: 30.0
     longitudinal_stddev: 0.5
     lateral_stddev: 0.3
     yaw_stddev: 0.2
-    use_map_z: true
+    # HH_260527: centerline_z_mode options:
+    #   input: keep input pose Z
+    #   map: use lanelet centerline Z + map_z_offset
+    #   ground: force ground plane Z (0) + map_z_offset
+    centerline_z_mode: map
     map_z_offset: 0.0
-    flatten_to_ground: false
     # HH_260413: Throttle nearest-centerline lookup to reduce CPU under high-rate pose input.
     centerline_min_update_period_s: 0.05
     centerline_min_displacement_m: 0.05
@@ -31,12 +34,18 @@
 
     match_radius: 2.0
     stable_count: 10
-    publish_initialpose3d: true
+    publish_drop_zone_initial_pose: true
     publish_once: true
-    use_corners_center: true
-    use_zone_yaw: true
+    # HH_260527: drop_zone_center_mode options:
+    #   corners_mean: center = average of polygon corners
+    #   yaml_center: center = zone center_x/center_y fields
+    drop_zone_center_mode: corners_mean
+    # HH_260527: drop_zone_yaw_source options:
+    #   zone: use zone yaw_deg from YAML
+    #   input: keep current input pose yaw
+    drop_zone_yaw_source: zone
 
-    initialpose3d_topic: "/localization/initialpose3d"
-    status_topic: "/localization/initial_match_ok"
-    match_id_topic: "/localization/initial_match_id"
-    match_distance_topic: "/localization/initial_match_distance"
+    drop_zone_initial_pose_topic: "/localization/drop_zone/initial_pose"
+    status_topic: "/localization/drop_zone/match_ok"
+    match_id_topic: "/localization/drop_zone/match_id"
+    match_distance_topic: "/localization/drop_zone/match_distance"

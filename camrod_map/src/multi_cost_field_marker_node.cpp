@@ -59,12 +59,12 @@ public:
     const bool clear_on_empty_default = declare_parameter<bool>("clear_on_empty_grid_default", true);
     const bool grid_qos_transient_local_default =
       declare_parameter<bool>("grid_qos_transient_local_default", true);
-    const double stale_timeout_default = declareDurationWithLegacy(
-      "stale_timeout_s_default", "stale_timeout_sec_default", 0.0);
-    const double min_publish_period_default = declareDurationWithLegacy(
-      "min_publish_period_s_default", "min_publish_period_sec_default", 0.0);
-    const double republish_period_default = declareDurationWithLegacy(
-      "republish_period_s_default", "republish_period_sec_default", 0.0);
+    const double stale_timeout_default =
+      declare_parameter<double>("stale_timeout_s_default", 0.0);
+    const double min_publish_period_default =
+      declare_parameter<double>("min_publish_period_s_default", 0.0);
+    const double republish_period_default =
+      declare_parameter<double>("republish_period_s_default", 0.0);
     const int sample_stride_default = declare_parameter<int>("sample_stride_default", 1);
 
     const auto marker_scales =
@@ -87,12 +87,12 @@ public:
       declare_parameter<std::vector<bool>>("clear_on_empty_grids", std::vector<bool>{});
     const auto grid_qos_transient_locals =
       declare_parameter<std::vector<bool>>("grid_qos_transient_locals", std::vector<bool>{});
-    const auto stale_timeouts_s = declareDurationListWithLegacy(
-      "stale_timeouts_s", "stale_timeout_secs", std::vector<double>{});
-    const auto min_publish_periods_s = declareDurationListWithLegacy(
-      "min_publish_periods_s", "min_publish_period_secs", std::vector<double>{});
-    const auto republish_periods_s = declareDurationListWithLegacy(
-      "republish_periods_s", "republish_period_secs", std::vector<double>{});
+    const auto stale_timeouts_s =
+      declare_parameter<std::vector<double>>("stale_timeouts_s", std::vector<double>{});
+    const auto min_publish_periods_s =
+      declare_parameter<std::vector<double>>("min_publish_periods_s", std::vector<double>{});
+    const auto republish_periods_s =
+      declare_parameter<std::vector<double>>("republish_periods_s", std::vector<double>{});
     const auto sample_strides =
       declare_parameter<std::vector<int64_t>>("sample_strides", std::vector<int64_t>{});
 
@@ -144,48 +144,6 @@ public:
   }
 
 private:
-  double declareDurationWithLegacy(
-    const std::string & canonical_name,
-    const std::string & legacy_name,
-    const double default_value)
-  {
-    const double canonical_value = declare_parameter<double>(canonical_name, default_value);
-    const double legacy_value = declare_parameter<double>(legacy_name, default_value);
-    if (std::abs(canonical_value - default_value) > 1e-9) {
-      return canonical_value;
-    }
-    if (std::abs(legacy_value - default_value) > 1e-9) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter '%s' is deprecated. Use '%s' instead.",
-        legacy_name.c_str(), canonical_name.c_str());
-      return legacy_value;
-    }
-    return canonical_value;
-  }
-
-  std::vector<double> declareDurationListWithLegacy(
-    const std::string & canonical_name,
-    const std::string & legacy_name,
-    const std::vector<double> & default_value)
-  {
-    const auto canonical_value =
-      declare_parameter<std::vector<double>>(canonical_name, default_value);
-    const auto legacy_value =
-      declare_parameter<std::vector<double>>(legacy_name, default_value);
-    if (!canonical_value.empty()) {
-      return canonical_value;
-    }
-    if (!legacy_value.empty()) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Parameter '%s' is deprecated. Use '%s' instead.",
-        legacy_name.c_str(), canonical_name.c_str());
-      return legacy_value;
-    }
-    return canonical_value;
-  }
-
   template<typename T>
   static T pickOrDefault(const std::vector<T> & values, size_t index, const T & fallback)
   {

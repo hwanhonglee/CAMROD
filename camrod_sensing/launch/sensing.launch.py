@@ -4,7 +4,14 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument,
+    GroupAction,
+    IncludeLaunchDescription,
+    LogInfo,
+    OpaqueFunction,
+    SetLaunchConfiguration,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -20,6 +27,33 @@ def _inc(path, *through, condition=None, **overrides):
     return IncludeLaunchDescription(PythonLaunchDescriptionSource(path), **kw)
 
 
+def _truthy(raw: str) -> bool:
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_camera_enable(context, *args, **kwargs):
+    requested_raw = context.perform_substitution(LaunchConfiguration("enable_camera"))
+    device_path = context.perform_substitution(LaunchConfiguration("camera_device_path")).strip()
+
+    requested = _truthy(requested_raw)
+    has_device = bool(device_path) and os.path.exists(device_path)
+    effective = requested and has_device
+
+    actions = [
+        SetLaunchConfiguration("enable_camera_effective", "true" if effective else "false"),
+    ]
+    if requested and not has_device:
+        actions.append(
+            LogInfo(
+                msg=(
+                    f"[sensing.launch] camera disabled: device not found at '{device_path}'. "
+                    "Run without camera pipeline."
+                )
+            )
+        )
+    return actions
+
+
 def generate_launch_description():
     sensing_share = get_package_share_directory("camrod_sensing")
 
@@ -30,7 +64,6 @@ def generate_launch_description():
     radar_launch  = os.path.join(sensing_share, "launch", "radar.launch.py")
 
     default_paths = {
-        "sensing_param_file":             os.path.join(sensing_share, "config", "sensing_params.yaml"),
         "camera_params_file":             os.path.join(sensing_share, "config", "camera", "camera_params.yaml"),
         "gnss_param_file":                os.path.join(sensing_share, "config", "gnss", "zed_f9p_rover.yaml"),
         "ntrip_param_file":               os.path.join(sensing_share, "config", "gnss", "ntrip_client.yaml"),
@@ -82,12 +115,14 @@ def generate_launch_description():
             default_value="/sensing/platform_velocity_converter/twist_with_covariance",
         ),
         DeclareLaunchArgument("imu_status_topic", default_value="status"),
+        SetLaunchConfiguration("enable_camera_effective", "false"),
+        OpaqueFunction(function=_resolve_camera_enable),
 
         GroupAction([
             PushRosNamespace(sensing_namespace),
 
             _inc(camera_launch,
-                 condition=IfCondition(LaunchConfiguration("enable_camera")),
+                 condition=IfCondition(LaunchConfiguration("enable_camera_effective")),
                  camera_params_file=LaunchConfiguration("camera_params_file"),
                  device_path=LaunchConfiguration("camera_device_path"),
                  module_namespace="camera",
@@ -119,7 +154,7 @@ def generate_launch_description():
             ),
 
             _inc(lidar_launch,
-                 "sensing_param_file", "lidar_preprocess_param_file",
+                 "lidar_preprocess_param_file",
                  "lidar_cost_grid_param_file", "vanjee_config_path",
                  "enable_lidar_driver", "enable_lidar_cost_grid", "enable_vanjee_static_tf",
                  module_namespace="lidar",

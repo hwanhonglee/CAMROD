@@ -126,11 +126,6 @@ def generate_launch_description():
         default_value='-1',
         description='Lanelet ID to follow (-1 uses the first valid centerline)',
     )
-    fake_lanelet_id_arg = DeclareLaunchArgument(
-        'fake_lanelet_id',
-        default_value='-1',
-        description='[Legacy alias] Lanelet ID to follow (-1 uses lanelet_id value)',
-    )
     speed_mps_arg = DeclareLaunchArgument(
         'speed_mps',
         default_value='1.4',
@@ -214,7 +209,6 @@ def generate_launch_description():
     origin_lon = LaunchConfiguration('origin_lon')
     origin_alt = LaunchConfiguration('origin_alt')
     lanelet_id = LaunchConfiguration('lanelet_id')
-    fake_lanelet_id = LaunchConfiguration('fake_lanelet_id')
     speed_mps = LaunchConfiguration('speed_mps')
     publish_rate = LaunchConfiguration('publish_rate_hz')
     loop = LaunchConfiguration('loop')
@@ -257,7 +251,6 @@ def generate_launch_description():
                 'origin_lon': ParameterValue(origin_lon, value_type=float),
                 'origin_alt': ParameterValue(origin_alt, value_type=float),
                 'lanelet_id': ParameterValue(lanelet_id, value_type=int),
-                'fake_lanelet_id': ParameterValue(fake_lanelet_id, value_type=int),
                 'speed_mps': ParameterValue(speed_mps, value_type=float),
                 'publish_rate_hz': ParameterValue(publish_rate, value_type=float),
                 'loop': ParameterValue(loop, value_type=bool),
@@ -308,7 +301,6 @@ def generate_launch_description():
         origin_lon_arg,
         origin_alt_arg,
         lanelet_id_arg,
-        fake_lanelet_id_arg,
         speed_mps_arg,
         publish_rate_arg,
         loop_arg,
