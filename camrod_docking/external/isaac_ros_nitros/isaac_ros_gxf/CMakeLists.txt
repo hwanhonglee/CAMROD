@@ -23,6 +23,7 @@ message( STATUS "Architecture: ${ARCHITECTURE}" )
 
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
+find_package(magic_enum REQUIRED)
 
 add_library(${PROJECT_NAME} STATIC src/isaac_ros_gxf.cpp)
 

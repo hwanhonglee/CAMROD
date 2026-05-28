@@ -24,6 +24,7 @@ endif()
 
 find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
+find_package(magic_enum REQUIRED)
 
 # Determine the architecture
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
