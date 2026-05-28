@@ -132,6 +132,7 @@ select_nvjpeg_packages() {
 # even when rosdep is skipped or partially unresolved.
 REQUIRED_SYS_PKGS=(
   ros-humble-nav2-graceful-controller
+  ros-humble-magic-enum
   python3-fastapi
   python3-uvicorn
 )
