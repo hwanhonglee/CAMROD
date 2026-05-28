@@ -16,7 +16,8 @@ import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from launch.substitutions import LaunchConfiguration
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
@@ -43,6 +44,15 @@ def _launch_setup(context, *args, **kwargs):
         executable='ranger_base_node',
         output='screen',
         emulate_tty=True,
+        # HH_260528: Ranger CAN node runs only for ranger platform type
+        # and when explicitly enabled.
+        condition=IfCondition(PythonExpression([
+            "'",
+            LaunchConfiguration("platform_type"),
+            "'.strip().lower() == 'ranger' and '",
+            LaunchConfiguration("enable_ranger_base_node"),
+            "'.strip().lower() in ['1','true','yes','on']",
+        ])),
         parameters=[{
             'use_sim_time':    p.get('use_sim_time', False),
             'port_name':       p.get('port_name', 'can0'),
@@ -61,6 +71,8 @@ def _launch_setup(context, *args, **kwargs):
         package='camrod_platform',
         executable='ranger_platform_bridge_node',
         output='screen',
+        # HH_260528: Keep bridge independently controllable from Ranger base.
+        condition=IfCondition(LaunchConfiguration("enable_ranger_bridge_node")),
         parameters=[params_file],  # HH_260428: reads odom_topic_name, odom_fallback_topic, etc.
     )
 
@@ -75,5 +87,10 @@ def generate_launch_description():
                 'camrod_platform', os.path.join('config', 'ranger_driver.yaml')),
             description='YAML parameter file for ranger_base and platform bridge nodes',
         ),
+        # HH_260528: Platform type selector propagated from platform.launch.py.
+        DeclareLaunchArgument('platform_type', default_value='ranger'),
+        # HH_260528: Independent toggles for Ranger CAN and bridge.
+        DeclareLaunchArgument('enable_ranger_base_node', default_value='true'),
+        DeclareLaunchArgument('enable_ranger_bridge_node', default_value='true'),
         OpaqueFunction(function=_launch_setup),
     ])

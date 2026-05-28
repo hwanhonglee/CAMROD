@@ -1,4 +1,4 @@
-#include "camrod_sensing/camera_publisher_node.hpp"
+#include "camrod_sensing/camera_front_publisher_node.hpp"
 #include <algorithm>
 #include <cctype>
 #include <fcntl.h>
@@ -19,8 +19,8 @@ std::string normalizeModeToken(std::string value)
 }
 }  // namespace
 
-CameraPublisherNode::CameraPublisherNode(const rclcpp::NodeOptions & options)
-: Node("camera_publisher", options)
+CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & options)
+: Node("camera_front_publisher", options)
 {
   this->declare_parameter<std::string>("camera_name", "camera");
   this->declare_parameter<std::string>("camera_frame_id", "camera_frame");
@@ -139,13 +139,13 @@ CameraPublisherNode::CameraPublisherNode(const rclcpp::NodeOptions & options)
 
   // captureThread stays fast (never blocked by DDS serialization)
   // publishThread handles the slow path (DDS overhead from subscribers)
-  capture_thread_ = std::thread(&CameraPublisherNode::captureThread, this);
-  publish_thread_ = std::thread(&CameraPublisherNode::publishThread, this);
+  capture_thread_ = std::thread(&CameraFrontPublisherNode::captureThread, this);
+  publish_thread_ = std::thread(&CameraFrontPublisherNode::publishThread, this);
 
-  RCLCPP_INFO(this->get_logger(), "Camera publisher node started");
+  RCLCPP_INFO(this->get_logger(), "Camera front publisher node started");
 }
 
-CameraPublisherNode::~CameraPublisherNode()
+CameraFrontPublisherNode::~CameraFrontPublisherNode()
 {
   stop_capture_ = true;
   frame_cv_.notify_all();
@@ -169,7 +169,7 @@ CameraPublisherNode::~CameraPublisherNode()
   if (cuda_stream_)  { cudaStreamDestroy(cuda_stream_); }
 }
 
-void CameraPublisherNode::captureThread()
+void CameraFrontPublisherNode::captureThread()
 {
   while (!stop_capture_) {
     cv::Mat frame;
@@ -187,7 +187,7 @@ void CameraPublisherNode::captureThread()
   }
 }
 
-void CameraPublisherNode::publishThread()
+void CameraFrontPublisherNode::publishThread()
 {
 
   while (!stop_capture_) {
@@ -276,7 +276,7 @@ void CameraPublisherNode::publishThread()
   }
 }
 
-void CameraPublisherNode::loadCameraInfo()
+void CameraFrontPublisherNode::loadCameraInfo()
 {
   camera_info_msg_.header.frame_id = camera_frame_id_;
   camera_info_msg_.width = image_width_;
@@ -329,7 +329,7 @@ void CameraPublisherNode::loadCameraInfo()
   }
 }
 
-void CameraPublisherNode::initVpiRemap()
+void CameraFrontPublisherNode::initVpiRemap()
 {
   if (intrinsics_source_ != "custom" || camera_matrix_.size() < 9 ||
       distortion_coefficients_.size() < 4) {
@@ -406,4 +406,4 @@ void CameraPublisherNode::initVpiRemap()
 }  // namespace camrod::sensing
 
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(camrod::sensing::CameraPublisherNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(camrod::sensing::CameraFrontPublisherNode)

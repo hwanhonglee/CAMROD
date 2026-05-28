@@ -67,8 +67,7 @@ def generate_launch_description():
         "camera_params_file":             os.path.join(sensing_share, "config", "camera", "camera_params.yaml"),
         "gnss_param_file":                os.path.join(sensing_share, "config", "gnss", "zed_f9p_rover.yaml"),
         "ntrip_param_file":               os.path.join(sensing_share, "config", "gnss", "ntrip_client.yaml"),
-        "cv7_param_file":                 os.path.join(sensing_share, "config", "imu", "microstrain_cv7.yaml"),
-        "gq7_param_file":                 os.path.join(sensing_share, "config", "imu", "microstrain_gq7.yaml"),
+        "imu_param_file":                 "__model_default__",
         "imu_converter_param_file":       os.path.join(sensing_share, "config", "imu", "platform_velocity_converter.yaml"),
         "lidar_preprocess_param_file":    os.path.join(sensing_share, "config", "lidar", "preprocessor.yaml"),
         "lidar_cost_grid_param_file":     os.path.join(sensing_share, "config", "lidar", "cost_grid.yaml"),
@@ -84,6 +83,9 @@ def generate_launch_description():
         DeclareLaunchArgument("sensing_namespace", default_value="sensing"),
 
         DeclareLaunchArgument("enable_camera",               default_value="true"),
+        # HH_260528: Per-camera enable flags for dual econ camera setup.
+        DeclareLaunchArgument("enable_front_camera",         default_value="true"),
+        DeclareLaunchArgument("enable_rear_camera",          default_value="true"),
         DeclareLaunchArgument("enable_gnss",                 default_value="true"),
         DeclareLaunchArgument("enable_imu",                  default_value="true"),
         DeclareLaunchArgument("enable_radar",                default_value="true"),
@@ -93,7 +95,9 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_inflation_cost_grid",  default_value="true"),
         DeclareLaunchArgument("enable_vanjee_static_tf",     default_value="false"),
         DeclareLaunchArgument("enable_ntrip",                default_value="true"),
-        DeclareLaunchArgument("imu_mode",                    default_value="cv7"),
+        # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
+        DeclareLaunchArgument("imu_model",                   default_value="cv7",
+                              description="IMU model: cv7 | gq7"),
 
         *[DeclareLaunchArgument(k, default_value=v) for k, v in default_paths.items()],
 
@@ -102,11 +106,6 @@ def generate_launch_description():
         DeclareLaunchArgument("gnss_namespace",   default_value="gnss"),
         DeclareLaunchArgument("gnss_rtcm_topic",  default_value="rtcm"),
 
-        DeclareLaunchArgument(
-            "cv7_port",
-            default_value="/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6286.226900-if00",
-        ),
-        DeclareLaunchArgument("gq7_port",              default_value="/dev/ttyACM1"),
         DeclareLaunchArgument("imu_velocity_topic",    default_value="/platform/status/velocity"),
         DeclareLaunchArgument("imu_input_topic",       default_value="data"),
         # Keep canonical absolute topic so diagnostics observe one stable velocity-converter stream.
@@ -124,8 +123,8 @@ def generate_launch_description():
             _inc(camera_launch,
                  condition=IfCondition(LaunchConfiguration("enable_camera_effective")),
                  camera_params_file=LaunchConfiguration("camera_params_file"),
-                 device_path=LaunchConfiguration("camera_device_path"),
-                 module_namespace="camera",
+                 enable_front_camera=LaunchConfiguration("enable_front_camera"),
+                 enable_rear_camera=LaunchConfiguration("enable_rear_camera"),
             ),
 
             _inc(gnss_launch,
@@ -138,13 +137,10 @@ def generate_launch_description():
             ),
 
             _inc(imu_launch,
-                 "enable_imu", "imu_mode",
-                 cv7_params_file=LaunchConfiguration("cv7_param_file"),
-                 cv7_port=LaunchConfiguration("cv7_port"),
-                 gq7_params_file=LaunchConfiguration("gq7_param_file"),
-                 gq7_port=LaunchConfiguration("gq7_port"),
+                 "enable_imu", "imu_model",
+                 imu_param_file=LaunchConfiguration("imu_param_file"),
                  use_ntrip=LaunchConfiguration("enable_ntrip"),
-                 ntrip_params_file=LaunchConfiguration("ntrip_param_file"),
+                 ntrip_param_file=LaunchConfiguration("ntrip_param_file"),
                  velocity_converter_param_file=LaunchConfiguration("imu_converter_param_file"),
                  velocity_topic=LaunchConfiguration("imu_velocity_topic"),
                  imu_topic=LaunchConfiguration("imu_input_topic"),

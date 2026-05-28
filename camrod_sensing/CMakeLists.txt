@@ -86,18 +86,19 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
       REQUIRED
     )
 
-    add_library(camera_publisher_component SHARED src/camera_publisher_node.cpp)
-    target_include_directories(camera_publisher_component PRIVATE include)
-    target_include_directories(camera_publisher_component PRIVATE ${OpenCV_INCLUDE_DIRS})
+    # HH_260528: camera_publisher_component → camera_front_publisher_component (renamed with front node).
+    add_library(camera_front_publisher_component SHARED src/camera_front_publisher_node.cpp)
+    target_include_directories(camera_front_publisher_component PRIVATE include)
+    target_include_directories(camera_front_publisher_component PRIVATE ${OpenCV_INCLUDE_DIRS})
     ament_target_dependencies(
-      camera_publisher_component
+      camera_front_publisher_component
       rclcpp
       rclcpp_components
       sensor_msgs
       avg_msgs
     )
     target_link_libraries(
-      camera_publisher_component
+      camera_front_publisher_component
       ${OpenCV_LIBRARIES}
       vpi
       CUDA::cudart
@@ -105,21 +106,43 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
     )
 
     rclcpp_components_register_node(
-      camera_publisher_component
-      PLUGIN "camrod::sensing::CameraPublisherNode"
-      EXECUTABLE camera_publisher_node
+      camera_front_publisher_component
+      PLUGIN "camrod::sensing::CameraFrontPublisherNode"
+      EXECUTABLE camera_front_publisher_node
     )
 
-    list(APPEND SENSING_NODE_TARGETS camera_publisher_node)
+    list(APPEND SENSING_NODE_TARGETS camera_front_publisher_node)
 
     install(
-      TARGETS camera_publisher_component
+      TARGETS camera_front_publisher_component
       ARCHIVE DESTINATION lib
       LIBRARY DESTINATION lib
       RUNTIME DESTINATION bin
     )
+
+    # HH_260528: Rear camera publisher — econ_camera_node (OpenCV + GStreamer, no GPU).
+    # Uses cv_bridge for image message conversion and yaml-cpp for calibration loading.
+    find_package(cv_bridge REQUIRED)
+    find_package(yaml-cpp REQUIRED)
+
+    add_executable(camera_rear_publisher_node src/camera_rear_publisher_node.cpp)
+    ament_target_dependencies(
+      camera_rear_publisher_node
+      rclcpp
+      sensor_msgs
+      cv_bridge
+    )
+    target_include_directories(camera_rear_publisher_node PRIVATE ${OpenCV_INCLUDE_DIRS})
+    target_link_libraries(
+      camera_rear_publisher_node
+      ${OpenCV_LIBRARIES}
+      yaml-cpp
+    )
+
+    list(APPEND SENSING_NODE_TARGETS camera_rear_publisher_node)
+
   else()
-    message(WARNING "Skipping camera_publisher_node: non-ARM architecture (${CMAKE_SYSTEM_PROCESSOR})")
+    message(WARNING "Skipping camera_front/rear_publisher_node: non-ARM architecture (${CMAKE_SYSTEM_PROCESSOR})")
   endif()
 endif()
 

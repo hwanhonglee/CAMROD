@@ -51,8 +51,16 @@ def generate_launch_description():
         # HH_260410: Use Ranger CAN derived /platform/status/estop as the default gate source.
         DeclareLaunchArgument("estop_topic",               default_value="/platform/status/estop"),
         DeclareLaunchArgument("drive_allow_on_start",      default_value="false"),
+        # HH_260528: Select platform type profile.
+        #   ranger: launch Ranger CAN driver path
+        #   rmp401: skip Ranger CAN path, keep external /rmp401 topics
+        DeclareLaunchArgument("platform_type",             default_value="ranger"),
         DeclareLaunchArgument("ranger_driver_enable",      default_value="true"),
+        # HH_260528: Toggle Ranger status bridge independently from CAN driver.
+        DeclareLaunchArgument("ranger_bridge_enable",      default_value="true"),
         DeclareLaunchArgument("ranger_params_file",        default_value=plat(os.path.join("config", "ranger_driver.yaml"))),
+        # HH_260528: Keep sensor_kit bridge optional for debug.
+        DeclareLaunchArgument("sensor_kit_bridge_enable",  default_value="true"),
 
         _inc(plat(os.path.join("launch", "robot_visualization.launch.py")),
              "module_namespace", "map_frame_id", "base_frame_id",
@@ -65,10 +73,13 @@ def generate_launch_description():
              "drive_state_topic", "estop_source_mode", "estop_topic", "drive_allow_on_start"),
 
         _inc(plat(os.path.join("launch", "ranger.launch.py")),
-             condition=IfCondition(LaunchConfiguration("ranger_driver_enable")),
+             "platform_type",
+             enable_ranger_base_node=LaunchConfiguration("ranger_driver_enable"),
+             enable_ranger_bridge_node=LaunchConfiguration("ranger_bridge_enable"),
              params_file=LaunchConfiguration("ranger_params_file")),
 
         _inc(plat(os.path.join("launch", "sensor_kit_bridge.launch.py")),
              "base_frame_id", "sensor_kit_base_frame_id",
-             "params_file", "sensor_kit_namespace"),
+             "params_file", "sensor_kit_namespace",
+             condition=IfCondition(LaunchConfiguration("sensor_kit_bridge_enable"))),
     ])

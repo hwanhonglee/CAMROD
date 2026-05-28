@@ -24,6 +24,9 @@
   <depend>pcl_conversions</depend>
   <depend>opencv</depend>
   <depend>cuda_cudart</depend>
+  <!-- HH_260528: rear camera publisher (camera_rear_publisher_node) -->
+  <depend>cv_bridge</depend>
+  <depend>yaml-cpp</depend>
   <build_depend>libpcl-all-dev</build_depend>
   <exec_depend>libpcl-all-dev</exec_depend>
 

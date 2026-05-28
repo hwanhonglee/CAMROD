@@ -37,9 +37,7 @@ class Nav2SelectorLatchNode(Node):
         self.create_timer(1.0 / max(0.2, self._repeat_hz), self._publish_once)
 
         self.get_logger().info(
-            "nav2_selector_latch active: planner=%s controller=%s",
-            self._planner_id,
-            self._controller_id,
+            f"nav2_selector_latch active: planner={self._planner_id} controller={self._controller_id}"
         )
 
     def _publish_once(self) -> None:

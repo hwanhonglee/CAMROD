@@ -10,7 +10,8 @@ planner_server:
       angle_quantization_bins: 32
       minimum_turning_radius: 0.6
       max_iterations: 2000000
-      max_planning_time: 3.0
+      # HH_260528: Faster no-path response for Smac planner combos.
+      max_planning_time: 1.2
       reverse_penalty: 2.0
       non_straight_penalty: 1.1
 

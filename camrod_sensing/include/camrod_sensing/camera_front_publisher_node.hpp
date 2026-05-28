@@ -1,5 +1,5 @@
-#ifndef CAMERA_PUBLISHER_NODE_HPP_
-#define CAMERA_PUBLISHER_NODE_HPP_
+#ifndef CAMERA_FRONT_PUBLISHER_NODE_HPP_
+#define CAMERA_FRONT_PUBLISHER_NODE_HPP_
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
@@ -23,11 +23,11 @@
 namespace camrod::sensing
 {
 
-class CameraPublisherNode : public rclcpp::Node
+class CameraFrontPublisherNode : public rclcpp::Node
 {
 public:
-  explicit CameraPublisherNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
-  ~CameraPublisherNode();
+  explicit CameraFrontPublisherNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
+  ~CameraFrontPublisherNode();
 
 private:
   void captureThread();
@@ -87,4 +87,4 @@ private:
 
 }  // namespace camrod::sensing
 
-#endif  // CAMERA_PUBLISHER_NODE_HPP_
+#endif  // CAMERA_FRONT_PUBLISHER_NODE_HPP_

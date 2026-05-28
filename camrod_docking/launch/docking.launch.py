@@ -38,40 +38,9 @@ def generate_launch_description():
             description='Enable UI-triggered manual docking server'
         ),
 
-        # 후면 카메라: base_link 기준 전방 10cm, 높이 46cm, 후방을 향함 (실측)
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='rear_camera_tf_publisher',
-            arguments=['0.10', '0.0', '0.46', '3.1416', '0.0', '0.0',
-                       'base_link', 'econ_rear_camera_frame'],
-            output='screen',
-        ),
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='rear_camera_optical_tf_publisher',
-            arguments=['0', '0', '0', '-1.5708', '0', '-1.5708',
-                       'econ_rear_camera_frame', 'econ_rear_camera_optical_frame'],
-            output='screen',
-        ),
-        # 전면 카메라: base_link 기준 전방 40cm, 높이 46cm, 전방을 향함 (실측)
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='front_camera_tf_publisher',
-            arguments=['0.40', '0.0', '0.46', '0.0', '0.0', '0.0',
-                       'base_link', 'econ_front_camera_frame'],
-            output='screen',
-        ),
-        Node(
-            package='tf2_ros',
-            executable='static_transform_publisher',
-            name='front_camera_optical_tf_publisher',
-            arguments=['0', '0', '0', '-1.5708', '0', '-1.5708',
-                       'econ_front_camera_frame', 'econ_front_camera_optical_frame'],
-            output='screen',
-        ),
+        # HH_260528: Camera TF publishers removed — econ_front/rear_camera_frame and
+        # econ_front/rear_camera_optical_frame are now published by sensor_kit
+        # (camrod_sensor_kit.xacro via robot_state_publisher). Do not re-add here.
         Node(
             package='camrod_docking',
             executable='odom_yaw_corrector',
@@ -96,9 +65,9 @@ def generate_launch_description():
                         name='rectify_node',
                         namespace='',
                         remappings=[
-                            ('image_raw', '/rear/econ_camera/image_raw'),
-                            ('camera_info', '/rear/econ_camera/camera_info'),
-                            ('image_rect', '/rear/econ_camera/image_rect'),
+                            ('image_raw', '/sensing/camera/econ_rear/image_raw'),
+                            ('camera_info', '/sensing/camera/econ_rear/camera_info'),
+                            ('image_rect', '/sensing/camera/econ_rear/image_rect'),
                         ],
                     ),
                     ComposableNode(
@@ -113,8 +82,8 @@ def generate_launch_description():
                             'backends': 'CUDA',
                         }],
                         remappings=[
-                            ('image', '/rear/econ_camera/image_rect'),
-                            ('camera_info', '/rear/econ_camera/camera_info'),
+                            ('image', '/sensing/camera/econ_rear/image_rect'),
+                            ('camera_info', '/sensing/camera/econ_rear/camera_info'),
                             ('tag_detections', '/docking/apriltag/detections_raw'),
                             ('tf', '/tf'),
                         ],
@@ -153,7 +122,7 @@ def generate_launch_description():
                 output='screen',
                 condition=IfCondition(enable_apriltag),
                 parameters=[{
-                    'camera_frame': 'econ_rear_camera_optical_frame',
+                    'camera_frame': 'camera_rear',
                     'tag_frame': 'tag36h11:3',
                     'publish_rate_hz': 10.0,
                 }]

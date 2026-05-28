@@ -440,7 +440,7 @@ ros2 launch camrod_sensing camera.launch.py
 
 | File | Purpose |
 |---|---|
-| `config/sensing_params.yaml` | Monolithic fallback parameters aligned to `/sensing/*` namespace; overridden by per-sensor files below |
+| `config/camera/camera_params.yaml` | Dual econ camera params: launch enable flags (`camrod_sensing_camera`), intrinsics, device paths |
 | `config/lidar/preprocessor.yaml` | Ground filter (RANSAC), range limits, voxel size, frame ID override |
 | `config/lidar/cost_grid.yaml` | LiDAR grid geometry, cost thresholds, ego clear radius |
 | `config/lidar/vanjee/config.yaml` | Vanjee LiDAR driver hardware config |

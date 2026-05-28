@@ -32,6 +32,17 @@
   <xacro:arg name="camera_xyz" default="0.35 0.0 0.8"/>
   <xacro:arg name="camera_rpy" default="0.0 0.0 0.0"/>
 
+  <!-- HH_260528: Dual econ camera arguments (front + rear).                    -->
+  <!--   TF: sensor_kit_base_link → camera_front_link → camera_front (optical) -->
+  <!--       sensor_kit_base_link → camera_rear_link  → camera_rear  (optical) -->
+  <!--   front: x=0.40 m, z=0.46 m, yaw=0 (forward-facing)                    -->
+  <!--   rear : x=0.10 m, z=0.46 m, yaw=π (backward-facing)                   -->
+  <xacro:arg name="camera_front_xyz" default="0.40 0.0 0.46"/>
+  <xacro:arg name="camera_front_rpy" default="0.0 0.0 0.0"/>
+
+  <xacro:arg name="camera_rear_xyz"  default="0.10 0.0 0.46"/>
+  <xacro:arg name="camera_rear_rpy"  default="0.0 0.0 3.141593"/>
+
   <!-- ========================================================= -->
   <!-- 4. Radar transform arguments                              -->
   <!--    yaw examples:                                          -->
@@ -70,9 +81,10 @@
   <xacro:property name="base_height_val" value="$(arg base_height)"/>
 
   <!-- ========================================================= -->
-  <!-- 6. Reusable sensor macro                                  -->
-  <!--    Creates one link + one fixed joint                     -->
+  <!-- 6. Reusable sensor macros                                 -->
   <!-- ========================================================= -->
+
+  <!-- sensor_link: one body link + one fixed joint -->
   <xacro:macro name="sensor_link" params="name parent xyz rpy color_rgba radius length mass">
     <link name="${name}">
       <visual>
@@ -105,6 +117,51 @@
       <parent link="${parent}"/>
       <child link="${name}"/>
       <origin xyz="${xyz}" rpy="${rpy}"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- HH_260528: econ_camera_link macro                                       -->
+  <!--   Creates a body frame (name) and an optical child frame (optical_name).-->
+  <!--   optical_name joint uses the standard ROS camera optical convention:  -->
+  <!--     RPY = -π/2, 0, -π/2  (Z forward, Y down in optical frame)         -->
+  <xacro:macro name="econ_camera_link" params="name optical_name parent xyz rpy">
+    <link name="${name}">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.06 0.10 0.04"/>
+        </geometry>
+        <material name="${name}_mat">
+          <color rgba="0.15 0.15 0.15 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.06 0.10 0.04"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="0.15"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <inertia ixx="1e-4" ixy="0.0" ixz="0.0"
+                 iyy="1e-4" iyz="0.0"
+                 izz="1e-4"/>
+      </inertial>
+    </link>
+
+    <joint name="${name}_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${name}"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+    </joint>
+
+    <!-- Optical frame: Z forward, Y down (standard ROS camera convention). -->
+    <link name="${optical_name}"/>
+    <joint name="${optical_name}_joint" type="fixed">
+      <parent link="${name}"/>
+      <child link="${optical_name}"/>
+      <origin xyz="0 0 0" rpy="-1.570796 0.0 -1.570796"/>
     </joint>
   </xacro:macro>
 
@@ -256,5 +313,24 @@
     radius="0.03"
     length="0.06"
     mass="0.10"/>
+
+  <!-- ========================================================= -->
+  <!-- 11. Econ dual cameras (HH_260528)                         -->
+  <!--     sensor_kit_base_link → camera_front_link → camera_front -->
+  <!--     sensor_kit_base_link → camera_rear_link  → camera_rear  -->
+  <!-- ========================================================= -->
+  <xacro:econ_camera_link
+    name="camera_front_link"
+    optical_name="camera_front"
+    parent="${sensor_kit_base_link_name}"
+    xyz="$(arg camera_front_xyz)"
+    rpy="$(arg camera_front_rpy)"/>
+
+  <xacro:econ_camera_link
+    name="camera_rear_link"
+    optical_name="camera_rear"
+    parent="${sensor_kit_base_link_name}"
+    xyz="$(arg camera_rear_xyz)"
+    rpy="$(arg camera_rear_rpy)"/>
 
 </robot>

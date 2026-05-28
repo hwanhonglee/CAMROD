@@ -14,7 +14,11 @@
         <RateController hz="3.0">
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
             <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="{selected_planner}"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+            <Sequence name="ClearGlobalCostmapAndSettle-Context">
+              <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+              <!-- HH_260528: Costmap clear->replan race guard for SIM BT profile. -->
+              <Wait wait_duration="0.4"/>
+            </Sequence>
           </RecoveryNode>
         </RateController>
         <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
@@ -29,6 +33,8 @@
           <Sequence name="ClearingActions">
             <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
             <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+            <!-- HH_260528: Let clear services settle before the next recovery branch/planner retry. -->
+            <Wait wait_duration="0.4"/>
           </Sequence>
           <Spin spin_dist="1.57"/>
           <Wait wait_duration="5"/>

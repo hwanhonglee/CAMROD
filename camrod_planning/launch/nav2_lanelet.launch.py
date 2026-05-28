@@ -102,6 +102,9 @@ def build_nav2_selector_latch_node(context, *args, **kwargs):
             name='nav2_selector_latch',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260528: Keep selector publisher alive even if transient startup errors occur.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[{
                 'planner_id': planner_id,
                 'controller_id': controller_id,

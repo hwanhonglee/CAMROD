@@ -1,5 +1,6 @@
-# HH_260528: Camera parameter file — econ cameras (front + rear).
-# Hardware: ECONSYSTEM 1920x1080 fisheye, same product for both positions.
+# HH_260528: Bringup-level camera parameter override — econ cameras (front + rear).
+# Deployment-specific hardware parameters (device paths, intrinsics, calibration).
+# This file overrides the sensing package default when bringup.launch.py is used.
 #
 # ── Launch configuration (read by camera.launch.py) ──────────────────────────
 # Controls which camera nodes are started. Edit here; no CLI args needed.

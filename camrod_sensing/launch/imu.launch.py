@@ -1,123 +1,146 @@
 #!/usr/bin/env python3
+# HH_260528: Unified IMU launch — selects driver based on imu_model parameter.
+#
+# Models:
+#   cv7  — MicroStrain CV7-AHRS (IMU only, direct node launch with respawn)
+#   gq7  — MicroStrain GQ7 (GNSS/INS, upstream microstrain_launch.py + optional NTRIP)
+#
+# Model selection: set imu_model in camrod_bringup/config/bringup/launch_defaults.yaml
+#   sensing:
+#     imu_model: cv7       # or gq7
+#     imu_param_file: __module_default__   # auto-resolves to config/imu/microstrain_<model>.yaml
+#
+# Standalone usage:
+#   ros2 launch camrod_sensing imu.launch.py imu_model:=cv7
+#   ros2 launch camrod_sensing imu.launch.py imu_model:=gq7 use_ntrip:=true
 
 import os
+import yaml
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, GroupAction
+from launch.actions import (
+    DeclareLaunchArgument, GroupAction, IncludeLaunchDescription,
+    OpaqueFunction, SetLaunchConfiguration,
+)
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
-from launch_ros.actions import PushRosNamespace
+from launch_ros.actions import Node, PushRosNamespace, SetRemap
+
+_sensing_share = get_package_share_directory('camrod_sensing')
+_microstrain_share = get_package_share_directory('microstrain_inertial_driver')
+_microstrain_default_params_file = os.path.join(
+    _microstrain_share, 'microstrain_inertial_driver_common', 'config', 'params.yml')
+
+
+_PARAM_FILE_SENTINELS = {'__model_default__', '__module_default__', 'module_default', 'default', ''}
+
+
+def _resolve_imu_param_file(context, *args, **kwargs):
+    """Resolve imu_param_file from imu_model when value is a sentinel."""
+    model = context.perform_substitution(LaunchConfiguration('imu_model'))
+    raw   = context.perform_substitution(LaunchConfiguration('imu_param_file')).strip()
+    if raw in _PARAM_FILE_SENTINELS:
+        resolved = os.path.join(_sensing_share, 'config', 'imu', f'microstrain_{model}.yaml')
+    else:
+        resolved = raw
+    return [SetLaunchConfiguration('_imu_param_file_resolved', resolved)]
 
 
 def generate_launch_description():
-    sensing_share = get_package_share_directory("camrod_sensing")
-
-    imu_cv7_launch = os.path.join(sensing_share, "launch", "imu_cv7.launch.py")
-    imu_gq7_ntrip_launch = os.path.join(sensing_share, "launch", "imu_gq7_ntrip.launch.py")
     velocity_converter_launch = os.path.join(
-        sensing_share, "launch", "platform_velocity_converter.launch.py"
-    )
+        _sensing_share, 'launch', 'platform_velocity_converter.launch.py')
 
-    imu_mode = LaunchConfiguration("imu_mode")
-    module_namespace = LaunchConfiguration("module_namespace")
-    enable_imu = LaunchConfiguration("enable_imu")
-
-    cv7_params_file = LaunchConfiguration("cv7_params_file")
-    cv7_port = LaunchConfiguration("cv7_port")
-
-    gq7_params_file = LaunchConfiguration("gq7_params_file")
-    gq7_port = LaunchConfiguration("gq7_port")
-    use_ntrip = LaunchConfiguration("use_ntrip")
-    ntrip_params_file = LaunchConfiguration("ntrip_params_file")
-
-    velocity_converter_param_file = LaunchConfiguration("velocity_converter_param_file")
-    velocity_topic = LaunchConfiguration("velocity_topic")
-    imu_topic = LaunchConfiguration("imu_topic")
-    output_topic = LaunchConfiguration("output_topic")
-    imu_status_topic = LaunchConfiguration("imu_status_topic")
-
-    default_cv7_params = os.path.join(sensing_share, "config", "imu", "microstrain_cv7.yaml")
-    default_gq7_params = os.path.join(sensing_share, "config", "imu", "microstrain_gq7.yaml")
-    default_ntrip_params = os.path.join(sensing_share, "config", "gnss", "ntrip_client.yaml")
+    default_ntrip_params = os.path.join(_sensing_share, 'config', 'gnss', 'ntrip_client.yaml')
     default_converter_params = os.path.join(
-        sensing_share, "config", "imu", "platform_velocity_converter.yaml"
-    )
+        _sensing_share, 'config', 'imu', 'platform_velocity_converter.yaml')
+
+    # Load MicroStrain upstream defaults at launch-description time (static file).
+    microstrain_default_params = yaml.safe_load(
+        open(_microstrain_default_params_file, 'r', encoding='utf-8'))
+
+    imu_model        = LaunchConfiguration('imu_model')
+    enable_imu       = LaunchConfiguration('enable_imu')
+    use_ntrip        = LaunchConfiguration('use_ntrip')
+    module_namespace = LaunchConfiguration('module_namespace')
 
     return LaunchDescription([
-        DeclareLaunchArgument("enable_imu", default_value="true"),
-        DeclareLaunchArgument("imu_mode", default_value="cv7"),
-        DeclareLaunchArgument("module_namespace", default_value="imu"),
+        DeclareLaunchArgument('enable_imu',      default_value='true'),
+        DeclareLaunchArgument('imu_model',        default_value='cv7',
+                              description='IMU model: cv7 | gq7'),
+        DeclareLaunchArgument('imu_param_file',   default_value='__model_default__',
+                              description='Param YAML path, or __model_default__ to auto-resolve from imu_model'),
+        DeclareLaunchArgument('use_ntrip',        default_value='true',
+                              description='(gq7 only) Launch NTRIP client for RTK corrections'),
+        DeclareLaunchArgument('ntrip_param_file', default_value=default_ntrip_params),
+        DeclareLaunchArgument('module_namespace', default_value='imu'),
 
-        DeclareLaunchArgument("cv7_params_file", default_value=default_cv7_params),
-        DeclareLaunchArgument(
-            "cv7_port",
-            default_value="/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6286.226900-if00",
-        ),
+        DeclareLaunchArgument('velocity_converter_param_file', default_value=default_converter_params),
+        DeclareLaunchArgument('velocity_topic',   default_value='/platform/status/velocity'),
+        DeclareLaunchArgument('imu_topic',        default_value='data'),
+        DeclareLaunchArgument('output_topic',     default_value='twist_with_covariance'),
+        DeclareLaunchArgument('imu_status_topic', default_value='status'),
 
-        DeclareLaunchArgument("gq7_params_file", default_value=default_gq7_params),
-        DeclareLaunchArgument("gq7_port", default_value="/dev/ttyACM1"),
-        DeclareLaunchArgument("use_ntrip", default_value="true"),
-        DeclareLaunchArgument("ntrip_params_file", default_value=default_ntrip_params),
-
-        DeclareLaunchArgument("velocity_converter_param_file", default_value=default_converter_params),
-        DeclareLaunchArgument("velocity_topic", default_value="/platform/status/velocity"),
-        DeclareLaunchArgument("imu_topic", default_value="data"),
-        DeclareLaunchArgument("output_topic", default_value="twist_with_covariance"),
-        DeclareLaunchArgument("imu_status_topic", default_value="status"),
+        OpaqueFunction(function=_resolve_imu_param_file),
 
         GroupAction([
             PushRosNamespace(module_namespace),
 
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(imu_cv7_launch),
-                launch_arguments={
-                    "params_file": cv7_params_file,
-                    "port": cv7_port,
-                    "namespace": "",
-                }.items(),
-                condition=IfCondition(
-                    PythonExpression([
-                        "'",
-                        enable_imu,
-                        "' == 'true' and '",
-                        imu_mode,
-                        "' == 'cv7'"
-                    ])
+            # ── CV7 model (direct node launch, respawn for serial lock recovery) ───
+            GroupAction([
+                SetRemap(src='/ekf/status', dst='ekf/status'),
+                SetRemap(src='imu/data',    dst='data'),
+                Node(
+                    package='microstrain_inertial_driver',
+                    executable='microstrain_inertial_driver_node',
+                    name='microstrain_inertial_driver',
+                    output='screen',
+                    parameters=[
+                        microstrain_default_params,
+                        LaunchConfiguration('_imu_param_file_resolved'),
+                    ],
+                    respawn=True,
+                    respawn_delay=2.0,
                 ),
+            ], condition=IfCondition(PythonExpression(["'", imu_model, "' == 'cv7'"]))),
+
+            # ── GQ7 model (upstream microstrain_launch.py + optional NTRIP) ────────
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(_microstrain_share, 'launch', 'microstrain_launch.py')),
+                launch_arguments={
+                    'params_file': LaunchConfiguration('_imu_param_file_resolved'),
+                }.items(),
+                condition=IfCondition(PythonExpression(["'", imu_model, "' == 'gq7'"])),
+            ),
+            Node(
+                package='ntrip_client',
+                executable='ntrip_ros.py',
+                name='ntrip_client',
+                output='screen',
+                parameters=[
+                    LaunchConfiguration('ntrip_param_file'),
+                    {'rtcm_message_package': 'rtcm_msgs'},
+                    {'rtcm_topic': '/rtcm'},
+                ],
+                remappings=[('fix', '/gnss_1/llh_position')],
+                condition=IfCondition(PythonExpression([
+                    "'", imu_model, "' == 'gq7' and '", use_ntrip, "' == 'true'",
+                ])),
             ),
 
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(imu_gq7_ntrip_launch),
-                launch_arguments={
-                    "microstrain_params": gq7_params_file,
-                    "microstrain_port": gq7_port,
-                    "use_ntrip": use_ntrip,
-                    "ntrip_params": ntrip_params_file,
-                }.items(),
-                condition=IfCondition(
-                    PythonExpression([
-                        "'",
-                        enable_imu,
-                        "' == 'true' and '",
-                        imu_mode,
-                        "' == 'gq7_ntrip'"
-                    ])
-                ),
-            ),
-
+            # ── Velocity converter (both models) ────────────────────────────────────
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(velocity_converter_launch),
                 launch_arguments={
-                    "params_file": velocity_converter_param_file,
-                    "module_namespace": "",
-                    "velocity_topic": velocity_topic,
-                    "imu_topic": imu_topic,
-                    "output_topic": output_topic,
-                    "imu_status_topic": imu_status_topic,
+                    'params_file':        LaunchConfiguration('velocity_converter_param_file'),
+                    'module_namespace':   '',
+                    'velocity_topic':     LaunchConfiguration('velocity_topic'),
+                    'imu_topic':          LaunchConfiguration('imu_topic'),
+                    'output_topic':       LaunchConfiguration('output_topic'),
+                    'imu_status_topic':   LaunchConfiguration('imu_status_topic'),
                 }.items(),
-                condition=IfCondition(enable_imu),
             ),
-        ]),
+        ], condition=IfCondition(enable_imu)),
     ])

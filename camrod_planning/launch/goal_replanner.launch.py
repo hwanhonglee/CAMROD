@@ -29,23 +29,8 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 LaunchConfiguration('goal_replanner_param_file'),
-                {
-                    'replan_rate_hz': 0.0,
-                    'request_timeout_s': 0.0,
-                    'retry_after_failure_s': 0.8,
-                    'immediate_replan_on_goal': True,
-                    'immediate_replan_on_start': False,
-                    'replan_on_start_change': False,
-                    'stop_replan_after_goal_reached': True,
-                    'goal_reached_distance_m': 0.8,
-                    'pause_when_navigate_active': True,
-                    'navigate_status_topic': '/planning/navigate_to_pose/_action/status',
-                    'min_request_interval_s': 0.25,
-                    'enable_periodic_replan': False,
-                    'publish_result_path': True,
-                    'output_path_topic': '/planning/global_path_replanner',
-                    'start_topic_fallback_to_tf': True,
-                },
+                # HH_260528: Stop hard-overriding replanner params in launch.
+                # Keep runtime behavior controlled by goal_replanner_param_file.
             ],
             condition=IfCondition(LaunchConfiguration('enable_goal_replanner')),
         ),

@@ -11,7 +11,8 @@ planner_server:
       motion_model_for_search: "DUBIN"
       angle_quantization_bins: 16
       max_iterations: 2000000
-      max_planning_time: 3.0
+      # HH_260528: Faster no-path response for Smac planner combos.
+      max_planning_time: 1.2
 
 controller_server:
   ros__parameters:

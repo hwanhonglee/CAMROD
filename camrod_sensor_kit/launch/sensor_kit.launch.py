@@ -74,8 +74,14 @@ def _launch_setup(context, *args, **kwargs):
   # ---------------------------------------------------------
   # 1. Flat sensors
   # ---------------------------------------------------------
-  for name in ["imu", "gnss", "lidar", "camera"]:
+  for name in ["imu", "gnss", "lidar"]:
     sensors[name] = _sensor_pose(params.get(name, {}))
+
+  # HH_260528: Dual econ cameras — nested under camera: front/rear (same pattern as radar).
+  # Drives econ_camera_link xacro macro (body frame + optical child frame).
+  for cam_name in ["front", "rear"]:
+    key = f"camera_{cam_name}"
+    sensors[key] = _sensor_pose(_sensor_cfg_compat(params, ("camera", cam_name), key))
 
   # ---------------------------------------------------------
   # 2. Nested radar sensors

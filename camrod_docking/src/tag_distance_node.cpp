@@ -15,7 +15,7 @@ public:
     tf_listener_(tf_buffer_)
   {
     camera_frame_ = declare_parameter<std::string>(
-      "camera_frame", "econ_front_camera_optical_frame");
+      "camera_frame", "camera_rear");
     tag_frame_ = declare_parameter<std::string>(
       "tag_frame", "dock_tag");
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);

@@ -17,8 +17,9 @@ planner_server:
     # 0.0 = wait forever (legacy), >0 = timeout seconds.
     # Give global costmap more settle time before timeout warning.
     # Allow extra settle time for layered global costmap current-state.
-    # Further extend timeout for heavy real-sensor bringup phases.
-    costmap_wait_timeout_sec: 12.0
+    # HH_260528: Reduce costmap wait to improve plan response latency.
+    # Large timeout (12s) caused slow recoveries after global-costmap clear.
+    costmap_wait_timeout_sec: 2.5
     # Runtime-selectable planner IDs (published to /planning/planner_selector):
     # NavFn | Smac2D | ThetaStar | SmacHybrid | SmacLattice
     planner_plugins: ["NavFn", "Smac2D", "ThetaStar", "SmacHybrid", "SmacLattice"]
@@ -55,7 +56,8 @@ planner_server:
       # Relax search limits so long corridor goals do not fail early.
       max_iterations: 2000000
       max_on_approach_iterations: 1000
-      max_planning_time: 3.0
+      # HH_260528: Cap Smac planning budget for faster failover to NavFn.
+      max_planning_time: 1.2
 
     ThetaStar:
       plugin: "nav2_theta_star_planner/ThetaStarPlanner"
@@ -76,7 +78,8 @@ planner_server:
       analytic_expansion_ratio: 3.5
       max_iterations: 2000000
       max_on_approach_iterations: 1000
-      max_planning_time: 3.0
+      # HH_260528: Cap Smac planning budget for faster failover to NavFn.
+      max_planning_time: 1.2
       reverse_penalty: 2.0
       change_penalty: 0.0
       non_straight_penalty: 1.1
@@ -94,7 +97,8 @@ planner_server:
       minimum_turning_radius: 0.6
       max_iterations: 2000000
       max_on_approach_iterations: 1000
-      max_planning_time: 3.0
+      # HH_260528: Cap Smac planning budget for faster failover to NavFn.
+      max_planning_time: 1.2
       lookup_table_size: 20.0
       lattice_filepath: "/opt/ros/humble/share/nav2_smac_planner/sample_primitives/5cm_resolution/1m_turning_radius/ackermann/output.json"
       smooth_path: True

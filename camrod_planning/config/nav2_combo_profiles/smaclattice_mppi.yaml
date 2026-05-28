@@ -10,7 +10,8 @@ planner_server:
       downsampling_factor: 1
       minimum_turning_radius: 0.6
       max_iterations: 2000000
-      max_planning_time: 3.0
+      # HH_260528: Faster no-path response for Smac planner combos.
+      max_planning_time: 1.2
       lattice_filepath: "/opt/ros/humble/share/nav2_smac_planner/sample_primitives/5cm_resolution/1m_turning_radius/ackermann/output.json"
 
 controller_server:
