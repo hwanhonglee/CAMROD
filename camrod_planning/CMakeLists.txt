@@ -21,6 +21,8 @@ find_package(camrod_map REQUIRED)
 find_package(lanelet2_core REQUIRED)
 find_package(lanelet2_io REQUIRED)
 find_package(lanelet2_projection REQUIRED)
+find_package(lanelet2_routing REQUIRED)
+find_package(lanelet2_traffic_rules REQUIRED)
 
 # HH_260112 Add goal snapper node for lanelet-constrained goals.
 add_executable(goal_snapper_node src/goal_snapper_node.cpp)
@@ -32,6 +34,8 @@ ament_target_dependencies(goal_snapper_node
   lanelet2_core
   lanelet2_io
   lanelet2_projection
+  lanelet2_routing
+  lanelet2_traffic_rules
 )
 target_include_directories(goal_snapper_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../camrod_map/include>

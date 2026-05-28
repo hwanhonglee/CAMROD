@@ -1,8 +1,11 @@
 #include <algorithm>
-#include <cctype>
 #include <cmath>
+#include <cstdint>
+#include <deque>
 #include <limits>
+#include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -16,20 +19,14 @@
 #include <lanelet2_io/Io.h>
 #include <lanelet2_io/Projection.h>
 #include <lanelet2_projection/LocalCartesian.h>
+#include <lanelet2_routing/RoutingGraph.h>
+#include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 #include <rclcpp/rclcpp.hpp>
 
 #include "camrod_map/custom_regulatory_elements.hpp"
 
 namespace
 {
-std::string normalizeModeToken(std::string value)
-{
-  std::transform(
-    value.begin(), value.end(), value.begin(),
-    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  return value;
-}
-
 struct LoaderConfig
 {
   std::string map_path;
@@ -109,12 +106,8 @@ public:
     cfg_.offset_lon = declare_parameter<double>("offset_lon", 0.0);
     cfg_.offset_alt = declare_parameter<double>("offset_alt", 0.0);
     input_goal_topic_ = declare_parameter<std::string>("input_goal_topic", "/goal_pose");
-    // HH_260412: Accept RViz default 2D goal topic as fallback input.
-    input_goal_topic_fallback_ = declare_parameter<std::string>(
-      "input_goal_topic_fallback", "/move_base_simple/goal");
-    enable_fallback_goal_topic_ = declare_parameter<bool>("enable_fallback_goal_topic", true);
     output_goal_topic_ = declare_parameter<std::string>("output_goal_topic", "/planning/goal_pose");
-    // HH_260317-00:00 Publish ROS-native snapped goal for Nav2 topic compatibility.
+    // HH_260317 Publish ROS-native snapped goal for Nav2 topic compatibility.
     output_goal_topic_ros_ = declare_parameter<std::string>(
       "output_goal_topic_ros", "/planning/goal_pose_snapped_ros");
     publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
@@ -123,27 +116,59 @@ public:
     max_search_radius_ = declare_parameter<double>("max_search_radius", 30.0);
     require_lanelet_containment_ = declare_parameter<bool>("require_lanelet_containment", true);
     fallback_uncontained_ = declare_parameter<bool>("fallback_uncontained", true);
-    // HH_260526: Replace use_map_z/flatten_to_ground booleans with one explicit mode.
-    // goal_z_mode options: input | map | ground.
-    goal_z_mode_ = normalizeModeToken(declare_parameter<std::string>("goal_z_mode", "ground"));
+    use_map_z_ = declare_parameter<bool>("use_map_z", true);
+    flatten_to_ground_ = declare_parameter<bool>("flatten_to_ground", true);
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);
-    // HH_260329: Debounce duplicate goal callbacks when the same topic is
+
+    // HH_260528 Restrict goal snapping to the lanelet component connected to
+    // the robot's current lane pose to prevent cross-network jumps.
+    restrict_to_connected_lanelet_component_ = declare_parameter<bool>(
+      "restrict_to_connected_lanelet_component", true);
+    allow_component_fallback_to_global_ = declare_parameter<bool>(
+      "allow_component_fallback_to_global", false);
+    component_include_lane_changes_ = declare_parameter<bool>(
+      "component_include_lane_changes", true);
+    component_max_expansion_nodes_ = declare_parameter<int>(
+      "component_max_expansion_nodes", 5000);
+    current_pose_topic_ = declare_parameter<std::string>(
+      "current_pose_topic", "/planning/lanelet_pose");
+    current_lanelet_search_radius_ = declare_parameter<double>(
+      "current_lanelet_search_radius", 12.0);
+    component_update_min_period_s_ = declare_parameter<double>(
+      "component_update_min_period_s", 0.2);
+    component_update_min_displacement_m_ = declare_parameter<double>(
+      "component_update_min_displacement_m", 0.5);
+    routing_location_ = declare_parameter<std::string>("routing_location", "de");
+    routing_participant_ = declare_parameter<std::string>(
+      "routing_participant", "vehicle:car");
+
+    // HH_260329 Debounce duplicate goal callbacks when the same topic is
     // subscribed by both avg_msgs and geometry_msgs interfaces.
     duplicate_goal_xy_eps_m_ = declare_parameter<double>("duplicate_goal_xy_eps_m", 0.05);
     duplicate_goal_z_eps_m_ = declare_parameter<double>("duplicate_goal_z_eps_m", 0.10);
     duplicate_goal_time_window_s_ = declare_parameter<double>("duplicate_goal_time_window_s", 0.25);
-    if (goal_z_mode_ != "input" && goal_z_mode_ != "map" && goal_z_mode_ != "ground") {
-      RCLCPP_WARN(
-        get_logger(),
-        "Invalid goal_z_mode='%s'. Falling back to 'ground'.",
-        goal_z_mode_.c_str());
-      goal_z_mode_ = "ground";
-    }
 
     if (!loadMap()) {
       RCLCPP_FATAL(get_logger(), "goal snapper: failed to load map. exiting.");
       rclcpp::shutdown();
       return;
+    }
+
+    if (restrict_to_connected_lanelet_component_) {
+      if (!buildRoutingGraph()) {
+        if (allow_component_fallback_to_global_) {
+          RCLCPP_WARN(
+            get_logger(),
+            "goal snapper: routing graph unavailable; using global nearest-lanelet fallback");
+          restrict_to_connected_lanelet_component_ = false;
+        } else {
+          RCLCPP_FATAL(
+            get_logger(),
+            "goal snapper: routing graph unavailable while strict connected-lane mode is enabled");
+          rclcpp::shutdown();
+          return;
+        }
+      }
     }
 
     pub_goal_ = create_publisher<avg_msgs::msg::PoseStamped>(
@@ -160,22 +185,19 @@ public:
     sub_goal_ros_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       input_goal_topic_, rclcpp::QoS(10),
       std::bind(&GoalSnapperNode::onGoalRos, this, std::placeholders::_1));
-    if (
-      enable_fallback_goal_topic_ &&
-      !input_goal_topic_fallback_.empty() &&
-      input_goal_topic_fallback_ != input_goal_topic_)
-    {
-      sub_goal_ros_fallback_ = create_subscription<geometry_msgs::msg::PoseStamped>(
-        input_goal_topic_fallback_, rclcpp::QoS(10),
-        std::bind(&GoalSnapperNode::onGoalRos, this, std::placeholders::_1));
+
+    if (restrict_to_connected_lanelet_component_) {
+      sub_current_pose_ = create_subscription<avg_msgs::msg::PoseStamped>(
+        current_pose_topic_, rclcpp::QoS(10),
+        std::bind(&GoalSnapperNode::onCurrentPose, this, std::placeholders::_1));
     }
 
     RCLCPP_INFO(
       get_logger(),
-      "goal_snapper ready: map=%s input=%s fallback=%s output(avg)=%s output(ros)=%s",
+      "goal_snapper ready: map=%s input=%s output(avg)=%s output(ros)=%s lane_component=%s",
       cfg_.map_path.c_str(), input_goal_topic_.c_str(),
-      input_goal_topic_fallback_.c_str(),
-      output_goal_topic_.c_str(), output_goal_topic_ros_.c_str());
+      output_goal_topic_.c_str(), output_goal_topic_ros_.c_str(),
+      restrict_to_connected_lanelet_component_ ? "enabled" : "disabled");
   }
 
 private:
@@ -202,6 +224,229 @@ private:
     map_ground_z_ = computeGroundZ(*map_);
     RCLCPP_DEBUG(get_logger(), "map ground z (median)=%.3f", map_ground_z_);
     return true;
+  }
+
+  // Builds routing graph used for connected-lanelet component extraction.
+  bool buildRoutingGraph()
+  {
+    if (!map_) {
+      return false;
+    }
+
+    auto try_build = [this](const std::string & participant) -> bool {
+        try {
+          traffic_rules_ = lanelet::traffic_rules::TrafficRulesFactory::create(
+            routing_location_, participant);
+        } catch (const std::exception & e) {
+          RCLCPP_WARN(
+            get_logger(),
+            "goal_snapper: traffic rule create failed (location=%s participant=%s): %s",
+            routing_location_.c_str(), participant.c_str(), e.what());
+          return false;
+        }
+
+        if (!traffic_rules_) {
+          return false;
+        }
+
+        try {
+          routing_graph_ = lanelet::routing::RoutingGraph::build(*map_, *traffic_rules_);
+        } catch (const std::exception & e) {
+          RCLCPP_WARN(
+            get_logger(),
+            "goal_snapper: routing graph build failed (location=%s participant=%s): %s",
+            routing_location_.c_str(), participant.c_str(), e.what());
+          routing_graph_.reset();
+          return false;
+        }
+
+        return static_cast<bool>(routing_graph_);
+      };
+
+    // HH_260528 Try configured participant first, then generic vehicle fallback.
+    if (try_build(routing_participant_)) {
+      return true;
+    }
+
+    const std::string generic_vehicle = "vehicle";
+    if (routing_participant_ != generic_vehicle && try_build(generic_vehicle)) {
+      RCLCPP_WARN(
+        get_logger(),
+        "goal_snapper: fallback routing participant applied: %s -> %s",
+        routing_participant_.c_str(), generic_vehicle.c_str());
+      routing_participant_ = generic_vehicle;
+      return true;
+    }
+
+    return false;
+  }
+
+  // Handles current lanelet pose updates for connected-component filtering.
+  void onCurrentPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  {
+    if (!restrict_to_connected_lanelet_component_ || !routing_graph_) {
+      return;
+    }
+
+    const double px = msg->pose.position.x;
+    const double py = msg->pose.position.y;
+    const double now_sec = this->get_clock()->now().seconds();
+
+    if (has_last_component_pose_) {
+      const double dt = now_sec - last_component_update_sec_;
+      const double moved = std::hypot(px - last_component_pose_x_, py - last_component_pose_y_);
+      const bool skip_by_time = component_update_min_period_s_ > 0.0 && dt < component_update_min_period_s_;
+      const bool skip_by_movement =
+        component_update_min_displacement_m_ > 0.0 && moved < component_update_min_displacement_m_;
+      if (skip_by_time && skip_by_movement) {
+        return;
+      }
+    }
+
+    lanelet::ConstLanelet seed;
+    if (!findBestLaneletForPoint(px, py, seed)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "goal_snapper: current pose is not near any lanelet (r=%.1fm), keep previous connected component",
+        current_lanelet_search_radius_);
+      return;
+    }
+
+    rebuildConnectedComponent(seed);
+
+    has_last_component_pose_ = true;
+    last_component_pose_x_ = px;
+    last_component_pose_y_ = py;
+    last_component_update_sec_ = now_sec;
+  }
+
+  // Recomputes connected lanelet id set from the given seed lanelet.
+  void rebuildConnectedComponent(const lanelet::ConstLanelet & seed_lanelet)
+  {
+    if (!routing_graph_) {
+      return;
+    }
+
+    std::unordered_set<lanelet::Id> new_ids;
+    std::deque<lanelet::ConstLanelet> queue;
+
+    new_ids.insert(seed_lanelet.id());
+    queue.push_back(seed_lanelet);
+
+    int expanded_nodes = 0;
+    while (!queue.empty()) {
+      if (component_max_expansion_nodes_ > 0 && expanded_nodes >= component_max_expansion_nodes_) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "goal_snapper: connected component expansion capped at %d nodes",
+          component_max_expansion_nodes_);
+        break;
+      }
+
+      const lanelet::ConstLanelet current = queue.front();
+      queue.pop_front();
+      ++expanded_nodes;
+
+      auto enqueue_neighbors = [&new_ids, &queue](const lanelet::ConstLanelets & neighbors) {
+          for (const auto & nb : neighbors) {
+            const lanelet::Id id = nb.id();
+            if (new_ids.insert(id).second) {
+              queue.push_back(nb);
+            }
+          }
+        };
+
+      enqueue_neighbors(routing_graph_->following(current, component_include_lane_changes_));
+      enqueue_neighbors(routing_graph_->previous(current, component_include_lane_changes_));
+    }
+
+    const bool seed_changed = (!has_component_seed_) || (seed_lanelet.id() != component_seed_lanelet_id_);
+    component_seed_lanelet_id_ = seed_lanelet.id();
+    has_component_seed_ = true;
+    connected_lanelet_ids_ = std::move(new_ids);
+
+    if (seed_changed) {
+      RCLCPP_INFO(
+        get_logger(),
+        "goal_snapper: connected lanelet component updated seed=%ld size=%zu",
+        static_cast<long>(component_seed_lanelet_id_), connected_lanelet_ids_.size());
+    }
+  }
+
+  // Finds lanelet for current pose prioritizing containment, then nearest centerline.
+  bool findBestLaneletForPoint(double x, double y, lanelet::ConstLanelet & out_lanelet) const
+  {
+    if (!map_) {
+      return false;
+    }
+
+    const double max_sq = current_lanelet_search_radius_ * current_lanelet_search_radius_;
+
+    bool found_inside = false;
+    lanelet::ConstLanelet best_inside;
+    double best_inside_sq = std::numeric_limits<double>::max();
+
+    lanelet::ConstLanelet best_near;
+    double best_near_sq = std::numeric_limits<double>::max();
+
+    for (const auto & ll : map_->laneletLayer) {
+      const double d2 = distanceSqToCenterline(ll, x, y);
+      if (!(d2 < max_sq)) {
+        continue;
+      }
+
+      if (pointInsideLanelet(ll, x, y)) {
+        if (d2 < best_inside_sq) {
+          best_inside_sq = d2;
+          best_inside = ll;
+          found_inside = true;
+        }
+      } else if (d2 < best_near_sq) {
+        best_near_sq = d2;
+        best_near = ll;
+      }
+    }
+
+    if (found_inside) {
+      out_lanelet = best_inside;
+      return true;
+    }
+    if (best_near_sq < std::numeric_limits<double>::max()) {
+      out_lanelet = best_near;
+      return true;
+    }
+    return false;
+  }
+
+  // Returns squared distance from a 2D point to a lanelet centerline.
+  double distanceSqToCenterline(const lanelet::ConstLanelet & ll, double x, double y) const
+  {
+    const auto & cl = ll.centerline();
+    if (cl.size() < 2) {
+      return std::numeric_limits<double>::max();
+    }
+
+    double best = std::numeric_limits<double>::max();
+    for (size_t i = 0; i + 1 < cl.size(); ++i) {
+      const auto p0 = cl[i];
+      const auto p1 = cl[i + 1];
+      const double vx = p1.x() - p0.x();
+      const double vy = p1.y() - p0.y();
+      const double wx = x - p0.x();
+      const double wy = y - p0.y();
+      const double seg_len2 = vx * vx + vy * vy + 1e-6;
+      double t = (vx * wx + vy * wy) / seg_len2;
+      t = std::max(0.0, std::min(1.0, t));
+      const double proj_x = p0.x() + t * vx;
+      const double proj_y = p0.y() + t * vy;
+      const double dx = x - proj_x;
+      const double dy = y - proj_y;
+      const double d2 = dx * dx + dy * dy;
+      if (d2 < best) {
+        best = d2;
+      }
+    }
+    return best;
   }
 
   // Handles the `onGoal` callback.
@@ -232,7 +477,7 @@ private:
     out.pose.orientation = yawToQuat(nearest.heading);
     pub_goal_->publish(out);
     publishRosGoal(out);
-    // HH_260316-00:00 Keep explicit runtime trace for path-failure diagnosis.
+    // HH_260316 Keep explicit runtime trace for path-failure diagnosis.
     // This confirms whether BT/NavigateToPose is using snapped goal coordinates.
     RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 500,
@@ -244,7 +489,7 @@ private:
   // Handles the `onGoalRos` callback.
   void onGoalRos(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
-    // HH_260317-00:00 Accept RViz 2D Goal Pose directly (geometry_msgs).
+    // HH_260317 Accept RViz 2D Goal Pose directly (geometry_msgs).
     // Internal planning helpers still consume avg_msgs output_goal_topic_.
     const double px = msg->pose.position.x;
     const double py = msg->pose.position.y;
@@ -308,10 +553,8 @@ private:
         px, py, max_search_radius_);
       return false;
     }
-    snapped_z = pz;
-    if (goal_z_mode_ == "map") {
-      snapped_z = nearest.nearest_point.z() + map_z_offset_;
-    } else if (goal_z_mode_ == "ground") {
+    snapped_z = use_map_z_ ? (nearest.nearest_point.z() + map_z_offset_) : pz;
+    if (flatten_to_ground_) {
       snapped_z = map_ground_z_ + map_z_offset_;
     }
     return true;
@@ -386,11 +629,28 @@ private:
 
   // Implements `findNearestCenterline` behavior.
   NearestResult findNearestCenterline(
-    double x, double y, bool require_lanelet_containment) const
+    double x, double y, bool require_lanelet_containment)
   {
     NearestResult best;
     const double max_sq = max_search_radius_ * max_search_radius_;
+
+    const bool strict_component =
+      restrict_to_connected_lanelet_component_ && !allow_component_fallback_to_global_;
+    const bool component_ready = !connected_lanelet_ids_.empty();
+    if (strict_component && !component_ready) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "goal_snapper: connected lanelet component is not ready yet; reject goal");
+      return best;
+    }
+
     for (const auto & ll : map_->laneletLayer) {
+      if (restrict_to_connected_lanelet_component_ && component_ready) {
+        if (connected_lanelet_ids_.count(ll.id()) == 0U) {
+          continue;
+        }
+      }
+
       if (require_lanelet_containment && !pointInsideLanelet(ll, x, y)) {
         continue;
       }
@@ -422,6 +682,15 @@ private:
         }
       }
     }
+
+    if (!best.valid && restrict_to_connected_lanelet_component_ && !component_ready &&
+      allow_component_fallback_to_global_)
+    {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "goal_snapper: connected component unavailable; global fallback active");
+    }
+
     return best;
   }
 
@@ -463,14 +732,14 @@ private:
   lanelet::LaneletMapPtr map_;
 
   std::string input_goal_topic_;
-  std::string input_goal_topic_fallback_;
   std::string output_goal_topic_;
   std::string output_goal_topic_ros_;
   std::string planning_status_topic_;
   double max_search_radius_{30.0};
   bool require_lanelet_containment_{true};
   bool fallback_uncontained_{true};
-  std::string goal_z_mode_{"ground"};
+  bool use_map_z_{true};
+  bool flatten_to_ground_{true};
   double map_z_offset_{0.0};
   double map_ground_z_{0.0};
   double duplicate_goal_xy_eps_m_{0.05};
@@ -485,13 +754,33 @@ private:
   double last_goal_z_{0.0};
   double last_goal_received_sec_{0.0};
 
+  // HH_260528 Connected lanelet-component restriction state.
+  bool restrict_to_connected_lanelet_component_{true};
+  bool allow_component_fallback_to_global_{false};
+  bool component_include_lane_changes_{true};
+  int component_max_expansion_nodes_{5000};
+  std::string current_pose_topic_;
+  double current_lanelet_search_radius_{12.0};
+  double component_update_min_period_s_{0.2};
+  double component_update_min_displacement_m_{0.5};
+  std::string routing_location_{"de"};
+  std::string routing_participant_{"vehicle:car"};
+  lanelet::traffic_rules::TrafficRulesUPtr traffic_rules_;
+  lanelet::routing::RoutingGraphUPtr routing_graph_;
+  std::unordered_set<lanelet::Id> connected_lanelet_ids_;
+  lanelet::Id component_seed_lanelet_id_{lanelet::InvalId};
+  bool has_component_seed_{false};
+  bool has_last_component_pose_{false};
+  double last_component_pose_x_{0.0};
+  double last_component_pose_y_{0.0};
+  double last_component_update_sec_{0.0};
+
   rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr pub_goal_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_goal_ros_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_goal_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_fallback_;
-  bool enable_fallback_goal_topic_{true};
+  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_current_pose_;
   bool publish_planning_status_{false};
 };
 

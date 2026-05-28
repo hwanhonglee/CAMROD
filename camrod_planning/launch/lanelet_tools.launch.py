@@ -100,7 +100,6 @@ def generate_launch_description():
                     'input_goal_topic': '/goal_pose',
                     'output_goal_topic': '/planning/goal_pose_snapped',
                     'output_goal_topic_ros': '/planning/goal_pose_snapped_ros',
-                    'goal_z_mode': 'input',
                 },
             ],
         ),
