@@ -1,36 +1,24 @@
-# TODO VIO References
+# VIO Reference Notes
 
-<!-- HH_260109 Track VIO references, install notes, and topic wiring. -->
+_Last updated: HH_260528_
 
-## Kimera-VIO
-- Repository: https://github.com/MIT-SPARK/Kimera-VIO
-- Workspace location: `camrod_localization/external/Kimera-VIO`
-- Current integration: CSV bridge (`kimera_csv_bridge_node`) into `/localization/kimera_vio/*`
-- Topic wiring (target):
-  - Input: `/sensing/camera/processed/image`, `/sensing/imu/data`
-  - Output (desired): `/localization/vio/odometry`
+VIO integration is future work. Current localization runs on GNSS + IMU + wheel odometry via EKF/ESKF.
 
-## VINS-Fusion
-- Paper: "VINS-Fusion: A Robust Multi-Sensor Visual-Inertial State Estimator"
-  - Venue: IROS 2019
-  - Link: https://github.com/HKUST-Aerial-Robotics/VINS-Fusion
-  - Paper PDF: https://arxiv.org/abs/1901.04413
-- Install (ROS2): needs ROS2 port; verify fork and compatibility.
-- Topic wiring (target):
-  - Input: `/sensing/camera/processed/image`, `/sensing/imu/data`
-  - Output (desired): `/localization/vio/odometry`
+## Candidate implementations
 
-## ORB-SLAM3
-- Paper: "ORB-SLAM3: An Accurate Open-Source Library for Visual, Visual-Inertial, and Multi-Map SLAM"
-  - Venue: IEEE T-RO 2021
-  - Link: https://github.com/UZ-SLAMLab/ORB_SLAM3
-  - Paper PDF: https://arxiv.org/abs/2007.11898
-- Install (ROS2): requires wrapper/bridge; heavier runtime.
-- Topic wiring (target):
-  - Input: `/sensing/camera/processed/image`, `/sensing/imu/data`
-  - Output (desired): `/localization/vio/odometry`
+| Library | Repo | Notes |
+|---|---|---|
+| Kimera-VIO | https://github.com/MIT-SPARK/Kimera-VIO | CSV bridge (`kimera_csv_bridge_node`) exists for offline testing |
+| VINS-Fusion | https://github.com/HKUST-Aerial-Robotics/VINS-Fusion | Needs ROS2 port |
+| ORB-SLAM3 | https://github.com/UZ-SLAMLab/ORB_SLAM3 | Highest accuracy, heaviest compute |
 
-## Decision Notes
-- Kimera-VIO: current project reference implementation.
-- VINS-Fusion: strong performance but ROS2 integration effort.
-- ORB-SLAM3: highest accuracy, heavier integration and compute.
+## Target topic wiring (when integrated)
+
+| Direction | Topic | Type |
+|---|---|---|
+| Input | `/sensing/camera/econ_front/image_rect/compressed` | `sensor_msgs/CompressedImage` |
+| Input | `/sensing/imu/data` | `sensor_msgs/Imu` |
+| Output | `/localization/vio/odometry` | `nav_msgs/Odometry` |
+
+> **HH_260528 note:** Camera topic changed from the old `/sensing/camera/processed/image`.
+> Front camera output is now `/sensing/camera/econ_front/image_rect/compressed` (GPU-rectified).

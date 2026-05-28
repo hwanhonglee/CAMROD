@@ -185,7 +185,7 @@ graph TD
 | Node (executable) | Inputs | Outputs | Key params |
 |---|---|---|---|
 | `lanelet2_map_node` (`lanelet_map_provider`) | Lanelet2 .osm | `/map/markers`, TF `world→map` | `map_path`, `offset_lat/lon/alt`, `world_frame_id`, `map_frame_id` |
-| `lanelet_cost_grid_node` (`lanelet_boundary_cost_grid`) | .osm, `/planning/lanelet_pose`, `/planning/global_path` | `/map/cost_grid/lanelet` (secondary, centerline, **active**); `/map/cost_grid/planning_base` (primary, bounds, **disabled**) | `cost_mode`, `resolution`, `width`, `height`, `centerline_half_width`, `outside_value`, `primary_enable`, `secondary.output_topic` |
+| `lanelet_cost_grid_node` (`lanelet_boundary_cost_grid`) | .osm, `/planning/lanelet_pose`, `/planning/global_path` | `/map/cost_grid/lanelet` (secondary, centerline, **active**); `/map/cost_grid/planning_base` (primary, bounds, **disabled**) | `cost_mode`, `resolution`, `width`, `height`, `centerline_half_width`, `outside_value`, `primary_enable`, `secondary.output_topic`, `start_current` (Nav2 costmap layer cold-start behavior) |
 | `multi_cost_field_marker_node` (`cost_grid_multi_marker`) | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar` | `/map/cost_grid/lanelet_markers`, `lidar_markers`, `radar_markers` | `palettes`, `alphas`, `marker_scales`, `z_offsets` |
 | `cost_field_marker_node` (`nav2_costmap_debug_marker`) | `/planning/global_costmap/costmap` | `/map/cost_grid/inflation_nav2_markers` | `palette`, `alpha`, `marker_scale` (off by default) |
 | `marker_array_aggregator_node` (`cost_grid_marker_aggregator`) | All cost marker topics | `/map/cost_grid/inflation_markers` | `stale_timeout_s`, `republish_period_s` (off by default) |
@@ -408,7 +408,7 @@ ros2 launch camrod_map area_export.launch.py \
 | `config/lanelet_cost_grid.yaml` | Grid geometry, cost mode, corridor widths, penalty weights, rebuild triggers |
 | `config/map_visualization.yaml` | Multi-marker and debug visualization parameters |
 | `config/drop_zones.yaml` | Generated drop-zone list (id, x/y/z, yaw_deg, corners) |
-| `config/nav2_params_costlayer_example.yaml` | Reference Nav2 costmap layer config |
+| `config/nav2_params_costlayer_example.yaml` | Reference Nav2 costmap layer config showing `LaneletCostLayer` params including `start_current` |
 
 ---
 

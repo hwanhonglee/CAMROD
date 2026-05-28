@@ -437,7 +437,7 @@ Key launch arguments:
 |---|---|
 | `config/source/input_adapter.yaml` | GNSS NavSatFix → PoseWithCovariance conversion, wheel topic bridging, covariance floors (`gnss_covariance_floor_xy`: 1e-6 m²), position jump rejection (`max_position_jump_m`: 8.0 m) |
 | `config/filter/eskf.yaml` | ESKF noise params (`gyro_noise`: 0.015 rad/s, `gnss_position_noise`: 4.0 m), Mahalanobis gates, NHC/ZUPT, IMU sign corrections, GNSS auto-profile switching, stop detection (`stop_speed_threshold`: 0.10 m/s) |
-| `config/filter/ekf.yaml` | robot_localization EKF parameters (used when `filter_type:=ekf`) |
+| `config/filter/ekf.yaml` | robot_localization EKF parameters (used when `filter_type:=ekf`). Node log level set to WARN in `filter.launch.py` — suppress verbose INFO (e.g. `set_pose` request logs emitted on every GNSS-reattach) |
 | `config/filter/monitor.yaml` | Sensor timeout thresholds (`gnss_timeout_s`: 2.0, `imu_timeout_s`: 0.5, `wheel_timeout_s`: 0.5), GNSS innovation limits (`gnss_innovation_fail`: 6.0), DR timeout (`dr_max_duration_s`: 30.0), covariance trace limit (`dr_max_cov_trace`: 200.0) |
 | `config/filter/pose_selector.yaml` | Primary/fallback source topology, `fallback_on_mode_at_or_above`: 3 (INVALID), `primary_timeout_s`: 0.5 s |
 | `config/reference/map_helper.yaml` | Centerline snapper covariance (`lateral_stddev`: 0.3), drop zone match radius 2.0 m, `stable_count`: 10, `drop_zone_yaw_source`: zone |

@@ -459,16 +459,16 @@ ros2 launch camrod_sensing camera.launch.py
 
 | File | Purpose |
 |---|---|
-| `config/camera/camera_params.yaml` | Dual econ camera params: launch enable flags (`camrod_sensing_camera`), intrinsics, device paths |
+| `config/camera/camera_params.yaml` | Dual econ camera: launch enable flags (`camrod_sensing_camera`), device paths, front intrinsics, rear `camera_info_url` |
+| `config/camera/camera_rear_calibration.yaml` | Rear econ camera intrinsics (plumb_bob, 1920×1080): K, D, R, P matrices — loaded by `camera_info_url` at startup |
 | `config/lidar/preprocessor.yaml` | Ground filter (RANSAC), range limits, voxel size, frame ID override |
 | `config/lidar/cost_grid.yaml` | LiDAR grid geometry, cost thresholds, ego clear radius |
 | `config/lidar/vanjee/config.yaml` | Vanjee LiDAR driver hardware config |
 | `config/radar/sen0592_radar.yaml` | Serial ports, per-sensor range limits, detection angle config |
 | `config/radar/cost_grid.yaml` | Radar grid geometry, near-field cost range |
 | `config/inflation_cost_grid.yaml` | Merged grid geometry, per-input staleness limits |
-| `config/camera/camera_params.yaml` | Resolution, fps, exposure, calibrated intrinsics, distortion coefficients |
 | `config/imu/microstrain_cv7.yaml` | CV7-AHRS driver: port, rates, frame, filter aiding flags |
-| `config/imu/microstrain_gq7.yaml` | GQ7 driver config (used with `imu_mode:=gq7_ntrip`) |
+| `config/imu/microstrain_gq7.yaml` | GQ7 driver config (used with `imu_model:=gq7`) |
 | `config/imu/platform_velocity_converter.yaml` | Velocity/IMU fusion covariance |
 | `config/gnss/zed_f9p_rover.yaml` | u-blox F9P: device, measurement rate, rover mode, publish flags |
 | `config/gnss/ntrip_client.yaml` | NTRIP caster host/port/mountpoint, authentication, retry policy |
@@ -537,8 +537,13 @@ ros2 topic hz /sensing/platform_velocity_converter/twist_with_covariance
 # Inflation grid
 ros2 topic hz /planning/cost_grid/inflation           # expect 10 Hz
 
-# Camera
-ros2 topic hz /sensing/camera/image_rect/compressed   # expect 10 Hz
+# Camera — front (GPU VPI pipeline)
+ros2 topic hz /sensing/camera/econ_front/image_rect/compressed   # expect 10 Hz
+ros2 topic echo /sensing/camera/econ_front/camera_info --once
+
+# Camera — rear (CPU GStreamer pipeline)
+ros2 topic hz /sensing/camera/econ_rear/image_raw                # expect 10 Hz
+ros2 topic echo /sensing/camera/econ_rear/camera_info --once
 ```
 
 ---
