@@ -16,6 +16,7 @@ __pycache__/
 # ROS 2 bag file (large storage - MB ~ GB)
 *.bag
 *.db3
+*.db3.zstd
 *.mcap
 
 # virtual env
