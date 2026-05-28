@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v1.10**
+> Current release: **v1.11**
 
 ---
 
@@ -17,7 +17,7 @@ Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground site
 | `camrod_localization` | GNSS/IMU/wheel fusion (ESKF) + map helper | [README](camrod_localization/README.md) |
 | `camrod_perception` | LiDAR obstacles + optional YOLOv9 camera fusion | [README](camrod_perception/README.md) |
 | `camrod_planning` | Nav2 runtime + cmd\_vel gating + state machine | [README](camrod_planning/README.md) |
-| `camrod_parking` | AprilTag dock detection + opennav\_docking | [README](camrod_parking/README.md) |
+| `camrod_docking` | AprilTag dock detection + opennav\_docking | [README](camrod_docking/README.md) |
 | `camrod_platform` | Final cmd\_vel gate + robot visualization | [README](camrod_platform/README.md) |
 | `camrod_sensor_kit` | URDF + static TF tree + RobotParams lib | [README](camrod_sensor_kit/README.md) |
 | `camrod_system` | Diagnostic checkers + aggregator | [README](camrod_system/README.md) |
@@ -83,8 +83,8 @@ CAMROD is a supervised-autonomy delivery platform designed for controlled outdoo
 | OS | Ubuntu 22.04 LTS |
 | ROS 2 | Humble Hawksbill |
 | Nav2 | Humble release (included in `camrod_planning/external/`) |
-| opennav\_docking | Included in `camrod_parking/external/` |
-| apriltag\_ros | Included in `camrod_parking/external/` |
+| opennav\_docking | Included in `camrod_docking/external/` |
+| apriltag\_ros | Included in `camrod_docking/external/` |
 | robot\_localization | Included in `camrod_localization/external/` |
 | Python | 3.10+ (FastAPI, uvicorn for camrod\_ui) |
 | Node.js | 18+ (frontend build only) |
@@ -116,7 +116,7 @@ graph TD
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef iface        fill:#F0FDFA,stroke:#14B8A6,stroke-width:1.5px,color:#115E59;
@@ -140,7 +140,7 @@ graph TD
   subgraph ACT ["🤖 Actuation"]
     PLT([🤖 camrod_platform])
     KIT([🔧 camrod_sensor_kit])
-    PARK([🅿️ camrod_parking])
+    PARK([🅿️ camrod_docking])
   end
 
   subgraph OPS ["🩺 Ops & UI"]
@@ -173,7 +173,7 @@ graph TD
   class PLN planning
   class PLT platform
   class KIT system
-  class PARK parking
+  class PARK docking
   class SYS system
   class UI ui
   class AVG iface
@@ -202,7 +202,7 @@ graph TD
 | `camrod_sensor_kit` | Robot URDF/xacro and static TF backbone |
 | `camrod_system` | Per-module diagnostic checkers + aggregator (20+ checkers) |
 | `camrod_ui` | FastAPI HTTP backend (port 8010) + React operator web UI |
-| `camrod_parking` | AprilTag detection bridge + opennav\_docking integration |
+| `camrod_docking` | AprilTag detection bridge + opennav\_docking integration |
 | `camrod_common/avg_msgs` | Shared ROS 2 message/service/action definitions |
 
 ---
@@ -329,8 +329,8 @@ graph LR
 | `nav2_*` (10 pkgs) | `camrod_planning/external/` | Nav2 navigation stack |
 | `ranger_ros2` | `camrod_platform/external/` | Agilex Ranger CAN driver |
 | `ugv_sdk` | `camrod_platform/external/` | Agilex UGV CAN SDK |
-| `opennav_docking` | `camrod_parking/external/` | Docking station manager |
-| `apriltag_ros` | `camrod_parking/external/` | AprilTag marker detection |
+| `opennav_docking` | `camrod_docking/external/` | Docking station manager |
+| `apriltag_ros` | `camrod_docking/external/` | AprilTag marker detection |
 | `lanelet2` | `camrod_map/external/` | Map utilities |
 
 ---
@@ -714,6 +714,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
+| v1.11 | 2026-05-28 | Dual econ camera (front GPU/VPI + rear CPU/GStreamer), unified IMU launch (imu_model), camrod_parking → camrod_docking, rear camera calibration, EKF log suppression, costmap start_current |
 | v1.10 | 2026-05-21 | Camera sensing refactor (V4L2 publisher), YOLOv9 perception, UI symlink fix, nav2 combo profiles, planning parameter stabilization |
 | v1.9 | 2026-05-13 | Planning stability, radar angle fix, Smac2D re-enable |
 | v1.8 | 2026-05-08 | ESKF stability, GNSS COG auto-init, DR timeout, platform fixes |
