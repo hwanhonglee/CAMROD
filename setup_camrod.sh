@@ -204,8 +204,8 @@ log "bootstrapping external repositories (workspace: ${WS_ROOT})"
 clone_ext "https://github.com/KumarRobotics/ublox.git"                      "master"       "camrod_sensing/external/ublox"
 clone_ext "https://github.com/cra-ros-pkg/robot_localization.git"            "humble-devel"  "camrod_localization/external/robot_localization"
 clone_ext "https://github.com/fzi-forschungszentrum-informatik/Lanelet2.git" "master"       "camrod_map/external/lanelet2"
-clone_ext "https://github.com/ros-perception/vision_opencv.git"              "humble"       "camrod_perception/external/vision_opencv"
 clone_ext "https://github.com/ros-perception/vision_msgs.git"                "ros2"         "camrod_common/external/vision_msgs"
+clone_ext "https://github.com/ros-perception/vision_opencv.git"              "3.2.1"        "camrod_common/external/vision_opencv"
 clone_ext "https://github.com/ros-perception/perception_pcl.git"             "humble"       "camrod_sensing/external/perception_pcl"
 clone_ext "https://github.com/ros-perception/laser_geometry.git"             "ros2"         "camrod_planning/external/laser_geometry"
 # HH_260428: Agilex platform drivers — set CAMROD_AGILEX_BASE to use custom forks.
@@ -222,7 +222,6 @@ clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_apriltag.git"       "re
 clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_pipeline.git" "release-3.2"  "camrod_docking/external/isaac_ros_image_pipeline"
 clone_ext "https://github.com/ros-perception/image_pipeline.git"             "humble"       "camrod_docking/external/image_pipeline"
 clone_ext "https://github.com/osrf/negotiated.git"                           "master"       "camrod_docking/external/negotiated"
-clone_ext "https://github.com/ros-perception/vision_opencv.git"              "3.2.1"        "camrod_docking/external/vision_opencv"
 
 # ── VIO bridge SDK installers (disable/vio_bridge — not built by default) ────
 # HH_260428: These large SDK binaries are NOT stored in git. Download manually

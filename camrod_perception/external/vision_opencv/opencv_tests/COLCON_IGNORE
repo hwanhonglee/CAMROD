@@ -1,3 +1,0 @@
-# CAMROD: Exclude upstream vision_opencv test-only package from workspace builds.
-# Reason: opencv_tests is not required for runtime and can fail with editable/symlink installs
-# in this environment due setuptools/distutils invocation differences.
