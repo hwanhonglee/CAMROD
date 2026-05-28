@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>opencv4_vendor</name>
+  <version>4.5.4</version>
+  <description>Vendor package for OpenCV 4.5.4 — builds from source (core, imgproc, imgcodecs, videoio, calib3d), no system libopencv-dev required.</description>
+  <maintainer email="you@todo.com">you</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

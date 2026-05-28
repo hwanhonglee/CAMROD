@@ -3,6 +3,9 @@
 /install/
 /log/
 
+# HH_260528: Nested third-party package build artifacts.
+build/
+
 # Python cache artifacts.
 __pycache__/
 *.pyc
