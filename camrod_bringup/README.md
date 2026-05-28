@@ -293,7 +293,10 @@ flowchart TD
 | `enable_api_ui` | `true` | HTTP UI backend |
 | `api_ui_host` | `127.0.0.1` | UI bind address |
 | `api_ui_port` | `8010` | UI bind port |
-| `platform_ranger_driver_enable` | `false` | Ranger CAN driver (real hardware) |
+| `platform_type` | `ranger` | Platform type selector: `ranger` \| `rmp401` |
+| `platform_ranger_driver_enable` | `true` | Enable Ranger base CAN node |
+| `platform_ranger_bridge_enable` | `true` | Enable `ranger_platform_bridge_node` (`/platform/status/*` normalizer) |
+| `platform_sensor_kit_bridge_enable` | `true` | Enable sensor-kit TF/description bridge in platform launch |
 | `diagnostics_profile` | `default` | System diagnostics config profile |
 | `enable_gnss` | `false` | Enable GNSS driver stack |
 | `enable_radar` | `false` | Enable serial radar driver |
@@ -373,7 +376,7 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 
 | File | Purpose |
 |---|---|
-| `config/sensing/sensing_params.yaml` | Sensing node parameter overrides |
+| `config/sensing/camera/camera_params.yaml` | Dual econ camera params (front/rear enable flags, intrinsics, device paths) |
 | `config/sensing/lidar/cost_grid.yaml` | LiDAR cost-grid overrides |
 | `config/sensing/radar/cost_grid.yaml` | Radar cost-grid overrides |
 | `config/sensing/inflation_cost_grid.yaml` | Merged inflation cost-grid overrides |

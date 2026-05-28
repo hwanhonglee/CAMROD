@@ -370,8 +370,11 @@ The geometry source file is controlled by the `params_file` argument, which defa
 | `estop_source_mode` | `platform_status` | E-stop source selector (`platform_status` or `disabled`) |
 | `estop_topic` | `/platform/status/estop` | E-stop source topic |
 | `drive_allow_on_start` | `false` | Arm gate at startup without explicit enable |
-| `ranger_driver_enable` | `true` | Launch Ranger CAN driver sub-launch |
-| `ranger_params_file` | `config/ranger_params.yaml` | Ranger driver parameter file |
+| `platform_type` | `ranger` | Platform type profile: `ranger` (CAN path) or `rmp401` (skip Ranger CAN, use external `/rmp401` topics) |
+| `ranger_driver_enable` | `true` | Launch Ranger CAN base node |
+| `ranger_bridge_enable` | `true` | Launch Ranger status bridge node (independent from CAN driver) |
+| `sensor_kit_bridge_enable` | `true` | Include `sensor_kit_bridge.launch.py` (disable for debug without TF) |
+| `ranger_params_file` | `config/ranger_driver.yaml` | Ranger driver parameter file |
 | `params_file` | `camrod_sensor_kit/config/robot_params.yaml` | Robot geometry for TF and visualization |
 | `robot_visualization_param_file` | `config/robot_visualization.yaml` | Robot visualization node parameters |
 | `map_frame_id` | `map` | Global frame ID |

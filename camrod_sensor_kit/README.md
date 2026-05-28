@@ -153,7 +153,8 @@ graph TD
       IMU[📡 imu_link\n0.28, 0.0, 0.2]:::sensing
       GNSS[📡 gnss_link\n0.0, 0.0, 0.0]:::sensing
       LIDAR[📡 lidar_link\n0.68, 0.0, 0.45]:::sensing
-      CAM[📡 camera_link\n0.68, 0.0, 0.2]:::sensing
+      CAMF[📡 camera_front_link\n0.40, 0.0, 0.46]:::sensing
+      CAMR[📡 camera_rear_link\n0.10, 0.0, 0.46]:::sensing
       subgraph RADAR["Radar sensors (direct to sensor_kit_base_link)"]
         RF[📡 radar_front_link]:::sensing
         RL1[📡 radar_left1_link]:::sensing

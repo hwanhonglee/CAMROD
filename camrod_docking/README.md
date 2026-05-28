@@ -19,7 +19,7 @@ camrod_docking/
 │   ├── camrod_docking_plugin.hpp
 │   └── manual_dock_server_node.hpp
 ├── launch/
-│   ├── docking.launch.py       # 메인 런치 (카메라 TF + 전체 스택)
+│   ├── docking.launch.py       # Main launch (AprilTag + DockingServer + ManualDockServer; camera TF is in camrod_sensor_kit)
 │   └── parking.launch.py       # docking.launch.py 래퍼
 └── src/
     ├── camrod_docking_plugin.cpp       # ChargingDock 플러그인
@@ -121,17 +121,17 @@ RMP401 `segwayrmp` 드라이버의 오도메트리 부호 버그를 보정한다
 
 ---
 
-## 카메라 TF 구조
+## Camera TF Structure
 
 ```
-base_link
- ├─ econ_rear_camera_frame    [x=+0.10m, z=0.46m, yaw=π  — 후면 카메라]
- │   └─ econ_rear_camera_optical_frame   [RPY(-π/2, 0, -π/2) — REP-103]
- └─ econ_front_camera_frame   [x=+0.40m, z=0.46m, yaw=0  — 전면 카메라]
-     └─ econ_front_camera_optical_frame  [RPY(-π/2, 0, -π/2) — REP-103]
+sensor_kit_base_link
+ ├─ camera_front_link  [x=+0.40m, z=0.46m, yaw=0  — forward-facing]
+ │   └─ camera_front   [RPY(-π/2, 0, -π/2) — REP-103 optical frame]
+ └─ camera_rear_link   [x=+0.10m, z=0.46m, yaw=π  — backward-facing]
+     └─ camera_rear    [RPY(-π/2, 0, -π/2) — REP-103 optical frame]
 ```
 
-static TF는 `docking.launch.py`에서 발행한다.
+> **HH_260528:** Static TF is now published by `camrod_sensor_kit` (`robot_state_publisher` via `camrod_sensor_kit.xacro`). `docking.launch.py` no longer runs `static_transform_publisher` nodes for camera frames.
 
 ---
 

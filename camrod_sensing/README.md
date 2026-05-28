@@ -4,7 +4,7 @@
 
 `camrod_sensing` acquires raw data from all physical sensors (LiDAR, radar, camera, IMU, GNSS), preprocesses the streams, and produces the filtered topics and obstacle cost grids consumed by localization, perception, and planning. It also fuses the map lanelet cost grid with real-time sensor grids into a single inflation grid for the Nav2 local costmap.
 
-> 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 ultrasonic radar ×6 (CH9344 USB serial), V4L2 camera (ISX031 / `/dev/video0`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial), u-blox ZED-F9P GNSS (USB), NTRIP RTK correction stream.
+> 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 ultrasonic radar ×6 (CH9344 USB serial), Econ dual cameras — front (`camera_front_publisher_node`, GPU VPI+NvJPEG, `/dev/video0`) + rear (`camera_rear_publisher_node`, CPU OpenCV, `/dev/video1`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial, selected via `imu_model`), u-blox ZED-F9P GNSS (USB), NTRIP RTK correction stream.
 
 ---
 
@@ -19,8 +19,8 @@ ros2 launch camrod_sensing sensing.launch.py \
   enable_gnss:=false \
   enable_ntrip:=false
 
-# Switch IMU hardware
-ros2 launch camrod_sensing sensing.launch.py imu_mode:=gq7_ntrip
+# Switch IMU hardware (HH_260528: imu_mode → imu_model)
+ros2 launch camrod_sensing sensing.launch.py imu_model:=gq7
 
 # Sub-stacks (for isolated bringup or debug)
 ros2 launch camrod_sensing lidar.launch.py
@@ -81,8 +81,8 @@ graph LR
   SENS ==>|/sensing/lidar/points_filtered| PERC
   SENS ==>|/planning/cost_grid/inflation| PLAN_OUT
   SENS -->|lidar/radar cost grids| MAP_VIZ
-  SENS -->|camera/image_rect/compressed| PARK
-  SENS -->|camera/image_rect/compressed| PERC
+  SENS -->|camera/econ_front/image_rect/compressed| PERC
+  SENS -->|camera/econ_rear/image_raw| PARK
 
   linkStyle 0,1,3,4,5,6,7 stroke:#06B6D4,stroke-width:2.5px;
 ```
@@ -132,9 +132,11 @@ graph TD
 
   subgraph CAM["📷 Camera"]
     HW3{{🛠️ ISX031\n/dev/video0}}:::hardware
-    CAMDRV(camera_publisher):::sensing
-    CAMRECT((camera/image_rect\n/compressed)):::topic
-    CAMINFO((camera/camera_info)):::topic
+    CAMFRONT(camera_front_publisher):::sensing
+    CAMREAR(camera_rear_publisher):::sensing
+    CAMRECT((camera/econ_front\n/image_rect/compressed)):::topic
+    CAMRAW((camera/econ_rear\n/image_raw)):::topic
+    CAMINFO((camera/econ_front\n/camera_info)):::topic
     HW3 ==> CAMDRV
     CAMDRV ==> CAMRECT
     CAMDRV --> CAMINFO
@@ -257,8 +259,11 @@ graph TD
 | `/sensing/gnss/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | camrod_localization (ESKF) | 10 Hz | GNSS-derived pose with position covariance for filter fusion |
 | `/sensing/imu/data` | `sensor_msgs/Imu` | camrod_localization (ESKF), `platform_velocity_converter` | 100 Hz | Filtered orientation + angular velocity + linear acceleration in `imu_link` frame |
 | `/sensing/platform_velocity_converter/twist_with_covariance` | `geometry_msgs/TwistWithCovarianceStamped` | camrod_localization (ESKF) | ~20 Hz | Platform forward velocity with fixed covariance for wheel-odometry fusion |
-| `camera/image_rect/compressed` | `sensor_msgs/CompressedImage` | camrod_perception (YOLOv9), camrod_parking (`apriltag_node`) | 10 Hz | Rectified 1920×1080 JPEG-compressed image in `camera_link` frame |
-| `camera/camera_info` | `sensor_msgs/CameraInfo` | camrod_perception, camrod_parking | 10 Hz | Calibrated intrinsics (equidistant distortion model) |
+| `/sensing/camera/econ_front/image_rect/compressed` | `sensor_msgs/CompressedImage` | camrod_perception (YOLOv9) | 10 Hz | GPU-rectified 1920×1080 JPEG in `camera_front` frame (VPI VIC + NvJPEG) |
+| `/sensing/camera/econ_front/camera_info` | `sensor_msgs/CameraInfo` | camrod_perception | 10 Hz | Calibrated intrinsics — equidistant 4-coefficient (k1–k4) |
+| `/sensing/camera/econ_rear/image_raw` | `sensor_msgs/Image` | camrod_docking (Isaac ROS AprilTag) | 10 Hz | Uncompressed 1920×1080 in `camera_rear` frame; required by RectifyNode |
+| `/sensing/camera/econ_rear/image_raw/compressed` | `sensor_msgs/CompressedImage` | monitoring | 10 Hz | CPU-JPEG compressed rear stream |
+| `/sensing/camera/econ_rear/camera_info` | `sensor_msgs/CameraInfo` | camrod_docking | 10 Hz | Rear camera intrinsics |
 
 ---
 
@@ -308,26 +313,39 @@ graph TD
 | Related params | `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
 | Related topics | `/sensing/radar/*/range` → `/sensing/cost_grid/radar` |
 
-### Camera (V4L2, ISX031)
+### Camera — dual econ (front + rear)
+
+**Front camera (`camera_front_publisher_node`, GPU pipeline)**
 
 | Field | Detail |
 |---|---|
-| Trigger | Continuous V4L2 capture at configured fps |
-| Internal logic | `camera_publisher_node` opens `/dev/video0`, captures 1920×1080 MJPEG frames at 10 fps with `exposure_time_us: 25000`. Undistortion uses the calibrated equidistant model (4-coefficient: k1–k4). The rectified image is JPEG-compressed (quality 90) and published on `~/image_rect/compressed` (remapped to `camera/image_rect/compressed`). CameraInfo uses the calibrated intrinsics matrix. Zero-copy DDS transport is enabled via Iceoryx (`iox-roudi` started 1 s before the camera node). |
-| Output effect | `camera/image_rect/compressed`, `camera/camera_info` at 10 Hz. |
-| Operator-visible symptom | Node crash at startup → `iox-roudi` not running (check `ps aux | grep iox-roudi`). Black or distorted image → wrong `device_path` or stale calibration in `camera_params.yaml`. |
+| Trigger | Continuous V4L2 capture; started when `enable_front_camera: true` in `camrod_sensing_camera` section of `camera_params.yaml` |
+| Internal logic | Opens `/dev/video0`, captures 1920×1080 MJPEG at 10 fps. Fisheye undistortion via VPI VIC (equidistant 4-coeff). Output JPEG-encoded by NvJPEG hardware. Published on `~/image_rect/compressed` → `/sensing/camera/econ_front/image_rect/compressed`. Zero-copy DDS via Iceoryx (`iox-roudi` must be running). |
+| Output effect | `/sensing/camera/econ_front/image_rect/compressed`, `/sensing/camera/econ_front/camera_info` at 10 Hz. |
+| Operator-visible symptom | Node crash at startup → `iox-roudi` not running (`ps aux \| grep iox-roudi`). Distorted image → stale `camera_matrix`/`distortion_coefficients` in `camera_params.yaml`. |
 | Related params | `device_path`, `image_width`, `image_height`, `fps`, `exposure_time_us`, `jpeg_quality`, `camera_matrix`, `distortion_coefficients`, `intrinsics_source` |
-| Related topics | `camera/image_rect/compressed`, `camera/camera_info` |
+| Related topics | `/sensing/camera/econ_front/image_rect/compressed`, `/sensing/camera/econ_front/camera_info` |
+
+**Rear camera (`camera_rear_publisher_node`, CPU pipeline)**
+
+| Field | Detail |
+|---|---|
+| Trigger | Continuous GStreamer capture; started when `enable_rear_camera: true` in `camrod_sensing_camera` |
+| Internal logic | Opens `/dev/video1` via OpenCV GStreamer pipeline. Publishes `image_raw` (uncompressed, on-demand when subscribed) and `image_raw/compressed` (always). Uncompressed stream is required by Isaac ROS RectifyNode in camrod_docking. |
+| Output effect | `/sensing/camera/econ_rear/image_raw`, `/sensing/camera/econ_rear/image_raw/compressed`, `/sensing/camera/econ_rear/camera_info` at 10 Hz. |
+| Operator-visible symptom | AprilTag detection silent → check `/sensing/camera/econ_rear/image_raw` is live and `/dev/video1` exists. |
+| Related params | `device`, `width`, `height`, `fps`, `jpeg_quality`, `frame_id`, `camera_info_url` |
+| Related topics | `/sensing/camera/econ_rear/image_raw`, `/sensing/camera/econ_rear/image_raw/compressed`, `/sensing/camera/econ_rear/camera_info` |
 
 ### IMU (CV7-AHRS or GQ7, selectable)
 
 | Field | Detail |
 |---|---|
-| Trigger | Node startup; `imu_mode` launch argument selects `cv7` (default) or `gq7_ntrip` |
-| Internal logic | **cv7 mode:** `microstrain_inertial_driver` connects to the CV7-AHRS via USB serial (identified by `by-id` path). Filter output rate is 100 Hz. GNSS aiding is disabled (`filter_enable_gnss_pos_vel_aiding: false`). ENU frame is used (`use_enu_frame: true`). Timestamps use ROS receive time (`timestamp_source: 0`). **gq7_ntrip mode:** GQ7 with NTRIP aiding for heading; connected on `/dev/ttyACM1`. |
+| Trigger | Node startup; `imu_model` launch argument selects `cv7` (default) or `gq7` |
+| Internal logic | **cv7:** `microstrain_inertial_driver` node launched directly with `respawn=true` (recovers serial lock). Filter output 100 Hz, ENU frame, GNSS aiding disabled. **gq7:** upstream `microstrain_launch.py` + optional `ntrip_client` for RTK-heading. Model auto-resolves param file: `config/imu/microstrain_cv7.yaml` or `microstrain_gq7.yaml`. |
 | Output effect | `/sensing/imu/data` (sensor_msgs/Imu) at 100 Hz in `imu_link` frame. |
-| Operator-visible symptom | `imu_mode` mismatch (e.g., `cv7` selected but GQ7 hardware present) → driver connects on wrong port and publishes zeroed or noisy orientation. Check port existence: `ls /dev/serial/by-id/usb-Lord_Microstrain*`. |
-| Related params | `imu_mode`, `cv7_port`, `gq7_port`, `imu_data_rate`, `use_enu_frame`, `timestamp_source`, `frame_id` |
+| Operator-visible symptom | Wrong model selected → driver connects on wrong port, zeroed or noisy orientation. Check: `ls /dev/serial/by-id/usb-Lord_Microstrain*`. |
+| Related params | `imu_model`, `imu_param_file`, `imu_data_rate`, `use_enu_frame`, `timestamp_source`, `frame_id` |
 | Related topics | `/sensing/imu/data` |
 
 ### GNSS (u-blox ZED-F9P + NTRIP)
@@ -422,14 +440,15 @@ ros2 launch camrod_sensing camera.launch.py
 | `enable_radar` | `true` | SEN0592 radar driver |
 | `enable_radar_cost_grid` | `true` | Radar obstacle cost grid |
 | `enable_inflation_cost_grid` | `true` | Merged inflation cost grid |
-| `enable_camera` | `true` | V4L2 camera driver |
+| `enable_camera` | `true` | Enable camera stack (gate for both front + rear) |
+| `enable_front_camera` | `true` | Front econ camera node (`camera_front_publisher_node`) |
+| `enable_rear_camera` | `true` | Rear econ camera node (`camera_rear_publisher_node`) |
 | `enable_gnss` | `true` | u-blox F9P GNSS driver |
 | `enable_ntrip` | `true` | NTRIP RTK correction client |
 | `enable_imu` | `true` | MicroStrain IMU driver |
-| `imu_mode` | `cv7` | `cv7` (CV7-AHRS) or `gq7_ntrip` (GQ7 with NTRIP heading) |
-| `camera_device_path` | `/dev/video0` | V4L2 camera device |
-| `cv7_port` | `/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6286.226900-if00` | CV7 USB serial port |
-| `gq7_port` | `/dev/ttyACM1` | GQ7 serial port |
+| `imu_model` | `cv7` | IMU hardware model: `cv7` (CV7-AHRS) or `gq7` (GQ7 with optional NTRIP) |
+| `imu_param_file` | `__model_default__` | IMU param YAML; auto-resolves to `config/imu/microstrain_<model>.yaml` |
+| `camera_device_path` | `/dev/video0` | Front camera V4L2 device (rear is always `/dev/video1`) |
 | `imu_velocity_topic` | `/platform/status/velocity` | Platform velocity input to velocity converter |
 | `imu_output_topic` | `/sensing/platform_velocity_converter/twist_with_covariance` | Velocity converter output (fixed) |
 | `gnss_namespace` | `gnss` | Sub-namespace for GNSS nodes (resolves to `/sensing/gnss/`) |
