@@ -10,6 +10,10 @@
     goal_topic_ros: "/planning/goal_pose_snapped_ros"
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
+    # HH_260528 Scenario contract for UI integration:
+    # 0=WAIT_DROP_ZONE, 1=DELIVERY_TO_SITE, 2=RETURN_TO_DROP_ZONE, 3=RECALL_TO_SITE
+    scenario_id_topic: "/planning/state_machine/scenario_id"
+    scenario_command_topic: "/planning/state_machine/scenario_command"
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     camping_site_recall_topic: "/planning/state_machine/camping_site_recall"
     mission_source_topic: "/planning/state_machine/mission_source"
@@ -36,6 +40,8 @@
     site_goal_key_prefix: "camping_site_"
     goal_reached_dwell_s: 600.0
     goal_key_match_distance_m: 1.5
+    require_docking_for_idle: false
+    docking_status_topic: "/docking/is_charging"
 
     min_goal_publish_interval_s: 1.0
     goal_reached_distance_m: 0.8

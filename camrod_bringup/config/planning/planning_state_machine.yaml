@@ -9,10 +9,17 @@
     goal_topic_ros: "/planning/goal_pose_snapped_ros"
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
+
+    # HH_260528 Scenario contract for UI integration:
+    # 0=WAIT_DROP_ZONE, 1=DELIVERY_TO_SITE, 2=RETURN_TO_DROP_ZONE, 3=RECALL_TO_SITE
+    scenario_id_topic: "/planning/state_machine/scenario_id"
+    # UI/ops command topic. Send std_msgs/Int32 with {0,1,2,3}.
+    scenario_command_topic: "/planning/state_machine/scenario_command"
+
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     # Recall request published from a camping site.
     # msg.data = camping site name (e.g. "camping_site_3").
-    # Triggers RECALLED state: robot navigates to the site, waits, then auto-returns.
+    # Triggers recall flow to "<site>_road" keypoint when defined.
     camping_site_recall_topic: "/planning/state_machine/camping_site_recall"
     # Publishes the reason for the current goal (startup / return_request / recall:* / auto_return).
     mission_source_topic: "/planning/state_machine/mission_source"
@@ -40,6 +47,12 @@
     goal_reached_dwell_s: 10.0
     # Distance tolerance for associating a manual goal with a keypoint (auto-return eligibility).
     goal_key_match_distance_m: 1.5
+
+    # HH_260528 Scenario-2 -> Scenario-0 completion gate.
+    # false: reaching return_goal_key pose is enough.
+    # true : require docking status true as well.
+    require_docking_for_idle: false
+    docking_status_topic: "/docking/is_charging"
 
     min_goal_publish_interval_s: 1.0
     goal_reached_distance_m: 0.8
