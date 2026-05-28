@@ -45,14 +45,24 @@
       pitch: 0.4              # LiDAR mount pitch offset [deg].
       yaw: 0.0                # LiDAR mount yaw offset [deg].
 
+    # HH_260528: Dual econ camera mount poses (front + rear), mirroring radar nested structure.
+    # Measured from sensor_kit_base_link (≡ robot_base_link).
+    # Body → optical frame rotation is handled inside econ_camera_link xacro macro (RPY=-π/2,0,-π/2).
     camera:
-      # HH_260326: Canonical camera pose.
-      x: 0.68                 # Camera optical rig X offset from sensor_kit_base_link [m].
-      y: 0.0                  # Camera optical rig Y offset from sensor_kit_base_link [m].
-      z: 0.2                  # Camera optical rig Z offset from sensor_kit_base_link [m].
-      roll: 0.0               # Camera optical rig roll offset [deg].
-      pitch: 0.0              # Camera optical rig pitch offset [deg].
-      yaw: 0.0                # Camera optical rig yaw offset [deg].
+      front:
+        x: 0.40               # Front camera X offset from sensor_kit_base_link [m].
+        y: 0.0                # Front camera Y offset from sensor_kit_base_link [m].
+        z: 0.46               # Front camera Z offset from sensor_kit_base_link [m].
+        roll: 0.0             # Front camera roll offset [deg].
+        pitch: 0.0            # Front camera pitch offset [deg].
+        yaw: 0.0              # Front camera yaw offset [deg] — facing forward.
+      rear:
+        x: 0.10               # Rear camera X offset from sensor_kit_base_link [m].
+        y: 0.0                # Rear camera Y offset from sensor_kit_base_link [m].
+        z: 0.46               # Rear camera Z offset from sensor_kit_base_link [m].
+        roll: 0.0             # Rear camera roll offset [deg].
+        pitch: 0.0            # Rear camera pitch offset [deg].
+        yaw: 180.0            # Rear camera yaw offset [deg] — facing rear.
 
     radar:
       front:

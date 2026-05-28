@@ -44,8 +44,9 @@
     min_request_interval_s: 0.25
     # Event-driven mode is more stable than periodic churn.
     replan_rate_hz: 0.0
-    # Bound in-flight ComputePath request lifetime.
-    request_timeout_s: 3.0
+    # HH_260528: Keep event-driven replans responsive under no-path cases.
+    # This timeout only affects goal_replanner requests (not Nav2 BT actions).
+    request_timeout_s: 1.5
     # Prevent retry storm when planner reports ABORTED.
     retry_after_failure_s: 0.8
     # Trigger ComputePath immediately on new goal and on first valid snapped start pose.

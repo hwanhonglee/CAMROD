@@ -62,8 +62,8 @@ OVERRIDE_SPECS = {
     },
     'sensing': {
         'lidar_preprocess_param_file': ('sensing/lidar_preprocess_param_file',),
-        'camera_params_file': ('sensing/camera_params_file',),
-        'camera_device_path': ('sensing/camera_device_path',),
+        'camera_params_file':    ('sensing/camera_params_file',),
+        'camera_device_path':    ('sensing/camera_device_path',),
         'imu_converter_param_file': ('sensing/imu_converter_param_file',),
         'radar_sensor_param_file': ('sensing/radar_sensor_param_file',),
         'radar_cost_grid_param_file': ('sensing/radar_cost_grid_param_file',),
@@ -71,8 +71,8 @@ OVERRIDE_SPECS = {
         'inflation_cost_grid_param_file': ('sensing/inflation_cost_grid_param_file',),
         'gnss_param_file': ('sensing/gnss_param_file',),
         'ntrip_param_file': ('sensing/ntrip_param_file',),
-        'cv7_param_file': ('sensing/cv7_param_file',),
-        'gq7_param_file': ('sensing/gq7_param_file',),
+        # HH_260528: imu_param_file resolves model-specific YAML via OVERRIDE_SPECS (file path only).
+        'imu_param_file': ('sensing/imu_param_file',),
         'vanjee_config_path': ('sensing/vanjee_config_path',),
     },
     'platform': {
@@ -757,11 +757,17 @@ def generate_launch_description():
 
         ('enable_radar', cfg_get(launch_cfg, 'sensing/enable_radar', False), 'Enable serial radar'),
         ('enable_camera', cfg_get(launch_cfg, 'sensing/enable_camera', True), 'Enable camera publisher stack'),
+        # HH_260528: Per-camera enable flags for dual econ camera setup.
+        ('enable_front_camera', cfg_get(launch_cfg, 'sensing/enable_front_camera', True), 'Enable front econ camera node'),
+        ('enable_rear_camera',  cfg_get(launch_cfg, 'sensing/enable_rear_camera',  True), 'Enable rear econ camera node'),
         ('enable_radar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_radar_cost_grid', True), 'Enable radar cost-grid'),
         ('enable_lidar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_lidar_cost_grid', True), 'Enable lidar cost-grid'),
         ('enable_inflation_cost_grid', cfg_get(launch_cfg, 'sensing/enable_inflation_cost_grid', True), 'Enable inflation cost-grid (lanelet+lidar+radar+global_path merger)'),
         ('enable_lidar_driver', cfg_get(launch_cfg, 'sensing/enable_lidar_driver', False), 'Enable lidar driver'),
-        ('enable_imu', cfg_get(launch_cfg, 'sensing/enable_imu', True), 'Enable IMU driver + velocity converter'),
+        ('enable_imu',      cfg_get(launch_cfg, 'sensing/enable_imu',      True),  'Enable IMU driver + velocity converter'),
+        # HH_260528: Unified IMU model selector (imu_mode → imu_model).
+        ('imu_model',       cfg_get(launch_cfg, 'sensing/imu_model',       'cv7'), 'IMU model: cv7 | gq7'),
+        ('imu_param_file',  cfg_get(launch_cfg, 'sensing/imu_param_file',  '__module_default__'), 'IMU param file path (or __module_default__)'),
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
         ('enable_ntrip', cfg_get(launch_cfg, 'sensing/enable_ntrip', False), 'Enable GNSS NTRIP client'),
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
@@ -813,8 +819,14 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'platform/estop_topic', '/platform/status/estop'),
             'Platform e-stop status topic',
         ),
+        # HH_260528: Platform type selector.
+        ('platform_type', cfg_get(launch_cfg, 'platform/type', 'ranger'), 'Platform type: ranger|rmp401'),
         # Keep platform top launch lean. Ranger detailed params are in ranger_params_file.
-        ('platform_ranger_driver_enable', cfg_get(launch_cfg, 'platform/ranger_driver_enable', True), 'Enable camrod_platform ranger wrapper include'),
+        ('platform_ranger_driver_enable', cfg_get(launch_cfg, 'platform/ranger_driver_enable', True), 'Enable Ranger base CAN node in platform launch'),
+        # HH_260528: Ranger bridge toggle (independent from Ranger base node).
+        ('platform_ranger_bridge_enable', cfg_get(launch_cfg, 'platform/ranger_bridge_enable', True), 'Enable ranger_platform_bridge_node in platform launch'),
+        # HH_260528: Keep sensor_kit bridge optional for debug.
+        ('platform_sensor_kit_bridge_enable', cfg_get(launch_cfg, 'platform/sensor_kit_bridge_enable', True), 'Enable sensor_kit bridge include in platform launch'),
 
         ('map_path', map_path_default, 'Lanelet2 map path'),
         ('map_info_file', map_info_launch_default, 'Map info YAML path used by map/localization'),
@@ -906,10 +918,15 @@ def generate_launch_description():
         'engage_source_mode': lc['platform_engage_source_mode'],
         'estop_source_mode': lc['platform_estop_source_mode'],
         'estop_topic': lc['platform_estop_topic'],
+        'platform_type': sim_switch(
+            lc['sim'], 'rmp401', lc['platform_type']
+        ),
         # In sim, disable external CAN driver by default.
         'ranger_driver_enable': sim_switch(
             lc['sim'], 'false', lc['platform_ranger_driver_enable']
         ),
+        'ranger_bridge_enable': lc['platform_ranger_bridge_enable'],
+        'sensor_kit_bridge_enable': lc['platform_sensor_kit_bridge_enable'],
     }
     apply_cfg_overrides(platform_args, platform_overrides)
 
@@ -949,13 +966,16 @@ def generate_launch_description():
         # In sim mode, fake_sensors.launch.py already publishes synthetic
         # GNSS/IMU/wheel data and obstacle cloud, so keep hardware drivers off.
         'enable_camera': sim_switch(lc['sim'], 'false', lc['enable_camera']),
+        'enable_front_camera': sim_switch(lc['sim'], 'false', lc['enable_front_camera']),
+        'enable_rear_camera':  sim_switch(lc['sim'], 'false', lc['enable_rear_camera']),
         'enable_ntrip': sim_switch(lc['sim'], 'false', lc['enable_ntrip']),
         'enable_radar': sim_switch(lc['sim'], 'false', lc['enable_radar']),
         'enable_radar_cost_grid': lc['enable_radar_cost_grid'],
         'enable_lidar_cost_grid': lc['enable_lidar_cost_grid'],
         'enable_inflation_cost_grid': lc['enable_inflation_cost_grid'],
         'enable_lidar_driver': sim_switch(lc['sim'], 'false', lc['enable_lidar_driver']),
-        'enable_imu': sim_switch(lc['sim'], 'false', lc['enable_imu']),
+        'enable_imu':      sim_switch(lc['sim'], 'false', lc['enable_imu']),
+        'imu_model':       lc['imu_model'],
         'enable_gnss': sim_switch(lc['sim'], 'false', lc['enable_gnss']),
         'camera_device_path': lc['camera_device_path'],
         # HH_260527: Removed unused pass-through args

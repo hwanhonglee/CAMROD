@@ -192,6 +192,11 @@ bringup:
 
   sensing:
     enable_camera: true
+    # HH_260528: Per-camera enable flags for dual econ camera setup.
+    #   enable_front_camera: true  → start camera_front_publisher_node (GPU VPI pipeline)
+    #   enable_rear_camera:  true  → start camera_rear_publisher_node  (CPU OpenCV pipeline)
+    enable_front_camera: true
+    enable_rear_camera: true
     enable_radar: true
     enable_radar_cost_grid: true
     enable_lidar_cost_grid: true
@@ -202,7 +207,7 @@ bringup:
     enable_ntrip: true
     # By default, use internal config defaults declared by sensing launch files.
     lidar_preprocess_param_file: sensing/lidar/preprocessor.yaml
-    camera_params_file: __module_default__
+    camera_params_file: sensing/camera/camera_params.yaml
     camera_device_path: /dev/video0
     imu_converter_param_file: sensing/imu/platform_velocity_converter.yaml
     radar_sensor_param_file: sensing/radar/sen0592_radar.yaml
@@ -211,8 +216,11 @@ bringup:
     inflation_cost_grid_param_file: sensing/inflation_cost_grid.yaml
     gnss_param_file: sensing/gnss/zed_f9p_rover.yaml
     ntrip_param_file: sensing/gnss/ntrip_client.yaml
-    cv7_param_file: sensing/imu/microstrain_cv7.yaml
-    gq7_param_file: __module_default__
+    # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
+    #   imu_model: cv7  → MicroStrain CV7-AHRS (direct node, respawn)
+    #   imu_model: gq7  → MicroStrain GQ7 (microstrain_launch.py + optional NTRIP)
+    imu_model: cv7
+    imu_param_file: __module_default__
     vanjee_config_path: sensing/lidar/vanjee/config.yaml
 
   platform:
