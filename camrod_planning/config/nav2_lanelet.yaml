@@ -196,6 +196,8 @@ local_costmap:
         source_topic: "/map/cost_grid/lanelet"
         lethal_threshold: 100
         unknown_value: 255
+        # HH_260528: Keep strict startup for base lanelet mask (must wait for map grid).
+        start_current: false
 
       lidar_obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -274,6 +276,8 @@ global_costmap:
         source_topic: "/map/cost_grid/lanelet"
         lethal_threshold: 100
         unknown_value: 255
+        # HH_260528: Keep strict startup for base lanelet mask (must wait for map grid).
+        start_current: false
 
       lidar_obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"

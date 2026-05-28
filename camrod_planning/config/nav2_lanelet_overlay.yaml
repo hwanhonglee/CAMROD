@@ -44,6 +44,8 @@ local_costmap:
         # Cells outside the 12m grid window treated as free.
         unknown_value: 0
         write_unknown: false
+        # HH_260528: Avoid local-costmap cold-start waits before first merged grid arrives.
+        start_current: true
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -62,6 +64,8 @@ global_costmap:
         # Write unknown for base lanelet mask so non-lanelet cells
         # remain non-traversable in master costmap.
         write_unknown: true
+        # HH_260528: Base lanelet layer stays strict; wait for first map cost grid.
+        start_current: false
 
       # Do not inject /planning/cost_grid/global_path into global planner master.
       # Reason: this creates a circular dependency
@@ -75,6 +79,8 @@ global_costmap:
         unknown_value: 0
         # Keep no-data cells from clearing base lanelet costs.
         write_unknown: false
+        # HH_260528: Sensor layer can start current and apply costs once first grid arrives.
+        start_current: true
 
       radar_cost_layer:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
@@ -83,6 +89,8 @@ global_costmap:
         unknown_value: 0
         # Keep no-data cells from clearing base lanelet costs.
         write_unknown: false
+        # HH_260528: Sensor layer can start current and apply costs once first grid arrives.
+        start_current: true
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"

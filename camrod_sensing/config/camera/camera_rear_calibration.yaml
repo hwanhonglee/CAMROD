@@ -1,0 +1,29 @@
+# Rear camera (econ_rear) intrinsic calibration.
+# Calibrated with plumb_bob (radial + tangential) distortion model.
+# Loaded by camera_rear_publisher_node via camera_info_url parameter.
+image_width: 1920
+image_height: 1080
+camera_name: narrow_stereo
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [958.319060, 0.0,        976.067310,
+         0.0,        968.536209, 631.750619,
+         0.0,        0.0,        1.0]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.342576, 0.089276, -0.013731, -0.002663, 0.0]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0,
+         0.0, 1.0, 0.0,
+         0.0, 0.0, 1.0]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [683.461331, 0.0,        963.670514, 0.0,
+         0.0,        849.249927, 640.152540, 0.0,
+         0.0,        0.0,        1.0,        0.0]

@@ -63,6 +63,9 @@ def generate_launch_description():
                 namespace=LaunchConfiguration("module_namespace"),
                 output="screen",
                 parameters=[LaunchConfiguration("ekf_params_file")],
+                # HH_260528: suppress verbose INFO logs from robot_localization
+                # (e.g. "Received set_pose request" printed on every GNSS-reattach cycle).
+                ros_arguments=["--log-level", "localization.ekf_filter:=warn"],
                 # HH_260527: Feed pose_selector primary input directly from EKF output.
                 remappings=[
                     ("odometry/filtered", "/localization/primary/odometry"),

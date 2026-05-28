@@ -75,7 +75,6 @@ camrod_sensing_camera:
     width: 1920
     height: 1080
 
-    # camera_info_url: path to ROS-format calibration YAML (file:///path/to/cal.yaml).
-    # Leave empty to use auto-generated defaults (no distortion, focal length = width).
-    # HH_260528: TODO — calibrate rear camera; set path when calibration file is ready.
-    camera_info_url: ""
+    # HH_260528: Rear camera calibration (plumb_bob, 1920x1080).
+    # Calibration data provided by hardware team; loaded on node startup.
+    camera_info_url: "package://camrod_sensing/config/camera/camera_rear_calibration.yaml"

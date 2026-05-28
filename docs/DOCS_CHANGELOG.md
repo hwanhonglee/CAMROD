@@ -1,7 +1,38 @@
 # Documentation Changelog
 
-Tracks changes to CAMROD documentation (READMEs, style guides, templates).  
+Tracks changes to CAMROD documentation (READMEs, style guides, templates).
 For code changes see git log and release tags.
+
+---
+
+## [1.11-docs] — 2026-05-28 (HH_260528)
+
+### Changed — package READMEs
+
+| Package | What changed |
+|---------|-------------|
+| `camrod_sensing` | Dual econ camera architecture (front: GPU/VPI, rear: CPU/GStreamer); `imu_mode` → `imu_model` rename; updated topic list and launch args |
+| `camrod_docking` | Full Korean → English translation; Camera TF ownership moved to `camrod_sensor_kit`; new frame names `camera_front_link`/`camera_rear_link` |
+| `camrod_sensor_kit` | TF diagram updated with `camera_front_link` and `camera_rear_link` frames |
+| `camrod_platform` | Added `platform_type`, `ranger_bridge_enable`, `sensor_kit_bridge_enable` launch args |
+| `camrod_bringup` | Updated sensing config filename; added per-camera enable flags; platform args |
+
+### Changed — docs/
+
+- `docs/archive/TODO_BRINGUP_SUMMARY.md` — updated topic paths and node names to match HH_260528 state
+- `docs/archive/TODO_MODULE_RUNTIME_FLOW.md` — sensing section updated for dual camera and unified IMU
+
+### Added — code (reflected in docs)
+
+- `camrod_sensing/config/camera/camera_rear_calibration.yaml` — rear camera intrinsics (plumb_bob, 1920×1080)
+- `camrod_bringup/config/sensing/camera/camera_params.yaml` — bringup-level deployment override for both cameras
+
+### Deleted — code (reflected in docs)
+
+- `camrod_sensing/launch/imu_cv7.launch.py` — replaced by unified `imu.launch.py`
+- `camrod_sensing/launch/imu_gq7_ntrip.launch.py` — replaced by unified `imu.launch.py`
+- `camrod_sensing/src/camera_publisher_node.cpp` — renamed to `camera_front_publisher_node.cpp`
+- All `*copy_org*`, `*copy_750*`, `*copy_722*` backup files across sensing and bringup
 
 ---
 
@@ -11,7 +42,7 @@ For code changes see git log and release tags.
 - `docs/templates/README_STYLE_GUIDE.md` — canonical 12-section README structure, Mermaid legend, Interface Contract column rules, Key Behavior block format
 - `docs/templates/PACKAGE_README_TEMPLATE.md` — copy-paste skeleton for new package READMEs
 - `docs/DOCS_CHANGELOG.md` — this file
-- `camrod_parking/README.md` — new package documentation for AprilTag dock detection + opennav_docking
+- `camrod_parking/README.md` → renamed to `camrod_docking/README.md` with architecture update
 - Root `README.md` — Documentation Map table, Hardware & Software Requirements, Docker section, First Run Guide, Glossary, versioning table
 - All package READMEs — stateDiagram-v2 and sequenceDiagram blocks for key behaviors
 
@@ -20,11 +51,6 @@ For code changes see git log and release tags.
 - Topic tables expanded with Required / Rate / Meaning columns (Interface Contract format)
 - Architecture diagrams split into Context (graph LR) + Runtime (graph TD) where applicable
 - `PARAMETER_NAMING_STANDARD.md` — added §6 Quick Reference Cheatsheet, §7 Writing New Configs, §8 Per-Package Canonical Keys Index, §9 Related Docs
-
-### Notes
-- Legacy `*_sec` param aliases remain accepted at runtime (see `PARAMETER_NAMING_STANDARD.md §5`)
-- `<!-- TODO: verify -->` comments mark values that need field-confirmation
-- `camrod_parking` diagnostics checker not yet implemented (tracked with TODO in `camrod_system/README.md`)
 
 ---
 

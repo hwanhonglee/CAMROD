@@ -37,6 +37,7 @@ private:
   unsigned char lethal_threshold_{65};
   unsigned char unknown_value_{nav2_costmap_2d::NO_INFORMATION};
   bool write_unknown_{false};
+  bool start_current_{false};
 
   avg_msgs::msg::OccupancyGrid::ConstSharedPtr latest_grid_;
   bool has_data_{false};

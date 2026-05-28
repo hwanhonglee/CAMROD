@@ -26,6 +26,10 @@ void LaneletCostLayer::onInitialize()
   // false: keep existing master values on unknown cells (safer for layered lanelet/path fusion).
   // true : write unknown_value into master on unknown cells.
   declareParameter("write_unknown", rclcpp::ParameterValue(false));
+  // HH_260528: Optional cold-start behavior.
+  // false: wait for first source grid before reporting layer current (strict mode).
+  // true : report current at startup and start applying data when first grid arrives.
+  declareParameter("start_current", rclcpp::ParameterValue(false));
 
   // 2026-01-29 21:09: Use standard ROS2 param separator (.) for layered params.
   node->get_parameter(name_ + ".source_topic", source_topic_);
@@ -39,6 +43,8 @@ void LaneletCostLayer::onInitialize()
   node->get_parameter(name_ + ".unknown_value", unknown_tmp);
   unknown_value_ = static_cast<unsigned char>(std::clamp(unknown_tmp, 0, 255));
   node->get_parameter(name_ + ".write_unknown", write_unknown_);
+  node->get_parameter(name_ + ".start_current", start_current_);
+  current_ = start_current_;
 
   // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
   RCLCPP_DEBUG(node->get_logger(), "lanelet_cost_layer subscribing %s", source_topic_.c_str());

@@ -196,6 +196,8 @@ local_costmap:
         lethal_threshold: 100
         unknown_value: 0
         write_unknown: false
+        # HH_260528: Avoid local-costmap cold-start waits before first merged grid arrives.
+        start_current: true
 
       # HH_260513: Perception fusion objects → dynamic obstacle marking in local costmap.
       # Topic /perception/fusion/objects published by camera+LiDAR fusion package.
@@ -277,6 +279,8 @@ global_costmap:
         source_topic: "/map/cost_grid/lanelet"
         lethal_threshold: 100
         unknown_value: 255
+        # HH_260528: Keep strict startup for base lanelet mask (must wait for map grid).
+        start_current: false
 
       # HH_260513: Perception fusion objects → dynamic obstacle marking in global costmap.
       # Enables Smac2D to replan around detected objects within lanelets.
