@@ -68,7 +68,7 @@ camrod_sensing_camera:
 # FQN: /sensing/camera/econ_rear/camera_rear_publisher
 # Param names match camera_rear_publisher_node (based on econ_camera_node):
 #   device (not device_path), width/height (not image_width/height),
-#   frame_id (not camera_frame_id), camera_info_url for calibration YAML.
+#   frame_id (not camera_frame_id).
 /sensing/camera/econ_rear/camera_rear_publisher:
   ros__parameters:
     frame_id: "camera_rear"
@@ -76,6 +76,21 @@ camrod_sensing_camera:
     width: 1920
     height: 1080
 
-    # HH_260528: Rear camera calibration (plumb_bob, 1920x1080).
-    # Calibration data provided by hardware team; loaded on node startup.
-    camera_info_url: "package://camrod_sensing/config/camera/camera_rear_calibration.yaml"
+    # HH_260601: replaced camera_info_url with inline calibration parameters.
+    # Calibrated (plumb_bob, 1920x1080). Provided by hardware team.
+    # K = [fx,  0, cx]
+    #     [ 0, fy, cy]
+    #     [ 0,  0,  1]
+    camera_matrix: [
+      958.319060, 0.0,        976.067310,
+      0.0,        968.536209, 631.750619,
+      0.0,        0.0,        1.0
+    ]
+    # plumb_bob: [k1, k2, t1, t2, k3]
+    distortion_coefficients: [-0.342576, 0.089276, -0.013731, -0.002663, 0.0]
+    rectification_matrix: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    projection_matrix: [
+      683.461331, 0.0,        963.670514, 0.0,
+      0.0,        849.249927, 640.152540, 0.0,
+      0.0,        0.0,        1.0,        0.0
+    ]

@@ -121,9 +121,8 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
     )
 
     # HH_260528: Rear camera publisher — econ_camera_node (OpenCV + GStreamer, no GPU).
-    # Uses cv_bridge for image message conversion and yaml-cpp for calibration loading.
+    # HH_260601: removed yaml-cpp dependency; calibration now loaded from ROS parameters.
     find_package(cv_bridge REQUIRED)
-    find_package(yaml-cpp REQUIRED)
 
     add_executable(camera_rear_publisher_node src/camera_rear_publisher_node.cpp)
     ament_target_dependencies(
@@ -136,7 +135,6 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
     target_link_libraries(
       camera_rear_publisher_node
       ${OpenCV_LIBRARIES}
-      yaml-cpp
     )
 
     list(APPEND SENSING_NODE_TARGETS camera_rear_publisher_node)

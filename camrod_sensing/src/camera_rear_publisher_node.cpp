@@ -3,6 +3,10 @@
 // Uses OpenCV GStreamer pipeline + CPU JPEG encoding (no GPU dependency).
 // Publishes image_raw (uncompressed) required by Isaac ROS AprilTag in docking.
 //
+// HH_260601: replace camera_info_url file loading with inline ROS parameter calibration
+//            (camera_matrix, distortion_coefficients, rectification_matrix, projection_matrix).
+//            Removed yaml-cpp and fstream dependencies.
+//
 // Publishes:
 //   ~/image_raw            (sensor_msgs/Image,           on demand)
 //   ~/image_raw/compressed (sensor_msgs/CompressedImage, always — lightweight JPEG)
@@ -10,7 +14,6 @@
 
 #include <atomic>
 #include <condition_variable>
-#include <fstream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -20,7 +23,6 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
-#include <yaml-cpp/yaml.h>
 
 #include "cv_bridge/cv_bridge.h"
 #include "rclcpp/rclcpp.hpp"
@@ -41,7 +43,10 @@ public:
     declare_parameter("fps",             30);
     declare_parameter("jpeg_quality",    80);
     declare_parameter("frame_id",        std::string("camera_rear"));
-    declare_parameter("camera_info_url", std::string(""));
+    declare_parameter("camera_matrix",           std::vector<double>{});
+    declare_parameter("distortion_coefficients", std::vector<double>{});
+    declare_parameter("rectification_matrix",    std::vector<double>{});
+    declare_parameter("projection_matrix",       std::vector<double>{});
 
     device_       = get_parameter("device").as_string();
     cap_w_        = get_parameter("width").as_int();
@@ -53,7 +58,7 @@ public:
     fps_          = get_parameter("fps").as_int();
     jpeg_quality_ = get_parameter("jpeg_quality").as_int();
     frame_id_     = get_parameter("frame_id").as_string();
-    load_calibration(get_parameter("camera_info_url").as_string());
+    load_calibration_from_params();
 
     image_pub_      = create_publisher<sensor_msgs::msg::Image>("~/image_raw", 2);
     compressed_pub_ = create_publisher<sensor_msgs::msg::CompressedImage>(
@@ -210,41 +215,40 @@ private:
     return ci;
   }
 
-  void load_calibration(const std::string & url)
+  void load_calibration_from_params()
   {
-    std::string path = url;
-    if (path.rfind("file://", 0) == 0) path = path.substr(7);
-    if (path.empty()) return;
+    auto km = get_parameter("camera_matrix").as_double_array();
+    auto dm = get_parameter("distortion_coefficients").as_double_array();
+    auto rm = get_parameter("rectification_matrix").as_double_array();
+    auto pm = get_parameter("projection_matrix").as_double_array();
 
-    std::ifstream f(path);
-    if (!f.good()) {
-      RCLCPP_WARN(get_logger(), "Calibration file not found: %s", path.c_str());
+    if (km.size() != 9) {
+      RCLCPP_WARN(get_logger(), "camera_matrix must have 9 elements — using identity fallback");
       return;
     }
-    try {
-      YAML::Node root = YAML::LoadFile(path);
-      calib_w_ = root["image_width"].as<int>();
-      calib_h_ = root["image_height"].as<int>();
+    std::copy(km.begin(), km.end(), k_.begin());
+    d_ = dm;
 
-      auto fill_arr = [](const YAML::Node & n, auto & arr) {
-        size_t i = 0;
-        for (const auto & e : n["data"]) { if (i < arr.size()) arr[i++] = e.as<double>(); }
-      };
-      auto fill_vec = [](const YAML::Node & n, std::vector<double> & v) {
-        v.clear();
-        for (const auto & e : n["data"]) v.push_back(e.as<double>());
-      };
-
-      fill_arr(root["camera_matrix"],            k_);
-      fill_vec(root["distortion_coefficients"],  d_);
-      fill_arr(root["rectification_matrix"],     r_);
-      fill_arr(root["projection_matrix"],        p_);
-      calib_loaded_ = true;
-      RCLCPP_INFO(get_logger(), "Calibration loaded: %s  (%dx%d)",
-        path.c_str(), calib_w_, calib_h_);
-    } catch (const std::exception & e) {
-      RCLCPP_ERROR(get_logger(), "Calibration parse error: %s", e.what());
+    if (rm.size() == 9) {
+      std::copy(rm.begin(), rm.end(), r_.begin());
+    } else {
+      r_.fill(0.0);
+      r_[0] = r_[4] = r_[8] = 1.0;
     }
+
+    if (pm.size() == 12) {
+      std::copy(pm.begin(), pm.end(), p_.begin());
+    } else {
+      p_.fill(0.0);
+      p_[0] = k_[0]; p_[2] = k_[2];
+      p_[5] = k_[4]; p_[6] = k_[5];
+      p_[10] = 1.0;
+    }
+
+    calib_w_      = cap_w_;
+    calib_h_      = cap_h_;
+    calib_loaded_ = true;
+    RCLCPP_INFO(get_logger(), "Calibration loaded from ROS parameters (%dx%d)", calib_w_, calib_h_);
   }
 
   std::string device_, frame_id_;
