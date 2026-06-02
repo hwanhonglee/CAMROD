@@ -10,9 +10,11 @@
 #   /sensing/camera/econ_rear/image_raw/compressed
 #   /sensing/camera/econ_rear/camera_info
 #
-# Parameters: config/camera/camera_params.yaml
-#   camrod_sensing_camera section controls which cameras are active (read at launch time).
-#   Per-node sections keyed by FQN override the /** defaults.
+# Parameters:
+#   config/camera/camera_params.yaml        — ROS2 node params (intrinsics, device path, etc.)
+#   config/camera/camera_launch_config.yaml — launch-only enable flags (HJ_260529)
+#     camrod_sensing_camera section was moved out of camera_params.yaml because
+#     the non-namespace top-level key caused rcl params parser to SIGABRT the node.
 #
 # TF frames (from camrod_sensor_kit robot_state_publisher):
 #   sensor_kit_base_link → camera_front_link → camera_front
@@ -24,7 +26,7 @@ import yaml as _yaml
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import (
-    DeclareLaunchArgument, ExecuteProcess, OpaqueFunction, SetLaunchConfiguration,
+    DeclareLaunchArgument, OpaqueFunction, SetLaunchConfiguration,
 )
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
@@ -32,14 +34,16 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def _resolve_camera_enables(context, *args, **kwargs):
-    """Read enable_front/rear from camera_params.yaml unless already set by caller (bringup)."""
+    """Read enable_front/rear from camera_launch_config.yaml unless already set by caller."""
     front_raw = context.perform_substitution(LaunchConfiguration('enable_front_camera'))
     rear_raw  = context.perform_substitution(LaunchConfiguration('enable_rear_camera'))
 
     if front_raw == '__yaml__' or rear_raw == '__yaml__':
-        param_file = context.perform_substitution(LaunchConfiguration('camera_params_file'))
+        # HJ_260529: read from camera_launch_config.yaml (separate from ROS2 params file)
+        launch_config_file = context.perform_substitution(
+            LaunchConfiguration('camera_launch_config_file'))
         try:
-            with open(param_file, 'r', encoding='utf-8') as f:
+            with open(launch_config_file, 'r', encoding='utf-8') as f:
                 data = _yaml.safe_load(f) or {}
             cfg = data.get('camrod_sensing_camera', {})
         except Exception:
@@ -59,9 +63,9 @@ def _resolve_camera_enables(context, *args, **kwargs):
 def generate_launch_description():
     pkg_dir = get_package_share_directory('camrod_sensing')
 
-    default_config_file = os.path.join(pkg_dir, 'config', 'camera', 'camera_params.yaml')
-    cyclonedds_config   = os.path.join(pkg_dir, 'config', 'camera', 'cyclonedds.xml')
-    roudi_config        = os.path.join(pkg_dir, 'config', 'camera', 'roudi_config.toml')
+    default_config_file       = os.path.join(pkg_dir, 'config', 'camera', 'camera_params.yaml')
+    default_launch_config     = os.path.join(pkg_dir, 'config', 'camera', 'camera_launch_config.yaml')
+    cyclonedds_config         = os.path.join(pkg_dir, 'config', 'camera', 'cyclonedds.xml')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -69,30 +73,30 @@ def generate_launch_description():
             default_value=default_config_file,
             description='Camera parameter YAML (intrinsics + device paths for front + rear)',
         ),
-        # '__yaml__' sentinel: camera.launch.py reads value from camera_params.yaml.
+        # HJ_260529: separate launch-only config (camera enable flags)
+        DeclareLaunchArgument(
+            'camera_launch_config_file',
+            default_value=default_launch_config,
+            description='Launch config YAML with camera enable flags (not passed to nodes)',
+        ),
+        # '__yaml__' sentinel: reads value from camera_launch_config.yaml (HJ_260529).
         # When called from bringup/sensing.launch.py, an explicit 'true'/'false' is passed
         # (overriding the yaml), so standalone and bringup behave consistently.
         DeclareLaunchArgument(
             'enable_front_camera',
             default_value='__yaml__',
-            description='Enable front camera node. Default: read from camera_params.yaml.',
+            description='Enable front camera node. Default: read from camera_launch_config.yaml.',
         ),
         DeclareLaunchArgument(
             'enable_rear_camera',
             default_value='__yaml__',
-            description='Enable rear camera node. Default: read from camera_params.yaml.',
+            description='Enable rear camera node. Default: read from camera_launch_config.yaml.',
         ),
 
         OpaqueFunction(function=_resolve_camera_enables),
 
-        # Iceoryx shared memory daemon — required by camera_front_publisher_node (VPI/NvJPEG).
-        # camera_rear_publisher_node is CPU-based and does not use iceoryx.
-        ExecuteProcess(
-            cmd=['iox-roudi', '-l', 'warning', '-c', roudi_config],
-            output='screen',
-            name='iox-roudi',
-            condition=IfCondition(LaunchConfiguration('_front_camera_eff')),
-        ),
+        # HJ_260529: iox-roudi removed — CycloneDDS SharedMemory is disabled and
+        # camera_front_publisher_node does not use iceoryx APIs directly.
 
         # ── Front camera node ───────────────────────────────────────────────────
         # FQN: /sensing/camera/econ_front/camera_front_publisher
@@ -111,6 +115,28 @@ def generate_launch_description():
             ],
             additional_env={'CYCLONEDDS_URI': cyclonedds_config},
         ),
+
+        # HJ_260529: compressed→raw bridge for yolov9mit and obstacle_fusion.
+        # Both nodes require sensor_msgs/Image (raw). camera_front_publisher_node
+        # only outputs CompressedImage, so republish to processed/image.
+Node(
+    package='image_transport',
+    executable='republish',
+    name='front_camera_republisher',
+    namespace='camera',
+    output='screen',
+    condition=IfCondition(LaunchConfiguration('_front_camera_eff')),
+    arguments=['compressed', 'raw'],
+    remappings=[
+        ('in/compressed', 'econ_front/image_rect/compressed'),
+        ('out',           'processed/image'),
+    ],
+    parameters=[{
+        'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.reliability': 'best_effort',
+        'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.history': 'keep_last',
+        'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.depth': 5,
+    }],
+),
 
         # ── Rear camera node ────────────────────────────────────────────────────
         # FQN: /sensing/camera/econ_rear/camera_rear_publisher

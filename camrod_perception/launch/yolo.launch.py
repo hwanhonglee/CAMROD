@@ -42,7 +42,7 @@ def generate_launch_description():
                 {
                     'model_path':       LaunchConfiguration('yolo_model_path'),
                     'class_label_path': LaunchConfiguration('yolo_labels_path'),
-                    'transport_hint':   'raw',
+                    'transport_hint':   'compressed',  # HJ_260529: econ_front publishes CompressedImage
                 },
             ],
             condition=IfCondition(LaunchConfiguration('enable_yolo')),

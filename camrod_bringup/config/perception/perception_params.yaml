@@ -11,8 +11,8 @@
     # HH_260522: Unified fusion filter selector.
     #   camera_bbox/enabled/on: camera-detection-gated point cloud
     #   pass_through/disabled/off/none: no camera gating (LiDAR-only passthrough)
-    fusion_filter_mode: "camera_bbox"
-    keep_lidar_when_no_detections: true                           # If true, passes through LiDAR cloud when detections are empty.
+    # HJ_260529: replace fusion_filter_mode with lidar_min_forward_m; points closer than this [m] are ignored.
+    lidar_min_forward_m: 1.0
     # HH_260109 Perception obstacle fusion (camera detections + LiDAR).
 
 /perception/obstacle_lidar:

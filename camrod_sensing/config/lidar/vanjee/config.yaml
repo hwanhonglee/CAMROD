@@ -28,8 +28,8 @@ lidar:
       # angle_path_ver/hor are resolved at launch time from vanjee_lidar_sdk share directory.
       # See lidar_driver.launch.py — do not edit paths here directly.
       config_from_file: true
-      angle_path_ver: ""
-      angle_path_hor: ""
+      angle_path_ver: "/home/nvidia/camrod_peception_val_ws/install/vanjee_lidar_sdk/share/vanjee_lidar_sdk/param/Vanjee_750C_VA.csv"
+      angle_path_hor: "/home/nvidia/camrod_peception_val_ws/install/vanjee_lidar_sdk/share/vanjee_lidar_sdk/param/Vanjee_750C_HA.csv"
       imu_param_path:
       dense_points: false
       ts_first_point: true

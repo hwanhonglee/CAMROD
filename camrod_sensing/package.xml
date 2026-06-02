@@ -29,6 +29,9 @@
   <depend>yaml-cpp</depend>
   <build_depend>libpcl-all-dev</build_depend>
   <exec_depend>libpcl-all-dev</exec_depend>
+  <!-- HJ_260529: optional LiDAR driver — declared so packages-up-to pulls it in automatically -->
+  <exec_depend>vanjee_lidar_sdk</exec_depend>
+  <exec_depend>vanjee_lidar_msg</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

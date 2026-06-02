@@ -34,8 +34,8 @@
     min_confidence: 0.5
     min_iou: 0.5
     imshow: false
-    input_image_topic: "/sensing/camera/processed/image"
-    transport_hint: "raw"
+    input_image_topic: "/sensing/camera/econ_front/image_rect"  # HJ_260529
+    transport_hint: "compressed"
     output_image_topic: "/perception/camera/yolo_image"
     output_boundingbox_topic: "/perception/camera/detections_2d"
 
@@ -44,8 +44,8 @@
     # Topics
     input_cloud_topic:   "/sensing/lidar/points_filtered"
     detection_topic:     "/perception/camera/detections_2d"
-    camera_info_topic:   "/sensing/camera/processed/camera_info"
-    image_topic:         "/sensing/camera/processed/image"
+    camera_info_topic:   "/sensing/camera/econ_front/camera_info"  # HJ_260529
+    image_topic:         "/sensing/camera/econ_front/image_rect/compressed"
     bbox_topic:          "/perception/lidar/bboxes"
     output_topic:        "/perception/obstacles"
     out_image_topic:     "/perception/camera_lidar/image"
@@ -63,6 +63,8 @@
     extrinsic_x: 0.0
     extrinsic_y: 0.0
     extrinsic_z: -0.075   # camera is 7.5 cm below LiDAR
+    # HJ_260529: replace fusion_filter_mode with lidar_min_forward_m; points closer than this [m] are ignored.
+    lidar_min_forward_m: 1.0
     # Clustering / tracking
     n_closest:     5
     min_pts_in_bbox: 3
