@@ -1,0 +1,9 @@
+/ntrip_client:
+  ros__parameters:
+    use_https: false
+    host: "gnssdata.or.kr"
+    port: 2101
+    mountpoint: "CNJU-RTCM32"
+    username: "hwanhong57@gmail.com"
+    password: "gnss"
+    maxage_conn: 30
