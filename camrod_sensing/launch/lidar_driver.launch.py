@@ -85,8 +85,8 @@ def generate_launch_description():
                 {"config_path": vanjee_config_path}
             ],
             remappings=[
-                ("/vanjee_points722", "points_raw"),
-                ("vanjee_points722", "points_raw"),
+                ("/vanjee_points750", "points_raw"),
+                ("vanjee_points750", "points_raw"),
 
                 ("/vanjee_lidar_imu_packets", "imu_packets"),
                 ("vanjee_lidar_imu_packets", "imu_packets"),
@@ -115,7 +115,7 @@ def generate_launch_description():
             ("/ground_segmentation/input_pointcloud", "/sensing/lidar/vanjee/points_raw"),
             ("/ground_segmentation/obstacle_points",  "/sensing/lidar/points_filtered"),
         ],
-        parameters=[sensing_param_file, ground_seg_param_file],
+        parameters=[ground_seg_param_file],
     )
 
     if has_vanjee_driver_pkg:
