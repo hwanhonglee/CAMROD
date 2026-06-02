@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # HH_260421: UI backend simplified to direct destination-driven engage/goal dispatch.
 # HH_260520: Migrated HTTP server to FastAPI+uvicorn with WebSocket support.
-#            Added /battery_percentage and /AMR_arrive subscriptions.
+#            Added /battery_percentage and /AMR_service_state sub/pub.
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Set
 import rclpy
 import yaml
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
+from avg_msgs.msg import AvgAmrServiceState
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -89,8 +90,8 @@ class UiBackendNode(Node):
         self.battery_topic = str(
             self.declare_parameter("battery_topic", "/battery_percentage").value
         )
-        self.amr_arrive_topic = str(
-            self.declare_parameter("amr_arrive_topic", "/AMR_arrive").value
+        self.amr_service_state_topic = str(
+            self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
         )
         self.publish_goal_key = bool(self.declare_parameter("publish_goal_key", True).value)
         self.publish_goal_pose = bool(self.declare_parameter("publish_goal_pose", True).value)
@@ -148,10 +149,10 @@ class UiBackendNode(Node):
             self._on_battery,
             10,
         )
-        self.sub_amr_arrive = self.create_subscription(
-            Bool,
-            self.amr_arrive_topic,
-            self._on_amr_arrive,
+        self.sub_amr_service_state = self.create_subscription(
+            AvgAmrServiceState,
+            self.amr_service_state_topic,
+            self._on_amr_service_state,
             10,
         )
 
@@ -160,6 +161,7 @@ class UiBackendNode(Node):
         self.pub_engage = self.create_publisher(Bool, self.planning_engage_topic, 10)
         self.pub_goal_key = self.create_publisher(String, self.planning_goal_key_topic, 10)
         self.pub_goal_pose = self.create_publisher(PoseStamped, self.planning_goal_pose_topic, 10)
+        self.pub_amr_service_state = self.create_publisher(AvgAmrServiceState, self.amr_service_state_topic, 10)
 
         self._server_thread: Optional[threading.Thread] = None
         if self.enable_http_server:
@@ -348,16 +350,38 @@ class UiBackendNode(Node):
             self._state.battery_percentage = pct
         self._schedule_broadcast({"battery": pct})
 
-    def _on_amr_arrive(self, msg: Bool) -> None:
-        if not msg.data:
-            return
-        with self._lock:
-            site = self._state.destination.get("site", "")
-            self._state.ws_site_states = {s: False for s in self.site_names}
-        if site:
-            self._schedule_broadcast({"arrived": site})
-            self._schedule_broadcast({"site": site, "state": False})
-        self._publish_engage(False, source="amr_arrive")
+    def _on_amr_service_state(self, msg: AvgAmrServiceState) -> None:
+        state = int(msg.state)
+        self.get_logger().info(
+            f"AMR service state received: {state} ({msg.description})"
+        )
+        if state == AvgAmrServiceState.SITE_ARRIVED:
+            with self._lock:
+                site = self._state.destination.get("site", "")
+            if site:
+                self._schedule_broadcast({"arrived": site})
+            self._publish_engage(False, source="amr_service_state:SITE_ARRIVED")
+        elif state == AvgAmrServiceState.DROP_ZONE_WAIT:
+            self._schedule_broadcast({"amr_state": 0})
+        elif state == AvgAmrServiceState.GUEST_RECALL_SERVICE:
+            # HJ_260601: Notify robot UI that guest requested a recall.
+            self._schedule_broadcast({"guest_recall": True})
+
+    def _publish_amr_service_state(self, state: int, source: str) -> None:
+        desc_map = {
+            AvgAmrServiceState.DROP_ZONE_WAIT:         "Drop Zone 대기 중",
+            AvgAmrServiceState.MOVING_TO_SITE:         "Drop Zone → Site 이동 중",
+            AvgAmrServiceState.SITE_ARRIVED:           "Site 도착",
+            AvgAmrServiceState.RETURNING_TO_DROP_ZONE: "Site → Drop Zone 복귀 중",
+        }
+        msg = AvgAmrServiceState()
+        msg.state = state
+        msg.description = desc_map.get(state, f"unknown state {state}")
+        self.pub_amr_service_state.publish(msg)
+        self.get_logger().info(
+            f"AMR service state ({source}) -> {self.amr_service_state_topic}: "
+            f"{state} ({msg.description})"
+        )
 
     def _on_destination_command(self, msg: String) -> None:
         parsed = self._parse_destination_payload(msg.data)
@@ -508,6 +532,7 @@ class UiBackendNode(Node):
                 "message": "run=false -> engage off, goal dispatch skipped",
             }
 
+        self._publish_amr_service_state(AvgAmrServiceState.MOVING_TO_SITE, source=f"{source}:start")
         goal_result = self._publish_goal_for_site(site=site, source=source)
         return {
             "site": site,
@@ -609,12 +634,13 @@ class UiBackendNode(Node):
             return realdir(self.frontend_dir)
         try:
             share = Path(get_package_share_directory("camrod_ui"))
-            candidate = share / "assets" / "frontend" / "build"
+            candidate = share / "camrod_ui_robot" / "assets" / "frontend" / "build"
             if candidate.exists():
                 return realdir(candidate)
         except PackageNotFoundError:
             pass
-        source_candidate = Path(__file__).resolve().parents[2] / "assets" / "frontend" / "build"
+        # parents[3] = package root (runtime/python/camrod_ui → runtime/python → runtime → pkg)
+        source_candidate = Path(__file__).resolve().parents[3] / "camrod_ui_robot" / "assets" / "frontend" / "build"
         if source_candidate.exists():
             return realdir(source_candidate)
         return None
@@ -680,6 +706,15 @@ class UiBackendNode(Node):
                         new_engage = bool(payload["engage"])
                         node._publish_engage(new_engage, source="ws_engage")
                         await node._broadcast({"engage": new_engage})
+
+                    # {"usage_complete": true} — 이용 완료 버튼 → state=4 publish
+                    if payload.get("usage_complete"):
+                        node._publish_amr_service_state(AvgAmrServiceState.RETURNING_TO_DROP_ZONE, source="ws:usage_complete")
+                        node._publish_engage(False, source="ws:usage_complete")
+                        with node._lock:
+                            node._state.ws_site_states = {s: False for s in node.site_names}
+                        await node._broadcast({"states": {s: False for s in node.site_names}})
+                        await node._broadcast({"engage": False})
 
             except WebSocketDisconnect:
                 pass

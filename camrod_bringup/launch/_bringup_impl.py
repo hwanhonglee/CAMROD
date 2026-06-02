@@ -770,6 +770,7 @@ def generate_launch_description():
         ('imu_param_file',  cfg_get(launch_cfg, 'sensing/imu_param_file',  '__module_default__'), 'IMU param file path (or __module_default__)'),
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
         ('enable_ntrip', cfg_get(launch_cfg, 'sensing/enable_ntrip', False), 'Enable GNSS NTRIP client'),
+        ('gnss_driver', cfg_get(launch_cfg, 'sensing/gnss_driver', 'ublox_dgnss'), 'GNSS driver: ublox | ublox_dgnss'),  # HJ_260528
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
         ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),
         ('perception_mode', cfg_get(launch_cfg, 'perception/mode', 'auto'), 'Perception mode: auto|lidar_only|camera_lidar'),
@@ -977,6 +978,7 @@ def generate_launch_description():
         'enable_imu':      sim_switch(lc['sim'], 'false', lc['enable_imu']),
         'imu_model':       lc['imu_model'],
         'enable_gnss': sim_switch(lc['sim'], 'false', lc['enable_gnss']),
+        'gnss_driver': lc['gnss_driver'],  # HJ_260528
         'camera_device_path': lc['camera_device_path'],
         # HH_260527: Removed unused pass-through args
         # (system_namespace, gnss_navsatfix_topic, enable_module_validator).

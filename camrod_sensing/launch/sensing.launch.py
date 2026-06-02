@@ -14,7 +14,7 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression  # HJ_260602: add PythonExpression for gnss_driver condition
 from launch_ros.actions import Node, PushRosNamespace
 
 
@@ -57,9 +57,10 @@ def _resolve_camera_enable(context, *args, **kwargs):
 def generate_launch_description():
     sensing_share = get_package_share_directory("camrod_sensing")
 
-    camera_launch = os.path.join(sensing_share, "launch", "camera.launch.py")
-    gnss_launch   = os.path.join(sensing_share, "launch", "gnss.launch.py")
-    imu_launch    = os.path.join(sensing_share, "launch", "imu.launch.py")
+    camera_launch      = os.path.join(sensing_share, "launch", "camera.launch.py")
+    gnss_launch        = os.path.join(sensing_share, "launch", "gnss.launch.py")
+    gnss_dgnss_launch  = os.path.join(sensing_share, "launch", "gnss_ublox_dgnss.launch.py")  # HJ_260602: define missing gnss_dgnss_launch path
+    imu_launch         = os.path.join(sensing_share, "launch", "imu.launch.py")
     lidar_launch  = os.path.join(sensing_share, "launch", "lidar.launch.py")
     radar_launch  = os.path.join(sensing_share, "launch", "radar.launch.py")
 
@@ -69,7 +70,7 @@ def generate_launch_description():
         "ntrip_param_file":               os.path.join(sensing_share, "config", "gnss", "ntrip_client.yaml"),
         "imu_param_file":                 "__model_default__",
         "imu_converter_param_file":       os.path.join(sensing_share, "config", "imu", "platform_velocity_converter.yaml"),
-        "lidar_preprocess_param_file":    os.path.join(sensing_share, "config", "lidar", "preprocessor.yaml"),
+        "ground_seg_param_file":          os.path.join(sensing_share, "config", "lidar", "ground_seg_params.yaml"),
         "lidar_cost_grid_param_file":     os.path.join(sensing_share, "config", "lidar", "cost_grid.yaml"),
         "radar_sensor_param_file":        os.path.join(sensing_share, "config", "radar", "sen0592_radar.yaml"),
         "radar_cost_grid_param_file":     os.path.join(sensing_share, "config", "radar", "cost_grid.yaml"),
@@ -94,7 +95,15 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_lidar_cost_grid",      default_value="true"),
         DeclareLaunchArgument("enable_inflation_cost_grid",  default_value="true"),
         DeclareLaunchArgument("enable_vanjee_static_tf",     default_value="false"),
-        DeclareLaunchArgument("enable_ntrip",                default_value="true"),
+        ## HJ_260528
+        DeclareLaunchArgument("enable_ntrip", default_value="true"),
+        # HJ_260528: gnss_driver selects between ublox (single) and ublox_dgnss (dual antenna)
+        DeclareLaunchArgument(
+            "gnss_driver",
+            default_value="ublox_dgnss",
+            description="GNSS driver: ublox (single antenna) | ublox_dgnss (dual antenna)",
+        ),
+
         # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
         DeclareLaunchArgument("imu_model",                   default_value="cv7",
                               description="IMU model: cv7 | gq7"),
@@ -127,11 +136,25 @@ def generate_launch_description():
                  enable_rear_camera=LaunchConfiguration("enable_rear_camera"),
             ),
 
+            # HJ_260528: Conditionally launch ublox or ublox_dgnss based on gnss_driver argument
             _inc(gnss_launch,
                  "enable_ntrip",
-                 condition=IfCondition(LaunchConfiguration("enable_gnss")),
+                 condition=IfCondition(PythonExpression([
+                     '"', LaunchConfiguration("enable_gnss"), '" == "true"',
+                     ' and "', LaunchConfiguration("gnss_driver"), '" == "ublox"',
+                 ])),
                  ublox_param_file=LaunchConfiguration("gnss_param_file"),
                  ntrip_param_file=LaunchConfiguration("ntrip_param_file"),
+                 gnss_namespace=LaunchConfiguration("gnss_namespace"),
+                 rtcm_topic=LaunchConfiguration("gnss_rtcm_topic"),
+            ),
+
+            _inc(gnss_dgnss_launch,
+                 "enable_ntrip",
+                 condition=IfCondition(PythonExpression([
+                     '"', LaunchConfiguration("enable_gnss"), '" == "true"',
+                     ' and "', LaunchConfiguration("gnss_driver"), '" == "ublox_dgnss"',
+                 ])),
                  gnss_namespace=LaunchConfiguration("gnss_namespace"),
                  rtcm_topic=LaunchConfiguration("gnss_rtcm_topic"),
             ),
@@ -150,7 +173,7 @@ def generate_launch_description():
             ),
 
             _inc(lidar_launch,
-                 "lidar_preprocess_param_file",
+                 "ground_seg_param_file",
                  "lidar_cost_grid_param_file", "vanjee_config_path",
                  "enable_lidar_driver", "enable_lidar_cost_grid", "enable_vanjee_static_tf",
                  module_namespace="lidar",

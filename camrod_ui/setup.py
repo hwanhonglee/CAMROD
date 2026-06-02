@@ -1,4 +1,5 @@
 import os
+# HJ_260601: Added ui_guest_node entry point and guest_frontend assets.
 from setuptools import find_packages, setup
 
 package_name = "camrod_ui"
@@ -25,8 +26,13 @@ setup(
     data_files=[
         ("share/ament_index/resource_index/packages", [f"runtime/resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
-        (f"share/{package_name}/launch", ["launch/ui.launch.py"]),
-        *_collect_data_files("runtime/assets/frontend/build", f"share/{package_name}/assets/frontend/build"),
+        # Launch files install to share/camrod_ui/launch/ for bringup compatibility.
+        (f"share/{package_name}/launch", [
+            "camrod_ui_robot/launch/ui.launch.py",
+            "camrod_ui_guest/launch/ui_guest.launch.py",
+        ]),
+        *_collect_data_files("camrod_ui_robot/assets/frontend/build", f"share/{package_name}/camrod_ui_robot/assets/frontend/build"),
+        *_collect_data_files("camrod_ui_guest/assets/guest_frontend", f"share/{package_name}/camrod_ui_guest/assets/guest_frontend"),
     ],
     install_requires=["setuptools", "fastapi", "uvicorn[standard]"],
     zip_safe=True,
@@ -37,6 +43,7 @@ setup(
     entry_points={
         "console_scripts": [
             "ui_backend_node = camrod_ui.ui_backend_node:main",
+            "ui_guest_node = camrod_ui.ui_guest_node:main",
         ],
     },
 )

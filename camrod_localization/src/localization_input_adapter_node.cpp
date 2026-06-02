@@ -19,6 +19,7 @@
 #include <avg_msgs/msg/avg_localization_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
 
+#include <sensor_msgs/msg/imu.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 namespace
@@ -105,6 +106,11 @@ public:
   : Node("localization_input_adapter")
   {
     enable_navsat_to_pose_ = declare_parameter<bool>("enable_navsat_to_pose", true);
+    // HJ_260528: GNSS dual-antenna heading support
+    enable_gnss_heading_ = declare_parameter<bool>("enable_gnss_heading", false);
+    gnss_heading_topic_ = declare_parameter<std::string>(
+      "gnss_heading_topic", "/sensing/gnss/navheading");
+    enable_pose_cov_bridge_ = declare_parameter<bool>("enable_pose_cov_bridge", true);
     enable_odometry_to_pose_ = declare_parameter<bool>("enable_odometry_to_pose", true);
     enable_wheel_odometry_bridge_ = declare_parameter<bool>("enable_wheel_odometry_bridge", true);
 
@@ -233,15 +239,23 @@ public:
         navsat_topic_, rclcpp::SensorDataQoS(),
         std::bind(&LocalizationInputAdapterNode::onNavSatFix, this, _1));
 
+      // HJ_260528: Subscribe to GNSS heading topic when dual-antenna heading is enabled
+      if (enable_gnss_heading_) {
+        gnss_heading_sub_ = create_subscription<sensor_msgs::msg::Imu>(
+          gnss_heading_topic_, rclcpp::SensorDataQoS(),
+          std::bind(&LocalizationInputAdapterNode::onGnssHeading, this, _1));
+      }
+
+      if (!raw_pose_topic_.empty()) {
+        raw_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+          raw_pose_topic_, rclcpp::QoS(10),
+          std::bind(&LocalizationInputAdapterNode::onRawPose, this, _1));
+      }
+
       if (!utm_pose_topic_.empty()) {
         utm_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
           utm_pose_topic_, rclcpp::QoS(10),
           std::bind(&LocalizationInputAdapterNode::onUtmPose, this, _1));
-      }
-      if (!mgrs_pose_topic_.empty()) {
-        mgrs_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
-          mgrs_pose_topic_, rclcpp::QoS(10),
-          std::bind(&LocalizationInputAdapterNode::onMgrsPose, this, _1));
       }
     }
 
@@ -311,6 +325,19 @@ private:
     kFallback
   };
 
+  // HJ_260528: Cache orientation and covariance from GNSS heading (dual-antenna IMU msg)
+  void onGnssHeading(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
+  {
+    heading_x_ = msg->orientation.x;
+    heading_y_ = msg->orientation.y;
+    heading_z_ = msg->orientation.z;
+    heading_w_ = msg->orientation.w;
+    for (int i = 0; i < 9; ++i) {
+      heading_orientation_cov_[i] = msg->orientation_covariance[i];
+    }
+    has_heading_ = true;
+  }
+
   void onNavSatFix(const avg_msgs::msg::NavSatFix::ConstSharedPtr msg)
   {
     const double lat_rad = deg2rad(msg->latitude);
@@ -353,7 +380,15 @@ private:
     pose.header = msg->header;
     pose.header.frame_id = map_frame_id_;
     pose.pose.position = p;
-    pose.pose.orientation.w = 1.0;
+    // HJ_260528: Apply dual-antenna heading to pose orientation when available
+    if (enable_gnss_heading_ && has_heading_) {
+      pose.pose.orientation.x = heading_x_;
+      pose.pose.orientation.y = heading_y_;
+      pose.pose.orientation.z = heading_z_;
+      pose.pose.orientation.w = heading_w_;
+    } else {
+      pose.pose.orientation.w = 1.0;
+    }
 
     gnss_pose_pub_->publish(pose);
 
@@ -362,6 +397,16 @@ private:
       pose_cov.header = pose.header;
       pose_cov.pose.pose = pose.pose;
       pose_cov.pose.covariance = pose_covariance_;
+      
+      // HJ_260528: Fill orientation covariance block [3:6,3:6] from heading IMU covariance
+      if (enable_gnss_heading_ && has_heading_) {
+        for (int row = 0; row < 3; ++row) {
+          for (int col = 0; col < 3; ++col) {
+            pose_cov.pose.covariance[(3 + row) * 6 + (3 + col)] =
+              heading_orientation_cov_[row * 3 + col];
+          }
+        }
+      }
 
       if (navsat_covariance_source_ == "navsat" && msg->position_covariance_type != 0) {
         // HH_260415: Protect filter stability by applying minimum GNSS covariance floors.
@@ -439,6 +484,24 @@ private:
       offset_mgrs_northing_,
       offset_mgrs_alt_,
       "mgrs_pose_bridge");
+  }
+
+  void onRawPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  {
+    if (!enable_navsat_to_pose_) {
+      return;
+    }
+    avg_msgs::msg::PoseStamped out = *msg;
+    out.header.frame_id = map_frame_id_;
+    gnss_pose_pub_->publish(out);
+    if (publish_gnss_covariance_) {
+      avg_msgs::msg::PoseWithCovarianceStamped cov;
+      cov.header = out.header;
+      cov.pose.pose = out.pose;
+      cov.pose.covariance = pose_covariance_;
+      gnss_pose_cov_pub_->publish(cov);
+    }
+    publishLocalizationStatus("raw_pose_bridge", msg->header.stamp);
   }
 
   void onOdom(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
@@ -644,9 +707,16 @@ private:
   std::string localization_status_topic_;
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
 
-  std::string navsat_topic_, utm_pose_topic_, mgrs_pose_topic_;
+  std::string navsat_topic_, utm_pose_topic_, mgrs_pose_topic_, raw_pose_topic_;
   std::string gnss_pose_topic_, gnss_pose_cov_topic_, map_frame_id_;
   bool publish_gnss_covariance_{true};
+  // HJ_260528: GNSS dual-antenna heading state
+  bool enable_gnss_heading_{false};
+  std::string gnss_heading_topic_;
+  bool enable_pose_cov_bridge_{true};
+  double heading_x_{0.0}, heading_y_{0.0}, heading_z_{0.0}, heading_w_{1.0};
+  std::array<double, 9> heading_orientation_cov_{};
+  bool has_heading_{false};
   std::string navsat_covariance_source_{"navsat"};
   double gnss_covariance_floor_xy_{0.25};
   double gnss_covariance_floor_z_{1.0};
@@ -683,8 +753,10 @@ private:
   rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr gnss_pose_pub_;
   rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr gnss_pose_cov_pub_;
   rclcpp::Subscription<avg_msgs::msg::NavSatFix>::SharedPtr navsat_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr gnss_heading_sub_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr utm_pose_sub_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr mgrs_pose_sub_;
+  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr raw_pose_sub_;
 
   std::string odom_input_topic_, odom_pose_topic_, odom_pose_cov_topic_, odom_output_frame_id_;
   rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr odom_pose_pub_;

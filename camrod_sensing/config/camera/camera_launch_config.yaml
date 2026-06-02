@@ -1,0 +1,11 @@
+# HJ_260529: Launch-only config separated from camera_params.yaml.
+# This file is read by camera.launch.py to decide which camera nodes to start.
+# It is NOT passed to ROS2 nodes as a --params-file (not valid ROS2 params format).
+#
+# Controls which camera nodes are started. Edit here; no CLI args needed.
+#   both cameras : enable_front_camera: true  / enable_rear_camera: true
+#   front only   : enable_front_camera: true  / enable_rear_camera: false
+#   rear only    : enable_front_camera: false / enable_rear_camera: true
+camrod_sensing_camera:
+  enable_front_camera: true
+  enable_rear_camera: false

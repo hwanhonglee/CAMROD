@@ -37,6 +37,7 @@ if(Python3_LIBRARIES)
 endif()
 
 set(msg_files
+  "msg/AvgAmrServiceState.msg"
   "msg/AvgAprilTagPoint.msg"
   "msg/AvgAprilTagDetection.msg"
   "msg/AvgAprilTagDetectionArray.msg"

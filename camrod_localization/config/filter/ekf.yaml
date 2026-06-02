@@ -3,7 +3,9 @@
   ros__parameters:
     # HH_260327: Reduce EKF loop target to avoid startup overload under full bringup.
     # 30 Hz budget (33.3 ms) caused periodic missed-rate warnings; 20 Hz gives 50 ms budget.
-    frequency: 20.0
+    # HH_260602: Lower to 15 Hz (66 ms budget) — 5 sensor inputs + GNSS timeout overhead
+    # caused persistent missed-rate errors at 20 Hz on Orin NX under full bringup load.
+    frequency: 15.0
     sensor_timeout: 0.2
     two_d_mode: true
     map_frame: map

@@ -25,6 +25,11 @@
     gnss_covariance_floor_xy: 1.0e-6
     gnss_covariance_floor_z: 1.0e-4
 
+    # GNSS heading from dual-antenna (ublox_dgnss /sensing/gnss/navheading)
+    # HJ_260528
+    enable_gnss_heading: true
+    gnss_heading_topic: "/sensing/gnss/navheading"
+
     max_position_jump_m: 8.0
     jump_reject_max_speed_mps: 20.0
     jump_reject_reset_s: 2.0
