@@ -8,6 +8,9 @@
 #include "yolov9mit/utils.hpp"
 #include "yolov9mit_ros/cv_bridge_include.hpp"
 
+// HJ_260529: cv_bridge CompressedImage support
+#include <cv_bridge/cv_bridge.h>
+
 namespace yolov9mit_ros
 {
 
@@ -83,10 +86,19 @@ YOLOV9MIT_Node::YOLOV9MIT_Node(const rclcpp::NodeOptions &options) : Node("yolov
             output_boundingbox_topic, 10);
         this->pub_image_ = image_transport::create_publisher(this, output_image_topic);
         auto qos = rclcpp::QoS(rclcpp::SensorDataQoS());
-        this->sub_image_ = image_transport::create_subscription(
-            this, input_image_topic,
-            std::bind(&YOLOV9MIT_Node::image_callback, this, std::placeholders::_1),
-            transport_hint, qos.get_rmw_qos_profile());
+        // HJ_260529: when transport_hint=="compressed", subscribe directly to CompressedImage
+        // (camera_front_publisher_node uses a direct publisher, not image_transport)
+        if (transport_hint == "compressed") {
+            this->sub_compressed_ = this->create_subscription<sensor_msgs::msg::CompressedImage>(
+                input_image_topic + "/compressed",
+                qos,
+                std::bind(&YOLOV9MIT_Node::compressed_image_callback, this, std::placeholders::_1));
+        } else {
+            this->sub_image_ = image_transport::create_subscription(
+                this, input_image_topic,
+                std::bind(&YOLOV9MIT_Node::image_callback, this, std::placeholders::_1),
+                transport_hint, qos.get_rmw_qos_profile());
+        }
 
         if (this->imshow_)
         {
@@ -116,6 +128,37 @@ YOLOV9MIT_Node::YOLOV9MIT_Node(const rclcpp::NodeOptions &options) : Node("yolov
     RCLCPP_INFO(this->get_logger(), "initialized.");
 }
 
+void YOLOV9MIT_Node::process_image(const cv::Mat & image, const std_msgs::msg::Header & header)
+{
+    auto t0_inf = std::chrono::system_clock::now();
+    const auto objects = this->yolo_->inference(image);
+    auto t1_inf = std::chrono::system_clock::now();
+
+    const auto bboxes = objects_to_bboxes(objects, header);
+    this->pub_bboxes_->publish(*bboxes);
+
+    const bool publish_image = this->pub_image_.getNumSubscribers() > 0 || this->imshow_;
+    if (publish_image)
+    {
+        cv::Mat draw = image.clone();
+        yolov9mit::utils::draw_objects(draw, objects, this->class_names_);
+        const auto pub_img_msg = cv_bridge::CvImage(header, "bgr8", draw).toImageMsg();
+        this->pub_image_.publish(pub_img_msg);
+    }
+
+    auto inf_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(t1_inf - t0_inf);
+    RCLCPP_DEBUG(this->get_logger(), "Inference: %.3f ms | Detections: %ld",
+                 (float)inf_elapsed.count() * 0.001, objects.size());
+
+    if (this->imshow_)
+    {
+        cv::Mat draw = image.clone();
+        yolov9mit::utils::draw_objects(draw, objects, this->class_names_);
+        cv::imshow(this->window_name_, draw);
+        if (cv::waitKey(1) == 113) { cv::destroyWindow(this->window_name_); rclcpp::shutdown(); }
+    }
+}
+
 void YOLOV9MIT_Node::image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &msg)
 {
     if (throttle_interval_.count() > 0.0)
@@ -124,53 +167,22 @@ void YOLOV9MIT_Node::image_callback(const sensor_msgs::msg::Image::ConstSharedPt
         if (now - last_inference_time_ < throttle_interval_) return;
         last_inference_time_ = now;
     }
+    const cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
+    process_image(image, msg->header);
+}
 
-    const bool publish_image = this->pub_image_.getNumSubscribers() > 0 || this->imshow_;
-
-    // Avoid full copy when we don't need to draw on the image
-    cv::Mat image;
-    cv_bridge::CvImageConstPtr cv_shared;
-    if (publish_image)
+// HJ_260529: direct CompressedImage callback — decodes JPEG then runs inference
+void YOLOV9MIT_Node::compressed_image_callback(
+    const sensor_msgs::msg::CompressedImage::ConstSharedPtr &msg)
+{
+    if (throttle_interval_.count() > 0.0)
     {
-        image = cv_bridge::toCvCopy(msg, "bgr8")->image;
+        const auto now = std::chrono::steady_clock::now();
+        if (now - last_inference_time_ < throttle_interval_) return;
+        last_inference_time_ = now;
     }
-    else
-    {
-        cv_shared = cv_bridge::toCvShare(msg, "bgr8");
-        image = cv_shared->image;
-    }
-
-    auto t0_inf = std::chrono::system_clock::now();
-    const auto objects = this->yolo_->inference(image);
-    auto t1_inf = std::chrono::system_clock::now();
-
-    const auto bboxes = objects_to_bboxes(objects, msg->header);
-    this->pub_bboxes_->publish(*bboxes);
-
-    if (publish_image)
-    {
-        yolov9mit::utils::draw_objects(image, objects, this->class_names_);
-        const auto pub_img_msg = cv_bridge::CvImage(msg->header, "bgr8", image).toImageMsg();
-        this->pub_image_.publish(pub_img_msg);
-    }
-
-    // Debug-level timing log (use `ros2 run ... --ros-args --log-level debug` to enable)
-    {
-        auto inf_elapsed = std::chrono::duration_cast<std::chrono::microseconds>(t1_inf - t0_inf);
-        RCLCPP_DEBUG(this->get_logger(), "Inference: %.3f ms | Detections: %ld",
-                     (float)inf_elapsed.count() * 0.001, objects.size());
-    }
-
-    if (this->imshow_)
-    {
-        cv::imshow(this->window_name_, image);
-        const auto key = cv::waitKey(1);
-        if (key == 113)
-        {
-            cv::destroyWindow(this->window_name_);
-            rclcpp::shutdown();
-        }
-    }
+    const cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
+    process_image(image, msg->header);
 }
 
 vision_msgs::msg::Detection2DArray::SharedPtr YOLOV9MIT_Node::objects_to_bboxes(

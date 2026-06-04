@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>로봇 호출</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    /* ── Locked overlay ───────────────────────── */
+    .locked-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0, 0, 0, 0.92);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+    .locked-box {
+      background: #161b22;
+      border: 1px solid #e94560;
+      border-radius: 20px;
+      padding: 40px 28px;
+      text-align: center;
+      max-width: 320px;
+      width: 90%;
+    }
+    .locked-icon { font-size: 3rem; margin-bottom: 16px; }
+    .locked-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 10px; }
+    .locked-msg {
+      color: #8b949e; font-size: 0.95rem;
+      line-height: 1.7;
+    }
+    .retry-btn {
+      margin-top: 24px;
+      padding: 14px 0;
+      width: 100%;
+      background: #e94560; border: none; border-radius: 12px;
+      color: #fff; font-size: 1rem; font-weight: 600;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .retry-btn:hover { background: #c73652; }
+
+    /* ── Grace period overlay ─────────────────── */
+    .grace-box {
+      background: #161b22;
+      border: 1px solid #f0883e;
+      border-radius: 20px;
+      padding: 40px 28px;
+      text-align: center;
+      max-width: 320px;
+      width: 90%;
+    }
+    .grace-icon { font-size: 3rem; margin-bottom: 16px; }
+    .grace-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 10px; }
+    .grace-msg { color: #8b949e; font-size: 0.95rem; line-height: 1.7; }
+    .grace-count {
+      display: inline-block;
+      margin-top: 20px;
+      font-size: 2.5rem; font-weight: 800;
+      color: #f0883e;
+      min-width: 60px;
+    }
+    .grace-unit { font-size: 0.9rem; color: #8b949e; margin-top: 4px; }
+
+    /* ── Main card ────────────────────────────── */
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 24px;
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+    .title { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.01em; }
+
+    /* Battery badge */
+    .battery-badge {
+      display: flex; align-items: center; gap: 7px;
+      background: #21262d; border-radius: 20px;
+      padding: 6px 13px; font-size: 0.88rem; font-weight: 600;
+    }
+    .battery-icon {
+      width: 22px; height: 11px;
+      border: 1.8px solid currentColor; border-radius: 3px;
+      position: relative; display: flex; align-items: center; padding: 1px;
+    }
+    .battery-icon::after {
+      content: '';
+      position: absolute; right: -5px; top: 50%;
+      transform: translateY(-50%);
+      width: 3px; height: 5px;
+      background: currentColor; border-radius: 0 2px 2px 0;
+    }
+    .battery-fill {
+      height: 100%; border-radius: 1px;
+      transition: width 0.4s, background 0.4s;
+    }
+
+    /* Status row */
+    .status-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 16px;
+      background: #21262d; border-radius: 12px;
+      margin-bottom: 20px;
+    }
+    .status-dot {
+      width: 11px; height: 11px; border-radius: 50%;
+      flex-shrink: 0;
+      transition: background 0.3s, box-shadow 0.3s;
+    }
+    .dot-ready    { background: #3fb950; box-shadow: 0 0 8px #3fb950; }
+    .dot-moving   { background: #f0883e; box-shadow: 0 0 8px #f0883e; }
+    .dot-returning{ background: #58a6ff; box-shadow: 0 0 8px #58a6ff; }
+    .dot-busy     { background: #8b949e; }
+
+    .status-label { font-size: 0.78rem; color: #8b949e; margin-bottom: 2px; }
+    .status-text  { font-size: 1rem; font-weight: 600; }
+
+    /* Warning box */
+    .warning-box {
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 0.92rem;
+      line-height: 1.55;
+      margin-bottom: 20px;
+      display: none;
+    }
+    .warning-box.show { display: block; }
+    .warning-moving {
+      background: rgba(240, 136, 62, 0.1);
+      border: 1px solid rgba(240, 136, 62, 0.35);
+      color: #f0883e;
+    }
+    .warning-returning {
+      background: rgba(88, 166, 255, 0.08);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      color: #58a6ff;
+    }
+
+    /* Recall button */
+    .recall-btn {
+      width: 100%; padding: 20px;
+      font-size: 1.15rem; font-weight: 700;
+      border: none; border-radius: 16px;
+      letter-spacing: 0.02em;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .recall-btn:not(:disabled) {
+      background: linear-gradient(135deg, #3fb950 0%, #2ea043 100%);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(63, 185, 80, 0.28);
+    }
+    .recall-btn:not(:disabled):active { transform: scale(0.97); }
+    .recall-btn:disabled {
+      background: #21262d; color: #484f58; cursor: not-allowed;
+    }
+
+    /* Connection status */
+    .conn-row {
+      margin-top: 18px;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      font-size: 0.8rem; color: #484f58;
+    }
+    .conn-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #484f58; transition: background 0.3s;
+    }
+    .conn-dot.on { background: #3fb950; }
+  </style>
+</head>
+<body>
+
+<!-- Locked overlay (활성 세션 중) -->
+<div class="locked-overlay" id="lockedOverlay" style="display:none">
+  <div class="locked-box">
+    <div class="locked-icon">🔒</div>
+    <div class="locked-title">사이트 사용 중</div>
+    <div class="locked-msg">현재 다른 사용자가 이용 중입니다.<br>잠시 후 다시 시도해주세요.</div>
+    <button class="retry-btn" onclick="retryConnect()">다시 시도</button>
+  </div>
+</div>
+
+<!-- Grace period overlay (이전 사용자 재연결 대기) -->
+<div class="locked-overlay" id="graceOverlay" style="display:none">
+  <div class="grace-box">
+    <div class="grace-icon">⏳</div>
+    <div class="grace-title">잠시 후 연결됩니다</div>
+    <div class="grace-msg">이전 사용자의 재연결 대기 중입니다.</div>
+    <div class="grace-count" id="graceCount">60</div>
+    <div class="grace-unit">초 후 자동 접속</div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="card">
+  <div class="header">
+    <div class="title">🤖 로봇 호출</div>
+    <div class="battery-badge" id="batteryBadge" style="color:#8b949e">
+      <div class="battery-icon" id="batteryIcon">
+        <div class="battery-fill" id="batteryFill" style="width:0%;background:#8b949e"></div>
+      </div>
+      <span id="batteryText">--%</span>
+    </div>
+  </div>
+
+  <div class="status-row">
+    <div>
+      <div class="status-dot dot-busy" id="statusDot"></div>
+    </div>
+    <div>
+      <div class="status-label">로봇 상태</div>
+      <div class="status-text" id="statusText">연결 중...</div>
+    </div>
+  </div>
+
+  <div class="warning-box" id="warningBox"></div>
+
+  <button class="recall-btn" id="recallBtn" disabled onclick="sendRecall()">
+    로봇 호출
+  </button>
+
+  <div class="conn-row">
+    <div class="conn-dot" id="connDot"></div>
+    <span id="connText">연결 중...</span>
+  </div>
+</div>
+
+<script>
+  const AMR = { DROP_ZONE_WAIT: 0, MOVING_TO_SITE: 1, SITE_ARRIVED: 2, RETURNING_TO_DROP_ZONE: 3 };
+
+  let ws = null;
+  let isLocked = false;   // 다른 사람 활성 접속 → 수동 재시도
+  let isGrace  = false;   // 유예 기간 → 카운트다운 후 자동 재시도
+  let graceTimer = null;
+  let currentState = -1;
+
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+
+    ws.onopen = () => setConnected(true);
+
+    ws.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+
+      if (d.locked) {
+        ws.close();
+        if (d.grace_remaining > 0) {
+          // 유예 기간: 이전 사용자가 방금 나감 → 카운트다운 후 자동 재시도
+          isGrace = true;
+          showGraceOverlay(d.grace_remaining);
+        } else {
+          // 완전 잠금: 다른 사람 활성 세션 중 → 수동 재시도
+          isLocked = true;
+          document.getElementById('lockedOverlay').style.display = 'flex';
+        }
+        return;
+      }
+      if (d.battery !== undefined) updateBattery(d.battery);
+      if (d.amr_state !== undefined) updateAmrState(d.amr_state);
+    };
+
+    ws.onclose = () => {
+      setConnected(false);
+      if (!isLocked && !isGrace) setTimeout(connect, 3000);
+    };
+
+    ws.onerror = () => ws.close();
+  }
+
+  function showGraceOverlay(seconds) {
+    clearInterval(graceTimer);
+    const overlay = document.getElementById('graceOverlay');
+    const countEl = document.getElementById('graceCount');
+    let remaining = seconds;
+    countEl.textContent = remaining;
+    overlay.style.display = 'flex';
+
+    graceTimer = setInterval(() => {
+      remaining--;
+      countEl.textContent = remaining;
+      if (remaining <= 0) {
+        clearInterval(graceTimer);
+        overlay.style.display = 'none';
+        isGrace = false;
+        connect();  // 유예 기간 종료 → 자동 재연결
+      }
+    }, 1000);
+  }
+
+  function retryConnect() {
+    isLocked = false;
+    document.getElementById('lockedOverlay').style.display = 'none';
+    connect();
+  }
+
+  function setConnected(on) {
+    document.getElementById('connDot').className = 'conn-dot' + (on ? ' on' : '');
+    document.getElementById('connText').textContent = on ? '연결됨' : '연결 끊김...';
+  }
+
+  function updateBattery(pct) {
+    const fill   = document.getElementById('batteryFill');
+    const text   = document.getElementById('batteryText');
+    const icon   = document.getElementById('batteryIcon');
+    const badge  = document.getElementById('batteryBadge');
+    const color  = pct < 20 ? '#f85149' : pct < 40 ? '#f0883e' : '#3fb950';
+    fill.style.width      = pct + '%';
+    fill.style.background = color;
+    icon.style.color      = color;
+    badge.style.color     = color;
+    text.textContent      = pct + '%';
+  }
+
+  function updateAmrState(state) {
+    currentState = state;
+
+    const dot     = document.getElementById('statusDot');
+    const txt     = document.getElementById('statusText');
+    const warning = document.getElementById('warningBox');
+    const btn     = document.getElementById('recallBtn');
+
+    // Reset
+    dot.className = 'status-dot';
+    warning.className = 'warning-box';
+    warning.textContent = '';
+    btn.disabled = true;
+
+    if (state === AMR.DROP_ZONE_WAIT) {
+      dot.classList.add('dot-ready');
+      txt.textContent = 'DropZone 대기 중';
+      btn.disabled = false;
+
+    } else if (state === AMR.MOVING_TO_SITE || state === AMR.SITE_ARRIVED) {
+      dot.classList.add('dot-moving');
+      txt.textContent = state === AMR.MOVING_TO_SITE ? '사이트 이동 중' : '사이트 도착';
+      warning.classList.add('show', 'warning-moving');
+      warning.textContent = '⚠️  로봇이 사이트로 이동중입니다';
+
+    } else if (state === AMR.RETURNING_TO_DROP_ZONE) {
+      dot.classList.add('dot-returning');
+      txt.textContent = 'DropZone 복귀 중';
+      warning.classList.add('show', 'warning-returning');
+      warning.textContent = 'ℹ️  로봇이 DropZone으로 복귀중입니다';
+
+    } else {
+      // state=4 (GUEST_RECALL_SERVICE) or unknown — show busy
+      dot.classList.add('dot-busy');
+      txt.textContent = '처리 중...';
+    }
+  }
+
+  function sendRecall() {
+    if (currentState !== AMR.DROP_ZONE_WAIT) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action: 'recall' }));
+    }
+  }
+
+  connect();
+</script>
+</body>
+</html>

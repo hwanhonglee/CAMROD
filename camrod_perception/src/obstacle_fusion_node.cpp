@@ -10,6 +10,7 @@
 #include <avg_msgs/msg/detection2_d_array.hpp>
 #include <avg_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/compressed_image.hpp>  // HJ_260529
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <vision_msgs/msg/detection3_d_array.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -39,7 +40,7 @@ class CameraLidarFusionNode : public rclcpp::Node
 {
   using SyncPolicy = message_filters::sync_policies::ApproximateTime<
     avg_msgs::msg::PointCloud2,
-    sensor_msgs::msg::Image>;
+    sensor_msgs::msg::CompressedImage>;  // HJ_260529: compressed image
 
 public:
   CameraLidarFusionNode()
@@ -51,6 +52,11 @@ public:
     ema_alpha_  = declare_parameter<double>("ema_alpha",       0.4);
     assoc_dist_ = declare_parameter<double>("assoc_dist",      1.0);
     max_miss_   = declare_parameter<int>   ("max_miss",        5);
+
+    // HJ_260529: expose min forward distance as a ROS parameter (replaces hardcoded 0.3 m).
+    // Points closer than this in the effective forward axis (eff_Y = raw_X) are ignored.
+    lidar_min_forward_m_ = static_cast<float>(
+      declare_parameter<double>("lidar_min_forward_m", 1.0));
 
     // Extrinsic translation: camera position relative to LiDAR effective frame [m]
     extrinsic_x_ = declare_parameter<double>("extrinsic_x",  0.0);
@@ -79,39 +85,15 @@ public:
     out_euclidean_topic_ = declare_parameter<std::string>(
       "out_euclidean_topic", "/perception/camera_lidar/euclidean_markers");
 
-    // HH_260522: unified selector for camera-lidar fusion filter behavior.
-    //   camera_bbox/enabled/on: keep points inside camera detections
-    //   pass_through/disabled/off/none: bypass camera detection filtering
-    const std::string fusion_filter_mode =
-      declare_parameter<std::string>("fusion_filter_mode", "camera_bbox");
-    keep_lidar_when_no_detections_ =
-      declare_parameter<bool>("keep_lidar_when_no_detections", true);
-    if (
-      fusion_filter_mode == "pass_through" || fusion_filter_mode == "disabled" ||
-      fusion_filter_mode == "off" || fusion_filter_mode == "none")
-    {
-      camera_bbox_filter_enabled_ = false;
-    } else if (
-      fusion_filter_mode == "camera_bbox" || fusion_filter_mode == "enabled" ||
-      fusion_filter_mode == "on")
-    {
-      camera_bbox_filter_enabled_ = true;
-    } else {
-      camera_bbox_filter_enabled_ = true;
-      RCLCPP_WARN(
-        get_logger(),
-        "Unknown fusion_filter_mode '%s'. Using default 'camera_bbox' mode.",
-        fusion_filter_mode.c_str());
-    }
-
     param_cb_ = add_on_set_parameters_callback(
       [this](const std::vector<rclcpp::Parameter> & params) {
         for (const auto & p : params) {
-          if (p.get_name() == "n_closest")       n_closest_  = p.as_int();
-          if (p.get_name() == "min_pts_in_bbox") min_pts_    = p.as_int();
-          if (p.get_name() == "ema_alpha")       ema_alpha_  = p.as_double();
-          if (p.get_name() == "assoc_dist")      assoc_dist_ = p.as_double();
-          if (p.get_name() == "max_miss")        max_miss_   = p.as_int();
+          if (p.get_name() == "n_closest")          n_closest_           = p.as_int();
+          if (p.get_name() == "min_pts_in_bbox")   min_pts_             = p.as_int();
+          if (p.get_name() == "ema_alpha")          ema_alpha_           = p.as_double();
+          if (p.get_name() == "assoc_dist")         assoc_dist_          = p.as_double();
+          if (p.get_name() == "max_miss")           max_miss_            = p.as_int();
+          if (p.get_name() == "lidar_min_forward_m") lidar_min_forward_m_ = static_cast<float>(p.as_double()); // HJ_260529
         }
         rcl_interfaces::msg::SetParametersResult result;
         result.successful = true;
@@ -136,24 +118,25 @@ public:
           msg->p[0], msg->p[5], msg->p[2], msg->p[6]);
       });
 
-    const auto reliable_qos = rclcpp::QoS(10).get_rmw_qos_profile();
 
     det_sub_cache_ = create_subscription<avg_msgs::msg::Detection2DArray>(
-      detection_topic_, rclcpp::QoS(10),
+      detection_topic_, rclcpp::SensorDataQoS(),  // HJ_260529
       [this](const avg_msgs::msg::Detection2DArray::ConstSharedPtr & msg) {
         std::lock_guard<std::mutex> lock(det_mutex_);
         latest_det_ = msg;
       });
 
     euclidean_sub_ = create_subscription<visualization_msgs::msg::MarkerArray>(
-      bbox_topic_, rclcpp::QoS(10),
+      bbox_topic_, rclcpp::SensorDataQoS(),  // HJ_260529
       [this](const visualization_msgs::msg::MarkerArray::ConstSharedPtr & msg) {
         std::lock_guard<std::mutex> lock(euclidean_mutex_);
         latest_euclidean_ = msg;
       });
 
-    lidar_sub_.subscribe(this, input_cloud_topic_, reliable_qos);
-    image_sub_.subscribe(this, image_topic_, reliable_qos);
+    // HJ_260529: both LiDAR and camera publish with SensorDataQoS (BEST_EFFORT)
+    const auto sensor_qos = rclcpp::SensorDataQoS().get_rmw_qos_profile();
+    lidar_sub_.subscribe(this, input_cloud_topic_, sensor_qos);
+    image_sub_.subscribe(this, image_topic_, sensor_qos);
 
     sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
       SyncPolicy(30), lidar_sub_, image_sub_);
@@ -212,7 +195,7 @@ private:
 
   void callback(
     const avg_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg,
-    const sensor_msgs::msg::Image::ConstSharedPtr & img_msg)
+    const sensor_msgs::msg::CompressedImage::ConstSharedPtr & img_msg)  // HJ_260529
   {
     if (!cam_ready_) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
@@ -228,7 +211,7 @@ private:
       det_msg = latest_det_;
     }
 
-    cv::Mat img = cv_bridge::toCvCopy(img_msg, "bgr8")->image;
+    cv::Mat img = cv_bridge::toCvCopy(img_msg, "bgr8")->image;  // HJ_260529: cv_bridge handles CompressedImage
 
     const auto proj = projectCloud(cloud_msg, img.cols, img.rows);
     drawPoints(img, proj);
@@ -249,7 +232,7 @@ private:
     fuseEuclideanClusters(det_msg, cloud_msg->header.stamp, img);
 
     pub_image_->publish(
-      *cv_bridge::CvImage(img_msg->header, "bgr8", img).toImageMsg());
+      *cv_bridge::CvImage(std_msgs::msg::Header{}, "bgr8", img).toImageMsg());
   }
 
   // Collects YOLO-bbox-filtered LiDAR points and publishes to output_topic_ for Nav2 costmap.
@@ -266,12 +249,7 @@ private:
     mod.setPointCloud2FieldsByString(1, "xyz");
 
     std::vector<std::array<float, 3>> pts;
-    if (!camera_bbox_filter_enabled_) {
-      pts.reserve(proj.size());
-      for (const auto & pp : proj) {
-        pts.push_back({pp.lx, pp.ly, pp.lz});
-      }
-    } else if (det_msg) {
+    if (det_msg) {
       for (const auto & d2 : det_msg->detections) {
         const float x0 = static_cast<float>(d2.bbox.center.position.x - d2.bbox.size_x / 2.0);
         const float x1 = static_cast<float>(d2.bbox.center.position.x + d2.bbox.size_x / 2.0);
@@ -282,17 +260,6 @@ private:
             pts.push_back({pp.lx, pp.ly, pp.lz});
           }
         }
-      }
-      if (pts.empty() && keep_lidar_when_no_detections_) {
-        pts.reserve(proj.size());
-        for (const auto & pp : proj) {
-          pts.push_back({pp.lx, pp.ly, pp.lz});
-        }
-      }
-    } else if (keep_lidar_when_no_detections_) {
-      pts.reserve(proj.size());
-      for (const auto & pp : proj) {
-        pts.push_back({pp.lx, pp.ly, pp.lz});
       }
     }
 
@@ -326,7 +293,7 @@ private:
       const float lx = -(*iter_y);
       const float ly =  (*iter_x);
       const float lz =  (*iter_z);
-      if (ly < 0.3f) continue;
+      if (ly < lidar_min_forward_m_) continue; // HJ_260529
       scratch_obj_.push_back({lx, ly, lz});
     }
     if (scratch_obj_.empty()) return {};
@@ -565,7 +532,7 @@ private:
       ci.dist  = std::sqrt(raw_x*raw_x + raw_y*raw_y + raw_z*raw_z);
       ci.in_image = false;
 
-      if (ly >= 0.3f) {
+      if (ly >= lidar_min_forward_m_) { // HJ_260529
         std::vector<cv::Point3f> obj_pt = {{lx, ly, lz}};
         std::vector<cv::Point2f> img_pt;
         cv::projectPoints(obj_pt, rvec_, tvec_, P_, D_zero_, img_pt);
@@ -679,9 +646,8 @@ private:
   double ema_alpha_;
   double assoc_dist_;
   int    max_miss_;
+  float  lidar_min_forward_m_; // HJ_260529
   double extrinsic_x_, extrinsic_y_, extrinsic_z_;
-  bool   camera_bbox_filter_enabled_{true};
-  bool   keep_lidar_when_no_detections_{true};
 
   std::string input_cloud_topic_, detection_topic_, camera_info_topic_;
   std::string image_topic_, bbox_topic_, output_topic_;
@@ -722,7 +688,7 @@ private:
   rclcpp::Subscription<avg_msgs::msg::Detection2DArray>::SharedPtr      det_sub_cache_;
   rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr euclidean_sub_;
   message_filters::Subscriber<avg_msgs::msg::PointCloud2>               lidar_sub_;
-  message_filters::Subscriber<sensor_msgs::msg::Image>                  image_sub_;
+  message_filters::Subscriber<sensor_msgs::msg::CompressedImage>        image_sub_;  // HJ_260529
   std::shared_ptr<message_filters::Synchronizer<SyncPolicy>>            sync_;
 
   // --- publishers ---
