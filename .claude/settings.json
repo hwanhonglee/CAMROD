@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(grep -v \"^$\")",
-      "Bash(ros2 topic *)",
-      "Bash(kill %1)"
-    ]
-  }
-}
