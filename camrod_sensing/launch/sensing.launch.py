@@ -14,7 +14,7 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression  # HJ_260602: add PythonExpression for gnss_driver condition
 from launch_ros.actions import Node, PushRosNamespace
 
 
@@ -57,9 +57,10 @@ def _resolve_camera_enable(context, *args, **kwargs):
 def generate_launch_description():
     sensing_share = get_package_share_directory("camrod_sensing")
 
-    camera_launch = os.path.join(sensing_share, "launch", "camera.launch.py")
-    gnss_launch   = os.path.join(sensing_share, "launch", "gnss.launch.py")
-    imu_launch    = os.path.join(sensing_share, "launch", "imu.launch.py")
+    camera_launch      = os.path.join(sensing_share, "launch", "camera.launch.py")
+    gnss_launch        = os.path.join(sensing_share, "launch", "gnss.launch.py")
+    gnss_dgnss_launch  = os.path.join(sensing_share, "launch", "gnss_ublox_dgnss.launch.py")  # HJ_260602: define missing gnss_dgnss_launch path
+    imu_launch         = os.path.join(sensing_share, "launch", "imu.launch.py")
     lidar_launch  = os.path.join(sensing_share, "launch", "lidar.launch.py")
     radar_launch  = os.path.join(sensing_share, "launch", "radar.launch.py")
 
@@ -144,6 +145,16 @@ def generate_launch_description():
                  ublox_param_file=LaunchConfiguration("gnss_param_file"),
                  ntrip_param_file=LaunchConfiguration("ntrip_param_file"),
                  dgnss_rover_param_file=LaunchConfiguration("dgnss_rover_param_file"),
+                 gnss_namespace=LaunchConfiguration("gnss_namespace"),
+                 rtcm_topic=LaunchConfiguration("gnss_rtcm_topic"),
+            ),
+
+            _inc(gnss_dgnss_launch,
+                 "enable_ntrip",
+                 condition=IfCondition(PythonExpression([
+                     '"', LaunchConfiguration("enable_gnss"), '" == "true"',
+                     ' and "', LaunchConfiguration("gnss_driver"), '" == "ublox_dgnss"',
+                 ])),
                  gnss_namespace=LaunchConfiguration("gnss_namespace"),
                  rtcm_topic=LaunchConfiguration("gnss_rtcm_topic"),
             ),

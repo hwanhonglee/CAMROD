@@ -588,6 +588,24 @@ private:
     publishLocalizationStatus("raw_pose_bridge", msg->header.stamp);
   }
 
+  void onRawPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  {
+    if (!enable_navsat_to_pose_) {
+      return;
+    }
+    avg_msgs::msg::PoseStamped out = *msg;
+    out.header.frame_id = map_frame_id_;
+    gnss_pose_pub_->publish(out);
+    if (publish_gnss_covariance_) {
+      avg_msgs::msg::PoseWithCovarianceStamped cov;
+      cov.header = out.header;
+      cov.pose.pose = out.pose;
+      cov.pose.covariance = pose_covariance_;
+      gnss_pose_cov_pub_->publish(cov);
+    }
+    publishLocalizationStatus("raw_pose_bridge", msg->header.stamp);
+  }
+
   void onOdom(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
   {
     avg_msgs::msg::PoseStamped pose;
