@@ -2,7 +2,14 @@ cmake_minimum_required(VERSION 3.9)
 project(ground_segmentation_ros2)
 
 find_package(ament_cmake REQUIRED)
-find_package(PCL REQUIRED)
+find_package(PCL REQUIRED COMPONENTS
+  common
+  io
+  filters
+  kdtree
+  segmentation
+)
+find_package(nanoflann REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_eigen REQUIRED)
@@ -12,7 +19,6 @@ find_package(std_srvs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
-find_package(ground_segmentation REQUIRED)
 
 set(dependencies
   geometry_msgs
@@ -29,7 +35,10 @@ set(dependencies
 )
 
 add_executable(ground_segmentation_ros2_node src/ground_segmentation_ros2_node.cpp)
+
+# ground_segmentation 라이브러리(header-only) 통합: include/ 에 hpp 직접 포함
 target_include_directories(ground_segmentation_ros2_node PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${pcl_conversions_INCLUDE_DIRS}
 )
 
@@ -37,9 +46,9 @@ ament_target_dependencies(ground_segmentation_ros2_node
   ${dependencies}
 )
 
-target_link_libraries(ground_segmentation_ros2_node 
+target_link_libraries(ground_segmentation_ros2_node
   ${PCL_LIBRARIES}
-  ground_segmentation::ground_segmentation
+  nanoflann::nanoflann
 )
 
 install(TARGETS ground_segmentation_ros2_node
@@ -47,7 +56,6 @@ install(TARGETS ground_segmentation_ros2_node
 
 install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME})
-
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

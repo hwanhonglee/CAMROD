@@ -76,14 +76,6 @@ public:
         }
 
         show_benchmark = this->get_parameter("show_benchmark").as_bool();
-        maxX = this->get_parameter("maxX").as_double();
-        minX = this->get_parameter("minX").as_double();
-        maxY = this->get_parameter("maxY").as_double();
-        minY = this->get_parameter("minY").as_double();
-        maxZ = this->get_parameter("maxZ").as_double();
-        minZ = this->get_parameter("minZ").as_double();
-        downsample = this->get_parameter("downsample").as_bool();
-        downsample_resolution = this->get_parameter("downsample_resolution").as_double();
    
         robot_frame = this->get_parameter("robot_frame").as_string();
         lidar_to_ground = this->get_parameter("lidar_to_ground").as_double();
@@ -118,9 +110,6 @@ private:
     double lidar_to_ground,transform_tolerance;
     bool show_benchmark;
     std::vector<double> runtime;
-    double maxX, minX, maxY, minY, maxZ, minZ;
-    bool downsample;
-    double downsample_resolution;
 
     std::shared_ptr<tf2_ros::Buffer> buffer;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener;
@@ -163,23 +152,24 @@ private:
         typename pcl::PointCloud<PointType> transformed_cloud;
         pcl::fromROSMsg(*pointcloud_msg, input_cloud);
 
+        double maxX = this->get_parameter("maxX").as_double();
+        double minX = this->get_parameter("minX").as_double();
+        double maxY = this->get_parameter("maxY").as_double();
+        double minY = this->get_parameter("minY").as_double();
+        double maxZ = this->get_parameter("maxZ").as_double();
+        double minZ = this->get_parameter("minZ").as_double();
+        bool downsample = this->get_parameter("downsample").as_bool();
+        double downsample_resolution = this->get_parameter("downsample_resolution").as_double();
 
         std::string velo_frame = pointcloud_msg->header.frame_id;
         // Transform: base <- velo
         geometry_msgs::msg::TransformStamped tf;
-        if (robot_frame != velo_frame) {
-            try {
-                tf = buffer->lookupTransform(robot_frame, velo_frame, pointcloud_msg->header.stamp, tf2::durationFromSec(transform_tolerance));
-            } catch (tf2::TransformException &ex) {
-                RCLCPP_ERROR(this->get_logger(), "Pointcloud Transform exception: %s", ex.what());
-                return;
-            }
-        } else {
-            // same frame — use identity transform
-            tf.header.frame_id = robot_frame;
-            tf.child_frame_id  = velo_frame;
-            tf.transform.rotation.w = 1.0;
-        }
+        try {
+            tf =  buffer->lookupTransform(robot_frame, velo_frame, pointcloud_msg->header.stamp, tf2::durationFromSec(transform_tolerance));
+        } catch (tf2::TransformException &ex) {
+            RCLCPP_ERROR(this->get_logger(), "Pointcloud Transform exception: %s", ex.what());
+            return;
+        }        
 
         Eigen::Isometry3d T = tf2::transformToEigen(tf.transform);
 
@@ -263,25 +253,14 @@ private:
         final_ground_points = post_ground_points;
         *final_non_ground_points = *pre_non_ground_points + *post_non_ground_points;
         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-int main(int argc, char** argv) {
-    rclcpp::init(argc, argv);
-    rclcpp::NodeOptions options;
-    options.allow_undeclared_parameters(true);
-    options.automatically_declare_parameters_from_overrides(true);
-    auto node = std::make_shared<GroundSegmentatioNode>(options);
-    rclcpp::executors::MultiThreadedExecutor executor;
-    executor.add_node(node);
-    executor.spin();
-    rclcpp::shutdown();
-    return 0;
-}
-        // if (show_benchmark) {
-        //     // End time
-        //     double rt = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() * 0.001;
-        //     runtime.push_back(rt);
-        //     double rt_mean = std::accumulate(runtime.begin(), runtime.end(), 0.0) / runtime.size();
-        //     std::cout << "Avg Time difference = " << rt_mean << "[ms]" << std::endl;
-        // }
+
+        if (show_benchmark) {
+            // End time
+            double rt = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() * 0.001;
+            runtime.push_back(rt);
+            double rt_mean = std::accumulate(runtime.begin(), runtime.end(), 0.0) / runtime.size();
+            std::cout << "Avg Time difference = " << rt_mean << "[ms]" << std::endl;
+        }
 
         final_non_ground_points->width = final_non_ground_points->points.size();
         final_non_ground_points->height = 1;
@@ -318,10 +297,7 @@ int main(int argc, char** argv) {
     rclcpp::NodeOptions options;
     options.allow_undeclared_parameters(true);
     options.automatically_declare_parameters_from_overrides(true);
-    auto node = std::make_shared<GroundSegmentatioNode>(options);
-    rclcpp::executors::MultiThreadedExecutor executor;
-    executor.add_node(node);
-    executor.spin();
+    rclcpp::spin(std::make_shared<GroundSegmentatioNode>(options));
     rclcpp::shutdown();
     return 0;
 }
