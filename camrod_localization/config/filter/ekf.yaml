@@ -78,6 +78,18 @@
     pose1_relative: false
     pose1_queue_size: 10
 
+    # HH_260604: Fuse GNSS yaw as pose2 so heading innovations cannot reject pose0 position.
+    pose2: /sensing/gnss/pose_with_covariance
+    pose2_config: [false, false, false,
+                  false, false, true,
+                  false, false, false,
+                  false, false, false,
+                  false, false, false]
+    pose2_differential: false
+    pose2_relative: false
+    pose2_queue_size: 10
+    pose2_rejection_threshold: 10.0
+
     process_noise_covariance: [0.05, 0.0,  0.0,  0.0, 0.0, 0.0,  0.0, 0.0, 0.0,  0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
                               0.0,  0.05, 0.0,  0.0, 0.0, 0.0,  0.0, 0.0, 0.0,  0.0, 0.0, 0.0,  0.0, 0.0, 0.0,
                               0.0,  0.0,  0.1,  0.0, 0.0, 0.0,  0.0, 0.0, 0.0,  0.0, 0.0, 0.0,  0.0, 0.0, 0.0,

@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from nav2_common.launch import RewrittenYaml
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 import os
 import yaml
 
@@ -79,6 +79,14 @@ def resolve_selector_choice(requested: str, inferred: str) -> str:
     if not value or value in ('__auto__', 'auto'):
         return inferred
     return value
+
+
+def package_available(package_name: str) -> bool:
+    try:
+        get_package_share_directory(package_name)
+        return True
+    except PackageNotFoundError:
+        return False
 
 
 def build_nav2_selector_latch_node(context, *args, **kwargs):
@@ -373,6 +381,9 @@ def generate_launch_description():
     # -------------------------------------------------------------------------
     # Nav2 nodes under /planning namespace
     # -------------------------------------------------------------------------
+    has_nav2_behaviors = package_available('nav2_behaviors')
+    has_nav2_smoother = package_available('nav2_smoother')
+
     planner_server = Node(
         package='nav2_planner',
         executable='planner_server',
@@ -406,37 +417,45 @@ def generate_launch_description():
         ],
     )
 
-    behavior_server = Node(
-        package='nav2_behaviors',
-        executable='behavior_server',
-        name='behavior_server',
-        namespace=module_namespace,
-        output='screen',
-        parameters=nav2_param_chain + [{
-            # HH_260306-00:00 Hard-override to block fallback to default "robot_base_link"
-            # during recovery behavior pose transforms.
-            'global_frame': 'map',
-            'local_frame': 'odom',
-            'robot_base_frame': nav2_robot_base_frame,
-            # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
-            'transform_tolerance': 0.5,
-        }],
-        remappings=[
-            # HH_260331: Keep /planning/cmd_vel as controller-only stream.
-            # Recovery behaviors publish to a separate topic for clearer runtime control/debug.
-            ('cmd_vel', '/planning/cmd_vel_recovery'),
-        ],
-    )
+    if has_nav2_behaviors:
+        behavior_server = Node(
+            package='nav2_behaviors',
+            executable='behavior_server',
+            name='behavior_server',
+            namespace=module_namespace,
+            output='screen',
+            parameters=nav2_param_chain + [{
+                # HH_260306-00:00 Hard-override to block fallback to default "robot_base_link"
+                # during recovery behavior pose transforms.
+                'global_frame': 'map',
+                'local_frame': 'odom',
+                'robot_base_frame': nav2_robot_base_frame,
+                # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
+                'transform_tolerance': 0.5,
+            }],
+            remappings=[
+                # HH_260331: Keep /planning/cmd_vel as controller-only stream.
+                # Recovery behaviors publish to a separate topic for clearer runtime control/debug.
+                ('cmd_vel', '/planning/cmd_vel_recovery'),
+            ],
+        )
+    else:
+        # HH_260604: Do not abort bringup when optional Nav2 behavior package is absent.
+        behavior_server = LogInfo(msg='[nav2_lanelet] nav2_behaviors not found; skipping behavior_server')
 
     # HH_260513: SimpleSmoother server for BT SmoothPath node.
-    smoother_server = Node(
-        package='nav2_smoother',
-        executable='smoother_server',
-        name='smoother_server',
-        namespace=module_namespace,
-        output='screen',
-        parameters=nav2_param_chain,
-    )
+    if has_nav2_smoother:
+        smoother_server = Node(
+            package='nav2_smoother',
+            executable='smoother_server',
+            name='smoother_server',
+            namespace=module_namespace,
+            output='screen',
+            parameters=nav2_param_chain,
+        )
+    else:
+        # HH_260604: Do not abort bringup when optional Nav2 smoother package is absent.
+        smoother_server = LogInfo(msg='[nav2_lanelet] nav2_smoother not found; skipping smoother_server')
 
     bt_navigator = Node(
         package='nav2_bt_navigator',
@@ -463,6 +482,21 @@ def generate_launch_description():
         ],
     )
 
+    lifecycle_node_names = [
+        'planner_server',
+        'controller_server',
+    ]
+    if has_nav2_smoother:
+        # HH_260604: Activate smoother only when its package is installed.
+        lifecycle_node_names.append('smoother_server')
+    if has_nav2_behaviors:
+        # HH_260604: Activate behavior server only when its package is installed.
+        lifecycle_node_names.append('behavior_server')
+    lifecycle_node_names.extend([
+        'bt_navigator',
+        # 2026-01-30 14:32: Let planner/controller manage internal costmap lifecycles (avoid duplicate configure).
+    ])
+
     lifecycle_mgr = Node(
         package='nav2_lifecycle_manager',
         executable='lifecycle_manager',
@@ -479,16 +513,7 @@ def generate_launch_description():
             'service_timeout': 10000,
             'attempt_respawn_reconnection': True,
             'bond_respawn_max_duration': 30.0,
-            'node_names': [
-                'planner_server',
-                'controller_server',
-                # HH_260513: smoother_server must be activated before bt_navigator to avoid
-                # SmoothPath action server not-found errors at BT startup.
-                'smoother_server',
-                'behavior_server',
-                'bt_navigator',
-                # 2026-01-30 14:32: Let planner/controller manage internal costmap lifecycles (avoid duplicate configure).
-            ],
+            'node_names': lifecycle_node_names,
         }],
         remappings=[
         ],

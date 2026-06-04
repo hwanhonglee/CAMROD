@@ -32,6 +32,11 @@
   <!-- HJ_260529: optional LiDAR driver — declared so packages-up-to pulls it in automatically -->
   <exec_depend>vanjee_lidar_sdk</exec_depend>
   <exec_depend>vanjee_lidar_msg</exec_depend>
+  <!-- HH_260604: Declare launch-time external drivers so packages-up-to camrod_sensing builds GNSS/LiDAR runtime dependencies. -->
+  <exec_depend>ublox_gps</exec_depend>
+  <exec_depend>ublox_dgnss_node</exec_depend>
+  <exec_depend>ntrip_client</exec_depend>
+  <exec_depend>ground_segmentation_ros2</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
