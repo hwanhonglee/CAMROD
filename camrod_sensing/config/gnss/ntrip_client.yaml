@@ -1,30 +1,35 @@
+# HH_260604: Unified NTRIP parameters for both drivers.
+#   - ublox (single antenna): ntrip_ros.py reads this file directly via ROS2 param loading (/**:).
+#   - ublox_dgnss (dual antenna): NTRIPClientNode reads /**:ros__parameters dict at launch time.
+# Server: gnssdata.or.kr:2101, mountpoint CNJU-RTCM32.
+
 /**:
   ros__parameters:
-    host: www.gnssdata.or.kr
+    # ── Server connection ─────────────────────────────────────────────────────
+    host: gnssdata.or.kr
     port: 2101
-    mountpoint: CNJU-RTCM32 # CNJU-RTCM31 # CNJU-RTCM23 # CNJU-RTCM32 # CNJU-BINEX
-    # mountpoint: JECH-RTCM32 # JECH-RTCM31 # JECH-RTCM23 # JECH-RTCM32 # JECH-BINEX
+    mountpoint: "CNJU-RTCM32"
+    # mountpoint: "JECH-RTCM32"
+    username: "hwanhong57@gmail.com"
+    password: "gnss"
+
+    # ── Python ntrip_ros.py (ublox single antenna) ────────────────────────────
     authenticate: true
-    username: hwanhong57@gmail.com
-    password: gnss
-
-    # Force rtcm_msgs (avoid mavros_msgs dependency)
     rtcm_message_package: rtcm_msgs
-    # HH_260327: Accept slightly longer GGA strings generated at runtime
-    # to avoid dropping valid NMEA and triggering avoidable reconnect churn.
+    # HH_260327: Accept slightly longer GGA strings to avoid reconnect churn.
     nmea_max_length: 96
-
-    # Ensure topic name (some versions use 'rtcm_topic')
     rtcm_topic: /rtcm
-    
     ntrip_version: "None"
     ssl: false
     cert: "None"
     key: "None"
     ca_cert: "None"
-
     rtcm_frame_id: "gps"
     # HH_260327: Relax timeout/retry cadence for unstable RTCM network periods.
     rtcm_timeout_seconds: 10
     reconnect_attempt_max: 10
     reconnect_attempt_wait_seconds: 8
+
+    # ── C++ NTRIPClientNode (ublox_dgnss dual antenna) ────────────────────────
+    use_https: false
+    maxage_conn: 30

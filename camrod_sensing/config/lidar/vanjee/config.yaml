@@ -15,7 +15,7 @@ lidar:
       end_angle: 80                                 # FOV end angle
       wait_for_difop: false                         # 750 does not require difop calibration wait
       min_distance: 0.01                            # min point distance (m)
-      max_distance: 30                              # max point distance (m)
+      max_distance: 3                              # max point distance (m)
       # HH_260415: Use host ROS clock to avoid TF extrapolation caused by sensor-clock skew.
       # HH_260527: use_lidar_clock options:
       #   true: use LiDAR device clock for message stamp
@@ -28,8 +28,8 @@ lidar:
       # angle_path_ver/hor are resolved at launch time from vanjee_lidar_sdk share directory.
       # See lidar_driver.launch.py — do not edit paths here directly.
       config_from_file: true
-      angle_path_ver: ""
-      angle_path_hor: ""
+      angle_path_ver: "/home/nvidia/camrod_peception_val_ws/install/vanjee_lidar_sdk/share/vanjee_lidar_sdk/param/Vanjee_750C_VA.csv"
+      angle_path_hor: "/home/nvidia/camrod_peception_val_ws/install/vanjee_lidar_sdk/share/vanjee_lidar_sdk/param/Vanjee_750C_HA.csv"
       imu_param_path:
       dense_points: false
       ts_first_point: true

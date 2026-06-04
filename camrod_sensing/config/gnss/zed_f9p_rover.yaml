@@ -1,6 +1,7 @@
 /**:
   ros__parameters:
-    device: /dev/ttyACM1
+    # HH_260604: SparkFun ZED-F9P at ttyACM0 — simpleRTK2B uses libusb (no ttyACM created).
+    device: /dev/ttyACM0
     frame_id: gps
     debug: 1 # 4 is logging data
 

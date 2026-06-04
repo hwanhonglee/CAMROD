@@ -1,0 +1,47 @@
+# HH_260604: Hardware parameters for UbloxDGNSSNode (simpleRTK2B Heading / ZED-F9P dual antenna).
+# DEVICE_FAMILY, DEVICE_SERIAL_STRING, UBX_CONFIG_FILE are injected at launch time.
+#
+# ── What this file controls ─────────────────────────────────────────────────────────────
+#   - Measurement rate (how fast the chip reports position)
+#   - USB protocol settings (what the host PC sends/receives)
+#   - Which UBX messages are output over USB (topics published by UbloxDGNSSNode)
+#
+# ── What this file deliberately does NOT touch ──────────────────────────────────────────
+#   UART1 / UART2 settings are intentionally absent.
+#
+#   The simpleRTK2B Heading board has two F9P chips (BASE + ROVER) on one PCB.
+#   They communicate via an internal UART2 trace at the board's factory baudrate.
+#   Setting CFG_UART2_BAUDRATE or CFG_UART2INPROT_* here overrides the ROVER chip's
+#   UART2 settings while the BASE chip remains at its factory value → baudrate mismatch
+#   → BASE→ROVER corrections stop flowing → diff_corr: false → heading lost.
+#
+#   Leave UART1/UART2 alone; the board factory config handles moving-baseline correctly.
+
+/**:
+  ros__parameters:
+    FRAME_ID: "gnss_link"
+
+    # Measurement/navigation rate — 200 ms = 5 Hz
+    CFG_RATE_MEAS: 200
+    CFG_RATE_NAV: 1
+
+    # USB input protocols
+    # RTCM3X input must be enabled so UbloxDGNSSNode can inject NTRIP corrections
+    # received via ntrip_client into the ROVER chip over USB.
+    CFG_USBINPROT_NMEA:    false
+    CFG_USBINPROT_RTCM3X:  true    # NTRIP corrections in
+    CFG_USBINPROT_UBX:     true    # UBX command/config in
+
+    # USB output protocols
+    # RTCM3X output is disabled — without it the node does not publish /gnss/rtcm,
+    # which would duplicate the NTRIP input and cause confusion.
+    CFG_USBOUTPROT_NMEA:   false
+    CFG_USBOUTPROT_RTCM3X: false   # disabled — avoids unused /gnss/rtcm mirror topic
+    CFG_USBOUTPROT_UBX:    true    # UBX messages out
+
+    # UBX message outputs over USB → become ROS topics published by UbloxDGNSSNode
+    CFG_MSGOUT_UBX_NAV_HPPOSLLH_USB: 1   # high-precision position (lat/lon/alt)
+    CFG_MSGOUT_UBX_NAV_COV_USB:       1   # position covariance
+    CFG_MSGOUT_UBX_NAV_STATUS_USB:    1   # fix status / diff_corr flag
+    CFG_MSGOUT_UBX_NAV_PVT_USB:       1   # position/velocity/time + RTK state
+    CFG_MSGOUT_UBX_NAV_RELPOSNED_USB: 1   # relative position NED → dual-antenna heading

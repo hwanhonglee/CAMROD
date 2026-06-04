@@ -62,11 +62,11 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
   RCLCPP_INFO(this->get_logger(), "Device path: %s", device_path_.c_str());
   RCLCPP_INFO(this->get_logger(), "Target FPS: %d", fps_);
 
-  // io-mode=4: DMABUF zero-copy from Tegra VI sensor → nvvidconv
+  // HJ_260529: removed io-mode=4 (DMABUF) — ISX031 econ camera does not support it.
   // videorate before nvvidconv: drops UYVY frames first so VIC (nvvidconv) only
   // runs at fps_, not at the sensor's native 30fps. 3x reduction in VIC calls.
   std::string gst_pipeline =
-    "v4l2src device=" + device_path_ + " io-mode=4" +
+    "v4l2src device=" + device_path_ +
     " ! video/x-raw,width=" + std::to_string(image_width_) +
     ",height=" + std::to_string(image_height_) +
     ",format=UYVY,framerate=30/1" +

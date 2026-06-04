@@ -65,11 +65,12 @@ def generate_launch_description():
 
     default_paths = {
         "camera_params_file":             os.path.join(sensing_share, "config", "camera", "camera_params.yaml"),
-        "gnss_param_file":                os.path.join(sensing_share, "config", "gnss", "zed_f9p_rover.yaml"),
-        "ntrip_param_file":               os.path.join(sensing_share, "config", "gnss", "ntrip_client.yaml"),
+        "gnss_param_file":          os.path.join(sensing_share, "config", "gnss", "zed_f9p_rover.yaml"),
+        "ntrip_param_file":         os.path.join(sensing_share, "config", "gnss", "ntrip_client.yaml"),
+        "dgnss_rover_param_file":   os.path.join(sensing_share, "config", "gnss", "ublox_dgnss_rover.yaml"),
         "imu_param_file":                 "__model_default__",
         "imu_converter_param_file":       os.path.join(sensing_share, "config", "imu", "platform_velocity_converter.yaml"),
-        "lidar_preprocess_param_file":    os.path.join(sensing_share, "config", "lidar", "preprocessor.yaml"),
+        "ground_seg_param_file":          os.path.join(sensing_share, "config", "lidar", "ground_seg_params.yaml"),
         "lidar_cost_grid_param_file":     os.path.join(sensing_share, "config", "lidar", "cost_grid.yaml"),
         "radar_sensor_param_file":        os.path.join(sensing_share, "config", "radar", "sen0592_radar.yaml"),
         "radar_cost_grid_param_file":     os.path.join(sensing_share, "config", "radar", "cost_grid.yaml"),
@@ -94,7 +95,15 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_lidar_cost_grid",      default_value="true"),
         DeclareLaunchArgument("enable_inflation_cost_grid",  default_value="true"),
         DeclareLaunchArgument("enable_vanjee_static_tf",     default_value="false"),
-        DeclareLaunchArgument("enable_ntrip",                default_value="true"),
+        ## HJ_260528
+        DeclareLaunchArgument("enable_ntrip", default_value="true"),
+        # HJ_260528: gnss_driver selects between ublox (single) and ublox_dgnss (dual antenna)
+        DeclareLaunchArgument(
+            "gnss_driver",
+            default_value="ublox_dgnss",
+            description="GNSS driver: ublox (single antenna) | ublox_dgnss (dual antenna)",
+        ),
+
         # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
         DeclareLaunchArgument("imu_model",                   default_value="cv7",
                               description="IMU model: cv7 | gq7"),
@@ -127,11 +136,14 @@ def generate_launch_description():
                  enable_rear_camera=LaunchConfiguration("enable_rear_camera"),
             ),
 
+            # HH_260604: Single gnss.launch.py handles both ublox and ublox_dgnss via gnss_driver arg.
             _inc(gnss_launch,
                  "enable_ntrip",
                  condition=IfCondition(LaunchConfiguration("enable_gnss")),
+                 gnss_driver=LaunchConfiguration("gnss_driver"),
                  ublox_param_file=LaunchConfiguration("gnss_param_file"),
                  ntrip_param_file=LaunchConfiguration("ntrip_param_file"),
+                 dgnss_rover_param_file=LaunchConfiguration("dgnss_rover_param_file"),
                  gnss_namespace=LaunchConfiguration("gnss_namespace"),
                  rtcm_topic=LaunchConfiguration("gnss_rtcm_topic"),
             ),
@@ -150,7 +162,7 @@ def generate_launch_description():
             ),
 
             _inc(lidar_launch,
-                 "lidar_preprocess_param_file",
+                 "ground_seg_param_file",
                  "lidar_cost_grid_param_file", "vanjee_config_path",
                  "enable_lidar_driver", "enable_lidar_cost_grid", "enable_vanjee_static_tf",
                  module_namespace="lidar",

@@ -1,0 +1,17 @@
+/sensing/lidar/lidar_preprocessor:
+  ros__parameters:
+    input_topic: "/sensing/lidar/vanjee/points_raw"
+    filtered_topic: "/sensing/lidar/points_preprocessed"
+    lidar_status_topic: "/sensing/lidar/status"
+    publish_lidar_status: false
+    min_range: 0.0
+    max_range: 35.0
+    min_z: -1.0
+    max_z: 1.0
+    method: "z"
+    z_min: -1.0
+    z_max: 1.0
+    voxel_leaf: 0.05
+    stamp_with_now: true
+    frame_id_override: "lidar_link"
+    publish_filtered: true

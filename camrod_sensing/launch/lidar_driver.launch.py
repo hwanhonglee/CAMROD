@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 
 import os
-import tempfile
 
-import yaml
 from ament_index_python.packages import get_package_share_directory
-
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, LogInfo
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -26,84 +23,54 @@ def _resolve_vanjee_config_and_presence() -> tuple[str, bool]:
         return default_config, False
 
 
-def _inject_calibration_paths(context, *args, **kwargs):
-    """Resolve 750C calibration CSV paths from vanjee_lidar_sdk share and patch config.yaml."""
-    try:
-        sdk_share = get_package_share_directory("vanjee_lidar_sdk")
-        va_csv = os.path.join(sdk_share, "param", "Vanjee_750C_VA.csv")
-        ha_csv = os.path.join(sdk_share, "param", "Vanjee_750C_HA.csv")
-    except Exception:
-        va_csv = ""
-        ha_csv = ""
-
-    config_path = context.launch_configurations.get("vanjee_config_path", "")
-    if not config_path or not os.path.isfile(config_path):
-        return []
-
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
-
-        driver = cfg.get("lidar", [{}])[0].get("driver", {})
-        driver["angle_path_ver"] = va_csv if os.path.isfile(va_csv) else ""
-        driver["angle_path_hor"] = ha_csv if os.path.isfile(ha_csv) else ""
-
-        tmp = tempfile.NamedTemporaryFile(
-            mode="w", suffix="_vanjee_750.yaml", delete=False, encoding="utf-8"
-        )
-        yaml.dump(cfg, tmp, allow_unicode=True, default_flow_style=False)
-        tmp.close()
-        context.launch_configurations["vanjee_config_path"] = tmp.name
-    except Exception as exc:
-        print(f"[lidar_driver] WARNING: could not patch calibration paths: {exc}")
-
-    return []
-
-
 def generate_launch_description():
     sensing_share = get_package_share_directory("camrod_sensing")
 
-    default_lidar_preprocess_param = os.path.join(
-        sensing_share, "config", "lidar", "preprocessor.yaml"
+    default_sensing_param = os.path.join(
+        sensing_share, "config", "sensing_params.yaml"
+    )
+    default_ground_seg_param = os.path.join(
+        sensing_share, "config", "lidar", "ground_seg_params.yaml"
     )
     default_vanjee_config, has_vanjee_driver_pkg = _resolve_vanjee_config_and_presence()
     enable_driver_default = "true" if has_vanjee_driver_pkg else "false"
 
     declare_args = [
-        DeclareLaunchArgument("lidar_preprocess_param_file", default_value=default_lidar_preprocess_param),
-        DeclareLaunchArgument("vanjee_config_path", default_value=default_vanjee_config),
+        DeclareLaunchArgument("sensing_param_file",     default_value=default_sensing_param),
+        DeclareLaunchArgument("ground_seg_param_file",  default_value=default_ground_seg_param),
+        DeclareLaunchArgument("vanjee_config_path",     default_value=default_vanjee_config),
 
-        DeclareLaunchArgument("enable_lidar_driver", default_value=enable_driver_default),
-        DeclareLaunchArgument("enable_vanjee_static_tf", default_value="false"),
+        DeclareLaunchArgument("enable_lidar_driver",       default_value=enable_driver_default),
+        DeclareLaunchArgument("enable_vanjee_static_tf",   default_value="false"),
 
-        DeclareLaunchArgument("module_namespace", default_value="lidar"),
-        DeclareLaunchArgument("vanjee_driver_namespace", default_value="vanjee"),
+        DeclareLaunchArgument("module_namespace",          default_value="lidar"),
+        DeclareLaunchArgument("vanjee_driver_namespace",   default_value="vanjee"),
 
-        DeclareLaunchArgument("preprocessor_input_topic", default_value="vanjee/points_raw"),
-        DeclareLaunchArgument("lidar_filtered_topic", default_value="points_filtered"),
-        DeclareLaunchArgument("lidar_status_topic", default_value="status"),
+        DeclareLaunchArgument("preprocessor_input_topic",  default_value="vanjee/points_raw"),
+        DeclareLaunchArgument("lidar_filtered_topic",      default_value="points_filtered"),
+        DeclareLaunchArgument("lidar_status_topic",        default_value="status"),
 
-        DeclareLaunchArgument("vanjee_tf_x", default_value="0.0"),
-        DeclareLaunchArgument("vanjee_tf_y", default_value="0.0"),
-        DeclareLaunchArgument("vanjee_tf_z", default_value="0.9"),
-        DeclareLaunchArgument("vanjee_tf_roll", default_value="0.0"),
-        DeclareLaunchArgument("vanjee_tf_pitch", default_value="0.0"),
-        DeclareLaunchArgument("vanjee_tf_yaw", default_value="0.0"),
-        DeclareLaunchArgument("vanjee_tf_parent", default_value="robot_base_link"),
-        DeclareLaunchArgument("vanjee_tf_child", default_value="vanjee_lidar"),
+        DeclareLaunchArgument("vanjee_tf_x",       default_value="0.0"),
+        DeclareLaunchArgument("vanjee_tf_y",       default_value="0.0"),
+        DeclareLaunchArgument("vanjee_tf_z",       default_value="0.9"),
+        DeclareLaunchArgument("vanjee_tf_roll",    default_value="0.0"),
+        DeclareLaunchArgument("vanjee_tf_pitch",   default_value="0.0"),
+        DeclareLaunchArgument("vanjee_tf_yaw",     default_value="0.0"),
+        DeclareLaunchArgument("vanjee_tf_parent",  default_value="robot_base_link"),
+        DeclareLaunchArgument("vanjee_tf_child",   default_value="vanjee_lidar"),
     ]
 
-    lidar_preprocess_param_file = LaunchConfiguration("lidar_preprocess_param_file")
-    enable_lidar_driver = LaunchConfiguration("enable_lidar_driver")
-    vanjee_config_path = LaunchConfiguration("vanjee_config_path")
+    sensing_param_file    = LaunchConfiguration("sensing_param_file")
+    ground_seg_param_file = LaunchConfiguration("ground_seg_param_file")
+    enable_lidar_driver   = LaunchConfiguration("enable_lidar_driver")
+    vanjee_config_path    = LaunchConfiguration("vanjee_config_path")
 
-    module_namespace = LaunchConfiguration("module_namespace")
-    vanjee_driver_namespace = LaunchConfiguration("vanjee_driver_namespace")
+    module_namespace         = LaunchConfiguration("module_namespace")
+    vanjee_driver_namespace  = LaunchConfiguration("vanjee_driver_namespace")
 
     preprocessor_input_topic = LaunchConfiguration("preprocessor_input_topic")
-    lidar_filtered_topic = LaunchConfiguration("lidar_filtered_topic")
-    lidar_status_topic = LaunchConfiguration("lidar_status_topic")
-    enable_vanjee_static_tf = LaunchConfiguration("enable_vanjee_static_tf")
+    lidar_filtered_topic     = LaunchConfiguration("lidar_filtered_topic")
+    enable_vanjee_static_tf  = LaunchConfiguration("enable_vanjee_static_tf")
 
     optional_driver_actions = []
 
@@ -118,12 +85,14 @@ def generate_launch_description():
                 {"config_path": vanjee_config_path}
             ],
             remappings=[
-                # WLR-750 SDK publishes on /vanjee_points750
                 ("/vanjee_points750", "points_raw"),
                 ("vanjee_points750", "points_raw"),
 
                 ("/vanjee_lidar_imu_packets", "imu_packets"),
                 ("vanjee_lidar_imu_packets", "imu_packets"),
+
+                ("/lidar/vanjee/points_raw", "points_raw"),
+                ("/lidar/vanjee/imu_packets", "imu_packets"),
             ],
             condition=IfCondition(enable_lidar_driver),
         )
@@ -135,20 +104,20 @@ def generate_launch_description():
             )
         )
 
-    lidar_preprocessor_node = Node(
-        package="camrod_sensing",
-        executable="lidar_preprocessor_node",
-        name="lidar_preprocessor",
+    # ── Ground Segmentation (DFKI) ──────────────────────────────────
+    ground_segmentation_node = Node(
+        package="ground_segmentation_ros2",
+        executable="ground_segmentation_ros2_node",
+        name="ground_segmentation",
         namespace=module_namespace,
         output="screen",
-        parameters=[
-            lidar_preprocess_param_file,
-            {
-                "input_topic": preprocessor_input_topic,
-                "filtered_topic": lidar_filtered_topic,
-                "lidar_status_topic": lidar_status_topic,
-            },
+        remappings=[
+            ("/ground_segmentation/input_pointcloud", "/sensing/lidar/vanjee/points_raw"),
+            ("/ground_segmentation/obstacle_points",  "/sensing/lidar/points_filtered"),
         ],
+        parameters=[ground_seg_param_file],
+        # HH_260604: Do not require the optional ground-segmentation package when LiDAR is disabled.
+        condition=IfCondition(enable_lidar_driver),
     )
 
     if has_vanjee_driver_pkg:
@@ -180,9 +149,5 @@ def generate_launch_description():
         optional_driver_actions.append(vanjee_static_tf)
 
     return LaunchDescription(
-        declare_args + [
-            # Patch calibration paths into config before driver node reads it
-            OpaqueFunction(function=_inject_calibration_paths),
-            lidar_preprocessor_node,
-        ] + optional_driver_actions
+        declare_args + [ground_segmentation_node] + optional_driver_actions
     )
