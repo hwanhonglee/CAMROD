@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v1.11**
+> Current release: **v1.12**
 
 ---
 
@@ -68,7 +68,7 @@ CAMROD is a supervised-autonomy delivery platform designed for controlled outdoo
 | Component | Model / Notes |
 |-----------|---------------|
 | Mobile base | Agilex Ranger (4WD skid-steer, CAN bus) |
-| GNSS | u-blox ZED-F9P (RTK via NTRIP) |
+| GNSS | SparkFun ZED-F9P (single antenna, RTK via NTRIP) + ArduSimple simpleRTK2B Heading (dual antenna, moving-baseline heading) |
 | IMU | Microstrain CV7 or GQ7 (9-axis; GQ7 has embedded GNSS) |
 | LiDAR | Vanjee 3D LiDAR |
 | Camera | USB camera (V4L2, UYVY → ROS Image) |
@@ -714,6 +714,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
+| v1.12 | 2026-06-04 | Dual antenna GNSS heading (simpleRTK2B Heading, moving-baseline RELPOSNED), unified GNSS launch (gnss_driver:=ublox\|ublox_dgnss), Python NTRIP for both modes (GGA feedback for VRS), centralize ublox_dgnss config to camrod_sensing/config/gnss/, remove COG heading fallback |
 | v1.11 | 2026-05-28 | Dual econ camera (front GPU/VPI + rear CPU/GStreamer), unified IMU launch (imu_model), camrod_parking → camrod_docking, rear camera calibration, EKF log suppression, costmap start_current |
 | v1.10 | 2026-05-21 | Camera sensing refactor (V4L2 publisher), YOLOv9 perception, UI symlink fix, nav2 combo profiles, planning parameter stabilization |
 | v1.9 | 2026-05-13 | Planning stability, radar angle fix, Smac2D re-enable |

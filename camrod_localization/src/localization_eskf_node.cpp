@@ -227,6 +227,17 @@ public:
     // Eliminates the need for imu_yaw_init_offset_deg calibration — heading self-calibrates
     // from GNSS velocity direction as soon as robot moves at gnss_cog_min_speed_mps.
     gnss_cog_force_init_ = declare_parameter<bool>("gnss_cog_force_init", true);
+    // HH_260604: Dual-antenna GNSS heading arrives as yaw in the GNSS pose covariance topic.
+    // Keep this separate from COG so stationary heading can be fused when RELPOSNED is valid.
+    enable_gnss_pose_heading_ = declare_parameter<bool>("enable_gnss_pose_heading", true);
+    gnss_pose_heading_noise_floor_rad_ =
+      declare_parameter<double>("gnss_pose_heading_noise_floor_deg", 1.0) * M_PI / 180.0;
+    gnss_pose_heading_gate_mahalanobis_ =
+      declare_parameter<double>("gnss_pose_heading_gate_mahalanobis", 9.0);
+    gnss_pose_heading_max_covariance_ =
+      declare_parameter<double>("gnss_pose_heading_max_covariance", 100.0);
+    gnss_pose_heading_force_init_ =
+      declare_parameter<bool>("gnss_pose_heading_force_init", true);
     if (yaw_init_source_ != "imu_orientation" && yaw_init_source_ != "state") {
       RCLCPP_WARN(
         get_logger(),
@@ -470,9 +481,15 @@ private:
       R(1, 1) = msg->pose.covariance[7];
     }
 
+    double gnss_heading_yaw = 0.0;
+    double gnss_heading_var = 0.0;
+    const bool has_gnss_heading =
+      gnssPoseHeadingMeasurement(*msg, gnss_heading_yaw, gnss_heading_var);
+
     if (init_on_first_gnss_ && !initialized_) {
       // 2026-01-30: Snap initial state to GNSS position and reset covariance.
-      const double yaw_seed = yawForInitialization();
+      // HH_260604: Seed initial yaw from dual-antenna GNSS pose heading when available.
+      const double yaw_seed = has_gnss_heading ? gnss_heading_yaw : yawForInitialization();
       state_.setZero();
       state_(0) = z.x();
       state_(1) = z.y();
@@ -482,14 +499,20 @@ private:
           get_logger(),
           "Yaw debug GNSS init: seeded yaw=%.2f deg from %s",
           radToDeg(yaw_seed),
-          (yawInitUsesImuOrientation() && has_imu_base_yaw_) ? "IMU orientation" :
-          "state yaw");
+          has_gnss_heading ? "GNSS pose heading" :
+          ((yawInitUsesImuOrientation() && has_imu_base_yaw_) ? "IMU orientation" :
+          "state yaw"));
       }
 
       covariance_.setIdentity();
       covariance_ *= 10.0;
       covariance_(0, 0) = R(0, 0);
       covariance_(1, 1) = R(1, 1);
+      if (has_gnss_heading) {
+        covariance_(4, 4) = gnss_heading_var;
+        gnss_pose_heading_initialized_ = true;
+        gnss_cog_heading_initialized_ = true;
+      }
 
       initialized_ = true;
       // HH_260422: Preserve wheel status so monitor's wheel_update_accepted is not zeroed.
@@ -523,10 +546,9 @@ private:
     if (mahal > gnss_gate_mahalanobis_) {
       if (reinit_on_gnss_reject_ && pos_error > reinit_distance_threshold_) {
         // 2026-02-02: Hard reset to GNSS if drifted too far.
-        // On re-init, always preserve current filter yaw (state_(4)) — IMU quaternion yaw
-        // has drifted (CV7 has no magnetometer, pure gyro-integrated heading) so using it
-        // here would corrupt a valid heading estimate built up during prior driving.
-        const double yaw_seed = normalizeYaw(state_(4));
+        // HH_260604: On re-init, prefer dual-antenna GNSS heading when present; otherwise preserve
+        // current filter yaw because CV7 quaternion yaw has no absolute reference here.
+        const double yaw_seed = has_gnss_heading ? gnss_heading_yaw : normalizeYaw(state_(4));
         state_.setZero();
         state_(0) = z.x();
         state_(1) = z.y();
@@ -534,14 +556,21 @@ private:
         if (debug_yaw_init_) {
           RCLCPP_WARN(
             get_logger(),
-            "Yaw debug GNSS reinit: seeded yaw=%.2f deg from current filter state (pos_error=%.2fm)",
-            radToDeg(yaw_seed), pos_error);
+            "Yaw debug GNSS reinit: seeded yaw=%.2f deg from %s (pos_error=%.2fm)",
+            radToDeg(yaw_seed),
+            has_gnss_heading ? "GNSS pose heading" : "current filter state",
+            pos_error);
         }
 
         covariance_.setIdentity();
         covariance_ *= 10.0;
         covariance_(0, 0) = R(0, 0);
         covariance_(1, 1) = R(1, 1);
+        if (has_gnss_heading) {
+          covariance_(4, 4) = gnss_heading_var;
+          gnss_pose_heading_initialized_ = true;
+          gnss_cog_heading_initialized_ = true;
+        }
 
         initialized_ = true;
         diag.gnss_update_accepted = true;
@@ -568,6 +597,8 @@ private:
     state_ += K * innov;
     state_(4) = normalizeYaw(state_(4));
     applyJosephUpdate<2>(K, H, R);
+    // HH_260604: Fuse GNSS pose yaw after the accepted GNSS position update.
+    applyGnssPoseHeading(*msg);
 
     diag.gnss_update_accepted = true;
     diag.covariance_trace = covariance_.trace();
@@ -1094,6 +1125,79 @@ private:
       cog * 180.0 / M_PI, speed, innov * 180.0 / M_PI);
   }
 
+  // HH_260604: Extract a valid yaw measurement from GNSS pose orientation and covariance.
+  bool gnssPoseHeadingMeasurement(
+    const avg_msgs::msg::PoseWithCovarianceStamped & msg,
+    double & yaw,
+    double & yaw_variance) const
+  {
+    if (!enable_gnss_pose_heading_) {
+      return false;
+    }
+    const auto & q = msg.pose.pose.orientation;
+    const double q_norm_sq = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+    if (!std::isfinite(q_norm_sq) || q_norm_sq <= 1e-12) {
+      return false;
+    }
+    const double raw_var = msg.pose.covariance[35];
+    if (!std::isfinite(raw_var) || raw_var <= 0.0 ||
+        raw_var > gnss_pose_heading_max_covariance_) {
+      return false;
+    }
+    yaw = normalizeYaw(yawFromQuat(q));
+    yaw_variance = std::max(
+      raw_var,
+      gnss_pose_heading_noise_floor_rad_ * gnss_pose_heading_noise_floor_rad_);
+    return true;
+  }
+
+  // HH_260604: Apply GNSS pose yaw as a one-dimensional heading update.
+  void applyGnssPoseHeading(const avg_msgs::msg::PoseWithCovarianceStamped & msg)
+  {
+    if (!initialized_) {
+      return;
+    }
+
+    double yaw = 0.0;
+    double yaw_variance = 0.0;
+    if (!gnssPoseHeadingMeasurement(msg, yaw, yaw_variance)) {
+      return;
+    }
+
+    if (gnss_pose_heading_force_init_ && !gnss_pose_heading_initialized_) {
+      RCLCPP_INFO(
+        get_logger(),
+        "GNSS pose heading init: yaw %.1f deg -> %.1f deg",
+        state_(4) * 180.0 / M_PI, yaw * 180.0 / M_PI);
+      state_(4) = yaw;
+      covariance_(4, 4) = yaw_variance;
+      gnss_pose_heading_initialized_ = true;
+      gnss_cog_heading_initialized_ = true;
+      return;
+    }
+
+    const double innov = normalizeYaw(yaw - state_(4));
+    const double S = covariance_(4, 4) + yaw_variance;
+    const double mahal = (innov * innov) / std::max(1e-12, S);
+    if (mahal > gnss_pose_heading_gate_mahalanobis_) {
+      RCLCPP_DEBUG_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "GNSS pose heading rejected (mahal=%.2f > gate=%.2f, yaw=%.1f deg)",
+        mahal, gnss_pose_heading_gate_mahalanobis_, yaw * 180.0 / M_PI);
+      return;
+    }
+
+    Eigen::Matrix<double, 1, 8> H = Eigen::Matrix<double, 1, 8>::Zero();
+    H(0, 4) = 1.0;
+    const Eigen::Matrix<double, 8, 1> K = covariance_ * H.transpose() / S;
+    state_ += K * innov;
+    state_(4) = normalizeYaw(state_(4));
+    Eigen::Matrix<double, 1, 1> R_heading; R_heading << yaw_variance;
+    applyJosephUpdate<1>(K, H, R_heading);
+    gnss_pose_heading_initialized_ = true;
+    gnss_cog_heading_initialized_ = true;
+  }
+
   // Updates stop-state based on wheel speed so we can clamp yaw drift at standstill.
   void updateStopState(double v_meas, const rclcpp::Time & stamp)
   {
@@ -1204,6 +1308,13 @@ private:
   bool gnss_cog_force_init_{true};
   bool gnss_cog_heading_initialized_{false};
   rclcpp::Subscription<avg_msgs::msg::TwistWithCovarianceStamped>::SharedPtr gnss_cog_sub_;
+  // HH_260604: Track dual-antenna GNSS pose heading fusion state.
+  bool enable_gnss_pose_heading_{true};
+  double gnss_pose_heading_noise_floor_rad_{0.017};
+  double gnss_pose_heading_gate_mahalanobis_{9.0};
+  double gnss_pose_heading_max_covariance_{100.0};
+  bool gnss_pose_heading_force_init_{true};
+  bool gnss_pose_heading_initialized_{false};
   double imu_accel_x_sign_{1.0};
   double imu_accel_y_sign_{1.0};
   double imu_gyro_z_sign_{1.0};

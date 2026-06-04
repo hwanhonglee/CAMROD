@@ -55,6 +55,8 @@ bringup:
 
   planning:
     # ---- Planning core toggles ----
+    # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
+    enable_planning: true
     enable_path_cost_grids: true
     enable_goal_replanner: true
     # Recover from intermittent lifecycle startup race on resource-limited targets.
@@ -217,6 +219,7 @@ bringup:
     gnss_driver: ublox_dgnss # HJ_260528
     gnss_param_file: sensing/gnss/zed_f9p_rover.yaml
     ntrip_param_file: sensing/gnss/ntrip_client.yaml
+    dgnss_rover_param_file: sensing/gnss/ublox_dgnss_rover.yaml
     # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
     #   imu_model: cv7  → MicroStrain CV7-AHRS (direct node, respawn)
     #   imu_model: gq7  → MicroStrain GQ7 (microstrain_launch.py + optional NTRIP)

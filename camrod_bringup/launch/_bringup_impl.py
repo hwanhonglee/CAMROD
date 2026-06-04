@@ -69,8 +69,9 @@ OVERRIDE_SPECS = {
         'radar_cost_grid_param_file': ('sensing/radar_cost_grid_param_file',),
         'lidar_cost_grid_param_file': ('sensing/lidar_cost_grid_param_file',),
         'inflation_cost_grid_param_file': ('sensing/inflation_cost_grid_param_file',),
-        'gnss_param_file': ('sensing/gnss_param_file',),
-        'ntrip_param_file': ('sensing/ntrip_param_file',),
+        'gnss_param_file':        ('sensing/gnss_param_file',),
+        'ntrip_param_file':       ('sensing/ntrip_param_file',),
+        'dgnss_rover_param_file': ('sensing/dgnss_rover_param_file',),
         # HH_260528: imu_param_file resolves model-specific YAML via OVERRIDE_SPECS (file path only).
         'imu_param_file': ('sensing/imu_param_file',),
         'vanjee_config_path': ('sensing/vanjee_config_path',),
@@ -439,6 +440,8 @@ def generate_launch_description():
         ('localization_enable_monitor', cfg_get(launch_cfg, 'localization/enable_monitor', True), 'Enable localization monitor launch'),
         ('localization_enable_map_helper', cfg_get(launch_cfg, 'localization/enable_map_helper', True), 'Enable localization map_helper launch'),
 
+        # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
+        ('enable_planning', cfg_get(launch_cfg, 'planning/enable_planning', True), 'Enable planning launch module'),
         ('enable_path_cost_grids', cfg_get(launch_cfg, 'planning/enable_path_cost_grids', True), 'Enable path cost-grid helpers'),
         ('enable_goal_replanner', cfg_get(launch_cfg, 'planning/enable_goal_replanner', True), 'Enable goal replanner'),
         ('enable_nav2_lifecycle_retry', cfg_get(launch_cfg, 'planning/enable_nav2_lifecycle_retry', True), 'Enable Nav2 lifecycle retry'),
@@ -1128,7 +1131,7 @@ def generate_launch_description():
         ('camrod_sensing', 'sensing.launch.py', sensing_args, None),
         ('camrod_perception', 'perception.launch.py', perception_args, None),
         ('camrod_localization', 'localization.launch.py', localization_args, None),
-        ('camrod_planning', 'planning.launch.py', planning_args, None),
+        ('camrod_planning', 'planning.launch.py', planning_args, IfCondition(lc['enable_planning'])),
         # Launch unified diagnostics stack via top-level system.launch.py.
         ('camrod_system', 'system.launch.py', system_args, None),
         ('camrod_ui', 'ui.launch.py', api_args, None),

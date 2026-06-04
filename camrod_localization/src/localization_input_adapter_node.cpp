@@ -2,6 +2,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -20,6 +21,7 @@
 #include <avg_msgs/msg/module_state.hpp>
 
 #include <sensor_msgs/msg/imu.hpp>
+#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
 namespace
@@ -30,6 +32,38 @@ constexpr double WGS84_E2 = 6.69437999014e-3;
 double deg2rad(double deg)
 {
   return deg * M_PI / 180.0;
+}
+
+double normalizeYaw(double yaw)
+{
+  const double two_pi = 2.0 * M_PI;
+  while (yaw > M_PI) yaw -= two_pi;
+  while (yaw < -M_PI) yaw += two_pi;
+  return yaw;
+}
+
+double yawFromQuat(const geometry_msgs::msg::Quaternion & q)
+{
+  const double siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
+  const double cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+  return std::atan2(siny_cosp, cosy_cosp);
+}
+
+geometry_msgs::msg::Quaternion yawToQuat(double yaw)
+{
+  geometry_msgs::msg::Quaternion q;
+  const double half = yaw * 0.5;
+  q.x = 0.0;
+  q.y = 0.0;
+  q.z = std::sin(half);
+  q.w = std::cos(half);
+  return q;
+}
+
+bool quaternionIsUsable(const geometry_msgs::msg::Quaternion & q)
+{
+  const double norm_sq = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+  return std::isfinite(norm_sq) && norm_sq > 1e-12;
 }
 
 struct Ecef
@@ -106,10 +140,20 @@ public:
   : Node("localization_input_adapter")
   {
     enable_navsat_to_pose_ = declare_parameter<bool>("enable_navsat_to_pose", true);
-    // HJ_260528: GNSS dual-antenna heading support
+    // HH_260604: Add dual-antenna GNSS heading parameters for GNSS pose orientation.
     enable_gnss_heading_ = declare_parameter<bool>("enable_gnss_heading", false);
     gnss_heading_topic_ = declare_parameter<std::string>(
       "gnss_heading_topic", "/sensing/gnss/navheading");
+    gnss_heading_timeout_s_ = declare_parameter<double>("gnss_heading_timeout_s", 1.0);
+    gnss_heading_yaw_offset_rad_ =
+      deg2rad(declare_parameter<double>("gnss_heading_yaw_offset_deg", 0.0));
+    gnss_heading_covariance_floor_ = std::pow(
+      deg2rad(declare_parameter<double>("gnss_heading_covariance_floor_deg", 1.0)), 2);
+    gnss_heading_max_covariance_ =
+      declare_parameter<double>("gnss_heading_max_covariance", 100.0);
+    gnss_heading_unavailable_covariance_ =
+      declare_parameter<double>("gnss_heading_unavailable_covariance", 1.0e6);
+    hold_last_gnss_heading_ = declare_parameter<bool>("hold_last_gnss_heading", true);
     enable_pose_cov_bridge_ = declare_parameter<bool>("enable_pose_cov_bridge", true);
     enable_odometry_to_pose_ = declare_parameter<bool>("enable_odometry_to_pose", true);
     enable_wheel_odometry_bridge_ = declare_parameter<bool>("enable_wheel_odometry_bridge", true);
@@ -122,9 +166,8 @@ public:
     navsat_topic_ = declare_parameter<std::string>(
       "navsat_topic", "/sensing/gnss/ublox_gps_node/fix");
     // HH_260527: Optional metric pose inputs.
-    // UTM/MGRS are both treated as metric XY sources and shifted by configured offsets.
+    // UTM pose is treated as a metric XY source and shifted by configured offsets.
     utm_pose_topic_ = declare_parameter<std::string>("utm_pose_topic", "");
-    mgrs_pose_topic_ = declare_parameter<std::string>("mgrs_pose_topic", "");
     gnss_pose_topic_ = declare_parameter<std::string>("gnss_pose_topic", "/sensing/gnss/pose");
     gnss_pose_cov_topic_ = declare_parameter<std::string>(
       "gnss_pose_cov_topic", "/sensing/gnss/pose_with_covariance");
@@ -154,10 +197,6 @@ public:
     offset_utm_easting_ = declare_parameter<double>("offset_utm_easting", 0.0);
     offset_utm_northing_ = declare_parameter<double>("offset_utm_northing", 0.0);
     offset_utm_alt_ = declare_parameter<double>("offset_utm_alt", 0.0);
-    offset_mgrs_easting_ = declare_parameter<double>("offset_mgrs_easting", 0.0);
-    offset_mgrs_northing_ = declare_parameter<double>("offset_mgrs_northing", 0.0);
-    offset_mgrs_alt_ = declare_parameter<double>("offset_mgrs_alt", 0.0);
-
     max_position_jump_m_ = declare_parameter<double>("max_position_jump_m", 8.0);
     jump_reject_max_speed_mps_ = declare_parameter<double>("jump_reject_max_speed_mps", 20.0);
     jump_reject_reset_s_ = declare_parameter<double>("jump_reject_reset_s", 2.0);
@@ -239,7 +278,7 @@ public:
         navsat_topic_, rclcpp::SensorDataQoS(),
         std::bind(&LocalizationInputAdapterNode::onNavSatFix, this, _1));
 
-      // HJ_260528: Subscribe to GNSS heading topic when dual-antenna heading is enabled
+      // HH_260604: Subscribe to dual-antenna GNSS heading when enabled.
       if (enable_gnss_heading_) {
         gnss_heading_sub_ = create_subscription<sensor_msgs::msg::Imu>(
           gnss_heading_topic_, rclcpp::SensorDataQoS(),
@@ -325,17 +364,79 @@ private:
     kFallback
   };
 
-  // HJ_260528: Cache orientation and covariance from GNSS heading (dual-antenna IMU msg)
+  // HH_260604: Store heading samples with covariance and timestamp for GNSS pose fusion.
+  struct HeadingSample
+  {
+    geometry_msgs::msg::Quaternion orientation;
+    double yaw_covariance{1.0e6};
+    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+    bool has_sample{false};
+  };
+
+  bool headingFresh(const HeadingSample & sample, const rclcpp::Time & stamp, double timeout_s) const
+  {
+    if (!sample.has_sample || timeout_s < 0.0) {
+      return sample.has_sample;
+    }
+    const double age = std::abs((stamp - sample.stamp).seconds());
+    return age <= timeout_s;
+  }
+
+  bool headingUsable(const HeadingSample & sample, const rclcpp::Time & stamp, double timeout_s) const
+  {
+    return headingFresh(sample, stamp, timeout_s) &&
+      std::isfinite(sample.yaw_covariance) &&
+      sample.yaw_covariance > 0.0 &&
+      sample.yaw_covariance <= gnss_heading_max_covariance_;
+  }
+
+  void rememberHeading(const HeadingSample & sample)
+  {
+    if (!sample.has_sample) {
+      return;
+    }
+    last_any_heading_ = sample;
+    has_any_heading_ = true;
+  }
+
+  // HH_260604: Cache yaw and covariance from dual-antenna GNSS heading.
   void onGnssHeading(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
   {
-    heading_x_ = msg->orientation.x;
-    heading_y_ = msg->orientation.y;
-    heading_z_ = msg->orientation.z;
-    heading_w_ = msg->orientation.w;
-    for (int i = 0; i < 9; ++i) {
-      heading_orientation_cov_[i] = msg->orientation_covariance[i];
+    if (!quaternionIsUsable(msg->orientation)) {
+      return;
     }
-    has_heading_ = true;
+    const double raw_cov = msg->orientation_covariance[8];
+    const double yaw_cov = (std::isfinite(raw_cov) && raw_cov > 0.0)
+      ? std::max(raw_cov, gnss_heading_covariance_floor_)
+      : gnss_heading_unavailable_covariance_;
+
+    const double yaw = normalizeYaw(yawFromQuat(msg->orientation) + gnss_heading_yaw_offset_rad_);
+    gnss_heading_.orientation = yawToQuat(yaw);
+    gnss_heading_.yaw_covariance = yaw_cov;
+    gnss_heading_.stamp = rclcpp::Time(msg->header.stamp);
+    gnss_heading_.has_sample = true;
+    rememberHeading(gnss_heading_);
+  }
+
+  // HH_260604: Prefer dual-antenna heading; fall back to last heading for display only.
+  bool selectHeading(
+    const rclcpp::Time & stamp,
+    geometry_msgs::msg::Quaternion & orientation,
+    double & yaw_covariance) const
+  {
+    if (enable_gnss_heading_ &&
+        headingUsable(gnss_heading_, stamp, gnss_heading_timeout_s_)) {
+      orientation = gnss_heading_.orientation;
+      yaw_covariance = gnss_heading_.yaw_covariance;
+      return true;
+    }
+    if (hold_last_gnss_heading_ && has_any_heading_) {
+      orientation = last_any_heading_.orientation;
+    } else {
+      orientation = yawToQuat(0.0);
+    }
+    yaw_covariance = gnss_heading_unavailable_covariance_;
+    return false;
   }
 
   void onNavSatFix(const avg_msgs::msg::NavSatFix::ConstSharedPtr msg)
@@ -380,15 +481,12 @@ private:
     pose.header = msg->header;
     pose.header.frame_id = map_frame_id_;
     pose.pose.position = p;
-    // HJ_260528: Apply dual-antenna heading to pose orientation when available
-    if (enable_gnss_heading_ && has_heading_) {
-      pose.pose.orientation.x = heading_x_;
-      pose.pose.orientation.y = heading_y_;
-      pose.pose.orientation.z = heading_z_;
-      pose.pose.orientation.w = heading_w_;
-    } else {
-      pose.pose.orientation.w = 1.0;
-    }
+    geometry_msgs::msg::Quaternion heading_orientation;
+    double heading_yaw_covariance = gnss_heading_unavailable_covariance_;
+    const bool has_fresh_heading =
+      selectHeading(stamp, heading_orientation, heading_yaw_covariance);
+    // HH_260604: Publish GNSS pose orientation from the selected heading instead of fixed yaw.
+    pose.pose.orientation = heading_orientation;
 
     gnss_pose_pub_->publish(pose);
 
@@ -397,16 +495,12 @@ private:
       pose_cov.header = pose.header;
       pose_cov.pose.pose = pose.pose;
       pose_cov.pose.covariance = pose_covariance_;
-      
-      // HJ_260528: Fill orientation covariance block [3:6,3:6] from heading IMU covariance
-      if (enable_gnss_heading_ && has_heading_) {
-        for (int row = 0; row < 3; ++row) {
-          for (int col = 0; col < 3; ++col) {
-            pose_cov.pose.covariance[(3 + row) * 6 + (3 + col)] =
-              heading_orientation_cov_[row * 3 + col];
-          }
-        }
-      }
+      // HH_260604: Expose only yaw covariance when a fresh GNSS heading is available.
+      pose_cov.pose.covariance[21] = gnss_heading_unavailable_covariance_;
+      pose_cov.pose.covariance[28] = gnss_heading_unavailable_covariance_;
+      pose_cov.pose.covariance[35] = has_fresh_heading
+        ? heading_yaw_covariance
+        : gnss_heading_unavailable_covariance_;
 
       if (navsat_covariance_source_ == "navsat" && msg->position_covariance_type != 0) {
         // HH_260415: Protect filter stability by applying minimum GNSS covariance floors.
@@ -476,14 +570,22 @@ private:
       "utm_pose_bridge");
   }
 
-  void onMgrsPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onRawPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
-    publishMetricPose(
-      msg,
-      offset_mgrs_easting_,
-      offset_mgrs_northing_,
-      offset_mgrs_alt_,
-      "mgrs_pose_bridge");
+    if (!enable_navsat_to_pose_) {
+      return;
+    }
+    avg_msgs::msg::PoseStamped out = *msg;
+    out.header.frame_id = map_frame_id_;
+    gnss_pose_pub_->publish(out);
+    if (publish_gnss_covariance_) {
+      avg_msgs::msg::PoseWithCovarianceStamped cov;
+      cov.header = out.header;
+      cov.pose.pose = out.pose;
+      cov.pose.covariance = pose_covariance_;
+      gnss_pose_cov_pub_->publish(cov);
+    }
+    publishLocalizationStatus("raw_pose_bridge", msg->header.stamp);
   }
 
   void onRawPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
@@ -598,7 +700,6 @@ private:
     if (odom.header.frame_id.empty()) {
       odom.header.frame_id = wheel_odom_frame_;
     }
-    // HH_260413: Force wheel child_frame to configured base frame to avoid
     // HH_260413: Normalize child frame to robot_base_link to avoid base_link TF duplication.
     odom.child_frame_id = wheel_base_frame_;
     wheel_odom_pub_->publish(odom);
@@ -707,16 +808,22 @@ private:
   std::string localization_status_topic_;
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
 
-  std::string navsat_topic_, utm_pose_topic_, mgrs_pose_topic_, raw_pose_topic_;
+  std::string navsat_topic_, utm_pose_topic_, raw_pose_topic_;
   std::string gnss_pose_topic_, gnss_pose_cov_topic_, map_frame_id_;
   bool publish_gnss_covariance_{true};
-  // HJ_260528: GNSS dual-antenna heading state
+  // HH_260604: Keep GNSS heading state for dual-antenna heading selection.
   bool enable_gnss_heading_{false};
   std::string gnss_heading_topic_;
+  double gnss_heading_timeout_s_{1.0};
+  double gnss_heading_yaw_offset_rad_{0.0};
+  double gnss_heading_covariance_floor_{0.0};
+  double gnss_heading_max_covariance_{100.0};
+  double gnss_heading_unavailable_covariance_{1.0e6};
+  bool hold_last_gnss_heading_{true};
   bool enable_pose_cov_bridge_{true};
-  double heading_x_{0.0}, heading_y_{0.0}, heading_z_{0.0}, heading_w_{1.0};
-  std::array<double, 9> heading_orientation_cov_{};
-  bool has_heading_{false};
+  HeadingSample gnss_heading_;
+  HeadingSample last_any_heading_;
+  bool has_any_heading_{false};
   std::string navsat_covariance_source_{"navsat"};
   double gnss_covariance_floor_xy_{0.25};
   double gnss_covariance_floor_z_{1.0};
@@ -731,9 +838,6 @@ private:
   double offset_utm_easting_{0.0};
   double offset_utm_northing_{0.0};
   double offset_utm_alt_{0.0};
-  double offset_mgrs_easting_{0.0};
-  double offset_mgrs_northing_{0.0};
-  double offset_mgrs_alt_{0.0};
 
   double offset_lat_rad_{0.0};
   double offset_lon_rad_{0.0};
@@ -755,7 +859,6 @@ private:
   rclcpp::Subscription<avg_msgs::msg::NavSatFix>::SharedPtr navsat_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr gnss_heading_sub_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr utm_pose_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr mgrs_pose_sub_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr raw_pose_sub_;
 
   std::string odom_input_topic_, odom_pose_topic_, odom_pose_cov_topic_, odom_output_frame_id_;

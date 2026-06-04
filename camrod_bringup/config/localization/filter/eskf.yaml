@@ -44,6 +44,13 @@
     gnss_cog_noise_deg: 15.0
     gnss_cog_gate_mahalanobis: 9.0
 
+    # HH_260604: Fuse dual-antenna GNSS pose yaw so stationary heading is observable.
+    enable_gnss_pose_heading: true
+    gnss_pose_heading_noise_floor_deg: 1.0
+    gnss_pose_heading_gate_mahalanobis: 9.0
+    gnss_pose_heading_max_covariance: 100.0
+    gnss_pose_heading_force_init: true
+
     # HH_260416: Current platform IMU appears mirrored in runtime checks
     # (up/down and left/right opposite), so invert signs in ESKF input path.
     imu_accel_x_sign: -1.0

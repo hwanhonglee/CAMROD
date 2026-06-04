@@ -123,6 +123,18 @@
     pose1_queue_size: 10
     pose1_rejection_threshold: 3.0
 
+    # HH_260604: Fuse GNSS yaw as pose2 so heading innovations cannot reject pose0 position.
+    pose2: /sensing/gnss/pose_with_covariance
+    pose2_config: [false, false, false,
+                  false, false, true,
+                  false, false, false,
+                  false, false, false,
+                  false, false, false]
+    pose2_differential: false
+    pose2_relative: false
+    pose2_queue_size: 10
+    pose2_rejection_threshold: 10.0
+
     # State vector: [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
     # HH_260526: Position noise reduced 0.05→0.01, velocity noise 0.5→0.05.
     #   Position Q=0.05 → steady-state K≈0.51 (51% GNSS gain, 0.5m GNSS jump → 0.25m EKF jump).

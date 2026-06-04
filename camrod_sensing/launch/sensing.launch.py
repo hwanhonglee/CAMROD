@@ -66,8 +66,9 @@ def generate_launch_description():
 
     default_paths = {
         "camera_params_file":             os.path.join(sensing_share, "config", "camera", "camera_params.yaml"),
-        "gnss_param_file":                os.path.join(sensing_share, "config", "gnss", "zed_f9p_rover.yaml"),
-        "ntrip_param_file":               os.path.join(sensing_share, "config", "gnss", "ntrip_client.yaml"),
+        "gnss_param_file":          os.path.join(sensing_share, "config", "gnss", "zed_f9p_rover.yaml"),
+        "ntrip_param_file":         os.path.join(sensing_share, "config", "gnss", "ntrip_client.yaml"),
+        "dgnss_rover_param_file":   os.path.join(sensing_share, "config", "gnss", "ublox_dgnss_rover.yaml"),
         "imu_param_file":                 "__model_default__",
         "imu_converter_param_file":       os.path.join(sensing_share, "config", "imu", "platform_velocity_converter.yaml"),
         "ground_seg_param_file":          os.path.join(sensing_share, "config", "lidar", "ground_seg_params.yaml"),
@@ -136,15 +137,14 @@ def generate_launch_description():
                  enable_rear_camera=LaunchConfiguration("enable_rear_camera"),
             ),
 
-            # HJ_260528: Conditionally launch ublox or ublox_dgnss based on gnss_driver argument
+            # HH_260604: Single gnss.launch.py handles both ublox and ublox_dgnss via gnss_driver arg.
             _inc(gnss_launch,
                  "enable_ntrip",
-                 condition=IfCondition(PythonExpression([
-                     '"', LaunchConfiguration("enable_gnss"), '" == "true"',
-                     ' and "', LaunchConfiguration("gnss_driver"), '" == "ublox"',
-                 ])),
+                 condition=IfCondition(LaunchConfiguration("enable_gnss")),
+                 gnss_driver=LaunchConfiguration("gnss_driver"),
                  ublox_param_file=LaunchConfiguration("gnss_param_file"),
                  ntrip_param_file=LaunchConfiguration("ntrip_param_file"),
+                 dgnss_rover_param_file=LaunchConfiguration("dgnss_rover_param_file"),
                  gnss_namespace=LaunchConfiguration("gnss_namespace"),
                  rtcm_topic=LaunchConfiguration("gnss_rtcm_topic"),
             ),

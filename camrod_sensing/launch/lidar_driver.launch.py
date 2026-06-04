@@ -116,6 +116,8 @@ def generate_launch_description():
             ("/ground_segmentation/obstacle_points",  "/sensing/lidar/points_filtered"),
         ],
         parameters=[ground_seg_param_file],
+        # HH_260604: Do not require the optional ground-segmentation package when LiDAR is disabled.
+        condition=IfCondition(enable_lidar_driver),
     )
 
     if has_vanjee_driver_pkg:
