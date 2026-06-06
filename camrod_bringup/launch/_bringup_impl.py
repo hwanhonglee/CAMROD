@@ -774,6 +774,11 @@ def generate_launch_description():
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
         ('enable_ntrip', cfg_get(launch_cfg, 'sensing/enable_ntrip', False), 'Enable GNSS NTRIP client'),
         ('gnss_driver', cfg_get(launch_cfg, 'sensing/gnss_driver', 'ublox_dgnss'), 'GNSS driver: ublox | ublox_dgnss'),  # HJ_260528
+        # HH_260606 // Keep dGNSS hardware selectors available from bringup so the
+        # standalone GNSS, sensing, and full bringup paths all resolve the same rover profile.
+        ('dgnss_device_family', cfg_get(launch_cfg, 'sensing/dgnss_device_family', 'F9P'), 'u-blox dGNSS device family: F9P|F9R|X20P'),
+        ('dgnss_device_serial_string', cfg_get(launch_cfg, 'sensing/dgnss_device_serial_string', ''), 'Optional u-blox USB serial string for dGNSS'),
+        ('dgnss_ubx_config_file', cfg_get(launch_cfg, 'sensing/dgnss_ubx_config_file', '__auto__'), 'dGNSS UBX TOML config path or __auto__'),
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
         ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),
         ('perception_mode', cfg_get(launch_cfg, 'perception/mode', 'auto'), 'Perception mode: auto|lidar_only|camera_lidar'),
@@ -982,6 +987,9 @@ def generate_launch_description():
         'imu_model':       lc['imu_model'],
         'enable_gnss': sim_switch(lc['sim'], 'false', lc['enable_gnss']),
         'gnss_driver': lc['gnss_driver'],  # HJ_260528
+        'device_family': lc['dgnss_device_family'],
+        'device_serial_string': lc['dgnss_device_serial_string'],
+        'dgnss_ubx_config_file': lc['dgnss_ubx_config_file'],
         'camera_device_path': lc['camera_device_path'],
         # HH_260527: Removed unused pass-through args
         # (system_namespace, gnss_navsatfix_topic, enable_module_validator).

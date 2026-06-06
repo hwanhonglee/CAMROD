@@ -116,7 +116,7 @@ protected:
       wheel->expected_hz        = get_parameter(name + ".expected_hz").as_double();
       wheel->hz_warn_ratio      = get_parameter(name + ".hz_warn_ratio").as_double();
       wheel->hz_error_ratio     = get_parameter(name + ".hz_error_ratio").as_double();
-      wheel->stale_timeout = get_param_with_alias<double>(name + ".stale_timeout_s", wheel->stale_timeout, {name + ".stale_timeout"});
+      wheel->stale_timeout = get_param<double>(name + ".stale_timeout_s", wheel->stale_timeout);
       wheel->max_speed_warn_ms  = get_parameter(name + ".max_speed_warn_ms").as_double();
       wheel->max_speed_error_ms = get_parameter(name + ".max_speed_error_ms").as_double();
 

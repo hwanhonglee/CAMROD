@@ -119,7 +119,7 @@ protected:
       imu->expected_hz           = get_parameter(name + ".expected_hz").as_double();
       imu->hz_warn_ratio         = get_parameter(name + ".hz_warn_ratio").as_double();
       imu->hz_error_ratio        = get_parameter(name + ".hz_error_ratio").as_double();
-      imu->stale_timeout = get_param_with_alias<double>(name + ".stale_timeout_s", imu->stale_timeout, {name + ".stale_timeout"});
+      imu->stale_timeout = get_param<double>(name + ".stale_timeout_s", imu->stale_timeout);
       imu->accel_magnitude_warn  = get_parameter(name + ".accel_magnitude_warn").as_double();
       imu->accel_magnitude_error = get_parameter(name + ".accel_magnitude_error").as_double();
 

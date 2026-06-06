@@ -18,11 +18,6 @@ def _resolve_default_frontend_dir() -> str:
     if env_frontend_dir and os.path.isdir(env_frontend_dir):
         return env_frontend_dir
 
-    # Backward compatibility with previous environment variable name.
-    legacy_env_frontend_dir = os.environ.get('CAMROD_API_FRONTEND_DIR', '').strip()
-    if legacy_env_frontend_dir and os.path.isdir(legacy_env_frontend_dir):
-        return legacy_env_frontend_dir
-
     source_frontend_dir = os.path.join(source_pkg_root, 'camrod_ui_robot', 'assets', 'frontend', 'build')
     if os.path.isdir(source_frontend_dir):
         return source_frontend_dir

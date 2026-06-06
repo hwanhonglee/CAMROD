@@ -96,7 +96,7 @@ protected:
     expected_hz_           = get_parameter("expected_hz").as_double();
     hz_warn_ratio_         = get_parameter("hz_warn_ratio").as_double();
     hz_error_ratio_        = get_parameter("hz_error_ratio").as_double();
-    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
+    stale_timeout_ = get_param<double>("stale_timeout_s", stale_timeout_);
     cov_warn_threshold_    = get_parameter("cov_warn_threshold").as_double();
     cov_error_threshold_   = get_parameter("cov_error_threshold").as_double();
   }

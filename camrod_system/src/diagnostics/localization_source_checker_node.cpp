@@ -16,8 +16,8 @@
  *                              "fallback_source" → WARN (폴백 활성)
  *                              그 외 값       → ERROR (알 수 없는 소스)
  *     - Fallback duration    : 폴백 활성 지속 시간
- *                              > fallback_warn_sec  → WARN
- *                              > fallback_error_sec → ERROR
+ *                              > fallback_warn_s  → WARN
+ *                              > fallback_error_s → ERROR
  *     - Switch count         : 분당 소스 전환 횟수
  *                              > switch_warn  → WARN  (불안정 전환)
  *                              > switch_error → ERROR (과도한 전환)
@@ -27,9 +27,9 @@
  *   source_topic:          "/localization/pose_source"
  *   primary_source:        "primary_eskf"
  *   fallback_source:       "fallback_source"
- *   stale_timeout:         3.0
- *   fallback_warn_sec:     10.0   # 폴백 지속 > 이 값 → WARN
- *   fallback_error_sec:    60.0   # 폴백 지속 > 이 값 → ERROR
+ *   stale_timeout_s:       3.0
+ *   fallback_warn_s:       10.0   # 폴백 지속 > 이 값 → WARN
+ *   fallback_error_s:      60.0   # 폴백 지속 > 이 값 → ERROR
  *   switch_warn:           3      # 최근 60s 내 전환 횟수 > 이 값 → WARN
  *   switch_error:          10     # 최근 60s 내 전환 횟수 > 이 값 → ERROR
  */
@@ -101,11 +101,11 @@ protected:
     source_topic_       = get_parameter("source_topic").as_string();
     primary_source_     = get_parameter("primary_source").as_string();
     fallback_source_    = get_parameter("fallback_source").as_string();
-    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
-    fallback_warn_sec_  = get_param_with_alias<double>(
-      "fallback_warn_s", fallback_warn_sec_, {"fallback_warn_sec"});
-    fallback_error_sec_ = get_param_with_alias<double>(
-      "fallback_error_s", fallback_error_sec_, {"fallback_error_sec"});
+    stale_timeout_ = get_param<double>("stale_timeout_s", stale_timeout_);
+    fallback_warn_sec_  = get_param<double>(
+      "fallback_warn_s", fallback_warn_sec_);
+    fallback_error_sec_ = get_param<double>(
+      "fallback_error_s", fallback_error_sec_);
     switch_warn_        = get_parameter("switch_warn").as_int();
     switch_error_       = get_parameter("switch_error").as_int();
   }

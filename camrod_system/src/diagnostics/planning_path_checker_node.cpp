@@ -106,7 +106,7 @@ protected:
       declare_parameter(name + ".min_points_error", int64_t(2));
 
       src->topic            = get_parameter(name + ".topic").as_string();
-      src->stale_timeout = get_param_with_alias<double>(name + ".stale_timeout_s", src->stale_timeout, {name + ".stale_timeout"});
+      src->stale_timeout = get_param<double>(name + ".stale_timeout_s", src->stale_timeout);
       src->min_points_warn  = static_cast<std::size_t>(
         get_parameter(name + ".min_points_warn").as_int());
       src->min_points_error = static_cast<std::size_t>(

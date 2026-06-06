@@ -111,7 +111,7 @@ protected:
       cam->expected_fps      = get_parameter(name + ".expected_fps").as_double();
       cam->fps_warn_ratio    = get_parameter(name + ".fps_warn_ratio").as_double();
       cam->fps_error_ratio   = get_parameter(name + ".fps_error_ratio").as_double();
-      cam->stale_timeout = get_param_with_alias<double>(name + ".stale_timeout_s", cam->stale_timeout, {name + ".stale_timeout"});
+      cam->stale_timeout = get_param<double>(name + ".stale_timeout_s", cam->stale_timeout);
       cam->expected_width    = static_cast<uint32_t>(
         get_parameter(name + ".expected_width").as_int());
       cam->expected_height   = static_cast<uint32_t>(

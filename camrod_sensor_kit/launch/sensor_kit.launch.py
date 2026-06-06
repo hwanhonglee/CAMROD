@@ -49,15 +49,6 @@ def _nested_sensor_cfg(root: Dict[str, Any], path: Sequence[str]) -> Dict[str, A
   return value if isinstance(value, dict) else {}
 
 
-def _sensor_cfg_compat(root: Dict[str, Any], nested_path: Sequence[str], flat_key: str) -> Dict[str, Any]:
-  # HH_260326: Support both nested keys and legacy flat keys.
-  nested = _nested_sensor_cfg(root, nested_path)
-  if nested:
-    return nested
-  flat = root.get(flat_key, {})
-  return flat if isinstance(flat, dict) else {}
-
-
 def _launch_setup(context, *args, **kwargs):
   # Expands sensor parameters into xacro arguments and builds runtime nodes.
   pkg_share = Path(get_package_share_directory("camrod_sensor_kit"))
@@ -79,18 +70,20 @@ def _launch_setup(context, *args, **kwargs):
 
   # HH_260528: Dual econ cameras — nested under camera: front/rear (same pattern as radar).
   # Drives econ_camera_link xacro macro (body frame + optical child frame).
+  # HH_260606: Use only canonical nested camera config; flat camera_* aliases were removed.
   for cam_name in ["front", "rear"]:
     key = f"camera_{cam_name}"
-    sensors[key] = _sensor_pose(_sensor_cfg_compat(params, ("camera", cam_name), key))
+    sensors[key] = _sensor_pose(_nested_sensor_cfg(params, ("camera", cam_name)))
 
   # ---------------------------------------------------------
   # 2. Nested radar sensors
   # ---------------------------------------------------------
   # HH_260507: Radar sensors are directly attached to sensor_kit_base_link.
   # There is no intermediate radar base frame anymore.
+  # HH_260606: Use only canonical nested radar config; flat radar_* aliases were removed.
   for radar_name in ["front", "left1", "left2", "right1", "right2", "rear"]:
     key = f"radar_{radar_name}"
-    sensors[key] = _sensor_pose(_sensor_cfg_compat(params, ("radar", radar_name), key))
+    sensors[key] = _sensor_pose(_nested_sensor_cfg(params, ("radar", radar_name)))
 
   base_length = float(robot_cfg.get("length", 1.4))
   base_width = float(robot_cfg.get("width", 0.7))

@@ -99,7 +99,7 @@ protected:
       gnss->expected_hz    = get_parameter(name + ".expected_hz").as_double();
       gnss->hz_warn_ratio  = get_parameter(name + ".hz_warn_ratio").as_double();
       gnss->hz_error_ratio = get_parameter(name + ".hz_error_ratio").as_double();
-      gnss->stale_timeout = get_param_with_alias<double>(name + ".stale_timeout_s", gnss->stale_timeout, {name + ".stale_timeout"});
+      gnss->stale_timeout = get_param<double>(name + ".stale_timeout_s", gnss->stale_timeout);
 
       gnss_list_.push_back(gnss);
     }

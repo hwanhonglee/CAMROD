@@ -179,10 +179,7 @@ flowchart TD
   A --> B{"CAMROD_UI_FRONTEND_DIR\nset and exists?"}:::ui
   B -->|yes| Z[Use env var path]:::localization
 
-  B -->|no| C{"CAMROD_API_FRONTEND_DIR\nset and exists?"}:::ui
-  C -->|yes| Z
-
-  C -->|no| D{"source tree\nruntime/assets/frontend/build\nexists?"}:::ui
+  B -->|no| D{"source tree\nruntime/assets/frontend/build\nexists?"}:::ui
   D -->|yes| Z
 
   D -->|no| E{"installed share\ncamrod_ui/assets/frontend/build\nexists?"}:::ui
@@ -364,7 +361,7 @@ Run `ros2 topic echo /system/diagnostics_agg` and look for `level: 2` entries. I
 <details>
 <summary><strong>Wrong frontend build served</strong></summary>
 
-Resolution order: `CAMROD_UI_FRONTEND_DIR` env → `CAMROD_API_FRONTEND_DIR` env → source tree `runtime/assets/frontend/build` → installed `share/camrod_ui/assets/frontend/build` → `share/camrod_ui/assets/web`.
+Resolution order: `CAMROD_UI_FRONTEND_DIR` env → source tree `runtime/assets/frontend/build` → installed `share/camrod_ui/assets/frontend/build` → `share/camrod_ui/assets/web`.
 
 After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the `build/` directory exists in the expected location. Set `CAMROD_UI_FRONTEND_DIR=/absolute/path/to/build` to force a specific directory. If the installed path is stale after `colcon build`, run `colcon build --packages-select camrod_ui` again.
 

@@ -19,8 +19,8 @@
  *     - "/planning/controller_server"
  *     - "/planning/bt_navigator"
  *     - "/planning/behavior_server"
- *   poll_rate:    2.0   # lifecycle state 폴링 주기 (Hz)
- *   stale_timeout: 5.0  # 마지막 응답 후 이 시간 초과 시 ERROR
+ *   poll_rate_hz:    2.0  # lifecycle state 폴링 주기 (Hz)
+ *   stale_timeout_s: 5.0  # 마지막 응답 후 이 시간 초과 시 ERROR
  */
 
 #include <cstdio>
@@ -86,8 +86,8 @@ protected:
   void load_parameters_() override
   {
     node_names_    = get_parameter("node_names").as_string_array();
-    poll_rate_ = get_param_with_alias<double>("poll_rate_hz", poll_rate_, {"poll_rate"});
-    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
+    poll_rate_ = get_param<double>("poll_rate_hz", poll_rate_);
+    stale_timeout_ = get_param<double>("stale_timeout_s", stale_timeout_);
   }
 
   void setup_tasks_() override

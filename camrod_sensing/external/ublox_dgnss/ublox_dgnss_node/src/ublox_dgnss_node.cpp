@@ -232,6 +232,10 @@ public:
       "ubx_nav_rel_pos_ned", qos, pub_options);
     ubx_nav_status_pub_ = this->create_publisher<ublox_ubx_msgs::msg::UBXNavStatus>(
       "ubx_nav_status", qos, pub_options);
+    // HH_260606 // Expose RXM-RTCM so moving-base RTCM 4072 input can be verified
+    // independently from NTRIP and absolute RTK fix state.
+    ubx_rxm_rtcm_pub_ = this->create_publisher<ublox_ubx_msgs::msg::UBXRxmRTCM>(
+      "ubx_rxm_rtcm", qos, pub_options);
     rtcm_pub_ = this->create_publisher<rtcm_msgs::msg::Message>(
       "rtcm", 10);
     fix_pub_ = this->create_publisher<sensor_msgs::msg::NavSatFix>(
@@ -595,6 +599,7 @@ private:
   rclcpp::Publisher<ublox_ubx_msgs::msg::UBXNavPVT>::SharedPtr ubx_nav_pvt_pub_;
   rclcpp::Publisher<ublox_ubx_msgs::msg::UBXNavRelPosNED>::SharedPtr ubx_nav_rel_pos_ned_pub_;
   rclcpp::Publisher<ublox_ubx_msgs::msg::UBXNavStatus>::SharedPtr ubx_nav_status_pub_;
+  rclcpp::Publisher<ublox_ubx_msgs::msg::UBXRxmRTCM>::SharedPtr ubx_rxm_rtcm_pub_;
   rclcpp::Publisher<rtcm_msgs::msg::Message>::SharedPtr rtcm_pub_;
   rclcpp::Publisher<sensor_msgs::msg::NavSatFix>::SharedPtr fix_pub_;
   rclcpp::Publisher<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr fix_velocity_pub_;
@@ -2745,7 +2750,9 @@ private:
 
     // Imu (heading only, REP-103: NED → ENU)
     auto imu = std::make_unique<sensor_msgs::msg::Imu>();
-    imu->header.frame_id = "gnss";
+    // HH_260606 // Use the configured GNSS sensor frame instead of a hard-coded
+    // synthetic frame so TF-aware consumers see the heading in gnss_link.
+    imu->header.frame_id = frame_id_;
     imu->header.stamp = f->ts;
     double heading_ned_rad = payload->relPosHeading * 1e-5 * M_PI / 180.0;
     double yaw = M_PI / 2.0 - heading_ned_rad;
@@ -2756,7 +2763,18 @@ private:
     imu->orientation.z = std::sin(half);
     double heading_cov = payload->flags.bits.relPosHeadingValid ?
       std::pow(payload->accHeading * 1e-5 * M_PI / 180.0, 2) : 1000.0;
-    imu->orientation_covariance = {-1, 0, 0, 0, 0, 0, 0, 0, heading_cov};
+    // HH_260606 // Do not mark valid dual-antenna heading as unavailable.
+    // ROS IMU covariance[0] == -1 means "no orientation estimate"; keep roll/pitch
+    // effectively ignored with large variance and expose only yaw covariance.
+    if (payload->flags.bits.relPosHeadingValid) {
+      constexpr double kRollPitchCovariance = 1.0e6;
+      imu->orientation_covariance = {
+        kRollPitchCovariance, 0.0, 0.0,
+        0.0, kRollPitchCovariance, 0.0,
+        0.0, 0.0, heading_cov};
+    } else {
+      imu->orientation_covariance = {-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, heading_cov};
+    }
     imu->angular_velocity_covariance[0]    = -1.0;
     imu->linear_acceleration_covariance[0] = -1.0;
     navheading_pub_->publish(std::move(imu));
@@ -3343,6 +3361,7 @@ private:
     msg->ref_station = payload->refStation;
     msg->msg_type = payload->msgType;
 
+    ubx_rxm_rtcm_pub_->publish(*msg);
   }
 
   UBLOX_DGNSS_NODE_LOCAL

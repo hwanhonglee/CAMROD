@@ -21,9 +21,9 @@
  *   velocity_topic:          "/platform/status/velocity"
  *   imu_topic:               "/sensing/imu/data"
  *   output_topic:            "/sensing/platform_velocity_converter/twist_with_covariance"
- *   velocity_stale_timeout:  1.0
- *   imu_stale_timeout:       1.0
- *   output_stale_timeout:    1.0
+ *   velocity_stale_timeout_s: 1.0
+ *   imu_stale_timeout_s:      1.0
+ *   output_stale_timeout_s:   1.0
  *   expected_output_hz:      10.0
  *   hz_warn_ratio:           0.7
  *   hz_error_ratio:          0.4
@@ -79,9 +79,9 @@ protected:
     velocity_topic_          = get_parameter("velocity_topic").as_string();
     imu_topic_               = get_parameter("imu_topic").as_string();
     output_topic_            = get_parameter("output_topic").as_string();
-    velocity_stale_timeout_ = get_param_with_alias<double>("velocity_stale_timeout_s", velocity_stale_timeout_, {"velocity_stale_timeout"});
-    imu_stale_timeout_ = get_param_with_alias<double>("imu_stale_timeout_s", imu_stale_timeout_, {"imu_stale_timeout"});
-    output_stale_timeout_ = get_param_with_alias<double>("output_stale_timeout_s", output_stale_timeout_, {"output_stale_timeout"});
+    velocity_stale_timeout_ = get_param<double>("velocity_stale_timeout_s", velocity_stale_timeout_);
+    imu_stale_timeout_ = get_param<double>("imu_stale_timeout_s", imu_stale_timeout_);
+    output_stale_timeout_ = get_param<double>("output_stale_timeout_s", output_stale_timeout_);
     expected_output_hz_      = get_parameter("expected_output_hz").as_double();
     hz_warn_ratio_           = get_parameter("hz_warn_ratio").as_double();
     hz_error_ratio_          = get_parameter("hz_error_ratio").as_double();

@@ -175,12 +175,12 @@ protected:
     actuator_state_topic_= get_parameter("actuator_state_topic").as_string();
     odom_topic_          = get_parameter("odom_topic").as_string();
 
-    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
+    stale_timeout_ = get_param<double>("stale_timeout_s", stale_timeout_);
 
     odom_expected_hz_    = get_parameter("odom_expected_hz").as_double();
     odom_hz_warn_ratio_  = get_parameter("odom_hz_warn_ratio").as_double();
     odom_hz_error_ratio_ = get_parameter("odom_hz_error_ratio").as_double();
-    odom_stale_timeout_ = get_param_with_alias<double>("odom_stale_timeout_s", odom_stale_timeout_, {"odom_stale_timeout"});
+    odom_stale_timeout_ = get_param<double>("odom_stale_timeout_s", odom_stale_timeout_);
 
     batt_volt_warn_      = get_parameter("battery.voltage_warn").as_double();
     batt_volt_error_     = get_parameter("battery.voltage_error").as_double();

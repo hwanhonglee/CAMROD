@@ -1,4 +1,6 @@
 # HH_260604: Hardware parameters for UbloxDGNSSNode (simpleRTK2B Heading / ZED-F9P dual antenna).
+# HH_260606 // Heading is moving-baseline RELPOSNED from the rover chip and must work
+# without NTRIP; NTRIP only improves absolute rover position.
 # DEVICE_FAMILY, DEVICE_SERIAL_STRING, UBX_CONFIG_FILE are injected at launch time.
 #
 # ── What this file controls ─────────────────────────────────────────────────────────────
@@ -45,3 +47,4 @@
     CFG_MSGOUT_UBX_NAV_STATUS_USB:    1   # fix status / diff_corr flag
     CFG_MSGOUT_UBX_NAV_PVT_USB:       1   # position/velocity/time + RTK state
     CFG_MSGOUT_UBX_NAV_RELPOSNED_USB: 1   # relative position NED → dual-antenna heading
+    CFG_MSGOUT_UBX_RXM_RTCM_USB:      1   # monitor moving-base RTCM 4072 received on rover UART2
