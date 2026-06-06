@@ -126,7 +126,7 @@ protected:
       src->expected_hz    = get_parameter(name + ".expected_hz").as_double();
       src->hz_warn_ratio  = get_parameter(name + ".hz_warn_ratio").as_double();
       src->hz_error_ratio = get_parameter(name + ".hz_error_ratio").as_double();
-      src->stale_timeout = get_param_with_alias<double>(name + ".stale_timeout_s", src->stale_timeout, {name + ".stale_timeout"});
+      src->stale_timeout = get_param<double>(name + ".stale_timeout_s", src->stale_timeout);
       src->min_count      = get_parameter(name + ".min_count").as_int();
       src->max_count      = get_parameter(name + ".max_count").as_int();
 

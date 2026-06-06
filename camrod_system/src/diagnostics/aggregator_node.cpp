@@ -92,16 +92,8 @@ private:
     if (cfg["global"]) {
       auto g = cfg["global"];
       if (g["timeout_s"])  default_timeout_ = g["timeout_s"].as<double>();
-      // Canonical key: publish_rate_hz
-      // Legacy key:    publish_rate
       if (g["publish_rate_hz"]) {
         publish_rate_hz = g["publish_rate_hz"].as<double>();
-      } else if (g["publish_rate"]) {
-        publish_rate_hz = g["publish_rate"].as<double>();
-        RCLCPP_WARN(
-          get_logger(),
-          "Deprecated key 'global.publish_rate' detected. "
-          "Use 'global.publish_rate_hz' instead.");
       }
     }
 

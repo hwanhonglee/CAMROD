@@ -104,7 +104,7 @@ protected:
   {
     status_topic_  = get_parameter("status_topic").as_string();
     health_topic_  = get_parameter("health_topic").as_string();
-    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
+    stale_timeout_ = get_param<double>("stale_timeout_s", stale_timeout_);
     conf_warn_     = get_parameter("conf_warn").as_double();
     conf_error_    = get_parameter("conf_error").as_double();
     innov_warn_    = get_parameter("innov_warn").as_double();

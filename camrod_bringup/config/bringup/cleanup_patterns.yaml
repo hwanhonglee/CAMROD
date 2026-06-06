@@ -18,8 +18,6 @@ patterns:
   # [platform]
   - robot_state_publisher
   - robot_visualization_node
-  - base_link_alias_publisher
-  - bringup_base_link_alias_publisher
   - __node:=sensor_kit_status
   - __node:=platform_status
 

@@ -207,6 +207,9 @@ bringup:
     enable_imu: true
     enable_gnss: true
     enable_ntrip: true
+    # HH_260606 // dGNSS heading must be available even when enable_ntrip=false.
+    # NTRIP affects absolute RTK position only; simpleRTK2B heading uses moving-base RTCM 4072
+    # from BASE UART2 into ROVER UART2, then ROVER publishes RELPOSNED over USB.
     # By default, use internal config defaults declared by sensing launch files.
     lidar_preprocess_param_file: sensing/lidar/preprocessor.yaml
     camera_params_file: sensing/camera/camera_params.yaml
@@ -217,6 +220,12 @@ bringup:
     lidar_cost_grid_param_file: sensing/lidar/cost_grid.yaml
     inflation_cost_grid_param_file: sensing/inflation_cost_grid.yaml
     gnss_driver: ublox_dgnss # HJ_260528
+    # HH_260606 // dGNSS selector options:
+    #   dgnss_device_family: F9P | F9R | X20P
+    #   dgnss_ubx_config_file: __auto__ uses simpleRTK2B rover-safe F9P TOML.
+    dgnss_device_family: F9P
+    dgnss_device_serial_string: ""
+    dgnss_ubx_config_file: __auto__
     gnss_param_file: sensing/gnss/zed_f9p_rover.yaml
     ntrip_param_file: sensing/gnss/ntrip_client.yaml
     dgnss_rover_param_file: sensing/gnss/ublox_dgnss_rover.yaml

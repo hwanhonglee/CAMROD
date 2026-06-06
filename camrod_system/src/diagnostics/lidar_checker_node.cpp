@@ -109,7 +109,7 @@ protected:
       lidar->expected_hz     = get_parameter(name + ".expected_hz").as_double();
       lidar->hz_warn_ratio   = get_parameter(name + ".hz_warn_ratio").as_double();
       lidar->hz_error_ratio  = get_parameter(name + ".hz_error_ratio").as_double();
-      lidar->stale_timeout = get_param_with_alias<double>(name + ".stale_timeout_s", lidar->stale_timeout, {name + ".stale_timeout"});
+      lidar->stale_timeout = get_param<double>(name + ".stale_timeout_s", lidar->stale_timeout);
       lidar->min_point_count = get_parameter(name + ".min_point_count").as_int();
       lidar->max_point_count = get_parameter(name + ".max_point_count").as_int();
       lidar->max_nan_ratio   = get_parameter(name + ".max_nan_ratio").as_double();

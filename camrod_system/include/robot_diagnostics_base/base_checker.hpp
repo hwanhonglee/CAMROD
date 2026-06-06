@@ -69,14 +69,10 @@ public:
     const std::string & hardware_id = "none")
   : rclcpp::Node(node_name), hardware_id_(hardware_id)
   {
-    // Declare both canonical and legacy publish-rate parameters.
-    // Canonical: publish_rate_hz
-    // Legacy:    publish_rate
     // ⚠️ C++ 제약: 기본 클래스 생성자에서 순수 가상 함수(setup_tasks_)를 호출하면
     //    vtable 이 파생 클래스로 완성되기 전이므로 링커 오류가 발생한다.
     //    → 서브클래스 생성자 마지막에 base_init() 을 반드시 호출한다.
     declare_parameter("publish_rate_hz", 1.0);
-    declare_parameter("publish_rate", 1.0);
   }
 
   // ── 공개 API ─────────────────────────────────────────────────────────
@@ -137,18 +133,13 @@ public:
   }
 
   /**
-   * Read a canonical parameter key.
-   *
-   * HH_260522: legacy aliases are intentionally ignored so diagnostics
-   * use one canonical naming scheme across modules.
+   * HH_260606: Read only canonical parameter keys.
    */
   template<typename T>
-  T get_param_with_alias(
+  T get_param(
     const std::string & canonical_name,
-    const T & default_value,
-    const std::vector<std::string> & legacy_names = {})
+    const T & default_value)
   {
-    (void)legacy_names;
     if (!has_parameter(canonical_name)) {
       declare_parameter(canonical_name, default_value);
     }
@@ -177,8 +168,8 @@ protected:
   {
     declare_parameters_();
 
-    double rate_hz = get_param_with_alias<double>(
-      "publish_rate_hz", 1.0, {"publish_rate"});
+    double rate_hz = get_param<double>(
+      "publish_rate_hz", 1.0);
     if (rate_hz <= 1e-6) {
       RCLCPP_WARN(
         get_logger(),

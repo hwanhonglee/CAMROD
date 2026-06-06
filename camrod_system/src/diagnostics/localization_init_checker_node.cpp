@@ -93,9 +93,9 @@ protected:
     ok_topic_         = get_parameter("ok_topic").as_string();
     distance_topic_   = get_parameter("distance_topic").as_string();
     id_topic_         = get_parameter("id_topic").as_string();
-    stale_timeout_ = get_param_with_alias<double>("stale_timeout_s", stale_timeout_, {"stale_timeout"});
-    grace_period_sec_ = get_param_with_alias<double>(
-      "grace_period_s", grace_period_sec_, {"grace_period_sec"});
+    stale_timeout_ = get_param<double>("stale_timeout_s", stale_timeout_);
+    grace_period_sec_ = get_param<double>(
+      "grace_period_s", grace_period_sec_);
     dist_warn_m_      = get_parameter("dist_warn_m").as_double();
     dist_error_m_     = get_parameter("dist_error_m").as_double();
   }

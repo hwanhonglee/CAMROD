@@ -75,11 +75,11 @@ protected:
   {
     global_.name          = "global";
     global_.topic         = get_parameter("global_costmap_topic").as_string();
-    global_.stale_timeout = get_param_with_alias<double>("global_stale_timeout_s", global_.stale_timeout, {"global_stale_timeout"});
+    global_.stale_timeout = get_param<double>("global_stale_timeout_s", global_.stale_timeout);
 
     local_.name          = "local";
     local_.topic         = get_parameter("local_costmap_topic").as_string();
-    local_.stale_timeout = get_param_with_alias<double>("local_stale_timeout_s", local_.stale_timeout, {"local_stale_timeout"});
+    local_.stale_timeout = get_param<double>("local_stale_timeout_s", local_.stale_timeout);
   }
 
   void setup_tasks_() override

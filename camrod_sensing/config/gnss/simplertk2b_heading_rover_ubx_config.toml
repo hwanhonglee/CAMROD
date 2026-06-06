@@ -1,0 +1,73 @@
+# simpleRTK2B Heading rover-safe UBX Configuration
+# HH_260606 // Rover USB profile for moving-baseline heading.
+# The moving base sends RTCM 4072 to the rover over UART2. Keep UART2 values out
+# of YAML so launch never overwrites the u-center board settings, but include the
+# UART2/TMODE/NAV readback keys here so UbloxDGNSSNode initializes the same
+# moving-baseline state as the full F9P profile without polling unsupported groups.
+
+[metadata]
+device_family = "F9P"
+description = "simpleRTK2B Heading rover moving-baseline profile"
+version = "1.0"
+parameter_count = 57
+
+[parameters]
+include = [
+    "CFG_INFMSG_NMEA_USB",
+    "CFG_INFMSG_UBX_USB",
+    "CFG_MSGOUT_RTCM_3X_TYPE1074_UART2",
+    "CFG_MSGOUT_RTCM_3X_TYPE1084_UART2",
+    "CFG_MSGOUT_RTCM_3X_TYPE1094_UART2",
+    "CFG_MSGOUT_RTCM_3X_TYPE1124_UART2",
+    "CFG_MSGOUT_RTCM_3X_TYPE1230_UART2",
+    "CFG_MSGOUT_RTCM_3X_TYPE4072_0_UART2",
+    "CFG_MSGOUT_UBX_NAV_COV_UART2",
+    "CFG_MSGOUT_UBX_NAV_COV_USB",
+    "CFG_MSGOUT_UBX_NAV_HPPOSLLH_UART2",
+    "CFG_MSGOUT_UBX_NAV_HPPOSLLH_USB",
+    "CFG_MSGOUT_UBX_NAV_PVT_USB",
+    "CFG_MSGOUT_UBX_NAV_RELPOSNED_USB",
+    "CFG_MSGOUT_UBX_NAV_STATUS_UART2",
+    "CFG_MSGOUT_UBX_NAV_STATUS_USB",
+    "CFG_MSGOUT_UBX_RXM_COR_UART2",
+    "CFG_MSGOUT_UBX_RXM_COR_USB",
+    "CFG_MSGOUT_UBX_RXM_RTCM_USB",
+    "CFG_NAVHPG_DGNSSMODE",
+    "CFG_NAVSPG_DYNMODEL",
+    "CFG_NAVSPG_FIXMODE",
+    "CFG_NAVSPG_INIFIX3D",
+    "CFG_NAVSPG_UTCSTANDARD",
+    "CFG_RATE_MEAS",
+    "CFG_RATE_NAV",
+    "CFG_TMODE_ECEF_X",
+    "CFG_TMODE_ECEF_X_HP",
+    "CFG_TMODE_ECEF_Y",
+    "CFG_TMODE_ECEF_Y_HP",
+    "CFG_TMODE_ECEF_Z",
+    "CFG_TMODE_ECEF_Z_HP",
+    "CFG_TMODE_FIXED_POS_ACC",
+    "CFG_TMODE_HEIGHT",
+    "CFG_TMODE_HEIGHT_HP",
+    "CFG_TMODE_LAT",
+    "CFG_TMODE_LAT_HP",
+    "CFG_TMODE_LON",
+    "CFG_TMODE_LON_HP",
+    "CFG_TMODE_MODE",
+    "CFG_TMODE_POS_TYPE",
+    "CFG_TMODE_SVIN_ACC_LIMIT",
+    "CFG_TMODE_SVIN_MIN_DUR",
+    "CFG_UART2INPROT_NMEA",
+    "CFG_UART2INPROT_RTCM3X",
+    "CFG_UART2INPROT_SPARTN",
+    "CFG_UART2INPROT_UBX",
+    "CFG_UART2OUTPROT_NMEA",
+    "CFG_UART2OUTPROT_RTCM3X",
+    "CFG_UART2OUTPROT_UBX",
+    "CFG_UART2_BAUDRATE",
+    "CFG_USBINPROT_NMEA",
+    "CFG_USBINPROT_RTCM3X",
+    "CFG_USBINPROT_UBX",
+    "CFG_USBOUTPROT_NMEA",
+    "CFG_USBOUTPROT_RTCM3X",
+    "CFG_USBOUTPROT_UBX",
+]

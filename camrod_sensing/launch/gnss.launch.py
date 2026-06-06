@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # HH_260604: Unified GNSS launch — selects ublox (single antenna) or ublox_dgnss (dual antenna)
 # based on gnss_driver argument. All config loaded from camrod_sensing/config/gnss/.
+# HH_260606 // Keep ublox/ublox_dgnss branching inside this single launch file.
 # Both modes share Python ntrip_ros.py for NTRIP: supports GGA feedback (required for VRS/MAC
 # networks like gnssdata.or.kr) and configurable reconnect logic.
 
 import os
-import yaml
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -56,11 +56,15 @@ def _launch_setup(context, *args, **kwargs):
         dgnss_rover_param_file = context.perform_substitution(LaunchConfiguration("dgnss_rover_param_file"))
 
         # HH_260604: Resolve TOML — explicit override or auto-select by device family.
+        # HH_260606 // simpleRTK2B Heading defaults to a rover-safe F9P profile.
+        # UART2 is included for readback/validation only; launch-time YAML values do
+        # not overwrite the moving-base UART2 link configured in u-center.
         dgnss_ubx_config_file = context.perform_substitution(LaunchConfiguration("dgnss_ubx_config_file"))
         if not dgnss_ubx_config_file or dgnss_ubx_config_file == "__auto__":
+            toml_name = "simplertk2b_heading_rover_ubx_config.toml" if device_family.upper() == "F9P" else f"{device_family.lower()}_ubx_config.toml"
             dgnss_ubx_config_file = os.path.join(
                 pkg_share, "config", "gnss",
-                f"{device_family.lower()}_ubx_config.toml",
+                toml_name,
             )
 
         # Hardware params from YAML; dynamic fields (device, TOML path) appended inline.
