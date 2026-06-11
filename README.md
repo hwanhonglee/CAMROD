@@ -714,7 +714,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
-| v1.12 | 2026-06-04 | Dual antenna GNSS heading (simpleRTK2B Heading, moving-baseline RELPOSNED), unified GNSS launch (gnss_driver:=ublox\|ublox_dgnss), Python NTRIP for both modes (GGA feedback for VRS), centralize ublox_dgnss config to camrod_sensing/config/gnss/, remove COG heading fallback |
+| v1.12 | 2026-06-04 | Dual antenna GNSS heading (simpleRTK2B Heading, moving-baseline RELPOSNED), ublox_gps-based single/dual GNSS launch, Python NTRIP with GGA feedback for VRS, remove legacy dGNSS fallback and COG heading fallback |
 | v1.11 | 2026-05-28 | Dual econ camera (front GPU/VPI + rear CPU/GStreamer), unified IMU launch (imu_model), camrod_parking → camrod_docking, rear camera calibration, EKF log suppression, costmap start_current |
 | v1.10 | 2026-05-21 | Camera sensing refactor (V4L2 publisher), YOLOv9 perception, UI symlink fix, nav2 combo profiles, planning parameter stabilization |
 | v1.9 | 2026-05-13 | Planning stability, radar angle fix, Smac2D re-enable |

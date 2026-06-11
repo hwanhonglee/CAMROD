@@ -17,6 +17,23 @@
 
 namespace ublox_node {
 
+namespace {
+
+// HH_260611: Convert RELPOSNED carrier flags into readable diagnostics for
+// simultaneous heading and RTK-fixed validation during simpleRTK2B Heading tests.
+const char * carrierSolutionLabel(uint32_t flags) {
+  switch (flags & ublox_msgs::msg::NavRELPOSNED9::FLAGS_CARR_SOLN_MASK) {
+    case ublox_msgs::msg::NavRELPOSNED9::FLAGS_CARR_SOLN_FIXED:
+      return "fixed";
+    case ublox_msgs::msg::NavRELPOSNED9::FLAGS_CARR_SOLN_FLOAT:
+      return "float";
+    default:
+      return "none";
+  }
+}
+
+}  // namespace
+
 //
 // U-Blox High Precision Positioning Receiver
 //
@@ -37,11 +54,56 @@ HpPosRecProduct::HpPosRecProduct(uint16_t nav_rate, uint16_t meas_rate, const st
 void HpPosRecProduct::subscribe(std::shared_ptr<ublox_gps::Gps> gps) {
   // Whether to publish Nav Relative Position NED
   // Subscribe to Nav Relative Position NED messages (also updates diagnostics)
-  gps->subscribe<ublox_msgs::msg::NavRELPOSNED9>(std::bind(
-     &HpPosRecProduct::callbackNavRelPosNed, this, std::placeholders::_1), 1);
+  auto callback = std::bind(
+     &HpPosRecProduct::callbackNavRelPosNed, this, std::placeholders::_1);
+  // HH_260611: In dual-antenna mode, avoid one-shot RELPOSNED subscription so
+  // heading remains continuously available during simpleRTK2B Heading operation.
+  if (getRosBoolean(node_, "dual_antenna")) {
+    gps->subscribe<ublox_msgs::msg::NavRELPOSNED9>(callback);
+  } else {
+    gps->subscribe<ublox_msgs::msg::NavRELPOSNED9>(callback, 1);
+  }
 }
 
 void HpPosRecProduct::callbackNavRelPosNed(const ublox_msgs::msg::NavRELPOSNED9 &m) {
+  // HH_260611: Log moving-baseline heading state explicitly to separate
+  // heading-valid failures from absolute RTK pose fix failures.
+  const bool rel_pos_valid =
+    (m.flags & ublox_msgs::msg::NavRELPOSNED9::FLAGS_REL_POS_VALID) != 0;
+  const bool heading_valid =
+    (m.flags & ublox_msgs::msg::NavRELPOSNED9::FLAGS_REL_POS_HEAD_VALID) != 0;
+  const bool moving_baseline =
+    (m.flags & ublox_msgs::msg::NavRELPOSNED9::FLAGS_IS_MOVING) != 0;
+
+  if (heading_valid) {
+    RCLCPP_INFO_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), 5000,
+      "Dual antenna heading valid: flags=%u carrier=%s ref_station=%u length_cm=%d heading_deg=%.5f acc_heading_deg=%.5f",
+      m.flags,
+      carrierSolutionLabel(m.flags),
+      m.ref_station_id,
+      m.rel_pos_length,
+      static_cast<double>(m.rel_pos_heading) * 1e-5,
+      static_cast<double>(m.acc_heading) * 1e-5);
+  } else {
+    RCLCPP_WARN_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), 5000,
+      "Dual antenna heading invalid: flags=%u carrier=%s gnss_fix_ok=%d diff_soln=%d rel_pos_valid=%d is_moving=%d ref_pos_miss=%d ref_obs_miss=%d head_valid=%d ref_station=%u length_cm=%d heading_raw=%d acc_heading_raw=%u",
+      m.flags,
+      carrierSolutionLabel(m.flags),
+      (m.flags & ublox_msgs::msg::NavRELPOSNED9::FLAGS_GNSS_FIX_OK) != 0,
+      (m.flags & ublox_msgs::msg::NavRELPOSNED9::FLAGS_DIFF_SOLN) != 0,
+      rel_pos_valid,
+      moving_baseline,
+      (m.flags & ublox_msgs::msg::NavRELPOSNED9::FLAGS_REF_POS_MISS) != 0,
+      (m.flags & ublox_msgs::msg::NavRELPOSNED9::FLAGS_REF_OBS_MISS) != 0,
+      heading_valid,
+      m.ref_station_id,
+      m.rel_pos_length,
+      m.rel_pos_heading,
+      m.acc_heading);
+  }
+
   if (getRosBoolean(node_, "publish.nav.relposned")) {
     nav_relposned_pub_->publish(m);
   }
@@ -61,12 +123,17 @@ void HpPosRecProduct::callbackNavRelPosNed(const ublox_msgs::msg::NavRELPOSNED9 
     imu_.orientation.y = orientation[1];
     imu_.orientation.z = orientation[2];
     imu_.orientation.w = orientation[3];
-    imu_.orientation_covariance[0] = 1000.0;
-    imu_.orientation_covariance[4] = 1000.0;
-    imu_.orientation_covariance[8] = 1000.0;
-    // When heading is reported to be valid, use accuracy reported in 1e-5 deg units
-    if (m.flags & ublox_msgs::msg::NavRELPOSNED9::FLAGS_REL_POS_HEAD_VALID) {
+    // HH_260611: Use reported heading accuracy only when the receiver marks the
+    // heading valid; otherwise publish unknown orientation covariance.
+    if (heading_valid) {
+      constexpr double kRollPitchCovariance = 1.0e6;
+      imu_.orientation_covariance[0] = kRollPitchCovariance;
+      imu_.orientation_covariance[4] = kRollPitchCovariance;
       imu_.orientation_covariance[8] = ::pow(m.acc_heading * 1e-5 / 180.0 * M_PI, 2);
+    } else {
+      imu_.orientation_covariance[0] = -1.0;
+      imu_.orientation_covariance[4] = 0.0;
+      imu_.orientation_covariance[8] = 1000.0;
     }
 
     imu_pub_->publish(imu_);

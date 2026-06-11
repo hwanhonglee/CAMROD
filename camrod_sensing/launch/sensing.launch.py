@@ -67,7 +67,6 @@ def generate_launch_description():
         "camera_params_file":             os.path.join(sensing_share, "config", "camera", "camera_params.yaml"),
         "gnss_param_file":          os.path.join(sensing_share, "config", "gnss", "zed_f9p_rover.yaml"),
         "ntrip_param_file":         os.path.join(sensing_share, "config", "gnss", "ntrip_client.yaml"),
-        "dgnss_rover_param_file":   os.path.join(sensing_share, "config", "gnss", "ublox_dgnss_rover.yaml"),
         "imu_param_file":                 "__model_default__",
         "imu_converter_param_file":       os.path.join(sensing_share, "config", "imu", "platform_velocity_converter.yaml"),
         "ground_seg_param_file":          os.path.join(sensing_share, "config", "lidar", "ground_seg_params.yaml"),
@@ -97,21 +96,18 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_vanjee_static_tf",     default_value="false"),
         ## HJ_260528
         DeclareLaunchArgument("enable_ntrip", default_value="true"),
-        # HH_260606 // gnss.launch.py is the single GNSS entry point.
-        # It branches internally between ublox and ublox_dgnss via gnss_driver.
+        # HH_260611: gnss.launch.py now uses ublox_gps_node only; single vs dual
+        # simpleRTK2B Heading behavior is controlled by ublox_dual_antenna.
         DeclareLaunchArgument(
-            "gnss_driver",
-            default_value="ublox_dgnss",
-            description="GNSS driver: ublox (single antenna) | ublox_dgnss (dual antenna)",
+            "ublox_dual_antenna",
+            default_value="true",
+            description="Use ublox_gps dual-antenna simpleRTK2B Heading mode",
         ),
-        # HH_260606 // Pass dGNSS hardware selectors through every sensing entrypoint
-        # so gnss.launch.py, sensing.launch.py, and bringup.launch.py test the same rover path.
-        DeclareLaunchArgument("device_family", default_value="F9P",
-                              description="u-blox device family for ublox_dgnss (F9P, F9R, X20P)"),
-        DeclareLaunchArgument("device_serial_string", default_value="",
-                              description="Optional u-blox USB serial string for ublox_dgnss"),
-        DeclareLaunchArgument("dgnss_ubx_config_file", default_value="__auto__",
-                              description="UBX TOML config; '__auto__ uses simpleRTK2B rover profile for F9P"),
+        DeclareLaunchArgument(
+            "ublox_dual_forward_ntrip_to_rover",
+            default_value="false",
+            description="Forward NTRIP RTCM into ublox_gps dual rover USB input; keep false for moving-baseline heading",
+        ),
 
         # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
         DeclareLaunchArgument("imu_model",                   default_value="cv7",
@@ -146,17 +142,15 @@ def generate_launch_description():
             ),
 
             # HH_260606 // Route all GNSS startup through gnss.launch.py only.
-            # Do not include a second GNSS launch path; gnss_driver branches inside gnss.launch.py.
+            # HH_260611: dGNSS fallback path was removed; this include always starts ublox_gps_node.
             _inc(gnss_launch,
                  "enable_ntrip",
                  condition=IfCondition(LaunchConfiguration("enable_gnss")),
-                 gnss_driver=LaunchConfiguration("gnss_driver"),
+                 # HH_260611: Preserve the same ublox_gps dual-antenna controls through sensing.launch.py.
+                 ublox_dual_antenna=LaunchConfiguration("ublox_dual_antenna"),
+                 ublox_dual_forward_ntrip_to_rover=LaunchConfiguration("ublox_dual_forward_ntrip_to_rover"),
                  ublox_param_file=LaunchConfiguration("gnss_param_file"),
                  ntrip_param_file=LaunchConfiguration("ntrip_param_file"),
-                 dgnss_rover_param_file=LaunchConfiguration("dgnss_rover_param_file"),
-                 device_family=LaunchConfiguration("device_family"),
-                 device_serial_string=LaunchConfiguration("device_serial_string"),
-                 dgnss_ubx_config_file=LaunchConfiguration("dgnss_ubx_config_file"),
                  gnss_namespace=LaunchConfiguration("gnss_namespace"),
                  rtcm_topic=LaunchConfiguration("gnss_rtcm_topic"),
             ),

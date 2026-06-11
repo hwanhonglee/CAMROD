@@ -49,6 +49,9 @@
 #include <ublox_msgs/msg/cfg_inf_block.hpp>
 #include <ublox_msgs/msg/cfg_nav5.hpp>
 #include <ublox_msgs/msg/cfg_prt.hpp>
+#include <ublox_msgs/msg/cfg_rst.hpp>
+#include <ublox_msgs/msg/cfg_valset.hpp>
+#include <ublox_msgs/msg/cfg_valset_cfgdata.hpp>
 #include <ublox_msgs/msg/inf.hpp>
 #include <ublox_msgs/msg/mon_ver.hpp>
 #include <ublox_msgs/msg/nav_clock.hpp>
@@ -74,6 +77,58 @@
 #include <ublox_gps/ublox_firmware9.hpp>
 
 namespace ublox_node {
+
+namespace {
+// HH_260611: UBX-CFG-VALSET keys used to reproduce the verified dual-antenna
+// simpleRTK2B Heading rover I/O profile from inside ublox_gps.
+constexpr uint32_t kCfgUart1InProtUbx = 0x10730001;
+constexpr uint32_t kCfgUart1InProtNmea = 0x10730002;
+constexpr uint32_t kCfgUart1InProtRtcm3x = 0x10730004;
+constexpr uint32_t kCfgUart1OutProtUbx = 0x10740001;
+constexpr uint32_t kCfgUart1OutProtNmea = 0x10740002;
+constexpr uint32_t kCfgUart1OutProtRtcm3x = 0x10740004;
+constexpr uint32_t kCfgUart2InProtUbx = 0x10750001;
+constexpr uint32_t kCfgUart2InProtNmea = 0x10750002;
+constexpr uint32_t kCfgUart2InProtRtcm3x = 0x10750004;
+constexpr uint32_t kCfgUart2OutProtUbx = 0x10760001;
+constexpr uint32_t kCfgUart2OutProtNmea = 0x10760002;
+constexpr uint32_t kCfgUart2OutProtRtcm3x = 0x10760004;
+constexpr uint32_t kCfgUsbInProtUbx = 0x10770001;
+constexpr uint32_t kCfgUsbInProtNmea = 0x10770002;
+constexpr uint32_t kCfgUsbInProtRtcm3x = 0x10770004;
+constexpr uint32_t kCfgUsbOutProtUbx = 0x10780001;
+constexpr uint32_t kCfgUsbOutProtNmea = 0x10780002;
+constexpr uint32_t kCfgUsbOutProtRtcm3x = 0x10780004;
+constexpr uint32_t kCfgTmodeMode = 0x20030001;
+constexpr uint32_t kCfgNavHpgDgnssMode = 0x20140011;
+constexpr uint32_t kCfgNavSpgFixMode = 0x20110011;
+constexpr uint32_t kCfgNavSpgIniFix3d = 0x10110013;
+constexpr uint32_t kCfgNavSpgDynModel = 0x20110021;
+constexpr uint32_t kCfgRateMeas = 0x30210001;
+constexpr uint32_t kCfgRateNav = 0x30210002;
+constexpr uint32_t kCfgMsgoutUbxNavStatusUsb = 0x2091001d;
+constexpr uint32_t kCfgMsgoutUbxNavCovUsb = 0x20910086;
+constexpr uint32_t kCfgMsgoutUbxNavPvtUsb = 0x20910009;
+constexpr uint32_t kCfgMsgoutUbxNavRelPosNedUsb = 0x20910090;
+constexpr uint32_t kCfgMsgoutUbxNavHpPosLlhUsb = 0x20910036;
+constexpr uint32_t kCfgMsgoutUbxRxmRtcmUsb = 0x2091026b;
+
+// HH_260611: Identify RTCM3 message ids so dual mode can block conflicting
+// correction streams, especially moving-baseline 4072, before forwarding to USB.
+bool extractRtcm3MessageType(const std::vector<uint8_t> & frame, uint16_t & message_type) {
+  if (frame.size() < 5 || frame[0] != 0xD3) {
+    return false;
+  }
+  const uint16_t payload_length =
+    (static_cast<uint16_t>(frame[1] & 0x03) << 8) | static_cast<uint16_t>(frame[2]);
+  if (payload_length < 2 || frame.size() < static_cast<size_t>(payload_length) + 6) {
+    return false;
+  }
+  message_type =
+    (static_cast<uint16_t>(frame[3]) << 4) | (static_cast<uint16_t>(frame[4]) >> 4);
+  return true;
+}
+}  // namespace
 
 /**
  * @brief Determine dynamic model from human-readable string.
@@ -194,6 +249,21 @@ UbloxNode::UbloxNode(const rclcpp::NodeOptions & options) : rclcpp::Node("ublox_
 }
 
 void UbloxNode::rtcmCallback(const rtcm_msgs::msg::Message::SharedPtr msg) {
+  // HH_260611: In simpleRTK2B Heading mode, do not forward blocked ROS/NTRIP
+  // RTCM messages into the rover USB path because that can break moving-baseline heading.
+  uint16_t message_type = 0;
+  if (dual_antenna_ &&
+      extractRtcm3MessageType(msg->message, message_type) &&
+      std::find(
+        dual_antenna_block_rtcm_ids_.begin(),
+        dual_antenna_block_rtcm_ids_.end(),
+        static_cast<int64_t>(message_type)) != dual_antenna_block_rtcm_ids_.end()) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "Dropping RTCM %u from ROS input in dual-antenna mode to preserve moving-baseline heading.",
+      message_type);
+    return;
+  }
   gps_->sendRtcm(msg->message);
 }
 
@@ -222,9 +292,17 @@ void UbloxNode::addProductInterface(const std::string & product_category,
   if ((product_category == "HPG" || product_category == "HPS") && ref_rov == "REF") {
     components_.push_back(std::make_shared<HpgRefProduct>(nav_rate_, meas_rate_, updater_, rtcms_, this));
   } else if ((product_category == "HPG" || product_category == "HPS") && ref_rov == "ROV") {
-    components_.push_back(std::make_shared<HpgRovProduct>(nav_rate_, updater_, this));
+    // HH_260611: Reuse the high-precision position receiver component in dual mode
+    // because it publishes NAV-RELPOSNED heading, unlike the standard rover component.
+    if (dual_antenna_) {
+      components_.push_back(std::make_shared<HpPosRecProduct>(nav_rate_, meas_rate_, frame_id_, updater_, rtcms_, this));
+      hp_pos_rec_product_added_ = true;
+    } else {
+      components_.push_back(std::make_shared<HpgRovProduct>(nav_rate_, updater_, this));
+    }
   } else if (product_category == "HPG" || product_category == "HPS") {
     components_.push_back(std::make_shared<HpPosRecProduct>(nav_rate_, meas_rate_, frame_id_, updater_, rtcms_, this));
+    hp_pos_rec_product_added_ = true;
   } else if (product_category == "TIM") {
     components_.push_back(std::make_shared<TimProduct>(frame_id_, updater_, this));
   } else if (product_category == "ADR" ||
@@ -245,6 +323,23 @@ void UbloxNode::addProductInterface(const std::string & product_category,
 void UbloxNode::getRosParams() {
   device_ = this->declare_parameter("device", std::string("/dev/ttyACM0"));
   frame_id_ = this->declare_parameter("frame_id", std::string("gps"));
+  // HH_260611: These parameters let launch files switch between SparkFun single
+  // antenna and simpleRTK2B Heading dual-antenna behavior without separate nodes.
+  rtcm_topic_ = this->declare_parameter("rtcm_topic", std::string("rtcm"));
+  dual_antenna_ = this->declare_parameter("dual_antenna", false);
+  dual_antenna_configure_usb_ = this->declare_parameter("dual_antenna.configure_usb", dual_antenna_);
+  dual_antenna_configure_navigation_ = this->declare_parameter(
+    "dual_antenna.configure_navigation", false);
+  dual_antenna_block_rtcm_ids_ = this->declare_parameter(
+    "dual_antenna.block_rtcm_ids", std::vector<int64_t>{4072});
+  dual_antenna_warm_start_on_startup_ = this->declare_parameter(
+    "dual_antenna.warm_start_on_startup", false);
+  dual_antenna_warm_start_wait_ms_ = this->declare_parameter(
+    "dual_antenna.warm_start_wait_ms", static_cast<int64_t>(12000));
+  if (!dual_antenna_) {
+    dual_antenna_block_rtcm_ids_.clear();
+    dual_antenna_warm_start_on_startup_ = false;
+  }
 
   // Save configuration parameters
   load_.load_mask = declareRosIntParameter<uint32_t>(this, "load.mask", 0);
@@ -501,7 +596,151 @@ void UbloxNode::getRosParams() {
   }
 
   // Create subscriber for RTCM correction data to enable RTK
-  this->subscription_ = this->create_subscription<rtcm_msgs::msg::Message>("/rtcm", 10, std::bind(&UbloxNode::rtcmCallback, this, std::placeholders::_1));
+  // HH_260611: Subscribe to a relative/configurable RTCM topic so dual mode can
+  // keep NTRIP RTCM off the rover USB input while still running the NTRIP client.
+  this->subscription_ = this->create_subscription<rtcm_msgs::msg::Message>(rtcm_topic_, 10, std::bind(&UbloxNode::rtcmCallback, this, std::placeholders::_1));
+}
+
+// HH_260611: Helpers encode VALSET values using the little-endian payload format expected by UBX-CFG-VALSET.
+ublox_msgs::msg::CfgVALSETCfgdata UbloxNode::makeValsetU1(uint32_t key, uint8_t value) const {
+  ublox_msgs::msg::CfgVALSETCfgdata item;
+  item.key = key;
+  item.data.push_back(value);
+  return item;
+}
+
+ublox_msgs::msg::CfgVALSETCfgdata UbloxNode::makeValsetU2(uint32_t key, uint16_t value) const {
+  ublox_msgs::msg::CfgVALSETCfgdata item;
+  item.key = key;
+  item.data.push_back(static_cast<uint8_t>(value & 0xff));
+  item.data.push_back(static_cast<uint8_t>((value >> 8) & 0xff));
+  return item;
+}
+
+ublox_msgs::msg::CfgVALSETCfgdata UbloxNode::makeValsetBool(uint32_t key, bool value) const {
+  return makeValsetU1(key, value ? 1 : 0);
+}
+
+bool UbloxNode::configureDualAntennaRover() {
+  // HH_260611: Apply only RAM-layer runtime config so saved u-center UART1/UART2
+  // baudrate and board routing remain intact across tests.
+  if (!dual_antenna_ || !dual_antenna_configure_usb_) {
+    return true;
+  }
+
+  if (protocol_version_ < 27.0) {
+    RCLCPP_WARN(this->get_logger(), "Skipping dual-antenna VALSET config: protocol %.2f is older than F9P protocol 27", protocol_version_);
+    return true;
+  }
+
+  ublox_msgs::msg::CfgVALSET cfg;
+  cfg.layers = ublox_msgs::msg::CfgVALSET::LAYER_RAM;
+  if (dual_antenna_configure_navigation_) {
+    cfg.cfgdata.push_back(makeValsetU1(kCfgTmodeMode, 0));
+    cfg.cfgdata.push_back(makeValsetU1(kCfgNavHpgDgnssMode, 3));
+    cfg.cfgdata.push_back(makeValsetU1(kCfgNavSpgFixMode, fmode_));
+    cfg.cfgdata.push_back(makeValsetBool(kCfgNavSpgIniFix3d, true));
+    cfg.cfgdata.push_back(makeValsetU1(kCfgNavSpgDynModel, dmodel_));
+  } else {
+    RCLCPP_INFO(
+      this->get_logger(),
+      "Dual-antenna navigation VALSET is disabled; leaving TMODE/NAVSPG/NAVHPG as stored on the receiver.");
+  }
+  cfg.cfgdata.push_back(makeValsetU2(kCfgRateMeas, meas_rate_));
+  cfg.cfgdata.push_back(makeValsetU2(kCfgRateNav, nav_rate_));
+  // HH_260611: Mirror the verified rover I/O profile for simpleRTK2B
+  // Heading. Rover consumes moving-base RTCM on UART2 only; USB is UBX output/control only.
+  // Baudrate is intentionally not written here so the u-center saved 115200 setting stays intact.
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart1InProtUbx, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart1InProtNmea, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart1InProtRtcm3x, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart1OutProtUbx, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart1OutProtNmea, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart1OutProtRtcm3x, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart2InProtUbx, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart2InProtNmea, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart2InProtRtcm3x, true));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart2OutProtUbx, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart2OutProtNmea, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUart2OutProtRtcm3x, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUsbInProtUbx, true));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUsbInProtNmea, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUsbInProtRtcm3x, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUsbOutProtUbx, true));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUsbOutProtNmea, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUsbOutProtRtcm3x, false));
+  cfg.cfgdata.push_back(makeValsetU1(kCfgMsgoutUbxNavPvtUsb, 1));
+  cfg.cfgdata.push_back(makeValsetU1(kCfgMsgoutUbxNavStatusUsb, 1));
+  cfg.cfgdata.push_back(makeValsetU1(kCfgMsgoutUbxNavCovUsb, 1));
+  cfg.cfgdata.push_back(makeValsetU1(kCfgMsgoutUbxNavHpPosLlhUsb, 1));
+  cfg.cfgdata.push_back(makeValsetU1(kCfgMsgoutUbxNavRelPosNedUsb, 1));
+  cfg.cfgdata.push_back(makeValsetU1(kCfgMsgoutUbxRxmRtcmUsb, 1));
+
+  RCLCPP_INFO(this->get_logger(), "Applying dual-antenna rover dGNSS-compatible I/O VALSET config.");
+  if (!gps_->configure(cfg)) {
+    RCLCPP_ERROR(this->get_logger(), "Failed to apply dual-antenna rover USB VALSET config.");
+    return false;
+  }
+  return true;
+}
+
+bool UbloxNode::warmStartDualAntennaRover() {
+  if (!dual_antenna_ || !dual_antenna_warm_start_on_startup_) {
+    return true;
+  }
+
+  // HH_260611: Match the verified recovery sequence for simpleRTK2B
+  // Heading. A delayed GNSS-only warm start after RTCM subscription restores the receiver's
+  // moving-baseline state without clearing saved UART1/UART2 board configuration.
+  RCLCPP_WARN(
+    this->get_logger(),
+    "Dual-antenna startup warm start: resetting GNSS engine only to restore moving-baseline heading.");
+  if (!gps_->configReset(
+      ublox_msgs::msg::CfgRST::NAV_BBR_WARM_START,
+      ublox_msgs::msg::CfgRST::RESET_MODE_GNSS)) {
+    RCLCPP_WARN(this->get_logger(), "Dual-antenna startup warm start command failed; continuing.");
+    return false;
+  }
+
+  return true;
+}
+
+void UbloxNode::scheduleDualAntennaWarmStart() {
+  // HH_260611: Warm start is disabled by default; this remains available as a
+  // manual fallback when the receiver gets stuck after prior experiments.
+  if (!dual_antenna_ || !dual_antenna_warm_start_on_startup_) {
+    return;
+  }
+  const auto delay_ms = std::max<int64_t>(0, dual_antenna_warm_start_wait_ms_);
+  RCLCPP_WARN(
+    this->get_logger(),
+    "Scheduling dual-antenna GNSS-only warm start in %ld ms after RTCM subscription startup.",
+    delay_ms);
+  dual_antenna_warm_start_timer_ = this->create_wall_timer(
+    std::chrono::milliseconds(delay_ms),
+    [this]() {
+      if (dual_antenna_warm_start_timer_) {
+        dual_antenna_warm_start_timer_->cancel();
+      }
+      warmStartDualAntennaRover();
+    });
+}
+
+void UbloxNode::addDualAntennaInterfaceIfNeeded() {
+  // HH_260611: Ensure NAV-RELPOSNED heading is present even when MON-VER product
+  // parsing reports the receiver as a standard HPG rover.
+  if (!dual_antenna_ || hp_pos_rec_product_added_) {
+    return;
+  }
+
+  if (protocol_version_ < 27.0) {
+    RCLCPP_WARN(this->get_logger(), "dual_antenna is true, but protocol %.2f does not support NavRELPOSNED9 heading.", protocol_version_);
+    return;
+  }
+
+  components_.push_back(std::make_shared<HpPosRecProduct>(nav_rate_, meas_rate_, frame_id_, updater_, rtcms_, this));
+  hp_pos_rec_product_added_ = true;
+  RCLCPP_INFO(this->get_logger(), "Added dual-antenna NavRELPOSNED9 heading interface.");
 }
 
 void UbloxNode::keepAlive() {
@@ -800,6 +1039,9 @@ bool UbloxNode::configureUblox() {
         }
       }
     }
+    if (!configureDualAntennaRover()) {
+      throw std::runtime_error("Failed to configure dual-antenna rover mode.");
+    }
     if (save_.save_mask != 0) {
       RCLCPP_DEBUG(this->get_logger(), "Saving the u-blox configuration, mask %u, device %u",
                    save_.save_mask, save_.device_mask);
@@ -897,6 +1139,7 @@ void UbloxNode::initialize() {
   initializeIo();
   // Must process Mon VER before setting firmware/hardware params
   processMonVer();
+  addDualAntennaInterfaceIfNeeded();
   if (protocol_version_ <= 14.0) {
     if (getRosBoolean(this, "raw_data")) {
       components_.push_back(std::make_shared<RawDataProduct>(nav_rate_, meas_rate_, updater_, this));
@@ -924,6 +1167,7 @@ void UbloxNode::initialize() {
 
     poller_ = this->create_wall_timer(std::chrono::milliseconds(static_cast<int64_t>(kPollDuration * 1000.0)),
                                       std::bind(&UbloxNode::pollMessages, this));
+    scheduleDualAntennaWarmStart();
   }
 }
 

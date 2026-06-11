@@ -35,6 +35,66 @@ SRC_ROOT="${WS_ROOT}/src"
 mkdir -p "${WS_ROOT}/build" "${WS_ROOT}/install" "${WS_ROOT}/log"
 cd "${WS_ROOT}"
 
+# HH_260611: Remove stale per-package CMake build directories whose cached source
+# path no longer exists. This handles external repo moves without requiring a full
+# workspace clean.
+_clean_stale_cmake_build_dirs() {
+  local cache src build_dir
+  shopt -s nullglob
+  for cache in "${WS_ROOT}"/build/*/CMakeCache.txt; do
+    src="$(awk -F= '/^CMAKE_HOME_DIRECTORY:INTERNAL=/ {print $2; exit}' "${cache}" || true)"
+    [[ -n "${src}" ]] || continue
+    [[ -d "${src}" ]] && continue
+    build_dir="$(dirname "${cache}")"
+    rm -rf "${build_dir}"
+    log "removed stale build dir: ${build_dir} (missing source: ${src})"
+  done
+  shopt -u nullglob
+}
+_clean_stale_cmake_build_dirs
+
+# HH_260611: ament_python symlink-install can fail when an installed data-file
+# symlink already exists from an older build. Remove known generated launch
+# artifacts before rebuilding so setup.py can recreate them.
+_clean_stale_install_artifacts() {
+  local path
+  for path in \
+    "${WS_ROOT}/install/camrod_ui/share/camrod_ui/launch/ui.launch.py"
+  do
+    if [[ -e "${path}" || -L "${path}" ]]; then
+      rm -f "${path}"
+      log "removed stale install artifact: ${path}"
+    fi
+  done
+
+  # HH_260611: Remove stale isolated install prefixes for packages that are no
+  # longer part of this x86_64 build graph. If left in place, setup.bash tries
+  # to source missing local_setup.bash files and launch reports unrelated
+  # packages as "not built".
+  local prefix
+  for prefix in \
+    "${WS_ROOT}/install/apriltag_msgs" \
+    "${WS_ROOT}/install/apriltag_ros" \
+    "${WS_ROOT}/install/opennav_docking_msgs" \
+    "${WS_ROOT}/install/opennav_docking_bt" \
+    "${WS_ROOT}/install/opennav_docking_core" \
+    "${WS_ROOT}/install/opennav_docking" \
+    "${WS_ROOT}/install/camrod_parking" \
+    "${WS_ROOT}/install/ntrip_client_node" \
+    "${WS_ROOT}/install/ublox_dgnss" \
+    "${WS_ROOT}/install/ublox_dgnss_node" \
+    "${WS_ROOT}/install/ublox_nav_sat_fix_hp_node" \
+    "${WS_ROOT}/install/ublox_ubx_interfaces" \
+    "${WS_ROOT}/install/ublox_ubx_msgs"
+  do
+    if [[ -e "${prefix}" || -L "${prefix}" ]]; then
+      rm -rf "${prefix}"
+      log "removed stale install prefix: ${prefix}"
+    fi
+  done
+}
+_clean_stale_install_artifacts
+
 # shellcheck disable=SC1091
 set +u; source /opt/ros/humble/setup.bash; set -u
 
@@ -63,15 +123,38 @@ sanitize_path_var COLCON_PREFIX_PATH
 
 # HH_260428: Collect all external/ base directories for colcon --base-paths.
 # Excludes .git internals, build/install/log artifacts, and disabled packages.
+ARCH="$(uname -m)"
 mapfile -t EXTERNAL_BASES < <(
   cd "${WS_ROOT}" && find src -type d -name external \
+    -not -path 'src/todo/*' \
     -not -path '*/.git/*' \
     -not -path '*/build/*' \
     -not -path '*/install/*' \
     -not -path '*/log/*' \
     -not -path '*/disable/*' | sort
 )
+BUILD_SKIP_PACKAGES=()
+if [[ "${ARCH}" != "aarch64" && "${ARCH}" != "arm64" ]]; then
+  # HH_260611: Isaac ROS / VPI docking dependencies are Jetson-only in this workspace.
+  # Keep x86_64 development builds focused on buildable CAMROD modules such as sensing/GNSS.
+  _filtered_external_bases=()
+  for _base in "${EXTERNAL_BASES[@]}"; do
+    [[ "${_base}" == "src/camrod_docking/external" ]] && continue
+    _filtered_external_bases+=("${_base}")
+  done
+  EXTERNAL_BASES=("${_filtered_external_bases[@]}")
+  if [[ -d "src/camrod_docking/external/opencv4_vendor" ]]; then
+    EXTERNAL_BASES+=("src/camrod_docking/external/opencv4_vendor")
+  fi
+  BUILD_SKIP_PACKAGES+=(camrod_docking)
+  log "skip camrod_docking and docking external packages on ${ARCH} (Isaac ROS/VPI not available)"
+  unset _base _filtered_external_bases
+fi
 BASE_PATHS=("src" "${EXTERNAL_BASES[@]}")
+BUILD_SKIP_ARGS=()
+if [[ ${#BUILD_SKIP_PACKAGES[@]} -gt 0 ]]; then
+  BUILD_SKIP_ARGS=(--packages-skip "${BUILD_SKIP_PACKAGES[@]}")
+fi
 
 # HH_260428: Mark extracted vendor binary trees (e.g. tier4_adapi) so colcon
 # does not try to build them as source packages.
@@ -125,6 +208,7 @@ colcon --log-base "${WS_ROOT}/log" build \
   --base-paths "${BASE_PATHS[@]}" \
   --build-base  "${WS_ROOT}/build" \
   --install-base "${WS_ROOT}/install" \
+  "${BUILD_SKIP_ARGS[@]}" \
   "$@"
 
 log "done.  source ${WS_ROOT}/install/setup.bash"

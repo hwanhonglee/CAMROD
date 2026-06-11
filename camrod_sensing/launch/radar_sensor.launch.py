@@ -38,19 +38,8 @@ def generate_launch_description():
             name="sen0592_radar_node",
             namespace=module_namespace,
             output="screen",
-            parameters=[
-                radar_params,
-                {
-                    "topics": [
-                        "rear/range",
-                        "left2/range",
-                        "left1/range",
-                        "right2/range",
-                        "right1/range",
-                        "front/range",
-                    ],
-                    "radar_status_topic": "status",
-                },
-            ],
+            # HH_260611: Keep sensor mapping only in YAML so one-radar and six-radar configs
+            # can be swapped without launch-time hard-coded topic overrides.
+            parameters=[radar_params],
         ),
     ])

@@ -3,12 +3,19 @@
     # HH_260604: SparkFun ZED-F9P at ttyACM0 — simpleRTK2B uses libusb (no ttyACM created).
     device: /dev/ttyACM0
     frame_id: gps
+    # HH_260611: Make the RTCM input topic configurable so dual mode can avoid rover USB RTCM.
+    rtcm_topic: rtcm
     debug: 1 # 4 is logging data
 
     # HH_260330: Avoid startup abort on some F9P units reporting
     # "Failed to read the GNSS config" during CFG polling.
     # Keep receiver running even if runtime CFG read/write is flaky.
     config_on_startup: false
+    # HH_260611: Keep the base YAML single-antenna safe; launch files enable these for simpleRTK2B Heading.
+    dual_antenna: false
+    dual_antenna.configure_usb: false
+    dual_antenna.configure_navigation: false
+    dual_antenna.block_rtcm_ids: [4072]
 
     # HH_260326: Increase GNSS fix rate for localization consistency validation.
     # Keep nav_rate=1 and raise measurement rate from 1 Hz -> 10 Hz.

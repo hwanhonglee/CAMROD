@@ -156,12 +156,11 @@ REQUIRED_SYS_PKGS=(
 #       ros-humble-isaac-ros-apriltag \
 #       ros-humble-isaac-ros-image-pipeline
 #
-#   If the apt repo is not available (e.g. x86_64 dev machine without JetPack),
-#   colcon will still build all other packages; only camrod_docking will fail to
-#   find isaac_ros_apriltag_interfaces.  In that case build with:
-#     ./colcon_build.sh --packages-skip camrod_docking
+#   HH_260611: On x86_64 without JetPack, ./colcon_build.sh automatically
+#   skips Jetson-only docking packages and still builds the rest of the workspace.
 
-# HH_260522: Add nvjpeg packages only when camrod_sensing exists and nvjpeg is missing.
+# HH_260611: Keep nvjpeg dependency handling Jetson-only so x86_64 sensing/GNSS
+# builds do not warn about unavailable CUDA/JetPack runtime libraries.
 if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
   _arch="$(uname -m)"
   if [[ "${_arch}" == "aarch64" || "${_arch}" == "arm64" ]]; then
@@ -191,12 +190,18 @@ fi
 unset _pkg _missing
 
 if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
-  if ! has_nvjpeg_header; then
-    log "WARN: nvjpeg header (nvjpeg.h) is still missing after setup"
+  # HH_260611: Report missing nvjpeg only on Jetson targets where the camera
+  # pipeline actually depends on NVIDIA's nvjpeg runtime.
+  _arch="$(uname -m)"
+  if [[ "${_arch}" == "aarch64" || "${_arch}" == "arm64" ]]; then
+    if ! has_nvjpeg_header; then
+      log "WARN: nvjpeg header (nvjpeg.h) is still missing after setup"
+    fi
+    if ! has_nvjpeg_library; then
+      log "WARN: nvjpeg library (libnvjpeg.so) is still missing after setup"
+    fi
   fi
-  if ! has_nvjpeg_library; then
-    log "WARN: nvjpeg library (libnvjpeg.so) is still missing after setup"
-  fi
+  unset _arch
 fi
 
 # ── External repositories ────────────────────────────────────────────────────

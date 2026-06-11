@@ -15,42 +15,29 @@
 
     # Per-sensor detection angle written to register 0x0208 at startup.
     # Values: 1=15° 2=30° 3=45° 4=60° 5=75°. 0 = skip (sensor retains hardware value).
-    # Order: REAR, LEFT2, LEFT1, RIGHT2, RIGHT1, FRONT.
-    sensor_angle_config_values: [5, 5, 5, 5, 5, 5]
+    # HH_260611: Current bench test has one SEN0592 connected, so keep this file single-sensor.
+    # For the full 6-radar vehicle setup, restore the REAR/LEFT/RIGHT/FRONT arrays below.
+    sensor_angle_config_values: [5]
 
-    # Per-sensor max detection range (m). Order: REAR, LEFT2, LEFT1, RIGHT2, RIGHT1, FRONT.
-    sensor_max_ranges_m: [0.50, 0.80, 0.80, 0.80, 0.80, 1.50]
-    # Hardware range limit (mm) written to register 0x021F. Same order as above.
-    sensor_range_config_mm: [500, 800, 800, 800, 800, 1500]
+    # Per-sensor max detection range (m). Single connected radar is treated as FRONT.
+    sensor_max_ranges_m: [1.50]
+    # Hardware range limit (mm) written to register 0x021F.
+    sensor_range_config_mm: [1500]
 
     # Aggregated sensing message output
     publish_radar_status: false
     radar_status_topic: "status"
 
     # Sensor mapping
-    sensor_names: ["REAR", "LEFT2", "LEFT1", "RIGHT2", "RIGHT1", "FRONT"]
+    sensor_names: ["FRONT"]
     frame_ids:
-      - "radar_rear_link"
-      - "radar_left2_link"
-      - "radar_left1_link"
-      - "radar_right2_link"
-      - "radar_right1_link"
       - "radar_front_link"
 
-    # CH9344 multi-port device paths
+    # CH9344 multi-port device paths.
+    # HH_260611: Use auto so the node probes whichever /dev/ttyCH9344USB* port currently has the one sensor.
     ports:
-      - "/dev/ttyCH9344USB2"
-      - "/dev/ttyCH9344USB3"
-      - "/dev/ttyCH9344USB4"
-      - "/dev/ttyCH9344USB5"
-      - "/dev/ttyCH9344USB6"
-      - "/dev/ttyCH9344USB7"
+      - "auto:/dev/ttyCH9344USB*"
 
     # topic names (relative to namespace)
     topics:
-      - "rear/range"
-      - "left2/range"
-      - "left1/range"
-      - "right2/range"
-      - "right1/range"
       - "front/range"

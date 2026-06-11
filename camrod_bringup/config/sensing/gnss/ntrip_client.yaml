@@ -1,6 +1,4 @@
-# HH_260604: Unified NTRIP parameters for both drivers.
-#   - ublox (single antenna): ntrip_ros.py reads this file via ROS2 param loading (/**:).
-#   - ublox_dgnss (dual antenna): NTRIPClientNode reads /**:ros__parameters dict at launch time.
+# HH_260611: NTRIP parameters for Python ntrip_ros.py used by ublox_gps single/dual modes.
 # Server: gnssdata.or.kr:2101, mountpoint CNJU-RTCM32.
 
 /**:
@@ -13,7 +11,7 @@
     username: "hwanhong57@gmail.com"
     password: "gnss"
 
-    # ── Python ntrip_ros.py (ublox single antenna) ────────────────────────────
+    # ── Python ntrip_ros.py (ublox_gps single/dual antenna) ───────────────────
     authenticate: true
     rtcm_message_package: rtcm_msgs
     # HH_260327: Accept slightly longer GGA strings to avoid reconnect churn.
@@ -29,7 +27,3 @@
     rtcm_timeout_seconds: 10
     reconnect_attempt_max: 10
     reconnect_attempt_wait_seconds: 8
-
-    # ── C++ NTRIPClientNode (ublox_dgnss dual antenna) ────────────────────────
-    use_https: false
-    maxage_conn: 30
