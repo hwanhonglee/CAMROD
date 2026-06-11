@@ -40,6 +40,8 @@
 // U-Blox msgs nicludes
 #include <ublox_msgs/msg/cfg_cfg.hpp>
 #include <ublox_msgs/msg/cfg_dat.hpp>
+// HH_260611: VALSET support is needed to apply the verified simpleRTK2B rover I/O profile.
+#include <ublox_msgs/msg/cfg_valset_cfgdata.hpp>
 #include <ublox_msgs/msg/inf.h>
 #include <rtcm_msgs/msg/message.hpp>
 #include <nmea_msgs/msg/sentence.hpp>
@@ -193,6 +195,16 @@ class UbloxNode final : public rclcpp::Node {
   void addProductInterface(const std::string & product_category,
                            const std::string & ref_rov = "");
 
+  // HH_260611: Dual-antenna helper methods let ublox_gps mirror the verified
+  // verified dual-antenna rover startup path while preserving single-antenna behavior.
+  bool configureDualAntennaRover();
+  bool warmStartDualAntennaRover();
+  void scheduleDualAntennaWarmStart();
+  ublox_msgs::msg::CfgVALSETCfgdata makeValsetU1(uint32_t key, uint8_t value) const;
+  ublox_msgs::msg::CfgVALSETCfgdata makeValsetU2(uint32_t key, uint16_t value) const;
+  ublox_msgs::msg::CfgVALSETCfgdata makeValsetBool(uint32_t key, bool value) const;
+  void addDualAntennaInterfaceIfNeeded();
+
   /**
    * @brief Poll version message from the U-Blox device to keep socket active.
    */
@@ -220,6 +232,26 @@ class UbloxNode final : public rclcpp::Node {
   // Variables set from parameter server
   //! Device port
   std::string device_;
+  // HH_260611: Dual-antenna runtime options are launch-controlled so SparkFun
+  // single-antenna and simpleRTK2B Heading can share the same ublox_gps node.
+  //! Topic for RTCM corrections.
+  std::string rtcm_topic_;
+  //! Enable simpleRTK2B Heading / moving-baseline rover handling.
+  bool dual_antenna_{false};
+  //! Apply dGNSS-compatible rover I/O VALSET parameters for UART2 moving-base and USB UBX.
+  bool dual_antenna_configure_usb_{false};
+  //! Also apply NAVSPG/TMODE rover navigation settings; disabled by default to preserve receiver-stored config.
+  bool dual_antenna_configure_navigation_{false};
+  //! RTCM message ids to drop from ROS/NTRIP input in dual-antenna mode.
+  std::vector<int64_t> dual_antenna_block_rtcm_ids_;
+  //! Run a GNSS-only warm start after startup config to restore moving-baseline solving.
+  bool dual_antenna_warm_start_on_startup_{false};
+  //! Delay after ROS subscriptions are active before the startup warm start is sent.
+  int64_t dual_antenna_warm_start_wait_ms_{0};
+  //! One-shot timer for delayed dual-antenna startup warm start.
+  rclcpp::TimerBase::SharedPtr dual_antenna_warm_start_timer_;
+  //! Whether the high precision position/heading component was added.
+  bool hp_pos_rec_product_added_{false};
   //! dynamic model type
   std::string dynamic_model_;
   //! Fix mode type

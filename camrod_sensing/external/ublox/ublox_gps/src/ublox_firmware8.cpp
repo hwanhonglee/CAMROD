@@ -231,8 +231,15 @@ bool UbloxFirmware8::configureUblox(std::shared_ptr<ublox_gps::Gps> gps) {
 
 void UbloxFirmware8::subscribe(std::shared_ptr<ublox_gps::Gps> gps) {
   // Subscribe to Nav PVT
-  gps->subscribe<ublox_msgs::msg::NavPVT>(
-    std::bind(&UbloxFirmware7Plus::callbackNavPvt, this, std::placeholders::_1), 1);
+  auto nav_pvt_callback =
+    std::bind(&UbloxFirmware7Plus::callbackNavPvt, this, std::placeholders::_1);
+  // HH_260611: Keep NavPVT streaming in dual-antenna mode so pose RTK state can
+  // be checked continuously alongside RELPOSNED heading.
+  if (getRosBoolean(node_, "dual_antenna")) {
+    gps->subscribe<ublox_msgs::msg::NavPVT>(nav_pvt_callback);
+  } else {
+    gps->subscribe<ublox_msgs::msg::NavPVT>(nav_pvt_callback, 1);
+  }
 
   // Subscribe to Nav SAT messages
   if (getRosBoolean(node_, "publish.nav.sat")) {
@@ -248,8 +255,14 @@ void UbloxFirmware8::subscribe(std::shared_ptr<ublox_gps::Gps> gps) {
 
   // Subscribe to RTCM messages
   if (getRosBoolean(node_, "publish.rxm.rtcm")) {
-    gps->subscribe<ublox_msgs::msg::RxmRTCM>([this](const ublox_msgs::msg::RxmRTCM &m) { rxm_rtcm_pub_->publish(m); },
-                                        1);
+    auto rxm_rtcm_callback = [this](const ublox_msgs::msg::RxmRTCM &m) { rxm_rtcm_pub_->publish(m); };
+    // HH_260611: Keep RXM-RTCM streaming in dual-antenna mode to verify which
+    // correction messages the rover is actually receiving.
+    if (getRosBoolean(node_, "dual_antenna")) {
+      gps->subscribe<ublox_msgs::msg::RxmRTCM>(rxm_rtcm_callback);
+    } else {
+      gps->subscribe<ublox_msgs::msg::RxmRTCM>(rxm_rtcm_callback, 1);
+    }
   }
 }
 

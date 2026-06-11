@@ -1,7 +1,10 @@
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <fcntl.h>
+#include <glob.h>
 #include <mutex>
 #include <sys/ioctl.h>
 #include <termios.h>
@@ -205,11 +208,6 @@ public:
         "/sensing/radar/right2/range", "/sensing/radar/right1/range", "/sensing/radar/front/range"
       });
 
-    const auto n = ports_.size();
-    if (sensor_names_.size() != n || frame_ids_.size() != n || topics_.size() != n) {
-      throw std::runtime_error("sensor_names, frame_ids, ports, topics must have the same length");
-    }
-
     baud_ = this->get_parameter("baud").as_int();
     slave_id_ = static_cast<uint8_t>(this->get_parameter("slave_id").as_int());
     poll_period_s_ = this->get_parameter("poll_period_s").as_double();
@@ -220,6 +218,14 @@ public:
     fov_rad_ = this->get_parameter("field_of_view_rad").as_double();
     radar_status_topic_ = this->get_parameter("radar_status_topic").as_string();
     publish_radar_status_ = this->get_parameter("publish_radar_status").as_bool();
+
+    resolve_auto_ports();
+
+    const auto n = ports_.size();
+    if (sensor_names_.size() != n || frame_ids_.size() != n || topics_.size() != n) {
+      throw std::runtime_error("sensor_names, frame_ids, ports, topics must have the same length");
+    }
+
     const auto sensor_max_ranges = this->get_parameter("sensor_max_ranges_m").as_double_array();
     const auto sensor_range_config_mm = this->get_parameter("sensor_range_config_mm").as_integer_array();
     const auto sensor_angle_config = this->get_parameter("sensor_angle_config_values").as_integer_array();
@@ -343,6 +349,139 @@ private:
       static_cast<uint16_t>(s.range_config_mm), "range_config");
   }
 
+  bool is_auto_port_spec(const std::string& port) const
+  {
+    return port == "auto" || port.rfind("auto:", 0) == 0;
+  }
+
+  // HH_260611: Resolve "auto" radar ports at runtime because the CH9344 USB
+  // serial indices can change when GNSS/radar converters are unplugged or swapped.
+  std::string auto_port_pattern(const std::string& port) const
+  {
+    if (port == "auto") {
+      return "/dev/ttyCH9344USB*";
+    }
+    return port.substr(std::strlen("auto:"));
+  }
+
+  std::vector<std::string> expand_port_pattern(const std::string& pattern) const
+  {
+    glob_t matches{};
+    std::vector<std::string> paths;
+    const int rc = ::glob(pattern.c_str(), 0, nullptr, &matches);
+    if (rc == 0) {
+      for (size_t i = 0; i < matches.gl_pathc; ++i) {
+        paths.emplace_back(matches.gl_pathv[i]);
+      }
+      std::sort(paths.begin(), paths.end());
+    }
+    ::globfree(&matches);
+    return paths;
+  }
+
+  bool probe_sensor_port(const std::string& port, int& out_mm)
+  {
+    // HH_260611: Probe candidates by reading one SEN0592 sample so a single
+    // connected radar can be found without hard-coding /dev/ttyCH9344USBN.
+    int fd = ::open(port.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
+    if (fd < 0) {
+      return false;
+    }
+
+    if (!configure_serial(fd, baud_)) {
+      ::close(fd);
+      return false;
+    }
+
+    SensorRuntime probe;
+    probe.name = "AUTO";
+    probe.port = port;
+    probe.fd = fd;
+    const bool ok = read_realtime_mm(probe, out_mm);
+    ::close(fd);
+    probe.fd = -1;
+    return ok;
+  }
+
+  void log_port_open_hint_once(const SensorRuntime& sensor, int open_errno)
+  {
+    // HH_260611: Emit actionable one-time hints for the common bench failures:
+    // missing CH9344 kernel device nodes or user permission on serial devices.
+    if (open_errno == ENOENT &&
+        sensor.port.find("/dev/ttyCH9344USB") != std::string::npos) {
+      bool expected = false;
+      if (ch9344_driver_hint_logged_.compare_exchange_strong(expected, true)) {
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "CH9344 radar serial devices are missing. The launch is using '%s', but /dev/ttyCH9344USB* does not exist. Load/check the CH9344 kernel driver, then verify with: sudo insmod /home/hong/camrod_ws/build/radar_driver/ch9344.ko && ls /dev/ttyCH9344USB*",
+          sensor.port.c_str());
+      }
+      return;
+    }
+
+    if (open_errno == EACCES) {
+      bool expected = false;
+      if (serial_permission_hint_logged_.compare_exchange_strong(expected, true)) {
+        RCLCPP_ERROR(
+          this->get_logger(),
+          "Radar serial port '%s' exists but is not accessible. Check dialout group/udev permissions for the current user.",
+          sensor.port.c_str());
+      }
+    }
+  }
+
+  void resolve_auto_ports()
+  {
+    // HH_260611: Expand each auto pattern and bind it to the first unused port
+    // that responds as a SEN0592 radar.
+    std::vector<std::string> used_ports;
+
+    for (auto& port : ports_) {
+      if (!is_auto_port_spec(port)) {
+        used_ports.push_back(port);
+        continue;
+      }
+
+      const auto pattern = auto_port_pattern(port);
+      const auto candidates = expand_port_pattern(pattern);
+      if (candidates.empty()) {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "No serial ports matched radar auto pattern '%s'; leaving it unresolved",
+          pattern.c_str());
+        port = pattern;
+        continue;
+      }
+
+      bool resolved = false;
+      for (const auto& candidate : candidates) {
+        if (std::find(used_ports.begin(), used_ports.end(), candidate) != used_ports.end()) {
+          continue;
+        }
+
+        int mm = -1;
+        if (probe_sensor_port(candidate, mm)) {
+          port = candidate;
+          used_ports.push_back(candidate);
+          resolved = true;
+          RCLCPP_INFO(
+            this->get_logger(),
+            "Resolved radar auto port '%s' -> '%s' (%d mm)",
+            pattern.c_str(), candidate.c_str(), mm);
+          break;
+        }
+      }
+
+      if (!resolved) {
+        RCLCPP_WARN(
+          this->get_logger(),
+          "No responding SEN0592 radar found for auto pattern '%s'; leaving it unresolved",
+          pattern.c_str());
+        port = pattern;
+      }
+    }
+  }
+
   // Implements `open_sensor_port` behavior.
   bool open_sensor_port(SensorRuntime& s)
   {
@@ -350,8 +489,10 @@ private:
 
     int fd = ::open(s.port.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
     if (fd < 0) {
+      const int open_errno = errno;
       RCLCPP_ERROR(this->get_logger(), "[%s] Failed to open port %s: %s",
-                   s.name.c_str(), s.port.c_str(), std::strerror(errno));
+                   s.name.c_str(), s.port.c_str(), std::strerror(open_errno));
+      log_port_open_hint_once(s, open_errno);
       return false;
     }
 
@@ -578,6 +719,9 @@ private:
 
   std::vector<std::thread> threads_;
   std::atomic<bool> stop_{false};
+  // HH_260611: Keep port-open hints one-shot to avoid flooding logs while retrying disconnected radars.
+  std::atomic<bool> ch9344_driver_hint_logged_{false};
+  std::atomic<bool> serial_permission_hint_logged_{false};
   std::mutex mtx_;
   std::mutex avg_mtx_;
 

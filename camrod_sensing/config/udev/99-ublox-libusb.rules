@@ -1,7 +1,0 @@
-# HH_260604: Allow the ublox_dgnss libusb driver to open u-blox GNSS USB devices as the ROS user.
-SUBSYSTEM=="usb", ATTR{idVendor}=="1546", ATTR{idProduct}=="01a9", MODE:="0666", GROUP:="dialout", TAG+="uaccess"
-
-# HH_260604: Keep the same access rule for X20P-compatible u-blox USB product IDs.
-SUBSYSTEM=="usb", ATTR{idVendor}=="1546", ATTR{idProduct}=="01ab", MODE:="0666", GROUP:="dialout", TAG+="uaccess"
-SUBSYSTEM=="usb", ATTR{idVendor}=="1546", ATTR{idProduct}=="050c", MODE:="0666", GROUP:="dialout", TAG+="uaccess"
-SUBSYSTEM=="usb", ATTR{idVendor}=="1546", ATTR{idProduct}=="050d", MODE:="0666", GROUP:="dialout", TAG+="uaccess"

@@ -28,7 +28,7 @@
     gnss_covariance_floor_xy: 0.1
     gnss_covariance_floor_z: 0.25
 
-    # HH_260604: Enable dual-antenna GNSS heading from ublox_dgnss RELPOSNED.
+    # HH_260611: Enable dual-antenna GNSS heading from ublox_gps NAV-RELPOSNED.
     # HH_260604: COG heading removed — dual-antenna moving-baseline RTK is the sole heading source.
     enable_gnss_heading: true
     gnss_heading_topic: "/sensing/gnss/navheading"

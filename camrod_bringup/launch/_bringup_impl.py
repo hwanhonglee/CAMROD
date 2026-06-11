@@ -18,6 +18,7 @@ from launch.actions import (
     ExecuteProcess,
     GroupAction,
     IncludeLaunchDescription,
+    LogInfo,
     OpaqueFunction,
     RegisterEventHandler,
     TimerAction,
@@ -71,7 +72,6 @@ OVERRIDE_SPECS = {
         'inflation_cost_grid_param_file': ('sensing/inflation_cost_grid_param_file',),
         'gnss_param_file':        ('sensing/gnss_param_file',),
         'ntrip_param_file':       ('sensing/ntrip_param_file',),
-        'dgnss_rover_param_file': ('sensing/dgnss_rover_param_file',),
         # HH_260528: imu_param_file resolves model-specific YAML via OVERRIDE_SPECS (file path only).
         'imu_param_file': ('sensing/imu_param_file',),
         'vanjee_config_path': ('sensing/vanjee_config_path',),
@@ -773,12 +773,9 @@ def generate_launch_description():
         ('imu_param_file',  cfg_get(launch_cfg, 'sensing/imu_param_file',  '__module_default__'), 'IMU param file path (or __module_default__)'),
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
         ('enable_ntrip', cfg_get(launch_cfg, 'sensing/enable_ntrip', False), 'Enable GNSS NTRIP client'),
-        ('gnss_driver', cfg_get(launch_cfg, 'sensing/gnss_driver', 'ublox_dgnss'), 'GNSS driver: ublox | ublox_dgnss'),  # HJ_260528
-        # HH_260606 // Keep dGNSS hardware selectors available from bringup so the
-        # standalone GNSS, sensing, and full bringup paths all resolve the same rover profile.
-        ('dgnss_device_family', cfg_get(launch_cfg, 'sensing/dgnss_device_family', 'F9P'), 'u-blox dGNSS device family: F9P|F9R|X20P'),
-        ('dgnss_device_serial_string', cfg_get(launch_cfg, 'sensing/dgnss_device_serial_string', ''), 'Optional u-blox USB serial string for dGNSS'),
-        ('dgnss_ubx_config_file', cfg_get(launch_cfg, 'sensing/dgnss_ubx_config_file', '__auto__'), 'dGNSS UBX TOML config path or __auto__'),
+        # HH_260611: Pass simpleRTK2B Heading controls through bringup to the ublox_gps launch.
+        ('ublox_dual_antenna', cfg_get(launch_cfg, 'sensing/ublox_dual_antenna', True), 'Use ublox_gps for dual-antenna simpleRTK2B Heading'),
+        ('ublox_dual_forward_ntrip_to_rover', cfg_get(launch_cfg, 'sensing/ublox_dual_forward_ntrip_to_rover', False), 'Forward NTRIP RTCM into ublox_gps dual rover USB input'),
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
         ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),
         ('perception_mode', cfg_get(launch_cfg, 'perception/mode', 'auto'), 'Perception mode: auto|lidar_only|camera_lidar'),
@@ -914,6 +911,15 @@ def generate_launch_description():
             kwargs['condition'] = condition
         return IncludeLaunchDescription(**kwargs)
 
+    # HH_260611: Treat optional modules as optional at launch time so stale/missing
+    # package artifacts do not block GNSS and sensing validation on this x86_64 PC.
+    def has_launch_file(pkg: str, launch_file: str) -> tuple[bool, str]:
+        try:
+            launch_path = pkg_path(pkg, os.path.join('launch', launch_file))
+        except Exception:
+            return False, ''
+        return os.path.isfile(launch_path), launch_path
+
     platform_args = {
         'module_namespace': lc['platform_namespace'],
         'sensor_kit_namespace': lc['sensor_kit_namespace'],
@@ -986,10 +992,9 @@ def generate_launch_description():
         'enable_imu':      sim_switch(lc['sim'], 'false', lc['enable_imu']),
         'imu_model':       lc['imu_model'],
         'enable_gnss': sim_switch(lc['sim'], 'false', lc['enable_gnss']),
-        'gnss_driver': lc['gnss_driver'],  # HJ_260528
-        'device_family': lc['dgnss_device_family'],
-        'device_serial_string': lc['dgnss_device_serial_string'],
-        'dgnss_ubx_config_file': lc['dgnss_ubx_config_file'],
+        # HH_260611: Forward ublox_gps dual-antenna runtime controls from bringup.
+        'ublox_dual_antenna': lc['ublox_dual_antenna'],
+        'ublox_dual_forward_ntrip_to_rover': lc['ublox_dual_forward_ntrip_to_rover'],
         'camera_device_path': lc['camera_device_path'],
         # HH_260527: Removed unused pass-through args
         # (system_namespace, gnss_navsatfix_topic, enable_module_validator).
@@ -1142,12 +1147,31 @@ def generate_launch_description():
         ('camrod_planning', 'planning.launch.py', planning_args, IfCondition(lc['enable_planning'])),
         # Launch unified diagnostics stack via top-level system.launch.py.
         ('camrod_system', 'system.launch.py', system_args, None),
-        ('camrod_ui', 'ui.launch.py', api_args, None),
     ]
+    optional_modules = []
+    ui_launch_exists, ui_launch_path = has_launch_file('camrod_ui', 'ui.launch.py')
+    if ui_launch_exists:
+        # HH_260611: Start UI only when an API/UI surface is requested and the launch file exists.
+        ui_condition = IfCondition(
+            PythonExpression([
+                "'", lc['enable_plugin_api'], "' == 'true' or '",
+                lc['enable_api_ui'], "' == 'true'",
+            ])
+        )
+        module_specs.append(('camrod_ui', 'ui.launch.py', api_args, ui_condition))
+    else:
+        optional_modules.append(
+            LogInfo(
+                msg=(
+                    '[bringup] camrod_ui skipped: '
+                    f'launch file not found{": " + ui_launch_path if ui_launch_path else ""}'
+                )
+            )
+        )
     modules = [
         include(pkg, launch_file, launch_args, condition=condition)
         for pkg, launch_file, launch_args, condition in module_specs
-    ]
+    ] + optional_modules
 
     # Removed bringup_status runtime node from default launch path.
 

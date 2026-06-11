@@ -4,7 +4,7 @@
 
 `camrod_sensing` acquires raw data from all physical sensors (LiDAR, radar, camera, IMU, GNSS), preprocesses the streams, and produces the filtered topics and obstacle cost grids consumed by localization, perception, and planning. It also fuses the map lanelet cost grid with real-time sensor grids into a single inflation grid for the Nav2 local costmap.
 
-> 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 ultrasonic radar ×6 (CH9344 USB serial), Econ dual cameras — front (`camera_front_publisher_node`, GPU VPI+NvJPEG, `/dev/video0`) + rear (`camera_rear_publisher_node`, CPU OpenCV, `/dev/video1`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial, selected via `imu_model`), u-blox SparkFun ZED-F9P (single antenna, `/dev/ttyACM0`, `gnss_driver:=ublox`) or ArduSimple simpleRTK2B Heading (dual antenna, moving-baseline heading, `gnss_driver:=ublox_dgnss`), NTRIP RTK correction stream (gnssdata.or.kr).
+> 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 ultrasonic radar ×6 (CH9344 USB serial), Econ dual cameras — front (`camera_front_publisher_node`, GPU VPI+NvJPEG, `/dev/video0`) + rear (`camera_rear_publisher_node`, CPU OpenCV, `/dev/video1`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial, selected via `imu_model`), u-blox SparkFun ZED-F9P (single antenna, `/dev/ttyACM0`, `ublox_dual_antenna:=false`) or ArduSimple simpleRTK2B Heading (dual antenna, moving-baseline heading, `ublox_dual_antenna:=true`), NTRIP RTK correction stream (gnssdata.or.kr).
 
 ---
 
@@ -26,8 +26,8 @@ ros2 launch camrod_sensing sensing.launch.py imu_model:=gq7
 ros2 launch camrod_sensing lidar.launch.py
 ros2 launch camrod_sensing radar.launch.py
 ros2 launch camrod_sensing gnss.launch.py                          # dual antenna (default)
-ros2 launch camrod_sensing gnss.launch.py gnss_driver:=ublox      # single antenna
-ros2 launch camrod_sensing gnss.launch.py gnss_driver:=ublox_dgnss enable_ntrip:=false  # dual, no NTRIP
+ros2 launch camrod_sensing gnss.launch.py ublox_dual_antenna:=false  # single antenna
+ros2 launch camrod_sensing gnss.launch.py enable_ntrip:=false        # dual, no NTRIP
 ros2 launch camrod_sensing imu.launch.py
 ros2 launch camrod_sensing camera.launch.py
 ```
@@ -350,11 +350,11 @@ graph TD
 | Related params | `imu_model`, `imu_param_file`, `imu_data_rate`, `use_enu_frame`, `timestamp_source`, `frame_id` |
 | Related topics | `/sensing/imu/data` |
 
-### GNSS (HH_260604: unified single/dual antenna via gnss_driver)
+### GNSS (HH_260611: ublox_gps single/dual antenna)
 
-Select the GNSS driver via `gnss_driver` launch argument (`ublox` = single antenna, `ublox_dgnss` = dual antenna). Both modes use `ntrip_client` (Python) for NTRIP RTK corrections with GGA feedback, required for gnssdata.or.kr VRS network.
+Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single antenna, `true` = simpleRTK2B Heading dual antenna). Both modes use `ublox_gps_node` and Python `ntrip_client` for NTRIP RTK corrections with GGA feedback, required for gnssdata.or.kr VRS network.
 
-#### Single antenna — SparkFun ZED-F9P (`gnss_driver:=ublox`)
+#### Single antenna — SparkFun ZED-F9P (`ublox_dual_antenna:=false`)
 
 | Field | Detail |
 |---|---|
@@ -365,16 +365,16 @@ Select the GNSS driver via `gnss_driver` launch argument (`ublox` = single anten
 | Related params | `config/gnss/zed_f9p_rover.yaml`: `device` (`/dev/ttyACM0`), `rate`, `nav_rate`, `tmode3` |
 | Related topics | `/sensing/gnss/ublox_gps_node/fix`, `/sensing/gnss/ntrip_client/rtcm` |
 
-#### Dual antenna — ArduSimple simpleRTK2B Heading (`gnss_driver:=ublox_dgnss`)
+#### Dual antenna — ArduSimple simpleRTK2B Heading (`ublox_dual_antenna:=true`)
 
 | Field | Detail |
 |---|---|
-| Trigger | Node startup via `UbloxDGNSSNode` (libusb, no ttyACM). `enable_ntrip` controls NTRIP client. |
-| Internal logic | Board contains two ZED-F9P chips (BASE + ROVER) on one PCB, powered by single USB. BASE chip sends RTCM TYPE4072 moving-baseline corrections to ROVER chip via internal UART2 at factory baudrate — **do not override UART2 settings in config**. ROVER chip computes `UBX-NAV-RELPOSNED` → dual-antenna heading at 5 Hz. NTRIP improves absolute position accuracy but is not required for heading. |
-| Output effect | `/sensing/gnss/navheading` (heading from RELPOSNED), `/sensing/gnss/ublox_gps_node/fix`, `/sensing/gnss/ubx_nav_rel_pos_ned`. Heading valid when `rel_pos_heading_valid: true` (covariance < 100.0). |
-| Operator-visible symptom | `diff_corr: false` → UART2 factory config overridden (check `ublox_dgnss_rover.yaml` has no UART2 entries). Heading stays at 90° fixed → `rel_pos_valid: false`, wait for moving-baseline convergence (~30–90 s). |
-| Related params | `config/gnss/ublox_dgnss_rover.yaml`: rate, USB protocols, message outputs. UART1/UART2 intentionally absent. |
-| Related topics | `/sensing/gnss/navheading`, `/sensing/gnss/ubx_nav_rel_pos_ned`, `/sensing/gnss/ntrip_client/rtcm` |
+| Trigger | `ublox_gps_node` startup with `dual_antenna:=true`. `enable_ntrip` controls Python NTRIP client. |
+| Internal logic | Board contains two ZED-F9P chips (BASE + ROVER) on one PCB. BASE sends moving-baseline RTCM to ROVER through UART2 at the u-center saved 115200 baudrate. ROVER computes `UBX-NAV-RELPOSNED` and publishes heading over USB. NTRIP improves absolute RTK position but is not forwarded into rover USB by default, because a second RTCM stream can break moving-baseline heading. |
+| Output effect | `/sensing/gnss/navheading` (heading from RELPOSNED), `/sensing/gnss/navrelposned`, `/sensing/gnss/ublox_gps_node/fix`. |
+| Operator-visible symptom | Heading valid but pose float → external RTCM/sky/base state issue. Heading invalid → check BASE→ROVER UART2 moving-baseline RTCM and confirm `ublox_dual_forward_ntrip_to_rover:=false`. |
+| Related params | `config/gnss/zed_f9p_rover.yaml` plus launch inline dual-antenna params. |
+| Related topics | `/sensing/gnss/navheading`, `/sensing/gnss/navrelposned`, `/sensing/gnss/ntrip_client/rtcm` |
 
 ### NTRIP/RTK operating conditions
 
