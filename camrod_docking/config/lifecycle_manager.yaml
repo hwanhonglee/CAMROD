@@ -1,0 +1,4 @@
+/docking/lifecycle_manager_docking:
+  ros__parameters:
+    autostart: true
+    node_names: ["docking_server"]

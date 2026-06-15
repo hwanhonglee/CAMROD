@@ -1,7 +1,9 @@
-manual_dock_server:
+/docking/manual_dock_server:
   ros__parameters:
-    action_server_name: /docking/manual_dock
-    dock_action_name: /docking/dock_robot
+    # 상대 경로 — PushRosNamespace(docking_ns) 에 의해 자동으로 /docking/... 으로 확장됨
+    # docking_ns 변경 시 이 파일은 수정 불필요
+    action_server_name: manual_dock
+    dock_action_name: dock_robot
     # true  — Nav2로 staging 위치까지 자율 이동 후 도킹 (기본, 완전 자율 운전)
     # false — 로봇이 이미 staging 위치에 있다고 가정, Nav2 생략 (카메라+로봇만으로 도킹 단계 테스트)
     navigate_to_staging_pose: false

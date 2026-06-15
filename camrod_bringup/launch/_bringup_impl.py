@@ -871,6 +871,10 @@ def generate_launch_description():
         ('sim_obstacle_height', cfg_get(launch_cfg, 'sim/obstacle_height', 0.5), 'Fake obstacle height (m)'),
         ('sim_obstacle_direction', cfg_get(launch_cfg, 'sim/obstacle_direction', 'front'), 'Fake obstacle direction: front|left|right|rear'),
         ('sim_obstacle_lateral_offset', cfg_get(launch_cfg, 'sim/obstacle_lateral_offset', 0.0), 'Fake obstacle lateral offset in vehicle-left axis (m)'),
+
+        ('enable_docking',        cfg_get(launch_cfg, 'docking/enable_docking',        True),  'Enable docking module'),
+        ('enable_auto_docking',   cfg_get(launch_cfg, 'docking/enable_auto_docking',   False), 'Enable battery-triggered automatic docking'),
+        ('enable_manual_docking', cfg_get(launch_cfg, 'docking/enable_manual_docking', True),  'Enable UI-triggered manual docking server'),
     ]
 
     args = [
@@ -1127,6 +1131,14 @@ def generate_launch_description():
         'module_namespace': lc['system_namespace'],
     }
 
+    docking_args = {
+        'enable_auto_docking':   lc['enable_auto_docking'],
+        'enable_manual_docking': lc['enable_manual_docking'],
+        # ESKF (full stack) publishes odom→base_link TF.
+        # odom_yaw_corrector must be off to prevent TF tree conflict.
+        'enable_odom_corrector': 'false',
+    }
+
     api_args = {
         'enable_plugin_api': lc['enable_plugin_api'],
         'enable_ui_backend': lc['enable_api_ui'],
@@ -1145,6 +1157,7 @@ def generate_launch_description():
         ('camrod_perception', 'perception.launch.py', perception_args, None),
         ('camrod_localization', 'localization.launch.py', localization_args, None),
         ('camrod_planning', 'planning.launch.py', planning_args, IfCondition(lc['enable_planning'])),
+        ('camrod_docking',  'docking.launch.py',  docking_args, IfCondition(lc['enable_docking'])),
         # Launch unified diagnostics stack via top-level system.launch.py.
         ('camrod_system', 'system.launch.py', system_args, None),
     ]

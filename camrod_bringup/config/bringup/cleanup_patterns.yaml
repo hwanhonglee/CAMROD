@@ -108,6 +108,16 @@ patterns:
   # [bringup]
   - __node:=bringup_status
 
+  # [docking]
+  - __node:=odom_yaw_corrector
+  - apriltag_container
+  - __node:=rectify_node
+  - __node:=apriltag
+  - __node:=docking_apriltag_bridge
+  - __node:=docking_server
+  - __node:=lifecycle_manager_docking
+  - __node:=manual_dock_server
+
   # [api]
   # Prevent UI backend port conflicts on rapid relaunch.
   # Without these patterns, stale api nodes can keep TCP port 8010 bound.
