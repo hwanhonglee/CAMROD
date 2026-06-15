@@ -1,9 +1,9 @@
-docking_server:
+/docking/docking_server:
   ros__parameters:
-    controller_frequency: 20.0
+
+    # ── DockingServer 전역 설정 ────────────────────────────────────────────────
+    controller_frequency: 40.0          # odom 40Hz와 맞춤 (이전 50Hz → TF extrapolation 오류 원인)
     initial_perception_timeout: 5.0
-    # 충전 하드웨어 없는 테스트 시: /battery_state mock 필요 (current > 0.5A)
-    # ros2 topic pub /battery_state sensor_msgs/msg/BatteryState "{current: 1.0}" -r 10
     wait_charge_timeout: 10.0
     dock_approach_timeout: 120.0
     undock_linear_tolerance: 0.05
@@ -12,45 +12,38 @@ docking_server:
 
     base_frame: "base_link"
     fixed_frame: "odom"
-    # RMP401 드라이버 namespace(/rmp401)의 cmd_vel 토픽
-    cmd_vel_topic: "/rmp401/cmd_vel"
+    cmd_vel_topic: "/platform/cmd_vel"
 
     dock_backwards: true
-    dock_prestaging_tolerance: 0.5
+    dock_prestaging_tolerance: 0.3
+
+    rotate_to_dock: false
+    rotate_to_dock_timeout: 10.0
+    rotation_angular_tolerance: 0.05    # 선회 완료 기준 (rad, ≈3°)
 
     dock_plugins: ["apriltag_dock"]
-    dock_database: ""  # injected at launch time via get_package_share_directory
+    dock_database: ""  # launch 시 get_package_share_directory 로 주입
 
+    # ── SimpleChargingDock 플러그인 ───────────────────────────────────────────
+    # Nova Carter 패턴: use_external_detection_pose=true
+    # bridge 가 camera frame PoseStamped 발행 → 플러그인이 TF 변환 + EMA 처리
     apriltag_dock:
-      plugin: "camrod_docking::CamrodDockingPlugin"
-      docking_threshold: 0.50
-      external_detection_translation_x: -0.20
-      staging_x_offset: -0.70
-      staging_yaw_offset: 0.0
-      external_detection_timeout: 1.0
-      external_detection_translation_y: 0.0
-      # PoseStamped topic published by docking_apriltag_bridge (odom frame)
-      detected_dock_pose_topic: "/docking/detected_dock_pose"
-      base_frame: "base_link"
-      # 플러그인 내부 EMA 계수: 높을수록 빠른 추적(lag 감소), 낮을수록 강한 필터
-      filter_coef: 0.5
+      plugin: "opennav_docking::SimpleChargingDock"
+      use_external_detection_pose: true
+      use_battery_status: false         # 충전 하드웨어 연동 후 true 로 변경
 
-    controller:
-      k_phi: 1.5
-      k_delta: 1.5
-      beta: 0.4
-      lambda: 2.0
-      v_linear_min: 0.05
-      v_linear_max: 0.15
-      # v_linear_max 대비 과도한 기본값(0.75)이 선회 반경 0.2m를 유발 → 0.3으로 제한(반경 0.5m)
-      v_angular_max: 0.3
-      # 목표 도달 전 선속도 감속 시작 반경. 작으면 근접 시 1/r 항 증폭으로 각도 진동 발생.
-      slowdown_radius: 0.5
-      # Nav2 costmap 없음 — 테스트 환경에서 비활성화
-      use_collision_detection: false
-      costmap_topic: /planning/local_costmap/costmap_raw
-      footprint_topic: /planning/local_costmap/published_footprint
-      transform_tolerance: 0.1
-      projection_time: 5.0
-      simulation_time_step: 0.1
-      dock_collision_threshold: 0.3
+      # 실측 캘리브레이션값 (docking_calibration_record.py 로 측정)
+      external_detection_translation_x: 0.0    # 태그 위치 = 접촉점 (물리적 오프셋은 별도 측정 필요)
+      external_detection_translation_y: 0.0
+
+      # optical frame → robot nav 2D 좌표 변환 보정
+      # pitch 부호: 캘리브레이션 스크립트 검증 결과 +1.5708 (yaw 오차 23.9° → 반전)
+      external_detection_rotation_roll: -1.5708
+      external_detection_rotation_pitch: 1.5708
+      external_detection_rotation_yaw: 0.0
+
+      docking_threshold: 0.5            # 도킹 완료 판정 거리
+      staging_x_offset: -1.5            # 로봇을 dock 1.5m 앞에 배치 후 시작
+      staging_yaw_offset: 0.0
+      external_detection_timeout: 3.0
+      filter_coef: 0.3                  # EMA 응답성 향상 (이전 0.1 → 느린 수렴, 나선 원인 중 하나)

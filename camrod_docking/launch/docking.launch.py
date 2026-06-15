@@ -12,46 +12,61 @@ from launch_ros.descriptions import ComposableNode
 def generate_launch_description():
     pkg_dir = get_package_share_directory('camrod_docking')
 
-    docking_param = os.path.join(pkg_dir, 'config', 'docking_server.yaml')
-    manual_dock_param = os.path.join(pkg_dir, 'config', 'manual_dock_server.yaml')
+    # ── config 파일 경로 ────────────────────────────────────────────────────────
+    cfg = lambda f: os.path.join(pkg_dir, 'config', f)  # noqa: E731
+
+    # ── 토픽 이름 — 단일 소스 ──────────────────────────────────────────────────
+    # AprilTagNode remapping 과 bridge input_detection_topic 이 반드시 일치해야 함.
+    # 한 곳에서만 변경하면 무음 실패하므로 아래 상수로 두 곳을 동시에 제어한다.
+    TOPIC_RAW_DETECTIONS = '/docking/apriltag/detections_raw'
 
     docking_ns = LaunchConfiguration('docking_ns')
     enable_auto_docking = LaunchConfiguration('enable_auto_docking')
     enable_manual_docking = LaunchConfiguration('enable_manual_docking')
-    # AprilTag + bridge는 auto/manual 어느 쪽이든 활성화되면 실행
     enable_apriltag = OrSubstitution(enable_auto_docking, enable_manual_docking)
 
     return LaunchDescription([
         DeclareLaunchArgument(
             'docking_ns',
             default_value='docking',
-            description='Top-level namespace for docking feature'
+            description='Top-level namespace for docking nodes'
         ),
         DeclareLaunchArgument(
             'enable_auto_docking',
             default_value='false',
-            description='Enable battery-triggered automatic docking (state machine integration)'
+            description='Enable battery-triggered automatic docking'
         ),
         DeclareLaunchArgument(
             'enable_manual_docking',
             default_value='true',
             description='Enable UI-triggered manual docking server'
         ),
+        # 도킹 단독 실행: true (odom→base_link TF 직접 발행)
+        # CAMROD 풀스택(ESKF) 연동: false (ESKF가 TF 담당 — 중복 발행 시 TF tree 충돌)
+        DeclareLaunchArgument(
+            'enable_odom_corrector',
+            default_value='true',
+            description='Enable odom_yaw_corrector TF broadcaster. '
+                        'Set false when running with CAMROD full stack (ESKF publishes odom TF)'
+        ),
 
-        # HH_260528: Camera TF publishers removed — econ_front/rear_camera_frame and
-        # econ_front/rear_camera_optical_frame are now published by sensor_kit
-        # (camrod_sensor_kit.xacro via robot_state_publisher). Do not re-add here.
+        # 카메라 TF: camrod_sensor_kit URDF 가 담당
+        # (camera_rear_link → camera_rear, camera_front_link → camera_front)
+        # CAMROD 통합 환경에서는 static_transform_publisher 불필요
+
         Node(
             package='camrod_docking',
             executable='odom_yaw_corrector',
             name='odom_yaw_corrector',
             output='screen',
+            condition=IfCondition(LaunchConfiguration('enable_odom_corrector')),
+            parameters=[cfg('odom_yaw_corrector.yaml')],
         ),
 
         GroupAction([
             PushRosNamespace(docking_ns),
 
-            # Isaac ROS GPU 이미지 보정 + AprilTag — 동일 container에서 NITROS zero-copy
+            # ── Isaac ROS GPU 이미지 보정 + AprilTag (NITROS zero-copy) ───────────
             ComposableNodeContainer(
                 package='rclcpp_components',
                 name='apriltag_container',
@@ -64,10 +79,11 @@ def generate_launch_description():
                         plugin='nvidia::isaac_ros::image_proc::RectifyNode',
                         name='rectify_node',
                         namespace='',
+                        parameters=[cfg('apriltag.yaml')],
                         remappings=[
-                            ('image_raw', '/sensing/camera/econ_rear/image_raw'),
+                            ('image_raw',   '/sensing/camera/econ_rear/image_raw'),
                             ('camera_info', '/sensing/camera/econ_rear/camera_info'),
-                            ('image_rect', '/sensing/camera/econ_rear/image_rect'),
+                            ('image_rect',  '/sensing/camera/econ_rear/image_rect'),
                         ],
                     ),
                     ComposableNode(
@@ -75,16 +91,11 @@ def generate_launch_description():
                         plugin='nvidia::isaac_ros::apriltag::AprilTagNode',
                         name='apriltag',
                         namespace='',
-                        parameters=[{
-                            'size': 0.200,
-                            'max_tags': 64,
-                            'tag_family': 'tag36h11',
-                            'backends': 'CUDA',
-                        }],
+                        parameters=[cfg('apriltag.yaml')],
                         remappings=[
-                            ('image', '/sensing/camera/econ_rear/image_rect'),
-                            ('camera_info', '/sensing/camera/econ_rear/camera_info'),
-                            ('tag_detections', '/docking/apriltag/detections_raw'),
+                            ('image',         '/sensing/camera/econ_rear/image_rect'),
+                            ('camera_info',   '/sensing/camera/econ_rear/camera_info'),
+                            ('tag_detections', TOPIC_RAW_DETECTIONS),
                             ('tf', '/tf'),
                         ],
                     ),
@@ -92,89 +103,35 @@ def generate_launch_description():
                 output='screen',
             ),
 
+            # ── AprilTag Bridge ─────────────────────────────────────────────────
+            # camera frame PoseStamped 직접 발행 → SimpleChargingDock 이 TF 변환 처리
             Node(
                 package='camrod_docking',
                 executable='docking_apriltag_bridge',
                 name='docking_apriltag_bridge',
                 output='screen',
                 condition=IfCondition(enable_apriltag),
-                parameters=[{
-                    'input_detection_topic': '/docking/apriltag/detections_raw',
-                    'output_avg_detection_topic': '/docking/apriltag/detections',
-                    'output_avg_pose_topic': '/docking/apriltag/pose',
-                    'output_detected_dock_pose_topic': '/docking/detected_dock_pose',
-                    'fixed_frame': 'odom',
-                    'tag_frame': 'tag36h11:3',
-                    'family': 'tag36h11',
-                    'target_tag_id': 3,
-                    'publish_rate_hz': 10.0,
-                    'ema_alpha': 0.3,            # EMA 필터 계수 (낮을수록 강한 필터)
-                    'max_jump_m': 0.3,          # 이 거리 이상 위치 급변 시 무시 (outlier rejection)
-                    'detection_timeout': 0.5,   # 이 시간 이내 검출 없으면 publish 중단
-                    'negate_y': True,           # 후면 카메라 Y 부호 반전 보정 (전면 카메라 시 False)
-                }]
+                parameters=[cfg('bridge_params.yaml'),
+                            {'input_detection_topic': TOPIC_RAW_DETECTIONS}],
             ),
 
-            Node(
-                package='camrod_docking',
-                executable='tag_distance_node',
-                name='tag_distance_node',
-                output='screen',
-                condition=IfCondition(enable_apriltag),
-                parameters=[{
-                    'camera_frame': 'camera_rear',
-                    'tag_frame': 'tag36h11:3',
-                    'publish_rate_hz': 10.0,
-                }]
-            ),
-
+            # ── DockingServer ────────────────────────────────────────────────────
+            # docking_server.yaml  : 서버 전역 설정 + SimpleChargingDock 플러그인
+            # controller.yaml      : EgoPolar 게인
+            # dock_database        : 런타임 경로이므로 인라인 주입
             Node(
                 package='opennav_docking',
                 executable='opennav_docking',
                 name='docking_server',
                 output='screen',
                 parameters=[
-                    docking_param,
-                    {
-                        'dock_database': os.path.join(pkg_dir, 'config', 'docks.yaml'),
-                        # PushRosNamespace 안에서 YAML key 매칭이 깨지는 경우 대비 — 모두 명시적 주입
-                        'controller_frequency': 20.0,
-                        'initial_perception_timeout': 5.0,
-                        'wait_charge_timeout': 10.0,
-                        'dock_approach_timeout': 120.0,
-                        'undock_linear_tolerance': 0.05,
-                        'undock_angular_tolerance': 0.10,
-                        'max_retries': 3,
-                        'base_frame': 'base_link',
-                        'fixed_frame': 'odom',
-                        'cmd_vel_topic': '/rmp401/cmd_vel',
-                        'dock_backwards': True,
-                        'dock_prestaging_tolerance': 0.5,
-                        'dock_plugins': ['apriltag_dock'],
-                        'apriltag_dock.plugin': 'camrod_docking::CamrodDockingPlugin',
-                        'apriltag_dock.docking_threshold': 0.50,
-                        'apriltag_dock.staging_x_offset': -0.50,
-                        'apriltag_dock.staging_yaw_offset': 0.0,
-                        'apriltag_dock.external_detection_timeout': 1.0,
-                        'apriltag_dock.external_detection_translation_x': -0.20,
-                        'apriltag_dock.external_detection_translation_y': 0.0,
-                        'apriltag_dock.detected_dock_pose_topic': '/docking/detected_dock_pose',
-                        'apriltag_dock.base_frame': 'base_link',
-                        'apriltag_dock.filter_coef': 0.5,
-                        'controller.k_phi': 1.5,
-                        'controller.k_delta': 1.5,
-                        'controller.beta': 0.4,
-                        'controller.lambda': 2.0,
-                        'controller.v_linear_min': 0.05,
-                        'controller.v_linear_max': 0.15,
-                        'controller.v_angular_max': 0.3,
-                        'controller.slowdown_radius': 0.5,
-                        'controller.use_collision_detection': False,
-                    },
+                    cfg('docking_server.yaml'),
+                    cfg('controller.yaml'),
+                    {'dock_database': cfg('docks.yaml')},
                 ],
-                remappings=[
-                    ('cmd_vel', '/rmp401/cmd_vel'),
-                ],
+                remappings=[('cmd_vel', '/platform/cmd_vel')],
+                respawn=True,
+                respawn_delay=2.0,
             ),
 
             Node(
@@ -182,21 +139,17 @@ def generate_launch_description():
                 executable='lifecycle_manager',
                 name='lifecycle_manager_docking',
                 output='screen',
-                parameters=[{
-                    'autostart': True,
-                    'node_names': ['docking_server']
-                }]
+                parameters=[cfg('lifecycle_manager.yaml')],
             ),
 
+            # ── 수동 도킹 서버 ──────────────────────────────────────────────────
             Node(
                 package='camrod_docking',
                 executable='manual_dock_server_node',
                 name='manual_dock_server',
                 output='screen',
                 condition=IfCondition(enable_manual_docking),
-                parameters=[manual_dock_param, {
-                    'navigate_to_staging_pose': False,
-                }],
+                parameters=[cfg('manual_dock_server.yaml')],
             ),
-        ])
+        ]),
     ])

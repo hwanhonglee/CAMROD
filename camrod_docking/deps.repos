@@ -1,0 +1,94 @@
+# CAMROD DOCKING — 외부 의존성 패키지 목록
+# vcstool로 관리: https://github.com/dirk-thomas/vcstool
+#
+# 사용법:
+#   최초 셋업:   ./setup_deps.sh
+#   수동 임포트: vcs import src < deps.repos
+#   버전 고정:   vcs export src/external --exact > deps.repos.lock
+#
+# ─── git에서 직접 관리하는 커스텀 패키지 (deps.repos 제외) ───────────────────
+#   src/external/opencv4_vendor/   — OpenCV 4.5.4 소스 빌드 (커스텀 ExternalProject)
+#                                    econ_camera 빌드 전에 반드시 먼저 빌드해야 함
+#   src/external/yaml_cpp_vendor/  — yaml-cpp 0.8.0 소스 빌드 (커스텀 ExternalProject)
+#                                    opennav_docking이 yaml-cpp::yaml-cpp CMake 타겟을
+#                                    요구하므로 시스템 버전(apt)이 아닌 이 패키지를
+#                                    opennav_docking 빌드 전에 반드시 먼저 빌드해야 함
+#
+# ─── 구조 변경 주의 ──────────────────────────────────────────────────────────
+#   opennav_docking 은 모노레포 — 클론 후 하위에 opennav_docking/, opennav_docking_bt/,
+#   opennav_docking_core/, opennav_docking_msgs/, opennav_following/, ...
+#   opennav_following_bt/, opennav_following_demo/, opennav_following_msgs/ 가 생긴다.
+#   colcon은 재귀 탐색하므로 빌드에는 영향 없다.
+#
+# ─── NVIDIA Isaac ROS 태그 형식 ──────────────────────────────────────────────
+#   태그 형식: v3.2-X (X = 패치 번호, package.xml 버전 3.2.X 에 대응)
+#   common / apriltag / nitros : v3.2-5  (패키지 버전 3.2.5)
+#   image_pipeline              : v3.2-10 (패키지 버전 3.2.10)
+
+repositories:
+
+  # ── ROS 2 Humble — ros-perception ─────────────────────────────────────────
+  # 모노레포: image_proc (v3.0.9), tracetools_image_pipeline 포함
+
+  external/image_pipeline:
+    type: git
+    url: https://github.com/ros-perception/image_pipeline.git
+    version: humble
+
+  # 모노레포: cv_bridge (v3.2.1), image_geometry, vision_opencv, opencv_tests 포함
+
+  external/vision_opencv:
+    type: git
+    url: https://github.com/ros-perception/vision_opencv.git
+    version: humble
+
+  # ── ROS 2 Infrastructure — osrf ───────────────────────────────────────────
+  # 모노레포: negotiated (v0.1.0), negotiated_interfaces, negotiated_examples 포함
+  # 브랜치: master (humble 브랜치 없음)
+
+  external/negotiated:
+    type: git
+    url: https://github.com/osrf/negotiated.git
+    version: master
+
+  # ── Open Navigation ────────────────────────────────────────────────────────
+  # 모노레포: opennav_docking / opennav_docking_bt / opennav_docking_core /
+  #           opennav_docking_msgs / opennav_following / opennav_following_bt /
+  #           opennav_following_demo / opennav_following_msgs 모두 포함
+
+  external/opennav_docking:
+    type: git
+    url: https://github.com/open-navigation/opennav_docking.git
+    version: humble
+
+  # ── NVIDIA Isaac ROS (JetPack 6.1 / L4T R36.4.x) ─────────────────────────
+
+  # 빌드 대상: isaac_ros_common (v3.2.5), isaac_ros_apriltag_interfaces (v3.2.5)
+  # 나머지 서브패키지는 repo 내부에 개별 COLCON_IGNORE 로 제외됨
+
+  external/isaac_ros_common:
+    type: git
+    url: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git
+    version: v3.2-5
+
+  # ⚠️  아래 3개는 클론 후에도 repo 루트에 COLCON_IGNORE 가 있어 빌드 완전 제외.
+  #     필요 시 COLCON_IGNORE 제거 후 소스 빌드, 또는 NVIDIA apt 패키지 사용.
+
+  external/isaac_ros_apriltag:
+    type: git
+    url: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_apriltag.git
+    version: v3.2-5
+
+  # isaac_ros_image_proc (v3.2.10) 포함 → 태그 v3.2-10
+
+  external/isaac_ros_image_pipeline:
+    type: git
+    url: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_pipeline.git
+    version: v3.2-10
+
+  # 가장 큰 패키지 (442MB 소스) — setup_deps.sh 기본값은 --shallow 클론
+
+  external/isaac_ros_nitros:
+    type: git
+    url: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros.git
+    version: v3.2-5

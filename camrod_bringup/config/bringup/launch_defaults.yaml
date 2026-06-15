@@ -319,6 +319,13 @@ bringup:
     lanelet_cost_grid_param_file: map/lanelet_cost_grid.yaml
     map_visualization_param_file: map/map_visualization.yaml
 
+  docking:
+    # Enable docking module in bringup.
+    # enable_odom_corrector is always false in bringup (ESKF publishes odom→base_link TF).
+    enable_docking: true
+    enable_auto_docking: false      # battery-triggered auto docking (BMS 연동 후 true)
+    enable_manual_docking: true     # UI/action-triggered manual docking
+
   sim:
     lanelet_id: -1
     # Synthetic obstacle controls for cost-stop scenario tests.

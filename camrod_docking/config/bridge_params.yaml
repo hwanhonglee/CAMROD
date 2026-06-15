@@ -1,0 +1,12 @@
+/docking/docking_apriltag_bridge:
+  ros__parameters:
+
+    # ── 입출력 토픽 ─────────────────────────────────────────────────────────────
+    # docking.launch.py 의 TOPIC_RAW_DETECTIONS 상수로 주입됨 — 이 값을 직접 변경하지 말 것
+    input_detection_topic: "/docking/apriltag/detections_raw"
+    output_avg_detection_topic: "/docking/apriltag/detections"
+    output_detected_dock_pose_topic: "/docking/detected_dock_pose"
+
+    # ── 타겟 태그 설정 ──────────────────────────────────────────────────────────
+    # docks.yaml 의 dock tag ID 와 일치시킬 것
+    target_tag_id: 3        # tag36h11 family ID 3
