@@ -60,12 +60,12 @@ graph LR
   UI -->|/planning/engage| PLAN
   UI -->|/planning/state_machine/goal_key| PLAN
   UI -->|/goal_pose| PLAN
-  PARK([🅿️ camrod_parking]):::parking -.->|destination sites| UI
+  PARK([🅿️ camrod_docking]):::docking -.->|destination sites| UI
 
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
 ```
 
@@ -374,5 +374,5 @@ After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the 
 - [`../README.md`](../README.md) — Top-level CAMROD workspace overview
 - [`../camrod_system/README.md`](../camrod_system/README.md) — produces `/diagnostics_agg`
 - [`../camrod_planning/README.md`](../camrod_planning/README.md) — consumes `/planning/engage`, `/goal_pose`, `/planning/state_machine/goal_key`
-- [`../camrod_parking/README.md`](../camrod_parking/README.md) — camping site definitions used by destination dispatch
+- [`../camrod_docking/README.md`](../camrod_docking/README.md) — camping site definitions used by destination dispatch
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions

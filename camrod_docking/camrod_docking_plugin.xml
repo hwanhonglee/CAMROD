@@ -1,9 +1,0 @@
-<library path="camrod_docking_plugin">
-  <class type="camrod_docking::CamrodDockingPlugin"
-         base_class_type="opennav_docking_core::ChargingDock">
-    <description>
-      CAMROD docking plugin: uses AprilTag pose detection from
-      docking_apriltag_bridge to refine dock pose. No charging hardware assumed.
-    </description>
-  </class>
-</library>

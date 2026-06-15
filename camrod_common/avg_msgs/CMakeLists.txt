@@ -67,6 +67,8 @@ set(msg_files
   "msg/AvgBringupMsgs.msg"
   "msg/AvgSensorKitMsgs.msg"
   "msg/AvgSystemMsgs.msg"
+  "msg/AudioRequest.msg"     # HH_260615: voice announcer — key-based WAV playback request
+  "msg/VoiceState.msg"       # HH_260615: voice announcer — current playback state
 )
 
 set(srv_files

@@ -135,29 +135,53 @@ REQUIRED_SYS_PKGS=(
   ros-humble-magic-enum
   python3-fastapi
   python3-uvicorn
+  libsdl2-dev        # HH_260615: camrod_voice — SDL2 오디오 백엔드
+  libsdl2-mixer-dev  # HH_260615: camrod_voice — WAV 재생 (Mix_* API)
 )
 
-# HH_260528: camrod_docking depends on Isaac ROS packages (GPU-accelerated AprilTag).
-# These are NOT available via apt on standard Ubuntu; they require the NVIDIA Isaac ROS
-# apt repository to be configured first.  On a fresh Jetson / NVIDIA machine:
-#
-#   Step 1 — Add Isaac ROS apt repo (one-time):
-#     sudo apt-get install -y curl
-#     curl -sSL https://isaac.download.nvidia.com/isaac-ros/repos.key | \
-#       sudo apt-key add -
-#     echo "deb https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release-3.2" | \
-#       sudo tee /etc/apt/sources.list.d/isaac-ros.list
-#     sudo apt-get update
-#
-#   Step 2 — Install Isaac ROS runtime packages:
-#     sudo apt-get install -y \
-#       ros-humble-isaac-ros-common \
-#       ros-humble-isaac-ros-nitros \
-#       ros-humble-isaac-ros-apriltag \
-#       ros-humble-isaac-ros-image-pipeline
-#
-#   HH_260611: On x86_64 without JetPack, ./colcon_build.sh automatically
-#   skips Jetson-only docking packages and still builds the rest of the workspace.
+# HH_260615: camrod_docking — Isaac ROS apt 저장소 자동 등록 및 런타임 패키지 설치.
+# aarch64(Jetson/JetPack)에서만 동작. x86_64는 건너뛰고 skip 안내를 출력합니다.
+setup_isaac_ros_apt() {
+  local _arch
+  _arch="$(uname -m)"
+  if [[ "${_arch}" != "aarch64" && "${_arch}" != "arm64" ]]; then
+    log "skip Isaac ROS apt setup (${_arch} is not aarch64)"
+    log "  x86_64 빌드 시 camrod_docking 제외: colcon build --packages-skip camrod_docking"
+    return 0
+  fi
+
+  if [[ ! -f /etc/apt/sources.list.d/isaac-ros.list ]]; then
+    log "NVIDIA Isaac ROS apt 저장소 등록 중 (arm64)"
+    sudo apt-get install -y curl gnupg lsb-release
+    curl -fsSL https://isaac.download.nvidia.com/isaac-ros/repos.key \
+      | gpg --dearmor \
+      | sudo tee /usr/share/keyrings/isaac-ros-archive-keyring.gpg > /dev/null
+    echo "deb [arch=arm64 signed-by=/usr/share/keyrings/isaac-ros-archive-keyring.gpg] \
+https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release-3.0" \
+      | sudo tee /etc/apt/sources.list.d/isaac-ros.list > /dev/null
+    sudo apt-get update
+  else
+    log "Isaac ROS apt 저장소 이미 등록됨"
+  fi
+
+  local _isaac_pkgs=(
+    ros-humble-isaac-ros-common
+    ros-humble-isaac-ros-nitros
+    ros-humble-isaac-ros-apriltag
+    ros-humble-isaac-ros-image-proc
+  )
+  local _missing_isaac=()
+  for _ipkg in "${_isaac_pkgs[@]}"; do
+    dpkg -l "${_ipkg}" 2>/dev/null | grep -q "^ii" || _missing_isaac+=("${_ipkg}")
+  done
+  if [[ ${#_missing_isaac[@]} -gt 0 ]]; then
+    log "Isaac ROS 패키지 설치 중: ${_missing_isaac[*]}"
+    sudo apt-get install -y "${_missing_isaac[@]}"
+  else
+    log "Isaac ROS 패키지 이미 설치됨"
+  fi
+  unset _arch _isaac_pkgs _ipkg _missing_isaac
+}
 
 # HH_260611: Keep nvjpeg dependency handling Jetson-only so x86_64 sensing/GNSS
 # builds do not warn about unavailable CUDA/JetPack runtime libraries.
@@ -189,6 +213,11 @@ if [[ ${#_missing[@]} -gt 0 ]]; then
 fi
 unset _pkg _missing
 
+# HH_260615: Isaac ROS apt 등록 — camrod_docking 모듈 존재 시에만 실행
+if [[ -d "${SRC_ROOT}/camrod_docking" ]]; then
+  setup_isaac_ros_apt
+fi
+
 if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
   # HH_260611: Report missing nvjpeg only on Jetson targets where the camera
   # pipeline actually depends on NVIDIA's nvjpeg runtime.
@@ -219,15 +248,16 @@ clone_ext "${AGILEX_BASE}/ugv_sdk.git"                                        "m
 clone_ext "${AGILEX_BASE}/ranger_ros2.git"                                    "humble"       "camrod_platform/external/ranger_ros2"
 # HH_260528: Replaced camrod_parking external repos with camrod_docking equivalents.
 # camrod_docking uses Isaac ROS AprilTag (GPU-accelerated) instead of cpu-based apriltag_ros.
-# opennav_docking/opennav_docking_core/opennav_docking_msgs/opencv4_vendor/yaml_cpp_vendor
-# are custom forks embedded in the CAMROD repo itself (camrod_docking/external/) and do not
-# need separate clone_ext calls — they are already present after git clone.
-clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git"         "release-3.2"  "camrod_docking/external/isaac_ros_common"
-clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros.git"         "release-3.2"  "camrod_docking/external/isaac_ros_nitros"
-clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_apriltag.git"       "release-3.2"  "camrod_docking/external/isaac_ros_apriltag"
-clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_pipeline.git" "release-3.2"  "camrod_docking/external/isaac_ros_image_pipeline"
+# opencv4_vendor/yaml_cpp_vendor are custom forks embedded in the CAMROD repo itself
+# (camrod_docking/external/) and do not need separate clone_ext calls.
+# opennav_docking is cloned below (open-navigation fork, humble branch).
+clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git"         "v3.2-5"       "camrod_docking/external/isaac_ros_common"
+clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros.git"         "v3.2-5"       "camrod_docking/external/isaac_ros_nitros"
+clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_apriltag.git"       "v3.2-5"       "camrod_docking/external/isaac_ros_apriltag"
+clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_pipeline.git" "v3.2-10"      "camrod_docking/external/isaac_ros_image_pipeline"
 clone_ext "https://github.com/ros-perception/image_pipeline.git"             "humble"       "camrod_docking/external/image_pipeline"
 clone_ext "https://github.com/osrf/negotiated.git"                           "master"       "camrod_docking/external/negotiated"
+clone_ext "https://github.com/open-navigation/opennav_docking.git"           "humble"       "camrod_docking/external/opennav_docking"
 
 # ── VIO bridge SDK installers (disable/vio_bridge — not built by default) ────
 # HH_260428: These large SDK binaries are NOT stored in git. Download manually
