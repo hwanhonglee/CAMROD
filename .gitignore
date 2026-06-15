@@ -45,6 +45,7 @@ Thumbs.db        # Windows
 .idea/
 *.swp            # vim
 *.Identifier     # Xcode / macOS identifier files
+*:Zone.Identifier*  # Windows WSL alternate data stream artifacts
 
 # HH_260428: SDK installer binaries — download via setup scripts, not stored in git.
 # ZED SDK: https://www.stereolabs.com/developers/release
