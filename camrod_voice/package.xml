@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>camrod_voice</name>
+  <version>0.1.0</version>
+  <description>
+    CAMROD voice announcer module. Pre-recorded WAV playback with priority
+    queuing, and a CAMROD system event adapter that maps state machine /
+    platform events to AudioRequest messages.
+  </description>
+  <maintainer email="yhjeon@avgenius.kr">AVGenius</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>avg_msgs</depend>
+  <depend>ament_index_cpp</depend>
+
+  <build_depend>libsdl2-dev</build_depend>
+  <depend>libsdl2-mixer-dev</depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
