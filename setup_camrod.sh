@@ -169,6 +169,7 @@ https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release
     ros-humble-isaac-ros-nitros
     ros-humble-isaac-ros-apriltag
     ros-humble-isaac-ros-image-proc
+    ros-humble-isaac-ros-image-pipeline
   )
   local _missing_isaac=()
   for _ipkg in "${_isaac_pkgs[@]}"; do
@@ -216,6 +217,23 @@ unset _pkg _missing
 # HH_260615: Isaac ROS apt 등록 — camrod_docking 모듈 존재 시에만 실행
 if [[ -d "${SRC_ROOT}/camrod_docking" ]]; then
   setup_isaac_ros_apt
+  # Install non-Isaac docking dependencies via apt (available on all architectures)
+  _docking_apt_pkgs=(
+    ros-humble-image-pipeline
+    ros-humble-negotiated
+    ros-humble-opennav-docking
+  )
+  _docking_missing=()
+  for _dpkg in "${_docking_apt_pkgs[@]}"; do
+    dpkg -l "${_dpkg}" 2>/dev/null | grep -q "^ii" || _docking_missing+=("${_dpkg}")
+  done
+  if [[ ${#_docking_missing[@]} -gt 0 ]]; then
+    log "install docking packages: ${_docking_missing[*]}"
+    sudo apt-get install -y "${_docking_missing[@]}"
+  else
+    log "docking packages already installed"
+  fi
+  unset _docking_apt_pkgs _docking_missing _dpkg
 fi
 
 if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
@@ -251,13 +269,9 @@ clone_ext "${AGILEX_BASE}/ranger_ros2.git"                                    "h
 # opencv4_vendor/yaml_cpp_vendor are custom forks embedded in the CAMROD repo itself
 # (camrod_docking/external/) and do not need separate clone_ext calls.
 # opennav_docking is cloned below (open-navigation fork, humble branch).
-clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git"         "v3.2-5"       "camrod_docking/external/isaac_ros_common"
-clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nitros.git"         "v3.2-5"       "camrod_docking/external/isaac_ros_nitros"
-clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_apriltag.git"       "v3.2-5"       "camrod_docking/external/isaac_ros_apriltag"
-clone_ext "https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_pipeline.git" "v3.2-10"      "camrod_docking/external/isaac_ros_image_pipeline"
-clone_ext "https://github.com/ros-perception/image_pipeline.git"             "humble"       "camrod_docking/external/image_pipeline"
-clone_ext "https://github.com/osrf/negotiated.git"                           "master"       "camrod_docking/external/negotiated"
-clone_ext "https://github.com/open-navigation/opennav_docking.git"           "humble"       "camrod_docking/external/opennav_docking"
+# camrod_docking externals installed via apt (see setup_isaac_ros_apt above):
+#   isaac_ros_common, isaac_ros_nitros, isaac_ros_apriltag, isaac_ros_image_pipeline (apt)
+#   image_pipeline, negotiated, opennav_docking (apt)
 
 # ── VIO bridge SDK installers (disable/vio_bridge — not built by default) ────
 # HH_260428: These large SDK binaries are NOT stored in git. Download manually
