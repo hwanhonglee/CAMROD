@@ -17,6 +17,15 @@
 
 set -euo pipefail
 
+# WARN: Do NOT run this script with 'sudo bash setup_camrod.sh'.
+# Internal sudo calls handle privileged operations individually.
+# Running as root causes git-cloned external/ files to be owned by root,
+# which breaks subsequent 'git restore' and normal user file operations.
+if [[ "${EUID}" -eq 0 ]]; then
+  echo "[setup_camrod] ERROR: Do not run as root (sudo bash ...). Run as normal user: ./setup_camrod.sh" >&2
+  exit 1
+fi
+
 # HH_260428: Upstream URLs — override CAMROD_AGILEX_BASE for custom forks of agilexrobotics.
 AGILEX_BASE="${CAMROD_AGILEX_BASE:-https://github.com/agilexrobotics}"
 
@@ -137,6 +146,18 @@ REQUIRED_SYS_PKGS=(
   python3-uvicorn
   libsdl2-dev        # HH_260615: camrod_voice — SDL2 오디오 백엔드
   libsdl2-mixer-dev  # HH_260615: camrod_voice — WAV 재생 (Mix_* API)
+  # rosdep 으로 해결되어야 하지만 interactive sudo 없이 실패하는 패키지들을 명시 추가
+  ros-humble-nav2-map-server        # nav2 맵 서버 (camrod_planning)
+  ros-humble-behaviortree-cpp-v3    # Nav2 BT 네비게이터 (camrod_planning)
+  ros-humble-controller-manager     # ugv_sdk 의존
+  ros-humble-rviz2                  # RViz2 (camrod_bringup sim 모드)
+  ros-humble-rviz-common            # RViz2 공통 라이브러리
+  ros-humble-rviz-default-plugins   # RViz2 기본 플러그인
+  ros-humble-rtcm-msgs              # ublox GNSS RTK (camrod_sensing)
+  ros-humble-test-msgs              # 테스트 의존
+  python3-serial                    # ublox, radar 시리얼 통신
+  libpugixml-dev                    # Lanelet2 XML 파서 (camrod_map)
+  libnanoflann-dev                  # PCL/포인트클라우드 KNN (camrod_perception)
 )
 
 # HH_260615: camrod_docking — Isaac ROS apt 저장소 자동 등록 및 런타임 패키지 설치.
@@ -182,6 +203,21 @@ https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release
     log "Isaac ROS 패키지 이미 설치됨"
   fi
   unset _arch _isaac_pkgs _ipkg _missing_isaac
+
+  # HH_260616: isaac_ros cmake export 파일이 numpy include 경로를 빌드 시점 절대경로로
+  # 하드코딩한다 (/usr/local/lib/python3.10/dist-packages/numpy/core/include).
+  # user-install numpy (/home/.../.local/) 가 있으면 cmake Generate 단계에서 실패하므로
+  # 시스템 경로(sudo pip3)에 numpy를 보장한다.
+  if [[ ! -d /usr/local/lib/python3.10/dist-packages/numpy ]]; then
+    log "numpy 시스템 경로 설치 중 (isaac_ros cmake 경로 호환)"
+    # 기존 user-install numpy 버전과 동일하게 고정 설치.
+    # 버전 불일치 시 cv_bridge 등 C 확장 패키지에서 numpy ABI 오류가 발생할 수 있다.
+    _numpy_ver="$(python3 -c 'import numpy; print(numpy.__version__)' 2>/dev/null || echo '1.26.4')"
+    sudo pip3 install "numpy==${_numpy_ver}"
+    unset _numpy_ver
+  else
+    log "numpy 시스템 경로 확인됨"
+  fi
 }
 
 # HH_260611: Keep nvjpeg dependency handling Jetson-only so x86_64 sensing/GNSS
@@ -190,6 +226,11 @@ if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
   _arch="$(uname -m)"
   if [[ "${_arch}" == "aarch64" || "${_arch}" == "arm64" ]]; then
     if ! has_nvjpeg_header || ! has_nvjpeg_library; then
+      # HH_260616: apt-cache는 stale 상태일 수 있으므로 nvjpeg 탐색 전 갱신.
+      # 갱신 없이 apt_has_candidate가 실패하면 libnvjpeg-dev가 설치되지 않아
+      # nvjpeg.h 누락으로 camrod_sensing 빌드가 실패한다.
+      log "apt-get update (nvjpeg 탐색 전 패키지 목록 갱신)"
+      sudo apt-get update -q
       if _nvjpeg_pkgs="$(select_nvjpeg_packages)"; then
         # shellcheck disable=SC2206
         _nvjpeg_arr=(${_nvjpeg_pkgs})
@@ -288,6 +329,13 @@ clone_ext "${AGILEX_BASE}/ranger_ros2.git"                                    "h
 
 # ── rosdep ───────────────────────────────────────────────────────────────────
 if [[ "${DO_ROSDEP}" -eq 1 ]]; then
+  # init: 이미 초기화된 경우 에러를 무시
+  if ! rosdep init 2>/dev/null; then
+    log "rosdep already initialized — skipping init"
+  fi
+  log "rosdep update"
+  rosdep update || log "WARN: rosdep update failed — continuing"
+
   log "rosdep install"
   mapfile -t _ROSDEP_PATHS < <(
     find "${SRC_ROOT}" -name package.xml -type f \
