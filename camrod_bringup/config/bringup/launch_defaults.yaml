@@ -299,6 +299,7 @@ bringup:
     # sensing.launch.py already pushes /sensing namespace.
     # Keep GNSS sub-namespace as `gnss` to avoid duplicated /sensing/sensing/gnss paths.
     gnss: gnss
+    voice: voice
 
   topics:
     gnss_navsatfix: /sensing/gnss/ublox_gps_node/fix
@@ -325,6 +326,10 @@ bringup:
     enable_docking: true
     enable_auto_docking: false      # battery-triggered auto docking (BMS 연동 후 true)
     enable_manual_docking: true     # UI/action-triggered manual docking
+
+  voice:
+    enable_voice: true
+    enable_voice_adapter: true
 
   sim:
     lanelet_id: -1

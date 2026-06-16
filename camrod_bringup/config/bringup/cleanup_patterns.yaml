@@ -118,6 +118,10 @@ patterns:
   - __node:=lifecycle_manager_docking
   - __node:=manual_dock_server
 
+  # [voice]
+  - __node:=voice_announcer
+  - __node:=voice_event_adapter
+
   # [api]
   # Prevent UI backend port conflicts on rapid relaunch.
   # Without these patterns, stale api nodes can keep TCP port 8010 bound.

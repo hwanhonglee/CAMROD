@@ -875,6 +875,10 @@ def generate_launch_description():
         ('enable_docking',        cfg_get(launch_cfg, 'docking/enable_docking',        True),  'Enable docking module'),
         ('enable_auto_docking',   cfg_get(launch_cfg, 'docking/enable_auto_docking',   False), 'Enable battery-triggered automatic docking'),
         ('enable_manual_docking', cfg_get(launch_cfg, 'docking/enable_manual_docking', True),  'Enable UI-triggered manual docking server'),
+
+        ('enable_voice',         cfg_get(launch_cfg, 'voice/enable_voice',         True),  'Enable voice announcer module'),
+        ('enable_voice_adapter', cfg_get(launch_cfg, 'voice/enable_voice_adapter', True),  'Enable voice event adapter node'),
+        ('voice_namespace',      cfg_get(launch_cfg, 'namespaces/voice',           'voice'), 'Voice module namespace'),
     ]
 
     args = [
@@ -1139,6 +1143,11 @@ def generate_launch_description():
         'enable_odom_corrector': 'false',
     }
 
+    voice_args = {
+        'voice_namespace':      lc['voice_namespace'],
+        'enable_voice_adapter': lc['enable_voice_adapter'],
+    }
+
     api_args = {
         'enable_plugin_api': lc['enable_plugin_api'],
         'enable_ui_backend': lc['enable_api_ui'],
@@ -1158,6 +1167,7 @@ def generate_launch_description():
         ('camrod_localization', 'localization.launch.py', localization_args, None),
         ('camrod_planning', 'planning.launch.py', planning_args, IfCondition(lc['enable_planning'])),
         ('camrod_docking',  'docking.launch.py',  docking_args, IfCondition(lc['enable_docking'])),
+        ('camrod_voice',    'voice.launch.py',    voice_args,   IfCondition(lc['enable_voice'])),
         # Launch unified diagnostics stack via top-level system.launch.py.
         ('camrod_system', 'system.launch.py', system_args, None),
     ]
