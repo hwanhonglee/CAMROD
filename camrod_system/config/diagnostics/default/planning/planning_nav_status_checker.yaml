@@ -4,5 +4,8 @@ planning_nav_status_checker:
 
     nav_status_topic: "/planning/navigate_to_pose/_action/status"
     stale_timeout_s: 5.0         # 이 시간(초) 이상 토픽 없으면 STALE
+    # HH_260618: After Nav2 reports SUCCEEDED/CANCELED, a quiet action status
+    # topic means idle, not a planning fault.
+    terminal_status_stale_ok: true
     abort_warn: 2              # 60s 내 abort 횟수 > 이 값 → WARN
     abort_error: 5             # 60s 내 abort 횟수 > 이 값 → ERROR

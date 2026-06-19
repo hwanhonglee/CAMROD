@@ -128,9 +128,9 @@ ros2 launch camrod_docking docking.launch.py enable_auto_docking:=true
 ros2 launch camrod_docking docking.launch.py enable_manual_docking:=false
 ```
 
-### CAMROD 풀스택 연동 (ESKF TF 사용)
+### CAMROD Full-Stack Integration (Localization TF)
 
-ESKF가 `odom → base_link` TF를 담당하므로 `odom_yaw_corrector`의 TF 발행을 비활성화한다.
+HH_260617 - In the CAMROD full stack, the selected localization backend (EKF by default, ESKF optional) owns the `odom → base_link` TF, so `odom_yaw_corrector` TF publication must stay disabled.
 
 ```bash
 ros2 launch camrod_docking docking.launch.py enable_odom_corrector:=false
@@ -143,7 +143,7 @@ ros2 launch camrod_docking docking.launch.py enable_odom_corrector:=false
 | `docking_ns` | `docking` | 도킹 노드 최상위 네임스페이스 |
 | `enable_auto_docking` | `false` | 배터리 기반 자동 도킹 활성화 |
 | `enable_manual_docking` | `true` | UI 명령 매뉴얼 도킹 활성화 |
-| `enable_odom_corrector` | `true` | `odom_yaw_corrector` TF 발행 활성화. CAMROD 풀스택(ESKF) 연동 시 `false` |
+| `enable_odom_corrector` | `true` | `odom_yaw_corrector` TF 발행 활성화. CAMROD 풀스택 localization TF 연동 시 `false` |
 
 ### 매뉴얼 도킹 트리거 (CLI)
 
@@ -259,3 +259,9 @@ target_tag_id: 3   # tag36h11 family ID — 단일 값만 허용
 
 이 저장소는 AVG(Avgenius) 내부 프로젝트입니다.  
 외부 벤더 패키지(`opennav_docking`, `isaac_ros_*`)는 각 패키지의 라이선스를 따릅니다.
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: Docking is no longer the only return-to-charger path.
+
+`camrod_docking` remains the AprilTag/opennav docking path and is still Jetson/Isaac-ROS dependent. HH_260618: Full bringup selects this method only with `parking_method:=docking`; `parking_method:=rule_based` launches `camrod_parking` instead, and launch conditions prevent both final parking methods from commanding motion at the same time. On x86_64, `colcon_build.sh` skips `camrod_docking` because Isaac ROS/VPI dependencies are unavailable.

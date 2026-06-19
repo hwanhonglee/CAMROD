@@ -1,8 +1,8 @@
-# 📍 camrod_localization — GNSS/IMU/wheel fusion (ESKF) & localization state
+# 📍 camrod_localization — GNSS/IMU/wheel fusion (EKF default) & localization state
 
 ## 1. 📋 Summary
 
-`camrod_localization` is the state estimation pipeline for the CAMROD robot. It fuses GNSS (NavSatFix), IMU, and wheel odometry into a consistent `map`-frame pose using an Extended Schmidt–Kalman Filter (ESKF). A Non-Holonomic Constraint (NHC) and Zero Velocity Update (ZUPT) provide additional robustness. A map helper node snaps poses to the Lanelet2 centerline and matches the robot to a configured drop zone at startup for automatic pose initialization.
+`camrod_localization` is the state estimation pipeline for the CAMROD robot. The default runtime backend is EKF (`filter_type:=ekf`); the custom ESKF backend remains available only for explicit `filter_type:=eskf` experiments. The pipeline fuses GNSS (NavSatFix), IMU, and wheel odometry into a consistent `map`-frame pose. A map helper node snaps poses to the Lanelet2 centerline and matches the robot to a configured drop zone at startup for automatic pose initialization.
 
 | | |
 |---|---|
@@ -14,12 +14,12 @@
 ## 2. 🚀 Quick Start
 
 ```bash
-# Full localization stack (ESKF + adapter + monitor + map helper)
+# Full localization stack (EKF + adapter + monitor + map helper)
 ros2 launch camrod_localization localization.launch.py
 
-# With explicit ESKF config override
+# With explicit EKF config override
 ros2 launch camrod_localization localization.launch.py \
-  filter_eskf_param_file:=/path/to/eskf.yaml
+  filter_ekf_param_file:=/path/to/ekf.yaml
 
 # Without map helper (no Lanelet2 map available)
 ros2 launch camrod_localization localization.launch.py \
@@ -514,3 +514,9 @@ ros2 run tf2_tools view_frames
 - [../camrod_map/README.md](../camrod_map/README.md) — Lanelet2 map, drop zone coordinates source
 - [../camrod_planning/README.md](../camrod_planning/README.md) — Planning stack, GNSS recovery hold, `require_localization_ready`
 - [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — Canonical param naming conventions
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: EKF remains the default localization backend for both real and sim bringup.
+
+`bringup.launch.py` forwards `filter_type:=ekf` by default. Planning and parking consume `/localization/pose`; parking controllers do not perform localization fusion themselves. Drop-zone reverse parking depends on fresh `PoseStamped` data and will refuse to start if `pose_timeout_s` is exceeded.

@@ -86,10 +86,12 @@ class GoalToleranceProbe(Node):
         if self._goal is None or self._pose is None:
             return
 
-        goal_key = (round(self._goal[0], 2), round(self._goal[1], 2))
-        if goal_key in self._recorded_goals:
+        # HH_260617: Use a coordinate-specific name; mission keys are handled
+        # separately by the planning state machine.
+        goal_xy_signature = (round(self._goal[0], 2), round(self._goal[1], 2))
+        if goal_xy_signature in self._recorded_goals:
             return
-        self._recorded_goals.add(goal_key)
+        self._recorded_goals.add(goal_xy_signature)
 
         err = math.hypot(self._pose[0] - self._goal[0], self._pose[1] - self._goal[1])
         self._errors.append(err)

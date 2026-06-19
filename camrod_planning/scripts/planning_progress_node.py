@@ -141,8 +141,16 @@ class PlanningProgressNode(Node):
 def main():
     rclpy.init()
     node = PlanningProgressNode()
-    rclpy.spin(node)
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        # HH_260617: Ctrl+C during launch shutdown should exit cleanly instead
+        # of printing a traceback and reporting this helper as a crashed process.
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

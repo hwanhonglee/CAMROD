@@ -8,16 +8,16 @@ scenario:
     - id: camping_site_1_auto_return_10min
       # Includes travel + 600s dwell + return trigger margin.
       timeout_s: 900.0
-      # Trigger via state-machine goal-key input so mission_source sequence
-      # includes "key_topic:*" deterministically.
-      goal_key: camping_site_1
+      # HH_260617: Trigger via mission-key input so mission_source sequence
+      # includes "mission_key:*" deterministically.
+      mission_key: camping_site_1
       goal:
         x: -13.1858
         y: -93.0608
         z: -96.9358
         yaw_deg: -179.992
       expect_mission_source_sequence:
-        - "key_topic:camping_site_1"
+        - "mission_key:camping_site_1"
         - "auto_return"
       expect_state_sequence:
         - "GOAL_REACHED"

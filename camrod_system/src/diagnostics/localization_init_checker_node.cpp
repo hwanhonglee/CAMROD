@@ -24,7 +24,7 @@
  *   distance_topic:   "/localization/drop_zone/match_distance"
  *   id_topic:         "/localization/drop_zone/match_id"
  *   stale_timeout:    5.0    # drop_zone_matcher 가 늦게 뜰 수 있으므로 여유있게
- *   grace_period_sec: 30.0   # 시동 후 이 시간 이내 미매칭 → WARN (이후 → ERROR)
+ *   grace_period_s:   30.0   # 시동 후 이 시간 이내 미매칭 → WARN (이후 → ERROR)
  *   dist_warn_m:      3.0    # 거리 > 이 값 → WARN
  *   dist_error_m:     8.0    # 거리 > 이 값 → ERROR (zone 밖으로 봄)
  */
@@ -86,6 +86,7 @@ protected:
     declare_parameter("grace_period_s", 30.0);
     declare_parameter("dist_warn_m",     3.0);
     declare_parameter("dist_error_m",    8.0);
+    declare_parameter("warn_during_grace", true);
   }
 
   void load_parameters_() override
@@ -94,10 +95,11 @@ protected:
     distance_topic_   = get_parameter("distance_topic").as_string();
     id_topic_         = get_parameter("id_topic").as_string();
     stale_timeout_ = get_param<double>("stale_timeout_s", stale_timeout_);
-    grace_period_sec_ = get_param<double>(
-      "grace_period_s", grace_period_sec_);
+    grace_period_s_ = get_param<double>(
+      "grace_period_s", grace_period_s_);
     dist_warn_m_      = get_parameter("dist_warn_m").as_double();
     dist_error_m_     = get_parameter("dist_error_m").as_double();
+    warn_during_grace_ = get_parameter("warn_during_grace").as_bool();
   }
 
   void setup_tasks_() override
@@ -131,7 +133,7 @@ protected:
     RCLCPP_INFO(get_logger(),
       "Localization Init 모니터링 시작 "
       "(grace=%.0fs, dist_warn=%.1fm, dist_error=%.1fm)",
-      grace_period_sec_, dist_warn_m_, dist_error_m_);
+      grace_period_s_, dist_warn_m_, dist_error_m_);
   }
 
 private:
@@ -151,7 +153,7 @@ private:
         // 노드 시작 직후 drop_zone_matcher 가 아직 안 뜬 경우
         stat.summary(DiagnosticStatus::WARN,
           "초기화 상태 대기 중 (drop_zone_matcher 시작 전)");
-        stat.add("since_node_start_sec", since_start);
+        stat.add("since_node_start_s", since_start);
       }
       return;
     }
@@ -165,7 +167,7 @@ private:
         "%.1fs 동안 메시지 없음 (timeout=%.1fs)",
         elapsed_since_msg, stale_timeout_);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
-      stat.add("last_msg_sec_ago", elapsed_since_msg);
+      stat.add("last_msg_age_s", elapsed_since_msg);
       return;
     }
 
@@ -185,12 +187,14 @@ private:
       }
     } else {
       // 미매칭: grace period 내 → WARN, 초과 → ERROR
-      if (since_start < grace_period_sec_) {
-        lvl = DiagnosticStatus::WARN;
+      if (since_start < grace_period_s_) {
+        // HH_260617: Sim profile can keep startup grace at OK so localization
+        // dummy data does not block planning/control smoke tests.
+        lvl = warn_during_grace_ ? DiagnosticStatus::WARN : DiagnosticStatus::OK;
         char buf[80];
         std::snprintf(buf, sizeof(buf),
           "초기화 중 (%.0fs / grace=%.0fs)",
-          since_start, grace_period_sec_);
+          since_start, grace_period_s_);
         msg_str = buf;
       } else {
         lvl     = DiagnosticStatus::ERROR;
@@ -231,11 +235,12 @@ private:
     std::snprintf(tmp, sizeof(tmp), "%.1f", dist_error_m_);
     stat.add("dist_error_m",      std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.1f", since_start);
-    stat.add("since_node_start_sec", std::string(tmp));
-    std::snprintf(tmp, sizeof(tmp), "%.1f", grace_period_sec_);
-    stat.add("grace_period_sec",  std::string(tmp));
+    stat.add("since_node_start_s", std::string(tmp));
+    std::snprintf(tmp, sizeof(tmp), "%.1f", grace_period_s_);
+    // HH_260617: Publish diagnostic detail keys with canonical `_s` time suffix.
+    stat.add("grace_period_s",  std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed_since_msg);
-    stat.add("last_msg_sec_ago",  std::string(tmp));
+    stat.add("last_msg_age_s",  std::string(tmp));
   }
 
   // 파라미터
@@ -243,9 +248,10 @@ private:
   std::string distance_topic_;
   std::string id_topic_;
   double stale_timeout_{5.0};
-  double grace_period_sec_{30.0};
+  double grace_period_s_{30.0};
   double dist_warn_m_{3.0};
   double dist_error_m_{8.0};
+  bool warn_during_grace_{true};
 
   rclcpp::Time node_start_time_;
   InitState    state_;

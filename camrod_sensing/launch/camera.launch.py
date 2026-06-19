@@ -23,14 +23,23 @@
 import os
 import yaml as _yaml
 
-from launch import LaunchDescription
-from launch_ros.actions import Node
 from launch.actions import (
-    DeclareLaunchArgument, OpaqueFunction, SetLaunchConfiguration,
+    DeclareLaunchArgument, LogInfo, OpaqueFunction, SetLaunchConfiguration,
 )
 from launch.conditions import IfCondition
+from launch import LaunchDescription
 from launch.substitutions import LaunchConfiguration
-from ament_index_python.packages import get_package_share_directory
+from launch_ros.actions import Node
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
+
+
+def _truthy(raw: str) -> bool:
+    return str(raw).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _camera_executable_exists(executable_name: str) -> bool:
+    prefix = get_package_prefix('camrod_sensing')
+    return os.path.exists(os.path.join(prefix, 'lib', 'camrod_sensing', executable_name))
 
 
 def _resolve_camera_enables(context, *args, **kwargs):
@@ -54,9 +63,28 @@ def _resolve_camera_enables(context, *args, **kwargs):
         if rear_raw == '__yaml__':
             rear_raw = 'true' if cfg.get('enable_rear_camera', True) else 'false'
 
+    front_requested = _truthy(front_raw)
+    rear_requested = _truthy(rear_raw)
+    front_available = _camera_executable_exists('camera_front_publisher_node')
+    rear_available = _camera_executable_exists('camera_rear_publisher_node')
+    front_eff = front_requested and front_available
+    rear_eff = rear_requested and rear_available
+    actions = []
+    if front_requested and not front_available:
+        actions.append(LogInfo(
+            msg='[camera.launch] front camera disabled: camera_front_publisher_node is not installed.'
+        ))
+    if rear_requested and not rear_available:
+        actions.append(LogInfo(
+            msg='[camera.launch] rear camera disabled: camera_rear_publisher_node is not installed.'
+        ))
+    # HH_260617: Camera publishers are installed only when their CMake dependencies
+    # are available (Jetson/VPI/NvJPEG for the front camera). Keep standalone launch
+    # from failing on x86_64 by disabling unavailable executables at launch time.
     return [
-        SetLaunchConfiguration('_front_camera_eff', front_raw),
-        SetLaunchConfiguration('_rear_camera_eff',  rear_raw),
+        *actions,
+        SetLaunchConfiguration('_front_camera_eff', 'true' if front_eff else 'false'),
+        SetLaunchConfiguration('_rear_camera_eff',  'true' if rear_eff else 'false'),
     ]
 
 
@@ -111,7 +139,8 @@ def generate_launch_description():
             parameters=[LaunchConfiguration('camera_params_file')],
             remappings=[
                 ('~/image_rect/compressed', 'image_rect/compressed'),
-                ('~/camera_info', 'camera_info'),
+                ('~/image_raw',             'image_raw'),
+                ('~/camera_info',           'camera_info'),
             ],
             additional_env={'CYCLONEDDS_URI': cyclonedds_config},
         ),
@@ -119,24 +148,24 @@ def generate_launch_description():
         # HJ_260529: compressed→raw bridge for yolov9mit and obstacle_fusion.
         # Both nodes require sensor_msgs/Image (raw). camera_front_publisher_node
         # only outputs CompressedImage, so republish to processed/image.
-Node(
-    package='image_transport',
-    executable='republish',
-    name='front_camera_republisher',
-    namespace='camera',
-    output='screen',
-    condition=IfCondition(LaunchConfiguration('_front_camera_eff')),
-    arguments=['compressed', 'raw'],
-    remappings=[
-        ('in/compressed', 'econ_front/image_rect/compressed'),
-        ('out',           'processed/image'),
-    ],
-    parameters=[{
-        'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.reliability': 'best_effort',
-        'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.history': 'keep_last',
-        'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.depth': 5,
-    }],
-),
+        Node(
+            package='image_transport',
+            executable='republish',
+            name='front_camera_republisher',
+            namespace='camera',
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('_front_camera_eff')),
+            arguments=['compressed', 'raw'],
+            remappings=[
+                ('in/compressed', 'econ_front/image_rect/compressed'),
+                ('out',           'processed/image'),
+            ],
+            parameters=[{
+                'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.reliability': 'best_effort',
+                'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.history': 'keep_last',
+                'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.depth': 5,
+            }],
+        ),
 
         # ── Rear camera node ────────────────────────────────────────────────────
         # FQN: /sensing/camera/econ_rear/camera_rear_publisher

@@ -73,9 +73,11 @@ protected:
 
   void setup_tasks_() override
   {
-    // LidarCostGridNode 발행 QoS 와 동일하게 맞춤 (transient_local + reliable)
+    // HH_260617: Match LidarCostGridNode's default volatile/reliable publisher QoS.
+    // A transient-local subscriber does not connect to the current volatile cost-grid
+    // publishers, so the checker could report STALE even while the topic exists.
     sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-      output_topic_, rclcpp::QoS(1).transient_local().reliable(),
+      output_topic_, rclcpp::QoS(10).reliable(),
       [this](const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg) { onGrid(msg); });
 
     add_task("/perception/lidar/cost_grid",

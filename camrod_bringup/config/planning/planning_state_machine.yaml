@@ -2,9 +2,13 @@
   ros__parameters:
     enabled: true
     state_status_topic: "/system/diagnostics_agg"
-    pose_topic: "/planning/lanelet_pose"
-    # State machine tracks the snapped goal stream, not raw /goal_pose.
-    goal_topic: "/planning/goal_pose_snapped"
+    pose_topic: "/planning/lanelet_pose_ros"
+    # HH_260617: Canonical goal naming used in logs/docs:
+    #   mission_key = semantic site/key name on mission_key_topic (e.g. camping_site_1)
+    #   site_goal   = raw site-center PoseStamped on /goal_pose from UI/RViz
+    #   route_goal  = lanelet-snapped PoseStamped consumed by Nav2
+    # State machine tracks the route_goal stream, not the raw site_goal.
+    goal_topic: "/planning/goal_pose_snapped_ros"
     # Auto-goals are mirrored to the Nav2-facing topic as well.
     goal_topic_ros: "/planning/goal_pose_snapped_ros"
     state_topic: "/planning/state_machine/state"
@@ -13,47 +17,64 @@
     # HH_260528 Scenario contract for UI integration:
     # 0=WAIT_DROP_ZONE, 1=DELIVERY_TO_SITE, 2=RETURN_TO_DROP_ZONE, 3=RECALL_TO_SITE
     scenario_id_topic: "/planning/state_machine/scenario_id"
-    # UI/ops command topic. Send std_msgs/Int32 with {0,1,2,3}.
+    # HH_260617: UI/ops command topic. Send avg_msgs/PlanningScenario.
     scenario_command_topic: "/planning/state_machine/scenario_command"
 
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     # Recall request published from a camping site.
-    # msg.data = camping site name (e.g. "camping_site_3").
+    # avg_msgs/PlanningRecallRequest.site_name = camping site name (e.g. "camping_site_3").
     # Triggers recall flow to "<site>_road" keypoint when defined.
     camping_site_recall_topic: "/planning/state_machine/camping_site_recall"
-    # Publishes the reason for the current goal (startup / return_request / recall:* / auto_return).
+    # Publishes avg_msgs/PlanningMissionKey with the current mission key and source.
     mission_source_topic: "/planning/state_machine/mission_source"
-    return_goal_key: "drop_zone"
-    goal_key_topic: "/planning/state_machine/goal_key"
-    request_goal_service: "/planning/state_machine/request_goal"
+    return_mission_key: "drop_zone"
+    mission_key_topic: "/planning/mission_key"
+    # HH_260616: UI already publishes the site_goal (/goal_pose). Keep the mission_key
+    # topic for scenario tracking only so raw site-center goals are not injected directly
+    # into /planning/goal_pose_snapped_ros before goal_snapper runs.
+    mission_key_publish_route_goal: false
+    request_mission_service: "/planning/request_mission"
     status_stream_topic: "/status_stream"
 
     # Launch resolves these to absolute paths at startup; keep empty here to
     # avoid host-specific path hardcoding in the package config.
     keypoints_yaml: ""
     camping_sites_yaml: ""
-    startup_goal_key: "drop_zone"
-    warn_goal_key: "garage"
+    startup_mission_key: "drop_zone"
+    warn_mission_key: "garage"
 
-    auto_startup_goal: true
-    auto_warn_recovery_goal: true
+    # HH_260616: Do not enqueue a Nav2 startup goal before the operator/UI chooses
+    # a mission. The old startup goal kept NavigateToPose active and could swallow
+    # the first UI camping-site request as a preemption race.
+    auto_startup_goal: false
+    # HH_260616: Diagnostics WARN at startup must not enqueue a recovery goal
+    # before an operator/UI mission is selected; it races the first UI request.
+    auto_warn_recovery_goal: false
     auto_estop_on_error: true
 
     # When true: arriving at a camping_site_* key starts a dwell timer; after
-    # goal_reached_dwell_s the robot auto-returns to return_goal_key.
+    # goal_reached_dwell_s the robot auto-returns to return_mission_key.
     # When false: robot waits until an external return command arrives.
     enable_auto_return_on_site_goal: false
-    site_goal_key_prefix: "camping_site_"
+    site_mission_key_prefix: "camping_site_"
     goal_reached_dwell_s: 10.0
     # Distance tolerance for associating a manual goal with a keypoint (auto-return eligibility).
-    goal_key_match_distance_m: 1.5
+    mission_key_match_distance_m: 1.5
+    # HH_260618: Preserve drop_zone semantic key for return route-goal echoes
+    # that are lanelet-snap poses rather than the exact station center.
+    return_goal_key_preserve_distance_m: 5.0
+    # HH_260618: Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
+    site_goal_key_preserve_distance_m: 2.0
 
     # HH_260528 Scenario-2 -> Scenario-0 completion gate.
-    # false: reaching return_goal_key pose is enough.
+    # false: reaching return_mission_key pose is enough.
     # true : require docking status true as well.
     require_docking_for_idle: false
     docking_status_topic: "/docking/is_charging"
 
     min_goal_publish_interval_s: 1.0
     goal_reached_distance_m: 0.8
+    # HH_260618 - Return route handoff uses a wider tolerance than campsite
+    # arrival so drop-zone parking starts after Nav2 succeeds near the station.
+    return_goal_reached_distance_m: 1.2
     loop_rate_hz: 5.0

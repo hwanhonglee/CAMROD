@@ -135,8 +135,10 @@ protected:
   std::string path_blackboard_id_;
   std::string start_blackboard_id_;
   std::string start_pose_topic_;
+  std::string start_pose_override_yaw_source_{"current_pose"};
   double start_pose_timeout_s_{1.0};
-  bool use_start_pose_override_{true};
+  // HH_260619 - Safe default matches NavigateToPose current-pose semantics.
+  bool use_start_pose_override_{false};
   bool has_start_pose_{false};
   geometry_msgs::msg::PoseStamped latest_start_pose_;
   rclcpp::Time latest_start_pose_time_;

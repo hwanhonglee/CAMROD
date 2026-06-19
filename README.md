@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v1.12**
+> Current release: **v1.13**
 
 ---
 
@@ -14,9 +14,10 @@ Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground site
 | `camrod_bringup` | Top-level orchestrator | [README](camrod_bringup/README.md) |
 | `camrod_map` | Lanelet2 map + cost grids + markers | [README](camrod_map/README.md) |
 | `camrod_sensing` | Camera/LiDAR/radar/IMU/GNSS + near-range cost grids | [README](camrod_sensing/README.md) |
-| `camrod_localization` | GNSS/IMU/wheel fusion (ESKF) + map helper | [README](camrod_localization/README.md) |
+| `camrod_localization` | GNSS/IMU/wheel fusion (EKF default; ESKF optional) + map helper | [README](camrod_localization/README.md) |
 | `camrod_perception` | LiDAR obstacles + optional YOLOv9 camera fusion | [README](camrod_perception/README.md) |
 | `camrod_planning` | Nav2 runtime + cmd\_vel gating + state machine | [README](camrod_planning/README.md) |
+| `camrod_parking` | Rule-based campsite crab maneuver + drop-zone reverse parking | [README](camrod_parking/README.md) |
 | `camrod_docking` | AprilTag dock detection + opennav\_docking | [README](camrod_docking/README.md) |
 | `camrod_platform` | Final cmd\_vel gate + robot visualization | [README](camrod_platform/README.md) |
 | `camrod_sensor_kit` | URDF + static TF tree + RobotParams lib | [README](camrod_sensor_kit/README.md) |
@@ -195,7 +196,7 @@ graph TD
 | `camrod_bringup` | Top-level orchestrator; cross-package argument and config wiring |
 | `camrod_map` | Lanelet2 map loading, lane cost grids, RViz markers |
 | `camrod_sensing` | Camera / LiDAR / GNSS / IMU / radar drivers + near-range cost grids |
-| `camrod_localization` | GNSS+IMU+wheel ESKF fusion; DR-mode fallback; drop-zone init |
+| `camrod_localization` | GNSS+IMU+wheel EKF fusion by default; optional ESKF backend; DR-mode fallback; drop-zone init |
 | `camrod_perception` | LiDAR obstacle clustering, YOLOv9 camera detection, obstacle fusion |
 | `camrod_planning` | Nav2 runtime, Lanelet2 goal/path snapping, cmd\_vel safety gate, mission state machine |
 | `camrod_platform` | Final cmd\_vel gate, Ranger CAN bridge, URDF/TF publisher |
@@ -300,7 +301,7 @@ graph LR
 1. System starts; all modules launch with staggered delays.
 2. Localization initializes from `camrod_map/config/map_info.yaml` (single map reference source).
 3. State machine sends robot to `drop_zone` (startup goal).
-4. Operator selects a camping site via UI → `/planning/state_machine/goal_key` published.
+4. Operator selects a camping site via UI → `/planning/mission_key` published.
 5. Nav2 generates global path; cmd\_vel gate enforces engage / e-stop / cost-stop / GNSS-recovery hold.
 6. Robot arrives; waits `goal_reached_dwell_s` (default 600 s) or until recall trigger.
 7. On recall: navigates to site's lanelet coordinate for loading, then auto-returns to `drop_zone`.
@@ -501,7 +502,7 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/sensing/gnss/fix` | `NavSatFix` | sensing → localization | GNSS position |
 | `/sensing/imu/data` | `Imu` | sensing → localization | 9-axis inertial data |
 | `/sensing/camera/color/image_rect` | `Image` | sensing → perception | Camera feed for YOLO |
-| `/localization/pose` | `PoseStamped` | localization → planning | Canonical fused pose (ESKF) |
+| `/localization/pose` | `PoseStamped` | localization → planning | Canonical fused localization pose |
 | `/localization/mode` | `AvgLocalizationMode` | localization → planning gate | NORMAL / DEGRADED / DR\_ONLY / INVALID |
 | `/localization/initial_match_ok` | `Bool` | localization → planning | Drop-zone match readiness |
 | `/perception/obstacles` | `PointCloud2` | perception → planning costmap | Fused obstacle cloud |
@@ -516,11 +517,11 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/platform/status/odometry` | `Odometry` | Ranger CAN → localization | Wheel odometry |
 | `/planning/engage` | `Bool` | UI / state machine → gate | Drive enable signal |
 | `/planning/state_machine/state` | `String` | state machine → all | INIT / RUNNING / GOAL\_REACHED / … |
-| `/planning/state_machine/goal_key` | `String` | UI → state machine | Named site selector (e.g. "B3") |
+| `/planning/mission_key` | `String` | UI → state machine | Named site selector (e.g. "B3") |
 | `/planning/state_machine/mission_source` | `String` | state machine → diagnostics | startup / recall:B3 / auto\_return |
 | `/goal_pose` | `PoseStamped` | UI / RViz → Nav2 | Manual 2D Nav Goal |
 | `/ui/selected_destination` | `String` | UI → backend | Operator site selection |
-| `/diagnostics_agg` | `DiagnosticArray` | system → UI | Aggregated health status |
+| `/system/diagnostics_agg` | `DiagnosticArray` | system → UI | Aggregated health status |
 
 ---
 
@@ -561,13 +562,13 @@ The web UI runs at **http://\<robot-ip\>:8010** (default bind: `127.0.0.1:8010`)
 
 **Features:**
 - Camping site selection dropdown → dispatches goal to state machine
-- System health dashboard (from `/diagnostics_agg`)
+- System health dashboard (from `/system/diagnostics_agg`)
 - Engage / stop button
 - Real-time robot status (localization mode, planning state, battery)
 
 **Backend architecture:**  
 FastAPI (Python) in `camrod_ui/runtime/python/camrod_ui/ui_backend_node.py`  
-React frontend built in `camrod_ui/runtime/assets/frontend/`
+React frontend built in `camrod_ui/camrod_ui_robot/assets/frontend/`
 
 **Launch with external access:**
 
@@ -578,7 +579,7 @@ ros2 launch camrod_ui ui.launch.py ui_host:=0.0.0.0
 **Rebuild frontend** (after editing `src/App.js`):
 
 ```bash
-cd camrod_ui/runtime/assets/frontend
+cd camrod_ui/camrod_ui_robot/assets/frontend
 DISABLE_ESLINT_PLUGIN=true npm run build
 ```
 
@@ -593,7 +594,7 @@ camrod_planning/config/camping_sites.yaml
 ```
 
 Each entry maps a site key (e.g. `B1`) to a WGS84 lat/lon pose.  
-The UI backend pre-loads this file and dispatches the corresponding `goal_pose` or `goal_key` when the operator selects a site.
+The UI backend pre-loads this file and dispatches the corresponding `goal_pose` or `mission_key` when the operator selects a site.
 
 Add a new site:
 
@@ -648,7 +649,7 @@ The system health pipeline:
 ```
 [per-module checker nodes]  →  /diagnostics
   ↓
-diagnostics_aggregator  →  /diagnostics_agg
+diagnostics_aggregator  →  /system/diagnostics_agg
   ↓
 camrod_ui dashboard
 ```
@@ -660,7 +661,7 @@ View live diagnostics:
 ```bash
 ros2 run rqt_robot_monitor rqt_robot_monitor
 # or
-ros2 topic echo /diagnostics_agg
+ros2 topic echo /system/diagnostics_agg
 ```
 
 ---
@@ -720,3 +721,42 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 | v1.9 | 2026-05-13 | Planning stability, radar angle fix, Smac2D re-enable |
 | v1.8 | 2026-05-08 | ESKF stability, GNSS COG auto-init, DR timeout, platform fixes |
 | v1.7 | 2026-04-28 | Ranger platform bridge, DBC status aggregation, planning/system nodes |
+
+## 2026-06-17 Runtime Update
+
+> HH_260617 - Current full-stack baseline after GNSS dual-antenna, system diagnostics, UI goal naming, and parking integration.
+> HH_260618 - Final parking is method-selected: `parking_method:=rule_based` uses `camrod_parking`, `parking_method:=docking` uses `camrod_docking`, and launch/system checks require exactly one method to be active.
+
+### Current Mission Flow
+
+1. Operator UI or RViz publishes a raw site goal on `/goal_pose` or `/planning/goal_pose`.
+2. `camrod_planning/goal_snapper` converts that site-center goal to the lanelet route goal on `/planning/goal_pose_snapped` and `/planning/goal_pose_snapped_ros`; the latest clicked/UI goal immediately replaces older goals.
+3. `local_path_extractor` resets stale controller-local paths for a short hold after each new global route. HH_260618 - This keeps route-heading alignment pointed at the newest goal instead of the previous controller path.
+4. Nav2 drives to the lanelet-snap pose and `planning_state_machine` publishes `avg_msgs/PlanningState` on `/planning/state_machine/state`.
+5. `planning_cmd_vel_gate_node` checks the raw `/map/cost_grid/lanelet` grid before the ego-cleared inflation grid. HH_260618 - Forward translation is blocked on lane-boundary/off-lane cost while in-place rotation remains allowed.
+6. `camrod_parking/site_maneuver` starts for `camping_site_*`: while active, it commands `Twist.linear.y` on `/planning/cmd_vel_raw` for crab entry, rotates 180 degrees, waits for unload, then crab-exits back to the snap pose. HH_260618 - Parking nodes stay silent on `/planning/cmd_vel_raw` while idle so they do not race Nav2.
+7. `site_maneuver` requests return through `/planning/state_machine/return_to_drop_zone`.
+8. Nav2 returns to the drop-zone snap pose.
+9. Final parking is mutually exclusive: `camrod_parking/drop_zone_parking` aligns the parked robot front yaw to the configured charging-station yaw, reverses with yaw/lateral feedback, and stops on `/platform/status/is_charging`; `camrod_docking` remains the AprilTag/opennav method when `parking_method:=docking`.
+10. `camrod_system` validates module graph/runtime diagnostics and publishes `/system/status` plus `/system/msgs`.
+
+### Setup and Build
+
+```bash
+cd /home/hong/camrod_ws/src
+./setup_camrod.sh
+./colcon_build.sh
+source /home/hong/camrod_ws/install/setup.bash
+```
+
+`setup_camrod.sh` is idempotent: it keeps existing external repositories, installs explicit system dependencies, skips Jetson-only docking packages on x86_64, and runs rosdep unless `--no-rosdep` is provided. `colcon_build.sh` builds source packages plus all `external/` package roots, skips x86_64-only unavailable docking/voice pieces only when their system dependencies are unavailable, and keeps the local `camrod_parking` package in the normal source build graph.
+
+### Smoke Tests
+
+```bash
+ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=false
+ros2 topic echo /system/diagnostics --once   # check system_checker/final_parking
+ros2 topic echo /parking/site_maneuver/status --once  # rule_based only
+ros2 topic echo /parking/drop_zone/status --once       # rule_based only
+ros2 topic echo /system/status --once
+```

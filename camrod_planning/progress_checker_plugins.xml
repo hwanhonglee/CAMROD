@@ -1,0 +1,12 @@
+<library path="engage_aware_progress_checker">
+  <class
+    name="camrod_planning::EngageAwareProgressChecker"
+    type="camrod_planning::EngageAwareProgressChecker"
+    base_class_type="nav2_core::ProgressChecker">
+    <description>
+      HH_260618 - Nav2 progress checker that pauses timeout accounting while
+      CAMROD planning engage is false, then behaves like a simple distance/time
+      progress checker after engage becomes true.
+    </description>
+  </class>
+</library>

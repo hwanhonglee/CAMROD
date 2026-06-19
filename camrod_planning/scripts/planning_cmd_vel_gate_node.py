@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import rclpy
 from avg_msgs.msg import AvgLocalizationMode
 from geometry_msgs.msg import PoseStamped, Twist
-from nav_msgs.msg import OccupancyGrid, Odometry
+from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
@@ -174,6 +174,73 @@ class PlanningCmdVelGateNode(Node):
         self.cost_stop_hold_s = float(
             self.declare_parameter("cost_stop_hold_s", 1.0).value
         )
+        # HH_260618: Hard lanelet safety uses the raw lanelet grid before
+        # inflation ego-clear. The merged inflation grid intentionally clears
+        # the robot footprint, so it cannot be the only source that decides
+        # whether translational cmd_vel may leave the drivable lanelet area.
+        self.lanelet_safety_enable = bool(
+            self.declare_parameter("lanelet_safety_enable", True).value
+        )
+        self.lanelet_safety_grid_topic = str(
+            self.declare_parameter(
+                "lanelet_safety_grid_topic", "/map/cost_grid/lanelet"
+            ).value
+        )
+        self.lanelet_safety_threshold = int(
+            self.declare_parameter("lanelet_safety_threshold", 85).value
+        )
+        self.lanelet_safety_current_threshold = int(
+            self.declare_parameter("lanelet_safety_current_threshold", 85).value
+        )
+        self.lanelet_safety_lookahead_m = float(
+            self.declare_parameter("lanelet_safety_lookahead_m", 1.0).value
+        )
+        self.lanelet_safety_width_m = float(
+            self.declare_parameter("lanelet_safety_width_m", 0.8).value
+        )
+        self.lanelet_safety_stop_on_unknown = bool(
+            self.declare_parameter("lanelet_safety_stop_on_unknown", True).value
+        )
+        self.lanelet_safety_allow_rotation_in_place = bool(
+            self.declare_parameter(
+                "lanelet_safety_allow_rotation_in_place", True
+            ).value
+        )
+        self.lanelet_safety_check_reverse = bool(
+            self.declare_parameter("lanelet_safety_check_reverse", False).value
+        )
+        self.lanelet_safety_check_lateral = bool(
+            self.declare_parameter("lanelet_safety_check_lateral", False).value
+        )
+        self.lanelet_safety_min_translation_mps = float(
+            self.declare_parameter("lanelet_safety_min_translation_mps", 0.02).value
+        )
+        # HH_260618: Attribute cost-stop events to original cost-grid sources
+        # without publishing another large debug grid. Source grids are sampled
+        # only when a merged-grid stop actually occurs.
+        self.cost_source_debug_enable = bool(
+            self.declare_parameter("cost_source_debug_enable", True).value
+        )
+        self.cost_source_debug_max_age_s = float(
+            self.declare_parameter("cost_source_debug_max_age_s", 1.0).value
+        )
+        self.cost_source_debug_topics = list(
+            self.declare_parameter(
+                "cost_source_debug_topics",
+                [
+                    "/map/cost_grid/lanelet",
+                    "/sensing/cost_grid/lidar",
+                    "/sensing/cost_grid/radar",
+                    "/planning/cost_grid/global_path",
+                ],
+            ).value
+        )
+        self.cost_source_debug_labels = list(
+            self.declare_parameter(
+                "cost_source_debug_labels",
+                ["lanelet", "lidar", "radar", "global_path"],
+            ).value
+        )
 
         # HH_260422: Speed-dependent front lookahead.
         #   lookahead = clamp(v²/(2·g·mu) + reaction_time·v + margin, min, max)
@@ -223,6 +290,30 @@ class PlanningCmdVelGateNode(Node):
         self.rear_corridor_width_m = float(
             self.declare_parameter("rear_corridor_width_m", 0.9).value
         )
+        # HH_260618: Site parking enters campsites with explicit lateral or
+        # reverse cmd_vel. That motion is mission-owned and intentionally
+        # leaves the lanelet corridor, so static lanelet/global-path
+        # front/side/rear cost must not block it. Dynamic LiDAR/Radar source
+        # cost still blocks site maneuver motion.
+        self.lateral_cmd_bypass_static_cost_stop = bool(
+            self.declare_parameter(
+                "lateral_cmd_bypass_static_cost_stop", True
+            ).value
+        )
+        self.lateral_cmd_bypass_min_mps = float(
+            self.declare_parameter("lateral_cmd_bypass_min_mps", 0.02).value
+        )
+        self.reverse_cmd_bypass_static_cost_stop = bool(
+            self.declare_parameter(
+                "reverse_cmd_bypass_static_cost_stop", True
+            ).value
+        )
+        self.reverse_cmd_bypass_min_mps = float(
+            self.declare_parameter("reverse_cmd_bypass_min_mps", 0.02).value
+        )
+        self.lateral_cmd_dynamic_obstacle_threshold = int(
+            self.declare_parameter("lateral_cmd_dynamic_obstacle_threshold", 85).value
+        )
 
         # Unavoidable-cluster stop options (front only).
         self.enable_unavoidable_stop = bool(
@@ -254,6 +345,48 @@ class PlanningCmdVelGateNode(Node):
         self.yaw_alignment_exit_margin_m = float(
             self.declare_parameter("yaw_alignment_exit_margin_m", 0.3).value
         )
+        # HH_260618: Route-heading alignment guard. Cost-stop samples the
+        # current robot-forward corridor, so it cannot detect a robot that is
+        # facing opposite to the active route. Hold linear motion and rotate
+        # first when the active path tangent and robot yaw diverge too much.
+        self.enable_route_heading_alignment = bool(
+            self.declare_parameter("enable_route_heading_alignment", True).value
+        )
+        self.route_heading_path_topic = str(
+            self.declare_parameter(
+                "route_heading_path_topic", "/planning/local_path"
+            ).value
+        )
+        self.route_heading_frame_id = str(
+            self.declare_parameter("route_heading_frame_id", "map").value
+        )
+        self.route_heading_min_cmd_x_mps = float(
+            self.declare_parameter("route_heading_min_cmd_x_mps", 0.03).value
+        )
+        self.route_heading_lateral_cmd_epsilon_mps = float(
+            self.declare_parameter("route_heading_lateral_cmd_epsilon_mps", 0.02).value
+        )
+        self.route_heading_lookahead_m = float(
+            self.declare_parameter("route_heading_lookahead_m", 1.5).value
+        )
+        self.route_heading_error_enter_deg = float(
+            self.declare_parameter("route_heading_error_enter_deg", 75.0).value
+        )
+        self.route_heading_error_exit_deg = float(
+            self.declare_parameter("route_heading_error_exit_deg", 20.0).value
+        )
+        self.route_heading_angular_kp = float(
+            self.declare_parameter("route_heading_angular_kp", 1.4).value
+        )
+        self.route_heading_max_angular_z = float(
+            self.declare_parameter("route_heading_max_angular_z", 0.6).value
+        )
+        self.route_heading_max_linear_x = float(
+            self.declare_parameter("route_heading_max_linear_x", 0.0).value
+        )
+        self.route_heading_min_path_points = int(
+            self.declare_parameter("route_heading_min_path_points", 2).value
+        )
 
         # HH_260422: _enabled becomes True when /planning/engage publishes True.
         #   True + _estop==False -> passes /planning/cmd_vel_raw through to /planning/cmd_vel.
@@ -278,6 +411,8 @@ class PlanningCmdVelGateNode(Node):
         self._last_tf_warn_sec = 0.0
         self._last_empty_corridor_warn_sec = 0.0
         self._last_yaw_align_log_sec = 0.0
+        self._last_route_heading_log_sec = 0.0
+        self._last_lateral_static_bypass_log_sec = 0.0
 
         # HH_260422: _current_speed holds the latest forward body velocity (m/s) from odometry.
         #   Used to compute speed-dependent front lookahead. Stays 0.0 until first odometry arrives.
@@ -285,9 +420,14 @@ class PlanningCmdVelGateNode(Node):
 
         # HH_260422: Single merged cost grid (LiDAR + Radar) used for all directional checks.
         self._last_grid = None
+        self._last_lanelet_safety_grid = None
         self._last_pose = None
         self._last_odom = None
+        self._last_route_heading_path: Path | None = None
+        self._route_heading_align_active = False
         self._last_block_reason_log_sec = 0.0
+        self._cost_source_grids: dict[str, OccupancyGrid] = {}
+        self._cost_source_recv_sec: dict[str, float] = {}
 
         # Runtime state for yaw-alignment gate.
         self._yaw_alignment_zones: list[YawAlignmentZone] = []
@@ -330,6 +470,7 @@ class PlanningCmdVelGateNode(Node):
             )
 
         self.sub_cost_grid = None
+        self.sub_lanelet_safety_grid = None
         self.sub_pose = None
         self.sub_odom = None
         if self.enable_cost_stop:
@@ -340,8 +481,45 @@ class PlanningCmdVelGateNode(Node):
             self.sub_cost_grid = self.create_subscription(
                 OccupancyGrid, self.cost_grid_topic, self._on_cost_grid, cost_qos
             )
-        if self.enable_cost_stop or self.enable_yaw_alignment_zone:
-            # Pose/odometry are also required by yaw-alignment zone logic.
+            if self.lanelet_safety_enable:
+                self.sub_lanelet_safety_grid = self.create_subscription(
+                    OccupancyGrid,
+                    self.lanelet_safety_grid_topic,
+                    self._on_lanelet_safety_grid,
+                    cost_qos,
+                )
+            self.sub_cost_source_grids = []
+            if self.cost_source_debug_enable:
+                for idx, topic in enumerate(self.cost_source_debug_topics):
+                    label = (
+                        str(self.cost_source_debug_labels[idx])
+                        if idx < len(self.cost_source_debug_labels)
+                        else str(topic)
+                    )
+                    self.sub_cost_source_grids.append(
+                        self.create_subscription(
+                            OccupancyGrid,
+                            str(topic),
+                            lambda msg, source_label=label: self._on_cost_source_grid(
+                                source_label, msg
+                            ),
+                            cost_qos,
+                        )
+                    )
+        self.sub_route_heading_path = None
+        if self.enable_route_heading_alignment:
+            self.sub_route_heading_path = self.create_subscription(
+                Path,
+                self.route_heading_path_topic,
+                self._on_route_heading_path,
+                10,
+            )
+        if (
+            self.enable_cost_stop
+            or self.enable_yaw_alignment_zone
+            or self.enable_route_heading_alignment
+        ):
+            # Pose/odometry are also required by yaw-alignment and route-heading logic.
             # Keep pose topic as fallback when TF lookup is temporarily unavailable.
             self.sub_pose = self.create_subscription(
                 PoseStamped, self.pose_topic, self._on_pose, 10
@@ -365,10 +543,16 @@ class PlanningCmdVelGateNode(Node):
             f"gnss_recovery_hold_s={self.gnss_recovery_hold_s:.2f}s "
             f"cost_stop={'true' if self.enable_cost_stop else 'false'} "
             f"inflation_grid={self.cost_grid_topic} "
+            f"lanelet_safety={'true' if self.lanelet_safety_enable else 'false'} "
+            f"lanelet_grid={self.lanelet_safety_grid_topic} "
             f"speed_dependent={'true' if self.enable_speed_dependent_lookahead else 'false'} "
             f"front_lookahead=[{self.front_lookahead_min_m:.1f},{self.front_lookahead_max_m:.1f}]m "
+            f"cost_source_debug={'true' if self.cost_source_debug_enable else 'false'} "
             f"side_rear={'true' if self.enable_side_rear_cost_stop else 'false'} "
+            f"lateral_static_bypass={'true' if self.lateral_cmd_bypass_static_cost_stop else 'false'} "
+            f"reverse_static_bypass={'true' if self.reverse_cmd_bypass_static_cost_stop else 'false'} "
             f"yaw_zone_align={'true' if self.enable_yaw_alignment_zone else 'false'} "
+            f"route_heading_align={'true' if self.enable_route_heading_alignment else 'false'} "
             f"unavoidable_stop={'true' if self.enable_unavoidable_stop else 'false'}"
         )
 
@@ -386,6 +570,30 @@ class PlanningCmdVelGateNode(Node):
                 self.cost_stop_lookahead_m = float(p.value)
             elif p.name == "cost_stop_width_m":
                 self.cost_stop_width_m = float(p.value)
+            elif p.name == "cost_source_debug_enable":
+                self.cost_source_debug_enable = bool(p.value)
+            elif p.name == "cost_source_debug_max_age_s":
+                self.cost_source_debug_max_age_s = float(p.value)
+            elif p.name == "lanelet_safety_enable":
+                self.lanelet_safety_enable = bool(p.value)
+            elif p.name == "lanelet_safety_threshold":
+                self.lanelet_safety_threshold = int(p.value)
+            elif p.name == "lanelet_safety_current_threshold":
+                self.lanelet_safety_current_threshold = int(p.value)
+            elif p.name == "lanelet_safety_lookahead_m":
+                self.lanelet_safety_lookahead_m = float(p.value)
+            elif p.name == "lanelet_safety_width_m":
+                self.lanelet_safety_width_m = float(p.value)
+            elif p.name == "lanelet_safety_stop_on_unknown":
+                self.lanelet_safety_stop_on_unknown = bool(p.value)
+            elif p.name == "lanelet_safety_allow_rotation_in_place":
+                self.lanelet_safety_allow_rotation_in_place = bool(p.value)
+            elif p.name == "lanelet_safety_check_reverse":
+                self.lanelet_safety_check_reverse = bool(p.value)
+            elif p.name == "lanelet_safety_check_lateral":
+                self.lanelet_safety_check_lateral = bool(p.value)
+            elif p.name == "lanelet_safety_min_translation_mps":
+                self.lanelet_safety_min_translation_mps = float(p.value)
             elif p.name == "enable_speed_dependent_lookahead":
                 self.enable_speed_dependent_lookahead = bool(p.value)
             elif p.name == "front_lookahead_min_m":
@@ -412,6 +620,16 @@ class PlanningCmdVelGateNode(Node):
                 self.rear_lookahead_m = float(p.value)
             elif p.name == "rear_corridor_width_m":
                 self.rear_corridor_width_m = float(p.value)
+            elif p.name == "lateral_cmd_bypass_static_cost_stop":
+                self.lateral_cmd_bypass_static_cost_stop = bool(p.value)
+            elif p.name == "lateral_cmd_bypass_min_mps":
+                self.lateral_cmd_bypass_min_mps = float(p.value)
+            elif p.name == "reverse_cmd_bypass_static_cost_stop":
+                self.reverse_cmd_bypass_static_cost_stop = bool(p.value)
+            elif p.name == "reverse_cmd_bypass_min_mps":
+                self.reverse_cmd_bypass_min_mps = float(p.value)
+            elif p.name == "lateral_cmd_dynamic_obstacle_threshold":
+                self.lateral_cmd_dynamic_obstacle_threshold = int(p.value)
             elif p.name == "enable_unavoidable_stop":
                 self.enable_unavoidable_stop = bool(p.value)
             elif p.name == "unavoidable_lethal_threshold":
@@ -444,6 +662,28 @@ class PlanningCmdVelGateNode(Node):
                 reload_yaw_zone_cfg = True
             elif p.name == "yaw_alignment_exit_margin_m":
                 self.yaw_alignment_exit_margin_m = float(p.value)
+            elif p.name == "enable_route_heading_alignment":
+                self.enable_route_heading_alignment = bool(p.value)
+                if not self.enable_route_heading_alignment:
+                    self._route_heading_align_active = False
+            elif p.name == "route_heading_min_cmd_x_mps":
+                self.route_heading_min_cmd_x_mps = float(p.value)
+            elif p.name == "route_heading_lateral_cmd_epsilon_mps":
+                self.route_heading_lateral_cmd_epsilon_mps = float(p.value)
+            elif p.name == "route_heading_lookahead_m":
+                self.route_heading_lookahead_m = float(p.value)
+            elif p.name == "route_heading_error_enter_deg":
+                self.route_heading_error_enter_deg = float(p.value)
+            elif p.name == "route_heading_error_exit_deg":
+                self.route_heading_error_exit_deg = float(p.value)
+            elif p.name == "route_heading_angular_kp":
+                self.route_heading_angular_kp = float(p.value)
+            elif p.name == "route_heading_max_angular_z":
+                self.route_heading_max_angular_z = float(p.value)
+            elif p.name == "route_heading_max_linear_x":
+                self.route_heading_max_linear_x = float(p.value)
+            elif p.name == "route_heading_min_path_points":
+                self.route_heading_min_path_points = int(p.value)
         if reload_yaw_zone_cfg:
             self._load_yaw_alignment_zones()
         return SetParametersResult(successful=True)
@@ -473,10 +713,6 @@ class PlanningCmdVelGateNode(Node):
 
     # Handles raw cmd_vel input and applies engage/estop/cost-stop rules.
     def _on_cmd(self, msg: Twist) -> None:
-        if self.enable_cost_stop and self._should_stop_for_cost():
-            if self.publish_zero_when_blocked:
-                self._publish_zero()
-            return
         if self._effective_enabled():
             # Keep callback robust for lightweight unit-test doubles that may
             # bypass __init__ and not populate newly added yaw-zone fields.
@@ -489,6 +725,18 @@ class PlanningCmdVelGateNode(Node):
                 if override_cmd is not None:
                     self.pub_cmd.publish(self._scale_twist(override_cmd))
                     return
+            route_heading_enabled = bool(
+                getattr(self, "enable_route_heading_alignment", False)
+            )
+            if route_heading_enabled:
+                override_cmd = self._apply_route_heading_alignment_gate(msg)
+                if override_cmd is not None:
+                    self.pub_cmd.publish(self._scale_twist(override_cmd))
+                    return
+            if self.enable_cost_stop and self._should_stop_for_cost(msg):
+                if self.publish_zero_when_blocked:
+                    self._publish_zero()
+                return
             self.pub_cmd.publish(self._scale_twist(msg))
             return
         if self.publish_zero_when_blocked:
@@ -604,6 +852,15 @@ class PlanningCmdVelGateNode(Node):
     def _on_cost_grid(self, msg: OccupancyGrid) -> None:
         self._last_grid = msg
 
+    # HH_260618: Stores raw lanelet safety grid before inflation ego-clear.
+    def _on_lanelet_safety_grid(self, msg: OccupancyGrid) -> None:
+        self._last_lanelet_safety_grid = msg
+
+    # HH_260618: Stores original cost-grid sources for event-time attribution.
+    def _on_cost_source_grid(self, label: str, msg: OccupancyGrid) -> None:
+        self._cost_source_grids[label] = msg
+        self._cost_source_recv_sec[label] = self.get_clock().now().nanoseconds * 1e-9
+
     # Stores latest pose fallback.
     def _on_pose(self, msg: PoseStamped) -> None:
         self._last_pose = msg
@@ -613,6 +870,10 @@ class PlanningCmdVelGateNode(Node):
         self._last_odom = msg
         # HH_260422: twist.twist.linear.x is robot-frame forward speed (m/s).
         self._current_speed = float(msg.twist.twist.linear.x)
+
+    # HH_260618: Stores the active local route used by route-heading alignment.
+    def _on_route_heading_path(self, msg: Path) -> None:
+        self._last_route_heading_path = msg
 
     # Computes speed-dependent front lookahead distance using wet-road braking physics.
     def _compute_front_lookahead(self) -> float:
@@ -626,9 +887,23 @@ class PlanningCmdVelGateNode(Node):
         return max(self.front_lookahead_min_m, min(self.front_lookahead_max_m, raw))
 
     # Checks all directional corridors and triggers stop when any is blocked.
-    def _should_stop_for_cost(self) -> bool:
+    def _should_stop_for_cost(self, cmd_in: Twist | None = None) -> bool:
         now_ns = self.get_clock().now().nanoseconds
         now_sec = now_ns * 1e-9
+
+        # HH_260618: Allow pure in-place rotation to re-align with the latest
+        # route even when the current cell is near a lanelet boundary. Any
+        # translational component still goes through lanelet/inflation checks.
+        if (
+            cmd_in is not None
+            and self.lanelet_safety_allow_rotation_in_place
+            and not self._is_translational_cmd(cmd_in)
+        ):
+            return False
+
+        if self._should_stop_for_lanelet_safety(cmd_in, now_sec):
+            return True
+        site_static_bypass = self._should_bypass_static_cost_for_site_maneuver(cmd_in)
 
         # --- Front stop (LiDAR grid, speed-dependent lookahead) ---
         lidar_grid = self._last_grid
@@ -649,7 +924,7 @@ class PlanningCmdVelGateNode(Node):
                 best_label = ""
                 best_lethal: list[tuple[int, int]] = []
                 for label, pose in pose_candidates:
-                    blocked, total_cells, lethal_cells = self._sample_cost_corridor(
+                    blocked, total_cells, lethal_cells, blocked_detail = self._sample_cost_corridor(
                         lidar_grid, pose,
                         yaw_offset=0.0,
                         lookahead=front_lookahead,
@@ -657,11 +932,20 @@ class PlanningCmdVelGateNode(Node):
                         threshold=self.cost_stop_threshold,
                     )
                     if blocked:
+                        if site_static_bypass and not self._dynamic_obstacle_source_blocks(
+                            blocked_detail
+                        ):
+                            self._log_site_static_cost_bypass(
+                                "FRONT", label, front_lookahead, blocked_detail
+                            )
+                            continue
                         self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                        cause = self._format_cost_source_debug(blocked_detail)
                         self.get_logger().warn(
                             f"cost-stop FRONT: source={label} "
                             f"lookahead={front_lookahead:.2f}m "
                             f"speed={self._current_speed:.2f}m/s "
+                            f"cause={cause} "
                             f"hold={self.cost_stop_hold_s:.2f}s"
                         )
                         return True
@@ -694,7 +978,7 @@ class PlanningCmdVelGateNode(Node):
                         ("RIGHT", -math.pi / 2, self.side_lookahead_m, self.side_corridor_width_m, self.side_cost_threshold),
                         ("REAR",  math.pi,      self.rear_lookahead_m, self.rear_corridor_width_m, self.rear_cost_threshold),
                     ):
-                        blocked, _, _ = self._sample_cost_corridor(
+                        blocked, _, _, blocked_detail = self._sample_cost_corridor(
                             merged_grid, pose,
                             yaw_offset=yaw_off,
                             lookahead=la,
@@ -702,13 +986,167 @@ class PlanningCmdVelGateNode(Node):
                             threshold=thr,
                         )
                         if blocked:
+                            if site_static_bypass and not self._dynamic_obstacle_source_blocks(
+                                blocked_detail
+                            ):
+                                self._log_site_static_cost_bypass(
+                                    direction, label, la, blocked_detail
+                                )
+                                continue
                             self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                            cause = self._format_cost_source_debug(blocked_detail)
                             self.get_logger().warn(
                                 f"cost-stop {direction}: source={label} "
                                 f"lookahead={la:.2f}m "
+                                f"cause={cause} "
                                 f"hold={self.cost_stop_hold_s:.2f}s"
                             )
                             return True
+
+        return False
+
+    # HH_260618: Returns true only for mission-owned campsite parking commands.
+    # Mixed x/y motion remains under normal cost-stop behavior.
+    def _should_bypass_static_cost_for_site_maneuver(
+        self, cmd_in: Twist | None
+    ) -> bool:
+        if cmd_in is None:
+            return False
+        min_lateral = max(0.0, float(self.lateral_cmd_bypass_min_mps))
+        lateral_site_motion = (
+            self.lateral_cmd_bypass_static_cost_stop
+            and
+            abs(float(cmd_in.linear.y)) > min_lateral
+            and abs(float(cmd_in.linear.x)) <= min_lateral
+        )
+        min_reverse = max(0.0, float(self.reverse_cmd_bypass_min_mps))
+        reverse_site_motion = (
+            self.reverse_cmd_bypass_static_cost_stop
+            and float(cmd_in.linear.x) < -min_reverse
+            and abs(float(cmd_in.linear.y)) <= min_lateral
+        )
+        return lateral_site_motion or reverse_site_motion
+
+    # HH_260618: Static lanelet/global-path cost is allowed during explicit
+    # site maneuver, but live obstacle sources must still stop parking motion.
+    def _dynamic_obstacle_source_blocks(
+        self, blocked_detail: tuple[float, float, int] | None
+    ) -> bool:
+        if blocked_detail is None:
+            return False
+        wx, wy, _ = blocked_detail
+        threshold = int(self.lateral_cmd_dynamic_obstacle_threshold)
+        for label, grid in self._cost_source_grids.items():
+            normalized = str(label).lower()
+            if "lidar" not in normalized and "radar" not in normalized:
+                continue
+            if self._sample_grid_cost(grid, wx, wy) >= threshold:
+                return True
+        return False
+
+    # HH_260618: Throttled visibility for campsite maneuver static-cost bypass.
+    def _log_site_static_cost_bypass(
+        self,
+        direction: str,
+        source_label: str,
+        lookahead_m: float,
+        blocked_detail: tuple[float, float, int] | None,
+    ) -> None:
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        if (now_sec - self._last_lateral_static_bypass_log_sec) < 2.0:
+            return
+        self._last_lateral_static_bypass_log_sec = now_sec
+        cause = self._format_cost_source_debug(blocked_detail)
+        self.get_logger().info(
+            f"site-maneuver static-cost bypass {direction}: source={source_label} "
+            f"lookahead={lookahead_m:.2f}m cause={cause}"
+        )
+
+    # HH_260618: Returns true when cmd_vel has forward/rear/lateral translation.
+    def _is_translational_cmd(self, cmd_in: Twist) -> bool:
+        eps = max(0.0, float(self.lanelet_safety_min_translation_mps))
+        return abs(float(cmd_in.linear.x)) > eps or abs(float(cmd_in.linear.y)) > eps
+
+    # HH_260618: Blocks translation based on the raw lanelet cost grid. This
+    # catches off-lane and lane-boundary penetration that can be hidden by the
+    # merged inflation grid's ego-clear footprint.
+    def _should_stop_for_lanelet_safety(
+        self, cmd_in: Twist | None, now_sec: float
+    ) -> bool:
+        if not self.lanelet_safety_enable:
+            return False
+        if cmd_in is None:
+            return False
+        if not self._is_translational_cmd(cmd_in):
+            return False
+
+        grid = self._last_lanelet_safety_grid
+        if grid is None or not grid.data or grid.info.resolution <= 0.0:
+            return False
+
+        target_frame = str(grid.header.frame_id).strip()
+        pose_candidates = self._resolve_pose_candidates(target_frame)
+        if not pose_candidates:
+            if (now_sec - self._last_empty_corridor_warn_sec) >= 2.0:
+                self._last_empty_corridor_warn_sec = now_sec
+                self.get_logger().warn(
+                    "lanelet-safety: no pose candidates; "
+                    "check pose/lanelet costmap frame alignment"
+                )
+            return False
+
+        directions: list[tuple[str, float, float]] = []
+        min_cmd = max(0.0, float(self.lanelet_safety_min_translation_mps))
+        if float(cmd_in.linear.x) > min_cmd:
+            directions.append(("FRONT", 0.0, self.lanelet_safety_lookahead_m))
+        if self.lanelet_safety_check_reverse and float(cmd_in.linear.x) < -min_cmd:
+            directions.append(("REAR", math.pi, self.lanelet_safety_lookahead_m))
+        if self.lanelet_safety_check_lateral and float(cmd_in.linear.y) > min_cmd:
+            directions.append(("LEFT", math.pi / 2.0, self.lanelet_safety_lookahead_m))
+        if self.lanelet_safety_check_lateral and float(cmd_in.linear.y) < -min_cmd:
+            directions.append(("RIGHT", -math.pi / 2.0, self.lanelet_safety_lookahead_m))
+
+        if not directions:
+            return False
+
+        for label, pose in pose_candidates:
+            pose_x, pose_y, _ = pose
+            inside, current_cost = self._sample_grid_cost_detail(grid, pose_x, pose_y)
+            if not inside and self.lanelet_safety_stop_on_unknown:
+                self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                self.get_logger().warn(
+                    f"lanelet-safety CURRENT: source={label} out_of_grid "
+                    f"hold={self.cost_stop_hold_s:.2f}s"
+                )
+                return True
+            if inside and current_cost >= self.lanelet_safety_current_threshold:
+                self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                self.get_logger().warn(
+                    f"lanelet-safety CURRENT: source={label} "
+                    f"cost={current_cost} threshold={self.lanelet_safety_current_threshold} "
+                    f"hold={self.cost_stop_hold_s:.2f}s"
+                )
+                return True
+
+            for direction, yaw_offset, lookahead in directions:
+                blocked, detail = self._sample_lanelet_safety_corridor(
+                    grid,
+                    pose,
+                    yaw_offset=yaw_offset,
+                    lookahead=lookahead,
+                    width=self.lanelet_safety_width_m,
+                    threshold=self.lanelet_safety_threshold,
+                )
+                if blocked:
+                    self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                    wx, wy, cost, reason = detail
+                    self.get_logger().warn(
+                        f"lanelet-safety {direction}: source={label} "
+                        f"cost={cost} reason={reason} at=({wx:.2f},{wy:.2f}) "
+                        f"lookahead={lookahead:.2f}m width={self.lanelet_safety_width_m:.2f}m "
+                        f"hold={self.cost_stop_hold_s:.2f}s"
+                    )
+                    return True
 
         return False
 
@@ -922,6 +1360,134 @@ class PlanningCmdVelGateNode(Node):
             )
         return cmd
 
+    # HH_260618: Holds forward motion until robot yaw agrees with route tangent.
+    def _apply_route_heading_alignment_gate(self, cmd_in: Twist) -> Twist | None:
+        if not self.enable_route_heading_alignment:
+            self._route_heading_align_active = False
+            return None
+        if abs(float(cmd_in.linear.y)) > self.route_heading_lateral_cmd_epsilon_mps:
+            # Crab/site maneuvers are explicit non-Nav2 phases; do not override them.
+            self._route_heading_align_active = False
+            return None
+        if float(cmd_in.linear.x) < -self.route_heading_min_cmd_x_mps:
+            # Reverse motion is reserved for parking/recovery nodes and must not
+            # be converted into a route-facing turn by the normal driving gate.
+            self._route_heading_align_active = False
+            return None
+        if (
+            not self._route_heading_align_active
+            and float(cmd_in.linear.x) <= self.route_heading_min_cmd_x_mps
+        ):
+            return None
+
+        path = self._last_route_heading_path
+        if path is None:
+            self._route_heading_align_active = False
+            return None
+        path_frame = str(path.header.frame_id).strip() or self.route_heading_frame_id
+        pose_candidates = self._resolve_pose_candidates(path_frame)
+        if not pose_candidates:
+            self._route_heading_align_active = False
+            return None
+        source_label, pose = pose_candidates[0]
+        pose_x, pose_y, pose_yaw = pose
+
+        heading = self._route_heading_from_path(path, pose_x, pose_y)
+        if heading is None:
+            self._route_heading_align_active = False
+            return None
+        desired_yaw, closest_dist_m, start_idx, target_idx = heading
+        yaw_error_rad = self._normalize_yaw(desired_yaw - pose_yaw)
+        yaw_error_deg = abs(math.degrees(yaw_error_rad))
+
+        enter_deg = max(1.0, self.route_heading_error_enter_deg)
+        exit_deg = max(1.0, min(self.route_heading_error_exit_deg, enter_deg))
+        if self._route_heading_align_active:
+            if yaw_error_deg <= exit_deg:
+                self._route_heading_align_active = False
+                return None
+        elif yaw_error_deg >= enter_deg:
+            self._route_heading_align_active = True
+        else:
+            return None
+
+        cmd = Twist()
+        cmd.linear.x = self._clamp(
+            float(cmd_in.linear.x),
+            0.0,
+            max(0.0, self.route_heading_max_linear_x),
+        )
+        cmd.linear.y = 0.0
+        cmd.linear.z = 0.0
+        cmd.angular.z = self._clamp(
+            self.route_heading_angular_kp * yaw_error_rad,
+            -abs(self.route_heading_max_angular_z),
+            abs(self.route_heading_max_angular_z),
+        )
+
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        if (now_sec - self._last_route_heading_log_sec) >= 1.0:
+            self._last_route_heading_log_sec = now_sec
+            self.get_logger().warn(
+                "route-heading align active: "
+                f"source={source_label} yaw_err={yaw_error_deg:.1f}deg "
+                f"path_idx={start_idx}->{target_idx} nearest={closest_dist_m:.2f}m "
+                f"cmd_x={cmd_in.linear.x:.2f}"
+            )
+        return cmd
+
+    # HH_260618: Computes active path tangent near the robot for heading guard.
+    def _route_heading_from_path(
+        self, path: Path, pose_x: float, pose_y: float
+    ) -> tuple[float, float, int, int] | None:
+        points: list[tuple[float, float]] = []
+        for pose_stamped in path.poses:
+            x = float(pose_stamped.pose.position.x)
+            y = float(pose_stamped.pose.position.y)
+            if math.isfinite(x) and math.isfinite(y):
+                points.append((x, y))
+        min_points = max(2, int(self.route_heading_min_path_points))
+        if len(points) < min_points:
+            return None
+
+        closest_idx = 0
+        closest_dist_sq = float("inf")
+        for idx, (x, y) in enumerate(points):
+            dist_sq = (x - pose_x) * (x - pose_x) + (y - pose_y) * (y - pose_y)
+            if dist_sq < closest_dist_sq:
+                closest_dist_sq = dist_sq
+                closest_idx = idx
+
+        lookahead = max(0.10, float(self.route_heading_lookahead_m))
+        target_idx = closest_idx
+        accumulated = 0.0
+        prev_x, prev_y = points[closest_idx]
+        for idx in range(closest_idx + 1, len(points)):
+            x, y = points[idx]
+            step = math.hypot(x - prev_x, y - prev_y)
+            if step <= 1e-4:
+                continue
+            accumulated += step
+            prev_x, prev_y = x, y
+            target_idx = idx
+            if accumulated >= lookahead:
+                break
+
+        start_idx = closest_idx
+        if target_idx == closest_idx:
+            if closest_idx <= 0:
+                return None
+            start_idx = closest_idx - 1
+            target_idx = closest_idx
+
+        start_x, start_y = points[start_idx]
+        target_x, target_y = points[target_idx]
+        if math.hypot(target_x - start_x, target_y - start_y) <= 1e-4:
+            return None
+
+        heading = math.atan2(target_y - start_y, target_x - start_x)
+        return heading, math.sqrt(closest_dist_sq), start_idx, target_idx
+
     # Selects currently active zone by nearest-distance rule with exit hysteresis.
     def _select_active_yaw_zone(self, x: float, y: float) -> YawAlignmentZone | None:
         if not self._yaw_alignment_zones:
@@ -945,6 +1511,54 @@ class PlanningCmdVelGateNode(Node):
                 nearest_dist = dist
         return nearest
 
+    # HH_260618: Strict lanelet-grid corridor sampler. Unlike the merged-grid
+    # sampler, out-of-grid can be treated as blocked because leaving the
+    # lanelet map is a route-safety violation, not an obstacle-grid miss.
+    def _sample_lanelet_safety_corridor(
+        self,
+        grid: OccupancyGrid,
+        pose: tuple[float, float, float],
+        *,
+        yaw_offset: float,
+        lookahead: float,
+        width: float,
+        threshold: int,
+    ) -> tuple[bool, tuple[float, float, int, str]]:
+        pose_x, pose_y, yaw = pose
+        effective_yaw = yaw + yaw_offset
+        scan_lookahead = max(0.05, float(lookahead))
+        scan_width = max(0.05, float(width))
+        stop_threshold = int(threshold)
+        res = float(grid.info.resolution)
+        origin_x = float(grid.info.origin.position.x)
+        origin_y = float(grid.info.origin.position.y)
+        grid_width = int(grid.info.width)
+        grid_height = int(grid.info.height)
+        cos_y = self._cos(effective_yaw)
+        sin_y = self._sin(effective_yaw)
+        half_w = scan_width * 0.5
+
+        n_x = int(math.floor(scan_lookahead / res + 1e-9)) + 1
+        n_y = int(math.floor(scan_width / res + 1e-9)) + 1
+
+        for ix in range(n_x):
+            x = ix * res
+            for iy in range(n_y):
+                y = -half_w + iy * res
+                wx = pose_x + x * cos_y - y * sin_y
+                wy = pose_y + x * sin_y + y * cos_y
+                mx = int(round((wx - origin_x) / res))
+                my = int(round((wy - origin_y) / res))
+                if mx < 0 or my < 0 or mx >= grid_width or my >= grid_height:
+                    if self.lanelet_safety_stop_on_unknown:
+                        return True, (wx, wy, -1, "out_of_grid")
+                    continue
+                cost = int(grid.data[my * grid_width + mx])
+                if cost >= stop_threshold:
+                    return True, (wx, wy, cost, "cost")
+
+        return False, (pose_x, pose_y, -1, "clear")
+
     # Samples a corridor in the direction (yaw + yaw_offset) for one pose candidate.
     def _sample_cost_corridor(
         self,
@@ -955,7 +1569,7 @@ class PlanningCmdVelGateNode(Node):
         lookahead: float | None = None,
         width: float | None = None,
         threshold: int | None = None,
-    ) -> tuple[bool, int, list[tuple[int, int]]]:
+    ) -> tuple[bool, int, list[tuple[int, int]], tuple[float, float, int] | None]:
         pose_x, pose_y, yaw = pose
         effective_yaw = yaw + yaw_offset
         scan_lookahead = max(0.05, lookahead if lookahead is not None else self.cost_stop_lookahead_m)
@@ -991,11 +1605,77 @@ class PlanningCmdVelGateNode(Node):
                     cost = int(grid.data[idx])
                     total_cells += 1
                     if cost >= stop_threshold:
-                        return True, total_cells, lethal_cells
+                        return True, total_cells, lethal_cells, (wx, wy, cost)
                     if cost >= self.unavoidable_lethal_threshold:
                         lethal_cells.append((mx, my))
 
-        return False, total_cells, lethal_cells
+        return False, total_cells, lethal_cells, None
+
+    # HH_260618: Samples original source grids at a blocked merged-grid cell.
+    def _format_cost_source_debug(
+        self, blocked_detail: tuple[float, float, int] | None
+    ) -> str:
+        if blocked_detail is None:
+            return "merged:unknown"
+        wx, wy, merged_cost = blocked_detail
+        if not self.cost_source_debug_enable:
+            return f"merged:{merged_cost}@({wx:.2f},{wy:.2f})"
+
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        best_label = "source"
+        best_cost = -1
+        source_parts = []
+        for label, grid in self._cost_source_grids.items():
+            recv_sec = self._cost_source_recv_sec.get(label, 0.0)
+            if self.cost_source_debug_max_age_s > 0.0:
+                if (now_sec - recv_sec) > self.cost_source_debug_max_age_s:
+                    continue
+            cost = self._sample_grid_cost(grid, wx, wy)
+            source_parts.append(f"{label}:{cost}")
+            if cost > best_cost:
+                best_label = label
+                best_cost = cost
+
+        if source_parts:
+            return (
+                f"{best_label}:{best_cost}@({wx:.2f},{wy:.2f}) "
+                f"merged={merged_cost} sources=[{', '.join(source_parts)}]"
+            )
+        return f"merged:{merged_cost}@({wx:.2f},{wy:.2f}) sources=unavailable"
+
+    # HH_260618: Samples one occupancy grid and reports whether the world point
+    # is inside the grid. Raw lanelet safety uses this to distinguish free from
+    # unknown/outside-map space.
+    def _sample_grid_cost_detail(
+        self, grid: OccupancyGrid, wx: float, wy: float
+    ) -> tuple[bool, int]:
+        res = float(grid.info.resolution)
+        if res <= 0.0:
+            return False, -1
+        origin_x = float(grid.info.origin.position.x)
+        origin_y = float(grid.info.origin.position.y)
+        mx = int((wx - origin_x) / res)
+        my = int((wy - origin_y) / res)
+        width = int(grid.info.width)
+        height = int(grid.info.height)
+        if mx < 0 or my < 0 or mx >= width or my >= height:
+            return False, -1
+        return True, int(grid.data[my * width + mx])
+
+    # HH_260618: Samples one occupancy grid at map/world position.
+    def _sample_grid_cost(self, grid: OccupancyGrid, wx: float, wy: float) -> int:
+        res = float(grid.info.resolution)
+        if res <= 0.0:
+            return -1
+        origin_x = float(grid.info.origin.position.x)
+        origin_y = float(grid.info.origin.position.y)
+        mx = int((wx - origin_x) / res)
+        my = int((wy - origin_y) / res)
+        width = int(grid.info.width)
+        height = int(grid.info.height)
+        if mx < 0 or my < 0 or mx >= width or my >= height:
+            return -1
+        return int(grid.data[my * width + mx])
 
     # Resolves robot pose candidates as (x, y, yaw) in target_frame.
     def _resolve_pose_candidates(
@@ -1033,10 +1713,13 @@ class PlanningCmdVelGateNode(Node):
             "pose_topic": ["pose_topic", "tf_robot_base", "odometry"],
         }.get(preference, ["odometry", "tf_robot_base", "pose_topic"])
 
-        candidates: list[tuple[str, tuple[float, float, float]]] = []
+        # HH_260617: Treat pose_source_preference as an exclusive priority list, not a union.
+        # A valid lanelet-snapped pose must not be vetoed by raw odometry/TF that can sit on lane-boundary cost.
         for source in ordered_sources:
-            candidates.extend(source_candidates.get(source, []))
-        return candidates
+            candidates = source_candidates.get(source, [])
+            if candidates:
+                return candidates
+        return []
 
     # Resolves pose-topic candidates in target frame.
     def _resolve_pose_topic_candidates(

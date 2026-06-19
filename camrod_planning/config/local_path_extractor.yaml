@@ -2,34 +2,45 @@
   ros__parameters:
     enabled: true
     frame_id: "map"
-    # Use Nav2 planner native output as global path source.
+    # HH_260619 - Use planner_server's published route as the source of truth.
+    # Nav2 SmoothPath keeps its path on the BT blackboard and does not publish a
+    # stable /planning/plan_smoothed topic in this stack.
     global_path_topic: "/planning/global_path"
+    fallback_global_path_topic: ""
+    preferred_path_hold_s: 1.0
     # HH_260527: local_path_source options:
     #   controller_then_slice: prefer controller path, fallback to global path slice
     #   controller_only: use controller path only (publish empty when unavailable)
     #   slice_only: always slice from global path
-    # Prefer controller-local trajectory first so local path reflects
-    # real-time local costmap/obstacle reactions; fallback to global slice for continuity.
-    local_path_source: "controller_then_slice"
+    # HH_260619 - Keep operator-visible local path and path-cost guidance tied
+    # to the newest selected global route. Controller debug plans can lag during
+    # goal replacement and make RViz look like it follows an old target.
+    local_path_source: "slice_only"
     controller_path_topic: "/planning/local_path_controller"
     controller_path_timeout_s: 0.8
-    # planner_server /planning/global_path is VOLATILE.
-    # Keep subscriber durability VOLATILE for guaranteed matching.
+    # HH_260618: On a new clicked/UI goal, discard controller-local path from
+    # the previous goal for a short window so /planning/local_path follows the
+    # latest global route immediately.
+    controller_path_reset_on_global_path_change: true
+    controller_path_reset_hold_s: 0.4
+    # HH_260619 - Keep VOLATILE so live route updates are matched even when the
+    # upstream planner QoS differs across Nav2 builds.
     global_path_qos_transient_local: false
     # Use fused localization pose for controller-plan transform.
     # This prevents heading/sign mismatch between global and local path direction.
     pose_topic: "/localization/pose"
     output_topic: "/planning/local_path"
-    # Local path is controller-local plan first; global-slice is fallback for continuity.
-    # Balance responsiveness and CPU load.
-    # Keep realtime behavior while reducing high-frequency republish load.
-    publish_rate_hz: 20.0
+    # Local path is an explicit slice of the current global route.
+    # HH_260618: Keep input-triggered refresh, but lower timer heartbeat to reduce CPU/topic load.
+    publish_rate_hz: 15.0
     # HH_260513: Publish immediately on new global path so path updates snap
     # to current robot position right after new goal, not at next timer tick.
     publish_on_input_update: true
     # Slice current global path around closest pose.
     lookahead_distance_m: 30.0
-    lookbehind_distance_m: 0.5
+    # HH_260619 - Keep only a short tail behind the robot. A long look-behind
+    # makes RViz show stale route geometry near the start while the robot turns.
+    lookbehind_distance_m: 0.2
     min_points: 12
     max_points: 320
     # Keep local path anchored near the previous closest index so
@@ -52,7 +63,7 @@
     # Empty publishes were causing local cost-grid marker flicker.
     publish_empty_on_invalid: false
     empty_republish_period_s: 0.3
-    # HH_260513: Moving-average window applied to local path XY before publishing.
-    # Reduces high-frequency jitter from SMAC/NavFn planner output.
-    # 0 or 1 disables smoothing. Odd values (3, 5, 7) recommended; 5 is a good default.
-    smooth_window: 5
+    # HH_260619 - Do not smooth the local slice independently. Local path must
+    # remain the exact forward slice of the fixed global route; additional
+    # moving-average smoothing cuts corners and looks like left/right drift.
+    smooth_window: 1

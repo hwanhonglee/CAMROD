@@ -1,0 +1,14 @@
+# HH_260617: Sim profile keeps localization diagnostics focused on topic
+# presence/rate instead of real covariance thresholds. The EKF covariance in
+# sim is synthetic and can be larger than RTK-quality hardware output.
+/system/localization_pose_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    pose_topic: "/localization/pose_with_covariance"
+    expected_hz: 20.0
+    hz_warn_ratio: 0.5
+    hz_error_ratio: 0.2
+    stale_timeout_s: 2.0
+    cov_warn_threshold: 100.0
+    cov_error_threshold: 400.0
+    max_jump_m: 20.0

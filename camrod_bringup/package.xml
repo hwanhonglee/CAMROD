@@ -3,7 +3,8 @@
 <package format="3">
   <name>camrod_bringup</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
+  <!-- HH_260617: Replace placeholder metadata with the package role. -->
+  <description>Launch orchestration and system-level configuration profiles for the CAMROD stack.</description>
   <maintainer email="hwanhong57@gmail.com">hong</maintainer>
   <!-- Set explicit Apache license. -->
   <license>Apache-2.0</license>

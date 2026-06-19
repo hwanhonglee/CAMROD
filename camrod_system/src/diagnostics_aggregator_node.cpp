@@ -23,7 +23,9 @@ public:
   : Node("diagnostics_aggregator")
   {
     source_topic_ = declare_parameter<std::string>("source_topic", "/diagnostics");
-    output_topic_ = declare_parameter<std::string>("output_topic", "/diagnostics_agg");
+    // HH_260617: Default to a relative topic; system.launch.py namespaces it to
+    // `/system/diagnostics_agg_tools` when used for lightweight system tools.
+    output_topic_ = declare_parameter<std::string>("output_topic", "diagnostics_agg");
     publish_period_s_ = declare_parameter<double>("publish_period_s", 1.0);
     stale_timeout_s_ = declare_parameter<double>("stale_timeout_s", 3.0);
 

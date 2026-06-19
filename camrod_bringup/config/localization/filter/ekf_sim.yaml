@@ -1,0 +1,159 @@
+/**:
+# HH_260618: Sim EKF profile accepts the fake GNSS start pose so planning tests
+# begin from the configured simulated robot pose instead of staying at map origin.
+# HH_260109 Use node-agnostic parameters so launch applies them regardless of namespace.
+  ros__parameters:
+    # HH_260327: Reduce EKF loop target to avoid startup overload under full bringup.
+    # 30 Hz budget (33.3 ms) caused periodic missed-rate warnings; 20 Hz gives 50 ms budget.
+    frequency: 20.0
+    sensor_timeout: 0.2
+    two_d_mode: true
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: robot_base_link
+    # HH_260327: Keep EKF world_frame as odom (single-filter topology stability).
+    # map-frame consistency for /localization/pose is handled by odometry_to_pose_node
+    # output_frame_id=map in localization.launch.py.
+    world_frame: odom
+    publish_tf: true
+    publish_acceleration: false
+    # Handle out-of-order sensor messages gracefully (IMU/GNSS timing jitter under full bringup).
+    smooth_lagged_data: true
+    history_length: 0.3
+    # Extrapolate filter state to current time on each publish cycle so TF/pose
+    # consumers get the most recent estimate rather than the last fused timestamp.
+    predict_to_current_time: true
+    # HH_260526: Initial position uncertainty set to 1.0 m² so the first GNSS measurement
+    # is well-trusted (K_init ≈ 0.91) and EKF converges to GNSS position within 1-2 epochs.
+    # robot_localization default is 1e-9 (near-zero) which gives K≈0 and prevents attachment.
+    # 1.0 (not 5.0) avoids over-aggressive initial jumps — GNSS position can vary within 1m at startup.
+    # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    initial_estimate_covariance: [1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                  0.0,  1.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.0,  0.5,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,  0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,
+                                  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01]
+
+    # HH_260522: Stability-first IMU fusion for ground vehicle.
+    # - Keep orientation + gyro yaw-rate for heading observability.
+    # - Disable raw linear acceleration fusion (accel bias can induce standstill drift).
+    # HH_260526: relative=false (absolute heading).
+    #   CV7 IMU provides absolute heading (ENU convention after driver conversion).
+    #   relative=true forces initial yaw=0 regardless of actual robot heading.
+    #   When robot moves, EKF integrates wheel vx along yaw=0 (East) direction,
+    #   but GNSS shows actual displacement → large innovation → "flies away".
+    #   relative=false uses the IMU absolute heading for correct position integration.
+    imu0: /sensing/imu/data
+    imu0_config: [false, false, false,
+                  true,  true,  true,
+                  false, false, false,
+                  true,  true,  true,
+                  false, false, false]
+    imu0_remove_gravitational_acceleration: true
+    imu0_differential: false
+    imu0_relative: false
+    imu0_queue_size: 20
+
+    # GNSS absolute position (map frame).
+    # map→odom identity TF is published by ekf_map_to_odom_static_tf in localization.launch.py
+    # (ekf_publish_map_to_odom_static_tf default=true) so EKF can transform this to odom world_frame.
+    pose0: /sensing/gnss/pose_with_covariance
+    pose0_config: [true,  true,  true,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false]
+    pose0_differential: false
+    pose0_relative: false
+    pose0_queue_size: 10
+    # Reject GNSS if it deviates > ~3σ from the predicted state.
+    # With gnss_covariance_floor_xy=0.1 m² and steady-state P_ss≈0.037, threshold distance ≈ 1.0 m
+    # — catches multipath / float-mode jumps while passing normal RTK corrections (<5 cm).
+    pose0_rejection_threshold: 1000.0
+
+    # Primary wheel odometry — forward velocity + yaw rate only (non-holonomic).
+    # HH_260410 Topic renamed for consistent /platform/status/* naming.
+    odom0: /platform/status/wheel_odometry
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  false, false,
+                   false, false, true,
+                   false, false, false]
+    odom0_differential: false
+    odom0_relative: false
+    odom0_queue_size: 20
+
+    # Secondary wheel odometry (nav_msgs) — vx, vy≈0, yaw rate.
+    # vy≈0 acts as a soft non-holonomic constraint (lateral velocity should be ~0).
+    odom1: /platform/wheel/nav_odometry
+    odom1_config: [false, false, false,
+                  false, false, false,
+                  true,  true,  false,
+                  false, false, true,
+                  false, false, false]
+    odom1_differential: false
+    odom1_relative: false
+    odom1_queue_size: 20
+
+    # HH_260526: Lanelet snap DISABLED in EKF.
+    # The feedback loop (EKF→adapter→pose→map_helper→lanelet_pose→EKF) was the primary cause
+    # of GNSS not attaching at startup:
+    #   1. map_helper snaps initial (0,0) EKF estimate to nearest lanelet (wrong position)
+    #   2. EKF fuses lanelet with K≈0.98 (lanelet R=0.09 < GNSS R=0.1 → more trusted than GNSS)
+    #   3. GNSS arrives at actual position → innovation > rejection_threshold → GNSS rejected
+    #   4. EKF stays locked to wrong lanelet position
+    # With RTK GNSS available, the road-snap constraint is redundant.
+    # Re-enable only if GNSS-absent DR mode requires lateral lane-keeping correction.
+    pose1: /localization/centerline_pose
+    pose1_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, false]
+    pose1_differential: false
+    pose1_relative: false
+    pose1_queue_size: 10
+    pose1_rejection_threshold: 3.0
+
+    # HH_260604: Fuse GNSS yaw as pose2 so heading innovations cannot reject pose0 position.
+    pose2: /sensing/gnss/pose_with_covariance
+    pose2_config: [false, false, false,
+                  false, false, true,
+                  false, false, false,
+                  false, false, false,
+                  false, false, false]
+    pose2_differential: false
+    pose2_relative: false
+    pose2_queue_size: 10
+    pose2_rejection_threshold: 1000.0
+
+    # State vector: [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    # HH_260526: Position noise reduced 0.05→0.01, velocity noise 0.5→0.05.
+    #   Position Q=0.05 → steady-state K≈0.51 (51% GNSS gain, 0.5m GNSS jump → 0.25m EKF jump).
+    #   Position Q=0.01 → steady-state K≈0.27 (27% GNSS gain, 0.5m GNSS jump → 0.14m EKF jump).
+    #   Lower Q means EKF trusts its own model more between GNSS epochs → less drift while stationary.
+    process_noise_covariance: [0.01, 0.0,  0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.01, 0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.1,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.1, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.1, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.0, 0.1,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.0, 0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.0, 0.0,  0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.05, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.1,  0.0,  0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.05, 0.0,  0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.05, 0.0,
+                              0.0,  0.0,  0.0,  0.0, 0.0, 0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.05]

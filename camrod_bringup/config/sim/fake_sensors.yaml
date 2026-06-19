@@ -18,6 +18,11 @@
     motion_source: "cmd_vel"
     cmd_vel_motion_topic: "/platform/cmd_vel"
     cmd_vel_timeout_s: 0.5
+    # HH_260618: Hold the last non-zero command briefly in sim because Nav2 may
+    # interleave zero/non-zero Twist samples during controller updates. Without
+    # this, the fake sensor timer can sample only zeros and appear stuck.
+    cmd_vel_nonzero_hold_s: 0.20
+    cmd_vel_deadband: 0.0001
     max_cmd_speed_mps: 2.5
     # Feed wheel_odometry_bridge input in sim so localization wheel
     # stream is available even without real /rmp401/odom hardware source.
@@ -28,7 +33,9 @@
     # - true  : keep fake sensor position fixed on the path anchor
     # - false : move along centerline by speed_mps
     freeze_motion: false
-    publish_rate_hz: 20.0
+    # HH_260618: 15 Hz is enough for sim localization/control while reducing CPU and topic traffic.
+    # HH_260618: 10 Hz is sufficient for sim localization/planning smoke tests and reduces CPU.
+    publish_rate_hz: 10.0
     loop: true
     # 2026-02-05 14:37: Skip crosswalk lanelets to prevent stitching jumps.
     exclude_crosswalk: true
@@ -44,6 +51,8 @@
     # centerline_scope: all | selected_lanelet
     centerline_scope: "all"
     centerline_connect_max_gap: 5.0
+    # HH_260618: Default to one summary warning instead of hundreds of full-map stitch warnings.
+    log_centerline_stitch_details: false
     # 2026-02-02: Close near-loop centerlines for continuous laps.
     close_loop: true
     close_loop_max_gap: 3.0
@@ -62,6 +71,18 @@
     # filtered-lidar topics so sensing cost-grid can consume filtered points.
     obstacle_cloud_topic: "/perception/obstacles"
     lidar_filtered_topic: "/sensing/lidar/points_filtered"
+    # HH_260617: Sim hardware drivers are disabled; publish deterministic dummy
+    # converter/cost-grid outputs so diagnostics do not block planning/control tests.
+    publish_velocity_converter_output: true
+    velocity_converter_output_topic: "/sensing/platform_velocity_converter/twist_with_covariance"
+    publish_dummy_lidar_cost_grid: true
+    dummy_lidar_cost_grid_topic: "/sensing/lidar/near_cost_grid"
+    dummy_lidar_cost_grid_width: 120
+    dummy_lidar_cost_grid_height: 120
+    dummy_lidar_cost_grid_resolution: 0.10
+    # HH_260618: Cost-grid health fallback does not need to follow pose/IMU rate.
+    # HH_260618: Dummy diagnostic grid is not the real obstacle pipeline; lower to reduce load.
+    dummy_lidar_cost_grid_publish_rate_hz: 3.0
     # Align incoming /localization/pose yaw to nearest global-path tangent.
     # Position is preserved; only yaw is replaced and published to output topic.
     localization_pose_yaw_align_enable: true
@@ -86,11 +107,13 @@
     # 2026-03-03: Hold vehicle still at startup so GNSS/ESKF can settle before motion begins.
     startup_hold_s: 5.0
     # GNSS failure simulation for DR fallback testing.
+    # HH_260617: Keep failure injection disabled by default so sim:=true
+    # validates planning/control with steady dummy localization and sensing.
     # gnss_failure_after_s: seconds from startup when GNSS NavSatFix stops. -1 = never.
     # gnss_recovery_after_s: seconds from startup when GNSS resumes. -1 = never recovers.
     # Example: failure_after=15, recovery_after=45 -> GNSS off for 30s then back on.
-    gnss_failure_after_s: 25.0
-    gnss_recovery_after_s: 55.0
+    gnss_failure_after_s: -1.0
+    gnss_recovery_after_s: -1.0
     # HH_260526: Navigation model mode.
     # simulation_nav_mode: centerline | free_nav
     # HH_260527: Default to free_nav so RViz initial pose (P) relocates

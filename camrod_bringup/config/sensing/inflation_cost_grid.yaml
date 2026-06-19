@@ -4,12 +4,17 @@
     base_frame_id: "robot_base_link"
     output_frame_id: "map"
 
-    # Grid geometry — 12×12 m window centred on robot
+    # HH_260618: Keep the output map-axis aligned for Nav2/gate consumers, but
+    # use a smaller bbox plus robot-frame cost window to reduce side/rear load.
     resolution: 0.10
-    width: 120
-    height: 120
-    origin_x: -6.0
-    origin_y: -6.0
+    width: 50
+    height: 50
+    origin_x: -2.5
+    origin_y: -2.5
+    enable_robot_frame_window: true
+    forward_extent_m: 3.0
+    rear_extent_m: 1.2
+    side_extent_m: 1.4
 
     # Cost model
     free_value: 0
@@ -17,7 +22,8 @@
     ego_clear_radius_m: 0.50
 
     # Runtime
-    publish_rate_hz: 10.0
+    # HH_260618: Match Nav2 local-costmap cadence; 10 Hz was redundant for a 6 Hz consumer.
+    publish_rate_hz: 6.0
 
     # HH_260424: Inputs merged cell-wise (max). Order doesn't matter.
     #   lanelet:      lanelet centerline gradient (0=center, 35=in-lane, 99=off-lane)

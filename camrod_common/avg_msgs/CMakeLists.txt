@@ -58,6 +58,11 @@ set(msg_files
   "msg/AvgGnssPose.msg" # HH_260326: custom GNSS pose message type
   "msg/AvgTrackingError.msg" # HH_260330: local/global path tracking error stream
   "msg/AvgPlatformStatus.msg" # HH_260409: platform CAN/status bridge payload
+  "msg/PlanningMissionKey.msg" # HH_260617: planning semantic mission key command/status
+  "msg/PlanningRecallRequest.msg" # HH_260617: camping-site recall request
+  "msg/PlanningScenario.msg" # HH_260617: planning scenario command/status
+  "msg/PlanningState.msg" # HH_260617: planning state-machine status
+  "msg/UiDestinationCommand.msg" # HH_260617: UI destination command
   "msg/AvgSensingMsgs.msg"
   "msg/AvgLocalizationMsgs.msg"
   "msg/AvgPlanningMsgs.msg"

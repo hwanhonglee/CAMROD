@@ -1,0 +1,13 @@
+<library path="lanelet_route_planner">
+  <class
+    name="camrod_planning::LaneletRoutePlanner"
+    type="camrod_planning::LaneletRoutePlanner"
+    base_class_type="nav2_core::GlobalPlanner">
+    <description>
+      HH_260619 - Lanelet centerline global planner for CAMROD route following.
+      It returns legal lanelet-routing centerline paths instead of free-space
+      costmap-search paths, so the global route stays fixed and local control
+      handles obstacle response.
+    </description>
+  </class>
+</library>

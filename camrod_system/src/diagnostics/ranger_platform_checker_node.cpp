@@ -7,7 +7,7 @@
  * 구독 토픽
  * ---------
  *   /system_state    (ranger_msgs/SystemState)
- *   /battery_state   (sensor_msgs/BatteryState)
+ *   /platform/status/battery_state (sensor_msgs/BatteryState)
  *   /actuator_state  (ranger_msgs/ActuatorStateArray)
  *   /odom            (nav_msgs/Odometry)
  *
@@ -107,7 +107,7 @@ struct PlatformState
   double   battery_voltage_sys{0.0};
   uint8_t  motion_mode{0};
 
-  // /battery_state
+  // /platform/status/battery_state
   bool has_battery{false};
   rclcpp::Time battery_time{0, 0, RCL_ROS_TIME};
   float batt_voltage{0.0f};
@@ -141,7 +141,9 @@ protected:
   void declare_parameters_() override
   {
     declare_parameter("system_state_topic",  std::string("/system_state"));
-    declare_parameter("battery_state_topic", std::string("/battery_state"));
+    // HH_260617: Default to normalized CAMROD platform BMS topic. Raw Ranger
+    // /battery_state is still available as a launch/config override if needed.
+    declare_parameter("battery_state_topic", std::string("/platform/status/battery_state"));
     declare_parameter("actuator_state_topic",std::string("/actuator_state"));
     declare_parameter("odom_topic",          std::string("/odom"));
 
@@ -207,7 +209,7 @@ protected:
         onSystemState(msg);
       });
 
-    // /battery_state 구독
+    // HH_260617: Subscribe to normalized platform BMS topic by default.
     battery_sub_ = create_subscription<sensor_msgs::msg::BatteryState>(
       battery_state_topic_, 10,
       [this](const sensor_msgs::msg::BatteryState::ConstSharedPtr msg) {

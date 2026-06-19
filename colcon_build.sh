@@ -35,6 +35,28 @@ SRC_ROOT="${WS_ROOT}/src"
 mkdir -p "${WS_ROOT}/build" "${WS_ROOT}/install" "${WS_ROOT}/log"
 cd "${WS_ROOT}"
 
+# HH_260616: Scope-aware cleanup for generated artifacts. Package-selected builds
+# must not delete artifacts owned by packages that are not being rebuilt.
+_build_scope_includes_pkg() {
+  local pkg="$1" prev="" token
+  local saw_selector=0
+  for token in "$@"; do
+    case "${prev}" in
+      --packages-select|--packages-up-to|--packages-above|--packages-above-and-dependencies|--packages-select-by-dep|--packages-start|--packages-end)
+        saw_selector=1
+        [[ "${token}" == "${pkg}" ]] && return 0
+        ;;
+    esac
+    case "${token}" in
+      --packages-select|--packages-up-to|--packages-above|--packages-above-and-dependencies|--packages-select-by-dep|--packages-start|--packages-end)
+        saw_selector=1
+        ;;
+    esac
+    prev="${token}"
+  done
+  [[ "${saw_selector}" -eq 0 ]]
+}
+
 # HH_260611: Remove stale per-package CMake build directories whose cached source
 # path no longer exists. This handles external repo moves without requiring a full
 # workspace clean.
@@ -58,19 +80,23 @@ _clean_stale_cmake_build_dirs
 # artifacts before rebuilding so setup.py can recreate them.
 _clean_stale_install_artifacts() {
   local path
-  for path in \
-    "${WS_ROOT}/install/camrod_ui/share/camrod_ui/launch/ui.launch.py"
-  do
-    if [[ -e "${path}" || -L "${path}" ]]; then
-      rm -f "${path}"
-      log "removed stale install artifact: ${path}"
-    fi
-  done
+  if _build_scope_includes_pkg camrod_ui "$@"; then
+    for path in \
+      "${WS_ROOT}/install/camrod_ui/share/camrod_ui/launch/ui.launch.py"
+    do
+      if [[ -e "${path}" || -L "${path}" ]]; then
+        rm -f "${path}"
+        log "removed stale install artifact: ${path}"
+      fi
+    done
+  fi
 
   # HH_260611: Remove stale isolated install prefixes for packages that are no
   # longer part of this x86_64 build graph. If left in place, setup.bash tries
   # to source missing local_setup.bash files and launch reports unrelated
   # packages as "not built".
+  # HH_260617: Keep camrod_parking out of this legacy cleanup list because it is
+  # now a first-class source package built from src/camrod_parking.
   local prefix
   for prefix in \
     "${WS_ROOT}/install/apriltag_msgs" \
@@ -79,7 +105,6 @@ _clean_stale_install_artifacts() {
     "${WS_ROOT}/install/opennav_docking_bt" \
     "${WS_ROOT}/install/opennav_docking_core" \
     "${WS_ROOT}/install/opennav_docking" \
-    "${WS_ROOT}/install/camrod_parking" \
     "${WS_ROOT}/install/ntrip_client_node" \
     "${WS_ROOT}/install/ublox_dgnss" \
     "${WS_ROOT}/install/ublox_dgnss_node" \
@@ -93,7 +118,7 @@ _clean_stale_install_artifacts() {
     fi
   done
 }
-_clean_stale_install_artifacts
+_clean_stale_install_artifacts "$@"
 
 # shellcheck disable=SC1091
 set +u; source /opt/ros/humble/setup.bash; set -u
@@ -150,6 +175,16 @@ if [[ "${ARCH}" != "aarch64" && "${ARCH}" != "arm64" ]]; then
   log "skip camrod_docking and docking external packages on ${ARCH} (Isaac ROS/VPI not available)"
   unset _base _filtered_external_bases
 fi
+
+# HH_260616: Keep planning/sensing development builds usable on machines where the
+# optional voice stack has not been provisioned yet. setup_camrod.sh installs
+# libsdl2-mixer-dev; until then camrod_voice cannot configure because SDL2_mixer
+# is a required pkg-config dependency.
+if [[ -d "src/camrod_voice" ]] && ! pkg-config --exists SDL2_mixer 2>/dev/null; then
+  BUILD_SKIP_PACKAGES+=(camrod_voice)
+  log "skip camrod_voice (missing SDL2_mixer; install libsdl2-mixer-dev via setup_camrod.sh)"
+fi
+
 BASE_PATHS=("src" "${EXTERNAL_BASES[@]}")
 BUILD_SKIP_ARGS=()
 if [[ ${#BUILD_SKIP_PACKAGES[@]} -gt 0 ]]; then

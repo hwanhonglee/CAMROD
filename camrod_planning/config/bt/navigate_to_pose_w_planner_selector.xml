@@ -1,27 +1,32 @@
 <!-- PlannerSelector-enabled BT.
-  - Default planner: NavFn
-  - Optional planner: Smac2D
-  - Default controller: RPP
-  - Optional controller: DWB
+  - Default planner: LaneletRoute
+  - Optional planners: NavFn, Smac2D, SmacHybrid, SmacLattice
+  - Default controller: MPPI
+  - Optional controllers: RPP, DWB, Graceful, RotationShim
   - Switch planner by publishing std_msgs/String to /planning/planner_selector
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
-      <PipelineSequence name="NavigateWithReplanning">
+      <PipelineSequence name="NavigateGoalLocked">
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
-        <!-- HH_260528: Use NavFn as safe default for first plan while selector topic warms up. -->
-        <PlannerSelector selected_planner="{selected_planner}" default_planner="NavFn" topic_name="/planning/planner_selector"/>
-        <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector"/>
-        <!-- HH_260513: Increased 1.5→3.0Hz to reduce path-behind-robot offset.
-             At 1.4m/s: 1.5Hz→~0.93m lag, 3.0Hz→~0.46m lag. -->
-        <RateController hz="3.0">
+        <!-- HH_260619 - Use LaneletRoute as warm-up default so the first tick
+             already follows lanelet centerlines before selector latch arrives. -->
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="LaneletRoute" topic_name="/planning/planner_selector"/>
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="MPPI" topic_name="/planning/controller_selector"/>
+        <!-- HH_260619 - Lock the global route after each accepted goal.
+             GoalUpdatedController computes a new global path only on the first
+             tick, goal preemption, or recovery restart. The local path extractor
+             then slices the fixed global route around the live robot pose. -->
+        <GoalUpdatedController>
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
             <!-- HH_260528: Try selected planner first, then immediate NavFn fallback. -->
             <Fallback name="ComputePathPlannerFallback">
-              <!-- start port omitted: planner always queries current robot pose via TF. -->
-              <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}"/>
-              <ComputePathToPose goal="{goal}" path="{path}" planner_id="NavFn"/>
+              <!-- HH_260619 - Pass the navigator-provided snapped start pose.
+                   Without start="{start}", ComputePathToPose silently plans from
+                   current TF and draws a short off-center connector near the robot. -->
+              <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="{selected_planner}"/>
+              <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="NavFn"/>
             </Fallback>
             <Sequence name="ClearGlobalCostmapAndSettle-Context">
               <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
@@ -30,7 +35,7 @@
               <Wait wait_duration="0.4"/>
             </Sequence>
           </RecoveryNode>
-        </RateController>
+        </GoalUpdatedController>
         <!-- HH_260513: Smooth planner path before handing to FollowPath. -->
         <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">

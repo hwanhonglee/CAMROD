@@ -24,6 +24,7 @@ def generate_launch_description():
     enable_auto_docking = LaunchConfiguration('enable_auto_docking')
     enable_manual_docking = LaunchConfiguration('enable_manual_docking')
     enable_apriltag = OrSubstitution(enable_auto_docking, enable_manual_docking)
+    cmd_vel_topic = LaunchConfiguration('cmd_vel_topic')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -41,13 +42,21 @@ def generate_launch_description():
             default_value='true',
             description='Enable UI-triggered manual docking server'
         ),
-        # 도킹 단독 실행: true (odom→base_link TF 직접 발행)
-        # CAMROD 풀스택(ESKF) 연동: false (ESKF가 TF 담당 — 중복 발행 시 TF tree 충돌)
+        # HH_260618 - Full CAMROD bringup overrides this to /planning/cmd_vel_raw
+        # so marker docking and rule-based parking share the same safety gates.
+        DeclareLaunchArgument(
+            'cmd_vel_topic',
+            default_value='/platform/cmd_vel',
+            description='Velocity command topic used by opennav_docking'
+        ),
+        # Standalone docking: true (publish odom→base_link TF directly).
+        # HH_260617 - CAMROD full-stack integration: false. Localization owns odom→base_link
+        # TF for the selected EKF/ESKF backend; duplicate TF publication conflicts.
         DeclareLaunchArgument(
             'enable_odom_corrector',
             default_value='true',
             description='Enable odom_yaw_corrector TF broadcaster. '
-                        'Set false when running with CAMROD full stack (ESKF publishes odom TF)'
+                        'Set false when running with CAMROD full stack localization TF'
         ),
 
         # 카메라 TF: camrod_sensor_kit URDF 가 담당
@@ -128,8 +137,9 @@ def generate_launch_description():
                     cfg('docking_server.yaml'),
                     cfg('controller.yaml'),
                     {'dock_database': cfg('docks.yaml')},
+                    {'cmd_vel_topic': cmd_vel_topic},
                 ],
-                remappings=[('cmd_vel', '/platform/cmd_vel')],
+                remappings=[('cmd_vel', cmd_vel_topic)],
                 respawn=True,
                 respawn_delay=2.0,
             ),

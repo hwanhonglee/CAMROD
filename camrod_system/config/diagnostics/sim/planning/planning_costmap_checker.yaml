@@ -1,0 +1,9 @@
+# HH_260617: In sim idle mode Nav2 costmaps may publish once and then remain
+# unchanged until a goal is active. Keep this from blocking baseline readiness.
+/system/planning_costmap_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    global_costmap_topic: "/planning/global_costmap/costmap"
+    local_costmap_topic: "/planning/local_costmap/costmap"
+    global_stale_timeout_s: 3600.0
+    local_stale_timeout_s: 3600.0

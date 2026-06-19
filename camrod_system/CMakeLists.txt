@@ -84,6 +84,8 @@ camrod_system_add_checker(planning_lifecycle_checker_node src/diagnostics/planni
 camrod_system_add_checker(planning_costmap_checker_node src/diagnostics/planning_costmap_checker_node.cpp)
 camrod_system_add_checker(planning_nav_status_checker_node src/diagnostics/planning_nav_status_checker_node.cpp)
 camrod_system_add_checker(planning_path_checker_node src/diagnostics/planning_path_checker_node.cpp)
+# HH_260617: Validate semantic planning state before parking/control progression.
+camrod_system_add_checker(planning_state_checker_node src/diagnostics/planning_state_checker_node.cpp)
 
 add_executable(aggregator_node src/diagnostics/aggregator_node.cpp)
 target_compile_features(aggregator_node PUBLIC cxx_std_17)

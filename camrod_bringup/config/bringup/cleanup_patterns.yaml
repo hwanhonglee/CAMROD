@@ -92,6 +92,11 @@ patterns:
   - __node:=lifecycle_manager_planning
   - __node:=planning_status
 
+  # [parking]
+  # HH_260617: Rule-based campsite crab maneuver and drop-zone reverse parking.
+  - __node:=site_maneuver
+  - __node:=drop_zone_parking
+
   # [system]
   - __node:=map_validator
   - __node:=sensing_validator

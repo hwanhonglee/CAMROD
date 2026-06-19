@@ -20,7 +20,9 @@ def generate_launch_description():
             default_value=pkg_share('camrod_planning', os.path.join('config', 'local_path_extractor.yaml')),
         ),
         DeclareLaunchArgument('local_path_pose_topic', default_value='/localization/pose'),
-        DeclareLaunchArgument('local_path_source', default_value='controller_then_slice'),
+        DeclareLaunchArgument('local_path_global_path_topic', default_value='/planning/global_path'),
+        DeclareLaunchArgument('local_path_fallback_global_path_topic', default_value=''),
+        DeclareLaunchArgument('local_path_source', default_value='slice_only'),
         DeclareLaunchArgument('enable_tracking_error', default_value='true'),
         DeclareLaunchArgument('tracking_error_topic', default_value='/planning/ltracking_error'),
 
@@ -33,7 +35,11 @@ def generate_launch_description():
             parameters=[
                 LaunchConfiguration('local_path_extractor_param_file'),
                 {
-                    'global_path_topic': '/planning/global_path',
+                    # HH_260619 - Use the latest published route directly.
+                    # SmoothPath is internal to the Nav2 BT blackboard in this stack,
+                    # so /planning/plan_smoothed must not be treated as a route topic.
+                    'global_path_topic': LaunchConfiguration('local_path_global_path_topic'),
+                    'fallback_global_path_topic': LaunchConfiguration('local_path_fallback_global_path_topic'),
                     'pose_topic': LaunchConfiguration('local_path_pose_topic'),
                     'output_topic': '/planning/local_path',
                     'local_path_source': LaunchConfiguration('local_path_source'),
@@ -52,7 +58,7 @@ def generate_launch_description():
             parameters=[{
                 'pose_topic': LaunchConfiguration('local_path_pose_topic'),
                 'local_path_topic': '/planning/local_path',
-                'global_path_topic': '/planning/global_path',
+                'global_path_topic': LaunchConfiguration('local_path_global_path_topic'),
                 'output_topic': LaunchConfiguration('tracking_error_topic'),
                 'prefer_local_path': True,
                 'pose_timeout_s': 1.0,

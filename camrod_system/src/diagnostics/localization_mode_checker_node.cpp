@@ -98,6 +98,7 @@ protected:
     declare_parameter("conf_error",    0.3);
     declare_parameter("innov_warn",    3.0);
     declare_parameter("innov_error",   6.0);
+    declare_parameter("require_sensor_flags", true);
   }
 
   void load_parameters_() override
@@ -109,6 +110,7 @@ protected:
     conf_error_    = get_parameter("conf_error").as_double();
     innov_warn_    = get_parameter("innov_warn").as_double();
     innov_error_   = get_parameter("innov_error").as_double();
+    require_sensor_flags_ = get_parameter("require_sensor_flags").as_bool();
   }
 
   void setup_tasks_() override
@@ -227,7 +229,10 @@ private:
     }
 
     // 3. Sensor flag 체크 (WARN 레벨)
-    if (lvl < DiagnosticStatus::WARN) {
+    // HH_260617: Sim profiles can disable sensor flag enforcement because the
+    // localization monitor may publish NORMAL confidence while hardware-specific
+    // gnss/imu/wheel flags are intentionally synthetic or unavailable.
+    if (require_sensor_flags_ && lvl < DiagnosticStatus::WARN) {
       if (!state_.gnss_ok) {
         lvl     = DiagnosticStatus::WARN;
         msg_str = "GNSS 입력 없음 또는 불량";
@@ -288,6 +293,7 @@ private:
   double conf_error_{0.3};
   double innov_warn_{3.0};
   double innov_error_{6.0};
+  bool require_sensor_flags_{true};
 
   ModeState state_;
 };

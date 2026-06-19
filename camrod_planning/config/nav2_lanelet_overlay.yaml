@@ -3,30 +3,18 @@
 planner_server:
   ros__parameters:
     Smac2D:
-      minimum_turning_radius: 0.6
+      # HH_260618: SmacPlanner2D runtime-declared tuning surface is intentionally
+      # small: cost_travel_multiplier plus smoother settings. Hybrid-only fields
+      # were removed because Humble ignores them for SmacPlanner2D.
       # 2026-02-25: Keep center bias but reduce grid-quantized "kinks" at bends.
       cost_travel_multiplier: 12.0
-      # Strengthen low-cost preference so planner follows
-      # centerline-biased lanelet costs first, then deviates only for high-risk cells.
-      # Increase centerline-biased cost adherence.
-      # Strengthen low-cost preference to keep route closer
-      # to centerline-biased planner base costs.
-      cost_penalty: 20.0
-      lethal_cost: 253
-      neutral_cost: 55
-      change_penalty: 0.0
-      # 2026-02-26: Prefer forward-like paths around corners unless reverse is truly required.
-      reverse_penalty: 2.2
-      non_straight_penalty: 1.1
-      final_turn_penalty: 0.5
-      lookup_table_size: 20.0
-      smooth_path: true
       smoother:
         # Keep smoothed curvature but prevent corner-cutting off centerline.
         max_iterations: 4000
-        # Reduce corner-cutting: preserve planner data term more.
-        w_data: 0.96
-        w_smooth: 0.04
+        # HH_260618: Increase smoothing enough to remove visible Smac2D stair-step
+        # jitter while preserving the lanelet center-cost data term.
+        w_data: 0.90
+        w_smooth: 0.10
         tolerance: 1.0e-8
         do_refinement: true
 

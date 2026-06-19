@@ -4,6 +4,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/compressed_image.hpp>
+#include <sensor_msgs/msg/image.hpp>  // HH_260618: Front camera also offers subscriber-gated raw Image output.
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 #include <nvjpeg.h>
@@ -36,6 +37,7 @@ private:
   void initVpiRemap();
 
   rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr rect_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_raw_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_pub_;
 
   cv::VideoCapture cap_;
@@ -83,6 +85,8 @@ private:
   std::thread capture_thread_;
   std::thread publish_thread_;
   std::atomic<bool> stop_capture_{false};
+
+  bool use_v4l2_fallback_{false};
 };
 
 }  // namespace camrod::sensing

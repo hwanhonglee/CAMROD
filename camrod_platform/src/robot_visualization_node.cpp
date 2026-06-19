@@ -144,6 +144,10 @@ public:
     group_robot_marker_namespaces_ = declare_parameter<bool>(
       "group_robot_marker_namespaces", true);
     const double publish_rate_hz = declare_parameter<double>("publish_rate_hz", 1.0);
+    // HH_260618: Apply publish_rate_hz to both timer and pose-callback driven
+    // marker updates. Previously localization callbacks could drive markers at
+    // the localization rate, ignoring the configured visualization rate.
+    marker_publish_period_s_ = publish_rate_hz > 0.0 ? 1.0 / publish_rate_hz : 1.0;
     body_scale_factor_ = declare_parameter<double>("body_scale_factor", 1.0);
     planning_boundary_margin_ = declare_parameter<double>("planning_boundary_margin", 0.3);
     ground_z_offset_ = declare_parameter<double>("ground_z_offset", 0.0);
@@ -204,15 +208,17 @@ public:
     }
 
     publishBaseTransform();
-    publishMarkers();
+    publishMarkers(true);
 
     using namespace std::chrono_literals;
-    const auto period = publish_rate_hz > 0.0
-      ? std::chrono::duration<double>(1.0 / publish_rate_hz)
+    const auto period = marker_publish_period_s_ > 0.0
+      ? std::chrono::duration<double>(marker_publish_period_s_)
       : std::chrono::seconds(1);
     timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(period),
-      std::bind(&RobotVisualizationNode::publishMarkers, this));
+      [this]() {
+        publishMarkers(false);
+      });
 
     // HH_260304-00:00 // Keep startup logs quiet by default.
     RCLCPP_DEBUG(
@@ -240,12 +246,18 @@ private:
   }
 
   // Rebuilds and publishes all robot/sensor visualization markers and planning boundary polygon.
-  void publishMarkers()
+  void publishMarkers(bool force = false)
   {
+    const auto now = this->get_clock()->now();
+    if (!force && last_marker_publish_time_.nanoseconds() > 0 && marker_publish_period_s_ > 0.0) {
+      const double age_s = (now - last_marker_publish_time_).seconds();
+      if (age_s < marker_publish_period_s_) {
+        return;
+      }
+    }
     publishBaseTransform();
     avg_msgs::msg::MarkerArray markers;
     int32_t marker_id = 0;
-    const auto now = this->get_clock()->now();
     tf2::Quaternion base_tf;
     base_tf.setRPY(base_pose_.roll, base_pose_.pitch, base_pose_.yaw);
     base_tf.normalize();
@@ -460,6 +472,7 @@ private:
 
     marker_pub_->publish(markers);
     publishAvgPlatform(markers, polygon_msg, now);
+    last_marker_publish_time_ = now;
   }
 
   // Creates a PoseStamped message from the current base pose state.
@@ -643,7 +656,7 @@ private:
       if (map_marker_sub_) {
         map_marker_sub_.reset();
       }
-      publishMarkers();
+      publishMarkers(true);
     }
   }
 
@@ -672,6 +685,8 @@ private:
   rclcpp::Time last_localization_pose_stamp_{0, 0, RCL_ROS_TIME};
   avg_msgs::msg::Quaternion last_localization_orientation_{};
   bool has_localization_orientation_{false};
+  double marker_publish_period_s_{1.0};
+  rclcpp::Time last_marker_publish_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::Publisher<avg_msgs::msg::PolygonStamped>::SharedPtr boundary_pub_;

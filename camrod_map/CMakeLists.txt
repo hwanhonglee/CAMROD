@@ -103,6 +103,7 @@ add_executable(lanelet_cost_grid_node
 ament_target_dependencies(lanelet_cost_grid_node
   avg_msgs
   rclcpp
+  std_msgs
   nav_msgs
   lanelet2_core
   lanelet2_io

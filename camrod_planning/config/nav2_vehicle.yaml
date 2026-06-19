@@ -72,7 +72,9 @@ controller_server:
       use_rotate_to_heading: False
       min_approach_linear_velocity: 0.10
       approach_velocity_scaling_dist: 0.6
-      use_collision_detection: False
+      # HH_260618: RPP is now a fallback controller; keep its internal collision
+      # check enabled when selected instead of relying only on external cmd_vel gates.
+      use_collision_detection: True
       max_allowed_time_to_collision: 1.0
       use_regulated_linear_velocity_scaling: True
       regulated_linear_scaling_min_radius: 0.9

@@ -5,7 +5,8 @@
   <version>0.0.0</version>
   <description>Nav2-based planning wrapper for the camping cart (includes lanelet goal snapping)</description>
   <maintainer email="hwanhong57@gmail.com">hong</maintainer>
-  <license>Apache License 2.0</license>
+  <!-- HH_260617: Use SPDX-style license naming for package metadata consistency. -->
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
@@ -14,7 +15,11 @@
   <depend>rclcpp_action</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <!-- HH_260618: nav2_core/pluginlib are required for EngageAwareProgressChecker. -->
+  <depend>nav2_core</depend>
   <depend>nav2_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp_lifecycle</depend>
   <depend>std_srvs</depend>
   <depend>action_msgs</depend>
   <depend>lanelet2_core</depend>
@@ -28,6 +33,7 @@
   <depend>avg_msgs</depend>
   <depend>std_msgs</depend>
   <depend>diagnostic_msgs</depend>
+  <depend>visualization_msgs</depend>
 
   <!-- HH_260105: Nav2 runtime components used by nav2_lanelet.launch.py -->
   <!-- Nav2 runtime components used by nav2_lanelet.launch.py -->
@@ -42,5 +48,9 @@
 
   <export>
     <build_type>ament_cmake</build_type>
+    <!-- HH_260618: Export CAMROD progress checker to Nav2 controller_server. -->
+    <nav2_core plugin="${prefix}/progress_checker_plugins.xml"/>
+    <!-- HH_260619: Export CAMROD lanelet centerline planner to Nav2 planner_server. -->
+    <nav2_core plugin="${prefix}/global_planner_plugins.xml"/>
   </export>
 </package>

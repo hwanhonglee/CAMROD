@@ -133,7 +133,8 @@ def generate_launch_description():
     )
     publish_rate_arg = DeclareLaunchArgument(
         'publish_rate_hz',
-        default_value='20.0',
+        # HH_260618: Match fake sensor launch override with YAML default to reduce sim topic load.
+        default_value='10.0',
         description='Fake sensor publish rate (Hz)',
     )
     loop_arg = DeclareLaunchArgument(
@@ -225,11 +226,23 @@ def generate_launch_description():
         cmd=[
             'bash',
             '-lc',
-            # Cleanup by ROS node token instead of script filename.
-            'for _pid in $(pgrep -f "__node:=fake_sensor_publisher" || true); do '
+            # HH_260618: Match both ROS node token and script name, then
+            # escalate after a short grace period so standalone sim reruns do
+            # not leave fake_sensor_publisher consuming CPU.
+            '_pids=""; '
+            'for _pat in "__node:=fake_sensor_publisher" "fake_sensor_publisher.py"; do '
+            'for _pid in $(pgrep -f "$_pat" || true); do '
             '[ "$_pid" = "$$" ] && continue; '
             '[ "$_pid" = "$PPID" ] && continue; '
+            '_pids="$_pids $_pid"; '
             'kill "$_pid" 2>/dev/null || true; '
+            'done; '
+            'done; '
+            'sleep 0.5; '
+            'for _pid in $_pids; do '
+            '[ "$_pid" = "$$" ] && continue; '
+            '[ "$_pid" = "$PPID" ] && continue; '
+            'kill -0 "$_pid" 2>/dev/null && kill -9 "$_pid" 2>/dev/null || true; '
             'done',
         ],
         output='screen',

@@ -5,11 +5,15 @@
 # It will NOT overwrite existing external directories unless --update is given.
 #
 # Usage:
-#   ./setup_camrod.sh             # clone missing externals + rosdep (safe, idempotent)
+#   ./setup_camrod.sh             # install deps + clone missing externals + rosdep (safe, idempotent)
 #   ./setup_camrod.sh --update    # also pull latest for each external (REWRITES working copies)
-#   ./setup_camrod.sh --no-rosdep # skip rosdep (externals only)
+#   ./setup_camrod.sh --no-rosdep # skip rosdep after explicit system-package + external setup
 #
 # WARN: --update overwrites any local changes inside external/ directories.
+# HH_260617: setup covers the current split runtime:
+#   - camrod_parking is a local source package, not a legacy external.
+#   - camrod_voice requires SDL2_mixer; setup installs libsdl2-mixer-dev.
+#   - camrod_docking/Isaac ROS remains Jetson-only and is skipped on x86_64.
 #
 # Fork override:
 #   Set CAMROD_AGILEX_BASE before running to use your own forks of agilexrobotics repos:
@@ -30,6 +34,24 @@ fi
 AGILEX_BASE="${CAMROD_AGILEX_BASE:-https://github.com/agilexrobotics}"
 
 log() { echo "[setup_camrod] $*"; }
+
+# HH_260617: Keep setup usable from CI/Codex/non-interactive shells.  When sudo
+# cannot prompt for a password, report the exact apt command instead of hanging
+# or turning optional dependency setup into a hard failure.
+apt_install_pkgs() {
+  local label="$1"
+  shift
+  if [[ "$#" -eq 0 ]]; then
+    return 0
+  fi
+  if sudo -n true 2>/dev/null || [[ -t 0 ]]; then
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
+    return $?
+  fi
+  log "WARN: sudo password is required but no TTY is available; cannot install ${label}: $*"
+  log "      Run manually: sudo apt-get install -y $*"
+  return 1
+}
 
 resolve_ws_root() {
   local probe="$1"
@@ -144,8 +166,8 @@ REQUIRED_SYS_PKGS=(
   ros-humble-magic-enum
   python3-fastapi
   python3-uvicorn
-  libsdl2-dev        # HH_260615: camrod_voice — SDL2 오디오 백엔드
-  libsdl2-mixer-dev  # HH_260615: camrod_voice — WAV 재생 (Mix_* API)
+  libsdl2-dev        # HH_260615 - camrod_voice SDL2 audio backend.
+  libsdl2-mixer-dev  # HH_260615 - camrod_voice WAV playback via Mix_* API.
   # rosdep 으로 해결되어야 하지만 interactive sudo 없이 실패하는 패키지들을 명시 추가
   ros-humble-nav2-map-server        # nav2 맵 서버 (camrod_planning)
   ros-humble-behaviortree-cpp-v3    # Nav2 BT 네비게이터 (camrod_planning)
@@ -156,12 +178,14 @@ REQUIRED_SYS_PKGS=(
   ros-humble-rtcm-msgs              # ublox GNSS RTK (camrod_sensing)
   ros-humble-test-msgs              # 테스트 의존
   python3-serial                    # ublox, radar 시리얼 통신
+  python3-yaml                      # HH_260617: camrod_parking/camrod_bringup YAML config parsing
+  python3-setuptools                # HH_260617: ament_python entry point install for camrod_parking/ui
   libpugixml-dev                    # Lanelet2 XML 파서 (camrod_map)
   libnanoflann-dev                  # PCL/포인트클라우드 KNN (camrod_perception)
 )
 
-# HH_260615: camrod_docking — Isaac ROS apt 저장소 자동 등록 및 런타임 패키지 설치.
-# aarch64(Jetson/JetPack)에서만 동작. x86_64는 건너뛰고 skip 안내를 출력합니다.
+# HH_260615 - camrod_docking registers the Isaac ROS apt repository and runtime packages.
+# Runs only on aarch64 Jetson/JetPack targets; x86_64 prints a skip notice.
 setup_isaac_ros_apt() {
   local _arch
   _arch="$(uname -m)"
@@ -173,7 +197,7 @@ setup_isaac_ros_apt() {
 
   if [[ ! -f /etc/apt/sources.list.d/isaac-ros.list ]]; then
     log "NVIDIA Isaac ROS apt 저장소 등록 중 (arm64)"
-    sudo apt-get install -y curl gnupg lsb-release
+    apt_install_pkgs "Isaac ROS apt repository tools" curl gnupg lsb-release
     curl -fsSL https://isaac.download.nvidia.com/isaac-ros/repos.key \
       | gpg --dearmor \
       | sudo tee /usr/share/keyrings/isaac-ros-archive-keyring.gpg > /dev/null
@@ -198,16 +222,16 @@ https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release
   done
   if [[ ${#_missing_isaac[@]} -gt 0 ]]; then
     log "Isaac ROS 패키지 설치 중: ${_missing_isaac[*]}"
-    sudo apt-get install -y "${_missing_isaac[@]}"
+    apt_install_pkgs "Isaac ROS runtime packages" "${_missing_isaac[@]}"
   else
     log "Isaac ROS 패키지 이미 설치됨"
   fi
   unset _arch _isaac_pkgs _ipkg _missing_isaac
 
-  # HH_260616: isaac_ros cmake export 파일이 numpy include 경로를 빌드 시점 절대경로로
-  # 하드코딩한다 (/usr/local/lib/python3.10/dist-packages/numpy/core/include).
-  # user-install numpy (/home/.../.local/) 가 있으면 cmake Generate 단계에서 실패하므로
-  # 시스템 경로(sudo pip3)에 numpy를 보장한다.
+  # HH_260616 - isaac_ros CMake exports hard-code the build-time numpy include path
+  # (/usr/local/lib/python3.10/dist-packages/numpy/core/include). User-installed
+  # numpy under /home/.../.local can break CMake generation, so ensure numpy also
+  # exists in the system sudo-pip path.
   if [[ ! -d /usr/local/lib/python3.10/dist-packages/numpy ]]; then
     log "numpy 시스템 경로 설치 중 (isaac_ros cmake 경로 호환)"
     # 기존 user-install numpy 버전과 동일하게 고정 설치.
@@ -226,9 +250,9 @@ if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
   _arch="$(uname -m)"
   if [[ "${_arch}" == "aarch64" || "${_arch}" == "arm64" ]]; then
     if ! has_nvjpeg_header || ! has_nvjpeg_library; then
-      # HH_260616: apt-cache는 stale 상태일 수 있으므로 nvjpeg 탐색 전 갱신.
-      # 갱신 없이 apt_has_candidate가 실패하면 libnvjpeg-dev가 설치되지 않아
-      # nvjpeg.h 누락으로 camrod_sensing 빌드가 실패한다.
+      # HH_260616 - apt-cache may be stale, so refresh it before nvjpeg discovery.
+      # Without this, apt_has_candidate can miss libnvjpeg-dev and camrod_sensing
+      # can fail later because nvjpeg.h is absent.
       log "apt-get update (nvjpeg 탐색 전 패키지 목록 갱신)"
       sudo apt-get update -q
       if _nvjpeg_pkgs="$(select_nvjpeg_packages)"; then
@@ -250,31 +274,42 @@ for _pkg in "${REQUIRED_SYS_PKGS[@]}"; do
 done
 if [[ ${#_missing[@]} -gt 0 ]]; then
   log "install system packages: ${_missing[*]}"
-  sudo apt-get install -y "${_missing[@]}" || \
+  apt_install_pkgs "system packages" "${_missing[@]}" || \
     log "WARN: apt-get install failed — build may fail if packages are absent"
 fi
 unset _pkg _missing
 
-# HH_260615: Isaac ROS apt 등록 — camrod_docking 모듈 존재 시에만 실행
+# HH_260615 - Register Isaac ROS apt only when the camrod_docking module exists.
 if [[ -d "${SRC_ROOT}/camrod_docking" ]]; then
+  _arch="$(uname -m)"
   setup_isaac_ros_apt
-  # Install non-Isaac docking dependencies via apt (available on all architectures)
-  _docking_apt_pkgs=(
-    ros-humble-image-pipeline
-    ros-humble-negotiated
-    ros-humble-opennav-docking
-  )
-  _docking_missing=()
-  for _dpkg in "${_docking_apt_pkgs[@]}"; do
-    dpkg -l "${_dpkg}" 2>/dev/null | grep -q "^ii" || _docking_missing+=("${_dpkg}")
-  done
-  if [[ ${#_docking_missing[@]} -gt 0 ]]; then
-    log "install docking packages: ${_docking_missing[*]}"
-    sudo apt-get install -y "${_docking_missing[@]}"
+
+  # HH_260616: Match colcon_build.sh behavior. On x86_64 camrod_docking is
+  # skipped because Isaac ROS/VPI is Jetson-only in this workspace, so setup
+  # must not fail while installing optional docking runtime packages.
+  if [[ "${_arch}" == "aarch64" || "${_arch}" == "arm64" ]]; then
+    # Install non-Isaac docking dependencies via apt on Jetson targets.
+    _docking_apt_pkgs=(
+      ros-humble-image-pipeline
+      ros-humble-negotiated
+      ros-humble-opennav-docking
+    )
+    _docking_missing=()
+    for _dpkg in "${_docking_apt_pkgs[@]}"; do
+      dpkg -l "${_dpkg}" 2>/dev/null | grep -q "^ii" || _docking_missing+=("${_dpkg}")
+    done
+    if [[ ${#_docking_missing[@]} -gt 0 ]]; then
+      log "install docking packages: ${_docking_missing[*]}"
+      apt_install_pkgs "docking packages" "${_docking_missing[@]}" || \
+        log "WARN: docking apt install failed — docking may be unavailable"
+    else
+      log "docking packages already installed"
+    fi
+    unset _docking_apt_pkgs _docking_missing _dpkg
   else
-    log "docking packages already installed"
+    log "skip docking apt packages (${_arch}; camrod_docking is skipped by colcon_build.sh)"
   fi
-  unset _docking_apt_pkgs _docking_missing _dpkg
+  unset _arch
 fi
 
 if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
@@ -336,7 +371,27 @@ if [[ "${DO_ROSDEP}" -eq 1 ]]; then
   log "rosdep update"
   rosdep update || log "WARN: rosdep update failed — continuing"
 
-  log "rosdep install"
+  # HH_260617: These keys are either source-built in this workspace, handled by
+  # explicit apt setup above, Jetson-only, or legacy upstream package.xml names
+  # that break idempotent x86_64 setup.  Keep rosdep focused on actionable deps.
+  _ROSDEP_SKIP_KEYS=(
+    ament_python
+    catkin
+    OpenCV
+    cuda_cudart
+    isaac_ros_apriltag
+    isaac_ros_apriltag_interfaces
+    isaac_ros_image_proc
+    libsdl2-dev
+    libsdl2-mixer-dev
+    opencv
+    opennav_docking
+    opennav_docking_core
+    opennav_docking_bt
+    opennav_docking_msgs
+  )
+
+  log "rosdep install (skip keys: ${_ROSDEP_SKIP_KEYS[*]})"
   mapfile -t _ROSDEP_PATHS < <(
     find "${SRC_ROOT}" -name package.xml -type f \
       | grep -Ev '/vendor/.*/extract/' \
@@ -344,9 +399,11 @@ if [[ "${DO_ROSDEP}" -eq 1 ]]; then
       | while read -r p; do readlink -f "${p}"; done \
       | sort -u
   )
-  if ! rosdep install --from-paths "${_ROSDEP_PATHS[@]}" --ignore-src -r -y; then
+  if ! rosdep install --from-paths "${_ROSDEP_PATHS[@]}" --ignore-src -r -y \
+      --skip-keys="${_ROSDEP_SKIP_KEYS[*]}"; then
     log "WARN: rosdep failed (no sudo or unresolved keys) — continuing"
   fi
+  unset _ROSDEP_SKIP_KEYS
 fi
 
 log "setup complete. now run: ./colcon_build.sh"

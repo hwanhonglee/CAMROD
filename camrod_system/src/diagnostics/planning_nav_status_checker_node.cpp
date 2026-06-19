@@ -21,6 +21,8 @@
  *   stale_timeout:     5.0   # 이 시간(초) 이상 토픽 없으면 STALE
  *   abort_warn:        2     # 60s 내 abort 횟수 > 이 값 → WARN
  *   abort_error:       5     # 60s 내 abort 횟수 > 이 값 → ERROR
+ *   terminal_status_stale_ok: true
+ *                     # SUCCEEDED/CANCELED 후 status topic 정지는 정상 idle로 처리
  */
 
 #include <cstdio>
@@ -77,6 +79,8 @@ protected:
     declare_parameter("nav_status_topic",
       std::string("/planning/navigate_to_pose/_action/status"));
     declare_parameter("stale_timeout_s", 5.0);
+    declare_parameter("idle_ok_without_status", true);
+    declare_parameter("terminal_status_stale_ok", true);
     declare_parameter("abort_warn",    2);
     declare_parameter("abort_error",   5);
   }
@@ -85,6 +89,8 @@ protected:
   {
     nav_status_topic_ = get_parameter("nav_status_topic").as_string();
     stale_timeout_ = get_param<double>("stale_timeout_s", stale_timeout_);
+    idle_ok_without_status_ = get_parameter("idle_ok_without_status").as_bool();
+    terminal_status_stale_ok_ = get_parameter("terminal_status_stale_ok").as_bool();
     abort_warn_       = get_parameter("abort_warn").as_int();
     abort_error_      = get_parameter("abort_error").as_int();
   }
@@ -100,8 +106,9 @@ protected:
 
     RCLCPP_INFO(get_logger(),
       "Planning Nav Status 모니터링 시작 "
-      "(topic=%s, stale=%.1fs, abort_warn=%d, abort_error=%d)",
-      nav_status_topic_.c_str(), stale_timeout_, abort_warn_, abort_error_);
+      "(topic=%s, stale=%.1fs, terminal_stale_ok=%s, abort_warn=%d, abort_error=%d)",
+      nav_status_topic_.c_str(), stale_timeout_,
+      terminal_status_stale_ok_ ? "true" : "false", abort_warn_, abort_error_);
   }
 
 private:
@@ -167,6 +174,15 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!state_.has_msg) {
+      // HH_260617: Before the first Nav2 goal, the action status topic may not
+      // publish anything. Lifecycle checks cover server liveness; this checker
+      // should report abort/status quality, not force ERROR while idle.
+      if (idle_ok_without_status_) {
+        stat.summary(DiagnosticStatus::OK, "idle (no nav status yet)");
+        stat.add("topic", nav_status_topic_);
+        stat.add("idle_ok_without_status", "true");
+        return;
+      }
       stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + nav_status_topic_);
       stat.add("topic", nav_status_topic_);
       return;
@@ -174,6 +190,25 @@ private:
 
     double elapsed = (this->now() - state_.last_msg_time).seconds();
     if (elapsed > stale_timeout_) {
+      // HH_260618: Nav2 action status is event-driven enough that it can stop
+      // publishing after SUCCEEDED/CANCELED. Treat terminal stale as normal idle;
+      // lifecycle checkers still verify server liveness, and abort history remains
+      // handled below when new status samples arrive.
+      if (
+        terminal_status_stale_ok_ &&
+        (state_.current_status == GoalStatus::STATUS_SUCCEEDED ||
+         state_.current_status == GoalStatus::STATUS_CANCELED))
+      {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+          "idle: %s (last status %.1fs ago)",
+          statusLabel(state_.current_status), elapsed);
+        stat.summary(DiagnosticStatus::OK, std::string(buf));
+        stat.add("current_status", std::string(statusLabel(state_.current_status)));
+        stat.add("terminal_status_stale_ok", "true");
+        stat.add("last_msg_sec_ago", elapsed);
+        return;
+      }
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "%.1fs 동안 nav status 없음 (timeout=%.1fs)", elapsed, stale_timeout_);
@@ -241,6 +276,8 @@ private:
   // 파라미터
   std::string nav_status_topic_;
   double      stale_timeout_{5.0};
+  bool        idle_ok_without_status_{true};
+  bool        terminal_status_stale_ok_{true};
   int         abort_warn_{2};
   int         abort_error_{5};
 

@@ -48,6 +48,14 @@
     # 2026-02-26: In lanelet mode, also paint left/right boundaries as high cost.
     # -1 disables boundary overlay.
     lanelet_boundary_value: 100
+    # HH_260617: Clear boundary cost where the OSM boundary has lane_change=yes.
+    # This keeps normal lane edges blocked while allowing mapped lane-change sections to be crossed.
+    lane_change_clearance_enable: true
+    lane_change_clearance_value: 0
+    lane_change_clearance_use_dashed_fallback: false
+    # HH_260618: Keep primary boundary visualization conservative; -1 uses boundary_half_width.
+    lane_change_clearance_half_width_m: -1.0
+    lane_change_clearance_clip_to_lanelet: true
     # 2026-02-27: Keep boundary overlay inside lane polygon (avoid outward bleed).
     boundary_clip_to_lanelet: true
     # 2026-02-27: Enable to print boundary candidate/written/clipped statistics.
@@ -66,15 +74,26 @@
     outside_value: -1
     # HH_260526: Unified window mode (robot_centered | path_bbox | fixed | map_bbox).
     window_mode: "robot_centered"
-    # 2026-02-27: Static lanelet base grid does not need per-pose/path rebuild.
+    # HH_260619: Pose rebuild stays off, but path rebuild is required because
+    # secondary planning cost is filtered by active LaneletRoute lanelet IDs.
     rebuild_on_pose: false
-    rebuild_on_path: false
+    rebuild_on_path: true
     min_rebuild_period_s: 0.2
     # HH_260109 Drive cost grid from fused localization pose.
     pose_topic: "/planning/lanelet_pose"
     path_topic: "/planning/global_path"
-    # Periodic republish interval in seconds (0 disables periodic republish).
-    republish_period: 0.0
+    # HH_260619: LaneletRoutePlanner publishes exact route lanelet IDs.
+    # Primary boundary visualization stays global; secondary planning cost uses the active route only.
+    route_lanelet_ids_topic: "/planning/route_lanelet_ids"
+    route_lanelet_filter_enable: false
+    route_boundary_clearance_enable: false
+    route_boundary_clearance_value: 0
+    route_boundary_clearance_half_width_m: 0.75
+    route_boundary_clearance_clip_to_lanelet: true
+    # HH_260616: Republish the static lanelet grid so Nav2 costmap layers that miss
+    # the transient-local sample during lifecycle startup still become current.
+    # HH_260617: Use canonical `_s` suffix for duration parameters.
+    republish_period_s: 1.0
     # 2026-04-06: Secondary profile published from the same node.
     # Keeps planning_base behavior while reducing node count.
     secondary.enable: true
@@ -85,11 +104,13 @@
     #   lanelet: full lanelet polygon
     #   path: path strip from path_topic
     secondary.cost_mode: "centerline"
-    # HH_260412: Apply the same bounded window policy to planning_base output.
-    secondary.resolution: 0.20
-    secondary.width: 600
-    secondary.height: 600
-    secondary.centerline_half_width: 0.75
+    # HH_260619 - Use a finer centerline grid so SmacLattice sees lane curvature
+    # instead of a coarse raster corridor at bends. 0.25m keeps the 240m window
+    # while avoiding the CPU spike of a 0.10m full-window source grid.
+    secondary.resolution: 0.25
+    secondary.width: 960
+    secondary.height: 960
+    secondary.centerline_half_width: 0.55
     secondary.free_value: 0
     secondary.lethal_value: 100
     secondary.centerline_clip_to_lanelet: true
@@ -97,7 +118,10 @@
     # Keep off-lane cells traversable-but-expensive so that when start pose is
     # temporarily outside lanelet, planner first reconnects to nearest lane and
     # then continues along lane center corridor.
-    secondary.centerline_lanelet_fill_value: 35
+    # HH_260619 - Raise off-center lane cost so the global planner treats the
+    # lanelet centerline as the nominal route and leaves lateral deviation for
+    # obstacle/lane-change cases.
+    secondary.centerline_lanelet_fill_value: 70
     # HH_260527: Enforce lanelet-bound global planning.
     # 99 (sub-lethal) let the planner cut free-space diagonals across non-lanelet areas.
     # 100 marks outside-lanelet cells as lethal in Nav2 global costmap.
@@ -105,8 +129,27 @@
     # HH_260527: Lane-boundary margin for centerline planning profile.
     # - lanelet_boundary_value: higher cost near lane edge (0..100, -1 disables)
     # - boundary_half_width: boundary strip half-width in meters (margin control)
-    secondary.lanelet_boundary_value: 92
-    secondary.boundary_half_width: 0.30
+    # HH_260619 - Keep lane edges very expensive but still sub-lethal so mapped
+    # lane-change clearances can intentionally open them.
+    secondary.lanelet_boundary_value: 98
+    secondary.boundary_half_width: 0.25
+    # HH_260619: Planning cost must use the lanelets selected by the active global
+    # route, not every lanelet boundary in the local map window. This prevents
+    # merge/branch lane boundaries from blocking a valid LaneletRoute path.
+    secondary.route_lanelet_filter_enable: true
+    secondary.route_boundary_clearance_enable: true
+    secondary.route_boundary_clearance_value: 0
+    secondary.route_boundary_clearance_half_width_m: 0.80
+    secondary.route_boundary_clearance_clip_to_lanelet: true
+    # HH_260617: /map/cost_grid/lanelet is consumed by Nav2 and cmd_vel cost-stop.
+    # Clear lane_change=yes boundary cells below cost_stop_threshold so legal lateral crossing is not blocked.
+    secondary.lane_change_clearance_enable: true
+    secondary.lane_change_clearance_value: 0
+    secondary.lane_change_clearance_use_dashed_fallback: false
+    # HH_260618: Open a vehicle-width gap on mapped lane-change boundaries for cmd_vel_gate.
+    secondary.lane_change_clearance_half_width_m: 0.85
+    # HH_260618: Bridge tiny OSM/raster gaps between adjacent lanelet polygons only on lane_change=yes lines.
+    secondary.lane_change_clearance_clip_to_lanelet: false
     secondary.debug_coverage_stats: false
     secondary.debug_coverage_stride: 2
     secondary.debug_coverage_min_value: 0
@@ -118,12 +161,11 @@
     secondary.centerline_use_distance_gradient: true
     secondary.direction_penalty: 0
     secondary.backward_penalty: 0
-    # HH_260527: secondary.window_mode options:
-    #   robot_centered | path_bbox | fixed | map_bbox
-    # Use full-map window so planning-base coverage does not leave free shortcut
-    # bands near rolling-costmap edges for far/diagonal goals.
-    secondary.window_mode: "map_bbox"
+    # HH_260616: Keep the planning-base grid robot-centered. The previous map_bbox
+    # override ignored secondary.width/height and built an 876x1260 grid, delaying
+    # startup long enough for Nav2 to plan before the lanelet layer became current.
+    secondary.window_mode: "robot_centered"
     # HH_260527: Backward-compatible window controls for older lanelet_cost_grid_node
     # builds that still use boolean window selectors.
-    secondary.use_map_bbox: true
+    secondary.use_map_bbox: false
     secondary.use_path_bbox: false

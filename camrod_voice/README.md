@@ -1,169 +1,102 @@
 # camrod_voice
 
-CAMROD 음성 안내 모듈. 사전 녹음된 한국어 WAV 파일을 우선순위 큐 기반으로 재생한다.
+CAMROD voice announcement module. It plays pre-recorded WAV files through a priority queue and converts CAMROD runtime events into `avg_msgs/AudioRequest` messages.
 
-## 패키지 구조
+> HH_260617: This README reflects the implemented runtime files. The old TODO-only description was removed because `voice.launch.py`, `voice_event_adapter.yaml`, and `voice_event_adapter_node.py` now exist.
 
-```
+## Package Structure
+
+```text
 camrod_voice/
 ├── CMakeLists.txt
 ├── package.xml
 ├── config/
-│   └── voice_event_adapter.yaml        # TODO: 생성 필요
+│   └── voice_event_adapter.yaml
 ├── include/voice_announcer/
 │   ├── audio_player.hpp
 │   ├── priority_queue.hpp
-│   └── voice_announcer_node.hpp        # avg_msgs 기반
+│   └── voice_announcer_node.hpp
 ├── launch/
-│   └── voice.launch.py                 # TODO: 생성 필요
-├── resource/audio/ko-KR/               # 23개 WAV 파일
-│   ├── battery/   (low, critical, charging, full)
-│   ├── docking/   (started, approaching, succeeded, failed, cancelled)
-│   ├── navigation/(to_campsite, arrived_campsite, to_dropzone, return_to_dropzone, please_step_aside)
-│   ├── safety/    (estop, estop_released, obstacle)
-│   ├── system/    (startup, ready, shutdown)
-│   └── undocking/ (started, succeeded, failed)
+│   └── voice.launch.py
+├── resource/audio/ko-KR/
+│   ├── battery/
+│   ├── docking/
+│   ├── navigation/
+│   ├── safety/
+│   ├── system/
+│   └── undocking/
 └── src/
     ├── audio_player.cpp
     ├── main.cpp
     ├── priority_queue.cpp
-    ├── voice_announcer_node.cpp        # avg_msgs 기반
-    └── voice_event_adapter_node.py     # TODO: 구현 필요 (현재 placeholder)
+    ├── voice_announcer_node.cpp
+    └── voice_event_adapter_node.py
 ```
 
-## 인터페이스
+## Nodes
 
-| 방향 | 토픽 | 타입 |
-|------|------|------|
-| Subscribe | `~/say` | `avg_msgs/AudioRequest` |
-| Publish   | `~/state` | `avg_msgs/VoiceState` |
+| Node | Type | Purpose |
+|------|------|---------|
+| `/voice/voice_announcer` | C++ | Plays `AudioRequest.key` WAV files with priority handling |
+| `/voice/voice_event_adapter` | Python | Converts planning/platform/battery/charging events to audio requests |
 
-**AudioRequest.key** 형식: `"카테고리.파일명"` → `resource/audio/{locale}/{카테고리}/{파일명}.wav`  
-예) `"navigation.arrived_campsite"` → `ko-KR/navigation/arrived_campsite.wav`
+## Topics
 
-**우선순위**: 0=info, 1=notice, 2=warning, 3=critical (3은 큐 클리어 후 즉시 재생)
+| Direction | Topic | Type | Description |
+|-----------|-------|------|-------------|
+| Subscribe | `/voice/voice_announcer/say` | `avg_msgs/AudioRequest` | Audio request input |
+| Publish | `/voice/voice_announcer/state` | `avg_msgs/VoiceState` | Playback state |
+| Subscribe | `/planning/state_machine/state` | `avg_msgs/PlanningState` | Navigation state changes |
+| Subscribe | `/platform/status/estop` | `std_msgs/Bool` | E-stop edge events |
+| Subscribe | `/battery_percentage` | `std_msgs/Int32` | Battery threshold announcements |
+| Subscribe | `/docking/is_charging` | `std_msgs/Bool` | Charging/docking success edge |
 
-## 빌드
+## Audio Keys
+
+`AudioRequest.key` format is `category.file_name`, resolved as:
+
+```text
+resource/audio/{locale}/{category}/{file_name}.wav
+```
+
+Example: `navigation.arrived_campsite` resolves to `resource/audio/ko-KR/navigation/arrived_campsite.wav`.
+
+Priority convention: `0=info`, `1=notice`, `2=warning`, `3=critical`. Critical requests may interrupt the current queue when `interrupt=true`.
+
+## Event Mapping
+
+| Event | Audio key | Priority |
+|-------|-----------|----------|
+| Startup timer | `system.startup` | 0 |
+| State `READY` | `system.ready` | 1 |
+| State `GOAL_REACHED` | `navigation.arrived_campsite` | 1 |
+| State `RETURNING` or `WAIT_DZ` | `navigation.return_to_dropzone` | 1 |
+| State `WARN_RECOVERY` | `safety.obstacle` | 2 |
+| State `WAIT_DZ -> RUNNING` | `undocking.started` | 1 |
+| E-stop `false -> true` | `safety.estop` | 3 |
+| E-stop `true -> false` | `safety.estop_released` | 3 |
+| Battery `<= low threshold` | `battery.low` | 1 |
+| Battery `<= critical threshold` | `battery.critical` | 2 |
+| Charging `false -> true` | `docking.succeeded` | 1 |
+
+## Launch
 
 ```bash
-colcon build --packages-select camrod_voice --cmake-args -DCMAKE_BUILD_TYPE=Release
+ros2 launch camrod_voice voice.launch.py
+ros2 launch camrod_voice voice.launch.py enable_voice_adapter:=false
+ros2 launch camrod_voice voice.launch.py voice_namespace:=voice locale:=ko-KR
 ```
 
-의존 시스템 패키지: `libsdl2-dev`, `libsdl2-mixer-dev` (setup_camrod.sh에 이미 포함)
+## Build
 
----
-
-## TODO
-
-### 1. voice_event_adapter_node.py 구현
-
-`src/voice_event_adapter_node.py` (현재 placeholder) — CAMROD 시스템 이벤트를 AudioRequest로 변환하는 Python 노드.
-
-**구독 토픽:**
-
-| 토픽 | 타입 | 용도 |
-|------|------|------|
-| `/planning/state_machine/state` | `std_msgs/String` | 내비게이션 상태 전환 감지 |
-| `/platform/status/estop` | `std_msgs/Bool` | 비상정지 engage/release |
-| `/battery_percentage` | `std_msgs/Int32` | 배터리 임계값 경고 |
-| `/docking/is_charging` | `std_msgs/Bool` | 도킹/충전 감지 |
-
-**상태머신 → 오디오 키 매핑 (edge-triggered):**
-
-| 전환 | 키 | 우선순위 |
-|------|----|----------|
-| `→ READY` | `system.ready` | 1 |
-| `→ GOAL_REACHED` | `navigation.arrived_campsite` | 1 |
-| `→ RETURNING` / `WAIT_DZ` | `navigation.return_to_dropzone` | 1 |
-| `→ WARN_RECOVERY` | `safety.obstacle` | 2 |
-| `→ RUNNING` (from WAIT_DZ) | `undocking.started` | 1 |
-| 노드 시작 후 3초 | `system.startup` | 0 |
-
-**기타 이벤트:**
-
-| 이벤트 | 키 | 우선순위 |
-|--------|----|----------|
-| estop `false→true` | `safety.estop` | 3 |
-| estop `true→false` | `safety.estop_released` | 3 |
-| 배터리 ≤ 20% | `battery.low` | 1 |
-| 배터리 ≤ 10% | `battery.critical` | 2 |
-| is_charging `false→true` | `docking.succeeded` | 1 |
-
----
-
-### 2. voice.launch.py 생성
-
-`launch/voice.launch.py` — `voice` 네임스페이스 아래 두 노드를 함께 기동.
-
-```python
-# 기동 노드:
-# - voice_announcer_node  (C++ component)
-# - voice_event_adapter_node  (Python, enable_voice_adapter 조건부)
-#
-# 파라미터:
-#   locale             (default: "ko-KR")
-#   voice_namespace    (default: "voice")
-#   enable_voice_adapter (default: true)
+```bash
+./colcon_build.sh --packages-select camrod_voice
 ```
 
----
+System dependencies: `libsdl2-dev`, `libsdl2-mixer-dev`. `setup_camrod.sh` installs them when apt is available. On machines without `SDL2_mixer`, `colcon_build.sh` skips `camrod_voice` so other packages can still build.
 
-### 3. voice_event_adapter.yaml 생성
+## 2026-06-17 Runtime Update
 
-`config/voice_event_adapter.yaml` — 이벤트 어댑터 파라미터.
+> HH_260617: Voice event adaptation consumes semantic planning and charging states.
 
-```yaml
-/voice/voice_event_adapter:
-  ros__parameters:
-    startup_delay_s: 3.0
-    enable_nav_audio: true
-    enable_estop_audio: true
-    enable_battery_audio: true
-    enable_docking_audio: true
-    battery_low_threshold: 20
-    battery_critical_threshold: 10
-```
-
----
-
-### 4. bringup 통합
-
-**`camrod_bringup/launch/_bringup_impl.py`** 수정 3곳:
-
-1. `arg_specs` 리스트에 추가 (docking 항목 뒤):
-```python
-('enable_voice',         cfg_get(launch_cfg, 'voice/enable_voice',         True),  'Enable voice announcer module'),
-('enable_voice_adapter', cfg_get(launch_cfg, 'voice/enable_voice_adapter', True),  'Enable voice event adapter node'),
-('voice_namespace',      cfg_get(launch_cfg, 'namespaces/voice',           'voice'), 'Voice module namespace'),
-```
-
-2. `voice_args` dict 추가 (docking_args 블록 뒤):
-```python
-voice_args = {
-    'voice_namespace': lc['voice_namespace'],
-    'enable_voice_adapter': lc['enable_voice_adapter'],
-}
-```
-
-3. `module_specs` 리스트에 추가 (docking 뒤, system 앞):
-```python
-('camrod_voice', 'voice.launch.py', voice_args, IfCondition(lc['enable_voice'])),
-```
-
----
-
-### 5. bringup config 수정
-
-**`camrod_bringup/config/bringup/launch_defaults.yaml`** — `voice:` 섹션 추가:
-```yaml
-  voice:
-    enable_voice: true
-    enable_voice_adapter: true
-```
-
-**`camrod_bringup/config/bringup/cleanup_patterns.yaml`** — voice 노드 패턴 추가:
-```yaml
-  # [voice]
-  - __node:=voice_announcer
-  - __node:=voice_event_adapter
-```
+`voice_event_adapter_node.py` should listen to `avg_msgs/PlanningState`, platform e-stop, battery/charging topics, and parking/docking completion signals. `setup_camrod.sh` installs `libsdl2-mixer-dev`; if that package is missing, `colcon_build.sh` skips `camrod_voice` on development PCs instead of blocking GNSS/planning/parking builds.

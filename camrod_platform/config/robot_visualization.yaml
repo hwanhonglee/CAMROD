@@ -17,7 +17,8 @@
     publish_tf: false                            # If true, publishes map->base TF from visualization pose.
     ground_z_source: "lanelet_map"               # fixed_offset | lanelet_map
     ground_z_offset: 0.0                         # Additional Z offset applied on top of estimated ground height [m].
-    publish_rate_hz: 20.0                        # Marker and boundary publish frequency [Hz].
+    # HH_260618: Robot markers/boundary are visualization/diagnostic outputs; 5 Hz is enough and reduces RViz load.
+    publish_rate_hz: 5.0                         # Marker and boundary publish frequency [Hz].
     show_chassis_marker: false                   # Shows translucent robot body cube marker when true.
     group_robot_marker_namespaces: true          # Groups base/chassis markers under shared robot/* namespaces.
     body_scale_factor: 1.0                       # Uniform scale multiplier for body footprint visuals.

@@ -1,10 +1,13 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
+#include "avg_msgs/msg/avg_system_msgs.hpp"
 #include "avg_msgs/msg/module_state.hpp"
+#include "avg_msgs/msg/system_status.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
 #include "diagnostic_msgs/msg/key_value.hpp"
@@ -15,9 +18,11 @@ namespace camrod_system
 
 struct ModuleSnapshot
 {
+  std::string category{"system"};
   int level{static_cast<int>(avg_msgs::msg::ModuleState::OK)};
   std::string message{"no status yet"};
   double stamp_sec{0.0};
+  std::vector<diagnostic_msgs::msg::KeyValue> values;
 };
 
 class SystemDiagnosticNode : public rclcpp::Node
@@ -31,29 +36,28 @@ public:
     stale_timeout_s_ = declare_parameter<double>("stale_timeout_s", 2.0);
     source_diagnostic_topic_ =
       declare_parameter<std::string>("source_diagnostic_topic", "/diagnostics");
+    system_status_topic_ = declare_parameter<std::string>("system_status_topic", "status");
+    avg_system_msgs_topic_ = declare_parameter<std::string>("avg_system_msgs_topic", "msgs");
     known_modules_ = declare_parameter<std::vector<std::string>>(
       "known_modules",
       std::vector<std::string>{
+        "hardware",
         "map",
         "sensing",
         "localization",
         "planning",
+        // HH_260617: Include camrod_parking status in semantic /system/status.
+        "parking",
         "platform",
         "perception",
-        "sensor_kit",
-        "bringup",
         "system",
       });
 
-    for (const auto & module : known_modules_) {
-      snapshots_[module] = ModuleSnapshot{
-        static_cast<int>(avg_msgs::msg::ModuleState::WARN),
-        "no status yet",
-        0.0,
-      };
-    }
-
     diag_pub_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(diagnostic_topic_, 10);
+    system_status_pub_ =
+      create_publisher<avg_msgs::msg::SystemStatus>(system_status_topic_, 10);
+    avg_system_msgs_pub_ =
+      create_publisher<avg_msgs::msg::AvgSystemMsgs>(avg_system_msgs_topic_, 10);
     diag_sub_ = create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
       source_diagnostic_topic_, 10,
       std::bind(&SystemDiagnosticNode::on_diagnostic, this, std::placeholders::_1));
@@ -76,14 +80,78 @@ private:
         return kv.value;
       }
     }
-    if (!status.name.empty()) {
-      const auto slash = status.name.find('/');
-      return slash == std::string::npos ? status.name : status.name.substr(0, slash);
-    }
-    return status.hardware_id;
+    return infer_category_from_name(status.name, status.hardware_id);
   }
 
-  // Consumes incoming module diagnostics and updates latest snapshot per category.
+  // HH_260617: Most checker statuses are named "node: /domain/item".
+  // Infer the owning CAMROD module so module readiness is not hidden by checker names.
+  static std::string infer_category_from_name(
+    const std::string & status_name,
+    const std::string & hardware_id)
+  {
+    const std::string key = !status_name.empty() ? status_name : hardware_id;
+    const auto colon = key.find(':');
+    const std::string task = colon == std::string::npos ? key : key.substr(colon + 1);
+    const std::string normalized = trim(task);
+
+    if (starts_with(normalized, "/hardware/") || starts_with(key, "hw_checker") ||
+      starts_with(key, "gpu_checker") || starts_with(key, "network_checker"))
+    {
+      return "hardware";
+    }
+    if (starts_with(normalized, "/sensor/") || starts_with(normalized, "/sensing/") ||
+      starts_with(key, "gnss_checker") || starts_with(key, "imu_checker") ||
+      starts_with(key, "lidar_checker") || starts_with(key, "radar_checker") ||
+      starts_with(key, "camera_checker") || starts_with(key, "wheel_odometry_checker") ||
+      starts_with(key, "velocity_converter_checker"))
+    {
+      return "sensing";
+    }
+    if (starts_with(normalized, "/localization/") || starts_with(key, "localization_")) {
+      return "localization";
+    }
+    if (starts_with(normalized, "/planning/") || starts_with(key, "planning_")) {
+      return "planning";
+    }
+    if (starts_with(normalized, "/perception/") || starts_with(key, "perception_")) {
+      return "perception";
+    }
+    if (starts_with(normalized, "/map/") || starts_with(key, "map_")) {
+      return "map";
+    }
+    if (starts_with(normalized, "/platform/") || starts_with(key, "ranger_platform")) {
+      return "platform";
+    }
+    if (starts_with(normalized, "/ui/") || starts_with(key, "ui_")) {
+      return "ui";
+    }
+    if (starts_with(normalized, "/docking/") || starts_with(key, "docking_")) {
+      return "docking";
+    }
+    if (starts_with(normalized, "/system/") || starts_with(key, "system_") ||
+      starts_with(key, "system/"))
+    {
+      return "system";
+    }
+    return hardware_id;
+  }
+
+  static bool starts_with(const std::string & value, const std::string & prefix)
+  {
+    return value.rfind(prefix, 0) == 0;
+  }
+
+  static std::string trim(const std::string & value)
+  {
+    const auto first = value.find_first_not_of(" \t");
+    if (first == std::string::npos) {
+      return "";
+    }
+    const auto last = value.find_last_not_of(" \t");
+    return value.substr(first, last - first + 1);
+  }
+
+  // Consumes incoming diagnostics and stores latest snapshot by stable status key.
   void on_diagnostic(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg)
   {
     const double now_sec = now().seconds();
@@ -92,20 +160,24 @@ private:
       if (category.empty()) {
         continue;
       }
-      auto it = snapshots_.find(category);
-      if (it == snapshots_.end()) {
-        it = snapshots_.insert(
-          std::make_pair(
-            category,
-            ModuleSnapshot{
-              static_cast<int>(avg_msgs::msg::ModuleState::WARN),
-              "discovered dynamically",
-              0.0,
-            })).first;
+      const std::string status_key = !status.name.empty() ? status.name : status.hardware_id;
+      if (status_key.empty()) {
+        continue;
       }
-      it->second.level = static_cast<int>(status.level);
-      it->second.message = status.message;
-      it->second.stamp_sec = now_sec;
+      // HH_260617: system_diagnostic publishes `system/diagnostic` to the same
+      // diagnostics bus it reads. Ignore its own summary to avoid recursively
+      // turning a previous WARN/ERROR into a persistent system-module fault.
+      if (status_key == "system/diagnostic") {
+        snapshots_.erase(status_key);
+        continue;
+      }
+      snapshots_[status_key] = ModuleSnapshot{
+        category,
+        static_cast<int>(status.level),
+        status.message,
+        now_sec,
+        status.values,
+      };
     }
   }
 
@@ -115,28 +187,15 @@ private:
     const auto stamp = now();
     const double now_sec = stamp.seconds();
 
+    auto module_states = build_module_states(stamp, now_sec);
+
     std::vector<std::string> warn_modules;
     std::vector<std::string> error_modules;
-
-    for (const auto & kv : snapshots_) {
-      const auto & module_name = kv.first;
-      const auto & snap = kv.second;
-
-      if (snap.stamp_sec <= 0.0) {
-        warn_modules.push_back(module_name);
-        continue;
-      }
-
-      const double age = now_sec - snap.stamp_sec;
-      if (age > stale_timeout_s_) {
-        warn_modules.push_back(module_name);
-        continue;
-      }
-
-      if (snap.level >= static_cast<int>(avg_msgs::msg::ModuleState::ERROR)) {
-        error_modules.push_back(module_name);
-      } else if (snap.level == static_cast<int>(avg_msgs::msg::ModuleState::WARN)) {
-        warn_modules.push_back(module_name);
+    for (const auto & module : module_states) {
+      if (module.level >= avg_msgs::msg::ModuleState::ERROR) {
+        error_modules.push_back(module.module_name);
+      } else if (module.level == avg_msgs::msg::ModuleState::WARN) {
+        warn_modules.push_back(module.module_name);
       }
     }
 
@@ -158,13 +217,160 @@ private:
     }
 
     st.values.push_back(make_kv("category", "system"));
-    st.values.push_back(make_kv("status_count", std::to_string(snapshots_.size())));
-    st.values.push_back(make_kv("active_modules", join_sorted_keys(snapshots_)));
+    st.values.push_back(make_kv("status_count", std::to_string(module_states.size())));
+    st.values.push_back(make_kv("active_modules", module_names(module_states)));
     st.values.push_back(make_kv("warn_modules", join_vector(warn_modules)));
     st.values.push_back(make_kv("error_modules", join_vector(error_modules)));
     diag.status.push_back(st);
 
     diag_pub_->publish(diag);
+    publish_system_status(stamp, module_states, warn_modules, error_modules);
+  }
+
+  std::vector<avg_msgs::msg::ModuleState> build_module_states(
+    const rclcpp::Time & stamp,
+    double now_sec)
+  {
+    std::map<std::string, avg_msgs::msg::ModuleState> modules;
+    for (const auto & name : known_modules_) {
+      avg_msgs::msg::ModuleState module;
+      module.stamp = stamp;
+      module.module_name = name;
+      module.level = avg_msgs::msg::ModuleState::WARN;
+      module.message = "no status yet";
+      modules[name] = module;
+    }
+
+    for (const auto & kv : snapshots_) {
+      const auto & snap = kv.second;
+      const std::string category = snap.category.empty() ? "system" : snap.category;
+      if (modules.find(category) == modules.end()) {
+        avg_msgs::msg::ModuleState module;
+        module.stamp = stamp;
+        module.module_name = category;
+        module.level = avg_msgs::msg::ModuleState::WARN;
+        module.message = "discovered dynamically";
+        modules[category] = module;
+      }
+
+      auto candidate = make_module_state(stamp, category, kv.first, snap, now_sec);
+      auto & aggregate = modules[category];
+      merge_module_state(aggregate, candidate);
+    }
+
+    std::vector<avg_msgs::msg::ModuleState> out;
+    out.reserve(modules.size());
+    for (const auto & kv : modules) {
+      out.push_back(kv.second);
+    }
+    return out;
+  }
+
+  avg_msgs::msg::ModuleState make_module_state(
+    const rclcpp::Time & stamp,
+    const std::string & category,
+    const std::string & status_key,
+    const ModuleSnapshot & snap,
+    double now_sec) const
+  {
+    avg_msgs::msg::ModuleState module;
+    module.stamp = stamp;
+    module.module_name = category;
+    module.level = map_diagnostic_level(snap.level);
+    module.message = status_key + ": " + snap.message;
+    if (snap.stamp_sec <= 0.0 || now_sec - snap.stamp_sec > stale_timeout_s_) {
+      module.level = std::max<uint8_t>(module.level, avg_msgs::msg::ModuleState::WARN);
+      module.message = status_key + ": stale";
+    }
+    module.missing_nodes = split_csv(value_for(snap.values, "missing_nodes"));
+    module.missing_topics = split_csv(value_for(snap.values, "missing_topics"));
+    const auto legacy_missing = split_csv(value_for(snap.values, "missing"));
+    if (!legacy_missing.empty()) {
+      if (status_key.find("topics") != std::string::npos) {
+        module.missing_topics.insert(
+          module.missing_topics.end(), legacy_missing.begin(), legacy_missing.end());
+      } else if (status_key.find("nodes") != std::string::npos) {
+        module.missing_nodes.insert(
+          module.missing_nodes.end(), legacy_missing.begin(), legacy_missing.end());
+      }
+    }
+    const auto publisher_missing = split_csv(value_for(snap.values, "publisher_missing"));
+    module.missing_topics.insert(
+      module.missing_topics.end(), publisher_missing.begin(), publisher_missing.end());
+    const auto type_mismatches = split_csv(value_for(snap.values, "type_mismatches"));
+    module.missing_topics.insert(
+      module.missing_topics.end(), type_mismatches.begin(), type_mismatches.end());
+    return module;
+  }
+
+  static uint8_t map_diagnostic_level(int level)
+  {
+    if (level >= diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
+      return avg_msgs::msg::ModuleState::ERROR;
+    }
+    if (level == diagnostic_msgs::msg::DiagnosticStatus::WARN) {
+      return avg_msgs::msg::ModuleState::WARN;
+    }
+    return avg_msgs::msg::ModuleState::OK;
+  }
+
+  static void merge_module_state(
+    avg_msgs::msg::ModuleState & aggregate,
+    const avg_msgs::msg::ModuleState & candidate)
+  {
+    if (aggregate.message == "no status yet" || candidate.level >= aggregate.level) {
+      aggregate.level = candidate.level;
+      aggregate.message = candidate.message;
+    }
+    append_unique(aggregate.missing_nodes, candidate.missing_nodes);
+    append_unique(aggregate.missing_topics, candidate.missing_topics);
+    append_unique(aggregate.missing_lifecycle_nodes, candidate.missing_lifecycle_nodes);
+  }
+
+  static void append_unique(std::vector<std::string> & dst, const std::vector<std::string> & src)
+  {
+    for (const auto & item : src) {
+      if (!item.empty() && std::find(dst.begin(), dst.end(), item) == dst.end()) {
+        dst.push_back(item);
+      }
+    }
+  }
+
+  void publish_system_status(
+    const rclcpp::Time & stamp,
+    const std::vector<avg_msgs::msg::ModuleState> & modules,
+    const std::vector<std::string> & warn_modules,
+    const std::vector<std::string> & error_modules)
+  {
+    avg_msgs::msg::SystemStatus system_status;
+    system_status.stamp = stamp;
+    system_status.system_ok = error_modules.empty() && warn_modules.empty();
+    if (!error_modules.empty()) {
+      system_status.message = "one or more modules in ERROR";
+    } else if (!warn_modules.empty()) {
+      system_status.message = "one or more modules in WARN";
+    } else {
+      system_status.message = "system healthy";
+    }
+    system_status.modules = modules;
+    system_status_pub_->publish(system_status);
+
+    avg_msgs::msg::AvgSystemMsgs avg_msg;
+    avg_msg.stamp = stamp;
+    avg_msg.state.stamp = stamp;
+    avg_msg.state.module_name = "system";
+    avg_msg.state.level = system_status.system_ok ?
+      avg_msgs::msg::ModuleState::OK : avg_msgs::msg::ModuleState::WARN;
+    if (!error_modules.empty()) {
+      avg_msg.state.level = avg_msgs::msg::ModuleState::ERROR;
+    }
+    avg_msg.state.message = system_status.message;
+    avg_msg.system_status = system_status;
+    for (const auto & module : modules) {
+      avg_msg.active_modules.push_back(module.module_name);
+    }
+    avg_msg.status_count = static_cast<uint32_t>(modules.size());
+    avg_system_msgs_pub_->publish(avg_msg);
   }
 
   // Helper to create diagnostic key-value fields with consistent style.
@@ -176,13 +382,12 @@ private:
     return kv;
   }
 
-  // Joins map keys sorted by std::map order (module name ascending).
-  static std::string join_sorted_keys(const std::map<std::string, ModuleSnapshot> & values)
+  static std::string module_names(const std::vector<avg_msgs::msg::ModuleState> & values)
   {
     std::vector<std::string> keys;
     keys.reserve(values.size());
-    for (const auto & kv : values) {
-      keys.push_back(kv.first);
+    for (const auto & module : values) {
+      keys.push_back(module.module_name);
     }
     return join_vector(keys);
   }
@@ -200,15 +405,45 @@ private:
     return out;
   }
 
+  static std::string value_for(
+    const std::vector<diagnostic_msgs::msg::KeyValue> & values,
+    const std::string & key)
+  {
+    for (const auto & kv : values) {
+      if (kv.key == key) {
+        return kv.value;
+      }
+    }
+    return "";
+  }
+
+  static std::vector<std::string> split_csv(const std::string & value)
+  {
+    std::vector<std::string> out;
+    std::stringstream stream(value);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+      item = trim(item);
+      if (!item.empty()) {
+        out.push_back(item);
+      }
+    }
+    return out;
+  }
+
 private:
   std::string diagnostic_topic_;
   std::string source_diagnostic_topic_;
+  std::string system_status_topic_;
+  std::string avg_system_msgs_topic_;
   double publish_period_s_{0.5};
   double stale_timeout_s_{2.0};
   std::vector<std::string> known_modules_;
   std::map<std::string, ModuleSnapshot> snapshots_;
 
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diag_pub_;
+  rclcpp::Publisher<avg_msgs::msg::SystemStatus>::SharedPtr system_status_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgSystemMsgs>::SharedPtr avg_system_msgs_pub_;
   rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diag_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
@@ -223,4 +458,3 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
-

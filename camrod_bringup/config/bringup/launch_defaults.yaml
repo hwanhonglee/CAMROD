@@ -58,7 +58,10 @@ bringup:
     # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
     enable_planning: true
     enable_path_cost_grids: true
-    enable_goal_replanner: true
+    # HH_260618: Keep goal_replanner off by default because Nav2 planner_server
+    # already publishes /planning/global_path; duplicate publishers make RViz path
+    # visualization flicker and can feed stale paths to downstream cost grids.
+    enable_goal_replanner: false
     # Recover from intermittent lifecycle startup race on resource-limited targets.
     enable_nav2_lifecycle_retry: true
     # false  → nav2_autostart=true: Nav2 activates immediately on bringup.
@@ -70,6 +73,8 @@ bringup:
     require_localization_ready: false
     enable_state_machine: true
     enable_progress: true
+    # HH_260618: Publish thick global/local trajectory markers for RViz readability.
+    enable_path_visualization: true
     # Resolve drop_zone from map-exported semantic area YAML.
     state_machine_keypoints_yaml: map/drop_zones.yaml
     state_machine_camping_sites_yaml: planning/camping_sites.yaml
@@ -79,9 +84,10 @@ bringup:
     #   controller_then_slice: prefer controller path, fallback to global-path slice
     #   controller_only: use controller-local path only
     #   slice_only: always slice from global path
-    # Prefer controller-local path first so /planning/local_path differs from
-    # pure global slicing and reflects local costmap reactions in real time.
-    local_path_source: controller_then_slice
+    # HH_260619 - Use global-route slicing by default so operator-visible
+    # /planning/local_path follows the newest goal immediately and does not
+    # reuse a stale controller debug path during goal replacement.
+    local_path_source: slice_only
 
     # ---- Planning cmd_vel gate ----
     # Require explicit /planning/engage trigger for final /planning/cmd_vel.
@@ -112,21 +118,40 @@ bringup:
     # Cost-based stop uses combined inflation grid (lanelet+LiDAR+Radar+global_path).
     cmd_vel_gate_cost_stop_enable: true
     cmd_vel_gate_cost_grid_topic: /planning/cost_grid/inflation
+    # HH_260618: Safety/cmd_vel gates use real localization pose. Do not use
+    # /planning/lanelet_pose here: snapped pose can stay on-lane while the robot
+    # is physically outside the drivable lanelet/cost corridor.
     cmd_vel_gate_cost_pose_topic: /localization/pose
     # HH_260527: Primary-only selector default; use selected localization odometry.
     cmd_vel_gate_cost_odometry_topic: /localization/odometry/filtered
     # HH_260522: pose source preference options:
     #   odometry: prefer /localization/odometry/filtered candidate first
     #   tf_robot_base: prefer TF(map<-robot_base_link) first
-    #   pose_topic: prefer /localization/pose candidate first
-    # Use odometry heading by default for stable cost-stop corridor checks.
-    cmd_vel_gate_pose_source_preference: odometry
+    #   pose_topic: prefer the configured cost pose topic first.
+    # HH_260618: Prefer the configured real localization pose for safety checks.
+    cmd_vel_gate_pose_source_preference: pose_topic
     cmd_vel_gate_enable_pose_raw_fallback: false
     cmd_vel_gate_cost_threshold: 85
     # Legacy fixed lookahead; used only when enable_speed_dependent_lookahead=false.
     cmd_vel_gate_cost_lookahead_m: 2.0
     cmd_vel_gate_cost_width_m: 1.0
     cmd_vel_gate_cost_hold_s: 1.0
+    # HH_260618: Raw lanelet hard-stop before inflation ego-clear. This blocks
+    # translational cmd_vel when the current/corridor cell is lane-boundary or
+    # outside lanelet, while still allowing in-place yaw correction.
+    cmd_vel_gate_lanelet_safety_enable: true
+    cmd_vel_gate_lanelet_safety_grid_topic: /map/cost_grid/lanelet
+    cmd_vel_gate_lanelet_safety_threshold: 85
+    cmd_vel_gate_lanelet_safety_current_threshold: 85
+    cmd_vel_gate_lanelet_safety_lookahead_m: 1.0
+    cmd_vel_gate_lanelet_safety_width_m: 0.8
+    cmd_vel_gate_lanelet_safety_stop_on_unknown: true
+    cmd_vel_gate_lanelet_safety_allow_rotation_in_place: true
+    # HH_260618: Keep reverse/lateral free for explicit parking/site maneuver
+    # phases; those phases need their own mission-state boundary guard.
+    cmd_vel_gate_lanelet_safety_check_reverse: false
+    cmd_vel_gate_lanelet_safety_check_lateral: false
+    cmd_vel_gate_lanelet_safety_min_translation_mps: 0.02
     # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
     cmd_vel_gate_speed_dependent_lookahead: true
     cmd_vel_gate_front_lookahead_min_m: 0.4
@@ -142,6 +167,16 @@ bringup:
     cmd_vel_gate_rear_cost_threshold: 92
     cmd_vel_gate_rear_lookahead_m: 0.6
     cmd_vel_gate_rear_corridor_width_m: 0.6
+    # HH_260618: Explicit site-crab lateral parking may cross static
+    # lanelet/global-path front/side/rear cost, but LiDAR/Radar dynamic source cost still
+    # stops the robot.
+    cmd_vel_gate_lateral_cmd_bypass_static_cost_stop: true
+    cmd_vel_gate_lateral_cmd_bypass_min_mps: 0.02
+    # HH_260618: Reverse campsite parking may cross static lanelet/global-path
+    # cost after lanelet-snap arrival; LiDAR/Radar source cost remains active.
+    cmd_vel_gate_reverse_cmd_bypass_static_cost_stop: true
+    cmd_vel_gate_reverse_cmd_bypass_min_mps: 0.02
+    cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold: 85
     # Unavoidable-stop cluster detection for lethal costs (front only).
     cmd_vel_gate_unavoidable_stop_enable: true
     # Fixed from 253 (OccupancyGrid max is 100; 253 never triggers).
@@ -155,6 +190,20 @@ bringup:
     cmd_vel_gate_yaw_alignment_exit_margin_m: 0.3
     # Keep module default unless bringup-level override is required.
     cmd_vel_gate_yaw_alignment_zones_file: planning/yaw_alignment_zones.yaml
+    # HH_260618: Route-heading guard keeps normal Nav2 driving from moving
+    # forward while the robot is facing opposite to the active local path.
+    cmd_vel_gate_route_heading_enable: true
+    cmd_vel_gate_route_heading_path_topic: /planning/local_path
+    cmd_vel_gate_route_heading_frame_id: map
+    cmd_vel_gate_route_heading_min_cmd_x_mps: 0.03
+    cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps: 0.02
+    cmd_vel_gate_route_heading_lookahead_m: 1.5
+    cmd_vel_gate_route_heading_error_enter_deg: 75.0
+    cmd_vel_gate_route_heading_error_exit_deg: 20.0
+    cmd_vel_gate_route_heading_angular_kp: 1.4
+    cmd_vel_gate_route_heading_max_angular_z: 0.6
+    cmd_vel_gate_route_heading_max_linear_x: 0.0
+    cmd_vel_gate_route_heading_min_path_points: 2
     # HH_260507: Scale all cmd_vel output by this factor before sending to /planning/cmd_vel.
     cmd_vel_gate_speed_scale: 0.5
 
@@ -181,8 +230,13 @@ bringup:
     # Examples:
     # - navfn_rpp.yaml       -> planner=NavFn, controller=RPP
     # - smac2d_dwb.yaml      -> planner=Smac2D, controller=DWB
-    nav2_selected_planner: __auto__
-    nav2_selected_controller: __auto__
+    # HH_260619: Prefer LaneletRoute for operator-visible route quality.
+    # It follows lanelet routing centerlines; Smac/NavFn remain selectable
+    # fallback/free-space planners for diagnostics.
+    nav2_selected_planner: LaneletRoute
+    # HH_260618: Use MPPI by default so local costmap/obstacle costs shape the
+    # actual trajectory; RPP/DWB remain selectable fallback controllers.
+    nav2_selected_controller: MPPI
 
     # ---- Per-planning-node parameter file overrides ----
     path_cost_grids_param_file: planning/path_cost_grids.yaml
@@ -250,6 +304,9 @@ bringup:
     #   estop_source_mode: platform_status/topic/enabled/on | disabled/off/none
     engage_source_mode: planning_engage
     estop_source_mode: platform_status
+    # HH_260618: Sim and real platform both stay closed by default; RViz/UI goals
+    # may plan, but motion requires /planning/engage=true unless explicitly changed.
+    drive_allow_on_start: false
     # Ranger base node directly publishes /platform/status/*.
     estop_topic: /platform/status/estop
     # Current baseline is no physical ranger CAN platform.
@@ -258,6 +315,19 @@ bringup:
     # Keep platform.launch.py lean and route Ranger params through
     # bringup override profile when using bringup.launch.py.
     ranger_params_file: platform/ranger_driver.yaml
+
+  parking:
+    # HH_260618: Select exactly one final parking method.
+    #   rule_based: use private camrod_parking for campsite crab + rear parking.
+    #   docking   : use camrod_docking/opennav marker-based docking.
+    # A run without either method is considered a system readiness fault.
+    method: rule_based
+    # HH_260617: Rule-based parking runs after Nav2 lanelet-snap arrival and
+    # publishes through /planning/cmd_vel_raw so existing safety gates remain active.
+    enable_parking: true
+    enable_site_maneuver: true
+    enable_drop_zone_parking: true
+    param_file: parking/parking.yaml
 
   perception:
     enable_lidar_obstacle: true
@@ -292,6 +362,7 @@ bringup:
     localization: localization
     planning: planning
     platform: platform
+    parking: parking
     perception: perception
     sensor_kit: sensor_kit
     bringup: bringup
@@ -302,9 +373,6 @@ bringup:
     voice: voice
 
   topics:
-    gnss_navsatfix: /sensing/gnss/ublox_gps_node/fix
-    gnss_pose: /sensing/gnss/pose
-    gnss_pose_cov: /sensing/gnss/pose_with_covariance
     gnss_rtcm: /sensing/gnss/rtcm
 
   map:
@@ -321,8 +389,11 @@ bringup:
     map_visualization_param_file: map/map_visualization.yaml
 
   docking:
-    # Enable docking module in bringup.
-    # enable_odom_corrector is always false in bringup (ESKF publishes odom→base_link TF).
+    # HH_260618: This module launches only when parking.method=docking.
+    # Keep these feature flags separate from the backend selector so the same
+    # launch file can switch between AprilTag docking and rule-based parking.
+    # HH_260617: enable_odom_corrector is always false in full bringup because
+    # localization owns odom→base_link TF for the selected EKF/ESKF backend.
     enable_docking: true
     enable_auto_docking: false      # battery-triggered auto docking (BMS 연동 후 true)
     enable_manual_docking: true     # UI/action-triggered manual docking

@@ -185,7 +185,7 @@ graph TD
 | Node (executable) | Inputs | Outputs | Key params |
 |---|---|---|---|
 | `lanelet2_map_node` (`lanelet_map_provider`) | Lanelet2 .osm | `/map/markers`, TF `world→map` | `map_path`, `offset_lat/lon/alt`, `world_frame_id`, `map_frame_id` |
-| `lanelet_cost_grid_node` (`lanelet_boundary_cost_grid`) | .osm, `/planning/lanelet_pose`, `/planning/global_path` | `/map/cost_grid/lanelet` (secondary, centerline, **active**); `/map/cost_grid/planning_base` (primary, bounds, **disabled**) | `cost_mode`, `resolution`, `width`, `height`, `centerline_half_width`, `outside_value`, `primary_enable`, `secondary.output_topic`, `start_current` (Nav2 costmap layer cold-start behavior) |
+| `lanelet_cost_grid_node` (`lanelet_boundary_cost_grid`) | .osm, `/planning/lanelet_pose`, `/planning/global_path`, `/planning/route_lanelet_ids` | `/map/cost_grid/lanelet` (secondary, centerline, **active**); `/map/cost_grid/planning_base` (primary, bounds, **disabled**) | `cost_mode`, `resolution`, `width`, `height`, `centerline_half_width`, `outside_value`, `primary_enable`, `secondary.output_topic`, `secondary.route_lanelet_filter_enable`, `secondary.route_boundary_clearance_enable`, `start_current` |
 | `multi_cost_field_marker_node` (`cost_grid_multi_marker`) | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar` | `/map/cost_grid/lanelet_markers`, `lidar_markers`, `radar_markers` | `palettes`, `alphas`, `marker_scales`, `z_offsets` |
 | `cost_field_marker_node` (`nav2_costmap_debug_marker`) | `/planning/global_costmap/costmap` | `/map/cost_grid/inflation_nav2_markers` | `palette`, `alpha`, `marker_scale` (off by default) |
 | `marker_array_aggregator_node` (`cost_grid_marker_aggregator`) | All cost marker topics | `/map/cost_grid/inflation_markers` | `stale_timeout_s`, `republish_period_s` (off by default) |
@@ -249,8 +249,10 @@ graph LR
 | `/planning/global_path` | `nav_msgs/Path` | No | camrod_planning | On replan | Global path used for path-mode cost layer |
 | `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | No | camrod_sensing | 10 Hz | LiDAR obstacle grid forwarded to multi-marker visualizer |
 | `/sensing/cost_grid/radar` | `nav_msgs/OccupancyGrid` | No | camrod_sensing | 10 Hz | Radar obstacle grid forwarded to multi-marker visualizer |
+| `/planning/route_lanelet_ids` | `std_msgs/Int64MultiArray` | No | camrod_planning | on new LaneletRoute plan | HH_260619 - Exact active-route lanelet IDs used to filter merge/branch boundary costs |
 | `/planning/cost_grid/global_path_markers` | `visualization_msgs/MarkerArray` | No | camrod_planning | ~5 Hz | Global path marker stream aggregated for RViz |
 | `/planning/cost_grid/local_path_markers` | `visualization_msgs/MarkerArray` | No | camrod_planning | ~5 Hz | Local path marker stream aggregated for RViz |
+| `/planning/path_markers` | `visualization_msgs/MarkerArray` | No | camrod_planning | On path update + 5 Hz cache | HH_260618 - thick blue global path and orange local path overlays with direction arrows |
 
 ### Outputs
 
@@ -258,7 +260,7 @@ graph LR
 |---|---|---|---|---|
 | `/map/markers` | `visualization_msgs/MarkerArray` | camrod_platform, RViz | Once (transient_local) | Lanelet geometry: centerlines, boundaries, lane-direction arrows |
 | TF `world→map` | `tf2_msgs/TFMessage` | All packages | Static | Fixed transform anchoring the metric map frame to WGS84 world |
-| `/map/cost_grid/lanelet` | `nav_msgs/OccupancyGrid` | camrod_sensing, camrod_planning | Static (transient_local) | Centerline-gradient cost grid: 0=centerline, 35=in-lane, 99=off-lane |
+| `/map/cost_grid/lanelet` | `nav_msgs/OccupancyGrid` | camrod_sensing, camrod_planning | On startup, route update, and 1 Hz republish | HH_260619 - Route-aware centerline-gradient cost grid: 0=centerline/route corridor, 70=in-route-lane off-center, 98=route boundary, 100=off-lane |
 | `/map/cost_grid/planning_base` | `nav_msgs/OccupancyGrid` | camrod_planning | Static (transient_local) | Boundary-strips-only cost grid. **Currently disabled** (`primary_enable: false`) |
 | `/map/cost_grid/lanelet_markers` | `visualization_msgs/MarkerArray` | RViz | ~5 Hz | Colored cubes for lanelet cost visualization |
 | `/map/cost_grid/lidar_markers` | `visualization_msgs/MarkerArray` | RViz | ~8 Hz | Colored cubes for LiDAR cost visualization |
@@ -292,12 +294,12 @@ graph LR
 
 | Field | Detail |
 |---|---|
-| Trigger | Node startup (static grid); the node does **not** rebuild on each pose update (`rebuild_on_pose: false`, `rebuild_on_path: false`). |
-| Internal logic | `lanelet_boundary_cost_grid` runs **two output profiles** from a single node instance. The **primary profile** (`cost_mode: bounds`, `/map/cost_grid/planning_base`) is currently **disabled** (`primary_enable: false`). The **secondary profile** (`cost_mode: centerline`, `/map/cost_grid/lanelet`) is the only active output: center cells = 0, in-lane off-center cells = 35, off-lane cells = 99. The window is 600×600 cells at 0.20 m resolution (120 m square). Outside-lanelet cells receive 99; unreachable cells receive −1. |
+| Trigger | Node startup, active route update, and `/planning/global_path` update; the node still does **not** rebuild on each pose update (`rebuild_on_pose: false`, `rebuild_on_path: true`). |
+| Internal logic | `lanelet_boundary_cost_grid` runs **two output profiles** from a single node instance. The **primary profile** (`cost_mode: bounds`, `/map/cost_grid/planning_base`) is currently **disabled** (`primary_enable: false`). The **secondary profile** (`cost_mode: centerline`, `/map/cost_grid/lanelet`) is the only active output: HH_260619 - it filters rendered lanelets by `/planning/route_lanelet_ids`, then re-opens the active `/planning/global_path` corridor so merge/branch lane boundaries outside the selected route do not block the route. Center cells = 0, in-route-lane off-center cells = 70, route boundary cells = 98, off-lane cells = 100. The active planning window is 960×960 cells at 0.25 m resolution (240 m square). |
 | Output effect | Both grids are published with `transient_local` QoS so late-joining Nav2 costmap layers receive them immediately on subscribe. |
 | Operator-visible symptom | If the robot pose is far from any lanelet at startup, the centerline profile will show only the off-lane fill value (99). The grid becomes meaningful once the robot is driven into a lanelet corridor or a route is planned. |
-| Related params | `cost_mode`, `resolution`, `width`, `height`, `centerline_half_width` (secondary: 0.75 m), `outside_value`, `secondary.outside_value`, `secondary.centerline_lanelet_fill_value` |
-| Related topics | `/map/cost_grid/lanelet` (active); `/map/cost_grid/planning_base` (disabled) |
+| Related params | `cost_mode`, `resolution`, `width`, `height`, `centerline_half_width`, `secondary.route_lanelet_filter_enable`, `secondary.route_boundary_clearance_enable`, `secondary.route_boundary_clearance_half_width_m`, `secondary.outside_value`, `secondary.centerline_lanelet_fill_value` |
+| Related topics | `/map/cost_grid/lanelet` (active); `/map/cost_grid/planning_base` (disabled); `/planning/route_lanelet_ids`; `/planning/global_path` |
 
 ### TF publishing
 
@@ -386,9 +388,15 @@ ros2 launch camrod_map area_export.launch.py \
 | `centerline_half_width` | `2.2` m | (Primary profile) half-width of boundary strip |
 | `outside_value` | `-1` | Cells outside lanelets are unknown |
 | `secondary.cost_mode` | `centerline` | Secondary profile → `/map/cost_grid/lanelet` |
-| `secondary.centerline_half_width` | `0.75` m | Tight centerline corridor |
-| `secondary.outside_value` | `99` | Off-lane cells are near-lethal |
-| `secondary.centerline_lanelet_fill_value` | `35` | In-lane but off-centerline cost |
+| `secondary.resolution` | `0.25` m | HH_260619 - Finer route grid for curved lane centerlines |
+| `secondary.width` / `secondary.height` | `960` cells | 240 m square route window |
+| `secondary.centerline_half_width` | `0.55` m | Tight centerline corridor |
+| `secondary.outside_value` | `100` | Off-lane cells are lethal for Nav2/global planning |
+| `secondary.centerline_lanelet_fill_value` | `70` | In-route-lane but off-centerline cost |
+| `secondary.lanelet_boundary_value` | `98` | High route-boundary margin, still below lethal |
+| `secondary.route_lanelet_filter_enable` | `true` | HH_260619 - Render only lanelets selected by `/planning/route_lanelet_ids` |
+| `secondary.route_boundary_clearance_enable` | `true` | HH_260619 - Clear the active global-path corridor through merge/branch boundary cells |
+| `secondary.route_boundary_clearance_half_width_m` | `0.80` m | Corridor half-width used when clearing active-route boundary blockers |
 
 ### `config/map_visualization.yaml` — key params
 
@@ -481,3 +489,9 @@ The `area_exporter` node runs once at launch and exits. If the output file is em
 - [../camrod_planning/README.md](../camrod_planning/README.md) — consumes `/map/cost_grid/lanelet`, produces `/planning/global_path`
 - [../camrod_sensing/README.md](../camrod_sensing/README.md) — consumes `/map/cost_grid/lanelet` for inflation grid, produces `/sensing/cost_grid/lidar` and `/sensing/cost_grid/radar`
 - [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions used across the stack
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: Map semantic YAML is now used by planning and parking.
+
+`map/drop_zones.yaml` provides the drop-zone/station pose used by `camrod_parking/drop_zone_parking` when `use_drop_zone_pose_as_station: true`. `planning/camping_sites.yaml` provides raw campsite center goals for UI and mission-key dispatch. HH_260618: Keep `yaw_deg` meaningful for drop zones because reverse parking aligns the parked robot front yaw to this station yaw by default; set `rear_matches_station_yaw: true` only when a map stores rear/charger-facing yaw.

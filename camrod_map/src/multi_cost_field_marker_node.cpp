@@ -114,10 +114,10 @@ public:
         pickOrDefault(clear_on_empty_grids, i, clear_on_empty_default);
       stream.grid_qos_transient_local =
         pickOrDefault(grid_qos_transient_locals, i, grid_qos_transient_local_default);
-      stream.stale_timeout_sec = std::max(0.0, pickOrDefault(stale_timeouts_s, i, stale_timeout_default));
-      stream.min_publish_period_sec =
+      stream.stale_timeout_s = std::max(0.0, pickOrDefault(stale_timeouts_s, i, stale_timeout_default));
+      stream.min_publish_period_s =
         std::max(0.0, pickOrDefault(min_publish_periods_s, i, min_publish_period_default));
-      stream.republish_period_sec =
+      stream.republish_period_s =
         std::max(0.0, pickOrDefault(republish_periods_s, i, republish_period_default));
       stream.sample_stride = std::max(
         1, static_cast<int>(pickOrDefault(sample_strides, i, static_cast<int64_t>(sample_stride_default))));
@@ -168,9 +168,10 @@ private:
     bool show_unknown{false};
     bool clear_on_empty_grid{true};
     bool grid_qos_transient_local{true};
-    double stale_timeout_sec{0.0};
-    double min_publish_period_sec{0.0};
-    double republish_period_sec{0.0};
+    // HH_260617: Keep internal duration fields aligned with canonical `_s` naming.
+    double stale_timeout_s{0.0};
+    double min_publish_period_s{0.0};
+    double republish_period_s{0.0};
     int sample_stride{1};
 
     rclcpp::Subscription<avg_msgs::msg::OccupancyGrid>::SharedPtr sub;
@@ -185,11 +186,11 @@ private:
 
   bool canPublishNow(const StreamRuntime & stream, const rclcpp::Time & now_t) const
   {
-    if (stream.min_publish_period_sec <= 0.0 || stream.last_publish_time.nanoseconds() <= 0) {
+    if (stream.min_publish_period_s <= 0.0 || stream.last_publish_time.nanoseconds() <= 0) {
       return true;
     }
     const double dt = (now_t - stream.last_publish_time).seconds();
-    return dt >= stream.min_publish_period_sec;
+    return dt >= stream.min_publish_period_s;
   }
 
   avg_msgs::msg::Marker initMarker(
@@ -415,9 +416,9 @@ private:
     }
     auto & stream = streams_[index];
 
-    if (stream.stale_timeout_sec > 0.0 && stream.last_grid_rx.nanoseconds() > 0) {
+    if (stream.stale_timeout_s > 0.0 && stream.last_grid_rx.nanoseconds() > 0) {
       const double dt = (now() - stream.last_grid_rx).seconds();
-      if (dt > stream.stale_timeout_sec && !stream.last_markers.markers.empty()) {
+      if (dt > stream.stale_timeout_s && !stream.last_markers.markers.empty()) {
         publishDeleteAll(stream, stream.last_markers.markers.front().header);
         stream.latest_grid.reset();
         stream.pending_grid_update = false;
@@ -456,12 +457,12 @@ private:
     }
     auto & stream = streams_[index];
     stream.republish_timer.reset();
-    if (stream.republish_period_sec <= 0.0) {
+    if (stream.republish_period_s <= 0.0) {
       return;
     }
     stream.republish_timer = create_wall_timer(
       std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::duration<double>(stream.republish_period_sec)),
+        std::chrono::duration<double>(stream.republish_period_s)),
       [this, index]() {
         onRepublishTimer(index);
       });

@@ -2,7 +2,7 @@
 
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -31,13 +31,30 @@ def _truthy(raw: str) -> bool:
     return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _camera_executable_exists(executable_name: str) -> bool:
+    prefix = get_package_prefix("camrod_sensing")
+    return os.path.exists(os.path.join(prefix, "lib", "camrod_sensing", executable_name))
+
+
 def _resolve_camera_enable(context, *args, **kwargs):
     requested_raw = context.perform_substitution(LaunchConfiguration("enable_camera"))
+    front_raw = context.perform_substitution(LaunchConfiguration("enable_front_camera"))
+    rear_raw = context.perform_substitution(LaunchConfiguration("enable_rear_camera"))
     device_path = context.perform_substitution(LaunchConfiguration("camera_device_path")).strip()
 
     requested = _truthy(requested_raw)
+    front_requested = _truthy(front_raw)
+    rear_requested = _truthy(rear_raw)
     has_device = bool(device_path) and os.path.exists(device_path)
-    effective = requested and has_device
+    front_executable = _camera_executable_exists("camera_front_publisher_node")
+    rear_executable = _camera_executable_exists("camera_rear_publisher_node")
+    has_requested_executable = (
+        (front_requested and front_executable) or
+        (rear_requested and rear_executable)
+    )
+    # HH_260617: Camera publisher nodes are Jetson-only in the current CMake.
+    # Do not include camera.launch.py on x86_64 just because /dev/video0 exists.
+    effective = requested and has_device and has_requested_executable
 
     actions = [
         SetLaunchConfiguration("enable_camera_effective", "true" if effective else "false"),
@@ -48,6 +65,15 @@ def _resolve_camera_enable(context, *args, **kwargs):
                 msg=(
                     f"[sensing.launch] camera disabled: device not found at '{device_path}'. "
                     "Run without camera pipeline."
+                )
+            )
+        )
+    if requested and has_device and not has_requested_executable:
+        actions.append(
+            LogInfo(
+                msg=(
+                    "[sensing.launch] camera disabled: requested camera publisher "
+                    "executable is not installed in camrod_sensing. Run without camera pipeline."
                 )
             )
         )
@@ -191,7 +217,9 @@ def generate_launch_description():
                 package="camrod_sensing",
                 executable="inflation_cost_grid_node",
                 name="inflation_cost_grid",
-                namespace=LaunchConfiguration("sensing_namespace"),
+                # HH_260618: Inherit PushRosNamespace(sensing_namespace) once.
+                # Setting namespace here again produced /sensing/sensing/inflation_cost_grid
+                # and prevented /sensing/inflation_cost_grid YAML params from applying.
                 output="screen",
                 parameters=[LaunchConfiguration("inflation_cost_grid_param_file")],
                 condition=IfCondition(LaunchConfiguration("enable_inflation_cost_grid")),

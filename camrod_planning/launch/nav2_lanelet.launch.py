@@ -44,11 +44,18 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
 def infer_nav2_combo_ids(combo_param_file: str) -> tuple[str, str]:
     """Infer planner/controller IDs from combo profile filename."""
     name = os.path.basename(str(combo_param_file)).lower()
-    planner_id = 'NavFn'
-    controller_id = 'RPP'
+    # HH_260619: Default to LaneletRoute when no combo profile is selected.
+    # Normal campground driving should use the lanelet routing graph and
+    # centerlines. Smac/NavFn remain explicit fallback/free-space planners.
+    planner_id = 'LaneletRoute'
+    # HH_260618: Default controller is MPPI. Global path remains the reference,
+    # but local trajectory sampling/cost critics decide the actual cmd_vel.
+    controller_id = 'MPPI'
 
     # HH_260528: Keep mapping explicit so one combo file controls both selectors.
     planner_tokens = (
+        ('laneletroute', 'LaneletRoute'),
+        ('lanelet_route', 'LaneletRoute'),
         ('smachybrid', 'SmacHybrid'),
         ('smaclattice', 'SmacLattice'),
         ('smac2d', 'Smac2D'),
@@ -170,7 +177,7 @@ def generate_launch_description():
         pkg_share, 'config', 'nav2_combo_profiles', 'disabled.yaml'
     )
     default_path_cost_grids_param = os.path.join(pkg_share, 'config', 'path_cost_grids.yaml')
-    # HH_260513: Switched default BT to Smac2D profile (was _grid.xml / GridBased default).
+    # HH_260619: Default BT uses PlannerSelector; selector default is LaneletRoute.
     # _grid.xml remains available for runtime override via nav2_bt_xml_nav_to_pose launch arg.
     default_nav_to_pose_bt_xml = os.path.join(
         pkg_share, 'config', 'bt', 'navigate_to_pose_w_planner_selector.xml'
@@ -289,7 +296,15 @@ def generate_launch_description():
     nav2_base_params = RewrittenYaml(
         source_file=nav2_base_param_file,
         root_key='planning',
-        param_rewrites={},
+        # HH_260619: Inject lanelet map launch arguments into the Nav2
+        # LaneletRoute planner plugin. RewrittenYaml rewrites parameter leaves;
+        # a raw nested dict in Node(parameters=...) is not a node-scoped YAML.
+        param_rewrites={
+            'map_path': map_path,
+            'offset_lat': origin_lat,
+            'offset_lon': origin_lon,
+            'offset_alt': origin_alt,
+        },
         convert_types=True,
     )
     nav2_vehicle_params = RewrittenYaml(

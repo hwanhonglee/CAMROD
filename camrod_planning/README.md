@@ -24,12 +24,12 @@ ros2 launch camrod_planning planning.launch.py \
   enable_state_machine:=true
 
 # Send a goal by keypoint name (state machine must be enabled)
-ros2 topic pub /planning/state_machine/goal_key std_msgs/msg/String \
-  "{data: camping_site_1}" -1
+ros2 topic pub /planning/mission_key avg_msgs/msg/PlanningMissionKey \
+  "{mission_key: camping_site_1, source: cli, publish_route_goal: false}" -1
 
 # Trigger camping-site recall (navigate robot to road-snap position)
-ros2 topic pub /planning/state_machine/camping_site_recall std_msgs/msg/String \
-  "{data: camping_site_1}" -1
+ros2 topic pub /planning/state_machine/camping_site_recall avg_msgs/msg/PlanningRecallRequest \
+  "{site_name: camping_site_1, source: cli}" -1
 
 # Standalone gate logic unit test (no ROS 2 runtime needed, 29 assertions)
 python3 camrod_planning/test/test_cmd_vel_gate_logic.py
@@ -209,12 +209,12 @@ graph TD
 
   DIAGAGG((/system/diagnostics_agg)) --> SM(planning_state_machine_node)
   RECALL((/planning/state_machine/camping_site_recall)) --> SM
-  GOALKEY((/planning/state_machine/goal_key)) --> SM
+  MISSIONKEY((/planning/mission_key)) --> SM
   SM --> SMGOAL((/planning/goal_pose_snapped))
   SM --> SMSTATE
   SM --> SMSOURCE
 
-  class LOCPOSE,LANEPOSE,GSNAPPED,CMDRAW,GPATH,CTRLPATH,LOCALPATH,TERROR,GCOST,RDIST,RTIME,RPCT,ENGAGE,ESTOP,INFCOST,LOCMODE,LOCODO,DIAGAGG,RECALL,GOALKEY,SMGOAL,SMSTATE,SMSOURCE,CMDOUT,ENGAGED,LCOST topic
+  class LOCPOSE,LANEPOSE,GSNAPPED,CMDRAW,GPATH,CTRLPATH,LOCALPATH,TERROR,GCOST,RDIST,RTIME,RPCT,ENGAGE,ESTOP,INFCOST,LOCMODE,LOCODO,DIAGAGG,RECALL,MISSIONKEY,SMGOAL,SMSTATE,SMSOURCE,CMDOUT,ENGAGED,LCOST topic
   class GSNAP,CSNAP,LPATH,TERR,PCOST,PROG,GATE,SM planning
   class NAV2 system
   class RVIZ ui
@@ -227,18 +227,21 @@ graph TD
 
 ### Node Summary
 
+**HH_260617 - terminology:** `mission_key` is the semantic site/key name on `/planning/mission_key`, `site_goal` is the raw operator/UI pose on `/goal_pose`, and `route_goal` is the lanelet-snapped Nav2 pose on `/planning/goal_pose_snapped_ros`.
+
 | Node | Key Inputs | Key Outputs | Notable Params |
 |---|---|---|---|
-| `goal_snapper_node` | `/goal_pose`, Lanelet2 map | `/planning/goal_pose_snapped_ros` | `max_search_radius`: 120 m, `require_lanelet_containment`, `fallback_uncontained` |
+| `goal_snapper_node` | `site_goal` `/goal_pose`, Lanelet2 map | `route_goal` `/planning/goal_pose_snapped_ros` | `max_search_radius`: 120 m, `require_lanelet_containment`, `fallback_uncontained`, latest goal preempts older goals |
 | `centerline_snapper_node` | `/localization/pose` | `/planning/lanelet_pose` | `max_search_radius`: 120 m, `lateral_stddev`: 0.3, `min_update_period_s`: 0.05 |
-| `local_path_extractor_node` | `/planning/global_path`, `/planning/lanelet_pose`, `/planning/local_path_controller` | `/planning/local_path` | `local_path_source`: `controller_then_slice`, lookahead 30 m, lookbehind 3 m, 15 Hz |
+| `local_path_extractor_node` | `/planning/global_path`, `/localization/pose`, optional `/planning/local_path_controller` | `/planning/local_path` | `local_path_source`: `slice_only`, lookahead 30 m, lookbehind 0.2 m, 15 Hz; HH_260619 - uses the fixed per-goal global route and publishes an unsmoothed forward slice so RViz/local consumers do not see corner-cut drift |
 | `path_tracking_error_node` | `/planning/local_path`, `/planning/lanelet_pose` | `/planning/ltracking_error` | `prefer_local_path`: true, `publish_rate_hz`: 15, `pose_timeout_s`: 1.0 |
+| `path_visualizer_node` | `/planning/global_path`, `/planning/local_path` | `/planning/path_markers` | HH_260619 - high-contrast RViz markers show the same route source used by local-path and path-cost consumers; stale global markers are cleared when local path has moved to a different goal |
 | `goal_replanner_node` | `/planning/goal_pose`, `/planning/lanelet_pose`, Nav2 action | replanning triggers | `min_request_interval_s`, `retry_after_failure_s`, `navigate_inactive_grace_s` |
 | `planning_progress_node` | `/planning/global_path`, `/localization/pose`, `/localization/odometry/filtered` | `/planning/progress/*` | `publish_rate_hz`: 2.0, `speed_ema_alpha`: 0.2, `speed_floor_mps`: 0.1 |
-| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/platform/status/estop`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/fallback/odometry` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors |
-| `planning_state_machine_node` | `/system/diagnostics_agg`, `/planning/lanelet_pose`, `/planning/state_machine/camping_site_recall`, `/planning/state_machine/goal_key` | `/planning/goal_pose_snapped`, `/planning/state_machine/state`, `/planning/state_machine/mission_source` | `keypoints_yaml`, `camping_sites_yaml`, `startup_goal_key`, `goal_reached_dwell_s` |
-| Nav2 `planner_server` | `/planning/goal_pose_snapped_ros`, costmaps | `/planning/global_path` | SmacHybrid / Smac2D / NavFn / ThetaStar / SmacLattice |
-| Nav2 `controller_server` | `/planning/global_path`, costmaps | `/planning/cmd_vel_raw`, `/planning/local_path_controller` | RPP / DWB / MPPI / Graceful / RotationShim; `xy_goal_tolerance`: 0.15 m |
+| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/platform/status/estop`, `/map/cost_grid/lanelet`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/odometry/filtered` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors |
+| `planning_state_machine_node` | `/system/diagnostics_agg`, `/planning/lanelet_pose_ros`, `/planning/state_machine/camping_site_recall`, `mission_key` `/planning/mission_key` | `/planning/goal_pose_snapped_ros`, `/planning/state_machine/state`, `/planning/state_machine/mission_source` | `keypoints_yaml`, `camping_sites_yaml`, `startup_mission_key`, `goal_reached_dwell_s` |
+| Nav2 `planner_server` | `route_goal` `/planning/goal_pose_snapped_ros`, Lanelet2 map, costmaps | `/planning/global_path`, `/planning/route_lanelet_ids` | HH_260619 - default `LaneletRoute` publishes a fixed lanelet-centerline route and exact route lanelet IDs for route-aware map costs; `SmacLattice`, `NavFn`, `Smac2D`, `SmacHybrid`, `ThetaStar` remain selectable diagnostics/free-space fallbacks; BT uses `GoalUpdatedController`, so global path is recomputed on goal/preemption/recovery, not continuously while following |
+| Nav2 `controller_server` | `/planning/global_path`, costmaps, `/planning/engaged` | `/planning/cmd_vel_raw`, `/planning/local_path_controller` | RPP / DWB / MPPI / Graceful / RotationShim; `xy_goal_tolerance`: 0.15 m; HH_260618 - `EngageAwareProgressChecker` pauses progress timeout before operator engage |
 
 ---
 
@@ -255,9 +258,9 @@ graph TD
 | `/localization/mode` | `AvgLocalizationMode` | Yes | camrod_localization | ~5 Hz | NORMAL / DEGRADED / DR_ONLY / INVALID; triggers GNSS recovery hold |
 | `/map/cost_grid/lanelet` | `nav_msgs/OccupancyGrid` | Yes | camrod_map | ~1 Hz | Lanelet drivable-space constraints for global costmap |
 | `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | Yes | camrod_sensing | ~10 Hz | Inflation-layer obstacle grid for local costmap and cmd_vel_gate cost-stop |
-| `/goal_pose` | `geometry_msgs/PoseStamped` | Yes | RViz / camrod_ui | on demand | Operator navigation goal; snapped to nearest lanelet centerline |
-| `/planning/state_machine/goal_key` | `std_msgs/String` | No | camrod_ui | on demand | Named keypoint goal (e.g. `camping_site_1`) sent to state machine |
-| `/planning/state_machine/camping_site_recall` | `std_msgs/String` | No | camrod_ui / external | on demand | Recall request; `data` = camping site name; triggers road-snap navigation |
+| `/goal_pose` | `geometry_msgs/PoseStamped` | Yes | RViz / camrod_ui | on demand | `site_goal`: raw operator/UI goal; snapped to nearest lanelet centerline |
+| `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | No | camrod_ui | on demand | `mission_key`: named semantic target (e.g. `camping_site_1`) sent to state machine |
+| `/planning/state_machine/camping_site_recall` | `avg_msgs/PlanningRecallRequest` | No | camrod_ui / external | on demand | Recall request; `site_name` = camping site name; triggers road-snap navigation |
 | `/planning/engage` | `std_msgs/Bool` | Yes | camrod_system / operator | on demand | Gate open (`true`) / closed (`false`) for velocity passthrough |
 | `/platform/status/estop` | `std_msgs/Bool` | Yes | camrod_platform | ~10 Hz | Hardware e-stop; immediately zeroes cmd_vel when `true` |
 | `/system/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | No | camrod_system | ~1 Hz | System-level health; drives WARN_RECOVERY / ERROR_STOP state transitions |
@@ -266,15 +269,17 @@ graph TD
 
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
-| `/planning/global_path` | `nav_msgs/Path` | camrod_map, camrod_sensing, RViz | on replan | Full global path from current position to goal |
-| `/planning/local_path` | `nav_msgs/Path` | camrod_system (diagnostic), RViz | 15 Hz | Robot-centred local path window (lookahead 30 m, lookbehind 3 m) |
+| `/planning/global_path` | `nav_msgs/Path` | camrod_map, camrod_sensing, RViz | on new goal / recovery | Planner-server route from current position to goal; HH_260619 - BT locks this route per accepted goal so local updates do not rewrite the global path every tick |
+| `/planning/route_lanelet_ids` | `std_msgs/Int64MultiArray` | camrod_map | on new LaneletRoute plan | HH_260619 - Exact Lanelet2 IDs in the active global route; used by lanelet cost grid to ignore non-route branch/merge boundaries |
+| `/planning/local_path` | `nav_msgs/Path` | camrod_system (diagnostic), RViz | 15 Hz + pose updates | Robot-centred local path window; HH_260619 - default source is an exact forward slice of the locked global route, not a smoothed/corner-cut controller debug path |
+| `/planning/path_markers` | `visualization_msgs/MarkerArray` | RViz | on path update + 5 Hz cache | HH_260618 - thick global/local path line, direction arrows, and endpoint markers above cost-grid overlays |
 | `/planning/cmd_vel_raw` | `geometry_msgs/Twist` | planning_cmd_vel_gate_node | 30 Hz | Raw controller velocity before gating |
 | `/planning/cmd_vel` | `geometry_msgs/Twist` | camrod_platform | 30 Hz | Gated velocity command; zeroed on e-stop, cost-stop, disengaged, or hold |
 | `/planning/engaged` | `std_msgs/Bool` | camrod_system, camrod_platform | 30 Hz | Current gate state after all checks |
-| `/planning/cost_grid/global_path` | `nav_msgs/OccupancyGrid` | camrod_map, camrod_sensing, Nav2 | ~2 Hz | Path-corridor cost layer for global planner guidance |
+| `/planning/cost_grid/global_path` | `nav_msgs/OccupancyGrid` | camrod_sensing, cmd_vel_gate, RViz | on path update + heartbeat | HH_260619 - path-corridor layer generated from `/planning/global_path` for local inflation/gate/visualization; not injected into global planner master to avoid circular replans |
 | `/planning/ltracking_error` | `AvgTrackingError` | camrod_system | 15 Hz | Lateral and heading tracking error against local path |
-| `/planning/state_machine/state` | `std_msgs/String` | camrod_system, camrod_ui | on change | Mission FSM state: INIT / RUNNING / GOAL_REACHED / RECALLED / RETURNING / WARN_RECOVERY / ERROR_STOP |
-| `/planning/state_machine/mission_source` | `std_msgs/String` | camrod_ui, logging | on new goal | Reason for current goal: `startup` / `return_request` / `recall:*` / `auto_return` / `key_topic:*` |
+| `/planning/state_machine/state` | `avg_msgs/PlanningState` | camrod_system, camrod_ui | on change | Mission FSM state plus scenario, mission key, source, request flags |
+| `/planning/state_machine/mission_source` | `avg_msgs/PlanningMissionKey` | camrod_ui, logging | on new goal | Current mission key and source: `startup` / `return_request` / `recall:*` / `auto_return` / `mission_key:*` |
 | `/planning/progress/remaining_distance_m` | `std_msgs/Float32` | camrod_ui, logging | 2 Hz | Path length from closest point to goal [m] |
 | `/planning/progress/remaining_time_s` | `std_msgs/Float32` | camrod_ui, logging | 2 Hz | Estimated travel time at current EMA speed [s] |
 | `/planning/progress/completion_pct` | `std_msgs/Float32` | camrod_ui, logging | 2 Hz | Fraction of total path already traversed [0–100] |
@@ -282,6 +287,20 @@ graph TD
 ---
 
 ## ⚙️ Key Behaviors
+
+### 6.0 Engage-Aware Nav2 Progress
+
+**HH_260618 - Trigger:** Nav2 receives a new `route_goal` while `/planning/engaged` is still `false`.
+
+**Internal logic:** `camrod_planning::EngageAwareProgressChecker` subscribes to `/planning/engaged`. While the planning velocity gate is disengaged, it continuously resets Nav2 progress timing and returns success to the controller server. Once `/planning/engaged` becomes `true`, it behaves like a normal distance/time progress checker using `required_movement_radius` and `movement_time_allowance`.
+
+**Reason:** Operators and UI flows can create or revise goals before authorizing motion. Without this plugin, Nav2's default progress checker can abort `FollowPath` with “Failed to make progress” while the robot is correctly stopped by the engage gate.
+
+**Related params:** `progress_checker.plugin: camrod_planning::EngageAwareProgressChecker`, `progress_checker.engaged_topic`, `progress_checker.default_engaged`, `progress_checker.required_movement_radius`, `progress_checker.movement_time_allowance`.
+
+**Operator-visible behavior:** Goal click creates a global/local path immediately, but `/planning/cmd_vel` and `/platform/cmd_vel` remain zero until `/planning/engage=true`. Waiting before engage no longer aborts the Nav2 action.
+
+---
 
 ### 6.1 Cost-Stop
 
@@ -303,6 +322,23 @@ graph TD
 > 🔧 **Debug hint** Related params: `cmd_vel_gate_cost_stop_enable`, `cmd_vel_gate_cost_threshold`, `cmd_vel_gate_speed_dependent_lookahead`, `cmd_vel_gate_front_lookahead_min_m`, `cmd_vel_gate_front_lookahead_max_m`, `cmd_vel_gate_front_lookahead_friction`, `cmd_vel_gate_front_reaction_time_s`, `cmd_vel_gate_cost_hold_s`, `cmd_vel_gate_side_cost_threshold`, `cmd_vel_gate_rear_cost_threshold`, `cmd_vel_gate_unavoidable_lethal_threshold`, `cmd_vel_gate_unavoidable_cluster_min_cells`, `cmd_vel_gate_unavoidable_cluster_min_ratio`
 
 **Related topics:** `/planning/cost_grid/inflation`, `/planning/cmd_vel`, `/planning/engaged`
+
+---
+
+### 6.1.1 Raw Lanelet Safety Stop
+
+**Trigger:** `planning_cmd_vel_gate_node` receives a translational `/planning/cmd_vel_raw` command while `cmd_vel_gate_lanelet_safety_enable` is true.
+
+**HH_260618 - Internal logic:** The gate samples the raw `/map/cost_grid/lanelet` grid before the merged `/planning/cost_grid/inflation` grid. This is separate because the inflation grid clears the ego footprint so Nav2 can start near occupied cells, but that same ego-clear can hide lane-boundary/off-lane cost directly under the robot.
+
+| Direction | Default Policy | Reason |
+|---|---|---|
+| Forward | checked, threshold 85 | normal Nav2 driving must not leave lanelet drivable space |
+| In-place yaw | allowed | robot must be able to rotate toward the newest route goal |
+| Reverse | not checked by default | drop-zone reverse parking needs mission-specific bounds |
+| Lateral crab | not checked by default | campsite crab entry/exit needs mission-specific bounds |
+
+> 🔧 **Debug hint** Related params: `cmd_vel_gate_lanelet_safety_enable`, `cmd_vel_gate_lanelet_safety_grid_topic`, `cmd_vel_gate_lanelet_safety_threshold`, `cmd_vel_gate_lanelet_safety_current_threshold`, `cmd_vel_gate_lanelet_safety_lookahead_m`, `cmd_vel_gate_lanelet_safety_width_m`, `cmd_vel_gate_lanelet_safety_check_reverse`, `cmd_vel_gate_lanelet_safety_check_lateral`.
 
 ---
 
@@ -362,8 +398,9 @@ stateDiagram-v2
   classDef error   fill:#FEE2E2,stroke:#EF4444,color:#B91C1C
 
   [*] --> INIT
-  INIT --> RUNNING : startup_goal_key (drop_zone)
+  INIT --> RUNNING : startup_mission_key (drop_zone)
   RUNNING --> GOAL_REACHED : within goal_reached_distance_m (0.8 m)
+  RUNNING --> GOAL_REACHED : HH_260618 return route uses return_goal_reached_distance_m (1.2 m)
   GOAL_REACHED --> RETURNING : recall or dwell timeout
   GOAL_REACHED --> RECALLED : camping_site_recall received
   RECALLED --> RUNNING : robot reaches road-snap position
@@ -388,11 +425,11 @@ stateDiagram-v2
 
 | Value | Trigger |
 |---|---|
-| `startup` | Initial goal at boot (`startup_goal_key`) |
+| `startup` | Initial goal at boot (`startup_mission_key`) |
 | `return_request` | Operator pressed return button |
 | `recall:camping_site_N` | Camping site requested recall |
 | `auto_return` | Dwell timeout expired at camping site |
-| `key_topic:camping_site_N` | Goal key received on `goal_key_topic` |
+| `mission_key:camping_site_N` | `mission_key` received on `mission_key_topic` |
 
 ### 7.3 Camping-Site Recall Sequence
 
@@ -407,10 +444,10 @@ sequenceDiagram
   participant Plat as 🤖 Platform
 
   Note over UI,SM: Recall triggered from camping site UI button
-  UI->>SM: /planning/state_machine/camping_site_recall (camping_site_1)
+  UI->>SM: /planning/state_machine/camping_site_recall PlanningRecallRequest(camping_site_1)
   SM-->>SM: GOAL_REACHED → RECALLED
   SM->>Nav2: /planning/goal_pose_snapped (camping_site_1_road)
-  SM->>UI: /planning/state_machine/mission_source = "recall:camping_site_1"
+  SM->>UI: /planning/state_machine/mission_source PlanningMissionKey(source="recall:camping_site_1")
 
   Note over Nav2,Plat: Robot drives to road-snap position
   Nav2->>Gate: /planning/cmd_vel_raw
@@ -422,7 +459,7 @@ sequenceDiagram
 
   Note over Nav2,Plat: Auto-return to drop zone
   SM->>Nav2: /planning/goal_pose_snapped (drop_zone)
-  SM->>UI: /planning/state_machine/mission_source = "auto_return"
+  SM->>UI: /planning/state_machine/mission_source PlanningMissionKey(source="auto_return")
   Nav2->>Gate: /planning/cmd_vel_raw
   Gate->>Plat: /planning/cmd_vel (gated)
 ```
@@ -464,14 +501,18 @@ Key launch arguments:
 | `enable_state_machine` | `false` | Mission state machine |
 | `enable_tracking_error` | `true` | Path tracking error publisher |
 | `enable_progress` | `true` | Remaining distance / time / completion publisher |
+| `enable_path_visualization` | `true` | High-contrast global/local RViz path marker publisher |
 | `enable_nav2_lifecycle_retry` | `false` | Nav2 lifecycle startup retry |
 | `require_localization_ready` | `false` | Wait for `/localization/initial_match_ok` before Nav2 start |
 | `cmd_vel_gate_enable` | `true` | Velocity gate node |
 | `cmd_vel_gate_cost_stop_enable` | `true` | Cost-based obstacle stop |
+| `cmd_vel_gate_lanelet_safety_enable` | `true` | Raw lanelet-grid hard stop before inflation ego-clear |
+| `cmd_vel_gate_lateral_cmd_bypass_static_cost_stop` | `true` | HH_260618 - explicit site-crab lateral cmd_vel bypasses static lanelet/global-path front/side/rear cost while keeping LiDAR/Radar source stops |
 | `cmd_vel_gate_speed_dependent_lookahead` | `true` | Physics-based braking distance for front corridor |
 | `cmd_vel_gate_enable_gnss_recovery_hold` | `true` | Hold velocity for 2 s after DR_ONLY → NORMAL |
 | `cmd_vel_gate_yaw_alignment_enable` | `false` | Yaw alignment zone enforcement |
-| `local_path_source` | `controller_then_slice` | `controller_then_slice` or global-path slice |
+| `local_path_source` | `slice_only` | `slice_only` for newest-route visualization/cost guidance; `controller_then_slice` remains available for controller-debug overlays |
+| `nav2_selected_planner` | `LaneletRoute` | HH_260619 - default lanelet-centerline route planner; `SmacLattice`/`ThetaStar` remain selectable for free-space diagnostics |
 | `nav2_combo_param_file` | `config/nav2_combo_profiles/disabled.yaml` | Planner+controller profile overlay |
 
 ---
@@ -480,17 +521,17 @@ Key launch arguments:
 
 | File | Purpose |
 |---|---|
-| `config/nav2_base.yaml` | Nav2 planner plugins (NavFn, Smac2D, SmacHybrid, SmacLattice, ThetaStar), controller plugins (RPP, DWB, MPPI, Graceful, RotationShim), costmap base config; `xy_goal_tolerance`: 0.15 m |
+| `config/nav2_base.yaml` | Nav2 planner plugins (LaneletRoute, NavFn, Smac2D, SmacHybrid, SmacLattice, ThetaStar), controller plugins (RPP, DWB, MPPI, Graceful, RotationShim), costmap base config; `xy_goal_tolerance`: 0.15 m; HH_260619 - `LaneletRoute.route_lanelet_ids_topic` feeds route-aware map costs and `bt_navigator.use_start_pose_override=true` only supplies snapped start XY/current yaw to Nav2 |
 | `config/nav2_vehicle.yaml` | Vehicle specs (Ranger: wheelbase 0.89 m, track 0.56 m, mass 100 kg), footprint `[[0.59, 0.375],…]` (body+margins), RPP limits (1.4 m/s, 1.2 rad/s, lookahead 0.8 m) |
 | `config/nav2_lanelet_overlay.yaml` | Lanelet-specific cost weights and regulatory element handling |
-| `config/nav2_behavior.yaml` | Recovery behaviors, BT timeouts, transform tolerance |
+| `config/nav2_behavior.yaml` | Recovery behaviors, BT timeouts, transform tolerance, and `nav2_goal_updated_controller_bt_node` for goal-locked global planning |
 | `config/nav2_combo_profiles/` | Planner+controller profile overlays (e.g. `smachybrid_graceful.yaml`, `smac2d_dwb.yaml`) |
-| `config/goal_snapper.yaml` | Goal snap search radius, containment check, Z handling |
+| `config/goal_snapper.yaml` | Goal snap search radius, containment check, Z handling, latest-goal preemption policy |
 | `config/centerline_snapper.yaml` | Pose projection covariance, update throttle period |
-| `config/local_path_extractor.yaml` | Lookahead 30 m / lookbehind 3 m, jump guard 3 m, publish rate 15 Hz |
-| `config/path_cost_grids.yaml` | Global/local path grid geometry, cost weights, rebuild triggers |
-| `config/goal_replanner.yaml` | Replan intervals, timeout, failure retry backoff |
-| `config/planning_state_machine.yaml` | State machine topics, startup/warn goal keys, dwell time 10 s, recall config |
+| `config/local_path_extractor.yaml` | Primary route `/planning/global_path`, lookahead 30 m / lookbehind 0.2 m, jump guard 3 m, publish rate 15 Hz; HH_260619 - `/planning/plan_smoothed` is not treated as a stable ROS route topic and local smoothing is disabled to preserve the fixed global route geometry |
+| `config/path_cost_grids.yaml` | Global/local path grid geometry, cost weights, rebuild triggers; `primary_enable: true` required for `/planning/cost_grid/*` publishers |
+| `config/goal_replanner.yaml` | Replan intervals, timeout, failure retry backoff; default planner `LaneletRoute`, fallback `Smac2D` |
+| `config/planning_state_machine.yaml` | State machine topics, startup/warn mission keys, dwell time 10 s, recall config |
 | `config/planning_state_machine_keypoints.yaml` | Named keypoint coordinates (drop_zone, etc.) |
 | `config/camping_sites.yaml` | Named camping-site goal positions; optional `recall_x/y/z/yaw_deg` for road snap |
 | `config/yaw_alignment_zones.yaml` | Manual yaw alignment zone definitions |
@@ -549,8 +590,8 @@ ros2 topic echo /planning/progress/remaining_distance_m
 
 1. Confirm `enable_auto_return_on_site_goal` is `true` in `config/planning_state_machine.yaml` or bringup override.
 2. Check `goal_reached_dwell_s` — default 10.0 s (bringup may set 600 s).
-3. Verify the goal keypoint matches the `site_goal_key_prefix` (`camping_site_`) prefix; non-matching keys do not start the dwell timer.
-4. Check `goal_key_match_distance_m` (default 1.5 m) — robot must arrive within this distance of the keypoint coordinates for dwell to trigger.
+3. Verify the mission keypoint matches the `site_mission_key_prefix` (`camping_site_`) prefix; non-matching keys do not start the dwell timer.
+4. Check `mission_key_match_distance_m` (default 1.5 m) — robot must arrive within this distance of the keypoint coordinates for dwell to trigger.
 
 ---
 
@@ -581,3 +622,21 @@ ros2 topic echo /planning/progress/remaining_distance_m
 - [../camrod_ui/README.md](../camrod_ui/README.md) — Goal and recall command source
 - [../camrod_docking/README.md](../camrod_docking/README.md) — Parking state consumer
 - [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — Canonical param naming conventions
+
+## 2026-06-17 Runtime Update
+
+> HH_260617 - Planning owns lanelet route goals and Nav2 driving; parking owns non-lanelet low-speed maneuvers after route arrival.
+
+### Goal Naming Contract
+
+| Name | Topic | Meaning |
+|---|---|---|
+| `mission_key` | `/planning/mission_key` | Semantic key such as `camping_site_1` or `drop_zone` |
+| `site_goal` | `/planning/goal_pose` or `/goal_pose` | Raw UI/RViz site-center pose |
+| `route_goal` | `/planning/goal_pose_snapped`, `/planning/goal_pose_snapped_ros` | Lanelet-snapped Nav2 goal |
+
+`planning_state_machine` publishes `avg_msgs/PlanningState` on `/planning/state_machine/state`. `camrod_parking/site_maneuver` watches this topic and starts only after a `camping_site_*` ROS-native route goal (`/planning/goal_pose_snapped_ros`) reaches `GOAL_REACHED`. `camrod_parking/drop_zone_parking` watches the same topic and starts after `RETURN_TO_DROP_ZONE` reaches the `drop_zone` route goal. HH_260618: return handoff uses `return_goal_reached_distance_m` so Nav2 success near the drop-zone lanelet snap still triggers parking.
+
+### Command Path
+
+Nav2 controller output and parking controller output both target `/planning/cmd_vel_raw`. `planning_cmd_vel_gate_node` applies engage, e-stop, localization recovery hold, raw lanelet safety checks, and inflation cost checks before publishing `/planning/cmd_vel`. HH_260618 - explicit lateral site-crab commands bypass only static front/side/rear lanelet/global-path cost; dynamic LiDAR/Radar source cost still stops the robot. `camrod_platform` then applies the final platform gate before `/platform/cmd_vel`.

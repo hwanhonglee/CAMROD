@@ -1,15 +1,9 @@
 # HH_260528: Bringup-level camera parameter override — econ cameras (front + rear).
 # Deployment-specific hardware parameters (device paths, intrinsics, calibration).
 # This file overrides the sensing package default when bringup.launch.py is used.
-#
-# ── Launch configuration (read by camera.launch.py) ──────────────────────────
-# Controls which camera nodes are started. Edit here; no CLI args needed.
-#   both cameras : enable_front_camera: true  / enable_rear_camera: true
-#   front only   : enable_front_camera: true  / enable_rear_camera: false
-#   rear only    : enable_front_camera: false / enable_rear_camera: true
-camrod_sensing_camera:
-  enable_front_camera: true
-  enable_rear_camera: true
+# HH_260617: Keep this file as ROS2 node parameters only. Launch-only camera
+# enable flags live in bringup/launch_defaults.yaml (`sensing.enable_*_camera`)
+# so this file remains safe to pass as a --params-file.
 
 # Topic layout:
 #   /sensing/camera/econ_front/image_rect/compressed  (GPU-encoded, front)

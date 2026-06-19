@@ -255,7 +255,7 @@ graph TD
 | `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | camrod_perception, camrod_planning | ~10 Hz | Ground-filtered, voxel-downsampled LiDAR points in `lidar_link` frame |
 | `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 150×150 @ 0.08 m robot-centred obstacle grid from LiDAR |
 | `/sensing/cost_grid/radar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 120×120 @ 0.10 m robot-centred near-field obstacle grid from radar |
-| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | camrod_planning (Nav2 local costmap, `cmd_vel_gate`) | 10 Hz | 120×120 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
+| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | camrod_planning (Nav2 local costmap, `cmd_vel_gate`) | 6 Hz | 80×80 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
 | `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz | Raw GNSS fix with RTK status |
 | `/sensing/gnss/pose` | `geometry_msgs/PoseStamped` | camrod_localization (`localization_monitor_node`) | 10 Hz | GNSS-derived pose in `map` frame (no covariance) |
 | `/sensing/gnss/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | camrod_localization (ESKF) | 10 Hz | GNSS-derived pose with position covariance for filter fusion |
@@ -321,10 +321,10 @@ graph TD
 
 | Field | Detail |
 |---|---|
-| Trigger | Continuous V4L2 capture; started when `enable_front_camera: true` in `camrod_sensing_camera` section of `camera_params.yaml` |
-| Internal logic | Opens `/dev/video0`, captures 1920×1080 MJPEG at 10 fps. Fisheye undistortion via VPI VIC (equidistant 4-coeff). Output JPEG-encoded by NvJPEG hardware. Published on `~/image_rect/compressed` → `/sensing/camera/econ_front/image_rect/compressed`. Zero-copy DDS via Iceoryx (`iox-roudi` must be running). |
+| Trigger | Continuous capture; started when `enable_front_camera: true` in `camera_params.yaml` |
+| Internal logic | Opens `/dev/video0` via GStreamer (`v4l2src` → UYVY @ 30 fps → `videorate` → `nvvidconv` → NV12). Falls back to `cv::CAP_V4L2` direct if GStreamer fails (ISX031 Tegra CSI cameras can fail `v4l2src`; see §14). In fallback mode, BGR→NV12 conversion runs on CPU. Fisheye undistortion via VPI VIC (equidistant 4-coeff). Output JPEG-encoded by NvJPEG hardware. Exposure set to `exposure_time_us` in V4L2 manual mode at startup. |
 | Output effect | `/sensing/camera/econ_front/image_rect/compressed`, `/sensing/camera/econ_front/camera_info` at 10 Hz. |
-| Operator-visible symptom | Node crash at startup → `iox-roudi` not running (`ps aux \| grep iox-roudi`). Distorted image → stale `camera_matrix`/`distortion_coefficients` in `camera_params.yaml`. |
+| Operator-visible symptom | Node crash at startup → `/dev/video0` not present or permissions issue. Distorted image → stale `camera_matrix`/`distortion_coefficients` in `camera_params.yaml`. Log shows `"V4L2 direct"` → GStreamer unavailable (normal on this platform; see §14). |
 | Related params | `device_path`, `image_width`, `image_height`, `fps`, `exposure_time_us`, `jpeg_quality`, `camera_matrix`, `distortion_coefficients`, `intrinsics_source` |
 | Related topics | `/sensing/camera/econ_front/image_rect/compressed`, `/sensing/camera/econ_front/camera_info` |
 
@@ -404,9 +404,9 @@ Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single ante
 | Field | Detail |
 |---|---|
 | Trigger | Any updated input grid; publishes at 10 Hz |
-| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (0.50 s), radar cost (0.50 s), global_path cost (10.0 s). The output is a 120×120 @ 0.10 m grid (12 m square centred on robot). An ego-clear disk of radius 0.50 m is always free. Messages older than their per-input limit are treated as absent. |
-| Output effect | `/planning/cost_grid/inflation` at 10 Hz; consumed by Nav2 local costmap and `cmd_vel_gate`. |
-| Operator-visible symptom | If inflation grid stops updating at 10 Hz, check each input: lidar/radar grids must arrive within 0.50 s; lanelet grid arrives once (transient_local) and is valid for 5.0 s after last receipt. |
+| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (0.50 s), radar cost (0.50 s), global_path cost (10.0 s). The output is an 80×80 @ 0.10 m grid (8 m square centred on robot; HH_260618: sized for the 2.8 s MPPI horizon at 1.4 m/s). An ego-clear disk of radius 0.50 m is always free. Messages older than their per-input limit are treated as absent. |
+| Output effect | `/planning/cost_grid/inflation` at 6 Hz; consumed by Nav2 local costmap and `cmd_vel_gate`. |
+| Operator-visible symptom | If inflation grid stops updating at 6 Hz, check each input: lidar/radar grids must arrive within 0.50 s; lanelet grid arrives once (transient_local) and is valid for 5.0 s after last receipt. |
 | Related params | `resolution`, `width`, `height`, `ego_clear_radius_m`, `publish_rate_hz`, `input_topics`, `input_max_ages_s` |
 | Related topics | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`, `/planning/cost_grid/global_path` → `/planning/cost_grid/inflation` |
 
@@ -420,7 +420,7 @@ All cost grids are robot-centred and published in the `map` frame via TF2.
 |---|---|---|---|---|---|
 | `/sensing/cost_grid/lidar` | 150×150 | 0.08 m | 30–95 | 0.50 s | 0.90 m |
 | `/sensing/cost_grid/radar` | 120×120 | 0.10 m | 35–95 | 0.35 s | 0.50 m |
-| `/planning/cost_grid/inflation` | 120×120 | 0.10 m | 0–100 | per-input (below) | 0.50 m |
+| `/planning/cost_grid/inflation` | 80×80 | 0.10 m | 0–100 | per-input (below) | 0.50 m |
 
 `inflation_cost_grid_node` per-input staleness limits:
 
@@ -552,7 +552,7 @@ ros2 topic hz /sensing/imu/data                       # expect 100 Hz
 ros2 topic hz /sensing/platform_velocity_converter/twist_with_covariance
 
 # Inflation grid
-ros2 topic hz /planning/cost_grid/inflation           # expect 10 Hz
+ros2 topic hz /planning/cost_grid/inflation           # expect 6 Hz
 
 # Camera — front (GPU VPI pipeline)
 ros2 topic hz /sensing/camera/econ_front/image_rect/compressed   # expect 10 Hz
@@ -599,7 +599,7 @@ One or more `/sensing/radar/*/range` topics are silent.
 
 ### Inflation grid stops updating
 
-`/planning/cost_grid/inflation` drops below 10 Hz or freezes.
+`/planning/cost_grid/inflation` drops below 6 Hz or freezes.
 
 1. Check each input: `ros2 topic hz /sensing/cost_grid/lidar` and `ros2 topic hz /sensing/cost_grid/radar`. Both must be at 10 Hz.
 2. The lanelet grid (`/map/cost_grid/lanelet`) is published once with `transient_local` QoS. It is valid for 5 s after last receipt. If camrod_map has not been launched, the inflation node will hold indefinitely waiting for this input.
@@ -614,18 +614,115 @@ One or more `/sensing/radar/*/range` topics are silent.
 2. For GQ7 hardware, launch with `imu_mode:=gq7_ntrip` and ensure `/dev/ttyACM1` is the GQ7 (not the F9P GNSS — both appear as `ttyACM*`).
 3. Check the driver log for `Invalid Parameter` errors. This typically means `filter_pps_source` or `filter_declination_source` is set to a value unsupported by the connected model.
 
+### Front camera node crashes at startup
+
+`camera_front_publisher_node` exits immediately (exit code -6 / SIGABRT).
+
+1. Check `/dev/video0` exists: `ls /dev/video0`. If missing, the ISX031 driver is not loaded or the CSI cable is disconnected.
+2. Check permissions: `ls -l /dev/video0`. The user must be in the `video` group (`sudo usermod -aG video $USER`).
+3. GStreamer failure is normal on this platform — the node falls back to V4L2 direct automatically. Look for `"Camera opened successfully (V4L2 direct)"` in the node log. If the log still shows a crash after the fallback attempt, both GStreamer and V4L2 direct failed, which indicates a hardware issue.
+4. See §14 for a detailed explanation of why GStreamer fails and what the V4L2 fallback does.
+
 ### Camera image not reaching `apriltag_node`
 
 `camrod_docking` does not detect dock markers even when the dock is in view.
 
-1. Confirm the camera is publishing: `ros2 topic hz /sensing/camera/image_rect/compressed`.
-2. The `apriltag_node` in `camrod_docking` subscribes to `/camera/color/image_rect`. Verify the topic remapping in `camrod_docking/launch/docking.launch.py` matches the actual camera namespace (remapping: `image_rect → /camera/color/image_rect`, `camera_info → /camera/color/camera_info`).
-3. Iceoryx zero-copy: if `iox-roudi` is not running, the `camera_publisher_node` may crash or stall. Check: `ps aux | grep iox-roudi`. If absent, it was not started (the camera launch starts it automatically, but it may have exited).
-4. Check exposure: if the environment is very dark, increase `exposure_time_us` in `camera_params.yaml` (max ~25000 for stable 10 fps).
+1. Confirm the **rear** camera (not front) is publishing: `ros2 topic hz /sensing/camera/econ_rear/image_raw`. The `apriltag_node` consumes the uncompressed rear stream.
+2. Verify the topic remapping in `camrod_docking/launch/docking.launch.py` maps `/sensing/camera/econ_rear/image_raw` to the Isaac ROS `RectifyNode` input.
+3. Check exposure: if the environment is very dark or the dock marker is overexposed, image quality may prevent detection. The rear camera uses OpenCV JPEG and does not have manual exposure control.
 
 ---
 
-## 13. 📚 Related Docs
+## 13. ⚠️ Known Hardware Behaviors
+
+Platform-specific behaviors that are not bugs but require documentation to avoid confusion during maintenance.
+
+---
+
+### Front camera: GStreamer `v4l2src` failure and V4L2 direct fallback
+
+**Background**
+
+The ECONSYSTEM ISX031 front camera (`/dev/video0`) is connected to the Jetson Orin via the Tegra VI (Video Input) subsystem — a MIPI CSI interface managed by the `tegra-camrtc-ca` media controller driver. The V4L2 device entry (`vi-output, isx031 10-0043`, driver `tegra-video`) is registered by the kernel, and `v4l2-ctl` shows it as `UYVY 1920×1080 @ 30 fps`. However, the device appears in `v4l2-ctl --all` as:
+
+```
+Video input : 0 (Camera 2: no power)
+```
+
+This `no power` state means the MIPI lanes are not yet active. Activating them requires the full media controller pipeline to be initialized — a step that GStreamer's generic `v4l2src` plugin does not perform for Tegra VI devices. As a result, `v4l2src` fails immediately with:
+
+```
+Embedded video playback halted; module v4l2src0 reported: Internal data stream error.
+```
+
+OpenCV's `cv::CAP_V4L2` backend handles the Tegra VI initialization internally (via direct `ioctl` calls that trigger the media controller), so it succeeds where GStreamer fails.
+
+The rear camera (`/dev/video1`, same ISX031 hardware) has the same GStreamer failure. It already had a `cv::CAP_V4L2` fallback in its original implementation. The front camera did not — it threw `std::runtime_error` and crashed. The fallback was added on 2026-06-17.
+
+---
+
+**Capture mode selection (constructor, `camera_front_publisher_node.cpp`)**
+
+```
+GStreamer pipeline attempt
+  v4l2src → UYVY@30fps → videorate → NV12 → appsink
+         │
+         ▼ fails (Internal data stream error)
+V4L2 direct fallback
+  cv::CAP_V4L2 → UYVY FOURCC → 1920×1080 @ 30fps
+```
+
+The active mode is logged at startup:
+
+```
+[INFO] Camera opened successfully (GStreamer)   ← GStreamer succeeded
+[INFO] Camera opened successfully (V4L2 direct) ← fallback active
+```
+
+On the current Jetson Orin platform, **V4L2 direct is always active**.
+
+---
+
+**Processing pipeline per capture mode**
+
+| Stage | GStreamer mode | V4L2 direct mode |
+|---|---|---|
+| Capture | `v4l2src` kernel DMA | `cv::CAP_V4L2` kernel DMA |
+| UYVY → NV12 | `nvvidconv` (Tegra VIC hardware) | CPU: `cv::cvtColor` BGR→I420 + manual I420→NV12 interleave |
+| Fisheye remap | VPI VIC hardware | VPI VIC hardware (unchanged) |
+| JPEG encode | NvJPEG hardware | NvJPEG hardware (unchanged) |
+
+In V4L2 direct mode, **VPI fisheye remap and NvJPEG encoding remain GPU-accelerated**. Only the format conversion step (UYVY→NV12) moves to CPU. For 1920×1080 @ 30 fps this is approximately 180 MB/s of color-space conversion work on the ARM cores — within the Orin's capacity but non-zero load.
+
+The conversion path in V4L2 mode has one redundant step: OpenCV's V4L2 backend converts UYVY→BGR internally, and `captureThread` then converts BGR→I420→NV12. A future optimization is to read raw UYVY via `CAP_PROP_CONVERT_RGB = 0` and convert UYVY→NV12 directly, halving the CPU conversion cost.
+
+---
+
+**How to verify the fallback is active**
+
+```bash
+# Check the startup log
+ros2 launch camrod_sensing camera.launch.py 2>&1 | grep "Camera opened"
+# Expected on this platform:
+#   [INFO] [...] Camera opened successfully (V4L2 direct)
+
+# Confirm the topic is publishing
+ros2 topic hz /sensing/camera/econ_front/image_rect/compressed
+# Expected: ~10 Hz (30 fps native, VPI+NvJPEG pipeline runs at publish rate)
+```
+
+---
+
+**Affected files**
+
+| File | Change |
+|---|---|
+| `src/camera_front_publisher_node.cpp` | V4L2 fallback in constructor; BGR→NV12 conversion in `captureThread` |
+| `include/camrod_sensing/camera_front_publisher_node.hpp` | `use_v4l2_fallback_` member added |
+
+---
+
+## 14. 📚 Related Docs
 
 - [../README.md](../README.md) — monorepo overview and inter-package data flow
 - [../camrod_localization/README.md](../camrod_localization/README.md) — consumes IMU, GNSS, velocity converter outputs from this package
@@ -634,3 +731,11 @@ One or more `/sensing/radar/*/range` topics are silent.
 - [../camrod_platform/README.md](../camrod_platform/README.md) — produces `/platform/status/velocity` consumed by velocity converter
 - [../camrod_docking/README.md](../camrod_docking/README.md) — consumes `camera/image_rect/compressed` for AprilTag-based dock detection
 - [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions used across the stack
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: Current GNSS baseline is `ublox_gps_node` with simpleRTK2B Heading dual-antenna support.
+
+The simpleRTK2B Heading rover publishes RELPOSNED/heading and RTK pose through the USB-connected rover. NTRIP RTCM should not be injected into the rover USB path when it conflicts with moving-base RTCM; keep `ublox_dual_forward_ntrip_to_rover: false` unless intentionally testing a different RTCM topology. Bringup defaults keep dual-antenna heading enabled and route GNSS config through `sensing/gnss_param_file`.
+
+Radar remains launched through the existing `radar_sensor.launch.py` path and should be validated by checking `/sensing/radar/*` plus `/system/status` sensing entries.
