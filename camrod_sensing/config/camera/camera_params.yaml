@@ -23,7 +23,33 @@
     jpeg_quality: 90
 
 # ── Front camera (camera_front_publisher_node: VPI VIC + NvJPEG GPU pipeline) ─
-# FQN: /sensing/camera/econ_front/camera_front_publisher
+# FQN when launched from sensing.launch.py (PushRosNamespace adds /sensing prefix):
+#   /sensing/camera/econ_front/camera_front_publisher
+# FQN when launched standalone from camera.launch.py (no /sensing prefix):
+#   /camera/econ_front/camera_front_publisher
+# Both sections must exist so params are applied in either launch mode.
+
+/camera/econ_front/camera_front_publisher:
+  ros__parameters:
+    camera_name: "camera"
+    camera_frame_id: "camera_front"
+    device_path: "/dev/video0"
+    image_width: 1920
+    image_height: 1080
+    exposure_time_us: 25000
+    intrinsics_source: "custom"
+    camera_matrix: [
+      867.8957073616848, 0.0,               911.8892022281101,
+      0.0,               870.7794114485896, 561.7588674259021,
+      0.0,               0.0,               1.0
+    ]
+    distortion_coefficients: [
+      -0.02571812099473933,
+      -0.008561500059412931,
+       0.0027446870144155,
+      -0.00161184746781962
+    ]
+
 /sensing/camera/econ_front/camera_front_publisher:
   ros__parameters:
     camera_name: "camera"

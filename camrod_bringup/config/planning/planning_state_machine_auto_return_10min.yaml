@@ -4,9 +4,9 @@
     # Use isolated diagnostics topic for long synthetic scenario validation.
     # This prevents simulated checker ERROR levels from forcing ERROR_STOP.
     state_status_topic: "/system/diagnostics_agg_test"
-    pose_topic: "/planning/lanelet_pose"
+    pose_topic: "/planning/lanelet_pose_ros"
     # State machine tracks snapped goal topic and mirrors to ROS goal output.
-    goal_topic: "/planning/goal_pose_snapped"
+    goal_topic: "/planning/goal_pose_snapped_ros"
     goal_topic_ros: "/planning/goal_pose_snapped_ros"
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
@@ -17,16 +17,18 @@
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     camping_site_recall_topic: "/planning/state_machine/camping_site_recall"
     mission_source_topic: "/planning/state_machine/mission_source"
-    return_goal_key: "drop_zone"
-    goal_key_topic: "/planning/state_machine/goal_key"
-    request_goal_service: "/planning/state_machine/request_goal"
+    # HH_260617: Use mission-key naming for semantic destination commands.
+    return_mission_key: "drop_zone"
+    mission_key_topic: "/planning/mission_key"
+    request_mission_service: "/planning/request_mission"
     status_stream_topic: "/status_stream"
 
     # Launch injects absolute file paths.
     keypoints_yaml: ""
     camping_sites_yaml: ""
-    startup_goal_key: "drop_zone"
-    warn_goal_key: "garage"
+    # HH_260617: Startup/warn keys use the same mission-key contract as UI.
+    startup_mission_key: "drop_zone"
+    warn_mission_key: "garage"
 
     auto_startup_goal: true
     auto_warn_recovery_goal: true
@@ -37,12 +39,21 @@
     # Long-run validation profile:
     # when camping_site_* is reached, wait 600s then auto-return.
     enable_auto_return_on_site_goal: true
-    site_goal_key_prefix: "camping_site_"
+    # HH_260617: Auto-return matches semantic campsite mission keys.
+    site_mission_key_prefix: "camping_site_"
     goal_reached_dwell_s: 600.0
-    goal_key_match_distance_m: 1.5
+    mission_key_match_distance_m: 1.5
+    # HH_260618: Preserve drop_zone semantic key for return route-goal echoes
+    # that are lanelet-snap poses rather than the exact station center.
+    return_goal_key_preserve_distance_m: 5.0
+    # HH_260618: Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
+    site_goal_key_preserve_distance_m: 2.0
     require_docking_for_idle: false
     docking_status_topic: "/docking/is_charging"
 
     min_goal_publish_interval_s: 1.0
     goal_reached_distance_m: 0.8
+    # HH_260618 - Return route handoff uses a wider tolerance than campsite
+    # arrival so drop-zone parking starts after Nav2 succeeds near the station.
+    return_goal_reached_distance_m: 1.2
     loop_rate_hz: 5.0

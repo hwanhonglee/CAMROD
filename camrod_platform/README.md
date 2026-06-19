@@ -9,7 +9,7 @@
 `camrod_platform` is the **last safety boundary before hardware**. It sits between the planning stack and the Ranger CAN driver, and it is responsible for three distinct concerns:
 
 1. **`cmd_vel_gate_node`** — gates `/planning/cmd_vel` behind a four-signal safety interlock before the velocity command reaches the robot's drive motors.
-2. **`robot_visualization_node`** — renders the robot body, sensor frames, planning boundary, and debug range rings as RViz MarkerArray at 20 Hz.
+2. **`robot_visualization_node`** — renders the robot body, sensor frames, planning boundary, and debug range rings as RViz MarkerArray at 5 Hz.
 3. **`sensor_kit_bridge`** — includes `camrod_sensor_kit` to publish all static TF transforms and `/robot_description` (URDF) for every sensor frame.
 
 **Safety interlock — `/platform/cmd_vel` is only published when ALL four conditions hold simultaneously:**
@@ -174,10 +174,13 @@ graph TD
 | `/platform/status/odometry` | `nav_msgs/Odometry` | camrod_localization (primary wheel) | 50 Hz | Normalized odometry from Ranger CAN bridge |
 | `/platform/status/velocity` | `geometry_msgs/TwistStamped` | camrod_sensing (platform_velocity_converter) | 50 Hz | Velocity status from Ranger CAN bridge |
 | `/platform/status/estop` | `std_msgs/Bool` | camrod_planning (cmd_vel gate), camrod_localization | 50 Hz | Derived e-stop from CAN bus |
+| `/platform/status/battery_state` | `sensor_msgs/BatteryState` | camrod_system, docking/parking logic | 2 Hz | HH_260617: Normalized Ranger BMS state from CAN `0x361` |
+| `/platform/status/is_charging` | `std_msgs/Bool` | docking/parking logic | 2 Hz | HH_260617: Debounced charger-contact estimate from BMS current/status |
+| `/docking/is_charging` | `std_msgs/Bool` | camrod_planning, camrod_voice | 2 Hz | HH_260617: Compatibility charging topic for existing docking contract |
 | `/platform/status` | `avg_msgs/AvgPlatformStatus` | camrod_system | 50 Hz | Aggregated CAN status (vehicle_state, control_mode, battery, motor RPM) |
 | `/rmp401/odom` | `nav_msgs/Odometry` | camrod_localization (wheel fallback) | 50 Hz | Fallback odometry (activated when `/odom` primary is silent) |
-| `/platform/robot/markers` | `visualization_msgs/MarkerArray` | RViz | 20 Hz | Robot body, sensor axes, range rings, world origin |
-| `/platform/robot/planning_boundary` | `geometry_msgs/PolygonStamped` | RViz, camrod_planning (collision reference) | 20 Hz | Body footprint + `planning_boundary_margin` polygon |
+| `/platform/robot/markers` | `visualization_msgs/MarkerArray` | RViz | 5 Hz | Robot body, sensor axes, range rings, world origin |
+| `/platform/robot/planning_boundary` | `geometry_msgs/PolygonStamped` | RViz, camrod_planning (collision reference) | 5 Hz | Body footprint + `planning_boundary_margin` polygon |
 | TF static (all sensor frames) | `tf2_msgs/TFMessage` | All packages | Static | Sensor-to-base-link transforms from `robot_params.yaml` |
 | `/robot_description` | `std_msgs/String` | All packages (TF, RViz) | Latched | URDF description from `camrod_sensor_kit` |
 
@@ -255,7 +258,7 @@ flowchart TD
 
 ### 6.2 🎨 robot_visualization_node
 
-Publishes a single `MarkerArray` on `/platform/robot/markers` at 20 Hz, anchored to the latest `/localization/pose`. Falls back to `/sensing/gnss/pose` if localization has been silent for longer than `localization_pose_timeout_s` (3.0 s default).
+Publishes a single `MarkerArray` on `/platform/robot/markers` at 5 Hz, anchored to the latest `/localization/pose`. Falls back to `/sensing/gnss/pose` if localization has been silent for longer than `localization_pose_timeout_s` (3.0 s default). HH_260618: `publish_rate_hz` also rate-limits pose-callback driven marker updates, so high-rate localization does not bypass the visualization budget.
 
 **Marker contents:**
 
@@ -269,7 +272,7 @@ Publishes a single `MarkerArray` on `/platform/robot/markers` at 20 Hz, anchored
 
 | Parameter | Default | Description |
 |---|---|---|
-| `publish_rate_hz` | `20.0` | Marker and boundary publish rate [Hz] |
+| `publish_rate_hz` | `5.0` | Marker and boundary publish rate [Hz] |
 | `localization_pose_timeout_s` | `3.0` | Max localization age before GNSS fallback [s] |
 | `planning_boundary_margin` | `0.3` | Extra margin around footprint for boundary polygon [m] |
 | `heading_yaw_offset_deg` | `0.0` | Heading correction [deg] applied to all markers |
@@ -412,7 +415,7 @@ ros2 run tf2_tools view_frames
 # Expect: robot_base_link → sensor_kit_base_link → imu_link / gnss_link / lidar_link
 
 # Check visualization markers are publishing
-ros2 topic hz /platform/robot/markers   # expect ~20 Hz
+ros2 topic hz /platform/robot/markers   # expect ~5 Hz
 
 # Check Ranger odometry (real hardware only)
 ros2 topic hz /platform/status/odometry  # expect ~50 Hz
@@ -513,3 +516,19 @@ Or ensure `bringup/launch_defaults.yaml` has `platform/cmd_vel_gate_enable: fals
 | camrod_sensor_kit | `../camrod_sensor_kit/README.md` |
 | camrod_system | `../camrod_system/README.md` |
 | camrod_docking | `../camrod_docking/README.md` |
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: Platform remains the final motion boundary for both Nav2 driving and parking maneuvers.
+
+### Parking-Relevant Motion Modes
+
+The Ranger ROS2 driver selects non-Ackermann motion from `geometry_msgs/Twist`:
+
+| Command | Driver behavior |
+|---|---|
+| `linear.x` + `angular.z` | Dual Ackermann or spin depending on radius |
+| `linear.y != 0` | Parallel/side-slip mode for crab motion |
+| `linear.x < 0` | Reverse motion for drop-zone parking |
+
+`camrod_parking` publishes to `/planning/cmd_vel_raw`, not directly to `/platform/cmd_vel`. This keeps `/planning/cmd_vel` and `/platform/cmd_vel` gates active. Charging state is published from the Ranger platform bridge as `/platform/status/is_charging` and mirrored to `/docking/is_charging` for legacy consumers.

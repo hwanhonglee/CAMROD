@@ -105,3 +105,9 @@ colcon build
 - [../README.md](../README.md) — CAMROD monorepo overview
 - [avg_msgs/README.md](avg_msgs/README.md) — Full interface catalog and dependency matrix
 - [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — Canonical parameter naming conventions
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: `avg_msgs` is the common contract for planning, system, platform, UI, voice, and parking integration.
+
+Current semantic mission interfaces include `PlanningState`, `PlanningScenario`, `PlanningMissionKey`, `PlanningRecallRequest`, and `UiDestinationCommand`. `ModuleState` remains the shared module-health/status payload and is used by `camrod_parking` status topics, `camrod_system`, and package-level validators.

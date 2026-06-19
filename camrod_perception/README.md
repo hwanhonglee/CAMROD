@@ -421,3 +421,9 @@ ros2 topic hz /perception/lidar/bboxes
 | [../camrod_docking/README.md](../camrod_docking/README.md) | AprilTag docking — separate perception pipeline, not this package |
 | [../camrod_system/README.md](../camrod_system/README.md) | `perception_obstacle_checker` that subscribes to `/perception/obstacles` |
 | [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) | Parameter naming conventions (`*_s`, `*_hz`) |
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: Perception feeds planning cost checks; parking still routes through the planning/platform gates.
+
+Obstacle/cost outputs are consumed by planning safety checks before `/planning/cmd_vel` is released. Because parking publishes to `/planning/cmd_vel_raw`, the same cost-stop and platform interlock path can block parking motion if the configured side/rear corridors detect unsafe occupancy.

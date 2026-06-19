@@ -87,6 +87,8 @@
     # Use lanelet-snapped pose for stable in-lane realtime refresh.
     # This prevents temporary off-lane localization jitter from shifting path-cost windows.
     pose_topic: "/planning/lanelet_pose"
+    # HH_260619 - Build path guidance from the actual published global route.
+    # /planning/plan_smoothed is not a stable ROS topic in the Nav2 BT flow.
     path_topic: "/planning/global_path"
     # Clear/rebuild against snapped goals only.
     goal_topic: "/planning/goal_pose_snapped"
@@ -135,8 +137,12 @@
     # /planning/global_path publisher is VOLATILE.
     # Keep subscriber durability VOLATILE to avoid QoS mismatch/drop.
     path_qos_transient_local: false
-    # Slower republish keeps marker updates visible with lower load.
-    republish_period: 0.15
+    # HH_260618: Enable the primary publisher for this helper. The shared
+    # lanelet_cost_grid_node default disables primary output because the map
+    # package normally uses the secondary output; path-cost helpers do not.
+    primary_enable: true
+    # HH_260618: Lower heartbeat load; path updates still trigger immediate rebuilds.
+    republish_period_s: 0.25
     output_topic: "/planning/cost_grid/global_path"
 
 /planning/lanelet_cost_grid_local_path:
@@ -259,7 +265,9 @@
     debug_coverage_stride: 2
     debug_coverage_min_value: 0
     path_qos_transient_local: false
-    # Reduce local marker heartbeat load while preserving visibility.
-    # Keep marker refresh responsive but lighter.
-    republish_period: 0.10
+    # HH_260618: Enable the primary publisher for this helper. Without this,
+    # /planning/cost_grid/local_path has subscribers but no publisher.
+    primary_enable: true
+    # HH_260618: Reduce local marker/grid heartbeat; pose/path callbacks still refresh immediately.
+    republish_period_s: 0.20
     output_topic: "/planning/cost_grid/local_path"

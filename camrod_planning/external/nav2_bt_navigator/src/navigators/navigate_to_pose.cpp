@@ -48,7 +48,10 @@ NavigateToPoseNavigator::configure(
   start_blackboard_id_ = node->get_parameter("start_blackboard_id").as_string();
 
   if (!node->has_parameter("use_start_pose_override")) {
-    node->declare_parameter("use_start_pose_override", true);
+    // HH_260619 - Default to the real TF/localization pose. Lanelet snapped
+    // start override is opt-in because it can make the route appear to avoid
+    // from the first meter when the robot is not exactly on the centerline.
+    node->declare_parameter("use_start_pose_override", false);
   }
   use_start_pose_override_ = node->get_parameter("use_start_pose_override").as_bool();
 
@@ -61,6 +64,23 @@ NavigateToPoseNavigator::configure(
     node->declare_parameter("start_pose_timeout", 1.0);
   }
   start_pose_timeout_s_ = node->get_parameter("start_pose_timeout").as_double();
+
+  if (!node->has_parameter("start_pose_override_yaw_source")) {
+    node->declare_parameter(
+      "start_pose_override_yaw_source", std::string("current_pose"));
+  }
+  start_pose_override_yaw_source_ =
+    node->get_parameter("start_pose_override_yaw_source").as_string();
+  if (
+    start_pose_override_yaw_source_ != "current_pose" &&
+    start_pose_override_yaw_source_ != "snapped_pose")
+  {
+    RCLCPP_WARN(
+      logger_,
+      "Invalid start_pose_override_yaw_source='%s'. Falling back to current_pose.",
+      start_pose_override_yaw_source_.c_str());
+    start_pose_override_yaw_source_ = "current_pose";
+  }
   has_start_pose_ = false;
   latest_start_pose_time_ = rclcpp::Time(0, 0, node->get_clock()->get_clock_type());
 
@@ -81,8 +101,9 @@ NavigateToPoseNavigator::configure(
       std::bind(&NavigateToPoseNavigator::onStartPoseReceived, this, std::placeholders::_1));
     RCLCPP_INFO(
       logger_,
-      "start pose override enabled: topic=%s timeout=%.2fs bb_key=%s",
-      start_pose_topic_.c_str(), start_pose_timeout_s_, start_blackboard_id_.c_str());
+      "start pose override enabled: topic=%s timeout=%.2fs bb_key=%s yaw_source=%s",
+      start_pose_topic_.c_str(), start_pose_timeout_s_, start_blackboard_id_.c_str(),
+      start_pose_override_yaw_source_.c_str());
   } else {
     RCLCPP_INFO(logger_, "start pose override disabled (planner start uses current robot pose)");
   }
@@ -283,6 +304,14 @@ NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
       }
 
       if (transformed.header.frame_id == feedback_utils_.global_frame) {
+        // HH_260619 - Use snapped XY for centerline route generation, but keep
+        // the real robot yaw by default. Some bidirectional/parallel lanelets
+        // expose a nearest centerline heading opposite to the current vehicle
+        // heading; feeding that yaw to SmacLattice creates a backward/S-shaped
+        // path segment immediately in front of the robot.
+        if (start_pose_override_yaw_source_ == "current_pose") {
+          transformed.pose.orientation = current_pose.pose.orientation;
+        }
         start_for_planner = transformed;
         using_override = true;
       }

@@ -5,6 +5,8 @@
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <vpi/Status.h>
+#include "cv_bridge/cv_bridge.h"
+#include <std_msgs/msg/header.hpp>
 
 namespace camrod::sensing
 {
@@ -80,11 +82,23 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
   cap_.open(gst_pipeline, cv::CAP_GSTREAMER);
 
   if (!cap_.isOpened()) {
+    RCLCPP_WARN(this->get_logger(), "GStreamer failed, falling back to V4L2 direct");
+    cap_.open(device_path_, cv::CAP_V4L2);
+    cap_.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('U', 'Y', 'V', 'Y'));
+    cap_.set(cv::CAP_PROP_FRAME_WIDTH,  image_width_);
+    cap_.set(cv::CAP_PROP_FRAME_HEIGHT, image_height_);
+    cap_.set(cv::CAP_PROP_FPS,          30);
+    cap_.set(cv::CAP_PROP_BUFFERSIZE,   2);
+    use_v4l2_fallback_ = true;
+  }
+
+  if (!cap_.isOpened()) {
     RCLCPP_ERROR(this->get_logger(), "Failed to open camera");
     throw std::runtime_error("Failed to open camera");
   }
 
-  RCLCPP_INFO(this->get_logger(), "Camera opened successfully");
+  RCLCPP_INFO(this->get_logger(), "Camera opened successfully (%s)",
+    use_v4l2_fallback_ ? "V4L2 direct" : "GStreamer");
 
   // ISX031 default exposure is 33000us = 33ms, which equals the 30fps frame period.
   // The AE algorithm periodically exceeds this limit and drops to 18fps.
@@ -111,6 +125,8 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
 
   rect_pub_ = this->create_publisher<sensor_msgs::msg::CompressedImage>(
     "~/image_rect/compressed", rclcpp::SensorDataQoS());
+  image_raw_pub_ = this->create_publisher<sensor_msgs::msg::Image>(
+    "~/image_raw", rclcpp::SensorDataQoS());
   camera_info_pub_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
     "~/camera_info", rclcpp::SensorDataQoS());
 
@@ -176,6 +192,39 @@ void CameraFrontPublisherNode::captureThread()
 
     if (!cap_.read(frame) || frame.empty()) {
       continue;
+    }
+
+    if (use_v4l2_fallback_) {
+      // V4L2 direct returns BGR; VPI/NvJPEG pipeline requires NV12 semi-planar.
+      // BGR → I420 (planar YUV420) → NV12 (interleave U and V into semi-planar UV).
+      // Use actual frame dimensions (not image_width_/image_height_ params) so the
+      // conversion is safe even when params are not applied (e.g. standalone launch).
+      const int src_h = frame.rows;
+      const int src_w = frame.cols;
+      if (frame.channels() != 3) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+          "V4L2 frame has %d channels (expected 3/BGR) — skipping", frame.channels());
+        continue;
+      }
+      if (src_h != image_height_ || src_w != image_width_) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+          "V4L2 frame size %dx%d differs from configured %dx%d",
+          src_w, src_h, image_width_, image_height_);
+      }
+      cv::Mat i420;
+      cv::cvtColor(frame, i420, cv::COLOR_BGR2YUV_I420);
+      cv::Mat nv12(src_h * 3 / 2, src_w, CV_8UC1);
+      const size_t y_bytes = static_cast<size_t>(src_w) * src_h;
+      std::memcpy(nv12.data, i420.data, y_bytes);
+      const int uv_count = (src_w / 2) * (src_h / 2);
+      const uint8_t* src_u = i420.data + y_bytes;
+      const uint8_t* src_v = src_u + uv_count;
+      uint8_t* dst_uv = nv12.data + y_bytes;
+      for (int i = 0; i < uv_count; ++i) {
+        dst_uv[2 * i]     = src_u[i];
+        dst_uv[2 * i + 1] = src_v[i];
+      }
+      frame = std::move(nv12);
     }
 
     {
@@ -245,6 +294,14 @@ void CameraFrontPublisherNode::publishThread()
 
       vpiImageUnlock(vpi_nv12_out_wrapper_);
 
+      // image_raw: rectified BGR, subscriber-gated (~6 MB/frame — skip when no consumers)
+      if (image_raw_pub_->get_subscription_count() > 0) {
+        cv::Mat bgr;
+        cv::cvtColor(nv12_rect_buf_, bgr, cv::COLOR_YUV2BGR_NV12);
+        auto img_msg = cv_bridge::CvImage(compressed_msg_.header, "bgr8", bgr).toImageMsg();
+        image_raw_pub_->publish(std::move(*img_msg));
+      }
+
       // Upload planar YUV to GPU (async on cuda_stream_)
       const int y_size  = image_width_ * image_height_;
       const int uv_size = y_size / 4;
@@ -272,6 +329,15 @@ void CameraFrontPublisherNode::publishThread()
 
       compressed_msg_.header.stamp = timestamp;
       rect_pub_->publish(compressed_msg_);
+    } else if (image_raw_pub_->get_subscription_count() > 0) {
+      // VPI pipeline not ready (no calibration / V4L2 fallback): publish unrectified BGR
+      cv::Mat bgr;
+      cv::cvtColor(nv12_frame, bgr, cv::COLOR_YUV2BGR_NV12);
+      auto img_msg = cv_bridge::CvImage(
+        std_msgs::msg::Header(), "bgr8", bgr).toImageMsg();
+      img_msg->header.stamp = timestamp;
+      img_msg->header.frame_id = camera_frame_id_;
+      image_raw_pub_->publish(std::move(*img_msg));
     }
   }
 }

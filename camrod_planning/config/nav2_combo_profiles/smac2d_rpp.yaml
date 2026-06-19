@@ -8,8 +8,8 @@ planner_server:
       allow_unknown: False
       downsample_costmap: False
       downsampling_factor: 1
-      motion_model_for_search: "DUBIN"
-      angle_quantization_bins: 16
+      # HH_260618: SmacPlanner2D does not expose Hybrid-A* motion/angle params.
+      use_final_approach_orientation: false
       max_iterations: 2000000
       # HH_260528: Faster no-path response for Smac planner combos.
       max_planning_time: 1.2

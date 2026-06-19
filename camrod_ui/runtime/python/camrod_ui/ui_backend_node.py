@@ -17,14 +17,14 @@ from typing import Any, Dict, List, Optional, Set
 import rclpy
 import yaml
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
-from avg_msgs.msg import AvgAmrServiceState
+from avg_msgs.msg import AvgAmrServiceState, PlanningMissionKey, UiDestinationCommand
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
-from std_msgs.msg import Bool, Int32, String
+from std_msgs.msg import Bool, Int32
 
 import uvicorn
 
@@ -51,7 +51,7 @@ class ApiState:
 
 
 @dataclass
-class GoalKeypoint:
+class MissionKeypoint:
     """Resolved keypoint for destination dispatch."""
 
     key: str
@@ -81,8 +81,8 @@ class UiBackendNode(Node):
         self.planning_engage_topic = str(
             self.declare_parameter("planning_engage_topic", "/planning/engage").value
         )
-        self.planning_goal_key_topic = str(
-            self.declare_parameter("planning_goal_key_topic", "/planning/state_machine/goal_key").value
+        self.planning_mission_key_topic = str(
+            self.declare_parameter("planning_mission_key_topic", "/planning/mission_key").value
         )
         self.planning_goal_pose_topic = str(
             self.declare_parameter("planning_goal_pose_topic", "/goal_pose").value
@@ -93,13 +93,13 @@ class UiBackendNode(Node):
         self.amr_service_state_topic = str(
             self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
         )
-        self.publish_goal_key = bool(self.declare_parameter("publish_goal_key", True).value)
+        self.publish_mission_key = bool(self.declare_parameter("publish_mission_key", True).value)
         self.publish_goal_pose = bool(self.declare_parameter("publish_goal_pose", True).value)
         self.publish_engage_from_destination = bool(
             self.declare_parameter("publish_engage_from_destination", True).value
         )
         self.default_goal_frame_id = str(self.declare_parameter("default_goal_frame_id", "map").value)
-        self.fallback_goal_key = str(self.declare_parameter("fallback_goal_key", "camping_site_1").value)
+        self.fallback_mission_key = str(self.declare_parameter("fallback_mission_key", "camping_site_1").value)
         self.fallback_to_first_known_goal = bool(
             self.declare_parameter("fallback_to_first_known_goal", True).value
         )
@@ -112,14 +112,14 @@ class UiBackendNode(Node):
         if not self.site_names:
             self.site_names = [f"B{i}" for i in range(1, 14)]
 
-        raw_site_to_goal = self.declare_parameter("site_to_goal_key_map", []).value
-        self.site_to_goal_key_map = self._parse_site_goal_map(raw_site_to_goal)
+        raw_site_to_mission = self.declare_parameter("site_to_mission_key_map", []).value
+        self.site_to_mission_key_map = self._parse_site_mission_map(raw_site_to_mission)
 
         self.diagnostics_agg_topic = str(
-            self.declare_parameter("diagnostics_agg_topic", "/diagnostics_agg").value
+            self.declare_parameter("diagnostics_agg_topic", "/system/diagnostics_agg").value
         )
 
-        self._keypoints_by_goal_key = self._load_camping_site_keypoints(self.camping_sites_yaml)
+        self._keypoints_by_mission_key = self._load_camping_site_keypoints(self.camping_sites_yaml)
         self._lock = threading.Lock()
         self._state = ApiState(
             ws_site_states={s: False for s in self.site_names}
@@ -132,7 +132,7 @@ class UiBackendNode(Node):
 
         # Subscriptions.
         self.sub_destination = self.create_subscription(
-            String,
+            UiDestinationCommand,
             self.ui_destination_topic,
             self._on_destination_command,
             10,
@@ -157,9 +157,15 @@ class UiBackendNode(Node):
         )
 
         # Publishers.
-        self.pub_destination = self.create_publisher(String, self.ui_destination_topic, 10)
+        # HH_260617: UI destination and planning mission-key topics now use
+        # generated avg_msgs semantic messages instead of JSON/String wrappers.
+        self.pub_destination = self.create_publisher(
+            UiDestinationCommand, self.ui_destination_topic, 10
+        )
         self.pub_engage = self.create_publisher(Bool, self.planning_engage_topic, 10)
-        self.pub_goal_key = self.create_publisher(String, self.planning_goal_key_topic, 10)
+        self.pub_mission_key = self.create_publisher(
+            PlanningMissionKey, self.planning_mission_key_topic, 10
+        )
         self.pub_goal_pose = self.create_publisher(PoseStamped, self.planning_goal_pose_topic, 10)
         self.pub_amr_service_state = self.create_publisher(AvgAmrServiceState, self.amr_service_state_topic, 10)
 
@@ -173,12 +179,12 @@ class UiBackendNode(Node):
             f"frontend_dir={str(self.frontend_dir) if self.frontend_dir else '(builtin)'} "
             f"destination_topic={self.ui_destination_topic} "
             f"engage_topic={self.planning_engage_topic} "
-            f"goal_key_topic={self.planning_goal_key_topic} "
+            f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'}"
         )
 
-    def _parse_site_goal_map(self, raw_value: object) -> Dict[str, str]:
+    def _parse_site_mission_map(self, raw_value: object) -> Dict[str, str]:
         parsed: Dict[str, str] = {}
         if not isinstance(raw_value, list):
             return parsed
@@ -186,18 +192,18 @@ class UiBackendNode(Node):
             entry = str(item).strip()
             if not entry or ":" not in entry:
                 continue
-            site, goal_key = entry.split(":", maxsplit=1)
+            site, mission_key = entry.split(":", maxsplit=1)
             site = site.strip()
-            goal_key = goal_key.strip()
-            if site and goal_key:
-                parsed[site] = goal_key
+            mission_key = mission_key.strip()
+            if site and mission_key:
+                parsed[site] = mission_key
         return parsed
 
-    def _load_camping_site_keypoints(self, yaml_path: str) -> Dict[str, GoalKeypoint]:
-        keypoints: Dict[str, GoalKeypoint] = {}
+    def _load_camping_site_keypoints(self, yaml_path: str) -> Dict[str, MissionKeypoint]:
+        keypoints: Dict[str, MissionKeypoint] = {}
         path = Path(yaml_path).expanduser() if yaml_path else None
         if path is None or not str(path):
-            self.get_logger().warn("camping_sites_yaml is empty: goal_pose dispatch will use goal-key only")
+            self.get_logger().warn("camping_sites_yaml is empty: goal_pose dispatch will use mission-key only")
             return keypoints
         if not path.exists():
             self.get_logger().warn(
@@ -223,7 +229,7 @@ class UiBackendNode(Node):
             key = str(site.get("type", "")).strip() or f"camping_site_{idx}"
             if key in keypoints:
                 continue
-            keypoints[key] = GoalKeypoint(
+            keypoints[key] = MissionKeypoint(
                 key=key,
                 frame_id=str(site.get("frame_id", self.default_goal_frame_id)).strip()
                 or self.default_goal_frame_id,
@@ -373,6 +379,7 @@ class UiBackendNode(Node):
             AvgAmrServiceState.MOVING_TO_SITE:         "Drop Zone → Site 이동 중",
             AvgAmrServiceState.SITE_ARRIVED:           "Site 도착",
             AvgAmrServiceState.RETURNING_TO_DROP_ZONE: "Site → Drop Zone 복귀 중",
+            AvgAmrServiceState.GUEST_RECALL_SERVICE:   "Guest 호출 요청",
         }
         msg = AvgAmrServiceState()
         msg.state = state
@@ -383,43 +390,44 @@ class UiBackendNode(Node):
             f"{state} ({msg.description})"
         )
 
-    def _on_destination_command(self, msg: String) -> None:
-        parsed = self._parse_destination_payload(msg.data)
-        if parsed is None:
+    def _on_destination_command(self, msg: UiDestinationCommand) -> None:
+        site = str(msg.site).strip()
+        if not site:
+            self.get_logger().warn("destination command has empty site")
             return
-        site, run = parsed
+        run = bool(msg.run)
         result = self._apply_destination_command(site=site, run=run, source="destination_topic")
         self.get_logger().info(
             "destination dispatch summary: "
             f"site={site} run={str(run).lower()} "
-            f"goal_key={result.get('goal_key', '')} "
-            f"goal_pose={str(bool(result.get('goal_pose_published', False))).lower()}"
+            f"mission_key={result.get('mission_key', '')} "
+            f"site_goal={str(bool(result.get('goal_pose_published', False))).lower()}"
         )
 
     # ── Goal and engage publishing ────────────────────────────────────────────
 
-    def _resolve_goal_key_for_site(self, site: str) -> Optional[str]:
-        if site in self.site_to_goal_key_map:
-            mapped = self.site_to_goal_key_map[site]
-            if mapped in self._keypoints_by_goal_key:
+    def _resolve_mission_key_for_site(self, site: str) -> Optional[str]:
+        if site in self.site_to_mission_key_map:
+            mapped = self.site_to_mission_key_map[site]
+            if mapped in self._keypoints_by_mission_key:
                 return mapped
 
         site_text = str(site).strip().upper()
         if site_text.startswith("B") and site_text[1:].isdigit():
             candidate = f"camping_site_{int(site_text[1:])}"
-            if candidate in self._keypoints_by_goal_key:
+            if candidate in self._keypoints_by_mission_key:
                 return candidate
 
-        if self.fallback_goal_key in self._keypoints_by_goal_key:
+        if self.fallback_mission_key in self._keypoints_by_mission_key:
             self.get_logger().warn(
-                f"no exact goal key for site={site}; fallback to {self.fallback_goal_key}"
+                f"no exact mission key for site={site}; fallback to {self.fallback_mission_key}"
             )
-            return self.fallback_goal_key
+            return self.fallback_mission_key
 
-        if self.fallback_to_first_known_goal and self._keypoints_by_goal_key:
-            fallback = sorted(self._keypoints_by_goal_key.keys())[0]
+        if self.fallback_to_first_known_goal and self._keypoints_by_mission_key:
+            fallback = sorted(self._keypoints_by_mission_key.keys())[0]
             self.get_logger().warn(
-                f"no exact goal key for site={site}; fallback to first known key={fallback}"
+                f"no exact mission key for site={site}; fallback to first known key={fallback}"
             )
             return fallback
 
@@ -445,24 +453,27 @@ class UiBackendNode(Node):
         )
 
     def _publish_goal_for_site(self, site: str, source: str) -> Dict[str, Any]:
-        goal_key = self._resolve_goal_key_for_site(site)
-        if not goal_key:
+        mission_key = self._resolve_mission_key_for_site(site)
+        if not mission_key:
             return {
-                "goal_key": "",
+                "mission_key": "",
                 "goal_pose_published": False,
-                "message": f"no goal key resolved for site={site}",
+                "message": f"no mission key resolved for site={site}",
             }
 
-        if self.publish_goal_key:
-            key_msg = String()
-            key_msg.data = goal_key
-            self.pub_goal_key.publish(key_msg)
+        if self.publish_mission_key:
+            key_msg = PlanningMissionKey()
+            key_msg.header.stamp = self.get_clock().now().to_msg()
+            key_msg.mission_key = mission_key
+            key_msg.source = source
+            key_msg.publish_route_goal = False
+            self.pub_mission_key.publish(key_msg)
             self.get_logger().info(
-                f"goal key ({source}) -> {self.planning_goal_key_topic}: {goal_key}"
+                f"mission key ({source}) -> {self.planning_mission_key_topic}: {mission_key}"
             )
 
         pose_published = False
-        goal = self._keypoints_by_goal_key.get(goal_key)
+        goal = self._keypoints_by_mission_key.get(mission_key)
         if self.publish_goal_pose and goal is not None:
             pose = PoseStamped()
             pose.header.stamp = self.get_clock().now().to_msg()
@@ -478,17 +489,17 @@ class UiBackendNode(Node):
             self.pub_goal_pose.publish(pose)
             pose_published = True
             self.get_logger().info(
-                f"goal pose ({source}) -> {self.planning_goal_pose_topic}: "
-                f"key={goal_key} site={site} xy=({goal.x:.2f},{goal.y:.2f})"
+                f"site goal ({source}) -> {self.planning_goal_pose_topic}: "
+                f"mission_key={mission_key} site={site} xy=({goal.x:.2f},{goal.y:.2f})"
             )
 
         if self.publish_goal_pose and goal is None:
             self.get_logger().warn(
-                f"goal pose dispatch skipped: keypoint for '{goal_key}' is missing in camping_sites_yaml"
+                f"site goal dispatch skipped: mission key '{mission_key}' is missing in camping_sites_yaml"
             )
 
         return {
-            "goal_key": goal_key,
+            "mission_key": mission_key,
             "goal_pose_published": pose_published,
             "message": "ok",
         }
@@ -527,7 +538,7 @@ class UiBackendNode(Node):
             return {
                 "site": site,
                 "run": False,
-                "goal_key": "",
+                "mission_key": "",
                 "goal_pose_published": False,
                 "message": "run=false -> engage off, goal dispatch skipped",
             }
@@ -537,7 +548,7 @@ class UiBackendNode(Node):
         return {
             "site": site,
             "run": True,
-            "goal_key": goal_result.get("goal_key", ""),
+            "mission_key": goal_result.get("mission_key", ""),
             "goal_pose_published": bool(goal_result.get("goal_pose_published", False)),
             "message": str(goal_result.get("message", "ok")),
         }
@@ -545,8 +556,12 @@ class UiBackendNode(Node):
     def _publish_destination_command(self, site: str, run: bool, source: str) -> Dict[str, Any]:
         payload = {"site": site, "run": bool(run)}
 
-        msg = String()
-        msg.data = json.dumps(payload, ensure_ascii=False)
+        msg = UiDestinationCommand()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.site = site
+        msg.run = bool(run)
+        msg.mission_key = self._resolve_mission_key_for_site(site) or ""
+        msg.source = source
         self.pub_destination.publish(msg)
 
         with self._lock:
@@ -676,20 +691,43 @@ class UiBackendNode(Node):
             try:
                 while True:
                     data = await ws.receive_text()
-                    payload = json.loads(data)
+                    try:
+                        payload = json.loads(data)
+                    except json.JSONDecodeError as exc:
+                        # HH_260616: Keep malformed WebSocket frames from tearing down
+                        # the UI bridge; browser/UI retries should not leave stale goals.
+                        node.get_logger().warn(f"invalid websocket JSON ignored: {exc}")
+                        continue
+
+                    if not isinstance(payload, dict):
+                        # HH_260616: The UI protocol is object-based. Ignore other
+                        # payload shapes instead of raising inside Starlette.
+                        node.get_logger().warn("websocket payload must be a JSON object")
+                        continue
 
                     # {"site": "B1", "state": true/false}
                     if "site" in payload and "state" in payload:
                         site = str(payload["site"])
                         new_state = bool(payload["state"])
+                        if site not in node.site_names:
+                            node.get_logger().warn(f"unknown websocket site ignored: {site}")
+                            await ws.send_json({
+                                "error": "unknown_site",
+                                "site": site,
+                                "valid_sites": list(node.site_names),
+                            })
+                            continue
                         if new_state:
                             # Deactivate all other sites, activate this one.
                             with node._lock:
                                 node._state.ws_site_states = {
                                     s: (s == site) for s in node.site_names
                                 }
+                            # HH_260616: Publish one destination command and let the
+                            # /ui/selected_destination subscriber dispatch engage/goal.
+                            # This keeps WebSocket behavior identical to REST and prevents
+                            # duplicate mission_key/site_goal publications for one button tap.
                             node._publish_destination_command(site, run=True, source="ws")
-                            node._apply_destination_command(site=site, run=True, source="ws")
                             await node._broadcast(
                                 {"states": {s: (s == site) for s in node.site_names}}
                             )
@@ -707,7 +745,8 @@ class UiBackendNode(Node):
                         node._publish_engage(new_engage, source="ws_engage")
                         await node._broadcast({"engage": new_engage})
 
-                    # {"usage_complete": true} — 이용 완료 버튼 → state=4 publish
+                    # HH_260617: usage_complete is return-to-drop-zone state=3.
+                    # Guest recall request is state=4 and is published by ui_guest_node.
                     if payload.get("usage_complete"):
                         node._publish_amr_service_state(AvgAmrServiceState.RETURNING_TO_DROP_ZONE, source="ws:usage_complete")
                         node._publish_engage(False, source="ws:usage_complete")
@@ -718,6 +757,10 @@ class UiBackendNode(Node):
 
             except WebSocketDisconnect:
                 pass
+            except KeyError as exc:
+                # HH_260616: Some non-browser test clients disconnect without a close
+                # code; Starlette can surface that as KeyError('code').
+                node.get_logger().debug(f"websocket disconnected without close code: {exc}")
             finally:
                 with node._ws_clients_lock:
                     node._ws_clients.discard(ws)

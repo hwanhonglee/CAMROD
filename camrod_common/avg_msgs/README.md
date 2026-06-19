@@ -22,6 +22,7 @@ source install/setup.bash
 
 # Verify a message type is available
 ros2 interface show avg_msgs/msg/ModuleState
+ros2 interface show avg_msgs/msg/PlanningState
 ros2 interface show avg_msgs/srv/RequestGoalByKey
 ```
 
@@ -154,6 +155,11 @@ graph LR
 | 📨 `AvgMapMsgs` | msg | `stamp`, `ModuleState state`, lanelet/planning cost grids, lanelet/lidar/radar/inflation marker arrays | camrod_map | camrod_planning, camrod_platform, camrod_bringup |
 | 📨 `AvgPerceptionMsgs` | msg | `stamp`, `ModuleState state`, `PointCloud2 obstacles`, `CameraInfo`, `Detection2DArray detections` | camrod_perception | camrod_planning, camrod_system |
 | 📨 `AvgPlanningMsgs` | msg | `stamp`, `ModuleState state`, goal/lanelet poses, nav action status, global/local paths, costmaps, path cost markers | camrod_planning | camrod_platform, camrod_bringup |
+| 📨 `PlanningMissionKey` | msg | `header`, `mission_key`, `source`, `publish_route_goal` | camrod_ui, camrod_planning | camrod_planning, camrod_ui, logging |
+| 📨 `PlanningRecallRequest` | msg | `header`, `site_name`, `source` | camrod_ui / external recall clients | camrod_planning |
+| 📨 `PlanningScenario` | msg | `header`, scenario constants, `scenario_id`, `label`, `source` | camrod_planning / UI commands | camrod_planning, camrod_ui |
+| 📨 `PlanningState` | msg | `header`, state constants, `state`, `label`, scenario, active mission/source, estop/request flags | camrod_planning | camrod_system, camrod_ui, camrod_voice |
+| 📨 `UiDestinationCommand` | msg | `header`, `site`, `run`, `mission_key`, `source` | camrod_ui | camrod_ui, planning dispatch path |
 | 📨 `AvgPlatformMsgs` | msg | `stamp`, `ModuleState state`, `AvgRobotInfo`, robot markers, planning boundary, localization pose | camrod_platform | camrod_bringup |
 | 📨 `AvgPlatformStatus` | msg | `stamp`, `header`, `ModuleState state`, odometry, velocity/wheel twist, estop, vehicle_state, control_mode, error_code, battery_voltage, motor RPM/speed/angle arrays | camrod_platform | camrod_system |
 | 📨 `AvgSensorKitMsgs` | msg | `stamp`, `ModuleState state`, frame IDs, `tf_static_ready/tf_ready`, child frame lists | camrod_sensor_kit | camrod_system, camrod_bringup |
@@ -191,6 +197,11 @@ graph LR
 | `AvgMapMsgs` | — | P | — | — | — | C | C | C | — | — |
 | `AvgPerceptionMsgs` | — | — | — | — | P | C | — | C | — | — |
 | `AvgPlanningMsgs` | — | — | — | — | — | P | C | C | — | — |
+| `PlanningMissionKey` | — | — | — | — | — | P+C | — | — | P+C | — |
+| `PlanningRecallRequest` | — | — | — | — | — | C | — | — | P | — |
+| `PlanningScenario` | — | — | — | — | — | P+C | — | — | C | — |
+| `PlanningState` | — | — | — | — | — | P | — | C | C | — |
+| `UiDestinationCommand` | — | — | — | — | — | — | — | — | P+C | — |
 | `AvgPlatformMsgs` | — | — | — | — | — | — | P | C | — | — |
 | `AvgPlatformStatus` | — | — | — | — | — | — | P | C | — | — |
 | `AvgSensorKitMsgs` | P | — | — | — | — | — | — | C | — | — |
@@ -306,3 +317,16 @@ If a node crashes with `rcutils_logging` type errors or `rmw` deserialization fa
 - [`../../camrod_ui/README.md`](../../camrod_ui/README.md)
 - [`../../camrod_docking/README.md`](../../camrod_docking/README.md)
 - [`../../PARAMETER_NAMING_STANDARD.md`](../../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: Planning and parking integration use small semantic messages instead of one large module snapshot message for command/state paths.
+
+| Interface | Current use |
+|---|---|
+| `PlanningState` | `/planning/state_machine/state`, consumed by `camrod_parking`, UI, voice, diagnostics |
+| `PlanningScenario` | `/planning/state_machine/scenario_id` and scenario command path |
+| `PlanningMissionKey` | `/planning/mission_key` semantic destination command |
+| `PlanningRecallRequest` | `/planning/state_machine/camping_site_recall` guest/site recall flow |
+| `ModuleState` | `/parking/*/status`, `/system/status.modules`, module validators |
+| `SystemStatus` / `AvgSystemMsgs` | `/system/status`, `/system/msgs` full-stack health snapshots |

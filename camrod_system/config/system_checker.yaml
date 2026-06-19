@@ -2,22 +2,121 @@
 /system/system_checker:
   ros__parameters:
     check_period_s: 1.0
+    startup_grace_s: 6.0
+
+    # HH_260617: Legacy aggregate lists kept for compatibility with old UI/tools.
     required_nodes:
-      # lanelet cost-grid publisher node in camrod_map/launch/cost_grid.launch.py
       - /map/lanelet_boundary_cost_grid
       - /planning/goal_snapper
       - /planning/planner_server
       - /planning/controller_server
       - /planning/bt_navigator
-      # Filter node name varies by filter_type (ekf_filter/eskf).
-      # pose_selector is always launched for both EKF and ESKF.
       - /localization/pose_selector
     required_topics:
       - /localization/pose
       - /sensing/imu/data
       - /sensing/gnss/ublox_gps_node/fix
-      # HH_260410: Unified wheel odometry topic required for localization readiness.
       - /platform/status/wheel_odometry
-      # HH_260527: Primary-only selector default. Track selected odometry stream.
       - /localization/odometry/filtered
       - /map/cost_grid/lanelet
+      - /planning/state_machine/state
+
+    # HH_260617: Module manifest format:
+    #   "topic|ros_type|min_publishers"
+    # min_publishers=0 checks only graph/type presence and avoids command-topic false WARNs.
+    required_modules:
+      - map
+      - sensing
+      - localization
+      - perception
+      - planning
+      - platform
+
+    # HH_260618: Final parking is required, but it can be implemented by either
+    # rule-based camrod_parking or marker/opennav camrod_docking. The checker
+    # reports ERROR if neither graph is present or if both are accidentally active.
+    required_alternative_groups:
+      - final_parking
+
+    final_parking:
+      alternatives:
+        - parking
+        - docking
+
+    map:
+      required_nodes:
+        - /map/lanelet_map_provider
+        - /map/lanelet_boundary_cost_grid
+      required_topics:
+        - "/map/cost_grid/lanelet|nav_msgs/msg/OccupancyGrid|1"
+
+    sensing:
+      required_topics:
+        - "/sensing/gnss/ublox_gps_node/fix|sensor_msgs/msg/NavSatFix|1"
+        - "/sensing/imu/data|sensor_msgs/msg/Imu|1"
+        - "/sensing/lidar/points_filtered|sensor_msgs/msg/PointCloud2|1"
+        - "/platform/status/wheel_odometry|nav_msgs/msg/Odometry|1"
+
+    localization:
+      required_nodes:
+        - /localization/input_adapter
+        - /localization/ekf_filter
+        - /localization/pose_selector
+        - /localization/monitor
+      required_topics:
+        - "/localization/pose|geometry_msgs/msg/PoseStamped|1"
+        - "/localization/pose_with_covariance|geometry_msgs/msg/PoseWithCovarianceStamped|1"
+        - "/localization/odometry/filtered|nav_msgs/msg/Odometry|1"
+        - "/localization/mode|avg_msgs/msg/AvgLocalizationMode|1"
+        - "/localization/state|std_msgs/msg/Bool|1"
+
+    perception:
+      required_nodes:
+        - /perception/obstacle_lidar
+      required_topics:
+        - "/perception/lidar/bboxes|visualization_msgs/msg/MarkerArray|1"
+
+    planning:
+      required_nodes:
+        - /planning/goal_snapper
+        - /planning/centerline_snapper
+        - /planning/planner_server
+        - /planning/controller_server
+        - /planning/bt_navigator
+        - /planning/behavior_server
+        - /planning/local_path_extractor
+        - /planning/planning_state_machine
+        - /planning/cmd_vel_gate
+      required_topics:
+        - "/planning/state_machine/state|avg_msgs/msg/PlanningState|1"
+        - "/planning/state_machine/mission_source|avg_msgs/msg/PlanningMissionKey|1"
+        - "/planning/state_machine/scenario_id|avg_msgs/msg/PlanningScenario|1"
+        - "/planning/goal_pose_snapped_ros|geometry_msgs/msg/PoseStamped|1"
+        - "/planning/lanelet_pose_ros|geometry_msgs/msg/PoseStamped|1"
+        - "/planning/local_path|nav_msgs/msg/Path|1"
+        - "/planning/engaged|std_msgs/msg/Bool|1"
+
+    parking:
+      # HH_260617: Parking owns non-lanelet low-speed maneuvers after Nav2
+      # reaches a snapped pose; command topics are checked by platform/planning gates.
+      required_nodes:
+        - /parking/site_maneuver
+        - /parking/drop_zone_parking
+      required_topics:
+        - "/parking/site_maneuver/status|avg_msgs/msg/ModuleState|1"
+        - "/parking/drop_zone/status|avg_msgs/msg/ModuleState|1"
+
+    docking:
+      # HH_260618: Marker/opennav docking is the public alternative to
+      # rule-based camrod_parking for the same final-parking capability.
+      required_nodes:
+        - /docking/docking_server
+        - /docking/lifecycle_manager_docking
+
+    platform:
+      required_nodes:
+        - /platform/cmd_vel_gate
+        - /platform/robot_visualization
+      required_topics:
+        - "/platform/cmd_vel|geometry_msgs/msg/Twist|1"
+        - "/platform/drive_enabled|std_msgs/msg/Bool|1"

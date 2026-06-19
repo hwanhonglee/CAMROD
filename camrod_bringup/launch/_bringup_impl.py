@@ -10,7 +10,7 @@ import sys
 from typing import Any
 
 import yaml
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import get_package_prefix, get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import (
@@ -31,6 +31,25 @@ from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 _MISSING = object()
+
+# HH_260617: Optional modules are skipped on x86 when their launch files remain
+# installed but their native/third-party executables are unavailable.
+OPTIONAL_MODULE_EXECUTABLES = {
+    'camrod_parking': (
+        ('camrod_parking', 'site_maneuver_node'),
+        ('camrod_parking', 'drop_zone_parking_node'),
+    ),
+    'camrod_docking': (
+        ('camrod_docking', 'odom_yaw_corrector'),
+        ('camrod_docking', 'docking_apriltag_bridge'),
+        ('opennav_docking', 'opennav_docking'),
+        ('camrod_docking', 'manual_dock_server_node'),
+    ),
+    'camrod_voice': (
+        ('camrod_voice', 'voice_announcer_node'),
+        ('camrod_voice', 'voice_event_adapter_node'),
+    ),
+}
 
 # Override resolution specs:
 # key   = launch argument key to pass to module launch.
@@ -98,6 +117,13 @@ OVERRIDE_SPECS = {
 # Resolves package-relative path.
 def pkg_path(pkg: str, rel: str) -> str:
     return os.path.join(get_package_share_directory(pkg), rel)
+
+
+def optional_pkg_path(pkg: str, rel: str) -> str:
+    try:
+        return pkg_path(pkg, rel)
+    except Exception:
+        return ''
 
 
 # Loads YAML as dict/list (returns {} on failure).
@@ -168,17 +194,37 @@ def pkill_safe_pattern(raw: str) -> str:
 
 # Builds a shell command for cleanup from process patterns.
 def build_cleanup_cmd(patterns: list[str]) -> str:
-    parts = []
+    # HH_260618: Build an ancestor allow-list so cleanup can kill stale previous
+    # bringup processes without terminating the current launch wrapper/shell.
+    ancestor_scan = (
+        '_ancestors=" $$ "; '
+        '_pp="$PPID"; '
+        'while [ -n "$_pp" ] && [ "$_pp" != "0" ]; do '
+        '_ancestors="$_ancestors$_pp "; '
+        '_pp="$(ps -o ppid= -p "$_pp" 2>/dev/null | tr -d "[:space:]")"; '
+        'done'
+    )
+    parts = ['_cleanup_pids=""']
     for p in patterns:
         safe = pkill_safe_pattern(str(p))
         parts.append(
             f'for _pid in $(pgrep -f "{safe}" || true); do '
-            f'[ "$_pid" = "$$" ] && continue; '
-            f'[ "$_pid" = "$PPID" ] && continue; '
+            f'case "$_ancestors" in *" $_pid "*) continue;; esac; '
+            f'_cleanup_pids="$_cleanup_pids $_pid"; '
             f'kill "$_pid" 2>/dev/null || true; '
             f'done'
         )
-    return '; '.join(parts)
+    # HH_260618: Python launch children can survive SIGTERM long enough to
+    # overload the next test run. Escalate only the previously matched stale
+    # CAMROD/Nav2 process set after a short grace period.
+    force_kill = (
+        'sleep 0.5; '
+        'for _pid in $_cleanup_pids; do '
+        'case "$_ancestors" in *" $_pid "*) continue;; esac; '
+        'kill -0 "$_pid" 2>/dev/null && kill -9 "$_pid" 2>/dev/null || true; '
+        'done'
+    )
+    return '; '.join([ancestor_scan, *parts, force_kill])
 
 
 # Runs cleanup command synchronously in launch context.
@@ -392,6 +438,33 @@ def generate_launch_description():
             planning_state_machine_cfg_entry,
             'planning/planning_state_machine.yaml',
         )
+    parking_method_default = str(
+        cfg_get(
+            launch_cfg,
+            'parking/method',
+            cfg_get(
+                launch_cfg,
+                'parking/backend',
+                cfg_get(launch_cfg, 'parking/mode', 'rule_based'),
+            ),
+        )
+    ).strip().lower()
+    if parking_method_default not in ('rule_based', 'parking', 'docking'):
+        parking_method_default = 'rule_based'
+    parking_cfg_entry = cfg_get(launch_cfg, 'parking/param_file', '__module_default__')
+    if str(parking_cfg_entry).strip() in ('', '__module_default__', 'module_default', 'default'):
+        # HH_260618: parking is a selectable final-parking method. Do not require
+        # the camrod_parking package when parking_method selects camrod_docking;
+        # this keeps public docking-only builds usable when rule-based parking is not shipped.
+        parking_param_default = optional_pkg_path(
+            'camrod_parking', os.path.join('config', 'parking.yaml')
+        )
+    else:
+        parking_param_default = resolve_cfg_file(
+            config_root_default,
+            parking_cfg_entry,
+            'parking/parking.yaml',
+        )
     map_path_default = resolve_map_path_default(
         cfg_get(launch_cfg, 'map/map_path', ''),
         map_params.get('map_path', ''),
@@ -443,12 +516,15 @@ def generate_launch_description():
         # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
         ('enable_planning', cfg_get(launch_cfg, 'planning/enable_planning', True), 'Enable planning launch module'),
         ('enable_path_cost_grids', cfg_get(launch_cfg, 'planning/enable_path_cost_grids', True), 'Enable path cost-grid helpers'),
-        ('enable_goal_replanner', cfg_get(launch_cfg, 'planning/enable_goal_replanner', True), 'Enable goal replanner'),
+        # HH_260618: Default off unless explicitly enabled; Nav2 planner_server
+        # already owns /planning/global_path in the normal bringup path.
+        ('enable_goal_replanner', cfg_get(launch_cfg, 'planning/enable_goal_replanner', False), 'Enable goal replanner'),
         ('enable_nav2_lifecycle_retry', cfg_get(launch_cfg, 'planning/enable_nav2_lifecycle_retry', True), 'Enable Nav2 lifecycle retry'),
         # Hold Nav2 STARTUP until localization reports ready.
         ('require_localization_ready', cfg_get(launch_cfg, 'planning/require_localization_ready', True), 'Gate Nav2 STARTUP on localization readiness'),
         ('enable_state_machine', cfg_get(launch_cfg, 'planning/enable_state_machine', False), 'Enable planning state machine'),
         ('enable_progress', cfg_get(launch_cfg, 'planning/enable_progress', True), 'Enable remaining distance/time progress publisher'),
+        ('enable_path_visualization', cfg_get(launch_cfg, 'planning/enable_path_visualization', True), 'Enable RViz global/local path marker publisher'),
         ('controller_profile', cfg_get(launch_cfg, 'planning/controller_profile', 'rpp'), 'Nav2 controller profile: rpp|dwb'),
         (
             'planning_nav2_selected_planner',
@@ -482,7 +558,10 @@ def generate_launch_description():
         ),
         (
             'local_path_source',
-            cfg_get(launch_cfg, 'planning/local_path_source', 'controller_then_slice'),
+            # HH_260619 - Keep bringup default aligned with local_path.launch.py:
+            # local path visualization/cost guidance should follow the current route,
+            # not a controller debug path that may lag after goal replacement.
+            cfg_get(launch_cfg, 'planning/local_path_source', 'slice_only'),
             'Local path source policy: controller_then_slice|controller_only|slice_only',
         ),
         # Require explicit planning engage trigger before publishing /planning/cmd_vel.
@@ -580,10 +659,10 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_odometry_topic', '/localization/odometry/filtered'),
             'Odometry topic for cost-stop pose source',
         ),
-        # Default to odometry heading for robust front/side/rear corridor checks.
+        # HH_260618: Default to real localization pose for safety/cmd_vel gates.
         (
             'planning_cmd_vel_gate_pose_source_preference',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_pose_source_preference', 'odometry'),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_pose_source_preference', 'pose_topic'),
             'Cost-stop pose source preference: odometry|tf_robot_base|pose_topic',
         ),
         (
@@ -610,6 +689,64 @@ def generate_launch_description():
             'planning_cmd_vel_gate_cost_hold_s',
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_hold_s', 1.0),
             'Hold duration for cost-stop',
+        ),
+        # HH_260618: Raw lanelet hard-stop parameters. This stays separate
+        # from /planning/cost_grid/inflation because inflation clears the ego
+        # footprint for planner startup and cannot be the final lanelet guard.
+        (
+            'planning_cmd_vel_gate_lanelet_safety_enable',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_enable', True),
+            'Enable raw lanelet-grid safety stop',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_grid_topic',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_grid_topic', '/map/cost_grid/lanelet'),
+            'Raw lanelet cost grid topic for safety stop',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_threshold',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_threshold', 85),
+            'Raw lanelet corridor threshold for safety stop',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_current_threshold',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_current_threshold', 85),
+            'Raw lanelet current-cell threshold for safety stop',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_lookahead_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_lookahead_m', 1.0),
+            'Raw lanelet safety lookahead distance (m)',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_width_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_width_m', 0.8),
+            'Raw lanelet safety corridor width (m)',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_stop_on_unknown',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_stop_on_unknown', True),
+            'Treat unknown/out-of-grid lanelet safety cells as blocked',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_allow_rotation_in_place',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_allow_rotation_in_place', True),
+            'Allow pure in-place rotation during lanelet safety stop',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_check_reverse',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_check_reverse', False),
+            'Apply raw lanelet safety stop to reverse motion',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_check_lateral',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_check_lateral', False),
+            'Apply raw lanelet safety stop to lateral crab motion',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_min_translation_mps',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_min_translation_mps', 0.02),
+            'Minimum cmd_vel translation treated as lanelet-safety motion',
         ),
         # Speed-dependent front lookahead.
         (
@@ -678,6 +815,35 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_corridor_width_m', 0.6),
             'Rear corridor width (m)',
         ),
+        # HH_260618: Site-crab lateral parking is mission-owned; let it cross
+        # static lanelet/global-path front/side/rear cost while preserving live LiDAR/Radar stops.
+        (
+            'planning_cmd_vel_gate_lateral_cmd_bypass_static_cost_stop',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lateral_cmd_bypass_static_cost_stop', True),
+            'Bypass static front/side/rear cost for explicit lateral site-crab cmd_vel',
+        ),
+        (
+            'planning_cmd_vel_gate_lateral_cmd_bypass_min_mps',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lateral_cmd_bypass_min_mps', 0.02),
+            'Minimum lateral cmd_vel for site-crab static cost bypass',
+        ),
+        # HH_260618: Reverse campsite parking also leaves the lanelet corridor,
+        # so it needs the same static-cost bypass while preserving live obstacle stops.
+        (
+            'planning_cmd_vel_gate_reverse_cmd_bypass_static_cost_stop',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_reverse_cmd_bypass_static_cost_stop', True),
+            'Bypass static front/side/rear cost for explicit reverse site-parking cmd_vel',
+        ),
+        (
+            'planning_cmd_vel_gate_reverse_cmd_bypass_min_mps',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_reverse_cmd_bypass_min_mps', 0.02),
+            'Minimum reverse cmd_vel for site-parking static cost bypass',
+        ),
+        (
+            'planning_cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold', 85),
+            'LiDAR/Radar source threshold that still blocks lateral site-crab',
+        ),
         (
             'planning_cmd_vel_gate_unavoidable_stop_enable',
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_stop_enable', True),
@@ -714,6 +880,67 @@ def generate_launch_description():
             'planning_cmd_vel_gate_yaw_alignment_exit_margin_m',
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_yaw_alignment_exit_margin_m', 0.3),
             'Exit hysteresis margin for yaw alignment zones (m)',
+        ),
+        # HH_260618: Route-heading guard for normal Nav2 driving.
+        (
+            'planning_cmd_vel_gate_route_heading_enable',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_enable', True),
+            'Enable route-heading alignment guard in planning cmd_vel gate',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_path_topic',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_path_topic', '/planning/local_path'),
+            'Path topic used by route-heading alignment guard',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_frame_id',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_frame_id', 'map'),
+            'Fallback frame for route-heading alignment path',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_min_cmd_x_mps',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_min_cmd_x_mps', 0.03),
+            'Minimum forward cmd_vel before route-heading alignment engages',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps', 0.02),
+            'Lateral cmd_vel threshold treated as explicit crab motion',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_lookahead_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_lookahead_m', 1.5),
+            'Path tangent lookahead distance for route-heading alignment',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_error_enter_deg',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_error_enter_deg', 75.0),
+            'Yaw error threshold to start route-heading alignment',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_error_exit_deg',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_error_exit_deg', 20.0),
+            'Yaw error threshold to release route-heading alignment',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_angular_kp',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_angular_kp', 1.4),
+            'Angular proportional gain for route-heading alignment',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_max_angular_z',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_max_angular_z', 0.6),
+            'Max angular speed for route-heading alignment',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_max_linear_x',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_max_linear_x', 0.0),
+            'Max forward speed while route-heading alignment is active',
+        ),
+        (
+            'planning_cmd_vel_gate_route_heading_min_path_points',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_min_path_points', 2),
+            'Minimum path points required for route-heading alignment',
         ),
         # HH_260507: Speed scale for all cmd_vel output in planning gate.
         (
@@ -786,6 +1013,7 @@ def generate_launch_description():
         ('localization_namespace', cfg_get(launch_cfg, 'namespaces/localization', 'localization'), 'Localization namespace'),
         ('planning_namespace', cfg_get(launch_cfg, 'namespaces/planning', 'planning'), 'Planning namespace'),
         ('platform_namespace', cfg_get(launch_cfg, 'namespaces/platform', 'platform'), 'Platform namespace'),
+        ('parking_namespace', cfg_get(launch_cfg, 'namespaces/parking', 'parking'), 'Parking namespace'),
         ('perception_namespace', cfg_get(launch_cfg, 'namespaces/perception', 'perception'), 'Perception namespace'),
         ('sensor_kit_namespace', cfg_get(launch_cfg, 'namespaces/sensor_kit', 'sensor_kit'), 'Sensor-kit namespace'),
         ('bringup_namespace', cfg_get(launch_cfg, 'namespaces/bringup', 'bringup'), 'Bringup namespace'),
@@ -814,6 +1042,11 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'platform/engage_source_mode', 'planning_engage'),
             'Platform engage source mode: planning_engage|topic|enabled|on|disabled|off|none',
         ),
+        (
+            'platform_drive_allow_on_start',
+            cfg_get(launch_cfg, 'platform/drive_allow_on_start', False),
+            'Arm platform cmd_vel gate on startup',
+        ),
         # Ranger base node is the single source for /platform/status/* outputs.
         (
             'platform_estop_source_mode',
@@ -833,6 +1066,19 @@ def generate_launch_description():
         ('platform_ranger_bridge_enable', cfg_get(launch_cfg, 'platform/ranger_bridge_enable', True), 'Enable ranger_platform_bridge_node in platform launch'),
         # HH_260528: Keep sensor_kit bridge optional for debug.
         ('platform_sensor_kit_bridge_enable', cfg_get(launch_cfg, 'platform/sensor_kit_bridge_enable', True), 'Enable sensor_kit bridge include in platform launch'),
+
+        # HH_260618: Mutually exclusive final parking method selector.
+        #   rule_based/parking: camrod_parking owns site crab + rear parking.
+        #   docking           : camrod_docking/opennav owns marker-based docking.
+        ('parking_method', parking_method_default, 'Final parking method: rule_based|docking'),
+        # HH_260618: Deprecated compatibility alias for earlier local commands.
+        # Prefer parking_method; non-auto parking_backend still overrides it.
+        ('parking_backend', '__use_parking_method__', 'Deprecated alias for parking_method'),
+        # HH_260617: Rule-based site crab maneuver and reverse parking module.
+        ('enable_parking', cfg_get(launch_cfg, 'parking/enable_parking', True), 'Enable camrod_parking module'),
+        ('enable_site_maneuver', cfg_get(launch_cfg, 'parking/enable_site_maneuver', True), 'Enable campsite crab/rotate maneuver node'),
+        ('enable_drop_zone_parking', cfg_get(launch_cfg, 'parking/enable_drop_zone_parking', True), 'Enable drop-zone reverse parking node'),
+        ('parking_param_file', parking_param_default, 'Parking parameter YAML path'),
 
         ('map_path', map_path_default, 'Lanelet2 map path'),
         ('map_info_file', map_info_launch_default, 'Map info YAML path used by map/localization'),
@@ -887,6 +1133,21 @@ def generate_launch_description():
     ]
 
     lc = {name: LaunchConfiguration(name) for name, _, _ in arg_specs}
+    # HH_260618: Resolve the new parking_method first, while keeping the old
+    # parking_backend launch argument as an override-only compatibility alias.
+    parking_method_expr = [
+        "('", lc['parking_backend'], "'.lower() if '", lc['parking_backend'],
+        "'.lower() not in ('', '__use_parking_method__', 'auto') else '",
+        lc['parking_method'], "'.lower())",
+    ]
+    parking_method_rule_based_expr = PythonExpression([
+        "(", *parking_method_expr, ") in ('rule_based', 'parking') and ",
+        "'", lc['enable_parking'], "'.lower() in ('1', 'true', 'yes', 'on')",
+    ])
+    parking_method_docking_expr = PythonExpression([
+        "(", *parking_method_expr, ") == 'docking' and ",
+        "'", lc['enable_docking'], "'.lower() in ('1', 'true', 'yes', 'on')",
+    ])
 
     # Module config defaults-first policy.
     # Bringup passes file paths only when an explicit override is configured.
@@ -928,6 +1189,28 @@ def generate_launch_description():
             return False, ''
         return os.path.isfile(launch_path), launch_path
 
+    def has_executable(pkg: str, executable: str) -> tuple[bool, str]:
+        try:
+            executable_path = os.path.join(get_package_prefix(pkg), 'lib', pkg, executable)
+        except Exception:
+            return False, ''
+        return os.path.isfile(executable_path) and os.access(executable_path, os.X_OK), executable_path
+
+    def optional_module_available(pkg: str, launch_file: str) -> tuple[bool, str]:
+        launch_exists, launch_path = has_launch_file(pkg, launch_file)
+        if not launch_exists:
+            return False, f'launch file not found{": " + launch_path if launch_path else ""}'
+
+        missing = []
+        for executable_pkg, executable_name in OPTIONAL_MODULE_EXECUTABLES.get(pkg, ()):
+            executable_exists, _ = has_executable(executable_pkg, executable_name)
+            if not executable_exists:
+                missing.append(f'{executable_pkg}/{executable_name}')
+        if missing:
+            return False, 'missing executable(s): ' + ', '.join(missing)
+
+        return True, ''
+
     platform_args = {
         'module_namespace': lc['platform_namespace'],
         'sensor_kit_namespace': lc['sensor_kit_namespace'],
@@ -939,6 +1222,9 @@ def generate_launch_description():
         'cmd_vel_in_topic': lc['platform_cmd_vel_in_topic'],
         'cmd_vel_out_topic': lc['platform_cmd_vel_out_topic'],
         'engage_source_mode': lc['platform_engage_source_mode'],
+        # HH_260618: Sim RViz goals must create paths only; platform motion still
+        # requires the configured drive_allow_on_start policy or explicit engage.
+        'drive_allow_on_start': lc['platform_drive_allow_on_start'],
         'estop_source_mode': lc['platform_estop_source_mode'],
         'estop_topic': lc['platform_estop_topic'],
         'platform_type': sim_switch(
@@ -1027,6 +1313,10 @@ def generate_launch_description():
     # 2026-04-22: Keep this explicit-only so non-Ranger platforms can use their
     # own DR topics without unintended /rmp401/odom override.
     eskf_force_rmp401_effective = lc['eskf_force_rmp401_odom']
+    # HH_260617: Keep the configured localization filter in sim and hardware.
+    # The project baseline is EKF; use launch override `filter_type:=eskf` only for
+    # explicit ESKF experiments.
+    localization_filter_type = lc['filter_type']
 
     # Default path is primary /platform/status/* + runtime fallback /rmp401/odom.
     # HH_260522: force /rmp401/odom override only in explicit ESKF mode.
@@ -1036,7 +1326,7 @@ def generate_launch_description():
         "' if (('",
         eskf_force_rmp401_effective,
         "' == 'true') and ('",
-        lc['filter_type'],
+        localization_filter_type,
         "' == 'eskf')) else '",
         lc['wheel_input_topic'],
         "'",
@@ -1045,11 +1335,17 @@ def generate_launch_description():
         "'nav_odom' if (('",
         eskf_force_rmp401_effective,
         "' == 'true') and ('",
-        lc['filter_type'],
+        localization_filter_type,
         "' == 'eskf')) else '",
         lc['wheel_input_type'],
         "'",
     ])
+
+    # HH_260618: In sim mode, relax EKF GNSS rejection so the fake GNSS start
+    # pose becomes the planning/control truth instead of leaving EKF at map origin.
+    _ekf_sim_cfg = os.path.join(config_root_default, 'localization', 'filter', 'ekf_sim.yaml')
+    _ekf_real_cfg = localization_overrides.get('filter_ekf_param_file', '')
+    _ekf_cfg = sim_switch(lc['sim'], _ekf_sim_cfg, _ekf_real_cfg or '')
 
     # HH_260428: In sim mode, override the ESKF param file to remove hardware-specific
     # sign inversions (imu_yaw_sign / imu_gyro_z_sign = -1 for physically inverted IMU)
@@ -1059,6 +1355,16 @@ def generate_launch_description():
     _eskf_sim_cfg = os.path.join(config_root_default, 'localization', 'filter', 'eskf_sim.yaml')
     _eskf_real_cfg = localization_overrides.get('filter_eskf_param_file', '')
     _eskf_cfg = sim_switch(lc['sim'], _eskf_sim_cfg, _eskf_real_cfg or '')
+    # HH_260617: In sim planning tests, automatic GNSS reattach can teleport the
+    # EKF pose away from the active Nav2 path. Keep the node for manual
+    # initialpose reset bridging, but use a sim parameter file that disables
+    # automatic distance-based reattach.
+    _gnss_reattach_sim_cfg = os.path.join(
+        config_root_default, 'localization', 'filter', 'gnss_reattach_sim.yaml')
+    _gnss_reattach_real_cfg = localization_overrides.get(
+        'filter_gnss_reattach_param_file', '')
+    _gnss_reattach_cfg = sim_switch(
+        lc['sim'], _gnss_reattach_sim_cfg, _gnss_reattach_real_cfg or '')
 
     localization_args = {
         'module_namespace': lc['localization_namespace'],
@@ -1066,7 +1372,7 @@ def generate_launch_description():
         'enable_filter': lc['localization_enable_filter'],
         'enable_monitor': lc['localization_enable_monitor'],
         'enable_map_helper': lc['localization_enable_map_helper'],
-        'filter_type': lc['filter_type'],
+        'filter_type': localization_filter_type,
         'wheel_bridge_enable': lc['wheel_bridge_enable'],
         'wheel_input_topic': wheel_input_topic_for_filter,
         'wheel_input_type': wheel_input_type_for_filter,
@@ -1078,9 +1384,13 @@ def generate_launch_description():
         'map_path': lc['map_path'],
     }
     apply_cfg_overrides(localization_args, localization_overrides)
+    # HH_260618: Apply sim EKF override after apply_cfg_overrides so it is not
+    # overwritten by user-level localization/filter_ekf_param_file entries.
+    localization_args['filter_ekf_param_file'] = _ekf_cfg
     # HH_260428: Apply sim ESKF override after apply_cfg_overrides so it is not
     # overwritten by user-level localization/filter_eskf_param_file entries.
     localization_args['filter_eskf_param_file'] = _eskf_cfg
+    localization_args['filter_gnss_reattach_param_file'] = _gnss_reattach_cfg
 
     planning_args = {
         'enable_path_cost_grids': lc['enable_path_cost_grids'],
@@ -1089,9 +1399,16 @@ def generate_launch_description():
         'require_localization_ready': lc['require_localization_ready'],
         'enable_state_machine': lc['enable_state_machine'],
         'enable_progress': lc['enable_progress'],
+        'enable_path_visualization': lc['enable_path_visualization'],
         'planning_state_machine_keypoints_yaml': lc['planning_state_machine_keypoints_yaml'],
         'planning_state_machine_camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
-        'planning_state_machine_param_file': lc['planning_state_machine_param_file'],
+        # HH_260617: In sim, avoid ERROR_STOP from intentionally missing/stale
+        # hardware diagnostics so RViz/UI planning-control tests can move.
+        'planning_state_machine_param_file': sim_switch(
+            lc['sim'],
+            os.path.join(config_root_default, 'planning', 'planning_state_machine_sim.yaml'),
+            lc['planning_state_machine_param_file'],
+        ),
         'map_path': lc['map_path'],
         'origin_lat': lc['origin_lat'],
         'origin_lon': lc['origin_lon'],
@@ -1112,6 +1429,9 @@ def generate_launch_description():
         'nav2_selected_planner': lc['planning_nav2_selected_planner'],
         'nav2_selected_controller': lc['planning_nav2_selected_controller'],
     }
+    # HH_260618: Do not auto-arm planning in sim. RViz/UI goals may plan, but
+    # /planning/cmd_vel remains gated until /planning/engage=true.
+    planning_args['cmd_vel_gate_allow_on_start'] = lc['planning_cmd_vel_gate_allow_on_start']
     set_if_not_empty(planning_args, 'nav2_base_param_file', planning_overrides['nav2_base_param_file'])
     set_if_not_empty(planning_args, 'nav2_vehicle_param_file', selected_nav2_vehicle_override)
     set_if_not_empty(planning_args, 'nav2_lanelet_param_file', planning_overrides['nav2_lanelet_param_file'])
@@ -1128,18 +1448,44 @@ def generate_launch_description():
         planning_overrides['cmd_vel_gate_yaw_alignment_zones_file'],
     )
 
+    diagnostics_profile_runtime = PythonExpression([
+        "'sim' if str('", lc['sim'], "').lower() in ['1', 'true', 'yes', 'on'] "
+        "and str('", lc['diagnostics_profile'], "') == 'default' "
+        "else str('", lc['diagnostics_profile'], "')"
+    ])
+
     system_args = {
         'enable_checkers': lc['enable_module_validators'],
-        'config_profile': lc['diagnostics_profile'],
+        # HH_260617: sim defaults to the diagnostics/sim profile so hardware-only
+        # checks do not block planning/control validation.
+        'config_profile': diagnostics_profile_runtime,
         'enable_platform': lc['enable_platform_checker'],
         'module_namespace': lc['system_namespace'],
+    }
+
+    parking_args = {
+        'parking_namespace': lc['parking_namespace'],
+        'enable_site_maneuver': lc['enable_site_maneuver'],
+        'enable_drop_zone_parking': lc['enable_drop_zone_parking'],
+        # HH_260617: Parking remains behind the existing planning/platform cmd_vel gates.
+        'cmd_vel_topic': lc['planning_cmd_vel_raw_topic'],
+        'pose_topic': '/localization/pose',
+        'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
+        # HH_260618: Share campsite coordinates with rule-based site maneuver so
+        # it can recover raw site_goal context for mission-key UI requests.
+        'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
+        'param_file': lc['parking_param_file'],
     }
 
     docking_args = {
         'enable_auto_docking':   lc['enable_auto_docking'],
         'enable_manual_docking': lc['enable_manual_docking'],
-        # ESKF (full stack) publishes odom→base_link TF.
-        # odom_yaw_corrector must be off to prevent TF tree conflict.
+        # HH_260618: Full bringup routes docking velocity through the same
+        # planning/platform gates as rule-based parking; mutual launch conditions
+        # prevent the two final-parking methods from publishing simultaneously.
+        'cmd_vel_topic': lc['planning_cmd_vel_raw_topic'],
+        # HH_260617: Full stack localization owns odom→base_link TF for the
+        # selected EKF/ESKF backend. odom_yaw_corrector must stay off here.
         'enable_odom_corrector': 'false',
     }
 
@@ -1166,7 +1512,8 @@ def generate_launch_description():
         ('camrod_perception', 'perception.launch.py', perception_args, None),
         ('camrod_localization', 'localization.launch.py', localization_args, None),
         ('camrod_planning', 'planning.launch.py', planning_args, IfCondition(lc['enable_planning'])),
-        ('camrod_docking',  'docking.launch.py',  docking_args, IfCondition(lc['enable_docking'])),
+        ('camrod_parking', 'parking.launch.py', parking_args, IfCondition(parking_method_rule_based_expr)),
+        ('camrod_docking',  'docking.launch.py',  docking_args, IfCondition(parking_method_docking_expr)),
         ('camrod_voice',    'voice.launch.py',    voice_args,   IfCondition(lc['enable_voice'])),
         # Launch unified diagnostics stack via top-level system.launch.py.
         ('camrod_system', 'system.launch.py', system_args, None),
@@ -1191,10 +1538,18 @@ def generate_launch_description():
                 )
             )
         )
-    modules = [
-        include(pkg, launch_file, launch_args, condition=condition)
-        for pkg, launch_file, launch_args, condition in module_specs
-    ] + optional_modules
+    modules = []
+    for pkg, launch_file, launch_args, condition in module_specs:
+        # HH_260617: Optional feature packages may be intentionally unavailable on
+        # development PCs. Check required executables as well as launch-file presence
+        # so stale install/share artifacts do not make bringup fail at runtime.
+        if pkg in OPTIONAL_MODULE_EXECUTABLES:
+            available, reason = optional_module_available(pkg, launch_file)
+            if not available:
+                modules.append(LogInfo(msg=f'[bringup] {pkg} skipped: {reason}', condition=condition))
+                continue
+        modules.append(include(pkg, launch_file, launch_args, condition=condition))
+    modules += optional_modules
 
     # Removed bringup_status runtime node from default launch path.
 

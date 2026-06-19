@@ -5,11 +5,13 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# HH_260109 Platform package placeholder (CAN, wheel odometry, vehicle state).
+# HH_260109 Platform package for CAN, wheel odometry, and vehicle state integration.
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+# HH_260617: Ranger BMS bridge publishes sensor_msgs/BatteryState from CAN 0x361.
+find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(visualization_msgs REQUIRED)
@@ -63,6 +65,8 @@ if(ranger_msgs_FOUND)
   ament_target_dependencies(ranger_platform_bridge_node
     rclcpp
     nav_msgs
+    # HH_260617: Required by /platform/status/battery_state publisher.
+    sensor_msgs
     geometry_msgs
     std_msgs
     ranger_msgs

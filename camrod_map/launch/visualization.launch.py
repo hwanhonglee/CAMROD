@@ -93,8 +93,10 @@ def _launch_nodes(context, *_args, **_kwargs):
                     "/planning/cost_grid/global_path_markers",
                     "/planning/cost_grid/local_path_markers",
                 ],
-                "republish_period_s": 0.05,
-                "min_publish_period_s": 0.01,
+                # HH_260618: Aggregated inflation markers are debug-only; avoid
+                # a 20 Hz marker republish loop on resource-limited targets.
+                "republish_period_s": 0.20,
+                "min_publish_period_s": 0.10,
                 "stale_timeout_s": 1.2,
                 "stale_timeout_topics": [
                     "/map/cost_grid/lidar_markers",

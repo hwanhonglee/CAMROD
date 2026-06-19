@@ -1,4 +1,4 @@
-# [LEGACY - not loaded by default launch]
+# HH_260617: Alternate Nav2 lanelet config; not loaded by the default launch profile.
 # This monolithic file is kept only for reference/backward compatibility.
 # Active bringup path loads split overlays in this order:
 #   1) camrod_bringup/config/planning/nav2_base.yaml
@@ -37,22 +37,11 @@ planner_server:
       tolerance: 0.5
       downsample_costmap: False
       downsampling_factor: 1
-      use_astar: True
-      motion_model_for_search: "REEDS_SHEPP"
-      angle_quantization_bins: 128
-      # 2026-02-24: Allow tighter turns for sharp lanelet bends.
-      minimum_turning_radius: 0.6
+      # HH_260618: Keep only parameters declared by Nav2 Humble SmacPlanner2D.
+      # Hybrid-A* fields were removed from this 2D planner block because they
+      # are not exposed at runtime and do not affect the generated path.
+      use_final_approach_orientation: false
       cost_travel_multiplier: 1.0
-      # Strengthen low-cost preference so planner follows
-      # centerline-biased lanelet costs first, then deviates only for high-risk cells.
-      cost_penalty: 7.5
-      lethal_cost: 253
-      neutral_cost: 66
-      change_penalty: 0.0
-      reverse_penalty: 1.05
-      non_straight_penalty: 1.1
-      final_turn_penalty: 0.5
-      lookup_table_size: 20.0
       # 2026-02-23: Extra smoothing to reduce zig-zag artifacts in narrow lanelets.
       smoother:
         max_iterations: 2000
@@ -74,18 +63,25 @@ controller_server:
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["goal_checker"]
     controller_plugins: ["RPP", "DWB"]
-    default_controller: RPP
+    # HH_260618: Prefer MPPI local trajectory evaluation over pure path tracking.
+    default_controller: MPPI
 
-    # Restore Humble plugin class names required by nav2_controller.
     progress_checker:
-      plugin: "nav2_controller::SimpleProgressChecker"
+      # HH_260618: Pause progress timeout while /planning/engaged is false so
+      # waiting for operator engage does not abort FollowPath.
+      plugin: "camrod_planning::EngageAwareProgressChecker"
+      engaged_topic: /planning/engaged
+      default_engaged: false
       required_movement_radius: 0.5
       movement_time_allowance: 10.0
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.3
-      yaw_goal_tolerance: 0.25
+      # HH_260616: Match campsite lanelet-approach completion to the planning
+      # goal latch. UI campsite goals are lanelet-snap approach points, so
+      # position arrival is the stop condition and yaw must not cause oscillation.
+      xy_goal_tolerance: 0.8
+      yaw_goal_tolerance: 3.14
       stateful: False
 
     RPP:
@@ -112,7 +108,9 @@ controller_server:
       use_velocity_scaled_lookahead_dist: True
       min_approach_linear_velocity: 0.15
       approach_velocity_scaling_dist: 0.6
-      use_collision_detection: False
+      # HH_260618: RPP is a fallback controller; keep controller-level collision
+      # checking enabled when it is selected.
+      use_collision_detection: True
       max_allowed_time_to_collision: 1.0
       use_regulated_linear_velocity_scaling: True
       regulated_linear_scaling_min_radius: 0.9
@@ -150,7 +148,7 @@ controller_server:
       short_circuit_trajectory_evaluation: True
       stateful: True
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
-      BaseObstacle.scale: 0.02
+      BaseObstacle.scale: 0.08
       PathAlign.scale: 24.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 18.0
@@ -249,8 +247,9 @@ global_costmap:
       # from very large layered costmap updates.
       # enlarge global rolling window margin to reduce
       # near-edge planner aborts on long map-frame goals.
-      width: 160
-      height: 160
+      # HH_260617: 240 m rolling window keeps distant camping-site route goals inside the global planner costmap.
+      width: 240
+      height: 240
       resolution: 0.08
       # origin_* retained for backward compatibility; ignored in rolling window mode.
       origin_x: -100.0
@@ -340,6 +339,8 @@ bt_navigator:
       - nav2_is_stuck_condition_bt_node
       - nav2_goal_reached_condition_bt_node
       - nav2_goal_updated_condition_bt_node
+      # HH_260619 - Required by <GoalUpdatedController> in the goal-locked BT.
+      - nav2_goal_updated_controller_bt_node
       - nav2_initial_pose_received_condition_bt_node
       - nav2_reinitialize_global_localization_service_bt_node
       - nav2_rate_controller_bt_node

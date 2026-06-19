@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <deque>
@@ -13,6 +14,8 @@
 #include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
 #include <avg_msgs/msg/quaternion.hpp>
+#include <action_msgs/msg/goal_status.hpp>
+#include <action_msgs/msg/goal_status_array.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <lanelet2_core/LaneletMap.h>
@@ -21,6 +24,7 @@
 #include <lanelet2_projection/LocalCartesian.h>
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/TrafficRulesFactory.h>
+#include <nav_msgs/msg/occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "camrod_map/custom_regulatory_elements.hpp"
@@ -47,18 +51,6 @@ struct NearestResult
 avg_msgs::msg::Quaternion yawToQuat(double yaw)
 {
   avg_msgs::msg::Quaternion q;
-  const double half_yaw = yaw * 0.5;
-  q.x = 0.0;
-  q.y = 0.0;
-  q.z = std::sin(half_yaw);
-  q.w = std::cos(half_yaw);
-  return q;
-}
-
-// Implements `yawToQuatRos` behavior.
-geometry_msgs::msg::Quaternion yawToQuatRos(double yaw)
-{
-  geometry_msgs::msg::Quaternion q;
   const double half_yaw = yaw * 0.5;
   q.x = 0.0;
   q.y = 0.0;
@@ -141,12 +133,56 @@ public:
     routing_location_ = declare_parameter<std::string>("routing_location", "de");
     routing_participant_ = declare_parameter<std::string>(
       "routing_participant", "vehicle:car");
+    // HH_260617: Keep snapped goals inside the same traversable raster component
+    // used by Nav2. Lanelet routing may be connected while the OccupancyGrid is
+    // still disconnected by map gaps, which causes "no valid path" at runtime.
+    restrict_to_cost_grid_component_ = declare_parameter<bool>(
+      "restrict_to_cost_grid_component", true);
+    allow_cost_grid_component_fallback_ = declare_parameter<bool>(
+      "allow_cost_grid_component_fallback", false);
+    cost_grid_topic_ = declare_parameter<std::string>(
+      "cost_grid_topic", "/map/cost_grid/lanelet");
+    cost_grid_block_threshold_ = std::clamp(
+      static_cast<int>(declare_parameter<int>("cost_grid_block_threshold", 100)), 1, 101);
 
     // HH_260329 Debounce duplicate goal callbacks when the same topic is
     // subscribed by both avg_msgs and geometry_msgs interfaces.
     duplicate_goal_xy_eps_m_ = declare_parameter<double>("duplicate_goal_xy_eps_m", 0.05);
     duplicate_goal_z_eps_m_ = declare_parameter<double>("duplicate_goal_z_eps_m", 0.10);
     duplicate_goal_time_window_s_ = declare_parameter<double>("duplicate_goal_time_window_s", 0.25);
+    // HH_260618: Default to latest-wins command semantics. RViz/UI goal clicks
+    // should preempt stale active goals; enable sequential release only for
+    // explicit waypoint smoke tests.
+    sequential_goal_release_enable_ =
+      declare_parameter<bool>("sequential_goal_release_enable", false);
+    sequential_goal_queue_policy_ =
+      declare_parameter<std::string>("sequential_goal_queue_policy", "replace_pending");
+    sequential_goal_reached_distance_m_ =
+      declare_parameter<double>("sequential_goal_reached_distance_m", 0.8);
+    sequential_goal_stop_hold_s_ =
+      declare_parameter<double>("sequential_goal_stop_hold_s", 0.5);
+    sequential_goal_duplicate_xy_eps_m_ =
+      declare_parameter<double>("sequential_goal_duplicate_xy_eps_m", 0.20);
+    sequential_goal_max_queue_size_ =
+      std::max(1, static_cast<int>(declare_parameter<int>("sequential_goal_max_queue_size", 10)));
+    sequential_goal_status_topic_ = declare_parameter<std::string>(
+      "sequential_goal_status_topic", "/planning/navigate_to_pose/_action/status");
+    // HH_260618: Wait for Nav2's terminal SUCCEEDED status before releasing the
+    // next queued waypoint. Pose-distance alone can fire while BT is still
+    // finishing, which causes topic-goal preemption instead of a clean stop.
+    sequential_goal_require_nav2_terminal_ =
+      declare_parameter<bool>("sequential_goal_require_nav2_terminal", true);
+    if (
+      sequential_goal_queue_policy_ != "append" &&
+      sequential_goal_queue_policy_ != "replace_pending" &&
+      sequential_goal_queue_policy_ != "drop_if_busy")
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid sequential_goal_queue_policy='%s'; using replace_pending",
+        sequential_goal_queue_policy_.c_str());
+      sequential_goal_queue_policy_ = "replace_pending";
+    }
 
     if (!loadMap()) {
       RCLCPP_FATAL(get_logger(), "goal snapper: failed to load map. exiting.");
@@ -186,18 +222,37 @@ public:
       input_goal_topic_, rclcpp::QoS(10),
       std::bind(&GoalSnapperNode::onGoalRos, this, std::placeholders::_1));
 
-    if (restrict_to_connected_lanelet_component_) {
+    if (
+      restrict_to_connected_lanelet_component_ ||
+      restrict_to_cost_grid_component_ ||
+      sequential_goal_release_enable_)
+    {
       sub_current_pose_ = create_subscription<avg_msgs::msg::PoseStamped>(
         current_pose_topic_, rclcpp::QoS(10),
         std::bind(&GoalSnapperNode::onCurrentPose, this, std::placeholders::_1));
     }
+    if (restrict_to_cost_grid_component_) {
+      sub_cost_grid_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
+        cost_grid_topic_, rclcpp::QoS(1),
+        std::bind(&GoalSnapperNode::onCostGrid, this, std::placeholders::_1));
+    }
+    if (sequential_goal_release_enable_) {
+      sub_nav_status_ = create_subscription<action_msgs::msg::GoalStatusArray>(
+        sequential_goal_status_topic_, rclcpp::QoS(10),
+        std::bind(&GoalSnapperNode::onNavStatus, this, std::placeholders::_1));
+      queue_timer_ = create_wall_timer(
+        std::chrono::milliseconds(100),
+        std::bind(&GoalSnapperNode::releasePendingGoalIfReady, this));
+    }
 
     RCLCPP_INFO(
       get_logger(),
-      "goal_snapper ready: map=%s input=%s output(avg)=%s output(ros)=%s lane_component=%s",
+      "goal_snapper ready: map=%s input=%s output(avg)=%s output(ros)=%s lane_component=%s cost_grid_component=%s sequential_release=%s",
       cfg_.map_path.c_str(), input_goal_topic_.c_str(),
       output_goal_topic_.c_str(), output_goal_topic_ros_.c_str(),
-      restrict_to_connected_lanelet_component_ ? "enabled" : "disabled");
+      restrict_to_connected_lanelet_component_ ? "enabled" : "disabled",
+      restrict_to_cost_grid_component_ ? "enabled" : "disabled",
+      sequential_goal_release_enable_ ? "enabled" : "disabled");
   }
 
 private:
@@ -284,12 +339,18 @@ private:
   // Handles current lanelet pose updates for connected-component filtering.
   void onCurrentPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
+    const double px = msg->pose.position.x;
+    const double py = msg->pose.position.y;
+    latest_current_pose_x_ = px;
+    latest_current_pose_y_ = py;
+    has_latest_current_pose_ = true;
+    rebuildCostGridComponent();
+    releasePendingGoalIfReady();
+
     if (!restrict_to_connected_lanelet_component_ || !routing_graph_) {
       return;
     }
 
-    const double px = msg->pose.position.x;
-    const double py = msg->pose.position.y;
     const double now_sec = this->get_clock()->now().seconds();
 
     if (has_last_component_pose_) {
@@ -318,6 +379,41 @@ private:
     last_component_pose_x_ = px;
     last_component_pose_y_ = py;
     last_component_update_sec_ = now_sec;
+  }
+
+  // Handles Nav2 lanelet cost-grid updates used for reachable goal filtering.
+  void onCostGrid(const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg)
+  {
+    latest_cost_grid_ = *msg;
+    has_latest_cost_grid_ = true;
+    rebuildCostGridComponent();
+  }
+
+  // HH_260618: Treat Nav2 action success as the authoritative reached event.
+  // Pose-distance is still used as a fallback when action status is delayed.
+  void onNavStatus(const action_msgs::msg::GoalStatusArray::ConstSharedPtr msg)
+  {
+    if (!sequential_goal_release_enable_ || !has_active_released_goal_ || !msg) {
+      return;
+    }
+    for (const auto & status : msg->status_list) {
+      const double status_stamp_sec =
+        static_cast<double>(status.goal_info.stamp.sec) +
+        static_cast<double>(status.goal_info.stamp.nanosec) * 1e-9;
+      const bool status_is_newer =
+        active_released_sec_ <= 0.0 ||
+        status_stamp_sec <= 0.0 ||
+        status_stamp_sec + 0.5 >= active_released_sec_;
+      if (!status_is_newer) {
+        continue;
+      }
+      if (status.status == action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+        active_goal_nav2_succeeded_ = true;
+        markActiveGoalReached("nav2_status");
+        releasePendingGoalIfReady();
+        return;
+      }
+    }
   }
 
   // Recomputes connected lanelet id set from the given seed lanelet.
@@ -475,15 +571,7 @@ private:
     out.pose.position.y = nearest.nearest_point.y();
     out.pose.position.z = snapped_z;
     out.pose.orientation = yawToQuat(nearest.heading);
-    pub_goal_->publish(out);
-    publishRosGoal(out);
-    // HH_260316 Keep explicit runtime trace for path-failure diagnosis.
-    // This confirms whether BT/NavigateToPose is using snapped goal coordinates.
-    RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 500,
-      "goal_snapper: in=(%.2f, %.2f) out=(%.2f, %.2f) dist=%.2f",
-      px, py, out.pose.position.x, out.pose.position.y, std::sqrt(nearest.sq_dist));
-    publishAvgPlanning(out);
+    handleSnappedGoal(out, px, py, std::sqrt(nearest.sq_dist), "avg");
   }
 
   // Handles the `onGoalRos` callback.
@@ -515,21 +603,171 @@ private:
     out_avg.pose.position.y = nearest.nearest_point.y();
     out_avg.pose.position.z = snapped_z;
     out_avg.pose.orientation = yawToQuat(nearest.heading);
-    pub_goal_->publish(out_avg);
+    handleSnappedGoal(out_avg, px, py, std::sqrt(nearest.sq_dist), "ros");
+  }
 
-    geometry_msgs::msg::PoseStamped out_ros;
-    out_ros.header = msg->header;
-    out_ros.pose.position.x = nearest.nearest_point.x();
-    out_ros.pose.position.y = nearest.nearest_point.y();
-    out_ros.pose.position.z = snapped_z;
-    out_ros.pose.orientation = yawToQuatRos(nearest.heading);
-    pub_goal_ros_->publish(out_ros);
+  void handleSnappedGoal(
+    const avg_msgs::msg::PoseStamped & goal_pose,
+    double input_x, double input_y, double snap_distance, const char * source_label)
+  {
+    if (!sequential_goal_release_enable_) {
+      publishReleasedGoal(goal_pose, input_x, input_y, snap_distance, source_label, "direct");
+      return;
+    }
 
-    RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 500,
-      "goal_snapper(ros): in=(%.2f, %.2f) out=(%.2f, %.2f) dist=%.2f",
-      px, py, out_ros.pose.position.x, out_ros.pose.position.y, std::sqrt(nearest.sq_dist));
-    publishAvgPlanning(out_avg);
+    releasePendingGoalIfReady();
+    if (!has_active_released_goal_ || activeGoalReadyForNext()) {
+      publishReleasedGoal(goal_pose, input_x, input_y, snap_distance, source_label, "released");
+      return;
+    }
+
+    if (isSameGoal(goal_pose, active_released_goal_)) {
+      RCLCPP_DEBUG_THROTTLE(
+        get_logger(), *get_clock(), 500,
+        "goal_snapper(%s): skipped active duplicate queued goal", source_label);
+      return;
+    }
+    enqueuePendingGoal(goal_pose, input_x, input_y, snap_distance, source_label);
+  }
+
+  void publishReleasedGoal(
+    const avg_msgs::msg::PoseStamped & goal_pose,
+    double input_x, double input_y, double snap_distance,
+    const char * source_label, const char * release_reason)
+  {
+    pub_goal_->publish(goal_pose);
+    publishRosGoal(goal_pose);
+    active_released_goal_ = goal_pose;
+    has_active_released_goal_ = true;
+    active_goal_reached_ = false;
+    active_goal_nav2_succeeded_ = false;
+    active_goal_reached_sec_ = 0.0;
+    active_released_sec_ = now().seconds();
+
+    // HH_260316 Keep explicit runtime trace for path-failure diagnosis.
+    // This confirms whether BT/NavigateToPose is using snapped goal coordinates.
+    RCLCPP_INFO(
+      get_logger(),
+      "goal_snapper(%s): in=(%.2f, %.2f) out=(%.2f, %.2f) dist=%.2f mode=%s pending=%zu",
+      source_label, input_x, input_y,
+      goal_pose.pose.position.x, goal_pose.pose.position.y,
+      snap_distance, release_reason, pending_goals_.size());
+    publishAvgPlanning(goal_pose);
+  }
+
+  void enqueuePendingGoal(
+    const avg_msgs::msg::PoseStamped & goal_pose,
+    double input_x, double input_y, double snap_distance, const char * source_label)
+  {
+    if (sequential_goal_queue_policy_ == "drop_if_busy") {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 500,
+        "goal_snapper(%s): dropped goal while active goal is running in drop_if_busy mode",
+        source_label);
+      return;
+    }
+
+    if (sequential_goal_queue_policy_ == "replace_pending") {
+      pending_goals_.clear();
+    } else if (!pending_goals_.empty() && isSameGoal(goal_pose, pending_goals_.back())) {
+      return;
+    }
+
+    while (static_cast<int>(pending_goals_.size()) >= sequential_goal_max_queue_size_) {
+      pending_goals_.pop_front();
+    }
+    pending_goals_.push_back(goal_pose);
+    RCLCPP_INFO(
+      get_logger(),
+      "goal_snapper(%s): queued pending goal in=(%.2f, %.2f) out=(%.2f, %.2f) dist=%.2f policy=%s pending=%zu",
+      source_label, input_x, input_y,
+      goal_pose.pose.position.x, goal_pose.pose.position.y,
+      snap_distance, sequential_goal_queue_policy_.c_str(), pending_goals_.size());
+  }
+
+  void releasePendingGoalIfReady()
+  {
+    if (!sequential_goal_release_enable_ || pending_goals_.empty()) {
+      return;
+    }
+    updateActiveGoalReachedFromPose();
+    if (!activeGoalReadyForNext()) {
+      return;
+    }
+
+    while (!pending_goals_.empty()) {
+      const auto next_goal = pending_goals_.front();
+      pending_goals_.pop_front();
+      if (has_active_released_goal_ && isSameGoal(next_goal, active_released_goal_)) {
+        continue;
+      }
+      publishReleasedGoal(next_goal, next_goal.pose.position.x, next_goal.pose.position.y, 0.0, "queue", "released_after_reached");
+      return;
+    }
+  }
+
+  bool activeGoalReadyForNext()
+  {
+    if (!has_active_released_goal_) {
+      return true;
+    }
+    if (!active_goal_reached_) {
+      updateActiveGoalReachedFromPose();
+    }
+    if (!active_goal_reached_) {
+      return false;
+    }
+    if (sequential_goal_require_nav2_terminal_ && !active_goal_nav2_succeeded_) {
+      return false;
+    }
+    const double elapsed_s = now().seconds() - active_goal_reached_sec_;
+    return elapsed_s >= std::max(0.0, sequential_goal_stop_hold_s_);
+  }
+
+  void updateActiveGoalReachedFromPose()
+  {
+    // HH_260618: Reached is sticky until a new active goal is released. Nav2 can
+    // report SUCCEEDED while simulated/real pose drifts slightly outside the
+    // distance threshold during controller settling; clearing the flag here
+    // leaves queued goals stuck forever.
+    if (active_goal_reached_ || !has_active_released_goal_ || !has_latest_current_pose_) {
+      return;
+    }
+    const double dist = std::hypot(
+      latest_current_pose_x_ - active_released_goal_.pose.position.x,
+      latest_current_pose_y_ - active_released_goal_.pose.position.y);
+    if (dist <= sequential_goal_reached_distance_m_) {
+      markActiveGoalReached("pose_distance");
+    }
+  }
+
+  void markActiveGoalReached(const char * source)
+  {
+    if (active_goal_reached_) {
+      return;
+    }
+    active_goal_reached_ = true;
+    active_goal_reached_sec_ = now().seconds();
+    RCLCPP_INFO(
+      get_logger(),
+      "goal_snapper: active goal reached by %s; hold=%.2fs pending=%zu",
+      source, sequential_goal_stop_hold_s_, pending_goals_.size());
+  }
+
+  bool isSameGoal(
+    const avg_msgs::msg::PoseStamped & lhs,
+    const avg_msgs::msg::PoseStamped & rhs) const
+  {
+    if (!lhs.header.frame_id.empty() && !rhs.header.frame_id.empty() &&
+      lhs.header.frame_id != rhs.header.frame_id)
+    {
+      return false;
+    }
+    const double dxy = std::hypot(
+      lhs.pose.position.x - rhs.pose.position.x,
+      lhs.pose.position.y - rhs.pose.position.y);
+    const double dz = std::fabs(lhs.pose.position.z - rhs.pose.position.z);
+    return dxy <= sequential_goal_duplicate_xy_eps_m_ && dz <= duplicate_goal_z_eps_m_;
   }
 
   // Implements `snapGoal` behavior.
@@ -674,6 +912,9 @@ private:
         const double dy = y - proj_y;
         const double dist2 = dx * dx + dy * dy;
         if (dist2 < best.sq_dist && dist2 < max_sq) {
+          if (!isPointInCostGridComponent(proj_x, proj_y)) {
+            continue;
+          }
           best.sq_dist = dist2;
           best.valid = true;
           const double proj_z = p0.z() + t * (p1.z() - p0.z());
@@ -692,6 +933,124 @@ private:
     }
 
     return best;
+  }
+
+  // HH_260617: Rebuilds the connected free-space component from the current pose
+  // in the same lanelet OccupancyGrid consumed by Nav2.
+  void rebuildCostGridComponent()
+  {
+    if (!restrict_to_cost_grid_component_) {
+      return;
+    }
+    has_cost_grid_component_ = false;
+    cost_grid_component_mask_.clear();
+    if (!has_latest_cost_grid_ || !has_latest_current_pose_) {
+      return;
+    }
+
+    const auto & grid = latest_cost_grid_;
+    const int width = static_cast<int>(grid.info.width);
+    const int height = static_cast<int>(grid.info.height);
+    if (width <= 0 || height <= 0 || grid.info.resolution <= 0.0 ||
+      grid.data.size() != static_cast<size_t>(width * height))
+    {
+      return;
+    }
+
+    int start_x = 0;
+    int start_y = 0;
+    if (!worldToCostGridCell(latest_current_pose_x_, latest_current_pose_y_, start_x, start_y)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "goal_snapper: current pose is outside cost grid; reachable goal filter is not ready");
+      return;
+    }
+
+    const auto is_passable = [this, &grid](const int index) {
+        const int value = static_cast<int>(grid.data[static_cast<size_t>(index)]);
+        return value >= 0 && value < cost_grid_block_threshold_;
+      };
+
+    const int start_index = start_y * width + start_x;
+    if (!is_passable(start_index)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "goal_snapper: current cost-grid cell is blocked cost=%d; reachable goal filter is not ready",
+        static_cast<int>(grid.data[static_cast<size_t>(start_index)]));
+      return;
+    }
+
+    cost_grid_component_mask_.assign(static_cast<size_t>(width * height), 0U);
+    std::deque<int> queue;
+    queue.push_back(start_index);
+    cost_grid_component_mask_[static_cast<size_t>(start_index)] = 1U;
+
+    while (!queue.empty()) {
+      const int index = queue.front();
+      queue.pop_front();
+      const int x = index % width;
+      const int y = index / width;
+      for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+          if (dx == 0 && dy == 0) {
+            continue;
+          }
+          const int nx = x + dx;
+          const int ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+            continue;
+          }
+          const int next_index = ny * width + nx;
+          const auto next_offset = static_cast<size_t>(next_index);
+          if (cost_grid_component_mask_[next_offset] != 0U || !is_passable(next_index)) {
+            continue;
+          }
+          cost_grid_component_mask_[next_offset] = 1U;
+          queue.push_back(next_index);
+        }
+      }
+    }
+    has_cost_grid_component_ = true;
+  }
+
+  bool worldToCostGridCell(double x, double y, int & cell_x, int & cell_y) const
+  {
+    if (!has_latest_cost_grid_) {
+      return false;
+    }
+    const auto & info = latest_cost_grid_.info;
+    if (info.resolution <= 0.0) {
+      return false;
+    }
+    cell_x = static_cast<int>(std::floor((x - info.origin.position.x) / info.resolution));
+    cell_y = static_cast<int>(std::floor((y - info.origin.position.y) / info.resolution));
+    return cell_x >= 0 && cell_y >= 0 &&
+      cell_x < static_cast<int>(info.width) && cell_y < static_cast<int>(info.height);
+  }
+
+  bool isPointInCostGridComponent(double x, double y)
+  {
+    if (!restrict_to_cost_grid_component_) {
+      return true;
+    }
+    if (!has_cost_grid_component_) {
+      if (allow_cost_grid_component_fallback_) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "goal_snapper: cost-grid component unavailable; using lanelet-only snap filter");
+        return true;
+      }
+      return false;
+    }
+    int cell_x = 0;
+    int cell_y = 0;
+    if (!worldToCostGridCell(x, y, cell_x, cell_y)) {
+      return false;
+    }
+    const int width = static_cast<int>(latest_cost_grid_.info.width);
+    const auto index = static_cast<size_t>(cell_y * width + cell_x);
+    return index < cost_grid_component_mask_.size() &&
+      cost_grid_component_mask_[index] != 0U;
   }
 
   // Implements `pointInsideLanelet` behavior.
@@ -754,6 +1113,23 @@ private:
   double last_goal_z_{0.0};
   double last_goal_received_sec_{0.0};
 
+  // HH_260618 Sequential release state for non-preemptive waypoint behavior.
+  bool sequential_goal_release_enable_{true};
+  std::string sequential_goal_queue_policy_{"append"};
+  double sequential_goal_reached_distance_m_{0.8};
+  double sequential_goal_stop_hold_s_{0.5};
+  double sequential_goal_duplicate_xy_eps_m_{0.20};
+  int sequential_goal_max_queue_size_{10};
+  std::string sequential_goal_status_topic_{"/planning/navigate_to_pose/_action/status"};
+  bool sequential_goal_require_nav2_terminal_{true};
+  std::deque<avg_msgs::msg::PoseStamped> pending_goals_;
+  avg_msgs::msg::PoseStamped active_released_goal_;
+  bool has_active_released_goal_{false};
+  bool active_goal_reached_{false};
+  bool active_goal_nav2_succeeded_{false};
+  double active_goal_reached_sec_{0.0};
+  double active_released_sec_{0.0};
+
   // HH_260528 Connected lanelet-component restriction state.
   bool restrict_to_connected_lanelet_component_{true};
   bool allow_component_fallback_to_global_{false};
@@ -775,12 +1151,28 @@ private:
   double last_component_pose_y_{0.0};
   double last_component_update_sec_{0.0};
 
+  // HH_260617 Cost-grid component restriction state.
+  bool restrict_to_cost_grid_component_{true};
+  bool allow_cost_grid_component_fallback_{false};
+  std::string cost_grid_topic_{"/map/cost_grid/lanelet"};
+  int cost_grid_block_threshold_{100};
+  nav_msgs::msg::OccupancyGrid latest_cost_grid_;
+  bool has_latest_cost_grid_{false};
+  bool has_latest_current_pose_{false};
+  double latest_current_pose_x_{0.0};
+  double latest_current_pose_y_{0.0};
+  std::vector<uint8_t> cost_grid_component_mask_;
+  bool has_cost_grid_component_{false};
+
   rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr pub_goal_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_goal_ros_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_goal_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_current_pose_;
+  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub_cost_grid_;
+  rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub_nav_status_;
+  rclcpp::TimerBase::SharedPtr queue_timer_;
   bool publish_planning_status_{false};
 };
 

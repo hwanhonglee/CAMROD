@@ -42,7 +42,8 @@ class UiGuestNode(Node):
         self.battery_topic = str(
             self.declare_parameter("battery_topic", "/battery_percentage").value
         )
-        self.grace_period_sec = int(self.declare_parameter("grace_period_sec", 60).value)
+        # HH_260617: Use canonical `_s` suffix for duration parameters.
+        self.grace_period_s = int(self.declare_parameter("grace_period_s", 60).value)
 
         self._lock = threading.Lock()
         self._amr_state: int = AvgAmrServiceState.DROP_ZONE_WAIT
@@ -206,7 +207,7 @@ class UiGuestNode(Node):
                 with node._guest_ws_lock:
                     if node._guest_ws is ws:
                         node._guest_ws = None
-                        node._grace_until = time.time() + node.grace_period_sec
+                        node._grace_until = time.time() + node.grace_period_s
                         # _last_client_ip 유지 → 같은 IP는 유예 기간 내 즉시 재접속 가능
 
         html_path = node._resolve_guest_html()

@@ -6,9 +6,9 @@
 
 ## 📋 Summary
 
-`camrod_system` provides the health monitoring layer for all CAMROD runtime packages. It runs more than 20 independent checker nodes, each subscribing to one module's runtime topics and publishing `diagnostic_msgs/DiagnosticStatus` entries to `/diagnostics`. A central `aggregator_node` collects all entries, detects stale reporters, groups them into a tree by subsystem, and publishes the consolidated result to `/diagnostics_agg`.
+`camrod_system` provides the health monitoring layer for all CAMROD runtime packages. It runs more than 20 independent checker nodes, each subscribing to one module's runtime topics and publishing `diagnostic_msgs/DiagnosticStatus` entries to `/diagnostics`. A central `aggregator_node` collects all entries, detects stale reporters, groups them into a tree by subsystem, and publishes the consolidated result to `/system/diagnostics_agg`.
 
-A separate lightweight system tools track (`enable_system_tools: true`) checks that required ROS 2 nodes and topics are alive and publishes a secondary summary to `/system/diagnostics_agg_tools`.
+A separate lightweight system tools track (`enable_system_tools: true`) checks that required ROS 2 nodes/topics are alive from `config/system_checker.yaml`, verifies topic types/publisher counts, and publishes both diagnostics and semantic CAMROD status snapshots on `/system/status` and `/system/msgs`.
 
 > **Non-goals:** Reports health status only — does **not** enforce safety actions (e-stop, speed reduction, disengagement). Does not contain autonomous decision logic; consumers (e.g., `camrod_ui`) decide what to do with the health data. Does not check `camrod_docking` yet (TODO: docking checker category).
 
@@ -30,6 +30,9 @@ ros2 launch camrod_system system.launch.py enable_platform:=false
 
 # Watch aggregated diagnostics
 ros2 topic echo /system/diagnostics_agg
+
+# Watch semantic CAMROD module status
+ros2 topic echo /system/status
 
 # Watch per-checker raw diagnostics
 ros2 topic echo /system/diagnostics
@@ -54,7 +57,7 @@ graph LR
     SYS(aggregator\n+ checkers):::system
   end
 
-  SYS -->|/diagnostics_agg| UI([🖥️ camrod_ui]):::ui
+  SYS -->|/system/diagnostics_agg| UI([🖥️ camrod_ui]):::ui
 
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
   classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
@@ -81,16 +84,17 @@ graph TD
   LOC((/localization/*)):::topic --> LOCCHK(localization_gnss/mode/pose\ninit/source/lanelet checkers):::localization
   PER((/perception/*)):::topic --> PERCHK(perception_obstacle_checker):::perception
   MAP((/map/cost_grid/lanelet)):::topic --> MAPCHK(map_cost_grid_checker):::mapping
-  PLAN((/planning/*)):::topic --> PLANCHK(planning_lifecycle/costmap\nnav_status/path checkers):::planning
+  PLAN((/planning/*)):::topic --> PLANCHK(planning_lifecycle/costmap\nnav_status/path/state checkers):::planning
   PLAT((/platform/*)):::topic --> PLATOP(ranger_platform_checker\n⚠️ optional):::platform
 
   HWCHK & SENSCHK & LOCCHK & PERCHK & MAPCHK & PLANCHK & PLATOP --> DIAG((/diagnostics)):::topic
 
   DIAG --> AGG(aggregator_node):::system
-  AGG --> DIAGAGG((/diagnostics_agg)):::topic
+  AGG --> DIAGAGG((/system/diagnostics_agg)):::topic
 
   DIAG --> SYSCHK(system_checker_node):::system
   SYSCHK --> SYSDIAG((/system/diagnostics)):::topic
+  SYSDIAG --> SYSSTATUS((/system/status\n/system/msgs)):::topic
   SYSDIAG --> SYSAGG(diagnostics_aggregator_node):::system
   SYSAGG --> TOOLS((/system/diagnostics_agg_tools)):::topic
 
@@ -111,12 +115,36 @@ graph TD
 
 ## 🔑 Key Behaviors
 
+### Required Topic / Node Manifest
+
+`system_checker_node` is the graph-level manifest checker. Add package-level required nodes/topics in `config/system_checker.yaml` under `required_modules`.
+
+```yaml
+required_modules:
+  - planning
+
+planning:
+  required_nodes:
+    - /planning/planner_server
+    - /planning/planning_state_machine
+  required_topics:
+    # HH_260617: "topic|ros_type|min_publishers"
+    - "/planning/state_machine/state|avg_msgs/msg/PlanningState|1"
+```
+
+- **Existence**: missing nodes/topics produce `system_checker/<module>` WARN.
+- **Type**: existing topic with wrong ROS type is reported in `type_mismatches`.
+- **Publisher count**: `min_publishers=1` requires at least one active publisher; use `0` for command topics that may only have subscribers.
+- **Value quality**: per-domain checker nodes decide data quality, e.g. GNSS fix/covariance, IMU acceleration, localization mode/confidence, path point count, Nav2 lifecycle state.
+- **Semantic output**: `system_diagnostic_node` converts diagnostics into `avg_msgs/SystemStatus` on `/system/status` and `avg_msgs/AvgSystemMsgs` on `/system/msgs`.
+- **Optional modules**: UI, docking, voice, and sensor-kit are not forced by the default manifest; they are added dynamically when their diagnostics appear.
+
 ### Module Readiness Decision Tree
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F1F5F9', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#64748B', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 flowchart TD
-  A[/🔔 /diagnostics_agg received/]:::system --> B{msg.status\nempty?}:::system
+  A[/🔔 /system/diagnostics_agg received/]:::system --> B{msg.status\nempty?}:::system
   B -->|yes| C[🔴 ready = false\nmessage: 'no diagnostics yet']:::platform
   B -->|no| D{any ERROR\nlevel entries?}:::system
   D -->|yes| E[🔴 ready = false\nmessage: 'diagnostics errors: N']:::platform
@@ -169,7 +197,7 @@ sequenceDiagram
 
   Note over DOCK,SYS: 📦 Docking checker — TODO: not yet implemented
 
-  SYS->>UI: /diagnostics_agg with zero ERROR entries
+  SYS->>UI: /system/diagnostics_agg with zero ERROR entries
   UI->>UI: ready=true, engaged=true → operation_mode=AUTO
 ```
 
@@ -184,7 +212,7 @@ sequenceDiagram
 | `localization` | localization_gnss, localization_mode, localization_pose, localization_init, localization_source, localization_lanelet | `config/diagnostics/default/localization/` | — |
 | `perception` | perception_obstacle | `config/diagnostics/default/perception/` | — |
 | `map` | map_cost_grid | `config/diagnostics/default/map/` | — |
-| `planning` | planning_lifecycle, planning_costmap, planning_nav_status, planning_path | `config/diagnostics/default/planning/` | — |
+| `planning` | planning_lifecycle, planning_costmap, planning_nav_status, planning_path, planning_state | `config/diagnostics/default/planning/` | — |
 | `platform` | ranger_platform (optional) | `config/diagnostics/default/platform/` | — |
 | `docking` | — | — | **TODO**: not yet implemented |
 
@@ -198,14 +226,14 @@ sequenceDiagram
 |---|---|---|---|---|---|
 | `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | Yes | camrod_sensing | 5 Hz | GNSS fix for `gnss_checker` |
 | `/sensing/imu/data` | `sensor_msgs/Imu` | Yes | camrod_sensing | 100 Hz | IMU data for `imu_checker` |
-| `/sensing/lidar/*/points` | `sensor_msgs/PointCloud2` | Yes | camrod_sensing | 10 Hz | LiDAR points for `lidar_checker` |
+| `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | Yes | camrod_sensing/fake_sensors | 10 Hz | Filtered LiDAR points for manifest and downstream perception |
 | `/sensing/radar/*/range` | `sensor_msgs/Range` | Yes | camrod_sensing | variable | Radar ranges for `radar_checker` |
 | `/sensing/camera/*/image_raw` | `sensor_msgs/Image` | Yes | camrod_sensing | 30 Hz | Camera frames for `camera_checker` |
 | `/platform/status/wheel_odometry` | `nav_msgs/Odometry` | Yes | camrod_platform | variable | Wheel odometry for `wheel_odometry_checker` |
 | `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | Yes | camrod_planning | variable | Inflated cost grid for `cost_grid_checker` |
 | `/sensing/platform_velocity_converter/twist_with_covariance` | `geometry_msgs/TwistWithCovarianceStamped` | Yes | camrod_sensing | variable | Velocity for `velocity_converter_checker` |
 | `/sensing/gnss/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | Yes | camrod_localization | 5 Hz | GNSS-derived pose for `localization_gnss_checker` |
-| `/localization/mode` | `avg_msgs/AvgLocalizationMode` | Yes | camrod_localization | variable | ESKF mode for `localization_mode_checker` |
+| `/localization/mode` | `avg_msgs/AvgLocalizationMode` | Yes | camrod_localization | variable | Localization mode for `localization_mode_checker` |
 | `/localization/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | Yes | camrod_localization | 30 Hz | Pose estimate for `localization_pose_checker` |
 | `/localization/initial_match_ok` | `std_msgs/Bool` | Yes | camrod_localization | event | Drop zone init flag for `localization_init_checker` |
 | `/localization/pose_source` | `std_msgs/String` | Yes | camrod_localization | event | Active pose source for `localization_source_checker` |
@@ -215,6 +243,7 @@ sequenceDiagram
 | `/perception/camera/detections_2d` | `vision_msgs/Detection2DArray` | Yes | camrod_perception | variable | Camera detections for `perception_obstacle_checker` |
 | `/planning/global_path` | `nav_msgs/Path` | Yes | camrod_planning | variable | Global path for `planning_path_checker` |
 | `/planning/local_path` | `nav_msgs/Path` | Yes | camrod_planning | variable | Local path for `planning_path_checker` |
+| `/planning/state_machine/state` | `avg_msgs/PlanningState` | Yes | camrod_planning | ~1 Hz | Mission/state-machine semantic health for `planning_state_checker` |
 
 ### Outputs
 
@@ -223,6 +252,8 @@ sequenceDiagram
 | `/system/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `aggregator_node` | ~1 Hz per checker | Raw per-checker status entries |
 | `/system/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | `camrod_ui`, RViz | 1 Hz | Aggregated tree of all module statuses |
 | `/system/diagnostics_agg_tools` | `diagnostic_msgs/DiagnosticArray` | monitoring tools | 1 Hz | System tools lightweight aggregation |
+| `/system/status` | `avg_msgs/SystemStatus` | `camrod_ui`, monitoring tools | 2 Hz | Semantic module-level status/warn/error summary |
+| `/system/msgs` | `avg_msgs/AvgSystemMsgs` | CAMROD internal consumers | 2 Hz | Snapshot wrapper with system status and active module list |
 
 ---
 
@@ -311,7 +342,7 @@ status:
 
 | Name | Meaning |
 |---|---|
-| `publish_rate_hz` | How often the aggregator publishes `/diagnostics_agg` |
+| `publish_rate_hz` | How often the aggregator publishes `/system/diagnostics_agg` |
 | `poll_rate_hz` | How often a checker actively polls a service (e.g., Nav2 lifecycle) |
 | `stale_timeout_s` | Seconds before a topic is considered stale and elevated to WARN |
 | `grace_period_s` | Post-startup grace window before a checker raises errors |
@@ -339,7 +370,7 @@ ros2 topic hz /system/diagnostics
 ## 🩺 Troubleshooting
 
 <details>
-<summary><strong>/diagnostics_agg is empty</strong></summary>
+<summary><strong>/system/diagnostics_agg is empty</strong></summary>
 
 - Confirm `aggregator_node` is running: `ros2 node list | grep diagnostics_agg`
 - Confirm at least one checker is publishing: `ros2 topic hz /system/diagnostics`
@@ -361,7 +392,7 @@ ros2 topic hz /system/diagnostics
 <details>
 <summary><strong>UI shows WAITING_FOR_READY indefinitely</strong></summary>
 
-`camrod_ui` sets `ready = false` when `/diagnostics_agg` contains any ERROR-level entry. Run `ros2 topic echo /system/diagnostics_agg` and look for `level: 2` entries.
+`camrod_ui` sets `ready = false` when `/system/diagnostics_agg` contains any ERROR-level entry. Run `ros2 topic echo /system/diagnostics_agg` and look for `level: 2` entries.
 
 Common causes: LiDAR not publishing, localization not initialized (`initial_match_ok` not received), Nav2 lifecycle nodes not in active state.
 
@@ -388,5 +419,30 @@ Verify: `ls $(ros2 pkg prefix camrod_system)/share/camrod_system/config/diagnost
 - [`../camrod_planning/README.md`](../camrod_planning/README.md)
 - [`../camrod_platform/README.md`](../camrod_platform/README.md)
 - [`../camrod_docking/README.md`](../camrod_docking/README.md)
-- [`../camrod_ui/README.md`](../camrod_ui/README.md) — consumes `/diagnostics_agg`
+- [`../camrod_ui/README.md`](../camrod_ui/README.md) — consumes `/system/diagnostics_agg`
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: System diagnostics now include module-manifest checks and semantic status snapshots for parking.
+> HH_260618: `system_checker` treats final parking as an alternative group: exactly one of `camrod_parking` or `camrod_docking` must be healthy. If neither is running, or if both graphs are accidentally active, `/system/diagnostics` reports ERROR.
+
+### Parking Health Contract
+
+`system_checker_node` checks the common final-parking capability:
+
+| Alternative | Required nodes | Required topics |
+|---|---|---|
+| `parking` | `/parking/site_maneuver`, `/parking/drop_zone_parking` | `/parking/site_maneuver/status`, `/parking/drop_zone/status` |
+| `docking` | `/docking/docking_server`, `/docking/lifecycle_manager_docking` | none |
+
+`system_checker/final_parking` is OK only when exactly one alternative graph is healthy. The diagnostics aggregator tracks that capability-level status under `parking/manifest`; rule-based runtime statuses are classified when received, but they are not pre-created as stale entries in docking mode.
+
+### Where to Add Required Topics
+
+Add graph-level required nodes/topics in `config/system_checker.yaml`. Use `topic|ros_type|min_publishers` format, for example:
+
+```yaml
+required_topics:
+  - "/parking/drop_zone/status|avg_msgs/msg/ModuleState|1"
+```

@@ -176,6 +176,7 @@ protected:
     declare_parameter("gpu.mem_error_threshold",  95.0);
     declare_parameter("gpu.temp_warn_threshold",  75.0);
     declare_parameter("gpu.temp_error_threshold", 85.0);
+    declare_parameter("gpu.required", true);
 
     // 컨테이너 환경에서 nvidia-smi 경로 오버라이드 (빈 문자열 = 자동 탐색)
     declare_parameter("container.nvidia_smi_path", std::string(""));
@@ -189,6 +190,7 @@ protected:
     mem_error_  = get_parameter("gpu.mem_error_threshold").as_double();
     temp_warn_  = get_parameter("gpu.temp_warn_threshold").as_double();
     temp_error_ = get_parameter("gpu.temp_error_threshold").as_double();
+    gpu_required_ = get_parameter("gpu.required").as_bool();
 
     in_container_ = is_in_container();
 
@@ -217,14 +219,14 @@ protected:
   void setup_tasks_() override
   {
     if (!nvidia_smi_) {
-      add_task("/hardware/gpu0", [this](auto & s) { check_stale(s); });
+      add_task("/hardware/gpu0", [this](auto & s) { check_missing_gpu(s); });
       return;
     }
 
     try {
       auto gpus = query_gpus(*nvidia_smi_);
       if (gpus.empty()) {
-        add_task("/hardware/gpu0", [this](auto & s) { check_stale(s); });
+        add_task("/hardware/gpu0", [this](auto & s) { check_missing_gpu(s); });
       } else {
         for (size_t i = 0; i < gpus.size(); ++i) {
           add_task(
@@ -233,7 +235,7 @@ protected:
         }
       }
     } catch (...) {
-      add_task("/hardware/gpu0", [this](auto & s) { check_stale(s); });
+      add_task("/hardware/gpu0", [this](auto & s) { check_missing_gpu(s); });
     }
   }
 
@@ -251,8 +253,16 @@ private:
     return gpu_cache_;
   }
 
-  void check_stale(StatusWrapper & stat)
+  void check_missing_gpu(StatusWrapper & stat)
   {
+    if (!gpu_required_) {
+      // HH_260617: Simulation/dev PCs may not expose NVIDIA GPU. When the
+      // selected diagnostics profile marks GPU optional, publish OK instead
+      // of blocking planning/control validation.
+      stat.summary(DiagnosticStatus::OK, "GPU check disabled or not required");
+      stat.add("gpu_required", "false");
+      return;
+    }
     stat.summary(DiagnosticStatus::STALE, "nvidia-smi not found");
     if (in_container_) {
       stat.add("hint",
@@ -328,6 +338,7 @@ private:
   double util_warn_{85.0},  util_error_{95.0};
   double mem_warn_{80.0},   mem_error_{95.0};
   double temp_warn_{75.0},  temp_error_{85.0};
+  bool gpu_required_{true};
 
   bool                                        in_container_{false};
   std::optional<std::string>                  nvidia_smi_;

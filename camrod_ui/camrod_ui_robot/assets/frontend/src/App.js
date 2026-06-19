@@ -12,6 +12,18 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 import AMRAnimation from './AMRAnimation';
 
+// HH_260619 - Developer/test builds bypass the public operating-hours gate by default.
+// Enable the kiosk time gate explicitly with REACT_APP_OPERATING_HOURS_GATE_ENABLED=true.
+const parseHourEnv = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 24 ? parsed : fallback;
+};
+
+const OPERATING_HOURS_GATE_ENABLED =
+  process.env.REACT_APP_OPERATING_HOURS_GATE_ENABLED === 'true';
+const OPERATING_HOURS_START = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_START, 3);
+const OPERATING_HOURS_END = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_END, 23);
+
 // ── 탐방로 공통 이미지 캐러셀 컴포넌트 ──────────────────────────────────────
 function TrailCarousel({ title, images }) {
   const [open, setOpen] = useState(false);
@@ -135,7 +147,8 @@ function DiagnosticsMonitor() {
           );
         })}
         {items.length === 0 && (
-          <div className="diag-empty">데이터 없음 — /diagnostics_agg 대기 중…</div>
+          /* HH_260617: UI diagnostics reads the namespaced system aggregator topic. */
+          <div className="diag-empty">데이터 없음 — /system/diagnostics_agg 대기 중…</div>
         )}
       </div>
 
@@ -876,11 +889,18 @@ function App() {
   // 현재 ON인 사이트 (이동 중인 사이트)
   const activeSite = SITE_NAMES.find(s => states[s]) || null;
 
-  // ── 현재 시각이 운영시간(09:00~16:00) 내인지 확인 ─────────────────────
+  // ── 운영시간 게이트 확인 ───────────────────────────────────────────────
   const isWithinOperatingHours = () => {
-    const now = new Date();
-    const hour = now.getHours();
-    return hour >= 3 && hour < 23;
+    if (!OPERATING_HOURS_GATE_ENABLED) {
+      return true;
+    }
+
+    const hour = new Date().getHours();
+    if (OPERATING_HOURS_START <= OPERATING_HOURS_END) {
+      return hour >= OPERATING_HOURS_START && hour < OPERATING_HOURS_END;
+    }
+
+    return hour >= OPERATING_HOURS_START || hour < OPERATING_HOURS_END;
   };
 
   // ── 대기 화면 터치 핸들러 (운영시간 체크) ──────────────────────────────

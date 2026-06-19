@@ -8,4 +8,4 @@
 #   rear only    : enable_front_camera: false / enable_rear_camera: true
 camrod_sensing_camera:
   enable_front_camera: true
-  enable_rear_camera: false
+  enable_rear_camera: true

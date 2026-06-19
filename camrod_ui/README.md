@@ -32,7 +32,13 @@ ros2 launch camrod_ui ui.launch.py ui_host:=0.0.0.0 ui_port:=8010
 ros2 launch camrod_ui ui.launch.py camping_sites_yaml:=/path/to/camping_sites.yaml
 
 # Rebuild the React frontend
-cd camrod_ui/runtime/assets/frontend
+cd camrod_ui/camrod_ui_robot/assets/frontend
+DISABLE_ESLINT_PLUGIN=true npm run build
+
+# Public kiosk build with operating-hours gate enabled
+REACT_APP_OPERATING_HOURS_GATE_ENABLED=true \
+REACT_APP_OPERATING_HOURS_START=9 \
+REACT_APP_OPERATING_HOURS_END=16 \
 DISABLE_ESLINT_PLUGIN=true npm run build
 
 # Health check
@@ -48,7 +54,7 @@ curl http://localhost:8010/ui/health
 graph LR
   BROWSER{{🌐 Browser\nexternal actor}}:::hardware
 
-  SYS([🩺 camrod_system]):::system    -->|/diagnostics_agg| UI
+  SYS([🩺 camrod_system]):::system    -->|/system/diagnostics_agg| UI
   PLAN([🧭 camrod_planning]):::planning -->|/planning/engaged| UI
 
   subgraph UI_BOX["🖥️ camrod_ui"]
@@ -58,7 +64,7 @@ graph LR
   BROWSER <-->|HTTP :8010\nWebSocket /ws| UI
 
   UI -->|/planning/engage| PLAN
-  UI -->|/planning/state_machine/goal_key| PLAN
+  UI -->|/planning/mission_key| PLAN
   UI -->|/goal_pose| PLAN
   PARK([🅿️ camrod_docking]):::docking -.->|destination sites| UI
 
@@ -83,7 +89,7 @@ graph TD
     NOTE[threading.Lock\non ApiState]:::ui
   end
 
-  DIAGAGG((/diagnostics_agg)):::topic     --> BACKEND
+  DIAGAGG((/system/diagnostics_agg)):::topic     --> BACKEND
   ENGAGED((/planning/engaged)):::topic    --> BACKEND
   DEST((/ui/selected_destination)):::topic --> BACKEND
   BATTERY((/battery_percentage)):::topic  --> BACKEND
@@ -91,7 +97,7 @@ graph TD
 
   BACKEND -->|HTTP/WS responses| BROWSER
   BACKEND --> ENGAGE((/planning/engage)):::topic
-  BACKEND --> GOALKEY((/planning/state_machine/goal_key)):::topic
+  BACKEND --> MISSIONKEY((/planning/mission_key)):::topic
   BACKEND --> GOALPOSE((/goal_pose)):::topic
   BACKEND --> DEST2((/ui/selected_destination)):::topic
 
@@ -112,6 +118,8 @@ Thread safety between the two contexts is managed by a `threading.Lock` on `ApiS
 
 ### Destination Dispatch Sequence
 
+**HH_260617 terminology:** `mission_key` is the semantic site id (`camping_site_3`), `site_goal` is the raw site-center pose on `/goal_pose`, and `route_goal` is the lanelet-snapped Nav2 pose produced by camrod_planning. Public topic names stay unchanged for compatibility.
+
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#FFF7ED', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#F97316', 'lineColor': '#475569'}}}%%
 sequenceDiagram
@@ -125,14 +133,14 @@ sequenceDiagram
 
   Browser->>Backend: POST /ui/destination?site=B3&run=true
   Backend->>Backend: validate site B3 → camping_site_3
-  Backend->>SM: /ui/selected_destination {"site":"B3","run":true}
-  Backend->>SM: /planning/state_machine/goal_key "camping_site_3"
-  Backend->>Nav2: /goal_pose PoseStamped(x,y,z,yaw from camping_sites.yaml)
+  Backend->>SM: /ui/selected_destination UiDestinationCommand(site=B3, run=true)
+  Backend->>SM: /planning/mission_key PlanningMissionKey(camping_site_3)
+  Backend->>Nav2: site_goal /goal_pose PoseStamped(x,y,z,yaw from camping_sites.yaml)
   Backend->>Gate: /planning/engage Bool(true)
   Gate-->>Nav2: cmd_vel gate opens → velocity flows
 
   Note over Dock: Parallel docking branch
-  alt goal_key contains "dock"
+  alt mission_key contains "dock"
     SM->>Dock: send docking action goal
     Dock-->>SM: docking result (succeeded/aborted)
     Dock-->>Backend: /AMR_arrive Bool(true)
@@ -152,10 +160,10 @@ stateDiagram-v2
   [*] --> STOP
   STOP --> WAITING_FOR_READY : engage=true, not ready
   STOP --> AUTO : engage=true, ready
-  WAITING_FOR_READY --> AUTO : /diagnostics_agg clears all errors
+  WAITING_FOR_READY --> AUTO : /system/diagnostics_agg clears all errors
   WAITING_FOR_READY --> STOP : engage published (false)
   AUTO --> STOP : engage=false or arrived
-  AUTO --> WAITING_FOR_READY : new ERROR in /diagnostics_agg
+  AUTO --> WAITING_FOR_READY : new ERROR in /system/diagnostics_agg
 
   AUTO:::auto
   WAITING_FOR_READY:::waiting
@@ -167,7 +175,7 @@ stateDiagram-v2
 - 🟡 `WAITING_FOR_READY` — `engaged=true` AND `ready=false`
 - 🔴 `STOP` — `engaged=false`
 
-`ready` is `true` when `/diagnostics_agg` has at least one entry and zero ERROR-level statuses.
+`ready` is `true` when `/system/diagnostics_agg` has at least one entry and zero ERROR-level statuses.
 
 ### Frontend Path Resolution
 
@@ -195,13 +203,24 @@ flowchart TD
 
 > Static files are served manually (not via Starlette `StaticFiles`) to support `--symlink-install` builds where symlinked files would otherwise fail the Starlette commonprefix security check. All paths not matching a real file fall back to `index.html` (SPA routing).
 
-### Goal Key Resolution for Sites
+### Operating-Hours Gate
+
+> HH_260619: Developer/test frontend builds bypass the public operating-hours gate by default.
+
+The waiting screen accepts taps at any time unless the React bundle is built with `REACT_APP_OPERATING_HOURS_GATE_ENABLED=true`. This keeps development, route testing, and operator validation independent from public service hours.
+
+| Build mode | Command |
+|---|---|
+| Developer/test | `DISABLE_ESLINT_PLUGIN=true npm run build` |
+| Public kiosk | `REACT_APP_OPERATING_HOURS_GATE_ENABLED=true REACT_APP_OPERATING_HOURS_START=9 REACT_APP_OPERATING_HOURS_END=16 DISABLE_ESLINT_PLUGIN=true npm run build` |
+
+### Mission Key Resolution for Sites
 
 When `set_destination(site="B3", ...)` is called:
 
-1. Check `site_to_goal_key_map` config for explicit mapping.
+1. Check `site_to_mission_key_map` config for explicit mapping.
 2. Parse `B<N>` → `camping_site_<N>` and look up in loaded keypoints.
-3. Fallback to `fallback_goal_key` (default: `camping_site_1`) if no match found.
+3. Fallback to `fallback_mission_key` (default: `camping_site_1`) if no match found.
 4. Fallback to the lexicographically first known key if `fallback_to_first_known_goal=true`.
 
 ---
@@ -212,9 +231,9 @@ When `set_destination(site="B3", ...)` is called:
 
 | Topic | Type | Required | Producer | Rate | Meaning |
 |---|---|---|---|---|---|
-| `/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | Yes | camrod_system | 1 Hz | Module health; used to compute `ready` and `operation_mode` |
+| `/system/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | Yes | camrod_system | 1 Hz | Module health; used to compute `ready` and `operation_mode` |
 | `/planning/engaged` | `std_msgs/Bool` | Yes | camrod_planning | event | Current engagement state of `cmd_vel_gate` |
-| `/ui/selected_destination` | `std_msgs/String` | No | self (republish) | event | JSON `{"site": "B1", "run": true}`; consumed to dispatch goal |
+| `/ui/selected_destination` | `avg_msgs/UiDestinationCommand` | No | self (republish) | event | Destination command; consumed to dispatch mission key and site goal |
 | `/battery_percentage` | `std_msgs/Int32` | No | external | event | Battery SOC 0–100; forwarded to WebSocket clients |
 | `/AMR_arrive` | `std_msgs/Bool` | No | external | event | Arrival signal; clears all site states and disengages |
 
@@ -223,9 +242,9 @@ When `set_destination(site="B3", ...)` is called:
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
 | `/planning/engage` | `std_msgs/Bool` | camrod_planning (`cmd_vel_gate`) | event | Engage (`true`) or disengage (`false`) autonomy |
-| `/planning/state_machine/goal_key` | `std_msgs/String` | camrod_planning (state machine) | event | Named goal key (e.g., `camping_site_3`) |
-| `/goal_pose` | `geometry_msgs/PoseStamped` | camrod_planning (Nav2 BT, goal_snapper) | event | Goal pose in `map` frame derived from `camping_sites.yaml` |
-| `/ui/selected_destination` | `std_msgs/String` | self (loop-back) | event | JSON destination command republished for inspection |
+| `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | camrod_planning (state machine) | event | `mission_key`: semantic site/key name (e.g., `camping_site_3`) |
+| `/goal_pose` | `geometry_msgs/PoseStamped` | camrod_planning goal_snapper | event | `site_goal`: raw site-center pose in `map`, later snapped to a lanelet route goal |
+| `/ui/selected_destination` | `avg_msgs/UiDestinationCommand` | self (loop-back) | event | Destination command republished for inspection |
 
 ---
 
@@ -247,12 +266,12 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 
 | Parameter | Default | Description |
 |---|---|---|
-| `publish_goal_key` | `true` | Publish goal key on destination select |
-| `publish_goal_pose` | `true` | Publish goal pose on destination select |
+| `publish_mission_key` | `true` | publish `mission_key` on destination select |
+| `publish_goal_pose` | `true` | publish `site_goal` on destination select |
 | `publish_engage_from_destination` | `true` | Auto-engage when a destination is selected with `run=true` |
-| `fallback_goal_key` | `camping_site_1` | Key to use when site resolution fails |
+| `fallback_mission_key` | `camping_site_1` | fallback `mission_key` when site resolution fails |
 | `fallback_to_first_known_goal` | `true` | Use first loaded goal if fallback key also missing |
-| `default_goal_frame_id` | `map` | frame_id for published goal poses |
+| `default_goal_frame_id` | `map` | frame_id for published `site_goal` poses |
 | `site_names` | `[B1, B2, ..., B13]` | Valid site name list for validation |
 
 ---
@@ -266,7 +285,7 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 | 🟢 `GET` | `/ui/state` | — | `ApiState` JSON snapshot | Full system state: engaged, ready, operation_mode, module_states, diagnostics, destination, battery_percentage |
 | 🟢 `GET` | `/ui/health` | — | `{"ok": true, "node": "ui_backend"}` | Liveness check |
 | 🟢 `GET` | `/ui/destination` | — | `{"destination": {…}, "valid_sites": […]}` | Current destination and valid site list |
-| 🟢 `GET` | `/ui/diagnostics` | — | `{"status": […]}` | Diagnostics list from `/diagnostics_agg` |
+| 🟢 `GET` | `/ui/diagnostics` | — | `{"status": […]}` | Diagnostics list from `/system/diagnostics_agg` |
 | 🟢 `GET` | `/api/diagnostics` | — | `{"status": […]}` | Same as `/ui/diagnostics` (legacy path) |
 | 🔵 `POST` | `/ui/engage` | `?value=true\|false` | `{"success": bool, "value": bool}` | Publish engage command directly |
 | 🔵 `POST` | `/ui/operation_mode` | `?auto=true\|false` | `{"success": bool, "auto": bool}` | Alias for engage; forwards as Bool |
@@ -296,7 +315,7 @@ camping_sites:
     ...
 ```
 
-Site names `B1`–`B13` map to `camping_site_1`–`camping_site_13` by the `B<N>` convention. Custom mappings can be provided via the `site_to_goal_key_map` node parameter.
+Site names `B1`–`B13` map to `camping_site_1`–`camping_site_13` by the `B<N>` convention. Custom mappings can be provided via the `site_to_mission_key_map` node parameter.
 
 ---
 
@@ -324,7 +343,7 @@ curl -X POST "http://localhost:8010/ui/destination?site=B3&run=true"
 # Watch what the backend publishes
 ros2 topic echo /planning/engage
 ros2 topic echo /goal_pose
-ros2 topic echo /planning/state_machine/goal_key
+ros2 topic echo /planning/mission_key
 ```
 
 ---
@@ -345,23 +364,23 @@ ros2 topic echo /planning/state_machine/goal_key
 
 `set_destination` validates against `site_names` (default: `B1`–`B13`). Unknown sites return `{"success": false, "message": "unknown site: X"}`.
 
-Add the site to `site_names` via node parameter and ensure the corresponding entry exists in `camping_sites.yaml`. If `camping_sites_yaml` is empty or missing, goal pose dispatch is skipped; only the goal key is published.
+Add the site to `site_names` via node parameter and ensure the corresponding entry exists in `camping_sites.yaml`. If `camping_sites_yaml` is empty or missing, `site_goal` dispatch is skipped; only the `mission_key` is published.
 
 </details>
 
 <details>
 <summary><strong>WAITING_FOR_READY never clears</strong></summary>
 
-The UI enters `WAITING_FOR_READY` when `engaged=true` but `ready=false`. `ready` is false when `/diagnostics_agg` has zero entries or at least one ERROR-level entry.
+The UI enters `WAITING_FOR_READY` when `engaged=true` but `ready=false`. `ready` is false when `/system/diagnostics_agg` has zero entries or at least one ERROR-level entry.
 
-Run `ros2 topic echo /system/diagnostics_agg` and look for `level: 2` entries. If `/diagnostics_agg` is empty, `camrod_system` may not be running: `ros2 node list | grep diagnostics_agg`.
+Run `ros2 topic echo /system/diagnostics_agg` and look for `level: 2` entries. If `/system/diagnostics_agg` is empty, `camrod_system` may not be running: `ros2 node list | grep diagnostics_agg`.
 
 </details>
 
 <details>
 <summary><strong>Wrong frontend build served</strong></summary>
 
-Resolution order: `CAMROD_UI_FRONTEND_DIR` env → source tree `runtime/assets/frontend/build` → installed `share/camrod_ui/assets/frontend/build` → `share/camrod_ui/assets/web`.
+Resolution order: `CAMROD_UI_FRONTEND_DIR` env → source tree `camrod_ui_robot/assets/frontend/build` → installed `share/camrod_ui/assets/frontend/build` → `share/camrod_ui/assets/web`.
 
 After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the `build/` directory exists in the expected location. Set `CAMROD_UI_FRONTEND_DIR=/absolute/path/to/build` to force a specific directory. If the installed path is stale after `colcon build`, run `colcon build --packages-select camrod_ui` again.
 
@@ -372,7 +391,20 @@ After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the 
 ## 🔗 Related Docs
 
 - [`../README.md`](../README.md) — Top-level CAMROD workspace overview
-- [`../camrod_system/README.md`](../camrod_system/README.md) — produces `/diagnostics_agg`
-- [`../camrod_planning/README.md`](../camrod_planning/README.md) — consumes `/planning/engage`, `/goal_pose`, `/planning/state_machine/goal_key`
+- [`../camrod_system/README.md`](../camrod_system/README.md) — produces `/system/diagnostics_agg`
+- [`../camrod_planning/README.md`](../camrod_planning/README.md) — consumes `/planning/engage`, `/goal_pose`, `/planning/mission_key`
 - [`../camrod_docking/README.md`](../camrod_docking/README.md) — camping site definitions used by destination dispatch
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: UI destination dispatch follows the mission/site/route naming contract.
+
+A camping-site button publishes semantic intent and raw site-center pose only once per button action. Planning owns snapping to lanelet route goals. Parking starts later from `PlanningState`, not directly from the UI button, so UI dispatch does not bypass Nav2 or the safety gates.
+
+| UI concept | ROS contract |
+|---|---|
+| Button destination | `PlanningMissionKey.mission_key` |
+| Site center | `/planning/goal_pose` / `/goal_pose` |
+| Lanelet snap route | produced by `camrod_planning` as `/planning/goal_pose_snapped_ros` (`geometry_msgs`) and `/planning/goal_pose_snapped` (`avg_msgs`) |
+| Parking phase | produced by `camrod_parking` status topics |

@@ -4,7 +4,8 @@
   <version>0.0.1</version>
   <description>Docking package for autonomous dock approach using AprilTag detection</description>
 
-  <maintainer email="you@todo.com">you</maintainer>
+  <!-- HH_260617: Replace placeholder maintainer metadata. -->
+  <maintainer email="hwanhong57@gmail.com">hong</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

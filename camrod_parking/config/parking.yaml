@@ -1,0 +1,112 @@
+/parking/site_maneuver:
+  ros__parameters:
+    # HH_260617: Parking controllers publish into the existing planning gate chain.
+    cmd_vel_topic: "/planning/cmd_vel_raw"
+    pose_topic: "/localization/pose"
+    # HH_260618: Raw site center comes from RViz/UI on /goal_pose.
+    # /planning/goal_pose_snapped_ros is the ROS-native lanelet route goal.
+    site_goal_topic: "/goal_pose"
+    route_goal_topic: "/planning/goal_pose_snapped_ros"
+    planning_state_topic: "/planning/state_machine/state"
+    diagnostics_topic: "/system/diagnostics"
+
+    enable_auto_start_from_planning_state: true
+    site_mission_key_prefix: "camping_site_"
+    use_goal_pair_for_lateral_offset: true
+    require_goal_pair_for_auto_start: true
+    # HH_260618: Operational campsite entry rotates at the lanelet-snap pose,
+    # reverses into the raw site center, then rotates 180deg before unload wait.
+    site_entry_mode: "reverse"
+    enable_manual_site_goal_auto_start: true
+    manual_site_min_offset_m: 1.0
+    camping_sites_yaml: ""
+    site_goal_frame_id: "map"
+    default_lateral_offset_m: 1.2
+    min_lateral_offset_m: 0.2
+    # HH_260618: Camping-site center can be ~6 m from the lanelet-snap pose;
+    # 3 m clipped the crab entry before reaching the selected site.
+    max_lateral_offset_m: 7.0
+    # HH_260618: Start crab entry only when the current pose is near the latest
+    # route_goal, so stale GOAL_REACHED cannot start parking during Nav2 approach.
+    route_goal_reached_distance_m: 0.9
+    # HH_260618: 0 disables time expiry; the pair remains valid until a new
+    # site/route goal replaces it, which is safer for long campsite approaches.
+    goal_pair_max_age_s: 0.0
+    default_lateral_direction: "left"
+
+    crab_speed_mps: 0.18
+    entry_position_tolerance_m: 0.15
+    return_position_tolerance_m: 0.18
+    # HH_260618: Sim/platform low-speed integration can be ~40% of raw parking
+    # cmd_vel after gates; use this only for timeout prediction.
+    crab_timeout_speed_scale: 0.4
+    crab_timeout_margin_s: 8.0
+    max_forward_residual_m: 0.8
+    rotate_kp: 1.2
+    max_angular_speed_radps: 0.35
+    rotate_yaw_tolerance_deg: 4.0
+    reverse_entry_speed_mps: 0.12
+    reverse_entry_yaw_kp: 1.0
+    reverse_entry_lateral_kp: -0.25
+    reverse_entry_max_angular_speed_radps: 0.25
+    unload_wait_s: 5.0
+    # HH_260618: Stay parked inside the campsite after unload by default.
+    # Return is triggered by /parking/site_maneuver/return or return_service.
+    auto_return_after_unload_wait: false
+    request_return_to_drop_zone_on_done: true
+    # HH_260618: Retry the mission return command until planning acknowledges
+    # RETURN_TO_DROP_ZONE/drop_zone; prevents one-shot topic timing loss.
+    return_request_retry_period_s: 1.0
+    # HH_260618: Low-speed site maneuver control loop reduced to lower CPU.
+    control_rate_hz: 10.0
+    # HH_260618: Idle parking node wakes at 1 Hz until a maneuver starts.
+    idle_tick_rate_hz: 1.0
+    # HH_260618: Diagnostics/status are throttled separately from control.
+    status_publish_rate_hz: 1.0
+
+/parking/drop_zone_parking:
+  ros__parameters:
+    # HH_260617: Reverse parking consumes BMS charging state from platform CAN bridge.
+    cmd_vel_topic: "/planning/cmd_vel_raw"
+    pose_topic: "/localization/pose"
+    charging_topic: "/platform/status/is_charging"
+    planning_state_topic: "/planning/state_machine/state"
+    diagnostics_topic: "/system/diagnostics"
+
+    drop_zones_yaml: ""
+    drop_zone_id: "drop_zone"
+    use_drop_zone_pose_as_station: true
+    station_x_m: 0.0
+    station_y_m: 0.0
+    station_yaw_deg: 0.0
+
+    enable_auto_start_from_planning_state: true
+    return_scenario_id: 2
+    return_mission_key: "drop_zone"
+    # HH_260618: drop_zones.yaml yaw is the desired robot rear/charger yaw.
+    # Align the robot front 180deg away so linear.x<0 reverses toward station.
+    rear_matches_station_yaw: true
+    # HH_260618: Choose the 180deg-equivalent robot yaw that keeps the station
+    # in front of the reverse axis for service starts and recovery starts.
+    auto_select_reverse_yaw_to_station: true
+    align_yaw_tolerance_deg: 5.0
+    align_yaw_kp: 1.2
+    align_max_angular_speed_radps: 0.35
+
+    reverse_speed_mps: 0.12
+    reverse_yaw_kp: 0.8
+    # HH_260617: Signed lateral gain allows field calibration if reverse steering sign differs.
+    reverse_lateral_kp: -0.25
+    reverse_max_angular_speed_radps: 0.22
+    max_reverse_distance_m: 1.5
+    max_reverse_duration_s: 30.0
+    require_station_ahead_for_reverse: true
+    station_ahead_tolerance_m: 0.25
+    stop_on_charging: true
+    complete_on_reverse_limit_without_charging: true
+    # HH_260618: Low-speed reverse parking control loop reduced to lower CPU.
+    control_rate_hz: 10.0
+    # HH_260618: Idle parking node wakes at 1 Hz until a maneuver starts.
+    idle_tick_rate_hz: 1.0
+    # HH_260618: Diagnostics/status are throttled separately from control.
+    status_publish_rate_hz: 1.0

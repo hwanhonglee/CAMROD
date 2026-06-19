@@ -38,3 +38,26 @@
     component_update_min_displacement_m: 0.5
     routing_location: "de"
     routing_participant: "vehicle:car"
+    # HH_260617: Snap only to the same traversable OccupancyGrid component
+    # as the current pose. This prevents Nav2 from receiving a lanelet-routing
+    # goal that is disconnected in the actual costmap raster.
+    restrict_to_cost_grid_component: true
+    allow_cost_grid_component_fallback: false
+    cost_grid_topic: "/map/cost_grid/lanelet"
+    cost_grid_block_threshold: 100
+
+    # HH_260618: RViz/UI goals are commands, not a waypoint queue. Publish the
+    # latest snapped goal immediately so Nav2 preempts older active goals.
+    # Enable this only for explicit waypoint smoke tests.
+    sequential_goal_release_enable: false
+    # HH_260618: If sequential mode is explicitly enabled, keep only the newest
+    # pending goal rather than following stale clicks in FIFO order.
+    sequential_goal_queue_policy: "replace_pending"
+    sequential_goal_reached_distance_m: 0.8
+    sequential_goal_stop_hold_s: 0.5
+    sequential_goal_duplicate_xy_eps_m: 0.20
+    sequential_goal_max_queue_size: 10
+    sequential_goal_status_topic: "/planning/navigate_to_pose/_action/status"
+    # HH_260618: Release queued waypoints only after Nav2 reports SUCCEEDED, not
+    # only after pose-distance arrival, to avoid BT topic-goal preemption.
+    sequential_goal_require_nav2_terminal: true

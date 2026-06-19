@@ -13,8 +13,10 @@ class Nav2SelectorLatchNode(Node):
 
         # HH_260528: Keep combo-level planner/controller choice sticky via transient-local QoS.
         self._planner_id = str(self.declare_parameter("planner_id", "NavFn").value).strip()
+        # HH_260618: Default to MPPI so normal autonomy uses local trajectory
+        # sampling against the local costmap instead of pure path tracking.
         self._controller_id = str(
-            self.declare_parameter("controller_id", "RPP").value
+            self.declare_parameter("controller_id", "MPPI").value
         ).strip()
         self._planner_topic = str(
             self.declare_parameter("planner_topic", "/planning/planner_selector").value
@@ -53,8 +55,16 @@ class Nav2SelectorLatchNode(Node):
 def main() -> None:
     rclpy.init()
     node = Nav2SelectorLatchNode()
-    rclpy.spin(node)
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        # HH_260617: Ctrl+C during launch shutdown should exit cleanly instead
+        # of printing a traceback and reporting this helper as a crashed process.
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

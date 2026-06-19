@@ -10,10 +10,16 @@ from typing import Dict, Optional
 
 import rclpy
 import yaml
+from avg_msgs.msg import (
+    PlanningMissionKey,
+    PlanningRecallRequest,
+    PlanningScenario,
+    PlanningState,
+)
 from avg_msgs.srv import RequestGoalByKey
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
-from std_msgs.msg import Bool, Int32, String
+from std_msgs.msg import Bool
 
 # HH_260528 Prefer status_msgs, fallback to diagnostic_msgs for robustness.
 try:
@@ -54,6 +60,25 @@ class PlanningStateMachineNode(Node):
     SCENARIO_RETURN_TO_DROP_ZONE = 2
     SCENARIO_RECALL_TO_SITE = 3
 
+    _SCENARIO_LABELS = {
+        SCENARIO_WAIT_DROP_ZONE: "WAIT_DROP_ZONE",
+        SCENARIO_DELIVERY_TO_SITE: "DELIVERY_TO_SITE",
+        SCENARIO_RETURN_TO_DROP_ZONE: "RETURN_TO_DROP_ZONE",
+        SCENARIO_RECALL_TO_SITE: "RECALL_TO_SITE",
+    }
+
+    _STATE_IDS = {
+        "INIT": PlanningState.INIT,
+        "READY": PlanningState.READY,
+        "WAIT_DZ": PlanningState.WAIT_DZ,
+        "RUNNING": PlanningState.RUNNING,
+        "GOAL_REACHED": PlanningState.GOAL_REACHED,
+        "RECALLED": PlanningState.RECALLED,
+        "RETURNING": PlanningState.RETURNING,
+        "WARN_RECOVERY": PlanningState.WARN_RECOVERY,
+        "ERROR_STOP": PlanningState.ERROR_STOP,
+    }
+
     # Implements `__init__` behavior.
     def __init__(self) -> None:
         super().__init__("planning_state_machine")
@@ -65,8 +90,13 @@ class PlanningStateMachineNode(Node):
         self.state_stale_timeout_s = float(
             self.declare_parameter("state_stale_timeout_s", 3.0).value
         )
-        self.pose_topic = str(self.declare_parameter("pose_topic", "/planning/lanelet_pose").value)
-        self.goal_topic = str(self.declare_parameter("goal_topic", "/planning/goal_pose").value)
+        # HH_260618: This Python node consumes ROS-native geometry_msgs poses.
+        # C++ planning nodes keep avg_msgs on /planning/lanelet_pose and
+        # /planning/goal_pose_snapped; use the *_ros mirrors here.
+        self.pose_topic = str(self.declare_parameter("pose_topic", "/planning/lanelet_pose_ros").value)
+        self.goal_topic = str(
+            self.declare_parameter("goal_topic", "/planning/goal_pose_snapped_ros").value
+        )
         # HH_260319 Mirror auto-goals to Nav2 ROS-facing goal topic if configured.
         self.goal_topic_ros = str(
             self.declare_parameter("goal_topic_ros", "/planning/goal_pose_snapped_ros").value
@@ -87,11 +117,17 @@ class PlanningStateMachineNode(Node):
                 "camping_site_recall_topic", "/planning/state_machine/camping_site_recall"
             ).value
         )
-        self.goal_key_topic = str(
-            self.declare_parameter("goal_key_topic", "/planning/state_machine/goal_key").value
+        self.mission_key_topic = str(
+            self.declare_parameter("mission_key_topic", "/planning/mission_key").value
         )
-        self.request_goal_service = str(
-            self.declare_parameter("request_goal_service", "/planning/state_machine/request_goal").value
+        # HH_260616: UI destination requests publish both mission_key and site_goal.
+        # This switch controls whether a mission_key publishes a route_goal directly, while the
+        # actual site-center site_goal still passes through goal_snapper before Nav2.
+        self.mission_key_publish_route_goal = bool(
+            self.declare_parameter("mission_key_publish_route_goal", True).value
+        )
+        self.request_mission_service = str(
+            self.declare_parameter("request_mission_service", "/planning/request_mission").value
         )
 
         # HH_260528 Scenario contract topics for UI.
@@ -111,11 +147,11 @@ class PlanningStateMachineNode(Node):
         )
         self.keypoints_yaml = str(self.declare_parameter("keypoints_yaml", "").value)
         self.camping_sites_yaml = str(self.declare_parameter("camping_sites_yaml", "").value)
-        self.startup_goal_key = str(self.declare_parameter("startup_goal_key", "drop_zone").value)
-        self.warn_goal_key = str(self.declare_parameter("warn_goal_key", "garage").value)
-        self.return_goal_key = str(self.declare_parameter("return_goal_key", "drop_zone").value)
-        self.default_recall_site_key = str(
-            self.declare_parameter("default_recall_site_key", "camping_site_1").value
+        self.startup_mission_key = str(self.declare_parameter("startup_mission_key", "drop_zone").value)
+        self.warn_mission_key = str(self.declare_parameter("warn_mission_key", "garage").value)
+        self.return_mission_key = str(self.declare_parameter("return_mission_key", "drop_zone").value)
+        self.default_recall_mission_key = str(
+            self.declare_parameter("default_recall_mission_key", "camping_site_1").value
         )
 
         self.auto_startup_goal = bool(self.declare_parameter("auto_startup_goal", True).value)
@@ -128,14 +164,28 @@ class PlanningStateMachineNode(Node):
         self.enable_auto_return_on_site_goal = bool(
             self.declare_parameter("enable_auto_return_on_site_goal", False).value
         )
-        self.site_goal_key_prefix = str(
-            self.declare_parameter("site_goal_key_prefix", "camping_site_").value
+        self.site_mission_key_prefix = str(
+            self.declare_parameter("site_mission_key_prefix", "camping_site_").value
         )
         self.goal_reached_dwell_s = float(
             self.declare_parameter("goal_reached_dwell_s", 10.0).value
         )
-        self.goal_key_match_distance_m = float(
-            self.declare_parameter("goal_key_match_distance_m", 1.5).value
+        self.mission_key_match_distance_m = float(
+            self.declare_parameter("mission_key_match_distance_m", 1.5).value
+        )
+        # HH_260618: Return-to-drop-zone goals can be lanelet-snap poses several
+        # meters away from the station keypoint. Preserve the semantic drop_zone
+        # key when an echoed/snap goal is still near the active return goal.
+        self.return_goal_key_preserve_distance_m = float(
+            self.declare_parameter("return_goal_key_preserve_distance_m", 5.0).value
+        )
+        # HH_260618: UI sends a semantic mission_key and a raw campsite center,
+        # then goal_snapper publishes the lanelet-snapped route_goal. The route
+        # goal is several meters from the campsite keypoint, so repeated/smoothed
+        # route_goal echoes must not clear active_mission_key before parking
+        # starts.
+        self.site_goal_key_preserve_distance_m = float(
+            self.declare_parameter("site_goal_key_preserve_distance_m", 2.0).value
         )
 
         # HH_260528 Scenario-2 completion gate.
@@ -152,6 +202,13 @@ class PlanningStateMachineNode(Node):
         self.goal_reached_distance_m = float(
             self.declare_parameter("goal_reached_distance_m", 0.8).value
         )
+        # HH_260618 - Return-to-drop-zone Nav2 success can stop slightly outside
+        # the generic route tolerance because centerline/lanelet pose and Nav2
+        # goal-checker pose are not identical. Keep campsite arrival tight while
+        # allowing the parking handoff to start after the return route succeeds.
+        self.return_goal_reached_distance_m = float(
+            self.declare_parameter("return_goal_reached_distance_m", 1.2).value
+        )
         self.loop_rate_hz = float(self.declare_parameter("loop_rate_hz", 5.0).value)
 
         self.keypoints: Dict[str, Keypoint] = {}
@@ -163,7 +220,7 @@ class PlanningStateMachineNode(Node):
         self.last_manual_goal: Optional[PoseStamped] = None
         self.active_goal: Optional[PoseStamped] = None
         self.active_goal_source: str = "none"
-        self.active_goal_key: str = ""
+        self.active_mission_key: str = ""
 
         self.state: str = "INIT"
         self.scenario_id: int = self.SCENARIO_WAIT_DROP_ZONE
@@ -173,7 +230,7 @@ class PlanningStateMachineNode(Node):
         self.recall_requested = False
         self.recall_target_key: str = ""
         self.recall_site_name: str = ""
-        self.last_recalled_site_key: str = ""
+        self.last_recalled_mission_key: str = ""
         self.docking_charging: bool = False
 
         self.prev_state_level: Optional[int] = None
@@ -183,29 +240,45 @@ class PlanningStateMachineNode(Node):
 
         self._last_goal_publish_time = self.get_clock().now()
         self._last_self_goal: Optional[PoseStamped] = None
+        self._pending_mission_key_request: str = ""
+        self._pending_mission_key_time = self.get_clock().now()
 
         self._goal_reached_since: Optional[rclpy.time.Time] = None
         self._goal_reached_latched = False
+        # HH_260618: Return-to-drop-zone completion must be published once as
+        # GOAL_REACHED/RETURN_TO_DROP_ZONE before switching to WAIT_DROP_ZONE so
+        # camrod_parking/drop_zone_parking can start its reverse-parking phase.
+        self._drop_zone_arrival_notified = False
 
         self.pub_goal = self.create_publisher(PoseStamped, self.goal_topic, 10)
         self.pub_goal_ros = None
         if self.goal_topic_ros and self.goal_topic_ros != self.goal_topic:
             self.pub_goal_ros = self.create_publisher(PoseStamped, self.goal_topic_ros, 10)
 
-        self.pub_state = self.create_publisher(String, self.state_topic, 10)
+        # HH_260617: Publish CAMROD semantic state/status messages instead of
+        # std_msgs/String/Int32 wrappers.
+        self.pub_state = self.create_publisher(PlanningState, self.state_topic, 10)
         self.pub_estop = self.create_publisher(Bool, self.estop_topic, 10)
         self.pub_diag = self.create_publisher(StatusArray, self.diag_topic, 10)
-        self.pub_mission_source = self.create_publisher(String, self.mission_source_topic, 10)
-        self.pub_scenario_id = self.create_publisher(Int32, self.scenario_id_topic, 10)
+        self.pub_mission_source = self.create_publisher(
+            PlanningMissionKey, self.mission_source_topic, 10
+        )
+        self.pub_scenario_id = self.create_publisher(PlanningScenario, self.scenario_id_topic, 10)
 
         self.create_subscription(StatusArray, self.state_status_topic, self._on_state, 10)
         self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
         self.create_subscription(PoseStamped, self.goal_topic, self._on_goal, 10)
         self.create_subscription(Bool, self.return_topic, self._on_return_to_drop_zone, 10)
-        self.create_subscription(String, self.recall_topic, self._on_camping_site_recall, 10)
-        self.create_subscription(String, self.goal_key_topic, self._on_goal_key_request, 10)
-        self.create_subscription(Int32, self.scenario_command_topic, self._on_scenario_command, 10)
-        self.create_service(RequestGoalByKey, self.request_goal_service, self._on_goal_key_service)
+        self.create_subscription(
+            PlanningRecallRequest, self.recall_topic, self._on_camping_site_recall, 10
+        )
+        self.create_subscription(
+            PlanningMissionKey, self.mission_key_topic, self._on_mission_key_request, 10
+        )
+        self.create_subscription(
+            PlanningScenario, self.scenario_command_topic, self._on_scenario_command, 10
+        )
+        self.create_service(RequestGoalByKey, self.request_mission_service, self._on_mission_key_service)
 
         if self.require_docking_for_idle:
             self.create_subscription(Bool, self.docking_status_topic, self._on_docking_status, 10)
@@ -223,8 +296,8 @@ class PlanningStateMachineNode(Node):
             f"recall={self.recall_topic} "
             f"scenario_cmd={self.scenario_command_topic} "
             f"scenario_id={self.scenario_id_topic} "
-            f"goal_key_topic={self.goal_key_topic} "
-            f"request_goal_service={self.request_goal_service} "
+            f"mission_key_topic={self.mission_key_topic} "
+            f"request_mission_service={self.request_mission_service} "
             f"keypoints={','.join(sorted(self.keypoints.keys()))}"
         )
 
@@ -359,11 +432,13 @@ class PlanningStateMachineNode(Node):
             if not module:
                 continue
             level = self._status_level_int(st.level)
-            prev = current_levels.get(module, self._ok_level)
-            if level > prev:
+            # HH_260617: Always record OK levels too. The previous logic only
+            # stored levels greater than OK, so once an ERROR was observed it
+            # never cleared when /system/diagnostics_agg returned to all OK.
+            prev = current_levels.get(module)
+            if prev is None or level > prev:
                 current_levels[module] = level
-        if current_levels:
-            self.module_levels = current_levels
+        self.module_levels = current_levels
 
     def _on_pose(self, msg: PoseStamped) -> None:
         self.last_pose = msg
@@ -377,7 +452,7 @@ class PlanningStateMachineNode(Node):
         dy = a.pose.position.y - b.pose.position.y
         return math.hypot(dx, dy)
 
-    def _match_goal_key(self, goal: PoseStamped) -> str:
+    def _match_mission_key(self, goal: PoseStamped) -> str:
         best_name = ""
         best_dist = float("inf")
         goal_frame = str(goal.header.frame_id).strip()
@@ -389,22 +464,22 @@ class PlanningStateMachineNode(Node):
             if d < best_dist:
                 best_dist = d
                 best_name = name
-        if best_name and best_dist <= self.goal_key_match_distance_m:
+        if best_name and best_dist <= self.mission_key_match_distance_m:
             return best_name
         return ""
 
     def _is_site_key(self, key: str) -> bool:
-        return bool(key) and key.startswith(self.site_goal_key_prefix) and not key.endswith("_road")
+        return bool(key) and key.startswith(self.site_mission_key_prefix) and not key.endswith("_road")
 
     def _default_site_key(self) -> str:
-        if self.default_recall_site_key in self.keypoints:
-            return self.default_recall_site_key
+        if self.default_recall_mission_key in self.keypoints:
+            return self.default_recall_mission_key
         site_keys = sorted(
             [k for k in self.keypoints.keys() if self._is_site_key(k)]
         )
         if site_keys:
             return site_keys[0]
-        return self.return_goal_key
+        return self.return_mission_key
 
     def _resolve_recall_target_key(self, site_name: str) -> str:
         site_name = site_name.strip()
@@ -422,6 +497,8 @@ class PlanningStateMachineNode(Node):
 
     def _set_scenario(self, scenario_id: int, reason: str) -> None:
         scenario_id = int(scenario_id)
+        if scenario_id != self.SCENARIO_WAIT_DROP_ZONE:
+            self._drop_zone_arrival_notified = False
         if scenario_id == self.scenario_id:
             return
         self.scenario_id = scenario_id
@@ -431,34 +508,75 @@ class PlanningStateMachineNode(Node):
         if self._last_self_goal is not None and self._dist_xy(self._last_self_goal, msg) < 0.02:
             return
 
+        matched_mission_key = self._match_mission_key(msg)
+        # HH_260616: A camping-site center can be several meters away from the
+        # lanelet-snapped route_goal. If a mission_key request just preceded this
+        # route_goal, keep that semantic key instead of clearing active_mission_key.
+        if not matched_mission_key and self._pending_mission_key_request:
+            pending_age_s = (
+                self.get_clock().now() - self._pending_mission_key_time
+            ).nanoseconds / 1e9
+            if pending_age_s <= 3.0:
+                matched_mission_key = self._pending_mission_key_request
+            self._pending_mission_key_request = ""
+        if (
+            not matched_mission_key
+            and self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE
+            and self.active_mission_key == self.return_mission_key
+            and self.active_goal is not None
+            and self._dist_xy(self.active_goal, msg) <= self.return_goal_key_preserve_distance_m
+        ):
+            # HH_260618: Do not let a near-identical route-goal echo clear the
+            # drop_zone mission key; drop_zone_parking depends on this semantic key.
+            matched_mission_key = self.return_mission_key
+        if (
+            not matched_mission_key
+            and self._is_site_key(self.active_mission_key)
+            and self.active_goal is not None
+            and self._dist_xy(self.active_goal, msg) <= self.site_goal_key_preserve_distance_m
+        ):
+            # HH_260618: Preserve campsite semantic ownership for duplicate or
+            # near-identical snapped route goals. camrod_parking/site_maneuver
+            # starts from PlanningState.GOAL_REACHED + camping_site_*.
+            matched_mission_key = self.active_mission_key
+
         self.last_manual_goal = msg
         self.active_goal = msg
         self.active_goal_source = "manual"
-        self.active_goal_key = self._match_goal_key(msg)
+        self.active_mission_key = matched_mission_key
         self.startup_goal_sent = True
         self.return_requested = False
         self.recall_requested = False
         self._goal_reached_since = None
         self._goal_reached_latched = False
+        self._drop_zone_arrival_notified = False
 
-        if self._is_site_key(self.active_goal_key):
+        if self._is_site_key(self.active_mission_key):
             self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "manual_site_goal")
+        elif self.active_mission_key == self.return_mission_key:
+            self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "manual_return_goal")
+        else:
+            # HH_260618: A fresh unmatched manual/UI goal must enter a driving
+            # scenario instead of leaving stale WAIT_DZ/RETURN_TO_DROP_ZONE state.
+            # Otherwise the state output and route ownership can disagree with
+            # the operator's latest goal.
+            self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "manual_goal")
 
     def _on_return_to_drop_zone(self, msg: Bool) -> None:
         if not msg.data:
             return
         self.return_requested = True
-        if self._publish_auto_goal(self.return_goal_key, "return_request", force=True):
+        if self._publish_auto_goal(self.return_mission_key, "return_request", force=True):
             self.return_requested = False
             self.warn_goal_sent = False
             self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "return_topic")
 
-    def _on_camping_site_recall(self, msg: String) -> None:
-        site_name = msg.data.strip()
+    def _on_camping_site_recall(self, msg: PlanningRecallRequest) -> None:
+        site_name = msg.site_name.strip()
         target_key = self._resolve_recall_target_key(site_name)
         self.recall_target_key = target_key
         self.recall_site_name = site_name
-        self.last_recalled_site_key = site_name or self.last_recalled_site_key
+        self.last_recalled_mission_key = site_name or self.last_recalled_mission_key
         self.recall_requested = True
 
         if self._publish_auto_goal(target_key, f"recall:{site_name or 'unspecified'}", force=True):
@@ -466,8 +584,8 @@ class PlanningStateMachineNode(Node):
             self.warn_goal_sent = False
             self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "recall_topic")
 
-    def _on_scenario_command(self, msg: Int32) -> None:
-        requested = int(msg.data)
+    def _on_scenario_command(self, msg: PlanningScenario) -> None:
+        requested = int(msg.scenario_id)
         if requested not in (
             self.SCENARIO_WAIT_DROP_ZONE,
             self.SCENARIO_DELIVERY_TO_SITE,
@@ -478,7 +596,7 @@ class PlanningStateMachineNode(Node):
             return
 
         if requested == self.SCENARIO_DELIVERY_TO_SITE:
-            site_key = self.active_goal_key if self._is_site_key(self.active_goal_key) else self._default_site_key()
+            site_key = self.active_mission_key if self._is_site_key(self.active_mission_key) else self._default_site_key()
             if self._publish_auto_goal(site_key, "scenario:1", force=True):
                 self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "scenario_command")
                 self.return_requested = False
@@ -486,7 +604,7 @@ class PlanningStateMachineNode(Node):
             return
 
         if requested == self.SCENARIO_RECALL_TO_SITE:
-            site_name = self.last_recalled_site_key or self._default_site_key()
+            site_name = self.last_recalled_mission_key or self._default_site_key()
             target_key = self._resolve_recall_target_key(site_name)
             if self._publish_auto_goal(target_key, f"scenario:3:{site_name}", force=True):
                 self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "scenario_command")
@@ -496,7 +614,7 @@ class PlanningStateMachineNode(Node):
 
         if requested == self.SCENARIO_RETURN_TO_DROP_ZONE:
             self.return_requested = True
-            if self._publish_auto_goal(self.return_goal_key, "scenario:2", force=True):
+            if self._publish_auto_goal(self.return_mission_key, "scenario:2", force=True):
                 self.return_requested = False
                 self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "scenario_command")
             return
@@ -509,7 +627,7 @@ class PlanningStateMachineNode(Node):
         else:
             # HH_260528 If not at drop-zone yet, command 0 means return first.
             self.return_requested = True
-            if self._publish_auto_goal(self.return_goal_key, "scenario:0_to_return", force=True):
+            if self._publish_auto_goal(self.return_mission_key, "scenario:0_to_return", force=True):
                 self.return_requested = False
                 self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "scenario0_requires_return")
 
@@ -552,29 +670,49 @@ class PlanningStateMachineNode(Node):
         self._last_goal_publish_time = now
         self.active_goal = msg
         self.active_goal_source = source
-        self.active_goal_key = key_name
+        self.active_mission_key = key_name
         self.startup_goal_sent = True
         self._goal_reached_since = None
         self._goal_reached_latched = False
+        self._drop_zone_arrival_notified = False
         return True
 
-    def _on_goal_key_request(self, msg: String) -> None:
-        key_name = msg.data.strip()
+    def _on_mission_key_request(self, msg: PlanningMissionKey) -> None:
+        key_name = msg.mission_key.strip()
         if not key_name:
-            self.get_logger().warn("received empty goal-key request on topic")
+            self.get_logger().warn("received empty mission-key request on topic")
             return
 
-        if self._publish_auto_goal(key_name, f"key_topic:{key_name}", force=True):
+        if not self.mission_key_publish_route_goal:
+            if key_name not in self.keypoints:
+                self.get_logger().warn(f"keypoint '{key_name}' not found")
+                return
+            self.active_mission_key = key_name
+            self._pending_mission_key_request = key_name
+            self._pending_mission_key_time = self.get_clock().now()
             self.return_requested = False
             self.recall_requested = False
             self.warn_goal_sent = False
             if self._is_site_key(key_name):
-                self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "goal_key_topic")
-            elif key_name == self.return_goal_key:
-                self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "goal_key_return")
-            self.get_logger().info(f"published goal from key request topic: {key_name}")
+                self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "mission_key_topic")
+            elif key_name == self.return_mission_key:
+                self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "mission_key_return")
+            self.get_logger().info(
+                f"accepted mission key without direct route_goal publish: {key_name}"
+            )
+            return
 
-    def _on_goal_key_service(
+        if self._publish_auto_goal(key_name, f"mission_key:{key_name}", force=True):
+            self.return_requested = False
+            self.recall_requested = False
+            self.warn_goal_sent = False
+            if self._is_site_key(key_name):
+                self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "mission_key_topic")
+            elif key_name == self.return_mission_key:
+                self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "mission_key_return")
+            self.get_logger().info(f"published route_goal from mission key request: {key_name}")
+
+    def _on_mission_key_service(
         self, request: RequestGoalByKey.Request, response: RequestGoalByKey.Response
     ) -> RequestGoalByKey.Response:
         key_name = request.key.strip()
@@ -604,41 +742,61 @@ class PlanningStateMachineNode(Node):
             self.recall_requested = False
             self.warn_goal_sent = False
             if self._is_site_key(key_name):
-                self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "goal_key_service")
-            elif key_name == self.return_goal_key:
-                self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "goal_key_service_return")
-            response.message = f"goal published for key: {key_name}"
+                self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "mission_key_service")
+            elif key_name == self.return_mission_key:
+                self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "mission_key_service_return")
+            response.message = f"route_goal published for mission_key: {key_name}"
             response.goal_pose = goal_pose
-            self.get_logger().info(f"published goal from key request service: {key_name}")
+            self.get_logger().info(f"published route_goal from mission_key service: {key_name}")
         else:
-            response.message = f"goal publish throttled for key: {key_name}"
+            response.message = f"route_goal publish throttled for mission_key: {key_name}"
         return response
 
-    def _goal_reached(self) -> bool:
+    def _active_goal_distance(self) -> Optional[float]:
         if self.last_pose is None or self.active_goal is None:
-            return False
+            return None
         if self.last_pose.header.frame_id and self.active_goal.header.frame_id:
             if self.last_pose.header.frame_id != self.active_goal.header.frame_id:
-                return False
-        return self._dist_xy(self.last_pose, self.active_goal) <= self.goal_reached_distance_m
+                return None
+        return self._dist_xy(self.last_pose, self.active_goal)
+
+    def _goal_reached(self, distance_m: Optional[float] = None) -> bool:
+        distance = self._active_goal_distance()
+        if distance is None:
+            return False
+        if distance_m is None:
+            distance_m = self.goal_reached_distance_m
+        return distance <= float(distance_m)
+
+    def _active_goal_reached_distance_m(self) -> float:
+        # HH_260618 - Use a wider handoff threshold only for the return route.
+        if self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE:
+            return self.return_goal_reached_distance_m
+        return self.goal_reached_distance_m
+
+    def _return_keypoint_reached(self) -> bool:
+        if self.last_pose is None:
+            return False
+        return_kp = self.keypoints.get(self.return_mission_key)
+        if return_kp is None:
+            return False
+        pseudo_goal = PoseStamped()
+        pseudo_goal.header.frame_id = return_kp.frame_id
+        pseudo_goal.pose.position.x = return_kp.x
+        pseudo_goal.pose.position.y = return_kp.y
+        pseudo_goal.pose.position.z = return_kp.z
+        if self.last_pose.header.frame_id != pseudo_goal.header.frame_id:
+            return False
+        return self._dist_xy(self.last_pose, pseudo_goal) <= self.return_goal_reached_distance_m
 
     def _drop_zone_arrived_with_condition(self) -> bool:
-        if self.active_goal_key != self.return_goal_key and self.last_pose is not None:
-            # If goal key is unknown/manual, still allow by geometric check near return keypoint.
-            return_kp = self.keypoints.get(self.return_goal_key)
-            if return_kp is not None:
-                pseudo_goal = PoseStamped()
-                pseudo_goal.header.frame_id = return_kp.frame_id
-                pseudo_goal.pose.position.x = return_kp.x
-                pseudo_goal.pose.position.y = return_kp.y
-                pseudo_goal.pose.position.z = return_kp.z
-                if self.last_pose.header.frame_id == pseudo_goal.header.frame_id:
-                    if self._dist_xy(self.last_pose, pseudo_goal) > self.goal_reached_distance_m:
-                        return False
-                else:
-                    return False
+        if self.active_mission_key != self.return_mission_key:
+            # HH_260618 - If the semantic key was lost, still allow drop-zone
+            # completion by geometry near the configured return keypoint.
+            if not self._return_keypoint_reached():
+                return False
         else:
-            if not self._goal_reached():
+            if not self._goal_reached(self.return_goal_reached_distance_m):
                 return False
 
         if self.require_docking_for_idle and not self.docking_charging:
@@ -646,17 +804,35 @@ class PlanningStateMachineNode(Node):
         return True
 
     def _publish_state_outputs(self, estop: bool) -> None:
-        s = String()
-        s.data = self.state
-        self.pub_state.publish(s)
+        now_msg = self.get_clock().now().to_msg()
 
-        m = String()
-        m.data = self.active_goal_source
-        self.pub_mission_source.publish(m)
+        state_msg = PlanningState()
+        state_msg.header.stamp = now_msg
+        state_msg.header.frame_id = "map"
+        state_msg.state = int(self._STATE_IDS.get(self.state, PlanningState.READY))
+        state_msg.label = self.state
+        state_msg.scenario_id = int(self.scenario_id)
+        state_msg.scenario_label = self._SCENARIO_LABELS.get(self.scenario_id, "UNKNOWN")
+        state_msg.active_mission_key = self.active_mission_key
+        state_msg.active_goal_source = self.active_goal_source
+        state_msg.estop = bool(estop)
+        state_msg.return_requested = bool(self.return_requested)
+        state_msg.recall_requested = bool(self.recall_requested)
+        self.pub_state.publish(state_msg)
 
-        sid = Int32()
-        sid.data = int(self.scenario_id)
-        self.pub_scenario_id.publish(sid)
+        mission_msg = PlanningMissionKey()
+        mission_msg.header.stamp = now_msg
+        mission_msg.mission_key = self.active_mission_key
+        mission_msg.source = self.active_goal_source
+        mission_msg.publish_route_goal = bool(self.mission_key_publish_route_goal)
+        self.pub_mission_source.publish(mission_msg)
+
+        scenario_msg = PlanningScenario()
+        scenario_msg.header.stamp = now_msg
+        scenario_msg.scenario_id = int(self.scenario_id)
+        scenario_msg.label = self._SCENARIO_LABELS.get(self.scenario_id, "UNKNOWN")
+        scenario_msg.source = self.active_goal_source
+        self.pub_scenario_id.publish(scenario_msg)
 
         b = Bool()
         b.data = bool(estop)
@@ -680,10 +856,23 @@ class PlanningStateMachineNode(Node):
         st.values.append(KeyValue(key="state", value=self.state))
         st.values.append(KeyValue(key="scenario_id", value=str(self.scenario_id)))
         st.values.append(KeyValue(key="active_goal_source", value=self.active_goal_source))
-        st.values.append(KeyValue(key="active_goal_key", value=self.active_goal_key))
+        st.values.append(KeyValue(key="active_mission_key", value=self.active_mission_key))
+        active_goal_distance = self._active_goal_distance()
+        st.values.append(
+            KeyValue(
+                key="active_goal_distance_m",
+                value="none" if active_goal_distance is None else f"{active_goal_distance:.2f}",
+            )
+        )
+        st.values.append(
+            KeyValue(
+                key="active_goal_reached_distance_m",
+                value=f"{self._active_goal_reached_distance_m():.2f}",
+            )
+        )
         st.values.append(KeyValue(key="return_requested", value=str(self.return_requested).lower()))
         st.values.append(KeyValue(key="recall_requested", value=str(self.recall_requested).lower()))
-        st.values.append(KeyValue(key="return_goal_key", value=self.return_goal_key))
+        st.values.append(KeyValue(key="return_mission_key", value=self.return_mission_key))
         st.values.append(
             KeyValue(
                 key="active_goal_xy",
@@ -721,23 +910,23 @@ class PlanningStateMachineNode(Node):
                 self._set_scenario(self.SCENARIO_RECALL_TO_SITE, "recall_retry")
         elif self.return_requested:
             self.state = "RETURNING"
-            if self._publish_auto_goal(self.return_goal_key, "return_request"):
+            if self._publish_auto_goal(self.return_mission_key, "return_request"):
                 self.return_requested = False
                 self.warn_goal_sent = False
                 self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "return_retry")
         elif level == self._warn_level:
             self.state = "WARN_RECOVERY"
             if self.auto_warn_recovery_goal and not self.warn_goal_sent:
-                if self._publish_auto_goal(self.warn_goal_key, "warn_recovery"):
+                if self._publish_auto_goal(self.warn_mission_key, "warn_recovery"):
                     self.warn_goal_sent = True
         else:
             if self.auto_startup_goal and not self.startup_goal_sent:
-                if self._publish_auto_goal(self.startup_goal_key, "startup"):
+                if self._publish_auto_goal(self.startup_mission_key, "startup"):
                     self.startup_goal_sent = True
-                    if self.startup_goal_key == self.return_goal_key:
+                    if self.startup_mission_key == self.return_mission_key:
                         self._set_scenario(self.SCENARIO_WAIT_DROP_ZONE, "startup_goal")
 
-            goal_reached = self._goal_reached()
+            goal_reached = self._goal_reached(self._active_goal_reached_distance_m())
             if goal_reached:
                 if not self._goal_reached_latched:
                     self._goal_reached_latched = True
@@ -752,21 +941,32 @@ class PlanningStateMachineNode(Node):
                 goal_reached
                 and self.enable_auto_return_on_site_goal
                 and self.scenario_id in (self.SCENARIO_DELIVERY_TO_SITE, self.SCENARIO_RECALL_TO_SITE)
-                and self._is_site_key(self.active_goal_key)
+                and self._is_site_key(self.active_mission_key)
             ):
                 dwell_elapsed_s = 0.0
                 if self._goal_reached_since is not None:
                     dwell_elapsed_s = (now - self._goal_reached_since).nanoseconds / 1e9
                 if dwell_elapsed_s >= self.goal_reached_dwell_s:
-                    if self._publish_auto_goal(self.return_goal_key, "auto_return"):
+                    if self._publish_auto_goal(self.return_mission_key, "auto_return"):
                         self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "auto_return")
                         self.state = "RETURNING"
 
             # HH_260528 Scenario 2 completion: arrive drop-zone (+ optional docking).
+            drop_zone_arrival_announced = False
             if self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE and self._drop_zone_arrived_with_condition():
-                self._set_scenario(self.SCENARIO_WAIT_DROP_ZONE, "drop_zone_arrived")
+                if not self._drop_zone_arrival_notified:
+                    # HH_260618: Publish one explicit GOAL_REACHED return-state
+                    # sample before idling; drop_zone_parking uses this as the
+                    # automatic reverse-parking trigger.
+                    self.state = "GOAL_REACHED"
+                    self._drop_zone_arrival_notified = True
+                    drop_zone_arrival_announced = True
+                else:
+                    self._set_scenario(self.SCENARIO_WAIT_DROP_ZONE, "drop_zone_arrived")
 
-            if self.scenario_id == self.SCENARIO_WAIT_DROP_ZONE:
+            if drop_zone_arrival_announced:
+                pass
+            elif self.scenario_id == self.SCENARIO_WAIT_DROP_ZONE:
                 self.state = "WAIT_DZ"
             elif goal_reached:
                 self.state = "GOAL_REACHED"

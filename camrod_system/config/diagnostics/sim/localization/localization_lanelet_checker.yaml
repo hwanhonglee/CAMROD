@@ -1,0 +1,12 @@
+# HH_260617: Sim centerline snapping can run below the nominal hardware rate
+# while still being sufficient for planning/control smoke tests.
+/system/localization_lanelet_checker:
+  ros__parameters:
+    publish_rate_hz: 1.0
+    lanelet_topic: "/localization/centerline_pose"
+    expected_hz: 10.0
+    hz_warn_ratio: 0.5
+    hz_error_ratio: 0.2
+    stale_timeout_s: 2.0
+    cov_warn_threshold: 10.0
+    cov_error_threshold: 100.0

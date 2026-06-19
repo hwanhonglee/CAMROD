@@ -9,6 +9,8 @@
 #   Fallback odom : odom_fallback_topic param (default /rmp401/odom for substitute platform).
 #   Actuator state: /actuator_state -> /platform/status/wheel (CAN 0x281/0x271, id-based).
 #   System state  : /system_state  -> /platform/status/estop  (CAN 0x211).
+#   HH_260617: Battery state : /battery_state -> /platform/status/battery_state and /docking/is_charging
+#                   (BMS CAN 0x361 current-based charger contact).
 
 import os
 import yaml

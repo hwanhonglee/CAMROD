@@ -1,17 +1,20 @@
 <!-- PlannerSelector-enabled BT (SIM profile).
-  - Default planner: NavFn
-  - Default controller: RPP
-  - Optional controller: DWB
+  - Default planner: SmacLattice
+  - Default controller: MPPI
+  - Optional controllers: RPP, DWB, Graceful, RotationShim
   - Switch planner by publishing std_msgs/String to /planning/planner_selector
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
-      <PipelineSequence name="NavigateWithReplanning">
+      <PipelineSequence name="NavigateGoalLocked">
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
-        <PlannerSelector selected_planner="{selected_planner}" default_planner="NavFn" topic_name="/planning/planner_selector"/>
-        <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector"/>
-        <RateController hz="3.0">
+        <!-- HH_260618: Keep SIM-grid BT default aligned with the curvature-preserving route default. -->
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="SmacLattice" topic_name="/planning/planner_selector"/>
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="MPPI" topic_name="/planning/controller_selector"/>
+        <!-- HH_260619 - Keep the SIM global route fixed per goal; local path
+             updates remain continuous through /planning/local_path slicing. -->
+        <GoalUpdatedController>
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
             <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="{selected_planner}"/>
             <Sequence name="ClearGlobalCostmapAndSettle-Context">
@@ -20,7 +23,7 @@
               <Wait wait_duration="0.4"/>
             </Sequence>
           </RecoveryNode>
-        </RateController>
+        </GoalUpdatedController>
         <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">
           <FollowPath path="{path}" controller_id="{selected_controller}"/>

@@ -30,6 +30,12 @@ public:
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     global_path_topic_ =
       declare_parameter<std::string>("global_path_topic", "/planning/global_path");
+    // HH_260619 - Prefer the actual published route by default. Nav2 SmoothPath
+    // is used inside the BT blackboard here and must not be assumed to publish
+    // a stable /planning/plan_smoothed topic.
+    fallback_global_path_topic_ =
+      declare_parameter<std::string>("fallback_global_path_topic", "");
+    preferred_path_hold_s_ = declare_parameter<double>("preferred_path_hold_s", 1.0);
     // HH_260316-00:00 Default to lanelet-snapped pose to keep local path aligned to centerline.
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/planning/lanelet_pose");
     output_topic_ = declare_parameter<std::string>("output_topic", "/planning/local_path");
@@ -42,6 +48,13 @@ public:
     controller_path_topic_ = declare_parameter<std::string>(
       "controller_path_topic", "/planning/local_path_controller");
     controller_path_timeout_s_ = declare_parameter<double>("controller_path_timeout_s", 0.8);
+    // HH_260618: A newly clicked goal must immediately drive /planning/local_path
+    // from the latest global path slice. Otherwise a still-fresh controller path
+    // from the previous goal can keep route-heading alignment facing the old route.
+    controller_path_reset_on_global_path_change_ =
+      declare_parameter<bool>("controller_path_reset_on_global_path_change", true);
+    controller_path_reset_hold_s_ =
+      declare_parameter<double>("controller_path_reset_hold_s", 0.4);
     publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
     planning_status_topic_ =
       declare_parameter<std::string>("planning_status_topic", "/planning/status");
@@ -87,7 +100,16 @@ public:
     auto local_path_qos = rclcpp::QoS(1).reliable();
     sub_global_path_ = create_subscription<avg_msgs::msg::Path>(
       global_path_topic_, global_path_qos,
-      std::bind(&LocalPathExtractorNode::onGlobalPath, this, std::placeholders::_1));
+      [this](const avg_msgs::msg::Path::ConstSharedPtr msg) {
+        onGlobalPath(msg, true);
+      });
+    if (!fallback_global_path_topic_.empty() && fallback_global_path_topic_ != global_path_topic_) {
+      sub_fallback_global_path_ = create_subscription<avg_msgs::msg::Path>(
+        fallback_global_path_topic_, global_path_qos,
+        [this](const avg_msgs::msg::Path::ConstSharedPtr msg) {
+          onGlobalPath(msg, false);
+        });
+    }
     sub_pose_ = create_subscription<avg_msgs::msg::PoseStamped>(
       pose_topic_, pose_qos,
       std::bind(&LocalPathExtractorNode::onPose, this, std::placeholders::_1));
@@ -109,10 +131,14 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "local_path_extractor: source=%s global=%s pose=%s controller=%s output=%s frame=%s lookahead=%.1fm lookbehind=%.1fm",
-      local_path_source_.c_str(), global_path_topic_.c_str(), pose_topic_.c_str(),
+      "local_path_extractor: source=%s global=%s fallback=%s pose=%s controller=%s output=%s frame=%s lookahead=%.1fm lookbehind=%.1fm controller_reset=%s hold=%.2fs",
+      local_path_source_.c_str(), global_path_topic_.c_str(),
+      fallback_global_path_topic_.empty() ? "<disabled>" : fallback_global_path_topic_.c_str(),
+      pose_topic_.c_str(),
       controller_path_topic_.c_str(), output_topic_.c_str(), frame_id_.c_str(),
-      lookahead_distance_m_, lookbehind_distance_m_);
+      lookahead_distance_m_, lookbehind_distance_m_,
+      controller_path_reset_on_global_path_change_ ? "true" : "false",
+      controller_path_reset_hold_s_);
   }
 
 private:
@@ -206,10 +232,21 @@ private:
   }
 
   // Handles the `onGlobalPath` callback.
-  void onGlobalPath(const avg_msgs::msg::Path::ConstSharedPtr msg)
+  void onGlobalPath(const avg_msgs::msg::Path::ConstSharedPtr msg, bool preferred_source)
   {
+    const auto rx_time = now();
+    const bool preferred_is_fresh =
+      last_preferred_path_rx_.nanoseconds() > 0 &&
+      preferred_path_hold_s_ > 0.0 &&
+      (rx_time - last_preferred_path_rx_).seconds() < preferred_path_hold_s_;
+
     if (!msg || msg->poses.empty()) {
+      if (!preferred_source && global_path_from_preferred_ && preferred_is_fresh) {
+        return;
+      }
       has_global_path_ = false;
+      has_controller_path_ = false;
+      latest_controller_path_.poses.clear();
       publishEmptyPath();
       return;
     }
@@ -225,11 +262,36 @@ private:
       route_changed = (first_delta > 2.0) || (last_delta > 2.0);
     }
 
+    // HH_260619 - If a preferred/fallback pair is configured, keep a recent
+    // preferred route from being overwritten by a stale fallback route. The
+    // default configuration uses only /planning/global_path.
+    if (!preferred_source && global_path_from_preferred_ && preferred_is_fresh && !route_changed) {
+      return;
+    }
+
     global_path_ = *msg;
     if (global_path_.header.frame_id.empty()) {
       global_path_.header.frame_id = frame_id_;
     }
     has_global_path_ = true;
+    global_path_from_preferred_ = preferred_source;
+    if (preferred_source) {
+      last_preferred_path_rx_ = rx_time;
+    }
+    if (route_changed && controller_path_reset_on_global_path_change_) {
+      // HH_260618: Force the first local path after a new goal to come from the
+      // updated global path, then allow Nav2's controller-local path once it has
+      // had time to recompute against the new goal.
+      has_controller_path_ = false;
+      latest_controller_path_.poses.clear();
+      last_controller_path_rx_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
+      const double hold_s = std::max(0.0, controller_path_reset_hold_s_);
+      controller_path_ignore_until_ = rx_time + rclcpp::Duration::from_seconds(hold_s);
+      RCLCPP_INFO(
+        get_logger(),
+        "local_path_extractor: reset controller path for new %s route; hold=%.2fs",
+        preferred_source ? "smoothed" : "fallback", hold_s);
+    }
     // HH_260306-00:00 Any valid new global path re-enables local path publishing.
     route_completed_latched_ = false;
     // HH_260305-00:00 Keep continuity across frequent replans on the same route.
@@ -268,9 +330,17 @@ private:
     if (!msg || msg->poses.empty()) {
       return;
     }
+    const auto now_time = now();
+    if (
+      controller_path_reset_on_global_path_change_ &&
+      controller_path_ignore_until_.nanoseconds() > 0 &&
+      now_time < controller_path_ignore_until_)
+    {
+      return;
+    }
     latest_controller_path_ = *msg;
     has_controller_path_ = true;
-    last_controller_path_rx_ = now();
+    last_controller_path_rx_ = now_time;
     if (publish_on_input_update_ && has_pose_ && has_global_path_) {
       onTimer();
     }
@@ -280,6 +350,13 @@ private:
   bool transformControllerPathToMap(avg_msgs::msg::Path & out) const
   {
     if (!has_controller_path_ || latest_controller_path_.poses.size() < 2) {
+      return false;
+    }
+    if (
+      controller_path_reset_on_global_path_change_ &&
+      controller_path_ignore_until_.nanoseconds() > 0 &&
+      now() < controller_path_ignore_until_)
+    {
       return false;
     }
     if (controller_path_timeout_s_ > 0.0 && last_controller_path_rx_.nanoseconds() > 0) {
@@ -737,6 +814,7 @@ private:
   bool enabled_{true};
   std::string frame_id_{"map"};
   std::string global_path_topic_;
+  std::string fallback_global_path_topic_;
   std::string pose_topic_;
   std::string output_topic_;
   std::string local_path_source_;
@@ -759,6 +837,9 @@ private:
   double pose_timeout_s_{1.0};
   double empty_republish_period_s_{0.5};
   double controller_path_timeout_s_{0.8};
+  bool controller_path_reset_on_global_path_change_{true};
+  double controller_path_reset_hold_s_{0.4};
+  double preferred_path_hold_s_{1.0};
   bool publish_empty_on_invalid_{true};
   bool global_path_qos_transient_local_{false};
 
@@ -772,12 +853,16 @@ private:
   bool route_completed_latched_{false};
   bool has_controller_path_{false};
   bool last_output_empty_{true};
+  bool global_path_from_preferred_{false};
   rclcpp::Time last_pose_rx_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_preferred_path_rx_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_controller_path_rx_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time controller_path_ignore_until_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_empty_publish_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_pose_;
   rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr sub_global_path_;
+  rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr sub_fallback_global_path_;
   rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr sub_controller_path_;
   rclcpp::Publisher<avg_msgs::msg::Path>::SharedPtr pub_local_path_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;

@@ -61,11 +61,14 @@
     # Per-stream transient_local QoS flags for grid subscribers.
     grid_qos_transient_locals: [true, true, true]
     # Per-stream sampling strides.
-    sample_strides: [1, 2, 2]
+    # HH_260618: Cost-grid markers are RViz-only; decimate all streams to reduce load.
+    sample_strides: [2, 2, 2]
     # Per-stream minimum publish intervals (seconds).
-    min_publish_periods_s: [0.02, 0.03, 0.03]
+    # HH_260618: Throttle marker conversion; source OccupancyGrid topics remain unchanged.
+    min_publish_periods_s: [0.20, 0.20, 0.20]
     # Per-stream periodic republish intervals (seconds).
-    republish_periods_s: [0.20, 0.12, 0.12]
+    # HH_260618: Disable timer republish because transient_local + input updates are enough.
+    republish_periods_s: [0.0, 0.0, 0.0]
     # Per-stream stale timeouts (seconds). 0 disables stale clear.
     stale_timeouts_s: [0.0, 0.0, 0.0]
     # Per-stream behavior on empty input grids.

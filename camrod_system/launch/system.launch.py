@@ -33,6 +33,8 @@ CHECKER_NODE_SPECS = (
     ("planning", "planning_costmap_checker_node", "planning_costmap_checker", "planning_costmap_checker.yaml"),
     ("planning", "planning_nav_status_checker_node", "planning_nav_status_checker", "planning_nav_status_checker.yaml"),
     ("planning", "planning_path_checker_node", "planning_path_checker", "planning_path_checker.yaml"),
+    # HH_260617: PlanningState semantic health is checked as part of system readiness.
+    ("planning", "planning_state_checker_node", "planning_state_checker", "planning_state_checker.yaml"),
 )
 
 
@@ -44,17 +46,34 @@ def _as_bool(value: str) -> bool:
     return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
-def _checker_node(config_dir: str, category: str, executable: str, name: str, param_file: str) -> Node:
+def _profile_param_file(config_dir: str, default_dir: str, category: str, param_file: str) -> str:
+    # HH_260617: Diagnostics profiles may override only the files they need.
+    # Missing profile files fall back to `default` so sim can relax hardware-only
+    # checks without duplicating every checker configuration.
+    profile_path = os.path.join(config_dir, category, param_file)
+    if os.path.exists(profile_path):
+        return profile_path
+    return os.path.join(default_dir, category, param_file)
+
+
+def _checker_node(
+    config_dir: str,
+    default_dir: str,
+    category: str,
+    executable: str,
+    name: str,
+    param_file: str,
+) -> Node:
     return Node(
         package="camrod_system",
         executable=executable,
         name=name,
         output="screen",
-        parameters=[os.path.join(config_dir, category, param_file)],
+        parameters=[_profile_param_file(config_dir, default_dir, category, param_file)],
     )
 
 
-def _build_checker_nodes(config_dir: str) -> list:
+def _build_checker_nodes(config_dir: str, default_dir: str) -> list:
     nodes = [
         # Main diagnostics aggregator used by the system health state machine.
         Node(
@@ -62,10 +81,14 @@ def _build_checker_nodes(config_dir: str) -> list:
             executable="aggregator_node",
             name="diagnostics_agg",
             output="screen",
-            parameters=[{"config_file": os.path.join(config_dir, "aggregator", "diagnostics_config.yaml")}],
+            parameters=[{
+                "config_file": _profile_param_file(
+                    config_dir, default_dir, "aggregator", "diagnostics_config.yaml"
+                )
+            }],
         ),
     ]
-    nodes.extend(_checker_node(config_dir, *spec) for spec in CHECKER_NODE_SPECS)
+    nodes.extend(_checker_node(config_dir, default_dir, *spec) for spec in CHECKER_NODE_SPECS)
     return nodes
 
 
@@ -79,7 +102,8 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
 
     config_root = os.path.join(pkg_share_dir, "config", "diagnostics")
     profile_dir = os.path.join(config_root, config_profile)
-    config_dir = profile_dir if os.path.isdir(profile_dir) else os.path.join(config_root, "default")
+    default_dir = os.path.join(config_root, "default")
+    config_dir = profile_dir if os.path.isdir(profile_dir) else default_dir
 
     if not enable_checkers:
         return [
@@ -88,7 +112,7 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
             )
         ]
 
-    diagnostics_nodes = _build_checker_nodes(config_dir)
+    diagnostics_nodes = _build_checker_nodes(config_dir, default_dir)
 
     ranger_checker_exec = os.path.join(
         pkg_prefix, "lib", "camrod_system", "ranger_platform_checker_node"
@@ -98,10 +122,12 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
             Node(
                 package="camrod_system",
                 executable="ranger_platform_checker_node",
-                name="ranger_platform_checker",
-                output="screen",
-                parameters=[os.path.join(config_dir, "platform", "ranger_platform_checker.yaml")],
-            )
+            name="ranger_platform_checker",
+            output="screen",
+            parameters=[_profile_param_file(
+                config_dir, default_dir, "platform", "ranger_platform_checker.yaml"
+            )],
+        )
         )
     elif enable_platform:
         diagnostics_nodes.append(
@@ -143,6 +169,11 @@ def generate_launch_description():
             'system_checker_param_file',
             default_value=pkg_share('camrod_system', os.path.join('config', 'system_checker.yaml')),
         ),
+        DeclareLaunchArgument(
+            'system_checker_disabled_modules',
+            default_value='',
+            description='Comma-separated module names excluded from system_checker graph readiness for debug',
+        ),
 
         # HH_260527: Main diagnostics stack is fully inline
         # (legacy system_diagnostics/component launch files removed).
@@ -160,7 +191,12 @@ def generate_launch_description():
                     output='screen',
                     parameters=[
                         LaunchConfiguration('system_checker_param_file'),
-                        {'diagnostic_topic': 'diagnostics'},
+                        {
+                            'diagnostic_topic': 'diagnostics',
+                            # HH_260618: Keep a debug-only exclusion hook, while
+                            # normal bringup requires exactly one final-parking graph.
+                            'disabled_modules_csv': LaunchConfiguration('system_checker_disabled_modules'),
+                        },
                     ],
                 ),
                 Node(
@@ -171,6 +207,9 @@ def generate_launch_description():
                     parameters=[{
                         'diagnostic_topic': 'diagnostics',
                         'source_diagnostic_topic': 'diagnostics',
+                        # HH_260617: Publish stable system status topics consumed by UI/voice/diagnostics.
+                        'system_status_topic': 'status',
+                        'avg_system_msgs_topic': 'msgs',
                         'publish_period_s': 0.5,
                         'stale_timeout_s': 2.0,
                     }],

@@ -7,9 +7,9 @@
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Bool, Int32, String
+from std_msgs.msg import Bool, Int32
 
-from avg_msgs.msg import AudioRequest
+from avg_msgs.msg import AudioRequest, PlanningState  # HH_260617: Consume semantic planning state.
 
 
 # 상태머신 상태 → 음성 키 매핑 (엣지 트리거)
@@ -59,8 +59,9 @@ class VoiceEventAdapterNode(Node):
         self._say_pub = self.create_publisher(AudioRequest, 'voice_announcer/say', 10)
 
         # 구독
+        # HH_260617: Planning state is now avg_msgs/PlanningState, not a raw string.
         self.create_subscription(
-            String, '/planning/state_machine/state',
+            PlanningState, '/planning/state_machine/state',
             self._on_state, 10)
         self.create_subscription(
             Bool, '/platform/status/estop',
@@ -89,10 +90,10 @@ class VoiceEventAdapterNode(Node):
 
     # ── 구독 콜백 ────────────────────────────────────────────────────────────
 
-    def _on_state(self, msg: String):
+    def _on_state(self, msg: PlanningState):
         if not self._en_nav:
             return
-        state = msg.data
+        state = msg.label
         prev  = self._prev_state
         self._prev_state = state
 

@@ -575,7 +575,7 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /planning/global_path
+                Value: /planning/plan_smoothed
               Value: true
             - Class: rviz_default_plugins/MarkerArray
               Enabled: false

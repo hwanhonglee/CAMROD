@@ -356,3 +356,9 @@ If both `camrod_sensor_kit` standalone and a parent bringup launch start `robot_
 - [`../camrod_sensing/README.md`](../camrod_sensing/README.md) — consumes `/tf_static` for all sensor frame lookups
 - [`../camrod_docking/README.md`](../camrod_docking/README.md) — consumes `/tf_static` for parking geometry
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
+
+## 2026-06-17 Runtime Update
+
+> HH_260617: Sensor-kit TF remains shared geometry for planning, platform, localization, sensing, and parking consumers.
+
+`camrod_parking` relies on the same base frame convention as the rest of the stack: `Twist.linear.y > 0` means body-left crab motion in the robot base frame, and drop-zone yaw alignment compares the current `/localization/pose` yaw against the configured map-frame station yaw.

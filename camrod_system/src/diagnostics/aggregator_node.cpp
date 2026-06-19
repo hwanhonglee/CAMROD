@@ -4,6 +4,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <yaml-cpp/yaml.h>
 
@@ -61,11 +62,13 @@ public:
       RCLCPP_WARN(get_logger(), "config_file 파라미터가 설정되지 않았습니다. 기본값으로 동작합니다.");
     }
 
+    // HH_260617: Use relative diagnostics topics so the system namespace owns the
+    // public `/system/diagnostics*` API instead of relying on absolute-topic remaps.
     sub_ = create_subscription<DiagnosticArray>(
-      "/diagnostics", 10,
+      "diagnostics", 10,
       [this](const DiagnosticArray::SharedPtr msg) { diagnostics_callback(msg); });
 
-    pub_   = create_publisher<DiagnosticArray>("/diagnostics_agg", 10);
+    pub_   = create_publisher<DiagnosticArray>("diagnostics_agg", 10);
     timer_ = create_timer(
       this, get_clock(),
       std::chrono::duration<double>(1.0 / publish_rate_hz),
@@ -95,6 +98,11 @@ private:
       if (g["publish_rate_hz"]) {
         publish_rate_hz = g["publish_rate_hz"].as<double>();
       }
+      if (g["ignored_names"]) {
+        for (const auto & name : g["ignored_names"]) {
+          ignored_names_.insert(name.as<std::string>());
+        }
+      }
     }
 
     if (cfg["topics"]) {
@@ -108,6 +116,12 @@ private:
     }
 
     RCLCPP_INFO(get_logger(), "config 로드 완료: %s", config_path.c_str());
+    // HH_260617: Drop explicitly ignored diagnostics from the state-machine
+    // aggregate stream. This prevents planning/system summary self-loops while
+    // keeping raw checker statuses available on /system/diagnostics.
+    for (const auto & name : ignored_names_) {
+      RCLCPP_INFO(get_logger(), "  [ignored] %s", name.c_str());
+    }
     for (const auto & [name, tc] : topic_configs_) {
       RCLCPP_INFO(get_logger(), "  [%s] %s  timeout=%.1fs",
         tc.group.c_str(), name.c_str(), tc.timeout_s);
@@ -124,12 +138,20 @@ private:
   {
     auto now = SteadyClock::now();
     for (const auto & status : msg->status) {
-      if (!topic_configs_.empty() && topic_configs_.find(status.name) == topic_configs_.end()) {
+      const std::string key = !status.name.empty() ? status.name : status.hardware_id;
+      if (key.empty()) {
+        continue;
+      }
+      if (ignored_names_.find(key) != ignored_names_.end()) {
+        status_map_.erase(key);
+        continue;
+      }
+      if (!topic_configs_.empty() && topic_configs_.find(key) == topic_configs_.end()) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 10000,
-          "config에 없는 진단 항목(name) 수신: \"%s\" → unknown 그룹으로 처리", status.name.c_str());
+          "config에 없는 진단 항목(name) 수신: \"%s\" → unknown 그룹으로 처리", key.c_str());
       }
-      status_map_[status.name] = {status, now};
+      status_map_[key] = {status, now};
     }
   }
 
@@ -214,6 +236,7 @@ private:
 
   std::unordered_map<std::string, TopicConfig>    topic_configs_;
   std::unordered_map<std::string, StatusEntry>    status_map_;
+  std::unordered_set<std::string>                  ignored_names_;
   double                                           default_timeout_{5.0};
   bool                                             enable_summary_log_{false};
 

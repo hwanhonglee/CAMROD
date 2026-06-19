@@ -19,7 +19,7 @@
 # │   ├── Sensing/IMU        ← /sensor/imu/main
 # │   ├── Sensing/LiDAR      ← /sensor/lidar/main, /sensor/lidar/filtered
 # │   ├── Sensing/Radar      ← /sensor/radar/{REAR,LEFT1,LEFT2,RIGHT1,RIGHT2,FRONT}
-# │   ├── Sensing/Camera     ← /sensor/camera/front, /sensor/camera/processed
+# │   ├── Sensing/Camera     ← /sensor/camera/econ_front, /sensor/camera/econ_rear
 # │   ├── Sensing/Wheel      ← /sensor/wheel/main
 # │   ├── Sensing/CostGrid   ← /perception/lidar/cost_grid
 # │   └── Sensing/Velocity   ← /sensing/velocity_converter
@@ -181,11 +181,23 @@ diagnostic_aggregator:
         path: 'Planning/NavStatus'
         contains: ['/planning/nav_status']
 
+      # HH_260617: CAMROD semantic state-machine health.
+      planning_state_machine:
+        type: 'diagnostic_aggregator/GenericAnalyzer'
+        path: 'Planning/StateMachine'
+        contains: ['/planning/state_machine/']
+
       # ── Planning: Nav2 노드 lifecycle 상태 ────────────────────────────
       planning_lifecycle:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Planning/Lifecycle'
         contains: ['/planning/lifecycle/']
+
+      # HH_260617: Rule-based campsite and drop-zone parking controllers.
+      parking:
+        type: 'diagnostic_aggregator/GenericAnalyzer'
+        path: 'Parking'
+        contains: ['parking/']
 
       # ── Map: Lanelet 레인 제약 격자 ───────────────────────────────────
       map_cost_grid:

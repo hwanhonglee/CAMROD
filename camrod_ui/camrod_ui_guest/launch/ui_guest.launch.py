@@ -22,8 +22,9 @@ def generate_launch_description():
         default_value='8012',
         description='Guest UI bind port',
     )
+    # HH_260617: Use canonical `_s` suffix for duration launch arguments.
     grace_period_arg = DeclareLaunchArgument(
-        'grace_period_sec',
+        'grace_period_s',
         default_value='60',
         description='Seconds to hold lock after disconnect before releasing to others',
     )
@@ -39,7 +40,7 @@ def generate_launch_description():
             'port': LaunchConfiguration('guest_port'),
             'amr_service_state_topic': '/AMR_service_state',
             'battery_topic': '/battery_percentage',
-            'grace_period_sec': LaunchConfiguration('grace_period_sec'),
+            'grace_period_s': LaunchConfiguration('grace_period_s'),
         }],
     )
 

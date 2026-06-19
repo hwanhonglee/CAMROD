@@ -21,9 +21,9 @@
     #   ground: force ground plane Z (0) + map_z_offset
     centerline_z_mode: map
     map_z_offset: 0.0
-    # HH_260413: Throttle nearest-centerline lookup to reduce CPU under high-rate pose input.
-    centerline_min_update_period_s: 0.05
-    centerline_min_displacement_m: 0.05
+    # HH_260618: Throttle nearest-centerline lookup to 10 Hz under high-rate pose input.
+    centerline_min_update_period_s: 0.10
+    centerline_min_displacement_m: 0.08
 
     # --------------------------------------------------------------------------
     # Drop zone matcher

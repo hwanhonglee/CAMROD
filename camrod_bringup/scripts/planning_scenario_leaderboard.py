@@ -59,9 +59,9 @@ class PlanningScenarioLeaderboard(Node):
             self.declare_parameter("engage_topic", "/planning/engage").value
         )
         self.goal_topic = str(self.declare_parameter("goal_topic", "/goal_pose").value)
-        self.goal_key_topic = str(
+        self.mission_key_topic = str(
             self.declare_parameter(
-                "goal_key_topic", "/planning/state_machine/goal_key"
+                "mission_key_topic", "/planning/mission_key"
             ).value
         )
         self.global_path_topic = str(
@@ -109,7 +109,7 @@ class PlanningScenarioLeaderboard(Node):
         self.report_file = str(self.declare_parameter("report_file", "").value)
 
         self.pub_goal = self.create_publisher(PoseStamped, self.goal_topic, 10)
-        self.pub_goal_key = self.create_publisher(String, self.goal_key_topic, 10)
+        self.pub_mission_key = self.create_publisher(String, self.mission_key_topic, 10)
         self.pub_engage = self.create_publisher(Bool, self.engage_topic, 10)
 
         self.create_subscription(Twist, self.cmd_vel_topic, self._on_cmd_vel, 10)
@@ -226,15 +226,15 @@ class PlanningScenarioLeaderboard(Node):
         rclpy.spin_once(self, timeout_sec=0.05)
         self.pub_goal.publish(goal)
 
-    # Publishes a state-machine goal key (e.g. camping_site_1, drop_zone).
-    def publish_goal_key(self, goal_key: str) -> None:
+    # Publishes a state-machine mission key (e.g. camping_site_1, drop_zone).
+    def publish_mission_key(self, mission_key: str) -> None:
         msg = String()
-        msg.data = str(goal_key).strip()
+        msg.data = str(mission_key).strip()
         if not msg.data:
             return
-        self.pub_goal_key.publish(msg)
+        self.pub_mission_key.publish(msg)
         rclpy.spin_once(self, timeout_sec=0.05)
-        self.pub_goal_key.publish(msg)
+        self.pub_mission_key.publish(msg)
 
     # Loads scenario YAML and returns normalized dict with name + steps.
     def load_scenario(self) -> dict[str, Any]:
@@ -280,7 +280,7 @@ class PlanningScenarioLeaderboard(Node):
     def run_step(self, step: dict[str, Any]) -> StepResult:
         step_id = str(step.get("id", "unnamed_step"))
         goal = step.get("goal", {})
-        goal_key = str(step.get("goal_key", "")).strip()
+        mission_key = str(step.get("mission_key", "")).strip()
         x = float(goal.get("x", 0.0))
         y = float(goal.get("y", 0.0))
         z = float(goal.get("z", 0.0))
@@ -303,9 +303,9 @@ class PlanningScenarioLeaderboard(Node):
         base_mission_count = len(self._mission_source_history)
         start = time.monotonic()
 
-        if goal_key:
-            # Prefer key dispatch for state-machine-driven scenarios.
-            self.publish_goal_key(goal_key)
+        if mission_key:
+            # HH_260617: Prefer mission dispatch for state-machine-driven scenarios.
+            self.publish_mission_key(mission_key)
         else:
             self.publish_goal(x, y, z, yaw_deg)
 

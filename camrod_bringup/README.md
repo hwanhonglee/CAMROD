@@ -20,7 +20,7 @@
 ## 2. ⚡ Quick Start
 
 ```bash
-# Real robot bringup (default: ESKF on, RViz on, all hardware drivers)
+# Real robot bringup (default: EKF localization, RViz on, all hardware drivers)
 ros2 launch camrod_bringup bringup.launch.py
 
 # Simulation with RViz (fake sensors, no hardware drivers)
@@ -31,7 +31,7 @@ ros2 launch camrod_bringup bringup.launch.py enable_gnss:=false
 
 # Override a module's param file from the CLI
 ros2 launch camrod_bringup bringup.launch.py \
-  filter_eskf_param_file:=/absolute/path/to/custom_eskf.yaml
+  filter_ekf_param_file:=/absolute/path/to/custom_ekf.yaml
 
 # Override the lanelet2 map
 ros2 launch camrod_bringup bringup.launch.py \
@@ -139,9 +139,9 @@ graph TD
 
 > ⚠️ **`module_launch_gap_s` too short can cause lifecycle failures.** On ARM targets or slow storage, values below `0.8 s` may cause Nav2 lifecycle manager to log `ERROR: Failed to get state for node`. Use `1.5` or `2.0` on constrained hardware. See Troubleshooting §11.
 
-> 📌 **`camrod_docking`** is not launched by `bringup.launch.py`. Launch it separately with `ros2 launch camrod_docking docking.launch.py` when docking capability is needed.
+> 📌 **HH_260618:** Final parking is method-selected. `parking_method:=rule_based` launches `camrod_parking`; `parking_method:=docking` launches `camrod_docking`. Launch conditions prevent both from running, and `camrod_system` reports ERROR if neither method is healthy.
 
-*Figure 2 — Staggered module launch sequence. Each slot starts at `N × module_launch_gap_s` seconds after cleanup exits. `camrod_docking` sits logically between planning and system but requires a separate launch.*
+*Figure 2 — Staggered module launch sequence. Each slot starts at `N × module_launch_gap_s` seconds after cleanup exits. The final parking slot is mutually exclusive: rule-based parking or AprilTag/opennav docking.*
 
 ---
 
@@ -190,7 +190,7 @@ Modules start with `module_launch_gap_s` (default `1.0 s`) stagger. The timer in
 | 7 | camrod_system | `system.launch.py` | Diagnostics validators; monitors all modules after they are up |
 | 8 | camrod_ui | `ui.launch.py` | HTTP API and plugin bridge; last because it depends on all other module services |
 
-> 📌 **camrod_docking** is not launched by `bringup.launch.py`. Launch it separately with `ros2 launch camrod_docking docking.launch.py` when docking capability is needed.
+> 📌 **HH_260618:** `camrod_docking` is launched by `bringup.launch.py` only when `parking_method:=docking`. This keeps marker-based docking separate from rule-based `camrod_parking`.
 
 ---
 
@@ -245,7 +245,7 @@ flowchart TD
 
 **Output effect:** When a key resolves to empty, bringup does NOT pass the argument to the module launch. The module then uses its own `DeclareLaunchArgument` default — typically a path inside the module's `config/` directory. This ensures bringup overrides are strictly opt-in; a new field added to a module is not accidentally nulled by bringup.
 
-**Operator-visible symptom:** `ros2 launch camrod_bringup bringup.launch.py filter_eskf_param_file:=/tmp/test.yaml` overrides ESKF params. Omitting the argument (or leaving it as `__module_default__` in YAML) silently uses the module default.
+**Operator-visible symptom:** `ros2 launch camrod_bringup bringup.launch.py filter_ekf_param_file:=/tmp/test.yaml` overrides EKF params. Omitting the argument (or leaving it as `__module_default__` in YAML) silently uses the module default.
 
 **Related params:** All `*_param_file` and `*_yaml` keys in `launch_defaults.yaml`.
 
@@ -257,7 +257,7 @@ flowchart TD
 
 **Trigger:** Operator sets a `*_param_file` CLI argument to an absolute path.
 
-**Internal logic:** `resolve_cfg_override` strips `__module_default__` sentinel. `set_if_not_empty` forwards non-empty strings as launch arguments to the target module. For `filter_eskf_param_file`, bringup additionally applies a sim-mode override (`eskf_sim.yaml`) after the user-level override so that hardware-specific sign inversions are removed in simulation.
+**Internal logic:** `resolve_cfg_override` strips `__module_default__` sentinel. `set_if_not_empty` forwards non-empty strings as launch arguments to the target module. EKF is the default backend; ESKF-specific sim overrides are applied only when `filter_type:=eskf`.
 
 **Output effect:** The target module receives the override path and loads it instead of its internal default.
 
@@ -286,7 +286,13 @@ flowchart TD
 | `require_localization_ready` | `false` | Gate Nav2 startup on localization readiness |
 | `enable_state_machine` | `false` | Enable planning mission state machine |
 | `enable_progress` | `true` | Remaining distance/time/completion% publisher |
+| `nav2_selected_planner` | `LaneletRoute` | HH_260619 - default lanelet-centerline global route planner; `SmacLattice` remains available for free-space diagnostics |
+| `bt_navigator.use_start_pose_override` | `true` | HH_260619 - planner start override supplies snapped start XY with current yaw; it is not the primary fix for centerline routing |
 | `planning_cmd_vel_gate_cost_stop_enable` | `true` | Cost-based obstacle stop in planning gate |
+| `planning_cmd_vel_gate_lanelet_safety_enable` | `true` | HH_260618 - raw `/map/cost_grid/lanelet` hard stop before inflation ego-clear |
+| `planning_cmd_vel_gate_lanelet_safety_check_reverse` | `false` | Keep reverse parking under mission-specific parking control |
+| `planning_cmd_vel_gate_lanelet_safety_check_lateral` | `false` | Keep campsite crab motion under mission-specific site control |
+| `planning_cmd_vel_gate_lateral_cmd_bypass_static_cost_stop` | `true` | HH_260618 - site-crab lateral cmd_vel may cross static lanelet/global-path front/side/rear cost; LiDAR/Radar source cost still stops |
 | `planning_cmd_vel_gate_speed_dependent_lookahead` | `true` | Physics-based braking distance lookahead |
 | `enable_yaw_alignment_zone` → `planning_cmd_vel_gate_yaw_alignment_enable` | `false` | Heading alignment at named map zones |
 | `enable_plugin_api` | `true` | Plugin API bridge node |
@@ -339,9 +345,9 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 
 | File | Purpose |
 |---|---|
-| `config/localization/filter/eskf.yaml` | ESKF parameter overrides applied by bringup on real hardware |
-| `config/localization/filter/eskf_sim.yaml` | ESKF parameter overrides applied automatically in sim mode (removes HW sign inversions) |
-| `config/localization/filter/ekf.yaml` | EKF parameter overrides |
+| `config/localization/filter/ekf.yaml` | EKF parameter overrides used by the default localization backend |
+| `config/localization/filter/eskf.yaml` | Optional ESKF parameter overrides for explicit `filter_type:=eskf` runs |
+| `config/localization/filter/eskf_sim.yaml` | Optional ESKF sim-mode overrides for explicit `filter_type:=eskf` runs |
 | `config/localization/filter/monitor.yaml` | Localization monitor overrides |
 | `config/localization/filter/pose_selector.yaml` | Pose selector overrides |
 | `config/localization/source/input_adapter.yaml` | Input adapter overrides |
@@ -356,7 +362,7 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 | `config/planning/nav2_base.yaml` | Nav2 base parameter overrides |
 | `config/planning/nav2_vehicle.yaml` | Vehicle footprint and dynamics overrides |
 | `config/planning/nav2_lanelet_overlay.yaml` | Lanelet2 costmap layer overlay params |
-| `config/planning/nav2_behavior.yaml` | Nav2 behavior server + BT plugin list |
+| `config/planning/nav2_behavior.yaml` | Nav2 behavior server + BT plugin list; HH_260619 - includes `nav2_goal_updated_controller_bt_node` for per-goal global route locking |
 | `config/planning/nav2_combo_profiles/` | Planner/controller pair-specific tuning profiles |
 | `config/planning/camping_sites.yaml` | Camping-site goal positions; sites 1–12 include `recall_x/y/z/yaw_deg` for road-snap navigation; site 13 uses site 12's road snap |
 | `config/planning/planning_state_machine.yaml` | State machine timing and keypoint overrides |
@@ -364,7 +370,8 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 | `config/planning/goal_snapper.yaml` | Goal snapper overrides |
 | `config/planning/centerline_snapper.yaml` | Centerline snapper overrides |
 | `config/planning/goal_replanner.yaml` | Goal replanner overrides |
-| `config/planning/local_path_extractor.yaml` | Local path extractor overrides |
+| `config/planning/local_path_extractor.yaml` | Local path extractor overrides; HH_260619 - `/planning/global_path` is fixed per goal while `/planning/local_path` is the live unsmoothed forward slice |
+| `planning/enable_path_visualization` | `true`; HH_260619 - publishes `/planning/path_markers` from `/planning/global_path` + `/planning/local_path` so RViz matches the route source used by local path and path-cost grids |
 | `config/planning/yaw_alignment_zones.yaml` | Manual yaw-alignment zone definitions |
 
 </details>
@@ -502,3 +509,39 @@ If the issue recurs, check `config/bringup/cleanup_patterns.yaml` and add the mi
 | camrod_ui | `../camrod_ui/README.md` |
 | camrod_docking | `../camrod_docking/README.md` |
 | camrod_sensor_kit | `../camrod_sensor_kit/README.md` |
+
+## 2026-06-17 Runtime Update
+
+> HH_260617 - Bringup now owns the full module sequence including `camrod_parking`.
+> HH_260618 - Bringup selects exactly one final parking method with `parking_method`; `parking_backend` remains a deprecated launch-argument alias.
+
+### Current Launch Order
+
+`platform → map → fake_sensors(sim) → sensing → perception → localization → planning → final_parking_method(rule_based|docking) → voice(optional) → system → ui`
+
+`bringup.launch.py` resolves the rule-based parking config through `parking/param_file` only when `parking_method` is `rule_based` or `parking`. Docking uses `camrod_docking` config files and does not consume `camrod_parking` topics or parameters.
+
+### Parking Launch Arguments
+
+| Argument | Default | Meaning |
+|---|---:|---|
+| `parking_method` | `rule_based` | Final parking method: `rule_based` or `docking` |
+| `parking_backend` | `__use_parking_method__` | Deprecated alias; use only for old scripts |
+| `enable_parking` | `true` | Allow `camrod_parking/parking.launch.py` when `parking_method=rule_based` |
+| `enable_site_maneuver` | `true` | Enable campsite crab/180-degree maneuver node |
+| `enable_drop_zone_parking` | `true` | Enable reverse parking controller |
+| `parking_param_file` | `parking/parking.yaml` | Bringup-level parking parameters |
+| `parking_namespace` | `parking` | Namespace for parking nodes and status topics |
+| `enable_docking` | `true` | Allow `camrod_docking/docking.launch.py` when `parking_method=docking` |
+
+Both parking controllers publish to `/planning/cmd_vel_raw` only while active, so the existing planning cmd_vel gate and platform cmd_vel gate remain in the motion command path without idle zero-Twist competition with Nav2.
+
+HH_260618 - Rule-based campsite parking uses the raw `/goal_pose` site center and `/planning/goal_pose_snapped` lanelet entry pose as a pair. Auto-start reports ERROR if that pair is unavailable, and the default flow stays inside the campsite after unload until `/parking/site_maneuver/return` or `return_service` requests crab-out.
+
+HH_260618 - `parking/parking.yaml` sets `crab_timeout_speed_scale: 0.5` to match the default `planning_cmd_vel_gate_speed_scale`. This keeps the campsite crab timeout based on the velocity that actually reaches the simulator/platform, not only the raw parking command.
+
+HH_260618 - Normal Nav2 forward driving now uses raw lanelet safety in `planning_cmd_vel_gate_node`; reverse parking and lateral campsite crab commands are excluded from that generic lanelet stop by default and must be bounded by their mission-specific parking/site controllers.
+
+HH_260618 - Campsite crab additionally bypasses static front/side/rear cost-stop caused by lanelet/global-path cost while preserving dynamic LiDAR/Radar source stops. This prevents the robot from timing out at the lanelet snap pose when the intended mission is lateral entry into an off-lane camping site.
+
+HH_260618 - Bringup planning configs load `camrod_planning::EngageAwareProgressChecker`. A route can be planned before operator engage, but Nav2 progress timeout is paused until `/planning/engaged=true`; this prevents pre-engage `FollowPath` aborts during UI/RViz inspection.

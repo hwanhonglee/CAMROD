@@ -14,6 +14,7 @@
 #include <avg_msgs/msg/pose_stamped.hpp>
 #include <avg_msgs/msg/path.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/int64_multi_array.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
@@ -80,6 +81,18 @@ public:
     // 2026-02-26: Optional boundary overlay when cost_mode == lanelet.
     // -1 disables boundary overlay, otherwise [0..100] is painted on lane boundaries.
     lanelet_boundary_value_ = declare_parameter<int>("lanelet_boundary_value", -1);
+    // HH_260617: Clear high boundary cost on OSM boundaries tagged lane_change=yes.
+    // This preserves solid lane edges while allowing planner/cmd_vel gate crossing at mapped lane-change gaps.
+    lane_change_clearance_enable_ = declare_parameter<bool>("lane_change_clearance_enable", false);
+    lane_change_clearance_value_ = declare_parameter<int>("lane_change_clearance_value", 0);
+    lane_change_clearance_use_dashed_fallback_ =
+      declare_parameter<bool>("lane_change_clearance_use_dashed_fallback", false);
+    // HH_260618: Tune lane-change clearance independently from normal boundary margin.
+    // This lets legal lateral crossings survive cmd_vel_gate corridor sampling.
+    lane_change_clearance_half_width_m_ =
+      declare_parameter<double>("lane_change_clearance_half_width_m", -1.0);
+    lane_change_clearance_clip_to_lanelet_ =
+      declare_parameter<bool>("lane_change_clearance_clip_to_lanelet", true);
     // 2026-02-27: Clip boundary strips to lanelet interior to prevent outward bleed.
     boundary_clip_to_lanelet_ = declare_parameter<bool>("boundary_clip_to_lanelet", true);
     // 2026-02-27: Debug counters for boundary rasterization quality.
@@ -126,6 +139,19 @@ public:
     // HH_260109 default to fused localization pose for lanelet-guided cost grid.
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
     path_topic_ = declare_parameter<std::string>("path_topic", "/planning/global_path");  // HH_260103 focus cost along planned path
+    // HH_260619: Route-aware lanelet filtering uses the exact lanelet IDs from
+    // LaneletRoutePlanner, avoiding unrelated merge/branch boundaries in the active planning cost.
+    route_lanelet_ids_topic_ =
+      declare_parameter<std::string>("route_lanelet_ids_topic", "/planning/route_lanelet_ids");
+    route_lanelet_filter_enable_ = declare_parameter<bool>("route_lanelet_filter_enable", false);
+    route_boundary_clearance_enable_ =
+      declare_parameter<bool>("route_boundary_clearance_enable", false);
+    route_boundary_clearance_value_ =
+      declare_parameter<int>("route_boundary_clearance_value", 0);
+    route_boundary_clearance_half_width_m_ =
+      declare_parameter<double>("route_boundary_clearance_half_width_m", 0.75);
+    route_boundary_clearance_clip_to_lanelet_ =
+      declare_parameter<bool>("route_boundary_clearance_clip_to_lanelet", true);
     // 2026-02-25: Optional fallback path input (e.g. local path primary + global path fallback).
     path_fallback_topic_ = declare_parameter<std::string>("path_fallback_topic", "");
     // 2026-02-26: Optional goal topic to clear stale path visualization immediately on new goal.
@@ -178,7 +204,8 @@ public:
       1, 9);
     // 2026-02-27: Allow latched path consumption when path publishers are transient_local.
     path_qos_transient_local_ = declare_parameter<bool>("path_qos_transient_local", false);
-    republish_period_ = declare_parameter<double>("republish_period", 1.0);  // HH_260103 RViz toggle refresh
+    // HH_260617: Use canonical `_s` suffix for duration parameters.
+    republish_period_s_ = declare_parameter<double>("republish_period_s", 1.0);
     // HH_260311-00:00 Optional timer-driven rebuild.
     // Enables deterministic realtime gradient refresh even when path/pose callbacks are sparse.
     rebuild_on_timer_ = declare_parameter<bool>("rebuild_on_timer", false);
@@ -205,6 +232,29 @@ public:
       "secondary.centerline_use_distance_gradient", false);
     secondary_lanelet_boundary_value_ = declare_parameter<int>("secondary.lanelet_boundary_value", -1);
     secondary_boundary_half_width_ = declare_parameter<double>("secondary.boundary_half_width", 0.05);
+    secondary_route_lanelet_filter_enable_ =
+      declare_parameter<bool>("secondary.route_lanelet_filter_enable", false);
+    secondary_route_boundary_clearance_enable_ =
+      declare_parameter<bool>("secondary.route_boundary_clearance_enable", false);
+    secondary_route_boundary_clearance_value_ =
+      declare_parameter<int>("secondary.route_boundary_clearance_value", 0);
+    secondary_route_boundary_clearance_half_width_m_ =
+      declare_parameter<double>("secondary.route_boundary_clearance_half_width_m", 0.75);
+    secondary_route_boundary_clearance_clip_to_lanelet_ =
+      declare_parameter<bool>("secondary.route_boundary_clearance_clip_to_lanelet", true);
+    // HH_260617: Secondary profile feeds /map/cost_grid/lanelet, so keep lane-change clearance separately tunable.
+    secondary_lane_change_clearance_enable_ =
+      declare_parameter<bool>("secondary.lane_change_clearance_enable", false);
+    secondary_lane_change_clearance_value_ =
+      declare_parameter<int>("secondary.lane_change_clearance_value", 0);
+    secondary_lane_change_clearance_use_dashed_fallback_ =
+      declare_parameter<bool>("secondary.lane_change_clearance_use_dashed_fallback", false);
+    // HH_260618: Secondary profile feeds Nav2/cmd_vel_gate, so crossing clearance
+    // can be wider than the visual boundary strip without weakening solid edges.
+    secondary_lane_change_clearance_half_width_m_ =
+      declare_parameter<double>("secondary.lane_change_clearance_half_width_m", -1.0);
+    secondary_lane_change_clearance_clip_to_lanelet_ =
+      declare_parameter<bool>("secondary.lane_change_clearance_clip_to_lanelet", true);
     secondary_direction_penalty_ = declare_parameter<int>("secondary.direction_penalty", 0);
     secondary_backward_penalty_ = declare_parameter<int>("secondary.backward_penalty", 0);
     secondary_free_value_ = declare_parameter<int>("secondary.free_value", 0);
@@ -314,6 +364,11 @@ public:
     path_sub_ = create_subscription<avg_msgs::msg::Path>(
       path_topic_, path_qos,
       std::bind(&LaneletCostGridNode::onPathPrimary, this, _1));
+    if (!route_lanelet_ids_topic_.empty()) {
+      route_lanelet_ids_sub_ = create_subscription<std_msgs::msg::Int64MultiArray>(
+        route_lanelet_ids_topic_, rclcpp::QoS(1).reliable().transient_local(),
+        std::bind(&LaneletCostGridNode::onRouteLaneletIds, this, _1));
+    }
     if (!path_fallback_topic_.empty() && path_fallback_topic_ != path_topic_) {
       path_fallback_sub_ = create_subscription<avg_msgs::msg::Path>(
         path_fallback_topic_, path_qos,
@@ -381,6 +436,31 @@ private:
       value.begin(), value.end(), value.begin(),
       [](unsigned char c) {return static_cast<char>(std::tolower(c));});
     return value;
+  }
+
+  // HH_260617: Reads Lanelet2 attributes defensively because historical OSM exports mix key casing.
+  template<typename PrimitiveT>
+  static std::string attributeCaseInsensitive(
+    const PrimitiveT & primitive,
+    const std::string & key)
+  {
+    std::string value = primitive.attributeOr(key, std::string(""));
+    if (!value.empty()) {
+      return value;
+    }
+    std::string lower = key;
+    std::transform(
+      lower.begin(), lower.end(), lower.begin(),
+      [](unsigned char c) {return static_cast<char>(std::tolower(c));});
+    value = primitive.attributeOr(lower, std::string(""));
+    if (!value.empty()) {
+      return value;
+    }
+    std::string upper = key;
+    std::transform(
+      upper.begin(), upper.end(), upper.begin(),
+      [](unsigned char c) {return static_cast<char>(std::toupper(c));});
+    return primitive.attributeOr(upper, std::string(""));
   }
 
   static bool isValidWindowMode(const std::string & mode)
@@ -476,6 +556,26 @@ private:
       }
     }
     (void)onPathCommon(msg);
+  }
+
+  // HH_260619: Receive the exact LaneletRoutePlanner lanelet sequence. This is
+  // more reliable than re-inferring route lanelets from centerline points at merge polygons.
+  void onRouteLaneletIds(const std_msgs::msg::Int64MultiArray::ConstSharedPtr msg)
+  {
+    route_lanelet_ids_.clear();
+    for (const auto lanelet_id : msg->data) {
+      route_lanelet_ids_.insert(static_cast<lanelet::Id>(lanelet_id));
+    }
+    route_lanelet_ids_received_ = !route_lanelet_ids_.empty();
+    invalidatePathLaneletCache();
+    if (has_pose_ && (
+        route_lanelet_filter_enable_ ||
+        route_boundary_clearance_enable_ ||
+        secondary_route_lanelet_filter_enable_ ||
+        secondary_route_boundary_clearance_enable_))
+    {
+      requestBuild(true);
+    }
   }
 
   // Callback onPathCommon: handles incoming ROS data or timer events and updates internal cache/publish state.
@@ -669,6 +769,16 @@ private:
       } else if (p.get_name() == "path_use_lanelet_mask") {
         path_use_lanelet_mask_ = p.as_bool();
         invalidatePathLaneletCache();
+      } else if (p.get_name() == "route_lanelet_filter_enable") {
+        route_lanelet_filter_enable_ = p.as_bool();
+      } else if (p.get_name() == "route_boundary_clearance_enable") {
+        route_boundary_clearance_enable_ = p.as_bool();
+      } else if (p.get_name() == "route_boundary_clearance_value") {
+        route_boundary_clearance_value_ = static_cast<int>(p.as_int());
+      } else if (p.get_name() == "route_boundary_clearance_half_width_m") {
+        route_boundary_clearance_half_width_m_ = p.as_double();
+      } else if (p.get_name() == "route_boundary_clearance_clip_to_lanelet") {
+        route_boundary_clearance_clip_to_lanelet_ = p.as_bool();
       } else if (p.get_name() == "clear_path_on_goal") {
         clear_path_on_goal_ = p.as_bool();
       } else if (p.get_name() == "rebuild_on_pose") {
@@ -699,6 +809,16 @@ private:
         boundary_half_width_ = p.as_double();
       } else if (p.get_name() == "lanelet_boundary_value") {
         lanelet_boundary_value_ = p.as_int();
+      } else if (p.get_name() == "lane_change_clearance_enable") {
+        lane_change_clearance_enable_ = p.as_bool();
+      } else if (p.get_name() == "lane_change_clearance_value") {
+        lane_change_clearance_value_ = p.as_int();
+      } else if (p.get_name() == "lane_change_clearance_use_dashed_fallback") {
+        lane_change_clearance_use_dashed_fallback_ = p.as_bool();
+      } else if (p.get_name() == "lane_change_clearance_half_width_m") {
+        lane_change_clearance_half_width_m_ = p.as_double();
+      } else if (p.get_name() == "lane_change_clearance_clip_to_lanelet") {
+        lane_change_clearance_clip_to_lanelet_ = p.as_bool();
       } else if (p.get_name() == "boundary_clip_to_lanelet") {
         boundary_clip_to_lanelet_ = p.as_bool();
       } else if (p.get_name() == "debug_boundary_stats") {
@@ -766,6 +886,26 @@ private:
         secondary_lanelet_boundary_value_ = p.as_int();
       } else if (p.get_name() == "secondary.boundary_half_width") {
         secondary_boundary_half_width_ = p.as_double();
+      } else if (p.get_name() == "secondary.route_lanelet_filter_enable") {
+        secondary_route_lanelet_filter_enable_ = p.as_bool();
+      } else if (p.get_name() == "secondary.route_boundary_clearance_enable") {
+        secondary_route_boundary_clearance_enable_ = p.as_bool();
+      } else if (p.get_name() == "secondary.route_boundary_clearance_value") {
+        secondary_route_boundary_clearance_value_ = static_cast<int>(p.as_int());
+      } else if (p.get_name() == "secondary.route_boundary_clearance_half_width_m") {
+        secondary_route_boundary_clearance_half_width_m_ = p.as_double();
+      } else if (p.get_name() == "secondary.route_boundary_clearance_clip_to_lanelet") {
+        secondary_route_boundary_clearance_clip_to_lanelet_ = p.as_bool();
+      } else if (p.get_name() == "secondary.lane_change_clearance_enable") {
+        secondary_lane_change_clearance_enable_ = p.as_bool();
+      } else if (p.get_name() == "secondary.lane_change_clearance_value") {
+        secondary_lane_change_clearance_value_ = p.as_int();
+      } else if (p.get_name() == "secondary.lane_change_clearance_use_dashed_fallback") {
+        secondary_lane_change_clearance_use_dashed_fallback_ = p.as_bool();
+      } else if (p.get_name() == "secondary.lane_change_clearance_half_width_m") {
+        secondary_lane_change_clearance_half_width_m_ = p.as_double();
+      } else if (p.get_name() == "secondary.lane_change_clearance_clip_to_lanelet") {
+        secondary_lane_change_clearance_clip_to_lanelet_ = p.as_bool();
       } else if (p.get_name() == "secondary.direction_penalty") {
         secondary_direction_penalty_ = p.as_int();
       } else if (p.get_name() == "secondary.backward_penalty") {
@@ -788,8 +928,8 @@ private:
         secondary_debug_coverage_stride_ = std::max(1, static_cast<int>(p.as_int()));
       } else if (p.get_name() == "secondary.debug_coverage_min_value") {
         secondary_debug_coverage_min_value_ = static_cast<int>(p.as_int());
-      } else if (p.get_name() == "republish_period") {
-        republish_period_ = std::max(0.0, p.as_double());
+      } else if (p.get_name() == "republish_period_s") {
+        republish_period_s_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "rebuild_on_timer") {
         rebuild_on_timer_ = p.as_bool();
       }
@@ -1103,7 +1243,20 @@ private:
         }
       }
     } else {  // centerline (default)
-      for (const auto & ll : map_->laneletLayer) {
+      std::vector<lanelet::ConstLanelet> route_lanelets;
+      const std::vector<lanelet::ConstLanelet> * lanelets_to_render = &all_lanelets_;
+      if (route_lanelet_filter_enable_) {
+        route_lanelets = collectActiveRouteLanelets();
+        if (!route_lanelets.empty()) {
+          lanelets_to_render = &route_lanelets;
+        } else {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "route lanelet filter requested but no route lanelets are available; using all lanelets");
+        }
+      }
+
+      for (const auto & ll : *lanelets_to_render) {
         lanelet::BasicPolygon2d lane_poly;
         const bool has_lane_poly = buildLaneletPolygon(ll, lane_poly);
         if (has_lane_poly && centerline_lanelet_fill_value_ >= 0) {
@@ -1168,6 +1321,11 @@ private:
       }
     }
 
+    // HH_260617: Open mapped lane-change boundaries after all normal boundary overlays.
+    // This prevents duplicated/shared lanelet bounds from re-blocking the allowed crossing section.
+    applyLaneChangeClearance(grid);
+    applyRouteBoundaryClearance(grid);
+
     grid.header.stamp = now();
     last_grid_ = grid;
     grid_pub_->publish(grid);
@@ -1208,6 +1366,21 @@ private:
     const double saved_boundary_half_width = boundary_half_width_;
     const int saved_lanelet_boundary_value = lanelet_boundary_value_;
     const bool saved_boundary_clip_to_lanelet = boundary_clip_to_lanelet_;
+    const bool saved_route_lanelet_filter_enable = route_lanelet_filter_enable_;
+    const bool saved_route_boundary_clearance_enable = route_boundary_clearance_enable_;
+    const int saved_route_boundary_clearance_value = route_boundary_clearance_value_;
+    const double saved_route_boundary_clearance_half_width_m =
+      route_boundary_clearance_half_width_m_;
+    const bool saved_route_boundary_clearance_clip_to_lanelet =
+      route_boundary_clearance_clip_to_lanelet_;
+    const bool saved_lane_change_clearance_enable = lane_change_clearance_enable_;
+    const int saved_lane_change_clearance_value = lane_change_clearance_value_;
+    const bool saved_lane_change_clearance_use_dashed_fallback =
+      lane_change_clearance_use_dashed_fallback_;
+    const double saved_lane_change_clearance_half_width_m =
+      lane_change_clearance_half_width_m_;
+    const bool saved_lane_change_clearance_clip_to_lanelet =
+      lane_change_clearance_clip_to_lanelet_;
     const bool saved_debug_coverage_stats = debug_coverage_stats_;
     const int saved_debug_coverage_stride = debug_coverage_stride_;
     const int saved_debug_coverage_min_value = debug_coverage_min_value_;
@@ -1236,6 +1409,20 @@ private:
     boundary_half_width_ = secondary_boundary_half_width_;
     lanelet_boundary_value_ = secondary_lanelet_boundary_value_;
     boundary_clip_to_lanelet_ = true;
+    route_lanelet_filter_enable_ = secondary_route_lanelet_filter_enable_;
+    route_boundary_clearance_enable_ = secondary_route_boundary_clearance_enable_;
+    route_boundary_clearance_value_ = secondary_route_boundary_clearance_value_;
+    route_boundary_clearance_half_width_m_ =
+      secondary_route_boundary_clearance_half_width_m_;
+    route_boundary_clearance_clip_to_lanelet_ =
+      secondary_route_boundary_clearance_clip_to_lanelet_;
+    lane_change_clearance_enable_ = secondary_lane_change_clearance_enable_;
+    lane_change_clearance_value_ = secondary_lane_change_clearance_value_;
+    lane_change_clearance_use_dashed_fallback_ =
+      secondary_lane_change_clearance_use_dashed_fallback_;
+    lane_change_clearance_half_width_m_ = secondary_lane_change_clearance_half_width_m_;
+    lane_change_clearance_clip_to_lanelet_ =
+      secondary_lane_change_clearance_clip_to_lanelet_;
     debug_coverage_stats_ = secondary_debug_coverage_stats_;
     debug_coverage_stride_ = secondary_debug_coverage_stride_;
     debug_coverage_min_value_ = secondary_debug_coverage_min_value_;
@@ -1267,6 +1454,19 @@ private:
     boundary_half_width_ = saved_boundary_half_width;
     lanelet_boundary_value_ = saved_lanelet_boundary_value;
     boundary_clip_to_lanelet_ = saved_boundary_clip_to_lanelet;
+    route_lanelet_filter_enable_ = saved_route_lanelet_filter_enable;
+    route_boundary_clearance_enable_ = saved_route_boundary_clearance_enable;
+    route_boundary_clearance_value_ = saved_route_boundary_clearance_value;
+    route_boundary_clearance_half_width_m_ = saved_route_boundary_clearance_half_width_m;
+    route_boundary_clearance_clip_to_lanelet_ =
+      saved_route_boundary_clearance_clip_to_lanelet;
+    lane_change_clearance_enable_ = saved_lane_change_clearance_enable;
+    lane_change_clearance_value_ = saved_lane_change_clearance_value;
+    lane_change_clearance_use_dashed_fallback_ =
+      saved_lane_change_clearance_use_dashed_fallback;
+    lane_change_clearance_half_width_m_ = saved_lane_change_clearance_half_width_m;
+    lane_change_clearance_clip_to_lanelet_ =
+      saved_lane_change_clearance_clip_to_lanelet;
     debug_coverage_stats_ = saved_debug_coverage_stats;
     debug_coverage_stride_ = saved_debug_coverage_stride;
     debug_coverage_min_value_ = saved_debug_coverage_min_value;
@@ -1330,12 +1530,12 @@ private:
   void updateRepublishTimer()
   {
     republish_timer_.reset();
-    if (republish_period_ <= 0.0) {
+    if (republish_period_s_ <= 0.0) {
       return;
     }
     republish_timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::duration<double>(republish_period_)),
+        std::chrono::duration<double>(republish_period_s_)),
       std::bind(&LaneletCostGridNode::onRepublishTimer, this));
   }
 
@@ -1504,7 +1704,8 @@ private:
     const lanelet::ConstPoint3d & p1,
     int value,
     avg_msgs::msg::OccupancyGrid & grid,
-    const lanelet::BasicPolygon2d * clip_poly = nullptr)
+    const lanelet::BasicPolygon2d * clip_poly = nullptr,
+    double half_width_override_m = -1.0)
   {
     const double dx = p1.x() - p0.x();
     const double dy = p1.y() - p0.y();
@@ -1512,8 +1713,11 @@ private:
     if (len < 1e-3) {
       return;
     }
-    const double nx = -dy / len * boundary_half_width_;
-    const double ny = dx / len * boundary_half_width_;
+    // HH_260618: Lane-change clearance can use a wider strip than regular boundary painting.
+    const double effective_half_width =
+      half_width_override_m > 0.0 ? half_width_override_m : boundary_half_width_;
+    const double nx = -dy / len * effective_half_width;
+    const double ny = dx / len * effective_half_width;
     lanelet::BasicPolygon2d strip{
       {p0.x() + nx, p0.y() + ny},
       {p0.x() - nx, p0.y() - ny},
@@ -1553,6 +1757,77 @@ private:
         ++boundary_written_;
       }
     }
+  }
+
+  // HH_260617: Decides whether a boundary should be opened for lateral lane-change traversal.
+  bool isLaneChangeClearanceBoundary(const lanelet::ConstLineString3d & boundary) const
+  {
+    if (!lane_change_clearance_enable_) {
+      return false;
+    }
+    const std::string lane_change =
+      toLower(attributeCaseInsensitive(boundary, "lane_change"));
+    if (lane_change == "yes" || lane_change == "true" || lane_change == "1") {
+      return true;
+    }
+    if (!lane_change_clearance_use_dashed_fallback_) {
+      return false;
+    }
+    const std::string line_type = toLower(attributeCaseInsensitive(boundary, "type"));
+    const std::string subtype = toLower(attributeCaseInsensitive(boundary, "subtype"));
+    return line_type == "virtual" || subtype == "dashed";
+  }
+
+  // HH_260617: Repaints lane-change-enabled boundary segments with low cost after high boundary overlay.
+  int64_t clearLaneChangeBoundary(
+    const lanelet::ConstLineString3d & boundary,
+    const int clear_value,
+    avg_msgs::msg::OccupancyGrid & grid,
+    const lanelet::BasicPolygon2d * clip_poly,
+    const double clearance_half_width_m)
+  {
+    if (!isLaneChangeClearanceBoundary(boundary) || boundary.size() < 2) {
+      return 0;
+    }
+    int64_t cleared_segments = 0;
+    for (size_t i = 0; i + 1 < boundary.size(); ++i) {
+      fillBoundaryStrip(
+        boundary[i], boundary[i + 1], clear_value, grid, clip_poly,
+        clearance_half_width_m);
+      ++cleared_segments;
+    }
+    return cleared_segments;
+  }
+
+  // HH_260617: Applies OSM lane_change=yes clearance to every lanelet boundary after normal cost painting.
+  void applyLaneChangeClearance(avg_msgs::msg::OccupancyGrid & grid)
+  {
+    if (!lane_change_clearance_enable_ || !map_) {
+      return;
+    }
+    const int clear_value = std::clamp(lane_change_clearance_value_, free_value_, lethal_value_);
+    const double clearance_half_width_m =
+      lane_change_clearance_half_width_m_ > 0.0
+      ? lane_change_clearance_half_width_m_
+      : boundary_half_width_;
+    int64_t cleared_lanelets = 0;
+    int64_t cleared_segments = 0;
+    for (const auto & ll : map_->laneletLayer) {
+      lanelet::BasicPolygon2d lane_poly;
+      const bool has_lane_poly = buildLaneletPolygon(ll, lane_poly);
+      const lanelet::BasicPolygon2d * clip_poly =
+        (lane_change_clearance_clip_to_lanelet_ && has_lane_poly) ? &lane_poly : nullptr;
+      cleared_segments += clearLaneChangeBoundary(
+        ll.leftBound(), clear_value, grid, clip_poly, clearance_half_width_m);
+      cleared_segments += clearLaneChangeBoundary(
+        ll.rightBound(), clear_value, grid, clip_poly, clearance_half_width_m);
+      ++cleared_lanelets;
+    }
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 2000,
+      "lane-change boundary clearance active: lanelets=%ld segments=%ld value=%d half_width=%.2f clip=%s",
+      cleared_lanelets, cleared_segments, clear_value, clearance_half_width_m,
+      lane_change_clearance_clip_to_lanelet_ ? "true" : "false");
   }
 
   // fillLaneletArea: Rasterizes lane/path geometry into cost-grid cells.
@@ -1693,6 +1968,28 @@ private:
     return result;
   }
 
+  // HH_260619: Select route lanelets from exact planner IDs first, with path
+  // sampling as fallback for non-LaneletRoute planner diagnostics.
+  std::vector<lanelet::ConstLanelet> collectActiveRouteLanelets() const
+  {
+    std::vector<lanelet::ConstLanelet> result;
+    if (!map_) {
+      return result;
+    }
+    if (route_lanelet_ids_received_ && !route_lanelet_ids_.empty()) {
+      result.reserve(route_lanelet_ids_.size());
+      for (std::size_t li = 0; li < all_lanelets_.size(); ++li) {
+        if (route_lanelet_ids_.find(all_lanelet_ids_[li]) != route_lanelet_ids_.end()) {
+          result.emplace_back(all_lanelets_[li]);
+        }
+      }
+      if (!result.empty()) {
+        return result;
+      }
+    }
+    return collectPathLanelets();
+  }
+
   // Rebuilds cached path-lanelet/polygon sets when cache is invalid.
   void ensurePathLaneletCache()
   {
@@ -1803,6 +2100,94 @@ private:
           cell = cost;
         }
       }
+    }
+  }
+
+  // HH_260619: Re-open the active route corridor after static lane boundary
+  // overlays. This removes merge/internal boundary blockers while sensor grids
+  // still retain obstacle authority in the later inflation max-merge.
+  void fillRouteClearanceStrip(
+    const lanelet::BasicPolygon2d & poly,
+    const int value,
+    avg_msgs::msg::OccupancyGrid & grid,
+    const std::vector<lanelet::BasicPolygon2d> * clip_polys)
+  {
+    if (poly.empty()) {
+      return;
+    }
+    double min_x = poly[0].x(), max_x = poly[0].x();
+    double min_y = poly[0].y(), max_y = poly[0].y();
+    for (const auto & p : poly) {
+      min_x = std::min(min_x, p.x());
+      max_x = std::max(max_x, p.x());
+      min_y = std::min(min_y, p.y());
+      max_y = std::max(max_y, p.y());
+    }
+    const int grid_w = static_cast<int>(grid.info.width);
+    const int grid_h = static_cast<int>(grid.info.height);
+    const int ix_min = std::max(0, static_cast<int>((min_x - origin_x_) / resolution_));
+    const int ix_max = std::min(grid_w - 1, static_cast<int>((max_x - origin_x_) / resolution_));
+    const int iy_min = std::max(0, static_cast<int>((min_y - origin_y_) / resolution_));
+    const int iy_max = std::min(grid_h - 1, static_cast<int>((max_y - origin_y_) / resolution_));
+
+    for (int iy = iy_min; iy <= iy_max; ++iy) {
+      for (int ix = ix_min; ix <= ix_max; ++ix) {
+        const double wx = origin_x_ + (ix + 0.5) * resolution_;
+        const double wy = origin_y_ + (iy + 0.5) * resolution_;
+        if (!cellMostlyInsidePolygon(poly, wx, wy, cell_inside_min_hits_path_)) {
+          continue;
+        }
+        if (clip_polys && !clip_polys->empty() &&
+          !cellMostlyInsideAnyPolygon(wx, wy, *clip_polys, cell_inside_min_hits_path_))
+        {
+          continue;
+        }
+        grid.data[iy * grid_w + ix] = value;
+      }
+    }
+  }
+
+  void applyRouteBoundaryClearance(avg_msgs::msg::OccupancyGrid & grid)
+  {
+    if (!route_boundary_clearance_enable_ || !path_received_ || path_.poses.size() < 2) {
+      return;
+    }
+
+    std::vector<lanelet::BasicPolygon2d> route_polys;
+    const std::vector<lanelet::BasicPolygon2d> * route_polys_ptr = nullptr;
+    if (route_boundary_clearance_clip_to_lanelet_) {
+      const auto route_lanelets = collectActiveRouteLanelets();
+      route_polys = toLaneletPolygons(route_lanelets);
+      if (route_polys.empty()) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "route boundary clearance skipped: no active route lanelet polygons");
+        return;
+      }
+      route_polys_ptr = &route_polys;
+    }
+
+    const int clear_value =
+      std::clamp(route_boundary_clearance_value_, free_value_, lethal_value_);
+    const double half_width = std::max(route_boundary_clearance_half_width_m_, resolution_);
+    for (size_t i = 0; i + 1 < path_.poses.size(); ++i) {
+      const auto & p0 = path_.poses[i].pose.position;
+      const auto & p1 = path_.poses[i + 1].pose.position;
+      const double dx = p1.x - p0.x;
+      const double dy = p1.y - p0.y;
+      const double len = std::hypot(dx, dy);
+      if (len < 1e-3) {
+        continue;
+      }
+      const double nx = -dy / len * half_width;
+      const double ny = dx / len * half_width;
+      lanelet::BasicPolygon2d strip{
+        {p0.x + nx, p0.y + ny},
+        {p0.x - nx, p0.y - ny},
+        {p1.x - nx, p1.y - ny},
+        {p1.x + nx, p1.y + ny}
+      };
+      fillRouteClearanceStrip(strip, clear_value, grid, route_polys_ptr);
     }
   }
 
@@ -2153,6 +2538,11 @@ private:
   double boundary_half_width_;
   int lanelet_boundary_value_;
   bool boundary_clip_to_lanelet_;
+  bool lane_change_clearance_enable_{false};
+  int lane_change_clearance_value_{0};
+  bool lane_change_clearance_use_dashed_fallback_{false};
+  double lane_change_clearance_half_width_m_{-1.0};
+  bool lane_change_clearance_clip_to_lanelet_{true};
   bool debug_boundary_stats_;
   bool debug_coverage_stats_{false};
   int debug_coverage_stride_{3};
@@ -2173,6 +2563,11 @@ private:
   bool centerline_use_distance_gradient_;
   bool centerline_clip_to_lanelet_{true};
   int centerline_lanelet_fill_value_{-1};
+  bool route_lanelet_filter_enable_{false};
+  bool route_boundary_clearance_enable_{false};
+  int route_boundary_clearance_value_{0};
+  double route_boundary_clearance_half_width_m_{0.75};
+  bool route_boundary_clearance_clip_to_lanelet_{true};
   bool path_use_lanelet_mask_;
   int path_lane_base_value_;
   bool path_lanelet_only_;
@@ -2212,6 +2607,9 @@ private:
   std::vector<lanelet::ConstLanelet> cached_path_lanelets_;
   std::vector<lanelet::BasicPolygon2d> cached_path_lanelet_polys_;
   bool cached_path_lanelets_valid_{false};
+  std::string route_lanelet_ids_topic_{"/planning/route_lanelet_ids"};
+  std::unordered_set<lanelet::Id> route_lanelet_ids_;
+  bool route_lanelet_ids_received_{false};
   double grid_yaw_;
   std::string cost_mode_;
   std::string window_mode_{"robot_centered"};
@@ -2223,7 +2621,7 @@ private:
   double primary_path_timeout_s_{1.0};
   double goal_fallback_holdoff_s_{0.6};
   double stale_path_timeout_s_{0.0};
-  double republish_period_;
+  double republish_period_s_;
   std::string output_topic_;
   bool primary_enable_{false};
   bool secondary_enable_{false};
@@ -2239,6 +2637,16 @@ private:
   bool secondary_centerline_use_distance_gradient_{false};
   int secondary_lanelet_boundary_value_{-1};
   double secondary_boundary_half_width_{0.05};
+  bool secondary_route_lanelet_filter_enable_{false};
+  bool secondary_route_boundary_clearance_enable_{false};
+  int secondary_route_boundary_clearance_value_{0};
+  double secondary_route_boundary_clearance_half_width_m_{0.75};
+  bool secondary_route_boundary_clearance_clip_to_lanelet_{true};
+  bool secondary_lane_change_clearance_enable_{false};
+  int secondary_lane_change_clearance_value_{0};
+  bool secondary_lane_change_clearance_use_dashed_fallback_{false};
+  double secondary_lane_change_clearance_half_width_m_{-1.0};
+  bool secondary_lane_change_clearance_clip_to_lanelet_{true};
   int secondary_direction_penalty_{0};
   int secondary_backward_penalty_{0};
   int secondary_free_value_{0};
@@ -2279,6 +2687,7 @@ private:
   rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr path_sub_;
   rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr path_fallback_sub_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
+  rclcpp::Subscription<std_msgs::msg::Int64MultiArray>::SharedPtr route_lanelet_ids_sub_;
   rclcpp::Publisher<avg_msgs::msg::OccupancyGrid>::SharedPtr grid_pub_;
   rclcpp::Publisher<avg_msgs::msg::OccupancyGrid>::SharedPtr secondary_grid_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;
