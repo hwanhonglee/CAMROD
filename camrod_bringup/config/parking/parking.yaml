@@ -49,6 +49,13 @@
     reverse_entry_yaw_kp: 1.0
     reverse_entry_lateral_kp: -0.25
     reverse_entry_max_angular_speed_radps: 0.25
+    # HH_260619 - Use the campsite semantic yaw as the reverse travel axis.
+    # The robot body yaw is commanded 180deg opposite to that axis while backing in.
+    reverse_entry_use_site_goal_yaw: true
+    reverse_entry_site_yaw_mode: "reverse_axis"
+    reverse_entry_auto_select_yaw_equivalent: true
+    reverse_entry_lateral_tolerance_m: 0.35
+    reverse_entry_debug_period_s: 1.0
     unload_wait_s: 5.0
     # HH_260618: Stay parked inside the campsite after unload by default.
     # Return is triggered by /parking/site_maneuver/return or return_service.
