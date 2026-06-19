@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v1.13**
+> Current release: **v1.14**
 
 ---
 
@@ -715,6 +715,8 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
+| v1.14 | 2026-06-19 | Mission-key semantic planning (PlanningState/MissionKey/Scenario msgs), lanelet raw cost safety stop, local path reset on goal change, goal_snapper pose-jump reissue, lanelet_route_planner + engage_aware_progress_checker plugins, front camera V4L2 fallback + image_raw publisher (PR#14), Ranger BMS charging detection, planning_state_checker, sim diagnostics profile, parking_method bringup arg |
+| v1.13 | 2026-06-11 | GNSS dual-antenna heading stabilization (simpleRTK2B Heading moving-baseline RELPOSNED fix) |
 | v1.12 | 2026-06-04 | Dual antenna GNSS heading (simpleRTK2B Heading, moving-baseline RELPOSNED), ublox_gps-based single/dual GNSS launch, Python NTRIP with GGA feedback for VRS, remove legacy dGNSS fallback and COG heading fallback |
 | v1.11 | 2026-05-28 | Dual econ camera (front GPU/VPI + rear CPU/GStreamer), unified IMU launch (imu_model), camrod_parking → camrod_docking, rear camera calibration, EKF log suppression, costmap start_current |
 | v1.10 | 2026-05-21 | Camera sensing refactor (V4L2 publisher), YOLOv9 perception, UI symlink fix, nav2 combo profiles, planning parameter stabilization |
