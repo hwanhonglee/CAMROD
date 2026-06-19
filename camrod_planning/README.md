@@ -338,7 +338,13 @@ graph TD
 | Reverse | not checked by default | drop-zone reverse parking needs mission-specific bounds |
 | Lateral crab | not checked by default | campsite crab entry/exit needs mission-specific bounds |
 
-> 🔧 **Debug hint** Related params: `cmd_vel_gate_lanelet_safety_enable`, `cmd_vel_gate_lanelet_safety_grid_topic`, `cmd_vel_gate_lanelet_safety_threshold`, `cmd_vel_gate_lanelet_safety_current_threshold`, `cmd_vel_gate_lanelet_safety_lookahead_m`, `cmd_vel_gate_lanelet_safety_width_m`, `cmd_vel_gate_lanelet_safety_check_reverse`, `cmd_vel_gate_lanelet_safety_check_lateral`.
+HH_260619 - Forward lanelet safety first samples the active `/planning/local_path`
+corridor when it is close to the robot. This avoids false stops at merge points
+where the raw robot-yaw rectangle touches a lanelet boundary even though the
+selected local path stays on the valid route. If the local path is unavailable
+or too far from the robot, the node falls back to the raw robot-yaw rectangle.
+
+> 🔧 **Debug hint** Related params: `cmd_vel_gate_lanelet_safety_enable`, `cmd_vel_gate_lanelet_safety_grid_topic`, `cmd_vel_gate_lanelet_safety_threshold`, `cmd_vel_gate_lanelet_safety_current_threshold`, `cmd_vel_gate_lanelet_safety_lookahead_m`, `cmd_vel_gate_lanelet_safety_width_m`, `cmd_vel_gate_lanelet_safety_check_reverse`, `cmd_vel_gate_lanelet_safety_check_lateral`, `cmd_vel_gate_lanelet_safety_front_use_local_path`, `cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m`.
 
 ---
 

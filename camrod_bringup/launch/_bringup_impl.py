@@ -748,6 +748,16 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_min_translation_mps', 0.02),
             'Minimum cmd_vel translation treated as lanelet-safety motion',
         ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_front_use_local_path',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_use_local_path', True),
+            'Use active local-path corridor for forward lanelet-safety sampling',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', 1.5),
+            'Maximum pose-to-local-path distance for path-based lanelet safety',
+        ),
         # Speed-dependent front lookahead.
         (
             'planning_cmd_vel_gate_speed_dependent_lookahead',

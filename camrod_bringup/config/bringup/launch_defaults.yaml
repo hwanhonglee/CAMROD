@@ -152,6 +152,10 @@ bringup:
     cmd_vel_gate_lanelet_safety_check_reverse: false
     cmd_vel_gate_lanelet_safety_check_lateral: false
     cmd_vel_gate_lanelet_safety_min_translation_mps: 0.02
+    # HH_260619 - Forward lanelet safety follows the active local path first;
+    # fallback remains the raw robot-yaw rectangle when the path is unavailable.
+    cmd_vel_gate_lanelet_safety_front_use_local_path: true
+    cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m: 1.5
     # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
     cmd_vel_gate_speed_dependent_lookahead: true
     cmd_vel_gate_front_lookahead_min_m: 0.4

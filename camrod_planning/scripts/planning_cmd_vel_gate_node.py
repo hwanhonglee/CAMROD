@@ -215,6 +215,16 @@ class PlanningCmdVelGateNode(Node):
         self.lanelet_safety_min_translation_mps = float(
             self.declare_parameter("lanelet_safety_min_translation_mps", 0.02).value
         )
+        # HH_260619 - Sample forward lanelet safety along the active local path
+        # instead of the raw robot-yaw rectangle when possible. Merge lanes and
+        # route starts can place static lane boundaries inside the robot-forward
+        # rectangle even though the selected local path is centered and valid.
+        self.lanelet_safety_front_use_local_path = bool(
+            self.declare_parameter("lanelet_safety_front_use_local_path", True).value
+        )
+        self.lanelet_safety_front_path_max_start_distance_m = float(
+            self.declare_parameter("lanelet_safety_front_path_max_start_distance_m", 1.5).value
+        )
         # HH_260618: Attribute cost-stop events to original cost-grid sources
         # without publishing another large debug grid. Source grids are sampled
         # only when a merged-grid stop actually occurs.
@@ -594,6 +604,10 @@ class PlanningCmdVelGateNode(Node):
                 self.lanelet_safety_check_lateral = bool(p.value)
             elif p.name == "lanelet_safety_min_translation_mps":
                 self.lanelet_safety_min_translation_mps = float(p.value)
+            elif p.name == "lanelet_safety_front_use_local_path":
+                self.lanelet_safety_front_use_local_path = bool(p.value)
+            elif p.name == "lanelet_safety_front_path_max_start_distance_m":
+                self.lanelet_safety_front_path_max_start_distance_m = float(p.value)
             elif p.name == "enable_speed_dependent_lookahead":
                 self.enable_speed_dependent_lookahead = bool(p.value)
             elif p.name == "front_lookahead_min_m":
@@ -1129,6 +1143,28 @@ class PlanningCmdVelGateNode(Node):
                 return True
 
             for direction, yaw_offset, lookahead in directions:
+                if direction == "FRONT" and self.lanelet_safety_front_use_local_path:
+                    path_available, path_blocked, path_detail = (
+                        self._sample_lanelet_safety_local_path_corridor(
+                            grid,
+                            pose,
+                            lookahead=lookahead,
+                            width=self.lanelet_safety_width_m,
+                            threshold=self.lanelet_safety_threshold,
+                        )
+                    )
+                    if path_available:
+                        if path_blocked:
+                            self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                            wx, wy, cost, reason = path_detail
+                            self.get_logger().warn(
+                                f"lanelet-safety FRONT_PATH: source={label} "
+                                f"cost={cost} reason={reason} at=({wx:.2f},{wy:.2f}) "
+                                f"lookahead={lookahead:.2f}m width={self.lanelet_safety_width_m:.2f}m "
+                                f"hold={self.cost_stop_hold_s:.2f}s"
+                            )
+                            return True
+                        continue
                 blocked, detail = self._sample_lanelet_safety_corridor(
                     grid,
                     pose,
@@ -1510,6 +1546,101 @@ class PlanningCmdVelGateNode(Node):
                 nearest = zone
                 nearest_dist = dist
         return nearest
+
+    # HH_260619 - Path-based lanelet safety sampler for forward Nav2 driving.
+    # The raw yaw rectangle is still used as fallback, but a valid local path is
+    # the correct nominal corridor after route selection and lanelet snapping.
+    def _sample_lanelet_safety_local_path_corridor(
+        self,
+        grid: OccupancyGrid,
+        pose: tuple[float, float, float],
+        *,
+        lookahead: float,
+        width: float,
+        threshold: int,
+    ) -> tuple[bool, bool, tuple[float, float, int, str]]:
+        path = self._last_route_heading_path
+        if path is None or len(path.poses) < 2:
+            return False, False, (pose[0], pose[1], -1, "no_path")
+
+        grid_frame = str(grid.header.frame_id).strip()
+        path_frame = str(path.header.frame_id).strip()
+        if grid_frame and path_frame and grid_frame != path_frame:
+            return False, False, (pose[0], pose[1], -1, "frame_mismatch")
+
+        points: list[tuple[float, float]] = []
+        for pose_stamped in path.poses:
+            x = float(pose_stamped.pose.position.x)
+            y = float(pose_stamped.pose.position.y)
+            if math.isfinite(x) and math.isfinite(y):
+                points.append((x, y))
+        if len(points) < 2:
+            return False, False, (pose[0], pose[1], -1, "empty_path")
+
+        pose_x, pose_y, _ = pose
+        closest_idx = 0
+        closest_dist_sq = float("inf")
+        for idx, (x, y) in enumerate(points):
+            dist_sq = (x - pose_x) * (x - pose_x) + (y - pose_y) * (y - pose_y)
+            if dist_sq < closest_dist_sq:
+                closest_idx = idx
+                closest_dist_sq = dist_sq
+
+        max_start = max(0.05, float(self.lanelet_safety_front_path_max_start_distance_m))
+        if math.sqrt(closest_dist_sq) > max_start:
+            return False, False, (pose_x, pose_y, -1, "path_far")
+
+        res = float(grid.info.resolution)
+        if res <= 0.0:
+            return False, False, (pose_x, pose_y, -1, "bad_resolution")
+        origin_x = float(grid.info.origin.position.x)
+        origin_y = float(grid.info.origin.position.y)
+        grid_width = int(grid.info.width)
+        grid_height = int(grid.info.height)
+        stop_threshold = int(threshold)
+        scan_lookahead = max(0.05, float(lookahead))
+        scan_width = max(0.05, float(width))
+        half_w = scan_width * 0.5
+        n_y = int(math.floor(scan_width / res + 1e-9)) + 1
+
+        accumulated = 0.0
+        for idx in range(closest_idx, len(points) - 1):
+            start_x, start_y = points[idx]
+            end_x, end_y = points[idx + 1]
+            seg_dx = end_x - start_x
+            seg_dy = end_y - start_y
+            seg_len = math.hypot(seg_dx, seg_dy)
+            if seg_len <= 1e-4:
+                continue
+            heading = math.atan2(seg_dy, seg_dx)
+            cos_y = self._cos(heading)
+            sin_y = self._sin(heading)
+            step_count = max(1, int(math.ceil(seg_len / res)))
+            for step in range(step_count + 1):
+                along = min(seg_len, step * res)
+                total_along = accumulated + along
+                if total_along > scan_lookahead:
+                    return True, False, (pose_x, pose_y, -1, "clear")
+                center_x = start_x + cos_y * along
+                center_y = start_y + sin_y * along
+                for iy in range(n_y):
+                    lateral = -half_w + iy * res
+                    wx = center_x - lateral * sin_y
+                    wy = center_y + lateral * cos_y
+                    mx = int(round((wx - origin_x) / res))
+                    my = int(round((wy - origin_y) / res))
+                    if mx < 0 or my < 0 or mx >= grid_width or my >= grid_height:
+                        if self.lanelet_safety_stop_on_unknown:
+                            return True, True, (wx, wy, -1, "path_out_of_grid")
+                        continue
+                    cost = int(grid.data[my * grid_width + mx])
+                    if cost >= stop_threshold:
+                        return True, True, (wx, wy, cost, "path_cost")
+            accumulated += seg_len
+            if accumulated >= scan_lookahead:
+                break
+
+        return True, False, (pose_x, pose_y, -1, "clear")
 
     # HH_260618: Strict lanelet-grid corridor sampler. Unlike the merged-grid
     # sampler, out-of-grid can be treated as blocked because leaving the
