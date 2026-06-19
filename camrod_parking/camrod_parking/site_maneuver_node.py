@@ -162,6 +162,31 @@ class SiteManeuverNode(Node):
         self.reverse_entry_max_angular_speed_radps = abs(
             float(self.declare_parameter("reverse_entry_max_angular_speed_radps", 0.25).value)
         )
+        # HH_260619 - Campsite reverse entry should track the semantic site yaw,
+        # not only the straight vector from the lanelet snap pose to the site
+        # center. The default treats site yaw as the desired reverse travel
+        # axis; the robot body target is therefore site_yaw + 180deg.
+        self.reverse_entry_use_site_goal_yaw = bool(
+            self.declare_parameter("reverse_entry_use_site_goal_yaw", True).value
+        )
+        self.reverse_entry_site_yaw_mode = str(
+            self.declare_parameter("reverse_entry_site_yaw_mode", "reverse_axis").value
+        ).strip().lower()
+        if self.reverse_entry_site_yaw_mode not in {"reverse_axis", "robot_yaw"}:
+            self.get_logger().warn(
+                "unknown reverse_entry_site_yaw_mode='%s'; using reverse_axis",
+                self.reverse_entry_site_yaw_mode,
+            )
+            self.reverse_entry_site_yaw_mode = "reverse_axis"
+        self.reverse_entry_auto_select_yaw_equivalent = bool(
+            self.declare_parameter("reverse_entry_auto_select_yaw_equivalent", True).value
+        )
+        self.reverse_entry_lateral_tolerance_m = abs(
+            float(self.declare_parameter("reverse_entry_lateral_tolerance_m", 0.35).value)
+        )
+        self.reverse_entry_debug_period_s = float(
+            self.declare_parameter("reverse_entry_debug_period_s", 1.0).value
+        )
         self.unload_wait_s = float(self.declare_parameter("unload_wait_s", 5.0).value)
         # HH_260618: Default campsite behavior is to remain parked inside the
         # selected site after unload. Automatic return is opt-in for scripted
@@ -234,6 +259,9 @@ class SiteManeuverNode(Node):
         self.target_yaw = 0.0
         self.entry_target_yaw = 0.0
         self.entry_reverse_axis_yaw = 0.0
+        self.entry_line_origin_x = 0.0
+        self.entry_line_origin_y = 0.0
+        self.entry_target_progress_m = 0.0
         self.entry_target_x = 0.0
         self.entry_target_y = 0.0
         self.entry_reverse_distance_m = 0.0
@@ -252,6 +280,7 @@ class SiteManeuverNode(Node):
         self.return_published = False
         self.return_acknowledged = False
         self.last_return_request_publish_s = 0.0
+        self.last_reverse_entry_debug_s = 0.0
         self.last_status_publish_s = 0.0
         self.camping_site_goals: dict[str, PoseStamped] = {}
         self._load_camping_sites()
@@ -537,9 +566,18 @@ class SiteManeuverNode(Node):
             return False, "reverse site target exceeds max distance"
 
         self.start_yaw = yaw_from_pose(self.last_pose)  # type: ignore[arg-type]
-        self.entry_reverse_axis_yaw = math.atan2(dy, dx)
+        direct_axis_yaw = math.atan2(dy, dx)
+        self.entry_reverse_axis_yaw, reverse_axis_source = self._select_reverse_entry_axis(
+            direct_axis_yaw, dx, dy
+        )
         self.entry_target_yaw = normalize_angle(self.entry_reverse_axis_yaw + math.pi)
         self.target_yaw = self.entry_target_yaw
+        self.entry_line_origin_x = self.entry_target_x
+        self.entry_line_origin_y = self.entry_target_y
+        self.entry_target_progress_m = (
+            math.cos(self.entry_reverse_axis_yaw) * dx
+            + math.sin(self.entry_reverse_axis_yaw) * dy
+        )
         self.entry_reverse_distance_m = distance
         self.crab_offset_m = distance
         self.crab_source = source_name
@@ -561,7 +599,9 @@ class SiteManeuverNode(Node):
             Phase.ALIGN_ENTRY_YAW,
             f"start={source} reverse_distance={distance:.2f}m "
             f"target=({self.entry_target_x:.2f},{self.entry_target_y:.2f}) "
-            f"source={source_name} forward={forward_residual:.2f}m",
+            f"source={source_name} forward={forward_residual:.2f}m "
+            f"axis={reverse_axis_source} axis_yaw={math.degrees(self.entry_reverse_axis_yaw):.1f}deg "
+            f"body_yaw={math.degrees(self.entry_target_yaw):.1f}deg",
         )
         return True, "site reverse maneuver started"
 
@@ -598,6 +638,28 @@ class SiteManeuverNode(Node):
                 source_name = "goal_pair"
         offset = clamp(offset, self.min_lateral_offset_m, self.max_lateral_offset_m)
         return offset, direction, source_name, forward
+
+    def _select_reverse_entry_axis(self, direct_axis_yaw: float, dx: float, dy: float) -> tuple[float, str]:
+        if not self.reverse_entry_use_site_goal_yaw or self.site_goal is None:
+            return direct_axis_yaw, "snap_to_site"
+
+        site_yaw = yaw_from_pose(self.site_goal)
+        if self.reverse_entry_site_yaw_mode == "robot_yaw":
+            axis_yaw = normalize_angle(site_yaw + math.pi)
+            source = "site_robot_yaw"
+        else:
+            axis_yaw = site_yaw
+            source = "site_reverse_axis"
+
+        if self.reverse_entry_auto_select_yaw_equivalent:
+            forward_projection = math.cos(axis_yaw) * dx + math.sin(axis_yaw) * dy
+            flipped_axis = normalize_angle(axis_yaw + math.pi)
+            flipped_projection = math.cos(flipped_axis) * dx + math.sin(flipped_axis) * dy
+            if flipped_projection > forward_projection:
+                axis_yaw = flipped_axis
+                source = f"{source}_flipped"
+
+        return normalize_angle(axis_yaw), source
 
     def _pose_distance(self, a: PoseStamped, b: PoseStamped) -> float:
         return math.hypot(
@@ -709,10 +771,16 @@ class SiteManeuverNode(Node):
         progress, _ = self._axis_progress_lateral(
             self.entry_start_x, self.entry_start_y, self.entry_reverse_axis_yaw
         )
+        _, target_line_lateral = self._axis_progress_lateral(
+            self.entry_line_origin_x, self.entry_line_origin_y, self.entry_reverse_axis_yaw
+        )
         return (
             self._distance_to_xy(self.entry_target_x, self.entry_target_y)
             <= self.entry_position_tolerance_m
-            or progress >= max(0.0, self.entry_reverse_distance_m - self.entry_position_tolerance_m)
+            or (
+                progress >= max(0.0, self.entry_target_progress_m - self.entry_position_tolerance_m)
+                and abs(target_line_lateral) <= self.reverse_entry_lateral_tolerance_m
+            )
         )
 
     def _reverse_out_reached(self) -> bool:
@@ -736,17 +804,29 @@ class SiteManeuverNode(Node):
             self.reverse_entry_max_angular_speed_radps,
         )
         self.cmd_pub.publish(cmd)
+        now_s = self._now_s()
+        if self.reverse_entry_debug_period_s > 0.0 and (
+            now_s - self.last_reverse_entry_debug_s
+        ) >= self.reverse_entry_debug_period_s:
+            self.last_reverse_entry_debug_s = now_s
+            self.get_logger().info(
+                "site_maneuver reverse control: "
+                f"phase={self.phase.value} target_yaw={math.degrees(target_yaw):.1f}deg "
+                f"reverse_axis={math.degrees(reverse_axis_yaw):.1f}deg "
+                f"heading_err={math.degrees(heading_error):.1f}deg "
+                f"lateral_err={lateral_error:.2f}m angular_z={cmd.angular.z:.2f}"
+            )
 
     def _publish_reverse_in(self) -> None:
         self._publish_reverse_along_axis(
-            self.entry_target_yaw, self.entry_start_x, self.entry_start_y
+            self.entry_target_yaw, self.entry_line_origin_x, self.entry_line_origin_y
         )
 
     def _publish_reverse_out(self) -> None:
         self._publish_reverse_along_axis(
             normalize_angle(self.entry_target_yaw + math.pi),
-            self.return_start_x,
-            self.return_start_y,
+            self.entry_start_x,
+            self.entry_start_y,
         )
 
     def _publish_rotate(self) -> bool:

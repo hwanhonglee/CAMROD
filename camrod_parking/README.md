@@ -35,6 +35,13 @@ HH_260618: Crab-out completion uses signed lateral progress back toward the
 original lanelet snap pose, not only Euclidean distance. This prevents one
 control tick of overshoot from missing the return completion condition.
 
+HH_260619: Reverse campsite entry uses the raw site-center yaw as the desired
+reverse travel axis by default (`reverse_entry_site_yaw_mode: reverse_axis`).
+The robot body yaw is commanded 180 degrees opposite to that axis while backing
+in, and yaw/lateral feedback continues during the reverse motion so the final
+pose converges to the campsite centerline instead of only following the initial
+snap-to-site vector.
+
 ### Drop-Zone Parking
 
 - Start: `/parking/drop_zone/start` (`std_msgs/Bool`) or `/parking/drop_zone/start_service`
