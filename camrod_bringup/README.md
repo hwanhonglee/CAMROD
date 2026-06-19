@@ -367,7 +367,7 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 | `config/planning/camping_sites.yaml` | Camping-site goal positions; sites 1–12 include `recall_x/y/z/yaw_deg` for road-snap navigation; site 13 uses site 12's road snap |
 | `config/planning/planning_state_machine.yaml` | State machine timing and keypoint overrides |
 | `config/planning/path_cost_grids.yaml` | Path cost-grid node overrides |
-| `config/planning/goal_snapper.yaml` | Goal snapper overrides |
+| `config/planning/goal_snapper.yaml` | Goal snapper overrides; HH_260619 - active goal is reissued after a >1.5 m pose jump so Nav2 replans from manual/RViz teleported pose |
 | `config/planning/centerline_snapper.yaml` | Centerline snapper overrides |
 | `config/planning/goal_replanner.yaml` | Goal replanner overrides |
 | `config/planning/local_path_extractor.yaml` | Local path extractor overrides; HH_260619 - `/planning/global_path` is fixed per goal while `/planning/local_path` is the live unsmoothed forward slice |
