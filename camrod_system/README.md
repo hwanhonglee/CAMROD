@@ -214,7 +214,8 @@ sequenceDiagram
 | `map` | map_cost_grid | `config/diagnostics/default/map/` | — |
 | `planning` | planning_lifecycle, planning_costmap, planning_nav_status, planning_path, planning_state | `config/diagnostics/default/planning/` | — |
 | `platform` | ranger_platform (optional) | `config/diagnostics/default/platform/` | — |
-| `docking` | — | — | **TODO**: not yet implemented |
+| `parking` | — (status via `system_diagnostic_node` /system/status snapshot) | — | HH_260617: parking state included in `/system/status` semantic snapshot; no dedicated checker node |
+| `docking` | — | — | **TODO**: dedicated docking checker not yet implemented |
 
 ---
 
