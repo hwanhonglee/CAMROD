@@ -231,7 +231,7 @@ graph TD
 
 | Node | Key Inputs | Key Outputs | Notable Params |
 |---|---|---|---|
-| `goal_snapper_node` | `site_goal` `/goal_pose`, Lanelet2 map | `route_goal` `/planning/goal_pose_snapped_ros` | `max_search_radius`: 120 m, `require_lanelet_containment`, `fallback_uncontained`, latest goal preempts older goals |
+| `goal_snapper_node` | `site_goal` `/goal_pose`, Lanelet2 map, `/planning/lanelet_pose` | `route_goal` `/planning/goal_pose_snapped_ros` | `max_search_radius`: 120 m, `require_lanelet_containment`, `fallback_uncontained`, latest goal preempts older goals; HH_260619 - pose jumps >1.5 m reissue the active snapped goal so Nav2 rebuilds the FollowPath context |
 | `centerline_snapper_node` | `/localization/pose` | `/planning/lanelet_pose` | `max_search_radius`: 120 m, `lateral_stddev`: 0.3, `min_update_period_s`: 0.05 |
 | `local_path_extractor_node` | `/planning/global_path`, `/localization/pose`, optional `/planning/local_path_controller` | `/planning/local_path` | `local_path_source`: `slice_only`, lookahead 30 m, lookbehind 0.2 m, 15 Hz; HH_260619 - uses the fixed per-goal global route and publishes an unsmoothed forward slice so RViz/local consumers do not see corner-cut drift |
 | `path_tracking_error_node` | `/planning/local_path`, `/planning/lanelet_pose` | `/planning/ltracking_error` | `prefer_local_path`: true, `publish_rate_hz`: 15, `pose_timeout_s`: 1.0 |
@@ -526,7 +526,7 @@ Key launch arguments:
 | `config/nav2_lanelet_overlay.yaml` | Lanelet-specific cost weights and regulatory element handling |
 | `config/nav2_behavior.yaml` | Recovery behaviors, BT timeouts, transform tolerance, and `nav2_goal_updated_controller_bt_node` for goal-locked global planning |
 | `config/nav2_combo_profiles/` | Planner+controller profile overlays (e.g. `smachybrid_graceful.yaml`, `smac2d_dwb.yaml`) |
-| `config/goal_snapper.yaml` | Goal snap search radius, containment check, Z handling, latest-goal preemption policy |
+| `config/goal_snapper.yaml` | Goal snap search radius, containment check, Z handling, latest-goal preemption policy; HH_260619 - `reissue_active_goal_on_pose_jump` handles RViz/manual pose teleport during an active goal |
 | `config/centerline_snapper.yaml` | Pose projection covariance, update throttle period |
 | `config/local_path_extractor.yaml` | Primary route `/planning/global_path`, lookahead 30 m / lookbehind 0.2 m, jump guard 3 m, publish rate 15 Hz; HH_260619 - `/planning/plan_smoothed` is not treated as a stable ROS route topic and local smoothing is disabled to preserve the fixed global route geometry |
 | `config/path_cost_grids.yaml` | Global/local path grid geometry, cost weights, rebuild triggers; `primary_enable: true` required for `/planning/cost_grid/*` publishers |

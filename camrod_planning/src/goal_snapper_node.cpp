@@ -172,6 +172,16 @@ public:
     // finishing, which causes topic-goal preemption instead of a clean stop.
     sequential_goal_require_nav2_terminal_ =
       declare_parameter<bool>("sequential_goal_require_nav2_terminal", true);
+    // HH_260619: If the robot pose is manually reset or localization jumps while
+    // a NavigateToPose action is active, re-send the current snapped goal once.
+    // This forces BT/Navigator to rebuild its blackboard path from the new pose
+    // instead of rotating in place against the stale FollowPath context.
+    reissue_active_goal_on_pose_jump_ =
+      declare_parameter<bool>("reissue_active_goal_on_pose_jump", true);
+    pose_jump_reissue_distance_m_ =
+      declare_parameter<double>("pose_jump_reissue_distance_m", 1.5);
+    pose_jump_reissue_min_interval_s_ =
+      declare_parameter<double>("pose_jump_reissue_min_interval_s", 1.0);
     if (
       sequential_goal_queue_policy_ != "append" &&
       sequential_goal_queue_policy_ != "replace_pending" &&
@@ -341,17 +351,25 @@ private:
   {
     const double px = msg->pose.position.x;
     const double py = msg->pose.position.y;
+    const double now_sec = this->get_clock()->now().seconds();
+    const bool has_previous_pose = has_pose_jump_check_pose_;
+    const double pose_jump_distance = has_previous_pose
+      ? std::hypot(px - last_pose_jump_check_x_, py - last_pose_jump_check_y_)
+      : 0.0;
+    last_pose_jump_check_x_ = px;
+    last_pose_jump_check_y_ = py;
+    has_pose_jump_check_pose_ = true;
+
     latest_current_pose_x_ = px;
     latest_current_pose_y_ = py;
     has_latest_current_pose_ = true;
     rebuildCostGridComponent();
     releasePendingGoalIfReady();
+    maybeReissueActiveGoalOnPoseJump(pose_jump_distance, now_sec);
 
     if (!restrict_to_connected_lanelet_component_ || !routing_graph_) {
       return;
     }
-
-    const double now_sec = this->get_clock()->now().seconds();
 
     if (has_last_component_pose_) {
       const double dt = now_sec - last_component_update_sec_;
@@ -704,6 +722,45 @@ private:
       publishReleasedGoal(next_goal, next_goal.pose.position.x, next_goal.pose.position.y, 0.0, "queue", "released_after_reached");
       return;
     }
+  }
+
+  // HH_260619: Reissue the active snapped goal when the robot pose jumps > pose_jump_reissue_distance_m_.
+  // Triggered by RViz "2D Pose Estimate" or localization re-init during an active NavigateToPose action.
+  // Without reissue, Nav2 BT keeps the stale FollowPath context from the pre-jump pose and rotates in place.
+  void maybeReissueActiveGoalOnPoseJump(double pose_jump_distance, double now_sec)
+  {
+    if (
+      !reissue_active_goal_on_pose_jump_ ||
+      !has_active_released_goal_ ||
+      active_goal_reached_ ||
+      pose_jump_distance < pose_jump_reissue_distance_m_)
+    {
+      return;
+    }
+
+    const double min_interval_s = std::max(0.0, pose_jump_reissue_min_interval_s_);
+    if (
+      last_pose_jump_reissue_sec_ > 0.0 &&
+      (now_sec - last_pose_jump_reissue_sec_) < min_interval_s)
+    {
+      return;
+    }
+
+    auto goal_pose = active_released_goal_;
+    goal_pose.header.stamp = this->get_clock()->now();
+    pub_goal_->publish(goal_pose);
+    publishRosGoal(goal_pose);
+    active_released_goal_ = goal_pose;
+    active_released_sec_ = now_sec;
+    active_goal_nav2_succeeded_ = false;
+    last_pose_jump_reissue_sec_ = now_sec;
+
+    RCLCPP_WARN(
+      get_logger(),
+      "goal_snapper: pose jump %.2fm detected; reissued active snapped goal (%.2f, %.2f) to rebuild Nav2 path",
+      pose_jump_distance,
+      goal_pose.pose.position.x, goal_pose.pose.position.y);
+    publishAvgPlanning(goal_pose);
   }
 
   bool activeGoalReadyForNext()
@@ -1122,6 +1179,10 @@ private:
   int sequential_goal_max_queue_size_{10};
   std::string sequential_goal_status_topic_{"/planning/navigate_to_pose/_action/status"};
   bool sequential_goal_require_nav2_terminal_{true};
+  // HH_260619: Pose-jump reissue state — tracks last known pose and last reissue timestamp.
+  bool reissue_active_goal_on_pose_jump_{true};
+  double pose_jump_reissue_distance_m_{1.5};
+  double pose_jump_reissue_min_interval_s_{1.0};
   std::deque<avg_msgs::msg::PoseStamped> pending_goals_;
   avg_msgs::msg::PoseStamped active_released_goal_;
   bool has_active_released_goal_{false};
@@ -1129,6 +1190,11 @@ private:
   bool active_goal_nav2_succeeded_{false};
   double active_goal_reached_sec_{0.0};
   double active_released_sec_{0.0};
+  // HH_260619: Previous pose checkpoint for per-callback jump distance measurement.
+  bool has_pose_jump_check_pose_{false};
+  double last_pose_jump_check_x_{0.0};
+  double last_pose_jump_check_y_{0.0};
+  double last_pose_jump_reissue_sec_{0.0};
 
   // HH_260528 Connected lanelet-component restriction state.
   bool restrict_to_connected_lanelet_component_{true};

@@ -61,3 +61,10 @@
     # HH_260618: Release queued waypoints only after Nav2 reports SUCCEEDED, not
     # only after pose-distance arrival, to avoid BT topic-goal preemption.
     sequential_goal_require_nav2_terminal: true
+
+    # HH_260619: When RViz/manual test pose is teleported while a goal is active,
+    # reissue the same snapped goal once so Nav2 rebuilds its FollowPath context
+    # from the new pose instead of rotating against the stale action path.
+    reissue_active_goal_on_pose_jump: true
+    pose_jump_reissue_distance_m: 1.5
+    pose_jump_reissue_min_interval_s: 1.0
