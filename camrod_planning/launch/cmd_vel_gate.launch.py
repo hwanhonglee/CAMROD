@@ -68,6 +68,9 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_check_reverse', default_value='false'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_check_lateral', default_value='false'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_min_translation_mps', default_value='0.02'),
+        # HH_260619 - Prefer active local-path corridor for forward lanelet safety.
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_use_local_path', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', default_value='1.5'),
         # HH_260422: Speed-dependent front lookahead parameters.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='0.4'),
@@ -158,6 +161,8 @@ def generate_launch_description():
                 'lanelet_safety_check_reverse': LaunchConfiguration('cmd_vel_gate_lanelet_safety_check_reverse'),
                 'lanelet_safety_check_lateral': LaunchConfiguration('cmd_vel_gate_lanelet_safety_check_lateral'),
                 'lanelet_safety_min_translation_mps': LaunchConfiguration('cmd_vel_gate_lanelet_safety_min_translation_mps'),
+                'lanelet_safety_front_use_local_path': LaunchConfiguration('cmd_vel_gate_lanelet_safety_front_use_local_path'),
+                'lanelet_safety_front_path_max_start_distance_m': LaunchConfiguration('cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m'),
                 'enable_speed_dependent_lookahead': LaunchConfiguration('cmd_vel_gate_speed_dependent_lookahead'),
                 'front_lookahead_min_m': LaunchConfiguration('cmd_vel_gate_front_lookahead_min_m'),
                 'front_lookahead_max_m': LaunchConfiguration('cmd_vel_gate_front_lookahead_max_m'),
