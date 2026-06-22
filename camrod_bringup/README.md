@@ -37,9 +37,15 @@ ros2 launch camrod_bringup bringup.launch.py \
 ros2 launch camrod_bringup bringup.launch.py \
   map_path:=/absolute/path/to/lanelet2_maps.osm
 
+# Use the current Park validation map/profile
+ros2 launch camrod_bringup bringup.launch.py sim:=true \
+  map_path:="/home/hong/camrod_ws/src/lanelet2_maps_(copy_park).osm"
+
 # Full-stack GNSS DR fallback integration test (sim)
 ros2 launch camrod_bringup gnss_dr_test.launch.py
 ```
+
+> HHL_260622 - `map_info.yaml` now defaults to the `copy_park` validation map. `_bringup_impl.py` also infers `map_profile` from `map_profile` or the OSM filename and loads matching `drop_zones (<profile>).yaml` / `camping_sites (<profile>).yaml` when those files exist.
 
 ---
 
@@ -370,6 +376,7 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 | `config/planning/goal_snapper.yaml` | Goal snapper overrides; HH_260619 - active goal is reissued after a >1.5 m pose jump so Nav2 replans from manual/RViz teleported pose |
 | `config/planning/centerline_snapper.yaml` | Centerline snapper overrides |
 | `config/planning/goal_replanner.yaml` | Goal replanner overrides |
+| `config/planning/obstacle_replan_monitor.yaml` | HH_260619 - persistent LiDAR/Radar route-block monitor; temporarily selects Smac2D and preempts the active Nav2 goal when the fixed LaneletRoute is dynamically blocked |
 | `config/planning/local_path_extractor.yaml` | Local path extractor overrides; HH_260619 - `/planning/global_path` is fixed per goal while `/planning/local_path` is the live unsmoothed forward slice |
 | `planning/enable_path_visualization` | `true`; HH_260619 - publishes `/planning/path_markers` from `/planning/global_path` + `/planning/local_path` so RViz matches the route source used by local path and path-cost grids |
 | `config/planning/yaw_alignment_zones.yaml` | Manual yaw-alignment zone definitions |
@@ -538,7 +545,15 @@ Both parking controllers publish to `/planning/cmd_vel_raw` only while active, s
 
 HH_260618 - Rule-based campsite parking uses the raw `/goal_pose` site center and `/planning/goal_pose_snapped` lanelet entry pose as a pair. Auto-start reports ERROR if that pair is unavailable, and the default flow stays inside the campsite after unload until `/parking/site_maneuver/return` or `return_service` requests crab-out.
 
-HH_260618 - `parking/parking.yaml` sets `crab_timeout_speed_scale: 0.5` to match the default `planning_cmd_vel_gate_speed_scale`. This keeps the campsite crab timeout based on the velocity that actually reaches the simulator/platform, not only the raw parking command.
+HHL_260622 - Rule-based parking publishes RViz validation paths on `/parking/site_maneuver/reverse_path` and `/parking/drop_zone/reverse_path`. Drop-zone parking aligns vehicle body yaw to the configured station/goal yaw and reverses only; the 180-degree body rotation phase is campsite-only.
+
+HHL_260622 - Rule-based campsite parking defaults to `site_entry_mode: crab`: lanelet-snap arrival keeps the body yaw fixed, uses wheel-crab lateral motion into the raw site center, rotates 180 degrees only inside the campsite, then crab-outs on return. Reverse site entry remains available only by explicitly setting `site_entry_mode: reverse`.
+
+HH_260618 - `parking/parking.yaml` sets `crab_timeout_speed_scale: 0.4` to match the effective low-speed simulator/platform motion. This keeps the campsite crab timeout based on the velocity that actually reaches the simulator/platform, not only the raw parking command.
+
+HH_260619 - `parking/parking.yaml` also sets `reverse_return_timeout_margin_s: 45.0` so campsite reverse-out can finish its curved return path without being stopped by the shorter reverse-in timeout estimate.
+
+HH_260619 - Campsite reverse-out completion is axis-progress based, not only exact point-distance based. This avoids false timeout when the robot crosses the lanelet snap point while yaw/lateral feedback is still converging.
 
 HH_260618 - Normal Nav2 forward driving now uses raw lanelet safety in `planning_cmd_vel_gate_node`; reverse parking and lateral campsite crab commands are excluded from that generic lanelet stop by default and must be bounded by their mission-specific parking/site controllers.
 
