@@ -19,6 +19,7 @@ command path without racing the Nav2 controller during normal lanelet driving.
 - Return from site: `/parking/site_maneuver/return` (`std_msgs/Bool`) or `/parking/site_maneuver/return_service`
 - Cancel: `/parking/site_maneuver/cancel` (`std_msgs/Bool`) or `/parking/site_maneuver/cancel_service`
 - Status: `/parking/site_maneuver/status` (`avg_msgs/ModuleState`)
+- Site maneuver path visualization: `/parking/site_maneuver/reverse_path` (`nav_msgs/Path`)
 
 When `use_goal_pair_for_lateral_offset` is enabled, the node computes the crab
 offset from `/goal_pose` (raw site center) and `/planning/goal_pose_snapped_ros`
@@ -27,38 +28,63 @@ raw site center is missing, the node reports ERROR instead of pretending the
 default offset is a valid campsite parking motion. HH_260618: Auto-start also requires the current pose to be within `route_goal_reached_distance_m` of the latest lanelet route goal, keeps the goal pair valid until a new goal replaces it (`goal_pair_max_age_s: 0.0`), and the default `max_lateral_offset_m` is 7.0 m so campsite centers several meters from the road are reachable.
 
 HH_260618: `crab_timeout_speed_scale` accounts for downstream command scaling
-in the planning cmd_vel gate. With `cmd_vel_gate_speed_scale: 0.5`, the timeout
-duration is computed from `crab_speed_mps * 0.5` so long off-lane campsite
-entries do not time out while the robot is still moving correctly.
+in the planning cmd_vel gate. With the current parking default
+`crab_timeout_speed_scale: 0.4`, the timeout duration is computed from
+`crab_speed_mps * 0.4` so long off-lane campsite entries do not time out while
+the robot is still moving correctly.
 
 HH_260618: Crab-out completion uses signed lateral progress back toward the
 original lanelet snap pose, not only Euclidean distance. This prevents one
 control tick of overshoot from missing the return completion condition.
 
-HH_260619: Reverse campsite entry uses the raw site-center yaw as the desired
-reverse travel axis by default (`reverse_entry_site_yaw_mode: reverse_axis`).
-The robot body yaw is commanded 180 degrees opposite to that axis while backing
-in, and yaw/lateral feedback continues during the reverse motion so the final
-pose converges to the campsite centerline instead of only following the initial
-snap-to-site vector.
+HHL_260622 - Default campsite entry is `site_entry_mode: crab`: the robot keeps
+the lanelet-snap body yaw, uses `Twist.linear.y` for wheel-crab lateral entry,
+then rotates the body 180 degrees only after it is inside the selected campsite.
+The legacy reverse campsite entry remains available with `site_entry_mode:
+reverse` for fallback testing.
+
+HHL_260622 - New campsite goals are ignored while `site_maneuver` is already
+inside or exiting a campsite (`CRAB_IN`, `ROTATE_180`, `UNLOAD_WAIT`,
+`WAIT_RETURN`, `CRAB_OUT`, or reverse-mode equivalents). A blocked new goal
+latches/starts the return request instead of overwriting the original
+site/route pair, so the robot must crab/reverse back to the lanelet snap pose
+before any new Nav2 route can start.
+
+HHL_260622 - The rule-based site maneuver path is published on
+`/parking/site_maneuver/reverse_path` so RViz can display the final off-lane
+campsite trajectory separately from Nav2 global/local paths.
+
+HH_260619 - `reverse_return_timeout_margin_s` gives reverse-out an additional
+timeout margin after return is requested. Reverse-out follows a curved
+nonholonomic return path and can take longer than the straight reverse-in
+estimate, so it uses a separate timeout guard instead of reusing only the
+entry/crab estimate.
+
+HH_260619 - Reverse-out completion uses signed progress along the lanelet-snap
+return axis plus lateral tolerance. This prevents the robot from timing out or
+overshooting when it crosses the snap pose between control ticks instead of
+hitting the exact XY point.
 
 ### Drop-Zone Parking
 
 - Start: `/parking/drop_zone/start` (`std_msgs/Bool`) or `/parking/drop_zone/start_service`
 - Cancel: `/parking/drop_zone/cancel` (`std_msgs/Bool`) or `/parking/drop_zone/cancel_service`
 - Status: `/parking/drop_zone/status` (`avg_msgs/ModuleState`)
+- Reverse path visualization: `/parking/drop_zone/reverse_path` (`nav_msgs/Path`)
 
 The reverse controller treats the configured station yaw as the desired parked
-robot rear/charger yaw, aligns the robot front 180 degrees away, then reverses
-with yaw/lateral feedback until charging is detected or the configured reverse
-distance is reached. HH_260618: `rear_matches_station_yaw: true` is the default
-for maps where the station yaw points along the robot rear/charger direction.
-`auto_select_reverse_yaw_to_station: true` chooses the 180-degree-equivalent
-robot yaw that puts the station in front of the reverse axis, so service starts
-and recovery starts do not fail when the robot begins on the opposite side of
-the station.
+robot front yaw, aligns to that yaw, then reverses with yaw/lateral feedback
+until charging is detected or the configured reverse distance is reached.
+HH_260619 - C-track `drop_zones.yaml` stores the parked robot front yaw, so
+`rear_matches_station_yaw` is `false`; set it `true` only for maps where the
+station yaw points along the robot rear/charger direction. `auto_select_reverse_yaw_to_station`
+defaults to `false`; drop-zone parking no longer chooses a
+180-degree-equivalent body yaw automatically. The only 180-degree body rotation
+phase is campsite handling.
 HH_260618: during reverse, crossing the station reverse axis is treated as a
 successful no-charging simulation completion instead of a yaw-selection error.
+HH_260619 - The intended drop-zone reverse approach is published on
+`/parking/drop_zone/reverse_path` for RViz validation.
 
 ## 2026-06-17 Runtime Update
 
@@ -69,16 +95,31 @@ successful no-charging simulation completion instead of a yaw-selection error.
 
 | Node | Trigger | Command output | Stop/completion condition |
 |---|---|---|---|
-| `/parking/site_maneuver` | `PlanningState.GOAL_REACHED` for `camping_site_*`, or `/parking/site_maneuver/start_service` | `/planning/cmd_vel_raw` with `linear.y` crab and `angular.z` rotate | HH_260618: Entry pose reached, 180-degree rotation complete, then wait inside the site until a return request triggers crab-out |
+| `/parking/site_maneuver` | `PlanningState.GOAL_REACHED` for `camping_site_*`, or `/parking/site_maneuver/start_service` | `/planning/cmd_vel_raw` with default `linear.y` crab entry/exit plus campsite-only 180-degree rotation; reverse entry is fallback-selectable | HHL_260622: Crab entry reaches the raw site center before the body rotates 180 degrees, then waits inside the site until a return request triggers crab-out |
 | `/parking/drop_zone_parking` | `PlanningState.GOAL_REACHED` for `RETURN_TO_DROP_ZONE/drop_zone`, or `/parking/drop_zone/start_service` | `/planning/cmd_vel_raw` with yaw alignment and reverse command | `/platform/status/is_charging`, reverse distance limit, or timeout |
 
 ### Controller Design
 
 - Site entry uses Ranger parallel/side-slip command (`Twist.linear.y`) so the robot body does not rotate during crab motion.
 - Site handling rotates the body 180 degrees after lateral entry, then waits inside the site until `/parking/site_maneuver/return` or `return_service` unless `auto_return_after_unload_wait` is explicitly enabled.
-- Drop-zone parking uses a rule-based reverse pose controller: align parked rear yaw to station yaw within `align_yaw_tolerance_deg`, then reverse with `reverse_yaw_kp` and `reverse_lateral_kp` feedback.
+- HHL_260622 - UI usage-complete must publish `/parking/site_maneuver/return` first. `/planning/state_machine/return_to_drop_zone` is published by `site_maneuver` only after `CRAB_OUT`/`REVERSE_OUT` reaches the lanelet snap pose.
+- Drop-zone parking uses a rule-based reverse pose controller: align vehicle body yaw to station/goal yaw within `align_yaw_tolerance_deg`, then reverse with `reverse_yaw_kp` and `reverse_lateral_kp` feedback.
+- HH_260619 - Drop-zone parking does not run the campsite 180-degree body rotation phase; it only aligns yaw and reverses to the station pose.
+- HHL_260622 - RViz displays the site maneuver path and drop-zone reverse path from `/parking/site_maneuver/reverse_path` and `/parking/drop_zone/reverse_path`.
 - The default station pose is loaded from bringup `map/drop_zones.yaml` via `drop_zones_yaml` and `drop_zone_id`.
 - HH_260618: Idle parking nodes do not publish zero Twist. They wake at `idle_tick_rate_hz` (default 1 Hz), switch to `control_rate_hz` (default 10 Hz) only while active, and throttle status/diagnostics with `status_publish_rate_hz`.
+- HHL_260622 - Site/drop-zone phases are mirrored to `/AMR_service_state` so `camrod_planning` and `camrod_ui` can show mission-level progress while Nav2 is no longer controlling the robot.
+
+### Phase Contract
+
+| Sequence | Phase | External state |
+|---|---|---|
+| Campsite entry | `CRAB_IN → ROTATE_180` by default; `ALIGN_ENTRY_YAW → REVERSE_IN → ROTATE_180` only when `site_entry_mode=reverse` | `/AMR_service_state.state=SITE_ENTRY` |
+| Campsite unload | `UNLOAD_WAIT → WAIT_RETURN` | `/AMR_service_state.state=UNLOAD_WAIT` |
+| Campsite return | `CRAB_OUT → DONE` by default; `REVERSE_OUT → DONE` only when `site_entry_mode=reverse` | `/AMR_service_state.state=RETURN_WITH_CARGO`, then `/planning/state_machine/return_to_drop_zone=true` |
+| Drop-zone parking | `ALIGN_REAR_YAW → REVERSE_APPROACH → PARKED` | `/AMR_service_state.state=DROP_ZONE_PARKING`, then `DROP_ZONE_WAIT` |
+
+HHL_260622 - Park profile validation used `lanelet2_maps_(copy_park).osm`: UI `B1` dispatched to `camping_site_1`, Nav2 reached the lanelet-snap pose, `site_maneuver` entered the site with crab motion, rotated 180 degrees only inside the campsite, entered `WAIT_RETURN`, accepted `/parking/site_maneuver/return`, crabbed out, and requested return-to-drop-zone.
 
 ### Smoke Test
 
@@ -88,4 +129,6 @@ ros2 service call /parking/site_maneuver/start_service std_srvs/srv/Trigger '{}'
 ros2 service call /parking/drop_zone/start_service std_srvs/srv/Trigger '{}'
 ros2 topic echo /parking/site_maneuver/status --once
 ros2 topic echo /parking/drop_zone/status --once
+ros2 topic echo /parking/site_maneuver/reverse_path --once
+ros2 topic echo /parking/drop_zone/reverse_path --once
 ```

@@ -9,14 +9,19 @@
     route_goal_topic: "/planning/goal_pose_snapped_ros"
     planning_state_topic: "/planning/state_machine/state"
     diagnostics_topic: "/system/diagnostics"
+    # HHL_260622 - Parking phase telemetry is shared with UI/system state.
+    amr_service_state_topic: "/AMR_service_state"
+    # HHL_260622 - RViz path for the rule-based campsite maneuver.
+    reverse_path_topic: "/parking/site_maneuver/reverse_path"
 
     enable_auto_start_from_planning_state: true
     site_mission_key_prefix: "camping_site_"
     use_goal_pair_for_lateral_offset: true
     require_goal_pair_for_auto_start: true
-    # HH_260618: Operational campsite entry rotates at the lanelet-snap pose,
-    # reverses into the raw site center, then rotates 180deg before unload wait.
-    site_entry_mode: "reverse"
+    # HHL_260622 - Operational campsite entry keeps the robot body yaw at the
+    # lanelet-snap pose, commands wheel-crab lateral motion into the site, then
+    # rotates the robot body 180deg only inside the selected campsite.
+    site_entry_mode: "crab"
     enable_manual_site_goal_auto_start: true
     manual_site_min_offset_m: 1.0
     camping_sites_yaml: ""
@@ -41,11 +46,20 @@
     # cmd_vel after gates; use this only for timeout prediction.
     crab_timeout_speed_scale: 0.4
     crab_timeout_margin_s: 8.0
+    # HH_260619 - Reverse-out is a curved nonholonomic return to the lanelet
+    # snap pose; keep it from timing out while the robot is still converging.
+    reverse_return_timeout_margin_s: 45.0
+    # HH_260619 - Complete reverse-out by snap-line progress instead of exact
+    # Euclidean position, because low-speed reverse ticks can cross the snap pose.
+    reverse_return_progress_tolerance_m: 0.45
+    reverse_return_lateral_tolerance_m: 0.40
     max_forward_residual_m: 0.8
     rotate_kp: 1.2
     max_angular_speed_radps: 0.35
     rotate_yaw_tolerance_deg: 4.0
-    reverse_entry_speed_mps: 0.12
+    # HHL_260622 - Keep reverse mode available for fallback tests, but make it
+    # slightly faster than the old 0.12 m/s parking crawl.
+    reverse_entry_speed_mps: 0.16
     reverse_entry_yaw_kp: 1.0
     reverse_entry_lateral_kp: -0.25
     reverse_entry_max_angular_speed_radps: 0.25
@@ -60,6 +74,9 @@
     # HH_260618: Stay parked inside the campsite after unload by default.
     # Return is triggered by /parking/site_maneuver/return or return_service.
     auto_return_after_unload_wait: false
+    # HH_260619 - Re-selecting the same campsite while WAIT_RETURN is treated as
+    # a fresh mission/test request instead of keeping the old parked state.
+    reset_wait_return_on_site_goal: true
     request_return_to_drop_zone_on_done: true
     # HH_260618: Retry the mission return command until planning acknowledges
     # RETURN_TO_DROP_ZONE/drop_zone; prevents one-shot topic timing loss.
@@ -79,6 +96,10 @@
     charging_topic: "/platform/status/is_charging"
     planning_state_topic: "/planning/state_machine/state"
     diagnostics_topic: "/system/diagnostics"
+    # HHL_260622 - Drop-zone parking publishes post-navigation service state.
+    amr_service_state_topic: "/AMR_service_state"
+    # HHL_260622 - RViz path for the rule-based drop-zone reverse maneuver.
+    reverse_path_topic: "/parking/drop_zone/reverse_path"
 
     drop_zones_yaml: ""
     drop_zone_id: "drop_zone"
@@ -90,17 +111,18 @@
     enable_auto_start_from_planning_state: true
     return_scenario_id: 2
     return_mission_key: "drop_zone"
-    # HH_260618: drop_zones.yaml yaw is the desired robot rear/charger yaw.
-    # Align the robot front 180deg away so linear.x<0 reverses toward station.
-    rear_matches_station_yaw: true
-    # HH_260618: Choose the 180deg-equivalent robot yaw that keeps the station
-    # in front of the reverse axis for service starts and recovery starts.
-    auto_select_reverse_yaw_to_station: true
+    # HHL_260622 - Drop-zone yaw is the parked robot front yaw. The vehicle body
+    # aligns to station/goal yaw first; reverse motion then drives along yaw + pi.
+    rear_matches_station_yaw: false
+    # HH_260619 - Do not auto-select a 180deg-equivalent yaw at drop-zone;
+    # campsite handling is the only parking flow that rotates the body 180deg.
+    auto_select_reverse_yaw_to_station: false
     align_yaw_tolerance_deg: 5.0
     align_yaw_kp: 1.2
     align_max_angular_speed_radps: 0.35
 
-    reverse_speed_mps: 0.12
+    # HHL_260622 - Slightly faster reverse parking while keeping low-speed rule-based control.
+    reverse_speed_mps: 0.16
     reverse_yaw_kp: 0.8
     # HH_260617: Signed lateral gain allows field calibration if reverse steering sign differs.
     reverse_lateral_kp: -0.25
