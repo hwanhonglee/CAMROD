@@ -225,6 +225,33 @@ class PlanningCmdVelGateNode(Node):
         self.lanelet_safety_front_path_max_start_distance_m = float(
             self.declare_parameter("lanelet_safety_front_path_max_start_distance_m", 1.5).value
         )
+        # HHL_260622 - Path-based lanelet safety should validate the selected
+        # route center corridor, not the full robot-width boundary area. Merge
+        # lanes and lane-change connections can legitimately place raw lanelet
+        # boundary cost near the local path.
+        self.lanelet_safety_front_path_width_m = float(
+            self.declare_parameter("lanelet_safety_front_path_width_m", 0.25).value
+        )
+        # HHL_260622 - When a map/profile starts from a manually placed pose
+        # just outside the drivable lanelet, allow one controlled forward
+        # re-entry if the active local path is already close. This is not a
+        # general lanelet bypass: FRONT_PATH and dynamic obstacle checks still
+        # run after the current-cell guard is skipped.
+        self.lanelet_safety_current_allow_route_reentry = bool(
+            self.declare_parameter(
+                "lanelet_safety_current_allow_route_reentry", True
+            ).value
+        )
+        self.lanelet_safety_current_route_reentry_max_distance_m = float(
+            self.declare_parameter(
+                "lanelet_safety_current_route_reentry_max_distance_m", 4.0
+            ).value
+        )
+        self.lanelet_safety_current_route_reentry_require_front_cmd = bool(
+            self.declare_parameter(
+                "lanelet_safety_current_route_reentry_require_front_cmd", True
+            ).value
+        )
         # HH_260618: Attribute cost-stop events to original cost-grid sources
         # without publishing another large debug grid. Source grids are sampled
         # only when a merged-grid stop actually occurs.
@@ -250,6 +277,18 @@ class PlanningCmdVelGateNode(Node):
                 "cost_source_debug_labels",
                 ["lanelet", "lidar", "radar", "global_path"],
             ).value
+        )
+        # HHL_260622 - Treat the merged inflation grid as an attribution surface:
+        # lanelet/global-path costs guide planning and RViz, while only live
+        # dynamic sources may close cmd_vel. Raw lanelet safety stays separate.
+        self.cost_stop_require_dynamic_source = bool(
+            self.declare_parameter("cost_stop_require_dynamic_source", True).value
+        )
+        self.cost_stop_dynamic_source_labels = self._parse_source_label_set(
+            self.declare_parameter(
+                "cost_stop_dynamic_source_labels", "lidar,radar"
+            ).value,
+            {"lidar", "radar"},
         )
 
         # HH_260422: Speed-dependent front lookahead.
@@ -423,6 +462,8 @@ class PlanningCmdVelGateNode(Node):
         self._last_yaw_align_log_sec = 0.0
         self._last_route_heading_log_sec = 0.0
         self._last_lateral_static_bypass_log_sec = 0.0
+        self._last_static_cost_ignored_log_sec = 0.0
+        self._last_lanelet_current_reentry_bypass_log_sec = 0.0
 
         # HH_260422: _current_speed holds the latest forward body velocity (m/s) from odometry.
         #   Used to compute speed-dependent front lookahead. Stays 0.0 until first odometry arrives.
@@ -497,9 +538,9 @@ class PlanningCmdVelGateNode(Node):
                     self.lanelet_safety_grid_topic,
                     self._on_lanelet_safety_grid,
                     cost_qos,
-                )
+            )
             self.sub_cost_source_grids = []
-            if self.cost_source_debug_enable:
+            if self.cost_source_debug_enable or self.cost_stop_require_dynamic_source:
                 for idx, topic in enumerate(self.cost_source_debug_topics):
                     label = (
                         str(self.cost_source_debug_labels[idx])
@@ -558,6 +599,8 @@ class PlanningCmdVelGateNode(Node):
             f"speed_dependent={'true' if self.enable_speed_dependent_lookahead else 'false'} "
             f"front_lookahead=[{self.front_lookahead_min_m:.1f},{self.front_lookahead_max_m:.1f}]m "
             f"cost_source_debug={'true' if self.cost_source_debug_enable else 'false'} "
+            f"dynamic_cost_stop={'true' if self.cost_stop_require_dynamic_source else 'false'} "
+            f"dynamic_sources={sorted(self.cost_stop_dynamic_source_labels)} "
             f"side_rear={'true' if self.enable_side_rear_cost_stop else 'false'} "
             f"lateral_static_bypass={'true' if self.lateral_cmd_bypass_static_cost_stop else 'false'} "
             f"reverse_static_bypass={'true' if self.reverse_cmd_bypass_static_cost_stop else 'false'} "
@@ -584,6 +627,13 @@ class PlanningCmdVelGateNode(Node):
                 self.cost_source_debug_enable = bool(p.value)
             elif p.name == "cost_source_debug_max_age_s":
                 self.cost_source_debug_max_age_s = float(p.value)
+            elif p.name == "cost_stop_require_dynamic_source":
+                self.cost_stop_require_dynamic_source = bool(p.value)
+            elif p.name == "cost_stop_dynamic_source_labels":
+                self.cost_stop_dynamic_source_labels = self._parse_source_label_set(
+                    p.value,
+                    {"lidar", "radar"},
+                )
             elif p.name == "lanelet_safety_enable":
                 self.lanelet_safety_enable = bool(p.value)
             elif p.name == "lanelet_safety_threshold":
@@ -608,6 +658,14 @@ class PlanningCmdVelGateNode(Node):
                 self.lanelet_safety_front_use_local_path = bool(p.value)
             elif p.name == "lanelet_safety_front_path_max_start_distance_m":
                 self.lanelet_safety_front_path_max_start_distance_m = float(p.value)
+            elif p.name == "lanelet_safety_front_path_width_m":
+                self.lanelet_safety_front_path_width_m = float(p.value)
+            elif p.name == "lanelet_safety_current_allow_route_reentry":
+                self.lanelet_safety_current_allow_route_reentry = bool(p.value)
+            elif p.name == "lanelet_safety_current_route_reentry_max_distance_m":
+                self.lanelet_safety_current_route_reentry_max_distance_m = float(p.value)
+            elif p.name == "lanelet_safety_current_route_reentry_require_front_cmd":
+                self.lanelet_safety_current_route_reentry_require_front_cmd = bool(p.value)
             elif p.name == "enable_speed_dependent_lookahead":
                 self.enable_speed_dependent_lookahead = bool(p.value)
             elif p.name == "front_lookahead_min_m":
@@ -946,6 +1004,14 @@ class PlanningCmdVelGateNode(Node):
                         threshold=self.cost_stop_threshold,
                     )
                     if blocked:
+                        if not self._merged_cost_should_block(
+                            blocked_detail,
+                            threshold=self.cost_stop_threshold,
+                            direction="FRONT",
+                            source_label=label,
+                            lookahead_m=front_lookahead,
+                        ):
+                            continue
                         if site_static_bypass and not self._dynamic_obstacle_source_blocks(
                             blocked_detail
                         ):
@@ -1000,6 +1066,14 @@ class PlanningCmdVelGateNode(Node):
                             threshold=thr,
                         )
                         if blocked:
+                            if not self._merged_cost_should_block(
+                                blocked_detail,
+                                threshold=thr,
+                                direction=direction,
+                                source_label=label,
+                                lookahead_m=la,
+                            ):
+                                continue
                             if site_static_bypass and not self._dynamic_obstacle_source_blocks(
                                 blocked_detail
                             ):
@@ -1041,22 +1115,79 @@ class PlanningCmdVelGateNode(Node):
         )
         return lateral_site_motion or reverse_site_motion
 
+    # HHL_260622 - Normal driving must not stop on route/lanelet visualization
+    # costs embedded in the merged grid. Only configured dynamic source grids
+    # are allowed to turn a merged-grid hit into a cmd_vel block.
+    def _merged_cost_should_block(
+        self,
+        blocked_detail: tuple[float, float, int] | None,
+        *,
+        threshold: int,
+        direction: str,
+        source_label: str,
+        lookahead_m: float,
+    ) -> bool:
+        if not self.cost_stop_require_dynamic_source:
+            return True
+        if self._dynamic_obstacle_source_blocks(
+            blocked_detail,
+            threshold=threshold,
+        ):
+            return True
+        self._log_static_guide_cost_ignored(
+            direction,
+            source_label,
+            lookahead_m,
+            blocked_detail,
+        )
+        return False
+
     # HH_260618: Static lanelet/global-path cost is allowed during explicit
     # site maneuver, but live obstacle sources must still stop parking motion.
     def _dynamic_obstacle_source_blocks(
-        self, blocked_detail: tuple[float, float, int] | None
+        self,
+        blocked_detail: tuple[float, float, int] | None,
+        *,
+        threshold: int | None = None,
     ) -> bool:
         if blocked_detail is None:
             return False
         wx, wy, _ = blocked_detail
-        threshold = int(self.lateral_cmd_dynamic_obstacle_threshold)
+        stop_threshold = int(
+            threshold
+            if threshold is not None
+            else self.lateral_cmd_dynamic_obstacle_threshold
+        )
         for label, grid in self._cost_source_grids.items():
-            normalized = str(label).lower()
-            if "lidar" not in normalized and "radar" not in normalized:
+            if not self._source_label_matches(label, self.cost_stop_dynamic_source_labels):
                 continue
-            if self._sample_grid_cost(grid, wx, wy) >= threshold:
+            recv_sec = self._cost_source_recv_sec.get(label, 0.0)
+            if self.cost_source_debug_max_age_s > 0.0:
+                now_sec = self.get_clock().now().nanoseconds * 1e-9
+                if (now_sec - recv_sec) > self.cost_source_debug_max_age_s:
+                    continue
+            if self._sample_grid_cost(grid, wx, wy) >= stop_threshold:
                 return True
         return False
+
+    # HHL_260622 - Keep a visible breadcrumb when the merged grid is high only
+    # because static route/lanelet layers are present, without spamming logs.
+    def _log_static_guide_cost_ignored(
+        self,
+        direction: str,
+        source_label: str,
+        lookahead_m: float,
+        blocked_detail: tuple[float, float, int] | None,
+    ) -> None:
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        if (now_sec - self._last_static_cost_ignored_log_sec) < 2.0:
+            return
+        self._last_static_cost_ignored_log_sec = now_sec
+        cause = self._format_cost_source_debug(blocked_detail)
+        self.get_logger().info(
+            f"cost-stop static-guide ignored {direction}: source={source_label} "
+            f"lookahead={lookahead_m:.2f}m cause={cause}"
+        )
 
     # HH_260618: Throttled visibility for campsite maneuver static-cost bypass.
     def _log_site_static_cost_bypass(
@@ -1080,6 +1211,36 @@ class PlanningCmdVelGateNode(Node):
     def _is_translational_cmd(self, cmd_in: Twist) -> bool:
         eps = max(0.0, float(self.lanelet_safety_min_translation_mps))
         return abs(float(cmd_in.linear.x)) > eps or abs(float(cmd_in.linear.y)) > eps
+
+    def _parse_source_label_set(
+        self,
+        value,
+        default_labels: set[str],
+    ) -> set[str]:
+        if value is None:
+            return set(default_labels)
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        else:
+            try:
+                raw_items = list(value)
+            except TypeError:
+                raw_items = [value]
+        labels = set()
+        for item in raw_items:
+            normalized = self._normalize_source_label(item)
+            if normalized:
+                labels.add(normalized)
+        return labels or set(default_labels)
+
+    def _normalize_source_label(self, label) -> str:
+        return str(label).strip().lower().replace("-", "_").replace(" ", "_")
+
+    def _source_label_matches(self, label, accepted_labels: set[str]) -> bool:
+        normalized = self._normalize_source_label(label)
+        return normalized in accepted_labels or any(
+            token and token in normalized for token in accepted_labels
+        )
 
     # HH_260618: Blocks translation based on the raw lanelet cost grid. This
     # catches off-lane and lane-boundary penetration that can be hidden by the
@@ -1125,6 +1286,7 @@ class PlanningCmdVelGateNode(Node):
 
         for label, pose in pose_candidates:
             pose_x, pose_y, _ = pose
+            current_reentry_bypass = False
             inside, current_cost = self._sample_grid_cost_detail(grid, pose_x, pose_y)
             if not inside and self.lanelet_safety_stop_on_unknown:
                 self._cost_blocked_until = now_sec + self.cost_stop_hold_s
@@ -1134,23 +1296,47 @@ class PlanningCmdVelGateNode(Node):
                 )
                 return True
             if inside and current_cost >= self.lanelet_safety_current_threshold:
-                self._cost_blocked_until = now_sec + self.cost_stop_hold_s
-                self.get_logger().warn(
-                    f"lanelet-safety CURRENT: source={label} "
-                    f"cost={current_cost} threshold={self.lanelet_safety_current_threshold} "
-                    f"hold={self.cost_stop_hold_s:.2f}s"
+                current_reentry_bypass = self._can_bypass_lanelet_current_for_route_reentry(
+                    cmd_in,
+                    target_frame,
+                    pose,
+                    current_cost,
+                    label,
+                    now_sec,
                 )
-                return True
+                if not current_reentry_bypass:
+                    self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                    self.get_logger().warn(
+                        f"lanelet-safety CURRENT: source={label} "
+                        f"cost={current_cost} threshold={self.lanelet_safety_current_threshold} "
+                        f"hold={self.cost_stop_hold_s:.2f}s"
+                    )
+                    return True
 
             for direction, yaw_offset, lookahead in directions:
                 if direction == "FRONT" and self.lanelet_safety_front_use_local_path:
+                    # HHL_260622 - Keep using the selected local path during
+                    # route re-entry even after the current cell drops below
+                    # the hard threshold. Otherwise the raw robot-yaw rectangle
+                    # can re-block near lane boundaries before the robot has
+                    # fully converged to the centerline.
+                    route_reentry_max_start = (
+                        self.lanelet_safety_current_route_reentry_max_distance_m
+                        if self.lanelet_safety_current_allow_route_reentry
+                        else None
+                    )
                     path_available, path_blocked, path_detail = (
                         self._sample_lanelet_safety_local_path_corridor(
                             grid,
                             pose,
                             lookahead=lookahead,
-                            width=self.lanelet_safety_width_m,
+                            width=self.lanelet_safety_front_path_width_m,
                             threshold=self.lanelet_safety_threshold,
+                            max_start_distance=(
+                                route_reentry_max_start
+                                if current_reentry_bypass or route_reentry_max_start is not None
+                                else None
+                            ),
                         )
                     )
                     if path_available:
@@ -1160,7 +1346,7 @@ class PlanningCmdVelGateNode(Node):
                             self.get_logger().warn(
                                 f"lanelet-safety FRONT_PATH: source={label} "
                                 f"cost={cost} reason={reason} at=({wx:.2f},{wy:.2f}) "
-                                f"lookahead={lookahead:.2f}m width={self.lanelet_safety_width_m:.2f}m "
+                                f"lookahead={lookahead:.2f}m width={self.lanelet_safety_front_path_width_m:.2f}m "
                                 f"hold={self.cost_stop_hold_s:.2f}s"
                             )
                             return True
@@ -1185,6 +1371,90 @@ class PlanningCmdVelGateNode(Node):
                     return True
 
         return False
+
+    # HHL_260622 - Route re-entry guard for map-agnostic simulation starts:
+    # a raw pose can be outside lanelet while the selected local path is valid
+    # and close. Let the robot move toward that path, but only for forward
+    # commands and only within a bounded distance.
+    def _can_bypass_lanelet_current_for_route_reentry(
+        self,
+        cmd_in: Twist,
+        frame_id: str,
+        pose: tuple[float, float, float],
+        current_cost: int,
+        source_label: str,
+        now_sec: float,
+    ) -> bool:
+        if not self.lanelet_safety_current_allow_route_reentry:
+            return False
+        min_cmd = max(0.0, float(self.lanelet_safety_min_translation_mps))
+        if (
+            self.lanelet_safety_current_route_reentry_require_front_cmd
+            and float(cmd_in.linear.x) <= min_cmd
+        ):
+            return False
+        max_dist = max(
+            0.0,
+            float(self.lanelet_safety_current_route_reentry_max_distance_m),
+        )
+        if max_dist <= 0.0:
+            return False
+        distance_m = self._closest_route_path_distance_m(frame_id, pose[0], pose[1])
+        if distance_m is None or distance_m > max_dist:
+            return False
+        if (now_sec - self._last_lanelet_current_reentry_bypass_log_sec) >= 1.0:
+            self._last_lanelet_current_reentry_bypass_log_sec = now_sec
+            self.get_logger().warn(
+                "lanelet-safety CURRENT route-reentry bypass: "
+                f"source={source_label} cost={current_cost} "
+                f"path_dist={distance_m:.2f}m max={max_dist:.2f}m"
+            )
+        return True
+
+    def _closest_route_path_distance_m(
+        self, frame_id: str, pose_x: float, pose_y: float
+    ) -> float | None:
+        path = self._last_route_heading_path
+        if path is None or len(path.poses) < 2:
+            return None
+        path_frame = str(path.header.frame_id).strip()
+        target_frame = str(frame_id).strip()
+        if path_frame and target_frame and path_frame != target_frame:
+            return None
+
+        points: list[tuple[float, float]] = []
+        for pose_stamped in path.poses:
+            x = float(pose_stamped.pose.position.x)
+            y = float(pose_stamped.pose.position.y)
+            if math.isfinite(x) and math.isfinite(y):
+                points.append((x, y))
+        if len(points) < 2:
+            return None
+
+        best_dist_sq = float("inf")
+        for idx in range(len(points) - 1):
+            ax, ay = points[idx]
+            bx, by = points[idx + 1]
+            dx = bx - ax
+            dy = by - ay
+            seg_len_sq = dx * dx + dy * dy
+            if seg_len_sq <= 1e-9:
+                dist_sq = (pose_x - ax) * (pose_x - ax) + (pose_y - ay) * (pose_y - ay)
+            else:
+                t = ((pose_x - ax) * dx + (pose_y - ay) * dy) / seg_len_sq
+                t = max(0.0, min(1.0, t))
+                proj_x = ax + t * dx
+                proj_y = ay + t * dy
+                dist_sq = (
+                    (pose_x - proj_x) * (pose_x - proj_x)
+                    + (pose_y - proj_y) * (pose_y - proj_y)
+                )
+            if dist_sq < best_dist_sq:
+                best_dist_sq = dist_sq
+
+        if not math.isfinite(best_dist_sq):
+            return None
+        return math.sqrt(best_dist_sq)
 
     # Loads yaw-alignment zones from YAML (if enabled).
     def _load_yaw_alignment_zones(self) -> None:
@@ -1558,6 +1828,7 @@ class PlanningCmdVelGateNode(Node):
         lookahead: float,
         width: float,
         threshold: int,
+        max_start_distance: float | None = None,
     ) -> tuple[bool, bool, tuple[float, float, int, str]]:
         path = self._last_route_heading_path
         if path is None or len(path.poses) < 2:
@@ -1586,7 +1857,15 @@ class PlanningCmdVelGateNode(Node):
                 closest_idx = idx
                 closest_dist_sq = dist_sq
 
-        max_start = max(0.05, float(self.lanelet_safety_front_path_max_start_distance_m))
+        max_start_cfg = (
+            self.lanelet_safety_front_path_max_start_distance_m
+            if max_start_distance is None
+            else max(
+                self.lanelet_safety_front_path_max_start_distance_m,
+                float(max_start_distance),
+            )
+        )
+        max_start = max(0.05, float(max_start_cfg))
         if math.sqrt(closest_dist_sq) > max_start:
             return False, False, (pose_x, pose_y, -1, "path_far")
 
@@ -1601,7 +1880,14 @@ class PlanningCmdVelGateNode(Node):
         scan_lookahead = max(0.05, float(lookahead))
         scan_width = max(0.05, float(width))
         half_w = scan_width * 0.5
-        n_y = int(math.floor(scan_width / res + 1e-9)) + 1
+        # HHL_260622 - Always test the route centerline first, then optional
+        # narrow lateral offsets. The previous full-width sweep made raw
+        # lanelet boundary pixels at merge/branch connections stop valid paths.
+        lateral_offsets = [0.0]
+        lateral_step_count = int(math.floor(half_w / res + 1e-9))
+        for step in range(1, lateral_step_count + 1):
+            offset = step * res
+            lateral_offsets.extend((-offset, offset))
 
         accumulated = 0.0
         for idx in range(closest_idx, len(points) - 1):
@@ -1623,8 +1909,7 @@ class PlanningCmdVelGateNode(Node):
                     return True, False, (pose_x, pose_y, -1, "clear")
                 center_x = start_x + cos_y * along
                 center_y = start_y + sin_y * along
-                for iy in range(n_y):
-                    lateral = -half_w + iy * res
+                for lateral in lateral_offsets:
                     wx = center_x - lateral * sin_y
                     wy = center_y + lateral * cos_y
                     mx = int(round((wx - origin_x) / res))

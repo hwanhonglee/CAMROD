@@ -56,6 +56,10 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_cost_lookahead_m', default_value='2.0'),
         DeclareLaunchArgument('cmd_vel_gate_cost_width_m', default_value='1.0'),
         DeclareLaunchArgument('cmd_vel_gate_cost_hold_s', default_value='1.0'),
+        # HHL_260622: Merged inflation cost is only a stop source when one of
+        # these dynamic source grids owns the high-cost cell.
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_require_dynamic_source', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_dynamic_source_labels', default_value='lidar,radar'),
         # HH_260618: Raw lanelet grid hard-stop before inflation ego-clear.
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_enable', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_grid_topic', default_value='/map/cost_grid/lanelet'),
@@ -71,6 +75,12 @@ def generate_launch_description():
         # HH_260619 - Prefer active local-path corridor for forward lanelet safety.
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_use_local_path', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', default_value='1.5'),
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_width_m', default_value='0.25'),
+        # HHL_260622: Allow bounded re-entry when a manually placed/sim pose is
+        # outside lanelet but the selected local path is close and valid.
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_allow_route_reentry', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m', default_value='4.0'),
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', default_value='true'),
         # HH_260422: Speed-dependent front lookahead parameters.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='0.4'),
@@ -78,7 +88,8 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_friction', default_value='0.4'),
         DeclareLaunchArgument('cmd_vel_gate_front_reaction_time_s', default_value='0.15'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_margin_m', default_value='0.3'),
-        # HH_260422: Side/rear cost-stop — uses same merged grid as front.
+        # HHL_260622: Side/rear cost-stop samples the merged grid, but blocks
+        # only when dynamic source attribution owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='92'),
         DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='0.8'),
@@ -150,6 +161,8 @@ def generate_launch_description():
                 'cost_stop_lookahead_m': LaunchConfiguration('cmd_vel_gate_cost_lookahead_m'),
                 'cost_stop_width_m': LaunchConfiguration('cmd_vel_gate_cost_width_m'),
                 'cost_stop_hold_s': LaunchConfiguration('cmd_vel_gate_cost_hold_s'),
+                'cost_stop_require_dynamic_source': LaunchConfiguration('cmd_vel_gate_cost_stop_require_dynamic_source'),
+                'cost_stop_dynamic_source_labels': LaunchConfiguration('cmd_vel_gate_cost_stop_dynamic_source_labels'),
                 'lanelet_safety_enable': LaunchConfiguration('cmd_vel_gate_lanelet_safety_enable'),
                 'lanelet_safety_grid_topic': LaunchConfiguration('cmd_vel_gate_lanelet_safety_grid_topic'),
                 'lanelet_safety_threshold': LaunchConfiguration('cmd_vel_gate_lanelet_safety_threshold'),
@@ -163,6 +176,10 @@ def generate_launch_description():
                 'lanelet_safety_min_translation_mps': LaunchConfiguration('cmd_vel_gate_lanelet_safety_min_translation_mps'),
                 'lanelet_safety_front_use_local_path': LaunchConfiguration('cmd_vel_gate_lanelet_safety_front_use_local_path'),
                 'lanelet_safety_front_path_max_start_distance_m': LaunchConfiguration('cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m'),
+                'lanelet_safety_front_path_width_m': LaunchConfiguration('cmd_vel_gate_lanelet_safety_front_path_width_m'),
+                'lanelet_safety_current_allow_route_reentry': LaunchConfiguration('cmd_vel_gate_lanelet_safety_current_allow_route_reentry'),
+                'lanelet_safety_current_route_reentry_max_distance_m': LaunchConfiguration('cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m'),
+                'lanelet_safety_current_route_reentry_require_front_cmd': LaunchConfiguration('cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd'),
                 'enable_speed_dependent_lookahead': LaunchConfiguration('cmd_vel_gate_speed_dependent_lookahead'),
                 'front_lookahead_min_m': LaunchConfiguration('cmd_vel_gate_front_lookahead_min_m'),
                 'front_lookahead_max_m': LaunchConfiguration('cmd_vel_gate_front_lookahead_max_m'),
