@@ -43,6 +43,11 @@
     # goal that is disconnected in the actual costmap raster.
     restrict_to_cost_grid_component: true
     allow_cost_grid_component_fallback: false
+    # HH_260619 - Campsite center goals are off-lane by design. Avoid snapping
+    # them to a distant stale component when the nearest real lanelet is close.
+    uncontained_global_snap_override_enable: true
+    uncontained_global_snap_max_distance_m: 15.0
+    uncontained_global_snap_min_improvement_m: 5.0
     cost_grid_topic: "/map/cost_grid/lanelet"
     cost_grid_block_threshold: 100
 
@@ -62,7 +67,7 @@
     # only after pose-distance arrival, to avoid BT topic-goal preemption.
     sequential_goal_require_nav2_terminal: true
 
-    # HH_260619: When RViz/manual test pose is teleported while a goal is active,
+    # HH_260619 - When RViz/manual test pose is teleported while a goal is active,
     # reissue the same snapped goal once so Nav2 rebuilds its FollowPath context
     # from the new pose instead of rotating against the stale action path.
     reissue_active_goal_on_pose_jump: true

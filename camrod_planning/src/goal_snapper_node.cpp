@@ -140,6 +140,15 @@ public:
       "restrict_to_cost_grid_component", true);
     allow_cost_grid_component_fallback_ = declare_parameter<bool>(
       "allow_cost_grid_component_fallback", false);
+    // HH_260619 - UI campsite centers are intentionally outside lanelets. If a
+    // stale connected/cost component would snap that off-lane goal to a much
+    // farther lanelet, prefer a bounded global nearest-centerline snap instead.
+    uncontained_global_snap_override_enable_ = declare_parameter<bool>(
+      "uncontained_global_snap_override_enable", true);
+    uncontained_global_snap_max_distance_m_ = declare_parameter<double>(
+      "uncontained_global_snap_max_distance_m", 15.0);
+    uncontained_global_snap_min_improvement_m_ = declare_parameter<double>(
+      "uncontained_global_snap_min_improvement_m", 5.0);
     cost_grid_topic_ = declare_parameter<std::string>(
       "cost_grid_topic", "/map/cost_grid/lanelet");
     cost_grid_block_threshold_ = std::clamp(
@@ -172,7 +181,7 @@ public:
     // finishing, which causes topic-goal preemption instead of a clean stop.
     sequential_goal_require_nav2_terminal_ =
       declare_parameter<bool>("sequential_goal_require_nav2_terminal", true);
-    // HH_260619: If the robot pose is manually reset or localization jumps while
+    // HH_260619 - If the robot pose is manually reset or localization jumps while
     // a NavigateToPose action is active, re-send the current snapped goal once.
     // This forces BT/Navigator to rebuild its blackboard path from the new pose
     // instead of rotating in place against the stale FollowPath context.
@@ -235,7 +244,8 @@ public:
     if (
       restrict_to_connected_lanelet_component_ ||
       restrict_to_cost_grid_component_ ||
-      sequential_goal_release_enable_)
+      sequential_goal_release_enable_ ||
+      reissue_active_goal_on_pose_jump_)
     {
       sub_current_pose_ = create_subscription<avg_msgs::msg::PoseStamped>(
         current_pose_topic_, rclcpp::QoS(10),
@@ -246,10 +256,14 @@ public:
         cost_grid_topic_, rclcpp::QoS(1),
         std::bind(&GoalSnapperNode::onCostGrid, this, std::placeholders::_1));
     }
-    if (sequential_goal_release_enable_) {
+    // HHL_260622 - Subscribe to Nav2 status whenever pose-jump reissue is enabled.
+    // Otherwise a succeeded direct goal can stay "active" and be reissued after RViz initialpose resets.
+    if (sequential_goal_release_enable_ || reissue_active_goal_on_pose_jump_) {
       sub_nav_status_ = create_subscription<action_msgs::msg::GoalStatusArray>(
         sequential_goal_status_topic_, rclcpp::QoS(10),
         std::bind(&GoalSnapperNode::onNavStatus, this, std::placeholders::_1));
+    }
+    if (sequential_goal_release_enable_) {
       queue_timer_ = create_wall_timer(
         std::chrono::milliseconds(100),
         std::bind(&GoalSnapperNode::releasePendingGoalIfReady, this));
@@ -411,7 +425,7 @@ private:
   // Pose-distance is still used as a fallback when action status is delayed.
   void onNavStatus(const action_msgs::msg::GoalStatusArray::ConstSharedPtr msg)
   {
-    if (!sequential_goal_release_enable_ || !has_active_released_goal_ || !msg) {
+    if (!has_active_released_goal_ || !msg) {
       return;
     }
     for (const auto & status : msg->status_list) {
@@ -428,7 +442,9 @@ private:
       if (status.status == action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
         active_goal_nav2_succeeded_ = true;
         markActiveGoalReached("nav2_status");
-        releasePendingGoalIfReady();
+        if (sequential_goal_release_enable_) {
+          releasePendingGoalIfReady();
+        }
         return;
       }
     }
@@ -724,11 +740,14 @@ private:
     }
   }
 
-  // HH_260619: Reissue the active snapped goal when the robot pose jumps > pose_jump_reissue_distance_m_.
+  // HH_260619 - Reissue the active snapped goal when the robot pose jumps > pose_jump_reissue_distance_m_.
   // Triggered by RViz "2D Pose Estimate" or localization re-init during an active NavigateToPose action.
   // Without reissue, Nav2 BT keeps the stale FollowPath context from the pre-jump pose and rotates in place.
   void maybeReissueActiveGoalOnPoseJump(double pose_jump_distance, double now_sec)
   {
+    // HHL_260622 - Recheck reached state before reissuing. This prevents a manual
+    // initialpose/P reset after arrival from resurrecting the previous snapped goal.
+    updateActiveGoalReachedFromPose();
     if (
       !reissue_active_goal_on_pose_jump_ ||
       !has_active_released_goal_ ||
@@ -833,12 +852,36 @@ private:
     NearestResult & nearest, double & snapped_z)
   {
     nearest = findNearestCenterline(px, py, require_lanelet_containment_);
+    bool used_uncontained_search = false;
     if (!nearest.valid && require_lanelet_containment_ && fallback_uncontained_) {
+      used_uncontained_search = true;
       nearest = findNearestCenterline(px, py, false);
       if (nearest.valid) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 2000,
           "Goal is outside lanelet polygon; snapped to nearest centerline");
+      }
+    }
+    if (used_uncontained_search && uncontained_global_snap_override_enable_) {
+      const auto global_nearest = findNearestCenterline(px, py, false, true);
+      if (global_nearest.valid) {
+        const double selected_dist = nearest.valid ?
+          std::sqrt(nearest.sq_dist) : std::numeric_limits<double>::infinity();
+        const double global_dist = std::sqrt(global_nearest.sq_dist);
+        const bool selected_is_too_far =
+          !nearest.valid || selected_dist > uncontained_global_snap_max_distance_m_;
+        const bool global_is_materially_better =
+          selected_dist - global_dist >= uncontained_global_snap_min_improvement_m_;
+        if (global_dist <= uncontained_global_snap_max_distance_m_ &&
+          (selected_is_too_far || global_is_materially_better))
+        {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "goal_snapper: off-lane goal used bounded global nearest snap "
+            "selected_dist=%.2f global_dist=%.2f",
+            selected_dist, global_dist);
+          nearest = global_nearest;
+        }
       }
     }
     if (!nearest.valid) {
@@ -924,12 +967,14 @@ private:
 
   // Implements `findNearestCenterline` behavior.
   NearestResult findNearestCenterline(
-    double x, double y, bool require_lanelet_containment)
+    double x, double y, bool require_lanelet_containment,
+    bool ignore_component_filters = false)
   {
     NearestResult best;
     const double max_sq = max_search_radius_ * max_search_radius_;
 
     const bool strict_component =
+      !ignore_component_filters &&
       restrict_to_connected_lanelet_component_ && !allow_component_fallback_to_global_;
     const bool component_ready = !connected_lanelet_ids_.empty();
     if (strict_component && !component_ready) {
@@ -940,7 +985,7 @@ private:
     }
 
     for (const auto & ll : map_->laneletLayer) {
-      if (restrict_to_connected_lanelet_component_ && component_ready) {
+      if (!ignore_component_filters && restrict_to_connected_lanelet_component_ && component_ready) {
         if (connected_lanelet_ids_.count(ll.id()) == 0U) {
           continue;
         }
@@ -969,7 +1014,7 @@ private:
         const double dy = y - proj_y;
         const double dist2 = dx * dx + dy * dy;
         if (dist2 < best.sq_dist && dist2 < max_sq) {
-          if (!isPointInCostGridComponent(proj_x, proj_y)) {
+          if (!ignore_component_filters && !isPointInCostGridComponent(proj_x, proj_y)) {
             continue;
           }
           best.sq_dist = dist2;
@@ -981,7 +1026,8 @@ private:
       }
     }
 
-    if (!best.valid && restrict_to_connected_lanelet_component_ && !component_ready &&
+    if (!best.valid && !ignore_component_filters &&
+      restrict_to_connected_lanelet_component_ && !component_ready &&
       allow_component_fallback_to_global_)
     {
       RCLCPP_WARN_THROTTLE(
@@ -1179,7 +1225,7 @@ private:
   int sequential_goal_max_queue_size_{10};
   std::string sequential_goal_status_topic_{"/planning/navigate_to_pose/_action/status"};
   bool sequential_goal_require_nav2_terminal_{true};
-  // HH_260619: Pose-jump reissue state — tracks last known pose and last reissue timestamp.
+  // HH_260619 - Pose-jump reissue state tracks last known pose and last reissue timestamp.
   bool reissue_active_goal_on_pose_jump_{true};
   double pose_jump_reissue_distance_m_{1.5};
   double pose_jump_reissue_min_interval_s_{1.0};
@@ -1190,7 +1236,7 @@ private:
   bool active_goal_nav2_succeeded_{false};
   double active_goal_reached_sec_{0.0};
   double active_released_sec_{0.0};
-  // HH_260619: Previous pose checkpoint for per-callback jump distance measurement.
+  // HH_260619 - Previous pose checkpoint for per-callback jump distance measurement.
   bool has_pose_jump_check_pose_{false};
   double last_pose_jump_check_x_{0.0};
   double last_pose_jump_check_y_{0.0};
@@ -1220,6 +1266,9 @@ private:
   // HH_260617 Cost-grid component restriction state.
   bool restrict_to_cost_grid_component_{true};
   bool allow_cost_grid_component_fallback_{false};
+  bool uncontained_global_snap_override_enable_{true};
+  double uncontained_global_snap_max_distance_m_{15.0};
+  double uncontained_global_snap_min_improvement_m_{5.0};
   std::string cost_grid_topic_{"/map/cost_grid/lanelet"};
   int cost_grid_block_threshold_{100};
   nav_msgs::msg::OccupancyGrid latest_cost_grid_;
