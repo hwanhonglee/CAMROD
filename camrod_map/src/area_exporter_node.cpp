@@ -196,6 +196,31 @@ lanelet::BasicPoint3d computeCentroid(const std::vector<lanelet::BasicPoint3d> &
   return lanelet::BasicPoint3d(sx * inv, sy * inv, sz * inv);
 }
 
+double pointDistance2D(const lanelet::BasicPoint3d & a, const lanelet::BasicPoint3d & b)
+{
+  return std::hypot(a.x() - b.x(), a.y() - b.y());
+}
+
+// HHL_260622 - Normalize closed OSM/lanelet polygons before centroid export.
+// Slightly duplicated closing points bias center coordinates and break site occupancy polygons.
+std::vector<lanelet::BasicPoint3d> normalizePolygonCorners(
+  const std::vector<lanelet::BasicPoint3d> & pts)
+{
+  constexpr double kDuplicatePointEpsM = 0.10;
+  std::vector<lanelet::BasicPoint3d> corners;
+  corners.reserve(pts.size());
+  for (const auto & p : pts) {
+    if (!corners.empty() && pointDistance2D(corners.back(), p) <= kDuplicatePointEpsM) {
+      continue;
+    }
+    corners.push_back(p);
+  }
+  if (corners.size() > 1 && pointDistance2D(corners.front(), corners.back()) <= kDuplicatePointEpsM) {
+    corners.pop_back();
+  }
+  return corners;
+}
+
 // Math helper PolygonCentroid: computes derived geometric values used by mapping logic.
 lanelet::BasicPoint3d computePolygonCentroid(
   const std::vector<lanelet::BasicPoint3d> & pts)
@@ -350,7 +375,8 @@ public:
           pts.push_back(lanelet::BasicPoint3d(p.x(), p.y(), p.z()));
         }
       }
-      const auto center = computeCentroid(pts);
+      const auto corners = normalizePolygonCorners(pts);
+      const auto center = corners.size() >= 3 ? computePolygonCentroid(corners) : computeCentroid(pts);
       DropZone dz;
       dz.id = "dz_area_" + std::to_string(area.id());
       dz.type = zone_type;
@@ -360,6 +386,9 @@ public:
       dz.y = center.y();
       dz.z = center.z();
       dz.yaw_deg = computeYawDegFromPoints(pts, default_yaw_deg_);
+      if (corners.size() >= 3) {
+        dz.corners = corners;
+      }
       zones.push_back(dz);
     }
 
@@ -375,7 +404,8 @@ public:
         pts.push_back(lanelet::BasicPoint3d(p.x(), p.y(), p.z()));
       }
       const bool is_area = attributeIsTrue(ls, "area");
-      const auto center = is_area ? computePolygonCentroid(pts) : computeCentroid(pts);
+      const auto corners = is_area ? normalizePolygonCorners(pts) : std::vector<lanelet::BasicPoint3d>{};
+      const auto center = is_area ? computePolygonCentroid(corners) : computeCentroid(pts);
       DropZone dz;
       dz.id = "dz_line_" + std::to_string(ls.id());
       dz.type = zone_type;
@@ -385,6 +415,9 @@ public:
       dz.y = center.y();
       dz.z = center.z();
       dz.yaw_deg = computeYawDegFromPoints(pts, default_yaw_deg_);
+      if (corners.size() >= 3) {
+        dz.corners = corners;
+      }
       zones.push_back(dz);
     }
 
@@ -726,21 +759,12 @@ private:
       if (pts.size() < 2) {
         continue;
       }
-      std::vector<lanelet::BasicPoint3d> corners = pts;
-      if (way.area && !corners.empty()) {
-        // Remove closing duplicate if present.
-        const auto & first = corners.front();
-        const auto & last = corners.back();
-        if (first.x() == last.x() && first.y() == last.y() && first.z() == last.z()) {
-          corners.pop_back();
-        }
-      }
+      const std::vector<lanelet::BasicPoint3d> corners =
+        way.area ? normalizePolygonCorners(pts) : std::vector<lanelet::BasicPoint3d>{};
 
       lanelet::BasicPoint3d center;
-      if (way.area && corners.size() == 4) {
-        center = computeCentroid(corners);
-      } else if (way.area) {
-        center = computePolygonCentroid(pts);
+      if (way.area) {
+        center = computePolygonCentroid(corners);
       } else {
         center = computeCentroid(pts);
       }
@@ -753,7 +777,7 @@ private:
       dz.y = center.y();
       dz.z = center.z();
       dz.yaw_deg = computeYawDegFromPoints(pts, default_yaw_deg_);
-      if (dz.type == "drop_zone" && way.area && corners.size() >= 3) {
+      if (way.area && corners.size() >= 3) {
         dz.corners = corners;
       }
       zones.push_back(dz);
