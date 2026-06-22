@@ -825,6 +825,51 @@ body {
 .move-confirm-no:hover { background: #e0e0e0; }
 .move-confirm-no:active { transform: scale(0.96); }
 
+/* HHL_260622 - Show mission-gate rejection instead of silently ignoring unsafe site-to-site commands. */
+.site-access-error-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 450;
+  animation: fadeIn 0.15s ease;
+}
+
+.site-access-error-box {
+  background: #fff;
+  border-radius: 20px;
+  padding: 2.6rem 3.2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.8rem;
+  min-width: 480px;
+  max-width: 760px;
+  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.32);
+  text-align: center;
+}
+
+.site-access-error-msg {
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.65;
+  color: #b71c1c;
+  margin: 0;
+}
+
+.site-access-error-btn {
+  padding: 0.9rem 3.2rem;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  cursor: pointer;
+  background: linear-gradient(145deg, #c62828, #8e0000);
+  color: #fff;
+}
+
 /* ── 모달 오버레이 ─────────────────────────────────────────────────────── */
 .modal-overlay {
   position: fixed;

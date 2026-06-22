@@ -28,6 +28,11 @@ def generate_launch_description():
         default_value='60',
         description='Seconds to hold lock after disconnect before releasing to others',
     )
+    default_recall_site_arg = DeclareLaunchArgument(
+        'default_recall_site_name',
+        default_value='camping_site_1',
+        description='Fallback camping_site_* key used when guest recall omits a site',
+    )
 
     guest_node = Node(
         package='camrod_ui',
@@ -39,6 +44,8 @@ def generate_launch_description():
             'host': LaunchConfiguration('guest_host'),
             'port': LaunchConfiguration('guest_port'),
             'amr_service_state_topic': '/AMR_service_state',
+            'camping_site_recall_topic': '/planning/state_machine/camping_site_recall',
+            'default_recall_site_name': LaunchConfiguration('default_recall_site_name'),
             'battery_topic': '/battery_percentage',
             'grace_period_s': LaunchConfiguration('grace_period_s'),
         }],
@@ -49,5 +56,6 @@ def generate_launch_description():
         host_arg,
         port_arg,
         grace_period_arg,
+        default_recall_site_arg,
         guest_node,
     ])

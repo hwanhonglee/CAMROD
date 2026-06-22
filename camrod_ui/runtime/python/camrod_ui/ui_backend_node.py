@@ -48,6 +48,13 @@ class ApiState:
     )
     battery_percentage: int = -1
     ws_site_states: Dict[str, bool] = field(default_factory=dict)
+    site_access: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    active_reservation_code: str = ""
+    # HHL_260622 - Expose parking/site maneuver lifecycle to UI clients instead
+    # of leaving detailed phase state only in ROS logs.
+    amr_service_state: int = AvgAmrServiceState.DROP_ZONE_WAIT
+    amr_service_description: str = "Drop Zone 대기 중"
+    parking_phase: str = ""
 
 
 @dataclass
@@ -60,6 +67,21 @@ class MissionKeypoint:
     y: float
     z: float
     yaw_deg: float
+
+
+@dataclass
+class SiteAccessRecord:
+    """Runtime reservation/occupancy gate for one campsite."""
+
+    site: str
+    status: str = "AVAILABLE"
+    reservation_code: str = ""
+    mission_key: str = ""
+    delivery_allowed: bool = True
+    recall_allowed: bool = True
+    site_entry_allowed: bool = True
+    staging_mission_key: str = ""
+    message: str = ""
 
 
 class UiBackendNode(Node):
@@ -87,6 +109,21 @@ class UiBackendNode(Node):
         self.planning_goal_pose_topic = str(
             self.declare_parameter("planning_goal_pose_topic", "/goal_pose").value
         )
+        self.planning_return_to_drop_zone_topic = str(
+            self.declare_parameter(
+                "planning_return_to_drop_zone_topic",
+                "/planning/state_machine/return_to_drop_zone",
+            ).value
+        )
+        # HHL_260622 - UI usage-complete must trigger campsite crab-out first.
+        # The planning return topic is published by site_maneuver after it has
+        # returned to the lanelet-snap pose.
+        self.parking_site_return_topic = str(
+            self.declare_parameter(
+                "parking_site_return_topic",
+                "/parking/site_maneuver/return",
+            ).value
+        )
         self.battery_topic = str(
             self.declare_parameter("battery_topic", "/battery_percentage").value
         )
@@ -105,6 +142,28 @@ class UiBackendNode(Node):
         )
 
         self.camping_sites_yaml = str(self.declare_parameter("camping_sites_yaml", "").value)
+        self.site_access_yaml = str(self.declare_parameter("site_access_yaml", "").value)
+        self.enable_site_access_gate = bool(
+            self.declare_parameter("enable_site_access_gate", True).value
+        )
+        self.require_reservation_code_for_delivery = bool(
+            self.declare_parameter("require_reservation_code_for_delivery", False).value
+        )
+        self.require_known_mission_key_for_delivery = bool(
+            self.declare_parameter("require_known_mission_key_for_delivery", True).value
+        )
+        self.enforce_delivery_start_state = bool(
+            self.declare_parameter("enforce_delivery_start_state", True).value
+        )
+        # HHL_260622 - A new delivery may only start from the drop-zone idle state.
+        # This prevents accidental site-to-site dispatch after unloading at a campsite.
+        self.delivery_allowed_amr_states = self._parse_int_list(
+            self.declare_parameter(
+                "delivery_allowed_amr_states",
+                [int(AvgAmrServiceState.DROP_ZONE_WAIT)],
+            ).value,
+            [int(AvgAmrServiceState.DROP_ZONE_WAIT)],
+        )
         self.site_names = [
             str(site)
             for site in self.declare_parameter("site_names", [f"B{i}" for i in range(1, 14)]).value
@@ -120,9 +179,11 @@ class UiBackendNode(Node):
         )
 
         self._keypoints_by_mission_key = self._load_camping_site_keypoints(self.camping_sites_yaml)
+        self._site_access_records = self._load_site_access_records(self.site_access_yaml)
         self._lock = threading.Lock()
         self._state = ApiState(
-            ws_site_states={s: False for s in self.site_names}
+            ws_site_states={s: False for s in self.site_names},
+            site_access=self._site_access_snapshot_unlocked(),
         )
 
         # WebSocket client management.
@@ -167,6 +228,12 @@ class UiBackendNode(Node):
             PlanningMissionKey, self.planning_mission_key_topic, 10
         )
         self.pub_goal_pose = self.create_publisher(PoseStamped, self.planning_goal_pose_topic, 10)
+        self.pub_return_to_drop_zone = self.create_publisher(
+            Bool, self.planning_return_to_drop_zone_topic, 10
+        )
+        self.pub_site_maneuver_return = self.create_publisher(
+            Bool, self.parking_site_return_topic, 10
+        )
         self.pub_amr_service_state = self.create_publisher(AvgAmrServiceState, self.amr_service_state_topic, 10)
 
         self._server_thread: Optional[threading.Thread] = None
@@ -181,8 +248,173 @@ class UiBackendNode(Node):
             f"engage_topic={self.planning_engage_topic} "
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
-            f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'}"
+            f"return_topic={self.planning_return_to_drop_zone_topic} "
+            f"site_return_topic={self.parking_site_return_topic} "
+            f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'} "
+            f"site_access_gate={str(self.enable_site_access_gate).lower()} "
+            f"delivery_allowed_states={self.delivery_allowed_amr_states}"
         )
+
+    def _normalize_site_status(self, status: object) -> str:
+        text = str(status).strip().upper()
+        if not text:
+            return "AVAILABLE"
+        aliases = {
+            "FREE": "AVAILABLE",
+            "EMPTY": "AVAILABLE",
+            "RESERVE": "RESERVED",
+            "CHECKIN": "CHECKED_IN",
+            "CHECK_IN": "CHECKED_IN",
+            "IN_USE": "OCCUPIED",
+            "USED": "OCCUPIED",
+            "CHECKOUT": "CHECKED_OUT",
+            "CHECK_OUT": "CHECKED_OUT",
+            "DISABLED": "BLOCKED",
+        }
+        return aliases.get(text, text)
+
+    def _parse_int_list(self, raw: Any, default: List[int]) -> List[int]:
+        values: List[int] = []
+        if isinstance(raw, str):
+            items = [item.strip() for item in raw.replace(";", ",").split(",")]
+        elif isinstance(raw, (list, tuple)):
+            items = list(raw)
+        else:
+            items = [raw]
+        for item in items:
+            if item is None or item == "":
+                continue
+            try:
+                values.append(int(item))
+            except (TypeError, ValueError):
+                self.get_logger().warn(f"invalid integer list item ignored: {item}")
+        return values if values else list(default)
+
+    def _default_delivery_allowed(self, status: str) -> bool:
+        return status in {"AVAILABLE", "RESERVED", "CHECKED_IN"}
+
+    def _default_recall_allowed(self, status: str) -> bool:
+        return status in {"RESERVED", "CHECKED_IN", "OCCUPIED", "CHECKED_OUT"}
+
+    def _strict_mission_key_for_site(self, site: str) -> str:
+        # HHL_260621 - Only bind a site to an existing planning key; never reuse fallback_mission_key silently.
+        mapped = self.site_to_mission_key_map.get(site, "")
+        if mapped and mapped in self._keypoints_by_mission_key:
+            return mapped
+        site_text = str(site).strip().upper()
+        if site_text.startswith("B") and site_text[1:].isdigit():
+            candidate = f"camping_site_{int(site_text[1:])}"
+            if candidate in self._keypoints_by_mission_key:
+                return candidate
+        return ""
+
+    def _make_site_record(self, site: str, raw: Optional[Dict[str, Any]] = None) -> SiteAccessRecord:
+        raw = raw or {}
+        status = self._normalize_site_status(raw.get("status", "AVAILABLE"))
+        delivery_allowed = bool(raw.get("delivery_allowed", self._default_delivery_allowed(status)))
+        recall_allowed = bool(raw.get("recall_allowed", self._default_recall_allowed(status)))
+        site_entry_allowed = bool(raw.get("site_entry_allowed", delivery_allowed and status != "OCCUPIED"))
+        return SiteAccessRecord(
+            site=site,
+            status=status,
+            reservation_code=str(raw.get("reservation_code", "")).strip(),
+            mission_key=str(raw.get("mission_key", self._strict_mission_key_for_site(site))).strip(),
+            delivery_allowed=delivery_allowed,
+            recall_allowed=recall_allowed,
+            site_entry_allowed=site_entry_allowed,
+            staging_mission_key=str(raw.get("staging_mission_key", "")).strip(),
+            message=str(raw.get("message", "")).strip(),
+        )
+
+    def _load_site_access_records(self, yaml_path: str) -> Dict[str, SiteAccessRecord]:
+        records = {site: self._make_site_record(site) for site in self.site_names}
+        path = Path(yaml_path).expanduser() if yaml_path else None
+        if path is None or not str(path):
+            return records
+        if not path.exists():
+            self.get_logger().warn(f"site_access_yaml not found: {str(path)}")
+            return records
+
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().error(f"failed to read site_access_yaml {str(path)}: {exc}")
+            return records
+
+        config = data.get("site_access", data)
+        if isinstance(config, dict):
+            self.enable_site_access_gate = bool(
+                config.get("enabled", self.enable_site_access_gate)
+            )
+            self.require_reservation_code_for_delivery = bool(
+                config.get(
+                    "require_reservation_code_for_delivery",
+                    self.require_reservation_code_for_delivery,
+                )
+            )
+            self.require_known_mission_key_for_delivery = bool(
+                config.get(
+                    "require_known_mission_key_for_delivery",
+                    self.require_known_mission_key_for_delivery,
+                )
+            )
+            self.enforce_delivery_start_state = bool(
+                config.get(
+                    "enforce_delivery_start_state",
+                    self.enforce_delivery_start_state,
+                )
+            )
+            if "delivery_allowed_amr_states" in config:
+                self.delivery_allowed_amr_states = self._parse_int_list(
+                    config.get("delivery_allowed_amr_states"),
+                    self.delivery_allowed_amr_states,
+                )
+            raw_sites = config.get("sites", [])
+        else:
+            raw_sites = []
+
+        if isinstance(raw_sites, list):
+            for item in raw_sites:
+                if not isinstance(item, dict):
+                    continue
+                site = str(item.get("site", "")).strip()
+                if site in records:
+                    records[site] = self._make_site_record(site, item)
+
+        self.get_logger().info(
+            f"loaded {len(records)} site access records from {str(path)} "
+            f"gate={str(self.enable_site_access_gate).lower()}"
+        )
+        return records
+
+    def _site_record_to_dict(self, record: SiteAccessRecord) -> Dict[str, Any]:
+        return {
+            "site": record.site,
+            "status": record.status,
+            "reservation_code": record.reservation_code,
+            "mission_key": record.mission_key,
+            "delivery_allowed": record.delivery_allowed,
+            "recall_allowed": record.recall_allowed,
+            "site_entry_allowed": record.site_entry_allowed,
+            "staging_mission_key": record.staging_mission_key,
+            "message": record.message,
+        }
+
+    def _site_access_snapshot_unlocked(self) -> Dict[str, Dict[str, Any]]:
+        return {
+            site: self._site_record_to_dict(record)
+            for site, record in sorted(self._site_access_records.items())
+        }
+
+    def _sync_site_access_state_unlocked(self) -> None:
+        self._state.site_access = self._site_access_snapshot_unlocked()
+
+    def _broadcast_site_access(self) -> None:
+        with self._lock:
+            self._sync_site_access_state_unlocked()
+            snapshot = dict(self._state.site_access)
+        self._schedule_broadcast({"site_access": snapshot})
 
     def _parse_site_mission_map(self, raw_value: object) -> Dict[str, str]:
         parsed: Dict[str, str] = {}
@@ -361,17 +593,61 @@ class UiBackendNode(Node):
         self.get_logger().info(
             f"AMR service state received: {state} ({msg.description})"
         )
-        if state == AvgAmrServiceState.SITE_ARRIVED:
+        description = str(msg.description)
+        parking_phase = self._extract_parking_phase(description)
+        with self._lock:
+            self._state.amr_service_state = state
+            self._state.amr_service_description = description
+            self._state.parking_phase = parking_phase
+        self._schedule_broadcast({
+            "amr_state": state,
+            "amr_description": description,
+            "parking_phase": parking_phase,
+        })
+        if state == AvgAmrServiceState.SITE_ARRIVED or self._site_maneuver_is_waiting_for_user(parking_phase):
             with self._lock:
                 site = self._state.destination.get("site", "")
             if site:
                 self._schedule_broadcast({"arrived": site})
-            self._publish_engage(False, source="amr_service_state:SITE_ARRIVED")
+            self._publish_engage(False, source=f"amr_service_state:{parking_phase or 'SITE_ARRIVED'}")
         elif state == AvgAmrServiceState.DROP_ZONE_WAIT:
             self._schedule_broadcast({"amr_state": 0})
         elif state == AvgAmrServiceState.GUEST_RECALL_SERVICE:
             # HJ_260601: Notify robot UI that guest requested a recall.
             self._schedule_broadcast({"guest_recall": True})
+
+    # HHL_260622 - Parking nodes encode detailed phase in description
+    # (`site_maneuver:PHASE:reason`, `drop_zone_parking:PHASE:reason`).
+    def _extract_parking_phase(self, description: str) -> str:
+        parts = str(description).split(":", 2)
+        if len(parts) >= 2 and parts[0] in {"site_maneuver", "drop_zone_parking"}:
+            return f"{parts[0]}:{parts[1]}"
+        return ""
+
+    def _site_maneuver_is_waiting_for_user(self, parking_phase: str) -> bool:
+        # HHL_260622 - The customer-visible "arrived" state is campsite
+        # internal wait, not only Nav2's lanelet-snap GOAL_REACHED.
+        return parking_phase in {
+            "site_maneuver:UNLOAD_WAIT",
+            "site_maneuver:WAIT_RETURN",
+        }
+
+    def _return_requires_site_maneuver(self) -> bool:
+        with self._lock:
+            parking_phase = self._state.parking_phase
+            amr_state = int(self._state.amr_service_state)
+        if parking_phase in {
+            "site_maneuver:ALIGN_ENTRY_YAW",
+            "site_maneuver:REVERSE_IN",
+            "site_maneuver:CRAB_IN",
+            "site_maneuver:ROTATE_180",
+            "site_maneuver:UNLOAD_WAIT",
+            "site_maneuver:WAIT_RETURN",
+            "site_maneuver:REVERSE_OUT",
+            "site_maneuver:CRAB_OUT",
+        }:
+            return True
+        return amr_state == int(getattr(AvgAmrServiceState, "UNLOAD_WAIT", 6))
 
     def _publish_amr_service_state(self, state: int, source: str) -> None:
         desc_map = {
@@ -380,6 +656,12 @@ class UiBackendNode(Node):
             AvgAmrServiceState.SITE_ARRIVED:           "Site 도착",
             AvgAmrServiceState.RETURNING_TO_DROP_ZONE: "Site → Drop Zone 복귀 중",
             AvgAmrServiceState.GUEST_RECALL_SERVICE:   "Guest 호출 요청",
+            getattr(AvgAmrServiceState, "SITE_ENTRY", 5):             "Camping site 내부 진입 중",
+            getattr(AvgAmrServiceState, "UNLOAD_WAIT", 6):            "Camping site 하역 대기 중",
+            getattr(AvgAmrServiceState, "RECALL_TO_SITE_ROAD", 7):    "Guest 회수 지점 이동 중",
+            getattr(AvgAmrServiceState, "GUEST_LOADING_WAIT", 8):     "Guest 적재 대기 중",
+            getattr(AvgAmrServiceState, "RETURN_WITH_CARGO", 9):      "적재 후 Drop Zone 복귀 중",
+            getattr(AvgAmrServiceState, "DROP_ZONE_PARKING", 10):     "Drop Zone 주차 중",
         }
         msg = AvgAmrServiceState()
         msg.state = state
@@ -388,6 +670,25 @@ class UiBackendNode(Node):
         self.get_logger().info(
             f"AMR service state ({source}) -> {self.amr_service_state_topic}: "
             f"{state} ({msg.description})"
+        )
+
+    def _publish_return_to_drop_zone(self, source: str) -> None:
+        # HHL_260621 - Usage-complete must command the planning FSM return topic, not only UI state.
+        msg = Bool()
+        msg.data = True
+        self.pub_return_to_drop_zone.publish(msg)
+        self.get_logger().info(
+            f"return-to-drop-zone request ({source}) -> {self.planning_return_to_drop_zone_topic}: true"
+        )
+
+    def _publish_site_maneuver_return(self, source: str) -> None:
+        # HHL_260622 - This starts crab-out/reverse-out. Planning return starts
+        # later from site_maneuver DONE to prevent straight-line site exit.
+        msg = Bool()
+        msg.data = True
+        self.pub_site_maneuver_return.publish(msg)
+        self.get_logger().info(
+            f"site-maneuver return request ({source}) -> {self.parking_site_return_topic}: true"
         )
 
     def _on_destination_command(self, msg: UiDestinationCommand) -> None:
@@ -504,6 +805,157 @@ class UiBackendNode(Node):
             "message": "ok",
         }
 
+    def _validate_site_access(
+        self,
+        site: str,
+        mission_type: str,
+        reservation_code: str = "",
+    ) -> Dict[str, Any]:
+        # HHL_260621 - Central mission gate prevents UI/human error from sending unsafe site goals.
+        if not self.enable_site_access_gate:
+            return {"allowed": True, "message": "site access gate disabled"}
+
+        record = self._site_access_records.get(site)
+        if record is None:
+            return {"allowed": False, "message": f"site access record missing: {site}"}
+
+        if record.status in {"BLOCKED", "MAINTENANCE"}:
+            return {
+                "allowed": False,
+                "message": f"site {site} is blocked: {record.status}",
+                "site_access": self._site_record_to_dict(record),
+            }
+
+        if mission_type == "delivery" and self.enforce_delivery_start_state:
+            with self._lock:
+                current_state = int(self._state.amr_service_state)
+                current_description = str(self._state.amr_service_description)
+                parking_phase = str(self._state.parking_phase)
+            allowed_states = {int(state) for state in self.delivery_allowed_amr_states}
+            if current_state not in allowed_states:
+                return {
+                    "allowed": False,
+                    "message": (
+                        "new delivery requires drop-zone idle state; "
+                        f"current_state={current_state} description={current_description}"
+                    ),
+                    "site_access": self._site_record_to_dict(record),
+                    "current_state": current_state,
+                    "current_description": current_description,
+                    "parking_phase": parking_phase,
+                    "allowed_states": sorted(allowed_states),
+                }
+
+        expected_code = record.reservation_code.strip()
+        provided_code = reservation_code.strip()
+        if (
+            mission_type == "delivery"
+            and self.require_reservation_code_for_delivery
+            and expected_code
+            and provided_code != expected_code
+        ):
+            return {
+                "allowed": False,
+                "message": f"reservation code mismatch for {site}",
+                "site_access": self._site_record_to_dict(record),
+            }
+
+        if mission_type == "delivery" and not record.delivery_allowed:
+            return {
+                "allowed": False,
+                "message": f"delivery is not allowed for {site} status={record.status}",
+                "site_access": self._site_record_to_dict(record),
+            }
+
+        if (
+            mission_type == "delivery"
+            and self.require_known_mission_key_for_delivery
+            and record.mission_key not in self._keypoints_by_mission_key
+        ):
+            return {
+                "allowed": False,
+                "message": f"delivery mission key is not configured for {site}",
+                "site_access": self._site_record_to_dict(record),
+            }
+
+        if mission_type == "recall" and not record.recall_allowed:
+            return {
+                "allowed": False,
+                "message": f"recall is not allowed for {site} status={record.status}",
+                "site_access": self._site_record_to_dict(record),
+            }
+
+        return {
+            "allowed": True,
+            "message": "ok",
+            "site_access": self._site_record_to_dict(record),
+        }
+
+    def _set_site_status(
+        self,
+        site: str,
+        status: str,
+        *,
+        reservation_code: Optional[str] = None,
+        message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        normalized_site = str(site).strip()
+        if normalized_site not in self.site_names:
+            return {
+                "success": False,
+                "message": f"unknown site: {normalized_site}",
+                "valid_sites": list(self.site_names),
+            }
+
+        record = self._site_access_records.get(normalized_site)
+        if record is None:
+            record = self._make_site_record(normalized_site)
+            self._site_access_records[normalized_site] = record
+
+        record.status = self._normalize_site_status(status)
+        if reservation_code is not None:
+            record.reservation_code = str(reservation_code).strip()
+        if message is not None:
+            record.message = str(message).strip()
+
+        record.delivery_allowed = self._default_delivery_allowed(record.status)
+        record.recall_allowed = self._default_recall_allowed(record.status)
+        record.site_entry_allowed = record.delivery_allowed and record.status != "OCCUPIED"
+
+        self._broadcast_site_access()
+        return {
+            "success": True,
+            "site_access": self._site_record_to_dict(record),
+        }
+
+    def check_in_site(self, reservation_code: str = "", site: str = "") -> Dict[str, Any]:
+        # HHL_260621 - Check-in resolves the reservation to one site before any delivery command.
+        code = str(reservation_code).strip()
+        normalized_site = str(site).strip()
+        if not normalized_site and code:
+            for candidate, record in self._site_access_records.items():
+                if record.reservation_code and record.reservation_code == code:
+                    normalized_site = candidate
+                    break
+
+        if not normalized_site:
+            return {"success": False, "message": "site or reservation_code is required"}
+
+        result = self._set_site_status(
+            normalized_site,
+            "CHECKED_IN",
+            reservation_code=code if code else None,
+            message="checked in",
+        )
+        if result.get("success"):
+            with self._lock:
+                self._state.active_reservation_code = code
+        return result
+
+    def check_out_site(self, site: str) -> Dict[str, Any]:
+        # HHL_260621 - Checkout keeps recall allowed but blocks automatic campsite entry.
+        return self._set_site_status(site, "CHECKED_OUT", message="checked out")
+
     def _parse_destination_payload(self, raw: str) -> Optional[tuple[str, bool]]:
         text = str(raw).strip()
         if not text:
@@ -531,10 +983,9 @@ class UiBackendNode(Node):
         return (site, run)
 
     def _apply_destination_command(self, site: str, run: bool, source: str) -> Dict[str, Any]:
-        if self.publish_engage_from_destination:
-            self._publish_engage(run, source=f"{source}:destination")
-
         if not run:
+            if self.publish_engage_from_destination:
+                self._publish_engage(False, source=f"{source}:destination")
             return {
                 "site": site,
                 "run": False,
@@ -543,6 +994,29 @@ class UiBackendNode(Node):
                 "message": "run=false -> engage off, goal dispatch skipped",
             }
 
+        with self._lock:
+            active_reservation_code = self._state.active_reservation_code
+        access = self._validate_site_access(
+            site,
+            mission_type="delivery",
+            reservation_code=active_reservation_code,
+        )
+        if not access.get("allowed", False):
+            if self.publish_engage_from_destination:
+                self._publish_engage(False, source=f"{source}:site_access_rejected")
+            return {
+                "site": site,
+                "run": False,
+                "mission_key": "",
+                "goal_pose_published": False,
+                "message": str(access.get("message", "site access rejected")),
+                "site_access": access.get("site_access", {}),
+            }
+
+        # HHL_260622 - Engage only after the destination gate accepts the mission.
+        # Direct /ui/selected_destination publishers must not open cmd_vel before validation.
+        if self.publish_engage_from_destination:
+            self._publish_engage(True, source=f"{source}:destination")
         self._publish_amr_service_state(AvgAmrServiceState.MOVING_TO_SITE, source=f"{source}:start")
         goal_result = self._publish_goal_for_site(site=site, source=source)
         return {
@@ -586,6 +1060,11 @@ class UiBackendNode(Node):
                 "diagnostics_agg_error_count": self._state.diagnostics_agg_error_count,
                 "destination": dict(self._state.destination),
                 "battery_percentage": self._state.battery_percentage,
+                "site_access": dict(self._state.site_access),
+                "active_reservation_code": self._state.active_reservation_code,
+                "amr_service_state": self._state.amr_service_state,
+                "amr_service_description": self._state.amr_service_description,
+                "parking_phase": self._state.parking_phase,
             }
 
     # ── Public API methods (called by HTTP handlers) ──────────────────────────
@@ -614,7 +1093,29 @@ class UiBackendNode(Node):
         self._schedule_broadcast({"engage": False})
         return {"success": True, "message": "stop command published"}
 
-    def set_destination(self, site: str, run: bool) -> Dict[str, Any]:
+    def request_return_to_drop_zone(self, source: str) -> Dict[str, Any]:
+        # HHL_260622 - One public return command, two safe backends:
+        # campsite internal phase -> parking/site_maneuver crab-out first;
+        # all other phases -> direct planning return.
+        return_requires_site_maneuver = self._return_requires_site_maneuver()
+        self._publish_amr_service_state(AvgAmrServiceState.RETURNING_TO_DROP_ZONE, source=source)
+        self._publish_engage(True, source=source)
+        if return_requires_site_maneuver:
+            self._publish_site_maneuver_return(source=source)
+            return_mode = "site_maneuver_return"
+            message = "site maneuver return requested; planning return waits for lanelet snap"
+        else:
+            self._publish_return_to_drop_zone(source=source)
+            return_mode = "planning_return"
+            message = "planning return-to-drop-zone requested"
+
+        with self._lock:
+            self._state.ws_site_states = {s: False for s in self.site_names}
+        self._schedule_broadcast({"states": {s: False for s in self.site_names}})
+        self._schedule_broadcast({"engage": True, "returning": True, "return_mode": return_mode})
+        return {"success": True, "message": message, "mode": return_mode}
+
+    def set_destination(self, site: str, run: bool, reservation_code: str = "") -> Dict[str, Any]:
         normalized_site = str(site).strip()
         if not normalized_site:
             return {"success": False, "message": "site is required"}
@@ -625,8 +1126,27 @@ class UiBackendNode(Node):
                 "valid_sites": list(self.site_names),
             }
 
+        if run:
+            access = self._validate_site_access(
+                normalized_site,
+                mission_type="delivery",
+                reservation_code=reservation_code,
+            )
+            if not access.get("allowed", False):
+                self.get_logger().warn(
+                    f"destination rejected by site access gate: site={normalized_site} "
+                    f"reason={access.get('message', '')}"
+                )
+                return {
+                    "success": False,
+                    "message": access.get("message", "site access rejected"),
+                    "site_access": access.get("site_access", {}),
+                }
+
         with self._lock:
             self._state.ws_site_states = {s: (s == normalized_site and run) for s in self.site_names}
+            if reservation_code:
+                self._state.active_reservation_code = str(reservation_code).strip()
         self._schedule_broadcast({
             "states": {s: (s == normalized_site and run) for s in self.site_names}
         })
@@ -636,7 +1156,11 @@ class UiBackendNode(Node):
             run=bool(run),
             source="http_ui_destination",
         )
-        return {"success": True, "destination": payload}
+        return {
+            "success": True,
+            "destination": payload,
+            "site_access": self._site_record_to_dict(self._site_access_records[normalized_site]),
+        }
 
     # ── FastAPI server ────────────────────────────────────────────────────────
 
@@ -683,8 +1207,16 @@ class UiBackendNode(Node):
                 states = dict(node._state.ws_site_states)
                 engage = node._state.engaged
                 battery = node._state.battery_percentage
+                amr_state = node._state.amr_service_state
+                amr_description = node._state.amr_service_description
+                parking_phase = node._state.parking_phase
             await ws.send_json({"states": states})
             await ws.send_json({"engage": engage})
+            await ws.send_json({
+                "amr_state": amr_state,
+                "amr_description": amr_description,
+                "parking_phase": parking_phase,
+            })
             if battery >= 0:
                 await ws.send_json({"battery": battery})
 
@@ -718,19 +1250,20 @@ class UiBackendNode(Node):
                             })
                             continue
                         if new_state:
-                            # Deactivate all other sites, activate this one.
-                            with node._lock:
-                                node._state.ws_site_states = {
-                                    s: (s == site) for s in node.site_names
-                                }
-                            # HH_260616: Publish one destination command and let the
-                            # /ui/selected_destination subscriber dispatch engage/goal.
-                            # This keeps WebSocket behavior identical to REST and prevents
-                            # duplicate mission_key/site_goal publications for one button tap.
-                            node._publish_destination_command(site, run=True, source="ws")
-                            await node._broadcast(
-                                {"states": {s: (s == site) for s in node.site_names}}
+                            reservation_code = str(payload.get("reservation_code", "")).strip()
+                            result = node.set_destination(
+                                site=site,
+                                run=True,
+                                reservation_code=reservation_code,
                             )
+                            if not result.get("success"):
+                                await ws.send_json({
+                                    "error": "site_access_rejected",
+                                    "site": site,
+                                    "message": result.get("message", ""),
+                                    "site_access": result.get("site_access", {}),
+                                })
+                                continue
                             await node._broadcast({"engage": True})
                         else:
                             with node._lock:
@@ -748,12 +1281,8 @@ class UiBackendNode(Node):
                     # HH_260617: usage_complete is return-to-drop-zone state=3.
                     # Guest recall request is state=4 and is published by ui_guest_node.
                     if payload.get("usage_complete"):
-                        node._publish_amr_service_state(AvgAmrServiceState.RETURNING_TO_DROP_ZONE, source="ws:usage_complete")
-                        node._publish_engage(False, source="ws:usage_complete")
-                        with node._lock:
-                            node._state.ws_site_states = {s: False for s in node.site_names}
-                        await node._broadcast({"states": {s: False for s in node.site_names}})
-                        await node._broadcast({"engage": False})
+                        result = node.request_return_to_drop_zone(source="ws:usage_complete")
+                        await node._broadcast({"returning": True, "return_mode": result.get("mode", "")})
 
             except WebSocketDisconnect:
                 pass
@@ -781,6 +1310,16 @@ class UiBackendNode(Node):
             return JSONResponse({
                 "destination": snap.get("destination", {"site": "", "run": False}),
                 "valid_sites": list(node.site_names),
+            })
+
+        @app.get("/ui/site_access")
+        async def get_site_access() -> JSONResponse:
+            snap = node._snapshot()
+            return JSONResponse({
+                "enabled": node.enable_site_access_gate,
+                "require_reservation_code_for_delivery": node.require_reservation_code_for_delivery,
+                "active_reservation_code": snap.get("active_reservation_code", ""),
+                "sites": snap.get("site_access", {}),
             })
 
         @app.get("/ui/diagnostics")
@@ -816,10 +1355,51 @@ class UiBackendNode(Node):
             result = node.set_stop()
             return JSONResponse(result, status_code=200 if result.get("success") else 503)
 
+        @app.post("/ui/return_to_drop_zone")
+        async def post_return_to_drop_zone() -> JSONResponse:
+            result = node.request_return_to_drop_zone(source="http:return_to_drop_zone")
+            return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
         @app.post("/ui/destination")
-        async def post_destination(site: str = "", run: str = "false") -> JSONResponse:
+        async def post_destination(
+            site: str = "",
+            run: str = "false",
+            reservation_code: str = "",
+        ) -> JSONResponse:
             run_bool = run.lower() in {"1", "true", "yes", "on"}
-            result = node.set_destination(site=site, run=run_bool)
+            result = node.set_destination(
+                site=site,
+                run=run_bool,
+                reservation_code=reservation_code,
+            )
+            return JSONResponse(result, status_code=200 if result.get("success") else 400)
+
+        @app.post("/ui/site_access/checkin")
+        async def post_site_checkin(
+            reservation_code: str = "",
+            site: str = "",
+        ) -> JSONResponse:
+            result = node.check_in_site(reservation_code=reservation_code, site=site)
+            return JSONResponse(result, status_code=200 if result.get("success") else 400)
+
+        @app.post("/ui/site_access/checkout")
+        async def post_site_checkout(site: str = "") -> JSONResponse:
+            result = node.check_out_site(site=site)
+            return JSONResponse(result, status_code=200 if result.get("success") else 400)
+
+        @app.post("/ui/site_access/status")
+        async def post_site_status(
+            site: str = "",
+            status: str = "",
+            reservation_code: str = "",
+            message: str = "",
+        ) -> JSONResponse:
+            result = node._set_site_status(
+                site,
+                status,
+                reservation_code=reservation_code if reservation_code else None,
+                message=message if message else None,
+            )
             return JSONResponse(result, status_code=200 if result.get("success") else 400)
 
         # ── Static frontend serving ───────────────────────────────────────────
