@@ -164,6 +164,7 @@ install(
     scripts/planning_progress_node.py
     scripts/nav2_selector_latch_node.py
     scripts/path_visualizer_node.py
+    scripts/obstacle_replan_monitor_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
