@@ -5,6 +5,7 @@
 """
 
 import os
+import re
 import subprocess
 import sys
 from typing import Any
@@ -78,6 +79,7 @@ OVERRIDE_SPECS = {
         'goal_snapper_param_file': ('planning/goal_snapper_param_file',),
         'centerline_snapper_param_file': ('planning/centerline_snapper_param_file',),
         'goal_replanner_param_file': ('planning/goal_replanner_param_file',),
+        'obstacle_replan_monitor_param_file': ('planning/obstacle_replan_monitor_param_file',),
         'cmd_vel_gate_yaw_alignment_zones_file': ('planning/cmd_vel_gate_yaw_alignment_zones_file',),
     },
     'sensing': {
@@ -273,6 +275,69 @@ def resolve_cfg_override(config_root: str, raw_value: Any) -> str:
     return os.path.join(config_root, candidate)
 
 
+def _normalize_profile_name(value: Any) -> str:
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    text = text.replace('(', '_').replace(')', '_')
+    text = re.sub(r'[^A-Za-z0-9_]+', '_', text)
+    text = re.sub(r'_+', '_', text).strip('_').lower()
+    return text
+
+
+def infer_map_profile(map_params: dict, map_path: str) -> str:
+    # HHL_260622 - Map profile selects map-coupled semantic YAML without hardcoding C-track/Park files.
+    for key in ('map_profile', 'profile', 'semantic_profile'):
+        profile = _normalize_profile_name(map_params.get(key, ''))
+        if profile:
+            return profile
+
+    basename = os.path.basename(str(map_path or ''))
+    match = re.search(r'\(([^)]+)\)', basename)
+    if match:
+        return _normalize_profile_name(match.group(1))
+
+    stem = os.path.splitext(basename)[0]
+    for prefix in ('lanelet2_maps_', 'lanelet2_map_', 'lanelet_'):
+        if stem.startswith(prefix):
+            return _normalize_profile_name(stem[len(prefix):])
+    return ''
+
+
+def _is_default_cfg_value(raw_value: Any, default_rel: str) -> bool:
+    text = str(raw_value or '').strip()
+    if text in ('', '__module_default__', 'module_default', 'default'):
+        return True
+    return os.path.normpath(text) == os.path.normpath(default_rel)
+
+
+def resolve_profile_cfg_file(
+    config_root: str,
+    raw_value: Any,
+    default_rel: str,
+    map_profile: str,
+) -> str:
+    if not _is_default_cfg_value(raw_value, default_rel):
+        return resolve_cfg_file(config_root, raw_value, default_rel)
+
+    profile = _normalize_profile_name(map_profile)
+    if profile:
+        default_abs = resolve_cfg_file(config_root, default_rel, default_rel)
+        directory = os.path.dirname(default_abs)
+        stem, ext = os.path.splitext(os.path.basename(default_abs))
+        candidates = [
+            os.path.join(directory, f'{stem} ({profile}){ext}'),
+            os.path.join(directory, f'{stem}_{profile}{ext}'),
+            os.path.join(directory, f'{stem}-{profile}{ext}'),
+            os.path.join(directory, profile, f'{stem}{ext}'),
+        ]
+        selected = _first_existing_path(candidates)
+        if selected:
+            return selected
+
+    return resolve_cfg_file(config_root, raw_value, default_rel)
+
+
 # Adds launch argument key/value only when value is non-empty.
 def set_if_not_empty(args: dict, key: str, value: str) -> None:
     if isinstance(value, str) and value.strip():
@@ -321,11 +386,33 @@ def _first_existing_path(candidates: list[str]) -> str:
     return ''
 
 
+def _map_filename_candidates(configured: str, map_profile: str) -> list[str]:
+    filenames = []
+    configured_name = os.path.basename(str(configured or '').strip())
+    if configured_name:
+        filenames.append(configured_name)
+    profile = _normalize_profile_name(map_profile)
+    if profile:
+        filenames.extend([
+            f'lanelet2_maps_({profile}).osm',
+            f'lanelet2_maps_{profile}.osm',
+            f'lanelet2_maps-{profile}.osm',
+        ])
+    filenames.append('lanelet2_maps.osm')
+
+    ordered = []
+    for filename in filenames:
+        if filename and filename not in ordered:
+            ordered.append(filename)
+    return ordered
+
+
 def resolve_map_path_default(
     launch_cfg_map_path: Any,
     map_info_map_path: Any,
     map_info_path: str,
     config_root: str,
+    map_profile: Any = '',
 ) -> str:
     launch_cfg_value = str(launch_cfg_map_path).strip() if launch_cfg_map_path is not None else ''
     configured_path = ''
@@ -350,14 +437,26 @@ def resolve_map_path_default(
         if os.path.isfile(map_info_path_candidate):
             return os.path.abspath(map_info_path_candidate)
 
-    config_parent = os.path.abspath(os.path.join(config_root, '..'))
-    auto_candidates = [
-        os.path.join(config_parent, 'lanelet2_maps.osm'),
-        os.path.join(os.path.dirname(config_parent), 'lanelet2_maps.osm'),
-        os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src', 'lanelet2_maps.osm'),
-        os.path.join(os.getcwd(), 'lanelet2_maps.osm'),
-        os.path.join(os.getcwd(), 'src', 'lanelet2_maps.osm'),
+    # HHL_260622 - Fallback discovery honors map_profile so bringup is not tied to C-track.
+    auto_candidates = []
+    filenames = _map_filename_candidates(map_info_value or launch_cfg_value, str(map_profile or ''))
+    anchors = [
+        os.path.abspath(os.path.join(config_root, '..')),
+        os.path.abspath(os.path.join(config_root, '..', '..')),
+        os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src'),
+        os.getcwd(),
+        os.path.join(os.getcwd(), 'src'),
     ]
+    for anchor in anchors:
+        cur = os.path.abspath(anchor)
+        for _ in range(8):
+            for filename in filenames:
+                auto_candidates.append(os.path.join(cur, filename))
+                auto_candidates.append(os.path.join(cur, 'src', filename))
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
     discovered = _first_existing_path(auto_candidates)
     if discovered:
         return discovered
@@ -404,12 +503,21 @@ def generate_launch_description():
         'lon': map_params.get('reference_lon', map_params.get('offset_lon', 0.0)),
         'alt': map_params.get('reference_alt', map_params.get('offset_alt', 0.0)),
     }
-    planning_state_machine_keypoints_default = resolve_cfg_file(
+    map_path_default = resolve_map_path_default(
+        cfg_get(launch_cfg, 'map/map_path', ''),
+        map_params.get('map_path', ''),
+        map_info_path,
+        config_root_default,
+        map_params.get('map_profile', map_params.get('profile', '')),
+    )
+    map_profile = infer_map_profile(map_params, map_path_default)
+    planning_state_machine_keypoints_default = resolve_profile_cfg_file(
         config_root_default,
         cfg_get(launch_cfg, 'planning/state_machine_keypoints_yaml', 'map/drop_zones.yaml'),
         'map/drop_zones.yaml',
+        map_profile,
     )
-    planning_state_machine_camping_sites_default = resolve_cfg_file(
+    planning_state_machine_camping_sites_default = resolve_profile_cfg_file(
         config_root_default,
         cfg_get(
             launch_cfg,
@@ -417,6 +525,7 @@ def generate_launch_description():
             'planning/camping_sites.yaml',
         ),
         'planning/camping_sites.yaml',
+        map_profile,
     )
     planning_state_machine_cfg_entry = cfg_get(
         launch_cfg,
@@ -465,12 +574,6 @@ def generate_launch_description():
             parking_cfg_entry,
             'parking/parking.yaml',
         )
-    map_path_default = resolve_map_path_default(
-        cfg_get(launch_cfg, 'map/map_path', ''),
-        map_params.get('map_path', ''),
-        map_info_path,
-        config_root_default,
-    )
     map_info_launch_default = (
         map_info_path
         if str(map_info_cfg_entry).strip() in ('', '__module_default__', 'module_default', 'default')
@@ -519,6 +622,10 @@ def generate_launch_description():
         # HH_260618: Default off unless explicitly enabled; Nav2 planner_server
         # already owns /planning/global_path in the normal bringup path.
         ('enable_goal_replanner', cfg_get(launch_cfg, 'planning/enable_goal_replanner', False), 'Enable goal replanner'),
+        # HH_260619 - Keep this separate from goal_replanner: it only preempts
+        # active navigation after persistent LiDAR/Radar blockage, then lets Nav2
+        # compute a Smac2D fallback route.
+        ('enable_obstacle_replan_monitor', cfg_get(launch_cfg, 'planning/enable_obstacle_replan_monitor', True), 'Enable dynamic-obstacle replan monitor'),
         ('enable_nav2_lifecycle_retry', cfg_get(launch_cfg, 'planning/enable_nav2_lifecycle_retry', True), 'Enable Nav2 lifecycle retry'),
         # Hold Nav2 STARTUP until localization reports ready.
         ('require_localization_ready', cfg_get(launch_cfg, 'planning/require_localization_ready', True), 'Gate Nav2 STARTUP on localization readiness'),
@@ -690,6 +797,18 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_hold_s', 1.0),
             'Hold duration for cost-stop',
         ),
+        # HHL_260622: The merged inflation grid includes static route/lanelet
+        # guidance. Only configured dynamic sources may trigger cost-stop.
+        (
+            'planning_cmd_vel_gate_cost_stop_require_dynamic_source',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_require_dynamic_source', True),
+            'Require dynamic source attribution before merged-grid cost-stop blocks cmd_vel',
+        ),
+        (
+            'planning_cmd_vel_gate_cost_stop_dynamic_source_labels',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_dynamic_source_labels', 'lidar,radar'),
+            'Comma-separated source labels that can trigger dynamic cost-stop',
+        ),
         # HH_260618: Raw lanelet hard-stop parameters. This stays separate
         # from /planning/cost_grid/inflation because inflation clears the ego
         # footprint for planner startup and cannot be the final lanelet guard.
@@ -758,6 +877,30 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', 1.5),
             'Maximum pose-to-local-path distance for path-based lanelet safety',
         ),
+        # HHL_260622: Use a narrow center corridor for local-path lanelet safety;
+        # full robot-width raw boundary checks falsely stop at merges.
+        (
+            'planning_cmd_vel_gate_lanelet_safety_front_path_width_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_path_width_m', 0.25),
+            'Center corridor width for path-based lanelet safety',
+        ),
+        # HHL_260622: Allow bounded route re-entry for manually placed/sim poses
+        # that start slightly outside lanelet while a valid local path exists.
+        (
+            'planning_cmd_vel_gate_lanelet_safety_current_allow_route_reentry',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_current_allow_route_reentry', True),
+            'Allow current-cell lanelet bypass when close to active local path',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m', 4.0),
+            'Maximum distance to active local path for current-cell route re-entry',
+        ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', True),
+            'Require forward cmd_vel for current-cell route re-entry bypass',
+        ),
         # Speed-dependent front lookahead.
         (
             'planning_cmd_vel_gate_speed_dependent_lookahead',
@@ -789,7 +932,8 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_margin_m', 0.3),
             'Static safety margin for front lookahead (m)',
         ),
-        # Side/rear cost-stop — uses same merged grid as front.
+        # HHL_260622: Side/rear cost-stop samples the merged grid, but blocks
+        # only when dynamic source attribution owns the high-cost cell.
         (
             'planning_cmd_vel_gate_side_rear_cost_stop',
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_rear_cost_stop', True),
@@ -1405,6 +1549,7 @@ def generate_launch_description():
     planning_args = {
         'enable_path_cost_grids': lc['enable_path_cost_grids'],
         'enable_goal_replanner': lc['enable_goal_replanner'],
+        'enable_obstacle_replan_monitor': lc['enable_obstacle_replan_monitor'],
         'enable_nav2_lifecycle_retry': lc['enable_nav2_lifecycle_retry'],
         'require_localization_ready': lc['require_localization_ready'],
         'enable_state_machine': lc['enable_state_machine'],
@@ -1451,6 +1596,11 @@ def generate_launch_description():
     set_if_not_empty(planning_args, 'goal_snapper_param_file', planning_overrides['goal_snapper_param_file'])
     set_if_not_empty(planning_args, 'centerline_snapper_param_file', planning_overrides['centerline_snapper_param_file'])
     set_if_not_empty(planning_args, 'goal_replanner_param_file', planning_overrides['goal_replanner_param_file'])
+    set_if_not_empty(
+        planning_args,
+        'obstacle_replan_monitor_param_file',
+        planning_overrides['obstacle_replan_monitor_param_file'],
+    )
     set_if_not_empty(planning_args, 'local_path_extractor_param_file', planning_overrides['local_path_extractor_param_file'])
     set_if_not_empty(
         planning_args,

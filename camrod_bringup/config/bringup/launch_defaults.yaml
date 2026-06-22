@@ -62,6 +62,11 @@ bringup:
     # already publishes /planning/global_path; duplicate publishers make RViz path
     # visualization flicker and can feed stale paths to downstream cost grids.
     enable_goal_replanner: false
+    # HH_260619 - Dynamic-obstacle recovery is separate from goal_replanner.
+    # It keeps LaneletRoute fixed during normal motion, but preempts the active
+    # Nav2 goal with Smac2D only after LiDAR/Radar costs persistently block the
+    # route corridor.
+    enable_obstacle_replan_monitor: true
     # Recover from intermittent lifecycle startup race on resource-limited targets.
     enable_nav2_lifecycle_retry: true
     # false  → nav2_autostart=true: Nav2 activates immediately on bringup.
@@ -136,6 +141,10 @@ bringup:
     cmd_vel_gate_cost_lookahead_m: 2.0
     cmd_vel_gate_cost_width_m: 1.0
     cmd_vel_gate_cost_hold_s: 1.0
+    # HHL_260622 - The merged inflation grid also carries static lanelet/global
+    # path guidance. Only live dynamic sensor sources may block cmd_vel here.
+    cmd_vel_gate_cost_stop_require_dynamic_source: true
+    cmd_vel_gate_cost_stop_dynamic_source_labels: lidar,radar
     # HH_260618: Raw lanelet hard-stop before inflation ego-clear. This blocks
     # translational cmd_vel when the current/corridor cell is lane-boundary or
     # outside lanelet, while still allowing in-place yaw correction.
@@ -156,6 +165,14 @@ bringup:
     # fallback remains the raw robot-yaw rectangle when the path is unavailable.
     cmd_vel_gate_lanelet_safety_front_use_local_path: true
     cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m: 1.5
+    # HHL_260622 - FRONT_PATH uses only the selected route center corridor so
+    # merge/branch lanelet boundary pixels do not block valid centerline travel.
+    cmd_vel_gate_lanelet_safety_front_path_width_m: 0.25
+    # HHL_260622 - Allow bounded route re-entry when a sim/manual pose starts
+    # just outside lanelet but the active local path is already close and valid.
+    cmd_vel_gate_lanelet_safety_current_allow_route_reentry: true
+    cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m: 4.0
+    cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd: true
     # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
     cmd_vel_gate_speed_dependent_lookahead: true
     cmd_vel_gate_front_lookahead_min_m: 0.4
@@ -163,7 +180,8 @@ bringup:
     cmd_vel_gate_front_lookahead_friction: 0.4
     cmd_vel_gate_front_reaction_time_s: 0.15
     cmd_vel_gate_front_lookahead_margin_m: 0.3
-    # Side/rear cost-stop — uses same merged grid as front.
+    # Side/rear cost-stop samples the same merged grid, but still requires a
+    # dynamic source attribution before blocking.
     cmd_vel_gate_side_rear_cost_stop: true
     cmd_vel_gate_side_cost_threshold: 92
     cmd_vel_gate_side_lookahead_m: 0.8
@@ -247,6 +265,7 @@ bringup:
     goal_snapper_param_file: planning/goal_snapper.yaml
     centerline_snapper_param_file: planning/centerline_snapper.yaml
     goal_replanner_param_file: planning/goal_replanner.yaml
+    obstacle_replan_monitor_param_file: planning/obstacle_replan_monitor.yaml
     local_path_extractor_param_file: planning/local_path_extractor.yaml
     planning_state_machine_param_file: planning/planning_state_machine.yaml
 

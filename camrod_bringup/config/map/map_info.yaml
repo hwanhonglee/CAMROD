@@ -5,7 +5,9 @@
     # Lanelet2 OSM path.
     # Keep empty by default and let launch resolve via package-share/workspace search.
     # (bringup/map/planning launch files already provide this resolution path.)
-    map_path: ""
+    # HHL_260622 - Default planning validation map is the Park copy profile.
+    map_path: "../../../lanelet2_maps_(copy_park).osm"
+    map_profile: "copy_park"
 
     # WGS84 origin used by LocalCartesian/UTM projectors.
     # Keep these values aligned with the source map generation reference.
@@ -25,18 +27,18 @@
     # offset_lon: 126.77473954
     # offset_alt: 84.0
 
-    # 52S-CF60, C-track - VMB
-    # Degree LLH: 36.7292921, 127.4429577
-    # UTM (meter): 52S 360965.99E 4065972.49N
-    # MGRS: 52SCF6096565972
-    offset_lat: 36.7292921
-    offset_lon: 127.4429577
-    offset_alt: 84.0
+    # HHL_260622 - copy_park origin copied from util/map_proejctor_info/map_projector_info (copy_park).yaml.
+    # 52S, Park - VMB
+    # Degree LLH: 36.8435737, 128.0925646
+    # UTM (meter): 52S 419093.91E 4077903.92N
+    offset_lat: 36.8435737
+    offset_lon: 128.0925646
+    offset_alt: 299.425
 
     # Optional UTM-origin metadata for downstream tools that prefer metric origin fields.
-    offset_utm_easting: 360965.99
-    offset_utm_northing: 4065972.49
-    offset_utm_alt: 84.0
+    offset_utm_easting: 419093.91
+    offset_utm_northing: 4077903.92
+    offset_utm_alt: 299.425
 
     # Optional map yaw correction (degrees).
     # If enabled, lat/lon->xy conversion can be rotated by this offset.
