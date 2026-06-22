@@ -8,15 +8,23 @@ from enum import Enum
 
 import rclpy
 import yaml
-from avg_msgs.msg import ModuleState, PlanningScenario, PlanningState
+from avg_msgs.msg import AvgAmrServiceState, ModuleState, PlanningScenario, PlanningState
 from diagnostic_msgs.msg import DiagnosticStatus
 from geometry_msgs.msg import PoseStamped, Twist
+from nav_msgs.msg import Path
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import Bool
 from std_srvs.srv import Trigger
 
 from .utils import clamp, make_diagnostics, make_module_state, normalize_angle, yaw_from_pose
+
+
+def quat_from_yaw(yaw: float):
+    q = PoseStamped().pose.orientation
+    q.z = math.sin(yaw * 0.5)
+    q.w = math.cos(yaw * 0.5)
+    return q
 
 
 class Phase(str, Enum):
@@ -43,6 +51,14 @@ class DropZoneParkingNode(Node):
         self.cancel_topic = str(self.declare_parameter("cancel_topic", "/parking/drop_zone/cancel").value)
         self.status_topic = str(self.declare_parameter("status_topic", "/parking/drop_zone/status").value)
         self.diagnostics_topic = str(self.declare_parameter("diagnostics_topic", "/system/diagnostics").value)
+        # HHL_260622 - Drop-zone parking phase updates the UI/system service state.
+        self.amr_service_state_topic = str(
+            self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
+        )
+        # HH_260619 - Publish the planned drop-zone reverse approach path for RViz verification.
+        self.reverse_path_topic = str(
+            self.declare_parameter("reverse_path_topic", "/parking/drop_zone/reverse_path").value
+        )
 
         self.drop_zones_yaml = str(self.declare_parameter("drop_zones_yaml", "").value)
         self.drop_zone_id = str(self.declare_parameter("drop_zone_id", "drop_zone").value)
@@ -67,11 +83,12 @@ class DropZoneParkingNode(Node):
         self.rear_matches_station_yaw = bool(
             self.declare_parameter("rear_matches_station_yaw", False).value
         )
-        # HH_260618: The same drop-zone station yaw can be approached from either
-        # side in simulation and during recovery. Select the 180-degree equivalent
-        # robot yaw that makes the reverse axis point toward the station.
+        # HH_260619 - Drop-zone parking must not auto-select a 180-degree
+        # equivalent body yaw. The 180-degree body rotation phase belongs only
+        # to campsite handling; drop-zone parking aligns to the configured yaw
+        # and reverses straight into the station.
         self.auto_select_reverse_yaw_to_station = bool(
-            self.declare_parameter("auto_select_reverse_yaw_to_station", True).value
+            self.declare_parameter("auto_select_reverse_yaw_to_station", False).value
         )
         self.align_yaw_tolerance_deg = float(
             self.declare_parameter("align_yaw_tolerance_deg", 5.0).value
@@ -80,7 +97,8 @@ class DropZoneParkingNode(Node):
         self.align_max_angular_speed_radps = abs(
             float(self.declare_parameter("align_max_angular_speed_radps", 0.35).value)
         )
-        self.reverse_speed_mps = abs(float(self.declare_parameter("reverse_speed_mps", 0.12).value))
+        # HHL_260622 - Match config default for slightly faster reverse parking.
+        self.reverse_speed_mps = abs(float(self.declare_parameter("reverse_speed_mps", 0.16).value))
         self.reverse_yaw_kp = float(self.declare_parameter("reverse_yaw_kp", 0.8).value)
         self.reverse_lateral_kp = float(self.declare_parameter("reverse_lateral_kp", -0.25).value)
         self.reverse_max_angular_speed_radps = abs(
@@ -122,6 +140,10 @@ class DropZoneParkingNode(Node):
         self.cmd_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.status_pub = self.create_publisher(ModuleState, self.status_topic, 10)
         self.diag_pub = self.create_publisher(type(make_diagnostics(self, "", "", 0, "")), self.diagnostics_topic, 10)
+        self.amr_service_pub = self.create_publisher(
+            AvgAmrServiceState, self.amr_service_state_topic, 10
+        )
+        self.reverse_path_pub = self.create_publisher(Path, self.reverse_path_topic, 10)
 
         self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
         self.create_subscription(Bool, self.charging_topic, self._on_charging, 10)
@@ -265,14 +287,65 @@ class DropZoneParkingNode(Node):
             self.reverse_start_x = self.last_pose.pose.position.x
             self.reverse_start_y = self.last_pose.pose.position.y
             self.reverse_start_station_ahead_m = self._station_ahead_distance()
+        if phase in {Phase.ALIGN_REAR_YAW, Phase.REVERSE_APPROACH}:
+            self._publish_reverse_path()
+        self._publish_amr_service_state_for_phase(phase, message)
         self._publish_status(force=True)
 
     def _set_error(self, message: str) -> None:
         self._publish_zero()
         self._set_phase(Phase.ERROR, message)
 
+    def _publish_amr_service_state_for_phase(self, phase: Phase, source_message: str) -> None:
+        # HHL_260622 - UI sees drop-zone parking as a dedicated post-navigation state.
+        service_state = None
+        if phase in {Phase.ALIGN_REAR_YAW, Phase.REVERSE_APPROACH}:
+            service_state = AvgAmrServiceState.DROP_ZONE_PARKING
+        elif phase == Phase.PARKED:
+            service_state = AvgAmrServiceState.DROP_ZONE_WAIT
+
+        if service_state is None:
+            return
+
+        msg = AvgAmrServiceState()
+        msg.state = int(service_state)
+        msg.description = f"drop_zone_parking:{phase.value}:{source_message}"
+        self.amr_service_pub.publish(msg)
+
     def _publish_zero(self) -> None:
         self.cmd_pub.publish(Twist())
+
+    def _publish_reverse_path(self) -> None:
+        # HH_260619 - Visualize the low-speed rule-based drop-zone reverse path separately from Nav2 paths.
+        if self.last_pose is None:
+            return
+
+        frame_id = self.last_pose.header.frame_id or "map"
+        stamp = self.get_clock().now().to_msg()
+        start_x = self.last_pose.pose.position.x
+        start_y = self.last_pose.pose.position.y
+        reverse_axis_yaw = self._reverse_axis_yaw()
+        station_ahead_m = max(0.0, self._station_ahead_distance())
+        max_distance_m = max(0.05, abs(self.max_reverse_distance_m))
+        distance_m = station_ahead_m if station_ahead_m > 0.05 else max_distance_m
+        distance_m = min(distance_m, max_distance_m)
+        end_x = start_x + math.cos(reverse_axis_yaw) * distance_m
+        end_y = start_y + math.sin(reverse_axis_yaw) * distance_m
+
+        path = Path()
+        path.header.frame_id = frame_id
+        path.header.stamp = stamp
+        steps = max(1, int(distance_m / 0.25))
+        for index in range(steps + 1):
+            ratio = index / steps
+            pose = PoseStamped()
+            pose.header.frame_id = frame_id
+            pose.header.stamp = stamp
+            pose.pose.position.x = start_x + (end_x - start_x) * ratio
+            pose.pose.position.y = start_y + (end_y - start_y) * ratio
+            pose.pose.orientation = quat_from_yaw(self.target_robot_yaw)
+            path.poses.append(pose)
+        self.reverse_path_pub.publish(path)
 
     def _publish_align(self) -> bool:
         if not self._pose_is_fresh():

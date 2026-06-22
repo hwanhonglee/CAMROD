@@ -9,9 +9,10 @@ from enum import Enum
 
 import rclpy
 import yaml
-from avg_msgs.msg import ModuleState, PlanningScenario, PlanningState
+from avg_msgs.msg import AvgAmrServiceState, ModuleState, PlanningScenario, PlanningState
 from diagnostic_msgs.msg import DiagnosticStatus
 from geometry_msgs.msg import PoseStamped, Twist
+from nav_msgs.msg import Path
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import Bool
@@ -77,6 +78,14 @@ class SiteManeuverNode(Node):
             self.declare_parameter("status_topic", "/parking/site_maneuver/status").value
         )
         self.diagnostics_topic = str(self.declare_parameter("diagnostics_topic", "/system/diagnostics").value)
+        # HHL_260622 - Parking phase updates the UI/system service state during non-Nav2 maneuvers.
+        self.amr_service_state_topic = str(
+            self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
+        )
+        # HH_260619 - Publish the planned campsite reverse-in/reverse-out path for RViz verification.
+        self.reverse_path_topic = str(
+            self.declare_parameter("reverse_path_topic", "/parking/site_maneuver/reverse_path").value
+        )
 
         # HH_260617: Auto mode is based on PlanningState.GOAL_REACHED so Nav2
         # remains responsible for lanelet-snap approach before parking motion.
@@ -95,15 +104,15 @@ class SiteManeuverNode(Node):
         self.require_goal_pair_for_auto_start = bool(
             self.declare_parameter("require_goal_pair_for_auto_start", True).value
         )
-        # HH_260618: Campsite entry can be either wheel-crab lateral motion or
-        # rotate-then-reverse motion. Reverse is the operational default because
-        # it matches Ackermann-compatible site entry without relying on crab mode.
-        self.site_entry_mode = str(self.declare_parameter("site_entry_mode", "reverse").value).strip().lower()
+        # HHL_260622 - Campsite entry defaults to wheel-crab lateral motion:
+        # lanelet-snap approach -> crab into the site -> body rotate 180deg
+        # only after the robot is inside the selected camping site.
+        self.site_entry_mode = str(self.declare_parameter("site_entry_mode", "crab").value).strip().lower()
         if self.site_entry_mode not in {"reverse", "crab"}:
             self.get_logger().warn(
-                "unknown site_entry_mode='%s'; using reverse", self.site_entry_mode
+                f"unknown site_entry_mode='{self.site_entry_mode}'; using crab"
             )
-            self.site_entry_mode = "reverse"
+            self.site_entry_mode = "crab"
         self.enable_manual_site_goal_auto_start = bool(
             self.declare_parameter("enable_manual_site_goal_auto_start", True).value
         )
@@ -134,6 +143,22 @@ class SiteManeuverNode(Node):
         self.crab_timeout_margin_s = abs(
             float(self.declare_parameter("crab_timeout_margin_s", 3.0).value)
         )
+        # HH_260619 - Reverse-out follows a curved nonholonomic path back to the
+        # lanelet snap pose, so it needs a separate margin from crab/reverse-in
+        # timeout prediction.
+        self.reverse_return_timeout_margin_s = abs(
+            float(self.declare_parameter("reverse_return_timeout_margin_s", 45.0).value)
+        )
+        # HH_260619 - Reverse-out completion uses progress along the return
+        # travel axis plus lateral error to the lanelet-snap line. These
+        # tolerances avoid overshooting forever when the robot has crossed the
+        # snap pose between low-speed control ticks.
+        self.reverse_return_progress_tolerance_m = abs(
+            float(self.declare_parameter("reverse_return_progress_tolerance_m", 0.45).value)
+        )
+        self.reverse_return_lateral_tolerance_m = abs(
+            float(self.declare_parameter("reverse_return_lateral_tolerance_m", 0.40).value)
+        )
         # HH_260618: The planning cmd_vel gate can scale `/planning/cmd_vel_raw`
         # before the simulator/platform integrates motion. Use the expected
         # effective scale for timeout prediction so long campsite crab entries
@@ -152,8 +177,9 @@ class SiteManeuverNode(Node):
         self.rotate_yaw_tolerance_deg = abs(
             float(self.declare_parameter("rotate_yaw_tolerance_deg", 4.0).value)
         )
+        # HHL_260622 - Match the package/config fallback reverse speed.
         self.reverse_entry_speed_mps = abs(
-            float(self.declare_parameter("reverse_entry_speed_mps", 0.12).value)
+            float(self.declare_parameter("reverse_entry_speed_mps", 0.16).value)
         )
         self.reverse_entry_yaw_kp = float(self.declare_parameter("reverse_entry_yaw_kp", 1.0).value)
         self.reverse_entry_lateral_kp = float(
@@ -174,8 +200,7 @@ class SiteManeuverNode(Node):
         ).strip().lower()
         if self.reverse_entry_site_yaw_mode not in {"reverse_axis", "robot_yaw"}:
             self.get_logger().warn(
-                "unknown reverse_entry_site_yaw_mode='%s'; using reverse_axis",
-                self.reverse_entry_site_yaw_mode,
+                f"unknown reverse_entry_site_yaw_mode='{self.reverse_entry_site_yaw_mode}'; using reverse_axis"
             )
             self.reverse_entry_site_yaw_mode = "reverse_axis"
         self.reverse_entry_auto_select_yaw_equivalent = bool(
@@ -193,6 +218,13 @@ class SiteManeuverNode(Node):
         # demos only; otherwise the robot leaves the site immediately.
         self.auto_return_after_unload_wait = bool(
             self.declare_parameter("auto_return_after_unload_wait", False).value
+        )
+        # HH_260619 - Re-selecting a campsite while the node waits for an
+        # external return command is an explicit new mission/test request. Without
+        # this, selecting the same site again keeps WAIT_RETURN because the raw
+        # site-goal coordinates are unchanged.
+        self.reset_wait_return_on_site_goal = bool(
+            self.declare_parameter("reset_wait_return_on_site_goal", True).value
         )
         self.request_return_to_drop_zone_on_done = bool(
             self.declare_parameter("request_return_to_drop_zone_on_done", True).value
@@ -234,6 +266,10 @@ class SiteManeuverNode(Node):
         self.status_pub = self.create_publisher(ModuleState, self.status_topic, 10)
         self.diag_pub = self.create_publisher(type(make_diagnostics(self, "", "", 0, "")), self.diagnostics_topic, 10)
         self.return_request_pub = self.create_publisher(Bool, self.return_to_drop_zone_topic, 10)
+        self.amr_service_pub = self.create_publisher(
+            AvgAmrServiceState, self.amr_service_state_topic, 10
+        )
+        self.reverse_path_pub = self.create_publisher(Path, self.reverse_path_topic, 10)
 
         self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
         self.create_subscription(PoseStamped, self.site_goal_topic, self._on_site_goal, 10)
@@ -299,6 +335,22 @@ class SiteManeuverNode(Node):
     def _is_active_phase(self) -> bool:
         return self.phase not in {Phase.IDLE, Phase.DONE, Phase.ERROR}
 
+    def _is_site_internal_phase(self) -> bool:
+        # HHL_260622 - Once the robot is inside or leaving a campsite, a new
+        # campsite goal must not overwrite the original site/route pair. The
+        # only safe transition is to finish crab-out first, then let planning
+        # route from the lanelet snap pose.
+        return self.phase in {
+            Phase.ALIGN_ENTRY_YAW,
+            Phase.REVERSE_IN,
+            Phase.CRAB_IN,
+            Phase.ROTATE_180,
+            Phase.UNLOAD_WAIT,
+            Phase.WAIT_RETURN,
+            Phase.REVERSE_OUT,
+            Phase.CRAB_OUT,
+        }
+
     def _timer_period_s(self) -> float:
         rate_hz = self.control_rate_hz if self._is_active_phase() else self.idle_tick_rate_hz
         return 1.0 / max(rate_hz, 0.1)
@@ -321,6 +373,36 @@ class SiteManeuverNode(Node):
         pose.header = msg.header
         pose.pose = msg.pose
         return pose
+
+    def _publish_reverse_path(
+        self,
+        start_x: float,
+        start_y: float,
+        end_x: float,
+        end_y: float,
+        robot_yaw: float,
+    ) -> None:
+        # HH_260619 - Visualize the low-speed rule-based reverse path separately from Nav2 paths.
+        path = Path()
+        stamp = self.get_clock().now().to_msg()
+        frame_id = self.site_goal_frame_id or "map"
+        if self.last_pose is not None and self.last_pose.header.frame_id:
+            frame_id = self.last_pose.header.frame_id
+        path.header.frame_id = frame_id
+        path.header.stamp = stamp
+
+        distance = math.hypot(end_x - start_x, end_y - start_y)
+        steps = max(1, int(distance / 0.25))
+        for index in range(steps + 1):
+            ratio = index / steps
+            pose = PoseStamped()
+            pose.header.frame_id = frame_id
+            pose.header.stamp = stamp
+            pose.pose.position.x = start_x + (end_x - start_x) * ratio
+            pose.pose.position.y = start_y + (end_y - start_y) * ratio
+            pose.pose.orientation = quat_from_yaw(robot_yaw)
+            path.poses.append(pose)
+        self.reverse_path_pub.publish(path)
 
     def _stamp_pose_now(self, pose: PoseStamped) -> PoseStamped:
         pose.header.stamp = self.get_clock().now().to_msg()
@@ -373,14 +455,41 @@ class SiteManeuverNode(Node):
         self.last_pose_time_s = self._now_s()
 
     def _on_site_goal(self, msg: PoseStamped) -> None:
+        if self._is_site_internal_phase():
+            ok, message = self._request_return("site_goal_blocked_inside_site")
+            self.get_logger().warn(
+                "site_maneuver ignored new site_goal while site maneuver is internal: "
+                f"phase={self.phase.value} x={msg.pose.position.x:.2f} y={msg.pose.position.y:.2f} "
+                f"return_request={str(ok).lower()} message='{message}'"
+            )
+            return
+
         old_goal = self.site_goal
         self.site_goal = msg
         self.site_goal_time_s = self._now_s()
         self.site_goal_key = ""
-        if self._is_active_phase() and old_goal is not None and self._pose_distance(old_goal, msg) > 0.2:
+        goal_changed = old_goal is not None and self._pose_distance(old_goal, msg) > 0.2
+        waiting_return_reselected = (
+            self.reset_wait_return_on_site_goal
+            and self.phase == Phase.WAIT_RETURN
+        )
+        if old_goal is None or goal_changed or self.phase in {Phase.IDLE, Phase.DONE, Phase.ERROR}:
+            # HH_260619 - Treat every explicit idle/done/error campsite command
+            # as a retryable command so P-reset or same-site reselection can
+            # restart the entry sequence instead of being filtered as stale.
+            self.last_auto_key = ""
+        if self._is_active_phase() and (goal_changed or waiting_return_reselected):
             self._publish_zero()
             self.last_auto_key = ""
-            self._set_phase(Phase.IDLE, "new site_goal received; stale maneuver cancelled")
+            self.return_requested = False
+            self.return_published = False
+            self.return_acknowledged = False
+            reason = (
+                "new site_goal received; stale maneuver cancelled"
+                if goal_changed
+                else "site_goal reselected during WAIT_RETURN; maneuver reset"
+            )
+            self._set_phase(Phase.IDLE, reason)
         self.get_logger().info(
             "site_maneuver site_goal updated: "
             f"topic={self.site_goal_topic} x={msg.pose.position.x:.2f} y={msg.pose.position.y:.2f}"
@@ -436,6 +545,11 @@ class SiteManeuverNode(Node):
             if self.phase in {Phase.IDLE, Phase.DONE, Phase.ERROR}:
                 self.last_auto_key = ""
             return
+        if msg.scenario_id not in {
+            int(PlanningScenario.DELIVERY_TO_SITE),
+            int(PlanningScenario.RECALL_TO_SITE),
+        }:
+            return
         key = msg.active_mission_key.strip()
         auto_key = ""
         if key.startswith(self.site_mission_key_prefix):
@@ -446,6 +560,11 @@ class SiteManeuverNode(Node):
             # campsite request when the raw goal and snapped route goal differ
             # enough to describe a parking-site entry.
             auto_key = f"manual_site:{self.site_goal_time_s:.3f}:{self.route_goal_time_s:.3f}"
+        elif self._site_goal_pair_is_ready():
+            # HH_260619 - Separate parking entry readiness from fragile semantic
+            # key matching. A valid raw campsite goal plus reached route goal is
+            # sufficient when PlanningState is already in a site scenario.
+            auto_key = f"site_pair:{self.site_goal_time_s:.3f}:{self.route_goal_time_s:.3f}"
         else:
             return
         if auto_key == self.last_auto_key and self.phase not in {Phase.IDLE, Phase.DONE}:
@@ -525,10 +644,10 @@ class SiteManeuverNode(Node):
         self.return_acknowledged = False
         self.last_return_request_publish_s = 0.0
         if source_name == "goal_pair" and abs(forward_residual) > self.max_forward_residual_m:
+            # HHL_260622 - rclpy logger does not accept printf-style extra args.
             self.get_logger().warn(
-                "site_maneuver goal pair has forward residual %.2fm. "
-                "Crab-only parking corrects lateral offset; check lanelet snap if the site is not perpendicular.",
-                forward_residual,
+                f"site_maneuver goal pair has forward residual {forward_residual:.2f}m. "
+                "Crab-only parking corrects lateral offset; check lanelet snap if the site is not perpendicular."
             )
         self._set_phase(
             Phase.CRAB_IN,
@@ -595,6 +714,13 @@ class SiteManeuverNode(Node):
         self.return_published = False
         self.return_acknowledged = False
         self.last_return_request_publish_s = 0.0
+        self._publish_reverse_path(
+            self.entry_start_x,
+            self.entry_start_y,
+            self.entry_target_x,
+            self.entry_target_y,
+            self.entry_target_yaw,
+        )
         self._set_phase(
             Phase.ALIGN_ENTRY_YAW,
             f"start={source} reverse_distance={distance:.2f}m "
@@ -686,6 +812,9 @@ class SiteManeuverNode(Node):
             return False
         if msg.active_goal_source.strip() != "manual":
             return False
+        return self._site_goal_pair_is_ready()
+
+    def _site_goal_pair_is_ready(self) -> bool:
         if self.site_goal is None or self.route_goal is None:
             return False
         if not self._goal_pair_is_fresh():
@@ -726,6 +855,11 @@ class SiteManeuverNode(Node):
     def _crab_timed_out(self, elapsed: float) -> bool:
         return elapsed > (self.crab_duration_s + self.crab_timeout_margin_s)
 
+    def _reverse_return_timed_out(self, elapsed: float) -> bool:
+        # HH_260619 - Returning from the campsite usually includes yaw and
+        # lateral correction, so use a longer dedicated margin than entry.
+        return elapsed > (self.crab_duration_s + self.reverse_return_timeout_margin_s)
+
     def _pose_is_fresh(self) -> bool:
         return self.last_pose is not None and (self._now_s() - self.last_pose_time_s) <= self.pose_timeout_s
 
@@ -735,13 +869,39 @@ class SiteManeuverNode(Node):
         if phase == Phase.REVERSE_OUT and self.last_pose is not None:
             self.return_start_x = self.last_pose.pose.position.x
             self.return_start_y = self.last_pose.pose.position.y
+            self._publish_reverse_path(
+                self.return_start_x,
+                self.return_start_y,
+                self.entry_start_x,
+                self.entry_start_y,
+                normalize_angle(self.entry_target_yaw + math.pi),
+            )
         self._update_timer_period()
         self.get_logger().info(f"site_maneuver {phase.value}: {message}")
+        self._publish_amr_service_state_for_phase(phase, message)
         self._publish_status(force=True)
 
     def _set_error(self, message: str) -> None:
         self._publish_zero()
         self._set_phase(Phase.ERROR, message)
+
+    def _publish_amr_service_state_for_phase(self, phase: Phase, source_message: str) -> None:
+        # HHL_260622 - UI needs campsite-internal phases, not only Nav2 lanelet arrival state.
+        service_state = None
+        if phase in {Phase.ALIGN_ENTRY_YAW, Phase.REVERSE_IN, Phase.CRAB_IN, Phase.ROTATE_180}:
+            service_state = AvgAmrServiceState.SITE_ENTRY
+        elif phase in {Phase.UNLOAD_WAIT, Phase.WAIT_RETURN}:
+            service_state = AvgAmrServiceState.UNLOAD_WAIT
+        elif phase in {Phase.REVERSE_OUT, Phase.CRAB_OUT, Phase.DONE}:
+            service_state = AvgAmrServiceState.RETURN_WITH_CARGO
+
+        if service_state is None:
+            return
+
+        msg = AvgAmrServiceState()
+        msg.state = int(service_state)
+        msg.description = f"site_maneuver:{phase.value}:{source_message}"
+        self.amr_service_pub.publish(msg)
 
     def _publish_zero(self) -> None:
         self.cmd_pub.publish(Twist())
@@ -786,7 +946,37 @@ class SiteManeuverNode(Node):
     def _reverse_out_reached(self) -> bool:
         if not self._pose_is_fresh():
             return False
-        return self._distance_to_xy(self.entry_start_x, self.entry_start_y) <= self.return_position_tolerance_m
+        if self._distance_to_xy(self.entry_start_x, self.entry_start_y) <= self.return_position_tolerance_m:
+            return True
+        # HH_260619 - Reverse-out control drives backward with the robot body
+        # yaw aligned to entry_reverse_axis_yaw, so the actual travel axis is
+        # entry_reverse_axis_yaw + 180deg. Use the same snap-line origin as the
+        # controller; using the campsite origin made off-axis sites fail even
+        # after crossing the lanelet snap pose.
+        return_axis_yaw = normalize_angle(self.entry_reverse_axis_yaw + math.pi)
+        target_dx = self.entry_start_x - self.return_start_x
+        target_dy = self.entry_start_y - self.return_start_y
+        target_progress = math.cos(return_axis_yaw) * target_dx + math.sin(return_axis_yaw) * target_dy
+        current_progress, _ = self._axis_progress_lateral(
+            self.return_start_x, self.return_start_y, return_axis_yaw
+        )
+        _, current_lateral_to_snap_line = self._axis_progress_lateral(
+            self.entry_start_x, self.entry_start_y, return_axis_yaw
+        )
+        progress_tolerance = max(
+            self.return_position_tolerance_m,
+            self.reverse_return_progress_tolerance_m,
+        )
+        lateral_tolerance = max(
+            self.return_position_tolerance_m,
+            self.reverse_entry_lateral_tolerance_m,
+            self.reverse_return_lateral_tolerance_m,
+        )
+        if abs(current_lateral_to_snap_line) > lateral_tolerance:
+            return False
+        if target_progress >= 0.0:
+            return current_progress >= target_progress - progress_tolerance
+        return current_progress <= target_progress + progress_tolerance
 
     def _publish_reverse_along_axis(self, target_yaw: float, origin_x: float, origin_y: float) -> None:
         if not self._pose_is_fresh():
@@ -796,6 +986,15 @@ class SiteManeuverNode(Node):
         heading_error = normalize_angle(target_yaw - yaw)
         reverse_axis_yaw = normalize_angle(target_yaw + math.pi)
         _, lateral_error = self._axis_progress_lateral(origin_x, origin_y, reverse_axis_yaw)
+        progress_text = ""
+        if self.phase == Phase.REVERSE_OUT:
+            target_dx = self.entry_start_x - self.return_start_x
+            target_dy = self.entry_start_y - self.return_start_y
+            target_progress = math.cos(reverse_axis_yaw) * target_dx + math.sin(reverse_axis_yaw) * target_dy
+            current_progress, _ = self._axis_progress_lateral(
+                self.return_start_x, self.return_start_y, reverse_axis_yaw
+            )
+            progress_text = f" progress={current_progress:.2f}/{target_progress:.2f}m"
         cmd = Twist()
         cmd.linear.x = -self.reverse_entry_speed_mps
         cmd.angular.z = clamp(
@@ -814,7 +1013,7 @@ class SiteManeuverNode(Node):
                 f"phase={self.phase.value} target_yaw={math.degrees(target_yaw):.1f}deg "
                 f"reverse_axis={math.degrees(reverse_axis_yaw):.1f}deg "
                 f"heading_err={math.degrees(heading_error):.1f}deg "
-                f"lateral_err={lateral_error:.2f}m angular_z={cmd.angular.z:.2f}"
+                f"lateral_err={lateral_error:.2f}m{progress_text} angular_z={cmd.angular.z:.2f}"
             )
 
     def _publish_reverse_in(self) -> None:
@@ -901,7 +1100,7 @@ class SiteManeuverNode(Node):
                 self._publish_zero()
                 self._set_phase(Phase.DONE, "returned to lanelet snap pose")
                 self._publish_return_request("done")
-            elif self._crab_timed_out(elapsed):
+            elif self._reverse_return_timed_out(elapsed):
                 self._set_error("reverse return timeout before reaching lanelet snap pose")
             else:
                 self._publish_reverse_out()
