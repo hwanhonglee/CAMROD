@@ -1,4 +1,5 @@
 import os
+import re
 import yaml
 
 from ament_index_python.packages import get_package_share_directory
@@ -45,6 +46,104 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
     return {}
 
 
+def _first_existing_path(candidates: list[str]) -> str:
+    seen = set()
+    for candidate in candidates:
+        normalized = os.path.abspath(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if os.path.isfile(normalized):
+            return normalized
+    return ''
+
+
+def _normalize_profile_name(value) -> str:
+    text = str(value or '').strip()
+    if not text:
+        return ''
+    text = text.replace('(', '_').replace(')', '_')
+    text = re.sub(r'[^A-Za-z0-9_]+', '_', text)
+    text = re.sub(r'_+', '_', text).strip('_').lower()
+    return text
+
+
+def _profile_file_variants(default_path: str, profile: str) -> list[str]:
+    normalized = _normalize_profile_name(profile)
+    if not normalized:
+        return []
+    directory = os.path.dirname(default_path)
+    stem, ext = os.path.splitext(os.path.basename(default_path))
+    return [
+        os.path.join(directory, f'{stem} ({normalized}){ext}'),
+        os.path.join(directory, f'{stem}_{normalized}{ext}'),
+        os.path.join(directory, f'{stem}-{normalized}{ext}'),
+        os.path.join(directory, normalized, f'{stem}{ext}'),
+    ]
+
+
+def resolve_profile_file(default_path: str, profile: str) -> str:
+    # HHL_260622 - Standalone planning follows the map semantic profile used by bringup.
+    selected = _first_existing_path(_profile_file_variants(default_path, profile))
+    return selected if selected else default_path
+
+
+def _map_filename_candidates(configured: str, profile: str) -> list[str]:
+    filenames = []
+    configured_name = os.path.basename(str(configured or '').strip())
+    if configured_name:
+        filenames.append(configured_name)
+    normalized = _normalize_profile_name(profile)
+    if normalized:
+        filenames.extend([
+            f'lanelet2_maps_({normalized}).osm',
+            f'lanelet2_maps_{normalized}.osm',
+            f'lanelet2_maps-{normalized}.osm',
+        ])
+    filenames.append('lanelet2_maps.osm')
+
+    ordered = []
+    for filename in filenames:
+        if filename and filename not in ordered:
+            ordered.append(filename)
+    return ordered
+
+
+def resolve_map_path_default(map_info_path: str, map_path_from_info: str, map_profile: str) -> str:
+    configured = str(map_path_from_info or '').strip()
+    if configured:
+        configured_path = (
+            configured
+            if os.path.isabs(configured)
+            else os.path.abspath(os.path.join(os.path.dirname(map_info_path), configured))
+        )
+        if os.path.isfile(configured_path):
+            return configured_path
+
+    candidates = []
+    filenames = _map_filename_candidates(configured, map_profile)
+    anchors = [
+        os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src'),
+        os.getcwd(),
+        os.path.join(os.getcwd(), 'src'),
+        os.path.dirname(map_info_path),
+        pkg_share('camrod_map', ''),
+    ]
+    for anchor in anchors:
+        cur = os.path.abspath(anchor)
+        for _ in range(8):
+            for filename in filenames:
+                candidates.append(os.path.join(cur, filename))
+                candidates.append(os.path.join(cur, 'src', filename))
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+
+    discovered = _first_existing_path(candidates)
+    return discovered if discovered else configured
+
+
 def generate_launch_description():
     # Top-level planning launch (Nav2 + lanelet tools + cmd_vel gate).
     map_info_path = pkg_share('camrod_map', os.path.join('config', 'map_info.yaml'))
@@ -52,27 +151,28 @@ def generate_launch_description():
     origin_lat_default = '0.0'
     origin_lon_default = '0.0'
     origin_alt_default = '0.0'
+    map_profile_default = ''
     try:
         with open(map_info_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f) or {}
         params = extract_map_ros_params(data)
         map_path_default = str(params.get('map_path', map_path_default))
+        map_profile_default = str(params.get('map_profile', params.get('profile', '')))
         origin_lat_default = str(params.get('offset_lat', origin_lat_default))
         origin_lon_default = str(params.get('offset_lon', origin_lon_default))
         origin_alt_default = str(params.get('offset_alt', origin_alt_default))
     except Exception:
         pass
-    # HH_260409: Keep planning standalone launch usable even when map_info.yaml
-    # leaves map_path empty (discover common workspace map path candidates).
-    if not str(map_path_default).strip():
-        for candidate in (
-            os.path.join(os.path.expanduser('~'), 'camrod_ws', 'src', 'lanelet2_maps.osm'),
-            os.path.join(os.getcwd(), 'lanelet2_maps.osm'),
-            os.path.join(os.getcwd(), 'src', 'lanelet2_maps.osm'),
-        ):
-            if os.path.isfile(candidate):
-                map_path_default = os.path.abspath(candidate)
-                break
+    # HHL_260622 - Resolve relative/profile map paths so standalone planning is map-file agnostic.
+    map_path_default = resolve_map_path_default(map_info_path, map_path_default, map_profile_default)
+    planning_state_machine_camping_sites_default = resolve_profile_file(
+        pkg_share('camrod_planning', os.path.join('config', 'camping_sites.yaml')),
+        map_profile_default,
+    )
+    planning_state_machine_keypoints_default = resolve_profile_file(
+        pkg_share('camrod_map', os.path.join('config', 'drop_zones.yaml')),
+        map_profile_default,
+    )
 
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace', default_value='planning'),
@@ -90,6 +190,7 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_progress', default_value='true'),
         DeclareLaunchArgument('enable_tracking_error', default_value='true'),
         DeclareLaunchArgument('enable_path_visualization', default_value='true'),
+        DeclareLaunchArgument('enable_obstacle_replan_monitor', default_value='false'),
 
         DeclareLaunchArgument('centerline_input_pose_topic', default_value='/localization/pose'),
         DeclareLaunchArgument('local_path_pose_topic', default_value='/localization/pose'),
@@ -128,6 +229,10 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_cost_lookahead_m', default_value='2.0'),
         DeclareLaunchArgument('cmd_vel_gate_cost_width_m', default_value='1.0'),
         DeclareLaunchArgument('cmd_vel_gate_cost_hold_s', default_value='1.0'),
+        # HHL_260622: Merged inflation grid contains route/lanelet guidance;
+        # cmd_vel blocking must be owned by live dynamic sources.
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_require_dynamic_source', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_dynamic_source_labels', default_value='lidar,radar'),
         # HH_260618: Raw lanelet hard-stop uses /map/cost_grid/lanelet before
         # the merged inflation grid clears the ego footprint.
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_enable', default_value='true'),
@@ -144,6 +249,7 @@ def generate_launch_description():
         # HH_260619 - Prefer active local-path corridor for forward lanelet safety.
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_use_local_path', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', default_value='1.5'),
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_width_m', default_value='0.25'),
         # HH_260422: Speed-dependent front lookahead.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='0.4'),
@@ -151,7 +257,8 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_friction', default_value='0.4'),
         DeclareLaunchArgument('cmd_vel_gate_front_reaction_time_s', default_value='0.15'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_margin_m', default_value='0.3'),
-        # HH_260422: Side/rear cost-stop — uses same merged grid as front.
+        # HHL_260622: Side/rear cost-stop samples the merged grid, but blocks
+        # only when dynamic source attribution owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='92'),
         DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='0.8'),
@@ -206,9 +313,13 @@ def generate_launch_description():
               'goal_snapper_param_file':           'goal_snapper.yaml',
               'centerline_snapper_param_file':     'centerline_snapper.yaml',
               'goal_replanner_param_file':         'goal_replanner.yaml',
+              'obstacle_replan_monitor_param_file': 'obstacle_replan_monitor.yaml',
               'planning_state_machine_param_file': 'planning_state_machine.yaml',
-              'planning_state_machine_camping_sites_yaml': 'camping_sites.yaml',
           }.items()],
+        DeclareLaunchArgument(
+            'planning_state_machine_camping_sites_yaml',
+            default_value=planning_state_machine_camping_sites_default,
+        ),
         DeclareLaunchArgument('nav2_robot_base_frame', default_value='robot_base_link'),
         DeclareLaunchArgument(
             'nav2_selected_planner',
@@ -220,7 +331,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'planning_state_machine_keypoints_yaml',
-            default_value=pkg_share('camrod_map', os.path.join('config', 'drop_zones.yaml')),
+            default_value=planning_state_machine_keypoints_default,
         ),
 
         # HH_260527: Removed unused compatibility args
@@ -319,6 +430,8 @@ def generate_launch_description():
                 'cmd_vel_gate_cost_lookahead_m',
                 'cmd_vel_gate_cost_width_m',
                 'cmd_vel_gate_cost_hold_s',
+                'cmd_vel_gate_cost_stop_require_dynamic_source',
+                'cmd_vel_gate_cost_stop_dynamic_source_labels',
                 'cmd_vel_gate_lanelet_safety_enable',
                 'cmd_vel_gate_lanelet_safety_grid_topic',
                 'cmd_vel_gate_lanelet_safety_threshold',
@@ -332,6 +445,7 @@ def generate_launch_description():
                 'cmd_vel_gate_lanelet_safety_min_translation_mps',
                 'cmd_vel_gate_lanelet_safety_front_use_local_path',
                 'cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m',
+                'cmd_vel_gate_lanelet_safety_front_path_width_m',
                 'cmd_vel_gate_speed_dependent_lookahead',
                 'cmd_vel_gate_front_lookahead_min_m',
                 'cmd_vel_gate_front_lookahead_max_m',
@@ -425,6 +539,18 @@ def generate_launch_description():
                 'global_path_stale_timeout_s': 1.0,
                 'route_endpoint_mismatch_m': 1.0,
             }],
+        ),
+
+        Node(
+            package='camrod_planning',
+            executable='obstacle_replan_monitor_node.py',
+            name='obstacle_replan_monitor',
+            namespace=LaunchConfiguration('module_namespace'),
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('enable_obstacle_replan_monitor')),
+            parameters=[
+                LaunchConfiguration('obstacle_replan_monitor_param_file'),
+            ],
         ),
 
         IncludeLaunchDescription(
