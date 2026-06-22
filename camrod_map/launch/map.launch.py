@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import yaml
 
 from ament_index_python.packages import get_package_share_directory
@@ -46,12 +47,13 @@ def extract_map_ros_params(map_info_cfg: dict) -> dict:
 
 
 def load_defaults(default_map_info: str) -> dict:
-    defaults = {"map_path": "", "origin_lat": "", "origin_lon": "", "origin_alt": ""}
+    defaults = {"map_path": "", "map_profile": "", "origin_lat": "", "origin_lon": "", "origin_alt": ""}
     try:
         with open(default_map_info, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         params = extract_map_ros_params(data)
         defaults["map_path"]    = str(params.get("map_path", "")).strip()
+        defaults["map_profile"] = str(params.get("map_profile", params.get("profile", ""))).strip()
         defaults["origin_lat"]  = str(params.get("offset_lat", "")).strip()
         defaults["origin_lon"]  = str(params.get("offset_lon", "")).strip()
         defaults["origin_alt"]  = str(params.get("offset_alt", "")).strip()
@@ -72,7 +74,39 @@ def _first_existing_path(candidates: list[str]) -> str:
     return ""
 
 
-def discover_map_path(map_share: str, map_info_file: str, map_path_from_info: str) -> str:
+def _normalize_profile_name(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = text.replace("(", "_").replace(")", "_")
+    text = re.sub(r"[^A-Za-z0-9_]+", "_", text)
+    text = re.sub(r"_+", "_", text).strip("_").lower()
+    return text
+
+
+def _map_filename_candidates(configured: str, map_profile: str) -> list[str]:
+    filenames = []
+    configured_name = os.path.basename(str(configured or "").strip())
+    if configured_name:
+        filenames.append(configured_name)
+    profile = _normalize_profile_name(map_profile)
+    if profile:
+        filenames.extend([
+            f"lanelet2_maps_({profile}).osm",
+            f"lanelet2_maps_{profile}.osm",
+            f"lanelet2_maps-{profile}.osm",
+        ])
+    filenames.append("lanelet2_maps.osm")
+
+    ordered = []
+    for filename in filenames:
+        if filename and filename not in ordered:
+            ordered.append(filename)
+    return ordered
+
+
+def discover_map_path(map_share: str, map_info_file: str, map_path_from_info: str, map_profile: str = "") -> str:
+    # HHL_260622 - Map launch can select any lanelet2 map profile without hardcoding C-track.
     configured = str(map_path_from_info or "").strip()
     if configured:
         configured_path = (
@@ -83,17 +117,23 @@ def discover_map_path(map_share: str, map_info_file: str, map_path_from_info: st
         if os.path.isfile(configured_path):
             return configured_path
 
-    candidates = [
-        os.path.join(os.path.expanduser("~"), "camrod_ws", "src", "lanelet2_maps.osm"),
-        os.path.join(os.getcwd(), "lanelet2_maps.osm"),
-        os.path.join(os.getcwd(), "src", "lanelet2_maps.osm"),
+    candidates = []
+    filenames = _map_filename_candidates(configured, map_profile)
+    anchors = [
+        os.path.join(os.path.expanduser("~"), "camrod_ws", "src"),
+        os.getcwd(),
+        os.path.join(os.getcwd(), "src"),
     ]
+    for anchor in anchors:
+        for filename in filenames:
+            candidates.append(os.path.join(anchor, filename))
     # HH_260407: Relative lookup around package share / config path.
     for anchor in (map_share, os.path.dirname(map_info_file)):
         cur = os.path.abspath(anchor)
         for _ in range(8):
-            candidates.append(os.path.join(cur, "lanelet2_maps.osm"))
-            candidates.append(os.path.join(cur, "src", "lanelet2_maps.osm"))
+            for filename in filenames:
+                candidates.append(os.path.join(cur, filename))
+                candidates.append(os.path.join(cur, "src", filename))
             parent = os.path.dirname(cur)
             if parent == cur:
                 break
@@ -108,7 +148,9 @@ def generate_launch_description():
 
     default_map_info = os.path.join(map_share, "config", "map_info.yaml")
     defaults = load_defaults(default_map_info)
-    defaults["map_path"] = discover_map_path(map_share, default_map_info, defaults["map_path"])
+    defaults["map_path"] = discover_map_path(
+        map_share, default_map_info, defaults["map_path"], defaults["map_profile"]
+    )
 
     lanelet2_map_launch  = os.path.join(map_share, "launch", "lanelet2_map.launch.py")
     cost_grid_launch     = os.path.join(map_share, "launch", "cost_grid.launch.py")
