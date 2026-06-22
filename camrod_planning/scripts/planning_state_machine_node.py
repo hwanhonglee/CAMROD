@@ -10,7 +10,9 @@ from typing import Dict, Optional
 
 import rclpy
 import yaml
+from action_msgs.msg import GoalStatus, GoalStatusArray
 from avg_msgs.msg import (
+    AvgAmrServiceState,
     PlanningMissionKey,
     PlanningRecallRequest,
     PlanningScenario,
@@ -59,12 +61,25 @@ class PlanningStateMachineNode(Node):
     SCENARIO_DELIVERY_TO_SITE = 1
     SCENARIO_RETURN_TO_DROP_ZONE = 2
     SCENARIO_RECALL_TO_SITE = 3
+    # HHL_260622 - Mirror non-Nav2 parking/site phases into the central planning state output.
+    SCENARIO_SITE_ENTRY = int(PlanningScenario.SITE_ENTRY)
+    SCENARIO_UNLOAD_WAIT = int(PlanningScenario.UNLOAD_WAIT)
+    SCENARIO_RECALL_TO_SITE_ROAD = int(PlanningScenario.RECALL_TO_SITE_ROAD)
+    SCENARIO_GUEST_LOADING_WAIT = int(PlanningScenario.GUEST_LOADING_WAIT)
+    SCENARIO_RETURN_WITH_CARGO = int(PlanningScenario.RETURN_WITH_CARGO)
+    SCENARIO_DROP_ZONE_PARKING = int(PlanningScenario.DROP_ZONE_PARKING)
 
     _SCENARIO_LABELS = {
         SCENARIO_WAIT_DROP_ZONE: "WAIT_DROP_ZONE",
         SCENARIO_DELIVERY_TO_SITE: "DELIVERY_TO_SITE",
         SCENARIO_RETURN_TO_DROP_ZONE: "RETURN_TO_DROP_ZONE",
         SCENARIO_RECALL_TO_SITE: "RECALL_TO_SITE",
+        SCENARIO_SITE_ENTRY: "SITE_ENTRY",
+        SCENARIO_UNLOAD_WAIT: "UNLOAD_WAIT",
+        SCENARIO_RECALL_TO_SITE_ROAD: "RECALL_TO_SITE_ROAD",
+        SCENARIO_GUEST_LOADING_WAIT: "GUEST_LOADING_WAIT",
+        SCENARIO_RETURN_WITH_CARGO: "RETURN_WITH_CARGO",
+        SCENARIO_DROP_ZONE_PARKING: "DROP_ZONE_PARKING",
     }
 
     _STATE_IDS = {
@@ -137,6 +152,18 @@ class PlanningStateMachineNode(Node):
         self.scenario_command_topic = str(
             self.declare_parameter("scenario_command_topic", "/planning/state_machine/scenario_command").value
         )
+        # HHL_260622 - Parking nodes publish detailed phase telemetry on
+        # /AMR_service_state; planning mirrors that into scenario/state output
+        # without letting UI's generic MOVING_TO_SITE messages override planning.
+        self.enable_parking_phase_state_override = bool(
+            self.declare_parameter("enable_parking_phase_state_override", True).value
+        )
+        self.parking_phase_state_topic = str(
+            self.declare_parameter("parking_phase_state_topic", "/AMR_service_state").value
+        )
+        self.parking_phase_override_timeout_s = float(
+            self.declare_parameter("parking_phase_override_timeout_s", 0.0).value
+        )
 
         self.mission_source_topic = str(
             self.declare_parameter("mission_source_topic", "/planning/state_machine/mission_source").value
@@ -187,6 +214,16 @@ class PlanningStateMachineNode(Node):
         self.site_goal_key_preserve_distance_m = float(
             self.declare_parameter("site_goal_key_preserve_distance_m", 2.0).value
         )
+        # HH_260619 - UI destination dispatch publishes mission_key first and
+        # raw campsite center immediately after. The snapped route goal may be
+        # closer to another semantic key during stale component transitions, so
+        # the recent mission_key must remain authoritative for one route update.
+        self.pending_mission_key_preserve_s = float(
+            self.declare_parameter("pending_mission_key_preserve_s", 5.0).value
+        )
+        self.pending_mission_key_overrides_goal_match = bool(
+            self.declare_parameter("pending_mission_key_overrides_goal_match", True).value
+        )
 
         # HH_260528 Scenario-2 completion gate.
         self.require_docking_for_idle = bool(
@@ -201,6 +238,22 @@ class PlanningStateMachineNode(Node):
         )
         self.goal_reached_distance_m = float(
             self.declare_parameter("goal_reached_distance_m", 0.8).value
+        )
+        # HHL_260622 - Parking handoff must wait for Nav2 terminal success, not
+        # only geometric distance, otherwise site_maneuver can race bt_navigator.
+        self.require_nav2_success_for_goal_reached = bool(
+            self.declare_parameter("require_nav2_success_for_goal_reached", True).value
+        )
+        self.nav_status_topic = str(
+            self.declare_parameter(
+                "nav_status_topic", "/planning/navigate_to_pose/_action/status"
+            ).value
+        )
+        self.nav_status_goal_match_tolerance_s = float(
+            self.declare_parameter("nav_status_goal_match_tolerance_s", 0.5).value
+        )
+        self.nav_success_latch_s = float(
+            self.declare_parameter("nav_success_latch_s", 3.0).value
         )
         # HH_260618 - Return-to-drop-zone Nav2 success can stop slightly outside
         # the generic route tolerance because centerline/lanelet pose and Nav2
@@ -242,6 +295,14 @@ class PlanningStateMachineNode(Node):
         self._last_self_goal: Optional[PoseStamped] = None
         self._pending_mission_key_request: str = ""
         self._pending_mission_key_time = self.get_clock().now()
+        self._active_goal_time = self.get_clock().now()
+        self._nav2_goal_succeeded = False
+        self._nav2_terminal_status = 0
+        self._nav2_terminal_time: Optional[rclpy.time.Time] = None
+        self._parking_phase_override_state: str = ""
+        self._parking_phase_override_scenario_id: Optional[int] = None
+        self._parking_phase_override_source: str = ""
+        self._parking_phase_override_time: Optional[rclpy.time.Time] = None
 
         self._goal_reached_since: Optional[rclpy.time.Time] = None
         self._goal_reached_latched = False
@@ -268,6 +329,14 @@ class PlanningStateMachineNode(Node):
         self.create_subscription(StatusArray, self.state_status_topic, self._on_state, 10)
         self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
         self.create_subscription(PoseStamped, self.goal_topic, self._on_goal, 10)
+        self.create_subscription(GoalStatusArray, self.nav_status_topic, self._on_nav_status, 10)
+        if self.enable_parking_phase_state_override:
+            self.create_subscription(
+                AvgAmrServiceState,
+                self.parking_phase_state_topic,
+                self._on_parking_phase_state,
+                10,
+            )
         self.create_subscription(Bool, self.return_topic, self._on_return_to_drop_zone, 10)
         self.create_subscription(
             PlanningRecallRequest, self.recall_topic, self._on_camping_site_recall, 10
@@ -292,6 +361,8 @@ class PlanningStateMachineNode(Node):
             f"pose={self.pose_topic} "
             f"goal={self.goal_topic} "
             f"goal_ros={self.goal_topic_ros} "
+            f"nav_status={self.nav_status_topic} "
+            f"parking_phase_state={self.parking_phase_state_topic if self.enable_parking_phase_state_override else '(disabled)'} "
             f"return={self.return_topic} "
             f"recall={self.recall_topic} "
             f"scenario_cmd={self.scenario_command_topic} "
@@ -508,15 +579,28 @@ class PlanningStateMachineNode(Node):
         if self._last_self_goal is not None and self._dist_xy(self._last_self_goal, msg) < 0.02:
             return
 
-        matched_mission_key = self._match_mission_key(msg)
+        self._clear_parking_phase_override("new_route_goal")
+        raw_matched_mission_key = self._match_mission_key(msg)
+        matched_mission_key = raw_matched_mission_key
         # HH_260616: A camping-site center can be several meters away from the
         # lanelet-snapped route_goal. If a mission_key request just preceded this
         # route_goal, keep that semantic key instead of clearing active_mission_key.
-        if not matched_mission_key and self._pending_mission_key_request:
+        if self._pending_mission_key_request:
             pending_age_s = (
                 self.get_clock().now() - self._pending_mission_key_time
             ).nanoseconds / 1e9
-            if pending_age_s <= 3.0:
+            if pending_age_s <= self.pending_mission_key_preserve_s and (
+                self.pending_mission_key_overrides_goal_match or not matched_mission_key
+            ):
+                if (
+                    raw_matched_mission_key
+                    and raw_matched_mission_key != self._pending_mission_key_request
+                ):
+                    self.get_logger().warn(
+                        "pending mission_key overrides snapped-goal key match: "
+                        f"pending={self._pending_mission_key_request} "
+                        f"matched={raw_matched_mission_key}"
+                    )
                 matched_mission_key = self._pending_mission_key_request
             self._pending_mission_key_request = ""
         if (
@@ -544,6 +628,7 @@ class PlanningStateMachineNode(Node):
         self.active_goal = msg
         self.active_goal_source = "manual"
         self.active_mission_key = matched_mission_key
+        self._reset_nav2_goal_status()
         self.startup_goal_sent = True
         self.return_requested = False
         self.recall_requested = False
@@ -562,9 +647,132 @@ class PlanningStateMachineNode(Node):
             # the operator's latest goal.
             self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "manual_goal")
 
+    def _reset_nav2_goal_status(self) -> None:
+        # HHL_260622 - Treat every route-goal update as a new Nav2 handoff.
+        self._active_goal_time = self.get_clock().now()
+        self._nav2_goal_succeeded = False
+        self._nav2_terminal_status = 0
+        self._nav2_terminal_time = None
+
+    def _goal_status_time(self, status: GoalStatus) -> Optional[rclpy.time.Time]:
+        stamp = status.goal_info.stamp
+        if stamp.sec == 0 and stamp.nanosec == 0:
+            return None
+        return rclpy.time.Time.from_msg(stamp)
+
+    def _on_nav_status(self, msg: GoalStatusArray) -> None:
+        if self.active_goal is None:
+            return
+        active_time = self._active_goal_time
+        tolerance_ns = int(max(0.0, self.nav_status_goal_match_tolerance_s) * 1e9)
+        latest_terminal: Optional[GoalStatus] = None
+        latest_terminal_time: Optional[rclpy.time.Time] = None
+        for status in msg.status_list:
+            if status.status not in {
+                GoalStatus.STATUS_SUCCEEDED,
+                GoalStatus.STATUS_CANCELED,
+                GoalStatus.STATUS_ABORTED,
+            }:
+                continue
+            status_time = self._goal_status_time(status)
+            if status_time is not None:
+                if (status_time - active_time).nanoseconds < -tolerance_ns:
+                    continue
+            if latest_terminal_time is None or (
+                status_time is not None and status_time > latest_terminal_time
+            ):
+                latest_terminal = status
+                latest_terminal_time = status_time
+
+        if latest_terminal is None:
+            return
+
+        self._nav2_terminal_status = int(latest_terminal.status)
+        self._nav2_terminal_time = self.get_clock().now()
+        self._nav2_goal_succeeded = latest_terminal.status == GoalStatus.STATUS_SUCCEEDED
+
+    def _clear_parking_phase_override(self, reason: str) -> None:
+        if self._parking_phase_override_scenario_id is None:
+            return
+        self.get_logger().info(
+            "parking phase override cleared: "
+            f"scenario={self._parking_phase_override_scenario_id} reason={reason}"
+        )
+        self._parking_phase_override_state = ""
+        self._parking_phase_override_scenario_id = None
+        self._parking_phase_override_source = ""
+        self._parking_phase_override_time = None
+
+    def _on_parking_phase_state(self, msg: AvgAmrServiceState) -> None:
+        description = str(msg.description).strip()
+        source = description.split(":", 1)[0] if ":" in description else ""
+        if source not in {"site_maneuver", "drop_zone_parking"}:
+            return
+
+        state_id = int(msg.state)
+        override_state = ""
+        override_scenario: Optional[int] = None
+        if state_id == int(AvgAmrServiceState.SITE_ENTRY):
+            override_state = "RUNNING"
+            override_scenario = self.SCENARIO_SITE_ENTRY
+        elif state_id == int(AvgAmrServiceState.UNLOAD_WAIT):
+            override_state = "GOAL_REACHED"
+            override_scenario = self.SCENARIO_UNLOAD_WAIT
+        elif state_id == int(AvgAmrServiceState.RECALL_TO_SITE_ROAD):
+            override_state = "RUNNING"
+            override_scenario = self.SCENARIO_RECALL_TO_SITE_ROAD
+        elif state_id == int(AvgAmrServiceState.GUEST_LOADING_WAIT):
+            override_state = "GOAL_REACHED"
+            override_scenario = self.SCENARIO_GUEST_LOADING_WAIT
+        elif state_id == int(AvgAmrServiceState.RETURN_WITH_CARGO):
+            override_state = "RETURNING"
+            override_scenario = self.SCENARIO_RETURN_WITH_CARGO
+        elif state_id == int(AvgAmrServiceState.DROP_ZONE_PARKING):
+            override_state = "RUNNING"
+            override_scenario = self.SCENARIO_DROP_ZONE_PARKING
+        elif state_id == int(AvgAmrServiceState.DROP_ZONE_WAIT):
+            override_state = "WAIT_DZ"
+            override_scenario = self.SCENARIO_WAIT_DROP_ZONE
+
+        if override_scenario is None:
+            return
+
+        self._parking_phase_override_state = override_state
+        self._parking_phase_override_scenario_id = int(override_scenario)
+        self._parking_phase_override_source = description
+        self._parking_phase_override_time = self.get_clock().now()
+        self.get_logger().info(
+            "parking phase override: "
+            f"state={override_state} scenario={override_scenario} source={description}"
+        )
+
+    def _active_parking_phase_override(self) -> tuple[str, Optional[int], str]:
+        if self._parking_phase_override_scenario_id is None or self._parking_phase_override_time is None:
+            return "", None, ""
+        # HHL_260622 - Parking phase messages are state-transition events, not
+        # periodic telemetry. A non-positive timeout keeps the latest phase
+        # authoritative until a new route/mission/return command explicitly
+        # clears it.
+        if self.parking_phase_override_timeout_s <= 0.0:
+            return (
+                self._parking_phase_override_state,
+                self._parking_phase_override_scenario_id,
+                self._parking_phase_override_source,
+            )
+        age_s = (self.get_clock().now() - self._parking_phase_override_time).nanoseconds / 1e9
+        if age_s > max(0.1, self.parking_phase_override_timeout_s):
+            self._clear_parking_phase_override("timeout")
+            return "", None, ""
+        return (
+            self._parking_phase_override_state,
+            self._parking_phase_override_scenario_id,
+            self._parking_phase_override_source,
+        )
+
     def _on_return_to_drop_zone(self, msg: Bool) -> None:
         if not msg.data:
             return
+        self._clear_parking_phase_override("return_to_drop_zone")
         self.return_requested = True
         if self._publish_auto_goal(self.return_mission_key, "return_request", force=True):
             self.return_requested = False
@@ -586,6 +794,7 @@ class PlanningStateMachineNode(Node):
 
     def _on_scenario_command(self, msg: PlanningScenario) -> None:
         requested = int(msg.scenario_id)
+        self._clear_parking_phase_override("scenario_command")
         if requested not in (
             self.SCENARIO_WAIT_DROP_ZONE,
             self.SCENARIO_DELIVERY_TO_SITE,
@@ -671,6 +880,7 @@ class PlanningStateMachineNode(Node):
         self.active_goal = msg
         self.active_goal_source = source
         self.active_mission_key = key_name
+        self._reset_nav2_goal_status()
         self.startup_goal_sent = True
         self._goal_reached_since = None
         self._goal_reached_latched = False
@@ -683,6 +893,7 @@ class PlanningStateMachineNode(Node):
             self.get_logger().warn("received empty mission-key request on topic")
             return
 
+        self._clear_parking_phase_override("mission_key_request")
         if not self.mission_key_publish_route_goal:
             if key_name not in self.keypoints:
                 self.get_logger().warn(f"keypoint '{key_name}' not found")
@@ -766,7 +977,16 @@ class PlanningStateMachineNode(Node):
             return False
         if distance_m is None:
             distance_m = self.goal_reached_distance_m
-        return distance <= float(distance_m)
+        if distance > float(distance_m):
+            return False
+        if not self.require_nav2_success_for_goal_reached:
+            return True
+        if not self._nav2_goal_succeeded:
+            return False
+        if self._nav2_terminal_time is None:
+            return False
+        age_s = (self.get_clock().now() - self._nav2_terminal_time).nanoseconds / 1e9
+        return age_s <= max(0.1, self.nav_success_latch_s)
 
     def _active_goal_reached_distance_m(self) -> float:
         # HH_260618 - Use a wider handoff threshold only for the return route.
@@ -805,14 +1025,26 @@ class PlanningStateMachineNode(Node):
 
     def _publish_state_outputs(self, estop: bool) -> None:
         now_msg = self.get_clock().now().to_msg()
+        effective_state = self.state
+        effective_scenario_id = int(self.scenario_id)
+        parking_override_state, parking_override_scenario_id, parking_override_source = (
+            self._active_parking_phase_override()
+        )
+        if (
+            parking_override_scenario_id is not None
+            and not estop
+            and self.state not in {"ERROR_STOP", "WARN_RECOVERY"}
+        ):
+            effective_state = parking_override_state
+            effective_scenario_id = int(parking_override_scenario_id)
 
         state_msg = PlanningState()
         state_msg.header.stamp = now_msg
         state_msg.header.frame_id = "map"
-        state_msg.state = int(self._STATE_IDS.get(self.state, PlanningState.READY))
-        state_msg.label = self.state
-        state_msg.scenario_id = int(self.scenario_id)
-        state_msg.scenario_label = self._SCENARIO_LABELS.get(self.scenario_id, "UNKNOWN")
+        state_msg.state = int(self._STATE_IDS.get(effective_state, PlanningState.READY))
+        state_msg.label = effective_state
+        state_msg.scenario_id = int(effective_scenario_id)
+        state_msg.scenario_label = self._SCENARIO_LABELS.get(effective_scenario_id, "UNKNOWN")
         state_msg.active_mission_key = self.active_mission_key
         state_msg.active_goal_source = self.active_goal_source
         state_msg.estop = bool(estop)
@@ -829,8 +1061,8 @@ class PlanningStateMachineNode(Node):
 
         scenario_msg = PlanningScenario()
         scenario_msg.header.stamp = now_msg
-        scenario_msg.scenario_id = int(self.scenario_id)
-        scenario_msg.label = self._SCENARIO_LABELS.get(self.scenario_id, "UNKNOWN")
+        scenario_msg.scenario_id = int(effective_scenario_id)
+        scenario_msg.label = self._SCENARIO_LABELS.get(effective_scenario_id, "UNKNOWN")
         scenario_msg.source = self.active_goal_source
         self.pub_scenario_id.publish(scenario_msg)
 
@@ -847,16 +1079,19 @@ class PlanningStateMachineNode(Node):
         if estop:
             st.level = _diag_level(StatusStatus.ERROR)
             st.message = "estop_asserted"
-        elif self.state.startswith("WARN"):
+        elif effective_state.startswith("WARN"):
             st.level = _diag_level(StatusStatus.WARN)
             st.message = "warn_recovery"
         else:
-            st.message = self.state.lower()
+            st.message = effective_state.lower()
 
-        st.values.append(KeyValue(key="state", value=self.state))
-        st.values.append(KeyValue(key="scenario_id", value=str(self.scenario_id)))
+        st.values.append(KeyValue(key="state", value=effective_state))
+        st.values.append(KeyValue(key="raw_state", value=self.state))
+        st.values.append(KeyValue(key="scenario_id", value=str(effective_scenario_id)))
+        st.values.append(KeyValue(key="raw_scenario_id", value=str(self.scenario_id)))
         st.values.append(KeyValue(key="active_goal_source", value=self.active_goal_source))
         st.values.append(KeyValue(key="active_mission_key", value=self.active_mission_key))
+        st.values.append(KeyValue(key="parking_phase_override", value=parking_override_source))
         active_goal_distance = self._active_goal_distance()
         st.values.append(
             KeyValue(
@@ -870,6 +1105,13 @@ class PlanningStateMachineNode(Node):
                 value=f"{self._active_goal_reached_distance_m():.2f}",
             )
         )
+        st.values.append(
+            KeyValue(
+                key="nav2_goal_succeeded",
+                value=str(self._nav2_goal_succeeded).lower(),
+            )
+        )
+        st.values.append(KeyValue(key="nav2_terminal_status", value=str(self._nav2_terminal_status)))
         st.values.append(KeyValue(key="return_requested", value=str(self.return_requested).lower()))
         st.values.append(KeyValue(key="recall_requested", value=str(self.recall_requested).lower()))
         st.values.append(KeyValue(key="return_mission_key", value=self.return_mission_key))
