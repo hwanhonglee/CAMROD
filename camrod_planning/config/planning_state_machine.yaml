@@ -19,6 +19,12 @@
     scenario_id_topic: "/planning/state_machine/scenario_id"
     # HH_260617: UI/ops command topic. Send avg_msgs/PlanningScenario.
     scenario_command_topic: "/planning/state_machine/scenario_command"
+    # HHL_260622 - Mirror rule-based parking/site maneuver phase telemetry into
+    # the central planning state output for UI/system consumers.
+    enable_parking_phase_state_override: true
+    parking_phase_state_topic: "/AMR_service_state"
+    # HHL_260622 - Parking phase transition events persist until an explicit mission/route change clears them.
+    parking_phase_override_timeout_s: 0.0
 
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     # Recall request published from a camping site.
@@ -60,6 +66,10 @@
     return_goal_key_preserve_distance_m: 5.0
     # HH_260618: Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
     site_goal_key_preserve_distance_m: 2.0
+    # HH_260619 - UI sends mission_key before raw campsite goal. Keep that key
+    # authoritative for the next snapped route goal to avoid drop_zone mis-match.
+    pending_mission_key_preserve_s: 5.0
+    pending_mission_key_overrides_goal_match: true
 
     # HH_260528 Scenario-2 -> Scenario-0 completion gate.
     # false: reaching return_mission_key pose is enough.
@@ -69,6 +79,12 @@
 
     min_goal_publish_interval_s: 1.0
     goal_reached_distance_m: 0.8
+    # HHL_260622 - GOAL_REACHED is a parking handoff signal, so require Nav2
+    # NavigateToPose terminal SUCCEEDED in addition to geometric distance.
+    require_nav2_success_for_goal_reached: true
+    nav_status_topic: "/planning/navigate_to_pose/_action/status"
+    nav_status_goal_match_tolerance_s: 0.5
+    nav_success_latch_s: 3.0
     # HH_260618 - Return route handoff uses a wider tolerance than campsite
     # arrival so drop-zone parking starts after Nav2 succeeds near the station.
     return_goal_reached_distance_m: 1.2
