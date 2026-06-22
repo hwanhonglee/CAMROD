@@ -20,7 +20,7 @@ from typing import Optional
 import rclpy
 import uvicorn
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
-from avg_msgs.msg import AvgAmrServiceState
+from avg_msgs.msg import AvgAmrServiceState, PlanningRecallRequest
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -38,6 +38,15 @@ class UiGuestNode(Node):
         self.port = int(self.declare_parameter("port", 8012).value)
         self.amr_service_state_topic = str(
             self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
+        )
+        self.camping_site_recall_topic = str(
+            self.declare_parameter(
+                "camping_site_recall_topic",
+                "/planning/state_machine/camping_site_recall",
+            ).value
+        )
+        self.default_recall_site_name = str(
+            self.declare_parameter("default_recall_site_name", "camping_site_1").value
         )
         self.battery_topic = str(
             self.declare_parameter("battery_topic", "/battery_percentage").value
@@ -76,11 +85,17 @@ class UiGuestNode(Node):
             self.amr_service_state_topic,
             10,
         )
+        self.pub_recall = self.create_publisher(
+            PlanningRecallRequest,
+            self.camping_site_recall_topic,
+            10,
+        )
 
         self._start_fastapi_server()
 
         self.get_logger().info(
-            f"ui_guest ready: host={self.host} port={self.port}"
+            f"ui_guest ready: host={self.host} port={self.port} "
+            f"recall_topic={self.camping_site_recall_topic}"
         )
 
     # ── ROS2 callbacks ────────────────────────────────────────────────────────
@@ -120,13 +135,31 @@ class UiGuestNode(Node):
 
     # ── ROS2 publish ─────────────────────────────────────────────────────────
 
-    def _publish_guest_recall(self) -> None:
+    def _normalize_recall_site_name(self, site_name: str) -> str:
+        text = str(site_name).strip()
+        if not text:
+            text = self.default_recall_site_name
+        upper = text.upper()
+        if upper.startswith("B") and upper[1:].isdigit():
+            return f"camping_site_{int(upper[1:])}"
+        return text
+
+    def _publish_guest_recall(self, site_name: str) -> None:
+        # HHL_260621 - Guest recall must command planning to the site road/staging target.
+        recall_site = self._normalize_recall_site_name(site_name)
+        recall_msg = PlanningRecallRequest()
+        recall_msg.header.stamp = self.get_clock().now().to_msg()
+        recall_msg.site_name = recall_site
+        recall_msg.source = "ui_guest"
+        self.pub_recall.publish(recall_msg)
+
         msg = AvgAmrServiceState()
         msg.state = AvgAmrServiceState.GUEST_RECALL_SERVICE
-        msg.description = "Guest 호출 요청"
+        msg.description = f"Guest 호출 요청: {recall_site}"
         self.pub_amr.publish(msg)
         self.get_logger().info(
-            f"[guest] published GUEST_RECALL_SERVICE(4) -> {self.amr_service_state_topic}"
+            f"[guest] recall {recall_site} -> {self.camping_site_recall_topic}; "
+            f"GUEST_RECALL_SERVICE(4) -> {self.amr_service_state_topic}"
         )
 
     # ── Path resolution ───────────────────────────────────────────────────────
@@ -197,7 +230,9 @@ class UiGuestNode(Node):
                         with node._lock:
                             current = node._amr_state
                         if current == AvgAmrServiceState.DROP_ZONE_WAIT:
-                            node._publish_guest_recall()
+                            node._publish_guest_recall(
+                                str(payload.get("site_name", payload.get("site", "")))
+                            )
                         else:
                             await ws.send_json({"error": "robot_not_ready", "amr_state": current})
 

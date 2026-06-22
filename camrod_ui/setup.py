@@ -31,6 +31,9 @@ setup(
             "camrod_ui_robot/launch/ui.launch.py",
             "camrod_ui_guest/launch/ui_guest.launch.py",
         ]),
+        (f"share/{package_name}/config", [
+            "config/site_access.yaml",
+        ]),
         *_collect_data_files("camrod_ui_robot/assets/frontend/build", f"share/{package_name}/camrod_ui_robot/assets/frontend/build"),
         *_collect_data_files("camrod_ui_guest/assets/guest_frontend", f"share/{package_name}/camrod_ui_guest/assets/guest_frontend"),
     ],

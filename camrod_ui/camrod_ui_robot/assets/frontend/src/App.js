@@ -803,6 +803,7 @@ function App() {
   const [showGuestRecall, setShowGuestRecall] = useState(false); // HJ_260601: 게스트 호출 알림 팝업
   const diagPressAnimRef = useRef(null);
   const [showMoveConfirm, setShowMoveConfirm] = useState(false); // 출발 최종 확인 팝업
+  const [siteAccessError, setSiteAccessError] = useState(''); // HHL_260622 - Unsafe site-to-site dispatch feedback.
 
   const openSettingsLoginModal = () => {
     setActiveModal(null);
@@ -993,10 +994,25 @@ function App() {
       if ('site' in data && 'state' in data) {
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
-      // AMR 도착 알림: {"arrived": "B1"} 수신 (state=3)
+      // HHL_260622 - AMR arrived means campsite internal wait is active.
       if ('arrived' in data) {
         setArrivedSite(data.arrived);
         setShowArrivalComplete(true);
+        setShowWaiting(false);
+        setSiteAccessError('');
+      }
+      // HHL_260622 - Site-to-site dispatch is rejected while the robot is inside a campsite.
+      if (data.error === 'site_access_rejected') {
+        setSiteAccessError(data.message || '현재 상태에서는 새 목적지를 선택할 수 없습니다. 먼저 Drop Zone으로 복귀하세요.');
+        setSelectedSite(null);
+        setShowMoveConfirm(false);
+      }
+      if (data.returning) {
+        setShowArrivalComplete(false);
+        setArrivedSite(null);
+        setIsReturning(true);
+        setShowWaiting(false);
+        setSiteAccessError('');
       }
       // AMR Drop_zone 대기 복귀: {"amr_state": 0} 수신
       if ('amr_state' in data && data.amr_state === 0) {
@@ -1058,6 +1074,7 @@ function App() {
     }
     if (anyOn) {
       // 다른 사이트가 ON 중 → 선택 불가
+      setSiteAccessError('현재 임무가 진행 중입니다. 다른 사이트로 이동하려면 먼저 Drop Zone으로 복귀하세요.');
       return;
     }
     // OFF → 이미지 프리뷰 표시 (아직 publish 안 함)
@@ -1401,6 +1418,9 @@ function App() {
               />
               <p className="preview-site-name">{arrivedSite}</p>
               <p className="preview-arrived">배송 로봇이 목적지에 도착했습니다.</p>
+              <div className="preview-yn-btns">
+                <button className="preview-yes-btn" onClick={handleArrivalComplete}>Drop Zone 복귀</button>
+              </div>
             </>
           ) : isReturning ? (
             <>
@@ -1496,13 +1516,13 @@ function App() {
         <div className="arrival-complete-overlay">
           <div className="arrival-complete-box">
             <p className="arrival-complete-msg">
-              짐을 내려놓은 후,<br /><strong>[이용 완료]</strong> 버튼을 눌러주세요
+              짐을 내려놓은 후,<br /><strong>[Drop Zone 복귀]</strong> 버튼을 눌러주세요
             </p>
             <p className="arrival-complete-sub">
-              이용 완료 버튼을 누르면 로봇이 이동합니다.
+              로봇은 campsite에서 crab-out으로 빠져나간 뒤 Drop Zone으로 복귀합니다.
             </p>
             <button className="arrival-complete-btn" onClick={handleArrivalComplete}>
-              이용 완료
+              Drop Zone 복귀
             </button>
           </div>
         </div>
@@ -1531,6 +1551,15 @@ function App() {
                 아니오
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {siteAccessError && (
+        <div className="site-access-error-overlay" onClick={() => setSiteAccessError('')}>
+          <div className="site-access-error-box" onClick={e => e.stopPropagation()}>
+            <p className="site-access-error-msg">{siteAccessError}</p>
+            <button className="site-access-error-btn" onClick={() => setSiteAccessError('')}>확인</button>
           </div>
         </div>
       )}

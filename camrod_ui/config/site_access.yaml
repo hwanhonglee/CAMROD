@@ -1,0 +1,42 @@
+site_access:
+  # HHL_260621 - Runtime campsite reservation/occupancy gate used by ui_backend_node.
+  enabled: true
+  require_reservation_code_for_delivery: false
+  require_known_mission_key_for_delivery: true
+  # HHL_260622 - New delivery commands are accepted only while the robot is idle at the drop zone.
+  enforce_delivery_start_state: true
+  delivery_allowed_amr_states: [0]
+  sites:
+    - site: B1
+      status: AVAILABLE
+      reservation_code: ""
+      mission_key: camping_site_1
+      delivery_allowed: true
+      recall_allowed: true
+      site_entry_allowed: true
+      staging_mission_key: ""
+      message: "default development site"
+    - site: B2
+      status: AVAILABLE
+    - site: B3
+      status: AVAILABLE
+    - site: B4
+      status: AVAILABLE
+    - site: B5
+      status: AVAILABLE
+    - site: B6
+      status: AVAILABLE
+    - site: B7
+      status: AVAILABLE
+    - site: B8
+      status: AVAILABLE
+    - site: B9
+      status: AVAILABLE
+    - site: B10
+      status: AVAILABLE
+    - site: B11
+      status: AVAILABLE
+    - site: B12
+      status: AVAILABLE
+    - site: B13
+      status: AVAILABLE
