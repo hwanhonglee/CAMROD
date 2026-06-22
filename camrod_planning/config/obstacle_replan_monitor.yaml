@@ -1,0 +1,40 @@
+/planning/obstacle_replan_monitor:
+  ros__parameters:
+    enabled: true
+    # HH_260619 - Monitor only dynamic obstacle grids; lanelet/static costs are
+    # handled by the route and safety gate and must not trigger false reroutes.
+    dynamic_cost_grid_topics:
+      - "/sensing/cost_grid/lidar"
+      - "/sensing/cost_grid/radar"
+    global_path_topic: "/planning/global_path"
+    goal_topic: "/planning/goal_pose_snapped_ros"
+    pose_topic: "/localization/pose"
+    navigate_action_name: "/planning/navigate_to_pose"
+    navigate_status_topic: "/planning/navigate_to_pose/_action/status"
+    planner_selector_topic: "/planning/planner_selector"
+    status_topic: "/planning/obstacle_replan/status"
+
+    # HH_260619 - LaneletRoute intentionally ignores dynamic costmap cells.
+    # Persistent full-route blockage is therefore retried once through Smac2D,
+    # which can use the global costmap sensor layers for an alternate path.
+    fallback_planner_id: "Smac2D"
+    monitor_rate_hz: 5.0
+    grid_max_age_s: 0.75
+    lookahead_m: 8.0
+    sample_start_distance_m: 0.8
+    sample_step_m: 0.25
+    corridor_half_width_m: 0.55
+    lateral_step_m: 0.25
+    obstacle_cost_threshold: 85
+    min_blocked_samples: 5
+    blocked_sample_ratio: 0.08
+    block_hold_s: 2.0
+    # HH_260619 - Keep this longer than block_hold_s so alternating empty/test
+    # grids cannot reset persistent blockage before Smac2D fallback is selected.
+    clear_hold_s: 2.5
+    replan_cooldown_s: 10.0
+    selector_override_s: 3.0
+    selector_publish_hz: 10.0
+    require_navigation_active: true
+    require_goal: true
+    ignore_unknown_cells: true
