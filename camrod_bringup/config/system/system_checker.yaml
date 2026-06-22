@@ -2,6 +2,9 @@
 /system/system_checker:
   ros__parameters:
     check_period_s: 1.0
+    # HHL_260622 - Full bringup graph discovery can lag after staggered launches;
+    # keep startup-only false WARNs out while still reporting real runtime drops.
+    startup_grace_s: 30.0
     required_nodes:
       # lanelet cost-grid publisher node in camrod_map/launch/cost_grid.launch.py
       - /map/lanelet_boundary_cost_grid

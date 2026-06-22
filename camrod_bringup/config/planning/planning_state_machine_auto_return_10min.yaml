@@ -14,6 +14,11 @@
     # 0=WAIT_DROP_ZONE, 1=DELIVERY_TO_SITE, 2=RETURN_TO_DROP_ZONE, 3=RECALL_TO_SITE
     scenario_id_topic: "/planning/state_machine/scenario_id"
     scenario_command_topic: "/planning/state_machine/scenario_command"
+    # HHL_260622 - Sim/validation profiles mirror parking phases into planning state.
+    enable_parking_phase_state_override: true
+    parking_phase_state_topic: "/AMR_service_state"
+    # HHL_260622 - Parking phase transition events persist until an explicit mission/route change clears them.
+    parking_phase_override_timeout_s: 0.0
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     camping_site_recall_topic: "/planning/state_machine/camping_site_recall"
     mission_source_topic: "/planning/state_machine/mission_source"
@@ -48,6 +53,10 @@
     return_goal_key_preserve_distance_m: 5.0
     # HH_260618: Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
     site_goal_key_preserve_distance_m: 2.0
+    # HH_260619 - UI mission_key is authoritative for the immediately following
+    # snapped route goal, even if stale geometry matches another keypoint.
+    pending_mission_key_preserve_s: 5.0
+    pending_mission_key_overrides_goal_match: true
     require_docking_for_idle: false
     docking_status_topic: "/docking/is_charging"
 
