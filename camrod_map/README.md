@@ -31,6 +31,20 @@ ros2 launch camrod_map area_export.launch.py \
 
 > 💡 Verify in RViz: add topics `/map/markers` (MarkerArray) and `/map/cost_grid/lanelet` (OccupancyGrid). Both should appear within 3 s of launch.
 
+### Map Profile Selection
+
+> HHL_260622 - The default validation profile is `copy_park`, backed by `lanelet2_maps_(copy_park).osm`.
+
+`config/map_info.yaml` carries both the Lanelet2 OSM path and the WGS84/UTM origin. Bringup/planning launch files infer a normalized `map_profile` from either `map_profile` or the OSM filename suffix in parentheses. Profile-specific semantic YAML files are then selected automatically when present:
+
+| Profile input | OSM example | Semantic files selected |
+|---|---|---|
+| `map_profile: copy_park` | `lanelet2_maps_(copy_park).osm` | `drop_zones (copy_park).yaml`, `camping_sites (copy_park).yaml` |
+| `map_profile: copy_c_track` | `lanelet2_maps_(copy_c_track).osm` | `drop_zones (copy_c_track).yaml`, `camping_sites (copy_c_track).yaml` |
+| empty / unknown | `lanelet2_maps.osm` | `drop_zones.yaml`, `camping_sites.yaml` |
+
+This keeps the mechanism independent of the specific `.osm` file. A new map only needs a correct `map_info.yaml` origin and, if its site/drop-zone semantics differ, matching profile YAML files.
+
 ---
 
 ## 3. 🗺️ System Position
@@ -495,3 +509,5 @@ The `area_exporter` node runs once at launch and exits. If the output file is em
 > HH_260617: Map semantic YAML is now used by planning and parking.
 
 `map/drop_zones.yaml` provides the drop-zone/station pose used by `camrod_parking/drop_zone_parking` when `use_drop_zone_pose_as_station: true`. `planning/camping_sites.yaml` provides raw campsite center goals for UI and mission-key dispatch. HH_260618: Keep `yaw_deg` meaningful for drop zones because reverse parking aligns the parked robot front yaw to this station yaw by default; set `rear_matches_station_yaw: true` only when a map stores rear/charger-facing yaw.
+
+> HHL_260622: `area_exporter` now uses the polygon centroid, not a simple vertex average, and exports normalized `corners` for both drop zones and camping sites. This keeps UI/planning targets closer to the true semantic-area center and provides polygon data for campsite-occupancy checks such as tent detection.

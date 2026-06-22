@@ -138,6 +138,7 @@ planning:
 - **Value quality**: per-domain checker nodes decide data quality, e.g. GNSS fix/covariance, IMU acceleration, localization mode/confidence, path point count, Nav2 lifecycle state.
 - **Semantic output**: `system_diagnostic_node` converts diagnostics into `avg_msgs/SystemStatus` on `/system/status` and `avg_msgs/AvgSystemMsgs` on `/system/msgs`.
 - **Optional modules**: UI, docking, voice, and sensor-kit are not forced by the default manifest; they are added dynamically when their diagnostics appear.
+- HHL_260622 - `startup_grace_s` is 30 s by default because full bringup uses staggered launch and ROS graph discovery can lag even after map/planning nodes have started. After this startup window, missing required nodes/topics are reported normally.
 
 ### Module Readiness Decision Tree
 
@@ -427,6 +428,7 @@ Verify: `ls $(ros2 pkg prefix camrod_system)/share/camrod_system/config/diagnost
 
 > HH_260617: System diagnostics now include module-manifest checks and semantic status snapshots for parking.
 > HH_260618: `system_checker` treats final parking as an alternative group: exactly one of `camrod_parking` or `camrod_docking` must be healthy. If neither is running, or if both graphs are accidentally active, `/system/diagnostics` reports ERROR.
+> HHL_260622: Rule-based parking phase progress is published through `/AMR_service_state` and mirrored by planning/UI; system still checks final-parking graph health via the alternative group.
 
 ### Parking Health Contract
 

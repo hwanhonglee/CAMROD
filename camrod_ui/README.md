@@ -6,11 +6,11 @@
 
 ## 📋 Summary
 
-`camrod_ui` provides the operator control interface for CAMROD. `ui_backend_node` runs a FastAPI + uvicorn HTTP server in a daemon thread alongside the ROS 2 spin loop. It serves the static React frontend and exposes REST endpoints (and a `/ws` WebSocket channel) for system state, destination selection, engage/disengage control, and battery status.
+`camrod_ui` provides the operator control interface for CAMROD. `ui_backend_node` runs a FastAPI + uvicorn HTTP server in a daemon thread alongside the ROS 2 spin loop. It serves the static React frontend and exposes REST endpoints (and a `/ws` WebSocket channel) for system state, destination selection, engage/disengage control, campsite reservation/occupancy gating, and battery status.
 
 On the ROS side it bridges operator intent to planning topics without making any autonomy decisions itself.
 
-> **Non-goals:** Makes no autonomy decisions — only proxies operator intent. Does not plan paths, monitor localization, or enforce safety constraints. WebSocket is for real-time UI push only; it does not replace the REST API.
+> **Non-goals:** Makes no path-planning or vehicle-control decisions. The UI backend can reject unsafe/invalid campsite commands using the reservation/occupancy gate, but it does not replace planning, localization, perception, or hardware safety checks. WebSocket is for real-time UI push only; it does not replace the REST API.
 
 ---
 
@@ -30,6 +30,9 @@ ros2 launch camrod_ui ui.launch.py ui_host:=0.0.0.0 ui_port:=8010
 
 # Custom camping sites YAML
 ros2 launch camrod_ui ui.launch.py camping_sites_yaml:=/path/to/camping_sites.yaml
+
+# Custom reservation/occupancy gate YAML
+ros2 launch camrod_ui ui.launch.py site_access_yaml:=/path/to/site_access.yaml
 
 # Rebuild the React frontend
 cd camrod_ui/camrod_ui_robot/assets/frontend
@@ -93,12 +96,13 @@ graph TD
   ENGAGED((/planning/engaged)):::topic    --> BACKEND
   DEST((/ui/selected_destination)):::topic --> BACKEND
   BATTERY((/battery_percentage)):::topic  --> BACKEND
-  ARRIVE((/AMR_arrive)):::topic           --> BACKEND
+  AMRSTATE((/AMR_service_state)):::topic  --> BACKEND
 
   BACKEND -->|HTTP/WS responses| BROWSER
   BACKEND --> ENGAGE((/planning/engage)):::topic
   BACKEND --> MISSIONKEY((/planning/mission_key)):::topic
   BACKEND --> GOALPOSE((/goal_pose)):::topic
+  BACKEND --> RETURN((/planning/state_machine/return_to_drop_zone)):::topic
   BACKEND --> DEST2((/ui/selected_destination)):::topic
 
   classDef ui       fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
@@ -132,7 +136,7 @@ sequenceDiagram
   participant Dock as 🅿️ DockingServer
 
   Browser->>Backend: POST /ui/destination?site=B3&run=true
-  Backend->>Backend: validate site B3 → camping_site_3
+  Backend->>Backend: validate site access + B3 → camping_site_3
   Backend->>SM: /ui/selected_destination UiDestinationCommand(site=B3, run=true)
   Backend->>SM: /planning/mission_key PlanningMissionKey(camping_site_3)
   Backend->>Nav2: site_goal /goal_pose PoseStamped(x,y,z,yaw from camping_sites.yaml)
@@ -214,6 +218,36 @@ The waiting screen accepts taps at any time unless the React bundle is built wit
 | Developer/test | `DISABLE_ESLINT_PLUGIN=true npm run build` |
 | Public kiosk | `REACT_APP_OPERATING_HOURS_GATE_ENABLED=true REACT_APP_OPERATING_HOURS_START=9 REACT_APP_OPERATING_HOURS_END=16 DISABLE_ESLINT_PLUGIN=true npm run build` |
 
+### Reservation / Occupancy Gate
+
+> HHL_260621: `site_access.yaml` is the first UI-side guard against human error. A campsite button is accepted only when the selected site is valid and the current site access record allows delivery.
+
+> HHL_260622: Destination dispatch now validates the site-access record before publishing `/planning/engage`; a rejected campsite request cannot open the velocity gate.
+
+The gate is intentionally a command filter, not a replacement for perception/cost safety. It prevents obvious business-logic errors before `/goal_pose` is published:
+
+- `AVAILABLE`, `RESERVED`, `CHECKED_IN`: delivery can be allowed.
+- `OCCUPIED`, `CHECKED_OUT`, `BLOCKED`: delivery is rejected by default.
+- New delivery requests are accepted only while `/AMR_service_state.state` is `DROP_ZONE_WAIT` by default.
+- `recall_allowed` can remain true for `OCCUPIED` / `CHECKED_OUT` so guest recall drives only to the road/staging target instead of entering the campsite.
+- `require_reservation_code_for_delivery=true` forces `/ui/destination` to provide `reservation_code`.
+
+```yaml
+site_access:
+  enabled: true
+  require_reservation_code_for_delivery: false
+  enforce_delivery_start_state: true
+  delivery_allowed_amr_states: [0]
+  sites:
+    - site: B1
+      status: RESERVED
+      reservation_code: "1234"
+      mission_key: camping_site_1
+      delivery_allowed: true
+      recall_allowed: true
+      site_entry_allowed: true
+```
+
 ### Mission Key Resolution for Sites
 
 When `set_destination(site="B3", ...)` is called:
@@ -235,7 +269,7 @@ When `set_destination(site="B3", ...)` is called:
 | `/planning/engaged` | `std_msgs/Bool` | Yes | camrod_planning | event | Current engagement state of `cmd_vel_gate` |
 | `/ui/selected_destination` | `avg_msgs/UiDestinationCommand` | No | self (republish) | event | Destination command; consumed to dispatch mission key and site goal |
 | `/battery_percentage` | `std_msgs/Int32` | No | external | event | Battery SOC 0–100; forwarded to WebSocket clients |
-| `/AMR_arrive` | `std_msgs/Bool` | No | external | event | Arrival signal; clears all site states and disengages |
+| `/AMR_service_state` | `avg_msgs/AvgAmrServiceState` | No | self / guest UI / external | event | Human-readable service state; arrival disengages, guest recall updates UI |
 
 ### Outputs
 
@@ -244,6 +278,8 @@ When `set_destination(site="B3", ...)` is called:
 | `/planning/engage` | `std_msgs/Bool` | camrod_planning (`cmd_vel_gate`) | event | Engage (`true`) or disengage (`false`) autonomy |
 | `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | camrod_planning (state machine) | event | `mission_key`: semantic site/key name (e.g., `camping_site_3`) |
 | `/goal_pose` | `geometry_msgs/PoseStamped` | camrod_planning goal_snapper | event | `site_goal`: raw site-center pose in `map`, later snapped to a lanelet route goal |
+| `/parking/site_maneuver/return` | `std_msgs/Bool` | camrod_parking site_maneuver | event | HHL_260622: Usage-complete command while the robot is inside a campsite; starts crab-out/reverse-out first |
+| `/planning/state_machine/return_to_drop_zone` | `std_msgs/Bool` | camrod_planning state machine | event | Return-to-drop-zone command; emitted directly only when no site maneuver is active, otherwise emitted by `site_maneuver` after lanelet-snap return |
 | `/ui/selected_destination` | `avg_msgs/UiDestinationCommand` | self (loop-back) | event | Destination command republished for inspection |
 
 ---
@@ -260,7 +296,8 @@ ros2 launch camrod_ui ui.launch.py [ARG:=VALUE ...]
 | `ui_host` | `127.0.0.1` | HTTP bind address (`0.0.0.0` = all interfaces) |
 | `ui_port` | `8010` | HTTP bind port |
 | `frontend_dir` | auto-resolved (see above) | Static web frontend directory |
-| `camping_sites_yaml` | `camrod_planning/config/camping_sites.yaml` | Named goal positions YAML |
+| `camping_sites_yaml` | profile-aware `camrod_planning/config/camping_sites*.yaml` | Named goal positions YAML; HHL_260622 - standalone UI resolves `map_profile` from `camrod_map/config/map_info.yaml` |
+| `site_access_yaml` | `camrod_ui/config/site_access.yaml` | Reservation/occupancy gate YAML |
 
 Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 
@@ -272,7 +309,13 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 | `fallback_mission_key` | `camping_site_1` | fallback `mission_key` when site resolution fails |
 | `fallback_to_first_known_goal` | `true` | Use first loaded goal if fallback key also missing |
 | `default_goal_frame_id` | `map` | frame_id for published `site_goal` poses |
+| `parking_site_return_topic` | `/parking/site_maneuver/return` | HHL_260622: campsite-internal return command used before planning return |
 | `site_names` | `[B1, B2, ..., B13]` | Valid site name list for validation |
+| `enable_site_access_gate` | `true` | Reject blocked/unsafe campsite destination commands before publishing goals |
+| `require_reservation_code_for_delivery` | `false` | Require matching `reservation_code` for delivery dispatch |
+| `require_known_mission_key_for_delivery` | `true` | Reject a delivery command when the selected site has no configured planning mission key |
+| `enforce_delivery_start_state` | `true` | Reject a new delivery unless `/AMR_service_state.state` is in `delivery_allowed_amr_states` |
+| `delivery_allowed_amr_states` | `[0]` | Allowed AMR states for starting a new delivery; `0` = `DROP_ZONE_WAIT` |
 
 ---
 
@@ -285,13 +328,18 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 | 🟢 `GET` | `/ui/state` | — | `ApiState` JSON snapshot | Full system state: engaged, ready, operation_mode, module_states, diagnostics, destination, battery_percentage |
 | 🟢 `GET` | `/ui/health` | — | `{"ok": true, "node": "ui_backend"}` | Liveness check |
 | 🟢 `GET` | `/ui/destination` | — | `{"destination": {…}, "valid_sites": […]}` | Current destination and valid site list |
+| 🟢 `GET` | `/ui/site_access` | — | `{"enabled": bool, "sites": {…}}` | Current reservation/occupancy records |
 | 🟢 `GET` | `/ui/diagnostics` | — | `{"status": […]}` | Diagnostics list from `/system/diagnostics_agg` |
+| 🔵 `POST` | `/ui/return_to_drop_zone` | — | `{"success": true, "mode": "site_maneuver_return"}` or `planning_return` | HHL_260622: Single return command; uses campsite crab-out first when `site_maneuver` is active |
 | 🟢 `GET` | `/api/diagnostics` | — | `{"status": […]}` | Same as `/ui/diagnostics` (legacy path) |
 | 🔵 `POST` | `/ui/engage` | `?value=true\|false` | `{"success": bool, "value": bool}` | Publish engage command directly |
 | 🔵 `POST` | `/ui/operation_mode` | `?auto=true\|false` | `{"success": bool, "auto": bool}` | Alias for engage; forwards as Bool |
 | 🔵 `POST` | `/ui/auto` | — | `{"success": true}` | Shortcut: engage=true |
 | 🔵 `POST` | `/ui/stop` | — | `{"success": true}` | Shortcut: engage=false |
-| 🔵 `POST` | `/ui/destination` | `?site=B1&run=true\|false` | `{"success": bool, "destination": {…}}` | Select destination and optionally dispatch goal+engage |
+| 🔵 `POST` | `/ui/destination` | `?site=B1&run=true\|false&reservation_code=1234` | `{"success": bool, "destination": {…}}` | Select destination and optionally dispatch goal+engage after access validation |
+| 🔵 `POST` | `/ui/site_access/checkin` | `?site=B1&reservation_code=1234` | `{"success": bool, "site_access": {…}}` | Mark site as checked in and bind active reservation code |
+| 🔵 `POST` | `/ui/site_access/checkout` | `?site=B1` | `{"success": bool, "site_access": {…}}` | Mark site checked out; delivery entry is blocked, recall can remain allowed |
+| 🔵 `POST` | `/ui/site_access/status` | `?site=B1&status=OCCUPIED` | `{"success": bool, "site_access": {…}}` | Operator/dev override for site status |
 | 🔌 `WS` | `/ws` | — | JSON push messages | Real-time push: `{"states": {…}}`, `{"engage": bool}`, `{"battery": int}`, `{"arrived": site}` |
 | 🟢 `GET` | `/{full_path}` | — | Static file or `index.html` | Serve React SPA |
 
@@ -408,3 +456,16 @@ A camping-site button publishes semantic intent and raw site-center pose only on
 | Site center | `/planning/goal_pose` / `/goal_pose` |
 | Lanelet snap route | produced by `camrod_planning` as `/planning/goal_pose_snapped_ros` (`geometry_msgs`) and `/planning/goal_pose_snapped` (`avg_msgs`) |
 | Parking phase | produced by `camrod_parking` status topics |
+
+> HHL_260622 - `/AMR_service_state` is now exposed in the HTTP/WebSocket snapshot as `amr_state`, `amr_description`, and `parking_phase`. For rule-based parking this lets the UI distinguish Nav2 road driving from campsite entry, unload wait, reverse-out, and drop-zone parking.
+> HHL_260622 - The robot UI treats `site_maneuver:UNLOAD_WAIT` and
+> `site_maneuver:WAIT_RETURN` as the customer-visible arrival state. The
+> `Drop Zone 복귀` button publishes `usage_complete`, which the backend routes to
+> `/parking/site_maneuver/return`; planning return starts only after the
+> campsite maneuver reaches the lanelet snap pose.
+
+| Snapshot field | Source | Meaning |
+|---|---|---|
+| `amr_state` | `/AMR_service_state.state` | Numeric service/mission phase |
+| `amr_description` | `/AMR_service_state.description` | Producer-prefixed text such as `site_maneuver:WAIT_RETURN:...` |
+| `parking_phase` | parsed description | Compact phase label for UI rendering |

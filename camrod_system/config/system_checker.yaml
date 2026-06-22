@@ -2,7 +2,9 @@
 /system/system_checker:
   ros__parameters:
     check_period_s: 1.0
-    startup_grace_s: 6.0
+    # HHL_260622 - Full bringup graph discovery can lag after staggered launches;
+    # keep startup-only false WARNs out while still reporting real runtime drops.
+    startup_grace_s: 30.0
 
     # HH_260617: Legacy aggregate lists kept for compatibility with old UI/tools.
     required_nodes:
