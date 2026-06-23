@@ -8,6 +8,9 @@
     offset_lon: 128.0925490
     offset_alt: 0.0
     input_goal_topic: "/goal_pose"
+    # HHL_260623 - Private input for planning_state_machine auto return goals.
+    # It keeps drop-zone station-center poses away from the public campsite site_goal topic.
+    auxiliary_input_goal_topic: "/planning/auto_goal_raw"
     # Publish only snapped goal on dedicated topic.
     output_goal_topic: "/planning/goal_pose_snapped"
     # HH_260528: ROS PoseStamped mirror for direct Nav2 consumption.

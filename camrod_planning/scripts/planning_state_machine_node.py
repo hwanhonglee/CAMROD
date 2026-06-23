@@ -116,6 +116,13 @@ class PlanningStateMachineNode(Node):
         self.goal_topic_ros = str(
             self.declare_parameter("goal_topic_ros", "/planning/goal_pose_snapped_ros").value
         )
+        # HHL_260623 - Auto return/drop-zone goals are station-center poses, not
+        # lanelet route poses. Publish those raw poses through a private goal_snapper
+        # input so Nav2 receives a valid lanelet-snapped route goal while parking
+        # keeps the original station pose for reverse parking.
+        self.auto_goal_snapper_input_topic = str(
+            self.declare_parameter("auto_goal_snapper_input_topic", "").value
+        )
         self.state_topic = str(
             self.declare_parameter("state_topic", "/planning/state_machine/state").value
         )
@@ -177,6 +184,17 @@ class PlanningStateMachineNode(Node):
         self.startup_mission_key = str(self.declare_parameter("startup_mission_key", "drop_zone").value)
         self.warn_mission_key = str(self.declare_parameter("warn_mission_key", "garage").value)
         self.return_mission_key = str(self.declare_parameter("return_mission_key", "drop_zone").value)
+        raw_auto_snap_keys = self.declare_parameter(
+            "auto_goal_snapper_keys", [self.return_mission_key]
+        ).value
+        if isinstance(raw_auto_snap_keys, str):
+            self.auto_goal_snapper_keys = {
+                item.strip() for item in raw_auto_snap_keys.split(",") if item.strip()
+            }
+        else:
+            self.auto_goal_snapper_keys = {
+                str(item).strip() for item in raw_auto_snap_keys if str(item).strip()
+            }
         self.default_recall_mission_key = str(
             self.declare_parameter("default_recall_mission_key", "camping_site_1").value
         )
@@ -315,6 +333,11 @@ class PlanningStateMachineNode(Node):
         self.pub_goal_ros = None
         if self.goal_topic_ros and self.goal_topic_ros != self.goal_topic:
             self.pub_goal_ros = self.create_publisher(PoseStamped, self.goal_topic_ros, 10)
+        self.pub_auto_goal_snapper = None
+        if self.auto_goal_snapper_input_topic:
+            self.pub_auto_goal_snapper = self.create_publisher(
+                PoseStamped, self.auto_goal_snapper_input_topic, 10
+            )
 
         # HH_260617: Publish CAMROD semantic state/status messages instead of
         # std_msgs/String/Int32 wrappers.
@@ -361,6 +384,8 @@ class PlanningStateMachineNode(Node):
             f"pose={self.pose_topic} "
             f"goal={self.goal_topic} "
             f"goal_ros={self.goal_topic_ros} "
+            f"auto_goal_snapper_input={self.auto_goal_snapper_input_topic or '(disabled)'} "
+            f"auto_goal_snapper_keys={','.join(sorted(self.auto_goal_snapper_keys)) or '(none)'} "
             f"nav_status={self.nav_status_topic} "
             f"parking_phase_state={self.parking_phase_state_topic if self.enable_parking_phase_state_override else '(disabled)'} "
             f"return={self.return_topic} "
@@ -871,14 +896,29 @@ class PlanningStateMachineNode(Node):
         msg.pose.position.z = kp.z
         msg.pose.orientation.w = 1.0
 
-        self.pub_goal.publish(msg)
-        if self.pub_goal_ros is not None:
-            self.pub_goal_ros.publish(msg)
+        publish_via_snapper = (
+            self.pub_auto_goal_snapper is not None
+            and key_name in self.auto_goal_snapper_keys
+        )
+        if publish_via_snapper:
+            self.pub_auto_goal_snapper.publish(msg)
+            self._pending_mission_key_request = key_name
+            self._pending_mission_key_time = now
+            self._last_self_goal = None
+            self.get_logger().info(
+                "published raw auto-goal through goal_snapper: "
+                f"key={key_name} source={source} topic={self.auto_goal_snapper_input_topic} "
+                f"xy=({kp.x:.2f},{kp.y:.2f})"
+            )
+        else:
+            self.pub_goal.publish(msg)
+            if self.pub_goal_ros is not None:
+                self.pub_goal_ros.publish(msg)
+            self._last_self_goal = msg
 
-        self._last_self_goal = msg
         self._last_goal_publish_time = now
         self.active_goal = msg
-        self.active_goal_source = source
+        self.active_goal_source = f"{source}:snap_request" if publish_via_snapper else source
         self.active_mission_key = key_name
         self._reset_nav2_goal_status()
         self.startup_goal_sent = True

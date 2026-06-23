@@ -98,6 +98,10 @@ public:
     cfg_.offset_lon = declare_parameter<double>("offset_lon", 0.0);
     cfg_.offset_alt = declare_parameter<double>("offset_alt", 0.0);
     input_goal_topic_ = declare_parameter<std::string>("input_goal_topic", "/goal_pose");
+    // HHL_260623 - Keep internal return/drop-zone raw goals separate from the public
+    // site_goal topic so camrod_parking/site_maneuver does not consume them as campsite goals.
+    auxiliary_input_goal_topic_ =
+      declare_parameter<std::string>("auxiliary_input_goal_topic", "");
     output_goal_topic_ = declare_parameter<std::string>("output_goal_topic", "/planning/goal_pose");
     // HH_260317 Publish ROS-native snapped goal for Nav2 topic compatibility.
     output_goal_topic_ros_ = declare_parameter<std::string>(
@@ -240,6 +244,14 @@ public:
     sub_goal_ros_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       input_goal_topic_, rclcpp::QoS(10),
       std::bind(&GoalSnapperNode::onGoalRos, this, std::placeholders::_1));
+    if (!auxiliary_input_goal_topic_.empty() && auxiliary_input_goal_topic_ != input_goal_topic_) {
+      sub_aux_goal_ = create_subscription<avg_msgs::msg::PoseStamped>(
+        auxiliary_input_goal_topic_, rclcpp::QoS(10),
+        std::bind(&GoalSnapperNode::onAuxGoal, this, std::placeholders::_1));
+      sub_aux_goal_ros_ = create_subscription<geometry_msgs::msg::PoseStamped>(
+        auxiliary_input_goal_topic_, rclcpp::QoS(10),
+        std::bind(&GoalSnapperNode::onAuxGoalRos, this, std::placeholders::_1));
+    }
 
     if (
       restrict_to_connected_lanelet_component_ ||
@@ -271,8 +283,9 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "goal_snapper ready: map=%s input=%s output(avg)=%s output(ros)=%s lane_component=%s cost_grid_component=%s sequential_release=%s",
+      "goal_snapper ready: map=%s input=%s aux_input=%s output(avg)=%s output(ros)=%s lane_component=%s cost_grid_component=%s sequential_release=%s",
       cfg_.map_path.c_str(), input_goal_topic_.c_str(),
+      auxiliary_input_goal_topic_.empty() ? "(disabled)" : auxiliary_input_goal_topic_.c_str(),
       output_goal_topic_.c_str(), output_goal_topic_ros_.c_str(),
       restrict_to_connected_lanelet_component_ ? "enabled" : "disabled",
       restrict_to_cost_grid_component_ ? "enabled" : "disabled",
@@ -582,14 +595,26 @@ private:
   // Handles the `onGoal` callback.
   void onGoal(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
-    const double px = msg->pose.position.x;
-    const double py = msg->pose.position.y;
-    const double pz = msg->pose.position.z;
-    if (shouldSkipDuplicateGoal(msg->header.frame_id, msg->header.stamp, px, py, pz)) {
+    snapAvgGoal(*msg, "avg");
+  }
+
+  // HHL_260623 - Internal auto goals use the same snap logic but carry a distinct
+  // log label to prove that return/drop-zone routing did not come from UI/RViz.
+  void onAuxGoal(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  {
+    snapAvgGoal(*msg, "aux_avg");
+  }
+
+  void snapAvgGoal(const avg_msgs::msg::PoseStamped & msg, const char * source_label)
+  {
+    const double px = msg.pose.position.x;
+    const double py = msg.pose.position.y;
+    const double pz = msg.pose.position.z;
+    if (shouldSkipDuplicateGoal(msg.header.frame_id, msg.header.stamp, px, py, pz)) {
       RCLCPP_DEBUG_THROTTLE(
         get_logger(), *get_clock(), 500,
-        "goal_snapper: skipped duplicate avg goal in frame=%s",
-        msg->header.frame_id.c_str());
+        "goal_snapper: skipped duplicate %s goal in frame=%s",
+        source_label, msg.header.frame_id.c_str());
       return;
     }
 
@@ -600,27 +625,39 @@ private:
     }
 
     avg_msgs::msg::PoseStamped out;
-    out.header = msg->header;
+    out.header = msg.header;
     out.pose.position.x = nearest.nearest_point.x();
     out.pose.position.y = nearest.nearest_point.y();
     out.pose.position.z = snapped_z;
     out.pose.orientation = yawToQuat(nearest.heading);
-    handleSnappedGoal(out, px, py, std::sqrt(nearest.sq_dist), "avg");
+    handleSnappedGoal(out, px, py, std::sqrt(nearest.sq_dist), source_label);
   }
 
   // Handles the `onGoalRos` callback.
   void onGoalRos(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
+    snapRosGoal(*msg, "ros");
+  }
+
+  // HHL_260623 - ROS-native auxiliary input is used by planning_state_machine for
+  // drop-zone return requests that still need lanelet snapping before Nav2.
+  void onAuxGoalRos(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  {
+    snapRosGoal(*msg, "aux_ros");
+  }
+
+  void snapRosGoal(const geometry_msgs::msg::PoseStamped & msg, const char * source_label)
+  {
     // HH_260317 Accept RViz 2D Goal Pose directly (geometry_msgs).
     // Internal planning helpers still consume avg_msgs output_goal_topic_.
-    const double px = msg->pose.position.x;
-    const double py = msg->pose.position.y;
-    const double pz = msg->pose.position.z;
-    if (shouldSkipDuplicateGoal(msg->header.frame_id, msg->header.stamp, px, py, pz)) {
+    const double px = msg.pose.position.x;
+    const double py = msg.pose.position.y;
+    const double pz = msg.pose.position.z;
+    if (shouldSkipDuplicateGoal(msg.header.frame_id, msg.header.stamp, px, py, pz)) {
       RCLCPP_DEBUG_THROTTLE(
         get_logger(), *get_clock(), 500,
-        "goal_snapper: skipped duplicate ros goal in frame=%s",
-        msg->header.frame_id.c_str());
+        "goal_snapper: skipped duplicate %s goal in frame=%s",
+        source_label, msg.header.frame_id.c_str());
       return;
     }
 
@@ -631,13 +668,13 @@ private:
     }
 
     avg_msgs::msg::PoseStamped out_avg;
-    out_avg.header.stamp = msg->header.stamp;
-    out_avg.header.frame_id = msg->header.frame_id;
+    out_avg.header.stamp = msg.header.stamp;
+    out_avg.header.frame_id = msg.header.frame_id;
     out_avg.pose.position.x = nearest.nearest_point.x();
     out_avg.pose.position.y = nearest.nearest_point.y();
     out_avg.pose.position.z = snapped_z;
     out_avg.pose.orientation = yawToQuat(nearest.heading);
-    handleSnappedGoal(out_avg, px, py, std::sqrt(nearest.sq_dist), "ros");
+    handleSnappedGoal(out_avg, px, py, std::sqrt(nearest.sq_dist), source_label);
   }
 
   void handleSnappedGoal(
@@ -1194,6 +1231,7 @@ private:
   lanelet::LaneletMapPtr map_;
 
   std::string input_goal_topic_;
+  std::string auxiliary_input_goal_topic_;
   std::string output_goal_topic_;
   std::string output_goal_topic_ros_;
   std::string planning_status_topic_;
@@ -1284,6 +1322,8 @@ private:
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_goal_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_;
+  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_aux_goal_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_aux_goal_ros_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_current_pose_;
   rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub_cost_grid_;
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub_nav_status_;
