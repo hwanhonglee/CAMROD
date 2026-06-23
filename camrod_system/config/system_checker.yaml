@@ -6,23 +6,8 @@
     # keep startup-only false WARNs out while still reporting real runtime drops.
     startup_grace_s: 30.0
 
-    # HH_260617: Legacy aggregate lists kept for compatibility with old UI/tools.
-    required_nodes:
-      - /map/lanelet_boundary_cost_grid
-      - /planning/goal_snapper
-      - /planning/planner_server
-      - /planning/controller_server
-      - /planning/bt_navigator
-      - /localization/pose_selector
-    required_topics:
-      - /localization/pose
-      - /sensing/imu/data
-      - /sensing/gnss/ublox_gps_node/fix
-      - /platform/status/wheel_odometry
-      - /localization/odometry/filtered
-      - /map/cost_grid/lanelet
-      - /planning/state_machine/state
-
+    # HHL_260623 - Module manifests below are the single graph-readiness source;
+    # aggregate system_checker/nodes and /topics diagnostics are derived from them.
     # HH_260617: Module manifest format:
     #   "topic|ros_type|min_publishers"
     # min_publishers=0 checks only graph/type presence and avoids command-topic false WARNs.

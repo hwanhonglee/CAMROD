@@ -443,9 +443,12 @@ Verify: `ls $(ros2 pkg prefix camrod_system)/share/camrod_system/config/diagnost
 
 ### Where to Add Required Topics
 
-Add graph-level required nodes/topics in `config/system_checker.yaml`. Use `topic|ros_type|min_publishers` format, for example:
+HHL_260623 - Add graph-level required nodes/topics under the owning module in
+`config/system_checker.yaml`; top-level aggregate lists were removed. Use
+`topic|ros_type|min_publishers` format, for example:
 
 ```yaml
-required_topics:
-  - "/parking/drop_zone/status|avg_msgs/msg/ModuleState|1"
+parking:
+  required_topics:
+    - "/parking/drop_zone/status|avg_msgs/msg/ModuleState|1"
 ```

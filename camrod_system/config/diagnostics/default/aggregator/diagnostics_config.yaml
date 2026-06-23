@@ -74,7 +74,16 @@ topics:
     group: sensing/lidar
     timeout_s: 3.0
 
-  # ── Sensing: Radar (SEN0592 6채널) ────────────────────────────────────
+  # ── Sensing: Radar (SEN0592 7채널) ────────────────────────────────────
+  # HHL_260623 - Monitor FRONT1/FRONT2 separately for the latest dual-front radar layout.
+  - name: "radar_checker: /sensor/radar/FRONT1"
+    group: sensing/radar
+    timeout_s: 3.0
+
+  - name: "radar_checker: /sensor/radar/FRONT2"
+    group: sensing/radar
+    timeout_s: 3.0
+
   - name: "radar_checker: /sensor/radar/REAR"
     group: sensing/radar
     timeout_s: 3.0
@@ -92,10 +101,6 @@ topics:
     timeout_s: 3.0
 
   - name: "radar_checker: /sensor/radar/RIGHT1"
-    group: sensing/radar
-    timeout_s: 3.0
-
-  - name: "radar_checker: /sensor/radar/FRONT"
     group: sensing/radar
     timeout_s: 3.0
 
