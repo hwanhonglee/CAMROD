@@ -1,7 +1,7 @@
 # CAMROD Parameter Naming Standard
 
 This document defines the canonical parameter naming rules for custom CAMROD packages
-and records the legacy-to-canonical aliases currently supported in code.
+and records the legacy-to-canonical cleanup history.
 
 ## 1) Canonical Naming Rules
 
@@ -30,12 +30,13 @@ and records the legacy-to-canonical aliases currently supported in code.
 
 ## 2) Migration Policy
 
-- Canonical key is preferred.
-- Legacy key is still accepted for backward compatibility.
-- When only a legacy key is provided, runtime falls back to the legacy value and prints a deprecation warning.
-- If canonical and legacy keys are both set with different values, canonical value wins.
+- Canonical key is required for new config and code.
+- HHL_260623 - Do not add runtime compatibility aliases unless there is a
+  release-blocking migration reason and a removal date is written next to it.
+- Historical legacy keys listed below are migration records, not active public
+  parameters.
 
-## 3) Implemented Alias Migrations (This Change)
+## 3) Completed Legacy-Key Migrations
 
 ### camrod_system (C++ diagnostics)
 
@@ -129,17 +130,10 @@ And planning launch now passes canonical gate parameter key:
 
 - `camrod_planning/launch/cmd_vel_gate.launch.py`
 
-## 5) Remaining Legacy Aliases (Intentional)
+## 5) Removed Legacy `_sec` Aliases
 
-The following legacy `_sec` keys are intentionally still declared as compatibility aliases:
-
-- `goal_delay_sec`, `engage_delay_sec`, `test_duration_sec`
-- `step_timeout_sec`, `wait_for_topics_sec`
-- `cmd_vel_timeout_sec`, `startup_hold_sec`
-- `gnss_failure_after_sec`, `gnss_recovery_after_sec`
-- `startup_grace_sec`
-
-Canonical runtime keys for new configs are:
+HHL_260623 - A workspace-wide source scan found no active declarations for the
+old `_sec` aliases below. Keep only the canonical `_s` names in new configs:
 
 - `goal_delay_s`, `engage_delay_s`, `test_duration_s`
 - `step_timeout_s`, `wait_for_topics_s`

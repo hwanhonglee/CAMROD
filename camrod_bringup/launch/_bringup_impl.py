@@ -1225,9 +1225,6 @@ def generate_launch_description():
         #   rule_based/parking: camrod_parking owns site crab + rear parking.
         #   docking           : camrod_docking/opennav owns marker-based docking.
         ('parking_method', parking_method_default, 'Final parking method: rule_based|docking'),
-        # HH_260618: Deprecated compatibility alias for earlier local commands.
-        # Prefer parking_method; non-auto parking_backend still overrides it.
-        ('parking_backend', '__use_parking_method__', 'Deprecated alias for parking_method'),
         # HH_260617: Rule-based site crab maneuver and reverse parking module.
         ('enable_parking', cfg_get(launch_cfg, 'parking/enable_parking', True), 'Enable camrod_parking module'),
         ('enable_site_maneuver', cfg_get(launch_cfg, 'parking/enable_site_maneuver', True), 'Enable campsite crab/rotate maneuver node'),
@@ -1287,13 +1284,9 @@ def generate_launch_description():
     ]
 
     lc = {name: LaunchConfiguration(name) for name, _, _ in arg_specs}
-    # HH_260618: Resolve the new parking_method first, while keeping the old
-    # parking_backend launch argument as an override-only compatibility alias.
-    parking_method_expr = [
-        "('", lc['parking_backend'], "'.lower() if '", lc['parking_backend'],
-        "'.lower() not in ('', '__use_parking_method__', 'auto') else '",
-        lc['parking_method'], "'.lower())",
-    ]
+    # HHL_260623 - Removed the deprecated parking_backend launch alias;
+    # parking_method is the single selector for rule_based versus docking.
+    parking_method_expr = ["'", lc['parking_method'], "'.lower()"]
     parking_method_rule_based_expr = PythonExpression([
         "(", *parking_method_expr, ") in ('rule_based', 'parking') and ",
         "'", lc['enable_parking'], "'.lower() in ('1', 'true', 'yes', 'on')",
