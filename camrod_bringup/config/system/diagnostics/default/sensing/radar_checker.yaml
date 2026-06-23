@@ -1,4 +1,4 @@
-# Radar Checker 설정 파일 (SEN0592 Modbus RTU 레이다 6채널)
+# Radar Checker 설정 파일 (SEN0592 Modbus RTU 레이다 7채널)
 #
 # 진단 태스크 이름 형식: "radar_checker: /sensor/radar/<NAME>"
 # (diagnostic_updater 가 "<node_name>: <task_name>" 으로 자동 생성)
@@ -8,7 +8,8 @@ radar_checker:
     publish_rate_hz: 1.0          # 진단 발행 주기 (Hz)
 
     # 모니터링할 레이다 이름 목록 (sen0592_radar_node 의 sensor_names 와 일치)
-    radar_names: ["REAR", "LEFT2", "LEFT1", "RIGHT2", "RIGHT1", "FRONT"]
+    # HHL_260623 - Match latest 7-channel SEN0592 radar names.
+    radar_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]
 
     # ── 각 센서 설정 ──────────────────────────────────────────────────────
     #
@@ -85,8 +86,21 @@ radar_checker:
       stuck_max_warn_m:   4.4
       stuck_max_error_m:  0.0
 
-    FRONT:
-      topic: "/sensing/radar/front/range"
+    FRONT1:
+      topic: "/sensing/radar/front1/range"
+      expected_hz:        16.0
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
+      stale_timeout_s:      1.0
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0
+
+    FRONT2:
+      topic: "/sensing/radar/front2/range"
       expected_hz:        16.0
       hz_warn_ratio:      0.7
       hz_error_ratio:     0.4

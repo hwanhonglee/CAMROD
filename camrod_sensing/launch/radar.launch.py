@@ -31,7 +31,9 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("enable_radar", default_value="true"),
         DeclareLaunchArgument("enable_radar_cost_grid", default_value="true"),
-        DeclareLaunchArgument("module_namespace", default_value="radar"),
+        # HHL_260623 - Standalone radar.launch has no outer /sensing namespace,
+        # so default directly to /sensing/radar for topic compatibility.
+        DeclareLaunchArgument("module_namespace", default_value="sensing/radar"),
         DeclareLaunchArgument("radar_sensor_param_file", default_value=default_sensor_param),
         DeclareLaunchArgument("radar_cost_grid_param_file", default_value=default_cost_grid_param),
 

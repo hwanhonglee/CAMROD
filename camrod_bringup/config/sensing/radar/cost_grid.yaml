@@ -28,10 +28,12 @@
     publish_rate_hz: 10.0
     publish_radar_status: false
     radar_status_topic: "/sensing/radar/status"
+    # HHL_260623 - Match latest 7-channel SEN0592 radar topics.
     input_topics:
-      - "/sensing/radar/front/range"
-      - "/sensing/radar/right1/range"
-      - "/sensing/radar/right2/range"
+      - "/sensing/radar/front1/range"
+      - "/sensing/radar/front2/range"
       - "/sensing/radar/left1/range"
       - "/sensing/radar/left2/range"
+      - "/sensing/radar/right1/range"
+      - "/sensing/radar/right2/range"
       - "/sensing/radar/rear/range"
