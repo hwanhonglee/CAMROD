@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Launch SEN0592 ultrasonic radar node (6x serial sensors, Modbus RTU).
+Launch SEN0592 ultrasonic radar node (7x serial sensors, Modbus RTU).
 """
 
 import os
@@ -28,7 +28,9 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "module_namespace",
-            default_value="radar",
+            # HHL_260623 - Direct radar_sensor.launch should publish the same
+            # /sensing/radar/* topics consumed by radar cost grid and Nav2.
+            default_value="sensing/radar",
             description="Namespace for radar standalone launch",
         ),
 
@@ -38,8 +40,14 @@ def generate_launch_description():
             name="sen0592_radar_node",
             namespace=module_namespace,
             output="screen",
-            # HH_260611: Keep sensor mapping only in YAML so one-radar and six-radar configs
-            # can be swapped without launch-time hard-coded topic overrides.
-            parameters=[radar_params],
+            # HHL_260623 - Keep the latest seven-radar mapping in YAML so bench overrides
+            # can still replace the sensor count without launch-time topic mismatch.
+            parameters=[
+                radar_params,
+                {
+                    "radar_status_topic": "status",
+                    "log_status": True,
+                },
+            ],
         ),
     ])

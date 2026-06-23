@@ -55,12 +55,14 @@ public:
     publish_radar_status_ = declare_parameter<bool>("publish_radar_status", false);
     input_topics_ = declare_parameter<std::vector<std::string>>(
       "input_topics",
+      // HHL_260623 - Use the latest 7-channel radar topic set from todo/camrod_sensing.
       std::vector<std::string>{
-        "/sensing/radar/front/range",
-        "/sensing/radar/right1/range",
-        "/sensing/radar/right2/range",
+        "/sensing/radar/front1/range",
+        "/sensing/radar/front2/range",
         "/sensing/radar/left1/range",
         "/sensing/radar/left2/range",
+        "/sensing/radar/right1/range",
+        "/sensing/radar/right2/range",
         "/sensing/radar/rear/range"});
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
@@ -311,8 +313,11 @@ private:
       return;
     }
     const auto & topic = input_topics_[idx];
-    if (topic.find("front") != std::string::npos) {
-      avg_msg.front = msg;
+    // HHL_260623 - Removed the legacy merged front alias; publish front1/front2 separately.
+    if (topic.find("front1") != std::string::npos) {
+      avg_msg.front1 = msg;
+    } else if (topic.find("front2") != std::string::npos) {
+      avg_msg.front2 = msg;
     } else if (topic.find("right1") != std::string::npos) {
       avg_msg.right1 = msg;
     } else if (topic.find("right2") != std::string::npos) {
