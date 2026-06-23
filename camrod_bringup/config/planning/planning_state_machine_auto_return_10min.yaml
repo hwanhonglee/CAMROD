@@ -8,6 +8,10 @@
     # State machine tracks snapped goal topic and mirrors to ROS goal output.
     goal_topic: "/planning/goal_pose_snapped_ros"
     goal_topic_ros: "/planning/goal_pose_snapped_ros"
+    # HHL_260623 - Auto return/drop-zone goals are raw station poses and must be
+    # snapped before Nav2; campsite UI goals still use /goal_pose.
+    auto_goal_snapper_input_topic: "/planning/auto_goal_raw"
+    auto_goal_snapper_keys: ["drop_zone"]
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
     # HH_260528 Scenario contract for UI integration:
