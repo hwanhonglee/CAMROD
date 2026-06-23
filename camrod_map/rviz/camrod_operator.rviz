@@ -409,14 +409,29 @@ Visualization Manager:
               Class: rviz_default_plugins/Range
               Color: 255; 255; 255
               Enabled: true
-              Name: Front_Range
+              # HHL_260623 - Split radar front display into FRONT1/FRONT2 for the latest 7-channel layout.
+              Name: Front1_Range
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /sensing/radar/front/range
+                Value: /sensing/radar/front1/range
+              Value: true
+            - Alpha: 0.30000001192092896
+              Buffer Length: 1
+              Class: rviz_default_plugins/Range
+              Color: 255; 255; 255
+              Enabled: true
+              Name: Front2_Range
+              Topic:
+                Depth: 5
+                Durability Policy: Volatile
+                Filter size: 3
+                History Policy: Keep Last
+                Reliability Policy: Reliable
+                Value: /sensing/radar/front2/range
               Value: true
             - Alpha: 0.30000001192092896
               Buffer Length: 1

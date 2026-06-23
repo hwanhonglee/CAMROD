@@ -156,7 +156,9 @@ graph TD
       CAMF[📡 camera_front_link\n0.40, 0.0, 0.46]:::sensing
       CAMR[📡 camera_rear_link\n0.10, 0.0, 0.46]:::sensing
       subgraph RADAR["Radar sensors (direct to sensor_kit_base_link)"]
-        RF[📡 radar_front_link]:::sensing
+        %% HHL_260623 - Removed the legacy single-front radar alias; front1/front2 are canonical.
+        RF1[📡 radar_front1_link]:::sensing
+        RF2[📡 radar_front2_link]:::sensing
         RL1[📡 radar_left1_link]:::sensing
         RL2[📡 radar_left2_link]:::sensing
         RR1[📡 radar_right1_link]:::sensing
@@ -170,7 +172,7 @@ graph TD
   MAP --> BASE
   BASE --> SKB
   SKB --> IMU & GNSS & LIDAR & CAMF & CAMR
-  SKB --> RF & RL1 & RL2 & RR1 & RR2 & RR
+  SKB --> RF1 & RF2 & RF & RL1 & RL2 & RR1 & RR2 & RR
 
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
   classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
@@ -281,7 +283,8 @@ All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **de
 | `lidar` | 0.68 | 0.0 | 0.45 | 0.0 | 0.4 | 0.0 |
 | `camera.front` | 0.40 | 0.0 | 0.46 | 0.0 | 0.0 | 0.0 |
 | `camera.rear` | 0.10 | 0.0 | 0.46 | 0.0 | 0.0 | 180.0 |
-| `radar.front` | 0.64 | 0.0 | 0.45 | 0.0 | 0.0 | 0.0 |
+| `radar.front1` | 0.55 | 0.18 | 0.45 | 0.0 | 0.0 | 0.0 |
+| `radar.front2` | 0.55 | -0.18 | 0.45 | 0.0 | 0.0 | 0.0 |
 | `radar.left1` | -0.1 | 0.2 | 0.45 | 0.0 | 0.0 | 90.0 |
 | `radar.left2` | 0.5 | 0.2 | 0.45 | 0.0 | 0.0 | 90.0 |
 | `radar.right1` | -0.1 | -0.2 | 0.45 | 0.0 | 0.0 | -90.0 |
@@ -302,7 +305,7 @@ ros2 topic echo /tf_static --once | grep frame_id
 
 # Lookup each sensor frame from robot_base_link
 for frame in imu_link gnss_link lidar_link camera_front_link camera_rear_link \
-  radar_front_link radar_rear_link; do
+  radar_front1_link radar_front2_link radar_rear_link; do
   ros2 run tf2_ros tf2_echo robot_base_link $frame
 done
 

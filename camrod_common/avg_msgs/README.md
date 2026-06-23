@@ -146,7 +146,7 @@ graph LR
 | 📨 `AvgSensingCamera` | msg | `Image image`, `CameraInfo camera_info` | camrod_sensing | camrod_perception |
 | 📨 `AvgSensingImu` | msg | `Imu imu_data`, `TwistWithCovarianceStamped platform_twist_cov` | camrod_sensing | camrod_localization |
 | 📨 `AvgSensingGnss` | msg | `NavSatFix navsatfix`, `PoseWithCovarianceStamped pose_with_covariance` | camrod_sensing | camrod_localization |
-| 📨 `AvgSensingRadar` | msg | `Range front/right1/right2/left1/left2/rear`, `OccupancyGrid near_cost_grid` | camrod_sensing | camrod_platform, camrod_map |
+| 📨 `AvgSensingRadar` | msg | `Range front1/front2/right1/right2/left1/left2/rear`, `OccupancyGrid near_cost_grid` | camrod_sensing | camrod_platform, camrod_map |
 | 📨 `AvgLocalizationMsgs` | msg | `stamp`, `ModuleState state`, pose/odom/twist/mode/status fields, GNSS and wheel update flags and innovation norms | camrod_localization | camrod_platform, camrod_planning, camrod_bringup |
 | 📨 `AvgLocalizationMode` | msg | `value` (NORMAL=0/DEGRADED=1/DR_ONLY=2/INVALID=3), `label` | camrod_localization | camrod_system, camrod_planning |
 | 📨 `AvgLocalizationStatus` | msg | `header`, `AvgLocalizationMode mode`, `confidence`, `gnss_ok/imu_ok/wheel_ok`, innovation norms | camrod_localization | camrod_system |
