@@ -14,10 +14,10 @@
  *
  * 파라미터 구성
  * -------------
- *   radar_names: ["FRONT", "REAR"]   ← 모니터링할 레이다 이름 목록
+ *   radar_names: ["FRONT1", "FRONT2", "REAR"]   ← 모니터링할 레이다 이름 목록
  *
- *   FRONT:
- *     topic:              "/sensing/radar/front/range"
+ *   FRONT1:
+ *     topic:              "/sensing/radar/front1/range"
  *     expected_hz:        16.0    # SEN0592 기본 poll 60 ms → ~16.7 Hz
  *     hz_warn_ratio:      0.7     # actual_hz / expected_hz 비율 미만이면 WARN
  *     hz_error_ratio:     0.4     # actual_hz / expected_hz 비율 미만이면 ERROR
@@ -28,6 +28,8 @@
  *     stuck_min_error_m:  0.0     # 0.0 = 비활성화: range ≤ 이 값이면 ERROR (전방 차폐 확실)
  *     stuck_max_warn_m:   0.0     # 0.0 = 비활성화: range ≥ 이 값이면 WARN  (무감지 의심)
  *     stuck_max_error_m:  0.0     # 0.0 = 비활성화: range ≥ 이 값이면 ERROR (무감지 확실)
+ *
+ * HHL_260623 - Documentation example updated for the latest 7-channel radar layout.
  */
 
 #include <algorithm>

@@ -18,7 +18,7 @@
 # │   ├── Sensing/GNSS       ← /sensor/gnss/main
 # │   ├── Sensing/IMU        ← /sensor/imu/main
 # │   ├── Sensing/LiDAR      ← /sensor/lidar/main, /sensor/lidar/filtered
-# │   ├── Sensing/Radar      ← /sensor/radar/{REAR,LEFT1,LEFT2,RIGHT1,RIGHT2,FRONT}
+# │   ├── Sensing/Radar      ← /sensor/radar/{FRONT1,FRONT2,LEFT1,LEFT2,RIGHT1,RIGHT2,REAR}
 # │   ├── Sensing/Camera     ← /sensor/camera/econ_front, /sensor/camera/econ_rear
 # │   ├── Sensing/Wheel      ← /sensor/wheel/main
 # │   ├── Sensing/CostGrid   ← /perception/lidar/cost_grid

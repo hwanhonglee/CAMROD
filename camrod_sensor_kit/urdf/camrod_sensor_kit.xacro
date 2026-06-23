@@ -46,15 +46,19 @@
   <!-- ========================================================= -->
   <!-- 4. Radar transform arguments                              -->
   <!--    yaw examples:                                          -->
-  <!--      front  =   0 deg =  0.0                              -->
+  <!--      front1/front2 = 0 deg = 0.0                           -->
   <!--      left1  =  90 deg =  1.570796                         -->
   <!--      left2  = 135 deg =  2.356194                         -->
   <!--      right1 = -90 deg = -1.570796                         -->
   <!--      right2 = -135deg = -2.356194                         -->
   <!--      rear   = 180 deg =  3.141593                         -->
   <!-- ========================================================= -->
-  <xacro:arg name="radar_front_xyz"  default="0.55 0.0 0.45"/>
-  <xacro:arg name="radar_front_rpy"  default="0.0 0.0 0.0"/>
+  <!-- HHL_260623 - Removed the legacy single-front radar alias; only front1/front2 exist. -->
+  <xacro:arg name="radar_front1_xyz" default="0.55 0.18 0.45"/>
+  <xacro:arg name="radar_front1_rpy" default="0.0 0.0 0.0"/>
+
+  <xacro:arg name="radar_front2_xyz" default="0.55 -0.18 0.45"/>
+  <xacro:arg name="radar_front2_rpy" default="0.0 0.0 0.0"/>
 
   <xacro:arg name="radar_left1_xyz"  default="0.20 0.45 0.45"/>
   <xacro:arg name="radar_left1_rpy"  default="0.0 0.0 1.570796"/>
@@ -253,12 +257,23 @@
   <!-- 10. Radar sensors                                         -->
   <!-- ========================================================= -->
   <!-- HH_260507: Radar sensors are attached directly under sensor_kit_base_link. -->
+  <!-- HHL_260623 - Front radar TFs match the 7-channel radar topics exactly. -->
 
   <xacro:sensor_link
-    name="radar_front_link"
+    name="radar_front1_link"
     parent="${sensor_kit_base_link_name}"
-    xyz="$(arg radar_front_xyz)"
-    rpy="$(arg radar_front_rpy)"
+    xyz="$(arg radar_front1_xyz)"
+    rpy="$(arg radar_front1_rpy)"
+    color_rgba="0.95 0.65 0.20 1.0"
+    radius="0.03"
+    length="0.06"
+    mass="0.10"/>
+
+  <xacro:sensor_link
+    name="radar_front2_link"
+    parent="${sensor_kit_base_link_name}"
+    xyz="$(arg radar_front2_xyz)"
+    rpy="$(arg radar_front2_rpy)"
     color_rgba="0.95 0.65 0.20 1.0"
     radius="0.03"
     length="0.06"

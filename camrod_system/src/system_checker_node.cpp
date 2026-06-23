@@ -46,15 +46,6 @@ public:
 
     startup_grace_s_ = declare_parameter<double>("startup_grace_s", 6.0);
 
-    declare_parameter<std::vector<std::string>>(
-      "required_nodes", std::vector<std::string>{});
-    declare_parameter<std::vector<std::string>>(
-      "required_topics", std::vector<std::string>{});
-    required_nodes_ = normalize_names(
-      get_parameter("required_nodes").as_string_array());
-    required_topics_ = normalize_names(
-      get_parameter("required_topics").as_string_array());
-
     // HH_260617: Add module-level graph manifests so system health can report
     // which package domain is missing required ROS nodes/topics, instead of one
     // ambiguous global "topics missing" list.
@@ -426,16 +417,24 @@ private:
       topic_names_and_types[kv.first] = kv.second;
     }
 
+    // HHL_260623 - Build aggregate graph diagnostics from module manifests
+    // instead of legacy top-level required_nodes/required_topics lists.
     std::vector<std::string> missing_nodes;
-    for (const auto & need : required_nodes_) {
-      if (node_names.find(need) == node_names.end()) {
-        missing_nodes.push_back(need);
-      }
-    }
     std::vector<std::string> missing_topics;
-    for (const auto & need : required_topics_) {
-      if (topic_names_and_types.find(need) == topic_names_and_types.end()) {
-        missing_topics.push_back(need);
+    for (const auto & module : required_module_specs_) {
+      for (const auto & need : module.required_nodes) {
+        if (node_names.find(need) == node_names.end() &&
+          std::find(missing_nodes.begin(), missing_nodes.end(), need) == missing_nodes.end())
+        {
+          missing_nodes.push_back(need);
+        }
+      }
+      for (const auto & topic : module.required_topics) {
+        if (topic_names_and_types.find(topic.name) == topic_names_and_types.end() &&
+          std::find(missing_topics.begin(), missing_topics.end(), topic.name) == missing_topics.end())
+        {
+          missing_topics.push_back(topic.name);
+        }
       }
     }
 
@@ -473,7 +472,7 @@ private:
     pub_diag_->publish(diag);
   }
 
-  // Joins list for warn logs while preserving legacy "-" output on empty list.
+  // Joins list for warn logs while preserving compact "-" output on empty list.
   static std::string join_or_dash(const std::vector<std::string> & values)
   {
     if (values.empty()) {
@@ -514,8 +513,6 @@ private:
   double check_period_s_{1.0};
   double startup_grace_s_{6.0};
   std::string diagnostic_topic_;
-  std::vector<std::string> required_nodes_;
-  std::vector<std::string> required_topics_;
   std::vector<RequiredModuleSpec> required_module_specs_;
   std::vector<RequiredAlternativeGroupSpec> required_alternative_group_specs_;
 
