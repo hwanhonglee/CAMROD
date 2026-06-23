@@ -383,7 +383,8 @@ global_costmap:
       width: 240
       height: 240
       resolution: 0.10
-      # origin_* retained for backward compatibility; ignored in rolling window mode.
+      # HHL_260623 - Keep explicit origin fields for Nav2 costmap schema clarity;
+      # rolling_window mode ignores them at runtime.
       origin_x: -100.0
       origin_y: -50.0
       # HH_260527: Keep unknown as unknown in global master.
