@@ -77,7 +77,8 @@ function DiagnosticsMonitor() {
 
   useEffect(() => {
     const fetch_ = () =>
-      fetch('/api/diagnostics')
+      // HHL_260623 - Use the canonical UI diagnostics endpoint; legacy /api/diagnostics was removed.
+      fetch('/ui/diagnostics')
         .then(r => r.json())
         .then(j => setItems(j.status || []))
         .catch(() => {});

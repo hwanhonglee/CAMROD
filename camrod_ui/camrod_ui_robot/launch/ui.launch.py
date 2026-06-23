@@ -178,9 +178,6 @@ def generate_launch_description():
             'publish_goal_pose': True,
             'publish_engage_from_destination': True,
             'default_goal_frame_id': 'map',
-            # HH_260617: Fallback destination uses the same mission-key contract.
-            'fallback_mission_key': 'camping_site_1',
-            'fallback_to_first_known_goal': True,
             'camping_sites_yaml': LaunchConfiguration('camping_sites_yaml'),
             'site_access_yaml': LaunchConfiguration('site_access_yaml'),
             'enable_site_access_gate': True,
