@@ -136,10 +136,6 @@ class UiBackendNode(Node):
             self.declare_parameter("publish_engage_from_destination", True).value
         )
         self.default_goal_frame_id = str(self.declare_parameter("default_goal_frame_id", "map").value)
-        self.fallback_mission_key = str(self.declare_parameter("fallback_mission_key", "camping_site_1").value)
-        self.fallback_to_first_known_goal = bool(
-            self.declare_parameter("fallback_to_first_known_goal", True).value
-        )
 
         self.camping_sites_yaml = str(self.declare_parameter("camping_sites_yaml", "").value)
         self.site_access_yaml = str(self.declare_parameter("site_access_yaml", "").value)
@@ -297,7 +293,7 @@ class UiBackendNode(Node):
         return status in {"RESERVED", "CHECKED_IN", "OCCUPIED", "CHECKED_OUT"}
 
     def _strict_mission_key_for_site(self, site: str) -> str:
-        # HHL_260621 - Only bind a site to an existing planning key; never reuse fallback_mission_key silently.
+        # HHL_260623 - Only bind a site to an existing planning key; never reuse another campsite silently.
         mapped = self.site_to_mission_key_map.get(site, "")
         if mapped and mapped in self._keypoints_by_mission_key:
             return mapped
@@ -719,21 +715,10 @@ class UiBackendNode(Node):
             if candidate in self._keypoints_by_mission_key:
                 return candidate
 
-        if self.fallback_mission_key in self._keypoints_by_mission_key:
-            self.get_logger().warn(
-                f"no exact mission key for site={site}; fallback to {self.fallback_mission_key}"
-            )
-            return self.fallback_mission_key
-
-        if self.fallback_to_first_known_goal and self._keypoints_by_mission_key:
-            fallback = sorted(self._keypoints_by_mission_key.keys())[0]
-            self.get_logger().warn(
-                f"no exact mission key for site={site}; fallback to first known key={fallback}"
-            )
-            return fallback
-
-        if site_text.startswith("B") and site_text[1:].isdigit():
-            return f"camping_site_{int(site_text[1:])}"
+        # HHL_260623 - Reject unresolved sites instead of falling back to another
+        # campsite. Silent fallback can dispatch a human-error selection to an
+        # occupied or wrong site.
+        self.get_logger().warn(f"no configured mission key for site={site}; destination rejected")
         return None
 
     def _publish_engage(self, enabled: bool, source: str) -> None:
@@ -1326,12 +1311,6 @@ class UiBackendNode(Node):
         async def get_diagnostics() -> JSONResponse:
             snap = node._snapshot()
             return JSONResponse({"status": snap.get("diagnostics", [])})
-
-        @app.get("/api/diagnostics")
-        async def get_api_diagnostics() -> JSONResponse:
-            with node._lock:
-                diags = list(node._state.diagnostics)
-            return JSONResponse({"status": diags})
 
         @app.post("/ui/engage")
         async def post_engage(value: str = "false") -> JSONResponse:

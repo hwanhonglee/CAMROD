@@ -253,9 +253,8 @@ site_access:
 When `set_destination(site="B3", ...)` is called:
 
 1. Check `site_to_mission_key_map` config for explicit mapping.
-2. Parse `B<N>` → `camping_site_<N>` and look up in loaded keypoints.
-3. Fallback to `fallback_mission_key` (default: `camping_site_1`) if no match found.
-4. Fallback to the lexicographically first known key if `fallback_to_first_known_goal=true`.
+2. Parse `B<N>` → `camping_site_<N>` and require that key in loaded keypoints.
+3. HHL_260623 - Reject unresolved sites instead of falling back to another campsite; this prevents a wrong UI selection from being silently dispatched to `camping_site_1`.
 
 ---
 
@@ -306,8 +305,6 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 | `publish_mission_key` | `true` | publish `mission_key` on destination select |
 | `publish_goal_pose` | `true` | publish `site_goal` on destination select |
 | `publish_engage_from_destination` | `true` | Auto-engage when a destination is selected with `run=true` |
-| `fallback_mission_key` | `camping_site_1` | fallback `mission_key` when site resolution fails |
-| `fallback_to_first_known_goal` | `true` | Use first loaded goal if fallback key also missing |
 | `default_goal_frame_id` | `map` | frame_id for published `site_goal` poses |
 | `parking_site_return_topic` | `/parking/site_maneuver/return` | HHL_260622: campsite-internal return command used before planning return |
 | `site_names` | `[B1, B2, ..., B13]` | Valid site name list for validation |
@@ -331,7 +328,6 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 | 🟢 `GET` | `/ui/site_access` | — | `{"enabled": bool, "sites": {…}}` | Current reservation/occupancy records |
 | 🟢 `GET` | `/ui/diagnostics` | — | `{"status": […]}` | Diagnostics list from `/system/diagnostics_agg` |
 | 🔵 `POST` | `/ui/return_to_drop_zone` | — | `{"success": true, "mode": "site_maneuver_return"}` or `planning_return` | HHL_260622: Single return command; uses campsite crab-out first when `site_maneuver` is active |
-| 🟢 `GET` | `/api/diagnostics` | — | `{"status": […]}` | Same as `/ui/diagnostics` (legacy path) |
 | 🔵 `POST` | `/ui/engage` | `?value=true\|false` | `{"success": bool, "value": bool}` | Publish engage command directly |
 | 🔵 `POST` | `/ui/operation_mode` | `?auto=true\|false` | `{"success": bool, "auto": bool}` | Alias for engage; forwards as Bool |
 | 🔵 `POST` | `/ui/auto` | — | `{"success": true}` | Shortcut: engage=true |
