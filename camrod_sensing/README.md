@@ -123,10 +123,11 @@ graph TD
     HW1 ==> LDRV ==> LFLT ==> LGRID ==> LOUT
   end
 
-  subgraph RADAR["📶 Radar ×6"]
-    HW2{{🛠️ SEN0592 ×6\nCH9344 USB serial}}:::hardware
+  subgraph RADAR["📶 Radar ×7"]
+    %% HHL_260623 - Latest radar profile uses FRONT1/FRONT2 plus side/rear sensors.
+    HW2{{🛠️ SEN0592 ×7\nCH9344 USB serial}}:::hardware
     RDRV(sen0592_radar_node):::sensing
-    RRANGE((/sensing/radar/\nfront,rear,left1,left2\nright1,right2/range)):::topic
+    RRANGE((/sensing/radar/\nfront1,front2,left1,left2\nright1,right2,rear/range)):::topic
     RGRID(radar_cost_grid):::sensing
     ROUT((/sensing/cost_grid/radar)):::topic
     HW2 ==> RDRV ==> RRANGE ==> RGRID ==> ROUT
@@ -293,16 +294,18 @@ graph TD
 | Related params | `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
 | Related topics | `/sensing/lidar/points_filtered` → `/sensing/cost_grid/lidar` |
 
-### Radar (SEN0592 ×6)
+### Radar (SEN0592 ×7)
+
+<!-- HHL_260623 - Updated radar documentation to match the latest todo/camrod_sensing 7-channel layout. -->
 
 | Field | Detail |
 |---|---|
 | Trigger | `poll_period_s` timer (60 ms cycle) |
-| Internal logic | `sen0592_radar_node` polls six DFRobot SEN0592 sensors over six CH9344 USB serial ports at 115200 baud. Detection angle is configured to 75° (register 0x0208, value 5) at startup. Per-sensor max ranges are written to register 0x021F: REAR 0.50 m, LEFT1/LEFT2/RIGHT1/RIGHT2 0.80 m, FRONT 1.50 m. Each sensor publishes one `sensor_msgs/Range` message per poll cycle. |
-| Output effect | Six topics: `/sensing/radar/{front,rear,left1,left2,right1,right2}/range`. |
-| Operator-visible symptom | If any topic is silent, the corresponding CH9344 port may not be enumerated. Run `ls /dev/ttyCH9344USB*` to verify all six ports exist. |
+| Internal logic | `sen0592_radar_node` polls seven DFRobot SEN0592 sensors over seven CH9344 USB serial ports at 115200 baud. Detection angle is configured to 75° (register 0x0208, value 5) at startup. Per-sensor max ranges are written to register 0x021F: FRONT1/FRONT2 1.50 m, LEFT1/LEFT2/RIGHT1/RIGHT2 0.80 m, REAR 0.50 m. Each sensor publishes one `sensor_msgs/Range` message per poll cycle. |
+| Output effect | Seven topics: `/sensing/radar/{front1,front2,left1,left2,right1,right2,rear}/range`. |
+| Operator-visible symptom | If any topic is silent, the corresponding CH9344 port may not be enumerated. Run `ls /dev/ttyCH9344USB*` to verify all seven ports exist. |
 | Related params | `ports`, `sensor_names`, `frame_ids`, `sensor_max_ranges_m`, `poll_period_s`, `baud`, `angle_config_value` |
-| Related topics | `/sensing/radar/{front,rear,left1,left2,right1,right2}/range` |
+| Related topics | `/sensing/radar/{front1,front2,left1,left2,right1,right2,rear}/range` |
 
 ### Radar cost grid
 
@@ -512,8 +515,8 @@ ros2 launch camrod_sensing camera.launch.py
 |---|---|---|
 | `poll_period_s` | `0.06` s | Sensor polling interval (≈16.7 Hz cycle) |
 | `angle_config_value` | `5` | Detection angle: 5 = 75° (max for SEN0592) |
-| `sensor_max_ranges_m` | `[0.50, 0.80, 0.80, 0.80, 0.80, 1.50]` | Per-sensor max range (REAR, L2, L1, R2, R1, FRONT) |
-| `ports` | `/dev/ttyCH9344USB2` – `USB7` | CH9344 serial port assignments |
+| `sensor_max_ranges_m` | `[1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]` | Per-sensor max range (FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR) |
+| `ports` | `/dev/ttyCH9344USB0` – `USB6` | CH9344 serial port assignments |
 
 </details>
 
@@ -539,7 +542,8 @@ ros2 topic hz /sensing/lidar/points_filtered          # expect ~10 Hz
 ros2 topic hz /sensing/cost_grid/lidar                # expect 10 Hz
 
 # Radar
-ros2 topic hz /sensing/radar/front/range              # expect ~16 Hz
+ros2 topic hz /sensing/radar/front1/range             # expect ~16 Hz
+ros2 topic hz /sensing/radar/front2/range             # expect ~16 Hz
 ros2 topic hz /sensing/cost_grid/radar                # expect 10 Hz
 
 # GNSS
@@ -593,9 +597,9 @@ ros2 topic echo /sensing/camera/econ_rear/camera_info --once
 
 One or more `/sensing/radar/*/range` topics are silent.
 
-1. Verify all six CH9344 ports exist: `ls /dev/ttyCH9344USB*`. Expect USB2–USB7. If fewer ports appear, the CH9344 kernel module may not be loaded: `sudo modprobe ch9344`.
+1. Verify all seven CH9344 ports exist: `ls /dev/ttyCH9344USB*`. Expect USB0–USB6. If fewer ports appear, the CH9344 kernel module may not be loaded: `sudo modprobe ch9344`.
 2. Check port permissions: `ls -l /dev/ttyCH9344USB*`. The user must be in the `dialout` group.
-3. Identify which sensor maps to which port by checking `sensor_names` and `ports` arrays in `config/radar/sen0592_radar.yaml` (order: REAR, LEFT2, LEFT1, RIGHT2, RIGHT1, FRONT → USB2–USB7).
+3. Identify which sensor maps to which port by checking `sensor_names` and `ports` arrays in `config/radar/sen0592_radar.yaml` (order: FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR → USB0–USB6).
 4. If a specific sensor is silent after hardware check, try swapping its USB cable/port.
 
 ### Inflation grid stops updating

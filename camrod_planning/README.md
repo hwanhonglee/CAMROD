@@ -562,6 +562,10 @@ Key launch arguments:
 | `config/nav2_vehicle.yaml` | Vehicle specs (Ranger: wheelbase 0.89 m, track 0.56 m, mass 100 kg), footprint `[[0.59, 0.375],…]` (body+margins), RPP limits (1.4 m/s, 1.2 rad/s, lookahead 0.8 m) |
 | `config/nav2_lanelet_overlay.yaml` | Lanelet-specific cost weights and regulatory element handling |
 | `config/nav2_behavior.yaml` | Recovery behaviors, BT timeouts, transform tolerance, and `nav2_goal_updated_controller_bt_node` for goal-locked global planning |
+
+HHL_260623 - Removed the old monolithic `config/nav2_lanelet.yaml`; the supported
+Nav2 configuration is the split stack `nav2_base.yaml` + `nav2_vehicle.yaml` +
+`nav2_lanelet_overlay.yaml` + `nav2_behavior.yaml`.
 | `config/nav2_combo_profiles/` | Planner+controller profile overlays (e.g. `smachybrid_graceful.yaml`, `smac2d_dwb.yaml`) |
 | `config/goal_snapper.yaml` | Goal snap search radius, containment check, Z handling, latest-goal preemption policy; HH_260619 - `reissue_active_goal_on_pose_jump` handles RViz/manual pose teleport during an active goal; HH_260619 - `uncontained_global_snap_override_enable` allows off-lane UI campsite centers to ignore stale connected-component filters when that gives a much nearer valid route snap; HHL_260622 - completed goals are not reissued on later manual pose jumps |
 | `config/centerline_snapper.yaml` | Pose projection covariance, update throttle period |
@@ -673,7 +677,7 @@ ros2 topic echo /planning/progress/remaining_distance_m
 | `site_goal` | `/planning/goal_pose` or `/goal_pose` | Raw UI/RViz site-center pose |
 | `route_goal` | `/planning/goal_pose_snapped`, `/planning/goal_pose_snapped_ros` | Lanelet-snapped Nav2 goal |
 
-`planning_state_machine` publishes `avg_msgs/PlanningState` on `/planning/state_machine/state`. `camrod_parking/site_maneuver` watches this topic and starts only after a `camping_site_*` ROS-native route goal (`/planning/goal_pose_snapped_ros`) reaches `GOAL_REACHED`. `camrod_parking/drop_zone_parking` watches the same topic and starts after `RETURN_TO_DROP_ZONE` reaches the `drop_zone` route goal. HH_260618: return handoff uses `return_goal_reached_distance_m` so Nav2 success near the drop-zone lanelet snap still triggers parking.
+`planning_state_machine` publishes `avg_msgs/PlanningState` on `/planning/state_machine/state`. `camrod_parking/site_maneuver` watches this topic and starts only after a `camping_site_*` ROS-native route goal (`/planning/goal_pose_snapped_ros`) reaches `GOAL_REACHED`. `camrod_parking/drop_zone_parking` watches the same topic and starts after `RETURN_TO_DROP_ZONE` reaches the `drop_zone` route goal. HH_260618: return handoff uses `return_goal_reached_distance_m` so Nav2 success near the drop-zone lanelet snap still triggers parking. HHL_260623: auto `drop_zone` return goals are published as raw station-center poses on `/planning/auto_goal_raw`; `goal_snapper` converts them to lanelet route goals for Nav2 while preserving the semantic key for drop-zone parking.
 
 ### Command Path
 

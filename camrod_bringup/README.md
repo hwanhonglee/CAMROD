@@ -419,10 +419,13 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 
 | File | Purpose |
 |---|---|
-| `config/system/diagnostics/default/` | Full diagnostics config profile (mirrors `camrod_system` defaults) |
+| `config/system/diagnostics/default/` | Full diagnostics config profile with bringup deployment overrides |
 | `config/sim/fake_sensors.yaml` | Fake sensor publisher parameters: speed, lanelet selection, GNSS failure timing, sim obstacle |
-| `config/map/map_info.yaml` | Bringup-level map origin override (mirrors `camrod_map/config/map_info.yaml`) |
+| `config/map/map_info.yaml` | Bringup-level map origin/profile override |
 | `config/map/drop_zones.yaml` | Drop zone positions (from lanelet2 map; used by state machine and localization init) |
+
+HHL_260623 - Removed the old config mirror sync helper because bringup configs
+are deployment overrides, not byte-for-byte package config mirrors.
 
 ---
 
@@ -520,7 +523,7 @@ If the issue recurs, check `config/bringup/cleanup_patterns.yaml` and add the mi
 ## 2026-06-17 Runtime Update
 
 > HH_260617 - Bringup now owns the full module sequence including `camrod_parking`.
-> HH_260618 - Bringup selects exactly one final parking method with `parking_method`; `parking_backend` remains a deprecated launch-argument alias.
+> HHL_260623 - Bringup selects exactly one final parking method with `parking_method`; the deprecated `parking_backend` launch alias was removed.
 
 ### Current Launch Order
 
@@ -533,7 +536,6 @@ If the issue recurs, check `config/bringup/cleanup_patterns.yaml` and add the mi
 | Argument | Default | Meaning |
 |---|---:|---|
 | `parking_method` | `rule_based` | Final parking method: `rule_based` or `docking` |
-| `parking_backend` | `__use_parking_method__` | Deprecated alias; use only for old scripts |
 | `enable_parking` | `true` | Allow `camrod_parking/parking.launch.py` when `parking_method=rule_based` |
 | `enable_site_maneuver` | `true` | Enable campsite crab/180-degree maneuver node |
 | `enable_drop_zone_parking` | `true` | Enable reverse parking controller |
@@ -554,6 +556,8 @@ HH_260618 - `parking/parking.yaml` sets `crab_timeout_speed_scale: 0.4` to match
 HH_260619 - `parking/parking.yaml` also sets `reverse_return_timeout_margin_s: 45.0` so campsite reverse-out can finish its curved return path without being stopped by the shorter reverse-in timeout estimate.
 
 HH_260619 - Campsite reverse-out completion is axis-progress based, not only exact point-distance based. This avoids false timeout when the robot crosses the lanelet snap point while yaw/lateral feedback is still converging.
+
+HHL_260623 - Auto return-to-drop-zone no longer sends the station-center pose directly to Nav2. `planning_state_machine` publishes raw auto goals on `/planning/auto_goal_raw`, `goal_snapper` snaps them to `/planning/goal_pose_snapped_ros`, and the preserved `drop_zone` mission key lets `drop_zone_parking` start after Nav2 reaches the lanelet route goal.
 
 HH_260618 - Normal Nav2 forward driving now uses raw lanelet safety in `planning_cmd_vel_gate_node`; reverse parking and lateral campsite crab commands are excluded from that generic lanelet stop by default and must be bounded by their mission-specific parking/site controllers.
 
