@@ -774,6 +774,10 @@ function App() {
   const [batteryPct, setBatteryPct] = useState(null); // null = 아직 수신 전
   const [togglePage, setTogglePage] = useState(0);   // 0: B1~B6, 1: B7~B12, 2: B13
   const [engageState, setEngageState] = useState(false);
+  // HHL_260623 - Manual ENGAGE is only for arbitrary RViz 2D Goal Pose driving.
+  // Camping-site scenarios use missionEngageState so the two controls cannot
+  // stop each other.
+  const [missionEngageState, setMissionEngageState] = useState(false);
   const [signalLevel, setSignalLevel] = useState(() => {
     if (!navigator.onLine) return 0;
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -890,6 +894,10 @@ function App() {
 
   // 현재 ON인 사이트 (이동 중인 사이트)
   const activeSite = SITE_NAMES.find(s => states[s]) || null;
+  // HHL_260623 - Site mission progress follows mission engage, not manual ENGAGE.
+  const missionPaused = !!activeSite && !missionEngageState && !arrivedSite && !isReturning;
+  // HHL_260624 - Return-to-drop-zone must expose the same mission latch pause state.
+  const returningPaused = isReturning && !missionEngageState;
 
   // ── 운영시간 게이트 확인 ───────────────────────────────────────────────
   const isWithinOperatingHours = () => {
@@ -1005,6 +1013,11 @@ function App() {
       // HHL_260622 - Site-to-site dispatch is rejected while the robot is inside a campsite.
       if (data.error === 'site_access_rejected') {
         setSiteAccessError(data.message || '현재 상태에서는 새 목적지를 선택할 수 없습니다. 먼저 Drop Zone으로 복귀하세요.');
+        // HHL_260623 - Revert optimistic site ON state when backend rejects the mission.
+        // Otherwise the UI shows a campsite as active even though planning never accepted it.
+        if (data.site) {
+          setStates(prev => ({ ...prev, [data.site]: false }));
+        }
         setSelectedSite(null);
         setShowMoveConfirm(false);
       }
@@ -1034,6 +1047,10 @@ function App() {
       // engage 상태: {"engage": true/false} 수신
       if ('engage' in data) {
         setEngageState(data.engage);
+      }
+      // HHL_260623 - UI scenario engage is independent from manual ENGAGE.
+      if ('mission_engage' in data) {
+        setMissionEngageState(data.mission_engage);
       }
     };
 
@@ -1068,6 +1085,24 @@ function App() {
     }
   };
 
+  // HHL_260623 - Pause/resume campsite missions without touching manual ENGAGE.
+  // Manual ENGAGE is reserved for arbitrary RViz 2D Goal Pose driving only.
+  const handleMissionEngage = (enabled, stopManualEngage = false) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const payload = { mission_engage: enabled };
+      // HHL_260624 - A UI stop is safety-critical and closes both motion latches.
+      // Resume still reopens only mission_engage so manual 2D-goal driving remains separate.
+      if (!enabled && stopManualEngage) {
+        payload.engage = false;
+      }
+      wsRef.current.send(JSON.stringify(payload));
+    }
+    setMissionEngageState(enabled);
+    if (!enabled && stopManualEngage) {
+      setEngageState(false);
+    }
+  };
+
   const handleToggle = (site) => {
     if (states[site]) {
       // 이미 ON → OFF 불가, 아무것도 하지 않음
@@ -1091,11 +1126,14 @@ function App() {
     }
   };
 
-  // ── 이동중 "Yes" 클릭 → 운행 정지 (OFF) ─────────────────────────────────
+  // ── 이동중 "Yes" 클릭 → 미션 운행 일시정지 ───────────────────────────────
   const handleStopMove = () => {
-    if (activeSite) {
-      applyToggle(activeSite, false);
-    }
+    if (activeSite) handleMissionEngage(false, true);
+  };
+
+  // HHL_260624 - Drop-zone return needs an explicit pause control in the UI.
+  const handleReturnStop = () => {
+    if (isReturning) handleMissionEngage(false, true);
   };
 
   // ── 이용 완료 버튼 클릭 → state=3(RETURNING) publish 요청 ──────────────
@@ -1426,7 +1464,20 @@ function App() {
           ) : isReturning ? (
             <>
               <span className="preview-placeholder-title">Drop Zone</span>
-              <p className="preview-returning">로봇이 Drop Zone (대기 장소)로 이동중입니다.</p>
+              <p className={returningPaused ? "preview-paused" : "preview-returning"}>
+                {returningPaused ? "Drop Zone 복귀가 일시 정지 중입니다." : "로봇이 Drop Zone (대기 장소)로 이동중입니다."}
+              </p>
+              <p className="preview-question">
+                {returningPaused ? "Drop Zone 복귀를 재개하시겠습니까?" : "복귀 운행을 정지하시겠습니까?"}
+              </p>
+              <div className="preview-yn-btns">
+                <button
+                  className={returningPaused ? "preview-yes-btn" : "preview-stop-btn"}
+                  onClick={returningPaused ? () => handleMissionEngage(true) : handleReturnStop}
+                >
+                  {returningPaused ? "복귀 재개" : "정지"}
+                </button>
+              </div>
             </>
           ) : activeSite ? (
             <>
@@ -1436,10 +1487,19 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{activeSite}</p>
-              <p className="preview-moving">배송 로봇이 이동중 입니다.</p>
-              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <p className={missionPaused ? "preview-paused" : "preview-moving"}>
+                {missionPaused ? "임무 운행 허가가 OFF되어 일시 정지 중입니다." : "배송 로봇이 이동중 입니다."}
+              </p>
+              <p className="preview-question">
+                {missionPaused ? "다시 운행 허가하시겠습니까?" : "운행을 정지하시겠습니까?"}
+              </p>
               <div className="preview-yn-btns">
-                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
+                <button
+                  className={missionPaused ? "preview-yes-btn" : "preview-stop-btn"}
+                  onClick={missionPaused ? () => handleMissionEngage(true) : handleStopMove}
+                >
+                  {missionPaused ? "운행 재개" : "예"}
+                </button>
               </div>
             </>
           ) : (
@@ -1470,12 +1530,12 @@ function App() {
               {SITE_NAMES.slice(togglePage * 6, togglePage * 6 + 6).map(site => (
                 <button
                   key={site}
-                  className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${anyOn && !states[site] ? 'locked' : ''} ${isReturning ? 'locked' : ''}`}
+                  className={`toggle-card ${states[site] ? 'on' : ''} ${states[site] && !missionEngageState ? 'paused' : ''} ${selectedSite === site ? 'selected' : ''} ${anyOn && !states[site] ? 'locked' : ''} ${isReturning ? 'locked' : ''}`}
                   onClick={() => handleToggle(site)}
                   disabled={isReturning}
                 >
                   <span className="site-label">{site}</span>
-                  {states[site] && <span className="site-on-badge">ON</span>}
+                  {states[site] && <span className="site-on-badge">{missionEngageState ? "이동중" : "일시정지"}</span>}
                 </button>
               ))}
               {togglePage === Math.ceil(SITE_NAMES.length / 6) - 1 && (
@@ -1484,7 +1544,7 @@ function App() {
                   onClick={handleEngage}
                   disabled={isReturning}
                 >
-                  <span className="site-label">ENGAGE</span>
+                  <span className="site-label">수동 ENGAGE</span>
                   {engageState && <span className="site-on-badge">ON</span>}
                 </button>
               )}

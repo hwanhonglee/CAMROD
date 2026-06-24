@@ -151,6 +151,17 @@ def generate_launch_description():
         default_value=default_site_access_yaml,
         description='Reservation/occupancy YAML used to gate unsafe campsite dispatch',
     )
+    # HHL_260623 - Keep manual 2D-goal engage separate from scenario mission engage.
+    planning_engage_topic_arg = DeclareLaunchArgument(
+        'planning_engage_topic',
+        default_value='/planning/engage',
+        description='Manual planning engage topic for arbitrary 2D Goal Pose operation',
+    )
+    planning_mission_engage_topic_arg = DeclareLaunchArgument(
+        'planning_mission_engage_topic',
+        default_value='/planning/mission_engage',
+        description='Scenario mission engage topic for camping-site/drop-zone UI missions',
+    )
 
     ui_backend = Node(
         package='camrod_ui',
@@ -166,7 +177,8 @@ def generate_launch_description():
             'diagnostics_agg_topic': '/system/diagnostics_agg',
             'site_names': [f'B{i}' for i in range(1, 14)],
             'ui_destination_topic': '/ui/selected_destination',
-            'planning_engage_topic': '/planning/engage',
+            'planning_engage_topic': LaunchConfiguration('planning_engage_topic'),
+            'planning_mission_engage_topic': LaunchConfiguration('planning_mission_engage_topic'),
             # HH_260617: Replace ambiguous goal-key naming with semantic mission-key dispatch.
             'planning_mission_key_topic': '/planning/mission_key',
             'planning_goal_pose_topic': '/goal_pose',
@@ -197,5 +209,7 @@ def generate_launch_description():
         frontend_dir_arg,
         camping_sites_yaml_arg,
         site_access_yaml_arg,
+        planning_engage_topic_arg,
+        planning_mission_engage_topic_arg,
         ui_backend,
     ])
