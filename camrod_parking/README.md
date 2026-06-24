@@ -25,7 +25,7 @@ When `use_goal_pair_for_lateral_offset` is enabled, the node computes the crab
 offset from `/goal_pose` (raw site center) and `/planning/goal_pose_snapped_ros`
 (lanelet snap pose). HH_260618: auto-start requires this pair by default; if the
 raw site center is missing, the node reports ERROR instead of pretending the
-default offset is a valid campsite parking motion. HH_260618: Auto-start also requires the current pose to be within `route_goal_reached_distance_m` of the latest lanelet route goal, keeps the goal pair valid until a new goal replaces it (`goal_pair_max_age_s: 0.0`), and the default `max_lateral_offset_m` is 7.0 m so campsite centers several meters from the road are reachable.
+default offset is a valid campsite parking motion. HHL_260623: Auto-start also requires the current pose to be within `route_goal_reached_distance_m` (default 0.3 m) of the latest lanelet route goal, keeps the goal pair valid until a new goal replaces it (`goal_pair_max_age_s: 0.0`), and the default `max_lateral_offset_m` is 7.0 m so campsite centers several meters from the road are reachable.
 
 HH_260618: `crab_timeout_speed_scale` accounts for downstream command scaling
 in the planning cmd_vel gate. With the current parking default
@@ -42,6 +42,10 @@ the lanelet-snap body yaw, uses `Twist.linear.y` for wheel-crab lateral entry,
 then rotates the body 180 degrees only after it is inside the selected campsite.
 The legacy reverse campsite entry remains available with `site_entry_mode:
 reverse` for fallback testing.
+
+HHL_260624 - Campsite 180-degree rotation direction can follow the lanelet-side
+site index policy: B1/B3/B5/B7/B9/B11 rotate clockwise, while
+B2/B4/B6/B8/B10/B12/B13 rotate counter-clockwise by default.
 
 HHL_260622 - New campsite goals are ignored while `site_maneuver` is already
 inside or exiting a campsite (`CRAB_IN`, `ROTATE_180`, `UNLOAD_WAIT`,
@@ -106,7 +110,7 @@ HH_260619 - The intended drop-zone reverse approach is published on
 - Drop-zone parking uses a rule-based reverse pose controller: align vehicle body yaw to station/goal yaw within `align_yaw_tolerance_deg`, then reverse with `reverse_yaw_kp` and `reverse_lateral_kp` feedback.
 - HH_260619 - Drop-zone parking does not run the campsite 180-degree body rotation phase; it only aligns yaw and reverses to the station pose.
 - HHL_260622 - RViz displays the site maneuver path and drop-zone reverse path from `/parking/site_maneuver/reverse_path` and `/parking/drop_zone/reverse_path`.
-- The default station pose is loaded from bringup `map/drop_zones.yaml` via `drop_zones_yaml` and `drop_zone_id`.
+- HHL_260624 - The default station pose is loaded from map-exported `drop_zones.yaml` via `drop_zones_yaml` and `drop_zone_id`, matching the planning return goal selector.
 - HH_260618: Idle parking nodes do not publish zero Twist. They wake at `idle_tick_rate_hz` (default 1 Hz), switch to `control_rate_hz` (default 10 Hz) only while active, and throttle status/diagnostics with `status_publish_rate_hz`.
 - HHL_260622 - Site/drop-zone phases are mirrored to `/AMR_service_state` so `camrod_planning` and `camrod_ui` can show mission-level progress while Nav2 is no longer controlling the robot.
 
