@@ -81,13 +81,28 @@ def _launch_setup(context, *args, **kwargs):
   # HH_260507: Radar sensors are directly attached to sensor_kit_base_link.
   # There is no intermediate radar base frame anymore.
   # HH_260606: Use only canonical nested radar config; flat radar_* aliases were removed.
-  for radar_name in ["front", "left1", "left2", "right1", "right2", "rear"]:
+  # HHL_260623 - Keep YAML keys aligned with the seven SEN0592 TF frames used by sensing/radar.
+  for radar_name in ["front1", "front2", "left1", "left2", "right1", "right2", "rear"]:
     key = f"radar_{radar_name}"
     sensors[key] = _sensor_pose(_nested_sensor_cfg(params, ("radar", radar_name)))
 
   base_length = float(robot_cfg.get("length", 1.4))
   base_width = float(robot_cfg.get("width", 0.7))
   base_height = float(robot_cfg.get("height", 1.2))
+  # HHL_260623 - Keep the visualization/collision body aligned to the measured
+  # asymmetric robot_base_link-relative envelope instead of assuming centered geometry.
+  body_extents = _nested_sensor_cfg(robot_cfg, ("body_extents",))
+  body_front = float(body_extents.get("front", base_length * 0.5))
+  body_rear = float(body_extents.get("rear", base_length * 0.5))
+  body_left = float(body_extents.get("left", base_width * 0.5))
+  body_right = float(body_extents.get("right", base_width * 0.5))
+  body_top_z = float(body_extents.get("top_z", base_height))
+  body_bottom_z = float(body_extents.get("bottom_z", 0.0))
+  base_origin_xyz = (
+    f"{(body_front - body_rear) * 0.5:.6f} "
+    f"{(body_left - body_right) * 0.5:.6f} "
+    f"{(body_top_z + body_bottom_z) * 0.5:.6f}"
+  )
 
   xacro_file = PathJoinSubstitution([str(pkg_share), "urdf", "camrod_sensor_kit.xacro"])
   command_args = [
@@ -103,6 +118,9 @@ def _launch_setup(context, *args, **kwargs):
     f"{base_width}",
     " base_height:=",
     f"{base_height}",
+    " base_origin_xyz:=\"",
+    base_origin_xyz,
+    "\"",
   ]
 
   for sensor_name, (xyz_str, rpy_str) in sensors.items():

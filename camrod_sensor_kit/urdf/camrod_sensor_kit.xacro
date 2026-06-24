@@ -13,6 +13,8 @@
   <xacro:arg name="base_length" default="1.4"/>
   <xacro:arg name="base_width"  default="0.7"/>
   <xacro:arg name="base_height" default="1.2"/>
+  <!-- HHL_260623 - Body box origin follows measured asymmetric robot_base_link extents. -->
+  <xacro:arg name="base_origin_xyz" default="0.455570 0.000050 0.394565"/>
 
   <!-- ========================================================= -->
   <!-- 3. Existing sensor transform arguments                    -->
@@ -25,54 +27,50 @@
   <xacro:arg name="gnss_xyz" default="0.2 0.0 1.0"/>
   <xacro:arg name="gnss_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="lidar_xyz" default="0.5 0.0 0.5"/>
+  <xacro:arg name="lidar_xyz" default="1.20636 0.0 0.59538"/>
   <xacro:arg name="lidar_rpy" default="0.0 0.0 0.0"/>
-
-  <!-- HH_260326: Canonical camera frame arguments. -->
-  <xacro:arg name="camera_xyz" default="0.35 0.0 0.8"/>
-  <xacro:arg name="camera_rpy" default="0.0 0.0 0.0"/>
 
   <!-- HH_260528: Dual econ camera arguments (front + rear).                    -->
   <!--   TF: sensor_kit_base_link → camera_front_link → camera_front (optical) -->
   <!--       sensor_kit_base_link → camera_rear_link  → camera_rear  (optical) -->
-  <!--   front: x=0.40 m, z=0.46 m, yaw=0 (forward-facing)                    -->
-  <!--   rear : x=0.10 m, z=0.46 m, yaw=π (backward-facing)                   -->
-  <xacro:arg name="camera_front_xyz" default="0.40 0.0 0.46"/>
+  <!-- HHL_260623 - Fallback defaults match measured robot_base_link-relative mounts. -->
+  <!--   front: x=1.20637 m, z=0.49568 m, yaw=0 (forward-facing)              -->
+  <!--   rear : x=-0.17633 m, z=0.30013 m, yaw=π (backward-facing)            -->
+  <xacro:arg name="camera_front_xyz" default="1.20637 0.0 0.49568"/>
   <xacro:arg name="camera_front_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="camera_rear_xyz"  default="0.10 0.0 0.46"/>
+  <xacro:arg name="camera_rear_xyz"  default="-0.17633 0.0 0.30013"/>
   <xacro:arg name="camera_rear_rpy"  default="0.0 0.0 3.141593"/>
 
   <!-- ========================================================= -->
   <!-- 4. Radar transform arguments                              -->
   <!--    yaw examples:                                          -->
   <!--      front1/front2 = 0 deg = 0.0                           -->
-  <!--      left1  =  90 deg =  1.570796                         -->
-  <!--      left2  = 135 deg =  2.356194                         -->
-  <!--      right1 = -90 deg = -1.570796                         -->
-  <!--      right2 = -135deg = -2.356194                         -->
+  <!--      left1/left2   =  90 deg =  1.570796                  -->
+  <!--      right1/right2 = -90 deg = -1.570796                  -->
   <!--      rear   = 180 deg =  3.141593                         -->
   <!-- ========================================================= -->
   <!-- HHL_260623 - Removed the legacy single-front radar alias; only front1/front2 exist. -->
-  <xacro:arg name="radar_front1_xyz" default="0.55 0.18 0.45"/>
+  <!-- HHL_260623 - Fallback defaults match measured robot_base_link-relative mounts. -->
+  <xacro:arg name="radar_front1_xyz" default="1.07087 -0.11005 0.33378"/>
   <xacro:arg name="radar_front1_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="radar_front2_xyz" default="0.55 -0.18 0.45"/>
+  <xacro:arg name="radar_front2_xyz" default="1.07087 0.11005 0.33378"/>
   <xacro:arg name="radar_front2_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="radar_left1_xyz"  default="0.20 0.45 0.45"/>
+  <xacro:arg name="radar_left1_xyz"  default="0.73488 0.41005 0.29013"/>
   <xacro:arg name="radar_left1_rpy"  default="0.0 0.0 1.570796"/>
 
-  <xacro:arg name="radar_left2_xyz"  default="-0.20 0.45 0.45"/>
-  <xacro:arg name="radar_left2_rpy"  default="0.0 0.0 2.356194"/>
+  <xacro:arg name="radar_left2_xyz"  default="0.15966 0.41005 0.29013"/>
+  <xacro:arg name="radar_left2_rpy"  default="0.0 0.0 1.570796"/>
 
-  <xacro:arg name="radar_right1_xyz" default="0.20 -0.45 0.45"/>
+  <xacro:arg name="radar_right1_xyz" default="0.73488 -0.41005 0.29013"/>
   <xacro:arg name="radar_right1_rpy" default="0.0 0.0 -1.570796"/>
 
-  <xacro:arg name="radar_right2_xyz" default="-0.20 -0.45 0.45"/>
-  <xacro:arg name="radar_right2_rpy" default="0.0 0.0 -2.356194"/>
+  <xacro:arg name="radar_right2_xyz" default="0.15966 -0.41005 0.29013"/>
+  <xacro:arg name="radar_right2_rpy" default="0.0 0.0 -1.570796"/>
 
-  <xacro:arg name="radar_rear_xyz"   default="-0.55 0.0 0.45"/>
+  <xacro:arg name="radar_rear_xyz"   default="-0.17433 0.0 0.33978"/>
   <xacro:arg name="radar_rear_rpy"   default="0.0 0.0 3.141593"/>
 
   <!-- ========================================================= -->
@@ -83,6 +81,7 @@
   <xacro:property name="base_length_val" value="$(arg base_length)"/>
   <xacro:property name="base_width_val"  value="$(arg base_width)"/>
   <xacro:property name="base_height_val" value="$(arg base_height)"/>
+  <xacro:property name="base_origin_xyz_val" value="$(arg base_origin_xyz)"/>
 
   <!-- ========================================================= -->
   <!-- 6. Reusable sensor macros                                 -->
@@ -174,7 +173,7 @@
   <!-- ========================================================= -->
   <link name="${base_link_name}">
     <visual>
-      <origin xyz="0 0 ${base_height_val / 2.0}" rpy="0 0 0"/>
+      <origin xyz="${base_origin_xyz_val}" rpy="0 0 0"/>
       <geometry>
         <box size="${base_length_val} ${base_width_val} ${base_height_val}"/>
       </geometry>
@@ -184,7 +183,7 @@
     </visual>
 
     <collision>
-      <origin xyz="0 0 ${base_height_val / 2.0}" rpy="0 0 0"/>
+      <origin xyz="${base_origin_xyz_val}" rpy="0 0 0"/>
       <geometry>
         <box size="${base_length_val} ${base_width_val} ${base_height_val}"/>
       </geometry>
@@ -192,7 +191,7 @@
 
     <inertial>
       <mass value="10.0"/>
-      <origin xyz="0 0 ${base_height_val / 2.0}" rpy="0 0 0"/>
+      <origin xyz="${base_origin_xyz_val}" rpy="0 0 0"/>
       <inertia ixx="1.0" ixy="0.0" ixz="0.0"
                iyy="1.0" iyz="0.0"
                izz="1.0"/>
@@ -243,15 +242,7 @@
     length="0.10"
     mass="0.30"/>
 
-  <xacro:sensor_link
-    name="camera_link"
-    parent="${sensor_kit_base_link_name}"
-    xyz="$(arg camera_xyz)"
-    rpy="$(arg camera_rpy)"
-    color_rgba="0.4 0.8 1.0 1.0"
-    radius="0.04"
-    length="0.08"
-    mass="0.15"/>
+  <!-- HHL_260623 - Removed legacy single camera_link; camera_front/camera_rear are canonical. -->
 
   <!-- ========================================================= -->
   <!-- 10. Radar sensors                                         -->
