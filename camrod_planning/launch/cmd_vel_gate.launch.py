@@ -85,6 +85,10 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_allow_route_reentry', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m', default_value='4.0'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', default_value='true'),
+        # HHL_260624 - Drop-zone exit is an explicit parking phase that may
+        # cross static lanelet/drop-zone cost before Nav2 campsite routing.
+        DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_status_topic', default_value='/parking/drop_zone/status'),
+        DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_static_bypass_phases', default_value='EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
         # HH_260422: Speed-dependent front lookahead parameters.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
         # HHL_260623 - Minimum front scan reaches measured front bumper plus planning margin.
@@ -111,6 +115,11 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_reverse_cmd_bypass_static_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_reverse_cmd_bypass_min_mps', default_value='0.02'),
         DeclareLaunchArgument('cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold', default_value='85'),
+        # HHL_260624 - Pure in-place parking rotation bypasses only static
+        # lanelet cost; live LiDAR/Radar disk cost still blocks rotation.
+        DeclareLaunchArgument('cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m', default_value='1.5'),
+        DeclareLaunchArgument('cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold', default_value='85'),
         DeclareLaunchArgument('cmd_vel_gate_unavoidable_stop_enable', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_unavoidable_lethal_threshold', default_value='90'),
         DeclareLaunchArgument('cmd_vel_gate_unavoidable_cluster_min_cells', default_value='25'),
@@ -189,6 +198,8 @@ def generate_launch_description():
                 'lanelet_safety_current_allow_route_reentry': LaunchConfiguration('cmd_vel_gate_lanelet_safety_current_allow_route_reentry'),
                 'lanelet_safety_current_route_reentry_max_distance_m': LaunchConfiguration('cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m'),
                 'lanelet_safety_current_route_reentry_require_front_cmd': LaunchConfiguration('cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd'),
+                'parking_drop_zone_status_topic': LaunchConfiguration('cmd_vel_gate_parking_drop_zone_status_topic'),
+                'parking_drop_zone_static_bypass_phases': LaunchConfiguration('cmd_vel_gate_parking_drop_zone_static_bypass_phases'),
                 'enable_speed_dependent_lookahead': LaunchConfiguration('cmd_vel_gate_speed_dependent_lookahead'),
                 'front_lookahead_min_m': LaunchConfiguration('cmd_vel_gate_front_lookahead_min_m'),
                 'front_lookahead_max_m': LaunchConfiguration('cmd_vel_gate_front_lookahead_max_m'),
@@ -207,6 +218,9 @@ def generate_launch_description():
                 'reverse_cmd_bypass_static_cost_stop': LaunchConfiguration('cmd_vel_gate_reverse_cmd_bypass_static_cost_stop'),
                 'reverse_cmd_bypass_min_mps': LaunchConfiguration('cmd_vel_gate_reverse_cmd_bypass_min_mps'),
                 'lateral_cmd_dynamic_obstacle_threshold': LaunchConfiguration('cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold'),
+                'rotation_cmd_dynamic_obstacle_stop': LaunchConfiguration('cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop'),
+                'rotation_cmd_dynamic_obstacle_radius_m': LaunchConfiguration('cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m'),
+                'rotation_cmd_dynamic_obstacle_threshold': LaunchConfiguration('cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold'),
                 'enable_unavoidable_stop': LaunchConfiguration('cmd_vel_gate_unavoidable_stop_enable'),
                 'unavoidable_lethal_threshold': LaunchConfiguration('cmd_vel_gate_unavoidable_lethal_threshold'),
                 'unavoidable_cluster_min_cells': LaunchConfiguration('cmd_vel_gate_unavoidable_cluster_min_cells'),
