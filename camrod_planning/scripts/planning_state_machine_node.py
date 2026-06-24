@@ -53,6 +53,8 @@ class Keypoint:
     x: float
     y: float
     z: float
+    yaw_deg: float = 0.0
+    source_id: str = ""
 
 
 class PlanningStateMachineNode(Node):
@@ -184,6 +186,22 @@ class PlanningStateMachineNode(Node):
         self.startup_mission_key = str(self.declare_parameter("startup_mission_key", "drop_zone").value)
         self.warn_mission_key = str(self.declare_parameter("warn_mission_key", "garage").value)
         self.return_mission_key = str(self.declare_parameter("return_mission_key", "drop_zone").value)
+        # HHL_260624 - Keep planning and parking on the same semantic drop-zone selector.
+        self.drop_zone_id = str(self.declare_parameter("drop_zone_id", "drop_zone").value)
+        # HHL_260624 - Publish the raw station-center return target for RViz/debug only.
+        self.drop_zone_goal_raw_topic = str(
+            self.declare_parameter("drop_zone_goal_raw_topic", "/planning/drop_zone_goal_raw").value
+        )
+        # HHL_260624 - RViz/UI manual /goal_pose clicks lose semantic meaning after
+        # goal_snapper moves them to a lanelet. Watch the raw goal too so a manual
+        # drop-zone click still starts RETURN_TO_DROP_ZONE and reverse parking.
+        self.raw_goal_topic = str(self.declare_parameter("raw_goal_topic", "/goal_pose").value)
+        self.enable_raw_drop_zone_goal_match = bool(
+            self.declare_parameter("enable_raw_drop_zone_goal_match", True).value
+        )
+        self.drop_zone_raw_goal_match_distance_m = float(
+            self.declare_parameter("drop_zone_raw_goal_match_distance_m", 3.0).value
+        )
         raw_auto_snap_keys = self.declare_parameter(
             "auto_goal_snapper_keys", [self.return_mission_key]
         ).value
@@ -255,7 +273,7 @@ class PlanningStateMachineNode(Node):
             self.declare_parameter("min_goal_publish_interval_s", 1.0).value
         )
         self.goal_reached_distance_m = float(
-            self.declare_parameter("goal_reached_distance_m", 0.8).value
+            self.declare_parameter("goal_reached_distance_m", 0.2).value
         )
         # HHL_260622 - Parking handoff must wait for Nav2 terminal success, not
         # only geometric distance, otherwise site_maneuver can race bt_navigator.
@@ -278,11 +296,20 @@ class PlanningStateMachineNode(Node):
         # goal-checker pose are not identical. Keep campsite arrival tight while
         # allowing the parking handoff to start after the return route succeeds.
         self.return_goal_reached_distance_m = float(
-            self.declare_parameter("return_goal_reached_distance_m", 1.2).value
+            self.declare_parameter("return_goal_reached_distance_m", 0.3).value
+        )
+        # HHL_260623 - Keep the return GOAL_REACHED state visible long enough
+        # for drop_zone_parking to receive the handoff; a single 5 Hz tick was
+        # too easy to miss and could leave the robot stopped before parking.
+        self.drop_zone_parking_handoff_hold_s = float(
+            self.declare_parameter("drop_zone_parking_handoff_hold_s", 1.0).value
         )
         self.loop_rate_hz = float(self.declare_parameter("loop_rate_hz", 5.0).value)
 
         self.keypoints: Dict[str, Keypoint] = {}
+        self.drop_zone_keypoints: list[Keypoint] = []
+        self.drop_zone_polygons: Dict[str, list[tuple[float, float]]] = {}
+        self.selected_return_keypoint: Optional[Keypoint] = None
         self._load_keypoints()
 
         self.last_state_stamp: Optional[rclpy.time.Time] = None
@@ -328,6 +355,7 @@ class PlanningStateMachineNode(Node):
         # GOAL_REACHED/RETURN_TO_DROP_ZONE before switching to WAIT_DROP_ZONE so
         # camrod_parking/drop_zone_parking can start its reverse-parking phase.
         self._drop_zone_arrival_notified = False
+        self._drop_zone_arrival_notified_time: Optional[rclpy.time.Time] = None
 
         self.pub_goal = self.create_publisher(PoseStamped, self.goal_topic, 10)
         self.pub_goal_ros = None
@@ -337,6 +365,11 @@ class PlanningStateMachineNode(Node):
         if self.auto_goal_snapper_input_topic:
             self.pub_auto_goal_snapper = self.create_publisher(
                 PoseStamped, self.auto_goal_snapper_input_topic, 10
+            )
+        self.pub_drop_zone_goal_raw = None
+        if self.drop_zone_goal_raw_topic:
+            self.pub_drop_zone_goal_raw = self.create_publisher(
+                PoseStamped, self.drop_zone_goal_raw_topic, 10
             )
 
         # HH_260617: Publish CAMROD semantic state/status messages instead of
@@ -352,6 +385,8 @@ class PlanningStateMachineNode(Node):
         self.create_subscription(StatusArray, self.state_status_topic, self._on_state, 10)
         self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
         self.create_subscription(PoseStamped, self.goal_topic, self._on_goal, 10)
+        if self.enable_raw_drop_zone_goal_match and self.raw_goal_topic:
+            self.create_subscription(PoseStamped, self.raw_goal_topic, self._on_raw_goal, 10)
         self.create_subscription(GoalStatusArray, self.nav_status_topic, self._on_nav_status, 10)
         if self.enable_parking_phase_state_override:
             self.create_subscription(
@@ -383,9 +418,12 @@ class PlanningStateMachineNode(Node):
             f"state={self.state_status_topic} "
             f"pose={self.pose_topic} "
             f"goal={self.goal_topic} "
+            f"raw_goal={self.raw_goal_topic if self.enable_raw_drop_zone_goal_match else '(disabled)'} "
             f"goal_ros={self.goal_topic_ros} "
             f"auto_goal_snapper_input={self.auto_goal_snapper_input_topic or '(disabled)'} "
             f"auto_goal_snapper_keys={','.join(sorted(self.auto_goal_snapper_keys)) or '(none)'} "
+            f"drop_zone_id={self.drop_zone_id} "
+            f"drop_zone_goal_raw={self.drop_zone_goal_raw_topic or '(disabled)'} "
             f"nav_status={self.nav_status_topic} "
             f"parking_phase_state={self.parking_phase_state_topic if self.enable_parking_phase_state_override else '(disabled)'} "
             f"return={self.return_topic} "
@@ -400,6 +438,9 @@ class PlanningStateMachineNode(Node):
     # Implements `_load_keypoints` behavior.
     def _load_keypoints(self) -> None:
         self.keypoints.clear()
+        self.drop_zone_keypoints.clear()
+        self.drop_zone_polygons.clear()
+        self.selected_return_keypoint = None
         if not self.keypoints_yaml:
             return
         if not os.path.exists(self.keypoints_yaml):
@@ -425,21 +466,12 @@ class PlanningStateMachineNode(Node):
                     x=float(v.get("x", 0.0)),
                     y=float(v.get("y", 0.0)),
                     z=float(v.get("z", 0.0)),
+                    yaw_deg=float(v.get("yaw_deg", 0.0)),
+                    source_id=str(v.get("id", name)),
                 )
 
-        # Fallback: allow direct reuse of map drop_zones.yaml structure.
-        if "drop_zone" not in self.keypoints:
-            dz = data.get("drop_zones", [])
-            if isinstance(dz, list) and dz:
-                first = dz[0]
-                if isinstance(first, dict):
-                    self.keypoints["drop_zone"] = Keypoint(
-                        name="drop_zone",
-                        frame_id="map",
-                        x=float(first.get("x", 0.0)),
-                        y=float(first.get("y", 0.0)),
-                        z=float(first.get("z", 0.0)),
-                    )
+        # HHL_260624 - Directly consume map/drop_zones.yaml so return goals use exported station centers.
+        self._merge_drop_zones(data)
 
         self._merge_camping_sites(data)
 
@@ -466,7 +498,129 @@ class PlanningStateMachineNode(Node):
                 x=dz.x,
                 y=dz.y,
                 z=dz.z,
+                yaw_deg=dz.yaw_deg,
+                source_id=dz.source_id,
             )
+
+    # HHL_260624 - Preserve exported drop-zone id/yaw and select the configured return station.
+    def _merge_drop_zones(self, data: dict) -> None:
+        raw_zones = data.get("drop_zones", [])
+        if not isinstance(raw_zones, list):
+            return
+
+        selected: Optional[Keypoint] = None
+        first_zone: Optional[Keypoint] = None
+        for index, zone in enumerate(raw_zones, start=1):
+            if not isinstance(zone, dict):
+                continue
+            zone_id = str(zone.get("id", f"drop_zone_{index}")).strip() or f"drop_zone_{index}"
+            zone_type = str(zone.get("type", "drop_zone")).strip() or "drop_zone"
+            keypoint = Keypoint(
+                name=zone_id,
+                frame_id=str(zone.get("frame_id", "map")),
+                x=float(zone.get("x", 0.0)),
+                y=float(zone.get("y", 0.0)),
+                z=float(zone.get("z", 0.0)),
+                yaw_deg=float(zone.get("yaw_deg", 0.0)),
+                source_id=zone_id,
+            )
+            self.drop_zone_keypoints.append(keypoint)
+            self.keypoints.setdefault(zone_id, keypoint)
+            self.keypoints.setdefault(f"drop_zone_{index}", keypoint)
+            corners = self._extract_xy_polygon(zone.get("corners"))
+            if corners:
+                self.drop_zone_polygons[zone_id] = corners
+            if first_zone is None:
+                first_zone = keypoint
+            if selected is None and (zone_id == self.drop_zone_id or zone_type == self.drop_zone_id):
+                selected = keypoint
+
+        selected = selected or first_zone
+        if selected is None:
+            return
+
+        self._select_return_keypoint(selected, "configured_selector")
+
+    def _drop_zone_selector_is_generic(self) -> bool:
+        selector = self.drop_zone_id.strip()
+        return selector in {"", self.return_mission_key, "drop_zone"}
+
+    def _select_return_keypoint(self, selected: Keypoint, reason: str) -> None:
+        # HHL_260624 - Keep the canonical drop_zone key mapped to the selected
+        # physical area so planning, RViz raw target, and parking station agree.
+        canonical = Keypoint(
+            name=self.return_mission_key,
+            frame_id=selected.frame_id,
+            x=selected.x,
+            y=selected.y,
+            z=selected.z,
+            yaw_deg=selected.yaw_deg,
+            source_id=selected.source_id,
+        )
+        self.selected_return_keypoint = canonical
+        self.keypoints[self.return_mission_key] = canonical
+        self.get_logger().info(
+            "selected drop-zone return keypoint: "
+            f"selector={self.drop_zone_id} reason={reason} "
+            f"id={canonical.source_id or canonical.name} "
+            f"xy=({canonical.x:.2f},{canonical.y:.2f}) yaw={canonical.yaw_deg:.1f}deg"
+        )
+
+    def _select_nearest_return_keypoint_for_current_pose(self, reason: str) -> None:
+        if not self._drop_zone_selector_is_generic() or len(self.drop_zone_keypoints) <= 1:
+            return
+        if self.last_pose is None:
+            return
+        pose_frame = str(self.last_pose.header.frame_id).strip()
+        pose_x = float(self.last_pose.pose.position.x)
+        pose_y = float(self.last_pose.pose.position.y)
+        nearest: Optional[Keypoint] = None
+        nearest_dist = float("inf")
+        for keypoint in self.drop_zone_keypoints:
+            kp_frame = str(keypoint.frame_id).strip()
+            if pose_frame and kp_frame and pose_frame != kp_frame:
+                continue
+            dist = math.hypot(pose_x - keypoint.x, pose_y - keypoint.y)
+            if dist < nearest_dist:
+                nearest = keypoint
+                nearest_dist = dist
+        if nearest is None:
+            return
+        current_id = self.selected_return_keypoint.source_id if self.selected_return_keypoint else ""
+        if current_id != nearest.source_id:
+            self._select_return_keypoint(nearest, f"{reason}:nearest_current_pose")
+
+    @staticmethod
+    def _extract_xy_polygon(raw_corners: object) -> list[tuple[float, float]]:
+        if not isinstance(raw_corners, list):
+            return []
+        polygon: list[tuple[float, float]] = []
+        for corner in raw_corners:
+            if not isinstance(corner, dict):
+                continue
+            try:
+                polygon.append((float(corner["x"]), float(corner["y"])))
+            except (KeyError, TypeError, ValueError):
+                continue
+        return polygon if len(polygon) >= 3 else []
+
+    @staticmethod
+    def _point_in_polygon(x: float, y: float, polygon: list[tuple[float, float]]) -> bool:
+        inside = False
+        count = len(polygon)
+        j = count - 1
+        for i in range(count):
+            xi, yi = polygon[i]
+            xj, yj = polygon[j]
+            denom = yj - yi
+            if abs(denom) < 1e-12:
+                denom = 1e-12
+            if ((yi > y) != (yj > y)) and (
+                x < (xj - xi) * (y - yi) / denom + xi
+            ):
+                inside = not inside
+            j = i
+        return inside
 
     # Implements `_merge_camping_sites` behavior.
     def _merge_camping_sites(self, data: dict) -> None:
@@ -539,6 +693,21 @@ class PlanningStateMachineNode(Node):
     def _on_pose(self, msg: PoseStamped) -> None:
         self.last_pose = msg
 
+    def _on_raw_goal(self, msg: PoseStamped) -> None:
+        matched = self._match_drop_zone_raw_goal(msg)
+        if matched is None:
+            return
+
+        self._select_return_keypoint(matched, "manual_raw_goal")
+        self._pending_mission_key_request = self.return_mission_key
+        self._pending_mission_key_time = self.get_clock().now()
+        self._publish_drop_zone_goal_raw_for_keypoint(matched)
+        self.get_logger().info(
+            "raw drop-zone goal matched: "
+            f"id={matched.source_id or matched.name} "
+            f"xy=({matched.x:.2f},{matched.y:.2f}) yaw={matched.yaw_deg:.1f}deg"
+        )
+
     def _on_docking_status(self, msg: Bool) -> None:
         self.docking_charging = bool(msg.data)
 
@@ -563,6 +732,53 @@ class PlanningStateMachineNode(Node):
         if best_name and best_dist <= self.mission_key_match_distance_m:
             return best_name
         return ""
+
+    def _match_drop_zone_raw_goal(self, goal: PoseStamped) -> Optional[Keypoint]:
+        if not self.drop_zone_keypoints:
+            return None
+        goal_frame = str(goal.header.frame_id).strip()
+        x = float(goal.pose.position.x)
+        y = float(goal.pose.position.y)
+        nearest: Optional[Keypoint] = None
+        nearest_dist = float("inf")
+        for keypoint in self.drop_zone_keypoints:
+            kp_frame = str(keypoint.frame_id).strip()
+            if goal_frame and kp_frame and goal_frame != kp_frame:
+                continue
+            polygon = self.drop_zone_polygons.get(keypoint.source_id or keypoint.name, [])
+            if polygon and self._point_in_polygon(x, y, polygon):
+                return keypoint
+            dist = math.hypot(x - keypoint.x, y - keypoint.y)
+            if dist < nearest_dist:
+                nearest = keypoint
+                nearest_dist = dist
+        if nearest is not None and nearest_dist <= max(0.0, self.drop_zone_raw_goal_match_distance_m):
+            return nearest
+        return None
+
+    # HHL_260624 - Use the selected drop-zone keypoint for every return-to-drop-zone path.
+    def _return_keypoint(self) -> Optional[Keypoint]:
+        return self.selected_return_keypoint or self.keypoints.get(self.return_mission_key)
+
+    # HHL_260624 - Resolve semantic keys through the drop-zone selector when needed.
+    def _goal_keypoint(self, key_name: str) -> Optional[Keypoint]:
+        if key_name == self.return_mission_key:
+            return self._return_keypoint()
+        return self.keypoints.get(key_name)
+
+    def _publish_drop_zone_goal_raw_for_keypoint(self, keypoint: Keypoint) -> None:
+        if self.pub_drop_zone_goal_raw is None:
+            return
+        msg = PoseStamped()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = keypoint.frame_id
+        msg.pose.position.x = keypoint.x
+        msg.pose.position.y = keypoint.y
+        msg.pose.position.z = keypoint.z
+        yaw = math.radians(float(keypoint.yaw_deg))
+        msg.pose.orientation.z = math.sin(yaw * 0.5)
+        msg.pose.orientation.w = math.cos(yaw * 0.5)
+        self.pub_drop_zone_goal_raw.publish(msg)
 
     def _is_site_key(self, key: str) -> bool:
         return bool(key) and key.startswith(self.site_mission_key_prefix) and not key.endswith("_road")
@@ -595,6 +811,7 @@ class PlanningStateMachineNode(Node):
         scenario_id = int(scenario_id)
         if scenario_id != self.SCENARIO_WAIT_DROP_ZONE:
             self._drop_zone_arrival_notified = False
+            self._drop_zone_arrival_notified_time = None
         if scenario_id == self.scenario_id:
             return
         self.scenario_id = scenario_id
@@ -607,6 +824,7 @@ class PlanningStateMachineNode(Node):
         self._clear_parking_phase_override("new_route_goal")
         raw_matched_mission_key = self._match_mission_key(msg)
         matched_mission_key = raw_matched_mission_key
+        goal_source = "manual"
         # HH_260616: A camping-site center can be several meters away from the
         # lanelet-snapped route_goal. If a mission_key request just preceded this
         # route_goal, keep that semantic key instead of clearing active_mission_key.
@@ -627,6 +845,7 @@ class PlanningStateMachineNode(Node):
                         f"matched={raw_matched_mission_key}"
                     )
                 matched_mission_key = self._pending_mission_key_request
+                goal_source = f"auto_snapper:{self._pending_mission_key_request}"
             self._pending_mission_key_request = ""
         if (
             not matched_mission_key
@@ -651,7 +870,7 @@ class PlanningStateMachineNode(Node):
 
         self.last_manual_goal = msg
         self.active_goal = msg
-        self.active_goal_source = "manual"
+        self.active_goal_source = goal_source
         self.active_mission_key = matched_mission_key
         self._reset_nav2_goal_status()
         self.startup_goal_sent = True
@@ -664,7 +883,8 @@ class PlanningStateMachineNode(Node):
         if self._is_site_key(self.active_mission_key):
             self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "manual_site_goal")
         elif self.active_mission_key == self.return_mission_key:
-            self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "manual_return_goal")
+            reason = "auto_return_goal" if goal_source.startswith("auto_snapper:") else "manual_return_goal"
+            self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, reason)
         else:
             # HH_260618: A fresh unmatched manual/UI goal must enter a driving
             # scenario instead of leaving stale WAIT_DZ/RETURN_TO_DROP_ZONE state.
@@ -797,6 +1017,20 @@ class PlanningStateMachineNode(Node):
     def _on_return_to_drop_zone(self, msg: Bool) -> None:
         if not msg.data:
             return
+        # HHL_260623 - Do not publish another drop-zone route when the robot is
+        # already at the drop-zone keypoint or in the return-arrival handoff.
+        # The duplicate route looked like a small forward goal in RViz and could
+        # interrupt the reverse-parking sequence.
+        if (
+            self.scenario_id == self.SCENARIO_WAIT_DROP_ZONE
+            and self._return_keypoint_reached()
+        ) or (
+            self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE
+            and self._drop_zone_arrived_with_condition()
+        ):
+            self.return_requested = False
+            self.get_logger().info("ignored return_to_drop_zone: already at drop_zone")
+            return
         self._clear_parking_phase_override("return_to_drop_zone")
         self.return_requested = True
         if self._publish_auto_goal(self.return_mission_key, "return_request", force=True):
@@ -878,7 +1112,9 @@ class PlanningStateMachineNode(Node):
         return max(self.module_levels.values())
 
     def _publish_auto_goal(self, key_name: str, source: str, force: bool = False) -> bool:
-        kp = self.keypoints.get(key_name)
+        if key_name == self.return_mission_key:
+            self._select_nearest_return_keypoint_for_current_pose(source)
+        kp = self._goal_keypoint(key_name)
         if kp is None:
             self.get_logger().warn(f"keypoint '{key_name}' not found")
             return False
@@ -894,7 +1130,9 @@ class PlanningStateMachineNode(Node):
         msg.pose.position.x = kp.x
         msg.pose.position.y = kp.y
         msg.pose.position.z = kp.z
-        msg.pose.orientation.w = 1.0
+        yaw = math.radians(float(kp.yaw_deg))
+        msg.pose.orientation.z = math.sin(yaw * 0.5)
+        msg.pose.orientation.w = math.cos(yaw * 0.5)
 
         publish_via_snapper = (
             self.pub_auto_goal_snapper is not None
@@ -902,12 +1140,15 @@ class PlanningStateMachineNode(Node):
         )
         if publish_via_snapper:
             self.pub_auto_goal_snapper.publish(msg)
+            if key_name == self.return_mission_key and self.pub_drop_zone_goal_raw is not None:
+                self.pub_drop_zone_goal_raw.publish(msg)
             self._pending_mission_key_request = key_name
             self._pending_mission_key_time = now
             self._last_self_goal = None
             self.get_logger().info(
                 "published raw auto-goal through goal_snapper: "
                 f"key={key_name} source={source} topic={self.auto_goal_snapper_input_topic} "
+                f"drop_zone_id={kp.source_id or kp.name} yaw={kp.yaw_deg:.1f}deg "
                 f"xy=({kp.x:.2f},{kp.y:.2f})"
             )
         else:
@@ -935,7 +1176,7 @@ class PlanningStateMachineNode(Node):
 
         self._clear_parking_phase_override("mission_key_request")
         if not self.mission_key_publish_route_goal:
-            if key_name not in self.keypoints:
+            if self._goal_keypoint(key_name) is None:
                 self.get_logger().warn(f"keypoint '{key_name}' not found")
                 return
             self.active_mission_key = key_name
@@ -972,7 +1213,7 @@ class PlanningStateMachineNode(Node):
             response.message = "empty key"
             return response
 
-        keypoint = self.keypoints.get(key_name)
+        keypoint = self._goal_keypoint(key_name)
         if keypoint is None:
             response.accepted = False
             response.message = f"unknown key: {key_name}"
@@ -1037,7 +1278,7 @@ class PlanningStateMachineNode(Node):
     def _return_keypoint_reached(self) -> bool:
         if self.last_pose is None:
             return False
-        return_kp = self.keypoints.get(self.return_mission_key)
+        return_kp = self._return_keypoint()
         if return_kp is None:
             return False
         pseudo_goal = PoseStamped()
@@ -1237,14 +1478,26 @@ class PlanningStateMachineNode(Node):
             drop_zone_arrival_announced = False
             if self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE and self._drop_zone_arrived_with_condition():
                 if not self._drop_zone_arrival_notified:
-                    # HH_260618: Publish one explicit GOAL_REACHED return-state
-                    # sample before idling; drop_zone_parking uses this as the
-                    # automatic reverse-parking trigger.
+                    # HHL_260623: Publish a short explicit GOAL_REACHED
+                    # return-state hold before idling; drop_zone_parking uses
+                    # this as the automatic reverse-parking trigger.
                     self.state = "GOAL_REACHED"
                     self._drop_zone_arrival_notified = True
+                    self._drop_zone_arrival_notified_time = now
                     drop_zone_arrival_announced = True
                 else:
-                    self._set_scenario(self.SCENARIO_WAIT_DROP_ZONE, "drop_zone_arrived")
+                    hold_s = max(0.0, self.drop_zone_parking_handoff_hold_s)
+                    if self._drop_zone_arrival_notified_time is None:
+                        elapsed_s = hold_s
+                    else:
+                        elapsed_s = (
+                            now - self._drop_zone_arrival_notified_time
+                        ).nanoseconds / 1e9
+                    if elapsed_s < hold_s:
+                        self.state = "GOAL_REACHED"
+                        drop_zone_arrival_announced = True
+                    else:
+                        self._set_scenario(self.SCENARIO_WAIT_DROP_ZONE, "drop_zone_arrived")
 
             if drop_zone_arrival_announced:
                 pass

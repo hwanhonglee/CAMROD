@@ -185,10 +185,10 @@ controller_server:
       plugin: "nav2_controller::SimpleGoalChecker"
       # Start at 15 cm; tighten after measuring actual stopping error with
       # goal_tolerance_probe_node. Practical floor is ~2× worst-case GNSS noise.
-      # HH_260617: Align Nav2 success with the 0.8 m planning goal latch and
-      # ignore final yaw for lanelet-snap approach goals to prevent near-goal
-      # oscillation in sim/UI campsite runs.
-      xy_goal_tolerance: 0.8
+      # HHL_260623 - Use robot_base_link center as the arrival reference. A
+      # wide 0.8 m tolerance made Nav2 succeed when only the front footprint
+      # reached the marker, before the robot center reached the goal pose.
+      xy_goal_tolerance: 0.15
       yaw_goal_tolerance: 3.14
       # stateful=True: goal checker remembers progress so momentary overshoot
       # does not reset the check — reduces false restarts near tight tolerances.
@@ -220,7 +220,9 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.2
-      xy_goal_tolerance: 0.3
+      # HHL_260623 - Keep DWB fallback aligned with the center-based Nav2
+      # arrival tolerance so controller selection does not change stop point.
+      xy_goal_tolerance: 0.15
       trans_stopped_velocity: 0.10
       short_circuit_trajectory_evaluation: True
       stateful: True

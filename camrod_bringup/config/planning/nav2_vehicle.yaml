@@ -10,8 +10,12 @@
 #                             lf = CG->front axle, lr = CG->rear axle (lf≈lr≈0.445 m if CG centered)
 #   track_width:     0.56 m   left-to-right wheel centerline distance
 #   tire_radius:     0.13 m   wheel radius (approx 260 mm dia / 2)
-#   body_length:    ~0.98 m   (nav2 footprint uses conservative 1.8 m incl. sensor overhang)
-#   body_width:     ~0.55 m   (nav2 footprint uses conservative 0.8 m incl. margin)
+#   HHL_260623 - measured body envelope relative to robot_base_link:
+#   body_front:      1.20137 m
+#   body_rear:       0.29023 m
+#   body_left:       0.53505 m
+#   body_right:      0.53495 m
+#   planning_margin: 0.10 m each side
 #
 #   --- Inertia / Mass ---
 #   mass:            100.0 kg   vehicle dry weight (rated payload 150 kg, IP55)
@@ -90,19 +94,13 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      # footprint derivation (Ranger actual body + explicit margins):
-      #   x (front/rear): 0.49 (body_half = 0.98 m / 2)  + 0.10 (sensor overhang) = 0.59 m
-      #   y (left/right): 0.275 (body_half = 0.55 m / 2) + 0.10 (safety margin)   = 0.375 m
-      #   original (oversized, pre-update): [[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]
-      footprint: "[[0.59, 0.375], [0.59, -0.375], [-0.59, -0.375], [-0.59, 0.375]]"
+      # HHL_260623 - Measured robot_base_link-relative body extents plus 0.10 m safety margin.
+      footprint: "[[1.30137, 0.63505], [1.30137, -0.63495], [-0.39023, -0.63495], [-0.39023, 0.63505]]"
       robot_radius: 0.0
 
 global_costmap:
   global_costmap:
     ros__parameters:
-      # footprint derivation (Ranger actual body + explicit margins):
-      #   x (front/rear): 0.49 (body_half = 0.98 m / 2)  + 0.10 (sensor overhang) = 0.59 m
-      #   y (left/right): 0.275 (body_half = 0.55 m / 2) + 0.10 (safety margin)   = 0.375 m
-      #   original (oversized, pre-update): [[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]
-      footprint: "[[0.59, 0.375], [0.59, -0.375], [-0.59, -0.375], [-0.59, 0.375]]"
+      # HHL_260623 - Measured robot_base_link-relative body extents plus 0.10 m safety margin.
+      footprint: "[[1.30137, 0.63505], [1.30137, -0.63495], [-0.39023, -0.63495], [-0.39023, 0.63505]]"
       robot_radius: 0.0
