@@ -24,9 +24,11 @@ public:
     enable_topic_ =
       declare_parameter<std::string>("enable_topic", "/platform/drive_enable");
     engage_topic_ =
-      declare_parameter<std::string>("engage_topic", "/planning/engage");
+      declare_parameter<std::string>("engage_topic", "/planning/engaged");
     // HH_260522: unified source selector for engage signal.
-    //   planning_engage/topic/enabled/on: subscribe
+    // HHL_260624 - Default to /planning/engaged so manual 2D-goal engage and
+    // UI mission engage remain independent before reaching the final platform gate.
+    //   planning_engage/planning_engaged/topic/enabled/on: subscribe
     //   disabled/off/none: ignore
     engage_source_mode_ =
       declare_parameter<std::string>("engage_source_mode", "planning_engage");
@@ -41,15 +43,16 @@ public:
     {
       enable_engage_topic_sub_ = false;
     } else if (
-      engage_source_mode_ == "planning_engage" || engage_source_mode_ == "topic" ||
-      engage_source_mode_ == "enabled" || engage_source_mode_ == "on")
+      engage_source_mode_ == "planning_engage" || engage_source_mode_ == "planning_engaged" ||
+      engage_source_mode_ == "topic" || engage_source_mode_ == "enabled" ||
+      engage_source_mode_ == "on")
     {
       enable_engage_topic_sub_ = true;
     } else {
       enable_engage_topic_sub_ = true;
       RCLCPP_WARN(
         get_logger(),
-        "Unknown engage_source_mode '%s'. Using planning_engage mode.",
+        "Unknown engage_source_mode '%s'. Using planning_engaged mode.",
         engage_source_mode_.c_str());
     }
     state_topic_ =
@@ -191,7 +194,7 @@ private:
       effective_enabled() ? "true" : "false");
   }
 
-  // Mirrors /planning/engage into the same gate state latch.
+  // Mirrors the configured planning engage-state topic into the same gate state latch.
   void on_engage(const std_msgs::msg::Bool::SharedPtr msg)
   {
     const bool new_enabled = static_cast<bool>(msg->data);
@@ -205,7 +208,7 @@ private:
     }
     RCLCPP_INFO(
       get_logger(),
-      "planning engage update: enabled=%s estop=%s effective=%s",
+      "planning engage-state update: enabled=%s estop=%s effective=%s",
       enabled_ ? "true" : "false",
       estop_ ? "true" : "false",
       effective_enabled() ? "true" : "false");
