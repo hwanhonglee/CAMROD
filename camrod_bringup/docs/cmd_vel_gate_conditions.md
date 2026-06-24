@@ -66,16 +66,20 @@ INVALID    = !imu_ok  OR  (!gnss_good && !wheel_good)
 ### 3. Planning gate open
 | Variable | Node | Set by topic | Blocks when |
 |---|---|---|---|
-| `_enabled` | planning_cmd_vel_gate_node | `/planning/engage` | `False` → /planning/cmd_vel_raw blocked |
+| `_enabled` | planning_cmd_vel_gate_node | `/planning/engage` OR `/planning/mission_engage` | `False` → /planning/cmd_vel_raw blocked |
 | `_estop` | planning_cmd_vel_gate_node | `/platform/status/estop` | `True` → overrides _enabled |
 | `_cost_blocked_until` | planning_cmd_vel_gate_node | internal (costmap check) | current time < value |
 
-Effective pass condition: `_enabled AND NOT _estop AND NOT cost_blocked`
+Effective pass condition: `(manual_engage OR mission_engage) AND NOT _estop AND NOT cost_blocked`
+
+HHL_260624 - Site crab/reverse and in-place parking rotations may bypass static
+lanelet/global-path cost only for their mission-owned maneuver. Live LiDAR/Radar
+dynamic cost still sets `_cost_blocked_until` and stops `/planning/cmd_vel`.
 
 ### 4. Platform gate open
 | Variable | Node | Set by topic | Blocks when |
 |---|---|---|---|
-| `_enabled` | cmd_vel_gate_node | `/platform/drive_enable` or `/planning/engage` | `False` → /planning/cmd_vel blocked |
+| `_enabled` | cmd_vel_gate_node | `/planning/engaged` by default; `/platform/drive_enable` remains an optional bench override | `False` → /planning/cmd_vel blocked |
 | `_estop` | cmd_vel_gate_node | `/platform/status/estop` | `True` → overrides _enabled |
 
 Effective pass condition: `_enabled AND NOT _estop`
@@ -95,11 +99,11 @@ When `/platform/cmd_vel` is silent, check in order:
        -> If silent: nav2 is not planning (localization not ready or no goal)
 
 3. ros2 topic echo /planning/engaged
-       -> If False: publish /planning/engage std_msgs/Bool data: true
+       -> If False: for RViz manual goal publish /planning/engage true;
+          for UI campsite mission verify /planning/mission_engage true
 
 4. ros2 topic echo /platform/drive_enabled
-       -> If False: publish /platform/drive_enable std_msgs/Bool data: true
-          OR /planning/engage is also wired here
+       -> If False while /planning/engaged is True, check platform engage_topic wiring
 
 5. ros2 topic echo /platform/status/estop
        -> If True: hardware e-stop is active — check physical platform
@@ -111,9 +115,11 @@ When `/platform/cmd_vel` is silent, check in order:
 
 | Topic | Value | Effect |
 |---|---|---|
-| `/planning/engage` | `true` | Opens planning gate AND platform gate |
-| `/planning/engage` | `false` | Closes both gates; zero Twist sent to platform |
-| `/platform/drive_enable` | `true` | Opens platform gate independently |
+| `/planning/engage` | `true` | Opens the manual 2D-goal latch in planning gate |
+| `/planning/engage` | `false` | Closes only the manual latch; UI mission latch can keep `/planning/engaged=true` |
+| `/planning/mission_engage` | `true` | Opens the accepted UI campsite/drop-zone mission latch |
+| `/planning/engaged` | `true` | Opens the platform final gate by default |
+| `/platform/drive_enable` | `true` | Optional platform bench override |
 | `/platform/status/estop` | `true` | Closes ALL gates immediately, overrides engage |
 | `/localization/mode` | `>= DR_ONLY(2)` | pose_selector may stop publishing primary pose |
 | `/localization/state` | `false` | Overall localization unhealthy (imu_ok && (gnss_good || wheel_good)) |

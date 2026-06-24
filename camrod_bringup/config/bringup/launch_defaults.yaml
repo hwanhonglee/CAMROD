@@ -73,7 +73,8 @@ bringup:
     # false  → nav2_autostart=true: Nav2 activates immediately on bringup.
     #          bt_navigator will start planning as soon as ANY goal arrives (RViz, UI, etc.).
     #          Path follows lanelet centerline — looks like "auto driving" but cmd_vel gate
-    #          blocks actual movement until /planning/engage is published.
+    #          HHL_260624 - Effective engage may come from manual or UI mission latch;
+    #          blocks actual movement until /planning/engaged becomes true.
     # true   → nav2_autostart=false: Nav2 waits for localization_ready before activating.
     #          Use true for production runs to prevent premature path planning.
     require_localization_ready: false
@@ -179,6 +180,10 @@ bringup:
     cmd_vel_gate_lanelet_safety_current_allow_route_reentry: true
     cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m: 4.0
     cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd: true
+    # HHL_260624 - During explicit drop-zone straight exit, bypass only static
+    # lanelet/drop-zone cost for these parking phases; dynamic obstacle stops remain active.
+    cmd_vel_gate_parking_drop_zone_status_topic: /parking/drop_zone/status
+    cmd_vel_gate_parking_drop_zone_static_bypass_phases: EXIT_STRAIGHT,ALIGN_EXIT_YAW
     # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
     cmd_vel_gate_speed_dependent_lookahead: true
     # HHL_260623 - Minimum front scan reaches measured front bumper plus planning margin.
@@ -208,6 +213,11 @@ bringup:
     cmd_vel_gate_reverse_cmd_bypass_static_cost_stop: true
     cmd_vel_gate_reverse_cmd_bypass_min_mps: 0.02
     cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold: 85
+    # HHL_260624 - Static lanelet cost may be bypassed during in-place 180deg
+    # site turns, but live LiDAR/Radar cost around the body still stops rotation.
+    cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop: true
+    cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m: 1.5
+    cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold: 85
     # Unavoidable-stop cluster detection for lethal costs (front only).
     cmd_vel_gate_unavoidable_stop_enable: true
     # Fixed from 253 (OccupancyGrid max is 100; 253 never triggers).
