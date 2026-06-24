@@ -151,7 +151,7 @@ graph LR
   ODOM(odom)
   BASE(base_link)
   LIDAR(lidar_link\n published by lidar_preprocessor / URDF)
-  CAM(camera_link\n required static or continuous)
+  CAM(camera_front\n required static or continuous)
 
   ODOM --> BASE --> LIDAR --> CAM
 
@@ -172,7 +172,7 @@ graph LR
 odom
   └── base_link
         └── lidar_link          ← published by lidar_preprocessor / URDF
-              └── camera_link   ← required for projection; must be static or published continuously
+              └── camera_front  ← required for projection; must be static or published continuously
 ```
 
 ### Vanjee 750C Axis Convention
@@ -215,7 +215,7 @@ Default `extrinsic_z = -0.075` (camera is 7.5 cm below LiDAR). Adjust in `percep
 | `/sensing/camera/processed/image` | `sensor_msgs/Image` | Yes (fusion) | camrod_sensing | 10 Hz | Rectified colour image; used for image-space point overlay and fusion |
 | `/perception/camera/detections_2d` | `avg_msgs/Detection2DArray` | No | `yolov9mit_ros` (external) | ~10 Hz | 2D bounding boxes from YOLOv9; absence triggers pass-through mode |
 | `/perception/lidar/bboxes` | `avg_msgs/MarkerArray` | No | `obstacle_lidar_node` (self) | ~10 Hz | Euclidean cluster AABB markers used for cluster-centroid fusion |
-| TF `lidar_link → camera_link` | TF2 | Yes (fusion) | robot URDF / static TF | static | Extrinsic transform for projection; supplemented by `extrinsic_z` param |
+| TF `lidar_link → camera_front` | TF2 | Yes (fusion) | robot URDF / static TF | static | Extrinsic transform for projection; supplemented by `extrinsic_z` param |
 
 ### Outputs
 

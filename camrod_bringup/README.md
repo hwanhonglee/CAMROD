@@ -300,6 +300,10 @@ flowchart TD
 | `planning_cmd_vel_gate_lanelet_safety_check_lateral` | `false` | Keep campsite crab motion under mission-specific site control |
 | `planning_cmd_vel_gate_lateral_cmd_bypass_static_cost_stop` | `true` | HH_260618 - site-crab lateral cmd_vel may cross static lanelet/global-path front/side/rear cost; LiDAR/Radar source cost still stops |
 | `planning_cmd_vel_gate_speed_dependent_lookahead` | `true` | Physics-based braking distance lookahead |
+| `planning_cmd_vel_gate_cost_width_m` | `1.27` | HHL_260623 - measured body width plus 0.10 m margin per side |
+| `planning_cmd_vel_gate_front_lookahead_min_m` | `1.30137` | HHL_260623 - measured front body extent plus 0.10 m margin |
+| `planning_cmd_vel_gate_side_corridor_width_m` | `1.69160` | HHL_260623 - measured body length plus 0.10 m front/rear margin |
+| `planning_cmd_vel_gate_rear_corridor_width_m` | `1.27` | HHL_260623 - measured body width plus 0.10 m margin per side |
 | `enable_yaw_alignment_zone` → `planning_cmd_vel_gate_yaw_alignment_enable` | `false` | Heading alignment at named map zones |
 | `enable_plugin_api` | `true` | Plugin API bridge node |
 | `enable_api_ui` | `true` | HTTP UI backend |
@@ -557,7 +561,7 @@ HH_260619 - `parking/parking.yaml` also sets `reverse_return_timeout_margin_s: 4
 
 HH_260619 - Campsite reverse-out completion is axis-progress based, not only exact point-distance based. This avoids false timeout when the robot crosses the lanelet snap point while yaw/lateral feedback is still converging.
 
-HHL_260623 - Auto return-to-drop-zone no longer sends the station-center pose directly to Nav2. `planning_state_machine` publishes raw auto goals on `/planning/auto_goal_raw`, `goal_snapper` snaps them to `/planning/goal_pose_snapped_ros`, and the preserved `drop_zone` mission key lets `drop_zone_parking` start after Nav2 reaches the lanelet route goal.
+HHL_260623 - Auto return-to-drop-zone no longer sends the station-center pose directly to Nav2. `planning_state_machine` publishes raw auto goals on `/planning/auto_goal_raw`, `goal_snapper` snaps them to `/planning/goal_pose_snapped_ros`, and the preserved `drop_zone` mission key lets `drop_zone_parking` start after Nav2 reaches the lanelet route goal. HHL_260624 - The selected raw station pose is additionally published on `/planning/drop_zone_goal_raw`, and campsite 180-degree rotation direction is configured by lanelet-side site index lists in `parking/parking.yaml`.
 
 HH_260618 - Normal Nav2 forward driving now uses raw lanelet safety in `planning_cmd_vel_gate_node`; reverse parking and lateral campsite crab commands are excluded from that generic lanelet stop by default and must be bounded by their mission-specific parking/site controllers.
 

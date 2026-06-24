@@ -262,8 +262,8 @@ Publishes a single `MarkerArray` on `/platform/robot/markers` at 5 Hz, anchored 
 
 **Marker contents:**
 
-- Robot footprint outline at ground plane (sized from `robot_params.yaml`)
-- Planning boundary polygon (footprint + `planning_boundary_margin: 0.3 m`)
+- Robot footprint outline at ground plane (HHL_260623 - asymmetric measured `robot.body_extents` from `robot_params.yaml`)
+- Planning boundary polygon (footprint + `planning_boundary_margin: 0.10 m`)
 - Sensor frame axes labels (IMU, GNSS, LiDAR, camera)
 - Debug range rings at radii `[2.0, 4.0, 6.0, 8.0]` m (configurable)
 - World origin and map origin axes
@@ -274,11 +274,12 @@ Publishes a single `MarkerArray` on `/platform/robot/markers` at 5 Hz, anchored 
 |---|---|---|
 | `publish_rate_hz` | `5.0` | Marker and boundary publish rate [Hz] |
 | `localization_pose_timeout_s` | `3.0` | Max localization age before GNSS fallback [s] |
-| `planning_boundary_margin` | `0.3` | Extra margin around footprint for boundary polygon [m] |
+| `planning_boundary_margin` | `0.10` | HHL_260623 - extra margin around measured asymmetric footprint for boundary polygon [m] |
 | `heading_yaw_offset_deg` | `0.0` | Heading correction [deg] applied to all markers |
 | `range_ring_radii` | `[2.0, 4.0, 6.0, 8.0]` | Debug ring radii [m] |
 | `pose_source_mode` | `localization_with_gnss_fallback` | `localization_only` or GNSS fallback mode when localization is stale |
 | `ground_z_source` | `lanelet_map` | `fixed_offset` or lanelet-map sampled ground Z |
+| `pose_z_source` | `ground` | HHL_260623 - `ground` pins robot markers to the 2D planning plane; `pose` keeps incoming localization/GNSS altitude |
 
 ---
 
@@ -412,7 +413,9 @@ ros2 topic echo /platform/drive_enabled --once
 
 # Confirm sensor TF is up
 ros2 run tf2_tools view_frames
-# Expect: robot_base_link → sensor_kit_base_link → imu_link / gnss_link / lidar_link
+# HHL_260623 - Expect canonical sensor frames:
+# robot_base_link → sensor_kit_base_link → imu_link / gnss_link / lidar_link /
+# camera_front_link / camera_rear_link / radar_front1_link / radar_front2_link / ...
 
 # Check visualization markers are publishing
 ros2 topic hz /platform/robot/markers   # expect ~5 Hz

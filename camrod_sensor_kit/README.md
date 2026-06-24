@@ -152,9 +152,9 @@ graph TD
       SKB[🔧 sensor_kit_base_link]:::system
       IMU[📡 imu_link\n0.28, 0.0, 0.2]:::sensing
       GNSS[📡 gnss_link\n0.0, 0.0, 0.0]:::sensing
-      LIDAR[📡 lidar_link\n0.68, 0.0, 0.45]:::sensing
-      CAMF[📡 camera_front_link\n0.40, 0.0, 0.46]:::sensing
-      CAMR[📡 camera_rear_link\n0.10, 0.0, 0.46]:::sensing
+      LIDAR[📡 lidar_link\n1.20636, 0.0, 0.59538]:::sensing
+      CAMF[📡 camera_front_link\n1.20637, 0.0, 0.49568]:::sensing
+      CAMR[📡 camera_rear_link\n-0.17633, 0.0, 0.30013]:::sensing
       subgraph RADAR["Radar sensors (direct to sensor_kit_base_link)"]
         %% HHL_260623 - Removed the legacy single-front radar alias; front1/front2 are canonical.
         RF1[📡 radar_front1_link]:::sensing
@@ -172,7 +172,7 @@ graph TD
   MAP --> BASE
   BASE --> SKB
   SKB --> IMU & GNSS & LIDAR & CAMF & CAMR
-  SKB --> RF1 & RF2 & RF & RL1 & RL2 & RR1 & RR2 & RR
+  SKB --> RF1 & RF2 & RL1 & RL2 & RR1 & RR2 & RR
 
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
   classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
@@ -190,7 +190,7 @@ graph TD
 
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
-| `/tf_static` | `tf2_msgs/TFMessage` | all packages doing sensor frame lookups | once at startup | Full static joint tree from `world` to each sensor link |
+| `/tf_static` | `tf2_msgs/TFMessage` | all packages doing sensor frame lookups | once at startup | Full static joint tree from `robot_base_link` to each sensor link |
 | `/robot_description` | `std_msgs/String` | RViz, URDF consumers | once at startup | URDF XML string expanded from xacro |
 
 ### Library Interface
@@ -230,7 +230,7 @@ camrod::RobotParams params = camrod::loadRobotParams(node);
 | Internal logic | Calls `node->declare_parameter()` for each field; YAML degree values are converted to radians internally |
 | Output effect | Returns a `RobotParams` struct used for footprint polygon, wheelbase, and sensor offset calculations |
 | Operator-visible symptom | If `robot_params.yaml` is not loaded (missing params_file), default C++ struct values are silently used |
-| Related params | All fields under `robot.*`, `imu.*`, `gnss.*`, `lidar.*`, `camera.*` |
+| Related params | All fields under `robot.*`, `imu.*`, `gnss.*`, `lidar.*`, `camera.front.*`, `camera.rear.*`, `radar.*` |
 | Related topics | None |
 
 ---
@@ -255,41 +255,53 @@ ros2 launch camrod_sensor_kit sensor_kit.launch.py [ARG:=VALUE ...]
 
 All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **degrees**; `loadRobotParams()` converts them to radians internally.
 
+> HHL_260623 - Full bringup uses `camrod_bringup/config/sensor_kit/robot_params.yaml` as the active override. Keep this package default and the bringup copy synchronized when mount offsets change.
+
 ### 🤖 Robot Body Parameters
 
 | YAML key | Default (YAML) | C++ default | Unit | Notes |
 |---|---|---|---|---|
 | `robot.wheelbase` | `0.5` | `1.10` | m | **TODO:verify** — YAML (0.5 m) differs from C++ default (1.10 m) |
-| `robot.track_width` | `3.2` | `0.65` | m | **TODO:verify** — see warning below |
-| `robot.length` | `0.8` | `1.40` | m | Robot body length |
-| `robot.width` | `0.4` | `0.70` | m | Robot body width |
-| `robot.height` | `0.8` | `1.20` | m | Robot body height |
-| `robot.wheel_radius` | `0.08` | `0.15` | m | Effective rolling radius |
+| `robot.track_width` | `1.07` | `1.07000` | m | HHL_260623 - body lateral envelope until separate wheel-center track is measured |
+| `robot.length` | `1.49160` | `1.49160` | m | HHL_260623 - measured body length from robot_base_link extents |
+| `robot.width` | `1.07000` | `1.07000` | m | HHL_260623 - measured body width from robot_base_link extents |
+| `robot.height` | `1.09463` | `1.09463` | m | HHL_260623 - measured full body height |
+| `robot.body_extents.front` | `1.20137` | `1.20137` | m | Forward body extent from `robot_base_link` |
+| `robot.body_extents.rear` | `0.29023` | `0.29023` | m | Rear body extent from `robot_base_link` |
+| `robot.body_extents.left` | `0.53505` | `0.53505` | m | Left body extent from `robot_base_link` |
+| `robot.body_extents.right` | `0.53495` | `0.53495` | m | Right body extent from `robot_base_link` |
+| `robot.body_extents.top_z` | `0.94188` | `0.94188` | m | Top body Z from `robot_base_link` |
+| `robot.body_extents.bottom_z` | `-0.15275` | `-0.15275` | m | Bottom body Z from `robot_base_link` |
+| `robot.body_extents.planning_margin` | `0.10` | `0.10` | m | HHL_260623 - safety margin added to Nav2/planning footprint |
+| `robot.wheel_radius` | `0.15275` | `0.15275` | m | HHL_260623 - Measured wheel radius, 152.75 mm |
 | `robot.encoder_resolution` | `2048` | `2048` | ticks/rev | Encoder ticks per wheel revolution |
 | `robot.drive_type` | `"ackermann"` | `"ackermann"` | — | Platform drive model |
-| `ground_z_offset` | `5.3` | — | m | **TODO:verify** — see warning below |
+| `ground_z_offset` | `0.0` | — | m | HHL_260623 - 2D planning/RViz ground fallback; sensor mount Z values still carry physical heights |
 
-> ⚠️ **Suspicious values in `robot_params.yaml` — verify before deployment:**
+> ⚠️ **Remaining geometry value to verify before deployment:**
 >
-> - `robot.track_width: 3.2 m` — this is far wider than a typical CAMROD platform (C++ default is `0.65 m`). This value is likely a placeholder and will produce incorrect footprint polygons and collision geometry.
-> - `ground_z_offset: 5.3 m` — this is the fallback Z offset used when map-ground estimation is unavailable. A 5.3 m offset is physically implausible for a ground robot and will corrupt any Z-dependent transform lookups.
+> - `robot.track_width` currently mirrors the measured body width. Replace it with wheel-center track when the wheel-track measurement is available.
 
-### 📡 Sensor Mount Poses (relative to `sensor_kit_base_link`)
+### 📡 Sensor Mount Poses (relative to `sensor_kit_base_link`, fixed at `robot_base_link` origin)
+
+> HHL_260623 - `sensor_kit_base_link` is fixed to `robot_base_link` with zero offset, so the measured `robot_base_link`-relative sensor mounts are applied directly here.
 
 | Sensor | x (m) | y (m) | z (m) | roll (deg) | pitch (deg) | yaw (deg) |
 |---|---|---|---|---|---|---|
 | `imu` | 0.28 | 0.0 | 0.2 | 0.0 | 0.0 | 0.0 |
 | `gnss` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| `lidar` | 0.68 | 0.0 | 0.45 | 0.0 | 0.4 | 0.0 |
-| `camera.front` | 0.40 | 0.0 | 0.46 | 0.0 | 0.0 | 0.0 |
-| `camera.rear` | 0.10 | 0.0 | 0.46 | 0.0 | 0.0 | 180.0 |
-| `radar.front1` | 0.55 | 0.18 | 0.45 | 0.0 | 0.0 | 0.0 |
-| `radar.front2` | 0.55 | -0.18 | 0.45 | 0.0 | 0.0 | 0.0 |
-| `radar.left1` | -0.1 | 0.2 | 0.45 | 0.0 | 0.0 | 90.0 |
-| `radar.left2` | 0.5 | 0.2 | 0.45 | 0.0 | 0.0 | 90.0 |
-| `radar.right1` | -0.1 | -0.2 | 0.45 | 0.0 | 0.0 | -90.0 |
-| `radar.right2` | 0.5 | -0.2 | 0.45 | 0.0 | 0.0 | -90.0 |
-| `radar.rear` | -0.1 | 0.0 | 0.45 | 0.0 | 0.0 | 180.0 |
+| `lidar` | 1.20636 | 0.0 | 0.59538 | 0.0 | 0.0 | 0.0 |
+| `camera.front` | 1.20637 | 0.0 | 0.49568 | 0.0 | 0.0 | 0.0 |
+| `camera.rear` | -0.17633 | 0.0 | 0.30013 | 0.0 | 0.0 | 180.0 |
+| `radar.front1` | 1.07087 | -0.11005 | 0.33378 | 0.0 | 0.0 | 0.0 |
+| `radar.front2` | 1.07087 | 0.11005 | 0.33378 | 0.0 | 0.0 | 0.0 |
+| `radar.left1` | 0.73488 | 0.41005 | 0.29013 | 0.0 | 0.0 | 90.0 |
+| `radar.left2` | 0.15966 | 0.41005 | 0.29013 | 0.0 | 0.0 | 90.0 |
+| `radar.right1` | 0.73488 | -0.41005 | 0.29013 | 0.0 | 0.0 | -90.0 |
+| `radar.right2` | 0.15966 | -0.41005 | 0.29013 | 0.0 | 0.0 | -90.0 |
+| `radar.rear` | -0.17433 | 0.0 | 0.33978 | 0.0 | 0.0 | 180.0 |
+
+> HHL_260623 - `radar.front1/front2` keep the sensing channel names. With the vehicle coordinate convention (+Y left), `front1` is currently placed at negative Y and `front2` at positive Y according to the measured wiring note.
 
 ### `urdf/camrod_sensor_kit.xacro`
 
@@ -305,7 +317,8 @@ ros2 topic echo /tf_static --once | grep frame_id
 
 # Lookup each sensor frame from robot_base_link
 for frame in imu_link gnss_link lidar_link camera_front_link camera_rear_link \
-  radar_front1_link radar_front2_link radar_rear_link; do
+  radar_front1_link radar_front2_link radar_left1_link radar_left2_link \
+  radar_right1_link radar_right2_link radar_rear_link; do
   ros2 run tf2_ros tf2_echo robot_base_link $frame
 done
 

@@ -231,6 +231,11 @@ The gate is intentionally a command filter, not a replacement for perception/cos
 - New delivery requests are accepted only while `/AMR_service_state.state` is `DROP_ZONE_WAIT` by default.
 - `recall_allowed` can remain true for `OCCUPIED` / `CHECKED_OUT` so guest recall drives only to the road/staging target instead of entering the campsite.
 - `require_reservation_code_for_delivery=true` forces `/ui/destination` to provide `reservation_code`.
+- HHL_260623 - `ENGAGE` is the manual motion gate, while campsite `ON` is the
+  accepted mission state. If manual ENGAGE is turned off during an accepted
+  campsite mission, the UI shows that mission as paused instead of implying a
+  second independent engage. If the backend rejects a campsite command, the
+  frontend immediately reverts the optimistic site `ON` state.
 
 ```yaml
 site_access:
@@ -327,16 +332,16 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 | 🟢 `GET` | `/ui/destination` | — | `{"destination": {…}, "valid_sites": […]}` | Current destination and valid site list |
 | 🟢 `GET` | `/ui/site_access` | — | `{"enabled": bool, "sites": {…}}` | Current reservation/occupancy records |
 | 🟢 `GET` | `/ui/diagnostics` | — | `{"status": […]}` | Diagnostics list from `/system/diagnostics_agg` |
-| 🔵 `POST` | `/ui/return_to_drop_zone` | — | `{"success": true, "mode": "site_maneuver_return"}` or `planning_return` | HHL_260622: Single return command; uses campsite crab-out first when `site_maneuver` is active |
+| 🔵 `POST` | `/ui/return_to_drop_zone` | — | `{"success": true, "mode": "site_maneuver_return"}`, `planning_return`, or `already_drop_zone` | HHL_260623: Single return command; uses campsite crab-out first for campsite-internal states and ignores duplicate return while already at/drop-zone parking |
 | 🔵 `POST` | `/ui/engage` | `?value=true\|false` | `{"success": bool, "value": bool}` | Publish engage command directly |
 | 🔵 `POST` | `/ui/operation_mode` | `?auto=true\|false` | `{"success": bool, "auto": bool}` | Alias for engage; forwards as Bool |
 | 🔵 `POST` | `/ui/auto` | — | `{"success": true}` | Shortcut: engage=true |
-| 🔵 `POST` | `/ui/stop` | — | `{"success": true}` | Shortcut: engage=false |
+| 🔵 `POST` | `/ui/stop` | — | `{"success": true}` | HHL_260624: Safety stop; publishes manual engage=false and mission_engage=false |
 | 🔵 `POST` | `/ui/destination` | `?site=B1&run=true\|false&reservation_code=1234` | `{"success": bool, "destination": {…}}` | Select destination and optionally dispatch goal+engage after access validation |
 | 🔵 `POST` | `/ui/site_access/checkin` | `?site=B1&reservation_code=1234` | `{"success": bool, "site_access": {…}}` | Mark site as checked in and bind active reservation code |
 | 🔵 `POST` | `/ui/site_access/checkout` | `?site=B1` | `{"success": bool, "site_access": {…}}` | Mark site checked out; delivery entry is blocked, recall can remain allowed |
 | 🔵 `POST` | `/ui/site_access/status` | `?site=B1&status=OCCUPIED` | `{"success": bool, "site_access": {…}}` | Operator/dev override for site status |
-| 🔌 `WS` | `/ws` | — | JSON push messages | Real-time push: `{"states": {…}}`, `{"engage": bool}`, `{"battery": int}`, `{"arrived": site}` |
+| 🔌 `WS` | `/ws` | — | JSON push messages | HHL_260624: Real-time push/control includes `engage`, `mission_engage`, campsite arrival, and return pause/resume state |
 | 🟢 `GET` | `/{full_path}` | — | Static file or `index.html` | Serve React SPA |
 
 > ⚠️ **Security — `ui_host:=0.0.0.0` binding:**
