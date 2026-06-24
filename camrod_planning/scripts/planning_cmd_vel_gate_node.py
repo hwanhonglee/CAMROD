@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # HH_260331: Gate Nav2 controller cmd_vel with explicit planning engage trigger.
-# HH_260409: Use a single trigger topic (/planning/engage) for operator UX consistency.
+# HHL_260624 - Split manual /planning/engage from UI /planning/mission_engage
+# while publishing one effective /planning/engaged state for downstream gates.
 
 from __future__ import annotations
 
@@ -9,7 +10,7 @@ import os
 from dataclasses import dataclass
 
 import rclpy
-from avg_msgs.msg import AvgLocalizationMode
+from avg_msgs.msg import AvgLocalizationMode, ModuleState
 from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rcl_interfaces.msg import SetParametersResult
@@ -263,6 +264,21 @@ class PlanningCmdVelGateNode(Node):
                 "lanelet_safety_current_route_reentry_require_front_cmd", True
             ).value
         )
+        # HHL_260624 - Drop-zone straight exit is mission-owned parking motion:
+        # it intentionally starts inside static lanelet/drop-zone boundary cost,
+        # so raw lanelet safety must not block it before Nav2 campsite routing.
+        self.parking_drop_zone_status_topic = str(
+            self.declare_parameter(
+                "parking_drop_zone_status_topic", "/parking/drop_zone/status"
+            ).value
+        )
+        self.parking_drop_zone_static_bypass_phases = self._parse_source_label_set(
+            self.declare_parameter(
+                "parking_drop_zone_static_bypass_phases",
+                "EXIT_STRAIGHT,ALIGN_EXIT_YAW",
+            ).value,
+            {"exit_straight", "align_exit_yaw"},
+        )
         # HH_260618: Attribute cost-stop events to original cost-grid sources
         # without publishing another large debug grid. Source grids are sampled
         # only when a merged-grid stop actually occurs.
@@ -377,6 +393,17 @@ class PlanningCmdVelGateNode(Node):
         self.lateral_cmd_dynamic_obstacle_threshold = int(
             self.declare_parameter("lateral_cmd_dynamic_obstacle_threshold", 85).value
         )
+        # HHL_260624 - In-place 180deg site rotations may ignore static lanelet
+        # cost, but live LiDAR/Radar cost around the body must still stop motion.
+        self.rotation_cmd_dynamic_obstacle_stop = bool(
+            self.declare_parameter("rotation_cmd_dynamic_obstacle_stop", True).value
+        )
+        self.rotation_cmd_dynamic_obstacle_radius_m = float(
+            self.declare_parameter("rotation_cmd_dynamic_obstacle_radius_m", 1.5).value
+        )
+        self.rotation_cmd_dynamic_obstacle_threshold = int(
+            self.declare_parameter("rotation_cmd_dynamic_obstacle_threshold", 85).value
+        )
 
         # Unavoidable-cluster stop options (front only).
         self.enable_unavoidable_stop = bool(
@@ -482,6 +509,8 @@ class PlanningCmdVelGateNode(Node):
         self._last_static_cost_ignored_log_sec = 0.0
         self._last_lanelet_current_reentry_bypass_log_sec = 0.0
         self._last_lanelet_front_path_reentry_bypass_log_sec = 0.0
+        self._last_drop_zone_static_bypass_log_sec = 0.0
+        self._parking_drop_zone_phase = ""
 
         # HH_260422: _current_speed holds the latest forward body velocity (m/s) from odometry.
         #   Used to compute speed-dependent front lookahead. Stays 0.0 until first odometry arrives.
@@ -520,6 +549,12 @@ class PlanningCmdVelGateNode(Node):
         )
         self.sub_mission_engage = self.create_subscription(
             Bool, self.mission_engage_topic, self._on_mission_engage, 10
+        )
+        self.sub_parking_drop_zone_status = self.create_subscription(
+            ModuleState,
+            self.parking_drop_zone_status_topic,
+            self._on_parking_drop_zone_status,
+            10,
         )
         self.sub_localization_mode = None
         if self.enable_gnss_recovery_hold:
@@ -626,6 +661,7 @@ class PlanningCmdVelGateNode(Node):
             f"side_rear={'true' if self.enable_side_rear_cost_stop else 'false'} "
             f"lateral_static_bypass={'true' if self.lateral_cmd_bypass_static_cost_stop else 'false'} "
             f"reverse_static_bypass={'true' if self.reverse_cmd_bypass_static_cost_stop else 'false'} "
+            f"rotation_dynamic_stop={'true' if self.rotation_cmd_dynamic_obstacle_stop else 'false'} "
             f"yaw_zone_align={'true' if self.enable_yaw_alignment_zone else 'false'} "
             f"route_heading_align={'true' if self.enable_route_heading_alignment else 'false'} "
             f"unavoidable_stop={'true' if self.enable_unavoidable_stop else 'false'}"
@@ -726,6 +762,12 @@ class PlanningCmdVelGateNode(Node):
                 self.reverse_cmd_bypass_min_mps = float(p.value)
             elif p.name == "lateral_cmd_dynamic_obstacle_threshold":
                 self.lateral_cmd_dynamic_obstacle_threshold = int(p.value)
+            elif p.name == "rotation_cmd_dynamic_obstacle_stop":
+                self.rotation_cmd_dynamic_obstacle_stop = bool(p.value)
+            elif p.name == "rotation_cmd_dynamic_obstacle_radius_m":
+                self.rotation_cmd_dynamic_obstacle_radius_m = float(p.value)
+            elif p.name == "rotation_cmd_dynamic_obstacle_threshold":
+                self.rotation_cmd_dynamic_obstacle_threshold = int(p.value)
             elif p.name == "enable_unavoidable_stop":
                 self.enable_unavoidable_stop = bool(p.value)
             elif p.name == "unavoidable_lethal_threshold":
@@ -909,6 +951,11 @@ class PlanningCmdVelGateNode(Node):
     def _on_mission_engage(self, msg: Bool) -> None:
         self._set_enabled(msg.data, source="mission")
 
+    # HHL_260624 - Track parking phase so drop-zone exit can cross static
+    # lanelet/drop-zone cost without disabling live obstacle protection.
+    def _on_parking_drop_zone_status(self, msg: ModuleState) -> None:
+        self._parking_drop_zone_phase = self._extract_phase_from_status(msg.message)
+
     # Handles localization mode updates and applies DR->NORMAL recovery hold.
     def _on_localization_mode(self, msg: AvgLocalizationMode) -> None:
         current_mode = int(msg.value)
@@ -1023,6 +1070,8 @@ class PlanningCmdVelGateNode(Node):
             and self.lanelet_safety_allow_rotation_in_place
             and not self._is_translational_cmd(cmd_in)
         ):
+            if self._should_stop_for_rotation_dynamic_obstacle(now_sec):
+                return True
             return False
 
         if self._should_stop_for_lanelet_safety(cmd_in, now_sec):
@@ -1222,6 +1271,90 @@ class PlanningCmdVelGateNode(Node):
                 return True
         return False
 
+    # HHL_260624 - Pure yaw rotation has no front/rear direction, so sample a
+    # body-centered disk from live dynamic sources before allowing static-cost bypass.
+    def _should_stop_for_rotation_dynamic_obstacle(self, now_sec: float) -> bool:
+        if not self.rotation_cmd_dynamic_obstacle_stop:
+            return False
+        radius = max(0.05, float(self.rotation_cmd_dynamic_obstacle_radius_m))
+        threshold = int(self.rotation_cmd_dynamic_obstacle_threshold)
+        for label, grid in self._cost_source_grids.items():
+            if not self._source_label_matches(label, self.cost_stop_dynamic_source_labels):
+                continue
+            recv_sec = self._cost_source_recv_sec.get(label, 0.0)
+            if self.cost_source_debug_max_age_s > 0.0 and (
+                now_sec - recv_sec
+            ) > self.cost_source_debug_max_age_s:
+                continue
+            if grid is None or not grid.data or grid.info.resolution <= 0.0:
+                continue
+            target_frame = str(grid.header.frame_id).strip()
+            for pose_label, pose in self._resolve_pose_candidates(target_frame):
+                blocked, detail = self._sample_dynamic_cost_disk(
+                    grid,
+                    pose,
+                    radius=radius,
+                    threshold=threshold,
+                )
+                if not blocked:
+                    continue
+                self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                wx, wy, cost = detail
+                self.get_logger().warn(
+                    f"cost-stop ROTATE: source={pose_label} dynamic={label} "
+                    f"cost={cost} at=({wx:.2f},{wy:.2f}) radius={radius:.2f}m "
+                    f"hold={self.cost_stop_hold_s:.2f}s"
+                )
+                return True
+        return False
+
+    def _sample_dynamic_cost_disk(
+        self,
+        grid: OccupancyGrid,
+        pose: tuple[float, float, float],
+        *,
+        radius: float,
+        threshold: int,
+    ) -> tuple[bool, tuple[float, float, int]]:
+        resolution = float(grid.info.resolution)
+        if resolution <= 0.0:
+            return False, (pose[0], pose[1], -1)
+        origin_x = float(grid.info.origin.position.x)
+        origin_y = float(grid.info.origin.position.y)
+        center_x = int((pose[0] - origin_x) / resolution)
+        center_y = int((pose[1] - origin_y) / resolution)
+        width = int(grid.info.width)
+        height = int(grid.info.height)
+        cell_radius = max(1, int(math.ceil(radius / resolution)))
+        best_cost = -1
+        best_detail = (pose[0], pose[1], -1)
+
+        for dy in range(-cell_radius, cell_radius + 1):
+            gy = center_y + dy
+            if gy < 0 or gy >= height:
+                continue
+            for dx in range(-cell_radius, cell_radius + 1):
+                if (dx * resolution) ** 2 + (dy * resolution) ** 2 > radius * radius:
+                    continue
+                gx = center_x + dx
+                if gx < 0 or gx >= width:
+                    continue
+                cost = int(grid.data[gy * width + gx])
+                if cost > best_cost:
+                    best_cost = cost
+                    best_detail = (
+                        origin_x + (gx + 0.5) * resolution,
+                        origin_y + (gy + 0.5) * resolution,
+                        cost,
+                    )
+                if cost >= threshold:
+                    return True, (
+                        origin_x + (gx + 0.5) * resolution,
+                        origin_y + (gy + 0.5) * resolution,
+                        cost,
+                    )
+        return False, best_detail
+
     # HHL_260622 - Keep a visible breadcrumb when the merged grid is high only
     # because static route/lanelet layers are present, without spamming logs.
     def _log_static_guide_cost_ignored(
@@ -1334,6 +1467,8 @@ class PlanningCmdVelGateNode(Node):
             directions.append(("RIGHT", -math.pi / 2.0, self.lanelet_safety_lookahead_m))
 
         if not directions:
+            return False
+        if self._should_bypass_static_lanelet_for_drop_zone_exit(cmd_in, now_sec):
             return False
 
         for label, pose in pose_candidates:
@@ -1516,6 +1651,39 @@ class PlanningCmdVelGateNode(Node):
                 f"max={max_dist:.2f}m"
             )
         return True
+
+    def _extract_phase_from_status(self, message: str) -> str:
+        # HHL_260624 - ModuleState.message uses "phase=<PHASE> ..." from
+        # camrod_parking; keep parsing local to avoid adding a new message type.
+        for token in str(message).split():
+            if token.startswith("phase="):
+                return token.split("=", 1)[1].strip()
+        return ""
+
+    def _should_bypass_static_lanelet_for_drop_zone_exit(
+        self, cmd_in: Twist, now_sec: float
+    ) -> bool:
+        if not self._is_drop_zone_exit_phase():
+            return False
+        min_cmd = max(0.0, float(self.lanelet_safety_min_translation_mps))
+        if float(cmd_in.linear.x) <= min_cmd:
+            return False
+        if abs(float(cmd_in.linear.y)) > min_cmd:
+            return False
+        if (now_sec - self._last_drop_zone_static_bypass_log_sec) >= 1.0:
+            self._last_drop_zone_static_bypass_log_sec = now_sec
+            self.get_logger().warn(
+                "lanelet-safety drop-zone exit static bypass: "
+                f"phase={self._parking_drop_zone_phase} "
+                f"cmd_x={float(cmd_in.linear.x):.2f}m/s"
+            )
+        return True
+
+    def _is_drop_zone_exit_phase(self) -> bool:
+        # HHL_260624 - Keep drop-zone exit phase checks centralized so route
+        # heading and static lanelet safety agree on parking-owned motion.
+        phase = self._normalize_source_label(self._parking_drop_zone_phase)
+        return bool(phase and phase in self.parking_drop_zone_static_bypass_phases)
 
     def _closest_route_path_distance_m(
         self, frame_id: str, pose_x: float, pose_y: float
@@ -1775,6 +1943,11 @@ class PlanningCmdVelGateNode(Node):
     # HH_260618: Holds forward motion until robot yaw agrees with route tangent.
     def _apply_route_heading_alignment_gate(self, cmd_in: Twist) -> Twist | None:
         if not self.enable_route_heading_alignment:
+            self._route_heading_align_active = False
+            return None
+        if self._is_drop_zone_exit_phase():
+            # HHL_260624 - During explicit drop-zone departure, the parking
+            # node owns straight exit/alignment before any Nav2 local path is valid.
             self._route_heading_align_active = False
             return None
         if abs(float(cmd_in.linear.y)) > self.route_heading_lateral_cmd_epsilon_mps:

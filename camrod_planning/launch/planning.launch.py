@@ -257,6 +257,10 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_allow_route_reentry', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m', default_value='4.0'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', default_value='true'),
+        # HHL_260624 - Forward drop-zone departure is parking-owned motion and
+        # must not be blocked by static lanelet/drop-zone cells before routing.
+        DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_status_topic', default_value='/parking/drop_zone/status'),
+        DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_static_bypass_phases', default_value='EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
         # HH_260422: Speed-dependent front lookahead.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
         # HHL_260623 - Minimum front scan reaches measured front bumper plus planning margin.
@@ -283,6 +287,11 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_reverse_cmd_bypass_static_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_reverse_cmd_bypass_min_mps', default_value='0.02'),
         DeclareLaunchArgument('cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold', default_value='85'),
+        # HHL_260624 - Pure in-place parking rotation bypasses only static
+        # lanelet cost; live LiDAR/Radar disk cost still blocks rotation.
+        DeclareLaunchArgument('cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m', default_value='1.5'),
+        DeclareLaunchArgument('cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold', default_value='85'),
         DeclareLaunchArgument('cmd_vel_gate_unavoidable_stop_enable', default_value='true'),
         # HH_260422: Fixed from 253 (OccupancyGrid max is 100; 253 never triggers).
         DeclareLaunchArgument('cmd_vel_gate_unavoidable_lethal_threshold', default_value='90'),
@@ -461,6 +470,8 @@ def generate_launch_description():
                 'cmd_vel_gate_lanelet_safety_current_allow_route_reentry',
                 'cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m',
                 'cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd',
+                'cmd_vel_gate_parking_drop_zone_status_topic',
+                'cmd_vel_gate_parking_drop_zone_static_bypass_phases',
                 'cmd_vel_gate_speed_dependent_lookahead',
                 'cmd_vel_gate_front_lookahead_min_m',
                 'cmd_vel_gate_front_lookahead_max_m',
@@ -479,6 +490,9 @@ def generate_launch_description():
                 'cmd_vel_gate_reverse_cmd_bypass_static_cost_stop',
                 'cmd_vel_gate_reverse_cmd_bypass_min_mps',
                 'cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold',
+                'cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop',
+                'cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m',
+                'cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold',
                 'cmd_vel_gate_unavoidable_stop_enable',
                 'cmd_vel_gate_unavoidable_lethal_threshold',
                 'cmd_vel_gate_unavoidable_cluster_min_cells',
