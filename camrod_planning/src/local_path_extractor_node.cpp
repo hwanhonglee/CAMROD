@@ -79,7 +79,9 @@ public:
     max_segment_jump_m_ = declare_parameter<double>("max_segment_jump_m", 3.0);
     // HH_260306-00:00 Latch local-path stop when goal is reached.
     stop_after_goal_reached_ = declare_parameter<bool>("stop_after_goal_reached", true);
-    goal_reached_distance_m_ = declare_parameter<double>("goal_reached_distance_m", 0.8);
+    // HHL_260623 - Default local-path completion uses the same center-based
+    // arrival band as bringup configs when a config file is not loaded.
+    goal_reached_distance_m_ = declare_parameter<double>("goal_reached_distance_m", 0.25);
     goal_reached_index_margin_ = declare_parameter<int>("goal_reached_index_margin", 2);
     pose_timeout_s_ = declare_parameter<double>("pose_timeout_s", 1.0);
     empty_republish_period_s_ = declare_parameter<double>("empty_republish_period_s", 0.5);
@@ -832,7 +834,7 @@ private:
   double full_reacquire_heading_deg_{85.0};
   double max_segment_jump_m_{3.0};
   bool stop_after_goal_reached_{true};
-  double goal_reached_distance_m_{0.8};
+  double goal_reached_distance_m_{0.25};
   int goal_reached_index_margin_{2};
   double pose_timeout_s_{1.0};
   double empty_republish_period_s_{0.5};

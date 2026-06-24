@@ -171,7 +171,7 @@ public:
     sequential_goal_queue_policy_ =
       declare_parameter<std::string>("sequential_goal_queue_policy", "replace_pending");
     sequential_goal_reached_distance_m_ =
-      declare_parameter<double>("sequential_goal_reached_distance_m", 0.8);
+      declare_parameter<double>("sequential_goal_reached_distance_m", 0.25);
     sequential_goal_stop_hold_s_ =
       declare_parameter<double>("sequential_goal_stop_hold_s", 0.5);
     sequential_goal_duplicate_xy_eps_m_ =
@@ -930,7 +930,8 @@ private:
     }
     snapped_z = use_map_z_ ? (nearest.nearest_point.z() + map_z_offset_) : pz;
     if (flatten_to_ground_) {
-      snapped_z = map_ground_z_ + map_z_offset_;
+      // HHL_260623 - Ground flattening is the 2D planning plane, not raw OSM median altitude.
+      snapped_z = map_z_offset_;
     }
     return true;
   }
@@ -1257,7 +1258,7 @@ private:
   // HH_260618 Sequential release state for non-preemptive waypoint behavior.
   bool sequential_goal_release_enable_{true};
   std::string sequential_goal_queue_policy_{"append"};
-  double sequential_goal_reached_distance_m_{0.8};
+  double sequential_goal_reached_distance_m_{0.25};
   double sequential_goal_stop_hold_s_{0.5};
   double sequential_goal_duplicate_xy_eps_m_{0.20};
   int sequential_goal_max_queue_size_{10};

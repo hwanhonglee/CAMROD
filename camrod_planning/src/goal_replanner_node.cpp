@@ -112,7 +112,8 @@ public:
     // HH_260306-00:00 Stop replanning after reaching goal until a new goal is received.
     stop_replan_after_goal_reached_ =
       declare_parameter<bool>("stop_replan_after_goal_reached", true);
-    goal_reached_distance_m_ = declare_parameter<double>("goal_reached_distance_m", 0.8);
+    // HHL_260623 - Replanner-only completion follows center-based arrival.
+    goal_reached_distance_m_ = declare_parameter<double>("goal_reached_distance_m", 0.25);
     // 2026-02-27: Reduce goal->path latency by triggering immediate request on new goal/start.
     immediate_replan_on_goal_ = declare_parameter<bool>("immediate_replan_on_goal", true);
     immediate_replan_on_start_ = declare_parameter<bool>("immediate_replan_on_start", true);
@@ -759,7 +760,7 @@ private:
   bool last_request_used_tf_start_{false};
   bool force_tf_start_once_{false};
   bool tf_start_fallback_used_for_goal_{false};
-  double goal_reached_distance_m_{0.8};
+  double goal_reached_distance_m_{0.25};
   uint64_t request_seq_counter_{0};
   uint64_t active_request_seq_{0};
 

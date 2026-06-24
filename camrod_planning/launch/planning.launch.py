@@ -203,6 +203,8 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_raw_topic', default_value='/planning/cmd_vel_raw'),
         DeclareLaunchArgument('cmd_vel_output_topic', default_value='/planning/cmd_vel'),
         DeclareLaunchArgument('planning_engage_topic', default_value='/planning/engage'),
+        # HHL_260623 - Mission engage keeps UI scenarios independent from manual engage.
+        DeclareLaunchArgument('planning_mission_engage_topic', default_value='/planning/mission_engage'),
         DeclareLaunchArgument('planning_engaged_state_topic', default_value='/planning/engaged'),
         DeclareLaunchArgument('cmd_vel_gate_estop_source_mode', default_value='platform_status'),
         # HH_260409: Use platform-originated e-stop by default.
@@ -227,7 +229,8 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_enable_pose_raw_fallback', default_value='false'),
         DeclareLaunchArgument('cmd_vel_gate_cost_threshold', default_value='85'),
         DeclareLaunchArgument('cmd_vel_gate_cost_lookahead_m', default_value='2.0'),
-        DeclareLaunchArgument('cmd_vel_gate_cost_width_m', default_value='1.0'),
+        # HHL_260623 - Measured body width plus 0.10 m planning margin per side.
+        DeclareLaunchArgument('cmd_vel_gate_cost_width_m', default_value='1.27'),
         DeclareLaunchArgument('cmd_vel_gate_cost_hold_s', default_value='1.0'),
         # HHL_260622: Merged inflation grid contains route/lanelet guidance;
         # cmd_vel blocking must be owned by live dynamic sources.
@@ -250,9 +253,14 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_use_local_path', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', default_value='1.5'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_width_m', default_value='0.25'),
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_allow_route_reentry', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m', default_value='4.0'),
+        DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', default_value='true'),
         # HH_260422: Speed-dependent front lookahead.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
-        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='0.4'),
+        # HHL_260623 - Minimum front scan reaches measured front bumper plus planning margin.
+        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='1.30137'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_max_m', default_value='3.0'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_friction', default_value='0.4'),
         DeclareLaunchArgument('cmd_vel_gate_front_reaction_time_s', default_value='0.15'),
@@ -262,10 +270,12 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='92'),
         DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='0.8'),
-        DeclareLaunchArgument('cmd_vel_gate_side_corridor_width_m', default_value='0.45'),
+        # HHL_260623 - Side scan width covers full body length plus front/rear margins.
+        DeclareLaunchArgument('cmd_vel_gate_side_corridor_width_m', default_value='1.69160'),
         DeclareLaunchArgument('cmd_vel_gate_rear_cost_threshold', default_value='92'),
         DeclareLaunchArgument('cmd_vel_gate_rear_lookahead_m', default_value='0.6'),
-        DeclareLaunchArgument('cmd_vel_gate_rear_corridor_width_m', default_value='0.6'),
+        # HHL_260623 - Rear scan width covers full body width plus left/right margins.
+        DeclareLaunchArgument('cmd_vel_gate_rear_corridor_width_m', default_value='1.27'),
         # HH_260618: Allow explicit parking/site crab to cross static
         # lanelet/global-path front/side/rear cost while keeping LiDAR/Radar stops active.
         DeclareLaunchArgument('cmd_vel_gate_lateral_cmd_bypass_static_cost_stop', default_value='true'),
@@ -410,6 +420,7 @@ def generate_launch_description():
                 'cmd_vel_raw_topic',
                 'cmd_vel_output_topic',
                 'planning_engage_topic',
+                'planning_mission_engage_topic',
                 'planning_engaged_state_topic',
                 'cmd_vel_gate_estop_source_mode',
                 'cmd_vel_gate_estop_topic',
@@ -446,6 +457,10 @@ def generate_launch_description():
                 'cmd_vel_gate_lanelet_safety_front_use_local_path',
                 'cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m',
                 'cmd_vel_gate_lanelet_safety_front_path_width_m',
+                'cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry',
+                'cmd_vel_gate_lanelet_safety_current_allow_route_reentry',
+                'cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m',
+                'cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd',
                 'cmd_vel_gate_speed_dependent_lookahead',
                 'cmd_vel_gate_front_lookahead_min_m',
                 'cmd_vel_gate_front_lookahead_max_m',
@@ -538,6 +553,9 @@ def generate_launch_description():
                 # clearly moved to a newer goal while the global marker source is stale.
                 'global_path_stale_timeout_s': 1.0,
                 'route_endpoint_mismatch_m': 1.0,
+                # HHL_260623 - Keep path visualization on the same 2D ground plane as Lanelet2 markers.
+                'flatten_path_z': True,
+                'path_ground_z': 0.0,
             }],
         ),
 
