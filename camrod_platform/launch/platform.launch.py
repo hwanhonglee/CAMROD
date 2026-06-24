@@ -44,7 +44,7 @@ def generate_launch_description():
         # HH_260522: unified source selector for engage signal.
         #   planning_engage/planning_engaged/topic/enabled/on: subscribe configured topic
         #   disabled/off/none: ignore engage topic
-        DeclareLaunchArgument("engage_source_mode",        default_value="planning_engage"),
+        DeclareLaunchArgument("engage_source_mode",        default_value="planning_engaged"),
         DeclareLaunchArgument("drive_state_topic",         default_value="/platform/drive_enabled"),
         # HH_260522: unified source selector for e-stop signal.
         #   platform_status/topic/enabled/on: subscribe /platform/status/estop
