@@ -100,6 +100,7 @@ private:
   static std::string groupedNamespace(const std::string & group, const std::string & subtype);
   static avg_msgs::msg::ColorRGBA makeColor(float r, float g, float b, float a = 1.0f);
   avg_msgs::msg::Point makePoint(double x, double y, double z) const;
+  avg_msgs::msg::Point makeMapPoint(double x, double y, double z) const;  // HHL_260623 - Project OSM geometry onto the configured visualization ground plane.
   static avg_msgs::msg::Point computeCentroid(const lanelet::ConstLineString3d & line_string);  // HH_260114 Compute semantic centroid.
   bool computeFlatArrow(
     const lanelet::ConstLineString3d & centerline, std::size_t tail_idx, std::size_t head_idx,

@@ -5,6 +5,7 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
+        - /Vehicle1
         - /Map1
         - /Map1/Lane_Map1/Namespaces1
         - /Map1/Lidar_Cost1/Namespaces1
@@ -12,6 +13,7 @@ Panels:
         - /Sensing1
         - /Perception1
         - /Planning1
+        - /Planning1/Local_Path_Planner1
       Splitter Ratio: 0.5904255509376526
     Tree Height: 1145
   - Class: rviz_common/Selection
@@ -64,10 +66,18 @@ Visualization Manager:
             range_rings: true
             robot/base: true
             robot/chassis: true
-            sensor/camera: true
+            sensor/camera/front: true
+            sensor/camera/rear: true
             sensor/gnss: true
             sensor/imu: true
             sensor/lidar: true
+            sensor/radar/front1: true
+            sensor/radar/front2: true
+            sensor/radar/left1: true
+            sensor/radar/left2: true
+            sensor/radar/rear: true
+            sensor/radar/right1: true
+            sensor/radar/right2: true
             tf/map: true
             tf/world: true
           Topic:
@@ -105,13 +115,8 @@ Visualization Manager:
             lanelet/left_bound: true
             lanelet/right_bound: true
             line/dashed: true
-            line/pedestrian_marking: true
             line/solid: true
             point/point: false
-            semantic/text: true
-            semantic/traffic_light/body: true
-            semantic/traffic_light/bulb: true
-            semantic/traffic_sign: true
           Topic:
             Depth: 5
             Durability Policy: Transient Local
@@ -159,6 +164,7 @@ Visualization Manager:
       Name: Map
     - Class: rviz_common/Group
       Displays:
+        # HHL_260624 - Show the raw map-exported drop-zone return target before lanelet snapping.
         - Alpha: 1
           Axes Length: 1
           Axes Radius: 0.10000000149011612
@@ -409,7 +415,6 @@ Visualization Manager:
               Class: rviz_default_plugins/Range
               Color: 255; 255; 255
               Enabled: true
-              # HHL_260623 - Split radar front display into FRONT1/FRONT2 for the latest 7-channel layout.
               Name: Front1_Range
               Topic:
                 Depth: 5
@@ -609,17 +614,17 @@ Visualization Manager:
                 Value: /planning/global_path
               Value: true
             - Class: rviz_default_plugins/MarkerArray
-              Enabled: true
+              Enabled: false
               Name: Global_Path_Cost_Marker
               Namespaces:
-                inflation_cost_grid: true
+                {}
               Topic:
                 Depth: 5
                 Durability Policy: Volatile
                 History Policy: Keep Last
                 Reliability Policy: Reliable
                 Value: /planning/cost_grid/global_path_markers
-              Value: true
+              Value: false
           Enabled: true
           Name: Global_Path_Planner
         - Class: rviz_common/Group
@@ -764,6 +769,26 @@ Visualization Manager:
             Value: /goal_pose
           Value: true
         - Alpha: 1
+          Axes Length: 1.2000000476837158
+          Axes Radius: 0.20000000298023224
+          Class: rviz_default_plugins/Pose
+          Color: 80; 255; 80
+          Enabled: true
+          Head Length: 0.30000001192092896
+          Head Radius: 0.10000000149011612
+          Name: DropZone_Goal_Raw
+          Shaft Length: 1
+          Shaft Radius: 0.05000000074505806
+          Shape: Axes
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 3
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /planning/drop_zone_goal_raw
+          Value: true
+        - Alpha: 1
           Axes Length: 1
           Axes Radius: 0.20000000298023224
           Class: rviz_default_plugins/Pose
@@ -834,7 +859,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: 0
+      Angle: 1.215000033378601
       Class: rviz_default_plugins/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -844,11 +869,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 18.156940460205078
+      Scale: 64.27815246582031
       Target Frame: sensor_kit_base_link
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 4.441613674163818
-      Y: -6.279522895812988
+      X: -6.287733554840088
+      Y: 4.258274078369141
     Saved: ~
 Window Geometry:
   Camera_View:

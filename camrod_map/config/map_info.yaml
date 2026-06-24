@@ -48,6 +48,8 @@
     # Canonical frame IDs shared by map/localization/planning.
     world_frame_id: "world"
     map_frame_id: "map"
+    # HHL_260623 - Flatten Lanelet2 marker altitude to the 2D planning ground plane so RViz overlays align with robot/path data.
+    align_z_to_ground: true
 
     # Lane-direction marker styling (RViz visualization only).
     dir_body_scale: 0.55

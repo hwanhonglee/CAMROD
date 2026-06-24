@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import yaml
 
 from ament_index_python.packages import get_package_share_directory
@@ -91,9 +92,29 @@ def _default_output_path(relative_path: str, package_share_path: str) -> str:
     return os.path.join(package_share_path, os.path.basename(relative_path))
 
 
+def _normalize_profile_name(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = text.replace("(", "_").replace(")", "_")
+    text = re.sub(r"[^A-Za-z0-9_]+", "_", text)
+    return re.sub(r"_+", "_", text).strip("_").lower()
+
+
+def _profiled_output_path(relative_path: str, map_profile: str) -> str:
+    # HHL_260623 - Export active map-profile semantics to the same YAML selected by bringup/planning.
+    profile = _normalize_profile_name(map_profile)
+    if not profile:
+        return relative_path
+    directory, filename = os.path.split(relative_path)
+    stem, ext = os.path.splitext(filename)
+    return os.path.join(directory, f"{stem} ({profile}){ext}")
+
+
 def _read_map_info_defaults(map_info_file: str) -> dict:
     defaults = {
         "map_path": "",
+        "map_profile": "",
         "origin_lat": "",
         "origin_lon": "",
         "origin_alt": "",
@@ -108,6 +129,7 @@ def _read_map_info_defaults(map_info_file: str) -> dict:
         if map_path and not os.path.isabs(map_path):
             map_path = os.path.abspath(os.path.join(os.path.dirname(map_info_file), map_path))
         defaults["map_path"] = map_path
+        defaults["map_profile"] = str(params.get("map_profile", params.get("profile", ""))).strip()
         defaults["origin_lat"] = str(params.get("offset_lat", "")).strip()
         defaults["origin_lon"] = str(params.get("offset_lon", "")).strip()
         defaults["origin_alt"] = str(params.get("offset_alt", "")).strip()
@@ -218,11 +240,17 @@ def generate_launch_description():
         map_info_defaults["map_path"], map_share, default_map_info)
 
     default_drop_zones = _default_output_path(
-        os.path.join("camrod_map", "config", "drop_zones.yaml"),
+        _profiled_output_path(
+            os.path.join("camrod_map", "config", "drop_zones.yaml"),
+            map_info_defaults["map_profile"],
+        ),
         os.path.join(map_share, "config", "drop_zones.yaml"),
     )
     default_camping_sites = _default_output_path(
-        os.path.join("camrod_planning", "config", "camping_sites.yaml"),
+        _profiled_output_path(
+            os.path.join("camrod_planning", "config", "camping_sites.yaml"),
+            map_info_defaults["map_profile"],
+        ),
         os.path.join(planning_share, "config", "camping_sites.yaml"),
     )
 

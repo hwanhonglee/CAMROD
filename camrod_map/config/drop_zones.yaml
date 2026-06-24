@@ -1,3 +1,4 @@
+# HHL_260624 - Synchronized active drop-zone export with copy_park OSM area semantics.
 drop_zones:
   - id: "dz_way_2048"
     type: "drop_zone"

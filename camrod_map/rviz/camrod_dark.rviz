@@ -72,14 +72,21 @@ Visualization Manager:
             robot_body: true
             robot_footprint: true
             robot_planning_boundary: true
-            sensor/camera/axes: true
-            sensor/camera/label: true
+            sensor/camera/front: true
+            sensor/camera/rear: true
             sensor/gnss/axes: true
             sensor/gnss/label: true
             sensor/imu/axes: true
             sensor/imu/label: true
             sensor/lidar/axes: true
             sensor/lidar/label: true
+            sensor/radar/front1: true
+            sensor/radar/front2: true
+            sensor/radar/left1: true
+            sensor/radar/left2: true
+            sensor/radar/rear: true
+            sensor/radar/right1: true
+            sensor/radar/right2: true
             tf/map_axes: true
             tf/map_label: true
             tf/world_axes: true
@@ -161,6 +168,7 @@ Visualization Manager:
       Name: Map
     - Class: rviz_common/Group
       Displays:
+        # HHL_260624 - Show the raw map-exported drop-zone return target before lanelet snapping.
         - Alpha: 1
           Axes Length: 1
           Axes Radius: 0.10000000149011612
@@ -725,6 +733,26 @@ Visualization Manager:
             History Policy: Keep Last
             Reliability Policy: Reliable
             Value: /goal_pose
+          Value: true
+        - Alpha: 1
+          Axes Length: 1.2000000476837158
+          Axes Radius: 0.20000000298023224
+          Class: rviz_default_plugins/Pose
+          Color: 80; 255; 80
+          Enabled: true
+          Head Length: 0.30000001192092896
+          Head Radius: 0.10000000149011612
+          Name: DropZone_Goal_Raw
+          Shaft Length: 1
+          Shaft Radius: 0.05000000074505806
+          Shape: Axes
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            Filter size: 3
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /planning/drop_zone_goal_raw
           Value: true
         - Alpha: 1
           Axes Length: 1

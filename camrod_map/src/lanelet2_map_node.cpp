@@ -154,8 +154,9 @@ void Lanelet2MapNode::loadParameters()
   config_.dir_width_scale = this->declare_parameter<double>("dir_width_scale", 0.18);
   // HH_260114 Arrow generation stride.
   config_.dir_stride = static_cast<std::size_t>(this->declare_parameter<int>("dir_stride", 30));
-  // HH_260114 Default keeps source z; enable to flatten to ground.
-  align_z_to_ground_ = this->declare_parameter<bool>("align_z_to_ground", false);
+  // HHL_260623 - Default RViz/planning visualization uses the 2D map ground plane.
+  // Raw OSM altitude stays in the loader; marker Z is flattened unless explicitly disabled.
+  align_z_to_ground_ = this->declare_parameter<bool>("align_z_to_ground", true);
   visualization_republish_period_s_ = this->declare_parameter<double>(
     "visualization_republish_period_s", 0.0);
   publish_map_status_ = this->declare_parameter<bool>("publish_map_status", false);
@@ -261,6 +262,19 @@ avg_msgs::msg::SetParametersResult Lanelet2MapNode::onParameterChange(
     return true;
   };
 
+  auto ensure_bool = [&](const rclcpp::Parameter & param, bool & target) -> bool {
+    if (param.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
+      result.successful = false;
+      result.reason = "Invalid type for parameter '" + param.get_name() + "'";
+      return false;
+    }
+    target = param.as_bool();
+    return true;
+  };
+
+  bool new_align_z_to_ground = align_z_to_ground_;
+  bool requires_visualization_update = false;
+
   for (const auto & param : params) {
     if (param.get_name() == "map_path") {
       if (!ensure_string(param, new_config.map_path)) {
@@ -302,6 +316,11 @@ avg_msgs::msg::SetParametersResult Lanelet2MapNode::onParameterChange(
       if (param.get_type() == rclcpp::ParameterType::PARAMETER_INTEGER) {
         new_config.dir_stride = static_cast<std::size_t>(param.as_int());
       }
+    } else if (param.get_name() == "align_z_to_ground") {
+      if (!ensure_bool(param, new_align_z_to_ground)) {
+        return result;
+      }
+      requires_visualization_update = true;
     } else {
       // Allow other parameters to be set without affecting the map node.
       continue;
@@ -310,8 +329,12 @@ avg_msgs::msg::SetParametersResult Lanelet2MapNode::onParameterChange(
 
   if (!requires_reload) {
     config_ = new_config;
+    align_z_to_ground_ = new_align_z_to_ground;
     if (requires_tf_update) {
       publishStaticTF();
+    }
+    if (requires_visualization_update) {
+      publishVisualization();
     }
     return result;
   }
@@ -323,6 +346,7 @@ avg_msgs::msg::SetParametersResult Lanelet2MapNode::onParameterChange(
   }
 
   config_ = new_config;
+  align_z_to_ground_ = new_align_z_to_ground;
   publishVisualization();
   publishStaticTF();
   return result;
@@ -364,7 +388,7 @@ std::size_t Lanelet2MapNode::addLaneletCenterlines(
     marker.type = avg_msgs::msg::Marker::LINE_STRIP;
 
     for (const auto & point : lanelet.centerline()) {
-      marker.points.push_back(makePoint(point.x(), point.y(), point.z()));
+      marker.points.push_back(makeMapPoint(point.x(), point.y(), point.z()));
     }
     markers.markers.emplace_back(std::move(marker));
     ++count;
@@ -386,7 +410,7 @@ std::size_t Lanelet2MapNode::addLaneletBounds(
     auto left_marker = initLineMarker(
       "lanelet/left_bound", id_counter++, config_.map_frame_id, left_color, 0.18, stamp);
     for (const auto & point : lanelet.leftBound()) {
-      left_marker.points.push_back(makePoint(point.x(), point.y(), point.z()));
+      left_marker.points.push_back(makeMapPoint(point.x(), point.y(), point.z()));
     }
     markers.markers.emplace_back(std::move(left_marker));
     ++count;
@@ -394,7 +418,7 @@ std::size_t Lanelet2MapNode::addLaneletBounds(
     auto right_marker = initLineMarker(
       "lanelet/right_bound", id_counter++, config_.map_frame_id, right_color, 0.18, stamp);
     for (const auto & point : lanelet.rightBound()) {
-      right_marker.points.push_back(makePoint(point.x(), point.y(), point.z()));
+      right_marker.points.push_back(makeMapPoint(point.x(), point.y(), point.z()));
     }
     markers.markers.emplace_back(std::move(right_marker));
     ++count;
@@ -417,12 +441,12 @@ std::size_t Lanelet2MapNode::addAreas(
 
     for (const auto & bound : area.outerBound()) {
       for (const auto & point : bound) {
-        marker.points.push_back(makePoint(point.x(), point.y(), point.z()));
+        marker.points.push_back(makeMapPoint(point.x(), point.y(), point.z()));
       }
       // close each bound loop
       if (!bound.empty()) {
         const auto & first = bound.front();
-        marker.points.push_back(makePoint(first.x(), first.y(), first.z()));
+        marker.points.push_back(makeMapPoint(first.x(), first.y(), first.z()));
       }
     }
 
@@ -453,7 +477,7 @@ std::size_t Lanelet2MapNode::addLineStrings(
       color, lineWidthFromSubtype(subtype), stamp);
 
     for (const auto & point : line_string) {
-      marker.points.push_back(makePoint(point.x(), point.y(), point.z()));
+      marker.points.push_back(makeMapPoint(point.x(), point.y(), point.z()));
     }
     markers.markers.emplace_back(std::move(marker));
     if (!marker.points.empty()) {
@@ -487,7 +511,7 @@ std::size_t Lanelet2MapNode::addPoints(
     marker.scale.y = scale;
     marker.scale.z = scale;
     marker.color = colorFromSubtype(subtype, makeColor(0.9f, 0.9f, 0.2f));
-    marker.pose.position = makePoint(point.x(), point.y(), point.z());
+    marker.pose.position = makeMapPoint(point.x(), point.y(), point.z());
     marker.pose.orientation.w = 1.0;
 
     markers.markers.emplace_back(std::move(marker));
@@ -568,10 +592,11 @@ std::size_t Lanelet2MapNode::addLaneletIds(
     marker.color = makeColor(0.55f, 0.55f, 0.60f, 0.45f);
     marker.text = std::to_string(lanelet.id());
     const size_t mid_index = centerline.size() / 2;
+    const double label_base_z = align_z_to_ground_ ? map_ground_z_ : centerline[mid_index].z();
     avg_msgs::msg::Point p = makePoint(
       centerline[mid_index].x(),
       centerline[mid_index].y(),
-      centerline[mid_index].z() + 1.0);
+      label_base_z + 1.0);
     marker.pose.position = p;
     marker.pose.orientation.w = 1.0;
     markers.markers.emplace_back(std::move(marker));
@@ -628,13 +653,14 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
     if (style.marker_type == avg_msgs::msg::Marker::LINE_STRIP) {
       marker.scale.x = style.sx;
       for (const auto & point : line_string) {
-        marker.points.push_back(makePoint(point.x(), point.y(), point.z()));
+        marker.points.push_back(makeMapPoint(point.x(), point.y(), point.z()));
       }
     } else {
       marker.scale.x = style.sx;
       marker.scale.y = style.sy;
       marker.scale.z = style.sz;
-      marker.pose.position = computeCentroid(line_string);
+      const auto centroid = computeCentroid(line_string);
+      marker.pose.position = makeMapPoint(centroid.x, centroid.y, centroid.z);
       if (style.ns == "semantic/traffic_light/body") {
         marker.scale.x = 0.45;
         marker.scale.y = 0.45;
@@ -680,7 +706,7 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
       continue;
     }
     const auto & style = it->second;
-    avg_msgs::msg::Point centroid = makePoint(point.x(), point.y(), point.z());
+    avg_msgs::msg::Point centroid = makeMapPoint(point.x(), point.y(), point.z());
     const bool is_traffic_sign = tags.subtype == "traffic_sign" || tags.type == "traffic_sign";
 
     avg_msgs::msg::Marker marker;
@@ -764,6 +790,12 @@ avg_msgs::msg::Point Lanelet2MapNode::makePoint(double x, double y, double z) co
   p.y = y;
   p.z = z;
   return p;
+}
+
+// makeMapPoint: Constructs a map-geometry point and optionally flattens OSM altitude for 2D RViz/planning alignment.
+avg_msgs::msg::Point Lanelet2MapNode::makeMapPoint(double x, double y, double z) const
+{
+  return makePoint(x, y, align_z_to_ground_ ? map_ground_z_ : z);
 }
 
 // HH_260114 Semantic marker centroid for placement.
@@ -862,7 +894,8 @@ bool Lanelet2MapNode::computeFlatArrow(
   const double half_width = std::max(0.08, clamped_width * config_.dir_width_scale);
   const double body_length = std::max(0.35, clamped_width * config_.dir_body_scale);
   const double head_length = std::max(0.20, clamped_width * config_.dir_head_scale);
-  const double base_z = (tail.z() + head.z()) * 0.5;  // HH_260102 keep map Z, midpoint
+  // HHL_260623 - Direction arrows follow the same flattened map marker plane as lane boundaries.
+  const double base_z = align_z_to_ground_ ? map_ground_z_ : (tail.z() + head.z()) * 0.5;
 
   // Build arrow around the midpoint of the segment to avoid forward shift
   avg_msgs::msg::Point mid = makePoint(
