@@ -55,7 +55,8 @@
     max_segment_jump_m: 3.0
     # Stop local path after route completion (until next global path update).
     stop_after_goal_reached: true
-    goal_reached_distance_m: 0.8
+    # HHL_260623 - Match local path completion with center-based arrival.
+    goal_reached_distance_m: 0.25
     goal_reached_index_margin: 3
     # Relax timeout to tolerate brief TF/pose hiccups under load.
     pose_timeout_s: 2.5

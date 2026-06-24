@@ -19,7 +19,8 @@
     #   input: keep input pose Z
     #   map: use lanelet centerline Z + map_z_offset
     #   ground: force Z=0 + map_z_offset
-    centerline_z_mode: map
+    # HHL_260623 - Use the 2D planning plane so snapped pose markers stay attached to flattened Lanelet2 markers.
+    centerline_z_mode: ground
     map_z_offset: 0.0
     # Throttle nearest-centerline projection for CPU stability.
     min_update_period_s: 0.05

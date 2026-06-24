@@ -90,9 +90,10 @@ public:
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
     yaw_stddev_ = declare_parameter<double>("yaw_stddev", 0.2);
     // HH_260526: Replace use_map_z/flatten_to_ground booleans with one explicit mode.
+    // HHL_260623 - "ground" means the 2D planning plane (Z=0), not raw OSM median altitude.
     // centerline_z_mode options: input | map | ground.
     centerline_z_mode_ = normalizeModeToken(
-      declare_parameter<std::string>("centerline_z_mode", "map"));
+      declare_parameter<std::string>("centerline_z_mode", "ground"));
     map_z_offset_ = declare_parameter<double>("map_z_offset", 0.0);    // HH_260114 Extra z offset applied to map elevation.
     // HH_260413: Throttle nearest-centerline search under high-rate localization streams.
     min_update_period_s_ = declare_parameter<double>("min_update_period_s", 0.05);
@@ -104,9 +105,9 @@ public:
     {
       RCLCPP_WARN(
         get_logger(),
-        "Invalid centerline_z_mode='%s'. Falling back to 'map'.",
+        "Invalid centerline_z_mode='%s'. Falling back to 'ground'.",
         centerline_z_mode_.c_str());
-      centerline_z_mode_ = "map";
+      centerline_z_mode_ = "ground";
     }
 
     if (!loadMap()) {
@@ -218,7 +219,7 @@ private:
     if (centerline_z_mode_ == "map") {
       snapped_z = nearest.nearest_point.z() + map_z_offset_;
     } else if (centerline_z_mode_ == "ground") {
-      snapped_z = map_ground_z_ + map_z_offset_;
+      snapped_z = map_z_offset_;
     }
     out_pose.pose.position.z = snapped_z;
     out_pose.pose.orientation = yawToQuat(nearest.heading);
@@ -338,7 +339,7 @@ private:
   double longitudinal_stddev_{0.5};
   double lateral_stddev_{0.3};
   double yaw_stddev_{0.2};
-  std::string centerline_z_mode_{"map"};
+  std::string centerline_z_mode_{"ground"};  // HHL_260623 - Default to 2D planning plane.
   double map_z_offset_{0.0};
   double min_update_period_s_{0.05};
   double min_input_displacement_m_{0.05};

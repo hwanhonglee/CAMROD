@@ -23,9 +23,10 @@
     fallback_uncontained: true
     # HH_260528 Z behavior:
     # use_map_z=true   -> lanelet projected Z + map_z_offset
-    # flatten_to_ground=true -> overwrite to map median ground Z + map_z_offset
+    # flatten_to_ground=true -> overwrite to 2D planning ground Z(0) + map_z_offset
     use_map_z: false
-    flatten_to_ground: false
+    # HHL_260623 - Force UI/RViz/site snapped goals onto the same 2D ground plane as map/path markers.
+    flatten_to_ground: true
     map_z_offset: 0.0
 
     # HH_260528 Restrict snapped goal to lanelet network connected to current pose.
@@ -61,7 +62,10 @@
     # HH_260618: If sequential mode is explicitly enabled, keep only the newest
     # pending goal rather than following stale clicks in FIFO order.
     sequential_goal_queue_policy: "replace_pending"
-    sequential_goal_reached_distance_m: 0.8
+    # HHL_260623 - This latch also suppresses active-goal reissues; keep it
+    # center-based so a route is not considered reached before robot_base_link
+    # reaches the snapped goal.
+    sequential_goal_reached_distance_m: 0.25
     sequential_goal_stop_hold_s: 0.5
     sequential_goal_duplicate_xy_eps_m: 0.20
     sequential_goal_max_queue_size: 10

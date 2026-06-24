@@ -56,7 +56,8 @@
     replan_on_start_change: false
     # After goal is reached, pause replanning until a new goal arrives.
     stop_replan_after_goal_reached: true
-    goal_reached_distance_m: 0.8
+    # HHL_260623 - Keep replanner-only tests aligned with center-based arrival.
+    goal_reached_distance_m: 0.25
     start_replan_distance: 0.15
     start_replan_yaw_deg: 3.0
     goal_replan_distance: 0.05
