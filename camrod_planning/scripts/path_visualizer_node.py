@@ -15,11 +15,17 @@ from visualization_msgs.msg import Marker, MarkerArray
 Color = Tuple[float, float, float, float]
 
 
-def _path_point(point: Point, z_offset: float) -> Point:
+def _path_point(
+    point: Point,
+    z_offset: float,
+    *,
+    flatten_path_z: bool,
+    path_ground_z: float,
+) -> Point:
     out = Point()
     out.x = point.x
     out.y = point.y
-    out.z = point.z + z_offset
+    out.z = (path_ground_z if flatten_path_z else point.z) + z_offset
     return out
 
 
@@ -61,6 +67,9 @@ class PathVisualizerNode(Node):
         self.route_endpoint_mismatch_m = float(
             self.declare_parameter("route_endpoint_mismatch_m", 1.0).value
         )
+        # HHL_260623 - Keep path markers on the same 2D ground plane as flattened Lanelet2 markers.
+        self.flatten_path_z = bool(self.declare_parameter("flatten_path_z", True).value)
+        self.path_ground_z = float(self.declare_parameter("path_ground_z", 0.0).value)
 
         self.global_path: Path | None = None
         self.local_path: Path | None = None
@@ -195,7 +204,15 @@ class PathVisualizerNode(Node):
         line.scale.x = line_width
         line.pose.orientation.w = 1.0
         line.color = _make_color(line_color)
-        line.points = [_path_point(pose.pose.position, z_offset) for pose in path.poses]
+        line.points = [
+            _path_point(
+                pose.pose.position,
+                z_offset,
+                flatten_path_z=self.flatten_path_z,
+                path_ground_z=self.path_ground_z,
+            )
+            for pose in path.poses
+        ]
         marker_array.markers.append(line)
 
         marker_id = self._append_direction_arrows(
@@ -260,8 +277,18 @@ class PathVisualizerNode(Node):
             arrow.scale.y = 0.13
             arrow.scale.z = 0.13
             arrow.color = _make_color(color)
-            start = _path_point(prev_pos, z_offset)
-            end = _path_point(curr_pos, z_offset)
+            start = _path_point(
+                prev_pos,
+                z_offset,
+                flatten_path_z=self.flatten_path_z,
+                path_ground_z=self.path_ground_z,
+            )
+            end = _path_point(
+                curr_pos,
+                z_offset,
+                flatten_path_z=self.flatten_path_z,
+                path_ground_z=self.path_ground_z,
+            )
             direction_scale = min(0.75, segment_length) / segment_length
             end.x = start.x + dx * direction_scale
             end.y = start.y + dy * direction_scale
@@ -291,7 +318,12 @@ class PathVisualizerNode(Node):
             marker_id += 1
             marker.type = Marker.SPHERE
             marker.action = Marker.ADD
-            marker.pose.position = _path_point(pose.pose.position, z_offset)
+            marker.pose.position = _path_point(
+                pose.pose.position,
+                z_offset,
+                flatten_path_z=self.flatten_path_z,
+                path_ground_z=self.path_ground_z,
+            )
             marker.pose.orientation.w = 1.0
             marker.scale.x = 0.34
             marker.scale.y = 0.34
