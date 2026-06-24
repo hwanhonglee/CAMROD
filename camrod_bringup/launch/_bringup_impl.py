@@ -947,6 +947,18 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', True),
             'Require forward cmd_vel for current-cell route re-entry bypass',
         ),
+        # HHL_260624 - Drop-zone exit is explicit parking motion; pass its
+        # status to planning so only static lanelet cost is bypassed there.
+        (
+            'planning_cmd_vel_gate_parking_drop_zone_status_topic',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_parking_drop_zone_status_topic', '/parking/drop_zone/status'),
+            'Parking drop-zone status topic for bounded static lanelet bypass',
+        ),
+        (
+            'planning_cmd_vel_gate_parking_drop_zone_static_bypass_phases',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_parking_drop_zone_static_bypass_phases', 'EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
+            'Parking drop-zone phases allowed to cross static lanelet cost',
+        ),
         # Speed-dependent front lookahead.
         (
             'planning_cmd_vel_gate_speed_dependent_lookahead',
@@ -1046,6 +1058,23 @@ def generate_launch_description():
             'planning_cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold',
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold', 85),
             'LiDAR/Radar source threshold that still blocks lateral site-crab',
+        ),
+        # HHL_260624 - Keep dynamic LiDAR/Radar obstacle stops active for pure
+        # in-place parking rotations even when static lanelet cost is bypassed.
+        (
+            'planning_cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop', True),
+            'Block pure rotation when live dynamic cost is near the robot body',
+        ),
+        (
+            'planning_cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m', 1.5),
+            'Dynamic obstacle disk radius for pure rotation',
+        ),
+        (
+            'planning_cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold', 85),
+            'LiDAR/Radar cost threshold that blocks pure rotation',
         ),
         (
             'planning_cmd_vel_gate_unavoidable_stop_enable',
@@ -1642,8 +1671,8 @@ def generate_launch_description():
         'nav2_selected_planner': lc['planning_nav2_selected_planner'],
         'nav2_selected_controller': lc['planning_nav2_selected_controller'],
     }
-    # HH_260618: Do not auto-arm planning in sim. RViz/UI goals may plan, but
-    # /planning/cmd_vel remains gated until /planning/engage=true.
+    # HHL_260624 - Do not auto-arm planning in sim. Goals may plan, but
+    # /planning/cmd_vel remains gated until /planning/engaged=true.
     planning_args['cmd_vel_gate_allow_on_start'] = lc['planning_cmd_vel_gate_allow_on_start']
     set_if_not_empty(planning_args, 'nav2_base_param_file', planning_overrides['nav2_base_param_file'])
     set_if_not_empty(planning_args, 'nav2_vehicle_param_file', selected_nav2_vehicle_override)

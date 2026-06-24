@@ -44,9 +44,9 @@
     # - start_from_pose=false -> first point of stitched centerline path
     # Start near drop_zone for scenario validation (bringup sim).
     start_from_pose: true
-    # Keep initial anchor near drop_zone from bringup map/drop_zones.yaml.
-    start_x: 16.8676
-    start_y: -117.408
+    # HHL_260624 - Keep the sim start anchor synchronized with generated drop_zones.yaml after the park map update.
+    start_x: -2.72382
+    start_y: -2.25363
     # HH_260526: Centerline scope mode.
     # centerline_scope: all | selected_lanelet
     centerline_scope: "all"
