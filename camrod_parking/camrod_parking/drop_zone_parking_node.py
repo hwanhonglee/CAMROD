@@ -29,6 +29,8 @@ def quat_from_yaw(yaw: float):
 
 class Phase(str, Enum):
     IDLE = "IDLE"
+    EXIT_STRAIGHT = "EXIT_STRAIGHT"
+    ALIGN_EXIT_YAW = "ALIGN_EXIT_YAW"
     ALIGN_REAR_YAW = "ALIGN_REAR_YAW"
     REVERSE_APPROACH = "REVERSE_APPROACH"
     PARKED = "PARKED"
@@ -58,6 +60,18 @@ class DropZoneParkingNode(Node):
         # HH_260619 - Publish the planned drop-zone reverse approach path for RViz verification.
         self.reverse_path_topic = str(
             self.declare_parameter("reverse_path_topic", "/parking/drop_zone/reverse_path").value
+        )
+        # HHL_260624 - UI site dispatch from a parked drop-zone first requests a
+        # rule-based straight exit; Nav2 receives the campsite goal only after exit_done.
+        self.exit_topic = str(self.declare_parameter("exit_topic", "/parking/drop_zone/exit").value)
+        self.exit_done_topic = str(
+            self.declare_parameter("exit_done_topic", "/parking/drop_zone/exit_done").value
+        )
+        self.exit_path_topic = str(
+            self.declare_parameter("exit_path_topic", "/parking/drop_zone/exit_path").value
+        )
+        self.lanelet_pose_topic = str(
+            self.declare_parameter("lanelet_pose_topic", "/planning/lanelet_pose_ros").value
         )
         # HHL_260624 - Planning publishes the selected raw drop-zone area here.
         # This keeps rule-based reverse parking aligned with the exact station
@@ -103,6 +117,13 @@ class DropZoneParkingNode(Node):
         self.align_max_angular_speed_radps = abs(
             float(self.declare_parameter("align_max_angular_speed_radps", 0.35).value)
         )
+        # HHL_260624 - Drop-zone departure uses low-speed forward motion along
+        # the parked heading before aligning to the current lanelet yaw.
+        self.exit_forward_distance_m = abs(
+            float(self.declare_parameter("exit_forward_distance_m", 1.2).value)
+        )
+        self.exit_speed_mps = abs(float(self.declare_parameter("exit_speed_mps", 0.16).value))
+        self.exit_max_duration_s = float(self.declare_parameter("exit_max_duration_s", 12.0).value)
         # HHL_260622 - Match config default for slightly faster reverse parking.
         self.reverse_speed_mps = abs(float(self.declare_parameter("reverse_speed_mps", 0.16).value))
         self.reverse_yaw_kp = float(self.declare_parameter("reverse_yaw_kp", 0.8).value)
@@ -146,13 +167,18 @@ class DropZoneParkingNode(Node):
             AvgAmrServiceState, self.amr_service_state_topic, 10
         )
         self.reverse_path_pub = self.create_publisher(Path, self.reverse_path_topic, 10)
+        self.exit_done_pub = self.create_publisher(Bool, self.exit_done_topic, 10)
+        self.exit_path_pub = self.create_publisher(Path, self.exit_path_topic, 10)
 
         self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
+        if self.lanelet_pose_topic:
+            self.create_subscription(PoseStamped, self.lanelet_pose_topic, self._on_lanelet_pose, 10)
         if self.drop_zone_goal_raw_topic:
             self.create_subscription(PoseStamped, self.drop_zone_goal_raw_topic, self._on_drop_zone_goal_raw, 10)
         self.create_subscription(Bool, self.charging_topic, self._on_charging, 10)
         self.create_subscription(PlanningState, self.planning_state_topic, self._on_planning_state, 10)
         self.create_subscription(Bool, self.start_topic, self._on_start_bool, 10)
+        self.create_subscription(Bool, self.exit_topic, self._on_exit_bool, 10)
         self.create_subscription(Bool, self.cancel_topic, self._on_cancel_bool, 10)
         self.create_service(Trigger, "/parking/drop_zone/start_service", self._on_start_service)
         self.create_service(Trigger, "/parking/drop_zone/cancel_service", self._on_cancel_service)
@@ -160,8 +186,13 @@ class DropZoneParkingNode(Node):
         self.phase = Phase.IDLE
         self.last_pose: PoseStamped | None = None
         self.last_pose_time_s = 0.0
+        self.last_lanelet_pose: PoseStamped | None = None
+        self.last_lanelet_pose_time_s = 0.0
         self.is_charging = False
         self.phase_start_s = self._now_s()
+        self.exit_start_x = 0.0
+        self.exit_start_y = 0.0
+        self.exit_heading_yaw = 0.0
         self.reverse_start_x = 0.0
         self.reverse_start_y = 0.0
         self.reverse_start_station_ahead_m = 0.0
@@ -173,7 +204,7 @@ class DropZoneParkingNode(Node):
             "drop_zone_parking ready: "
             f"station=({self.station_x_m:.2f}, {self.station_y_m:.2f}, "
             f"{self.station_yaw_deg:.1f}deg) raw_goal={self.drop_zone_goal_raw_topic or '(disabled)'} "
-            f"cmd={self.cmd_vel_topic}"
+            f"exit_topic={self.exit_topic} exit_done={self.exit_done_topic} cmd={self.cmd_vel_topic}"
         )
 
     def _now_s(self) -> float:
@@ -243,6 +274,10 @@ class DropZoneParkingNode(Node):
         self.last_pose = msg
         self.last_pose_time_s = self._now_s()
 
+    def _on_lanelet_pose(self, msg: PoseStamped) -> None:
+        self.last_lanelet_pose = msg
+        self.last_lanelet_pose_time_s = self._now_s()
+
     def _on_drop_zone_goal_raw(self, msg: PoseStamped) -> None:
         if self._is_active_phase():
             self.get_logger().warn("ignored drop_zone_goal_raw while parking is active")
@@ -279,6 +314,10 @@ class DropZoneParkingNode(Node):
         if msg.data:
             self._start_sequence("topic")
 
+    def _on_exit_bool(self, msg: Bool) -> None:
+        if msg.data:
+            self._start_exit_sequence("topic")
+
     def _on_cancel_bool(self, msg: Bool) -> None:
         if msg.data:
             self._cancel("topic")
@@ -305,6 +344,24 @@ class DropZoneParkingNode(Node):
         self._set_phase(Phase.ALIGN_REAR_YAW, f"start={source}")
         return True, "drop-zone parking started"
 
+    def _start_exit_sequence(self, source: str) -> tuple[bool, str]:
+        # HHL_260624 - Starting a campsite route from inside the drop-zone is
+        # split into straight exit -> lanelet yaw alignment -> Nav2 route goal.
+        if self.phase not in {Phase.IDLE, Phase.PARKED, Phase.ERROR}:
+            self._publish_exit_done(False)
+            return False, f"drop-zone exit already active: {self.phase.value}"
+        if not self._pose_is_fresh():
+            self._publish_exit_done(False)
+            self._set_error("fresh pose unavailable for drop-zone exit")
+            return False, "fresh pose unavailable for drop-zone exit"
+        pose = self.last_pose  # type: ignore[assignment]
+        self.exit_start_x = pose.pose.position.x
+        self.exit_start_y = pose.pose.position.y
+        self.exit_heading_yaw = yaw_from_pose(pose)
+        self.target_robot_yaw = self._select_exit_target_yaw()
+        self._set_phase(Phase.EXIT_STRAIGHT, f"start={source}")
+        return True, "drop-zone exit started"
+
     def _cancel(self, source: str) -> None:
         self._publish_zero()
         self._set_phase(Phase.IDLE, f"cancel={source}")
@@ -323,6 +380,8 @@ class DropZoneParkingNode(Node):
             self.reverse_start_station_ahead_m = self._station_ahead_distance()
         if phase in {Phase.ALIGN_REAR_YAW, Phase.REVERSE_APPROACH}:
             self._publish_reverse_path()
+        if phase in {Phase.EXIT_STRAIGHT, Phase.ALIGN_EXIT_YAW}:
+            self._publish_exit_path()
         self._publish_amr_service_state_for_phase(phase, message)
         self._publish_status(force=True)
 
@@ -333,7 +392,9 @@ class DropZoneParkingNode(Node):
     def _publish_amr_service_state_for_phase(self, phase: Phase, source_message: str) -> None:
         # HHL_260622 - UI sees drop-zone parking as a dedicated post-navigation state.
         service_state = None
-        if phase in {Phase.ALIGN_REAR_YAW, Phase.REVERSE_APPROACH}:
+        if phase in {Phase.EXIT_STRAIGHT, Phase.ALIGN_EXIT_YAW}:
+            service_state = AvgAmrServiceState.MOVING_TO_SITE
+        elif phase in {Phase.ALIGN_REAR_YAW, Phase.REVERSE_APPROACH}:
             service_state = AvgAmrServiceState.DROP_ZONE_PARKING
         elif phase == Phase.PARKED:
             service_state = AvgAmrServiceState.DROP_ZONE_WAIT
@@ -348,6 +409,13 @@ class DropZoneParkingNode(Node):
 
     def _publish_zero(self) -> None:
         self.cmd_pub.publish(Twist())
+
+    def _publish_exit_done(self, ok: bool) -> None:
+        # HHL_260624 - UI waits for this handoff before publishing the campsite
+        # /goal_pose, preventing diagonal Nav2 departures from the parking area.
+        msg = Bool()
+        msg.data = bool(ok)
+        self.exit_done_pub.publish(msg)
 
     def _publish_reverse_path(self) -> None:
         # HH_260619 - Visualize the low-speed rule-based drop-zone reverse path separately from Nav2 paths.
@@ -381,6 +449,34 @@ class DropZoneParkingNode(Node):
             path.poses.append(pose)
         self.reverse_path_pub.publish(path)
 
+    def _publish_exit_path(self) -> None:
+        # HHL_260624 - Visualize the straight drop-zone departure before Nav2 takes over.
+        if self.last_pose is None:
+            return
+
+        frame_id = self.last_pose.header.frame_id or "map"
+        stamp = self.get_clock().now().to_msg()
+        start_x = self.exit_start_x
+        start_y = self.exit_start_y
+        distance_m = max(0.05, self.exit_forward_distance_m)
+        end_x = start_x + math.cos(self.exit_heading_yaw) * distance_m
+        end_y = start_y + math.sin(self.exit_heading_yaw) * distance_m
+
+        path = Path()
+        path.header.frame_id = frame_id
+        path.header.stamp = stamp
+        steps = max(1, int(distance_m / 0.25))
+        for index in range(steps + 1):
+            ratio = index / steps
+            pose = PoseStamped()
+            pose.header.frame_id = frame_id
+            pose.header.stamp = stamp
+            pose.pose.position.x = start_x + (end_x - start_x) * ratio
+            pose.pose.position.y = start_y + (end_y - start_y) * ratio
+            pose.pose.orientation = quat_from_yaw(self.exit_heading_yaw)
+            path.poses.append(pose)
+        self.exit_path_pub.publish(path)
+
     def _publish_align(self) -> bool:
         if not self._pose_is_fresh():
             self._set_error("pose timeout during rear-yaw alignment")
@@ -406,6 +502,13 @@ class DropZoneParkingNode(Node):
         dy = self.last_pose.pose.position.y - self.reverse_start_y
         return math.hypot(dx, dy)
 
+    def _exit_distance(self) -> float:
+        if self.last_pose is None:
+            return 0.0
+        dx = self.last_pose.pose.position.x - self.exit_start_x
+        dy = self.last_pose.pose.position.y - self.exit_start_y
+        return math.hypot(dx, dy)
+
     def _station_lateral_error(self) -> float:
         if self.last_pose is None:
             return 0.0
@@ -426,6 +529,28 @@ class DropZoneParkingNode(Node):
 
     def _station_ahead_distance(self) -> float:
         return self._station_ahead_distance_for_target_yaw(self.target_robot_yaw)
+
+    def _lanelet_pose_is_fresh(self) -> bool:
+        return (
+            self.last_lanelet_pose is not None
+            and (self._now_s() - self.last_lanelet_pose_time_s) <= self.pose_timeout_s
+        )
+
+    def _nearest_equivalent_yaw(self, target_yaw: float, reference_yaw: float) -> float:
+        # HHL_260624 - Use the yaw representation requiring the smallest body
+        # rotation. This preserves the desired yaw while avoiding long wraparound turns.
+        return normalize_angle(reference_yaw + normalize_angle(target_yaw - reference_yaw))
+
+    def _select_exit_target_yaw(self) -> float:
+        if self._lanelet_pose_is_fresh():
+            return self._nearest_equivalent_yaw(
+                yaw_from_pose(self.last_lanelet_pose),  # type: ignore[arg-type]
+                yaw_from_pose(self.last_pose),  # type: ignore[arg-type]
+            )
+        return self._nearest_equivalent_yaw(
+            self.base_target_robot_yaw,
+            yaw_from_pose(self.last_pose),  # type: ignore[arg-type]
+        )
 
     def _select_target_yaw_for_reverse_axis(self) -> None:
         self.target_robot_yaw = self.base_target_robot_yaw
@@ -497,8 +622,45 @@ class DropZoneParkingNode(Node):
         self.cmd_pub.publish(cmd)
         return False
 
+    def _publish_exit_straight(self) -> bool:
+        if not self._pose_is_fresh():
+            self._publish_exit_done(False)
+            self._set_error("pose timeout during drop-zone exit")
+            return False
+
+        elapsed = self._now_s() - self.phase_start_s
+        distance = self._exit_distance()
+        if distance >= self.exit_forward_distance_m:
+            self._publish_zero()
+            self.target_robot_yaw = self._select_exit_target_yaw()
+            self._set_phase(Phase.ALIGN_EXIT_YAW, "straight exit complete")
+            return True
+        if elapsed >= self.exit_max_duration_s:
+            self._publish_zero()
+            self._publish_exit_done(False)
+            self._set_error("drop-zone exit timeout")
+            return False
+
+        yaw = yaw_from_pose(self.last_pose)  # type: ignore[arg-type]
+        heading_error = normalize_angle(self.exit_heading_yaw - yaw)
+        cmd = Twist()
+        cmd.linear.x = self.exit_speed_mps
+        cmd.angular.z = clamp(
+            self.align_yaw_kp * heading_error,
+            -self.align_max_angular_speed_radps,
+            self.align_max_angular_speed_radps,
+        )
+        self.cmd_pub.publish(cmd)
+        return False
+
     def _tick(self) -> None:
-        if self.phase == Phase.ALIGN_REAR_YAW:
+        if self.phase == Phase.EXIT_STRAIGHT:
+            self._publish_exit_straight()
+        elif self.phase == Phase.ALIGN_EXIT_YAW:
+            if self._publish_align():
+                self._publish_exit_done(True)
+                self._set_phase(Phase.IDLE, "drop-zone exit aligned")
+        elif self.phase == Phase.ALIGN_REAR_YAW:
             if self._publish_align():
                 self._set_phase(Phase.REVERSE_APPROACH, "rear yaw aligned")
         elif self.phase == Phase.REVERSE_APPROACH:
@@ -543,6 +705,8 @@ class DropZoneParkingNode(Node):
                     ("reverse_axis_yaw_deg", f"{math.degrees(self._reverse_axis_yaw()):.3f}"),
                     ("station_ahead_m", f"{self._station_ahead_distance():.3f}"),
                     ("reverse_distance_m", f"{self._reverse_distance():.3f}"),
+                    ("exit_distance_m", f"{self._exit_distance():.3f}"),
+                    ("exit_heading_yaw_deg", f"{math.degrees(self.exit_heading_yaw):.3f}"),
                 ),
             )
         )

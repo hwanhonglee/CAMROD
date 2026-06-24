@@ -104,6 +104,11 @@
     amr_service_state_topic: "/AMR_service_state"
     # HHL_260622 - RViz path for the rule-based drop-zone reverse maneuver.
     reverse_path_topic: "/parking/drop_zone/reverse_path"
+    # HHL_260624 - Straight drop-zone departure handoff before UI campsite route dispatch.
+    exit_topic: "/parking/drop_zone/exit"
+    exit_done_topic: "/parking/drop_zone/exit_done"
+    exit_path_topic: "/parking/drop_zone/exit_path"
+    lanelet_pose_topic: "/planning/lanelet_pose_ros"
     # HHL_260624 - Selected raw drop-zone pose from planning; synchronizes multi-drop-zone maps.
     drop_zone_goal_raw_topic: "/planning/drop_zone_goal_raw"
 
@@ -126,6 +131,11 @@
     align_yaw_tolerance_deg: 5.0
     align_yaw_kp: 1.2
     align_max_angular_speed_radps: 0.35
+    # HHL_260624 - Exit straight out of the drop-zone before aligning to lanelet yaw.
+    exit_forward_distance_m: 1.2
+    exit_speed_mps: 0.16
+    # HHL_260624 - Allow slow sim/platform velocity scaling to finish the straight drop-zone exit before timeout.
+    exit_max_duration_s: 30.0
 
     # HHL_260622 - Slightly faster reverse parking while keeping low-speed rule-based control.
     reverse_speed_mps: 0.16
