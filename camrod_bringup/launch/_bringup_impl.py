@@ -304,6 +304,26 @@ def infer_map_profile(map_params: dict, map_path: str) -> str:
     return ''
 
 
+def _profile_file_variants(default_path: str, profile: str) -> list[str]:
+    normalized = _normalize_profile_name(profile)
+    if not normalized:
+        return []
+    directory = os.path.dirname(default_path)
+    stem, ext = os.path.splitext(os.path.basename(default_path))
+    return [
+        os.path.join(directory, f'{stem} ({normalized}){ext}'),
+        os.path.join(directory, f'{stem}_{normalized}{ext}'),
+        os.path.join(directory, f'{stem}-{normalized}{ext}'),
+        os.path.join(directory, normalized, f'{stem}{ext}'),
+    ]
+
+
+def resolve_profile_file(default_path: str, profile: str) -> str:
+    # HHL_260623 - Resolve map-profile package configs without using stale bringup-local copies.
+    selected = _first_existing_path(_profile_file_variants(default_path, profile))
+    return selected if selected else default_path
+
+
 def _is_default_cfg_value(raw_value: Any, default_rel: str) -> bool:
     text = str(raw_value or '').strip()
     if text in ('', '__module_default__', 'module_default', 'default'):
@@ -511,22 +531,37 @@ def generate_launch_description():
         map_params.get('map_profile', map_params.get('profile', '')),
     )
     map_profile = infer_map_profile(map_params, map_path_default)
-    planning_state_machine_keypoints_default = resolve_profile_cfg_file(
-        config_root_default,
-        cfg_get(launch_cfg, 'planning/state_machine_keypoints_yaml', 'map/drop_zones.yaml'),
-        'map/drop_zones.yaml',
-        map_profile,
-    )
-    planning_state_machine_camping_sites_default = resolve_profile_cfg_file(
-        config_root_default,
-        cfg_get(
-            launch_cfg,
-            'planning/state_machine_camping_sites_yaml',
+    state_machine_keypoints_cfg = cfg_get(
+        launch_cfg, 'planning/state_machine_keypoints_yaml', 'map/drop_zones.yaml')
+    state_machine_camping_sites_cfg = cfg_get(
+        launch_cfg, 'planning/state_machine_camping_sites_yaml', 'planning/camping_sites.yaml')
+    if _is_default_cfg_value(state_machine_keypoints_cfg, 'map/drop_zones.yaml'):
+        # HHL_260623 - Use camrod_map exporter output as the default drop-zone source.
+        # Bringup-local profile copies easily go stale when the active Lanelet2 map changes.
+        planning_state_machine_keypoints_default = resolve_profile_file(
+            pkg_path('camrod_map', os.path.join('config', 'drop_zones.yaml')),
+            map_profile,
+        )
+    else:
+        planning_state_machine_keypoints_default = resolve_profile_cfg_file(
+            config_root_default,
+            state_machine_keypoints_cfg,
+            'map/drop_zones.yaml',
+            map_profile,
+        )
+    if _is_default_cfg_value(state_machine_camping_sites_cfg, 'planning/camping_sites.yaml'):
+        # HHL_260623 - Use camrod_planning exporter output as the default camping-site source.
+        planning_state_machine_camping_sites_default = resolve_profile_file(
+            pkg_path('camrod_planning', os.path.join('config', 'camping_sites.yaml')),
+            map_profile,
+        )
+    else:
+        planning_state_machine_camping_sites_default = resolve_profile_cfg_file(
+            config_root_default,
+            state_machine_camping_sites_cfg,
             'planning/camping_sites.yaml',
-        ),
-        'planning/camping_sites.yaml',
-        map_profile,
-    )
+            map_profile,
+        )
     planning_state_machine_cfg_entry = cfg_get(
         launch_cfg,
         'planning/planning_state_machine_param_file',
@@ -690,7 +725,12 @@ def generate_launch_description():
         (
             'planning_engage_topic',
             cfg_get(launch_cfg, 'planning/engage_topic', '/planning/engage'),
-            'Planning engage trigger topic',
+            'Planning manual engage trigger topic',
+        ),
+        (
+            'planning_mission_engage_topic',
+            cfg_get(launch_cfg, 'planning/mission_engage_topic', '/planning/mission_engage'),
+            'Planning UI mission engage trigger topic',
         ),
         (
             'planning_engaged_state_topic',
@@ -789,8 +829,9 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_cost_width_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_width_m', 1.0),
-            'Corridor width for cost-stop',
+            # HHL_260623 - Default is measured body width plus 0.10 m margin per side.
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_width_m', 1.27),
+            'Corridor width for front dynamic cost-stop',
         ),
         (
             'planning_cmd_vel_gate_cost_hold_s',
@@ -884,6 +925,11 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_path_width_m', 0.25),
             'Center corridor width for path-based lanelet safety',
         ),
+        (
+            'planning_cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry', True),
+            'Allow FRONT_PATH static-cost bypass during bounded route re-entry',
+        ),
         # HHL_260622: Allow bounded route re-entry for manually placed/sim poses
         # that start slightly outside lanelet while a valid local path exists.
         (
@@ -909,7 +955,8 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_front_lookahead_min_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_min_m', 0.4),
+            # HHL_260623 - Include front body extent from robot_base_link plus planning margin.
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_min_m', 1.30137),
             'Min front lookahead (m)',
         ),
         (
@@ -951,7 +998,8 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_side_corridor_width_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_corridor_width_m', 0.45),
+            # HHL_260623 - Side corridor width covers full body length plus front/rear margins.
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_corridor_width_m', 1.69160),
             'Side corridor width (m)',
         ),
         (
@@ -966,7 +1014,8 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_rear_corridor_width_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_corridor_width_m', 0.6),
+            # HHL_260623 - Rear corridor width covers full body width plus left/right margins.
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_corridor_width_m', 1.27),
             'Rear corridor width (m)',
         ),
         # HH_260618: Site-crab lateral parking is mission-owned; let it cross
@@ -1193,8 +1242,19 @@ def generate_launch_description():
         ),
         (
             'platform_engage_source_mode',
-            cfg_get(launch_cfg, 'platform/engage_source_mode', 'planning_engage'),
-            'Platform engage source mode: planning_engage|topic|enabled|on|disabled|off|none',
+            cfg_get(launch_cfg, 'platform/engage_source_mode', 'planning_engaged'),
+            'Platform engage source mode: planning_engage|planning_engaged|topic|enabled|on|disabled|off|none',
+        ),
+        (
+            'platform_planning_engage_topic',
+            # HHL_260624 - Platform consumes the effective planning state so UI
+            # mission engage can drive without the manual 2D-goal engage latch.
+            cfg_get(
+                launch_cfg,
+                'platform/planning_engage_topic',
+                cfg_get(launch_cfg, 'planning/engaged_state_topic', '/planning/engaged'),
+            ),
+            'Planning engage-state topic consumed by platform cmd_vel gate',
         ),
         (
             'platform_drive_allow_on_start',
@@ -1369,6 +1429,7 @@ def generate_launch_description():
         'cmd_vel_in_topic': lc['platform_cmd_vel_in_topic'],
         'cmd_vel_out_topic': lc['platform_cmd_vel_out_topic'],
         'engage_source_mode': lc['platform_engage_source_mode'],
+        'planning_engage_topic': lc['platform_planning_engage_topic'],
         # HH_260618: Sim RViz goals must create paths only; platform motion still
         # requires the configured drive_allow_on_start policy or explicit engage.
         'drive_allow_on_start': lc['platform_drive_allow_on_start'],
@@ -1531,6 +1592,9 @@ def generate_launch_description():
         'map_path': lc['map_path'],
     }
     apply_cfg_overrides(localization_args, localization_overrides)
+    if 'drop_zones_yaml' not in localization_args:
+        # HHL_260623 - Keep localization map helper aligned with planning/parking drop-zone semantics.
+        localization_args['drop_zones_yaml'] = lc['planning_state_machine_keypoints_yaml']
     # HH_260618: Apply sim EKF override after apply_cfg_overrides so it is not
     # overwritten by user-level localization/filter_ekf_param_file entries.
     localization_args['filter_ekf_param_file'] = _ekf_cfg
@@ -1569,6 +1633,7 @@ def generate_launch_description():
         'cmd_vel_raw_topic': lc['planning_cmd_vel_raw_topic'],
         'cmd_vel_output_topic': lc['planning_cmd_vel_topic'],
         'planning_engage_topic': lc['planning_engage_topic'],
+        'planning_mission_engage_topic': lc['planning_mission_engage_topic'],
         'planning_engaged_state_topic': lc['planning_engaged_state_topic'],
         # All planning_cmd_vel_gate_* args forward as cmd_vel_gate_* (strip 'planning_' prefix).
         **{k[len('planning_'):]: lc[k] for k in lc if k.startswith('planning_cmd_vel_gate_')},
@@ -1655,6 +1720,10 @@ def generate_launch_description():
         # Share bringup camping-sites YAML with UI backend so
         # /ui/selected_destination can dispatch exact goal_pose coordinates.
         'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
+        # HHL_260623 - UI campsite missions publish a separate mission engage latch
+        # so the manual ENGAGE button cannot stop an accepted scenario.
+        'planning_engage_topic': lc['planning_engage_topic'],
+        'planning_mission_engage_topic': lc['planning_mission_engage_topic'],
     }
 
     module_specs = [

@@ -51,7 +51,8 @@ bringup:
     monitor_param_file: localization/filter/monitor.yaml
     map_helper_param_file: localization/reference/map_helper.yaml
     map_info_file: __module_default__
-    drop_zones_yaml: localization/drop_zones.yaml
+    # HHL_260623 - Let bringup inject the active camrod_map drop_zones exporter output.
+    drop_zones_yaml: __module_default__
 
   planning:
     # ---- Planning core toggles ----
@@ -95,11 +96,13 @@ bringup:
     local_path_source: slice_only
 
     # ---- Planning cmd_vel gate ----
-    # Require explicit /planning/engage trigger for final /planning/cmd_vel.
+    # HHL_260623 - Manual 2D-goal engage and UI mission engage are separate latches.
+    # Final /planning/cmd_vel opens when either latch is true.
     cmd_vel_gate_enable: true
     cmd_vel_raw_topic: /planning/cmd_vel_raw
     cmd_vel_topic: /planning/cmd_vel
     engage_topic: /planning/engage
+    mission_engage_topic: /planning/mission_engage
     engaged_state_topic: /planning/engaged
     # HH_260522: unified source selector for planning cmd_vel gate e-stop input.
     #   platform_status/topic/enabled/on: subscribe /platform/status/estop
@@ -139,7 +142,8 @@ bringup:
     cmd_vel_gate_cost_threshold: 85
     # Legacy fixed lookahead; used only when enable_speed_dependent_lookahead=false.
     cmd_vel_gate_cost_lookahead_m: 2.0
-    cmd_vel_gate_cost_width_m: 1.0
+    # HHL_260623 - Measured body width plus 0.10 m planning margin per side.
+    cmd_vel_gate_cost_width_m: 1.27
     cmd_vel_gate_cost_hold_s: 1.0
     # HHL_260622 - The merged inflation grid also carries static lanelet/global
     # path guidance. Only live dynamic sensor sources may block cmd_vel here.
@@ -168,6 +172,8 @@ bringup:
     # HHL_260622 - FRONT_PATH uses only the selected route center corridor so
     # merge/branch lanelet boundary pixels do not block valid centerline travel.
     cmd_vel_gate_lanelet_safety_front_path_width_m: 0.25
+    # HHL_260624 - Allow bounded static FRONT_PATH bypass while re-entering lanelet from site/drop-zone.
+    cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry: true
     # HHL_260622 - Allow bounded route re-entry when a sim/manual pose starts
     # just outside lanelet but the active local path is already close and valid.
     cmd_vel_gate_lanelet_safety_current_allow_route_reentry: true
@@ -175,7 +181,8 @@ bringup:
     cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd: true
     # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
     cmd_vel_gate_speed_dependent_lookahead: true
-    cmd_vel_gate_front_lookahead_min_m: 0.4
+    # HHL_260623 - Minimum front scan reaches measured front bumper plus planning margin.
+    cmd_vel_gate_front_lookahead_min_m: 1.30137
     cmd_vel_gate_front_lookahead_max_m: 3.0
     cmd_vel_gate_front_lookahead_friction: 0.4
     cmd_vel_gate_front_reaction_time_s: 0.15
@@ -185,10 +192,12 @@ bringup:
     cmd_vel_gate_side_rear_cost_stop: true
     cmd_vel_gate_side_cost_threshold: 92
     cmd_vel_gate_side_lookahead_m: 0.8
-    cmd_vel_gate_side_corridor_width_m: 0.45
+    # HHL_260623 - Side scan width covers full body length plus front/rear margins.
+    cmd_vel_gate_side_corridor_width_m: 1.69160
     cmd_vel_gate_rear_cost_threshold: 92
     cmd_vel_gate_rear_lookahead_m: 0.6
-    cmd_vel_gate_rear_corridor_width_m: 0.6
+    # HHL_260623 - Rear scan width covers full body width plus left/right margins.
+    cmd_vel_gate_rear_corridor_width_m: 1.27
     # HH_260618: Explicit site-crab lateral parking may cross static
     # lanelet/global-path front/side/rear cost, but LiDAR/Radar dynamic source cost still
     # stops the robot.
@@ -323,12 +332,16 @@ bringup:
     cmd_vel_in_topic: /planning/cmd_vel
     cmd_vel_out_topic: /platform/cmd_vel
     # HH_260522: unified source selectors for platform cmd_vel gate.
-    #   engage_source_mode: planning_engage/topic/enabled/on | disabled/off/none
+    # HHL_260624 - Use /planning/engaged, the effective OR of manual engage and
+    # mission engage, so UI campsite missions do not depend on the manual button.
+    #   engage_source_mode: planning_engage/planning_engaged/topic/enabled/on | disabled/off/none
     #   estop_source_mode: platform_status/topic/enabled/on | disabled/off/none
-    engage_source_mode: planning_engage
+    engage_source_mode: planning_engaged
+    planning_engage_topic: /planning/engaged
     estop_source_mode: platform_status
-    # HH_260618: Sim and real platform both stay closed by default; RViz/UI goals
-    # may plan, but motion requires /planning/engage=true unless explicitly changed.
+    # HH_260618: Sim and real platform both stay closed by default; RViz/manual
+    # goals require /planning/engage=true, while accepted UI missions publish
+    # /planning/mission_engage=true and open /planning/engaged automatically.
     drive_allow_on_start: false
     # Ranger base node directly publishes /platform/status/*.
     estop_topic: /platform/status/estop
