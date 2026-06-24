@@ -66,7 +66,7 @@ graph LR
 
   BROWSER <-->|HTTP :8010\nWebSocket /ws| UI
 
-  UI -->|/planning/engage| PLAN
+  UI -->|/planning/engage manual\n/planning/mission_engage mission| PLAN
   UI -->|/planning/mission_key| PLAN
   UI -->|/goal_pose| PLAN
   PARK([🅿️ camrod_docking]):::docking -.->|destination sites| UI
@@ -99,7 +99,8 @@ graph TD
   AMRSTATE((/AMR_service_state)):::topic  --> BACKEND
 
   BACKEND -->|HTTP/WS responses| BROWSER
-  BACKEND --> ENGAGE((/planning/engage)):::topic
+  BACKEND --> ENGAGE((/planning/engage\nmanual latch)):::topic
+  BACKEND --> MISSIONENGAGE((/planning/mission_engage\nmission latch)):::topic
   BACKEND --> MISSIONKEY((/planning/mission_key)):::topic
   BACKEND --> GOALPOSE((/goal_pose)):::topic
   BACKEND --> RETURN((/planning/state_machine/return_to_drop_zone)):::topic
@@ -140,7 +141,7 @@ sequenceDiagram
   Backend->>SM: /ui/selected_destination UiDestinationCommand(site=B3, run=true)
   Backend->>SM: /planning/mission_key PlanningMissionKey(camping_site_3)
   Backend->>Nav2: site_goal /goal_pose PoseStamped(x,y,z,yaw from camping_sites.yaml)
-  Backend->>Gate: /planning/engage Bool(true)
+  Backend->>Gate: /planning/mission_engage Bool(true)
   Gate-->>Nav2: cmd_vel gate opens → velocity flows
 
   Note over Dock: Parallel docking branch
@@ -148,7 +149,7 @@ sequenceDiagram
     SM->>Dock: send docking action goal
     Dock-->>SM: docking result (succeeded/aborted)
     Dock-->>Backend: /AMR_arrive Bool(true)
-    Backend->>Gate: /planning/engage Bool(false)
+    Backend->>Gate: /planning/mission_engage Bool(false)
   end
 ```
 
@@ -222,7 +223,7 @@ The waiting screen accepts taps at any time unless the React bundle is built wit
 
 > HHL_260621: `site_access.yaml` is the first UI-side guard against human error. A campsite button is accepted only when the selected site is valid and the current site access record allows delivery.
 
-> HHL_260622: Destination dispatch now validates the site-access record before publishing `/planning/engage`; a rejected campsite request cannot open the velocity gate.
+> HHL_260622: Destination dispatch now validates the site-access record before publishing `/planning/mission_engage`; a rejected campsite request cannot open the mission velocity latch.
 
 The gate is intentionally a command filter, not a replacement for perception/cost safety. It prevents obvious business-logic errors before `/goal_pose` is published:
 
@@ -231,10 +232,9 @@ The gate is intentionally a command filter, not a replacement for perception/cos
 - New delivery requests are accepted only while `/AMR_service_state.state` is `DROP_ZONE_WAIT` by default.
 - `recall_allowed` can remain true for `OCCUPIED` / `CHECKED_OUT` so guest recall drives only to the road/staging target instead of entering the campsite.
 - `require_reservation_code_for_delivery=true` forces `/ui/destination` to provide `reservation_code`.
-- HHL_260623 - `ENGAGE` is the manual motion gate, while campsite `ON` is the
-  accepted mission state. If manual ENGAGE is turned off during an accepted
-  campsite mission, the UI shows that mission as paused instead of implying a
-  second independent engage. If the backend rejects a campsite command, the
+- HHL_260624 - `ENGAGE` is only the manual 2D-goal latch. Campsite `ON` uses
+  `/planning/mission_engage`; turning manual ENGAGE off must not pause an
+  accepted campsite mission. If the backend rejects a campsite command, the
   frontend immediately reverts the optimistic site `ON` state.
 
 ```yaml
@@ -279,7 +279,8 @@ When `set_destination(site="B3", ...)` is called:
 
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
-| `/planning/engage` | `std_msgs/Bool` | camrod_planning (`cmd_vel_gate`) | event | Engage (`true`) or disengage (`false`) autonomy |
+| `/planning/engage` | `std_msgs/Bool` | camrod_planning (`cmd_vel_gate`) | event | Manual 2D-goal engage latch |
+| `/planning/mission_engage` | `std_msgs/Bool` | camrod_planning (`cmd_vel_gate`) | event | UI campsite/drop-zone scenario engage latch |
 | `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | camrod_planning (state machine) | event | `mission_key`: semantic site/key name (e.g., `camping_site_3`) |
 | `/goal_pose` | `geometry_msgs/PoseStamped` | camrod_planning goal_snapper | event | `site_goal`: raw site-center pose in `map`, later snapped to a lanelet route goal |
 | `/parking/site_maneuver/return` | `std_msgs/Bool` | camrod_parking site_maneuver | event | HHL_260622: Usage-complete command while the robot is inside a campsite; starts crab-out/reverse-out first |
@@ -390,7 +391,8 @@ curl -X POST "http://localhost:8010/ui/engage?value=true"
 curl -X POST "http://localhost:8010/ui/destination?site=B3&run=true"
 
 # Watch what the backend publishes
-ros2 topic echo /planning/engage
+ros2 topic echo /planning/mission_engage
+ros2 topic echo /planning/engaged
 ros2 topic echo /goal_pose
 ros2 topic echo /planning/mission_key
 ```
@@ -402,9 +404,9 @@ ros2 topic echo /planning/mission_key
 <details>
 <summary><strong>UI page loads but engage does nothing</strong></summary>
 
-- Check `ros2 topic echo /planning/engage` while clicking the engage button. If no message appears, the backend may not be receiving HTTP requests (wrong host/port, firewall rule).
+- Check `ros2 topic echo /planning/engage` while clicking the manual ENGAGE button. Check `ros2 topic echo /planning/mission_engage` while selecting a campsite.
 - Verify `ui_host` and `ui_port` match the URL the browser is using.
-- If the message appears on `/planning/engage` but the robot does not move, the issue is downstream in `camrod_planning`'s `cmd_vel_gate`, not in `camrod_ui`.
+- If `/planning/mission_engage=true` and `/planning/engaged=true` but the robot does not move, check platform gate wiring to `/planning/engaged`.
 
 </details>
 
@@ -441,7 +443,7 @@ After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the 
 
 - [`../README.md`](../README.md) — Top-level CAMROD workspace overview
 - [`../camrod_system/README.md`](../camrod_system/README.md) — produces `/system/diagnostics_agg`
-- [`../camrod_planning/README.md`](../camrod_planning/README.md) — consumes `/planning/engage`, `/goal_pose`, `/planning/mission_key`
+- [`../camrod_planning/README.md`](../camrod_planning/README.md) — consumes `/planning/engage`, `/planning/mission_engage`, `/goal_pose`, `/planning/mission_key`
 - [`../camrod_docking/README.md`](../camrod_docking/README.md) — camping site definitions used by destination dispatch
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
 

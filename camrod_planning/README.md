@@ -123,7 +123,8 @@ graph TD
     LOCPOSE((/localization/pose))
     LCOST((/map/cost_grid/lanelet))
     GCOST((/planning/cost_grid/global_path))
-    ENGAGE((/planning/engage))
+    ENGAGE((/planning/engage\nmanual))
+    MISSIONENGAGE((/planning/mission_engage\nmission))
     ESTOP((/platform/status/estop))
     INFCOST((/planning/cost_grid/inflation))
     LOCMODE((/localization/mode))
@@ -239,7 +240,7 @@ graph TD
 | `goal_replanner_node` | `/planning/goal_pose`, `/planning/lanelet_pose`, Nav2 action | replanning triggers | `min_request_interval_s`, `retry_after_failure_s`, `navigate_inactive_grace_s` |
 | `obstacle_replan_monitor_node.py` | `/planning/global_path`, `/planning/goal_pose_snapped_ros`, `/localization/pose`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar` | `/planning/obstacle_replan/status`, temporary `/planning/planner_selector=Smac2D`, preempted `/planning/navigate_to_pose` goal | HH_260619 - keeps `LaneletRoute` fixed during normal driving, but forces a Smac2D global fallback only when dynamic obstacle costs persistently block the route corridor; HH_260619 - `clear_hold_s` prevents alternating empty/test cost grids from clearing a real blockage immediately |
 | `planning_progress_node` | `/planning/global_path`, `/localization/pose`, `/localization/odometry/filtered` | `/planning/progress/*` | `publish_rate_hz`: 2.0, `speed_ema_alpha`: 0.2, `speed_floor_mps`: 0.1 |
-| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/platform/status/estop`, `/map/cost_grid/lanelet`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/odometry/filtered` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors |
+| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/planning/mission_engage`, `/platform/status/estop`, `/map/cost_grid/lanelet`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/odometry/filtered` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors |
 | `planning_state_machine_node` | `/system/diagnostics_agg`, `/planning/lanelet_pose_ros`, `/planning/state_machine/camping_site_recall`, `mission_key` `/planning/mission_key` | `/planning/goal_pose_snapped_ros`, `/planning/state_machine/state`, `/planning/state_machine/mission_source` | `keypoints_yaml`, `camping_sites_yaml`, `startup_mission_key`, `goal_reached_dwell_s`; HH_260619 - recent UI `mission_key` can override a misleading snapped-goal key match during the preserve window |
 | Nav2 `planner_server` | `route_goal` `/planning/goal_pose_snapped_ros`, Lanelet2 map, costmaps | `/planning/global_path`, `/planning/route_lanelet_ids` | HH_260619 - default `LaneletRoute` publishes a fixed lanelet-centerline route and exact route lanelet IDs for route-aware map costs; `SmacLattice`, `NavFn`, `Smac2D`, `SmacHybrid`, `ThetaStar` remain selectable diagnostics/free-space fallbacks; BT uses `GoalUpdatedController`, so global path is recomputed on goal/preemption/recovery, not continuously while following |
 | Nav2 `controller_server` | `/planning/global_path`, costmaps, `/planning/engaged` | `/planning/cmd_vel_raw`, `/planning/local_path_controller` | RPP / DWB / MPPI / Graceful / RotationShim; `xy_goal_tolerance`: 0.15 m; HH_260618 - `EngageAwareProgressChecker` pauses progress timeout before operator engage; HHL_260622 - MPPI path critics are tuned to reduce inside-cutting on high-curvature lanelet centerlines |
@@ -262,7 +263,8 @@ graph TD
 | `/goal_pose` | `geometry_msgs/PoseStamped` | Yes | RViz / camrod_ui | on demand | `site_goal`: raw operator/UI goal; snapped to nearest lanelet centerline |
 | `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | No | camrod_ui | on demand | `mission_key`: named semantic target (e.g. `camping_site_1`) sent to state machine |
 | `/planning/state_machine/camping_site_recall` | `avg_msgs/PlanningRecallRequest` | No | camrod_ui / external | on demand | Recall request; `site_name` = camping site name; triggers road-snap navigation to `<site>_road` when configured |
-| `/planning/engage` | `std_msgs/Bool` | Yes | camrod_system / operator | on demand | Gate open (`true`) / closed (`false`) for velocity passthrough |
+| `/planning/engage` | `std_msgs/Bool` | Yes | operator / camrod_ui manual button | on demand | Manual 2D-goal motion latch only |
+| `/planning/mission_engage` | `std_msgs/Bool` | Yes | camrod_ui / mission state | on demand | UI campsite/drop-zone mission motion latch |
 | `/platform/status/estop` | `std_msgs/Bool` | Yes | camrod_platform | ~10 Hz | Hardware e-stop; immediately zeroes cmd_vel when `true` |
 | `/system/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | No | camrod_system | ~1 Hz | System-level health; drives WARN_RECOVERY / ERROR_STOP state transitions |
 
@@ -276,7 +278,7 @@ graph TD
 | `/planning/path_markers` | `visualization_msgs/MarkerArray` | RViz | on path update + 5 Hz cache | HH_260618 - thick global/local path line, direction arrows, and endpoint markers above cost-grid overlays |
 | `/planning/cmd_vel_raw` | `geometry_msgs/Twist` | planning_cmd_vel_gate_node | 30 Hz | Raw controller velocity before gating |
 | `/planning/cmd_vel` | `geometry_msgs/Twist` | camrod_platform | 30 Hz | Gated velocity command; zeroed on e-stop, cost-stop, disengaged, or hold |
-| `/planning/engaged` | `std_msgs/Bool` | camrod_system, camrod_platform | 30 Hz | Current gate state after all checks |
+| `/planning/engaged` | `std_msgs/Bool` | camrod_system, camrod_platform | 30 Hz | Effective gate state after manual/mission latch, e-stop, cost-stop, and holds |
 | `/planning/cost_grid/global_path` | `nav_msgs/OccupancyGrid` | camrod_sensing, cmd_vel_gate, RViz | on path update + heartbeat | HH_260619 - path-corridor layer generated from `/planning/global_path` for local inflation/gate/visualization; not injected into global planner master to avoid circular replans |
 | `/planning/obstacle_replan/status` | `std_msgs/String` | RViz/logging/system diagnostics | 5 Hz | HH_260619 - dynamic route blockage state; reports CLEAR/BLOCKED and the grid source used before Smac2D fallback preemption |
 | `/planning/ltracking_error` | `AvgTrackingError` | camrod_system | 15 Hz | Lateral and heading tracking error against local path |
@@ -300,7 +302,7 @@ graph TD
 
 **Related params:** `progress_checker.plugin: camrod_planning::EngageAwareProgressChecker`, `progress_checker.engaged_topic`, `progress_checker.default_engaged`, `progress_checker.required_movement_radius`, `progress_checker.movement_time_allowance`.
 
-**Operator-visible behavior:** Goal click creates a global/local path immediately, but `/planning/cmd_vel` and `/platform/cmd_vel` remain zero until `/planning/engage=true`. Waiting before engage no longer aborts the Nav2 action.
+**Operator-visible behavior:** RViz/manual goal clicks create a global/local path immediately, but `/planning/cmd_vel` and `/platform/cmd_vel` remain zero until `/planning/engage=true`. Accepted UI campsite/drop-zone missions instead publish `/planning/mission_engage=true`, so they can move without the manual ENGAGE button.
 
 ---
 
@@ -336,7 +338,7 @@ graph TD
 | Direction | Default Policy | Reason |
 |---|---|---|
 | Forward | checked, threshold 85 | normal Nav2 driving must not leave lanelet drivable space |
-| In-place yaw | allowed | robot must be able to rotate toward the newest route goal |
+| In-place yaw | static lanelet allowed, dynamic cost checked | robot must be able to rotate toward the newest route goal while still stopping for live LiDAR/Radar obstacles |
 | Reverse | not checked by default | drop-zone reverse parking needs mission-specific bounds |
 | Lateral crab | not checked by default | campsite crab entry/exit needs mission-specific bounds |
 
@@ -545,6 +547,7 @@ Key launch arguments:
 | `cmd_vel_gate_cost_stop_enable` | `true` | Cost-based obstacle stop |
 | `cmd_vel_gate_lanelet_safety_enable` | `true` | Raw lanelet-grid hard stop before inflation ego-clear |
 | `cmd_vel_gate_lateral_cmd_bypass_static_cost_stop` | `true` | HH_260618 - explicit site-crab lateral cmd_vel bypasses static lanelet/global-path front/side/rear cost while keeping LiDAR/Radar source stops |
+| `cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop` | `true` | HHL_260624 - pure in-place parking rotation bypasses static lanelet cost but still stops on live LiDAR/Radar cost near the body |
 | `cmd_vel_gate_speed_dependent_lookahead` | `true` | Physics-based braking distance for front corridor |
 | `cmd_vel_gate_cost_width_m` | `1.27` | HHL_260623 - measured body width plus 0.10 m margin per side |
 | `cmd_vel_gate_front_lookahead_min_m` | `1.30137` | HHL_260623 - measured front body extent plus 0.10 m margin |
@@ -616,7 +619,7 @@ ros2 topic echo /planning/progress/remaining_distance_m
 ### Engage true but no motion
 
 1. Check `/platform/status/estop` — if `true`, e-stop is active.
-2. Check `/planning/engaged` — if `false` while `/planning/engage` is `true`, the gate is blocking.
+2. Check `/planning/engaged` — if `false` while `/planning/engage` or `/planning/mission_engage` is `true`, the planning gate is blocking.
 3. Check for cost-stop: `ros2 topic echo /planning/cost_grid/inflation` — look for high-cost cells near the robot footprint.
 4. Check for GNSS recovery hold: `ros2 topic echo /localization/mode` — if it recently transitioned from `DR_ONLY (2)` to `NORMAL (0)`, the 2 s hold may still be active.
 5. Verify Nav2 lifecycle: `ros2 lifecycle get /controller_server` — must be `active`.
@@ -685,4 +688,4 @@ ros2 topic echo /planning/progress/remaining_distance_m
 
 ### Command Path
 
-Nav2 controller output and parking controller output both target `/planning/cmd_vel_raw`. `planning_cmd_vel_gate_node` applies engage, e-stop, localization recovery hold, raw lanelet safety checks, and inflation cost checks before publishing `/planning/cmd_vel`. HH_260618 - explicit lateral site-crab commands bypass only static front/side/rear lanelet/global-path cost; dynamic LiDAR/Radar source cost still stops the robot. `camrod_platform` then applies the final platform gate before `/platform/cmd_vel`.
+Nav2 controller output and parking controller output both target `/planning/cmd_vel_raw`. `planning_cmd_vel_gate_node` applies engage, e-stop, localization recovery hold, raw lanelet safety checks, and inflation cost checks before publishing `/planning/cmd_vel`. HH_260618 - explicit lateral site-crab/reverse commands bypass only static front/side/rear lanelet/global-path cost; dynamic LiDAR/Radar source cost still stops the robot. HHL_260624 - pure in-place parking rotation also bypasses only static lanelet cost and samples a body-centered live LiDAR/Radar disk before allowing rotation. `camrod_platform` then applies the final platform gate before `/platform/cmd_vel`.
