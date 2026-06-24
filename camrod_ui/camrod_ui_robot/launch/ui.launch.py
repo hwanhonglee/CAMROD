@@ -186,6 +186,11 @@ def generate_launch_description():
             # HHL_260622 - Customer "usage complete" starts campsite crab-out
             # before planning is allowed to route back to the drop zone.
             'parking_site_return_topic': '/parking/site_maneuver/return',
+            # HHL_260624 - Campsite dispatch from the drop-zone waits for a
+            # straight parking-backend exit before publishing the Nav2 goal.
+            'enable_drop_zone_exit_handoff': True,
+            'drop_zone_exit_topic': '/parking/drop_zone/exit',
+            'drop_zone_exit_done_topic': '/parking/drop_zone/exit_done',
             'publish_mission_key': True,
             'publish_goal_pose': True,
             'publish_engage_from_destination': True,
