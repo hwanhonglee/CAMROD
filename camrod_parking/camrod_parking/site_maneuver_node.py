@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from enum import Enum
 
 import rclpy
@@ -177,6 +178,21 @@ class SiteManeuverNode(Node):
         self.rotate_yaw_tolerance_deg = abs(
             float(self.declare_parameter("rotate_yaw_tolerance_deg", 4.0).value)
         )
+        # HHL_260624 - Force campsite 180deg body rotation toward the lanelet side.
+        self.site_rotate_direction_policy = str(
+            self.declare_parameter("site_rotate_direction_policy", "site_index_lanelet_side").value
+        ).strip().lower()
+        if self.site_rotate_direction_policy not in {"site_index_lanelet_side", "shortest"}:
+            self.get_logger().warn(
+                f"unknown site_rotate_direction_policy='{self.site_rotate_direction_policy}'; using shortest"
+            )
+            self.site_rotate_direction_policy = "shortest"
+        self.right_lanelet_site_indices = self._int_set(
+            self.declare_parameter("right_lanelet_site_indices", [1, 3, 5, 7, 9, 11]).value
+        )
+        self.left_lanelet_site_indices = self._int_set(
+            self.declare_parameter("left_lanelet_site_indices", [2, 4, 6, 8, 10, 12, 13]).value
+        )
         # HHL_260622 - Match the package/config fallback reverse speed.
         self.reverse_entry_speed_mps = abs(
             float(self.declare_parameter("reverse_entry_speed_mps", 0.16).value)
@@ -293,6 +309,8 @@ class SiteManeuverNode(Node):
         self.phase_start_s = self._now_s()
         self.start_yaw = 0.0
         self.target_yaw = 0.0
+        self.rotate_direction_sign = 0.0
+        self.rotate_direction_label = "shortest"
         self.entry_target_yaw = 0.0
         self.entry_reverse_axis_yaw = 0.0
         self.entry_line_origin_x = 0.0
@@ -331,6 +349,23 @@ class SiteManeuverNode(Node):
 
     def _now_s(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
+
+    # HHL_260624 - Normalize YAML list/string campsite index parameters.
+    @staticmethod
+    def _int_set(value: object) -> set[int]:
+        if isinstance(value, str):
+            raw_items = [item.strip() for item in value.split(",")]
+        elif isinstance(value, (list, tuple, set)):
+            raw_items = list(value)
+        else:
+            raw_items = [value]
+        result: set[int] = set()
+        for item in raw_items:
+            try:
+                result.add(int(item))
+            except (TypeError, ValueError):
+                continue
+        return result
 
     def _is_active_phase(self) -> bool:
         return self.phase not in {Phase.IDLE, Phase.DONE, Phase.ERROR}
@@ -533,6 +568,30 @@ class SiteManeuverNode(Node):
                 "site_maneuver restored route_goal from current pose at Nav2 GOAL_REACHED"
             )
 
+    # HHL_260624 - Extract campsite index from semantic mission strings.
+    def _site_index_from_text(self, text: str) -> int | None:
+        match = re.search(r"camping_site_(\d+)", text or "")
+        if match is None:
+            return None
+        return int(match.group(1))
+
+    # HHL_260624 - Map odd/even park campsite groups to lanelet-side rotation direction.
+    def _rotation_direction_for_source(self, source: str) -> tuple[float, str]:
+        if self.site_rotate_direction_policy != "site_index_lanelet_side":
+            return 0.0, "shortest"
+        site_index = (
+            self._site_index_from_text(source)
+            or self._site_index_from_text(self.site_goal_key)
+            or self._site_index_from_text(self.last_auto_key)
+        )
+        if site_index is None:
+            return 0.0, "shortest"
+        if site_index in self.right_lanelet_site_indices:
+            return -1.0, f"right_cw_site_{site_index}"
+        if site_index in self.left_lanelet_site_indices:
+            return 1.0, f"left_ccw_site_{site_index}"
+        return 0.0, f"shortest_site_{site_index}"
+
     def _on_planning_state(self, msg: PlanningState) -> None:
         if (
             msg.scenario_id == int(PlanningScenario.RETURN_TO_DROP_ZONE)
@@ -629,7 +688,9 @@ class SiteManeuverNode(Node):
             return False, "invalid lateral motion parameters"
 
         self.start_yaw = yaw_from_pose(self.last_pose)  # type: ignore[arg-type]
-        self.target_yaw = normalize_angle(self.start_yaw + math.pi)
+        self.rotate_direction_sign, self.rotate_direction_label = self._rotation_direction_for_source(source)
+        rotation_delta = self.rotate_direction_sign * math.pi if self.rotate_direction_sign else math.pi
+        self.target_yaw = normalize_angle(self.start_yaw + rotation_delta)
         self.crab_direction = direction
         self.crab_offset_m = lateral_offset
         self.crab_source = source_name
@@ -652,6 +713,7 @@ class SiteManeuverNode(Node):
         self._set_phase(
             Phase.CRAB_IN,
             f"start={source} offset={lateral_offset:.2f}m direction={direction:+.0f} "
+            f"rotate={self.rotate_direction_label} "
             f"source={source_name} forward={forward_residual:.2f}m "
             f"timeout_speed_scale={self.crab_timeout_speed_scale:.2f} "
             f"duration={self.crab_duration_s:.1f}s",
@@ -691,6 +753,8 @@ class SiteManeuverNode(Node):
         )
         self.entry_target_yaw = normalize_angle(self.entry_reverse_axis_yaw + math.pi)
         self.target_yaw = self.entry_target_yaw
+        self.rotate_direction_sign = 0.0
+        self.rotate_direction_label = "shortest"
         self.entry_line_origin_x = self.entry_target_x
         self.entry_line_origin_y = self.entry_target_y
         self.entry_target_progress_m = (
@@ -1033,6 +1097,33 @@ class SiteManeuverNode(Node):
             self._set_error(f"pose timeout during {self.phase.value.lower()} yaw control")
             return False
         yaw = yaw_from_pose(self.last_pose)  # type: ignore[arg-type]
+        if self.phase == Phase.ROTATE_180 and self.rotate_direction_sign != 0.0:
+            target_delta = self.rotate_direction_sign * math.pi
+            traveled = normalize_angle(yaw - self.start_yaw)
+            if self.rotate_direction_sign > 0.0 and traveled < 0.0:
+                traveled += 2.0 * math.pi
+            elif self.rotate_direction_sign < 0.0 and traveled > 0.0:
+                traveled -= 2.0 * math.pi
+            remaining = target_delta - traveled
+            if abs(math.degrees(remaining)) <= self.rotate_yaw_tolerance_deg:
+                self._publish_zero()
+                return True
+            cmd = Twist()
+            if self.rotate_direction_sign * remaining > 0.0:
+                angular_speed = min(
+                    self.max_angular_speed_radps,
+                    max(0.05, abs(self.rotate_kp * remaining)),
+                )
+                cmd.angular.z = self.rotate_direction_sign * angular_speed
+            else:
+                err = normalize_angle(self.target_yaw - yaw)
+                cmd.angular.z = clamp(
+                    self.rotate_kp * err,
+                    -self.max_angular_speed_radps,
+                    self.max_angular_speed_radps,
+                )
+            self.cmd_pub.publish(cmd)
+            return False
         err = normalize_angle(self.target_yaw - yaw)
         if abs(math.degrees(err)) <= self.rotate_yaw_tolerance_deg:
             self._publish_zero()

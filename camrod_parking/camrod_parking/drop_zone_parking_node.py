@@ -59,6 +59,12 @@ class DropZoneParkingNode(Node):
         self.reverse_path_topic = str(
             self.declare_parameter("reverse_path_topic", "/parking/drop_zone/reverse_path").value
         )
+        # HHL_260624 - Planning publishes the selected raw drop-zone area here.
+        # This keeps rule-based reverse parking aligned with the exact station
+        # chosen from drop_zones.yaml instead of a generic first-entry fallback.
+        self.drop_zone_goal_raw_topic = str(
+            self.declare_parameter("drop_zone_goal_raw_topic", "/planning/drop_zone_goal_raw").value
+        )
 
         self.drop_zones_yaml = str(self.declare_parameter("drop_zones_yaml", "").value)
         self.drop_zone_id = str(self.declare_parameter("drop_zone_id", "drop_zone").value)
@@ -130,12 +136,8 @@ class DropZoneParkingNode(Node):
             self.declare_parameter("status_publish_rate_hz", 1.0).value
         )
 
-        self.station_x_m, self.station_y_m, self.station_yaw_deg = self._resolve_station_pose()
-        self.station_yaw = math.radians(self.station_yaw_deg)
-        self.base_target_robot_yaw = normalize_angle(
-            self.station_yaw + (math.pi if self.rear_matches_station_yaw else 0.0)
-        )
-        self.target_robot_yaw = self.base_target_robot_yaw
+        station_x_m, station_y_m, station_yaw_deg = self._resolve_station_pose()
+        self._apply_station_pose(station_x_m, station_y_m, station_yaw_deg, "config", log=False)
 
         self.cmd_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
         self.status_pub = self.create_publisher(ModuleState, self.status_topic, 10)
@@ -146,6 +148,8 @@ class DropZoneParkingNode(Node):
         self.reverse_path_pub = self.create_publisher(Path, self.reverse_path_topic, 10)
 
         self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
+        if self.drop_zone_goal_raw_topic:
+            self.create_subscription(PoseStamped, self.drop_zone_goal_raw_topic, self._on_drop_zone_goal_raw, 10)
         self.create_subscription(Bool, self.charging_topic, self._on_charging, 10)
         self.create_subscription(PlanningState, self.planning_state_topic, self._on_planning_state, 10)
         self.create_subscription(Bool, self.start_topic, self._on_start_bool, 10)
@@ -168,7 +172,8 @@ class DropZoneParkingNode(Node):
         self.get_logger().info(
             "drop_zone_parking ready: "
             f"station=({self.station_x_m:.2f}, {self.station_y_m:.2f}, "
-            f"{self.station_yaw_deg:.1f}deg) cmd={self.cmd_vel_topic}"
+            f"{self.station_yaw_deg:.1f}deg) raw_goal={self.drop_zone_goal_raw_topic or '(disabled)'} "
+            f"cmd={self.cmd_vel_topic}"
         )
 
     def _now_s(self) -> float:
@@ -217,9 +222,38 @@ class DropZoneParkingNode(Node):
             float(selected.get("yaw_deg", self.station_yaw_deg)),
         )
 
+    def _apply_station_pose(self, x_m: float, y_m: float, yaw_deg: float, source: str, log: bool = True) -> None:
+        self.station_x_m = float(x_m)
+        self.station_y_m = float(y_m)
+        self.station_yaw_deg = float(yaw_deg)
+        self.station_yaw = math.radians(self.station_yaw_deg)
+        self.base_target_robot_yaw = normalize_angle(
+            self.station_yaw + (math.pi if self.rear_matches_station_yaw else 0.0)
+        )
+        if not hasattr(self, "phase") or not self._is_active_phase():
+            self.target_robot_yaw = self.base_target_robot_yaw
+        if log:
+            self.get_logger().info(
+                "drop_zone_parking station updated: "
+                f"source={source} xy=({self.station_x_m:.2f},{self.station_y_m:.2f}) "
+                f"yaw={self.station_yaw_deg:.1f}deg"
+            )
+
     def _on_pose(self, msg: PoseStamped) -> None:
         self.last_pose = msg
         self.last_pose_time_s = self._now_s()
+
+    def _on_drop_zone_goal_raw(self, msg: PoseStamped) -> None:
+        if self._is_active_phase():
+            self.get_logger().warn("ignored drop_zone_goal_raw while parking is active")
+            return
+        yaw_deg = math.degrees(yaw_from_pose(msg))
+        self._apply_station_pose(
+            msg.pose.position.x,
+            msg.pose.position.y,
+            yaw_deg,
+            "drop_zone_goal_raw",
+        )
 
     def _on_charging(self, msg: Bool) -> None:
         self.is_charging = bool(msg.data)

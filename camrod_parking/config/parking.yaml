@@ -31,9 +31,9 @@
     # HH_260618: Camping-site center can be ~6 m from the lanelet-snap pose;
     # 3 m clipped the crab entry before reaching the selected site.
     max_lateral_offset_m: 7.0
-    # HH_260618: Start crab entry only when the current pose is near the latest
-    # route_goal, so stale GOAL_REACHED cannot start parking during Nav2 approach.
-    route_goal_reached_distance_m: 0.9
+    # HHL_260623 - Start campsite maneuver only after the robot_base_link
+    # center is near the lanelet route goal; 0.9 m started parking too early.
+    route_goal_reached_distance_m: 0.3
     # HH_260618: 0 disables time expiry; the pair remains valid until a new
     # site/route goal replaces it, which is safer for long campsite approaches.
     goal_pair_max_age_s: 0.0
@@ -57,6 +57,10 @@
     rotate_kp: 1.2
     max_angular_speed_radps: 0.35
     rotate_yaw_tolerance_deg: 4.0
+    # HHL_260624 - Rotate toward the lanelet side after crab entry by campsite index.
+    site_rotate_direction_policy: "site_index_lanelet_side"
+    right_lanelet_site_indices: [1, 3, 5, 7, 9, 11]
+    left_lanelet_site_indices: [2, 4, 6, 8, 10, 12, 13]
     # HHL_260622 - Keep reverse mode available for fallback tests, but make it
     # slightly faster than the old 0.12 m/s parking crawl.
     reverse_entry_speed_mps: 0.16
@@ -100,6 +104,8 @@
     amr_service_state_topic: "/AMR_service_state"
     # HHL_260622 - RViz path for the rule-based drop-zone reverse maneuver.
     reverse_path_topic: "/parking/drop_zone/reverse_path"
+    # HHL_260624 - Selected raw drop-zone pose from planning; synchronizes multi-drop-zone maps.
+    drop_zone_goal_raw_topic: "/planning/drop_zone_goal_raw"
 
     drop_zones_yaml: ""
     drop_zone_id: "drop_zone"
