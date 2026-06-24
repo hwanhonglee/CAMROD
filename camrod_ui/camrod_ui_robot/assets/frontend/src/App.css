@@ -309,6 +309,13 @@ body {
   animation: pulse-text 1.5s ease-in-out infinite;
 }
 
+/* HHL_260623 - Manual ENGAGE off pauses motion after an accepted site mission. */
+.preview-paused {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #e65100;
+}
+
 .preview-arrived {
   font-size: 1.3rem;
   font-weight: 800;
@@ -1319,6 +1326,16 @@ h1 {
 .toggle-card.on:hover {
   background: linear-gradient(145deg, #43a047, #2d6e40);
   transform: none;
+}
+
+/* HHL_260623 - Distinguish selected mission from actual motion authorization. */
+.toggle-card.on.paused {
+  background: linear-gradient(145deg, #ffb74d, #e65100);
+  box-shadow: 0 0 20px rgba(230, 81, 0, 0.35), 3px 3px 10px rgba(0,0,0,0.15);
+}
+
+.toggle-card.on.paused:hover {
+  background: linear-gradient(145deg, #ffb74d, #e65100);
 }
 
 /* 선택된 카드 하이라이트 (프리뷰 표시 중) */

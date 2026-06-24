@@ -36,6 +36,9 @@ class ApiState:
     """In-memory snapshot exposed by the HTTP/WebSocket API."""
 
     engaged: bool = False
+    # HHL_260623 - Manual ENGAGE is independent from accepted UI mission engage.
+    mission_engaged: bool = False
+    effective_engaged: bool = False
     ready: bool = False
     operation_mode: str = "STOP"
     ready_message: str = ""
@@ -102,6 +105,9 @@ class UiBackendNode(Node):
         )
         self.planning_engage_topic = str(
             self.declare_parameter("planning_engage_topic", "/planning/engage").value
+        )
+        self.planning_mission_engage_topic = str(
+            self.declare_parameter("planning_mission_engage_topic", "/planning/mission_engage").value
         )
         self.planning_mission_key_topic = str(
             self.declare_parameter("planning_mission_key_topic", "/planning/mission_key").value
@@ -220,6 +226,9 @@ class UiBackendNode(Node):
             UiDestinationCommand, self.ui_destination_topic, 10
         )
         self.pub_engage = self.create_publisher(Bool, self.planning_engage_topic, 10)
+        self.pub_mission_engage = self.create_publisher(
+            Bool, self.planning_mission_engage_topic, 10
+        )
         self.pub_mission_key = self.create_publisher(
             PlanningMissionKey, self.planning_mission_key_topic, 10
         )
@@ -241,7 +250,8 @@ class UiBackendNode(Node):
             f"host={self.host} port={self.port} "
             f"frontend_dir={str(self.frontend_dir) if self.frontend_dir else '(builtin)'} "
             f"destination_topic={self.ui_destination_topic} "
-            f"engage_topic={self.planning_engage_topic} "
+            f"manual_engage_topic={self.planning_engage_topic} "
+            f"mission_engage_topic={self.planning_mission_engage_topic} "
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"return_topic={self.planning_return_to_drop_zone_topic} "
@@ -573,8 +583,11 @@ class UiBackendNode(Node):
             self._state.diagnostics_agg_error_count = error_count
             self._state.ready = ready
             self._state.ready_message = ready_message
+            self._state.effective_engaged = bool(
+                self._state.engaged or self._state.mission_engaged
+            )
             self._state.operation_mode = self._compute_operation_mode(
-                self._state.engaged,
+                self._state.effective_engaged,
                 self._state.ready,
             )
 
@@ -605,8 +618,12 @@ class UiBackendNode(Node):
                 site = self._state.destination.get("site", "")
             if site:
                 self._schedule_broadcast({"arrived": site})
-            self._publish_engage(False, source=f"amr_service_state:{parking_phase or 'SITE_ARRIVED'}")
+            self._publish_mission_engage(
+                False,
+                source=f"amr_service_state:{parking_phase or 'SITE_ARRIVED'}",
+            )
         elif state == AvgAmrServiceState.DROP_ZONE_WAIT:
+            self._publish_mission_engage(False, source="amr_service_state:DROP_ZONE_WAIT")
             self._schedule_broadcast({"amr_state": 0})
         elif state == AvgAmrServiceState.GUEST_RECALL_SERVICE:
             # HJ_260601: Notify robot UI that guest requested a recall.
@@ -632,6 +649,9 @@ class UiBackendNode(Node):
         with self._lock:
             parking_phase = self._state.parking_phase
             amr_state = int(self._state.amr_service_state)
+        # HHL_260623 - Return from inside a campsite must exit by site_maneuver
+        # first. If UI sends a direct planning return while the robot is parked
+        # inside the site, Nav2 can drive straight out instead of crab-out.
         if parking_phase in {
             "site_maneuver:ALIGN_ENTRY_YAW",
             "site_maneuver:REVERSE_IN",
@@ -643,7 +663,23 @@ class UiBackendNode(Node):
             "site_maneuver:CRAB_OUT",
         }:
             return True
-        return amr_state == int(getattr(AvgAmrServiceState, "UNLOAD_WAIT", 6))
+        site_internal_states = {
+            int(AvgAmrServiceState.SITE_ARRIVED),
+            int(getattr(AvgAmrServiceState, "SITE_ENTRY", 5)),
+            int(getattr(AvgAmrServiceState, "UNLOAD_WAIT", 6)),
+        }
+        return amr_state in site_internal_states
+
+    def _return_is_redundant_at_drop_zone(self) -> bool:
+        with self._lock:
+            parking_phase = self._state.parking_phase
+            amr_state = int(self._state.amr_service_state)
+        # HHL_260623 - Avoid publishing another drop-zone route when already
+        # waiting/parking at the drop-zone. That duplicate route appears as a
+        # small forward goal and can interrupt the parking backend.
+        if parking_phase.startswith("drop_zone_parking:"):
+            return True
+        return amr_state == int(AvgAmrServiceState.DROP_ZONE_WAIT)
 
     def _publish_amr_service_state(self, state: int, source: str) -> None:
         desc_map = {
@@ -728,15 +764,46 @@ class UiBackendNode(Node):
 
         with self._lock:
             self._state.engaged = bool(enabled)
+            self._state.effective_engaged = bool(
+                self._state.engaged or self._state.mission_engaged
+            )
             self._state.operation_mode = self._compute_operation_mode(
-                self._state.engaged,
+                self._state.effective_engaged,
                 self._state.ready,
             )
+            effective = self._state.effective_engaged
 
         self.get_logger().info(
-            f"engage command ({source}) -> {self.planning_engage_topic}: "
-            f"{str(bool(enabled)).lower()}"
+            f"manual engage command ({source}) -> {self.planning_engage_topic}: "
+            f"{str(bool(enabled)).lower()} effective={str(effective).lower()}"
         )
+
+    def _publish_mission_engage(self, enabled: bool, source: str) -> None:
+        # HHL_260623 - UI campsite/drop-zone scenarios use a mission latch so the
+        # manual ENGAGE button can be turned off without stopping the scenario.
+        msg = Bool()
+        msg.data = bool(enabled)
+        self.pub_mission_engage.publish(msg)
+
+        with self._lock:
+            self._state.mission_engaged = bool(enabled)
+            self._state.effective_engaged = bool(
+                self._state.engaged or self._state.mission_engaged
+            )
+            self._state.operation_mode = self._compute_operation_mode(
+                self._state.effective_engaged,
+                self._state.ready,
+            )
+            effective = self._state.effective_engaged
+
+        self.get_logger().info(
+            f"mission engage command ({source}) -> {self.planning_mission_engage_topic}: "
+            f"{str(bool(enabled)).lower()} effective={str(effective).lower()}"
+        )
+        self._schedule_broadcast({
+            "mission_engage": bool(enabled),
+            "effective_engage": effective,
+        })
 
     def _publish_goal_for_site(self, site: str, source: str) -> Dict[str, Any]:
         mission_key = self._resolve_mission_key_for_site(site)
@@ -970,13 +1037,13 @@ class UiBackendNode(Node):
     def _apply_destination_command(self, site: str, run: bool, source: str) -> Dict[str, Any]:
         if not run:
             if self.publish_engage_from_destination:
-                self._publish_engage(False, source=f"{source}:destination")
+                self._publish_mission_engage(False, source=f"{source}:destination")
             return {
                 "site": site,
                 "run": False,
                 "mission_key": "",
                 "goal_pose_published": False,
-                "message": "run=false -> engage off, goal dispatch skipped",
+                "message": "run=false -> mission engage off, goal dispatch skipped",
             }
 
         with self._lock:
@@ -987,8 +1054,8 @@ class UiBackendNode(Node):
             reservation_code=active_reservation_code,
         )
         if not access.get("allowed", False):
-            if self.publish_engage_from_destination:
-                self._publish_engage(False, source=f"{source}:site_access_rejected")
+            # HHL_260623 - A rejected new destination must not close an already
+            # active manual or mission engage latch. It is only a rejected request.
             return {
                 "site": site,
                 "run": False,
@@ -1001,7 +1068,7 @@ class UiBackendNode(Node):
         # HHL_260622 - Engage only after the destination gate accepts the mission.
         # Direct /ui/selected_destination publishers must not open cmd_vel before validation.
         if self.publish_engage_from_destination:
-            self._publish_engage(True, source=f"{source}:destination")
+            self._publish_mission_engage(True, source=f"{source}:destination")
         self._publish_amr_service_state(AvgAmrServiceState.MOVING_TO_SITE, source=f"{source}:start")
         goal_result = self._publish_goal_for_site(site=site, source=source)
         return {
@@ -1035,7 +1102,11 @@ class UiBackendNode(Node):
     def _snapshot(self) -> Dict[str, Any]:
         with self._lock:
             return {
-                "engaged": self._state.engaged,
+                # HHL_260623 - Keep legacy /ui/state "engaged" as final gate state.
+                "engaged": self._state.effective_engaged,
+                "manual_engaged": self._state.engaged,
+                "mission_engaged": self._state.mission_engaged,
+                "effective_engaged": self._state.effective_engaged,
                 "ready": self._state.ready,
                 "operation_mode": self._state.operation_mode,
                 "ready_message": self._state.ready_message,
@@ -1056,12 +1127,16 @@ class UiBackendNode(Node):
 
     def set_engage(self, value: bool) -> Dict[str, Any]:
         self._publish_engage(bool(value), source="http")
-        self._schedule_broadcast({"engage": bool(value)})
+        with self._lock:
+            effective = self._state.effective_engaged
+        self._schedule_broadcast({"engage": bool(value), "effective_engage": effective})
         return {"success": True, "message": "engage command published", "value": bool(value)}
 
     def set_operation_mode(self, value: bool) -> Dict[str, Any]:
         self._publish_engage(bool(value), source="http_operation_mode")
-        self._schedule_broadcast({"engage": bool(value)})
+        with self._lock:
+            effective = self._state.effective_engaged
+        self._schedule_broadcast({"engage": bool(value), "effective_engage": effective})
         return {
             "success": True,
             "message": "operation_mode command forwarded as engage",
@@ -1070,21 +1145,44 @@ class UiBackendNode(Node):
 
     def set_auto(self) -> Dict[str, Any]:
         self._publish_engage(True, source="http_auto")
-        self._schedule_broadcast({"engage": True})
+        with self._lock:
+            effective = self._state.effective_engaged
+        self._schedule_broadcast({"engage": True, "effective_engage": effective})
         return {"success": True, "message": "auto command published"}
 
     def set_stop(self) -> Dict[str, Any]:
+        # HHL_260624 - Stop is a safety command, not only a manual-drive latch.
+        # Close both manual engage and mission engage so return-to-drop-zone can be paused.
         self._publish_engage(False, source="http_stop")
-        self._schedule_broadcast({"engage": False})
+        self._publish_mission_engage(False, source="http_stop")
+        with self._lock:
+            effective = self._state.effective_engaged
+        self._schedule_broadcast(
+            {
+                "engage": False,
+                "mission_engage": False,
+                "effective_engage": effective,
+            }
+        )
         return {"success": True, "message": "stop command published"}
 
     def request_return_to_drop_zone(self, source: str) -> Dict[str, Any]:
         # HHL_260622 - One public return command, two safe backends:
         # campsite internal phase -> parking/site_maneuver crab-out first;
         # all other phases -> direct planning return.
+        if self._return_is_redundant_at_drop_zone():
+            self._schedule_broadcast({"returning": False})
+            self.get_logger().info(
+                f"return-to-drop-zone request ({source}) ignored: already at drop-zone"
+            )
+            return {
+                "success": True,
+                "message": "already at drop-zone; return command ignored",
+                "mode": "already_drop_zone",
+            }
         return_requires_site_maneuver = self._return_requires_site_maneuver()
         self._publish_amr_service_state(AvgAmrServiceState.RETURNING_TO_DROP_ZONE, source=source)
-        self._publish_engage(True, source=source)
+        self._publish_mission_engage(True, source=source)
         if return_requires_site_maneuver:
             self._publish_site_maneuver_return(source=source)
             return_mode = "site_maneuver_return"
@@ -1097,7 +1195,11 @@ class UiBackendNode(Node):
         with self._lock:
             self._state.ws_site_states = {s: False for s in self.site_names}
         self._schedule_broadcast({"states": {s: False for s in self.site_names}})
-        self._schedule_broadcast({"engage": True, "returning": True, "return_mode": return_mode})
+        self._schedule_broadcast({
+            "mission_engage": True,
+            "returning": True,
+            "return_mode": return_mode,
+        })
         return {"success": True, "message": message, "mode": return_mode}
 
     def set_destination(self, site: str, run: bool, reservation_code: str = "") -> Dict[str, Any]:
@@ -1191,12 +1293,18 @@ class UiBackendNode(Node):
             with node._lock:
                 states = dict(node._state.ws_site_states)
                 engage = node._state.engaged
+                mission_engage = node._state.mission_engaged
+                effective_engage = node._state.effective_engaged
                 battery = node._state.battery_percentage
                 amr_state = node._state.amr_service_state
                 amr_description = node._state.amr_service_description
                 parking_phase = node._state.parking_phase
             await ws.send_json({"states": states})
             await ws.send_json({"engage": engage})
+            await ws.send_json({
+                "mission_engage": mission_engage,
+                "effective_engage": effective_engage,
+            })
             await ws.send_json({
                 "amr_state": amr_state,
                 "amr_description": amr_description,
@@ -1242,6 +1350,12 @@ class UiBackendNode(Node):
                                 reservation_code=reservation_code,
                             )
                             if not result.get("success"):
+                                # HHL_260623 - Rejecting a destination must also clear the
+                                # optimistic frontend site state. Site ON means an accepted
+                                # mission, not a pending/unaccepted UI click.
+                                with node._lock:
+                                    node._state.ws_site_states[site] = False
+                                await node._broadcast({"site": site, "state": False})
                                 await ws.send_json({
                                     "error": "site_access_rejected",
                                     "site": site,
@@ -1249,19 +1363,40 @@ class UiBackendNode(Node):
                                     "site_access": result.get("site_access", {}),
                                 })
                                 continue
-                            await node._broadcast({"engage": True})
+                            await node._broadcast({"mission_engage": True})
                         else:
                             with node._lock:
                                 node._state.ws_site_states[site] = False
-                            node._publish_engage(False, source="ws_toggle_off")
+                            node._publish_mission_engage(False, source="ws_toggle_off")
                             await node._broadcast({"site": site, "state": False})
-                            await node._broadcast({"engage": False})
+                            await node._broadcast({"mission_engage": False})
 
                     # {"engage": true/false}
                     if "engage" in payload:
                         new_engage = bool(payload["engage"])
                         node._publish_engage(new_engage, source="ws_engage")
-                        await node._broadcast({"engage": new_engage})
+                        with node._lock:
+                            effective = node._state.effective_engaged
+                        await node._broadcast({
+                            "engage": new_engage,
+                            "effective_engage": effective,
+                        })
+
+                    # HHL_260623 - Mission engage is independent from manual ENGAGE.
+                    # The frontend uses this to pause/resume accepted campsite/drop-zone
+                    # scenarios without affecting arbitrary RViz 2D Goal Pose driving.
+                    if "mission_engage" in payload:
+                        new_mission_engage = bool(payload["mission_engage"])
+                        node._publish_mission_engage(
+                            new_mission_engage,
+                            source="ws_mission_engage",
+                        )
+                        with node._lock:
+                            effective = node._state.effective_engaged
+                        await node._broadcast({
+                            "mission_engage": new_mission_engage,
+                            "effective_engage": effective,
+                        })
 
                     # HH_260617: usage_complete is return-to-drop-zone state=3.
                     # Guest recall request is state=4 and is published by ui_guest_node.
