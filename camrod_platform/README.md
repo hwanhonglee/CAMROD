@@ -8,15 +8,15 @@
 
 `camrod_platform` is the **last safety boundary before hardware**. It sits between the planning stack and the Ranger CAN driver, and it is responsible for three distinct concerns:
 
-1. **`cmd_vel_gate_node`** — gates `/planning/cmd_vel` behind a four-signal safety interlock before the velocity command reaches the robot's drive motors.
+1. **`cmd_vel_gate_node`** — gates `/planning/cmd_vel` behind the effective planning engage state and e-stop before the velocity command reaches the robot's drive motors.
 2. **`robot_visualization_node`** — renders the robot body, sensor frames, planning boundary, and debug range rings as RViz MarkerArray at 5 Hz.
 3. **`sensor_kit_bridge`** — includes `camrod_sensor_kit` to publish all static TF transforms and `/robot_description` (URDF) for every sensor frame.
 
-**Safety interlock — `/platform/cmd_vel` is only published when ALL four conditions hold simultaneously:**
-- `/platform/drive_enable` has published `true`
-- `/planning/engage` has published `true` (when `engage_source_mode:=planning_engage`)
+**Safety interlock — `/platform/cmd_vel` is published only when these conditions hold:**
+- `/planning/engaged` is `true` (default `engage_source_mode:=planning_engaged`)
 - `/platform/status/estop` is `false` (when `estop_source_mode:=platform_status`)
 - The gate node itself is running (`cmd_vel_gate_enable:=true`)
+- Optional `/platform/drive_enable` or `set_enabled` service commands are still supported for bench override flows.
 
 When any condition is not met, the gate publishes a zero `Twist` on `/platform/cmd_vel` (`publish_zero_when_blocked: true`). The gate never passes through a stale velocity from a previous engage cycle.
 
@@ -101,7 +101,7 @@ graph TD
   classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
 
   PLAN_IN((/planning/cmd_vel)) ==> GATE
-  ENGAGE((/planning/engage)) ==> GATE
+  ENGAGE((/planning/engaged)) ==> GATE
   DRIVE_EN((/platform/drive_enable)) ==> GATE
   ESTOP((/platform/status/estop)) ==> GATE
 
@@ -158,8 +158,8 @@ graph TD
 | Topic | Type | Required | Producer | Rate | Meaning |
 |---|---|---|---|---|---|
 | `/planning/cmd_vel` | `geometry_msgs/Twist` | Yes | camrod_planning | ~10–20 Hz | Velocity command from Nav2 controller or planning gate |
-| `/planning/engage` | `std_msgs/Bool` | Yes (if `engage_source_mode:=planning_engage`) | camrod_planning | On change | Operator or state-machine engage signal; `true` arms the gate |
-| `/platform/drive_enable` | `std_msgs/Bool` | Yes | External (UI / operator) | On change | Hardware drive-enable signal; `true` arms the gate |
+| `/planning/engaged` | `std_msgs/Bool` | Yes (if `engage_source_mode:=planning_engaged`) | camrod_planning | On change + heartbeat | Effective planning gate state; true when manual or mission engage is active and planning safety checks pass |
+| `/platform/drive_enable` | `std_msgs/Bool` | No | External / bench operator | On change | Optional direct platform gate override; not used by normal UI campsite missions |
 | `/platform/status/estop` | `std_msgs/Bool` | Yes (if `estop_source_mode:=platform_status`) | Ranger CAN driver (via bridge) | ~50 Hz | E-stop status from CAN bus; `true` blocks the gate |
 | `/localization/pose` | `geometry_msgs/PoseStamped` | Yes | camrod_localization | ~20 Hz | Primary robot pose for visualization anchor |
 | `/sensing/gnss/pose` | `geometry_msgs/PoseStamped` | No (fallback) | camrod_sensing | ~10 Hz | GNSS pose used when localization is stale |
@@ -210,16 +210,16 @@ flowchart TD
   C -- No --> ZERO(Publish zero Twist)
   C -- Yes --> D{❓ estop active?\n/platform/status/estop}
   D -- Yes --> ZERO
-  D -- No --> E{❓ engage active?\n/planning/engage}
+  D -- No --> E{❓ engage active?\n/planning/engaged}
   E -- No --> ZERO
   E -- Yes --> Z
 
   Z ==> OUT((/platform/cmd_vel → Ranger CAN))
   ZERO -.->|publish_zero_when_blocked| OUT
 
-  subgraph ARMING [drive_enabled becomes True when ALL:]
-    E1((/platform/drive_enable == true))
-    E2((/planning/engage == true\nengage_source_mode=planning_engage))
+  subgraph ARMING [normal arming source:]
+    E2((/planning/engaged == true\nengage_source_mode=planning_engaged))
+    E1((optional /platform/drive_enable\nbench override))
   end
 
   subgraph ESTOP_SG [estop becomes True when:]
@@ -246,8 +246,8 @@ flowchart TD
 | `input_cmd_vel_topic` | `/planning/cmd_vel` | Gate input topic |
 | `output_cmd_vel_topic` | `/platform/cmd_vel` | Gate output topic |
 | `enable_topic` | `/platform/drive_enable` | Drive-enable signal topic |
-| `engage_topic` | `/planning/engage` | Planning engage signal topic |
-| `engage_source_mode` | `planning_engage` | Engage source selector (`planning_engage` or `disabled`) |
+| `engage_topic` | `/planning/engaged` | Effective planning engage-state topic |
+| `engage_source_mode` | `planning_engaged` | Engage source selector (`planning_engaged`, `planning_engage`, `topic`, or `disabled`) |
 | `state_topic` | `/platform/drive_enabled` | Published gate state |
 | `estop_source_mode` | `platform_status` | E-stop source selector (`platform_status` or `disabled`) |
 | `estop_topic` | `/platform/status/estop` | E-stop source topic |
@@ -314,7 +314,7 @@ The geometry source file is controlled by the `params_file` argument, which defa
 
 **Trigger:** Startup condition.
 
-**Internal logic:** `allow_on_start: false` means the gate initializes in the closed (zeroed) state. Neither `/planning/engage` nor `/platform/drive_enable` is latched from a previous run.
+**Internal logic:** `allow_on_start: false` means the gate initializes in the closed (zeroed) state. Neither `/planning/engaged` nor optional `/platform/drive_enable` is latched from a previous run.
 
 **Output effect:** `/platform/cmd_vel` publishes zero Twist from startup until an explicit enable is received.
 
@@ -322,7 +322,7 @@ The geometry source file is controlled by the `params_file` argument, which defa
 
 **Related params:** `drive_allow_on_start`
 
-**Related topics:** `/platform/drive_enable`, `/planning/engage`
+**Related topics:** `/platform/drive_enable`, `/planning/engaged`, `/planning/engage`, `/planning/mission_engage`
 
 ---
 
@@ -368,8 +368,8 @@ The geometry source file is controlled by the `params_file` argument, which defa
 | `cmd_vel_in_topic` | `/planning/cmd_vel` | Gate input topic |
 | `cmd_vel_out_topic` | `/platform/cmd_vel` | Gate output topic |
 | `drive_enable_topic` | `/platform/drive_enable` | Drive-enable signal topic |
-| `planning_engage_topic` | `/planning/engage` | Planning engage signal topic |
-| `engage_source_mode` | `planning_engage` | Engage source selector (`planning_engage` or `disabled`) |
+| `planning_engage_topic` | `/planning/engaged` | Effective planning engage-state topic consumed by the platform gate |
+| `engage_source_mode` | `planning_engaged` | Engage source selector (`planning_engaged`, `planning_engage`, `topic`, or `disabled`) |
 | `drive_state_topic` | `/platform/drive_enabled` | Gate state output topic |
 | `estop_source_mode` | `platform_status` | E-stop source selector (`platform_status` or `disabled`) |
 | `estop_topic` | `/platform/status/estop` | E-stop source topic |
@@ -438,20 +438,21 @@ ros2 topic echo /platform/drive_enabled --once
 ```
 Expected: `data: true`. If `false`, continue.
 
-**2. Has `/planning/engage` been published?**
+**2. Is `/planning/engaged` true?**
 ```bash
-ros2 topic echo /planning/engage --once
+ros2 topic echo /planning/engaged --once
 ```
-If no message or `data: false`, the planning engage signal has not been sent. Use the UI or publish manually:
+If no message or `data: false`, the planning gate is closed. For RViz manual goals publish manual engage; for UI campsite missions verify mission engage:
 ```bash
 ros2 topic pub /planning/engage std_msgs/Bool "data: true" --once
+ros2 topic echo /planning/mission_engage --once
 ```
 
-**3. Has `/platform/drive_enable` been published?**
+**3. Is a bench override intentionally being used?**
 ```bash
 ros2 topic echo /platform/drive_enable --once
 ```
-Same action as above if missing.
+Normal UI/RViz operation does not require this topic. Use it only when `engage_source_mode` is configured for a direct bench override instead of `/planning/engaged`.
 
 **4. Is e-stop active?**
 ```bash
