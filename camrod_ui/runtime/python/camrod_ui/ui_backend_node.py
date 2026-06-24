@@ -109,6 +109,21 @@ class UiBackendNode(Node):
         self.planning_mission_engage_topic = str(
             self.declare_parameter("planning_mission_engage_topic", "/planning/mission_engage").value
         )
+        # HHL_260624 - The UI must command manual/mission engage inputs only.
+        # Publishing directly to /planning/engaged races the cmd_vel_gate effective
+        # state and makes campsite missions depend on stale manual button state.
+        if self.planning_engage_topic.strip() == "/planning/engaged":
+            self.get_logger().warn(
+                "planning_engage_topic=/planning/engaged is an output state; "
+                "rewriting manual engage command topic to /planning/engage"
+            )
+            self.planning_engage_topic = "/planning/engage"
+        if self.planning_mission_engage_topic.strip() == "/planning/engaged":
+            self.get_logger().warn(
+                "planning_mission_engage_topic=/planning/engaged is an output state; "
+                "rewriting mission engage command topic to /planning/mission_engage"
+            )
+            self.planning_mission_engage_topic = "/planning/mission_engage"
         self.planning_mission_key_topic = str(
             self.declare_parameter("planning_mission_key_topic", "/planning/mission_key").value
         )
@@ -129,6 +144,17 @@ class UiBackendNode(Node):
                 "parking_site_return_topic",
                 "/parking/site_maneuver/return",
             ).value
+        )
+        # HHL_260624 - From a parked drop-zone, delay campsite /goal_pose until
+        # the parking backend drives straight out and aligns with the lanelet.
+        self.enable_drop_zone_exit_handoff = bool(
+            self.declare_parameter("enable_drop_zone_exit_handoff", True).value
+        )
+        self.drop_zone_exit_topic = str(
+            self.declare_parameter("drop_zone_exit_topic", "/parking/drop_zone/exit").value
+        )
+        self.drop_zone_exit_done_topic = str(
+            self.declare_parameter("drop_zone_exit_done_topic", "/parking/drop_zone/exit_done").value
         )
         self.battery_topic = str(
             self.declare_parameter("battery_topic", "/battery_percentage").value
@@ -218,6 +244,12 @@ class UiBackendNode(Node):
             self._on_amr_service_state,
             10,
         )
+        self.sub_drop_zone_exit_done = self.create_subscription(
+            Bool,
+            self.drop_zone_exit_done_topic,
+            self._on_drop_zone_exit_done,
+            10,
+        )
 
         # Publishers.
         # HH_260617: UI destination and planning mission-key topics now use
@@ -239,7 +271,11 @@ class UiBackendNode(Node):
         self.pub_site_maneuver_return = self.create_publisher(
             Bool, self.parking_site_return_topic, 10
         )
+        self.pub_drop_zone_exit = self.create_publisher(Bool, self.drop_zone_exit_topic, 10)
         self.pub_amr_service_state = self.create_publisher(AvgAmrServiceState, self.amr_service_state_topic, 10)
+
+        self._pending_drop_zone_exit_site = ""
+        self._pending_drop_zone_exit_source = ""
 
         self._server_thread: Optional[threading.Thread] = None
         if self.enable_http_server:
@@ -256,6 +292,7 @@ class UiBackendNode(Node):
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"return_topic={self.planning_return_to_drop_zone_topic} "
             f"site_return_topic={self.parking_site_return_topic} "
+            f"drop_zone_exit_topic={self.drop_zone_exit_topic} "
             f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'} "
             f"site_access_gate={str(self.enable_site_access_gate).lower()} "
             f"delivery_allowed_states={self.delivery_allowed_amr_states}"
@@ -681,6 +718,65 @@ class UiBackendNode(Node):
             return True
         return amr_state == int(AvgAmrServiceState.DROP_ZONE_WAIT)
 
+    def _should_handoff_drop_zone_exit(self) -> bool:
+        # HHL_260624 - A campsite route from a parked drop-zone must not publish
+        # /goal_pose immediately; otherwise Nav2 cuts diagonally through the drop-zone.
+        if not self.enable_drop_zone_exit_handoff:
+            return False
+        with self._lock:
+            parking_phase = self._state.parking_phase
+            amr_state = int(self._state.amr_service_state)
+        return (
+            parking_phase == "drop_zone_parking:PARKED"
+            or amr_state == int(AvgAmrServiceState.DROP_ZONE_WAIT)
+        )
+
+    def _drop_zone_exit_is_active(self) -> bool:
+        with self._lock:
+            parking_phase = self._state.parking_phase
+        return parking_phase in {"drop_zone_parking:EXIT_STRAIGHT", "drop_zone_parking:ALIGN_EXIT_YAW"}
+
+    def _request_drop_zone_exit(self, site: str, source: str) -> None:
+        # HHL_260624 - Store the pending site so the route goal is published only
+        # after /parking/drop_zone/exit_done reports success.
+        self._pending_drop_zone_exit_site = site
+        self._pending_drop_zone_exit_source = source
+        msg = Bool()
+        msg.data = True
+        self.pub_drop_zone_exit.publish(msg)
+        self.get_logger().info(
+            f"drop-zone exit request ({source}) -> {self.drop_zone_exit_topic}: site={site}"
+        )
+
+    def _on_drop_zone_exit_done(self, msg: Bool) -> None:
+        site = self._pending_drop_zone_exit_site
+        source = self._pending_drop_zone_exit_source
+        if not site:
+            return
+        if not msg.data:
+            self.get_logger().warn(f"drop-zone exit failed before site dispatch: site={site}")
+            self._pending_drop_zone_exit_site = ""
+            self._pending_drop_zone_exit_source = ""
+            self._publish_mission_engage(False, source="drop_zone_exit_failed")
+            return
+
+        self._pending_drop_zone_exit_site = ""
+        self._pending_drop_zone_exit_source = ""
+        self._publish_amr_service_state(
+            AvgAmrServiceState.MOVING_TO_SITE,
+            source=f"{source}:drop_zone_exit_done",
+        )
+        result = self._publish_goal_for_site(
+            site=site,
+            source=f"{source}:drop_zone_exit_done",
+            publish_pose=True,
+        )
+        self.get_logger().info(
+            "drop-zone exit completed; dispatched campsite route: "
+            f"site={site} mission_key={result.get('mission_key', '')} "
+            f"goal_pose={str(bool(result.get('goal_pose_published', False))).lower()}"
+        )
+
     def _publish_amr_service_state(self, state: int, source: str) -> None:
         desc_map = {
             AvgAmrServiceState.DROP_ZONE_WAIT:         "Drop Zone 대기 중",
@@ -805,7 +901,12 @@ class UiBackendNode(Node):
             "effective_engage": effective,
         })
 
-    def _publish_goal_for_site(self, site: str, source: str) -> Dict[str, Any]:
+    def _publish_goal_for_site(
+        self,
+        site: str,
+        source: str,
+        publish_pose: bool = True,
+    ) -> Dict[str, Any]:
         mission_key = self._resolve_mission_key_for_site(site)
         if not mission_key:
             return {
@@ -827,7 +928,7 @@ class UiBackendNode(Node):
 
         pose_published = False
         goal = self._keypoints_by_mission_key.get(mission_key)
-        if self.publish_goal_pose and goal is not None:
+        if publish_pose and self.publish_goal_pose and goal is not None:
             pose = PoseStamped()
             pose.header.stamp = self.get_clock().now().to_msg()
             pose.header.frame_id = goal.frame_id
@@ -846,7 +947,7 @@ class UiBackendNode(Node):
                 f"mission_key={mission_key} site={site} xy=({goal.x:.2f},{goal.y:.2f})"
             )
 
-        if self.publish_goal_pose and goal is None:
+        if publish_pose and self.publish_goal_pose and goal is None:
             self.get_logger().warn(
                 f"site goal dispatch skipped: mission key '{mission_key}' is missing in camping_sites_yaml"
             )
@@ -1069,6 +1170,42 @@ class UiBackendNode(Node):
         # Direct /ui/selected_destination publishers must not open cmd_vel before validation.
         if self.publish_engage_from_destination:
             self._publish_mission_engage(True, source=f"{source}:destination")
+        if self._drop_zone_exit_is_active():
+            goal_result = self._publish_goal_for_site(site=site, source=source, publish_pose=False)
+            if goal_result.get("mission_key", ""):
+                # HHL_260624 - During an ongoing drop-zone exit, a newer site
+                # selection replaces the pending destination without publishing /goal_pose.
+                self._pending_drop_zone_exit_site = site
+                self._pending_drop_zone_exit_source = source
+            return {
+                "site": site,
+                "run": True,
+                "mission_key": goal_result.get("mission_key", ""),
+                "goal_pose_published": False,
+                "message": "drop-zone exit active; pending campsite route updated",
+            }
+        if self._should_handoff_drop_zone_exit():
+            goal_result = self._publish_goal_for_site(site=site, source=source, publish_pose=False)
+            if not goal_result.get("mission_key", ""):
+                return {
+                    "site": site,
+                    "run": False,
+                    "mission_key": "",
+                    "goal_pose_published": False,
+                    "message": str(goal_result.get("message", "mission key unavailable")),
+                }
+            self._publish_amr_service_state(
+                AvgAmrServiceState.MOVING_TO_SITE,
+                source=f"{source}:drop_zone_exit_start",
+            )
+            self._request_drop_zone_exit(site=site, source=source)
+            return {
+                "site": site,
+                "run": True,
+                "mission_key": goal_result.get("mission_key", ""),
+                "goal_pose_published": False,
+                "message": "drop-zone exit handoff requested before campsite route",
+            }
         self._publish_amr_service_state(AvgAmrServiceState.MOVING_TO_SITE, source=f"{source}:start")
         goal_result = self._publish_goal_for_site(site=site, source=source)
         return {
