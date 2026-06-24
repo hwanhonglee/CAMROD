@@ -25,7 +25,8 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
 : Node("camera_front_publisher", options)
 {
   this->declare_parameter<std::string>("camera_name", "camera");
-  this->declare_parameter<std::string>("camera_frame_id", "camera_frame");
+  // HHL_260623 - Default to the canonical sensor_kit optical frame when no YAML override is loaded.
+  this->declare_parameter<std::string>("camera_frame_id", "camera_front");
   this->declare_parameter<std::string>("device_path", "/dev/video0");
   this->declare_parameter<int>("image_width", 640);
   this->declare_parameter<int>("image_height", 480);
