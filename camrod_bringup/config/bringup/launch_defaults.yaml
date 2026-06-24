@@ -329,6 +329,7 @@ bringup:
     imu_model: cv7
     imu_param_file: __module_default__
     vanjee_config_path: sensing/lidar/vanjee/config.yaml
+    ground_seg_param_file: sensing/lidar/ground_seg_params.yaml
 
   platform:
     # By default, use internal config defaults declared by platform launch files.

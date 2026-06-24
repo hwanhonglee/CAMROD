@@ -76,15 +76,16 @@ void HpPosRecProduct::callbackNavRelPosNed(const ublox_msgs::msg::NavRELPOSNED9 
     (m.flags & ublox_msgs::msg::NavRELPOSNED9::FLAGS_IS_MOVING) != 0;
 
   if (heading_valid) {
-    RCLCPP_INFO_THROTTLE(
-      node_->get_logger(), *node_->get_clock(), 5000,
-      "Dual antenna heading valid: flags=%u carrier=%s ref_station=%u length_cm=%d heading_deg=%.5f acc_heading_deg=%.5f",
-      m.flags,
-      carrierSolutionLabel(m.flags),
-      m.ref_station_id,
-      m.rel_pos_length,
-      static_cast<double>(m.rel_pos_heading) * 1e-5,
-      static_cast<double>(m.acc_heading) * 1e-5);
+    // HH_260624: Debug — dual antenna heading status spam; commented out to reduce log noise.
+    // RCLCPP_INFO_THROTTLE(
+    //   node_->get_logger(), *node_->get_clock(), 5000,
+    //   "Dual antenna heading valid: flags=%u carrier=%s ref_station=%u length_cm=%d heading_deg=%.5f acc_heading_deg=%.5f",
+    //   m.flags,
+    //   carrierSolutionLabel(m.flags),
+    //   m.ref_station_id,
+    //   m.rel_pos_length,
+    //   static_cast<double>(m.rel_pos_heading) * 1e-5,
+    //   static_cast<double>(m.acc_heading) * 1e-5);
   } else {
     RCLCPP_WARN_THROTTLE(
       node_->get_logger(), *node_->get_clock(), 5000,

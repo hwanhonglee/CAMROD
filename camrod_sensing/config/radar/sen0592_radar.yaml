@@ -15,11 +15,11 @@
 
     # Per-sensor detection angle written to register 0x0208 at startup.
     # Values: 1=15° 2=30° 3=45° 4=60° 5=75°. 0 = skip (sensor retains hardware value).
-    # HHL_260623 - Latest vehicle radar profile uses seven sensors:
-    # FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
+    # HHL_260623 - Latest vehicle radar profile uses seven sensors.
+    # HHL_260624 - Physical left/right labels are swapped while keeping CH9344 port order.
     sensor_angle_config_values: [5, 5, 5, 5, 5, 5, 5]
 
-    # Per-sensor max detection range (m). Order: FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
+    # Per-sensor max detection range (m). Order: FRONT1, FRONT2, RIGHT1, RIGHT2, LEFT1, LEFT2, REAR.
     sensor_max_ranges_m: [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]
     # Hardware range limit (mm) written to register 0x021F. Same order as above.
     sensor_range_config_mm: [1500, 1500, 800, 800, 800, 800, 500]
@@ -29,17 +29,14 @@
     radar_status_topic: "status"
 
     # Sensor mapping
-    # HHL_260623 - Index order is the contract:
-    #   name[i] -> frame_ids[i] -> ports[i] -> topics[i].
-    #   If wiring is swapped, swap all fields at the same index, not only the label.
-    sensor_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]
+    sensor_names: ["FRONT1", "FRONT2", "RIGHT1", "RIGHT2", "LEFT1", "LEFT2", "REAR"]
     frame_ids:
       - "radar_front1_link"
       - "radar_front2_link"
-      - "radar_left1_link"
-      - "radar_left2_link"
       - "radar_right1_link"
       - "radar_right2_link"
+      - "radar_left1_link"
+      - "radar_left2_link"
       - "radar_rear_link"
 
     # CH9344 multi-port device paths: A1/B1..A7/B7 -> USB0..USB6.
@@ -57,8 +54,8 @@
     topics:
       - "front1/range"
       - "front2/range"
-      - "left1/range"
-      - "left2/range"
       - "right1/range"
       - "right2/range"
+      - "left1/range"
+      - "left2/range"
       - "rear/range"

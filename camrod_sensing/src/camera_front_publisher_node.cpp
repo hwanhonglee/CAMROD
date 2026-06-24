@@ -25,8 +25,7 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
 : Node("camera_front_publisher", options)
 {
   this->declare_parameter<std::string>("camera_name", "camera");
-  // HHL_260623 - Default to the canonical sensor_kit optical frame when no YAML override is loaded.
-  this->declare_parameter<std::string>("camera_frame_id", "camera_front");
+  this->declare_parameter<std::string>("camera_frame_id", "camera_frame");
   this->declare_parameter<std::string>("device_path", "/dev/video0");
   this->declare_parameter<int>("image_width", 640);
   this->declare_parameter<int>("image_height", 480);
@@ -295,10 +294,10 @@ void CameraFrontPublisherNode::publishThread()
 
       vpiImageUnlock(vpi_nv12_out_wrapper_);
 
-      // image_raw: rectified BGR, subscriber-gated (~6 MB/frame — skip when no consumers)
+      // image_raw: unrectified BGR, subscriber-gated (~6 MB/frame — skip when no consumers)
       if (image_raw_pub_->get_subscription_count() > 0) {
         cv::Mat bgr;
-        cv::cvtColor(nv12_rect_buf_, bgr, cv::COLOR_YUV2BGR_NV12);
+        cv::cvtColor(nv12_frame, bgr, cv::COLOR_YUV2BGR_NV12);
         auto img_msg = cv_bridge::CvImage(compressed_msg_.header, "bgr8", bgr).toImageMsg();
         image_raw_pub_->publish(std::move(*img_msg));
       }

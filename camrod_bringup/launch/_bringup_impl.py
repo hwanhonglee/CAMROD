@@ -96,6 +96,7 @@ OVERRIDE_SPECS = {
         # HH_260528: imu_param_file resolves model-specific YAML via OVERRIDE_SPECS (file path only).
         'imu_param_file': ('sensing/imu_param_file',),
         'vanjee_config_path': ('sensing/vanjee_config_path',),
+        'ground_seg_param_file': ('sensing/ground_seg_param_file',),
     },
     'platform': {
         'params_file': ('platform/params_file',),
