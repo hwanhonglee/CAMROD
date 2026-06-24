@@ -31,7 +31,7 @@ public:
     //   planning_engage/planning_engaged/topic/enabled/on: subscribe
     //   disabled/off/none: ignore
     engage_source_mode_ =
-      declare_parameter<std::string>("engage_source_mode", "planning_engage");
+      declare_parameter<std::string>("engage_source_mode", "planning_engaged");
     std::transform(
       engage_source_mode_.begin(),
       engage_source_mode_.end(),
