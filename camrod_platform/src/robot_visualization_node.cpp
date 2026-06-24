@@ -2,7 +2,7 @@
 #include <cctype>
 #include <cmath>
 #include <limits>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <avg_msgs/msg/avg_platform_msgs.hpp>
@@ -149,7 +149,9 @@ public:
     // the localization rate, ignoring the configured visualization rate.
     marker_publish_period_s_ = publish_rate_hz > 0.0 ? 1.0 / publish_rate_hz : 1.0;
     body_scale_factor_ = declare_parameter<double>("body_scale_factor", 1.0);
-    planning_boundary_margin_ = declare_parameter<double>("planning_boundary_margin", 0.3);
+    // HHL_260623 - Default visualization boundary margin follows measured robot_params planning margin.
+    planning_boundary_margin_ = declare_parameter<double>(
+      "planning_boundary_margin", params_.planning_margin);
     ground_z_offset_ = declare_parameter<double>("ground_z_offset", 0.0);
     range_ring_radii_ = declare_parameter<std::vector<double>>(
       "range_ring_radii", std::vector<double>{2.0, 4.0, 6.0, 8.0});
@@ -157,6 +159,10 @@ public:
     // ground_z_source options: fixed_offset | lanelet_map.
     ground_z_source_ = normalizeModeToken(
       declare_parameter<std::string>("ground_z_source", "lanelet_map"));
+    // HHL_260623 - Visualization is 2D-ground anchored by default; real pose altitude can be enabled explicitly.
+    // pose_z_source options: ground | pose.
+    pose_z_source_ = normalizeModeToken(
+      declare_parameter<std::string>("pose_z_source", "ground"));
     base_pose_.x = declare_parameter<double>("base_pose.x", 0.0);
     base_pose_.y = declare_parameter<double>("base_pose.y", 0.0);
     base_pose_.z = declare_parameter<double>("base_pose.z", ground_z_offset_);
@@ -181,6 +187,13 @@ public:
         "Invalid ground_z_source='%s'. Falling back to 'lanelet_map'.",
         ground_z_source_.c_str());
       ground_z_source_ = "lanelet_map";
+    }
+    if (pose_z_source_ != "ground" && pose_z_source_ != "pose") {
+      RCLCPP_WARN(
+        get_logger(),
+        "Invalid pose_z_source='%s'. Falling back to 'ground'.",
+        pose_z_source_.c_str());
+      pose_z_source_ = "ground";
     }
 
     auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
@@ -322,7 +335,21 @@ private:
     map_label.text = map_frame_id_;
     markers.markers.emplace_back(map_label);
 
-    // Vehicle bounding box (assume base frame is geometric center)
+    // HHL_260623 - Vehicle body is asymmetric because robot_base_link is the rear-wheel center.
+    const double body_front = params_.body_front_extent * body_scale_factor_;
+    const double body_rear = params_.body_rear_extent * body_scale_factor_;
+    const double body_left = params_.body_left_extent * body_scale_factor_;
+    const double body_right = params_.body_right_extent * body_scale_factor_;
+    const double body_top_z = params_.body_top_z * body_scale_factor_;
+    const double body_bottom_z = params_.body_bottom_z * body_scale_factor_;
+    const double body_length = body_front + body_rear;
+    const double body_width = body_left + body_right;
+    const double body_height = body_top_z - body_bottom_z;
+    const double body_center_x = (body_front - body_rear) * 0.5;
+    const double body_center_y = (body_left - body_right) * 0.5;
+    const double body_center_z = (body_top_z + body_bottom_z) * 0.5;
+
+    // Vehicle bounding box
     if (show_chassis_marker_) {
       avg_msgs::msg::Marker body_marker;
       body_marker.header.frame_id = map_frame_id_;
@@ -331,11 +358,11 @@ private:
       body_marker.id = marker_id++;
       body_marker.type = avg_msgs::msg::Marker::CUBE;
       body_marker.action = avg_msgs::msg::Marker::ADD;
-      body_marker.pose.position = transformLocal(0.0, 0.0, params_.height * 0.5);
+      body_marker.pose.position = transformLocal(body_center_x, body_center_y, body_center_z);
       body_marker.pose.orientation = base_orientation;
-      body_marker.scale.x = params_.length * body_scale_factor_;
-      body_marker.scale.y = params_.width * body_scale_factor_;
-      body_marker.scale.z = params_.height * body_scale_factor_;
+      body_marker.scale.x = body_length;
+      body_marker.scale.y = body_width;
+      body_marker.scale.z = body_height;
       body_marker.color = makeColor(0.1f, 0.65f, 0.9f, 0.25f);
       markers.markers.emplace_back(body_marker);
     }
@@ -354,7 +381,7 @@ private:
     base_label.id = marker_id++;
     base_label.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
     base_label.action = avg_msgs::msg::Marker::ADD;
-    base_label.pose.position = transformLocal(0.0, 0.0, params_.height * 0.5 + 0.3);
+    base_label.pose.position = transformLocal(0.0, 0.0, body_top_z + 0.3);
     base_label.scale.z = kLabelScale;
     base_label.color = makeColor(1.0f, 1.0f, 1.0f, 0.9f);
     base_label.text = base_frame_id_;
@@ -372,13 +399,11 @@ private:
     footprint_marker.color = makeColor(0.15f, 0.8f, 0.9f, 0.8f);
     footprint_marker.pose.position = base_translation;
     footprint_marker.pose.orientation = base_orientation;
-    const double half_length = (params_.length * body_scale_factor_) * 0.5;
-    const double half_width = (params_.width * body_scale_factor_) * 0.5;
-    footprint_marker.points.push_back(makePoint(half_length, half_width, 0.0));
-    footprint_marker.points.push_back(makePoint(half_length, -half_width, 0.0));
-    footprint_marker.points.push_back(makePoint(-half_length, -half_width, 0.0));
-    footprint_marker.points.push_back(makePoint(-half_length, half_width, 0.0));
-    footprint_marker.points.push_back(makePoint(half_length, half_width, 0.0));
+    footprint_marker.points.push_back(makePoint(body_front, body_left, 0.0));
+    footprint_marker.points.push_back(makePoint(body_front, -body_right, 0.0));
+    footprint_marker.points.push_back(makePoint(-body_rear, -body_right, 0.0));
+    footprint_marker.points.push_back(makePoint(-body_rear, body_left, 0.0));
+    footprint_marker.points.push_back(makePoint(body_front, body_left, 0.0));
     markers.markers.emplace_back(footprint_marker);
 
     avg_msgs::msg::Marker boundary_marker;
@@ -392,14 +417,16 @@ private:
     boundary_marker.color = makeColor(1.0f, 0.85f, 0.0f, 0.95f);
     boundary_marker.pose.position = base_translation;
     boundary_marker.pose.orientation = base_orientation;
-    const double boundary_half_length = half_length + planning_boundary_margin_;
-    const double boundary_half_width = half_width + planning_boundary_margin_;
+    const double boundary_front = body_front + planning_boundary_margin_;
+    const double boundary_rear = body_rear + planning_boundary_margin_;
+    const double boundary_left = body_left + planning_boundary_margin_;
+    const double boundary_right = body_right + planning_boundary_margin_;
     std::vector<avg_msgs::msg::Point> boundary_local_points{
-      makePoint(boundary_half_length, boundary_half_width, 0.0),
-      makePoint(boundary_half_length, -boundary_half_width, 0.0),
-      makePoint(-boundary_half_length, -boundary_half_width, 0.0),
-      makePoint(-boundary_half_length, boundary_half_width, 0.0),
-      makePoint(boundary_half_length, boundary_half_width, 0.0)};
+      makePoint(boundary_front, boundary_left, 0.0),
+      makePoint(boundary_front, -boundary_right, 0.0),
+      makePoint(-boundary_rear, -boundary_right, 0.0),
+      makePoint(-boundary_rear, boundary_left, 0.0),
+      makePoint(boundary_front, boundary_left, 0.0)};
     boundary_marker.points = boundary_local_points;
     markers.markers.emplace_back(boundary_marker);
 
@@ -549,13 +576,22 @@ private:
   }
 
   // Exposes known sensor poses as a name->pose map for marker generation.
-  std::unordered_map<std::string, SensorPose> getSensorDictionary() const
+  std::vector<std::pair<std::string, SensorPose>> getSensorDictionary() const
   {
+    // HHL_260623 - Expose the same canonical sensor names used by sensor_kit TF frames.
     return {
       {"imu", params_.imu},
       {"gnss", params_.gnss},
       {"lidar", params_.lidar},
-      {"camera", params_.camera}
+      {"camera/front", params_.camera_front},
+      {"camera/rear", params_.camera_rear},
+      {"radar/front1", params_.radar_front1},
+      {"radar/front2", params_.radar_front2},
+      {"radar/left1", params_.radar_left1},
+      {"radar/left2", params_.radar_left2},
+      {"radar/right1", params_.radar_right1},
+      {"radar/right2", params_.radar_right2},
+      {"radar/rear", params_.radar_rear}
     };
   }
 
@@ -565,7 +601,8 @@ private:
     const auto & pose = msg->pose.pose;
     base_pose_.x = pose.position.x;
     base_pose_.y = pose.position.y;
-    base_pose_.z = pose.position.z + ground_z_offset_ + mapGroundOffset();
+    const double pose_z = pose_z_source_ == "pose" ? pose.position.z : 0.0;
+    base_pose_.z = pose_z + ground_z_offset_ + mapGroundOffset();
     tf2::Quaternion q;
     tf2::fromMsg(pose.orientation, q);
     double roll, pitch, yaw;
@@ -662,10 +699,11 @@ private:
 
   RobotParams params_;
   PoseRPY base_pose_;
-  double planning_boundary_margin_{0.3};
+  double planning_boundary_margin_{0.10};  // HHL_260623 - Default to measured body_extents planning margin.
   double body_scale_factor_{1.0};
   double ground_z_offset_{0.0};
   std::string ground_z_source_{"lanelet_map"};
+  std::string pose_z_source_{"ground"};
   bool publish_tf_{false};
   std::vector<double> range_ring_radii_;
   std::string map_frame_id_;
