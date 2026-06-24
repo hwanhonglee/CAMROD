@@ -30,6 +30,14 @@
     mission_source_topic: "/planning/state_machine/mission_source"
     # HH_260617: Use mission-key naming for semantic destination commands.
     return_mission_key: "drop_zone"
+    # HHL_260624 - Select the map-exported drop-zone area used for return goals.
+    drop_zone_id: "drop_zone"
+    # HHL_260624 - RViz/debug copy of the raw station-center return target.
+    drop_zone_goal_raw_topic: "/planning/drop_zone_goal_raw"
+    # HHL_260624 - Preserve manual /goal_pose drop-zone semantics before goal_snapper snaps to lanelet.
+    raw_goal_topic: "/goal_pose"
+    enable_raw_drop_zone_goal_match: true
+    drop_zone_raw_goal_match_distance_m: 3.0
     mission_key_topic: "/planning/mission_key"
     request_mission_service: "/planning/request_mission"
     status_stream_topic: "/status_stream"
@@ -66,8 +74,11 @@
     docking_status_topic: "/docking/is_charging"
 
     min_goal_publish_interval_s: 1.0
-    goal_reached_distance_m: 0.8
-    # HH_260618 - Return route handoff uses a wider tolerance than campsite
-    # arrival so drop-zone parking starts after Nav2 succeeds near the station.
-    return_goal_reached_distance_m: 1.2
+    # HHL_260623 - Fast auto-return tests use the same center-based arrival
+    # threshold as normal bringup to prevent early test-only success.
+    goal_reached_distance_m: 0.2
+    # HHL_260623 - Return handoff stays slightly wider for drop-zone geometry.
+    return_goal_reached_distance_m: 0.3
+    # HHL_260623 - Hold return GOAL_REACHED for parking handoff reliability.
+    drop_zone_parking_handoff_hold_s: 1.0
     loop_rate_hz: 5.0
