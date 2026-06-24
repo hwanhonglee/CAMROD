@@ -1,0 +1,20 @@
+<CycloneDDS>
+  <Domain>
+    <General>
+      <Interfaces>
+        <NetworkInterface name="lo" multicast="false"/>
+      </Interfaces>
+    </General>
+    <Tracing>
+      <Verbosity>severe</Verbosity>
+    </Tracing>
+    <SharedMemory>
+      <Enable>false</Enable>
+    </SharedMemory>
+    <Internal>
+      <!-- 1920x1080 BGR8 = ~6.2MB/frame; requires net.core.rmem_max >= 20971520 -->
+      <SocketReceiveBufferSize min="20971520B"/>
+      <SocketSendBufferSize min="20971520B"/>
+    </Internal>
+  </Domain>
+</CycloneDDS>

@@ -15,8 +15,7 @@ def generate_launch_description():
         sensing_share, "config", "lidar", "cost_grid.yaml"
     )
 
-    sensing_param_file       = LaunchConfiguration("sensing_param_file")
-    ground_seg_param_file    = LaunchConfiguration("ground_seg_param_file")  # ← 변경
+    ground_seg_param_file    = LaunchConfiguration("ground_seg_param_file")
     enable_lidar_driver      = LaunchConfiguration("enable_lidar_driver")
     enable_lidar_cost_grid   = LaunchConfiguration("enable_lidar_cost_grid")
     vanjee_config_path       = LaunchConfiguration("vanjee_config_path")
@@ -24,17 +23,13 @@ def generate_launch_description():
     module_namespace         = LaunchConfiguration("module_namespace")
     vanjee_driver_namespace  = LaunchConfiguration("vanjee_driver_namespace")
     preprocessor_input_topic = LaunchConfiguration("preprocessor_input_topic")
+    preprocessor_output_topic = LaunchConfiguration("preprocessor_output_topic")
     lidar_filtered_topic     = LaunchConfiguration("lidar_filtered_topic")
-    lidar_status_topic       = LaunchConfiguration("lidar_status_topic")
     lidar_cost_grid_param_file = LaunchConfiguration("lidar_cost_grid_param_file")
 
     return LaunchDescription([
         DeclareLaunchArgument(
-            "sensing_param_file",
-            default_value=os.path.join(sensing_share, "config", "sensing_params.yaml"),
-        ),
-        DeclareLaunchArgument(
-            "ground_seg_param_file",                                          # ← 변경
+            "ground_seg_param_file",
             default_value=os.path.join(sensing_share, "config", "lidar", "ground_seg_params.yaml"),
         ),
         DeclareLaunchArgument(
@@ -51,22 +46,21 @@ def generate_launch_description():
         DeclareLaunchArgument("module_namespace",         default_value="lidar"),
         DeclareLaunchArgument("vanjee_driver_namespace",  default_value="vanjee"),
         DeclareLaunchArgument("preprocessor_input_topic", default_value="vanjee/points_raw"),
+        DeclareLaunchArgument("preprocessor_output_topic", default_value="filtered_cloud"),
         DeclareLaunchArgument("lidar_filtered_topic",     default_value="points_filtered"),
-        DeclareLaunchArgument("lidar_status_topic",       default_value="status"),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(lidar_driver_launch),
             launch_arguments={
-                "sensing_param_file":       sensing_param_file,
-                "ground_seg_param_file":    ground_seg_param_file,            # ← 변경
+                "ground_seg_param_file":    ground_seg_param_file,
                 "enable_lidar_driver":      enable_lidar_driver,
                 "vanjee_config_path":       vanjee_config_path,
                 "enable_vanjee_static_tf":  enable_vanjee_static_tf,
                 "module_namespace":         module_namespace,
                 "vanjee_driver_namespace":  vanjee_driver_namespace,
                 "preprocessor_input_topic": preprocessor_input_topic,
+                "preprocessor_output_topic": preprocessor_output_topic,
                 "lidar_filtered_topic":     lidar_filtered_topic,
-                "lidar_status_topic":       lidar_status_topic,
             }.items(),
         ),
 

@@ -201,8 +201,8 @@ def generate_launch_description():
                  module_namespace="lidar",
                  vanjee_driver_namespace="vanjee",
                  preprocessor_input_topic="vanjee/points_raw",
+                 preprocessor_output_topic="filtered_cloud",
                  lidar_filtered_topic="points_filtered",
-                 lidar_status_topic="status",
             ),
 
             _inc(radar_launch,

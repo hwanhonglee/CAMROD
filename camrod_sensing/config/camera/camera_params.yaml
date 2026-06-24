@@ -39,15 +39,15 @@
     exposure_time_us: 25000
     intrinsics_source: "custom"
     camera_matrix: [
-      867.8957073616848, 0.0,               911.8892022281101,
-      0.0,               870.7794114485896, 561.7588674259021,
+      881.0636076451058, 0.0,               966.9419364472,
+      0.0,               883.2737394915184, 538.4644821384885,
       0.0,               0.0,               1.0
     ]
     distortion_coefficients: [
-      -0.02571812099473933,
-      -0.008561500059412931,
-       0.0027446870144155,
-      -0.00161184746781962
+      -0.02804686885142065,
+      -0.008560461904822351,
+      -0.0006670417315390038,
+       0.0
     ]
 
 /sensing/camera/econ_front/camera_front_publisher:
@@ -67,21 +67,21 @@
     #   custom: enables VPI VIC fisheye remap using camera_matrix + distortion_coefficients
     intrinsics_source: "custom"
 
-    # Calibrated 2026-04-27 (OpenCV equidistant/fisheye, reprojection error: 0.0634)
+    # Calibrated 2026-06-24 (OpenCV equidistant/fisheye, reprojection error: 0.067882)
     # K = [fx,  0, cx]
     #     [ 0, fy, cy]
     #     [ 0,  0,  1]
     camera_matrix: [
-      867.8957073616848, 0.0,               911.8892022281101,
-      0.0,               870.7794114485896, 561.7588674259021,
+      881.0636076451058, 0.0,               966.9419364472,
+      0.0,               883.2737394915184, 538.4644821384885,
       0.0,               0.0,               1.0
     ]
     # equidistant (fisheye): [k1, k2, k3, k4]
     distortion_coefficients: [
-      -0.02571812099473933,
-      -0.008561500059412931,
-       0.0027446870144155,
-      -0.00161184746781962
+      -0.02804686885142065,
+      -0.008560461904822351,
+      -0.0006670417315390038,
+       0.0
     ]
 
 # ── Rear camera (camera_rear_publisher_node: OpenCV GStreamer + CPU JPEG) ──────

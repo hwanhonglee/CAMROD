@@ -1,0 +1,23 @@
+/sensing/lidar/ground_segmentation: #HJ_260623 fixed: PushRosNamespace("sensing") wraps lidar, actual full ns is /sensing/lidar
+  ros__parameters:
+    robot_frame: "lidar_link"
+    maxX:  3.0
+    minX:  0.0
+    maxY:  1.5
+    minY: -1.5
+    maxZ:  1.0
+    minZ: -1.0
+    downsample: true
+    downsample_resolution: 0.06
+    lidar_to_ground: -0.75
+    transform_tolerance: 0.1
+    cellSizeX: 0.3
+    cellSizeY: 0.3
+    cellSizeZ: 1.0
+    cellSizeZPhase2: 0.1
+    slopeThresholdDegrees: 20.0
+    groundInlierThreshold: 0.05
+    centroidSearchRadius: 1.0
+    maxGroundHeightDeviation: 0.05
+    use_imu_orientation: false
+    show_benchmark: false

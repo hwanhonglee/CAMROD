@@ -1,153 +1,183 @@
-#include <cmath>
-#include <memory>
-#include <string>
-
-#include <avg_msgs/msg/point_cloud2.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <visualization_msgs/msg/marker.hpp>
 
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/point_types.h>
-#include <pcl/segmentation/sac_segmentation.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-class GroundFilterNode : public rclcpp::Node
-{
+#include <cmath>
+#include <string>
+
+/**
+ * LiDAR preprocessor node.
+ * 역할: 각도 필터 + ROI 박스 + Voxel Downsampling
+ * 흐름: points_raw -> (이 노드) -> filtered_cloud -> ground_segmentation_ros2
+ *
+ * HJ_260623: ground_segmentation_ros2 앞단 전처리로 원본 포인트를 줄여
+ * ground_seg/perception 부하를 낮춘다.
+ */
+class LidarPreprocessorNode : public rclcpp::Node {
 public:
-  GroundFilterNode() : Node("lidar_preprocessor")
-  {
+  LidarPreprocessorNode() : Node("lidar_preprocessor") {
     this->declare_parameter<std::string>("input_topic", "vanjee/points_raw");
-    this->declare_parameter<std::string>("filtered_topic", "points_filtered");
-    this->declare_parameter<std::string>("lidar_status_topic", "status");
+    this->declare_parameter<std::string>("output_topic", "filtered_cloud");
+    this->declare_parameter<std::string>("marker_frame_id", "lidar_link");
 
-    this->declare_parameter<std::string>("method", "ransac");
-    this->declare_parameter<double>("z_min", -0.25);
-    this->declare_parameter<double>("z_max", 0.25);
-    this->declare_parameter<double>("voxel_leaf", 0.10);
-    this->declare_parameter<double>("ransac_dist_thresh", 0.12);
-    this->declare_parameter<int>("ransac_max_iter", 120);
+    this->declare_parameter("angle_filter_deg", 64.0);
+    this->declare_parameter("roi_x_min",  0.0);
+    this->declare_parameter("roi_x_max",  3.0);
+    this->declare_parameter("roi_y_min", -1.5);
+    this->declare_parameter("roi_y_max",  1.5);
+    this->declare_parameter("roi_z_min", -1.0);
+    this->declare_parameter("roi_z_max",  1.0);
+    this->declare_parameter("voxel_leaf_size", 0.03);
 
-    this->get_parameter("input_topic", input_topic_);
-    this->get_parameter("filtered_topic", filtered_topic_);
-    this->get_parameter("lidar_status_topic", lidar_status_topic_);
+    input_topic_ = this->get_parameter("input_topic").as_string();
+    output_topic_ = this->get_parameter("output_topic").as_string();
+    marker_frame_id_ = this->get_parameter("marker_frame_id").as_string();
 
-    this->get_parameter("method", method_);
-    this->get_parameter("z_min", z_min_);
-    this->get_parameter("z_max", z_max_);
-    this->get_parameter("voxel_leaf", voxel_leaf_);
-    this->get_parameter("ransac_dist_thresh", ransac_dist_thresh_);
-    this->get_parameter("ransac_max_iter", ransac_max_iter_);
+    angle_filter_rad_ = this->get_parameter("angle_filter_deg").as_double() * M_PI / 180.0;
+    this->get_parameter("roi_x_min", roi_x_min_);
+    this->get_parameter("roi_x_max", roi_x_max_);
+    this->get_parameter("roi_y_min", roi_y_min_);
+    this->get_parameter("roi_y_max", roi_y_max_);
+    this->get_parameter("roi_z_min", roi_z_min_);
+    this->get_parameter("roi_z_max", roi_z_max_);
+    this->get_parameter("voxel_leaf_size", voxel_leaf_size_);
 
-    auto qos = rclcpp::SensorDataQoS().keep_last(1);
+    voxel_filter_.setLeafSize(voxel_leaf_size_, voxel_leaf_size_, voxel_leaf_size_);
 
-    // HH_260326: Keep intra-stack lidar transport aligned on avg_msgs aliases.
-    sub_ = this->create_subscription<avg_msgs::msg::PointCloud2>(
+    // ground_segmentation_ros2 subscribes reliably; keep this edge reliable too.
+    auto qos = rclcpp::QoS(rclcpp::KeepLast(10)).reliable();
+    sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       input_topic_,
       qos,
-      std::bind(&GroundFilterNode::cb, this, std::placeholders::_1)
-    );
+      std::bind(&LidarPreprocessorNode::callback, this, std::placeholders::_1));
 
-    pub_filtered_ = this->create_publisher<avg_msgs::msg::PointCloud2>(
-      filtered_topic_,
-      qos
-    );
+    pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+      output_topic_,
+      qos);
 
-    RCLCPP_INFO(this->get_logger(), "Ground filter started");
-    RCLCPP_INFO(this->get_logger(), "  input_topic    : %s", input_topic_.c_str());
-    RCLCPP_INFO(this->get_logger(), "  filtered_topic : %s", filtered_topic_.c_str());
-    RCLCPP_INFO(this->get_logger(), "  method         : %s", method_.c_str());
+    marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("roi_marker", 10);
+    marker_timer_ = this->create_wall_timer(
+      std::chrono::seconds(1),
+      std::bind(&LidarPreprocessorNode::publishRoiMarker, this));
+
+    RCLCPP_INFO(this->get_logger(), "[camrod] LiDAR preprocessor started");
+    RCLCPP_INFO(
+      this->get_logger(),
+      "in=%s out=%s frame=%s | angle: +/-%.0f deg | ROI X[%.1f~%.1f] Y[%.1f~%.1f] Z[%.1f~%.1f] | voxel: %.2fm",
+      input_topic_.c_str(), output_topic_.c_str(), marker_frame_id_.c_str(),
+      this->get_parameter("angle_filter_deg").as_double(),
+      roi_x_min_, roi_x_max_, roi_y_min_, roi_y_max_, roi_z_min_, roi_z_max_,
+      voxel_leaf_size_);
   }
 
 private:
-  void cb(const avg_msgs::msg::PointCloud2::SharedPtr msg)
-  {
-    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>());
-    pcl::fromROSMsg(*msg, *cloud);
+  void callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+    pcl::PointCloud<pcl::PointXYZI>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZI>());
 
-    if (cloud->empty()) {
+    sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_y(*msg, "y");
+    sensor_msgs::PointCloud2ConstIterator<float> iter_z(*msg, "z");
+
+    for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+      const float x = *iter_x;
+      const float y = *iter_y;
+      const float z = *iter_z;
+      if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+        continue;
+      }
+
+      const double azimuth = std::atan2(y, x);
+      if (std::fabs(azimuth) > angle_filter_rad_) {
+        continue;
+      }
+
+      if (x < roi_x_min_ || x > roi_x_max_) {
+        continue;
+      }
+      if (y < roi_y_min_ || y > roi_y_max_) {
+        continue;
+      }
+      if (z < roi_z_min_ || z > roi_z_max_) {
+        continue;
+      }
+
+      pcl::PointXYZI pt;
+      pt.x = x;
+      pt.y = y;
+      pt.z = z;
+      pt.intensity = 0.0f;
+      filtered->push_back(pt);
+    }
+
+    if (filtered->empty()) {
       return;
     }
 
-    pcl::PointCloud<pcl::PointXYZI>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZI>());
+    pcl::PointCloud<pcl::PointXYZI>::Ptr downsampled(new pcl::PointCloud<pcl::PointXYZI>());
+    voxel_filter_.setInputCloud(filtered);
+    voxel_filter_.filter(*downsampled);
 
-    if (method_ == "z")
-    {
-      for (const auto & p : cloud->points)
-      {
-        if (!(p.z >= z_min_ && p.z <= z_max_)) {
-          filtered->points.push_back(p);
-        }
-      }
-    }
-    else
-    {
-      pcl::VoxelGrid<pcl::PointXYZI> vg;
-      vg.setInputCloud(cloud);
-      vg.setLeafSize(voxel_leaf_, voxel_leaf_, voxel_leaf_);
+    sensor_msgs::msg::PointCloud2 out_msg;
+    pcl::toROSMsg(*downsampled, out_msg);
+    out_msg.header = msg->header;
+    pub_->publish(out_msg);
 
-      pcl::PointCloud<pcl::PointXYZI>::Ptr ds(new pcl::PointCloud<pcl::PointXYZI>());
-      vg.filter(*ds);
+    RCLCPP_DEBUG(
+      this->get_logger(), "filtered: %zu -> voxel: %zu",
+      filtered->size(), downsampled->size());
+  }
 
-      pcl::SACSegmentation<pcl::PointXYZI> seg;
-      seg.setOptimizeCoefficients(true);
-      seg.setModelType(pcl::SACMODEL_PLANE);
-      seg.setMethodType(pcl::SAC_RANSAC);
-      seg.setMaxIterations(ransac_max_iter_);
-      seg.setDistanceThreshold(ransac_dist_thresh_);
-      seg.setInputCloud(ds);
-
-      pcl::PointIndices::Ptr inliers(new pcl::PointIndices());
-      pcl::ModelCoefficients::Ptr coeff(new pcl::ModelCoefficients());
-      seg.segment(*inliers, *coeff);
-
-      if (inliers->indices.empty())
-      {
-        *filtered = *ds;
-      }
-      else
-      {
-        const double a = coeff->values[0];
-        const double b = coeff->values[1];
-        const double c = coeff->values[2];
-        const double d = coeff->values[3];
-        const double denom = std::sqrt(a * a + b * b + c * c);
-
-        for (const auto & p : ds->points)
-        {
-          const double dist = std::fabs(a * p.x + b * p.y + c * p.z + d) / (denom + 1e-9);
-          if (dist > ransac_dist_thresh_) {
-            filtered->points.push_back(p);
-          }
-        }
-      }
-    }
-
-    avg_msgs::msg::PointCloud2 out;
-    pcl::toROSMsg(*filtered, out);
-    out.header = msg->header;
-    out.header.stamp = this->get_clock()->now();
-
-    pub_filtered_->publish(out);
+  void publishRoiMarker() {
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = marker_frame_id_;
+    marker.header.stamp = this->now();
+    marker.ns = "roi_box";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::CUBE;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose.position.x = (roi_x_min_ + roi_x_max_) / 2.0;
+    marker.pose.position.y = (roi_y_min_ + roi_y_max_) / 2.0;
+    marker.pose.position.z = (roi_z_min_ + roi_z_max_) / 2.0;
+    marker.pose.orientation.w = 1.0;
+    marker.scale.x = roi_x_max_ - roi_x_min_;
+    marker.scale.y = roi_y_max_ - roi_y_min_;
+    marker.scale.z = roi_z_max_ - roi_z_min_;
+    marker.color.r = 0.0f;
+    marker.color.g = 1.0f;
+    marker.color.b = 0.0f;
+    marker.color.a = 0.2f;
+    marker.lifetime = rclcpp::Duration::from_seconds(2.0);
+    marker_pub_->publish(marker);
   }
 
   std::string input_topic_;
-  std::string filtered_topic_;
-  std::string lidar_status_topic_;
+  std::string output_topic_;
+  std::string marker_frame_id_;
+  double angle_filter_rad_;
+  double roi_x_min_;
+  double roi_x_max_;
+  double roi_y_min_;
+  double roi_y_max_;
+  double roi_z_min_;
+  double roi_z_max_;
+  double voxel_leaf_size_;
 
-  std::string method_;
-  double z_min_;
-  double z_max_;
-  double voxel_leaf_;
-  double ransac_dist_thresh_;
-  int ransac_max_iter_;
-
-  rclcpp::Subscription<avg_msgs::msg::PointCloud2>::SharedPtr sub_;
-  rclcpp::Publisher<avg_msgs::msg::PointCloud2>::SharedPtr pub_filtered_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr marker_pub_;
+  rclcpp::TimerBase::SharedPtr marker_timer_;
+  pcl::VoxelGrid<pcl::PointXYZI> voxel_filter_;
 };
 
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<GroundFilterNode>());
+  rclcpp::spin(std::make_shared<LidarPreprocessorNode>());
   rclcpp::shutdown();
   return 0;
 }
