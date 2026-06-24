@@ -52,6 +52,8 @@
     out_det3d_topic:     "/perception/camera_lidar/detections_3d"
     out_markers_topic:   "/perception/camera_lidar/markers"
     out_euclidean_topic: "/perception/camera_lidar/euclidean_markers"
+    # HHL_260623 - camera_front is the canonical optical TF frame; legacy camera_link was removed from sensor_kit.
+    camera_frame: "camera_front"
     # HH_260522: unified fusion filter selector.
     #   camera_bbox/enabled/on: keep only points inside camera detections
     #   pass_through/disabled/off/none: ignore camera detections and publish projected LiDAR points

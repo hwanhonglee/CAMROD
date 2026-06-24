@@ -29,6 +29,9 @@
     radar_status_topic: "status"
 
     # Sensor mapping
+    # HHL_260623 - Index order is the contract:
+    #   name[i] -> frame_ids[i] -> ports[i] -> topics[i].
+    #   If wiring is swapped, swap all fields at the same index, not only the label.
     sensor_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]
     frame_ids:
       - "radar_front1_link"
