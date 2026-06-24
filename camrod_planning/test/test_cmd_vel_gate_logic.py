@@ -165,6 +165,11 @@ class PoseStamped:
         self.header = Header()
         self.pose = Pose()
 
+class Path:
+    def __init__(self):
+        self.header = Header()
+        self.poses: list[PoseStamped] = []
+
 class Odometry:
     def __init__(self):
         self.header = Header()
@@ -207,7 +212,7 @@ sys.modules.update({
                                          QoSDurabilityPolicy=_mod(TRANSIENT_LOCAL=1)),
     "rcl_interfaces.msg":           _mod(SetParametersResult=SetParametersResult),
     "geometry_msgs.msg":            _mod(PoseStamped=PoseStamped, Twist=Twist),
-    "nav_msgs.msg":                 _mod(OccupancyGrid=OccupancyGrid, Odometry=Odometry),
+    "nav_msgs.msg":                 _mod(OccupancyGrid=OccupancyGrid, Odometry=Odometry, Path=Path),
     "std_msgs.msg":                 _mod(Bool=BoolMsg),
     "tf2_ros":                      _mod(Buffer=FakeBuffer, TransformException=Exception,
                                          TransformListener=FakeTransformListener),
@@ -255,6 +260,7 @@ def make_gate(
     n.input_topic = "/planning/cmd_vel_raw"
     n.output_topic = "/planning/cmd_vel"
     n.engage_topic = "/planning/engage"
+    n.mission_engage_topic = "/planning/mission_engage"
     n.state_topic = "/planning/engaged"
     n.estop_topic_enabled = True
     n.dr_timeout_topic_enabled = True
@@ -271,6 +277,17 @@ def make_gate(
 
     n.enable_cost_stop = True
     n.cost_grid_topic = "/planning/cost_grid/inflation"
+    # HHL_260623 - Unit tests exercise merged cost-stop only; lanelet safety
+    # needs a full map grid fixture and is disabled in this lightweight stub.
+    n.lanelet_safety_enable = False
+    n.lanelet_safety_allow_rotation_in_place = True
+    n.lanelet_safety_min_translation_mps = 0.02
+    # HHL_260624 - Keep route re-entry defaults in the lightweight unit stub.
+    n.lanelet_safety_lookahead_m = 1.0
+    n.lanelet_safety_front_path_allow_route_reentry = True
+    n.lanelet_safety_current_allow_route_reentry = True
+    n.lanelet_safety_current_route_reentry_max_distance_m = 4.0
+    n.lanelet_safety_current_route_reentry_require_front_cmd = True
     n.pose_topic = "/localization/pose"
     n.odometry_topic = "/localization/fallback/odometry"
     n.pose_source_preference = "odometry"
@@ -280,6 +297,14 @@ def make_gate(
     n.cost_stop_lookahead_m = 2.0
     n.cost_stop_width_m = 1.0
     n.cost_stop_hold_s = hold_s
+    n.cost_source_debug_enable = False
+    n.cost_source_debug_max_age_s = 1.0
+    n.cost_stop_require_dynamic_source = False
+    n.cost_stop_dynamic_source_labels = {"lidar", "radar"}
+    n.lateral_cmd_bypass_static_cost_stop = True
+    n.lateral_cmd_bypass_min_mps = 0.02
+    n.reverse_cmd_bypass_static_cost_stop = True
+    n.reverse_cmd_bypass_min_mps = 0.02
 
     n.enable_speed_dependent_lookahead = False  # 고정 lookahead 사용
     n.front_lookahead_min_m = 0.4
@@ -302,6 +327,9 @@ def make_gate(
     n.unavoidable_cluster_min_ratio = 0.25
 
     # ── 내부 상태 ──
+    # HHL_260623 - Manual and UI-mission engage are independent OR latches.
+    n._manual_enabled = False
+    n._mission_enabled = False
     n._enabled = False
     n._estop = False
     n._dr_timeout = False
@@ -312,9 +340,11 @@ def make_gate(
     n._last_unavoidable_cluster_ratio = 0.0
     n._last_tf_warn_sec = 0.0
     n._last_empty_corridor_warn_sec = 0.0
+    n._last_lanelet_front_path_reentry_bypass_log_sec = 0.0
     n._last_block_reason_log_sec = 0.0
     n._current_speed = 0.0
     n._last_grid = None
+    n._last_route_heading_path = None
     n._last_pose = None
     n._last_odom = None
 
@@ -368,6 +398,19 @@ def make_odom(x: float = 0.0, y: float = 0.0, yaw: float = 0.0) -> Odometry:
     odom.pose.pose.orientation.w = math.cos(yaw * 0.5)
     odom.pose.pose.orientation.z = math.sin(yaw * 0.5)
     return odom
+
+
+def make_path(points: list[tuple[float, float]], frame_id: str = "map") -> Path:
+    """경로 거리 계산 테스트용 Path 메시지를 생성합니다."""
+    path = Path()
+    path.header.frame_id = frame_id
+    for x, y in points:
+        pose = PoseStamped()
+        pose.header.frame_id = frame_id
+        pose.pose.position.x = x
+        pose.pose.position.y = y
+        path.poses.append(pose)
+    return path
 
 
 # ─── 테스트 실행 ──────────────────────────────────────────────────────────────
@@ -547,6 +590,11 @@ n._on_engage(BoolMsg(data=False))
 check("engage=False → _effective_enabled() = False", not n._effective_enabled())
 n._on_engage(BoolMsg(data=True))
 check("engage=True → _effective_enabled() = True", n._effective_enabled())
+n._on_mission_engage(BoolMsg(data=True))
+n._on_engage(BoolMsg(data=False))
+check("manual engage off while mission engage true → _effective_enabled() = True", n._effective_enabled())
+n._on_mission_engage(BoolMsg(data=False))
+check("both manual and mission engage false → _effective_enabled() = False", not n._effective_enabled())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -596,6 +644,45 @@ check("v=0 → min lookahead(0.4m)", abs(la_stop - 0.4) < 0.05)
 check("v=1m/s → lookahead > 0.4m", la_1ms > 0.4)
 check("v=3m/s → lookahead <= max(3.0m)", la_3ms <= 3.0)
 check("속도 증가 → lookahead 증가", la_3ms >= la_1ms >= la_stop)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+print("\n=== TEST 12: lanelet FRONT_PATH route re-entry bypass ===")
+print("  사이트/드랍존에서 lanelet으로 재진입할 때 경로 근처 정적 cost만 우회")
+n = make_gate()
+n._enabled = True
+n._last_route_heading_path = make_path([(0.0, 0.0), (2.0, 0.0)])
+cmd = Twist(); cmd.linear.x = 0.2
+near_path_detail = (0.5, 0.0, 100, "path_cost")
+far_path_detail = (5.5, 0.0, 100, "path_cost")
+allow = n._can_bypass_lanelet_front_path_for_route_reentry(
+    cmd,
+    "map",
+    (0.0, 0.0, 0.0),
+    near_path_detail,
+    "pose_raw",
+    300.0,
+)
+deny_far = n._can_bypass_lanelet_front_path_for_route_reentry(
+    cmd,
+    "map",
+    (0.0, 0.0, 0.0),
+    far_path_detail,
+    "pose_raw",
+    301.0,
+)
+cmd_reverse = Twist(); cmd_reverse.linear.x = -0.2
+deny_reverse = n._can_bypass_lanelet_front_path_for_route_reentry(
+    cmd_reverse,
+    "map",
+    (0.0, 0.0, 0.0),
+    near_path_detail,
+    "pose_raw",
+    302.0,
+)
+check("경로 근처 FRONT_PATH static cost → 우회 허용", allow)
+check("lookahead 밖 FRONT_PATH static cost → 우회 금지", not deny_far)
+check("후진/비전방 cmd → FRONT_PATH 우회 금지", not deny_reverse)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -55,6 +55,9 @@ class PlanningCmdVelGateNode(Node):
         self.engage_topic = str(
             self.declare_parameter("engage_topic", "/planning/engage").value
         )
+        self.mission_engage_topic = str(
+            self.declare_parameter("mission_engage_topic", "/planning/mission_engage").value
+        )
         self.state_topic = str(
             self.declare_parameter("state_topic", "/planning/engaged").value
         )
@@ -169,7 +172,8 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("cost_stop_lookahead_m", 2.0).value
         )
         self.cost_stop_width_m = float(
-            self.declare_parameter("cost_stop_width_m", 1.0).value
+            # HHL_260623 - Full robot width plus 0.10 m margin per side.
+            self.declare_parameter("cost_stop_width_m", 1.27).value
         )
         self.cost_stop_hold_s = float(
             self.declare_parameter("cost_stop_hold_s", 1.0).value
@@ -231,6 +235,13 @@ class PlanningCmdVelGateNode(Node):
         # boundary cost near the local path.
         self.lanelet_safety_front_path_width_m = float(
             self.declare_parameter("lanelet_safety_front_path_width_m", 0.25).value
+        )
+        # HHL_260624 - When the robot is leaving a drop-zone/site back to the
+        # lanelet route, the local path can start in static off-lane cost. Allow
+        # only that bounded route-reentry segment; normal FRONT_PATH blocking
+        # still applies once the robot is no longer close to the active path.
+        self.lanelet_safety_front_path_allow_route_reentry = bool(
+            self.declare_parameter("lanelet_safety_front_path_allow_route_reentry", True).value
         )
         # HHL_260622 - When a map/profile starts from a manually placed pose
         # just outside the drivable lanelet, allow one controlled forward
@@ -298,7 +309,8 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("enable_speed_dependent_lookahead", True).value
         )
         self.front_lookahead_min_m = float(
-            self.declare_parameter("front_lookahead_min_m", 0.4).value
+            # HHL_260623 - Include measured front body extent plus planning margin from robot_base_link.
+            self.declare_parameter("front_lookahead_min_m", 1.30137).value
         )
         self.front_lookahead_max_m = float(
             self.declare_parameter("front_lookahead_max_m", 3.0).value
@@ -328,7 +340,8 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("side_lookahead_m", 1.2).value
         )
         self.side_corridor_width_m = float(
-            self.declare_parameter("side_corridor_width_m", 0.6).value
+            # HHL_260623 - Side scans need full body length plus 0.10 m margin front/rear.
+            self.declare_parameter("side_corridor_width_m", 1.69160).value
         )
         self.rear_cost_threshold = int(
             self.declare_parameter("rear_cost_threshold", 85).value
@@ -337,7 +350,8 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("rear_lookahead_m", 0.8).value
         )
         self.rear_corridor_width_m = float(
-            self.declare_parameter("rear_corridor_width_m", 0.9).value
+            # HHL_260623 - Rear scans need full body width plus 0.10 m margin per side.
+            self.declare_parameter("rear_corridor_width_m", 1.27).value
         )
         # HH_260618: Site parking enters campsites with explicit lateral or
         # reverse cmd_vel. That motion is mission-owned and intentionally
@@ -437,11 +451,14 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("route_heading_min_path_points", 2).value
         )
 
-        # HH_260422: _enabled becomes True when /planning/engage publishes True.
-        #   True + _estop==False -> passes /planning/cmd_vel_raw through to /planning/cmd_vel.
-        #   False -> blocks nav2 cmd_vel; publish_zero_when_blocked=True sends zero Twist downstream.
-        #   allow_on_start=True enables gate at startup without an explicit engage signal (default: False).
-        self._enabled = self.allow_on_start
+        # HHL_260623 - Split manual 2D-goal engage from UI mission engage.
+        #   /planning/engage is only the manual operator latch.
+        #   /planning/mission_engage is the scenario latch for camping-site/drop-zone missions.
+        #   The final gate opens when either latch is true; turning manual engage off must not
+        #   stop an active UI mission.
+        self._manual_enabled = self.allow_on_start
+        self._mission_enabled = False
+        self._enabled = self._manual_enabled or self._mission_enabled
 
         # HH_260422: _estop becomes True when /platform/status/estop publishes True.
         #   True -> blocks cmd_vel regardless of _enabled state; zero Twist is sent immediately.
@@ -464,6 +481,7 @@ class PlanningCmdVelGateNode(Node):
         self._last_lateral_static_bypass_log_sec = 0.0
         self._last_static_cost_ignored_log_sec = 0.0
         self._last_lanelet_current_reentry_bypass_log_sec = 0.0
+        self._last_lanelet_front_path_reentry_bypass_log_sec = 0.0
 
         # HH_260422: _current_speed holds the latest forward body velocity (m/s) from odometry.
         #   Used to compute speed-dependent front lookahead. Stays 0.0 until first odometry arrives.
@@ -499,6 +517,9 @@ class PlanningCmdVelGateNode(Node):
         )
         self.sub_engage = self.create_subscription(
             Bool, self.engage_topic, self._on_engage, 10
+        )
+        self.sub_mission_engage = self.create_subscription(
+            Bool, self.mission_engage_topic, self._on_mission_engage, 10
         )
         self.sub_localization_mode = None
         if self.enable_gnss_recovery_hold:
@@ -586,7 +607,8 @@ class PlanningCmdVelGateNode(Node):
         self.get_logger().info(
             "planning_cmd_vel_gate ready: "
             f"in={self.input_topic} out={self.output_topic} "
-            f"engage_topic={self.engage_topic} "
+            f"manual_engage_topic={self.engage_topic} "
+            f"mission_engage_topic={self.mission_engage_topic} "
             f"estop_topic={self.estop_topic if self.estop_topic_enabled else '(disabled)'} "
             f"allow_on_start={'true' if self.allow_on_start else 'false'} "
             f"speed_scale={self.speed_scale:.2f} "
@@ -660,6 +682,8 @@ class PlanningCmdVelGateNode(Node):
                 self.lanelet_safety_front_path_max_start_distance_m = float(p.value)
             elif p.name == "lanelet_safety_front_path_width_m":
                 self.lanelet_safety_front_path_width_m = float(p.value)
+            elif p.name == "lanelet_safety_front_path_allow_route_reentry":
+                self.lanelet_safety_front_path_allow_route_reentry = bool(p.value)
             elif p.name == "lanelet_safety_current_allow_route_reentry":
                 self.lanelet_safety_current_allow_route_reentry = bool(p.value)
             elif p.name == "lanelet_safety_current_route_reentry_max_distance_m":
@@ -824,7 +848,11 @@ class PlanningCmdVelGateNode(Node):
         now_ns = self.get_clock().now().nanoseconds
         reasons = []
         if not self._enabled:
-            reasons.append("engage=False")
+            reasons.append(
+                "engage=False("
+                f"manual={str(getattr(self, '_manual_enabled', False)).lower()},"
+                f"mission={str(getattr(self, '_mission_enabled', False)).lower()})"
+            )
         if self._estop:
             reasons.append("estop=True")
         if self._dr_timeout:
@@ -837,25 +865,49 @@ class PlanningCmdVelGateNode(Node):
             "cmd_vel BLOCKED: " + (", ".join(reasons) if reasons else "unknown")
         )
 
-    # Updates engage latch from /planning/engage.
-    def _set_enabled(self, enabled: bool) -> None:
-        new_enabled = bool(enabled)
-        if new_enabled == self._enabled:
+    # HHL_260623 - Updates one engage latch without collapsing manual and mission intent.
+    def _set_enabled(self, enabled: bool, source: str = "manual") -> None:
+        source_key = str(source).strip().lower()
+        new_latch = bool(enabled)
+        prev_enabled = bool(self._enabled)
+        prev_latch = (
+            bool(getattr(self, "_mission_enabled", False))
+            if source_key == "mission"
+            else bool(getattr(self, "_manual_enabled", False))
+        )
+
+        if source_key == "mission":
+            self._mission_enabled = new_latch
+        else:
+            self._manual_enabled = new_latch
+
+        self._enabled = bool(
+            getattr(self, "_manual_enabled", False)
+            or getattr(self, "_mission_enabled", False)
+        )
+        if new_latch == prev_latch and self._enabled == prev_enabled:
             return
-        self._enabled = new_enabled
+
         self._publish_state()
         if not self._effective_enabled() and self.publish_zero_when_blocked:
             self._publish_zero()
         self.get_logger().info(
             "planning engage update: "
+            f"source={source_key} "
+            f"manual={'true' if getattr(self, '_manual_enabled', False) else 'false'} "
+            f"mission={'true' if getattr(self, '_mission_enabled', False) else 'false'} "
             f"enabled={'true' if self._enabled else 'false'} "
             f"estop={'true' if self._estop else 'false'} "
             f"effective={'true' if self._effective_enabled() else 'false'}"
         )
 
-    # Handles engage messages.
+    # Handles manual 2D-goal engage messages.
     def _on_engage(self, msg: Bool) -> None:
-        self._set_enabled(msg.data)
+        self._set_enabled(msg.data, source="manual")
+
+    # Handles UI mission engage messages.
+    def _on_mission_engage(self, msg: Bool) -> None:
+        self._set_enabled(msg.data, source="mission")
 
     # Handles localization mode updates and applies DR->NORMAL recovery hold.
     def _on_localization_mode(self, msg: AvgLocalizationMode) -> None:
@@ -1341,6 +1393,15 @@ class PlanningCmdVelGateNode(Node):
                     )
                     if path_available:
                         if path_blocked:
+                            if self._can_bypass_lanelet_front_path_for_route_reentry(
+                                cmd_in,
+                                target_frame,
+                                pose,
+                                path_detail,
+                                label,
+                                now_sec,
+                            ):
+                                continue
                             self._cost_blocked_until = now_sec + self.cost_stop_hold_s
                             wx, wy, cost, reason = path_detail
                             self.get_logger().warn(
@@ -1408,6 +1469,51 @@ class PlanningCmdVelGateNode(Node):
                 "lanelet-safety CURRENT route-reentry bypass: "
                 f"source={source_label} cost={current_cost} "
                 f"path_dist={distance_m:.2f}m max={max_dist:.2f}m"
+            )
+        return True
+
+    # HHL_260624 - FRONT_PATH is a static map safety layer. During controlled
+    # route re-entry from a drop-zone/site, block dynamic obstacles elsewhere
+    # but do not let the first off-lane static cells prevent reaching the lanelet.
+    def _can_bypass_lanelet_front_path_for_route_reentry(
+        self,
+        cmd_in: Twist,
+        frame_id: str,
+        pose: tuple[float, float, float],
+        path_detail: tuple[float, float, int, str],
+        source_label: str,
+        now_sec: float,
+    ) -> bool:
+        if not self.lanelet_safety_front_path_allow_route_reentry:
+            return False
+        if not self.lanelet_safety_current_allow_route_reentry:
+            return False
+        min_cmd = max(0.0, float(self.lanelet_safety_min_translation_mps))
+        if (
+            self.lanelet_safety_current_route_reentry_require_front_cmd
+            and float(cmd_in.linear.x) <= min_cmd
+        ):
+            return False
+        max_dist = max(
+            0.0,
+            float(self.lanelet_safety_current_route_reentry_max_distance_m),
+        )
+        if max_dist <= 0.0:
+            return False
+        path_dist_m = self._closest_route_path_distance_m(frame_id, pose[0], pose[1])
+        if path_dist_m is None or path_dist_m > max_dist:
+            return False
+        wx, wy, cost, reason = path_detail
+        blocked_point_dist_m = math.hypot(float(wx) - pose[0], float(wy) - pose[1])
+        if blocked_point_dist_m > max(0.05, float(self.lanelet_safety_lookahead_m)):
+            return False
+        if (now_sec - self._last_lanelet_front_path_reentry_bypass_log_sec) >= 1.0:
+            self._last_lanelet_front_path_reentry_bypass_log_sec = now_sec
+            self.get_logger().warn(
+                "lanelet-safety FRONT_PATH route-reentry bypass: "
+                f"source={source_label} cost={cost} reason={reason} "
+                f"path_dist={path_dist_m:.2f}m blocked_dist={blocked_point_dist_m:.2f}m "
+                f"max={max_dist:.2f}m"
             )
         return True
 
