@@ -1,9 +1,8 @@
 network_checker:
   ros__parameters:
 
-    # 모니터링할 WiFi 인터페이스 이름
-    # ip link show 또는 iw dev 로 확인
-    interface: "wlan0"
+    # HH_260625: EAC-6000 exposes WiFi as wlP7p1s0, not wlan0.
+    interface: "wlP7p1s0"
 
     # ── 연결 상태 ─────────────────────────────────────────────────────────
     connection:

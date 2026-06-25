@@ -84,7 +84,6 @@ private:
     return dt >= min_publish_period_s_;
   }
 
-  // Publish helper FromGrid: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishFromGrid(const avg_msgs::msg::OccupancyGrid & grid_msg)
   {
     avg_msgs::msg::MarkerArray arr;
@@ -159,7 +158,6 @@ private:
     pending_grid_update_ = false;
   }
 
-  // Publish helper AvgMapMessage: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishAvgMapMessage(
     const avg_msgs::msg::MarkerArray & markers,
     const builtin_interfaces::msg::Time & stamp,
@@ -195,7 +193,6 @@ private:
     return m;
   }
 
-  // colorFromValue: Utility helper used for string parsing, math conversion, or styling.
   avg_msgs::msg::ColorRGBA colorFromValue(int8_t v) const
   {
     avg_msgs::msg::ColorRGBA c;
@@ -257,7 +254,6 @@ private:
     return c;
   }
 
-  // Callback onParamChange: handles incoming ROS data or timer events and updates internal cache/publish state.
   avg_msgs::msg::SetParametersResult onParamChange(
     const std::vector<rclcpp::Parameter> & params)
   {
@@ -313,7 +309,6 @@ private:
       std::bind(&CostFieldMarkerNode::onRepublishTimer, this));
   }
 
-  // Callback onGrid: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onGrid(const avg_msgs::msg::OccupancyGrid::ConstSharedPtr msg)
   {
     if (!msg) {
@@ -336,7 +331,6 @@ private:
     publishFromGrid(*msg);
   }
 
-  // Callback onRepublishTimer: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onRepublishTimer()
   {
     if (stale_timeout_s_ > 0.0 && last_grid_rx_.nanoseconds() > 0) {
@@ -372,7 +366,6 @@ private:
     }
   }
 
-  // Publish helper DeleteAll: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishDeleteAll(const avg_msgs::msg::Header & header)
   {
     avg_msgs::msg::MarkerArray arr;
@@ -419,7 +412,6 @@ private:
 
 }  // namespace camrod_map
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

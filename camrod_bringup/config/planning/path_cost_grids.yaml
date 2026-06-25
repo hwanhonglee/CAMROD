@@ -132,6 +132,8 @@
     # Disabled by default to reduce CPU/log load during realtime runs.
     # Enable temporarily for raster-debug sessions only.
     debug_coverage_stats: false
+    # HH_260625: Keep timing visible when path-cost helpers are explicitly enabled.
+    debug_build_timing: true
     debug_coverage_stride: 2
     debug_coverage_min_value: 0
     # /planning/global_path publisher is VOLATILE.
@@ -262,6 +264,8 @@
     # Disabled by default to reduce CPU/log load during realtime runs.
     # Enable temporarily for raster-debug sessions only.
     debug_coverage_stats: false
+    # HH_260625: Keep timing visible when path-cost helpers are explicitly enabled.
+    debug_build_timing: true
     debug_coverage_stride: 2
     debug_coverage_min_value: 0
     path_qos_transient_local: false

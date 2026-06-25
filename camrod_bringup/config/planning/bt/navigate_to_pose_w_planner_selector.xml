@@ -1,8 +1,8 @@
 <!-- PlannerSelector-enabled BT.
-  - Default planner: LaneletRoute
+  - Default planner: Smac2D
   - Optional planners: NavFn, Smac2D, SmacHybrid, SmacLattice
-  - Default controller: MPPI
-  - Optional controllers: RPP, DWB, Graceful, RotationShim
+  - Default controller: RPP
+  - Optional controllers: MPPI, DWB, Graceful, RotationShim
   - Switch planner by publishing std_msgs/String to /planning/planner_selector
 -->
 <root main_tree_to_execute="MainTree">
@@ -10,10 +10,10 @@
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
       <PipelineSequence name="NavigateGoalLocked">
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
-        <!-- HH_260619 - Use LaneletRoute as warm-up default so the first tick
-             already follows lanelet centerlines before selector latch arrives. -->
-        <PlannerSelector selected_planner="{selected_planner}" default_planner="LaneletRoute" topic_name="/planning/planner_selector"/>
-        <ControllerSelector selected_controller="{selected_controller}" default_controller="MPPI" topic_name="/planning/controller_selector"/>
+        <!-- HH_260625 - Smac2D is the fast default; lanelet constraints come
+             from the map cost grid instead of the LaneletRoute graph. -->
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="Smac2D" topic_name="/planning/planner_selector"/>
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector"/>
         <!-- HH_260619 - Lock the global route after each accepted goal.
              GoalUpdatedController computes a new global path only on the first
              tick, goal preemption, or recovery restart. The local path extractor

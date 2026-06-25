@@ -10,7 +10,7 @@
 #                             lf = CG->front axle, lr = CG->rear axle (lf≈lr≈0.445 m if CG centered)
 #   track_width:     0.56 m   left-to-right wheel centerline distance
 #   tire_radius:     0.13 m   wheel radius (approx 260 mm dia / 2)
-#   HHL_260623 - measured body envelope relative to robot_base_link:
+#   HH_260623 - measured body envelope relative to robot_base_link:
 #   body_front:      1.20137 m
 #   body_rear:       0.29023 m
 #   body_left:       0.53505 m
@@ -92,13 +92,13 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      # HHL_260623 - Measured robot_base_link-relative body extents plus 0.10 m safety margin.
+      # HH_260623 - Measured robot_base_link-relative body extents plus 0.10 m safety margin.
       footprint: "[[1.30137, 0.63505], [1.30137, -0.63495], [-0.39023, -0.63495], [-0.39023, 0.63505]]"
       robot_radius: 0.0
 
 global_costmap:
   global_costmap:
     ros__parameters:
-      # HHL_260623 - Measured robot_base_link-relative body extents plus 0.10 m safety margin.
+      # HH_260623 - Measured robot_base_link-relative body extents plus 0.10 m safety margin.
       footprint: "[[1.30137, 0.63505], [1.30137, -0.63495], [-0.39023, -0.63495], [-0.39023, 0.63505]]"
       robot_radius: 0.0

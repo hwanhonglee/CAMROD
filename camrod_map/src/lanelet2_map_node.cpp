@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <cctype>
+#include <functional>
 
 #include <avg_msgs/msg/point.hpp>
 #include <avg_msgs/msg/transform_stamped.hpp>
@@ -34,7 +35,6 @@ struct SemanticTags
   std::string subtype;
 };
 
-// toLowerCopy: Utility helper used for string parsing, math conversion, or styling.
 std::string toLowerCopy(const std::string & value)
 {
   std::string lower = value;
@@ -45,7 +45,6 @@ std::string toLowerCopy(const std::string & value)
 }
 
 template<typename PrimitiveT>
-// getAttributeCaseInsensitive: Utility helper used for string parsing, math conversion, or styling.
 std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std::string & key)
 {
   std::string value = primitive.attributeOr(key.c_str(), "");
@@ -68,7 +67,6 @@ std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std:
 }
 
 template<typename PrimitiveT>
-// getSemanticType: Utility helper used for string parsing, math conversion, or styling.
 std::string getSemanticType(const PrimitiveT & primitive)
 {
   auto value = getAttributeCaseInsensitive(primitive, "Subtype");
@@ -123,7 +121,7 @@ Lanelet2MapNode::Lanelet2MapNode()
 
   tf_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
 
-  publishVisualization();
+  startVisualization();
   publishStaticTF();
 
   // HH_260413: Keep static map marker computation one-shot by default.
@@ -139,7 +137,6 @@ Lanelet2MapNode::Lanelet2MapNode()
     std::bind(&Lanelet2MapNode::onParameterChange, this, std::placeholders::_1));
 }
 
-// Configuration loader Parameters: loads configuration values and applies safe runtime defaults.
 void Lanelet2MapNode::loadParameters()
 {
   config_.map_path = this->declare_parameter<std::string>("map_path", "");
@@ -154,19 +151,35 @@ void Lanelet2MapNode::loadParameters()
   config_.dir_width_scale = this->declare_parameter<double>("dir_width_scale", 0.18);
   // HH_260114 Arrow generation stride.
   config_.dir_stride = static_cast<std::size_t>(this->declare_parameter<int>("dir_stride", 30));
-  // HHL_260623 - Default RViz/planning visualization uses the 2D map ground plane.
+  // HH_260623 - Default RViz/planning visualization uses the 2D map ground plane.
   // Raw OSM altitude stays in the loader; marker Z is flattened unless explicitly disabled.
   align_z_to_ground_ = this->declare_parameter<bool>("align_z_to_ground", true);
   visualization_republish_period_s_ = this->declare_parameter<double>(
     "visualization_republish_period_s", 0.0);
+  progressive_visualization_enable_ = this->declare_parameter<bool>(
+    "progressive_visualization_enable", false);
+  progressive_visualization_radius_m_ = this->declare_parameter<double>(
+    "progressive_visualization_radius_m", 120.0);
+  progressive_visualization_full_delay_s_ = this->declare_parameter<double>(
+    "progressive_visualization_full_delay_s", 4.0);
+  progressive_visualization_pose_topic_ = this->declare_parameter<std::string>(
+    "progressive_visualization_pose_topic", "/sensing/gnss/pose");
+  progressive_visualization_fallback_pose_topic_ = this->declare_parameter<std::string>(
+    "progressive_visualization_fallback_pose_topic", "/localization/pose");
+  progressive_visualization_lightweight_local_ = this->declare_parameter<bool>(
+    "progressive_visualization_lightweight_local", true);
+  progressive_visualization_lightweight_full_ = this->declare_parameter<bool>(
+    "progressive_visualization_lightweight_full", false);
+  debug_timing_ = this->declare_parameter<bool>("debug_timing", true);
   publish_map_status_ = this->declare_parameter<bool>("publish_map_status", false);
   map_status_topic_ = this->declare_parameter<std::string>("map_status_topic", "/map/status");
 }
 
-// Configuration loader Map: loads configuration values and applies safe runtime defaults.
 bool Lanelet2MapNode::loadMap()
 {
+  const auto load_t0 = std::chrono::steady_clock::now();
   loaded_map_ = loader_.load(config_.map_path);
+  const auto load_t1 = std::chrono::steady_clock::now();
   if (!loaded_map_) {
     RCLCPP_ERROR(
       get_logger(), "Failed to parse Lanelet2 map file '%s'", config_.map_path.c_str());
@@ -174,60 +187,228 @@ bool Lanelet2MapNode::loadMap()
   }
 
   RCLCPP_INFO(get_logger(), "%s", loader_.getMapStats().c_str());
+  if (debug_timing_) {
+    const double load_ms =
+      std::chrono::duration<double, std::milli>(load_t1 - load_t0).count();
+    RCLCPP_INFO(
+      get_logger(),
+      "map load timing: %.2fms path=%s",
+      load_ms, config_.map_path.c_str());
+  }
   return true;
 }
 
-// Publish helper Visualization: builds and publishes ROS outputs for downstream consumers and RViz overlays.
+void Lanelet2MapNode::startVisualization()
+{
+  if (!progressive_visualization_enable_) {
+    publishFullVisualization(true);
+    return;
+  }
+
+  auto pose_callback = std::bind(&Lanelet2MapNode::onProgressivePose, this, std::placeholders::_1);
+  if (!progressive_visualization_pose_topic_.empty()) {
+    progressive_pose_sub_ = this->create_subscription<avg_msgs::msg::PoseStamped>(
+      progressive_visualization_pose_topic_, rclcpp::QoS(10), pose_callback);
+  }
+  if (!progressive_visualization_fallback_pose_topic_.empty() &&
+    progressive_visualization_fallback_pose_topic_ != progressive_visualization_pose_topic_)
+  {
+    progressive_fallback_pose_sub_ = this->create_subscription<avg_msgs::msg::PoseStamped>(
+      progressive_visualization_fallback_pose_topic_, rclcpp::QoS(10), pose_callback);
+  }
+
+  const double delay_s = std::max(0.0, progressive_visualization_full_delay_s_);
+  if (delay_s <= 0.0) {
+    publishFullVisualization(true);
+    return;
+  }
+
+  progressive_full_viz_timer_ = this->create_wall_timer(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::duration<double>(delay_s)),
+    [this]() { publishFullVisualization(); });
+
+  const std::string fallback_text = progressive_visualization_fallback_pose_topic_.empty() ?
+    "" :
+    ", fallback " + progressive_visualization_fallback_pose_topic_;
+  RCLCPP_INFO(
+    get_logger(),
+    "Progressive map visualization enabled: local radius %.1fm from %s%s, full map after %.1fs",
+    progressive_visualization_radius_m_,
+    progressive_visualization_pose_topic_.c_str(),
+    fallback_text.c_str(),
+    delay_s);
+}
+
 void Lanelet2MapNode::publishVisualization()
+{
+  publishVisualization(nullptr, "full");
+}
+
+void Lanelet2MapNode::publishVisualization(
+  const VisualizationFilter * filter,
+  const char * mode_label)
 {
   if (!loaded_map_) {
     RCLCPP_WARN(get_logger(), "No map loaded. Visualization skipped.");
     return;
   }
 
+  const auto * previous_filter = active_visualization_filter_;
+  active_visualization_filter_ = filter;
+  const auto viz_t0 = std::chrono::steady_clock::now();
+
   avg_msgs::msg::MarkerArray markers;
   int32_t marker_id = 0;
 
   const auto stamp = now();
-  const auto centerline_count = addLaneletCenterlines(markers, marker_id, stamp);
+  const bool local_mode = filter != nullptr;
+  const bool lightweight_local = local_mode && progressive_visualization_lightweight_local_;
+  const bool lightweight_full = !local_mode && progressive_visualization_lightweight_full_;
+  const bool lightweight_mode = lightweight_local || lightweight_full;
+  std::size_t centerline_count = 0U;
+  std::size_t line_string_count = 0U;
+  // HH_260625: The first RViz paint must not compute lazy centerlines or
+  // semantic/text markers for the whole map. Bounds give the operator immediate
+  // local context while planning/lifecycle nodes finish startup.
+  if (!lightweight_local) {
+    centerline_count = addLaneletCenterlines(markers, marker_id, stamp);
+  }
   const auto bound_count = addLaneletBounds(markers, marker_id, stamp);
   const auto area_count = addAreas(markers, marker_id, stamp);
-  const auto line_string_count = addLineStrings(markers, marker_id, stamp);
-  const auto point_count = addPoints(markers, marker_id, stamp);
-  const auto direction_count = addLaneletDirections(markers, marker_id, stamp);
-  const auto id_count = addLaneletIds(markers, marker_id, stamp);
-  const auto semantic_count = addSemanticMarkers(markers, marker_id, stamp);
+  if (!lightweight_local) {
+    line_string_count = addLineStrings(markers, marker_id, stamp);
+  }
+  std::size_t point_count = 0U;
+  std::size_t direction_count = 0U;
+  std::size_t id_count = 0U;
+  std::size_t semantic_count = 0U;
+  if (!lightweight_mode) {
+    point_count = addPoints(markers, marker_id, stamp);
+    direction_count = addLaneletDirections(markers, marker_id, stamp);
+    id_count = addLaneletIds(markers, marker_id, stamp);
+    semantic_count = addSemanticMarkers(markers, marker_id, stamp);
+  }
 
-  if (!logged_marker_stats_) {
+  const bool should_log =
+    (local_mode && !logged_local_marker_stats_) ||
+    (!local_mode && !logged_full_marker_stats_);
+  if (should_log) {
     RCLCPP_INFO(
       get_logger(),
-      "Visualization markers -> centerlines: %zu, bounds: %zu, areas: %zu, linestrings: %zu, points/text: %zu",
+      "Visualization markers (%s%s) -> centerlines: %zu, bounds: %zu, areas: %zu, linestrings: %zu, points/text: %zu",
+      mode_label,
+      local_mode ? ", filtered" : "",
       centerline_count, bound_count, area_count,
       line_string_count + direction_count + semantic_count,
       point_count + id_count + semantic_count);
-    logged_marker_stats_ = true;
+    if (local_mode) {
+      logged_local_marker_stats_ = true;
+    } else {
+      logged_full_marker_stats_ = true;
+    }
   }
 
   if (markers.markers.empty()) {
-    RCLCPP_WARN(get_logger(), "Loaded map contains no lanelets to visualize.");
+    RCLCPP_WARN(get_logger(), "Loaded map contains no lanelets to visualize for %s mode.", mode_label);
+    if (local_mode) {
+      // HH_260625: A startup fallback pose can briefly be outside the loaded map.
+      // Keep waiting for the next GNSS/localization pose instead of caching an empty local map.
+      logged_local_marker_stats_ = false;
+      active_visualization_filter_ = previous_filter;
+      return;
+    }
   }
 
   cached_markers_ = markers;
+  const auto build_t1 = std::chrono::steady_clock::now();
   viz_pub_->publish(cached_markers_);
   publishAvgMapMessage(markers, stamp);
+  const auto publish_t1 = std::chrono::steady_clock::now();
+  if (debug_timing_ && should_log) {
+    const double build_ms =
+      std::chrono::duration<double, std::milli>(build_t1 - viz_t0).count();
+    const double publish_ms =
+      std::chrono::duration<double, std::milli>(publish_t1 - build_t1).count();
+    const double total_ms =
+      std::chrono::duration<double, std::milli>(publish_t1 - viz_t0).count();
+    RCLCPP_INFO(
+      get_logger(),
+      "map visualization timing (%s%s): markers=%zu build=%.2fms publish=%.2fms total=%.2fms",
+      mode_label,
+      local_mode ? ", filtered" : "",
+      markers.markers.size(),
+      build_ms, publish_ms, total_ms);
+  }
+
+  if (local_mode) {
+    progressive_local_visualization_published_ = true;
+  } else {
+    progressive_full_visualization_published_ = true;
+  }
+  active_visualization_filter_ = previous_filter;
 }
 
-// Publish helper CachedVisualization: republishes already-built static marker arrays.
+void Lanelet2MapNode::publishFullVisualization(bool force)
+{
+  if (progressive_full_viz_timer_) {
+    progressive_full_viz_timer_->cancel();
+  }
+  if (!force && progressive_full_visualization_published_) {
+    return;
+  }
+  publishVisualization(nullptr, "full");
+}
+
 void Lanelet2MapNode::publishCachedVisualization()
 {
   if (cached_markers_.markers.empty()) {
-    publishVisualization();
+    if (progressive_visualization_enable_ && !progressive_full_visualization_published_) {
+      return;
+    }
+    publishFullVisualization(true);
     return;
   }
   viz_pub_->publish(cached_markers_);
 }
 
-// Callback onParameterChange: handles incoming ROS data or timer events and updates internal cache/publish state.
+void Lanelet2MapNode::onProgressivePose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+{
+  if (!progressive_visualization_enable_ ||
+    progressive_local_visualization_published_ ||
+    progressive_full_visualization_published_)
+  {
+    return;
+  }
+
+  if (progressive_visualization_radius_m_ <= 0.0) {
+    publishFullVisualization(true);
+    return;
+  }
+
+  VisualizationFilter filter;
+  filter.x = msg->pose.position.x;
+  filter.y = msg->pose.position.y;
+  filter.radius = progressive_visualization_radius_m_;
+  filter.radius_sq = filter.radius * filter.radius;
+  publishVisualization(&filter, "local");
+
+  const double delay_s = std::max(0.0, progressive_visualization_full_delay_s_);
+  if (delay_s <= 0.0) {
+    publishFullVisualization(true);
+    return;
+  }
+  if (progressive_full_viz_timer_) {
+    progressive_full_viz_timer_->cancel();
+  }
+  // HH_260625: Count the full-map delay from the first local publish, not node startup.
+  // Otherwise a slow local render can let the full-map timer fire immediately afterward.
+  progressive_full_viz_timer_ = this->create_wall_timer(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::duration<double>(delay_s)),
+    [this]() { publishFullVisualization(); });
+}
+
 avg_msgs::msg::SetParametersResult Lanelet2MapNode::onParameterChange(
   const std::vector<rclcpp::Parameter> & params)
 {
@@ -347,7 +528,7 @@ avg_msgs::msg::SetParametersResult Lanelet2MapNode::onParameterChange(
 
   config_ = new_config;
   align_z_to_ground_ = new_align_z_to_ground;
-  publishVisualization();
+  publishFullVisualization(true);
   publishStaticTF();
   return result;
 }
@@ -374,7 +555,6 @@ bool Lanelet2MapNode::reloadMapWithConfig(const Lanelet2MapNodeConfig & new_conf
   return true;
 }
 
-// addLaneletCenterlines: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addLaneletCenterlines(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -383,6 +563,9 @@ std::size_t Lanelet2MapNode::addLaneletCenterlines(
   const auto color = makeColor(0.45f, 0.65f, 0.70f, 0.7f);
   std::size_t count = 0;
   for (const auto & lanelet : loaded_map_->laneletLayer) {
+    if (!isLaneletNear(lanelet)) {
+      continue;
+    }
     auto marker = initLineMarker(
       "lanelet/centerline", id_counter++, config_.map_frame_id, color, 0.12, stamp);
     marker.type = avg_msgs::msg::Marker::LINE_STRIP;
@@ -396,7 +579,6 @@ std::size_t Lanelet2MapNode::addLaneletCenterlines(
   return count;
 }
 
-// addLaneletBounds: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addLaneletBounds(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -407,6 +589,9 @@ std::size_t Lanelet2MapNode::addLaneletBounds(
   std::size_t count = 0;
 
   for (const auto & lanelet : loaded_map_->laneletLayer) {
+    if (!isLaneletNear(lanelet)) {
+      continue;
+    }
     auto left_marker = initLineMarker(
       "lanelet/left_bound", id_counter++, config_.map_frame_id, left_color, 0.18, stamp);
     for (const auto & point : lanelet.leftBound()) {
@@ -426,7 +611,6 @@ std::size_t Lanelet2MapNode::addLaneletBounds(
   return count;
 }
 
-// addAreas: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addAreas(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -435,6 +619,9 @@ std::size_t Lanelet2MapNode::addAreas(
   // HH_260114 Thicken area outlines slightly so they are visible but calm.
   const auto area_color = makeColor(0.55f, 0.65f, 0.78f, 0.35f);
   for (const auto & area : loaded_map_->areaLayer) {
+    if (!isAreaNear(area)) {
+      continue;
+    }
     auto marker = initLineMarker(
       "lanelet/area", id_counter++, config_.map_frame_id, area_color, 0.08, stamp);
     marker.type = avg_msgs::msg::Marker::LINE_STRIP;
@@ -456,13 +643,15 @@ std::size_t Lanelet2MapNode::addAreas(
   return count;
 }
 
-// addLineStrings: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addLineStrings(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
   for (const auto & line_string : loaded_map_->lineStringLayer) {
+    if (!isLineStringNear(line_string)) {
+      continue;
+    }
     auto subtype = getSemanticType(line_string);
     if (subtype.empty()) {
       subtype = "line_string";
@@ -487,13 +676,15 @@ std::size_t Lanelet2MapNode::addLineStrings(
   return count;
 }
 
-// addPoints: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addPoints(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
   for (const auto & point : loaded_map_->pointLayer) {
+    if (!isNearVisualizationCenter(point.x(), point.y())) {
+      continue;
+    }
     auto subtype = getSemanticType(point);
     if (subtype.empty()) {
       subtype = "point";
@@ -520,7 +711,6 @@ std::size_t Lanelet2MapNode::addPoints(
   return count;
 }
 
-// addLaneletDirections: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addLaneletDirections(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -529,6 +719,9 @@ std::size_t Lanelet2MapNode::addLaneletDirections(
   // HH_260114 Direction arrow color/alpha matched to Autoware tone.
   const auto color = makeColor(0.35f, 0.35f, 0.38f, 0.9f);
   for (const auto & lanelet : loaded_map_->laneletLayer) {
+    if (!isLaneletNear(lanelet)) {
+      continue;
+    }
     const auto & centerline = lanelet.centerline();
     if (centerline.size() < 2) {
       continue;
@@ -537,6 +730,11 @@ std::size_t Lanelet2MapNode::addLaneletDirections(
     // HH_260114 Draw arrows on short segments along the full centerline for accurate alignment.
     const std::size_t stride = std::max<std::size_t>(1, config_.dir_stride);  // HH_260114 Controlled by parameter.
     for (std::size_t i = 0; i + 1 < centerline.size(); i += stride) {
+      if (!isNearVisualizationCenter(centerline[i].x(), centerline[i].y()) &&
+        !isNearVisualizationCenter(centerline[i + 1].x(), centerline[i + 1].y()))
+      {
+        continue;
+      }
       const double lane_width = laneWidthAt(lanelet, i);
       avg_msgs::msg::Point tail_left, tail_right, head_point;
       if (!computeFlatArrow(centerline, i, i + 1, lane_width, tail_left, tail_right, head_point)) {
@@ -569,13 +767,15 @@ std::size_t Lanelet2MapNode::addLaneletDirections(
   return count;
 }
 
-// addLaneletIds: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addLaneletIds(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
   for (const auto & lanelet : loaded_map_->laneletLayer) {
+    if (!isLaneletNear(lanelet)) {
+      continue;
+    }
     const auto & centerline = lanelet.centerline();
     if (centerline.empty()) {
       continue;
@@ -605,7 +805,6 @@ std::size_t Lanelet2MapNode::addLaneletIds(
   return count;
 }
 
-// addSemanticMarkers: Appends visualization elements to the outgoing marker set.
 std::size_t Lanelet2MapNode::addSemanticMarkers(
   avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
@@ -629,6 +828,9 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
   };
 
   for (const auto & line_string : loaded_map_->lineStringLayer) {
+    if (!isLineStringNear(line_string)) {
+      continue;
+    }
     const auto tags = extractSemanticTags(line_string);
     auto it = semantic_styles.find(tags.subtype);
     if (it == semantic_styles.end() && !tags.type.empty()) {
@@ -697,6 +899,9 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
   }
 
   for (const auto & point : loaded_map_->pointLayer) {
+    if (!isNearVisualizationCenter(point.x(), point.y())) {
+      continue;
+    }
     const auto tags = extractSemanticTags(point);
     auto it = semantic_styles.find(tags.subtype);
     if (it == semantic_styles.end() && !tags.type.empty()) {
@@ -771,7 +976,6 @@ avg_msgs::msg::Marker Lanelet2MapNode::initLineMarker(
   return marker;
 }
 
-// makeColor: Constructs and returns a helper message/value object.
 avg_msgs::msg::ColorRGBA Lanelet2MapNode::makeColor(float r, float g, float b, float a)
 {
   avg_msgs::msg::ColorRGBA c;
@@ -782,7 +986,6 @@ avg_msgs::msg::ColorRGBA Lanelet2MapNode::makeColor(float r, float g, float b, f
   return c;
 }
 
-// makePoint: Constructs and returns a helper message/value object.
 avg_msgs::msg::Point Lanelet2MapNode::makePoint(double x, double y, double z) const
 {
   avg_msgs::msg::Point p;
@@ -821,7 +1024,56 @@ avg_msgs::msg::Point Lanelet2MapNode::computeCentroid(
   return centroid;
 }
 
-// addTrafficLightBulbs: Appends visualization elements to the outgoing marker set.
+bool Lanelet2MapNode::isNearVisualizationCenter(double x, double y) const
+{
+  if (!active_visualization_filter_) {
+    return true;
+  }
+  const double dx = x - active_visualization_filter_->x;
+  const double dy = y - active_visualization_filter_->y;
+  return dx * dx + dy * dy <= active_visualization_filter_->radius_sq;
+}
+
+bool Lanelet2MapNode::isLineStringNear(const lanelet::ConstLineString3d & line_string) const
+{
+  if (!active_visualization_filter_) {
+    return true;
+  }
+  for (const auto & point : line_string) {
+    if (isNearVisualizationCenter(point.x(), point.y())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Lanelet2MapNode::isLaneletNear(const lanelet::ConstLanelet & lanelet) const
+{
+  if (!active_visualization_filter_) {
+    return true;
+  }
+  // HH_260625: Avoid computing lazy centerlines for every far-away lanelet during
+  // the first local RViz publish. Bounds are already loaded and cover the same
+  // local neighborhood for an 80m startup window.
+  return isLineStringNear(lanelet.leftBound()) ||
+    isLineStringNear(lanelet.rightBound());
+}
+
+bool Lanelet2MapNode::isAreaNear(const lanelet::ConstArea & area) const
+{
+  if (!active_visualization_filter_) {
+    return true;
+  }
+  for (const auto & bound : area.outerBound()) {
+    for (const auto & point : bound) {
+      if (isNearVisualizationCenter(point.x(), point.y())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void Lanelet2MapNode::addTrafficLightBulbs(  // HH_260114 Autoware-style tri-color bulbs.
   const avg_msgs::msg::Point & base_center,
   const std::string & bulb_namespace,
@@ -863,7 +1115,6 @@ void Lanelet2MapNode::addTrafficLightBulbs(  // HH_260114 Autoware-style tri-col
   }
 }
 
-// Math helper FlatArrow: computes derived geometric values used by mapping logic.
 bool Lanelet2MapNode::computeFlatArrow(
   const lanelet::ConstLineString3d & centerline, const std::size_t tail_idx, const std::size_t head_idx,
   double lane_width,
@@ -894,7 +1145,7 @@ bool Lanelet2MapNode::computeFlatArrow(
   const double half_width = std::max(0.08, clamped_width * config_.dir_width_scale);
   const double body_length = std::max(0.35, clamped_width * config_.dir_body_scale);
   const double head_length = std::max(0.20, clamped_width * config_.dir_head_scale);
-  // HHL_260623 - Direction arrows follow the same flattened map marker plane as lane boundaries.
+  // HH_260623 - Direction arrows follow the same flattened map marker plane as lane boundaries.
   const double base_z = align_z_to_ground_ ? map_ground_z_ : (tail.z() + head.z()) * 0.5;
 
   // Build arrow around the midpoint of the segment to avoid forward shift
@@ -946,7 +1197,6 @@ double Lanelet2MapNode::laneWidthAt(const lanelet::ConstLanelet & lanelet, std::
   return width > 0.1 ? width : 3.0;
 }
 
-// colorFromSubtype: Utility helper used for string parsing, math conversion, or styling.
 avg_msgs::msg::ColorRGBA Lanelet2MapNode::colorFromSubtype(
   const std::string & subtype, const avg_msgs::msg::ColorRGBA & fallback) const
 {
@@ -980,7 +1230,6 @@ avg_msgs::msg::ColorRGBA Lanelet2MapNode::colorFromSubtype(
   return fallback;
 }
 
-// lineWidthFromSubtype: Utility helper used for string parsing, math conversion, or styling.
 double Lanelet2MapNode::lineWidthFromSubtype(const std::string & subtype) const
 {
   // HH_260114 Autoware-style line thickness.
@@ -999,7 +1248,6 @@ double Lanelet2MapNode::lineWidthFromSubtype(const std::string & subtype) const
   return 0.1;
 }
 
-// sanitizeNamespace: Utility helper used for string parsing, math conversion, or styling.
 std::string Lanelet2MapNode::sanitizeNamespace(
   const std::string & prefix, const std::string & subtype)
 {
@@ -1011,7 +1259,6 @@ std::string Lanelet2MapNode::sanitizeNamespace(
   return prefix + "_" + sanitized;
 }
 
-// groupedNamespace: Utility helper used for string parsing, math conversion, or styling.
 std::string Lanelet2MapNode::groupedNamespace(
   const std::string & group, const std::string & subtype)
 {
@@ -1023,7 +1270,6 @@ std::string Lanelet2MapNode::groupedNamespace(
   return group + "/" + sanitized;
 }
 
-// Publish helper StaticTF: builds and publishes ROS outputs for downstream consumers and RViz overlays.
 void Lanelet2MapNode::publishStaticTF()
 {
   avg_msgs::msg::TransformStamped tf_msg;
@@ -1041,7 +1287,6 @@ void Lanelet2MapNode::publishStaticTF()
   tf_broadcaster_->sendTransform(tf_msg);
 }
 
-// Publish helper AvgMapMessage: builds and publishes ROS outputs for downstream consumers and RViz overlays.
 void Lanelet2MapNode::publishAvgMapMessage(
   const avg_msgs::msg::MarkerArray & markers,
   const rclcpp::Time & stamp)
@@ -1063,7 +1308,6 @@ void Lanelet2MapNode::publishAvgMapMessage(
 }  // namespace map
 }  // namespace camrod
 
-// Entry point for this executable.
 int main(int argc, char * argv[])
 {
   rclcpp::init(argc, argv);

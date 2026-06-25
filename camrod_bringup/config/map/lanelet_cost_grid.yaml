@@ -60,6 +60,8 @@
     boundary_clip_to_lanelet: true
     # 2026-02-27: Enable to print boundary candidate/written/clipped statistics.
     debug_boundary_stats: false
+    # HH_260625: Log one throttled build-time line per published lanelet grid.
+    debug_build_timing: true
     # HH_260313-00:00 Validate lanelet-grid raster cells against lanelet polygons.
     # Logs warning if known cells are detected outside lanelet bounds.
     # HH_260413: Disable by default to reduce realtime CPU pressure in full bringup.
@@ -74,13 +76,21 @@
     outside_value: -1
     # HH_260526: Unified window mode (robot_centered | path_bbox | fixed | map_bbox).
     window_mode: "robot_centered"
-    # HH_260619: Pose rebuild stays off, but path rebuild is required because
-    # secondary planning cost is filtered by active LaneletRoute lanelet IDs.
+    # HH_260625: Pose rebuild stays off for CPU stability; path rebuild remains
+    # available for explicit route or goal updates.
     rebuild_on_pose: false
     rebuild_on_path: true
     min_rebuild_period_s: 0.2
-    # HH_260109 Drive cost grid from fused localization pose.
-    pose_topic: "/planning/lanelet_pose"
+    # HH_260625: If GNSS reattach moves localization after the initial startup
+    # placeholder, rebuild the robot-centered grid even though continuous pose
+    # rebuilds are disabled for CPU stability.
+    rebuild_when_pose_exits_grid: true
+    rebuild_pose_grid_margin_m: 5.0
+    # HH_260625: Center the map grid from raw GNSS pose. Localization can be
+    # invalid or still seeded at (0,0) during static startup; using GNSS here
+    # lets RViz/Nav2 receive the local lanelet window first while cmd_vel safety
+    # still gates motion on localization state.
+    pose_topic: "/sensing/gnss/pose"
     path_topic: "/planning/global_path"
     # HH_260619: LaneletRoutePlanner publishes exact route lanelet IDs.
     # Primary boundary visualization stays global; secondary planning cost uses the active route only.
@@ -122,9 +132,7 @@
     # lanelet centerline as the nominal route and leaves lateral deviation for
     # obstacle/lane-change cases.
     secondary.centerline_lanelet_fill_value: 70
-    # HH_260527: Enforce lanelet-bound global planning.
-    # 99 (sub-lethal) let the planner cut free-space diagonals across non-lanelet areas.
-    # 100 marks outside-lanelet cells as lethal in Nav2 global costmap.
+    # HH_260527: Keep outside-lanelet cells lethal for lane-bound global planning.
     secondary.outside_value: 100
     # HH_260527: Lane-boundary margin for centerline planning profile.
     # - lanelet_boundary_value: higher cost near lane edge (0..100, -1 disables)
@@ -133,10 +141,15 @@
     # lane-change clearances can intentionally open them.
     secondary.lanelet_boundary_value: 98
     secondary.boundary_half_width: 0.25
-    # HH_260619: Planning cost must use the lanelets selected by the active global
-    # route, not every lanelet boundary in the local map window. This prevents
-    # merge/branch lane boundaries from blocking a valid LaneletRoute path.
-    secondary.route_lanelet_filter_enable: true
+    # HH_260625: Keep the Nav2 base lanelet grid unfiltered by the active route.
+    # Filtering this source by route IDs creates a circular dependency:
+    # planner -> route IDs -> /map/cost_grid/lanelet -> planner. Route-focused
+    # guidance belongs in path/grid overlays, while this base grid must keep new
+    # goals reachable inside the local lanelet window.
+    secondary.route_lanelet_filter_enable: false
+    # Keep startup publishing the local lanelet mask immediately so Nav2 and
+    # goal_snapper can build a valid component before any route exists.
+    secondary.route_lanelet_filter_wait_for_route: false
     secondary.route_boundary_clearance_enable: true
     secondary.route_boundary_clearance_value: 0
     secondary.route_boundary_clearance_half_width_m: 0.80
@@ -159,8 +172,11 @@
     # HH_260415: Re-enable centerline distance gradient so center cells remain
     # the lowest-cost route and free-space shortcuts outside lane are disfavored.
     secondary.centerline_use_distance_gradient: true
-    secondary.direction_penalty: 0
-    secondary.backward_penalty: 0
+    # HH_260625: Preserve lane direction semantics while keeping the base grid
+    # unfiltered. Smac2D can otherwise choose short raster connections through
+    # opposite-direction lanelets when LaneletRoute is not loaded.
+    secondary.direction_penalty: 60
+    secondary.backward_penalty: 20
     # HH_260616: Keep the planning-base grid robot-centered. The previous map_bbox
     # override ignored secondary.width/height and built an 876x1260 grid, delaying
     # startup long enough for Nav2 to plan before the lanelet layer became current.

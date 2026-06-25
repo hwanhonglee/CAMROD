@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from typing import Dict, Any, Tuple, Sequence
+from typing import Dict, Any, Optional, Sequence, Tuple
 
 import yaml
 
@@ -21,8 +21,10 @@ def _load_params(params_path: str) -> Dict[str, Any]:
   return data.get("/**", {}).get("ros__parameters", {})
 
 
-def _sensor_pose(sensor_cfg: Dict[str, Any]) -> Tuple[str, str]:
+def _sensor_pose(sensor_cfg: Dict[str, Any]) -> Optional[Tuple[str, str]]:
   # Converts pose fields into xacro-ready xyz/rpy strings.
+  if not sensor_cfg:
+    return None
   xyz = [
     float(sensor_cfg.get("x", 0.0)),
     float(sensor_cfg.get("y", 0.0)),
@@ -66,14 +68,18 @@ def _launch_setup(context, *args, **kwargs):
   # 1. Flat sensors
   # ---------------------------------------------------------
   for name in ["imu", "gnss", "lidar"]:
-    sensors[name] = _sensor_pose(params.get(name, {}))
+    pose = _sensor_pose(params.get(name, {}))
+    if pose is not None:
+      sensors[name] = pose
 
   # HH_260528: Dual econ cameras — nested under camera: front/rear (same pattern as radar).
   # Drives econ_camera_link xacro macro (body frame + optical child frame).
   # HH_260606: Use only canonical nested camera config; flat camera_* aliases were removed.
   for cam_name in ["front", "rear"]:
     key = f"camera_{cam_name}"
-    sensors[key] = _sensor_pose(_nested_sensor_cfg(params, ("camera", cam_name)))
+    pose = _sensor_pose(_nested_sensor_cfg(params, ("camera", cam_name)))
+    if pose is not None:
+      sensors[key] = pose
 
   # ---------------------------------------------------------
   # 2. Nested radar sensors
@@ -81,15 +87,17 @@ def _launch_setup(context, *args, **kwargs):
   # HH_260507: Radar sensors are directly attached to sensor_kit_base_link.
   # There is no intermediate radar base frame anymore.
   # HH_260606: Use only canonical nested radar config; flat radar_* aliases were removed.
-  # HHL_260623 - Keep YAML keys aligned with the seven SEN0592 TF frames used by sensing/radar.
+  # HH_260623 - Keep YAML keys aligned with the seven SEN0592 TF frames used by sensing/radar.
   for radar_name in ["front1", "front2", "left1", "left2", "right1", "right2", "rear"]:
     key = f"radar_{radar_name}"
-    sensors[key] = _sensor_pose(_nested_sensor_cfg(params, ("radar", radar_name)))
+    pose = _sensor_pose(_nested_sensor_cfg(params, ("radar", radar_name)))
+    if pose is not None:
+      sensors[key] = pose
 
   base_length = float(robot_cfg.get("length", 1.4))
   base_width = float(robot_cfg.get("width", 0.7))
   base_height = float(robot_cfg.get("height", 1.2))
-  # HHL_260623 - Keep the visualization/collision body aligned to the measured
+  # HH_260623 - Keep the visualization/collision body aligned to the measured
   # asymmetric robot_base_link-relative envelope instead of assuming centered geometry.
   body_extents = _nested_sensor_cfg(robot_cfg, ("body_extents",))
   body_front = float(body_extents.get("front", base_length * 0.5))
@@ -112,16 +120,20 @@ def _launch_setup(context, *args, **kwargs):
     base_frame,
     " sensor_kit_base_link:=",
     sensor_kit_base_frame,
-    " base_length:=",
-    f"{base_length}",
-    " base_width:=",
-    f"{base_width}",
-    " base_height:=",
-    f"{base_height}",
-    " base_origin_xyz:=\"",
-    base_origin_xyz,
-    "\"",
   ]
+  # HH_260625: Missing YAML must not zero sensor TFs; leave xacro defaults intact.
+  if robot_cfg:
+    command_args.extend([
+      " base_length:=",
+      f"{base_length}",
+      " base_width:=",
+      f"{base_width}",
+      " base_height:=",
+      f"{base_height}",
+      " base_origin_xyz:=\"",
+      base_origin_xyz,
+      "\"",
+    ])
 
   for sensor_name, (xyz_str, rpy_str) in sensors.items():
     command_args.extend([
@@ -151,7 +163,6 @@ def _launch_setup(context, *args, **kwargs):
 
 
 def generate_launch_description():
-  # Declares launch arguments and defers runtime node creation to `_launch_setup`.
   default_params = Path(
     get_package_share_directory("camrod_sensor_kit"),
     "config",

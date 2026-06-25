@@ -62,7 +62,7 @@ specific consumer that needs a full snapshot payload.
 
 Do not add more alias headers for standard ROS messages.
 
-HHL_260623 - Keep the nested forwarding alias-header tree under
+HH_260623 - Keep the nested forwarding alias-header tree under
 `include/avg_msgs/avg_msgs/msg/` because ROSIDL exports
 `install/avg_msgs/include/avg_msgs` to downstream targets in this workspace.
 With that include path, source includes such as `avg_msgs/msg/range.hpp` resolve

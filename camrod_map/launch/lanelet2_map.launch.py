@@ -9,7 +9,6 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
-# Parses optional numeric launch arguments and returns None on empty/invalid input.
 def _optional_float(value: str):
     if value is None:
         return None
@@ -22,7 +21,6 @@ def _optional_float(value: str):
         return None
 
 
-# Builds lanelet2_map_node with launch-time map/origin overrides.
 def _launch_node(context, *_args, **_kwargs):
     overrides = {}
 
@@ -56,7 +54,6 @@ def _launch_node(context, *_args, **_kwargs):
     ]
 
 
-# Declares lanelet2 map launch arguments and dispatches node construction.
 def generate_launch_description():
     config_dir = FindPackageShare("camrod_map").find("camrod_map")
     default_map_info = os.path.join(config_dir, "config", "map_info.yaml")

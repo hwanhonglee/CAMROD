@@ -157,7 +157,7 @@ graph LR
 | 📨 `AvgPlanningMsgs` | msg | `stamp`, `ModuleState state`, goal/lanelet poses, nav action status, global/local paths, costmaps, path cost markers | camrod_planning | camrod_platform, camrod_bringup |
 | 📨 `PlanningMissionKey` | msg | `header`, `mission_key`, `source`, `publish_route_goal` | camrod_ui, camrod_planning | camrod_planning, camrod_ui, logging |
 | 📨 `PlanningRecallRequest` | msg | `header`, `site_name`, `source` | camrod_ui / external recall clients | camrod_planning |
-| 📨 `PlanningScenario` | msg | `header`, scenario constants, `scenario_id`, `label`, `source`; HHL_260621 adds campsite entry/recall/loading/parking phase constants | camrod_planning / UI commands | camrod_planning, camrod_ui |
+| 📨 `PlanningScenario` | msg | `header`, scenario constants, `scenario_id`, `label`, `source`; HH_260621 adds campsite entry/recall/loading/parking phase constants | camrod_planning / UI commands | camrod_planning, camrod_ui |
 | 📨 `PlanningState` | msg | `header`, state constants, `state`, `label`, scenario, active mission/source, estop/request flags | camrod_planning | camrod_system, camrod_ui, camrod_voice |
 | 📨 `UiDestinationCommand` | msg | `header`, `site`, `run`, `mission_key`, `source` | camrod_ui | camrod_ui, planning dispatch path |
 | 📨 `AvgPlatformMsgs` | msg | `stamp`, `ModuleState state`, `AvgRobotInfo`, robot markers, planning boundary, localization pose | camrod_platform | camrod_bringup |
@@ -333,7 +333,7 @@ If a node crashes with `rcutils_logging` type errors or `rmw` deserialization fa
 
 ## 2026-06-21 Runtime Update
 
-> HHL_260621: Reservation-aware UI and recall flows use explicit service/scenario constants so UI, planning, and diagnostics can distinguish delivery entry from road-only guest recall.
+> HH_260621: Reservation-aware UI and recall flows use explicit service/scenario constants so UI, planning, and diagnostics can distinguish delivery entry from road-only guest recall.
 
 | Interface | Added contract |
 |---|---|

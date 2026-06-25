@@ -3,7 +3,7 @@ localization_source_checker:
     publish_rate_hz: 1.0
 
     source_topic:    "/localization/pose_source"
-    # pose_selector.yaml default label
+    # HH_260625: pose_selector publishes primary_filter as its nominal source label.
     primary_source:  "primary_filter"
     fallback_source: "fallback_source"
 

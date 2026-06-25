@@ -19,7 +19,7 @@
     #   input: keep input pose Z
     #   map: use lanelet centerline Z + map_z_offset
     #   ground: force ground plane Z (0) + map_z_offset
-    # HHL_260623 - Keep localization helper centerline outputs on the 2D planning plane.
+    # HH_260623 - Keep localization helper centerline outputs on the 2D planning plane.
     centerline_z_mode: ground
     map_z_offset: 0.0
     # HH_260618: Throttle nearest-centerline lookup to 10 Hz under high-rate pose input.

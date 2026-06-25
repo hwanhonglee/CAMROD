@@ -106,7 +106,7 @@ def _map_filename_candidates(configured: str, map_profile: str) -> list[str]:
 
 
 def discover_map_path(map_share: str, map_info_file: str, map_path_from_info: str, map_profile: str = "") -> str:
-    # HHL_260622 - Map launch can select any lanelet2 map profile without hardcoding C-track.
+    # HH_260622 - Map launch can select any lanelet2 map profile without hardcoding C-track.
     configured = str(map_path_from_info or "").strip()
     if configured:
         configured_path = (
@@ -167,7 +167,7 @@ def generate_launch_description():
         DeclareLaunchArgument("origin_alt",           default_value=defaults["origin_alt"]),
         DeclareLaunchArgument("enable_nav2_inflation_debug_marker", default_value="false"),
         DeclareLaunchArgument("enable_inflation_markers",           default_value="false"),
-        DeclareLaunchArgument("enable_map_cost_markers",            default_value="true"),
+        DeclareLaunchArgument("enable_map_cost_markers",            default_value="false"),
         DeclareLaunchArgument("enable_cost_field",                  default_value="false"),
         DeclareLaunchArgument("enable_cost_grids",                  default_value="true"),
         DeclareLaunchArgument("module_namespace",                   default_value="map"),

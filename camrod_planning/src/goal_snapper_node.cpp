@@ -98,7 +98,7 @@ public:
     cfg_.offset_lon = declare_parameter<double>("offset_lon", 0.0);
     cfg_.offset_alt = declare_parameter<double>("offset_alt", 0.0);
     input_goal_topic_ = declare_parameter<std::string>("input_goal_topic", "/goal_pose");
-    // HHL_260623 - Keep internal return/drop-zone raw goals separate from the public
+    // HH_260623 - Keep internal return/drop-zone raw goals separate from the public
     // site_goal topic so camrod_parking/site_maneuver does not consume them as campsite goals.
     auxiliary_input_goal_topic_ =
       declare_parameter<std::string>("auxiliary_input_goal_topic", "");
@@ -268,7 +268,7 @@ public:
         cost_grid_topic_, rclcpp::QoS(1),
         std::bind(&GoalSnapperNode::onCostGrid, this, std::placeholders::_1));
     }
-    // HHL_260622 - Subscribe to Nav2 status whenever pose-jump reissue is enabled.
+    // HH_260622 - Subscribe to Nav2 status whenever pose-jump reissue is enabled.
     // Otherwise a succeeded direct goal can stay "active" and be reissued after RViz initialpose resets.
     if (sequential_goal_release_enable_ || reissue_active_goal_on_pose_jump_) {
       sub_nav_status_ = create_subscription<action_msgs::msg::GoalStatusArray>(
@@ -598,7 +598,7 @@ private:
     snapAvgGoal(*msg, "avg");
   }
 
-  // HHL_260623 - Internal auto goals use the same snap logic but carry a distinct
+  // HH_260623 - Internal auto goals use the same snap logic but carry a distinct
   // log label to prove that return/drop-zone routing did not come from UI/RViz.
   void onAuxGoal(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
@@ -639,7 +639,7 @@ private:
     snapRosGoal(*msg, "ros");
   }
 
-  // HHL_260623 - ROS-native auxiliary input is used by planning_state_machine for
+  // HH_260623 - ROS-native auxiliary input is used by planning_state_machine for
   // drop-zone return requests that still need lanelet snapping before Nav2.
   void onAuxGoalRos(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
@@ -782,7 +782,7 @@ private:
   // Without reissue, Nav2 BT keeps the stale FollowPath context from the pre-jump pose and rotates in place.
   void maybeReissueActiveGoalOnPoseJump(double pose_jump_distance, double now_sec)
   {
-    // HHL_260622 - Recheck reached state before reissuing. This prevents a manual
+    // HH_260622 - Recheck reached state before reissuing. This prevents a manual
     // initialpose/P reset after arrival from resurrecting the previous snapped goal.
     updateActiveGoalReachedFromPose();
     if (
@@ -930,7 +930,7 @@ private:
     }
     snapped_z = use_map_z_ ? (nearest.nearest_point.z() + map_z_offset_) : pz;
     if (flatten_to_ground_) {
-      // HHL_260623 - Ground flattening is the 2D planning plane, not raw OSM median altitude.
+      // HH_260623 - Ground flattening is the 2D planning plane, not raw OSM median altitude.
       snapped_z = map_z_offset_;
     }
     return true;
@@ -1332,7 +1332,6 @@ private:
   bool publish_planning_status_{false};
 };
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

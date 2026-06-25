@@ -112,7 +112,7 @@ public:
     // HH_260306-00:00 Stop replanning after reaching goal until a new goal is received.
     stop_replan_after_goal_reached_ =
       declare_parameter<bool>("stop_replan_after_goal_reached", true);
-    // HHL_260623 - Replanner-only completion follows center-based arrival.
+    // HH_260623 - Replanner-only completion follows center-based arrival.
     goal_reached_distance_m_ = declare_parameter<double>("goal_reached_distance_m", 0.25);
     // 2026-02-27: Reduce goal->path latency by triggering immediate request on new goal/start.
     immediate_replan_on_goal_ = declare_parameter<bool>("immediate_replan_on_goal", true);
@@ -784,7 +784,6 @@ private:
 
 }  // namespace camrod_planning
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

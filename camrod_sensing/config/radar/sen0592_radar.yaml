@@ -15,8 +15,8 @@
 
     # Per-sensor detection angle written to register 0x0208 at startup.
     # Values: 1=15° 2=30° 3=45° 4=60° 5=75°. 0 = skip (sensor retains hardware value).
-    # HHL_260623 - Latest vehicle radar profile uses seven sensors.
-    # HHL_260624 - Physical left/right labels are swapped while keeping CH9344 port order.
+    # HH_260623 - Latest vehicle radar profile uses seven sensors.
+    # HH_260624 - Physical left/right labels are swapped while keeping CH9344 port order.
     sensor_angle_config_values: [5, 5, 5, 5, 5, 5, 5]
 
     # Per-sensor max detection range (m). Order: FRONT1, FRONT2, RIGHT1, RIGHT2, LEFT1, LEFT2, REAR.
@@ -40,7 +40,7 @@
       - "radar_rear_link"
 
     # CH9344 multi-port device paths: A1/B1..A7/B7 -> USB0..USB6.
-    # HHL_260623 - Fixed port order follows todo/camrod_sensing latest radar mapping.
+    # HH_260623 - Fixed port order follows todo/camrod_sensing latest radar mapping.
     ports:
       - "/dev/ttyCH9344USB0"
       - "/dev/ttyCH9344USB1"

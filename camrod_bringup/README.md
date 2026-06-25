@@ -45,7 +45,7 @@ ros2 launch camrod_bringup bringup.launch.py sim:=true \
 ros2 launch camrod_bringup gnss_dr_test.launch.py
 ```
 
-> HHL_260622 - `map_info.yaml` now defaults to the `copy_park` validation map. `_bringup_impl.py` also infers `map_profile` from `map_profile` or the OSM filename and loads matching `drop_zones (<profile>).yaml` / `camping_sites (<profile>).yaml` when those files exist.
+> HH_260622 - `map_info.yaml` now defaults to the `copy_park` validation map. `_bringup_impl.py` also infers `map_profile` from `map_profile` or the OSM filename and loads matching `drop_zones (<profile>).yaml` / `camping_sites (<profile>).yaml` when those files exist.
 
 ---
 
@@ -300,10 +300,10 @@ flowchart TD
 | `planning_cmd_vel_gate_lanelet_safety_check_lateral` | `false` | Keep campsite crab motion under mission-specific site control |
 | `planning_cmd_vel_gate_lateral_cmd_bypass_static_cost_stop` | `true` | HH_260618 - site-crab lateral cmd_vel may cross static lanelet/global-path front/side/rear cost; LiDAR/Radar source cost still stops |
 | `planning_cmd_vel_gate_speed_dependent_lookahead` | `true` | Physics-based braking distance lookahead |
-| `planning_cmd_vel_gate_cost_width_m` | `1.27` | HHL_260623 - measured body width plus 0.10 m margin per side |
-| `planning_cmd_vel_gate_front_lookahead_min_m` | `1.30137` | HHL_260623 - measured front body extent plus 0.10 m margin |
-| `planning_cmd_vel_gate_side_corridor_width_m` | `1.69160` | HHL_260623 - measured body length plus 0.10 m front/rear margin |
-| `planning_cmd_vel_gate_rear_corridor_width_m` | `1.27` | HHL_260623 - measured body width plus 0.10 m margin per side |
+| `planning_cmd_vel_gate_cost_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
+| `planning_cmd_vel_gate_front_lookahead_min_m` | `1.30137` | HH_260623 - measured front body extent plus 0.10 m margin |
+| `planning_cmd_vel_gate_side_corridor_width_m` | `1.69160` | HH_260623 - measured body length plus 0.10 m front/rear margin |
+| `planning_cmd_vel_gate_rear_corridor_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `enable_yaw_alignment_zone` → `planning_cmd_vel_gate_yaw_alignment_enable` | `false` | Heading alignment at named map zones |
 | `enable_plugin_api` | `true` | Plugin API bridge node |
 | `enable_api_ui` | `true` | HTTP UI backend |
@@ -428,7 +428,7 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 | `config/map/map_info.yaml` | Bringup-level map origin/profile override |
 | `config/map/drop_zones.yaml` | Drop zone positions (from lanelet2 map; used by state machine and localization init) |
 
-HHL_260623 - Removed the old config mirror sync helper because bringup configs
+HH_260623 - Removed the old config mirror sync helper because bringup configs
 are deployment overrides, not byte-for-byte package config mirrors.
 
 ---
@@ -527,7 +527,7 @@ If the issue recurs, check `config/bringup/cleanup_patterns.yaml` and add the mi
 ## 2026-06-17 Runtime Update
 
 > HH_260617 - Bringup now owns the full module sequence including `camrod_parking`.
-> HHL_260623 - Bringup selects exactly one final parking method with `parking_method`; the deprecated `parking_backend` launch alias was removed.
+> HH_260623 - Bringup selects exactly one final parking method with `parking_method`; the deprecated `parking_backend` launch alias was removed.
 
 ### Current Launch Order
 
@@ -551,9 +551,9 @@ Both parking controllers publish to `/planning/cmd_vel_raw` only while active, s
 
 HH_260618 - Rule-based campsite parking uses the raw `/goal_pose` site center and `/planning/goal_pose_snapped` lanelet entry pose as a pair. Auto-start reports ERROR if that pair is unavailable, and the default flow stays inside the campsite after unload until `/parking/site_maneuver/return` or `return_service` requests crab-out.
 
-HHL_260622 - Rule-based parking publishes RViz validation paths on `/parking/site_maneuver/reverse_path` and `/parking/drop_zone/reverse_path`. Drop-zone parking aligns vehicle body yaw to the configured station/goal yaw and reverses only; the 180-degree body rotation phase is campsite-only.
+HH_260622 - Rule-based parking publishes RViz validation paths on `/parking/site_maneuver/reverse_path` and `/parking/drop_zone/reverse_path`. Drop-zone parking aligns vehicle body yaw to the configured station/goal yaw and reverses only; the 180-degree body rotation phase is campsite-only.
 
-HHL_260622 - Rule-based campsite parking defaults to `site_entry_mode: crab`: lanelet-snap arrival keeps the body yaw fixed, uses wheel-crab lateral motion into the raw site center, rotates 180 degrees only inside the campsite, then crab-outs on return. Reverse site entry remains available only by explicitly setting `site_entry_mode: reverse`.
+HH_260622 - Rule-based campsite parking defaults to `site_entry_mode: crab`: lanelet-snap arrival keeps the body yaw fixed, uses wheel-crab lateral motion into the raw site center, rotates 180 degrees only inside the campsite, then crab-outs on return. Reverse site entry remains available only by explicitly setting `site_entry_mode: reverse`.
 
 HH_260618 - `parking/parking.yaml` sets `crab_timeout_speed_scale: 0.4` to match the effective low-speed simulator/platform motion. This keeps the campsite crab timeout based on the velocity that actually reaches the simulator/platform, not only the raw parking command.
 
@@ -561,7 +561,7 @@ HH_260619 - `parking/parking.yaml` also sets `reverse_return_timeout_margin_s: 4
 
 HH_260619 - Campsite reverse-out completion is axis-progress based, not only exact point-distance based. This avoids false timeout when the robot crosses the lanelet snap point while yaw/lateral feedback is still converging.
 
-HHL_260623 - Auto return-to-drop-zone no longer sends the station-center pose directly to Nav2. `planning_state_machine` publishes raw auto goals on `/planning/auto_goal_raw`, `goal_snapper` snaps them to `/planning/goal_pose_snapped_ros`, and the preserved `drop_zone` mission key lets `drop_zone_parking` start after Nav2 reaches the lanelet route goal. HHL_260624 - The selected raw station pose is additionally published on `/planning/drop_zone_goal_raw`, and campsite 180-degree rotation direction is configured by lanelet-side site index lists in `parking/parking.yaml`.
+HH_260623 - Auto return-to-drop-zone no longer sends the station-center pose directly to Nav2. `planning_state_machine` publishes raw auto goals on `/planning/auto_goal_raw`, `goal_snapper` snaps them to `/planning/goal_pose_snapped_ros`, and the preserved `drop_zone` mission key lets `drop_zone_parking` start after Nav2 reaches the lanelet route goal. HH_260624 - The selected raw station pose is additionally published on `/planning/drop_zone_goal_raw`, and campsite 180-degree rotation direction is configured by lanelet-side site index lists in `parking/parking.yaml`.
 
 HH_260618 - Normal Nav2 forward driving now uses raw lanelet safety in `planning_cmd_vel_gate_node`; reverse parking and lateral campsite crab commands are excluded from that generic lanelet stop by default and must be bounded by their mission-specific parking/site controllers.
 

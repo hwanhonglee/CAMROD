@@ -149,7 +149,7 @@ public:
     // the localization rate, ignoring the configured visualization rate.
     marker_publish_period_s_ = publish_rate_hz > 0.0 ? 1.0 / publish_rate_hz : 1.0;
     body_scale_factor_ = declare_parameter<double>("body_scale_factor", 1.0);
-    // HHL_260623 - Default visualization boundary margin follows measured robot_params planning margin.
+    // HH_260623 - Default visualization boundary margin follows measured robot_params planning margin.
     planning_boundary_margin_ = declare_parameter<double>(
       "planning_boundary_margin", params_.planning_margin);
     ground_z_offset_ = declare_parameter<double>("ground_z_offset", 0.0);
@@ -159,7 +159,7 @@ public:
     // ground_z_source options: fixed_offset | lanelet_map.
     ground_z_source_ = normalizeModeToken(
       declare_parameter<std::string>("ground_z_source", "lanelet_map"));
-    // HHL_260623 - Visualization is 2D-ground anchored by default; real pose altitude can be enabled explicitly.
+    // HH_260623 - Visualization is 2D-ground anchored by default; real pose altitude can be enabled explicitly.
     // pose_z_source options: ground | pose.
     pose_z_source_ = normalizeModeToken(
       declare_parameter<std::string>("pose_z_source", "ground"));
@@ -335,7 +335,7 @@ private:
     map_label.text = map_frame_id_;
     markers.markers.emplace_back(map_label);
 
-    // HHL_260623 - Vehicle body is asymmetric because robot_base_link is the rear-wheel center.
+    // HH_260623 - Vehicle body is asymmetric because robot_base_link is the rear-wheel center.
     const double body_front = params_.body_front_extent * body_scale_factor_;
     const double body_rear = params_.body_rear_extent * body_scale_factor_;
     const double body_left = params_.body_left_extent * body_scale_factor_;
@@ -578,7 +578,7 @@ private:
   // Exposes known sensor poses as a name->pose map for marker generation.
   std::vector<std::pair<std::string, SensorPose>> getSensorDictionary() const
   {
-    // HHL_260623 - Expose the same canonical sensor names used by sensor_kit TF frames.
+    // HH_260623 - Expose the same canonical sensor names used by sensor_kit TF frames.
     return {
       {"imu", params_.imu},
       {"gnss", params_.gnss},
@@ -699,7 +699,7 @@ private:
 
   RobotParams params_;
   PoseRPY base_pose_;
-  double planning_boundary_margin_{0.10};  // HHL_260623 - Default to measured body_extents planning margin.
+  double planning_boundary_margin_{0.10};  // HH_260623 - Default to measured body_extents planning margin.
   double body_scale_factor_{1.0};
   double ground_z_offset_{0.0};
   std::string ground_z_source_{"lanelet_map"};
@@ -808,7 +808,6 @@ private:
 
 }  // namespace camrod
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

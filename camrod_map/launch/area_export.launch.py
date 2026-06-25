@@ -102,7 +102,7 @@ def _normalize_profile_name(value: str) -> str:
 
 
 def _profiled_output_path(relative_path: str, map_profile: str) -> str:
-    # HHL_260623 - Export active map-profile semantics to the same YAML selected by bringup/planning.
+    # HH_260623 - Export active map-profile semantics to the same YAML selected by bringup/planning.
     profile = _normalize_profile_name(map_profile)
     if not profile:
         return relative_path

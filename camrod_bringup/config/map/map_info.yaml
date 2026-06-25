@@ -44,7 +44,7 @@
     # Canonical frame IDs shared by map/localization/planning.
     world_frame_id: "world"
     map_frame_id: "map"
-    # HHL_260623 - Flatten Lanelet2 marker altitude to the 2D planning ground plane so RViz overlays align with robot/path data.
+    # HH_260623 - Flatten Lanelet2 marker altitude to the 2D planning ground plane so RViz overlays align with robot/path data.
     align_z_to_ground: true
 
     # Lane-direction marker styling (RViz visualization only).
@@ -53,5 +53,18 @@
     dir_width_scale: 0.18
     # Number of centerline points skipped between arrow markers.
     dir_stride: 30
-    # HH_260413: 0 keeps one-shot static marker publish (transient_local for late RViz joiners).
+    # HH_260625: Publish the GNSS/localization neighborhood first; delay the
+    # full RViz marker build so startup planning does not compete with full-map rendering.
+    progressive_visualization_enable: true
+    progressive_visualization_radius_m: 80.0
+    progressive_visualization_full_delay_s: 180.0
+    progressive_visualization_pose_topic: "/sensing/gnss/pose"
+    # HH_260625: Fallback keeps RViz local-first working when GNSS pose is quiet.
+    # Empty local renders are ignored in code, so a startup (0,0) pose cannot lock the map.
+    progressive_visualization_fallback_pose_topic: "/localization/pose"
+    progressive_visualization_lightweight_local: true
+    progressive_visualization_lightweight_full: true
+    debug_timing: true
+
+    # 0 keeps one-shot static marker publish; transient_local handles late RViz subscribers.
     visualization_republish_period_s: 0.0

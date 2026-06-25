@@ -168,7 +168,7 @@ Visualization Manager:
       Name: Map
     - Class: rviz_common/Group
       Displays:
-        # HHL_260624 - Show the raw map-exported drop-zone return target before lanelet snapping.
+        # HH_260624 - Show the raw map-exported drop-zone return target before lanelet snapping.
         - Alpha: 1
           Axes Length: 1
           Axes Radius: 0.10000000149011612
@@ -419,7 +419,7 @@ Visualization Manager:
               Class: rviz_default_plugins/Range
               Color: 255; 255; 255
               Enabled: true
-              # HHL_260623 - Split radar front display into FRONT1/FRONT2 for the latest 7-channel layout.
+              # HH_260623 - Split radar front display into FRONT1/FRONT2 for the latest 7-channel layout.
               Name: Front1_Range
               Topic:
                 Depth: 5
@@ -714,7 +714,7 @@ Visualization Manager:
             Reliability Policy: Reliable
             Value: /parking/drop_zone/reverse_path
           Value: true
-        # HHL_260624 - Show straight drop-zone exit before Nav2 campsite routing starts.
+        # HH_260624 - Show straight drop-zone exit before Nav2 campsite routing starts.
         - Alpha: 1
           Buffer Length: 1
           Class: rviz_default_plugins/Path

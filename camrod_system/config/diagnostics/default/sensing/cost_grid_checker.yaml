@@ -11,7 +11,8 @@ cost_grid_checker:
   ros__parameters:
     publish_rate_hz: 1.0
 
-    output_topic:        "/sensing/lidar/near_cost_grid"
+    # HH_260625: Current lidar_cost_grid_node publishes the Nav2-facing grid here.
+    output_topic:        "/sensing/cost_grid/lidar"
     expected_hz:         10.0
     hz_warn_ratio:       0.7     # 7 Hz 미만이면 WARN
     hz_error_ratio:      0.4     # 4 Hz 미만이면 ERROR

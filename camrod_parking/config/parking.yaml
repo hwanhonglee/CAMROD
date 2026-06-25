@@ -9,16 +9,16 @@
     route_goal_topic: "/planning/goal_pose_snapped_ros"
     planning_state_topic: "/planning/state_machine/state"
     diagnostics_topic: "/system/diagnostics"
-    # HHL_260622 - Parking phase telemetry is shared with UI/system state.
+    # HH_260622 - Parking phase telemetry is shared with UI/system state.
     amr_service_state_topic: "/AMR_service_state"
-    # HHL_260622 - RViz path for the rule-based campsite maneuver.
+    # HH_260622 - RViz path for the rule-based campsite maneuver.
     reverse_path_topic: "/parking/site_maneuver/reverse_path"
 
     enable_auto_start_from_planning_state: true
     site_mission_key_prefix: "camping_site_"
     use_goal_pair_for_lateral_offset: true
     require_goal_pair_for_auto_start: true
-    # HHL_260622 - Operational campsite entry keeps the robot body yaw at the
+    # HH_260622 - Operational campsite entry keeps the robot body yaw at the
     # lanelet-snap pose, commands wheel-crab lateral motion into the site, then
     # rotates the robot body 180deg only inside the selected campsite.
     site_entry_mode: "crab"
@@ -31,7 +31,7 @@
     # HH_260618: Camping-site center can be ~6 m from the lanelet-snap pose;
     # 3 m clipped the crab entry before reaching the selected site.
     max_lateral_offset_m: 7.0
-    # HHL_260623 - Start campsite maneuver only after the robot_base_link
+    # HH_260623 - Start campsite maneuver only after the robot_base_link
     # center is near the lanelet route goal; 0.9 m started parking too early.
     route_goal_reached_distance_m: 0.3
     # HH_260618: 0 disables time expiry; the pair remains valid until a new
@@ -57,11 +57,11 @@
     rotate_kp: 1.2
     max_angular_speed_radps: 0.35
     rotate_yaw_tolerance_deg: 4.0
-    # HHL_260624 - Rotate toward the lanelet side after crab entry by campsite index.
+    # HH_260624 - Rotate toward the lanelet side after crab entry by campsite index.
     site_rotate_direction_policy: "site_index_lanelet_side"
     right_lanelet_site_indices: [1, 3, 5, 7, 9, 11]
     left_lanelet_site_indices: [2, 4, 6, 8, 10, 12, 13]
-    # HHL_260622 - Keep reverse mode available for fallback tests, but make it
+    # HH_260622 - Keep reverse mode available for fallback tests, but make it
     # slightly faster than the old 0.12 m/s parking crawl.
     reverse_entry_speed_mps: 0.16
     reverse_entry_yaw_kp: 1.0
@@ -100,16 +100,16 @@
     charging_topic: "/platform/status/is_charging"
     planning_state_topic: "/planning/state_machine/state"
     diagnostics_topic: "/system/diagnostics"
-    # HHL_260622 - Drop-zone parking publishes post-navigation service state.
+    # HH_260622 - Drop-zone parking publishes post-navigation service state.
     amr_service_state_topic: "/AMR_service_state"
-    # HHL_260622 - RViz path for the rule-based drop-zone reverse maneuver.
+    # HH_260622 - RViz path for the rule-based drop-zone reverse maneuver.
     reverse_path_topic: "/parking/drop_zone/reverse_path"
-    # HHL_260624 - Straight drop-zone departure handoff before UI campsite route dispatch.
+    # HH_260624 - Straight drop-zone departure handoff before UI campsite route dispatch.
     exit_topic: "/parking/drop_zone/exit"
     exit_done_topic: "/parking/drop_zone/exit_done"
     exit_path_topic: "/parking/drop_zone/exit_path"
     lanelet_pose_topic: "/planning/lanelet_pose_ros"
-    # HHL_260624 - Selected raw drop-zone pose from planning; synchronizes multi-drop-zone maps.
+    # HH_260624 - Selected raw drop-zone pose from planning; synchronizes multi-drop-zone maps.
     drop_zone_goal_raw_topic: "/planning/drop_zone_goal_raw"
 
     drop_zones_yaml: ""
@@ -122,7 +122,7 @@
     enable_auto_start_from_planning_state: true
     return_scenario_id: 2
     return_mission_key: "drop_zone"
-    # HHL_260622 - Drop-zone yaw is the parked robot front yaw. The vehicle body
+    # HH_260622 - Drop-zone yaw is the parked robot front yaw. The vehicle body
     # aligns to station/goal yaw first; reverse motion then drives along yaw + pi.
     rear_matches_station_yaw: false
     # HH_260619 - Do not auto-select a 180deg-equivalent yaw at drop-zone;
@@ -131,13 +131,13 @@
     align_yaw_tolerance_deg: 5.0
     align_yaw_kp: 1.2
     align_max_angular_speed_radps: 0.35
-    # HHL_260624 - Exit straight out of the drop-zone before aligning to lanelet yaw.
+    # HH_260624 - Exit straight out of the drop-zone before aligning to lanelet yaw.
     exit_forward_distance_m: 1.2
     exit_speed_mps: 0.16
-    # HHL_260624 - Allow slow sim/platform velocity scaling to finish the straight drop-zone exit before timeout.
+    # HH_260624 - Allow slow sim/platform velocity scaling to finish the straight drop-zone exit before timeout.
     exit_max_duration_s: 30.0
 
-    # HHL_260622 - Slightly faster reverse parking while keeping low-speed rule-based control.
+    # HH_260622 - Slightly faster reverse parking while keeping low-speed rule-based control.
     reverse_speed_mps: 0.16
     reverse_yaw_kp: 0.8
     # HH_260617: Signed lateral gain allows field calibration if reverse steering sign differs.

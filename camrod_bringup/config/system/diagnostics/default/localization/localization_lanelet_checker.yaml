@@ -4,7 +4,8 @@ localization_lanelet_checker:
 
     lanelet_topic: "/localization/centerline_pose"
 
-    expected_hz:    20.0   # centerline_snapper 입력 포즈와 동일 주기
+    # HH_260625: map_helper throttles nearest-centerline lookup to 10Hz.
+    expected_hz:    10.0
     hz_warn_ratio:  0.7    # actual / expected < 이 값 → WARN (간헐적 snapping 실패)
     hz_error_ratio: 0.4    # actual / expected < 이 값 → ERROR
 

@@ -44,15 +44,11 @@
                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,
                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01]
 
-    # HH_260522: Stability-first IMU fusion for ground vehicle.
-    # - Keep orientation + gyro yaw-rate for heading observability.
-    # - Disable raw linear acceleration fusion (accel bias can induce standstill drift).
-    # HH_260526: relative=false (absolute heading).
-    #   CV7 IMU provides absolute heading (ENU convention after driver conversion).
-    #   relative=true forces initial yaw=0 regardless of actual robot heading.
-    #   When robot moves, EKF integrates wheel vx along yaw=0 (East) direction,
-    #   but GNSS shows actual displacement → large innovation → "flies away".
-    #   relative=false uses the IMU absolute heading for correct position integration.
+    # HH_260625: Sim fake IMU publishes map-consistent yaw, so yaw fusion stays
+    # enabled here. Real CV7-AHRS yaw is handled differently in ekf.yaml.
+    # imu0_config order:
+    # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    # Enabled: roll/pitch/yaw orientation + angular velocity; raw acceleration off.
     imu0: /sensing/imu/data
     imu0_config: [false, false, false,
                   true,  true,  true,
@@ -125,7 +121,8 @@
     pose1_queue_size: 10
     pose1_rejection_threshold: 3.0
 
-    # HH_260604: Fuse GNSS yaw as pose2 so heading innovations cannot reject pose0 position.
+    # HH_260625: Sim keeps GNSS yaw as a yaw-only correction.
+    # pose2_config order matches the EKF state vector above.
     pose2: /sensing/gnss/pose_with_covariance
     pose2_config: [false, false, false,
                   false, false, true,

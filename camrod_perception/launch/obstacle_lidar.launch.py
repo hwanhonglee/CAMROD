@@ -8,7 +8,6 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-# Declares obstacle-lidar launch arguments and starts the LiDAR clustering node.
 def generate_launch_description():
     default_param = os.path.join(
         get_package_share_directory('camrod_perception'),

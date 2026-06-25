@@ -309,7 +309,7 @@ body {
   animation: pulse-text 1.5s ease-in-out infinite;
 }
 
-/* HHL_260623 - Manual ENGAGE off pauses motion after an accepted site mission. */
+/* HH_260623 - Manual ENGAGE off pauses motion after an accepted site mission. */
 .preview-paused {
   font-size: 1.3rem;
   font-weight: 800;
@@ -832,7 +832,7 @@ body {
 .move-confirm-no:hover { background: #e0e0e0; }
 .move-confirm-no:active { transform: scale(0.96); }
 
-/* HHL_260622 - Show mission-gate rejection instead of silently ignoring unsafe site-to-site commands. */
+/* HH_260622 - Show mission-gate rejection instead of silently ignoring unsafe site-to-site commands. */
 .site-access-error-overlay {
   position: fixed;
   inset: 0;
@@ -1328,7 +1328,7 @@ h1 {
   transform: none;
 }
 
-/* HHL_260623 - Distinguish selected mission from actual motion authorization. */
+/* HH_260623 - Distinguish selected mission from actual motion authorization. */
 .toggle-card.on.paused {
   background: linear-gradient(145deg, #ffb74d, #e65100);
   box-shadow: 0 0 20px rgba(230, 81, 0, 0.35), 3px 3px 10px rgba(0,0,0,0.15);

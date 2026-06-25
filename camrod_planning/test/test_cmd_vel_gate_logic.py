@@ -277,12 +277,12 @@ def make_gate(
 
     n.enable_cost_stop = True
     n.cost_grid_topic = "/planning/cost_grid/inflation"
-    # HHL_260623 - Unit tests exercise merged cost-stop only; lanelet safety
+    # HH_260623 - Unit tests exercise merged cost-stop only; lanelet safety
     # needs a full map grid fixture and is disabled in this lightweight stub.
     n.lanelet_safety_enable = False
     n.lanelet_safety_allow_rotation_in_place = True
     n.lanelet_safety_min_translation_mps = 0.02
-    # HHL_260624 - Keep route re-entry defaults in the lightweight unit stub.
+    # HH_260624 - Keep route re-entry defaults in the lightweight unit stub.
     n.lanelet_safety_lookahead_m = 1.0
     n.lanelet_safety_front_path_allow_route_reentry = True
     n.lanelet_safety_current_allow_route_reentry = True
@@ -327,7 +327,7 @@ def make_gate(
     n.unavoidable_cluster_min_ratio = 0.25
 
     # ── 내부 상태 ──
-    # HHL_260623 - Manual and UI-mission engage are independent OR latches.
+    # HH_260623 - Manual and UI-mission engage are independent OR latches.
     n._manual_enabled = False
     n._mission_enabled = False
     n._enabled = False

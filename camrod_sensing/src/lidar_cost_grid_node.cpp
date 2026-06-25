@@ -362,7 +362,6 @@ private:
 
 }  // namespace camrod::sensing
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

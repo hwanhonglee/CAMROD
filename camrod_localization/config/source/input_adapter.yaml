@@ -18,17 +18,25 @@
     # HH_260527: navsat_covariance_source options:
     #   navsat: use NavSatFix covariance (with floor clamp)
     #   fixed: use pose_covariance_diagonal fixed values
-    # HH_260415: Use NavSat covariance but clamp to floor values to reduce ESKF GNSS reject bursts.
     navsat_covariance_source: navsat
-    # HH_260415: RTK environment keeps very small covariance; floor is only a numerical guard.
-    gnss_covariance_floor_xy: 1.0e-6
-    gnss_covariance_floor_z: 1.0e-4
+    # RTK fixed covariance is ~0.001 m² (1 mm²). Floor at 0.1 m² (≈32 cm) balances:
+    #   - Startup convergence: with initial_estimate_covariance[x,y]=5.0, K_init≈0.98 (fast attachment)
+    #   - Steady-state stability: with Q_xx=0.01, P_ss≈0.037, K_ss≈0.27 (27% GNSS influence per epoch)
+    #   - A single bad RTK epoch (0.5m error) shifts EKF by 0.5×0.27 = 0.14 m → acceptable.
+    # Pairs with pose0_rejection_threshold=3.0 in ekf.yaml (rejects jumps > 3σ ≈ 1.0 m from predicted).
+    # HH_260526: tuned 0.04→0.2→0.1 (0.04 caused instability, 0.2 caused slow startup convergence).
+    gnss_covariance_floor_xy: 0.1
+    gnss_covariance_floor_z: 0.25
 
-    # HH_260604: Enable dual-antenna GNSS heading from /sensing/gnss/navheading.
+    # HH_260611: Enable dual-antenna GNSS heading from ublox_gps NAV-RELPOSNED.
+    # HH_260604: COG heading removed — dual-antenna moving-baseline RTK is the sole heading source.
     enable_gnss_heading: true
     gnss_heading_topic: "/sensing/gnss/navheading"
     gnss_heading_timeout_s: 1.0
-    gnss_heading_yaw_offset_deg: 0.0
+    # HH_260625: Live C-track measurement showed GNSS/localization yaw aligned
+    # with each other but ~85 deg clockwise from the lanelet heading. Correct
+    # only the dual-antenna heading here; keep map XY/yaw offsets unchanged.
+    gnss_heading_yaw_offset_deg: -85.0
     gnss_heading_covariance_floor_deg: 1.0
     gnss_heading_max_covariance: 100.0
     gnss_heading_unavailable_covariance: 1000000.0

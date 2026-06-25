@@ -36,7 +36,7 @@ class ApiState:
     """In-memory snapshot exposed by the HTTP/WebSocket API."""
 
     engaged: bool = False
-    # HHL_260623 - Manual ENGAGE is independent from accepted UI mission engage.
+    # HH_260623 - Manual ENGAGE is independent from accepted UI mission engage.
     mission_engaged: bool = False
     effective_engaged: bool = False
     ready: bool = False
@@ -53,7 +53,7 @@ class ApiState:
     ws_site_states: Dict[str, bool] = field(default_factory=dict)
     site_access: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     active_reservation_code: str = ""
-    # HHL_260622 - Expose parking/site maneuver lifecycle to UI clients instead
+    # HH_260622 - Expose parking/site maneuver lifecycle to UI clients instead
     # of leaving detailed phase state only in ROS logs.
     amr_service_state: int = AvgAmrServiceState.DROP_ZONE_WAIT
     amr_service_description: str = "Drop Zone 대기 중"
@@ -109,7 +109,7 @@ class UiBackendNode(Node):
         self.planning_mission_engage_topic = str(
             self.declare_parameter("planning_mission_engage_topic", "/planning/mission_engage").value
         )
-        # HHL_260624 - The UI must command manual/mission engage inputs only.
+        # HH_260624 - The UI must command manual/mission engage inputs only.
         # Publishing directly to /planning/engaged races the cmd_vel_gate effective
         # state and makes campsite missions depend on stale manual button state.
         if self.planning_engage_topic.strip() == "/planning/engaged":
@@ -136,7 +136,7 @@ class UiBackendNode(Node):
                 "/planning/state_machine/return_to_drop_zone",
             ).value
         )
-        # HHL_260622 - UI usage-complete must trigger campsite crab-out first.
+        # HH_260622 - UI usage-complete must trigger campsite crab-out first.
         # The planning return topic is published by site_maneuver after it has
         # returned to the lanelet-snap pose.
         self.parking_site_return_topic = str(
@@ -145,7 +145,7 @@ class UiBackendNode(Node):
                 "/parking/site_maneuver/return",
             ).value
         )
-        # HHL_260624 - From a parked drop-zone, delay campsite /goal_pose until
+        # HH_260624 - From a parked drop-zone, delay campsite /goal_pose until
         # the parking backend drives straight out and aligns with the lanelet.
         self.enable_drop_zone_exit_handoff = bool(
             self.declare_parameter("enable_drop_zone_exit_handoff", True).value
@@ -183,7 +183,7 @@ class UiBackendNode(Node):
         self.enforce_delivery_start_state = bool(
             self.declare_parameter("enforce_delivery_start_state", True).value
         )
-        # HHL_260622 - A new delivery may only start from the drop-zone idle state.
+        # HH_260622 - A new delivery may only start from the drop-zone idle state.
         # This prevents accidental site-to-site dispatch after unloading at a campsite.
         self.delivery_allowed_amr_states = self._parse_int_list(
             self.declare_parameter(
@@ -340,7 +340,7 @@ class UiBackendNode(Node):
         return status in {"RESERVED", "CHECKED_IN", "OCCUPIED", "CHECKED_OUT"}
 
     def _strict_mission_key_for_site(self, site: str) -> str:
-        # HHL_260623 - Only bind a site to an existing planning key; never reuse another campsite silently.
+        # HH_260623 - Only bind a site to an existing planning key; never reuse another campsite silently.
         mapped = self.site_to_mission_key_map.get(site, "")
         if mapped and mapped in self._keypoints_by_mission_key:
             return mapped
@@ -666,7 +666,7 @@ class UiBackendNode(Node):
             # HJ_260601: Notify robot UI that guest requested a recall.
             self._schedule_broadcast({"guest_recall": True})
 
-    # HHL_260622 - Parking nodes encode detailed phase in description
+    # HH_260622 - Parking nodes encode detailed phase in description
     # (`site_maneuver:PHASE:reason`, `drop_zone_parking:PHASE:reason`).
     def _extract_parking_phase(self, description: str) -> str:
         parts = str(description).split(":", 2)
@@ -675,7 +675,7 @@ class UiBackendNode(Node):
         return ""
 
     def _site_maneuver_is_waiting_for_user(self, parking_phase: str) -> bool:
-        # HHL_260622 - The customer-visible "arrived" state is campsite
+        # HH_260622 - The customer-visible "arrived" state is campsite
         # internal wait, not only Nav2's lanelet-snap GOAL_REACHED.
         return parking_phase in {
             "site_maneuver:UNLOAD_WAIT",
@@ -686,7 +686,7 @@ class UiBackendNode(Node):
         with self._lock:
             parking_phase = self._state.parking_phase
             amr_state = int(self._state.amr_service_state)
-        # HHL_260623 - Return from inside a campsite must exit by site_maneuver
+        # HH_260623 - Return from inside a campsite must exit by site_maneuver
         # first. If UI sends a direct planning return while the robot is parked
         # inside the site, Nav2 can drive straight out instead of crab-out.
         if parking_phase in {
@@ -711,7 +711,7 @@ class UiBackendNode(Node):
         with self._lock:
             parking_phase = self._state.parking_phase
             amr_state = int(self._state.amr_service_state)
-        # HHL_260623 - Avoid publishing another drop-zone route when already
+        # HH_260623 - Avoid publishing another drop-zone route when already
         # waiting/parking at the drop-zone. That duplicate route appears as a
         # small forward goal and can interrupt the parking backend.
         if parking_phase.startswith("drop_zone_parking:"):
@@ -719,7 +719,7 @@ class UiBackendNode(Node):
         return amr_state == int(AvgAmrServiceState.DROP_ZONE_WAIT)
 
     def _should_handoff_drop_zone_exit(self) -> bool:
-        # HHL_260624 - A campsite route from a parked drop-zone must not publish
+        # HH_260624 - A campsite route from a parked drop-zone must not publish
         # /goal_pose immediately; otherwise Nav2 cuts diagonally through the drop-zone.
         if not self.enable_drop_zone_exit_handoff:
             return False
@@ -737,7 +737,7 @@ class UiBackendNode(Node):
         return parking_phase in {"drop_zone_parking:EXIT_STRAIGHT", "drop_zone_parking:ALIGN_EXIT_YAW"}
 
     def _request_drop_zone_exit(self, site: str, source: str) -> None:
-        # HHL_260624 - Store the pending site so the route goal is published only
+        # HH_260624 - Store the pending site so the route goal is published only
         # after /parking/drop_zone/exit_done reports success.
         self._pending_drop_zone_exit_site = site
         self._pending_drop_zone_exit_source = source
@@ -801,7 +801,7 @@ class UiBackendNode(Node):
         )
 
     def _publish_return_to_drop_zone(self, source: str) -> None:
-        # HHL_260621 - Usage-complete must command the planning FSM return topic, not only UI state.
+        # HH_260621 - Usage-complete must command the planning FSM return topic, not only UI state.
         msg = Bool()
         msg.data = True
         self.pub_return_to_drop_zone.publish(msg)
@@ -810,7 +810,7 @@ class UiBackendNode(Node):
         )
 
     def _publish_site_maneuver_return(self, source: str) -> None:
-        # HHL_260622 - This starts crab-out/reverse-out. Planning return starts
+        # HH_260622 - This starts crab-out/reverse-out. Planning return starts
         # later from site_maneuver DONE to prevent straight-line site exit.
         msg = Bool()
         msg.data = True
@@ -847,7 +847,7 @@ class UiBackendNode(Node):
             if candidate in self._keypoints_by_mission_key:
                 return candidate
 
-        # HHL_260623 - Reject unresolved sites instead of falling back to another
+        # HH_260623 - Reject unresolved sites instead of falling back to another
         # campsite. Silent fallback can dispatch a human-error selection to an
         # occupied or wrong site.
         self.get_logger().warn(f"no configured mission key for site={site}; destination rejected")
@@ -875,7 +875,7 @@ class UiBackendNode(Node):
         )
 
     def _publish_mission_engage(self, enabled: bool, source: str) -> None:
-        # HHL_260623 - UI campsite/drop-zone scenarios use a mission latch so the
+        # HH_260623 - UI campsite/drop-zone scenarios use a mission latch so the
         # manual ENGAGE button can be turned off without stopping the scenario.
         msg = Bool()
         msg.data = bool(enabled)
@@ -964,7 +964,7 @@ class UiBackendNode(Node):
         mission_type: str,
         reservation_code: str = "",
     ) -> Dict[str, Any]:
-        # HHL_260621 - Central mission gate prevents UI/human error from sending unsafe site goals.
+        # HH_260621 - Central mission gate prevents UI/human error from sending unsafe site goals.
         if not self.enable_site_access_gate:
             return {"allowed": True, "message": "site access gate disabled"}
 
@@ -1082,7 +1082,7 @@ class UiBackendNode(Node):
         }
 
     def check_in_site(self, reservation_code: str = "", site: str = "") -> Dict[str, Any]:
-        # HHL_260621 - Check-in resolves the reservation to one site before any delivery command.
+        # HH_260621 - Check-in resolves the reservation to one site before any delivery command.
         code = str(reservation_code).strip()
         normalized_site = str(site).strip()
         if not normalized_site and code:
@@ -1106,7 +1106,7 @@ class UiBackendNode(Node):
         return result
 
     def check_out_site(self, site: str) -> Dict[str, Any]:
-        # HHL_260621 - Checkout keeps recall allowed but blocks automatic campsite entry.
+        # HH_260621 - Checkout keeps recall allowed but blocks automatic campsite entry.
         return self._set_site_status(site, "CHECKED_OUT", message="checked out")
 
     def _parse_destination_payload(self, raw: str) -> Optional[tuple[str, bool]]:
@@ -1155,7 +1155,7 @@ class UiBackendNode(Node):
             reservation_code=active_reservation_code,
         )
         if not access.get("allowed", False):
-            # HHL_260623 - A rejected new destination must not close an already
+            # HH_260623 - A rejected new destination must not close an already
             # active manual or mission engage latch. It is only a rejected request.
             return {
                 "site": site,
@@ -1166,14 +1166,14 @@ class UiBackendNode(Node):
                 "site_access": access.get("site_access", {}),
             }
 
-        # HHL_260622 - Engage only after the destination gate accepts the mission.
+        # HH_260622 - Engage only after the destination gate accepts the mission.
         # Direct /ui/selected_destination publishers must not open cmd_vel before validation.
         if self.publish_engage_from_destination:
             self._publish_mission_engage(True, source=f"{source}:destination")
         if self._drop_zone_exit_is_active():
             goal_result = self._publish_goal_for_site(site=site, source=source, publish_pose=False)
             if goal_result.get("mission_key", ""):
-                # HHL_260624 - During an ongoing drop-zone exit, a newer site
+                # HH_260624 - During an ongoing drop-zone exit, a newer site
                 # selection replaces the pending destination without publishing /goal_pose.
                 self._pending_drop_zone_exit_site = site
                 self._pending_drop_zone_exit_source = source
@@ -1239,7 +1239,7 @@ class UiBackendNode(Node):
     def _snapshot(self) -> Dict[str, Any]:
         with self._lock:
             return {
-                # HHL_260623 - Keep legacy /ui/state "engaged" as final gate state.
+                # HH_260623 - Keep legacy /ui/state "engaged" as final gate state.
                 "engaged": self._state.effective_engaged,
                 "manual_engaged": self._state.engaged,
                 "mission_engaged": self._state.mission_engaged,
@@ -1288,7 +1288,7 @@ class UiBackendNode(Node):
         return {"success": True, "message": "auto command published"}
 
     def set_stop(self) -> Dict[str, Any]:
-        # HHL_260624 - Stop is a safety command, not only a manual-drive latch.
+        # HH_260624 - Stop is a safety command, not only a manual-drive latch.
         # Close both manual engage and mission engage so return-to-drop-zone can be paused.
         self._publish_engage(False, source="http_stop")
         self._publish_mission_engage(False, source="http_stop")
@@ -1304,7 +1304,7 @@ class UiBackendNode(Node):
         return {"success": True, "message": "stop command published"}
 
     def request_return_to_drop_zone(self, source: str) -> Dict[str, Any]:
-        # HHL_260622 - One public return command, two safe backends:
+        # HH_260622 - One public return command, two safe backends:
         # campsite internal phase -> parking/site_maneuver crab-out first;
         # all other phases -> direct planning return.
         if self._return_is_redundant_at_drop_zone():
@@ -1487,7 +1487,7 @@ class UiBackendNode(Node):
                                 reservation_code=reservation_code,
                             )
                             if not result.get("success"):
-                                # HHL_260623 - Rejecting a destination must also clear the
+                                # HH_260623 - Rejecting a destination must also clear the
                                 # optimistic frontend site state. Site ON means an accepted
                                 # mission, not a pending/unaccepted UI click.
                                 with node._lock:
@@ -1519,7 +1519,7 @@ class UiBackendNode(Node):
                             "effective_engage": effective,
                         })
 
-                    # HHL_260623 - Mission engage is independent from manual ENGAGE.
+                    # HH_260623 - Mission engage is independent from manual ENGAGE.
                     # The frontend uses this to pause/resume accepted campsite/drop-zone
                     # scenarios without affecting arbitrary RViz 2D Goal Pose driving.
                     if "mission_engage" in payload:

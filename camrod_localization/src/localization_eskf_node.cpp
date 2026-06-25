@@ -1419,7 +1419,6 @@ private:
   double last_imu_base_yaw_{0.0};
 };
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

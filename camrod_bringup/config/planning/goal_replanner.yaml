@@ -23,9 +23,10 @@
     # This prevents occasional free-space diagonal plans when start_topic is stale.
     start_topic_fallback_to_tf: false
     action_name: "/planning/compute_path_to_pose"
-    # HH_260619: Use LaneletRoute for planner-only tests so global routes stay
-    # on the lanelet centerline instead of free-space costmap detours.
-    planner_id: "LaneletRoute"
+    # HH_260625: Use Smac2D by default for fast event-driven path generation.
+    # The lanelet cost grid keeps the search lane-bound without the LaneletRoute
+    # routing-graph startup cost.
+    planner_id: "Smac2D"
     fallback_planner_id: "Smac2D"
     retry_with_fallback_planner: true
     frame_id: "map"
@@ -56,7 +57,7 @@
     replan_on_start_change: false
     # After goal is reached, pause replanning until a new goal arrives.
     stop_replan_after_goal_reached: true
-    # HHL_260623 - Keep replanner-only tests aligned with center-based arrival.
+    # HH_260623 - Keep replanner-only tests aligned with center-based arrival.
     goal_reached_distance_m: 0.25
     start_replan_distance: 0.15
     start_replan_yaw_deg: 3.0

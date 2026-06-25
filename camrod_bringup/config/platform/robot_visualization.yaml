@@ -16,7 +16,7 @@
     heading_yaw_offset_deg: 0.0                  # [deg], negative=clockwise in ROS yaw convention.
     publish_tf: false                            # If true, publishes map->base TF from visualization pose.
     ground_z_source: "lanelet_map"               # fixed_offset | lanelet_map
-    # HHL_260623 - Ignore incoming localization/GNSS altitude for 2D RViz overlay alignment.
+    # HH_260623 - Ignore incoming localization/GNSS altitude for 2D RViz overlay alignment.
     pose_z_source: "ground"                      # ground | pose
     ground_z_offset: 0.0                         # Additional Z offset applied on top of estimated ground height [m].
     # HH_260618: Robot markers/boundary are visualization/diagnostic outputs; 5 Hz is enough and reduces RViz load.
@@ -24,6 +24,6 @@
     show_chassis_marker: false                   # Shows translucent robot body cube marker when true.
     group_robot_marker_namespaces: true          # Groups base/chassis markers under shared robot/* namespaces.
     body_scale_factor: 1.0                       # Uniform scale multiplier for body footprint visuals.
-    # HHL_260623 - Match measured body_extents.planning_margin so RViz boundary equals planning footprint.
+    # HH_260623 - Match measured body_extents.planning_margin so RViz boundary equals planning footprint.
     planning_boundary_margin: 0.10               # Extra margin added around measured body footprint [m].
     range_ring_radii: [2.0, 4.0, 6.0, 8.0]       # Concentric debug rings around base frame [m].

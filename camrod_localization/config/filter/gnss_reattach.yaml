@@ -14,14 +14,14 @@
     ekf_set_pose_topic: "/localization/set_pose"
     avg_pose_reset_topic: "/localization/eskf/set_pose"
 
-    # HH_260527: Reattach trigger hysteresis.
     detach_distance_m: 3.0
     attach_distance_m: 1.5
     detach_hold_s: 0.5
     reattach_cooldown_s: 3.0
 
-    # Require evidence of movement after detach before forcing reset.
-    require_motion_after_detach: true
+    # HH_260625: Allow static startup recovery. Requiring motion kept EKF at (0,0)
+    # while valid GNSS pose was already available and the vehicle was intentionally blocked.
+    require_motion_after_detach: false
     motion_distance_threshold_m: 0.4
     motion_step_clip_m: 5.0
     wheel_motion_speed_threshold_mps: 0.12
@@ -33,15 +33,12 @@
     localization_timeout_s: 1.0
     gnss_timeout_s: 2.0
 
-    # GNSS covariance guard (trace = cov_x + cov_y). <=0 disables guard.
     max_gnss_cov_trace: 25.0
-
-    # Reset pose covariance floor (variance units, m^2 / rad^2).
     min_reset_cov_xy: 0.05
     reset_cov_yaw: 0.5
-
-    # Preserve current localization yaw when snapping XY to GNSS.
-    use_localization_yaw: true
+    # HH_260625: Reattach uses GNSS dual heading instead of preserving
+    # an EKF yaw that may have been seeded by unaided IMU yaw.
+    use_localization_yaw: false
 
     # HH_260527: Manual RViz 2D Pose Estimate (/localization/initialpose) bridge.
     enable_initialpose_reset: true

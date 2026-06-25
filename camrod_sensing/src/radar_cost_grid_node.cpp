@@ -41,6 +41,9 @@ public:
     min_cost_ = declare_parameter<int>("min_cost", 35);
     max_cost_ = declare_parameter<int>("max_cost", 100);
     cost_range_min_m_ = declare_parameter<double>("cost_range_min_m", 0.3);
+    // HH_260625: Optional SEN0592 self-echo reject. Cost range min is a max-cost
+    // knee, not an ignore threshold, so very small fixed echoes need this gate.
+    ignore_below_range_m_ = declare_parameter<double>("ignore_below_range_m", 0.0);
     // HH_260422: Default lowered to 2.0m — radar is near-field only; per-sensor max_range in Range
     //   message limits detections before they reach the cost mapping stage.
     cost_range_max_m_ = declare_parameter<double>("cost_range_max_m", 2.0);
@@ -55,7 +58,7 @@ public:
     publish_radar_status_ = declare_parameter<bool>("publish_radar_status", false);
     input_topics_ = declare_parameter<std::vector<std::string>>(
       "input_topics",
-      // HHL_260623 - Use the latest 7-channel radar topic set from todo/camrod_sensing.
+      // HH_260623 - Use the latest 7-channel radar topic set from todo/camrod_sensing.
       std::vector<std::string>{
         "/sensing/radar/front1/range",
         "/sensing/radar/front2/range",
@@ -196,6 +199,9 @@ private:
     if (!std::isfinite(msg.range)) {
       return false;
     }
+    if (ignore_below_range_m_ > 0.0 && msg.range < ignore_below_range_m_) {
+      return false;
+    }
     if (msg.range < msg.min_range || msg.range > msg.max_range) {
       return false;
     }
@@ -313,7 +319,7 @@ private:
       return;
     }
     const auto & topic = input_topics_[idx];
-    // HHL_260623 - Removed the legacy merged front alias; publish front1/front2 separately.
+    // HH_260623 - Removed the legacy merged front alias; publish front1/front2 separately.
     if (topic.find("front1") != std::string::npos) {
       avg_msg.front1 = msg;
     } else if (topic.find("front2") != std::string::npos) {
@@ -362,6 +368,7 @@ private:
   int min_cost_{35};
   int max_cost_{100};
   double cost_range_min_m_{0.3};
+  double ignore_below_range_m_{0.0};
   double cost_range_max_m_{2.0};
   double obstacle_radius_m_{0.30};
   double ego_clear_radius_m_{0.50};
@@ -382,7 +389,6 @@ private:
 
 }  // namespace camrod::sensing
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

@@ -53,7 +53,7 @@ class DropZoneParkingNode(Node):
         self.cancel_topic = str(self.declare_parameter("cancel_topic", "/parking/drop_zone/cancel").value)
         self.status_topic = str(self.declare_parameter("status_topic", "/parking/drop_zone/status").value)
         self.diagnostics_topic = str(self.declare_parameter("diagnostics_topic", "/system/diagnostics").value)
-        # HHL_260622 - Drop-zone parking phase updates the UI/system service state.
+        # HH_260622 - Drop-zone parking phase updates the UI/system service state.
         self.amr_service_state_topic = str(
             self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
         )
@@ -61,7 +61,7 @@ class DropZoneParkingNode(Node):
         self.reverse_path_topic = str(
             self.declare_parameter("reverse_path_topic", "/parking/drop_zone/reverse_path").value
         )
-        # HHL_260624 - UI site dispatch from a parked drop-zone first requests a
+        # HH_260624 - UI site dispatch from a parked drop-zone first requests a
         # rule-based straight exit; Nav2 receives the campsite goal only after exit_done.
         self.exit_topic = str(self.declare_parameter("exit_topic", "/parking/drop_zone/exit").value)
         self.exit_done_topic = str(
@@ -73,7 +73,7 @@ class DropZoneParkingNode(Node):
         self.lanelet_pose_topic = str(
             self.declare_parameter("lanelet_pose_topic", "/planning/lanelet_pose_ros").value
         )
-        # HHL_260624 - Planning publishes the selected raw drop-zone area here.
+        # HH_260624 - Planning publishes the selected raw drop-zone area here.
         # This keeps rule-based reverse parking aligned with the exact station
         # chosen from drop_zones.yaml instead of a generic first-entry fallback.
         self.drop_zone_goal_raw_topic = str(
@@ -117,14 +117,14 @@ class DropZoneParkingNode(Node):
         self.align_max_angular_speed_radps = abs(
             float(self.declare_parameter("align_max_angular_speed_radps", 0.35).value)
         )
-        # HHL_260624 - Drop-zone departure uses low-speed forward motion along
+        # HH_260624 - Drop-zone departure uses low-speed forward motion along
         # the parked heading before aligning to the current lanelet yaw.
         self.exit_forward_distance_m = abs(
             float(self.declare_parameter("exit_forward_distance_m", 1.2).value)
         )
         self.exit_speed_mps = abs(float(self.declare_parameter("exit_speed_mps", 0.16).value))
         self.exit_max_duration_s = float(self.declare_parameter("exit_max_duration_s", 12.0).value)
-        # HHL_260622 - Match config default for slightly faster reverse parking.
+        # HH_260622 - Match config default for slightly faster reverse parking.
         self.reverse_speed_mps = abs(float(self.declare_parameter("reverse_speed_mps", 0.16).value))
         self.reverse_yaw_kp = float(self.declare_parameter("reverse_yaw_kp", 0.8).value)
         self.reverse_lateral_kp = float(self.declare_parameter("reverse_lateral_kp", -0.25).value)
@@ -345,7 +345,7 @@ class DropZoneParkingNode(Node):
         return True, "drop-zone parking started"
 
     def _start_exit_sequence(self, source: str) -> tuple[bool, str]:
-        # HHL_260624 - Starting a campsite route from inside the drop-zone is
+        # HH_260624 - Starting a campsite route from inside the drop-zone is
         # split into straight exit -> lanelet yaw alignment -> Nav2 route goal.
         if self.phase not in {Phase.IDLE, Phase.PARKED, Phase.ERROR}:
             self._publish_exit_done(False)
@@ -390,7 +390,7 @@ class DropZoneParkingNode(Node):
         self._set_phase(Phase.ERROR, message)
 
     def _publish_amr_service_state_for_phase(self, phase: Phase, source_message: str) -> None:
-        # HHL_260622 - UI sees drop-zone parking as a dedicated post-navigation state.
+        # HH_260622 - UI sees drop-zone parking as a dedicated post-navigation state.
         service_state = None
         if phase in {Phase.EXIT_STRAIGHT, Phase.ALIGN_EXIT_YAW}:
             service_state = AvgAmrServiceState.MOVING_TO_SITE
@@ -411,7 +411,7 @@ class DropZoneParkingNode(Node):
         self.cmd_pub.publish(Twist())
 
     def _publish_exit_done(self, ok: bool) -> None:
-        # HHL_260624 - UI waits for this handoff before publishing the campsite
+        # HH_260624 - UI waits for this handoff before publishing the campsite
         # /goal_pose, preventing diagonal Nav2 departures from the parking area.
         msg = Bool()
         msg.data = bool(ok)
@@ -450,7 +450,7 @@ class DropZoneParkingNode(Node):
         self.reverse_path_pub.publish(path)
 
     def _publish_exit_path(self) -> None:
-        # HHL_260624 - Visualize the straight drop-zone departure before Nav2 takes over.
+        # HH_260624 - Visualize the straight drop-zone departure before Nav2 takes over.
         if self.last_pose is None:
             return
 
@@ -537,7 +537,7 @@ class DropZoneParkingNode(Node):
         )
 
     def _nearest_equivalent_yaw(self, target_yaw: float, reference_yaw: float) -> float:
-        # HHL_260624 - Use the yaw representation requiring the smallest body
+        # HH_260624 - Use the yaw representation requiring the smallest body
         # rotation. This preserves the desired yaw while avoiding long wraparound turns.
         return normalize_angle(reference_yaw + normalize_angle(target_yaw - reference_yaw))
 

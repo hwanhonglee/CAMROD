@@ -417,7 +417,7 @@ private:
       topic_names_and_types[kv.first] = kv.second;
     }
 
-    // HHL_260623 - Build aggregate graph diagnostics from module manifests
+    // HH_260623 - Build aggregate graph diagnostics from module manifests
     // instead of legacy top-level required_nodes/required_topics lists.
     std::vector<std::string> missing_nodes;
     std::vector<std::string> missing_topics;

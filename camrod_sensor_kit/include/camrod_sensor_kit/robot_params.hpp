@@ -29,7 +29,7 @@ struct RobotParams
   double width{1.07000};
   double height{1.09463};
 
-  // HHL_260623 - Measured asymmetric body extents relative to robot_base_link.
+  // HH_260623 - Measured asymmetric body extents relative to robot_base_link.
   double body_front_extent{1.20137};
   double body_rear_extent{0.29023};
   double body_left_extent{0.53505};
@@ -38,7 +38,7 @@ struct RobotParams
   double body_bottom_z{-0.15275};
   double planning_margin{0.10};
 
-  // HHL_260623 - Default wheel radius updated from measured 152.75 mm.
+  // HH_260623 - Default wheel radius updated from measured 152.75 mm.
   double wheel_radius{0.15275};
   int encoder_resolution{2048};
 
@@ -50,7 +50,7 @@ struct RobotParams
   SensorPose lidar;
   // HH_260326: Canonical camera pose.
   SensorPose camera;
-  // HHL_260623 - Canonical dual-camera and seven-radar poses used by sensor_kit TF/RViz.
+  // HH_260623 - Canonical dual-camera and seven-radar poses used by sensor_kit TF/RViz.
   SensorPose camera_front;
   SensorPose camera_rear;
   SensorPose radar_front1;

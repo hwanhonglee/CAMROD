@@ -26,7 +26,7 @@ public:
     engage_topic_ =
       declare_parameter<std::string>("engage_topic", "/planning/engaged");
     // HH_260522: unified source selector for engage signal.
-    // HHL_260624 - Default to /planning/engaged so manual 2D-goal engage and
+    // HH_260624 - Default to /planning/engaged so manual 2D-goal engage and
     // UI mission engage remain independent before reaching the final platform gate.
     //   planning_engage/planning_engaged/topic/enabled/on: subscribe
     //   disabled/off/none: ignore
@@ -91,7 +91,8 @@ public:
     publish_zero_when_blocked_ =
       declare_parameter<bool>("publish_zero_when_blocked", true);
 
-    enabled_ = allow_on_start_;
+    drive_enabled_ = allow_on_start_;
+    planning_engaged_ = !enable_engage_topic_sub_ || allow_on_start_;
     estop_ = false;
 
     pub_cmd_ = create_publisher<geometry_msgs::msg::Twist>(output_cmd_vel_topic_, 10);
@@ -128,19 +129,22 @@ public:
     RCLCPP_INFO(
       get_logger(),
       "cmd_vel_gate ready: in=%s out=%s enable_topic=%s engage_topic=%s "
-      "estop_topic=%s allow_on_start=%s",
+      "estop_topic=%s allow_on_start=%s drive_enabled=%s planning_engaged=%s",
       input_cmd_vel_topic_.c_str(), output_cmd_vel_topic_.c_str(),
       enable_topic_.c_str(),
       enable_engage_topic_sub_ ? engage_topic_.c_str() : "(disabled)",
       enable_estop_topic_sub_ ? estop_topic_.c_str() : "(disabled)",
-      allow_on_start_ ? "true" : "false");
+      allow_on_start_ ? "true" : "false",
+      drive_enabled_ ? "true" : "false",
+      planning_engaged_ ? "true" : "false");
   }
 
 private:
-  // Returns effective gate state after e-stop override.
+  // HH_260625: Platform drive-enable and planning engage are independent latches.
+  // The final platform cmd_vel opens only when both latches are true and e-stop is clear.
   bool effective_enabled() const
   {
-    return enabled_ && !estop_;
+    return drive_enabled_ && planning_engaged_ && !estop_;
   }
 
   // Publishes effective drive state for downstream modules.
@@ -170,46 +174,50 @@ private:
       publish_zero();
     }
     RCLCPP_DEBUG(
-      get_logger(), "cmd_vel blocked: enabled=%s estop=%s",
-      enabled_ ? "true" : "false", estop_ ? "true" : "false");
+      get_logger(), "cmd_vel blocked: drive_enabled=%s planning_engaged=%s estop=%s",
+      drive_enabled_ ? "true" : "false",
+      planning_engaged_ ? "true" : "false",
+      estop_ ? "true" : "false");
   }
 
   // Updates gate state from /platform/drive_enable.
   void on_enable(const std_msgs::msg::Bool::SharedPtr msg)
   {
     const bool new_enabled = static_cast<bool>(msg->data);
-    if (new_enabled == enabled_) {
+    if (new_enabled == drive_enabled_) {
       return;
     }
-    enabled_ = new_enabled;
+    drive_enabled_ = new_enabled;
     publish_state();
     if (!effective_enabled() && publish_zero_when_blocked_) {
       publish_zero();
     }
     RCLCPP_INFO(
       get_logger(),
-      "drive enable topic update: enabled=%s estop=%s effective=%s",
-      enabled_ ? "true" : "false",
+      "drive enable topic update: drive_enabled=%s planning_engaged=%s estop=%s effective=%s",
+      drive_enabled_ ? "true" : "false",
+      planning_engaged_ ? "true" : "false",
       estop_ ? "true" : "false",
       effective_enabled() ? "true" : "false");
   }
 
-  // Mirrors the configured planning engage-state topic into the same gate state latch.
+  // Mirrors the configured planning engage-state topic into the planning latch.
   void on_engage(const std_msgs::msg::Bool::SharedPtr msg)
   {
     const bool new_enabled = static_cast<bool>(msg->data);
-    if (new_enabled == enabled_) {
+    if (new_enabled == planning_engaged_) {
       return;
     }
-    enabled_ = new_enabled;
+    planning_engaged_ = new_enabled;
     publish_state();
     if (!effective_enabled() && publish_zero_when_blocked_) {
       publish_zero();
     }
     RCLCPP_INFO(
       get_logger(),
-      "planning engage-state update: enabled=%s estop=%s effective=%s",
-      enabled_ ? "true" : "false",
+      "planning engage-state update: drive_enabled=%s planning_engaged=%s estop=%s effective=%s",
+      drive_enabled_ ? "true" : "false",
+      planning_engaged_ ? "true" : "false",
       estop_ ? "true" : "false",
       effective_enabled() ? "true" : "false");
   }
@@ -238,14 +246,15 @@ private:
     const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
     std::shared_ptr<std_srvs::srv::SetBool::Response> response)
   {
-    enabled_ = static_cast<bool>(request->data);
+    drive_enabled_ = static_cast<bool>(request->data);
     publish_state();
     if (!effective_enabled() && publish_zero_when_blocked_) {
       publish_zero();
     }
     response->success = true;
     response->message =
-      "enabled=" + std::string(enabled_ ? "true" : "false") +
+      "drive_enabled=" + std::string(drive_enabled_ ? "true" : "false") +
+      " planning_engaged=" + std::string(planning_engaged_ ? "true" : "false") +
       " estop=" + std::string(estop_ ? "true" : "false") +
       " effective=" + std::string(effective_enabled() ? "true" : "false");
   }
@@ -263,7 +272,8 @@ private:
   bool enable_estop_topic_sub_{true};
   bool allow_on_start_{false};
   bool publish_zero_when_blocked_{true};
-  bool enabled_{false};
+  bool drive_enabled_{false};
+  bool planning_engaged_{false};
   bool estop_{false};
 
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_cmd_;

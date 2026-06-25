@@ -26,7 +26,7 @@ constexpr uint16_t kRegAngleConfig    = 0x0208;
 // HH_260422: Detection range register (mm). Hardware-level filter — sensor does not report
 //   objects beyond this value. Set per direction based on stopping-distance physics:
 //   FRONT1/FRONT2 1500mm (5km/h wet-road stop), SIDE 800mm, REAR 500mm (3km/h reverse stop).
-// HHL_260623 - Updated the default vehicle radar profile to the latest 7-channel layout:
+// HH_260623 - Updated the default vehicle radar profile to the latest 7-channel layout:
 //   FRONT1/FRONT2 1500mm, SIDE 800mm, REAR 500mm.
 constexpr uint16_t kRegRangeConfig    = 0x021F;
 constexpr uint8_t  kFunctionReadHolding = 0x03;
@@ -147,7 +147,7 @@ void drain_serial_rx(int fd)
   int available = 0;
   if (ioctl(fd, FIONREAD, &available) == 0 && available > 0) {
     std::vector<uint8_t> tmp(static_cast<size_t>(available));
-    // HHL_260623 - Keep the drain result explicit so the radar build stays warning-free.
+    // HH_260623 - Keep the drain result explicit so the radar build stays warning-free.
     const ssize_t drained = ::read(fd, tmp.data(), tmp.size());
     (void)drained;
   }
@@ -185,14 +185,14 @@ public:
     this->declare_parameter<std::vector<double>>(
       "sensor_max_ranges_m", std::vector<double>{});
     // HH_260422: sensor_range_config_mm: hardware detection range per sensor (mm) written to 0x021F.
-    // HHL_260623 - Default order is FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
+    // HH_260623 - Default order is FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
     //   Basis: wet-road stopping distance + reaction time + margin at operating speed per direction.
     this->declare_parameter<std::vector<int>>(
       "sensor_range_config_mm", std::vector<int>{1500, 1500, 800, 800, 800, 800, 500});
 
     // Sensor definitions (name, frame_id, port, topic)
     // Default values are Linux examples; replace with your actual /dev paths or udev symlinks.
-    // HHL_260623 - Match the latest todo/camrod_sensing radar wiring: two front radars plus
+    // HH_260623 - Match the latest todo/camrod_sensing radar wiring: two front radars plus
     // side/rear radars on fixed CH9344 ports. The legacy auto: resolver was removed so an
     // unexpected USB reorder fails visibly instead of silently binding the wrong sensor.
     sensor_names_ = this->declare_parameter<std::vector<std::string>>(
@@ -470,7 +470,7 @@ private:
       std::lock_guard<std::mutex> lock(avg_mtx_);
       if (idx < topics_.size()) {
         const auto & topic = topics_[idx];
-        // HHL_260623 - Removed the legacy merged front alias; publish front1/front2 separately.
+        // HH_260623 - Removed the legacy merged front alias; publish front1/front2 separately.
         if (topic.find("front1") != std::string::npos) {
           avg_radar_msg_.front1 = msg;
         } else if (topic.find("front2") != std::string::npos) {
@@ -618,7 +618,6 @@ private:
   rclcpp::TimerBase::SharedPtr status_timer_;
 };
 
-// Entry point for this executable.
 int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv);

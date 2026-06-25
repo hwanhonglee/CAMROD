@@ -15,11 +15,15 @@
     longitudinal_stddev: 0.5
     lateral_stddev: 0.3
     yaw_stddev: 0.2
+    # HH_260625: Use localization/GNSS yaw when choosing among nearby centerlines.
+    # This prevents crossing lanelets from rotating /planning/lanelet_pose.
+    heading_filter_enable: true
+    max_heading_error_deg: 100.0
     # HH_260527: centerline_z_mode options:
     #   input: keep input pose Z
     #   map: use lanelet centerline Z + map_z_offset
     #   ground: force Z=0 + map_z_offset
-    # HHL_260623 - Use the 2D planning plane so snapped pose markers stay attached to flattened Lanelet2 markers.
+    # HH_260623 - Use the 2D planning plane so snapped pose markers stay attached to flattened Lanelet2 markers.
     centerline_z_mode: ground
     map_z_offset: 0.0
     # Throttle nearest-centerline projection for CPU stability.
