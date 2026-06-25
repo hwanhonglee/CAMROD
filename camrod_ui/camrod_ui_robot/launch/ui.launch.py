@@ -55,7 +55,7 @@ def _normalize_profile_name(profile: str) -> str:
 
 
 def _resolve_profile_file(base_path: str, profile: str) -> str:
-    # HHL_260622 - Standalone UI follows the active map profile just like bringup/planning.
+    # HH_260622 - Standalone UI follows the active map profile just like bringup/planning.
     normalized = _normalize_profile_name(profile)
     if normalized:
         root, ext = os.path.splitext(base_path)
@@ -107,7 +107,7 @@ def _resolve_default_site_access_yaml() -> str:
     except PackageNotFoundError:
         pass
 
-    # HHL_260621 - Source fallback keeps reservation/occupancy gate active before install.
+    # HH_260621 - Source fallback keeps reservation/occupancy gate active before install.
     source_candidate = os.path.abspath(
         os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'site_access.yaml')
     )
@@ -151,7 +151,7 @@ def generate_launch_description():
         default_value=default_site_access_yaml,
         description='Reservation/occupancy YAML used to gate unsafe campsite dispatch',
     )
-    # HHL_260623 - Keep manual 2D-goal engage separate from scenario mission engage.
+    # HH_260623 - Keep manual 2D-goal engage separate from scenario mission engage.
     planning_engage_topic_arg = DeclareLaunchArgument(
         'planning_engage_topic',
         default_value='/planning/engage',
@@ -183,10 +183,10 @@ def generate_launch_description():
             'planning_mission_key_topic': '/planning/mission_key',
             'planning_goal_pose_topic': '/goal_pose',
             'planning_return_to_drop_zone_topic': '/planning/state_machine/return_to_drop_zone',
-            # HHL_260622 - Customer "usage complete" starts campsite crab-out
+            # HH_260622 - Customer "usage complete" starts campsite crab-out
             # before planning is allowed to route back to the drop zone.
             'parking_site_return_topic': '/parking/site_maneuver/return',
-            # HHL_260624 - Campsite dispatch from the drop-zone waits for a
+            # HH_260624 - Campsite dispatch from the drop-zone waits for a
             # straight parking-backend exit before publishing the Nav2 goal.
             'enable_drop_zone_exit_handoff': True,
             'drop_zone_exit_topic': '/parking/drop_zone/exit',
@@ -199,9 +199,9 @@ def generate_launch_description():
             'site_access_yaml': LaunchConfiguration('site_access_yaml'),
             'enable_site_access_gate': True,
             'require_reservation_code_for_delivery': False,
-            # HHL_260621 - Do not let unmapped B-sites fall back to camping_site_1.
+            # HH_260621 - Do not let unmapped B-sites fall back to camping_site_1.
             'require_known_mission_key_for_delivery': True,
-            # HHL_260622 - A new delivery may start only from drop-zone idle unless site_access.yaml overrides it.
+            # HH_260622 - A new delivery may start only from drop-zone idle unless site_access.yaml overrides it.
             'enforce_delivery_start_state': True,
             'delivery_allowed_amr_states': [0],
         }],

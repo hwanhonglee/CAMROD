@@ -29,7 +29,7 @@ public:
     camera_status_topic_ = declare_parameter<std::string>(
       "camera_status_topic", "/sensing/camera/status");
     publish_camera_status_ = declare_parameter<bool>("publish_camera_status", false);
-    // HHL_260623 - Use camera_front; legacy camera_link was removed from sensor_kit TF.
+    // HH_260623 - Use camera_front; legacy camera_link was removed from sensor_kit TF.
     frame_id_override_ = declare_parameter<std::string>("frame_id_override", "camera_front");
     require_camera_info_ = declare_parameter<bool>("require_camera_info", false);
 
@@ -125,7 +125,6 @@ private:
 
 }  // namespace camping_cart::sensing
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

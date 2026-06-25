@@ -6,7 +6,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 import rclpy
 import yaml
@@ -63,7 +63,7 @@ class PlanningStateMachineNode(Node):
     SCENARIO_DELIVERY_TO_SITE = 1
     SCENARIO_RETURN_TO_DROP_ZONE = 2
     SCENARIO_RECALL_TO_SITE = 3
-    # HHL_260622 - Mirror non-Nav2 parking/site phases into the central planning state output.
+    # HH_260622 - Mirror non-Nav2 parking/site phases into the central planning state output.
     SCENARIO_SITE_ENTRY = int(PlanningScenario.SITE_ENTRY)
     SCENARIO_UNLOAD_WAIT = int(PlanningScenario.UNLOAD_WAIT)
     SCENARIO_RECALL_TO_SITE_ROAD = int(PlanningScenario.RECALL_TO_SITE_ROAD)
@@ -107,6 +107,14 @@ class PlanningStateMachineNode(Node):
         self.state_stale_timeout_s = float(
             self.declare_parameter("state_stale_timeout_s", 3.0).value
         )
+        ignored_state_names = self.declare_parameter(
+            "state_status_ignored_names", [""]
+        ).value
+        ignored_state_prefixes = self.declare_parameter(
+            "state_status_ignored_prefixes", [""]
+        ).value
+        self.state_status_ignored_names = self._param_string_set(ignored_state_names)
+        self.state_status_ignored_prefixes = self._param_string_set(ignored_state_prefixes)
         # HH_260618: This Python node consumes ROS-native geometry_msgs poses.
         # C++ planning nodes keep avg_msgs on /planning/lanelet_pose and
         # /planning/goal_pose_snapped; use the *_ros mirrors here.
@@ -118,7 +126,7 @@ class PlanningStateMachineNode(Node):
         self.goal_topic_ros = str(
             self.declare_parameter("goal_topic_ros", "/planning/goal_pose_snapped_ros").value
         )
-        # HHL_260623 - Auto return/drop-zone goals are station-center poses, not
+        # HH_260623 - Auto return/drop-zone goals are station-center poses, not
         # lanelet route poses. Publish those raw poses through a private goal_snapper
         # input so Nav2 receives a valid lanelet-snapped route goal while parking
         # keeps the original station pose for reverse parking.
@@ -161,7 +169,7 @@ class PlanningStateMachineNode(Node):
         self.scenario_command_topic = str(
             self.declare_parameter("scenario_command_topic", "/planning/state_machine/scenario_command").value
         )
-        # HHL_260622 - Parking nodes publish detailed phase telemetry on
+        # HH_260622 - Parking nodes publish detailed phase telemetry on
         # /AMR_service_state; planning mirrors that into scenario/state output
         # without letting UI's generic MOVING_TO_SITE messages override planning.
         self.enable_parking_phase_state_override = bool(
@@ -186,13 +194,13 @@ class PlanningStateMachineNode(Node):
         self.startup_mission_key = str(self.declare_parameter("startup_mission_key", "drop_zone").value)
         self.warn_mission_key = str(self.declare_parameter("warn_mission_key", "garage").value)
         self.return_mission_key = str(self.declare_parameter("return_mission_key", "drop_zone").value)
-        # HHL_260624 - Keep planning and parking on the same semantic drop-zone selector.
+        # HH_260624 - Keep planning and parking on the same semantic drop-zone selector.
         self.drop_zone_id = str(self.declare_parameter("drop_zone_id", "drop_zone").value)
-        # HHL_260624 - Publish the raw station-center return target for RViz/debug only.
+        # HH_260624 - Publish the raw station-center return target for RViz/debug only.
         self.drop_zone_goal_raw_topic = str(
             self.declare_parameter("drop_zone_goal_raw_topic", "/planning/drop_zone_goal_raw").value
         )
-        # HHL_260624 - RViz/UI manual /goal_pose clicks lose semantic meaning after
+        # HH_260624 - RViz/UI manual /goal_pose clicks lose semantic meaning after
         # goal_snapper moves them to a lanelet. Watch the raw goal too so a manual
         # drop-zone click still starts RETURN_TO_DROP_ZONE and reverse parking.
         self.raw_goal_topic = str(self.declare_parameter("raw_goal_topic", "/goal_pose").value)
@@ -275,7 +283,7 @@ class PlanningStateMachineNode(Node):
         self.goal_reached_distance_m = float(
             self.declare_parameter("goal_reached_distance_m", 0.2).value
         )
-        # HHL_260622 - Parking handoff must wait for Nav2 terminal success, not
+        # HH_260622 - Parking handoff must wait for Nav2 terminal success, not
         # only geometric distance, otherwise site_maneuver can race bt_navigator.
         self.require_nav2_success_for_goal_reached = bool(
             self.declare_parameter("require_nav2_success_for_goal_reached", True).value
@@ -298,7 +306,7 @@ class PlanningStateMachineNode(Node):
         self.return_goal_reached_distance_m = float(
             self.declare_parameter("return_goal_reached_distance_m", 0.3).value
         )
-        # HHL_260623 - Keep the return GOAL_REACHED state visible long enough
+        # HH_260623 - Keep the return GOAL_REACHED state visible long enough
         # for drop_zone_parking to receive the handoff; a single 5 Hz tick was
         # too easy to miss and could leave the robot stopped before parking.
         self.drop_zone_parking_handoff_hold_s = float(
@@ -470,7 +478,7 @@ class PlanningStateMachineNode(Node):
                     source_id=str(v.get("id", name)),
                 )
 
-        # HHL_260624 - Directly consume map/drop_zones.yaml so return goals use exported station centers.
+        # HH_260624 - Directly consume map/drop_zones.yaml so return goals use exported station centers.
         self._merge_drop_zones(data)
 
         self._merge_camping_sites(data)
@@ -502,7 +510,7 @@ class PlanningStateMachineNode(Node):
                 source_id=dz.source_id,
             )
 
-    # HHL_260624 - Preserve exported drop-zone id/yaw and select the configured return station.
+    # HH_260624 - Preserve exported drop-zone id/yaw and select the configured return station.
     def _merge_drop_zones(self, data: dict) -> None:
         raw_zones = data.get("drop_zones", [])
         if not isinstance(raw_zones, list):
@@ -546,7 +554,7 @@ class PlanningStateMachineNode(Node):
         return selector in {"", self.return_mission_key, "drop_zone"}
 
     def _select_return_keypoint(self, selected: Keypoint, reason: str) -> None:
-        # HHL_260624 - Keep the canonical drop_zone key mapped to the selected
+        # HH_260624 - Keep the canonical drop_zone key mapped to the selected
         # physical area so planning, RViz raw target, and parking station agree.
         canonical = Keypoint(
             name=self.return_mission_key,
@@ -674,10 +682,32 @@ class PlanningStateMachineNode(Node):
             return st.hardware_id
         return ""
 
+    @staticmethod
+    def _param_string_set(value: object) -> Set[str]:
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        else:
+            try:
+                raw_items = list(value)
+            except TypeError:
+                raw_items = [value]
+        return {str(item).strip() for item in raw_items if str(item).strip()}
+
+    def _ignore_state_status(self, st: StatusStatus) -> bool:
+        status_name = str(getattr(st, "name", "") or "")
+        if status_name in self.state_status_ignored_names:
+            return True
+        return any(
+            status_name.startswith(prefix)
+            for prefix in self.state_status_ignored_prefixes
+        )
+
     def _on_state(self, msg: StatusArray) -> None:
         self.last_state_stamp = self.get_clock().now()
         current_levels: Dict[str, int] = {}
         for st in msg.status:
+            if self._ignore_state_status(st):
+                continue
             module = self._extract_module(st)
             if not module:
                 continue
@@ -756,11 +786,11 @@ class PlanningStateMachineNode(Node):
             return nearest
         return None
 
-    # HHL_260624 - Use the selected drop-zone keypoint for every return-to-drop-zone path.
+    # HH_260624 - Use the selected drop-zone keypoint for every return-to-drop-zone path.
     def _return_keypoint(self) -> Optional[Keypoint]:
         return self.selected_return_keypoint or self.keypoints.get(self.return_mission_key)
 
-    # HHL_260624 - Resolve semantic keys through the drop-zone selector when needed.
+    # HH_260624 - Resolve semantic keys through the drop-zone selector when needed.
     def _goal_keypoint(self, key_name: str) -> Optional[Keypoint]:
         if key_name == self.return_mission_key:
             return self._return_keypoint()
@@ -893,7 +923,7 @@ class PlanningStateMachineNode(Node):
             self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "manual_goal")
 
     def _reset_nav2_goal_status(self) -> None:
-        # HHL_260622 - Treat every route-goal update as a new Nav2 handoff.
+        # HH_260622 - Treat every route-goal update as a new Nav2 handoff.
         self._active_goal_time = self.get_clock().now()
         self._nav2_goal_succeeded = False
         self._nav2_terminal_status = 0
@@ -994,7 +1024,7 @@ class PlanningStateMachineNode(Node):
     def _active_parking_phase_override(self) -> tuple[str, Optional[int], str]:
         if self._parking_phase_override_scenario_id is None or self._parking_phase_override_time is None:
             return "", None, ""
-        # HHL_260622 - Parking phase messages are state-transition events, not
+        # HH_260622 - Parking phase messages are state-transition events, not
         # periodic telemetry. A non-positive timeout keeps the latest phase
         # authoritative until a new route/mission/return command explicitly
         # clears it.
@@ -1017,7 +1047,7 @@ class PlanningStateMachineNode(Node):
     def _on_return_to_drop_zone(self, msg: Bool) -> None:
         if not msg.data:
             return
-        # HHL_260623 - Do not publish another drop-zone route when the robot is
+        # HH_260623 - Do not publish another drop-zone route when the robot is
         # already at the drop-zone keypoint or in the return-arrival handoff.
         # The duplicate route looked like a small forward goal in RViz and could
         # interrupt the reverse-parking sequence.
@@ -1478,7 +1508,7 @@ class PlanningStateMachineNode(Node):
             drop_zone_arrival_announced = False
             if self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE and self._drop_zone_arrived_with_condition():
                 if not self._drop_zone_arrival_notified:
-                    # HHL_260623: Publish a short explicit GOAL_REACHED
+                    # HH_260623: Publish a short explicit GOAL_REACHED
                     # return-state hold before idling; drop_zone_parking uses
                     # this as the automatic reverse-parking trigger.
                     self.state = "GOAL_REACHED"
@@ -1514,7 +1544,6 @@ class PlanningStateMachineNode(Node):
         self._publish_state_outputs(estop)
 
 
-# Entry point for this executable.
 def main() -> None:
     rclpy.init()
     node = PlanningStateMachineNode()

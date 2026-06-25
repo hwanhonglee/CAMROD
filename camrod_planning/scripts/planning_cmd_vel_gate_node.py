@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # HH_260331: Gate Nav2 controller cmd_vel with explicit planning engage trigger.
-# HHL_260624 - Split manual /planning/engage from UI /planning/mission_engage
+# HH_260624 - Split manual /planning/engage from UI /planning/mission_engage
 # while publishing one effective /planning/engaged state for downstream gates.
 
 from __future__ import annotations
@@ -62,6 +62,15 @@ class PlanningCmdVelGateNode(Node):
         self.state_topic = str(
             self.declare_parameter("state_topic", "/planning/engaged").value
         )
+        if self.engage_topic == self.state_topic:
+            # HH_260625: Never subscribe manual engage from this node's own effective-state output.
+            # A stale/miswired launch can otherwise create a self-loop and ignore /planning/engage.
+            fallback_engage_topic = "/planning/engage"
+            self.get_logger().warn(
+                "manual engage_topic matched state_topic (%s); using %s instead"
+                % (self.state_topic, fallback_engage_topic)
+            )
+            self.engage_topic = fallback_engage_topic
         # HH_260522: unified source selector for e-stop input.
         #   platform_status/topic/enabled/on -> subscribe
         #   disabled/off/none -> ignore
@@ -173,7 +182,7 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("cost_stop_lookahead_m", 2.0).value
         )
         self.cost_stop_width_m = float(
-            # HHL_260623 - Full robot width plus 0.10 m margin per side.
+            # HH_260623 - Full robot width plus 0.10 m margin per side.
             self.declare_parameter("cost_stop_width_m", 1.27).value
         )
         self.cost_stop_hold_s = float(
@@ -230,21 +239,21 @@ class PlanningCmdVelGateNode(Node):
         self.lanelet_safety_front_path_max_start_distance_m = float(
             self.declare_parameter("lanelet_safety_front_path_max_start_distance_m", 1.5).value
         )
-        # HHL_260622 - Path-based lanelet safety should validate the selected
+        # HH_260622 - Path-based lanelet safety should validate the selected
         # route center corridor, not the full robot-width boundary area. Merge
         # lanes and lane-change connections can legitimately place raw lanelet
         # boundary cost near the local path.
         self.lanelet_safety_front_path_width_m = float(
             self.declare_parameter("lanelet_safety_front_path_width_m", 0.25).value
         )
-        # HHL_260624 - When the robot is leaving a drop-zone/site back to the
+        # HH_260624 - When the robot is leaving a drop-zone/site back to the
         # lanelet route, the local path can start in static off-lane cost. Allow
         # only that bounded route-reentry segment; normal FRONT_PATH blocking
         # still applies once the robot is no longer close to the active path.
         self.lanelet_safety_front_path_allow_route_reentry = bool(
             self.declare_parameter("lanelet_safety_front_path_allow_route_reentry", True).value
         )
-        # HHL_260622 - When a map/profile starts from a manually placed pose
+        # HH_260622 - When a map/profile starts from a manually placed pose
         # just outside the drivable lanelet, allow one controlled forward
         # re-entry if the active local path is already close. This is not a
         # general lanelet bypass: FRONT_PATH and dynamic obstacle checks still
@@ -264,7 +273,7 @@ class PlanningCmdVelGateNode(Node):
                 "lanelet_safety_current_route_reentry_require_front_cmd", True
             ).value
         )
-        # HHL_260624 - Drop-zone straight exit is mission-owned parking motion:
+        # HH_260624 - Drop-zone straight exit is mission-owned parking motion:
         # it intentionally starts inside static lanelet/drop-zone boundary cost,
         # so raw lanelet safety must not block it before Nav2 campsite routing.
         self.parking_drop_zone_status_topic = str(
@@ -305,7 +314,7 @@ class PlanningCmdVelGateNode(Node):
                 ["lanelet", "lidar", "radar", "global_path"],
             ).value
         )
-        # HHL_260622 - Treat the merged inflation grid as an attribution surface:
+        # HH_260622 - Treat the merged inflation grid as an attribution surface:
         # lanelet/global-path costs guide planning and RViz, while only live
         # dynamic sources may close cmd_vel. Raw lanelet safety stays separate.
         self.cost_stop_require_dynamic_source = bool(
@@ -325,7 +334,7 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("enable_speed_dependent_lookahead", True).value
         )
         self.front_lookahead_min_m = float(
-            # HHL_260623 - Include measured front body extent plus planning margin from robot_base_link.
+            # HH_260623 - Include measured front body extent plus planning margin from robot_base_link.
             self.declare_parameter("front_lookahead_min_m", 1.30137).value
         )
         self.front_lookahead_max_m = float(
@@ -356,7 +365,7 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("side_lookahead_m", 1.2).value
         )
         self.side_corridor_width_m = float(
-            # HHL_260623 - Side scans need full body length plus 0.10 m margin front/rear.
+            # HH_260623 - Side scans need full body length plus 0.10 m margin front/rear.
             self.declare_parameter("side_corridor_width_m", 1.69160).value
         )
         self.rear_cost_threshold = int(
@@ -366,7 +375,7 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("rear_lookahead_m", 0.8).value
         )
         self.rear_corridor_width_m = float(
-            # HHL_260623 - Rear scans need full body width plus 0.10 m margin per side.
+            # HH_260623 - Rear scans need full body width plus 0.10 m margin per side.
             self.declare_parameter("rear_corridor_width_m", 1.27).value
         )
         # HH_260618: Site parking enters campsites with explicit lateral or
@@ -393,7 +402,7 @@ class PlanningCmdVelGateNode(Node):
         self.lateral_cmd_dynamic_obstacle_threshold = int(
             self.declare_parameter("lateral_cmd_dynamic_obstacle_threshold", 85).value
         )
-        # HHL_260624 - In-place 180deg site rotations may ignore static lanelet
+        # HH_260624 - In-place 180deg site rotations may ignore static lanelet
         # cost, but live LiDAR/Radar cost around the body must still stop motion.
         self.rotation_cmd_dynamic_obstacle_stop = bool(
             self.declare_parameter("rotation_cmd_dynamic_obstacle_stop", True).value
@@ -478,7 +487,7 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("route_heading_min_path_points", 2).value
         )
 
-        # HHL_260623 - Split manual 2D-goal engage from UI mission engage.
+        # HH_260623 - Split manual 2D-goal engage from UI mission engage.
         #   /planning/engage is only the manual operator latch.
         #   /planning/mission_engage is the scenario latch for camping-site/drop-zone missions.
         #   The final gate opens when either latch is true; turning manual engage off must not
@@ -535,7 +544,12 @@ class PlanningCmdVelGateNode(Node):
         self._load_yaw_alignment_zones()
 
         self.pub_cmd = self.create_publisher(Twist, self.output_topic, 10)
-        self.pub_state = self.create_publisher(Bool, self.state_topic, 10)
+        # HH_260625: Nav2 progress checker subscribes with transient_local QoS.
+        # Publish effective engage state latched so late lifecycle subscribers receive it.
+        state_qos = QoSProfile(depth=1)
+        state_qos.reliability = QoSReliabilityPolicy.RELIABLE
+        state_qos.durability = QoSDurabilityPolicy.TRANSIENT_LOCAL
+        self.pub_state = self.create_publisher(Bool, self.state_topic, state_qos)
 
         # HH_260415: Resolve robot pose in costmap frame through TF first.
         self._tf_buffer = Buffer()
@@ -907,7 +921,7 @@ class PlanningCmdVelGateNode(Node):
             "cmd_vel BLOCKED: " + (", ".join(reasons) if reasons else "unknown")
         )
 
-    # HHL_260623 - Updates one engage latch without collapsing manual and mission intent.
+    # HH_260623 - Updates one engage latch without collapsing manual and mission intent.
     def _set_enabled(self, enabled: bool, source: str = "manual") -> None:
         source_key = str(source).strip().lower()
         new_latch = bool(enabled)
@@ -951,7 +965,7 @@ class PlanningCmdVelGateNode(Node):
     def _on_mission_engage(self, msg: Bool) -> None:
         self._set_enabled(msg.data, source="mission")
 
-    # HHL_260624 - Track parking phase so drop-zone exit can cross static
+    # HH_260624 - Track parking phase so drop-zone exit can cross static
     # lanelet/drop-zone cost without disabling live obstacle protection.
     def _on_parking_drop_zone_status(self, msg: ModuleState) -> None:
         self._parking_drop_zone_phase = self._extract_phase_from_status(msg.message)
@@ -1216,7 +1230,7 @@ class PlanningCmdVelGateNode(Node):
         )
         return lateral_site_motion or reverse_site_motion
 
-    # HHL_260622 - Normal driving must not stop on route/lanelet visualization
+    # HH_260622 - Normal driving must not stop on route/lanelet visualization
     # costs embedded in the merged grid. Only configured dynamic source grids
     # are allowed to turn a merged-grid hit into a cmd_vel block.
     def _merged_cost_should_block(
@@ -1271,7 +1285,7 @@ class PlanningCmdVelGateNode(Node):
                 return True
         return False
 
-    # HHL_260624 - Pure yaw rotation has no front/rear direction, so sample a
+    # HH_260624 - Pure yaw rotation has no front/rear direction, so sample a
     # body-centered disk from live dynamic sources before allowing static-cost bypass.
     def _should_stop_for_rotation_dynamic_obstacle(self, now_sec: float) -> bool:
         if not self.rotation_cmd_dynamic_obstacle_stop:
@@ -1355,7 +1369,7 @@ class PlanningCmdVelGateNode(Node):
                     )
         return False, best_detail
 
-    # HHL_260622 - Keep a visible breadcrumb when the merged grid is high only
+    # HH_260622 - Keep a visible breadcrumb when the merged grid is high only
     # because static route/lanelet layers are present, without spamming logs.
     def _log_static_guide_cost_ignored(
         self,
@@ -1502,7 +1516,7 @@ class PlanningCmdVelGateNode(Node):
 
             for direction, yaw_offset, lookahead in directions:
                 if direction == "FRONT" and self.lanelet_safety_front_use_local_path:
-                    # HHL_260622 - Keep using the selected local path during
+                    # HH_260622 - Keep using the selected local path during
                     # route re-entry even after the current cell drops below
                     # the hard threshold. Otherwise the raw robot-yaw rectangle
                     # can re-block near lane boundaries before the robot has
@@ -1568,7 +1582,7 @@ class PlanningCmdVelGateNode(Node):
 
         return False
 
-    # HHL_260622 - Route re-entry guard for map-agnostic simulation starts:
+    # HH_260622 - Route re-entry guard for map-agnostic simulation starts:
     # a raw pose can be outside lanelet while the selected local path is valid
     # and close. Let the robot move toward that path, but only for forward
     # commands and only within a bounded distance.
@@ -1607,7 +1621,7 @@ class PlanningCmdVelGateNode(Node):
             )
         return True
 
-    # HHL_260624 - FRONT_PATH is a static map safety layer. During controlled
+    # HH_260624 - FRONT_PATH is a static map safety layer. During controlled
     # route re-entry from a drop-zone/site, block dynamic obstacles elsewhere
     # but do not let the first off-lane static cells prevent reaching the lanelet.
     def _can_bypass_lanelet_front_path_for_route_reentry(
@@ -1653,7 +1667,7 @@ class PlanningCmdVelGateNode(Node):
         return True
 
     def _extract_phase_from_status(self, message: str) -> str:
-        # HHL_260624 - ModuleState.message uses "phase=<PHASE> ..." from
+        # HH_260624 - ModuleState.message uses "phase=<PHASE> ..." from
         # camrod_parking; keep parsing local to avoid adding a new message type.
         for token in str(message).split():
             if token.startswith("phase="):
@@ -1680,7 +1694,7 @@ class PlanningCmdVelGateNode(Node):
         return True
 
     def _is_drop_zone_exit_phase(self) -> bool:
-        # HHL_260624 - Keep drop-zone exit phase checks centralized so route
+        # HH_260624 - Keep drop-zone exit phase checks centralized so route
         # heading and static lanelet safety agree on parking-owned motion.
         phase = self._normalize_source_label(self._parking_drop_zone_phase)
         return bool(phase and phase in self.parking_drop_zone_static_bypass_phases)
@@ -1946,7 +1960,7 @@ class PlanningCmdVelGateNode(Node):
             self._route_heading_align_active = False
             return None
         if self._is_drop_zone_exit_phase():
-            # HHL_260624 - During explicit drop-zone departure, the parking
+            # HH_260624 - During explicit drop-zone departure, the parking
             # node owns straight exit/alignment before any Nav2 local path is valid.
             self._route_heading_align_active = False
             return None
@@ -2159,7 +2173,7 @@ class PlanningCmdVelGateNode(Node):
         scan_lookahead = max(0.05, float(lookahead))
         scan_width = max(0.05, float(width))
         half_w = scan_width * 0.5
-        # HHL_260622 - Always test the route centerline first, then optional
+        # HH_260622 - Always test the route centerline first, then optional
         # narrow lateral offsets. The previous full-width sweep made raw
         # lanelet boundary pixels at merge/branch connections stop valid paths.
         lateral_offsets = [0.0]

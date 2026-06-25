@@ -10,12 +10,10 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
-# Resolves a package-relative file path via package share directory.
 def pkg_share(pkg: str, rel: str) -> str:
     return os.path.join(get_package_share_directory(pkg), rel)
 
 
-# Parses optional numeric launch arguments and returns None on empty/invalid input.
 def _optional_float(value: str):
     if value is None:
         return None
@@ -28,7 +26,6 @@ def _optional_float(value: str):
         return None
 
 
-# Builds lanelet cost-grid node list with map/origin overrides from launch arguments.
 def _launch_nodes(context, *_args, **_kwargs):
     params = [
         LaunchConfiguration("map_info_file"),
@@ -69,7 +66,6 @@ def _launch_nodes(context, *_args, **_kwargs):
     ]
 
 
-# Declares cost-grid launch arguments and defers node creation to runtime context.
 def generate_launch_description():
     module_namespace_arg = DeclareLaunchArgument(
         "module_namespace",

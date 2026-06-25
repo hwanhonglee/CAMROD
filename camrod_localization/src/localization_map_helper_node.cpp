@@ -126,7 +126,7 @@ public:
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
     yaw_stddev_ = declare_parameter<double>("yaw_stddev", 0.2);
     // HH_260526: Replace use_map_z/flatten_to_ground toggles with one explicit mode.
-    // HHL_260623 - "ground" means the 2D planning plane (Z=0), not raw OSM median altitude.
+    // HH_260623 - "ground" means the 2D planning plane (Z=0), not raw OSM median altitude.
     // centerline_z_mode options: input | map | ground.
     centerline_z_mode_ = normalizeModeToken(
       declare_parameter<std::string>("centerline_z_mode", "ground"));
@@ -489,7 +489,7 @@ private:
   double longitudinal_stddev_{0.5};
   double lateral_stddev_{0.3};
   double yaw_stddev_{0.2};
-  std::string centerline_z_mode_{"ground"};  // HHL_260623 - Default to 2D planning plane.
+  std::string centerline_z_mode_{"ground"};  // HH_260623 - Default to 2D planning plane.
   double map_z_offset_{0.0};
   double centerline_min_update_period_s_{0.05};
   double centerline_min_displacement_m_{0.05};

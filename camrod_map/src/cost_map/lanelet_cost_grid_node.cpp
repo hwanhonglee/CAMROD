@@ -144,6 +144,8 @@ public:
     route_lanelet_ids_topic_ =
       declare_parameter<std::string>("route_lanelet_ids_topic", "/planning/route_lanelet_ids");
     route_lanelet_filter_enable_ = declare_parameter<bool>("route_lanelet_filter_enable", false);
+    route_lanelet_filter_wait_for_route_ =
+      declare_parameter<bool>("route_lanelet_filter_wait_for_route", false);
     route_boundary_clearance_enable_ =
       declare_parameter<bool>("route_boundary_clearance_enable", false);
     route_boundary_clearance_value_ =
@@ -181,6 +183,12 @@ public:
     rebuild_on_pose_ = declare_parameter<bool>("rebuild_on_pose", true);
     rebuild_on_path_ = declare_parameter<bool>("rebuild_on_path", true);
     min_rebuild_period_s_ = declare_parameter<double>("min_rebuild_period_s", 0.0);
+    // HH_260625: GNSS reattach can move localization from the EKF startup seed
+    // to the real map pose after the first placeholder grid was already built.
+    rebuild_when_pose_exits_grid_ =
+      declare_parameter<bool>("rebuild_when_pose_exits_grid", true);
+    rebuild_pose_grid_margin_m_ = std::max(
+      0.0, declare_parameter<double>("rebuild_pose_grid_margin_m", 5.0));
     // HH_260305-00:00 Allow path-mode grid baseline build (lanelet mask + pose gradient)
     // even when no valid path has been received yet.
     allow_build_without_path_ = declare_parameter<bool>("allow_build_without_path", false);
@@ -234,6 +242,8 @@ public:
     secondary_boundary_half_width_ = declare_parameter<double>("secondary.boundary_half_width", 0.05);
     secondary_route_lanelet_filter_enable_ =
       declare_parameter<bool>("secondary.route_lanelet_filter_enable", false);
+    secondary_route_lanelet_filter_wait_for_route_ =
+      declare_parameter<bool>("secondary.route_lanelet_filter_wait_for_route", false);
     secondary_route_boundary_clearance_enable_ =
       declare_parameter<bool>("secondary.route_boundary_clearance_enable", false);
     secondary_route_boundary_clearance_value_ =
@@ -386,7 +396,6 @@ public:
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   }
 
-  // Callback onRepublishTimer: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onRepublishTimer()
   {
     if (debug_rebuild_stats_) {
@@ -429,7 +438,6 @@ public:
   }
 
 private:
-  // toLower: Utility helper used for string parsing, math conversion, or styling.
   static std::string toLower(std::string value)
   {
     std::transform(
@@ -472,7 +480,6 @@ private:
       mode == "map_bbox";
   }
 
-  // Math helper MapBounds: computes derived geometric values used by mapping logic.
   void computeMapBounds()
   {
     if (!map_) {
@@ -506,7 +513,6 @@ private:
     }
   }
 
-  // Callback onPose: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     ++pose_cb_count_;
@@ -531,10 +537,18 @@ private:
     }
     if (rebuild_on_pose_) {
       requestBuild(false);
+      return;
+    }
+    if (rebuild_when_pose_exits_grid_ && !isPoseInsideCachedGrid(current_pose_)) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "pose left cached cost-grid window; forcing rebuild around x=%.2f y=%.2f",
+        current_pose_.pose.position.x,
+        current_pose_.pose.position.y);
+      requestBuild(true);
     }
   }
 
-  // Callback onPathPrimary: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onPathPrimary(const avg_msgs::msg::Path::ConstSharedPtr msg)
   {
     if (onPathCommon(msg)) {
@@ -542,7 +556,6 @@ private:
     }
   }
 
-  // Callback onPathFallback: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onPathFallback(const avg_msgs::msg::Path::ConstSharedPtr msg)
   {
     if (fallback_holdoff_until_.nanoseconds() > 0 && now() < fallback_holdoff_until_) {
@@ -578,7 +591,6 @@ private:
     }
   }
 
-  // Callback onPathCommon: handles incoming ROS data or timer events and updates internal cache/publish state.
   bool onPathCommon(const avg_msgs::msg::Path::ConstSharedPtr msg)
   {
     ++path_cb_count_;
@@ -671,7 +683,6 @@ private:
     return true;
   }
 
-  // Callback onGoal: handles incoming ROS data or timer events and updates internal cache/publish state.
   void onGoal(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     if (msg && (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0)) {
@@ -712,7 +723,6 @@ private:
     }
   }
 
-  // Callback onParamChange: handles incoming ROS data or timer events and updates internal cache/publish state.
   avg_msgs::msg::SetParametersResult onParamChange(
     const std::vector<rclcpp::Parameter> & params)
   {
@@ -771,6 +781,8 @@ private:
         invalidatePathLaneletCache();
       } else if (p.get_name() == "route_lanelet_filter_enable") {
         route_lanelet_filter_enable_ = p.as_bool();
+      } else if (p.get_name() == "route_lanelet_filter_wait_for_route") {
+        route_lanelet_filter_wait_for_route_ = p.as_bool();
       } else if (p.get_name() == "route_boundary_clearance_enable") {
         route_boundary_clearance_enable_ = p.as_bool();
       } else if (p.get_name() == "route_boundary_clearance_value") {
@@ -787,6 +799,10 @@ private:
         rebuild_on_path_ = p.as_bool();
       } else if (p.get_name() == "min_rebuild_period_s") {
         min_rebuild_period_s_ = std::max(0.0, p.as_double());
+      } else if (p.get_name() == "rebuild_when_pose_exits_grid") {
+        rebuild_when_pose_exits_grid_ = p.as_bool();
+      } else if (p.get_name() == "rebuild_pose_grid_margin_m") {
+        rebuild_pose_grid_margin_m_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "allow_build_without_path") {
         allow_build_without_path_ = p.as_bool();
       } else if (p.get_name() == "drop_stale_path_after_goal") {
@@ -888,6 +904,8 @@ private:
         secondary_boundary_half_width_ = p.as_double();
       } else if (p.get_name() == "secondary.route_lanelet_filter_enable") {
         secondary_route_lanelet_filter_enable_ = p.as_bool();
+      } else if (p.get_name() == "secondary.route_lanelet_filter_wait_for_route") {
+        secondary_route_lanelet_filter_wait_for_route_ = p.as_bool();
       } else if (p.get_name() == "secondary.route_boundary_clearance_enable") {
         secondary_route_boundary_clearance_enable_ = p.as_bool();
       } else if (p.get_name() == "secondary.route_boundary_clearance_value") {
@@ -1065,6 +1083,8 @@ private:
     boundary_candidates_ = 0;
     boundary_rejected_clip_ = 0;
     boundary_written_ = 0;
+
+    bool route_wait_placeholder = false;
 
     if (cost_mode_ == "path") {
       const std::vector<lanelet::BasicPolygon2d> * path_lanelet_polys_ptr = nullptr;
@@ -1244,11 +1264,19 @@ private:
       }
     } else {  // centerline (default)
       std::vector<lanelet::ConstLanelet> route_lanelets;
+      std::vector<lanelet::ConstLanelet> empty_lanelets;
       const std::vector<lanelet::ConstLanelet> * lanelets_to_render = &all_lanelets_;
       if (route_lanelet_filter_enable_) {
         route_lanelets = collectActiveRouteLanelets();
         if (!route_lanelets.empty()) {
           lanelets_to_render = &route_lanelets;
+        } else if (route_lanelet_filter_wait_for_route_) {
+          route_wait_placeholder = true;
+          lanelets_to_render = &empty_lanelets;
+          std::fill(grid.data.begin(), grid.data.end(), -1);
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "route lanelet filter waiting for route lanelets; publishing unknown placeholder grid");
         } else {
           RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 2000,
@@ -1256,9 +1284,37 @@ private:
         }
       }
 
+      std::vector<lanelet::ConstLanelet> window_lanelets;
+      if (!route_wait_placeholder) {
+        const double lanelet_filter_padding = std::max({
+          computeRasterPadding(),
+          centerline_half_width_,
+          boundary_half_width_,
+          lane_change_clearance_half_width_m_ > 0.0 ? lane_change_clearance_half_width_m_ : 0.0,
+          resolution_});
+        window_lanelets = filterLaneletsForGridWindow(
+          *lanelets_to_render, grid, lanelet_filter_padding);
+        if (route_lanelet_filter_enable_ && route_lanelets.empty() &&
+          !route_lanelet_filter_wait_for_route_)
+        {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "route lanelet filter requested but no route lanelets are available; using %zu local-window lanelets",
+            window_lanelets.size());
+        }
+        lanelets_to_render = &window_lanelets;
+      }
+
       for (const auto & ll : *lanelets_to_render) {
         lanelet::BasicPolygon2d lane_poly;
-        const bool has_lane_poly = buildLaneletPolygon(ll, lane_poly);
+        // HH_260625: The startup centerline profile disables lanelet fill,
+        // boundary overlay, and centerline clipping. Skip polygon creation in
+        // that case; building every lanelet polygon dominated first-grid time.
+        const bool needs_lane_poly =
+          centerline_lanelet_fill_value_ >= 0 ||
+          centerline_clip_to_lanelet_ ||
+          lanelet_boundary_value_ >= 0;
+        const bool has_lane_poly = needs_lane_poly && buildLaneletPolygon(ll, lane_poly);
         if (has_lane_poly && centerline_lanelet_fill_value_ >= 0) {
           // HH_260316-00:00 Fill lanelet interior with soft base cost so global
           // connectivity is preserved even when centerline strips get sparse at bends.
@@ -1323,11 +1379,18 @@ private:
 
     // HH_260617: Open mapped lane-change boundaries after all normal boundary overlays.
     // This prevents duplicated/shared lanelet bounds from re-blocking the allowed crossing section.
-    applyLaneChangeClearance(grid);
-    applyRouteBoundaryClearance(grid);
+    if (!route_wait_placeholder) {
+      applyLaneChangeClearance(grid);
+      applyRouteBoundaryClearance(grid);
+    }
 
     grid.header.stamp = now();
     last_grid_ = grid;
+    last_build_topic_ = output_topic_;
+    last_build_mode_ = cost_mode_;
+    last_build_width_ = grid.info.width;
+    last_build_height_ = grid.info.height;
+    last_build_resolution_ = grid.info.resolution;
     grid_pub_->publish(grid);
     publishAvgMapGrid(grid, "lanelet cost grid published");
     if (debug_boundary_stats_ && (cost_mode_ == "bounds" || lanelet_boundary_value_ >= 0)) {
@@ -1367,6 +1430,7 @@ private:
     const int saved_lanelet_boundary_value = lanelet_boundary_value_;
     const bool saved_boundary_clip_to_lanelet = boundary_clip_to_lanelet_;
     const bool saved_route_lanelet_filter_enable = route_lanelet_filter_enable_;
+    const bool saved_route_lanelet_filter_wait_for_route = route_lanelet_filter_wait_for_route_;
     const bool saved_route_boundary_clearance_enable = route_boundary_clearance_enable_;
     const int saved_route_boundary_clearance_value = route_boundary_clearance_value_;
     const double saved_route_boundary_clearance_half_width_m =
@@ -1410,6 +1474,7 @@ private:
     lanelet_boundary_value_ = secondary_lanelet_boundary_value_;
     boundary_clip_to_lanelet_ = true;
     route_lanelet_filter_enable_ = secondary_route_lanelet_filter_enable_;
+    route_lanelet_filter_wait_for_route_ = secondary_route_lanelet_filter_wait_for_route_;
     route_boundary_clearance_enable_ = secondary_route_boundary_clearance_enable_;
     route_boundary_clearance_value_ = secondary_route_boundary_clearance_value_;
     route_boundary_clearance_half_width_m_ =
@@ -1455,6 +1520,7 @@ private:
     lanelet_boundary_value_ = saved_lanelet_boundary_value;
     boundary_clip_to_lanelet_ = saved_boundary_clip_to_lanelet;
     route_lanelet_filter_enable_ = saved_route_lanelet_filter_enable;
+    route_lanelet_filter_wait_for_route_ = saved_route_lanelet_filter_wait_for_route;
     route_boundary_clearance_enable_ = saved_route_boundary_clearance_enable;
     route_boundary_clearance_value_ = saved_route_boundary_clearance_value;
     route_boundary_clearance_half_width_m_ = saved_route_boundary_clearance_half_width_m;
@@ -1516,14 +1582,38 @@ private:
       const double ms = std::chrono::duration<double, std::milli>(build_t1 - build_t0).count();
       RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "build timing: mode=%s size=%ux%u dt=%.2fms",
-        cost_mode_.c_str(),
-        last_grid_.info.width, last_grid_.info.height,
+        "build timing: topic=%s mode=%s size=%ux%u res=%.2f dt=%.2fms",
+        last_build_topic_.empty() ? output_topic_.c_str() : last_build_topic_.c_str(),
+        last_build_mode_.empty() ? cost_mode_.c_str() : last_build_mode_.c_str(),
+        last_build_width_, last_build_height_,
+        last_build_resolution_,
         ms);
     }
     ++build_ok_count_;
     has_built_grid_ = true;
     last_build_time_ = now();
+  }
+
+  bool isPoseInsideCachedGrid(const avg_msgs::msg::PoseStamped & pose) const
+  {
+    const auto & grid = (secondary_enable_ && !secondary_last_grid_.data.empty()) ?
+      secondary_last_grid_ : last_grid_;
+    if (grid.data.empty() || grid.info.width == 0 || grid.info.height == 0 ||
+      grid.info.resolution <= 0.0)
+    {
+      return false;
+    }
+    const double x = pose.pose.position.x;
+    const double y = pose.pose.position.y;
+    const double min_x = grid.info.origin.position.x + rebuild_pose_grid_margin_m_;
+    const double min_y = grid.info.origin.position.y + rebuild_pose_grid_margin_m_;
+    const double max_x =
+      grid.info.origin.position.x + static_cast<double>(grid.info.width) *
+      grid.info.resolution - rebuild_pose_grid_margin_m_;
+    const double max_y =
+      grid.info.origin.position.y + static_cast<double>(grid.info.height) *
+      grid.info.resolution - rebuild_pose_grid_margin_m_;
+    return x >= min_x && x <= max_x && y >= min_y && y <= max_y;
   }
 
   // State update RepublishTimer: updates cached runtime state used by the next build/publish cycle.
@@ -1568,7 +1658,6 @@ private:
     }
   }
 
-  // Publish helper AvgMapGrid: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishAvgMapGrid(const avg_msgs::msg::OccupancyGrid & grid, const std::string & message)
   {
     if (!publish_map_status_ || !avg_map_pub_) {
@@ -1631,7 +1720,6 @@ private:
     return primary_requires || secondary_requires;
   }
 
-  // Math helper RasterPadding: computes derived geometric values used by mapping logic.
   double computeRasterPadding() const
   {
     if (cost_mode_ == "bounds") {
@@ -1641,6 +1729,52 @@ private:
       return std::max(centerline_half_width_, resolution_);
     }
     return std::max(0.5 * resolution_, 0.01);
+  }
+
+  bool laneletBoundsIntersectGridWindow(
+    const std::array<double, 4> & bounds,
+    const avg_msgs::msg::OccupancyGrid & grid,
+    const double padding) const
+  {
+    const double grid_min_x = grid.info.origin.position.x - padding;
+    const double grid_min_y = grid.info.origin.position.y - padding;
+    const double grid_max_x = grid.info.origin.position.x +
+      static_cast<double>(grid.info.width) * grid.info.resolution + padding;
+    const double grid_max_y = grid.info.origin.position.y +
+      static_cast<double>(grid.info.height) * grid.info.resolution + padding;
+    return bounds[1] >= grid_min_x && bounds[0] <= grid_max_x &&
+      bounds[3] >= grid_min_y && bounds[2] <= grid_max_y;
+  }
+
+  bool laneletIntersectsGridWindow(
+    const lanelet::ConstLanelet & ll,
+    const avg_msgs::msg::OccupancyGrid & grid,
+    const double padding) const
+  {
+    for (std::size_t i = 0; i < all_lanelet_ids_.size(); ++i) {
+      if (all_lanelet_ids_[i] == ll.id() && i < all_lanelet_bounds_.size()) {
+        return laneletBoundsIntersectGridWindow(all_lanelet_bounds_[i], grid, padding);
+      }
+    }
+    return true;
+  }
+
+  std::vector<lanelet::ConstLanelet> filterLaneletsForGridWindow(
+    const std::vector<lanelet::ConstLanelet> & lanelets,
+    const avg_msgs::msg::OccupancyGrid & grid,
+    const double padding) const
+  {
+    std::vector<lanelet::ConstLanelet> filtered;
+    filtered.reserve(lanelets.size());
+    // HH_260625: Route IDs are not available before the first LaneletRoute plan.
+    // Limit the bootstrap raster to the current robot-centered grid window so
+    // startup does not spend tens of seconds painting far-away lanelets.
+    for (const auto & ll : lanelets) {
+      if (laneletIntersectsGridWindow(ll, grid, padding)) {
+        filtered.push_back(ll);
+      }
+    }
+    return filtered;
   }
 
   // fillPolygon: Rasterizes lane/path geometry into cost-grid cells.
@@ -1812,7 +1946,11 @@ private:
       : boundary_half_width_;
     int64_t cleared_lanelets = 0;
     int64_t cleared_segments = 0;
-    for (const auto & ll : map_->laneletLayer) {
+    const double clearance_padding = std::max(clearance_half_width_m, resolution_);
+    for (const auto & ll : all_lanelets_) {
+      if (!laneletIntersectsGridWindow(ll, grid, clearance_padding)) {
+        continue;
+      }
       lanelet::BasicPolygon2d lane_poly;
       const bool has_lane_poly = buildLaneletPolygon(ll, lane_poly);
       const lanelet::BasicPolygon2d * clip_poly =
@@ -2271,25 +2409,45 @@ private:
     const double sy = p1.y() - p0.y();
     const double vlen2 = sx * sx + sy * sy;
     const double half_width = std::max(1e-3, centerline_half_width_);
+    const double raster_half_width = half_width + 0.5 * resolution_;
+    const bool fast_unclipped_strip = clip_poly == nullptr;
 
     for (int iy = iy_min; iy <= iy_max; ++iy) {
       for (int ix = ix_min; ix <= ix_max; ++ix) {
         const double wx = origin_x_ + (ix + 0.5) * resolution_;
         const double wy = origin_y_ + (iy + 0.5) * resolution_;
-        if (!cellMostlyInsidePolygon(poly, wx, wy, cell_inside_min_hits_path_)) {
-          continue;
-        }
-        // HH_260316-00:00 Keep centerline strip strictly lanelet-internal.
-        if (clip_poly && !lanelet::geometry::within(lanelet::BasicPoint2d(wx, wy), *clip_poly)) {
-          continue;
+        double lateral_dist = 0.0;
+        if (fast_unclipped_strip && vlen2 > 1e-6) {
+          // HH_260625: Fast path for startup centerline grids. Distance to the
+          // segment replaces the 9-sample polygon containment check and keeps
+          // local map startup responsive.
+          const double t =
+            std::clamp(((wx - p0.x()) * sx + (wy - p0.y()) * sy) / vlen2, 0.0, 1.0);
+          const double px = p0.x() + t * sx;
+          const double py = p0.y() + t * sy;
+          lateral_dist = std::hypot(wx - px, wy - py);
+          if (lateral_dist > raster_half_width) {
+            continue;
+          }
+        } else {
+          if (!cellMostlyInsidePolygon(poly, wx, wy, cell_inside_min_hits_path_)) {
+            continue;
+          }
+          // HH_260316-00:00 Keep centerline strip strictly lanelet-internal.
+          if (clip_poly && !lanelet::geometry::within(lanelet::BasicPoint2d(wx, wy), *clip_poly)) {
+            continue;
+          }
         }
         int cost = free_value_;
         if (use_lateral_gradient && vlen2 > 1e-6) {
-          const double t = std::clamp(((wx - p0.x()) * sx + (wy - p0.y()) * sy) / vlen2, 0.0, 1.0);
-          const double px = p0.x() + t * sx;
-          const double py = p0.y() + t * sy;
-          const double dist = std::hypot(wx - px, wy - py);
-          const double norm = std::clamp(dist / half_width, 0.0, 1.0);
+          if (!fast_unclipped_strip) {
+            const double t =
+              std::clamp(((wx - p0.x()) * sx + (wy - p0.y()) * sy) / vlen2, 0.0, 1.0);
+            const double px = p0.x() + t * sx;
+            const double py = p0.y() + t * sy;
+            lateral_dist = std::hypot(wx - px, wy - py);
+          }
+          const double norm = std::clamp(lateral_dist / half_width, 0.0, 1.0);
           cost = static_cast<int>(free_value_ + norm * (lethal_value_ - free_value_));
         }
         if (has_pose_ && opposite_heading) {
@@ -2564,6 +2722,7 @@ private:
   bool centerline_clip_to_lanelet_{true};
   int centerline_lanelet_fill_value_{-1};
   bool route_lanelet_filter_enable_{false};
+  bool route_lanelet_filter_wait_for_route_{false};
   bool route_boundary_clearance_enable_{false};
   int route_boundary_clearance_value_{0};
   double route_boundary_clearance_half_width_m_{0.75};
@@ -2585,12 +2744,19 @@ private:
   bool rebuild_on_path_{true};
   bool rebuild_on_timer_{false};
   double min_rebuild_period_s_{0.0};
+  bool rebuild_when_pose_exits_grid_{true};
+  double rebuild_pose_grid_margin_m_{5.0};
   bool allow_build_without_path_{false};
   bool drop_stale_path_after_goal_{true};
   double path_goal_stamp_slack_s_{0.10};
   double fresh_path_goal_match_tolerance_m_{2.0};
   bool debug_rebuild_stats_{false};
   bool debug_build_timing_{false};
+  std::string last_build_topic_;
+  std::string last_build_mode_;
+  uint32_t last_build_width_{0};
+  uint32_t last_build_height_{0};
+  double last_build_resolution_{0.0};
   int cell_inside_min_hits_{5};
   int cell_inside_min_hits_path_{5};
   int cell_inside_min_hits_boundary_{5};
@@ -2638,6 +2804,7 @@ private:
   int secondary_lanelet_boundary_value_{-1};
   double secondary_boundary_half_width_{0.05};
   bool secondary_route_lanelet_filter_enable_{false};
+  bool secondary_route_lanelet_filter_wait_for_route_{false};
   bool secondary_route_boundary_clearance_enable_{false};
   int secondary_route_boundary_clearance_value_{0};
   double secondary_route_boundary_clearance_half_width_m_{0.75};
@@ -2697,7 +2864,6 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 };
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

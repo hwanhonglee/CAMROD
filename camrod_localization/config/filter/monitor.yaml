@@ -16,16 +16,19 @@
     # HH_260410 Monitor uses the same unified wheel topic as EKF/ESKF.
     wheel_topic: "/platform/status/wheel_odometry"
 
-    # HH_260511: GPS hardware runs at ~1Hz (config_on_startup: false keeps stored device rate).
-    # Set timeout >= 2s to avoid spurious GNSS-lost detection at 1Hz.
-    gnss_timeout_s: 2.0
-    imu_timeout_s: 0.5
-    wheel_timeout_s: 0.5
+    # HH_260625: Live GNSS pose stamps can arrive ~2s behind node time while
+    # RTK is otherwise healthy. Keep the monitor tolerant enough to avoid
+    # false DR_ONLY->NORMAL recovery holds from timestamp jitter.
+    gnss_timeout_s: 4.0
+    imu_timeout_s: 1.0
+    wheel_timeout_s: 1.0
 
     gnss_innovation_warn: 3.0
     gnss_innovation_fail: 6.0
 
-    gnss_cov_trace_fail: 0.3
+    # HH_260625: Outdoor RTK covariance trace was observed around 0.30-0.45
+    # during stable fixes. 0.3 caused repeated false GNSS_BAD transitions.
+    gnss_cov_trace_fail: 1.0
     gnss_jump_fail_m: 1.0
     # HH_260511: GPS at ~1Hz; lower from 2.0 to 0.8 so gnss_rate_ok passes at 1Hz.
     gnss_min_hz: 0.8

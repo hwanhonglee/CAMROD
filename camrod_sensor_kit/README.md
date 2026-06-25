@@ -156,7 +156,7 @@ graph TD
       CAMF[📡 camera_front_link\n1.20637, 0.0, 0.49568]:::sensing
       CAMR[📡 camera_rear_link\n-0.17633, 0.0, 0.30013]:::sensing
       subgraph RADAR["Radar sensors (direct to sensor_kit_base_link)"]
-        %% HHL_260623 - Removed the legacy single-front radar alias; front1/front2 are canonical.
+        %% HH_260623 - Removed the legacy single-front radar alias; front1/front2 are canonical.
         RF1[📡 radar_front1_link]:::sensing
         RF2[📡 radar_front2_link]:::sensing
         RL1[📡 radar_left1_link]:::sensing
@@ -255,28 +255,28 @@ ros2 launch camrod_sensor_kit sensor_kit.launch.py [ARG:=VALUE ...]
 
 All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **degrees**; `loadRobotParams()` converts them to radians internally.
 
-> HHL_260623 - Full bringup uses `camrod_bringup/config/sensor_kit/robot_params.yaml` as the active override. Keep this package default and the bringup copy synchronized when mount offsets change.
+> HH_260623 - Full bringup uses `camrod_bringup/config/sensor_kit/robot_params.yaml` as the active override. Keep this package default and the bringup copy synchronized when mount offsets change.
 
 ### 🤖 Robot Body Parameters
 
 | YAML key | Default (YAML) | C++ default | Unit | Notes |
 |---|---|---|---|---|
 | `robot.wheelbase` | `0.5` | `1.10` | m | **TODO:verify** — YAML (0.5 m) differs from C++ default (1.10 m) |
-| `robot.track_width` | `1.07` | `1.07000` | m | HHL_260623 - body lateral envelope until separate wheel-center track is measured |
-| `robot.length` | `1.49160` | `1.49160` | m | HHL_260623 - measured body length from robot_base_link extents |
-| `robot.width` | `1.07000` | `1.07000` | m | HHL_260623 - measured body width from robot_base_link extents |
-| `robot.height` | `1.09463` | `1.09463` | m | HHL_260623 - measured full body height |
+| `robot.track_width` | `1.07` | `1.07000` | m | HH_260623 - body lateral envelope until separate wheel-center track is measured |
+| `robot.length` | `1.49160` | `1.49160` | m | HH_260623 - measured body length from robot_base_link extents |
+| `robot.width` | `1.07000` | `1.07000` | m | HH_260623 - measured body width from robot_base_link extents |
+| `robot.height` | `1.09463` | `1.09463` | m | HH_260623 - measured full body height |
 | `robot.body_extents.front` | `1.20137` | `1.20137` | m | Forward body extent from `robot_base_link` |
 | `robot.body_extents.rear` | `0.29023` | `0.29023` | m | Rear body extent from `robot_base_link` |
 | `robot.body_extents.left` | `0.53505` | `0.53505` | m | Left body extent from `robot_base_link` |
 | `robot.body_extents.right` | `0.53495` | `0.53495` | m | Right body extent from `robot_base_link` |
 | `robot.body_extents.top_z` | `0.94188` | `0.94188` | m | Top body Z from `robot_base_link` |
 | `robot.body_extents.bottom_z` | `-0.15275` | `-0.15275` | m | Bottom body Z from `robot_base_link` |
-| `robot.body_extents.planning_margin` | `0.10` | `0.10` | m | HHL_260623 - safety margin added to Nav2/planning footprint |
-| `robot.wheel_radius` | `0.15275` | `0.15275` | m | HHL_260623 - Measured wheel radius, 152.75 mm |
+| `robot.body_extents.planning_margin` | `0.10` | `0.10` | m | HH_260623 - safety margin added to Nav2/planning footprint |
+| `robot.wheel_radius` | `0.15275` | `0.15275` | m | HH_260623 - Measured wheel radius, 152.75 mm |
 | `robot.encoder_resolution` | `2048` | `2048` | ticks/rev | Encoder ticks per wheel revolution |
 | `robot.drive_type` | `"ackermann"` | `"ackermann"` | — | Platform drive model |
-| `ground_z_offset` | `0.0` | — | m | HHL_260623 - 2D planning/RViz ground fallback; sensor mount Z values still carry physical heights |
+| `ground_z_offset` | `0.0` | — | m | HH_260623 - 2D planning/RViz ground fallback; sensor mount Z values still carry physical heights |
 
 > ⚠️ **Remaining geometry value to verify before deployment:**
 >
@@ -284,7 +284,7 @@ All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **de
 
 ### 📡 Sensor Mount Poses (relative to `sensor_kit_base_link`, fixed at `robot_base_link` origin)
 
-> HHL_260623 - `sensor_kit_base_link` is fixed to `robot_base_link` with zero offset, so the measured `robot_base_link`-relative sensor mounts are applied directly here.
+> HH_260623 - `sensor_kit_base_link` is fixed to `robot_base_link` with zero offset, so the measured `robot_base_link`-relative sensor mounts are applied directly here.
 
 | Sensor | x (m) | y (m) | z (m) | roll (deg) | pitch (deg) | yaw (deg) |
 |---|---|---|---|---|---|---|
@@ -301,7 +301,7 @@ All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **de
 | `radar.right2` | 0.15966 | -0.41005 | 0.29013 | 0.0 | 0.0 | -90.0 |
 | `radar.rear` | -0.17433 | 0.0 | 0.33978 | 0.0 | 0.0 | 180.0 |
 
-> HHL_260623 - `radar.front1/front2` keep the sensing channel names. With the vehicle coordinate convention (+Y left), `front1` is currently placed at negative Y and `front2` at positive Y according to the measured wiring note.
+> HH_260623 - `radar.front1/front2` keep the sensing channel names. With the vehicle coordinate convention (+Y left), `front1` is currently placed at negative Y and `front2` at positive Y according to the measured wiring note.
 
 ### `urdf/camrod_sensor_kit.xacro`
 

@@ -24,7 +24,7 @@ namespace
 {
 constexpr double WGS84_A = 6378137.0;
 constexpr double WGS84_E2 = 6.69437999014e-3;
-// HHL_260624 - Semantic mission areas are 2D planning objects; export them on the
+// HH_260624 - Semantic mission areas are 2D planning objects; export them on the
 // map ground plane so RViz markers, goals, and planning overlays share z=0.
 constexpr double SEMANTIC_EXPORT_Z_M = 0.0;
 
@@ -41,7 +41,6 @@ struct DropZone
   std::vector<lanelet::BasicPoint3d> corners;
 };
 
-// toLowerCopy: Utility helper used for string parsing, math conversion, or styling.
 std::string toLowerCopy(const std::string & value)
 {
   std::string lower = value;
@@ -52,7 +51,6 @@ std::string toLowerCopy(const std::string & value)
 }
 
 template<typename PrimitiveT>
-// getAttributeCaseInsensitive: Utility helper used for string parsing, math conversion, or styling.
 std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std::string & key)
 {
   std::string value = primitive.attributeOr(key.c_str(), "");
@@ -75,7 +73,6 @@ std::string getAttributeCaseInsensitive(const PrimitiveT & primitive, const std:
 }
 
 template<typename PrimitiveT>
-// getSemanticType: Utility helper used for string parsing, math conversion, or styling.
 std::string getSemanticType(const PrimitiveT & primitive)
 {
   auto subtype = getAttributeCaseInsensitive(primitive, "Subtype");
@@ -86,13 +83,11 @@ std::string getSemanticType(const PrimitiveT & primitive)
   return toLowerCopy(type);
 }
 
-// startsWith: Utility helper used for string parsing, math conversion, or styling.
 bool startsWith(const std::string & value, const std::string & prefix)
 {
   return value.size() >= prefix.size() && value.compare(0, prefix.size(), prefix) == 0;
 }
 
-// extractSuffixNumber: Utility helper used for string parsing, math conversion, or styling.
 std::optional<int> extractSuffixNumber(const std::string & value, const std::string & prefix)
 {
   if (!startsWith(value, prefix)) {
@@ -110,13 +105,11 @@ std::optional<int> extractSuffixNumber(const std::string & value, const std::str
   return std::stoi(suffix);
 }
 
-// rad2deg: Utility helper used for string parsing, math conversion, or styling.
 double rad2deg(double rad)
 {
   return rad * 180.0 / M_PI;
 }
 
-// deg2rad: Utility helper used for string parsing, math conversion, or styling.
 double deg2rad(double deg)
 {
   return deg * M_PI / 180.0;
@@ -129,7 +122,6 @@ struct Ecef
   double z;
 };
 
-// llhToEcef: Utility helper used for string parsing, math conversion, or styling.
 Ecef llhToEcef(double lat_rad, double lon_rad, double alt)
 {
   const double sin_lat = std::sin(lat_rad);
@@ -143,7 +135,6 @@ Ecef llhToEcef(double lat_rad, double lon_rad, double alt)
     (N * (1.0 - WGS84_E2) + alt) * sin_lat};
 }
 
-// ecefToEnu: Utility helper used for string parsing, math conversion, or styling.
 lanelet::BasicPoint3d ecefToEnu(
   const Ecef & ref, const Ecef & cur, double lat_ref, double lon_ref)
 {
@@ -160,7 +151,6 @@ lanelet::BasicPoint3d ecefToEnu(
   return lanelet::BasicPoint3d(east, north, up);
 }
 
-// Math helper YawDegFromPoints: computes derived geometric values used by mapping logic.
 double computeYawDegFromPoints(
   const std::vector<lanelet::BasicPoint3d> & pts, double default_yaw_deg)
 {
@@ -181,7 +171,6 @@ double computeYawDegFromPoints(
   return rad2deg(best_yaw);
 }
 
-// Math helper Centroid: computes derived geometric values used by mapping logic.
 lanelet::BasicPoint3d computeCentroid(const std::vector<lanelet::BasicPoint3d> & pts)
 {
   if (pts.empty()) {
@@ -204,7 +193,7 @@ double pointDistance2D(const lanelet::BasicPoint3d & a, const lanelet::BasicPoin
   return std::hypot(a.x() - b.x(), a.y() - b.y());
 }
 
-// HHL_260622 - Normalize closed OSM/lanelet polygons before centroid export.
+// HH_260622 - Normalize closed OSM/lanelet polygons before centroid export.
 // Slightly duplicated closing points bias center coordinates and break site occupancy polygons.
 std::vector<lanelet::BasicPoint3d> normalizePolygonCorners(
   const std::vector<lanelet::BasicPoint3d> & pts)
@@ -224,14 +213,14 @@ std::vector<lanelet::BasicPoint3d> normalizePolygonCorners(
   return corners;
 }
 
-// HHL_260624 - Keep semantic area x/y from the Lanelet2 map while flattening z
+// HH_260624 - Keep semantic area x/y from the Lanelet2 map while flattening z
 // for generated drop_zones.yaml and camping_sites.yaml consumers.
 lanelet::BasicPoint3d flattenSemanticPoint(const lanelet::BasicPoint3d & point)
 {
   return lanelet::BasicPoint3d(point.x(), point.y(), SEMANTIC_EXPORT_Z_M);
 }
 
-// HHL_260624 - Flatten all exported semantic polygon corners to the planning plane.
+// HH_260624 - Flatten all exported semantic polygon corners to the planning plane.
 std::vector<lanelet::BasicPoint3d> flattenSemanticPoints(
   const std::vector<lanelet::BasicPoint3d> & points)
 {
@@ -243,7 +232,6 @@ std::vector<lanelet::BasicPoint3d> flattenSemanticPoints(
   return flattened;
 }
 
-// Math helper PolygonCentroid: computes derived geometric values used by mapping logic.
 lanelet::BasicPoint3d computePolygonCentroid(
   const std::vector<lanelet::BasicPoint3d> & pts)
 {
@@ -275,14 +263,12 @@ lanelet::BasicPoint3d computePolygonCentroid(
 }
 
 template<typename PrimitiveT>
-// attributeIsTrue: Utility helper used for string parsing, math conversion, or styling.
 bool attributeIsTrue(const PrimitiveT & primitive, const std::string & key)
 {
   const auto value = toLowerCopy(getAttributeCaseInsensitive(primitive, key));
   return value == "yes" || value == "true" || value == "1";
 }
 
-// getAttr: Utility helper used for string parsing, math conversion, or styling.
 std::string getAttr(const std::string & line, const std::string & key)
 {
   const std::string pattern = key + "=\"";
@@ -298,7 +284,7 @@ std::string getAttr(const std::string & line, const std::string & key)
   return line.substr(start, end - start);
 }
 
-// HHL_260624 - Let semantic area YAML preserve map-authored yaw instead of deriving it from polygon edge order.
+// HH_260624 - Let semantic area YAML preserve map-authored yaw instead of deriving it from polygon edge order.
 template<typename PrimitiveT>
 std::optional<double> getYawDegOverride(const PrimitiveT & primitive)
 {
@@ -452,7 +438,7 @@ public:
       const auto corners = is_area ? normalizePolygonCorners(pts) : std::vector<lanelet::BasicPoint3d>{};
       const auto center = is_area ? computePolygonCentroid(corners) : computeCentroid(pts);
       DropZone dz;
-      // HHL_260624 - Preserve OSM area way ids such as dz_way_2048/dz_way_2054 in exported YAML.
+      // HH_260624 - Preserve OSM area way ids such as dz_way_2048/dz_way_2054 in exported YAML.
       dz.id = (is_area ? "dz_way_" : "dz_line_") + std::to_string(ls.id());
       dz.type = zone_type;
       dz.semantic_type = type;
@@ -594,7 +580,7 @@ public:
         return 1;
       }
 
-      out << "# HHL_260624 - Generated by camrod_map area_exporter from semantic drop_zone areas; z is flattened to the 2D planning plane and OSM yaw_deg is preserved.\n";
+      out << "# HH_260624 - Generated by camrod_map area_exporter from semantic drop_zone areas; z is flattened to the 2D planning plane and OSM yaw_deg is preserved.\n";
       out << "drop_zones:\n";
       for (const auto & dz : drop_zones) {
         out << "  - id: \"" << dz.id << "\"\n";
@@ -627,7 +613,7 @@ public:
         return 1;
       }
 
-      out << "# HHL_260624 - Generated by camrod_map area_exporter from semantic camping_site areas; z is flattened to the 2D planning plane.\n";
+      out << "# HH_260624 - Generated by camrod_map area_exporter from semantic camping_site areas; z is flattened to the 2D planning plane.\n";
       out << "camping_sites:\n";
       for (const auto & site : camping_sites) {
         out << "  - id: \"" << site.id << "\"\n";
@@ -657,7 +643,6 @@ public:
   }
 
 private:
-  // Publish helper Status: builds and publishes ROS outputs for downstream consumers and RViz overlays.
   void publishStatus(uint8_t level, const std::string & message)
   {
     if (!publish_map_status_ || !avg_map_pub_) {
@@ -866,7 +851,6 @@ private:
 }  // namespace map
 }  // namespace camrod
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

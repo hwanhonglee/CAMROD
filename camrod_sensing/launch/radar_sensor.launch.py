@@ -28,7 +28,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "module_namespace",
-            # HHL_260623 - Direct radar_sensor.launch should publish the same
+            # HH_260623 - Direct radar_sensor.launch should publish the same
             # /sensing/radar/* topics consumed by radar cost grid and Nav2.
             default_value="sensing/radar",
             description="Namespace for radar standalone launch",
@@ -40,7 +40,7 @@ def generate_launch_description():
             name="sen0592_radar_node",
             namespace=module_namespace,
             output="screen",
-            # HHL_260623 - Keep the latest seven-radar mapping in YAML so bench overrides
+            # HH_260623 - Keep the latest seven-radar mapping in YAML so bench overrides
             # can still replace the sensor count without launch-time topic mismatch.
             parameters=[
                 radar_params,

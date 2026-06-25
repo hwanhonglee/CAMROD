@@ -287,7 +287,7 @@ def _normalize_profile_name(value: Any) -> str:
 
 
 def infer_map_profile(map_params: dict, map_path: str) -> str:
-    # HHL_260622 - Map profile selects map-coupled semantic YAML without hardcoding C-track/Park files.
+    # HH_260622 - Map profile selects map-coupled semantic YAML without hardcoding C-track/Park files.
     for key in ('map_profile', 'profile', 'semantic_profile'):
         profile = _normalize_profile_name(map_params.get(key, ''))
         if profile:
@@ -320,7 +320,7 @@ def _profile_file_variants(default_path: str, profile: str) -> list[str]:
 
 
 def resolve_profile_file(default_path: str, profile: str) -> str:
-    # HHL_260623 - Resolve map-profile package configs without using stale bringup-local copies.
+    # HH_260623 - Resolve map-profile package configs without using stale bringup-local copies.
     selected = _first_existing_path(_profile_file_variants(default_path, profile))
     return selected if selected else default_path
 
@@ -458,7 +458,7 @@ def resolve_map_path_default(
         if os.path.isfile(map_info_path_candidate):
             return os.path.abspath(map_info_path_candidate)
 
-    # HHL_260622 - Fallback discovery honors map_profile so bringup is not tied to C-track.
+    # HH_260622 - Fallback discovery honors map_profile so bringup is not tied to C-track.
     auto_candidates = []
     filenames = _map_filename_candidates(map_info_value or launch_cfg_value, str(map_profile or ''))
     anchors = [
@@ -537,7 +537,7 @@ def generate_launch_description():
     state_machine_camping_sites_cfg = cfg_get(
         launch_cfg, 'planning/state_machine_camping_sites_yaml', 'planning/camping_sites.yaml')
     if _is_default_cfg_value(state_machine_keypoints_cfg, 'map/drop_zones.yaml'):
-        # HHL_260623 - Use camrod_map exporter output as the default drop-zone source.
+        # HH_260623 - Use camrod_map exporter output as the default drop-zone source.
         # Bringup-local profile copies easily go stale when the active Lanelet2 map changes.
         planning_state_machine_keypoints_default = resolve_profile_file(
             pkg_path('camrod_map', os.path.join('config', 'drop_zones.yaml')),
@@ -551,7 +551,7 @@ def generate_launch_description():
             map_profile,
         )
     if _is_default_cfg_value(state_machine_camping_sites_cfg, 'planning/camping_sites.yaml'):
-        # HHL_260623 - Use camrod_planning exporter output as the default camping-site source.
+        # HH_260623 - Use camrod_planning exporter output as the default camping-site source.
         planning_state_machine_camping_sites_default = resolve_profile_file(
             pkg_path('camrod_planning', os.path.join('config', 'camping_sites.yaml')),
             map_profile,
@@ -654,7 +654,7 @@ def generate_launch_description():
 
         # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
         ('enable_planning', cfg_get(launch_cfg, 'planning/enable_planning', True), 'Enable planning launch module'),
-        ('enable_path_cost_grids', cfg_get(launch_cfg, 'planning/enable_path_cost_grids', True), 'Enable path cost-grid helpers'),
+        ('enable_path_cost_grids', cfg_get(launch_cfg, 'planning/enable_path_cost_grids', False), 'Enable path cost-grid helpers'),
         # HH_260618: Default off unless explicitly enabled; Nav2 planner_server
         # already owns /planning/global_path in the normal bringup path.
         ('enable_goal_replanner', cfg_get(launch_cfg, 'planning/enable_goal_replanner', False), 'Enable goal replanner'),
@@ -662,7 +662,7 @@ def generate_launch_description():
         # active navigation after persistent LiDAR/Radar blockage, then lets Nav2
         # compute a Smac2D fallback route.
         ('enable_obstacle_replan_monitor', cfg_get(launch_cfg, 'planning/enable_obstacle_replan_monitor', True), 'Enable dynamic-obstacle replan monitor'),
-        ('enable_nav2_lifecycle_retry', cfg_get(launch_cfg, 'planning/enable_nav2_lifecycle_retry', True), 'Enable Nav2 lifecycle retry'),
+        ('enable_nav2_lifecycle_retry', cfg_get(launch_cfg, 'planning/enable_nav2_lifecycle_retry', False), 'Enable Nav2 lifecycle retry'),
         # Hold Nav2 STARTUP until localization reports ready.
         ('require_localization_ready', cfg_get(launch_cfg, 'planning/require_localization_ready', True), 'Gate Nav2 STARTUP on localization readiness'),
         ('enable_state_machine', cfg_get(launch_cfg, 'planning/enable_state_machine', False), 'Enable planning state machine'),
@@ -830,7 +830,7 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_cost_width_m',
-            # HHL_260623 - Default is measured body width plus 0.10 m margin per side.
+            # HH_260623 - Default is measured body width plus 0.10 m margin per side.
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_width_m', 1.27),
             'Corridor width for front dynamic cost-stop',
         ),
@@ -839,7 +839,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_hold_s', 1.0),
             'Hold duration for cost-stop',
         ),
-        # HHL_260622: The merged inflation grid includes static route/lanelet
+        # HH_260622: The merged inflation grid includes static route/lanelet
         # guidance. Only configured dynamic sources may trigger cost-stop.
         (
             'planning_cmd_vel_gate_cost_stop_require_dynamic_source',
@@ -919,7 +919,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', 1.5),
             'Maximum pose-to-local-path distance for path-based lanelet safety',
         ),
-        # HHL_260622: Use a narrow center corridor for local-path lanelet safety;
+        # HH_260622: Use a narrow center corridor for local-path lanelet safety;
         # full robot-width raw boundary checks falsely stop at merges.
         (
             'planning_cmd_vel_gate_lanelet_safety_front_path_width_m',
@@ -931,7 +931,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry', True),
             'Allow FRONT_PATH static-cost bypass during bounded route re-entry',
         ),
-        # HHL_260622: Allow bounded route re-entry for manually placed/sim poses
+        # HH_260622: Allow bounded route re-entry for manually placed/sim poses
         # that start slightly outside lanelet while a valid local path exists.
         (
             'planning_cmd_vel_gate_lanelet_safety_current_allow_route_reentry',
@@ -948,7 +948,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', True),
             'Require forward cmd_vel for current-cell route re-entry bypass',
         ),
-        # HHL_260624 - Drop-zone exit is explicit parking motion; pass its
+        # HH_260624 - Drop-zone exit is explicit parking motion; pass its
         # status to planning so only static lanelet cost is bypassed there.
         (
             'planning_cmd_vel_gate_parking_drop_zone_status_topic',
@@ -968,7 +968,7 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_front_lookahead_min_m',
-            # HHL_260623 - Include front body extent from robot_base_link plus planning margin.
+            # HH_260623 - Include front body extent from robot_base_link plus planning margin.
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_min_m', 1.30137),
             'Min front lookahead (m)',
         ),
@@ -992,7 +992,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_margin_m', 0.3),
             'Static safety margin for front lookahead (m)',
         ),
-        # HHL_260622: Side/rear cost-stop samples the merged grid, but blocks
+        # HH_260622: Side/rear cost-stop samples the merged grid, but blocks
         # only when dynamic source attribution owns the high-cost cell.
         (
             'planning_cmd_vel_gate_side_rear_cost_stop',
@@ -1011,7 +1011,7 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_side_corridor_width_m',
-            # HHL_260623 - Side corridor width covers full body length plus front/rear margins.
+            # HH_260623 - Side corridor width covers full body length plus front/rear margins.
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_corridor_width_m', 1.69160),
             'Side corridor width (m)',
         ),
@@ -1027,7 +1027,7 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_rear_corridor_width_m',
-            # HHL_260623 - Rear corridor width covers full body width plus left/right margins.
+            # HH_260623 - Rear corridor width covers full body width plus left/right margins.
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_corridor_width_m', 1.27),
             'Rear corridor width (m)',
         ),
@@ -1060,7 +1060,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold', 85),
             'LiDAR/Radar source threshold that still blocks lateral site-crab',
         ),
-        # HHL_260624 - Keep dynamic LiDAR/Radar obstacle stops active for pure
+        # HH_260624 - Keep dynamic LiDAR/Radar obstacle stops active for pure
         # in-place parking rotations even when static lanelet cost is bypassed.
         (
             'planning_cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop',
@@ -1277,7 +1277,7 @@ def generate_launch_description():
         ),
         (
             'platform_planning_engage_topic',
-            # HHL_260624 - Platform consumes the effective planning state so UI
+            # HH_260625 - Platform consumes the effective planning state so UI
             # mission engage can drive without the manual 2D-goal engage latch.
             cfg_get(
                 launch_cfg,
@@ -1374,7 +1374,7 @@ def generate_launch_description():
     ]
 
     lc = {name: LaunchConfiguration(name) for name, _, _ in arg_specs}
-    # HHL_260623 - Removed the deprecated parking_backend launch alias;
+    # HH_260623 - Removed the deprecated parking_backend launch alias;
     # parking_method is the single selector for rule_based versus docking.
     parking_method_expr = ["'", lc['parking_method'], "'.lower()"]
     parking_method_rule_based_expr = PythonExpression([
@@ -1459,7 +1459,7 @@ def generate_launch_description():
         'cmd_vel_in_topic': lc['platform_cmd_vel_in_topic'],
         'cmd_vel_out_topic': lc['platform_cmd_vel_out_topic'],
         'engage_source_mode': lc['platform_engage_source_mode'],
-        'planning_engage_topic': lc['platform_planning_engage_topic'],
+        'platform_planning_engage_topic': lc['platform_planning_engage_topic'],
         # HH_260618: Sim RViz goals must create paths only; platform motion still
         # requires the configured drive_allow_on_start policy or explicit engage.
         'drive_allow_on_start': lc['platform_drive_allow_on_start'],
@@ -1623,7 +1623,7 @@ def generate_launch_description():
     }
     apply_cfg_overrides(localization_args, localization_overrides)
     if 'drop_zones_yaml' not in localization_args:
-        # HHL_260623 - Keep localization map helper aligned with planning/parking drop-zone semantics.
+        # HH_260623 - Keep localization map helper aligned with planning/parking drop-zone semantics.
         localization_args['drop_zones_yaml'] = lc['planning_state_machine_keypoints_yaml']
     # HH_260618: Apply sim EKF override after apply_cfg_overrides so it is not
     # overwritten by user-level localization/filter_ekf_param_file entries.
@@ -1672,7 +1672,7 @@ def generate_launch_description():
         'nav2_selected_planner': lc['planning_nav2_selected_planner'],
         'nav2_selected_controller': lc['planning_nav2_selected_controller'],
     }
-    # HHL_260624 - Do not auto-arm planning in sim. Goals may plan, but
+    # HH_260624 - Do not auto-arm planning in sim. Goals may plan, but
     # /planning/cmd_vel remains gated until /planning/engaged=true.
     planning_args['cmd_vel_gate_allow_on_start'] = lc['planning_cmd_vel_gate_allow_on_start']
     set_if_not_empty(planning_args, 'nav2_base_param_file', planning_overrides['nav2_base_param_file'])
@@ -1750,7 +1750,7 @@ def generate_launch_description():
         # Share bringup camping-sites YAML with UI backend so
         # /ui/selected_destination can dispatch exact goal_pose coordinates.
         'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
-        # HHL_260623 - UI campsite missions publish a separate mission engage latch
+        # HH_260623 - UI campsite missions publish a separate mission engage latch
         # so the manual ENGAGE button cannot stop an accepted scenario.
         'planning_engage_topic': lc['planning_engage_topic'],
         'planning_mission_engage_topic': lc['planning_mission_engage_topic'],

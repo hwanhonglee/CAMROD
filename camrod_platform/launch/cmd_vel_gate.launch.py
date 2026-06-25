@@ -13,9 +13,9 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_in_topic', default_value='/planning/cmd_vel'),
         DeclareLaunchArgument('cmd_vel_out_topic', default_value='/platform/cmd_vel'),
         DeclareLaunchArgument('drive_enable_topic', default_value='/platform/drive_enable'),
-        # HHL_260624 - Subscribe to the effective planning gate state by default.
-        # This keeps manual /planning/engage and UI /planning/mission_engage independent.
-        DeclareLaunchArgument('planning_engage_topic', default_value='/planning/engaged'),
+        # HH_260625 - Subscribe to the effective planning gate state by default.
+        # Platform output still requires /platform/drive_enable and this planning state.
+        DeclareLaunchArgument('platform_planning_engage_topic', default_value='/planning/engaged'),
         # HH_260522: unified source selector for engage signal.
         #   planning_engage/planning_engaged/topic/enabled/on: subscribe configured topic
         #   disabled/off/none: ignore engage topic
@@ -39,7 +39,7 @@ def generate_launch_description():
                 'input_cmd_vel_topic': LaunchConfiguration('cmd_vel_in_topic'),
                 'output_cmd_vel_topic': LaunchConfiguration('cmd_vel_out_topic'),
                 'enable_topic': LaunchConfiguration('drive_enable_topic'),
-                'engage_topic': LaunchConfiguration('planning_engage_topic'),
+                'engage_topic': LaunchConfiguration('platform_planning_engage_topic'),
                 'engage_source_mode': LaunchConfiguration('engage_source_mode'),
                 'state_topic': LaunchConfiguration('drive_state_topic'),
                 'estop_source_mode': LaunchConfiguration('estop_source_mode'),

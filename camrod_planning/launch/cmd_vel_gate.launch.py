@@ -21,7 +21,7 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_raw_topic', default_value='/planning/cmd_vel_raw'),
         DeclareLaunchArgument('cmd_vel_output_topic', default_value='/planning/cmd_vel'),
         DeclareLaunchArgument('planning_engage_topic', default_value='/planning/engage'),
-        # HHL_260623 - UI mission engage is independent from manual 2D-goal engage.
+        # HH_260623 - UI mission engage is independent from manual 2D-goal engage.
         DeclareLaunchArgument('planning_mission_engage_topic', default_value='/planning/mission_engage'),
         DeclareLaunchArgument('planning_engaged_state_topic', default_value='/planning/engaged'),
         # HH_260522: unified source selector for planning e-stop input.
@@ -56,10 +56,10 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_enable_pose_raw_fallback', default_value='false'),
         DeclareLaunchArgument('cmd_vel_gate_cost_threshold', default_value='85'),
         DeclareLaunchArgument('cmd_vel_gate_cost_lookahead_m', default_value='2.0'),
-        # HHL_260623 - Measured body width plus 0.10 m planning margin per side.
+        # HH_260623 - Measured body width plus 0.10 m planning margin per side.
         DeclareLaunchArgument('cmd_vel_gate_cost_width_m', default_value='1.27'),
         DeclareLaunchArgument('cmd_vel_gate_cost_hold_s', default_value='1.0'),
-        # HHL_260622: Merged inflation cost is only a stop source when one of
+        # HH_260622: Merged inflation cost is only a stop source when one of
         # these dynamic source grids owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_require_dynamic_source', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_dynamic_source_labels', default_value='lidar,radar'),
@@ -80,33 +80,33 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', default_value='1.5'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_width_m', default_value='0.25'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry', default_value='true'),
-        # HHL_260622: Allow bounded re-entry when a manually placed/sim pose is
+        # HH_260622: Allow bounded re-entry when a manually placed/sim pose is
         # outside lanelet but the selected local path is close and valid.
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_allow_route_reentry', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m', default_value='4.0'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', default_value='true'),
-        # HHL_260624 - Drop-zone exit is an explicit parking phase that may
+        # HH_260624 - Drop-zone exit is an explicit parking phase that may
         # cross static lanelet/drop-zone cost before Nav2 campsite routing.
         DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_status_topic', default_value='/parking/drop_zone/status'),
         DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_static_bypass_phases', default_value='EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
         # HH_260422: Speed-dependent front lookahead parameters.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
-        # HHL_260623 - Minimum front scan reaches measured front bumper plus planning margin.
+        # HH_260623 - Minimum front scan reaches measured front bumper plus planning margin.
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='1.30137'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_max_m', default_value='3.0'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_friction', default_value='0.4'),
         DeclareLaunchArgument('cmd_vel_gate_front_reaction_time_s', default_value='0.15'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_margin_m', default_value='0.3'),
-        # HHL_260622: Side/rear cost-stop samples the merged grid, but blocks
+        # HH_260622: Side/rear cost-stop samples the merged grid, but blocks
         # only when dynamic source attribution owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='92'),
         DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='0.8'),
-        # HHL_260623 - Side scan width covers full body length plus front/rear margins.
+        # HH_260623 - Side scan width covers full body length plus front/rear margins.
         DeclareLaunchArgument('cmd_vel_gate_side_corridor_width_m', default_value='1.69160'),
         DeclareLaunchArgument('cmd_vel_gate_rear_cost_threshold', default_value='92'),
         DeclareLaunchArgument('cmd_vel_gate_rear_lookahead_m', default_value='0.6'),
-        # HHL_260623 - Rear scan width covers full body width plus left/right margins.
+        # HH_260623 - Rear scan width covers full body width plus left/right margins.
         DeclareLaunchArgument('cmd_vel_gate_rear_corridor_width_m', default_value='1.27'),
         # HH_260618: Allow explicit parking/site crab to cross static
         # lanelet/global-path front/side/rear cost while keeping LiDAR/Radar stops active.
@@ -115,7 +115,7 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_reverse_cmd_bypass_static_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_reverse_cmd_bypass_min_mps', default_value='0.02'),
         DeclareLaunchArgument('cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold', default_value='85'),
-        # HHL_260624 - Pure in-place parking rotation bypasses only static
+        # HH_260624 - Pure in-place parking rotation bypasses only static
         # lanelet cost; live LiDAR/Radar disk cost still blocks rotation.
         DeclareLaunchArgument('cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m', default_value='1.5'),

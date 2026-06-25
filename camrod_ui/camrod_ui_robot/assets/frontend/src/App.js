@@ -77,7 +77,7 @@ function DiagnosticsMonitor() {
 
   useEffect(() => {
     const fetch_ = () =>
-      // HHL_260623 - Use the canonical UI diagnostics endpoint; legacy /api/diagnostics was removed.
+      // HH_260623 - Use the canonical UI diagnostics endpoint; legacy /api/diagnostics was removed.
       fetch('/ui/diagnostics')
         .then(r => r.json())
         .then(j => setItems(j.status || []))
@@ -774,7 +774,7 @@ function App() {
   const [batteryPct, setBatteryPct] = useState(null); // null = 아직 수신 전
   const [togglePage, setTogglePage] = useState(0);   // 0: B1~B6, 1: B7~B12, 2: B13
   const [engageState, setEngageState] = useState(false);
-  // HHL_260623 - Manual ENGAGE is only for arbitrary RViz 2D Goal Pose driving.
+  // HH_260623 - Manual ENGAGE is only for arbitrary RViz 2D Goal Pose driving.
   // Camping-site scenarios use missionEngageState so the two controls cannot
   // stop each other.
   const [missionEngageState, setMissionEngageState] = useState(false);
@@ -808,7 +808,7 @@ function App() {
   const [showGuestRecall, setShowGuestRecall] = useState(false); // HJ_260601: 게스트 호출 알림 팝업
   const diagPressAnimRef = useRef(null);
   const [showMoveConfirm, setShowMoveConfirm] = useState(false); // 출발 최종 확인 팝업
-  const [siteAccessError, setSiteAccessError] = useState(''); // HHL_260622 - Unsafe site-to-site dispatch feedback.
+  const [siteAccessError, setSiteAccessError] = useState(''); // HH_260622 - Unsafe site-to-site dispatch feedback.
 
   const openSettingsLoginModal = () => {
     setActiveModal(null);
@@ -894,9 +894,9 @@ function App() {
 
   // 현재 ON인 사이트 (이동 중인 사이트)
   const activeSite = SITE_NAMES.find(s => states[s]) || null;
-  // HHL_260623 - Site mission progress follows mission engage, not manual ENGAGE.
+  // HH_260623 - Site mission progress follows mission engage, not manual ENGAGE.
   const missionPaused = !!activeSite && !missionEngageState && !arrivedSite && !isReturning;
-  // HHL_260624 - Return-to-drop-zone must expose the same mission latch pause state.
+  // HH_260624 - Return-to-drop-zone must expose the same mission latch pause state.
   const returningPaused = isReturning && !missionEngageState;
 
   // ── 운영시간 게이트 확인 ───────────────────────────────────────────────
@@ -1003,17 +1003,17 @@ function App() {
       if ('site' in data && 'state' in data) {
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
-      // HHL_260622 - AMR arrived means campsite internal wait is active.
+      // HH_260622 - AMR arrived means campsite internal wait is active.
       if ('arrived' in data) {
         setArrivedSite(data.arrived);
         setShowArrivalComplete(true);
         setShowWaiting(false);
         setSiteAccessError('');
       }
-      // HHL_260622 - Site-to-site dispatch is rejected while the robot is inside a campsite.
+      // HH_260622 - Site-to-site dispatch is rejected while the robot is inside a campsite.
       if (data.error === 'site_access_rejected') {
         setSiteAccessError(data.message || '현재 상태에서는 새 목적지를 선택할 수 없습니다. 먼저 Drop Zone으로 복귀하세요.');
-        // HHL_260623 - Revert optimistic site ON state when backend rejects the mission.
+        // HH_260623 - Revert optimistic site ON state when backend rejects the mission.
         // Otherwise the UI shows a campsite as active even though planning never accepted it.
         if (data.site) {
           setStates(prev => ({ ...prev, [data.site]: false }));
@@ -1048,7 +1048,7 @@ function App() {
       if ('engage' in data) {
         setEngageState(data.engage);
       }
-      // HHL_260623 - UI scenario engage is independent from manual ENGAGE.
+      // HH_260623 - UI scenario engage is independent from manual ENGAGE.
       if ('mission_engage' in data) {
         setMissionEngageState(data.mission_engage);
       }
@@ -1085,12 +1085,12 @@ function App() {
     }
   };
 
-  // HHL_260623 - Pause/resume campsite missions without touching manual ENGAGE.
+  // HH_260623 - Pause/resume campsite missions without touching manual ENGAGE.
   // Manual ENGAGE is reserved for arbitrary RViz 2D Goal Pose driving only.
   const handleMissionEngage = (enabled, stopManualEngage = false) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       const payload = { mission_engage: enabled };
-      // HHL_260624 - A UI stop is safety-critical and closes both motion latches.
+      // HH_260624 - A UI stop is safety-critical and closes both motion latches.
       // Resume still reopens only mission_engage so manual 2D-goal driving remains separate.
       if (!enabled && stopManualEngage) {
         payload.engage = false;
@@ -1131,7 +1131,7 @@ function App() {
     if (activeSite) handleMissionEngage(false, true);
   };
 
-  // HHL_260624 - Drop-zone return needs an explicit pause control in the UI.
+  // HH_260624 - Drop-zone return needs an explicit pause control in the UI.
   const handleReturnStop = () => {
     if (isReturning) handleMissionEngage(false, true);
   };

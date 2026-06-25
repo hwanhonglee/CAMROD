@@ -14,9 +14,8 @@
     planner_selector_topic: "/planning/planner_selector"
     status_topic: "/planning/obstacle_replan/status"
 
-    # HH_260619 - LaneletRoute intentionally ignores dynamic costmap cells.
-    # Persistent full-route blockage is therefore retried once through Smac2D,
-    # which can use the global costmap sensor layers for an alternate path.
+    # HH_260625: Smac2D is already the normal planner. Keep this ID aligned so
+    # the monitor can latch the selector during dynamic-obstacle recovery.
     fallback_planner_id: "Smac2D"
     monitor_rate_hz: 5.0
     grid_max_age_s: 0.75

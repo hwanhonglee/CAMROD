@@ -1224,7 +1224,6 @@ class FakeSensorPublisher(Node):
         return SetParametersResult(successful=True)
 
 
-# Entry point for this executable.
 def main():
     rclpy.init()
     node = FakeSensorPublisher()

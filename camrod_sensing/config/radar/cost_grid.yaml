@@ -1,4 +1,4 @@
-/sensing/radar_cost_grid:
+/sensing/radar/radar_cost_grid:
   ros__parameters:
     output_topic: "/sensing/cost_grid/radar"
     base_frame_id: "robot_base_link"
@@ -17,6 +17,9 @@
     min_cost: 35
     max_cost: 95
     cost_range_min_m: 0.3
+    # HH_260625: Ignore stable SEN0592 near-zero self echoes seen outdoors
+    # (front ~0.10m, side ~0.03m, rear ~0.11m) without masking real >0.15m hits.
+    ignore_below_range_m: 0.15
     # HH_260422: Near-field only; per-sensor max_range limits detections before cost mapping.
     cost_range_max_m: 2.0
     obstacle_radius_m: 0.30
@@ -28,7 +31,7 @@
     publish_rate_hz: 10.0
     publish_radar_status: false
     radar_status_topic: "/sensing/radar/status"
-    # HHL_260623 - Match latest 7-channel SEN0592 radar topics.
+    # HH_260623 - Match latest 7-channel SEN0592 radar topics.
     input_topics:
       - "/sensing/radar/front1/range"
       - "/sensing/radar/front2/range"

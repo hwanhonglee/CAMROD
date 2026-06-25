@@ -67,7 +67,7 @@ class PathVisualizerNode(Node):
         self.route_endpoint_mismatch_m = float(
             self.declare_parameter("route_endpoint_mismatch_m", 1.0).value
         )
-        # HHL_260623 - Keep path markers on the same 2D ground plane as flattened Lanelet2 markers.
+        # HH_260623 - Keep path markers on the same 2D ground plane as flattened Lanelet2 markers.
         self.flatten_path_z = bool(self.declare_parameter("flatten_path_z", True).value)
         self.path_ground_z = float(self.declare_parameter("path_ground_z", 0.0).value)
 

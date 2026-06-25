@@ -6,7 +6,7 @@
     detection_topic: "/perception/camera/detections_2d"           # 2D detection boxes used to gate LiDAR points.
     camera_info_topic: "/sensing/camera/processed/camera_info"    # Camera intrinsics used for 3D->2D projection.
     output_topic: "/perception/obstacles"                         # Filtered obstacle point-cloud output topic.
-    # HHL_260623 - camera_front is the canonical optical TF frame; legacy camera_link was removed from sensor_kit.
+    # HH_260623 - camera_front is the canonical optical TF frame; legacy camera_link was removed from sensor_kit.
     camera_frame: "camera_front"                                  # Camera TF frame used in transform lookup.
     # HH_260522: Unified fusion filter selector.
     #   camera_bbox/enabled/on: camera-detection-gated point cloud

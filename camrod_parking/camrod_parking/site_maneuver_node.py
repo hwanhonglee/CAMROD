@@ -79,7 +79,7 @@ class SiteManeuverNode(Node):
             self.declare_parameter("status_topic", "/parking/site_maneuver/status").value
         )
         self.diagnostics_topic = str(self.declare_parameter("diagnostics_topic", "/system/diagnostics").value)
-        # HHL_260622 - Parking phase updates the UI/system service state during non-Nav2 maneuvers.
+        # HH_260622 - Parking phase updates the UI/system service state during non-Nav2 maneuvers.
         self.amr_service_state_topic = str(
             self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
         )
@@ -105,7 +105,7 @@ class SiteManeuverNode(Node):
         self.require_goal_pair_for_auto_start = bool(
             self.declare_parameter("require_goal_pair_for_auto_start", True).value
         )
-        # HHL_260622 - Campsite entry defaults to wheel-crab lateral motion:
+        # HH_260622 - Campsite entry defaults to wheel-crab lateral motion:
         # lanelet-snap approach -> crab into the site -> body rotate 180deg
         # only after the robot is inside the selected camping site.
         self.site_entry_mode = str(self.declare_parameter("site_entry_mode", "crab").value).strip().lower()
@@ -178,7 +178,7 @@ class SiteManeuverNode(Node):
         self.rotate_yaw_tolerance_deg = abs(
             float(self.declare_parameter("rotate_yaw_tolerance_deg", 4.0).value)
         )
-        # HHL_260624 - Force campsite 180deg body rotation toward the lanelet side.
+        # HH_260624 - Force campsite 180deg body rotation toward the lanelet side.
         self.site_rotate_direction_policy = str(
             self.declare_parameter("site_rotate_direction_policy", "site_index_lanelet_side").value
         ).strip().lower()
@@ -193,7 +193,7 @@ class SiteManeuverNode(Node):
         self.left_lanelet_site_indices = self._int_set(
             self.declare_parameter("left_lanelet_site_indices", [2, 4, 6, 8, 10, 12, 13]).value
         )
-        # HHL_260622 - Match the package/config fallback reverse speed.
+        # HH_260622 - Match the package/config fallback reverse speed.
         self.reverse_entry_speed_mps = abs(
             float(self.declare_parameter("reverse_entry_speed_mps", 0.16).value)
         )
@@ -350,7 +350,7 @@ class SiteManeuverNode(Node):
     def _now_s(self) -> float:
         return self.get_clock().now().nanoseconds * 1e-9
 
-    # HHL_260624 - Normalize YAML list/string campsite index parameters.
+    # HH_260624 - Normalize YAML list/string campsite index parameters.
     @staticmethod
     def _int_set(value: object) -> set[int]:
         if isinstance(value, str):
@@ -371,7 +371,7 @@ class SiteManeuverNode(Node):
         return self.phase not in {Phase.IDLE, Phase.DONE, Phase.ERROR}
 
     def _is_site_internal_phase(self) -> bool:
-        # HHL_260622 - Once the robot is inside or leaving a campsite, a new
+        # HH_260622 - Once the robot is inside or leaving a campsite, a new
         # campsite goal must not overwrite the original site/route pair. The
         # only safe transition is to finish crab-out first, then let planning
         # route from the lanelet snap pose.
@@ -568,14 +568,14 @@ class SiteManeuverNode(Node):
                 "site_maneuver restored route_goal from current pose at Nav2 GOAL_REACHED"
             )
 
-    # HHL_260624 - Extract campsite index from semantic mission strings.
+    # HH_260624 - Extract campsite index from semantic mission strings.
     def _site_index_from_text(self, text: str) -> int | None:
         match = re.search(r"camping_site_(\d+)", text or "")
         if match is None:
             return None
         return int(match.group(1))
 
-    # HHL_260624 - Map odd/even park campsite groups to lanelet-side rotation direction.
+    # HH_260624 - Map odd/even park campsite groups to lanelet-side rotation direction.
     def _rotation_direction_for_source(self, source: str) -> tuple[float, str]:
         if self.site_rotate_direction_policy != "site_index_lanelet_side":
             return 0.0, "shortest"
@@ -705,7 +705,7 @@ class SiteManeuverNode(Node):
         self.return_acknowledged = False
         self.last_return_request_publish_s = 0.0
         if source_name == "goal_pair" and abs(forward_residual) > self.max_forward_residual_m:
-            # HHL_260622 - rclpy logger does not accept printf-style extra args.
+            # HH_260622 - rclpy logger does not accept printf-style extra args.
             self.get_logger().warn(
                 f"site_maneuver goal pair has forward residual {forward_residual:.2f}m. "
                 "Crab-only parking corrects lateral offset; check lanelet snap if the site is not perpendicular."
@@ -950,7 +950,7 @@ class SiteManeuverNode(Node):
         self._set_phase(Phase.ERROR, message)
 
     def _publish_amr_service_state_for_phase(self, phase: Phase, source_message: str) -> None:
-        # HHL_260622 - UI needs campsite-internal phases, not only Nav2 lanelet arrival state.
+        # HH_260622 - UI needs campsite-internal phases, not only Nav2 lanelet arrival state.
         service_state = None
         if phase in {Phase.ALIGN_ENTRY_YAW, Phase.REVERSE_IN, Phase.CRAB_IN, Phase.ROTATE_180}:
             service_state = AvgAmrServiceState.SITE_ENTRY

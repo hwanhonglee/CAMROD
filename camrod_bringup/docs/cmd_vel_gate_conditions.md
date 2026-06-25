@@ -72,7 +72,7 @@ INVALID    = !imu_ok  OR  (!gnss_good && !wheel_good)
 
 Effective pass condition: `(manual_engage OR mission_engage) AND NOT _estop AND NOT cost_blocked`
 
-HHL_260624 - Site crab/reverse and in-place parking rotations may bypass static
+HH_260624 - Site crab/reverse and in-place parking rotations may bypass static
 lanelet/global-path cost only for their mission-owned maneuver. Live LiDAR/Radar
 dynamic cost still sets `_cost_blocked_until` and stops `/planning/cmd_vel`.
 

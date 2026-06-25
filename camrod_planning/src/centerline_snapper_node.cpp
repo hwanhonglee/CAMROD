@@ -28,6 +28,17 @@ std::string normalizeModeToken(std::string value)
   return value;
 }
 
+double normalizeAngle(double angle)
+{
+  while (angle > M_PI) {
+    angle -= 2.0 * M_PI;
+  }
+  while (angle < -M_PI) {
+    angle += 2.0 * M_PI;
+  }
+  return angle;
+}
+
 struct LoaderConfig
 {
   std::string map_path;
@@ -54,6 +65,13 @@ avg_msgs::msg::Quaternion yawToQuat(double yaw)
   q.z = std::sin(half_yaw);
   q.w = std::cos(half_yaw);
   return q;
+}
+
+double yawFromQuat(const avg_msgs::msg::Quaternion & q)
+{
+  return std::atan2(
+    2.0 * (q.w * q.z + q.x * q.y),
+    1.0 - 2.0 * (q.y * q.y + q.z * q.z));
 }
 
 }  // namespace
@@ -89,8 +107,12 @@ public:
     longitudinal_stddev_ = declare_parameter<double>("longitudinal_stddev", 0.5);
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
     yaw_stddev_ = declare_parameter<double>("yaw_stddev", 0.2);
+    // HH_260625: Prefer centerlines aligned with GNSS/localization yaw. Nearest
+    // distance alone can snap to a crossing lanelet and rotate planning yaw ~90 deg.
+    heading_filter_enable_ = declare_parameter<bool>("heading_filter_enable", true);
+    max_heading_error_deg_ = declare_parameter<double>("max_heading_error_deg", 100.0);
     // HH_260526: Replace use_map_z/flatten_to_ground booleans with one explicit mode.
-    // HHL_260623 - "ground" means the 2D planning plane (Z=0), not raw OSM median altitude.
+    // HH_260623 - "ground" means the 2D planning plane (Z=0), not raw OSM median altitude.
     // centerline_z_mode options: input | map | ground.
     centerline_z_mode_ = normalizeModeToken(
       declare_parameter<std::string>("centerline_z_mode", "ground"));
@@ -203,7 +225,7 @@ private:
       }
     }
 
-    const auto nearest = findNearestCenterline(px, py);
+    const auto nearest = findNearestCenterline(px, py, yawFromQuat(msg->pose.orientation));
     if (!nearest.valid) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000, "No centerline within search radius %.1f m",
@@ -291,10 +313,12 @@ private:
   }
 
   // Implements `findNearestCenterline` behavior.
-  NearestResult findNearestCenterline(double x, double y) const
+  NearestResult findNearestCenterline(double x, double y, double pose_yaw) const
   {
     NearestResult best;
+    NearestResult best_heading_aligned;
     const double max_sq = max_search_radius_ * max_search_radius_;
+    const double max_heading_error_rad = max_heading_error_deg_ * M_PI / 180.0;
     for (const auto & ll : map_->laneletLayer) {
       const auto & cl = ll.centerline();
       if (cl.size() < 2) {
@@ -315,14 +339,29 @@ private:
         const double dx = x - proj_x;
         const double dy = y - proj_y;
         const double dist2 = dx * dx + dy * dy;
+        const double heading = std::atan2(vy, vx);
         if (dist2 < best.sq_dist && dist2 < max_sq) {
           best.sq_dist = dist2;
           best.valid = true;
           const double proj_z = p0.z() + t * (p1.z() - p0.z());  // HH_260114 Interpolate z along segment.
           best.nearest_point = lanelet::Point3d(lanelet::InvalId, proj_x, proj_y, proj_z);
-          best.heading = std::atan2(vy, vx);
+          best.heading = heading;
+        }
+        const double heading_error = std::abs(normalizeAngle(heading - pose_yaw));
+        if (heading_filter_enable_ && heading_error <= max_heading_error_rad &&
+          dist2 < best_heading_aligned.sq_dist && dist2 < max_sq)
+        {
+          best_heading_aligned.sq_dist = dist2;
+          best_heading_aligned.valid = true;
+          const double proj_z = p0.z() + t * (p1.z() - p0.z());
+          best_heading_aligned.nearest_point =
+            lanelet::Point3d(lanelet::InvalId, proj_x, proj_y, proj_z);
+          best_heading_aligned.heading = heading;
         }
       }
+    }
+    if (heading_filter_enable_ && best_heading_aligned.valid) {
+      return best_heading_aligned;
     }
     return best;
   }
@@ -339,7 +378,9 @@ private:
   double longitudinal_stddev_{0.5};
   double lateral_stddev_{0.3};
   double yaw_stddev_{0.2};
-  std::string centerline_z_mode_{"ground"};  // HHL_260623 - Default to 2D planning plane.
+  bool heading_filter_enable_{true};
+  double max_heading_error_deg_{100.0};
+  std::string centerline_z_mode_{"ground"};  // HH_260623 - Default to 2D planning plane.
   double map_z_offset_{0.0};
   double min_update_period_s_{0.05};
   double min_input_displacement_m_{0.05};
@@ -372,7 +413,6 @@ private:
   bool publish_planning_status_{false};
 };
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

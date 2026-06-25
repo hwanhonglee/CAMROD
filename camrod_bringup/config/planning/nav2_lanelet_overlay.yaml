@@ -21,7 +21,7 @@ planner_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      # HHL_260622 - Local controllers must not collision-check against static
+      # HH_260622 - Local controllers must not collision-check against static
       # lanelet/global-path guide grids. Those grids are route guidance and
       # safety-gate inputs, not physical obstacles. Keep the local Nav2 costmap
       # dynamic-only so RPP/MPPI do not falsely report collision at lane merges

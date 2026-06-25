@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -173,10 +174,12 @@ public:
       throw nav2_core::PlannerException("LaneletRoutePlanner is not configured");
     }
 
+    const auto plan_t0 = std::chrono::steady_clock::now();
     const LaneletMatch start_match = findBestLanelet(
       start.pose.position.x, start.pose.position.y);
     const LaneletMatch goal_match = findBestLanelet(
       goal.pose.position.x, goal.pose.position.y);
+    const auto snap_t1 = std::chrono::steady_clock::now();
 
     if (!start_match.valid) {
       throw nav2_core::PlannerException("LaneletRoutePlanner could not snap start to lanelet");
@@ -186,6 +189,7 @@ public:
     }
 
     const auto route_lanelets = findRoute(start_match, goal_match);
+    const auto route_t1 = std::chrono::steady_clock::now();
     if (route_lanelets.empty()) {
       throw nav2_core::PlannerException("LaneletRoutePlanner could not find lanelet route");
     }
@@ -219,13 +223,25 @@ public:
       throw nav2_core::PlannerException("LaneletRoutePlanner generated an empty route");
     }
 
+    const auto geometry_t1 = std::chrono::steady_clock::now();
     updatePathOrientations(path);
+    const auto plan_t1 = std::chrono::steady_clock::now();
+    const double snap_ms =
+      std::chrono::duration<double, std::milli>(snap_t1 - plan_t0).count();
+    const double route_ms =
+      std::chrono::duration<double, std::milli>(route_t1 - snap_t1).count();
+    const double geometry_ms =
+      std::chrono::duration<double, std::milli>(geometry_t1 - route_t1).count();
+    const double total_ms =
+      std::chrono::duration<double, std::milli>(plan_t1 - plan_t0).count();
     RCLCPP_INFO(
       node_->get_logger(),
-      "LaneletRoutePlanner plan: start_ll=%ld goal_ll=%ld lanelets=%zu points=%zu",
+      "LaneletRoutePlanner plan: start_ll=%ld goal_ll=%ld lanelets=%zu points=%zu "
+      "timing snap=%.2fms route=%.2fms geometry=%.2fms total=%.2fms",
       static_cast<long>(start_match.lanelet.id()),
       static_cast<long>(goal_match.lanelet.id()),
-      route_lanelets.size(), path.poses.size());
+      route_lanelets.size(), path.poses.size(),
+      snap_ms, route_ms, geometry_ms, total_ms);
     return path;
   }
 
@@ -252,6 +268,7 @@ private:
     lanelet::Origin origin(origin_gps);
     lanelet::projection::LocalCartesianProjector projector(origin);
 
+    const auto load_t0 = std::chrono::steady_clock::now();
     try {
       map_ = lanelet::load(map_path_, projector);
     } catch (const std::exception & exception) {
@@ -260,6 +277,13 @@ private:
         exception.what());
       return false;
     }
+    const auto load_t1 = std::chrono::steady_clock::now();
+    const double load_ms =
+      std::chrono::duration<double, std::milli>(load_t1 - load_t0).count();
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "LaneletRoutePlanner map load timing: %.2fms path=%s",
+      load_ms, map_path_.c_str());
     return static_cast<bool>(map_);
   }
 
@@ -288,14 +312,25 @@ private:
         }
       };
 
+    const auto graph_t0 = std::chrono::steady_clock::now();
     if (try_build(routing_participant_)) {
+      const auto graph_t1 = std::chrono::steady_clock::now();
+      const double graph_ms =
+        std::chrono::duration<double, std::milli>(graph_t1 - graph_t0).count();
+      RCLCPP_INFO(
+        node_->get_logger(),
+        "LaneletRoutePlanner routing graph timing: %.2fms participant=%s",
+        graph_ms, routing_participant_.c_str());
       return true;
     }
     if (routing_participant_ != "vehicle" && try_build("vehicle")) {
+      const auto graph_t1 = std::chrono::steady_clock::now();
+      const double graph_ms =
+        std::chrono::duration<double, std::milli>(graph_t1 - graph_t0).count();
       RCLCPP_WARN(
         node_->get_logger(),
-        "LaneletRoutePlanner fallback routing participant applied: %s -> vehicle",
-        routing_participant_.c_str());
+        "LaneletRoutePlanner fallback routing participant applied: %s -> vehicle (%.2fms)",
+        routing_participant_.c_str(), graph_ms);
       routing_participant_ = "vehicle";
       return true;
     }

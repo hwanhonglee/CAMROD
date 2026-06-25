@@ -51,29 +51,34 @@ bringup:
     monitor_param_file: localization/filter/monitor.yaml
     map_helper_param_file: localization/reference/map_helper.yaml
     map_info_file: __module_default__
-    # HHL_260623 - Let bringup inject the active camrod_map drop_zones exporter output.
+    # HH_260623 - Let bringup inject the active camrod_map drop_zones exporter output.
     drop_zones_yaml: __module_default__
 
   planning:
     # ---- Planning core toggles ----
     # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
     enable_planning: true
-    enable_path_cost_grids: true
+    # HH_260625: Path-cost grids are RViz/guide helpers, not required for Nav2
+    # route generation. Keep them off in full bringup to avoid extra OSM loads
+    # and raster rebuilds during startup; enable explicitly for cost-grid debug.
+    enable_path_cost_grids: false
     # HH_260618: Keep goal_replanner off by default because Nav2 planner_server
     # already publishes /planning/global_path; duplicate publishers make RViz path
     # visualization flicker and can feed stale paths to downstream cost grids.
     enable_goal_replanner: false
-    # HH_260619 - Dynamic-obstacle recovery is separate from goal_replanner.
-    # It keeps LaneletRoute fixed during normal motion, but preempts the active
-    # Nav2 goal with Smac2D only after LiDAR/Radar costs persistently block the
-    # route corridor.
+    # HH_260625: Dynamic-obstacle recovery is separate from goal_replanner.
+    # The normal planner is already Smac2D, so this monitor mainly keeps the
+    # planner selector latched and can be used for future planner-specific
+    # fallback policies.
     enable_obstacle_replan_monitor: true
-    # Recover from intermittent lifecycle startup race on resource-limited targets.
-    enable_nav2_lifecycle_retry: true
+    # HH_260625: Let lifecycle_manager autostart own STARTUP unless localization
+    # readiness gating is explicitly enabled. Running the retry node alongside
+    # autostart can resend STARTUP while controller_server is still configuring.
+    enable_nav2_lifecycle_retry: false
     # false  → nav2_autostart=true: Nav2 activates immediately on bringup.
     #          bt_navigator will start planning as soon as ANY goal arrives (RViz, UI, etc.).
     #          Path follows lanelet centerline — looks like "auto driving" but cmd_vel gate
-    #          HHL_260624 - Effective engage may come from manual or UI mission latch;
+    #          HH_260624 - Effective engage may come from manual or UI mission latch;
     #          blocks actual movement until /planning/engaged becomes true.
     # true   → nav2_autostart=false: Nav2 waits for localization_ready before activating.
     #          Use true for production runs to prevent premature path planning.
@@ -97,7 +102,7 @@ bringup:
     local_path_source: slice_only
 
     # ---- Planning cmd_vel gate ----
-    # HHL_260623 - Manual 2D-goal engage and UI mission engage are separate latches.
+    # HH_260623 - Manual 2D-goal engage and UI mission engage are separate latches.
     # Final /planning/cmd_vel opens when either latch is true.
     cmd_vel_gate_enable: true
     cmd_vel_raw_topic: /planning/cmd_vel_raw
@@ -143,10 +148,10 @@ bringup:
     cmd_vel_gate_cost_threshold: 85
     # Legacy fixed lookahead; used only when enable_speed_dependent_lookahead=false.
     cmd_vel_gate_cost_lookahead_m: 2.0
-    # HHL_260623 - Measured body width plus 0.10 m planning margin per side.
+    # HH_260623 - Measured body width plus 0.10 m planning margin per side.
     cmd_vel_gate_cost_width_m: 1.27
     cmd_vel_gate_cost_hold_s: 1.0
-    # HHL_260622 - The merged inflation grid also carries static lanelet/global
+    # HH_260622 - The merged inflation grid also carries static lanelet/global
     # path guidance. Only live dynamic sensor sources may block cmd_vel here.
     cmd_vel_gate_cost_stop_require_dynamic_source: true
     cmd_vel_gate_cost_stop_dynamic_source_labels: lidar,radar
@@ -170,23 +175,23 @@ bringup:
     # fallback remains the raw robot-yaw rectangle when the path is unavailable.
     cmd_vel_gate_lanelet_safety_front_use_local_path: true
     cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m: 1.5
-    # HHL_260622 - FRONT_PATH uses only the selected route center corridor so
+    # HH_260622 - FRONT_PATH uses only the selected route center corridor so
     # merge/branch lanelet boundary pixels do not block valid centerline travel.
     cmd_vel_gate_lanelet_safety_front_path_width_m: 0.25
-    # HHL_260624 - Allow bounded static FRONT_PATH bypass while re-entering lanelet from site/drop-zone.
+    # HH_260624 - Allow bounded static FRONT_PATH bypass while re-entering lanelet from site/drop-zone.
     cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry: true
-    # HHL_260622 - Allow bounded route re-entry when a sim/manual pose starts
+    # HH_260622 - Allow bounded route re-entry when a sim/manual pose starts
     # just outside lanelet but the active local path is already close and valid.
     cmd_vel_gate_lanelet_safety_current_allow_route_reentry: true
     cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m: 4.0
     cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd: true
-    # HHL_260624 - During explicit drop-zone straight exit, bypass only static
+    # HH_260624 - During explicit drop-zone straight exit, bypass only static
     # lanelet/drop-zone cost for these parking phases; dynamic obstacle stops remain active.
     cmd_vel_gate_parking_drop_zone_status_topic: /parking/drop_zone/status
     cmd_vel_gate_parking_drop_zone_static_bypass_phases: EXIT_STRAIGHT,ALIGN_EXIT_YAW
     # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
     cmd_vel_gate_speed_dependent_lookahead: true
-    # HHL_260623 - Minimum front scan reaches measured front bumper plus planning margin.
+    # HH_260623 - Minimum front scan reaches measured front bumper plus planning margin.
     cmd_vel_gate_front_lookahead_min_m: 1.30137
     cmd_vel_gate_front_lookahead_max_m: 3.0
     cmd_vel_gate_front_lookahead_friction: 0.4
@@ -197,11 +202,11 @@ bringup:
     cmd_vel_gate_side_rear_cost_stop: true
     cmd_vel_gate_side_cost_threshold: 92
     cmd_vel_gate_side_lookahead_m: 0.8
-    # HHL_260623 - Side scan width covers full body length plus front/rear margins.
+    # HH_260623 - Side scan width covers full body length plus front/rear margins.
     cmd_vel_gate_side_corridor_width_m: 1.69160
     cmd_vel_gate_rear_cost_threshold: 92
     cmd_vel_gate_rear_lookahead_m: 0.6
-    # HHL_260623 - Rear scan width covers full body width plus left/right margins.
+    # HH_260623 - Rear scan width covers full body width plus left/right margins.
     cmd_vel_gate_rear_corridor_width_m: 1.27
     # HH_260618: Explicit site-crab lateral parking may cross static
     # lanelet/global-path front/side/rear cost, but LiDAR/Radar dynamic source cost still
@@ -213,7 +218,7 @@ bringup:
     cmd_vel_gate_reverse_cmd_bypass_static_cost_stop: true
     cmd_vel_gate_reverse_cmd_bypass_min_mps: 0.02
     cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold: 85
-    # HHL_260624 - Static lanelet cost may be bypassed during in-place 180deg
+    # HH_260624 - Static lanelet cost may be bypassed during in-place 180deg
     # site turns, but live LiDAR/Radar cost around the body still stops rotation.
     cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop: true
     cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m: 1.5
@@ -271,13 +276,12 @@ bringup:
     # Examples:
     # - navfn_rpp.yaml       -> planner=NavFn, controller=RPP
     # - smac2d_dwb.yaml      -> planner=Smac2D, controller=DWB
-    # HH_260619: Prefer LaneletRoute for operator-visible route quality.
-    # It follows lanelet routing centerlines; Smac/NavFn remain selectable
-    # fallback/free-space planners for diagnostics.
-    nav2_selected_planner: LaneletRoute
-    # HH_260618: Use MPPI by default so local costmap/obstacle costs shape the
-    # actual trajectory; RPP/DWB remain selectable fallback controllers.
-    nav2_selected_controller: MPPI
+    # HH_260625: Default to Smac2D for startup responsiveness. LaneletRoute
+    # remains selectable, but its routing-graph build is too slow for normal
+    # bringup on the full C-track map.
+    nav2_selected_planner: Smac2D
+    # HH_260625: RPP is the real-bringup default; MPPI remains selectable.
+    nav2_selected_controller: RPP
 
     # ---- Per-planning-node parameter file overrides ----
     path_cost_grids_param_file: planning/path_cost_grids.yaml
@@ -337,14 +341,14 @@ bringup:
     # edited in camrod_bringup/config/sensor_kit/robot_params.yaml are applied.
     params_file: sensor_kit/robot_params.yaml
     robot_visualization_param_file: platform/robot_visualization.yaml
-    # Real platform defaults to direct planning cmd_vel usage.
-    # Keep cmd_vel gate ON in sim mode via bringup.launch.py runtime override.
-    cmd_vel_gate_enable: false
+    # Real platform uses the platform cmd_vel gate so /platform/cmd_vel and
+    # /platform/drive_enabled exist for system checks and Ranger output.
+    cmd_vel_gate_enable: true
     cmd_vel_in_topic: /planning/cmd_vel
     cmd_vel_out_topic: /platform/cmd_vel
     # HH_260522: unified source selectors for platform cmd_vel gate.
-    # HHL_260624 - Use /planning/engaged, the effective OR of manual engage and
-    # mission engage, so UI campsite missions do not depend on the manual button.
+    # HH_260625 - Use /planning/engaged as the planning-side effective state.
+    # The platform gate still requires /platform/drive_enable separately.
     #   engage_source_mode: planning_engage/planning_engaged/topic/enabled/on | disabled/off/none
     #   estop_source_mode: platform_status/topic/enabled/on | disabled/off/none
     engage_source_mode: planning_engaged
@@ -354,11 +358,12 @@ bringup:
     # goals require /planning/engage=true, while accepted UI missions publish
     # /planning/mission_engage=true and open /planning/engaged automatically.
     drive_allow_on_start: false
-    # Ranger base node directly publishes /platform/status/*.
+    # Ranger base node consumes /platform/cmd_vel and publishes CAN-derived status.
     estop_topic: /platform/status/estop
-    # Current baseline is no physical ranger CAN platform.
-    # Use /rmp401/odom fallback path unless this is explicitly set true.
-    ranger_driver_enable: false
+    # HH_260625: Real outdoor bringup must start ranger_base_node so the final
+    # /platform/cmd_vel gate has a hardware command subscriber. Keep
+    # /platform/drive_enable as the operator safety arm.
+    ranger_driver_enable: true
     # Keep platform.launch.py lean and route Ranger params through
     # bringup override profile when using bringup.launch.py.
     ranger_params_file: platform/ranger_driver.yaml

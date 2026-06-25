@@ -5156,6 +5156,6 @@
     <tag k="type" v="multipolygon"/>
     <tag k="subtype" v="drop_zone"/>
     <tag k="yaw_deg" v="-82.2127"/>
-    <!-- HHL_260624 - Mark the updated OSM area as drop_zone so area_exporter regenerates drop_zones.yaml. -->
+    <!-- HH_260624 - Mark the updated OSM area as drop_zone so area_exporter regenerates drop_zones.yaml. -->
   </relation>
 </osm>

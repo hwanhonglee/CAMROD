@@ -18,7 +18,7 @@ RobotParams loadRobotParams(rclcpp::Node * node)
   params.length = node->declare_parameter<double>("robot.length", params.length);
   params.width = node->declare_parameter<double>("robot.width", params.width);
   params.height = node->declare_parameter<double>("robot.height", params.height);
-  // HHL_260623 - Load measured asymmetric envelope used by URDF, RViz boundary, and planning safety.
+  // HH_260623 - Load measured asymmetric envelope used by URDF, RViz boundary, and planning safety.
   params.body_front_extent = node->declare_parameter<double>(
     "robot.body_extents.front", params.body_front_extent);
   params.body_rear_extent = node->declare_parameter<double>(
@@ -34,7 +34,7 @@ RobotParams loadRobotParams(rclcpp::Node * node)
   params.planning_margin = node->declare_parameter<double>(
     "robot.body_extents.planning_margin", params.planning_margin);
 
-  // HHL_260623 - Default wheel radius updated from measured 152.75 mm.
+  // HH_260623 - Default wheel radius updated from measured 152.75 mm.
   params.wheel_radius = node->declare_parameter<double>("robot.wheel_radius", 0.15275);
   params.encoder_resolution = node->declare_parameter<int>("robot.encoder_resolution", 2048);
   params.drive_type = node->declare_parameter<std::string>("robot.drive_type", "ackermann");
@@ -66,7 +66,7 @@ RobotParams loadRobotParams(rclcpp::Node * node)
   load_pose("gnss", params.gnss);
   // HH_260326: Canonical camera pose.
   load_pose("camera", params.camera);
-  // HHL_260623 - Load canonical nested camera/radar poses used by sensor_kit.launch.py and xacro.
+  // HH_260623 - Load canonical nested camera/radar poses used by sensor_kit.launch.py and xacro.
   load_pose("camera.front", params.camera_front);
   load_pose("camera.rear", params.camera_rear);
   if (is_default_pose(params.camera_front)) {

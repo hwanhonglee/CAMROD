@@ -8,7 +8,7 @@ radar_checker:
     publish_rate_hz: 1.0          # 진단 발행 주기 (Hz)
 
     # 모니터링할 레이다 이름 목록 (sen0592_radar_node 의 sensor_names 와 일치)
-    # HHL_260623 - Match latest 7-channel SEN0592 radar names.
+    # HH_260623 - Match latest 7-channel SEN0592 radar names.
     radar_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]
 
     # ── 각 센서 설정 ──────────────────────────────────────────────────────

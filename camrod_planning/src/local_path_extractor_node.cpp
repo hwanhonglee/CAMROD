@@ -79,7 +79,7 @@ public:
     max_segment_jump_m_ = declare_parameter<double>("max_segment_jump_m", 3.0);
     // HH_260306-00:00 Latch local-path stop when goal is reached.
     stop_after_goal_reached_ = declare_parameter<bool>("stop_after_goal_reached", true);
-    // HHL_260623 - Default local-path completion uses the same center-based
+    // HH_260623 - Default local-path completion uses the same center-based
     // arrival band as bringup configs when a config file is not loaded.
     goal_reached_distance_m_ = declare_parameter<double>("goal_reached_distance_m", 0.25);
     goal_reached_index_margin_ = declare_parameter<int>("goal_reached_index_margin", 2);
@@ -875,7 +875,6 @@ private:
 
 }  // namespace camrod_planning
 
-// Entry point for this executable.
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);

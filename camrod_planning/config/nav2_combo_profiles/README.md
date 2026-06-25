@@ -16,10 +16,9 @@ Use `disabled.yaml` to apply no combo-specific overrides.
 ## Auto Selector Behavior
 
 - HH_260528: `nav2_combo_param_file` now also auto-selects planner/controller IDs.
-- HH_260619: With `disabled.yaml`/no combo override, bringup defaults to `LaneletRoute + MPPI`.
-  `LaneletRoute` is the normal campground-driving default because it fixes the global
-  path to Lanelet2 centerlines; Smac/NavFn/ThetaStar profiles below remain diagnostic
-  free-space planner references and should be re-run after planner/controller changes.
+- HH_260625: With `disabled.yaml`/no combo override, bringup defaults to `Smac2D + RPP`.
+  `LaneletRoute` remains available for exact Lanelet2 centerline routing, but it is
+  not loaded by default because the full C-track routing graph is slow to configure.
 - Mapping is inferred from combo filename tokens:
   - planner: `laneletroute`, `lanelet_route`, `navfn`, `smac2d`, `thetastar`, `smachybrid`, `smaclattice`
   - controller: `rpp`, `dwb`, `mppi`, `graceful`, `rotationshim`

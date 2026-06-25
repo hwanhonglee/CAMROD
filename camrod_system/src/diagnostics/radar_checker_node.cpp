@@ -29,7 +29,7 @@
  *     stuck_max_warn_m:   0.0     # 0.0 = 비활성화: range ≥ 이 값이면 WARN  (무감지 의심)
  *     stuck_max_error_m:  0.0     # 0.0 = 비활성화: range ≥ 이 값이면 ERROR (무감지 확실)
  *
- * HHL_260623 - Documentation example updated for the latest 7-channel radar layout.
+ * HH_260623 - Documentation example updated for the latest 7-channel radar layout.
  */
 
 #include <algorithm>

@@ -262,7 +262,7 @@ Publishes a single `MarkerArray` on `/platform/robot/markers` at 5 Hz, anchored 
 
 **Marker contents:**
 
-- Robot footprint outline at ground plane (HHL_260623 - asymmetric measured `robot.body_extents` from `robot_params.yaml`)
+- Robot footprint outline at ground plane (HH_260623 - asymmetric measured `robot.body_extents` from `robot_params.yaml`)
 - Planning boundary polygon (footprint + `planning_boundary_margin: 0.10 m`)
 - Sensor frame axes labels (IMU, GNSS, LiDAR, camera)
 - Debug range rings at radii `[2.0, 4.0, 6.0, 8.0]` m (configurable)
@@ -274,12 +274,12 @@ Publishes a single `MarkerArray` on `/platform/robot/markers` at 5 Hz, anchored 
 |---|---|---|
 | `publish_rate_hz` | `5.0` | Marker and boundary publish rate [Hz] |
 | `localization_pose_timeout_s` | `3.0` | Max localization age before GNSS fallback [s] |
-| `planning_boundary_margin` | `0.10` | HHL_260623 - extra margin around measured asymmetric footprint for boundary polygon [m] |
+| `planning_boundary_margin` | `0.10` | HH_260623 - extra margin around measured asymmetric footprint for boundary polygon [m] |
 | `heading_yaw_offset_deg` | `0.0` | Heading correction [deg] applied to all markers |
 | `range_ring_radii` | `[2.0, 4.0, 6.0, 8.0]` | Debug ring radii [m] |
 | `pose_source_mode` | `localization_with_gnss_fallback` | `localization_only` or GNSS fallback mode when localization is stale |
 | `ground_z_source` | `lanelet_map` | `fixed_offset` or lanelet-map sampled ground Z |
-| `pose_z_source` | `ground` | HHL_260623 - `ground` pins robot markers to the 2D planning plane; `pose` keeps incoming localization/GNSS altitude |
+| `pose_z_source` | `ground` | HH_260623 - `ground` pins robot markers to the 2D planning plane; `pose` keeps incoming localization/GNSS altitude |
 
 ---
 
@@ -368,7 +368,7 @@ The geometry source file is controlled by the `params_file` argument, which defa
 | `cmd_vel_in_topic` | `/planning/cmd_vel` | Gate input topic |
 | `cmd_vel_out_topic` | `/platform/cmd_vel` | Gate output topic |
 | `drive_enable_topic` | `/platform/drive_enable` | Drive-enable signal topic |
-| `planning_engage_topic` | `/planning/engaged` | Effective planning engage-state topic consumed by the platform gate |
+| `platform_planning_engage_topic` | `/planning/engaged` | Effective planning engage-state topic consumed by the platform gate |
 | `engage_source_mode` | `planning_engaged` | Engage source selector (`planning_engaged`, `planning_engage`, `topic`, or `disabled`) |
 | `drive_state_topic` | `/platform/drive_enabled` | Gate state output topic |
 | `estop_source_mode` | `platform_status` | E-stop source selector (`platform_status` or `disabled`) |
@@ -413,7 +413,7 @@ ros2 topic echo /platform/drive_enabled --once
 
 # Confirm sensor TF is up
 ros2 run tf2_tools view_frames
-# HHL_260623 - Expect canonical sensor frames:
+# HH_260623 - Expect canonical sensor frames:
 # robot_base_link → sensor_kit_base_link → imu_link / gnss_link / lidar_link /
 # camera_front_link / camera_rear_link / radar_front1_link / radar_front2_link / ...
 

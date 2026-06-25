@@ -124,7 +124,7 @@ graph TD
   end
 
   subgraph RADAR["📶 Radar ×7"]
-    %% HHL_260623 - Latest radar profile uses FRONT1/FRONT2 plus side/rear sensors.
+    %% HH_260623 - Latest radar profile uses FRONT1/FRONT2 plus side/rear sensors.
     HW2{{🛠️ SEN0592 ×7\nCH9344 USB serial}}:::hardware
     RDRV(sen0592_radar_node):::sensing
     RRANGE((/sensing/radar/\nfront1,front2,left1,left2\nright1,right2,rear/range)):::topic
@@ -296,7 +296,7 @@ graph TD
 
 ### Radar (SEN0592 ×7)
 
-<!-- HHL_260623 - Updated radar documentation to match the latest todo/camrod_sensing 7-channel layout. -->
+<!-- HH_260623 - Updated radar documentation to match the latest todo/camrod_sensing 7-channel layout. -->
 
 | Field | Detail |
 |---|---|

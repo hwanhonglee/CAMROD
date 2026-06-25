@@ -8,7 +8,7 @@
     offset_lon: 128.0925490
     offset_alt: 0.0
     input_goal_topic: "/goal_pose"
-    # HHL_260623 - Private input for planning_state_machine auto return goals.
+    # HH_260623 - Private input for planning_state_machine auto return goals.
     # It keeps drop-zone station-center poses away from the public campsite site_goal topic.
     auxiliary_input_goal_topic: "/planning/auto_goal_raw"
     # Publish only snapped goal on dedicated topic.
@@ -25,7 +25,7 @@
     # use_map_z=true   -> lanelet projected Z + map_z_offset
     # flatten_to_ground=true -> overwrite to 2D planning ground Z(0) + map_z_offset
     use_map_z: false
-    # HHL_260623 - Force UI/RViz/site snapped goals onto the same 2D ground plane as map/path markers.
+    # HH_260623 - Force UI/RViz/site snapped goals onto the same 2D ground plane as map/path markers.
     flatten_to_ground: true
     map_z_offset: 0.0
 
@@ -46,7 +46,9 @@
     # as the current pose. This prevents Nav2 from receiving a lanelet-routing
     # goal that is disconnected in the actual costmap raster.
     restrict_to_cost_grid_component: true
-    allow_cost_grid_component_fallback: false
+    # HH_260625: Startup map cost grid is an unknown placeholder until the first
+    # LaneletRoute publishes route IDs; use lanelet-component filtering during that window.
+    allow_cost_grid_component_fallback: true
     # HH_260619 - Campsite center goals are off-lane by design. Avoid snapping
     # them to a distant stale component when the nearest real lanelet is close.
     uncontained_global_snap_override_enable: true
@@ -62,7 +64,7 @@
     # HH_260618: If sequential mode is explicitly enabled, keep only the newest
     # pending goal rather than following stale clicks in FIFO order.
     sequential_goal_queue_policy: "replace_pending"
-    # HHL_260623 - This latch also suppresses active-goal reissues; keep it
+    # HH_260623 - This latch also suppresses active-goal reissues; keep it
     # center-based so a route is not considered reached before robot_base_link
     # reaches the snapped goal.
     sequential_goal_reached_distance_m: 0.25

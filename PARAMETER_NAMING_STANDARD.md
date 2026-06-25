@@ -31,7 +31,7 @@ and records the legacy-to-canonical cleanup history.
 ## 2) Migration Policy
 
 - Canonical key is required for new config and code.
-- HHL_260623 - Do not add runtime compatibility aliases unless there is a
+- HH_260623 - Do not add runtime compatibility aliases unless there is a
   release-blocking migration reason and a removal date is written next to it.
 - Historical legacy keys listed below are migration records, not active public
   parameters.
@@ -132,7 +132,7 @@ And planning launch now passes canonical gate parameter key:
 
 ## 5) Removed Legacy `_sec` Aliases
 
-HHL_260623 - A workspace-wide source scan found no active declarations for the
+HH_260623 - A workspace-wide source scan found no active declarations for the
 old `_sec` aliases below. Keep only the canonical `_s` names in new configs:
 
 - `goal_delay_s`, `engage_delay_s`, `test_duration_s`

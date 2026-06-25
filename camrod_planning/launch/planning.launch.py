@@ -83,7 +83,7 @@ def _profile_file_variants(default_path: str, profile: str) -> list[str]:
 
 
 def resolve_profile_file(default_path: str, profile: str) -> str:
-    # HHL_260622 - Standalone planning follows the map semantic profile used by bringup.
+    # HH_260622 - Standalone planning follows the map semantic profile used by bringup.
     selected = _first_existing_path(_profile_file_variants(default_path, profile))
     return selected if selected else default_path
 
@@ -163,7 +163,7 @@ def generate_launch_description():
         origin_alt_default = str(params.get('offset_alt', origin_alt_default))
     except Exception:
         pass
-    # HHL_260622 - Resolve relative/profile map paths so standalone planning is map-file agnostic.
+    # HH_260622 - Resolve relative/profile map paths so standalone planning is map-file agnostic.
     map_path_default = resolve_map_path_default(map_info_path, map_path_default, map_profile_default)
     planning_state_machine_camping_sites_default = resolve_profile_file(
         pkg_share('camrod_planning', os.path.join('config', 'camping_sites.yaml')),
@@ -182,7 +182,7 @@ def generate_launch_description():
         DeclareLaunchArgument('origin_lon', default_value=origin_lon_default),
         DeclareLaunchArgument('origin_alt', default_value=origin_alt_default),
 
-        DeclareLaunchArgument('enable_path_cost_grids', default_value='true'),
+        DeclareLaunchArgument('enable_path_cost_grids', default_value='false'),
         DeclareLaunchArgument('enable_goal_replanner', default_value='false'),
         DeclareLaunchArgument('enable_nav2_lifecycle_retry', default_value='false'),
         DeclareLaunchArgument('require_localization_ready', default_value='false'),
@@ -203,7 +203,7 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_raw_topic', default_value='/planning/cmd_vel_raw'),
         DeclareLaunchArgument('cmd_vel_output_topic', default_value='/planning/cmd_vel'),
         DeclareLaunchArgument('planning_engage_topic', default_value='/planning/engage'),
-        # HHL_260623 - Mission engage keeps UI scenarios independent from manual engage.
+        # HH_260623 - Mission engage keeps UI scenarios independent from manual engage.
         DeclareLaunchArgument('planning_mission_engage_topic', default_value='/planning/mission_engage'),
         DeclareLaunchArgument('planning_engaged_state_topic', default_value='/planning/engaged'),
         DeclareLaunchArgument('cmd_vel_gate_estop_source_mode', default_value='platform_status'),
@@ -229,10 +229,10 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_enable_pose_raw_fallback', default_value='false'),
         DeclareLaunchArgument('cmd_vel_gate_cost_threshold', default_value='85'),
         DeclareLaunchArgument('cmd_vel_gate_cost_lookahead_m', default_value='2.0'),
-        # HHL_260623 - Measured body width plus 0.10 m planning margin per side.
+        # HH_260623 - Measured body width plus 0.10 m planning margin per side.
         DeclareLaunchArgument('cmd_vel_gate_cost_width_m', default_value='1.27'),
         DeclareLaunchArgument('cmd_vel_gate_cost_hold_s', default_value='1.0'),
-        # HHL_260622: Merged inflation grid contains route/lanelet guidance;
+        # HH_260622: Merged inflation grid contains route/lanelet guidance;
         # cmd_vel blocking must be owned by live dynamic sources.
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_require_dynamic_source', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_dynamic_source_labels', default_value='lidar,radar'),
@@ -257,28 +257,28 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_allow_route_reentry', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m', default_value='4.0'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', default_value='true'),
-        # HHL_260624 - Forward drop-zone departure is parking-owned motion and
+        # HH_260624 - Forward drop-zone departure is parking-owned motion and
         # must not be blocked by static lanelet/drop-zone cells before routing.
         DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_status_topic', default_value='/parking/drop_zone/status'),
         DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_static_bypass_phases', default_value='EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
         # HH_260422: Speed-dependent front lookahead.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
-        # HHL_260623 - Minimum front scan reaches measured front bumper plus planning margin.
+        # HH_260623 - Minimum front scan reaches measured front bumper plus planning margin.
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='1.30137'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_max_m', default_value='3.0'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_friction', default_value='0.4'),
         DeclareLaunchArgument('cmd_vel_gate_front_reaction_time_s', default_value='0.15'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_margin_m', default_value='0.3'),
-        # HHL_260622: Side/rear cost-stop samples the merged grid, but blocks
+        # HH_260622: Side/rear cost-stop samples the merged grid, but blocks
         # only when dynamic source attribution owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='92'),
         DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='0.8'),
-        # HHL_260623 - Side scan width covers full body length plus front/rear margins.
+        # HH_260623 - Side scan width covers full body length plus front/rear margins.
         DeclareLaunchArgument('cmd_vel_gate_side_corridor_width_m', default_value='1.69160'),
         DeclareLaunchArgument('cmd_vel_gate_rear_cost_threshold', default_value='92'),
         DeclareLaunchArgument('cmd_vel_gate_rear_lookahead_m', default_value='0.6'),
-        # HHL_260623 - Rear scan width covers full body width plus left/right margins.
+        # HH_260623 - Rear scan width covers full body width plus left/right margins.
         DeclareLaunchArgument('cmd_vel_gate_rear_corridor_width_m', default_value='1.27'),
         # HH_260618: Allow explicit parking/site crab to cross static
         # lanelet/global-path front/side/rear cost while keeping LiDAR/Radar stops active.
@@ -287,7 +287,7 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_reverse_cmd_bypass_static_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_reverse_cmd_bypass_min_mps', default_value='0.02'),
         DeclareLaunchArgument('cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold', default_value='85'),
-        # HHL_260624 - Pure in-place parking rotation bypasses only static
+        # HH_260624 - Pure in-place parking rotation bypasses only static
         # lanelet cost; live LiDAR/Radar disk cost still blocks rotation.
         DeclareLaunchArgument('cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m', default_value='1.5'),
@@ -567,7 +567,7 @@ def generate_launch_description():
                 # clearly moved to a newer goal while the global marker source is stale.
                 'global_path_stale_timeout_s': 1.0,
                 'route_endpoint_mismatch_m': 1.0,
-                # HHL_260623 - Keep path visualization on the same 2D ground plane as Lanelet2 markers.
+                # HH_260623 - Keep path visualization on the same 2D ground plane as Lanelet2 markers.
                 'flatten_path_z': True,
                 'path_ground_z': 0.0,
             }],

@@ -38,9 +38,9 @@ def generate_launch_description():
         DeclareLaunchArgument("cmd_vel_in_topic",          default_value="/planning/cmd_vel"),
         DeclareLaunchArgument("cmd_vel_out_topic",         default_value="/platform/cmd_vel"),
         DeclareLaunchArgument("drive_enable_topic",        default_value="/platform/drive_enable"),
-        # HHL_260624 - Platform listens to the effective planning engage state.
+        # HH_260625 - Platform listens to the effective planning engage state.
         # Raw /planning/engage remains manual-only; UI missions use /planning/mission_engage.
-        DeclareLaunchArgument("planning_engage_topic",     default_value="/planning/engaged"),
+        DeclareLaunchArgument("platform_planning_engage_topic", default_value="/planning/engaged"),
         # HH_260522: unified source selector for engage signal.
         #   planning_engage/planning_engaged/topic/enabled/on: subscribe configured topic
         #   disabled/off/none: ignore engage topic
@@ -71,7 +71,7 @@ def generate_launch_description():
         _inc(plat(os.path.join("launch", "cmd_vel_gate.launch.py")),
              "module_namespace", "cmd_vel_gate_enable",
              "cmd_vel_in_topic", "cmd_vel_out_topic",
-             "drive_enable_topic", "planning_engage_topic", "engage_source_mode",
+             "drive_enable_topic", "platform_planning_engage_topic", "engage_source_mode",
              "drive_state_topic", "estop_source_mode", "estop_topic", "drive_allow_on_start"),
 
         _inc(plat(os.path.join("launch", "ranger.launch.py")),

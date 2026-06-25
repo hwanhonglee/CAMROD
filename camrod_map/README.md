@@ -33,7 +33,7 @@ ros2 launch camrod_map area_export.launch.py \
 
 ### Map Profile Selection
 
-> HHL_260622 - The default validation profile is `copy_park`, backed by `lanelet2_maps_(copy_park).osm`.
+> HH_260622 - The default validation profile is `copy_park`, backed by `lanelet2_maps_(copy_park).osm`.
 
 `config/map_info.yaml` carries both the Lanelet2 OSM path and the WGS84/UTM origin. Bringup/planning launch files infer a normalized `map_profile` from either `map_profile` or the OSM filename suffix in parentheses. Profile-specific semantic YAML files are then selected automatically when present:
 
@@ -384,7 +384,7 @@ ros2 launch camrod_map area_export.launch.py \
 | `rotate_latlon_xy_by_yaw_offset` | bool | No | `true` | Enable/disable the yaw rotation above | `lanelet_map_provider` |
 | `world_frame_id` | — | Yes | `world` | TF frame name for the WGS84 world frame | All packages |
 | `map_frame_id` | — | Yes | `map` | TF frame name for the projected metric map frame | All packages |
-| `align_z_to_ground` | bool | No | `true` | HHL_260623 - Flatten Lanelet2 visualization markers to the 2D planning ground plane so RViz overlays align with robot/path data | `lanelet_map_provider` |
+| `align_z_to_ground` | bool | No | `true` | HH_260623 - Flatten Lanelet2 visualization markers to the 2D planning ground plane so RViz overlays align with robot/path data | `lanelet_map_provider` |
 | `dir_body_scale` | m | No | `0.55` | Arrow body scale for lane-direction markers (RViz only) | `lanelet_map_provider` |
 | `dir_head_scale` | m | No | `0.35` | Arrow head scale for lane-direction markers (RViz only) | `lanelet_map_provider` |
 | `dir_width_scale` | m | No | `0.18` | Arrow width scale for lane-direction markers (RViz only) | `lanelet_map_provider` |
@@ -511,6 +511,6 @@ The `area_exporter` node runs once at launch and exits. If the output file is em
 
 `map/drop_zones.yaml` provides the drop-zone/station pose used by `camrod_parking/drop_zone_parking` when `use_drop_zone_pose_as_station: true`. `planning/camping_sites.yaml` provides raw campsite center goals for UI and mission-key dispatch. HH_260618: Keep `yaw_deg` meaningful for drop zones because reverse parking aligns the parked robot front yaw to this station yaw by default; set `rear_matches_station_yaw: true` only when a map stores rear/charger-facing yaw.
 
-> HHL_260622: `area_exporter` now uses the polygon centroid, not a simple vertex average, and exports normalized `corners` for both drop zones and camping sites. This keeps UI/planning targets closer to the true semantic-area center and provides polygon data for campsite-occupancy checks such as tent detection.
+> HH_260622: `area_exporter` now uses the polygon centroid, not a simple vertex average, and exports normalized `corners` for both drop zones and camping sites. This keeps UI/planning targets closer to the true semantic-area center and provides polygon data for campsite-occupancy checks such as tent detection.
 
-> HHL_260624: `copy_park` drop zones are authored as explicit OSM area ways `2048` and `2054`; `area_exporter` preserves `yaw_deg` when present so planning and rule-based parking use the same station pose/yaw after every export.
+> HH_260624: `copy_park` drop zones are authored as explicit OSM area ways `2048` and `2054`; `area_exporter` preserves `yaw_deg` when present so planning and rule-based parking use the same station pose/yaw after every export.

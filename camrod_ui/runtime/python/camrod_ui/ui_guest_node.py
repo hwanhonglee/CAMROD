@@ -145,7 +145,7 @@ class UiGuestNode(Node):
         return text
 
     def _publish_guest_recall(self, site_name: str) -> None:
-        # HHL_260621 - Guest recall must command planning to the site road/staging target.
+        # HH_260621 - Guest recall must command planning to the site road/staging target.
         recall_site = self._normalize_recall_site_name(site_name)
         recall_msg = PlanningRecallRequest()
         recall_msg.header.stamp = self.get_clock().now().to_msg()
