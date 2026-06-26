@@ -3,262 +3,528 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>로봇 호출</title>
+  <title>국립공원 로봇 서비스</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', 'Segoe UI', sans-serif;
-      background: #0d1117;
-      color: #e6edf3;
+      font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
       min-height: 100dvh;
       display: flex;
       flex-direction: column;
+    }
+
+    /* ── Overlays ──────────────────────────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      display: none;
       align-items: center;
       justify-content: center;
-      padding: 24px 16px;
-    }
-
-    /* ── Locked overlay ───────────────────────── */
-    .locked-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0, 0, 0, 0.92);
-      display: flex; align-items: center; justify-content: center;
       z-index: 9999;
+      padding: 20px;
     }
-    .locked-box {
-      background: #161b22;
-      border: 1px solid #e94560;
-      border-radius: 20px;
-      padding: 40px 28px;
-      text-align: center;
-      max-width: 320px;
-      width: 90%;
-    }
-    .locked-icon { font-size: 3rem; margin-bottom: 16px; }
-    .locked-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 10px; }
-    .locked-msg {
-      color: #8b949e; font-size: 0.95rem;
-      line-height: 1.7;
-    }
-    .retry-btn {
-      margin-top: 24px;
-      padding: 14px 0;
-      width: 100%;
-      background: #e94560; border: none; border-radius: 12px;
-      color: #fff; font-size: 1rem; font-weight: 600;
-      cursor: pointer; transition: background 0.15s;
-    }
-    .retry-btn:hover { background: #c73652; }
+    .overlay.show { display: flex; }
 
-    /* ── Grace period overlay ─────────────────── */
-    .grace-box {
-      background: #161b22;
-      border: 1px solid #f0883e;
-      border-radius: 20px;
-      padding: 40px 28px;
+    .overlay-card {
+      background: #fff;
+      border-radius: 24px;
+      padding: 36px 28px;
       text-align: center;
-      max-width: 320px;
-      width: 90%;
+      max-width: 340px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
     }
-    .grace-icon { font-size: 3rem; margin-bottom: 16px; }
-    .grace-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 10px; }
-    .grace-msg { color: #8b949e; font-size: 0.95rem; line-height: 1.7; }
+    .overlay-icon { font-size: 3rem; margin-bottom: 16px; line-height: 1; }
+    .overlay-title {
+      font-size: 1.4rem; font-weight: 700; color: #1a1a2e;
+      margin-bottom: 10px;
+    }
+    .overlay-msg {
+      color: #6b7280; font-size: 0.95rem; line-height: 1.7;
+    }
+    .overlay-card.locked { border-top: 5px solid #ef4444; }
+    .overlay-card.grace  { border-top: 5px solid #f59e0b; }
+
     .grace-count {
       display: inline-block;
       margin-top: 20px;
-      font-size: 2.5rem; font-weight: 800;
-      color: #f0883e;
-      min-width: 60px;
+      font-size: 2.8rem; font-weight: 800;
+      color: #f59e0b;
     }
-    .grace-unit { font-size: 0.9rem; color: #8b949e; margin-top: 4px; }
+    .grace-unit { font-size: 0.88rem; color: #9ca3af; margin-top: 4px; }
 
-    /* ── Main card ────────────────────────────── */
-    .card {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 24px;
-      padding: 28px 24px;
-      width: 100%;
-      max-width: 420px;
+    .retry-btn {
+      margin-top: 24px;
+      display: block; width: 100%;
+      padding: 14px 0;
+      background: #2d6e40; border: none; border-radius: 14px;
+      color: #fff; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: background 0.15s;
     }
+    .retry-btn:active { background: #1b4332; }
 
-    /* Header */
-    .header {
+    /* ── Header ────────────────────────────────────────────────── */
+    .app-header {
+      background: linear-gradient(135deg, #1b4332 0%, #2d6e40 100%);
+      padding: clamp(10px, 2.5vw, 16px) clamp(14px, 3.5vw, 24px);
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 28px;
+      justify-content: space-between;
+      flex-shrink: 0;
     }
-    .title { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.01em; }
+    .header-left {
+      display: flex; align-items: center; gap: clamp(10px, 2vw, 16px);
+      min-width: 0;
+    }
+    .logo-box {
+      width: clamp(46px, 8vw, 68px);
+      height: clamp(46px, 8vw, 68px);
+      background: #ffffff;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.3);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      overflow: hidden;
+      padding: 3px;
+    }
+    .logo-box img {
+      width: 100%; height: 100%; object-fit: contain;
+    }
+    .header-text {
+      display: flex; flex-direction: column; gap: 3px;
+      min-width: 0;
+    }
+    .header-label {
+      font-size: clamp(9px, 1.8vw, 12px);
+      font-weight: 400;
+      letter-spacing: 0.06em;
+      color: rgba(255,255,255,0.6);
+      white-space: nowrap;
+    }
+    .header-title {
+      font-size: clamp(14px, 3.2vw, 20px);
+      font-weight: 800;
+      color: #ffffff;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Header badges (battery + wifi) */
+    .header-badges {
+      display: flex; align-items: center; gap: 8px;
+      flex-shrink: 0;
+    }
 
     /* Battery badge */
     .battery-badge {
-      display: flex; align-items: center; gap: 7px;
-      background: #21262d; border-radius: 20px;
-      padding: 6px 13px; font-size: 0.88rem; font-weight: 600;
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 6px 12px;
+      color: rgba(255,255,255,0.9);
+      font-size: 0.85rem; font-weight: 600;
     }
-    .battery-icon {
+    .batt-icon {
       width: 22px; height: 11px;
-      border: 1.8px solid currentColor; border-radius: 3px;
-      position: relative; display: flex; align-items: center; padding: 1px;
+      border: 2px solid currentColor; border-radius: 3px;
+      position: relative; display: flex; align-items: center; padding: 1.5px;
     }
-    .battery-icon::after {
+    .batt-icon::after {
       content: '';
       position: absolute; right: -5px; top: 50%;
       transform: translateY(-50%);
       width: 3px; height: 5px;
-      background: currentColor; border-radius: 0 2px 2px 0;
+      background: currentColor; border-radius: 0 1px 1px 0;
     }
-    .battery-fill {
+    .batt-fill {
       height: 100%; border-radius: 1px;
-      transition: width 0.4s, background 0.4s;
+      transition: width 0.5s, background 0.5s;
+      background: rgba(255,255,255,0.8);
     }
 
-    /* Status row */
-    .status-row {
-      display: flex; align-items: center; gap: 10px;
-      padding: 14px 16px;
-      background: #21262d; border-radius: 12px;
-      margin-bottom: 20px;
+    /* WiFi widget — robot UI wh-wifi 동일 */
+    .wh-wifi {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.15rem;
     }
-    .status-dot {
-      width: 11px; height: 11px; border-radius: 50%;
+    .wh-wifi-label {
+      font-size: clamp(0.55rem, 1.8vw, 0.72rem);
+      font-weight: 600;
+      color: rgba(255,255,255,0.85);
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Main content ───────────────────────────────────────────── */
+    .main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: clamp(14px, 3vw, 24px) clamp(12px, 3vw, 20px);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-width: 500px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* ── Card ───────────────────────────────────────────────────── */
+    .card {
+      background: #ffffff;
+      border-radius: 20px;
+      border-top: 4px solid #2d6e40;
+      padding: 20px;
+      box-shadow: 0 2px 16px rgba(45,110,64,0.08);
+    }
+    .card-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #9ca3af;
+      margin-bottom: 14px;
+    }
+
+    /* ── Status panel ───────────────────────────────────────────── */
+    .status-row {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .status-indicator {
+      width: 12px; height: 12px; border-radius: 50%;
       flex-shrink: 0;
+      background: #d1d5db;
       transition: background 0.3s, box-shadow 0.3s;
     }
-    .dot-ready    { background: #3fb950; box-shadow: 0 0 8px #3fb950; }
-    .dot-moving   { background: #f0883e; box-shadow: 0 0 8px #f0883e; }
-    .dot-returning{ background: #58a6ff; box-shadow: 0 0 8px #58a6ff; }
-    .dot-busy     { background: #8b949e; }
+    .si-idle     { background: #2d6e40; box-shadow: 0 0 8px rgba(45,110,64,0.5); }
+    .si-moving   { background: #f59e0b; box-shadow: 0 0 8px rgba(245,158,11,0.5); }
+    .si-arrived  { background: #3b82f6; box-shadow: 0 0 8px rgba(59,130,246,0.5); }
+    .si-returning{ background: #8b5cf6; box-shadow: 0 0 8px rgba(139,92,246,0.5); }
+    .si-busy     { background: #d1d5db; }
 
-    .status-label { font-size: 0.78rem; color: #8b949e; margin-bottom: 2px; }
-    .status-text  { font-size: 1rem; font-weight: 600; }
+    .status-info {}
+    .status-phase {
+      font-size: 0.78rem; color: #9ca3af; margin-bottom: 2px;
+    }
+    .status-label {
+      font-size: 1.05rem; font-weight: 700; color: #1a1a2e;
+    }
 
-    /* Warning box */
-    .warning-box {
-      border-radius: 12px;
-      padding: 12px 16px;
-      font-size: 0.92rem;
-      line-height: 1.55;
-      margin-bottom: 20px;
+    /* ── Info banner ────────────────────────────────────────────── */
+    .info-banner {
       display: none;
+      border-radius: 12px;
+      padding: 12px 15px;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      margin-top: 14px;
     }
-    .warning-box.show { display: block; }
-    .warning-moving {
-      background: rgba(240, 136, 62, 0.1);
-      border: 1px solid rgba(240, 136, 62, 0.35);
-      color: #f0883e;
+    .info-banner.show { display: block; }
+    .info-moving {
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      color: #92400e;
     }
-    .warning-returning {
-      background: rgba(88, 166, 255, 0.08);
-      border: 1px solid rgba(88, 166, 255, 0.3);
-      color: #58a6ff;
+    .info-arrived {
+      background: #dbeafe;
+      border: 1px solid #93c5fd;
+      color: #1e40af;
+    }
+    .info-returning {
+      background: #ede9fe;
+      border: 1px solid #c4b5fd;
+      color: #5b21b6;
     }
 
-    /* Recall button */
-    .recall-btn {
-      width: 100%; padding: 20px;
-      font-size: 1.15rem; font-weight: 700;
-      border: none; border-radius: 16px;
-      letter-spacing: 0.02em;
-      transition: all 0.2s;
+    /* ── Section divider ────────────────────────────────────────── */
+    .section-divider {
+      height: 1px;
+      background: #f3f4f6;
+      margin: 16px 0;
+    }
+
+    /* ── Site grid ──────────────────────────────────────────────── */
+    .site-grid-wrap {}
+    .site-grid-label {
+      font-size: 0.82rem;
+      color: #6b7280;
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+    .site-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .site-btn {
+      padding: 12px 6px;
+      border: 2px solid #e5e7eb;
+      border-radius: 12px;
+      background: #f9fafb;
+      color: #374151;
+      font-size: 0.9rem;
+      font-weight: 600;
       cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
-    .recall-btn:not(:disabled) {
-      background: linear-gradient(135deg, #3fb950 0%, #2ea043 100%);
-      color: #fff;
-      box-shadow: 0 4px 20px rgba(63, 185, 80, 0.28);
+    .site-btn:active { transform: scale(0.94); }
+    .site-btn.selected {
+      border-color: #2d6e40;
+      background: #f0fdf4;
+      color: #1b4332;
+      box-shadow: 0 0 0 2px rgba(45,110,64,0.2);
     }
-    .recall-btn:not(:disabled):active { transform: scale(0.97); }
-    .recall-btn:disabled {
-      background: #21262d; color: #484f58; cursor: not-allowed;
+    .site-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
     }
 
-    /* Connection status */
-    .conn-row {
-      margin-top: 18px;
-      display: flex; align-items: center; justify-content: center; gap: 6px;
-      font-size: 0.8rem; color: #484f58;
+    /* ── Confirm dialog ─────────────────────────────────────────── */
+    .confirm-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 8000;
+      padding: 20px;
     }
-    .conn-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: #484f58; transition: background 0.3s;
+    .confirm-overlay.show { display: flex; }
+    .confirm-dialog {
+      background: #fff;
+      border-radius: 24px;
+      padding: 32px 24px 24px;
+      max-width: 360px;
+      width: 100%;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.22);
+      text-align: center;
     }
-    .conn-dot.on { background: #3fb950; }
+    .confirm-site-tag {
+      display: inline-block;
+      background: #f0fdf4;
+      border: 1.5px solid #bbf7d0;
+      border-radius: 20px;
+      padding: 4px 16px;
+      font-size: 1rem; font-weight: 800;
+      color: #166534;
+      margin-bottom: 18px;
+    }
+    .confirm-title {
+      font-size: 1.15rem; font-weight: 700; color: #1a1a2e;
+      margin-bottom: 10px; line-height: 1.45;
+    }
+    .confirm-desc {
+      font-size: 0.88rem; color: #6b7280; line-height: 1.65;
+      margin-bottom: 24px;
+    }
+    .confirm-desc strong { color: #ef4444; }
+    .confirm-btns {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    .btn-cancel {
+      padding: 14px;
+      background: #f3f4f6; border: none; border-radius: 14px;
+      color: #374151; font-size: 1rem; font-weight: 600;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .btn-cancel:active { background: #e5e7eb; }
+    .btn-confirm {
+      padding: 14px;
+      background: linear-gradient(135deg, #2d6e40 0%, #1b4332 100%);
+      border: none; border-radius: 14px;
+      color: #fff; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: opacity 0.15s;
+      box-shadow: 0 4px 14px rgba(45,110,64,0.3);
+    }
+    .btn-confirm:active { opacity: 0.85; }
+
+    /* ── Action buttons ─────────────────────────────────────────── */
+    .action-btn {
+      width: 100%;
+      padding: 17px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      letter-spacing: 0.01em;
+      transition: all 0.2s;
+      display: block;
+      text-align: center;
+      margin-top: 14px;
+    }
+    .btn-navigate {
+      background: linear-gradient(135deg, #2d6e40 0%, #1b4332 100%);
+      color: #ffffff;
+      box-shadow: 0 4px 18px rgba(45,110,64,0.3);
+    }
+    .btn-navigate:active { transform: scale(0.97); box-shadow: 0 2px 8px rgba(45,110,64,0.2); }
+    .btn-navigate:disabled {
+      background: #e5e7eb;
+      color: #9ca3af;
+      box-shadow: none;
+      cursor: not-allowed;
+    }
+    .btn-complete {
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      color: #ffffff;
+      box-shadow: 0 4px 18px rgba(59,130,246,0.3);
+    }
+    .btn-complete:active { transform: scale(0.97); }
+
+    /* ── Destination tag (shown when moving/arrived) ─────────────── */
+    .dest-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #f0fdf4;
+      border: 1.5px solid #bbf7d0;
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #166534;
+      margin-top: 10px;
+    }
+    .dest-tag-label { font-weight: 400; color: #4b5563; font-size: 0.8rem; }
   </style>
 </head>
 <body>
 
-<!-- Locked overlay (활성 세션 중) -->
-<div class="locked-overlay" id="lockedOverlay" style="display:none">
-  <div class="locked-box">
-    <div class="locked-icon">🔒</div>
-    <div class="locked-title">사이트 사용 중</div>
-    <div class="locked-msg">현재 다른 사용자가 이용 중입니다.<br>잠시 후 다시 시도해주세요.</div>
+<!-- Locked overlay -->
+<div class="overlay" id="lockedOverlay">
+  <div class="overlay-card locked">
+    <div class="overlay-icon">🔒</div>
+    <div class="overlay-title">사이트 사용 중</div>
+    <div class="overlay-msg">현재 다른 사용자가 이용 중입니다.<br>잠시 후 다시 시도해주세요.</div>
     <button class="retry-btn" onclick="retryConnect()">다시 시도</button>
   </div>
 </div>
 
-<!-- Grace period overlay (이전 사용자 재연결 대기) -->
-<div class="locked-overlay" id="graceOverlay" style="display:none">
-  <div class="grace-box">
-    <div class="grace-icon">⏳</div>
-    <div class="grace-title">잠시 후 연결됩니다</div>
-    <div class="grace-msg">이전 사용자의 재연결 대기 중입니다.</div>
+<!-- Grace period overlay -->
+<div class="overlay" id="graceOverlay">
+  <div class="overlay-card grace">
+    <div class="overlay-icon">⏳</div>
+    <div class="overlay-title">잠시 후 연결됩니다</div>
+    <div class="overlay-msg">이전 사용자의 재연결 대기 중입니다.</div>
     <div class="grace-count" id="graceCount">60</div>
     <div class="grace-unit">초 후 자동 접속</div>
   </div>
 </div>
 
-<!-- Main -->
-<div class="card">
-  <div class="header">
-    <div class="title">🤖 로봇 호출</div>
-    <div class="battery-badge" id="batteryBadge" style="color:#8b949e">
-      <div class="battery-icon" id="batteryIcon">
-        <div class="battery-fill" id="batteryFill" style="width:0%;background:#8b949e"></div>
+<!-- Confirm navigate dialog -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-dialog">
+    <div class="confirm-site-tag" id="confirmSiteTag">--</div>
+    <div class="confirm-title">호출하시겠습니까?</div>
+    <div class="confirm-desc">
+      목적지를 선택하면<br><strong>취소할 수 없습니다.</strong>
+    </div>
+    <div class="confirm-btns">
+      <button class="btn-cancel" onclick="closeConfirm()">취소</button>
+      <button class="btn-confirm" onclick="confirmNavigate()">호출</button>
+    </div>
+  </div>
+</div>
+
+<!-- Header -->
+<header class="app-header">
+  <div class="header-left">
+    <div class="logo-box">
+      <img src="/월악산_국립공원_로고.jpg" alt="국립공원공단 로고" />
+    </div>
+    <div class="header-text">
+      <div class="header-label">국립공원공단 · WORAKSAN NATIONAL PARK</div>
+      <div class="header-title">월악산 국립공원 배송 로봇</div>
+    </div>
+  </div>
+  <div class="header-badges">
+    <div class="wh-wifi">
+      <svg id="wifiSvg" width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path id="wArc3" d="M1.5 8.5C5.1 4.9 10.3 3 12 3s6.9 1.9 10.5 5.5" stroke="#d0d8d0" stroke-width="2" stroke-linecap="round"/>
+        <path id="wArc2" d="M4.5 11.5C6.9 9.1 9.7 8 12 8s5.1 1.1 7.5 3.5" stroke="#d0d8d0" stroke-width="2" stroke-linecap="round"/>
+        <path id="wArc1" d="M7.5 14.5C8.9 13.1 10.4 12.5 12 12.5s3.1.6 4.5 2" stroke="#d0d8d0" stroke-width="2" stroke-linecap="round"/>
+        <circle id="wDot" cx="12" cy="18" r="1.5" fill="#e53935"/>
+        <line id="wXline" x1="4" y1="4" x2="20" y2="20" stroke="#e53935" stroke-width="2" stroke-linecap="round" style="display:none"/>
+      </svg>
+      <span class="wh-wifi-label">WIFI</span>
+    </div>
+    <div class="battery-badge" id="batteryBadge">
+      <div class="batt-icon" id="batteryIcon">
+        <div class="batt-fill" id="batteryFill" style="width:0%"></div>
       </div>
       <span id="batteryText">--%</span>
     </div>
   </div>
+</header>
 
-  <div class="status-row">
-    <div>
-      <div class="status-dot dot-busy" id="statusDot"></div>
+<!-- Main content -->
+<div class="main-content">
+
+  <!-- Status card -->
+  <div class="card">
+    <div class="card-title">로봇 상태</div>
+    <div class="status-row">
+      <div class="status-indicator" id="statusDot"></div>
+      <div class="status-info">
+        <div class="status-phase" id="statusPhase">대기</div>
+        <div class="status-label" id="statusLabel">연결 중...</div>
+      </div>
     </div>
-    <div>
-      <div class="status-label">로봇 상태</div>
-      <div class="status-text" id="statusText">연결 중...</div>
+    <div class="dest-tag" id="destTag" style="display:none">
+      <span class="dest-tag-label">목적지</span>
+      <span id="destTagSite">--</span>
     </div>
+    <div class="info-banner" id="infoBanner"></div>
   </div>
 
-  <div class="warning-box" id="warningBox"></div>
-
-  <button class="recall-btn" id="recallBtn" disabled onclick="sendRecall()">
-    로봇 호출
-  </button>
-
-  <div class="conn-row">
-    <div class="conn-dot" id="connDot"></div>
-    <span id="connText">연결 중...</span>
+  <!-- Site selection card (visible when idle) -->
+  <div class="card" id="siteCard" style="display:none">
+    <div class="card-title">사이트 선택</div>
+    <div class="site-grid-label">이용할 캠핑 사이트를 선택하세요</div>
+    <div class="site-grid" id="siteGrid"></div>
+    <button class="action-btn btn-navigate" id="navigateBtn" disabled onclick="sendNavigate()">
+      선택한 사이트로 이동
+    </button>
   </div>
-</div>
+
+  <!-- Usage complete card (visible when arrived) -->
+  <div class="card" id="completeCard" style="display:none">
+    <div class="card-title">이용 완료</div>
+    <div class="site-grid-label">로봇 사용을 마치셨으면 버튼을 눌러주세요.<br>로봇이 거점으로 돌아갑니다.</div>
+    <button class="action-btn btn-complete" onclick="sendUsageComplete()">
+      이용 완료 · 로봇 복귀
+    </button>
+  </div>
+
+</div><!-- /main-content -->
 
 <script>
-  const AMR = { DROP_ZONE_WAIT: 0, MOVING_TO_SITE: 1, SITE_ARRIVED: 2, RETURNING_TO_DROP_ZONE: 3 };
-
+  /* ── State ── */
   let ws = null;
-  let isLocked = false;   // 다른 사람 활성 접속 → 수동 재시도
-  let isGrace  = false;   // 유예 기간 → 카운트다운 후 자동 재시도
+  let isLocked = false;
+  let isGrace  = false;
   let graceTimer = null;
+  let currentPhase = 'unknown';
   let currentState = -1;
+  let selectedSite = null;
+  let sites = [];
+  let lastDestSite = null;  // remember destination while moving/arrived
 
+  /* ── WebSocket ── */
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(`${proto}://${location.host}/ws`);
+    ws = new WebSocket(proto + '://' + location.host + '/ws');
 
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => setConn(true);
 
     ws.onmessage = (e) => {
       const d = JSON.parse(e.data);
@@ -266,117 +532,243 @@
       if (d.locked) {
         ws.close();
         if (d.grace_remaining > 0) {
-          // 유예 기간: 이전 사용자가 방금 나감 → 카운트다운 후 자동 재시도
           isGrace = true;
-          showGraceOverlay(d.grace_remaining);
+          startGrace(d.grace_remaining);
         } else {
-          // 완전 잠금: 다른 사람 활성 세션 중 → 수동 재시도
           isLocked = true;
-          document.getElementById('lockedOverlay').style.display = 'flex';
+          document.getElementById('lockedOverlay').classList.add('show');
         }
         return;
       }
+
+      if (Array.isArray(d.sites) && d.sites.length > 0) {
+        sites = d.sites;
+        buildSiteGrid();
+      }
       if (d.battery !== undefined) updateBattery(d.battery);
-      if (d.amr_state !== undefined) updateAmrState(d.amr_state);
+      if (d.phase !== undefined) {
+        currentPhase = d.phase;
+        if (d.amr_state !== undefined) currentState = d.amr_state;
+        updateUI();
+      } else if (d.amr_state !== undefined) {
+        currentState = d.amr_state;
+        updateUI();
+      }
     };
 
     ws.onclose = () => {
-      setConnected(false);
+      setConn(false);
       if (!isLocked && !isGrace) setTimeout(connect, 3000);
     };
 
     ws.onerror = () => ws.close();
   }
 
-  function showGraceOverlay(seconds) {
+  function startGrace(seconds) {
     clearInterval(graceTimer);
     const overlay = document.getElementById('graceOverlay');
     const countEl = document.getElementById('graceCount');
     let remaining = seconds;
     countEl.textContent = remaining;
-    overlay.style.display = 'flex';
+    overlay.classList.add('show');
 
     graceTimer = setInterval(() => {
       remaining--;
       countEl.textContent = remaining;
       if (remaining <= 0) {
         clearInterval(graceTimer);
-        overlay.style.display = 'none';
+        overlay.classList.remove('show');
         isGrace = false;
-        connect();  // 유예 기간 종료 → 자동 재연결
+        connect();
       }
     }, 1000);
   }
 
   function retryConnect() {
     isLocked = false;
-    document.getElementById('lockedOverlay').style.display = 'none';
+    document.getElementById('lockedOverlay').classList.remove('show');
     connect();
   }
 
-  function setConnected(on) {
-    document.getElementById('connDot').className = 'conn-dot' + (on ? ' on' : '');
-    document.getElementById('connText').textContent = on ? '연결됨' : '연결 끊김...';
+  function setConn(on) {
+    // 연결 상태를 WiFi 배지 투명도로 표현
+    document.getElementById('wifiBadge').style.opacity = on ? '1' : '0.4';
   }
 
+  /* ── Battery ── */
   function updateBattery(pct) {
-    const fill   = document.getElementById('batteryFill');
-    const text   = document.getElementById('batteryText');
-    const icon   = document.getElementById('batteryIcon');
-    const badge  = document.getElementById('batteryBadge');
-    const color  = pct < 20 ? '#f85149' : pct < 40 ? '#f0883e' : '#3fb950';
+    const fill  = document.getElementById('batteryFill');
+    const text  = document.getElementById('batteryText');
+    const color = pct < 20 ? 'rgba(239,68,68,0.9)' : pct < 40 ? 'rgba(245,158,11,0.9)' : 'rgba(255,255,255,0.85)';
     fill.style.width      = pct + '%';
     fill.style.background = color;
-    icon.style.color      = color;
-    badge.style.color     = color;
     text.textContent      = pct + '%';
   }
 
-  function updateAmrState(state) {
-    currentState = state;
+  /* ── UI state machine ── */
+  function updateUI() {
+    const dot      = document.getElementById('statusDot');
+    const phaseLbl = document.getElementById('statusPhase');
+    const stateLbl = document.getElementById('statusLabel');
+    const banner   = document.getElementById('infoBanner');
+    const destTag  = document.getElementById('destTag');
+    const siteCard    = document.getElementById('siteCard');
+    const completeCard = document.getElementById('completeCard');
 
-    const dot     = document.getElementById('statusDot');
-    const txt     = document.getElementById('statusText');
-    const warning = document.getElementById('warningBox');
-    const btn     = document.getElementById('recallBtn');
+    // reset
+    dot.className = 'status-indicator';
+    banner.className = 'info-banner';
+    banner.textContent = '';
+    destTag.style.display = 'none';
 
-    // Reset
-    dot.className = 'status-dot';
-    warning.className = 'warning-box';
-    warning.textContent = '';
-    btn.disabled = true;
+    const phase = currentPhase;
 
-    if (state === AMR.DROP_ZONE_WAIT) {
-      dot.classList.add('dot-ready');
-      txt.textContent = 'DropZone 대기 중';
-      btn.disabled = false;
+    if (phase === 'idle') {
+      dot.classList.add('si-idle');
+      phaseLbl.textContent = '대기 중';
+      stateLbl.textContent = 'Drop Zone에서 대기 중';
+      siteCard.style.display = sites.length ? 'block' : 'none';
+      completeCard.style.display = 'none';
+      setSiteGridEnabled(true);
+      lastDestSite = null;
 
-    } else if (state === AMR.MOVING_TO_SITE || state === AMR.SITE_ARRIVED) {
-      dot.classList.add('dot-moving');
-      txt.textContent = state === AMR.MOVING_TO_SITE ? '사이트 이동 중' : '사이트 도착';
-      warning.classList.add('show', 'warning-moving');
-      warning.textContent = '⚠️  로봇이 사이트로 이동중입니다';
+    } else if (phase === 'moving') {
+      dot.classList.add('si-moving');
+      phaseLbl.textContent = '이동 중';
+      stateLbl.textContent = '사이트로 이동 중...';
+      siteCard.style.display = 'none';
+      completeCard.style.display = 'none';
+      banner.classList.add('show', 'info-moving');
+      banner.textContent = '로봇이 사이트로 이동 중입니다. 잠시 기다려주세요.';
+      if (lastDestSite) {
+        document.getElementById('destTagSite').textContent = lastDestSite;
+        destTag.style.display = 'inline-flex';
+      }
 
-    } else if (state === AMR.RETURNING_TO_DROP_ZONE) {
-      dot.classList.add('dot-returning');
-      txt.textContent = 'DropZone 복귀 중';
-      warning.classList.add('show', 'warning-returning');
-      warning.textContent = 'ℹ️  로봇이 DropZone으로 복귀중입니다';
+    } else if (phase === 'arrived') {
+      dot.classList.add('si-arrived');
+      phaseLbl.textContent = '도착';
+      stateLbl.textContent = '사이트에 도착했습니다';
+      siteCard.style.display = 'none';
+      completeCard.style.display = 'block';
+      banner.classList.add('show', 'info-arrived');
+      banner.textContent = '로봇이 도착했습니다. 이용 후 완료 버튼을 눌러주세요.';
+      if (lastDestSite) {
+        document.getElementById('destTagSite').textContent = lastDestSite;
+        destTag.style.display = 'inline-flex';
+      }
+
+    } else if (phase === 'returning' || phase === 'recall') {
+      dot.classList.add('si-returning');
+      phaseLbl.textContent = phase === 'recall' ? '호출됨' : '복귀 중';
+      stateLbl.textContent = phase === 'recall' ? '로봇이 호출되었습니다' : 'Drop Zone으로 복귀 중';
+      siteCard.style.display = 'none';
+      completeCard.style.display = 'none';
+      banner.classList.add('show', 'info-returning');
+      banner.textContent = 'DropZone으로 복귀 중입니다.';
 
     } else {
-      // state=4 (GUEST_RECALL_SERVICE) or unknown — show busy
-      dot.classList.add('dot-busy');
-      txt.textContent = '처리 중...';
+      dot.classList.add('si-busy');
+      phaseLbl.textContent = '처리 중';
+      stateLbl.textContent = '처리 중...';
+      siteCard.style.display = 'none';
+      completeCard.style.display = 'none';
     }
   }
 
-  function sendRecall() {
-    if (currentState !== AMR.DROP_ZONE_WAIT) return;
+  /* ── Site grid ── */
+  function buildSiteGrid() {
+    const grid = document.getElementById('siteGrid');
+    grid.innerHTML = '';
+    sites.forEach(site => {
+      const btn = document.createElement('button');
+      btn.className = 'site-btn';
+      btn.textContent = site;
+      btn.dataset.site = site;
+      btn.onclick = () => selectSite(site);
+      grid.appendChild(btn);
+    });
+  }
+
+  function selectSite(site) {
+    if (currentPhase !== 'idle') return;
+    selectedSite = site;
+    document.querySelectorAll('.site-btn').forEach(b => {
+      b.classList.toggle('selected', b.dataset.site === site);
+    });
+    document.getElementById('navigateBtn').disabled = false;
+    document.getElementById('navigateBtn').textContent = site + ' 사이트로 이동';
+  }
+
+  function setSiteGridEnabled(enabled) {
+    document.querySelectorAll('.site-btn').forEach(b => {
+      b.disabled = !enabled;
+    });
+    if (!enabled) {
+      selectedSite = null;
+      document.getElementById('navigateBtn').disabled = true;
+      document.getElementById('navigateBtn').textContent = '선택한 사이트로 이동';
+    }
+  }
+
+  /* ── Confirm dialog ── */
+  function openConfirm() {
+    if (!selectedSite || currentPhase !== 'idle') return;
+    document.getElementById('confirmSiteTag').textContent = selectedSite + ' 사이트';
+    document.getElementById('confirmOverlay').classList.add('show');
+  }
+
+  function closeConfirm() {
+    document.getElementById('confirmOverlay').classList.remove('show');
+  }
+
+  function confirmNavigate() {
+    closeConfirm();
+    if (!selectedSite || currentPhase !== 'idle') return;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ action: 'recall' }));
+      lastDestSite = selectedSite;
+      ws.send(JSON.stringify({ action: 'navigate', site: selectedSite }));
     }
   }
 
+  /* ── Actions ── */
+  function sendNavigate() {
+    openConfirm();
+  }
+
+  function sendUsageComplete() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action: 'usage_complete' }));
+    }
+  }
+
+  /* ── WiFi (robot UI 동일: navigator.connection 기반) ── */
+  function getWifiLevel() {
+    if (!navigator.onLine) return 0;
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (!conn) return 3;
+    const t = conn.effectiveType;
+    if (t === '4g') return 3;
+    if (t === '3g') return 2;
+    return 1;
+  }
+
+  function applyWifiLevel(level) {
+    const arcColor = (min) => level >= min ? '#2d6e40' : '#d0d8d0';
+    document.getElementById('wArc1').setAttribute('stroke', arcColor(1));
+    document.getElementById('wArc2').setAttribute('stroke', arcColor(2));
+    document.getElementById('wArc3').setAttribute('stroke', arcColor(3));
+    document.getElementById('wDot').setAttribute('fill', level > 0 ? '#2d6e40' : '#e53935');
+    document.getElementById('wXline').style.display = level === 0 ? '' : 'none';
+  }
+
+  applyWifiLevel(getWifiLevel());
+  window.addEventListener('online',  () => applyWifiLevel(getWifiLevel()));
+  window.addEventListener('offline', () => applyWifiLevel(getWifiLevel()));
+  const _wconn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (_wconn) _wconn.addEventListener('change', () => applyWifiLevel(getWifiLevel()));
+
+  /* ── Init ── */
   connect();
 </script>
 </body>

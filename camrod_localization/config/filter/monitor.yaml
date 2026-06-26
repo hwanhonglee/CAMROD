@@ -42,3 +42,9 @@
     # this stabilizes around 80-110. Set to 200 to allow normal 1Hz GPS operation.
     dr_max_duration_s: 30.0
     dr_max_cov_trace: 200.0
+
+    # HH_260626: Worsening modes publish immediately; recovery to NORMAL must
+    # stay stable briefly to avoid GNSS timestamp/rate jitter causing repeated
+    # DR_ONLY->NORMAL recovery holds in planning.
+    mode_degrade_debounce_s: 0.0
+    mode_recovery_debounce_s: 1.5

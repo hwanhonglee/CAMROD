@@ -53,6 +53,8 @@ def generate_launch_description():
         # HH_260410: Use Ranger CAN derived /platform/status/estop as the default gate source.
         DeclareLaunchArgument("estop_topic",               default_value="/platform/status/estop"),
         DeclareLaunchArgument("drive_allow_on_start",      default_value="false"),
+        DeclareLaunchArgument("cmd_vel_input_timeout_s",   default_value="0.50"),
+        DeclareLaunchArgument("cmd_vel_zero_publish_rate_hz", default_value="10.0"),
         # HH_260528: Select platform type profile.
         #   ranger: launch Ranger CAN driver path
         #   rmp401: skip Ranger CAN path, keep external /rmp401 topics
@@ -72,7 +74,8 @@ def generate_launch_description():
              "module_namespace", "cmd_vel_gate_enable",
              "cmd_vel_in_topic", "cmd_vel_out_topic",
              "drive_enable_topic", "platform_planning_engage_topic", "engage_source_mode",
-             "drive_state_topic", "estop_source_mode", "estop_topic", "drive_allow_on_start"),
+             "drive_state_topic", "estop_source_mode", "estop_topic", "drive_allow_on_start",
+             "cmd_vel_input_timeout_s", "cmd_vel_zero_publish_rate_hz"),
 
         _inc(plat(os.path.join("launch", "ranger.launch.py")),
              "platform_type",
