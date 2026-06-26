@@ -39,6 +39,8 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_enable_gnss_recovery_hold', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_localization_mode_topic', default_value='/localization/mode'),
         DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_hold_s', default_value='2.0'),
+        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_min_source_s', default_value='0.5'),
+        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_hold_cooldown_s', default_value='5.0'),
         DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_source_mode_min', default_value='2'),
         DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_target_mode', default_value='0'),
         # HH_260413: Optional cost-based stop in front of the platform.
@@ -145,6 +147,9 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_route_heading_min_path_points', default_value='2'),
         # HH_260507: Speed scale for cmd_vel output (applied in planning_cmd_vel_gate_node).
         DeclareLaunchArgument('cmd_vel_gate_speed_scale', default_value='1.0'),
+        # HH_260626: Stop downstream motion if Nav2 raw cmd_vel stops publishing.
+        DeclareLaunchArgument('cmd_vel_gate_input_timeout_s', default_value='0.35'),
+        DeclareLaunchArgument('cmd_vel_gate_zero_publish_rate_hz', default_value='10.0'),
 
         Node(
             package='camrod_planning',
@@ -166,6 +171,8 @@ def generate_launch_description():
                 'enable_gnss_recovery_hold': LaunchConfiguration('cmd_vel_gate_enable_gnss_recovery_hold'),
                 'localization_mode_topic': LaunchConfiguration('cmd_vel_gate_localization_mode_topic'),
                 'gnss_recovery_hold_s': LaunchConfiguration('cmd_vel_gate_gnss_recovery_hold_s'),
+                'gnss_recovery_min_source_s': LaunchConfiguration('cmd_vel_gate_gnss_recovery_min_source_s'),
+                'gnss_recovery_hold_cooldown_s': LaunchConfiguration('cmd_vel_gate_gnss_recovery_hold_cooldown_s'),
                 'gnss_recovery_source_mode_min': LaunchConfiguration('cmd_vel_gate_gnss_recovery_source_mode_min'),
                 'gnss_recovery_target_mode': LaunchConfiguration('cmd_vel_gate_gnss_recovery_target_mode'),
                 'enable_cost_stop': LaunchConfiguration('cmd_vel_gate_cost_stop_enable'),
@@ -242,6 +249,8 @@ def generate_launch_description():
                 'route_heading_max_linear_x': LaunchConfiguration('cmd_vel_gate_route_heading_max_linear_x'),
                 'route_heading_min_path_points': LaunchConfiguration('cmd_vel_gate_route_heading_min_path_points'),
                 'speed_scale': LaunchConfiguration('cmd_vel_gate_speed_scale'),
+                'input_timeout_s': LaunchConfiguration('cmd_vel_gate_input_timeout_s'),
+                'zero_publish_rate_hz': LaunchConfiguration('cmd_vel_gate_zero_publish_rate_hz'),
             }],
             condition=IfCondition(LaunchConfiguration('cmd_vel_gate_enable')),
         ),

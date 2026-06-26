@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 # HJ_260601: Guest UI backend for WiFi-accessible robot recall service.
 #            Single-user WebSocket lock, GUEST_RECALL_SERVICE(4) publish on recall.
+# (확장) 사이트 선택 호출(경우 B) 지원:
+#            mobile에서 B1~B13 선택 → /ui/selected_destination publish →
+#            기존 ui_backend_node가 goal_pose/engage 반응. usage_complete 추가.
 """Guest UI backend: mobile/laptop access for robot recall service.
 
 Binds to 0.0.0.0 so devices on the same WiFi can reach it.
@@ -20,7 +23,7 @@ from typing import Optional
 import rclpy
 import uvicorn
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
-from avg_msgs.msg import AvgAmrServiceState, PlanningRecallRequest
+from avg_msgs.msg import AvgAmrServiceState, UiDestinationCommand
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -39,20 +42,21 @@ class UiGuestNode(Node):
         self.amr_service_state_topic = str(
             self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
         )
-        self.camping_site_recall_topic = str(
-            self.declare_parameter(
-                "camping_site_recall_topic",
-                "/planning/state_machine/camping_site_recall",
-            ).value
-        )
-        self.default_recall_site_name = str(
-            self.declare_parameter("default_recall_site_name", "camping_site_1").value
-        )
         self.battery_topic = str(
             self.declare_parameter("battery_topic", "/battery_percentage").value
         )
-        # HH_260617: Use canonical `_s` suffix for duration parameters.
         self.grace_period_s = int(self.declare_parameter("grace_period_s", 60).value)
+
+        # (확장) 사이트 선택 호출용 — ui_backend_node가 구독하는 토픽과 동일하게 맞춤
+        self.ui_destination_topic = str(
+            self.declare_parameter("ui_destination_topic", "/ui/selected_destination").value
+        )
+        self.site_names = [
+            str(s)
+            for s in self.declare_parameter("site_names", [f"B{i}" for i in range(1, 14)]).value
+        ]
+        if not self.site_names:
+            self.site_names = [f"B{i}" for i in range(1, 14)]
 
         self._lock = threading.Lock()
         self._amr_state: int = AvgAmrServiceState.DROP_ZONE_WAIT
@@ -79,15 +83,22 @@ class UiGuestNode(Node):
             self._on_battery,
             10,
         )
+        self.sub_destination = self.create_subscription(
+            UiDestinationCommand,
+            self.ui_destination_topic,
+            self._on_destination_cleared,
+            10,
+        )
 
         self.pub_amr = self.create_publisher(
             AvgAmrServiceState,
             self.amr_service_state_topic,
             10,
         )
-        self.pub_recall = self.create_publisher(
-            PlanningRecallRequest,
-            self.camping_site_recall_topic,
+        # (확장) 사이트 선택 → 목적지 토픽 publish (ui_backend_node가 goal_pose 처리)
+        self.pub_destination = self.create_publisher(
+            UiDestinationCommand,
+            self.ui_destination_topic,
             10,
         )
 
@@ -95,7 +106,7 @@ class UiGuestNode(Node):
 
         self.get_logger().info(
             f"ui_guest ready: host={self.host} port={self.port} "
-            f"recall_topic={self.camping_site_recall_topic}"
+            f"destination_topic={self.ui_destination_topic}"
         )
 
     # ── ROS2 callbacks ────────────────────────────────────────────────────────
@@ -104,7 +115,8 @@ class UiGuestNode(Node):
         state = int(msg.state)
         with self._lock:
             self._amr_state = state
-        self._schedule_broadcast({"amr_state": state})
+        # (확장) phase 문자열 동봉 → 프론트가 정수값 하드코딩에 의존하지 않게
+        self._schedule_broadcast({"amr_state": state, "phase": self._phase_of(state)})
         self.get_logger().info(f"[guest] AMR state received: {state}")
 
     def _on_battery(self, msg: Int32) -> None:
@@ -112,6 +124,17 @@ class UiGuestNode(Node):
         with self._lock:
             self._battery = pct
         self._schedule_broadcast({"battery": pct})
+
+    def _on_destination_cleared(self, msg: UiDestinationCommand) -> None:
+        if msg.run:
+            return
+        with self._lock:
+            self._amr_state = AvgAmrServiceState.DROP_ZONE_WAIT
+        self._schedule_broadcast({
+            "amr_state": AvgAmrServiceState.DROP_ZONE_WAIT,
+            "phase": "idle",
+        })
+        self.get_logger().info("[guest] destination cleared -> broadcast idle to guest UI")
 
     # ── WebSocket broadcast ───────────────────────────────────────────────────
 
@@ -135,31 +158,44 @@ class UiGuestNode(Node):
 
     # ── ROS2 publish ─────────────────────────────────────────────────────────
 
-    def _normalize_recall_site_name(self, site_name: str) -> str:
-        text = str(site_name).strip()
-        if not text:
-            text = self.default_recall_site_name
-        upper = text.upper()
-        if upper.startswith("B") and upper[1:].isdigit():
-            return f"camping_site_{int(upper[1:])}"
-        return text
+    def _phase_of(self, state: int) -> str:
+        """AMR 상태값 → 프론트가 읽기 쉬운 phase 문자열."""
+        return {
+            AvgAmrServiceState.DROP_ZONE_WAIT: "idle",
+            AvgAmrServiceState.MOVING_TO_SITE: "moving",
+            AvgAmrServiceState.SITE_ARRIVED: "arrived",
+            AvgAmrServiceState.RETURNING_TO_DROP_ZONE: "returning",
+            AvgAmrServiceState.GUEST_RECALL_SERVICE: "recall",
+        }.get(state, "unknown")
 
-    def _publish_guest_recall(self, site_name: str) -> None:
-        # HH_260621 - Guest recall must command planning to the site road/staging target.
-        recall_site = self._normalize_recall_site_name(site_name)
-        recall_msg = PlanningRecallRequest()
-        recall_msg.header.stamp = self.get_clock().now().to_msg()
-        recall_msg.site_name = recall_site
-        recall_msg.source = "ui_guest"
-        self.pub_recall.publish(recall_msg)
-
+    def _publish_guest_recall(self) -> None:
         msg = AvgAmrServiceState()
         msg.state = AvgAmrServiceState.GUEST_RECALL_SERVICE
-        msg.description = f"Guest 호출 요청: {recall_site}"
+        msg.description = "Guest 호출 요청"
         self.pub_amr.publish(msg)
         self.get_logger().info(
-            f"[guest] recall {recall_site} -> {self.camping_site_recall_topic}; "
-            f"GUEST_RECALL_SERVICE(4) -> {self.amr_service_state_topic}"
+            f"[guest] published GUEST_RECALL_SERVICE(4) -> {self.amr_service_state_topic}"
+        )
+
+    def _publish_navigate(self, site: str) -> None:
+        """(확장) 사이트 선택 호출 → ui_backend_node가 받아 goal_pose/engage를 반응."""
+        msg = UiDestinationCommand()
+        msg.site = site
+        msg.run = True
+        msg.source = "guest"
+        self.pub_destination.publish(msg)
+        self.get_logger().info(
+            f"[guest] navigate -> {self.ui_destination_topic}: site={site}"
+        )
+
+    def _publish_usage_complete(self) -> None:
+        """(확장) 이용 완료 → 드롭존 복귀 상태 발행 (키오스크 usage_complete와 동일 신호)."""
+        msg = AvgAmrServiceState()
+        msg.state = AvgAmrServiceState.RETURNING_TO_DROP_ZONE
+        msg.description = "이용 완료 → Drop Zone 복귀"
+        self.pub_amr.publish(msg)
+        self.get_logger().info(
+            f"[guest] usage_complete -> RETURNING_TO_DROP_ZONE -> {self.amr_service_state_topic}"
         )
 
     # ── Path resolution ───────────────────────────────────────────────────────
@@ -198,14 +234,12 @@ class UiGuestNode(Node):
 
             with node._guest_ws_lock:
                 if node._guest_ws is not None:
-                    # 다른 사람이 활성 세션 중
                     await ws.send_json({"locked": True, "grace_remaining": 0})
                     await ws.close(1008)
                     return
 
                 now = time.time()
                 if now < node._grace_until and client_ip != node._last_client_ip:
-                    # 유예 기간 중 + 다른 IP → 차단, 남은 시간 전달
                     remaining = int(node._grace_until - now)
                     await ws.send_json({"locked": True, "grace_remaining": remaining})
                     await ws.close(1008)
@@ -215,26 +249,48 @@ class UiGuestNode(Node):
                 node._last_client_ip = client_ip
                 node._grace_until = 0.0
 
-            # Send initial state.
+            # Send initial state — phase + 사이트 목록 동봉
             with node._lock:
                 state = node._amr_state
                 battery = node._battery
-            await ws.send_json({"amr_state": state, "battery": battery})
+            await ws.send_json({
+                "amr_state": state,
+                "phase": node._phase_of(state),
+                "battery": battery,
+                "sites": node.site_names,
+            })
 
             try:
                 while True:
                     raw = await ws.receive_text()
                     payload = json.loads(raw)
+                    action = payload.get("action")
 
-                    if payload.get("action") == "recall":
+                    # (확장) 사이트 선택 호출 (경우 B): B1~B13 중 선택 → 해당 사이트로 이동
+                    if action == "navigate":
+                        site = str(payload.get("site", "")).strip()
+                        if site not in node.site_names:
+                            await ws.send_json({"error": "invalid_site", "site": site})
+                        else:
+                            with node._lock:
+                                current = node._amr_state
+                            if current == AvgAmrServiceState.DROP_ZONE_WAIT:
+                                node._publish_navigate(site)
+                            else:
+                                await ws.send_json({"error": "robot_not_ready", "amr_state": current})
+
+                    # 단순 호출 (드롭존으로) — 기존 동작 유지
+                    elif action == "recall":
                         with node._lock:
                             current = node._amr_state
                         if current == AvgAmrServiceState.DROP_ZONE_WAIT:
-                            node._publish_guest_recall(
-                                str(payload.get("site_name", payload.get("site", "")))
-                            )
+                            node._publish_guest_recall()
                         else:
                             await ws.send_json({"error": "robot_not_ready", "amr_state": current})
+
+                    # (확장) 이용 완료 → 드롭존 복귀
+                    elif action == "usage_complete":
+                        node._publish_usage_complete()
 
             except WebSocketDisconnect:
                 pass
@@ -248,10 +304,17 @@ class UiGuestNode(Node):
         html_path = node._resolve_guest_html()
 
         if html_path:
+            # index.html 단일 파일만이 아니라, 같은 폴더의 정적 파일(사이트 이미지 등)도
+            # 서빙되도록 변경. 없는 경로는 index.html로 폴백(SPA 동작).
+            guest_dir = html_path.parent
+
             @app.get("/{full_path:path}")
             async def serve_html(full_path: str) -> FileResponse:
-                real = Path(os.path.realpath(str(html_path)))
-                return FileResponse(str(real))
+                candidate = guest_dir / full_path
+                real = Path(os.path.realpath(str(candidate)))
+                if real.is_file():
+                    return FileResponse(str(real))
+                return FileResponse(str(os.path.realpath(str(html_path))))
         else:
             @app.get("/")
             async def serve_fallback() -> JSONResponse:

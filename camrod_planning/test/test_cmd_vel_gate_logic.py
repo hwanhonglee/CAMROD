@@ -37,9 +37,9 @@ ROS2 없이 실행 가능 (rclpy, tf2_ros 등 stub 처리).
 
 [ GNSS Recovery Hold ]
 ESKF 로컬라이제이션이 DR_ONLY(2) → NORMAL(0)로 복구될 때:
-  1. Nav2와 costmap이 복구된 위치 기반으로 재계산하는 데 시간이 필요
-  2. gate 노드가 gnss_recovery_hold_s(기본 2.0s) 동안 cmd_vel을 0으로 강제
-  3. hold 만료 후 cmd_vel 정상 통과 재개
+  1. DR_ONLY가 최소 지속시간 이상 유지된 경우만 실제 복구로 인정
+  2. gate 노드가 gnss_recovery_hold_s 동안 cmd_vel을 0으로 강제
+  3. hold 만료 후 cmd_vel 정상 통과, 쿨다운 중 반복 hold는 생략
 
   /localization/mode 토픽 값:
     NORMAL=0, DEGRADED=1, DR_ONLY=2, INVALID=3
@@ -194,6 +194,14 @@ class AvgLocalizationMode:
         self.value = value
         self.label = {0: "NORMAL", 1: "DEGRADED", 2: "DR_ONLY", 3: "INVALID"}.get(value, str(value))
 
+class ModuleState:
+    OK = 0
+    WARN = 1
+    ERROR = 2
+
+    def __init__(self):
+        self.message = ""
+
 
 # ─── patch sys.modules ────────────────────────────────────────────────────────
 
@@ -216,7 +224,7 @@ sys.modules.update({
     "std_msgs.msg":                 _mod(Bool=BoolMsg),
     "tf2_ros":                      _mod(Buffer=FakeBuffer, TransformException=Exception,
                                          TransformListener=FakeTransformListener),
-    "avg_msgs.msg":                 _mod(AvgLocalizationMode=AvgLocalizationMode),
+    "avg_msgs.msg":                 _mod(AvgLocalizationMode=AvgLocalizationMode, ModuleState=ModuleState),
 })
 for top in ["rcl_interfaces", "geometry_msgs", "nav_msgs", "std_msgs", "avg_msgs"]:
     if top not in sys.modules:
@@ -272,6 +280,8 @@ def make_gate(
     n.enable_gnss_recovery_hold = True
     n.localization_mode_topic = "/localization/mode"
     n.gnss_recovery_hold_s = recovery_hold_s
+    n.gnss_recovery_min_source_s = 0.5
+    n.gnss_recovery_hold_cooldown_s = 5.0
     n.gnss_recovery_source_mode_min = int(AvgLocalizationMode.DR_ONLY)
     n.gnss_recovery_target_mode = int(AvgLocalizationMode.NORMAL)
 
@@ -335,6 +345,8 @@ def make_gate(
     n._dr_timeout = False
     n._cost_blocked_until = 0.0
     n._gnss_recovery_blocked_until = 0.0
+    n._gnss_recovery_source_enter_sec = None
+    n._gnss_recovery_last_hold_sec = -1.0e9
     n._last_localization_mode_value = None
     n._last_unavoidable_cluster_cells = 0
     n._last_unavoidable_cluster_ratio = 0.0
@@ -554,12 +566,18 @@ mode_dr = AvgLocalizationMode(AvgLocalizationMode.DR_ONLY)
 n._on_localization_mode(mode_dr)
 check("DR_ONLY 수신 후 아직 hold 없음", n._gnss_recovery_blocked_until == 0.0)
 
-# NORMAL 수신 → hold 발동
+# NORMAL이 너무 빨리 돌아오면 순간 플랩으로 보고 hold 생략
 mode_normal = AvgLocalizationMode(AvgLocalizationMode.NORMAL)
+n._on_localization_mode(mode_normal)
+check("짧은 DR_ONLY 플랩 → hold 생략", n._gnss_recovery_blocked_until == 0.0)
+
+# DR_ONLY가 최소 지속시간을 넘은 뒤 NORMAL 수신 → hold 발동
+n._on_localization_mode(mode_dr)
+n._clock.advance_s(0.6)
 n._on_localization_mode(mode_normal)
 hold_until = n._gnss_recovery_blocked_until
 check("NORMAL 수신 → hold 설정됨", hold_until > 0.0)
-check(f"hold = now+2.0s ({hold_until:.1f}s)", abs(hold_until - (t0_ns * 1e-9 + 2.0)) < 0.1)
+check(f"hold = now+2.0s ({hold_until:.1f}s)", abs(hold_until - (n._clock.now().nanoseconds * 1e-9 + 2.0)) < 0.1)
 check("hold 중 _effective_enabled() = False", not n._effective_enabled())
 check("hold 중 pub_state last = False", n.pub_state.last is not None and not n.pub_state.last.data)
 

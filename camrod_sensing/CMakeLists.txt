@@ -69,6 +69,8 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
     find_package(OpenCV REQUIRED)
     find_package(CUDAToolkit REQUIRED)
+    # HJ_260626: cv_bridge moved up so camera_front_publisher_component can depend on it.
+    find_package(cv_bridge REQUIRED)
     find_package(vpi REQUIRED
       PATHS
         /opt/nvidia/vpi3/lib/aarch64-linux-gnu/cmake
@@ -96,6 +98,7 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
       rclcpp_components
       sensor_msgs
       avg_msgs
+      cv_bridge   # HJ_260626: front node now includes cv_bridge/cv_bridge.h
     )
     target_link_libraries(
       camera_front_publisher_component
@@ -122,8 +125,7 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
 
     # HH_260528: Rear camera publisher — econ_camera_node (OpenCV + GStreamer, no GPU).
     # HH_260601: removed yaml-cpp dependency; calibration now loaded from ROS parameters.
-    find_package(cv_bridge REQUIRED)
-
+    # HJ_260626: find_package(cv_bridge) moved above the front component.
     add_executable(camera_rear_publisher_node src/camera_rear_publisher_node.cpp)
     ament_target_dependencies(
       camera_rear_publisher_node

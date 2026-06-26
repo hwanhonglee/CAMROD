@@ -28,6 +28,9 @@ def generate_launch_description():
         # HH_260409: Default e-stop source is platform status bridge from CAN/system_state.
         DeclareLaunchArgument('estop_topic', default_value='/platform/status/estop'),
         DeclareLaunchArgument('drive_allow_on_start', default_value='false'),
+        # HH_260626: Final safety guard for stale /planning/cmd_vel input.
+        DeclareLaunchArgument('cmd_vel_input_timeout_s', default_value='0.50'),
+        DeclareLaunchArgument('cmd_vel_zero_publish_rate_hz', default_value='10.0'),
 
         Node(
             package='camrod_platform',
@@ -46,6 +49,8 @@ def generate_launch_description():
                 'estop_topic': LaunchConfiguration('estop_topic'),
                 'allow_on_start': LaunchConfiguration('drive_allow_on_start'),
                 'publish_zero_when_blocked': True,
+                'input_timeout_s': LaunchConfiguration('cmd_vel_input_timeout_s'),
+                'zero_publish_rate_hz': LaunchConfiguration('cmd_vel_zero_publish_rate_hz'),
             }],
             condition=IfCondition(LaunchConfiguration('cmd_vel_gate_enable')),
         ),

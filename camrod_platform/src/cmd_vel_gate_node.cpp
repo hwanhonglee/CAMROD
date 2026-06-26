@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -90,6 +91,12 @@ public:
       declare_parameter<bool>("allow_on_start", false);
     publish_zero_when_blocked_ =
       declare_parameter<bool>("publish_zero_when_blocked", true);
+    // HH_260626: If planning stops publishing, keep sending zero so Ranger
+    // never continues with a stale platform command.
+    input_timeout_s_ =
+      declare_parameter<double>("input_timeout_s", 0.50);
+    zero_publish_rate_hz_ =
+      declare_parameter<double>("zero_publish_rate_hz", 10.0);
 
     drive_enabled_ = allow_on_start_;
     planning_engaged_ = !enable_engage_topic_sub_ || allow_on_start_;
@@ -124,19 +131,26 @@ public:
     state_timer_ = create_wall_timer(
       std::chrono::milliseconds(500),
       std::bind(&CmdVelGateNode::publish_state, this));
+    const auto zero_period_ms = static_cast<int>(
+      1000.0 / std::max(1.0, zero_publish_rate_hz_));
+    cmd_timeout_timer_ = create_wall_timer(
+      std::chrono::milliseconds(zero_period_ms),
+      std::bind(&CmdVelGateNode::on_cmd_timeout_timer, this));
 
     publish_state();
     RCLCPP_INFO(
       get_logger(),
       "cmd_vel_gate ready: in=%s out=%s enable_topic=%s engage_topic=%s "
-      "estop_topic=%s allow_on_start=%s drive_enabled=%s planning_engaged=%s",
+      "estop_topic=%s allow_on_start=%s drive_enabled=%s planning_engaged=%s "
+      "input_timeout_s=%.2f zero_rate_hz=%.1f",
       input_cmd_vel_topic_.c_str(), output_cmd_vel_topic_.c_str(),
       enable_topic_.c_str(),
       enable_engage_topic_sub_ ? engage_topic_.c_str() : "(disabled)",
       enable_estop_topic_sub_ ? estop_topic_.c_str() : "(disabled)",
       allow_on_start_ ? "true" : "false",
       drive_enabled_ ? "true" : "false",
-      planning_engaged_ ? "true" : "false");
+      planning_engaged_ ? "true" : "false",
+      input_timeout_s_, zero_publish_rate_hz_);
   }
 
 private:
@@ -165,6 +179,10 @@ private:
   // Passes through or blocks cmd_vel based on gate/e-stop state.
   void on_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg)
   {
+    last_cmd_time_ = now();
+    has_cmd_ = true;
+    cmd_input_stale_ = false;
+
     if (effective_enabled()) {
       pub_cmd_->publish(*msg);
       return;
@@ -178,6 +196,32 @@ private:
       drive_enabled_ ? "true" : "false",
       planning_engaged_ ? "true" : "false",
       estop_ ? "true" : "false");
+  }
+
+  // Forces zero output when the upstream planning command stream stalls.
+  void on_cmd_timeout_timer()
+  {
+    if (input_timeout_s_ <= 0.0 || !has_cmd_) {
+      return;
+    }
+
+    const double age_s = (now() - last_cmd_time_).seconds();
+    if (age_s <= input_timeout_s_) {
+      return;
+    }
+
+    if (publish_zero_when_blocked_) {
+      publish_zero();
+    }
+    if (cmd_input_stale_) {
+      return;
+    }
+
+    cmd_input_stale_ = true;
+    RCLCPP_WARN(
+      get_logger(),
+      "cmd_vel input stale: last_cmd_age=%.2fs timeout=%.2fs; publishing zero",
+      age_s, input_timeout_s_);
   }
 
   // Updates gate state from /platform/drive_enable.
@@ -272,9 +316,14 @@ private:
   bool enable_estop_topic_sub_{true};
   bool allow_on_start_{false};
   bool publish_zero_when_blocked_{true};
+  double input_timeout_s_{0.50};
+  double zero_publish_rate_hz_{10.0};
   bool drive_enabled_{false};
   bool planning_engaged_{false};
   bool estop_{false};
+  bool has_cmd_{false};
+  bool cmd_input_stale_{false};
+  rclcpp::Time last_cmd_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr pub_cmd_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr pub_state_;
@@ -284,6 +333,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_estop_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr srv_set_enabled_;
   rclcpp::TimerBase::SharedPtr state_timer_;
+  rclcpp::TimerBase::SharedPtr cmd_timeout_timer_;
 };
 
 }  // namespace camrod_platform

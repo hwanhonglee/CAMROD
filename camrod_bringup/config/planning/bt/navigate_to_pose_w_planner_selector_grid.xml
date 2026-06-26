@@ -24,8 +24,8 @@
             </Sequence>
           </RecoveryNode>
         </GoalUpdatedController>
-        <!-- HH_260618: Smooth selected planner path before handing to FollowPath. -->
-        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
+        <!-- HH_260626: SIM/grid profile also uses the common smoother safely. -->
+        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="true"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">
           <FollowPath path="{path}" controller_id="{selected_controller}"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>

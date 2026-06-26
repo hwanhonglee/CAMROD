@@ -16,7 +16,7 @@ bt_navigator:
     # when full-stack bringup is CPU-constrained.
     bt_loop_duration: 80
     # Keep planner/controller IDs consistent with selector BT aliases:
-    # planner: Smac2D | NavFn, controller: RPP | DWB.
+    # planner: LaneletRoute | Smac2D | NavFn, controller: RPP | DWB.
     # Launch rewrites this value to a package-share-resolved XML path.
     default_nav_to_pose_bt_xml: ""
     default_nav_through_poses_bt_xml: "/opt/ros/humble/share/nav2_bt_navigator/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"
@@ -67,8 +67,10 @@ smoother_server:
       plugin: "nav2_smoother::SimpleSmoother"
       tolerance: 1.0e-10
       max_its: 1000
-      w_data: 0.2
-      w_smooth: 0.3
+      # HH_260626: Common BT smoother for all selected planners. Keep more data
+      # weight so smoothing does not pull a lanelet route into an adjacent lane.
+      w_data: 0.45
+      w_smooth: 0.25
       do_refinement: true
 
 behavior_server:

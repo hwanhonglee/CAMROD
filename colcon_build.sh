@@ -120,6 +120,28 @@ _clean_stale_install_artifacts() {
 }
 _clean_stale_install_artifacts "$@"
 
+# HJ_260626: Build the camrod_ui robot React frontend before colcon so setup.py can
+# package the generated build/ tree into install (see camrod_ui/setup.py). The guest
+# frontend is static (no build step). Only runs when camrod_ui is in the build scope.
+_build_camrod_ui_frontend() {
+  _build_scope_includes_pkg camrod_ui "$@" || return 0
+
+  local frontend_dir="${SRC_ROOT}/camrod_ui/camrod_ui_robot/assets/frontend"
+  [[ -f "${frontend_dir}/package.json" ]] || { log "camrod_ui frontend not found, skip npm build"; return 0; }
+
+  if ! command -v npm >/dev/null 2>&1; then
+    log "ERROR: npm not found but camrod_ui requires a frontend build (install Node.js/npm)" >&2
+    return 1
+  fi
+
+  log "camrod_ui frontend: npm install (${frontend_dir})"
+  ( cd "${frontend_dir}" && npm install )
+
+  log "camrod_ui frontend: npm run build"
+  ( cd "${frontend_dir}" && npm run build )
+}
+_build_camrod_ui_frontend "$@"
+
 # shellcheck disable=SC1091
 set +u; source /opt/ros/humble/setup.bash; set -u
 

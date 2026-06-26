@@ -196,7 +196,7 @@ def generate_launch_description():
         DeclareLaunchArgument('local_path_pose_topic', default_value='/localization/pose'),
         DeclareLaunchArgument('local_path_global_path_topic', default_value='/planning/global_path'),
         DeclareLaunchArgument('local_path_fallback_global_path_topic', default_value=''),
-        DeclareLaunchArgument('local_path_source', default_value='slice_only'),
+        DeclareLaunchArgument('local_path_source', default_value='controller_then_slice'),
         DeclareLaunchArgument('tracking_error_topic', default_value='/planning/ltracking_error'),
 
         DeclareLaunchArgument('cmd_vel_gate_enable', default_value='true'),
@@ -215,6 +215,8 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_enable_gnss_recovery_hold', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_localization_mode_topic', default_value='/localization/mode'),
         DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_hold_s', default_value='2.0'),
+        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_min_source_s', default_value='0.5'),
+        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_hold_cooldown_s', default_value='5.0'),
         DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_source_mode_min', default_value='2'),
         DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_target_mode', default_value='0'),
         # HH_260413: Optional cost-based stop in front of the platform.
@@ -319,6 +321,11 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_route_heading_max_angular_z', default_value='0.6'),
         DeclareLaunchArgument('cmd_vel_gate_route_heading_max_linear_x', default_value='0.0'),
         DeclareLaunchArgument('cmd_vel_gate_route_heading_min_path_points', default_value='2'),
+        # HH_260507: Speed scale for cmd_vel output (applied in planning gate).
+        DeclareLaunchArgument('cmd_vel_gate_speed_scale', default_value='1.0'),
+        # HH_260626: Force zero if controller cmd_vel stream goes stale.
+        DeclareLaunchArgument('cmd_vel_gate_input_timeout_s', default_value='0.35'),
+        DeclareLaunchArgument('cmd_vel_gate_zero_publish_rate_hz', default_value='10.0'),
 
         *[DeclareLaunchArgument(k, default_value=pkg_share('camrod_planning', os.path.join('config', v)))
           for k, v in {
@@ -438,6 +445,8 @@ def generate_launch_description():
                 'cmd_vel_gate_enable_gnss_recovery_hold',
                 'cmd_vel_gate_localization_mode_topic',
                 'cmd_vel_gate_gnss_recovery_hold_s',
+                'cmd_vel_gate_gnss_recovery_min_source_s',
+                'cmd_vel_gate_gnss_recovery_hold_cooldown_s',
                 'cmd_vel_gate_gnss_recovery_source_mode_min',
                 'cmd_vel_gate_gnss_recovery_target_mode',
                 'cmd_vel_gate_cost_stop_enable',
@@ -513,6 +522,9 @@ def generate_launch_description():
                 'cmd_vel_gate_route_heading_max_angular_z',
                 'cmd_vel_gate_route_heading_max_linear_x',
                 'cmd_vel_gate_route_heading_min_path_points',
+                'cmd_vel_gate_speed_scale',
+                'cmd_vel_gate_input_timeout_s',
+                'cmd_vel_gate_zero_publish_rate_hz',
             ).items(),
         ),
 

@@ -672,7 +672,7 @@ def generate_launch_description():
         (
             'planning_nav2_selected_planner',
             cfg_get(launch_cfg, 'planning/nav2_selected_planner', '__auto__'),
-            'Nav2 planner selector ID override (__auto__|NavFn|Smac2D|ThetaStar|SmacHybrid|SmacLattice)',
+            'Nav2 planner selector ID override (__auto__|LaneletRoute|NavFn|Smac2D|ThetaStar|SmacHybrid|SmacLattice)',
         ),
         (
             'planning_nav2_selected_controller',
@@ -701,10 +701,9 @@ def generate_launch_description():
         ),
         (
             'local_path_source',
-            # HH_260619 - Keep bringup default aligned with local_path.launch.py:
-            # local path visualization/cost guidance should follow the current route,
-            # not a controller debug path that may lag after goal replacement.
-            cfg_get(launch_cfg, 'planning/local_path_source', 'slice_only'),
+            # HH_260626 - Keep bringup default aligned with local_path.launch.py:
+            # use the smoothed FollowPath input when available, then slice global path.
+            cfg_get(launch_cfg, 'planning/local_path_source', 'controller_then_slice'),
             'Local path source policy: controller_then_slice|controller_only|slice_only',
         ),
         # Require explicit planning engage trigger before publishing /planning/cmd_vel.
@@ -775,6 +774,16 @@ def generate_launch_description():
             'planning_cmd_vel_gate_gnss_recovery_hold_s',
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_hold_s', 2.0),
             'Hold duration after localization recovery (s)',
+        ),
+        (
+            'planning_cmd_vel_gate_gnss_recovery_min_source_s',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_min_source_s', 0.5),
+            'Minimum DR/degraded duration before planning applies GNSS recovery hold',
+        ),
+        (
+            'planning_cmd_vel_gate_gnss_recovery_hold_cooldown_s',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_hold_cooldown_s', 5.0),
+            'Cooldown before planning can apply another GNSS recovery hold',
         ),
         (
             'planning_cmd_vel_gate_gnss_recovery_source_mode_min',
@@ -1181,6 +1190,16 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_speed_scale', 1.0),
             'Speed scale applied to all cmd_vel output (0.0-1.0)',
         ),
+        (
+            'planning_cmd_vel_gate_input_timeout_s',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_input_timeout_s', 0.35),
+            'Publish zero when raw planning cmd_vel input is stale for this many seconds',
+        ),
+        (
+            'planning_cmd_vel_gate_zero_publish_rate_hz',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_zero_publish_rate_hz', 10.0),
+            'Zero Twist publish rate while raw planning cmd_vel input is stale',
+        ),
 
         (
             'enable_module_validators',
@@ -1269,6 +1288,16 @@ def generate_launch_description():
             'platform_cmd_vel_out_topic',
             cfg_get(launch_cfg, 'platform/cmd_vel_out_topic', '/platform/cmd_vel'),
             'Platform cmd_vel gate output topic',
+        ),
+        (
+            'platform_cmd_vel_input_timeout_s',
+            cfg_get(launch_cfg, 'platform/cmd_vel_input_timeout_s', 0.50),
+            'Publish zero when platform cmd_vel input is stale for this many seconds',
+        ),
+        (
+            'platform_cmd_vel_zero_publish_rate_hz',
+            cfg_get(launch_cfg, 'platform/cmd_vel_zero_publish_rate_hz', 10.0),
+            'Zero Twist publish rate while platform cmd_vel input is stale',
         ),
         (
             'platform_engage_source_mode',
@@ -1458,6 +1487,8 @@ def generate_launch_description():
         ),
         'cmd_vel_in_topic': lc['platform_cmd_vel_in_topic'],
         'cmd_vel_out_topic': lc['platform_cmd_vel_out_topic'],
+        'cmd_vel_input_timeout_s': lc['platform_cmd_vel_input_timeout_s'],
+        'cmd_vel_zero_publish_rate_hz': lc['platform_cmd_vel_zero_publish_rate_hz'],
         'engage_source_mode': lc['platform_engage_source_mode'],
         'platform_planning_engage_topic': lc['platform_planning_engage_topic'],
         # HH_260618: Sim RViz goals must create paths only; platform motion still

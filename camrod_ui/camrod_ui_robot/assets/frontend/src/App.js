@@ -77,8 +77,7 @@ function DiagnosticsMonitor() {
 
   useEffect(() => {
     const fetch_ = () =>
-      // HH_260623 - Use the canonical UI diagnostics endpoint; legacy /api/diagnostics was removed.
-      fetch('/ui/diagnostics')
+      fetch('/api/diagnostics')
         .then(r => r.json())
         .then(j => setItems(j.status || []))
         .catch(() => {});
@@ -211,11 +210,6 @@ function FacilityContent() {
 
       {/* ── 헤더 배너 ── */}
       <div className="park-banner">
-        <svg className="park-banner-ridge" viewBox="0 0 1200 280" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M0 280 L0 180 Q100 120 200 160 Q300 100 400 130 Q480 80 560 110 Q650 60 720 100 Q800 70 880 95 Q960 55 1040 85 Q1120 65 1200 90 L1200 280 Z" fill="rgba(255,255,255,0.08)"/>
-          <path d="M0 280 L0 200 Q80 170 160 190 Q260 140 360 170 Q430 130 520 155 Q600 120 700 150 Q780 110 860 140 Q940 105 1040 135 Q1120 115 1200 130 L1200 280 Z" fill="rgba(255,255,255,0.06)"/>
-          <path d="M0 280 L0 230 Q120 200 240 220 Q360 190 480 210 Q600 185 720 205 Q840 180 960 200 Q1080 185 1200 195 L1200 280 Z" fill="rgba(255,255,255,0.04)"/>
-        </svg>
         <div className="park-banner-content">
           <div className="park-banner-logo">
             <img src="/월악산_국립공원_로고.jpg" alt="국립공원관리공단 로고" />
@@ -363,51 +357,12 @@ const SIDE_BUTTONS = [
     id: 'usage',
     label: '로봇 이용 방법',
     icon: (
-      <svg viewBox="0 0 100 100">
-        <circle cx="50" cy="52" r="36" fill="#E0F5FC"/>
-        <polygon points="20,74 38,52 56,74" fill="#0099CC" opacity="0.12"/>
-        <polygon points="44,74 60,58 76,74" fill="#0099CC" opacity="0.09"/>
-        <rect x="36" y="21" width="28" height="13" rx="4" fill="#006E99"/>
-        <rect x="36" y="21" width="28" height="5" rx="3" fill="#0099CC" opacity="0.9"/>
-        <line x1="40" y1="29" x2="64" y2="29" stroke="#ffffff" strokeWidth="1.3" opacity="0.7"/>
-        <line x1="42" y1="32" x2="62" y2="32" stroke="#ffffff" strokeWidth="0.9" opacity="0.4"/>
-        <line x1="70" y1="21" x2="74" y2="12" stroke="#006E99" strokeWidth="2" strokeLinecap="round"/>
-        <circle cx="74" cy="11" r="2.5" fill="#ffffff" stroke="#0099CC" strokeWidth="1"/>
-        <rect x="28" y="34" width="44" height="34" rx="6" fill="#0099CC"/>
-        <rect x="28" y="34" width="44" height="8" rx="4" fill="#00B8F0"/>
-        <rect x="28" y="60" width="44" height="3" rx="1" fill="#006E99" opacity="0.5"/>
-        <rect x="34" y="44" width="30" height="18" rx="3" fill="#003D5C"/>
-        <rect x="37" y="47" width="15" height="2.5" rx="1" fill="#ffffff" opacity="0.9"/>
-        <rect x="37" y="52" width="10" height="2.5" rx="1" fill="#ffffff" opacity="0.6"/>
-        <rect x="37" y="57" width="13" height="2" rx="1" fill="#ffffff" opacity="0.4"/>
-        <polyline points="52,57 55,52 58,54 62,48 64,51" fill="none" stroke="#00E5FF" strokeWidth="1.2" opacity="0.8"/>
-        <circle cx="38" cy="66" r="3" fill="#003D5C"/>
-        <circle cx="38" cy="66" r="1.8" fill="#00B8F0"/>
-        <circle cx="48" cy="66" r="3" fill="#003D5C"/>
-        <circle cx="48" cy="66" r="1.8" fill="#00B8F0"/>
-        <rect x="28" y="62" width="44" height="4" rx="2" fill="#00B8F0" opacity="0.6"/>
-        <rect x="24" y="66" width="52" height="13" rx="4" fill="#006E99"/>
-        <rect x="24" y="67" width="52" height="4" rx="2" fill="#0099CC" opacity="0.5"/>
-        <circle cx="35" cy="82" r="7" fill="#003D5C"/>
-        <circle cx="35" cy="82" r="4" fill="#006E99"/>
-        <circle cx="35" cy="82" r="1.8" fill="#0099CC" opacity="0.6"/>
-        <circle cx="65" cy="82" r="7" fill="#003D5C"/>
-        <circle cx="65" cy="82" r="4" fill="#006E99"/>
-        <circle cx="65" cy="82" r="1.8" fill="#0099CC" opacity="0.6"/>
-        <circle cx="78" cy="24" r="11" fill="#EF9F27"/>
-        <circle cx="78" cy="24" r="8.5" fill="#BA7517"/>
-        <text x="78" y="29" textAnchor="middle" fontSize="13" fontWeight="700" fill="#FAEEDA" fontFamily="sans-serif">i</text>
-      </svg>
+      <img src="/robot_gemini_nobg.png" alt="로봇" style={{width:'100%',height:'100%',objectFit:'contain'}}/>
     ),
     title: '로봇 이용 방법',
     content: (
       <div>
         <div className="park-banner" style={{ marginBottom: '1.2rem' }}>
-          <svg className="park-banner-ridge" viewBox="0 0 1200 280" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M0 280 L0 180 Q100 120 200 160 Q300 100 400 130 Q480 80 560 110 Q650 60 720 100 Q800 70 880 95 Q960 55 1040 85 Q1120 65 1200 90 L1200 280 Z" fill="rgba(255,255,255,0.08)"/>
-            <path d="M0 280 L0 200 Q80 170 160 190 Q260 140 360 170 Q430 130 520 155 Q600 120 700 150 Q780 110 860 140 Q940 105 1040 135 Q1120 115 1200 130 L1200 280 Z" fill="rgba(255,255,255,0.06)"/>
-            <path d="M0 280 L0 230 Q120 200 240 220 Q360 190 480 210 Q600 185 720 205 Q840 180 960 200 Q1080 185 1200 195 L1200 280 Z" fill="rgba(255,255,255,0.04)"/>
-          </svg>
           <div className="park-banner-content">
             <div className="park-banner-logo">
               <img src="/월악산_국립공원_로고.jpg" alt="국립공원관리공단 로고" />
@@ -530,31 +485,31 @@ const SIDE_BUTTONS = [
     id: 'facility',
     label: '시설 안내',
     icon: (
-      <svg viewBox="0 0 100 100">
-        <defs><clipPath id="sg-c2"><circle cx="50" cy="52" r="36"/></clipPath></defs>
-        <circle cx="50" cy="52" r="36" fill="#EAF3DE"/>
-        <rect x="14" y="14" width="72" height="36" fill="#C9E8F5" opacity="0.5" clipPath="url(#sg-c2)"/>
-        <polygon points="10,62 30,38 50,62" fill="#7AAA50" opacity="0.5" clipPath="url(#sg-c2)"/>
-        <polygon points="50,62 68,42 86,62" fill="#5A8A30" opacity="0.4" clipPath="url(#sg-c2)"/>
-        <rect x="30" y="48" width="40" height="32" rx="3" fill="#8B6340"/>
-        <polygon points="26,50 50,26 74,50" fill="#633806"/>
-        <polygon points="26,50 50,26 74,50" fill="#EF9F27" opacity="0.18"/>
-        <line x1="50" y1="26" x2="50" y2="50" stroke="#412402" strokeWidth="1.5" opacity="0.4"/>
-        <rect x="33" y="54" width="12" height="10" rx="2" fill="#FAC775" opacity="0.85"/>
-        <rect x="55" y="54" width="12" height="10" rx="2" fill="#FAC775" opacity="0.85"/>
-        <rect x="43" y="64" width="14" height="16" rx="3" fill="#412402"/>
-        <circle cx="54" cy="73" r="1.5" fill="#FAC775"/>
-        <line x1="78" y1="42" x2="78" y2="62" stroke="#633806" strokeWidth="2.5" strokeLinecap="round"/>
-        <rect x="66" y="31" width="20" height="14" rx="3" fill="#639922"/>
-        <rect x="69" y="35" width="6" height="2" rx="1" fill="#EAF3DE"/>
-        <rect x="69" y="39" width="11" height="2" rx="1" fill="#EAF3DE" opacity="0.7"/>
-        <rect x="14" y="56" width="5" height="16" fill="#633806"/>
-        <polygon points="16,56 8,70 24,70" fill="#27500A"/>
-        <polygon points="16,46 8,60 24,60" fill="#3B6D11"/>
-        <polygon points="16,38 9,52 23,52" fill="#639922"/>
-        <rect x="82" y="60" width="4" height="12" fill="#633806"/>
-        <polygon points="84,60 77,72 91,72" fill="#27500A"/>
-        <polygon points="84,50 78,63 90,63" fill="#3B6D11"/>
+      <svg viewBox="0 0 100 100" fill="none">
+        <defs>
+          <linearGradient id="facilityBg" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#4ab0f5"/>
+            <stop offset="100%" stopColor="#1565c0"/>
+          </linearGradient>
+          <clipPath id="facilityCircle">
+            <circle cx="50" cy="50" r="47"/>
+          </clipPath>
+        </defs>
+        <g clipPath="url(#facilityCircle)">
+          <circle cx="50" cy="50" r="47" fill="url(#facilityBg)"/>
+          {/* Head */}
+          <circle cx="50" cy="22" r="7" fill="white"/>
+          {/* Body */}
+          <path d="M34 57 L34 37 Q50 22 66 37 L66 57 Z" fill="white"/>
+          {/* Desk top surface */}
+          <rect x="15" y="55" width="70" height="8" rx="3" fill="white"/>
+          {/* Desk front panel */}
+          <rect x="19" y="63" width="62" height="23" rx="4" fill="white" opacity="0.92"/>
+          {/* "i" dot */}
+          <circle cx="50" cy="69" r="2.5" fill="url(#facilityBg)"/>
+          {/* "i" bar */}
+          <rect x="47.5" y="73" width="5" height="9" rx="2" fill="url(#facilityBg)"/>
+        </g>
       </svg>
     ),
     title: '시설 안내',
@@ -564,34 +519,50 @@ const SIDE_BUTTONS = [
     id: 'routes',
     label: '탐방로',
     icon: (
-      <svg viewBox="0 0 100 100">
-        <defs><clipPath id="sg-c3"><circle cx="50" cy="52" r="36"/></clipPath></defs>
-        <circle cx="50" cy="52" r="36" fill="#EAF3DE"/>
-        <rect x="14" y="14" width="72" height="40" fill="#C9E8F5" opacity="0.55" clipPath="url(#sg-c3)"/>
-        <circle cx="74" cy="26" r="8" fill="#FAC775" opacity="0.8" clipPath="url(#sg-c3)"/>
-        <polygon points="10,64 28,38 46,64" fill="#7AAA50" clipPath="url(#sg-c3)"/>
-        <polygon points="38,64 58,42 78,64" fill="#5A8A30" clipPath="url(#sg-c3)"/>
-        <polygon points="62,64 78,48 94,64" fill="#639922" opacity="0.7" clipPath="url(#sg-c3)"/>
-        <polygon points="28,38 34,50 22,50" fill="#EAF3DE" opacity="0.8" clipPath="url(#sg-c3)"/>
-        <polygon points="58,42 63,52 53,52" fill="#EAF3DE" opacity="0.7" clipPath="url(#sg-c3)"/>
-        <rect x="14" y="62" width="72" height="24" fill="#8B6340" opacity="0.5" clipPath="url(#sg-c3)"/>
-        <path d="M14,84 Q26,72 40,76 Q54,80 66,72 Q76,66 86,68" fill="none" stroke="#C8A870" strokeWidth="7" strokeLinecap="round" clipPath="url(#sg-c3)"/>
-        <path d="M14,84 Q26,72 40,76 Q54,80 66,72 Q76,66 86,68" fill="none" stroke="#D8B880" strokeWidth="3.5" strokeLinecap="round" opacity="0.7" clipPath="url(#sg-c3)"/>
-        <circle cx="30" cy="77" r="2" fill="#A08050" clipPath="url(#sg-c3)"/>
-        <circle cx="50" cy="78" r="1.8" fill="#A08050" clipPath="url(#sg-c3)"/>
-        <circle cx="68" cy="73" r="2" fill="#A08050" clipPath="url(#sg-c3)"/>
-        <ellipse cx="36" cy="76" rx="4" ry="2" fill="#CC4415" opacity="0.75" transform="rotate(-20 36 76)" clipPath="url(#sg-c3)"/>
-        <ellipse cx="58" cy="79" rx="3.5" ry="2" fill="#D4C020" opacity="0.8" transform="rotate(15 58 79)" clipPath="url(#sg-c3)"/>
-        <circle cx="30" cy="67" r="4" fill="#EF9F27"/>
-        <circle cx="30" cy="67" r="2.5" fill="#BA7517"/>
-        <circle cx="52" cy="65" r="4" fill="#EF9F27"/>
-        <circle cx="52" cy="65" r="2.5" fill="#BA7517"/>
-        <circle cx="72" cy="62" r="4" fill="#EF9F27"/>
-        <circle cx="72" cy="62" r="2.5" fill="#BA7517"/>
-        <line x1="34" y1="67" x2="48" y2="65" stroke="#BA7517" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.7"/>
-        <line x1="56" y1="65" x2="68" y2="62" stroke="#BA7517" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.7"/>
-        <line x1="20" y1="64" x2="20" y2="46" stroke="#633806" strokeWidth="2" strokeLinecap="round" clipPath="url(#sg-c3)"/>
-        <polygon points="20,46 33,50 20,54" fill="#D85A30" clipPath="url(#sg-c3)"/>
+      <svg viewBox="0 0 100 100" fill="none">
+        <defs>
+          <radialGradient id="compassBezel" cx="35%" cy="35%" r="65%">
+            <stop offset="0%" stopColor="#dde6ea"/>
+            <stop offset="100%" stopColor="#a4b4bc"/>
+          </radialGradient>
+        </defs>
+        {/* Ping ripple outer */}
+        <circle cx="50" cy="50" r="6" fill="none" stroke="#ef4444" strokeWidth="1.8">
+          <animate attributeName="r" values="6;50;6" dur="2.2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.7;0;0.7" dur="2.2s" repeatCount="indefinite"/>
+        </circle>
+        {/* Ping ripple inner */}
+        <circle cx="50" cy="50" r="6" fill="none" stroke="#ef4444" strokeWidth="2">
+          <animate attributeName="r" values="6;34;6" dur="2.2s" begin="0.7s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.5;0;0.5" dur="2.2s" begin="0.7s" repeatCount="indefinite"/>
+        </circle>
+        {/* Bezel depth shadow */}
+        <circle cx="52" cy="53" r="44" fill="#8a9aa4" opacity="0.65"/>
+        {/* Outer bezel */}
+        <circle cx="50" cy="50" r="44" fill="url(#compassBezel)"/>
+        {/* Bezel inner groove */}
+        <circle cx="50" cy="50" r="39" fill="none" stroke="#b0bec8" strokeWidth="1"/>
+        {/* Blue face */}
+        <circle cx="50" cy="50" r="38" fill="#4ab4e6"/>
+        {/* Needle shadow */}
+        <g transform="rotate(35, 50, 50)">
+          <polygon points="50,14 58,52 50,58 42,52" fill="#0a1a2a" opacity="0.18"/>
+        </g>
+        {/* Compass needle (rotated ~35° → NE direction) */}
+        <g transform="rotate(35, 50, 50)">
+          {/* North (red) */}
+          <polygon points="50,14 55,50 50,56 45,50" fill="#e53935"/>
+          {/* North shadow edge */}
+          <polygon points="50,14 55,50 50,56" fill="#b71c1c" opacity="0.3"/>
+          {/* South (white/light) */}
+          <polygon points="50,86 55,50 50,44 45,50" fill="#eceff1"/>
+          {/* South shadow edge */}
+          <polygon points="50,86 45,50 50,44" fill="#90a4ae" opacity="0.45"/>
+        </g>
+        {/* Center pivot */}
+        <circle cx="50" cy="50" r="7" fill="#8a9aa4"/>
+        <circle cx="50" cy="50" r="5" fill="#b8c8d0"/>
+        <circle cx="48.5" cy="48.5" r="1.8" fill="rgba(255,255,255,0.65)"/>
       </svg>
     ),
     title: '탐방로 안내',
@@ -600,11 +571,6 @@ const SIDE_BUTTONS = [
 
         {/* ── 헤더 배너 ── */}
         <div className="park-banner">
-          <svg className="park-banner-ridge" viewBox="0 0 1200 280" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M0 280 L0 180 Q100 120 200 160 Q300 100 400 130 Q480 80 560 110 Q650 60 720 100 Q800 70 880 95 Q960 55 1040 85 Q1120 65 1200 90 L1200 280 Z" fill="rgba(255,255,255,0.08)"/>
-            <path d="M0 280 L0 200 Q80 170 160 190 Q260 140 360 170 Q430 130 520 155 Q600 120 700 150 Q780 110 860 140 Q940 105 1040 135 Q1120 115 1200 130 L1200 280 Z" fill="rgba(255,255,255,0.06)"/>
-            <path d="M0 280 L0 230 Q120 200 240 220 Q360 190 480 210 Q600 185 720 205 Q840 180 960 200 Q1080 185 1200 195 L1200 280 Z" fill="rgba(255,255,255,0.04)"/>
-          </svg>
           <div className="park-banner-content">
             <div className="park-banner-logo">
               <img src="/월악산_국립공원_로고.jpg" alt="국립공원관리공단 로고" />
@@ -719,15 +685,15 @@ const SITE_IMAGES = {
 
 // level: 0=오프라인, 1=약함, 2=보통, 3=강함
 function WifiIcon({ level }) {
-  const arcColor = (minLevel) => level >= minLevel ? '#00e676' : 'rgba(255,255,255,0.25)';
+  const arcColor = (minLevel) => level >= minLevel ? '#2d6e40' : '#d0d8d0';
   return (
     <svg width="52" height="52" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M1.5 8.5C5.1 4.9 10.3 3 12 3s6.9 1.9 10.5 5.5" stroke={arcColor(3)} strokeWidth="2" strokeLinecap="round"/>
       <path d="M4.5 11.5C6.9 9.1 9.7 8 12 8s5.1 1.1 7.5 3.5" stroke={arcColor(2)} strokeWidth="2" strokeLinecap="round"/>
       <path d="M7.5 14.5C8.9 13.1 10.4 12.5 12 12.5s3.1.6 4.5 2" stroke={arcColor(1)} strokeWidth="2" strokeLinecap="round"/>
-      <circle cx="12" cy="18" r="1.5" fill={level > 0 ? '#00e676' : '#ff1744'}/>
+      <circle cx="12" cy="18" r="1.5" fill={level > 0 ? '#2d6e40' : '#e53935'}/>
       {level === 0 && (
-        <line x1="4" y1="4" x2="20" y2="20" stroke="#ff1744" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="4" y1="4" x2="20" y2="20" stroke="#e53935" strokeWidth="2" strokeLinecap="round"/>
       )}
     </svg>
   );
@@ -737,10 +703,10 @@ function WifiIcon({ level }) {
 function BatteryIcon({ pct }) {
   const fillRatio = pct === null ? 0 : Math.max(0, Math.min(100, pct)) / 100;
   const fillColor =
-    pct === null ? 'rgba(255,255,255,0.3)'
-    : pct <= 15  ? '#ff1744'
-    : pct <= 30  ? '#ffab00'
-    : '#00e676';
+    pct === null ? '#d0d0d0'
+    : pct <= 15  ? '#e53935'
+    : pct <= 30  ? '#f57c00'
+    : '#2d6e40';
 
   // 내부 채움 가용 너비: x=3.5 ~ x=38.5 → 35px
   const fillW = Math.round(fillRatio * 35);
@@ -749,10 +715,10 @@ function BatteryIcon({ pct }) {
     <svg width="64" height="37" viewBox="0 0 48 28" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* 배터리 몸체 */}
       <rect x="1" y="4" width="40" height="20" rx="4" ry="4"
-        stroke="rgba(255,255,255,0.7)" strokeWidth="2" fill="rgba(0,0,0,0.2)"/>
+        stroke="rgba(0,0,0,0.3)" strokeWidth="2" fill="rgba(0,0,0,0.04)"/>
       {/* 배터리 +극 돌기 */}
       <rect x="42" y="10" width="5" height="8" rx="2" ry="2"
-        fill="rgba(255,255,255,0.5)"/>
+        fill="rgba(0,0,0,0.2)"/>
       {/* 배터리 내부 채움 */}
       {fillW > 0 && (
         <rect x="3.5" y="6.5" width={fillW} height="15" rx="2" ry="2"
@@ -774,10 +740,6 @@ function App() {
   const [batteryPct, setBatteryPct] = useState(null); // null = 아직 수신 전
   const [togglePage, setTogglePage] = useState(0);   // 0: B1~B6, 1: B7~B12, 2: B13
   const [engageState, setEngageState] = useState(false);
-  // HH_260623 - Manual ENGAGE is only for arbitrary RViz 2D Goal Pose driving.
-  // Camping-site scenarios use missionEngageState so the two controls cannot
-  // stop each other.
-  const [missionEngageState, setMissionEngageState] = useState(false);
   const [signalLevel, setSignalLevel] = useState(() => {
     if (!navigator.onLine) return 0;
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -806,9 +768,12 @@ function App() {
   const [kbCaps, setKbCaps] = useState(false);          // 가상 키보드 대소문자
   const [diagPressProgress, setDiagPressProgress] = useState(0); // 진단 장누르기 진행도 (0~100)
   const [showGuestRecall, setShowGuestRecall] = useState(false); // HJ_260601: 게스트 호출 알림 팝업
+  const [guestNavigateSite, setGuestNavigateSite] = useState(null); // 게스트 사이트 이동 알림
   const diagPressAnimRef = useRef(null);
   const [showMoveConfirm, setShowMoveConfirm] = useState(false); // 출발 최종 확인 팝업
-  const [siteAccessError, setSiteAccessError] = useState(''); // HH_260622 - Unsafe site-to-site dispatch feedback.
+  const [showMoveVerify, setShowMoveVerify] = useState(false);  // 사이트명 입력 확인 팝업
+  const [moveVerifyInput, setMoveVerifyInput] = useState('');
+  const [moveVerifyError, setMoveVerifyError] = useState(false);
 
   const openSettingsLoginModal = () => {
     setActiveModal(null);
@@ -894,10 +859,6 @@ function App() {
 
   // 현재 ON인 사이트 (이동 중인 사이트)
   const activeSite = SITE_NAMES.find(s => states[s]) || null;
-  // HH_260623 - Site mission progress follows mission engage, not manual ENGAGE.
-  const missionPaused = !!activeSite && !missionEngageState && !arrivedSite && !isReturning;
-  // HH_260624 - Return-to-drop-zone must expose the same mission latch pause state.
-  const returningPaused = isReturning && !missionEngageState;
 
   // ── 운영시간 게이트 확인 ───────────────────────────────────────────────
   const isWithinOperatingHours = () => {
@@ -1003,30 +964,10 @@ function App() {
       if ('site' in data && 'state' in data) {
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
-      // HH_260622 - AMR arrived means campsite internal wait is active.
+      // AMR 도착 알림: {"arrived": "B1"} 수신 (state=3)
       if ('arrived' in data) {
         setArrivedSite(data.arrived);
         setShowArrivalComplete(true);
-        setShowWaiting(false);
-        setSiteAccessError('');
-      }
-      // HH_260622 - Site-to-site dispatch is rejected while the robot is inside a campsite.
-      if (data.error === 'site_access_rejected') {
-        setSiteAccessError(data.message || '현재 상태에서는 새 목적지를 선택할 수 없습니다. 먼저 Drop Zone으로 복귀하세요.');
-        // HH_260623 - Revert optimistic site ON state when backend rejects the mission.
-        // Otherwise the UI shows a campsite as active even though planning never accepted it.
-        if (data.site) {
-          setStates(prev => ({ ...prev, [data.site]: false }));
-        }
-        setSelectedSite(null);
-        setShowMoveConfirm(false);
-      }
-      if (data.returning) {
-        setShowArrivalComplete(false);
-        setArrivedSite(null);
-        setIsReturning(true);
-        setShowWaiting(false);
-        setSiteAccessError('');
       }
       // AMR Drop_zone 대기 복귀: {"amr_state": 0} 수신
       if ('amr_state' in data && data.amr_state === 0) {
@@ -1035,10 +976,15 @@ function App() {
         setIsReturning(false);
         setShowWaiting(true);
         setShowGuestRecall(false);
+        setGuestNavigateSite(null);
       }
       // HJ_260601: 게스트 호출 알림: {"guest_recall": true} 수신
       if (data.guest_recall) {
         setShowGuestRecall(true);
+      }
+      // 게스트 사이트 이동 알림: {"guest_navigate": "B1"} 수신
+      if (data.guest_navigate) {
+        setGuestNavigateSite(data.guest_navigate);
       }
       // 배터리 잔량: {"battery": 85} 수신
       if ('battery' in data) {
@@ -1047,10 +993,6 @@ function App() {
       // engage 상태: {"engage": true/false} 수신
       if ('engage' in data) {
         setEngageState(data.engage);
-      }
-      // HH_260623 - UI scenario engage is independent from manual ENGAGE.
-      if ('mission_engage' in data) {
-        setMissionEngageState(data.mission_engage);
       }
     };
 
@@ -1085,24 +1027,6 @@ function App() {
     }
   };
 
-  // HH_260623 - Pause/resume campsite missions without touching manual ENGAGE.
-  // Manual ENGAGE is reserved for arbitrary RViz 2D Goal Pose driving only.
-  const handleMissionEngage = (enabled, stopManualEngage = false) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      const payload = { mission_engage: enabled };
-      // HH_260624 - A UI stop is safety-critical and closes both motion latches.
-      // Resume still reopens only mission_engage so manual 2D-goal driving remains separate.
-      if (!enabled && stopManualEngage) {
-        payload.engage = false;
-      }
-      wsRef.current.send(JSON.stringify(payload));
-    }
-    setMissionEngageState(enabled);
-    if (!enabled && stopManualEngage) {
-      setEngageState(false);
-    }
-  };
-
   const handleToggle = (site) => {
     if (states[site]) {
       // 이미 ON → OFF 불가, 아무것도 하지 않음
@@ -1110,7 +1034,6 @@ function App() {
     }
     if (anyOn) {
       // 다른 사이트가 ON 중 → 선택 불가
-      setSiteAccessError('현재 임무가 진행 중입니다. 다른 사이트로 이동하려면 먼저 Drop Zone으로 복귀하세요.');
       return;
     }
     // OFF → 이미지 프리뷰 표시 (아직 publish 안 함)
@@ -1126,14 +1049,11 @@ function App() {
     }
   };
 
-  // ── 이동중 "Yes" 클릭 → 미션 운행 일시정지 ───────────────────────────────
+  // ── 이동중 "Yes" 클릭 → 운행 정지 (OFF) ─────────────────────────────────
   const handleStopMove = () => {
-    if (activeSite) handleMissionEngage(false, true);
-  };
-
-  // HH_260624 - Drop-zone return needs an explicit pause control in the UI.
-  const handleReturnStop = () => {
-    if (isReturning) handleMissionEngage(false, true);
+    if (activeSite) {
+      applyToggle(activeSite, false);
+    }
   };
 
   // ── 이용 완료 버튼 클릭 → state=3(RETURNING) publish 요청 ──────────────
@@ -1165,26 +1085,19 @@ function App() {
   };
 
   // ── JSX 렌더링 ─────────────────────────────────────────────────────────
+  // ── 공통 시간 문자열 (대기/컨트롤 화면 공유) ──────────────────────────────
+  const dateStr = currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+  const timeStr = currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
   // 대기 화면: 모든 토글 OFF 상태일 때 표시, 클릭/터치 시 토글 화면으로 전환
   if (showWaiting) {
     const modalData = SIDE_BUTTONS.find(b => b.id === activeModal);
-    const dateStr = currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
-    const timeStr = currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     return (
       <div className="waiting-screen">
         {/* ── 상단 헤더 배너 ── */}
         <div className="waiting-header">
-          {/* 하늘 배경 */}
-          <div className="wh-sky" />
-          {/* 태양 */}
-          <div className="wh-sun" />
-          {/* 구름 */}
-          <div className="wh-cloud wh-c1" /><div className="wh-cloud wh-c2" /><div className="wh-cloud wh-c3" />
-          {/* 새 */}
-          <div className="wh-bird wh-b1" /><div className="wh-bird wh-b2" /><div className="wh-bird wh-b3" />
-
-          {/* 산 일러스트 SVG */}
-          <svg className="wh-mountains" viewBox="0 0 1200 160" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+          {/* [REMOVED decorative sky/sun/cloud/bird/mountain elements — replaced with clean white header] */}
+          {false && <svg className="wh-mountains" viewBox="0 0 1200 160" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
             <polygon points="0,160 80,70 160,110 260,50 360,95 460,45 520,80 600,30 680,75 780,40 860,80 960,35 1060,70 1140,50 1200,65 1200,160" fill="#6aa8d4" opacity="0.45"/>
             <polygon points="0,160 60,100 140,130 220,80 300,115 400,65 480,100 560,55 640,90 720,60 800,95 880,55 960,85 1040,60 1120,80 1200,65 1200,160" fill="#4a8c6a" opacity="0.6"/>
             <polygon points="560,55 575,38 590,30 605,38 620,55 600,50" fill="white" opacity="0.9"/>
@@ -1210,12 +1123,8 @@ function App() {
             <g transform="translate(180,92)"><circle cx="0" cy="-2" r="5" fill="#f4c078"/><rect x="-4" y="3" width="8" height="12" fill="#3a6ab0" rx="1"/><rect x="3" y="3" width="5" height="9" fill="#8b6040" rx="1"/><line x1="-4" y1="15" x2="-6" y2="26" stroke="#3a4060" strokeWidth="2" strokeLinecap="round"/><line x1="4" y1="15" x2="6" y2="26" stroke="#3a4060" strokeWidth="2" strokeLinecap="round"/><line x1="8" y1="5" x2="12" y2="28" stroke="#888" strokeWidth="1.5" strokeLinecap="round"/><ellipse cx="0" cy="-6" rx="6" ry="2.5" fill="#c08030"/><ellipse cx="0" cy="-8" rx="3.5" ry="3" fill="#c08030"/></g>
             <g transform="translate(205,97)"><circle cx="0" cy="-2" r="4.5" fill="#f0a878"/><rect x="-3.5" y="3" width="7" height="11" fill="#c04060" rx="1"/><rect x="2.5" y="3" width="4.5" height="8" fill="#7a5030" rx="1"/><line x1="-3.5" y1="14" x2="-5" y2="24" stroke="#3a3050" strokeWidth="2" strokeLinecap="round"/><line x1="3.5" y1="14" x2="5" y2="24" stroke="#3a3050" strokeWidth="2" strokeLinecap="round"/><line x1="6" y1="5" x2="9" y2="26" stroke="#888" strokeWidth="1.5" strokeLinecap="round"/><ellipse cx="0" cy="-6" rx="5.5" ry="2" fill="#206040"/><ellipse cx="0" cy="-7.5" rx="3" ry="2.8" fill="#206040"/></g>
             <path d="M 140,160 Q 200,145 260,155 Q 320,148 380,158" stroke="#c8a870" strokeWidth="4" fill="none" opacity="0.7" strokeLinecap="round"/>
-          </svg>
+          </svg>}
 
-          {/* 텍스트 가독성 오버레이 */}
-          <div className="wh-overlay" />
-
-          {/* 텍스트 콘텐츠 */}
           <div className="wh-content">
             <div className="wh-left">
               <div className="wh-logo">
@@ -1227,10 +1136,6 @@ function App() {
               </div>
             </div>
             <div className="wh-right-group">
-              <div className="wh-right">
-                <span className="wh-date">{dateStr}</span>
-                <span className="wh-time">{timeStr}</span>
-              </div>
               <div className="wh-wifi">
                 <WifiIcon level={signalLevel} />
                 <span className="wh-wifi-label">WIFI</span>
@@ -1240,6 +1145,10 @@ function App() {
                 <span className="wh-battery-label">
                   {batteryPct === null ? '–%' : `${batteryPct}%`}
                 </span>
+              </div>
+              <div className="wh-right">
+                <span className="wh-date">{dateStr}</span>
+                <span className="wh-time">{timeStr}</span>
               </div>
             </div>
           </div>
@@ -1389,6 +1298,14 @@ function App() {
             </div>
           </div>
         )}
+        {/* 게스트 사이트 이동 알림 팝업 (대기 화면) */}
+        {guestNavigateSite && (
+          <div className="guest-recall-overlay">
+            <div className="guest-recall-box">
+              <p className="guest-recall-msg">{guestNavigateSite} 사이트에서 호출되었습니다</p>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1396,14 +1313,8 @@ function App() {
   return (
     <div className="main-layout" onClick={resetIdleTimer} onTouchStart={resetIdleTimer}>
 
-      {/* ── 상단 헤더 배너 (대기화면과 동일 테마) ── */}
+      {/* ── 상단 헤더 배너 ── */}
       <div className="control-header">
-        <div className="ch-sky" />
-        <svg className="ch-mountains" viewBox="0 0 1200 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-          <polygon points="0,80 80,35 160,55 260,25 360,48 460,22 520,40 600,15 680,38 780,20 860,40 960,18 1060,35 1140,25 1200,33 1200,80" fill="#4a8c6a" opacity="0.5"/>
-          <polygon points="0,80 60,50 140,65 220,40 300,58 400,32 480,50 560,28 640,45 720,30 800,48 880,28 960,42 1040,30 1120,40 1200,33 1200,80" fill="#2d6e40" opacity="0.85"/>
-        </svg>
-        <div className="ch-overlay" />
         <div className="ch-content">
           <div className="ch-left">
             <div className="ch-logo">
@@ -1424,6 +1335,10 @@ function App() {
               <span className="wh-battery-label">
                 {batteryPct === null ? '–%' : `${batteryPct}%`}
               </span>
+            </div>
+            <div className="wh-right">
+              <span className="wh-date">{dateStr}</span>
+              <span className="wh-time">{timeStr}</span>
             </div>
           </div>
         </div>
@@ -1457,27 +1372,11 @@ function App() {
               />
               <p className="preview-site-name">{arrivedSite}</p>
               <p className="preview-arrived">배송 로봇이 목적지에 도착했습니다.</p>
-              <div className="preview-yn-btns">
-                <button className="preview-yes-btn" onClick={handleArrivalComplete}>Drop Zone 복귀</button>
-              </div>
             </>
           ) : isReturning ? (
             <>
               <span className="preview-placeholder-title">Drop Zone</span>
-              <p className={returningPaused ? "preview-paused" : "preview-returning"}>
-                {returningPaused ? "Drop Zone 복귀가 일시 정지 중입니다." : "로봇이 Drop Zone (대기 장소)로 이동중입니다."}
-              </p>
-              <p className="preview-question">
-                {returningPaused ? "Drop Zone 복귀를 재개하시겠습니까?" : "복귀 운행을 정지하시겠습니까?"}
-              </p>
-              <div className="preview-yn-btns">
-                <button
-                  className={returningPaused ? "preview-yes-btn" : "preview-stop-btn"}
-                  onClick={returningPaused ? () => handleMissionEngage(true) : handleReturnStop}
-                >
-                  {returningPaused ? "복귀 재개" : "정지"}
-                </button>
-              </div>
+              <p className="preview-returning">로봇이 Drop Zone (대기 장소)로 이동중입니다.</p>
             </>
           ) : activeSite ? (
             <>
@@ -1487,19 +1386,10 @@ function App() {
                 className="preview-image"
               />
               <p className="preview-site-name">{activeSite}</p>
-              <p className={missionPaused ? "preview-paused" : "preview-moving"}>
-                {missionPaused ? "임무 운행 허가가 OFF되어 일시 정지 중입니다." : "배송 로봇이 이동중 입니다."}
-              </p>
-              <p className="preview-question">
-                {missionPaused ? "다시 운행 허가하시겠습니까?" : "운행을 정지하시겠습니까?"}
-              </p>
+              <p className="preview-moving">배송 로봇이 이동중 입니다.</p>
+              <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
-                <button
-                  className={missionPaused ? "preview-yes-btn" : "preview-stop-btn"}
-                  onClick={missionPaused ? () => handleMissionEngage(true) : handleStopMove}
-                >
-                  {missionPaused ? "운행 재개" : "예"}
-                </button>
+                <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
               </div>
             </>
           ) : (
@@ -1530,12 +1420,12 @@ function App() {
               {SITE_NAMES.slice(togglePage * 6, togglePage * 6 + 6).map(site => (
                 <button
                   key={site}
-                  className={`toggle-card ${states[site] ? 'on' : ''} ${states[site] && !missionEngageState ? 'paused' : ''} ${selectedSite === site ? 'selected' : ''} ${anyOn && !states[site] ? 'locked' : ''} ${isReturning ? 'locked' : ''}`}
+                  className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${anyOn && !states[site] ? 'locked' : ''} ${isReturning ? 'locked' : ''}`}
                   onClick={() => handleToggle(site)}
                   disabled={isReturning}
                 >
                   <span className="site-label">{site}</span>
-                  {states[site] && <span className="site-on-badge">{missionEngageState ? "이동중" : "일시정지"}</span>}
+                  {states[site] && <span className="site-on-badge">ON</span>}
                 </button>
               ))}
               {togglePage === Math.ceil(SITE_NAMES.length / 6) - 1 && (
@@ -1544,7 +1434,7 @@ function App() {
                   onClick={handleEngage}
                   disabled={isReturning}
                 >
-                  <span className="site-label">수동 ENGAGE</span>
+                  <span className="site-label">ENGAGE</span>
                   {engageState && <span className="site-on-badge">ON</span>}
                 </button>
               )}
@@ -1577,13 +1467,13 @@ function App() {
         <div className="arrival-complete-overlay">
           <div className="arrival-complete-box">
             <p className="arrival-complete-msg">
-              짐을 내려놓은 후,<br /><strong>[Drop Zone 복귀]</strong> 버튼을 눌러주세요
+              짐을 내려놓은 후,<br /><strong>[이용 완료]</strong> 버튼을 눌러주세요
             </p>
             <p className="arrival-complete-sub">
-              로봇은 campsite에서 crab-out으로 빠져나간 뒤 Drop Zone으로 복귀합니다.
+              이용 완료 버튼을 누르면 로봇이 이동합니다.
             </p>
             <button className="arrival-complete-btn" onClick={handleArrivalComplete}>
-              Drop Zone 복귀
+              이용 완료
             </button>
           </div>
         </div>
@@ -1600,7 +1490,9 @@ function App() {
                 className="move-confirm-yes"
                 onClick={() => {
                   setShowMoveConfirm(false);
-                  handleConfirmMove();
+                  setMoveVerifyInput('');
+                  setMoveVerifyError(false);
+                  setShowMoveVerify(true);
                 }}
               >
                 예
@@ -1616,11 +1508,51 @@ function App() {
         </div>
       )}
 
-      {siteAccessError && (
-        <div className="site-access-error-overlay" onClick={() => setSiteAccessError('')}>
-          <div className="site-access-error-box" onClick={e => e.stopPropagation()}>
-            <p className="site-access-error-msg">{siteAccessError}</p>
-            <button className="site-access-error-btn" onClick={() => setSiteAccessError('')}>확인</button>
+      {/* 사이트명 입력 확인 팝업 */}
+      {showMoveVerify && selectedSite && (
+        <div className="move-verify-overlay" onClick={() => { setShowMoveVerify(false); setMoveVerifyError(false); }}>
+          <div className="move-verify-box" onClick={e => e.stopPropagation()}>
+            <p className="move-verify-title">
+              지금 이동하시는 사이트는<br />
+              <span className="move-verify-site">{selectedSite}</span><br />
+              입니다
+            </p>
+            <p className="move-verify-sub">아래에 사이트명을 입력해주세요</p>
+            {moveVerifyError && (
+              <div className="move-verify-error-box">
+                <span className="move-verify-wrong">"{moveVerifyInput}"</span>
+                <span className="move-verify-error-msg">로 이동하시는게 맞으십니까?</span>
+                <p className="move-verify-retry">숫자를 다시 입력해주세요</p>
+              </div>
+            )}
+            <input
+              className={`move-verify-input${moveVerifyError ? ' error' : ''}`}
+              value={moveVerifyInput}
+              onChange={e => { setMoveVerifyInput(e.target.value); setMoveVerifyError(false); }}
+              placeholder={`예: ${selectedSite}`}
+              autoFocus
+            />
+            <div className="move-confirm-btns">
+              <button
+                className="move-confirm-no"
+                onClick={() => { setShowMoveVerify(false); setMoveVerifyError(false); }}
+              >
+                취소
+              </button>
+              <button
+                className="move-confirm-yes"
+                onClick={() => {
+                  if (moveVerifyInput.trim().toUpperCase() === selectedSite.toUpperCase()) {
+                    setShowMoveVerify(false);
+                    handleConfirmMove();
+                  } else {
+                    setMoveVerifyError(true);
+                  }
+                }}
+              >
+                확인
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1630,6 +1562,14 @@ function App() {
         <div className="guest-recall-overlay">
           <div className="guest-recall-box">
             <p className="guest-recall-msg">로봇이 이용객의 위치로 이동 중입니다</p>
+          </div>
+        </div>
+      )}
+      {/* 게스트 사이트 이동 알림 팝업 */}
+      {guestNavigateSite && (
+        <div className="guest-recall-overlay">
+          <div className="guest-recall-box">
+            <p className="guest-recall-msg">{guestNavigateSite} 사이트에서 호출되었습니다</p>
           </div>
         </div>
       )}

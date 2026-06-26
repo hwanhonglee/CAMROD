@@ -1,6 +1,6 @@
 <!-- PlannerSelector-enabled BT.
-  - Default planner: Smac2D
-  - Optional planners: NavFn, Smac2D, SmacHybrid, SmacLattice
+  - Default planner: LaneletRoute
+  - Optional planners: Smac2D, NavFn, SmacHybrid, SmacLattice
   - Default controller: RPP
   - Optional controllers: MPPI, DWB, Graceful, RotationShim
   - Switch planner by publishing std_msgs/String to /planning/planner_selector
@@ -10,9 +10,9 @@
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
       <PipelineSequence name="NavigateGoalLocked">
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
-        <!-- HH_260625 - Smac2D is the fast default; lanelet constraints come
-             from the map cost grid instead of the LaneletRoute graph. -->
-        <PlannerSelector selected_planner="{selected_planner}" default_planner="Smac2D" topic_name="/planning/planner_selector"/>
+        <!-- HH_260626 - Default to connected lanelet routing; grid planners
+             remain fallback/selectable for recovery and debugging. -->
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="LaneletRoute" topic_name="/planning/planner_selector"/>
         <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector"/>
         <!-- HH_260619 - Lock the global route after each accepted goal.
              GoalUpdatedController computes a new global path only on the first
@@ -20,12 +20,13 @@
              then slices the fixed global route around the live robot pose. -->
         <GoalUpdatedController>
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
-            <!-- HH_260528: Try selected planner first, then immediate NavFn fallback. -->
+            <!-- HH_260626: Try connected/selected route first, then grid fallbacks. -->
             <Fallback name="ComputePathPlannerFallback">
               <!-- HH_260619 - Pass the navigator-provided snapped start pose.
                    Without start="{start}", ComputePathToPose silently plans from
                    current TF and draws a short off-center connector near the robot. -->
               <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="{selected_planner}"/>
+              <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="Smac2D"/>
               <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="NavFn"/>
             </Fallback>
             <Sequence name="ClearGlobalCostmapAndSettle-Context">
@@ -36,8 +37,9 @@
             </Sequence>
           </RecoveryNode>
         </GoalUpdatedController>
-        <!-- HH_260513: Smooth planner path before handing to FollowPath. -->
-        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
+        <!-- HH_260626: Smooth every planner result before FollowPath; collision
+             check keeps smoothing from cutting across lane/cost boundaries. -->
+        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="true"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">
           <FollowPath path="{path}" controller_id="{selected_controller}"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>

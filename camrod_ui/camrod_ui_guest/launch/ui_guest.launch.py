@@ -1,4 +1,5 @@
 # HJ_260601: Launch file for guest UI node (WiFi-accessible recall site).
+# (확장) ui_destination_topic / site_names 파라미터 추가 (사이트 선택 호출 지원)
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
@@ -28,11 +29,14 @@ def generate_launch_description():
         default_value='60',
         description='Seconds to hold lock after disconnect before releasing to others',
     )
-    default_recall_site_arg = DeclareLaunchArgument(
-        'default_recall_site_name',
-        default_value='camping_site_1',
-        description='Fallback camping_site_* key used when guest recall omits a site',
+    # (확장) 사이트 선택 호출 — ui_backend_node가 구독하는 토픽과 동일하게 설정
+    ui_destination_topic_arg = DeclareLaunchArgument(
+        'ui_destination_topic',
+        default_value='/ui/selected_destination',
+        description='Topic to publish selected site destination (consumed by ui_backend_node)',
     )
+    # Note: site_names is a string_array parameter — override via a params YAML file
+    #       if the default B1~B13 list needs to change.
 
     guest_node = Node(
         package='camrod_ui',
@@ -44,10 +48,9 @@ def generate_launch_description():
             'host': LaunchConfiguration('guest_host'),
             'port': LaunchConfiguration('guest_port'),
             'amr_service_state_topic': '/AMR_service_state',
-            'camping_site_recall_topic': '/planning/state_machine/camping_site_recall',
-            'default_recall_site_name': LaunchConfiguration('default_recall_site_name'),
             'battery_topic': '/battery_percentage',
             'grace_period_s': LaunchConfiguration('grace_period_s'),
+            'ui_destination_topic': LaunchConfiguration('ui_destination_topic'),
         }],
     )
 
@@ -56,6 +59,6 @@ def generate_launch_description():
         host_arg,
         port_arg,
         grace_period_arg,
-        default_recall_site_arg,
+        ui_destination_topic_arg,
         guest_node,
     ])

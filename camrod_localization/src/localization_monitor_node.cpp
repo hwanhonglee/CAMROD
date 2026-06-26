@@ -66,6 +66,11 @@ public:
     // 0 disables each check independently.
     dr_max_duration_s_ = declare_parameter<double>("dr_max_duration_s", 0.0);
     dr_max_cov_trace_ = declare_parameter<double>("dr_max_cov_trace", 0.0);
+    // HH_260626: Publish worse modes immediately, but require GNSS recovery to
+    // remain stable briefly before returning to NORMAL. This avoids repeated
+    // DR_ONLY->NORMAL flapping from one late GNSS sample.
+    mode_degrade_debounce_s_ = declare_parameter<double>("mode_degrade_debounce_s", 0.0);
+    mode_recovery_debounce_s_ = declare_parameter<double>("mode_recovery_debounce_s", 1.5);
 
     publish_localization_status_ =
       declare_parameter<bool>("publish_localization_status", false);
@@ -257,6 +262,8 @@ private:
       status_label = "OK";
     }
 
+    mode = applyModeDebounce(mode, status_label, now);
+
     // HH_260507: DR duration tracking and timeout detection.
     if (in_dr) {
       if (dr_start_time_.nanoseconds() == 0) {
@@ -319,6 +326,77 @@ private:
     }
   }
 
+  int modeSeverity(uint8_t value) const
+  {
+    const avg_msgs::msg::AvgLocalizationMode ref;
+    if (value == ref.NORMAL) {
+      return 0;
+    }
+    if (value == ref.DEGRADED) {
+      return 1;
+    }
+    if (value == ref.DR_ONLY) {
+      return 2;
+    }
+    if (value == ref.INVALID) {
+      return 3;
+    }
+    return static_cast<int>(value);
+  }
+
+  avg_msgs::msg::AvgLocalizationMode applyModeDebounce(
+    const avg_msgs::msg::AvgLocalizationMode & raw_mode,
+    std::string & status_label,
+    const rclcpp::Time & now)
+  {
+    if (!has_published_mode_) {
+      acceptPublishedMode(raw_mode, status_label);
+      return raw_mode;
+    }
+
+    if (raw_mode.value == published_mode_value_) {
+      pending_mode_active_ = false;
+      acceptPublishedMode(raw_mode, status_label);
+      return raw_mode;
+    }
+
+    const bool recovering =
+      modeSeverity(raw_mode.value) < modeSeverity(published_mode_value_);
+    const double debounce_s =
+      recovering ? mode_recovery_debounce_s_ : mode_degrade_debounce_s_;
+
+    if (!pending_mode_active_ || pending_mode_value_ != raw_mode.value) {
+      pending_mode_active_ = true;
+      pending_mode_value_ = raw_mode.value;
+      pending_mode_label_ = raw_mode.label;
+      pending_status_label_ = status_label;
+      pending_mode_since_ = now;
+    }
+
+    const double elapsed_s = (now - pending_mode_since_).seconds();
+    if (debounce_s <= 0.0 || elapsed_s >= debounce_s) {
+      acceptPublishedMode(raw_mode, status_label);
+      pending_mode_active_ = false;
+      return raw_mode;
+    }
+
+    avg_msgs::msg::AvgLocalizationMode held;
+    held.value = published_mode_value_;
+    held.label = published_mode_label_;
+    status_label = published_status_label_;
+    return held;
+  }
+
+  void acceptPublishedMode(
+    const avg_msgs::msg::AvgLocalizationMode & mode,
+    const std::string & status_label)
+  {
+    has_published_mode_ = true;
+    published_mode_value_ = mode.value;
+    published_mode_label_ = mode.label;
+    published_status_label_ = status_label;
+  }
+
   std::string diag_topic_;
   // HH_260422: true -> subscribe to diag_topic_ and factor gnss_update_accepted / wheel_update_accepted
   //   into the gnss_good / wheel_good decision.
@@ -343,8 +421,20 @@ private:
   // HH_260507: DR timeout — 0 = disabled.
   double dr_max_duration_s_{0.0};
   double dr_max_cov_trace_{0.0};
+  double mode_degrade_debounce_s_{0.0};
+  double mode_recovery_debounce_s_{1.5};
   rclcpp::Time dr_start_time_{0, 0, RCL_ROS_TIME};
   bool dr_timeout_{false};
+
+  bool has_published_mode_{false};
+  uint8_t published_mode_value_{0};
+  std::string published_mode_label_{"NORMAL"};
+  std::string published_status_label_{"OK"};
+  bool pending_mode_active_{false};
+  uint8_t pending_mode_value_{0};
+  std::string pending_mode_label_;
+  std::string pending_status_label_;
+  rclcpp::Time pending_mode_since_{0, 0, RCL_ROS_TIME};
 
   bool publish_localization_status_{false}; // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs)
   std::string localization_status_topic_;

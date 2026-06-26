@@ -21,16 +21,14 @@ planner_server:
     # Large timeout (12s) caused slow recoveries after global-costmap clear.
     costmap_wait_timeout_sec: 2.5
     # Runtime-selectable planner IDs (published to /planning/planner_selector).
-    # HH_260625: Keep LaneletRoute configured below but do not load it by
-    # default; its routing graph adds ~34 s to planner_server configure on the
-    # full C-track map. Smac2D uses the lanelet cost grid and starts quickly.
-    planner_plugins: ["Smac2D", "NavFn", "ThetaStar", "SmacHybrid", "SmacLattice"]
+    # HH_260626: Load LaneletRoute by default so normal plans follow connected
+    # lanelet successors before any grid fallback planner is tried.
+    planner_plugins: ["LaneletRoute", "Smac2D", "NavFn", "ThetaStar", "SmacHybrid", "SmacLattice"]
 
     LaneletRoute:
       plugin: "camrod_planning::LaneletRoutePlanner"
-      # HH_260625: Optional exact lanelet-centerline route planner. Add
-      # "LaneletRoute" back to planner_plugins only when that startup cost is
-      # acceptable for the run profile.
+      # HH_260626: Exact lanelet-centerline route planner. Keep lane changes
+      # disabled by default to avoid adjacent-lane shortcuts on parallel lanes.
       map_path: ""
       offset_lat: 0.0
       offset_lon: 0.0
@@ -38,7 +36,7 @@ planner_server:
       frame_id: "map"
       routing_location: "de"
       routing_participant: "vehicle:car"
-      allow_lane_changes: true
+      allow_lane_changes: false
       max_snap_distance_m: 8.0
       interpolation_resolution_m: 0.20
       same_lane_forward_epsilon_m: 0.30

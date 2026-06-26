@@ -22,7 +22,7 @@ def generate_launch_description():
         DeclareLaunchArgument('local_path_pose_topic', default_value='/localization/pose'),
         DeclareLaunchArgument('local_path_global_path_topic', default_value='/planning/global_path'),
         DeclareLaunchArgument('local_path_fallback_global_path_topic', default_value=''),
-        DeclareLaunchArgument('local_path_source', default_value='slice_only'),
+        DeclareLaunchArgument('local_path_source', default_value='controller_then_slice'),
         DeclareLaunchArgument('enable_tracking_error', default_value='true'),
         DeclareLaunchArgument('tracking_error_topic', default_value='/planning/ltracking_error'),
 
@@ -35,9 +35,8 @@ def generate_launch_description():
             parameters=[
                 LaunchConfiguration('local_path_extractor_param_file'),
                 {
-                    # HH_260619 - Use the latest published route directly.
-                    # SmoothPath is internal to the Nav2 BT blackboard in this stack,
-                    # so /planning/plan_smoothed must not be treated as a route topic.
+                    # HH_260626 - Prefer controller path in the YAML/arg default
+                    # so /planning/local_path matches the smoothed FollowPath input.
                     'global_path_topic': LaunchConfiguration('local_path_global_path_topic'),
                     'fallback_global_path_topic': LaunchConfiguration('local_path_fallback_global_path_topic'),
                     'pose_topic': LaunchConfiguration('local_path_pose_topic'),

@@ -99,7 +99,7 @@ bringup:
     # HH_260619 - Use global-route slicing by default so operator-visible
     # /planning/local_path follows the newest goal immediately and does not
     # reuse a stale controller debug path during goal replacement.
-    local_path_source: slice_only
+    local_path_source: controller_then_slice
 
     # ---- Planning cmd_vel gate ----
     # HH_260623 - Manual 2D-goal engage and UI mission engage are separate latches.
@@ -126,6 +126,9 @@ bringup:
     cmd_vel_gate_enable_gnss_recovery_hold: true
     cmd_vel_gate_localization_mode_topic: /localization/mode
     cmd_vel_gate_gnss_recovery_hold_s: 2.0
+    # HH_260626: Avoid repeated recovery holds from one-sample GNSS/mode flaps.
+    cmd_vel_gate_gnss_recovery_min_source_s: 0.5
+    cmd_vel_gate_gnss_recovery_hold_cooldown_s: 5.0
     # AvgLocalizationMode enum used in this workspace: NORMAL=0, DR_ONLY=2.
     cmd_vel_gate_gnss_recovery_source_mode_min: 2
     cmd_vel_gate_gnss_recovery_target_mode: 0
@@ -252,6 +255,9 @@ bringup:
     cmd_vel_gate_route_heading_min_path_points: 2
     # HH_260507: Scale all cmd_vel output by this factor before sending to /planning/cmd_vel.
     cmd_vel_gate_speed_scale: 0.5
+    # HH_260626: Publish zero if Nav2 raw cmd_vel stops arriving.
+    cmd_vel_gate_input_timeout_s: 0.35
+    cmd_vel_gate_zero_publish_rate_hz: 10.0
 
     # ---- Nav2 profile selection ----
     # HH_260522: unified controller selector.
@@ -276,10 +282,9 @@ bringup:
     # Examples:
     # - navfn_rpp.yaml       -> planner=NavFn, controller=RPP
     # - smac2d_dwb.yaml      -> planner=Smac2D, controller=DWB
-    # HH_260625: Default to Smac2D for startup responsiveness. LaneletRoute
-    # remains selectable, but its routing-graph build is too slow for normal
-    # bringup on the full C-track map.
-    nav2_selected_planner: Smac2D
+    # HH_260626: Default to connected lanelet routing. Smac2D/NavFn remain
+    # fallback/selectable when the graph route is unavailable.
+    nav2_selected_planner: LaneletRoute
     # HH_260625: RPP is the real-bringup default; MPPI remains selectable.
     nav2_selected_controller: RPP
 
@@ -346,6 +351,9 @@ bringup:
     cmd_vel_gate_enable: true
     cmd_vel_in_topic: /planning/cmd_vel
     cmd_vel_out_topic: /platform/cmd_vel
+    # HH_260626: Final zero-output guard if /planning/cmd_vel stops arriving.
+    cmd_vel_input_timeout_s: 0.50
+    cmd_vel_zero_publish_rate_hz: 10.0
     # HH_260522: unified source selectors for platform cmd_vel gate.
     # HH_260625 - Use /planning/engaged as the planning-side effective state.
     # The platform gate still requires /platform/drive_enable separately.

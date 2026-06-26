@@ -121,6 +121,14 @@ class PlanningCmdVelGateNode(Node):
         self.speed_scale = float(
             self.declare_parameter("speed_scale", 1.0).value
         )
+        # HH_260626: If Nav2 stops publishing raw cmd_vel while gates are open,
+        # keep sending zero so downstream controllers never reuse a stale command.
+        self.input_timeout_s = float(
+            self.declare_parameter("input_timeout_s", 0.35).value
+        )
+        self.zero_publish_rate_hz = float(
+            self.declare_parameter("zero_publish_rate_hz", 10.0).value
+        )
         # HH_260427: When localization recovers from DR_ONLY to NORMAL, force
         # a short stop-hold window so downstream stack can settle the recovered pose.
         self.enable_gnss_recovery_hold = bool(
@@ -132,7 +140,13 @@ class PlanningCmdVelGateNode(Node):
         self.gnss_recovery_hold_s = float(
             self.declare_parameter("gnss_recovery_hold_s", 2.0).value
         )
-        # Default transition condition: DR_ONLY(2)+ -> NORMAL(1).
+        self.gnss_recovery_min_source_s = float(
+            self.declare_parameter("gnss_recovery_min_source_s", 0.5).value
+        )
+        self.gnss_recovery_hold_cooldown_s = float(
+            self.declare_parameter("gnss_recovery_hold_cooldown_s", 5.0).value
+        )
+        # Default transition condition: DR_ONLY(2)+ -> NORMAL(0).
         self.gnss_recovery_source_mode_min = int(
             self.declare_parameter(
                 "gnss_recovery_source_mode_min",
@@ -507,6 +521,8 @@ class PlanningCmdVelGateNode(Node):
         self._cost_blocked_until = 0.0
         # HH_260427: Recovery hold timestamp after DR_ONLY -> NORMAL transition.
         self._gnss_recovery_blocked_until = 0.0
+        self._gnss_recovery_source_enter_sec: float | None = None
+        self._gnss_recovery_last_hold_sec = -1.0e9
         self._last_localization_mode_value: int | None = None
         self._last_unavoidable_cluster_cells = 0
         self._last_unavoidable_cluster_ratio = 0.0
@@ -533,6 +549,9 @@ class PlanningCmdVelGateNode(Node):
         self._last_route_heading_path: Path | None = None
         self._route_heading_align_active = False
         self._last_block_reason_log_sec = 0.0
+        self._last_input_cmd_time: Time | None = None
+        self._cmd_input_stale = False
+        self._last_cmd_input_stale_log_sec = 0.0
         self._cost_source_grids: dict[str, OccupancyGrid] = {}
         self._cost_source_recv_sec: dict[str, float] = {}
 
@@ -650,6 +669,10 @@ class PlanningCmdVelGateNode(Node):
             )
 
         self._state_timer = self.create_timer(0.5, self._publish_state)
+        self._cmd_timeout_timer = self.create_timer(
+            1.0 / max(1.0, self.zero_publish_rate_hz),
+            self._on_cmd_timeout_timer,
+        )
         # HH_260415: Allow runtime threshold/profile tuning via ros2 param set.
         self.add_on_set_parameters_callback(self._on_set_parameters)
         self._publish_state()
@@ -661,8 +684,12 @@ class PlanningCmdVelGateNode(Node):
             f"estop_topic={self.estop_topic if self.estop_topic_enabled else '(disabled)'} "
             f"allow_on_start={'true' if self.allow_on_start else 'false'} "
             f"speed_scale={self.speed_scale:.2f} "
+            f"input_timeout_s={self.input_timeout_s:.2f} "
+            f"zero_rate_hz={self.zero_publish_rate_hz:.1f} "
             f"gnss_recovery_hold={'true' if self.enable_gnss_recovery_hold else 'false'} "
             f"gnss_recovery_hold_s={self.gnss_recovery_hold_s:.2f}s "
+            f"gnss_recovery_min_source_s={self.gnss_recovery_min_source_s:.2f}s "
+            f"gnss_recovery_cooldown_s={self.gnss_recovery_hold_cooldown_s:.2f}s "
             f"cost_stop={'true' if self.enable_cost_stop else 'false'} "
             f"inflation_grid={self.cost_grid_topic} "
             f"lanelet_safety={'true' if self.lanelet_safety_enable else 'false'} "
@@ -796,10 +823,24 @@ class PlanningCmdVelGateNode(Node):
                 self.publish_zero_when_blocked = bool(p.value)
             elif p.name == "speed_scale":
                 self.speed_scale = float(p.value)
+            elif p.name == "input_timeout_s":
+                self.input_timeout_s = float(p.value)
+            elif p.name == "zero_publish_rate_hz":
+                self.zero_publish_rate_hz = float(p.value)
+                if hasattr(self, "_cmd_timeout_timer"):
+                    self._cmd_timeout_timer.cancel()
+                    self._cmd_timeout_timer = self.create_timer(
+                        1.0 / max(1.0, self.zero_publish_rate_hz),
+                        self._on_cmd_timeout_timer,
+                    )
             elif p.name == "enable_gnss_recovery_hold":
                 self.enable_gnss_recovery_hold = bool(p.value)
             elif p.name == "gnss_recovery_hold_s":
                 self.gnss_recovery_hold_s = float(p.value)
+            elif p.name == "gnss_recovery_min_source_s":
+                self.gnss_recovery_min_source_s = float(p.value)
+            elif p.name == "gnss_recovery_hold_cooldown_s":
+                self.gnss_recovery_hold_cooldown_s = float(p.value)
             elif p.name == "gnss_recovery_source_mode_min":
                 self.gnss_recovery_source_mode_min = int(p.value)
             elif p.name == "gnss_recovery_target_mode":
@@ -863,8 +904,34 @@ class PlanningCmdVelGateNode(Node):
     def _publish_zero(self) -> None:
         self.pub_cmd.publish(Twist())
 
+    # Publishes zero if raw controller commands stop arriving after motion began.
+    def _on_cmd_timeout_timer(self) -> None:
+        if self.input_timeout_s <= 0.0:
+            return
+        if self._last_input_cmd_time is None:
+            return
+        now = self.get_clock().now()
+        age_s = (now - self._last_input_cmd_time).nanoseconds * 1e-9
+        if age_s <= self.input_timeout_s:
+            return
+        if self.publish_zero_when_blocked:
+            self._publish_zero()
+        if self._cmd_input_stale:
+            return
+        self._cmd_input_stale = True
+        now_sec = now.nanoseconds * 1e-9
+        if (now_sec - self._last_cmd_input_stale_log_sec) >= 2.0:
+            self._last_cmd_input_stale_log_sec = now_sec
+            self.get_logger().warn(
+                "cmd_vel input stale: "
+                f"last_raw_cmd_age={age_s:.2f}s timeout={self.input_timeout_s:.2f}s; "
+                "publishing zero"
+            )
+
     # Handles raw cmd_vel input and applies engage/estop/cost-stop rules.
     def _on_cmd(self, msg: Twist) -> None:
+        self._last_input_cmd_time = self.get_clock().now()
+        self._cmd_input_stale = False
         if self._effective_enabled():
             # Keep callback robust for lightweight unit-test doubles that may
             # bypass __init__ and not populate newly added yaw-zone fields.
@@ -975,19 +1042,54 @@ class PlanningCmdVelGateNode(Node):
         current_mode = int(msg.value)
         prev_mode = self._last_localization_mode_value
         self._last_localization_mode_value = current_mode
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+
+        prev_source = (
+            prev_mode is not None
+            and prev_mode >= int(self.gnss_recovery_source_mode_min)
+        )
+        current_source = current_mode >= int(self.gnss_recovery_source_mode_min)
+        if current_source and not prev_source:
+            self._gnss_recovery_source_enter_sec = now_sec
+
         if prev_mode is None or not self.enable_gnss_recovery_hold:
             return
         if self.gnss_recovery_hold_s <= 0.0:
             return
 
         recovered = (
-            prev_mode >= int(self.gnss_recovery_source_mode_min)
+            prev_source
             and current_mode == int(self.gnss_recovery_target_mode)
         )
         if not recovered:
             return
 
-        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        source_enter_sec = self._gnss_recovery_source_enter_sec
+        source_duration_s = (
+            now_sec - source_enter_sec
+            if source_enter_sec is not None
+            else self.gnss_recovery_min_source_s
+        )
+        self._gnss_recovery_source_enter_sec = None
+        if source_duration_s < self.gnss_recovery_min_source_s:
+            self.get_logger().info(
+                "localization recovery hold skipped: "
+                f"mode {prev_mode}->{current_mode}, "
+                f"source_duration={source_duration_s:.2f}s "
+                f"< min={self.gnss_recovery_min_source_s:.2f}s"
+            )
+            return
+
+        since_last_hold_s = now_sec - self._gnss_recovery_last_hold_sec
+        if since_last_hold_s < self.gnss_recovery_hold_cooldown_s:
+            self.get_logger().info(
+                "localization recovery hold skipped: "
+                f"mode {prev_mode}->{current_mode}, "
+                f"cooldown={self.gnss_recovery_hold_cooldown_s - since_last_hold_s:.2f}s left"
+            )
+            return
+
+        self._gnss_recovery_last_hold_sec = now_sec
         self._gnss_recovery_blocked_until = max(
             self._gnss_recovery_blocked_until,
             now_sec + self.gnss_recovery_hold_s,
