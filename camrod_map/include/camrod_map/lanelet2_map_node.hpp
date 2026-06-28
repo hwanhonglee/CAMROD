@@ -149,6 +149,7 @@ private:
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr progressive_fallback_pose_sub_;
   bool logged_full_marker_stats_{false};
   bool logged_local_marker_stats_{false};
+  bool logged_empty_local_marker_warning_{false};
   bool debug_timing_{true};
   bool progressive_visualization_enable_{false};
   bool progressive_visualization_lightweight_local_{true};
@@ -156,9 +157,9 @@ private:
   bool progressive_local_visualization_published_{false};
   bool progressive_full_visualization_published_{false};
   double progressive_visualization_radius_m_{120.0};
-  double progressive_visualization_full_delay_s_{4.0};
-  std::string progressive_visualization_pose_topic_{"/sensing/gnss/pose"};
-  std::string progressive_visualization_fallback_pose_topic_{"/localization/pose"};
+  double progressive_visualization_full_delay_s_{12.0};
+  std::string progressive_visualization_pose_topic_{"/localization/pose"};
+  std::string progressive_visualization_fallback_pose_topic_{""};
   const VisualizationFilter * active_visualization_filter_{nullptr};
   // HH_260413: Optional periodic re-publish period for static map markers.
   // 0.0 disables timer and publishes once (transient_local keeps late subscribers synced).

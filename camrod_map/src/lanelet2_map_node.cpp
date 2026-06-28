@@ -161,11 +161,11 @@ void Lanelet2MapNode::loadParameters()
   progressive_visualization_radius_m_ = this->declare_parameter<double>(
     "progressive_visualization_radius_m", 120.0);
   progressive_visualization_full_delay_s_ = this->declare_parameter<double>(
-    "progressive_visualization_full_delay_s", 4.0);
+    "progressive_visualization_full_delay_s", 12.0);
   progressive_visualization_pose_topic_ = this->declare_parameter<std::string>(
-    "progressive_visualization_pose_topic", "/sensing/gnss/pose");
+    "progressive_visualization_pose_topic", "/localization/pose");
   progressive_visualization_fallback_pose_topic_ = this->declare_parameter<std::string>(
-    "progressive_visualization_fallback_pose_topic", "/localization/pose");
+    "progressive_visualization_fallback_pose_topic", "");
   progressive_visualization_lightweight_local_ = this->declare_parameter<bool>(
     "progressive_visualization_lightweight_local", true);
   progressive_visualization_lightweight_full_ = this->declare_parameter<bool>(
@@ -310,14 +310,24 @@ void Lanelet2MapNode::publishVisualization(
   }
 
   if (markers.markers.empty()) {
-    RCLCPP_WARN(get_logger(), "Loaded map contains no lanelets to visualize for %s mode.", mode_label);
     if (local_mode) {
-      // HH_260625: A startup fallback pose can briefly be outside the loaded map.
-      // Keep waiting for the next GNSS/localization pose instead of caching an empty local map.
-      logged_local_marker_stats_ = false;
+      // HH_260629: Raw GNSS/startup poses can briefly be outside map-frame
+      // lanelet coordinates. Keep the previous/full cache and avoid a 10 Hz
+      // warning storm while waiting for a valid map-frame pose.
+      if (!logged_empty_local_marker_warning_) {
+        logged_empty_local_marker_warning_ = true;
+        RCLCPP_WARN(
+          get_logger(),
+          "Loaded map contains no lanelets for local visualization: "
+          "center=(%.2f, %.2f) radius=%.1fm; waiting for a map-frame pose",
+          filter ? filter->x : 0.0,
+          filter ? filter->y : 0.0,
+          filter ? filter->radius : 0.0);
+      }
       active_visualization_filter_ = previous_filter;
       return;
     }
+    RCLCPP_WARN(get_logger(), "Loaded map contains no lanelets to visualize for %s mode.", mode_label);
   }
 
   cached_markers_ = markers;
