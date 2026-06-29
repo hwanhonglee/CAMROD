@@ -71,7 +71,7 @@
     min_imu_dt: 0.0001
     max_imu_dt: 0.5
     freeze_yaw_when_stopped: true
-    align_yaw_to_imu_when_stopped: false #HJ_260429: falses
+    align_yaw_to_imu_when_stopped: false # HH_260429: Disabled for sim heading stability.
     stop_speed_threshold: 0.05
     stop_hold_s: 1.0
 

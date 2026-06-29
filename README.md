@@ -715,6 +715,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
+| v1.16 | 2026-06-29 | Field stabilization for map/planning/platform: local-first Lanelet2 visualization with cached full-map republish, map-fixed `slice_only` local path extraction, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, radar left/right remap plus invalid no-target filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, and expanded `avg_msgs` conversion coverage |
 | v1.15 | 2026-06-23 | Obstacle replan monitor (LiDAR/Radar persistent blockage → Smac2D fallback), extended AvgAmrServiceState/PlanningScenario (SITE_ENTRY/UNLOAD_WAIT/RECALL_TO_SITE_ROAD/GUEST_LOADING_WAIT/RETURN_WITH_CARGO/DROP_ZONE_PARKING), UI site-access reservation/occupancy gate, planning_state_machine parking-phase mirror from /AMR_service_state, dynamic-only cost stop gate, lanelet route re-entry bypass, goal_snapper uncontained-snap override, map profile auto-selection, area_exporter polygon centroid + corners export |
 | v1.14 | 2026-06-19 | Mission-key semantic planning (PlanningState/MissionKey/Scenario msgs), lanelet raw cost safety stop, local path reset on goal change, goal_snapper pose-jump reissue, lanelet_route_planner + engage_aware_progress_checker plugins, front camera V4L2 fallback + image_raw publisher (PR#14), Ranger BMS charging detection, planning_state_checker, sim diagnostics profile, parking_method bringup arg |
 | v1.13 | 2026-06-11 | GNSS dual-antenna heading stabilization (simpleRTK2B Heading moving-baseline RELPOSNED fix) |
@@ -725,34 +726,44 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 | v1.8 | 2026-05-08 | ESKF stability, GNSS COG auto-init, DR timeout, platform fixes |
 | v1.7 | 2026-04-28 | Ranger platform bridge, DBC status aggregation, planning/system nodes |
 
-## 2026-06-17 Runtime Update
+## 2026-06-29 Runtime Update
 
-> HH_260617 - Current full-stack baseline after GNSS dual-antenna, system diagnostics, UI goal naming, and parking integration.
+> HH_260629 - Current field baseline after map visibility recovery, planning/local-path stabilization, radar remap, SocketCAN bringup, UI build integration, and bringup/package config synchronization.
 > HH_260618 - Final parking is method-selected: `parking_method:=rule_based` uses `camrod_parking`, `parking_method:=docking` uses `camrod_docking`, and launch/system checks require exactly one method to be active.
 
 ### Current Mission Flow
 
 1. Operator UI or RViz publishes a raw site goal on `/goal_pose` or `/planning/goal_pose`.
 2. `camrod_planning/goal_snapper` converts that site-center goal to the lanelet route goal on `/planning/goal_pose_snapped` and `/planning/goal_pose_snapped_ros`; the latest clicked/UI goal immediately replaces older goals.
-3. `local_path_extractor` resets stale controller-local paths for a short hold after each new global route. HH_260618 - This keeps route-heading alignment pointed at the newest goal instead of the previous controller path.
-4. Nav2 drives to the lanelet-snap pose and `planning_state_machine` publishes `avg_msgs/PlanningState` on `/planning/state_machine/state`.
-5. `planning_cmd_vel_gate_node` checks the raw `/map/cost_grid/lanelet` grid before the ego-cleared inflation grid. HH_260618 - Forward translation is blocked on lane-boundary/off-lane cost while in-place rotation remains allowed.
-6. `camrod_parking/site_maneuver` starts for `camping_site_*`: while active, it commands `Twist.linear.y` on `/planning/cmd_vel_raw` for crab entry, rotates 180 degrees, waits for unload, then crab-exits back to the snap pose. HH_260618 - Parking nodes stay silent on `/planning/cmd_vel_raw` while idle so they do not race Nav2.
-7. `site_maneuver` requests return through `/planning/state_machine/return_to_drop_zone`.
-8. Nav2 returns to the drop-zone snap pose.
-9. Final parking is mutually exclusive: `camrod_parking/drop_zone_parking` aligns the parked robot front yaw to the configured charging-station yaw, reverses with yaw/lateral feedback, and stops on `/platform/status/is_charging`; `camrod_docking` remains the AprilTag/opennav method when `parking_method:=docking`.
-10. `camrod_system` validates module graph/runtime diagnostics and publishes `/system/status` plus `/system/msgs`.
+3. Nav2 defaults to the connected-lanelet `LaneletRoute` planner and keeps grid planners (`Smac2D`, `NavFn`, `ThetaStar`, etc.) as selectable diagnostics or recovery fallbacks.
+4. `smoother_server` runs through the BT for every selected planner and uses `robot_base_link` for collision checks. HH_260629 - This prevents the Nav2 default `base_link` lookup failure while keeping smoothing common across LaneletRoute and grid fallback paths.
+5. `local_path_extractor` publishes a `map`-fixed `slice_only` view of `/planning/global_path`. HH_260629 - Controller debug paths are no longer allowed to make the operator-visible local path rotate with the vehicle.
+6. Nav2 drives to the lanelet-snap pose and `planning_state_machine` publishes `avg_msgs/PlanningState` on `/planning/state_machine/state`.
+7. `planning_cmd_vel_gate_node` checks the raw `/map/cost_grid/lanelet` grid before the ego-cleared inflation grid. HH_260618 - Forward translation is blocked on lane-boundary/off-lane cost while in-place rotation remains allowed.
+8. `camrod_parking/site_maneuver` starts for `camping_site_*`: while active, it commands `Twist.linear.y` on `/planning/cmd_vel_raw` for crab entry, rotates 180 degrees, waits for unload, then crab-exits back to the snap pose. HH_260618 - Parking nodes stay silent on `/planning/cmd_vel_raw` while idle so they do not race Nav2.
+9. `site_maneuver` requests return through `/planning/state_machine/return_to_drop_zone`.
+10. Nav2 returns to the drop-zone snap pose.
+11. Final parking is mutually exclusive: `camrod_parking/drop_zone_parking` aligns the parked robot front yaw to the configured charging-station yaw, reverses with yaw/lateral feedback, and stops on `/platform/status/is_charging`; `camrod_docking` remains the AprilTag/opennav method when `parking_method:=docking`.
+12. `camrod_system` validates module graph/runtime diagnostics and publishes `/system/status` plus `/system/msgs`.
+
+### Field Notes
+
+- HH_260629: `map_info.yaml` is synchronized between `camrod_map` and `camrod_bringup`; active map selection should be done by changing the map profile/offset there, not by editing RViz displays.
+- HH_260629: Lanelet visualization publishes a lightweight full-map overview first, then local filtered markers near localization/GNSS pose, and republishes cached markers so RViz can recover after late subscription.
+- HH_260629: Radar wiring is the seven-sensor profile. Left/right topics and TFs are aligned with the current harness, and SEN0592 no-target values near `65535 mm` are filtered instead of becoming obstacles.
+- HH_260629: Ranger launch can bring up `can0` through `setup_can0.sh`; `setup_camrod.sh` installs the SocketCAN tools used for manual checks and service setup.
+- HH_260629: `avg_msgs` now carries the internal CAMROD-facing message surface, with conversion helpers for standard ROS messages that still enter or leave the stack.
 
 ### Setup and Build
 
 ```bash
-cd /home/hong/camrod_ws/src
+cd /home/nvidia/camrod_ws/src
 ./setup_camrod.sh
 ./colcon_build.sh
-source /home/hong/camrod_ws/install/setup.bash
+source /home/nvidia/camrod_ws/install/setup.bash
 ```
 
-`setup_camrod.sh` is idempotent: it keeps existing external repositories, installs explicit system dependencies, skips Jetson-only docking packages on x86_64, and runs rosdep unless `--no-rosdep` is provided. `colcon_build.sh` builds source packages plus all `external/` package roots, skips x86_64-only unavailable docking/voice pieces only when their system dependencies are unavailable, and keeps the local `camrod_parking` package in the normal source build graph.
+`setup_camrod.sh` is idempotent: it keeps existing external repositories, installs explicit system dependencies including SocketCAN tools, skips Jetson-only docking packages on x86_64, and runs rosdep unless `--no-rosdep` is provided. `colcon_build.sh` builds source packages plus all `external/` package roots, runs `npm install` and `npm run build` for the robot UI before packaging `camrod_ui`, skips x86_64-only unavailable docking/voice pieces only when their system dependencies are unavailable, and keeps the local `camrod_parking` package in the normal source build graph.
 
 ### Smoke Tests
 

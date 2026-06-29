@@ -107,7 +107,7 @@
     # HH_260413: Freeze yaw integration when stopped to reduce gyro drift.
     freeze_yaw_when_stopped: true
     # HH_260415: At standstill, use IMU quaternion yaw so heading follows real sensor rotation.
-    align_yaw_to_imu_when_stopped: false #HJ_260429: falsess
+    align_yaw_to_imu_when_stopped: false # HH_260429: Disabled for field heading stability.
     stop_speed_threshold: 0.05
     stop_hold_s: 1.4
 

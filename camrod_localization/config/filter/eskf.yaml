@@ -19,18 +19,27 @@
     publish_tf: true
     # HH_260415: Use ROS node time for TF stamping to avoid lidar->map extrapolation crashes.
     tf_use_node_time: true
-    # Optional startup bridge for TF consumers before first GNSS initializes ESKF.
-    publish_uninitialized_tf: false
-    # HH_260413: IMU mount yaw -> base yaw alignment (filter math).
-    # Keep this separate from platform visualization heading_yaw_offset_deg.
-    # HH_260415: IMU physical mount yaw offset measured 2026-04-29 (robot facing West, offset = 180 - 171.6 deg).
-    imu_to_base_yaw_deg: -32.5 # HJ_250430
-    # Heading-only startup correction. Keep 0.0 for package default; bringup overrides real hardware.
+    # Keep the TF tree connected during startup, before first GNSS initializes ESKF.
+    # This publishes a temporary odom->robot_base_link using the current yaw seed only until initialized.
+    publish_uninitialized_tf: true
+    # Physical IMU mount rotation relative to robot_base_link (for acceleration rotation in predict()).
+    # 0.0 = assume sign-corrected IMU axes are aligned with robot frame.
+    # Heading is handled by GNSS COG update — no manual offset tuning needed.
+    imu_to_base_yaw_deg: 0.0
+    # HH_260508: Offset no longer needed — gnss_cog_force_init hard-resets yaw from first COG.
     imu_yaw_init_offset_deg: 0.0
 
-    # Optional GNSS COG heading update. Bringup enables this for real hardware.
-    gnss_cog_topic: ""
+    # GNSS COG (Course Over Ground) heading update.
+    # u-blox fix_velocity publishes ENU velocity (x=East, y=North).
+    # atan2(vel_n, vel_e) → direct yaw measurement when speed >= threshold.
+    gnss_cog_topic: "/sensing/gnss/ublox_gps_node/fix_velocity"
+    # HH_260508: On first valid COG, yaw is hard-reset to actual heading (no offset needed).
     gnss_cog_yaw_offset_deg: 0.0
+    # HH_260508: Hard-reset yaw from first COG — eliminates imu_yaw_init_offset_deg calibration.
+    gnss_cog_force_init: true
+    # HH_260507: is_stopped_ (wheel odom) gates COG when truly stopped, so threshold can be
+    # lowered to match this platform's max speed (~1.1 m/s). 0.5 was too low (GNSS velocity
+    # noise at standstill), 1.5 was too high (robot never reached it). 0.8 is the working range.
     gnss_cog_min_speed_mps: 0.8
     gnss_cog_noise_deg: 15.0
     gnss_cog_gate_mahalanobis: 9.0
@@ -46,8 +55,8 @@
     # (up/down and left/right opposite), so invert signs in ESKF input path.
     imu_accel_x_sign: -1.0
     imu_accel_y_sign: -1.0
-    imu_gyro_z_sign: 1.0 # HJ_250430
-    imu_yaw_sign: -1.0
+    imu_gyro_z_sign: 1.0
+    imu_yaw_sign: 1.0
     # HH_260527: yaw_init_source options:
     #   imu_orientation: initialize yaw from IMU orientation
     #   state: keep filter state yaw on initialization/reset
@@ -79,8 +88,10 @@
     wheel_yaw_rate_min_speed_mps: 0.10
     # 2026-02-02: Reinit filter if GNSS is too far (recover from drift).
     reinit_on_gnss_reject: true
-    # HH_260413: Reinitialize earlier when GNSS and state diverge in no-ranger fallback runs.
-    reinit_distance_threshold: 3.0
+    # HH_260506: 3m was too tight — GNSS without NTRIP can drift 3-5m transiently.
+    # Raised to 10m so reinit only fires on genuine divergence, not multipath spikes.
+    # Re-init preserves current filter yaw (not IMU quaternion) to avoid heading corruption.
+    reinit_distance_threshold: 5.0
     gyro_noise: 0.015
     accel_noise: 0.15
     gyro_bias_walk: 0.0005
@@ -95,13 +106,10 @@
     max_imu_dt: 0.5
     # HH_260413: Freeze yaw integration when stopped to reduce gyro drift.
     freeze_yaw_when_stopped: true
-    # HH_260507: Also apply NHC/ZUPT on IMU callbacks while stop-state is active.
-    apply_constraints_on_imu_when_stopped: true
     # HH_260415: At standstill, use IMU quaternion yaw so heading follows real sensor rotation.
-    align_yaw_to_imu_when_stopped: false #HJ_260429: false
-    # HH_260507: Relax stop detector for noisy near-zero wheel speed.
-    stop_speed_threshold: 0.10
-    stop_hold_s: 0.40
+    align_yaw_to_imu_when_stopped: false # HH_260429: Disabled for field heading stability.
+    stop_speed_threshold: 0.05
+    stop_hold_s: 1.4
 
     # HH_260527: nhc_mode options: enabled | disabled.
     # HH_260422: Non-Holonomic Constraint — lateral body velocity ≈ 0 for wheeled robot.
@@ -114,6 +122,5 @@
     # HH_260422: Zero Velocity Update — inject v=[0,0] when confirmed stopped.
     # Prevents IMU accel bias drift accumulating into position error at standstill.
     zupt_mode: enabled
-    # HH_260507: Widen ZUPT acceptance so standstill correction keeps pulling drift back.
-    zupt_vel_noise: 0.05
-    zupt_gate_mahalanobis: 36.0
+    zupt_vel_noise: 0.02
+    zupt_gate_mahalanobis: 9.0

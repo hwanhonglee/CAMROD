@@ -1,4 +1,6 @@
-/sensing/lidar/ground_segmentation: #HJ_260623 fixed: PushRosNamespace("sensing") wraps lidar, actual full ns is /sensing/lidar
+# HH_260629: Shared ground segmentation params for camrod_sensing and camrod_bringup.
+# The full node FQN is /sensing/lidar/ground_segmentation in both launch paths.
+/sensing/lidar/ground_segmentation:
   ros__parameters:
     robot_frame: "lidar_link"
     maxX:  3.0
