@@ -1,0 +1,2 @@
+avg_msgs/AvgObjectHypothesis hypothesis
+avg_msgs/AvgPoseWithCovariance pose

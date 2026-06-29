@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
@@ -967,7 +968,7 @@ private:
     msg.state.module_name = "planning";
     msg.state.level = ModuleState::OK;
     msg.state.message = "goal_snapper";
-    msg.goal_pose = goal_pose;
+    msg.goal_pose = avg_msgs::conversions::fromRos(goal_pose);
     pub_avg_planning_->publish(msg);
   }
 

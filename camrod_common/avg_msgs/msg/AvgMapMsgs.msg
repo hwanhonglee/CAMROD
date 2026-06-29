@@ -1,10 +1,10 @@
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 
-nav_msgs/OccupancyGrid lanelet_cost_grid
-nav_msgs/OccupancyGrid planning_base_grid
+avg_msgs/AvgOccupancyGrid lanelet_cost_grid
+avg_msgs/AvgOccupancyGrid planning_base_grid
 
-visualization_msgs/MarkerArray lanelet_markers
-visualization_msgs/MarkerArray lidar_markers
-visualization_msgs/MarkerArray radar_markers
-visualization_msgs/MarkerArray inflation_markers
+avg_msgs/AvgMarkerArray lanelet_markers
+avg_msgs/AvgMarkerArray lidar_markers
+avg_msgs/AvgMarkerArray radar_markers
+avg_msgs/AvgMarkerArray inflation_markers

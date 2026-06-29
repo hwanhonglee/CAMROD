@@ -338,7 +338,7 @@ def generate_launch_description():
     # -------------------------------------------------------------------------
     # Critical safety guard:
     # Force robot_base_frame in costmap/behavior/smoother using canonical
-    # ROS2 parameter-tree structure. This prevents silent fallback to robot_base_link.
+    # ROS2 parameter-tree structure. This prevents silent fallback to base_link.
     # -------------------------------------------------------------------------
     force_base_link_overrides = {
         'global_costmap': {
@@ -361,6 +361,15 @@ def generate_launch_description():
                 'local_frame': 'odom',
                 'robot_base_frame': nav2_robot_base_frame,
                 # HH_260330: Keep TF tolerance aligned with nav2_base/behavior profiles.
+                'transform_tolerance': 0.5,
+            }
+        },
+        'smoother_server': {
+            'ros__parameters': {
+                # HH_260629: SimpleSmoother collision checks otherwise default
+                # to base_link, which this robot does not publish.
+                'global_frame': 'map',
+                'robot_base_frame': nav2_robot_base_frame,
                 'transform_tolerance': 0.5,
             }
         },
@@ -465,7 +474,13 @@ def generate_launch_description():
             name='smoother_server',
             namespace=module_namespace,
             output='screen',
-            parameters=nav2_param_chain,
+            parameters=nav2_param_chain + [{
+                # HH_260629: Hard-override to block smoother collision checks
+                # from using Nav2's default base_link frame.
+                'global_frame': 'map',
+                'robot_base_frame': nav2_robot_base_frame,
+                'transform_tolerance': 0.5,
+            }],
         )
     else:
         # HH_260604: Do not abort bringup when optional Nav2 smoother package is absent.

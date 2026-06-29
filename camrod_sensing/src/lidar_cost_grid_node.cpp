@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_sensing_lidar.hpp>
 #include <avg_msgs/msg/point_stamped.hpp>
 #include <avg_msgs/msg/transform_stamped.hpp>
@@ -320,9 +321,9 @@ private:
       return;
     }
     AvgSensingLidar avg_msg;
-    avg_msg.near_cost_grid = grid;
+    avg_msg.near_cost_grid = avg_msgs::conversions::fromRos(grid);
     if (latest_cloud_) {
-      avg_msg.points_filtered = *latest_cloud_;
+      avg_msg.points_filtered = avg_msgs::conversions::fromRos(*latest_cloud_);
     }
     avg_lidar_pub_->publish(avg_msg);
   }

@@ -45,9 +45,7 @@ controller_server:
   ros__parameters:
     RPP:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      # Moderate nominal speed for stable iterative-goal tracking
-      # under full bringup CPU load.
-      # HH_260507: Reverted to original values (0.7 change was ineffective at vehicle level).
+      # HH_260513: Synced to bringup values (hardware-tested at C-track).
       desired_linear_vel: 1.4
       max_linear_vel: 1.4
       min_linear_vel: 0.0

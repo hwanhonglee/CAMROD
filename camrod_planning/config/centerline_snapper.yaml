@@ -8,6 +8,7 @@
     offset_lon: 128.0925490
     offset_alt: 0.0
     input_pose_topic: "/localization/pose"
+    input_pose_cov_topic: "/localization/pose_with_covariance"
     output_pose_topic: "/planning/lanelet_pose"
     output_pose_cov_topic: "/planning/lanelet_pose_with_covariance"
     # Expand search radius to handle map/pose offsets during sim.
@@ -15,10 +16,11 @@
     longitudinal_stddev: 0.5
     lateral_stddev: 0.3
     yaw_stddev: 0.2
-    # HH_260625: Use localization/GNSS yaw when choosing among nearby centerlines.
-    # This prevents crossing lanelets from rotating /planning/lanelet_pose.
+    # HH_260629: Use localization yaw only while yaw covariance is healthy.
+    # Invalid GNSS heading can seed bad yaw; then snapping falls back to nearest geometry.
     heading_filter_enable: true
     max_heading_error_deg: 100.0
+    heading_filter_max_yaw_variance: 1.0
     # HH_260527: centerline_z_mode options:
     #   input: keep input pose Z
     #   map: use lanelet centerline Z + map_z_offset

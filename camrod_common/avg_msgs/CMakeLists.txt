@@ -16,6 +16,7 @@ find_package(rosidl_default_generators REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(unique_identifier_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -37,6 +38,54 @@ if(Python3_LIBRARIES)
 endif()
 
 set(msg_files
+  # HH_260629: Generated avg-owned mirrors for internal topics.
+  # Existing alias headers remain only as compatibility glue during migration.
+  "msg/AvgHeader.msg"
+  "msg/AvgBool.msg"
+  "msg/AvgString.msg"
+  "msg/AvgFloat32.msg"
+  "msg/AvgColorRGBA.msg"
+  "msg/AvgPoint.msg"
+  "msg/AvgPoint32.msg"
+  "msg/AvgQuaternion.msg"
+  "msg/AvgVector3.msg"
+  "msg/AvgPose.msg"
+  "msg/AvgPoseStamped.msg"
+  "msg/AvgPoseWithCovariance.msg"
+  "msg/AvgPoseWithCovarianceStamped.msg"
+  "msg/AvgTwist.msg"
+  "msg/AvgTwistStamped.msg"
+  "msg/AvgTwistWithCovariance.msg"
+  "msg/AvgTwistWithCovarianceStamped.msg"
+  "msg/AvgPolygon.msg"
+  "msg/AvgPolygonStamped.msg"
+  "msg/AvgTransform.msg"
+  "msg/AvgTransformStamped.msg"
+  "msg/AvgMapMetaData.msg"
+  "msg/AvgOccupancyGrid.msg"
+  "msg/AvgPath.msg"
+  "msg/AvgOdometry.msg"
+  "msg/AvgNavSatStatus.msg"
+  "msg/AvgNavSatFix.msg"
+  "msg/AvgImu.msg"
+  "msg/AvgRange.msg"
+  "msg/AvgPointField.msg"
+  "msg/AvgPointCloud2.msg"
+  "msg/AvgLaserScan.msg"
+  "msg/AvgRegionOfInterest.msg"
+  "msg/AvgImage.msg"
+  "msg/AvgCameraInfo.msg"
+  "msg/AvgGoalInfo.msg"
+  "msg/AvgGoalStatus.msg"
+  "msg/AvgGoalStatusArray.msg"
+  "msg/AvgPose2D.msg"
+  "msg/AvgBoundingBox2D.msg"
+  "msg/AvgObjectHypothesis.msg"
+  "msg/AvgObjectHypothesisWithPose.msg"
+  "msg/AvgDetection2D.msg"
+  "msg/AvgDetection2DArray.msg"
+  "msg/AvgMarker.msg"
+  "msg/AvgMarkerArray.msg"
   "msg/AvgAmrServiceState.msg"
   "msg/AvgAprilTagPoint.msg"
   "msg/AvgAprilTagDetection.msg"
@@ -95,6 +144,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
     builtin_interfaces
     action_msgs
     nav2_msgs
+    unique_identifier_msgs
     std_msgs
     geometry_msgs
     nav_msgs
@@ -111,4 +161,5 @@ install(
 ament_export_include_directories(include)
 ament_export_dependencies(rosidl_default_runtime)
 ament_export_dependencies(nav2_msgs)
+ament_export_dependencies(unique_identifier_msgs)
 ament_package()

@@ -62,6 +62,9 @@ def generate_launch_description():
         DeclareLaunchArgument("ranger_driver_enable",      default_value="true"),
         # HH_260528: Toggle Ranger status bridge independently from CAN driver.
         DeclareLaunchArgument("ranger_bridge_enable",      default_value="true"),
+        DeclareLaunchArgument("ranger_auto_setup_can",     default_value="true"),
+        DeclareLaunchArgument("ranger_can_bitrate",        default_value="500000"),
+        DeclareLaunchArgument("ranger_can_restart_ms",     default_value="100"),
         DeclareLaunchArgument("ranger_params_file",        default_value=plat(os.path.join("config", "ranger_driver.yaml"))),
         # HH_260528: Keep sensor_kit bridge optional for debug.
         DeclareLaunchArgument("sensor_kit_bridge_enable",  default_value="true"),
@@ -81,6 +84,9 @@ def generate_launch_description():
              "platform_type",
              enable_ranger_base_node=LaunchConfiguration("ranger_driver_enable"),
              enable_ranger_bridge_node=LaunchConfiguration("ranger_bridge_enable"),
+             auto_setup_can=LaunchConfiguration("ranger_auto_setup_can"),
+             can_bitrate=LaunchConfiguration("ranger_can_bitrate"),
+             can_restart_ms=LaunchConfiguration("ranger_can_restart_ms"),
              params_file=LaunchConfiguration("ranger_params_file")),
 
         _inc(plat(os.path.join("launch", "sensor_kit_bridge.launch.py")),

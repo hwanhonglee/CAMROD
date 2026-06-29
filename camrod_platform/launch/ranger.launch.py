@@ -13,6 +13,8 @@
 #                   (BMS CAN 0x361 current-based charger contact).
 
 import os
+import shlex
+import subprocess
 import yaml
 
 from ament_index_python.packages import get_package_share_directory
@@ -33,9 +35,67 @@ def _load_ros_params(params_path: str) -> dict:
     return data.get('/**', {}).get('ros__parameters', {})
 
 
+def _truthy(value: str) -> bool:
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _can_ready(port_name: str, bitrate: int, restart_ms: int) -> bool:
+    result = subprocess.run(
+        ['ip', '-details', 'link', 'show', port_name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False
+    text = result.stdout + result.stderr
+    return (
+        'state UP' in text and
+        f'bitrate {bitrate}' in text and
+        f'restart-ms {restart_ms}' in text
+    )
+
+
+def _setup_can_interface(context, params: dict) -> None:
+    platform_type = LaunchConfiguration('platform_type').perform(context)
+    ranger_enabled = LaunchConfiguration('enable_ranger_base_node').perform(context)
+    auto_setup_can = LaunchConfiguration('auto_setup_can').perform(context)
+    if platform_type.strip().lower() != 'ranger' or not _truthy(ranger_enabled) or not _truthy(auto_setup_can):
+        return
+
+    port_name = str(params.get('port_name', 'can0')).strip()
+    bitrate = int(LaunchConfiguration('can_bitrate').perform(context))
+    restart_ms = int(LaunchConfiguration('can_restart_ms').perform(context))
+    if _can_ready(port_name, bitrate, restart_ms):
+        print(f'[ranger.launch] CAN {port_name} already up: bitrate={bitrate} restart-ms={restart_ms}')
+        return
+
+    # HH_260629: Bring SocketCAN up before ranger_base_node opens it. `sudo -n`
+    # avoids a hidden password prompt inside ros2 launch; configure sudoers or
+    # run `sudo -v` before launch if this fails on a freshly booted system.
+    quoted_port = shlex.quote(port_name)
+    setup_script = (
+        f'ip link set {quoted_port} down || true; '
+        f'ip link set {quoted_port} type can bitrate {bitrate} restart-ms {restart_ms}; '
+        f'ip link set {quoted_port} up'
+    )
+    cmd = ['bash', '-lc', setup_script] if os.geteuid() == 0 else ['sudo', '-n', 'bash', '-lc', setup_script]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or '').strip()
+        raise RuntimeError(
+            f'Failed to setup CAN {port_name}. '
+            f'Run sudo -v before launch or configure a boot/systemd CAN setup. detail={detail}'
+        )
+    if not _can_ready(port_name, bitrate, restart_ms):
+        raise RuntimeError(f'CAN {port_name} setup finished but interface is not UP at {bitrate}bps')
+    print(f'[ranger.launch] CAN {port_name} setup complete: bitrate={bitrate} restart-ms={restart_ms}')
+
+
 def _launch_setup(context, *args, **kwargs):
     params_file = LaunchConfiguration('params_file').perform(context)
     p = _load_ros_params(params_file)
+    _setup_can_interface(context, p)
 
     # HH_260428: ranger_base odom output is hardcoded to /odom so it never collides
     # with substitute-platform topics (e.g. /rmp401/odom).
@@ -94,5 +154,8 @@ def generate_launch_description():
         # HH_260528: Independent toggles for Ranger CAN and bridge.
         DeclareLaunchArgument('enable_ranger_base_node', default_value='true'),
         DeclareLaunchArgument('enable_ranger_bridge_node', default_value='true'),
+        DeclareLaunchArgument('auto_setup_can', default_value='true'),
+        DeclareLaunchArgument('can_bitrate', default_value='500000'),
+        DeclareLaunchArgument('can_restart_ms', default_value='100'),
         OpaqueFunction(function=_launch_setup),
     ])

@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 #include <cctype>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -99,6 +100,7 @@ public:
     gnss_timeout_s_ = declare_parameter<double>("gnss_timeout_s", 2.0);
 
     max_gnss_cov_trace_ = declare_parameter<double>("max_gnss_cov_trace", 25.0);
+    max_gnss_yaw_covariance_ = declare_parameter<double>("max_gnss_yaw_covariance", 100.0);
     min_reset_cov_xy_ = declare_parameter<double>("min_reset_cov_xy", 0.05);
     reset_cov_yaw_ = declare_parameter<double>("reset_cov_yaw", 0.5);
     // HH_260527: RViz 2D Pose Estimate bridge options.
@@ -199,6 +201,7 @@ private:
     double yaw{0.0};
     double cov_x{0.0};
     double cov_y{0.0};
+    double cov_yaw{std::numeric_limits<double>::infinity()};
   };
 
   static double planarDistance(const PoseSample & a, const PoseSample & b)
@@ -227,6 +230,7 @@ private:
       msg->pose.pose.orientation.w));
     current.cov_x = msg->pose.covariance[0];
     current.cov_y = msg->pose.covariance[7];
+    current.cov_yaw = msg->pose.covariance[35];
 
     if (detached_ && prev_localization_pose_) {
       const double step = planarDistance(*prev_localization_pose_, current);
@@ -258,6 +262,7 @@ private:
       msg->pose.pose.orientation.w));
     current.cov_x = msg->pose.covariance[0];
     current.cov_y = msg->pose.covariance[7];
+    current.cov_yaw = msg->pose.covariance[35];
     gnss_pose_ = current;
   }
 
@@ -326,7 +331,7 @@ private:
         reset.yaw = localization_pose_->yaw;
       }
     } else if (initialpose_yaw_source_ == "gnss") {
-      if (gnss_pose_ && isFresh(*gnss_pose_, gnss_timeout_s_)) {
+      if (gnss_pose_ && isFresh(*gnss_pose_, gnss_timeout_s_) && gnssYawOk(*gnss_pose_)) {
         reset.yaw = gnss_pose_->yaw;
       }
     }
@@ -366,6 +371,20 @@ private:
     return trace <= max_gnss_cov_trace_;
   }
 
+  bool gnssYawOk(const PoseSample & gnss) const
+  {
+    return std::isfinite(gnss.cov_yaw) &&
+      gnss.cov_yaw > 0.0 &&
+      gnss.cov_yaw <= max_gnss_yaw_covariance_;
+  }
+
+  double resetYaw(const PoseSample & localization, const PoseSample & gnss) const
+  {
+    // HH_260629: During dual-antenna heading loss, GNSS pose keeps position but
+    // yaw covariance is intentionally huge. Do not seed EKF yaw from that placeholder.
+    return (!use_localization_yaw_ && gnssYawOk(gnss)) ? gnss.yaw : localization.yaw;
+  }
+
   void enterDetachedState(double gap_m)
   {
     detached_ = true;
@@ -399,7 +418,7 @@ private:
     msg.pose.pose.position.x = gnss.x;
     msg.pose.pose.position.y = gnss.y;
     msg.pose.pose.position.z = localization.z;
-    setQuaternionFromYaw(msg.pose.pose.orientation, use_localization_yaw_ ? localization.yaw : gnss.yaw);
+    setQuaternionFromYaw(msg.pose.pose.orientation, resetYaw(localization, gnss));
     msg.pose.covariance.fill(0.0);
     const double cov_x = std::max(std::max(0.0, gnss.cov_x), min_reset_cov_xy_);
     const double cov_y = std::max(std::max(0.0, gnss.cov_y), min_reset_cov_xy_);
@@ -421,7 +440,7 @@ private:
     msg.pose.pose.position.y = gnss.y;
     msg.pose.pose.position.z = localization.z;
     geometry_msgs::msg::Quaternion q;
-    setQuaternionFromYaw(q, use_localization_yaw_ ? localization.yaw : gnss.yaw);
+    setQuaternionFromYaw(q, resetYaw(localization, gnss));
     msg.pose.pose.orientation = q;
     msg.pose.covariance.fill(0.0);
     const double cov_x = std::max(std::max(0.0, gnss.cov_x), min_reset_cov_xy_);
@@ -578,6 +597,7 @@ private:
   double localization_timeout_s_{1.0};
   double gnss_timeout_s_{2.0};
   double max_gnss_cov_trace_{25.0};
+  double max_gnss_yaw_covariance_{100.0};
   double min_reset_cov_xy_{0.05};
   double reset_cov_yaw_{0.5};
 

@@ -8,6 +8,7 @@
 
 #include <Eigen/Dense>
 
+#include <avg_msgs/conversions.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
 #include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
@@ -861,10 +862,10 @@ private:
     if (publish_localization_status_ && avg_localization_pub_) {
       avg_msgs::msg::AvgLocalizationMsgs avg_msg;
       avg_msg.stamp = odom.header.stamp;
-      avg_msg.localization_odom = odom;
-      avg_msg.localization_pose = pose_msg;
-      avg_msg.localization_pose_cov = pose_cov_msg;
-      avg_msg.localization_twist = twist_msg;
+      avg_msg.localization_odom = avg_msgs::conversions::fromRos(odom);
+      avg_msg.localization_pose = avg_msgs::conversions::fromRos(pose_msg);
+      avg_msg.localization_pose_cov = avg_msgs::conversions::fromRos(pose_cov_msg);
+      avg_msg.localization_twist = avg_msgs::conversions::fromRos(twist_msg);
       avg_msg.localization_status_stream = last_diag_;
       avg_msg.gnss_update_accepted = last_diag_.gnss_update_accepted;
       avg_msg.gnss_innovation_norm = last_diag_.gnss_innovation_norm;

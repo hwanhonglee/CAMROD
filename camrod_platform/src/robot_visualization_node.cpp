@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_platform_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/polygon_stamped.hpp>
@@ -547,10 +548,10 @@ private:
     msg.state.module_name = "platform";
     msg.state.level = ModuleState::OK;
     msg.state.message = "robot_visualization";
-    msg.robot_markers = markers;
-    msg.planning_boundary = planning_boundary;
-    msg.localization_pose = makeBasePoseStamped(stamp);
-    msg.localization_pose_cov = makeBasePoseCov(stamp);
+    msg.robot_markers = avg_msgs::conversions::fromRos(markers);
+    msg.planning_boundary = avg_msgs::conversions::fromRos(planning_boundary);
+    msg.localization_pose = avg_msgs::conversions::fromRos(makeBasePoseStamped(stamp));
+    msg.localization_pose_cov = avg_msgs::conversions::fromRos(makeBasePoseCov(stamp));
     msg.robot_info.robot_specifications.wheelbase = params_.wheelbase;
     msg.robot_info.robot_specifications.track_width = params_.track_width;
     msg.robot_info.robot_specifications.length = params_.length;

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_sensing_radar.hpp>
 #include <avg_msgs/msg/point_stamped.hpp>
 #include <avg_msgs/msg/occupancy_grid.hpp>
@@ -321,19 +322,19 @@ private:
     const auto & topic = input_topics_[idx];
     // HH_260623 - Removed the legacy merged front alias; publish front1/front2 separately.
     if (topic.find("front1") != std::string::npos) {
-      avg_msg.front1 = msg;
+      avg_msg.front1 = avg_msgs::conversions::fromRos(msg);
     } else if (topic.find("front2") != std::string::npos) {
-      avg_msg.front2 = msg;
+      avg_msg.front2 = avg_msgs::conversions::fromRos(msg);
     } else if (topic.find("right1") != std::string::npos) {
-      avg_msg.right1 = msg;
+      avg_msg.right1 = avg_msgs::conversions::fromRos(msg);
     } else if (topic.find("right2") != std::string::npos) {
-      avg_msg.right2 = msg;
+      avg_msg.right2 = avg_msgs::conversions::fromRos(msg);
     } else if (topic.find("left1") != std::string::npos) {
-      avg_msg.left1 = msg;
+      avg_msg.left1 = avg_msgs::conversions::fromRos(msg);
     } else if (topic.find("left2") != std::string::npos) {
-      avg_msg.left2 = msg;
+      avg_msg.left2 = avg_msgs::conversions::fromRos(msg);
     } else if (topic.find("rear") != std::string::npos) {
-      avg_msg.rear = msg;
+      avg_msg.rear = avg_msgs::conversions::fromRos(msg);
     }
   }
 
@@ -344,7 +345,7 @@ private:
       return;
     }
     AvgSensingRadar avg_msg;
-    avg_msg.near_cost_grid = grid;
+    avg_msg.near_cost_grid = avg_msgs::conversions::fromRos(grid);
     for (std::size_t i = 0; i < samples_.size(); ++i) {
       if (!samples_[i].valid) {
         continue;

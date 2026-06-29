@@ -14,8 +14,8 @@
     planner_selector_topic: "/planning/planner_selector"
     status_topic: "/planning/obstacle_replan/status"
 
-    # HH_260625: Smac2D is already the normal planner. Keep this ID aligned so
-    # the monitor can latch the selector during dynamic-obstacle recovery.
+    # HH_260629: Normal routing starts with LaneletRoute. Smac2D remains the
+    # dynamic-obstacle recovery planner selected by this monitor.
     fallback_planner_id: "Smac2D"
     monitor_rate_hz: 5.0
     grid_max_age_s: 0.75

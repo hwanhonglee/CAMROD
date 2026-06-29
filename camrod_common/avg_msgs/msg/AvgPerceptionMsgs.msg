@@ -1,6 +1,6 @@
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 
-sensor_msgs/PointCloud2 obstacles
-sensor_msgs/CameraInfo camera_info
-vision_msgs/Detection2DArray detections
+avg_msgs/AvgPointCloud2 obstacles
+avg_msgs/AvgCameraInfo camera_info
+avg_msgs/AvgDetection2DArray detections

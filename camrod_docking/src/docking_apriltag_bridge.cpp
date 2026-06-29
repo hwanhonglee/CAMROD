@@ -7,6 +7,7 @@
 #include <string>
 
 #include "rclcpp/rclcpp.hpp"
+#include "avg_msgs/conversions.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "isaac_ros_apriltag_interfaces/msg/april_tag_detection_array.hpp"
 #include "avg_msgs/msg/avg_april_tag_detection.hpp"
@@ -49,7 +50,7 @@ private:
   {
     // avg_detection 발행 (진단용)
     avg_msgs::msg::AvgAprilTagDetectionArray out;
-    out.header = msg->header;
+    out.header = avg_msgs::conversions::fromRos(msg->header);
     for (const auto & det : msg->detections) {
       avg_msgs::msg::AvgAprilTagDetection item;
       item.family = det.family;

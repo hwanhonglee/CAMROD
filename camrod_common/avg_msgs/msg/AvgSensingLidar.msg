@@ -1,3 +1,3 @@
 # HH_260312-00:00 Sensing lidar subgroup message.
-sensor_msgs/PointCloud2 points_filtered
-nav_msgs/OccupancyGrid near_cost_grid
+avg_msgs/AvgPointCloud2 points_filtered
+avg_msgs/AvgOccupancyGrid near_cost_grid

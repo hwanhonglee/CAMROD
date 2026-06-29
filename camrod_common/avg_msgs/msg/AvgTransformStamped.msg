@@ -1,0 +1,3 @@
+avg_msgs/AvgHeader header
+string child_frame_id
+avg_msgs/AvgTransform transform

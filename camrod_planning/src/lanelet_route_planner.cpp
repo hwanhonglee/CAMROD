@@ -356,6 +356,37 @@ private:
     return pointInPolygon2D(polygon, x, y);
   }
 
+  bool laneletBoundsWithinSnapDistance(
+    const lanelet::ConstLanelet & lanelet,
+    const double x,
+    const double y) const
+  {
+    const auto left_bound = lanelet.leftBound();
+    const auto right_bound = lanelet.rightBound();
+    if (left_bound.empty() && right_bound.empty()) {
+      return false;
+    }
+
+    double min_x = std::numeric_limits<double>::max();
+    double min_y = std::numeric_limits<double>::max();
+    double max_x = std::numeric_limits<double>::lowest();
+    double max_y = std::numeric_limits<double>::lowest();
+    const auto update_bounds = [&](const lanelet::ConstLineString3d & bound) {
+        for (const auto & point : bound) {
+          min_x = std::min(min_x, point.x());
+          min_y = std::min(min_y, point.y());
+          max_x = std::max(max_x, point.x());
+          max_y = std::max(max_y, point.y());
+        }
+      };
+    update_bounds(left_bound);
+    update_bounds(right_bound);
+
+    const double margin = max_snap_distance_m_;
+    return x >= min_x - margin && x <= max_x + margin &&
+      y >= min_y - margin && y <= max_y + margin;
+  }
+
   ProjectedPoint projectToCenterline(
     const lanelet::ConstLanelet & lanelet, const double x, const double y) const
   {
@@ -408,6 +439,12 @@ private:
     const double max_snap_distance_sq = max_snap_distance_m_ * max_snap_distance_m_;
 
     for (const auto & lanelet : map_->laneletLayer) {
+      // HH_260629: Avoid forcing lazy centerline generation for every lanelet
+      // during start/goal snapping. Bounds are loaded cheaply and reject most
+      // unrelated or opposite-side lanelets before projection.
+      if (!laneletBoundsWithinSnapDistance(lanelet, x, y)) {
+        continue;
+      }
       const ProjectedPoint projection = projectToCenterline(lanelet, x, y);
       if (!projection.valid || projection.distance_sq > max_snap_distance_sq) {
         continue;

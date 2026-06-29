@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/goal_status_array.hpp>
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
@@ -699,13 +700,13 @@ private:
     msg.state.level = ModuleState::OK;
     msg.state.message = "goal_replanner";
     if (global_path.has_value()) {
-      msg.global_path = global_path.value();
+      msg.global_path = avg_msgs::conversions::fromRos(global_path.value());
     }
     if (navigate_status.has_value()) {
-      msg.navigate_to_pose_status = navigate_status.value();
+      msg.navigate_to_pose_status = avg_msgs::conversions::fromRos(navigate_status.value());
     }
     if (goal_pose.has_value()) {
-      msg.goal_pose = goal_pose.value();
+      msg.goal_pose = avg_msgs::conversions::fromRos(goal_pose.value());
     }
     pub_avg_planning_->publish(msg);
   }

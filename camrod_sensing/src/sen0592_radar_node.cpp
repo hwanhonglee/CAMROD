@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include <avg_msgs/conversions.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <avg_msgs/msg/range.hpp>
 
@@ -319,9 +320,24 @@ private:
     double last_dt_ms{0.0};
     uint64_t ok{0};
     uint64_t miss{0};
+    uint64_t invalid{0};
     rclcpp::Time last_update;
     bool ever_received{false};
   };
+
+  bool is_valid_measurement_mm(const SensorRuntime& s, int mm) const
+  {
+    if (mm <= 0) {
+      return false;
+    }
+    // SEN0592/Modbus no-target or invalid replies can appear near uint16 max
+    // (for example 65533 mm). Treat them as fresh invalid samples, not objects.
+    if (mm >= 0xFFF0) {
+      return false;
+    }
+    const int max_mm = static_cast<int>(s.max_range_m * 1000.0 + 0.5);
+    return max_mm <= 0 || mm <= max_mm;
+  }
 
   // Sends a single Modbus FC 0x06 write and waits for the echo response. Returns true on success.
   bool write_single_register(SensorRuntime& s, uint16_t reg, uint16_t value, const char* label)
@@ -449,13 +465,6 @@ private:
     msg.max_range = static_cast<float>(sensors_[idx].max_range_m);
     msg.range = static_cast<float>(mm) / 1000.0f;  // mm -> m
 
-    // clamp/invalid handling (optional)
-    if (msg.range < msg.min_range || msg.range > msg.max_range) {
-      // Keep publishing, but clamp to max for safety if needed:
-      // msg.range = msg.max_range;
-      // For now publish raw converted value.
-    }
-
     pubs_[idx]->publish(msg);
     publish_radar_status(idx, msg);
   }
@@ -472,19 +481,19 @@ private:
         const auto & topic = topics_[idx];
         // HH_260623 - Removed the legacy merged front alias; publish front1/front2 separately.
         if (topic.find("front1") != std::string::npos) {
-          avg_radar_msg_.front1 = msg;
+          avg_radar_msg_.front1 = avg_msgs::conversions::fromRos(msg);
         } else if (topic.find("front2") != std::string::npos) {
-          avg_radar_msg_.front2 = msg;
+          avg_radar_msg_.front2 = avg_msgs::conversions::fromRos(msg);
         } else if (topic.find("right1") != std::string::npos) {
-          avg_radar_msg_.right1 = msg;
+          avg_radar_msg_.right1 = avg_msgs::conversions::fromRos(msg);
         } else if (topic.find("right2") != std::string::npos) {
-          avg_radar_msg_.right2 = msg;
+          avg_radar_msg_.right2 = avg_msgs::conversions::fromRos(msg);
         } else if (topic.find("left1") != std::string::npos) {
-          avg_radar_msg_.left1 = msg;
+          avg_radar_msg_.left1 = avg_msgs::conversions::fromRos(msg);
         } else if (topic.find("left2") != std::string::npos) {
-          avg_radar_msg_.left2 = msg;
+          avg_radar_msg_.left2 = avg_msgs::conversions::fromRos(msg);
         } else if (topic.find("rear") != std::string::npos) {
-          avg_radar_msg_.rear = msg;
+          avg_radar_msg_.rear = avg_msgs::conversions::fromRos(msg);
         }
       }
       avg_radar_pub_->publish(avg_radar_msg_);
@@ -510,22 +519,27 @@ private:
       bool ok = read_realtime_mm(s, mm);
       auto t1 = std::chrono::steady_clock::now();
       double dt_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+      const bool measurement_valid = ok && is_valid_measurement_mm(s, mm);
 
       {
         std::lock_guard<std::mutex> lock(mtx_);
         s.last_dt_ms = dt_ms;
         s.last_update = this->now();
 
-        if (ok) {
+        if (measurement_valid) {
           s.ok++;
           s.last_mm = mm;
+          s.ever_received = true;
+        } else if (ok) {
+          s.invalid++;
+          s.last_mm = -1;
           s.ever_received = true;
         } else {
           s.miss++;
         }
       }
 
-      if (ok) {
+      if (measurement_valid) {
         publish_range(idx, mm);
       }
 
@@ -572,6 +586,12 @@ private:
       std::snprintf(c2, sizeof(c2), "ok%06llu miss%04llu",
                     static_cast<unsigned long long>(s.ok),
                     static_cast<unsigned long long>(s.miss));
+      if (s.invalid > 0) {
+        char invalid_text[32];
+        std::snprintf(invalid_text, sizeof(invalid_text), " inv%04llu",
+                      static_cast<unsigned long long>(s.invalid));
+        std::strncat(c2, invalid_text, sizeof(c2) - std::strlen(c2) - 1);
+      }
 
       if (i > 0) {
         row1 += " | ";

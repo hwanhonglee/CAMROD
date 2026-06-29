@@ -26,6 +26,7 @@ def generate_launch_description():
     enable_radar_cost_grid = LaunchConfiguration("enable_radar_cost_grid")
     radar_sensor_param_file = LaunchConfiguration("radar_sensor_param_file")
     radar_cost_grid_param_file = LaunchConfiguration("radar_cost_grid_param_file")
+    radar_log_status = LaunchConfiguration("radar_log_status")
     module_namespace = LaunchConfiguration("module_namespace")
 
     return LaunchDescription([
@@ -36,12 +37,14 @@ def generate_launch_description():
         DeclareLaunchArgument("module_namespace", default_value="sensing/radar"),
         DeclareLaunchArgument("radar_sensor_param_file", default_value=default_sensor_param),
         DeclareLaunchArgument("radar_cost_grid_param_file", default_value=default_cost_grid_param),
+        DeclareLaunchArgument("radar_log_status", default_value="false"),
 
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(radar_sensor_launch),
             launch_arguments={
                 "radar_params": radar_sensor_param_file,
                 "module_namespace": module_namespace,
+                "radar_log_status": radar_log_status,
             }.items(),
             condition=IfCondition(enable_radar),
         ),

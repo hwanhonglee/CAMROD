@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_map_msgs.hpp>
 #include <avg_msgs/msg/color_rgba.hpp>
 #include <avg_msgs/msg/header.hpp>
@@ -294,7 +295,7 @@ private:
     msg.state.module_name = "map";
     msg.state.level = avg_msgs::msg::ModuleState::OK;
     msg.state.message = message;
-    msg.inflation_markers = markers;
+    msg.inflation_markers = avg_msgs::conversions::fromRos(markers);
     avg_map_pub_->publish(msg);
   }
 

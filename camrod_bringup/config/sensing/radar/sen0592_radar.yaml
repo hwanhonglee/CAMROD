@@ -15,7 +15,7 @@
 
     # Per-sensor detection angle written to register 0x0208 at startup.
     # Values: 1=15° 2=30° 3=45° 4=60° 5=75°. 0 = skip (sensor retains hardware value).
-    # HH_260623 - Latest vehicle radar profile uses seven sensors:
+    # HH_260629 - Latest vehicle radar profile uses seven sensors:
     # FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
     sensor_angle_config_values: [5, 5, 5, 5, 5, 5, 5]
 
@@ -29,9 +29,9 @@
     radar_status_topic: "status"
 
     # Sensor mapping
-    # HH_260623 - Index order is the contract:
+    # HH_260629 - Keep standalone sensing launch aligned with full bringup:
     #   name[i] -> frame_ids[i] -> ports[i] -> topics[i].
-    #   If wiring is swapped, swap all fields at the same index, not only the label.
+    #   Current CH9344 harness reports LEFT on USB4/USB5 and RIGHT on USB2/USB3.
     sensor_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]
     frame_ids:
       - "radar_front1_link"
@@ -47,10 +47,10 @@
     ports:
       - "/dev/ttyCH9344USB0"
       - "/dev/ttyCH9344USB1"
-      - "/dev/ttyCH9344USB2"
-      - "/dev/ttyCH9344USB3"
       - "/dev/ttyCH9344USB4"
       - "/dev/ttyCH9344USB5"
+      - "/dev/ttyCH9344USB2"
+      - "/dev/ttyCH9344USB3"
       - "/dev/ttyCH9344USB6"
 
     # topic names (relative to namespace)

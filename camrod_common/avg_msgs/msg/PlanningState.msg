@@ -1,5 +1,5 @@
 # HH_260617: CAMROD mission/state-machine status payload.
-std_msgs/Header header
+avg_msgs/AvgHeader header
 
 uint8 INIT=0
 uint8 READY=1

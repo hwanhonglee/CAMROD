@@ -1,0 +1,13 @@
+[Unit]
+Description=CAMROD SocketCAN can0 setup
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+Before=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/camrod-setup-can0 can0 500000 100
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

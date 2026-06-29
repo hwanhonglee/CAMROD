@@ -1,0 +1,2 @@
+avg_msgs/AvgPoint position
+avg_msgs/AvgQuaternion orientation

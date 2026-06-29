@@ -1,5 +1,5 @@
 # HH_260617: CAMROD semantic mission-key command/status payload.
-std_msgs/Header header
+avg_msgs/AvgHeader header
 
 string mission_key
 string source

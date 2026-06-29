@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
-    # HH_260604: SparkFun ZED-F9P at ttyACM0 — simpleRTK2B uses libusb (no ttyACM created).
-    device: /dev/ttyACM0
+    # HH_260629: Current field wiring enumerates CV7 IMU as ttyACM0 and ZED-F9P as ttyACM1.
+    device: /dev/ttyACM1
     frame_id: gps
     # HH_260611: Make the RTCM input topic configurable so dual mode can avoid rover USB RTCM.
     rtcm_topic: rtcm

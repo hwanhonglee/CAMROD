@@ -2,39 +2,22 @@
 # This file is the single source of truth for map path + origin offsets.
 /**:
   ros__parameters:
-    # Lanelet2 OSM path.
-    # Keep empty by default and let launch resolve via package-share/workspace search.
-    # (bringup/map/planning launch files already provide this resolution path.)
-    map_path: "../../lanelet2_maps_(c_track_test).osm"
+    # Lanelet2 OSM path for the active C-track map.
+    # Use an absolute path so bringup/module launches load the same file.
+    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps_(c_track_test).osm"
     map_profile: "copy_c_track"
 
-    # WGS84 origin used by LocalCartesian/UTM projectors.
-    # Keep these values aligned with the source map generation reference.
-
-    # 52S-CF60, Park - VMB (map v8, back-calculated from all 675 OSM nodes local_x/y vs lat/lon)
-    # offset_lat: 36.8436194   # v1 origin
-    # offset_lon: 128.0925490
-    # offset_alt: 299.425
-    # offset_lat: 36.84357266  # incorrect partial average
-    # offset_lon: 128.09256443
-    # offset_lat: 36.84395344
-    # offset_lon: 128.09243413
-    # offset_alt: 293.119
-
-    # 52S-CF0, C-track - VMB
-    # offset_lat: 36.12491471
-    # offset_lon: 126.77473954
-    # offset_alt: 84.0
-
-    # 52S-CF0, C-track - VMB
-    offset_lat: 36.12491471
-    offset_lon: 126.77473954
-    offset_alt: 84.0
+    # WGS84 origin used by LocalCartesian projectors.
+    # HH_260629: Back-calculated from this OSM's local_x/local_y tags so the map
+    # frame stays in local meter coordinates instead of a tens-of-km offset.
+    offset_lat: 36.729291686
+    offset_lon: 127.442957302
+    offset_alt: 0.0
 
     # Optional UTM-origin metadata for downstream tools that prefer metric origin fields.
     offset_utm_easting: 0.0
     offset_utm_northing: 0.0
-    offset_utm_alt: 84.0
+    offset_utm_alt: 0.0
 
     # Optional map yaw correction (degrees).
     # If enabled, lat/lon->xy conversion can be rotated by this offset.
@@ -53,19 +36,23 @@
     dir_width_scale: 0.18
     # Number of centerline points skipped between arrow markers.
     dir_stride: 30
-    # HH_260625: Publish the GNSS/localization neighborhood first; delay the
-    # full RViz marker build so startup planning does not compete with full-map rendering.
+    # HH_260629: Publish a lightweight full-map overview immediately so RViz is
+    # never blank; detailed centerline/direction markers are still delayed.
     progressive_visualization_enable: true
     progressive_visualization_radius_m: 120.0
-    progressive_visualization_full_delay_s: 12.0
+    progressive_visualization_full_delay_s: 0.0
     # HH_260629: Use map-frame localization pose for local-first visualization.
     # Raw GNSS pose can be WGS84/driver-local before map projection and filter
     # every lanelet out of the local marker window.
     progressive_visualization_pose_topic: "/localization/pose"
     progressive_visualization_fallback_pose_topic: ""
-    progressive_visualization_lightweight_local: true
+    progressive_visualization_lightweight_local: false
     progressive_visualization_lightweight_full: true
+    progressive_visualization_detailed_full_delay_s: 30.0
+    # Keep direction/ID/semantic markers, but skip raw OSM point spheres by default.
+    visualization_publish_raw_points: false
     debug_timing: true
 
-    # 0 keeps one-shot static marker publish; transient_local handles late RViz subscribers.
-    visualization_republish_period_s: 0.0
+    # HH_260629: Republish cached markers so RViz recovers even if it misses the
+    # transient-local sample during display reloads or launch restarts.
+    visualization_republish_period_s: 5.0

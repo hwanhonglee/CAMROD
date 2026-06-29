@@ -13,6 +13,7 @@ import yaml
 from action_msgs.msg import GoalStatus, GoalStatusArray
 from avg_msgs.msg import (
     AvgAmrServiceState,
+    AvgPoseStamped,
     PlanningMissionKey,
     PlanningRecallRequest,
     PlanningScenario,
@@ -1249,7 +1250,7 @@ class PlanningStateMachineNode(Node):
             response.message = f"unknown key: {key_name}"
             return response
 
-        goal_pose = PoseStamped()
+        goal_pose = AvgPoseStamped()
         goal_pose.header.stamp = self.get_clock().now().to_msg()
         goal_pose.header.frame_id = keypoint.frame_id
         goal_pose.pose.position.x = keypoint.x

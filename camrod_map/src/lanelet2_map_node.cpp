@@ -6,6 +6,7 @@
 #include <cctype>
 #include <functional>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/point.hpp>
 #include <avg_msgs/msg/transform_stamped.hpp>
 #include <avg_msgs/msg/color_rgba.hpp>
@@ -162,6 +163,8 @@ void Lanelet2MapNode::loadParameters()
     "progressive_visualization_radius_m", 120.0);
   progressive_visualization_full_delay_s_ = this->declare_parameter<double>(
     "progressive_visualization_full_delay_s", 12.0);
+  progressive_visualization_detailed_full_delay_s_ = this->declare_parameter<double>(
+    "progressive_visualization_detailed_full_delay_s", 30.0);
   progressive_visualization_pose_topic_ = this->declare_parameter<std::string>(
     "progressive_visualization_pose_topic", "/localization/pose");
   progressive_visualization_fallback_pose_topic_ = this->declare_parameter<std::string>(
@@ -170,6 +173,8 @@ void Lanelet2MapNode::loadParameters()
     "progressive_visualization_lightweight_local", true);
   progressive_visualization_lightweight_full_ = this->declare_parameter<bool>(
     "progressive_visualization_lightweight_full", false);
+  visualization_publish_raw_points_ = this->declare_parameter<bool>(
+    "visualization_publish_raw_points", false);
   debug_timing_ = this->declare_parameter<bool>("debug_timing", true);
   publish_map_status_ = this->declare_parameter<bool>("publish_map_status", false);
   map_status_topic_ = this->declare_parameter<std::string>("map_status_topic", "/map/status");
@@ -271,7 +276,7 @@ void Lanelet2MapNode::publishVisualization(
   // HH_260625: The first RViz paint must not compute lazy centerlines or
   // semantic/text markers for the whole map. Bounds give the operator immediate
   // local context while planning/lifecycle nodes finish startup.
-  if (!lightweight_local) {
+  if (!lightweight_mode) {
     centerline_count = addLaneletCenterlines(markers, marker_id, stamp);
   }
   const auto bound_count = addLaneletBounds(markers, marker_id, stamp);
@@ -284,15 +289,20 @@ void Lanelet2MapNode::publishVisualization(
   std::size_t id_count = 0U;
   std::size_t semantic_count = 0U;
   if (!lightweight_mode) {
-    point_count = addPoints(markers, marker_id, stamp);
+    if (visualization_publish_raw_points_) {
+      point_count = addPoints(markers, marker_id, stamp);
+    }
     direction_count = addLaneletDirections(markers, marker_id, stamp);
     id_count = addLaneletIds(markers, marker_id, stamp);
     semantic_count = addSemanticMarkers(markers, marker_id, stamp);
   }
 
+  const bool detailed_full_mode =
+    !local_mode && std::string(mode_label ? mode_label : "") == "full_detailed";
   const bool should_log =
     (local_mode && !logged_local_marker_stats_) ||
-    (!local_mode && !logged_full_marker_stats_);
+    (detailed_full_mode && !logged_detailed_full_marker_stats_) ||
+    (!local_mode && !detailed_full_mode && !logged_full_marker_stats_);
   if (should_log) {
     RCLCPP_INFO(
       get_logger(),
@@ -304,6 +314,8 @@ void Lanelet2MapNode::publishVisualization(
       point_count + id_count + semantic_count);
     if (local_mode) {
       logged_local_marker_stats_ = true;
+    } else if (detailed_full_mode) {
+      logged_detailed_full_marker_stats_ = true;
     } else {
       logged_full_marker_stats_ = true;
     }
@@ -329,6 +341,14 @@ void Lanelet2MapNode::publishVisualization(
     }
     RCLCPP_WARN(get_logger(), "Loaded map contains no lanelets to visualize for %s mode.", mode_label);
   }
+
+  avg_msgs::msg::Marker clear_marker;
+  clear_marker.header.frame_id = config_.map_frame_id;
+  clear_marker.header.stamp = stamp;
+  clear_marker.ns = "lanelet/clear";
+  clear_marker.id = 0;
+  clear_marker.action = avg_msgs::msg::Marker::DELETEALL;
+  markers.markers.insert(markers.markers.begin(), std::move(clear_marker));
 
   cached_markers_ = markers;
   const auto build_t1 = std::chrono::steady_clock::now();
@@ -368,6 +388,42 @@ void Lanelet2MapNode::publishFullVisualization(bool force)
     return;
   }
   publishVisualization(nullptr, "full");
+  scheduleDetailedFullVisualization();
+}
+
+void Lanelet2MapNode::scheduleDetailedFullVisualization()
+{
+  if (!progressive_visualization_enable_ ||
+    !progressive_visualization_lightweight_full_ ||
+    progressive_detailed_full_visualization_published_ ||
+    progressive_visualization_detailed_full_delay_s_ <= 0.0)
+  {
+    return;
+  }
+  if (progressive_detailed_full_viz_timer_) {
+    progressive_detailed_full_viz_timer_->cancel();
+  }
+  // HH_260629: Publish a fast full-map overview first, then add expensive
+  // centerline/direction/text details after startup planning has settled.
+  progressive_detailed_full_viz_timer_ = this->create_wall_timer(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::duration<double>(progressive_visualization_detailed_full_delay_s_)),
+    [this]() { publishDetailedFullVisualization(); });
+}
+
+void Lanelet2MapNode::publishDetailedFullVisualization()
+{
+  if (progressive_detailed_full_viz_timer_) {
+    progressive_detailed_full_viz_timer_->cancel();
+  }
+  if (progressive_detailed_full_visualization_published_) {
+    return;
+  }
+  const bool saved_lightweight_full = progressive_visualization_lightweight_full_;
+  progressive_visualization_lightweight_full_ = false;
+  publishVisualization(nullptr, "full_detailed");
+  progressive_visualization_lightweight_full_ = saved_lightweight_full;
+  progressive_detailed_full_visualization_published_ = true;
 }
 
 void Lanelet2MapNode::publishCachedVisualization()
@@ -402,6 +458,12 @@ void Lanelet2MapNode::onProgressivePose(const avg_msgs::msg::PoseStamped::ConstS
   filter.radius = progressive_visualization_radius_m_;
   filter.radius_sq = filter.radius * filter.radius;
   publishVisualization(&filter, "local");
+  if (!progressive_local_visualization_published_) {
+    // HH_260629: Do not postpone the full-map timer when the local pose is
+    // outside the map frame. Otherwise high-rate invalid poses can keep
+    // resetting the delayed full publish and leave RViz with no lanelets.
+    return;
+  }
 
   const double delay_s = std::max(0.0, progressive_visualization_full_delay_s_);
   if (delay_s <= 0.0) {
@@ -1311,7 +1373,7 @@ void Lanelet2MapNode::publishAvgMapMessage(
   msg.state.module_name = "map";
   msg.state.level = avg_msgs::msg::ModuleState::OK;
   msg.state.message = "lanelet markers published";
-  msg.lanelet_markers = markers;
+  msg.lanelet_markers = avg_msgs::conversions::fromRos(markers);
   avg_map_pub_->publish(msg);
 }
 

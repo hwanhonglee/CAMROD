@@ -196,7 +196,7 @@ def generate_launch_description():
         DeclareLaunchArgument('local_path_pose_topic', default_value='/localization/pose'),
         DeclareLaunchArgument('local_path_global_path_topic', default_value='/planning/global_path'),
         DeclareLaunchArgument('local_path_fallback_global_path_topic', default_value=''),
-        DeclareLaunchArgument('local_path_source', default_value='controller_then_slice'),
+        DeclareLaunchArgument('local_path_source', default_value='slice_only'),
         DeclareLaunchArgument('tracking_error_topic', default_value='/planning/ltracking_error'),
 
         DeclareLaunchArgument('cmd_vel_gate_enable', default_value='true'),
