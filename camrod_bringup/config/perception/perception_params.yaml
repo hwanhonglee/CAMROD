@@ -1,15 +1,12 @@
-# 2026-02-02 10:32 Sync from package config into bringup/config
-# HH_260112 Align node parameter keys with /perception namespace + short names.
-# HH_260629: Synced from camrod_perception/config/perception_params.yaml (HJ_260529).
-# Previously this section pointed image_topic/camera_info_topic at /sensing/camera/processed/*
-# (no publisher / wrong type under bringup), so the camera_lidar fusion image was never produced.
-# Now points at the camera's direct econ_front topics, matching standalone.
+# HH_260629: Shared perception parameters for camrod_perception and camrod_bringup.
+# Keep the package and bringup copies synchronized before field runs.
+# Fusion uses direct econ_front topics; /sensing/camera/processed is not published.
 /perception/obstacle_fusion:
   ros__parameters:
     # Topics
     input_cloud_topic:   "/sensing/lidar/points_filtered"
     detection_topic:     "/perception/camera/detections_2d"
-    camera_info_topic:   "/sensing/camera/econ_front/camera_info"  # HJ_260529
+    camera_info_topic:   "/sensing/camera/econ_front/camera_info"  # HH_260529
     image_topic:         "/sensing/camera/econ_front/image_rect/compressed"
     bbox_topic:          "/perception/lidar/bboxes"
     output_topic:        "/perception/obstacles"
@@ -27,8 +24,8 @@
     # R (LiDAR eff→camera) is fixed by Vanjee 750 mounting: cam_X=eff_X, cam_Y=-eff_Z, cam_Z=eff_Y
     extrinsic_x: 0.0
     extrinsic_y: 0.0 # 0.0
-    extrinsic_z: -0.07    # HJ_260623: camera is 10 cm below LiDAR
-    # HJ_260529: replace fusion_filter_mode with lidar_min_forward_m; points closer than this [m] are ignored.
+    extrinsic_z: -0.07    # HH_260623: Camera is 10 cm below LiDAR.
+    # HH_260529: Replace fusion_filter_mode with lidar_min_forward_m; points closer than this [m] are ignored.
     lidar_min_forward_m: 1.0
     # Clustering / tracking
     n_closest:     5
@@ -61,9 +58,7 @@
     marker_lifetime_s: 0.15                                       # Marker lifetime before auto-expire [s].
     draw_text: true                                               # Enables per-cluster text marker (id/points/distance).
 
-# HH_260629: Synced from camrod_perception/config/perception_params.yaml (HJ_260529).
-# Was missing here, so under bringup the yolov9mit node fell back to its compiled
-# defaults (input /camera/image_rect/compressed) and received no images.
+# HH_260629: Explicit YOLO topics prevent fallback to compiled defaults.
 # model_path / class_label_path are resolved at launch time by yolo.launch.py.
 /perception/yolov9mit:
   ros__parameters:
@@ -74,7 +69,7 @@
     min_confidence: 0.5
     min_iou: 0.5
     imshow: false
-    input_image_topic: "/sensing/camera/econ_front/image_rect"   # HJ_260529
+    input_image_topic: "/sensing/camera/econ_front/image_rect"   # HH_260529
     transport_hint: "compressed"
     output_image_topic: "/perception/camera/yolo_image"
     output_boundingbox_topic: "/perception/camera/detections_2d"

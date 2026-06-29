@@ -23,6 +23,7 @@ bt_navigator:
     plugin_lib_names:
       - nav2_compute_path_through_poses_action_bt_node
       - nav2_compute_path_to_pose_action_bt_node
+      # HH_260513: SmoothPath BT node for post-planner path smoothing.
       - nav2_smooth_path_action_bt_node
       - nav2_follow_path_action_bt_node
       - nav2_back_up_action_bt_node
@@ -60,6 +61,11 @@ bt_navigator:
       - nav2_drive_on_heading_bt_node
       - nav2_assisted_teleop_action_bt_node
 
+# SimpleSmoother removes planner artifacts before FollowPath for every planner
+# selected by the BT, including LaneletRoute and grid fallbacks.
+# w_data + w_smooth must sum to < 1.0.
+# Higher w_smooth = more bending toward neighbors (smoother but may cut corners).
+# Higher w_data  = more fidelity to original path.
 smoother_server:
   ros__parameters:
     # HH_260629: Nav2 smoother defaults to base_link for collision checks unless
@@ -72,8 +78,8 @@ smoother_server:
       plugin: "nav2_smoother::SimpleSmoother"
       tolerance: 1.0e-10
       max_its: 1000
-      # HH_260626: Common BT smoother for all selected planners. Keep more data
-      # weight so smoothing does not pull a lanelet route into an adjacent lane.
+      # HH_260626: Keep more data weight so smoothing does not pull a connected
+      # lanelet route into an adjacent lane while still removing staircase noise.
       w_data: 0.45
       w_smooth: 0.25
       do_refinement: true

@@ -1,9 +1,6 @@
-# HH_260528: Camera parameter file — econ cameras (front + rear).
-# Hardware: ECONSYSTEM 1920x1080 fisheye, same product for both positions.
-#
-# ── Launch configuration ──────────────────────────────────────────────────────
-# Camera enable flags are now in camera_launch_config.yaml (HJ_260529).
-# This file is passed as --params-file to ROS2 nodes and must be valid ROS2 format.
+# HH_260629: Shared camera parameters for camrod_sensing and camrod_bringup.
+# Keep the package and bringup copies synchronized before field runs.
+# Launch-only camera enable flags stay outside this ROS parameter file.
 
 # Topic layout:
 #   /sensing/camera/econ_front/image_rect/compressed  (GPU-encoded, front)

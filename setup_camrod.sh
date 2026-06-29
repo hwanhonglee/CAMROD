@@ -10,10 +10,13 @@
 #   ./setup_camrod.sh --no-rosdep # skip rosdep after explicit system-package + external setup
 #
 # WARN: --update overwrites any local changes inside external/ directories.
-# HH_260617: setup covers the current split runtime:
+# HH_260629: setup covers the current split runtime:
 #   - camrod_parking is a local source package, not a legacy external.
 #   - camrod_voice requires SDL2_mixer; setup installs libsdl2-mixer-dev.
 #   - camrod_docking/Isaac ROS remains Jetson-only and is skipped on x86_64.
+#   - Ranger/SocketCAN tools are installed here; runtime CAN activation is handled
+#     by camrod_platform/scripts/setup_can0.sh or the matching systemd service.
+#   - camrod_ui frontend build is handled by colcon_build.sh before packaging.
 #
 # Fork override:
 #   Set CAMROD_AGILEX_BASE before running to use your own forks of agilexrobotics repos:
@@ -180,6 +183,8 @@ REQUIRED_SYS_PKGS=(
   python3-serial                    # ublox, radar 시리얼 통신
   python3-yaml                      # HH_260617: camrod_parking/camrod_bringup YAML config parsing
   python3-setuptools                # HH_260617: ament_python entry point install for camrod_parking/ui
+  can-utils                         # HH_260629: SocketCAN diagnostics for Ranger bringup.
+  iproute2                          # HH_260629: Provides `ip link` for setup_can0.sh.
   libpugixml-dev                    # Lanelet2 XML 파서 (camrod_map)
   libnanoflann-dev                  # PCL/포인트클라우드 KNN (camrod_perception)
 )

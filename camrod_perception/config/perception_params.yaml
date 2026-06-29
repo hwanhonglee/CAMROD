@@ -1,50 +1,12 @@
-# CAMROD v1.8 — Perception parameters (v1.7 structure, Vanjee 750C lidar)
-# model_path / class_label_path are resolved at launch time by yolo.launch.py
-# using get_package_share_directory — do not set absolute paths here.
-
-/perception/obstacle_lidar:
-  ros__parameters:
-    input_topic: "/sensing/lidar/points_filtered"
-    bbox_topic: "/perception/lidar/bboxes"
-    cluster_tolerance: 0.25
-    min_cluster_size: 12
-    max_cluster_size: 8000
-    # HH_260522: unified ROI filter selector for obstacle_lidar_node.
-    #   box/enabled/on: apply ROI bounds (x/y/z min/max)
-    #   disabled/off/none: skip ROI bounds
-    roi_filter_mode: box
-    x_min: 0.0
-    x_max: 5.0
-    y_min: -3.0
-    y_max: 3.0
-    z_min: -3.0
-    z_max: 5.0
-    min_size_x: 0.10
-    min_size_y: 0.10
-    min_size_z: 0.10
-    marker_lifetime_s: 0.15
-    draw_text: true
-
-/perception/yolov9mit:
-  ros__parameters:
-    model_path: ""                                         # resolved by yolo.launch.py
-    class_label_path: ""                                   # resolved by yolo.launch.py
-    model_type: "tensorrt"
-    tensorrt_device: 0
-    min_confidence: 0.5
-    min_iou: 0.5
-    imshow: false
-    input_image_topic: "/sensing/camera/econ_front/image_rect"  # HJ_260529
-    transport_hint: "compressed"
-    output_image_topic: "/perception/camera/yolo_image"
-    output_boundingbox_topic: "/perception/camera/detections_2d"
-
+# HH_260629: Shared perception parameters for camrod_perception and camrod_bringup.
+# Keep the package and bringup copies synchronized before field runs.
+# Fusion uses direct econ_front topics; /sensing/camera/processed is not published.
 /perception/obstacle_fusion:
   ros__parameters:
     # Topics
     input_cloud_topic:   "/sensing/lidar/points_filtered"
     detection_topic:     "/perception/camera/detections_2d"
-    camera_info_topic:   "/sensing/camera/econ_front/camera_info"  # HJ_260529
+    camera_info_topic:   "/sensing/camera/econ_front/camera_info"  # HH_260529
     image_topic:         "/sensing/camera/econ_front/image_rect/compressed"
     bbox_topic:          "/perception/lidar/bboxes"
     output_topic:        "/perception/obstacles"
@@ -62,8 +24,8 @@
     # R (LiDAR eff→camera) is fixed by Vanjee 750 mounting: cam_X=eff_X, cam_Y=-eff_Z, cam_Z=eff_Y
     extrinsic_x: 0.0
     extrinsic_y: 0.0 # 0.0
-    extrinsic_z: -0.07    # HJ_260623: camera is 10 cm below LiDAR
-    # HJ_260529: replace fusion_filter_mode with lidar_min_forward_m; points closer than this [m] are ignored.
+    extrinsic_z: -0.07    # HH_260623: Camera is 10 cm below LiDAR.
+    # HH_260529: Replace fusion_filter_mode with lidar_min_forward_m; points closer than this [m] are ignored.
     lidar_min_forward_m: 1.0
     # Clustering / tracking
     n_closest:     5
@@ -71,3 +33,43 @@
     ema_alpha:     0.4
     assoc_dist:    1.0
     max_miss:      5
+
+/perception/obstacle_lidar:
+  ros__parameters:
+    input_topic: "/sensing/lidar/points_filtered"                 # LiDAR cloud input for Euclidean clustering.
+    bbox_topic: "/perception/lidar/bboxes"                        # MarkerArray output topic for cluster AABB results.
+    # HH_260406: Canonical DBSCAN/Euclidean clustering params.
+    cluster_tolerance: 0.25                                       # Neighbor distance threshold for cluster growth [m].
+    min_cluster_size: 12                                          # Minimum number of points required for a valid cluster.
+    max_cluster_size: 8000                                        # Maximum number of points allowed for a valid cluster.
+    # HH_260522: Unified ROI filter selector.
+    #   box/enabled/on: apply ROI bounds
+    #   disabled/off/none: skip ROI bounds
+    roi_filter_mode: box
+    x_min: 0.0                                                    # ROI minimum X bound [m].
+    x_max: 5.0                                                    # ROI maximum X bound [m].
+    y_min: -3.0                                                   # ROI minimum Y bound [m].
+    y_max: 3.0                                                    # ROI maximum Y bound [m].
+    z_min: -3.0                                                   # ROI minimum Z bound [m].
+    z_max: 5.0                                                    # ROI maximum Z bound [m].
+    min_size_x: 0.10                                              # Reserved threshold for minimum box length in X [m].
+    min_size_y: 0.10                                              # Reserved threshold for minimum box width in Y [m].
+    min_size_z: 0.10                                              # Reserved threshold for minimum box height in Z [m].
+    marker_lifetime_s: 0.15                                       # Marker lifetime before auto-expire [s].
+    draw_text: true                                               # Enables per-cluster text marker (id/points/distance).
+
+# HH_260629: Explicit YOLO topics prevent fallback to compiled defaults.
+# model_path / class_label_path are resolved at launch time by yolo.launch.py.
+/perception/yolov9mit:
+  ros__parameters:
+    model_path: ""                                               # resolved by yolo.launch.py
+    class_label_path: ""                                         # resolved by yolo.launch.py
+    model_type: "tensorrt"
+    tensorrt_device: 0
+    min_confidence: 0.5
+    min_iou: 0.5
+    imshow: false
+    input_image_topic: "/sensing/camera/econ_front/image_rect"   # HH_260529
+    transport_hint: "compressed"
+    output_image_topic: "/perception/camera/yolo_image"
+    output_boundingbox_topic: "/perception/camera/detections_2d"

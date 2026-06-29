@@ -1,4 +1,4 @@
-# HJ_260529: Launch-only config separated from camera_params.yaml.
+# HH_260529: Launch-only config separated from camera_params.yaml.
 # This file is read by camera.launch.py to decide which camera nodes to start.
 # It is NOT passed to ROS2 nodes as a --params-file (not valid ROS2 params format).
 #

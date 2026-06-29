@@ -10,6 +10,8 @@
 #
 # All unknown arguments are forwarded directly to `colcon build`.
 # Run setup_camrod.sh first if external/ directories are missing.
+# HH_260629: camrod_ui robot frontend assets are built here before colcon installs
+# the package, so a normal full build also refreshes the UI bundle.
 
 set -euo pipefail
 
@@ -120,7 +122,7 @@ _clean_stale_install_artifacts() {
 }
 _clean_stale_install_artifacts "$@"
 
-# HJ_260626: Build the camrod_ui robot React frontend before colcon so setup.py can
+# HH_260629: Build the camrod_ui robot React frontend before colcon so setup.py can
 # package the generated build/ tree into install (see camrod_ui/setup.py). The guest
 # frontend is static (no build step). Only runs when camrod_ui is in the build scope.
 _build_camrod_ui_frontend() {
