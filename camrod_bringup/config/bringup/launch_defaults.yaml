@@ -66,10 +66,9 @@ bringup:
     # already publishes /planning/global_path; duplicate publishers make RViz path
     # visualization flicker and can feed stale paths to downstream cost grids.
     enable_goal_replanner: false
-    # HH_260625: Dynamic-obstacle recovery is separate from goal_replanner.
-    # The normal planner is already Smac2D, so this monitor mainly keeps the
-    # planner selector latched and can be used for future planner-specific
-    # fallback policies.
+    # HH_260629: Dynamic-obstacle recovery is separate from goal_replanner.
+    # Normal navigation starts with LaneletRoute; this monitor can temporarily
+    # latch Smac2D as a recovery planner when the active route is blocked.
     enable_obstacle_replan_monitor: true
     # HH_260625: Let lifecycle_manager autostart own STARTUP unless localization
     # readiness gating is explicitly enabled. Running the retry node alongside
@@ -96,10 +95,10 @@ bringup:
     #   controller_then_slice: prefer controller path, fallback to global-path slice
     #   controller_only: use controller-local path only
     #   slice_only: always slice from global path
-    # HH_260619 - Use global-route slicing by default so operator-visible
+    # HH_260629 - Use global-route slicing by default so operator-visible
     # /planning/local_path follows the newest goal immediately and does not
-    # reuse a stale controller debug path during goal replacement.
-    local_path_source: controller_then_slice
+    # reuse or transform robot-relative controller debug paths.
+    local_path_source: slice_only
 
     # ---- Planning cmd_vel gate ----
     # HH_260623 - Manual 2D-goal engage and UI mission engage are separate latches.
@@ -372,6 +371,9 @@ bringup:
     # /platform/cmd_vel gate has a hardware command subscriber. Keep
     # /platform/drive_enable as the operator safety arm.
     ranger_driver_enable: true
+    ranger_auto_setup_can: true
+    ranger_can_bitrate: 500000
+    ranger_can_restart_ms: 100
     # Keep platform.launch.py lean and route Ranger params through
     # bringup override profile when using bringup.launch.py.
     ranger_params_file: platform/ranger_driver.yaml

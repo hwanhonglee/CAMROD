@@ -95,6 +95,13 @@ def generate_launch_description():
     default_launch_config     = os.path.join(pkg_dir, 'config', 'camera', 'camera_launch_config.yaml')
     cyclonedds_config         = os.path.join(pkg_dir, 'config', 'camera', 'cyclonedds.xml')
 
+    # HH_260629: Standalone camera.launch has no outer /sensing namespace, so default
+    # directly to /sensing/camera for topic compatibility with downstream consumers
+    # (yolov9mit, obstacle_fusion, docking AprilTag, diagnostics) that hardcode
+    # /sensing/camera/... topics. sensing.launch.py overrides this to 'camera' because
+    # its PushRosNamespace("sensing") already adds the /sensing prefix.
+    camera_namespace = LaunchConfiguration('camera_namespace')
+
     return LaunchDescription([
         DeclareLaunchArgument(
             'camera_params_file',
@@ -120,6 +127,13 @@ def generate_launch_description():
             default_value='__yaml__',
             description='Enable rear camera node. Default: read from camera_launch_config.yaml.',
         ),
+        # HH_260629: base namespace for camera nodes. Standalone default includes the
+        # /sensing prefix; sensing.launch.py passes 'camera' (PushRosNamespace adds /sensing).
+        DeclareLaunchArgument(
+            'camera_namespace',
+            default_value='sensing/camera',
+            description='Base namespace for camera nodes (standalone: sensing/camera; via sensing.launch: camera).',
+        ),
 
         OpaqueFunction(function=_resolve_camera_enables),
 
@@ -128,12 +142,13 @@ def generate_launch_description():
 
         # ── Front camera node ───────────────────────────────────────────────────
         # FQN: /sensing/camera/econ_front/camera_front_publisher
-        # Relative namespace: sensing.launch.py wraps in PushRosNamespace("sensing")
+        # camera_namespace defaults to sensing/camera (standalone); sensing.launch.py
+        # passes 'camera' and its PushRosNamespace("sensing") adds the /sensing prefix.
         Node(
             package='camrod_sensing',
             executable='camera_front_publisher_node',
             name='camera_front_publisher',
-            namespace='camera/econ_front',
+            namespace=[camera_namespace, '/econ_front'],
             output='screen',
             condition=IfCondition(LaunchConfiguration('_front_camera_eff')),
             parameters=[LaunchConfiguration('camera_params_file')],
@@ -152,7 +167,7 @@ def generate_launch_description():
             package='image_transport',
             executable='republish',
             name='front_camera_republisher',
-            namespace='camera',
+            namespace=camera_namespace,
             output='screen',
             condition=IfCondition(LaunchConfiguration('_front_camera_eff')),
             arguments=['compressed', 'raw'],
@@ -174,7 +189,7 @@ def generate_launch_description():
             package='camrod_sensing',
             executable='camera_rear_publisher_node',
             name='camera_rear_publisher',
-            namespace='camera/econ_rear',
+            namespace=[camera_namespace, '/econ_rear'],
             output='screen',
             condition=IfCondition(LaunchConfiguration('_rear_camera_eff')),
             parameters=[LaunchConfiguration('camera_params_file')],

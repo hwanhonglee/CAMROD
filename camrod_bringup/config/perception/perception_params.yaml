@@ -1,19 +1,41 @@
 # 2026-02-02 10:32 Sync from package config into bringup/config
 # HH_260112 Align node parameter keys with /perception namespace + short names.
+# HH_260629: Synced from camrod_perception/config/perception_params.yaml (HJ_260529).
+# Previously this section pointed image_topic/camera_info_topic at /sensing/camera/processed/*
+# (no publisher / wrong type under bringup), so the camera_lidar fusion image was never produced.
+# Now points at the camera's direct econ_front topics, matching standalone.
 /perception/obstacle_fusion:
   ros__parameters:
-    input_cloud_topic: "/sensing/lidar/points_filtered"           # LiDAR cloud input used as raw obstacle candidates.
-    detection_topic: "/perception/camera/detections_2d"           # 2D detection boxes used to gate LiDAR points.
-    camera_info_topic: "/sensing/camera/processed/camera_info"    # Camera intrinsics used for 3D->2D projection.
-    output_topic: "/perception/obstacles"                         # Filtered obstacle point-cloud output topic.
-    # HH_260623 - camera_front is the canonical optical TF frame; legacy camera_link was removed from sensor_kit.
-    camera_frame: "camera_front"                                  # Camera TF frame used in transform lookup.
-    # HH_260522: Unified fusion filter selector.
-    #   camera_bbox/enabled/on: camera-detection-gated point cloud
-    #   pass_through/disabled/off/none: no camera gating (LiDAR-only passthrough)
+    # Topics
+    input_cloud_topic:   "/sensing/lidar/points_filtered"
+    detection_topic:     "/perception/camera/detections_2d"
+    camera_info_topic:   "/sensing/camera/econ_front/camera_info"  # HJ_260529
+    image_topic:         "/sensing/camera/econ_front/image_rect/compressed"
+    bbox_topic:          "/perception/lidar/bboxes"
+    output_topic:        "/perception/obstacles"
+    out_image_topic:     "/perception/camera_lidar/image"
+    out_det3d_topic:     "/perception/camera_lidar/detections_3d"
+    out_markers_topic:   "/perception/camera_lidar/markers"
+    out_euclidean_topic: "/perception/camera_lidar/euclidean_markers"
+    # HH_260522: unified fusion filter selector.
+    #   camera_bbox/enabled/on: keep only points inside camera detections
+    #   pass_through/disabled/off/none: ignore camera detections and publish projected LiDAR points
+    fusion_filter_mode: "camera_bbox"
+    # If true, publish pass-through points when detections are missing/empty.
+    keep_lidar_when_no_detections: true
+    # Extrinsic: camera position relative to LiDAR effective frame [m]
+    # R (LiDAR eff→camera) is fixed by Vanjee 750 mounting: cam_X=eff_X, cam_Y=-eff_Z, cam_Z=eff_Y
+    extrinsic_x: 0.0
+    extrinsic_y: 0.0 # 0.0
+    extrinsic_z: -0.07    # HJ_260623: camera is 10 cm below LiDAR
     # HJ_260529: replace fusion_filter_mode with lidar_min_forward_m; points closer than this [m] are ignored.
     lidar_min_forward_m: 1.0
-    # HH_260109 Perception obstacle fusion (camera detections + LiDAR).
+    # Clustering / tracking
+    n_closest:     5
+    min_pts_in_bbox: 3
+    ema_alpha:     0.4
+    assoc_dist:    1.0
+    max_miss:      5
 
 /perception/obstacle_lidar:
   ros__parameters:
@@ -38,3 +60,21 @@
     min_size_z: 0.10                                              # Reserved threshold for minimum box height in Z [m].
     marker_lifetime_s: 0.15                                       # Marker lifetime before auto-expire [s].
     draw_text: true                                               # Enables per-cluster text marker (id/points/distance).
+
+# HH_260629: Synced from camrod_perception/config/perception_params.yaml (HJ_260529).
+# Was missing here, so under bringup the yolov9mit node fell back to its compiled
+# defaults (input /camera/image_rect/compressed) and received no images.
+# model_path / class_label_path are resolved at launch time by yolo.launch.py.
+/perception/yolov9mit:
+  ros__parameters:
+    model_path: ""                                               # resolved by yolo.launch.py
+    class_label_path: ""                                         # resolved by yolo.launch.py
+    model_type: "tensorrt"
+    tensorrt_device: 0
+    min_confidence: 0.5
+    min_iou: 0.5
+    imshow: false
+    input_image_topic: "/sensing/camera/econ_front/image_rect"   # HJ_260529
+    transport_hint: "compressed"
+    output_image_topic: "/perception/camera/yolo_image"
+    output_boundingbox_topic: "/perception/camera/detections_2d"

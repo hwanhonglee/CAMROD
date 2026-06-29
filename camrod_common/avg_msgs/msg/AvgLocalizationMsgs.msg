@@ -1,17 +1,17 @@
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 
-geometry_msgs/PoseStamped localization_pose
-geometry_msgs/PoseWithCovarianceStamped localization_pose_cov
-nav_msgs/Odometry localization_odom
-geometry_msgs/TwistStamped localization_twist
+avg_msgs/AvgPoseStamped localization_pose
+avg_msgs/AvgPoseWithCovarianceStamped localization_pose_cov
+avg_msgs/AvgOdometry localization_odom
+avg_msgs/AvgTwistStamped localization_twist
 avg_msgs/AvgLocalizationMode localization_mode
 avg_msgs/AvgLocalizationStatus localization_status
 avg_msgs/AvgLocalizationStatusStream localization_status_stream
-geometry_msgs/PoseWithCovarianceStamped gnss_pose_cov
-sensor_msgs/NavSatFix gnss_navsatfix
-sensor_msgs/Imu imu_data
-nav_msgs/Odometry wheel_odometry
+avg_msgs/AvgPoseWithCovarianceStamped gnss_pose_cov
+avg_msgs/AvgNavSatFix gnss_navsatfix
+avg_msgs/AvgImu imu_data
+avg_msgs/AvgOdometry wheel_odometry
 
 bool gnss_update_accepted
 float32 gnss_innovation_norm

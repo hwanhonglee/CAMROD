@@ -18,7 +18,7 @@ def generate_launch_description():
     # Resolve labels path from yolov9mit_ros share (built in camera_lidar_fusion/yolo_ws).
     try:
         yolo_ros_share = get_package_share_directory('yolov9mit_ros')
-        default_model = os.path.join(yolo_ros_share, 'models', 'v9-s.vec2box.sim.engine')
+        default_model = os.path.join(yolo_ros_share, 'models', 'epoch74_step151350.vec2box.sim.engine')
         default_labels = os.path.join(yolo_ros_share, 'labels', 'coco_names.txt')
     except Exception:
         default_model = ''

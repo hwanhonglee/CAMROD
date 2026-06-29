@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/point.hpp>
@@ -40,11 +41,11 @@ public:
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/planning/lanelet_pose");
     output_topic_ = declare_parameter<std::string>("output_topic", "/planning/local_path");
     // Local path source policy:
-    // - "controller_then_slice" (default): use controller local plan first, fallback to global slice.
+    // - "controller_then_slice": use controller local plan first, fallback to global slice.
     // - "controller_only": publish only controller local plan.
-    // - "slice_only": always publish global-path slice.
+    // - "slice_only" (default): always publish a map-fixed global-path slice.
     local_path_source_ = declare_parameter<std::string>(
-      "local_path_source", "controller_then_slice");
+      "local_path_source", "slice_only");
     controller_path_topic_ = declare_parameter<std::string>(
       "controller_path_topic", "/planning/local_path_controller");
     controller_path_timeout_s_ = declare_parameter<double>("controller_path_timeout_s", 0.8);
@@ -281,9 +282,9 @@ private:
       last_preferred_path_rx_ = rx_time;
     }
     if (route_changed && controller_path_reset_on_global_path_change_) {
-      // HH_260618: Force the first local path after a new goal to come from the
-      // updated global path, then allow Nav2's controller-local path once it has
-      // had time to recompute against the new goal.
+      // HH_260629: Reset controller debug-path cache on new routes. The default
+      // local path source stays slice_only so RViz/control guards see a map-fixed
+      // route segment rather than a robot-frame plan attached to the vehicle.
       has_controller_path_ = false;
       latest_controller_path_.poses.clear();
       last_controller_path_rx_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
@@ -809,7 +810,7 @@ private:
     msg.state.module_name = "planning";
     msg.state.level = ModuleState::OK;
     msg.state.message = is_empty ? "local_path_extractor.empty" : "local_path_extractor";
-    msg.local_path = local_path;
+    msg.local_path = avg_msgs::conversions::fromRos(local_path);
     pub_avg_planning_->publish(msg);
   }
 

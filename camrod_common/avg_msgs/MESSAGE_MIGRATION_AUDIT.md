@@ -110,3 +110,21 @@ These should generally remain standard ROS messages:
 - `/localization/pose`, `/localization/odometry/filtered`.
 - `/sensing/gnss/fix`, `/sensing/imu/data`, point clouds, images, cost grids.
 - `/system/diagnostics_agg`.
+
+## 7. Phase 1 Generated Type Migration
+
+HH_260629: The package now provides generated `Avg*` mirror interfaces for the
+standard ROS shapes that CAMROD aggregate/status payloads need: header, pose,
+path, occupancy grid, marker array, odometry, GNSS, IMU, range, image, camera
+info, point cloud, action status, and 2D detections.
+
+The package-level aggregate/status messages now use generated `avg_msgs`
+fields instead of embedding `std_msgs`, `geometry_msgs`, `nav_msgs`,
+`sensor_msgs`, `visualization_msgs`, `action_msgs`, or `vision_msgs` fields.
+This keeps those CAMROD-owned snapshot payloads real `avg_msgs` wire types.
+
+Existing alias headers such as `avg_msgs/msg/pose_stamped.hpp` still exist for
+topic-level compatibility. Removing them requires a topic-by-topic split:
+CAMROD-internal topics move to generated `Avg*` messages, while Nav2, RViz,
+sensor drivers, TF, diagnostics, and other external ROS contracts keep standard
+ROS message types or get explicit bridge/mirror topics.

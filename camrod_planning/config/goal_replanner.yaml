@@ -23,10 +23,9 @@
     # This prevents occasional free-space diagonal plans when start_topic is stale.
     start_topic_fallback_to_tf: false
     action_name: "/planning/compute_path_to_pose"
-    # HH_260625: Use Smac2D by default for fast event-driven path generation.
-    # The lanelet cost grid keeps the search lane-bound without the LaneletRoute
-    # routing-graph startup cost.
-    planner_id: "Smac2D"
+    # HH_260629: Prefer connected Lanelet2 routes for replanner-only path
+    # previews; use Smac2D only as a fallback when a lanelet route is unavailable.
+    planner_id: "LaneletRoute"
     fallback_planner_id: "Smac2D"
     retry_with_fallback_planner: true
     frame_id: "map"

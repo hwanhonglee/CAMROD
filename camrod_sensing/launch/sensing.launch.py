@@ -165,6 +165,10 @@ def generate_launch_description():
                  camera_params_file=LaunchConfiguration("camera_params_file"),
                  enable_front_camera=LaunchConfiguration("enable_front_camera"),
                  enable_rear_camera=LaunchConfiguration("enable_rear_camera"),
+                 # HH_260629: PushRosNamespace("sensing") above already adds /sensing,
+                 # so pass the relative 'camera' (camera.launch standalone defaults to
+                 # 'sensing/camera'). Avoids /sensing/sensing/camera double prefix.
+                 camera_namespace="camera",
             ),
 
             # HH_260606 // Route all GNSS startup through gnss.launch.py only.

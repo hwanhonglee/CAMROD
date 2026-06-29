@@ -1,12 +1,12 @@
 builtin_interfaces/Time stamp
-std_msgs/Header header
+avg_msgs/AvgHeader header
 
 # HH_260409: Unified platform runtime status payload for CAN/state bridge users.
 avg_msgs/ModuleState state
 
-nav_msgs/Odometry odometry
-geometry_msgs/TwistStamped velocity
-geometry_msgs/TwistStamped wheel
+avg_msgs/AvgOdometry odometry
+avg_msgs/AvgTwistStamped velocity
+avg_msgs/AvgTwistStamped wheel
 
 bool estop
 uint8 vehicle_state

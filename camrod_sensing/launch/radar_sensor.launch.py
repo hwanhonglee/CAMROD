@@ -18,6 +18,7 @@ def generate_launch_description():
 
     radar_params = LaunchConfiguration("radar_params")
     module_namespace = LaunchConfiguration("module_namespace")
+    radar_log_status = LaunchConfiguration("radar_log_status")
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -33,6 +34,11 @@ def generate_launch_description():
             default_value="sensing/radar",
             description="Namespace for radar standalone launch",
         ),
+        DeclareLaunchArgument(
+            "radar_log_status",
+            default_value="false",
+            description="Print periodic per-port radar range status lines",
+        ),
 
         Node(
             package="camrod_sensing",
@@ -46,7 +52,7 @@ def generate_launch_description():
                 radar_params,
                 {
                     "radar_status_topic": "status",
-                    "log_status": True,
+                    "log_status": radar_log_status,
                 },
             ],
         ),

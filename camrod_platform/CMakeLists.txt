@@ -79,7 +79,7 @@ else()
   message(STATUS "ranger_msgs not found — ranger_platform_bridge_node will not be built")
 endif()
 
-install(DIRECTORY config launch
+install(DIRECTORY config launch scripts systemd
   DESTINATION share/${PROJECT_NAME})
 
 ament_package()

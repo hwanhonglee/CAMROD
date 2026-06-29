@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <avg_msgs/msg/marker_array.hpp>
@@ -172,7 +173,7 @@ private:
     msg.state.module_name = "map";
     msg.state.level = avg_msgs::msg::ModuleState::OK;
     msg.state.message = message;
-    msg.inflation_markers = markers;
+    msg.inflation_markers = avg_msgs::conversions::fromRos(markers);
     avg_map_pub_->publish(msg);
   }
 

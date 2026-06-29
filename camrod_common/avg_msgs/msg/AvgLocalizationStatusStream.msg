@@ -1,5 +1,5 @@
 # HH_260311-00:00 Internal ESKF status_stream migrated to avg_msgs.
-std_msgs/Header header
+avg_msgs/AvgHeader header
 float32 gnss_innovation_norm
 bool gnss_update_accepted
 float32 wheel_innovation_norm

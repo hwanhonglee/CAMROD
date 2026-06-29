@@ -12,10 +12,10 @@
     #   controller_then_slice: prefer controller path, fallback to global path slice
     #   controller_only: use controller path only (publish empty when unavailable)
     #   slice_only: always slice from global path
-    # HH_260626 - Prefer the controller's received plan, which is the BT
-    # smoothed path handed to FollowPath. Fall back to slicing /planning/global_path
-    # while the controller plan is not yet available or was reset by a new goal.
-    local_path_source: "controller_then_slice"
+    # HH_260629 - Publish a map-fixed slice of /planning/global_path. Controller
+    # debug plans can be robot-relative, which makes RViz local_path look glued
+    # to the vehicle and can move the apparent goal as the robot moves.
+    local_path_source: "slice_only"
     controller_path_topic: "/planning/local_path_controller"
     controller_path_timeout_s: 0.8
     # HH_260618: On a new clicked/UI goal, discard controller-local path from
@@ -23,9 +23,10 @@
     # latest global route immediately.
     controller_path_reset_on_global_path_change: true
     controller_path_reset_hold_s: 0.4
-    # HH_260619 - Keep VOLATILE so live route updates are matched even when the
-    # upstream planner QoS differs across Nav2 builds.
-    global_path_qos_transient_local: false
+    # HH_260629 - Planner publishes /planning/global_path as transient_local.
+    # Match it so a restarted local_path_extractor immediately receives the
+    # current route instead of waiting for the next goal.
+    global_path_qos_transient_local: true
     # Use fused localization pose for controller-plan transform.
     # This prevents heading/sign mismatch between global and local path direction.
     pose_topic: "/localization/pose"

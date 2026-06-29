@@ -1,0 +1,2 @@
+avg_msgs/AvgVector3 translation
+avg_msgs/AvgQuaternion rotation

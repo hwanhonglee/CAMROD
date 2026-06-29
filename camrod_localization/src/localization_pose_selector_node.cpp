@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 
+#include <avg_msgs/conversions.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include <avg_msgs/msg/pose_stamped.hpp>
@@ -368,9 +369,9 @@ private:
     if (publish_localization_status_ && avg_localization_pub_) {
       avg_msgs::msg::AvgLocalizationMsgs avg_msg;
       avg_msg.stamp = out_pose.header.stamp;
-      avg_msg.localization_pose = out_pose;
-      avg_msg.localization_pose_cov = out_pose_cov;
-      avg_msg.localization_odom = out_odom;
+      avg_msg.localization_pose = avg_msgs::conversions::fromRos(out_pose);
+      avg_msg.localization_pose_cov = avg_msgs::conversions::fromRos(out_pose_cov);
+      avg_msg.localization_odom = avg_msgs::conversions::fromRos(out_odom);
       avg_msg.state.stamp = out_pose.header.stamp;
       avg_msg.state.module_name = "localization";
       avg_msg.state.level = avg_msgs::msg::ModuleState::OK;

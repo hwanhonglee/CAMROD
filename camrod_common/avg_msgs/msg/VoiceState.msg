@@ -1,4 +1,4 @@
-std_msgs/Header header
+avg_msgs/AvgHeader header
 
 uint8 STATE_IDLE=0
 uint8 STATE_PLAYING=1

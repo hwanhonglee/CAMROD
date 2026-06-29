@@ -3,6 +3,7 @@
 #include <cmath>
 #include <vector>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/point.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <avg_msgs/msg/marker_array.hpp>
@@ -240,7 +241,7 @@ private:
     msg.state.module_name = "map";
     msg.state.level = avg_msgs::msg::ModuleState::OK;
     msg.state.message = "lanelet field markers published";
-    msg.lanelet_markers = markers;
+    msg.lanelet_markers = avg_msgs::conversions::fromRos(markers);
     avg_map_pub_->publish(msg);
   }
 

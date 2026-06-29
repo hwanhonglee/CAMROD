@@ -99,7 +99,7 @@ global_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # HH_260513: Reduced from 1.5 → 1.0 (matches module fix) to prevent inflation
-        # from lanelet boundary cells reaching robot start position (lethal space).
+        # HH_260513: Reduced from 1.5 → 1.0 to prevent inflation from lanelet
+        # boundary cells reaching robot start position (Starting point in lethal space).
         inflation_radius: 1.0
         cost_scaling_factor: 3.0

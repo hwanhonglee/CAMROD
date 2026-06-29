@@ -1,5 +1,5 @@
-std_msgs/Header header
+avg_msgs/AvgHeader header
 string family
 int32 id
 string tag_frame
-geometry_msgs/PoseStamped pose
+avg_msgs/AvgPoseStamped pose

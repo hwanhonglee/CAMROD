@@ -1,18 +1,18 @@
 builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 
-geometry_msgs/PoseStamped goal_pose
-geometry_msgs/PoseStamped lanelet_pose
-action_msgs/GoalStatusArray navigate_to_pose_status
+avg_msgs/AvgPoseStamped goal_pose
+avg_msgs/AvgPoseStamped lanelet_pose
+avg_msgs/AvgGoalStatusArray navigate_to_pose_status
 
-nav_msgs/Path global_path
-nav_msgs/Path local_path
-nav_msgs/Path local_plan_raw
-nav_msgs/Path local_path_controller
-nav_msgs/Path local_path_dwb
+avg_msgs/AvgPath global_path
+avg_msgs/AvgPath local_path
+avg_msgs/AvgPath local_plan_raw
+avg_msgs/AvgPath local_path_controller
+avg_msgs/AvgPath local_path_dwb
 
-nav_msgs/OccupancyGrid global_costmap
-nav_msgs/OccupancyGrid local_costmap
+avg_msgs/AvgOccupancyGrid global_costmap
+avg_msgs/AvgOccupancyGrid local_costmap
 
-visualization_msgs/MarkerArray global_path_cost_markers
-visualization_msgs/MarkerArray local_path_cost_markers
+avg_msgs/AvgMarkerArray global_path_cost_markers
+avg_msgs/AvgMarkerArray local_path_cost_markers

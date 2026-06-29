@@ -34,6 +34,7 @@
     gnss_timeout_s: 2.0
 
     max_gnss_cov_trace: 25.0
+    max_gnss_yaw_covariance: 100.0
     min_reset_cov_xy: 0.05
     reset_cov_yaw: 0.5
     # HH_260625: Reattach uses GNSS dual heading instead of preserving

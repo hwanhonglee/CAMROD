@@ -426,7 +426,7 @@ Visualization Manager:
                 Durability Policy: Volatile
                 Filter size: 3
                 History Policy: Keep Last
-                Reliability Policy: Reliable
+                Reliability Policy: Best Effort
                 Value: /sensing/radar/front1/range
               Value: true
             - Alpha: 0.5
@@ -440,7 +440,7 @@ Visualization Manager:
                 Durability Policy: Volatile
                 Filter size: 3
                 History Policy: Keep Last
-                Reliability Policy: Reliable
+                Reliability Policy: Best Effort
                 Value: /sensing/radar/front2/range
               Value: true
             - Alpha: 0.5
@@ -454,7 +454,7 @@ Visualization Manager:
                 Durability Policy: Volatile
                 Filter size: 3
                 History Policy: Keep Last
-                Reliability Policy: Reliable
+                Reliability Policy: Best Effort
                 Value: /sensing/radar/left1/range
               Value: true
             - Alpha: 0.5
@@ -468,7 +468,7 @@ Visualization Manager:
                 Durability Policy: Volatile
                 Filter size: 3
                 History Policy: Keep Last
-                Reliability Policy: Reliable
+                Reliability Policy: Best Effort
                 Value: /sensing/radar/left2/range
               Value: true
             - Alpha: 0.5
@@ -482,7 +482,7 @@ Visualization Manager:
                 Durability Policy: Volatile
                 Filter size: 3
                 History Policy: Keep Last
-                Reliability Policy: Reliable
+                Reliability Policy: Best Effort
                 Value: /sensing/radar/rear/range
               Value: true
             - Alpha: 0.5
@@ -496,7 +496,7 @@ Visualization Manager:
                 Durability Policy: Volatile
                 Filter size: 3
                 History Policy: Keep Last
-                Reliability Policy: Reliable
+                Reliability Policy: Best Effort
                 Value: /sensing/radar/right1/range
               Value: true
             - Alpha: 0.5
@@ -510,7 +510,7 @@ Visualization Manager:
                 Durability Policy: Volatile
                 Filter size: 3
                 History Policy: Keep Last
-                Reliability Policy: Reliable
+                Reliability Policy: Best Effort
                 Value: /sensing/radar/right2/range
               Value: true
           Enabled: true
@@ -873,11 +873,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 188.74728393554688
+      Scale: 700
       Target Frame: map
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 39.51093292236328
-      Y: -116.76868438720703
+      X: -92.87
+      Y: -191.39
     Saved: ~
 Window Geometry:
   Camera_Image_raw:

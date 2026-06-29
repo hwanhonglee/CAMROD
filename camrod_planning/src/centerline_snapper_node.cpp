@@ -4,6 +4,7 @@
 #include <limits>
 #include <string>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
@@ -93,6 +94,8 @@ public:
     cfg_.offset_alt = declare_parameter<double>("offset_alt", 0.0);
     // HH_260109 Default to fused localization pose and publish lanelet constraint pose.
     input_pose_topic_ = declare_parameter<std::string>("input_pose_topic", "/localization/pose");
+    input_pose_cov_topic_ =
+      declare_parameter<std::string>("input_pose_cov_topic", "/localization/pose_with_covariance");
     output_pose_topic_ = declare_parameter<std::string>(
       "output_pose_topic", "/localization/centerline_pose");
     // HH_260317-00:00 Publish ROS-native lanelet pose for TF/Nav2 helpers.
@@ -107,10 +110,11 @@ public:
     longitudinal_stddev_ = declare_parameter<double>("longitudinal_stddev", 0.5);
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
     yaw_stddev_ = declare_parameter<double>("yaw_stddev", 0.2);
-    // HH_260625: Prefer centerlines aligned with GNSS/localization yaw. Nearest
-    // distance alone can snap to a crossing lanelet and rotate planning yaw ~90 deg.
+    // HH_260629: Prefer yaw-aligned centerlines only while localization yaw covariance is healthy.
     heading_filter_enable_ = declare_parameter<bool>("heading_filter_enable", true);
     max_heading_error_deg_ = declare_parameter<double>("max_heading_error_deg", 100.0);
+    heading_filter_max_yaw_variance_ =
+      declare_parameter<double>("heading_filter_max_yaw_variance", 1.0);
     // HH_260526: Replace use_map_z/flatten_to_ground booleans with one explicit mode.
     // HH_260623 - "ground" means the 2D planning plane (Z=0), not raw OSM median altitude.
     // centerline_z_mode options: input | map | ground.
@@ -161,6 +165,9 @@ public:
     sub_pose_ = create_subscription<avg_msgs::msg::PoseStamped>(
       input_pose_topic_, rclcpp::QoS(1).reliable(),
       std::bind(&CenterlineSnapperNode::onPose, this, std::placeholders::_1));
+    sub_pose_cov_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+      input_pose_cov_topic_, rclcpp::QoS(1).reliable(),
+      std::bind(&CenterlineSnapperNode::onPoseCovariance, this, std::placeholders::_1));
 
     RCLCPP_INFO(
       get_logger(),
@@ -277,6 +284,11 @@ private:
     has_last_publish_ = true;
   }
 
+  void onPoseCovariance(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  {
+    latest_yaw_variance_ = msg->pose.covariance[35];
+  }
+
   // Publishes `RosPose` output.
   void publishRosPose(const avg_msgs::msg::PoseStamped & pose)
   {
@@ -308,7 +320,7 @@ private:
     msg.state.module_name = "planning";
     msg.state.level = ModuleState::OK;
     msg.state.message = "centerline_snapper";
-    msg.lanelet_pose = lanelet_pose;
+    msg.lanelet_pose = avg_msgs::conversions::fromRos(lanelet_pose);
     pub_avg_planning_->publish(msg);
   }
 
@@ -319,6 +331,11 @@ private:
     NearestResult best_heading_aligned;
     const double max_sq = max_search_radius_ * max_search_radius_;
     const double max_heading_error_rad = max_heading_error_deg_ * M_PI / 180.0;
+    const bool heading_filter_allowed =
+      heading_filter_enable_ &&
+      std::isfinite(latest_yaw_variance_) &&
+      latest_yaw_variance_ > 0.0 &&
+      latest_yaw_variance_ <= heading_filter_max_yaw_variance_;
     for (const auto & ll : map_->laneletLayer) {
       const auto & cl = ll.centerline();
       if (cl.size() < 2) {
@@ -348,7 +365,7 @@ private:
           best.heading = heading;
         }
         const double heading_error = std::abs(normalizeAngle(heading - pose_yaw));
-        if (heading_filter_enable_ && heading_error <= max_heading_error_rad &&
+        if (heading_filter_allowed && heading_error <= max_heading_error_rad &&
           dist2 < best_heading_aligned.sq_dist && dist2 < max_sq)
         {
           best_heading_aligned.sq_dist = dist2;
@@ -360,7 +377,7 @@ private:
         }
       }
     }
-    if (heading_filter_enable_ && best_heading_aligned.valid) {
+    if (heading_filter_allowed && best_heading_aligned.valid) {
       return best_heading_aligned;
     }
     return best;
@@ -370,6 +387,7 @@ private:
   lanelet::LaneletMapPtr map_;
 
   std::string input_pose_topic_;
+  std::string input_pose_cov_topic_;
   std::string output_pose_topic_;
   std::string output_pose_topic_ros_;
   std::string output_pose_cov_topic_;
@@ -380,6 +398,8 @@ private:
   double yaw_stddev_{0.2};
   bool heading_filter_enable_{true};
   double max_heading_error_deg_{100.0};
+  double heading_filter_max_yaw_variance_{1.0};
+  double latest_yaw_variance_{std::numeric_limits<double>::infinity()};
   std::string centerline_z_mode_{"ground"};  // HH_260623 - Default to 2D planning plane.
   double map_z_offset_{0.0};
   double min_update_period_s_{0.05};
@@ -410,6 +430,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_pose_cov_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_pose_;
+  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_pose_cov_;
   bool publish_planning_status_{false};
 };
 

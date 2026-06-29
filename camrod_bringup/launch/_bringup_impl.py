@@ -1337,6 +1337,9 @@ def generate_launch_description():
         ('platform_ranger_driver_enable', cfg_get(launch_cfg, 'platform/ranger_driver_enable', True), 'Enable Ranger base CAN node in platform launch'),
         # HH_260528: Ranger bridge toggle (independent from Ranger base node).
         ('platform_ranger_bridge_enable', cfg_get(launch_cfg, 'platform/ranger_bridge_enable', True), 'Enable ranger_platform_bridge_node in platform launch'),
+        ('platform_ranger_auto_setup_can', cfg_get(launch_cfg, 'platform/ranger_auto_setup_can', True), 'Bring can0 up before Ranger CAN node starts'),
+        ('platform_ranger_can_bitrate', cfg_get(launch_cfg, 'platform/ranger_can_bitrate', 500000), 'Ranger SocketCAN bitrate'),
+        ('platform_ranger_can_restart_ms', cfg_get(launch_cfg, 'platform/ranger_can_restart_ms', 100), 'Ranger SocketCAN restart-ms'),
         # HH_260528: Keep sensor_kit bridge optional for debug.
         ('platform_sensor_kit_bridge_enable', cfg_get(launch_cfg, 'platform/sensor_kit_bridge_enable', True), 'Enable sensor_kit bridge include in platform launch'),
 
@@ -1504,6 +1507,9 @@ def generate_launch_description():
             lc['sim'], 'false', lc['platform_ranger_driver_enable']
         ),
         'ranger_bridge_enable': lc['platform_ranger_bridge_enable'],
+        'ranger_auto_setup_can': lc['platform_ranger_auto_setup_can'],
+        'ranger_can_bitrate': lc['platform_ranger_can_bitrate'],
+        'ranger_can_restart_ms': lc['platform_ranger_can_restart_ms'],
         'sensor_kit_bridge_enable': lc['platform_sensor_kit_bridge_enable'],
     }
     apply_cfg_overrides(platform_args, platform_overrides)

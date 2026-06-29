@@ -3,6 +3,7 @@
 #include <mutex>
 #include <string>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_sensing_imu.hpp>
 #include <avg_msgs/msg/twist_stamped.hpp>
 #include <avg_msgs/msg/twist_with_covariance_stamped.hpp>
@@ -110,10 +111,10 @@ private:
     output_pub_->publish(out);
     if (publish_imu_status_ && avg_imu_pub_) {
       AvgSensingImu avg_msg;
-      avg_msg.platform_twist_cov = out;
+      avg_msg.platform_twist_cov = avg_msgs::conversions::fromRos(out);
       if (imu_ready_) {
         std::lock_guard<std::mutex> lock(mutex_);
-        avg_msg.imu_data = last_imu_;
+        avg_msg.imu_data = avg_msgs::conversions::fromRos(last_imu_);
       }
       avg_imu_pub_->publish(avg_msg);
     }

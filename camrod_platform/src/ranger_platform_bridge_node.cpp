@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_platform_status.hpp>
 #include <avg_msgs/msg/module_state.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
@@ -413,13 +414,15 @@ private:
 
     // Odom and velocity from latest odom source
     if (latest_odom_) {
-      s.odometry = *latest_odom_;
-      s.velocity.header = latest_odom_->header;
-      s.velocity.twist  = latest_odom_->twist.twist;
+      s.odometry = avg_msgs::conversions::fromRos(*latest_odom_);
+      geometry_msgs::msg::TwistStamped velocity;
+      velocity.header = latest_odom_->header;
+      velocity.twist = latest_odom_->twist.twist;
+      s.velocity = avg_msgs::conversions::fromRos(velocity);
     }
 
     // Wheel from actuator state
-    s.wheel = latest_wheel_;
+    s.wheel = avg_msgs::conversions::fromRos(latest_wheel_);
 
     // Estop
     s.estop = last_estop_;

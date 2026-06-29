@@ -415,7 +415,11 @@ private:
     gnss_heading_.yaw_covariance = yaw_cov;
     gnss_heading_.stamp = rclcpp::Time(msg->header.stamp);
     gnss_heading_.has_sample = true;
-    rememberHeading(gnss_heading_);
+    // HH_260629: u-blox publishes a deterministic placeholder yaw while
+    // RELPOSNED heading is invalid. Keep that sample out of the fallback cache.
+    if (yaw_cov <= gnss_heading_max_covariance_) {
+      rememberHeading(gnss_heading_);
+    }
   }
 
   // HH_260604: Prefer dual-antenna heading; fall back to last heading for display only.

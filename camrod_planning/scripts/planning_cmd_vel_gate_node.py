@@ -1113,12 +1113,18 @@ class PlanningCmdVelGateNode(Node):
         self._publish_state()
         if self._dr_timeout and self.publish_zero_when_blocked:
             self._publish_zero()
-        level = "WARN" if self._dr_timeout else "INFO"
-        log_fn = self.get_logger().warn if self._dr_timeout else self.get_logger().info
-        log_fn(
-            f"DR timeout update: dr_timeout={'true' if self._dr_timeout else 'false'} "
-            f"effective={'true' if self._effective_enabled() else 'false'}"
-        )
+        # HH_260629: rclpy binds severity to a call site. Keep WARN/INFO on
+        # separate lines so DR timeout flaps do not crash the gate.
+        if self._dr_timeout:
+            self.get_logger().warn(
+                f"DR timeout update: dr_timeout=true "
+                f"effective={'true' if self._effective_enabled() else 'false'}"
+            )
+        else:
+            self.get_logger().info(
+                f"DR timeout update: dr_timeout=false "
+                f"effective={'true' if self._effective_enabled() else 'false'}"
+            )
 
     # Handles e-stop messages.
     def _on_estop(self, msg: Bool) -> None:

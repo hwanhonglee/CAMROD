@@ -1,6 +1,7 @@
 #include <mutex>
 #include <string>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_sensing_camera.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <avg_msgs/msg/camera_info.hpp>
@@ -66,7 +67,7 @@ private:
     camera_info_pub_->publish(last_camera_info_);
     if (publish_camera_status_ && avg_camera_pub_) {
       AvgSensingCamera avg_msg;
-      avg_msg.camera_info = last_camera_info_;
+      avg_msg.camera_info = avg_msgs::conversions::fromRos(last_camera_info_);
       avg_camera_pub_->publish(avg_msg);
     }
   }
@@ -92,13 +93,13 @@ private:
       camera_info_pub_->publish(last_camera_info_);
       if (publish_camera_status_ && avg_camera_pub_) {
         AvgSensingCamera avg_msg;
-        avg_msg.image = out;
-        avg_msg.camera_info = last_camera_info_;
+        avg_msg.image = avg_msgs::conversions::fromRos(out);
+        avg_msg.camera_info = avg_msgs::conversions::fromRos(last_camera_info_);
         avg_camera_pub_->publish(avg_msg);
       }
     } else if (publish_camera_status_ && avg_camera_pub_) {
       AvgSensingCamera avg_msg;
-      avg_msg.image = out;
+      avg_msg.image = avg_msgs::conversions::fromRos(out);
       avg_camera_pub_->publish(avg_msg);
     }
   }

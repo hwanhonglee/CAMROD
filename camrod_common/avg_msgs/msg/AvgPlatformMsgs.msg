@@ -2,7 +2,7 @@ builtin_interfaces/Time stamp
 avg_msgs/ModuleState state
 
 avg_msgs/AvgRobotInfo robot_info
-visualization_msgs/MarkerArray robot_markers
-geometry_msgs/PolygonStamped planning_boundary
-geometry_msgs/PoseStamped localization_pose
-geometry_msgs/PoseWithCovarianceStamped localization_pose_cov
+avg_msgs/AvgMarkerArray robot_markers
+avg_msgs/AvgPolygonStamped planning_boundary
+avg_msgs/AvgPoseStamped localization_pose
+avg_msgs/AvgPoseWithCovarianceStamped localization_pose_cov

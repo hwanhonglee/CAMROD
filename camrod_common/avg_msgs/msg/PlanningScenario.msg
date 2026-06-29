@@ -1,5 +1,5 @@
 # HH_260617: CAMROD planning scenario command/status payload.
-std_msgs/Header header
+avg_msgs/AvgHeader header
 
 uint8 WAIT_DROP_ZONE=0
 uint8 DELIVERY_TO_SITE=1

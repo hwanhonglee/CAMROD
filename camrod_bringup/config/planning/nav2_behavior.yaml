@@ -68,6 +68,11 @@ bt_navigator:
 # Higher w_data  = more fidelity to original path.
 smoother_server:
   ros__parameters:
+    # HH_260629: Nav2 smoother defaults to base_link for collision checks unless
+    # these are explicit; CAMROD publishes robot_base_link.
+    global_frame: map
+    robot_base_frame: robot_base_link
+    transform_tolerance: 0.5
     smoother_plugins: ["SimpleSmoother"]
     SimpleSmoother:
       plugin: "nav2_smoother::SimpleSmoother"

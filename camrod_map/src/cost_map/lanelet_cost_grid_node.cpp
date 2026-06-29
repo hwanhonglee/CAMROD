@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/occupancy_grid.hpp>
 #include <avg_msgs/msg/pose_stamped.hpp>
 #include <avg_msgs/msg/path.hpp>
@@ -1669,7 +1670,7 @@ private:
     msg.state.module_name = "map";
     msg.state.level = avg_msgs::msg::ModuleState::OK;
     msg.state.message = message;
-    msg.lanelet_cost_grid = grid;
+    msg.lanelet_cost_grid = avg_msgs::conversions::fromRos(grid);
     avg_map_pub_->publish(msg);
   }
 

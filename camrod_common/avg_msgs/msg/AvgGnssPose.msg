@@ -1,8 +1,8 @@
 # HH_260326: GNSS pose custom message scaffold (custom node/link integration will be added later)
-std_msgs/Header header
+avg_msgs/AvgHeader header
 
 # HH_260326: pose in map frame (same convention as /sensing/gnss/pose)
-geometry_msgs/Pose pose
+avg_msgs/AvgPose pose
 
 # HH_260326: covariance matrix in row-major order (6x6)
 float64[36] covariance
