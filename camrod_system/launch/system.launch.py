@@ -6,6 +6,7 @@ from launch.actions import DeclareLaunchArgument, GroupAction, LogInfo, OpaqueFu
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushRosNamespace, SetRemap
+import yaml
 
 
 CHECKER_NODE_SPECS = (
@@ -56,6 +57,50 @@ def _profile_param_file(config_dir: str, default_dir: str, category: str, param_
     return os.path.join(default_dir, category, param_file)
 
 
+def _flatten_ros_parameters(params: dict, prefix: str = "") -> dict:
+    flattened = {}
+    for key, value in params.items():
+        full_key = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            flattened.update(_flatten_ros_parameters(value, full_key))
+        else:
+            flattened[full_key] = value
+    return flattened
+
+
+def _checker_parameters(
+    config_dir: str,
+    default_dir: str,
+    category: str,
+    node_name: str,
+    param_file: str,
+) -> dict:
+    # HH_260630 - Checker nodes run under /system, while profiles may be keyed by
+    # basename or absolute node name. Flatten parameters directly so namespace
+    # does not make camera_names/lidar_names/radar_names/grid_names use defaults.
+    path = _profile_param_file(config_dir, default_dir, category, param_file)
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+
+    key_candidates = (
+        node_name,
+        f"/system/{node_name}",
+        f"system/{node_name}",
+        f"/{node_name}",
+    )
+    node_section = next(
+        (data.get(key) for key in key_candidates if isinstance(data.get(key), dict)),
+        None,
+    )
+    if not isinstance(node_section, dict):
+        return {}
+
+    ros_params = node_section.get("ros__parameters", {})
+    if not isinstance(ros_params, dict):
+        return {}
+    return _flatten_ros_parameters(ros_params)
+
+
 def _checker_node(
     config_dir: str,
     default_dir: str,
@@ -69,7 +114,7 @@ def _checker_node(
         executable=executable,
         name=name,
         output="screen",
-        parameters=[_profile_param_file(config_dir, default_dir, category, param_file)],
+        parameters=[_checker_parameters(config_dir, default_dir, category, name, param_file)],
     )
 
 
@@ -122,12 +167,13 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
             Node(
                 package="camrod_system",
                 executable="ranger_platform_checker_node",
-            name="ranger_platform_checker",
-            output="screen",
-            parameters=[_profile_param_file(
-                config_dir, default_dir, "platform", "ranger_platform_checker.yaml"
-            )],
-        )
+                name="ranger_platform_checker",
+                output="screen",
+                parameters=[_checker_parameters(
+                    config_dir, default_dir, "platform",
+                    "ranger_platform_checker", "ranger_platform_checker.yaml"
+                )],
+            )
         )
     elif enable_platform:
         diagnostics_nodes.append(

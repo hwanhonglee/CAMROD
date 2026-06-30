@@ -21,7 +21,7 @@
 # │   ├── Sensing/Radar      ← /sensor/radar/{FRONT1,FRONT2,LEFT1,LEFT2,RIGHT1,RIGHT2,REAR}
 # │   ├── Sensing/Camera     ← /sensor/camera/econ_front, /sensor/camera/econ_rear
 # │   ├── Sensing/Wheel      ← /sensor/wheel/main
-# │   ├── Sensing/CostGrid   ← /perception/lidar/cost_grid
+# │   ├── Sensing/CostGrid   ← /sensing/cost_grid/{lidar,radar}
 # │   └── Sensing/Velocity   ← /sensing/velocity_converter
 # │
 # ├── Perception
@@ -39,6 +39,7 @@
 # ├── Planning
 # │   ├── Planning/Path      ← /planning/path/global_path, /planning/path/local_path
 # │   ├── Planning/Costmap   ← /planning/global_costmap, /planning/local_costmap
+# │   ├── Planning/InflationCostGrid ← /planning/cost_grid/inflation
 # │   ├── Planning/NavStatus ← /planning/nav_status
 # │   └── Planning/Lifecycle ← /planning/lifecycle/planning/{planner_server,
 # │                             controller_server, bt_navigator, behavior_server}
@@ -103,11 +104,11 @@ diagnostic_aggregator:
         path: 'Sensing/Wheel'
         contains: ['/sensor/wheel/']
 
-      # ── Sensing: Cost Grid (Perception) ───────────────────────────────
+      # ── Sensing: Cost Grid ────────────────────────────────────────────
       sensing_cost_grid:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Sensing/CostGrid'
-        contains: ['/perception/lidar/cost_grid']
+        contains: ['/sensing/cost_grid/']
 
       # ── Sensing: Velocity Converter ───────────────────────────────────
       sensing_velocity:
@@ -175,13 +176,19 @@ diagnostic_aggregator:
         path: 'Planning/Costmap'
         contains: ['/planning/global_costmap', '/planning/local_costmap']
 
+      # HH_260630 - Track the merged sensing-to-planning obstacle grid separately.
+      planning_inflation_cost_grid:
+        type: 'diagnostic_aggregator/GenericAnalyzer'
+        path: 'Planning/InflationCostGrid'
+        contains: ['/planning/cost_grid/inflation']
+
       # ── Planning: Nav2 액션 abort 빈도 ────────────────────────────────
       planning_nav_status:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Planning/NavStatus'
         contains: ['/planning/nav_status']
 
-      # HH_260617: CAMROD semantic state-machine health.
+      # HH_260617 - CAMROD semantic state-machine health.
       planning_state_machine:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Planning/StateMachine'
@@ -193,7 +200,7 @@ diagnostic_aggregator:
         path: 'Planning/Lifecycle'
         contains: ['/planning/lifecycle/']
 
-      # HH_260617: Rule-based campsite and drop-zone parking controllers.
+      # HH_260617 - Rule-based campsite and drop-zone parking controllers.
       parking:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Parking'

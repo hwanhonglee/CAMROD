@@ -9,7 +9,8 @@ gnss_checker:
     gnss_names: ["main"]
 
     main:
-      topic: "/sensing/gnss/navsatfix"
+      # HH_260617 - ublox_gps_node publishes NavSatFix as a private topic under its node name.
+      topic: "/sensing/gnss/ublox_gps_node/fix"
       expected_hz: 5.0         # 기대 수신 속도 (Hz)
       hz_warn_ratio: 0.8       # actual_hz / expected_hz 비율이 이 값 미만이면 WARN
       hz_error_ratio: 0.5      # actual_hz / expected_hz 비율이 이 값 미만이면 ERROR

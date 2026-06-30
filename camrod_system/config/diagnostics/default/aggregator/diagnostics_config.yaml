@@ -13,7 +13,7 @@
 global:
   timeout_s: 5.0
   publish_rate_hz: 1.0
-  # HH_260617: These raw diagnostics are still available on /system/diagnostics,
+  # HH_260617 - These raw diagnostics are still available on /system/diagnostics,
   # but they must not feed the planning FSM diagnostics input.
   ignored_names:
     - "system/diagnostic"
@@ -118,9 +118,18 @@ topics:
     group: sensing/wheel
     timeout_s: 3.0
 
-  # ── Sensing: Cost Grid (Perception) ───────────────────────────────────
-  - name: "cost_grid_checker: /perception/lidar/cost_grid"
-    group: sensing/perception
+  # ── Sensing/Planning: Cost Grid outputs ───────────────────────────────
+  - name: "cost_grid_checker: /sensing/cost_grid/lidar"
+    group: sensing/cost_grid
+    timeout_s: 5.0
+
+  - name: "cost_grid_checker: /sensing/cost_grid/radar"
+    group: sensing/cost_grid
+    timeout_s: 5.0
+
+  # HH_260630 - Inflation grid is produced by camrod_sensing and consumed by planning.
+  - name: "cost_grid_checker: /planning/cost_grid/inflation"
+    group: planning/cost_grid
     timeout_s: 5.0
 
   # ── Sensing: Velocity Converter ───────────────────────────────────────
@@ -192,7 +201,7 @@ topics:
     timeout_s: 8.0
 
   # ── Planning: CAMROD semantic state machine ───────────────────────────
-  # HH_260617: Do not feed planning_state_checker back into the
+  # HH_260617 - Do not feed planning_state_checker back into the
   # state-machine diagnostics input; it creates an ERROR_STOP self-loop.
 
   # ── Planning: Nav2 노드 lifecycle 상태 ────────────────────────────────
@@ -248,7 +257,7 @@ topics:
 
   # ── System: tools 채널(system_checker/system_diagnostic) ───────────────
   # NOTE: 여기의 name은 ROS topic 이름이 아니라 DiagnosticStatus.name 문자열.
-  # HH_260617: Do not aggregate system/diagnostic into the same stream consumed
+  # HH_260617 - Do not aggregate system/diagnostic into the same stream consumed
   # by planning_state_machine. system_diagnostic already summarizes the stream,
   # so feeding it back creates an indirect ERROR_STOP self-loop.
 
@@ -260,7 +269,7 @@ topics:
     group: system/checker
     timeout_s: 5.0
 
-  # HH_260617: Module-level graph manifests emitted by system_checker_node.
+  # HH_260617 - Module-level graph manifests emitted by system_checker_node.
   - name: "system_checker/map"
     group: map/manifest
     timeout_s: 5.0
@@ -281,14 +290,14 @@ topics:
     group: planning/manifest
     timeout_s: 5.0
 
-  # HH_260618: Final parking is a capability-level alternative group
+  # HH_260618 - Final parking is a capability-level alternative group
   # (camrod_parking OR camrod_docking), so common diagnostics must not require
   # method-specific runtime status names.
   - name: "system_checker/final_parking"
     group: parking/manifest
     timeout_s: 3.0
 
-  # HH_260618: Method-specific rule-based parking statuses are classified if
+  # HH_260618 - Method-specific rule-based parking statuses are classified if
   # received. diagnostics_aggregator does not pre-create stale entries, so these
   # do not penalize parking_method=docking runs.
   - name: "parking/site_maneuver"

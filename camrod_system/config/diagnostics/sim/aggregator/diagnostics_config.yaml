@@ -18,6 +18,21 @@ global:
   ignored_names:
     - "system/diagnostic"
     - "planning_state_checker: /planning/state_machine/state"
+    # HH_260630: Sim fake sensors do not run hardware camera/raw-LiDAR drivers,
+    # and SEN0592 range topics are intentionally silent when no target exists.
+    # Keep source checkers visible on /system/diagnostics but exclude these
+    # hardware-only entries from UI/planning readiness in sim.
+    - "camera_checker: /sensor/camera/econ_front"
+    - "camera_checker: /sensor/camera/econ_rear"
+    - "lidar_checker: /sensor/lidar/main"
+    - "radar_checker: /sensor/radar/FRONT1"
+    - "radar_checker: /sensor/radar/FRONT2"
+    - "radar_checker: /sensor/radar/LEFT1"
+    - "radar_checker: /sensor/radar/LEFT2"
+    - "radar_checker: /sensor/radar/RIGHT1"
+    - "radar_checker: /sensor/radar/RIGHT2"
+    - "radar_checker: /sensor/radar/REAR"
+    - "perception_obstacle_checker: /perception/obstacles/camera_detections"
 
 topics:
 
@@ -55,6 +70,8 @@ topics:
     timeout_s: 2.0
 
   # ── Sensing: LiDAR ────────────────────────────────────────────────────
+  # HH_260630: lidar/main remains listed for raw diagnostics visibility, but
+  # is ignored above in sim readiness because the Vanjee driver is disabled.
   - name: "lidar_checker: /sensor/lidar/main"
     group: sensing/lidar
     timeout_s: 3.0
@@ -107,9 +124,18 @@ topics:
     group: sensing/wheel
     timeout_s: 3.0
 
-  # ── Sensing: Cost Grid (Perception) ───────────────────────────────────
-  - name: "cost_grid_checker: /perception/lidar/cost_grid"
-    group: sensing/perception
+  # ── Sensing/Planning: Cost Grid outputs ───────────────────────────────
+  - name: "cost_grid_checker: /sensing/cost_grid/lidar"
+    group: sensing/cost_grid
+    timeout_s: 5.0
+
+  - name: "cost_grid_checker: /sensing/cost_grid/radar"
+    group: sensing/cost_grid
+    timeout_s: 5.0
+
+  # HH_260630 - Inflation grid is produced by camrod_sensing and consumed by planning.
+  - name: "cost_grid_checker: /planning/cost_grid/inflation"
+    group: planning/cost_grid
     timeout_s: 5.0
 
   # ── Sensing: Velocity Converter ───────────────────────────────────────

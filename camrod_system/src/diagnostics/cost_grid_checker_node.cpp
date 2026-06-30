@@ -1,31 +1,9 @@
-/**
- * Cost Grid Checker Node
- *
- * LidarCostGridNode 가 발행하는 nav_msgs/OccupancyGrid 를 감시하여
- * 파이프라인 출력 상태를 /diagnostics 토픽으로 발행한다.
- *
- * 진단 항목
- * ---------
- *   /perception/lidar/cost_grid
- *     - Staleness       : 마지막 메시지 수신 후 경과 시간
- *     - Publish rate    : 2 초 rolling window 기반 실제 Hz
- *     - Unknown ratio   : unknown(-1) 셀 비율
- *                         → 입력 클라우드 없거나 TF 실패 시 100% 에 수렴
- *
- * 파라미터 구성
- * -------------
- *   output_topic:         "/sensing/lidar/near_cost_grid"
- *   expected_hz:          10.0
- *   hz_warn_ratio:        0.7
- *   hz_error_ratio:       0.4
- *   stale_timeout:        2.0
- *   unknown_ratio_warn:   0.9   # unknown 90% 이상 → WARN  (입력 부족 의심)
- *   unknown_ratio_error:  1.0   # unknown 100%     → ERROR (입력 없음 또는 TF 실패)
- */
-
+#include <cstdio>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -37,7 +15,7 @@
 using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
-// ── CostGridCheckerNode ────────────────────────────────────────────────────
+// HH_260630 - Cost-grid checker covers sensor-derived and merged grid outputs.
 
 class CostGridCheckerNode : public robot_diagnostics_base::BaseChecker
 {
@@ -51,163 +29,219 @@ public:
 protected:
   void declare_parameters_() override
   {
-    declare_parameter("output_topic",        std::string("/sensing/lidar/near_cost_grid"));
-    declare_parameter("expected_hz",         10.0);
-    declare_parameter("hz_warn_ratio",       0.7);
-    declare_parameter("hz_error_ratio",      0.4);
-    declare_parameter("stale_timeout_s",       2.0);
-    declare_parameter("unknown_ratio_warn",  0.9);
+    declare_parameter("grid_names", std::vector<std::string>{});
+
+    // Legacy single-grid parameters remain supported for older profiles.
+    declare_parameter("diagnostic_name", std::string("/sensing/cost_grid/lidar"));
+    declare_parameter("output_topic", std::string("/sensing/cost_grid/lidar"));
+    declare_parameter("expected_hz", 10.0);
+    declare_parameter("hz_warn_ratio", 0.7);
+    declare_parameter("hz_error_ratio", 0.4);
+    declare_parameter("stale_timeout_s", 2.0);
+    declare_parameter("unknown_ratio_warn", 0.9);
     declare_parameter("unknown_ratio_error", 1.0);
   }
 
   void load_parameters_() override
   {
-    output_topic_         = get_parameter("output_topic").as_string();
-    expected_hz_          = get_parameter("expected_hz").as_double();
-    hz_warn_ratio_        = get_parameter("hz_warn_ratio").as_double();
-    hz_error_ratio_       = get_parameter("hz_error_ratio").as_double();
-    stale_timeout_ = get_param<double>("stale_timeout_s", stale_timeout_);
-    unknown_ratio_warn_   = get_parameter("unknown_ratio_warn").as_double();
-    unknown_ratio_error_  = get_parameter("unknown_ratio_error").as_double();
+    auto names = get_parameter("grid_names").as_string_array();
+
+    if (names.empty()) {
+      auto grid = std::make_shared<GridState>();
+      grid->name = "default";
+      grid->diagnostic_name = get_parameter("diagnostic_name").as_string();
+      grid->output_topic = get_parameter("output_topic").as_string();
+      grid->expected_hz = get_parameter("expected_hz").as_double();
+      grid->hz_warn_ratio = get_parameter("hz_warn_ratio").as_double();
+      grid->hz_error_ratio = get_parameter("hz_error_ratio").as_double();
+      grid->stale_timeout = get_param<double>("stale_timeout_s", grid->stale_timeout);
+      grid->unknown_ratio_warn = get_parameter("unknown_ratio_warn").as_double();
+      grid->unknown_ratio_error = get_parameter("unknown_ratio_error").as_double();
+      grids_.push_back(grid);
+      return;
+    }
+
+    for (const auto & name : names) {
+      auto grid = std::make_shared<GridState>();
+      grid->name = name;
+
+      declare_parameter(name + ".diagnostic_name", "/sensing/cost_grid/" + name);
+      declare_parameter(name + ".output_topic", "/sensing/cost_grid/" + name);
+      declare_parameter(name + ".expected_hz", get_parameter("expected_hz").as_double());
+      declare_parameter(name + ".hz_warn_ratio", get_parameter("hz_warn_ratio").as_double());
+      declare_parameter(name + ".hz_error_ratio", get_parameter("hz_error_ratio").as_double());
+      declare_parameter(name + ".stale_timeout_s", get_parameter("stale_timeout_s").as_double());
+      declare_parameter(name + ".unknown_ratio_warn", get_parameter("unknown_ratio_warn").as_double());
+      declare_parameter(name + ".unknown_ratio_error", get_parameter("unknown_ratio_error").as_double());
+
+      grid->diagnostic_name = get_parameter(name + ".diagnostic_name").as_string();
+      grid->output_topic = get_parameter(name + ".output_topic").as_string();
+      grid->expected_hz = get_parameter(name + ".expected_hz").as_double();
+      grid->hz_warn_ratio = get_parameter(name + ".hz_warn_ratio").as_double();
+      grid->hz_error_ratio = get_parameter(name + ".hz_error_ratio").as_double();
+      grid->stale_timeout = get_param<double>(name + ".stale_timeout_s", grid->stale_timeout);
+      grid->unknown_ratio_warn = get_parameter(name + ".unknown_ratio_warn").as_double();
+      grid->unknown_ratio_error = get_parameter(name + ".unknown_ratio_error").as_double();
+
+      grids_.push_back(grid);
+    }
   }
 
   void setup_tasks_() override
   {
-    // HH_260617: Match LidarCostGridNode's default volatile/reliable publisher QoS.
-    // A transient-local subscriber does not connect to the current volatile cost-grid
-    // publishers, so the checker could report STALE even while the topic exists.
-    sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-      output_topic_, rclcpp::QoS(10).reliable(),
-      [this](const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg) { onGrid(msg); });
+    for (auto & grid : grids_) {
+      // HH_260630 - Use volatile/reliable subscription so it connects to both
+      // volatile path grids and transient-local sensor/merged grid publishers.
+      grid->sub = create_subscription<nav_msgs::msg::OccupancyGrid>(
+        grid->output_topic, rclcpp::QoS(10).reliable(),
+        [this, grid](const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg) {
+          onGrid(msg, grid);
+        });
 
-    add_task("/perception/lidar/cost_grid",
-      [this](StatusWrapper & stat) { checkGrid(stat); });
+      add_task(grid->diagnostic_name,
+        [this, grid](StatusWrapper & stat) { checkGrid(stat, *grid); });
 
-    RCLCPP_INFO(get_logger(), "cost_grid 모니터링 시작: topic=%s", output_topic_.c_str());
+      RCLCPP_INFO(get_logger(),
+        "cost_grid monitoring: name=%s diagnostic=%s topic=%s expected_hz=%.1f",
+        grid->name.c_str(), grid->diagnostic_name.c_str(),
+        grid->output_topic.c_str(), grid->expected_hz);
+    }
   }
 
 private:
-  void onGrid(const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg)
+  struct GridState
   {
-    std::lock_guard<std::mutex> lock(mtx_);
-    auto now = this->now();
-    last_msg_time_ = now;
-    has_msg_       = true;
+    std::string name;
+    std::string diagnostic_name;
+    std::string output_topic;
+    double expected_hz{10.0};
+    double hz_warn_ratio{0.7};
+    double hz_error_ratio{0.4};
+    double stale_timeout{2.0};
+    double unknown_ratio_warn{0.9};
+    double unknown_ratio_error{1.0};
 
-    // unknown(-1) 비율 계산: 입력 없거나 TF 실패 시 모든 셀이 unknown 상태가 됨
+    std::mutex mtx;
+    rclcpp::Time last_msg_time{0, 0, RCL_ROS_TIME};
+    bool has_msg{false};
+    double actual_unknown_ratio{1.0};
+    uint32_t width{0};
+    uint32_t height{0};
+    double resolution{0.0};
+    std::deque<rclcpp::Time> timestamps;
+    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub;
+  };
+
+  void onGrid(
+    const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg,
+    const std::shared_ptr<GridState> & grid)
+  {
+    std::lock_guard<std::mutex> lock(grid->mtx);
+    auto now = this->now();
+    grid->last_msg_time = now;
+    grid->has_msg = true;
+    grid->width = msg->info.width;
+    grid->height = msg->info.height;
+    grid->resolution = msg->info.resolution;
+
     const auto total = msg->data.size();
     if (total > 0) {
       size_t unknown_count = 0;
       for (const auto & cell : msg->data) {
-        if (cell < 0) ++unknown_count;
+          if (cell < 0) ++unknown_count;
       }
-      actual_unknown_ratio_ =
+      grid->actual_unknown_ratio =
         static_cast<double>(unknown_count) / static_cast<double>(total);
     } else {
-      actual_unknown_ratio_ = 1.0;
+      grid->actual_unknown_ratio = 1.0;
     }
 
-    timestamps_.push_back(now);
-    while (!timestamps_.empty() &&
-           (now - timestamps_.front()).seconds() > 2.0)
+    grid->timestamps.push_back(now);
+    while (!grid->timestamps.empty() &&
+           (now - grid->timestamps.front()).seconds() > 2.0)
     {
-      timestamps_.pop_front();
+      grid->timestamps.pop_front();
     }
   }
 
-  void checkGrid(StatusWrapper & stat)
+  void checkGrid(StatusWrapper & stat, GridState & grid)
   {
-    std::lock_guard<std::mutex> lock(mtx_);
+    std::lock_guard<std::mutex> lock(grid.mtx);
 
-    // ── Staleness 체크 ──────────────────────────────────────────────────
-    if (!has_msg_) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + output_topic_);
-      stat.add("topic", output_topic_);
+    if (!grid.has_msg) {
+      stat.summary(DiagnosticStatus::STALE, "no topic messages: " + grid.output_topic);
+      stat.add("topic", grid.output_topic);
+      stat.add("grid_name", grid.name);
       return;
     }
 
-    double elapsed = (this->now() - last_msg_time_).seconds();
-    if (elapsed > stale_timeout_) {
+    double elapsed = (this->now() - grid.last_msg_time).seconds();
+    if (elapsed > grid.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 (timeout=%.1fs)", elapsed, stale_timeout_);
+        "no messages for %.1fs (timeout=%.1fs)", elapsed, grid.stale_timeout);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
+      stat.add("topic", grid.output_topic);
+      stat.add("grid_name", grid.name);
       return;
     }
 
-    // ── 발행 속도 계산 (rolling 2s window) ─────────────────────────────
     double actual_hz = 0.0;
-    if (timestamps_.size() >= 2) {
-      double window = (timestamps_.back() - timestamps_.front()).seconds();
+    if (grid.timestamps.size() >= 2) {
+      double window = (grid.timestamps.back() - grid.timestamps.front()).seconds();
       if (window > 0.0) {
-        actual_hz = static_cast<double>(timestamps_.size() - 1) / window;
+        actual_hz = static_cast<double>(grid.timestamps.size() - 1) / window;
       }
     }
 
-    // ── 레벨 판정 ───────────────────────────────────────────────────────
     int8_t lvl = DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
-    // 발행 속도 체크
-    if (expected_hz_ > 0.0) {
-      double ratio = actual_hz / expected_hz_;
-      int8_t hz_lvl = check_low(ratio, hz_warn_ratio_, hz_error_ratio_);
+    if (grid.expected_hz > 0.0) {
+      double ratio = actual_hz / grid.expected_hz;
+      int8_t hz_lvl = check_low(ratio, grid.hz_warn_ratio, grid.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "발행 속도 심각 저하" : "발행 속도 저하";
+        msg_str = (hz_lvl == S::ERROR) ? "publish rate critically low" : "publish rate low";
       }
     }
 
-    // unknown 비율 체크 (높을수록 위험 → check_high)
     int8_t unk_lvl = check_high(
-      actual_unknown_ratio_, unknown_ratio_warn_, unknown_ratio_error_);
+      grid.actual_unknown_ratio, grid.unknown_ratio_warn, grid.unknown_ratio_error);
     if (unk_lvl > lvl) {
       lvl = unk_lvl;
-      msg_str = (unk_lvl == S::ERROR) ?
-        "그리드 전체 unknown (입력 없음 또는 TF 실패)" : "그리드 unknown 비율 높음";
+      msg_str = (unk_lvl == S::ERROR) ? "grid fully unknown" : "grid unknown ratio high";
     }
 
     if (lvl == DiagnosticStatus::OK) {
       char buf[64];
       std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, unknown=%.0f%%)",
-        actual_hz, actual_unknown_ratio_ * 100.0);
+        actual_hz, grid.actual_unknown_ratio * 100.0);
       msg_str = buf;
     }
 
     stat.summary(lvl, msg_str);
 
-    // ── 상세 값 추가 ────────────────────────────────────────────────────
     char tmp[32];
     std::snprintf(tmp, sizeof(tmp), "%.1f", actual_hz);
-    stat.add("actual_hz",         std::string(tmp));
-    std::snprintf(tmp, sizeof(tmp), "%.1f", expected_hz_);
-    stat.add("expected_hz",       std::string(tmp));
-    std::snprintf(tmp, sizeof(tmp), "%.1f", actual_unknown_ratio_ * 100.0);
+    stat.add("actual_hz", std::string(tmp));
+    std::snprintf(tmp, sizeof(tmp), "%.1f", grid.expected_hz);
+    stat.add("expected_hz", std::string(tmp));
+    std::snprintf(tmp, sizeof(tmp), "%.1f", grid.actual_unknown_ratio * 100.0);
     stat.add("unknown_ratio_pct", std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed);
-    stat.add("last_msg_sec_ago",  std::string(tmp));
+    stat.add("last_msg_sec_ago", std::string(tmp));
+    stat.add("topic", grid.output_topic);
+    stat.add("grid_name", grid.name);
+    stat.add("width", static_cast<int>(grid.width));
+    stat.add("height", static_cast<int>(grid.height));
+    std::snprintf(tmp, sizeof(tmp), "%.3f", grid.resolution);
+    stat.add("resolution_m", std::string(tmp));
   }
 
-  // 파라미터
-  std::string output_topic_;
-  double expected_hz_{10.0};
-  double hz_warn_ratio_{0.7};
-  double hz_error_ratio_{0.4};
-  double stale_timeout_{2.0};
-  double unknown_ratio_warn_{0.9};
-  double unknown_ratio_error_{1.0};
-
-  // 런타임 상태
-  std::mutex mtx_;
-  rclcpp::Time last_msg_time_{0, 0, RCL_ROS_TIME};
-  bool has_msg_{false};
-  double actual_unknown_ratio_{1.0};
-  std::deque<rclcpp::Time> timestamps_;
-  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub_;
+  std::vector<std::shared_ptr<GridState>> grids_;
 };
-
-// ── main ──────────────────────────────────────────────────────────────────
 
 int main(int argc, char ** argv)
 {
