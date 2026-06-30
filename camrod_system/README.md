@@ -10,6 +10,11 @@
 
 A separate lightweight system tools track (`enable_system_tools: true`) checks that required ROS 2 nodes/topics are alive from `config/system_checker.yaml`, verifies topic types/publisher counts, and publishes both diagnostics and semantic CAMROD status snapshots on `/system/status` and `/system/msgs`.
 
+HH_260630 - The checker contract is now split into two complementary layers:
+`system_checker.yaml` validates that the expected package graph is wired
+together, while per-domain diagnostics validate message rate, staleness, and
+data quality for the concrete topic produced by that node.
+
 > **Non-goals:** Reports health status only — does **not** enforce safety actions (e-stop, speed reduction, disengagement). Does not contain autonomous decision logic; consumers (e.g., `camrod_ui`) decide what to do with the health data. Does not check `camrod_docking` yet (TODO: docking checker category).
 
 ---
@@ -140,6 +145,15 @@ planning:
 - **Optional modules**: UI, docking, voice, and sensor-kit are not forced by the default manifest; they are added dynamically when their diagnostics appear.
 - HH_260622 - `startup_grace_s` is 30 s by default because full bringup uses staggered launch and ROS graph discovery can lag even after map/planning nodes have started. After this startup window, missing required nodes/topics are reported normally.
 
+### Current Checker Contract
+
+| Layer | Config | Scope | Example |
+|---|---|---|---|
+| Graph manifest | `config/system_checker.yaml` | Required nodes, topic names, ROS types, and minimum publisher counts | `/planning/cmd_vel|geometry_msgs/msg/Twist|1` |
+| Default diagnostics | `config/diagnostics/default/` | Real hardware runtime rates and data-quality thresholds | real IMU 100 Hz, camera streams 10 fps, LiDAR/radar cost grids 10 Hz |
+| Sim diagnostics | `config/diagnostics/sim/` | `sim:=true` fake-sensor rates and intentionally absent hardware drivers | sim IMU 10 Hz, wheel odom 20 Hz, perception/fake obstacle topics |
+| Aggregation | `aggregator/*.yaml` | Diagnostic tree grouping and stale reporter timeout | `/system/diagnostics_agg` for UI readiness |
+
 ### Module Readiness Decision Tree
 
 ```mermaid
@@ -230,9 +244,10 @@ sequenceDiagram
 | `/sensing/imu/data` | `sensor_msgs/Imu` | Yes | camrod_sensing | 100 Hz | IMU data for `imu_checker` |
 | `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | Yes | camrod_sensing/fake_sensors | 10 Hz | Filtered LiDAR points for manifest and downstream perception |
 | `/sensing/radar/*/range` | `sensor_msgs/Range` | Yes | camrod_sensing | variable | Radar ranges for `radar_checker` |
-| `/sensing/camera/*/image_raw` | `sensor_msgs/Image` | Yes | camrod_sensing | 30 Hz | Camera frames for `camera_checker` |
+| `/sensing/camera/econ_front/image_rect/compressed` | `sensor_msgs/CompressedImage` | Yes | camrod_sensing | 10 Hz | Front camera frames for `camera_checker` |
+| `/sensing/camera/econ_rear/image_raw` | `sensor_msgs/Image` | Yes | camrod_sensing | 10 Hz | Rear raw camera frames for docking/diagnostics |
 | `/platform/status/wheel_odometry` | `nav_msgs/Odometry` | Yes | camrod_platform | variable | Wheel odometry for `wheel_odometry_checker` |
-| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | Yes | camrod_planning | variable | Inflated cost grid for `cost_grid_checker` |
+| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | Yes | camrod_sensing | 6 Hz | Merged inflated cost grid for `cost_grid_checker` and planning gate |
 | `/sensing/platform_velocity_converter/twist_with_covariance` | `geometry_msgs/TwistWithCovarianceStamped` | Yes | camrod_sensing | variable | Velocity for `velocity_converter_checker` |
 | `/sensing/gnss/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | Yes | camrod_localization | 5 Hz | GNSS-derived pose for `localization_gnss_checker` |
 | `/localization/mode` | `avg_msgs/AvgLocalizationMode` | Yes | camrod_localization | variable | Localization mode for `localization_mode_checker` |
@@ -319,12 +334,12 @@ status:
 | `hw/hw_gpu_checker.yaml` | CPU/memory/disk/GPU thresholds and container host paths |
 | `hw/network_checker.yaml` | Network interface check config |
 | `sensing/gnss_checker.yaml` | `expected_hz: 5.0`, `stale_timeout_s: 2.0` |
-| `sensing/imu_checker.yaml` | `expected_hz: 100.0`, `stale_timeout_s: 0.5` |
+| `sensing/imu_checker.yaml` | default `expected_hz: 100.0`, sim override `expected_hz: 10.0` |
 | `sensing/lidar_checker.yaml` | `expected_hz: 10.0`, `min_point_count`, `max_point_count` |
 | `sensing/radar_checker.yaml` | `stale_timeout_s: 1.0` |
-| `sensing/camera_checker.yaml` | `expected_fps: 30.0`, `expected_width`, `expected_height` |
+| `sensing/camera_checker.yaml` | front compressed and rear raw streams, `expected_fps: 10.0`, `expected_width`, `expected_height` |
 | `sensing/wheel_odometry_checker.yaml` | `stale_timeout_s: 1.0` |
-| `sensing/cost_grid_checker.yaml` | `stale_timeout_s: 2.0` |
+| `sensing/cost_grid_checker.yaml` | LiDAR 10 Hz, radar 10 Hz, inflation 6 Hz, `stale_timeout_s: 2.0` |
 | `sensing/velocity_converter_checker.yaml` | `stale_timeout_s: 1.0` |
 | `localization/localization_gnss_checker.yaml` | `expected_hz: 5.0`, `cov_warn_threshold` |
 | `localization/localization_mode_checker.yaml` | `conf_warn: 0.6`, `innov_warn: 3.0` |
@@ -424,11 +439,12 @@ Verify: `ls $(ros2 pkg prefix camrod_system)/share/camrod_system/config/diagnost
 - [`../camrod_ui/README.md`](../camrod_ui/README.md) — consumes `/system/diagnostics_agg`
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
 
-## 2026-06-17 Runtime Update
+## 2026-06-30 Runtime Update
 
 > HH_260617: System diagnostics now include module-manifest checks and semantic status snapshots for parking.
 > HH_260618: `system_checker` treats final parking as an alternative group: exactly one of `camrod_parking` or `camrod_docking` must be healthy. If neither is running, or if both graphs are accidentally active, `/system/diagnostics` reports ERROR.
 > HH_260622: Rule-based parking phase progress is published through `/AMR_service_state` and mirrored by planning/UI; system still checks final-parking graph health via the alternative group.
+> HH_260630: Default and sim diagnostics now monitor the same concrete runtime topics used by bringup, including front compressed camera, rear raw camera, seven radar topics, LiDAR/radar/inflation cost grids, planning state, and Nav2 lifecycle/path status.
 
 ### Parking Health Contract
 

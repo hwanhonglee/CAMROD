@@ -10,8 +10,11 @@
 #
 # All unknown arguments are forwarded directly to `colcon build`.
 # Run setup_camrod.sh first if external/ directories are missing.
-# HH_260629: camrod_ui robot frontend assets are built here before colcon installs
-# the package, so a normal full build also refreshes the UI bundle.
+# HH_260630: camrod_ui robot frontend assets are built here before colcon installs
+# the package, so a normal full build also refreshes the UI bundle. This wrapper
+# runs `colcon build` only; runtime sim validation and package lint/test commands
+# are intentionally run separately so field builds are not blocked by lint-scope
+# issues in vendored external packages.
 
 set -euo pipefail
 

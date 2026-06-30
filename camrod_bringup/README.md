@@ -43,6 +43,17 @@ ros2 launch camrod_bringup bringup.launch.py sim:=true \
 
 # Full-stack GNSS DR fallback integration test (sim)
 ros2 launch camrod_bringup gnss_dr_test.launch.py
+
+# Automated sim validation after bringup is running
+ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p report_file:=/tmp/camrod_sim_validation_manual.json
+
+# Camping-site route + site maneuver smoke validation
+ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p skip_manual_goal:=true \
+  -p run_camping:=true \
+  -p camping_timeout_s:=300.0 \
+  -p report_file:=/tmp/camrod_sim_validation_camping.json
 ```
 
 > HH_260622 - `map_info.yaml` now defaults to the `copy_park` validation map. `_bringup_impl.py` also infers `map_profile` from `map_profile` or the OSM filename and loads matching `drop_zones (<profile>).yaml` / `camping_sites (<profile>).yaml` when those files exist.
@@ -340,6 +351,37 @@ GNSS failure timing is controlled by `config/sim/fake_sensors.yaml`:
 | `gnss_failure_after_s` | Seconds from startup when GNSS NavSatFix stops |
 | `gnss_recovery_after_s` | Seconds from startup when GNSS resumes |
 
+### sim_validation_runner.py
+
+`scripts/sim_validation_runner.py` is the current top-level deterministic sim
+smoke test. Launch `bringup.launch.py sim:=true rviz:=false` first, then run the
+runner as a separate process.
+
+| Check | What it verifies |
+|---|---|
+| `baseline_hz` | `/localization/pose`, `/planning/lanelet_pose_ros`, `/sensing/imu/data`, `/sensing/lidar/points_filtered`, `/platform/status/wheel_odometry`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`, `/planning/cost_grid/inflation` publish at expected sim rates |
+| `radar_direction_hz` | All seven radar range topics publish: front1, front2, left1, left2, right1, right2, rear |
+| `directional_cost_stop` | Front/left/right/rear fake obstacles from LiDAR, radar, and combined sources force `/planning/cmd_vel` to zero |
+| `manual_goal_nav` | A manual route goal produces global/local paths, nonzero cmd_vel, movement, and Nav2 success |
+| `camping_site_smoke` | UI-equivalent camping-site mission reaches the route goal, enters site maneuver, performs crab/rotate/unload/crab-out phases, and requests return |
+
+Useful parameters:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `report_file` | `/tmp/camrod_sim_validation.json` | JSON result path |
+| `skip_manual_goal` | `false` | Skip the manual goal navigation check |
+| `run_camping` | `false` | Enable camping-site flow validation |
+| `manual_goal_distance_m` | `4.0` | Forward distance used for the generated manual goal |
+| `manual_goal_timeout_s` | `45.0` | Manual goal timeout |
+| `camping_timeout_s` | `120.0` | Camping-site flow timeout |
+
+Expected PASS evidence from the current profile: localization 20 Hz, wheel odom
+20 Hz, LiDAR/radar cost grids 10 Hz, inflation 6 Hz, radar direction topics ~10
+Hz, all directional stop checks with `planning_cmd_max=0`, manual goal movement
+around 3-4 m, and camping phases including `CRAB_IN`, `ROTATE_180`,
+`UNLOAD_WAIT`, `CRAB_OUT`, and `RETURNING`.
+
 ---
 
 ## 10. ⚙️ Config Files
@@ -455,6 +497,10 @@ ros2 topic echo /sensing/gnss/pose --once
 
 # Confirm RViz launched (if rviz:=true)
 ros2 node list | grep rviz2
+
+# Deterministic sim validation runner (run after sim bringup)
+ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p report_file:=/tmp/camrod_sim_validation_manual.json
 ```
 
 ---

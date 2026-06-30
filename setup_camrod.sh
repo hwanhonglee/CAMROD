@@ -10,13 +10,15 @@
 #   ./setup_camrod.sh --no-rosdep # skip rosdep after explicit system-package + external setup
 #
 # WARN: --update overwrites any local changes inside external/ directories.
-# HH_260629: setup covers the current split runtime:
+# HH_260630: setup covers the current split runtime:
 #   - camrod_parking is a local source package, not a legacy external.
 #   - camrod_voice requires SDL2_mixer; setup installs libsdl2-mixer-dev.
 #   - camrod_docking/Isaac ROS remains Jetson-only and is skipped on x86_64.
 #   - Ranger/SocketCAN tools are installed here; runtime CAN activation is handled
 #     by camrod_platform/scripts/setup_can0.sh or the matching systemd service.
 #   - camrod_ui frontend build is handled by colcon_build.sh before packaging.
+#   - sim validation is installed by camrod_bringup and run after bringup, not here.
+#   - colcon tests/lint are separate from setup because ament lint policy is package-specific.
 #
 # Fork override:
 #   Set CAMROD_AGILEX_BASE before running to use your own forks of agilexrobotics repos:
@@ -171,22 +173,23 @@ REQUIRED_SYS_PKGS=(
   python3-uvicorn
   libsdl2-dev        # HH_260615 - camrod_voice SDL2 audio backend.
   libsdl2-mixer-dev  # HH_260615 - camrod_voice WAV playback via Mix_* API.
-  # rosdep 으로 해결되어야 하지만 interactive sudo 없이 실패하는 패키지들을 명시 추가
-  ros-humble-nav2-map-server        # nav2 맵 서버 (camrod_planning)
-  ros-humble-behaviortree-cpp-v3    # Nav2 BT 네비게이터 (camrod_planning)
-  ros-humble-controller-manager     # ugv_sdk 의존
-  ros-humble-rviz2                  # RViz2 (camrod_bringup sim 모드)
-  ros-humble-rviz-common            # RViz2 공통 라이브러리
-  ros-humble-rviz-default-plugins   # RViz2 기본 플러그인
+  # HH_260630: Explicitly install deps that rosdep may not resolve in
+  # non-interactive field setup sessions.
+  ros-humble-nav2-map-server        # Nav2 map server for planning bringup.
+  ros-humble-behaviortree-cpp-v3    # Nav2 BT navigator runtime.
+  ros-humble-controller-manager     # ugv_sdk controller dependency.
+  ros-humble-rviz2                  # RViz2 for operator and sim bringup.
+  ros-humble-rviz-common            # RViz2 common libraries.
+  ros-humble-rviz-default-plugins   # RViz2 default plugins.
   ros-humble-rtcm-msgs              # ublox GNSS RTK (camrod_sensing)
-  ros-humble-test-msgs              # 테스트 의존
-  python3-serial                    # ublox, radar 시리얼 통신
+  ros-humble-test-msgs              # ROS 2 test message dependency.
+  python3-serial                    # ublox/radar serial communication.
   python3-yaml                      # HH_260617: camrod_parking/camrod_bringup YAML config parsing
   python3-setuptools                # HH_260617: ament_python entry point install for camrod_parking/ui
   can-utils                         # HH_260629: SocketCAN diagnostics for Ranger bringup.
   iproute2                          # HH_260629: Provides `ip link` for setup_can0.sh.
-  libpugixml-dev                    # Lanelet2 XML 파서 (camrod_map)
-  libnanoflann-dev                  # PCL/포인트클라우드 KNN (camrod_perception)
+  libpugixml-dev                    # Lanelet2 XML parser for camrod_map.
+  libnanoflann-dev                  # PCL/point-cloud KNN support for perception.
 )
 
 # HH_260615 - camrod_docking registers the Isaac ROS apt repository and runtime packages.
@@ -196,12 +199,12 @@ setup_isaac_ros_apt() {
   _arch="$(uname -m)"
   if [[ "${_arch}" != "aarch64" && "${_arch}" != "arm64" ]]; then
     log "skip Isaac ROS apt setup (${_arch} is not aarch64)"
-    log "  x86_64 빌드 시 camrod_docking 제외: colcon build --packages-skip camrod_docking"
+    log "  x86_64 builds skip camrod_docking: colcon build --packages-skip camrod_docking"
     return 0
   fi
 
   if [[ ! -f /etc/apt/sources.list.d/isaac-ros.list ]]; then
-    log "NVIDIA Isaac ROS apt 저장소 등록 중 (arm64)"
+    log "register NVIDIA Isaac ROS apt repository (arm64)"
     apt_install_pkgs "Isaac ROS apt repository tools" curl gnupg lsb-release
     curl -fsSL https://isaac.download.nvidia.com/isaac-ros/repos.key \
       | gpg --dearmor \
@@ -211,7 +214,7 @@ https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release
       | sudo tee /etc/apt/sources.list.d/isaac-ros.list > /dev/null
     sudo apt-get update
   else
-    log "Isaac ROS apt 저장소 이미 등록됨"
+    log "Isaac ROS apt repository already registered"
   fi
 
   local _isaac_pkgs=(
@@ -226,10 +229,10 @@ https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release
     dpkg -l "${_ipkg}" 2>/dev/null | grep -q "^ii" || _missing_isaac+=("${_ipkg}")
   done
   if [[ ${#_missing_isaac[@]} -gt 0 ]]; then
-    log "Isaac ROS 패키지 설치 중: ${_missing_isaac[*]}"
+    log "install Isaac ROS packages: ${_missing_isaac[*]}"
     apt_install_pkgs "Isaac ROS runtime packages" "${_missing_isaac[@]}"
   else
-    log "Isaac ROS 패키지 이미 설치됨"
+    log "Isaac ROS packages already installed"
   fi
   unset _arch _isaac_pkgs _ipkg _missing_isaac
 
@@ -238,14 +241,14 @@ https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release
   # numpy under /home/.../.local can break CMake generation, so ensure numpy also
   # exists in the system sudo-pip path.
   if [[ ! -d /usr/local/lib/python3.10/dist-packages/numpy ]]; then
-    log "numpy 시스템 경로 설치 중 (isaac_ros cmake 경로 호환)"
-    # 기존 user-install numpy 버전과 동일하게 고정 설치.
-    # 버전 불일치 시 cv_bridge 등 C 확장 패키지에서 numpy ABI 오류가 발생할 수 있다.
+    log "install numpy into system path for Isaac ROS CMake compatibility"
+    # HH_260630: Pin to the active user numpy version to avoid ABI drift in
+    # cv_bridge and other C extension packages.
     _numpy_ver="$(python3 -c 'import numpy; print(numpy.__version__)' 2>/dev/null || echo '1.26.4')"
     sudo pip3 install "numpy==${_numpy_ver}"
     unset _numpy_ver
   else
-    log "numpy 시스템 경로 확인됨"
+    log "numpy system path exists"
   fi
 }
 
@@ -258,7 +261,7 @@ if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
       # HH_260616 - apt-cache may be stale, so refresh it before nvjpeg discovery.
       # Without this, apt_has_candidate can miss libnvjpeg-dev and camrod_sensing
       # can fail later because nvjpeg.h is absent.
-      log "apt-get update (nvjpeg 탐색 전 패키지 목록 갱신)"
+      log "apt-get update before nvjpeg package discovery"
       sudo apt-get update -q
       if _nvjpeg_pkgs="$(select_nvjpeg_packages)"; then
         # shellcheck disable=SC2206
@@ -369,7 +372,7 @@ clone_ext "${AGILEX_BASE}/ranger_ros2.git"                                    "h
 
 # ── rosdep ───────────────────────────────────────────────────────────────────
 if [[ "${DO_ROSDEP}" -eq 1 ]]; then
-  # init: 이미 초기화된 경우 에러를 무시
+  # HH_260630: rosdep init is idempotent; ignore the already-initialized case.
   if ! rosdep init 2>/dev/null; then
     log "rosdep already initialized — skipping init"
   fi

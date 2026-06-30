@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v1.15**
+> Current release: **v1.16** (field baseline updated 2026-06-30)
 
 ---
 
@@ -72,8 +72,8 @@ CAMROD is a supervised-autonomy delivery platform designed for controlled outdoo
 | GNSS | SparkFun ZED-F9P (single antenna, RTK via NTRIP) + ArduSimple simpleRTK2B Heading (dual antenna, moving-baseline heading) |
 | IMU | Microstrain CV7 or GQ7 (9-axis; GQ7 has embedded GNSS) |
 | LiDAR | Vanjee 3D LiDAR |
-| Camera | USB camera (V4L2, UYVY → ROS Image) |
-| Radar | SEN0592 mmWave (near-range obstacle detection, ×6) |
+| Camera | Dual ECON ISX031 cameras: front compressed stream, rear raw AprilTag stream |
+| Radar | SEN0592 near-range radar/ultrasonic sensors, 7-channel profile |
 | Dock markers | AprilTag 36h11 family (autonomous docking) |
 | Compute | Onboard Linux x86\_64 / ARM64, Ubuntu 22.04 + ROS 2 Humble |
 
@@ -301,10 +301,12 @@ graph LR
 1. System starts; all modules launch with staggered delays.
 2. Localization initializes from `camrod_map/config/map_info.yaml` (single map reference source).
 3. State machine sends robot to `drop_zone` (startup goal).
-4. Operator selects a camping site via UI → `/planning/mission_key` published.
-5. Nav2 generates global path; cmd\_vel gate enforces engage / e-stop / cost-stop / GNSS-recovery hold.
-6. Robot arrives; waits `goal_reached_dwell_s` (default 600 s) or until recall trigger.
-7. On recall: navigates to site's lanelet coordinate for loading, then auto-returns to `drop_zone`.
+4. Operator selects a camping site via UI → `/planning/mission_key` (`avg_msgs/PlanningMissionKey`) and raw `/goal_pose` are published.
+5. Goal snapper converts the raw site pose into a lanelet route goal on `/planning/goal_pose_snapped_ros`.
+6. Nav2 generates a LaneletRoute-first global path; the smoother runs through the BT for every planner option.
+7. `planning_cmd_vel_gate_node` enforces manual/mission engage, e-stop, GNSS recovery hold, lanelet static safety, and live LiDAR/Radar cost stops.
+8. At a camping site, `camrod_parking/site_maneuver` executes crab entry, 180-degree rotation, unload wait, crab exit, and return handoff.
+9. Robot returns to `drop_zone`; final parking is handled by the selected rule-based parking or docking implementation.
 
 **GNSS outage:**
 - Localization switches to `DR_ONLY`; robot continues on IMU + wheel odometry.
@@ -499,9 +501,12 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | Topic | Type | Direction | Purpose |
 |-------|------|-----------|---------|
 | `/sensing/lidar/points_filtered` | `PointCloud2` | sensing → perception/planning | Processed LiDAR cloud |
-| `/sensing/gnss/fix` | `NavSatFix` | sensing → localization | GNSS position |
+| `/sensing/gnss/ublox_gps_node/fix` | `NavSatFix` | sensing → localization | GNSS position |
+| `/sensing/gnss/navheading` | `Imu` | sensing → localization | Dual-antenna GNSS heading when enabled |
 | `/sensing/imu/data` | `Imu` | sensing → localization | 9-axis inertial data |
-| `/sensing/camera/color/image_rect` | `Image` | sensing → perception | Camera feed for YOLO |
+| `/sensing/camera/econ_front/image_rect/compressed` | `CompressedImage` | sensing → perception / UI | Front camera stream |
+| `/sensing/camera/econ_rear/image_raw` | `Image` | sensing → docking / diagnostics | Rear raw stream for AprilTag/docking |
+| `/sensing/radar/front1/range` … `/sensing/radar/rear/range` | `Range` | sensing → radar cost grid | 7-channel near-field radar profile |
 | `/localization/pose` | `PoseStamped` | localization → planning | Canonical fused localization pose |
 | `/localization/mode` | `AvgLocalizationMode` | localization → planning gate | NORMAL / DEGRADED / DR\_ONLY / INVALID |
 | `/localization/initial_match_ok` | `Bool` | localization → planning | Drop-zone match readiness |
@@ -509,16 +514,17 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/planning/cost_grid/inflation` | `OccupancyGrid` | sensing/map → planning | Merged near-range cost grid |
 | `/map/cost_grid/lanelet` | `OccupancyGrid` | map → sensing inflation | Lane traversability layer |
 | `/planning/global_path` | `Path` | planning → RViz / diagnostics | Global Nav2 route |
-| `/planning/local_path` | `Path` | planning → cmd\_vel\_gate | Active trajectory segment |
+| `/planning/local_path` | `Path` | planning → RViz / diagnostics / gate | Map-fixed slice of the active route |
 | `/planning/cmd_vel_raw` | `Twist` | Nav2 controller → gate | Raw controller output |
 | `/planning/cmd_vel` | `Twist` | gate → platform | Gated velocity (safe to send) |
 | `/platform/cmd_vel` | `Twist` | platform gate → Ranger | Final vehicle command |
 | `/platform/status/estop` | `Bool` | Ranger CAN → gates | Hardware emergency stop |
 | `/platform/status/odometry` | `Odometry` | Ranger CAN → localization | Wheel odometry |
-| `/planning/engage` | `Bool` | UI / state machine → gate | Drive enable signal |
-| `/planning/state_machine/state` | `String` | state machine → all | INIT / RUNNING / GOAL\_REACHED / … |
-| `/planning/mission_key` | `String` | UI → state machine | Named site selector (e.g. "B3") |
-| `/planning/state_machine/mission_source` | `String` | state machine → diagnostics | startup / recall:B3 / auto\_return |
+| `/planning/engage` | `Bool` | UI / RViz manual → gate | Manual-goal engage latch |
+| `/planning/mission_engage` | `Bool` | UI / mission state → gate | Camping/drop-zone mission engage latch |
+| `/planning/state_machine/state` | `avg_msgs/PlanningState` | state machine → parking/UI/system | INIT / RUNNING / GOAL_REACHED / RETURNING / … |
+| `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | UI → state machine | Named semantic selector, e.g. `camping_site_3` |
+| `/planning/state_machine/mission_source` | `avg_msgs/PlanningMissionKey` | state machine → diagnostics/UI | `startup`, `mission_key:*`, `auto_return`, `recall:*` |
 | `/goal_pose` | `PoseStamped` | UI / RViz → Nav2 | Manual 2D Nav Goal |
 | `/ui/selected_destination` | `String` | UI → backend | Operator site selection |
 | `/system/diagnostics_agg` | `DiagnosticArray` | system → UI | Aggregated health status |
@@ -715,7 +721,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
-| v1.16 | 2026-06-29 | Field stabilization for map/planning/platform: local-first Lanelet2 visualization with cached full-map republish, map-fixed `slice_only` local path extraction, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, radar left/right remap plus invalid no-target filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, and expanded `avg_msgs` conversion coverage |
+| v1.16 | 2026-06-30 | Field stabilization for map/planning/platform/system: local-first Lanelet2 visualization with cached full-map republish, map-fixed `slice_only` local path extraction, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, radar 7-channel left/right mapping plus invalid no-target filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, expanded `avg_msgs` conversion coverage, diagnostics checker alignment, rear-camera CPU reduction, and automated sim validation runner |
 | v1.15 | 2026-06-23 | Obstacle replan monitor (LiDAR/Radar persistent blockage → Smac2D fallback), extended AvgAmrServiceState/PlanningScenario (SITE_ENTRY/UNLOAD_WAIT/RECALL_TO_SITE_ROAD/GUEST_LOADING_WAIT/RETURN_WITH_CARGO/DROP_ZONE_PARKING), UI site-access reservation/occupancy gate, planning_state_machine parking-phase mirror from /AMR_service_state, dynamic-only cost stop gate, lanelet route re-entry bypass, goal_snapper uncontained-snap override, map profile auto-selection, area_exporter polygon centroid + corners export |
 | v1.14 | 2026-06-19 | Mission-key semantic planning (PlanningState/MissionKey/Scenario msgs), lanelet raw cost safety stop, local path reset on goal change, goal_snapper pose-jump reissue, lanelet_route_planner + engage_aware_progress_checker plugins, front camera V4L2 fallback + image_raw publisher (PR#14), Ranger BMS charging detection, planning_state_checker, sim diagnostics profile, parking_method bringup arg |
 | v1.13 | 2026-06-11 | GNSS dual-antenna heading stabilization (simpleRTK2B Heading moving-baseline RELPOSNED fix) |
@@ -726,9 +732,9 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 | v1.8 | 2026-05-08 | ESKF stability, GNSS COG auto-init, DR timeout, platform fixes |
 | v1.7 | 2026-04-28 | Ranger platform bridge, DBC status aggregation, planning/system nodes |
 
-## 2026-06-29 Runtime Update
+## 2026-06-30 Runtime Update
 
-> HH_260629 - Current field baseline after map visibility recovery, planning/local-path stabilization, radar remap, SocketCAN bringup, UI build integration, and bringup/package config synchronization.
+> HH_260630 - Current field baseline after map visibility recovery, planning/local-path stabilization, radar remap, SocketCAN bringup, UI build integration, diagnostics/system checker synchronization, rear-camera runtime tuning, and sim validation runner integration.
 > HH_260618 - Final parking is method-selected: `parking_method:=rule_based` uses `camrod_parking`, `parking_method:=docking` uses `camrod_docking`, and launch/system checks require exactly one method to be active.
 
 ### Current Mission Flow
@@ -753,6 +759,9 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260629: Radar wiring is the seven-sensor profile. Left/right topics and TFs are aligned with the current harness, and SEN0592 no-target values near `65535 mm` are filtered instead of becoming obstacles.
 - HH_260629: Ranger launch can bring up `can0` through `setup_can0.sh`; `setup_camrod.sh` installs the SocketCAN tools used for manual checks and service setup.
 - HH_260629: `avg_msgs` now carries the internal CAMROD-facing message surface, with conversion helpers for standard ROS messages that still enter or leave the stack.
+- HH_260630: `camrod_system` now documents and checks the graph-level node/topic manifest, per-domain diagnostics, sim diagnostics profile, and semantic `/system/status` outputs used by the UI.
+- HH_260630: `camrod_bringup/scripts/sim_validation_runner.py` validates the sim stack for topic Hz, radar direction topics, directional LiDAR/Radar cost-stop, manual goal navigation, and camping-site flow.
+- HH_260630: `colcon test --packages-select camrod_planning` currently includes package-wide ament lint; failures from vendored `external/nav2_*` or existing style issues are lint-scope issues, not runtime planning failures.
 
 ### Setup and Build
 
@@ -773,4 +782,15 @@ ros2 topic echo /system/diagnostics --once   # check system_checker/final_parkin
 ros2 topic echo /parking/site_maneuver/status --once  # rule_based only
 ros2 topic echo /parking/drop_zone/status --once       # rule_based only
 ros2 topic echo /system/status --once
+
+# Automated sim validation: manual goal + radar/lidar directional stop matrix
+ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p report_file:=/tmp/camrod_sim_validation_manual.json
+
+# Automated sim validation: camping-site route + crab/rotate/unload/return flow
+ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p skip_manual_goal:=true \
+  -p run_camping:=true \
+  -p camping_timeout_s:=300.0 \
+  -p report_file:=/tmp/camrod_sim_validation_camping.json
 ```

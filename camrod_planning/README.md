@@ -240,7 +240,7 @@ graph TD
 | `goal_replanner_node` | `/planning/goal_pose`, `/planning/lanelet_pose`, Nav2 action | replanning triggers | `min_request_interval_s`, `retry_after_failure_s`, `navigate_inactive_grace_s` |
 | `obstacle_replan_monitor_node.py` | `/planning/global_path`, `/planning/goal_pose_snapped_ros`, `/localization/pose`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar` | `/planning/obstacle_replan/status`, temporary `/planning/planner_selector=Smac2D`, preempted `/planning/navigate_to_pose` goal | HH_260619 - keeps `LaneletRoute` fixed during normal driving, but forces a Smac2D global fallback only when dynamic obstacle costs persistently block the route corridor; HH_260619 - `clear_hold_s` prevents alternating empty/test cost grids from clearing a real blockage immediately |
 | `planning_progress_node` | `/planning/global_path`, `/localization/pose`, `/localization/odometry/filtered` | `/planning/progress/*` | `publish_rate_hz`: 2.0, `speed_ema_alpha`: 0.2, `speed_floor_mps`: 0.1 |
-| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/planning/mission_engage`, `/platform/status/estop`, `/map/cost_grid/lanelet`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/odometry/filtered` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors |
+| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/planning/mission_engage`, `/platform/status/estop`, `/map/cost_grid/lanelet`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/odometry/filtered` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors; HH_260630 - site-maneuver crab/reverse bypasses static lanelet/global-path cost while still stopping on live LiDAR/Radar source cost |
 | `planning_state_machine_node` | `/system/diagnostics_agg`, `/planning/lanelet_pose_ros`, `/planning/state_machine/camping_site_recall`, `mission_key` `/planning/mission_key` | `/planning/goal_pose_snapped_ros`, `/planning/state_machine/state`, `/planning/state_machine/mission_source` | `keypoints_yaml`, `camping_sites_yaml`, `startup_mission_key`, `goal_reached_dwell_s`; HH_260619 - recent UI `mission_key` can override a misleading snapped-goal key match during the preserve window |
 | Nav2 `planner_server` | `route_goal` `/planning/goal_pose_snapped_ros`, Lanelet2 map, costmaps | `/planning/global_path`, `/planning/route_lanelet_ids` | HH_260619 - default `LaneletRoute` publishes a fixed lanelet-centerline route and exact route lanelet IDs for route-aware map costs; `SmacLattice`, `NavFn`, `Smac2D`, `SmacHybrid`, `ThetaStar` remain selectable diagnostics/free-space fallbacks; BT uses `GoalUpdatedController`, so global path is recomputed on goal/preemption/recovery, not continuously while following |
 | Nav2 `controller_server` | `/planning/global_path`, costmaps, `/planning/engaged` | `/planning/cmd_vel_raw`, `/planning/local_path_controller` | RPP / DWB / MPPI / Graceful / RotationShim; `xy_goal_tolerance`: 0.15 m; HH_260618 - `EngageAwareProgressChecker` pauses progress timeout before operator engage; HH_260622 - MPPI path critics are tuned to reduce inside-cutting on high-curvature lanelet centerlines |
@@ -341,6 +341,12 @@ graph TD
 | In-place yaw | static lanelet allowed, dynamic cost checked | robot must be able to rotate toward the newest route goal while still stopping for live LiDAR/Radar obstacles |
 | Reverse | not checked by default | drop-zone reverse parking needs mission-specific bounds |
 | Lateral crab | not checked by default | campsite crab entry/exit needs mission-specific bounds |
+
+HH_260630 - During a recognized camping-site maneuver, explicit lateral/reverse
+parking commands also bypass static front/side/rear cost-stop from lanelet or
+global-path guide layers. Dynamic source grids are still evaluated afterward, so
+live LiDAR/Radar obstacles in the direction of travel continue to zero
+`/planning/cmd_vel`.
 
 HH_260619 - Forward lanelet safety first samples the active `/planning/local_path`
 corridor when it is close to the robot. This avoids false stops at merge points
@@ -610,7 +616,23 @@ ros2 topic echo /planning/state_machine/mission_source
 
 # Inspect progress
 ros2 topic echo /planning/progress/remaining_distance_m
+
+# Full sim smoke checks live in camrod_bringup and exercise this package end-to-end.
+ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p report_file:=/tmp/camrod_sim_validation_manual.json
+
+ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p skip_manual_goal:=true \
+  -p run_camping:=true \
+  -p camping_timeout_s:=300.0 \
+  -p report_file:=/tmp/camrod_sim_validation_camping.json
 ```
+
+`colcon test --packages-select camrod_planning` runs ament lint in addition to
+runtime/unit tests. The current package layout includes vendored Nav2 sources
+under `external/`, so lint failures from `external/nav2_*` or legacy style
+issues should be treated as lint-scope cleanup, not as proof that Nav2 planning
+or the gate failed at runtime.
 
 ---
 

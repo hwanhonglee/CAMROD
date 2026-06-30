@@ -4,7 +4,7 @@
 
 `camrod_sensing` acquires raw data from all physical sensors (LiDAR, radar, camera, IMU, GNSS), preprocesses the streams, and produces the filtered topics and obstacle cost grids consumed by localization, perception, and planning. It also fuses the map lanelet cost grid with real-time sensor grids into a single inflation grid for the Nav2 local costmap.
 
-> 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 ultrasonic radar ×6 (CH9344 USB serial), Econ dual cameras — front (`camera_front_publisher_node`, GPU VPI+NvJPEG, `/dev/video0`) + rear (`camera_rear_publisher_node`, CPU OpenCV, `/dev/video1`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial, selected via `imu_model`), u-blox SparkFun ZED-F9P (single antenna, `/dev/ttyACM0`, `ublox_dual_antenna:=false`) or ArduSimple simpleRTK2B Heading (dual antenna, moving-baseline heading, `ublox_dual_antenna:=true`), NTRIP RTK correction stream (gnssdata.or.kr).
+> 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 near-range radar ×7 (CH9344 USB serial: front1, front2, left1, left2, right1, right2, rear), ECON dual cameras — front (`camera_front_publisher_node`, GPU VPI+NvJPEG, `/dev/video0`) + rear (`camera_rear_publisher_node`, raw `image_raw` plus rate-limited CPU JPEG monitoring, `/dev/video1`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial, selected via `imu_model`), u-blox SparkFun ZED-F9P (single antenna, `/dev/ttyACM0`, `ublox_dual_antenna:=false`) or ArduSimple simpleRTK2B Heading (dual antenna, moving-baseline heading, `ublox_dual_antenna:=true`), NTRIP RTK correction stream (gnssdata.or.kr).
 
 ---
 
@@ -134,15 +134,22 @@ graph TD
   end
 
   subgraph CAM["📷 Camera"]
-    HW3{{🛠️ ISX031\n/dev/video0}}:::hardware
+    HW3F{{🛠️ ISX031 front\n/dev/video0}}:::hardware
+    HW3R{{🛠️ ISX031 rear\n/dev/video1}}:::hardware
     CAMFRONT(camera_front_publisher):::sensing
     CAMREAR(camera_rear_publisher):::sensing
     CAMRECT((camera/econ_front\n/image_rect/compressed)):::topic
     CAMRAW((camera/econ_rear\n/image_raw)):::topic
     CAMINFO((camera/econ_front\n/camera_info)):::topic
-    HW3 ==> CAMDRV
-    CAMDRV ==> CAMRECT
-    CAMDRV --> CAMINFO
+    RINFO((camera/econ_rear\n/camera_info)):::topic
+    RMON((camera/econ_rear\n/image_raw/compressed\n2 Hz monitoring)):::topic
+    HW3F ==> CAMFRONT
+    HW3R ==> CAMREAR
+    CAMFRONT ==> CAMRECT
+    CAMFRONT --> CAMINFO
+    CAMREAR ==> CAMRAW
+    CAMREAR --> RINFO
+    CAMREAR -.-> RMON
   end
 
   subgraph IMU["🧭 IMU"]
@@ -220,9 +227,9 @@ graph TD
   L3((/map/cost_grid/lanelet\n600×600 @ 0.20m\nstale: 5.0s)):::mapping
   L4((/planning/cost_grid/global_path\nroute-strip bias\nstale: 10.0s)):::planning
 
-  FUSE(inflation_cost_grid\ncell-wise MAX merge\nego clear: 0.50m radius):::highlight
+  FUSE(inflation_cost_grid\ncell-wise MAX merge\nego clear: 0.55m lidar / 0.50m radar):::highlight
 
-  OUT((/planning/cost_grid/inflation\n120×120 @ 0.10m · 10 Hz\nconsumed by Nav2 local costmap)):::topic
+  OUT((/planning/cost_grid/inflation\n80×80 @ 0.10m · 6 Hz\nconsumed by Nav2 local costmap)):::topic
 
   L1 ==> FUSE
   L2 ==> FUSE
@@ -288,7 +295,7 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | Each `/sensing/lidar/points_filtered` message |
-| Internal logic | `lidar_cost_grid_node` projects each filtered point into the `map` frame via TF2 and increments the corresponding cell. Cost is linearly scaled between `min_cost` (30) and `max_cost` (95) over the distance range 0.4–7.5 m. An ego-clear disk of radius 0.90 m around the robot base is always set to free. Grid is published at 10 Hz. Messages older than 0.50 s are discarded. |
+| Internal logic | `lidar_cost_grid_node` projects each filtered point into the `map` frame via TF2 and increments the corresponding cell. Cost is linearly scaled between `min_cost` (30) and `max_cost` (95) over the distance range 0.4–7.5 m. HH_260630 - an ego-clear disk of radius 0.55 m around the robot base is set free so side/rear obstacles just outside the body are not erased before safety gating. Grid is published at 10 Hz. Messages older than 0.50 s are discarded. |
 | Output effect | `/sensing/cost_grid/lidar`: 150×150 @ 0.08 m (12 m square centred on robot). |
 | Operator-visible symptom | Silent topic → LiDAR not publishing filtered points. Grid frozen → TF `robot_base_link → map` is stale (localization not running). |
 | Related params | `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
@@ -312,7 +319,7 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | Each incoming Range message (async per sensor) |
-| Internal logic | `radar_cost_grid_node` projects each Range into the `map` frame using the sensor's TF frame ID (`radar_*_link`). Cost is linearly scaled between `min_cost` (35) and `max_cost` (95) over 0.3–2.0 m. Ego-clear disk radius is 0.50 m (reduced from LiDAR's 0.90 m to preserve near-field side/rear readings). Messages older than 0.35 s are discarded. |
+| Internal logic | `radar_cost_grid_node` projects each Range into the `map` frame using the sensor's TF frame ID (`radar_*_link`). Cost is scaled between `min_cost` (85) and `max_cost` (95) over 0.3–2.0 m after invalid/no-target values and stable near-zero self echoes below 0.15 m are filtered. Ego-clear disk radius is 0.50 m. Messages older than 0.35 s are discarded. |
 | Output effect | `/sensing/cost_grid/radar`: 120×120 @ 0.10 m (12 m square centred on robot), published at 10 Hz. |
 | Operator-visible symptom | Empty grid → serial port permission denied or CH9344 driver not loaded. Near-field obstacles missing → ego_clear_radius_m is too large; current value 0.50 m is already minimal. |
 | Related params | `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
@@ -406,8 +413,8 @@ Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single ante
 
 | Field | Detail |
 |---|---|
-| Trigger | Any updated input grid; publishes at 10 Hz |
-| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (0.50 s), radar cost (0.50 s), global_path cost (10.0 s). The output is an 80×80 @ 0.10 m grid (8 m square centred on robot; HH_260618 - sized for the 2.8 s MPPI horizon at 1.4 m/s). An ego-clear disk of radius 0.50 m is always free. Messages older than their per-input limit are treated as absent. |
+| Trigger | Any updated input grid; publishes at 6 Hz |
+| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (0.50 s), radar cost (0.50 s), global_path cost (10.0 s). The output is an 80×80 @ 0.10 m grid (8 m square centred on robot; HH_260618 - sized for the 2.8 s MPPI horizon at 1.4 m/s). HH_260630 - LiDAR ego clear is 0.55 m so side/rear obstacles just outside the body are preserved for safety gating; radar ego clear remains 0.50 m. Messages older than their per-input limit are treated as absent. |
 | Output effect | `/planning/cost_grid/inflation` at 6 Hz; consumed by Nav2 local costmap and `cmd_vel_gate`. |
 | Operator-visible symptom | If inflation grid stops updating at 6 Hz, check each input: lidar/radar grids must arrive within 0.50 s; lanelet grid arrives once (transient_local) and is valid for 5.0 s after last receipt. |
 | Related params | `resolution`, `width`, `height`, `ego_clear_radius_m`, `publish_rate_hz`, `input_topics`, `input_max_ages_s` |
@@ -421,7 +428,7 @@ All cost grids are robot-centred and published in the `map` frame via TF2.
 
 | Grid | Size | Resolution | Cost range | Max staleness | Ego clear radius |
 |---|---|---|---|---|---|
-| `/sensing/cost_grid/lidar` | 150×150 | 0.08 m | 30–95 | 0.50 s | 0.90 m |
+| `/sensing/cost_grid/lidar` | 150×150 | 0.08 m | 30–95 | 0.50 s | 0.55 m |
 | `/sensing/cost_grid/radar` | 120×120 | 0.10 m | 35–95 | 0.35 s | 0.50 m |
 | `/planning/cost_grid/inflation` | 80×80 | 0.10 m | 0–100 | per-input (below) | 0.50 m |
 
@@ -662,7 +669,7 @@ Embedded video playback halted; module v4l2src0 reported: Internal data stream e
 
 OpenCV's `cv::CAP_V4L2` backend handles the Tegra VI initialization internally (via direct `ioctl` calls that trigger the media controller), so it succeeds where GStreamer fails.
 
-The rear camera (`/dev/video1`, same ISX031 hardware) has the same GStreamer failure. It already had a `cv::CAP_V4L2` fallback in its original implementation. The front camera did not — it threw `std::runtime_error` and crashed. The fallback was added on 2026-06-17.
+The rear camera (`/dev/video1`, same ISX031 hardware) has the same GStreamer failure. It already had a `cv::CAP_V4L2` fallback in its original implementation. The front camera did not — it threw `std::runtime_error` and crashed. The fallback was added on 2026-06-17. HH_260630 - rear compressed publishing is monitoring-only and rate-limited by `compressed_publish_rate_hz` (default 2 Hz), while `/sensing/camera/econ_rear/image_raw` and `/sensing/camera/econ_rear/camera_info` remain unchanged for docking and diagnostics.
 
 ---
 

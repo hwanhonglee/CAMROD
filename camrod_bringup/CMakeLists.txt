@@ -10,8 +10,8 @@ find_package(ament_cmake REQUIRED)
 find_package(avg_msgs REQUIRED)  # enforce avg_msgs availability for bringup scripts.
 find_package(rclcpp REQUIRED)
 
-# Install fake sensor publisher for simulation.
-# Added gnss_dr_test_node.py for GNSS DR fallback integration test.
+# HH_260630: Install simulation utilities used by bringup smoke tests and
+# deterministic validation runs.
 install(
   PROGRAMS
     scripts/fake_sensor_publisher.py
