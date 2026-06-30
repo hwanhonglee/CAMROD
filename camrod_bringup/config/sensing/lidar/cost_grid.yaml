@@ -22,8 +22,9 @@
     cost_range_min_m: 0.4
     cost_range_max_m: 7.5
     obstacle_radius_m: 0.20
-    # Keep ego footprint free so planner start cell is not lethal.
-    ego_clear_radius_m: 0.90
+    # HH_260630: Keep ego clearing close to the vehicle half-width so side/rear
+    # LiDAR obstacles just outside the body are not erased before safety gating.
+    ego_clear_radius_m: 0.55
 
     # Runtime
     max_message_age_s: 0.50

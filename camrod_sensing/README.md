@@ -19,7 +19,7 @@ ros2 launch camrod_sensing sensing.launch.py \
   enable_gnss:=false \
   enable_ntrip:=false
 
-# Switch IMU hardware (HH_260528: imu_mode → imu_model)
+# Switch IMU hardware (HH_260528 - imu_mode → imu_model)
 ros2 launch camrod_sensing sensing.launch.py imu_model:=gq7
 
 # Sub-stacks (for isolated bringup or debug)
@@ -265,7 +265,7 @@ graph TD
 | `/sensing/camera/econ_front/image_rect/compressed` | `sensor_msgs/CompressedImage` | camrod_perception (YOLOv9) | 10 Hz | GPU-rectified 1920×1080 JPEG in `camera_front` frame (VPI VIC + NvJPEG) |
 | `/sensing/camera/econ_front/camera_info` | `sensor_msgs/CameraInfo` | camrod_perception | 10 Hz | Calibrated intrinsics — equidistant 4-coefficient (k1–k4) |
 | `/sensing/camera/econ_rear/image_raw` | `sensor_msgs/Image` | camrod_docking (Isaac ROS AprilTag) | 10 Hz | Uncompressed 1920×1080 in `camera_rear` frame; required by RectifyNode |
-| `/sensing/camera/econ_rear/image_raw/compressed` | `sensor_msgs/CompressedImage` | monitoring | 10 Hz | CPU-JPEG compressed rear stream |
+| `/sensing/camera/econ_rear/image_raw/compressed` | `sensor_msgs/CompressedImage` | monitoring | 2 Hz | Rate-limited CPU-JPEG rear stream |
 | `/sensing/camera/econ_rear/camera_info` | `sensor_msgs/CameraInfo` | camrod_docking | 10 Hz | Rear camera intrinsics |
 
 ---
@@ -331,13 +331,13 @@ graph TD
 | Related params | `device_path`, `image_width`, `image_height`, `fps`, `exposure_time_us`, `jpeg_quality`, `camera_matrix`, `distortion_coefficients`, `intrinsics_source` |
 | Related topics | `/sensing/camera/econ_front/image_rect/compressed`, `/sensing/camera/econ_front/camera_info` |
 
-**Rear camera (`camera_rear_publisher_node`, CPU pipeline)**
+**Rear camera (`camera_rear_publisher_node`, OpenCV + VIC-assisted pipeline)**
 
 | Field | Detail |
 |---|---|
 | Trigger | Continuous GStreamer capture; started when `enable_rear_camera: true` in `camrod_sensing_camera` |
-| Internal logic | Opens `/dev/video1` via OpenCV GStreamer pipeline. Publishes `image_raw` (uncompressed, on-demand when subscribed) and `image_raw/compressed` (always). Uncompressed stream is required by Isaac ROS RectifyNode in camrod_docking. |
-| Output effect | `/sensing/camera/econ_rear/image_raw`, `/sensing/camera/econ_rear/image_raw/compressed`, `/sensing/camera/econ_rear/camera_info` at 10 Hz. |
+| Internal logic | Opens `/dev/video1` via OpenCV GStreamer. Captures the sensor at 30 Hz and uses `videorate` before VIC conversion to publish 10 Hz raw frames. `image_raw` is subscriber-gated; `image_raw/compressed` is CPU JPEG and rate-limited for monitoring. |
+| Output effect | `/sensing/camera/econ_rear/image_raw` and `/sensing/camera/econ_rear/camera_info` at 10 Hz; `/sensing/camera/econ_rear/image_raw/compressed` at 2 Hz. |
 | Operator-visible symptom | AprilTag detection silent → check `/sensing/camera/econ_rear/image_raw` is live and `/dev/video1` exists. |
 | Related params | `device`, `width`, `height`, `fps`, `jpeg_quality`, `frame_id`, `camera_info_url` |
 | Related topics | `/sensing/camera/econ_rear/image_raw`, `/sensing/camera/econ_rear/image_raw/compressed`, `/sensing/camera/econ_rear/camera_info` |
@@ -353,7 +353,7 @@ graph TD
 | Related params | `imu_model`, `imu_param_file`, `imu_data_rate`, `use_enu_frame`, `timestamp_source`, `frame_id` |
 | Related topics | `/sensing/imu/data` |
 
-### GNSS (HH_260611: ublox_gps single/dual antenna)
+### GNSS (HH_260611 - ublox_gps single/dual antenna)
 
 Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single antenna, `true` = simpleRTK2B Heading dual antenna). Both modes use `ublox_gps_node` and Python `ntrip_client` for NTRIP RTK corrections with GGA feedback, required for gnssdata.or.kr VRS network.
 
@@ -407,7 +407,7 @@ Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single ante
 | Field | Detail |
 |---|---|
 | Trigger | Any updated input grid; publishes at 10 Hz |
-| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (0.50 s), radar cost (0.50 s), global_path cost (10.0 s). The output is an 80×80 @ 0.10 m grid (8 m square centred on robot; HH_260618: sized for the 2.8 s MPPI horizon at 1.4 m/s). An ego-clear disk of radius 0.50 m is always free. Messages older than their per-input limit are treated as absent. |
+| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (0.50 s), radar cost (0.50 s), global_path cost (10.0 s). The output is an 80×80 @ 0.10 m grid (8 m square centred on robot; HH_260618 - sized for the 2.8 s MPPI horizon at 1.4 m/s). An ego-clear disk of radius 0.50 m is always free. Messages older than their per-input limit are treated as absent. |
 | Output effect | `/planning/cost_grid/inflation` at 6 Hz; consumed by Nav2 local costmap and `cmd_vel_gate`. |
 | Operator-visible symptom | If inflation grid stops updating at 6 Hz, check each input: lidar/radar grids must arrive within 0.50 s; lanelet grid arrives once (transient_local) and is valid for 5.0 s after last receipt. |
 | Related params | `resolution`, `width`, `height`, `ego_clear_radius_m`, `publish_rate_hz`, `input_topics`, `input_max_ages_s` |
@@ -739,7 +739,7 @@ ros2 topic hz /sensing/camera/econ_front/image_rect/compressed
 
 ## 2026-06-17 Runtime Update
 
-> HH_260617: Current GNSS baseline is `ublox_gps_node` with simpleRTK2B Heading dual-antenna support.
+> HH_260617 - Current GNSS baseline is `ublox_gps_node` with simpleRTK2B Heading dual-antenna support.
 
 The simpleRTK2B Heading rover publishes RELPOSNED/heading and RTK pose through the USB-connected rover. NTRIP RTCM should not be injected into the rover USB path when it conflicts with moving-base RTCM; keep `ublox_dual_forward_ntrip_to_rover: false` unless intentionally testing a different RTCM topology. Bringup defaults keep dual-antenna heading enabled and route GNSS config through `sensing/gnss_param_file`.
 
