@@ -24,6 +24,27 @@ const OPERATING_HOURS_GATE_ENABLED =
 const OPERATING_HOURS_START = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_START, 3);
 const OPERATING_HOURS_END = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_END, 23);
 
+// HH_260630 - Mirror avg_msgs/AvgAmrServiceState values used by backend and parking.
+const AMR_STATE = Object.freeze({
+  DROP_ZONE_WAIT: 0,
+  SITE_ARRIVED: 2,
+  RETURNING_TO_DROP_ZONE: 3,
+  UNLOAD_WAIT: 6,
+  GUEST_LOADING_WAIT: 8,
+  RETURN_WITH_CARGO: 9,
+  DROP_ZONE_PARKING: 10,
+});
+const ARRIVAL_STATES = new Set([
+  AMR_STATE.SITE_ARRIVED,
+  AMR_STATE.UNLOAD_WAIT,
+  AMR_STATE.GUEST_LOADING_WAIT,
+]);
+const RETURNING_STATES = new Set([
+  AMR_STATE.RETURNING_TO_DROP_ZONE,
+  AMR_STATE.RETURN_WITH_CARGO,
+  AMR_STATE.DROP_ZONE_PARKING,
+]);
+
 // ── 탐방로 공통 이미지 캐러셀 컴포넌트 ──────────────────────────────────────
 function TrailCarousel({ title, images }) {
   const [open, setOpen] = useState(false);
@@ -969,14 +990,25 @@ function App() {
         setArrivedSite(data.arrived);
         setShowArrivalComplete(true);
       }
-      // AMR Drop_zone 대기 복귀: {"amr_state": 0} 수신
-      if ('amr_state' in data && data.amr_state === 0) {
-        setArrivedSite(null);
-        setShowArrivalComplete(false);
-        setIsReturning(false);
-        setShowWaiting(true);
-        setShowGuestRecall(false);
-        setGuestNavigateSite(null);
+      // AMR service lifecycle: 0=drop-zone wait, 6=site unload wait, 9/10=returning.
+      if ('amr_state' in data) {
+        const amrState = Number(data.amr_state);
+        if (amrState === AMR_STATE.DROP_ZONE_WAIT) {
+          setArrivedSite(null);
+          setShowArrivalComplete(false);
+          setIsReturning(false);
+          setShowWaiting(true);
+          setShowGuestRecall(false);
+          setGuestNavigateSite(null);
+        } else if (ARRIVAL_STATES.has(amrState) && data.site) {
+          setArrivedSite(data.site);
+          setShowArrivalComplete(true);
+          setIsReturning(false);
+        } else if (RETURNING_STATES.has(amrState) || data.returning) {
+          setShowArrivalComplete(false);
+          setArrivedSite(null);
+          setIsReturning(true);
+        }
       }
       // HJ_260601: 게스트 호출 알림: {"guest_recall": true} 수신
       if (data.guest_recall) {
@@ -1372,6 +1404,9 @@ function App() {
               />
               <p className="preview-site-name">{arrivedSite}</p>
               <p className="preview-arrived">배송 로봇이 목적지에 도착했습니다.</p>
+              <button className="preview-return-btn" onClick={handleArrivalComplete}>
+                복귀
+              </button>
             </>
           ) : isReturning ? (
             <>
@@ -1473,7 +1508,7 @@ function App() {
               이용 완료 버튼을 누르면 로봇이 이동합니다.
             </p>
             <button className="arrival-complete-btn" onClick={handleArrivalComplete}>
-              이용 완료
+              복귀
             </button>
           </div>
         </div>

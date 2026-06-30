@@ -1753,10 +1753,19 @@ def generate_launch_description():
         "and str('", lc['diagnostics_profile'], "') == 'default' "
         "else str('", lc['diagnostics_profile'], "')"
     ])
-    _system_checker_default_cfg = pkg_path(
-        'camrod_system', os.path.join('config', 'system_checker.yaml'))
-    _system_checker_sim_cfg = pkg_path(
-        'camrod_system', os.path.join('config', 'system_checker_sim.yaml'))
+    _system_config_root = os.path.join(config_root_default, 'system')
+    _system_checker_default_cfg = _first_existing_path([
+        os.path.join(_system_config_root, 'system_checker.yaml'),
+        pkg_path('camrod_system', os.path.join('config', 'system_checker.yaml')),
+    ])
+    _system_checker_sim_cfg = _first_existing_path([
+        os.path.join(_system_config_root, 'system_checker_sim.yaml'),
+        pkg_path('camrod_system', os.path.join('config', 'system_checker_sim.yaml')),
+    ])
+    _system_diagnostics_config_root = os.path.join(_system_config_root, 'diagnostics')
+    if not os.path.isdir(_system_diagnostics_config_root):
+        _system_diagnostics_config_root = pkg_path(
+            'camrod_system', os.path.join('config', 'diagnostics'))
     system_checker_param_runtime = PythonExpression([
         "'", _system_checker_sim_cfg, "' if str('", lc['sim'],
         "').lower() in ('1', 'true', 'yes', 'on') "
@@ -1775,6 +1784,8 @@ def generate_launch_description():
         # HH_260630 - Match graph-readiness manifest to the same hardware/sim mode
         # as diagnostics_profile; hardware driver nodes are not required in sim.
         'system_checker_param_file': system_checker_param_runtime,
+        # HH_260630 - Use synchronized bringup/system diagnostics when present.
+        'diagnostics_config_root': _system_diagnostics_config_root,
         'enable_platform': lc['enable_platform_checker'],
         'module_namespace': lc['system_namespace'],
     }

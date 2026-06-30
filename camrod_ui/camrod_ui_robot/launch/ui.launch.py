@@ -93,6 +93,11 @@ def generate_launch_description():
         default_value='/platform/drive_enable',
         description='Platform drive-enable topic armed together with UI engage commands',
     )
+    site_maneuver_return_topic_arg = DeclareLaunchArgument(
+        'site_maneuver_return_topic',
+        default_value='/parking/site_maneuver/return',
+        description='Rule-based campsite return trigger used by the UI return button',
+    )
 
     ui_backend = Node(
         package='camrod_ui',
@@ -111,6 +116,7 @@ def generate_launch_description():
             'planning_engage_topic': LaunchConfiguration('planning_engage_topic'),
             'planning_mission_engage_topic': LaunchConfiguration('planning_mission_engage_topic'),
             'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
+            'site_maneuver_return_topic': LaunchConfiguration('site_maneuver_return_topic'),
             # HH_260617: Replace ambiguous goal-key naming with semantic mission-key dispatch.
             'planning_mission_key_topic': '/planning/mission_key',
             'planning_goal_pose_topic': '/goal_pose',
@@ -138,5 +144,6 @@ def generate_launch_description():
         planning_engage_topic_arg,
         planning_mission_engage_topic_arg,
         platform_drive_enable_topic_arg,
+        site_maneuver_return_topic_arg,
         ui_backend,
     ])

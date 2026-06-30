@@ -1,0 +1,86 @@
+# HH_260428: Sim-mode ESKF overrides.
+# The real-hardware eskf.yaml applies sign inversions for a physically
+# inverted IMU mount.  In simulation, fake_sensor_publisher already
+# publishes correct ROS-convention yaw (CCW positive, east = 0).
+# Applying the hardware sign correction to the fake IMU negates the yaw
+# and causes the local path to point ~180° wrong.
+#
+# Changes from eskf.yaml:
+#   imu_yaw_sign / imu_gyro_z_sign: +1.0  (no inversion — fake IMU is already correct)
+#   wheel_yaw_rate_mode: speed_only        (fake wheel always has angular.z=0,
+#                                           fighting the IMU yaw rate and causing shaking)
+/localization/eskf:
+  ros__parameters:
+    map_frame_id: "map"
+    odom_frame_id: "odom"
+    base_frame_id: "robot_base_link"
+    imu_topic: "/sensing/imu/data"
+    gnss_topic: "/sensing/gnss/pose_with_covariance"
+    wheel_topic: "/platform/status/wheel_odometry"
+    # HH_260527: External reset topic used by GNSS reattach helper.
+    set_pose_topic: "/localization/eskf/set_pose"
+    # HH_260527: Publish ESKF output to PRIMARY topics; pose_selector owns /localization/* final outputs.
+    pose_topic: "/localization/primary/pose"
+    pose_cov_topic: "/localization/primary/pose_with_covariance"
+    odom_topic: "/localization/primary/odometry"
+    twist_topic: "/localization/twist"
+    diag_topic: "/localization/eskf/status"
+    publish_tf: true
+    tf_use_node_time: true
+    # HH_260428: Sim fake IMU is already in correct ROS convention — no sign inversion.
+    imu_to_base_yaw_deg: 0.0
+    imu_accel_x_sign: 1.0
+    imu_accel_y_sign: 1.0
+    imu_gyro_z_sign: 1.0
+    imu_yaw_sign: 1.0
+    # HH_260527: yaw_init_source options:
+    #   imu_orientation: initialize yaw from IMU orientation
+    #   state: keep filter state yaw on initialization/reset
+    yaw_init_source: imu_orientation
+
+    gnss_gate_mahalanobis: 64.0
+    # HH_260527: gnss_profile_mode options:
+    #   auto: switch normal/unstable by reject/accept streaks
+    #   normal: force normal GNSS gate/noise profile
+    #   unstable: force unstable GNSS gate/noise profile
+    gnss_profile_mode: auto
+    gnss_profile_switch_reject_count: 2
+    gnss_profile_switch_accept_count: 8
+    gnss_profile_normal_gate_mahalanobis: 64.0
+    gnss_profile_unstable_gate_mahalanobis: 400.0
+    wheel_gate_mahalanobis: 9.0
+    # HH_260527: wheel_yaw_rate_mode options:
+    #   fused: use wheel angular.z (yaw-rate) + speed together
+    #   speed_only: use wheel speed only (ignore wheel angular.z correction term)
+    # HH_260428: Fake wheel odometry has angular.z=0 always — disable wheel yaw
+    # rate correction to prevent ESKF fighting the IMU-derived yaw rate.
+    wheel_yaw_rate_mode: speed_only
+    wheel_yaw_rate_noise: 0.25
+    wheel_yaw_rate_gate_mahalanobis: 9.0
+    wheel_yaw_rate_min_speed_mps: 0.10
+    reinit_on_gnss_reject: true
+    reinit_distance_threshold: 3.0
+    gyro_noise: 0.015
+    accel_noise: 0.15
+    gyro_bias_walk: 0.0005
+    accel_bias_walk: 0.01
+    gnss_position_noise: 4.0
+    gnss_profile_normal_position_noise: 4.0
+    gnss_profile_unstable_position_noise: 8.0
+    wheel_speed_noise: 0.35
+    min_imu_dt: 0.0001
+    max_imu_dt: 0.5
+    freeze_yaw_when_stopped: true
+    align_yaw_to_imu_when_stopped: false # HH_260429: Disabled for sim heading stability.
+    stop_speed_threshold: 0.05
+    stop_hold_s: 1.0
+
+    # HH_260527: nhc_mode options: enabled | disabled.
+    nhc_mode: enabled
+    nhc_lateral_noise: 0.05
+    nhc_gate_mahalanobis: 9.0
+
+    # HH_260527: zupt_mode options: enabled | disabled.
+    zupt_mode: enabled
+    zupt_vel_noise: 0.02
+    zupt_gate_mahalanobis: 9.0

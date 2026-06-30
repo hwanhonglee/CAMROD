@@ -523,6 +523,7 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/platform/status/odometry` | `Odometry` | Ranger CAN → localization | Wheel odometry |
 | `/planning/engage` | `Bool` | UI / RViz manual → gate | Manual-goal engage latch |
 | `/planning/mission_engage` | `Bool` | UI / mission state → gate | Camping/drop-zone mission engage latch |
+| `/parking/site_maneuver/return` | `Bool` | UI return button → parking | Starts campsite crab/reverse exit after unload wait |
 | `/planning/state_machine/state` | `avg_msgs/PlanningState` | state machine → parking/UI/system | INIT / RUNNING / GOAL_REACHED / RETURNING / … |
 | `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | UI → state machine | Named semantic selector, e.g. `camping_site_3` |
 | `/planning/state_machine/mission_source` | `avg_msgs/PlanningMissionKey` | state machine → diagnostics/UI | `startup`, `mission_key:*`, `auto_return`, `recall:*` |
@@ -763,6 +764,8 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260630: `camrod_system` now documents and checks the graph-level node/topic manifest, per-domain diagnostics, sim diagnostics profile, and semantic `/system/status` outputs used by the UI.
 - HH_260630: `sim:=true` now selects a sim graph manifest so fake-sensor runs do not require hardware GNSS/IMU/LiDAR/camera/Ranger nodes in `system_checker`.
 - HH_260630: UI manual engage and camping-site buttons now publish `/platform/drive_enable` with the matching planning engage latch, so normal operation does not require a separate `/platform/set_enabled` service call.
+- HH_260630: UI treats campsite `UNLOAD_WAIT` as arrival, shows the return button, and publishes `/parking/site_maneuver/return` before re-arming mission/platform gates for the return leg.
+- HH_260630: Bringup and package config trees are synchronized for map/localization/planning/sensing/platform/perception/parking/system configs; bringup passes its synchronized system diagnostics root to `camrod_system`.
 - HH_260630: `camrod_bringup/scripts/sim_validation_runner.py` validates the sim stack for topic Hz, radar direction topics, directional LiDAR/Radar cost-stop, manual goal navigation, and camping-site flow.
 - HH_260630: `colcon test --packages-select camrod_planning` currently includes package-wide ament lint; failures from vendored `external/nav2_*` or existing style issues are lint-scope issues, not runtime planning failures.
 

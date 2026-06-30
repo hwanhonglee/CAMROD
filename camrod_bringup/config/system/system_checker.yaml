@@ -1,0 +1,183 @@
+# HH_260630 - Graph readiness manifest for full CAMROD bringup.
+# Format: "topic|ros_type|min_publishers"; leave ros_type empty to check graph presence only.
+/system/system_checker:
+  ros__parameters:
+    check_period_s: 1.0
+    startup_grace_s: 30.0
+
+    required_modules:
+      - map
+      - sensing
+      - localization
+      - perception
+      - planning
+      - platform
+
+    # HH_260630 - Final parking is a capability: exactly one implementation must be active.
+    required_alternative_groups:
+      - final_parking
+
+    final_parking:
+      alternatives:
+        - parking
+        - docking
+
+    # Package: camrod_map
+    # Nodes publish lanelet visualization and the lane-boundary cost grid used by planning.
+    map:
+      required_nodes:
+        - /map/lanelet_map_provider
+        - /map/lanelet_boundary_cost_grid
+      required_topics:
+        # lanelet2_map_node -> RViz lanelet/direction/id/semantic markers.
+        - "/map/markers|visualization_msgs/msg/MarkerArray|1"
+        # lanelet_boundary_cost_grid -> Nav2/cmd_vel lane constraint grid.
+        - "/map/cost_grid/lanelet|nav_msgs/msg/OccupancyGrid|1"
+
+    # Package: camrod_sensing
+    # Nodes publish hardware sensor streams plus fused cost grids consumed by localization/planning.
+    sensing:
+      required_nodes:
+        - /sensing/gnss/ublox_gps_node
+        - /sensing/imu/microstrain_inertial_driver
+        - /sensing/imu/platform_velocity_converter
+        - /sensing/lidar/vanjee/vanjee_driver
+        - /sensing/lidar/lidar_preprocessor
+        - /sensing/lidar/ground_segmentation
+        - /sensing/lidar/lidar_cost_grid
+        - /sensing/radar/sen0592_radar_node
+        - /sensing/radar/radar_cost_grid
+        - /sensing/camera/econ_front/camera_front_publisher
+        - /sensing/camera/econ_rear/camera_rear_publisher
+        - /sensing/inflation_cost_grid
+      required_topics:
+        # gnss.launch.py / ublox_gps_node -> GNSS fix and dual-antenna yaw.
+        - "/sensing/gnss/ublox_gps_node/fix|sensor_msgs/msg/NavSatFix|1"
+        - "/sensing/gnss/navheading|sensor_msgs/msg/Imu|1"
+        # imu.launch.py / microstrain_inertial_driver -> CV7 IMU data.
+        - "/sensing/imu/data|sensor_msgs/msg/Imu|1"
+        # platform_velocity_converter_node -> wheel/IMU twist input for filters.
+        - "/sensing/platform_velocity_converter/twist_with_covariance|geometry_msgs/msg/TwistWithCovarianceStamped|1"
+        # lidar_driver.launch.py -> raw Vanjee points and filtered obstacle cloud.
+        - "/sensing/lidar/vanjee/points_raw|sensor_msgs/msg/PointCloud2|1"
+        - "/sensing/lidar/points_filtered|sensor_msgs/msg/PointCloud2|1"
+        - "/sensing/cost_grid/lidar|nav_msgs/msg/OccupancyGrid|1"
+        # radar_sensor.launch.py -> seven SEN0592 range streams and radar cost grid.
+        - "/sensing/radar/front1/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/front2/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/left1/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/left2/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/right1/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/right2/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/rear/range|sensor_msgs/msg/Range|1"
+        - "/sensing/cost_grid/radar|nav_msgs/msg/OccupancyGrid|1"
+        # camera.launch.py -> front compressed stream and rear raw stream.
+        - "/sensing/camera/econ_front/image_rect/compressed|sensor_msgs/msg/CompressedImage|1"
+        - "/sensing/camera/econ_front/camera_info|sensor_msgs/msg/CameraInfo|1"
+        - "/sensing/camera/econ_rear/image_raw|sensor_msgs/msg/Image|1"
+        - "/sensing/camera/econ_rear/camera_info|sensor_msgs/msg/CameraInfo|1"
+        # inflation_cost_grid_node -> merged static/dynamic safety grid.
+        - "/planning/cost_grid/inflation|nav_msgs/msg/OccupancyGrid|1"
+
+    # Package: camrod_localization
+    # Nodes adapt GNSS/wheel inputs, run the selected filter, select pose, and monitor mode.
+    localization:
+      required_nodes:
+        - /localization/input_adapter
+        - /localization/ekf_filter
+        - /localization/pose_selector
+        - /localization/monitor
+        - /localization/map_helper
+      required_topics:
+        # localization_input_adapter_node -> GNSS pose and wheel odometry bridges.
+        - "/sensing/gnss/pose|geometry_msgs/msg/PoseStamped|1"
+        - "/sensing/gnss/pose_with_covariance|geometry_msgs/msg/PoseWithCovarianceStamped|1"
+        - "/platform/status/wheel_odometry|nav_msgs/msg/Odometry|1"
+        # robot_localization/camrod selector -> public localization outputs.
+        - "/localization/pose|geometry_msgs/msg/PoseStamped|1"
+        - "/localization/pose_with_covariance|geometry_msgs/msg/PoseWithCovarianceStamped|1"
+        - "/localization/odometry/filtered|nav_msgs/msg/Odometry|1"
+        # localization_monitor_node -> mode/state used by cmd_vel gates and UI diagnostics.
+        - "/localization/mode|avg_msgs/msg/AvgLocalizationMode|1"
+        - "/localization/state|std_msgs/msg/Bool|1"
+        - "/localization/state/degraded|std_msgs/msg/Bool|1"
+        - "/localization/state/dr_timeout|std_msgs/msg/Bool|1"
+        # localization_map_helper_node -> lanelet-aligned pose for planning snap tools.
+        - "/localization/centerline_pose|geometry_msgs/msg/PoseWithCovarianceStamped|1"
+
+    # Package: camrod_perception
+    # LiDAR obstacle detection is the always-on perception backbone; camera fusion is checked by dedicated diagnostics when enabled.
+    perception:
+      required_nodes:
+        - /perception/obstacle_lidar
+      required_topics:
+        - "/perception/lidar/bboxes|visualization_msgs/msg/MarkerArray|1"
+
+    # Package: camrod_planning
+    # Nodes own lanelet snapping, Nav2, local path extraction, semantic state, and the planning cmd_vel gate.
+    planning:
+      required_nodes:
+        - /planning/goal_snapper
+        - /planning/centerline_snapper
+        - /planning/planner_server
+        - /planning/controller_server
+        - /planning/bt_navigator
+        - /planning/behavior_server
+        - /planning/smoother_server
+        - /planning/lifecycle_manager_planning
+        - /planning/local_path_extractor
+        - /planning/planning_state_machine
+        - /planning/path_visualizer
+        - /planning/obstacle_replan_monitor
+        - /planning/cmd_vel_gate
+      required_topics:
+        # snapper tools -> map-frame goal and lanelet pose contracts.
+        - "/planning/goal_pose_snapped_ros|geometry_msgs/msg/PoseStamped|1"
+        - "/planning/lanelet_pose_ros|geometry_msgs/msg/PoseStamped|1"
+        # local_path_extractor -> stable map-fixed path slice used by RViz and safety gates.
+        - "/planning/local_path|nav_msgs/msg/Path|1"
+        # planning_state_machine_node -> semantic mission state for parking/UI.
+        - "/planning/state_machine/state|avg_msgs/msg/PlanningState|1"
+        - "/planning/state_machine/mission_source|avg_msgs/msg/PlanningMissionKey|1"
+        - "/planning/state_machine/scenario_id|avg_msgs/msg/PlanningScenario|1"
+        # planning_cmd_vel_gate_node -> gated planning velocity and effective engage state.
+        - "/planning/engaged|std_msgs/msg/Bool|1"
+        - "/planning/cmd_vel|geometry_msgs/msg/Twist|1"
+
+    # Package: camrod_parking
+    # Rule-based campsite/drop-zone implementation for the final parking capability.
+    parking:
+      required_nodes:
+        - /parking/site_maneuver
+        - /parking/drop_zone_parking
+      required_topics:
+        - "/parking/site_maneuver/status|avg_msgs/msg/ModuleState|1"
+        - "/parking/drop_zone/status|avg_msgs/msg/ModuleState|1"
+
+    # Package: camrod_docking
+    # Marker/OpenNav docking implementation for the same final parking capability.
+    docking:
+      required_nodes:
+        - /docking/docking_server
+        - /docking/lifecycle_manager_docking
+
+    # Package: camrod_platform + ranger_base
+    # Nodes gate final velocity, bridge Ranger CAN state, and publish RViz robot markers.
+    platform:
+      required_nodes:
+        - /platform/cmd_vel_gate
+        - /ranger_base_node
+        - /ranger_platform_bridge
+        - /platform/robot_visualization
+      required_topics:
+        # camrod_platform/cmd_vel_gate_node -> final drive command and effective drive state.
+        - "/platform/cmd_vel|geometry_msgs/msg/Twist|1"
+        - "/platform/drive_enabled|std_msgs/msg/Bool|1"
+        # ranger_platform_bridge_node -> normalized platform state consumed by localization/planning/system.
+        - "/platform/status/odometry|nav_msgs/msg/Odometry|1"
+        - "/platform/status/velocity|geometry_msgs/msg/TwistStamped|1"
+        - "/platform/status/wheel|geometry_msgs/msg/TwistStamped|1"
+        - "/platform/status/estop|std_msgs/msg/Bool|1"
+        - "/platform/status/battery_state|sensor_msgs/msg/BatteryState|1"
+        - "/platform/status/is_charging|std_msgs/msg/Bool|1"
+        - "/platform/status|avg_msgs/msg/AvgPlatformStatus|1"
