@@ -81,6 +81,12 @@ class UiBackendNode(Node):
         self.planning_engage_topic = str(
             self.declare_parameter("planning_engage_topic", "/planning/engage").value
         )
+        self.planning_mission_engage_topic = str(
+            self.declare_parameter("planning_mission_engage_topic", "/planning/mission_engage").value
+        )
+        self.platform_drive_enable_topic = str(
+            self.declare_parameter("platform_drive_enable_topic", "/platform/drive_enable").value
+        )
         self.planning_mission_key_topic = str(
             self.declare_parameter("planning_mission_key_topic", "/planning/mission_key").value
         )
@@ -97,6 +103,12 @@ class UiBackendNode(Node):
         self.publish_goal_pose = bool(self.declare_parameter("publish_goal_pose", True).value)
         self.publish_engage_from_destination = bool(
             self.declare_parameter("publish_engage_from_destination", True).value
+        )
+        self.publish_mission_engage_from_destination = bool(
+            self.declare_parameter("publish_mission_engage_from_destination", False).value
+        )
+        self.publish_platform_drive_enable_with_engage = bool(
+            self.declare_parameter("publish_platform_drive_enable_with_engage", True).value
         )
         self.default_goal_frame_id = str(self.declare_parameter("default_goal_frame_id", "map").value)
         self.fallback_mission_key = str(self.declare_parameter("fallback_mission_key", "camping_site_1").value)
@@ -163,6 +175,12 @@ class UiBackendNode(Node):
             UiDestinationCommand, self.ui_destination_topic, 10
         )
         self.pub_engage = self.create_publisher(Bool, self.planning_engage_topic, 10)
+        self.pub_mission_engage = self.create_publisher(
+            Bool, self.planning_mission_engage_topic, 10
+        )
+        self.pub_platform_drive_enable = self.create_publisher(
+            Bool, self.platform_drive_enable_topic, 10
+        )
         self.pub_mission_key = self.create_publisher(
             PlanningMissionKey, self.planning_mission_key_topic, 10
         )
@@ -179,6 +197,8 @@ class UiBackendNode(Node):
             f"frontend_dir={str(self.frontend_dir) if self.frontend_dir else '(builtin)'} "
             f"destination_topic={self.ui_destination_topic} "
             f"engage_topic={self.planning_engage_topic} "
+            f"mission_engage_topic={self.planning_mission_engage_topic} "
+            f"platform_drive_enable_topic={self.platform_drive_enable_topic} "
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'}"
@@ -366,6 +386,8 @@ class UiBackendNode(Node):
                 site = self._state.destination.get("site", "")
             if site:
                 self._schedule_broadcast({"arrived": site})
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(False, source="amr_service_state:SITE_ARRIVED")
             self._publish_engage(False, source="amr_service_state:SITE_ARRIVED")
         elif state == AvgAmrServiceState.DROP_ZONE_WAIT:
             self._schedule_broadcast({"amr_state": 0})
@@ -410,6 +432,17 @@ class UiBackendNode(Node):
 
     # ── Goal and engage publishing ────────────────────────────────────────────
 
+    def _publish_platform_drive_enable(self, enabled: bool, source: str) -> None:
+        if not self.publish_platform_drive_enable_with_engage:
+            return
+        msg = Bool()
+        msg.data = bool(enabled)
+        self.pub_platform_drive_enable.publish(msg)
+        self.get_logger().info(
+            f"platform drive-enable ({source}) -> {self.platform_drive_enable_topic}: "
+            f"{str(bool(enabled)).lower()}"
+        )
+
     def _resolve_mission_key_for_site(self, site: str) -> Optional[str]:
         if site in self.site_to_mission_key_map:
             mapped = self.site_to_mission_key_map[site]
@@ -443,6 +476,7 @@ class UiBackendNode(Node):
         msg = Bool()
         msg.data = bool(enabled)
         self.pub_engage.publish(msg)
+        self._publish_platform_drive_enable(enabled, source=source)
 
         with self._lock:
             self._state.engaged = bool(enabled)
@@ -453,6 +487,24 @@ class UiBackendNode(Node):
 
         self.get_logger().info(
             f"engage command ({source}) -> {self.planning_engage_topic}: "
+            f"{str(bool(enabled)).lower()}"
+        )
+
+    def _publish_mission_engage(self, enabled: bool, source: str) -> None:
+        msg = Bool()
+        msg.data = bool(enabled)
+        self.pub_mission_engage.publish(msg)
+        self._publish_platform_drive_enable(enabled, source=source)
+
+        with self._lock:
+            self._state.engaged = bool(enabled)
+            self._state.operation_mode = self._compute_operation_mode(
+                self._state.engaged,
+                self._state.ready,
+            )
+
+        self.get_logger().info(
+            f"mission engage command ({source}) -> {self.planning_mission_engage_topic}: "
             f"{str(bool(enabled)).lower()}"
         )
 
@@ -537,6 +589,8 @@ class UiBackendNode(Node):
     def _apply_destination_command(self, site: str, run: bool, source: str) -> Dict[str, Any]:
         if self.publish_engage_from_destination:
             self._publish_engage(run, source=f"{source}:destination")
+        if self.publish_mission_engage_from_destination:
+            self._publish_mission_engage(run, source=f"{source}:destination")
 
         if not run:
             return {
@@ -739,6 +793,8 @@ class UiBackendNode(Node):
                         else:
                             with node._lock:
                                 node._state.ws_site_states[site] = False
+                            if node.publish_mission_engage_from_destination:
+                                node._publish_mission_engage(False, source="ws_toggle_off")
                             node._publish_engage(False, source="ws_toggle_off")
                             node._publish_destination_command(site, run=False, source="ws_toggle_off")
                             await node._broadcast({"site": site, "state": False})
@@ -754,6 +810,8 @@ class UiBackendNode(Node):
                     # Guest recall request is state=4 and is published by ui_guest_node.
                     if payload.get("usage_complete"):
                         node._publish_amr_service_state(AvgAmrServiceState.RETURNING_TO_DROP_ZONE, source="ws:usage_complete")
+                        if node.publish_mission_engage_from_destination:
+                            node._publish_mission_engage(False, source="ws:usage_complete")
                         node._publish_engage(False, source="ws:usage_complete")
                         with node._lock:
                             node._state.ws_site_states = {s: False for s in node.site_names}

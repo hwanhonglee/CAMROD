@@ -359,6 +359,9 @@ bringup:
     cmd_vel_gate_enable: true
     cmd_vel_in_topic: /planning/cmd_vel
     cmd_vel_out_topic: /platform/cmd_vel
+    # HH_260630 - UI engage/camping-site buttons publish this topic together
+    # with planning engage so the platform gate does not need a separate CLI call.
+    drive_enable_topic: /platform/drive_enable
     # HH_260626: Final zero-output guard if /planning/cmd_vel stops arriving.
     cmd_vel_input_timeout_s: 0.50
     cmd_vel_zero_publish_rate_hz: 10.0
@@ -417,6 +420,9 @@ bringup:
     #   camrod_bringup/config/system/diagnostics/<profile_name>/
     enable_module_validators: true
     diagnostics_profile: default
+    # HH_260630 - __module_default__ selects camrod_system/config/system_checker.yaml
+    # in hardware mode and system_checker_sim.yaml when sim:=true.
+    system_checker_param_file: __module_default__
     # Set true only when ranger_msgs-dependent platform checker is available.
     enable_platform_checker: false
     # Keep plugin API bridge enabled by default.

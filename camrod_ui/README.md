@@ -63,7 +63,9 @@ graph LR
 
   BROWSER <-->|HTTP :8010\nWebSocket /ws| UI
 
-  UI -->|/planning/engage| PLAN
+  UI -->|manual /planning/engage| PLAN
+  UI -->|destination /planning/mission_engage| PLAN
+  UI -->|/platform/drive_enable| PLAT([🤖 camrod_platform]):::planning
   UI -->|/planning/mission_key| PLAN
   UI -->|/goal_pose| PLAN
   PARK([🅿️ camrod_docking]):::docking -.->|destination sites| UI
@@ -96,7 +98,9 @@ graph TD
   ARRIVE((/AMR_arrive)):::topic           --> BACKEND
 
   BACKEND -->|HTTP/WS responses| BROWSER
-  BACKEND --> ENGAGE((/planning/engage)):::topic
+  BACKEND --> ENGAGE((manual /planning/engage)):::topic
+  BACKEND --> MISSIONENGAGE((destination /planning/mission_engage)):::topic
+  BACKEND --> DRIVEENABLE((/platform/drive_enable)):::topic
   BACKEND --> MISSIONKEY((/planning/mission_key)):::topic
   BACKEND --> GOALPOSE((/goal_pose)):::topic
   BACKEND --> DEST2((/ui/selected_destination)):::topic
@@ -136,15 +140,17 @@ sequenceDiagram
   Backend->>SM: /ui/selected_destination UiDestinationCommand(site=B3, run=true)
   Backend->>SM: /planning/mission_key PlanningMissionKey(camping_site_3)
   Backend->>Nav2: site_goal /goal_pose PoseStamped(x,y,z,yaw from camping_sites.yaml)
-  Backend->>Gate: /planning/engage Bool(true)
-  Gate-->>Nav2: cmd_vel gate opens → velocity flows
+  Backend->>Gate: /planning/mission_engage Bool(true)
+  Backend->>Gate: /platform/drive_enable Bool(true)
+  Gate-->>Nav2: planning/platform gates open → velocity flows
 
   Note over Dock: Parallel docking branch
   alt mission_key contains "dock"
     SM->>Dock: send docking action goal
     Dock-->>SM: docking result (succeeded/aborted)
     Dock-->>Backend: /AMR_arrive Bool(true)
-    Backend->>Gate: /planning/engage Bool(false)
+    Backend->>Gate: /planning/mission_engage Bool(false)
+    Backend->>Gate: /platform/drive_enable Bool(false)
   end
 ```
 

@@ -1216,6 +1216,11 @@ def generate_launch_description():
             'Diagnostics config profile name',
         ),
         (
+            'system_checker_param_file',
+            cfg_get(launch_cfg, 'system/system_checker_param_file', '__module_default__'),
+            'System checker graph manifest YAML path (__module_default__ selects hardware/sim automatically)',
+        ),
+        (
             'enable_platform_checker',
             cfg_get(launch_cfg, 'system/enable_platform_checker', False),
             'Enable diagnostics platform checker (requires ranger_msgs)',
@@ -1292,6 +1297,11 @@ def generate_launch_description():
             'platform_cmd_vel_out_topic',
             cfg_get(launch_cfg, 'platform/cmd_vel_out_topic', '/platform/cmd_vel'),
             'Platform cmd_vel gate output topic',
+        ),
+        (
+            'platform_drive_enable_topic',
+            cfg_get(launch_cfg, 'platform/drive_enable_topic', '/platform/drive_enable'),
+            'Platform drive-enable topic used by platform gate and UI engage buttons',
         ),
         (
             'platform_cmd_vel_input_timeout_s',
@@ -1494,6 +1504,7 @@ def generate_launch_description():
         ),
         'cmd_vel_in_topic': lc['platform_cmd_vel_in_topic'],
         'cmd_vel_out_topic': lc['platform_cmd_vel_out_topic'],
+        'drive_enable_topic': lc['platform_drive_enable_topic'],
         'cmd_vel_input_timeout_s': lc['platform_cmd_vel_input_timeout_s'],
         'cmd_vel_zero_publish_rate_hz': lc['platform_cmd_vel_zero_publish_rate_hz'],
         'engage_source_mode': lc['platform_engage_source_mode'],
@@ -1742,12 +1753,28 @@ def generate_launch_description():
         "and str('", lc['diagnostics_profile'], "') == 'default' "
         "else str('", lc['diagnostics_profile'], "')"
     ])
+    _system_checker_default_cfg = pkg_path(
+        'camrod_system', os.path.join('config', 'system_checker.yaml'))
+    _system_checker_sim_cfg = pkg_path(
+        'camrod_system', os.path.join('config', 'system_checker_sim.yaml'))
+    system_checker_param_runtime = PythonExpression([
+        "'", _system_checker_sim_cfg, "' if str('", lc['sim'],
+        "').lower() in ('1', 'true', 'yes', 'on') "
+        "and str('", lc['system_checker_param_file'],
+        "') in ('', '__module_default__') else ('",
+        _system_checker_default_cfg, "' if str('", lc['system_checker_param_file'],
+        "') in ('', '__module_default__') else str('",
+        lc['system_checker_param_file'], "'))",
+    ])
 
     system_args = {
         'enable_checkers': lc['enable_module_validators'],
         # HH_260617: sim defaults to the diagnostics/sim profile so hardware-only
         # checks do not block planning/control validation.
         'config_profile': diagnostics_profile_runtime,
+        # HH_260630 - Match graph-readiness manifest to the same hardware/sim mode
+        # as diagnostics_profile; hardware driver nodes are not required in sim.
+        'system_checker_param_file': system_checker_param_runtime,
         'enable_platform': lc['enable_platform_checker'],
         'module_namespace': lc['system_namespace'],
     }
@@ -1795,6 +1822,7 @@ def generate_launch_description():
         # so the manual ENGAGE button cannot stop an accepted scenario.
         'planning_engage_topic': lc['planning_engage_topic'],
         'planning_mission_engage_topic': lc['planning_mission_engage_topic'],
+        'platform_drive_enable_topic': lc['platform_drive_enable_topic'],
     }
 
     module_specs = [
