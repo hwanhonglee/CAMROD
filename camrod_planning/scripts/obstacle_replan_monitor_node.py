@@ -91,7 +91,7 @@ class ObstacleReplanMonitor(Node):
         )
         self._lateral_step_m = float(self.declare_parameter("lateral_step_m", 0.25).value)
         self._obstacle_cost_threshold = int(
-            self.declare_parameter("obstacle_cost_threshold", 85).value
+            self.declare_parameter("obstacle_cost_threshold", 60).value
         )
         self._min_blocked_samples = int(
             self.declare_parameter("min_blocked_samples", 5).value

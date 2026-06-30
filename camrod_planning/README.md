@@ -504,7 +504,7 @@ sequenceDiagram
 
 > 📌 **Note** **Road-snap logic:** When `camping_sites.yaml` includes a `recall_x/y/z/yaw_deg` entry, the state machine registers a second keypoint `<site_id>_road` pointing to the road-snap position. On recall, the robot navigates to this road position rather than the area centroid (which may be blocked by cargo). Sites without `recall_x/y` fall back to the area centroid.
 
-> HH_260621: Operator `usage_complete` from `camrod_ui` now publishes `/planning/state_machine/return_to_drop_zone=true`. This is the required planning trigger for return-to-drop-zone; changing only `/AMR_service_state` is not enough to start a return route.
+> HH_260621 - Operator `usage_complete` from `camrod_ui` now publishes `/planning/state_machine/return_to_drop_zone=true`. This is the required planning trigger for return-to-drop-zone; changing only `/AMR_service_state` is not enough to start a return route.
 
 ---
 
@@ -568,7 +568,7 @@ Key launch arguments:
 | `config/nav2_base.yaml` | Nav2 planner plugins (LaneletRoute, NavFn, Smac2D, SmacHybrid, SmacLattice, ThetaStar), controller plugins (RPP, DWB, MPPI, Graceful, RotationShim), costmap base config; `xy_goal_tolerance`: 0.15 m; HH_260619 - `LaneletRoute.route_lanelet_ids_topic` feeds route-aware map costs and `bt_navigator.use_start_pose_override=true` only supplies snapped start XY/current yaw to Nav2; HH_260622 - MPPI `PathAlignCritic` is stronger and `PathFollowCritic.offset_from_furthest` is shorter to avoid curve-inside shortcutting |
 | `config/nav2_vehicle.yaml` | Vehicle specs and Nav2 footprint; HH_260623 - footprint is measured robot_base_link-relative body extents plus 0.10 m margin: `[[1.30137,0.63505],[1.30137,-0.63495],[-0.39023,-0.63495],[-0.39023,0.63505]]` |
 | `config/nav2_lanelet_overlay.yaml` | Lanelet-specific cost weights and regulatory element handling |
-| `config/nav2_behavior.yaml` | Recovery behaviors, BT timeouts, transform tolerance, and `nav2_goal_updated_controller_bt_node` for goal-locked global planning |
+| `config/nav2_behavior.yaml` | Recovery behaviors, BT timeouts, transform tolerance, and `nav2_goal_updated_controller_bt_node` for goal-locked global planning; HH_260630 - BT `SmoothPath` remains enabled for every planner but disables collision checking because long lanelet routes can extend outside the rolling/global costmap window and falsely abort smoothing |
 
 HH_260623 - Removed the old monolithic `config/nav2_lanelet.yaml`; the supported
 Nav2 configuration is the split stack `nav2_base.yaml` + `nav2_vehicle.yaml` +
@@ -684,7 +684,7 @@ ros2 topic echo /planning/progress/remaining_distance_m
 | `site_goal` | `/planning/goal_pose` or `/goal_pose` | Raw UI/RViz site-center pose |
 | `route_goal` | `/planning/goal_pose_snapped`, `/planning/goal_pose_snapped_ros` | Lanelet-snapped Nav2 goal |
 
-`planning_state_machine` publishes `avg_msgs/PlanningState` on `/planning/state_machine/state`. `camrod_parking/site_maneuver` watches this topic and starts only after a `camping_site_*` ROS-native route goal (`/planning/goal_pose_snapped_ros`) reaches `GOAL_REACHED`. `camrod_parking/drop_zone_parking` watches the same topic and starts after `RETURN_TO_DROP_ZONE` reaches the `drop_zone` route goal. HH_260623: generic route arrival uses a 0.2 m center-based threshold, return handoff uses 0.3 m, and `GOAL_REACHED/RETURN_TO_DROP_ZONE` is held for `drop_zone_parking_handoff_hold_s` so parking does not miss a one-tick event. HH_260623: auto `drop_zone` return goals are published as raw station-center poses on `/planning/auto_goal_raw`; `goal_snapper` converts them to lanelet route goals for Nav2 while preserving the semantic key for drop-zone parking. HH_260624: return goals also publish the selected exported station pose on `/planning/drop_zone_goal_raw`, and `drop_zone_id` selects the exact `drop_zones.yaml` entry used by planning and parking.
+`planning_state_machine` publishes `avg_msgs/PlanningState` on `/planning/state_machine/state`. `camrod_parking/site_maneuver` watches this topic and starts only after a `camping_site_*` ROS-native route goal (`/planning/goal_pose_snapped_ros`) reaches `GOAL_REACHED`. `camrod_parking/drop_zone_parking` watches the same topic and starts after `RETURN_TO_DROP_ZONE` reaches the `drop_zone` route goal. HH_260623 - generic route arrival uses a 0.2 m center-based threshold, return handoff uses 0.3 m, and `GOAL_REACHED/RETURN_TO_DROP_ZONE` is held for `drop_zone_parking_handoff_hold_s` so parking does not miss a one-tick event. HH_260623 - auto `drop_zone` return goals are published as raw station-center poses on `/planning/auto_goal_raw`; `goal_snapper` converts them to lanelet route goals for Nav2 while preserving the semantic key for drop-zone parking. HH_260624 - return goals also publish the selected exported station pose on `/planning/drop_zone_goal_raw`, and `drop_zone_id` selects the exact `drop_zones.yaml` entry used by planning and parking.
 
 ### Command Path
 
