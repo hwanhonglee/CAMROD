@@ -8,12 +8,16 @@
 
 `camrod_system` provides the health monitoring layer for all CAMROD runtime packages. It runs more than 20 independent checker nodes, each subscribing to one module's runtime topics and publishing `diagnostic_msgs/DiagnosticStatus` entries to `/diagnostics`. A central `aggregator_node` collects all entries, detects stale reporters, groups them into a tree by subsystem, and publishes the consolidated result to `/system/diagnostics_agg`.
 
-A separate lightweight system tools track (`enable_system_tools: true`) checks that required ROS 2 nodes/topics are alive from `config/system_checker.yaml`, verifies topic types/publisher counts, and publishes both diagnostics and semantic CAMROD status snapshots on `/system/status` and `/system/msgs`.
+A separate lightweight system tools track (`enable_system_tools: true`) checks that required ROS 2 nodes/topics are alive from `config/system_checker.yaml` or `config/system_checker_sim.yaml`, verifies topic types/publisher counts, and publishes both diagnostics and semantic CAMROD status snapshots on `/system/status` and `/system/msgs`.
 
 HH_260630 - The checker contract is now split into two complementary layers:
 `system_checker.yaml` validates that the expected package graph is wired
 together, while per-domain diagnostics validate message rate, staleness, and
 data quality for the concrete topic produced by that node.
+HH_260630 - `bringup.launch.py sim:=true` automatically selects
+`system_checker_sim.yaml`, so fake-sensor simulation does not require hardware
+driver nodes such as `ublox_gps_node`, `microstrain_inertial_driver`,
+`vanjee_driver`, camera publishers, or `ranger_base_node`.
 
 > **Non-goals:** Reports health status only — does **not** enforce safety actions (e-stop, speed reduction, disengagement). Does not contain autonomous decision logic; consumers (e.g., `camrod_ui`) decide what to do with the health data. Does not check `camrod_docking` yet (TODO: docking checker category).
 
@@ -149,7 +153,8 @@ planning:
 
 | Layer | Config | Scope | Example |
 |---|---|---|---|
-| Graph manifest | `config/system_checker.yaml` | Required nodes, topic names, ROS types, and minimum publisher counts | `/planning/cmd_vel|geometry_msgs/msg/Twist|1` |
+| Graph manifest | `config/system_checker.yaml` | Real-hardware required nodes, topic names, ROS types, and minimum publisher counts | `/planning/cmd_vel|geometry_msgs/msg/Twist|1` |
+| Sim graph manifest | `config/system_checker_sim.yaml` | Fake-sensor sim graph; public topic contracts remain, hardware driver nodes are omitted | `/bringup/fake_sensor_publisher`, `/sensing/lidar/points_filtered` |
 | Default diagnostics | `config/diagnostics/default/` | Real hardware runtime rates and data-quality thresholds | real IMU 100 Hz, camera streams 10 fps, LiDAR/radar cost grids 10 Hz |
 | Sim diagnostics | `config/diagnostics/sim/` | `sim:=true` fake-sensor rates and intentionally absent hardware drivers | sim IMU 10 Hz, wheel odom 20 Hz, perception/fake obstacle topics |
 | Aggregation | `aggregator/*.yaml` | Diagnostic tree grouping and stale reporter timeout | `/system/diagnostics_agg` for UI readiness |
@@ -287,7 +292,7 @@ ros2 launch camrod_system system.launch.py [ARG:=VALUE ...]
 | `enable_checkers` | `true` | Launch all module checker nodes and `aggregator_node` |
 | `enable_platform` | `false` | Launch `ranger_platform_checker_node` (only if binary is installed) |
 | `enable_system_tools` | `true` | Launch `system_checker_node`, `system_diagnostic_node`, `diagnostics_aggregator_node` |
-| `system_checker_param_file` | `config/system_checker.yaml` | Parameter file for `system_checker_node` |
+| `system_checker_param_file` | `config/system_checker.yaml` | Parameter file for `system_checker_node`; bringup auto-selects `config/system_checker_sim.yaml` when `sim:=true` and the value is `__module_default__` |
 
 ---
 

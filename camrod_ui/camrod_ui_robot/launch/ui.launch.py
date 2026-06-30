@@ -78,6 +78,21 @@ def generate_launch_description():
         default_value=default_camping_sites_yaml,
         description='Camping site coordinates YAML used for destination->goal_pose dispatch',
     )
+    planning_engage_topic_arg = DeclareLaunchArgument(
+        'planning_engage_topic',
+        default_value='/planning/engage',
+        description='Manual planning engage topic used by UI engage/auto/stop buttons',
+    )
+    planning_mission_engage_topic_arg = DeclareLaunchArgument(
+        'planning_mission_engage_topic',
+        default_value='/planning/mission_engage',
+        description='Mission engage topic used by UI destination/camping-site buttons',
+    )
+    platform_drive_enable_topic_arg = DeclareLaunchArgument(
+        'platform_drive_enable_topic',
+        default_value='/platform/drive_enable',
+        description='Platform drive-enable topic armed together with UI engage commands',
+    )
 
     ui_backend = Node(
         package='camrod_ui',
@@ -93,13 +108,19 @@ def generate_launch_description():
             'diagnostics_agg_topic': '/system/diagnostics_agg',
             'site_names': [f'B{i}' for i in range(1, 14)],
             'ui_destination_topic': '/ui/selected_destination',
-            'planning_engage_topic': '/planning/engage',
+            'planning_engage_topic': LaunchConfiguration('planning_engage_topic'),
+            'planning_mission_engage_topic': LaunchConfiguration('planning_mission_engage_topic'),
+            'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
             # HH_260617: Replace ambiguous goal-key naming with semantic mission-key dispatch.
             'planning_mission_key_topic': '/planning/mission_key',
             'planning_goal_pose_topic': '/goal_pose',
             'publish_mission_key': True,
             'publish_goal_pose': True,
-            'publish_engage_from_destination': True,
+            # HH_260630 - Destination/camping-site buttons use the mission latch,
+            # while the manual UI engage button keeps controlling /planning/engage.
+            'publish_engage_from_destination': False,
+            'publish_mission_engage_from_destination': True,
+            'publish_platform_drive_enable_with_engage': True,
             'default_goal_frame_id': 'map',
             # HH_260617: Fallback destination uses the same mission-key contract.
             'fallback_mission_key': 'camping_site_1',
@@ -114,5 +135,8 @@ def generate_launch_description():
         ui_port_arg,
         frontend_dir_arg,
         camping_sites_yaml_arg,
+        planning_engage_topic_arg,
+        planning_mission_engage_topic_arg,
+        platform_drive_enable_topic_arg,
         ui_backend,
     ])

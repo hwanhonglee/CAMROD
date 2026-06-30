@@ -1,0 +1,148 @@
+# HH_260630 - Graph readiness manifest for sim bringup.
+# Sim keeps the same public planning/localization/platform contracts, but real
+# hardware driver nodes are replaced by /bringup/fake_sensor_publisher.
+# Format: "topic|ros_type|min_publishers"; leave ros_type empty to check graph presence only.
+/system/system_checker:
+  ros__parameters:
+    check_period_s: 1.0
+    startup_grace_s: 30.0
+
+    required_modules:
+      - map
+      - sensing
+      - localization
+      - perception
+      - planning
+      - platform
+
+    # HH_260630 - Sim still requires exactly one final-parking implementation.
+    required_alternative_groups:
+      - final_parking
+
+    final_parking:
+      alternatives:
+        - parking
+        - docking
+
+    # Package: camrod_map
+    # Same map publishers as hardware mode; local-first visualization is still checked.
+    map:
+      required_nodes:
+        - /map/lanelet_map_provider
+        - /map/lanelet_boundary_cost_grid
+      required_topics:
+        - "/map/markers|visualization_msgs/msg/MarkerArray|1"
+        - "/map/cost_grid/lanelet|nav_msgs/msg/OccupancyGrid|1"
+
+    # Packages: camrod_bringup + camrod_sensing
+    # Fake sensors replace hardware GNSS/IMU/LiDAR/Radar/camera drivers in sim.
+    sensing:
+      required_nodes:
+        - /bringup/fake_sensor_publisher
+        - /sensing/lidar/lidar_cost_grid
+        - /sensing/radar/radar_cost_grid
+        - /sensing/inflation_cost_grid
+      required_topics:
+        - "/sensing/gnss/ublox_gps_node/fix|sensor_msgs/msg/NavSatFix|1"
+        - "/sensing/imu/data|sensor_msgs/msg/Imu|1"
+        - "/sensing/platform_velocity_converter/twist_with_covariance|geometry_msgs/msg/TwistWithCovarianceStamped|1"
+        - "/sensing/lidar/points_filtered|sensor_msgs/msg/PointCloud2|1"
+        - "/sensing/cost_grid/lidar|nav_msgs/msg/OccupancyGrid|1"
+        - "/sensing/radar/front1/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/front2/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/left1/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/left2/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/right1/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/right2/range|sensor_msgs/msg/Range|1"
+        - "/sensing/radar/rear/range|sensor_msgs/msg/Range|1"
+        - "/sensing/cost_grid/radar|nav_msgs/msg/OccupancyGrid|1"
+        - "/planning/cost_grid/inflation|nav_msgs/msg/OccupancyGrid|1"
+
+    # Package: camrod_localization
+    # Real filter stack remains active; only its upstream sensor sources are synthetic.
+    localization:
+      required_nodes:
+        - /localization/input_adapter
+        - /localization/ekf_filter
+        - /localization/pose_selector
+        - /localization/monitor
+        - /localization/map_helper
+      required_topics:
+        - "/sensing/gnss/pose|geometry_msgs/msg/PoseStamped|1"
+        - "/sensing/gnss/pose_with_covariance|geometry_msgs/msg/PoseWithCovarianceStamped|1"
+        - "/platform/status/wheel_odometry|nav_msgs/msg/Odometry|1"
+        - "/localization/pose|geometry_msgs/msg/PoseStamped|1"
+        - "/localization/pose_with_covariance|geometry_msgs/msg/PoseWithCovarianceStamped|1"
+        - "/localization/odometry/filtered|nav_msgs/msg/Odometry|1"
+        - "/localization/mode|avg_msgs/msg/AvgLocalizationMode|1"
+        - "/localization/state|std_msgs/msg/Bool|1"
+        - "/localization/state/degraded|std_msgs/msg/Bool|1"
+        - "/localization/state/dr_timeout|std_msgs/msg/Bool|1"
+        - "/localization/centerline_pose|geometry_msgs/msg/PoseWithCovarianceStamped|1"
+
+    # Package: camrod_perception
+    # Sim is LiDAR-only; camera publishers are intentionally absent.
+    perception:
+      required_nodes:
+        - /perception/obstacle_lidar
+      required_topics:
+        - "/perception/obstacles|sensor_msgs/msg/PointCloud2|1"
+        - "/perception/lidar/bboxes|visualization_msgs/msg/MarkerArray|1"
+
+    # Package: camrod_planning
+    # Same public navigation/control graph as hardware mode.
+    planning:
+      required_nodes:
+        - /planning/goal_snapper
+        - /planning/centerline_snapper
+        - /planning/planner_server
+        - /planning/controller_server
+        - /planning/bt_navigator
+        - /planning/behavior_server
+        - /planning/smoother_server
+        - /planning/lifecycle_manager_planning
+        - /planning/local_path_extractor
+        - /planning/planning_state_machine
+        - /planning/path_visualizer
+        - /planning/obstacle_replan_monitor
+        - /planning/cmd_vel_gate
+      required_topics:
+        - "/planning/goal_pose_snapped_ros|geometry_msgs/msg/PoseStamped|1"
+        - "/planning/lanelet_pose_ros|geometry_msgs/msg/PoseStamped|1"
+        - "/planning/local_path|nav_msgs/msg/Path|1"
+        - "/planning/state_machine/state|avg_msgs/msg/PlanningState|1"
+        - "/planning/state_machine/mission_source|avg_msgs/msg/PlanningMissionKey|1"
+        - "/planning/state_machine/scenario_id|avg_msgs/msg/PlanningScenario|1"
+        - "/planning/engaged|std_msgs/msg/Bool|1"
+        - "/planning/cmd_vel|geometry_msgs/msg/Twist|1"
+
+    parking:
+      required_nodes:
+        - /parking/site_maneuver
+        - /parking/drop_zone_parking
+      required_topics:
+        - "/parking/site_maneuver/status|avg_msgs/msg/ModuleState|1"
+        - "/parking/drop_zone/status|avg_msgs/msg/ModuleState|1"
+
+    docking:
+      required_nodes:
+        - /docking/docking_server
+        - /docking/lifecycle_manager_docking
+
+    # Package: camrod_platform
+    # Sim skips ranger_base_node/CAN but keeps the final gate and normalized status topics.
+    platform:
+      required_nodes:
+        - /platform/cmd_vel_gate
+        - /ranger_platform_bridge
+        - /platform/robot_visualization
+      required_topics:
+        - "/platform/cmd_vel|geometry_msgs/msg/Twist|1"
+        - "/platform/drive_enabled|std_msgs/msg/Bool|1"
+        - "/platform/status/odometry|nav_msgs/msg/Odometry|1"
+        - "/platform/status/velocity|geometry_msgs/msg/TwistStamped|1"
+        - "/platform/status/wheel|geometry_msgs/msg/TwistStamped|1"
+        - "/platform/status/estop|std_msgs/msg/Bool|1"
+        - "/platform/status/battery_state|sensor_msgs/msg/BatteryState|1"
+        - "/platform/status/is_charging|std_msgs/msg/Bool|1"
+        - "/platform/status|avg_msgs/msg/AvgPlatformStatus|1"

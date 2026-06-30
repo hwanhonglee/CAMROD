@@ -517,6 +517,7 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/planning/local_path` | `Path` | planning → RViz / diagnostics / gate | Map-fixed slice of the active route |
 | `/planning/cmd_vel_raw` | `Twist` | Nav2 controller → gate | Raw controller output |
 | `/planning/cmd_vel` | `Twist` | gate → platform | Gated velocity (safe to send) |
+| `/platform/drive_enable` | `Bool` | UI / CLI → platform gate | Operator platform safety arm; UI engage and camping-site buttons publish this together with planning engage |
 | `/platform/cmd_vel` | `Twist` | platform gate → Ranger | Final vehicle command |
 | `/platform/status/estop` | `Bool` | Ranger CAN → gates | Hardware emergency stop |
 | `/platform/status/odometry` | `Odometry` | Ranger CAN → localization | Wheel odometry |
@@ -526,7 +527,7 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | UI → state machine | Named semantic selector, e.g. `camping_site_3` |
 | `/planning/state_machine/mission_source` | `avg_msgs/PlanningMissionKey` | state machine → diagnostics/UI | `startup`, `mission_key:*`, `auto_return`, `recall:*` |
 | `/goal_pose` | `PoseStamped` | UI / RViz → Nav2 | Manual 2D Nav Goal |
-| `/ui/selected_destination` | `String` | UI → backend | Operator site selection |
+| `/ui/selected_destination` | `avg_msgs/UiDestinationCommand` | UI → backend | Operator site selection |
 | `/system/diagnostics_agg` | `DiagnosticArray` | system → UI | Aggregated health status |
 
 ---
@@ -760,6 +761,8 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260629: Ranger launch can bring up `can0` through `setup_can0.sh`; `setup_camrod.sh` installs the SocketCAN tools used for manual checks and service setup.
 - HH_260629: `avg_msgs` now carries the internal CAMROD-facing message surface, with conversion helpers for standard ROS messages that still enter or leave the stack.
 - HH_260630: `camrod_system` now documents and checks the graph-level node/topic manifest, per-domain diagnostics, sim diagnostics profile, and semantic `/system/status` outputs used by the UI.
+- HH_260630: `sim:=true` now selects a sim graph manifest so fake-sensor runs do not require hardware GNSS/IMU/LiDAR/camera/Ranger nodes in `system_checker`.
+- HH_260630: UI manual engage and camping-site buttons now publish `/platform/drive_enable` with the matching planning engage latch, so normal operation does not require a separate `/platform/set_enabled` service call.
 - HH_260630: `camrod_bringup/scripts/sim_validation_runner.py` validates the sim stack for topic Hz, radar direction topics, directional LiDAR/Radar cost-stop, manual goal navigation, and camping-site flow.
 - HH_260630: `colcon test --packages-select camrod_planning` currently includes package-wide ament lint; failures from vendored `external/nav2_*` or existing style issues are lint-scope issues, not runtime planning failures.
 
