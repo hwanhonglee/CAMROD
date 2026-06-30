@@ -39,7 +39,7 @@ public:
     origin_y_ = declare_parameter<double>("origin_y", -6.0);
     free_value_ = declare_parameter<int>("free_value", 0);
     unknown_value_ = declare_parameter<int>("unknown_value", -1);
-    min_cost_ = declare_parameter<int>("min_cost", 35);
+    min_cost_ = declare_parameter<int>("min_cost", 85);
     max_cost_ = declare_parameter<int>("max_cost", 100);
     cost_range_min_m_ = declare_parameter<double>("cost_range_min_m", 0.3);
     // HH_260625: Optional SEN0592 self-echo reject. Cost range min is a max-cost
@@ -295,10 +295,11 @@ private:
       if (!transformHitToOutput(sample.msg, hit_output)) {
         continue;
       }
-      const double dx = hit_output.point.x - base_in_output.point.x;
-      const double dy = hit_output.point.y - base_in_output.point.y;
-      const double distance = std::sqrt(dx * dx + dy * dy);
-      const int value = mapDistanceToCost(distance);
+      // HH_260630: SEN0592 risk should follow sensor-relative range, not
+      // robot-base distance. Front/side/rear mounts are offset from base_link,
+      // so base-distance scaling made close hand/obstacle hits fall below the
+      // cmd_vel gate threshold.
+      const int value = mapDistanceToCost(sample.msg.range);
       markDisk(
         grid, grid_origin_x, grid_origin_y, hit_output.point.x, hit_output.point.y, value);
     }
@@ -366,7 +367,7 @@ private:
   double origin_y_{-6.0};
   int free_value_{0};
   int unknown_value_{0};
-  int min_cost_{35};
+  int min_cost_{85};
   int max_cost_{100};
   double cost_range_min_m_{0.3};
   double ignore_below_range_m_{0.0};

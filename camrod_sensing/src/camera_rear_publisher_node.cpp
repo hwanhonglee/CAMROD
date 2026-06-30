@@ -1,17 +1,19 @@
-// HH_260528: camera_rear_publisher_node — rear econ camera publisher.
+// HH_260528 - camera_rear_publisher_node — rear econ camera publisher.
 // Based on todo/econ_camera/src/econ_camera_node.cpp.
 // Uses OpenCV GStreamer pipeline + CPU JPEG encoding (no GPU dependency).
 // Publishes image_raw (uncompressed) required by Isaac ROS AprilTag in docking.
 //
-// HH_260601: replace camera_info_url file loading with inline ROS parameter calibration
+// HH_260601 - replace camera_info_url file loading with inline ROS parameter calibration
 //            (camera_matrix, distortion_coefficients, rectification_matrix, projection_matrix).
 //            Removed yaml-cpp and fstream dependencies.
+// HH_260630 - Rate-limit rear CPU JPEG publishing and avoid frame deep-copy handoff.
 //
 // Publishes:
 //   ~/image_raw            (sensor_msgs/Image,           on demand)
-//   ~/image_raw/compressed (sensor_msgs/CompressedImage, always — lightweight JPEG)
+//   ~/image_raw/compressed (sensor_msgs/CompressedImage, rate-limited CPU JPEG)
 //   ~/camera_info          (sensor_msgs/CameraInfo)
 
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <memory>
@@ -42,6 +44,8 @@ public:
     declare_parameter("publish_height",  0);
     declare_parameter("fps",             30);
     declare_parameter("jpeg_quality",    80);
+    declare_parameter("compressed_publish_rate_hz", 10.0);
+    declare_parameter("publish_compressed_without_subscribers", false);
     declare_parameter("frame_id",        std::string("camera_rear"));
     declare_parameter("camera_matrix",           std::vector<double>{});
     declare_parameter("distortion_coefficients", std::vector<double>{});
@@ -57,8 +61,24 @@ public:
     pub_h_        = (ph > 0) ? ph : cap_h_;
     fps_          = get_parameter("fps").as_int();
     jpeg_quality_ = get_parameter("jpeg_quality").as_int();
+    compressed_publish_rate_hz_ =
+      get_parameter("compressed_publish_rate_hz").as_double();
+    publish_compressed_without_subscribers_ =
+      get_parameter("publish_compressed_without_subscribers").as_bool();
+    if (compressed_publish_rate_hz_ < 0.0) {
+      RCLCPP_WARN(get_logger(),
+        "compressed_publish_rate_hz %.2f is invalid; using 0.0 (disabled)",
+        compressed_publish_rate_hz_);
+      compressed_publish_rate_hz_ = 0.0;
+    }
+    compressed_period_ns_ =
+      compressed_publish_rate_hz_ > 0.0
+        ? static_cast<int64_t>(1.0e9 / compressed_publish_rate_hz_)
+        : 0;
     frame_id_     = get_parameter("frame_id").as_string();
     load_calibration_from_params();
+    camera_info_msg_ = build_camera_info();
+    camera_info_msg_.header.frame_id = frame_id_;
 
     image_pub_      = create_publisher<sensor_msgs::msg::Image>("~/image_raw", 2);
     compressed_pub_ = create_publisher<sensor_msgs::msg::CompressedImage>(
@@ -75,8 +95,9 @@ public:
     publish_thread_ = std::thread(&CameraRearPublisherNode::publish_loop, this);
 
     RCLCPP_INFO(get_logger(),
-      "CameraRearPublisher ready  capture=%dx%d  publish=%dx%d  @%dfps  jpeg_q=%d  device=%s",
-      cap_w_, cap_h_, pub_w_, pub_h_, fps_, jpeg_quality_, device_.c_str());
+      "CameraRearPublisher ready  capture=%dx%d  publish=%dx%d  @%dfps  jpeg_q=%d  compressed_rate=%.2fHz  device=%s",
+      cap_w_, cap_h_, pub_w_, pub_h_, fps_, jpeg_quality_,
+      compressed_publish_rate_hz_, device_.c_str());
   }
 
   ~CameraRearPublisherNode()
@@ -98,11 +119,16 @@ private:
                    ", height=" + std::to_string(pub_h_);
     }
 
+    // HH_260630 - Match the front camera capture pattern. The ISX031 sensor is
+    // stable at 30 fps; videorate drops frames before VIC conversion so rear
+    // does not fall back to CPU V4L2 when the requested publish fps is lower.
     std::string gst =
       "v4l2src device=" + device_ + " ! "
       "video/x-raw, format=UYVY"
       ", width=" + std::to_string(cap_w_) +
       ", height=" + std::to_string(cap_h_) +
+      ", framerate=30/1 ! "
+      "videorate ! video/x-raw, format=UYVY"
       ", framerate=" + std::to_string(fps_) + "/1 ! "
       "nvvidconv ! " + nv12_caps + " ! "
       "nvvidconv ! video/x-raw, format=BGRx ! "
@@ -131,7 +157,7 @@ private:
       if (cap_.read(frame) && !frame.empty()) {
         {
           std::lock_guard<std::mutex> lk(frame_mutex_);
-          latest_frame_ = frame.clone();
+          latest_frame_ = std::move(frame);
           frame_ready_  = true;
         }
         cv_.notify_one();
@@ -147,14 +173,27 @@ private:
         std::unique_lock<std::mutex> lk(frame_mutex_);
         cv_.wait(lk, [this] { return frame_ready_ || !running_; });
         if (!running_) break;
-        frame        = latest_frame_;
+        frame        = std::move(latest_frame_);
         frame_ready_ = false;
       }
 
       const auto stamp = now();
+      const int64_t stamp_ns = stamp.nanoseconds();
 
-      // Compressed image (always publish — lightweight ~100 KB)
-      {
+      // HH_260630 - CPU JPEG is the rear camera's dominant load, so keep the
+      // monitoring topic name stable but publish it only when needed and due.
+      const bool compressed_has_subscribers =
+        compressed_pub_->get_subscription_count() > 0;
+      const bool compressed_enabled =
+        compressed_publish_rate_hz_ > 0.0 &&
+        (publish_compressed_without_subscribers_ || compressed_has_subscribers);
+      const bool compressed_due =
+        compressed_enabled &&
+        (last_compressed_publish_ns_ == 0 ||
+         stamp_ns < last_compressed_publish_ns_ ||
+         stamp_ns - last_compressed_publish_ns_ >= compressed_period_ns_);
+
+      if (compressed_due) {
         std::vector<uchar> buf;
         cv::imencode(".jpg", frame, buf,
                      {cv::IMWRITE_JPEG_QUALITY, jpeg_quality_});
@@ -165,6 +204,7 @@ private:
         comp.format          = "jpeg";
         comp.data            = std::move(buf);
         compressed_pub_->publish(std::move(comp));
+        last_compressed_publish_ns_ = stamp_ns;
       }
 
       // Raw image (only if someone subscribed — heavy ~1.5 MB, required by Isaac ROS AprilTag)
@@ -177,10 +217,8 @@ private:
       }
 
       // CameraInfo
-      auto ci          = build_camera_info();
-      ci.header.stamp    = stamp;
-      ci.header.frame_id = frame_id_;
-      cinfo_pub_->publish(std::move(ci));
+      camera_info_msg_.header.stamp = stamp;
+      cinfo_pub_->publish(camera_info_msg_);
     }
   }
 
@@ -253,6 +291,10 @@ private:
 
   std::string device_, frame_id_;
   int cap_w_, cap_h_, pub_w_, pub_h_, fps_, jpeg_quality_;
+  double compressed_publish_rate_hz_{10.0};
+  bool publish_compressed_without_subscribers_{false};
+  int64_t compressed_period_ns_{100000000};
+  int64_t last_compressed_publish_ns_{0};
 
   cv::VideoCapture  cap_;
   cv::Mat           latest_frame_;
@@ -266,6 +308,7 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr            image_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr  compressed_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr       cinfo_pub_;
+  sensor_msgs::msg::CameraInfo camera_info_msg_;
 
   bool calib_loaded_{false};
   int  calib_w_{1920}, calib_h_{1080};

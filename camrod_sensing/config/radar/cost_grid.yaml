@@ -14,7 +14,9 @@
     # Cost model
     free_value: 0
     unknown_value: -1
-    min_cost: 35
+    # HH_260630: Treat any valid SEN0592 hit inside its per-sensor max range as
+    # safety-relevant. Invalid/no-target values are filtered by the radar driver.
+    min_cost: 85
     max_cost: 95
     cost_range_min_m: 0.3
     # HH_260625: Ignore stable SEN0592 near-zero self echoes seen outdoors
