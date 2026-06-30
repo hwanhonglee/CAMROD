@@ -1,0 +1,937 @@
+#!/usr/bin/env python3
+# HH_260630: Deterministic sim validation for planning, cmd gates, and fake obstacle sources.
+
+from __future__ import annotations
+
+import json
+import math
+import os
+import time
+from dataclasses import dataclass, field
+from typing import Callable
+
+import yaml
+from ament_index_python.packages import get_package_share_directory
+import rclpy
+from action_msgs.msg import GoalStatus, GoalStatusArray
+from action_msgs.srv import CancelGoal
+from avg_msgs.msg import ModuleState, PlanningMissionKey, PlanningState
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Quaternion, Twist
+from nav_msgs.msg import Odometry, OccupancyGrid, Path
+from rcl_interfaces.srv import SetParameters
+from rclpy.node import Node
+from rclpy.parameter import Parameter
+from sensor_msgs.msg import Imu, PointCloud2, Range
+from std_msgs.msg import Bool
+
+
+RADAR_TOPICS = {
+    "front": ["/sensing/radar/front1/range", "/sensing/radar/front2/range"],
+    "left": ["/sensing/radar/left1/range", "/sensing/radar/left2/range"],
+    "right": ["/sensing/radar/right1/range", "/sensing/radar/right2/range"],
+    "rear": ["/sensing/radar/rear/range"],
+}
+
+
+@dataclass
+class CheckResult:
+    name: str
+    ok: bool
+    detail: str
+    metrics: dict[str, float | int | str | bool] = field(default_factory=dict)
+
+
+def yaw_from_quat(q: Quaternion) -> float:
+    return math.atan2(
+        2.0 * (q.w * q.z + q.x * q.y),
+        1.0 - 2.0 * (q.y * q.y + q.z * q.z),
+    )
+
+
+def quat_from_yaw(yaw: float) -> Quaternion:
+    q = Quaternion()
+    q.z = math.sin(yaw * 0.5)
+    q.w = math.cos(yaw * 0.5)
+    return q
+
+
+def twist_abs(msg: Twist) -> float:
+    return (
+        abs(msg.linear.x)
+        + abs(msg.linear.y)
+        + abs(msg.linear.z)
+        + abs(msg.angular.x)
+        + abs(msg.angular.y)
+        + abs(msg.angular.z)
+    )
+
+
+class SimValidationRunner(Node):
+    def __init__(self) -> None:
+        super().__init__("sim_validation_runner")
+        self.report_file = str(self.declare_parameter("report_file", "").value)
+        self.quick = bool(self.declare_parameter("quick", False).value)
+        self.manual_goal_timeout_s = float(
+            self.declare_parameter("manual_goal_timeout_s", 45.0).value
+        )
+        self.camping_timeout_s = float(
+            self.declare_parameter("camping_timeout_s", 240.0).value
+        )
+        self.run_camping = bool(self.declare_parameter("run_camping", False).value)
+        self.camping_mission_key = str(
+            self.declare_parameter("camping_mission_key", "camping_site_1").value
+        )
+        self.camping_sites_yaml = str(
+            self.declare_parameter("camping_sites_yaml", "").value
+        )
+        self.camping_prepare_near_route = bool(
+            self.declare_parameter("camping_prepare_near_route", True).value
+        )
+        self.camping_start_offset_m = float(
+            self.declare_parameter("camping_start_offset_m", 0.0).value
+        )
+        self.skip_manual_goal = bool(
+            self.declare_parameter("skip_manual_goal", False).value
+        )
+        self.fake_sensor_node = str(
+            self.declare_parameter("fake_sensor_node", "/bringup/fake_sensor_publisher").value
+        )
+        self.manual_goal_distance_m = float(
+            self.declare_parameter("manual_goal_distance_m", 4.0).value
+        )
+        self.results: list[CheckResult] = []
+
+        self.pub_goal = self.create_publisher(PoseStamped, "/goal_pose", 10)
+        self.pub_prepare_goal = self.create_publisher(
+            PoseStamped, "/planning/auto_goal_raw", 10
+        )
+        self.pub_initialpose = self.create_publisher(
+            PoseWithCovarianceStamped, "/initialpose", 10
+        )
+        self.pub_engage = self.create_publisher(Bool, "/planning/engage", 10)
+        self.pub_mission_engage = self.create_publisher(Bool, "/planning/mission_engage", 10)
+        self.pub_drive_enable = self.create_publisher(Bool, "/platform/drive_enable", 10)
+        self.pub_mission_key = self.create_publisher(
+            PlanningMissionKey, "/planning/mission_key", 10
+        )
+        self.pub_site_return = self.create_publisher(Bool, "/parking/site_maneuver/return", 10)
+        self.pub_raw = self.create_publisher(Twist, "/planning/cmd_vel_raw", 10)
+
+        self.param_client = self.create_client(
+            SetParameters, f"{self.fake_sensor_node}/set_parameters"
+        )
+        self.cancel_clients = {
+            "follow_path": self.create_client(
+                CancelGoal, "/planning/follow_path/_action/cancel_goal"
+            ),
+            "navigate_to_pose": self.create_client(
+                CancelGoal, "/planning/navigate_to_pose/_action/cancel_goal"
+            ),
+        }
+
+        self.counts: dict[str, int] = {}
+        self.first_seen: dict[str, float] = {}
+        self.last_seen: dict[str, float] = {}
+        self.max_abs_since: dict[str, float] = {}
+        self.latest_pose: PoseStamped | None = None
+        self.latest_lanelet_pose: PoseStamped | None = None
+        self.latest_state: PlanningState | None = None
+        self.latest_mission_source: PlanningMissionKey | None = None
+        self.latest_site_status: ModuleState | None = None
+        self.latest_drop_status: ModuleState | None = None
+        self.latest_nav_status: GoalStatusArray | None = None
+        self.latest_follow_status: GoalStatusArray | None = None
+        self.latest_raw_goal: PoseStamped | None = None
+        self.latest_route_goal: PoseStamped | None = None
+        self.global_path_count = 0
+        self.local_path_count = 0
+        self.global_path_points = 0
+        self.local_path_points = 0
+
+        self._subscribe_count("/sensing/imu/data", Imu)
+        self._subscribe_count("/sensing/lidar/points_filtered", PointCloud2)
+        self._subscribe_count("/perception/obstacles", PointCloud2)
+        self._subscribe_count("/sensing/cost_grid/lidar", OccupancyGrid)
+        self._subscribe_count("/sensing/cost_grid/radar", OccupancyGrid)
+        self._subscribe_count("/planning/cost_grid/inflation", OccupancyGrid)
+        self._subscribe_count("/platform/status/wheel_odometry", Odometry)
+        for topics in RADAR_TOPICS.values():
+            for topic in topics:
+                self._subscribe_count(topic, Range)
+
+        self.create_subscription(PoseStamped, "/localization/pose", self._on_pose, 10)
+        self.create_subscription(PoseStamped, "/goal_pose", self._on_raw_goal, 10)
+        self.create_subscription(
+            PoseStamped, "/planning/goal_pose_snapped_ros", self._on_route_goal, 10
+        )
+        self.create_subscription(
+            PoseStamped, "/planning/lanelet_pose_ros", self._on_lanelet_pose, 10
+        )
+        self.create_subscription(Path, "/planning/global_path", self._on_global_path, 10)
+        self.create_subscription(Path, "/planning/local_path", self._on_local_path, 10)
+        self.create_subscription(Twist, "/planning/cmd_vel_raw", self._on_raw_cmd, 10)
+        self.create_subscription(Twist, "/planning/cmd_vel", self._on_planning_cmd, 10)
+        self.create_subscription(Twist, "/platform/cmd_vel", self._on_platform_cmd, 10)
+        self.create_subscription(
+            PlanningState, "/planning/state_machine/state", self._on_state, 10
+        )
+        self.create_subscription(
+            PlanningMissionKey,
+            "/planning/state_machine/mission_source",
+            self._on_mission_source,
+            10,
+        )
+        self.create_subscription(
+            ModuleState, "/parking/site_maneuver/status", self._on_site_status, 10
+        )
+        self.create_subscription(
+            ModuleState, "/parking/drop_zone/status", self._on_drop_status, 10
+        )
+        self.create_subscription(
+            GoalStatusArray,
+            "/planning/navigate_to_pose/_action/status",
+            self._on_nav_status,
+            10,
+        )
+        self.create_subscription(
+            GoalStatusArray,
+            "/planning/follow_path/_action/status",
+            self._on_follow_status,
+            10,
+        )
+
+    def _subscribe_count(self, topic: str, msg_type) -> None:
+        self.create_subscription(msg_type, topic, lambda _msg, t=topic: self._count(t), 10)
+
+    def _count(self, topic: str) -> None:
+        now_s = time.monotonic()
+        self.counts[topic] = self.counts.get(topic, 0) + 1
+        self.first_seen.setdefault(topic, now_s)
+        self.last_seen[topic] = now_s
+
+    def _record_twist(self, topic: str, msg: Twist) -> None:
+        self._count(topic)
+        self.max_abs_since[topic] = max(self.max_abs_since.get(topic, 0.0), twist_abs(msg))
+
+    def _on_pose(self, msg: PoseStamped) -> None:
+        self.latest_pose = msg
+        self._count("/localization/pose")
+
+    def _on_lanelet_pose(self, msg: PoseStamped) -> None:
+        self.latest_lanelet_pose = msg
+        self._count("/planning/lanelet_pose_ros")
+
+    def _on_raw_goal(self, msg: PoseStamped) -> None:
+        self.latest_raw_goal = msg
+        self._count("/goal_pose")
+
+    def _on_route_goal(self, msg: PoseStamped) -> None:
+        self.latest_route_goal = msg
+        self._count("/planning/goal_pose_snapped_ros")
+
+    def _on_global_path(self, msg: Path) -> None:
+        self.global_path_count += 1
+        self.global_path_points = len(msg.poses)
+        self._count("/planning/global_path")
+
+    def _on_local_path(self, msg: Path) -> None:
+        self.local_path_count += 1
+        self.local_path_points = len(msg.poses)
+        self._count("/planning/local_path")
+
+    def _on_raw_cmd(self, msg: Twist) -> None:
+        self._record_twist("/planning/cmd_vel_raw", msg)
+
+    def _on_planning_cmd(self, msg: Twist) -> None:
+        self._record_twist("/planning/cmd_vel", msg)
+
+    def _on_platform_cmd(self, msg: Twist) -> None:
+        self._record_twist("/platform/cmd_vel", msg)
+
+    def _on_state(self, msg: PlanningState) -> None:
+        self.latest_state = msg
+        self._count("/planning/state_machine/state")
+
+    def _on_mission_source(self, msg: PlanningMissionKey) -> None:
+        self.latest_mission_source = msg
+        self._count("/planning/state_machine/mission_source")
+
+    def _on_site_status(self, msg: ModuleState) -> None:
+        self.latest_site_status = msg
+        self._count("/parking/site_maneuver/status")
+
+    def _on_drop_status(self, msg: ModuleState) -> None:
+        self.latest_drop_status = msg
+        self._count("/parking/drop_zone/status")
+
+    def _on_nav_status(self, msg: GoalStatusArray) -> None:
+        self.latest_nav_status = msg
+        self._count("/planning/navigate_to_pose/_action/status")
+
+    def _on_follow_status(self, msg: GoalStatusArray) -> None:
+        self.latest_follow_status = msg
+        self._count("/planning/follow_path/_action/status")
+
+    def spin_for(self, duration_s: float) -> None:
+        end = time.monotonic() + max(0.0, duration_s)
+        while rclpy.ok() and time.monotonic() < end:
+            rclpy.spin_once(self, timeout_sec=0.05)
+
+    def wait_for(self, pred: Callable[[], bool], timeout_s: float) -> bool:
+        end = time.monotonic() + max(0.0, timeout_s)
+        while rclpy.ok() and time.monotonic() < end:
+            rclpy.spin_once(self, timeout_sec=0.05)
+            if pred():
+                return True
+        return bool(pred())
+
+    def publish_bool(self, pub, value: bool, repeats: int = 4) -> None:
+        msg = Bool()
+        msg.data = bool(value)
+        for _ in range(repeats):
+            pub.publish(msg)
+            self.spin_for(0.05)
+
+    def publish_engage(self, value: bool) -> None:
+        # HH_260630: Sim drive tests must arm both planning and platform gates;
+        # otherwise Nav2 publishes /planning/cmd_vel while /platform/cmd_vel stays zero.
+        if value:
+            self.publish_bool(self.pub_drive_enable, True)
+        self.publish_bool(self.pub_engage, value)
+        if not value:
+            self.publish_bool(self.pub_drive_enable, False)
+
+    def publish_mission_engage(self, value: bool) -> None:
+        self.publish_bool(self.pub_mission_engage, value)
+
+    def set_fake_params(self, **kwargs) -> bool:
+        if not self.param_client.wait_for_service(timeout_sec=2.0):
+            self.results.append(
+                CheckResult("fake_params", False, "fake sensor set_parameters unavailable")
+            )
+            return False
+        req = SetParameters.Request()
+        for key, value in kwargs.items():
+            if isinstance(value, bool):
+                param = Parameter(key, Parameter.Type.BOOL, value)
+            elif isinstance(value, int):
+                param = Parameter(key, Parameter.Type.INTEGER, value)
+            elif isinstance(value, float):
+                param = Parameter(key, Parameter.Type.DOUBLE, value)
+            else:
+                param = Parameter(key, Parameter.Type.STRING, str(value))
+            req.parameters.append(param.to_parameter_msg())
+        future = self.param_client.call_async(req)
+        end = time.monotonic() + 3.0
+        while rclpy.ok() and not future.done() and time.monotonic() < end:
+            rclpy.spin_once(self, timeout_sec=0.05)
+        if not future.done():
+            return False
+        return all(result.successful for result in future.result().results)
+
+    def clear_obstacle(self) -> None:
+        self.set_fake_params(
+            obstacle_offset=30.0,
+            publish_fake_lidar_obstacle_cloud=True,
+            publish_fake_radar_ranges=True,
+        )
+        self.spin_for(1.2)
+
+    def cancel_all_actions(self) -> None:
+        req = CancelGoal.Request()
+        req.goal_info.goal_id.uuid = [0] * 16
+        req.goal_info.stamp.sec = 0
+        req.goal_info.stamp.nanosec = 0
+        for client in self.cancel_clients.values():
+            if not client.wait_for_service(timeout_sec=1.0):
+                continue
+            future = client.call_async(req)
+            end = time.monotonic() + 2.0
+            while rclpy.ok() and not future.done() and time.monotonic() < end:
+                rclpy.spin_once(self, timeout_sec=0.05)
+        zero = Twist()
+        for _ in range(8):
+            self.pub_raw.publish(zero)
+            self.spin_for(0.05)
+        self.spin_for(0.5)
+
+    def reset_cmd_metrics(self) -> None:
+        for topic in ("/planning/cmd_vel_raw", "/planning/cmd_vel", "/platform/cmd_vel"):
+            self.max_abs_since[topic] = 0.0
+
+    def make_cmd(self, direction: str) -> Twist:
+        msg = Twist()
+        if direction == "front":
+            msg.linear.x = 0.35
+        elif direction == "rear":
+            msg.linear.x = -0.18
+        elif direction == "left":
+            msg.linear.y = 0.16
+        elif direction == "right":
+            msg.linear.y = -0.16
+        elif direction == "rotate":
+            msg.angular.z = 0.35
+        return msg
+
+    def publish_raw_for(self, cmd: Twist, duration_s: float) -> None:
+        end = time.monotonic() + duration_s
+        while rclpy.ok() and time.monotonic() < end:
+            self.pub_raw.publish(cmd)
+            rclpy.spin_once(self, timeout_sec=0.05)
+
+    def goal_ids(self, msg: GoalStatusArray | None) -> set[tuple[int, ...]]:
+        if msg is None:
+            return set()
+        return {tuple(status.goal_info.goal_id.uuid) for status in msg.status_list}
+
+    def terminal_success_seen(
+        self,
+        msg: GoalStatusArray | None,
+        known_goal_ids: set[tuple[int, ...]] | None = None,
+    ) -> bool:
+        if msg is None:
+            return False
+        return any(
+            status.status == GoalStatus.STATUS_SUCCEEDED
+            and (
+                known_goal_ids is None
+                or tuple(status.goal_info.goal_id.uuid) not in known_goal_ids
+            )
+            for status in msg.status_list
+        )
+
+    def rate_for(self, topic: str, start_counts: dict[str, int], duration_s: float) -> float:
+        return (self.counts.get(topic, 0) - start_counts.get(topic, 0)) / max(duration_s, 0.1)
+
+    def check_baseline_rates(self) -> None:
+        self.clear_obstacle()
+        start_counts = dict(self.counts)
+        duration_s = 3.0 if not self.quick else 1.5
+        self.spin_for(duration_s)
+        expected = {
+            "/localization/pose": 7.0,
+            "/planning/lanelet_pose_ros": 7.0,
+            "/sensing/imu/data": 7.0,
+            "/sensing/lidar/points_filtered": 7.0,
+            "/platform/status/wheel_odometry": 7.0,
+            "/sensing/cost_grid/lidar": 5.0,
+            "/sensing/cost_grid/radar": 5.0,
+            "/planning/cost_grid/inflation": 3.0,
+        }
+        bad = []
+        metrics: dict[str, float] = {}
+        for topic, min_hz in expected.items():
+            hz = self.rate_for(topic, start_counts, duration_s)
+            metrics[topic] = round(hz, 2)
+            if hz < min_hz:
+                bad.append(f"{topic}={hz:.1f}Hz<{min_hz:.1f}")
+        self.results.append(
+            CheckResult(
+                "baseline_hz",
+                not bad,
+                "ok" if not bad else ", ".join(bad),
+                metrics,
+            )
+        )
+
+    def check_radar_ranges(self) -> None:
+        all_ok = True
+        detail_parts = []
+        metrics: dict[str, float] = {}
+        offsets = {"front": 1.0, "left": 0.6, "right": 0.6, "rear": 0.4}
+        for direction, topics in RADAR_TOPICS.items():
+            self.set_fake_params(
+                obstacle_direction=direction,
+                obstacle_offset=offsets[direction],
+                publish_fake_lidar_obstacle_cloud=False,
+                publish_fake_radar_ranges=True,
+            )
+            self.spin_for(0.4)
+            start_counts = dict(self.counts)
+            duration_s = 1.4 if not self.quick else 0.8
+            self.spin_for(duration_s)
+            for topic in topics:
+                hz = self.rate_for(topic, start_counts, duration_s)
+                metrics[topic] = round(hz, 2)
+                if hz < 5.0:
+                    all_ok = False
+                    detail_parts.append(f"{topic}={hz:.1f}Hz")
+        self.results.append(
+            CheckResult(
+                "radar_direction_hz",
+                all_ok,
+                "ok" if all_ok else ", ".join(detail_parts),
+                metrics,
+            )
+        )
+        self.clear_obstacle()
+
+    def check_gate_stop_matrix(self) -> None:
+        self.cancel_all_actions()
+        self.publish_engage(True)
+        self.publish_mission_engage(False)
+        offsets = {"front": 1.0, "left": 0.6, "right": 0.6, "rear": 0.4}
+        # HH_260630: Keep LiDAR-only fake obstacles clearly outside ego-clear
+        # while staying inside the side/rear lookahead corridors.
+        lidar_offsets = {"front": 1.0, "left": 0.95, "right": 0.95, "rear": 0.95}
+        directions = ["front", "left", "right", "rear"]
+        sources = [
+            ("lidar", True, False),
+            ("radar", False, True),
+            ("combined", True, True),
+        ]
+        all_ok = True
+        detail_parts = []
+        metrics: dict[str, float | str] = {}
+        for direction in directions:
+            for label, lidar, radar in sources:
+                self.set_fake_params(
+                    obstacle_direction=direction,
+                    obstacle_offset=(
+                        lidar_offsets[direction] if label == "lidar" else offsets[direction]
+                    ),
+                    publish_fake_lidar_obstacle_cloud=lidar,
+                    publish_fake_radar_ranges=radar,
+                )
+                self.spin_for(1.1)
+                self.reset_cmd_metrics()
+                self.publish_raw_for(self.make_cmd(direction), 1.2)
+                out = self.max_abs_since.get("/planning/cmd_vel", 0.0)
+                metrics[f"{direction}_{label}_planning_cmd_max"] = round(out, 3)
+                ok = out <= 0.03
+                if not ok:
+                    all_ok = False
+                    detail_parts.append(f"{direction}/{label} leaked {out:.3f}")
+                self.clear_obstacle()
+        self.results.append(
+            CheckResult(
+                "directional_cost_stop",
+                all_ok,
+                "ok" if all_ok else "; ".join(detail_parts),
+                metrics,
+            )
+        )
+
+    def publish_initialpose(self, pose: PoseStamped) -> None:
+        msg = PoseWithCovarianceStamped()
+        msg.header = pose.header
+        msg.pose.pose = pose.pose
+        for _ in range(4):
+            self.pub_initialpose.publish(msg)
+            self.spin_for(0.05)
+
+    def publish_goal_pose(self, pose: PoseStamped) -> None:
+        for _ in range(4):
+            msg = PoseStamped()
+            msg.header = pose.header
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.pose = pose.pose
+            self.pub_goal.publish(msg)
+            self.spin_for(0.05)
+
+    def publish_prepare_goal_pose(self, pose: PoseStamped) -> None:
+        for _ in range(4):
+            msg = PoseStamped()
+            msg.header = pose.header
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.pose = pose.pose
+            self.pub_prepare_goal.publish(msg)
+            self.spin_for(0.05)
+
+    def prepare_camping_start_pose(self, goal_pose: PoseStamped) -> bool:
+        if not self.camping_prepare_near_route:
+            return True
+        before = self.latest_route_goal
+        self.publish_engage(False)
+        self.publish_mission_engage(False)
+        self.cancel_all_actions()
+        # HH_260630: Probe goal_snapper through its auxiliary input so the
+        # preparation step does not look like a user/UI camping goal to
+        # site_maneuver or the state-machine raw-goal listener.
+        self.publish_prepare_goal_pose(goal_pose)
+
+        def route_goal_updated() -> bool:
+            if self.latest_route_goal is None:
+                return False
+            if before is None:
+                return True
+            return math.hypot(
+                self.latest_route_goal.pose.position.x - before.pose.position.x,
+                self.latest_route_goal.pose.position.y - before.pose.position.y,
+            ) > 0.05
+
+        self.wait_for(route_goal_updated, 5.0)
+        route_goal = self.latest_route_goal
+        if route_goal is None:
+            return False
+        yaw = yaw_from_quat(route_goal.pose.orientation)
+        start = PoseStamped()
+        start.header.stamp = self.get_clock().now().to_msg()
+        start.header.frame_id = route_goal.header.frame_id or "map"
+        offset_m = max(0.0, abs(self.camping_start_offset_m))
+        # HH_260630: Keep the camping end-to-end test deterministic by starting
+        # at the snapped lanelet entry instead of from wherever a previous sim
+        # run left the fake vehicle; nonzero offsets can land on the opposite
+        # directed lanelet and turn a handoff test into a full route test.
+        start.pose.position.x = route_goal.pose.position.x - offset_m * math.cos(yaw)
+        start.pose.position.y = route_goal.pose.position.y - offset_m * math.sin(yaw)
+        start.pose.position.z = route_goal.pose.position.z
+        start.pose.orientation = route_goal.pose.orientation
+        self.publish_initialpose(start)
+        self.cancel_all_actions()
+        return self.wait_for(
+            lambda: self.latest_pose is not None
+            and math.hypot(
+                self.latest_pose.pose.position.x - start.pose.position.x,
+                self.latest_pose.pose.position.y - start.pose.position.y,
+            )
+            < 1.0,
+            5.0,
+        )
+
+    def _candidate_camping_site_files(self) -> list[str]:
+        candidates = []
+        if self.camping_sites_yaml.strip():
+            candidates.append(self.camping_sites_yaml.strip())
+        try:
+            planning_share = get_package_share_directory("camrod_planning")
+            candidates.extend(
+                [
+                    os.path.join(planning_share, "config", "camping_sites (copy_c_track).yaml"),
+                    os.path.join(planning_share, "config", "camping_sites.yaml"),
+                ]
+            )
+        except Exception:
+            pass
+        candidates.extend(
+            [
+                os.path.join(
+                    os.getcwd(),
+                    "camrod_planning",
+                    "config",
+                    "camping_sites (copy_c_track).yaml",
+                ),
+                os.path.join(os.getcwd(), "camrod_planning", "config", "camping_sites.yaml"),
+            ]
+        )
+        return candidates
+
+    def load_camping_goal(self, mission_key: str) -> PoseStamped | None:
+        for path in self._candidate_camping_site_files():
+            if not path or not os.path.exists(path):
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as stream:
+                    data = yaml.safe_load(stream) or {}
+            except Exception as exc:
+                self.get_logger().warn(f"failed to read camping site file {path}: {exc}")
+                continue
+            for site in data.get("camping_sites", []) or []:
+                if str(site.get("type", "")).strip() != mission_key:
+                    continue
+                # HH_260630: Sim UI validation mirrors ui_backend_node behavior:
+                # publish semantic mission_key first, then the raw campsite goal pose.
+                pose = PoseStamped()
+                pose.header.stamp = self.get_clock().now().to_msg()
+                pose.header.frame_id = str(site.get("frame_id", "map"))
+                pose.pose.position.x = float(site.get("x", 0.0))
+                pose.pose.position.y = float(site.get("y", 0.0))
+                pose.pose.position.z = float(site.get("z", 0.0))
+                pose.pose.orientation = quat_from_yaw(
+                    math.radians(float(site.get("yaw_deg", 0.0)))
+                )
+                return pose
+        return None
+
+    def check_manual_goal(self) -> None:
+        self.cancel_all_actions()
+        self.clear_obstacle()
+        self.publish_engage(True)
+        if not self.wait_for(lambda: self.latest_lanelet_pose is not None, 5.0):
+            self.results.append(CheckResult("manual_goal_nav", False, "missing lanelet pose"))
+            return
+        base = self.latest_lanelet_pose or self.latest_pose
+        if base is None:
+            self.results.append(CheckResult("manual_goal_nav", False, "missing pose"))
+            return
+        self.publish_initialpose(base)
+        self.spin_for(0.8)
+        yaw = yaw_from_quat(base.pose.orientation)
+        goal = PoseStamped()
+        goal.header.stamp = self.get_clock().now().to_msg()
+        goal.header.frame_id = "map"
+        goal.pose.position.x = base.pose.position.x + self.manual_goal_distance_m * math.cos(yaw)
+        goal.pose.position.y = base.pose.position.y + self.manual_goal_distance_m * math.sin(yaw)
+        goal.pose.position.z = base.pose.position.z
+        goal.pose.orientation = quat_from_yaw(yaw)
+        base_global = self.global_path_count
+        base_local = self.local_path_count
+        known_nav_goals = self.goal_ids(self.latest_nav_status)
+        start_pose = self.latest_pose
+        self.reset_cmd_metrics()
+        self.publish_goal_pose(goal)
+        start = time.monotonic()
+        succeeded = False
+        moved_m = 0.0
+        while rclpy.ok() and (time.monotonic() - start) < self.manual_goal_timeout_s:
+            rclpy.spin_once(self, timeout_sec=0.05)
+            if start_pose is not None and self.latest_pose is not None:
+                moved_m = math.hypot(
+                    self.latest_pose.pose.position.x - start_pose.pose.position.x,
+                    self.latest_pose.pose.position.y - start_pose.pose.position.y,
+                )
+            if self.terminal_success_seen(self.latest_nav_status, known_nav_goals):
+                succeeded = True
+                break
+        self.publish_engage(False)
+        self.cancel_all_actions()
+        global_new = self.global_path_count > base_global
+        local_new = self.local_path_count > base_local
+        cmd_max = self.max_abs_since.get("/planning/cmd_vel", 0.0)
+        ok = bool(global_new and local_new and cmd_max > 0.03 and moved_m > 0.5 and succeeded)
+        self.results.append(
+            CheckResult(
+                "manual_goal_nav",
+                ok,
+                "ok"
+                if ok
+                else (
+                    f"global={global_new} local={local_new} cmd={cmd_max:.3f} "
+                    f"moved={moved_m:.2f} succeeded={succeeded}"
+                ),
+                {
+                    "global_path_points": self.global_path_points,
+                    "local_path_points": self.local_path_points,
+                    "cmd_max": round(cmd_max, 3),
+                    "moved_m": round(moved_m, 2),
+                    "succeeded": succeeded,
+                },
+            )
+        )
+
+    def check_camping_site_smoke(self) -> None:
+        self.cancel_all_actions()
+        self.clear_obstacle()
+        self.publish_engage(True)
+        self.publish_mission_engage(True)
+        mission_key = self.camping_mission_key.strip() or "camping_site_1"
+        goal_pose = self.load_camping_goal(mission_key)
+        if goal_pose is None:
+            self.results.append(
+                CheckResult(
+                    "camping_site_smoke",
+                    False,
+                    f"missing camping goal for {mission_key}",
+                )
+            )
+            return
+        if not self.prepare_camping_start_pose(goal_pose):
+            self.results.append(
+                CheckResult(
+                    "camping_site_smoke",
+                    False,
+                    "failed to prepare camping start pose near snapped route goal",
+                )
+            )
+            return
+
+        # HH_260630: prepare_camping_start_pose intentionally disarms planning
+        # while it probes the snapped route and seeds /initialpose. Re-arm both
+        # gates before mirroring the UI mission_key + goal publish sequence.
+        self.publish_engage(True)
+        self.publish_mission_engage(True)
+        self.spin_for(0.3)
+
+        msg = PlanningMissionKey()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.mission_key = mission_key
+        msg.source = "sim_validation"
+        msg.publish_route_goal = False
+        start = time.monotonic()
+        base_global = self.global_path_count
+        base_local = self.local_path_count
+        known_nav_goals = self.goal_ids(self.latest_nav_status)
+        self.reset_cmd_metrics()
+        for _ in range(4):
+            self.pub_mission_key.publish(msg)
+            self.spin_for(0.05)
+        self.publish_goal_pose(goal_pose)
+        seen_site_phase = False
+        seen_return_phase = False
+        reached_nav = False
+        seen_goal_reached_state = False
+        seen_site_key = False
+        state_labels: set[str] = set()
+        scenario_labels: set[str] = set()
+        site_status_messages: set[str] = set()
+        while rclpy.ok() and (time.monotonic() - start) < self.camping_timeout_s:
+            rclpy.spin_once(self, timeout_sec=0.05)
+            site_msg = self.latest_site_status.message if self.latest_site_status else ""
+            state_label = self.latest_state.label if self.latest_state else ""
+            active_key = self.latest_state.active_mission_key if self.latest_state else ""
+            scenario_label = self.latest_state.scenario_label if self.latest_state else ""
+            if state_label:
+                state_labels.add(state_label)
+            if scenario_label:
+                scenario_labels.add(scenario_label)
+            if site_msg:
+                site_status_messages.add(site_msg)
+            seen_goal_reached_state = seen_goal_reached_state or state_label == "GOAL_REACHED"
+            seen_site_key = seen_site_key or active_key.startswith("camping_site_")
+            if any(token in site_msg for token in ("CRAB_IN", "ROTATE_180", "WAIT_RETURN")):
+                seen_site_phase = True
+            if "WAIT_RETURN" in site_msg:
+                ret = Bool()
+                ret.data = True
+                self.pub_site_return.publish(ret)
+            if any(token in site_msg for token in ("CRAB_OUT", "DONE")) or state_label == "RETURNING":
+                seen_return_phase = True
+            if self.terminal_success_seen(self.latest_nav_status, known_nav_goals):
+                reached_nav = True
+            if seen_site_phase and seen_return_phase:
+                break
+        self.publish_engage(False)
+        self.publish_mission_engage(False)
+        self.cancel_all_actions()
+        cmd_max = self.max_abs_since.get("/planning/cmd_vel", 0.0)
+        global_new = self.global_path_count > base_global
+        local_new = self.local_path_count > base_local
+        route_reached = bool(reached_nav or seen_goal_reached_state)
+        ok = bool(global_new and cmd_max > 0.03 and route_reached and seen_site_phase and seen_return_phase)
+        route_dist = (
+            math.hypot(
+                self.latest_pose.pose.position.x - self.latest_route_goal.pose.position.x,
+                self.latest_pose.pose.position.y - self.latest_route_goal.pose.position.y,
+            )
+            if self.latest_pose is not None and self.latest_route_goal is not None
+            else -1.0
+        )
+        site_route_dist = (
+            math.hypot(
+                self.latest_raw_goal.pose.position.x - self.latest_route_goal.pose.position.x,
+                self.latest_raw_goal.pose.position.y - self.latest_route_goal.pose.position.y,
+            )
+            if self.latest_raw_goal is not None and self.latest_route_goal is not None
+            else -1.0
+        )
+        site_dist = (
+            math.hypot(
+                self.latest_pose.pose.position.x - self.latest_raw_goal.pose.position.x,
+                self.latest_pose.pose.position.y - self.latest_raw_goal.pose.position.y,
+            )
+            if self.latest_pose is not None and self.latest_raw_goal is not None
+            else -1.0
+        )
+        latest_state_label = self.latest_state.label if self.latest_state else ""
+        latest_state_key = self.latest_state.active_mission_key if self.latest_state else ""
+        latest_scenario = self.latest_state.scenario_label if self.latest_state else ""
+        latest_site_status = self.latest_site_status.message if self.latest_site_status else ""
+        self.results.append(
+            CheckResult(
+                "camping_site_smoke",
+                ok,
+                "ok"
+                if ok
+                else (
+                    f"global={global_new} local={local_new} cmd={cmd_max:.3f} "
+                    f"nav_success={reached_nav} site_phase={seen_site_phase} "
+                    f"return_phase={seen_return_phase} state={latest_state_label} "
+                    f"key={latest_state_key} route_dist={route_dist:.2f}"
+                ),
+                {
+                    "cmd_max": round(cmd_max, 3),
+                    "nav_success": reached_nav,
+                    "route_reached": route_reached,
+                    "site_phase": seen_site_phase,
+                    "return_phase": seen_return_phase,
+                    "goal_reached_state_seen": seen_goal_reached_state,
+                    "site_key_seen": seen_site_key,
+                    "latest_state": latest_state_label,
+                    "latest_active_mission_key": latest_state_key,
+                    "latest_scenario": latest_scenario,
+                    "latest_site_status": latest_site_status,
+                    "state_labels_seen": ",".join(sorted(state_labels)),
+                    "scenario_labels_seen": ",".join(sorted(scenario_labels)),
+                    "site_statuses_seen": " | ".join(sorted(site_status_messages)),
+                    "route_distance_m": round(route_dist, 2),
+                    "site_route_distance_m": round(site_route_dist, 2),
+                    "site_distance_m": round(site_dist, 2),
+                },
+            )
+        )
+
+    def run(self) -> int:
+        self.spin_for(1.0)
+        self.publish_mission_engage(False)
+        self.publish_engage(False)
+        self.cancel_all_actions()
+        self.check_baseline_rates()
+        self.check_radar_ranges()
+        self.check_gate_stop_matrix()
+        if not self.skip_manual_goal:
+            self.check_manual_goal()
+        if self.run_camping:
+            self.check_camping_site_smoke()
+        self.clear_obstacle()
+        self.publish_engage(False)
+        self.publish_mission_engage(False)
+        ok = all(result.ok for result in self.results)
+        self.print_report(ok)
+        self.write_report(ok)
+        return 0 if ok else 2
+
+    def print_report(self, overall_ok: bool) -> None:
+        print("\n=== CAMROD_SIM_VALIDATION_REPORT ===")
+        print(f"OVERALL={'PASS' if overall_ok else 'FAIL'}")
+        for idx, result in enumerate(self.results, 1):
+            print(f"CHECK_{idx:02d}_NAME={result.name}")
+            print(f"CHECK_{idx:02d}_RESULT={'PASS' if result.ok else 'FAIL'}")
+            print(f"CHECK_{idx:02d}_DETAIL={result.detail}")
+            if result.metrics:
+                print(
+                    f"CHECK_{idx:02d}_METRICS="
+                    + json.dumps(result.metrics, sort_keys=True, ensure_ascii=False)
+                )
+        print("=== CAMROD_SIM_VALIDATION_REPORT_END ===")
+
+    def write_report(self, overall_ok: bool) -> None:
+        if not self.report_file.strip():
+            return
+        path = os.path.abspath(self.report_file.strip())
+        report_dir = os.path.dirname(path)
+        if report_dir:
+            os.makedirs(report_dir, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as stream:
+            json.dump(
+                {
+                    "overall_pass": overall_ok,
+                    "checks": [
+                        {
+                            "name": r.name,
+                            "success": r.ok,
+                            "detail": r.detail,
+                            "metrics": r.metrics,
+                        }
+                        for r in self.results
+                    ],
+                },
+                stream,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+
+def main(args=None) -> None:
+    rclpy.init(args=args)
+    node = SimValidationRunner()
+    try:
+        rc = node.run()
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+    raise SystemExit(rc)
+
+
+if __name__ == "__main__":
+    main()

@@ -16,7 +16,7 @@ from geometry_msgs.msg import Twist
 from geometry_msgs.msg import TwistWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from sensor_msgs.msg import NavSatFix, NavSatStatus
-from sensor_msgs.msg import Imu, PointCloud2, PointField
+from sensor_msgs.msg import Imu, PointCloud2, PointField, Range
 from sensor_msgs_py import point_cloud2
 
 
@@ -201,6 +201,12 @@ class FakeSensorPublisher(Node):
         self.obstacle_lateral_offset = float(
             self.declare_parameter("obstacle_lateral_offset", 0.0).value
         )
+        # HH_260630: Keep the synthetic obstacle compact around the requested
+        # direction center. A wide perpendicular spread can make side/rear
+        # tests appear in the wrong corridor.
+        self.fake_obstacle_cluster_radius_m = float(
+            self.declare_parameter("fake_obstacle_cluster_radius_m", 0.12).value
+        )
         # Publish the same synthetic obstacle cloud to both
         # perception obstacle stream and filtered-lidar stream so cost-grid
         # source can be switched without breaking sim.
@@ -210,6 +216,55 @@ class FakeSensorPublisher(Node):
         self.lidar_filtered_topic = str(
             self.declare_parameter("lidar_filtered_topic", "/sensing/lidar/points_filtered").value
         )
+        # HH_260630: Split fake LiDAR cloud and fake radar range publishing so
+        # sim safety tests can validate each obstacle source independently.
+        self.publish_fake_lidar_obstacle_cloud = bool(
+            self.declare_parameter("publish_fake_lidar_obstacle_cloud", True).value
+        )
+        self.publish_fake_radar_ranges = bool(
+            self.declare_parameter("publish_fake_radar_ranges", True).value
+        )
+        self.fake_radar_min_range_m = float(
+            self.declare_parameter("fake_radar_min_range_m", 0.02).value
+        )
+        self.fake_radar_field_of_view_rad = float(
+            self.declare_parameter("fake_radar_field_of_view_rad", 0.26).value
+        )
+        self.fake_radar_topics = list(
+            self.declare_parameter(
+                "fake_radar_topics",
+                [
+                    "/sensing/radar/front1/range",
+                    "/sensing/radar/front2/range",
+                    "/sensing/radar/left1/range",
+                    "/sensing/radar/left2/range",
+                    "/sensing/radar/right1/range",
+                    "/sensing/radar/right2/range",
+                    "/sensing/radar/rear/range",
+                ],
+            ).value
+        )
+        self.fake_radar_frame_ids = list(
+            self.declare_parameter(
+                "fake_radar_frame_ids",
+                [
+                    "radar_front1_link",
+                    "radar_front2_link",
+                    "radar_left1_link",
+                    "radar_left2_link",
+                    "radar_right1_link",
+                    "radar_right2_link",
+                    "radar_rear_link",
+                ],
+            ).value
+        )
+        self.fake_radar_max_ranges_m = [
+            float(v)
+            for v in self.declare_parameter(
+                "fake_radar_max_ranges_m",
+                [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50],
+            ).value
+        ]
         # HH_260617: In sim, hardware IMU drivers are disabled by bringup. Publish
         # the velocity-converter output directly so diagnostics/planning can focus
         # on planning/control behavior instead of waiting for a real converter node.
@@ -395,6 +450,10 @@ class FakeSensorPublisher(Node):
         self.pub_lidar_filtered = self.create_publisher(
             PointCloud2, self.lidar_filtered_topic, 10
         )
+        self.pub_fake_radar_ranges = []
+        if self.publish_fake_radar_ranges:
+            for topic in self.fake_radar_topics:
+                self.pub_fake_radar_ranges.append(self.create_publisher(Range, topic, 10))
         self.pub_velocity_converter_output = None
         if self.publish_velocity_converter_output:
             self.pub_velocity_converter_output = self.create_publisher(
@@ -1153,22 +1212,32 @@ class FakeSensorPublisher(Node):
             + self.obstacle_offset * obstacle_dir_y
             + self.obstacle_lateral_offset * left_y
         )
-        # Keep 3 points spread perpendicular to obstacle direction.
+        # HH_260630: Publish a compact 3x3 cluster centered at the requested
+        # obstacle point so directional stop tests exercise the intended corridor.
         obstacle_perp_x = -obstacle_dir_y
         obstacle_perp_y = obstacle_dir_x
-        obstacle_points = [
-            (center_x, center_y, self.obstacle_height),
-            (center_x + obstacle_perp_x, center_y + obstacle_perp_y, self.obstacle_height),
-            (center_x - obstacle_perp_x, center_y - obstacle_perp_y, self.obstacle_height),
-        ]
+        cluster_radius = max(0.0, float(self.fake_obstacle_cluster_radius_m))
+        obstacle_points = []
+        for along in (-cluster_radius, 0.0, cluster_radius):
+            for side in (-cluster_radius, 0.0, cluster_radius):
+                obstacle_points.append(
+                    (
+                        center_x + along * obstacle_dir_x + side * obstacle_perp_x,
+                        center_y + along * obstacle_dir_y + side * obstacle_perp_y,
+                        self.obstacle_height,
+                    )
+                )
         fields = [
             PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
             PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
             PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
         ]
         cloud_msg = point_cloud2.create_cloud(pose_msg.header, fields, obstacle_points)
-        self.pub_obstacles.publish(cloud_msg)
-        self.pub_lidar_filtered.publish(cloud_msg)
+        if self.publish_fake_lidar_obstacle_cloud:
+            self.pub_obstacles.publish(cloud_msg)
+            self.pub_lidar_filtered.publish(cloud_msg)
+        if self.publish_fake_radar_ranges:
+            self._publish_fake_radar_ranges(now)
 
         dummy_grid_period_s = 1.0 / max(0.1, self.dummy_lidar_cost_grid_publish_rate_hz)
         if (
@@ -1187,6 +1256,43 @@ class FakeSensorPublisher(Node):
             grid.info.origin.orientation.w = 1.0
             grid.data = [0] * int(grid.info.width * grid.info.height)
             self.pub_dummy_lidar_cost_grid.publish(grid)
+
+    # Publishes simulated SEN0592 Range messages for the active obstacle side.
+    def _publish_fake_radar_ranges(self, stamp):
+        if not self.pub_fake_radar_ranges:
+            return
+        direction_to_indices = {
+            "front": (0, 1),
+            "left": (2, 3),
+            "right": (4, 5),
+            "rear": (6,),
+        }
+        indices = direction_to_indices.get(self.obstacle_direction, ())
+        distance = float(self.obstacle_offset)
+        for idx in indices:
+            if idx >= len(self.pub_fake_radar_ranges):
+                continue
+            max_range = (
+                self.fake_radar_max_ranges_m[idx]
+                if idx < len(self.fake_radar_max_ranges_m)
+                else 0.0
+            )
+            min_range = max(0.0, float(self.fake_radar_min_range_m))
+            if max_range <= 0.0 or distance < min_range or distance > max_range:
+                continue
+            msg = Range()
+            msg.header.stamp = stamp
+            msg.header.frame_id = (
+                self.fake_radar_frame_ids[idx]
+                if idx < len(self.fake_radar_frame_ids)
+                else ""
+            )
+            msg.radiation_type = Range.ULTRASOUND
+            msg.field_of_view = float(self.fake_radar_field_of_view_rad)
+            msg.min_range = min_range
+            msg.max_range = float(max_range)
+            msg.range = distance
+            self.pub_fake_radar_ranges[idx].publish(msg)
 
     # Normalizes obstacle_direction parameter and falls back safely.
     def _normalize_obstacle_direction(self, value):
@@ -1209,6 +1315,12 @@ class FakeSensorPublisher(Node):
                 self.obstacle_direction = self._normalize_obstacle_direction(p.value)
             elif p.name == "obstacle_lateral_offset":
                 self.obstacle_lateral_offset = float(p.value)
+            elif p.name == "fake_obstacle_cluster_radius_m":
+                self.fake_obstacle_cluster_radius_m = float(p.value)
+            elif p.name == "publish_fake_lidar_obstacle_cloud":
+                self.publish_fake_lidar_obstacle_cloud = bool(p.value)
+            elif p.name == "publish_fake_radar_ranges":
+                self.publish_fake_radar_ranges = bool(p.value)
             elif p.name == "speed_mps":
                 self.speed_mps = float(p.value)
             elif p.name == "publish_rate_hz":
