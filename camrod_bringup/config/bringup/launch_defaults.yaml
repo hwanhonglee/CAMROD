@@ -193,8 +193,9 @@ bringup:
     cmd_vel_gate_parking_drop_zone_static_bypass_phases: EXIT_STRAIGHT,ALIGN_EXIT_YAW
     # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
     cmd_vel_gate_speed_dependent_lookahead: true
-    # HH_260623 - Minimum front scan reaches measured front bumper plus planning margin.
-    cmd_vel_gate_front_lookahead_min_m: 1.30137
+    # HH_260630 - Minimum front dynamic-stop scan covers the front radar mount
+    # plus about 1.0m of obstacle clearance ahead of the sensor.
+    cmd_vel_gate_front_lookahead_min_m: 2.10
     cmd_vel_gate_front_lookahead_max_m: 3.0
     cmd_vel_gate_front_lookahead_friction: 0.4
     cmd_vel_gate_front_reaction_time_s: 0.15
@@ -202,12 +203,20 @@ bringup:
     # Side/rear cost-stop samples the same merged grid, but still requires a
     # dynamic source attribution before blocking.
     cmd_vel_gate_side_rear_cost_stop: true
-    cmd_vel_gate_side_cost_threshold: 92
-    cmd_vel_gate_side_lookahead_m: 0.8
+    # HH_260630: Match radar/lidar dynamic stop threshold so side hits are not
+    # ignored by the higher legacy side-only value.
+    cmd_vel_gate_side_cost_threshold: 85
+    # HH_260630: Side lidar/radar cells land near 0.9-1.0 m from robot center,
+    # so crab-motion stop must look beyond the old 0.8 m window.
+    cmd_vel_gate_side_lookahead_m: 1.2
     # HH_260623 - Side scan width covers full body length plus front/rear margins.
     cmd_vel_gate_side_corridor_width_m: 1.69160
-    cmd_vel_gate_rear_cost_threshold: 92
-    cmd_vel_gate_rear_lookahead_m: 0.6
+    # HH_260630: Match radar/lidar dynamic stop threshold so rear hits are not
+    # ignored by the higher legacy rear-only value.
+    cmd_vel_gate_rear_cost_threshold: 85
+    # HH_260630: Rear dynamic cells can land just past 0.9 m after cost-grid
+    # discretization and sensor/footprint offsets.
+    cmd_vel_gate_rear_lookahead_m: 1.2
     # HH_260623 - Rear scan width covers full body width plus left/right margins.
     cmd_vel_gate_rear_corridor_width_m: 1.27
     # HH_260618: Explicit site-crab lateral parking may cross static

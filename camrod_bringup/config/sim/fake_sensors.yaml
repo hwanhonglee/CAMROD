@@ -67,10 +67,35 @@
     obstacle_direction: "front"
     # Additional shift in vehicle-left axis (m). Keep 0.0 for centered tests.
     obstacle_lateral_offset: 0.0
+    # HH_260630: Compact fake obstacle cluster for directional stop validation.
+    fake_obstacle_cluster_radius_m: 0.12
     # Publish synthetic obstacle cloud to both perception and
     # filtered-lidar topics so sensing cost-grid can consume filtered points.
     obstacle_cloud_topic: "/perception/obstacles"
     lidar_filtered_topic: "/sensing/lidar/points_filtered"
+    # HH_260630: Keep LiDAR and radar fake obstacle sources independently
+    # switchable so sim safety tests can isolate each cost-grid input.
+    publish_fake_lidar_obstacle_cloud: true
+    publish_fake_radar_ranges: true
+    fake_radar_min_range_m: 0.02
+    fake_radar_field_of_view_rad: 0.26
+    fake_radar_topics:
+      - "/sensing/radar/front1/range"
+      - "/sensing/radar/front2/range"
+      - "/sensing/radar/left1/range"
+      - "/sensing/radar/left2/range"
+      - "/sensing/radar/right1/range"
+      - "/sensing/radar/right2/range"
+      - "/sensing/radar/rear/range"
+    fake_radar_frame_ids:
+      - "radar_front1_link"
+      - "radar_front2_link"
+      - "radar_left1_link"
+      - "radar_left2_link"
+      - "radar_right1_link"
+      - "radar_right2_link"
+      - "radar_rear_link"
+    fake_radar_max_ranges_m: [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]
     # HH_260617: Sim hardware drivers are disabled; publish deterministic dummy
     # converter/cost-grid outputs so diagnostics do not block planning/control tests.
     publish_velocity_converter_output: true

@@ -977,8 +977,8 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_front_lookahead_min_m',
-            # HH_260623 - Include front body extent from robot_base_link plus planning margin.
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_min_m', 1.30137),
+            # HH_260630 - Include front radar mount plus roughly 1m sensor-forward clearance.
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_min_m', 2.10),
             'Min front lookahead (m)',
         ),
         (
@@ -1010,12 +1010,14 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_side_cost_threshold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_cost_threshold', 92),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_cost_threshold', 85),
             'Cost threshold for side stop',
         ),
         (
             'planning_cmd_vel_gate_side_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_lookahead_m', 0.8),
+            # HH_260630: Sim and sensor cost grids place side hits near 1.0 m
+            # from robot center; keep crab stop ahead of that cell center.
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_lookahead_m', 1.2),
             'Side lookahead distance (m)',
         ),
         (
@@ -1026,12 +1028,14 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_rear_cost_threshold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_cost_threshold', 92),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_cost_threshold', 85),
             'Cost threshold for rear stop',
         ),
         (
             'planning_cmd_vel_gate_rear_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_lookahead_m', 0.6),
+            # HH_260630: Rear obstacle cell centers can sit past 0.9 m after
+            # grid quantization, so 0.8 m can leak reverse motion.
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_lookahead_m', 1.2),
             'Rear lookahead distance (m)',
         ),
         (

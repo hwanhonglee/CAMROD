@@ -16,6 +16,7 @@ install(
   PROGRAMS
     scripts/fake_sensor_publisher.py
     scripts/planning_scenario_leaderboard.py
+    scripts/sim_validation_runner.py
     # HH_260623 - Removed sync_package_configs_to_bringup.sh from install; bringup
     # config now carries deployment overrides and must not be force-mirrored.
     scripts/gnss_dr_test_node.py
