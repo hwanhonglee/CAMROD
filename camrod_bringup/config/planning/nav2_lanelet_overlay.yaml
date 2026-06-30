@@ -34,7 +34,9 @@ local_costmap:
       lidar_cost_layer:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
         source_topic: "/sensing/cost_grid/lidar"
-        lethal_threshold: 85
+        # HH_260630: Planner avoidance must see farther LiDAR obstacles before
+        # the cmd_vel hard-stop threshold is reached.
+        lethal_threshold: 60
         unknown_value: 0
         write_unknown: false
         start_current: true
@@ -42,7 +44,9 @@ local_costmap:
       radar_cost_layer:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
         source_topic: "/sensing/cost_grid/radar"
-        lethal_threshold: 85
+        # HH_260630: Radar grid now marks all valid near-field hits >=85, so the
+        # lower Nav2 dynamic threshold keeps radar/lidar avoidance behavior aligned.
+        lethal_threshold: 60
         unknown_value: 0
         write_unknown: false
         start_current: true
@@ -75,10 +79,9 @@ global_costmap:
       lidar_cost_layer:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
         source_topic: "/sensing/cost_grid/lidar"
-        # HH_260619 - LiDAR/Radar cost grids peak at 95. Use 85 so Smac2D
-        # fallback replans treat persistent obstacles as blocked, not merely
-        # high-cost soft penalties.
-        lethal_threshold: 85
+        # HH_260630: Lower than the cmd_vel stop threshold so Smac2D can route
+        # around persistent LiDAR obstacles while they are still ahead of the robot.
+        lethal_threshold: 60
         unknown_value: 0
         # Keep no-data cells from clearing base lanelet costs.
         write_unknown: false
@@ -88,9 +91,8 @@ global_costmap:
       radar_cost_layer:
         plugin: "camrod_map::cost_map::LaneletCostLayer"
         source_topic: "/sensing/cost_grid/radar"
-        # HH_260619 - Match obstacle_replan_monitor threshold so global fallback
-        # replans route around radar-confirmed blockage when free space exists.
-        lethal_threshold: 85
+        # HH_260630: Match obstacle_replan_monitor dynamic threshold.
+        lethal_threshold: 60
         unknown_value: 0
         # Keep no-data cells from clearing base lanelet costs.
         write_unknown: false

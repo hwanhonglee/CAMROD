@@ -51,6 +51,7 @@ import math
 import sys
 import time
 import types
+from pathlib import Path as FsPath
 
 # ─── ROS2 stub (rclpy, tf2_ros, nav_msgs 등) ─────────────────────────────────
 
@@ -232,7 +233,7 @@ for top in ["rcl_interfaces", "geometry_msgs", "nav_msgs", "std_msgs", "avg_msgs
 
 # ─── import target ────────────────────────────────────────────────────────────
 
-sys.path.insert(0, "/home/hong/camrod_ws/src/camrod_planning/scripts")
+sys.path.insert(0, str(FsPath(__file__).resolve().parents[1] / "scripts"))
 import planning_cmd_vel_gate_node as gmod
 
 
@@ -309,6 +310,8 @@ def make_gate(
     n.cost_stop_hold_s = hold_s
     n.cost_source_debug_enable = False
     n.cost_source_debug_max_age_s = 1.0
+    n._cost_source_grids = {}
+    n._cost_source_recv_sec = {}
     n.cost_stop_require_dynamic_source = False
     n.cost_stop_dynamic_source_labels = {"lidar", "radar"}
     n.lateral_cmd_bypass_static_cost_stop = True
@@ -353,6 +356,8 @@ def make_gate(
     n._last_tf_warn_sec = 0.0
     n._last_empty_corridor_warn_sec = 0.0
     n._last_lanelet_front_path_reentry_bypass_log_sec = 0.0
+    n._last_lateral_static_bypass_log_sec = 0.0
+    n._last_static_cost_ignored_log_sec = 0.0
     n._last_block_reason_log_sec = 0.0
     n._current_speed = 0.0
     n._last_grid = None
@@ -701,6 +706,40 @@ deny_reverse = n._can_bypass_lanelet_front_path_for_route_reentry(
 check("경로 근처 FRONT_PATH static cost → 우회 허용", allow)
 check("lookahead 밖 FRONT_PATH static cost → 우회 금지", not deny_far)
 check("후진/비전방 cmd → FRONT_PATH 우회 금지", not deny_reverse)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+print("\n=== TEST 13: crab cmd_vel은 진행 방향 코리더만 긴급 정지 ===")
+print("  좌측 crab 중 차체 앞 장애물은 무시, 좌측 진행방향 장애물은 정지")
+n = make_gate(enable_side_rear=True)
+n._enabled = True
+n._last_odom = make_odom(x=0.0, y=0.0, yaw=0.0)
+crab_left = Twist(); crab_left.linear.y = 0.2
+n._last_grid = make_grid(obstacle_x=1.0, obstacle_y=0.0, obstacle_cost=90)
+front_stop_during_crab = n._should_stop_for_cost(crab_left)
+check("crab-left 중 body-front 장애물 → 통과", not front_stop_during_crab)
+n._last_grid = make_grid(obstacle_x=0.0, obstacle_y=0.8, obstacle_cost=90)
+n._cost_source_grids = {"radar": n._last_grid}
+n._cost_source_recv_sec = {"radar": 0.0}
+left_stop_during_crab = n._should_stop_for_cost(crab_left)
+check("crab-left 중 left 장애물 → 정지", left_stop_during_crab)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+print("\n=== TEST 14: reverse cmd_vel은 후방 코리더를 전방처럼 사용 ===")
+print("  후진 중 차체 앞 장애물은 무시, 후방 장애물은 정지")
+n = make_gate(enable_side_rear=True)
+n._enabled = True
+n._last_odom = make_odom(x=0.0, y=0.0, yaw=0.0)
+reverse = Twist(); reverse.linear.x = -0.2
+n._last_grid = make_grid(obstacle_x=1.0, obstacle_y=0.0, obstacle_cost=90)
+front_stop_during_reverse = n._should_stop_for_cost(reverse)
+check("reverse 중 body-front 장애물 → 통과", not front_stop_during_reverse)
+n._last_grid = make_grid(obstacle_x=-0.6, obstacle_y=0.0, obstacle_cost=90)
+n._cost_source_grids = {"radar": n._last_grid}
+n._cost_source_recv_sec = {"radar": 0.0}
+rear_stop_during_reverse = n._should_stop_for_cost(reverse)
+check("reverse 중 rear 장애물 → 정지", rear_stop_during_reverse)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

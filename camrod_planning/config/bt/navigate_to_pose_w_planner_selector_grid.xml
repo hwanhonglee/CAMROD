@@ -9,7 +9,7 @@
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
       <PipelineSequence name="NavigateGoalLocked">
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
-        <!-- HH_260618: Keep SIM-grid BT default aligned with the curvature-preserving route default. -->
+        <!-- HH_260618 - Keep SIM-grid BT default aligned with the curvature-preserving route default. -->
         <PlannerSelector selected_planner="{selected_planner}" default_planner="SmacLattice" topic_name="/planning/planner_selector"/>
         <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector"/>
         <!-- HH_260619 - Keep the SIM global route fixed per goal; local path
@@ -19,13 +19,14 @@
             <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="{selected_planner}"/>
             <Sequence name="ClearGlobalCostmapAndSettle-Context">
               <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
-              <!-- HH_260528: Costmap clear->replan race guard for SIM BT profile. -->
+              <!-- HH_260528 - Costmap clear->replan race guard for SIM BT profile. -->
               <Wait wait_duration="0.4"/>
             </Sequence>
           </RecoveryNode>
         </GoalUpdatedController>
-        <!-- HH_260626: SIM/grid profile also uses the common smoother safely. -->
-        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="true"/>
+        <!-- HH_260630 - SIM/grid profile also uses the common smoother; disable
+             collision checking to avoid false aborts on long rolling-costmap paths. -->
+        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">
           <FollowPath path="{path}" controller_id="{selected_controller}"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
@@ -37,7 +38,7 @@
           <Sequence name="ClearingActions">
             <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
             <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
-            <!-- HH_260528: Let clear services settle before the next recovery branch/planner retry. -->
+            <!-- HH_260528 - Let clear services settle before the next recovery branch/planner retry. -->
             <Wait wait_duration="0.4"/>
           </Sequence>
           <Spin spin_dist="1.57"/>

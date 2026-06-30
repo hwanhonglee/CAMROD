@@ -20,7 +20,7 @@
              then slices the fixed global route around the live robot pose. -->
         <GoalUpdatedController>
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
-            <!-- HH_260626: Try connected/selected route first, then grid fallbacks. -->
+            <!-- HH_260626 - Try connected/selected route first, then grid fallbacks. -->
             <Fallback name="ComputePathPlannerFallback">
               <!-- HH_260619 - Pass the navigator-provided snapped start pose.
                    Without start="{start}", ComputePathToPose silently plans from
@@ -31,15 +31,16 @@
             </Fallback>
             <Sequence name="ClearGlobalCostmapAndSettle-Context">
               <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
-              <!-- HH_260528: Costmap clear->replan race guard.
+              <!-- HH_260528 - Costmap clear->replan race guard.
                    Give global layers one short cycle to repopulate before retrying ComputePath. -->
               <Wait wait_duration="0.4"/>
             </Sequence>
           </RecoveryNode>
         </GoalUpdatedController>
-        <!-- HH_260626: Smooth every planner result before FollowPath; collision
-             check keeps smoothing from cutting across lane/cost boundaries. -->
-        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="true"/>
+        <!-- HH_260630 - Smooth every planner result before FollowPath. Collision
+             checking is disabled here because long LaneletRoute paths can extend
+             outside the rolling/global costmap window and falsely abort smoothing. -->
+        <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">
           <FollowPath path="{path}" controller_id="{selected_controller}"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
@@ -51,7 +52,7 @@
           <Sequence name="ClearingActions">
             <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
             <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
-            <!-- HH_260528: Let clear services settle before the next recovery branch/planner retry. -->
+            <!-- HH_260528 - Let clear services settle before the next recovery branch/planner retry. -->
             <Wait wait_duration="0.4"/>
           </Sequence>
           <Spin spin_dist="1.57"/>

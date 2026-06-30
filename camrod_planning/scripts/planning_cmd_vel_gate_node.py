@@ -348,8 +348,8 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("enable_speed_dependent_lookahead", True).value
         )
         self.front_lookahead_min_m = float(
-            # HH_260623 - Include measured front body extent plus planning margin from robot_base_link.
-            self.declare_parameter("front_lookahead_min_m", 1.30137).value
+            # HH_260630 - Include front radar mount plus roughly 1m sensor-forward clearance.
+            self.declare_parameter("front_lookahead_min_m", 2.10).value
         )
         self.front_lookahead_max_m = float(
             self.declare_parameter("front_lookahead_max_m", 3.0).value
@@ -386,7 +386,9 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("rear_cost_threshold", 85).value
         )
         self.rear_lookahead_m = float(
-            self.declare_parameter("rear_lookahead_m", 0.8).value
+            # HH_260630: Rear dynamic cost cells can land past 0.9 m from the
+            # robot center after grid quantization; keep reverse stop outside it.
+            self.declare_parameter("rear_lookahead_m", 1.2).value
         )
         self.rear_corridor_width_m = float(
             # HH_260623 - Rear scans need full body width plus 0.10 m margin per side.
@@ -627,7 +629,7 @@ class PlanningCmdVelGateNode(Node):
                     self.lanelet_safety_grid_topic,
                     self._on_lanelet_safety_grid,
                     cost_qos,
-            )
+                )
             self.sub_cost_source_grids = []
             if self.cost_source_debug_enable or self.cost_stop_require_dynamic_source:
                 for idx, topic in enumerate(self.cost_source_debug_topics):
@@ -933,6 +935,7 @@ class PlanningCmdVelGateNode(Node):
         self._last_input_cmd_time = self.get_clock().now()
         self._cmd_input_stale = False
         if self._effective_enabled():
+            cmd_to_publish = msg
             # Keep callback robust for lightweight unit-test doubles that may
             # bypass __init__ and not populate newly added yaw-zone fields.
             yaw_alignment_enabled = bool(
@@ -942,21 +945,19 @@ class PlanningCmdVelGateNode(Node):
             if yaw_alignment_enabled and yaw_alignment_zones:
                 override_cmd = self._apply_yaw_alignment_gate(msg)
                 if override_cmd is not None:
-                    self.pub_cmd.publish(self._scale_twist(override_cmd))
-                    return
-            route_heading_enabled = bool(
-                getattr(self, "enable_route_heading_alignment", False)
-            )
-            if route_heading_enabled:
+                    cmd_to_publish = override_cmd
+            route_heading_enabled = bool(getattr(self, "enable_route_heading_alignment", False))
+            if cmd_to_publish is msg and route_heading_enabled:
                 override_cmd = self._apply_route_heading_alignment_gate(msg)
                 if override_cmd is not None:
-                    self.pub_cmd.publish(self._scale_twist(override_cmd))
-                    return
-            if self.enable_cost_stop and self._should_stop_for_cost(msg):
+                    cmd_to_publish = override_cmd
+            # HH_260630: Heading/yaw alignment may rewrite controller commands,
+            # but dynamic obstacle stop must still arbitrate the final motion.
+            if self.enable_cost_stop and self._should_stop_for_cost(cmd_to_publish):
                 if self.publish_zero_when_blocked:
                     self._publish_zero()
                 return
-            self.pub_cmd.publish(self._scale_twist(msg))
+            self.pub_cmd.publish(self._scale_twist(cmd_to_publish))
             return
         if self.publish_zero_when_blocked:
             self._publish_zero()
@@ -1179,6 +1180,70 @@ class PlanningCmdVelGateNode(Node):
         raw = braking + reaction + self.front_lookahead_margin_m
         return max(self.front_lookahead_min_m, min(self.front_lookahead_max_m, raw))
 
+    # HH_260630: Build dynamic obstacle corridors from the commanded motion
+    # direction. Sensor names stay body-fixed, but "front" for safety must follow
+    # cmd_vel during reverse/crab parking maneuvers.
+    def _cost_stop_corridors_for_cmd(
+        self,
+        cmd_in: Twist | None,
+        front_lookahead: float,
+    ) -> list[tuple[str, float, float, float, int, bool]]:
+        front = (
+            "FRONT",
+            0.0,
+            front_lookahead,
+            self.cost_stop_width_m,
+            self.cost_stop_threshold,
+            True,
+        )
+        side_rear = [
+            (
+                "LEFT",
+                math.pi / 2,
+                self.side_lookahead_m,
+                self.side_corridor_width_m,
+                self.side_cost_threshold,
+                False,
+            ),
+            (
+                "RIGHT",
+                -math.pi / 2,
+                self.side_lookahead_m,
+                self.side_corridor_width_m,
+                self.side_cost_threshold,
+                False,
+            ),
+            (
+                "REAR",
+                math.pi,
+                self.rear_lookahead_m,
+                self.rear_corridor_width_m,
+                self.rear_cost_threshold,
+                False,
+            ),
+        ]
+
+        if cmd_in is None:
+            return [front] + (side_rear if self.enable_side_rear_cost_stop else [])
+
+        min_cmd = max(0.0, float(self.lanelet_safety_min_translation_mps))
+        vx = float(cmd_in.linear.x)
+        vy = float(cmd_in.linear.y)
+        corridors: list[tuple[str, float, float, float, int, bool]] = []
+
+        if vx > min_cmd:
+            corridors.append(front)
+        elif self.enable_side_rear_cost_stop and vx < -min_cmd:
+            corridors.append(side_rear[2])
+
+        if self.enable_side_rear_cost_stop:
+            if vy > min_cmd:
+                corridors.append(side_rear[0])
+            elif vy < -min_cmd:
+                corridors.append(side_rear[1])
+
+        return corridors
+
     # Checks all directional corridors and triggers stop when any is blocked.
     def _should_stop_for_cost(self, cmd_in: Twist | None = None) -> bool:
         now_ns = self.get_clock().now().nanoseconds
@@ -1200,120 +1265,129 @@ class PlanningCmdVelGateNode(Node):
             return True
         site_static_bypass = self._should_bypass_static_cost_for_site_maneuver(cmd_in)
 
-        # --- Front stop (LiDAR grid, speed-dependent lookahead) ---
-        lidar_grid = self._last_grid
-        if lidar_grid is not None and lidar_grid.data and lidar_grid.info.resolution > 0.0:
-            front_lookahead = self._compute_front_lookahead()
-            target_frame = str(lidar_grid.header.frame_id).strip()
-            pose_candidates = self._resolve_pose_candidates(target_frame)
+        front_lookahead = self._compute_front_lookahead()
+        corridors = self._cost_stop_corridors_for_cmd(cmd_in, front_lookahead)
+        if not corridors:
+            return False
 
-            if not pose_candidates:
-                if (now_sec - self._last_empty_corridor_warn_sec) >= 2.0:
-                    self._last_empty_corridor_warn_sec = now_sec
-                    self.get_logger().warn(
-                        "cost-stop front: no pose candidates; "
-                        "check pose/costmap frame alignment"
-                    )
-            else:
-                best_total = -1
-                best_label = ""
-                best_lethal: list[tuple[int, int]] = []
-                for label, pose in pose_candidates:
-                    blocked, total_cells, lethal_cells, blocked_detail = self._sample_cost_corridor(
-                        lidar_grid, pose,
-                        yaw_offset=0.0,
-                        lookahead=front_lookahead,
-                        width=self.cost_stop_width_m,
-                        threshold=self.cost_stop_threshold,
-                    )
-                    if blocked:
-                        if not self._merged_cost_should_block(
-                            blocked_detail,
-                            threshold=self.cost_stop_threshold,
-                            direction="FRONT",
-                            source_label=label,
-                            lookahead_m=front_lookahead,
-                        ):
-                            continue
-                        if site_static_bypass and not self._dynamic_obstacle_source_blocks(
-                            blocked_detail
-                        ):
-                            self._log_site_static_cost_bypass(
-                                "FRONT", label, front_lookahead, blocked_detail
-                            )
-                            continue
-                        self._cost_blocked_until = now_sec + self.cost_stop_hold_s
-                        cause = self._format_cost_source_debug(blocked_detail)
-                        self.get_logger().warn(
-                            f"cost-stop FRONT: source={label} "
-                            f"lookahead={front_lookahead:.2f}m "
-                            f"speed={self._current_speed:.2f}m/s "
-                            f"cause={cause} "
-                            f"hold={self.cost_stop_hold_s:.2f}s"
-                        )
-                        return True
-                    if total_cells > best_total:
-                        best_total = total_cells
-                        best_label = label
-                        best_lethal = lethal_cells
+        if self._should_stop_for_dynamic_source_corridors(corridors, now_sec):
+            return True
 
-                if self.enable_unavoidable_stop and best_lethal:
-                    if self._is_unavoidable_cluster(best_lethal, max(1, best_total)):
-                        self._cost_blocked_until = now_sec + self.cost_stop_hold_s
-                        self.get_logger().warn(
-                            f"cost-stop FRONT (unavoidable): source={best_label} "
-                            f"lethal={self._last_unavoidable_cluster_cells} "
-                            f"ratio={self._last_unavoidable_cluster_ratio:.2f} "
-                            f"hold={self.cost_stop_hold_s:.2f}s"
-                        )
-                        return True
+        merged_grid = self._last_grid
+        if merged_grid is None or not merged_grid.data or merged_grid.info.resolution <= 0.0:
+            return False
 
-        # --- Side / Rear stop (same merged grid, fixed short lookaheads) ---
-        if self.enable_side_rear_cost_stop:
-            merged_grid = self._last_grid
-            if merged_grid is not None and merged_grid.data and merged_grid.info.resolution > 0.0:
-                target_frame = str(merged_grid.header.frame_id).strip()
-                pose_candidates = self._resolve_pose_candidates(target_frame)
-                if pose_candidates:
-                    label, pose = pose_candidates[0]
-                    for direction, yaw_off, la, wd, thr in (
-                        ("LEFT",  math.pi / 2,  self.side_lookahead_m, self.side_corridor_width_m, self.side_cost_threshold),
-                        ("RIGHT", -math.pi / 2, self.side_lookahead_m, self.side_corridor_width_m, self.side_cost_threshold),
-                        ("REAR",  math.pi,      self.rear_lookahead_m, self.rear_corridor_width_m, self.rear_cost_threshold),
+        target_frame = str(merged_grid.header.frame_id).strip()
+        pose_candidates = self._resolve_pose_candidates(target_frame)
+        if not pose_candidates:
+            if (now_sec - self._last_empty_corridor_warn_sec) >= 2.0:
+                self._last_empty_corridor_warn_sec = now_sec
+                self.get_logger().warn(
+                    "cost-stop: no pose candidates; "
+                    "check pose/costmap frame alignment"
+                )
+            return False
+
+        best_total = -1
+        best_label = ""
+        best_lethal: list[tuple[int, int]] = []
+        for label, pose in pose_candidates:
+            for direction, yaw_off, la, wd, thr, check_unavoidable in corridors:
+                blocked, total_cells, lethal_cells, blocked_detail = self._sample_cost_corridor(
+                    merged_grid,
+                    pose,
+                    yaw_offset=yaw_off,
+                    lookahead=la,
+                    width=wd,
+                    threshold=thr,
+                )
+                if blocked:
+                    if not self._merged_cost_should_block(
+                        blocked_detail,
+                        threshold=thr,
+                        direction=direction,
+                        source_label=label,
+                        lookahead_m=la,
                     ):
-                        blocked, _, _, blocked_detail = self._sample_cost_corridor(
-                            merged_grid, pose,
-                            yaw_offset=yaw_off,
-                            lookahead=la,
-                            width=wd,
-                            threshold=thr,
+                        continue
+                    if site_static_bypass and not self._dynamic_obstacle_source_blocks(
+                        blocked_detail,
+                        threshold=thr,
+                    ):
+                        self._log_site_static_cost_bypass(
+                            direction, label, la, blocked_detail
                         )
-                        if blocked:
-                            if not self._merged_cost_should_block(
-                                blocked_detail,
-                                threshold=thr,
-                                direction=direction,
-                                source_label=label,
-                                lookahead_m=la,
-                            ):
-                                continue
-                            if site_static_bypass and not self._dynamic_obstacle_source_blocks(
-                                blocked_detail
-                            ):
-                                self._log_site_static_cost_bypass(
-                                    direction, label, la, blocked_detail
-                                )
-                                continue
-                            self._cost_blocked_until = now_sec + self.cost_stop_hold_s
-                            cause = self._format_cost_source_debug(blocked_detail)
-                            self.get_logger().warn(
-                                f"cost-stop {direction}: source={label} "
-                                f"lookahead={la:.2f}m "
-                                f"cause={cause} "
-                                f"hold={self.cost_stop_hold_s:.2f}s"
-                            )
-                            return True
+                        continue
+                    self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                    cause = self._format_cost_source_debug(blocked_detail)
+                    self.get_logger().warn(
+                        f"cost-stop {direction}: source={label} "
+                        f"lookahead={la:.2f}m "
+                        f"speed={self._current_speed:.2f}m/s "
+                        f"cause={cause} "
+                        f"hold={self.cost_stop_hold_s:.2f}s"
+                    )
+                    return True
+                if check_unavoidable and total_cells > best_total:
+                    best_total = total_cells
+                    best_label = label
+                    best_lethal = lethal_cells
 
+        if self.enable_unavoidable_stop and best_lethal:
+            if self._is_unavoidable_cluster(best_lethal, max(1, best_total)):
+                self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                self.get_logger().warn(
+                    f"cost-stop FRONT (unavoidable): source={best_label} "
+                    f"lethal={self._last_unavoidable_cluster_cells} "
+                    f"ratio={self._last_unavoidable_cluster_ratio:.2f} "
+                    f"hold={self.cost_stop_hold_s:.2f}s"
+                )
+                return True
+
+        return False
+
+    # HH_260630: Sample live dynamic source grids directly before consulting
+    # the merged inflation grid. A static lanelet/global-path cell can be the
+    # first high merged-grid hit in a side/rear corridor; ignoring that static
+    # hit must not hide a live LiDAR/Radar obstacle farther along the same corridor.
+    def _should_stop_for_dynamic_source_corridors(
+        self,
+        corridors: list[tuple[str, float, float, float, int, bool]],
+        now_sec: float,
+    ) -> bool:
+        for source_label, grid in self._cost_source_grids.items():
+            if not self._source_label_matches(source_label, self.cost_stop_dynamic_source_labels):
+                continue
+            recv_sec = self._cost_source_recv_sec.get(source_label, 0.0)
+            if self.cost_source_debug_max_age_s > 0.0 and (
+                now_sec - recv_sec
+            ) > self.cost_source_debug_max_age_s:
+                continue
+            if grid is None or not grid.data or grid.info.resolution <= 0.0:
+                continue
+
+            target_frame = str(grid.header.frame_id).strip()
+            for pose_label, pose in self._resolve_pose_candidates(target_frame):
+                for direction, yaw_off, lookahead, width, threshold, _ in corridors:
+                    blocked, _, _, detail = self._sample_cost_corridor(
+                        grid,
+                        pose,
+                        yaw_offset=yaw_off,
+                        lookahead=lookahead,
+                        width=width,
+                        threshold=threshold,
+                    )
+                    if not blocked:
+                        continue
+                    self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                    wx, wy, cost = detail if detail is not None else (pose[0], pose[1], -1)
+                    self.get_logger().warn(
+                        f"cost-stop {direction}: source={pose_label} "
+                        f"dynamic={source_label}:{cost}@({wx:.2f},{wy:.2f}) "
+                        f"lookahead={lookahead:.2f}m "
+                        f"hold={self.cost_stop_hold_s:.2f}s"
+                    )
+                    return True
         return False
 
     # HH_260618: Returns true only for mission-owned campsite parking commands.
@@ -1592,6 +1666,9 @@ class PlanningCmdVelGateNode(Node):
             return False
         if self._should_bypass_static_lanelet_for_drop_zone_exit(cmd_in, now_sec):
             return False
+        if self._should_bypass_static_cost_for_site_maneuver(cmd_in):
+            self._log_site_lanelet_static_bypass(cmd_in, now_sec)
+            return False
 
         for label, pose in pose_candidates:
             pose_x, pose_y, _ = pose
@@ -1800,6 +1877,16 @@ class PlanningCmdVelGateNode(Node):
                 f"cmd_x={float(cmd_in.linear.x):.2f}m/s"
             )
         return True
+
+    def _log_site_lanelet_static_bypass(self, cmd_in: Twist, now_sec: float) -> None:
+        if (now_sec - self._last_lateral_static_bypass_log_sec) < 2.0:
+            return
+        self._last_lateral_static_bypass_log_sec = now_sec
+        self.get_logger().info(
+            "lanelet-safety site-maneuver static bypass: "
+            f"cmd_x={float(cmd_in.linear.x):.2f}m/s "
+            f"cmd_y={float(cmd_in.linear.y):.2f}m/s"
+        )
 
     def _is_drop_zone_exit_phase(self) -> bool:
         # HH_260624 - Keep drop-zone exit phase checks centralized so route
@@ -2422,7 +2509,12 @@ class PlanningCmdVelGateNode(Node):
                     cost = int(grid.data[idx])
                     total_cells += 1
                     if cost >= stop_threshold:
-                        return True, total_cells, lethal_cells, (wx, wy, cost)
+                        # HH_260630: Return the actual occupied cell center so
+                        # source-grid attribution samples the same cell instead
+                        # of a neighboring floor/round boundary case.
+                        cell_wx = origin_x + (mx + 0.5) * res
+                        cell_wy = origin_y + (my + 0.5) * res
+                        return True, total_cells, lethal_cells, (cell_wx, cell_wy, cost)
                     if cost >= self.unavoidable_lethal_threshold:
                         lethal_cells.append((mx, my))
 

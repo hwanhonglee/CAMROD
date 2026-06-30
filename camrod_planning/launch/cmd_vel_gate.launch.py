@@ -93,8 +93,8 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_static_bypass_phases', default_value='EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
         # HH_260422: Speed-dependent front lookahead parameters.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
-        # HH_260623 - Minimum front scan reaches measured front bumper plus planning margin.
-        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='1.30137'),
+        # HH_260630 - Minimum front scan reaches the front radar mount plus about 1m clearance.
+        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='2.10'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_max_m', default_value='3.0'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_friction', default_value='0.4'),
         DeclareLaunchArgument('cmd_vel_gate_front_reaction_time_s', default_value='0.15'),
@@ -102,12 +102,12 @@ def generate_launch_description():
         # HH_260622: Side/rear cost-stop samples the merged grid, but blocks
         # only when dynamic source attribution owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
-        DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='92'),
-        DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='0.8'),
+        DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='85'),
+        DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='1.2'),
         # HH_260623 - Side scan width covers full body length plus front/rear margins.
         DeclareLaunchArgument('cmd_vel_gate_side_corridor_width_m', default_value='1.69160'),
-        DeclareLaunchArgument('cmd_vel_gate_rear_cost_threshold', default_value='92'),
-        DeclareLaunchArgument('cmd_vel_gate_rear_lookahead_m', default_value='0.6'),
+        DeclareLaunchArgument('cmd_vel_gate_rear_cost_threshold', default_value='85'),
+        DeclareLaunchArgument('cmd_vel_gate_rear_lookahead_m', default_value='1.2'),
         # HH_260623 - Rear scan width covers full body width plus left/right margins.
         DeclareLaunchArgument('cmd_vel_gate_rear_corridor_width_m', default_value='1.27'),
         # HH_260618: Allow explicit parking/site crab to cross static

@@ -24,7 +24,8 @@
     sample_step_m: 0.25
     corridor_half_width_m: 0.55
     lateral_step_m: 0.25
-    obstacle_cost_threshold: 85
+    # HH_260630: Trigger dynamic replanning before the 85-cost hard-stop zone.
+    obstacle_cost_threshold: 60
     min_blocked_samples: 5
     blocked_sample_ratio: 0.08
     block_hold_s: 2.0
