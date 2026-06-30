@@ -1,0 +1,91 @@
+/planning/planning_state_machine:
+  ros__parameters:
+    enabled: true
+    # HH_260617: Sim planning/control tests should not enter ERROR_STOP because
+    # hardware-oriented diagnostics are intentionally absent or stale. The normal
+    # hardware profile still uses /system/diagnostics_agg.
+    state_status_topic: "/planning/disabled_diagnostics"
+    pose_topic: "/planning/lanelet_pose_ros"
+    # HH_260617: Canonical goal naming used in logs/docs:
+    #   mission_key = semantic site/key name on mission_key_topic (e.g. camping_site_1)
+    #   site_goal   = raw site-center PoseStamped on /goal_pose from UI/RViz
+    #   route_goal  = lanelet-snapped PoseStamped consumed by Nav2
+    goal_topic: "/planning/goal_pose_snapped_ros"
+    goal_topic_ros: "/planning/goal_pose_snapped_ros"
+    # HH_260623 - Auto return/drop-zone goals are raw station poses and must be
+    # snapped before Nav2; campsite UI goals still use /goal_pose.
+    auto_goal_snapper_input_topic: "/planning/auto_goal_raw"
+    auto_goal_snapper_keys: ["drop_zone"]
+    state_topic: "/planning/state_machine/state"
+    estop_topic: "/planning/state_machine/estop"
+
+    scenario_id_topic: "/planning/state_machine/scenario_id"
+    scenario_command_topic: "/planning/state_machine/scenario_command"
+    # HH_260622 - Sim must expose parking/site maneuver phases through the same
+    # planning state contract as hardware bringup.
+    enable_parking_phase_state_override: true
+    parking_phase_state_topic: "/AMR_service_state"
+    # HH_260622 - Parking phase transition events persist until an explicit mission/route change clears them.
+    parking_phase_override_timeout_s: 0.0
+    return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
+    camping_site_recall_topic: "/planning/state_machine/camping_site_recall"
+    mission_source_topic: "/planning/state_machine/mission_source"
+    return_mission_key: "drop_zone"
+    # HH_260624 - Select the map-exported drop-zone area used for return goals.
+    drop_zone_id: "drop_zone"
+    # HH_260624 - RViz/debug copy of the raw station-center return target.
+    drop_zone_goal_raw_topic: "/planning/drop_zone_goal_raw"
+    # HH_260624 - Preserve manual /goal_pose drop-zone semantics before goal_snapper snaps to lanelet.
+    raw_goal_topic: "/goal_pose"
+    enable_raw_drop_zone_goal_match: true
+    drop_zone_raw_goal_match_distance_m: 3.0
+    mission_key_topic: "/planning/mission_key"
+    mission_key_publish_route_goal: false
+    request_mission_service: "/planning/request_mission"
+    status_stream_topic: "/status_stream"
+
+    keypoints_yaml: ""
+    camping_sites_yaml: ""
+    startup_mission_key: "drop_zone"
+    warn_mission_key: "garage"
+
+    auto_startup_goal: false
+    auto_warn_recovery_goal: false
+    auto_estop_on_error: false
+
+    enable_auto_return_on_site_goal: false
+    site_mission_key_prefix: "camping_site_"
+    goal_reached_dwell_s: 10.0
+    mission_key_match_distance_m: 1.5
+    # HH_260618: Preserve drop_zone semantic key for return route-goal echoes
+    # that are lanelet-snap poses rather than the exact station center.
+    return_goal_key_preserve_distance_m: 5.0
+    # HH_260618: Preserve camping_site_* semantic key for repeated snapped route-goal echoes.
+    site_goal_key_preserve_distance_m: 2.0
+    # HH_260619 - UI sends mission_key before raw campsite goal. Keep that key
+    # authoritative for the next snapped route goal to avoid drop_zone mis-match.
+    pending_mission_key_preserve_s: 5.0
+    pending_mission_key_overrides_goal_match: true
+
+    require_docking_for_idle: false
+    docking_status_topic: "/docking/is_charging"
+
+    min_goal_publish_interval_s: 1.0
+    # HH_260623 - Sim state handoff follows robot_base_link-center arrival so
+    # RViz validation matches the real Nav2 stop reference.
+    # HH_260630: Sim initialpose/EKF settling can leave /planning/lanelet_pose_ros
+    # about 0.30 m from a freshly snapped route goal even when the fake vehicle is
+    # placed on the entry pose. Keep hardware profile tighter; this only unblocks
+    # deterministic site-maneuver handoff tests in sim:=true.
+    goal_reached_distance_m: 0.35
+    require_nav2_success_for_goal_reached: false
+    nav_status_topic: "/planning/navigate_to_pose/_action/status"
+    nav_status_goal_match_tolerance_s: 0.5
+    nav_success_latch_s: 3.0
+    # HH_260623 - Keep return handoff slightly wider than generic arrival for
+    # lanelet-snap/drop-zone geometry, but still center-based.
+    return_goal_reached_distance_m: 0.3
+    # HH_260623 - Hold GOAL_REACHED/RETURN_TO_DROP_ZONE long enough for
+    # drop_zone_parking to start reliably instead of missing a one-tick event.
+    drop_zone_parking_handoff_hold_s: 1.0
+    loop_rate_hz: 5.0

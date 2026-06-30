@@ -99,6 +99,9 @@ class UiBackendNode(Node):
         self.amr_service_state_topic = str(
             self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
         )
+        self.site_maneuver_return_topic = str(
+            self.declare_parameter("site_maneuver_return_topic", "/parking/site_maneuver/return").value
+        )
         self.publish_mission_key = bool(self.declare_parameter("publish_mission_key", True).value)
         self.publish_goal_pose = bool(self.declare_parameter("publish_goal_pose", True).value)
         self.publish_engage_from_destination = bool(
@@ -181,6 +184,9 @@ class UiBackendNode(Node):
         self.pub_platform_drive_enable = self.create_publisher(
             Bool, self.platform_drive_enable_topic, 10
         )
+        self.pub_site_maneuver_return = self.create_publisher(
+            Bool, self.site_maneuver_return_topic, 10
+        )
         self.pub_mission_key = self.create_publisher(
             PlanningMissionKey, self.planning_mission_key_topic, 10
         )
@@ -199,6 +205,7 @@ class UiBackendNode(Node):
             f"engage_topic={self.planning_engage_topic} "
             f"mission_engage_topic={self.planning_mission_engage_topic} "
             f"platform_drive_enable_topic={self.platform_drive_enable_topic} "
+            f"site_maneuver_return_topic={self.site_maneuver_return_topic} "
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'}"
@@ -381,16 +388,38 @@ class UiBackendNode(Node):
         self.get_logger().info(
             f"AMR service state received: {state} ({msg.description})"
         )
-        if state == AvgAmrServiceState.SITE_ARRIVED:
+        arrival_states = {
+            int(AvgAmrServiceState.SITE_ARRIVED),
+            int(AvgAmrServiceState.UNLOAD_WAIT),
+            int(AvgAmrServiceState.GUEST_LOADING_WAIT),
+        }
+        returning_states = {
+            int(AvgAmrServiceState.RETURNING_TO_DROP_ZONE),
+            int(AvgAmrServiceState.RETURN_WITH_CARGO),
+            int(AvgAmrServiceState.DROP_ZONE_PARKING),
+        }
+        if state in arrival_states:
             with self._lock:
                 site = self._state.destination.get("site", "")
             if site:
-                self._schedule_broadcast({"arrived": site})
+                self._schedule_broadcast({"arrived": site, "site": site, "amr_state": state})
             if self.publish_mission_engage_from_destination:
-                self._publish_mission_engage(False, source="amr_service_state:SITE_ARRIVED")
-            self._publish_engage(False, source="amr_service_state:SITE_ARRIVED")
+                self._publish_mission_engage(False, source=f"amr_service_state:{state}")
+            self._publish_engage(False, source=f"amr_service_state:{state}")
         elif state == AvgAmrServiceState.DROP_ZONE_WAIT:
             self._schedule_broadcast({"amr_state": 0})
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(False, source="amr_service_state:DROP_ZONE_WAIT")
+            self._publish_engage(False, source="amr_service_state:DROP_ZONE_WAIT")
+        elif state in returning_states:
+            self._schedule_broadcast({"amr_state": state, "returning": True})
+            # HH_260630 - Return-to-drop-zone must re-open the mission/platform
+            # gates after the site arrival hold closed them.
+            if state == int(AvgAmrServiceState.RETURNING_TO_DROP_ZONE):
+                self._publish_site_maneuver_return(source="amr_service_state:RETURNING_TO_DROP_ZONE")
+            self._publish_engage(False, source=f"amr_service_state:{state}:manual_clear")
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(True, source=f"amr_service_state:{state}")
         elif state == AvgAmrServiceState.GUEST_RECALL_SERVICE:
             # HJ_260601: Notify robot UI that guest requested a recall.
             self._schedule_broadcast({"guest_recall": True})
@@ -402,6 +431,11 @@ class UiBackendNode(Node):
             AvgAmrServiceState.SITE_ARRIVED:           "Site 도착",
             AvgAmrServiceState.RETURNING_TO_DROP_ZONE: "Site → Drop Zone 복귀 중",
             AvgAmrServiceState.GUEST_RECALL_SERVICE:   "Guest 호출 요청",
+            AvgAmrServiceState.SITE_ENTRY:             "Site 진입 중",
+            AvgAmrServiceState.UNLOAD_WAIT:            "Site 하차 대기",
+            AvgAmrServiceState.GUEST_LOADING_WAIT:     "Guest 적재 대기",
+            AvgAmrServiceState.RETURN_WITH_CARGO:      "Site 이탈 중",
+            AvgAmrServiceState.DROP_ZONE_PARKING:      "Drop Zone 주차 중",
         }
         msg = AvgAmrServiceState()
         msg.state = state
@@ -431,6 +465,14 @@ class UiBackendNode(Node):
         )
 
     # ── Goal and engage publishing ────────────────────────────────────────────
+
+    def _publish_site_maneuver_return(self, source: str) -> None:
+        msg = Bool()
+        msg.data = True
+        self.pub_site_maneuver_return.publish(msg)
+        self.get_logger().info(
+            f"site maneuver return ({source}) -> {self.site_maneuver_return_topic}: true"
+        )
 
     def _publish_platform_drive_enable(self, enabled: bool, source: str) -> None:
         if not self.publish_platform_drive_enable_with_engage:
@@ -810,9 +852,10 @@ class UiBackendNode(Node):
                     # Guest recall request is state=4 and is published by ui_guest_node.
                     if payload.get("usage_complete"):
                         node._publish_amr_service_state(AvgAmrServiceState.RETURNING_TO_DROP_ZONE, source="ws:usage_complete")
+                        node._publish_site_maneuver_return(source="ws:usage_complete")
+                        node._publish_engage(False, source="ws:usage_complete:manual_clear")
                         if node.publish_mission_engage_from_destination:
-                            node._publish_mission_engage(False, source="ws:usage_complete")
-                        node._publish_engage(False, source="ws:usage_complete")
+                            node._publish_mission_engage(True, source="ws:usage_complete")
                         with node._lock:
                             node._state.ws_site_states = {s: False for s in node.site_names}
                         await node._broadcast({"states": {s: False for s in node.site_names}})

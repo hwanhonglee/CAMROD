@@ -1,0 +1,323 @@
+# ============================================================
+# Robot Diagnostics Aggregator 설정 파일
+# ============================================================
+#
+# DiagnosticStatus.name 형식: "<node_name>: <task_name>"
+#   예) gnss_checker 노드 + add_task("/sensor/gnss/main")
+#       → name = "gnss_checker: /sensor/gnss/main"
+#
+# group: 로그 요약 및 집계에 사용되는 도메인 그룹명
+#
+# ============================================================
+
+global:
+  timeout_s: 5.0
+  publish_rate_hz: 1.0
+  # HH_260617: These raw diagnostics are still available on /system/diagnostics,
+  # but they must not feed the planning FSM diagnostics input.
+  ignored_names:
+    - "system/diagnostic"
+    - "planning_state_checker: /planning/state_machine/state"
+    # HH_260630: Sim fake sensors do not run hardware camera/raw-LiDAR drivers,
+    # and SEN0592 range topics are intentionally silent when no target exists.
+    # Keep source checkers visible on /system/diagnostics but exclude these
+    # hardware-only entries from UI/planning readiness in sim.
+    - "camera_checker: /sensor/camera/econ_front"
+    - "camera_checker: /sensor/camera/econ_rear"
+    - "lidar_checker: /sensor/lidar/main"
+    - "radar_checker: /sensor/radar/FRONT1"
+    - "radar_checker: /sensor/radar/FRONT2"
+    - "radar_checker: /sensor/radar/LEFT1"
+    - "radar_checker: /sensor/radar/LEFT2"
+    - "radar_checker: /sensor/radar/RIGHT1"
+    - "radar_checker: /sensor/radar/RIGHT2"
+    - "radar_checker: /sensor/radar/REAR"
+    - "perception_obstacle_checker: /perception/obstacles/camera_detections"
+
+topics:
+
+  # ── Hardware ──────────────────────────────────────────────────────────
+  - name: "hw_checker: /hardware/cpu"
+    group: hardware
+    timeout_s: 5.0
+
+  - name: "hw_checker: /hardware/memory"
+    group: hardware
+    timeout_s: 5.0
+
+  - name: "hw_checker: /hardware/disk"
+    group: hardware
+    timeout_s: 5.0
+
+  - name: "hw_checker: /hardware/cpu_temp"
+    group: hardware
+    timeout_s: 5.0
+
+  - name: "gpu_checker: /hardware/gpu0"
+    group: hardware
+    timeout_s: 5.0
+
+  # ── Hardware: Network ─────────────────────────────────────────────────
+  # HH_260617: Sim profile excludes WiFi network checks; no wlan0 is required for planning/control smoke tests.
+  # ── Sensing: GNSS ─────────────────────────────────────────────────────
+  - name: "gnss_checker: /sensor/gnss/main"
+    group: sensing/gnss
+    timeout_s: 3.0
+
+  # ── Sensing: IMU ──────────────────────────────────────────────────────
+  - name: "imu_checker: /sensor/imu/main"
+    group: sensing/imu
+    timeout_s: 2.0
+
+  # ── Sensing: LiDAR ────────────────────────────────────────────────────
+  # HH_260630: lidar/main remains listed for raw diagnostics visibility, but
+  # is ignored above in sim readiness because the Vanjee driver is disabled.
+  - name: "lidar_checker: /sensor/lidar/main"
+    group: sensing/lidar
+    timeout_s: 3.0
+
+  - name: "lidar_checker: /sensor/lidar/filtered"
+    group: sensing/lidar
+    timeout_s: 3.0
+
+  # ── Sensing: Radar (SEN0592 7채널) ────────────────────────────────────
+  # HH_260623 - Keep simulated diagnostics aligned with the latest dual-front radar layout.
+  - name: "radar_checker: /sensor/radar/FRONT1"
+    group: sensing/radar
+    timeout_s: 3.0
+
+  - name: "radar_checker: /sensor/radar/FRONT2"
+    group: sensing/radar
+    timeout_s: 3.0
+
+  - name: "radar_checker: /sensor/radar/REAR"
+    group: sensing/radar
+    timeout_s: 3.0
+
+  - name: "radar_checker: /sensor/radar/LEFT2"
+    group: sensing/radar
+    timeout_s: 3.0
+
+  - name: "radar_checker: /sensor/radar/LEFT1"
+    group: sensing/radar
+    timeout_s: 3.0
+
+  - name: "radar_checker: /sensor/radar/RIGHT2"
+    group: sensing/radar
+    timeout_s: 3.0
+
+  - name: "radar_checker: /sensor/radar/RIGHT1"
+    group: sensing/radar
+    timeout_s: 3.0
+
+  # ── Sensing: Camera ───────────────────────────────────────────────────
+  - name: "camera_checker: /sensor/camera/econ_front"
+    group: sensing/camera
+    timeout_s: 3.0
+
+  - name: "camera_checker: /sensor/camera/econ_rear"
+    group: sensing/camera
+    timeout_s: 3.0
+
+  # ── Sensing: Wheel Odometry ───────────────────────────────────────────
+  - name: "wheel_odometry_checker: /sensor/wheel/main"
+    group: sensing/wheel
+    timeout_s: 3.0
+
+  # ── Sensing/Planning: Cost Grid outputs ───────────────────────────────
+  - name: "cost_grid_checker: /sensing/cost_grid/lidar"
+    group: sensing/cost_grid
+    timeout_s: 5.0
+
+  - name: "cost_grid_checker: /sensing/cost_grid/radar"
+    group: sensing/cost_grid
+    timeout_s: 5.0
+
+  # HH_260630 - Inflation grid is produced by camrod_sensing and consumed by planning.
+  - name: "cost_grid_checker: /planning/cost_grid/inflation"
+    group: planning/cost_grid
+    timeout_s: 5.0
+
+  # ── Sensing: Velocity Converter ───────────────────────────────────────
+  - name: "velocity_converter_checker: /sensing/velocity_converter"
+    group: sensing/velocity
+    timeout_s: 3.0
+
+  # ── Localization: GNSS 입력 품질 ──────────────────────────────────────
+  - name: "localization_gnss_checker: /localization/gnss/main"
+    group: localization/gnss
+    timeout_s: 5.0
+
+  # ── Localization: 모드·신뢰도 ─────────────────────────────────────────
+  - name: "localization_mode_checker: /localization/mode"
+    group: localization/mode
+    timeout_s: 5.0
+
+  # ── Localization: 위치 추정 출력 품질 ─────────────────────────────────
+  - name: "localization_pose_checker: /localization/pose"
+    group: localization/pose
+    timeout_s: 3.0
+
+  # ── Localization: Drop zone 초기화 ────────────────────────────────────
+  - name: "localization_init_checker: /localization/init"
+    group: localization/init
+    timeout_s: 10.0
+
+  # ── Localization: ESKF / Fallback 소스 전환 ───────────────────────────
+  - name: "localization_source_checker: /localization/source"
+    group: localization/source
+    timeout_s: 5.0
+
+  # ── Localization: Lanelet 맵 범위 ─────────────────────────────────────
+  - name: "localization_lanelet_checker: /localization/lanelet"
+    group: localization/lanelet
+    timeout_s: 3.0
+
+  # ── Perception: 카메라 객체 검출 ──────────────────────────────────────
+  - name: "perception_obstacle_checker: /perception/obstacles/camera_detections"
+    group: perception/detections
+    timeout_s: 5.0
+
+  # ── Perception: 장애물 융합 출력 ──────────────────────────────────────
+  - name: "perception_obstacle_checker: /perception/obstacles/fused_obstacles"
+    group: perception/obstacles
+    timeout_s: 5.0
+
+  # ── Planning: 경로 품질 ───────────────────────────────────────────────
+  - name: "planning_path_checker: /planning/path/global_path"
+    group: planning/path
+    timeout_s: 5.0
+
+  - name: "planning_path_checker: /planning/path/local_path"
+    group: planning/path
+    timeout_s: 5.0
+
+  # ── Planning: Costmap 신선도 ──────────────────────────────────────────
+  - name: "planning_costmap_checker: /planning/global_costmap"
+    group: planning/costmap
+    timeout_s: 5.0
+
+  - name: "planning_costmap_checker: /planning/local_costmap"
+    group: planning/costmap
+    timeout_s: 5.0
+
+  # ── Planning: Nav2 액션 abort 빈도 ────────────────────────────────────
+  - name: "planning_nav_status_checker: /planning/nav_status"
+    group: planning/nav_status
+    timeout_s: 8.0
+
+  # ── Planning: CAMROD semantic state machine ───────────────────────────
+  # HH_260617: Do not feed planning_state_checker back into the
+  # state-machine diagnostics input; it creates an ERROR_STOP self-loop.
+
+  # ── Planning: Nav2 노드 lifecycle 상태 ────────────────────────────────
+  - name: "planning_lifecycle_checker: /planning/lifecycle/planning/planner_server"
+    group: planning/lifecycle
+    timeout_s: 8.0
+
+  - name: "planning_lifecycle_checker: /planning/lifecycle/planning/controller_server"
+    group: planning/lifecycle
+    timeout_s: 8.0
+
+  - name: "planning_lifecycle_checker: /planning/lifecycle/planning/bt_navigator"
+    group: planning/lifecycle
+    timeout_s: 8.0
+
+  - name: "planning_lifecycle_checker: /planning/lifecycle/planning/behavior_server"
+    group: planning/lifecycle
+    timeout_s: 8.0
+
+  # ── Map: Lanelet 레인 제약 격자 ───────────────────────────────────────
+  - name: "map_cost_grid_checker: /map/cost_grid"
+    group: map/cost_grid
+    timeout_s: 5.0
+
+  # ── Platform: Ranger chassis / normalized bridge ──────────────────────
+  - name: "ranger_platform_checker: /platform/ranger/connection"
+    group: platform/ranger
+    timeout_s: 3.0
+
+  - name: "ranger_platform_checker: /platform/ranger/vehicle"
+    group: platform/ranger
+    timeout_s: 3.0
+
+  - name: "ranger_platform_checker: /platform/ranger/control_mode"
+    group: platform/ranger
+    timeout_s: 3.0
+
+  - name: "ranger_platform_checker: /platform/ranger/error_code"
+    group: platform/ranger
+    timeout_s: 3.0
+
+  - name: "ranger_platform_checker: /platform/ranger/battery"
+    group: platform/ranger
+    timeout_s: 3.0
+
+  - name: "ranger_platform_checker: /platform/ranger/odom"
+    group: platform/ranger
+    timeout_s: 3.0
+
+  - name: "ranger_platform_checker: /platform/ranger/actuator"
+    group: platform/ranger
+    timeout_s: 3.0
+
+  # ── System: tools 채널(system_checker/system_diagnostic) ───────────────
+  # NOTE: 여기의 name은 ROS topic 이름이 아니라 DiagnosticStatus.name 문자열.
+  # HH_260617: Do not aggregate system/diagnostic into the same stream consumed
+  # by planning_state_machine. system_diagnostic already summarizes the stream,
+  # so feeding it back creates an indirect ERROR_STOP self-loop.
+
+  - name: "system_checker/nodes"
+    group: system/checker
+    timeout_s: 5.0
+
+  - name: "system_checker/topics"
+    group: system/checker
+    timeout_s: 5.0
+
+  # HH_260617: Module-level graph manifests emitted by system_checker_node.
+  - name: "system_checker/map"
+    group: map/manifest
+    timeout_s: 5.0
+
+  - name: "system_checker/sensing"
+    group: sensing/manifest
+    timeout_s: 5.0
+
+  - name: "system_checker/localization"
+    group: localization/manifest
+    timeout_s: 5.0
+
+  - name: "system_checker/perception"
+    group: perception/manifest
+    timeout_s: 5.0
+
+  - name: "system_checker/planning"
+    group: planning/manifest
+    timeout_s: 5.0
+
+  # HH_260618: Final parking is a capability-level alternative group
+  # (camrod_parking OR camrod_docking), so common diagnostics must not require
+  # method-specific runtime status names.
+  - name: "system_checker/final_parking"
+    group: parking/manifest
+    timeout_s: 3.0
+
+  # HH_260618: Method-specific rule-based parking statuses are classified if
+  # received. diagnostics_aggregator does not pre-create stale entries, so these
+  # do not penalize parking_method=docking runs.
+  - name: "parking/site_maneuver"
+    group: parking/runtime
+    timeout_s: 3.0
+
+  - name: "parking/drop_zone_parking"
+    group: parking/runtime
+    timeout_s: 3.0
+
+  - name: "system_checker/platform"
+    group: platform/manifest
+    timeout_s: 5.0
+
+  - name: "system_checker/ui"
+    group: ui/manifest
+    timeout_s: 5.0

@@ -59,6 +59,7 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
 > HH_260622 - `map_info.yaml` now defaults to the `copy_park` validation map. `_bringup_impl.py` also infers `map_profile` from `map_profile` or the OSM filename and loads matching `drop_zones (<profile>).yaml` / `camping_sites (<profile>).yaml` when those files exist.
 > HH_260630 - When `sim:=true`, bringup selects `camrod_system/config/system_checker_sim.yaml` in addition to the `diagnostics/sim` profile. Fake-sensor runs therefore check the simulated public topic graph without requiring real GNSS/IMU/LiDAR/camera/Ranger driver nodes.
 > HH_260630 - UI manual engage and camping-site destination buttons publish `/platform/drive_enable` together with the relevant planning engage latch. `/platform/set_enabled` remains a CLI/debug fallback, not the normal operator path.
+> HH_260630 - Package config trees are synchronized into `camrod_bringup/config`; bringup passes `config/system/diagnostics` to `camrod_system` so the synchronized system checker profiles are actually used.
 
 ---
 

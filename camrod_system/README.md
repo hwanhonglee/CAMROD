@@ -289,6 +289,7 @@ ros2 launch camrod_system system.launch.py [ARG:=VALUE ...]
 |---|---|---|
 | `module_namespace` | `system` | ROS 2 node namespace; topics appear as `/system/diagnostics` |
 | `config_profile` | `default` | Config profile directory under `config/diagnostics/`; falls back to `default` if profile dir missing |
+| `diagnostics_config_root` | `config/diagnostics` | Root directory for `default/` and `sim/` diagnostics profiles; bringup passes its synchronized `config/system/diagnostics` tree |
 | `enable_checkers` | `true` | Launch all module checker nodes and `aggregator_node` |
 | `enable_platform` | `false` | Launch `ranger_platform_checker_node` (only if binary is installed) |
 | `enable_system_tools` | `true` | Launch `system_checker_node`, `system_diagnostic_node`, `diagnostics_aggregator_node` |

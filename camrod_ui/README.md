@@ -133,6 +133,7 @@ sequenceDiagram
   participant SM as 🧭 StateMachine
   participant Nav2 as 🧠 Nav2
   participant Gate as 🚦 CmdVelGate
+  participant Parking as 🅿️ SiteManeuver
   participant Dock as 🅿️ DockingServer
 
   Browser->>Backend: POST /ui/destination?site=B3&run=true
@@ -143,6 +144,14 @@ sequenceDiagram
   Backend->>Gate: /planning/mission_engage Bool(true)
   Backend->>Gate: /platform/drive_enable Bool(true)
   Gate-->>Nav2: planning/platform gates open → velocity flows
+  Parking-->>Backend: /AMR_service_state UNLOAD_WAIT
+  Backend-->>Browser: WebSocket {"arrived": "B3", "amr_state": 6}
+  Backend->>Gate: /planning/mission_engage Bool(false)
+  Backend->>Gate: /platform/drive_enable Bool(false)
+  Browser->>Backend: WebSocket {"usage_complete": true}
+  Backend->>Parking: /parking/site_maneuver/return Bool(true)
+  Backend->>Gate: /planning/mission_engage Bool(true)
+  Backend->>Gate: /platform/drive_enable Bool(true)
 
   Note over Dock: Parallel docking branch
   alt mission_key contains "dock"

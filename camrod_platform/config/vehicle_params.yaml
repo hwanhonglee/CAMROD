@@ -1,0 +1,21 @@
+vehicle:
+  # HH_260119 Base vehicle specs used by planning controllers.
+  wheelbase: 2.0           # meters
+  lf: 1.0                  # HH_260119 Distance CG->front axle (m)
+  lr: 1.0                  # HH_260119 Distance CG->rear axle  (m)
+  track_width: 1.2         # HH_260119 Track width (m)
+  tire_radius: 0.32        # HH_260119 Tire effective radius (m)
+  mass: 1200.0             # HH_260119 Vehicle mass (kg)
+  inertia_yaw: 1500.0      # HH_260119 Yaw inertia (kg*m^2)
+  Cf: 80000.0              # HH_260119 Front cornering stiffness (N/rad)
+  Cr: 80000.0              # HH_260119 Rear cornering stiffness (N/rad)
+  max_velocity: 1.4        # m/s cruise speed (≈5 kph)
+  min_velocity: 0.0        # m/s
+  max_accel: 1.5           # m/s^2
+  max_decel: -2.0          # m/s^2 (negative)
+  max_jerk: 3.0            # m/s^3
+  max_steer_angle: 0.6     # radians
+  max_steer_rate: 1.0      # HH_260119 Steering rate limit (rad/s)
+  drag_coeff: 0.3          # HH_260119 Aero drag coefficient (lumped)
+  rolling_resist: 0.015    # HH_260119 Rolling resistance coefficient
+  controller_frequency: 20.0  # Hz

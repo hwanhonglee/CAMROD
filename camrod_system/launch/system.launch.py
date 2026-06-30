@@ -144,8 +144,14 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
     config_profile = LaunchConfiguration("config_profile").perform(context)
     enable_checkers = _as_bool(LaunchConfiguration("enable_checkers").perform(context))
     enable_platform = _as_bool(LaunchConfiguration("enable_platform").perform(context))
+    diagnostics_config_root = LaunchConfiguration("diagnostics_config_root").perform(context)
 
-    config_root = os.path.join(pkg_share_dir, "config", "diagnostics")
+    # HH_260630 - Standalone system.launch.py uses camrod_system configs by
+    # default; bringup may pass its synchronized deployment config root.
+    config_root = diagnostics_config_root.strip() or os.path.join(
+        pkg_share_dir, "config", "diagnostics")
+    if not os.path.isdir(config_root):
+        config_root = os.path.join(pkg_share_dir, "config", "diagnostics")
     profile_dir = os.path.join(config_root, config_profile)
     default_dir = os.path.join(config_root, "default")
     config_dir = profile_dir if os.path.isdir(profile_dir) else default_dir
@@ -207,6 +213,11 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace', default_value='system'),
         DeclareLaunchArgument('config_profile', default_value='default'),
+        DeclareLaunchArgument(
+            'diagnostics_config_root',
+            default_value=pkg_share('camrod_system', os.path.join('config', 'diagnostics')),
+            description='Root directory containing diagnostics/<profile> checker YAML files',
+        ),
         DeclareLaunchArgument('enable_checkers', default_value='true'),
         DeclareLaunchArgument('enable_platform', default_value='false'),
         # system_checker + system_diagnostic + diagnostics_aggregator (tools channel)
