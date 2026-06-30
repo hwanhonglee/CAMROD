@@ -1,24 +1,5 @@
-/**
- * Planning Costmap Checker Node
- *
- * Nav2 global/local costmap 토픽의 staleness 를 /diagnostics 로 발행한다.
- *
- * 진단 항목
- * ---------
- *   /planning/global_costmap
- *     - Staleness : global costmap 미갱신 경과 시간
- *
- *   /planning/local_costmap
- *     - Staleness : local costmap 미갱신 경과 시간
- *
- * 파라미터 구성
- * -------------
- *   global_costmap_topic:  "/planning/global_costmap/costmap"
- *   local_costmap_topic:   "/planning/local_costmap/costmap"
- *   stale_timeout:         5.0   # 이 시간(초) 이상 미갱신이면 ERROR
- */
-
 #include <cstdio>
+#include <deque>
 #include <mutex>
 #include <string>
 
@@ -33,22 +14,29 @@ using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 using OccupancyGrid    = nav_msgs::msg::OccupancyGrid;
 
-// ── Costmap 상태 구조체 ───────────────────────────────────────────────────
+// HH_260630 - Track Nav2 costmap freshness and publish rate with the same
+// diagnostic style used by sensing/preprocessing checkers.
 
 struct CostmapState
 {
   std::string  name;
   std::string  topic;
+  double       expected_hz{1.0};
+  double       hz_warn_ratio{0.7};
+  double       hz_error_ratio{0.4};
   double       stale_timeout{5.0};
+  double       hz_window_s{6.0};
 
   std::mutex   mtx;
   rclcpp::Time last_msg_time{0, 0, RCL_ROS_TIME};
   bool         has_msg{false};
+  uint32_t     width{0};
+  uint32_t     height{0};
+  double       resolution{0.0};
+  std::deque<rclcpp::Time> timestamps;
 
   rclcpp::Subscription<OccupancyGrid>::SharedPtr sub;
 };
-
-// ── PlanningCostmapCheckerNode ────────────────────────────────────────────
 
 class PlanningCostmapCheckerNode : public robot_diagnostics_base::BaseChecker
 {
@@ -67,41 +55,45 @@ protected:
       std::string("/planning/global_costmap/costmap"));
     declare_parameter("local_costmap_topic",
       std::string("/planning/local_costmap/costmap"));
+    declare_parameter("global_expected_hz", 0.5);
+    declare_parameter("local_expected_hz", 2.0);
+    declare_parameter("hz_warn_ratio", 0.7);
+    declare_parameter("hz_error_ratio", 0.4);
     declare_parameter("global_stale_timeout_s", 3.0);
-    declare_parameter("local_stale_timeout_s",  1.0);
+    declare_parameter("local_stale_timeout_s", 1.5);
+    declare_parameter("hz_window_s", 6.0);
   }
 
   void load_parameters_() override
   {
     global_.name          = "global";
     global_.topic         = get_parameter("global_costmap_topic").as_string();
+    global_.expected_hz   = get_parameter("global_expected_hz").as_double();
+    global_.hz_warn_ratio = get_parameter("hz_warn_ratio").as_double();
+    global_.hz_error_ratio = get_parameter("hz_error_ratio").as_double();
     global_.stale_timeout = get_param<double>("global_stale_timeout_s", global_.stale_timeout);
+    global_.hz_window_s = get_parameter("hz_window_s").as_double();
 
     local_.name          = "local";
     local_.topic         = get_parameter("local_costmap_topic").as_string();
+    local_.expected_hz   = get_parameter("local_expected_hz").as_double();
+    local_.hz_warn_ratio = get_parameter("hz_warn_ratio").as_double();
+    local_.hz_error_ratio = get_parameter("hz_error_ratio").as_double();
     local_.stale_timeout = get_param<double>("local_stale_timeout_s", local_.stale_timeout);
+    local_.hz_window_s = get_parameter("hz_window_s").as_double();
   }
 
   void setup_tasks_() override
   {
-    // global costmap — transient_local QoS (Nav2 기본값)
     auto costmap_qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
 
     global_.sub = create_subscription<OccupancyGrid>(
       global_.topic, costmap_qos,
-      [this](const OccupancyGrid::ConstSharedPtr /*msg*/) {
-        std::lock_guard<std::mutex> lock(global_.mtx);
-        global_.last_msg_time = this->now();
-        global_.has_msg       = true;
-      });
+      [this](const OccupancyGrid::ConstSharedPtr msg) { onCostmap(msg, global_); });
 
     local_.sub = create_subscription<OccupancyGrid>(
       local_.topic, costmap_qos,
-      [this](const OccupancyGrid::ConstSharedPtr /*msg*/) {
-        std::lock_guard<std::mutex> lock(local_.mtx);
-        local_.last_msg_time = this->now();
-        local_.has_msg       = true;
-      });
+      [this](const OccupancyGrid::ConstSharedPtr msg) { onCostmap(msg, local_); });
 
     add_task("/planning/global_costmap",
       [this](StatusWrapper & stat) { checkCostmap(stat, global_); });
@@ -110,21 +102,39 @@ protected:
       [this](StatusWrapper & stat) { checkCostmap(stat, local_); });
 
     RCLCPP_INFO(get_logger(),
-      "Planning Costmap 모니터링 시작 "
-      "(global=%s stale=%.1fs, local=%s stale=%.1fs)",
-      global_.topic.c_str(), global_.stale_timeout,
-      local_.topic.c_str(),  local_.stale_timeout);
+      "planning costmap monitoring: global=%s expected_hz=%.1f stale=%.1fs, "
+      "local=%s expected_hz=%.1f stale=%.1fs",
+      global_.topic.c_str(), global_.expected_hz, global_.stale_timeout,
+      local_.topic.c_str(), local_.expected_hz, local_.stale_timeout);
   }
 
 private:
+  void onCostmap(const OccupancyGrid::ConstSharedPtr msg, CostmapState & costmap)
+  {
+    std::lock_guard<std::mutex> lock(costmap.mtx);
+    const auto now = this->now();
+    costmap.last_msg_time = now;
+    costmap.has_msg = true;
+    costmap.width = msg->info.width;
+    costmap.height = msg->info.height;
+    costmap.resolution = msg->info.resolution;
+    costmap.timestamps.push_back(now);
+    while (!costmap.timestamps.empty() &&
+           (now - costmap.timestamps.front()).seconds() > costmap.hz_window_s)
+    {
+      costmap.timestamps.pop_front();
+    }
+  }
+
   void checkCostmap(StatusWrapper & stat, CostmapState & costmap)
   {
     std::lock_guard<std::mutex> lock(costmap.mtx);
 
     if (!costmap.has_msg) {
       stat.summary(DiagnosticStatus::STALE,
-        "토픽 수신 없음: " + costmap.topic);
+        "no topic messages: " + costmap.topic);
       stat.add("topic", costmap.topic);
+      stat.add("costmap", costmap.name);
       return;
     }
 
@@ -132,28 +142,62 @@ private:
     if (elapsed > costmap.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 costmap 미갱신 (timeout=%.1fs)",
+        "no costmap update for %.1fs (timeout=%.1fs)",
         elapsed, costmap.stale_timeout);
       stat.summary(DiagnosticStatus::ERROR, std::string(buf));
       char tmp[32];
       std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed);
       stat.add("last_msg_sec_ago", std::string(tmp));
+      stat.add("topic", costmap.topic);
+      stat.add("costmap", costmap.name);
       return;
     }
 
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "OK (%.1fs ago)", elapsed);
-    stat.summary(DiagnosticStatus::OK, std::string(buf));
+    double actual_hz = 0.0;
+    if (costmap.timestamps.size() >= 2) {
+      const double window = (costmap.timestamps.back() - costmap.timestamps.front()).seconds();
+      if (window > 0.0) {
+        actual_hz = static_cast<double>(costmap.timestamps.size() - 1) / window;
+      }
+    }
+
+    int8_t lvl = DiagnosticStatus::OK;
+    std::string msg_str = "OK";
+    if (costmap.expected_hz > 0.0) {
+      const double ratio = actual_hz / costmap.expected_hz;
+      const int8_t hz_lvl = check_low(ratio, costmap.hz_warn_ratio, costmap.hz_error_ratio);
+      if (hz_lvl > lvl) {
+        lvl = hz_lvl;
+        msg_str = (hz_lvl == S::ERROR) ? "publish rate critically low" : "publish rate low";
+      }
+    }
+
+    if (lvl == DiagnosticStatus::OK) {
+      char buf[80];
+      std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, %.1fs ago)", actual_hz, elapsed);
+      msg_str = buf;
+    }
+
+    stat.summary(lvl, msg_str);
+
     char tmp[32];
+    std::snprintf(tmp, sizeof(tmp), "%.1f", actual_hz);
+    stat.add("actual_hz", std::string(tmp));
+    std::snprintf(tmp, sizeof(tmp), "%.1f", costmap.expected_hz);
+    stat.add("expected_hz", std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed);
     stat.add("last_msg_sec_ago", std::string(tmp));
+    stat.add("topic", costmap.topic);
+    stat.add("costmap", costmap.name);
+    stat.add("width", static_cast<int>(costmap.width));
+    stat.add("height", static_cast<int>(costmap.height));
+    std::snprintf(tmp, sizeof(tmp), "%.3f", costmap.resolution);
+    stat.add("resolution_m", std::string(tmp));
   }
 
   CostmapState global_;
   CostmapState local_;
 };
-
-// ── main ──────────────────────────────────────────────────────────────────
 
 int main(int argc, char ** argv)
 {

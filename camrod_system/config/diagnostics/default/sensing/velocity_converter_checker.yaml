@@ -19,6 +19,8 @@ velocity_converter_checker:
     imu_stale_timeout_s:       1.0   # IMU 입력 timeout (s)
     output_stale_timeout_s:    1.0   # 출력 timeout (s)
 
-    expected_output_hz:  10.0
-    hz_warn_ratio:       0.7       # 7 Hz 미만이면 WARN
-    hz_error_ratio:      0.4       # 4 Hz 미만이면 ERROR
+    # HH_260630 - platform_velocity_converter publishes on each 50 Hz platform
+    # velocity update when IMU is available.
+    expected_output_hz:  50.0
+    hz_warn_ratio:       0.7
+    hz_error_ratio:      0.4

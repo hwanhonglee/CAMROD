@@ -46,13 +46,11 @@ public:
 
     startup_grace_s_ = declare_parameter<double>("startup_grace_s", 6.0);
 
-    // HH_260617: Add module-level graph manifests so system health can report
-    // which package domain is missing required ROS nodes/topics, instead of one
-    // ambiguous global "topics missing" list.
+    // HH_260630 - Load package-level graph manifests so diagnostics identify
+    // the owning subsystem for missing nodes/topics.
     declare_parameter<std::vector<std::string>>(
       "required_modules", std::vector<std::string>{});
-    // HH_260618: Keep a debug-only exclusion hook without editing the shared
-    // system_checker.yaml manifest. Normal bringup still requires final_parking.
+    // HH_260630 - Keep debug-only exclusions outside the shared manifest.
     declare_parameter<std::vector<std::string>>(
       "disabled_modules", std::vector<std::string>{});
     declare_parameter<std::string>("disabled_modules_csv", "");
@@ -80,8 +78,8 @@ public:
       required_module_specs_.push_back(load_module_spec(module_name));
     }
 
-    // HH_260618: Some runtime capabilities have multiple valid implementations.
-    // Final parking must have exactly one healthy graph: camrod_parking OR camrod_docking.
+    // HH_260630 - Some capabilities have multiple valid implementations.
+    // Final parking must have exactly one healthy graph.
     declare_parameter<std::vector<std::string>>(
       "required_alternative_groups", std::vector<std::string>{});
     const auto required_alternative_groups =
@@ -161,10 +159,8 @@ private:
     return text.substr(begin, end - begin + 1);
   }
 
-  // HH_260617: Topic spec format is "topic|type|min_publishers".
-  // type and min_publishers are optional; examples:
-  //   /localization/pose|avg_msgs/msg/PoseStamped|1
-  //   /planning/engage|std_msgs/msg/Bool|0
+  // HH_260630 - Topic spec format is "topic|type|min_publishers".
+  // Type and publisher count are optional; empty type skips type matching.
   static std::vector<RequiredTopicSpec> parse_topic_specs(
     const std::vector<std::string> & specs)
   {
@@ -381,15 +377,14 @@ private:
       status.message = "exactly one alternative graph ok";
       status.values.push_back(make_kv("selected_alternative", healthy_alternatives.front()));
     } else if (healthy_alternatives.empty()) {
-      // HH_260618: A required capability with no healthy implementation is an
-      // autonomy-blocking fault, not a degraded warning. Final parking cannot
-      // be skipped in normal operation.
+      // HH_260630 - A required capability with no healthy implementation is
+      // autonomy-blocking, not merely degraded.
       status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       status.message = "no required alternative graph ok";
       status.values.push_back(make_kv("selected_alternative", ""));
     } else {
-      // HH_260618: Multiple healthy final-parking implementations are also an
-      // invalid authority split because both can target the same motion command path.
+      // HH_260630 - Multiple healthy implementations would split authority
+      // over the same final parking command path.
       status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       status.message = "multiple required alternative graphs ok";
       status.values.push_back(make_kv("selected_alternative", ""));
@@ -417,8 +412,7 @@ private:
       topic_names_and_types[kv.first] = kv.second;
     }
 
-    // HH_260623 - Build aggregate graph diagnostics from module manifests
-    // instead of legacy top-level required_nodes/required_topics lists.
+    // HH_260630 - Build aggregate graph diagnostics from module manifests.
     std::vector<std::string> missing_nodes;
     std::vector<std::string> missing_topics;
     for (const auto & module : required_module_specs_) {

@@ -1,7 +1,8 @@
 # Camera Checker 설정 파일
-# HH_260528: Updated for dual econ cameras.
+# HH_260528 - Updated for dual econ cameras.
+# HH_260630 - Validate operational camera streams; rear compressed is monitoring-only.
 # camera_front_publisher_node publishes image_rect/compressed (NOT image_raw).
-# camera_rear_publisher_node publishes image_raw/compressed (NOT image_rect).
+# camera_rear_publisher_node publishes image_raw and a rate-limited monitoring compressed stream.
 
 camera_checker:
   ros__parameters:
@@ -11,22 +12,24 @@ camera_checker:
 
     econ_front:
       image_topic: "/sensing/camera/econ_front/image_rect/compressed"
+      image_type: "compressed"
       camera_info_topic: "/sensing/camera/econ_front/camera_info"
       expected_fps: 10.0
       fps_warn_ratio: 0.8
       fps_error_ratio: 0.5
       stale_timeout_s: 3.0
-      expected_width: 0
-      expected_height: 0
+      expected_width: 1920
+      expected_height: 1080
       expected_encoding: ""
 
     econ_rear:
-      image_topic: "/sensing/camera/econ_rear/image_raw/compressed"
+      image_topic: "/sensing/camera/econ_rear/image_raw"
+      image_type: "raw"
       camera_info_topic: "/sensing/camera/econ_rear/camera_info"
       expected_fps: 10.0
       fps_warn_ratio: 0.8
       fps_error_ratio: 0.5
       stale_timeout_s: 3.0
-      expected_width: 0
-      expected_height: 0
-      expected_encoding: ""
+      expected_width: 1920
+      expected_height: 1080
+      expected_encoding: "bgr8"

@@ -11,7 +11,9 @@ wheel_odometry_checker:
     main:
       # HH_260410: Unified wheel odometry topic consumed by localization filters.
       topic: "/platform/status/wheel_odometry"
-      expected_hz: 20.0          # 기대 수신 속도 (Hz)
+      # HH_260630 - ranger_platform_bridge republishes wheel odometry at the
+      # Ranger status cadence observed in full bringup.
+      expected_hz: 50.0
       hz_warn_ratio: 0.7         # actual_hz / expected_hz 비율이 이 값 미만이면 WARN
       hz_error_ratio: 0.4        # actual_hz / expected_hz 비율이 이 값 미만이면 ERROR
       stale_timeout_s: 1.0         # 이 시간(초) 이상 메시지 없으면 STALE
