@@ -15,6 +15,10 @@
 # runs `colcon build` only; runtime sim validation and package lint/test commands
 # are intentionally run separately so field builds are not blocked by lint-scope
 # issues in vendored external packages.
+# HH_260701: this wrapper is the canonical way to install the current field
+# baseline after config-only updates too: planning soft-estop wiring, synchronized
+# GNSS/LiDAR diagnostics configs, radar no-target handling, and README updates all
+# land in the install tree through this script.
 
 set -euo pipefail
 

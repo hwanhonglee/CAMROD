@@ -31,7 +31,7 @@ ros2 topic pub /planning/mission_key avg_msgs/msg/PlanningMissionKey \
 ros2 topic pub /planning/state_machine/camping_site_recall avg_msgs/msg/PlanningRecallRequest \
   "{site_name: camping_site_1, source: cli}" -1
 
-# Standalone gate logic unit test (no ROS 2 runtime needed, 29 assertions)
+# Standalone gate logic unit test (no ROS 2 runtime needed, 42 assertions)
 python3 camrod_planning/test/test_cmd_vel_gate_logic.py
 ```
 
@@ -126,6 +126,7 @@ graph TD
     ENGAGE((/planning/engage\nmanual))
     MISSIONENGAGE((/planning/mission_engage\nmission))
     ESTOP((/platform/status/estop))
+    SOFTESTOP((/planning/state_machine/estop))
     INFCOST((/planning/cost_grid/inflation))
     LOCMODE((/localization/mode))
     LOCODO((/localization/odometry/filtered))
@@ -201,6 +202,7 @@ graph TD
   CMDRAW ==> GATE
   ENGAGE --> GATE
   ESTOP --> GATE
+  SOFTESTOP --> GATE
   INFCOST --> GATE
   LOCMODE --> GATE
   LOCODO --> GATE
@@ -215,7 +217,7 @@ graph TD
   SM --> SMSTATE
   SM --> SMSOURCE
 
-  class LOCPOSE,LANEPOSE,GSNAPPED,CMDRAW,GPATH,CTRLPATH,LOCALPATH,TERROR,GCOST,RDIST,RTIME,RPCT,ENGAGE,ESTOP,INFCOST,LOCMODE,LOCODO,DIAGAGG,RECALL,MISSIONKEY,SMGOAL,SMSTATE,SMSOURCE,CMDOUT,ENGAGED,LCOST topic
+  class LOCPOSE,LANEPOSE,GSNAPPED,CMDRAW,GPATH,CTRLPATH,LOCALPATH,TERROR,GCOST,RDIST,RTIME,RPCT,ENGAGE,ESTOP,SOFTESTOP,INFCOST,LOCMODE,LOCODO,DIAGAGG,RECALL,MISSIONKEY,SMGOAL,SMSTATE,SMSOURCE,CMDOUT,ENGAGED,LCOST topic
   class GSNAP,CSNAP,LPATH,TERR,PCOST,PROG,GATE,SM planning
   class NAV2 system
   class RVIZ ui
@@ -240,7 +242,7 @@ graph TD
 | `goal_replanner_node` | `/planning/goal_pose`, `/planning/lanelet_pose`, Nav2 action | replanning triggers | `min_request_interval_s`, `retry_after_failure_s`, `navigate_inactive_grace_s` |
 | `obstacle_replan_monitor_node.py` | `/planning/global_path`, `/planning/goal_pose_snapped_ros`, `/localization/pose`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar` | `/planning/obstacle_replan/status`, temporary `/planning/planner_selector=Smac2D`, preempted `/planning/navigate_to_pose` goal | HH_260619 - keeps `LaneletRoute` fixed during normal driving, but forces a Smac2D global fallback only when dynamic obstacle costs persistently block the route corridor; HH_260619 - `clear_hold_s` prevents alternating empty/test cost grids from clearing a real blockage immediately |
 | `planning_progress_node` | `/planning/global_path`, `/localization/pose`, `/localization/odometry/filtered` | `/planning/progress/*` | `publish_rate_hz`: 2.0, `speed_ema_alpha`: 0.2, `speed_floor_mps`: 0.1 |
-| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/planning/mission_engage`, `/platform/status/estop`, `/map/cost_grid/lanelet`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/odometry/filtered` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors; HH_260630 - site-maneuver crab/reverse bypasses static lanelet/global-path cost while still stopping on live LiDAR/Radar source cost |
+| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/planning/mission_engage`, `/platform/status/estop`, `/planning/state_machine/estop`, `/map/cost_grid/lanelet`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/odometry/filtered` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors; HH_260630 - site-maneuver crab/reverse bypasses static lanelet/global-path cost while still stopping on live LiDAR/Radar source cost; HH_260701 - planning soft-estop is ORed with platform e-stop before command output |
 | `planning_state_machine_node` | `/system/diagnostics_agg`, `/planning/lanelet_pose_ros`, `/planning/state_machine/camping_site_recall`, `mission_key` `/planning/mission_key` | `/planning/goal_pose_snapped_ros`, `/planning/state_machine/state`, `/planning/state_machine/mission_source` | `keypoints_yaml`, `camping_sites_yaml`, `startup_mission_key`, `goal_reached_dwell_s`; HH_260619 - recent UI `mission_key` can override a misleading snapped-goal key match during the preserve window |
 | Nav2 `planner_server` | `route_goal` `/planning/goal_pose_snapped_ros`, Lanelet2 map, costmaps | `/planning/global_path`, `/planning/route_lanelet_ids` | HH_260619 - default `LaneletRoute` publishes a fixed lanelet-centerline route and exact route lanelet IDs for route-aware map costs; `SmacLattice`, `NavFn`, `Smac2D`, `SmacHybrid`, `ThetaStar` remain selectable diagnostics/free-space fallbacks; BT uses `GoalUpdatedController`, so global path is recomputed on goal/preemption/recovery, not continuously while following |
 | Nav2 `controller_server` | `/planning/global_path`, costmaps, `/planning/engaged` | `/planning/cmd_vel_raw`, `/planning/local_path_controller` | RPP / DWB / MPPI / Graceful / RotationShim; `xy_goal_tolerance`: 0.15 m; HH_260618 - `EngageAwareProgressChecker` pauses progress timeout before operator engage; HH_260622 - MPPI path critics are tuned to reduce inside-cutting on high-curvature lanelet centerlines |
@@ -259,13 +261,14 @@ graph TD
 | `/localization/fallback/odometry` | `nav_msgs/Odometry` | No | camrod_localization | ~50 Hz | Fallback odometry for cost-stop corridor heading when VIO is unavailable |
 | `/localization/mode` | `AvgLocalizationMode` | Yes | camrod_localization | ~5 Hz | NORMAL / DEGRADED / DR_ONLY / INVALID; triggers GNSS recovery hold |
 | `/map/cost_grid/lanelet` | `nav_msgs/OccupancyGrid` | Yes | camrod_map | ~1 Hz | Lanelet drivable-space constraints for global costmap |
-| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | Yes | camrod_sensing | ~10 Hz | Inflation-layer obstacle grid for local costmap and cmd_vel_gate cost-stop |
+| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | Yes | camrod_sensing | ~6 Hz | Inflation-layer obstacle grid for local costmap and cmd_vel_gate cost-stop |
 | `/goal_pose` | `geometry_msgs/PoseStamped` | Yes | RViz / camrod_ui | on demand | `site_goal`: raw operator/UI goal; snapped to nearest lanelet centerline |
 | `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | No | camrod_ui | on demand | `mission_key`: named semantic target (e.g. `camping_site_1`) sent to state machine |
 | `/planning/state_machine/camping_site_recall` | `avg_msgs/PlanningRecallRequest` | No | camrod_ui / external | on demand | Recall request; `site_name` = camping site name; triggers road-snap navigation to `<site>_road` when configured |
 | `/planning/engage` | `std_msgs/Bool` | Yes | operator / camrod_ui manual button | on demand | Manual 2D-goal motion latch only |
 | `/planning/mission_engage` | `std_msgs/Bool` | Yes | camrod_ui / mission state | on demand | UI campsite/drop-zone mission motion latch |
 | `/platform/status/estop` | `std_msgs/Bool` | Yes | camrod_platform | ~10 Hz | Hardware e-stop; immediately zeroes cmd_vel when `true` |
+| `/planning/state_machine/estop` | `std_msgs/Bool` | Yes | planning_state_machine_node | event / ~state updates | Mission/diagnostic soft e-stop. HH_260701 - ORed with platform e-stop by `planning_cmd_vel_gate_node` |
 | `/system/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | No | camrod_system | ~1 Hz | System-level health; drives WARN_RECOVERY / ERROR_STOP state transitions |
 
 ### Outputs
@@ -599,9 +602,10 @@ Nav2 configuration is the split stack `nav2_base.yaml` + `nav2_vehicle.yaml` +
 ```bash
 # Standalone gate logic unit test (no ROS 2 runtime needed)
 python3 camrod_planning/test/test_cmd_vel_gate_logic.py
-# 29 assertions covering: front/side/rear cost-stop, unavoidable cluster,
-# GNSS recovery hold trigger and expiry, e-stop, engage gate,
-# cost-stop hold, speed-dependent lookahead calculation.
+# 42 assertions covering: front/side/rear cost-stop, unavoidable cluster,
+# GNSS recovery hold trigger and expiry, platform + state-machine e-stop,
+# engage gate, cost-stop hold, speed-dependent lookahead, route re-entry,
+# crab-side and reverse-direction safety corridors.
 
 # Verify Nav2 lifecycle is active
 ros2 lifecycle get /planner_server
@@ -640,7 +644,7 @@ or the gate failed at runtime.
 
 ### Engage true but no motion
 
-1. Check `/platform/status/estop` — if `true`, e-stop is active.
+1. Check `/platform/status/estop` and `/planning/state_machine/estop` — either one blocks `/planning/cmd_vel`.
 2. Check `/planning/engaged` — if `false` while `/planning/engage` or `/planning/mission_engage` is `true`, the planning gate is blocking.
 3. Check for cost-stop: `ros2 topic echo /planning/cost_grid/inflation` — look for high-cost cells near the robot footprint.
 4. Check for GNSS recovery hold: `ros2 topic echo /localization/mode` — if it recently transitioned from `DR_ONLY (2)` to `NORMAL (0)`, the 2 s hold may still be active.
