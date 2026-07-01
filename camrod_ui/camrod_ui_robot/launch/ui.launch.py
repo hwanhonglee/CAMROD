@@ -98,6 +98,16 @@ def generate_launch_description():
         default_value='/parking/site_maneuver/return',
         description='Rule-based campsite return trigger used by the UI return button',
     )
+    site_maneuver_adopt_topic_arg = DeclareLaunchArgument(
+        'site_maneuver_adopt_topic',
+        default_value='/parking/site_maneuver/adopt',
+        description='Rule-based campsite parked-state adoption trigger used when UI selects the current site',
+    )
+    arrival_pose_topic_arg = DeclareLaunchArgument(
+        'arrival_pose_topic',
+        default_value='/localization/pose',
+        description='Pose topic used to detect already-arrived campsite selections',
+    )
 
     ui_backend = Node(
         package='camrod_ui',
@@ -117,6 +127,13 @@ def generate_launch_description():
             'planning_mission_engage_topic': LaunchConfiguration('planning_mission_engage_topic'),
             'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
             'site_maneuver_return_topic': LaunchConfiguration('site_maneuver_return_topic'),
+            'site_maneuver_adopt_topic': LaunchConfiguration('site_maneuver_adopt_topic'),
+            'arrival_pose_topic': LaunchConfiguration('arrival_pose_topic'),
+            # HH_260701 - If the robot is already inside the selected campsite,
+            # show the arrival/return UI instead of sending a fresh Nav2 goal.
+            'immediate_site_arrival_enabled': True,
+            'site_arrival_center_radius_m': 2.5,
+            'site_arrival_pose_timeout_s': 2.0,
             # HH_260617: Replace ambiguous goal-key naming with semantic mission-key dispatch.
             'planning_mission_key_topic': '/planning/mission_key',
             'planning_goal_pose_topic': '/goal_pose',
@@ -145,5 +162,7 @@ def generate_launch_description():
         planning_mission_engage_topic_arg,
         platform_drive_enable_topic_arg,
         site_maneuver_return_topic_arg,
+        site_maneuver_adopt_topic_arg,
+        arrival_pose_topic_arg,
         ui_backend,
     ])
