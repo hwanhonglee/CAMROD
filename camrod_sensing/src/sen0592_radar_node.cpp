@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <avg_msgs/conversions.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <avg_msgs/msg/range.hpp>
 
@@ -228,8 +229,21 @@ public:
     max_range_m_ = this->get_parameter("max_range_m").as_double();
     fov_rad_ = this->get_parameter("field_of_view_rad").as_double();
     radar_status_topic_ = this->get_parameter("radar_status_topic").as_string();
-    publish_radar_status_ = this->get_parameter("publish_radar_status").as_bool();
-    log_status_ = this->get_parameter("log_status").as_bool();
+    publish_radar_status_.store(this->get_parameter("publish_radar_status").as_bool());
+    log_status_.store(this->get_parameter("log_status").as_bool());
+    param_callback_handle_ = this->add_on_set_parameters_callback(
+      [this](const std::vector<rclcpp::Parameter> & params) {
+        rcl_interfaces::msg::SetParametersResult result;
+        result.successful = true;
+        for (const auto & param : params) {
+          if (param.get_name() == "log_status") {
+            log_status_.store(param.as_bool());
+          } else if (param.get_name() == "publish_radar_status") {
+            publish_radar_status_.store(param.as_bool());
+          }
+        }
+        return result;
+      });
 
     const auto n = ports_.size();
     if (sensor_names_.size() != n || frame_ids_.size() != n || topics_.size() != n) {
@@ -443,8 +457,7 @@ private:
     return true;
   }
 
-  // Publishes `_range` output.
-  void publish_range(size_t idx, int mm)
+  void publish_range_value(size_t idx, float range_m)
   {
     auto msg = avg_msgs::msg::Range();
     auto stamp = this->get_clock()->now();
@@ -463,16 +476,30 @@ private:
     msg.min_range = static_cast<float>(min_range_m_);
     // HH_260422: Use per-sensor max_range so cost grid node filters per direction automatically.
     msg.max_range = static_cast<float>(sensors_[idx].max_range_m);
-    msg.range = static_cast<float>(mm) / 1000.0f;  // mm -> m
+    msg.range = range_m;
 
     pubs_[idx]->publish(msg);
     publish_radar_status(idx, msg);
   }
 
+  // Publishes `_range` output for a valid obstacle return.
+  void publish_range(size_t idx, int mm)
+  {
+    publish_range_value(idx, static_cast<float>(mm) / 1000.0f);  // mm -> m
+  }
+
+  void publish_no_target_range(size_t idx)
+  {
+    // HH_260701 - Keep radar diagnostics alive on SEN0592 no-target replies.
+    // Range consumers already ignore values above max_range, so this heartbeat
+    // distinguishes "sensor responded with no object" from "serial port stale".
+    publish_range_value(idx, static_cast<float>(sensors_[idx].max_range_m + 0.001));
+  }
+
   // Publishes `_avg_radar` output.
   void publish_radar_status(size_t idx, const avg_msgs::msg::Range & msg)
   {
-    if (!publish_radar_status_ || !avg_radar_pub_) {
+    if (!publish_radar_status_.load() || !avg_radar_pub_) {
       return;
     }
     {
@@ -541,6 +568,8 @@ private:
 
       if (measurement_valid) {
         publish_range(idx, mm);
+      } else if (ok) {
+        publish_no_target_range(idx);
       }
 
       auto elapsed = std::chrono::steady_clock::now() - loop_start;
@@ -553,7 +582,7 @@ private:
   // Implements `print_status` behavior.
   void print_status()
   {
-    if (!log_status_) {
+    if (!log_status_.load()) {
       return;
     }
 
@@ -622,8 +651,8 @@ private:
   double max_range_m_{4.5};
   double fov_rad_{0.26};
   std::string radar_status_topic_;
-  bool publish_radar_status_{false};
-  bool log_status_{false};
+  std::atomic_bool publish_radar_status_{false};
+  std::atomic_bool log_status_{false};
 
   std::vector<SensorRuntime> sensors_;
   std::vector<rclcpp::Publisher<avg_msgs::msg::Range>::SharedPtr> pubs_;
@@ -637,6 +666,7 @@ private:
   std::mutex avg_mtx_;
 
   rclcpp::TimerBase::SharedPtr status_timer_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
 };
 
 int main(int argc, char** argv)

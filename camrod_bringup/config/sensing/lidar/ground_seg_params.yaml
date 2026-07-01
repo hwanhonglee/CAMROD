@@ -10,7 +10,10 @@
     maxZ:  1.0
     minZ: -1.0
     downsample: true
-    downsample_resolution: 0.06
+    # HH_260701 - Field profiling showed 0.06 m keeps obstacle detail but
+    # holds ground_segmentation near 4-5 Hz on Orin. 0.10 m keeps useful
+    # obstacle points while reducing the planning safety-grid latency.
+    downsample_resolution: 0.10
     lidar_to_ground: -0.75
     transform_tolerance: 0.1
     cellSizeX: 0.3
