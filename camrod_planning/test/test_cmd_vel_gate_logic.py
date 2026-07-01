@@ -345,6 +345,10 @@ def make_gate(
     n._mission_enabled = False
     n._enabled = False
     n._estop = False
+    n._estop_sources = {
+        n.estop_topic: False,
+        "/planning/state_machine/estop": False,
+    }
     n._dr_timeout = False
     n._cost_blocked_until = 0.0
     n._gnss_recovery_blocked_until = 0.0
@@ -355,13 +359,22 @@ def make_gate(
     n._last_unavoidable_cluster_ratio = 0.0
     n._last_tf_warn_sec = 0.0
     n._last_empty_corridor_warn_sec = 0.0
+    n._last_yaw_align_log_sec = 0.0
+    n._last_route_heading_log_sec = 0.0
     n._last_lanelet_front_path_reentry_bypass_log_sec = 0.0
+    n._last_lanelet_current_reentry_bypass_log_sec = 0.0
+    n._last_drop_zone_static_bypass_log_sec = 0.0
+    n._last_site_static_phase_bypass_log_sec = 0.0
     n._last_lateral_static_bypass_log_sec = 0.0
     n._last_static_cost_ignored_log_sec = 0.0
     n._last_block_reason_log_sec = 0.0
+    n._parking_drop_zone_phase = ""
+    n._parking_site_phase = ""
     n._current_speed = 0.0
     n._last_grid = None
+    n._last_lanelet_safety_grid = None
     n._last_route_heading_path = None
+    n._route_heading_align_active = False
     n._last_pose = None
     n._last_odom = None
 
@@ -596,13 +609,20 @@ check("hold 만료 후 _effective_enabled() = True", n._effective_enabled())
 
 # ═══════════════════════════════════════════════════════════════════════════════
 print("\n=== TEST 8: e-stop → cmd_vel 차단 ===")
-print("  /platform/status/estop = True → engage 상태와 무관하게 차단")
+print("  platform/status 또는 state_machine estop = True → engage 상태와 무관하게 차단")
 n = make_gate()
 n._enabled = True
 n._on_estop(BoolMsg(data=True))
 check("estop=True → _effective_enabled() = False", not n._effective_enabled())
 n._on_estop(BoolMsg(data=False))
 check("estop=False → _effective_enabled() = True", n._effective_enabled())
+n._on_estop(BoolMsg(data=True), "/planning/state_machine/estop")
+check("soft estop=True → _effective_enabled() = False", not n._effective_enabled())
+n._on_estop(BoolMsg(data=True), "/platform/status/estop")
+n._on_estop(BoolMsg(data=False), "/planning/state_machine/estop")
+check("platform estop 유지 → _effective_enabled() = False", not n._effective_enabled())
+n._on_estop(BoolMsg(data=False), "/platform/status/estop")
+check("모든 estop 해제 → _effective_enabled() = True", n._effective_enabled())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

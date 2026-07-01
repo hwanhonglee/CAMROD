@@ -91,6 +91,15 @@ class PlanningCmdVelGateNode(Node):
             # HH_260409: Use platform status e-stop as default shared source.
             self.declare_parameter("estop_topic", "/platform/status/estop").value
         )
+        # HH_260701 - OR additional soft-estop topics into the planning gate.
+        # The state-machine estop is mission/diagnostic-owned, so parking and
+        # Nav2 cmd_vel now close on the same ERROR_STOP condition.
+        self.additional_estop_topics = self._parse_topic_list(
+            self.declare_parameter(
+                "additional_estop_topics",
+                "/planning/state_machine/estop",
+            ).value
+        )
         # HH_260507: Block cmd_vel when DR timeout published by localization_monitor.
         # HH_260522: unified source selector for DR-timeout trigger.
         #   localization_monitor/topic/enabled/on -> subscribe
@@ -535,9 +544,10 @@ class PlanningCmdVelGateNode(Node):
         self._mission_enabled = False
         self._enabled = self._manual_enabled or self._mission_enabled
 
-        # HH_260422: _estop becomes True when /platform/status/estop publishes True.
+        # HH_260422: _estop becomes True when any configured estop source publishes True.
         #   True -> blocks cmd_vel regardless of _enabled state; zero Twist is sent immediately.
         self._estop = False
+        self._estop_sources: dict[str, bool] = {}
         # HH_260507: _dr_timeout becomes True when DR exceeds time/covariance limit.
         self._dr_timeout = False
 
@@ -632,10 +642,27 @@ class PlanningCmdVelGateNode(Node):
             )
 
         self.sub_estop = None
+        self.sub_additional_estops = []
         if self.estop_topic_enabled:
+            self._estop_sources[self.estop_topic] = False
             self.sub_estop = self.create_subscription(
-                Bool, self.estop_topic, self._on_estop, 10
+                Bool,
+                self.estop_topic,
+                lambda msg, topic=self.estop_topic: self._on_estop(msg, topic),
+                10,
             )
+            for topic in self.additional_estop_topics:
+                if not topic or topic == self.estop_topic:
+                    continue
+                self._estop_sources[topic] = False
+                self.sub_additional_estops.append(
+                    self.create_subscription(
+                        Bool,
+                        topic,
+                        lambda msg, topic=topic: self._on_estop(msg, topic),
+                        10,
+                    )
+                )
         self.sub_dr_timeout = None
         if self.dr_timeout_topic_enabled:
             self.sub_dr_timeout = self.create_subscription(
@@ -1176,8 +1203,10 @@ class PlanningCmdVelGateNode(Node):
             )
 
     # Handles e-stop messages.
-    def _on_estop(self, msg: Bool) -> None:
-        new_estop = bool(msg.data)
+    def _on_estop(self, msg: Bool, topic: str | None = None) -> None:
+        source_topic = str(topic or self.estop_topic)
+        self._estop_sources[source_topic] = bool(msg.data)
+        new_estop = any(self._estop_sources.values())
         if new_estop == self._estop:
             return
         self._estop = new_estop
@@ -1186,7 +1215,9 @@ class PlanningCmdVelGateNode(Node):
             self._publish_zero()
         self.get_logger().warn(
             "planning estop update: "
+            f"source={source_topic} "
             f"estop={'true' if self._estop else 'false'} "
+            f"sources={self._format_estop_sources()} "
             f"effective={'true' if self._effective_enabled() else 'false'}"
         )
 
@@ -1663,6 +1694,34 @@ class PlanningCmdVelGateNode(Node):
             if normalized:
                 labels.add(normalized)
         return labels or set(default_labels)
+
+    def _parse_topic_list(self, value) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            raw_items = value.split(",")
+        else:
+            try:
+                raw_items = list(value)
+            except TypeError:
+                raw_items = [value]
+        topics: list[str] = []
+        seen: set[str] = set()
+        for item in raw_items:
+            topic = str(item).strip()
+            if not topic or topic in seen:
+                continue
+            topics.append(topic)
+            seen.add(topic)
+        return topics
+
+    def _format_estop_sources(self) -> str:
+        if not self._estop_sources:
+            return "none"
+        return ",".join(
+            f"{topic}={'true' if active else 'false'}"
+            for topic, active in sorted(self._estop_sources.items())
+        )
 
     def _normalize_source_label(self, label) -> str:
         return str(label).strip().lower().replace("-", "_").replace(" ", "_")
