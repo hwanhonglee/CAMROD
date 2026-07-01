@@ -209,6 +209,11 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_estop_source_mode', default_value='platform_status'),
         # HH_260409: Use platform-originated e-stop by default.
         DeclareLaunchArgument('cmd_vel_gate_estop_topic', default_value='/platform/status/estop'),
+        # HH_260701 - OR state-machine ERROR_STOP into the planning cmd_vel gate.
+        DeclareLaunchArgument(
+            'cmd_vel_gate_additional_estop_topics',
+            default_value='/planning/state_machine/estop',
+        ),
         DeclareLaunchArgument('cmd_vel_gate_dr_timeout_source_mode', default_value='localization_monitor'),
         DeclareLaunchArgument('cmd_vel_gate_allow_on_start', default_value='false'),
         # HH_260427: Short hold window after DR_ONLY->NORMAL localization recovery.
@@ -447,6 +452,7 @@ def generate_launch_description():
                 'planning_engaged_state_topic',
                 'cmd_vel_gate_estop_source_mode',
                 'cmd_vel_gate_estop_topic',
+                'cmd_vel_gate_additional_estop_topics',
                 'cmd_vel_gate_dr_timeout_source_mode',
                 'cmd_vel_gate_allow_on_start',
                 'cmd_vel_gate_enable_gnss_recovery_hold',

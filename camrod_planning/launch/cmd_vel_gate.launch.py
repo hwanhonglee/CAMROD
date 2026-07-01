@@ -30,6 +30,12 @@ def generate_launch_description():
         DeclareLaunchArgument('cmd_vel_gate_estop_source_mode', default_value='platform_status'),
         # HH_260409: Use platform-originated e-stop by default.
         DeclareLaunchArgument('cmd_vel_gate_estop_topic', default_value='/platform/status/estop'),
+        # HH_260701 - Planning state-machine ERROR_STOP must also close cmd_vel,
+        # not only parking/site handoff logic.
+        DeclareLaunchArgument(
+            'cmd_vel_gate_additional_estop_topics',
+            default_value='/planning/state_machine/estop',
+        ),
         # HH_260522: unified source selector for DR-timeout trigger.
         #   localization_monitor/topic/enabled/on: subscribe /localization/state/dr_timeout
         #   disabled/off/none: ignore DR-timeout trigger
@@ -172,6 +178,7 @@ def generate_launch_description():
                 'state_topic': LaunchConfiguration('planning_engaged_state_topic'),
                 'estop_source_mode': LaunchConfiguration('cmd_vel_gate_estop_source_mode'),
                 'estop_topic': LaunchConfiguration('cmd_vel_gate_estop_topic'),
+                'additional_estop_topics': LaunchConfiguration('cmd_vel_gate_additional_estop_topics'),
                 'dr_timeout_source_mode': LaunchConfiguration('cmd_vel_gate_dr_timeout_source_mode'),
                 'allow_on_start': LaunchConfiguration('cmd_vel_gate_allow_on_start'),
                 'publish_zero_when_blocked': True,

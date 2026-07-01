@@ -750,6 +750,15 @@ def generate_launch_description():
             'Planning estop topic',
         ),
         (
+            'planning_cmd_vel_gate_additional_estop_topics',
+            cfg_get(
+                launch_cfg,
+                'planning/cmd_vel_gate_additional_estop_topics',
+                '/planning/state_machine/estop',
+            ),
+            'Additional planning estop topics, comma separated',
+        ),
+        (
             'planning_cmd_vel_gate_dr_timeout_source_mode',
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_dr_timeout_source_mode', 'localization_monitor'),
             'Planning DR-timeout source mode: localization_monitor|topic|enabled|on|disabled|off|none',

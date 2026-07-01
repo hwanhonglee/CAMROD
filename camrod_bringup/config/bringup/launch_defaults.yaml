@@ -115,6 +115,9 @@ bringup:
     cmd_vel_gate_estop_source_mode: platform_status
     # e-stop source is platform CAN->status bridge by default.
     cmd_vel_gate_estop_topic: /platform/status/estop
+    # HH_260701 - State-machine ERROR_STOP is a planning soft-estop and must
+    # close Nav2 cmd_vel, not only parking/site maneuver handoff.
+    cmd_vel_gate_additional_estop_topics: /planning/state_machine/estop
     # HH_260522: unified source selector for DR-timeout stop trigger.
     #   localization_monitor/topic/enabled/on: subscribe /localization/state/dr_timeout
     #   disabled/off/none: ignore DR-timeout trigger
