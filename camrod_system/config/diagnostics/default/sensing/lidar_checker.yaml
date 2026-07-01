@@ -17,14 +17,20 @@ lidar_checker:
       stale_timeout_s: 2.0       # 이 시간(초) 이상 메시지 없으면 STALE
       min_point_count: 100     # 0 = 체크 안 함 (스캔 당 최소 포인트 수)
       max_point_count: 0       # 0 = 체크 안 함 (스캔 당 최대 포인트 수)
-      max_nan_ratio: 0.1       # 0.0 = 체크 안 함 (NaN·Inf 포인트 비율 상한)
+      # HH_260701 - Raw Vanjee frames include sparse NaN placeholders that the
+      # preprocessor removes before planning. Warn only on severe raw corruption.
+      max_nan_ratio: 0.5       # 0.0 = 체크 안 함 (NaN·Inf 포인트 비율 상한)
 
     filtered:
       topic: "/sensing/lidar/points_filtered"
-      expected_hz: 10.0
+      # HH_260701 - ground_segmentation is the intentional bottleneck after
+      # 10 Hz preprocessor output; 6 Hz is the profiled stable planning input.
+      expected_hz: 6.0
       hz_warn_ratio: 0.8
       hz_error_ratio: 0.5
       stale_timeout_s: 2.0
-      min_point_count: 50      # 전처리 후 최소 포인트 수
+      # HH_260701 - This is obstacle-only output; 0 points is normal when the
+      # LiDAR ROI is clear, so freshness/rate are the safety checks here.
+      min_point_count: 0      # 전처리 후 최소 포인트 수
       max_point_count: 0
       max_nan_ratio: 0.0       # 전처리 후 NaN 없어야 함

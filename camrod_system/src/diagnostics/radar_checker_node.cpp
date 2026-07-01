@@ -73,6 +73,7 @@ struct RadarState
   bool has_msg{false};
   float actual_range_m{0.0f};
   bool range_is_invalid{false};    // NaN / Inf / 음수
+  bool range_no_target{false};      // Range heartbeat above max_range
   bool range_out_of_bounds{false}; // 센서 측정 범위 이탈
   std::deque<rclcpp::Time> timestamps;  // Hz 계산용 rolling window (2s)
 
@@ -172,9 +173,14 @@ private:
     radar->range_is_invalid =
       (!std::isfinite(msg->range) || msg->range < 0.0f);
 
+    // HH_260701 - The SEN0592 driver publishes range > max_range as a
+    // no-target heartbeat. It proves serial freshness but must not become a
+    // diagnostic warning or a cost-grid obstacle.
+    radar->range_no_target = !radar->range_is_invalid && msg->range > msg->max_range;
+
     // 센서 측정 범위 이탈 (쓰레기값이 아닌 경우만 의미 있음)
     radar->range_out_of_bounds = !radar->range_is_invalid &&
-      (msg->range < msg->min_range || msg->range > msg->max_range);
+      !radar->range_no_target && msg->range < msg->min_range;
 
     // Hz 계산용 rolling window (2s)
     radar->timestamps.push_back(now);
@@ -243,7 +249,7 @@ private:
     }
 
     // 최솟값 근처 고착 체크: 센서 전방 차폐 의심
-    if (!radar.range_is_invalid &&
+    if (!radar.range_is_invalid && !radar.range_no_target &&
         (radar.stuck_min_warn_m > 0.0 || radar.stuck_min_error_m > 0.0))
     {
       double r = static_cast<double>(radar.actual_range_m);
@@ -260,7 +266,7 @@ private:
     }
 
     // 최댓값 근처 고착 체크: 센서 무감지·고장 의심
-    if (!radar.range_is_invalid &&
+    if (!radar.range_is_invalid && !radar.range_no_target &&
         (radar.stuck_max_warn_m > 0.0 || radar.stuck_max_error_m > 0.0))
     {
       double r = static_cast<double>(radar.actual_range_m);
@@ -278,8 +284,12 @@ private:
 
     if (lvl == DiagnosticStatus::OK) {
       char buf[64];
-      std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, %.3f m)",
-        actual_hz, radar.actual_range_m);
+      if (radar.range_no_target) {
+        std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, no target)", actual_hz);
+      } else {
+        std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, %.3f m)",
+          actual_hz, radar.actual_range_m);
+      }
       msg_str = buf;
     }
 
@@ -292,7 +302,9 @@ private:
     std::snprintf(tmp, sizeof(tmp), "%.1f", radar.expected_hz);
     stat.add("expected_hz",      std::string(tmp));
     stat.add("range_valid",      std::string(radar.range_is_invalid ? "false(NaN/Inf)" :
+                                              radar.range_no_target ? "true(no_target)" :
                                               radar.range_out_of_bounds ? "false(OOB)" : "true"));
+    stat.add("no_target",        std::string(radar.range_no_target ? "true" : "false"));
     if (!radar.range_is_invalid) {
       std::snprintf(tmp, sizeof(tmp), "%.3f", static_cast<double>(radar.actual_range_m));
       stat.add("range_m", std::string(tmp));
