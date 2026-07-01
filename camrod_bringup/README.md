@@ -366,7 +366,8 @@ runner as a separate process.
 | `radar_direction_hz` | All seven radar range topics publish: front1, front2, left1, left2, right1, right2, rear |
 | `directional_cost_stop` | Front/left/right/rear fake obstacles from LiDAR, radar, and combined sources force `/planning/cmd_vel` to zero |
 | `manual_goal_nav` | A manual route goal produces global/local paths, nonzero cmd_vel, movement, and Nav2 success |
-| `camping_site_smoke` | UI-equivalent camping-site mission reaches the route goal, enters site maneuver, performs crab/rotate/unload/crab-out phases, and requests return |
+| `obstacle_replan` | HH_260701 - A larger fake route obstacle makes `obstacle_replan_monitor` report `BLOCKED` and temporarily select the fallback `Smac2D` planner |
+| `camping_site_smoke` | UI-equivalent camping-site mission reaches the route goal, enters site maneuver, performs crab/rotate/unload/crab-out phases, and requests return; with `camping_wait_drop_zone=true`, also waits for drop-zone reverse parking to reach `PARKED` |
 
 Useful parameters:
 
@@ -374,16 +375,31 @@ Useful parameters:
 |---|---|---|
 | `report_file` | `/tmp/camrod_sim_validation.json` | JSON result path |
 | `skip_manual_goal` | `false` | Skip the manual goal navigation check |
+| `run_obstacle_replan` | `false` | HH_260701 - Enable route-blocked fallback planner validation |
+| `obstacle_replan_goal_distance_m` | `12.0` | Forward route distance used for the replan test goal |
+| `obstacle_replan_obstacle_offset_m` | `2.0` | Obstacle distance from the robot for the replan trigger |
+| `obstacle_replan_cluster_radius_m` | `0.65` | Larger fake obstacle radius used only for the replan trigger |
 | `run_camping` | `false` | Enable camping-site flow validation |
 | `manual_goal_distance_m` | `4.0` | Forward distance used for the generated manual goal |
 | `manual_goal_timeout_s` | `45.0` | Manual goal timeout |
 | `camping_timeout_s` | `120.0` | Camping-site flow timeout |
+| `camping_wait_drop_zone` | `false` | Keep the camping check running after campsite `DONE` until drop-zone parking reaches `PARKED` |
 
-Expected PASS evidence from the current profile: localization 20 Hz, wheel odom
-20 Hz, LiDAR/radar cost grids 10 Hz, inflation 6 Hz, radar direction topics ~10
-Hz, all directional stop checks with `planning_cmd_max=0`, manual goal movement
-around 3-4 m, and camping phases including `CRAB_IN`, `ROTATE_180`,
-`UNLOAD_WAIT`, `CRAB_OUT`, and `RETURNING`.
+HH_260701 - Latest sim validation evidence:
+
+| Result | Evidence |
+|---|---|
+| PASS | `baseline_hz`: localization 20 Hz, wheel odom 20 Hz, LiDAR/radar cost grids 10 Hz, inflation 6 Hz |
+| PASS | `radar_direction_hz`: all seven radar topics published at about 10 Hz |
+| PASS | `directional_cost_stop`: front/left/right/rear LiDAR, radar, and combined fake obstacles all forced `planning_cmd_max=0.0` |
+| PASS | `obstacle_replan`: route obstacle produced `BLOCKED` / `BLOCKED_HOLD` and selected fallback `Smac2D` |
+| Needs investigation | `manual_goal_nav`: global/local paths and Nav2 success were observed, but `/planning/cmd_vel` stayed at 0.0 and simulated movement was only about 0.02 m |
+| Needs investigation | full `camping_site_smoke`: campsite phases reached `ALIGN_RETURN_YAW`, `CRAB_OUT`, and `DONE`, but the automated full roundtrip did not observe final drop-zone `PARKED` before the planner stack became unstable |
+
+Use this runner as a regression harness, not as a claim that every outdoor
+driving scenario is fully validated. A field run still needs localization
+alignment, lanelet cost placement, and platform gate checks before enabling
+real vehicle motion.
 
 ---
 
