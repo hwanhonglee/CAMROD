@@ -91,6 +91,13 @@ def generate_launch_description():
         # cross static lanelet/drop-zone cost before Nav2 campsite routing.
         DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_status_topic', default_value='/parking/drop_zone/status'),
         DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_static_bypass_phases', default_value='EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
+        # HH_260701 - Campsite maneuver phases may cross static lanelet cost,
+        # while live LiDAR/Radar source costs stay blocking.
+        DeclareLaunchArgument('cmd_vel_gate_parking_site_status_topic', default_value='/parking/site_maneuver/status'),
+        DeclareLaunchArgument(
+            'cmd_vel_gate_parking_site_static_bypass_phases',
+            default_value='ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT',
+        ),
         # HH_260422: Speed-dependent front lookahead parameters.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
         # HH_260630 - Minimum front scan reaches the front radar mount plus about 1m clearance.
@@ -207,6 +214,8 @@ def generate_launch_description():
                 'lanelet_safety_current_route_reentry_require_front_cmd': LaunchConfiguration('cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd'),
                 'parking_drop_zone_status_topic': LaunchConfiguration('cmd_vel_gate_parking_drop_zone_status_topic'),
                 'parking_drop_zone_static_bypass_phases': LaunchConfiguration('cmd_vel_gate_parking_drop_zone_static_bypass_phases'),
+                'parking_site_status_topic': LaunchConfiguration('cmd_vel_gate_parking_site_status_topic'),
+                'parking_site_static_bypass_phases': LaunchConfiguration('cmd_vel_gate_parking_site_static_bypass_phases'),
                 'enable_speed_dependent_lookahead': LaunchConfiguration('cmd_vel_gate_speed_dependent_lookahead'),
                 'front_lookahead_min_m': LaunchConfiguration('cmd_vel_gate_front_lookahead_min_m'),
                 'front_lookahead_max_m': LaunchConfiguration('cmd_vel_gate_front_lookahead_max_m'),

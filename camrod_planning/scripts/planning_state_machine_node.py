@@ -986,6 +986,20 @@ class PlanningStateMachineNode(Node):
             return
 
         state_id = int(msg.state)
+        if (
+            source == "site_maneuver"
+            and state_id == int(AvgAmrServiceState.RETURN_WITH_CARGO)
+            and "DONE" in description
+            and self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE
+            and self.active_mission_key == self.return_mission_key
+        ):
+            # HH_260701 - site_maneuver DONE can arrive just after it requests
+            # the drop-zone route. Do not let that late phase event mask the
+            # RETURN_TO_DROP_ZONE GOAL_REACHED handoff used by drop_zone_parking.
+            self.get_logger().info(
+                "ignored site_maneuver DONE override during active drop-zone return"
+            )
+            return
         override_state = ""
         override_scenario: Optional[int] = None
         if state_id == int(AvgAmrServiceState.SITE_ENTRY):

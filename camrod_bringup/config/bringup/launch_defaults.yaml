@@ -191,6 +191,10 @@ bringup:
     # lanelet/drop-zone cost for these parking phases; dynamic obstacle stops remain active.
     cmd_vel_gate_parking_drop_zone_status_topic: /parking/drop_zone/status
     cmd_vel_gate_parking_drop_zone_static_bypass_phases: EXIT_STRAIGHT,ALIGN_EXIT_YAW
+    # HH_260701 - Campsite entry/return is parking-owned body-frame motion;
+    # bypass only static lanelet/global-path cost in these phases.
+    cmd_vel_gate_parking_site_status_topic: /parking/site_maneuver/status
+    cmd_vel_gate_parking_site_static_bypass_phases: ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT
     # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
     cmd_vel_gate_speed_dependent_lookahead: true
     # HH_260630 - Minimum front dynamic-stop scan covers the front radar mount

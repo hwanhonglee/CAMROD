@@ -263,6 +263,13 @@ def generate_launch_description():
         # must not be blocked by static lanelet/drop-zone cells before routing.
         DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_status_topic', default_value='/parking/drop_zone/status'),
         DeclareLaunchArgument('cmd_vel_gate_parking_drop_zone_static_bypass_phases', default_value='EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
+        # HH_260701 - Campsite maneuver phases may cross static lanelet cost,
+        # while live LiDAR/Radar source costs stay blocking.
+        DeclareLaunchArgument('cmd_vel_gate_parking_site_status_topic', default_value='/parking/site_maneuver/status'),
+        DeclareLaunchArgument(
+            'cmd_vel_gate_parking_site_static_bypass_phases',
+            default_value='ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT',
+        ),
         # HH_260422: Speed-dependent front lookahead.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
         # HH_260630 - Minimum front scan reaches the front radar mount plus about 1m clearance.
@@ -481,6 +488,8 @@ def generate_launch_description():
                 'cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd',
                 'cmd_vel_gate_parking_drop_zone_status_topic',
                 'cmd_vel_gate_parking_drop_zone_static_bypass_phases',
+                'cmd_vel_gate_parking_site_status_topic',
+                'cmd_vel_gate_parking_site_static_bypass_phases',
                 'cmd_vel_gate_speed_dependent_lookahead',
                 'cmd_vel_gate_front_lookahead_min_m',
                 'cmd_vel_gate_front_lookahead_max_m',
