@@ -32,7 +32,7 @@ ros2 launch camrod_sensing imu.launch.py
 ros2 launch camrod_sensing camera.launch.py
 ```
 
-> 💡 Verify: `ros2 topic hz /sensing/lidar/points_filtered` should show ~10 Hz; `ros2 topic echo /sensing/gnss/ublox_gps_node/fix --once` should return a `NavSatFix` with `status.status >= 0`.
+> 💡 Verify: `ros2 topic hz /sensing/lidar/points_filtered` should show a stable obstacle-only stream around 6 Hz under field load; `ros2 topic echo /sensing/gnss/ublox_gps_node/fix --once` should return a `NavSatFix` with `status.status >= 0`.
 
 ---
 
@@ -160,7 +160,7 @@ graph TD
   end
 
   subgraph GNSS["🛰️ GNSS"]
-    HW4{{🛠️ u-blox ZED-F9P\n/dev/ttyACM1}}:::hardware
+    HW4{{🛠️ u-blox ZED-F9P\n/dev/ttyACM0}}:::hardware
     NTRIP[[ntrip_client]]:::system
     GNSSDRV[[ublox_gps_node]]:::system
     FIX((/sensing/gnss\n/ublox_gps_node/fix)):::topic
@@ -260,7 +260,7 @@ graph TD
 
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
-| `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | camrod_perception, camrod_planning | ~10 Hz | Ground-filtered, voxel-downsampled LiDAR points in `lidar_link` frame |
+| `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | camrod_perception, camrod_planning | ~6 Hz field target | Ground-filtered, voxel-downsampled obstacle points in `lidar_link` frame |
 | `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 150×150 @ 0.08 m robot-centred obstacle grid from LiDAR |
 | `/sensing/cost_grid/radar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 120×120 @ 0.10 m robot-centred near-field obstacle grid from radar |
 | `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | camrod_planning (Nav2 local costmap, `cmd_vel_gate`) | 6 Hz | 80×80 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
@@ -284,8 +284,8 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | Each incoming PointCloud2 from `vanjee/points_raw` |
-| Internal logic | `lidar_preprocessor_node` applies range clipping (0.3–35 m), Z-band filter (−1.0 to 2.0 m), then RANSAC ground plane removal. Points within Z −0.25 to 0.25 m of the estimated ground plane are discarded. Remaining points are re-stamped with the current ROS clock and re-framed to `lidar_link`. |
-| Output effect | `/sensing/lidar/points_filtered` contains obstacle-only returns. |
+| Internal logic | `lidar_preprocessor_node` applies range clipping (0.3–35 m), Z-band filter (−1.0 to 2.0 m), then RANSAC ground plane removal. Points within Z −0.25 to 0.25 m of the estimated ground plane are discarded. Remaining points are re-stamped with the current ROS clock and re-framed to `lidar_link`. HH_260701 - field load relief uses `downsample_resolution: 0.10` so the obstacle-only output remains stable around 6 Hz on Orin. |
+| Output effect | `/sensing/lidar/points_filtered` contains obstacle-only returns; zero points can be normal when the ROI is clear. |
 | Operator-visible symptom | If the topic is empty, verify the Vanjee driver is publishing on `/sensing/lidar/vanjee/points_raw`. If points look like the ground plane is still present, the RANSAC plane fit may have failed — check that the robot is on reasonably flat ground at startup. |
 | Related params | `method`, `min_range`, `max_range`, `min_z`, `max_z`, `z_min`, `z_max`, `frame_id_override` |
 | Related topics | `/sensing/lidar/vanjee/points_raw` → `/sensing/lidar/points_filtered` |
@@ -321,6 +321,7 @@ graph TD
 | Trigger | Each incoming Range message (async per sensor) |
 | Internal logic | `radar_cost_grid_node` projects each Range into the `map` frame using the sensor's TF frame ID (`radar_*_link`). Cost is scaled between `min_cost` (85) and `max_cost` (95) over 0.3–2.0 m after invalid/no-target values and stable near-zero self echoes below 0.15 m are filtered. Ego-clear disk radius is 0.50 m. Messages older than 0.35 s are discarded. |
 | Output effect | `/sensing/cost_grid/radar`: 120×120 @ 0.10 m (12 m square centred on robot), published at 10 Hz. |
+| No-target behavior | HH_260701 - SEN0592 no-target/invalid responses publish a heartbeat slightly above `max_range`; diagnostics treat this as fresh no-target data and cost-grid consumers ignore it as an obstacle. |
 | Operator-visible symptom | Empty grid → serial port permission denied or CH9344 driver not loaded. Near-field obstacles missing → ego_clear_radius_m is too large; current value 0.50 m is already minimal. |
 | Related params | `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
 | Related topics | `/sensing/radar/*/range` → `/sensing/cost_grid/radar` |
@@ -545,7 +546,7 @@ ros2 launch camrod_sensing camera.launch.py
 
 ```bash
 # LiDAR pipeline
-ros2 topic hz /sensing/lidar/points_filtered          # expect ~10 Hz
+ros2 topic hz /sensing/lidar/points_filtered          # expect ~6 Hz field target
 ros2 topic hz /sensing/cost_grid/lidar                # expect 10 Hz
 
 # Radar
@@ -613,7 +614,7 @@ One or more `/sensing/radar/*/range` topics are silent.
 
 `/planning/cost_grid/inflation` drops below 6 Hz or freezes.
 
-1. Check each input: `ros2 topic hz /sensing/cost_grid/lidar` and `ros2 topic hz /sensing/cost_grid/radar`. Both must be at 10 Hz.
+1. Check each input: `ros2 topic hz /sensing/cost_grid/lidar` and `ros2 topic hz /sensing/cost_grid/radar`. Both should target 10 Hz; `/sensing/lidar/points_filtered` itself may be closer to 6 Hz after HH_260701 load relief.
 2. The lanelet grid (`/map/cost_grid/lanelet`) is published once with `transient_local` QoS. It is valid for 5 s after last receipt. If camrod_map has not been launched, the inflation node will hold indefinitely waiting for this input.
 3. Check `max_message_age_s: 0.50` in `inflation_cost_grid.yaml` — if the inflation node itself is lagging (CPU overload), its own timer may expire before it can publish.
 4. Restart `inflation_cost_grid` node: `ros2 lifecycle set /sensing/inflation_cost_grid configure` (if managed) or kill and re-launch.
@@ -622,8 +623,8 @@ One or more `/sensing/radar/*/range` topics are silent.
 
 `/sensing/imu/data` is silent or produces constant-zero orientation.
 
-1. Confirm the physical hardware matches `imu_mode`. Default `cv7` expects the CV7-AHRS device at `/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6286.226900-if00`. Check: `ls /dev/serial/by-id/ | grep Microstrain`.
-2. For GQ7 hardware, launch with `imu_mode:=gq7_ntrip` and ensure `/dev/ttyACM1` is the GQ7 (not the F9P GNSS — both appear as `ttyACM*`).
+1. Confirm the physical hardware matches `imu_model`. Default `cv7` expects the CV7-AHRS device at the configured MicroStrain serial path. Check: `ls /dev/serial/by-id/ | grep Microstrain`.
+2. For GQ7 hardware, launch with `imu_model:=gq7` and ensure the configured IMU serial port is the GQ7/CV7 device, not the F9P GNSS (`/dev/ttyACM0` in the current field harness).
 3. Check the driver log for `Invalid Parameter` errors. This typically means `filter_pps_source` or `filter_declination_source` is set to a value unsupported by the connected model.
 
 ### Front camera node crashes at startup

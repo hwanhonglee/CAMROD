@@ -155,7 +155,7 @@ planning:
 |---|---|---|---|
 | Graph manifest | `config/system_checker.yaml` | Real-hardware required nodes, topic names, ROS types, and minimum publisher counts | `/planning/cmd_vel|geometry_msgs/msg/Twist|1` |
 | Sim graph manifest | `config/system_checker_sim.yaml` | Fake-sensor sim graph; public topic contracts remain, hardware driver nodes are omitted | `/bringup/fake_sensor_publisher`, `/sensing/lidar/points_filtered` |
-| Default diagnostics | `config/diagnostics/default/` | Real hardware runtime rates and data-quality thresholds | real IMU 100 Hz, camera streams 10 fps, LiDAR/radar cost grids 10 Hz |
+| Default diagnostics | `config/diagnostics/default/` | Real hardware runtime rates and data-quality thresholds | real IMU 100 Hz, camera streams 10 fps, LiDAR obstacle cloud 6 Hz, LiDAR/radar cost grids 10 Hz |
 | Sim diagnostics | `config/diagnostics/sim/` | `sim:=true` fake-sensor rates and intentionally absent hardware drivers | sim IMU 10 Hz, wheel odom 20 Hz, perception/fake obstacle topics |
 | Aggregation | `aggregator/*.yaml` | Diagnostic tree grouping and stale reporter timeout | `/system/diagnostics_agg` for UI readiness |
 
@@ -247,7 +247,7 @@ sequenceDiagram
 |---|---|---|---|---|---|
 | `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | Yes | camrod_sensing | 5 Hz | GNSS fix for `gnss_checker` |
 | `/sensing/imu/data` | `sensor_msgs/Imu` | Yes | camrod_sensing | 100 Hz | IMU data for `imu_checker` |
-| `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | Yes | camrod_sensing/fake_sensors | 10 Hz | Filtered LiDAR points for manifest and downstream perception |
+| `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | Yes | camrod_sensing/fake_sensors | 6 Hz field target | Filtered obstacle-only LiDAR points for manifest and downstream perception |
 | `/sensing/radar/*/range` | `sensor_msgs/Range` | Yes | camrod_sensing | variable | Radar ranges for `radar_checker` |
 | `/sensing/camera/econ_front/image_rect/compressed` | `sensor_msgs/CompressedImage` | Yes | camrod_sensing | 10 Hz | Front camera frames for `camera_checker` |
 | `/sensing/camera/econ_rear/image_raw` | `sensor_msgs/Image` | Yes | camrod_sensing | 10 Hz | Rear raw camera frames for docking/diagnostics |
@@ -341,7 +341,7 @@ status:
 | `hw/network_checker.yaml` | Network interface check config |
 | `sensing/gnss_checker.yaml` | `expected_hz: 5.0`, `stale_timeout_s: 2.0` |
 | `sensing/imu_checker.yaml` | default `expected_hz: 100.0`, sim override `expected_hz: 10.0` |
-| `sensing/lidar_checker.yaml` | `expected_hz: 10.0`, `min_point_count`, `max_point_count` |
+| `sensing/lidar_checker.yaml` | raw expected 10 Hz, filtered expected 6 Hz, relaxed raw NaN threshold, filtered `min_point_count: 0` because clear ROI can be empty |
 | `sensing/radar_checker.yaml` | `stale_timeout_s: 1.0` |
 | `sensing/camera_checker.yaml` | front compressed and rear raw streams, `expected_fps: 10.0`, `expected_width`, `expected_height` |
 | `sensing/wheel_odometry_checker.yaml` | `stale_timeout_s: 1.0` |

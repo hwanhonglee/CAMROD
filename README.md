@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v1.16** (field baseline updated 2026-06-30)
+> Current release: **v1.16** (field baseline updated 2026-07-01)
 
 ---
 
@@ -350,12 +350,11 @@ cd ~/camrod_ws/src
 # 2. Bootstrap externals + install system deps
 ./setup_camrod.sh
 
-# 3. Build
-cd ~/camrod_ws
-colcon build --symlink-install --packages-up-to camrod_bringup
+# 3. Build (also rebuilds the camrod_ui robot frontend when in scope)
+./colcon_build.sh --packages-up-to camrod_bringup
 
 # 4. Source workspace
-source install/setup.bash
+source ~/camrod_ws/install/setup.bash
 
 # 5. Launch simulation with RViz
 ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
@@ -372,7 +371,7 @@ ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
 
 ## 7. Build
 
-### 6.1 First-time setup (clone externals + rosdep)
+### 7.1 First-time setup (clone externals + rosdep)
 
 ```bash
 cd ~/camrod_ws/src
@@ -385,38 +384,32 @@ To update existing externals:
 ./setup_camrod.sh --update
 ```
 
-### 6.2 Build (all packages)
+### 7.2 Build (all packages)
 
 ```bash
-cd ~/camrod_ws
-colcon build --symlink-install
-```
-
-Or use the project wrapper (handles multi-base-paths for `external/` dirs):
-
-```bash
-./src/build_camrod.sh
+cd ~/camrod_ws/src
+./colcon_build.sh
 ```
 
 Build a specific package and its dependencies:
 
 ```bash
-./src/build_camrod.sh --packages-up-to camrod_bringup
+./colcon_build.sh --packages-up-to camrod_bringup
 ```
 
 Build only (skip rosdep / bootstrap):
 
 ```bash
-./src/build_camrod.sh --build-only --packages-up-to camrod_bringup
+./colcon_build.sh --packages-up-to camrod_bringup
 ```
 
 Bootstrap only (no build):
 
 ```bash
-./src/build_camrod.sh --bootstrap-only
+./setup_camrod.sh
 ```
 
-### 6.3 Source workspace
+### 7.3 Source workspace
 
 ```bash
 source ~/camrod_ws/install/setup.bash
@@ -520,6 +513,7 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/platform/drive_enable` | `Bool` | UI / CLI → platform gate | Operator platform safety arm; UI engage and camping-site buttons publish this together with planning engage |
 | `/platform/cmd_vel` | `Twist` | platform gate → Ranger | Final vehicle command |
 | `/platform/status/estop` | `Bool` | Ranger CAN → gates | Hardware emergency stop |
+| `/planning/state_machine/estop` | `Bool` | planning state machine → planning gate | Mission/diagnostic soft e-stop; ORed with platform e-stop before `/planning/cmd_vel` |
 | `/platform/status/odometry` | `Odometry` | Ranger CAN → localization | Wheel odometry |
 | `/planning/engage` | `Bool` | UI / RViz manual → gate | Manual-goal engage latch |
 | `/planning/mission_engage` | `Bool` | UI / mission state → gate | Camping/drop-zone mission engage latch |
@@ -723,7 +717,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
-| v1.16 | 2026-06-30 | Field stabilization for map/planning/platform/system: local-first Lanelet2 visualization with cached full-map republish, map-fixed `slice_only` local path extraction, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, radar 7-channel left/right mapping plus invalid no-target filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, expanded `avg_msgs` conversion coverage, diagnostics checker alignment, rear-camera CPU reduction, and automated sim validation runner |
+| v1.16 | 2026-07-01 | Field stabilization for map/planning/platform/system: local-first Lanelet2 visualization with cached full-map republish, map-fixed `slice_only` local path extraction, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, planning soft-estop gating from `/planning/state_machine/estop`, LiDAR ground-filter load relief, radar 7-channel left/right mapping plus no-target heartbeat filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, expanded `avg_msgs` conversion coverage, diagnostics checker alignment, rear-camera CPU reduction, and automated sim validation runner |
 | v1.15 | 2026-06-23 | Obstacle replan monitor (LiDAR/Radar persistent blockage → Smac2D fallback), extended AvgAmrServiceState/PlanningScenario (SITE_ENTRY/UNLOAD_WAIT/RECALL_TO_SITE_ROAD/GUEST_LOADING_WAIT/RETURN_WITH_CARGO/DROP_ZONE_PARKING), UI site-access reservation/occupancy gate, planning_state_machine parking-phase mirror from /AMR_service_state, dynamic-only cost stop gate, lanelet route re-entry bypass, goal_snapper uncontained-snap override, map profile auto-selection, area_exporter polygon centroid + corners export |
 | v1.14 | 2026-06-19 | Mission-key semantic planning (PlanningState/MissionKey/Scenario msgs), lanelet raw cost safety stop, local path reset on goal change, goal_snapper pose-jump reissue, lanelet_route_planner + engage_aware_progress_checker plugins, front camera V4L2 fallback + image_raw publisher (PR#14), Ranger BMS charging detection, planning_state_checker, sim diagnostics profile, parking_method bringup arg |
 | v1.13 | 2026-06-11 | GNSS dual-antenna heading stabilization (simpleRTK2B Heading moving-baseline RELPOSNED fix) |
@@ -768,6 +762,16 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260630: Bringup and package config trees are synchronized for map/localization/planning/sensing/platform/perception/parking/system configs; bringup passes its synchronized system diagnostics root to `camrod_system`.
 - HH_260630: `camrod_bringup/scripts/sim_validation_runner.py` validates the sim stack for topic Hz, radar direction topics, directional LiDAR/Radar cost-stop, manual goal navigation, and camping-site flow.
 - HH_260630: `colcon test --packages-select camrod_planning` currently includes package-wide ament lint; failures from vendored `external/nav2_*` or existing style issues are lint-scope issues, not runtime planning failures.
+
+## 2026-07-01 Safety and Sensor Update
+
+> HH_260701 - Current field baseline after planning soft-estop wiring, LiDAR load relief, radar no-target heartbeat handling, and GNSS/bringup config synchronization.
+
+- HH_260701: `/planning/state_machine/estop` is now ORed with `/platform/status/estop` inside `planning_cmd_vel_gate_node`. A state-machine `ERROR_STOP` now closes `/planning/cmd_vel`, publishes `/planning/engaged=false`, and lets the platform gate block through the normal planning-engaged path.
+- HH_260701: LiDAR ground segmentation uses `downsample_resolution: 0.10` in both `camrod_sensing` and `camrod_bringup` configs. The profiled target for `/sensing/lidar/points_filtered` is now a stable obstacle-only stream around 6 Hz under field load rather than forcing a 10 Hz checker threshold.
+- HH_260701: LiDAR diagnostics now tolerate raw Vanjee NaN placeholders before preprocessing and treat zero filtered obstacle points as normal when the ROI is clear.
+- HH_260701: SEN0592 radar drivers publish a no-target heartbeat above `max_range` when the sensor responds without a valid obstacle; diagnostics treat that as fresh/no-target data while cost-grid consumers ignore it.
+- HH_260701: GNSS rover config is synchronized to `/dev/ttyACM0` for the current field harness; radar CH9344 USB ports remain reserved for SEN0592 channels.
 
 ### Setup and Build
 

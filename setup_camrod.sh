@@ -19,6 +19,10 @@
 #   - camrod_ui frontend build is handled by colcon_build.sh before packaging.
 #   - sim validation is installed by camrod_bringup and run after bringup, not here.
 #   - colcon tests/lint are separate from setup because ament lint policy is package-specific.
+# HH_260701: current field setup assumptions:
+#   - ZED-F9P GNSS rover config uses /dev/ttyACM0; CH9344 USB ports are radar.
+#   - LiDAR runtime is tuned in package configs, not installed here.
+#   - planning soft-estop wiring is built/installed by colcon_build.sh.
 #
 # Fork override:
 #   Set CAMROD_AGILEX_BASE before running to use your own forks of agilexrobotics repos:
