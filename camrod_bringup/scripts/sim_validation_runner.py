@@ -22,7 +22,7 @@ from rcl_interfaces.srv import SetParameters
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from sensor_msgs.msg import Imu, PointCloud2, Range
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 
 
 RADAR_TOPICS = {
@@ -90,8 +90,29 @@ class SimValidationRunner(Node):
         self.camping_start_offset_m = float(
             self.declare_parameter("camping_start_offset_m", 0.0).value
         )
+        self.camping_wait_drop_zone = bool(
+            self.declare_parameter("camping_wait_drop_zone", False).value
+        )
         self.skip_manual_goal = bool(
             self.declare_parameter("skip_manual_goal", False).value
+        )
+        self.run_obstacle_replan = bool(
+            self.declare_parameter("run_obstacle_replan", False).value
+        )
+        self.obstacle_replan_timeout_s = float(
+            self.declare_parameter("obstacle_replan_timeout_s", 35.0).value
+        )
+        self.obstacle_replan_goal_distance_m = float(
+            self.declare_parameter("obstacle_replan_goal_distance_m", 12.0).value
+        )
+        self.obstacle_replan_obstacle_offset_m = float(
+            self.declare_parameter("obstacle_replan_obstacle_offset_m", 2.0).value
+        )
+        self.obstacle_replan_cluster_radius_m = float(
+            self.declare_parameter("obstacle_replan_cluster_radius_m", 0.65).value
+        )
+        self.default_fake_obstacle_cluster_radius_m = float(
+            self.declare_parameter("default_fake_obstacle_cluster_radius_m", 0.12).value
         )
         self.fake_sensor_node = str(
             self.declare_parameter("fake_sensor_node", "/bringup/fake_sensor_publisher").value
@@ -115,10 +136,15 @@ class SimValidationRunner(Node):
             PlanningMissionKey, "/planning/mission_key", 10
         )
         self.pub_site_return = self.create_publisher(Bool, "/parking/site_maneuver/return", 10)
+        self.pub_site_cancel = self.create_publisher(Bool, "/parking/site_maneuver/cancel", 10)
+        self.pub_drop_cancel = self.create_publisher(Bool, "/parking/drop_zone/cancel", 10)
         self.pub_raw = self.create_publisher(Twist, "/planning/cmd_vel_raw", 10)
 
         self.param_client = self.create_client(
             SetParameters, f"{self.fake_sensor_node}/set_parameters"
+        )
+        self.gate_param_client = self.create_client(
+            SetParameters, "/planning/cmd_vel_gate/set_parameters"
         )
         self.cancel_clients = {
             "follow_path": self.create_client(
@@ -139,10 +165,15 @@ class SimValidationRunner(Node):
         self.latest_mission_source: PlanningMissionKey | None = None
         self.latest_site_status: ModuleState | None = None
         self.latest_drop_status: ModuleState | None = None
+        self.latest_replan_status = ""
+        self.latest_planner_selector = ""
+        self.replan_statuses_seen: set[str] = set()
+        self.planner_selectors_seen: set[str] = set()
         self.latest_nav_status: GoalStatusArray | None = None
         self.latest_follow_status: GoalStatusArray | None = None
         self.latest_raw_goal: PoseStamped | None = None
         self.latest_route_goal: PoseStamped | None = None
+        self.latest_cost_grids: dict[str, OccupancyGrid] = {}
         self.global_path_count = 0
         self.local_path_count = 0
         self.global_path_points = 0
@@ -151,9 +182,9 @@ class SimValidationRunner(Node):
         self._subscribe_count("/sensing/imu/data", Imu)
         self._subscribe_count("/sensing/lidar/points_filtered", PointCloud2)
         self._subscribe_count("/perception/obstacles", PointCloud2)
-        self._subscribe_count("/sensing/cost_grid/lidar", OccupancyGrid)
-        self._subscribe_count("/sensing/cost_grid/radar", OccupancyGrid)
-        self._subscribe_count("/planning/cost_grid/inflation", OccupancyGrid)
+        self._subscribe_cost_grid("/sensing/cost_grid/lidar")
+        self._subscribe_cost_grid("/sensing/cost_grid/radar")
+        self._subscribe_cost_grid("/planning/cost_grid/inflation")
         self._subscribe_count("/platform/status/wheel_odometry", Odometry)
         for topics in RADAR_TOPICS.values():
             for topic in topics:
@@ -188,6 +219,12 @@ class SimValidationRunner(Node):
             ModuleState, "/parking/drop_zone/status", self._on_drop_status, 10
         )
         self.create_subscription(
+            String, "/planning/obstacle_replan/status", self._on_replan_status, 10
+        )
+        self.create_subscription(
+            String, "/planning/planner_selector", self._on_planner_selector, 10
+        )
+        self.create_subscription(
             GoalStatusArray,
             "/planning/navigate_to_pose/_action/status",
             self._on_nav_status,
@@ -203,6 +240,14 @@ class SimValidationRunner(Node):
     def _subscribe_count(self, topic: str, msg_type) -> None:
         self.create_subscription(msg_type, topic, lambda _msg, t=topic: self._count(t), 10)
 
+    def _subscribe_cost_grid(self, topic: str) -> None:
+        self.create_subscription(
+            OccupancyGrid,
+            topic,
+            lambda msg, t=topic: self._on_cost_grid(t, msg),
+            10,
+        )
+
     def _count(self, topic: str) -> None:
         now_s = time.monotonic()
         self.counts[topic] = self.counts.get(topic, 0) + 1
@@ -212,6 +257,10 @@ class SimValidationRunner(Node):
     def _record_twist(self, topic: str, msg: Twist) -> None:
         self._count(topic)
         self.max_abs_since[topic] = max(self.max_abs_since.get(topic, 0.0), twist_abs(msg))
+
+    def _on_cost_grid(self, topic: str, msg: OccupancyGrid) -> None:
+        self.latest_cost_grids[topic] = msg
+        self._count(topic)
 
     def _on_pose(self, msg: PoseStamped) -> None:
         self.latest_pose = msg
@@ -264,6 +313,16 @@ class SimValidationRunner(Node):
         self.latest_drop_status = msg
         self._count("/parking/drop_zone/status")
 
+    def _on_replan_status(self, msg: String) -> None:
+        self.latest_replan_status = msg.data
+        if msg.data:
+            self.replan_statuses_seen.add(msg.data.split(":", 1)[0])
+
+    def _on_planner_selector(self, msg: String) -> None:
+        self.latest_planner_selector = msg.data
+        if msg.data:
+            self.planner_selectors_seen.add(msg.data)
+
     def _on_nav_status(self, msg: GoalStatusArray) -> None:
         self.latest_nav_status = msg
         self._count("/planning/navigate_to_pose/_action/status")
@@ -305,9 +364,19 @@ class SimValidationRunner(Node):
         self.publish_bool(self.pub_mission_engage, value)
 
     def set_fake_params(self, **kwargs) -> bool:
-        if not self.param_client.wait_for_service(timeout_sec=2.0):
+        return self.set_node_params(self.param_client, "fake sensor", **kwargs)
+
+    def set_gate_params(self, **kwargs) -> bool:
+        return self.set_node_params(self.gate_param_client, "planning cmd_vel gate", **kwargs)
+
+    def set_node_params(self, client, label: str, **kwargs) -> bool:
+        if not client.wait_for_service(timeout_sec=2.0):
             self.results.append(
-                CheckResult("fake_params", False, "fake sensor set_parameters unavailable")
+                CheckResult(
+                    "set_parameters",
+                    False,
+                    f"{label} set_parameters unavailable",
+                )
             )
             return False
         req = SetParameters.Request()
@@ -321,7 +390,7 @@ class SimValidationRunner(Node):
             else:
                 param = Parameter(key, Parameter.Type.STRING, str(value))
             req.parameters.append(param.to_parameter_msg())
-        future = self.param_client.call_async(req)
+        future = client.call_async(req)
         end = time.monotonic() + 3.0
         while rclpy.ok() and not future.done() and time.monotonic() < end:
             rclpy.spin_once(self, timeout_sec=0.05)
@@ -332,6 +401,8 @@ class SimValidationRunner(Node):
     def clear_obstacle(self) -> None:
         self.set_fake_params(
             obstacle_offset=30.0,
+            obstacle_lateral_offset=0.0,
+            fake_obstacle_cluster_radius_m=self.default_fake_obstacle_cluster_radius_m,
             publish_fake_lidar_obstacle_cloud=True,
             publish_fake_radar_ranges=True,
         )
@@ -355,9 +426,37 @@ class SimValidationRunner(Node):
             self.spin_for(0.05)
         self.spin_for(0.5)
 
+    def cancel_parking_maneuvers(self) -> None:
+        # HH_260701 - Full-run validation executes manual-goal and camping
+        # checks in one process. Clear any rule-based parking phase that may
+        # have been triggered by stale /goal_pose during setup probes.
+        self.publish_bool(self.pub_site_cancel, True, repeats=3)
+        self.publish_bool(self.pub_drop_cancel, True, repeats=3)
+        self.spin_for(0.3)
+
     def reset_cmd_metrics(self) -> None:
         for topic in ("/planning/cmd_vel_raw", "/planning/cmd_vel", "/platform/cmd_vel"):
             self.max_abs_since[topic] = 0.0
+
+    def cost_grid_max(self, topic: str) -> int:
+        grid = self.latest_cost_grids.get(topic)
+        if grid is None or not grid.data:
+            return -1
+        return max(int(v) for v in grid.data)
+
+    def wait_for_cost_grid_update(
+        self,
+        topic: str,
+        start_counts: dict[str, int],
+        *,
+        min_cost: int = 85,
+        timeout_s: float = 2.5,
+    ) -> bool:
+        return self.wait_for(
+            lambda: self.counts.get(topic, 0) > start_counts.get(topic, 0)
+            and self.cost_grid_max(topic) >= min_cost,
+            timeout_s,
+        )
 
     def make_cmd(self, direction: str) -> Twist:
         msg = Twist()
@@ -399,6 +498,29 @@ class SimValidationRunner(Node):
             )
             for status in msg.status_list
         )
+
+    def terminal_success_for(
+        self,
+        msg: GoalStatusArray | None,
+        target_goal_ids: set[tuple[int, ...]],
+    ) -> bool:
+        if msg is None or not target_goal_ids:
+            return False
+        return any(
+            status.status == GoalStatus.STATUS_SUCCEEDED
+            and tuple(status.goal_info.goal_id.uuid) in target_goal_ids
+            for status in msg.status_list
+        )
+
+    def navigation_active(self) -> bool:
+        if self.latest_nav_status is None:
+            return False
+        active_states = {
+            GoalStatus.STATUS_ACCEPTED,
+            GoalStatus.STATUS_EXECUTING,
+            GoalStatus.STATUS_CANCELING,
+        }
+        return any(status.status in active_states for status in self.latest_nav_status.status_list)
 
     def rate_for(self, topic: str, start_counts: dict[str, int], duration_s: float) -> float:
         return (self.counts.get(topic, 0) - start_counts.get(topic, 0)) / max(duration_s, 0.1)
@@ -468,6 +590,10 @@ class SimValidationRunner(Node):
 
     def check_gate_stop_matrix(self) -> None:
         self.cancel_all_actions()
+        # HH_260701 - This check drives raw body-direction commands directly into
+        # the gate. Disable stale-route heading alignment here so the matrix tests
+        # cost-stop corridors, not route-following yaw correction.
+        self.set_gate_params(enable_route_heading_alignment=False)
         self.publish_engage(True)
         self.publish_mission_engage(False)
         offsets = {"front": 1.0, "left": 0.6, "right": 0.6, "rear": 0.4}
@@ -485,6 +611,7 @@ class SimValidationRunner(Node):
         metrics: dict[str, float | str] = {}
         for direction in directions:
             for label, lidar, radar in sources:
+                start_counts = dict(self.counts)
                 self.set_fake_params(
                     obstacle_direction=direction,
                     obstacle_offset=(
@@ -493,7 +620,16 @@ class SimValidationRunner(Node):
                     publish_fake_lidar_obstacle_cloud=lidar,
                     publish_fake_radar_ranges=radar,
                 )
-                self.spin_for(1.1)
+                wait_topics = []
+                if lidar:
+                    wait_topics.append("/sensing/cost_grid/lidar")
+                if radar:
+                    wait_topics.append("/sensing/cost_grid/radar")
+                if not wait_topics:
+                    wait_topics.append("/planning/cost_grid/inflation")
+                for topic in wait_topics:
+                    self.wait_for_cost_grid_update(topic, start_counts)
+                self.spin_for(0.3)
                 self.reset_cmd_metrics()
                 self.publish_raw_for(self.make_cmd(direction), 1.2)
                 out = self.max_abs_since.get("/planning/cmd_vel", 0.0)
@@ -503,6 +639,7 @@ class SimValidationRunner(Node):
                     all_ok = False
                     detail_parts.append(f"{direction}/{label} leaked {out:.3f}")
                 self.clear_obstacle()
+        self.set_gate_params(enable_route_heading_alignment=True)
         self.results.append(
             CheckResult(
                 "directional_cost_stop",
@@ -579,7 +716,7 @@ class SimValidationRunner(Node):
         start.pose.orientation = route_goal.pose.orientation
         self.publish_initialpose(start)
         self.cancel_all_actions()
-        return self.wait_for(
+        prepared = self.wait_for(
             lambda: self.latest_pose is not None
             and math.hypot(
                 self.latest_pose.pose.position.x - start.pose.position.x,
@@ -588,6 +725,8 @@ class SimValidationRunner(Node):
             < 1.0,
             5.0,
         )
+        self.cancel_parking_maneuvers()
+        return prepared
 
     def _candidate_camping_site_files(self) -> list[str]:
         candidates = []
@@ -670,6 +809,34 @@ class SimValidationRunner(Node):
         start_pose = self.latest_pose
         self.reset_cmd_metrics()
         self.publish_goal_pose(goal)
+        target_goal_ids: set[tuple[int, ...]] = set()
+
+        def observe_new_goal() -> bool:
+            new_ids = self.goal_ids(self.latest_nav_status) - known_nav_goals
+            if new_ids:
+                target_goal_ids.update(new_ids)
+                return True
+            return False
+
+        if not self.wait_for(observe_new_goal, 5.0):
+            self.publish_engage(False)
+            self.cancel_all_actions()
+            self.results.append(
+                CheckResult(
+                    "manual_goal_nav",
+                    False,
+                    "new Nav2 goal id was not observed",
+                    {
+                        "global_path_points": self.global_path_points,
+                        "local_path_points": self.local_path_points,
+                        "cmd_max": round(self.max_abs_since.get("/planning/cmd_vel", 0.0), 3),
+                        "moved_m": 0.0,
+                        "succeeded": False,
+                    },
+                )
+            )
+            return
+
         start = time.monotonic()
         succeeded = False
         moved_m = 0.0
@@ -680,7 +847,10 @@ class SimValidationRunner(Node):
                     self.latest_pose.pose.position.x - start_pose.pose.position.x,
                     self.latest_pose.pose.position.y - start_pose.pose.position.y,
                 )
-            if self.terminal_success_seen(self.latest_nav_status, known_nav_goals):
+            new_ids = self.goal_ids(self.latest_nav_status) - known_nav_goals
+            if new_ids:
+                target_goal_ids.update(new_ids)
+            if self.terminal_success_for(self.latest_nav_status, target_goal_ids):
                 succeeded = True
                 break
         self.publish_engage(False)
@@ -709,8 +879,108 @@ class SimValidationRunner(Node):
             )
         )
 
+    def check_obstacle_replan(self) -> None:
+        self.cancel_all_actions()
+        self.cancel_parking_maneuvers()
+        self.clear_obstacle()
+        self.publish_engage(True)
+        self.publish_mission_engage(False)
+        if not self.wait_for(lambda: self.latest_lanelet_pose is not None, 5.0):
+            self.results.append(CheckResult("obstacle_replan", False, "missing lanelet pose"))
+            return
+        base = self.latest_lanelet_pose or self.latest_pose
+        if base is None:
+            self.results.append(CheckResult("obstacle_replan", False, "missing pose"))
+            return
+
+        self.publish_initialpose(base)
+        self.spin_for(0.8)
+        yaw = yaw_from_quat(base.pose.orientation)
+        goal = PoseStamped()
+        goal.header.stamp = self.get_clock().now().to_msg()
+        goal.header.frame_id = "map"
+        goal.pose.position.x = (
+            base.pose.position.x + self.obstacle_replan_goal_distance_m * math.cos(yaw)
+        )
+        goal.pose.position.y = (
+            base.pose.position.y + self.obstacle_replan_goal_distance_m * math.sin(yaw)
+        )
+        goal.pose.position.z = base.pose.position.z
+        goal.pose.orientation = quat_from_yaw(yaw)
+
+        self.latest_replan_status = ""
+        self.latest_planner_selector = ""
+        self.replan_statuses_seen.clear()
+        self.planner_selectors_seen.clear()
+        base_global = self.global_path_count
+        base_local = self.local_path_count
+        self.reset_cmd_metrics()
+        self.publish_goal_pose(goal)
+        route_ready = self.wait_for(
+            lambda: self.global_path_count > base_global and self.navigation_active(),
+            12.0,
+        )
+        if route_ready:
+            # HH_260701 - Place a live synthetic obstacle on the active route so
+            # obstacle_replan_monitor must switch to the fallback free-space planner.
+            self.set_fake_params(
+                obstacle_direction="front",
+                obstacle_offset=self.obstacle_replan_obstacle_offset_m,
+                obstacle_lateral_offset=0.0,
+                fake_obstacle_cluster_radius_m=self.obstacle_replan_cluster_radius_m,
+                publish_fake_lidar_obstacle_cloud=True,
+                publish_fake_radar_ranges=True,
+            )
+        start = time.monotonic()
+        seen_blocked = False
+        seen_fallback = False
+        while route_ready and rclpy.ok() and (time.monotonic() - start) < self.obstacle_replan_timeout_s:
+            rclpy.spin_once(self, timeout_sec=0.05)
+            seen_blocked = seen_blocked or self.latest_replan_status.startswith("BLOCKED")
+            seen_fallback = (
+                seen_fallback
+                or self.latest_planner_selector == "Smac2D"
+                or "Smac2D" in self.planner_selectors_seen
+            )
+            if seen_blocked and seen_fallback:
+                break
+
+        cmd_max = self.max_abs_since.get("/planning/cmd_vel", 0.0)
+        self.clear_obstacle()
+        self.publish_engage(False)
+        self.cancel_all_actions()
+        self.cancel_parking_maneuvers()
+        ok = bool(route_ready and seen_blocked and seen_fallback)
+        self.results.append(
+            CheckResult(
+                "obstacle_replan",
+                ok,
+                "ok"
+                if ok
+                else (
+                    f"route_ready={route_ready} blocked={seen_blocked} "
+                    f"fallback={seen_fallback} status={self.latest_replan_status}"
+                ),
+                {
+                    "route_ready": route_ready,
+                    "global_path_points": self.global_path_points,
+                    "local_path_points": self.local_path_points,
+                    "blocked_seen": seen_blocked,
+                    "fallback_selector_seen": seen_fallback,
+                    "latest_replan_status": self.latest_replan_status,
+                    "latest_planner_selector": self.latest_planner_selector,
+                    "replan_statuses_seen": ",".join(sorted(self.replan_statuses_seen)),
+                    "planner_selectors_seen": ",".join(sorted(self.planner_selectors_seen)),
+                    "cmd_max": round(cmd_max, 3),
+                    "global_path_updates": self.global_path_count - base_global,
+                    "local_path_updates": self.local_path_count - base_local,
+                },
+            )
+        )
+
     def check_camping_site_smoke(self) -> None:
         self.cancel_all_actions()
+        self.cancel_parking_maneuvers()
         self.clear_obstacle()
         self.publish_engage(True)
         self.publish_mission_engage(True)
@@ -738,6 +1008,7 @@ class SimValidationRunner(Node):
         # HH_260630: prepare_camping_start_pose intentionally disarms planning
         # while it probes the snapped route and seeds /initialpose. Re-arm both
         # gates before mirroring the UI mission_key + goal publish sequence.
+        self.cancel_parking_maneuvers()
         self.publish_engage(True)
         self.publish_mission_engage(True)
         self.spin_for(0.3)
@@ -757,16 +1028,24 @@ class SimValidationRunner(Node):
             self.spin_for(0.05)
         self.publish_goal_pose(goal_pose)
         seen_site_phase = False
-        seen_return_phase = False
+        seen_align_return_yaw = False
+        seen_crab_out = False
+        seen_done = False
+        seen_drop_zone_return = False
+        seen_drop_parking = False
+        seen_drop_parked = False
+        seen_drop_error = False
         reached_nav = False
         seen_goal_reached_state = False
         seen_site_key = False
         state_labels: set[str] = set()
         scenario_labels: set[str] = set()
         site_status_messages: set[str] = set()
+        drop_status_messages: set[str] = set()
         while rclpy.ok() and (time.monotonic() - start) < self.camping_timeout_s:
             rclpy.spin_once(self, timeout_sec=0.05)
             site_msg = self.latest_site_status.message if self.latest_site_status else ""
+            drop_msg = self.latest_drop_status.message if self.latest_drop_status else ""
             state_label = self.latest_state.label if self.latest_state else ""
             active_key = self.latest_state.active_mission_key if self.latest_state else ""
             scenario_label = self.latest_state.scenario_label if self.latest_state else ""
@@ -776,20 +1055,41 @@ class SimValidationRunner(Node):
                 scenario_labels.add(scenario_label)
             if site_msg:
                 site_status_messages.add(site_msg)
+            if drop_msg:
+                drop_status_messages.add(drop_msg)
             seen_goal_reached_state = seen_goal_reached_state or state_label == "GOAL_REACHED"
             seen_site_key = seen_site_key or active_key.startswith("camping_site_")
+            seen_drop_zone_return = (
+                seen_drop_zone_return
+                or active_key == "drop_zone"
+                or scenario_label == "RETURN_TO_DROP_ZONE"
+            )
             if any(token in site_msg for token in ("CRAB_IN", "ROTATE_180", "WAIT_RETURN")):
                 seen_site_phase = True
             if "WAIT_RETURN" in site_msg:
                 ret = Bool()
                 ret.data = True
                 self.pub_site_return.publish(ret)
-            if any(token in site_msg for token in ("CRAB_OUT", "DONE")) or state_label == "RETURNING":
-                seen_return_phase = True
+            # HH_260701 - RETURNING can be emitted before the campsite exit is
+            # actually complete. Require the concrete site maneuver phases so
+            # the smoke test catches engage/gate issues that stop CRAB_OUT.
+            seen_align_return_yaw = seen_align_return_yaw or "ALIGN_RETURN_YAW" in site_msg
+            seen_crab_out = seen_crab_out or "CRAB_OUT" in site_msg
+            seen_done = seen_done or "DONE" in site_msg
+            # HH_260701 - Optional full-roundtrip mode keeps running after
+            # campsite DONE until drop-zone reverse parking reaches PARKED.
+            seen_drop_parking = seen_drop_parking or any(
+                token in drop_msg for token in ("ALIGN_REAR_YAW", "REVERSE_APPROACH")
+            )
+            seen_drop_parked = seen_drop_parked or "PARKED" in drop_msg
+            seen_drop_error = seen_drop_error or "ERROR" in drop_msg
             if self.terminal_success_seen(self.latest_nav_status, known_nav_goals):
                 reached_nav = True
-            if seen_site_phase and seen_return_phase:
-                break
+            if seen_site_phase and seen_crab_out and seen_done:
+                if not self.camping_wait_drop_zone:
+                    break
+                if seen_drop_parked or seen_drop_error:
+                    break
         self.publish_engage(False)
         self.publish_mission_engage(False)
         self.cancel_all_actions()
@@ -797,7 +1097,24 @@ class SimValidationRunner(Node):
         global_new = self.global_path_count > base_global
         local_new = self.local_path_count > base_local
         route_reached = bool(reached_nav or seen_goal_reached_state)
-        ok = bool(global_new and cmd_max > 0.03 and route_reached and seen_site_phase and seen_return_phase)
+        site_ok = bool(
+            global_new
+            and cmd_max > 0.03
+            and route_reached
+            and seen_site_phase
+            and seen_crab_out
+            and seen_done
+        )
+        drop_zone_ok = (
+            not self.camping_wait_drop_zone
+            or (
+                seen_drop_zone_return
+                and seen_drop_parking
+                and seen_drop_parked
+                and not seen_drop_error
+            )
+        )
+        ok = bool(site_ok and drop_zone_ok)
         route_dist = (
             math.hypot(
                 self.latest_pose.pose.position.x - self.latest_route_goal.pose.position.x,
@@ -826,6 +1143,7 @@ class SimValidationRunner(Node):
         latest_state_key = self.latest_state.active_mission_key if self.latest_state else ""
         latest_scenario = self.latest_state.scenario_label if self.latest_state else ""
         latest_site_status = self.latest_site_status.message if self.latest_site_status else ""
+        latest_drop_status = self.latest_drop_status.message if self.latest_drop_status else ""
         self.results.append(
             CheckResult(
                 "camping_site_smoke",
@@ -835,7 +1153,12 @@ class SimValidationRunner(Node):
                 else (
                     f"global={global_new} local={local_new} cmd={cmd_max:.3f} "
                     f"nav_success={reached_nav} site_phase={seen_site_phase} "
-                    f"return_phase={seen_return_phase} state={latest_state_label} "
+                    f"align_return_yaw={seen_align_return_yaw} "
+                    f"crab_out={seen_crab_out} done={seen_done} "
+                    f"drop_return={seen_drop_zone_return} "
+                    f"drop_parking={seen_drop_parking} "
+                    f"drop_parked={seen_drop_parked} "
+                    f"state={latest_state_label} "
                     f"key={latest_state_key} route_dist={route_dist:.2f}"
                 ),
                 {
@@ -843,16 +1166,25 @@ class SimValidationRunner(Node):
                     "nav_success": reached_nav,
                     "route_reached": route_reached,
                     "site_phase": seen_site_phase,
-                    "return_phase": seen_return_phase,
+                    "align_return_yaw": seen_align_return_yaw,
+                    "crab_out": seen_crab_out,
+                    "done": seen_done,
+                    "wait_drop_zone": self.camping_wait_drop_zone,
+                    "drop_zone_return": seen_drop_zone_return,
+                    "drop_zone_parking": seen_drop_parking,
+                    "drop_zone_parked": seen_drop_parked,
+                    "drop_zone_error": seen_drop_error,
                     "goal_reached_state_seen": seen_goal_reached_state,
                     "site_key_seen": seen_site_key,
                     "latest_state": latest_state_label,
                     "latest_active_mission_key": latest_state_key,
                     "latest_scenario": latest_scenario,
                     "latest_site_status": latest_site_status,
+                    "latest_drop_status": latest_drop_status,
                     "state_labels_seen": ",".join(sorted(state_labels)),
                     "scenario_labels_seen": ",".join(sorted(scenario_labels)),
                     "site_statuses_seen": " | ".join(sorted(site_status_messages)),
+                    "drop_statuses_seen": " | ".join(sorted(drop_status_messages)),
                     "route_distance_m": round(route_dist, 2),
                     "site_route_distance_m": round(site_route_dist, 2),
                     "site_distance_m": round(site_dist, 2),
@@ -870,6 +1202,8 @@ class SimValidationRunner(Node):
         self.check_gate_stop_matrix()
         if not self.skip_manual_goal:
             self.check_manual_goal()
+        if self.run_obstacle_replan:
+            self.check_obstacle_replan()
         if self.run_camping:
             self.check_camping_site_smoke()
         self.clear_obstacle()
