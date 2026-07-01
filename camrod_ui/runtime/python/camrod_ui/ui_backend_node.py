@@ -60,6 +60,7 @@ class MissionKeypoint:
     y: float
     z: float
     yaw_deg: float
+    corners: List[tuple[float, float]] = field(default_factory=list)
 
 
 class UiBackendNode(Node):
@@ -102,6 +103,21 @@ class UiBackendNode(Node):
         self.site_maneuver_return_topic = str(
             self.declare_parameter("site_maneuver_return_topic", "/parking/site_maneuver/return").value
         )
+        self.site_maneuver_adopt_topic = str(
+            self.declare_parameter("site_maneuver_adopt_topic", "/parking/site_maneuver/adopt").value
+        )
+        self.arrival_pose_topic = str(
+            self.declare_parameter("arrival_pose_topic", "/localization/pose").value
+        )
+        self.immediate_site_arrival_enabled = bool(
+            self.declare_parameter("immediate_site_arrival_enabled", True).value
+        )
+        self.site_arrival_center_radius_m = abs(
+            float(self.declare_parameter("site_arrival_center_radius_m", 2.5).value)
+        )
+        self.site_arrival_pose_timeout_s = float(
+            self.declare_parameter("site_arrival_pose_timeout_s", 2.0).value
+        )
         self.publish_mission_key = bool(self.declare_parameter("publish_mission_key", True).value)
         self.publish_goal_pose = bool(self.declare_parameter("publish_goal_pose", True).value)
         self.publish_engage_from_destination = bool(
@@ -139,6 +155,8 @@ class UiBackendNode(Node):
         self._state = ApiState(
             ws_site_states={s: False for s in self.site_names}
         )
+        self._latest_arrival_pose: Optional[PoseStamped] = None
+        self._latest_arrival_pose_time_s = 0.0
 
         # WebSocket client management.
         self._ws_clients: Set[WebSocket] = set()
@@ -170,6 +188,12 @@ class UiBackendNode(Node):
             self._on_amr_service_state,
             10,
         )
+        self.sub_arrival_pose = self.create_subscription(
+            PoseStamped,
+            self.arrival_pose_topic,
+            self._on_arrival_pose,
+            10,
+        )
 
         # Publishers.
         # HH_260617: UI destination and planning mission-key topics now use
@@ -186,6 +210,9 @@ class UiBackendNode(Node):
         )
         self.pub_site_maneuver_return = self.create_publisher(
             Bool, self.site_maneuver_return_topic, 10
+        )
+        self.pub_site_maneuver_adopt = self.create_publisher(
+            UiDestinationCommand, self.site_maneuver_adopt_topic, 10
         )
         self.pub_mission_key = self.create_publisher(
             PlanningMissionKey, self.planning_mission_key_topic, 10
@@ -206,8 +233,10 @@ class UiBackendNode(Node):
             f"mission_engage_topic={self.planning_mission_engage_topic} "
             f"platform_drive_enable_topic={self.platform_drive_enable_topic} "
             f"site_maneuver_return_topic={self.site_maneuver_return_topic} "
+            f"site_maneuver_adopt_topic={self.site_maneuver_adopt_topic} "
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
+            f"arrival_pose_topic={self.arrival_pose_topic} "
             f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'}"
         )
 
@@ -256,6 +285,16 @@ class UiBackendNode(Node):
             key = str(site.get("type", "")).strip() or f"camping_site_{idx}"
             if key in keypoints:
                 continue
+            corners = []
+            raw_corners = site.get("corners", [])
+            if isinstance(raw_corners, list):
+                for corner in raw_corners:
+                    if not isinstance(corner, dict):
+                        continue
+                    try:
+                        corners.append((float(corner["x"]), float(corner["y"])))
+                    except (KeyError, TypeError, ValueError):
+                        continue
             keypoints[key] = MissionKeypoint(
                 key=key,
                 frame_id=str(site.get("frame_id", self.default_goal_frame_id)).strip()
@@ -264,6 +303,7 @@ class UiBackendNode(Node):
                 y=float(site.get("y", 0.0)),
                 z=float(site.get("z", 0.0)),
                 yaw_deg=float(site.get("yaw_deg", 0.0)),
+                corners=corners,
             )
 
         self.get_logger().info(
@@ -297,6 +337,75 @@ class UiBackendNode(Node):
         yaw_rad = math.radians(float(yaw_deg))
         half = yaw_rad * 0.5
         return (0.0, 0.0, math.sin(half), math.cos(half))
+
+    def _now_s(self) -> float:
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    @staticmethod
+    def _point_in_polygon(x: float, y: float, polygon: List[tuple[float, float]]) -> bool:
+        inside = False
+        count = len(polygon)
+        if count < 3:
+            return False
+        j = count - 1
+        for i in range(count):
+            xi, yi = polygon[i]
+            xj, yj = polygon[j]
+            crosses = (yi > y) != (yj > y)
+            if crosses:
+                denom = yj - yi
+                if abs(denom) < 1.0e-9:
+                    j = i
+                    continue
+                x_at_y = (xj - xi) * (y - yi) / denom + xi
+                if x < x_at_y:
+                    inside = not inside
+            j = i
+        return inside
+
+    def _site_arrival_match(self, site: str) -> tuple[bool, str, float, str]:
+        mission_key = self._resolve_mission_key_for_site(site) or ""
+        keypoint = self._keypoints_by_mission_key.get(mission_key)
+        if not self.immediate_site_arrival_enabled:
+            return False, mission_key, float("inf"), "disabled"
+        if keypoint is None:
+            return False, mission_key, float("inf"), "missing_keypoint"
+        if self._latest_arrival_pose is None:
+            return False, mission_key, float("inf"), "missing_pose"
+        age_s = self._now_s() - self._latest_arrival_pose_time_s
+        if self.site_arrival_pose_timeout_s > 0.0 and age_s > self.site_arrival_pose_timeout_s:
+            return False, mission_key, float("inf"), f"stale_pose:{age_s:.2f}s"
+
+        pose_frame = str(self._latest_arrival_pose.header.frame_id or self.default_goal_frame_id)
+        goal_frame = str(keypoint.frame_id or self.default_goal_frame_id)
+        if pose_frame and goal_frame and pose_frame != goal_frame:
+            return False, mission_key, float("inf"), f"frame_mismatch:{pose_frame}!={goal_frame}"
+
+        px = float(self._latest_arrival_pose.pose.position.x)
+        py = float(self._latest_arrival_pose.pose.position.y)
+        center_distance = math.hypot(px - keypoint.x, py - keypoint.y)
+        if keypoint.corners and self._point_in_polygon(px, py, keypoint.corners):
+            return True, mission_key, center_distance, "inside_site_polygon"
+        if center_distance <= self.site_arrival_center_radius_m:
+            return True, mission_key, center_distance, "near_site_center"
+        return False, mission_key, center_distance, "outside_site"
+
+    def _notify_site_arrival(
+        self,
+        site: str,
+        state: int,
+        source: str,
+        *,
+        already_at_site: bool = False,
+    ) -> None:
+        payload = {"arrived": site, "site": site, "amr_state": int(state)}
+        if already_at_site:
+            payload["already_at_site"] = True
+        self._schedule_broadcast(payload)
+        self.get_logger().info(
+            f"site arrival notify ({source}): site={site} state={int(state)} "
+            f"already_at_site={str(already_at_site).lower()}"
+        )
 
     # ── WebSocket broadcast helpers ──────────────────────────────────────────
 
@@ -383,6 +492,10 @@ class UiBackendNode(Node):
             self._state.battery_percentage = pct
         self._schedule_broadcast({"battery": pct})
 
+    def _on_arrival_pose(self, msg: PoseStamped) -> None:
+        self._latest_arrival_pose = msg
+        self._latest_arrival_pose_time_s = self._now_s()
+
     def _on_amr_service_state(self, msg: AvgAmrServiceState) -> None:
         state = int(msg.state)
         self.get_logger().info(
@@ -402,7 +515,7 @@ class UiBackendNode(Node):
             with self._lock:
                 site = self._state.destination.get("site", "")
             if site:
-                self._schedule_broadcast({"arrived": site, "site": site, "amr_state": state})
+                self._notify_site_arrival(site, state, source=f"amr_service_state:{state}")
             if self.publish_mission_engage_from_destination:
                 self._publish_mission_engage(False, source=f"amr_service_state:{state}")
             self._publish_engage(False, source=f"amr_service_state:{state}")
@@ -417,7 +530,15 @@ class UiBackendNode(Node):
             # gates after the site arrival hold closed them.
             if state == int(AvgAmrServiceState.RETURNING_TO_DROP_ZONE):
                 self._publish_site_maneuver_return(source="amr_service_state:RETURNING_TO_DROP_ZONE")
-            self._publish_engage(False, source=f"amr_service_state:{state}:manual_clear")
+            # HH_260701 - Clear only the manual engage latch during return states.
+            # Mission engage owns the platform drive gate here; dropping platform
+            # enable on RETURN_WITH_CARGO can stop CRAB_OUT before the campsite
+            # maneuver reaches DONE.
+            self._publish_engage(
+                False,
+                source=f"amr_service_state:{state}:manual_clear",
+                sync_drive_enable=False,
+            )
             if self.publish_mission_engage_from_destination:
                 self._publish_mission_engage(True, source=f"amr_service_state:{state}")
         elif state == AvgAmrServiceState.GUEST_RECALL_SERVICE:
@@ -474,6 +595,19 @@ class UiBackendNode(Node):
             f"site maneuver return ({source}) -> {self.site_maneuver_return_topic}: true"
         )
 
+    def _publish_site_maneuver_adopt(self, site: str, mission_key: str, source: str) -> None:
+        msg = UiDestinationCommand()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.site = site
+        msg.run = True
+        msg.mission_key = mission_key
+        msg.source = source
+        self.pub_site_maneuver_adopt.publish(msg)
+        self.get_logger().info(
+            f"site maneuver adopt ({source}) -> {self.site_maneuver_adopt_topic}: "
+            f"site={site} mission_key={mission_key}"
+        )
+
     def _publish_platform_drive_enable(self, enabled: bool, source: str) -> None:
         if not self.publish_platform_drive_enable_with_engage:
             return
@@ -514,11 +648,14 @@ class UiBackendNode(Node):
             return f"camping_site_{int(site_text[1:])}"
         return None
 
-    def _publish_engage(self, enabled: bool, source: str) -> None:
+    def _publish_engage(
+        self, enabled: bool, source: str, *, sync_drive_enable: bool = True
+    ) -> None:
         msg = Bool()
         msg.data = bool(enabled)
         self.pub_engage.publish(msg)
-        self._publish_platform_drive_enable(enabled, source=source)
+        if sync_drive_enable:
+            self._publish_platform_drive_enable(enabled, source=source)
 
         with self._lock:
             self._state.engaged = bool(enabled)
@@ -629,12 +766,11 @@ class UiBackendNode(Node):
         return (site, run)
 
     def _apply_destination_command(self, site: str, run: bool, source: str) -> Dict[str, Any]:
-        if self.publish_engage_from_destination:
-            self._publish_engage(run, source=f"{source}:destination")
-        if self.publish_mission_engage_from_destination:
-            self._publish_mission_engage(run, source=f"{source}:destination")
-
         if not run:
+            if self.publish_engage_from_destination:
+                self._publish_engage(False, source=f"{source}:destination")
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(False, source=f"{source}:destination")
             return {
                 "site": site,
                 "run": False,
@@ -642,6 +778,41 @@ class UiBackendNode(Node):
                 "goal_pose_published": False,
                 "message": "run=false -> engage off, goal dispatch skipped",
             }
+
+        already_arrived, mission_key, distance_m, match_reason = self._site_arrival_match(site)
+        if already_arrived:
+            # HH_260701 - If the robot was manually driven into a campsite,
+            # selecting that site in the UI should adopt the parked state instead
+            # of dispatching a fresh Nav2 goal back through the lanelet route.
+            self._publish_site_maneuver_adopt(site, mission_key, source=f"{source}:already_at_site")
+            self._publish_amr_service_state(
+                AvgAmrServiceState.UNLOAD_WAIT,
+                source=f"{source}:already_at_site:{match_reason}",
+            )
+            self._notify_site_arrival(
+                site,
+                int(AvgAmrServiceState.UNLOAD_WAIT),
+                source=f"{source}:already_at_site:{match_reason}",
+                already_at_site=True,
+            )
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(False, source=f"{source}:already_at_site")
+            self._publish_engage(False, source=f"{source}:already_at_site")
+            return {
+                "site": site,
+                "run": True,
+                "mission_key": mission_key,
+                "goal_pose_published": False,
+                "message": (
+                    f"already at site ({match_reason}, distance={distance_m:.2f}m) "
+                    "-> arrival adopted"
+                ),
+            }
+
+        if self.publish_engage_from_destination:
+            self._publish_engage(True, source=f"{source}:destination")
+        if self.publish_mission_engage_from_destination:
+            self._publish_mission_engage(True, source=f"{source}:destination")
 
         self._publish_amr_service_state(AvgAmrServiceState.MOVING_TO_SITE, source=f"{source}:start")
         goal_result = self._publish_goal_for_site(site=site, source=source)
@@ -853,7 +1024,11 @@ class UiBackendNode(Node):
                     if payload.get("usage_complete"):
                         node._publish_amr_service_state(AvgAmrServiceState.RETURNING_TO_DROP_ZONE, source="ws:usage_complete")
                         node._publish_site_maneuver_return(source="ws:usage_complete")
-                        node._publish_engage(False, source="ws:usage_complete:manual_clear")
+                        node._publish_engage(
+                            False,
+                            source="ws:usage_complete:manual_clear",
+                            sync_drive_enable=False,
+                        )
                         if node.publish_mission_engage_from_destination:
                             node._publish_mission_engage(True, source="ws:usage_complete")
                         with node._lock:

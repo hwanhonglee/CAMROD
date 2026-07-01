@@ -99,13 +99,14 @@ HH_260619 - The intended drop-zone reverse approach is published on
 
 | Node | Trigger | Command output | Stop/completion condition |
 |---|---|---|---|
-| `/parking/site_maneuver` | `PlanningState.GOAL_REACHED` for `camping_site_*`, or `/parking/site_maneuver/start_service` | `/planning/cmd_vel_raw` with default `linear.y` crab entry/exit plus campsite-only 180-degree rotation; reverse entry is fallback-selectable | HH_260622: Crab entry reaches the raw site center before the body rotates 180 degrees, then waits inside the site until a return request triggers crab-out |
+| `/parking/site_maneuver` | `PlanningState.GOAL_REACHED` for `camping_site_*`, or `/parking/site_maneuver/start_service` | `/planning/cmd_vel_raw` with default `linear.y` crab entry/exit plus campsite-only 180-degree rotation; reverse entry is fallback-selectable | HH_260701: Crab entry reaches the raw site center, rotates 180 degrees inside the site, then restores lanelet yaw before crab-out by default |
 | `/parking/drop_zone_parking` | `PlanningState.GOAL_REACHED` for `RETURN_TO_DROP_ZONE/drop_zone`, or `/parking/drop_zone/start_service` | `/planning/cmd_vel_raw` with yaw alignment and reverse command | `/platform/status/is_charging`, reverse distance limit, or timeout |
 
 ### Controller Design
 
 - Site entry uses Ranger parallel/side-slip command (`Twist.linear.y`) so the robot body does not rotate during crab motion.
 - Site handling rotates the body 180 degrees after lateral entry, then waits inside the site until `/parking/site_maneuver/return` or `return_service` unless `auto_return_after_unload_wait` is explicitly enabled.
+- HH_260701 - With `align_return_yaw_before_crab_out=true`, return restores the original lanelet-snap yaw before crab-out and uses the opposite crab direction so the following Nav2 return route does not start with another 180-degree spin.
 - HH_260622 - UI usage-complete must publish `/parking/site_maneuver/return` first. `/planning/state_machine/return_to_drop_zone` is published by `site_maneuver` only after `CRAB_OUT`/`REVERSE_OUT` reaches the lanelet snap pose.
 - Drop-zone parking uses a rule-based reverse pose controller: align vehicle body yaw to station/goal yaw within `align_yaw_tolerance_deg`, then reverse with `reverse_yaw_kp` and `reverse_lateral_kp` feedback.
 - HH_260619 - Drop-zone parking does not run the campsite 180-degree body rotation phase; it only aligns yaw and reverses to the station pose.
@@ -120,10 +121,26 @@ HH_260619 - The intended drop-zone reverse approach is published on
 |---|---|---|
 | Campsite entry | `CRAB_IN → ROTATE_180` by default; `ALIGN_ENTRY_YAW → REVERSE_IN → ROTATE_180` only when `site_entry_mode=reverse` | `/AMR_service_state.state=SITE_ENTRY` |
 | Campsite unload | `UNLOAD_WAIT → WAIT_RETURN` | `/AMR_service_state.state=UNLOAD_WAIT` |
-| Campsite return | `CRAB_OUT → DONE` by default; `REVERSE_OUT → DONE` only when `site_entry_mode=reverse` | `/AMR_service_state.state=RETURN_WITH_CARGO`, then `/planning/state_machine/return_to_drop_zone=true` |
+| Campsite return | `ALIGN_RETURN_YAW → CRAB_OUT → DONE` by default; `CRAB_OUT → DONE` only when `align_return_yaw_before_crab_out=false`; `REVERSE_OUT → DONE` only when `site_entry_mode=reverse` | `/AMR_service_state.state=RETURN_WITH_CARGO`, then `/planning/state_machine/return_to_drop_zone=true` |
 | Drop-zone parking | `ALIGN_REAR_YAW → REVERSE_APPROACH → PARKED` | `/AMR_service_state.state=DROP_ZONE_PARKING`, then `DROP_ZONE_WAIT` |
 
-HH_260622 - Park profile validation used `lanelet2_maps_(copy_park).osm`: UI `B1` dispatched to `camping_site_1`, Nav2 reached the lanelet-snap pose, `site_maneuver` entered the site with crab motion, rotated 180 degrees only inside the campsite, entered `WAIT_RETURN`, accepted `/parking/site_maneuver/return`, crabbed out, and requested return-to-drop-zone.
+HH_260701 - Return flow is designed to rotate back to lanelet yaw before crab-out, then request return-to-drop-zone only after reaching the original lanelet snap pose.
+
+HH_260701 - State naming notes for operators:
+
+| Name | Scope | Meaning |
+|---|---|---|
+| `UNLOAD_WAIT` | campsite-internal | The robot is already inside the selected campsite after the 180-degree turn. UI should show the arrival/return prompt here. |
+| `WAIT_RETURN` | campsite-internal | The campsite maneuver is holding zero velocity and waiting for `/parking/site_maneuver/return`. |
+| `RETURN_WITH_CARGO` | campsite-internal exit | The robot is leaving the campsite back to the lanelet snap pose through `ALIGN_RETURN_YAW` and `CRAB_OUT` or `REVERSE_OUT`. This is not the Nav2 road return yet. |
+| `RETURN_TO_DROP_ZONE` | planning scenario | Nav2 is driving on the lanelet route from the campsite road/snap pose back to the configured drop-zone route goal. |
+
+HH_260701 - Manual campsite adoption uses `/parking/site_maneuver/adopt`.
+This path is for the case where the operator manually drives or manually goals
+into B1/B2/etc. before using the UI. The node validates the current pose is near
+the requested campsite, reconstructs a route/site pair from the latest
+`/planning/lanelet_pose_ros` when available, and enters `WAIT_RETURN` so the
+normal return button can start the exit sequence.
 
 ### Smoke Test
 

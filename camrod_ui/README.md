@@ -417,9 +417,29 @@ After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the 
 
 A camping-site button publishes semantic intent and raw site-center pose only once per button action. Planning owns snapping to lanelet route goals. Parking starts later from `PlanningState`, not directly from the UI button, so UI dispatch does not bypass Nav2 or the safety gates.
 
+HH_260701 - If the robot was manually driven into a campsite first, selecting
+the same site in the UI now adopts the parked state instead of sending another
+route goal. `ui_backend_node` checks the latest `/localization/pose` against the
+configured campsite polygon or center radius, publishes an
+`AvgAmrServiceState.UNLOAD_WAIT` arrival notification, and sends
+`UiDestinationCommand(run=true)` on `/parking/site_maneuver/adopt`. The parking
+node then enters `WAIT_RETURN`, so the operator can use the return button even
+when the original entry did not come from the UI camping-site button.
+
 | UI concept | ROS contract |
 |---|---|
 | Button destination | `PlanningMissionKey.mission_key` |
 | Site center | `/planning/goal_pose` / `/goal_pose` |
 | Lanelet snap route | produced by `camrod_planning` as `/planning/goal_pose_snapped_ros` (`geometry_msgs`) and `/planning/goal_pose_snapped` (`avg_msgs`) |
 | Parking phase | produced by `camrod_parking` status topics |
+| Already-at-site adoption | `/parking/site_maneuver/adopt` with `avg_msgs/UiDestinationCommand` |
+
+Important destination parameters:
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `arrival_pose_topic` | `/localization/pose` | Pose used to detect whether the robot is already inside the selected campsite |
+| `immediate_site_arrival_enabled` | `true` | Enables already-at-site adoption on UI destination selection |
+| `site_arrival_center_radius_m` | `2.5` | Fallback radius around the configured campsite center when no polygon match is available |
+| `site_arrival_pose_timeout_s` | `2.0` | Maximum age of the pose used for already-at-site detection |
+| `site_maneuver_adopt_topic` | `/parking/site_maneuver/adopt` | Parking handoff topic used to enter `WAIT_RETURN` after manual site entry |
