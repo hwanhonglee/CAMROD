@@ -302,6 +302,29 @@ class PlanningCmdVelGateNode(Node):
             ).value,
             {"exit_straight", "align_exit_yaw"},
         )
+        # HH_260701 - Campsite internal motion is owned by camrod_parking.
+        # Bypass only static lanelet/global-path cost during these phases;
+        # live LiDAR/Radar source cost remains blocking.
+        self.parking_site_status_topic = str(
+            self.declare_parameter(
+                "parking_site_status_topic", "/parking/site_maneuver/status"
+            ).value
+        )
+        self.parking_site_static_bypass_phases = self._parse_source_label_set(
+            self.declare_parameter(
+                "parking_site_static_bypass_phases",
+                "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT",
+            ).value,
+            {
+                "align_entry_yaw",
+                "reverse_in",
+                "crab_in",
+                "rotate_180",
+                "align_return_yaw",
+                "reverse_out",
+                "crab_out",
+            },
+        )
         # HH_260618: Attribute cost-stop events to original cost-grid sources
         # without publishing another large debug grid. Source grids are sampled
         # only when a merged-grid stop actually occurs.
@@ -537,7 +560,9 @@ class PlanningCmdVelGateNode(Node):
         self._last_lanelet_current_reentry_bypass_log_sec = 0.0
         self._last_lanelet_front_path_reentry_bypass_log_sec = 0.0
         self._last_drop_zone_static_bypass_log_sec = 0.0
+        self._last_site_static_phase_bypass_log_sec = 0.0
         self._parking_drop_zone_phase = ""
+        self._parking_site_phase = ""
 
         # HH_260422: _current_speed holds the latest forward body velocity (m/s) from odometry.
         #   Used to compute speed-dependent front lookahead. Stays 0.0 until first odometry arrives.
@@ -589,6 +614,12 @@ class PlanningCmdVelGateNode(Node):
             ModuleState,
             self.parking_drop_zone_status_topic,
             self._on_parking_drop_zone_status,
+            10,
+        )
+        self.sub_parking_site_status = self.create_subscription(
+            ModuleState,
+            self.parking_site_status_topic,
+            self._on_parking_site_status,
             10,
         )
         self.sub_localization_mode = None
@@ -704,6 +735,7 @@ class PlanningCmdVelGateNode(Node):
             f"side_rear={'true' if self.enable_side_rear_cost_stop else 'false'} "
             f"lateral_static_bypass={'true' if self.lateral_cmd_bypass_static_cost_stop else 'false'} "
             f"reverse_static_bypass={'true' if self.reverse_cmd_bypass_static_cost_stop else 'false'} "
+            f"site_static_phases={sorted(self.parking_site_static_bypass_phases)} "
             f"rotation_dynamic_stop={'true' if self.rotation_cmd_dynamic_obstacle_stop else 'false'} "
             f"yaw_zone_align={'true' if self.enable_yaw_alignment_zone else 'false'} "
             f"route_heading_align={'true' if self.enable_route_heading_alignment else 'false'} "
@@ -769,6 +801,19 @@ class PlanningCmdVelGateNode(Node):
                 self.lanelet_safety_current_route_reentry_max_distance_m = float(p.value)
             elif p.name == "lanelet_safety_current_route_reentry_require_front_cmd":
                 self.lanelet_safety_current_route_reentry_require_front_cmd = bool(p.value)
+            elif p.name == "parking_site_static_bypass_phases":
+                self.parking_site_static_bypass_phases = self._parse_source_label_set(
+                    p.value,
+                    {
+                        "align_entry_yaw",
+                        "reverse_in",
+                        "crab_in",
+                        "rotate_180",
+                        "align_return_yaw",
+                        "reverse_out",
+                        "crab_out",
+                    },
+                )
             elif p.name == "enable_speed_dependent_lookahead":
                 self.enable_speed_dependent_lookahead = bool(p.value)
             elif p.name == "front_lookahead_min_m":
@@ -1037,6 +1082,9 @@ class PlanningCmdVelGateNode(Node):
     # lanelet/drop-zone cost without disabling live obstacle protection.
     def _on_parking_drop_zone_status(self, msg: ModuleState) -> None:
         self._parking_drop_zone_phase = self._extract_phase_from_status(msg.message)
+
+    def _on_parking_site_status(self, msg: ModuleState) -> None:
+        self._parking_site_phase = self._extract_phase_from_status(msg.message)
 
     # Handles localization mode updates and applies DR->NORMAL recovery hold.
     def _on_localization_mode(self, msg: AvgLocalizationMode) -> None:
@@ -1397,6 +1445,8 @@ class PlanningCmdVelGateNode(Node):
     ) -> bool:
         if cmd_in is None:
             return False
+        if self._is_site_static_bypass_phase():
+            return True
         min_lateral = max(0.0, float(self.lateral_cmd_bypass_min_mps))
         lateral_site_motion = (
             self.lateral_cmd_bypass_static_cost_stop
@@ -1666,8 +1716,7 @@ class PlanningCmdVelGateNode(Node):
             return False
         if self._should_bypass_static_lanelet_for_drop_zone_exit(cmd_in, now_sec):
             return False
-        if self._should_bypass_static_cost_for_site_maneuver(cmd_in):
-            self._log_site_lanelet_static_bypass(cmd_in, now_sec)
+        if self._should_bypass_static_lanelet_for_site_maneuver(cmd_in, now_sec):
             return False
 
         for label, pose in pose_candidates:
@@ -1878,6 +1927,23 @@ class PlanningCmdVelGateNode(Node):
             )
         return True
 
+    def _should_bypass_static_lanelet_for_site_maneuver(
+        self, cmd_in: Twist, now_sec: float
+    ) -> bool:
+        if not self._is_site_static_bypass_phase():
+            return False
+        if not self._is_translational_cmd(cmd_in):
+            return False
+        if (now_sec - self._last_site_static_phase_bypass_log_sec) >= 1.0:
+            self._last_site_static_phase_bypass_log_sec = now_sec
+            self.get_logger().warn(
+                "lanelet-safety site-maneuver static bypass: "
+                f"phase={self._parking_site_phase} "
+                f"cmd_x={float(cmd_in.linear.x):.2f}m/s "
+                f"cmd_y={float(cmd_in.linear.y):.2f}m/s"
+            )
+        return True
+
     def _log_site_lanelet_static_bypass(self, cmd_in: Twist, now_sec: float) -> None:
         if (now_sec - self._last_lateral_static_bypass_log_sec) < 2.0:
             return
@@ -1893,6 +1959,10 @@ class PlanningCmdVelGateNode(Node):
         # heading and static lanelet safety agree on parking-owned motion.
         phase = self._normalize_source_label(self._parking_drop_zone_phase)
         return bool(phase and phase in self.parking_drop_zone_static_bypass_phases)
+
+    def _is_site_static_bypass_phase(self) -> bool:
+        phase = self._normalize_source_label(self._parking_site_phase)
+        return bool(phase and phase in self.parking_site_static_bypass_phases)
 
     def _closest_route_path_distance_m(
         self, frame_id: str, pose_x: float, pose_y: float
@@ -2157,6 +2227,11 @@ class PlanningCmdVelGateNode(Node):
         if self._is_drop_zone_exit_phase():
             # HH_260624 - During explicit drop-zone departure, the parking
             # node owns straight exit/alignment before any Nav2 local path is valid.
+            self._route_heading_align_active = False
+            return None
+        if self._is_site_static_bypass_phase():
+            # HH_260701 - During campsite entry/return, camrod_parking owns
+            # the body-frame command and Nav2 route tangent should not rewrite it.
             self._route_heading_align_active = False
             return None
         if abs(float(cmd_in.linear.y)) > self.route_heading_lateral_cmd_epsilon_mps:

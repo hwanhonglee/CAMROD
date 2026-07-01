@@ -708,6 +708,16 @@ or the gate failed at runtime.
 
 `planning_state_machine` publishes `avg_msgs/PlanningState` on `/planning/state_machine/state`. `camrod_parking/site_maneuver` watches this topic and starts only after a `camping_site_*` ROS-native route goal (`/planning/goal_pose_snapped_ros`) reaches `GOAL_REACHED`. `camrod_parking/drop_zone_parking` watches the same topic and starts after `RETURN_TO_DROP_ZONE` reaches the `drop_zone` route goal. HH_260623 - generic route arrival uses a 0.2 m center-based threshold, return handoff uses 0.3 m, and `GOAL_REACHED/RETURN_TO_DROP_ZONE` is held for `drop_zone_parking_handoff_hold_s` so parking does not miss a one-tick event. HH_260623 - auto `drop_zone` return goals are published as raw station-center poses on `/planning/auto_goal_raw`; `goal_snapper` converts them to lanelet route goals for Nav2 while preserving the semantic key for drop-zone parking. HH_260624 - return goals also publish the selected exported station pose on `/planning/drop_zone_goal_raw`, and `drop_zone_id` selects the exact `drop_zones.yaml` entry used by planning and parking.
 
+HH_260701 - The state topic carries two layers at once:
+`PlanningState.label` is the motion status (`RUNNING`, `GOAL_REACHED`,
+`RETURNING`, `WAIT_DZ`, etc.), while `PlanningState.scenario_label` is the
+mission phase (`DELIVERY_TO_SITE`, `SITE_ENTRY`, `UNLOAD_WAIT`,
+`RETURN_WITH_CARGO`, `RETURN_TO_DROP_ZONE`, `DROP_ZONE_PARKING`, etc.).
+`RETURN_WITH_CARGO` is the campsite-exit phase mirrored from
+`site_maneuver`; it means the robot is leaving the campsite back to the
+lanelet snap pose. The actual Nav2 road return to the drop-zone is
+`RETURN_TO_DROP_ZONE`.
+
 ### Command Path
 
 Nav2 controller output and parking controller output both target `/planning/cmd_vel_raw`. `planning_cmd_vel_gate_node` applies engage, e-stop, localization recovery hold, raw lanelet safety checks, and inflation cost checks before publishing `/planning/cmd_vel`. HH_260618 - explicit lateral site-crab/reverse commands bypass only static front/side/rear lanelet/global-path cost; dynamic LiDAR/Radar source cost still stops the robot. HH_260624 - pure in-place parking rotation also bypasses only static lanelet cost and samples a body-centered live LiDAR/Radar disk before allowing rotation. `camrod_platform` then applies the final platform gate before `/platform/cmd_vel`.

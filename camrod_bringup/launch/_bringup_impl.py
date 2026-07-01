@@ -969,6 +969,22 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_parking_drop_zone_static_bypass_phases', 'EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
             'Parking drop-zone phases allowed to cross static lanelet cost',
         ),
+        # HH_260701 - Site maneuver owns campsite entry/return body motion;
+        # forward the phase list so only static lanelet cost is bypassed there.
+        (
+            'planning_cmd_vel_gate_parking_site_status_topic',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_parking_site_status_topic', '/parking/site_maneuver/status'),
+            'Parking site status topic for bounded static lanelet bypass',
+        ),
+        (
+            'planning_cmd_vel_gate_parking_site_static_bypass_phases',
+            cfg_get(
+                launch_cfg,
+                'planning/cmd_vel_gate_parking_site_static_bypass_phases',
+                'ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT',
+            ),
+            'Parking site phases allowed to cross static lanelet cost',
+        ),
         # Speed-dependent front lookahead.
         (
             'planning_cmd_vel_gate_speed_dependent_lookahead',
@@ -1834,6 +1850,8 @@ def generate_launch_description():
         'planning_engage_topic': lc['planning_engage_topic'],
         'planning_mission_engage_topic': lc['planning_mission_engage_topic'],
         'platform_drive_enable_topic': lc['platform_drive_enable_topic'],
+        'site_maneuver_adopt_topic': '/parking/site_maneuver/adopt',
+        'arrival_pose_topic': '/localization/pose',
     }
 
     module_specs = [
