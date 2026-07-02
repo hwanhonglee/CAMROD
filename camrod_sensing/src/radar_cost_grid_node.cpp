@@ -321,7 +321,7 @@ private:
       return;
     }
     const auto & topic = input_topics_[idx];
-    // HH_260623 - Removed the legacy merged front alias; publish front1/front2 separately.
+    // HH_260623 - Publish front1/front2 separately; merged front output was removed.
     if (topic.find("front1") != std::string::npos) {
       avg_msg.front1 = avg_msgs::conversions::fromRos(msg);
     } else if (topic.find("front2") != std::string::npos) {

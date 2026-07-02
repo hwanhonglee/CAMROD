@@ -50,7 +50,7 @@
   <!--      right1/right2 = -90 deg = -1.570796                  -->
   <!--      rear   = 180 deg =  3.141593                         -->
   <!-- ========================================================= -->
-  <!-- HH_260623 - Removed the legacy single-front radar alias; only front1/front2 exist. -->
+  <!-- HH_260623 - Removed the old single-front radar frame; only front1/front2 exist. -->
   <!-- HH_260623 - Fallback defaults match measured robot_base_link-relative mounts. -->
   <xacro:arg name="radar_front1_xyz" default="1.07087 -0.11005 0.33378"/>
   <xacro:arg name="radar_front1_rpy" default="0.0 0.0 0.0"/>
@@ -242,7 +242,7 @@
     length="0.10"
     mass="0.30"/>
 
-  <!-- HH_260623 - Removed legacy single camera_link; camera_front/camera_rear are canonical. -->
+  <!-- HH_260623 - Removed old single camera_link; camera_front/camera_rear are canonical. -->
 
   <!-- ========================================================= -->
   <!-- 10. Radar sensors                                         -->

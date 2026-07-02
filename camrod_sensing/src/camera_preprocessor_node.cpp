@@ -30,7 +30,7 @@ public:
     camera_status_topic_ = declare_parameter<std::string>(
       "camera_status_topic", "/sensing/camera/status");
     publish_camera_status_ = declare_parameter<bool>("publish_camera_status", false);
-    // HH_260623 - Use camera_front; legacy camera_link was removed from sensor_kit TF.
+    // HH_260623 - Use camera_front; camera_link was removed from sensor_kit TF.
     frame_id_override_ = declare_parameter<std::string>("frame_id_override", "camera_front");
     require_camera_info_ = declare_parameter<bool>("require_camera_info", false);
 
@@ -88,9 +88,10 @@ private:
     }
     image_pub_->publish(out);
 
+    // HH_260702 - Keep /processed/camera_info at the original camera_info rate;
+    // the image callback only republishes image data and optional bundled status.
     if (camera_info_ready_) {
       std::lock_guard<std::mutex> lock(mutex_);
-      camera_info_pub_->publish(last_camera_info_);
       if (publish_camera_status_ && avg_camera_pub_) {
         AvgSensingCamera avg_msg;
         avg_msg.image = avg_msgs::conversions::fromRos(out);

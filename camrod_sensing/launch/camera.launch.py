@@ -96,7 +96,7 @@ def generate_launch_description():
     cyclonedds_config         = os.path.join(pkg_dir, 'config', 'camera', 'cyclonedds.xml')
 
     # HH_260629: Standalone camera.launch has no outer /sensing namespace, so default
-    # directly to /sensing/camera for topic compatibility with downstream consumers
+    # directly to /sensing/camera for downstream consumers
     # (yolov9mit, obstacle_fusion, docking AprilTag, diagnostics) that hardcode
     # /sensing/camera/... topics. sensing.launch.py overrides this to 'camera' because
     # its PushRosNamespace("sensing") already adds the /sensing prefix.
@@ -158,28 +158,6 @@ def generate_launch_description():
                 ('~/camera_info',           'camera_info'),
             ],
             additional_env={'CYCLONEDDS_URI': cyclonedds_config},
-        ),
-
-        # HJ_260529: compressed→raw bridge for yolov9mit and obstacle_fusion.
-        # Both nodes require sensor_msgs/Image (raw). camera_front_publisher_node
-        # only outputs CompressedImage, so republish to processed/image.
-        Node(
-            package='image_transport',
-            executable='republish',
-            name='front_camera_republisher',
-            namespace=camera_namespace,
-            output='screen',
-            condition=IfCondition(LaunchConfiguration('_front_camera_eff')),
-            arguments=['compressed', 'raw'],
-            remappings=[
-                ('in/compressed', 'econ_front/image_rect/compressed'),
-                ('out',           'processed/image'),
-            ],
-            parameters=[{
-                'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.reliability': 'best_effort',
-                'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.history': 'keep_last',
-                'qos_overrides./sensing/camera/econ_front/image_rect/compressed.subscription.depth': 5,
-            }],
         ),
 
         # ── Rear camera node ────────────────────────────────────────────────────

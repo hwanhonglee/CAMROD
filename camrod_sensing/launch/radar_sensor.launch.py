@@ -45,7 +45,7 @@ def generate_launch_description():
             executable="sen0592_radar_node",
             name="sen0592_radar_node",
             namespace=module_namespace,
-            output="screen",
+            output="log",
             # HH_260623 - Keep the latest seven-radar mapping in YAML so bench overrides
             # can still replace the sensor count without launch-time topic mismatch.
             parameters=[

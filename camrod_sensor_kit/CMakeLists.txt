@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.8)
 project(camrod_sensor_kit)
-# HH_260109 Sensor kit package (URDF/TF/specs) renamed from legacy package name.
+# HH_260109 Sensor kit package (URDF/TF/specs) renamed from the old package name.
 
 ###############################################
 # 1. Find packages

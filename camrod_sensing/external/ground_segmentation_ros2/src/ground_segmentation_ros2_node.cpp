@@ -52,9 +52,18 @@ void checkSubscriptionConnection(
 class GroundSegmentatioNode : public rclcpp::Node {
 public:
     GroundSegmentatioNode(rclcpp::NodeOptions options) : Node("ground_segmentation",options) {
-        publisher_ground_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/ground_points", 10);
         publisher_obstacle_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/obstacle_points", 10);
-        publisher_raw_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/raw_points", 10);
+        // HH_260702 - Raw/ground clouds are RViz/debug outputs. Keep the
+        // driving obstacle cloud always on, but avoid two extra PointCloud2
+        // conversions and publishes during field runs unless explicitly enabled.
+        if (!this->has_parameter("publish_debug_clouds")) {
+            this->declare_parameter<bool>("publish_debug_clouds", false);
+        }
+        publish_debug_clouds = this->get_parameter("publish_debug_clouds").as_bool();
+        if (publish_debug_clouds) {
+            publisher_ground_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/ground_points", 10);
+            publisher_raw_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/raw_points", 10);
+        }
 
         if (this->get_parameter("use_imu_orientation").as_bool()){
             subscriber_synced_pointcloud = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::PointCloud2>>(this, "/ground_segmentation/input_pointcloud");
@@ -109,6 +118,7 @@ private:
     std::string robot_frame;
     double lidar_to_ground,transform_tolerance;
     bool show_benchmark;
+    bool publish_debug_clouds{false};
     std::vector<double> runtime;
 
     std::shared_ptr<tf2_ros::Buffer> buffer;
@@ -143,8 +153,6 @@ private:
     }
 
     void segmentation(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &pointcloud_msg, const sensor_msgs::msg::Imu::ConstSharedPtr &imu_msg = nullptr){
-        sensor_msgs::msg::PointCloud2::SharedPtr raw_points = std::make_shared<sensor_msgs::msg::PointCloud2>();
-        sensor_msgs::msg::PointCloud2::SharedPtr ground_points = std::make_shared<sensor_msgs::msg::PointCloud2>();
         sensor_msgs::msg::PointCloud2::SharedPtr obstacle_points = std::make_shared<sensor_msgs::msg::PointCloud2>();
 
         // Convert the ROS 2 PointCloud2 message to a PCL PointCloud
@@ -270,22 +278,34 @@ private:
         final_ground_points->height = 1;
         final_ground_points->is_dense = true;  
 
-        pcl::toROSMsg(*filtered_cloud_ptr, *raw_points);
-        pcl::toROSMsg(*final_ground_points, *ground_points);
         pcl::toROSMsg(*final_non_ground_points, *obstacle_points);
+        sensor_msgs::msg::PointCloud2::SharedPtr raw_points;
+        sensor_msgs::msg::PointCloud2::SharedPtr ground_points;
+        if (publish_debug_clouds) {
+            raw_points = std::make_shared<sensor_msgs::msg::PointCloud2>();
+            ground_points = std::make_shared<sensor_msgs::msg::PointCloud2>();
+            pcl::toROSMsg(*filtered_cloud_ptr, *raw_points);
+            pcl::toROSMsg(*final_ground_points, *ground_points);
+        }
 
-        ground_points->header.frame_id = robot_frame;
         obstacle_points->header.frame_id = robot_frame;
-        raw_points->header.frame_id = robot_frame;
+        if (publish_debug_clouds) {
+            ground_points->header.frame_id = robot_frame;
+            raw_points->header.frame_id = robot_frame;
+        }
 
-        ground_points->header.stamp = this->now();
         obstacle_points->header.stamp = this->now();
-        raw_points->header.stamp = this->now();
+        if (publish_debug_clouds) {
+            ground_points->header.stamp = obstacle_points->header.stamp;
+            raw_points->header.stamp = obstacle_points->header.stamp;
+        }
 
         // Publish the message
-        publisher_ground_points->publish(*ground_points);
         publisher_obstacle_points->publish(*obstacle_points);
-        publisher_raw_points->publish(*raw_points);
+        if (publish_debug_clouds) {
+            publisher_ground_points->publish(*ground_points);
+            publisher_raw_points->publish(*raw_points);
+        }
 
         final_ground_points->clear();
         final_non_ground_points->clear();
