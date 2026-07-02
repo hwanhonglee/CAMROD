@@ -46,20 +46,23 @@ ros2 launch camrod_bringup gnss_dr_test.launch.py
 
 # Automated sim validation after bringup is running
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p run_obstacle_replan:=true \
   -p report_file:=/tmp/camrod_sim_validation_manual.json
 
-# Camping-site route + site maneuver smoke validation
+# Camping-site route + site maneuver + drop-zone reverse parking validation
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p skip_manual_goal:=true \
   -p run_camping:=true \
-  -p camping_timeout_s:=300.0 \
-  -p report_file:=/tmp/camrod_sim_validation_camping.json
+  -p camping_wait_drop_zone:=true \
+  -p camping_timeout_s:=420.0 \
+  -p report_file:=/tmp/camrod_sim_validation_camping_full.json
 ```
 
 > HH_260622 - `map_info.yaml` now defaults to the `copy_park` validation map. `_bringup_impl.py` also infers `map_profile` from `map_profile` or the OSM filename and loads matching `drop_zones (<profile>).yaml` / `camping_sites (<profile>).yaml` when those files exist.
 > HH_260630 - When `sim:=true`, bringup selects `camrod_system/config/system_checker_sim.yaml` in addition to the `diagnostics/sim` profile. Fake-sensor runs therefore check the simulated public topic graph without requiring real GNSS/IMU/LiDAR/camera/Ranger driver nodes.
 > HH_260630 - UI manual engage and camping-site destination buttons publish `/platform/drive_enable` together with the relevant planning engage latch. `/platform/set_enabled` remains a CLI/debug fallback, not the normal operator path.
 > HH_260630 - Package config trees are synchronized into `camrod_bringup/config`; bringup passes `config/system/diagnostics` to `camrod_system` so the synchronized system checker profiles are actually used.
+> HH_260702 - Latest sim validation passed baseline rates, all radar directions, LiDAR/Radar directional cost-stop, manual goal navigation, status-only obstacle blockage, campsite maneuver, return-to-drop-zone, and drop-zone reverse parking. Full real-sensor bringup with RViz/UI/voice/cameras/YOLO/docking enabled is a load probe; use the lighter field profile for drive validation.
 
 ---
 
@@ -366,7 +369,7 @@ runner as a separate process.
 | `radar_direction_hz` | All seven radar range topics publish: front1, front2, left1, left2, right1, right2, rear |
 | `directional_cost_stop` | Front/left/right/rear fake obstacles from LiDAR, radar, and combined sources force `/planning/cmd_vel` to zero |
 | `manual_goal_nav` | A manual route goal produces global/local paths, nonzero cmd_vel, movement, and Nav2 success |
-| `obstacle_replan` | HH_260701 - A larger fake route obstacle makes `obstacle_replan_monitor` report `BLOCKED` and temporarily select the fallback `Smac2D` planner |
+| `obstacle_replan` | HH_260702 - A larger fake route obstacle makes `obstacle_replan_monitor` report `BLOCKED` while keeping the default lanelet global route stable |
 | `camping_site_smoke` | UI-equivalent camping-site mission reaches the route goal, enters site maneuver, performs crab/rotate/unload/crab-out phases, and requests return; with `camping_wait_drop_zone=true`, also waits for drop-zone reverse parking to reach `PARKED` |
 
 Useful parameters:
@@ -375,7 +378,7 @@ Useful parameters:
 |---|---|---|
 | `report_file` | `/tmp/camrod_sim_validation.json` | JSON result path |
 | `skip_manual_goal` | `false` | Skip the manual goal navigation check |
-| `run_obstacle_replan` | `false` | HH_260701 - Enable route-blocked fallback planner validation |
+| `run_obstacle_replan` | `false` | HH_260702 - Enable route-blocked stable-route monitor validation |
 | `obstacle_replan_goal_distance_m` | `12.0` | Forward route distance used for the replan test goal |
 | `obstacle_replan_obstacle_offset_m` | `2.0` | Obstacle distance from the robot for the replan trigger |
 | `obstacle_replan_cluster_radius_m` | `0.65` | Larger fake obstacle radius used only for the replan trigger |
@@ -392,7 +395,7 @@ HH_260701 - Latest sim validation evidence:
 | PASS | `baseline_hz`: localization 20 Hz, wheel odom 20 Hz, LiDAR/radar cost grids 10 Hz, inflation 6 Hz |
 | PASS | `radar_direction_hz`: all seven radar topics published at about 10 Hz |
 | PASS | `directional_cost_stop`: front/left/right/rear LiDAR, radar, and combined fake obstacles all forced `planning_cmd_max=0.0` |
-| PASS | `obstacle_replan`: route obstacle produced `BLOCKED` / `BLOCKED_HOLD` and selected fallback `Smac2D` |
+| PASS | `obstacle_replan`: route obstacle produced `BLOCKED` / `BLOCKED_HOLD` without selecting a fallback planner |
 | Needs investigation | `manual_goal_nav`: global/local paths and Nav2 success were observed, but `/planning/cmd_vel` stayed at 0.0 and simulated movement was only about 0.02 m |
 | Needs investigation | full `camping_site_smoke`: campsite phases reached `ALIGN_RETURN_YAW`, `CRAB_OUT`, and `DONE`, but the automated full roundtrip did not observe final drop-zone `PARKED` before the planner stack became unstable |
 
@@ -441,7 +444,7 @@ real vehicle motion.
 | `config/planning/goal_snapper.yaml` | Goal snapper overrides; HH_260619 - active goal is reissued after a >1.5 m pose jump so Nav2 replans from manual/RViz teleported pose |
 | `config/planning/centerline_snapper.yaml` | Centerline snapper overrides |
 | `config/planning/goal_replanner.yaml` | Goal replanner overrides |
-| `config/planning/obstacle_replan_monitor.yaml` | HH_260619 - persistent LiDAR/Radar route-block monitor; temporarily selects Smac2D and preempts the active Nav2 goal when the fixed LaneletRoute is dynamically blocked |
+| `config/planning/obstacle_replan_monitor.yaml` | HH_260702 - persistent LiDAR/Radar route-block monitor; reports dynamic blockage by default, with SmacLattice NavigateToPose preemption available only when `preempt_enabled` is explicitly enabled |
 | `config/planning/local_path_extractor.yaml` | Local path extractor overrides; HH_260619 - `/planning/global_path` is fixed per goal while `/planning/local_path` is the live unsmoothed forward slice |
 | `planning/enable_path_visualization` | `true`; HH_260619 - publishes `/planning/path_markers` from `/planning/global_path` + `/planning/local_path` so RViz matches the route source used by local path and path-cost grids |
 | `config/planning/yaw_alignment_zones.yaml` | Manual yaw-alignment zone definitions |
@@ -519,7 +522,15 @@ ros2 node list | grep rviz2
 
 # Deterministic sim validation runner (run after sim bringup)
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p run_obstacle_replan:=true \
   -p report_file:=/tmp/camrod_sim_validation_manual.json
+
+ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p skip_manual_goal:=true \
+  -p run_camping:=true \
+  -p camping_wait_drop_zone:=true \
+  -p camping_timeout_s:=420.0 \
+  -p report_file:=/tmp/camrod_sim_validation_camping_full.json
 ```
 
 ---
@@ -592,7 +603,7 @@ If the issue recurs, check `config/bringup/cleanup_patterns.yaml` and add the mi
 ## 2026-06-17 Runtime Update
 
 > HH_260617 - Bringup now owns the full module sequence including `camrod_parking`.
-> HH_260623 - Bringup selects exactly one final parking method with `parking_method`; the deprecated `parking_backend` launch alias was removed.
+> HH_260623 - Bringup selects exactly one final parking method with `parking_method`; the old `parking_backend` launch argument was removed.
 
 ### Current Launch Order
 

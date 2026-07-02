@@ -20,6 +20,8 @@
 
 When any condition is not met, the gate publishes a zero `Twist` on `/platform/cmd_vel` (`publish_zero_when_blocked: true`). The gate never passes through a stale velocity from a previous engage cycle.
 
+> HH_260702 - Normal UI/manual/campsite flows publish `/platform/drive_enable` together with `/planning/engage` or `/planning/mission_engage`. `/platform/set_enabled` is kept for CLI probing, but the final `/platform/cmd_vel` still remains zero whenever planning is not effectively engaged or either e-stop source is active.
+
 ---
 
 ## 2. ⚡ Quick Start

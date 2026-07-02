@@ -18,6 +18,11 @@ HH_260630 - `bringup.launch.py sim:=true` automatically selects
 `system_checker_sim.yaml`, so fake-sensor simulation does not require hardware
 driver nodes such as `ublox_gps_node`, `microstrain_inertial_driver`,
 `vanjee_driver`, camera publishers, or `ranger_base_node`.
+HH_260702 - Diagnostics are now operator-facing evidence, not automatic motion
+policy. Planning soft-estop is owned by the planning state machine; map,
+perception, LiDAR, radar, and hardware load entries are surfaced through
+`/system/status` and `/system/msgs` so UI/field operators can see what is
+degraded without every transient diagnostic forcing a route abort.
 
 > **Non-goals:** Reports health status only — does **not** enforce safety actions (e-stop, speed reduction, disengagement). Does not contain autonomous decision logic; consumers (e.g., `camrod_ui`) decide what to do with the health data. Does not check `camrod_docking` yet (TODO: docking checker category).
 
@@ -155,9 +160,16 @@ planning:
 |---|---|---|---|
 | Graph manifest | `config/system_checker.yaml` | Real-hardware required nodes, topic names, ROS types, and minimum publisher counts | `/planning/cmd_vel|geometry_msgs/msg/Twist|1` |
 | Sim graph manifest | `config/system_checker_sim.yaml` | Fake-sensor sim graph; public topic contracts remain, hardware driver nodes are omitted | `/bringup/fake_sensor_publisher`, `/sensing/lidar/points_filtered` |
-| Default diagnostics | `config/diagnostics/default/` | Real hardware runtime rates and data-quality thresholds | real IMU 100 Hz, camera streams 10 fps, LiDAR obstacle cloud 6 Hz, LiDAR/radar cost grids 10 Hz |
+| Default diagnostics | `config/diagnostics/default/` | Real hardware runtime rates and data-quality thresholds | real IMU 100 Hz, camera streams 10 fps, LiDAR obstacle cloud 6 Hz, LiDAR/radar cost grids 10 Hz; HH_260702 - lanelet map-cost and perception thresholds are tolerant of multi-second rebuilds/high CPU and remain diagnostic signals rather than direct motion stops |
 | Sim diagnostics | `config/diagnostics/sim/` | `sim:=true` fake-sensor rates and intentionally absent hardware drivers | sim IMU 10 Hz, wheel odom 20 Hz, perception/fake obstacle topics |
 | Aggregation | `aggregator/*.yaml` | Diagnostic tree grouping and stale reporter timeout | `/system/diagnostics_agg` for UI readiness |
+
+HH_260702 - Latest sim evidence: baseline topic rates, all seven radar direction
+topics, directional LiDAR/Radar cost-stop, obstacle-block status, campsite
+maneuver, and drop-zone parking passed. Real full-stack tests with RViz/UI,
+voice, cameras, YOLO, and docking enabled may push CPU/GPU to the high/critical
+range; those diagnostics should be used to choose a lighter drive profile rather
+than interpreted as proof that the planner itself failed.
 
 ### Module Readiness Decision Tree
 
@@ -341,7 +353,7 @@ status:
 | `hw/network_checker.yaml` | Network interface check config |
 | `sensing/gnss_checker.yaml` | `expected_hz: 5.0`, `stale_timeout_s: 2.0` |
 | `sensing/imu_checker.yaml` | default `expected_hz: 100.0`, sim override `expected_hz: 10.0` |
-| `sensing/lidar_checker.yaml` | raw expected 10 Hz, filtered expected 6 Hz, relaxed raw NaN threshold, filtered `min_point_count: 0` because clear ROI can be empty |
+| `sensing/lidar_checker.yaml` | HH_260702 - raw expected 10 Hz with raw NaN ignored; filtered expected 6 Hz with freshness/rate and near-zero NaN as the motion-relevant LiDAR health signal |
 | `sensing/radar_checker.yaml` | `stale_timeout_s: 1.0` |
 | `sensing/camera_checker.yaml` | front compressed and rear raw streams, `expected_fps: 10.0`, `expected_width`, `expected_height` |
 | `sensing/wheel_odometry_checker.yaml` | `stale_timeout_s: 1.0` |

@@ -156,7 +156,7 @@ graph TD
       CAMF[📡 camera_front_link\n1.20637, 0.0, 0.49568]:::sensing
       CAMR[📡 camera_rear_link\n-0.17633, 0.0, 0.30013]:::sensing
       subgraph RADAR["Radar sensors (direct to sensor_kit_base_link)"]
-        %% HH_260623 - Removed the legacy single-front radar alias; front1/front2 are canonical.
+        %% HH_260623 - Removed the old single-front radar frame; front1/front2 are canonical.
         RF1[📡 radar_front1_link]:::sensing
         RF2[📡 radar_front2_link]:::sensing
         RL1[📡 radar_left1_link]:::sensing
@@ -302,6 +302,7 @@ All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **de
 | `radar.rear` | -0.17433 | 0.0 | 0.33978 | 0.0 | 0.0 | 180.0 |
 
 > HH_260623 - `radar.front1/front2` keep the sensing channel names. With the vehicle coordinate convention (+Y left), `front1` is currently placed at negative Y and `front2` at positive Y according to the measured wiring note.
+> HH_260702 - The current field harness crosses the LEFT/RIGHT serial branches, so the sensing YAML maps LEFT1/LEFT2 to CH9344 USB4/USB5 and RIGHT1/RIGHT2 to USB2/USB3 while the TF frames stay physically left/right in this table.
 
 ### `urdf/camrod_sensor_kit.xacro`
 
