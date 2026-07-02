@@ -326,7 +326,7 @@ public:
       const lanelet::Origin origin(lanelet::GPSPoint{origin_lat_, origin_lon_, origin_alt_});
       const std::string projector_norm = toLower(projector_type_);
       if (projector_norm == "utm") {
-        // HH_260316-00:00 Optional UTM mode for compatibility tests.
+        // HH_260316-00:00 Optional UTM mode for projection tests.
         lanelet::projection::UtmProjector projector(origin);
         map_ = lanelet::load(map_path_, projector, &errors);
       } else {
@@ -1063,7 +1063,7 @@ private:
       default_cell = outside_value_;
     } else if (cost_mode_ == "path") {
       // 2026-02-11: When lanelet mask mode is on, keep unknown outside lanes for lane-shaped rendering.
-      // Otherwise keep legacy behavior (free before first path, then lethal outside path).
+      // Otherwise keep the path-mode default: free before first path, then lethal outside path.
       default_cell = path_use_lanelet_mask_
         ? -1
         : (path_received_ ? lethal_value_ : free_value_);
