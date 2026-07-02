@@ -22,7 +22,7 @@
       encoder_resolution: 2048  # Encoder ticks per wheel revolution.
       drive_type: "ackermann" # Platform drive model identifier consumed by downstream logic.
 
-    ground_z_offset: 0.0      # HH_260623 - 2D planning/RViz ground fallback; do not inject legacy 5.3 m altitude offset.
+    ground_z_offset: 0.0      # HH_260623 - 2D planning/RViz ground fallback; do not inject the old 5.3 m altitude offset.
 
     base_pose:
       x: 0.0                  # Initial base position X in map/world frame [m].

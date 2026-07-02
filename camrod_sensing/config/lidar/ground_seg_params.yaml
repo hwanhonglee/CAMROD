@@ -26,3 +26,6 @@
     maxGroundHeightDeviation: 0.05
     use_imu_orientation: false
     show_benchmark: false
+    # HH_260702 - Keep RViz-only raw/ground debug clouds off during field runs;
+    # /sensing/lidar/points_filtered remains the driving obstacle output.
+    publish_debug_clouds: false

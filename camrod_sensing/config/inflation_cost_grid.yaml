@@ -4,17 +4,17 @@
     base_frame_id: "robot_base_link"
     output_frame_id: "map"
 
-    # HH_260618: Keep the output map-axis aligned for Nav2/gate consumers, but
-    # use a smaller bbox plus robot-frame cost window to reduce side/rear load.
+    # HH_260702 - Keep the output map-axis aligned for Nav2/gate consumers, but
+    # preserve enough forward dynamic cost for early avoidance release checks.
     resolution: 0.10
-    width: 50
-    height: 50
-    origin_x: -2.5
-    origin_y: -2.5
+    width: 180
+    height: 180
+    origin_x: -9.0
+    origin_y: -9.0
     enable_robot_frame_window: true
-    forward_extent_m: 3.0
-    rear_extent_m: 1.2
-    side_extent_m: 1.4
+    forward_extent_m: 8.0
+    rear_extent_m: 1.5
+    side_extent_m: 2.2
 
     # Cost model
     free_value: 0
@@ -39,7 +39,7 @@
     #   sensor grids update at ~10-20 Hz. Must match order of input_topics above.
     input_max_ages_s:
       - 5.0    # lanelet: static map, rarely changes
-      - 0.50   # lidar cost_grid
+      - 0.80   # lidar cost_grid, tolerate brief filtered/perception stalls
       - 0.50   # radar cost_grid
       - 10.0   # global_path: infrequent replanning
-    max_message_age_s: 0.50
+    max_message_age_s: 0.80

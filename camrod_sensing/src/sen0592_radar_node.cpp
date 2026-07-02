@@ -177,6 +177,7 @@ public:
     this->declare_parameter<std::string>("radar_status_topic", "/sensing/radar/status");
     this->declare_parameter<bool>("publish_radar_status", false);
     this->declare_parameter<bool>("log_status", false);
+    this->declare_parameter<bool>("configure_hardware_on_startup", false);
     // HH_260527: Per-sensor detection angle written to register 0x0208 on port open.
     //   Values: 1=15° 2=30° 3=45° 4=60° 5=75°. 0 = skip (sensor retains last hardware value).
     //   Order must match sensor_names.
@@ -195,7 +196,7 @@ public:
     // Sensor definitions (name, frame_id, port, topic)
     // Default values are Linux examples; replace with your actual /dev paths or udev symlinks.
     // HH_260623 - Match the latest todo/camrod_sensing radar wiring: two front radars plus
-    // side/rear radars on fixed CH9344 ports. The legacy auto: resolver was removed so an
+    // side/rear radars on fixed CH9344 ports. The auto: resolver was removed so an
     // unexpected USB reorder fails visibly instead of silently binding the wrong sensor.
     sensor_names_ = this->declare_parameter<std::vector<std::string>>(
       "sensor_names", {"FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"});
@@ -205,10 +206,12 @@ public:
                     "radar_left2_link", "radar_right1_link", "radar_right2_link",
                     "radar_rear_link"});
 
+    // HH_260702 - Default port order mirrors the current field harness where
+    // logical LEFT sensors are on USB4/USB5 and RIGHT sensors are on USB2/USB3.
     ports_ = this->declare_parameter<std::vector<std::string>>(
       "ports", {
-        "/dev/ttyCH9344USB0", "/dev/ttyCH9344USB1", "/dev/ttyCH9344USB2",
-        "/dev/ttyCH9344USB3", "/dev/ttyCH9344USB4", "/dev/ttyCH9344USB5",
+        "/dev/ttyCH9344USB0", "/dev/ttyCH9344USB1", "/dev/ttyCH9344USB4",
+        "/dev/ttyCH9344USB5", "/dev/ttyCH9344USB2", "/dev/ttyCH9344USB3",
         "/dev/ttyCH9344USB6"
       });
 
@@ -231,6 +234,8 @@ public:
     radar_status_topic_ = this->get_parameter("radar_status_topic").as_string();
     publish_radar_status_.store(this->get_parameter("publish_radar_status").as_bool());
     log_status_.store(this->get_parameter("log_status").as_bool());
+    configure_hardware_on_startup_ =
+      this->get_parameter("configure_hardware_on_startup").as_bool();
     param_callback_handle_ = this->add_on_set_parameters_callback(
       [this](const std::vector<rclcpp::Parameter> & params) {
         rcl_interfaces::msg::SetParametersResult result;
@@ -410,8 +415,12 @@ private:
 
     s.fd = fd;
     RCLCPP_INFO(this->get_logger(), "[%s] Opened %s @ %d", s.name.c_str(), s.port.c_str(), baud_);
-    // HH_260422: Configure detection angle on first open.
-    write_angle_config_register(s);
+    // HH_260702 - SEN0592 read polling is stable on this harness, but startup
+    // register writes often time out. Keep hardware writes opt-in and rely on
+    // software max_range filtering during normal bringup.
+    if (configure_hardware_on_startup_) {
+      write_angle_config_register(s);
+    }
     return true;
   }
 
@@ -506,7 +515,7 @@ private:
       std::lock_guard<std::mutex> lock(avg_mtx_);
       if (idx < topics_.size()) {
         const auto & topic = topics_[idx];
-        // HH_260623 - Removed the legacy merged front alias; publish front1/front2 separately.
+        // HH_260623 - Publish front1/front2 separately; merged front output was removed.
         if (topic.find("front1") != std::string::npos) {
           avg_radar_msg_.front1 = avg_msgs::conversions::fromRos(msg);
         } else if (topic.find("front2") != std::string::npos) {
@@ -653,6 +662,7 @@ private:
   std::string radar_status_topic_;
   std::atomic_bool publish_radar_status_{false};
   std::atomic_bool log_status_{false};
+  bool configure_hardware_on_startup_{false};
 
   std::vector<SensorRuntime> sensors_;
   std::vector<rclcpp::Publisher<avg_msgs::msg::Range>::SharedPtr> pubs_;

@@ -1,33 +1,50 @@
-/sensing/lidar_cost_grid:
+/sensing/lidar/lidar_cost_grid:
   ros__parameters:
     # HH_260421: Consume filtered lidar cloud so near-cost grid reflects
     # obstacle-only points instead of full raw returns.
     input_topic: "/sensing/lidar/points_filtered"
+    # HH_260702 - Also consume perception outputs so camera/LiDAR detections
+    # become planning costs even when the filtered-cloud obstacle footprint is sparse.
+    extra_input_topics:
+      - "/perception/obstacles"
+    perception_marker_topics:
+      - "/perception/lidar/bboxes"
+      - "/perception/camera_lidar/markers"
     output_topic: "/sensing/cost_grid/lidar"
     base_frame_id: "robot_base_link"
     output_frame_id: "map"
 
     # Grid geometry
-    resolution: 0.08
-    width: 150
-    height: 150
-    origin_x: -6.0
-    origin_y: -6.0
+    # HH_260702 - Keep dynamic obstacles visible far enough ahead for route
+    # replanning before cmd_vel hard-stop range. 18 m square at 0.10 m keeps
+    # the CPU cost close to the previous 150x150@0.08 profile while extending
+    # reliable forward coverage beyond the obstacle monitor lookahead.
+    resolution: 0.10
+    width: 180
+    height: 180
+    origin_x: -9.0
+    origin_y: -9.0
 
     # Cost model
     free_value: 0
     unknown_value: -1
-    min_cost: 30
+    # HH_260702 - LiDAR cells should be visible to Nav2/replan across the full
+    # lookahead, while cmd_vel hard-stop still uses the higher 85+ threshold.
+    min_cost: 65
     max_cost: 95
     cost_range_min_m: 0.4
-    cost_range_max_m: 7.5
+    cost_range_max_m: 9.0
     obstacle_radius_m: 0.20
+    perception_marker_cost: 90
+    perception_marker_max_radius_m: 1.2
     # HH_260630: Keep ego clearing close to the vehicle half-width so side/rear
     # LiDAR obstacles just outside the body are not erased before safety gating.
     ego_clear_radius_m: 0.55
 
     # Runtime
-    max_message_age_s: 0.50
+    # HH_260702 - Keep LiDAR/perception objects alive through brief CPU-load
+    # stalls so the grid does not flicker empty between 6 Hz filtered frames.
+    max_message_age_s: 0.80
     publish_rate_hz: 10.0
     publish_lidar_status: false
     lidar_status_topic: "/sensing/lidar/status"

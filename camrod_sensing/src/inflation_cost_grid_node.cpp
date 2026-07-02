@@ -37,7 +37,7 @@ public:
     origin_x_            = declare_parameter<double>("origin_x", -6.0);
     origin_y_            = declare_parameter<double>("origin_y", -6.0);
     // HH_260618: Keep the OccupancyGrid map-axis aligned for Nav2/gate
-    // compatibility, but mask merged costs by robot-frame extents so rear and
+    // consumers, but mask merged costs by robot-frame extents so rear and
     // side cost visualization/control load do not grow unnecessarily.
     enable_robot_frame_window_ = declare_parameter<bool>("enable_robot_frame_window", true);
     forward_extent_m_    = declare_parameter<double>("forward_extent_m", 3.0);

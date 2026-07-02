@@ -116,6 +116,9 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_imu",                  default_value="true"),
         DeclareLaunchArgument("enable_radar",                default_value="true"),
         DeclareLaunchArgument("enable_radar_cost_grid",      default_value="true"),
+        # HH_260702 - Keep per-radar range details on topics/checkers by default;
+        # enable this only for bench debugging so the field console stays concise.
+        DeclareLaunchArgument("radar_log_status",            default_value="false"),
         DeclareLaunchArgument("enable_lidar_driver",         default_value="true"),
         DeclareLaunchArgument("enable_lidar_cost_grid",      default_value="true"),
         DeclareLaunchArgument("enable_inflation_cost_grid",  default_value="true"),
@@ -145,6 +148,7 @@ def generate_launch_description():
 
         DeclareLaunchArgument("gnss_namespace",   default_value="gnss"),
         DeclareLaunchArgument("gnss_rtcm_topic",  default_value="rtcm"),
+        DeclareLaunchArgument("gnss_log_level",   default_value="error"),
 
         DeclareLaunchArgument("imu_velocity_topic",    default_value="/platform/status/velocity"),
         DeclareLaunchArgument("imu_input_topic",       default_value="data"),
@@ -183,6 +187,7 @@ def generate_launch_description():
                  ntrip_param_file=LaunchConfiguration("ntrip_param_file"),
                  gnss_namespace=LaunchConfiguration("gnss_namespace"),
                  rtcm_topic=LaunchConfiguration("gnss_rtcm_topic"),
+                 gnss_log_level=LaunchConfiguration("gnss_log_level"),
             ),
 
             _inc(imu_launch,
@@ -212,6 +217,7 @@ def generate_launch_description():
             _inc(radar_launch,
                  "enable_radar", "enable_radar_cost_grid",
                  "radar_sensor_param_file", "radar_cost_grid_param_file",
+                 "radar_log_status",
                  module_namespace="radar",
             ),
 

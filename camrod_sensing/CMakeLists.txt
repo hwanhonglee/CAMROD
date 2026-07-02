@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 # Project message layer
 find_package(avg_msgs REQUIRED)
@@ -53,8 +54,21 @@ target_link_libraries(
   pcl_kdtree
 )
 
+# ------------------------------------------------------------------------------
+# Camera preprocessor
+# ------------------------------------------------------------------------------
+# HH_260702 - Kept buildable as an optional relay/debug tool; normal camera
+# launch uses econ front/rear publisher outputs directly.
+add_executable(camera_preprocessor_node src/camera_preprocessor_node.cpp)
+ament_target_dependencies(
+  camera_preprocessor_node
+  rclcpp
+  avg_msgs
+)
+
 set(SENSING_NODE_TARGETS
   lidar_preprocessor_node
+  camera_preprocessor_node
   platform_velocity_converter_node
   sen0592_radar_node
   radar_cost_grid_node
@@ -187,6 +201,7 @@ ament_target_dependencies(
   lidar_cost_grid_node
   rclcpp
   avg_msgs
+  visualization_msgs
   tf2
   tf2_ros
   tf2_geometry_msgs

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # HH_260611: GNSS launch now uses ublox_gps_node for both SparkFun single-antenna
-# and simpleRTK2B Heading dual-antenna modes. The legacy dGNSS fallback code was removed.
+# and simpleRTK2B Heading dual-antenna modes. The old dGNSS fallback code was removed.
 # Python ntrip_ros.py remains the only NTRIP client because it provides GGA feedback
 # required for VRS/MAC networks like gnssdata.or.kr.
 
@@ -16,6 +16,7 @@ from launch_ros.actions import Node
 def _launch_setup(context, *args, **kwargs):
     gnss_namespace = context.perform_substitution(LaunchConfiguration("gnss_namespace"))
     rtcm_topic     = context.perform_substitution(LaunchConfiguration("rtcm_topic"))
+    gnss_log_level = context.perform_substitution(LaunchConfiguration("gnss_log_level"))
     enable_ntrip   = context.perform_substitution(LaunchConfiguration("enable_ntrip")).strip().lower() in {
         "1", "true", "yes", "on"
     }
@@ -67,7 +68,10 @@ def _launch_setup(context, *args, **kwargs):
             executable="ublox_gps_node",
             name="ublox_gps_node",
             namespace=gnss_namespace,
-            output="screen",
+            output="log",
+            # HH_260702 - Keep GNSS driver chatter out of the field console;
+            # /system/status carries the operator-facing GNSS health.
+            arguments=["--ros-args", "--log-level", gnss_log_level],
             # HH_260408: Disable auto-respawn for clean Ctrl+C and no duplicate nodes.
             parameters=[ublox_param_file, ublox_inline_params],
             remappings=[
@@ -77,18 +81,21 @@ def _launch_setup(context, *args, **kwargs):
         ),
     ]
     if enable_ntrip:
-        nodes.append(_ntrip_node(gnss_namespace, ntrip_param_file, ntrip_rtcm_topic))
+        nodes.append(_ntrip_node(gnss_namespace, ntrip_param_file, ntrip_rtcm_topic, gnss_log_level))
     return nodes
 
 
-def _ntrip_node(namespace: str, param_file: str, rtcm_topic: str) -> Node:
+def _ntrip_node(namespace: str, param_file: str, rtcm_topic: str, log_level: str) -> Node:
     # HH_260408: Disable auto-respawn for clean Ctrl+C and no duplicate NTRIP nodes.
     return Node(
         package="ntrip_client",
         executable="ntrip_ros.py",
         name="ntrip_client",
         namespace=namespace,
-        output="screen",
+        output="log",
+        # HH_260702 - Keep GNSS/NTRIP details in log files; the console should
+        # show the system-level health summary instead of per-driver chatter.
+        arguments=["--ros-args", "--log-level", log_level],
         parameters=[
             param_file,
             {"rtcm_topic": rtcm_topic},
@@ -117,6 +124,8 @@ def generate_launch_description():
                               description="Python ntrip_ros.py parameter file"),
         DeclareLaunchArgument("enable_ntrip",        default_value="true",
                               description="Enable NTRIP client for RTCM corrections"),
+        DeclareLaunchArgument("gnss_log_level",      default_value="error",
+                              description="ROS log level for GNSS/NTRIP nodes"),
         DeclareLaunchArgument("gnss_namespace",
                               # HH_260317-00:00 Standalone default /gnss/*; sensing.launch.py overrides to /sensing/gnss/*.
                               default_value="gnss",

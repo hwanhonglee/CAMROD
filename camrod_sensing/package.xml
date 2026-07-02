@@ -14,6 +14,7 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
+  <depend>visualization_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>tf2</depend>
@@ -32,7 +33,7 @@
   <!-- HJ_260529: optional LiDAR driver — declared so packages-up-to pulls it in automatically -->
   <exec_depend>vanjee_lidar_sdk</exec_depend>
   <exec_depend>vanjee_lidar_msg</exec_depend>
-  <!-- HH_260611: ublox_gps is the only GNSS driver path; legacy dGNSS fallback was removed. -->
+  <!-- HH_260611: ublox_gps is the only GNSS driver path; the old dGNSS fallback was removed. -->
   <exec_depend>ublox_gps</exec_depend>
   <exec_depend>ntrip_client</exec_depend>
   <exec_depend>ground_segmentation_ros2</exec_depend>

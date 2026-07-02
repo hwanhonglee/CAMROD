@@ -878,7 +878,7 @@ static ssize_t ch9344_tty_write(struct tty_struct *tty, const unsigned char *buf
 	else
 		packnum = total_len / (maxep - 3);
 
-	/* packnum is computed for legacy logic/readability; keep behavior unchanged */
+	/* packnum is computed for existing logic/readability; keep behavior unchanged */
 	(void)packnum;
 
 transmit:
