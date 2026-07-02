@@ -113,7 +113,7 @@ def _checker_node(
         package="camrod_system",
         executable=executable,
         name=name,
-        output="screen",
+        output="log",
         parameters=[_checker_parameters(config_dir, default_dir, category, name, param_file)],
     )
 
@@ -125,7 +125,7 @@ def _build_checker_nodes(config_dir: str, default_dir: str) -> list:
             package="camrod_system",
             executable="aggregator_node",
             name="diagnostics_agg",
-            output="screen",
+            output="log",
             parameters=[{
                 "config_file": _profile_param_file(
                     config_dir, default_dir, "aggregator", "diagnostics_config.yaml"
@@ -174,7 +174,7 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
                 package="camrod_system",
                 executable="ranger_platform_checker_node",
                 name="ranger_platform_checker",
-                output="screen",
+                output="log",
                 parameters=[_checker_parameters(
                     config_dir, default_dir, "platform",
                     "ranger_platform_checker", "ranger_platform_checker.yaml"
@@ -233,7 +233,7 @@ def generate_launch_description():
         ),
 
         # HH_260527: Main diagnostics stack is fully inline
-        # (legacy system_diagnostics/component launch files removed).
+        # Retired system_diagnostics/component launch files were removed.
         OpaqueFunction(function=_build_diagnostics_inline),
 
         # ── System tools: node/topic liveness check + lightweight aggregator ────
@@ -245,7 +245,7 @@ def generate_launch_description():
                     package='camrod_system',
                     executable='system_checker_node',
                     name='system_checker',
-                    output='screen',
+                    output='log',
                     parameters=[
                         LaunchConfiguration('system_checker_param_file'),
                         {
@@ -269,13 +269,15 @@ def generate_launch_description():
                         'avg_system_msgs_topic': 'msgs',
                         'publish_period_s': 0.5,
                         'stale_timeout_s': 2.0,
+                        'log_status_summary': True,
+                        'log_status_summary_period_s': 5.0,
                     }],
                 ),
                 Node(
                     package='camrod_system',
                     executable='diagnostics_aggregator_node',
                     name='diagnostics_aggregator',
-                    output='screen',
+                    output='log',
                     parameters=[{
                         'source_topic': 'diagnostics',
                         'output_topic': 'diagnostics_agg_tools',

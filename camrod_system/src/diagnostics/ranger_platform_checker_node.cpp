@@ -253,7 +253,7 @@ protected:
       [this](StatusWrapper & s) { checkActuator(s); });
 
     RCLCPP_INFO(get_logger(),
-      "Ranger Platform 체커 시작\n"
+      "Ranger platform checker started\n"
       "  system_state : %s\n"
       "  battery_state: %s\n"
       "  actuator_state: %s\n"
@@ -320,7 +320,7 @@ private:
 
     if (!state_.has_system_state) {
       stat.summary(DiagnosticStatus::STALE,
-        "토픽 수신 없음: " + system_state_topic_);
+        "No topic messages: " + system_state_topic_);
       stat.add("topic", system_state_topic_);
       return;
     }
@@ -329,7 +329,7 @@ private:
     if (elapsed > stale_timeout_) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "CAN 통신 끊김 (%.2fs 무응답, timeout=%.1fs)", elapsed, stale_timeout_);
+        "CAN communication stale (%.2fs without response, timeout=%.1fs)", elapsed, stale_timeout_);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("elapsed_sec", elapsed);
       return;
@@ -348,7 +348,7 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_system_state) {
-      stat.summary(DiagnosticStatus::STALE, "system_state 수신 없음");
+      stat.summary(DiagnosticStatus::STALE, "No system_state messages");
       return;
     }
 
@@ -361,13 +361,13 @@ private:
       msg_str = "NORMAL";
     } else if (vs == VEH_ESTOP) {
       lvl     = DiagnosticStatus::ERROR;
-      msg_str = "비상 정지 (E-STOP) 활성화";
+      msg_str = "Emergency stop (E-STOP) active";
     } else if (vs == VEH_EXCEPTION) {
       lvl     = DiagnosticStatus::ERROR;
-      msg_str = "시스템 예외 발생 (EXCEPTION)";
+      msg_str = "System exception (EXCEPTION)";
     } else {
       lvl     = DiagnosticStatus::WARN;
-      msg_str = "알 수 없는 차량 상태";
+      msg_str = "Unknown vehicle state";
     }
 
     stat.summary(lvl, msg_str);
@@ -381,7 +381,7 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_system_state) {
-      stat.summary(DiagnosticStatus::STALE, "system_state 수신 없음");
+      stat.summary(DiagnosticStatus::STALE, "No system_state messages");
       return;
     }
 
@@ -394,19 +394,19 @@ private:
 
     if (cm == CTRL_CAN) {
       lvl     = DiagnosticStatus::OK;
-      msg_str = "CAN 명령 제어 모드 (정상)";
+      msg_str = "CAN command control mode (OK)";
     } else if (cm == CTRL_RC) {
       lvl     = DiagnosticStatus::WARN;
-      msg_str = "RC 리모컨 제어 중 — CAN 명령 무시됨";
+      msg_str = "RC remote control active - CAN commands ignored";
     } else if (cm == CTRL_STANDBY) {
       lvl     = DiagnosticStatus::WARN;
-      msg_str = "대기 모드 (STANDBY) — CAN 제어 비활성";
+      msg_str = "STANDBY mode - CAN control inactive";
     } else if (cm == CTRL_UART) {
       lvl     = DiagnosticStatus::WARN;
-      msg_str = "UART 제어 모드 (비정상)";
+      msg_str = "UART control mode (unexpected)";
     } else {
       lvl     = DiagnosticStatus::ERROR;
-      msg_str = "알 수 없는 제어 모드";
+      msg_str = "Unknown control mode";
     }
 
     stat.summary(lvl, msg_str);
@@ -419,14 +419,14 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_system_state) {
-      stat.summary(DiagnosticStatus::STALE, "system_state 수신 없음");
+      stat.summary(DiagnosticStatus::STALE, "No system_state messages");
       return;
     }
 
     const uint16_t ec = state_.error_code;
 
     if (ec == 0) {
-      stat.summary(DiagnosticStatus::OK, "오류 없음");
+      stat.summary(DiagnosticStatus::OK, "No errors");
       stat.add("error_code_hex", "0x0000");
       return;
     }
@@ -447,7 +447,7 @@ private:
 
     char hex[12];
     std::snprintf(hex, sizeof(hex), "0x%04X", static_cast<unsigned>(ec));
-    stat.summary(lvl, std::string("오류 코드 활성: ") + hex);
+    stat.summary(lvl, std::string("Active error code: ") + hex);
 
     stat.add("error_code_hex", std::string(hex));
 
@@ -471,13 +471,13 @@ private:
     if (!state_.has_battery) {
       // battery_state 없으면 system_state 전압으로 대체
       if (!state_.has_system_state) {
-        stat.summary(DiagnosticStatus::STALE, "battery_state 수신 없음");
+        stat.summary(DiagnosticStatus::STALE, "No battery_state messages");
         return;
       }
       double v = state_.battery_voltage_sys;
       int8_t lvl = check_low(v, batt_volt_warn_, batt_volt_error_);
       char buf[64];
-      std::snprintf(buf, sizeof(buf), "%.1f V (system_state 기준)", v);
+      std::snprintf(buf, sizeof(buf), "%.1f V (from system_state)", v);
       stat.summary(lvl, std::string(buf));
       stat.add("voltage_V (system_state)", v);
       return;
@@ -500,14 +500,14 @@ private:
     char buf[80];
     if (lvl == DiagnosticStatus::OK) {
       std::snprintf(buf, sizeof(buf),
-        "OK (%.1f V, %.0f%%, %.1f°C)",
+        "OK (%.1f V, %.0f%%, %.1f C)",
         state_.batt_voltage, state_.batt_percentage, state_.batt_temperature);
     } else if (volt_lvl >= soc_lvl && volt_lvl >= temp_lvl) {
-      std::snprintf(buf, sizeof(buf), "배터리 전압 낮음 (%.1f V)", state_.batt_voltage);
+      std::snprintf(buf, sizeof(buf), "Battery voltage low (%.1f V)", state_.batt_voltage);
     } else if (soc_lvl >= temp_lvl) {
-      std::snprintf(buf, sizeof(buf), "배터리 잔량 낮음 (%.0f%%)", state_.batt_percentage);
+      std::snprintf(buf, sizeof(buf), "Battery level low (%.0f%%)", state_.batt_percentage);
     } else {
-      std::snprintf(buf, sizeof(buf), "배터리 온도 이상 (%.1f°C)", state_.batt_temperature);
+      std::snprintf(buf, sizeof(buf), "Battery temperature abnormal (%.1f C)", state_.batt_temperature);
     }
 
     stat.summary(lvl, std::string(buf));
@@ -529,7 +529,7 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_odom) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + odom_topic_);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + odom_topic_);
       stat.add("topic", odom_topic_);
       return;
     }
@@ -538,7 +538,7 @@ private:
     if (elapsed > odom_stale_timeout_) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "오도메트리 끊김 (%.2fs 무응답, timeout=%.1fs)",
+        "Odometry stale (%.2fs without response, timeout=%.1fs)",
         elapsed, odom_stale_timeout_);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("elapsed_sec", elapsed);
@@ -570,8 +570,8 @@ private:
     } else {
       char buf[64];
       std::snprintf(buf, sizeof(buf),
-        "수신 속도 %s (%.0f / %.0f Hz)",
-        lvl == DiagnosticStatus::ERROR ? "심각 저하" : "저하",
+        "Input rate %s (%.0f / %.0f Hz)",
+        lvl == DiagnosticStatus::ERROR ? "critically low" : "low",
         actual_hz, odom_expected_hz_);
       msg_str = buf;
     }
@@ -593,7 +593,7 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_actuator) {
-      stat.summary(DiagnosticStatus::STALE, "actuator_state 수신 없음");
+      stat.summary(DiagnosticStatus::STALE, "No actuator_state messages");
       stat.add("topic", actuator_state_topic_);
       return;
     }
@@ -602,7 +602,7 @@ private:
     if (elapsed > stale_timeout_) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "액추에이터 데이터 끊김 (%.2fs)", elapsed);
+        "Actuator data stale (%.2fs)", elapsed);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       return;
     }
@@ -622,7 +622,7 @@ private:
         worst_lvl = DiagnosticStatus::ERROR;
         char buf[64];
         std::snprintf(buf, sizeof(buf),
-          "액추에이터[%u] 드라이버 결함", act.id);
+          "Actuator[%u] driver fault", act.id);
         worst_msg = buf;
         fault_count++;
       } else if (drv_state & (DRV_OVERHEAT | DRV_MOTOR_OVERHEAT |
@@ -631,7 +631,7 @@ private:
           worst_lvl = DiagnosticStatus::WARN;
           char buf[64];
           std::snprintf(buf, sizeof(buf),
-            "액추에이터[%u] 경고 비트 활성", act.id);
+            "Actuator[%u] warning bit active", act.id);
           worst_msg = buf;
         }
         fault_count++;
@@ -643,7 +643,7 @@ private:
         worst_lvl = dtlvl;
         char buf[64];
         std::snprintf(buf, sizeof(buf),
-          "액추에이터[%u] 드라이버 온도 %.0f°C", act.id, drv_temp);
+          "Actuator[%u] driver temperature %.0f C", act.id, drv_temp);
         worst_msg = buf;
       }
 
@@ -653,7 +653,7 @@ private:
         worst_lvl = mtlvl;
         char buf[64];
         std::snprintf(buf, sizeof(buf),
-          "액추에이터[%u] 모터 온도 %.0f°C", act.id, mot_temp);
+          "Actuator[%u] motor temperature %.0f C", act.id, mot_temp);
         worst_msg = buf;
       }
 
@@ -663,7 +663,7 @@ private:
         worst_lvl = dvlvl;
         char buf[64];
         std::snprintf(buf, sizeof(buf),
-          "액추에이터[%u] 드라이버 전압 %.1f V", act.id, drv_volt);
+          "Actuator[%u] driver voltage %.1f V", act.id, drv_volt);
         worst_msg = buf;
       }
 
@@ -689,7 +689,7 @@ private:
     if (worst_lvl == DiagnosticStatus::OK) {
       char buf[48];
       std::snprintf(buf, sizeof(buf),
-        "OK (%zu 액추에이터)", state_.actuators.size());
+        "OK (%zu actuators)", state_.actuators.size());
       worst_msg = buf;
     }
 

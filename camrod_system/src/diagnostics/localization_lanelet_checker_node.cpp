@@ -111,7 +111,7 @@ protected:
       [this](StatusWrapper & stat) { checkLanelet(stat); });
 
     RCLCPP_INFO(get_logger(),
-      "Localization Lanelet 모니터링 시작 (topic=%s, stale=%.1fs)",
+      "Localization lanelet checker started (topic=%s, stale=%.1fs)",
       lanelet_topic_.c_str(), stale_timeout_);
   }
 
@@ -145,8 +145,8 @@ private:
     // ── Staleness 체크 (핵심: 맵 밖 이탈 = 발행 중단) ─────────────────
     if (!state_.has_msg) {
       stat.summary(DiagnosticStatus::STALE,
-        "토픽 수신 없음: " + lanelet_topic_ +
-        " (centerline_snapper 미시작 또는 맵 밖)");
+        "No topic messages: " + lanelet_topic_ +
+        " (centerline_snapper not started or outside map)");
       stat.add("topic", lanelet_topic_);
       return;
     }
@@ -155,7 +155,7 @@ private:
     if (elapsed > stale_timeout_) {
       char buf[120];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 — 맵 범위 이탈 의심 (timeout=%.1fs)",
+        "No messages for %.1fs - suspected outside map (timeout=%.1fs)",
         elapsed, stale_timeout_);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
@@ -184,8 +184,8 @@ private:
       cov_error_threshold_);
     if (cov_lvl > lvl) {
       lvl = cov_lvl;
-      if      (cov_lvl == S::ERROR) msg_str = "Lanelet 공분산 심각 (snapping 불가 수준)";
-      else if (cov_lvl == S::WARN)  msg_str = "Lanelet 공분산 높음 (snapping 불확실)";
+      if      (cov_lvl == S::ERROR) msg_str = "Lanelet covariance critical (snapping unusable)";
+      else if (cov_lvl == S::WARN)  msg_str = "Lanelet covariance high (snapping uncertain)";
     }
 
     // 2. Rate 체크
@@ -194,8 +194,8 @@ private:
       int8_t hz_lvl = check_low(ratio, hz_warn_ratio_, hz_error_ratio_);
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "Lanelet 출력 속도 심각 저하 (맵 이탈 간헐적)"
-                                       : "Lanelet 출력 속도 저하 (snapping 간헐 실패)";
+        msg_str = (hz_lvl == S::ERROR) ? "Lanelet output rate critically low (intermittent map loss)"
+                                       : "Lanelet output rate low (intermittent snapping failure)";
       }
     }
 

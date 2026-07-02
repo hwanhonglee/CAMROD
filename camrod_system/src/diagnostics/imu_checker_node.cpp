@@ -140,7 +140,7 @@ protected:
         [this, imu](StatusWrapper & stat) { checkImu(stat, *imu); });
 
       RCLCPP_INFO(get_logger(),
-        "IMU 모니터링 시작: %s (topic=%s, expected_hz=%.0f)",
+        "IMU checker started: %s (topic=%s, expected_hz=%.0f)",
         imu->name.c_str(), imu->topic.c_str(), imu->expected_hz);
     }
   }
@@ -183,7 +183,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!imu.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + imu.topic);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + imu.topic);
       stat.add("topic", imu.topic);
       return;
     }
@@ -192,7 +192,7 @@ private:
     if (elapsed > imu.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.2fs 동안 메시지 없음 (timeout=%.1fs)", elapsed, imu.stale_timeout);
+        "No messages for %.1fs (timeout=%.1fs)", elapsed, imu.stale_timeout);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
@@ -214,10 +214,10 @@ private:
     // NaN/Inf 체크 (최우선)
     if (imu.gyro_nan) {
       lvl     = DiagnosticStatus::ERROR;
-      msg_str = "angular_velocity에 NaN/Inf 포함";
+      msg_str = "angular_velocity contains NaN/Inf";
     } else if (imu.accel_nan) {
       lvl     = DiagnosticStatus::ERROR;
-      msg_str = "linear_acceleration에 NaN/Inf 포함";
+      msg_str = "linear_acceleration contains NaN/Inf";
     }
 
     // Rate 체크
@@ -227,7 +227,7 @@ private:
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
         msg_str = (hz_lvl == DiagnosticStatus::ERROR) ?
-          "수신 속도 심각 저하" : "수신 속도 저하";
+          "Input rate critically low" : "Input rate low";
       }
     }
 
@@ -237,13 +237,13 @@ private:
           imu.accel_magnitude > imu.accel_magnitude_error)
       {
         lvl     = DiagnosticStatus::ERROR;
-        msg_str = "가속도 크기 이상 (ERROR 임계값 초과)";
+        msg_str = "Acceleration magnitude abnormal (above ERROR threshold)";
       } else if (imu.accel_magnitude_warn > 0.0 &&
                  imu.accel_magnitude > imu.accel_magnitude_warn &&
                  lvl < DiagnosticStatus::WARN)
       {
         lvl     = DiagnosticStatus::WARN;
-        msg_str = "가속도 크기 이상 (WARN 임계값 초과)";
+        msg_str = "Acceleration magnitude abnormal (above WARN threshold)";
       }
     }
 
@@ -268,13 +268,13 @@ private:
     std::snprintf(tmp, sizeof(tmp), "%.3f", imu.gyro_z);
     stat.add("gyro_z (rad/s)",    std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.3f", imu.accel_x);
-    stat.add("accel_x (m/s²)",    std::string(tmp));
+    stat.add("accel_x (m/s^2)",    std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.3f", imu.accel_y);
-    stat.add("accel_y (m/s²)",    std::string(tmp));
+    stat.add("accel_y (m/s^2)",    std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.3f", imu.accel_z);
-    stat.add("accel_z (m/s²)",    std::string(tmp));
+    stat.add("accel_z (m/s^2)",    std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.3f", imu.accel_magnitude);
-    stat.add("accel_magnitude (m/s²)", std::string(tmp));
+    stat.add("accel_magnitude (m/s^2)", std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed);
     stat.add("last_msg_sec_ago",  std::string(tmp));
   }

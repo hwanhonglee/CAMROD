@@ -229,8 +229,8 @@ private:
   static diagnostic_msgs::msg::DiagnosticStatus build_status(
     const std::string & name,
     const std::vector<std::string> & missing,
-    const std::string & category = "system",
-    const std::string & missing_key = "missing")
+    const std::string & category,
+    const std::string & missing_key)
   {
     diagnostic_msgs::msg::DiagnosticStatus status;
     status.name = name;
@@ -239,7 +239,6 @@ private:
       status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       status.message = "missing";
       status.values.push_back(make_kv(missing_key, join_vector(missing)));
-      status.values.push_back(make_kv("missing", join_vector(missing)));
     } else {
       status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
       status.message = "ok";

@@ -79,6 +79,7 @@ public:
 protected:
   void declare_parameters_() override
   {
+    declare_parameter("enabled", true);
     declare_parameter("ok_topic",        std::string("/localization/drop_zone/match_ok"));
     declare_parameter("distance_topic",  std::string("/localization/drop_zone/match_distance"));
     declare_parameter("id_topic",        std::string("/localization/drop_zone/match_id"));
@@ -91,6 +92,7 @@ protected:
 
   void load_parameters_() override
   {
+    enabled_         = get_parameter("enabled").as_bool();
     ok_topic_         = get_parameter("ok_topic").as_string();
     distance_topic_   = get_parameter("distance_topic").as_string();
     id_topic_         = get_parameter("id_topic").as_string();
@@ -131,9 +133,9 @@ protected:
       [this](StatusWrapper & stat) { checkInit(stat); });
 
     RCLCPP_INFO(get_logger(),
-      "Localization Init 모니터링 시작 "
-      "(grace=%.0fs, dist_warn=%.1fm, dist_error=%.1fm)",
-      grace_period_s_, dist_warn_m_, dist_error_m_);
+      "Localization init checker started "
+      "(enabled=%s, grace=%.0fs, dist_warn=%.1fm, dist_error=%.1fm)",
+      enabled_ ? "true" : "false", grace_period_s_, dist_warn_m_, dist_error_m_);
   }
 
 private:
@@ -141,18 +143,24 @@ private:
   {
     std::lock_guard<std::mutex> lock(state_.mtx);
 
+    if (!enabled_) {
+      stat.summary(DiagnosticStatus::OK, "Drop zone init check disabled");
+      stat.add("enabled", "false");
+      return;
+    }
+
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!state_.has_msg) {
       double since_start =
         (rclcpp::Clock(RCL_ROS_TIME).now() - node_start_time_).seconds();
       if (since_start > stale_timeout_) {
         stat.summary(DiagnosticStatus::STALE,
-          "토픽 수신 없음: " + ok_topic_);
+          "No topic messages: " + ok_topic_);
         stat.add("topic", ok_topic_);
       } else {
         // 노드 시작 직후 drop_zone_matcher 가 아직 안 뜬 경우
         stat.summary(DiagnosticStatus::WARN,
-          "초기화 상태 대기 중 (drop_zone_matcher 시작 전)");
+          "Waiting for init status before drop_zone_matcher starts");
         stat.add("since_node_start_s", since_start);
       }
       return;
@@ -164,7 +172,7 @@ private:
     if (elapsed_since_msg > stale_timeout_) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 (timeout=%.1fs)",
+        "No messages for %.1fs (timeout=%.1fs)",
         elapsed_since_msg, stale_timeout_);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_age_s", elapsed_since_msg);
@@ -181,7 +189,7 @@ private:
     if (state_.match_ok) {
       // 매칭 성공 → OK. 거리 품질도 추가로 체크
       lvl     = DiagnosticStatus::OK;
-      msg_str = "Drop zone 매칭 완료";
+      msg_str = "Drop zone matching complete";
       if (!state_.match_id.empty()) {
         msg_str += " (id=" + state_.match_id + ")";
       }
@@ -193,12 +201,12 @@ private:
         lvl = warn_during_grace_ ? DiagnosticStatus::WARN : DiagnosticStatus::OK;
         char buf[80];
         std::snprintf(buf, sizeof(buf),
-          "초기화 중 (%.0fs / grace=%.0fs)",
+          "Initializing (%.0fs / grace=%.0fs)",
           since_start, grace_period_s_);
         msg_str = buf;
       } else {
         lvl     = DiagnosticStatus::ERROR;
-        msg_str = "Drop zone 매칭 실패 (grace period 초과)";
+        msg_str = "Drop zone matching failed: grace period exceeded";
       }
     }
 
@@ -208,18 +216,19 @@ private:
           lvl < DiagnosticStatus::ERROR)
       {
         lvl     = DiagnosticStatus::ERROR;
-        msg_str = "Drop zone 거리 초과 (zone 밖)";
+        msg_str = "Drop zone distance exceeded: outside zone";
       } else if (state_.match_distance > static_cast<float>(dist_warn_m_) &&
                  lvl < DiagnosticStatus::WARN)
       {
         lvl     = DiagnosticStatus::WARN;
-        msg_str = "Drop zone 거리 높음 (zone 경계 부근)";
+        msg_str = "Drop zone distance high: near zone boundary";
       }
     }
 
     stat.summary(lvl, msg_str);
 
     // ── 상세 값 추가 ────────────────────────────────────────────────────
+    stat.add("enabled",         "true");
     stat.add("match_ok",        state_.match_ok ? "true" : "false");
     stat.add("match_id",        state_.match_id.empty() ? "(none)" : state_.match_id);
 
@@ -247,6 +256,7 @@ private:
   std::string ok_topic_;
   std::string distance_topic_;
   std::string id_topic_;
+  bool enabled_{true};
   double stale_timeout_{5.0};
   double grace_period_s_{30.0};
   double dist_warn_m_{3.0};

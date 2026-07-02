@@ -154,7 +154,7 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "NetworkCheckerNode 시작. iface=%s | "
+      "NetworkCheckerNode started. iface=%s | "
       "RSSI warn=%.0f error=%.0f dBm | "
       "drop_rate warn=%.1f error=%.1f %%",
       iface_.c_str(),
@@ -209,7 +209,7 @@ private:
     // 인터페이스 존재 여부
     if (access(base.c_str(), F_OK) != 0) {
       stat.summary(DiagnosticStatus::ERROR,
-                   "인터페이스 없음: " + iface_);
+                   "Interface missing: " + iface_);
       stat.add("interface", iface_);
       return;
     }
@@ -223,13 +223,13 @@ private:
     stat.add("carrier",    carrier ? "connected" : "no carrier");
 
     if (operstate == "up" && carrier) {
-      stat.summary(DiagnosticStatus::OK, "WiFi 연결됨 (" + iface_ + ")");
+      stat.summary(DiagnosticStatus::OK, "WiFi connected (" + iface_ + ")");
     } else if (operstate == "down") {
-      stat.summary(DiagnosticStatus::ERROR, "인터페이스 down: " + iface_);
+      stat.summary(DiagnosticStatus::ERROR, "Interface down: " + iface_);
     } else {
-      // operstate == "unknown" 또는 carrier 없음
+      // operstate == "unknown" 또는 carrier unavailable
       stat.summary(DiagnosticStatus::WARN,
-                   "연결 불안정 (operstate=" + operstate + ")");
+                   "Link unstable (operstate=" + operstate + ")");
     }
   }
 
@@ -242,7 +242,7 @@ private:
     auto info = read_wireless(iface_);
     if (!info.valid) {
       stat.summary(DiagnosticStatus::STALE,
-                   "/proc/net/wireless 에 " + iface_ + " 없음 (미연결?)");
+                   "/proc/net/wireless missing " + iface_ + " (disconnected?)");
       return;
     }
 
@@ -262,7 +262,7 @@ private:
 
     char msg[64];
     std::snprintf(msg, sizeof(msg),
-                  "RSSI %.0f dBm  품질 %.0f%%",
+                  "RSSI %.0f dBm quality %.0f%%",
                   info.signal_dbm, info.link_quality_pct);
     std::string msg_str = msg;
     if      (lvl == DiagnosticStatus::WARN)  msg_str += " (Weak)";
@@ -279,7 +279,7 @@ private:
     auto cur = read_netdev(iface_);
     if (!cur.valid) {
       stat.summary(DiagnosticStatus::STALE,
-                   "/proc/net/dev 에 " + iface_ + " 없음");
+                   "/proc/net/dev missing " + iface_ + "");
       prev_stats_ = cur;
       return;
     }

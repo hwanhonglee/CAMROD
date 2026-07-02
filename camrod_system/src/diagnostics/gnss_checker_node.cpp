@@ -118,7 +118,7 @@ protected:
         [this, gnss](StatusWrapper & stat) { checkGnss(stat, *gnss); });
 
       RCLCPP_INFO(get_logger(),
-        "GNSS 모니터링 시작: %s (topic=%s, expected_hz=%.1f)",
+        "GNSS checker started: %s (topic=%s, expected_hz=%.1f)",
         gnss->name.c_str(), gnss->topic.c_str(), gnss->expected_hz);
     }
   }
@@ -149,7 +149,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!gnss.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + gnss.topic);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + gnss.topic);
       stat.add("topic", gnss.topic);
       return;
     }
@@ -158,7 +158,7 @@ private:
     if (elapsed > gnss.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 (timeout=%.1fs)", elapsed, gnss.stale_timeout);
+        "No messages for %.1fs (timeout=%.1fs)", elapsed, gnss.stale_timeout);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
@@ -180,7 +180,7 @@ private:
     // Fix status 체크 (최우선)
     if (gnss.fix_status == sensor_msgs::msg::NavSatStatus::STATUS_NO_FIX) {
       lvl     = DiagnosticStatus::ERROR;
-      msg_str = "GNSS fix 없음 (NO_FIX)";
+      msg_str = "GNSS fix unavailable (NO_FIX)";
     }
 
     // Rate 체크 (fix 있어도 느리면 경고)
@@ -189,7 +189,7 @@ private:
       int8_t hz_lvl = check_low(ratio, gnss.hz_warn_ratio, gnss.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "수신 속도 심각 저하" : "수신 속도 저하";
+        msg_str = (hz_lvl == S::ERROR) ? "Input rate critically low" : "Input rate low";
       }
     }
 
@@ -199,7 +199,7 @@ private:
           gnss.covariance_type == sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_APPROXIMATED)
       {
         lvl     = DiagnosticStatus::WARN;
-        msg_str = "공분산 타입 불확실 (UNKNOWN/APPROXIMATED)";
+        msg_str = "Covariance type uncertain (UNKNOWN/APPROXIMATED)";
       }
     }
 

@@ -137,7 +137,7 @@ protected:
         [this, wheel](StatusWrapper & stat) { checkWheel(stat, *wheel); });
 
       RCLCPP_INFO(get_logger(),
-        "휠 오도메트리 모니터링 시작: %s (topic=%s, expected_hz=%.0f)",
+        "Wheel odometry checker started: %s (topic=%s, expected_hz=%.0f)",
         wheel->name.c_str(), wheel->topic.c_str(), wheel->expected_hz);
     }
   }
@@ -176,7 +176,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!wheel.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + wheel.topic);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + wheel.topic);
       stat.add("topic", wheel.topic);
       return;
     }
@@ -185,7 +185,7 @@ private:
     if (elapsed > wheel.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.2fs 동안 메시지 없음 (timeout=%.1fs)", elapsed, wheel.stale_timeout);
+        "No messages for %.1fs (timeout=%.1fs)", elapsed, wheel.stale_timeout);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
@@ -207,7 +207,7 @@ private:
     // NaN/Inf 체크 (최우선)
     if (wheel.vel_nan) {
       lvl     = DiagnosticStatus::ERROR;
-      msg_str = "twist velocity에 NaN/Inf 포함";
+      msg_str = "twist velocity contains NaN/Inf";
     }
 
     // Rate 체크
@@ -217,7 +217,7 @@ private:
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
         msg_str = (hz_lvl == DiagnosticStatus::ERROR) ?
-          "수신 속도 심각 저하" : "수신 속도 저하";
+          "Input rate critically low" : "Input rate low";
       }
     }
 
@@ -226,12 +226,12 @@ private:
     if (lvl < DiagnosticStatus::ERROR) {
       if (wheel.max_speed_error_ms > 0.0 && speed > wheel.max_speed_error_ms) {
         lvl     = DiagnosticStatus::ERROR;
-        msg_str = "속도 이상 (ERROR 임계값 초과)";
+        msg_str = "Velocity abnormal (above ERROR threshold)";
       } else if (wheel.max_speed_warn_ms > 0.0 && speed > wheel.max_speed_warn_ms &&
                  lvl < DiagnosticStatus::WARN)
       {
         lvl     = DiagnosticStatus::WARN;
-        msg_str = "속도 이상 (WARN 임계값 초과)";
+        msg_str = "Velocity abnormal (above WARN threshold)";
       }
     }
 

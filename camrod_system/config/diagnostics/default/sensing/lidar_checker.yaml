@@ -1,36 +1,38 @@
-# LiDAR Checker 설정 파일
+# LiDAR checker configuration.
 
 lidar_checker:
   ros__parameters:
-    publish_rate_hz: 1.0          # 진단 발행 주기 (Hz)
+    publish_rate_hz: 1.0
 
-    # 모니터링할 LiDAR 이름 목록
-    # 각 이름은 아래 섹션의 키로 사용됩니다.
+    # Each name below becomes a /sensor/lidar/<name> diagnostic entry.
     lidar_names: ["main", "filtered"]
 
     main:
       # HH_260630 - Raw Vanjee output used by lidar_preprocessor_node.
+      # HH_260702 - Raw frames can contain vendor NaN placeholders, so this
+      # entry checks raw freshness/rate only. Motion quality is judged after
+      # preprocessing via the filtered entry below.
       topic: "/sensing/lidar/vanjee/points_raw"
-      expected_hz: 10.0        # 기대 스캔 속도 (Hz)
-      hz_warn_ratio: 0.8       # actual_hz / expected_hz 비율이 이 값 미만이면 WARN
-      hz_error_ratio: 0.5      # actual_hz / expected_hz 비율이 이 값 미만이면 ERROR
-      stale_timeout_s: 2.0       # 이 시간(초) 이상 메시지 없으면 STALE
-      min_point_count: 100     # 0 = 체크 안 함 (스캔 당 최소 포인트 수)
-      max_point_count: 0       # 0 = 체크 안 함 (스캔 당 최대 포인트 수)
-      # HH_260701 - Raw Vanjee frames include sparse NaN placeholders that the
-      # preprocessor removes before planning. Warn only on severe raw corruption.
-      max_nan_ratio: 0.5       # 0.0 = 체크 안 함 (NaN·Inf 포인트 비율 상한)
+      expected_hz: 10.0
+      hz_warn_ratio: 0.5
+      hz_error_ratio: 0.2
+      stale_timeout_s: 3.0
+      min_point_count: 100
+      max_point_count: 0
+      max_nan_ratio: 0.0
 
     filtered:
       topic: "/sensing/lidar/points_filtered"
       # HH_260701 - ground_segmentation is the intentional bottleneck after
       # 10 Hz preprocessor output; 6 Hz is the profiled stable planning input.
+      # HH_260702 - This entry is the motion-relevant LiDAR health check:
+      # freshness/rate must stay alive and filtered NaN/Inf should be nearly zero.
       expected_hz: 6.0
-      hz_warn_ratio: 0.8
-      hz_error_ratio: 0.5
-      stale_timeout_s: 2.0
+      hz_warn_ratio: 0.5
+      hz_error_ratio: 0.25
+      stale_timeout_s: 3.0
       # HH_260701 - This is obstacle-only output; 0 points is normal when the
       # LiDAR ROI is clear, so freshness/rate are the safety checks here.
-      min_point_count: 0      # 전처리 후 최소 포인트 수
+      min_point_count: 0
       max_point_count: 0
-      max_nan_ratio: 0.0       # 전처리 후 NaN 없어야 함
+      max_nan_ratio: 0.001

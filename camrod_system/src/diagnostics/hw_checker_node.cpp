@@ -51,7 +51,7 @@ namespace fs = std::filesystem;
 using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
-// ── 컨테이너 환경 감지 ────────────────────────────────────────────────────
+// ── Container environment detected ────────────────────────────────────────────────────
 
 static bool is_in_container()
 {
@@ -258,7 +258,7 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "HwCheckerNode 시작. "
+      "HwCheckerNode started. "
       "CPU warn=%.0f%% error=%.0f%% | "
       "MEM warn=%.0f%% error=%.0f%% | "
       "DISK(%s) warn=%.0f%% error=%.0f%%",
@@ -268,7 +268,7 @@ public:
 
     if (in_container_) {
       RCLCPP_INFO(get_logger(),
-        "컨테이너 환경 감지. proc_base=%s  sys_base=%s  disk_path=%s",
+        "Container environment detected. proc_base=%s  sys_base=%s  disk_path=%s",
         proc_base_.c_str(), sys_base_.c_str(), disk_path_.c_str());
     }
   }
@@ -353,20 +353,20 @@ protected:
       if (!host_rootfs.empty()) {
         disk_path_ = host_rootfs;
         RCLCPP_INFO(get_logger(),
-          "컨테이너 overlay FS 감지 → disk.path 를 호스트 rootfs (%s) 로 자동 설정",
+          "Container overlay FS detected; disk.path automatically set to host rootfs (%s)",
           disk_path_.c_str());
       } else {
         RCLCPP_WARN(get_logger(),
-          "컨테이너 환경에서 disk.path=\"/\" 는 overlay FS 를 가리킵니다. "
-          "호스트 디스크를 보려면 -v /:/host/rootfs:ro 마운트 후 "
-          "container.host_rootfs_path 파라미터를 설정하세요.");
+          "In a container, disk.path=\"/\" points to the overlay FS. "
+          "Mount -v /:/host/rootfs:ro to monitor the host disk, then "
+          "set the container.host_rootfs_path parameter.");
       }
     }
 
     has_cpu_temp_ = read_cpu_temp(sys_base_).has_value();
     if (!has_cpu_temp_) {
       RCLCPP_WARN(get_logger(),
-        "CPU 온도 센서를 찾을 수 없습니다 (sys_base=%s). STALE로 발행됩니다.",
+        "CPU temperature sensor not found (sys_base=%s). Publishing STALE.",
         sys_base_.c_str());
     }
 
@@ -422,7 +422,7 @@ private:
   {
     auto mem = read_mem_info(proc_base_);
     if (!mem) {
-      stat.summary(DiagnosticStatus::STALE, proc_base_ + "/meminfo 읽기 실패");
+      stat.summary(DiagnosticStatus::STALE, proc_base_ + "/meminfo read failed");
       return;
     }
 
@@ -467,7 +467,7 @@ private:
   {
     struct statvfs st {};
     if (statvfs(disk_path_.c_str(), &st) != 0) {
-      stat.summary(DiagnosticStatus::STALE, "statvfs 실패: " + disk_path_);
+      stat.summary(DiagnosticStatus::STALE, "statvfs failed: " + disk_path_);
       return;
     }
 
@@ -496,13 +496,13 @@ private:
   {
     if (!has_cpu_temp_) {
       stat.summary(DiagnosticStatus::STALE,
-        "CPU 온도 센서 없음 (sys_base=" + sys_base_ + ")");
+        "CPU temperature sensor missing (sys_base=" + sys_base_ + ")");
       return;
     }
 
     auto temp_opt = read_cpu_temp(sys_base_);
     if (!temp_opt) {
-      stat.summary(DiagnosticStatus::STALE, "CPU 온도 센서 없음");
+      stat.summary(DiagnosticStatus::STALE, "CPU temperature sensor missing");
       return;
     }
 
@@ -510,7 +510,7 @@ private:
     int8_t lvl  = check_high(temp, cpu_temp_warn_, cpu_temp_error_);
 
     char buf[64];
-    std::snprintf(buf, sizeof(buf), "CPU Temp %.1f°C", temp);
+    std::snprintf(buf, sizeof(buf), "CPU Temp %.1f C", temp);
     std::string msg = buf;
     if      (lvl == DiagnosticStatus::WARN)  msg += " (High)";
     else if (lvl == DiagnosticStatus::ERROR) msg += " (Critical)";

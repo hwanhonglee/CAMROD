@@ -164,7 +164,7 @@ protected:
         [this, cam](StatusWrapper & stat) { check_camera(stat, *cam); });
 
       RCLCPP_INFO(get_logger(),
-        "카메라 모니터링 시작: %s (image=%s, type=%s, expected_fps=%.0f)",
+        "Camera checker started: %s (image=%s, type=%s, expected_fps=%.0f)",
         cam->name.c_str(), cam->image_topic.c_str(), cam->image_type.c_str(),
         cam->expected_fps);
     }
@@ -189,7 +189,7 @@ private:
     std::lock_guard<std::mutex> lock(cam.mtx);
 
     if (!cam.has_image) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + cam.image_topic);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + cam.image_topic);
       stat.add("topic", cam.image_topic);
       return;
     }
@@ -198,7 +198,7 @@ private:
     if (elapsed > cam.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 (timeout=%.1fs)", elapsed, cam.stale_timeout);
+        "No messages for %.1fs (timeout=%.1fs)", elapsed, cam.stale_timeout);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
@@ -219,22 +219,22 @@ private:
     if (cam.expected_fps > 0.0) {
       double ratio = actual_fps / cam.expected_fps;
       lvl = check_low(ratio, cam.fps_warn_ratio, cam.fps_error_ratio);
-      if      (lvl == S::ERROR) msg_str = "FPS 심각 저하";
-      else if (lvl == S::WARN)  msg_str = "FPS 저하";
+      if      (lvl == S::ERROR) msg_str = "FPS critically low";
+      else if (lvl == S::WARN)  msg_str = "FPS low";
     }
 
     if (cam.expected_width > 0) {
       lvl = std::max(lvl, check_flag(cam.actual_width == cam.expected_width, S::WARN));
-      if (lvl == S::WARN) msg_str = "해상도 불일치";
+      if (lvl == S::WARN) msg_str = "Resolution mismatch";
     }
     if (cam.expected_height > 0) {
       lvl = std::max(lvl, check_flag(cam.actual_height == cam.expected_height, S::WARN));
-      if (lvl == S::WARN) msg_str = "해상도 불일치";
+      if (lvl == S::WARN) msg_str = "Resolution mismatch";
     }
 
     if (!cam.expected_encoding.empty()) {
       lvl = std::max(lvl, check_flag(cam.actual_encoding == cam.expected_encoding, S::WARN));
-      if (lvl == S::WARN) msg_str = "인코딩 불일치";
+      if (lvl == S::WARN) msg_str = "Encoding mismatch";
     }
 
     if (lvl == DiagnosticStatus::OK) {
@@ -254,7 +254,7 @@ private:
     stat.add("width",            cam.actual_width);
     stat.add("height",           cam.actual_height);
     stat.add("encoding",         cam.actual_encoding);
-    stat.add("camera_info",      cam.has_camera_info ? "OK" : "없음");
+    stat.add("camera_info",      cam.has_camera_info ? "OK" : "missing");
     std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed);
     stat.add("last_msg_sec_ago", std::string(tmp));
   }

@@ -38,6 +38,10 @@ public:
       declare_parameter<std::string>("source_diagnostic_topic", "/diagnostics");
     system_status_topic_ = declare_parameter<std::string>("system_status_topic", "status");
     avg_system_msgs_topic_ = declare_parameter<std::string>("avg_system_msgs_topic", "msgs");
+    // HH_260702 - Keep the operator console focused on one system-level line;
+    // detailed checker data remains available on /system/status and diagnostics topics.
+    log_status_summary_ = declare_parameter<bool>("log_status_summary", true);
+    log_status_summary_period_s_ = declare_parameter<double>("log_status_summary_period_s", 5.0);
     known_modules_ = declare_parameter<std::vector<std::string>>(
       "known_modules",
       std::vector<std::string>{
@@ -151,6 +155,37 @@ private:
     return value.substr(first, last - first + 1);
   }
 
+  static std::string collapse_spaces(std::string value)
+  {
+    std::string out;
+    out.reserve(value.size());
+    bool previous_space = false;
+    for (const char ch : value) {
+      const bool is_space = ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r';
+      if (is_space) {
+        if (!previous_space) {
+          out.push_back(' ');
+        }
+        previous_space = true;
+      } else {
+        out.push_back(ch);
+        previous_space = false;
+      }
+    }
+    return trim(out);
+  }
+
+  static std::string console_safe_ascii(std::string value)
+  {
+    for (auto & ch : value) {
+      const auto byte = static_cast<unsigned char>(ch);
+      if (byte < 32 || byte > 126) {
+        ch = ' ';
+      }
+    }
+    return collapse_spaces(value);
+  }
+
   // Consumes incoming diagnostics and stores latest snapshot by stable status key.
   void on_diagnostic(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg)
   {
@@ -225,6 +260,7 @@ private:
 
     diag_pub_->publish(diag);
     publish_system_status(stamp, module_states, warn_modules, error_modules);
+    maybe_log_system_summary(module_states, warn_modules, error_modules, now_sec);
   }
 
   std::vector<avg_msgs::msg::ModuleState> build_module_states(
@@ -284,16 +320,6 @@ private:
     }
     module.missing_nodes = split_csv(value_for(snap.values, "missing_nodes"));
     module.missing_topics = split_csv(value_for(snap.values, "missing_topics"));
-    const auto legacy_missing = split_csv(value_for(snap.values, "missing"));
-    if (!legacy_missing.empty()) {
-      if (status_key.find("topics") != std::string::npos) {
-        module.missing_topics.insert(
-          module.missing_topics.end(), legacy_missing.begin(), legacy_missing.end());
-      } else if (status_key.find("nodes") != std::string::npos) {
-        module.missing_nodes.insert(
-          module.missing_nodes.end(), legacy_missing.begin(), legacy_missing.end());
-      }
-    }
     const auto publisher_missing = split_csv(value_for(snap.values, "publisher_missing"));
     module.missing_topics.insert(
       module.missing_topics.end(), publisher_missing.begin(), publisher_missing.end());
@@ -373,6 +399,121 @@ private:
     avg_system_msgs_pub_->publish(avg_msg);
   }
 
+  void maybe_log_system_summary(
+    const std::vector<avg_msgs::msg::ModuleState> & modules,
+    const std::vector<std::string> & warn_modules,
+    const std::vector<std::string> & error_modules,
+    double now_sec)
+  {
+    if (!log_status_summary_) {
+      return;
+    }
+
+    const bool has_error = !error_modules.empty();
+    const bool has_warn = !warn_modules.empty();
+    const std::string summary = build_console_summary(modules, has_error, has_warn);
+    const bool changed = summary != last_console_summary_;
+    const bool periodic_due =
+      (has_error || has_warn) &&
+      log_status_summary_period_s_ > 0.0 &&
+      (last_console_summary_log_sec_ <= 0.0 ||
+       now_sec - last_console_summary_log_sec_ >= log_status_summary_period_s_);
+
+    if (!changed && !periodic_due) {
+      return;
+    }
+
+    last_console_summary_ = summary;
+    last_console_summary_log_sec_ = now_sec;
+    if (has_error) {
+      RCLCPP_ERROR(get_logger(), "%s", summary.c_str());
+    } else if (has_warn) {
+      RCLCPP_WARN(get_logger(), "%s", summary.c_str());
+    } else {
+      RCLCPP_INFO(get_logger(), "%s", summary.c_str());
+    }
+  }
+
+  static std::string build_console_summary(
+    const std::vector<avg_msgs::msg::ModuleState> & modules,
+    bool has_error,
+    bool has_warn)
+  {
+    if (has_error) {
+      std::string summary = "[SYSTEM] ERROR";
+      summary += "\n  ERROR:\n";
+      summary += describe_modules(modules, avg_msgs::msg::ModuleState::ERROR, true);
+      const auto warn = describe_modules(modules, avg_msgs::msg::ModuleState::WARN, false);
+      if (!warn.empty()) {
+        summary += "\n  WARN:\n" + warn;
+      }
+      return summary;
+    }
+    if (has_warn) {
+      return "[SYSTEM] WARN\n  WARN:\n" +
+        describe_modules(modules, avg_msgs::msg::ModuleState::WARN, false);
+    }
+    return "[SYSTEM] OK\n  all modules healthy";
+  }
+
+  static std::string describe_modules(
+    const std::vector<avg_msgs::msg::ModuleState> & modules,
+    uint8_t level,
+    bool include_higher)
+  {
+    std::string out;
+    for (const auto & module : modules) {
+      const bool match = include_higher ? module.level >= level : module.level == level;
+      if (!match) {
+        continue;
+      }
+      out += "    - " + format_module_line(module) + "\n";
+    }
+    if (!out.empty()) {
+      out.pop_back();
+    }
+    return out;
+  }
+
+  static std::string format_module_line(const avg_msgs::msg::ModuleState & module)
+  {
+    std::string message = console_safe_ascii(module.message);
+    std::string source;
+    std::string detail = message;
+
+    const auto first_colon = message.find(':');
+    if (first_colon != std::string::npos) {
+      source = trim(message.substr(0, first_colon));
+      const auto rest = trim(message.substr(first_colon + 1));
+      const auto second_colon = rest.find(':');
+      if (second_colon != std::string::npos) {
+        source += " " + trim(rest.substr(0, second_colon));
+        detail = trim(rest.substr(second_colon + 1));
+      } else {
+        detail = rest;
+      }
+    }
+
+    std::string item = console_safe_ascii(module.module_name) + ": " +
+      compact_message(detail, 112);
+    if (!source.empty()) {
+      item += " [" + compact_message(source, 88) + "]";
+    }
+    return item;
+  }
+
+  static std::string compact_message(std::string value, size_t limit)
+  {
+    value = console_safe_ascii(value);
+    if (value.size() <= limit) {
+      return value;
+    }
+    if (limit <= 3) {
+      return value.substr(0, limit);
+    }
+    return value.substr(0, limit - 3) + "...";
+  }
+
   // Helper to create diagnostic key-value fields with consistent style.
   static diagnostic_msgs::msg::KeyValue make_kv(const std::string & key, const std::string & value)
   {
@@ -399,7 +540,7 @@ private:
     for (size_t i = 0; i < values.size(); ++i) {
       out += values[i];
       if (i + 1 < values.size()) {
-        out += ",";
+        out += ", ";
       }
     }
     return out;
@@ -438,6 +579,10 @@ private:
   std::string avg_system_msgs_topic_;
   double publish_period_s_{0.5};
   double stale_timeout_s_{2.0};
+  bool log_status_summary_{true};
+  double log_status_summary_period_s_{5.0};
+  std::string last_console_summary_;
+  double last_console_summary_log_sec_{0.0};
   std::vector<std::string> known_modules_;
   std::map<std::string, ModuleSnapshot> snapshots_;
 

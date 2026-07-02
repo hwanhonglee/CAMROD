@@ -18,6 +18,9 @@ global:
   ignored_names:
     - "system/diagnostic"
     - "planning_state_checker: /planning/state_machine/state"
+    # HH_260702 - planning_state_machine publishes this when asserting soft estop;
+    # keep it out of diagnostics_agg so ERROR_STOP cannot feed back into itself.
+    - "planning/state_machine"
 
 topics:
 
