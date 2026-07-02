@@ -23,6 +23,10 @@
 #   - ZED-F9P GNSS rover config uses /dev/ttyACM0; CH9344 USB ports are radar.
 #   - LiDAR runtime is tuned in package configs, not installed here.
 #   - planning soft-estop wiring is built/installed by colcon_build.sh.
+# HH_260702: setup is still dependency-only. Do not add runtime launch/test
+#   side effects here; use colcon_build.sh for install sync and
+#   camrod_bringup/sim_validation_runner.py for deterministic manual, obstacle,
+#   campsite, and drop-zone validation after bringup is running.
 #
 # Fork override:
 #   Set CAMROD_AGILEX_BASE before running to use your own forks of agilexrobotics repos:

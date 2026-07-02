@@ -236,11 +236,11 @@ graph TD
 |---|---|---|---|
 | `goal_snapper_node` | `site_goal` `/goal_pose`, Lanelet2 map, `/planning/lanelet_pose` | `route_goal` `/planning/goal_pose_snapped_ros` | `max_search_radius`: 120 m, `require_lanelet_containment`, `fallback_uncontained`, latest goal preempts older goals; HH_260619 - pose jumps >1.5 m reissue the active snapped goal so Nav2 rebuilds the FollowPath context; HH_260619 - uncontained global snap override prevents off-lane UI campsite centers from snapping to a stale connected component/drop-zone lanelet; HH_260622 - Nav2 terminal status marks the active goal complete even when sequential-goal release is disabled, preventing stale goal reissue after RViz pose reset |
 | `centerline_snapper_node` | `/localization/pose` | `/planning/lanelet_pose` | `max_search_radius`: 120 m, `lateral_stddev`: 0.3, `min_update_period_s`: 0.05 |
-| `local_path_extractor_node` | `/planning/global_path`, `/localization/pose`, optional `/planning/local_path_controller` | `/planning/local_path` | `local_path_source`: `slice_only`, lookahead 30 m, lookbehind 0.2 m, 15 Hz; HH_260619 - uses the fixed per-goal global route and publishes an unsmoothed forward slice so RViz/local consumers do not see corner-cut drift |
+| `local_path_extractor_node` | `/planning/global_path`, `/localization/pose` | `/planning/local_path` | lookahead 30 m, lookbehind 0.2 m, 15 Hz; HH_260702 - publishes the map-fixed global-route slice and clears an empty local path on invalid input or route changes so old goal markers do not persist |
 | `path_tracking_error_node` | `/planning/local_path`, `/planning/lanelet_pose` | `/planning/ltracking_error` | `prefer_local_path`: true, `publish_rate_hz`: 15, `pose_timeout_s`: 1.0 |
 | `path_visualizer_node` | `/planning/global_path`, `/planning/local_path` | `/planning/path_markers` | HH_260619 - high-contrast RViz markers show the same route source used by local-path and path-cost consumers; stale global markers are cleared when local path has moved to a different goal; HH_260623 - path marker Z is flattened to the 2D planning ground plane by default |
 | `goal_replanner_node` | `/planning/goal_pose`, `/planning/lanelet_pose`, Nav2 action | replanning triggers | `min_request_interval_s`, `retry_after_failure_s`, `navigate_inactive_grace_s` |
-| `obstacle_replan_monitor_node.py` | `/planning/global_path`, `/planning/goal_pose_snapped_ros`, `/localization/pose`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar` | `/planning/obstacle_replan/status`, temporary `/planning/planner_selector=Smac2D`, preempted `/planning/navigate_to_pose` goal | HH_260619 - keeps `LaneletRoute` fixed during normal driving, but forces a Smac2D global fallback only when dynamic obstacle costs persistently block the route corridor; HH_260619 - `clear_hold_s` prevents alternating empty/test cost grids from clearing a real blockage immediately |
+| `obstacle_replan_monitor_node.py` | `/planning/local_path`, `/planning/goal_pose_snapped_ros`, `/localization/pose`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar` | `/planning/obstacle_replan/status`; optional `/planning/planner_selector=SmacLattice` + preempted `/planning/navigate_to_pose` only when `preempt_enabled=true` | HH_260702 - reports persistent dynamic blockage on the active local-path corridor while keeping the default `LaneletRoute` global path stable; fallback preemption is opt-in because free-space replans can cross adjacent/opposite lanes; `clear_hold_s` prevents alternating empty/test cost grids from clearing a real blockage immediately |
 | `planning_progress_node` | `/planning/global_path`, `/localization/pose`, `/localization/odometry/filtered` | `/planning/progress/*` | `publish_rate_hz`: 2.0, `speed_ema_alpha`: 0.2, `speed_floor_mps`: 0.1 |
 | `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/planning/mission_engage`, `/platform/status/estop`, `/planning/state_machine/estop`, `/map/cost_grid/lanelet`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/odometry/filtered` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors; HH_260630 - site-maneuver crab/reverse bypasses static lanelet/global-path cost while still stopping on live LiDAR/Radar source cost; HH_260701 - planning soft-estop is ORed with platform e-stop before command output |
 | `planning_state_machine_node` | `/system/diagnostics_agg`, `/planning/lanelet_pose_ros`, `/planning/state_machine/camping_site_recall`, `mission_key` `/planning/mission_key` | `/planning/goal_pose_snapped_ros`, `/planning/state_machine/state`, `/planning/state_machine/mission_source` | `keypoints_yaml`, `camping_sites_yaml`, `startup_mission_key`, `goal_reached_dwell_s`; HH_260619 - recent UI `mission_key` can override a misleading snapped-goal key match during the preserve window |
@@ -277,13 +277,13 @@ graph TD
 |---|---|---|---|---|
 | `/planning/global_path` | `nav_msgs/Path` | camrod_map, camrod_sensing, RViz | on new goal / recovery | Planner-server route from current position to goal; HH_260619 - BT locks this route per accepted goal so local updates do not rewrite the global path every tick |
 | `/planning/route_lanelet_ids` | `std_msgs/Int64MultiArray` | camrod_map | on new LaneletRoute plan | HH_260619 - Exact Lanelet2 IDs in the active global route; used by lanelet cost grid to ignore non-route branch/merge boundaries |
-| `/planning/local_path` | `nav_msgs/Path` | camrod_system (diagnostic), RViz | 15 Hz + pose updates | Robot-centred local path window; HH_260619 - default source is an exact forward slice of the locked global route, not a smoothed/corner-cut controller debug path |
+| `/planning/local_path` | `nav_msgs/Path` | camrod_system (diagnostic), RViz | 15 Hz + pose updates | Robot-centred local path window; HH_260702 - map-fixed locked-route slice by default; invalid inputs and route changes publish an empty path once to clear stale markers |
 | `/planning/path_markers` | `visualization_msgs/MarkerArray` | RViz | on path update + 5 Hz cache | HH_260618 - thick global/local path line, direction arrows, and endpoint markers above cost-grid overlays |
 | `/planning/cmd_vel_raw` | `geometry_msgs/Twist` | planning_cmd_vel_gate_node | 30 Hz | Raw controller velocity before gating |
 | `/planning/cmd_vel` | `geometry_msgs/Twist` | camrod_platform | 30 Hz | Gated velocity command; zeroed on e-stop, cost-stop, disengaged, or hold |
 | `/planning/engaged` | `std_msgs/Bool` | camrod_system, camrod_platform | 30 Hz | Effective gate state after manual/mission latch, e-stop, cost-stop, and holds |
 | `/planning/cost_grid/global_path` | `nav_msgs/OccupancyGrid` | camrod_sensing, cmd_vel_gate, RViz | on path update + heartbeat | HH_260619 - path-corridor layer generated from `/planning/global_path` for local inflation/gate/visualization; not injected into global planner master to avoid circular replans |
-| `/planning/obstacle_replan/status` | `std_msgs/String` | RViz/logging/system diagnostics | 5 Hz | HH_260619 - dynamic route blockage state; reports CLEAR/BLOCKED and the grid source used before Smac2D fallback preemption |
+| `/planning/obstacle_replan/status` | `std_msgs/String` | RViz/logging/system diagnostics | 5 Hz | HH_260702 - dynamic route blockage state; reports CLEAR/BLOCKED and the grid source; default policy does not preempt the global route |
 | `/planning/ltracking_error` | `AvgTrackingError` | camrod_system | 15 Hz | Lateral and heading tracking error against local path |
 | `/planning/state_machine/state` | `avg_msgs/PlanningState` | camrod_system, camrod_ui | on change | Mission FSM state plus scenario, mission key, source, request flags |
 | `/planning/state_machine/mission_source` | `avg_msgs/PlanningMissionKey` | camrod_ui, logging | on new goal | Current mission key and source: `startup` / `return_request` / `recall:*` / `auto_return` / `mission_key:*` |
@@ -313,13 +313,13 @@ graph TD
 
 **Trigger:** `planning_cmd_vel_gate_node` receives a `/planning/cost_grid/inflation` update while the gate is engaged.
 
-**Internal logic:** The gate scans rectangular corridors in front, on both sides, and behind the robot using the merged inflation cost grid. The front corridor uses a speed-dependent lookahead: `d = v²/(2μg) + t_react × v + margin`, clamped to [`front_lookahead_min_m`, `front_lookahead_max_m`]. HH_260623 - defaults are tied to the measured footprint: front width `1.27 m`, side scan width `1.69160 m`, rear width `1.27 m`, and minimum front lookahead `1.30137 m` from `robot_base_link` to cover the front body extent plus margin. A BFS cluster check additionally detects unavoidable lethal obstacles (≥ `unavoidable_cluster_min_cells` cells with cost ≥ `unavoidable_lethal_threshold` covering ≥ `unavoidable_cluster_min_ratio` of the corridor).
+**Internal logic:** The gate scans rectangular corridors in front, on both sides, and behind the robot using the merged inflation cost grid. The front corridor uses a speed-dependent lookahead: `d = v²/(2μg) + t_react × v + margin`, clamped to [`front_lookahead_min_m`, `front_lookahead_max_m`]. HH_260702 - current field defaults stop dynamic front obstacles at cost ≥85 with a 2.60 m minimum scan and 3.50 m maximum scan; side/rear dynamic stops also use cost ≥85 with a 1.20 m lookahead so crab/reverse maneuvers are protected by live LiDAR/Radar. A BFS cluster check additionally detects unavoidable lethal obstacles (≥ `unavoidable_cluster_min_cells` cells with cost ≥ `unavoidable_lethal_threshold` covering ≥ `unavoidable_cluster_min_ratio` of the corridor).
 
 | Zone | Cost Threshold | Lookahead | Corridor Half-Width |
 |---|---|---|---|
-| Front (speed-dependent) | 85 | `v²/(2×0.4×9.81) + 0.15v + 0.3`, clamped [0.4, 3.0] m | 0.5 m |
-| Side left / right | 92 | 0.8 m | 0.225 m |
-| Rear | 92 | 0.6 m | 0.3 m |
+| Front (speed-dependent) | 85 | `v²/(2×0.4×9.81) + 0.20v + 0.45`, clamped [2.60, 3.50] m | footprint corridor |
+| Side left / right | 85 | 1.20 m | footprint corridor |
+| Rear | 85 | 1.20 m | footprint corridor |
 | Unavoidable cluster | 90 (lethal floor) | front corridor | ≥ 25 cells / ≥ 25% coverage |
 
 > ⚠️ **Warning** `/planning/cmd_vel` is zeroed and `/planning/engaged` reflects `false`. The stop is held for `cmd_vel_gate_cost_hold_s` (default 1.0 s) after the obstacle clears.
@@ -363,13 +363,13 @@ or too far from the robot, the node falls back to the raw robot-yaw rectangle.
 
 ### 6.1.2 Dynamic Obstacle Replan
 
-**Trigger:** `obstacle_replan_monitor_node.py` sees fresh LiDAR/Radar cost cells above `obstacle_cost_threshold` inside the active global-route corridor for longer than `block_hold_s`.
+**Trigger:** `obstacle_replan_monitor_node.py` sees fresh LiDAR/Radar cost cells above `obstacle_cost_threshold` inside the active local-path corridor for longer than `block_hold_s`.
 
-**HH_260619 - Internal logic:** Normal driving uses `LaneletRoute`, so `/planning/global_path` stays on the selected lanelet centerline and does not oscillate every control tick. If a dynamic obstacle makes that route persistently unusable, the monitor temporarily publishes `Smac2D` on `/planning/planner_selector` and resends the latest `/planning/goal_pose_snapped_ros` to `/planning/navigate_to_pose`. This preempts the current goal and asks Nav2 for a costmap-aware alternate global path. If no free-space route exists, the cmd_vel gate still holds the robot stopped. `clear_hold_s` keeps a recently blocked sample active across short empty-grid intervals, which is required when real/test obstacle grids and empty simulator grids alternate on the same cost-grid topics.
+**HH_260702 - Internal logic:** Normal driving uses `LaneletRoute`, so `/planning/global_path` stays on the selected lanelet centerline and does not oscillate every control tick. The monitor now reports persistent dynamic blockage on `/planning/obstacle_replan/status` by default and leaves the active Nav2 goal/global route untouched. If a controlled test needs free-space fallback behavior, set `preempt_enabled=true`; then the monitor temporarily publishes `SmacLattice` on `/planning/planner_selector` and resends the latest `/planning/goal_pose_snapped_ros` to `/planning/navigate_to_pose`. If no lane-bounded/free-space route exists, the cmd_vel gate still holds the robot stopped. `clear_hold_s` keeps a recently blocked sample active across short empty-grid intervals, which is required when real/test obstacle grids and empty simulator grids alternate on the same cost-grid topics.
 
-**Important:** `/planning/local_path` is still the visible route window by default (`slice_only`). It is not the MPPI sampled trajectory display. Use `/planning/obstacle_replan/status`, Nav2 planner logs, and `/planning/global_path` to confirm a full-route fallback; use MPPI visualization topics/markers for controller-level obstacle avoidance.
+**Important:** `/planning/local_path` is the operator-visible local route window. HH_260702 - It is a map-fixed slice of `/planning/global_path` by default; route changes and invalid input publish an empty path once to clear stale RViz markers. It is not the MPPI sampled trajectory display. Use `/planning/obstacle_replan/status`, Nav2 planner logs, and `/planning/global_path` to confirm a full-route fallback; use MPPI visualization topics/markers for controller-level obstacle avoidance.
 
-> 🔧 **Debug hint** Related params: `enable_obstacle_replan_monitor`, `obstacle_replan_monitor_param_file`, `fallback_planner_id`, `lookahead_m`, `corridor_half_width_m`, `block_hold_s`, `clear_hold_s`, `replan_cooldown_s`.
+> 🔧 **Debug hint** Related params: `enable_obstacle_replan_monitor`, `obstacle_replan_monitor_param_file`, `preempt_enabled`, `fallback_planner_id`, `restore_planner_id`, `lookahead_m`, `corridor_half_width_m`, `block_hold_s`, `clear_hold_s`, `replan_cooldown_s`.
 
 ---
 
@@ -545,7 +545,7 @@ Key launch arguments:
 | `map_path` | (from `camrod_map/config/map_info.yaml`) | Lanelet2 `.osm` file path |
 | `enable_path_cost_grids` | `true` | Global/local path cost grid publisher |
 | `enable_goal_replanner` | `false` | Automatic goal replanning on Nav2 failure |
-| `enable_obstacle_replan_monitor` | `false` | HH_260619 - persistent LiDAR/Radar blockage monitor; bringup enables it by default for full-system tests |
+| `enable_obstacle_replan_monitor` | `false` | HH_260702 - persistent LiDAR/Radar blockage monitor; bringup enables it by default for status/gate visibility, while fallback preemption stays disabled unless explicitly enabled |
 | `enable_state_machine` | `false` | Mission state machine |
 | `enable_tracking_error` | `true` | Path tracking error publisher |
 | `enable_progress` | `true` | Remaining distance / time / completion publisher |
@@ -564,7 +564,6 @@ Key launch arguments:
 | `cmd_vel_gate_rear_corridor_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `cmd_vel_gate_enable_gnss_recovery_hold` | `true` | Hold velocity for 2 s after DR_ONLY → NORMAL |
 | `cmd_vel_gate_yaw_alignment_enable` | `false` | Yaw alignment zone enforcement |
-| `local_path_source` | `slice_only` | `slice_only` for newest-route visualization/cost guidance; `controller_then_slice` remains available for controller-debug overlays |
 | `nav2_selected_planner` | `LaneletRoute` | HH_260619 - default lanelet-centerline route planner; `SmacLattice`/`ThetaStar` remain selectable for free-space diagnostics |
 | `nav2_combo_param_file` | `config/nav2_combo_profiles/disabled.yaml` | Planner+controller profile overlay |
 
@@ -585,10 +584,10 @@ Nav2 configuration is the split stack `nav2_base.yaml` + `nav2_vehicle.yaml` +
 | `config/nav2_combo_profiles/` | Planner+controller profile overlays (e.g. `smachybrid_graceful.yaml`, `smac2d_dwb.yaml`) |
 | `config/goal_snapper.yaml` | Goal snap search radius, containment check, Z handling, latest-goal preemption policy; HH_260619 - `reissue_active_goal_on_pose_jump` handles RViz/manual pose teleport during an active goal; HH_260619 - `uncontained_global_snap_override_enable` allows off-lane UI campsite centers to ignore stale connected-component filters when that gives a much nearer valid route snap; HH_260622 - completed goals are not reissued on later manual pose jumps |
 | `config/centerline_snapper.yaml` | Pose projection covariance, update throttle period |
-| `config/local_path_extractor.yaml` | Primary route `/planning/global_path`, lookahead 30 m / lookbehind 0.2 m, jump guard 3 m, publish rate 15 Hz; HH_260619 - `/planning/plan_smoothed` is not treated as a stable ROS route topic and local smoothing is disabled to preserve the fixed global route geometry |
+| `config/local_path_extractor.yaml` | Primary route `/planning/global_path`, lookahead 30 m / lookbehind 0.2 m, jump guard 3 m, publish rate 15 Hz; HH_260619 - `/planning/plan_smoothed` is not treated as a stable ROS route topic; HH_260702 - controller path reset hold is 1.0 s and invalid/route-change empty publishes clear stale local path markers |
 | `config/path_cost_grids.yaml` | Global/local path grid geometry, cost weights, rebuild triggers; `primary_enable: true` required for `/planning/cost_grid/*` publishers |
 | `config/goal_replanner.yaml` | Replan intervals, timeout, failure retry backoff; default planner `LaneletRoute`, fallback `Smac2D` |
-| `config/obstacle_replan_monitor.yaml` | HH_260619 - dynamic obstacle corridor monitor; preempts active Nav2 goal with `Smac2D` only after persistent LiDAR/Radar blockage; `clear_hold_s` is longer than `block_hold_s` to debounce alternating empty/blocked cost grids |
+| `config/obstacle_replan_monitor.yaml` | HH_260702 - dynamic obstacle corridor monitor; default `preempt_enabled=false` reports persistent LiDAR/Radar blockage without changing `/planning/global_path`; opt-in `SmacLattice` preemption remains available for controlled fallback tests |
 | `config/planning_state_machine.yaml` | State machine topics, startup/warn mission keys, dwell time 10 s, recall config; HH_260619 - `pending_mission_key_preserve_s` keeps the UI mission semantic during the route-goal snap cycle |
 | `config/planning_state_machine_keypoints.yaml` | Named keypoint coordinates (drop_zone, etc.) |
 | `config/camping_sites.yaml` | Named camping-site goal positions; optional `recall_x/y/z/yaw_deg` for road snap |
@@ -623,18 +622,28 @@ ros2 topic echo /planning/progress/remaining_distance_m
 
 # Full sim smoke checks live in camrod_bringup and exercise this package end-to-end.
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p run_obstacle_replan:=true \
   -p report_file:=/tmp/camrod_sim_validation_manual.json
 
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p skip_manual_goal:=true \
   -p run_camping:=true \
-  -p camping_timeout_s:=300.0 \
-  -p report_file:=/tmp/camrod_sim_validation_camping.json
+  -p camping_wait_drop_zone:=true \
+  -p camping_timeout_s:=420.0 \
+  -p report_file:=/tmp/camrod_sim_validation_camping_full.json
 ```
+
+HH_260702 - Latest deterministic sim evidence: baseline rates, all seven radar
+direction topics, front/left/right/rear LiDAR/Radar stop matrix, manual route
+success, obstacle blockage with stable `LaneletRoute` global path, campsite
+crab/rotate/unload/crab-out, return-to-drop-zone, and drop-zone `PARKED` all
+passed. The default obstacle monitor reports blockage without `SmacLattice`
+preemption, so a future lane-bounded avoidance planner is required for true
+early detour driving rather than free-space lane crossing.
 
 `colcon test --packages-select camrod_planning` runs ament lint in addition to
 runtime/unit tests. The current package layout includes vendored Nav2 sources
-under `external/`, so lint failures from `external/nav2_*` or legacy style
+under `external/`, so lint failures from `external/nav2_*` or older style
 issues should be treated as lint-scope cleanup, not as proof that Nav2 planning
 or the gate failed at runtime.
 

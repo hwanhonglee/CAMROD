@@ -11,6 +11,7 @@
 On the ROS side it bridges operator intent to planning topics without making any autonomy decisions itself.
 
 > **Non-goals:** Makes no autonomy decisions — only proxies operator intent. Does not plan paths, monitor localization, or enforce safety constraints. WebSocket is for real-time UI push only; it does not replace the REST API.
+> HH_260702 - Operator engage controls now arm the platform drive-enable latch together with the matching planning engage topic. Campsite return uses `/parking/site_maneuver/return`, then re-arms mission/platform gates for the return-to-drop-zone leg; final motion safety remains enforced by planning/platform gates.
 
 ---
 
@@ -34,6 +35,10 @@ ros2 launch camrod_ui ui.launch.py camping_sites_yaml:=/path/to/camping_sites.ya
 # Rebuild the React frontend
 cd camrod_ui/camrod_ui_robot/assets/frontend
 DISABLE_ESLINT_PLUGIN=true npm run build
+
+# Preferred workspace build path; runs npm install/npm run build automatically
+cd /home/nvidia/camrod_ws/src
+./colcon_build.sh --packages-select camrod_ui
 
 # Public kiosk build with operating-hours gate enabled
 REACT_APP_OPERATING_HOURS_GATE_ENABLED=true \

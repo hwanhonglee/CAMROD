@@ -29,7 +29,7 @@ ros2 launch camrod_map area_export.launch.py \
   camping_sites_output_yaml_path:=/home/hong/camrod_ws/src/camrod_planning/config/camping_sites.yaml
 ```
 
-> 💡 Verify in RViz: add topics `/map/markers` (MarkerArray) and `/map/cost_grid/lanelet` (OccupancyGrid). Both should appear within 3 s of launch.
+> 💡 Verify in RViz: add topics `/map/markers` (MarkerArray) and `/map/cost_grid/lanelet` (OccupancyGrid). HH_260702 - full marker/cost-grid rebuilds can take several seconds on the Jetson under all-on load; the local-first marker path should show the GNSS/localization neighborhood first, then cached full-map markers recover late RViz subscriptions.
 
 ### Map Profile Selection
 
@@ -44,6 +44,8 @@ ros2 launch camrod_map area_export.launch.py \
 | empty / unknown | `lanelet2_maps.osm` | `drop_zones.yaml`, `camping_sites.yaml` |
 
 This keeps the mechanism independent of the specific `.osm` file. A new map only needs a correct `map_info.yaml` origin and, if its site/drop-zone semantics differ, matching profile YAML files.
+
+> HH_260702 - `camrod_map/config/map_info.yaml` and `camrod_bringup/config/map/map_info.yaml` are kept synchronized. Change the active map/profile in those config files together so standalone `camrod_map` and full `camrod_bringup` launch paths show the same C-track/Park map.
 
 ---
 

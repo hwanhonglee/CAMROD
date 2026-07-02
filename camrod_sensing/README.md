@@ -222,14 +222,14 @@ graph TD
   classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  L1((/sensing/cost_grid/lidar\n150×150 @ 0.08m\nstale: 0.50s)):::sensing
+  L1((/sensing/cost_grid/lidar\n180×180 @ 0.10m\nstale: 0.80s)):::sensing
   L2((/sensing/cost_grid/radar\n120×120 @ 0.10m\nstale: 0.35s)):::sensing
   L3((/map/cost_grid/lanelet\n600×600 @ 0.20m\nstale: 5.0s)):::mapping
   L4((/planning/cost_grid/global_path\nroute-strip bias\nstale: 10.0s)):::planning
 
   FUSE(inflation_cost_grid\ncell-wise MAX merge\nego clear: 0.55m lidar / 0.50m radar):::highlight
 
-  OUT((/planning/cost_grid/inflation\n80×80 @ 0.10m · 6 Hz\nconsumed by Nav2 local costmap)):::topic
+  OUT((/planning/cost_grid/inflation\n180×180 @ 0.10m · 6 Hz\nconsumed by Nav2 local costmap)):::topic
 
   L1 ==> FUSE
   L2 ==> FUSE
@@ -261,9 +261,9 @@ graph TD
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
 | `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | camrod_perception, camrod_planning | ~6 Hz field target | Ground-filtered, voxel-downsampled obstacle points in `lidar_link` frame |
-| `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 150×150 @ 0.08 m robot-centred obstacle grid from LiDAR |
+| `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 180×180 @ 0.10 m robot-centred obstacle grid from LiDAR and perception objects |
 | `/sensing/cost_grid/radar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 120×120 @ 0.10 m robot-centred near-field obstacle grid from radar |
-| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | camrod_planning (Nav2 local costmap, `cmd_vel_gate`) | 6 Hz | 80×80 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
+| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | camrod_planning (Nav2 local costmap, `cmd_vel_gate`) | 6 Hz | 180×180 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
 | `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz | Raw GNSS fix with RTK status |
 | `/sensing/gnss/pose` | `geometry_msgs/PoseStamped` | camrod_localization (`localization_monitor_node`) | 10 Hz | GNSS-derived pose in `map` frame (no covariance) |
 | `/sensing/gnss/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | camrod_localization (ESKF) | 10 Hz | GNSS-derived pose with position covariance for filter fusion |
@@ -294,12 +294,12 @@ graph TD
 
 | Field | Detail |
 |---|---|
-| Trigger | Each `/sensing/lidar/points_filtered` message |
-| Internal logic | `lidar_cost_grid_node` projects each filtered point into the `map` frame via TF2 and increments the corresponding cell. Cost is linearly scaled between `min_cost` (30) and `max_cost` (95) over the distance range 0.4–7.5 m. HH_260630 - an ego-clear disk of radius 0.55 m around the robot base is set free so side/rear obstacles just outside the body are not erased before safety gating. Grid is published at 10 Hz. Messages older than 0.50 s are discarded. |
-| Output effect | `/sensing/cost_grid/lidar`: 150×150 @ 0.08 m (12 m square centred on robot). |
-| Operator-visible symptom | Silent topic → LiDAR not publishing filtered points. Grid frozen → TF `robot_base_link → map` is stale (localization not running). |
-| Related params | `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
-| Related topics | `/sensing/lidar/points_filtered` → `/sensing/cost_grid/lidar` |
+| Trigger | Fresh PointCloud2/MarkerArray input; publishes at 10 Hz |
+| Internal logic | `lidar_cost_grid_node` projects each filtered point into the `map` frame via TF2 and increments the corresponding cell. HH_260702 - `/perception/obstacles` and selected perception markers are merged into the same grid so camera/LiDAR vehicle detections affect planning even when the raw filtered-cloud footprint is sparse. Cost is linearly scaled between `min_cost` (65) and `max_cost` (95) over the distance range 0.4–9.0 m; perception markers are marked at cost 90 and capped to 1.2 m radius. HH_260630 - an ego-clear disk of radius 0.55 m around the robot base is set free so side/rear obstacles just outside the body are not erased before safety gating. HH_260702 - LiDAR/perception inputs remain fresh for 0.80 s to avoid empty-grid flicker during brief CPU-load stalls. |
+| Output effect | `/sensing/cost_grid/lidar`: 180×180 @ 0.10 m (18 m square centred on robot). |
+| Operator-visible symptom | Silent topic → LiDAR/perception inputs are not publishing. Grid frozen → TF `robot_base_link → map` is stale (localization not running). |
+| Related params | `input_topic`, `extra_input_topics`, `perception_marker_topics`, `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
+| Related topics | `/sensing/lidar/points_filtered`, `/perception/obstacles`, `/perception/lidar/bboxes`, `/perception/camera_lidar/markers` → `/sensing/cost_grid/lidar` |
 
 ### Radar (SEN0592 ×7)
 
@@ -308,10 +308,10 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | `poll_period_s` timer (60 ms cycle) |
-| Internal logic | `sen0592_radar_node` polls seven DFRobot SEN0592 sensors over seven CH9344 USB serial ports at 115200 baud. Detection angle is configured to 75° (register 0x0208, value 5) at startup. Per-sensor max ranges are written to register 0x021F: FRONT1/FRONT2 1.50 m, LEFT1/LEFT2/RIGHT1/RIGHT2 0.80 m, REAR 0.50 m. Each sensor publishes one `sensor_msgs/Range` message per poll cycle. |
+| Internal logic | `sen0592_radar_node` polls seven DFRobot SEN0592 sensors over seven CH9344 USB serial ports at 115200 baud. HH_260702 - current field port order is FRONT1=USB0, FRONT2=USB1, LEFT1=USB4, LEFT2=USB5, RIGHT1=USB2, RIGHT2=USB3, REAR=USB6 because the LEFT/RIGHT harness branches are crossed. Normal bringup skips startup hardware register writes because this harness returns read data reliably but times out on write echoes; software `sensor_max_ranges_m` still limits each direction: FRONT1/FRONT2 1.50 m, LEFT1/LEFT2/RIGHT1/RIGHT2 0.80 m, REAR 0.50 m. Each sensor publishes one `sensor_msgs/Range` message per fresh valid/no-target reply. |
 | Output effect | Seven topics: `/sensing/radar/{front1,front2,left1,left2,right1,right2,rear}/range`. |
 | Operator-visible symptom | If any topic is silent, the corresponding CH9344 port may not be enumerated. Run `ls /dev/ttyCH9344USB*` to verify all seven ports exist. |
-| Related params | `ports`, `sensor_names`, `frame_ids`, `sensor_max_ranges_m`, `poll_period_s`, `baud`, `angle_config_value` |
+| Related params | `ports`, `sensor_names`, `frame_ids`, `sensor_max_ranges_m`, `poll_period_s`, `baud`, `configure_hardware_on_startup`, `sensor_angle_config_values` |
 | Related topics | `/sensing/radar/{front1,front2,left1,left2,right1,right2,rear}/range` |
 
 ### Radar cost grid
@@ -415,9 +415,9 @@ Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single ante
 | Field | Detail |
 |---|---|
 | Trigger | Any updated input grid; publishes at 6 Hz |
-| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (0.50 s), radar cost (0.50 s), global_path cost (10.0 s). The output is an 80×80 @ 0.10 m grid (8 m square centred on robot; HH_260618 - sized for the 2.8 s MPPI horizon at 1.4 m/s). HH_260630 - LiDAR ego clear is 0.55 m so side/rear obstacles just outside the body are preserved for safety gating; radar ego clear remains 0.50 m. Messages older than their per-input limit are treated as absent. |
+| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (0.80 s), radar cost (0.50 s), global_path cost (10.0 s). The output is a 180×180 @ 0.10 m grid (18 m square centred on robot) clipped to a robot-frame window of 8.0 m front, 1.5 m rear, and 2.2 m side. HH_260630 - LiDAR ego clear is 0.55 m so side/rear obstacles just outside the body are preserved for safety gating; radar ego clear remains 0.50 m. Messages older than their per-input limit are treated as absent. |
 | Output effect | `/planning/cost_grid/inflation` at 6 Hz; consumed by Nav2 local costmap and `cmd_vel_gate`. |
-| Operator-visible symptom | If inflation grid stops updating at 6 Hz, check each input: lidar/radar grids must arrive within 0.50 s; lanelet grid arrives once (transient_local) and is valid for 5.0 s after last receipt. |
+| Operator-visible symptom | If inflation grid stops updating at 6 Hz, check each input: LiDAR grid must arrive within 0.80 s, radar within 0.50 s; lanelet grid arrives once (transient_local) and is valid for 5.0 s after last receipt. |
 | Related params | `resolution`, `width`, `height`, `ego_clear_radius_m`, `publish_rate_hz`, `input_topics`, `input_max_ages_s` |
 | Related topics | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`, `/planning/cost_grid/global_path` → `/planning/cost_grid/inflation` |
 
@@ -429,16 +429,16 @@ All cost grids are robot-centred and published in the `map` frame via TF2.
 
 | Grid | Size | Resolution | Cost range | Max staleness | Ego clear radius |
 |---|---|---|---|---|---|
-| `/sensing/cost_grid/lidar` | 150×150 | 0.08 m | 30–95 | 0.50 s | 0.55 m |
+| `/sensing/cost_grid/lidar` | 180×180 | 0.10 m | 65–95 | 0.80 s | 0.55 m |
 | `/sensing/cost_grid/radar` | 120×120 | 0.10 m | 35–95 | 0.35 s | 0.50 m |
-| `/planning/cost_grid/inflation` | 80×80 | 0.10 m | 0–100 | per-input (below) | 0.50 m |
+| `/planning/cost_grid/inflation` | 180×180 | 0.10 m | 0–100 | per-input (below) | 0.50 m |
 
 `inflation_cost_grid_node` per-input staleness limits:
 
 | Input | Staleness limit |
 |---|---|
 | `/map/cost_grid/lanelet` | 5.0 s |
-| `/sensing/cost_grid/lidar` | 0.50 s |
+| `/sensing/cost_grid/lidar` | 0.80 s |
 | `/sensing/cost_grid/radar` | 0.50 s |
 | `/planning/cost_grid/global_path` | 10.0 s |
 
@@ -524,7 +524,7 @@ ros2 launch camrod_sensing camera.launch.py
 | `poll_period_s` | `0.06` s | Sensor polling interval (≈16.7 Hz cycle) |
 | `angle_config_value` | `5` | Detection angle: 5 = 75° (max for SEN0592) |
 | `sensor_max_ranges_m` | `[1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]` | Per-sensor max range (FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR) |
-| `ports` | `/dev/ttyCH9344USB0` – `USB6` | CH9344 serial port assignments |
+| `ports` | `[USB0, USB1, USB4, USB5, USB2, USB3, USB6]` | CH9344 serial port assignments for FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR |
 
 </details>
 
@@ -533,10 +533,10 @@ ros2 launch camrod_sensing camera.launch.py
 | Param | Value | Meaning |
 |---|---|---|
 | `resolution` | `0.10` m | Grid cell size |
-| `width` / `height` | `120` cells | 12 m square window |
+| `width` / `height` | `180` cells | 18 m square window |
 | `ego_clear_radius_m` | `0.50` m | Always-free disk around robot |
-| `publish_rate_hz` | `10.0` Hz | Output rate |
-| `input_max_ages_s` | `[5.0, 0.50, 0.50, 10.0]` | Per-input staleness limits (lanelet, lidar, radar, path) |
+| `publish_rate_hz` | `6.0` Hz | Output rate |
+| `input_max_ages_s` | `[5.0, 0.80, 0.50, 10.0]` | Per-input staleness limits (lanelet, lidar, radar, path) |
 
 </details>
 
@@ -550,8 +550,10 @@ ros2 topic hz /sensing/lidar/points_filtered          # expect ~6 Hz field targe
 ros2 topic hz /sensing/cost_grid/lidar                # expect 10 Hz
 
 # Radar
-ros2 topic hz /sensing/radar/front1/range             # expect ~16 Hz
-ros2 topic hz /sensing/radar/front2/range             # expect ~16 Hz
+ros2 topic hz /sensing/radar/front1/range             # expect ~10 Hz field target
+ros2 topic hz /sensing/radar/front2/range             # expect ~10 Hz field target
+ros2 topic hz /sensing/radar/left1/range              # expect ~10 Hz field target
+ros2 topic hz /sensing/radar/right1/range             # expect ~10 Hz field target
 ros2 topic hz /sensing/cost_grid/radar                # expect 10 Hz
 
 # GNSS
@@ -607,7 +609,7 @@ One or more `/sensing/radar/*/range` topics are silent.
 
 1. Verify all seven CH9344 ports exist: `ls /dev/ttyCH9344USB*`. Expect USB0–USB6. If fewer ports appear, the CH9344 kernel module may not be loaded: `sudo modprobe ch9344`.
 2. Check port permissions: `ls -l /dev/ttyCH9344USB*`. The user must be in the `dialout` group.
-3. Identify which sensor maps to which port by checking `sensor_names` and `ports` arrays in `config/radar/sen0592_radar.yaml` (order: FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR → USB0–USB6).
+3. Identify which sensor maps to which port by checking `sensor_names` and `ports` arrays in `config/radar/sen0592_radar.yaml` (current field order: FRONT1=USB0, FRONT2=USB1, LEFT1=USB4, LEFT2=USB5, RIGHT1=USB2, RIGHT2=USB3, REAR=USB6).
 4. If a specific sensor is silent after hardware check, try swapping its USB cable/port.
 
 ### Inflation grid stops updating
@@ -616,7 +618,7 @@ One or more `/sensing/radar/*/range` topics are silent.
 
 1. Check each input: `ros2 topic hz /sensing/cost_grid/lidar` and `ros2 topic hz /sensing/cost_grid/radar`. Both should target 10 Hz; `/sensing/lidar/points_filtered` itself may be closer to 6 Hz after HH_260701 load relief.
 2. The lanelet grid (`/map/cost_grid/lanelet`) is published once with `transient_local` QoS. It is valid for 5 s after last receipt. If camrod_map has not been launched, the inflation node will hold indefinitely waiting for this input.
-3. Check `max_message_age_s: 0.50` in `inflation_cost_grid.yaml` — if the inflation node itself is lagging (CPU overload), its own timer may expire before it can publish.
+3. Check `max_message_age_s: 0.80` in `inflation_cost_grid.yaml` — if the inflation node itself is lagging heavily (CPU overload), its own timer may still miss the 6 Hz target.
 4. Restart `inflation_cost_grid` node: `ros2 lifecycle set /sensing/inflation_cost_grid configure` (if managed) or kill and re-launch.
 
 ### IMU mode mismatch
@@ -752,3 +754,11 @@ ros2 topic hz /sensing/camera/econ_front/image_rect/compressed
 The simpleRTK2B Heading rover publishes RELPOSNED/heading and RTK pose through the USB-connected rover. NTRIP RTCM should not be injected into the rover USB path when it conflicts with moving-base RTCM; keep `ublox_dual_forward_ntrip_to_rover: false` unless intentionally testing a different RTCM topology. Bringup defaults keep dual-antenna heading enabled and route GNSS config through `sensing/gnss_param_file`.
 
 Radar remains launched through the existing `radar_sensor.launch.py` path and should be validated by checking `/sensing/radar/*` plus `/system/status` sensing entries.
+
+## 2026-07-02 Runtime Update
+
+> HH_260702 - Latest field/sim baseline keeps LiDAR, perception, and radar cost-grid semantics aligned with planning safety.
+
+- HH_260702: `/sensing/lidar/cost_grid` consumes `/sensing/lidar/points_filtered` plus `/perception/obstacles`, `/perception/lidar/bboxes`, and `/perception/camera_lidar/markers`. Perception markers are written as cost 90 and remain valid for the same 0.80 s freshness window as filtered LiDAR.
+- HH_260702: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; software range filters still ignore no-target values and stable near-zero self echoes.
+- HH_260702: Full-stack tests with RViz/UI/voice/camera/YOLO/docking enabled can saturate the Jetson and delay cost-grid publication. Treat that mode as a load probe, then repeat drive validation with the lighter outdoor profile.

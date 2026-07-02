@@ -19,6 +19,11 @@
 # baseline after config-only updates too: planning soft-estop wiring, synchronized
 # GNSS/LiDAR diagnostics configs, radar no-target handling, and README updates all
 # land in the install tree through this script.
+# HH_260702: this wrapper also preserves the current validation contract:
+# - run npm install/npm run build before packaging camrod_ui when it is in scope;
+# - install synchronized bringup/package configs and README updates together;
+# - leave sim/manual/obstacle/camping/drop-zone validation to
+#   camrod_bringup/scripts/sim_validation_runner.py after launch.
 
 set -euo pipefail
 
@@ -47,21 +52,27 @@ cd "${WS_ROOT}"
 # HH_260616: Scope-aware cleanup for generated artifacts. Package-selected builds
 # must not delete artifacts owned by packages that are not being rebuilt.
 _build_scope_includes_pkg() {
-  local pkg="$1" prev="" token
+  local pkg="$1" token
+  shift
+  # HH_260702: Colcon selectors accept multiple package names after one option.
+  # Keep scanning selector arguments until the next option so camrod_ui is
+  # recognized even when it is not the first package in --packages-select.
+  local in_selector=0
   local saw_selector=0
   for token in "$@"; do
-    case "${prev}" in
-      --packages-select|--packages-up-to|--packages-above|--packages-above-and-dependencies|--packages-select-by-dep|--packages-start|--packages-end)
-        saw_selector=1
-        [[ "${token}" == "${pkg}" ]] && return 0
-        ;;
-    esac
     case "${token}" in
       --packages-select|--packages-up-to|--packages-above|--packages-above-and-dependencies|--packages-select-by-dep|--packages-start|--packages-end)
         saw_selector=1
+        in_selector=1
+        continue
+        ;;
+      --*)
+        in_selector=0
         ;;
     esac
-    prev="${token}"
+    if [[ "${in_selector}" -eq 1 && "${token}" == "${pkg}" ]]; then
+      return 0
+    fi
   done
   [[ "${saw_selector}" -eq 0 ]]
 }

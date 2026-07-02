@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v1.16** (field baseline updated 2026-07-01)
+> Current release: **v1.16** (field baseline updated 2026-07-02)
 
 ---
 
@@ -503,7 +503,8 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/localization/pose` | `PoseStamped` | localization → planning | Canonical fused localization pose |
 | `/localization/mode` | `AvgLocalizationMode` | localization → planning gate | NORMAL / DEGRADED / DR\_ONLY / INVALID |
 | `/localization/initial_match_ok` | `Bool` | localization → planning | Drop-zone match readiness |
-| `/perception/obstacles` | `PointCloud2` | perception → planning costmap | Fused obstacle cloud |
+| `/perception/obstacles` | `PointCloud2` | perception → LiDAR cost grid | Fused obstacle cloud merged into `/sensing/cost_grid/lidar` |
+| `/perception/lidar/bboxes`, `/perception/camera_lidar/markers` | `MarkerArray` | perception → LiDAR cost grid | HH_260702 - marker obstacles merged into LiDAR cost grid when fresh |
 | `/planning/cost_grid/inflation` | `OccupancyGrid` | sensing/map → planning | Merged near-range cost grid |
 | `/map/cost_grid/lanelet` | `OccupancyGrid` | map → sensing inflation | Lane traversability layer |
 | `/planning/global_path` | `Path` | planning → RViz / diagnostics | Global Nav2 route |
@@ -717,11 +718,11 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
-| v1.16 | 2026-07-01 | Field stabilization for map/planning/platform/system: local-first Lanelet2 visualization with cached full-map republish, map-fixed `slice_only` local path extraction, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, planning soft-estop gating from `/planning/state_machine/estop`, LiDAR ground-filter load relief, radar 7-channel left/right mapping plus no-target heartbeat filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, expanded `avg_msgs` conversion coverage, diagnostics checker alignment, rear-camera CPU reduction, and automated sim validation runner |
+| v1.16 | 2026-07-02 | Field stabilization for map/planning/platform/system: local-first Lanelet2 visualization with cached full-map republish, map-fixed local path extraction with stale-marker clearing, obstacle-block monitor with status-only default, perception-to-cost-grid coupling, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, planning soft-estop gating from `/planning/state_machine/estop`, LiDAR ground-filter load relief, radar 7-channel left/right mapping plus no-target heartbeat filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, expanded `avg_msgs` conversion coverage, diagnostics checker alignment, rear-camera CPU reduction, and automated sim validation runner with manual-goal, obstacle, campsite, and drop-zone parking coverage |
 | v1.15 | 2026-06-23 | Obstacle replan monitor (LiDAR/Radar persistent blockage → Smac2D fallback), extended AvgAmrServiceState/PlanningScenario (SITE_ENTRY/UNLOAD_WAIT/RECALL_TO_SITE_ROAD/GUEST_LOADING_WAIT/RETURN_WITH_CARGO/DROP_ZONE_PARKING), UI site-access reservation/occupancy gate, planning_state_machine parking-phase mirror from /AMR_service_state, dynamic-only cost stop gate, lanelet route re-entry bypass, goal_snapper uncontained-snap override, map profile auto-selection, area_exporter polygon centroid + corners export |
 | v1.14 | 2026-06-19 | Mission-key semantic planning (PlanningState/MissionKey/Scenario msgs), lanelet raw cost safety stop, local path reset on goal change, goal_snapper pose-jump reissue, lanelet_route_planner + engage_aware_progress_checker plugins, front camera V4L2 fallback + image_raw publisher (PR#14), Ranger BMS charging detection, planning_state_checker, sim diagnostics profile, parking_method bringup arg |
 | v1.13 | 2026-06-11 | GNSS dual-antenna heading stabilization (simpleRTK2B Heading moving-baseline RELPOSNED fix) |
-| v1.12 | 2026-06-04 | Dual antenna GNSS heading (simpleRTK2B Heading, moving-baseline RELPOSNED), ublox_gps-based single/dual GNSS launch, Python NTRIP with GGA feedback for VRS, remove legacy dGNSS fallback and COG heading fallback |
+| v1.12 | 2026-06-04 | Dual antenna GNSS heading (simpleRTK2B Heading, moving-baseline RELPOSNED), ublox_gps-based single/dual GNSS launch, Python NTRIP with GGA feedback for VRS, removed old dGNSS fallback and COG heading fallback |
 | v1.11 | 2026-05-28 | Dual econ camera (front GPU/VPI + rear CPU/GStreamer), unified IMU launch (imu_model), camrod_parking → camrod_docking, rear camera calibration, EKF log suppression, costmap start_current |
 | v1.10 | 2026-05-21 | Camera sensing refactor (V4L2 publisher), YOLOv9 perception, UI symlink fix, nav2 combo profiles, planning parameter stabilization |
 | v1.9 | 2026-05-13 | Planning stability, radar angle fix, Smac2D re-enable |
@@ -739,7 +740,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 2. `camrod_planning/goal_snapper` converts that site-center goal to the lanelet route goal on `/planning/goal_pose_snapped` and `/planning/goal_pose_snapped_ros`; the latest clicked/UI goal immediately replaces older goals.
 3. Nav2 defaults to the connected-lanelet `LaneletRoute` planner and keeps grid planners (`Smac2D`, `NavFn`, `ThetaStar`, etc.) as selectable diagnostics or recovery fallbacks.
 4. `smoother_server` runs through the BT for every selected planner and uses `robot_base_link` for collision checks. HH_260629 - This prevents the Nav2 default `base_link` lookup failure while keeping smoothing common across LaneletRoute and grid fallback paths.
-5. `local_path_extractor` publishes a `map`-fixed `slice_only` view of `/planning/global_path`. HH_260629 - Controller debug paths are no longer allowed to make the operator-visible local path rotate with the vehicle.
+5. `local_path_extractor` publishes a `map`-fixed slice of `/planning/global_path`. HH_260702 - Invalid inputs and route changes publish an empty path once so previous local-path markers do not remain in RViz; controller-path modes remain available only as explicit diagnostics.
 6. Nav2 drives to the lanelet-snap pose and `planning_state_machine` publishes `avg_msgs/PlanningState` on `/planning/state_machine/state`.
 7. `planning_cmd_vel_gate_node` checks the raw `/map/cost_grid/lanelet` grid before the ego-cleared inflation grid. HH_260618 - Forward translation is blocked on lane-boundary/off-lane cost while in-place rotation remains allowed.
 8. `camrod_parking/site_maneuver` starts for `camping_site_*`: while active, it commands `Twist.linear.y` on `/planning/cmd_vel_raw` for crab entry, rotates 180 degrees, waits for unload, then crab-exits back to the snap pose. HH_260618 - Parking nodes stay silent on `/planning/cmd_vel_raw` while idle so they do not race Nav2.
@@ -763,13 +764,26 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260630: `camrod_bringup/scripts/sim_validation_runner.py` validates the sim stack for topic Hz, radar direction topics, directional LiDAR/Radar cost-stop, manual goal navigation, and camping-site flow.
 - HH_260630: `colcon test --packages-select camrod_planning` currently includes package-wide ament lint; failures from vendored `external/nav2_*` or existing style issues are lint-scope issues, not runtime planning failures.
 
+## 2026-07-02 Avoidance Path and Perception Cost Update
+
+> HH_260702 - Field update for dynamic avoidance path visibility and perception-to-cost-grid coupling.
+
+- HH_260702: `/planning/local_path` now always follows the latest planner/global route slice instead of a stale controller debug path.
+- HH_260702: Local-path extraction now clears stale `/planning/local_path` output on invalid input and route changes; map/perception/lidar/radar diagnostic errors remain visible in `/system/status` but no longer force planning `ERROR_STOP` by themselves.
+- HH_260702: `lidar_cost_grid_node` now merges `/sensing/lidar/points_filtered`, `/perception/obstacles`, `/perception/lidar/bboxes`, and `/perception/camera_lidar/markers` before publishing `/sensing/cost_grid/lidar`.
+- HH_260702: `obstacle_replan_monitor` now reports active local-path blockage on `/planning/obstacle_replan/status` by default without preempting Nav2 or changing `/planning/global_path`; SmacLattice fallback preemption is available only when `preempt_enabled=true`.
+- HH_260702: The LiDAR cost grid remains 180×180 at 0.10 m with 0.80 s input freshness. Perception markers are capped to 1.2 m radius and marked at cost 90.
+- HH_260702: Radar port order is synchronized to the current crossed LEFT/RIGHT field harness: FRONT1=USB0, FRONT2=USB1, LEFT1=USB4, LEFT2=USB5, RIGHT1=USB2, RIGHT2=USB3, REAR=USB6. Startup hardware register writes are opt-in to avoid false SEN0592 write timeout warnings; runtime polling and software range filtering remain active.
+- HH_260702: Sim validation passed for baseline topic rates, all seven radar direction topics, front/left/right/rear LiDAR/Radar cost-stop, manual goal navigation, obstacle-block status without fallback route preemption, campsite crab/rotate/unload/crab-out, return-to-drop-zone, and drop-zone reverse parking to `PARKED`.
+- HH_260702: Real full-stack tests with RViz/UI/voice/cameras/YOLO/docking enabled are intentionally treated as load probes. On the Jetson Orin field target that mode can saturate CPU/GPU and delay LiDAR/cost-grid/radar diagnostics; drive validation should use the lighter outdoor profile after the sim checks pass.
+
 ## 2026-07-01 Safety and Sensor Update
 
 > HH_260701 - Current field baseline after planning soft-estop wiring, LiDAR load relief, radar no-target heartbeat handling, and GNSS/bringup config synchronization.
 
 - HH_260701: `/planning/state_machine/estop` is now ORed with `/platform/status/estop` inside `planning_cmd_vel_gate_node`. A state-machine `ERROR_STOP` now closes `/planning/cmd_vel`, publishes `/planning/engaged=false`, and lets the platform gate block through the normal planning-engaged path.
 - HH_260701: LiDAR ground segmentation uses `downsample_resolution: 0.10` in both `camrod_sensing` and `camrod_bringup` configs. The profiled target for `/sensing/lidar/points_filtered` is now a stable obstacle-only stream around 6 Hz under field load rather than forcing a 10 Hz checker threshold.
-- HH_260701: LiDAR diagnostics now tolerate raw Vanjee NaN placeholders before preprocessing and treat zero filtered obstacle points as normal when the ROI is clear.
+- HH_260702: LiDAR diagnostics ignore raw Vanjee NaN placeholders and use filtered freshness/rate plus near-zero filtered NaN as the motion-relevant health signal. Zero filtered obstacle points remain normal when the ROI is clear.
 - HH_260701: SEN0592 radar drivers publish a no-target heartbeat above `max_range` when the sensor responds without a valid obstacle; diagnostics treat that as fresh/no-target data while cost-grid consumers ignore it.
 - HH_260701: GNSS rover config is synchronized to `/dev/ttyACM0` for the current field harness; radar CH9344 USB ports remain reserved for SEN0592 channels.
 
@@ -795,12 +809,14 @@ ros2 topic echo /system/status --once
 
 # Automated sim validation: manual goal + radar/lidar directional stop matrix
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p run_obstacle_replan:=true \
   -p report_file:=/tmp/camrod_sim_validation_manual.json
 
-# Automated sim validation: camping-site route + crab/rotate/unload/return flow
+# Automated sim validation: camping-site route + crab/rotate/unload/return + drop-zone parking
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p skip_manual_goal:=true \
   -p run_camping:=true \
-  -p camping_timeout_s:=300.0 \
-  -p report_file:=/tmp/camrod_sim_validation_camping.json
+  -p camping_wait_drop_zone:=true \
+  -p camping_timeout_s:=420.0 \
+  -p report_file:=/tmp/camrod_sim_validation_camping_full.json
 ```
