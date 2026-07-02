@@ -520,3 +520,21 @@ ros2 run tf2_tools view_frames
 > HH_260617: EKF remains the default localization backend for both real and sim bringup.
 
 `bringup.launch.py` forwards `filter_type:=ekf` by default. Planning and parking consume `/localization/pose`; parking controllers do not perform localization fusion themselves. Drop-zone reverse parking depends on fresh `PoseStamped` data and will refuse to start if `pose_timeout_s` is exceeded.
+
+## 2026-07-02 Runtime Update
+
+> HH_260702: Localization health is diagnostic evidence, while planning stop authority stays in planning/platform gates.
+
+The default operator flow keeps `/localization/pose`, `/localization/mode`, and `/localization/initial_match_ok` as the shared pose/mode contract for planning, parking, system diagnostics, and UI. Drop-zone matching is still useful for return-to-drop-zone missions, but manual-goal field tests may disable or downgrade that checker through the diagnostics profile instead of adding an arbitrary GNSS yaw/pose offset in code.
+
+When debugging outdoor heading or lane alignment, verify these topics together before changing offsets:
+
+```bash
+ros2 topic echo /localization/pose --once
+ros2 topic echo /localization/mode --once
+ros2 topic echo /localization/initial_match_ok --once
+ros2 topic hz /sensing/gnss/ublox_gps_node/fix
+ros2 topic hz /sensing/imu/data
+```
+
+For the v1.16 field baseline, bringup and package configs are expected to stay synchronized through `camrod_bringup/config/localization/*` and `camrod_localization/config/*`; update both sides when changing thresholds that affect system diagnostics or parking start conditions.

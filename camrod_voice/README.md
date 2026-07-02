@@ -100,3 +100,13 @@ System dependencies: `libsdl2-dev`, `libsdl2-mixer-dev`. `setup_camrod.sh` insta
 > HH_260617: Voice event adaptation consumes semantic planning and charging states.
 
 `voice_event_adapter_node.py` should listen to `avg_msgs/PlanningState`, platform e-stop, battery/charging topics, and parking/docking completion signals. `setup_camrod.sh` installs `libsdl2-mixer-dev`; if that package is missing, `colcon_build.sh` skips `camrod_voice` on development PCs instead of blocking GNSS/planning/parking builds.
+
+## 2026-07-02 Runtime Update
+
+> HH_260702: Voice is operator feedback only and must not be treated as safety authority.
+
+The voice adapter follows `/planning/state_machine/state`, `/platform/status/estop`, battery, and charging edges. It should announce obstacle/estop/recovery events after the planning/platform gates have already made the control decision. In high-load tests, disabling voice is acceptable for CPU recovery and does not remove any stop, engage, or parking interlock.
+
+```bash
+ros2 launch camrod_voice voice.launch.py enable_voice_adapter:=false
+```

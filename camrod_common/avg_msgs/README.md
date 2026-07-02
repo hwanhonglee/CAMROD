@@ -340,3 +340,16 @@ If a node crashes with `rcutils_logging` type errors or `rmw` deserialization fa
 | `AvgAmrServiceState` | `SITE_ENTRY`, `UNLOAD_WAIT`, `RECALL_TO_SITE_ROAD`, `GUEST_LOADING_WAIT`, `RETURN_WITH_CARGO`, `DROP_ZONE_PARKING` |
 | `PlanningScenario` | `SITE_ENTRY`, `UNLOAD_WAIT`, `RECALL_TO_SITE_ROAD`, `GUEST_LOADING_WAIT`, `RETURN_WITH_CARGO`, `DROP_ZONE_PARKING` |
 | `PlanningRecallRequest` | `ui_guest_node` now publishes this message directly to `/planning/state_machine/camping_site_recall` so recall can target `<site>_road` instead of the campsite centroid |
+
+## 2026-07-02 Runtime Update
+
+> HH_260702: Do not create new alias message paths for CAMROD-internal state.
+
+The v1.16 baseline keeps `avg_msgs` as the stable source of truth for system diagnostics, planning state, UI destination commands, parking phases, and platform summaries. When a package still needs standard ROS data types for external interoperability, wrap only the module-level state in `avg_msgs` and leave raw sensor/geometry payloads in their standard ROS message types.
+
+Before changing an existing `.msg` or `.srv`, rebuild and smoke-test dependent packages:
+
+```bash
+./colcon_build.sh --packages-select avg_msgs camrod_system camrod_planning camrod_ui
+ros2 interface show avg_msgs/msg/PlanningState
+```

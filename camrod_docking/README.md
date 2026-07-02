@@ -265,3 +265,11 @@ target_tag_id: 3   # tag36h11 family ID — 단일 값만 허용
 > HH_260617: Docking is no longer the only return-to-charger path.
 
 `camrod_docking` remains the AprilTag/opennav docking path and is still Jetson/Isaac-ROS dependent. HH_260618: Full bringup selects this method only with `parking_method:=docking`; `parking_method:=rule_based` launches `camrod_parking` instead, and launch conditions prevent both final parking methods from commanding motion at the same time. On x86_64, `colcon_build.sh` skips `camrod_docking` because Isaac ROS/VPI dependencies are unavailable.
+
+## 2026-07-02 Runtime Update
+
+> HH_260702: The v1.16 field baseline uses rule-based parking unless docking is explicitly selected.
+
+For outdoor campsite/drop-zone testing, `parking_method:=rule_based` is the supported path and `camrod_docking` should stay idle. Use `parking_method:=docking` only when the rear camera, Isaac ROS AprilTag pipeline, and opennav docking server are intentionally part of the test.
+
+The Docker and selected-package build paths may skip this package on hosts without Isaac ROS/VPI. That skip is expected and does not affect lanelet driving, campsite crab motion, drop-zone reverse parking, or platform command gating.

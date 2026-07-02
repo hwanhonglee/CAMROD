@@ -94,3 +94,16 @@ docker run --rm -it \
 ```bash
 RESET_BUILDER=1 ./buildx_camrod.sh
 ```
+
+## 2026-07-02 Runtime Update
+
+> HH_260702: Docker is not the canonical field validation path for v1.16.
+
+The current field/debug baseline was validated through the local workspace wrapper:
+
+```bash
+cd /home/nvidia/camrod_ws/src
+./colcon_build.sh --packages-select camrod_bringup camrod_map camrod_planning camrod_sensing camrod_system camrod_sensor_kit camrod_platform camrod_ui
+```
+
+Update this Docker guide only when the container build has been rerun with the same map, sensing, planning, diagnostics, and UI configs as the local workspace.
