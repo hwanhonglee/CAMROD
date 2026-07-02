@@ -155,7 +155,7 @@ protected:
           });
 
         RCLCPP_INFO(get_logger(),
-          "[%s] Detection2DArray 모니터링 시작 (topic=%s, expected_hz=%.1f)",
+          "[%s] Detection2DArray checker started (topic=%s, expected_hz=%.1f)",
           src->name.c_str(), src->topic.c_str(), src->expected_hz);
 
       } else {
@@ -177,7 +177,7 @@ protected:
           });
 
         RCLCPP_INFO(get_logger(),
-          "[%s] PointCloud2 모니터링 시작 (topic=%s, expected_hz=%.1f)",
+          "[%s] PointCloud2 checker started (topic=%s, expected_hz=%.1f)",
           src->name.c_str(), src->topic.c_str(), src->expected_hz);
       }
 
@@ -194,7 +194,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!src.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + src.topic);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + src.topic);
       stat.add("topic", src.topic);
       return;
     }
@@ -203,7 +203,7 @@ private:
     if (elapsed > src.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 (timeout=%.1fs)", elapsed, src.stale_timeout);
+        "No messages for %.1fs (timeout=%.1fs)", elapsed, src.stale_timeout);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
@@ -226,15 +226,15 @@ private:
     if (src.expected_hz > 0.0) {
       const double ratio = actual_hz / src.expected_hz;
       lvl = check_low(ratio, src.hz_warn_ratio, src.hz_error_ratio);
-      if      (lvl == S::ERROR) msg_str = "출력 속도 심각 저하";
-      else if (lvl == S::WARN)  msg_str = "출력 속도 저하";
+      if      (lvl == S::ERROR) msg_str = "Output rate critically low";
+      else if (lvl == S::WARN)  msg_str = "Output rate low";
     }
 
     // Count 하한 체크
     if (src.min_count > 0 && src.actual_count < src.min_count) {
       if (S::ERROR > lvl) {
         lvl     = S::ERROR;
-        msg_str = (src.type == "Detection2DArray") ? "검출 수 부족" : "포인트 수 부족";
+        msg_str = (src.type == "Detection2DArray") ? "Detection count too low" : "Point count too low";
       }
     }
 
@@ -242,7 +242,7 @@ private:
     if (src.max_count > 0 && src.actual_count > src.max_count) {
       if (S::WARN > lvl) {
         lvl     = S::WARN;
-        msg_str = (src.type == "Detection2DArray") ? "검출 수 초과" : "포인트 수 초과";
+        msg_str = (src.type == "Detection2DArray") ? "Detection count too high" : "Point count too high";
       }
     }
 

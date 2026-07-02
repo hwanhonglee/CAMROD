@@ -14,7 +14,7 @@
  *     - Velocity input  : /platform/status/velocity 수신 여부
  *     - IMU input       : /sensing/imu/data 수신 여부
  *     - Output          : TwistWithCovarianceStamped 출력 여부 및 Hz
- *     - Silent drop     : velocity 정상 + 출력 없음 → IMU 대기로 드롭 의심
+ *     - Silent drop     : velocity 정상 + 출력 unavailable → IMU 대기로 드롭 의심
  *
  * 파라미터 구성
  * -------------
@@ -124,7 +124,7 @@ protected:
       [this](StatusWrapper & stat) { checkConverter(stat); });
 
     RCLCPP_INFO(get_logger(),
-      "velocity_converter 모니터링 시작 (vel=%s, imu=%s, out=%s)",
+      "velocity_converter checker started (vel=%s, imu=%s, out=%s)",
       velocity_topic_.c_str(), imu_topic_.c_str(), output_topic_.c_str());
   }
 
@@ -156,24 +156,24 @@ private:
     int8_t lvl = DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
-    // velocity 입력 stale → 운동 정보 없음 → ERROR
+    // velocity 입력 stale → 운동 정보 unavailable → ERROR
     if (vel_stale) {
       lvl = S::ERROR;
       msg_str = vel_has_msg_ ?
-        "velocity 입력 timeout" : "velocity 입력 수신 없음";
+        "velocity input timeout" : "velocity input missing";
     }
 
     // IMU 입력 stale → angular velocity 부정확 → WARN
     if (imu_stale && lvl < S::WARN) {
       lvl = S::WARN;
       msg_str = imu_has_msg_ ?
-        "IMU 입력 timeout (angular velocity 부정확)" : "IMU 입력 수신 없음";
+        "IMU input timeout (angular velocity unreliable)" : "IMU input missing";
     }
 
-    // Silent drop 감지: velocity 정상인데 출력 없음 → require_imu 로 드롭 의심 → ERROR
+    // Silent drop 감지: velocity 정상인데 출력 unavailable → require_imu 로 드롭 의심 → ERROR
     if (!vel_stale && out_stale && lvl < S::ERROR) {
       lvl = S::ERROR;
-      msg_str = "velocity 수신 중이나 출력 차단 (IMU 대기 드롭 의심)";
+      msg_str = "Velocity received but output blocked (suspected IMU wait drop)";
     }
 
     // 출력 Hz 체크
@@ -182,7 +182,7 @@ private:
       int8_t hz_lvl = check_low(ratio, hz_warn_ratio_, hz_error_ratio_);
       if (hz_lvl > lvl) {
         lvl = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "출력 속도 심각 저하" : "출력 속도 저하";
+        msg_str = (hz_lvl == S::ERROR) ? "Output rate critically low" : "Output rate low";
       }
     }
 

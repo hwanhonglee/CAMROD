@@ -140,7 +140,7 @@ protected:
         [this, gnss](StatusWrapper & stat) { checkGnss(stat, *gnss); });
 
       RCLCPP_INFO(get_logger(),
-        "Localization GNSS 모니터링 시작: %s (topic=%s, cov_error=%.1f, max_jump=%.1fm)",
+        "Localization GNSS checker started: %s (topic=%s, cov_error=%.1f, max_jump=%.1fm)",
         gnss->name.c_str(), gnss->topic.c_str(),
         gnss->cov_error_threshold, gnss->max_jump_m);
     }
@@ -187,7 +187,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!gnss.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + gnss.topic);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + gnss.topic);
       stat.add("topic", gnss.topic);
       return;
     }
@@ -196,7 +196,7 @@ private:
     if (elapsed > gnss.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 (timeout=%.1fs)", elapsed, gnss.stale_timeout);
+        "No messages for %.1fs (timeout=%.1fs)", elapsed, gnss.stale_timeout);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
@@ -222,7 +222,7 @@ private:
       lvl = DiagnosticStatus::ERROR;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
-        "위치 점프 감지 (%.2fm > %.2fm)", gnss.last_jump_m, gnss.max_jump_m);
+        "Position jump detected (%.2fm > %.2fm)", gnss.last_jump_m, gnss.max_jump_m);
       msg_str = buf;
     }
 
@@ -233,8 +233,8 @@ private:
       gnss.cov_error_threshold);
     if (cov_lvl > lvl) {
       lvl = cov_lvl;
-      if      (cov_lvl == S::ERROR) msg_str = "GNSS 공분산 심각 (fusion 불가)";
-      else if (cov_lvl == S::WARN)  msg_str = "GNSS 공분산 높음 (fusion 품질 저하)";
+      if      (cov_lvl == S::ERROR) msg_str = "GNSS covariance critical (fusion unavailable)";
+      else if (cov_lvl == S::WARN)  msg_str = "GNSS covariance high (fusion quality degraded)";
     }
 
     // Rate 체크
@@ -243,7 +243,7 @@ private:
       int8_t hz_lvl = check_low(ratio, gnss.hz_warn_ratio, gnss.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "수신 속도 심각 저하" : "수신 속도 저하";
+        msg_str = (hz_lvl == S::ERROR) ? "Input rate critically low" : "Input rate low";
       }
     }
 

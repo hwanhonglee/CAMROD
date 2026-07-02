@@ -133,7 +133,7 @@ protected:
       [this](StatusWrapper & stat) { checkMode(stat); });
 
     RCLCPP_INFO(get_logger(),
-      "Localization Mode 모니터링 시작 (status=%s, conf_warn=%.2f, conf_error=%.2f)",
+      "Localization mode checker started (status=%s, conf_warn=%.2f, conf_error=%.2f)",
       status_topic_.c_str(), conf_warn_, conf_error_);
   }
 
@@ -172,7 +172,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!state_.has_status) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + status_topic_);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + status_topic_);
       stat.add("topic", status_topic_);
       return;
     }
@@ -181,7 +181,7 @@ private:
     if (elapsed > stale_timeout_) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 status 없음 (timeout=%.1fs)", elapsed, stale_timeout_);
+        "No status for %.1fs (timeout=%.1fs)", elapsed, stale_timeout_);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
@@ -195,19 +195,19 @@ private:
     switch (state_.mode_value) {
       case AvgMode::NORMAL:
         lvl     = DiagnosticStatus::OK;
-        msg_str = "NORMAL — 정상 로컬라이제이션";
+        msg_str = "NORMAL - localization healthy";
         break;
       case AvgMode::DEGRADED:
         lvl     = DiagnosticStatus::WARN;
-        msg_str = "DEGRADED — 성능 저하 (GNSS/Wheel 부족)";
+        msg_str = "DEGRADED - limited performance (GNSS/Wheel missing)";
         break;
       case AvgMode::DR_ONLY:
         lvl     = DiagnosticStatus::WARN;
-        msg_str = "DR_ONLY — Dead Reckoning만 동작 중 (GNSS 없음)";
+        msg_str = "DR_ONLY - dead reckoning only (GNSS missing)";
         break;
       case AvgMode::INVALID:
         lvl     = DiagnosticStatus::ERROR;
-        msg_str = "INVALID — 로컬라이제이션 불가 (IMU 없음 또는 전체 센서 실패)";
+        msg_str = "INVALID - localization unavailable (IMU missing or all sensors failed)";
         break;
       default:
         lvl     = DiagnosticStatus::ERROR;
@@ -220,12 +220,12 @@ private:
         lvl < DiagnosticStatus::ERROR)
     {
       lvl     = DiagnosticStatus::ERROR;
-      msg_str = "신뢰도 심각 저하 (conf < " + std::to_string(conf_error_) + ")";
+      msg_str = "Confidence critically low (conf < " + std::to_string(conf_error_) + ")";
     } else if (state_.confidence < static_cast<float>(conf_warn_) &&
                lvl < DiagnosticStatus::WARN)
     {
       lvl     = DiagnosticStatus::WARN;
-      msg_str = "신뢰도 저하 (conf < " + std::to_string(conf_warn_) + ")";
+      msg_str = "Confidence low (conf < " + std::to_string(conf_warn_) + ")";
     }
 
     // 3. Sensor flag 체크 (WARN 레벨)
@@ -235,15 +235,15 @@ private:
     if (require_sensor_flags_ && lvl < DiagnosticStatus::WARN) {
       if (!state_.gnss_ok) {
         lvl     = DiagnosticStatus::WARN;
-        msg_str = "GNSS 입력 없음 또는 불량";
+        msg_str = "GNSS input missing or invalid";
       } else if (!state_.wheel_ok) {
         lvl     = DiagnosticStatus::WARN;
-        msg_str = "Wheel 오도메트리 입력 없음";
+        msg_str = "Wheel odometry input missing";
       } else if (!state_.imu_ok) {
         // IMU 없으면 supervisor에서 INVALID로 이미 처리됨
         // 여기선 다른 조건이 OK인 경우에만 추가 WARN
         lvl     = DiagnosticStatus::WARN;
-        msg_str = "IMU 입력 없음";
+        msg_str = "IMU input missing";
       }
     }
 
@@ -254,12 +254,12 @@ private:
         lvl < DiagnosticStatus::ERROR)
     {
       lvl     = DiagnosticStatus::ERROR;
-      msg_str = "Innovation norm 심각 (측정값 거부 수준)";
+      msg_str = "Innovation norm critical (measurement rejection likely)";
     } else if (max_innov > static_cast<float>(innov_warn_) &&
                lvl < DiagnosticStatus::WARN)
     {
       lvl     = DiagnosticStatus::WARN;
-      msg_str = "Innovation norm 높음 (fusion 품질 저하)";
+      msg_str = "Innovation norm high (fusion quality degraded)";
     }
 
     stat.summary(lvl, msg_str);

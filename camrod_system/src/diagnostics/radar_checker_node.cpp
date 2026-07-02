@@ -152,7 +152,7 @@ protected:
         [this, radar](StatusWrapper & stat) { checkRadar(stat, *radar); });
 
       RCLCPP_INFO(get_logger(),
-        "레이다 모니터링 시작: %s (topic=%s, expected_hz=%.1f)",
+        "Radar checker started: %s (topic=%s, expected_hz=%.1f)",
         radar->name.c_str(), radar->topic.c_str(), radar->expected_hz);
     }
   }
@@ -197,7 +197,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!radar.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + radar.topic);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + radar.topic);
       stat.add("topic", radar.topic);
       return;
     }
@@ -206,7 +206,7 @@ private:
     if (elapsed > radar.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 (timeout=%.1fs)", elapsed, radar.stale_timeout);
+        "No messages for %.1fs (timeout=%.1fs)", elapsed, radar.stale_timeout);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
@@ -232,20 +232,20 @@ private:
       int8_t hz_lvl = check_low(ratio, radar.hz_warn_ratio, radar.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "발행 속도 심각 저하" : "발행 속도 저하";
+        msg_str = (hz_lvl == S::ERROR) ? "Publish rate critically low" : "Publish rate low";
       }
     }
 
     // NaN / Inf / 음수 체크 → 항상 ERROR (쓰레기값)
     if (radar.range_is_invalid) {
       lvl = S::ERROR;
-      msg_str = "range 쓰레기값 (NaN/Inf/음수)";
+      msg_str = "Invalid range value (NaN/Inf/negative)";
     }
 
     // range 유효 범위 이탈 체크 → WARN (쓰레기값이 아닌 경우만)
     if (radar.range_out_of_bounds && S::WARN > lvl) {
       lvl = S::WARN;
-      msg_str = "range 측정 범위 이탈";
+      msg_str = "Range outside measurement limits";
     }
 
     // 최솟값 근처 고착 체크: 센서 전방 차폐 의심
@@ -261,7 +261,10 @@ private:
       }
       if (stuck_lvl > lvl) {
         lvl = stuck_lvl;
-        msg_str = (stuck_lvl == S::ERROR) ? "센서 전방 차폐 의심 (ERROR)" : "센서 전방 차폐 의심 (WARN)";
+        // HH_260702 - This checker is shared by front/side/rear sensors; keep
+        // the diagnostic message direction-neutral and rely on the task name
+        // (/sensor/radar/<NAME>) for the physical sensor position.
+        msg_str = (stuck_lvl == S::ERROR) ? "Sensor near-field blockage suspected (ERROR)" : "Sensor near-field blockage suspected (WARN)";
       }
     }
 
@@ -278,7 +281,7 @@ private:
       }
       if (stuck_lvl > lvl) {
         lvl = stuck_lvl;
-        msg_str = (stuck_lvl == S::ERROR) ? "센서 무감지 고착 의심 (ERROR)" : "센서 무감지 고착 의심 (WARN)";
+        msg_str = (stuck_lvl == S::ERROR) ? "Sensor no-target stuck suspected (ERROR)" : "Sensor no-target stuck suspected (WARN)";
       }
     }
 

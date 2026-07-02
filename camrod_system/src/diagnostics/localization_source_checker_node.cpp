@@ -125,7 +125,7 @@ protected:
       [this](StatusWrapper & stat) { checkSource(stat); });
 
     RCLCPP_INFO(get_logger(),
-      "Localization Source 모니터링 시작 "
+      "Localization source checker started "
       "(primary=%s, fallback=%s, fallback_error=%.0fs)",
       primary_source_.c_str(), fallback_source_.c_str(), fallback_error_sec_);
   }
@@ -170,7 +170,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!state_.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + source_topic_);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + source_topic_);
       stat.add("topic", source_topic_);
       return;
     }
@@ -179,7 +179,7 @@ private:
     if (elapsed > stale_timeout_) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 (timeout=%.1fs)", elapsed, stale_timeout_);
+        "No messages for %.1fs (timeout=%.1fs)", elapsed, stale_timeout_);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
@@ -191,13 +191,13 @@ private:
 
     if (state_.current_source == primary_source_) {
       lvl     = DiagnosticStatus::OK;
-      msg_str = "Primary ESKF 사용 중";
+      msg_str = "Primary ESKF active";
     } else if (state_.current_source == fallback_source_) {
       lvl     = DiagnosticStatus::WARN;
-      msg_str = "폴백(Fallback source) 활성화 — ESKF 이상";
+      msg_str = "Fallback source active - ESKF unhealthy";
     } else {
       lvl     = DiagnosticStatus::ERROR;
-      msg_str = "알 수 없는 소스: " + state_.current_source;
+      msg_str = "Unknown source: " + state_.current_source;
     }
 
     // ── 폴백 지속 시간 체크 ─────────────────────────────────────────────
@@ -208,13 +208,13 @@ private:
         lvl     = DiagnosticStatus::ERROR;
         char buf[80];
         std::snprintf(buf, sizeof(buf),
-          "폴백 장기 지속 (%.0fs > %.0fs)", fallback_duration, fallback_error_sec_);
+          "Fallback active too long (%.0fs > %.0fs)", fallback_duration, fallback_error_sec_);
         msg_str = buf;
       } else if (fallback_duration > fallback_warn_sec_ && lvl < DiagnosticStatus::WARN) {
         lvl     = DiagnosticStatus::WARN;
         char buf[80];
         std::snprintf(buf, sizeof(buf),
-          "폴백 활성 (%.0fs / warn=%.0fs)", fallback_duration, fallback_warn_sec_);
+          "Fallback active (%.0fs / warn=%.0fs)", fallback_duration, fallback_warn_sec_);
         msg_str = buf;
       }
     }
@@ -225,13 +225,13 @@ private:
       lvl     = DiagnosticStatus::ERROR;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
-        "소스 과도 전환 (60s내 %d회 > %d)", switch_count, switch_error_);
+        "Excessive source switching (%d in 60s > %d)", switch_count, switch_error_);
       msg_str = buf;
     } else if (switch_count > switch_warn_ && lvl < DiagnosticStatus::WARN) {
       lvl     = DiagnosticStatus::WARN;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
-        "소스 불안정 전환 (60s내 %d회 > %d)", switch_count, switch_warn_);
+        "Unstable source switching (%d in 60s > %d)", switch_count, switch_warn_);
       msg_str = buf;
     }
 

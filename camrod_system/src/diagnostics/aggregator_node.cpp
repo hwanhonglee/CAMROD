@@ -59,7 +59,7 @@ public:
     if (!config_path.empty()) {
       publish_rate_hz = load_config(config_path);
     } else {
-      RCLCPP_WARN(get_logger(), "config_file 파라미터가 설정되지 않았습니다. 기본값으로 동작합니다.");
+      RCLCPP_WARN(get_logger(), "config_file parameter is not set. Using defaults.");
     }
 
     // HH_260617: Use relative diagnostics topics so the system namespace owns the
@@ -76,7 +76,7 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "DiagnosticsAggregator 시작. 모니터링 토픽 수: %zu, 기본 timeout: %.1fs",
+      "DiagnosticsAggregator started. monitored topics: %zu, default timeout: %.1fs",
       topic_configs_.size(), default_timeout_);
   }
 
@@ -85,7 +85,7 @@ private:
   {
     std::ifstream f(config_path);
     if (!f.good()) {
-      RCLCPP_ERROR(get_logger(), "config 파일을 찾을 수 없습니다: %s", config_path.c_str());
+      RCLCPP_ERROR(get_logger(), "config file not found: %s", config_path.c_str());
       return 1.0;
     }
 
@@ -115,7 +115,7 @@ private:
       }
     }
 
-    RCLCPP_INFO(get_logger(), "config 로드 완료: %s", config_path.c_str());
+    RCLCPP_INFO(get_logger(), "config loaded: %s", config_path.c_str());
     // HH_260617: Drop explicitly ignored diagnostics from the state-machine
     // aggregate stream. This prevents planning/system summary self-loops while
     // keeping raw checker statuses available on /system/diagnostics.
@@ -149,7 +149,8 @@ private:
       if (!topic_configs_.empty() && topic_configs_.find(key) == topic_configs_.end()) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 10000,
-          "config에 없는 진단 항목(name) 수신: \"%s\" → unknown 그룹으로 처리", key.c_str());
+          "Received diagnostic item not listed in config: \"%s\"; routing to unknown group",
+          key.c_str());
       }
       status_map_[key] = {status, now};
     }

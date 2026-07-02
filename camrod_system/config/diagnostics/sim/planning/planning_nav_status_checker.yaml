@@ -3,7 +3,9 @@
   ros__parameters:
     publish_rate_hz: 1.0
     nav_status_topic: "/planning/navigate_to_pose/_action/status"
-    stale_timeout_s: 10.0
+    # HH_260702 - Keep sim aligned with real diagnostics: action-status
+    # freshness is advisory and should not raise SYSTEM ERROR.
+    stale_timeout_s: 0.0
     idle_ok_without_status: true
     # HH_260618: Sim planning smoke tests can finish and then stay idle without
     # continuous Nav2 action-status samples.

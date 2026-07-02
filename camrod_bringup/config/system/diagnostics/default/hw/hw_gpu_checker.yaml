@@ -5,9 +5,11 @@ hw_checker:
     publish_rate_hz: 1.0          # 발행 주기 (Hz)
 
     cpu:
-      enabled: true           # CPU 모니터링 활성화 여부
-      warn_threshold: 70.0    # CPU 사용률 WARN 기준 (%)
-      error_threshold: 90.0   # CPU 사용률 ERROR 기준 (%)
+      enabled: true
+      # HH_260702 - Field bringup can run in the mid/high 90% range on Orin.
+      # Keep WARN visible, but reserve ERROR for full saturation.
+      warn_threshold: 92.0
+      error_threshold: 100.0
 
     memory:
       enabled: true           # 메모리 모니터링 활성화 여부

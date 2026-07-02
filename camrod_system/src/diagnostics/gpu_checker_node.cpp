@@ -37,7 +37,7 @@
 using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
-// ── 컨테이너 환경 감지 ────────────────────────────────────────────────────
+// ── Container environment detected ────────────────────────────────────────────────────
 
 static bool is_in_container()
 {
@@ -153,16 +153,16 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "GpuCheckerNode 시작. "
+      "GpuCheckerNode started. "
       "util warn=%.0f%% error=%.0f%% | "
       "mem warn=%.0f%% error=%.0f%% | "
-      "temp warn=%.0f°C error=%.0f°C",
+      "temp warn=%.0f C error=%.0f C",
       util_warn_, util_error_,
       mem_warn_,  mem_error_,
       temp_warn_, temp_error_);
 
     if (in_container_) {
-      RCLCPP_INFO(get_logger(), "컨테이너 환경 감지. nvidia_smi=%s",
+      RCLCPP_INFO(get_logger(), "Container environment detected. nvidia_smi=%s",
         nvidia_smi_ ? nvidia_smi_->c_str() : "N/A");
     }
   }
@@ -206,10 +206,10 @@ protected:
     auto smi = find_nvidia_smi(smi_override);
     if (!smi) {
       RCLCPP_WARN(get_logger(),
-        "nvidia-smi를 찾을 수 없습니다. GPU 상태는 STALE로 발행됩니다.%s",
+        "nvidia-smi not found. GPU status will be published as STALE.%s",
         in_container_
-          ? " (컨테이너 환경: NVIDIA Container Toolkit 설치 여부를 확인하거나 "
-            "container.nvidia_smi_path 파라미터를 설정하세요)"
+          ? " (container: check NVIDIA Container Toolkit or "
+            "set container.nvidia_smi_path)"
           : "");
     }
     nvidia_smi_ = smi;
@@ -266,8 +266,8 @@ private:
     stat.summary(DiagnosticStatus::STALE, "nvidia-smi not found");
     if (in_container_) {
       stat.add("hint",
-        "컨테이너 환경: NVIDIA Container Toolkit 또는 "
-        "container.nvidia_smi_path 파라미터 확인");
+        "Container environment: check NVIDIA Container Toolkit or "
+        "container.nvidia_smi_path");
     }
   }
 
@@ -280,7 +280,7 @@ private:
         if (g.index == std::to_string(idx)) { gpu = &g; break; }
       }
       if (!gpu) {
-        stat.summary(DiagnosticStatus::STALE, "GPU" + std::to_string(idx) + " 없음");
+        stat.summary(DiagnosticStatus::STALE, "GPU" + std::to_string(idx) + " unavailable");
         return;
       }
 
@@ -305,7 +305,7 @@ private:
         append(tmp);
       }
       if (lvl_temp >= DiagnosticStatus::WARN) {
-        std::snprintf(tmp, sizeof(tmp), "temp %.0f°C", gpu->temp);
+        std::snprintf(tmp, sizeof(tmp), "temp %.0f C", gpu->temp);
         append(tmp);
       }
 
@@ -331,7 +331,7 @@ private:
 
     } catch (const std::exception & e) {
       stat.summary(DiagnosticStatus::STALE,
-        std::string("nvidia-smi 오류: ") + e.what());
+        std::string("nvidia-smi error: ") + e.what());
     }
   }
 

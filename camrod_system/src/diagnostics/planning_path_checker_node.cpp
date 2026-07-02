@@ -150,7 +150,7 @@ protected:
         [this, src](StatusWrapper & stat) { checkPath(stat, *src); });
 
       RCLCPP_INFO(get_logger(),
-        "[%s] 경로 모니터링 시작 (topic=%s, stale=%.1fs, warn=%zu, error=%zu)",
+        "[%s] Path checker started (topic=%s, stale=%.1fs, warn=%zu, error=%zu)",
         src->name.c_str(), src->topic.c_str(),
         src->stale_timeout, src->min_points_warn, src->min_points_error);
     }
@@ -178,17 +178,19 @@ private:
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!src.has_path) {
       stat.summary(DiagnosticStatus::ERROR,
-        "navigation 중 경로 미수신: " + src.topic);
+        "No path while navigating: " + src.topic);
       stat.add("nav_active", "true");
       stat.add("topic",      src.topic);
       return;
     }
 
     const double elapsed = (this->now() - src.last_path_time).seconds();
-    if (elapsed > src.stale_timeout) {
+    // HH_260702 - A non-positive timeout disables staleness for event-style
+    // paths such as /planning/global_path. Point-count checks still run.
+    if (src.stale_timeout > 0.0 && elapsed > src.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "navigation 중 경로 stale (%.1fs > %.1fs)",
+        "Path stale while navigating (%.1fs > %.1fs)",
         elapsed, src.stale_timeout);
       stat.summary(DiagnosticStatus::ERROR, std::string(buf));
       char tmp[32];
@@ -206,14 +208,14 @@ private:
       lvl = DiagnosticStatus::ERROR;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
-        "경로 포인트 부족 (%zu < %zu)",
+        "Path point count too low (%zu < %zu)",
         src.point_count, src.min_points_error);
       msg_str = buf;
     } else if (src.point_count < src.min_points_warn) {
       lvl = DiagnosticStatus::WARN;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
-        "경로 포인트 적음 (%zu < %zu)",
+        "Path point count low (%zu < %zu)",
         src.point_count, src.min_points_warn);
       msg_str = buf;
     } else {

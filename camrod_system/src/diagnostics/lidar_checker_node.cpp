@@ -131,7 +131,7 @@ protected:
         [this, lidar](StatusWrapper & stat) { checkLidar(stat, *lidar); });
 
       RCLCPP_INFO(get_logger(),
-        "LiDAR 모니터링 시작: %s (topic=%s, expected_hz=%.1f)",
+        "LiDAR checker started: %s (topic=%s, expected_hz=%.1f)",
         lidar->name.c_str(), lidar->topic.c_str(), lidar->expected_hz);
     }
   }
@@ -179,7 +179,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!lidar.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "토픽 수신 없음: " + lidar.topic);
+      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + lidar.topic);
       stat.add("topic", lidar.topic);
       return;
     }
@@ -188,7 +188,7 @@ private:
     if (elapsed > lidar.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 (timeout=%.1fs)", elapsed, lidar.stale_timeout);
+        "No messages for %.1fs (timeout=%.1fs)", elapsed, lidar.stale_timeout);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
@@ -212,8 +212,8 @@ private:
     if (lidar.expected_hz > 0.0) {
       double ratio = actual_hz / lidar.expected_hz;
       lvl = check_low(ratio, lidar.hz_warn_ratio, lidar.hz_error_ratio);
-      if      (lvl == S::ERROR) msg_str = "스캔 속도 심각 저하";
-      else if (lvl == S::WARN)  msg_str = "스캔 속도 저하";
+      if      (lvl == S::ERROR) msg_str = "Scan rate critically low";
+      else if (lvl == S::WARN)  msg_str = "Scan rate low";
     }
 
     // Point count 하한 체크 (낮을수록 위험 → check_low)
@@ -224,7 +224,7 @@ private:
       int8_t cnt_lvl = (cnt < min_d) ? S::ERROR : S::OK;
       if (cnt_lvl > lvl) {
         lvl = cnt_lvl;
-        msg_str = "포인트 수 부족";
+        msg_str = "Point count too low";
       }
     }
 
@@ -235,7 +235,7 @@ private:
       int8_t cnt_lvl = (cnt > max_d) ? S::WARN : S::OK;
       if (cnt_lvl > lvl) {
         lvl = cnt_lvl;
-        msg_str = "포인트 수 초과";
+        msg_str = "Point count too high";
       }
     }
 
@@ -248,8 +248,8 @@ private:
         lidar.max_nan_ratio);
       if (nan_lvl > lvl) {
         lvl = nan_lvl;
-        if      (nan_lvl == S::ERROR) msg_str = "NaN 비율 심각";
-        else if (nan_lvl == S::WARN)  msg_str = "NaN 비율 높음";
+        if      (nan_lvl == S::ERROR) msg_str = "NaN ratio critical";
+        else if (nan_lvl == S::WARN)  msg_str = "NaN ratio high";
       }
     }
 

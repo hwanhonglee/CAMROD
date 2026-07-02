@@ -104,7 +104,7 @@ protected:
       nodes_.push_back(state);
 
       RCLCPP_INFO(get_logger(),
-        "Planning Lifecycle 모니터링 등록: %s", name.c_str());
+        "Planning lifecycle checker registered: %s", name.c_str());
     }
 
     // 폴링 타이머 (diagnostic updater 와 별도)
@@ -149,10 +149,10 @@ private:
     if (!node->has_response) {
       if (!node->client->service_is_ready()) {
         stat.summary(DiagnosticStatus::ERROR,
-          node->name + " — get_state 서비스 없음 (노드 미기동)");
+          node->name + " - get_state service unavailable (node not running)");
       } else {
         stat.summary(DiagnosticStatus::STALE,
-          node->name + " — 응답 대기 중");
+          node->name + " - waiting for response");
       }
       stat.add("node", node->name);
       return;
@@ -163,7 +163,7 @@ private:
     if (elapsed > stale_timeout_) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
-        "%s — 폴링 응답 없음 (%.1fs > %.1fs)",
+        "%s - no polling response (%.1fs > %.1fs)",
         node->name.c_str(), elapsed, stale_timeout_);
       stat.summary(DiagnosticStatus::ERROR, std::string(buf));
       stat.add("node",              node->name);
@@ -182,15 +182,15 @@ private:
         break;
       case LifecycleState::PRIMARY_STATE_INACTIVE:
         lvl     = DiagnosticStatus::WARN;
-        msg_str = node->name + " INACTIVE — 전환 중이거나 정지됨";
+        msg_str = node->name + " INACTIVE - transitioning or stopped";
         break;
       case LifecycleState::PRIMARY_STATE_UNCONFIGURED:
         lvl     = DiagnosticStatus::ERROR;
-        msg_str = node->name + " UNCONFIGURED — 초기화 안 됨";
+        msg_str = node->name + " UNCONFIGURED - not initialized";
         break;
       case LifecycleState::PRIMARY_STATE_FINALIZED:
         lvl     = DiagnosticStatus::ERROR;
-        msg_str = node->name + " FINALIZED — 종료됨";
+        msg_str = node->name + " FINALIZED - finalized";
         break;
       default:
         lvl     = DiagnosticStatus::ERROR;

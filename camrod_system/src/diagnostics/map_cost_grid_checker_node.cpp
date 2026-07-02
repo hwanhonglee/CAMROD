@@ -16,7 +16,7 @@
  *   /map/cost_grid
  *     - Staleness     : 마지막 메시지 수신 후 경과 시간
  *                       → stale_timeout 초과 시 STALE
- *                       (= 맵 로드 실패 or pose/path 입력 없음)
+ *                       (= 맵 로드 실패 or pose/path 입력 unavailable)
  *     - Rate          : 2초 rolling window 기반 실제 Hz
  *                       (이벤트 기반 발행이므로 expected_hz 는 낮게 설정)
  *     - Unknown ratio : unknown(-1) 셀 비율
@@ -93,7 +93,7 @@ protected:
       [this](StatusWrapper & stat) { checkGrid(stat); });
 
     RCLCPP_INFO(get_logger(),
-      "Map Cost Grid 모니터링 시작 (topic=%s, stale=%.1fs)",
+      "Map cost grid checker started (topic=%s, stale=%.1fs)",
       cost_grid_topic_.c_str(), stale_timeout_);
   }
 
@@ -138,8 +138,8 @@ private:
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!has_msg_) {
       stat.summary(DiagnosticStatus::STALE,
-        "토픽 수신 없음: " + cost_grid_topic_ +
-        " (맵 로드 실패 또는 pose/path 입력 없음)");
+        "No topic messages: " + cost_grid_topic_ +
+        " (map load failed or pose/path input missing)");
       stat.add("topic", cost_grid_topic_);
       return;
     }
@@ -148,7 +148,7 @@ private:
     if (elapsed > stale_timeout_) {
       char buf[120];
       std::snprintf(buf, sizeof(buf),
-        "%.1fs 동안 메시지 없음 (timeout=%.1fs) — pose/path 입력 확인 필요",
+        "No messages for %.1fs (timeout=%.1fs) - check pose/path input",
         elapsed, stale_timeout_);
       stat.summary(DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
@@ -168,14 +168,14 @@ private:
     int8_t lvl = DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
-    // 1. Unknown ratio (경로 없거나 맵 범위 밖 → 격자 의미 없음)
+    // 1. Unknown ratio (경로 없거나 맵 범위 밖 → 격자 의미 unavailable)
     int8_t unk_lvl = check_high(
       actual_unknown_ratio_, unknown_ratio_warn_, unknown_ratio_error_);
     if (unk_lvl > lvl) {
       lvl = unk_lvl;
       msg_str = (unk_lvl == S::ERROR) ?
-        "레인 격자 전체 unknown — 맵 로드 실패 또는 경로 없음" :
-        "레인 격자 unknown 높음 — 경로 없거나 맵 커버리지 밖";
+        "Lane grid fully unknown - map load failed or no path" :
+        "Lane grid unknown ratio high - no path or outside map coverage";
     }
 
     // 2. Rate 체크 (이벤트 기반이므로 임계값 낮게 설정)
@@ -185,8 +185,8 @@ private:
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
         msg_str = (hz_lvl == S::ERROR) ?
-          "레인 격자 발행 심각 저하 — pose/path 트리거 확인 필요" :
-          "레인 격자 발행 저하";
+          "Lane grid publish rate critically low - check pose/path trigger" :
+          "Lane grid publish rate low";
       }
     }
 

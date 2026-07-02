@@ -97,7 +97,7 @@ private:
     pub_->publish(out);
   }
 
-  // Formats age into fixed one-decimal text to keep legacy log style.
+  // Formats age into fixed one-decimal text for compact diagnostics.
   static std::string format_age(double age_s)
   {
     char buf[32];
