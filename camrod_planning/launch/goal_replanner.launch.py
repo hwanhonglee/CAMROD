@@ -27,6 +27,10 @@ def generate_launch_description():
             name='goal_replanner',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - Optional recovery planner helper should return if it
+            # exits while obstacle-replan mode is enabled.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[
                 LaunchConfiguration('goal_replanner_param_file'),
                 # HH_260528: Stop hard-overriding replanner params in launch.

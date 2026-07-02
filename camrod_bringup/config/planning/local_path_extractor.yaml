@@ -8,27 +8,14 @@
     global_path_topic: "/planning/global_path"
     fallback_global_path_topic: ""
     preferred_path_hold_s: 1.0
-    # HH_260527: local_path_source options:
-    #   controller_then_slice: prefer controller path, fallback to global path slice
-    #   controller_only: use controller path only (publish empty when unavailable)
-    #   slice_only: always slice from global path
-    # HH_260629 - Publish a map-fixed slice of /planning/global_path. Controller
-    # debug plans can be robot-relative, which makes RViz local_path look glued
-    # to the vehicle and can move the apparent goal as the robot moves.
-    local_path_source: "slice_only"
-    controller_path_topic: "/planning/local_path_controller"
-    controller_path_timeout_s: 0.8
-    # HH_260618: On a new clicked/UI goal, discard controller-local path from
-    # the previous goal for a short window so /planning/local_path follows the
-    # latest global route immediately.
-    controller_path_reset_on_global_path_change: true
-    controller_path_reset_hold_s: 0.4
+    # HH_260702 - Use the latest global route slice as the operator/safety path.
+    # Controller debug paths are not consumed here because they can remain stale
+    # while Nav2 replans around a curb.
     # HH_260629 - Planner publishes /planning/global_path as transient_local.
     # Match it so a restarted local_path_extractor immediately receives the
     # current route instead of waiting for the next goal.
     global_path_qos_transient_local: true
-    # Use fused localization pose for controller-plan transform.
-    # This prevents heading/sign mismatch between global and local path direction.
+    # HH_260702 - Use fused localization pose as the anchor for global-route slicing.
     pose_topic: "/localization/pose"
     output_topic: "/planning/local_path"
     # Local path is an explicit slice of the current global route.
@@ -61,9 +48,12 @@
     goal_reached_index_margin: 3
     # Relax timeout to tolerate brief TF/pose hiccups under load.
     pose_timeout_s: 2.5
-    # Do not emit empty-path on transient invalid frames.
-    # Empty publishes were causing local cost-grid marker flicker.
-    publish_empty_on_invalid: false
+    # HH_260702 - Clear stale local-path markers when pose/path/controller input
+    # becomes invalid. A brief empty path is safer than showing the previous goal.
+    publish_empty_on_invalid: true
+    # HH_260702 - Also clear once on route changes so RViz does not keep the
+    # previous local path while Nav2/controller are switching goals.
+    clear_local_path_on_route_change: true
     empty_republish_period_s: 0.3
     # HH_260626 - Apply only light fallback smoothing to sliced global paths.
     # Controller paths are already smoothed by Nav2's BT SimpleSmoother.

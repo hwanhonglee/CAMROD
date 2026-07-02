@@ -22,7 +22,6 @@ def generate_launch_description():
         DeclareLaunchArgument('local_path_pose_topic', default_value='/localization/pose'),
         DeclareLaunchArgument('local_path_global_path_topic', default_value='/planning/global_path'),
         DeclareLaunchArgument('local_path_fallback_global_path_topic', default_value=''),
-        DeclareLaunchArgument('local_path_source', default_value='slice_only'),
         DeclareLaunchArgument('enable_tracking_error', default_value='true'),
         DeclareLaunchArgument('tracking_error_topic', default_value='/planning/ltracking_error'),
 
@@ -32,18 +31,18 @@ def generate_launch_description():
             name='local_path_extractor',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - Local path feeds cmd_vel gate and RViz route state;
+            # respawn prevents a single crash from hiding avoidance paths.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[
                 LaunchConfiguration('local_path_extractor_param_file'),
                 {
-                    # HH_260629 - Default to map-fixed global-path slicing; controller
-                    # debug paths may be robot-relative and visually move with the car.
+                    # HH_260702 - Local path is always a map-fixed global-path slice.
                     'global_path_topic': LaunchConfiguration('local_path_global_path_topic'),
                     'fallback_global_path_topic': LaunchConfiguration('local_path_fallback_global_path_topic'),
                     'pose_topic': LaunchConfiguration('local_path_pose_topic'),
                     'output_topic': '/planning/local_path',
-                    'local_path_source': LaunchConfiguration('local_path_source'),
-                    'controller_path_topic': '/planning/local_path_controller',
-                    'controller_path_timeout_s': 0.8,
                 },
             ],
         ),
@@ -54,6 +53,10 @@ def generate_launch_description():
             name='path_tracking_error',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - Tracking error is diagnostic/control feedback; keep
+            # it available after transient launch-time or runtime exits.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[{
                 'pose_topic': LaunchConfiguration('local_path_pose_topic'),
                 'local_path_topic': '/planning/local_path',

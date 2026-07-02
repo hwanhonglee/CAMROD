@@ -413,6 +413,10 @@ def generate_launch_description():
         name='planner_server',
         namespace=module_namespace,
         output='screen',
+        # HH_260702 - Nav2 lifecycle_manager can reconnect to respawned
+        # lifecycle nodes, but launch must first recreate the crashed process.
+        respawn=True,
+        respawn_delay=2.0,
         parameters=nav2_param_chain,
         # Keep canonical global route topic stable for downstream modules.
         remappings=[
@@ -426,9 +430,12 @@ def generate_launch_description():
         name='controller_server',
         namespace=module_namespace,
         output='screen',
+        # HH_260702 - Keep the controller process alive after transient Nav2 crashes.
+        respawn=True,
+        respawn_delay=2.0,
         parameters=nav2_param_chain,
         # HH_260304-00:00 Keep only controller-internal debug topics that are still useful.
-        # HH_260304-00:00 Do not expose /planning/local_plan_raw: legacy RViz sessions may
+        # HH_260304-00:00 Do not expose /planning/local_plan_raw: older RViz sessions may
         # HH_260304-00:00 overlay it on top of /planning/local_path and make the local plan
         # HH_260304-00:00 look duplicated or branch to a wrong loop segment.
         remappings=[
@@ -447,6 +454,10 @@ def generate_launch_description():
             name='behavior_server',
             namespace=module_namespace,
             output='screen',
+            # HH_260702 - Recovery behaviors are lifecycle-managed and may be
+            # reconnected by lifecycle_manager after launch respawns the process.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=nav2_param_chain + [{
                 # HH_260306-00:00 Hard-override to block fallback to default "robot_base_link"
                 # during recovery behavior pose transforms.
@@ -474,6 +485,10 @@ def generate_launch_description():
             name='smoother_server',
             namespace=module_namespace,
             output='screen',
+            # HH_260702 - SmoothPath is in the BT path; respawn keeps planner
+            # recovery from staying broken after a one-off smoother crash.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=nav2_param_chain + [{
                 # HH_260629: Hard-override to block smoother collision checks
                 # from using Nav2's default base_link frame.
@@ -492,6 +507,9 @@ def generate_launch_description():
         name='bt_navigator',
         namespace=module_namespace,
         output='screen',
+        # HH_260702 - Keep the action server available if BT navigator exits.
+        respawn=True,
+        respawn_delay=2.0,
         parameters=nav2_param_chain + [{
             # HH_260306-00:00 Keep BT transform helpers pinned to configured Nav2 base frame.
             'global_frame': 'map',
@@ -505,7 +523,7 @@ def generate_launch_description():
         remappings=[
             # HH_260316-00:00 Consume snapped goal topic only.
             # Prevent raw-goal bypass when external tools publish to /planning/goal_pose directly.
-            # HH_260317-00:00 Apply both relative/absolute forms for compatibility.
+            # HH_260317-00:00 Apply both relative/absolute remaps for external tools.
             ('goal_pose', '/planning/goal_pose_snapped_ros'),
             ('/goal_pose', '/planning/goal_pose_snapped_ros'),
         ],
@@ -532,6 +550,11 @@ def generate_launch_description():
         name='lifecycle_manager_planning',
         namespace=module_namespace,
         output='screen',
+        # HH_260702 - If the manager itself exits, bring it back so it can
+        # reconnect respawned Nav2 lifecycle nodes instead of leaving checker
+        # missing-node warnings as the only recovery signal.
+        respawn=True,
+        respawn_delay=2.0,
         parameters=[{
             'use_sim_time': False,
             # HH_260327: allow launch-level localization gate to control activation timing.

@@ -66,9 +66,10 @@ bringup:
     # already publishes /planning/global_path; duplicate publishers make RViz path
     # visualization flicker and can feed stale paths to downstream cost grids.
     enable_goal_replanner: false
-    # HH_260629: Dynamic-obstacle recovery is separate from goal_replanner.
-    # Normal navigation starts with LaneletRoute; this monitor can temporarily
-    # latch Smac2D as a recovery planner when the active route is blocked.
+    # HH_260629: Dynamic-obstacle monitoring is separate from goal_replanner.
+    # HH_260702: Keep it enabled for BLOCKED status, but keep fallback
+    # NavigateToPose preemption disabled in obstacle_replan_monitor.yaml so
+    # /planning/global_path remains lanelet-route stable during normal driving.
     enable_obstacle_replan_monitor: true
     # HH_260625: Let lifecycle_manager autostart own STARTUP unless localization
     # readiness gating is explicitly enabled. Running the retry node alongside
@@ -91,15 +92,6 @@ bringup:
     state_machine_camping_sites_yaml: planning/camping_sites.yaml
     # Keep local-path pose topic aligned with standalone localization.launch.py behavior.
     local_path_pose_topic: /localization/pose
-    # HH_260522: local path source options:
-    #   controller_then_slice: prefer controller path, fallback to global-path slice
-    #   controller_only: use controller-local path only
-    #   slice_only: always slice from global path
-    # HH_260629 - Use global-route slicing by default so operator-visible
-    # /planning/local_path follows the newest goal immediately and does not
-    # reuse or transform robot-relative controller debug paths.
-    local_path_source: slice_only
-
     # ---- Planning cmd_vel gate ----
     # HH_260623 - Manual 2D-goal engage and UI mission engage are separate latches.
     # Final /planning/cmd_vel opens when either latch is true.
@@ -160,6 +152,11 @@ bringup:
     # path guidance. Only live dynamic sensor sources may block cmd_vel here.
     cmd_vel_gate_cost_stop_require_dynamic_source: true
     cmd_vel_gate_cost_stop_dynamic_source_labels: lidar,radar
+    # HH_260702 - When Nav2 publishes an avoidance local path, validate that
+    # path corridor before blocking on the old body-front obstacle rectangle.
+    cmd_vel_gate_front_dynamic_stop_use_local_path: true
+    cmd_vel_gate_front_dynamic_path_width_m: 1.27
+    cmd_vel_gate_front_dynamic_path_max_start_distance_m: 1.5
     # HH_260618: Raw lanelet hard-stop before inflation ego-clear. This blocks
     # translational cmd_vel when the current/corridor cell is lane-boundary or
     # outside lanelet, while still allowing in-place yaw correction.
@@ -202,16 +199,16 @@ bringup:
     cmd_vel_gate_speed_dependent_lookahead: true
     # HH_260630 - Minimum front dynamic-stop scan covers the front radar mount
     # plus about 1.0m of obstacle clearance ahead of the sensor.
-    cmd_vel_gate_front_lookahead_min_m: 2.10
-    cmd_vel_gate_front_lookahead_max_m: 3.0
+    cmd_vel_gate_front_lookahead_min_m: 2.60
+    cmd_vel_gate_front_lookahead_max_m: 3.5
     cmd_vel_gate_front_lookahead_friction: 0.4
-    cmd_vel_gate_front_reaction_time_s: 0.15
-    cmd_vel_gate_front_lookahead_margin_m: 0.3
+    cmd_vel_gate_front_reaction_time_s: 0.20
+    cmd_vel_gate_front_lookahead_margin_m: 0.45
     # Side/rear cost-stop samples the same merged grid, but still requires a
     # dynamic source attribution before blocking.
     cmd_vel_gate_side_rear_cost_stop: true
     # HH_260630: Match radar/lidar dynamic stop threshold so side hits are not
-    # ignored by the higher legacy side-only value.
+    # ignored by a higher side-only threshold.
     cmd_vel_gate_side_cost_threshold: 85
     # HH_260630: Side lidar/radar cells land near 0.9-1.0 m from robot center,
     # so crab-motion stop must look beyond the old 0.8 m window.
@@ -219,7 +216,7 @@ bringup:
     # HH_260623 - Side scan width covers full body length plus front/rear margins.
     cmd_vel_gate_side_corridor_width_m: 1.69160
     # HH_260630: Match radar/lidar dynamic stop threshold so rear hits are not
-    # ignored by the higher legacy rear-only value.
+    # ignored by a higher rear-only threshold.
     cmd_vel_gate_rear_cost_threshold: 85
     # HH_260630: Rear dynamic cells can land just past 0.9 m after cost-grid
     # discretization and sensor/footprint offsets.
@@ -321,6 +318,9 @@ bringup:
     enable_rear_camera: true
     enable_radar: true
     enable_radar_cost_grid: true
+    # HH_260702 - Keep radar range details on the topics/checkers; enable this
+    # only for bench debugging so field logs stay system-summary focused.
+    radar_log_status: false
     enable_lidar_cost_grid: true
     enable_inflation_cost_grid: true
     enable_lidar_driver: true
@@ -331,7 +331,6 @@ bringup:
     # NTRIP affects absolute RTK position only; simpleRTK2B heading uses moving-base RTCM
     # from BASE UART2 into ROVER UART2, then ROVER publishes RELPOSNED over USB via ublox_gps_node.
     # By default, use internal config defaults declared by sensing launch files.
-    lidar_preprocess_param_file: sensing/lidar/preprocessor.yaml
     camera_params_file: sensing/camera/camera_params.yaml
     camera_device_path: /dev/video0
     imu_converter_param_file: sensing/imu/platform_velocity_converter.yaml

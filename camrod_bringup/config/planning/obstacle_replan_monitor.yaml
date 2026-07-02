@@ -6,7 +6,9 @@
     dynamic_cost_grid_topics:
       - "/sensing/cost_grid/lidar"
       - "/sensing/cost_grid/radar"
-    global_path_topic: "/planning/global_path"
+    # HH_260702 - Monitor the active local path because cmd_vel_gate blocks
+    # FRONT_PATH against /planning/local_path.
+    path_topic: "/planning/local_path"
     goal_topic: "/planning/goal_pose_snapped_ros"
     pose_topic: "/localization/pose"
     navigate_action_name: "/planning/navigate_to_pose"
@@ -14,9 +16,13 @@
     planner_selector_topic: "/planning/planner_selector"
     status_topic: "/planning/obstacle_replan/status"
 
-    # HH_260629: Normal routing starts with LaneletRoute. Smac2D remains the
-    # dynamic-obstacle recovery planner selected by this monitor.
-    fallback_planner_id: "Smac2D"
+    # HH_260702 - Keep global route geometry stable during normal driving.
+    # Dynamic-obstacle blockage is reported to status/gates; fallback Nav2
+    # preemption is opt-in for controlled tests because it can create free-space
+    # global paths that cross adjacent/opposite lanes.
+    preempt_enabled: false
+    fallback_planner_id: "SmacLattice"
+    restore_planner_id: "LaneletRoute"
     monitor_rate_hz: 5.0
     grid_max_age_s: 0.75
     lookahead_m: 8.0
@@ -26,13 +32,14 @@
     lateral_step_m: 0.25
     # HH_260630: Trigger dynamic replanning before the 85-cost hard-stop zone.
     obstacle_cost_threshold: 60
-    min_blocked_samples: 5
-    blocked_sample_ratio: 0.08
-    block_hold_s: 2.0
-    # HH_260619 - Keep this longer than block_hold_s so alternating empty/test
-    # grids cannot reset persistent blockage before Smac2D fallback is selected.
-    clear_hold_s: 2.5
-    replan_cooldown_s: 10.0
+    # HH_260702 - Small far obstacles should be reported before the vehicle
+    # reaches hard-stop distance. Debounce with hold/cooldown instead of
+    # requiring a large occupied ratio inside the corridor.
+    min_blocked_samples: 3
+    blocked_sample_ratio: 0.025
+    block_hold_s: 0.6
+    clear_hold_s: 1.2
+    replan_cooldown_s: 3.0
     selector_override_s: 3.0
     selector_publish_hz: 10.0
     require_navigation_active: true

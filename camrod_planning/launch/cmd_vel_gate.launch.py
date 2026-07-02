@@ -71,6 +71,11 @@ def generate_launch_description():
         # these dynamic source grids owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_require_dynamic_source', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_dynamic_source_labels', default_value='lidar,radar'),
+        # HH_260702 - Let an already-planned avoidance local path release the
+        # stale body-front obstacle rectangle when the path corridor is clear.
+        DeclareLaunchArgument('cmd_vel_gate_front_dynamic_stop_use_local_path', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_front_dynamic_path_width_m', default_value='1.27'),
+        DeclareLaunchArgument('cmd_vel_gate_front_dynamic_path_max_start_distance_m', default_value='1.5'),
         # HH_260618: Raw lanelet grid hard-stop before inflation ego-clear.
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_enable', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_grid_topic', default_value='/map/cost_grid/lanelet'),
@@ -107,11 +112,11 @@ def generate_launch_description():
         # HH_260422: Speed-dependent front lookahead parameters.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
         # HH_260630 - Minimum front scan reaches the front radar mount plus about 1m clearance.
-        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='2.10'),
-        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_max_m', default_value='3.0'),
+        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='2.60'),
+        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_max_m', default_value='3.5'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_friction', default_value='0.4'),
-        DeclareLaunchArgument('cmd_vel_gate_front_reaction_time_s', default_value='0.15'),
-        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_margin_m', default_value='0.3'),
+        DeclareLaunchArgument('cmd_vel_gate_front_reaction_time_s', default_value='0.20'),
+        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_margin_m', default_value='0.45'),
         # HH_260622: Side/rear cost-stop samples the merged grid, but blocks
         # only when dynamic source attribution owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
@@ -170,6 +175,10 @@ def generate_launch_description():
             name='cmd_vel_gate',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - This gate owns the final planning cmd_vel stream.
+            # Respawn restores zero/blocked publishing after a transient crash.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[{
                 'input_topic': LaunchConfiguration('cmd_vel_raw_topic'),
                 'output_topic': LaunchConfiguration('cmd_vel_output_topic'),
@@ -201,6 +210,9 @@ def generate_launch_description():
                 'cost_stop_hold_s': LaunchConfiguration('cmd_vel_gate_cost_hold_s'),
                 'cost_stop_require_dynamic_source': LaunchConfiguration('cmd_vel_gate_cost_stop_require_dynamic_source'),
                 'cost_stop_dynamic_source_labels': LaunchConfiguration('cmd_vel_gate_cost_stop_dynamic_source_labels'),
+                'front_dynamic_stop_use_local_path': LaunchConfiguration('cmd_vel_gate_front_dynamic_stop_use_local_path'),
+                'front_dynamic_path_width_m': LaunchConfiguration('cmd_vel_gate_front_dynamic_path_width_m'),
+                'front_dynamic_path_max_start_distance_m': LaunchConfiguration('cmd_vel_gate_front_dynamic_path_max_start_distance_m'),
                 'lanelet_safety_enable': LaunchConfiguration('cmd_vel_gate_lanelet_safety_enable'),
                 'lanelet_safety_grid_topic': LaunchConfiguration('cmd_vel_gate_lanelet_safety_grid_topic'),
                 'lanelet_safety_threshold': LaunchConfiguration('cmd_vel_gate_lanelet_safety_threshold'),

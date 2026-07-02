@@ -196,7 +196,6 @@ def generate_launch_description():
         DeclareLaunchArgument('local_path_pose_topic', default_value='/localization/pose'),
         DeclareLaunchArgument('local_path_global_path_topic', default_value='/planning/global_path'),
         DeclareLaunchArgument('local_path_fallback_global_path_topic', default_value=''),
-        DeclareLaunchArgument('local_path_source', default_value='slice_only'),
         DeclareLaunchArgument('tracking_error_topic', default_value='/planning/ltracking_error'),
 
         DeclareLaunchArgument('cmd_vel_gate_enable', default_value='true'),
@@ -243,6 +242,11 @@ def generate_launch_description():
         # cmd_vel blocking must be owned by live dynamic sources.
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_require_dynamic_source', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_dynamic_source_labels', default_value='lidar,radar'),
+        # HH_260702 - Use the selected local path corridor for front dynamic
+        # obstacle release; fallback to body-front rectangle when no path exists.
+        DeclareLaunchArgument('cmd_vel_gate_front_dynamic_stop_use_local_path', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_front_dynamic_path_width_m', default_value='1.27'),
+        DeclareLaunchArgument('cmd_vel_gate_front_dynamic_path_max_start_distance_m', default_value='1.5'),
         # HH_260618: Raw lanelet hard-stop uses /map/cost_grid/lanelet before
         # the merged inflation grid clears the ego footprint.
         DeclareLaunchArgument('cmd_vel_gate_lanelet_safety_enable', default_value='true'),
@@ -278,11 +282,11 @@ def generate_launch_description():
         # HH_260422: Speed-dependent front lookahead.
         DeclareLaunchArgument('cmd_vel_gate_speed_dependent_lookahead', default_value='true'),
         # HH_260630 - Minimum front scan reaches the front radar mount plus about 1m clearance.
-        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='2.10'),
-        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_max_m', default_value='3.0'),
+        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_min_m', default_value='2.60'),
+        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_max_m', default_value='3.5'),
         DeclareLaunchArgument('cmd_vel_gate_front_lookahead_friction', default_value='0.4'),
-        DeclareLaunchArgument('cmd_vel_gate_front_reaction_time_s', default_value='0.15'),
-        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_margin_m', default_value='0.3'),
+        DeclareLaunchArgument('cmd_vel_gate_front_reaction_time_s', default_value='0.20'),
+        DeclareLaunchArgument('cmd_vel_gate_front_lookahead_margin_m', default_value='0.45'),
         # HH_260622: Side/rear cost-stop samples the merged grid, but blocks
         # only when dynamic source attribution owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
@@ -372,7 +376,7 @@ def generate_launch_description():
             default_value=planning_state_machine_keypoints_default,
         ),
 
-        # HH_260527: Removed unused compatibility args
+        # HH_260527: Removed unused map-origin launch args.
         # (system_namespace, enable_module_validator).
 
         IncludeLaunchDescription(
@@ -432,7 +436,6 @@ def generate_launch_description():
                 'local_path_pose_topic',
                 'local_path_global_path_topic',
                 'local_path_fallback_global_path_topic',
-                'local_path_source',
                 'enable_tracking_error',
                 'tracking_error_topic',
             ).items(),
@@ -474,6 +477,9 @@ def generate_launch_description():
                 'cmd_vel_gate_cost_hold_s',
                 'cmd_vel_gate_cost_stop_require_dynamic_source',
                 'cmd_vel_gate_cost_stop_dynamic_source_labels',
+                'cmd_vel_gate_front_dynamic_stop_use_local_path',
+                'cmd_vel_gate_front_dynamic_path_width_m',
+                'cmd_vel_gate_front_dynamic_path_max_start_distance_m',
                 'cmd_vel_gate_lanelet_safety_enable',
                 'cmd_vel_gate_lanelet_safety_grid_topic',
                 'cmd_vel_gate_lanelet_safety_threshold',
@@ -573,6 +579,9 @@ def generate_launch_description():
             name='planning_progress',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - Keep UI progress feedback alive after transient exits.
+            respawn=True,
+            respawn_delay=2.0,
             condition=IfCondition(LaunchConfiguration('enable_progress')),
         ),
 
@@ -582,6 +591,10 @@ def generate_launch_description():
             name='path_visualizer',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - RViz/operator path markers are non-safety critical
+            # but should recover without a full bringup restart.
+            respawn=True,
+            respawn_delay=2.0,
             condition=IfCondition(LaunchConfiguration('enable_path_visualization')),
             parameters=[{
                 # HH_260619 - Show the same published route that local-path and
@@ -606,6 +619,10 @@ def generate_launch_description():
             name='obstacle_replan_monitor',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - Dynamic obstacle replan monitor must recover if it
+            # exits while the robot is navigating around blocked routes.
+            respawn=True,
+            respawn_delay=2.0,
             condition=IfCondition(LaunchConfiguration('enable_obstacle_replan_monitor')),
             parameters=[
                 LaunchConfiguration('obstacle_replan_monitor_param_file'),

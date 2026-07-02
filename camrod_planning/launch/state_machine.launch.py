@@ -35,6 +35,10 @@ def generate_launch_description():
             name='planning_state_machine',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - The state machine owns planning soft-estop/scenario
+            # state, so a transient crash should recover without full bringup.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[
                 LaunchConfiguration('planning_state_machine_param_file'),
                 {

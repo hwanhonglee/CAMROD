@@ -90,6 +90,10 @@ def generate_launch_description():
             name='goal_snapper',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - Goal snapping is required before Nav2 consumes goals;
+            # respawn restores the input path after transient map/TF races.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[
                 LaunchConfiguration('goal_snapper_param_file'),
                 {
@@ -110,6 +114,10 @@ def generate_launch_description():
             name='centerline_snapper',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - Centerline pose supports lanelet-aligned localization
+            # and planning diagnostics; keep it alive after transient exits.
+            respawn=True,
+            respawn_delay=2.0,
             parameters=[
                 LaunchConfiguration('centerline_snapper_param_file'),
                 {
