@@ -111,3 +111,15 @@ colcon build
 > HH_260617: `avg_msgs` is the common contract for planning, system, platform, UI, voice, and parking integration.
 
 Current semantic mission interfaces include `PlanningState`, `PlanningScenario`, `PlanningMissionKey`, `PlanningRecallRequest`, and `UiDestinationCommand`. `ModuleState` remains the shared module-health/status payload and is used by `camrod_parking` status topics, `camrod_system`, and package-level validators.
+
+## 2026-07-02 Runtime Update
+
+> HH_260702: `avg_msgs` is the canonical in-repo interface boundary; legacy aliases should not be added to new code.
+
+New CAMROD packages should import message and service definitions directly from `avg_msgs`. External ROS messages such as `sensor_msgs`, `nav_msgs`, and `geometry_msgs` remain valid at hardware/ROS integration boundaries, but package-to-package CAMROD state should use the explicit `avg_msgs` contracts documented in `avg_msgs/README.md`.
+
+Use the workspace wrapper for dependency-order-safe rebuilds:
+
+```bash
+./colcon_build.sh --packages-select avg_msgs camrod_system camrod_planning camrod_ui
+```

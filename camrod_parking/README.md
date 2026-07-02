@@ -142,6 +142,26 @@ the requested campsite, reconstructs a route/site pair from the latest
 `/planning/lanelet_pose_ros` when available, and enters `WAIT_RETURN` so the
 normal return button can start the exit sequence.
 
+## 2026-07-02 Runtime Update
+
+> HH_260702: Parking remains rule-based and must not re-plan the road route while it owns `/planning/cmd_vel_raw`.
+
+The expected state separation is:
+
+| Flow | Owner | Route behavior |
+|---|---|---|
+| Lanelet road drive to campsite road/snap pose | `camrod_planning` / Nav2 | LaneletRoute global path remains map-fixed; local path slices the current segment |
+| Campsite crab-in, 180-degree site rotation, wait, crab-out | `camrod_parking/site_maneuver` | Parking publishes its own maneuver path and commands `/planning/cmd_vel_raw` |
+| Road return from campsite snap pose to drop-zone route goal | `camrod_planning` / Nav2 | Starts only after site maneuver publishes return-to-drop-zone request |
+| Drop-zone reverse parking | `camrod_parking/drop_zone_parking` | Aligns to drop-zone yaw and reverses; it does not run campsite 180-degree behavior |
+
+If a vehicle is already manually positioned inside a campsite, use the adoption path instead of replaying the full campsite entry:
+
+```bash
+ros2 service call /parking/site_maneuver/adopt std_srvs/srv/Trigger '{}'
+ros2 topic echo /parking/site_maneuver/status --once
+```
+
 ### Smoke Test
 
 ```bash

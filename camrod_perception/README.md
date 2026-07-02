@@ -427,3 +427,28 @@ ros2 topic hz /perception/lidar/bboxes
 > HH_260617: Perception feeds planning cost checks; parking still routes through the planning/platform gates.
 
 Obstacle/cost outputs are consumed by planning safety checks before `/planning/cmd_vel` is released. Because parking publishes to `/planning/cmd_vel_raw`, the same cost-stop and platform interlock path can block parking motion if the configured side/rear corridors detect unsafe occupancy.
+
+## 2026-07-02 Runtime Update
+
+> HH_260702: Perception object output is now documented as cost-grid input evidence, not only RViz visualization.
+
+The active obstacle path is:
+
+```text
+/sensing/lidar/points_filtered
+  -> camrod_perception obstacle_fusion_node
+  -> /perception/obstacles
+  -> camrod_sensing lidar_cost_grid_node
+  -> /map/cost_grid/lidar_*
+  -> camrod_planning cmd_vel gate / replan monitor
+```
+
+This means camera-LiDAR fusion can contribute to the LiDAR cost grid when the configured `obstacle_cloud_topic` points at `/perception/obstacles`. If YOLO or camera sync is disabled, `obstacle_fusion_node` falls back to pass-through LiDAR behavior so the safety path does not disappear.
+
+The node is not the final stop authority. Planning and platform gates still decide whether `/planning/cmd_vel_raw` becomes `/planning/cmd_vel` and `/platform/cmd_vel`. During all-on tests, check both perception freshness and cost-grid freshness:
+
+```bash
+ros2 topic hz /perception/obstacles
+ros2 topic hz /map/cost_grid/lidar_front
+ros2 topic echo /planning/obstacle_replan/status --once
+```
