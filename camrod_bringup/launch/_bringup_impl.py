@@ -83,7 +83,6 @@ OVERRIDE_SPECS = {
         'cmd_vel_gate_yaw_alignment_zones_file': ('planning/cmd_vel_gate_yaw_alignment_zones_file',),
     },
     'sensing': {
-        'lidar_preprocess_param_file': ('sensing/lidar_preprocess_param_file',),
         'camera_params_file':    ('sensing/camera_params_file',),
         'camera_device_path':    ('sensing/camera_device_path',),
         'imu_converter_param_file': ('sensing/imu_converter_param_file',),
@@ -699,13 +698,6 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/local_path_pose_topic', '/localization/pose'),
             'Pose topic for local_path_extractor',
         ),
-        (
-            'local_path_source',
-            # HH_260626 - Keep bringup default aligned with local_path.launch.py:
-            # use the smoothed FollowPath input when available, then slice global path.
-            cfg_get(launch_cfg, 'planning/local_path_source', 'controller_then_slice'),
-            'Local path source policy: controller_then_slice|controller_only|slice_only',
-        ),
         # Require explicit planning engage trigger before publishing /planning/cmd_vel.
         (
             'planning_cmd_vel_gate_enable',
@@ -869,6 +861,21 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_dynamic_source_labels', 'lidar,radar'),
             'Comma-separated source labels that can trigger dynamic cost-stop',
         ),
+        (
+            'planning_cmd_vel_gate_front_dynamic_stop_use_local_path',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_dynamic_stop_use_local_path', True),
+            'Use local path corridor for front dynamic obstacle release',
+        ),
+        (
+            'planning_cmd_vel_gate_front_dynamic_path_width_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_dynamic_path_width_m', 1.27),
+            'Front dynamic local-path corridor width (m)',
+        ),
+        (
+            'planning_cmd_vel_gate_front_dynamic_path_max_start_distance_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_dynamic_path_max_start_distance_m', 1.5),
+            'Max robot-to-local-path start distance for front dynamic release (m)',
+        ),
         # HH_260618: Raw lanelet hard-stop parameters. This stays separate
         # from /planning/cost_grid/inflation because inflation clears the ego
         # footprint for planner startup and cannot be the final lanelet guard.
@@ -1002,13 +1009,13 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_front_lookahead_min_m',
-            # HH_260630 - Include front radar mount plus roughly 1m sensor-forward clearance.
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_min_m', 2.10),
+            # HH_260702 - Stop earlier so Nav2 has room to publish an avoidance path.
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_min_m', 2.60),
             'Min front lookahead (m)',
         ),
         (
             'planning_cmd_vel_gate_front_lookahead_max_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_max_m', 3.0),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_max_m', 3.5),
             'Max front lookahead (m)',
         ),
         (
@@ -1018,12 +1025,12 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_front_reaction_time_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_reaction_time_s', 0.15),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_reaction_time_s', 0.20),
             'Latency budget for front lookahead (s)',
         ),
         (
             'planning_cmd_vel_gate_front_lookahead_margin_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_margin_m', 0.3),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_margin_m', 0.45),
             'Static safety margin for front lookahead (m)',
         ),
         # HH_260622: Side/rear cost-stop samples the merged grid, but blocks
@@ -1272,6 +1279,7 @@ def generate_launch_description():
         ),
 
         ('enable_radar', cfg_get(launch_cfg, 'sensing/enable_radar', False), 'Enable serial radar'),
+        ('radar_log_status', cfg_get(launch_cfg, 'sensing/radar_log_status', False), 'Print per-port radar status lines'),
         ('enable_camera', cfg_get(launch_cfg, 'sensing/enable_camera', True), 'Enable camera publisher stack'),
         # HH_260528: Per-camera enable flags for dual econ camera setup.
         ('enable_front_camera', cfg_get(launch_cfg, 'sensing/enable_front_camera', True), 'Enable front econ camera node'),
@@ -1421,7 +1429,7 @@ def generate_launch_description():
             ),
             'Map origin altitude',
         ),
-        # HH_260527: Removed unused map-origin compatibility args
+        # HH_260527: Removed unused map-origin launch args.
         # (yaw_offset_deg, utm_origin_*, rotate_latlon_xy_by_yaw_offset).
 
         ('lanelet_id', cfg_get(launch_cfg, 'sim/lanelet_id', -1), 'Fake sensor lanelet id'),
@@ -1445,7 +1453,7 @@ def generate_launch_description():
     ]
 
     lc = {name: LaunchConfiguration(name) for name, _, _ in arg_specs}
-    # HH_260623 - Removed the deprecated parking_backend launch alias;
+    # HH_260623 - Removed the old parking_backend launch argument;
     # parking_method is the single selector for rule_based versus docking.
     parking_method_expr = ["'", lc['parking_method'], "'.lower()"]
     parking_method_rule_based_expr = PythonExpression([
@@ -1594,6 +1602,7 @@ def generate_launch_description():
         'enable_rear_camera':  sim_switch(lc['sim'], 'false', lc['enable_rear_camera']),
         'enable_ntrip': sim_switch(lc['sim'], 'false', lc['enable_ntrip']),
         'enable_radar': sim_switch(lc['sim'], 'false', lc['enable_radar']),
+        'radar_log_status': lc['radar_log_status'],
         'enable_radar_cost_grid': lc['enable_radar_cost_grid'],
         'enable_lidar_cost_grid': lc['enable_lidar_cost_grid'],
         'enable_inflation_cost_grid': lc['enable_inflation_cost_grid'],
@@ -1735,7 +1744,6 @@ def generate_launch_description():
         # Keep centerline anchor on fused localization pose.
         'centerline_input_pose_topic': '/localization/pose',
         'local_path_pose_topic': lc['local_path_pose_topic'],
-        'local_path_source': lc['local_path_source'],
         'cmd_vel_gate_enable': lc['planning_cmd_vel_gate_enable'],
         'cmd_vel_raw_topic': lc['planning_cmd_vel_raw_topic'],
         'cmd_vel_output_topic': lc['planning_cmd_vel_topic'],

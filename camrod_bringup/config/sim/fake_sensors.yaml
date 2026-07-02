@@ -39,7 +39,7 @@
     loop: true
     # 2026-02-05 14:37: Skip crosswalk lanelets to prevent stitching jumps.
     exclude_crosswalk: true
-    # Optional initial anchor on centerline path (better naming alias):
+    # Optional initial anchor on centerline path:
     # - start_from_pose=true  -> nearest point to (start_x,start_y)
     # - start_from_pose=false -> first point of stitched centerline path
     # Start near drop_zone for scenario validation (bringup sim).
