@@ -921,8 +921,9 @@ class SimValidationRunner(Node):
             12.0,
         )
         if route_ready:
-            # HH_260701 - Place a live synthetic obstacle on the active route so
-            # obstacle_replan_monitor must switch to the fallback free-space planner.
+            # HH_260702 - Place a live synthetic obstacle on the active route.
+            # The monitor should report BLOCKED without forcing a fallback
+            # global replan in the default stable-route policy.
             self.set_fake_params(
                 obstacle_direction="front",
                 obstacle_offset=self.obstacle_replan_obstacle_offset_m,
@@ -934,15 +935,23 @@ class SimValidationRunner(Node):
         start = time.monotonic()
         seen_blocked = False
         seen_fallback = False
+        blocked_seen_at: float | None = None
         while route_ready and rclpy.ok() and (time.monotonic() - start) < self.obstacle_replan_timeout_s:
             rclpy.spin_once(self, timeout_sec=0.05)
-            seen_blocked = seen_blocked or self.latest_replan_status.startswith("BLOCKED")
+            if self.latest_replan_status.startswith("BLOCKED"):
+                seen_blocked = True
+                if blocked_seen_at is None:
+                    blocked_seen_at = time.monotonic()
             seen_fallback = (
                 seen_fallback
                 or self.latest_planner_selector == "Smac2D"
                 or "Smac2D" in self.planner_selectors_seen
+                or self.latest_planner_selector == "SmacLattice"
+                or "SmacLattice" in self.planner_selectors_seen
             )
-            if seen_blocked and seen_fallback:
+            if seen_fallback:
+                break
+            if blocked_seen_at is not None and (time.monotonic() - blocked_seen_at) >= 2.0:
                 break
 
         cmd_max = self.max_abs_since.get("/planning/cmd_vel", 0.0)
@@ -950,7 +959,7 @@ class SimValidationRunner(Node):
         self.publish_engage(False)
         self.cancel_all_actions()
         self.cancel_parking_maneuvers()
-        ok = bool(route_ready and seen_blocked and seen_fallback)
+        ok = bool(route_ready and seen_blocked and not seen_fallback)
         self.results.append(
             CheckResult(
                 "obstacle_replan",
@@ -959,14 +968,14 @@ class SimValidationRunner(Node):
                 if ok
                 else (
                     f"route_ready={route_ready} blocked={seen_blocked} "
-                    f"fallback={seen_fallback} status={self.latest_replan_status}"
+                    f"unexpected_fallback={seen_fallback} status={self.latest_replan_status}"
                 ),
                 {
                     "route_ready": route_ready,
                     "global_path_points": self.global_path_points,
                     "local_path_points": self.local_path_points,
                     "blocked_seen": seen_blocked,
-                    "fallback_selector_seen": seen_fallback,
+                    "unexpected_fallback_selector_seen": seen_fallback,
                     "latest_replan_status": self.latest_replan_status,
                     "latest_planner_selector": self.latest_planner_selector,
                     "replan_statuses_seen": ",".join(sorted(self.replan_statuses_seen)),
