@@ -372,6 +372,24 @@ class PlanningCmdVelGateNode(Node):
             ).value,
             {"lidar", "radar"},
         )
+        # HH_260702 - If Nav2 has already produced an avoidance local path, the
+        # dynamic stop gate should validate that path corridor instead of holding
+        # a stale body-forward rectangle on the original obstacle.
+        self.front_dynamic_stop_use_local_path = bool(
+            self.declare_parameter("front_dynamic_stop_use_local_path", True).value
+        )
+        self.front_dynamic_path_width_m = float(
+            self.declare_parameter(
+                "front_dynamic_path_width_m",
+                self.cost_stop_width_m,
+            ).value
+        )
+        self.front_dynamic_path_max_start_distance_m = float(
+            self.declare_parameter(
+                "front_dynamic_path_max_start_distance_m",
+                self.lanelet_safety_front_path_max_start_distance_m,
+            ).value
+        )
 
         # HH_260422: Speed-dependent front lookahead.
         #   lookahead = clamp(v²/(2·g·mu) + reaction_time·v + margin, min, max)
@@ -571,6 +589,7 @@ class PlanningCmdVelGateNode(Node):
         self._last_lanelet_front_path_reentry_bypass_log_sec = 0.0
         self._last_drop_zone_static_bypass_log_sec = 0.0
         self._last_site_static_phase_bypass_log_sec = 0.0
+        self._last_front_path_dynamic_clear_log_sec = 0.0
         self._parking_drop_zone_phase = ""
         self._parking_site_phase = ""
 
@@ -794,6 +813,12 @@ class PlanningCmdVelGateNode(Node):
                     p.value,
                     {"lidar", "radar"},
                 )
+            elif p.name == "front_dynamic_stop_use_local_path":
+                self.front_dynamic_stop_use_local_path = bool(p.value)
+            elif p.name == "front_dynamic_path_width_m":
+                self.front_dynamic_path_width_m = float(p.value)
+            elif p.name == "front_dynamic_path_max_start_distance_m":
+                self.front_dynamic_path_max_start_distance_m = float(p.value)
             elif p.name == "lanelet_safety_enable":
                 self.lanelet_safety_enable = bool(p.value)
             elif p.name == "lanelet_safety_threshold":
@@ -1372,14 +1397,49 @@ class PlanningCmdVelGateNode(Node):
         best_lethal: list[tuple[int, int]] = []
         for label, pose in pose_candidates:
             for direction, yaw_off, la, wd, thr, check_unavoidable in corridors:
-                blocked, total_cells, lethal_cells, blocked_detail = self._sample_cost_corridor(
-                    merged_grid,
-                    pose,
-                    yaw_offset=yaw_off,
-                    lookahead=la,
-                    width=wd,
-                    threshold=thr,
-                )
+                if direction == "FRONT" and self.front_dynamic_stop_use_local_path:
+                    path_valid, path_blocked, path_detail = (
+                        self._sample_dynamic_local_path_corridor(
+                            merged_grid,
+                            pose,
+                            lookahead=la,
+                            width=self.front_dynamic_path_width_m,
+                            threshold=thr,
+                            max_start_distance=self.front_dynamic_path_max_start_distance_m,
+                        )
+                    )
+                    if path_valid:
+                        if not path_blocked:
+                            self._log_front_path_dynamic_clear(
+                                label,
+                                "merged",
+                                la,
+                                path_detail,
+                            )
+                            continue
+                        wx, wy, cost, _ = path_detail
+                        blocked = True
+                        total_cells = 0
+                        lethal_cells = []
+                        blocked_detail = (wx, wy, cost)
+                    else:
+                        blocked, total_cells, lethal_cells, blocked_detail = self._sample_cost_corridor(
+                            merged_grid,
+                            pose,
+                            yaw_offset=yaw_off,
+                            lookahead=la,
+                            width=wd,
+                            threshold=thr,
+                        )
+                else:
+                    blocked, total_cells, lethal_cells, blocked_detail = self._sample_cost_corridor(
+                        merged_grid,
+                        pose,
+                        yaw_offset=yaw_off,
+                        lookahead=la,
+                        width=wd,
+                        threshold=thr,
+                    )
                 if blocked:
                     if not self._merged_cost_should_block(
                         blocked_detail,
@@ -1448,6 +1508,36 @@ class PlanningCmdVelGateNode(Node):
             target_frame = str(grid.header.frame_id).strip()
             for pose_label, pose in self._resolve_pose_candidates(target_frame):
                 for direction, yaw_off, lookahead, width, threshold, _ in corridors:
+                    if direction == "FRONT" and self.front_dynamic_stop_use_local_path:
+                        path_valid, path_blocked, path_detail = (
+                            self._sample_dynamic_local_path_corridor(
+                                grid,
+                                pose,
+                                lookahead=lookahead,
+                                width=self.front_dynamic_path_width_m,
+                                threshold=threshold,
+                                max_start_distance=self.front_dynamic_path_max_start_distance_m,
+                            )
+                        )
+                        if path_valid:
+                            if not path_blocked:
+                                self._log_front_path_dynamic_clear(
+                                    pose_label,
+                                    source_label,
+                                    lookahead,
+                                    path_detail,
+                                )
+                                continue
+                            self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                            wx, wy, cost, _ = path_detail
+                            self.get_logger().warn(
+                                f"cost-stop FRONT_PATH: source={pose_label} "
+                                f"dynamic={source_label}:{cost}@({wx:.2f},{wy:.2f}) "
+                                f"lookahead={lookahead:.2f}m "
+                                f"hold={self.cost_stop_hold_s:.2f}s"
+                            )
+                            return True
+
                     blocked, _, _, detail = self._sample_cost_corridor(
                         grid,
                         pose,
@@ -1468,6 +1558,23 @@ class PlanningCmdVelGateNode(Node):
                     )
                     return True
         return False
+
+    def _log_front_path_dynamic_clear(
+        self,
+        pose_label: str,
+        source_label: str,
+        lookahead_m: float,
+        detail: tuple[float, float, int, str],
+    ) -> None:
+        now_sec = self.get_clock().now().nanoseconds * 1e-9
+        if (now_sec - self._last_front_path_dynamic_clear_log_sec) < 2.0:
+            return
+        self._last_front_path_dynamic_clear_log_sec = now_sec
+        _, _, _, reason = detail
+        self.get_logger().info(
+            f"cost-stop FRONT_PATH clear: source={pose_label} dynamic={source_label} "
+            f"lookahead={lookahead_m:.2f}m reason={reason}"
+        )
 
     # HH_260618: Returns true only for mission-owned campsite parking commands.
     # Mixed x/y motion remains under normal cost-stop behavior.
@@ -2539,6 +2646,110 @@ class PlanningCmdVelGateNode(Node):
                     if mx < 0 or my < 0 or mx >= grid_width or my >= grid_height:
                         if self.lanelet_safety_stop_on_unknown:
                             return True, True, (wx, wy, -1, "path_out_of_grid")
+                        continue
+                    cost = int(grid.data[my * grid_width + mx])
+                    if cost >= stop_threshold:
+                        return True, True, (wx, wy, cost, "path_cost")
+            accumulated += seg_len
+            if accumulated >= scan_lookahead:
+                break
+
+        return True, False, (pose_x, pose_y, -1, "clear")
+
+    # HH_260702 - Path-based dynamic obstacle sampler for forward avoidance.
+    # Unlike lanelet safety, out-of-grid cells are ignored here because live
+    # LiDAR/Radar grids are rolling dynamic surfaces, not static map authority.
+    def _sample_dynamic_local_path_corridor(
+        self,
+        grid: OccupancyGrid,
+        pose: tuple[float, float, float],
+        *,
+        lookahead: float,
+        width: float,
+        threshold: int,
+        max_start_distance: float | None = None,
+    ) -> tuple[bool, bool, tuple[float, float, int, str]]:
+        path = self._last_route_heading_path
+        if path is None or len(path.poses) < 2:
+            return False, False, (pose[0], pose[1], -1, "no_path")
+
+        grid_frame = str(grid.header.frame_id).strip()
+        path_frame = str(path.header.frame_id).strip()
+        if grid_frame and path_frame and grid_frame != path_frame:
+            return False, False, (pose[0], pose[1], -1, "frame_mismatch")
+
+        points: list[tuple[float, float]] = []
+        for pose_stamped in path.poses:
+            x = float(pose_stamped.pose.position.x)
+            y = float(pose_stamped.pose.position.y)
+            if math.isfinite(x) and math.isfinite(y):
+                points.append((x, y))
+        if len(points) < 2:
+            return False, False, (pose[0], pose[1], -1, "empty_path")
+
+        pose_x, pose_y, _ = pose
+        closest_idx = 0
+        closest_dist_sq = float("inf")
+        for idx, (x, y) in enumerate(points):
+            dist_sq = (x - pose_x) * (x - pose_x) + (y - pose_y) * (y - pose_y)
+            if dist_sq < closest_dist_sq:
+                closest_idx = idx
+                closest_dist_sq = dist_sq
+
+        max_start = max(
+            0.05,
+            float(
+                self.front_dynamic_path_max_start_distance_m
+                if max_start_distance is None
+                else max_start_distance
+            ),
+        )
+        if math.sqrt(closest_dist_sq) > max_start:
+            return False, False, (pose_x, pose_y, -1, "path_far")
+
+        res = float(grid.info.resolution)
+        if res <= 0.0:
+            return False, False, (pose_x, pose_y, -1, "bad_resolution")
+        origin_x = float(grid.info.origin.position.x)
+        origin_y = float(grid.info.origin.position.y)
+        grid_width = int(grid.info.width)
+        grid_height = int(grid.info.height)
+        stop_threshold = int(threshold)
+        scan_lookahead = max(0.05, float(lookahead))
+        scan_width = max(0.05, float(width))
+        half_w = scan_width * 0.5
+        lateral_offsets = [0.0]
+        lateral_step_count = int(math.floor(half_w / res + 1e-9))
+        for step in range(1, lateral_step_count + 1):
+            offset = step * res
+            lateral_offsets.extend((-offset, offset))
+
+        accumulated = 0.0
+        for idx in range(closest_idx, len(points) - 1):
+            start_x, start_y = points[idx]
+            end_x, end_y = points[idx + 1]
+            seg_dx = end_x - start_x
+            seg_dy = end_y - start_y
+            seg_len = math.hypot(seg_dx, seg_dy)
+            if seg_len <= 1e-4:
+                continue
+            heading = math.atan2(seg_dy, seg_dx)
+            cos_y = self._cos(heading)
+            sin_y = self._sin(heading)
+            step_count = max(1, int(math.ceil(seg_len / res)))
+            for step in range(step_count + 1):
+                along = min(seg_len, step * res)
+                total_along = accumulated + along
+                if total_along > scan_lookahead:
+                    return True, False, (pose_x, pose_y, -1, "clear")
+                center_x = start_x + cos_y * along
+                center_y = start_y + sin_y * along
+                for lateral in lateral_offsets:
+                    wx = center_x - lateral * sin_y
+                    wy = center_y + lateral * cos_y
+                    mx = int(round((wx - origin_x) / res))
+                    my = int(round((wy - origin_y) / res))
+                    if mx < 0 or my < 0 or mx >= grid_width or my >= grid_height:
                         continue
                     cost = int(grid.data[my * grid_width + mx])
                     if cost >= stop_threshold:

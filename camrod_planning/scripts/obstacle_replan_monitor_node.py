@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trigger a Nav2 global replan when dynamic obstacles persistently block the route."""
+"""Monitor dynamic obstacle blockage on the active path."""
 
 import math
 from dataclasses import dataclass
@@ -37,15 +37,18 @@ class BlockageSample:
 
 
 class ObstacleReplanMonitor(Node):
-    """Monitors dynamic obstacle grids and preempts Nav2 with a fallback planner."""
+    """Monitors dynamic obstacle grids and optionally preempts Nav2."""
 
     def __init__(self) -> None:
         super().__init__("obstacle_replan_monitor")
 
         self._enabled = bool(self.declare_parameter("enabled", True).value)
+        # HH_260702 - Monitor the same active local path used by cmd_vel_gate.
+        # Monitoring only the global route can miss dynamic costs on the path
+        # that the controller/gate is actually evaluating.
         self._path_topic = str(
-            self.declare_parameter("global_path_topic", "/planning/global_path").value
-        ).strip()
+            self.declare_parameter("path_topic", "/planning/local_path").value
+        ).strip() or "/planning/local_path"
         self._goal_topic = str(
             self.declare_parameter("goal_topic", "/planning/goal_pose_snapped_ros").value
         ).strip()
@@ -77,7 +80,14 @@ class ObstacleReplanMonitor(Node):
         ]
 
         self._fallback_planner_id = str(
-            self.declare_parameter("fallback_planner_id", "Smac2D").value
+            self.declare_parameter("fallback_planner_id", "SmacLattice").value
+        ).strip()
+        # HH_260702 - Keep global route geometry stable by default. Dynamic
+        # obstacle blockage is reported for diagnostics/gates, while explicit
+        # fallback preemption is opt-in for controlled experiments.
+        self._preempt_enabled = bool(self.declare_parameter("preempt_enabled", False).value)
+        self._restore_planner_id = str(
+            self.declare_parameter("restore_planner_id", "LaneletRoute").value
         ).strip()
         self._monitor_rate_hz = float(self.declare_parameter("monitor_rate_hz", 5.0).value)
         self._grid_max_age_s = float(self.declare_parameter("grid_max_age_s", 0.75).value)
@@ -175,6 +185,7 @@ class ObstacleReplanMonitor(Node):
             f"enabled={str(self._enabled).lower()} "
             f"grids={','.join(self._dynamic_grid_topics)} "
             f"fallback={self._fallback_planner_id} "
+            f"preempt={str(self._preempt_enabled).lower()} "
             f"lookahead={self._lookahead_m:.1f}m hold={self._block_hold_s:.1f}s"
         )
 
@@ -231,11 +242,12 @@ class ObstacleReplanMonitor(Node):
                         f"source={self._last_blockage_sample.source_topic}"
                     )
                     if blocked_duration >= self._block_hold_s:
-                        if self._last_replan_time is not None:
-                            cooldown = (now_time - self._last_replan_time).nanoseconds / 1.0e9
-                            if cooldown < self._replan_cooldown_s:
-                                return
-                        self._trigger_fallback_replan(self._last_blockage_sample)
+                        self._maybe_trigger_fallback_replan(
+                            self._last_blockage_sample,
+                            now_time,
+                            blocked_duration,
+                            "BLOCKED_HOLD_NO_PREEMPT",
+                        )
                     return
             self._blocked_since = None
             self._last_blocked_sample_time = None
@@ -257,11 +269,12 @@ class ObstacleReplanMonitor(Node):
         )
         if blocked_duration < self._block_hold_s:
             return
-        if self._last_replan_time is not None:
-            cooldown = (now_time - self._last_replan_time).nanoseconds / 1.0e9
-            if cooldown < self._replan_cooldown_s:
-                return
-        self._trigger_fallback_replan(blockage)
+        self._maybe_trigger_fallback_replan(
+            blockage,
+            now_time,
+            blocked_duration,
+            "BLOCKED_NO_PREEMPT",
+        )
 
     def _on_selector_timer(self) -> None:
         if self._selector_override_until is None:
@@ -269,8 +282,30 @@ class ObstacleReplanMonitor(Node):
         now_time = self.get_clock().now()
         if now_time > self._selector_override_until:
             self._selector_override_until = None
+            if self._restore_planner_id:
+                self._publish_planner_selector(self._restore_planner_id)
             return
         self._publish_planner_selector()
+
+    def _maybe_trigger_fallback_replan(
+        self,
+        blockage: BlockageSample,
+        now_time: Time,
+        blocked_duration: float,
+        no_preempt_status: str,
+    ) -> None:
+        if not self._preempt_enabled:
+            self._publish_status(
+                f"{no_preempt_status}: {blocked_duration:.1f}s "
+                f"samples={blockage.blocked_count}/{blockage.total_count} "
+                f"max={blockage.max_cost} source={blockage.source_topic}"
+            )
+            return
+        if self._last_replan_time is not None:
+            cooldown = (now_time - self._last_replan_time).nanoseconds / 1.0e9
+            if cooldown < self._replan_cooldown_s:
+                return
+        self._trigger_fallback_replan(blockage)
 
     def _trigger_fallback_replan(self, blockage: BlockageSample) -> None:
         if self._latest_goal is None:
@@ -285,9 +320,9 @@ class ObstacleReplanMonitor(Node):
 
         self._last_replan_time = now_time
         self._selector_override_until = now_time + Duration(seconds=max(0.2, self._selector_override_s))
-        # HH_260619 - Publish the fallback selector before sending the action so
-        # Nav2 PlannerSelector reads Smac2D for this preempted goal instead of the
-        # normal LaneletRoute latch.
+        # HH_260702 - Publish the fallback selector before sending the action so
+        # Nav2 PlannerSelector reads the opt-in fallback planner for this
+        # preempted goal instead of the normal LaneletRoute latch.
         self._publish_planner_selector()
 
         goal_msg = NavigateToPose.Goal()
@@ -318,9 +353,9 @@ class ObstacleReplanMonitor(Node):
             f"fallback NavigateToPose finished status={int(result.status)}"
         )
 
-    def _publish_planner_selector(self) -> None:
+    def _publish_planner_selector(self, planner_id: Optional[str] = None) -> None:
         msg = String()
-        msg.data = self._fallback_planner_id
+        msg.data = planner_id if planner_id is not None else self._fallback_planner_id
         self._planner_selector_pub.publish(msg)
 
     def _publish_status(self, text: str) -> None:

@@ -26,6 +26,8 @@
                    Without start="{start}", ComputePathToPose silently plans from
                    current TF and draws a short off-center connector near the robot. -->
               <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="{selected_planner}"/>
+              <!-- HH_260702 - Prefer curvature-aware fallback before 2D grid fallback. -->
+              <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="SmacLattice"/>
               <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="Smac2D"/>
               <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="NavFn"/>
             </Fallback>

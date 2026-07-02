@@ -17,6 +17,10 @@ def generate_launch_description():
             name='nav2_lifecycle_startup_retry',
             namespace=LaunchConfiguration('module_namespace'),
             output='screen',
+            # HH_260702 - Keep the retry watchdog alive when it is enabled;
+            # it is the fallback path for Nav2 startup/lifecycle races.
+            respawn=True,
+            respawn_delay=2.0,
             condition=IfCondition(PythonExpression([
                 "('", LaunchConfiguration('enable_nav2_lifecycle_retry'), "' in ['true', 'True', '1']) or "
                 "('", LaunchConfiguration('require_localization_ready'), "' in ['true', 'True', '1'])"

@@ -40,22 +40,9 @@ public:
     // HH_260316-00:00 Default to lanelet-snapped pose to keep local path aligned to centerline.
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/planning/lanelet_pose");
     output_topic_ = declare_parameter<std::string>("output_topic", "/planning/local_path");
-    // Local path source policy:
-    // - "controller_then_slice": use controller local plan first, fallback to global slice.
-    // - "controller_only": publish only controller local plan.
-    // - "slice_only" (default): always publish a map-fixed global-path slice.
-    local_path_source_ = declare_parameter<std::string>(
-      "local_path_source", "slice_only");
-    controller_path_topic_ = declare_parameter<std::string>(
-      "controller_path_topic", "/planning/local_path_controller");
-    controller_path_timeout_s_ = declare_parameter<double>("controller_path_timeout_s", 0.8);
-    // HH_260618: A newly clicked goal must immediately drive /planning/local_path
-    // from the latest global path slice. Otherwise a still-fresh controller path
-    // from the previous goal can keep route-heading alignment facing the old route.
-    controller_path_reset_on_global_path_change_ =
-      declare_parameter<bool>("controller_path_reset_on_global_path_change", true);
-    controller_path_reset_hold_s_ =
-      declare_parameter<double>("controller_path_reset_hold_s", 0.4);
+    // HH_260702 - /planning/local_path is always a map-fixed global-path slice.
+    // Controller debug paths are intentionally not consumed here because they can
+    // be stale or robot-frame relative while the global route has already changed.
     publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
     planning_status_topic_ =
       declare_parameter<std::string>("planning_status_topic", "/planning/status");
@@ -88,6 +75,10 @@ public:
     empty_republish_period_s_ = declare_parameter<double>("empty_republish_period_s", 0.5);
     // HH_260305-00:00 Clear stale local-path consumers immediately when inputs go invalid.
     publish_empty_on_invalid_ = declare_parameter<bool>("publish_empty_on_invalid", true);
+    // HH_260702 - Force a one-shot empty path on route changes so RViz and
+    // downstream consumers do not keep rendering the previous goal's local path.
+    clear_local_path_on_route_change_ =
+      declare_parameter<bool>("clear_local_path_on_route_change", true);
     // HH_260513: Moving-average window applied to local path XY before publishing.
     // Reduces high-frequency jitter from the global planner without shifting path centerline.
     // 0 or 1 disables smoothing. Odd values (3, 5, 7) recommended.
@@ -116,9 +107,6 @@ public:
     sub_pose_ = create_subscription<avg_msgs::msg::PoseStamped>(
       pose_topic_, pose_qos,
       std::bind(&LocalPathExtractorNode::onPose, this, std::placeholders::_1));
-    sub_controller_path_ = create_subscription<avg_msgs::msg::Path>(
-      controller_path_topic_, rclcpp::QoS(1).reliable(),
-      std::bind(&LocalPathExtractorNode::onControllerPath, this, std::placeholders::_1));
     pub_local_path_ = create_publisher<avg_msgs::msg::Path>(output_topic_, local_path_qos);
     if (publish_planning_status_) {
       pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
@@ -134,14 +122,12 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "local_path_extractor: source=%s global=%s fallback=%s pose=%s controller=%s output=%s frame=%s lookahead=%.1fm lookbehind=%.1fm controller_reset=%s hold=%.2fs",
-      local_path_source_.c_str(), global_path_topic_.c_str(),
+      "local_path_extractor: global=%s fallback=%s pose=%s output=%s frame=%s lookahead=%.1fm lookbehind=%.1fm",
+      global_path_topic_.c_str(),
       fallback_global_path_topic_.empty() ? "<disabled>" : fallback_global_path_topic_.c_str(),
       pose_topic_.c_str(),
-      controller_path_topic_.c_str(), output_topic_.c_str(), frame_id_.c_str(),
-      lookahead_distance_m_, lookbehind_distance_m_,
-      controller_path_reset_on_global_path_change_ ? "true" : "false",
-      controller_path_reset_hold_s_);
+      output_topic_.c_str(), frame_id_.c_str(),
+      lookahead_distance_m_, lookbehind_distance_m_);
   }
 
 private:
@@ -248,8 +234,6 @@ private:
         return;
       }
       has_global_path_ = false;
-      has_controller_path_ = false;
-      latest_controller_path_.poses.clear();
       publishEmptyPath();
       return;
     }
@@ -281,19 +265,8 @@ private:
     if (preferred_source) {
       last_preferred_path_rx_ = rx_time;
     }
-    if (route_changed && controller_path_reset_on_global_path_change_) {
-      // HH_260629: Reset controller debug-path cache on new routes. The default
-      // local path source stays slice_only so RViz/control guards see a map-fixed
-      // route segment rather than a robot-frame plan attached to the vehicle.
-      has_controller_path_ = false;
-      latest_controller_path_.poses.clear();
-      last_controller_path_rx_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
-      const double hold_s = std::max(0.0, controller_path_reset_hold_s_);
-      controller_path_ignore_until_ = rx_time + rclcpp::Duration::from_seconds(hold_s);
-      RCLCPP_INFO(
-        get_logger(),
-        "local_path_extractor: reset controller path for new %s route; hold=%.2fs",
-        preferred_source ? "smoothed" : "fallback", hold_s);
+    if (route_changed && clear_local_path_on_route_change_) {
+      publishEmptyPath(true);
     }
     // HH_260306-00:00 Any valid new global path re-enables local path publishing.
     route_completed_latched_ = false;
@@ -325,159 +298,6 @@ private:
     if (publish_on_input_update_ && has_global_path_) {
       onTimer();
     }
-  }
-
-  // Handles the `onControllerPath` callback.
-  void onControllerPath(const avg_msgs::msg::Path::ConstSharedPtr msg)
-  {
-    if (!msg || msg->poses.empty()) {
-      return;
-    }
-    const auto now_time = now();
-    if (
-      controller_path_reset_on_global_path_change_ &&
-      controller_path_ignore_until_.nanoseconds() > 0 &&
-      now_time < controller_path_ignore_until_)
-    {
-      return;
-    }
-    latest_controller_path_ = *msg;
-    has_controller_path_ = true;
-    last_controller_path_rx_ = now_time;
-    if (publish_on_input_update_ && has_pose_ && has_global_path_) {
-      onTimer();
-    }
-  }
-
-  // Implements `transformControllerPathToMap` behavior.
-  bool transformControllerPathToMap(avg_msgs::msg::Path & out) const
-  {
-    if (!has_controller_path_ || latest_controller_path_.poses.size() < 2) {
-      return false;
-    }
-    if (
-      controller_path_reset_on_global_path_change_ &&
-      controller_path_ignore_until_.nanoseconds() > 0 &&
-      now() < controller_path_ignore_until_)
-    {
-      return false;
-    }
-    if (controller_path_timeout_s_ > 0.0 && last_controller_path_rx_.nanoseconds() > 0) {
-      const double dt = (now() - last_controller_path_rx_).seconds();
-      if (dt > controller_path_timeout_s_) {
-        return false;
-      }
-    }
-
-    const std::string target_frame = global_path_.header.frame_id.empty()
-      ? frame_id_ : global_path_.header.frame_id;
-    std::string source_frame = latest_controller_path_.header.frame_id;
-    if (source_frame.empty()) {
-      source_frame = target_frame;
-    }
-
-    out = latest_controller_path_;
-    out.header.stamp = now();
-    out.header.frame_id = target_frame;
-
-    if (source_frame == target_frame) {
-      return out.poses.size() >= 2;
-    }
-
-    if (!has_pose_) {
-      return false;
-    }
-    std::string pose_frame = latest_pose_.header.frame_id;
-    if (pose_frame.empty()) {
-      pose_frame = target_frame;
-    }
-
-    // Controller debug plans are often emitted in robot frame.
-    // Convert them to map by applying current lanelet pose transform.
-    const bool is_robot_frame =
-      source_frame == "robot_base_link";
-    if (!is_robot_frame || pose_frame != target_frame) {
-      return false;
-    }
-
-    const double base_x = latest_pose_.pose.position.x;
-    const double base_y = latest_pose_.pose.position.y;
-    const double base_z = latest_pose_.pose.position.z;
-    const double base_yaw = yawFromQuaternion(latest_pose_.pose.orientation);
-    const double c = std::cos(base_yaw);
-    const double s = std::sin(base_yaw);
-
-    for (auto & ps : out.poses) {
-      const double lx = ps.pose.position.x;
-      const double ly = ps.pose.position.y;
-      const double lz = ps.pose.position.z;
-      ps.pose.position.x = base_x + c * lx - s * ly;
-      ps.pose.position.y = base_y + s * lx + c * ly;
-      ps.pose.position.z = base_z + lz;
-      const double local_yaw = yawFromQuaternion(ps.pose.orientation);
-      ps.pose.orientation = quatFromYaw(base_yaw + local_yaw);
-      if (ps.header.frame_id.empty()) {
-        ps.header.frame_id = target_frame;
-      } else {
-        ps.header.frame_id = target_frame;
-      }
-    }
-    return out.poses.size() >= 2;
-  }
-
-  // Implements `closestGlobalIndexForPoint` behavior.
-  size_t closestGlobalIndexForPoint(const avg_msgs::msg::Point & p) const
-  {
-    if (global_path_.poses.empty()) {
-      return 0;
-    }
-    size_t best_idx = 0;
-    double best_d2 = std::numeric_limits<double>::infinity();
-    for (size_t i = 0; i < global_path_.poses.size(); ++i) {
-      const double d2 = dist2(global_path_.poses[i].pose.position, p);
-      if (d2 < best_d2) {
-        best_d2 = d2;
-        best_idx = i;
-      }
-    }
-    return best_idx;
-  }
-
-  // Implements `enforceControllerPathDirection` behavior.
-  void enforceControllerPathDirection(avg_msgs::msg::Path & path)
-  {
-    if (!has_pose_ || global_path_.poses.size() < 2 || path.poses.size() < 2) {
-      return;
-    }
-
-    const auto & robot_pos = latest_pose_.pose.position;
-    const auto & first_pos = path.poses.front().pose.position;
-    const auto & last_pos = path.poses.back().pose.position;
-    const double d_first = std::hypot(first_pos.x - robot_pos.x, first_pos.y - robot_pos.y);
-    const double d_last = std::hypot(last_pos.x - robot_pos.x, last_pos.y - robot_pos.y);
-
-    const size_t first_idx = closestGlobalIndexForPoint(first_pos);
-    const size_t last_idx = closestGlobalIndexForPoint(last_pos);
-
-    const bool reversed_by_index = (last_idx + 2U) < first_idx;
-    const bool reversed_by_robot_distance = (d_last + 0.7) < d_first;
-    if (!reversed_by_index && !reversed_by_robot_distance) {
-      return;
-    }
-
-    std::reverse(path.poses.begin(), path.poses.end());
-    for (size_t i = 0; i + 1 < path.poses.size(); ++i) {
-      const auto & a = path.poses[i].pose.position;
-      const auto & b = path.poses[i + 1].pose.position;
-      path.poses[i].pose.orientation = quatFromYaw(std::atan2(b.y - a.y, b.x - a.x));
-    }
-    if (path.poses.size() >= 2) {
-      path.poses.back().pose.orientation = path.poses[path.poses.size() - 2].pose.orientation;
-    }
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 2000,
-      "HH_260331: local controller path direction corrected (first_idx=%zu last_idx=%zu d_first=%.2f d_last=%.2f)",
-      first_idx, last_idx, d_first, d_last);
   }
 
   // Implements `findBestIndexInRange` behavior.
@@ -616,43 +436,6 @@ private:
       return;
     }
 
-    const bool allow_controller =
-      local_path_source_ == "controller_then_slice" || local_path_source_ == "controller_only";
-    if (allow_controller) {
-      avg_msgs::msg::Path controller_local;
-      if (transformControllerPathToMap(controller_local)) {
-        // Keep local path continuous by cutting discontinuous jumps.
-        avg_msgs::msg::Path out = controller_local;
-        avg_msgs::msg::Path filtered;
-        filtered.header = out.header;
-        filtered.poses.reserve(out.poses.size());
-        filtered.poses.push_back(out.poses.front());
-        for (size_t i = 1; i < out.poses.size(); ++i) {
-          const double ds = segmentLen2D(out.poses[i - 1], out.poses[i]);
-          if (max_segment_jump_m_ > 0.0 && ds > max_segment_jump_m_) {
-            RCLCPP_WARN_THROTTLE(
-              get_logger(), *get_clock(), 2000,
-              "local_path_extractor(controller): discontinuity detected (%.2fm > %.2fm), truncating local path",
-              ds, max_segment_jump_m_);
-            break;
-          }
-          filtered.poses.push_back(out.poses[i]);
-        }
-        if (filtered.poses.size() >= 2) {
-          enforceControllerPathDirection(filtered);
-          smoothPath(filtered);
-          pub_local_path_->publish(filtered);
-          publishAvgPlanning(filtered, false);
-          last_output_empty_ = false;
-          last_empty_publish_time_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
-          return;
-        }
-      }
-      if (local_path_source_ == "controller_only") {
-        publishEmptyPath();
-        return;
-      }
-    }
     if (
       !latest_pose_.header.frame_id.empty() &&
       !global_path_.header.frame_id.empty() &&
@@ -775,14 +558,14 @@ private:
   }
 
   // Publishes `EmptyPath` output.
-  void publishEmptyPath()
+  void publishEmptyPath(bool force = false)
   {
-    if (!publish_empty_on_invalid_) {
+    if (!force && !publish_empty_on_invalid_) {
       return;
     }
     const auto stamp = now();
     if (
-      last_output_empty_ && empty_republish_period_s_ > 0.0 &&
+      !force && last_output_empty_ && empty_republish_period_s_ > 0.0 &&
       last_empty_publish_time_.nanoseconds() > 0 &&
       (stamp - last_empty_publish_time_).seconds() < empty_republish_period_s_)
     {
@@ -820,8 +603,6 @@ private:
   std::string fallback_global_path_topic_;
   std::string pose_topic_;
   std::string output_topic_;
-  std::string local_path_source_;
-  std::string controller_path_topic_;
   std::string planning_status_topic_;
   double publish_rate_hz_{15.0};
   bool publish_on_input_update_{true};
@@ -839,34 +620,27 @@ private:
   int goal_reached_index_margin_{2};
   double pose_timeout_s_{1.0};
   double empty_republish_period_s_{0.5};
-  double controller_path_timeout_s_{0.8};
-  bool controller_path_reset_on_global_path_change_{true};
-  double controller_path_reset_hold_s_{0.4};
   double preferred_path_hold_s_{1.0};
   bool publish_empty_on_invalid_{true};
+  bool clear_local_path_on_route_change_{true};
   bool global_path_qos_transient_local_{false};
 
   bool has_pose_{false};
   bool has_global_path_{false};
   avg_msgs::msg::PoseStamped latest_pose_;
   avg_msgs::msg::Path global_path_;
-  avg_msgs::msg::Path latest_controller_path_;
   size_t last_closest_idx_{0};
   bool force_full_reacquire_{true};
   bool route_completed_latched_{false};
-  bool has_controller_path_{false};
   bool last_output_empty_{true};
   bool global_path_from_preferred_{false};
   rclcpp::Time last_pose_rx_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_preferred_path_rx_{0, 0, RCL_ROS_TIME};
-  rclcpp::Time last_controller_path_rx_{0, 0, RCL_ROS_TIME};
-  rclcpp::Time controller_path_ignore_until_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_empty_publish_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_pose_;
   rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr sub_global_path_;
   rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr sub_fallback_global_path_;
-  rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr sub_controller_path_;
   rclcpp::Publisher<avg_msgs::msg::Path>::SharedPtr pub_local_path_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::TimerBase::SharedPtr timer_;

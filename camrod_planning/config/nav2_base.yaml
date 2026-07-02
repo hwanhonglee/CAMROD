@@ -14,7 +14,7 @@ planner_server:
     # Match practical planner throughput under full real-sensor load.
     expected_planner_frequency: 0.5
     # Prevent planner action hang when costmap current-state is delayed.
-    # 0.0 = wait forever (legacy), >0 = timeout seconds.
+    # 0.0 = wait forever, >0 = timeout seconds.
     # Give global costmap more settle time before timeout warning.
     # Allow extra settle time for layered global costmap current-state.
     # HH_260528: Reduce costmap wait to improve plan response latency.
@@ -366,7 +366,7 @@ global_costmap:
       update_frequency: 1.0
       publish_frequency: 0.5
       # Keep planner global costmap centered on robot to prevent
-      # startup failures when localization origin drifts from legacy fixed bounds.
+      # startup failures when localization origin drifts from fixed map bounds.
       rolling_window: True
       # Match global rolling window to lanelet cost grid source window.
       # Reason: keep planner solve horizon bounded for responsive ComputePath results.

@@ -11,9 +11,10 @@ ROS2 없이 실행 가능 (rclpy, tf2_ros 등 stub 처리).
   5. unavoidable cluster 감지 — lethal 셀 집단이 코리더의 25% 이상이면 정지
   6. GNSS recovery hold — DR_ONLY → NORMAL 전환 시 gnss_recovery_hold_s 동안 cmd_vel 차단
   7. recovery hold 만료 — hold_s 경과 후 _effective_enabled() = True
-  8. e-stop 상태에서 cmd_vel 차단
-  9. engage = False 상태에서 cmd_vel 차단
- 10. cost_stop_hold 만료 후 통과 재개
+	 8. e-stop 상태에서 cmd_vel 차단
+	 9. engage = False 상태에서 cmd_vel 차단
+	 10. cost_stop_hold 만료 후 통과 재개
+	 15. 회피 local path corridor가 clear면 body-front 장애물 cost 통과
 
 === 동작 원리 ===
 
@@ -314,6 +315,9 @@ def make_gate(
     n._cost_source_recv_sec = {}
     n.cost_stop_require_dynamic_source = False
     n.cost_stop_dynamic_source_labels = {"lidar", "radar"}
+    n.front_dynamic_stop_use_local_path = True
+    n.front_dynamic_path_width_m = n.cost_stop_width_m
+    n.front_dynamic_path_max_start_distance_m = 1.5
     n.lateral_cmd_bypass_static_cost_stop = True
     n.lateral_cmd_bypass_min_mps = 0.02
     n.reverse_cmd_bypass_static_cost_stop = True
@@ -367,6 +371,7 @@ def make_gate(
     n._last_site_static_phase_bypass_log_sec = 0.0
     n._last_lateral_static_bypass_log_sec = 0.0
     n._last_static_cost_ignored_log_sec = 0.0
+    n._last_front_path_dynamic_clear_log_sec = 0.0
     n._last_block_reason_log_sec = 0.0
     n._parking_drop_zone_phase = ""
     n._parking_site_phase = ""
@@ -760,6 +765,31 @@ n._cost_source_grids = {"radar": n._last_grid}
 n._cost_source_recv_sec = {"radar": 0.0}
 rear_stop_during_reverse = n._should_stop_for_cost(reverse)
 check("reverse 중 rear 장애물 → 정지", rear_stop_during_reverse)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+print("\n=== TEST 15: 회피 local path가 clear면 body-front 장애물 cost 통과 ===")
+print("  정면 장애물이 있어도 local path corridor가 우회하면 cmd_vel gate 통과")
+n = make_gate(enable_side_rear=True)
+n._enabled = True
+n._last_odom = make_odom(x=0.0, y=0.0, yaw=0.0)
+forward = Twist(); forward.linear.x = 0.2
+n._last_route_heading_path = make_path([(0.0, 0.0), (0.5, 0.8), (2.0, 0.8)])
+n._last_grid = make_grid(obstacle_x=1.0, obstacle_y=0.0, obstacle_cost=90)
+n._cost_source_grids = {"lidar": n._last_grid}
+n._cost_source_recv_sec = {"lidar": 0.0}
+avoid_path_clear = n._should_stop_for_cost(forward)
+check("local path 우회 corridor clear → body-front obstacle 통과", not avoid_path_clear)
+
+n = make_gate(enable_side_rear=True)
+n._enabled = True
+n._last_odom = make_odom(x=0.0, y=0.0, yaw=0.0)
+n._last_route_heading_path = make_path([(0.0, 0.0), (2.0, 0.0)])
+n._last_grid = make_grid(obstacle_x=1.0, obstacle_y=0.0, obstacle_cost=90)
+n._cost_source_grids = {"lidar": n._last_grid}
+n._cost_source_recv_sec = {"lidar": 0.0}
+path_blocked = n._should_stop_for_cost(forward)
+check("local path corridor 위 장애물 → 정지", path_blocked)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

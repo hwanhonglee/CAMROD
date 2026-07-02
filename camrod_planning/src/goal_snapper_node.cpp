@@ -104,7 +104,7 @@ public:
     auxiliary_input_goal_topic_ =
       declare_parameter<std::string>("auxiliary_input_goal_topic", "");
     output_goal_topic_ = declare_parameter<std::string>("output_goal_topic", "/planning/goal_pose");
-    // HH_260317 Publish ROS-native snapped goal for Nav2 topic compatibility.
+    // HH_260317 Publish ROS-native snapped goal for Nav2 consumers.
     output_goal_topic_ros_ = declare_parameter<std::string>(
       "output_goal_topic_ros", "/planning/goal_pose_snapped_ros");
     publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);

@@ -86,6 +86,27 @@
       - "planning_nav_status_checker: /planning/nav_status"
       - "planning_path_checker: /planning/path/global_path"
       - "planning_path_checker: /planning/path/local_path"
+    # HH_260702 - Diagnostic names can vary slightly by namespace/install path.
+    # These prefixes keep non-motion-critical monitors visible in /system/status
+    # without letting them hold planning ERROR_STOP.
+    state_status_ignored_prefixes:
+      - "hw_checker:"
+      - "gpu_checker:"
+      - "network_checker:"
+      - "localization_init_checker:"
+      - "planning_costmap_checker:"
+      - "planning_nav_status_checker:"
+      - "planning_path_checker:"
+      - "planning_state_checker:"
+      - "planning/state_machine"
+      # HH_260702 - Keep slow sensor/map/perception health visible in
+      # /system/status, but do not turn every rate warning into planning estop.
+      # Live cost grids and command gates remain the motion-safety authority.
+      - "map_cost_grid_checker:"
+      - "perception_obstacle_checker:"
+      - "lidar_checker:"
+      - "radar_checker:"
+      - "cost_grid_checker:"
 
     # When true: arriving at a camping_site_* key starts a dwell timer; after
     # goal_reached_dwell_s the robot auto-returns to return_mission_key.
