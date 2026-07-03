@@ -23,6 +23,12 @@ policy. Planning soft-estop is owned by the planning state machine; map,
 perception, LiDAR, radar, and hardware load entries are surfaced through
 `/system/status` and `/system/msgs` so UI/field operators can see what is
 degraded without every transient diagnostic forcing a route abort.
+HH_260703 - Motion-critical stopping moved closer to the actuator path: the
+planning cmd_vel gate now owns stale inflation-grid fail-closed behavior and
+dynamic LiDAR/Radar stop latching. Camera FPS, raw Vanjee NaN placeholders,
+costmap freshness dips, and other selected non-motion diagnostics remain visible
+in `/system/status`, but planning state-machine auto-estop ignores those checker
+names/prefixes by default.
 
 > **Non-goals:** Reports health status only — does **not** enforce safety actions (e-stop, speed reduction, disengagement). Does not contain autonomous decision logic; consumers (e.g., `camrod_ui`) decide what to do with the health data. Does not check `camrod_docking` yet (TODO: docking checker category).
 
@@ -161,6 +167,7 @@ planning:
 | Graph manifest | `config/system_checker.yaml` | Real-hardware required nodes, topic names, ROS types, and minimum publisher counts | `/planning/cmd_vel|geometry_msgs/msg/Twist|1` |
 | Sim graph manifest | `config/system_checker_sim.yaml` | Fake-sensor sim graph; public topic contracts remain, hardware driver nodes are omitted | `/bringup/fake_sensor_publisher`, `/sensing/lidar/points_filtered` |
 | Default diagnostics | `config/diagnostics/default/` | Real hardware runtime rates and data-quality thresholds | real IMU 100 Hz, camera streams 10 fps, LiDAR obstacle cloud 6 Hz, LiDAR/radar cost grids 10 Hz; HH_260702 - lanelet map-cost and perception thresholds are tolerant of multi-second rebuilds/high CPU and remain diagnostic signals rather than direct motion stops |
+| Planning auto-estop policy | `camrod_planning/config/planning_state_machine.yaml` | Converts aggregated diagnostics into `WARN_RECOVERY` / `ERROR_STOP` while excluding selected non-motion-critical checkers | HH_260703 - raw LiDAR placeholders, camera FPS dips, planning costmap stale/rate dips, and map/perception monitor transients stay visible without forcing every transient into `ERROR_STOP` |
 | Sim diagnostics | `config/diagnostics/sim/` | `sim:=true` fake-sensor rates and intentionally absent hardware drivers | sim IMU 10 Hz, wheel odom 20 Hz, perception/fake obstacle topics |
 | Aggregation | `aggregator/*.yaml` | Diagnostic tree grouping and stale reporter timeout | `/system/diagnostics_agg` for UI readiness |
 

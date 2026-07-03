@@ -24,6 +24,9 @@
 # - install synchronized bringup/package configs and README updates together;
 # - leave sim/manual/obstacle/camping/drop-zone validation to
 #   camrod_bringup/scripts/sim_validation_runner.py after launch.
+# HH_260703: use this wrapper after config-only field safety changes too; the
+# install tree must receive cmd_vel gate, diagnostics, GNSS, and README updates
+# before outdoor validation.
 
 set -euo pipefail
 
