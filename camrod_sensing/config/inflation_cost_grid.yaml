@@ -18,7 +18,8 @@
 
     # Cost model
     free_value: 0
-    # HH_260422: Clears robot footprint so planner start cell is never lethal.
+    # HH_260703 - Static guide costs are cleared inside the footprint, but live
+    # LiDAR/Radar costs stay visible so side/rear safety stops are not erased.
     ego_clear_radius_m: 0.50
 
     # Runtime
