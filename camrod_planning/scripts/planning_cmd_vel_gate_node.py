@@ -211,6 +211,30 @@ class PlanningCmdVelGateNode(Node):
         self.cost_stop_hold_s = float(
             self.declare_parameter("cost_stop_hold_s", 1.0).value
         )
+        # HH_260703: Dynamic obstacle stops must remain latched until sensors
+        # report a continuous clear window; this prevents stop/go oscillation
+        # when lidar/radar cost cells briefly flicker below threshold.
+        self.cost_stop_latch_enable = bool(
+            self.declare_parameter("cost_stop_latch_enable", True).value
+        )
+        self.cost_stop_clear_required_s = float(
+            self.declare_parameter("cost_stop_clear_required_s", 2.0).value
+        )
+        self.cost_stop_latch_log_interval_s = float(
+            self.declare_parameter("cost_stop_latch_log_interval_s", 1.0).value
+        )
+        # HH_260703 - Missing/stale merged cost grid is a fail-safe motion stop.
+        # Diagnostics reports the fault, but cmd_vel safety should not wait for
+        # state-machine e-stop propagation.
+        self.cost_grid_stale_stop_enable = bool(
+            self.declare_parameter("cost_grid_stale_stop_enable", True).value
+        )
+        self.cost_grid_stale_timeout_s = float(
+            self.declare_parameter("cost_grid_stale_timeout_s", 1.0).value
+        )
+        self.cost_grid_stale_log_interval_s = float(
+            self.declare_parameter("cost_grid_stale_log_interval_s", 1.0).value
+        )
         # HH_260618: Hard lanelet safety uses the raw lanelet grid before
         # inflation ego-clear. The merged inflation grid intentionally clears
         # the robot footprint, so it cannot be the only source that decides
@@ -572,6 +596,11 @@ class PlanningCmdVelGateNode(Node):
         # HH_260422: _cost_blocked_until is the monotonic timestamp until which cost-stop keeps the gate closed.
         #   Gate remains blocked while time.monotonic() < _cost_blocked_until (cost_stop_hold_s duration).
         self._cost_blocked_until = 0.0
+        self._cost_stop_latched = False
+        self._cost_stop_clear_since_sec: float | None = None
+        self._cost_stop_latch_reason = ""
+        self._last_cost_stop_latch_log_sec = 0.0
+        self._last_cost_grid_stale_log_sec = 0.0
         # HH_260427: Recovery hold timestamp after DR_ONLY -> NORMAL transition.
         self._gnss_recovery_blocked_until = 0.0
         self._gnss_recovery_source_enter_sec: float | None = None
@@ -599,6 +628,7 @@ class PlanningCmdVelGateNode(Node):
 
         # HH_260422: Single merged cost grid (LiDAR + Radar) used for all directional checks.
         self._last_grid = None
+        self._last_grid_recv_sec: float | None = None
         self._last_lanelet_safety_grid = None
         self._last_pose = None
         self._last_odom = None
@@ -779,6 +809,10 @@ class PlanningCmdVelGateNode(Node):
             f"dynamic_cost_stop={'true' if self.cost_stop_require_dynamic_source else 'false'} "
             f"dynamic_sources={sorted(self.cost_stop_dynamic_source_labels)} "
             f"side_rear={'true' if self.enable_side_rear_cost_stop else 'false'} "
+            f"cost_stop_latch={'true' if self.cost_stop_latch_enable else 'false'} "
+            f"clear_required={self.cost_stop_clear_required_s:.2f}s "
+            f"cost_grid_stale_stop={'true' if self.cost_grid_stale_stop_enable else 'false'} "
+            f"stale_timeout={self.cost_grid_stale_timeout_s:.2f}s "
             f"lateral_static_bypass={'true' if self.lateral_cmd_bypass_static_cost_stop else 'false'} "
             f"reverse_static_bypass={'true' if self.reverse_cmd_bypass_static_cost_stop else 'false'} "
             f"site_static_phases={sorted(self.parking_site_static_bypass_phases)} "
@@ -798,6 +832,22 @@ class PlanningCmdVelGateNode(Node):
                 self.cost_stop_threshold = int(p.value)
             elif p.name == "cost_stop_hold_s":
                 self.cost_stop_hold_s = float(p.value)
+            elif p.name == "cost_stop_latch_enable":
+                self.cost_stop_latch_enable = bool(p.value)
+                if not self.cost_stop_latch_enable:
+                    self._cost_stop_latched = False
+                    self._cost_stop_clear_since_sec = None
+                    self._cost_stop_latch_reason = ""
+            elif p.name == "cost_stop_clear_required_s":
+                self.cost_stop_clear_required_s = float(p.value)
+            elif p.name == "cost_stop_latch_log_interval_s":
+                self.cost_stop_latch_log_interval_s = float(p.value)
+            elif p.name == "cost_grid_stale_stop_enable":
+                self.cost_grid_stale_stop_enable = bool(p.value)
+            elif p.name == "cost_grid_stale_timeout_s":
+                self.cost_grid_stale_timeout_s = float(p.value)
+            elif p.name == "cost_grid_stale_log_interval_s":
+                self.cost_grid_stale_log_interval_s = float(p.value)
             elif p.name == "cost_stop_lookahead_m":
                 self.cost_stop_lookahead_m = float(p.value)
             elif p.name == "cost_stop_width_m":
@@ -1078,8 +1128,18 @@ class PlanningCmdVelGateNode(Node):
             reasons.append("estop=True")
         if self._dr_timeout:
             reasons.append("dr_timeout=True")
-        if self._cost_blocked_until > now_ns * 1e-9:
-            reasons.append(f"cost_hold({self._cost_blocked_until - now_ns * 1e-9:.1f}s left)")
+        now_sec = now_ns * 1e-9
+        if self._cost_stop_latched:
+            clear_elapsed = 0.0
+            if self._cost_stop_clear_since_sec is not None:
+                clear_elapsed = max(0.0, now_sec - self._cost_stop_clear_since_sec)
+            reasons.append(
+                "cost_latch("
+                f"clear={clear_elapsed:.1f}/{max(0.0, self.cost_stop_clear_required_s):.1f}s"
+                ")"
+            )
+        elif self._cost_blocked_until > now_sec:
+            reasons.append(f"cost_hold({self._cost_blocked_until - now_sec:.1f}s left)")
         if self._gnss_recovery_blocked_until > now_ns * 1e-9:
             reasons.append(f"gnss_recovery_hold({self._gnss_recovery_blocked_until - now_ns * 1e-9:.1f}s left)")
         self.get_logger().warn(
@@ -1249,6 +1309,7 @@ class PlanningCmdVelGateNode(Node):
     # Stores latest merged near_cost_grid (all directions).
     def _on_cost_grid(self, msg: OccupancyGrid) -> None:
         self._last_grid = msg
+        self._last_grid_recv_sec = self.get_clock().now().nanoseconds * 1e-9
 
     # HH_260618: Stores raw lanelet safety grid before inflation ego-clear.
     def _on_lanelet_safety_grid(self, msg: OccupancyGrid) -> None:
@@ -1348,10 +1409,108 @@ class PlanningCmdVelGateNode(Node):
 
         return corridors
 
+    # HH_260703: Latch dynamic cost-stop blocks until the obstacle corridor has
+    # been continuously clear. Static lanelet safety can still use short holds.
+    def _mark_cost_stop_blocked(
+        self,
+        now_sec: float,
+        reason: str,
+        *,
+        latch: bool = True,
+    ) -> None:
+        self._cost_blocked_until = max(
+            self._cost_blocked_until,
+            now_sec + max(0.0, float(self.cost_stop_hold_s)),
+        )
+        if not (latch and self.cost_stop_latch_enable):
+            return
+        self._cost_stop_latched = True
+        self._cost_stop_clear_since_sec = None
+        self._cost_stop_latch_reason = reason
+
+    def _cost_stop_latch_blocks(self, now_sec: float) -> bool:
+        if not self._cost_stop_latched:
+            return False
+        if not self.cost_stop_latch_enable:
+            self._cost_stop_latched = False
+            self._cost_stop_clear_since_sec = None
+            self._cost_stop_latch_reason = ""
+            return False
+
+        required_s = max(0.0, float(self.cost_stop_clear_required_s))
+        if required_s <= 0.0:
+            self._cost_stop_latched = False
+            self._cost_stop_clear_since_sec = None
+            self._cost_stop_latch_reason = ""
+            return False
+
+        if self._cost_stop_clear_since_sec is None:
+            self._cost_stop_clear_since_sec = now_sec
+
+        clear_elapsed = max(0.0, now_sec - self._cost_stop_clear_since_sec)
+        if clear_elapsed >= required_s:
+            reason = self._cost_stop_latch_reason or "dynamic_obstacle"
+            self._cost_stop_latched = False
+            self._cost_stop_clear_since_sec = None
+            self._cost_stop_latch_reason = ""
+            self.get_logger().info(
+                f"cost-stop latch released: clear={clear_elapsed:.2f}s "
+                f"required={required_s:.2f}s previous={reason}"
+            )
+            return False
+
+        self._cost_blocked_until = max(
+            self._cost_blocked_until,
+            now_sec + max(0.0, float(self.cost_stop_hold_s)),
+        )
+        log_interval_s = max(0.0, float(self.cost_stop_latch_log_interval_s))
+        if log_interval_s <= 0.0 or (
+            now_sec - self._last_cost_stop_latch_log_sec
+        ) >= log_interval_s:
+            self._last_cost_stop_latch_log_sec = now_sec
+            reason = self._cost_stop_latch_reason or "dynamic_obstacle"
+            self.get_logger().warn(
+                f"cost-stop latched: waiting_clear={clear_elapsed:.2f}/"
+                f"{required_s:.2f}s previous={reason}"
+        )
+        return True
+
+    def _cost_grid_stale_blocks(self, now_sec: float) -> bool:
+        if not self.cost_grid_stale_stop_enable:
+            return False
+        timeout_s = max(0.0, float(self.cost_grid_stale_timeout_s))
+        if timeout_s <= 0.0:
+            return False
+
+        reason = ""
+        grid = self._last_grid
+        if grid is None or not grid.data or grid.info.resolution <= 0.0:
+            reason = "no valid merged cost grid"
+        elif self._last_grid_recv_sec is None:
+            reason = "merged cost grid timestamp missing"
+        else:
+            age_s = max(0.0, now_sec - self._last_grid_recv_sec)
+            if age_s <= timeout_s:
+                return False
+            reason = (
+                f"merged cost grid stale age={age_s:.2f}s "
+                f"timeout={timeout_s:.2f}s"
+            )
+
+        self._mark_cost_stop_blocked(now_sec, reason, latch=False)
+        log_interval_s = max(0.1, float(self.cost_grid_stale_log_interval_s))
+        if (now_sec - self._last_cost_grid_stale_log_sec) >= log_interval_s:
+            self._last_cost_grid_stale_log_sec = now_sec
+            self.get_logger().warn(f"cmd_vel blocked: {reason}")
+        return True
+
     # Checks all directional corridors and triggers stop when any is blocked.
     def _should_stop_for_cost(self, cmd_in: Twist | None = None) -> bool:
         now_ns = self.get_clock().now().nanoseconds
         now_sec = now_ns * 1e-9
+
+        if self._cost_grid_stale_blocks(now_sec):
+            return True
 
         # HH_260618: Allow pure in-place rotation to re-align with the latest
         # route even when the current cell is near a lanelet boundary. Any
@@ -1363,7 +1522,7 @@ class PlanningCmdVelGateNode(Node):
         ):
             if self._should_stop_for_rotation_dynamic_obstacle(now_sec):
                 return True
-            return False
+            return self._cost_stop_latch_blocks(now_sec)
 
         if self._should_stop_for_lanelet_safety(cmd_in, now_sec):
             return True
@@ -1372,14 +1531,14 @@ class PlanningCmdVelGateNode(Node):
         front_lookahead = self._compute_front_lookahead()
         corridors = self._cost_stop_corridors_for_cmd(cmd_in, front_lookahead)
         if not corridors:
-            return False
+            return self._cost_stop_latch_blocks(now_sec)
 
         if self._should_stop_for_dynamic_source_corridors(corridors, now_sec):
             return True
 
         merged_grid = self._last_grid
         if merged_grid is None or not merged_grid.data or merged_grid.info.resolution <= 0.0:
-            return False
+            return self._cost_stop_latch_blocks(now_sec)
 
         target_frame = str(merged_grid.header.frame_id).strip()
         pose_candidates = self._resolve_pose_candidates(target_frame)
@@ -1390,7 +1549,7 @@ class PlanningCmdVelGateNode(Node):
                     "cost-stop: no pose candidates; "
                     "check pose/costmap frame alignment"
                 )
-            return False
+            return self._cost_stop_latch_blocks(now_sec)
 
         best_total = -1
         best_label = ""
@@ -1457,8 +1616,9 @@ class PlanningCmdVelGateNode(Node):
                             direction, label, la, blocked_detail
                         )
                         continue
-                    self._cost_blocked_until = now_sec + self.cost_stop_hold_s
                     cause = self._format_cost_source_debug(blocked_detail)
+                    reason = f"{direction}:{label}:{cause}"
+                    self._mark_cost_stop_blocked(now_sec, reason, latch=True)
                     self.get_logger().warn(
                         f"cost-stop {direction}: source={label} "
                         f"lookahead={la:.2f}m "
@@ -1474,7 +1634,11 @@ class PlanningCmdVelGateNode(Node):
 
         if self.enable_unavoidable_stop and best_lethal:
             if self._is_unavoidable_cluster(best_lethal, max(1, best_total)):
-                self._cost_blocked_until = now_sec + self.cost_stop_hold_s
+                self._mark_cost_stop_blocked(
+                    now_sec,
+                    f"FRONT:unavoidable:{best_label}",
+                    latch=True,
+                )
                 self.get_logger().warn(
                     f"cost-stop FRONT (unavoidable): source={best_label} "
                     f"lethal={self._last_unavoidable_cluster_cells} "
@@ -1483,7 +1647,7 @@ class PlanningCmdVelGateNode(Node):
                 )
                 return True
 
-        return False
+        return self._cost_stop_latch_blocks(now_sec)
 
     # HH_260630: Sample live dynamic source grids directly before consulting
     # the merged inflation grid. A static lanelet/global-path cell can be the
@@ -1528,8 +1692,12 @@ class PlanningCmdVelGateNode(Node):
                                     path_detail,
                                 )
                                 continue
-                            self._cost_blocked_until = now_sec + self.cost_stop_hold_s
                             wx, wy, cost, _ = path_detail
+                            self._mark_cost_stop_blocked(
+                                now_sec,
+                                f"FRONT_PATH:{pose_label}:{source_label}:{cost}",
+                                latch=True,
+                            )
                             self.get_logger().warn(
                                 f"cost-stop FRONT_PATH: source={pose_label} "
                                 f"dynamic={source_label}:{cost}@({wx:.2f},{wy:.2f}) "
@@ -1548,8 +1716,12 @@ class PlanningCmdVelGateNode(Node):
                     )
                     if not blocked:
                         continue
-                    self._cost_blocked_until = now_sec + self.cost_stop_hold_s
                     wx, wy, cost = detail if detail is not None else (pose[0], pose[1], -1)
+                    self._mark_cost_stop_blocked(
+                        now_sec,
+                        f"{direction}:{pose_label}:{source_label}:{cost}",
+                        latch=True,
+                    )
                     self.get_logger().warn(
                         f"cost-stop {direction}: source={pose_label} "
                         f"dynamic={source_label}:{cost}@({wx:.2f},{wy:.2f}) "
@@ -1682,8 +1854,12 @@ class PlanningCmdVelGateNode(Node):
                 )
                 if not blocked:
                     continue
-                self._cost_blocked_until = now_sec + self.cost_stop_hold_s
                 wx, wy, cost = detail
+                self._mark_cost_stop_blocked(
+                    now_sec,
+                    f"ROTATE:{pose_label}:{label}:{cost}",
+                    latch=True,
+                )
                 self.get_logger().warn(
                     f"cost-stop ROTATE: source={pose_label} dynamic={label} "
                     f"cost={cost} at=({wx:.2f},{wy:.2f}) radius={radius:.2f}m "

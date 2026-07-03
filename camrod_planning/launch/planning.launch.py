@@ -238,6 +238,14 @@ def generate_launch_description():
         # HH_260623 - Measured body width plus 0.10 m planning margin per side.
         DeclareLaunchArgument('cmd_vel_gate_cost_width_m', default_value='1.27'),
         DeclareLaunchArgument('cmd_vel_gate_cost_hold_s', default_value='1.0'),
+        # HH_260703 - Dynamic obstacle stops stay latched until clear; stale
+        # merged cost grid blocks cmd_vel as a fail-safe.
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_latch_enable', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_clear_required_s', default_value='2.0'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_latch_log_interval_s', default_value='1.0'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_grid_stale_stop_enable', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_grid_stale_timeout_s', default_value='1.0'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_grid_stale_log_interval_s', default_value='1.0'),
         # HH_260622: Merged inflation grid contains route/lanelet guidance;
         # cmd_vel blocking must be owned by live dynamic sources.
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_require_dynamic_source', default_value='true'),
@@ -475,6 +483,12 @@ def generate_launch_description():
                 'cmd_vel_gate_cost_lookahead_m',
                 'cmd_vel_gate_cost_width_m',
                 'cmd_vel_gate_cost_hold_s',
+                'cmd_vel_gate_cost_stop_latch_enable',
+                'cmd_vel_gate_cost_stop_clear_required_s',
+                'cmd_vel_gate_cost_stop_latch_log_interval_s',
+                'cmd_vel_gate_cost_grid_stale_stop_enable',
+                'cmd_vel_gate_cost_grid_stale_timeout_s',
+                'cmd_vel_gate_cost_grid_stale_log_interval_s',
                 'cmd_vel_gate_cost_stop_require_dynamic_source',
                 'cmd_vel_gate_cost_stop_dynamic_source_labels',
                 'cmd_vel_gate_front_dynamic_stop_use_local_path',

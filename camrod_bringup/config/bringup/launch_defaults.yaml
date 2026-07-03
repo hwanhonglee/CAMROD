@@ -148,6 +148,16 @@ bringup:
     # HH_260623 - Measured body width plus 0.10 m planning margin per side.
     cmd_vel_gate_cost_width_m: 1.27
     cmd_vel_gate_cost_hold_s: 1.0
+    # HH_260703 - Keep dynamic obstacle stops latched until lidar/radar report
+    # a continuous clear corridor; this prevents field stop/go oscillation.
+    cmd_vel_gate_cost_stop_latch_enable: true
+    cmd_vel_gate_cost_stop_clear_required_s: 2.0
+    cmd_vel_gate_cost_stop_latch_log_interval_s: 1.0
+    # HH_260703 - If the merged inflation cost grid stalls, cmd_vel must fail
+    # closed even before diagnostics/state-machine e-stop catches up.
+    cmd_vel_gate_cost_grid_stale_stop_enable: true
+    cmd_vel_gate_cost_grid_stale_timeout_s: 1.0
+    cmd_vel_gate_cost_grid_stale_log_interval_s: 1.0
     # HH_260622 - The merged inflation grid also carries static lanelet/global
     # path guidance. Only live dynamic sensor sources may block cmd_vel here.
     cmd_vel_gate_cost_stop_require_dynamic_source: true
@@ -478,7 +488,7 @@ bringup:
     # HH_260617: enable_odom_corrector is always false in full bringup because
     # localization owns odom→base_link TF for the selected EKF/ESKF backend.
     enable_docking: true
-    enable_auto_docking: false      # battery-triggered auto docking (BMS 연동 후 true)
+    enable_auto_docking: false      # battery-triggered auto docking; set true after BMS integration.
     enable_manual_docking: true     # UI/action-triggered manual docking
 
   voice:
