@@ -8,10 +8,11 @@ cost_grid_checker:
     hz_warn_ratio: 0.7
     hz_error_ratio: 0.4
     stale_timeout_s: 2.0
-    # HH_260630 - Sparse sensor cost grids normally keep non-obstacle cells unknown.
-    # Treat only a fully unknown grid as an input/TF failure.
-    unknown_ratio_warn: 1.0
-    unknown_ratio_error: 1.0
+    # HH_260703 - Sensor cost grids use unknown cells as sparse "no obstacle"
+    # background, so freshness/rate are the health signals. Keep unknown ratio
+    # visible in diagnostics but do not promote 100% unknown to ERROR.
+    unknown_ratio_warn: 1.01
+    unknown_ratio_error: 1.01
 
     lidar:
       diagnostic_name: "/sensing/cost_grid/lidar"

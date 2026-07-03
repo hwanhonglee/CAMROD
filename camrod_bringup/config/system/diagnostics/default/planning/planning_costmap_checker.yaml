@@ -12,3 +12,8 @@ planning_costmap_checker:
     hz_window_s: 6.0
     global_stale_timeout_s: 3.0
     local_stale_timeout_s: 1.5
+    # HH_260703 - Nav2 costmap publication can pause under field CPU load and
+    # is already ignored by planning_state_machine for auto-estop decisions.
+    # Keep it visible as WARN so UI/logs report performance without blocking.
+    stale_is_error: false
+    rate_is_error: false
