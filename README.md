@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v1.16** (field baseline updated 2026-07-02)
+> Current release: **v2.0.0** (field safety baseline updated 2026-07-03)
 
 ---
 
@@ -718,6 +718,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
+| v2.0.0 | 2026-07-03 | Field safety baseline for outdoor validation: GNSS `/dev/ttyACM1` synchronization, 1 Hz GNSS diagnostic tolerance, dynamic LiDAR/Radar cost-stop latch, stale merged inflation-grid fail-closed gate, live sensor-cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning, WARN-safe campsite/drop-zone handoff, planning costmap diagnostic demotion, and 51-assertion deterministic cmd_vel gate coverage |
 | v1.16 | 2026-07-02 | Field stabilization for map/planning/platform/system: local-first Lanelet2 visualization with cached full-map republish, map-fixed local path extraction with stale-marker clearing, obstacle-block monitor with status-only default, perception-to-cost-grid coupling, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, planning soft-estop gating from `/planning/state_machine/estop`, LiDAR ground-filter load relief, radar 7-channel left/right mapping plus no-target heartbeat filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, expanded `avg_msgs` conversion coverage, diagnostics checker alignment, rear-camera CPU reduction, and automated sim validation runner with manual-goal, obstacle, campsite, and drop-zone parking coverage |
 | v1.15 | 2026-06-23 | Obstacle replan monitor (LiDAR/Radar persistent blockage → Smac2D fallback), extended AvgAmrServiceState/PlanningScenario (SITE_ENTRY/UNLOAD_WAIT/RECALL_TO_SITE_ROAD/GUEST_LOADING_WAIT/RETURN_WITH_CARGO/DROP_ZONE_PARKING), UI site-access reservation/occupancy gate, planning_state_machine parking-phase mirror from /AMR_service_state, dynamic-only cost stop gate, lanelet route re-entry bypass, goal_snapper uncontained-snap override, map profile auto-selection, area_exporter polygon centroid + corners export |
 | v1.14 | 2026-06-19 | Mission-key semantic planning (PlanningState/MissionKey/Scenario msgs), lanelet raw cost safety stop, local path reset on goal change, goal_snapper pose-jump reissue, lanelet_route_planner + engage_aware_progress_checker plugins, front camera V4L2 fallback + image_raw publisher (PR#14), Ranger BMS charging detection, planning_state_checker, sim diagnostics profile, parking_method bringup arg |
@@ -777,6 +778,19 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260702: Sim validation passed for baseline topic rates, all seven radar direction topics, front/left/right/rear LiDAR/Radar cost-stop, manual goal navigation, obstacle-block status without fallback route preemption, campsite crab/rotate/unload/crab-out, return-to-drop-zone, and drop-zone reverse parking to `PARKED`.
 - HH_260702: Real full-stack tests with RViz/UI/voice/cameras/YOLO/docking enabled are intentionally treated as load probes. On the Jetson Orin field target that mode can saturate CPU/GPU and delay LiDAR/cost-grid/radar diagnostics; drive validation should use the lighter outdoor profile after the sim checks pass.
 
+## 2026-07-03 Field Safety Patch
+
+> HH_260703 - Outdoor validation patch for intermittent obstacle grids, GNSS port enumeration, and diagnostics-to-estop policy.
+
+- HH_260703: ZED-F9P GNSS rover config is synchronized to `/dev/ttyACM1` in both `camrod_sensing` and `camrod_bringup`; the current robot enumerates CV7 IMU on `ttyACM0`, while CH9344 ports remain radar-only.
+- HH_260703: GNSS sensor/localization diagnostics now accept a 1 Hz field-rate floor while preserving freshness, fix status, covariance, and jump checks. The ublox driver config still requests its normal receiver rate; diagnostics no longer create false `ERROR_STOP` from stable 1 Hz fixes.
+- HH_260703: `planning_cmd_vel_gate_node` latches live LiDAR/Radar cost stops until the selected travel corridor stays clear for 2.0 s. This prevents obstacle stop/go flicker when a curb or vehicle intermittently drops out of the merged cost grid.
+- HH_260703: The planning gate now fails closed when `/planning/cost_grid/inflation` is missing or stale for more than 1.0 s, so stale safety input cannot accidentally release `/planning/cmd_vel`.
+- HH_260703: Radar and merged inflation cost grids preserve live LiDAR/Radar obstacle cells inside the ego-clear footprint while still masking static guide costs. Side radar self-echo filtering is reduced to 0.05 m while front/rear stay at 0.15 m, keeping valid right/left near-field detections available to the planning gate during crab motion.
+- HH_260703: Planning state-machine auto-estop ignores raw Vanjee placeholder NaNs, camera FPS dips, costmap freshness dips, and selected non-motion diagnostics for state transitions. These remain visible in `/system/status`; filtered LiDAR/Radar cost grids and gate checks remain the motion safety authority.
+- HH_260703: Planning costmap diagnostics are demoted to WARN for stale/rate failures, and fully unknown sparse cost-grid diagnostics are no longer ERROR by themselves. The gate-level stale inflation check is the immediate stop path.
+- HH_260703: Deterministic gate logic now has 51 passing assertions, including right-crab radar stop, dynamic cost-stop latch, and stale merged-cost-grid fail-safe coverage.
+
 ## 2026-07-01 Safety and Sensor Update
 
 > HH_260701 - Current field baseline after planning soft-estop wiring, LiDAR load relief, radar no-target heartbeat handling, and GNSS/bringup config synchronization.
@@ -785,7 +799,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260701: LiDAR ground segmentation uses `downsample_resolution: 0.10` in both `camrod_sensing` and `camrod_bringup` configs. The profiled target for `/sensing/lidar/points_filtered` is now a stable obstacle-only stream around 6 Hz under field load rather than forcing a 10 Hz checker threshold.
 - HH_260702: LiDAR diagnostics ignore raw Vanjee NaN placeholders and use filtered freshness/rate plus near-zero filtered NaN as the motion-relevant health signal. Zero filtered obstacle points remain normal when the ROI is clear.
 - HH_260701: SEN0592 radar drivers publish a no-target heartbeat above `max_range` when the sensor responds without a valid obstacle; diagnostics treat that as fresh/no-target data while cost-grid consumers ignore it.
-- HH_260701: GNSS rover config is synchronized to `/dev/ttyACM0` for the current field harness; radar CH9344 USB ports remain reserved for SEN0592 channels.
+- HH_260703: GNSS rover config is synchronized to `/dev/ttyACM1` for the current field harness; radar CH9344 USB ports remain reserved for SEN0592 channels.
 
 ### Setup and Build
 

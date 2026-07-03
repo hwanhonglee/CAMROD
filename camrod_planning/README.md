@@ -31,7 +31,7 @@ ros2 topic pub /planning/mission_key avg_msgs/msg/PlanningMissionKey \
 ros2 topic pub /planning/state_machine/camping_site_recall avg_msgs/msg/PlanningRecallRequest \
   "{site_name: camping_site_1, source: cli}" -1
 
-# Standalone gate logic unit test (no ROS 2 runtime needed, 42 assertions)
+# Standalone gate logic unit test (no ROS 2 runtime needed, 51 assertions)
 python3 camrod_planning/test/test_cmd_vel_gate_logic.py
 ```
 
@@ -242,7 +242,7 @@ graph TD
 | `goal_replanner_node` | `/planning/goal_pose`, `/planning/lanelet_pose`, Nav2 action | replanning triggers | `min_request_interval_s`, `retry_after_failure_s`, `navigate_inactive_grace_s` |
 | `obstacle_replan_monitor_node.py` | `/planning/local_path`, `/planning/goal_pose_snapped_ros`, `/localization/pose`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar` | `/planning/obstacle_replan/status`; optional `/planning/planner_selector=SmacLattice` + preempted `/planning/navigate_to_pose` only when `preempt_enabled=true` | HH_260702 - reports persistent dynamic blockage on the active local-path corridor while keeping the default `LaneletRoute` global path stable; fallback preemption is opt-in because free-space replans can cross adjacent/opposite lanes; `clear_hold_s` prevents alternating empty/test cost grids from clearing a real blockage immediately |
 | `planning_progress_node` | `/planning/global_path`, `/localization/pose`, `/localization/odometry/filtered` | `/planning/progress/*` | `publish_rate_hz`: 2.0, `speed_ema_alpha`: 0.2, `speed_floor_mps`: 0.1 |
-| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/planning/mission_engage`, `/platform/status/estop`, `/planning/state_machine/estop`, `/map/cost_grid/lanelet`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/odometry/filtered` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors; HH_260630 - site-maneuver crab/reverse bypasses static lanelet/global-path cost while still stopping on live LiDAR/Radar source cost; HH_260701 - planning soft-estop is ORed with platform e-stop before command output |
+| `planning_cmd_vel_gate_node` | `/planning/cmd_vel_raw`, `/planning/engage`, `/planning/mission_engage`, `/platform/status/estop`, `/planning/state_machine/estop`, `/map/cost_grid/lanelet`, `/planning/cost_grid/inflation`, `/localization/mode`, `/localization/odometry/filtered` | `/planning/cmd_vel`, `/planning/engaged` | see §Key Behaviors; HH_260630 - site-maneuver crab/reverse bypasses static lanelet/global-path cost while still stopping on live LiDAR/Radar source cost; HH_260701 - planning soft-estop is ORed with platform e-stop before command output; HH_260703 - live cost-stop latch and stale inflation-grid fail-safe zero output before platform commands |
 | `planning_state_machine_node` | `/system/diagnostics_agg`, `/planning/lanelet_pose_ros`, `/planning/state_machine/camping_site_recall`, `mission_key` `/planning/mission_key` | `/planning/goal_pose_snapped_ros`, `/planning/state_machine/state`, `/planning/state_machine/mission_source` | `keypoints_yaml`, `camping_sites_yaml`, `startup_mission_key`, `goal_reached_dwell_s`; HH_260619 - recent UI `mission_key` can override a misleading snapped-goal key match during the preserve window |
 | Nav2 `planner_server` | `route_goal` `/planning/goal_pose_snapped_ros`, Lanelet2 map, costmaps | `/planning/global_path`, `/planning/route_lanelet_ids` | HH_260619 - default `LaneletRoute` publishes a fixed lanelet-centerline route and exact route lanelet IDs for route-aware map costs; `SmacLattice`, `NavFn`, `Smac2D`, `SmacHybrid`, `ThetaStar` remain selectable diagnostics/free-space fallbacks; BT uses `GoalUpdatedController`, so global path is recomputed on goal/preemption/recovery, not continuously while following |
 | Nav2 `controller_server` | `/planning/global_path`, costmaps, `/planning/engaged` | `/planning/cmd_vel_raw`, `/planning/local_path_controller` | RPP / DWB / MPPI / Graceful / RotationShim; `xy_goal_tolerance`: 0.15 m; HH_260618 - `EngageAwareProgressChecker` pauses progress timeout before operator engage; HH_260622 - MPPI path critics are tuned to reduce inside-cutting on high-curvature lanelet centerlines |
@@ -324,9 +324,18 @@ graph TD
 
 > ⚠️ **Warning** `/planning/cmd_vel` is zeroed and `/planning/engaged` reflects `false`. The stop is held for `cmd_vel_gate_cost_hold_s` (default 1.0 s) after the obstacle clears.
 
+HH_260703 - Dynamic LiDAR/Radar cost stops are also latched until the sampled
+travel corridor stays continuously clear for `cmd_vel_gate_cost_stop_clear_required_s`
+(default 2.0 s). This is separate from the short `cost_hold`: the hold covers a
+single stop event, while the latch prevents stop/go oscillation when a curb,
+vehicle, or intermittent sensor return disappears for one frame and comes back.
+If `/planning/cost_grid/inflation` is missing or older than
+`cmd_vel_gate_cost_grid_stale_timeout_s` (default 1.0 s), the gate fails closed
+and publishes zero velocity.
+
 **Operator-visible symptom:** Robot stops abruptly without Nav2 abort. RViz inflation grid shows high-cost cells in the stopped direction.
 
-> 🔧 **Debug hint** Related params: `cmd_vel_gate_cost_stop_enable`, `cmd_vel_gate_cost_threshold`, `cmd_vel_gate_speed_dependent_lookahead`, `cmd_vel_gate_front_lookahead_min_m`, `cmd_vel_gate_front_lookahead_max_m`, `cmd_vel_gate_front_lookahead_friction`, `cmd_vel_gate_front_reaction_time_s`, `cmd_vel_gate_cost_hold_s`, `cmd_vel_gate_side_cost_threshold`, `cmd_vel_gate_rear_cost_threshold`, `cmd_vel_gate_unavoidable_lethal_threshold`, `cmd_vel_gate_unavoidable_cluster_min_cells`, `cmd_vel_gate_unavoidable_cluster_min_ratio`
+> 🔧 **Debug hint** Related params: `cmd_vel_gate_cost_stop_enable`, `cmd_vel_gate_cost_threshold`, `cmd_vel_gate_speed_dependent_lookahead`, `cmd_vel_gate_front_lookahead_min_m`, `cmd_vel_gate_front_lookahead_max_m`, `cmd_vel_gate_front_lookahead_friction`, `cmd_vel_gate_front_reaction_time_s`, `cmd_vel_gate_cost_hold_s`, `cmd_vel_gate_cost_stop_latch_enable`, `cmd_vel_gate_cost_stop_clear_required_s`, `cmd_vel_gate_cost_grid_stale_stop_enable`, `cmd_vel_gate_cost_grid_stale_timeout_s`, `cmd_vel_gate_side_cost_threshold`, `cmd_vel_gate_rear_cost_threshold`, `cmd_vel_gate_unavoidable_lethal_threshold`, `cmd_vel_gate_unavoidable_cluster_min_cells`, `cmd_vel_gate_unavoidable_cluster_min_ratio`
 
 **Related topics:** `/planning/cost_grid/inflation`, `/planning/cmd_vel`, `/planning/engaged`
 
@@ -554,6 +563,10 @@ Key launch arguments:
 | `require_localization_ready` | `false` | Wait for `/localization/initial_match_ok` before Nav2 start |
 | `cmd_vel_gate_enable` | `true` | Velocity gate node |
 | `cmd_vel_gate_cost_stop_enable` | `true` | Cost-based obstacle stop |
+| `cmd_vel_gate_cost_stop_latch_enable` | `true` | HH_260703 - Keep dynamic LiDAR/Radar stops latched until a continuous clear window |
+| `cmd_vel_gate_cost_stop_clear_required_s` | `2.0` | HH_260703 - Continuous clear duration required to release the latch |
+| `cmd_vel_gate_cost_grid_stale_stop_enable` | `true` | HH_260703 - Zero `/planning/cmd_vel` if the merged inflation grid is stale/missing |
+| `cmd_vel_gate_cost_grid_stale_timeout_s` | `1.0` | HH_260703 - Maximum accepted age of `/planning/cost_grid/inflation` |
 | `cmd_vel_gate_lanelet_safety_enable` | `true` | Raw lanelet-grid hard stop before inflation ego-clear |
 | `cmd_vel_gate_lateral_cmd_bypass_static_cost_stop` | `true` | HH_260618 - explicit site-crab lateral cmd_vel bypasses static lanelet/global-path front/side/rear cost while keeping LiDAR/Radar source stops |
 | `cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop` | `true` | HH_260624 - pure in-place parking rotation bypasses static lanelet cost but still stops on live LiDAR/Radar cost near the body |
@@ -601,10 +614,11 @@ Nav2 configuration is the split stack `nav2_base.yaml` + `nav2_vehicle.yaml` +
 ```bash
 # Standalone gate logic unit test (no ROS 2 runtime needed)
 python3 camrod_planning/test/test_cmd_vel_gate_logic.py
-# 42 assertions covering: front/side/rear cost-stop, unavoidable cluster,
+# 51 assertions covering: front/side/rear cost-stop, unavoidable cluster,
 # GNSS recovery hold trigger and expiry, platform + state-machine e-stop,
 # engage gate, cost-stop hold, speed-dependent lookahead, route re-entry,
-# crab-side and reverse-direction safety corridors.
+# crab-side and reverse-direction safety corridors, dynamic stop latch,
+# and stale merged-cost-grid fail-safe.
 
 # Verify Nav2 lifecycle is active
 ros2 lifecycle get /planner_server
@@ -665,7 +679,7 @@ or the gate failed at runtime.
 
 1. Inspect the inflation grid for persistent high-cost cells: `ros2 topic echo /planning/cost_grid/inflation --no-arr` (check `info.width`, `data` max).
 2. Reduce `cmd_vel_gate_cost_threshold` from 85 to a higher value to require denser obstacles.
-3. Check `cmd_vel_gate_cost_hold_s` — default 1.0 s; if the obstacle is intermittent, shorten the hold.
+3. Check `cmd_vel_gate_cost_stop_latch_enable` and `cmd_vel_gate_cost_stop_clear_required_s`. With the field default latch enabled, an intermittent live obstacle keeps the robot stopped until the corridor is continuously clear for 2.0 s.
 4. Verify that the `combined_cost_layer` in the local costmap is receiving the correct inflation grid (check `/planning/cost_grid/inflation` topic rate).
 
 ---

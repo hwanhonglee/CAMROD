@@ -63,6 +63,7 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
 > HH_260630 - UI manual engage and camping-site destination buttons publish `/platform/drive_enable` together with the relevant planning engage latch. `/platform/set_enabled` remains a CLI/debug fallback, not the normal operator path.
 > HH_260630 - Package config trees are synchronized into `camrod_bringup/config`; bringup passes `config/system/diagnostics` to `camrod_system` so the synchronized system checker profiles are actually used.
 > HH_260702 - Latest sim validation passed baseline rates, all radar directions, LiDAR/Radar directional cost-stop, manual goal navigation, status-only obstacle blockage, campsite maneuver, return-to-drop-zone, and drop-zone reverse parking. Full real-sensor bringup with RViz/UI/voice/cameras/YOLO/docking enabled is a load probe; use the lighter field profile for drive validation.
+> HH_260703 - Field patch adds GNSS `/dev/ttyACM1` config sync, cost-stop latch, stale inflation-grid fail-closed behavior, live LiDAR/Radar cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning for crab safety, and diagnostics policy that keeps non-motion camera/raw-LiDAR/costmap issues visible without forcing every transient into planning `ERROR_STOP`.
 
 ---
 
@@ -312,6 +313,10 @@ flowchart TD
 | `nav2_selected_planner` | `LaneletRoute` | HH_260619 - default lanelet-centerline global route planner; `SmacLattice` remains available for free-space diagnostics |
 | `bt_navigator.use_start_pose_override` | `true` | HH_260619 - planner start override supplies snapped start XY with current yaw; it is not the primary fix for centerline routing |
 | `planning_cmd_vel_gate_cost_stop_enable` | `true` | Cost-based obstacle stop in planning gate |
+| `planning_cmd_vel_gate_cost_stop_latch_enable` | `true` | HH_260703 - Latch live LiDAR/Radar cost stops until the corridor is continuously clear |
+| `planning_cmd_vel_gate_cost_stop_clear_required_s` | `2.0` | HH_260703 - Required continuous clear window before releasing a latched dynamic stop |
+| `planning_cmd_vel_gate_cost_grid_stale_stop_enable` | `true` | HH_260703 - Fail closed when merged inflation grid is stale or missing |
+| `planning_cmd_vel_gate_cost_grid_stale_timeout_s` | `1.0` | HH_260703 - Maximum age for `/planning/cost_grid/inflation` before zeroing cmd_vel |
 | `planning_cmd_vel_gate_lanelet_safety_enable` | `true` | HH_260618 - raw `/map/cost_grid/lanelet` hard stop before inflation ego-clear |
 | `planning_cmd_vel_gate_lanelet_safety_check_reverse` | `false` | Keep reverse parking under mission-specific parking control |
 | `planning_cmd_vel_gate_lanelet_safety_check_lateral` | `false` | Keep campsite crab motion under mission-specific site control |
@@ -462,7 +467,7 @@ real vehicle motion.
 | `config/sensing/lidar/cost_grid.yaml` | LiDAR cost-grid overrides |
 | `config/sensing/radar/cost_grid.yaml` | Radar cost-grid overrides |
 | `config/sensing/inflation_cost_grid.yaml` | Merged inflation cost-grid overrides |
-| `config/sensing/gnss/zed_f9p_rover.yaml` | u-blox ZED-F9P GNSS driver params |
+| `config/sensing/gnss/zed_f9p_rover.yaml` | u-blox ZED-F9P GNSS driver params; HH_260703 - current field device `/dev/ttyACM1` |
 | `config/sensing/gnss/ntrip_client.yaml` | NTRIP client params |
 | `config/sensing/imu/microstrain_cv7.yaml` | Microstrain CV7 IMU driver params |
 | `config/sensing/imu/microstrain_gq7.yaml` | Microstrain GQ7 IMU driver params |
