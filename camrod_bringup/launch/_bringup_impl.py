@@ -849,6 +849,40 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_hold_s', 1.0),
             'Hold duration for cost-stop',
         ),
+        # HH_260703 - Dynamic obstacle stops should not release on single-frame
+        # sensor flicker; require a continuous clear window before re-enabling.
+        (
+            'planning_cmd_vel_gate_cost_stop_latch_enable',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_latch_enable', True),
+            'Latch dynamic cost-stop until the obstacle corridor is continuously clear',
+        ),
+        (
+            'planning_cmd_vel_gate_cost_stop_clear_required_s',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_clear_required_s', 2.0),
+            'Continuous clear duration required to release dynamic cost-stop latch',
+        ),
+        (
+            'planning_cmd_vel_gate_cost_stop_latch_log_interval_s',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_latch_log_interval_s', 1.0),
+            'Log interval while waiting for dynamic cost-stop latch release',
+        ),
+        # HH_260703 - Fail closed if the merged inflation cost grid is missing
+        # or stale; this protects cmd_vel even when diagnostics are only WARN.
+        (
+            'planning_cmd_vel_gate_cost_grid_stale_stop_enable',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_grid_stale_stop_enable', True),
+            'Block cmd_vel when the merged cost grid is missing or stale',
+        ),
+        (
+            'planning_cmd_vel_gate_cost_grid_stale_timeout_s',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_grid_stale_timeout_s', 1.0),
+            'Maximum merged cost-grid age before cmd_vel fail-safe stop',
+        ),
+        (
+            'planning_cmd_vel_gate_cost_grid_stale_log_interval_s',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_grid_stale_log_interval_s', 1.0),
+            'Log interval for merged cost-grid stale fail-safe blocks',
+        ),
         # HH_260622: The merged inflation grid includes static route/lanelet
         # guidance. Only configured dynamic sources may trigger cost-stop.
         (
