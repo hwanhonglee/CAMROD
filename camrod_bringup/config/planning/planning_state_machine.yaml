@@ -69,6 +69,9 @@
     # before an operator/UI mission is selected; it races the first UI request.
     auto_warn_recovery_goal: false
     auto_estop_on_error: true
+    # HH_260703 - Keep WARN diagnostics visible while still publishing the
+    # GOAL_REACHED event that starts campsite/drop-zone parking handoff.
+    allow_goal_reached_handoff_in_warn: true
     # HH_260625: Keep operator/system diagnostics visible without letting
     # non-motion-critical health checks force planning ERROR_STOP. Localization
     # mode, platform graph, and explicit mission/state errors still participate
@@ -99,14 +102,20 @@
       - "planning_path_checker:"
       - "planning_state_checker:"
       - "planning/state_machine"
-      # HH_260702 - Keep slow sensor/map/perception health visible in
+      # HH_260702 - Keep non-motion-critical map/perception health visible in
       # /system/status, but do not turn every rate warning into planning estop.
       # Live cost grids and command gates remain the motion-safety authority.
       - "map_cost_grid_checker:"
       - "perception_obstacle_checker:"
-      - "lidar_checker:"
+      # HH_260703 - Raw Vanjee frames contain vendor placeholder NaNs, so only
+      # the raw stream is excluded from automatic ERROR_STOP. The filtered
+      # obstacle stream remains motion-relevant through diagnostics.
+      - "lidar_checker: /sensor/lidar/main"
+      # HH_260703 - Camera health remains visible in /system/status, but brief
+      # front/rear FPS drops must not toggle parking/planning auto-estop. Live
+      # lidar/radar cost grids remain the motion stop authority.
+      - "camera_checker:"
       - "radar_checker:"
-      - "cost_grid_checker:"
 
     # When true: arriving at a camping_site_* key starts a dwell timer; after
     # goal_reached_dwell_s the robot auto-returns to return_mission_key.

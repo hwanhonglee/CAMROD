@@ -231,6 +231,11 @@ class PlanningStateMachineNode(Node):
             self.declare_parameter("auto_warn_recovery_goal", True).value
         )
         self.auto_estop_on_error = bool(self.declare_parameter("auto_estop_on_error", True).value)
+        # HH_260703 - Diagnostics WARN must stay visible, but it should not
+        # mask the GOAL_REACHED handoff used by campsite/drop-zone parking.
+        self.allow_goal_reached_handoff_in_warn = bool(
+            self.declare_parameter("allow_goal_reached_handoff_in_warn", True).value
+        )
 
         # HH_260528 Optional auto-return behavior for scenario 1/3 when site reached.
         self.enable_auto_return_on_site_goal = bool(
@@ -1482,13 +1487,8 @@ class PlanningStateMachineNode(Node):
                 self.return_requested = False
                 self.warn_goal_sent = False
                 self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "return_retry")
-        elif level == self._warn_level:
-            self.state = "WARN_RECOVERY"
-            if self.auto_warn_recovery_goal and not self.warn_goal_sent:
-                if self._publish_auto_goal(self.warn_mission_key, "warn_recovery"):
-                    self.warn_goal_sent = True
         else:
-            if self.auto_startup_goal and not self.startup_goal_sent:
+            if level != self._warn_level and self.auto_startup_goal and not self.startup_goal_sent:
                 if self._publish_auto_goal(self.startup_mission_key, "startup"):
                     self.startup_goal_sent = True
                     if self.startup_mission_key == self.return_mission_key:
@@ -1554,6 +1554,23 @@ class PlanningStateMachineNode(Node):
                 self.state = "RUNNING"
             else:
                 self.state = "READY"
+
+            goal_reached_handoff = self.state == "GOAL_REACHED" and self.scenario_id in {
+                self.SCENARIO_DELIVERY_TO_SITE,
+                self.SCENARIO_RECALL_TO_SITE,
+                self.SCENARIO_RETURN_TO_DROP_ZONE,
+            }
+            if (
+                level == self._warn_level
+                and not (
+                    self.allow_goal_reached_handoff_in_warn
+                    and goal_reached_handoff
+                )
+            ):
+                self.state = "WARN_RECOVERY"
+                if self.auto_warn_recovery_goal and not self.warn_goal_sent:
+                    if self._publish_auto_goal(self.warn_mission_key, "warn_recovery"):
+                        self.warn_goal_sent = True
 
         self.prev_state_level = level
         self._publish_state_outputs(estop)

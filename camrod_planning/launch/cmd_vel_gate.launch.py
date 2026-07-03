@@ -67,6 +67,15 @@ def generate_launch_description():
         # HH_260623 - Measured body width plus 0.10 m planning margin per side.
         DeclareLaunchArgument('cmd_vel_gate_cost_width_m', default_value='1.27'),
         DeclareLaunchArgument('cmd_vel_gate_cost_hold_s', default_value='1.0'),
+        # HH_260703 - Dynamic obstacle stops stay latched until the live sensor
+        # corridor is continuously clear, preventing stop/go oscillation.
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_latch_enable', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_clear_required_s', default_value='2.0'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_stop_latch_log_interval_s', default_value='1.0'),
+        # HH_260703 - Fail-safe stop if the merged cost grid publisher stalls.
+        DeclareLaunchArgument('cmd_vel_gate_cost_grid_stale_stop_enable', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_grid_stale_timeout_s', default_value='1.0'),
+        DeclareLaunchArgument('cmd_vel_gate_cost_grid_stale_log_interval_s', default_value='1.0'),
         # HH_260622: Merged inflation cost is only a stop source when one of
         # these dynamic source grids owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_cost_stop_require_dynamic_source', default_value='true'),
@@ -208,6 +217,12 @@ def generate_launch_description():
                 'cost_stop_lookahead_m': LaunchConfiguration('cmd_vel_gate_cost_lookahead_m'),
                 'cost_stop_width_m': LaunchConfiguration('cmd_vel_gate_cost_width_m'),
                 'cost_stop_hold_s': LaunchConfiguration('cmd_vel_gate_cost_hold_s'),
+                'cost_stop_latch_enable': LaunchConfiguration('cmd_vel_gate_cost_stop_latch_enable'),
+                'cost_stop_clear_required_s': LaunchConfiguration('cmd_vel_gate_cost_stop_clear_required_s'),
+                'cost_stop_latch_log_interval_s': LaunchConfiguration('cmd_vel_gate_cost_stop_latch_log_interval_s'),
+                'cost_grid_stale_stop_enable': LaunchConfiguration('cmd_vel_gate_cost_grid_stale_stop_enable'),
+                'cost_grid_stale_timeout_s': LaunchConfiguration('cmd_vel_gate_cost_grid_stale_timeout_s'),
+                'cost_grid_stale_log_interval_s': LaunchConfiguration('cmd_vel_gate_cost_grid_stale_log_interval_s'),
                 'cost_stop_require_dynamic_source': LaunchConfiguration('cmd_vel_gate_cost_stop_require_dynamic_source'),
                 'cost_stop_dynamic_source_labels': LaunchConfiguration('cmd_vel_gate_cost_stop_dynamic_source_labels'),
                 'front_dynamic_stop_use_local_path': LaunchConfiguration('cmd_vel_gate_front_dynamic_stop_use_local_path'),
