@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
-    # HH_260701: Current field wiring enumerates ZED-F9P GNSS as ttyACM0 and CV7 IMU as ttyACM1.
-    device: /dev/ttyACM0
+    # HH_260703 - Current field wiring enumerates CV7 IMU as ttyACM0 and ZED-F9P GNSS as ttyACM1.
+    device: /dev/ttyACM1
     frame_id: gps
     # HH_260611: Make the RTCM input topic configurable so dual mode can avoid rover USB RTCM.
     rtcm_topic: rtcm

@@ -22,10 +22,14 @@
     # HH_260625: Ignore stable SEN0592 near-zero self echoes seen outdoors
     # (front ~0.10m, side ~0.03m, rear ~0.11m) without masking real >0.15m hits.
     ignore_below_range_m: 0.15
+    # HH_260703 - Per-sensor overrides ordered by input_topics. Side radars
+    # only need to mask ~0.03m self echoes, so keep them sensitive for crab stops.
+    ignore_below_ranges_m: [0.15, 0.15, 0.05, 0.05, 0.05, 0.05, 0.15]
     # HH_260422: Near-field only; per-sensor max_range limits detections before cost mapping.
     cost_range_max_m: 2.0
     obstacle_radius_m: 0.30
-    # HH_260422: Reduced from 0.90 so near-field side/rear readings are not cleared by ego disk.
+    # HH_260703 - radar_cost_grid clears ego before marking live hits, so valid
+    # side/rear detections can still become blocking radar costs.
     ego_clear_radius_m: 0.50
 
     # Runtime

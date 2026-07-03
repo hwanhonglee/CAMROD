@@ -117,24 +117,21 @@ private:
     return (v < 0) ? free_value_ : static_cast<int>(v);
   }
 
-  // Clears a disk of radius ego_clear_radius_m_ around the robot centre.
-  void clearEgo(
-    avg_msgs::msg::OccupancyGrid & grid,
-    double base_x, double base_y) const
+  bool isInsideEgoClear(double wx, double wy, double base_x, double base_y) const
   {
-    const int cx = static_cast<int>((base_x - grid.info.origin.position.x) / resolution_);
-    const int cy = static_cast<int>((base_y - grid.info.origin.position.y) / resolution_);
-    const int r  = static_cast<int>(std::ceil(ego_clear_radius_m_ / resolution_));
-    for (int dy = -r; dy <= r; ++dy) {
-      for (int dx = -r; dx <= r; ++dx) {
-        if (dx * dx + dy * dy > r * r) continue;
-        const int gx = cx + dx;
-        const int gy = cy + dy;
-        if (gx < 0 || gy < 0 || gx >= width_ || gy >= height_) continue;
-        grid.data[static_cast<std::size_t>(gy * width_ + gx)] =
-          static_cast<int8_t>(free_value_);
-      }
-    }
+    if (ego_clear_radius_m_ <= 0.0) return false;
+    const double dx = wx - base_x;
+    const double dy = wy - base_y;
+    return (dx * dx + dy * dy) <= (ego_clear_radius_m_ * ego_clear_radius_m_);
+  }
+
+  bool isDynamicInputTopic(std::size_t index) const
+  {
+    if (index >= input_topics_.size()) return false;
+    const auto & topic = input_topics_[index];
+    return (
+      topic.find("cost_grid/lidar") != std::string::npos ||
+      topic.find("cost_grid/radar") != std::string::npos);
   }
 
   void publishGrid()
@@ -188,9 +185,13 @@ private:
           continue;
         }
         int best = free_value_;
+        const bool ego_static_clear = isInsideEgoClear(wx, wy, base_x, base_y);
 
         for (std::size_t i = 0; i < input_grids_.size(); ++i) {
           if (!input_grids_[i]) continue;
+          // HH_260703 - Keep planner-start static guide costs clear inside the
+          // footprint, but preserve live LiDAR/Radar hits for safety stops.
+          if (ego_static_clear && !isDynamicInputTopic(i)) continue;
           // HH_260422: Use per-input age limit when configured; fall back to global limit.
           const double age_limit =
             (i < input_max_ages_s_.size() && input_max_ages_s_[i] > 0.0)
@@ -204,10 +205,6 @@ private:
         out.data[static_cast<std::size_t>(gy * width_ + gx)] =
           static_cast<int8_t>(best);
       }
-    }
-
-    if (ego_clear_radius_m_ > 0.0) {
-      clearEgo(out, base_x, base_y);
     }
 
     pub_grid_->publish(out);

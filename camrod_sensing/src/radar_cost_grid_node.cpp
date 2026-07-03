@@ -45,6 +45,10 @@ public:
     // HH_260625: Optional SEN0592 self-echo reject. Cost range min is a max-cost
     // knee, not an ignore threshold, so very small fixed echoes need this gate.
     ignore_below_range_m_ = declare_parameter<double>("ignore_below_range_m", 0.0);
+    // HH_260703 - Optional per-topic override, ordered like input_topics.
+    // Use this to keep side sensors more sensitive than front/rear self echoes.
+    ignore_below_ranges_m_ = declare_parameter<std::vector<double>>(
+      "ignore_below_ranges_m", std::vector<double>{});
     // HH_260422: Default lowered to 2.0m — radar is near-field only; per-sensor max_range in Range
     //   message limits detections before they reach the cost mapping stage.
     cost_range_max_m_ = declare_parameter<double>("cost_range_max_m", 2.0);
@@ -192,15 +196,24 @@ private:
     }
   }
 
+  double ignoreBelowRangeForIndex(const std::size_t idx) const
+  {
+    if (idx < ignore_below_ranges_m_.size() && ignore_below_ranges_m_[idx] >= 0.0) {
+      return ignore_below_ranges_m_[idx];
+    }
+    return ignore_below_range_m_;
+  }
+
   // Implements `transformHitToOutput` behavior.
   bool transformHitToOutput(
     const avg_msgs::msg::Range & msg,
+    const double ignore_below_range_m,
     avg_msgs::msg::PointStamped & hit_output)
   {
     if (!std::isfinite(msg.range)) {
       return false;
     }
-    if (ignore_below_range_m_ > 0.0 && msg.range < ignore_below_range_m_) {
+    if (ignore_below_range_m > 0.0 && msg.range < ignore_below_range_m) {
       return false;
     }
     if (msg.range < msg.min_range || msg.range > msg.max_range) {
@@ -282,8 +295,17 @@ private:
       unknown_value_ : free_value_;
     grid.data.assign(static_cast<std::size_t>(width_ * height_), static_cast<int8_t>(initial_value));
 
+    // HH_260703 - Clear the ego footprint before marking live radar hits so
+    // valid near-field side/rear detections can override the self-clear disk.
+    if (ego_clear_radius_m_ > 0.0) {
+      clearDisk(
+        grid, grid_origin_x, grid_origin_y,
+        base_in_output.point.x, base_in_output.point.y);
+    }
+
     const auto now_time = now();
-    for (const auto & sample : samples_) {
+    for (std::size_t i = 0; i < samples_.size(); ++i) {
+      const auto & sample = samples_[i];
       if (!sample.valid) {
         continue;
       }
@@ -292,7 +314,7 @@ private:
       }
 
       avg_msgs::msg::PointStamped hit_output;
-      if (!transformHitToOutput(sample.msg, hit_output)) {
+      if (!transformHitToOutput(sample.msg, ignoreBelowRangeForIndex(i), hit_output)) {
         continue;
       }
       // HH_260630: SEN0592 risk should follow sensor-relative range, not
@@ -302,12 +324,6 @@ private:
       const int value = mapDistanceToCost(sample.msg.range);
       markDisk(
         grid, grid_origin_x, grid_origin_y, hit_output.point.x, hit_output.point.y, value);
-    }
-
-    if (ego_clear_radius_m_ > 0.0) {
-      clearDisk(
-        grid, grid_origin_x, grid_origin_y,
-        base_in_output.point.x, base_in_output.point.y);
     }
 
     pub_grid_->publish(grid);
@@ -371,6 +387,7 @@ private:
   int max_cost_{100};
   double cost_range_min_m_{0.3};
   double ignore_below_range_m_{0.0};
+  std::vector<double> ignore_below_ranges_m_;
   double cost_range_max_m_{2.0};
   double obstacle_radius_m_{0.30};
   double ego_clear_radius_m_{0.50};
