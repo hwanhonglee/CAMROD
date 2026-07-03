@@ -26,6 +26,8 @@ struct CostmapState
   double       hz_error_ratio{0.4};
   double       stale_timeout{5.0};
   double       hz_window_s{6.0};
+  bool         stale_is_error{true};
+  bool         rate_is_error{true};
 
   std::mutex   mtx;
   rclcpp::Time last_msg_time{0, 0, RCL_ROS_TIME};
@@ -62,6 +64,8 @@ protected:
     declare_parameter("global_stale_timeout_s", 3.0);
     declare_parameter("local_stale_timeout_s", 1.5);
     declare_parameter("hz_window_s", 6.0);
+    declare_parameter("stale_is_error", true);
+    declare_parameter("rate_is_error", true);
   }
 
   void load_parameters_() override
@@ -73,6 +77,8 @@ protected:
     global_.hz_error_ratio = get_parameter("hz_error_ratio").as_double();
     global_.stale_timeout = get_param<double>("global_stale_timeout_s", global_.stale_timeout);
     global_.hz_window_s = get_parameter("hz_window_s").as_double();
+    global_.stale_is_error = get_parameter("stale_is_error").as_bool();
+    global_.rate_is_error = get_parameter("rate_is_error").as_bool();
 
     local_.name          = "local";
     local_.topic         = get_parameter("local_costmap_topic").as_string();
@@ -81,6 +87,8 @@ protected:
     local_.hz_error_ratio = get_parameter("hz_error_ratio").as_double();
     local_.stale_timeout = get_param<double>("local_stale_timeout_s", local_.stale_timeout);
     local_.hz_window_s = get_parameter("hz_window_s").as_double();
+    local_.stale_is_error = get_parameter("stale_is_error").as_bool();
+    local_.rate_is_error = get_parameter("rate_is_error").as_bool();
   }
 
   void setup_tasks_() override
@@ -131,10 +139,15 @@ private:
     std::lock_guard<std::mutex> lock(costmap.mtx);
 
     if (!costmap.has_msg) {
-      stat.summary(DiagnosticStatus::STALE,
+      // HH_260703: Field Nav2 costmap publication can be event-like under high
+      // CPU load. Let config decide whether missing/stale costmaps are fatal
+      // diagnostics; cmd_vel safety still uses live sensor cost grids directly.
+      stat.summary(
+        costmap.stale_is_error ? DiagnosticStatus::STALE : DiagnosticStatus::WARN,
         "no topic messages: " + costmap.topic);
       stat.add("topic", costmap.topic);
       stat.add("costmap", costmap.name);
+      stat.add("stale_is_error", costmap.stale_is_error ? "true" : "false");
       return;
     }
 
@@ -144,12 +157,15 @@ private:
       std::snprintf(buf, sizeof(buf),
         "no costmap update for %.1fs (timeout=%.1fs)",
         elapsed, costmap.stale_timeout);
-      stat.summary(DiagnosticStatus::ERROR, std::string(buf));
+      stat.summary(
+        costmap.stale_is_error ? DiagnosticStatus::ERROR : DiagnosticStatus::WARN,
+        std::string(buf));
       char tmp[32];
       std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed);
       stat.add("last_msg_sec_ago", std::string(tmp));
       stat.add("topic", costmap.topic);
       stat.add("costmap", costmap.name);
+      stat.add("stale_is_error", costmap.stale_is_error ? "true" : "false");
       return;
     }
 
@@ -167,8 +183,10 @@ private:
       const double ratio = actual_hz / costmap.expected_hz;
       const int8_t hz_lvl = check_low(ratio, costmap.hz_warn_ratio, costmap.hz_error_ratio);
       if (hz_lvl > lvl) {
-        lvl = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "publish rate critically low" : "publish rate low";
+        const bool demoted_error = !costmap.rate_is_error && hz_lvl >= S::ERROR;
+        lvl = demoted_error ? S::WARN : hz_lvl;
+        msg_str = (hz_lvl == S::ERROR && !demoted_error) ?
+          "publish rate critically low" : "publish rate low";
       }
     }
 
@@ -189,6 +207,7 @@ private:
     stat.add("last_msg_sec_ago", std::string(tmp));
     stat.add("topic", costmap.topic);
     stat.add("costmap", costmap.name);
+    stat.add("rate_is_error", costmap.rate_is_error ? "true" : "false");
     stat.add("width", static_cast<int>(costmap.width));
     stat.add("height", static_cast<int>(costmap.height));
     std::snprintf(tmp, sizeof(tmp), "%.3f", costmap.resolution);

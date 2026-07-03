@@ -70,8 +70,10 @@ radar_checker:
       stale_timeout_s:      1.0
       min_range_m:        0.02
       max_range_m:        4.5
-      stuck_min_warn_m:   0.05
-      stuck_min_error_m:  0.03
+      # HH_260703 - RIGHT2 sees a stable 3-4 cm chassis echo; keep that from
+      # becoming a WARN while still catching direct sensor blockage.
+      stuck_min_warn_m:   0.035
+      stuck_min_error_m:  0.025
       stuck_max_warn_m:   4.4
       stuck_max_error_m:  0.0
 
