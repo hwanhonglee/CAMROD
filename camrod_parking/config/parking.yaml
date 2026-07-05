@@ -43,7 +43,9 @@
     goal_pair_max_age_s: 0.0
     default_lateral_direction: "left"
 
-    crab_speed_mps: 0.18
+    # HH_260706 - Field crab entry was too slow after the 180-degree campsite
+    # sequence; keep the same controller but raise lateral speed moderately.
+    crab_speed_mps: 0.24
     entry_position_tolerance_m: 0.15
     return_position_tolerance_m: 0.18
     # HH_260618: Sim/platform low-speed integration can be ~40% of raw parking
