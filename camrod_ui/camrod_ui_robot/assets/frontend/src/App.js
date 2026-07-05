@@ -95,6 +95,10 @@ function DiagnosticsMonitor() {
   const [selected, setSelected] = useState(null);
   const [expanded, setExpanded] = useState({ error: true, stale: true, warn: true, ok: false });
   const [parkingOn, setParkingOn] = useState(false);
+  const [manualDockOn, setManualDockOn] = useState(false);
+  const [autoDockingOn, setAutoDockingOn] = useState(false);
+  const [manualDockStatus, setManualDockStatus] = useState(null); // null|'pending'|'ok'|'err'
+  const [dockPhase, setDockPhase] = useState(null); // e.g. 'DOCKING', 'INITIAL_PERCEPTION'
 
   useEffect(() => {
     const fetch_ = () =>
@@ -106,6 +110,48 @@ function DiagnosticsMonitor() {
     const t = setInterval(fetch_, 2000);
     return () => clearInterval(t);
   }, []);
+
+  // 마운트 시 백엔드 파라미터 기반 도킹 토글 초기값 로드
+  useEffect(() => {
+    fetch('/ui/state')
+      .then(r => r.json())
+      .then(data => {
+        if (data.manual_dock_enabled !== undefined) setManualDockOn(data.manual_dock_enabled);
+        if (data.auto_dock_enabled !== undefined) setAutoDockingOn(data.auto_dock_enabled);
+      })
+      .catch(() => {});
+  }, []);
+
+  // dock_feedback / dock_result 이벤트 수신 (메인 WebSocket → CustomEvent 경유)
+  useEffect(() => {
+    const onFeedback = (e) => setDockPhase(e.detail.phase);
+    const onResult = (e) => {
+      setManualDockStatus(e.detail.success ? 'ok' : 'err');
+      setDockPhase(null);
+    };
+    globalThis.addEventListener('dock_feedback', onFeedback);
+    globalThis.addEventListener('dock_result', onResult);
+    return () => {
+      globalThis.removeEventListener('dock_feedback', onFeedback);
+      globalThis.removeEventListener('dock_result', onResult);
+    };
+  }, []);
+
+  const handleManualDock = () => {
+    setManualDockStatus('pending');
+    setDockPhase(null);
+    fetch('/api/manual_dock', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => { if (!data.success) setManualDockStatus('err'); })
+      .catch(() => setManualDockStatus('err'));
+  };
+
+  const handleCancelDock = () => {
+    fetch('/api/cancel_dock', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => { if (data.success) setManualDockStatus(null); })
+      .catch(() => {});
+  };
 
   const LEVEL_STR  = { 0: 'OK', 1: 'WARN', 2: 'ERROR', 3: 'STALE' };
   const DOT_COLOR  = { 0: '#5dca5d', 1: '#d4a030', 2: '#e24b4a', 3: '#9e6644' };
@@ -132,6 +178,51 @@ function DiagnosticsMonitor() {
             {parkingOn ? 'Parking ON' : 'Parking OFF'}
           </span>
         </button>
+
+        <span className="diag-control-label">Manual Docking</span>
+        <button
+          className={`parking-toggle-btn ${manualDockOn ? 'on' : 'off'}`}
+          onClick={() => setManualDockOn(prev => !prev)}
+        >
+          <span className="parking-toggle-knob" />
+          <span className="parking-toggle-text">
+            {manualDockOn ? 'ON' : 'OFF'}
+          </span>
+        </button>
+
+        <span className="diag-control-label">Auto Docking</span>
+        <button
+          className={`parking-toggle-btn ${autoDockingOn ? 'on' : 'off'}`}
+          onClick={() => {
+            const newVal = !autoDockingOn;
+            setAutoDockingOn(newVal);
+            fetch('/api/auto_dock_enable', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ enabled: newVal }),
+            }).catch(() => {});
+          }}
+        >
+          <span className="parking-toggle-knob" />
+          <span className="parking-toggle-text">{autoDockingOn ? 'ON' : 'OFF'}</span>
+        </button>
+
+        <div className="dock-btn-row">
+          <button
+            className={`manual-dock-btn${manualDockStatus === 'pending' ? ' pending' : ''}`}
+            onClick={handleManualDock}
+            disabled={!manualDockOn || manualDockStatus === 'pending'}
+          >
+            {manualDockStatus === 'pending'
+              ? (dockPhase || '도킹 중…')
+              : '도킹 시작'}
+          </button>
+          {manualDockStatus === 'pending' && (
+            <button className="dock-cancel-btn" onClick={handleCancelDock}>취소</button>
+          )}
+        </div>
+        {manualDockStatus === 'ok' && <span className="dock-status-msg ok">도킹 명령 전송 완료</span>}
+        {manualDockStatus === 'err' && <span className="dock-status-msg err">도킹 명령 전송 실패</span>}
       </div>
 
     <div className="diag-monitor">
@@ -1025,6 +1116,14 @@ function App() {
       // engage 상태: {"engage": true/false} 수신
       if ('engage' in data) {
         setEngageState(data.engage);
+      }
+      // 도킹 피드백: {"dock_feedback": {phase, state, retries}} 수신
+      if ('dock_feedback' in data) {
+        globalThis.dispatchEvent(new CustomEvent('dock_feedback', { detail: data.dock_feedback }));
+      }
+      // 도킹 결과: {"dock_result": {success, message, elapsed}} 수신
+      if ('dock_result' in data) {
+        globalThis.dispatchEvent(new CustomEvent('dock_result', { detail: data.dock_result }));
       }
     };
 

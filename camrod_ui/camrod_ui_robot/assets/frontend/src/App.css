@@ -2173,6 +2173,7 @@ h1 {
 .diag-control-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 1.2rem;
   padding: 0.6rem 1.2rem;
   background: #1e2a1e;
@@ -2239,6 +2240,76 @@ h1 {
 
 .parking-toggle-text {
   letter-spacing: 0.04em;
+}
+
+.manual-dock-btn {
+  padding: 0.9rem 2.4rem;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1565c0, #1e88e5);
+  color: #fff;
+  font-family: 'Consolas', 'Menlo', 'Noto Sans KR', monospace;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(30, 136, 229, 0.4);
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.manual-dock-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0d47a1, #1565c0);
+}
+
+.manual-dock-btn.pending,
+.manual-dock-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.dock-btn-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.dock-cancel-btn {
+  padding: 0.9rem 1.6rem;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #b71c1c, #e53935);
+  color: #fff;
+  font-family: 'Consolas', 'Menlo', 'Noto Sans KR', monospace;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(229, 57, 53, 0.4);
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.dock-cancel-btn:hover {
+  background: linear-gradient(135deg, #7f0000, #b71c1c);
+}
+
+.dock-status-msg {
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+}
+
+.dock-status-msg.ok {
+  background: rgba(67, 192, 104, 0.15);
+  color: #43c068;
+  border: 1px solid #43c068;
+}
+
+.dock-status-msg.err {
+  background: rgba(192, 64, 64, 0.15);
+  color: #e05555;
+  border: 1px solid #e05555;
 }
 
 /* HJ_260601: 게스트 호출 알림 팝업 */
