@@ -8,7 +8,7 @@
     # Main device communication port.
     # CV7-AHRS typically appears as /dev/ttyACM0 on Linux.
     # port: "/dev/ttyACM0"
-    port: "/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6284.222091-if00"
+    port: "/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6286.226900-if00"
     
     # Baudrate for the main port.
     # For USB ACM devices, this usually does not change actual USB throughput,
