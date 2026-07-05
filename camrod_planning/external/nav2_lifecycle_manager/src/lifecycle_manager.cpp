@@ -223,8 +223,10 @@ LifecycleManager::changeStateForNode(const std::string & node_name, std::uint8_t
   // Some servers (notably behavior_server) can briefly report their previous state
   // immediately after change_state() while still finishing transition callbacks.
   // Poll for a short window before declaring failure to avoid false-negative bringup aborts.
+  // YH_260702: 느린 환경(WSL2 등)에서 bt_navigator activate(BT XML 로드)가 오래 걸려
+  //   2초 window 로는 false-negative abort 발생 → 30초로 확대.
   const auto expected_state = transition_state_map_[transition];
-  const auto deadline = std::chrono::steady_clock::now() + 2s;
+  const auto deadline = std::chrono::steady_clock::now() + 30s;
   uint8_t observed_state = node_map_[node_name]->get_state();
   while (observed_state != expected_state && std::chrono::steady_clock::now() < deadline) {
     std::this_thread::sleep_for(25ms);

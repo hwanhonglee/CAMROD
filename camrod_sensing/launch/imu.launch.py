@@ -105,15 +105,24 @@ def generate_launch_description():
                 ),
             ], condition=IfCondition(PythonExpression(["'", imu_model, "' == 'cv7'"]))),
 
-            # ── GQ7 model (upstream microstrain_launch.py + optional NTRIP) ────────
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    os.path.join(_microstrain_share, 'launch', 'microstrain_launch.py')),
-                launch_arguments={
-                    'params_file': LaunchConfiguration('_imu_param_file_resolved'),
-                }.items(),
-                condition=IfCondition(PythonExpression(["'", imu_model, "' == 'gq7'"])),
-            ),
+            # ── GQ7 model (direct Node — upstream microstrain_launch.py sets
+            #   namespace='/' explicitly, which overrides PushRosNamespace) ────────
+            GroupAction([
+                SetRemap(src='/ekf/status', dst='ekf/status'),
+                SetRemap(src='imu/data',    dst='data'),
+                Node(
+                    package='microstrain_inertial_driver',
+                    executable='microstrain_inertial_driver_node',
+                    name='microstrain_inertial_driver',
+                    output='screen',
+                    parameters=[
+                        microstrain_default_params,
+                        LaunchConfiguration('_imu_param_file_resolved'),
+                    ],
+                    respawn=True,
+                    respawn_delay=2.0,
+                ),
+            ], condition=IfCondition(PythonExpression(["'", imu_model, "' == 'gq7'"]))),
             Node(
                 package='ntrip_client',
                 executable='ntrip_ros.py',
