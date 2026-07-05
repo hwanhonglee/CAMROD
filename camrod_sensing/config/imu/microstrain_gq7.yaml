@@ -1,4 +1,4 @@
-microstrain_inertial_driver:
+/**:
   ros__parameters:
 
     # ============================================================
@@ -7,12 +7,13 @@ microstrain_inertial_driver:
 
     # Main USB serial port for the GQ7.
     # IMPORTANT:
-    #   The GQ7 exposes two USB ACM ports (main + aux). Use udev symlinks if possible.
-    #   If you see "configured main port appears to actually be the aux port",
-    #   swap port/aux_port or use stable /dev/serial/by-id paths.
-    # port: "/dev/ttyACM0"
-    port: "/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6286.226900-if00"    
-    aux_port: "/dev/ttyACM1"
+    #   J1 (main) and J2 (aux) are SEPARATE physical connectors, each needing its own USB cable.
+    #   Currently J2 (aux) is connected → /dev/ttyACM0.
+    #   J1 (main) must be physically connected via USB → will appear as new ttyACM device.
+    #   Update 'port' with the by-id path of J1 after connecting it.
+    # port: "/dev/ttyACM0"  ← do NOT use; this is the aux port (J2)
+    port: "/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_0000_6284.222091-if00"
+    aux_port: "/dev/serial/by-id/usb-Lord_Microstrain_Lord_Inertial_Sensor_2-00_6284.222091-if00"
 
     # Driver baudrate setting (still required even on USB ACM devices).
     baudrate: 115200
