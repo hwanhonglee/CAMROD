@@ -567,6 +567,10 @@ Key launch arguments:
 | `cmd_vel_gate_cost_stop_clear_required_s` | `2.0` | HH_260703 - Continuous clear duration required to release the latch |
 | `cmd_vel_gate_cost_grid_stale_stop_enable` | `true` | HH_260703 - Zero `/planning/cmd_vel` if the merged inflation grid is stale/missing |
 | `cmd_vel_gate_cost_grid_stale_timeout_s` | `1.0` | HH_260703 - Maximum accepted age of `/planning/cost_grid/inflation` |
+| `cmd_vel_gate_route_heading_lookahead_m` | `2.0` | HH_260706 - Longer path tangent sample smooths startup alignment under delayed field data |
+| `cmd_vel_gate_route_heading_error_exit_deg` | `35.0` | HH_260706 - Release alignment earlier to avoid yaw overshoot chatter |
+| `cmd_vel_gate_route_heading_angular_kp` | `0.8` | HH_260706 - Damped angular correction for route-heading alignment |
+| `cmd_vel_gate_route_heading_max_angular_z` | `0.35` | HH_260706 - Clamp route-heading rotation rate during startup alignment |
 | `cmd_vel_gate_lanelet_safety_enable` | `true` | Raw lanelet-grid hard stop before inflation ego-clear |
 | `cmd_vel_gate_lateral_cmd_bypass_static_cost_stop` | `true` | HH_260618 - explicit site-crab lateral cmd_vel bypasses static lanelet/global-path front/side/rear cost while keeping LiDAR/Radar source stops |
 | `cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop` | `true` | HH_260624 - pure in-place parking rotation bypasses static lanelet cost but still stops on live LiDAR/Radar cost near the body |

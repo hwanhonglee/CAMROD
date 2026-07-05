@@ -11,7 +11,7 @@
 #
 # WARN: --update overwrites any local changes inside external/ directories.
 # HH_260630: setup covers the current split runtime:
-#   - camrod_parking is a local source package, not a legacy external.
+#   - camrod_parking is a local source package, not an external dependency.
 #   - camrod_voice requires SDL2_mixer; setup installs libsdl2-mixer-dev.
 #   - camrod_docking/Isaac ROS remains Jetson-only and is skipped on x86_64.
 #   - Ranger/SocketCAN tools are installed here; runtime CAN activation is handled
@@ -24,6 +24,8 @@
 #     enumerates as ttyACM0; CH9344 USB ports are radar.
 #   - LiDAR runtime is tuned in package configs, not installed here.
 #   - planning soft-estop wiring is built/installed by colcon_build.sh.
+# HH_260706: route-heading damping and campsite crab speed are config/runtime
+#   changes installed by colcon_build.sh; setup remains dependency-only.
 # HH_260702: setup is still dependency-only. Do not add runtime launch/test
 #   side effects here; use colcon_build.sh for install sync and
 #   camrod_bringup/sim_validation_runner.py for deterministic manual, obstacle,
@@ -389,7 +391,8 @@ if [[ "${DO_ROSDEP}" -eq 1 ]]; then
   rosdep update || log "WARN: rosdep update failed — continuing"
 
   # HH_260617: These keys are either source-built in this workspace, handled by
-  # explicit apt setup above, Jetson-only, or legacy upstream package.xml names
+  # explicit apt setup above, Jetson-only, or upstream package.xml names that
+  # are not part of the current CAMROD source build
   # that break idempotent x86_64 setup.  Keep rosdep focused on actionable deps.
   _ROSDEP_SKIP_KEYS=(
     ament_python
