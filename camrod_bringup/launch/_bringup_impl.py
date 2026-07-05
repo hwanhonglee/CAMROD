@@ -1221,7 +1221,7 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_route_heading_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_lookahead_m', 1.5),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_lookahead_m', 2.0),
             'Path tangent lookahead distance for route-heading alignment',
         ),
         (
@@ -1231,17 +1231,17 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_route_heading_error_exit_deg',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_error_exit_deg', 20.0),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_error_exit_deg', 35.0),
             'Yaw error threshold to release route-heading alignment',
         ),
         (
             'planning_cmd_vel_gate_route_heading_angular_kp',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_angular_kp', 1.4),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_angular_kp', 0.8),
             'Angular proportional gain for route-heading alignment',
         ),
         (
             'planning_cmd_vel_gate_route_heading_max_angular_z',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_max_angular_z', 0.6),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_max_angular_z', 0.35),
             'Max angular speed for route-heading alignment',
         ),
         (
