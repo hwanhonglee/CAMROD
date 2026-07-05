@@ -25,6 +25,7 @@ def generate_launch_description():
     enable_manual_docking = LaunchConfiguration('enable_manual_docking')
     enable_apriltag = OrSubstitution(enable_auto_docking, enable_manual_docking)
     cmd_vel_topic = LaunchConfiguration('cmd_vel_topic')
+    nav_to_pose_action = LaunchConfiguration('nav_to_pose_action')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -57,6 +58,15 @@ def generate_launch_description():
             default_value='true',
             description='Enable odom_yaw_corrector TF broadcaster. '
                         'Set false when running with CAMROD full stack localization TF'
+        ),
+        # YH_260702 (Stage 1-3) - opennav_docking navigator action remap.
+        # navigator.cpp 가 상대경로 "navigate_to_pose" 로 클라이언트를 생성 → docking 네임스페이스
+        # 하에서 /docking/navigate_to_pose 를 탐색하나 실제 서버는 /planning/navigate_to_pose 에 있음.
+        # remap 없이는 Phase 1 staging 이 FailedToStage 로 즉시 실패.
+        DeclareLaunchArgument(
+            'nav_to_pose_action',
+            default_value='/planning/navigate_to_pose',
+            description='Nav2 navigate_to_pose action name that opennav_docking calls for Phase 1 staging'
         ),
 
         # 카메라 TF: camrod_sensor_kit URDF 가 담당
@@ -139,7 +149,12 @@ def generate_launch_description():
                     {'dock_database': cfg('docks.yaml')},
                     {'cmd_vel_topic': cmd_vel_topic},
                 ],
-                remappings=[('cmd_vel', cmd_vel_topic)],
+                remappings=[
+                    ('cmd_vel', cmd_vel_topic),
+                    # YH_260702 (Stage 1-3) - Phase 1 staging navigation 을 CAMROD Nav2
+                    # (/planning/navigate_to_pose) 로 연결. 기본 BT 사용 (navigator_bt_xml="").
+                    ('navigate_to_pose', nav_to_pose_action),
+                ],
                 respawn=True,
                 respawn_delay=2.0,
             ),
