@@ -192,6 +192,18 @@ REQUIRED_SYS_PKGS=(
   #   → docking Phase 1 aborts instantly with error 903 (FAILED_TO_STAGE).
   ros-humble-nav2-navfn-planner       # planner_plugins: "NavFn"
   ros-humble-nav2-theta-star-planner  # planner_plugins: "ThetaStar"
+  # YH_260706: Controllers listed in controller_server controller_plugins (nav2_base.yaml).
+  #   Same failure mode as the planners above — a missing controller plugin makes
+  #   controller_server on_configure throw and roll back, so planning never activates.
+  #   (RPP is vendored/built in camrod_planning/external; Graceful is nav2-graceful-controller above.)
+  ros-humble-nav2-mppi-controller          # controller_plugins: "MPPI" (CAMROD default)
+  ros-humble-nav2-dwb-controller           # controller_plugins: "DWB"
+  ros-humble-nav2-rotation-shim-controller # controller_plugins: "RotationShim"
+  # YH_260706: Recovery behaviors (spin/backup/wait/drive_on_heading). nav2_lanelet.launch.py
+  #   only launches behavior_server when this package is present; the nav-to-pose BT (default
+  #   and CAMROD's) references <Spin>/<BackUp>, so without it bt_navigator on_activate throws
+  #   "Action server spin not available" and stays inactive → navigate_to_pose unusable.
+  ros-humble-nav2-behaviors               # behavior_server recovery actions
   ros-humble-controller-manager     # ugv_sdk controller dependency.
   ros-humble-rviz2                  # RViz2 for operator and sim bringup.
   ros-humble-rviz-common            # RViz2 common libraries.
