@@ -157,6 +157,9 @@ class UiBackendNode(Node):
         )
         self._latest_arrival_pose: Optional[PoseStamped] = None
         self._latest_arrival_pose_time_s = 0.0
+        # HH_260706 - HTTP site selection dispatches immediately; ignore the
+        # local topic echo so the same camping-site command is not applied twice.
+        self._last_direct_destination_echo: Optional[tuple[str, bool, str, float]] = None
 
         # WebSocket client management.
         self._ws_clients: Set[WebSocket] = set()
@@ -546,17 +549,19 @@ class UiBackendNode(Node):
             self._schedule_broadcast({"guest_recall": True})
 
     def _publish_amr_service_state(self, state: int, source: str) -> None:
+        # HH_260706 - Keep ROS state descriptions and logs ASCII/English; UI
+        # localization should be handled in the frontend display layer.
         desc_map = {
-            AvgAmrServiceState.DROP_ZONE_WAIT:         "Drop Zone 대기 중",
-            AvgAmrServiceState.MOVING_TO_SITE:         "Drop Zone → Site 이동 중",
-            AvgAmrServiceState.SITE_ARRIVED:           "Site 도착",
-            AvgAmrServiceState.RETURNING_TO_DROP_ZONE: "Site → Drop Zone 복귀 중",
-            AvgAmrServiceState.GUEST_RECALL_SERVICE:   "Guest 호출 요청",
-            AvgAmrServiceState.SITE_ENTRY:             "Site 진입 중",
-            AvgAmrServiceState.UNLOAD_WAIT:            "Site 하차 대기",
-            AvgAmrServiceState.GUEST_LOADING_WAIT:     "Guest 적재 대기",
-            AvgAmrServiceState.RETURN_WITH_CARGO:      "Site 이탈 중",
-            AvgAmrServiceState.DROP_ZONE_PARKING:      "Drop Zone 주차 중",
+            AvgAmrServiceState.DROP_ZONE_WAIT:         "Waiting at drop zone",
+            AvgAmrServiceState.MOVING_TO_SITE:         "Moving from drop zone to site",
+            AvgAmrServiceState.SITE_ARRIVED:           "Arrived at site",
+            AvgAmrServiceState.RETURNING_TO_DROP_ZONE: "Returning from site to drop zone",
+            AvgAmrServiceState.GUEST_RECALL_SERVICE:   "Guest recall requested",
+            AvgAmrServiceState.SITE_ENTRY:             "Entering site",
+            AvgAmrServiceState.UNLOAD_WAIT:            "Waiting for unload at site",
+            AvgAmrServiceState.GUEST_LOADING_WAIT:     "Waiting for guest loading",
+            AvgAmrServiceState.RETURN_WITH_CARGO:      "Leaving site with cargo",
+            AvgAmrServiceState.DROP_ZONE_PARKING:      "Parking at drop zone",
         }
         msg = AvgAmrServiceState()
         msg.state = state
@@ -574,8 +579,14 @@ class UiBackendNode(Node):
             return
         run = bool(msg.run)
         source = str(msg.source).strip() if msg.source else "destination_topic"
+        if self._is_recent_direct_destination_echo(site, run, source):
+            self.get_logger().info(
+                "destination echo ignored after direct HTTP dispatch: "
+                f"site={site} run={str(run).lower()} source={source}"
+            )
+            return
         result = self._apply_destination_command(site=site, run=run, source=source)
-        # Guest 발신 명령 → robot UI에 사이트명 포함 호출 알림 브로드캐스트
+        # Broadcast guest-origin destination calls to the robot-side UI.
         if source == "guest" and run:
             self._schedule_broadcast({"guest_navigate": site})
         self.get_logger().info(
@@ -824,6 +835,19 @@ class UiBackendNode(Node):
             "message": str(goal_result.get("message", "ok")),
         }
 
+    def _is_recent_direct_destination_echo(self, site: str, run: bool, source: str) -> bool:
+        recent = self._last_direct_destination_echo
+        if recent is None:
+            return False
+        recent_site, recent_run, recent_source, recent_time_s = recent
+        if site != recent_site or bool(run) != recent_run or source != recent_source:
+            return False
+        age_s = self.get_clock().now().nanoseconds * 1e-9 - recent_time_s
+        if 0.0 <= age_s <= 1.0:
+            return True
+        self._last_direct_destination_echo = None
+        return False
+
     def _publish_destination_command(self, site: str, run: bool, source: str) -> Dict[str, Any]:
         payload = {"site": site, "run": bool(run)}
 
@@ -902,12 +926,23 @@ class UiBackendNode(Node):
             "states": {s: (s == normalized_site and run) for s in self.site_names}
         })
 
+        self._last_direct_destination_echo = (
+            normalized_site,
+            bool(run),
+            "http_ui_destination",
+            self.get_clock().now().nanoseconds * 1e-9,
+        )
         payload = self._publish_destination_command(
             site=normalized_site,
             run=bool(run),
             source="http_ui_destination",
         )
-        return {"success": True, "destination": payload}
+        dispatch = self._apply_destination_command(
+            site=normalized_site,
+            run=bool(run),
+            source="http_ui_destination",
+        )
+        return {"success": True, "destination": payload, "dispatch": dispatch}
 
     # ── FastAPI server ────────────────────────────────────────────────────────
 
