@@ -73,6 +73,19 @@ def generate_launch_description():
     # ── opennav_docking Phase 1 엔진 ────────────────────────────────────────────
     docking = GroupAction([
         PushRosNamespace('docking'),
+        # YH_260706: opennav 내부 navigator 는 노드 remap 을 무시하고
+        # /docking/navigate_to_pose 를 부른다(서버 없음 → Phase1 903). 이 릴레이가
+        # /docking/navigate_to_pose 서버를 제공하고 /planning/navigate_to_pose 로 중계.
+        Node(
+            package='camrod_docking',
+            executable='navigate_to_pose_relay',
+            name='navigate_to_pose_relay',
+            output='screen',
+            parameters=[
+                {'input_action': 'navigate_to_pose'},
+                {'output_action': '/planning/navigate_to_pose'},
+            ],
+        ),
         Node(
             package='opennav_docking',
             executable='opennav_docking',

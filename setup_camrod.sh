@@ -204,6 +204,10 @@ REQUIRED_SYS_PKGS=(
   #   and CAMROD's) references <Spin>/<BackUp>, so without it bt_navigator on_activate throws
   #   "Action server spin not available" and stays inactive → navigate_to_pose unusable.
   ros-humble-nav2-behaviors               # behavior_server recovery actions
+  # YH_260706: smoother_server(smooth_path). nav2_lanelet.launch.py launches it only when
+  #   present; CAMROD nav-to-pose BT calls <SmoothPath>, so without it bt_navigator on_activate
+  #   throws "Action server smooth_path not available" and stays inactive.
+  ros-humble-nav2-smoother                # smoother_server (smooth_path action)
   ros-humble-controller-manager     # ugv_sdk controller dependency.
   ros-humble-rviz2                  # RViz2 for operator and sim bringup.
   ros-humble-rviz-common            # RViz2 common libraries.
