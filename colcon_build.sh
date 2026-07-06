@@ -27,9 +27,9 @@
 # HH_260703: use this wrapper after config-only field safety changes too; the
 # install tree must receive cmd_vel gate, diagnostics, GNSS, and README updates
 # before outdoor validation.
-# HH_260706: route-heading damping and campsite crab speed changes are also
-# config-only field updates, so this wrapper is the install-sync check before
-# tagging v2.0.0.
+# HH_260706: v2.0.1 field updates also depend on this wrapper: it rebuilds the
+# UI bundle before packaging and syncs adaptive cmd_vel gate/config docs into
+# install before tagging.
 
 set -euo pipefail
 
@@ -101,20 +101,13 @@ _clean_stale_cmake_build_dirs() {
 }
 _clean_stale_cmake_build_dirs
 
-# HH_260611: ament_python symlink-install can fail when an installed data-file
-# symlink already exists from an older build. Remove known generated launch
-# artifacts before rebuilding so setup.py can recreate them.
+# HH_260706: Recreate camrod_ui build/install prefixes as a unit. Removing only
+# one generated launch symlink can make ament_python symlink_data fail on the
+# next rebuild, leaving the robot UI launch missing from install.
 _clean_stale_install_artifacts() {
-  local path
   if _build_scope_includes_pkg camrod_ui "$@"; then
-    for path in \
-      "${WS_ROOT}/install/camrod_ui/share/camrod_ui/launch/ui.launch.py"
-    do
-      if [[ -e "${path}" || -L "${path}" ]]; then
-        rm -f "${path}"
-        log "removed stale install artifact: ${path}"
-      fi
-    done
+    rm -rf "${WS_ROOT}/build/camrod_ui" "${WS_ROOT}/install/camrod_ui"
+    log "removed camrod_ui build/install prefixes for a clean UI reinstall"
   fi
 
   # HH_260611: Remove stale isolated install prefixes for packages that are no

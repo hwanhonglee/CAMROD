@@ -311,7 +311,7 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 | 🔵 `POST` | `/ui/operation_mode` | `?auto=true\|false` | `{"success": bool, "auto": bool}` | Alias for engage; forwards as Bool |
 | 🔵 `POST` | `/ui/auto` | — | `{"success": true}` | Shortcut: engage=true |
 | 🔵 `POST` | `/ui/stop` | — | `{"success": true}` | Shortcut: engage=false |
-| 🔵 `POST` | `/ui/destination` | `?site=B1&run=true\|false` | `{"success": bool, "destination": {…}}` | Select destination and optionally dispatch goal+engage |
+| 🔵 `POST` | `/ui/destination` | `?site=B1&run=true\|false` | `{"success": bool, "destination": {…}, "dispatch": {…}}` | Select destination and optionally dispatch goal+engage |
 | 🔌 `WS` | `/ws` | — | JSON push messages | Real-time push: `{"states": {…}}`, `{"engage": bool}`, `{"battery": int}`, `{"arrived": site}` |
 | 🟢 `GET` | `/{full_path}` | — | Static file or `index.html` | Serve React SPA |
 
@@ -319,7 +319,9 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 >
 > Binds on **all** network interfaces. Any host on the same LAN can send engage commands, select destinations, and dispatch goal poses. CORS is currently set to `allow_origins=["*"]` with **no authentication**.
 >
-> **Recommended deployment:** bind to `127.0.0.1` (default) and use an SSH tunnel or VPN when remote access is required. Do **not** expose port 8010 directly on a public or untrusted network.
+> **Recommended deployment:** bind to `127.0.0.1` for lab-only or tunnel-based operation. Bringup defaults to `0.0.0.0` for robot-IP UI access, so do **not** expose port 8010 directly on a public or untrusted network.
+>
+> HH_260706 - HTTP destination selection applies the camping-site command immediately and returns a `dispatch` result. `/ui/selected_destination` is still republished for inspection, but the backend ignores its own immediate echo to avoid duplicate mission-key/goal dispatch.
 
 ### `camping_sites.yaml` Format
 
