@@ -129,6 +129,11 @@ def generate_launch_description():
         # HH_260622: Side/rear cost-stop samples the merged grid, but blocks
         # only when dynamic source attribution owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_dynamic_stop', default_value='true'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_side_lookahead_m', default_value='0.75'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_rear_lookahead_m', default_value='0.55'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_maneuver_side_lookahead_m', default_value='0.55'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_maneuver_rear_lookahead_m', default_value='0.45'),
         DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='85'),
         DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='1.2'),
         # HH_260623 - Side scan width covers full body length plus front/rear margins.
@@ -257,6 +262,11 @@ def generate_launch_description():
                 'front_reaction_time_s': LaunchConfiguration('cmd_vel_gate_front_reaction_time_s'),
                 'front_lookahead_margin_m': LaunchConfiguration('cmd_vel_gate_front_lookahead_margin_m'),
                 'enable_side_rear_cost_stop': LaunchConfiguration('cmd_vel_gate_side_rear_cost_stop'),
+                'enable_body_near_dynamic_stop': LaunchConfiguration('cmd_vel_gate_body_near_dynamic_stop'),
+                'body_near_side_lookahead_m': LaunchConfiguration('cmd_vel_gate_body_near_side_lookahead_m'),
+                'body_near_rear_lookahead_m': LaunchConfiguration('cmd_vel_gate_body_near_rear_lookahead_m'),
+                'body_near_maneuver_side_lookahead_m': LaunchConfiguration('cmd_vel_gate_body_near_maneuver_side_lookahead_m'),
+                'body_near_maneuver_rear_lookahead_m': LaunchConfiguration('cmd_vel_gate_body_near_maneuver_rear_lookahead_m'),
                 'side_cost_threshold': LaunchConfiguration('cmd_vel_gate_side_cost_threshold'),
                 'side_lookahead_m': LaunchConfiguration('cmd_vel_gate_side_lookahead_m'),
                 'side_corridor_width_m': LaunchConfiguration('cmd_vel_gate_side_corridor_width_m'),

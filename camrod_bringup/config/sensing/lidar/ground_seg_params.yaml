@@ -10,14 +10,13 @@
     maxZ:  1.0
     minZ: -1.0
     downsample: true
-    # HH_260701 - Field profiling showed 0.06 m keeps obstacle detail but
-    # holds ground_segmentation near 4-5 Hz on Orin. 0.10 m keeps useful
-    # obstacle points while reducing the planning safety-grid latency.
-    downsample_resolution: 0.10
+    # HH_260706 - Use a slightly denser voxel grid with coarser ground cells.
+    # This keeps curb/obstacle shape while reducing per-cell RANSAC work.
+    downsample_resolution: 0.07
     lidar_to_ground: -0.75
     transform_tolerance: 0.1
-    cellSizeX: 0.3
-    cellSizeY: 0.3
+    cellSizeX: 0.5
+    cellSizeY: 0.5
     cellSizeZ: 1.0
     cellSizeZPhase2: 0.1
     slopeThresholdDegrees: 20.0

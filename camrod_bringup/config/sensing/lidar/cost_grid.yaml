@@ -36,7 +36,10 @@
     cost_range_max_m: 9.0
     obstacle_radius_m: 0.20
     perception_marker_cost: 90
-    perception_marker_max_radius_m: 1.2
+    # HH_260706 - Keep camera/LiDAR object cost compact; large circular disks
+    # around perception markers were causing unnecessary stops.
+    perception_marker_max_radius_m: 0.45
+    perception_marker_radius_scale: 0.25
     # HH_260630: Keep ego clearing close to the vehicle half-width so side/rear
     # LiDAR obstacles just outside the body are not erased before safety gating.
     ego_clear_radius_m: 0.55

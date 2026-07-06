@@ -339,6 +339,11 @@ def make_gate(
     n.front_lookahead_margin_m = 0.3
 
     n.enable_side_rear_cost_stop = enable_side_rear
+    n.enable_body_near_dynamic_stop = True
+    n.body_near_side_lookahead_m = 0.75
+    n.body_near_rear_lookahead_m = 0.55
+    n.body_near_maneuver_side_lookahead_m = 0.55
+    n.body_near_maneuver_rear_lookahead_m = 0.45
     n.side_cost_threshold = cost_threshold
     n.side_lookahead_m = 1.2
     n.side_corridor_width_m = 0.6
@@ -757,7 +762,7 @@ crab_left = Twist(); crab_left.linear.y = 0.2
 n._last_grid = make_grid(obstacle_x=1.0, obstacle_y=0.0, obstacle_cost=90)
 front_stop_during_crab = n._should_stop_for_cost(crab_left)
 check("crab-left body-front obstacle -> pass", not front_stop_during_crab)
-n._last_grid = make_grid(obstacle_x=0.0, obstacle_y=0.8, obstacle_cost=90)
+n._last_grid = make_grid(obstacle_x=0.0, obstacle_y=0.5, obstacle_cost=90)
 n._cost_source_grids = {"radar": n._last_grid}
 n._cost_source_recv_sec = {"radar": 0.0}
 left_stop_during_crab = n._should_stop_for_cost(crab_left)
@@ -767,7 +772,7 @@ n = make_gate(enable_side_rear=True)
 n._enabled = True
 n._last_odom = make_odom(x=0.0, y=0.0, yaw=0.0)
 crab_right = Twist(); crab_right.linear.y = -0.2
-n._last_grid = make_grid(obstacle_x=0.0, obstacle_y=-0.8, obstacle_cost=90)
+n._last_grid = make_grid(obstacle_x=0.0, obstacle_y=-0.5, obstacle_cost=90)
 n._cost_source_grids = {"radar": n._last_grid}
 n._cost_source_recv_sec = {"radar": 0.0}
 right_stop_during_crab = n._should_stop_for_cost(crab_right)
@@ -784,7 +789,7 @@ reverse = Twist(); reverse.linear.x = -0.2
 n._last_grid = make_grid(obstacle_x=1.0, obstacle_y=0.0, obstacle_cost=90)
 front_stop_during_reverse = n._should_stop_for_cost(reverse)
 check("reverse body-front obstacle -> pass", not front_stop_during_reverse)
-n._last_grid = make_grid(obstacle_x=-0.6, obstacle_y=0.0, obstacle_cost=90)
+n._last_grid = make_grid(obstacle_x=-0.35, obstacle_y=0.0, obstacle_cost=90)
 n._cost_source_grids = {"radar": n._last_grid}
 n._cost_source_recv_sec = {"radar": 0.0}
 rear_stop_during_reverse = n._should_stop_for_cost(reverse)
@@ -814,6 +819,50 @@ n._cost_source_grids = {"lidar": n._last_grid}
 n._cost_source_recv_sec = {"lidar": 0.0}
 path_blocked = n._should_stop_for_cost(forward)
 check("obstacle on local-path corridor -> stop", path_blocked)
+
+
+# ===============================================================================
+print("\n=== TEST 15b: near-body side/rear dynamic guard remains active while forward ===")
+print("  Forward path-following still stops for close right/rear radar cells")
+n = make_gate(enable_side_rear=True)
+n._enabled = True
+n._last_odom = make_odom(x=0.0, y=0.0, yaw=0.0)
+n._last_route_heading_path = make_path([(0.0, 0.0), (2.0, 0.0)])
+n._last_grid = make_grid(obstacle_x=0.0, obstacle_y=-0.60, obstacle_cost=90)
+n._cost_source_grids = {"radar": n._last_grid}
+n._cost_source_recv_sec = {"radar": 0.0}
+right_near_stop_forward = n._should_stop_for_cost(forward)
+check("forward close right radar obstacle -> stop", right_near_stop_forward)
+
+n = make_gate(enable_side_rear=True)
+n._enabled = True
+n._last_odom = make_odom(x=0.0, y=0.0, yaw=0.0)
+n._last_route_heading_path = make_path([(0.0, 0.0), (2.0, 0.0)])
+n._last_grid = make_grid(obstacle_x=-0.45, obstacle_y=0.0, obstacle_cost=90)
+n._cost_source_grids = {"radar": n._last_grid}
+n._cost_source_recv_sec = {"radar": 0.0}
+rear_near_stop_forward = n._should_stop_for_cost(forward)
+check("forward close rear radar obstacle -> stop", rear_near_stop_forward)
+
+n = make_gate(enable_side_rear=True)
+n._enabled = True
+n._last_odom = make_odom(x=0.0, y=0.0, yaw=0.0)
+n._last_route_heading_path = make_path([(0.0, 0.0), (2.0, 0.0)])
+n._last_grid = make_grid(obstacle_x=0.0, obstacle_y=-0.95, obstacle_cost=90)
+n._cost_source_grids = {"radar": n._last_grid}
+n._cost_source_recv_sec = {"radar": 0.0}
+right_far_pass_forward = n._should_stop_for_cost(forward)
+check("forward farther side obstacle outside near-body guard -> pass", not right_far_pass_forward)
+
+n = make_gate(enable_side_rear=True)
+n._enabled = True
+n._last_odom = make_odom(x=0.0, y=0.0, yaw=0.0)
+crab_left = Twist(); crab_left.linear.y = 0.2
+n._last_grid = make_grid(obstacle_x=0.0, obstacle_y=0.75, obstacle_cost=90)
+n._cost_source_grids = {"radar": n._last_grid}
+n._cost_source_recv_sec = {"radar": 0.0}
+crab_far_side_pass = n._should_stop_for_cost(crab_left)
+check("crab maneuver side guard is reduced adaptively -> pass", not crab_far_side_pass)
 
 
 # ===============================================================================

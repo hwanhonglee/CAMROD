@@ -65,7 +65,9 @@ public:
     obstacle_radius_m_ = declare_parameter<double>("obstacle_radius_m", 0.20);
     perception_marker_cost_ = declare_parameter<int>("perception_marker_cost", 90);
     perception_marker_max_radius_m_ =
-      declare_parameter<double>("perception_marker_max_radius_m", 1.2);
+      declare_parameter<double>("perception_marker_max_radius_m", 0.45);
+    perception_marker_radius_scale_ =
+      declare_parameter<double>("perception_marker_radius_scale", 0.25);
     ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.90);
     max_message_age_s_ = declare_parameter<double>("max_message_age_s", 0.50);
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);
@@ -467,7 +469,9 @@ private:
         point_out.point.x, point_out.point.y,
         base_in_output.point.x, base_in_output.point.y));
       const double marker_radius = std::clamp(
-        0.5 * std::hypot(marker.scale.x, marker.scale.y),
+        // HH_260706 - Perception boxes are already object-level detections;
+        // keep their projected cost compact instead of drawing a large disk.
+        perception_marker_radius_scale_ * std::hypot(marker.scale.x, marker.scale.y),
         obstacle_radius_m_, std::max(obstacle_radius_m_, perception_marker_max_radius_m_));
       const int value = std::clamp(
         std::max(perception_marker_cost_, mapDistanceToCost(distance)), min_cost_, max_cost_);
@@ -568,7 +572,8 @@ private:
   double cost_range_max_m_{9.0};
   double obstacle_radius_m_{0.20};
   int perception_marker_cost_{90};
-  double perception_marker_max_radius_m_{1.2};
+  double perception_marker_max_radius_m_{0.45};
+  double perception_marker_radius_scale_{0.25};
   double ego_clear_radius_m_{0.90};
   double max_message_age_s_{0.50};
   double publish_rate_hz_{10.0};
