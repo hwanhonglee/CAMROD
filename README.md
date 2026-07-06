@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v2.0.0** (field safety/tuning baseline updated 2026-07-06)
+> Current release: **v2.0.1** (field UI and adaptive safety tuning updated 2026-07-06)
 
 ---
 
@@ -24,6 +24,97 @@ Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground site
 | `camrod_system` | Diagnostic checkers + aggregator | [README](camrod_system/README.md) |
 | `camrod_ui` | HTTP backend + operator web UI | [README](camrod_ui/README.md) |
 | `avg_msgs` | Shared ROS 2 message/service interfaces | [README](camrod_common/avg_msgs/README.md) |
+
+---
+
+## Field Integration Reference
+
+HH_260706 - This section is the operator-facing integration map. Use it first
+when you need to know which package, node, topic, message, parameter, or network
+setting owns a runtime behavior. Package READMEs still hold the deeper details.
+
+### Runtime Entry Points
+
+| Task | Command | What It Starts |
+|---|---|---|
+| Full robot bringup | `ros2 launch camrod_bringup bringup.launch.py sim:=false` | Map, sensing, localization, perception, planning, parking/docking, platform, system diagnostics, UI |
+| Simulation bringup | `ros2 launch camrod_bringup bringup.launch.py sim:=true` | Fake sensors plus the same planning/UI/system graph where possible |
+| UI only | `ros2 launch camrod_ui ui.launch.py ui_host:=0.0.0.0 ui_port:=8010` | FastAPI backend and installed React UI assets |
+| Planning only | `ros2 launch camrod_planning planning.launch.py` | Nav2, goal snapping, local path, state machine, cmd_vel gate |
+| Sensing only | `ros2 launch camrod_sensing sensing.launch.py` | GNSS/IMU/LiDAR/radar/camera preprocessing and sensor cost grids |
+
+### Package-To-Behavior Map
+
+| Behavior | Primary Package / Node | Key Inputs | Key Outputs | Notes |
+|---|---|---|---|---|
+| Operator UI site button | `camrod_ui` / `ui_backend_node` | HTTP `POST /ui/destination`, `camping_sites.yaml` | `/planning/mission_key`, `/goal_pose`, `/planning/mission_engage`, `/platform/drive_enable` | HH_260706 - HTTP destination applies immediately and ignores its own `/ui/selected_destination` echo to avoid duplicate dispatch |
+| Manual engage | `camrod_ui` + `camrod_planning` / `planning_cmd_vel_gate_node.py` | `/planning/engage`, `/platform/drive_enable` | `/planning/engaged`, `/planning/cmd_vel` | `/planning/engage` is the command input; `/planning/engaged` is the gate state output |
+| Lanelet route planning | `camrod_planning` / LaneletRoute planner + goal snapper | `/goal_pose`, Lanelet2 map, `/planning/lanelet_pose_ros` | `/planning/global_path`, `/planning/goal_pose_snapped_ros` | Global path should normally stay lanelet-centered; free-space fallback should be explicit/diagnostic |
+| Local path following | `camrod_planning` / local path extractor + Nav2 controller | `/planning/global_path`, localization pose, costmaps | `/planning/local_path`, `/planning/cmd_vel_raw` | Local path updates frequently; global path should not change shape every tick |
+| Final planning velocity gate | `camrod_planning` / `planning_cmd_vel_gate_node.py` | `/planning/cmd_vel_raw`, engage, e-stop, localization mode, `/planning/cost_grid/inflation` | `/planning/cmd_vel`, `/planning/engaged` | Applies engage, e-stop, GNSS recovery hold, stale-grid fail-closed, dynamic obstacle stop |
+| Platform velocity gate | `camrod_platform` | `/planning/cmd_vel`, `/platform/drive_enable`, hardware status | `/platform/cmd_vel` | Last software gate before Ranger base |
+| LiDAR obstacle cost | `camrod_sensing` / `lidar_cost_grid_node` | `/sensing/lidar/points_filtered`, perception markers/clouds | `/sensing/cost_grid/lidar` | HH_260706 - perception marker radius is compact to avoid oversized circular stop zones |
+| Radar obstacle cost | `camrod_sensing` / `radar_cost_grid_node` | `/sensing/radar/*/range` | `/sensing/cost_grid/radar` | Seven sensors: front1/front2/left1/left2/right1/right2/rear |
+| Merged planning cost | `camrod_sensing` / `inflation_cost_grid_node` | lanelet, lidar, radar, global-path grids | `/planning/cost_grid/inflation` | Consumed by Nav2 local costmap and cmd_vel gate |
+| Diagnostics / soft e-stop | `camrod_system` + `camrod_planning` state machine | checker topics, `/system/diagnostics_agg` | `/system/status`, `/planning/state_machine/estop` | Keep diagnostics readable; only motion-critical ERRORs should force planning stop |
+
+### Critical Topic Contract
+
+| Topic | Message | Direction | Owner | Purpose |
+|---|---|---|---|---|
+| `/planning/engage` | `std_msgs/Bool` | UI/operator -> planning | `camrod_ui` / external tools | Manual planning gate command |
+| `/planning/mission_engage` | `std_msgs/Bool` | UI/state machine -> planning | `camrod_ui`, `camrod_planning` | Mission-owned movement latch for campsite/drop-zone flow |
+| `/planning/engaged` | `std_msgs/Bool` | planning -> UI/system | `planning_cmd_vel_gate_node.py` | Effective planning gate state after engage/e-stop/holds |
+| `/platform/drive_enable` | `std_msgs/Bool` | UI/planning -> platform | `camrod_ui` | Platform drive-enable latch; UI publishes it with engage actions |
+| `/goal_pose` | `geometry_msgs/PoseStamped` | UI/RViz -> planning | `camrod_ui`, RViz | Raw operator or campsite site-center goal |
+| `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | UI -> state machine | `camrod_ui` | Semantic mission key such as `camping_site_1` |
+| `/planning/global_path` | `nav_msgs/Path` | planning -> Nav2/RViz | `camrod_planning` | Lanelet/global route geometry |
+| `/planning/local_path` | `nav_msgs/Path` | planning -> controller/RViz | `camrod_planning` | Short active path segment near robot |
+| `/planning/cmd_vel_raw` | `geometry_msgs/Twist` | Nav2/parking -> gate | `camrod_planning`, `camrod_parking` | Ungated velocity request |
+| `/planning/cmd_vel` | `geometry_msgs/Twist` | planning gate -> platform | `planning_cmd_vel_gate_node.py` | Safety-gated velocity |
+| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | sensing -> planning | `camrod_sensing` | Merged obstacle/static cost used by local costmap and gate |
+| `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | sensing -> fusion/planning | `camrod_sensing` | LiDAR and perception-object cost |
+| `/sensing/cost_grid/radar` | `nav_msgs/OccupancyGrid` | sensing -> fusion/planning | `camrod_sensing` | Near-field radar cost |
+| `/system/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | system -> UI/state machine | `camrod_system` | Aggregated module health |
+
+### Network And Environment
+
+| Item | Current Default | Why It Exists |
+|---|---|---|
+| UI bind host | `api_ui_host: 0.0.0.0` in `camrod_bringup/config/bringup/launch_defaults.yaml` | Robot-IP UI access from an external tablet/laptop |
+| UI port | `8010` | FastAPI backend and React static UI |
+| UI security note | LAN-only, no public exposure | CORS allows operator commands; do not expose port 8010 to untrusted networks |
+| Build wrapper | `./colcon_build.sh` | Runs required UI frontend build before `camrod_ui` colcon install and preserves repo-specific build paths |
+| Runtime setup | `source /home/nvidia/camrod_ws/install/setup.bash` | Makes installed launch files, packages, and messages visible |
+| GNSS serial convention | `/dev/ttyACM*` | GNSS receiver family; CH9344 ports are radar |
+| Radar serial convention | `/dev/ttyCH9344USB0..6` | Seven SEN0592 channels; USB7 unused in the current profile |
+
+### Safety And Tuning Parameters
+
+| Parameter | Default | Owner | Meaning |
+|---|---:|---|---|
+| `cmd_vel_gate_body_near_dynamic_stop` | `true` | `planning_cmd_vel_gate_node.py` | Enables close side/rear dynamic obstacle stops during translation |
+| `cmd_vel_gate_body_near_side_lookahead_m` | `0.75` | bringup/planning | Normal forward-driving `LEFT_NEAR`/`RIGHT_NEAR` distance |
+| `cmd_vel_gate_body_near_rear_lookahead_m` | `0.55` | bringup/planning | Normal forward-driving `REAR_NEAR` distance |
+| `cmd_vel_gate_body_near_maneuver_side_lookahead_m` | `0.55` | bringup/planning | Reduced side guard for crab/reverse tight-space maneuvers |
+| `cmd_vel_gate_body_near_maneuver_rear_lookahead_m` | `0.45` | bringup/planning | Reduced rear guard for crab/reverse tight-space maneuvers |
+| `cmd_vel_gate_cost_stop_latch_enable` | `true` | bringup/planning | Keeps dynamic stops latched until the corridor is continuously clear |
+| `cmd_vel_gate_cost_stop_clear_required_s` | `2.0` | bringup/planning | Required clear time before releasing a latched dynamic stop |
+| `cmd_vel_gate_cost_grid_stale_stop_enable` | `true` | bringup/planning | Fails closed when `/planning/cost_grid/inflation` is stale or missing |
+| `perception_marker_max_radius_m` | `0.45` | `camrod_sensing` LiDAR cost grid | Caps perception-object cost disk size |
+| `perception_marker_radius_scale` | `0.25` | `camrod_sensing` LiDAR cost grid | Scales marker bbox size into compact cost radius |
+
+### Naming Rules
+
+| Name | Meaning |
+|---|---|
+| `mission_key` | Semantic target id, for example `camping_site_3` or `drop_zone` |
+| `site_goal` | Raw operator/UI goal pose on `/goal_pose` |
+| `route_goal` | Lanelet-snapped Nav2 goal pose, usually `/planning/goal_pose_snapped_ros` |
+| `/planning/engage` | Command topic from UI/operator |
+| `/planning/engaged` | Effective state published by the gate |
+| `FRONT_PATH` | Dynamic obstacle check along active local path, not simply robot-body front |
+| `LEFT_NEAR` / `RIGHT_NEAR` / `REAR_NEAR` | Short body-adjacent dynamic guards used by cmd_vel gate |
 
 ---
 
@@ -718,6 +809,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
+| v2.0.1 | 2026-07-06 | UI/IP and adaptive safety refinement: robot-IP UI bind default, immediate camping-site HTTP dispatch with duplicate echo suppression, clean `camrod_ui` rebuild/install handling, compact perception-object cost projection, near-body side/rear dynamic guards for right/rear radar stops, adaptive shorter crab/reverse guard distances, route-heading restart candidate filtering, synchronized LiDAR cost/ground-seg configs, and 55-assertion deterministic cmd_vel gate coverage |
 | v2.0.0 | 2026-07-06 | Field safety/tuning baseline for outdoor validation: GNSS `/dev/ttyACM1` synchronization, 1 Hz GNSS diagnostic tolerance, dynamic LiDAR/Radar cost-stop latch, stale merged inflation-grid fail-closed gate, live sensor-cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning, WARN-safe campsite/drop-zone handoff, planning costmap diagnostic demotion, damped route-heading alignment for startup oscillation reduction, faster campsite crab entry, and 51-assertion deterministic cmd_vel gate coverage |
 | v1.16 | 2026-07-02 | Field stabilization for map/planning/platform/system: local-first Lanelet2 visualization with cached full-map republish, map-fixed local path extraction with stale-marker clearing, obstacle-block monitor with status-only default, perception-to-cost-grid coupling, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, planning soft-estop gating from `/planning/state_machine/estop`, LiDAR ground-filter load relief, radar 7-channel left/right mapping plus no-target heartbeat filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, expanded `avg_msgs` conversion coverage, diagnostics checker alignment, rear-camera CPU reduction, and automated sim validation runner with manual-goal, obstacle, campsite, and drop-zone parking coverage |
 | v1.15 | 2026-06-23 | Obstacle replan monitor (LiDAR/Radar persistent blockage → Smac2D fallback), extended AvgAmrServiceState/PlanningScenario (SITE_ENTRY/UNLOAD_WAIT/RECALL_TO_SITE_ROAD/GUEST_LOADING_WAIT/RETURN_WITH_CARGO/DROP_ZONE_PARKING), UI site-access reservation/occupancy gate, planning_state_machine parking-phase mirror from /AMR_service_state, dynamic-only cost stop gate, lanelet route re-entry bypass, goal_snapper uncontained-snap override, map profile auto-selection, area_exporter polygon centroid + corners export |
