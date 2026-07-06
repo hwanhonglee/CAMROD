@@ -238,7 +238,7 @@ PointCloudGrid<PointT>::PointCloudGrid(const GridConfig & config)
   seg.setOptimizeCoefficients(true);
   seg.setModelType(pcl::SACMODEL_PLANE);
   seg.setMethodType(pcl::SAC_PROSAC);
-  seg.setMaxIterations(1000);
+  seg.setMaxIterations(100);
 }
 
 template<typename PointT>

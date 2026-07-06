@@ -446,6 +446,23 @@ class PlanningCmdVelGateNode(Node):
         self.enable_side_rear_cost_stop = bool(
             self.declare_parameter("enable_side_rear_cost_stop", True).value
         )
+        self.enable_body_near_dynamic_stop = bool(
+            # HH_260706 - Keep short side/rear dynamic guards active during
+            # forward driving so body-adjacent radar hits still stop motion.
+            self.declare_parameter("enable_body_near_dynamic_stop", True).value
+        )
+        self.body_near_side_lookahead_m = float(
+            self.declare_parameter("body_near_side_lookahead_m", 0.75).value
+        )
+        self.body_near_rear_lookahead_m = float(
+            self.declare_parameter("body_near_rear_lookahead_m", 0.55).value
+        )
+        self.body_near_maneuver_side_lookahead_m = float(
+            self.declare_parameter("body_near_maneuver_side_lookahead_m", 0.55).value
+        )
+        self.body_near_maneuver_rear_lookahead_m = float(
+            self.declare_parameter("body_near_maneuver_rear_lookahead_m", 0.45).value
+        )
         self.side_cost_threshold = int(
             self.declare_parameter("side_cost_threshold", 85).value
         )
@@ -930,6 +947,16 @@ class PlanningCmdVelGateNode(Node):
                 self.front_lookahead_margin_m = float(p.value)
             elif p.name == "enable_side_rear_cost_stop":
                 self.enable_side_rear_cost_stop = bool(p.value)
+            elif p.name == "enable_body_near_dynamic_stop":
+                self.enable_body_near_dynamic_stop = bool(p.value)
+            elif p.name == "body_near_side_lookahead_m":
+                self.body_near_side_lookahead_m = float(p.value)
+            elif p.name == "body_near_rear_lookahead_m":
+                self.body_near_rear_lookahead_m = float(p.value)
+            elif p.name == "body_near_maneuver_side_lookahead_m":
+                self.body_near_maneuver_side_lookahead_m = float(p.value)
+            elif p.name == "body_near_maneuver_rear_lookahead_m":
+                self.body_near_maneuver_rear_lookahead_m = float(p.value)
             elif p.name == "side_cost_threshold":
                 self.side_cost_threshold = int(p.value)
             elif p.name == "side_lookahead_m":
@@ -1361,32 +1388,38 @@ class PlanningCmdVelGateNode(Node):
             self.cost_stop_threshold,
             True,
         )
-        side_rear = [
-            (
-                "LEFT",
-                math.pi / 2,
-                self.side_lookahead_m,
-                self.side_corridor_width_m,
-                self.side_cost_threshold,
-                False,
-            ),
-            (
-                "RIGHT",
-                -math.pi / 2,
-                self.side_lookahead_m,
-                self.side_corridor_width_m,
-                self.side_cost_threshold,
-                False,
-            ),
-            (
-                "REAR",
-                math.pi,
-                self.rear_lookahead_m,
-                self.rear_corridor_width_m,
-                self.rear_cost_threshold,
-                False,
-            ),
-        ]
+        def side_rear_corridors(
+            side_lookahead_m: float,
+            rear_lookahead_m: float,
+        ) -> list[tuple[str, float, float, float, int, bool]]:
+            return [
+                (
+                    "LEFT",
+                    math.pi / 2,
+                    side_lookahead_m,
+                    self.side_corridor_width_m,
+                    self.side_cost_threshold,
+                    False,
+                ),
+                (
+                    "RIGHT",
+                    -math.pi / 2,
+                    side_lookahead_m,
+                    self.side_corridor_width_m,
+                    self.side_cost_threshold,
+                    False,
+                ),
+                (
+                    "REAR",
+                    math.pi,
+                    rear_lookahead_m,
+                    self.rear_corridor_width_m,
+                    self.rear_cost_threshold,
+                    False,
+                ),
+            ]
+
+        side_rear = side_rear_corridors(self.side_lookahead_m, self.rear_lookahead_m)
 
         if cmd_in is None:
             return [front] + (side_rear if self.enable_side_rear_cost_stop else [])
@@ -1395,6 +1428,21 @@ class PlanningCmdVelGateNode(Node):
         vx = float(cmd_in.linear.x)
         vy = float(cmd_in.linear.y)
         corridors: list[tuple[str, float, float, float, int, bool]] = []
+        maneuver_mode = vx < -min_cmd or abs(vy) > min_cmd
+        active_side_near = (
+            self.body_near_maneuver_side_lookahead_m
+            if maneuver_mode
+            else self.body_near_side_lookahead_m
+        )
+        active_rear_near = (
+            self.body_near_maneuver_rear_lookahead_m
+            if maneuver_mode
+            else self.body_near_rear_lookahead_m
+        )
+        if maneuver_mode:
+            # HH_260706 - Crab/reverse enters tight spaces intentionally, so
+            # use shorter dynamic corridors than normal forward path-following.
+            side_rear = side_rear_corridors(active_side_near, active_rear_near)
 
         if vx > min_cmd:
             corridors.append(front)
@@ -1406,6 +1454,46 @@ class PlanningCmdVelGateNode(Node):
                 corridors.append(side_rear[0])
             elif vy < -min_cmd:
                 corridors.append(side_rear[1])
+
+        if (
+            self.enable_side_rear_cost_stop
+            and self.enable_body_near_dynamic_stop
+            and (abs(vx) > min_cmd or abs(vy) > min_cmd)
+        ):
+            # HH_260706 - Travel-direction checks are path-following friendly,
+            # but close side/rear dynamic hits must still stop the body.
+            # Forward driving uses the normal near-body guard. Crab/reverse
+            # maneuvers use shorter adaptive distances.
+            near_dynamic = [
+                (
+                    "LEFT_NEAR",
+                    math.pi / 2,
+                    max(0.0, float(active_side_near)),
+                    self.side_corridor_width_m,
+                    self.side_cost_threshold,
+                    False,
+                ),
+                (
+                    "RIGHT_NEAR",
+                    -math.pi / 2,
+                    max(0.0, float(active_side_near)),
+                    self.side_corridor_width_m,
+                    self.side_cost_threshold,
+                    False,
+                ),
+                (
+                    "REAR_NEAR",
+                    math.pi,
+                    max(0.0, float(active_rear_near)),
+                    self.rear_corridor_width_m,
+                    self.rear_cost_threshold,
+                    False,
+                ),
+            ]
+            existing_angles = {round(float(item[1]), 6) for item in corridors}
+            for item in near_dynamic:
+                if round(float(item[1]), 6) not in existing_angles:
+                    corridors.append(item)
 
         return corridors
 
@@ -2603,7 +2691,7 @@ class PlanningCmdVelGateNode(Node):
         source_label, pose = pose_candidates[0]
         pose_x, pose_y, pose_yaw = pose
 
-        heading = self._route_heading_from_path(path, pose_x, pose_y)
+        heading = self._route_heading_from_path(path, pose_x, pose_y, pose_yaw)
         if heading is None:
             self._route_heading_align_active = False
             return None
@@ -2649,7 +2737,7 @@ class PlanningCmdVelGateNode(Node):
 
     # HH_260618: Computes active path tangent near the robot for heading guard.
     def _route_heading_from_path(
-        self, path: Path, pose_x: float, pose_y: float
+        self, path: Path, pose_x: float, pose_y: float, pose_yaw: float
     ) -> tuple[float, float, int, int] | None:
         points: list[tuple[float, float]] = []
         for pose_stamped in path.poses:
@@ -2663,11 +2751,22 @@ class PlanningCmdVelGateNode(Node):
 
         closest_idx = 0
         closest_dist_sq = float("inf")
+        forward_candidates: list[tuple[float, int]] = []
+        forward_x = math.cos(pose_yaw)
+        forward_y = math.sin(pose_yaw)
         for idx, (x, y) in enumerate(points):
             dist_sq = (x - pose_x) * (x - pose_x) + (y - pose_y) * (y - pose_y)
             if dist_sq < closest_dist_sq:
                 closest_dist_sq = dist_sq
                 closest_idx = idx
+            projection = forward_x * (x - pose_x) + forward_y * (y - pose_y)
+            if projection >= -0.30:
+                forward_candidates.append((dist_sq, idx))
+
+        if forward_candidates:
+            # HH_260706 - Prefer path points not behind the robot so restart
+            # alignment does not turn toward a stale/behind local-path segment.
+            closest_dist_sq, closest_idx = min(forward_candidates, key=lambda item: item[0])
 
         lookahead = max(0.10, float(self.route_heading_lookahead_m))
         target_idx = closest_idx

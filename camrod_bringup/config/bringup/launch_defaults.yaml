@@ -217,6 +217,15 @@ bringup:
     # Side/rear cost-stop samples the same merged grid, but still requires a
     # dynamic source attribution before blocking.
     cmd_vel_gate_side_rear_cost_stop: true
+    # HH_260706 - During forward path-following, keep short side/rear dynamic
+    # guards active so near-body radar hits still stop the robot.
+    cmd_vel_gate_body_near_dynamic_stop: true
+    cmd_vel_gate_body_near_side_lookahead_m: 0.75
+    cmd_vel_gate_body_near_rear_lookahead_m: 0.55
+    # HH_260706 - Crab/reverse maneuvers use shorter guards so intentional
+    # tight-space parking does not inherit the normal forward-driving envelope.
+    cmd_vel_gate_body_near_maneuver_side_lookahead_m: 0.55
+    cmd_vel_gate_body_near_maneuver_rear_lookahead_m: 0.45
     # HH_260630: Match radar/lidar dynamic stop threshold so side hits are not
     # ignored by a higher side-only threshold.
     cmd_vel_gate_side_cost_threshold: 85
@@ -445,8 +454,8 @@ bringup:
     enable_plugin_api: true
     # Lightweight HTTP UI backend for API/state monitoring.
     enable_api_ui: true
-    # Bind API UI locally by default; expose externally only when explicitly requested.
-    api_ui_host: 127.0.0.1
+    # HH_260706 - Bind operator UI to all interfaces for robot-IP access.
+    api_ui_host: 0.0.0.0
     api_ui_port: 8010
 
   namespaces:

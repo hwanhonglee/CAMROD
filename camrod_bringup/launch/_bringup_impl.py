@@ -1075,6 +1075,31 @@ def generate_launch_description():
             'Enable side/rear cost-stop',
         ),
         (
+            'planning_cmd_vel_gate_body_near_dynamic_stop',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_dynamic_stop', True),
+            'Enable near-body dynamic side/rear stop during translation',
+        ),
+        (
+            'planning_cmd_vel_gate_body_near_side_lookahead_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_side_lookahead_m', 0.75),
+            'Near-body side dynamic stop distance (m)',
+        ),
+        (
+            'planning_cmd_vel_gate_body_near_rear_lookahead_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_rear_lookahead_m', 0.55),
+            'Near-body rear dynamic stop distance (m)',
+        ),
+        (
+            'planning_cmd_vel_gate_body_near_maneuver_side_lookahead_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_maneuver_side_lookahead_m', 0.55),
+            'Adaptive maneuver side dynamic stop distance (m)',
+        ),
+        (
+            'planning_cmd_vel_gate_body_near_maneuver_rear_lookahead_m',
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_maneuver_rear_lookahead_m', 0.45),
+            'Adaptive maneuver rear dynamic stop distance (m)',
+        ),
+        (
             'planning_cmd_vel_gate_side_cost_threshold',
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_cost_threshold', 85),
             'Cost threshold for side stop',
@@ -1303,7 +1328,7 @@ def generate_launch_description():
         ),
         (
             'api_ui_host',
-            cfg_get(launch_cfg, 'system/api_ui_host', '127.0.0.1'),
+            cfg_get(launch_cfg, 'system/api_ui_host', '0.0.0.0'),
             'API UI backend bind host',
         ),
         (
