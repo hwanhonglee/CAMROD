@@ -313,13 +313,14 @@ graph TD
 
 **Trigger:** `planning_cmd_vel_gate_node` receives a `/planning/cost_grid/inflation` update while the gate is engaged.
 
-**Internal logic:** The gate scans rectangular corridors in front, on both sides, and behind the robot using the merged inflation cost grid. The front corridor uses a speed-dependent lookahead: `d = v²/(2μg) + t_react × v + margin`, clamped to [`front_lookahead_min_m`, `front_lookahead_max_m`]. HH_260702 - current field defaults stop dynamic front obstacles at cost ≥85 with a 2.60 m minimum scan and 3.50 m maximum scan; side/rear dynamic stops also use cost ≥85 with a 1.20 m lookahead so crab/reverse maneuvers are protected by live LiDAR/Radar. A BFS cluster check additionally detects unavoidable lethal obstacles (≥ `unavoidable_cluster_min_cells` cells with cost ≥ `unavoidable_lethal_threshold` covering ≥ `unavoidable_cluster_min_ratio` of the corridor).
+**Internal logic:** The gate scans rectangular corridors in front, on both sides, and behind the robot using the merged inflation cost grid. The front corridor uses a speed-dependent lookahead: `d = v²/(2μg) + t_react × v + margin`, clamped to [`front_lookahead_min_m`, `front_lookahead_max_m`]. HH_260702 - current field defaults stop dynamic front obstacles at cost ≥85 with a 2.60 m minimum scan and 3.50 m maximum scan; side/rear dynamic stops also use cost ≥85 with a 1.20 m lookahead so crab/reverse maneuvers are protected by live LiDAR/Radar. HH_260706 - forward path-following keeps short near-body side/rear dynamic guards (`LEFT_NEAR`, `RIGHT_NEAR`, `REAR_NEAR`) so close radar hits still stop the body without forcing long side/rear corridors into normal avoidance. A BFS cluster check additionally detects unavoidable lethal obstacles (≥ `unavoidable_cluster_min_cells` cells with cost ≥ `unavoidable_lethal_threshold` covering ≥ `unavoidable_cluster_min_ratio` of the corridor).
 
 | Zone | Cost Threshold | Lookahead | Corridor Half-Width |
 |---|---|---|---|
 | Front (speed-dependent) | 85 | `v²/(2×0.4×9.81) + 0.20v + 0.45`, clamped [2.60, 3.50] m | footprint corridor |
 | Side left / right | 85 | 1.20 m | footprint corridor |
 | Rear | 85 | 1.20 m | footprint corridor |
+| Near-body side/rear | 85 | 0.75 m side / 0.55 m rear | dynamic source only |
 | Unavoidable cluster | 90 (lethal floor) | front corridor | ≥ 25 cells / ≥ 25% coverage |
 
 > ⚠️ **Warning** `/planning/cmd_vel` is zeroed and `/planning/engaged` reflects `false`. The stop is held for `cmd_vel_gate_cost_hold_s` (default 1.0 s) after the obstacle clears.
@@ -335,7 +336,7 @@ and publishes zero velocity.
 
 **Operator-visible symptom:** Robot stops abruptly without Nav2 abort. RViz inflation grid shows high-cost cells in the stopped direction.
 
-> 🔧 **Debug hint** Related params: `cmd_vel_gate_cost_stop_enable`, `cmd_vel_gate_cost_threshold`, `cmd_vel_gate_speed_dependent_lookahead`, `cmd_vel_gate_front_lookahead_min_m`, `cmd_vel_gate_front_lookahead_max_m`, `cmd_vel_gate_front_lookahead_friction`, `cmd_vel_gate_front_reaction_time_s`, `cmd_vel_gate_cost_hold_s`, `cmd_vel_gate_cost_stop_latch_enable`, `cmd_vel_gate_cost_stop_clear_required_s`, `cmd_vel_gate_cost_grid_stale_stop_enable`, `cmd_vel_gate_cost_grid_stale_timeout_s`, `cmd_vel_gate_side_cost_threshold`, `cmd_vel_gate_rear_cost_threshold`, `cmd_vel_gate_unavoidable_lethal_threshold`, `cmd_vel_gate_unavoidable_cluster_min_cells`, `cmd_vel_gate_unavoidable_cluster_min_ratio`
+> 🔧 **Debug hint** Related params: `cmd_vel_gate_cost_stop_enable`, `cmd_vel_gate_cost_threshold`, `cmd_vel_gate_speed_dependent_lookahead`, `cmd_vel_gate_front_lookahead_min_m`, `cmd_vel_gate_front_lookahead_max_m`, `cmd_vel_gate_front_lookahead_friction`, `cmd_vel_gate_front_reaction_time_s`, `cmd_vel_gate_cost_hold_s`, `cmd_vel_gate_cost_stop_latch_enable`, `cmd_vel_gate_cost_stop_clear_required_s`, `cmd_vel_gate_cost_grid_stale_stop_enable`, `cmd_vel_gate_cost_grid_stale_timeout_s`, `cmd_vel_gate_side_cost_threshold`, `cmd_vel_gate_rear_cost_threshold`, `cmd_vel_gate_body_near_dynamic_stop`, `cmd_vel_gate_body_near_side_lookahead_m`, `cmd_vel_gate_body_near_rear_lookahead_m`, `cmd_vel_gate_body_near_maneuver_side_lookahead_m`, `cmd_vel_gate_body_near_maneuver_rear_lookahead_m`, `cmd_vel_gate_unavoidable_lethal_threshold`, `cmd_vel_gate_unavoidable_cluster_min_cells`, `cmd_vel_gate_unavoidable_cluster_min_ratio`
 
 **Related topics:** `/planning/cost_grid/inflation`, `/planning/cmd_vel`, `/planning/engaged`
 
@@ -577,6 +578,11 @@ Key launch arguments:
 | `cmd_vel_gate_speed_dependent_lookahead` | `true` | Physics-based braking distance for front corridor |
 | `cmd_vel_gate_cost_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `cmd_vel_gate_front_lookahead_min_m` | `1.30137` | HH_260623 - measured front body extent plus 0.10 m margin |
+| `cmd_vel_gate_body_near_dynamic_stop` | `true` | HH_260706 - keep short side/rear dynamic guards during forward path-following |
+| `cmd_vel_gate_body_near_side_lookahead_m` | `0.75` | HH_260706 - near-body side guard distance for `LEFT_NEAR`/`RIGHT_NEAR` |
+| `cmd_vel_gate_body_near_rear_lookahead_m` | `0.55` | HH_260706 - near-body rear guard distance for `REAR_NEAR` |
+| `cmd_vel_gate_body_near_maneuver_side_lookahead_m` | `0.55` | HH_260706 - reduced side guard for crab/reverse tight-space maneuvers |
+| `cmd_vel_gate_body_near_maneuver_rear_lookahead_m` | `0.45` | HH_260706 - reduced rear guard for crab/reverse tight-space maneuvers |
 | `cmd_vel_gate_side_corridor_width_m` | `1.69160` | HH_260623 - measured body length plus 0.10 m front/rear margin |
 | `cmd_vel_gate_rear_corridor_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `cmd_vel_gate_enable_gnss_recovery_hold` | `true` | Hold velocity for 2 s after DR_ONLY → NORMAL |

@@ -65,6 +65,9 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
 > HH_260702 - Latest sim validation passed baseline rates, all radar directions, LiDAR/Radar directional cost-stop, manual goal navigation, status-only obstacle blockage, campsite maneuver, return-to-drop-zone, and drop-zone reverse parking. Full real-sensor bringup with RViz/UI/voice/cameras/YOLO/docking enabled is a load probe; use the lighter field profile for drive validation.
 > HH_260703 - Field patch adds GNSS `/dev/ttyACM1` config sync, cost-stop latch, stale inflation-grid fail-closed behavior, live LiDAR/Radar cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning for crab safety, and diagnostics policy that keeps non-motion camera/raw-LiDAR/costmap issues visible without forcing every transient into planning `ERROR_STOP`.
 > HH_260706 - Field tuning keeps route-heading safety enabled with slower angular correction and raises campsite crab speed to reduce startup oscillation and long campsite entry time.
+> HH_260706 - Bringup binds the operator UI to `0.0.0.0:8010` by default so the web UI is reachable through the robot IP; standalone `camrod_ui` launch can still override `ui_host`.
+> HH_260706 - Field safety tuning adds short near-body side/rear dynamic guards in `planning_cmd_vel_gate` and reduces perception-marker cost radius so detected vehicles do not create oversized circular cost disks.
+> HH_260706 - v2.0.1 keeps `camrod_bringup/config/sensing/*` synchronized with package-level sensing configs for GNSS, LiDAR cost grid, and ground segmentation.
 
 ---
 
@@ -329,12 +332,17 @@ flowchart TD
 | `planning_cmd_vel_gate_speed_dependent_lookahead` | `true` | Physics-based braking distance lookahead |
 | `planning_cmd_vel_gate_cost_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `planning_cmd_vel_gate_front_lookahead_min_m` | `1.30137` | HH_260623 - measured front body extent plus 0.10 m margin |
+| `planning_cmd_vel_gate_body_near_dynamic_stop` | `true` | HH_260706 - keep short side/rear dynamic stops active during forward path-following |
+| `planning_cmd_vel_gate_body_near_side_lookahead_m` | `0.75` | HH_260706 - near-body side stop distance |
+| `planning_cmd_vel_gate_body_near_rear_lookahead_m` | `0.55` | HH_260706 - near-body rear stop distance |
+| `planning_cmd_vel_gate_body_near_maneuver_side_lookahead_m` | `0.55` | HH_260706 - reduced side stop distance for crab/reverse maneuvers |
+| `planning_cmd_vel_gate_body_near_maneuver_rear_lookahead_m` | `0.45` | HH_260706 - reduced rear stop distance for crab/reverse maneuvers |
 | `planning_cmd_vel_gate_side_corridor_width_m` | `1.69160` | HH_260623 - measured body length plus 0.10 m front/rear margin |
 | `planning_cmd_vel_gate_rear_corridor_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `enable_yaw_alignment_zone` → `planning_cmd_vel_gate_yaw_alignment_enable` | `false` | Heading alignment at named map zones |
 | `enable_plugin_api` | `true` | Plugin API bridge node |
 | `enable_api_ui` | `true` | HTTP UI backend |
-| `api_ui_host` | `127.0.0.1` | UI bind address |
+| `api_ui_host` | `0.0.0.0` | HH_260706 - UI bind address for robot-IP access |
 | `api_ui_port` | `8010` | UI bind port |
 | `platform_type` | `ranger` | Platform type selector: `ranger` \| `rmp401` |
 | `platform_ranger_driver_enable` | `true` | Enable Ranger base CAN node |

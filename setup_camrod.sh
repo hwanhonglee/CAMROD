@@ -24,8 +24,8 @@
 #     enumerates as ttyACM0; CH9344 USB ports are radar.
 #   - LiDAR runtime is tuned in package configs, not installed here.
 #   - planning soft-estop wiring is built/installed by colcon_build.sh.
-# HH_260706: route-heading damping and campsite crab speed are config/runtime
-#   changes installed by colcon_build.sh; setup remains dependency-only.
+# HH_260706: v2.0.1 UI/IP and adaptive safety tuning are config/runtime changes
+#   installed by colcon_build.sh; setup remains dependency-only.
 # HH_260702: setup is still dependency-only. Do not add runtime launch/test
 #   side effects here; use colcon_build.sh for install sync and
 #   camrod_bringup/sim_validation_runner.py for deterministic manual, obstacle,
