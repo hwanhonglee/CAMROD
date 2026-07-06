@@ -186,6 +186,12 @@ REQUIRED_SYS_PKGS=(
   # non-interactive field setup sessions.
   ros-humble-nav2-map-server        # Nav2 map server for planning bringup.
   ros-humble-behaviortree-cpp-v3    # Nav2 BT navigator runtime.
+  # YH_260706: Global planners listed in planner_server planner_plugins (nav2_base.yaml).
+  #   Missing → planner_server on_configure throws (pluginlib class not found) and rolls back
+  #   → planning lifecycle never activates → /planning/navigate_to_pose has no server
+  #   → docking Phase 1 aborts instantly with error 903 (FAILED_TO_STAGE).
+  ros-humble-nav2-navfn-planner       # planner_plugins: "NavFn"
+  ros-humble-nav2-theta-star-planner  # planner_plugins: "ThetaStar"
   ros-humble-controller-manager     # ugv_sdk controller dependency.
   ros-humble-rviz2                  # RViz2 for operator and sim bringup.
   ros-humble-rviz-common            # RViz2 common libraries.

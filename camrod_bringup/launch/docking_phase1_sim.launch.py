@@ -42,7 +42,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, PushRosNamespace
 
 # camrod_docking 은 x86 에서 빌드 스킵되어 share 가 install 되지 않으므로 소스 트리 config 사용.
-DOCK_CFG = '/home/avg/camrod_docking_test_ws/src/camrod_docking/config'
+DOCK_CFG = '/home/nvidia/camrod_docking_test_Ws/src/camrod_docking/config'
 
 
 def generate_launch_description():

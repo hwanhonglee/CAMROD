@@ -16,10 +16,18 @@ docks:
   home_dock:
     type: apriltag_dock
     frame: map
-    # YH_260703 (Phase1 sim 검증): dock 을 drop-zone area(dz_area_1353 = camping_site_1) 안으로 이동.
-    #   이전 좌표 (-0.947, 31.128) 는 lanelet 네트워크에서 8m 이상 떨어져 LaneletRoute 가
-    #   "could not snap goal to lanelet" 로 Phase1 을 즉시 실패(error 903)시켰다.
-    #   camping_site_1 중심 (25.51, -5.24) 는 lanelet 8m 이내로 실측 라우팅 확인됨.
-    #   staging = dock + staging_x_offset(-0.7m) ≈ (24.87, -5.52) 로 여전히 area 안 → snap OK.
-    pose: [25.51, -5.24, 0.4145]  # [x, y, yaw_rad] camping_site_1 area 중심, yaw=23.745°
-    # 이전값(백업): [-0.947, 31.128, -1.1943]
+    # 캠핑장(park) 맵 전환: dock 을 park 맵의 drop-zone area(dz_area_1353 = camping_site_1) 중심으로 이동.
+    #   camping_sites.yaml(park) 의 camping_site_1 = (37.1358, -47.4945, yaw_deg 23.7451 = 0.4145 rad).
+    #   staging = dock + staging_x_offset(-0.7m) 로 area 안 → snap 예상. 첫 실행 시 라우팅 검증 필요.
+    pose: [37.1358, -47.4945, 0.4145]  # [x, y, yaw_rad] park camping_site_1 area 중심, yaw=23.745°
+    # 이전값(백업): c_track camping_site_1 = [25.51, -5.24, 0.4145]  /  [-0.947, 31.128, -1.1943]
+
+  # ── (주석) c_track 맵 주차장 dock — c_track 맵으로 되돌릴 때 아래 주석 해제 ──────
+  #   map_info.yaml 을 c_track(copy_c_track)으로 되돌린 뒤 사용할 것.
+  #   좌표 출처: lanelet2_maps_(c_track_test_moved).osm 의 parking_space(way 33941) 중심.
+  #   주차 구역 centroid ≈ (-13.03, -84.23), 대표 스톨 중심 (-10.01, -88.94), stall-line yaw≈0.
+  #   ※ yaw(도킹 진입 방향)와 lanelet snap(라우팅)은 활성화 시 RViz 로 검증 후 미세조정 필요.
+  # parking_dock:
+  #   type: apriltag_dock
+  #   frame: map
+  #   pose: [-10.010, -88.940, 0.0]  # [x, y, yaw_rad] c_track 주차장 대표 스톨 중심
