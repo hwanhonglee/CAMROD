@@ -1,0 +1,480 @@
+<title>전조등·방향지시등 구현 설계서</title>
+<style>
+  :root{
+    --bg:#F5F7F4; --panel:#FFFFFF; --panel2:#EDF1EC;
+    --ink:#212A2B; --muted:#5D6C6E; --line:#D8DEDA;
+    --amber:#D98E1B; --amber-deep:#A96A0D; --amber-soft:#F6E7C8;
+    --path:#2E7D8C; --path-soft:#D9E9ED;
+    --danger:#C4453B; --danger-soft:#F6DCD9; --ok:#3F7E52; --ok-soft:#DCEEE2;
+    --mono:ui-monospace,'Cascadia Code','JetBrains Mono',Consolas,monospace;
+    --sans:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans KR','Malgun Gothic',sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#141819; --panel:#1C2224; --panel2:#242C2E;
+      --ink:#E4EAE8; --muted:#96A6A7; --line:#333D3F;
+      --amber:#F0A93C; --amber-deep:#F7C36E; --amber-soft:#3B2F1A;
+      --path:#54AABB; --path-soft:#1E3B42;
+      --danger:#E0685C; --danger-soft:#3D2422; --ok:#6BB483; --ok-soft:#1F3328;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141819; --panel:#1C2224; --panel2:#242C2E;
+    --ink:#E4EAE8; --muted:#96A6A7; --line:#333D3F;
+    --amber:#F0A93C; --amber-deep:#F7C36E; --amber-soft:#3B2F1A;
+    --path:#54AABB; --path-soft:#1E3B42;
+    --danger:#E0685C; --danger-soft:#3D2422; --ok:#6BB483; --ok-soft:#1F3328;
+  }
+  :root[data-theme="light"]{
+    --bg:#F5F7F4; --panel:#FFFFFF; --panel2:#EDF1EC;
+    --ink:#212A2B; --muted:#5D6C6E; --line:#D8DEDA;
+    --amber:#D98E1B; --amber-deep:#A96A0D; --amber-soft:#F6E7C8;
+    --path:#2E7D8C; --path-soft:#D9E9ED;
+    --danger:#C4453B; --danger-soft:#F6DCD9; --ok:#3F7E52; --ok-soft:#DCEEE2;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:var(--sans); line-height:1.65; font-size:15.5px;
+    margin:0; padding:0 20px 96px;
+  }
+  main{max-width:920px; margin:0 auto}
+
+  header{padding:52px 0 4px}
+  .eyebrow{font-size:12px; letter-spacing:.14em; font-weight:600; color:var(--amber-deep); text-transform:uppercase}
+  h1{font-size:clamp(24px,4vw,31px); font-weight:800; letter-spacing:-.02em; margin:.35em 0 .3em; text-wrap:balance}
+  .lede{color:var(--muted); max-width:64ch; margin:0}
+  .statusrow{display:flex; gap:8px; flex-wrap:wrap; margin:16px 0 0}
+  .status{
+    font-size:12.5px; font-weight:700; padding:4px 11px; border-radius:20px;
+  }
+  .st-ok{background:var(--ok-soft); color:var(--ok)}
+  .st-wait{background:var(--amber-soft); color:var(--amber-deep)}
+
+  h2{
+    font-size:19px; font-weight:750; letter-spacing:-.01em;
+    margin:2.7em 0 .6em; text-wrap:balance;
+    padding-bottom:8px; border-bottom:1px solid var(--line);
+  }
+  h2 .no{
+    font-family:var(--mono); font-size:13px; color:var(--amber-deep);
+    margin-right:8px; font-weight:700;
+  }
+  h3{font-size:15.5px; font-weight:700; margin:1.6em 0 .4em}
+  p{max-width:70ch}
+  code{
+    font-family:var(--mono); font-size:.85em;
+    background:var(--panel2); border:1px solid var(--line);
+    border-radius:4px; padding:1px 6px; white-space:nowrap;
+  }
+  pre{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:16px 18px; overflow-x:auto; font-family:var(--mono);
+    font-size:13px; line-height:1.6; margin:14px 0;
+  }
+  pre code{background:none; border:none; padding:0; white-space:pre}
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px 20px; margin:14px 0}
+  .figure{padding:12px 12px 4px; overflow-x:auto}
+  .figure svg{display:block; width:100%; height:auto; min-width:600px}
+  .caption{font-size:13px; color:var(--muted); margin:6px 4px 10px; max-width:none}
+
+  table{border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums}
+  .tablewrap{overflow-x:auto; margin:14px 0; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:4px 8px}
+  th,td{text-align:left; padding:9px 13px; vertical-align:top; border-bottom:1px solid var(--line)}
+  tr:last-child td{border-bottom:none}
+  th{font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); font-weight:700}
+
+  .prio{display:flex; flex-direction:column; gap:6px; margin:14px 0; max-width:560px}
+  .prio-item{
+    display:flex; align-items:center; gap:14px;
+    border:1px solid var(--line); border-radius:8px; padding:10px 16px;
+    background:var(--panel); font-size:14px;
+  }
+  .prio-item .rank{
+    font-family:var(--mono); font-weight:700; font-size:13px;
+    width:26px; height:26px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .prio-item .out{margin-left:auto; font-weight:750; font-size:13px; white-space:nowrap}
+  .p1{border-left:4px solid var(--danger)} .p1 .rank{background:var(--danger-soft); color:var(--danger)} .p1 .out{color:var(--danger)}
+  .p2{border-left:4px solid var(--amber)} .p2 .rank{background:var(--amber-soft); color:var(--amber-deep)} .p2 .out{color:var(--amber-deep)}
+  .p3{border-left:4px solid var(--amber)} .p3 .rank{background:var(--amber-soft); color:var(--amber-deep)} .p3 .out{color:var(--amber-deep)}
+  .p4{border-left:4px solid var(--line)} .p4 .rank{background:var(--panel2); color:var(--muted)} .p4 .out{color:var(--muted)}
+
+  .callout{border-left:3px solid var(--amber); background:var(--panel); border-radius:0 10px 10px 0; padding:14px 18px; margin:18px 0}
+  .callout.danger{border-left-color:var(--danger)}
+  .callout.path{border-left-color:var(--path)}
+  .callout p{margin:.3em 0}
+  .callout b.title{display:block; margin-bottom:4px}
+
+  .flow{display:flex; flex-direction:column; margin:16px 0}
+  .flow-row{display:flex; align-items:stretch; flex-wrap:wrap; gap:0}
+  .fbox{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 14px; font-size:13.5px; flex:1; min-width:150px}
+  .fbox b{display:block; font-size:13px}
+  .fbox span{color:var(--muted); font-size:12.3px}
+  .farrow{align-self:center; padding:0 9px; color:var(--muted); font-size:18px; user-select:none}
+  .fdown{text-align:center; color:var(--muted); font-size:18px; padding:2px 0; user-select:none}
+  .fbox.src{background:var(--panel2)}
+
+  .todo{list-style:none; padding:0; margin:16px 0; counter-reset:td}
+  .todo li{
+    counter-increment:td; position:relative;
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:12px 16px 12px 52px; margin-bottom:8px; font-size:14px;
+  }
+  .todo li::before{
+    content:counter(td); position:absolute; left:14px; top:13px;
+    width:24px; height:24px; border-radius:6px;
+    background:var(--amber-soft); color:var(--amber-deep);
+    font-family:var(--mono); font-size:12.5px; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .todo li b{font-size:14px}
+  .todo .meta{display:flex; gap:10px; margin-top:4px; flex-wrap:wrap}
+  .badge{
+    font-size:11.5px; font-weight:700; padding:2px 8px; border-radius:4px;
+    background:var(--panel2); color:var(--muted);
+  }
+  .badge.size-s{background:var(--ok-soft); color:var(--ok)}
+  .badge.size-m{background:var(--amber-soft); color:var(--amber-deep)}
+  .todo .verify{font-size:12.5px; color:var(--muted)}
+  .todo li.phase2{opacity:.72}
+
+  svg text{font-family:var(--sans); font-size:13px; fill:var(--ink)}
+  svg .mut{fill:var(--muted); font-size:12px}
+  svg .mono{font-family:var(--mono); font-size:12px}
+  svg .strong{font-weight:700}
+
+  footer{margin-top:64px; padding-top:16px; border-top:1px solid var(--line); font-size:12.5px; color:var(--muted)}
+</style>
+
+<main>
+<header>
+  <div class="eyebrow">CAMROD · camrod_platform 신규 기능</div>
+  <h1>전조등 · 방향지시등(WS2815) 제어 — 구현 설계서</h1>
+  <p class="lede">
+    UI 전조등 버튼, lanelet <code>turn_direction</code> 태그 기반 방향지시,
+    ERROR_STOP/estop 비상등을 Arduino Nano 경유로 제어하는 기능의 확정 설계와 작업 순서.
+  </p>
+  <div class="statusrow">
+    <span class="status st-ok">설계 결정 12건 확정 — 미해결 없음</span>
+    <span class="status st-ok">지도 태그 검증 완료 (left 53 · right 77)</span>
+    <span class="status st-ok">플래너 확장 코드 검증 완료 (§2)</span>
+    <span class="status st-ok">구현 언어 C++ 통일 확정</span>
+  </div>
+</header>
+
+<!-- ================================================== 1. 확정 결정 -->
+<h2><span class="no">1</span>확정된 설계 결정</h2>
+<div class="tablewrap">
+<table>
+  <thead><tr><th style="width:30%">항목</th><th>결정</th></tr></thead>
+  <tbody>
+    <tr><td>방향 판정</td><td><b>B안 — lanelet <code>turn_direction</code> 태그 조회</b> (지도에 태그 존재 검증됨)</td></tr>
+    <tr><td>비상등 트리거</td><td>ERROR_STOP / estop만 · 우선순위 비상등 &gt; 지시등 &gt; 소등</td></tr>
+    <tr><td>통신 두절 시</td><td>MCU가 <b>비상등 점멸</b> (단, 최초 프레임 수신 후부터 판정 — 부팅 오점등 방지)</td></tr>
+    <tr><td>크랩 기동 중</td><td><b>이동 방향 지시등</b> (site_maneuver 활성 + <code>linear.y</code> 부호)</td></tr>
+    <tr><td>그리드 폴백 주행</td><td>소등 유지 (자동 폴백 전환 자체가 기본 OFF임을 확인)</td></tr>
+    <tr><td>깜빡임 생성</td><td>MCU 자율 (약 1.25 Hz) · PC는 모드+하트비트만 전송</td></tr>
+    <tr><td>배선</td><td>Relay IN=<b>D12</b> · 좌 D5(데이터)/D6(백업) · 우 D7(데이터)/D8(백업) — D12 변경으로 D13 부트로더 점멸 문제 해소</td></tr>
+    <tr><td>통신</td><td>JSON over Serial 115200 · <code>/dev/serial/by-id/</code> 고정 경로</td></tr>
+    <tr><td>패키지 위치</td><td><code>camrod_platform</code> 하위, 노드 2개 분리 구성</td></tr>
+    <tr><td>전조등</td><td>UI 버튼 → FastAPI → 신규 토픽 → MCU (독립 채널)</td></tr>
+    <tr><td>구현 언어</td><td><b>C++ 통일</b> — platform 기존 노드 3개 전부 C++로 일관 · 시리얼=POSIX termios(무의존성) · JSON=nlohmann(시스템 설치+smac 선례) · 테스트=gtest</td></tr>
+    <tr><td>턴 구간 발행</td><td><b>플래너 확장 검증 완료</b> — createPlan 루프가 lanelet별 호길이를 이미 계산 중, additive 변경 (§2)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ================================================== 2. 아키텍처 -->
+<h2><span class="no">2</span>전체 아키텍처</h2>
+
+<div class="flow">
+  <div class="flow-row">
+    <div class="fbox src"><b>UI 전조등 버튼</b><span><code style="font-size:11px">/platform/headlight/command</code></span></div>
+    <div class="farrow">→</div>
+    <div class="fbox src"><b>비상 신호 3종</b><span>state_machine ERROR_STOP<br>platform estop · 소프트 estop</span></div>
+    <div class="farrow">→</div>
+    <div class="fbox src"><b>턴 구간 <em>(신규)</em></b><span><code style="font-size:11px">/planning/route_turn_segments</code><br>+ global_path + pose</span></div>
+    <div class="farrow">→</div>
+    <div class="fbox src"><b>크랩 신호</b><span>site_maneuver 상태<br>+ cmd_vel <code>linear.y</code></span></div>
+  </div>
+  <div class="fdown">↓</div>
+  <div class="flow-row">
+    <div class="fbox" style="border-color:var(--path); flex:2"><b>light_controller_node <em>(신규 · C++)</em></b>
+      <span>램프 모드 결정 5 Hz · 우선순위 <b style="color:var(--danger)">HAZARD</b> &gt; 크랩 &gt; 턴 &gt; OFF · 전조등 독립 채널</span></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>mcu_serial_bridge_node <em>(신규 · C++)</em></b>
+      <span>JSON + 하트비트 5 Hz<br>재접속 백오프 · ack 상태 발행</span></div>
+  </div>
+  <div class="fdown">↓ USB Serial (/dev/serial/by-id/)</div>
+  <div class="flow-row">
+    <div class="fbox" style="flex:1.6"><b>Arduino Nano</b>
+      <span>깜빡임 자율 생성 1.25 Hz · 하트비트 1.0 s 두절 → HAZARD 페일세이프</span></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Relay — D12</b><span>전조등 ON/OFF</span></div>
+    <div class="farrow">→</div>
+    <div class="fbox" style="border-color:var(--amber)"><b>WS2815 × 2</b>
+      <span>좌 D5 (백업 D6)<br>우 D7 (백업 D8)</span></div>
+  </div>
+</div>
+
+<div class="callout path">
+  <b class="title">✓ 플래너 확장 — 코드 검증 완료 (승인됨)</b>
+  <p><b>lanelet_route_planner(C++)가 경로 계산 시 턴 구간을 함께 발행</b>하도록 확장
+  (<code>/planning/route_turn_segments</code>, <code>Float32MultiArray</code>). 실코드 확인 결과:</p>
+  <p style="font-size:13.5px">
+  ① createPlan의 경로 생성 루프(205–220행)가 <b>lanelet별 호길이 구간을 이미 계산 중</b>
+  (segment_start_s/segment_end_s) — 누적 변수 하나로 전역 [S₀,S₁] 산출 ·
+  ② 태그는 루프 안에서 <code>attributeOr("turn_direction","")</code> 한 줄 ·
+  ③ <code>route_lanelet_ids</code> 발행(HH_260619)과 동일한 transient_local 퍼블리셔 선례 존재.
+  경로 계산 로직은 한 줄도 안 건드리는 <b>순수 additive 변경, 약 40–60줄.</b></p>
+  <p style="font-size:13.5px; color:var(--muted)"><b>동기화 가드:</b> 배열 첫 요소에 전체 경로 길이를 넣고,
+  light_controller가 수신한 global_path 길이와 대조(±1 m). 불일치 = 경로 교체 순간의 신구 혼합
+  → 해당 사이클은 소등 유지.</p>
+</div>
+
+<!-- ================================================== 3. 방향 판정 -->
+<h2><span class="no">3</span>방향 판정 — 호길이 기반 턴 구간 매칭</h2>
+
+<p>
+  플래너가 발행하는 턴 구간은 <b>경로 시작점 기준 호길이(s)</b>로 표현됩니다:
+  <code>[0]=전체 경로 길이</code>, 이후 <code>[방향(+1 좌 / −1 우), 시작 s₀, 끝 s₁] × N</code>.
+  라이트 노드는 로봇 위치를 경로에 투영해 현재 s만 계산하면 되고, 수신한 global_path
+  길이와 <code>[0]</code>이 ±1 m 이상 어긋나면(경로 교체 순간의 신구 혼합) 그 사이클은 소등을 유지합니다.
+</p>
+
+<div class="panel figure">
+<svg viewBox="0 0 760 260" role="img" aria-label="호길이 축 위에서 D_pre 진입 시 점등, 구간 통과 시 소등하는 그림">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 Z" fill="var(--muted)"/>
+    </marker>
+  </defs>
+  <!-- 경로 축 -->
+  <line x1="50" y1="150" x2="730" y2="150" stroke="var(--path)" stroke-width="5" stroke-linecap="round"/>
+  <text x="640" y="185" class="mut">경로 호길이 s →</text>
+
+  <!-- D_pre 구간 -->
+  <rect x="330" y="141" width="120" height="18" fill="var(--amber)" opacity="0.28" rx="3"/>
+  <line x1="330" y1="120" x2="330" y2="180" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <text x="336" y="200" fill="var(--amber-deep)" class="strong">여기부터 점등</text>
+  <text x="336" y="217" class="mut">s ≥ s₀ − D_pre</text>
+  <path d="M 336 110 L 444 110" stroke="var(--muted)" stroke-width="1.3" marker-end="url(#ar)"/>
+  <text x="345" y="100" class="mut">D_pre = 12 m (파라미터)</text>
+
+  <!-- 턴 구간 -->
+  <line x1="450" y1="150" x2="600" y2="150" stroke="var(--amber)" stroke-width="9" stroke-linecap="round"/>
+  <line x1="450" y1="132" x2="450" y2="168" stroke="var(--amber-deep)" stroke-width="2"/>
+  <line x1="600" y1="132" x2="600" y2="168" stroke="var(--amber-deep)" stroke-width="2"/>
+  <text x="452" y="72" fill="var(--amber-deep)" class="strong">turn_direction=left 인 lanelet 구간</text>
+  <text x="452" y="90" class="mono" fill="var(--amber-deep)">[s₀, s₁]  — 플래너가 발행</text>
+  <text x="446" y="124" class="mono">s₀</text>
+  <text x="596" y="124" class="mono">s₁</text>
+  <text x="608" y="200" class="mut">s &gt; s₁ → 소등</text>
+
+  <!-- 로봇 1: 구간 밖(소등) -->
+  <g transform="translate(160 150)">
+    <circle r="11" fill="var(--panel)" stroke="var(--ink)" stroke-width="2"/>
+    <path d="M -4 3 L 6 0 L -4 -3 Z" fill="var(--ink)"/>
+    <text x="-42" y="34" class="mut">현재 s → 소등</text>
+  </g>
+  <!-- 로봇 2: D_pre 안(점등) -->
+  <g transform="translate(385 150)">
+    <circle r="11" fill="var(--amber-soft)" stroke="var(--amber-deep)" stroke-width="2.5"/>
+    <path d="M -4 3 L 6 0 L -4 -3 Z" fill="var(--amber-deep)"/>
+    <circle cx="0" cy="-24" r="5" fill="var(--amber)">
+      <animate attributeName="opacity" values="1;0.15;1" dur="0.8s" repeatCount="indefinite"/>
+    </circle>
+    <text x="-30" y="46" fill="var(--amber-deep)" class="strong">좌측 점등</text>
+  </g>
+</svg>
+<p class="caption">
+  그림 1 — 판정 규칙. 로봇의 현재 호길이 s가 턴 구간 시작 12 m 앞(D_pre)에 들어오면 점등,
+  구간 끝 s₁을 지나면 소등. 각도 계산·임계값 튜닝이 전혀 없다 — 지도 태그가 곧 정답지.
+</p>
+</div>
+
+<h3>램프 모드 우선순위 (light_controller)</h3>
+<div class="prio">
+  <div class="prio-item p1"><span class="rank">1</span>
+    ERROR_STOP <span class="mut" style="font-size:12px">or</span> estop(HW/소프트)
+    <span class="out">HAZARD 점멸</span></div>
+  <div class="prio-item p2"><span class="rank">2</span>
+    크랩 기동 중 (site_maneuver 활성 + |linear.y| &gt; 0.05)
+    <span class="out">이동 방향 지시</span></div>
+  <div class="prio-item p3"><span class="rank">3</span>
+    턴 구간 D_pre 진입 ~ 통과 전
+    <span class="out">태그 방향 지시</span></div>
+  <div class="prio-item p4"><span class="rank">4</span>
+    그 외 (그리드 폴백 주행 포함)
+    <span class="out">소등</span></div>
+</div>
+<p class="caption" style="margin-top:2px">전조등은 이 우선순위와 무관한 독립 채널 (UI Bool 그대로 통과).</p>
+
+<!-- ================================================== 4. 토픽 계약 -->
+<h2><span class="no">4</span>토픽 / 메시지 계약</h2>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>토픽</th><th>타입</th><th>방향</th><th>비고</th></tr></thead>
+  <tbody>
+    <tr><td><code>/platform/headlight/command</code></td><td><code>std_msgs/Bool</code></td><td>UI → controller</td><td>신규</td></tr>
+    <tr><td><code>/planning/route_turn_segments</code></td><td><code>Float32MultiArray</code></td><td>planner → controller</td><td>신규 · transient_local · <code>[0]=전체 경로 길이(동기화 가드)</code>, 이후 <code>[방향, s₀, s₁]×N</code></td></tr>
+    <tr><td><code>/platform/lights/command</code></td><td><b><code>avg_msgs/AvgLightCommand</code></b></td><td>controller → bridge</td><td>신규 msg: <code>header + bool headlight + uint8 indicator{OFF,LEFT,RIGHT,HAZARD}</code></td></tr>
+    <tr><td><code>/platform/lights/status</code></td><td>동일 msg</td><td>bridge → 진단/UI</td><td>MCU ack 반영</td></tr>
+  </tbody>
+</table>
+</div>
+<p style="font-size:13.5px; color:var(--muted)">
+  기존 구독 토픽: <code>/planning/state_machine/state</code> · <code>/platform/status/estop</code> ·
+  <code>/planning/state_machine/estop</code> · <code>/planning/global_path</code> ·
+  <code>/localization/pose</code> · <code>/parking/site_maneuver/status</code> · <code>/planning/cmd_vel</code>
+</p>
+
+<!-- ================================================== 5. 시리얼 프로토콜 -->
+<h2><span class="no">5</span>시리얼 프로토콜 &amp; 페일세이프</h2>
+
+<pre><code>PC → MCU (5 Hz, 개행 종료):   {"h":1,"i":"L","q":42}
+                               h = 전조등 0/1
+                               i = 인디케이터 O(off) / L / R / H(hazard)
+                               q = 시퀀스 번호
+
+MCU → PC (1 Hz):               {"a":42,"h":1,"i":"L","e":0}
+                               a = 마지막 수신 q (ack) · e = 에러코드</code></pre>
+
+<div class="panel figure">
+<svg viewBox="0 0 760 190" role="img" aria-label="MCU 페일세이프 타임라인">
+  <!-- 타임라인 -->
+  <line x1="40" y1="120" x2="730" y2="120" stroke="var(--line)" stroke-width="2"/>
+
+  <!-- 구간 1: 부팅~첫 프레임 -->
+  <rect x="40" y="52" width="180" height="44" rx="7" fill="var(--panel2)" stroke="var(--line)"/>
+  <text x="62" y="72" class="strong">부팅 · 대기</text>
+  <text x="62" y="89" class="mut">전체 소등 (판정 안 함)</text>
+
+  <!-- 구간 2: 정상 -->
+  <rect x="232" y="52" width="270" height="44" rx="7" fill="var(--ok-soft)" stroke="var(--ok)"/>
+  <text x="254" y="72" fill="var(--ok)" class="strong">정상 링크</text>
+  <text x="254" y="89" class="mut">수신 모드 그대로 구동</text>
+
+  <!-- 구간 3: 두절 -->
+  <rect x="565" y="52" width="165" height="44" rx="7" fill="var(--danger-soft)" stroke="var(--danger)"/>
+  <text x="583" y="72" fill="var(--danger)" class="strong">링크 두절</text>
+  <text x="583" y="89" fill="var(--danger)">HAZARD 자율 점멸</text>
+
+  <!-- 이벤트 마커 -->
+  <circle cx="232" cy="120" r="6" fill="var(--ok)"/>
+  <text x="176" y="150" class="mut">최초 유효 프레임</text>
+  <text x="176" y="166" class="mut">→ 이후부터 두절 판정 시작</text>
+  <circle cx="502" cy="120" r="6" fill="var(--muted)"/>
+  <text x="452" y="150" class="mut">마지막 프레임</text>
+  <line x1="502" y1="120" x2="565" y2="120" stroke="var(--danger)" stroke-width="3"/>
+  <circle cx="565" cy="120" r="6" fill="var(--danger)"/>
+  <text x="512" y="108" fill="var(--danger)" class="mono strong">1.0 s</text>
+  <text x="580" y="150" class="mut">PC 프로세스 다운 ·</text>
+  <text x="580" y="166" class="mut">케이블 탈락 등</text>
+</svg>
+<p class="caption">
+  그림 2 — 페일세이프. "최초 프레임 이후부터만" 두절을 판정하므로 PC 부팅/노드 재시작
+  구간에서는 비상등이 오점등하지 않고, 주행 중 실제 두절 시에만 HAZARD가 켜진다.
+</p>
+</div>
+
+<!-- ================================================== 6. 하드웨어 주의 -->
+<h2><span class="no">6</span>하드웨어 주의사항</h2>
+
+<div class="callout">
+  <b class="title">✓ 릴레이 D12 확정 — D13 부트로더 점멸 문제 해소</b>
+  <p>D13은 부트로더가 리셋/업로드 시 점멸시키는 핀이라 릴레이가 순간 클릭될 수 있었음 →
+  <b>D12로 변경 확정.</b> 잔여 주의: 리셋 중 모든 핀이 잠깐 입력(플로팅) 상태가 되므로
+  릴레이 모듈은 풀다운 있는 active-HIGH 타입 권장 (벤치에서 확인).</p>
+</div>
+<div class="callout">
+  <b class="title">WS2815 전원/신호</b>
+  <p>스트립 전원은 12 V 별도 공급, 데이터 신호는 5 V (Nano 직결 가능), <b>GND 공통 필수</b>.
+  D6/D8 백업(BI) 라인은 스트립 자체 리던던시 기능 — FastLED 코드는 D5/D7만 구동하고 백업은 병렬 배선만 하면 됨.</p>
+</div>
+<div class="callout">
+  <b class="title">시리얼 포트 충돌 방지</b>
+  <p>Nano(CH340)는 <code>ttyUSB*</code>로 잡혀 레이더 CH9344 7채널과 <b>열거 순서가 섞일 수 있음</b>
+  (현 포트맵: FRONT1=USB0 … REAR=USB6). 반드시 <code>/dev/serial/by-id/</code> 고정 경로 사용.</p>
+</div>
+
+<!-- ================================================== 7. 파일 배치 -->
+<h2><span class="no">7</span>파일 배치</h2>
+<pre><code>camrod_common/avg_msgs/msg/AvgLightCommand.msg          [신규]
+camrod_planning/src/lanelet_route_planner.cpp           [수정 · 턴 구간 발행 추가]
+camrod_platform/src/light_controller_node.cpp           [신규 · C++]
+camrod_platform/src/mcu_serial_bridge_node.cpp          [신규 · C++ · termios]
+camrod_platform/config/lights.yaml                      [신규]
+camrod_platform/launch/lights.launch.py                 [신규]
+camrod_platform/firmware/camrod_light_mcu/*.ino         [신규 · colcon 빌드 제외]
+camrod_platform/test/test_light_controller_logic.cpp    [신규 · gtest]
+camrod_platform/CMakeLists.txt / package.xml            [수정 · 타깃 2개+gtest+nlohmann]
+camrod_ui/runtime/.../ui_backend_node.py                [수정 · 전조등 라우트+퍼블리셔]
+camrod_ui/.../frontend/src/App.js                       [수정 · 버튼 + npm 재빌드]
+camrod_bringup/config/platform/lights.yaml              [신규 · 브링업 동기화 사본 ★]
+camrod_bringup/config/bringup/launch_defaults.yaml      [수정 · enable_lights 등]
+camrod_bringup/launch/_bringup_impl.py                  [수정 · lights 모듈 연결]</code></pre>
+<p style="font-size:13.5px; color:var(--muted)">
+  구현 언어 C++ 근거: camrod_platform 기존 노드 3개(cmd_vel_gate·ranger_platform_bridge·robot_visualization)
+  전부 C++. 시리얼은 POSIX termios(신규 의존성 0, ugv_sdk async_serial과 동일 접근),
+  JSON은 <code>nlohmann/json.hpp</code>(시스템 설치 확인 + 워크스페이스 내 nav2_smac_planner 사용 선례).
+  판정 로직은 ROS 비의존 클래스로 분리해 gtest로 결정론 검증 (게이트 51-assertion 테스트의 C++판).
+</p>
+<p style="font-size:13.5px; color:var(--muted)">
+  ★ 이 저장소는 패키지 config를 <b>bringup에 동기화 사본</b>으로 복제하는 컨벤션 — 누락 주의.
+</p>
+
+<h3>주요 파라미터 (lights.yaml)</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>파라미터</th><th>기본값</th><th>설명</th></tr></thead>
+  <tbody>
+    <tr><td><code>turn_pre_distance_m</code></td><td>12.0</td><td>조기 점등 거리 D_pre</td></tr>
+    <tr><td><code>crab_lateral_threshold_mps</code></td><td>0.05</td><td>크랩 방향 판정 최소 y속도</td></tr>
+    <tr><td><code>serial_port</code></td><td><code>/dev/serial/by-id/…</code></td><td>udev 고정 경로</td></tr>
+    <tr><td><code>serial_baud</code> / <code>tx_rate_hz</code></td><td>115200 / 5.0</td><td>—</td></tr>
+    <tr><td><code>mcu_timeout_s</code></td><td>1.0</td><td>MCU 스케치 상수와 동일값 유지</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ================================================== 8. TODO -->
+<h2><span class="no">8</span>작업 순서 (TODO)</h2>
+
+<ol class="todo">
+  <li><b>avg_msgs — <code>AvgLightCommand.msg</code> 추가</b>
+    <div class="meta"><span class="badge size-s">규모 소</span><span class="verify">검증: colcon build</span></div></li>
+  <li><b>lanelet_route_planner — <code>/planning/route_turn_segments</code> 발행 추가</b>
+    — createPlan 루프에 호길이 누적 + <code>attributeOr("turn_direction")</code> 조회,
+    <b>배열 [0]=전체 경로 길이(동기화 가드)</b>, 연속 동일 방향 구간 병합
+    <div class="meta"><span class="badge size-s">규모 소 (40–60줄, additive)</span><span class="verify">검증: sim에서 topic echo로 태그 구간·총길이 확인</span></div></li>
+  <li><b>light_controller_node (C++) + lights.yaml + gtest 단위 테스트</b>
+    — 우선순위·D_pre·크랩 판정·<b>경로 길이 대조 가드(불일치 → 해당 사이클 소등)</b>,
+    판정 로직은 ROS 비의존 클래스로 분리 (게이트 51-assertion 패턴의 C++판)
+    <div class="meta"><span class="badge size-m">규모 중</span><span class="verify">검증: colcon test (gtest)</span></div></li>
+  <li><b>mcu_serial_bridge_node (C++)</b> — POSIX termios, nlohmann/json, 재접속 백오프, ack 상태 발행
+    <div class="meta"><span class="badge size-m">규모 중</span><span class="verify">검증: socat 가상 pty 루프백</span></div></li>
+  <li><b>Arduino 스케치</b> — ArduinoJson(Static 96B) + FastLED, 릴레이 <b>D12</b>, 페일세이프(최초 프레임 후 1.0 s 두절 → HAZARD)
+    <div class="meta"><span class="badge size-m">규모 중</span><span class="verify">검증: 벤치 단독 테스트</span></div></li>
+  <li><b>UI — FastAPI 라우트 + React 전조등 버튼</b> + <code>npm run build</code>
+    <div class="meta"><span class="badge size-s">규모 소</span><span class="verify">검증: 브라우저</span></div></li>
+  <li><b>런치 통합</b> — lights.launch.py + bringup 연결 + launch_defaults + <b>bringup config 동기화 사본</b>
+    <div class="meta"><span class="badge size-m">규모 중</span><span class="verify">검증: sim:=true 전체 기동</span></div></li>
+  <li><b>문서</b> — platform/planning README, PARAMETER_NAMING_STANDARD 준수, DOCS_CHANGELOG, 루트 README 토픽 표
+    <div class="meta"><span class="badge size-s">규모 소</span></div></li>
+  <li><b>통합 검증</b> — sim 주행 중 턴 구간 점등 로그 + 실제 Nano 벤치 연결
+    <div class="meta"><span class="badge size-m">규모 중</span><span class="verify">검증: sim + 벤치</span></div></li>
+  <li class="phase2"><b>(2차) camrod_system — MCU 링크 진단 체커</b>
+    <div class="meta"><span class="badge size-s">규모 소</span><span class="verify">검증: 진단 대시보드</span></div></li>
+</ol>
+
+<footer>
+  CAMROD v2.0.0 (develop) 기준 · 기본 플래너 LaneletRoute / 컨트롤러 RPP / 폴백 자동전환 OFF /
+  주차 기본 rule_based 확인됨 · 방향 판정 원리 비교는
+  별도 문서 「방향 지시 판정 · A안 vs B안」 참조
+</footer>
+</main>
