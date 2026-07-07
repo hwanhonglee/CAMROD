@@ -222,7 +222,7 @@ graph TD
   classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
   classDef highlight    fill:#FEF9C3,stroke:#CA8A04,stroke-width:2.5px,color:#713F12;
 
-  L1((/sensing/cost_grid/lidar\n180×180 @ 0.10m\nstale: 0.80s)):::sensing
+  L1((/sensing/cost_grid/lidar\n180×180 @ 0.10m\nstale: 1.50s)):::sensing
   L2((/sensing/cost_grid/radar\n120×120 @ 0.10m\nstale: 0.35s)):::sensing
   L3((/map/cost_grid/lanelet\n600×600 @ 0.20m\nstale: 5.0s)):::mapping
   L4((/planning/cost_grid/global_path\nroute-strip bias\nstale: 10.0s)):::planning
@@ -295,11 +295,11 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | Fresh PointCloud2/MarkerArray input; publishes at 10 Hz |
-| Internal logic | `lidar_cost_grid_node` projects each filtered point into the `map` frame via TF2 and increments the corresponding cell. HH_260702 - `/perception/obstacles` and selected perception markers are merged into the same grid so camera/LiDAR vehicle detections affect planning even when the raw filtered-cloud footprint is sparse. Cost is linearly scaled between `min_cost` (65) and `max_cost` (95) over the distance range 0.4–9.0 m. HH_260706 - perception markers are marked at cost 90 as compact object hints with `perception_marker_max_radius_m: 0.45` and `perception_marker_radius_scale: 0.25`, avoiding oversized circular stop zones around detected vehicles. HH_260630 - an ego-clear disk of radius 0.55 m around the robot base is set free so side/rear obstacles just outside the body are not erased before safety gating. HH_260702 - LiDAR/perception inputs remain fresh for 0.80 s to avoid empty-grid flicker during brief CPU-load stalls. |
+| Internal logic | `lidar_cost_grid_node` projects each filtered point into the `map` frame via TF2 and increments the corresponding cell. HH_260707 - `/sensing/lidar/filtered_cloud` is also consumed as a height-gated fallback (`cloud_min_z_m: -0.55`, `cloud_max_z_m: 1.00`) so near vehicle/body returns can create cost even when ground segmentation emits an empty obstacle cloud. HH_260702 - `/perception/obstacles` and selected perception markers are merged into the same grid so camera/LiDAR vehicle detections affect planning even when the raw filtered-cloud footprint is sparse. Cost is linearly scaled between `min_cost` (65) and `max_cost` (95) over the distance range 0.4–9.0 m. HH_260707 - perception markers are marked at cost 90 with `perception_marker_min_radius_m: 0.35`, `perception_marker_max_radius_m: 0.75`, and `perception_marker_radius_scale: 0.35`, keeping detections visible to planning without restoring the oversized lane-wide disks seen in field tests. HH_260630 - an ego-clear disk of radius 0.55 m around the robot base is set free so side/rear obstacles just outside the body are not erased before safety gating. HH_260707 - LiDAR/perception inputs remain fresh for 1.50 s to avoid empty-grid flicker during CPU-load stalls. |
 | Output effect | `/sensing/cost_grid/lidar`: 180×180 @ 0.10 m (18 m square centred on robot). |
 | Operator-visible symptom | Silent topic → LiDAR/perception inputs are not publishing. Grid frozen → TF `robot_base_link → map` is stale (localization not running). |
-| Related params | `input_topic`, `extra_input_topics`, `perception_marker_topics`, `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `perception_marker_max_radius_m`, `perception_marker_radius_scale`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
-| Related topics | `/sensing/lidar/points_filtered`, `/perception/obstacles`, `/perception/lidar/bboxes`, `/perception/camera_lidar/markers` → `/sensing/cost_grid/lidar` |
+| Related params | `input_topic`, `extra_input_topics`, `cloud_min_z_m`, `cloud_max_z_m`, `perception_marker_topics`, `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `perception_marker_min_radius_m`, `perception_marker_max_radius_m`, `perception_marker_radius_scale`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
+| Related topics | `/sensing/lidar/points_filtered`, `/sensing/lidar/filtered_cloud`, `/perception/obstacles`, `/perception/lidar/bboxes`, `/perception/camera_lidar/markers` → `/sensing/cost_grid/lidar` |
 
 ### Radar (SEN0592 ×7)
 
@@ -415,9 +415,9 @@ Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single ante
 | Field | Detail |
 |---|---|
 | Trigger | Any updated input grid; publishes at 6 Hz |
-| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (0.80 s), radar cost (0.50 s), global_path cost (10.0 s). The output is a 180×180 @ 0.10 m grid (18 m square centred on robot) clipped to a robot-frame window of 8.0 m front, 1.5 m rear, and 2.2 m side. HH_260703 - Static lanelet/global-path costs are masked inside the 0.50 m ego footprint, but live LiDAR/Radar costs are preserved there for safety gating. Messages older than their per-input limit are treated as absent. |
+| Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (1.50 s), radar cost (0.50 s), global_path cost (10.0 s). The output is a 180×180 @ 0.10 m grid (18 m square centred on robot) clipped to a robot-frame window of 8.0 m front, 1.5 m rear, and 2.2 m side. HH_260703 - Static lanelet/global-path costs are masked inside the 0.50 m ego footprint, but live LiDAR/Radar costs are preserved there for safety gating. Messages older than their per-input limit are treated as absent. |
 | Output effect | `/planning/cost_grid/inflation` at 6 Hz; consumed by Nav2 local costmap and `cmd_vel_gate`. |
-| Operator-visible symptom | If inflation grid stops updating at 6 Hz, check each input: LiDAR grid must arrive within 0.80 s, radar within 0.50 s; lanelet grid arrives once (transient_local) and is valid for 5.0 s after last receipt. |
+| Operator-visible symptom | If inflation grid stops updating at 6 Hz, check each input: LiDAR grid must arrive within 1.50 s, radar within 0.50 s; lanelet grid arrives once (transient_local) and is valid for 5.0 s after last receipt. |
 | Related params | `resolution`, `width`, `height`, `ego_clear_radius_m`, `publish_rate_hz`, `input_topics`, `input_max_ages_s` |
 | Related topics | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`, `/planning/cost_grid/global_path` → `/planning/cost_grid/inflation` |
 
@@ -429,7 +429,7 @@ All cost grids are robot-centred and published in the `map` frame via TF2.
 
 | Grid | Size | Resolution | Cost range | Max staleness | Ego clear radius |
 |---|---|---|---|---|---|
-| `/sensing/cost_grid/lidar` | 180×180 | 0.10 m | 65–95 | 0.80 s | 0.55 m |
+| `/sensing/cost_grid/lidar` | 180×180 | 0.10 m | 65–95 | 1.50 s | 0.55 m |
 | `/sensing/cost_grid/radar` | 120×120 | 0.10 m | 35–95 | 0.35 s | 0.50 m |
 | `/planning/cost_grid/inflation` | 180×180 | 0.10 m | 0–100 | per-input (below) | 0.50 m |
 
@@ -438,7 +438,7 @@ All cost grids are robot-centred and published in the `map` frame via TF2.
 | Input | Staleness limit |
 |---|---|
 | `/map/cost_grid/lanelet` | 5.0 s |
-| `/sensing/cost_grid/lidar` | 0.80 s |
+| `/sensing/cost_grid/lidar` | 1.50 s |
 | `/sensing/cost_grid/radar` | 0.50 s |
 | `/planning/cost_grid/global_path` | 10.0 s |
 
@@ -536,7 +536,7 @@ ros2 launch camrod_sensing camera.launch.py
 | `width` / `height` | `180` cells | 18 m square window |
 | `ego_clear_radius_m` | `0.50` m | Always-free disk around robot |
 | `publish_rate_hz` | `6.0` Hz | Output rate |
-| `input_max_ages_s` | `[5.0, 0.80, 0.50, 10.0]` | Per-input staleness limits (lanelet, lidar, radar, path) |
+| `input_max_ages_s` | `[5.0, 1.50, 0.50, 10.0]` | Per-input staleness limits (lanelet, lidar, radar, path) |
 
 </details>
 
@@ -587,9 +587,10 @@ ros2 topic echo /sensing/camera/econ_rear/camera_info --once
 `/sensing/lidar/points_filtered` has no messages.
 
 1. Check that the Vanjee LiDAR driver is running and publishing on `/sensing/lidar/vanjee/points_raw`: `ros2 topic hz /sensing/lidar/vanjee/points_raw`.
-2. Confirm `enable_lidar_driver:=true` and `enable_lidar_cost_grid:=true` in the launch command.
-3. Check the preprocessor node is alive: `ros2 node list | grep lidar_preprocessor`.
-4. If raw points arrive but filtered points don't, the RANSAC ground filter may be failing — this can happen if the robot is not on a flat surface at startup. Try restarting the preprocessor after placing the robot on flat ground.
+2. HH_260707 - If raw finite points all have `y=0` and `z=0`, verify `angle_path_ver` and `angle_path_hor` point to `install/camrod_sensing/share/camrod_sensing/config/lidar/Vanjee_750C_*.csv` without an extra `vanjee/` directory.
+3. Confirm `enable_lidar_driver:=true` and `enable_lidar_cost_grid:=true` in the launch command.
+4. Check the preprocessor node is alive: `ros2 node list | grep lidar_preprocessor`.
+5. If raw and `/sensing/lidar/filtered_cloud` are populated but `/sensing/lidar/points_filtered` is empty, the ground segmentation stage classified the current ROI as ground. The LiDAR cost grid still uses height-gated `/sensing/lidar/filtered_cloud` as a fallback for vehicle/body returns.
 
 ### GNSS stays in float
 
@@ -618,7 +619,7 @@ One or more `/sensing/radar/*/range` topics are silent.
 
 1. Check each input: `ros2 topic hz /sensing/cost_grid/lidar` and `ros2 topic hz /sensing/cost_grid/radar`. Both should target 10 Hz; `/sensing/lidar/points_filtered` itself may be closer to 6 Hz after HH_260701 load relief.
 2. The lanelet grid (`/map/cost_grid/lanelet`) is published once with `transient_local` QoS. It is valid for 5 s after last receipt. If camrod_map has not been launched, the inflation node will hold indefinitely waiting for this input.
-3. Check `max_message_age_s: 0.80` in `inflation_cost_grid.yaml` — if the inflation node itself is lagging heavily (CPU overload), its own timer may still miss the 6 Hz target.
+3. Check `max_message_age_s: 1.50` in `inflation_cost_grid.yaml` — if the inflation node itself is lagging heavily (CPU overload), its own timer may still miss the 6 Hz target.
 4. Restart `inflation_cost_grid` node: `ros2 lifecycle set /sensing/inflation_cost_grid configure` (if managed) or kill and re-launch.
 
 ### IMU mode mismatch
@@ -759,7 +760,7 @@ Radar remains launched through the existing `radar_sensor.launch.py` path and sh
 
 > HH_260702 - Latest field/sim baseline keeps LiDAR, perception, and radar cost-grid semantics aligned with planning safety.
 
-- HH_260702: `/sensing/lidar/cost_grid` consumes `/sensing/lidar/points_filtered` plus `/perception/obstacles`, `/perception/lidar/bboxes`, and `/perception/camera_lidar/markers`. Perception markers are written as cost 90 and remain valid for the same 0.80 s freshness window as filtered LiDAR.
+- HH_260707: `/sensing/lidar/cost_grid` consumes `/sensing/lidar/points_filtered`, height-gated `/sensing/lidar/filtered_cloud`, `/perception/obstacles`, `/perception/lidar/bboxes`, and `/perception/camera_lidar/markers`. Perception markers are written as cost 90 with a 0.35-0.75 m radius window and remain valid for the same 1.50 s freshness window as filtered LiDAR.
 - HH_260702: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; software range filters still ignore no-target values and stable near-zero self echoes.
 - HH_260702: Full-stack tests with RViz/UI/voice/camera/YOLO/docking enabled can saturate the Jetson and delay cost-grid publication. Treat that mode as a load probe, then repeat drive validation with the lighter outdoor profile.
 - HH_260703: ZED-F9P single-antenna GNSS is documented and configured as `/dev/ttyACM1`; diagnostics tolerate 1 Hz effective fix/pose rates while preserving freshness/fix/covariance/jump checks.

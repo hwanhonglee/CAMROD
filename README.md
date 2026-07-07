@@ -53,7 +53,7 @@ setting owns a runtime behavior. Package READMEs still hold the deeper details.
 | Local path following | `camrod_planning` / local path extractor + Nav2 controller | `/planning/global_path`, localization pose, costmaps | `/planning/local_path`, `/planning/cmd_vel_raw` | Local path updates frequently; global path should not change shape every tick |
 | Final planning velocity gate | `camrod_planning` / `planning_cmd_vel_gate_node.py` | `/planning/cmd_vel_raw`, engage, e-stop, localization mode, `/planning/cost_grid/inflation` | `/planning/cmd_vel`, `/planning/engaged` | Applies engage, e-stop, GNSS recovery hold, stale-grid fail-closed, dynamic obstacle stop |
 | Platform velocity gate | `camrod_platform` | `/planning/cmd_vel`, `/platform/drive_enable`, hardware status | `/platform/cmd_vel` | Last software gate before Ranger base |
-| LiDAR obstacle cost | `camrod_sensing` / `lidar_cost_grid_node` | `/sensing/lidar/points_filtered`, perception markers/clouds | `/sensing/cost_grid/lidar` | HH_260706 - perception marker radius is compact to avoid oversized circular stop zones |
+| LiDAR obstacle cost | `camrod_sensing` / `lidar_cost_grid_node` | `/sensing/lidar/points_filtered`, height-gated `/sensing/lidar/filtered_cloud`, perception markers/clouds | `/sensing/cost_grid/lidar` | HH_260707 - 750C angle tables are loaded from the installed CSV directory; pre-ground-segmentation fallback points are z-gated |
 | Radar obstacle cost | `camrod_sensing` / `radar_cost_grid_node` | `/sensing/radar/*/range` | `/sensing/cost_grid/radar` | Seven sensors: front1/front2/left1/left2/right1/right2/rear |
 | Merged planning cost | `camrod_sensing` / `inflation_cost_grid_node` | lanelet, lidar, radar, global-path grids | `/planning/cost_grid/inflation` | Consumed by Nav2 local costmap and cmd_vel gate |
 | Diagnostics / soft e-stop | `camrod_system` + `camrod_planning` state machine | checker topics, `/system/diagnostics_agg` | `/system/status`, `/planning/state_machine/estop` | Keep diagnostics readable; only motion-critical ERRORs should force planning stop |
@@ -101,8 +101,10 @@ setting owns a runtime behavior. Package READMEs still hold the deeper details.
 | `cmd_vel_gate_cost_stop_latch_enable` | `true` | bringup/planning | Keeps dynamic stops latched until the corridor is continuously clear |
 | `cmd_vel_gate_cost_stop_clear_required_s` | `2.0` | bringup/planning | Required clear time before releasing a latched dynamic stop |
 | `cmd_vel_gate_cost_grid_stale_stop_enable` | `true` | bringup/planning | Fails closed when `/planning/cost_grid/inflation` is stale or missing |
-| `perception_marker_max_radius_m` | `0.45` | `camrod_sensing` LiDAR cost grid | Caps perception-object cost disk size |
-| `perception_marker_radius_scale` | `0.25` | `camrod_sensing` LiDAR cost grid | Scales marker bbox size into compact cost radius |
+| `cloud_min_z_m` / `cloud_max_z_m` | `-0.55` / `1.00` | `camrod_sensing` LiDAR cost grid | Filters height-gated fallback LiDAR points before cost projection |
+| `perception_marker_min_radius_m` | `0.35` | `camrod_sensing` LiDAR cost grid | Keeps compact perception-object markers large enough to affect planning |
+| `perception_marker_max_radius_m` | `0.75` | `camrod_sensing` LiDAR cost grid | Caps perception-object cost disk size |
+| `perception_marker_radius_scale` | `0.35` | `camrod_sensing` LiDAR cost grid | Scales marker bbox size into compact cost radius |
 
 ### Naming Rules
 
@@ -595,7 +597,7 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/localization/mode` | `AvgLocalizationMode` | localization → planning gate | NORMAL / DEGRADED / DR\_ONLY / INVALID |
 | `/localization/initial_match_ok` | `Bool` | localization → planning | Drop-zone match readiness |
 | `/perception/obstacles` | `PointCloud2` | perception → LiDAR cost grid | Fused obstacle cloud merged into `/sensing/cost_grid/lidar` |
-| `/perception/lidar/bboxes`, `/perception/camera_lidar/markers` | `MarkerArray` | perception → LiDAR cost grid | HH_260702 - marker obstacles merged into LiDAR cost grid when fresh |
+| `/perception/lidar/bboxes`, `/perception/camera_lidar/markers` | `MarkerArray` | perception → LiDAR cost grid | HH_260707 - marker obstacles use a 0.35-0.75 m radius window when fresh |
 | `/planning/cost_grid/inflation` | `OccupancyGrid` | sensing/map → planning | Merged near-range cost grid |
 | `/map/cost_grid/lanelet` | `OccupancyGrid` | map → sensing inflation | Lane traversability layer |
 | `/planning/global_path` | `Path` | planning → RViz / diagnostics | Global Nav2 route |
@@ -863,9 +865,9 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 - HH_260702: `/planning/local_path` now always follows the latest planner/global route slice instead of a stale controller debug path.
 - HH_260702: Local-path extraction now clears stale `/planning/local_path` output on invalid input and route changes; map/perception/lidar/radar diagnostic errors remain visible in `/system/status` but no longer force planning `ERROR_STOP` by themselves.
-- HH_260702: `lidar_cost_grid_node` now merges `/sensing/lidar/points_filtered`, `/perception/obstacles`, `/perception/lidar/bboxes`, and `/perception/camera_lidar/markers` before publishing `/sensing/cost_grid/lidar`.
+- HH_260707: `lidar_cost_grid_node` now merges `/sensing/lidar/points_filtered`, height-gated `/sensing/lidar/filtered_cloud`, `/perception/obstacles`, `/perception/lidar/bboxes`, and `/perception/camera_lidar/markers` before publishing `/sensing/cost_grid/lidar`.
 - HH_260702: `obstacle_replan_monitor` now reports active local-path blockage on `/planning/obstacle_replan/status` by default without preempting Nav2 or changing `/planning/global_path`; SmacLattice fallback preemption is available only when `preempt_enabled=true`.
-- HH_260702: The LiDAR cost grid remains 180×180 at 0.10 m with 0.80 s input freshness. Perception markers are capped to 1.2 m radius and marked at cost 90.
+- HH_260707: The LiDAR cost grid remains 180×180 at 0.10 m with 1.50 s input freshness. Perception markers are marked at cost 90 with a 0.35-0.75 m radius window, and fallback LiDAR cloud points must pass `cloud_min_z_m: -0.55`.
 - HH_260702: Radar port order is synchronized to the current crossed LEFT/RIGHT field harness: FRONT1=USB0, FRONT2=USB1, LEFT1=USB4, LEFT2=USB5, RIGHT1=USB2, RIGHT2=USB3, REAR=USB6. Startup hardware register writes are opt-in to avoid false SEN0592 write timeout warnings; runtime polling and software range filtering remain active.
 - HH_260702: Sim validation passed for baseline topic rates, all seven radar direction topics, front/left/right/rear LiDAR/Radar cost-stop, manual goal navigation, obstacle-block status without fallback route preemption, campsite crab/rotate/unload/crab-out, return-to-drop-zone, and drop-zone reverse parking to `PARKED`.
 - HH_260702: Real full-stack tests with RViz/UI/voice/cameras/YOLO/docking enabled are intentionally treated as load probes. On the Jetson Orin field target that mode can saturate CPU/GPU and delay LiDAR/cost-grid/radar diagnostics; drive validation should use the lighter outdoor profile after the sim checks pass.
