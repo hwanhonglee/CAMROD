@@ -44,8 +44,10 @@ radar_checker:
       stale_timeout_s:      1.0
       min_range_m:        0.02
       max_range_m:        4.5
+      # HH_260707 - Side radars can see the vehicle body at very short range;
+      # keep that visible as WARN only and let cost-grid/gate handle real stops.
       stuck_min_warn_m:   0.05
-      stuck_min_error_m:  0.03
+      stuck_min_error_m:  0.0
       stuck_max_warn_m:   4.4
       stuck_max_error_m:  0.0
 
@@ -57,8 +59,10 @@ radar_checker:
       stale_timeout_s:      1.0
       min_range_m:        0.02
       max_range_m:        4.5
+      # HH_260707 - Side radars can see the vehicle body at very short range;
+      # keep that visible as WARN only and let cost-grid/gate handle real stops.
       stuck_min_warn_m:   0.05
-      stuck_min_error_m:  0.03
+      stuck_min_error_m:  0.0
       stuck_max_warn_m:   4.4
       stuck_max_error_m:  0.0
 
@@ -73,7 +77,7 @@ radar_checker:
       # HH_260707 - Keep near-body chassis echoes visible as WARN so mounting
       # or self-occlusion issues remain operator-visible during field tests.
       stuck_min_warn_m:   0.05
-      stuck_min_error_m:  0.03
+      stuck_min_error_m:  0.0
       stuck_max_warn_m:   4.4
       stuck_max_error_m:  0.0
 
@@ -88,7 +92,7 @@ radar_checker:
       # HH_260707 - Keep near-body chassis echoes visible as WARN so mounting
       # or self-occlusion issues remain operator-visible during field tests.
       stuck_min_warn_m:   0.05
-      stuck_min_error_m:  0.03
+      stuck_min_error_m:  0.0
       stuck_max_warn_m:   4.4
       stuck_max_error_m:  0.0
 
