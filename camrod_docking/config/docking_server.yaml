@@ -43,7 +43,8 @@
       external_detection_rotation_yaw: 0.0
 
       docking_threshold: 0.08           # 도킹 완료 판정 거리 (사용자 지정값)
-      staging_x_offset: -0.7            # 로봇을 dock 1.5m 앞에 배치 후 시작
+      staging_x_offset: -0.7            # staging 을 dock 0.7m 앞에 배치(=staging↔dock 거리).
+                                        #   1m 안쪽 권장: 후방 카메라 마커 시야 확보 + 종단 접근/후진거리↓ → 성공률↑
       staging_yaw_offset: 0.0
       external_detection_timeout: 1.0
       filter_coef: 0.1                  # EMA 필터 (Nova Carter 기준값)

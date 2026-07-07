@@ -185,7 +185,11 @@ controller_server:
       # HH_260623 - Use robot_base_link center as the arrival reference. A
       # wide 0.8 m tolerance made Nav2 succeed when only the front footprint
       # reached the marker, before the robot center reached the goal pose.
-      xy_goal_tolerance: 0.15
+      # YH_260707: 0.15 → 0.3. 도킹 Phase1 staging 은 "dock 앞에 대략 정렬"만 하면 되고
+      #   정밀 정렬은 Phase2(후방 카메라+마커)가 담당한다. lanelet 경로 종단이 staging 에서
+      #   ~0.2m 떨어진 지점에서 끝나 0.15m 로는 goal 미달성 → nav 미완료 → INITIAL_PERCEPTION
+      #   전환 실패했다. 0.3 으로 완화(여전히 center 기준, 과거 0.8 처럼 느슨하지 않음).
+      xy_goal_tolerance: 0.3
       yaw_goal_tolerance: 3.14
       stateful: False
 
@@ -217,7 +221,7 @@ controller_server:
       transform_tolerance: 0.2
       # HH_260623 - Keep DWB fallback aligned with the center-based Nav2
       # arrival tolerance so controller selection does not change stop point.
-      xy_goal_tolerance: 0.15
+      xy_goal_tolerance: 0.3
       trans_stopped_velocity: 0.10
       short_circuit_trajectory_evaluation: True
       stateful: True
