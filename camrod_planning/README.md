@@ -387,13 +387,13 @@ or too far from the robot, the node falls back to the raw robot-yaw rectangle.
 
 **Trigger:** `/localization/mode` transitions from `DR_ONLY (2)` to `NORMAL (0)`.
 
-**Internal logic:** The gate records the transition timestamp and blocks `/planning/cmd_vel` passthrough for `gnss_recovery_hold_s` (default 2.0 s). During the hold window, all velocity output is zeroed regardless of engage state or cost-stop state.
+**Internal logic:** The gate records the transition timestamp and blocks `/planning/cmd_vel` passthrough for `gnss_recovery_hold_s` (default 2.0 s). HH_260707 - The hold is applied only after the source mode has stayed in DR-only/recovery for at least `gnss_recovery_min_source_s` (default 1.5 s), and repeated holds are rate-limited by `gnss_recovery_hold_cooldown_s` (default 10.0 s). During the hold window, all velocity output is zeroed regardless of engage state or cost-stop state.
 
 > 📌 **Note** `/planning/cmd_vel` is zeroed for up to 2 s after GNSS re-acquisition; robot is briefly stationary even if the engage signal is active.
 
-**Operator-visible symptom:** Robot pauses for ~2 s each time GNSS lock is recovered after a DR_ONLY period. Nav2 costmap typically re-settles within this window.
+**Operator-visible symptom:** Robot pauses for ~2 s after a sustained DR_ONLY period recovers to NORMAL. One-sample GNSS/NTRIP flaps should log as skipped instead of repeatedly blocking cmd_vel.
 
-> 🔧 **Debug hint** Related params: `cmd_vel_gate_enable_gnss_recovery_hold`, `cmd_vel_gate_gnss_recovery_hold_s`, `cmd_vel_gate_gnss_recovery_source_mode_min` (default 2), `cmd_vel_gate_gnss_recovery_target_mode` (default 0)
+> 🔧 **Debug hint** Related params: `cmd_vel_gate_enable_gnss_recovery_hold`, `cmd_vel_gate_gnss_recovery_hold_s`, `cmd_vel_gate_gnss_recovery_min_source_s`, `cmd_vel_gate_gnss_recovery_hold_cooldown_s`, `cmd_vel_gate_gnss_recovery_source_mode_min` (default 2), `cmd_vel_gate_gnss_recovery_target_mode` (default 0)
 
 **Related topics:** `/localization/mode`, `/planning/cmd_vel`
 
@@ -586,6 +586,8 @@ Key launch arguments:
 | `cmd_vel_gate_side_corridor_width_m` | `1.69160` | HH_260623 - measured body length plus 0.10 m front/rear margin |
 | `cmd_vel_gate_rear_corridor_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `cmd_vel_gate_enable_gnss_recovery_hold` | `true` | Hold velocity for 2 s after DR_ONLY → NORMAL |
+| `cmd_vel_gate_gnss_recovery_min_source_s` | `1.5` | HH_260707 - ignore short GNSS/NTRIP mode flaps before recovery hold |
+| `cmd_vel_gate_gnss_recovery_hold_cooldown_s` | `10.0` | HH_260707 - prevent repeated recovery holds during unstable GNSS |
 | `cmd_vel_gate_yaw_alignment_enable` | `false` | Yaw alignment zone enforcement |
 | `nav2_selected_planner` | `LaneletRoute` | HH_260619 - default lanelet-centerline route planner; `SmacLattice`/`ThetaStar` remain selectable for free-space diagnostics |
 | `nav2_combo_param_file` | `config/nav2_combo_profiles/disabled.yaml` | Planner+controller profile overlay |

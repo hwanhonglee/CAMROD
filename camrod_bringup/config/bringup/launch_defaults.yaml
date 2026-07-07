@@ -120,9 +120,9 @@ bringup:
     cmd_vel_gate_enable_gnss_recovery_hold: true
     cmd_vel_gate_localization_mode_topic: /localization/mode
     cmd_vel_gate_gnss_recovery_hold_s: 2.0
-    # HH_260626: Avoid repeated recovery holds from one-sample GNSS/mode flaps.
-    cmd_vel_gate_gnss_recovery_min_source_s: 0.5
-    cmd_vel_gate_gnss_recovery_hold_cooldown_s: 5.0
+    # HH_260707 - Avoid repeated recovery holds from short GNSS/NTRIP flaps.
+    cmd_vel_gate_gnss_recovery_min_source_s: 1.5
+    cmd_vel_gate_gnss_recovery_hold_cooldown_s: 10.0
     # AvgLocalizationMode enum used in this workspace: NORMAL=0, DR_ONLY=2.
     cmd_vel_gate_gnss_recovery_source_mode_min: 2
     cmd_vel_gate_gnss_recovery_target_mode: 0
