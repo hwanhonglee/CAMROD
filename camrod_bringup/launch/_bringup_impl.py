@@ -760,7 +760,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_allow_on_start', False),
             'Allow planning cmd_vel on startup without engage',
         ),
-        # Short stop-hold after localization recovers from DR_ONLY to NORMAL.
+        # HH_260707 - Hold only after sustained DR_ONLY recovery and debounce repeated GNSS flaps.
         (
             'planning_cmd_vel_gate_enable_gnss_recovery_hold',
             cfg_get(launch_cfg, 'planning/cmd_vel_gate_enable_gnss_recovery_hold', True),
@@ -778,12 +778,12 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_gnss_recovery_min_source_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_min_source_s', 0.5),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_min_source_s', 1.5),
             'Minimum DR/degraded duration before planning applies GNSS recovery hold',
         ),
         (
             'planning_cmd_vel_gate_gnss_recovery_hold_cooldown_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_hold_cooldown_s', 5.0),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_hold_cooldown_s', 10.0),
             'Cooldown before planning can apply another GNSS recovery hold',
         ),
         (

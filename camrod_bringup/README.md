@@ -339,6 +339,8 @@ flowchart TD
 | `planning_cmd_vel_gate_body_near_maneuver_rear_lookahead_m` | `0.45` | HH_260706 - reduced rear stop distance for crab/reverse maneuvers |
 | `planning_cmd_vel_gate_side_corridor_width_m` | `1.69160` | HH_260623 - measured body length plus 0.10 m front/rear margin |
 | `planning_cmd_vel_gate_rear_corridor_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
+| `planning_cmd_vel_gate_gnss_recovery_min_source_s` | `1.5` | HH_260707 - ignore short GNSS/NTRIP mode flaps before recovery hold |
+| `planning_cmd_vel_gate_gnss_recovery_hold_cooldown_s` | `10.0` | HH_260707 - prevent repeated recovery holds during unstable GNSS |
 | `enable_yaw_alignment_zone` → `planning_cmd_vel_gate_yaw_alignment_enable` | `false` | Heading alignment at named map zones |
 | `enable_plugin_api` | `true` | Plugin API bridge node |
 | `enable_api_ui` | `true` | HTTP UI backend |

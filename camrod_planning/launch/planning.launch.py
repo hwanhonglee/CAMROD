@@ -215,12 +215,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('cmd_vel_gate_dr_timeout_source_mode', default_value='localization_monitor'),
         DeclareLaunchArgument('cmd_vel_gate_allow_on_start', default_value='false'),
-        # HH_260427: Short hold window after DR_ONLY->NORMAL localization recovery.
+        # HH_260707 - Hold after sustained DR_ONLY->NORMAL recovery, but ignore short GNSS flaps.
         DeclareLaunchArgument('cmd_vel_gate_enable_gnss_recovery_hold', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_localization_mode_topic', default_value='/localization/mode'),
         DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_hold_s', default_value='2.0'),
-        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_min_source_s', default_value='0.5'),
-        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_hold_cooldown_s', default_value='5.0'),
+        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_min_source_s', default_value='1.5'),
+        DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_hold_cooldown_s', default_value='10.0'),
         DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_source_mode_min', default_value='2'),
         DeclareLaunchArgument('cmd_vel_gate_gnss_recovery_target_mode', default_value='0'),
         # HH_260413: Optional cost-based stop in front of the platform.
