@@ -63,11 +63,17 @@ public:
     cost_range_min_m_ = declare_parameter<double>("cost_range_min_m", 0.4);
     cost_range_max_m_ = declare_parameter<double>("cost_range_max_m", 9.0);
     obstacle_radius_m_ = declare_parameter<double>("obstacle_radius_m", 0.20);
+    cloud_min_z_m_ = declare_parameter<double>(
+      "cloud_min_z_m", -std::numeric_limits<double>::infinity());
+    cloud_max_z_m_ = declare_parameter<double>(
+      "cloud_max_z_m", std::numeric_limits<double>::infinity());
     perception_marker_cost_ = declare_parameter<int>("perception_marker_cost", 90);
+    perception_marker_min_radius_m_ =
+      declare_parameter<double>("perception_marker_min_radius_m", 0.35);
     perception_marker_max_radius_m_ =
-      declare_parameter<double>("perception_marker_max_radius_m", 0.45);
+      declare_parameter<double>("perception_marker_max_radius_m", 0.75);
     perception_marker_radius_scale_ =
-      declare_parameter<double>("perception_marker_radius_scale", 0.25);
+      declare_parameter<double>("perception_marker_radius_scale", 0.35);
     ego_clear_radius_m_ = declare_parameter<double>("ego_clear_radius_m", 0.90);
     max_message_age_s_ = declare_parameter<double>("max_message_age_s", 0.50);
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);
@@ -418,6 +424,11 @@ private:
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
           continue;
         }
+        // HH_260707 - Allow pre-ground-segmentation fallback clouds without
+        // turning flat road returns into obstacle cost.
+        if (z < cloud_min_z_m_ || z > cloud_max_z_m_) {
+          continue;
+        }
 
         const tf2::Vector3 p_sensor(x, y, z);
         const tf2::Vector3 p_output = cloud_tf * p_sensor;
@@ -468,11 +479,15 @@ private:
       const double distance = std::sqrt(squaredDistance2d(
         point_out.point.x, point_out.point.y,
         base_in_output.point.x, base_in_output.point.y));
+      const double marker_min_radius =
+        std::max(obstacle_radius_m_, perception_marker_min_radius_m_);
+      const double marker_max_radius =
+        std::max(marker_min_radius, perception_marker_max_radius_m_);
       const double marker_radius = std::clamp(
-        // HH_260706 - Perception boxes are already object-level detections;
-        // keep their projected cost compact instead of drawing a large disk.
+        // HH_260707 - Keep perception detections large enough to influence
+        // planning, but capped so object markers do not become lane-wide stops.
         perception_marker_radius_scale_ * std::hypot(marker.scale.x, marker.scale.y),
-        obstacle_radius_m_, std::max(obstacle_radius_m_, perception_marker_max_radius_m_));
+        marker_min_radius, marker_max_radius);
       const int value = std::clamp(
         std::max(perception_marker_cost_, mapDistanceToCost(distance)), min_cost_, max_cost_);
       markDiskWithRadius(
@@ -571,9 +586,12 @@ private:
   double cost_range_min_m_{0.4};
   double cost_range_max_m_{9.0};
   double obstacle_radius_m_{0.20};
+  double cloud_min_z_m_{-std::numeric_limits<double>::infinity()};
+  double cloud_max_z_m_{std::numeric_limits<double>::infinity()};
   int perception_marker_cost_{90};
-  double perception_marker_max_radius_m_{0.45};
-  double perception_marker_radius_scale_{0.25};
+  double perception_marker_min_radius_m_{0.35};
+  double perception_marker_max_radius_m_{0.75};
+  double perception_marker_radius_scale_{0.35};
   double ego_clear_radius_m_{0.90};
   double max_message_age_s_{0.50};
   double publish_rate_hz_{10.0};

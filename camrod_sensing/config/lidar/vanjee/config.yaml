@@ -25,9 +25,10 @@ lidar:
       pcap_repeat: true
       pcap_rate: 1
       # JH_260630 - Use installed CAMROD 750C calibration CSVs for accurate point cloud geometry.
+      # HH_260707 - Match the installed CSV directory so the 750C decoder loads non-zero angle tables.
       config_from_file: true
-      angle_path_ver: /home/nvidia/camrod_ws/install/camrod_sensing/share/camrod_sensing/config/lidar/vanjee/Vanjee_750C_VA.csv
-      angle_path_hor: /home/nvidia/camrod_ws/install/camrod_sensing/share/camrod_sensing/config/lidar/vanjee/Vanjee_750C_HA.csv
+      angle_path_ver: /home/nvidia/camrod_ws/install/camrod_sensing/share/camrod_sensing/config/lidar/Vanjee_750C_VA.csv
+      angle_path_hor: /home/nvidia/camrod_ws/install/camrod_sensing/share/camrod_sensing/config/lidar/Vanjee_750C_HA.csv
       imu_param_path:
       dense_points: false
       ts_first_point: true

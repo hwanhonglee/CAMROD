@@ -5,7 +5,10 @@
     input_topic: "/sensing/lidar/points_filtered"
     # HH_260702 - Also consume perception outputs so camera/LiDAR detections
     # become planning costs even when the filtered-cloud obstacle footprint is sparse.
+    # HH_260707 - Use pre-ground-segmentation LiDAR as a height-gated fallback
+    # for near vehicles when ground segmentation emits an empty obstacle cloud.
     extra_input_topics:
+      - "/sensing/lidar/filtered_cloud"
       - "/perception/obstacles"
     perception_marker_topics:
       - "/perception/lidar/bboxes"
@@ -35,11 +38,16 @@
     cost_range_min_m: 0.4
     cost_range_max_m: 9.0
     obstacle_radius_m: 0.20
+    # HH_260707 - Reject road-level fallback points; vehicle/body returns above
+    # this height still become dynamic cost.
+    cloud_min_z_m: -0.55
+    cloud_max_z_m: 1.00
     perception_marker_cost: 90
-    # HH_260706 - Keep camera/LiDAR object cost compact; large circular disks
-    # around perception markers were causing unnecessary stops.
-    perception_marker_max_radius_m: 0.45
-    perception_marker_radius_scale: 0.25
+    # HH_260707 - Keep camera/LiDAR object cost visible to planning without
+    # restoring the oversized lane-wide marker disks seen during field tests.
+    perception_marker_min_radius_m: 0.35
+    perception_marker_max_radius_m: 0.75
+    perception_marker_radius_scale: 0.35
     # HH_260630: Keep ego clearing close to the vehicle half-width so side/rear
     # LiDAR obstacles just outside the body are not erased before safety gating.
     ego_clear_radius_m: 0.55
@@ -47,7 +55,7 @@
     # Runtime
     # HH_260702 - Keep LiDAR/perception objects alive through brief CPU-load
     # stalls so the grid does not flicker empty between 6 Hz filtered frames.
-    max_message_age_s: 0.80
+    max_message_age_s: 1.50
     publish_rate_hz: 10.0
     publish_lidar_status: false
     lidar_status_topic: "/sensing/lidar/status"
