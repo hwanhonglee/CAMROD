@@ -68,6 +68,10 @@ def generate_launch_description():
         DeclareLaunchArgument("ranger_params_file",        default_value=plat(os.path.join("config", "ranger_driver.yaml"))),
         # HH_260528: Keep sensor_kit bridge optional for debug.
         DeclareLaunchArgument("sensor_kit_bridge_enable",  default_value="true"),
+        # 260708: Exterior lights (headlight relay + WS2815 indicators via MCU).
+        DeclareLaunchArgument("lights_enable",             default_value="true"),
+        DeclareLaunchArgument("lights_mcu_bridge_enable",  default_value="true"),
+        DeclareLaunchArgument("lights_param_file",         default_value=plat(os.path.join("config", "lights.yaml"))),
 
         _inc(plat(os.path.join("launch", "robot_visualization.launch.py")),
              "module_namespace", "map_frame_id", "base_frame_id",
@@ -93,4 +97,8 @@ def generate_launch_description():
              "base_frame_id", "sensor_kit_base_frame_id",
              "params_file", "sensor_kit_namespace",
              condition=IfCondition(LaunchConfiguration("sensor_kit_bridge_enable"))),
+
+        _inc(plat(os.path.join("launch", "lights.launch.py")),
+             "module_namespace", "lights_enable",
+             "lights_mcu_bridge_enable", "lights_param_file"),
     ])

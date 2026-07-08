@@ -15,7 +15,7 @@ bt_navigator:
     # Further reduce tick pressure to limit planner/controller churn
     # when full-stack bringup is CPU-constrained.
     bt_loop_duration: 80
-    # Keep planner/controller IDs consistent with selector BT aliases:
+    # HH_260706 - Keep planner/controller IDs consistent with selector BT values:
     # planner: LaneletRoute | Smac2D | NavFn, controller: RPP | DWB.
     # Launch rewrites this value to a package-share-resolved XML path.
     default_nav_to_pose_bt_xml: ""

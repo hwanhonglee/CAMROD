@@ -545,7 +545,7 @@ class SiteManeuverNode(Node):
                 if key:
                     self.camping_site_goals[key] = self._copy_pose(pose)
         self.get_logger().info(
-            f"loaded {len(self.camping_site_goals)} campsite goal aliases from {path}"
+            f"loaded {len(self.camping_site_goals)} campsite goal entries from {path}"
         )
 
     def _on_pose(self, msg: PoseStamped) -> None:

@@ -39,6 +39,8 @@ class ApiState:
 
     engaged: bool = False
     ready: bool = False
+    # 260708: Operator headlight toggle state (relay via light MCU bridge).
+    headlight: bool = False
     operation_mode: str = "STOP"
     ready_message: str = ""
     module_states: List[Dict[str, Any]] = field(default_factory=list)
@@ -93,6 +95,10 @@ class UiBackendNode(Node):
         )
         self.platform_drive_enable_topic = str(
             self.declare_parameter("platform_drive_enable_topic", "/platform/drive_enable").value
+        )
+        # 260708: Headlight ON/OFF button target, consumed by light_controller.
+        self.headlight_command_topic = str(
+            self.declare_parameter("headlight_command_topic", "/platform/headlight/command").value
         )
         self.planning_mission_key_topic = str(
             self.declare_parameter("planning_mission_key_topic", "/planning/mission_key").value
@@ -231,6 +237,8 @@ class UiBackendNode(Node):
         self.pub_platform_drive_enable = self.create_publisher(
             Bool, self.platform_drive_enable_topic, 10
         )
+        # 260708: Headlight button publisher (light_controller passes it to the MCU).
+        self.pub_headlight = self.create_publisher(Bool, self.headlight_command_topic, 10)
         self.pub_site_maneuver_return = self.create_publisher(
             Bool, self.site_maneuver_return_topic, 10
         )
@@ -878,6 +886,7 @@ class UiBackendNode(Node):
             return {
                 "engaged": self._state.engaged,
                 "ready": self._state.ready,
+                "headlight": self._state.headlight,
                 "operation_mode": self._state.operation_mode,
                 "ready_message": self._state.ready_message,
                 "module_states": list(self._state.module_states),
@@ -896,6 +905,17 @@ class UiBackendNode(Node):
         self._publish_engage(bool(value), source="http")
         self._schedule_broadcast({"engage": bool(value)})
         return {"success": True, "message": "engage command published", "value": bool(value)}
+
+    # 260708: Headlight toggle — publishes the Bool consumed by light_controller.
+    def set_headlight(self, value: bool) -> Dict[str, Any]:
+        msg = Bool()
+        msg.data = bool(value)
+        self.pub_headlight.publish(msg)
+        with self._lock:
+            self._state.headlight = bool(value)
+        self._schedule_broadcast({"headlight": bool(value)})
+        self.get_logger().info(f"headlight command (http): {bool(value)}")
+        return {"success": True, "message": "headlight command published", "value": bool(value)}
 
     def set_operation_mode(self, value: bool) -> Dict[str, Any]:
         self._publish_engage(bool(value), source="http_operation_mode")
@@ -1170,6 +1190,12 @@ class UiBackendNode(Node):
         async def post_engage(value: str = "false") -> JSONResponse:
             enabled = value.lower() in {"1", "true", "yes", "on"}
             result = node.set_engage(enabled)
+            return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
+        @app.post("/ui/headlight")
+        async def post_headlight(value: str = "false") -> JSONResponse:
+            enabled = value.lower() in {"1", "true", "yes", "on"}
+            result = node.set_headlight(enabled)
             return JSONResponse(result, status_code=200 if result.get("success") else 503)
 
         @app.post("/ui/operation_mode")

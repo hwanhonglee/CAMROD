@@ -64,6 +64,7 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
 > HH_260630 - Package config trees are synchronized into `camrod_bringup/config`; bringup passes `config/system/diagnostics` to `camrod_system` so the synchronized system checker profiles are actually used.
 > HH_260702 - Latest sim validation passed baseline rates, all radar directions, LiDAR/Radar directional cost-stop, manual goal navigation, status-only obstacle blockage, campsite maneuver, return-to-drop-zone, and drop-zone reverse parking. Full real-sensor bringup with RViz/UI/voice/cameras/YOLO/docking enabled is a load probe; use the lighter field profile for drive validation.
 > HH_260703 - Field patch adds GNSS `/dev/ttyACM1` config sync, cost-stop latch, stale inflation-grid fail-closed behavior, live LiDAR/Radar cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning for crab safety, and diagnostics policy that keeps non-motion camera/raw-LiDAR/costmap issues visible without forcing every transient into planning `ERROR_STOP`.
+> HH_260706 - Field tuning keeps route-heading safety enabled with slower angular correction and raises campsite crab speed to reduce startup oscillation and long campsite entry time.
 
 ---
 
@@ -317,6 +318,10 @@ flowchart TD
 | `planning_cmd_vel_gate_cost_stop_clear_required_s` | `2.0` | HH_260703 - Required continuous clear window before releasing a latched dynamic stop |
 | `planning_cmd_vel_gate_cost_grid_stale_stop_enable` | `true` | HH_260703 - Fail closed when merged inflation grid is stale or missing |
 | `planning_cmd_vel_gate_cost_grid_stale_timeout_s` | `1.0` | HH_260703 - Maximum age for `/planning/cost_grid/inflation` before zeroing cmd_vel |
+| `planning_cmd_vel_gate_route_heading_lookahead_m` | `2.0` | HH_260706 - Longer path tangent sample smooths startup alignment when pose/cost updates lag |
+| `planning_cmd_vel_gate_route_heading_error_exit_deg` | `35.0` | HH_260706 - Release route-heading alignment before delayed pose feedback causes overshoot |
+| `planning_cmd_vel_gate_route_heading_angular_kp` | `0.8` | HH_260706 - Lower angular gain for startup yaw damping |
+| `planning_cmd_vel_gate_route_heading_max_angular_z` | `0.35` | HH_260706 - Lower angular clamp for less left-right correction chatter |
 | `planning_cmd_vel_gate_lanelet_safety_enable` | `true` | HH_260618 - raw `/map/cost_grid/lanelet` hard stop before inflation ego-clear |
 | `planning_cmd_vel_gate_lanelet_safety_check_reverse` | `false` | Keep reverse parking under mission-specific parking control |
 | `planning_cmd_vel_gate_lanelet_safety_check_lateral` | `false` | Keep campsite crab motion under mission-specific site control |

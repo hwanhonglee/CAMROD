@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v2.0.0** (field safety baseline updated 2026-07-03)
+> Current release: **v2.0.0** (field safety/tuning baseline updated 2026-07-06)
 
 ---
 
@@ -516,6 +516,10 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/platform/status/estop` | `Bool` | Ranger CAN → gates | Hardware emergency stop |
 | `/planning/state_machine/estop` | `Bool` | planning state machine → planning gate | Mission/diagnostic soft e-stop; ORed with platform e-stop before `/planning/cmd_vel` |
 | `/platform/status/odometry` | `Odometry` | Ranger CAN → localization | Wheel odometry |
+| `/planning/route_turn_segments` | `Float32MultiArray` | LaneletRoute planner → light controller | 260708: lanelet `turn_direction` windows as route arc-length `[total_len,(dir,S0,S1)…]`; `data[0]` syncs against `/planning/global_path` |
+| `/platform/headlight/command` | `Bool` | UI LIGHT button → light controller | 260708: operator headlight toggle (relay D10 via light MCU) |
+| `/platform/lights/command` | `avg_msgs/AvgLightCommand` | light controller → MCU serial bridge | 260708: lamp state — headlight + indicator OFF/LEFT/RIGHT/HAZARD (priority: estop hazard > crab direction > lanelet turn) |
+| `/platform/lights/status` | `avg_msgs/AvgLightCommand` | MCU serial bridge → diagnostics | 260708: Arduino Nano ack echo; MCU blinks autonomously and fails over to hazard on link loss |
 | `/planning/engage` | `Bool` | UI / RViz manual → gate | Manual-goal engage latch |
 | `/planning/mission_engage` | `Bool` | UI / mission state → gate | Camping/drop-zone mission engage latch |
 | `/parking/site_maneuver/return` | `Bool` | UI return button → parking | Starts campsite crab/reverse exit after unload wait |
@@ -708,7 +712,7 @@ Located in `disable/` (marked with `COLCON_IGNORE` — not built by default):
 |---------|-------------|
 | `vio_bridge` | Visual-Inertial Odometry (ZED SDK / Orbbec SDK) |
 | `kimera_vio_bridge` | Kimera VIO integration |
-| `config_archive` | Legacy configuration snapshots |
+| `config_archive` | Archived configuration snapshots |
 
 To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
@@ -718,7 +722,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
-| v2.0.0 | 2026-07-03 | Field safety baseline for outdoor validation: GNSS `/dev/ttyACM1` synchronization, 1 Hz GNSS diagnostic tolerance, dynamic LiDAR/Radar cost-stop latch, stale merged inflation-grid fail-closed gate, live sensor-cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning, WARN-safe campsite/drop-zone handoff, planning costmap diagnostic demotion, and 51-assertion deterministic cmd_vel gate coverage |
+| v2.0.0 | 2026-07-06 | Field safety/tuning baseline for outdoor validation: GNSS `/dev/ttyACM1` synchronization, 1 Hz GNSS diagnostic tolerance, dynamic LiDAR/Radar cost-stop latch, stale merged inflation-grid fail-closed gate, live sensor-cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning, WARN-safe campsite/drop-zone handoff, planning costmap diagnostic demotion, damped route-heading alignment for startup oscillation reduction, faster campsite crab entry, and 51-assertion deterministic cmd_vel gate coverage |
 | v1.16 | 2026-07-02 | Field stabilization for map/planning/platform/system: local-first Lanelet2 visualization with cached full-map republish, map-fixed local path extraction with stale-marker clearing, obstacle-block monitor with status-only default, perception-to-cost-grid coupling, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, planning soft-estop gating from `/planning/state_machine/estop`, LiDAR ground-filter load relief, radar 7-channel left/right mapping plus no-target heartbeat filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, expanded `avg_msgs` conversion coverage, diagnostics checker alignment, rear-camera CPU reduction, and automated sim validation runner with manual-goal, obstacle, campsite, and drop-zone parking coverage |
 | v1.15 | 2026-06-23 | Obstacle replan monitor (LiDAR/Radar persistent blockage → Smac2D fallback), extended AvgAmrServiceState/PlanningScenario (SITE_ENTRY/UNLOAD_WAIT/RECALL_TO_SITE_ROAD/GUEST_LOADING_WAIT/RETURN_WITH_CARGO/DROP_ZONE_PARKING), UI site-access reservation/occupancy gate, planning_state_machine parking-phase mirror from /AMR_service_state, dynamic-only cost stop gate, lanelet route re-entry bypass, goal_snapper uncontained-snap override, map profile auto-selection, area_exporter polygon centroid + corners export |
 | v1.14 | 2026-06-19 | Mission-key semantic planning (PlanningState/MissionKey/Scenario msgs), lanelet raw cost safety stop, local path reset on goal change, goal_snapper pose-jump reissue, lanelet_route_planner + engage_aware_progress_checker plugins, front camera V4L2 fallback + image_raw publisher (PR#14), Ranger BMS charging detection, planning_state_checker, sim diagnostics profile, parking_method bringup arg |
@@ -790,6 +794,14 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260703: Planning state-machine auto-estop ignores raw Vanjee placeholder NaNs, camera FPS dips, costmap freshness dips, and selected non-motion diagnostics for state transitions. These remain visible in `/system/status`; filtered LiDAR/Radar cost grids and gate checks remain the motion safety authority.
 - HH_260703: Planning costmap diagnostics are demoted to WARN for stale/rate failures, and fully unknown sparse cost-grid diagnostics are no longer ERROR by themselves. The gate-level stale inflation check is the immediate stop path.
 - HH_260703: Deterministic gate logic now has 51 passing assertions, including right-crab radar stop, dynamic cost-stop latch, and stale merged-cost-grid fail-safe coverage.
+
+## 2026-07-06 Field Tuning Patch
+
+> HH_260706 - Outdoor tuning patch for startup route-heading oscillation and campsite crab duration.
+
+- HH_260706: `planning_cmd_vel_gate_node` keeps the route-heading safety guard enabled, but uses a longer path tangent lookahead (`2.0 m`), lower angular gain (`0.8`), lower angular clamp (`0.35 rad/s`), and wider release threshold (`35 deg`). The intent is to stop the initial left-right over-correction seen when localization/cost-grid updates lag the pure-rotation command.
+- HH_260706: Campsite crab lateral speed is raised from `0.18 m/s` to `0.24 m/s` in both `camrod_parking/config/parking.yaml` and the synchronized bringup parking config. Timeout prediction still uses `crab_timeout_speed_scale: 0.4`.
+- HH_260706: `setup_camrod.sh`, `colcon_build.sh`, root/package READMEs, bringup defaults, package launch defaults, and node declaration defaults are kept synchronized so a normal wrapper build installs the same field-tuned values used by package-level launches.
 
 ## 2026-07-01 Safety and Sensor Update
 

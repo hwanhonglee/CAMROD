@@ -27,6 +27,9 @@
 # HH_260703: use this wrapper after config-only field safety changes too; the
 # install tree must receive cmd_vel gate, diagnostics, GNSS, and README updates
 # before outdoor validation.
+# HH_260706: route-heading damping and campsite crab speed changes are also
+# config-only field updates, so this wrapper is the install-sync check before
+# tagging v2.0.0.
 
 set -euo pipefail
 
@@ -118,8 +121,8 @@ _clean_stale_install_artifacts() {
   # longer part of this x86_64 build graph. If left in place, setup.bash tries
   # to source missing local_setup.bash files and launch reports unrelated
   # packages as "not built".
-  # HH_260617: Keep camrod_parking out of this legacy cleanup list because it is
-  # now a first-class source package built from src/camrod_parking.
+  # HH_260617: Keep camrod_parking out of this stale-prefix cleanup list because
+  # it is now a first-class source package built from src/camrod_parking.
   local prefix
   for prefix in \
     "${WS_ROOT}/install/apriltag_msgs" \

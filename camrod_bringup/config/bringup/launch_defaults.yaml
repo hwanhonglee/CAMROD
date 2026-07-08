@@ -261,18 +261,18 @@ bringup:
     cmd_vel_gate_yaw_alignment_exit_margin_m: 0.3
     # Keep module default unless bringup-level override is required.
     cmd_vel_gate_yaw_alignment_zones_file: planning/yaw_alignment_zones.yaml
-    # HH_260618: Route-heading guard keeps normal Nav2 driving from moving
-    # forward while the robot is facing opposite to the active local path.
+    # HH_260706: Route-heading guard uses slower rotation and a longer tangent
+    # lookahead to reduce startup left-right oscillation under delayed field data.
     cmd_vel_gate_route_heading_enable: true
     cmd_vel_gate_route_heading_path_topic: /planning/local_path
     cmd_vel_gate_route_heading_frame_id: map
     cmd_vel_gate_route_heading_min_cmd_x_mps: 0.03
     cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps: 0.02
-    cmd_vel_gate_route_heading_lookahead_m: 1.5
+    cmd_vel_gate_route_heading_lookahead_m: 2.0
     cmd_vel_gate_route_heading_error_enter_deg: 75.0
-    cmd_vel_gate_route_heading_error_exit_deg: 20.0
-    cmd_vel_gate_route_heading_angular_kp: 1.4
-    cmd_vel_gate_route_heading_max_angular_z: 0.6
+    cmd_vel_gate_route_heading_error_exit_deg: 35.0
+    cmd_vel_gate_route_heading_angular_kp: 0.8
+    cmd_vel_gate_route_heading_max_angular_z: 0.35
     cmd_vel_gate_route_heading_max_linear_x: 0.0
     cmd_vel_gate_route_heading_min_path_points: 2
     # HH_260507: Scale all cmd_vel output by this factor before sending to /planning/cmd_vel.
@@ -370,6 +370,13 @@ bringup:
     # edited in camrod_bringup/config/sensor_kit/robot_params.yaml are applied.
     params_file: sensor_kit/robot_params.yaml
     robot_visualization_param_file: platform/robot_visualization.yaml
+    # 260708: Exterior lights — light_controller decides HAZARD/crab/turn/OFF,
+    # mcu_serial_bridge streams JSON to the Arduino Nano (headlight relay D10,
+    # WS2815 left D5/right D7). Sim keeps the controller but forces the serial
+    # bridge off. Details: camrod_platform/docs/lights-design-doc.html
+    lights_enable: true
+    lights_mcu_bridge_enable: true
+    lights_param_file: platform/lights.yaml
     # Real platform uses the platform cmd_vel gate so /platform/cmd_vel and
     # /platform/drive_enabled exist for system checks and Ranger output.
     cmd_vel_gate_enable: true

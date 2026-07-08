@@ -331,18 +331,18 @@ def generate_launch_description():
             default_value=pkg_share('camrod_planning', os.path.join('config', 'yaw_alignment_zones.yaml')),
         ),
         DeclareLaunchArgument('cmd_vel_gate_yaw_alignment_exit_margin_m', default_value='0.3'),
-        # HH_260618: Route-heading guard holds forward cmd until the robot
-        # yaw matches the active local path tangent.
+        # HH_260706: Damped field defaults reduce startup yaw oscillation while
+        # still blocking forward motion when the robot faces away from the path.
         DeclareLaunchArgument('cmd_vel_gate_route_heading_enable', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_route_heading_path_topic', default_value='/planning/local_path'),
         DeclareLaunchArgument('cmd_vel_gate_route_heading_frame_id', default_value='map'),
         DeclareLaunchArgument('cmd_vel_gate_route_heading_min_cmd_x_mps', default_value='0.03'),
         DeclareLaunchArgument('cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps', default_value='0.02'),
-        DeclareLaunchArgument('cmd_vel_gate_route_heading_lookahead_m', default_value='1.5'),
+        DeclareLaunchArgument('cmd_vel_gate_route_heading_lookahead_m', default_value='2.0'),
         DeclareLaunchArgument('cmd_vel_gate_route_heading_error_enter_deg', default_value='75.0'),
-        DeclareLaunchArgument('cmd_vel_gate_route_heading_error_exit_deg', default_value='20.0'),
-        DeclareLaunchArgument('cmd_vel_gate_route_heading_angular_kp', default_value='1.4'),
-        DeclareLaunchArgument('cmd_vel_gate_route_heading_max_angular_z', default_value='0.6'),
+        DeclareLaunchArgument('cmd_vel_gate_route_heading_error_exit_deg', default_value='35.0'),
+        DeclareLaunchArgument('cmd_vel_gate_route_heading_angular_kp', default_value='0.8'),
+        DeclareLaunchArgument('cmd_vel_gate_route_heading_max_angular_z', default_value='0.35'),
         DeclareLaunchArgument('cmd_vel_gate_route_heading_max_linear_x', default_value='0.0'),
         DeclareLaunchArgument('cmd_vel_gate_route_heading_min_path_points', default_value='2'),
         # HH_260507: Speed scale for cmd_vel output (applied in planning gate).
