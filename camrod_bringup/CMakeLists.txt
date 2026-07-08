@@ -15,6 +15,7 @@ find_package(rclcpp REQUIRED)
 install(
   PROGRAMS
     scripts/fake_sensor_publisher.py
+    scripts/field_test_tool.sh
     scripts/planning_scenario_leaderboard.py
     scripts/sim_validation_runner.py
     # HH_260623 - Removed sync_package_configs_to_bringup.sh from install; bringup
@@ -31,6 +32,11 @@ install(
 
 install(
   DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY docs
   DESTINATION share/${PROJECT_NAME}
 )
 
