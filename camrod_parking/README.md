@@ -27,6 +27,8 @@ offset from `/goal_pose` (raw site center) and `/planning/goal_pose_snapped_ros`
 raw site center is missing, the node reports ERROR instead of pretending the
 default offset is a valid campsite parking motion. HH_260623: Auto-start also requires the current pose to be within `route_goal_reached_distance_m` (default 0.3 m) of the latest lanelet route goal, keeps the goal pair valid until a new goal replaces it (`goal_pair_max_age_s: 0.0`), and the default `max_lateral_offset_m` is 7.0 m so campsite centers several meters from the road are reachable.
 
+HH_260706: campsite crab uses `crab_speed_mps: 0.24` by default after field
+testing showed the previous 0.18 m/s setting made site entry take too long.
 HH_260618: `crab_timeout_speed_scale` accounts for downstream command scaling
 in the planning cmd_vel gate. With the current parking default
 `crab_timeout_speed_scale: 0.4`, the timeout duration is computed from
@@ -40,8 +42,8 @@ control tick of overshoot from missing the return completion condition.
 HH_260622 - Default campsite entry is `site_entry_mode: crab`: the robot keeps
 the lanelet-snap body yaw, uses `Twist.linear.y` for wheel-crab lateral entry,
 then rotates the body 180 degrees only after it is inside the selected campsite.
-The legacy reverse campsite entry remains available with `site_entry_mode:
-reverse` for fallback testing.
+Reverse campsite entry remains selectable with `site_entry_mode: reverse` for
+fallback testing.
 
 HH_260624 - Campsite 180-degree rotation direction can follow the lanelet-side
 site index policy: B1/B3/B5/B7/B9/B11 rotate clockwise, while

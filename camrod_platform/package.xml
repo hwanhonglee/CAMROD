@@ -25,6 +25,7 @@
   <depend>camrod_sensor_kit</depend>
   <depend>rclpy</depend>
   <depend>avg_msgs</depend>
+  <depend>nlohmann-json-dev</depend> <!-- 260708: light MCU serial JSON bridge -->
   <!-- HH_260410: Platform status topics are published directly from ranger_base_node. -->
   <depend>ranger_msgs</depend>
   <!-- HH_260409: platform.launch.py can optionally include ranger_bringup/ranger.launch.py. -->
@@ -32,6 +33,7 @@
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

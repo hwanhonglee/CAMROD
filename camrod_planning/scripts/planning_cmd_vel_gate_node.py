@@ -534,10 +534,10 @@ class PlanningCmdVelGateNode(Node):
         self.yaw_alignment_exit_margin_m = float(
             self.declare_parameter("yaw_alignment_exit_margin_m", 0.3).value
         )
-        # HH_260618: Route-heading alignment guard. Cost-stop samples the
-        # current robot-forward corridor, so it cannot detect a robot that is
-        # facing opposite to the active route. Hold linear motion and rotate
-        # first when the active path tangent and robot yaw diverge too much.
+        # HH_260706: Route-heading alignment guard uses damped field defaults.
+        # It holds linear motion and rotates first when the robot faces away
+        # from the local path, but releases before delayed localization causes
+        # over-correction and left-right startup oscillation.
         self.enable_route_heading_alignment = bool(
             self.declare_parameter("enable_route_heading_alignment", True).value
         )
@@ -556,19 +556,19 @@ class PlanningCmdVelGateNode(Node):
             self.declare_parameter("route_heading_lateral_cmd_epsilon_mps", 0.02).value
         )
         self.route_heading_lookahead_m = float(
-            self.declare_parameter("route_heading_lookahead_m", 1.5).value
+            self.declare_parameter("route_heading_lookahead_m", 2.0).value
         )
         self.route_heading_error_enter_deg = float(
             self.declare_parameter("route_heading_error_enter_deg", 75.0).value
         )
         self.route_heading_error_exit_deg = float(
-            self.declare_parameter("route_heading_error_exit_deg", 20.0).value
+            self.declare_parameter("route_heading_error_exit_deg", 35.0).value
         )
         self.route_heading_angular_kp = float(
-            self.declare_parameter("route_heading_angular_kp", 1.4).value
+            self.declare_parameter("route_heading_angular_kp", 0.8).value
         )
         self.route_heading_max_angular_z = float(
-            self.declare_parameter("route_heading_max_angular_z", 0.6).value
+            self.declare_parameter("route_heading_max_angular_z", 0.35).value
         )
         self.route_heading_max_linear_x = float(
             self.declare_parameter("route_heading_max_linear_x", 0.0).value
