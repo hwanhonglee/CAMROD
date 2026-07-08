@@ -29,7 +29,7 @@ ros2 launch camrod_map area_export.launch.py \
   camping_sites_output_yaml_path:=/home/hong/camrod_ws/src/camrod_planning/config/camping_sites.yaml
 ```
 
-> 💡 Verify in RViz: add topics `/map/markers` (MarkerArray) and `/map/cost_grid/lanelet` (OccupancyGrid). HH_260702 - full marker/cost-grid rebuilds can take several seconds on the Jetson under all-on load; the local-first marker path should show the GNSS/localization neighborhood first, then cached full-map markers recover late RViz subscriptions.
+> 💡 Verify in RViz: add topics `/map/markers` (MarkerArray) and `/map/cost_grid/lanelet` (OccupancyGrid). HH_260702 - full marker/cost-grid rebuilds can take several seconds on the Jetson under all-on load; the local-first marker path should show the GNSS/localization neighborhood first, then cached full-map markers recover late RViz subscriptions. HH_260707 - RViz-only marker conversion is throttled to 0.50 s per marker source so keeping RViz open does not force high-rate MarkerArray rebuilds.
 
 ### Map Profile Selection
 

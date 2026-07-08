@@ -299,10 +299,10 @@ def generate_launch_description():
         # only when dynamic source attribution owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_body_near_dynamic_stop', default_value='true'),
-        DeclareLaunchArgument('cmd_vel_gate_body_near_side_lookahead_m', default_value='0.75'),
-        DeclareLaunchArgument('cmd_vel_gate_body_near_rear_lookahead_m', default_value='0.55'),
-        DeclareLaunchArgument('cmd_vel_gate_body_near_maneuver_side_lookahead_m', default_value='0.55'),
-        DeclareLaunchArgument('cmd_vel_gate_body_near_maneuver_rear_lookahead_m', default_value='0.45'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_side_lookahead_m', default_value='1.20'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_rear_lookahead_m', default_value='0.80'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_maneuver_side_lookahead_m', default_value='1.20'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_maneuver_rear_lookahead_m', default_value='0.80'),
         DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='85'),
         DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='1.2'),
         # HH_260623 - Side scan width covers full body length plus front/rear margins.
@@ -626,7 +626,12 @@ def generate_launch_description():
                 'global_path_topic': LaunchConfiguration('local_path_global_path_topic'),
                 'local_path_topic': '/planning/local_path',
                 'marker_topic': '/planning/path_markers',
-                'republish_period_s': 0.20,
+                # HH_260707 - RViz-only marker keepalive; control/safety path
+                # topics still publish at their normal rates. Marker rebuilds
+                # are limited to 2 Hz because they were a visible CPU source
+                # in full real-sensor bringup with RViz enabled.
+                'republish_period_s': 1.00,
+                'min_publish_period_s': 0.50,
                 # HH_260619 - Drop cached global markers if the local route has
                 # clearly moved to a newer goal while the global marker source is stale.
                 'global_path_stale_timeout_s': 1.0,

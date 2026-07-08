@@ -60,7 +60,14 @@ class PathVisualizerNode(Node):
         )
         self.max_global_arrows = int(self.declare_parameter("max_global_arrows", 80).value)
         self.max_local_arrows = int(self.declare_parameter("max_local_arrows", 40).value)
-        self.republish_period_s = float(self.declare_parameter("republish_period_s", 0.20).value)
+        # HH_260707 - RViz-only keepalive. Input callbacks still publish
+        # immediately; the timer only refreshes cached markers for late joins.
+        self.republish_period_s = float(self.declare_parameter("republish_period_s", 1.00).value)
+        # HH_260707 - RViz marker construction is non-control work. Keep input
+        # path state current, but cap MarkerArray rebuilds while RViz is open.
+        self.min_publish_period_s = float(
+            self.declare_parameter("min_publish_period_s", 0.20).value
+        )
         self.global_path_stale_timeout_s = float(
             self.declare_parameter("global_path_stale_timeout_s", 1.0).value
         )
@@ -70,11 +77,19 @@ class PathVisualizerNode(Node):
         # HH_260623 - Keep path markers on the same 2D ground plane as flattened Lanelet2 markers.
         self.flatten_path_z = bool(self.declare_parameter("flatten_path_z", True).value)
         self.path_ground_z = float(self.declare_parameter("path_ground_z", 0.0).value)
+        # HH_260707 - Path markers are RViz-only. Keep path state updated even
+        # without subscribers, but defer MarkerArray construction until a viewer
+        # is actually attached.
+        self.publish_without_subscribers = bool(
+            self.declare_parameter("publish_without_subscribers", False).value
+        )
 
         self.global_path: Path | None = None
         self.local_path: Path | None = None
         self.last_global_path_rx = None
         self.last_marker_array: MarkerArray | None = None
+        self.last_marker_publish_time = None
+        self.markers_dirty = True
         self.pub = self.create_publisher(MarkerArray, self.marker_topic, 1)
         self.create_subscription(Path, self.global_path_topic, self._on_global_path, 10)
         self.create_subscription(Path, self.local_path_topic, self._on_local_path, 10)
@@ -126,7 +141,20 @@ class PathVisualizerNode(Node):
             )
             self.global_path = None
 
-    def _publish(self) -> None:
+    def _publish(self, *, force: bool = False) -> None:
+        self.markers_dirty = True
+        if not self._has_marker_consumer():
+            return
+        now_time = self.get_clock().now()
+        if (
+            not force
+            and self.last_marker_publish_time is not None
+            and self.min_publish_period_s > 0.0
+            and (now_time - self.last_marker_publish_time).nanoseconds
+            < int(self.min_publish_period_s * 1.0e9)
+        ):
+            return
+
         marker_array = MarkerArray()
         delete_all = Marker()
         delete_all.action = Marker.DELETEALL
@@ -163,15 +191,25 @@ class PathVisualizerNode(Node):
             )
         self.pub.publish(marker_array)
         self.last_marker_array = marker_array
+        self.last_marker_publish_time = now_time
+        self.markers_dirty = False
 
     def _republish(self) -> None:
         # HH_260618 - Keep cached path markers visible for RViz late joins and
         # display resets without forcing cost-grid marker nodes to republish.
+        if not self._has_marker_consumer():
+            return
+        if self.markers_dirty:
+            self._publish(force=True)
+            return
         if self.last_marker_array is not None:
             now = self.get_clock().now().to_msg()
             for marker in self.last_marker_array.markers:
                 marker.header.stamp = now
             self.pub.publish(self.last_marker_array)
+
+    def _has_marker_consumer(self) -> bool:
+        return self.publish_without_subscribers or self.pub.get_subscription_count() > 0
 
     def _append_path_markers(
         self,

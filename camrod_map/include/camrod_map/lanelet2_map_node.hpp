@@ -158,6 +158,7 @@ private:
   bool progressive_visualization_enable_{false};
   bool progressive_visualization_lightweight_local_{true};
   bool progressive_visualization_lightweight_full_{false};
+  bool progressive_visualization_publish_detailed_full_{false};
   bool visualization_publish_raw_points_{false};
   bool progressive_local_visualization_published_{false};
   bool progressive_full_visualization_published_{false};

@@ -25,6 +25,11 @@
     # Runtime
     # HH_260618: Match Nav2 local-costmap cadence; 10 Hz was redundant for a 6 Hz consumer.
     publish_rate_hz: 6.0
+    # HH_260707: Reuse cached merged grids for small pose changes.
+    # 0.0 republishes cached output every timer tick, preserving diagnostic Hz.
+    rebuild_min_pose_delta_m: 0.05
+    rebuild_min_yaw_delta_rad: 0.03
+    cached_republish_period_s: 0.0
 
     # HH_260424: Inputs merged cell-wise (max). Order doesn't matter.
     #   lanelet:      lanelet centerline gradient (0=center, 35=in-lane, 99=off-lane)

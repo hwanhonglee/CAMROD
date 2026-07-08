@@ -579,10 +579,10 @@ Key launch arguments:
 | `cmd_vel_gate_cost_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `cmd_vel_gate_front_lookahead_min_m` | `1.30137` | HH_260623 - measured front body extent plus 0.10 m margin |
 | `cmd_vel_gate_body_near_dynamic_stop` | `true` | HH_260706 - keep short side/rear dynamic guards during forward path-following |
-| `cmd_vel_gate_body_near_side_lookahead_m` | `0.75` | HH_260706 - near-body side guard distance for `LEFT_NEAR`/`RIGHT_NEAR` |
-| `cmd_vel_gate_body_near_rear_lookahead_m` | `0.55` | HH_260706 - near-body rear guard distance for `REAR_NEAR` |
-| `cmd_vel_gate_body_near_maneuver_side_lookahead_m` | `0.55` | HH_260706 - reduced side guard for crab/reverse tight-space maneuvers |
-| `cmd_vel_gate_body_near_maneuver_rear_lookahead_m` | `0.45` | HH_260706 - reduced rear guard for crab/reverse tight-space maneuvers |
+| `cmd_vel_gate_body_near_side_lookahead_m` | `1.20` | HH_260707 - near-body side guard distance for `LEFT_NEAR`/`RIGHT_NEAR`, sized to side-radar hit geometry |
+| `cmd_vel_gate_body_near_rear_lookahead_m` | `0.80` | HH_260707 - near-body rear guard distance for `REAR_NEAR` |
+| `cmd_vel_gate_body_near_maneuver_side_lookahead_m` | `1.20` | HH_260707 - crab/reverse side guard distance |
+| `cmd_vel_gate_body_near_maneuver_rear_lookahead_m` | `0.80` | HH_260707 - crab/reverse rear guard distance |
 | `cmd_vel_gate_side_corridor_width_m` | `1.69160` | HH_260623 - measured body length plus 0.10 m front/rear margin |
 | `cmd_vel_gate_rear_corridor_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `cmd_vel_gate_enable_gnss_recovery_hold` | `true` | Hold velocity for 2 s after DR_ONLY → NORMAL |
@@ -598,7 +598,7 @@ Key launch arguments:
 
 | File | Purpose |
 |---|---|
-| `config/nav2_base.yaml` | Nav2 planner plugins (LaneletRoute, NavFn, Smac2D, SmacHybrid, SmacLattice, ThetaStar), controller plugins (RPP, DWB, MPPI, Graceful, RotationShim), costmap base config; `xy_goal_tolerance`: 0.15 m; HH_260619 - `LaneletRoute.route_lanelet_ids_topic` feeds route-aware map costs and `bt_navigator.use_start_pose_override=true` only supplies snapped start XY/current yaw to Nav2; HH_260622 - MPPI `PathAlignCritic` is stronger and `PathFollowCritic.offset_from_furthest` is shorter to avoid curve-inside shortcutting |
+| `config/nav2_base.yaml` | Nav2 planner plugins (LaneletRoute, NavFn, Smac2D, SmacHybrid, SmacLattice, ThetaStar), controller plugins (RPP, DWB, MPPI, Graceful, RotationShim), costmap base config; `xy_goal_tolerance`: 0.15 m; HH_260619 - `LaneletRoute.route_lanelet_ids_topic` feeds route-aware map costs and `bt_navigator.use_start_pose_override=true` only supplies snapped start XY/current yaw to Nav2; HH_260622 - MPPI `PathAlignCritic` is stronger and `PathFollowCritic.offset_from_furthest` is shorter to avoid curve-inside shortcutting; HH_260708 - `LaneletRoute.async_initialization` keeps Nav2 lifecycle bringup responsive while the heavy Lanelet2 routing graph is built in the background |
 | `config/nav2_vehicle.yaml` | Vehicle specs and Nav2 footprint; HH_260623 - footprint is measured robot_base_link-relative body extents plus 0.10 m margin: `[[1.30137,0.63505],[1.30137,-0.63495],[-0.39023,-0.63495],[-0.39023,0.63505]]` |
 | `config/nav2_lanelet_overlay.yaml` | Lanelet-specific cost weights and regulatory element handling |
 | `config/nav2_behavior.yaml` | Recovery behaviors, BT timeouts, transform tolerance, and `nav2_goal_updated_controller_bt_node` for goal-locked global planning; HH_260630 - BT `SmoothPath` remains enabled for every planner but disables collision checking because long lanelet routes can extend outside the rolling/global costmap window and falsely abort smoothing |
@@ -659,11 +659,12 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p report_file:=/tmp/camrod_sim_validation_camping_full.json
 ```
 
-HH_260702 - Latest deterministic sim evidence: baseline rates, all seven radar
+HH_260707 - Latest deterministic sim evidence: baseline rates, all seven radar
 direction topics, front/left/right/rear LiDAR/Radar stop matrix, manual route
 success, obstacle blockage with stable `LaneletRoute` global path, campsite
 crab/rotate/unload/crab-out, return-to-drop-zone, and drop-zone `PARKED` all
-passed. The default obstacle monitor reports blockage without `SmacLattice`
+passed after the runtime-load update. The default obstacle monitor reports
+blockage without `SmacLattice`
 preemption, so a future lane-bounded avoidance planner is required for true
 early detour driving rather than free-space lane crossing.
 

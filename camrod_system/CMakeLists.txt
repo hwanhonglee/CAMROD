@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(diagnostic_updater REQUIRED)
+find_package(map_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -34,6 +35,7 @@ set(CAMROD_SYSTEM_COMMON_DEPS
   rclcpp
   diagnostic_msgs
   diagnostic_updater
+  map_msgs
   nav_msgs
   sensor_msgs
   geometry_msgs

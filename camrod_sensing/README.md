@@ -4,7 +4,7 @@
 
 `camrod_sensing` acquires raw data from all physical sensors (LiDAR, radar, camera, IMU, GNSS), preprocesses the streams, and produces the filtered topics and obstacle cost grids consumed by localization, perception, and planning. It also fuses the map lanelet cost grid with real-time sensor grids into a single inflation grid for the Nav2 local costmap.
 
-> 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 near-range radar ×7 (CH9344 USB serial: front1, front2, left1, left2, right1, right2, rear), ECON dual cameras — front (`camera_front_publisher_node`, GPU VPI+NvJPEG, `/dev/video0`) + rear (`camera_rear_publisher_node`, raw `image_raw` plus rate-limited CPU JPEG monitoring, `/dev/video1`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial, selected via `imu_model`; current field CV7 enumerates as `/dev/ttyACM0`), u-blox SparkFun ZED-F9P (single antenna, current field device `/dev/ttyACM1`, `ublox_dual_antenna:=false`) or ArduSimple simpleRTK2B Heading (dual antenna, moving-baseline heading, `ublox_dual_antenna:=true`), NTRIP RTK correction stream (gnssdata.or.kr).
+> 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 near-range radar ×7 (CH9344 USB serial: front1, front2, left1, left2, right1, right2, rear), ECON dual cameras — front (`camera_front_publisher_node`, GPU VPI+NvJPEG, `/dev/video0`) + rear (`camera_rear_publisher_node`, raw `image_raw` plus rate-limited CPU JPEG monitoring, `/dev/video1`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial, selected via `imu_model`), u-blox SparkFun ZED-F9P (single antenna, current field device `/dev/ttyACM0`, `ublox_dual_antenna:=false`) or ArduSimple simpleRTK2B Heading (dual antenna, moving-baseline heading, `ublox_dual_antenna:=true`), NTRIP RTK correction stream (gnssdata.or.kr).
 
 ---
 
@@ -160,7 +160,7 @@ graph TD
   end
 
   subgraph GNSS["🛰️ GNSS"]
-    HW4{{🛠️ u-blox ZED-F9P\n/dev/ttyACM1}}:::hardware
+    HW4{{🛠️ u-blox ZED-F9P\n/dev/ttyACM0}}:::hardware
     NTRIP[[ntrip_client]]:::system
     GNSSDRV[[ublox_gps_node]]:::system
     FIX((/sensing/gnss\n/ublox_gps_node/fix)):::topic
@@ -295,10 +295,10 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | Fresh PointCloud2/MarkerArray input; publishes at 10 Hz |
-| Internal logic | `lidar_cost_grid_node` projects each filtered point into the `map` frame via TF2 and increments the corresponding cell. HH_260707 - `/sensing/lidar/filtered_cloud` is also consumed as a height-gated fallback (`cloud_min_z_m: -0.55`, `cloud_max_z_m: 1.00`) so near vehicle/body returns can create cost even when ground segmentation emits an empty obstacle cloud. HH_260702 - `/perception/obstacles` and selected perception markers are merged into the same grid so camera/LiDAR vehicle detections affect planning even when the raw filtered-cloud footprint is sparse. Cost is linearly scaled between `min_cost` (65) and `max_cost` (95) over the distance range 0.4–9.0 m. HH_260707 - perception markers are marked at cost 90 with `perception_marker_min_radius_m: 0.35`, `perception_marker_max_radius_m: 0.75`, and `perception_marker_radius_scale: 0.35`, keeping detections visible to planning without restoring the oversized lane-wide disks seen in field tests. HH_260630 - an ego-clear disk of radius 0.55 m around the robot base is set free so side/rear obstacles just outside the body are not erased before safety gating. HH_260707 - LiDAR/perception inputs remain fresh for 1.50 s to avoid empty-grid flicker during CPU-load stalls. |
+| Internal logic | `lidar_cost_grid_node` projects each filtered point into the `map` frame via TF2 and increments the corresponding cell. HH_260707 - `/sensing/lidar/filtered_cloud` is also consumed as a height-gated fallback (`cloud_min_z_m: -0.55`, `cloud_max_z_m: 1.00`) so near vehicle/body returns can create cost even when ground segmentation emits an empty obstacle cloud. HH_260702 - `/perception/obstacles` and selected perception markers are merged into the same grid so camera/LiDAR vehicle detections affect planning even when the raw filtered-cloud footprint is sparse. Cost is linearly scaled between `min_cost` (65) and `max_cost` (95) over the distance range 0.4-9.0 m. HH_260707 - perception markers are marked at cost 90 with `perception_marker_min_radius_m: 0.35`, `perception_marker_max_radius_m: 0.75`, and `perception_marker_radius_scale: 0.35`, keeping detections visible to planning without restoring the oversized lane-wide disks seen in field tests. HH_260630 - an ego-clear disk of radius 0.55 m around the robot base is set free so side/rear obstacles just outside the body are not erased before safety gating. HH_260707 - LiDAR/perception inputs remain fresh for 1.50 s to avoid empty-grid flicker during CPU-load stalls. HH_260707 - unchanged inputs and sub-5 cm pose motion reuse the cached grid instead of rebuilding the full OccupancyGrid every tick. |
 | Output effect | `/sensing/cost_grid/lidar`: 180×180 @ 0.10 m (18 m square centred on robot). |
 | Operator-visible symptom | Silent topic → LiDAR/perception inputs are not publishing. Grid frozen → TF `robot_base_link → map` is stale (localization not running). |
-| Related params | `input_topic`, `extra_input_topics`, `cloud_min_z_m`, `cloud_max_z_m`, `perception_marker_topics`, `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `perception_marker_min_radius_m`, `perception_marker_max_radius_m`, `perception_marker_radius_scale`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
+| Related params | `input_topic`, `extra_input_topics`, `cloud_min_z_m`, `cloud_max_z_m`, `perception_marker_topics`, `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `perception_marker_min_radius_m`, `perception_marker_max_radius_m`, `perception_marker_radius_scale`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz`, `rebuild_min_pose_delta_m` |
 | Related topics | `/sensing/lidar/points_filtered`, `/sensing/lidar/filtered_cloud`, `/perception/obstacles`, `/perception/lidar/bboxes`, `/perception/camera_lidar/markers` → `/sensing/cost_grid/lidar` |
 
 ### Radar (SEN0592 ×7)
@@ -370,10 +370,10 @@ Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single ante
 | Field | Detail |
 |---|---|
 | Trigger | Node startup; `enable_ntrip` controls whether the NTRIP client is also started |
-| Internal logic | `ublox_gps_node` opens `/dev/ttyACM1` on the current field robot and requests 10 Hz measurement output (`rate: 10.0`, `nav_rate: 1`). TMODE3 is set to 0 (rover mode). UBX-NAV-PVT and NMEA are published. `ntrip_client` subscribes to `gnssdata.or.kr:2101`, mountpoint `CNJU-RTCM32`, and forwards RTCM3.2 corrections. Fix converges from no-fix → float → RTK-fixed over ~60 s under open sky. HH_260703 - diagnostics accept a stable 1 Hz field-rate floor because the receiver/driver can publish lower effective fix/pose rates under the current harness and correction conditions. |
+| Internal logic | `ublox_gps_node` opens `/dev/ttyACM0` on the current field robot and requests 10 Hz measurement output (`rate: 10.0`, `nav_rate: 1`). TMODE3 is set to 0 (rover mode). UBX-NAV-PVT and NMEA are published. `ntrip_client` subscribes to `gnssdata.or.kr:2101`, mountpoint `CNJU-RTCM32`, and forwards RTCM3.2 corrections. Fix converges from no-fix -> float -> RTK-fixed over ~60 s under open sky. HH_260708 - diagnostics accept a stable 1 Hz field-rate floor and the GNSS device intentionally stays on an operator-verified `/dev/ttyACM*` path rather than by-id. |
 | Output effect | `/sensing/gnss/ublox_gps_node/fix`; downstream adapter produces `/sensing/gnss/pose` and `/sensing/gnss/pose_with_covariance`. |
-| Operator-visible symptom | GNSS stays in float → NTRIP not delivering RTCM. No fix → check `/dev/ttyACM1`, cable state, and `config_on_startup: false`. |
-| Related params | `config/gnss/zed_f9p_rover.yaml`: `device` (`/dev/ttyACM1`), `rate`, `nav_rate`, `tmode3` |
+| Operator-visible symptom | GNSS stays in float -> NTRIP not delivering RTCM. No fix -> check `/dev/ttyACM0`, cable state, and `config_on_startup: false`. |
+| Related params | `config/gnss/zed_f9p_rover.yaml`: `device` (`/dev/ttyACM0`), `rate`, `nav_rate`, `tmode3` |
 | Related topics | `/sensing/gnss/ublox_gps_node/fix`, `/sensing/gnss/ntrip_client/rtcm` |
 
 #### Dual antenna — ArduSimple simpleRTK2B Heading (`ublox_dual_antenna:=true`)
@@ -627,7 +627,7 @@ One or more `/sensing/radar/*/range` topics are silent.
 `/sensing/imu/data` is silent or produces constant-zero orientation.
 
 1. Confirm the physical hardware matches `imu_model`. Default `cv7` expects the CV7-AHRS device at the configured MicroStrain serial path. Check: `ls /dev/serial/by-id/ | grep Microstrain`.
-2. For GQ7 hardware, launch with `imu_model:=gq7` and ensure the configured IMU serial port is the GQ7/CV7 device, not the F9P GNSS (`/dev/ttyACM1` in the current field harness).
+2. For GQ7 hardware, launch with `imu_model:=gq7` and ensure the configured IMU serial port is the GQ7/CV7 device, not the F9P GNSS (`/dev/ttyACM0` in the current field harness).
 3. Check the driver log for `Invalid Parameter` errors. This typically means `filter_pps_source` or `filter_declination_source` is set to a value unsupported by the connected model.
 
 ### Front camera node crashes at startup
@@ -761,6 +761,7 @@ Radar remains launched through the existing `radar_sensor.launch.py` path and sh
 > HH_260702 - Latest field/sim baseline keeps LiDAR, perception, and radar cost-grid semantics aligned with planning safety.
 
 - HH_260707: `/sensing/lidar/cost_grid` consumes `/sensing/lidar/points_filtered`, height-gated `/sensing/lidar/filtered_cloud`, `/perception/obstacles`, `/perception/lidar/bboxes`, and `/perception/camera_lidar/markers`. Perception markers are written as cost 90 with a 0.35-0.75 m radius window and remain valid for the same 1.50 s freshness window as filtered LiDAR.
+- HH_260707: LiDAR preprocessing uses shallow QoS and reusable point-cloud buffers, and LiDAR/inflation cost grids skip full rebuilds when inputs and vehicle pose/yaw are effectively unchanged.
 - HH_260702: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; software range filters still ignore no-target values and stable near-zero self echoes.
 - HH_260702: Full-stack tests with RViz/UI/voice/camera/YOLO/docking enabled can saturate the Jetson and delay cost-grid publication. Treat that mode as a load probe, then repeat drive validation with the lighter outdoor profile.
-- HH_260703: ZED-F9P single-antenna GNSS is documented and configured as `/dev/ttyACM1`; diagnostics tolerate 1 Hz effective fix/pose rates while preserving freshness/fix/covariance/jump checks.
+- HH_260708: ZED-F9P single-antenna GNSS is documented and configured as `/dev/ttyACM0`; diagnostics tolerate 1 Hz effective fix/pose rates while preserving freshness/fix/covariance/jump checks.

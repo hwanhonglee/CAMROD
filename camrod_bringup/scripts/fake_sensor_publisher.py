@@ -1257,7 +1257,10 @@ class FakeSensorPublisher(Node):
             grid.data = [0] * int(grid.info.width * grid.info.height)
             self.pub_dummy_lidar_cost_grid.publish(grid)
 
-    # Publishes simulated SEN0592 Range messages for the active obstacle side.
+    # HH_260707: Mirror the real SEN0592 heartbeat behavior. Publish every
+    # radar topic on every fake-sensor tick; non-hit sensors report
+    # max_range+epsilon so diagnostics stay alive while cost-grid consumers
+    # discard the sample as outside valid range.
     def _publish_fake_radar_ranges(self, stamp):
         if not self.pub_fake_radar_ranges:
             return
@@ -1267,19 +1270,16 @@ class FakeSensorPublisher(Node):
             "right": (4, 5),
             "rear": (6,),
         }
-        indices = direction_to_indices.get(self.obstacle_direction, ())
+        hit_indices = set(direction_to_indices.get(self.obstacle_direction, ()))
         distance = float(self.obstacle_offset)
-        for idx in indices:
-            if idx >= len(self.pub_fake_radar_ranges):
-                continue
+        for idx, pub in enumerate(self.pub_fake_radar_ranges):
             max_range = (
                 self.fake_radar_max_ranges_m[idx]
                 if idx < len(self.fake_radar_max_ranges_m)
                 else 0.0
             )
             min_range = max(0.0, float(self.fake_radar_min_range_m))
-            if max_range <= 0.0 or distance < min_range or distance > max_range:
-                continue
+            hit = idx in hit_indices and min_range <= distance <= max_range
             msg = Range()
             msg.header.stamp = stamp
             msg.header.frame_id = (
@@ -1291,8 +1291,8 @@ class FakeSensorPublisher(Node):
             msg.field_of_view = float(self.fake_radar_field_of_view_rad)
             msg.min_range = min_range
             msg.max_range = float(max_range)
-            msg.range = distance
-            self.pub_fake_radar_ranges[idx].publish(msg)
+            msg.range = distance if hit else float(max_range + 0.001)
+            pub.publish(msg)
 
     # Normalizes obstacle_direction parameter and falls back safely.
     def _normalize_obstacle_direction(self, value):

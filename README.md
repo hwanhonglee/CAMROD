@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v2.0.1** (field UI and adaptive safety tuning updated 2026-07-06)
+> Current release: **v2.0.1** (field UI, adaptive safety, and runtime-load tuning updated 2026-07-07)
 
 ---
 
@@ -94,10 +94,10 @@ setting owns a runtime behavior. Package READMEs still hold the deeper details.
 | Parameter | Default | Owner | Meaning |
 |---|---:|---|---|
 | `cmd_vel_gate_body_near_dynamic_stop` | `true` | `planning_cmd_vel_gate_node.py` | Enables close side/rear dynamic obstacle stops during translation |
-| `cmd_vel_gate_body_near_side_lookahead_m` | `0.75` | bringup/planning | Normal forward-driving `LEFT_NEAR`/`RIGHT_NEAR` distance |
-| `cmd_vel_gate_body_near_rear_lookahead_m` | `0.55` | bringup/planning | Normal forward-driving `REAR_NEAR` distance |
-| `cmd_vel_gate_body_near_maneuver_side_lookahead_m` | `0.55` | bringup/planning | Reduced side guard for crab/reverse tight-space maneuvers |
-| `cmd_vel_gate_body_near_maneuver_rear_lookahead_m` | `0.45` | bringup/planning | Reduced rear guard for crab/reverse tight-space maneuvers |
+| `cmd_vel_gate_body_near_side_lookahead_m` | `1.20` | bringup/planning | Normal forward-driving `LEFT_NEAR`/`RIGHT_NEAR` distance |
+| `cmd_vel_gate_body_near_rear_lookahead_m` | `0.80` | bringup/planning | Normal forward-driving `REAR_NEAR` distance |
+| `cmd_vel_gate_body_near_maneuver_side_lookahead_m` | `1.20` | bringup/planning | Crab/reverse side guard distance for tight-space maneuvers |
+| `cmd_vel_gate_body_near_maneuver_rear_lookahead_m` | `0.80` | bringup/planning | Crab/reverse rear guard distance for tight-space maneuvers |
 | `cmd_vel_gate_cost_stop_latch_enable` | `true` | bringup/planning | Keeps dynamic stops latched until the corridor is continuously clear |
 | `cmd_vel_gate_cost_stop_clear_required_s` | `2.0` | bringup/planning | Required clear time before releasing a latched dynamic stop |
 | `cmd_vel_gate_cost_grid_stale_stop_enable` | `true` | bringup/planning | Fails closed when `/planning/cost_grid/inflation` is stale or missing |
@@ -105,6 +105,17 @@ setting owns a runtime behavior. Package READMEs still hold the deeper details.
 | `perception_marker_min_radius_m` | `0.35` | `camrod_sensing` LiDAR cost grid | Keeps compact perception-object markers large enough to affect planning |
 | `perception_marker_max_radius_m` | `0.75` | `camrod_sensing` LiDAR cost grid | Caps perception-object cost disk size |
 | `perception_marker_radius_scale` | `0.35` | `camrod_sensing` LiDAR cost grid | Scales marker bbox size into compact cost radius |
+
+### Runtime Load Controls
+
+| Area | Current Control | Intent |
+|---|---|---|
+| Camera-LiDAR fusion queue | `sync_queue_size: 8` | HH_260707 - keep fusion real-time by dropping old backlog instead of processing stale frames |
+| Fusion debug image | `debug_image_publish_rate_hz: 2.0`, `publish_debug_image_without_subscribers: false` | HH_260707 - skip image decode/draw/publish work unless someone is actually watching the debug image |
+| LiDAR preprocessing | `qos_depth: 2`, optional `max_process_hz` | HH_260707 - avoid high-rate PointCloud2 backlog under CPU load |
+| LiDAR/inflation cost grids | `rebuild_min_pose_delta_m`, `rebuild_min_yaw_delta_rad` | HH_260707 - reuse cached grids when inputs and pose are effectively unchanged |
+| RViz-only markers | map marker throttle `0.50 s`, path visualizer subscriber gating | HH_260707 - keep RViz available while reducing marker construction and DDS traffic |
+| Diagnostics final source | `system_diagnostic_node` reads filtered `/system/diagnostics_agg` | HH_260707 - honor aggregator ignore rules before operator-facing `/system/status` output |
 
 ### Naming Rules
 
@@ -811,6 +822,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
+| develop | 2026-07-07 | Runtime-load/DDS reduction on top of v2.0.1: smaller fusion queues, debug-image subscriber gating, LiDAR preprocessing backlog limits, cost-grid cached rebuild gating, RViz marker throttling, fake seven-radar sim heartbeat, right/rear guard reach update, and filtered diagnostics source for system status |
 | v2.0.1 | 2026-07-06 | UI/IP and adaptive safety refinement: robot-IP UI bind default, immediate camping-site HTTP dispatch with duplicate echo suppression, clean `camrod_ui` rebuild/install handling, compact perception-object cost projection, near-body side/rear dynamic guards for right/rear radar stops, adaptive shorter crab/reverse guard distances, route-heading restart candidate filtering, synchronized LiDAR cost/ground-seg configs, and 55-assertion deterministic cmd_vel gate coverage |
 | v2.0.0 | 2026-07-06 | Field safety/tuning baseline for outdoor validation: GNSS `/dev/ttyACM1` synchronization, 1 Hz GNSS diagnostic tolerance, dynamic LiDAR/Radar cost-stop latch, stale merged inflation-grid fail-closed gate, live sensor-cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning, WARN-safe campsite/drop-zone handoff, planning costmap diagnostic demotion, damped route-heading alignment for startup oscillation reduction, faster campsite crab entry, and 51-assertion deterministic cmd_vel gate coverage |
 | v1.16 | 2026-07-02 | Field stabilization for map/planning/platform/system: local-first Lanelet2 visualization with cached full-map republish, map-fixed local path extraction with stale-marker clearing, obstacle-block monitor with status-only default, perception-to-cost-grid coupling, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, planning soft-estop gating from `/planning/state_machine/estop`, LiDAR ground-filter load relief, radar 7-channel left/right mapping plus no-target heartbeat filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, expanded `avg_msgs` conversion coverage, diagnostics checker alignment, rear-camera CPU reduction, and automated sim validation runner with manual-goal, obstacle, campsite, and drop-zone parking coverage |
@@ -876,7 +888,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 > HH_260703 - Outdoor validation patch for intermittent obstacle grids, GNSS port enumeration, and diagnostics-to-estop policy.
 
-- HH_260703: ZED-F9P GNSS rover config is synchronized to `/dev/ttyACM1` in both `camrod_sensing` and `camrod_bringup`; the current robot enumerates CV7 IMU on `ttyACM0`, while CH9344 ports remain radar-only.
+- HH_260708: ZED-F9P GNSS rover config is synchronized to `/dev/ttyACM0` in both `camrod_sensing` and `camrod_bringup`; GNSS port checks intentionally stay on `/dev/ttyACM*`, while CH9344 ports remain radar-only.
 - HH_260703: GNSS sensor/localization diagnostics now accept a 1 Hz field-rate floor while preserving freshness, fix status, covariance, and jump checks. The ublox driver config still requests its normal receiver rate; diagnostics no longer create false `ERROR_STOP` from stable 1 Hz fixes.
 - HH_260703: `planning_cmd_vel_gate_node` latches live LiDAR/Radar cost stops until the selected travel corridor stays clear for 2.0 s. This prevents obstacle stop/go flicker when a curb or vehicle intermittently drops out of the merged cost grid.
 - HH_260703: The planning gate now fails closed when `/planning/cost_grid/inflation` is missing or stale for more than 1.0 s, so stale safety input cannot accidentally release `/planning/cmd_vel`.
@@ -893,6 +905,20 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260706: Campsite crab lateral speed is raised from `0.18 m/s` to `0.24 m/s` in both `camrod_parking/config/parking.yaml` and the synchronized bringup parking config. Timeout prediction still uses `crab_timeout_speed_scale: 0.4`.
 - HH_260706: `setup_camrod.sh`, `colcon_build.sh`, root/package READMEs, bringup defaults, package launch defaults, and node declaration defaults are kept synchronized so a normal wrapper build installs the same field-tuned values used by package-level launches.
 
+## 2026-07-07 Runtime Load and DDS Update
+
+> HH_260707 - Structural load reduction without removing sensing, planning, RViz, UI, voice, camera, YOLO, docking, or safety functions.
+
+- HH_260707: `camrod_perception/obstacle_fusion_node` uses a smaller `message_filters` sync queue, skips debug image work unless there is a subscriber, rate-limits debug image output, and avoids full sorting of projected LiDAR points.
+- HH_260707: `camrod_sensing/lidar_preprocessor_node` reuses PCL buffers, supports shallow QoS, and has an optional process-rate cap so PointCloud2 backlog does not grow when CPU is saturated.
+- HH_260707: LiDAR and inflation cost-grid nodes cache the last grid and rebuild only when inputs or robot pose/yaw change enough to matter. Cached grids are republished with a fresh stamp when configured.
+- HH_260707: RViz-only map/path markers are throttled or subscriber-gated. The planning path visualizer dropped from about 30% CPU to about 4-5% CPU in `rviz:=false` sim load sampling.
+- HH_260707: Sim fake radar now publishes all seven range topics continuously, so direction diagnostics and cost-stop tests match the real radar topic contract.
+- HH_260707: Right/rear near-body guard reach is synchronized to `1.20 m` side and `0.80 m` rear for both normal and crab/reverse maneuvers, matching the observed right/rear radar hit geometry.
+- HH_260707: `system_diagnostic_node` consumes filtered `/system/diagnostics_agg`, so ignored raw diagnostics do not reappear as final `/system/status` errors.
+- HH_260707: Sim validation passed baseline Hz, all seven radar directions, front/left/right/rear LiDAR/Radar/combined stop matrix, manual goal route following, stable `LaneletRoute` obstacle-block monitoring, campsite crab/rotate/wait/crab-out, return-to-drop-zone, and drop-zone reverse parking to `PARKED`.
+- HH_260708: LaneletRoute map/routing graph creation now runs in the background during Nav2 bringup. Runtime verification on the indoor field host showed `planner_server` reached ACTIVE before the routing graph completed, then `LaneletRoutePlanner ready` appeared after the background graph build. First planning requests wait up to `async_initialization_plan_wait_timeout_s` if they arrive before readiness.
+
 ## 2026-07-01 Safety and Sensor Update
 
 > HH_260701 - Current field baseline after planning soft-estop wiring, LiDAR load relief, radar no-target heartbeat handling, and GNSS/bringup config synchronization.
@@ -901,7 +927,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260701: LiDAR ground segmentation uses `downsample_resolution: 0.10` in both `camrod_sensing` and `camrod_bringup` configs. The profiled target for `/sensing/lidar/points_filtered` is now a stable obstacle-only stream around 6 Hz under field load rather than forcing a 10 Hz checker threshold.
 - HH_260702: LiDAR diagnostics ignore raw Vanjee NaN placeholders and use filtered freshness/rate plus near-zero filtered NaN as the motion-relevant health signal. Zero filtered obstacle points remain normal when the ROI is clear.
 - HH_260701: SEN0592 radar drivers publish a no-target heartbeat above `max_range` when the sensor responds without a valid obstacle; diagnostics treat that as fresh/no-target data while cost-grid consumers ignore it.
-- HH_260703: GNSS rover config is synchronized to `/dev/ttyACM1` for the current field harness; radar CH9344 USB ports remain reserved for SEN0592 channels.
+- HH_260708: GNSS rover config is synchronized to `/dev/ttyACM0` for the current field harness; radar CH9344 USB ports remain reserved for SEN0592 channels.
 
 ### Setup and Build
 

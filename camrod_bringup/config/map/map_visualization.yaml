@@ -64,8 +64,8 @@
     # HH_260618: Cost-grid markers are RViz-only; decimate all streams to reduce load.
     sample_strides: [2, 2, 2]
     # Per-stream minimum publish intervals (seconds).
-    # HH_260618: Throttle marker conversion; source OccupancyGrid topics remain unchanged.
-    min_publish_periods_s: [0.20, 0.20, 0.20]
+    # HH_260707: Throttle RViz-only marker conversion; source OccupancyGrid topics remain unchanged.
+    min_publish_periods_s: [0.50, 0.50, 0.50]
     # Per-stream periodic republish intervals (seconds).
     # HH_260618: Disable timer republish because transient_local + input updates are enough.
     republish_periods_s: [0.0, 0.0, 0.0]

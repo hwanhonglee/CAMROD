@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <avg_msgs/conversions.hpp>
@@ -184,6 +185,12 @@ public:
     rebuild_on_pose_ = declare_parameter<bool>("rebuild_on_pose", true);
     rebuild_on_path_ = declare_parameter<bool>("rebuild_on_path", true);
     min_rebuild_period_s_ = declare_parameter<double>("min_rebuild_period_s", 0.0);
+    // HH_260707 - Avoid rebuilding the large lanelet grid when Nav2 or a goal
+    // reissue republishes the same global path geometry.
+    skip_unchanged_path_rebuild_ =
+      declare_parameter<bool>("skip_unchanged_path_rebuild", true);
+    path_change_epsilon_m_ = std::max(
+      0.0, declare_parameter<double>("path_change_epsilon_m", 0.05));
     // HH_260625: GNSS reattach can move localization from the EKF startup seed
     // to the real map pose after the first placeholder grid was already built.
     rebuild_when_pose_exits_grid_ =
@@ -402,9 +409,9 @@ public:
     if (debug_rebuild_stats_) {
       RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 2000,
-        "rebuild stats: pose_cb=%ld path_cb=%ld build_ok=%ld skip_no_path=%ld skip_throttle=%ld",
+        "rebuild stats: pose_cb=%ld path_cb=%ld build_ok=%ld skip_no_path=%ld skip_throttle=%ld skip_same_path=%ld",
         pose_cb_count_, path_cb_count_, build_ok_count_,
-        skip_no_path_count_, skip_throttle_count_);
+        skip_no_path_count_, skip_throttle_count_, skip_unchanged_path_count_);
     }
     if (stale_path_timeout_s_ > 0.0 && path_received_ && last_any_path_rx_.nanoseconds() > 0) {
       const double dt = (now() - last_any_path_rx_).seconds();
@@ -576,11 +583,18 @@ private:
   // more reliable than re-inferring route lanelets from centerline points at merge polygons.
   void onRouteLaneletIds(const std_msgs::msg::Int64MultiArray::ConstSharedPtr msg)
   {
-    route_lanelet_ids_.clear();
+    std::unordered_set<lanelet::Id> new_route_lanelet_ids;
     for (const auto lanelet_id : msg->data) {
-      route_lanelet_ids_.insert(static_cast<lanelet::Id>(lanelet_id));
+      new_route_lanelet_ids.insert(static_cast<lanelet::Id>(lanelet_id));
     }
-    route_lanelet_ids_received_ = !route_lanelet_ids_.empty();
+    const bool new_received = !new_route_lanelet_ids.empty();
+    if (new_received == route_lanelet_ids_received_ &&
+      new_route_lanelet_ids == route_lanelet_ids_)
+    {
+      return;
+    }
+    route_lanelet_ids_ = std::move(new_route_lanelet_ids);
+    route_lanelet_ids_received_ = new_received;
     invalidatePathLaneletCache();
     if (has_pose_ && (
         route_lanelet_filter_enable_ ||
@@ -592,6 +606,65 @@ private:
     }
   }
 
+  struct PathSignature
+  {
+    size_t size{0};
+    double first_x{0.0};
+    double first_y{0.0};
+    double mid_x{0.0};
+    double mid_y{0.0};
+    double last_x{0.0};
+    double last_y{0.0};
+    double length{0.0};
+  };
+
+  PathSignature makePathSignature(const avg_msgs::msg::Path & path) const
+  {
+    PathSignature sig;
+    sig.size = path.poses.size();
+    if (path.poses.empty()) {
+      return sig;
+    }
+
+    const auto & first = path.poses.front().pose.position;
+    const auto & mid = path.poses[path.poses.size() / 2].pose.position;
+    const auto & last = path.poses.back().pose.position;
+    sig.first_x = first.x;
+    sig.first_y = first.y;
+    sig.mid_x = mid.x;
+    sig.mid_y = mid.y;
+    sig.last_x = last.x;
+    sig.last_y = last.y;
+
+    for (size_t i = 1; i < path.poses.size(); ++i) {
+      const auto & a = path.poses[i - 1].pose.position;
+      const auto & b = path.poses[i].pose.position;
+      sig.length += std::hypot(b.x - a.x, b.y - a.y);
+    }
+    return sig;
+  }
+
+  bool pathSignatureChanged(const PathSignature & a, const PathSignature & b) const
+  {
+    const double eps = std::max(0.0, path_change_epsilon_m_);
+    return a.size != b.size ||
+           std::abs(a.first_x - b.first_x) > eps ||
+           std::abs(a.first_y - b.first_y) > eps ||
+           std::abs(a.mid_x - b.mid_x) > eps ||
+           std::abs(a.mid_y - b.mid_y) > eps ||
+           std::abs(a.last_x - b.last_x) > eps ||
+           std::abs(a.last_y - b.last_y) > eps ||
+           std::abs(a.length - b.length) > eps;
+  }
+
+  bool pathInputAffectsBuild() const
+  {
+    return cost_mode_ == "path" ||
+           secondary_cost_mode_ == "path" ||
+           window_mode_ == "path_bbox" ||
+           secondary_window_mode_ == "path_bbox";
+  }
+
   bool onPathCommon(const avg_msgs::msg::Path::ConstSharedPtr msg)
   {
     ++path_cb_count_;
@@ -601,6 +674,7 @@ private:
       }
       path_received_ = false;
       path_.poses.clear();
+      last_path_signature_valid_ = false;
       invalidatePathLaneletCache();
       last_any_path_rx_ = now();
       if (cost_mode_ == "path" && allow_build_without_path_ && has_pose_) {
@@ -627,6 +701,7 @@ private:
       }
       path_received_ = false;
       path_.poses.clear();
+      last_path_signature_valid_ = false;
       invalidatePathLaneletCache();
       last_any_path_rx_ = now();
       if (cost_mode_ == "path" && allow_build_without_path_ && has_pose_) {
@@ -673,12 +748,25 @@ private:
         }
       }
     }
+    const auto signature = makePathSignature(path_map);
+    const bool unchanged_path =
+      skip_unchanged_path_rebuild_ &&
+      path_received_ &&
+      last_path_signature_valid_ &&
+      !pathSignatureChanged(signature, last_path_signature_);
+
     path_ = path_map;
     path_received_ = true;
     waiting_fresh_path_after_goal_ = false;
-    invalidatePathLaneletCache();
     last_any_path_rx_ = now();
-    if (has_pose_ && rebuild_on_path_) {
+    if (unchanged_path) {
+      ++skip_unchanged_path_count_;
+      return true;
+    }
+    last_path_signature_ = signature;
+    last_path_signature_valid_ = true;
+    invalidatePathLaneletCache();
+    if (has_pose_ && rebuild_on_path_ && pathInputAffectsBuild()) {
       requestBuild(true);
     }
     return true;
@@ -705,6 +793,7 @@ private:
       // Optional strict behavior: clear old path immediately on goal update.
       path_received_ = false;
       path_.poses.clear();
+      last_path_signature_valid_ = false;
       invalidatePathLaneletCache();
       last_any_path_rx_ = now();
       if (cost_mode_ == "path" && allow_build_without_path_ && has_pose_) {
@@ -717,9 +806,10 @@ private:
       fallback_holdoff_until_ = now() + rclcpp::Duration::from_seconds(goal_fallback_holdoff_s_);
     }
 
-    // HH_260306-00:00 Rebuild immediately on goal updates so path-cost markers
-    // react even before the next path message arrives.
-    if (has_pose_) {
+    // HH_260707 - Goal-only rebuilds are useful for path-mode overlays, but the
+    // base lanelet centerline grid should wait for route/path changes. Otherwise
+    // every RViz/UI goal click can trigger a multi-second full raster rebuild.
+    if (has_pose_ && (cost_mode_ == "path" || secondary_cost_mode_ == "path")) {
       requestBuild(true);
     }
   }
@@ -800,6 +890,10 @@ private:
         rebuild_on_path_ = p.as_bool();
       } else if (p.get_name() == "min_rebuild_period_s") {
         min_rebuild_period_s_ = std::max(0.0, p.as_double());
+      } else if (p.get_name() == "skip_unchanged_path_rebuild") {
+        skip_unchanged_path_rebuild_ = p.as_bool();
+      } else if (p.get_name() == "path_change_epsilon_m") {
+        path_change_epsilon_m_ = std::max(0.0, p.as_double());
       } else if (p.get_name() == "rebuild_when_pose_exits_grid") {
         rebuild_when_pose_exits_grid_ = p.as_bool();
       } else if (p.get_name() == "rebuild_pose_grid_margin_m") {
@@ -2745,6 +2839,8 @@ private:
   bool rebuild_on_path_{true};
   bool rebuild_on_timer_{false};
   double min_rebuild_period_s_{0.0};
+  bool skip_unchanged_path_rebuild_{true};
+  double path_change_epsilon_m_{0.05};
   bool rebuild_when_pose_exits_grid_{true};
   double rebuild_pose_grid_margin_m_{5.0};
   bool allow_build_without_path_{false};
@@ -2766,7 +2862,10 @@ private:
   int64_t build_ok_count_{0};
   int64_t skip_no_path_count_{0};
   int64_t skip_throttle_count_{0};
+  int64_t skip_unchanged_path_count_{0};
   bool path_qos_transient_local_{false};
+  PathSignature last_path_signature_;
+  bool last_path_signature_valid_{false};
   std::vector<lanelet::ConstLanelet> all_lanelets_;
   std::vector<lanelet::Id> all_lanelet_ids_;
   std::vector<std::array<double, 4>> all_lanelet_bounds_;

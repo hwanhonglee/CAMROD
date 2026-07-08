@@ -81,6 +81,10 @@
     rebuild_on_pose: false
     rebuild_on_path: true
     min_rebuild_period_s: 0.2
+    # HH_260707 - Reissued identical global paths should not rebuild the 960x960
+    # lanelet cost grid. Rebuild only when route geometry actually changes.
+    skip_unchanged_path_rebuild: true
+    path_change_epsilon_m: 0.05
     # HH_260625: If GNSS reattach moves localization after the initial startup
     # placeholder, rebuild the robot-centered grid even though continuous pose
     # rebuilds are disabled for CPU stability.

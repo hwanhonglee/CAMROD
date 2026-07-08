@@ -29,6 +29,10 @@ dynamic LiDAR/Radar stop latching. Camera FPS, raw Vanjee NaN placeholders,
 costmap freshness dips, and other selected non-motion diagnostics remain visible
 in `/system/status`, but planning state-machine auto-estop ignores those checker
 names/prefixes by default.
+HH_260707 - `system_diagnostic_node` now reads filtered `/system/diagnostics_agg`
+instead of the raw `/diagnostics` stream. This preserves aggregator ignore rules
+before publishing final `/system/status` and avoids reintroducing sim-only or
+non-motion diagnostics that were already filtered from the operator tree.
 
 > **Non-goals:** Reports health status only — does **not** enforce safety actions (e-stop, speed reduction, disengagement). Does not contain autonomous decision logic; consumers (e.g., `camrod_ui`) decide what to do with the health data. Does not check `camrod_docking` yet (TODO: docking checker category).
 
@@ -375,7 +379,7 @@ status:
 | `map/map_cost_grid_checker.yaml` | `stale_timeout_s: 5.0` |
 | `perception/perception_obstacle_checker.yaml` | `expected_hz: 10.0`, `min_count`, `max_count` |
 | `planning/planning_lifecycle_checker.yaml` | Nav2 nodes to poll, `poll_rate_hz: 2.0` |
-| `planning/planning_costmap_checker.yaml` | `stale_timeout_s: 3.0` |
+| `planning/planning_costmap_checker.yaml` | HH_260708 - monitors both full Nav2 costmaps and `costmap_updates`; stale/rate drops stay WARN-level while cmd_vel safety uses live merged cost grids |
 | `planning/planning_nav_status_checker.yaml` | `abort_rate_warn` threshold |
 | `planning/planning_path_checker.yaml` | `stale_timeout: 3.0`, `min_points_warn: 5` |
 | `platform/ranger_platform_checker.yaml` | Ranger-specific platform diagnostics |

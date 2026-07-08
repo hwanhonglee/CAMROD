@@ -57,5 +57,8 @@
     # stalls so the grid does not flicker empty between 6 Hz filtered frames.
     max_message_age_s: 1.50
     publish_rate_hz: 10.0
+    # HH_260707: Keep the 10 Hz output fresh, but reuse the last built grid
+    # while inputs and rolling-grid origin remain effectively unchanged.
+    rebuild_min_pose_delta_m: 0.05
     publish_lidar_status: false
     lidar_status_topic: "/sensing/lidar/status"

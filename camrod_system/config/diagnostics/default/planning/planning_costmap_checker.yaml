@@ -4,6 +4,10 @@ planning_costmap_checker:
 
     global_costmap_topic: "/planning/global_costmap/costmap"
     local_costmap_topic: "/planning/local_costmap/costmap"
+    # HH_260707 - Treat incremental Nav2 costmap updates as freshness too;
+    # full costmap publication can be sparse while the local layer is alive.
+    global_costmap_updates_topic: "/planning/global_costmap/costmap_updates"
+    local_costmap_updates_topic: "/planning/local_costmap/costmap_updates"
     # HH_260630 - Match nav2_base.yaml costmap publish_frequency values.
     global_expected_hz: 0.5
     local_expected_hz: 2.0

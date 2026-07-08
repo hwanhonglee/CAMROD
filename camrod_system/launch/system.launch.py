@@ -263,7 +263,10 @@ def generate_launch_description():
                     output='screen',
                     parameters=[{
                         'diagnostic_topic': 'diagnostics',
-                        'source_diagnostic_topic': 'diagnostics',
+                        # HH_260707 - Operator-facing status must consume the
+                        # filtered aggregate stream so profile ignored_names
+                        # do not reappear as SYSTEM errors.
+                        'source_diagnostic_topic': 'diagnostics_agg',
                         # HH_260617: Publish stable system status topics consumed by UI/voice/diagnostics.
                         'system_status_topic': 'status',
                         'avg_system_msgs_topic': 'msgs',

@@ -57,6 +57,8 @@ def generate_launch_description():
         DeclareLaunchArgument("preprocessor_roi_z_min",             default_value="-1.0"),
         DeclareLaunchArgument("preprocessor_roi_z_max",             default_value="1.0"),
         DeclareLaunchArgument("preprocessor_voxel_leaf_size",       default_value="0.03"),
+        DeclareLaunchArgument("preprocessor_qos_depth",             default_value="2"),
+        DeclareLaunchArgument("preprocessor_max_process_hz",        default_value="0.0"),
 
         DeclareLaunchArgument("vanjee_tf_x",       default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_y",       default_value="0.0"),
@@ -91,6 +93,8 @@ def generate_launch_description():
     preprocessor_roi_z_min           = LaunchConfiguration("preprocessor_roi_z_min")
     preprocessor_roi_z_max           = LaunchConfiguration("preprocessor_roi_z_max")
     preprocessor_voxel_leaf_size     = LaunchConfiguration("preprocessor_voxel_leaf_size")
+    preprocessor_qos_depth           = LaunchConfiguration("preprocessor_qos_depth")
+    preprocessor_max_process_hz      = LaunchConfiguration("preprocessor_max_process_hz")
 
     optional_driver_actions = []
 
@@ -145,6 +149,8 @@ def generate_launch_description():
             "roi_z_min":        preprocessor_roi_z_min,
             "roi_z_max":        preprocessor_roi_z_max,
             "voxel_leaf_size":  preprocessor_voxel_leaf_size,
+            "qos_depth":        preprocessor_qos_depth,
+            "max_process_hz":   preprocessor_max_process_hz,
         }],
         condition=IfCondition(
             PythonExpression([
