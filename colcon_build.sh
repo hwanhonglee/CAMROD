@@ -34,6 +34,9 @@
 # tuning, LiDAR/cost-grid cache parameters, map/path marker throttles, filtered
 # system diagnostics, and README updates are installed through normal colcon
 # package data installation.
+# HH_260708: field_test_tool.sh and field_test_runbook.md are installed through
+# this wrapper so outdoor tests can collect config-sync, diagnostics, Hz, CPU,
+# and gate-state evidence from the same installed package graph.
 
 set -euo pipefail
 
