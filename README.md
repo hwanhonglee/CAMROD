@@ -39,6 +39,7 @@ setting owns a runtime behavior. Package READMEs still hold the deeper details.
 |---|---|---|
 | Full robot bringup | `ros2 launch camrod_bringup bringup.launch.py sim:=false` | Map, sensing, localization, perception, planning, parking/docking, platform, system diagnostics, UI |
 | Simulation bringup | `ros2 launch camrod_bringup bringup.launch.py sim:=true` | Fake sensors plus the same planning/UI/system graph where possible |
+| Outdoor field helper | `ros2 run camrod_bringup field_test_tool.sh snapshot` | HH_260708 - Captures config sync, ROS graph, diagnostics, CPU, topic samples, and Hz data for field debugging |
 | UI only | `ros2 launch camrod_ui ui.launch.py ui_host:=0.0.0.0 ui_port:=8010` | FastAPI backend and installed React UI assets |
 | Planning only | `ros2 launch camrod_planning planning.launch.py` | Nav2, goal snapping, local path, state machine, cmd_vel gate |
 | Sensing only | `ros2 launch camrod_sensing sensing.launch.py` | GNSS/IMU/LiDAR/radar/camera preprocessing and sensor cost grids |
@@ -86,6 +87,7 @@ setting owns a runtime behavior. Package READMEs still hold the deeper details.
 | UI security note | LAN-only, no public exposure | CORS allows operator commands; do not expose port 8010 to untrusted networks |
 | Build wrapper | `./colcon_build.sh` | Runs required UI frontend build before `camrod_ui` colcon install and preserves repo-specific build paths |
 | Runtime setup | `source /home/nvidia/camrod_ws/install/setup.bash` | Makes installed launch files, packages, and messages visible |
+| Field runbook | `camrod_bringup/docs/field_test_runbook.md` | HH_260708 - Repeatable outdoor workflow for config sync, bringup logging, topic-rate probes, gate commands, and campsite/drop-zone scenario checks |
 | GNSS serial convention | `/dev/ttyACM*` | GNSS receiver family; CH9344 ports are radar |
 | Radar serial convention | `/dev/ttyCH9344USB0..6` | Seven SEN0592 channels; USB7 unused in the current profile |
 

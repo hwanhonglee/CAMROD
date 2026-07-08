@@ -18,6 +18,18 @@ For code changes see git log and release tags.
 
 ---
 
+## [field-test-docs] — 2026-07-08 (HH_260708)
+
+### Added — outdoor test memory and evidence capture
+
+| Doc | What changed |
+|-----|--------------|
+| `camrod_bringup/docs/field_test_runbook.md` | New: outdoor workflow for config sync, bringup logging, snapshots, topic Hz probes, software gates, radar/LiDAR/perception-cost checks, camping-site flow, and drop-zone return |
+| `camrod_bringup/README.md` | Added `field_test_tool.sh` quick-start commands and field runbook reference |
+| root `README.md` | Added field helper and runbook rows to runtime/operator reference |
+
+---
+
 ## [1.11-docs] — 2026-05-28 (HH_260528)
 
 ### Changed — package READMEs
