@@ -178,7 +178,7 @@
     <tr><td>크랩 기동 중</td><td><b>이동 방향 지시등</b> (site_maneuver 활성 + <code>linear.y</code> 부호)</td></tr>
     <tr><td>그리드 폴백 주행</td><td>소등 유지 (자동 폴백 전환 자체가 기본 OFF임을 확인)</td></tr>
     <tr><td>깜빡임 생성</td><td>MCU 자율 (약 1.25 Hz) · PC는 모드+하트비트만 전송</td></tr>
-    <tr><td>배선</td><td>Relay IN=<b>D12</b> · 좌 D5(데이터)/D6(백업) · 우 D7(데이터)/D8(백업) — D12 변경으로 D13 부트로더 점멸 문제 해소</td></tr>
+    <tr><td>배선</td><td>Relay IN=<b>D10</b> · 좌 D5(데이터)/D6(백업) · 우 D7(데이터)/D8(백업) — D13→D12→D10 변경(부트로더 점멸 회피 유지)</td></tr>
     <tr><td>통신</td><td>JSON over Serial 115200 · <code>/dev/serial/by-id/</code> 고정 경로</td></tr>
     <tr><td>패키지 위치</td><td><code>camrod_platform</code> 하위, 노드 2개 분리 구성</td></tr>
     <tr><td>전조등</td><td>UI 버튼 → FastAPI → 신규 토픽 → MCU (독립 채널)</td></tr>
@@ -214,7 +214,7 @@
     <div class="fbox" style="flex:1.6"><b>Arduino Nano</b>
       <span>깜빡임 자율 생성 1.25 Hz · 하트비트 1.0 s 두절 → HAZARD 페일세이프</span></div>
     <div class="farrow">→</div>
-    <div class="fbox"><b>Relay — D12</b><span>전조등 ON/OFF</span></div>
+    <div class="fbox"><b>Relay — D10</b><span>전조등 ON/OFF</span></div>
     <div class="farrow">→</div>
     <div class="fbox" style="border-color:var(--amber)"><b>WS2815 × 2</b>
       <span>좌 D5 (백업 D6)<br>우 D7 (백업 D8)</span></div>
@@ -386,9 +386,9 @@ MCU → PC (1 Hz):               {"a":42,"h":1,"i":"L","e":0}
 <h2><span class="no">6</span>하드웨어 주의사항</h2>
 
 <div class="callout">
-  <b class="title">✓ 릴레이 D12 확정 — D13 부트로더 점멸 문제 해소</b>
+  <b class="title">✓ 릴레이 D10 확정 — D13 부트로더 점멸 문제 해소</b>
   <p>D13은 부트로더가 리셋/업로드 시 점멸시키는 핀이라 릴레이가 순간 클릭될 수 있었음 →
-  <b>D12로 변경 확정.</b> 잔여 주의: 리셋 중 모든 핀이 잠깐 입력(플로팅) 상태가 되므로
+  <b>D10으로 변경 확정</b> (D12에서 재변경, 2026-07-08). 잔여 주의: 리셋 중 모든 핀이 잠깐 입력(플로팅) 상태가 되므로
   릴레이 모듈은 풀다운 있는 active-HIGH 타입 권장 (벤치에서 확인).</p>
 </div>
 <div class="callout">
@@ -458,7 +458,7 @@ camrod_bringup/launch/_bringup_impl.py                  [수정 · lights 모듈
     <div class="meta"><span class="badge size-m">규모 중</span><span class="verify">검증: colcon test (gtest)</span></div></li>
   <li><b>mcu_serial_bridge_node (C++)</b> — POSIX termios, nlohmann/json, 재접속 백오프, ack 상태 발행
     <div class="meta"><span class="badge size-m">규모 중</span><span class="verify">검증: socat 가상 pty 루프백</span></div></li>
-  <li><b>Arduino 스케치</b> — ArduinoJson(Static 96B) + FastLED, 릴레이 <b>D12</b>, 페일세이프(최초 프레임 후 1.0 s 두절 → HAZARD)
+  <li><b>Arduino 스케치</b> — ArduinoJson(Static 96B) + FastLED, 릴레이 <b>D10</b>, 페일세이프(최초 프레임 후 1.0 s 두절 → HAZARD)
     <div class="meta"><span class="badge size-m">규모 중</span><span class="verify">검증: 벤치 단독 테스트</span></div></li>
   <li><b>UI — FastAPI 라우트 + React 전조등 버튼</b> + <code>npm run build</code>
     <div class="meta"><span class="badge size-s">규모 소</span><span class="verify">검증: 브라우저</span></div></li>
