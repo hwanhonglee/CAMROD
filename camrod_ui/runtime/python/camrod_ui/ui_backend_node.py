@@ -15,11 +15,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 import rclpy
+import rclpy.action
 import yaml
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
+from avg_msgs.action import ManualDock
 from avg_msgs.msg import AvgAmrServiceState, PlanningMissionKey, UiDestinationCommand
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from geometry_msgs.msg import PoseStamped
@@ -50,6 +52,10 @@ class ApiState:
     )
     battery_percentage: int = -1
     ws_site_states: Dict[str, bool] = field(default_factory=dict)
+    # YH_260624 - Expose docking toggle state to UI so App.js can initialise
+    # the manual/auto dock toggles from the launch-time parameter values.
+    manual_dock_enabled: bool = True
+    auto_dock_enabled: bool = False
 
 
 @dataclass
@@ -155,11 +161,28 @@ class UiBackendNode(Node):
         self.diagnostics_agg_topic = str(
             self.declare_parameter("diagnostics_agg_topic", "/system/diagnostics_agg").value
         )
+        self.auto_dock_enabled_topic = str(
+            self.declare_parameter("auto_dock_enabled_topic", "/docking/auto_dock_enabled").value
+        )
+        self.manual_dock_action = str(
+            self.declare_parameter("manual_dock_action", "/docking/manual_dock").value
+        )
+        self.manual_dock_id = str(
+            self.declare_parameter("manual_dock_id", "home_dock").value
+        )
+        self._init_manual_dock_enabled = bool(
+            self.declare_parameter("manual_dock_enabled", True).value
+        )
+        self._init_auto_dock_enabled = bool(
+            self.declare_parameter("auto_dock_enabled", False).value
+        )
 
         self._keypoints_by_mission_key = self._load_camping_site_keypoints(self.camping_sites_yaml)
         self._lock = threading.Lock()
         self._state = ApiState(
-            ws_site_states={s: False for s in self.site_names}
+            ws_site_states={s: False for s in self.site_names},
+            manual_dock_enabled=self._init_manual_dock_enabled,
+            auto_dock_enabled=self._init_auto_dock_enabled,
         )
         self._latest_arrival_pose: Optional[PoseStamped] = None
         self._latest_arrival_pose_time_s = 0.0
@@ -227,6 +250,12 @@ class UiBackendNode(Node):
         )
         self.pub_goal_pose = self.create_publisher(PoseStamped, self.planning_goal_pose_topic, 10)
         self.pub_amr_service_state = self.create_publisher(AvgAmrServiceState, self.amr_service_state_topic, 10)
+        self.pub_auto_dock_enabled = self.create_publisher(Bool, self.auto_dock_enabled_topic, 10)
+
+        # Action clients.
+        self._dock_action_client = rclpy.action.ActionClient(self, ManualDock, self.manual_dock_action)
+        self._dock_goal_handle: Any = None
+        self._dock_goal_lock = threading.Lock()
 
         self._server_thread: Optional[threading.Thread] = None
         if self.enable_http_server:
@@ -866,6 +895,8 @@ class UiBackendNode(Node):
                 "diagnostics_agg_error_count": self._state.diagnostics_agg_error_count,
                 "destination": dict(self._state.destination),
                 "battery_percentage": self._state.battery_percentage,
+                "manual_dock_enabled": self._state.manual_dock_enabled,
+                "auto_dock_enabled": self._state.auto_dock_enabled,
             }
 
     # ── Public API methods (called by HTTP handlers) ──────────────────────────
@@ -928,6 +959,66 @@ class UiBackendNode(Node):
             source="http_ui_destination",
         )
         return {"success": True, "destination": payload}
+
+    # ── Docking API methods ───────────────────────────────────────────────────
+
+    def set_auto_dock_enabled(self, enabled: bool) -> Dict[str, Any]:
+        msg = Bool()
+        msg.data = bool(enabled)
+        self.pub_auto_dock_enabled.publish(msg)
+        with self._lock:
+            self._state.auto_dock_enabled = bool(enabled)
+        return {"success": True, "message": f"auto_dock_enabled set to {enabled}"}
+
+    def send_manual_dock(self, dock_id: str) -> Dict[str, Any]:
+        if not self._dock_action_client.wait_for_server(timeout_sec=3.0):
+            return {"success": False, "message": "docking action server not available"}
+
+        goal = ManualDock.Goal()
+        goal.dock_id = dock_id
+
+        def _on_feedback(feedback_handle: Any) -> None:
+            fb = feedback_handle.feedback
+            self._schedule_broadcast({
+                "dock_feedback": {
+                    "phase": str(fb.phase_label),
+                    "state": int(fb.state),
+                    "retries": int(fb.num_retries),
+                }
+            })
+
+        def _on_result(future: Any) -> None:
+            wrapped = future.result()
+            self._schedule_broadcast({
+                "dock_result": {
+                    "success": bool(wrapped.result.success),
+                    "message": str(wrapped.result.message),
+                    "elapsed": float(wrapped.result.total_elapsed_sec),
+                }
+            })
+            with self._dock_goal_lock:
+                self._dock_goal_handle = None
+
+        def _on_goal_accepted(future: Any) -> None:
+            goal_handle = future.result()
+            if not goal_handle.accepted:
+                self._schedule_broadcast({"dock_result": {"success": False, "message": "goal rejected"}})
+                return
+            with self._dock_goal_lock:
+                self._dock_goal_handle = goal_handle
+            goal_handle.get_result_async().add_done_callback(_on_result)
+
+        send_future = self._dock_action_client.send_goal_async(goal, feedback_callback=_on_feedback)
+        send_future.add_done_callback(_on_goal_accepted)
+        return {"success": True, "message": f"dock goal sent: {dock_id}"}
+
+    def cancel_dock(self) -> Dict[str, Any]:
+        with self._dock_goal_lock:
+            handle = self._dock_goal_handle
+        if handle is None:
+            return {"success": False, "message": "no active docking goal"}
+        handle.cancel_goal_async()
+        return {"success": True, "message": "dock cancel requested"}
 
     # ── FastAPI server ────────────────────────────────────────────────────────
 
@@ -1128,6 +1219,34 @@ class UiBackendNode(Node):
             run_bool = run.lower() in {"1", "true", "yes", "on"}
             result = node.set_destination(site=site, run=run_bool)
             return JSONResponse(result, status_code=200 if result.get("success") else 400)
+
+        # ── Docking endpoints ─────────────────────────────────────────────────
+
+        @app.post("/api/manual_dock")
+        async def post_manual_dock(request: Request) -> JSONResponse:
+            try:
+                body = await request.json()
+                dock_id = str(body.get("dock_id", node.manual_dock_id))
+            except Exception:
+                dock_id = node.manual_dock_id
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, node.send_manual_dock, dock_id)
+            return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
+        @app.post("/api/cancel_dock")
+        async def post_cancel_dock() -> JSONResponse:
+            result = node.cancel_dock()
+            return JSONResponse(result, status_code=200 if result.get("success") else 409)
+
+        @app.post("/api/auto_dock_enable")
+        async def post_auto_dock_enable(request: Request) -> JSONResponse:
+            try:
+                body = await request.json()
+                enabled = bool(body.get("enabled", False))
+            except Exception:
+                enabled = False
+            result = node.set_auto_dock_enabled(enabled)
+            return JSONResponse(result, status_code=200)
 
         # ── Static frontend serving ───────────────────────────────────────────
         # Starlette 0.18 StaticFiles rejects symlinked files (commonprefix check

@@ -108,6 +108,16 @@ def generate_launch_description():
         default_value='/localization/pose',
         description='Pose topic used to detect already-arrived campsite selections',
     )
+    manual_dock_enabled_arg = DeclareLaunchArgument(
+        'manual_dock_enabled',
+        default_value='true',
+        description='Initial state of Manual Docking toggle in UI settings tab',
+    )
+    auto_dock_enabled_arg = DeclareLaunchArgument(
+        'auto_dock_enabled',
+        default_value='false',
+        description='Initial state of Auto Docking toggle in UI settings tab',
+    )
 
     ui_backend = Node(
         package='camrod_ui',
@@ -149,6 +159,8 @@ def generate_launch_description():
             'fallback_mission_key': 'camping_site_1',
             'fallback_to_first_known_goal': True,
             'camping_sites_yaml': LaunchConfiguration('camping_sites_yaml'),
+            'manual_dock_enabled': LaunchConfiguration('manual_dock_enabled'),
+            'auto_dock_enabled': LaunchConfiguration('auto_dock_enabled'),
         }],
     )
 
@@ -164,5 +176,7 @@ def generate_launch_description():
         site_maneuver_return_topic_arg,
         site_maneuver_adopt_topic_arg,
         arrival_pose_topic_arg,
+        manual_dock_enabled_arg,
+        auto_dock_enabled_arg,
         ui_backend,
     ])

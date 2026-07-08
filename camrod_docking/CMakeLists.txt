@@ -17,6 +17,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(opennav_docking_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(nav2_msgs REQUIRED)
 
 # AprilTag bridge: camera frame PoseStamped 직접 발행 (Nova Carter 패턴)
 # TF 변환은 SimpleChargingDock 이 내부 처리 → tf2 의존성 불필요
@@ -40,6 +41,15 @@ ament_target_dependencies(manual_dock_server_node
   opennav_docking_msgs
 )
 
+# YH_260706: NavigateToPose relay so opennav_docking(/docking/navigate_to_pose)
+# reaches the real Nav2 server(/planning/navigate_to_pose). See src comment.
+add_executable(navigate_to_pose_relay src/navigate_to_pose_relay.cpp)
+ament_target_dependencies(navigate_to_pose_relay
+  rclcpp
+  rclcpp_action
+  nav2_msgs
+)
+
 add_executable(odom_yaw_corrector src/odom_yaw_corrector.cpp)
 ament_target_dependencies(odom_yaw_corrector
   rclcpp
@@ -52,6 +62,7 @@ ament_target_dependencies(odom_yaw_corrector
 install(TARGETS
   docking_apriltag_bridge
   manual_dock_server_node
+  navigate_to_pose_relay
   odom_yaw_corrector
   DESTINATION lib/${PROJECT_NAME}
 )
