@@ -48,9 +48,35 @@ ament_target_dependencies(cmd_vel_gate_node
   std_srvs
 )
 
+# 260708: Exterior light controller — headlight relay + WS2815 turn indicators
+# decided from estop/crab/lanelet turn windows (see docs/lights-design-doc.html).
+add_executable(light_controller_node
+  src/light_controller_node.cpp
+)
+target_include_directories(light_controller_node PRIVATE include)
+ament_target_dependencies(light_controller_node
+  rclcpp
+  geometry_msgs
+  nav_msgs
+  std_msgs
+  avg_msgs
+)
+
+# 260708: Serial JSON bridge to the Arduino Nano light MCU (POSIX termios,
+# header-only nlohmann json — declared in package.xml like nav2_smac_planner).
+add_executable(mcu_serial_bridge_node
+  src/mcu_serial_bridge_node.cpp
+)
+ament_target_dependencies(mcu_serial_bridge_node
+  rclcpp
+  avg_msgs
+)
+
 install(TARGETS
   robot_visualization_node
   cmd_vel_gate_node
+  light_controller_node
+  mcu_serial_bridge_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -81,5 +107,12 @@ endif()
 
 install(DIRECTORY config launch scripts systemd
   DESTINATION share/${PROJECT_NAME})
+
+# 260708: Deterministic light-decision unit test (no ROS runtime needed).
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_light_decision test/test_light_decision.cpp)
+  target_include_directories(test_light_decision PRIVATE include)
+endif()
 
 ament_package()

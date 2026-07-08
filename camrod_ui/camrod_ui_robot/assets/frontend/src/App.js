@@ -761,6 +761,7 @@ function App() {
   const [batteryPct, setBatteryPct] = useState(null); // null = 아직 수신 전
   const [togglePage, setTogglePage] = useState(0);   // 0: B1~B6, 1: B7~B12, 2: B13
   const [engageState, setEngageState] = useState(false);
+  const [headlightState, setHeadlightState] = useState(false); // 260708: 전조등 토글
   const [signalLevel, setSignalLevel] = useState(() => {
     if (!navigator.onLine) return 0;
     const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -1026,6 +1027,10 @@ function App() {
       if ('engage' in data) {
         setEngageState(data.engage);
       }
+      // 260708: 전조등 상태 브로드캐스트 수신
+      if ('headlight' in data) {
+        setHeadlightState(data.headlight);
+      }
     };
 
     // 연결 끊김 시 → 2초 후 자동 재연결
@@ -1057,6 +1062,14 @@ function App() {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ engage: !engageState }));
     }
+  };
+
+  // 260708: 전조등 ON/OFF — /ui/headlight → /platform/headlight/command
+  const handleHeadlight = () => {
+    const next = !headlightState;
+    fetch(`/ui/headlight?value=${next}`, { method: 'POST' })
+      .then((res) => { if (res.ok) setHeadlightState(next); })
+      .catch(() => {});
   };
 
   const handleToggle = (site) => {
@@ -1471,6 +1484,15 @@ function App() {
                 >
                   <span className="site-label">ENGAGE</span>
                   {engageState && <span className="site-on-badge">ON</span>}
+                </button>
+              )}
+              {togglePage === Math.ceil(SITE_NAMES.length / 6) - 1 && (
+                <button
+                  className={`toggle-card engage-card ${headlightState ? 'engage-on' : ''}`}
+                  onClick={handleHeadlight}
+                >
+                  <span className="site-label">LIGHT</span>
+                  {headlightState && <span className="site-on-badge">ON</span>}
                 </button>
               )}
             </div>
