@@ -2,3 +2,5 @@
   ros__parameters:
     autostart: true
     node_names: ["docking_server"]
+    bond_timeout: 4.0
+    attempt_respawn_reconnection: true

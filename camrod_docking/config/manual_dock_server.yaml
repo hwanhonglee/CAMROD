@@ -6,4 +6,6 @@
     dock_action_name: dock_robot
     # true  — Nav2로 staging 위치까지 자율 이동 후 도킹 (기본, 완전 자율 운전)
     # false — 로봇이 이미 staging 위치에 있다고 가정, Nav2 생략 (카메라+로봇만으로 도킹 단계 테스트)
-    navigate_to_staging_pose: false
+    # YH_260702 (Stage 1-4): Phase 1(Nav2 staging) 활성화. docking_server fixed_frame=map +
+    #   docking.launch.py navigate_to_pose remap(/planning/navigate_to_pose) 전제.
+    navigate_to_staging_pose: true

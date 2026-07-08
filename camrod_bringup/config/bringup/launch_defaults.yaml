@@ -379,6 +379,13 @@ bringup:
     # edited in camrod_bringup/config/sensor_kit/robot_params.yaml are applied.
     params_file: sensor_kit/robot_params.yaml
     robot_visualization_param_file: platform/robot_visualization.yaml
+    # 260708: Exterior lights — light_controller decides HAZARD/crab/turn/OFF,
+    # mcu_serial_bridge streams JSON to the Arduino Nano (headlight relay D10,
+    # WS2815 left D5/right D7). Sim keeps the controller but forces the serial
+    # bridge off. Details: camrod_platform/docs/lights-design-doc.html
+    lights_enable: true
+    lights_mcu_bridge_enable: true
+    lights_param_file: platform/lights.yaml
     # Real platform uses the platform cmd_vel gate so /platform/cmd_vel and
     # /platform/drive_enabled exist for system checks and Ranger output.
     cmd_vel_gate_enable: true

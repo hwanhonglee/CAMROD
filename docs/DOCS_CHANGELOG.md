@@ -5,6 +5,19 @@ For code changes see git log and release tags.
 
 ---
 
+## [lights-docs] — 2026-07-08 (260708)
+
+### Added — exterior light feature docs
+
+| Doc | What changed |
+|-----|--------------|
+| `camrod_platform/docs/lights-design-doc.html` | New: implementation design for headlight relay + WS2815 turn indicators (decisions, architecture, serial protocol, failsafe, TODO) |
+| `camrod_platform/docs/turn-signal-explainer.html` | New: visual comparison of curvature vs lanelet `turn_direction` direction sources |
+| `camrod_platform/README.md` | Added light_controller/mcu_serial_bridge summary item, `lights.launch.py` row, lights topics in interface contract, launch args, `config/lights.yaml` row |
+| root `README.md` | Added `/planning/route_turn_segments`, `/platform/headlight/command`, `/platform/lights/*` to the key-topics table |
+
+---
+
 ## [1.11-docs] — 2026-05-28 (HH_260528)
 
 ### Changed — package READMEs

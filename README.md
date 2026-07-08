@@ -620,6 +620,10 @@ rviz2 -d ~/camrod_ws/src/camrod_map/rviz/camrod_operator.rviz \
 | `/platform/status/estop` | `Bool` | Ranger CAN → gates | Hardware emergency stop |
 | `/planning/state_machine/estop` | `Bool` | planning state machine → planning gate | Mission/diagnostic soft e-stop; ORed with platform e-stop before `/planning/cmd_vel` |
 | `/platform/status/odometry` | `Odometry` | Ranger CAN → localization | Wheel odometry |
+| `/planning/route_turn_segments` | `Float32MultiArray` | LaneletRoute planner → light controller | 260708: lanelet `turn_direction` windows as route arc-length `[total_len,(dir,S0,S1)…]`; `data[0]` syncs against `/planning/global_path` |
+| `/platform/headlight/command` | `Bool` | UI LIGHT button → light controller | 260708: operator headlight toggle (relay D10 via light MCU) |
+| `/platform/lights/command` | `avg_msgs/AvgLightCommand` | light controller → MCU serial bridge | 260708: lamp state — headlight + indicator OFF/LEFT/RIGHT/HAZARD (priority: estop hazard > crab direction > lanelet turn) |
+| `/platform/lights/status` | `avg_msgs/AvgLightCommand` | MCU serial bridge → diagnostics | 260708: Arduino Nano ack echo; MCU blinks autonomously and fails over to hazard on link loss |
 | `/planning/engage` | `Bool` | UI / RViz manual → gate | Manual-goal engage latch |
 | `/planning/mission_engage` | `Bool` | UI / mission state → gate | Camping/drop-zone mission engage latch |
 | `/parking/site_maneuver/return` | `Bool` | UI return button → parking | Starts campsite crab/reverse exit after unload wait |

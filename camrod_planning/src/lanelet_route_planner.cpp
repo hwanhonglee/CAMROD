@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cmath>
@@ -22,6 +23,7 @@
 #include "nav2_core/global_planner.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
+#include "std_msgs/msg/float32_multi_array.hpp"
 #include "std_msgs/msg/int64_multi_array.hpp"
 
 #include "camrod_map/custom_regulatory_elements.hpp"
@@ -123,6 +125,8 @@ public:
     declareIfMissing(plugin_name_ + ".route_lanelet_ids_topic", std::string("/planning/route_lanelet_ids"));
     declareIfMissing(plugin_name_ + ".async_initialization", true);
     declareIfMissing(plugin_name_ + ".async_initialization_plan_wait_timeout_s", 60.0);
+    declareIfMissing(
+      plugin_name_ + ".route_turn_segments_topic", std::string("/planning/route_turn_segments"));
 
     node_->get_parameter(plugin_name_ + ".map_path", map_path_);
     node_->get_parameter(plugin_name_ + ".offset_lat", offset_lat_);
@@ -141,6 +145,7 @@ public:
     node_->get_parameter(
       plugin_name_ + ".async_initialization_plan_wait_timeout_s",
       async_initialization_plan_wait_timeout_s_);
+    node_->get_parameter(plugin_name_ + ".route_turn_segments_topic", route_turn_segments_topic_);
 
     interpolation_resolution_m_ = std::max(0.05, interpolation_resolution_m_);
     max_snap_distance_m_ = std::max(0.1, max_snap_distance_m_);
@@ -149,6 +154,10 @@ public:
     // not infer ambiguous lanelets from overlapping merge polygons.
     route_lanelet_ids_pub_ = node_->create_publisher<std_msgs::msg::Int64MultiArray>(
       route_lanelet_ids_topic_, rclcpp::QoS(1).reliable().transient_local());
+    // HH_260708 - Publish turn_direction tag windows as route arc-length ranges so
+    // the exterior light controller can pre-signal turns without loading the map.
+    route_turn_segments_pub_ = node_->create_publisher<std_msgs::msg::Float32MultiArray>(
+      route_turn_segments_topic_, rclcpp::QoS(1).reliable().transient_local());
 
     startInitialization();
   }
@@ -157,6 +166,7 @@ public:
   {
     joinInitializationThread();
     route_lanelet_ids_pub_.reset();
+    route_turn_segments_pub_.reset();
     traffic_rules_.reset();
     routing_graph_.reset();
     map_.reset();
@@ -172,12 +182,18 @@ public:
     if (route_lanelet_ids_pub_) {
       route_lanelet_ids_pub_->on_activate();
     }
+    if (route_turn_segments_pub_) {
+      route_turn_segments_pub_->on_activate();
+    }
   }
 
   void deactivate() override
   {
     if (route_lanelet_ids_pub_) {
       route_lanelet_ids_pub_->on_deactivate();
+    }
+    if (route_turn_segments_pub_) {
+      route_turn_segments_pub_->on_deactivate();
     }
   }
 
@@ -218,6 +234,11 @@ public:
     // HH_260619 - Route geometry comes from Lanelet centerlines, not costmap
     // free-space search. This keeps global path fixed on the legal lane route;
     // local/controller layers remain responsible for obstacle response.
+    // HH_260708 - Accumulate per-lanelet arc-length windows while building the
+    // path so turn_direction tags publish as [S0,S1] ranges on the same route
+    // measure the light controller sees via /planning/global_path.
+    double route_cumulative_s = 0.0;
+    std::vector<std::array<float, 3>> turn_segments;
     for (std::size_t route_index = 0U; route_index < route_lanelets.size(); ++route_index) {
       const auto & route_lanelet = route_lanelets[route_index];
       const bool is_first = route_index == 0U;
@@ -232,8 +253,34 @@ public:
       if (segment_end_s + 1.0e-6 < segment_start_s) {
         continue;
       }
+
+      const double contributed_length_m = segment_end_s - segment_start_s;
+      std::string turn_direction;
+      const auto & lanelet_attributes = route_lanelet.attributes();
+      const auto turn_attribute = lanelet_attributes.find("turn_direction");
+      if (turn_attribute != lanelet_attributes.end()) {
+        turn_direction = turn_attribute->second.value();
+      }
+      const float direction_value =
+        turn_direction == "left" ? 1.0F : (turn_direction == "right" ? -1.0F : 0.0F);
+      if (direction_value != 0.0F && contributed_length_m > 1.0e-3) {
+        const auto window_start = static_cast<float>(route_cumulative_s);
+        const auto window_end = static_cast<float>(route_cumulative_s + contributed_length_m);
+        if (!turn_segments.empty() &&
+          turn_segments.back()[0] == direction_value &&
+          window_start - turn_segments.back()[2] < 0.5F)
+        {
+          // Merge consecutive same-direction lanelets into one signal window.
+          turn_segments.back()[2] = window_end;
+        } else {
+          turn_segments.push_back({direction_value, window_start, window_end});
+        }
+      }
+      route_cumulative_s += contributed_length_m;
+
       appendCenterlineSegment(route_lanelet, segment_start_s, segment_end_s, path);
     }
+    publishRouteTurnSegments(route_cumulative_s, turn_segments);
 
     if (path.poses.size() < 2U) {
       throw nav2_core::PlannerException("LaneletRoutePlanner generated an empty route");
@@ -698,6 +745,27 @@ private:
     route_lanelet_ids_pub_->publish(msg);
   }
 
+  // HH_260708 - Layout: data[0] = total route length [m] (sync guard against the
+  // matching /planning/global_path), then repeated [direction, S0, S1] triples
+  // with direction +1=left / -1=right and S in route arc-length meters.
+  void publishRouteTurnSegments(
+    double total_route_length_m,
+    const std::vector<std::array<float, 3>> & turn_segments) const
+  {
+    if (!route_turn_segments_pub_) {
+      return;
+    }
+    std_msgs::msg::Float32MultiArray msg;
+    msg.data.reserve(1U + turn_segments.size() * 3U);
+    msg.data.push_back(static_cast<float>(total_route_length_m));
+    for (const auto & segment : turn_segments) {
+      msg.data.push_back(segment[0]);
+      msg.data.push_back(segment[1]);
+      msg.data.push_back(segment[2]);
+    }
+    route_turn_segments_pub_->publish(msg);
+  }
+
   ProjectedPoint pointAtArcLength(const lanelet::ConstLanelet & lanelet, const double target_s) const
   {
     ProjectedPoint output;
@@ -806,8 +874,11 @@ private:
   bool async_initialization_{true};
   double async_initialization_plan_wait_timeout_s_{60.0};
   std::string route_lanelet_ids_topic_{"/planning/route_lanelet_ids"};
+  std::string route_turn_segments_topic_{"/planning/route_turn_segments"};
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Int64MultiArray>::SharedPtr
     route_lanelet_ids_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float32MultiArray>::SharedPtr
+    route_turn_segments_pub_;
   lanelet::LaneletMapPtr map_;
   lanelet::traffic_rules::TrafficRulesUPtr traffic_rules_;
   lanelet::routing::RoutingGraphUPtr routing_graph_;

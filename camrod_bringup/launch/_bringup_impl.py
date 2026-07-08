@@ -101,6 +101,8 @@ OVERRIDE_SPECS = {
         'params_file': ('platform/params_file',),
         'robot_visualization_param_file': ('platform/robot_visualization_param_file',),
         'ranger_params_file': ('platform/ranger_params_file',),
+        # 260708: exterior lights (light_controller + mcu_serial_bridge).
+        'lights_param_file': ('platform/lights_param_file',),
     },
     'map': {
         'map_info_file': ('map/map_info_file',),
@@ -1449,6 +1451,9 @@ def generate_launch_description():
         ('platform_ranger_can_restart_ms', cfg_get(launch_cfg, 'platform/ranger_can_restart_ms', 100), 'Ranger SocketCAN restart-ms'),
         # HH_260528: Keep sensor_kit bridge optional for debug.
         ('platform_sensor_kit_bridge_enable', cfg_get(launch_cfg, 'platform/sensor_kit_bridge_enable', True), 'Enable sensor_kit bridge include in platform launch'),
+        # 260708: Exterior lights (headlight relay + WS2815 indicators via light MCU).
+        ('platform_lights_enable', cfg_get(launch_cfg, 'platform/lights_enable', True), 'Enable light_controller node in platform launch'),
+        ('platform_lights_mcu_bridge_enable', cfg_get(launch_cfg, 'platform/lights_mcu_bridge_enable', True), 'Enable light MCU serial bridge (real hardware only; sim forces false)'),
 
         # HH_260618: Mutually exclusive final parking method selector.
         #   rule_based/parking: camrod_parking owns site crab + rear parking.
@@ -1619,6 +1624,12 @@ def generate_launch_description():
         'ranger_can_bitrate': lc['platform_ranger_can_bitrate'],
         'ranger_can_restart_ms': lc['platform_ranger_can_restart_ms'],
         'sensor_kit_bridge_enable': lc['platform_sensor_kit_bridge_enable'],
+        # 260708: light_controller runs in sim too (topic-only, no hardware);
+        # the MCU serial bridge is hardware-facing so sim disables it.
+        'lights_enable': lc['platform_lights_enable'],
+        'lights_mcu_bridge_enable': sim_switch(
+            lc['sim'], 'false', lc['platform_lights_mcu_bridge_enable']
+        ),
     }
     apply_cfg_overrides(platform_args, platform_overrides)
 
