@@ -6,11 +6,12 @@
 
 ## 1. 📋 Summary
 
-`camrod_platform` is the **last safety boundary before hardware**. It sits between the planning stack and the Ranger CAN driver, and it is responsible for three distinct concerns:
+`camrod_platform` is the **last safety boundary before hardware**. It sits between the planning stack and the Ranger CAN driver, and it is responsible for four distinct concerns:
 
 1. **`cmd_vel_gate_node`** — gates `/planning/cmd_vel` behind the effective planning engage state and e-stop before the velocity command reaches the robot's drive motors.
 2. **`robot_visualization_node`** — renders the robot body, sensor frames, planning boundary, and debug range rings as RViz MarkerArray at 5 Hz.
 3. **`sensor_kit_bridge`** — includes `camrod_sensor_kit` to publish all static TF transforms and `/robot_description` (URDF) for every sensor frame.
+4. **`light_controller_node` + `mcu_serial_bridge_node`** (260708) — exterior lights: decides HAZARD (estop) / crab-direction / lanelet-turn indicator state plus the UI headlight toggle, and streams it as JSON over serial to the Arduino Nano light MCU (headlight relay D10, WS2815 left D5 / right D7). Design: [docs/lights-design-doc.html](docs/lights-design-doc.html), firmware: `external/camrod_light_mcu/`.
 
 **Safety interlock — `/platform/cmd_vel` is published only when these conditions hold:**
 - `/planning/engaged` is `true` (default `engage_source_mode:=planning_engaged`)
@@ -148,6 +149,7 @@ graph TD
 | `robot_visualization.launch.py` | `launch/robot_visualization.launch.py` | Always |
 | `ranger.launch.py` | `launch/ranger.launch.py` | `ranger_driver_enable:=true` (default) |
 | `sensor_kit_bridge.launch.py` | `launch/sensor_kit_bridge.launch.py` | Always |
+| `lights.launch.py` | `launch/lights.launch.py` | `lights_enable:=true` (default); the serial bridge additionally needs `lights_mcu_bridge_enable:=true` (bringup forces it off in sim) |
 
 *Figure 2 — Platform runtime architecture. Three logical subsystems run in parallel; `/platform/cmd_vel` is the only critical output path.*
 
@@ -166,6 +168,10 @@ graph TD
 | `/localization/pose` | `geometry_msgs/PoseStamped` | Yes | camrod_localization | ~20 Hz | Primary robot pose for visualization anchor |
 | `/sensing/gnss/pose` | `geometry_msgs/PoseStamped` | No (fallback) | camrod_sensing | ~10 Hz | GNSS pose used when localization is stale |
 | `/map/markers` | `visualization_msgs/MarkerArray` | No | camrod_map | On change | Lanelet markers; used to estimate ground Z for visualization |
+| `/platform/headlight/command` | `std_msgs/Bool` | No | camrod_ui (LIGHT button) | On change | 260708: Operator headlight ON/OFF, passed through to the light MCU relay (D10) |
+| `/planning/route_turn_segments` | `std_msgs/Float32MultiArray` | No | camrod_planning (LaneletRoute planner) | Per plan (latched) | 260708: `[total_len, (dir,S0,S1)…]` lanelet `turn_direction` windows in route arc-length; `data[0]` is the sync guard against `/planning/global_path` |
+| `/planning/state_machine/estop` | `std_msgs/Bool` | No | camrod_planning state machine | On change | 260708: Soft e-stop (mirrors ERROR_STOP); either e-stop source switches the indicators to HAZARD |
+| `/parking/site_maneuver/status` | `avg_msgs/ModuleState` | No | camrod_parking | 1 Hz | 260708: WARN level = crab maneuver active → indicator follows `cmd_vel.linear.y` direction |
 
 ### Outputs
 
@@ -185,6 +191,8 @@ graph TD
 | `/platform/robot/planning_boundary` | `geometry_msgs/PolygonStamped` | RViz, camrod_planning (collision reference) | 5 Hz | Body footprint + `planning_boundary_margin` polygon |
 | TF static (all sensor frames) | `tf2_msgs/TFMessage` | All packages | Static | Sensor-to-base-link transforms from `robot_params.yaml` |
 | `/robot_description` | `std_msgs/String` | All packages (TF, RViz) | Latched | URDF description from `camrod_sensor_kit` |
+| `/platform/lights/command` | `avg_msgs/AvgLightCommand` | mcu_serial_bridge | 5 Hz | 260708: Decided lamp state (headlight bool + indicator OFF/LEFT/RIGHT/HAZARD + source tag) |
+| `/platform/lights/status` | `avg_msgs/AvgLightCommand` | camrod_system, UI (future) | ~1 Hz | 260708: MCU ack echo; `source` carries `mcu_ack` or `mcu_error:<code>` |
 
 ---
 
@@ -380,6 +388,9 @@ The geometry source file is controlled by the `params_file` argument, which defa
 | `ranger_driver_enable` | `true` | Launch Ranger CAN base node |
 | `ranger_bridge_enable` | `true` | Launch Ranger status bridge node (independent from CAN driver) |
 | `sensor_kit_bridge_enable` | `true` | Include `sensor_kit_bridge.launch.py` (disable for debug without TF) |
+| `lights_enable` | `true` | 260708: Launch `light_controller_node` (lamp mode decision) |
+| `lights_mcu_bridge_enable` | `true` | 260708: Launch `mcu_serial_bridge_node` (real hardware only; bringup forces `false` in sim) |
+| `lights_param_file` | `config/lights.yaml` | 260708: Parameters for both light nodes |
 | `ranger_params_file` | `config/ranger_driver.yaml` | Ranger driver parameter file |
 | `params_file` | `camrod_sensor_kit/config/robot_params.yaml` | Robot geometry for TF and visualization |
 | `robot_visualization_param_file` | `config/robot_visualization.yaml` | Robot visualization node parameters |
@@ -396,6 +407,7 @@ The geometry source file is controlled by the `params_file` argument, which defa
 | `config/robot_visualization.yaml` | `robot_visualization_node` parameters: pose topics, timeout, heading offset, boundary margin, range rings, publish rate |
 | `config/ranger_params.yaml` | Ranger CAN driver: `port_name: can0`, `update_rate: 50`, odom topics, e-stop behavior, platform status bridge topics |
 | `config/vehicle_params.yaml` | Vehicle kinematics reference: wheelbase, track width, tire radius, max velocity/acceleration (read-only reference; not passed as a launch override automatically) |
+| `config/lights.yaml` | 260708: Exterior lights — topics, `turn_pre_distance_m` (12.0), `crab_lateral_threshold_mps` (0.05), route sync tolerance, serial port (`/dev/serial/by-id/`, CH340 vs radar CH9344 enumeration guard), baud/rates. Synchronized copy in `camrod_bringup/config/platform/lights.yaml` |
 
 ---
 

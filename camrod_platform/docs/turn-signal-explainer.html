@@ -1,0 +1,568 @@
+<title>방향 지시 판정 · A안 vs B안</title>
+<style>
+  :root{
+    --bg:#F5F7F4; --panel:#FFFFFF; --panel2:#EDF1EC;
+    --ink:#212A2B; --muted:#5D6C6E; --line:#D8DEDA;
+    --amber:#D98E1B; --amber-deep:#A96A0D; --amber-soft:#F6E7C8;
+    --path:#2E7D8C; --path-soft:#D9E9ED;
+    --danger:#C4453B; --ok:#3F7E52;
+    --mono:ui-monospace,'Cascadia Code','JetBrains Mono',Consolas,monospace;
+    --sans:'Pretendard Variable',Pretendard,-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans KR','Malgun Gothic',sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#141819; --panel:#1C2224; --panel2:#242C2E;
+      --ink:#E4EAE8; --muted:#96A6A7; --line:#333D3F;
+      --amber:#F0A93C; --amber-deep:#F7C36E; --amber-soft:#3B2F1A;
+      --path:#54AABB; --path-soft:#1E3B42;
+      --danger:#E0685C; --ok:#6BB483;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141819; --panel:#1C2224; --panel2:#242C2E;
+    --ink:#E4EAE8; --muted:#96A6A7; --line:#333D3F;
+    --amber:#F0A93C; --amber-deep:#F7C36E; --amber-soft:#3B2F1A;
+    --path:#54AABB; --path-soft:#1E3B42;
+    --danger:#E0685C; --ok:#6BB483;
+  }
+  :root[data-theme="light"]{
+    --bg:#F5F7F4; --panel:#FFFFFF; --panel2:#EDF1EC;
+    --ink:#212A2B; --muted:#5D6C6E; --line:#D8DEDA;
+    --amber:#D98E1B; --amber-deep:#A96A0D; --amber-soft:#F6E7C8;
+    --path:#2E7D8C; --path-soft:#D9E9ED;
+    --danger:#C4453B; --ok:#3F7E52;
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.65; font-size:15.5px;
+    margin:0; padding:0 20px 96px;
+  }
+  main{max-width:900px; margin:0 auto}
+
+  header{padding:56px 0 8px}
+  .eyebrow{
+    font-size:12px; letter-spacing:.14em; font-weight:600;
+    color:var(--amber-deep); text-transform:uppercase;
+  }
+  h1{
+    font-size:clamp(24px,4vw,32px); font-weight:800; letter-spacing:-.02em;
+    margin:.35em 0 .3em; text-wrap:balance;
+  }
+  .lede{color:var(--muted); max-width:62ch; margin:0}
+
+  h2{
+    font-size:20px; font-weight:750; letter-spacing:-.01em;
+    margin:2.6em 0 .6em; text-wrap:balance;
+    display:flex; align-items:center; gap:10px;
+  }
+  .tag{
+    font-size:11.5px; font-weight:700; letter-spacing:.08em;
+    padding:3px 9px; border-radius:4px; white-space:nowrap;
+  }
+  .tag-a{background:var(--path-soft); color:var(--path)}
+  .tag-b{background:var(--amber-soft); color:var(--amber-deep)}
+
+  p{max-width:68ch}
+  code{
+    font-family:var(--mono); font-size:.86em;
+    background:var(--panel2); border:1px solid var(--line);
+    border-radius:4px; padding:1px 6px; white-space:nowrap;
+  }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:18px 20px; margin:14px 0;
+  }
+  .figure{padding:10px 12px 4px; overflow-x:auto}
+  .figure svg{display:block; width:100%; height:auto; min-width:560px}
+  .caption{
+    font-size:13px; color:var(--muted); margin:6px 4px 10px;
+    max-width:none;
+  }
+
+  .steps{counter-reset:st; padding:0; margin:16px 0; list-style:none; max-width:70ch}
+  .steps li{
+    counter-increment:st; position:relative;
+    padding:0 0 14px 44px;
+  }
+  .steps li::before{
+    content:counter(st); position:absolute; left:0; top:1px;
+    width:26px; height:26px; border-radius:50%;
+    background:var(--panel2); border:1px solid var(--line);
+    color:var(--ink); font-size:13px; font-weight:700;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .steps li:not(:last-child)::after{
+    content:''; position:absolute; left:13px; top:31px; bottom:3px;
+    width:1px; background:var(--line);
+  }
+
+  .duo{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:14px 0}
+  @media (max-width:680px){.duo{grid-template-columns:1fr}}
+
+  .verdicts{display:flex; flex-direction:column; gap:6px; margin-top:10px}
+  .verdict{
+    display:flex; gap:8px; align-items:baseline;
+    font-size:13.5px;
+  }
+  .verdict b{white-space:nowrap}
+  .dot-on{color:var(--ok); font-weight:800}
+  .dot-off{color:var(--danger); font-weight:800}
+
+  table{
+    border-collapse:collapse; width:100%; font-size:14px;
+    font-variant-numeric:tabular-nums;
+  }
+  .tablewrap{overflow-x:auto; margin:14px 0}
+  th,td{
+    text-align:left; padding:10px 14px; vertical-align:top;
+    border-bottom:1px solid var(--line);
+  }
+  th{
+    font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); font-weight:700;
+  }
+  td:first-child{white-space:nowrap; font-weight:650}
+
+  .callout{
+    border-left:3px solid var(--amber); background:var(--panel);
+    border-radius:0 10px 10px 0; padding:14px 18px; margin:18px 0;
+  }
+  .callout.path{border-left-color:var(--path)}
+  .callout p{margin:.3em 0}
+
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin:10px 0}
+  .chip{
+    font-family:var(--mono); font-size:12.5px;
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:6px; padding:5px 10px;
+  }
+  .chip small{font-family:var(--sans); color:var(--muted); margin-left:6px}
+
+  .flow{display:flex; flex-direction:column; gap:0; margin:16px 0}
+  .flow-row{display:flex; align-items:stretch; gap:0; flex-wrap:wrap}
+  .fbox{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:10px 14px; font-size:13.5px; flex:1; min-width:150px;
+  }
+  .fbox b{display:block; font-size:13px}
+  .fbox span{color:var(--muted); font-size:12.5px}
+  .farrow{
+    align-self:center; padding:0 10px; color:var(--muted);
+    font-size:18px; user-select:none;
+  }
+  .fdown{
+    text-align:center; color:var(--muted); font-size:18px;
+    padding:2px 0; user-select:none;
+  }
+
+  svg text{font-family:var(--sans); font-size:13px; fill:var(--ink)}
+  svg .mut{fill:var(--muted); font-size:12px}
+  svg .mono{font-family:var(--mono); font-size:12px}
+  svg .strong{font-weight:700}
+
+  footer{
+    margin-top:64px; padding-top:16px; border-top:1px solid var(--line);
+    font-size:12.5px; color:var(--muted);
+  }
+</style>
+
+<main>
+<header>
+  <div class="eyebrow">CAMROD · 방향 지시 인디케이터 설계 검토</div>
+  <h1>회전 방향(좌/우)은 어디서 알아내는가 — 두 방식 그림 설명</h1>
+  <p class="lede">
+    로봇에는 "지금 좌회전 중"이라는 신호가 없습니다. 그래서 이미 발행 중인 두 데이터
+    중 하나에서 방향을 <b>유도</b>해야 합니다. 이 페이지는 그 두 방식을 그림으로 비교합니다.
+  </p>
+  <div class="chips">
+    <span class="chip">/planning/local_path<small>A안 입력 · 전방 30 m 경로 조각, 15 Hz</small></span>
+    <span class="chip">/planning/route_lanelet_ids<small>B안 입력 · 주행할 차선 ID 목록</small></span>
+  </div>
+</header>
+
+<!-- ============================================================ A안 -->
+<h2><span class="tag tag-a">A안 · 권장</span> 로컬 경로 곡률 — "경로가 어느 쪽으로 휘어 있나"</h2>
+
+<p>
+  로봇 몇 미터 앞의 경로가 로봇이 바라보는 방향에서 <b>왼쪽으로 벗어나 있으면 좌회전,
+  오른쪽이면 우회전</b>이라고 판단하는 기하학적 방식입니다. 순수하게 "그림"으로 보면 이렇습니다.
+</p>
+
+<div class="panel figure">
+<svg viewBox="0 0 760 430" role="img" aria-label="A안: 로봇 heading과 전방 경로 지점 방위의 각도차로 좌우를 판정하는 그림">
+  <defs>
+    <marker id="ah-ink" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 Z" fill="var(--muted)"/>
+    </marker>
+    <marker id="ah-amber" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 Z" fill="var(--amber)"/>
+    </marker>
+  </defs>
+
+  <!-- 차로(넓은 바탕) -->
+  <path d="M 470 415 C 470 300 445 235 360 178 C 290 132 210 100 130 82"
+        fill="none" stroke="var(--path-soft)" stroke-width="46" stroke-linecap="round"/>
+  <!-- 주행 경로(local_path) -->
+  <path d="M 470 415 C 470 300 445 235 360 178 C 290 132 210 100 130 82"
+        fill="none" stroke="var(--path)" stroke-width="4" stroke-linecap="round"/>
+  <text x="96" y="60" fill="var(--path)" class="strong">/planning/local_path</text>
+  <text x="96" y="78" class="mut">(map 고정 · 전방 경로 조각)</text>
+
+  <!-- 호길이 L 브래킷 -->
+  <path d="M 496 340 C 497 282 480 240 448 208" fill="none" stroke="var(--muted)"
+        stroke-width="1.3" stroke-dasharray="3 4"/>
+  <text x="505" y="272" class="mut">경로를 따라 걸어간</text>
+  <text x="505" y="290" class="mut">호길이 L (예: 4–8 m)</text>
+
+  <!-- 로봇 -->
+  <g>
+    <rect x="450" y="332" width="40" height="52" rx="7" fill="var(--panel)"
+          stroke="var(--ink)" stroke-width="2"/>
+    <path d="M 462 342 L 470 330 L 478 342" fill="none" stroke="var(--ink)" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="452" y="404" class="mut">로봇 (localization/pose)</text>
+  </g>
+
+  <!-- heading θ : 수직 위 점선 -->
+  <line x1="470" y1="326" x2="470" y2="130" stroke="var(--muted)" stroke-width="2"
+        stroke-dasharray="6 5" marker-end="url(#ah-ink)"/>
+  <text x="479" y="142" class="mut strong">지금 바라보는 방향 θ</text>
+
+  <!-- P_ahead 점 -->
+  <circle cx="352" cy="173" r="7" fill="var(--amber)" stroke="var(--panel)" stroke-width="2.5"/>
+  <text x="255" y="152" fill="var(--amber-deep)" class="strong">P_ahead — 전방 L m 지점</text>
+
+  <!-- φ 화살표 -->
+  <line x1="466" y1="330" x2="362" y2="182" stroke="var(--amber)" stroke-width="2.5"
+        marker-end="url(#ah-amber)"/>
+  <text x="356" y="243" fill="var(--amber-deep)" class="strong" transform="rotate(-54 380 250)"> </text>
+  <text x="300" y="230" fill="var(--amber-deep)" class="strong">그 지점의 방위 φ</text>
+
+  <!-- 각도차 Δ 호 -->
+  <path d="M 470 254 A 76 76 0 0 0 428 274" fill="none" stroke="var(--danger)"
+        stroke-width="2.5" marker-end="url(#ah-ink)"/>
+  <text x="408" y="300" fill="var(--danger)" class="strong">각도차 Δ = φ − θ</text>
+  <text x="408" y="318" class="mut">이 부호(±)가 곧 좌/우</text>
+
+  <!-- 판정 게이지 -->
+  <g transform="translate(560 30)">
+    <text x="8" y="14" class="strong">판정 게이지</text>
+    <!-- 좌회전 구역 -->
+    <path d="M 74.4 61.5 A 68 68 0 0 0 20 130 L 51 130 A 37 37 0 0 1 80.3 92.7 Z"
+          fill="var(--amber)" opacity="0.85"/>
+    <!-- 직진 데드밴드 -->
+    <path d="M 101.6 61.5 A 68 68 0 0 0 74.4 61.5 L 80.3 92.7 A 37 37 0 0 1 95.7 92.7 Z"
+          fill="var(--panel2)" stroke="var(--line)"/>
+    <!-- 우회전 구역 -->
+    <path d="M 156 130 A 68 68 0 0 0 101.6 61.5 L 95.7 92.7 A 37 37 0 0 1 125 130 Z"
+          fill="var(--amber)" opacity="0.85"/>
+    <!-- 바늘: Δ = +40° (좌회전) -->
+    <line x1="88" y1="130" x2="47" y2="81" stroke="var(--ink)" stroke-width="3"
+          stroke-linecap="round"/>
+    <circle cx="88" cy="130" r="5" fill="var(--ink)"/>
+    <text x="0" y="52" class="mut" text-anchor="start">좌회전</text>
+    <text x="130" y="52" class="mut">우회전</text>
+    <text x="88" y="152" class="mut" text-anchor="middle">가운데 = 직진(데드밴드)</text>
+    <text x="88" y="170" class="mut" text-anchor="middle">|Δ| &gt; 임계 → 점등</text>
+  </g>
+</svg>
+<p class="caption">
+  그림 1 — A안 원리. 로봇의 현재 방향(θ, 점선)과 전방 L 미터 지점의 방위(φ, 주황 실선)의
+  각도차 Δ가 왼쪽(+)으로 임계값을 넘으면 좌회전 점등, 오른쪽(−)이면 우회전 점등.
+  이 그림에서는 경로가 왼쪽으로 휘므로 게이지 바늘이 좌회전 구역에 들어가 있다.
+</p>
+</div>
+
+<ol class="steps">
+  <li><code>/localization/pose</code>에서 로봇 위치와 바라보는 방향 θ를 얻는다.</li>
+  <li><code>/planning/local_path</code>를 로봇 위치부터 <b>호길이로 L 미터</b> 걸어가 전방 지점 P_ahead를 찾는다.</li>
+  <li>로봇 → P_ahead 방위 φ를 계산한다 (<code>atan2</code>).</li>
+  <li>부호 있는 각도차 <b>Δ = φ − θ</b> 를 구한다. 왼쪽이 +, 오른쪽이 −.</li>
+  <li>Δ &gt; +임계 → <b>좌회전 점등</b> · Δ &lt; −임계 → <b>우회전 점등</b> · 그 사이 → 직진(소등).</li>
+  <li>임계값 2개(진입/해제)와 최소 유지시간으로 <b>깜빡임 떨림을 방지</b>한다 (아래 그림 2).</li>
+</ol>
+
+<div class="panel figure">
+<svg viewBox="0 0 760 250" role="img" aria-label="히스테리시스: 진입 임계와 해제 임계를 다르게 두어 떨림을 막는 그림">
+  <!-- 축 -->
+  <line x1="60" y1="20" x2="60" y2="170" stroke="var(--line)" stroke-width="1.5"/>
+  <line x1="60" y1="170" x2="720" y2="170" stroke="var(--line)" stroke-width="1.5"/>
+  <text x="20" y="100" class="mut" transform="rotate(-90 20 100)">각도차 Δ</text>
+  <text x="700" y="188" class="mut">시간 →</text>
+
+  <!-- 임계선 -->
+  <line x1="60" y1="66" x2="720" y2="66" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text x="66" y="58" fill="var(--amber-deep)" class="mono">진입 임계 (예 +12°)</text>
+  <line x1="60" y1="96" x2="720" y2="96" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text x="66" y="114" class="mut mono">해제 임계 (예 +8°)</text>
+
+  <!-- Δ 곡선: 상승 → 66 위 (x=230) → 살짝 하강(88, 해제선 위) → 재상승 → 하강, x=560에서 96 아래 -->
+  <path d="M 60 160 C 130 158 180 120 230 64 C 262 34 292 78 322 88 C 352 96 382 40 430 38 C 490 36 520 70 560 98 C 600 126 650 152 715 158"
+        fill="none" stroke="var(--path)" stroke-width="3"/>
+  <circle cx="230" cy="64" r="5" fill="var(--amber)"/>
+  <circle cx="560" cy="98" r="5" fill="var(--muted)"/>
+
+  <!-- 흔들림 주석 -->
+  <text x="300" y="130" class="mut">중간에 살짝 내려와도(9° 등)</text>
+  <text x="300" y="147" class="mut">해제 임계(8°)보다 높으면 계속 켜짐</text>
+
+  <!-- 상태 바 -->
+  <text x="60" y="210" class="mut">램프 상태:</text>
+  <rect x="140" y="198" width="90" height="16" rx="4" fill="var(--panel2)" stroke="var(--line)"/>
+  <rect x="230" y="198" width="330" height="16" rx="4" fill="var(--amber)"/>
+  <rect x="560" y="198" width="155" height="16" rx="4" fill="var(--panel2)" stroke="var(--line)"/>
+  <text x="150" y="240" class="mut">소등</text>
+  <text x="360" y="240" fill="var(--amber-deep)" class="strong">좌회전 점등 (연속)</text>
+  <text x="640" y="240" class="mut">소등</text>
+</svg>
+<p class="caption">
+  그림 2 — 히스테리시스. 켜지는 임계(+12°)와 꺼지는 임계(+8°)를 다르게 두면, 커브 중간에
+  Δ가 잠깐 흔들려도 램프가 켜졌다-꺼졌다 하지 않는다. 여기에 "한번 켜지면 최소 1초 유지"
+  같은 최소 유지시간을 더한다.
+</p>
+</div>
+
+<div class="callout path">
+  <p><b>왜 만들기 쉬운가:</b> cmd_vel 게이트(v2.0.0)가 이미 "경로 접선 2.0 m lookahead vs
+  로봇 heading" 각도차를 계산하고 있습니다. 같은 수학을 lookahead 거리만 늘려 재사용하면 됩니다.</p>
+</div>
+
+<!-- ============================================================ B안 -->
+<h2><span class="tag tag-b">B안</span> lanelet 경로 + 다음 turn — "지도상 갈림길에서 어느 쪽을 고르나"</h2>
+
+<p>
+  자동차 내비게이션과 같은 발상입니다. 경로가 아니라 <b>지도(Lanelet2)의 구조</b>를 봅니다.
+  주행할 차선(lanelet) 목록을 따라가다가 <b>갈림길(후속 차선이 2개 이상인 지점)</b>을 찾고,
+  거기서 실제로 어느 쪽 차선을 선택했는지로 좌/우를 결정합니다.
+</p>
+
+<div class="panel figure">
+<svg viewBox="0 0 760 470" role="img" aria-label="B안: lanelet 갈림길에서 선택된 후속 차선의 방향으로 좌우를 판정하는 그림">
+  <defs>
+    <marker id="bh-ink" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 Z" fill="var(--muted)"/>
+    </marker>
+    <marker id="bh-teal" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+      <path d="M0,0 L8,4.5 L0,9 Z" fill="var(--path)"/>
+    </marker>
+  </defs>
+
+  <!-- 차선 경계: 아래 수직 도로 -->
+  <line x1="330" y1="450" x2="330" y2="255" stroke="var(--line)" stroke-width="3"/>
+  <line x1="430" y1="450" x2="430" y2="255" stroke="var(--line)" stroke-width="3"/>
+
+  <!-- 좌 분기 경계 -->
+  <path d="M 330 255 C 330 200 280 165 205 130" fill="none" stroke="var(--line)" stroke-width="3"/>
+  <path d="M 380 210 C 370 175 320 135 250 105" fill="none" stroke="var(--line)" stroke-width="3"/>
+  <!-- 우 분기 경계 -->
+  <path d="M 430 255 C 430 200 480 165 555 130" fill="none" stroke="var(--line)" stroke-width="3"/>
+  <path d="M 380 210 C 390 175 440 135 510 105" fill="none" stroke="var(--line)" stroke-width="3"/>
+
+  <!-- 중심선: l1 (아래) - 경로에 포함 → teal -->
+  <line x1="380" y1="450" x2="380" y2="252" stroke="var(--path)" stroke-width="4"/>
+  <!-- 중심선: l2a (좌) - 선택됨 -->
+  <path d="M 380 252 C 372 195 310 152 228 118" fill="none" stroke="var(--path)" stroke-width="4"
+        marker-end="url(#bh-teal)"/>
+  <!-- 중심선: l2b (우) - 선택 안 됨, 점선 -->
+  <path d="M 380 252 C 388 195 450 152 532 118" fill="none" stroke="var(--muted)" stroke-width="2.5"
+        stroke-dasharray="7 6"/>
+
+  <!-- lanelet 라벨 -->
+  <text x="392" y="360" fill="var(--path)" class="mono strong">l₁ (지금 차선)</text>
+  <text x="180" y="98" fill="var(--path)" class="mono strong">l₂ — 선택된 후속 ✓</text>
+  <text x="470" y="98" class="mut mono">선택 안 된 후속</text>
+
+  <!-- 결정점 -->
+  <circle cx="380" cy="252" r="16" fill="none" stroke="var(--amber)" stroke-width="2.5"/>
+  <circle cx="380" cy="252" r="7" fill="var(--amber)"/>
+  <text x="404" y="248" fill="var(--amber-deep)" class="strong">결정점</text>
+  <text x="404" y="266" class="mut">후속 차선이 2개인 지점</text>
+  <text x="404" y="283" class="mut">(routing graph에서 검색)</text>
+
+  <!-- 접선 비교 -->
+  <line x1="380" y1="252" x2="380" y2="185" stroke="var(--muted)" stroke-width="2"
+        stroke-dasharray="5 4" marker-end="url(#bh-ink)"/>
+  <text x="340" y="175" class="mut">l₁ 끝 접선</text>
+  <path d="M 380 252 L 322 208" fill="none" stroke="var(--path)" stroke-width="2.5"
+        marker-end="url(#bh-teal)"/>
+  <text x="222" y="212" fill="var(--path)">선택된 l₂ 접선</text>
+  <text x="222" y="230" class="mut">두 접선의 각도차 → 좌회전</text>
+
+  <!-- 로봇 -->
+  <g>
+    <rect x="360" y="388" width="40" height="52" rx="7" fill="var(--panel)"
+          stroke="var(--ink)" stroke-width="2"/>
+    <path d="M 372 398 L 380 386 L 388 398" fill="none" stroke="var(--ink)" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- 거리 D 브래킷 -->
+  <line x1="452" y1="384" x2="452" y2="272" stroke="var(--muted)" stroke-width="1.5"/>
+  <line x1="446" y1="384" x2="458" y2="384" stroke="var(--muted)" stroke-width="1.5"/>
+  <line x1="446" y1="272" x2="458" y2="272" stroke="var(--muted)" stroke-width="1.5"/>
+  <text x="464" y="322" class="strong">D</text>
+  <text x="464" y="342" class="mut">결정점까지 남은 거리</text>
+
+  <!-- 점등 규칙 박스 -->
+  <g transform="translate(40 330)">
+    <rect x="0" y="0" width="240" height="104" rx="8" fill="var(--panel2)" stroke="var(--line)"/>
+    <text x="16" y="28" class="strong">점등 규칙</text>
+    <text x="16" y="52" class="mut">D ≤ D_pre (예 15 m)</text>
+    <text x="16" y="70" fill="var(--amber-deep)" class="strong">→ 좌측 지시등 점등 시작</text>
+    <text x="16" y="92" class="mut">결정점 통과 후 → 소등</text>
+  </g>
+
+  <!-- 입력 라벨 -->
+  <text x="40" y="40" fill="var(--path)" class="mono strong">/planning/route_lanelet_ids</text>
+  <text x="40" y="58" class="mut">= [l₁, l₂, …] 주행할 차선 ID 순서 (이미 발행 중)</text>
+</svg>
+<p class="caption">
+  그림 3 — B안 원리. 파란 실선이 실제 주행 경로에 포함된 차선(l₁ → l₂), 회색 점선이
+  선택되지 않은 다른 후속 차선. 갈림길(주황 = 결정점)에서 l₁ 끝 접선과 선택된 l₂ 접선의
+  각도차로 좌/우를 정하고, 로봇이 결정점 D_pre 미터 앞에 오면 미리 점등한다.
+</p>
+</div>
+
+<ol class="steps">
+  <li><code>/planning/route_lanelet_ids</code>에서 주행할 차선 순서 [l₁, l₂, …]를 받는다.</li>
+  <li>Lanelet2 지도 + routing graph를 로드하고, 연속 쌍 (lᵢ, lᵢ₊₁)을 순회한다.</li>
+  <li>lᵢ의 <b>후속 차선이 2개 이상</b>인 지점 = 갈림길(결정점)만 골라낸다.</li>
+  <li>결정점에서 lᵢ 끝 접선 vs 실제 선택된 lᵢ₊₁ 시작 접선의 각도차 → 좌 / 우 / 직진 분류.
+      (지도에 <code>turn_direction</code> 태그가 있으면 그대로 쓰지만, 캠핑장 지도엔 없을 가능성이 높음)</li>
+  <li>로봇 위치를 경로에 투영해 <b>다음 결정점까지 거리 D</b>를 계산한다.</li>
+  <li>D ≤ D_pre(예 15 m)면 점등, 결정점을 지나면 소등 — 실차 깜빡이처럼 <b>미리</b> 켤 수 있다.</li>
+</ol>
+
+<!-- ============================================================ 갈리는 상황 -->
+<h2>두 방식이 서로 다르게 동작하는 상황</h2>
+<p>같은 로봇, 같은 도로에서 두 방식의 답이 갈리는 대표 상황 두 가지입니다.</p>
+
+<div class="duo">
+  <div class="panel figure">
+    <svg viewBox="0 0 360 300" role="img" aria-label="장애물 회피 시나리오">
+      <!-- 직선 차선 -->
+      <line x1="130" y1="280" x2="130" y2="20" stroke="var(--line)" stroke-width="3"/>
+      <line x1="230" y1="280" x2="230" y2="20" stroke="var(--line)" stroke-width="3"/>
+      <line x1="180" y1="280" x2="180" y2="20" stroke="var(--muted)" stroke-width="1.5"
+            stroke-dasharray="4 8"/>
+      <!-- 장애물 -->
+      <rect x="150" y="120" width="58" height="42" rx="5" fill="var(--danger)" opacity="0.85"/>
+      <text x="162" y="147" fill="#fff" style="font-size:12px">장애물</text>
+      <!-- 회피 경로 -->
+      <path d="M 180 275 C 180 230 150 210 138 175 C 128 140 150 100 180 78 L 180 30"
+            fill="none" stroke="var(--path)" stroke-width="4" stroke-linecap="round"/>
+      <!-- 로봇 -->
+      <rect x="166" y="240" width="28" height="36" rx="5" fill="var(--panel)"
+            stroke="var(--ink)" stroke-width="2"/>
+      <text x="30" y="200" fill="var(--path)" class="strong">실제 주행 경로가</text>
+      <text x="30" y="218" fill="var(--path)" class="strong">왼쪽으로 꺾임</text>
+      <text x="244" y="140" class="mut">lanelet 갈림길은</text>
+      <text x="244" y="158" class="mut">없음 (직선 도로)</text>
+    </svg>
+    <p class="caption"><b>상황 1 · 장애물 회피.</b> 경로는 실제로 왼쪽으로 꺾이지만 지도상 갈림길은 없다.</p>
+    <div class="verdicts">
+      <div class="verdict"><span class="dot-on">●</span><b>A안: 점등함</b> — 실제 회피 곡선을 그대로 감지</div>
+      <div class="verdict"><span class="dot-off">●</span><b>B안: 점등 못 함</b> — lanelet 분기가 아니므로 인식 불가</div>
+    </div>
+  </div>
+
+  <div class="panel figure">
+    <svg viewBox="0 0 360 300" role="img" aria-label="완만한 도로 커브 시나리오">
+      <!-- 완만한 커브 차선 -->
+      <path d="M 130 280 C 130 190 145 110 205 30" fill="none" stroke="var(--line)" stroke-width="3"/>
+      <path d="M 230 280 C 230 190 245 115 300 42" fill="none" stroke="var(--line)" stroke-width="3"/>
+      <path d="M 180 280 C 180 190 195 112 252 36" fill="none" stroke="var(--muted)"
+            stroke-width="1.5" stroke-dasharray="4 8"/>
+      <!-- 경로 = 중심선 추종 -->
+      <path d="M 180 275 C 180 190 195 112 250 40" fill="none" stroke="var(--path)"
+            stroke-width="4" stroke-linecap="round"/>
+      <!-- 로봇 -->
+      <rect x="166" y="240" width="28" height="36" rx="5" fill="var(--panel)"
+            stroke="var(--ink)" stroke-width="2"/>
+      <text x="34" y="120" class="mut">교차로가 아닌</text>
+      <text x="34" y="138" class="mut">완만한 도로 곡선</text>
+    </svg>
+    <p class="caption"><b>상황 2 · 완만한 커브.</b> 회전이 아니라 도로 자체가 휘어 있을 뿐이다.</p>
+    <div class="verdicts">
+      <div class="verdict"><span class="dot-off">●</span><b>A안: 오점등 가능</b> — 임계값·lookahead 튜닝으로 억제해야 함</div>
+      <div class="verdict"><span class="dot-on">●</span><b>B안: 정확히 소등 유지</b> — 갈림길이 아니므로 안 켜짐</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ 비교표 -->
+<h2>비교 요약</h2>
+<div class="tablewrap panel" style="padding:4px 8px">
+<table>
+  <thead>
+    <tr><th></th><th>A안 — 로컬 경로 곡률</th><th>B안 — lanelet 다음 turn</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>보는 것</td><td>실제로 주행할 경로의 <b>모양</b></td><td>지도의 <b>구조</b>(갈림길)</td></tr>
+    <tr><td>입력</td><td><code>/planning/local_path</code> + pose</td><td><code>/planning/route_lanelet_ids</code> + Lanelet2 지도</td></tr>
+    <tr><td>장애물 회피</td><td>감지함 (경로에 반영되므로)</td><td>감지 못 함</td></tr>
+    <tr><td>Smac2D 등 폴백 플래너</td><td>동작함 (경로만 있으면 됨)</td><td>동작 안 함 (lanelet 경로 전용)</td></tr>
+    <tr><td>완만한 커브 오점등</td><td>가능 — 임계값으로 억제</td><td>없음</td></tr>
+    <tr><td>미리 점등(예고)</td><td>lookahead 거리만큼만</td><td>D_pre로 자유롭게 (더 일찍 가능)</td></tr>
+    <tr><td>캠핑장 지도 적합성</td><td>지도 무관</td><td>갈림길이 드물면 <b>거의 안 켜질 위험</b></td></tr>
+    <tr><td>구현 규모</td><td>작음 — 게이트의 기존 접선 계산 재사용</td><td>큼 — 지도/routing graph 로드 + 신규 노드</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout">
+  <p><b>권장:</b> <b>A안으로 시작</b>합니다. CAMROD는 장애물 회피 곡선과 그리드 폴백 플래너를
+  실제로 쓰므로 "로봇이 지금 실제로 꺾는 방향"을 아는 건 A안뿐입니다. 이후 필요하면
+  B안을 <b>예고(조기 점등) 보조</b>로 얹는 하이브리드로 확장할 수 있습니다.</p>
+  <p style="color:var(--muted); font-size:13.5px">참고: 캠핑장 크랩(게걸음) 진입·180° 회전 중에는
+  local_path가 비므로 방향지시등은 자연히 소등 상태가 기본입니다.</p>
+</div>
+
+<!-- ============================================================ 전체 구성 -->
+<h2>확정 사항을 반영한 전체 구성</h2>
+<p style="color:var(--muted); font-size:14px">
+  확정: 비상등 = ERROR_STOP/estop만 · 깜빡임 = MCU 자율 · WS2815 = D5/D7 데이터, D6/D8 백업 · <code>camrod_platform</code> 하위
+</p>
+
+<div class="flow">
+  <div class="flow-row">
+    <div class="fbox"><b>UI 전조등 버튼</b><span>FastAPI → <code style="font-size:11.5px">/platform/headlight/command</code></span></div>
+    <div class="farrow">→</div>
+    <div class="fbox" style="border-color:var(--path)"><b>light_controller_node</b>
+      <span>램프 모드 결정 · 우선순위:<br><b style="color:var(--danger)">HAZARD</b> &gt; 좌/우 지시 &gt; 소등</span></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>mcu_serial_bridge_node</b><span>JSON + 하트비트<br><code style="font-size:11px">{"h":1,"i":"L","hb":42}</code></span></div>
+  </div>
+  <div class="fdown">↓ USB Serial</div>
+  <div class="flow-row">
+    <div class="fbox" style="flex:2"><b>Arduino Nano</b>
+      <span>깜빡임 주기 자율 생성 · 하트비트 끊기면 자동 소등(페일세이프)</span></div>
+    <div class="farrow">→</div>
+    <div class="fbox"><b>Relay IN — D13</b><span>전조등 ON/OFF</span></div>
+    <div class="farrow">→</div>
+    <div class="fbox" style="border-color:var(--amber)"><b>WS2815 인디케이터</b>
+      <span>좌: D5 데이터 / D6 백업<br>우: D7 데이터 / D8 백업</span></div>
+  </div>
+</div>
+
+<div class="panel">
+  <b style="font-size:14px">light_controller 입력 정리</b>
+  <div class="chips" style="margin-top:10px">
+    <span class="chip">/planning/local_path<small>A안 방향 판정</small></span>
+    <span class="chip">/localization/pose<small>heading θ</small></span>
+    <span class="chip">/planning/state_machine/state<small>ERROR_STOP → 비상등</small></span>
+    <span class="chip">/platform/status/estop<small>estop → 비상등</small></span>
+    <span class="chip">/planning/state_machine/estop<small>소프트 estop → 비상등</small></span>
+    <span class="chip">/platform/headlight/command<small>UI 버튼 (신규)</small></span>
+  </div>
+</div>
+
+<footer>
+  CAMROD v2.0.0 기준 · 두 입력 토픽(<code>/planning/local_path</code>,
+  <code>/planning/route_lanelet_ids</code>)은 현재 코드에서 이미 발행 중임을 확인함.
+</footer>
+</main>

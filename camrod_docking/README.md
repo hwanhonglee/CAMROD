@@ -1,8 +1,7 @@
 # CAMROD DOCKING
 
 ROS 2 Humble 기반 CAMROD 로봇 자율 충전 도킹 시스템.  
-Isaac ROS GPU 파이프라인(NITROS zero-copy)으로 AprilTag를 검출하고, EgoPolar 컨트롤러로 충전 스테이션 도킹을 수행한다.  
-전진/후진 도킹 모두 지원하며, 로봇을 스테이션 앞에 배치한 뒤 명령으로 도킹하는 매뉴얼 모드도 제공한다.
+Isaac ROS GPU 파이프라인(NITROS zero-copy)으로 AprilTag를 검출하고, EgoPolar 컨트롤러로 충전 스테이션 도킹을 수행한다.
 
 > **현재 타겟 플랫폼:** Agile-X Ranger  
 > 카메라 입력은 `camrod_sensing` 패키지가 담당하고, TF는 `camrod_sensor_kit` URDF가 관리한다.  
@@ -10,27 +9,86 @@ Isaac ROS GPU 파이프라인(NITROS zero-copy)으로 AprilTag를 검출하고, 
 
 ---
 
-## 시스템 구성
+## 도킹 시퀀스 (2-Phase)
+
+도킹은 두 단계로 구성된다.
+
+| Phase | 명칭 | 현황 |
+|-------|------|------|
+| Phase 1 | Nav2 자율 이동 → staging 위치 | **미구현** (설정 비활성 상태) |
+| Phase 2 | AprilTag 시각 도킹 → 충전 스테이션 정밀 접촉 | **구현 완료** |
+
+### Phase 1 — Navigate to Staging Pose
+
+`opennav_docking`의 `navigate_to_staging_pose` 기능을 이용해  
+Nav2 `/navigate_to_pose` action으로 로봇을 도킹 스테이션 앞 staging 위치까지 자율 이동한다.
+
+- `docks.yaml`의 dock 좌표 기준 `staging_x_offset` 거리만큼 전방 위치 계산
+- Nav2 `navigate_to_pose` → `SmacHybrid / NavFn` 플래너로 경로 생성
+- staging 도달 판정: `dock_prestaging_tolerance` 이내 도달 시 Phase 2로 전환
+- 실패 시 1회 재시도 후 `FailedToStage` 예외 발생 → ManualDock abort
+
+### Phase 2 — AprilTag Visual Docking
+
+후방 카메라로 AprilTag를 검출하고 EgoPolar 컨트롤러로 정밀 접근한다.
 
 ```
 camrod_sensing (econ_rear 카메라)
-  └─ /sensing/camera/econ_rear/image_raw  →  RectifyNode (isaac_ros_image_proc, GPU)
-                                               └─ AprilTagNode (isaac_ros_apriltag, CUDA/NITROS)
-                                                   └─ docking_apriltag_bridge
-                                                       └─ /docking/detected_dock_pose  (odom frame)
-                                                           └─ SimpleChargingDock.getRefinedPose()
-                                                               └─ opennav_docking (EgoPolar)
-                                                                   └─ /platform/cmd_vel  →  Agile-X Ranger
+  └─ /sensing/camera/econ_rear/image_raw
+       └─ RectifyNode (isaac_ros_image_proc, GPU/NITROS)
+            └─ AprilTagNode (isaac_ros_apriltag, CUDA)
+                 └─ /docking/apriltag/detections_raw
+                      └─ docking_apriltag_bridge
+                           └─ /docking/detected_dock_pose  (camera optical frame)
+                                └─ SimpleChargingDock.getRefinedPose()  (TF 변환 + EMA 필터)
+                                     └─ opennav_docking EgoPolar Controller
+                                          └─ /platform/cmd_vel  →  Agile-X Ranger
 ```
 
-**TF 트리**
+### Feedback 상태 흐름
 
 ```
-odom  ──(odom_yaw_corrector 또는 ESKF)──  base_link
-                                            ├─ camera_rear_link  (camrod_sensor_kit URDF)
-                                            │   └─ camera_rear   (optical frame)
-                                            └─ camera_front_link
-                                                └─ camera_front
+ManualDock Action Feedback (phase_label)
+  NAVIGATING_TO_STAGING  ← Phase 1: Nav2 이동 중
+  INITIAL_PERCEPTION     ← Phase 2: AprilTag 첫 검출 대기
+  DOCKING                ← Phase 2: EgoPolar 제어 중
+  WAIT_FOR_CHARGE        ← 도킹 완료, 충전 확인 대기
+  RETRY                  ← 실패 후 재시도
+```
+
+---
+
+## 시스템 구성
+
+### TF 트리
+
+```
+map ──(ESKF 위치추정)──  odom ──(odom_yaw_corrector 또는 ESKF)──  base_link
+                                                                    ├─ camera_rear_link  (camrod_sensor_kit URDF)
+                                                                    │   └─ camera_rear   (optical frame)
+                                                                    └─ camera_front_link
+                                                                        └─ camera_front
+```
+
+- **도킹 단독 실행**: `odom_yaw_corrector`가 `odom → base_link` TF 발행 (`enable_odom_corrector: true`)
+- **풀스택 연동**: ESKF가 `map → odom → base_link` TF 전체 담당 (`enable_odom_corrector: false`)
+
+### Phase 1+2 통합 아키텍처 (목표 상태)
+
+```
+[Phase 1]
+camrod_planning (Nav2)
+  └─ /navigate_to_pose action  →  SmacHybrid planner  →  /planning/cmd_vel_raw
+                                                              └─ cmd_vel_gate  →  /planning/cmd_vel  →  platform
+
+[Phase 2]
+opennav_docking (EgoPolar)
+  └─ /platform/cmd_vel  (cmd_vel_gate 우회, 저속 0.15 m/s)
+
+[전환 조건]
+staging 위치 도달 (dock_prestaging_tolerance: 0.3m)
+  → Nav2 goal cancel
+    → AprilTag INITIAL_PERCEPTION 시작
 ```
 
 ---
@@ -115,26 +173,42 @@ source install/setup.bash
 
 ## 실행
 
-### 도킹 스택 단독 실행 (Ranger 직결)
+### 도킹 스택 단독 실행 (Phase 2만, 수동 staging)
+
+로봇을 도킹 스테이션 앞 약 0.5~1.5m 위치에 수동 배치 후 실행한다.
 
 ```bash
 # 기본 (매뉴얼 도킹만 활성, odom_yaw_corrector TF 발행)
 ros2 launch camrod_docking docking.launch.py
 
-# 자동 도킹 활성화
-ros2 launch camrod_docking docking.launch.py enable_auto_docking:=true
-
-# 매뉴얼 도킹 비활성 (자동만)
-ros2 launch camrod_docking docking.launch.py enable_manual_docking:=false
+# CAMROD 풀스택(ESKF) 연동 시
+ros2 launch camrod_docking docking.launch.py enable_odom_corrector:=false
 ```
 
+### 도킹 테스트 런치 (카메라 + IMU + 도킹, Phase 2)
+
+카메라·IMU·도킹 모듈을 통합한 독립 테스트 환경. Nav2 미포함이므로 Phase 1 불가.
+
+```bash
+ros2 launch camrod_bringup docking_test.launch.py imu_model:=gq7
+```
+
+### CAMROD 풀스택 연동 (Phase 1+2, 목표 상태)
+
+Nav2(`camrod_planning`)와 ESKF(`camrod_localization`)가 함께 실행되어야 Phase 1이 동작한다.
 ### CAMROD Full-Stack Integration (Localization TF)
 
 HH_260617 - In the CAMROD full stack, the selected localization backend (EKF by default, ESKF optional) owns the `odom → base_link` TF, so `odom_yaw_corrector` TF publication must stay disabled.
 
 ```bash
+# 풀스택 bringup (planning + localization + sensing + docking)
+ros2 launch camrod_bringup bringup.launch.py
+
+# 도킹 단독 — 풀스택에서 docking 모듈 단독 재시작 시
 ros2 launch camrod_docking docking.launch.py enable_odom_corrector:=false
 ```
+
+> Phase 1 활성화를 위해 `config/manual_dock_server.yaml`의 `navigate_to_staging_pose: true`로 변경 필요. ([Phase 1 TODO](#phase-1-연동-todo) 참조)
 
 ### 런치 인수 전체 목록
 
@@ -148,8 +222,15 @@ ros2 launch camrod_docking docking.launch.py enable_odom_corrector:=false
 ### 매뉴얼 도킹 트리거 (CLI)
 
 ```bash
+# Phase 2만 (로봇이 이미 staging 위치에 있을 때)
 ros2 action send_goal /docking/manual_dock \
-  avg_msgs/action/ManualDock "{dock_id: 'home_dock'}"
+  avg_msgs/action/ManualDock \
+  "{dock_id: 'home_dock', max_staging_time: 0.0, dock_timeout_sec: 180.0}" --feedback
+
+# Phase 1+2 (로봇이 임의 위치에 있을 때, navigate_to_staging_pose: true 필요)
+ros2 action send_goal /docking/manual_dock \
+  avg_msgs/action/ManualDock \
+  "{dock_id: 'home_dock', max_staging_time: 120.0, dock_timeout_sec: 300.0}" --feedback
 ```
 
 ---
@@ -158,14 +239,34 @@ ros2 action send_goal /docking/manual_dock \
 
 | 파일 | 설명 |
 |------|------|
-| `camrod_docking/config/apriltag.yaml` | RectifyNode 해상도 + AprilTag 검출기 설정 (size, tag_family, CUDA) |
-| `camrod_docking/config/docking_server.yaml` | opennav_docking 서버 파라미터 (`/platform/cmd_vel` 등) |
-| `camrod_docking/config/controller.yaml` | EgoPolar 컨트롤러 게인 |
-| `camrod_docking/config/odom_yaw_corrector.yaml` | odom 보정기 설정 (Ranger: `use_firmware_yaw: true`) |
-| `camrod_docking/config/lifecycle_manager.yaml` | Nav2 라이프사이클 매니저 설정 |
-| `camrod_docking/config/docks.yaml` | 도킹 스테이션 위치 DB |
-| `camrod_docking/config/bridge_params.yaml` | AprilTag 브릿지 파라미터 |
-| `camrod_docking/config/manual_dock_server.yaml` | 매뉴얼 도킹 서버 파라미터 |
+| `config/apriltag.yaml` | RectifyNode 해상도 + AprilTag 검출기 설정 (size, tag_family, CUDA) |
+| `config/docking_server.yaml` | opennav_docking 서버 파라미터 (`fixed_frame`, `dock_prestaging_tolerance` 등) |
+| `config/controller.yaml` | EgoPolar 컨트롤러 게인 (`k_phi`, `k_delta`, `v_linear_max`) |
+| `config/odom_yaw_corrector.yaml` | odom 보정기 설정 (Ranger: `use_firmware_yaw: true`) |
+| `config/lifecycle_manager.yaml` | Nav2 라이프사이클 매니저 설정 |
+| `config/docks.yaml` | 도킹 스테이션 위치 DB (Phase 1 staging 좌표 포함) |
+| `config/bridge_params.yaml` | AprilTag 브릿지 파라미터 (`target_tag_id`, `filter_coef`) |
+| `config/manual_dock_server.yaml` | 매뉴얼 도킹 서버 파라미터 (`navigate_to_staging_pose`) |
+| `config/bt/dock_robot.xml` | DockRobot / UndockRobot BehaviorTree |
+
+### 핵심 파라미터 참조
+
+```yaml
+# docking_server.yaml
+controller_frequency: 40.0        # odom 40Hz와 일치 (50Hz → TF extrapolation 오류)
+fixed_frame: "odom"               # Phase 1 통합 시 "map"으로 변경 권장
+dock_prestaging_tolerance: 0.3    # Phase 1 완료 판정 거리 (m)
+dock_backwards: true              # 후방 카메라 사용 → 후진 도킹
+
+# SimpleChargingDock (apriltag_dock)
+staging_x_offset: -1.5           # dock 기준 staging 위치 (뒤쪽 1.5m)
+docking_threshold: 0.5           # 도킹 완료 판정 거리 (m)
+filter_coef: 0.3                 # EMA 응답성 (이전 0.1 → 느린 수렴)
+external_detection_rotation_pitch: 1.5708  # optical → nav 프레임 변환
+
+# manual_dock_server.yaml
+navigate_to_staging_pose: false  # Phase 1 활성화 스위치 (현재 비활성)
+```
 
 ---
 
@@ -177,15 +278,255 @@ ros2 action send_goal /docking/manual_dock \
 | 후방 카메라 info | `/sensing/camera/econ_rear/camera_info` |
 | 보정 이미지 (rectified) | `/sensing/camera/econ_rear/image_rect` |
 | AprilTag 검출 raw | `/docking/apriltag/detections_raw` |
+| AprilTag 검출 (진단용) | `/docking/apriltag/detections` |
 | 도킹 Pose | `/docking/detected_dock_pose` |
+| 매뉴얼 도킹 action | `/docking/manual_dock` (ManualDock) |
+| opennav 도킹 action | `/docking/dock_robot` (DockRobot) |
 | odom (입력) | `/odom` (Ranger CAN 출력) |
-| cmd_vel (출력) | `/platform/cmd_vel` |
+| cmd_vel Phase 1 | `/planning/cmd_vel_raw` → cmd_vel_gate → `/planning/cmd_vel` |
+| cmd_vel Phase 2 | `/platform/cmd_vel` (docking_server 직접 발행) |
+
+---
+
+## Phase 1 연동 TODO
+
+Phase 1 (Nav2 자율 이동 → staging) 활성화를 위해 필요한 작업 목록.
+
+### A. 전제조건 — 좌표 및 TF 인프라
+
+**A-1. 도킹 스테이션 staging 좌표 실측** _(즉시)_  
+`config/docks.yaml`의 `pose: [1.0, 0.0, 0.0]` → 실측값으로 교체.  
+staging 위치는 도크 기준 뒤쪽 ~1.5m, 후방 카메라로 태그 검출 가능한 지점.  
+좌표 프레임은 ESKF 리셋 영향을 받지 않는 `map` 프레임 사용 권장.
+
+```yaml
+# config/docks.yaml
+docks:
+  home_dock:
+    type: apriltag_dock
+    frame: map         # odom → map으로 변경 권장
+    pose: [x, y, yaw] # 실측값 입력
+```
+
+**A-2. fixed_frame → map 변경** _(높음)_  
+`config/docking_server.yaml`의 `fixed_frame: "odom"` → `"map"`.  
+이유: ESKF 리셋 시 odom 원점이 이동하므로 절대 좌표 기반 staging 위치가 틀어짐.  
+전제: ESKF가 `map → odom` TF를 제공해야 함 (풀스택에서 이미 제공).
+
+---
+
+### B. 런치 아키텍처 통합
+
+**B-1. Phase 1+2 통합 런치 작성** _(즉시)_  
+현재 `docking_test.launch.py`는 Nav2를 포함하지 않아 Phase 1 실행 불가.  
+아래 모듈을 포함하는 통합 런치 파일 작성 또는 `bringup.launch.py` 경로 확인.
+
+```
+camrod_sensing        (GNSS 포함)
+camrod_localization   (ESKF: map→odom TF 제공)
+camrod_planning       (Nav2: navigate_to_pose action 제공)
+camrod_docking        (enable_odom_corrector:=false)
+```
+
+**B-2. enable_odom_corrector 강제 false** _(높음)_  
+풀스택 실행 시 ESKF가 TF를 담당하므로 `odom_yaw_corrector` 중복 발행 방지.  
+`docking_test.launch.py`의 `enable_odom_corrector='true'` → 통합 런치에서 `false`로 덮어씀.
+
+---
+
+### C. 설정 변경
+
+**C-1. navigate_to_staging_pose 활성화** _(높음)_  
+`config/manual_dock_server.yaml`
+
+```yaml
+navigate_to_staging_pose: true   # false → true
+```
+
+**C-2. navigator_bt_xml 경로 설정** _(중간)_  
+`config/docking_server.yaml`에 파라미터 추가.  
+빈 문자열이면 opennav_docking 기본 BT 사용 (네비게이션 실패 처리 없음).
+
+```yaml
+/docking/docking_server:
+  ros__parameters:
+    navigator_bt_xml: ""   # 추가: 도킹 전용 BT 또는 기본값 유지
+```
+
+**C-3. max_staging_time 기본값 설정** _(중간)_  
+ManualDock goal의 `max_staging_time` 필드가 0이면 타임아웃 없음.  
+CLI 호출 및 UI에서 실용적 값(예: 120.0초) 전달하도록 명문화.
+
+---
+
+### D. cmd_vel 안전 경로 정비
+
+**D-1. Phase 1 중 cmd_vel_gate engage 보장** _(높음)_  
+Phase 1(Nav2 이동) 구간에서 `/planning/engage` 발행이 없으면 cmd_vel_gate가 차단되어 로봇 미동작.  
+도킹 시퀀스 진입 시 state_machine이 engage를 발행하는 경로 확인 또는 추가.
+
+**D-2. Phase 2 cmd_vel_gate 바이패스 정책 결정** _(낮음)_  
+Phase 2에서 docking_server가 `/platform/cmd_vel`에 직접 발행 → cost_stop / e-stop 안전 레이어 우회.  
+현재: 저속(v_linear_max: 0.15 m/s)으로 허용 중. 문서화 또는 cmd_vel_gate 경유로 변경.
+
+**D-3. Phase 전환 시 cmd_vel 경쟁 방지** _(중간)_  
+Phase 1 완료 후 opennav_docking이 Nav2 goal을 cancel하고 Phase 2 EgoPolar 루프 진입하는 순서에서  
+두 제어기가 동시에 cmd_vel을 발행하는 경쟁 조건 없는지 확인.
+
+---
+
+### E. 상태 머신 연동
+
+**E-1. RETURN 씨나리오 완료 → 도킹 트리거 연결** _(중간)_  
+`planning_state_machine_node.py`의 `require_docking_for_idle: false` → `true`로 변경 시  
+`/docking/is_charging` (Bool) 토픽 구독으로 도킹 완료 후 IDLE 전환.
+
+**E-2. /docking/is_charging 토픽 발행 구현** _(중간)_  
+`use_battery_status: false`이므로 충전 감지 토픽이 없음.  
+도킹 성공(ManualDock result.success=true) 후 Bool(True)를 발행하는 퍼블리셔 추가.
+
+**E-3. 도킹 중 Nav2 goal 차단** _(중간)_  
+Phase 1 실행 중 state_machine이 동시에 Nav2 goal 발행 시 충돌.  
+도킹 시퀀스 진입 시 state_machine의 goal 발행을 중단하는 인터록 추가.
+
+---
+
+### F. 검증 항목
+
+| 테스트 | 조건 | 기대 결과 |
+|--------|------|-----------|
+| Phase 1 단독 | 로봇 임의 위치, `navigate_to_staging_pose: true` | staging 위치까지 Nav2 자율 이동 |
+| Phase 1→2 전환 | staging 도달 후 | AprilTag 검출 시작, cmd_vel 스파이크 없음 |
+| Nav2 실패 리트라이 | staging 경로 장애물 | 1회 재시도 후 `FailedToStage`, ManualDock abort |
+| Undock | Phase 1+2 완료 후 | staging 위치로 후진, state_machine RETURN 전환 |
+
+---
+
+## Auto Docking (UI 제어) TODO
+
+UI 설정 탭의 **Auto Docking** 토글은 `camrod_ui`가 `/docking/auto_dock_enabled` (Bool) 토픽을 발행하도록 구현되어 있다.  
+해당 토픽을 소비하는 ROS2 측 로직은 아직 미구현이며, 아래 작업이 필요하다.
+
+### AA-1. planning_state_machine — 토픽 구독 추가 _(높음)_
+
+`planning_state_machine_node.py`에서 `/docking/auto_dock_enabled` 구독을 추가하고  
+플래그를 내부 상태(`self._auto_dock_enabled`)로 보관한다.
+
+```python
+# planning_state_machine_node.py 추가 예시
+self._auto_dock_enabled = False
+self.create_subscription(Bool, '/docking/auto_dock_enabled', self._on_auto_dock_enabled, 10)
+
+def _on_auto_dock_enabled(self, msg: Bool) -> None:
+    self._auto_dock_enabled = msg.data
+```
+
+### AA-2. 배터리 임계값 기반 자동 도킹 트리거 구현 _(높음)_
+
+`/battery_percentage` (Int32) 값을 감시하다가 임계값 이하로 떨어지면  
+`/docking/auto_dock_enabled` 플래그가 True일 때 자동으로 `/docking/manual_dock` 액션을 호출한다.
+
+구현 위치: `planning_state_machine_node.py` 또는 별도 `auto_dock_monitor_node.py`
+
+```python
+# 파라미터 예시 (auto_dock_monitor.yaml)
+auto_dock_battery_threshold: 20   # 배터리 20% 이하 시 자동 도킹 트리거
+auto_dock_id: "home_dock"         # 대상 도크 ID
+```
+
+**설계 결정 필요:**  
+- 배터리 모니터링을 state_machine에 통합할지, 독립 노드로 분리할지
+
+### AA-3. 미션 중 자동 도킹 충돌 처리 정책 결정 _(높음)_
+
+배송 미션(`RUNNING` 상태) 진행 중에 배터리 임계값에 도달하면 어떻게 처리할지 결정해야 한다.
+
+| 옵션 | 동작 | 비고 |
+|------|------|------|
+| A. 미션 우선 | 배송 완료 후 도킹 시도 | 극저 배터리 시 미션 실패 위험 |
+| B. 도킹 우선 | 미션 즉시 중단 → 도킹 | 미배송 상황 발생 |
+| C. 임계값 2단계 | 경고 임계(30%) + 강제 임계(10%) 구분 | 권장 |
+
+### AA-4. 도킹 완료 후 미션 복귀 로직 _(중간)_
+
+자동 도킹 → 충전 완료 후 원래 미션(목표 사이트)으로 복귀할지 여부 결정.  
+복귀 시 state_machine의 목표 사이트 정보를 도킹 진입 전에 보관해야 한다.
+
+`/docking/is_charging` (Bool) 토픽 또는 ManualDock `result.success` 콜백으로 충전 완료를 감지한다.  
+→ [알려진 설계 이슈 E-2](#medium-dockingis_charging-토픽-발행-미구현) 항목과 연계.
+
+### AA-5. 검증 항목
+
+| 테스트 | 조건 | 기대 결과 |
+|--------|------|-----------|
+| 토픽 연동 | UI 토글 ON → `ros2 topic echo /docking/auto_dock_enabled` | `data: true` 수신 |
+| 배터리 트리거 | `auto_dock_enabled=true`, 배터리 모킹 → 임계값 이하 | ManualDock goal 자동 전송 |
+| 미션 중 트리거 | RUNNING 상태에서 배터리 임계값 도달 | 결정된 정책대로 동작 |
+| 토글 OFF | 자동 도킹 진행 중 UI에서 OFF | 다음 트리거 사이클부터 비활성 (진행 중 액션은 계속) |
 
 ---
 
 ## 알려진 설계 이슈
 
-코드 리뷰를 통해 파악된 이슈 목록. 우선순위 순으로 정렬.
+### [HIGH] Nav2 미션 중 매뉴얼 도킹 트리거 시 cmd_vel 경쟁
+
+**현상:** Nav2 미션이 활성(`/planning/engage=True`) 상태에서 매뉴얼 도킹을 트리거하면,
+Nav2 컨트롤러와 opennav_docking EgoPolar 컨트롤러가 동시에 `/platform/cmd_vel`에 발행하여
+로봇 동작이 예측 불가능해진다.
+
+**cmd_vel 경로 분석:**
+
+```
+경로 A: Nav2 (정상 주행)
+  Nav2 → /planning/cmd_vel_raw
+       → planning_cmd_vel_gate_node  ← engage + estop 체크
+       → /planning/cmd_vel
+       → (실 하드웨어: 직접 연결, platform gate 비활성)
+       → /platform/cmd_vel → Ranger CAN
+
+경로 B: opennav_docking
+  EgoPolar Controller → /platform/cmd_vel (직접, 게이트 전혀 없음)
+                      → Ranger CAN
+```
+
+**각 안전장치가 무력화되는 이유:**
+
+| 안전장치 | 무력화 이유 |
+|----------|------------|
+| `/planning/engage` | planning gate(경로 A)만 제어. 경로 B는 이 게이트 자체를 우회 |
+| `/platform/status/estop` | planning gate의 estop 입력으로 경로 A만 차단. 경로 B 미구독 |
+| platform cmd_vel gate | `platform/cmd_vel_gate_enable: false`로 실 하드웨어에서 비활성 |
+| `active_` 플래그 | 두 번째 도킹 goal reject 전용. Nav2와의 cmd_vel 경쟁과 무관 |
+
+**재현 조건:**
+```bash
+# 1. bringup 풀스택 실행 (Nav2 미션 진행 중, engage=True)
+# 2. UI에서 매뉴얼 도킹 버튼 클릭
+# → Nav2(linear.x=+0.5)와 docking(linear.x=-0.2)이 교번 발행 → jitter
+```
+
+**개선 방향 (인터록 TODO):**
+
+1. `manual_dock_server_node.cpp`의 goal execute 함수 초반에 `/planning/engage=False` 발행  
+   → planning gate가 Nav2 cmd_vel을 즉시 차단 (가장 빠른 수정)
+
+   ```cpp
+   // manual_dock_server_node.cpp — execute() 시작 직후
+   auto engage_msg = std_msgs::msg::Bool();
+   engage_msg.data = false;
+   engage_pub_->publish(engage_msg);
+   // ... 도킹 완료/실패 후 원래 상태로 복귀
+   ```
+
+2. (중기) `planning_state_machine_node.py`에 `STATE_DOCKING` 추가:  
+   - 진입 시: `nav2.cancel_goal()` + `engage=False`  
+   - 완료 시: 이전 상태 복귀 + `engage=True`  
+   → AA-3 TODO 미션 중 자동 도킹 충돌 처리 정책과 동일한 해법
+
+> **현재 docking_test.launch.py 단독 테스트 환경에서는 Nav2 미션이 없으므로 발생하지 않음.**  
+> Phase 1 통합(Nav2 + 도킹 풀스택) 전에 반드시 인터록 구현 후 진행할 것.
+
+---
 
 ### [HIGH] manual_dock_server_node — lifecycle 미지원
 
@@ -210,6 +551,18 @@ ros2 action send_goal /docking/manual_dock avg_msgs/action/ManualDock "{dock_id:
 
 ---
 
+### [HIGH] Phase 1 미구현 — navigate_to_staging_pose 비활성
+
+**현상:** `manual_dock_server.yaml`의 `navigate_to_staging_pose: false`로 설정되어 있으며,
+`docking_test.launch.py`에 Nav2가 포함되어 있지 않아 Phase 1 자율 이동이 동작하지 않는다.
+현재는 로봇을 수동으로 staging 위치에 배치해야만 도킹을 시작할 수 있다.
+
+**영향:** 완전 자율 도킹 시퀀스 미지원. 운영자가 매번 수동 개입 필요.
+
+**개선 방향:** [Phase 1 연동 TODO](#phase-1-연동-todo) 항목 순서대로 진행.
+
+---
+
 ### [MEDIUM] target_tag_id 단일 태그만 지원
 
 **현상:** `docking_apriltag_bridge`의 `target_tag_id` 파라미터가 정수 1개로 고정되어 있어,
@@ -227,6 +580,17 @@ target_tag_id: 3   # tag36h11 family ID — 단일 값만 허용
 **개선 방향:**
 - `target_tag_id` 를 리스트(`int[]`)로 확장하거나
 - `/docking/target_tag_id` 토픽 구독으로 런타임 전환 지원
+
+---
+
+### [MEDIUM] fixed_frame odom 사용 — ESKF 리셋 시 staging 좌표 틀어짐
+
+**현상:** `docking_server.yaml`의 `fixed_frame: "odom"`과 `docks.yaml`의 `frame: odom` 조합에서
+ESKF가 리셋되거나 초기화되면 odom 원점이 이동하여 staging 좌표가 실제 위치와 달라진다.
+
+**영향:** Phase 1 활성화 시 재시작 후 첫 도킹에서 staging 위치 오류 가능성.
+
+**개선 방향:** A-1, A-2 TODO 항목 참조 (`map` 프레임으로 전환).
 
 ---
 

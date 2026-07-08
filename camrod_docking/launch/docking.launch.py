@@ -25,6 +25,7 @@ def generate_launch_description():
     enable_manual_docking = LaunchConfiguration('enable_manual_docking')
     enable_apriltag = OrSubstitution(enable_auto_docking, enable_manual_docking)
     cmd_vel_topic = LaunchConfiguration('cmd_vel_topic')
+    nav_to_pose_action = LaunchConfiguration('nav_to_pose_action')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -57,6 +58,15 @@ def generate_launch_description():
             default_value='true',
             description='Enable odom_yaw_corrector TF broadcaster. '
                         'Set false when running with CAMROD full stack localization TF'
+        ),
+        # YH_260702 (Stage 1-3) - opennav_docking navigator action remap.
+        # navigator.cpp 가 상대경로 "navigate_to_pose" 로 클라이언트를 생성 → docking 네임스페이스
+        # 하에서 /docking/navigate_to_pose 를 탐색하나 실제 서버는 /planning/navigate_to_pose 에 있음.
+        # remap 없이는 Phase 1 staging 이 FailedToStage 로 즉시 실패.
+        DeclareLaunchArgument(
+            'nav_to_pose_action',
+            default_value='/planning/navigate_to_pose',
+            description='Nav2 navigate_to_pose action name that opennav_docking calls for Phase 1 staging'
         ),
 
         # 카메라 TF: camrod_sensor_kit URDF 가 담당
@@ -124,6 +134,24 @@ def generate_launch_description():
                             {'input_detection_topic': TOPIC_RAW_DETECTIONS}],
             ),
 
+            # ── NavigateToPose 릴레이 ────────────────────────────────────────────
+            # YH_260706: opennav_docking 내부 navigator 는 상대명 "navigate_to_pose" 로
+            # 클라이언트를 만들어 /docking/navigate_to_pose 를 찾지만, 노드 레벨 remap
+            # (아래 docking_server 의 navigate_to_pose:=...) 이 opennav 내부 클라이언트에는
+            # 적용되지 않아(apt 바이너리, 액션명 파라미터 없음) Phase 1 이 즉시
+            # FailedToStage(903) 로 실패한다. 이 릴레이가 /docking/navigate_to_pose 서버를
+            # 제공하고 실제 Nav2 서버(nav_to_pose_action)로 goal/feedback/result/cancel 중계.
+            Node(
+                package='camrod_docking',
+                executable='navigate_to_pose_relay',
+                name='navigate_to_pose_relay',
+                output='screen',
+                parameters=[
+                    {'input_action': 'navigate_to_pose'},   # → /docking/navigate_to_pose
+                    {'output_action': nav_to_pose_action},  # → /planning/navigate_to_pose
+                ],
+            ),
+
             # ── DockingServer ────────────────────────────────────────────────────
             # docking_server.yaml  : 서버 전역 설정 + SimpleChargingDock 플러그인
             # controller.yaml      : EgoPolar 게인
@@ -139,7 +167,14 @@ def generate_launch_description():
                     {'dock_database': cfg('docks.yaml')},
                     {'cmd_vel_topic': cmd_vel_topic},
                 ],
-                remappings=[('cmd_vel', cmd_vel_topic)],
+                remappings=[
+                    ('cmd_vel', cmd_vel_topic),
+                    # YH_260702 (Stage 1-3) - Phase 1 staging navigation.
+                    # NOTE: opennav 내부 navigator 클라이언트엔 이 remap 이 적용되지 않아
+                    # 위 navigate_to_pose_relay 로 /docking/navigate_to_pose 를 제공한다.
+                    # (이 remap 은 무해하게 유지 — 다른 navigate_to_pose 사용처 대비)
+                    ('navigate_to_pose', nav_to_pose_action),
+                ],
                 respawn=True,
                 respawn_delay=2.0,
             ),

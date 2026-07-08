@@ -2,17 +2,17 @@
 # This file is the single source of truth for map path + origin offsets.
 /**:
   ros__parameters:
-    # Lanelet2 OSM path for the active C-track map.
+    # Lanelet2 OSM path for the active camping-site (park) map.
     # Use an absolute path so bringup/module launches load the same file.
-    # map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps_(c_track_test).osm"
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps_(c_track_test_moved).osm"
-    map_profile: "copy_c_track"
+    # c_track backup: "/home/nvidia/camrod_ws/src/lanelet2_maps_(c_track_test_moved).osm" (map_profile: copy_c_track)
+    map_path: "/home/nvidia/camrod_docking_test_Ws/src/lanelet2_maps_(copy_park).osm"
+    map_profile: "copy_park"
 
     # WGS84 origin used by LocalCartesian projectors.
-    # HH_260629: Back-calculated from this OSM's local_x/local_y tags so the map
-    # frame stays in local meter coordinates instead of a tens-of-km offset.
-    offset_lat: 36.729291686
-    offset_lon: 127.442957302
+    # Camping-site (park) map origin (from map_projector_info (copy_park).yaml).
+    # c_track backup: 36.729291686 / 127.442957302 / 0.0
+    offset_lat: 36.8435737
+    offset_lon: 128.0925646
     offset_alt: 0.0
 
     # Optional UTM-origin metadata for downstream tools that prefer metric origin fields.

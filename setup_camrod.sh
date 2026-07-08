@@ -191,6 +191,28 @@ REQUIRED_SYS_PKGS=(
   # non-interactive field setup sessions.
   ros-humble-nav2-map-server        # Nav2 map server for planning bringup.
   ros-humble-behaviortree-cpp-v3    # Nav2 BT navigator runtime.
+  # YH_260706: Global planners listed in planner_server planner_plugins (nav2_base.yaml).
+  #   Missing → planner_server on_configure throws (pluginlib class not found) and rolls back
+  #   → planning lifecycle never activates → /planning/navigate_to_pose has no server
+  #   → docking Phase 1 aborts instantly with error 903 (FAILED_TO_STAGE).
+  ros-humble-nav2-navfn-planner       # planner_plugins: "NavFn"
+  ros-humble-nav2-theta-star-planner  # planner_plugins: "ThetaStar"
+  # YH_260706: Controllers listed in controller_server controller_plugins (nav2_base.yaml).
+  #   Same failure mode as the planners above — a missing controller plugin makes
+  #   controller_server on_configure throw and roll back, so planning never activates.
+  #   (RPP is vendored/built in camrod_planning/external; Graceful is nav2-graceful-controller above.)
+  ros-humble-nav2-mppi-controller          # controller_plugins: "MPPI" (CAMROD default)
+  ros-humble-nav2-dwb-controller           # controller_plugins: "DWB"
+  ros-humble-nav2-rotation-shim-controller # controller_plugins: "RotationShim"
+  # YH_260706: Recovery behaviors (spin/backup/wait/drive_on_heading). nav2_lanelet.launch.py
+  #   only launches behavior_server when this package is present; the nav-to-pose BT (default
+  #   and CAMROD's) references <Spin>/<BackUp>, so without it bt_navigator on_activate throws
+  #   "Action server spin not available" and stays inactive → navigate_to_pose unusable.
+  ros-humble-nav2-behaviors               # behavior_server recovery actions
+  # YH_260706: smoother_server(smooth_path). nav2_lanelet.launch.py launches it only when
+  #   present; CAMROD nav-to-pose BT calls <SmoothPath>, so without it bt_navigator on_activate
+  #   throws "Action server smooth_path not available" and stays inactive.
+  ros-humble-nav2-smoother                # smoother_server (smooth_path action)
   ros-humble-controller-manager     # ugv_sdk controller dependency.
   ros-humble-rviz2                  # RViz2 for operator and sim bringup.
   ros-humble-rviz-common            # RViz2 common libraries.
