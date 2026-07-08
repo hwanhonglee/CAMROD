@@ -49,6 +49,12 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p run_obstacle_replan:=true \
   -p report_file:=/tmp/camrod_sim_validation_manual.json
 
+# Outdoor field snapshot after real bringup is running
+ros2 run camrod_bringup field_test_tool.sh snapshot
+
+# Verify bringup/package/install config synchronization
+ros2 run camrod_bringup field_test_tool.sh config
+
 # Camping-site route + site maneuver + drop-zone reverse parking validation
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p skip_manual_goal:=true \
@@ -69,6 +75,7 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
 > HH_260706 - Field safety tuning adds short near-body side/rear dynamic guards in `planning_cmd_vel_gate` and reduces perception-marker cost radius so detected vehicles do not create oversized circular cost disks.
 > HH_260706 - v2.0.1 keeps `camrod_bringup/config/sensing/*` synchronized with package-level sensing configs for GNSS, LiDAR cost grid, and ground segmentation.
 > HH_260707 - Runtime-load update keeps the full stack enabled while reducing internal backlog/marker/debug-image work: perception sync queue 8, debug-image subscriber gating, LiDAR/cost-grid cached rebuild gates, seven-radar sim heartbeat, and filtered system diagnostic input.
+> HH_260708 - Outdoor field testing now has `field_test_tool.sh` plus [docs/field_test_runbook.md](docs/field_test_runbook.md). Use it to check config sync, log bringup, capture diagnostics/Hz/CPU snapshots, close/open software gates, and preserve evidence for radar, LiDAR, perception-cost, GNSS recovery, path, campsite, and drop-zone issues.
 
 ---
 

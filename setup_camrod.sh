@@ -29,6 +29,9 @@
 # HH_260707: runtime-load and DDS/backlog reductions are code/config/runtime
 #   changes installed by colcon_build.sh. Do not add launch/test side effects
 #   here; this script remains dependency-only.
+# HH_260708: outdoor field-test helpers are installed by colcon_build.sh as
+#   camrod_bringup scripts/docs. setup stays dependency-only so field testing
+#   never starts processes during machine setup.
 # HH_260702: setup is still dependency-only. Do not add runtime launch/test
 #   side effects here; use colcon_build.sh for install sync and
 #   camrod_bringup/sim_validation_runner.py for deterministic manual, obstacle,
