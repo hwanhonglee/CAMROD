@@ -1,12 +1,11 @@
-rectify_node:
+/docking/rectify_node:
   ros__parameters:
-    output_width: 960
-    output_height: 540
+    output_width: 1920
+    output_height: 1080
 
-apriltag:
+/docking/apriltag:
   ros__parameters:
-    # 실제 태그 실측값으로 결정 필요 (현재 CAMROD_DOCKING 기준)
-    size: 0.160         # tag36h11 마커 외곽 변 길이 [m]
+    size: 0.160         # tag36h11 마커 외곽 변 길이 [m] — 실측값으로 교체 필요
     max_tags: 64
     tag_family: tag36h11
     backends: CUDA

@@ -1,12 +1,37 @@
-# Manual docking 테스트용 설정 (Nav2/map 없음)
-# frame: odom — 로봇 시작 위치 기준 좌표계
-# pose: [x, y, yaw_rad]
-#   navigate_to_staging_pose: false 이므로 이 좌표는 staging 이동에 사용되지 않음.
-#   SimpleChargingDock이 AprilTag 검출 pose를 직접 사용하므로 실제 스테이션 좌표
-#   정확도보다 tag 검출 가능 거리(~0.7m 이내)에 로봇을 수동 배치하는 것이 중요.
-# TODO: 실제 도킹 스테이션 설치 위치 확정 후 측정값으로 교체
+# 도킹 스테이션 위치 DB
+#
+# pose: [x, y, yaw_rad] — 도킹 스테이션(AprilTag 마커/접촉점) "자체"의 위치.
+#   staging(로봇 진입 대기) 위치가 아님. opennav_docking 이 이 pose 에서
+#   docking_server.yaml 의 staging_x_offset(-0.7m) 만큼 뒤로 뺀 지점을 Nav2 목표로 자동 계산.
+#   (검증: opennav_docking SimpleChargingDock::getStagingPose)
+#
+# frame:
+#   - "odom": Phase 2 단독 테스트 (navigate_to_staging_pose:false, pose 미사용)
+#   - "map" : Phase 1 (Nav2 staging) — docking_server.yaml 의 fixed_frame(map)과 일치시킬 것
+#
+# YH_260702 (Stage 1-2, 구조만): frame 을 map 기준으로 전환.
+# 현재 pose 는 sim 테스트용 임의 좌표 (RViz 2D Goal Pose 로 지정).
+# TODO(실측): 실차에서는 로봇을 스테이션에 밀착 후 /localization/pose(map) 를 읽어 접촉점 기준 좌표로 교체.
 docks:
   home_dock:
     type: apriltag_dock
-    frame: odom
-    pose: [1.0, 0.0, 0.0]  # TODO: 실제 odom 기준 스테이션 위치로 교체
+    frame: map
+    # park 맵 camping_site_1(dz_area_1353) 중심. yaw_deg 23.7451 = 0.4145 rad.
+    # YH_260707 실험: 이 좌표는 staging 이 lanelet 경계에서 ~2.7m 떨어져 있어 LaneletRoute
+    #   최종 접근이 불안정 → INITIAL_PERCEPTION 전환이 flaky(3회 중 1~2회).
+    #   staging 을 lanelet 도달점에 맞춘 임의 좌표(34.221,-48.608)로는 10/10 전환 확인됨.
+    #   → 신뢰성 있는 도킹을 위해 실차에서는 "실제 충전기 위치 + 그 앞 staging 이 차선망에서
+    #     도달 가능"하도록 dock 배치가 필요(맵/배치 이슈). 아래는 의미상 기준값(camping_site_1).
+    pose: [37.1358, -47.4945, 0.4145]  # [x,y,yaw_rad] park camping_site_1 중심
+    # sim 신뢰성 검증용 대안(도달점 역산): [34.221, -48.608, 0.4145]
+    # c_track: [25.51, -5.24, 0.4145]
+
+  # ── (주석) c_track 맵 주차장 dock — c_track 맵으로 되돌릴 때 아래 주석 해제 ──────
+  #   map_info.yaml 을 c_track(copy_c_track)으로 되돌린 뒤 사용할 것.
+  #   좌표 출처: lanelet2_maps_(c_track_test_moved).osm 의 parking_space(way 33941) 중심.
+  #   주차 구역 centroid ≈ (-13.03, -84.23), 대표 스톨 중심 (-10.01, -88.94), stall-line yaw≈0.
+  #   ※ yaw(도킹 진입 방향)와 lanelet snap(라우팅)은 활성화 시 RViz 로 검증 후 미세조정 필요.
+  # parking_dock:
+  #   type: apriltag_dock
+  #   frame: map
+  #   pose: [-10.010, -88.940, 0.0]  # [x, y, yaw_rad] c_track 주차장 대표 스톨 중심
