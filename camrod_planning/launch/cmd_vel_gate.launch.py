@@ -130,10 +130,10 @@ def generate_launch_description():
         # only when dynamic source attribution owns the high-cost cell.
         DeclareLaunchArgument('cmd_vel_gate_side_rear_cost_stop', default_value='true'),
         DeclareLaunchArgument('cmd_vel_gate_body_near_dynamic_stop', default_value='true'),
-        DeclareLaunchArgument('cmd_vel_gate_body_near_side_lookahead_m', default_value='0.75'),
-        DeclareLaunchArgument('cmd_vel_gate_body_near_rear_lookahead_m', default_value='0.55'),
-        DeclareLaunchArgument('cmd_vel_gate_body_near_maneuver_side_lookahead_m', default_value='0.55'),
-        DeclareLaunchArgument('cmd_vel_gate_body_near_maneuver_rear_lookahead_m', default_value='0.45'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_side_lookahead_m', default_value='1.20'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_rear_lookahead_m', default_value='0.80'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_maneuver_side_lookahead_m', default_value='1.20'),
+        DeclareLaunchArgument('cmd_vel_gate_body_near_maneuver_rear_lookahead_m', default_value='0.80'),
         DeclareLaunchArgument('cmd_vel_gate_side_cost_threshold', default_value='85'),
         DeclareLaunchArgument('cmd_vel_gate_side_lookahead_m', default_value='1.2'),
         # HH_260623 - Side scan width covers full body length plus front/rear margins.

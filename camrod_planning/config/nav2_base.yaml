@@ -40,6 +40,13 @@ planner_server:
       max_snap_distance_m: 8.0
       interpolation_resolution_m: 0.20
       same_lane_forward_epsilon_m: 0.30
+      # HH_260707 - Keep LaneletRoute output on the 2D planning plane.
+      flatten_path_z: true
+      # HH_260708: Build the heavy Lanelet2 map/routing graph in the background.
+      # This keeps Nav2 lifecycle bringup responsive; the first plan waits here
+      # if it arrives before the route graph is ready.
+      async_initialization: true
+      async_initialization_plan_wait_timeout_s: 60.0
       # HH_260619: Exact route lanelet IDs feed route-aware cost grids at merge areas.
       route_lanelet_ids_topic: "/planning/route_lanelet_ids"
 

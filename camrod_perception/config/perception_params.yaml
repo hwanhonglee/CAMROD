@@ -14,6 +14,14 @@
     out_det3d_topic:     "/perception/camera_lidar/detections_3d"
     out_markers_topic:   "/perception/camera_lidar/markers"
     out_euclidean_topic: "/perception/camera_lidar/euclidean_markers"
+    # HH_260707: Keep fusion outputs enabled, but avoid stale sync backlog and
+    # debug-image decode/draw work unless an operator UI/RViz is consuming it.
+    sync_queue_size: 8
+    debug_image_publish_rate_hz: 2.0
+    debug_draw_stride: 4
+    publish_debug_image_without_subscribers: false
+    image_width: 1920
+    image_height: 1080
     # HH_260522: unified fusion filter selector.
     #   camera_bbox/enabled/on: keep only points inside camera detections
     #   pass_through/disabled/off/none: ignore camera detections and publish projected LiDAR points

@@ -63,11 +63,12 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
 > HH_260630 - UI manual engage and camping-site destination buttons publish `/platform/drive_enable` together with the relevant planning engage latch. `/platform/set_enabled` remains a CLI/debug fallback, not the normal operator path.
 > HH_260630 - Package config trees are synchronized into `camrod_bringup/config`; bringup passes `config/system/diagnostics` to `camrod_system` so the synchronized system checker profiles are actually used.
 > HH_260702 - Latest sim validation passed baseline rates, all radar directions, LiDAR/Radar directional cost-stop, manual goal navigation, status-only obstacle blockage, campsite maneuver, return-to-drop-zone, and drop-zone reverse parking. Full real-sensor bringup with RViz/UI/voice/cameras/YOLO/docking enabled is a load probe; use the lighter field profile for drive validation.
-> HH_260703 - Field patch adds GNSS `/dev/ttyACM1` config sync, cost-stop latch, stale inflation-grid fail-closed behavior, live LiDAR/Radar cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning for crab safety, and diagnostics policy that keeps non-motion camera/raw-LiDAR/costmap issues visible without forcing every transient into planning `ERROR_STOP`.
+> HH_260708 - Field patch keeps GNSS on the operator-verified `/dev/ttyACM0` config, adds cost-stop latch, stale inflation-grid fail-closed behavior, live LiDAR/Radar cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning for crab safety, and diagnostics policy that keeps non-motion camera/raw-LiDAR/costmap issues visible without forcing every transient into planning `ERROR_STOP`.
 > HH_260706 - Field tuning keeps route-heading safety enabled with slower angular correction and raises campsite crab speed to reduce startup oscillation and long campsite entry time.
 > HH_260706 - Bringup binds the operator UI to `0.0.0.0:8010` by default so the web UI is reachable through the robot IP; standalone `camrod_ui` launch can still override `ui_host`.
 > HH_260706 - Field safety tuning adds short near-body side/rear dynamic guards in `planning_cmd_vel_gate` and reduces perception-marker cost radius so detected vehicles do not create oversized circular cost disks.
 > HH_260706 - v2.0.1 keeps `camrod_bringup/config/sensing/*` synchronized with package-level sensing configs for GNSS, LiDAR cost grid, and ground segmentation.
+> HH_260707 - Runtime-load update keeps the full stack enabled while reducing internal backlog/marker/debug-image work: perception sync queue 8, debug-image subscriber gating, LiDAR/cost-grid cached rebuild gates, seven-radar sim heartbeat, and filtered system diagnostic input.
 
 ---
 
@@ -333,10 +334,10 @@ flowchart TD
 | `planning_cmd_vel_gate_cost_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `planning_cmd_vel_gate_front_lookahead_min_m` | `1.30137` | HH_260623 - measured front body extent plus 0.10 m margin |
 | `planning_cmd_vel_gate_body_near_dynamic_stop` | `true` | HH_260706 - keep short side/rear dynamic stops active during forward path-following |
-| `planning_cmd_vel_gate_body_near_side_lookahead_m` | `0.75` | HH_260706 - near-body side stop distance |
-| `planning_cmd_vel_gate_body_near_rear_lookahead_m` | `0.55` | HH_260706 - near-body rear stop distance |
-| `planning_cmd_vel_gate_body_near_maneuver_side_lookahead_m` | `0.55` | HH_260706 - reduced side stop distance for crab/reverse maneuvers |
-| `planning_cmd_vel_gate_body_near_maneuver_rear_lookahead_m` | `0.45` | HH_260706 - reduced rear stop distance for crab/reverse maneuvers |
+| `planning_cmd_vel_gate_body_near_side_lookahead_m` | `1.20` | HH_260707 - near-body side stop distance, sized to right/left radar hit geometry |
+| `planning_cmd_vel_gate_body_near_rear_lookahead_m` | `0.80` | HH_260707 - near-body rear stop distance |
+| `planning_cmd_vel_gate_body_near_maneuver_side_lookahead_m` | `1.20` | HH_260707 - side stop distance for crab/reverse maneuvers |
+| `planning_cmd_vel_gate_body_near_maneuver_rear_lookahead_m` | `0.80` | HH_260707 - rear stop distance for crab/reverse maneuvers |
 | `planning_cmd_vel_gate_side_corridor_width_m` | `1.69160` | HH_260623 - measured body length plus 0.10 m front/rear margin |
 | `planning_cmd_vel_gate_rear_corridor_width_m` | `1.27` | HH_260623 - measured body width plus 0.10 m margin per side |
 | `planning_cmd_vel_gate_gnss_recovery_min_source_s` | `1.5` | HH_260707 - ignore short GNSS/NTRIP mode flaps before recovery hold |
@@ -408,16 +409,16 @@ Useful parameters:
 | `camping_timeout_s` | `120.0` | Camping-site flow timeout |
 | `camping_wait_drop_zone` | `false` | Keep the camping check running after campsite `DONE` until drop-zone parking reaches `PARKED` |
 
-HH_260701 - Latest sim validation evidence:
+HH_260707 - Latest sim validation evidence:
 
 | Result | Evidence |
 |---|---|
-| PASS | `baseline_hz`: localization 20 Hz, wheel odom 20 Hz, LiDAR/radar cost grids 10 Hz, inflation 6 Hz |
-| PASS | `radar_direction_hz`: all seven radar topics published at about 10 Hz |
+| PASS | `baseline_hz`: localization 20 Hz, wheel odom 20 Hz, LiDAR/radar cost grids 10 Hz, inflation about 6 Hz |
+| PASS | `radar_direction_hz`: front1/front2/left1/left2/right1/right2/rear all published at about 10 Hz in sim |
 | PASS | `directional_cost_stop`: front/left/right/rear LiDAR, radar, and combined fake obstacles all forced `planning_cmd_max=0.0` |
-| PASS | `obstacle_replan`: route obstacle produced `BLOCKED` / `BLOCKED_HOLD` without selecting a fallback planner |
-| Needs investigation | `manual_goal_nav`: global/local paths and Nav2 success were observed, but `/planning/cmd_vel` stayed at 0.0 and simulated movement was only about 0.02 m |
-| Needs investigation | full `camping_site_smoke`: campsite phases reached `ALIGN_RETURN_YAW`, `CRAB_OUT`, and `DONE`, but the automated full roundtrip did not observe final drop-zone `PARKED` before the planner stack became unstable |
+| PASS | `manual_goal_nav`: lanelet global/local paths, nonzero `/planning/cmd_vel`, simulated movement about 3.9 m, and Nav2 success |
+| PASS | `obstacle_replan`: route obstacle produced blockage status while keeping `planner_selector=LaneletRoute` and avoiding unexpected fallback global-path shape changes |
+| PASS | `camping_site_smoke`: route goal reached, crab-in, rotate 180, unload wait, crab-out, return-to-drop-zone, drop-zone yaw alignment, reverse approach, and `PARKED` all observed |
 
 Use this runner as a regression harness, not as a claim that every outdoor
 driving scenario is fully validated. A field run still needs localization
@@ -482,7 +483,7 @@ real vehicle motion.
 | `config/sensing/lidar/cost_grid.yaml` | LiDAR cost-grid overrides |
 | `config/sensing/radar/cost_grid.yaml` | Radar cost-grid overrides |
 | `config/sensing/inflation_cost_grid.yaml` | Merged inflation cost-grid overrides |
-| `config/sensing/gnss/zed_f9p_rover.yaml` | u-blox ZED-F9P GNSS driver params; HH_260703 - current field device `/dev/ttyACM1` |
+| `config/sensing/gnss/zed_f9p_rover.yaml` | u-blox ZED-F9P GNSS driver params; HH_260708 - current field device `/dev/ttyACM0`, intentionally not by-id |
 | `config/sensing/gnss/ntrip_client.yaml` | NTRIP client params |
 | `config/sensing/imu/microstrain_cv7.yaml` | Microstrain CV7 IMU driver params |
 | `config/sensing/imu/microstrain_gq7.yaml` | Microstrain GQ7 IMU driver params |

@@ -173,6 +173,8 @@ void Lanelet2MapNode::loadParameters()
     "progressive_visualization_lightweight_local", true);
   progressive_visualization_lightweight_full_ = this->declare_parameter<bool>(
     "progressive_visualization_lightweight_full", false);
+  progressive_visualization_publish_detailed_full_ = this->declare_parameter<bool>(
+    "progressive_visualization_publish_detailed_full", false);
   visualization_publish_raw_points_ = this->declare_parameter<bool>(
     "visualization_publish_raw_points", false);
   debug_timing_ = this->declare_parameter<bool>("debug_timing", true);
@@ -395,6 +397,7 @@ void Lanelet2MapNode::scheduleDetailedFullVisualization()
 {
   if (!progressive_visualization_enable_ ||
     !progressive_visualization_lightweight_full_ ||
+    !progressive_visualization_publish_detailed_full_ ||
     progressive_detailed_full_visualization_published_ ||
     progressive_visualization_detailed_full_delay_s_ <= 0.0)
   {

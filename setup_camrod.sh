@@ -26,6 +26,9 @@
 #   - planning soft-estop wiring is built/installed by colcon_build.sh.
 # HH_260706: v2.0.1 UI/IP and adaptive safety tuning are config/runtime changes
 #   installed by colcon_build.sh; setup remains dependency-only.
+# HH_260707: runtime-load and DDS/backlog reductions are code/config/runtime
+#   changes installed by colcon_build.sh. Do not add launch/test side effects
+#   here; this script remains dependency-only.
 # HH_260702: setup is still dependency-only. Do not add runtime launch/test
 #   side effects here; use colcon_build.sh for install sync and
 #   camrod_bringup/sim_validation_runner.py for deterministic manual, obstacle,

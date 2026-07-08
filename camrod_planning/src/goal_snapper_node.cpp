@@ -432,6 +432,7 @@ private:
   {
     latest_cost_grid_ = *msg;
     has_latest_cost_grid_ = true;
+    ++cost_grid_revision_;
     rebuildCostGridComponent();
   }
 
@@ -1084,8 +1085,6 @@ private:
     if (!restrict_to_cost_grid_component_) {
       return;
     }
-    has_cost_grid_component_ = false;
-    cost_grid_component_mask_.clear();
     if (!has_latest_cost_grid_ || !has_latest_current_pose_) {
       return;
     }
@@ -1096,12 +1095,16 @@ private:
     if (width <= 0 || height <= 0 || grid.info.resolution <= 0.0 ||
       grid.data.size() != static_cast<size_t>(width * height))
     {
+      has_cost_grid_component_ = false;
+      cost_grid_component_mask_.clear();
       return;
     }
 
     int start_x = 0;
     int start_y = 0;
     if (!worldToCostGridCell(latest_current_pose_x_, latest_current_pose_y_, start_x, start_y)) {
+      has_cost_grid_component_ = false;
+      cost_grid_component_mask_.clear();
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
         "goal_snapper: current pose is outside cost grid; reachable goal filter is not ready");
@@ -1111,9 +1114,22 @@ private:
     const auto is_passable = [this, &grid](const int index) {
         const int value = static_cast<int>(grid.data[static_cast<size_t>(index)]);
         return value >= 0 && value < cost_grid_block_threshold_;
-      };
+    };
 
     const int start_index = start_y * width + start_x;
+    const auto start_offset = static_cast<size_t>(start_index);
+    // HH_260707: Keep the previous flood-fill result while the pose remains
+    // inside the same passable component of the same cost-grid revision.
+    if (has_cost_grid_component_ &&
+      cost_grid_component_revision_ == cost_grid_revision_ &&
+      start_offset < cost_grid_component_mask_.size() &&
+      cost_grid_component_mask_[start_offset] != 0U)
+    {
+      return;
+    }
+
+    has_cost_grid_component_ = false;
+    cost_grid_component_mask_.clear();
     if (!is_passable(start_index)) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
@@ -1153,6 +1169,7 @@ private:
       }
     }
     has_cost_grid_component_ = true;
+    cost_grid_component_revision_ = cost_grid_revision_;
   }
 
   bool worldToCostGridCell(double x, double y, int & cell_x, int & cell_y) const
@@ -1313,6 +1330,8 @@ private:
   int cost_grid_block_threshold_{100};
   nav_msgs::msg::OccupancyGrid latest_cost_grid_;
   bool has_latest_cost_grid_{false};
+  uint64_t cost_grid_revision_{0U};
+  uint64_t cost_grid_component_revision_{0U};
   bool has_latest_current_pose_{false};
   double latest_current_pose_x_{0.0};
   double latest_current_pose_y_{0.0};

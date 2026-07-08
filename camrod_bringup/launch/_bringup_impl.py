@@ -1081,22 +1081,22 @@ def generate_launch_description():
         ),
         (
             'planning_cmd_vel_gate_body_near_side_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_side_lookahead_m', 0.75),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_side_lookahead_m', 1.20),
             'Near-body side dynamic stop distance (m)',
         ),
         (
             'planning_cmd_vel_gate_body_near_rear_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_rear_lookahead_m', 0.55),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_rear_lookahead_m', 0.80),
             'Near-body rear dynamic stop distance (m)',
         ),
         (
             'planning_cmd_vel_gate_body_near_maneuver_side_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_maneuver_side_lookahead_m', 0.55),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_maneuver_side_lookahead_m', 1.20),
             'Adaptive maneuver side dynamic stop distance (m)',
         ),
         (
             'planning_cmd_vel_gate_body_near_maneuver_rear_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_maneuver_rear_lookahead_m', 0.45),
+            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_maneuver_rear_lookahead_m', 0.80),
             'Adaptive maneuver rear dynamic stop distance (m)',
         ),
         (
@@ -1358,6 +1358,7 @@ def generate_launch_description():
         ('ublox_dual_forward_ntrip_to_rover', cfg_get(launch_cfg, 'sensing/ublox_dual_forward_ntrip_to_rover', False), 'Forward NTRIP RTCM into ublox_gps dual rover USB input'),
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
         ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),
+        ('use_camera_yolo_container', cfg_get(launch_cfg, 'perception/use_camera_yolo_container', False), 'Run front camera and YOLO in one component container'),
         ('perception_mode', cfg_get(launch_cfg, 'perception/mode', 'auto'), 'Perception mode: auto|lidar_only|camera_lidar'),
         ('camera_device_path', cfg_get(launch_cfg, 'sensing/camera_device_path', '/dev/video0'), 'Camera device path'),
 
@@ -1649,6 +1650,24 @@ def generate_launch_description():
     }
     apply_cfg_overrides(fake_sensors_args, sim_overrides)
 
+    # HH_260707: When the opt-in component path is enabled, the front camera is
+    # started by camera_yolo_container.launch.py while the rear camera remains in
+    # sensing.launch.py for docking. Sim mode still disables all hardware cameras.
+    regular_front_camera_enable = PythonExpression([
+        "'false' if '", lc['sim'], "' == 'true' or '",
+        lc['use_camera_yolo_container'], "' == 'true' else '",
+        lc['enable_front_camera'], "'",
+    ])
+    regular_yolo_enable = PythonExpression([
+        "'false' if '", lc['sim'], "' == 'true' or '",
+        lc['use_camera_yolo_container'], "' == 'true' else '",
+        lc['perception_enable_yolo'], "'",
+    ])
+    camera_yolo_container_condition = IfCondition(PythonExpression([
+        "'", lc['sim'], "' != 'true' and '",
+        lc['use_camera_yolo_container'], "' == 'true'",
+    ]))
+
     sensing_args = {
         # sensing.launch.py declares `sensing_namespace` (not `module_namespace`).
         'sensing_namespace': lc['sensing_namespace'],
@@ -1657,7 +1676,7 @@ def generate_launch_description():
         # In sim mode, fake_sensors.launch.py already publishes synthetic
         # GNSS/IMU/wheel data and obstacle cloud, so keep hardware drivers off.
         'enable_camera': sim_switch(lc['sim'], 'false', lc['enable_camera']),
-        'enable_front_camera': sim_switch(lc['sim'], 'false', lc['enable_front_camera']),
+        'enable_front_camera': regular_front_camera_enable,
         'enable_rear_camera':  sim_switch(lc['sim'], 'false', lc['enable_rear_camera']),
         'enable_ntrip': sim_switch(lc['sim'], 'false', lc['enable_ntrip']),
         'enable_radar': sim_switch(lc['sim'], 'false', lc['enable_radar']),
@@ -1682,7 +1701,7 @@ def generate_launch_description():
         'module_namespace': lc['perception_namespace'],
         'enable_lidar_obstacle': lc['perception_enable_lidar_obstacle'],
         # In sim mode, default to LiDAR-only perception to avoid GPU/TensorRT dependency.
-        'enable_yolo': sim_switch(lc['sim'], 'false', lc['perception_enable_yolo']),
+        'enable_yolo': regular_yolo_enable,
         # Camera-aware perception fallback:
         # perception.launch.py disables camera branches automatically when
         # camera is disabled or the device path does not exist.
@@ -1691,6 +1710,14 @@ def generate_launch_description():
         'perception_mode': lc['perception_mode'],
     }
     apply_cfg_overrides(perception_args, perception_overrides)
+
+    camera_yolo_container_args = {
+        'enable_container': lc['use_camera_yolo_container'],
+        'camera_params_file': sensing_args.get('camera_params_file', pkg_path('camrod_sensing', 'config/camera/camera_params.yaml')),
+        'perception_param_file': perception_args.get('perception_param_file', pkg_path('camrod_perception', 'config/perception_params.yaml')),
+        'front_camera_namespace': '/sensing/camera/econ_front',
+        'perception_namespace': lc['perception_namespace'],
+    }
 
     # Legacy escape hatch for forced ESKF source.
     # 2026-04-22: Keep this explicit-only so non-Ranger platforms can use their
@@ -1934,6 +1961,7 @@ def generate_launch_description():
         ('camrod_platform', 'platform.launch.py', platform_args, None),
         ('camrod_map', 'map.launch.py', map_args, None),
         ('camrod_bringup', 'fake_sensors.launch.py', fake_sensors_args, IfCondition(lc['sim'])),
+        ('camrod_bringup', 'camera_yolo_container.launch.py', camera_yolo_container_args, camera_yolo_container_condition),
         ('camrod_sensing', 'sensing.launch.py', sensing_args, None),
         ('camrod_perception', 'perception.launch.py', perception_args, None),
         ('camrod_localization', 'localization.launch.py', localization_args, None),

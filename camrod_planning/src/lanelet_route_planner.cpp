@@ -1,10 +1,13 @@
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -85,6 +88,11 @@ bool pointInPolygon2D(const std::vector<std::pair<double, double>> & polygon, co
 class LaneletRoutePlanner : public nav2_core::GlobalPlanner
 {
 public:
+  ~LaneletRoutePlanner() override
+  {
+    joinInitializationThread();
+  }
+
   void configure(
     const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
     std::string name,
@@ -111,7 +119,10 @@ public:
     declareIfMissing(plugin_name_ + ".max_snap_distance_m", 8.0);
     declareIfMissing(plugin_name_ + ".interpolation_resolution_m", 0.20);
     declareIfMissing(plugin_name_ + ".same_lane_forward_epsilon_m", 0.30);
+    declareIfMissing(plugin_name_ + ".flatten_path_z", true);
     declareIfMissing(plugin_name_ + ".route_lanelet_ids_topic", std::string("/planning/route_lanelet_ids"));
+    declareIfMissing(plugin_name_ + ".async_initialization", true);
+    declareIfMissing(plugin_name_ + ".async_initialization_plan_wait_timeout_s", 60.0);
 
     node_->get_parameter(plugin_name_ + ".map_path", map_path_);
     node_->get_parameter(plugin_name_ + ".offset_lat", offset_lat_);
@@ -124,32 +135,36 @@ public:
     node_->get_parameter(plugin_name_ + ".max_snap_distance_m", max_snap_distance_m_);
     node_->get_parameter(plugin_name_ + ".interpolation_resolution_m", interpolation_resolution_m_);
     node_->get_parameter(plugin_name_ + ".same_lane_forward_epsilon_m", same_lane_forward_epsilon_m_);
+    node_->get_parameter(plugin_name_ + ".flatten_path_z", flatten_path_z_);
     node_->get_parameter(plugin_name_ + ".route_lanelet_ids_topic", route_lanelet_ids_topic_);
+    node_->get_parameter(plugin_name_ + ".async_initialization", async_initialization_);
+    node_->get_parameter(
+      plugin_name_ + ".async_initialization_plan_wait_timeout_s",
+      async_initialization_plan_wait_timeout_s_);
 
     interpolation_resolution_m_ = std::max(0.05, interpolation_resolution_m_);
     max_snap_distance_m_ = std::max(0.1, max_snap_distance_m_);
 
-    if (!loadMap()) {
-      throw nav2_core::PlannerException("LaneletRoutePlanner failed to load lanelet map");
-    }
-    if (!buildRoutingGraph()) {
-      throw nav2_core::PlannerException("LaneletRoutePlanner failed to build routing graph");
-    }
     // HH_260619 - Publish exact routing lanelet IDs so route-aware cost grids do
     // not infer ambiguous lanelets from overlapping merge polygons.
     route_lanelet_ids_pub_ = node_->create_publisher<std_msgs::msg::Int64MultiArray>(
       route_lanelet_ids_topic_, rclcpp::QoS(1).reliable().transient_local());
 
-    RCLCPP_INFO(
-      node_->get_logger(),
-      "LaneletRoutePlanner ready: map=%s frame=%s lane_changes=%s resolution=%.2fm",
-      map_path_.c_str(), frame_id_.c_str(),
-      allow_lane_changes_ ? "true" : "false", interpolation_resolution_m_);
+    startInitialization();
   }
 
   void cleanup() override
   {
+    joinInitializationThread();
     route_lanelet_ids_pub_.reset();
+    traffic_rules_.reset();
+    routing_graph_.reset();
+    map_.reset();
+    std::lock_guard<std::mutex> lock(initialization_mutex_);
+    initialization_started_ = false;
+    initialization_complete_ = false;
+    initialization_success_ = false;
+    initialization_error_.clear();
   }
 
   void activate() override
@@ -170,8 +185,9 @@ public:
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal) override
   {
-    if (!map_ || !routing_graph_) {
-      throw nav2_core::PlannerException("LaneletRoutePlanner is not configured");
+    if (!waitForInitialization()) {
+      throw nav2_core::PlannerException(
+              "LaneletRoutePlanner map/routing graph initialization is not ready");
     }
 
     const auto plan_t0 = std::chrono::steady_clock::now();
@@ -335,6 +351,131 @@ private:
       return true;
     }
     return false;
+  }
+
+  bool initializeMapAndRoutingGraph(std::string & error_message)
+  {
+    if (!loadMap()) {
+      error_message = "map load failed";
+      return false;
+    }
+    if (!buildRoutingGraph()) {
+      error_message = "routing graph build failed";
+      return false;
+    }
+    return true;
+  }
+
+  void logReady() const
+  {
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "LaneletRoutePlanner ready: map=%s frame=%s lane_changes=%s resolution=%.2fm",
+      map_path_.c_str(), frame_id_.c_str(),
+      allow_lane_changes_ ? "true" : "false", interpolation_resolution_m_);
+  }
+
+  void completeInitialization(const bool success, const std::string & error_message)
+  {
+    {
+      std::lock_guard<std::mutex> lock(initialization_mutex_);
+      initialization_success_ = success;
+      initialization_error_ = error_message;
+      initialization_complete_ = true;
+    }
+    initialization_cv_.notify_all();
+  }
+
+  void runInitialization()
+  {
+    std::string error_message;
+    bool success = false;
+    try {
+      success = initializeMapAndRoutingGraph(error_message);
+    } catch (const std::exception & exception) {
+      error_message = exception.what();
+      success = false;
+    }
+
+    completeInitialization(success, error_message);
+    if (success) {
+      logReady();
+    } else {
+      RCLCPP_ERROR(
+        node_->get_logger(), "LaneletRoutePlanner initialization failed: %s",
+        error_message.c_str());
+    }
+  }
+
+  void startInitialization()
+  {
+    {
+      std::lock_guard<std::mutex> lock(initialization_mutex_);
+      initialization_started_ = true;
+      initialization_complete_ = false;
+      initialization_success_ = false;
+      initialization_error_.clear();
+    }
+
+    if (!async_initialization_) {
+      runInitialization();
+      if (!waitForInitialization()) {
+        throw nav2_core::PlannerException(
+                "LaneletRoutePlanner failed to initialize map/routing graph");
+      }
+      return;
+    }
+
+    // HH_260708: Build the heavy Lanelet2 map/routing graph in the background
+    // so Nav2 lifecycle activation is not blocked by the full C-track graph.
+    initialization_thread_ = std::thread([this]() {runInitialization();});
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "LaneletRoutePlanner async initialization started: map=%s participant=%s wait_timeout=%.1fs",
+      map_path_.c_str(), routing_participant_.c_str(),
+      async_initialization_plan_wait_timeout_s_);
+  }
+
+  bool waitForInitialization()
+  {
+    std::unique_lock<std::mutex> lock(initialization_mutex_);
+    if (!initialization_started_) {
+      RCLCPP_ERROR(node_->get_logger(), "LaneletRoutePlanner initialization was not started");
+      return false;
+    }
+
+    if (!initialization_complete_) {
+      if (async_initialization_plan_wait_timeout_s_ <= 0.0) {
+        initialization_cv_.wait(lock, [this]() {return initialization_complete_;});
+      } else {
+        const auto timeout = std::chrono::duration<double>(
+          async_initialization_plan_wait_timeout_s_);
+        const bool ready = initialization_cv_.wait_for(
+          lock, timeout, [this]() {return initialization_complete_;});
+        if (!ready) {
+          RCLCPP_ERROR(
+            node_->get_logger(),
+            "LaneletRoutePlanner initialization timed out after %.1fs",
+            async_initialization_plan_wait_timeout_s_);
+          return false;
+        }
+      }
+    }
+
+    if (!initialization_success_) {
+      RCLCPP_ERROR(
+        node_->get_logger(), "LaneletRoutePlanner initialization failed: %s",
+        initialization_error_.c_str());
+      return false;
+    }
+    return static_cast<bool>(map_) && static_cast<bool>(routing_graph_);
+  }
+
+  void joinInitializationThread()
+  {
+    if (initialization_thread_.joinable()) {
+      initialization_thread_.join();
+    }
   }
 
   bool pointInsideLanelet(const lanelet::ConstLanelet & lanelet, const double x, const double y) const
@@ -626,7 +767,9 @@ private:
     pose.header = path.header;
     pose.pose.position.x = point.x;
     pose.pose.position.y = point.y;
-    pose.pose.position.z = point.z;
+    // HH_260707 - Nav2 and RViz consume this as a 2D route. Flatten OSM
+    // altitude so plans do not inherit source lanelet negative Z values.
+    pose.pose.position.z = flatten_path_z_ ? 0.0 : point.z;
     pose.pose.orientation = yawToQuaternion(point.heading);
     path.poses.push_back(pose);
   }
@@ -659,12 +802,22 @@ private:
   double interpolation_resolution_m_{0.20};
   double same_lane_forward_epsilon_m_{0.30};
   bool allow_lane_changes_{true};
+  bool flatten_path_z_{true};
+  bool async_initialization_{true};
+  double async_initialization_plan_wait_timeout_s_{60.0};
   std::string route_lanelet_ids_topic_{"/planning/route_lanelet_ids"};
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Int64MultiArray>::SharedPtr
     route_lanelet_ids_pub_;
   lanelet::LaneletMapPtr map_;
   lanelet::traffic_rules::TrafficRulesUPtr traffic_rules_;
   lanelet::routing::RoutingGraphUPtr routing_graph_;
+  std::thread initialization_thread_;
+  std::mutex initialization_mutex_;
+  std::condition_variable initialization_cv_;
+  bool initialization_started_{false};
+  bool initialization_complete_{false};
+  bool initialization_success_{false};
+  std::string initialization_error_;
 };
 
 }  // namespace camrod_planning

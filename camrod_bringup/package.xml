@@ -19,6 +19,9 @@
   <depend>std_msgs</depend>
   <!-- avg_msgs is used across module interfaces at build/runtime. -->
   <depend>avg_msgs</depend>
+  <!-- HH_260707: Optional front-camera/YOLO component container launch path. -->
+  <exec_depend>rclcpp_components</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
   <exec_depend>rosidl_runtime_py</exec_depend>
   <exec_depend>sensor_msgs_py</exec_depend>
   <!-- Launch-time dependencies for fused localization and sensing pipeline. -->

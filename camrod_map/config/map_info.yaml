@@ -49,6 +49,10 @@
     progressive_visualization_fallback_pose_topic: ""
     progressive_visualization_lightweight_local: false
     progressive_visualization_lightweight_full: true
+    # HH_260707 - Keep expensive full-map direction/id/semantic markers opt-in.
+    # The lightweight full map still appears immediately; detailed full markers
+    # took ~54 s on full real-sensor bringup and starved planning startup.
+    progressive_visualization_publish_detailed_full: false
     progressive_visualization_detailed_full_delay_s: 30.0
     # Keep direction/ID/semantic markers, but skip raw OSM point spheres by default.
     visualization_publish_raw_points: false

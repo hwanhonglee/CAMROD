@@ -14,6 +14,7 @@ from avg_msgs.msg import AvgLocalizationMode, ModuleState
 from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rcl_interfaces.msg import SetParametersResult
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rclpy.time import Time
@@ -3417,8 +3418,12 @@ def main(args=None) -> None:
     node = PlanningCmdVelGateNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except RuntimeError as exc:
+        # HH_260707 - Suppress rclpy teardown races during launch shutdown only.
+        if rclpy.ok() and "Unable to convert call argument" not in str(exc):
+            raise
     finally:
         node.destroy_node()
         try:

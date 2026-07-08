@@ -12,6 +12,7 @@ from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid, Path
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
@@ -539,8 +540,12 @@ def main() -> None:
     node = ObstacleReplanMonitor()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except RuntimeError as exc:
+        # HH_260707 - Suppress rclpy teardown races during launch shutdown only.
+        if rclpy.ok() and "Unable to convert call argument" not in str(exc):
+            raise
     finally:
         node.destroy_node()
         if rclpy.ok():

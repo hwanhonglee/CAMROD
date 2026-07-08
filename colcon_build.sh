@@ -30,6 +30,10 @@
 # HH_260706: v2.0.1 field updates also depend on this wrapper: it rebuilds the
 # UI bundle before packaging and syncs adaptive cmd_vel gate/config docs into
 # install before tagging.
+# HH_260707: runtime-load update also depends on this wrapper: perception queue
+# tuning, LiDAR/cost-grid cache parameters, map/path marker throttles, filtered
+# system diagnostics, and README updates are installed through normal colcon
+# package data installation.
 
 set -euo pipefail
 

@@ -29,8 +29,10 @@
     flatten_to_ground: true
     map_z_offset: 0.0
 
-    # HH_260528 Restrict snapped goal to lanelet network connected to current pose.
-    restrict_to_connected_lanelet_component: true
+    # HH_260707: Avoid a duplicate Lanelet2 RoutingGraph build in goal_snapper.
+    # The cost-grid component below remains the reachable-goal filter, while
+    # LaneletRoutePlanner remains the authoritative route graph for planning.
+    restrict_to_connected_lanelet_component: false
     # false: strict reject until connected component is ready.
     # true : fallback to global nearest centerline when component is unavailable.
     allow_component_fallback_to_global: false
