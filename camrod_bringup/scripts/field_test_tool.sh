@@ -10,6 +10,7 @@ set -euo pipefail
 
 DEFAULT_HZ_SECONDS=5
 DEFAULT_WATCH_INTERVAL=1.0
+CAMERA_YOLO_MIN_SECONDS=12
 
 log() { echo "[field_test] $*"; }
 warn() { echo "[field_test] WARN: $*" >&2; }
@@ -26,6 +27,9 @@ Usage:
 
   field_test_tool.sh hz [seconds]
       Measure the field-critical topic rates.
+
+  field_test_tool.sh camera-yolo [seconds]
+      Check the front-camera input, YOLO detections, and on-demand debug image rates.
 
   field_test_tool.sh watch [seconds]
       Print a compact live status loop for diagnostics, localization, planning, and gates.
@@ -126,7 +130,7 @@ topic_hz_to_log() {
   local topic="$1"
   local seconds="$2"
   local out_file="$3"
-  run_eval_to_log "${out_file}" "source /opt/ros/humble/setup.bash; source '${WS_ROOT}/install/setup.bash' 2>/dev/null || true; timeout '${seconds}' ros2 topic hz '${topic}'"
+  run_eval_to_log "${out_file}" "source /opt/ros/humble/setup.bash; source '${WS_ROOT}/install/setup.bash' 2>/dev/null || true; timeout --signal=INT --kill-after=2 '${seconds}' ros2 topic hz '${topic}'"
 }
 
 compare_tree_subset() {
@@ -209,7 +213,7 @@ cmd_config() {
     "parking:camrod_bringup/config/parking:camrod_parking/config"
     "localization:camrod_bringup/config/localization:camrod_localization/config"
   )
-  local item label bringup_rel package_rel bringup_dir package_dir
+  local item label bringup_rel package_rel bringup_dir package_dir package_name
 
   cd "${SRC_ROOT}"
   for item in "${pairs[@]}"; do
@@ -220,13 +224,20 @@ cmd_config() {
     echo
   done
 
-  compare_install_subset "bringup/platform" \
-    "${SRC_ROOT}/camrod_bringup/config/platform" \
-    "${WS_ROOT}/install/camrod_bringup/share/camrod_bringup/config/platform" || rc=1
+  compare_install_subset "bringup" \
+    "${SRC_ROOT}/camrod_bringup/config" \
+    "${WS_ROOT}/install/camrod_bringup/share/camrod_bringup/config" || rc=1
   echo
-  compare_install_subset "platform" \
-    "${SRC_ROOT}/camrod_platform/config" \
-    "${WS_ROOT}/install/camrod_platform/share/camrod_platform/config" || rc=1
+
+  for item in "${pairs[@]}"; do
+    IFS=: read -r label bringup_rel package_rel <<<"${item}"
+    package_dir="${SRC_ROOT}/${package_rel}"
+    package_name="${package_rel%%/*}"
+    compare_install_subset "${label}" \
+      "${package_dir}" \
+      "${WS_ROOT}/install/${package_name}/share/${package_name}/config" || rc=1
+    echo
+  done
 
   if [[ "${rc}" -eq 0 ]]; then
     log "config sync OK"
@@ -256,6 +267,7 @@ critical_topics() {
 /sensing/cost_grid/radar
 /perception/obstacles/fused_obstacles
 /perception/obstacles
+/perception/camera/detections_2d
 /sensing/lidar/points_filtered
 /sensing/lidar/filtered_cloud
 /sensing/radar/front1/range
@@ -265,6 +277,13 @@ critical_topics() {
 /sensing/radar/right1/range
 /sensing/radar/right2/range
 /sensing/radar/rear/range
+EOF
+}
+
+rate_only_topics() {
+  cat <<'EOF'
+/sensing/camera/econ_front/image_rect/compressed
+/perception/camera/yolo_image
 EOF
 }
 
@@ -298,6 +317,16 @@ cmd_snapshot() {
     topic_hz_to_log "${topic}" "${DEFAULT_HZ_SECONDS}" "${log_dir}/hz/${name}.hz.txt"
   done < <(critical_topics)
 
+  # Camera frames are intentionally sampled by rate only. Saving one full
+  # 1920x1080 image in every snapshot creates large, low-value text logs.
+  while IFS= read -r topic; do
+    [[ -n "${topic}" ]] || continue
+    local name
+    name="$(safe_name "${topic}")"
+    run_eval_to_log "${log_dir}/topics/${name}.info.txt" "source /opt/ros/humble/setup.bash; source '${WS_ROOT}/install/setup.bash' 2>/dev/null || true; ros2 topic info -v '${topic}'"
+    topic_hz_to_log "${topic}" "${DEFAULT_HZ_SECONDS}" "${log_dir}/hz/${name}.hz.txt"
+  done < <(rate_only_topics)
+
   log "snapshot complete: ${log_dir}"
 }
 
@@ -309,8 +338,60 @@ cmd_hz() {
     [[ -n "${topic}" ]] || continue
     echo
     echo "## ${topic}"
-    timeout "${seconds}" ros2 topic hz "${topic}" || true
+    timeout --signal=INT --kill-after=2 "${seconds}" ros2 topic hz "${topic}" 2>/dev/null || true
   done < <(critical_topics)
+
+  while IFS= read -r topic; do
+    [[ -n "${topic}" ]] || continue
+    echo
+    echo "## ${topic}"
+    timeout --signal=INT --kill-after=2 "${seconds}" ros2 topic hz "${topic}" 2>/dev/null || true
+  done < <(rate_only_topics)
+}
+
+cmd_camera_yolo() {
+  source_ros
+  local seconds="${1:-${DEFAULT_HZ_SECONDS}}"
+  local topics=(
+    "/sensing/camera/econ_front/image_rect/compressed"
+    "/perception/camera/detections_2d"
+    "/perception/camera/yolo_image"
+  )
+  local topic pid
+  local pids=()
+
+  if [[ ! "${seconds}" =~ ^[0-9]+$ ]]; then
+    die "camera-yolo seconds must be an integer"
+  fi
+  if (( seconds < CAMERA_YOLO_MIN_SECONDS )); then
+    warn "camera-yolo needs at least ${CAMERA_YOLO_MIN_SECONDS}s for DDS discovery; using ${CAMERA_YOLO_MIN_SECONDS}s"
+    seconds="${CAMERA_YOLO_MIN_SECONDS}"
+  fi
+
+  log "checking front camera and YOLO for ${seconds}s per topic"
+  echo "## nodes"
+  ros2 node list | grep -E '/sensing/camera/econ_front/camera_front_publisher|/perception/yolov9mit' || true
+
+  for topic in "${topics[@]}"; do
+    echo
+    echo "## ${topic}"
+    ros2 topic info "${topic}" || true
+  done
+
+  echo
+  echo "## simultaneous rate samples"
+  for topic in "${topics[@]}"; do
+    (
+      timeout --signal=INT --kill-after=2 "${seconds}" \
+        ros2 topic hz "${topic}" 2>/dev/null | sed "s#^#[${topic}] #"
+    ) &
+    pids+=("$!")
+  done
+  for pid in "${pids[@]}"; do
+    wait "${pid}" || true
+  done
+
+  log "YOLO debug images are subscriber-gated; camera-yolo creates the subscriber that enables them"
 }
 
 echo_once_short() {
@@ -386,6 +467,7 @@ case "${cmd}" in
   config) cmd_config "$@" ;;
   snapshot) cmd_snapshot "$@" ;;
   hz) cmd_hz "$@" ;;
+  camera-yolo) cmd_camera_yolo "$@" ;;
   watch) cmd_watch "$@" ;;
   launch) cmd_launch "$@" ;;
   stop-gates) cmd_stop_gates "$@" ;;

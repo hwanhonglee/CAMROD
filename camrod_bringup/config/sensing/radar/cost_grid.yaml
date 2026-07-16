@@ -19,12 +19,16 @@
     min_cost: 85
     max_cost: 95
     cost_range_min_m: 0.3
-    # HH_260625: Ignore stable SEN0592 near-zero self echoes seen outdoors
-    # (front ~0.10m, side ~0.03m, rear ~0.11m) without masking real >0.15m hits.
-    ignore_below_range_m: 0.15
-    # HH_260703 - Per-sensor overrides ordered by input_topics. Side radars
-    # only need to mask ~0.03m self echoes, so keep them sensitive for crab stops.
-    ignore_below_ranges_m: [0.15, 0.15, 0.05, 0.05, 0.05, 0.05, 0.15]
+    # HH_260625: Ignore stable SEN0592 near-zero self echoes seen outdoors.
+    # HH_260716 - A 20 s stationary vehicle sample showed body returns up to
+    # 0.253 m (front ~0.17m, side ~0.25m, rear ~0.12m). Treat 0.30 m as the
+    # common self-echo dead zone; hits at 0.30 m or farther remain stop inputs.
+    ignore_below_range_m: 0.30
+    # HH_260703 - Per-sensor overrides are ordered exactly like input_topics.
+    # HH_260716 - LEFT2 also produced a repeated 0.70-0.72 m body/multipath
+    # return in the stationary full-stack sample. LEFT1 retains normal left-side
+    # coverage while LEFT2 uses a 0.75 m dead zone to prevent stop-latch chatter.
+    ignore_below_ranges_m: [0.30, 0.30, 0.30, 0.75, 0.30, 0.30, 0.30]
     # HH_260422: Near-field only; per-sensor max_range limits detections before cost mapping.
     cost_range_max_m: 2.0
     obstacle_radius_m: 0.30

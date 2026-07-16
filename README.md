@@ -3,7 +3,7 @@
 ROS 2 Humble workspace for the CAMROD autonomous mobile platform.  
 Built on the **Agilex Ranger** base, CAMROD navigates pre-mapped campground sites, delivers goods, and returns autonomously with GNSS/IMU/wheel localization and Lanelet2 lane-aware planning.
 
-> Current release: **v2.0.1** (field UI, adaptive safety, and runtime-load tuning updated 2026-07-07)
+> Current release: **v2.0.2** (field map, radar self-echo, camera/YOLO, GNSS, and config-sync baseline updated 2026-07-16)
 
 ---
 
@@ -40,6 +40,7 @@ setting owns a runtime behavior. Package READMEs still hold the deeper details.
 | Full robot bringup | `ros2 launch camrod_bringup bringup.launch.py sim:=false` | Map, sensing, localization, perception, planning, parking/docking, platform, system diagnostics, UI |
 | Simulation bringup | `ros2 launch camrod_bringup bringup.launch.py sim:=true` | Fake sensors plus the same planning/UI/system graph where possible |
 | Outdoor field helper | `ros2 run camrod_bringup field_test_tool.sh snapshot` | HH_260708 - Captures config sync, ROS graph, diagnostics, CPU, topic samples, and Hz data for field debugging |
+| Camera/YOLO probe | `ros2 run camrod_bringup field_test_tool.sh camera-yolo 12` | HH_260716 - Verifies front-camera input, detections, and subscriber-gated annotated-image output |
 | UI only | `ros2 launch camrod_ui ui.launch.py ui_host:=0.0.0.0 ui_port:=8010` | FastAPI backend and installed React UI assets |
 | Planning only | `ros2 launch camrod_planning planning.launch.py` | Nav2, goal snapping, local path, state machine, cmd_vel gate |
 | Sensing only | `ros2 launch camrod_sensing sensing.launch.py` | GNSS/IMU/LiDAR/radar/camera preprocessing and sensor cost grids |
@@ -828,7 +829,8 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 
 | Tag | Date | Summary |
 |-----|------|---------|
-| develop | 2026-07-07 | Runtime-load/DDS reduction on top of v2.0.1: smaller fusion queues, debug-image subscriber gating, LiDAR preprocessing backlog limits, cost-grid cached rebuild gating, RViz marker throttling, fake seven-radar sim heartbeat, right/rear guard reach update, and filtered diagnostics source for system status |
+| develop | 2026-07-16 | Same baseline as v2.0.2 after field map/origin, sensing thresholds, launch gating, config/install validation, and operator-document synchronization |
+| v2.0.2 | 2026-07-16 | Park-map re-georeference and semantic-coordinate refresh, common map/localization origin forwarding, 0.30 m radar body dead zone with LEFT2 0.75 m multipath override, 15-degree radar profile, JECH NTRIP mountpoint, camera/YOLO high-level launch gating, and all-package source/install config verification |
 | v2.0.1 | 2026-07-06 | UI/IP and adaptive safety refinement: robot-IP UI bind default, immediate camping-site HTTP dispatch with duplicate echo suppression, clean `camrod_ui` rebuild/install handling, compact perception-object cost projection, near-body side/rear dynamic guards for right/rear radar stops, adaptive shorter crab/reverse guard distances, route-heading restart candidate filtering, synchronized LiDAR cost/ground-seg configs, and 55-assertion deterministic cmd_vel gate coverage |
 | v2.0.0 | 2026-07-06 | Field safety/tuning baseline for outdoor validation: GNSS `/dev/ttyACM1` synchronization, 1 Hz GNSS diagnostic tolerance, dynamic LiDAR/Radar cost-stop latch, stale merged inflation-grid fail-closed gate, live sensor-cost preservation inside the ego-clear footprint, side-radar self-echo threshold tuning, WARN-safe campsite/drop-zone handoff, planning costmap diagnostic demotion, damped route-heading alignment for startup oscillation reduction, faster campsite crab entry, and 51-assertion deterministic cmd_vel gate coverage |
 | v1.16 | 2026-07-02 | Field stabilization for map/planning/platform/system: local-first Lanelet2 visualization with cached full-map republish, map-fixed local path extraction with stale-marker clearing, obstacle-block monitor with status-only default, perception-to-cost-grid coupling, common Nav2 smoother frame override, LaneletRoute-first planning with grid fallbacks, planning soft-estop gating from `/planning/state_machine/estop`, LiDAR ground-filter load relief, radar 7-channel left/right mapping plus no-target heartbeat filtering, SocketCAN setup integration for Ranger, UI frontend build before colcon, expanded `avg_msgs` conversion coverage, diagnostics checker alignment, rear-camera CPU reduction, and automated sim validation runner with manual-goal, obstacle, campsite, and drop-zone parking coverage |
@@ -898,7 +900,7 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260703: GNSS sensor/localization diagnostics now accept a 1 Hz field-rate floor while preserving freshness, fix status, covariance, and jump checks. The ublox driver config still requests its normal receiver rate; diagnostics no longer create false `ERROR_STOP` from stable 1 Hz fixes.
 - HH_260703: `planning_cmd_vel_gate_node` latches live LiDAR/Radar cost stops until the selected travel corridor stays clear for 2.0 s. This prevents obstacle stop/go flicker when a curb or vehicle intermittently drops out of the merged cost grid.
 - HH_260703: The planning gate now fails closed when `/planning/cost_grid/inflation` is missing or stale for more than 1.0 s, so stale safety input cannot accidentally release `/planning/cmd_vel`.
-- HH_260703: Radar and merged inflation cost grids preserve live LiDAR/Radar obstacle cells inside the ego-clear footprint while still masking static guide costs. Side radar self-echo filtering is reduced to 0.05 m while front/rear stay at 0.15 m, keeping valid right/left near-field detections available to the planning gate during crab motion.
+- HH_260716: Radar and merged inflation cost grids preserve live LiDAR/Radar obstacle cells inside the ego-clear footprint while still masking static guide costs. A stationary 20 s sample established a common 0.30 m body/self-echo dead zone; LEFT2 uses 0.75 m to reject its repeated 0.70-0.72 m body/multipath return. Hits at or beyond each threshold remain planning stop inputs.
 - HH_260703: Planning state-machine auto-estop ignores raw Vanjee placeholder NaNs, camera FPS dips, costmap freshness dips, and selected non-motion diagnostics for state transitions. These remain visible in `/system/status`; filtered LiDAR/Radar cost grids and gate checks remain the motion safety authority.
 - HH_260703: Planning costmap diagnostics are demoted to WARN for stale/rate failures, and fully unknown sparse cost-grid diagnostics are no longer ERROR by themselves. The gate-level stale inflation check is the immediate stop path.
 - HH_260703: Deterministic gate logic now has 51 passing assertions, including right-crab radar stop, dynamic cost-stop latch, and stale merged-cost-grid fail-safe coverage.
@@ -924,6 +926,17 @@ To enable VIO, install the required SDK and remove the `COLCON_IGNORE` file.
 - HH_260707: `system_diagnostic_node` consumes filtered `/system/diagnostics_agg`, so ignored raw diagnostics do not reappear as final `/system/status` errors.
 - HH_260707: Sim validation passed baseline Hz, all seven radar directions, front/left/right/rear LiDAR/Radar/combined stop matrix, manual goal route following, stable `LaneletRoute` obstacle-block monitoring, campsite crab/rotate/wait/crab-out, return-to-drop-zone, and drop-zone reverse parking to `PARKED`.
 - HH_260708: LaneletRoute map/routing graph creation now runs in the background during Nav2 bringup. Runtime verification on the indoor field host showed `planner_server` reached ACTIVE before the routing graph completed, then `LaneletRoutePlanner ready` appeared after the background graph build. First planning requests wait up to `async_initialization_plan_wait_timeout_s` if they arrive before readiness.
+
+## 2026-07-16 v2.0.2 Field Baseline
+
+> HH_260716 - Synchronizes the active Park map, radar/GNSS deployment settings, camera/YOLO launch behavior, installed configs, and field documentation.
+
+- The active Lanelet2 map is `lanelet2_maps_(copy_park_moved).osm` with `map_profile: copy_park_moved`; package and bringup `map_info.yaml` now share the same WGS84 and EPSG:32652 origin metadata.
+- Map-coupled drop zones, camping sites, fake-sensor start pose, docking pose, and coordinate-conversion helpers were regenerated for the moved Park geometry.
+- All seven radars use the 15-degree angle profile. Cost input ignores stationary vehicle echoes below 0.30 m, with a 0.75 m LEFT2 override for its repeated body/multipath return.
+- The field NTRIP mountpoint is `JECH-RTCM32`. A live GNSS topic alone does not guarantee `NORMAL`: the localization monitor also requires covariance trace <= 1.0, rate >= 0.8 Hz, jump <= 1.0 m, and freshness <= 4.0 s.
+- The camera/YOLO component container now honors the high-level camera, front-camera, and YOLO switches. `/perception/camera/yolo_image` is subscriber-gated; `/perception/camera/detections_2d` is the continuous inference-health signal.
+- `field_test_tool.sh config` verifies bringup-to-package pairs plus the full installed bringup tree and every paired package install tree.
 
 ## 2026-07-01 Safety and Sensor Update
 

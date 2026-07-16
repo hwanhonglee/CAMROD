@@ -264,9 +264,9 @@ graph TD
 | `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 180×180 @ 0.10 m robot-centred obstacle grid from LiDAR and perception objects |
 | `/sensing/cost_grid/radar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 120×120 @ 0.10 m robot-centred near-field obstacle grid from radar |
 | `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | camrod_planning (Nav2 local costmap, `cmd_vel_gate`) | 6 Hz | 180×180 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
-| `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz | Raw GNSS fix with RTK status |
-| `/sensing/gnss/pose` | `geometry_msgs/PoseStamped` | camrod_localization (`localization_monitor_node`) | 10 Hz | GNSS-derived pose in `map` frame (no covariance) |
-| `/sensing/gnss/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | camrod_localization (ESKF) | 10 Hz | GNSS-derived pose with position covariance for filter fusion |
+| `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz single / 5 Hz dual target | Raw GNSS fix with RTK status; field diagnostics accept >= 0.8 Hz |
+| `/sensing/gnss/pose` | `geometry_msgs/PoseStamped` | camrod_localization (`localization_monitor_node`) | follows fix | GNSS-derived pose in `map` frame (no covariance) |
+| `/sensing/gnss/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | camrod_localization (EKF/monitor) | follows fix | GNSS-derived pose with position covariance for filter fusion and mode health |
 | `/sensing/imu/data` | `sensor_msgs/Imu` | camrod_localization (ESKF), `platform_velocity_converter` | 100 Hz | Filtered orientation + angular velocity + linear acceleration in `imu_link` frame |
 | `/sensing/platform_velocity_converter/twist_with_covariance` | `geometry_msgs/TwistWithCovarianceStamped` | camrod_localization (ESKF) | ~20 Hz | Platform forward velocity with fixed covariance for wheel-odometry fusion |
 | `/sensing/camera/econ_front/image_rect/compressed` | `sensor_msgs/CompressedImage` | camrod_perception (YOLOv9) | 10 Hz | GPU-rectified 1920×1080 JPEG in `camera_front` frame (VPI VIC + NvJPEG) |
@@ -319,7 +319,7 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | Each incoming Range message (async per sensor) |
-| Internal logic | `radar_cost_grid_node` projects each Range into the `map` frame using the sensor's TF frame ID (`radar_*_link`). Cost is scaled between `min_cost` (85) and `max_cost` (95) over 0.3–2.0 m after invalid/no-target values and stable near-zero self echoes are filtered. HH_260703 - Per-sensor ignore thresholds are front1/front2=0.15 m, left/right=0.05 m, rear=0.15 m; the 0.50 m ego-clear disk is applied before live radar marking, so valid side/rear detections are not erased after projection. Messages older than 0.35 s are discarded. |
+| Internal logic | `radar_cost_grid_node` projects each Range into the `map` frame using the sensor's TF frame ID (`radar_*_link`). Cost is scaled between `min_cost` (85) and `max_cost` (95) over 0.3–2.0 m after invalid/no-target values and stable near-zero self echoes are filtered. HH_260716 - Six channels use a 0.30 m minimum obstacle range based on stationary vehicle measurements. LEFT2 uses 0.75 m because its full-stack sample repeatedly alternated between the near-body return and a 0.70–0.72 m body/multipath return; LEFT1 retains normal left-side coverage. The 0.50 m ego-clear disk is applied before live radar marking, so valid side/rear detections are not erased after projection. Messages older than 0.35 s are discarded. |
 | Output effect | `/sensing/cost_grid/radar`: 120×120 @ 0.10 m (12 m square centred on robot), published at 10 Hz. |
 | No-target behavior | HH_260701 - SEN0592 no-target/invalid responses publish a heartbeat slightly above `max_range`; diagnostics treat this as fresh no-target data and cost-grid consumers ignore it as an obstacle. |
 | Operator-visible symptom | Empty grid → serial port permission denied or CH9344 driver not loaded. Near-field obstacles missing → ego_clear_radius_m is too large; current value 0.50 m is already minimal. |
@@ -370,7 +370,7 @@ Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single ante
 | Field | Detail |
 |---|---|
 | Trigger | Node startup; `enable_ntrip` controls whether the NTRIP client is also started |
-| Internal logic | `ublox_gps_node` opens `/dev/ttyACM0` on the current field robot and requests 10 Hz measurement output (`rate: 10.0`, `nav_rate: 1`). TMODE3 is set to 0 (rover mode). UBX-NAV-PVT and NMEA are published. `ntrip_client` subscribes to `gnssdata.or.kr:2101`, mountpoint `CNJU-RTCM32`, and forwards RTCM3.2 corrections. Fix converges from no-fix -> float -> RTK-fixed over ~60 s under open sky. HH_260708 - diagnostics accept a stable 1 Hz field-rate floor and the GNSS device intentionally stays on an operator-verified `/dev/ttyACM*` path rather than by-id. |
+| Internal logic | `ublox_gps_node` opens `/dev/ttyACM0` on the current field robot and requests 10 Hz measurement output (`rate: 10.0`, `nav_rate: 1`). TMODE3 is set to 0 (rover mode). UBX-NAV-PVT and NMEA are published. `ntrip_client` subscribes to `gnssdata.or.kr:2101`, mountpoint `JECH-RTCM32`, and forwards RTCM3.2 corrections. Fix converges from no-fix -> float -> RTK-fixed over ~60 s under open sky. HH_260708 - diagnostics accept a stable 1 Hz field-rate floor and the GNSS device intentionally stays on an operator-verified `/dev/ttyACM*` path rather than by-id. |
 | Output effect | `/sensing/gnss/ublox_gps_node/fix`; downstream adapter produces `/sensing/gnss/pose` and `/sensing/gnss/pose_with_covariance`. |
 | Operator-visible symptom | GNSS stays in float -> NTRIP not delivering RTCM. No fix -> check `/dev/ttyACM0`, cable state, and `config_on_startup: false`. |
 | Related params | `config/gnss/zed_f9p_rover.yaml`: `device` (`/dev/ttyACM0`), `rate`, `nav_rate`, `tmode3` |
@@ -522,9 +522,10 @@ ros2 launch camrod_sensing camera.launch.py
 | Param | Value | Meaning |
 |---|---|---|
 | `poll_period_s` | `0.06` s | Sensor polling interval (≈16.7 Hz cycle) |
-| `angle_config_value` | `5` | Detection angle: 5 = 75° (max for SEN0592) |
+| `sensor_angle_config_values` | `[1, 1, 1, 1, 1, 1, 1]` | Detection angle: 1 = 15° for all seven channels |
 | `sensor_max_ranges_m` | `[1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]` | Per-sensor max range (FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR) |
 | `ports` | `[USB0, USB1, USB4, USB5, USB2, USB3, USB6]` | CH9344 serial port assignments for FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR |
+| Cost-grid dead zone | `[0.30, 0.30, 0.30, 0.75, 0.30, 0.30, 0.30]` m | Reject stationary body/self echoes; LEFT2 has the measured multipath override |
 
 </details>
 
@@ -602,7 +603,7 @@ ros2 topic echo /sensing/camera/econ_rear/camera_info --once
 2. Check network reachability: `ping www.gnssdata.or.kr`. Firewall or mobile data restrictions can block port 2101.
 3. Check the NTRIP node log for authentication errors: `ros2 node info /sensing/gnss/ntrip_client`.
 4. If RTCM is arriving but float persists, the antenna may have poor sky view or multipath. Try a different antenna location.
-5. Verify the mountpoint `CNJU-RTCM32` is appropriate for the site (use an NTRIP browser to confirm the nearest base station).
+5. Verify the field mountpoint `JECH-RTCM32` is appropriate for the site (use an NTRIP browser to confirm the nearest base station).
 
 ### Radar serial port not found
 
@@ -765,3 +766,4 @@ Radar remains launched through the existing `radar_sensor.launch.py` path and sh
 - HH_260702: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; software range filters still ignore no-target values and stable near-zero self echoes.
 - HH_260702: Full-stack tests with RViz/UI/voice/camera/YOLO/docking enabled can saturate the Jetson and delay cost-grid publication. Treat that mode as a load probe, then repeat drive validation with the lighter outdoor profile.
 - HH_260708: ZED-F9P single-antenna GNSS is documented and configured as `/dev/ttyACM0`; diagnostics tolerate 1 Hz effective fix/pose rates while preserving freshness/fix/covariance/jump checks.
+- HH_260716: The field NTRIP mountpoint is `JECH-RTCM32`; seven radar channels use 15-degree angles with 0.30 m common self-echo filtering and a 0.75 m LEFT2 body/multipath override.
