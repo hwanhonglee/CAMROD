@@ -211,7 +211,7 @@ graph TD
 |---|---|---|---|
 | `localization_input_adapter_node` | `/sensing/gnss/ublox_gps_node/fix`, `/platform/status/odometry`, `/rmp401/odom` | `/sensing/gnss/pose_with_covariance`, `/platform/status/wheel_odometry` | `gnss_covariance_floor_xy`: 1e-6 m², `wheel_primary_timeout_s`: 0.7 s, `max_position_jump_m`: 8.0 m |
 | `localization_eskf_node` | `/sensing/imu/data`, `/sensing/gnss/pose_with_covariance`, `/platform/status/wheel_odometry` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry/filtered`, TF, `/localization/eskf/status` | `nhc_mode`: enabled, `zupt_mode`: enabled, `gnss_gate_mahalanobis`: 64.0, `gyro_noise`: 0.015 rad/s, `gnss_position_noise`: 4.0 m, `reinit_distance_threshold`: 3.0 m |
-| `localization_monitor_node` | `/sensing/gnss/pose_with_covariance`, `/sensing/imu/data`, `/platform/status/wheel_odometry`, `/localization/eskf/status` | `/localization/mode`, `/localization/state`, `/localization/confidence` | `gnss_timeout_s`: 2.0, `imu_timeout_s`: 0.5, `wheel_timeout_s`: 0.5, `gnss_innovation_fail`: 6.0, `dr_max_duration_s`: 30.0 |
+| `localization_monitor_node` | `/sensing/gnss/pose_with_covariance`, `/sensing/imu/data`, `/platform/status/wheel_odometry`, `/localization/eskf/status` | `/localization/mode`, `/localization/state`, `/localization/confidence` | `gnss_timeout_s`: 4.0, `imu_timeout_s`: 1.0, `wheel_timeout_s`: 1.0, `gnss_cov_trace_fail`: 1.0, `gnss_min_hz`: 0.8, `dr_max_duration_s`: 30.0 |
 | `localization_map_helper_node` | `/localization/pose`, `/localization/pose_with_covariance`, Lanelet2 map, `drop_zones.yaml` | `/localization/lanelet_pose`, `/localization/initialpose3d`, `/localization/initial_match_ok` | `max_search_radius`: 30 m, `lateral_stddev`: 0.3, `match_radius`: 2.0 m, `stable_count`: 10 |
 | `localization_pose_selector_node` | `/localization/primary/pose_with_covariance`, `/localization/fallback/*`, `/localization/mode` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry/filtered` | `primary_timeout_s`: 0.5 s, `fallback_on_mode_at_or_above`: 3 (INVALID) |
 
@@ -280,7 +280,7 @@ stateDiagram-v2
 |---|---|---|
 | `NORMAL` | 0 | GNSS + IMU + wheel all healthy; filter converged |
 | `DEGRADED` | 1 | One or more sensors degraded but filter still tracking |
-| `DR_ONLY` | 2 | GNSS lost; dead-reckoning on IMU + wheel only |
+| `DR_ONLY` | 2 | GNSS fails any health gate (freshness, covariance, jump, rate, or filter acceptance) while wheel remains healthy; dead-reckoning on IMU + wheel |
 | `INVALID` | 3 | Insufficient data or filter diverged; pose unreliable |
 
 ### 6.2 ESKF Update Sources
@@ -299,7 +299,7 @@ stateDiagram-v2
 
 ### 7.1 GNSS Loss
 
-**Trigger:** `/sensing/gnss/pose_with_covariance` stops arriving for longer than `gnss_timeout_s` (default 2.0 s), or a position jump > `max_position_jump_m` (8.0 m) is detected by the adapter.
+**Trigger:** GNSS pose/covariance is older than `gnss_timeout_s` (4.0 s), XY covariance trace exceeds `gnss_cov_trace_fail` (1.0), rate falls below `gnss_min_hz` (0.8 Hz), a per-sample jump exceeds `gnss_jump_fail_m` (1.0 m), or an enabled filter-status stream rejects the GNSS update.
 
 **Internal logic:** The monitor transitions mode from NORMAL → DEGRADED → DR_ONLY. The ESKF continues prediction using IMU and wheel odometry (NHC + ZUPT active). If DR continues beyond `dr_max_duration_s` (30 s) or covariance trace exceeds `dr_max_cov_trace` (200.0), mode becomes INVALID. The cmd_vel gate in camrod_planning imposes a 2 s hold when GNSS recovers (DR_ONLY → NORMAL).
 
@@ -311,11 +311,13 @@ stateDiagram-v2
 
 **Related topics:** `/localization/mode`, `/sensing/gnss/pose_with_covariance`, `/localization/eskf/status`
 
+> HH_260716 - A live `/fix` topic is only transport evidence. `DR_ONLY` can still be correct when `covariance[0] + covariance[7] > 1.0`; check the covariance topic and monitor parameters before changing the map origin or declaring GNSS lost.
+
 ---
 
 ### 7.2 IMU Stream Loss
 
-**Trigger:** `/sensing/imu/data` stops arriving for longer than `imu_timeout_s` (default 0.5 s).
+**Trigger:** `/sensing/imu/data` stops arriving for longer than `imu_timeout_s` (default 1.0 s).
 
 **Internal logic:** The ESKF prediction step stalls. Monitor transitions mode to DEGRADED or INVALID depending on remaining sensor health. Without IMU prediction, the filter cannot maintain continuous odom-frame integration.
 
@@ -438,7 +440,7 @@ Key launch arguments:
 | `config/source/input_adapter.yaml` | GNSS NavSatFix → PoseWithCovariance conversion, wheel topic bridging, covariance floors (`gnss_covariance_floor_xy`: 1e-6 m²), position jump rejection (`max_position_jump_m`: 8.0 m) |
 | `config/filter/eskf.yaml` | ESKF noise params (`gyro_noise`: 0.015 rad/s, `gnss_position_noise`: 4.0 m), Mahalanobis gates, NHC/ZUPT, IMU sign corrections, GNSS auto-profile switching, stop detection (`stop_speed_threshold`: 0.10 m/s) |
 | `config/filter/ekf.yaml` | robot_localization EKF parameters (used when `filter_type:=ekf`). Node log level set to WARN in `filter.launch.py` — suppress verbose INFO (e.g. `set_pose` request logs emitted on every GNSS-reattach) |
-| `config/filter/monitor.yaml` | Sensor timeout thresholds (`gnss_timeout_s`: 2.0, `imu_timeout_s`: 0.5, `wheel_timeout_s`: 0.5), GNSS innovation limits (`gnss_innovation_fail`: 6.0), DR timeout (`dr_max_duration_s`: 30.0), covariance trace limit (`dr_max_cov_trace`: 200.0) |
+| `config/filter/monitor.yaml` | Sensor timeouts (`gnss_timeout_s`: 4.0, `imu_timeout_s`: 1.0, `wheel_timeout_s`: 1.0), GNSS health gates (`gnss_cov_trace_fail`: 1.0, `gnss_jump_fail_m`: 1.0, `gnss_min_hz`: 0.8), recovery debounce (1.5 s), and DR timeout (`dr_max_duration_s`: 30.0) |
 | `config/filter/pose_selector.yaml` | Primary/fallback source topology, `fallback_on_mode_at_or_above`: 3 (INVALID), `primary_timeout_s`: 0.5 s |
 | `config/reference/map_helper.yaml` | Centerline snapper covariance (`lateral_stddev`: 0.3), drop zone match radius 2.0 m, `stable_count`: 10, `drop_zone_yaw_source`: zone |
 | `config/drop_zones.yaml` | Drop zone definitions (id, x, y, z, yaw_deg in map frame) used for initial pose matching |

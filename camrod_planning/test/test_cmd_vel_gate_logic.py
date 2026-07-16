@@ -215,6 +215,7 @@ def _mod(**attrs):
 
 sys.modules.update({
     "rclpy":                        _mod(init=lambda *a,**kw: None, ok=lambda: True, shutdown=lambda: None),
+    "rclpy.executors":              _mod(ExternalShutdownException=Exception),
     "rclpy.node":                   _mod(Node=object),
     "rclpy.time":                   _mod(Time=FakeTime),
     "rclpy.qos":                    _mod(QoSProfile=lambda **kw: None,

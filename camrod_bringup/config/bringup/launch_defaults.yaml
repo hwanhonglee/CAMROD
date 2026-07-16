@@ -492,9 +492,8 @@ bringup:
     # launch_defaults keeps only explicit bringup-level overrides.
     # Keep only explicit map path / yaw override knobs here.
     map_path: ""
-    # Point to bringup-local map_info.yaml so origin edits here take effect
-    # without touching camrod_map. (If __module_default__, bringup impl
-    # hardcodes camrod_map/config/map_info.yaml and ignores this file.)
+    # Point to bringup-local map_info.yaml. The resolved file is forwarded to
+    # both map and localization so Lanelet2 and GNSS use one projection origin.
     map_info_file: map/map_info.yaml
     map_param_file: __module_default__
     lanelet_cost_grid_param_file: map/lanelet_cost_grid.yaml

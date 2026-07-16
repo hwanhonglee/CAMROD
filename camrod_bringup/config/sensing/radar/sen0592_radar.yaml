@@ -21,7 +21,7 @@
     # Values: 1=15° 2=30° 3=45° 4=60° 5=75°. 0 = skip (sensor retains hardware value).
     # HH_260629 - Latest vehicle radar profile uses seven sensors:
     # FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
-    sensor_angle_config_values: [5, 5, 5, 5, 5, 5, 5]
+    sensor_angle_config_values: [1, 1, 1, 1, 1, 1, 1]
 
     # Per-sensor max detection range (m). Order: FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
     sensor_max_ranges_m: [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]

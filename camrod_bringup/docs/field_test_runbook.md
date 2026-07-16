@@ -19,11 +19,9 @@ ros2 run camrod_bringup field_test_tool.sh config
 Expected:
 
 - `field_test_tool.sh config` prints `config sync OK`.
-- Platform config must match in all four places:
-  - `camrod_bringup/config/platform`
-  - `camrod_platform/config`
-  - `install/camrod_bringup/.../config/platform`
-  - `install/camrod_platform/.../config`
+- Every paired bringup/package config must match, and the full config trees must
+  match their `install/<package>/share/<package>/config` copies. A source-only
+  `OK` is not sufficient after changing deployment YAML.
 
 ## 2. Start Bringup With Logging
 
@@ -85,6 +83,16 @@ Use this while UI/RViz tests are running. It shows:
 ros2 run camrod_bringup field_test_tool.sh hz 5
 ```
 
+For the front camera and YOLO path specifically:
+
+```bash
+ros2 run camrod_bringup field_test_tool.sh camera-yolo 12
+```
+
+`/perception/camera/yolo_image` is generated only while it has a subscriber.
+With no RViz/CLI image subscriber it can be silent even though TensorRT inference
+and `/perception/camera/detections_2d` are healthy.
+
 If a behavior is wrong, collect this immediately before changing parameters.
 The important questions are:
 
@@ -134,8 +142,9 @@ Run these in order and take a `snapshot` after any failure.
    - Test left, right, and rear separately.
    - Confirm the correct radar topic updates.
    - Confirm the cost-grid side matches the physical side.
-   - Right self-echo WARN can remain visible, but true external cost must still
-     stop the robot.
+   - Stationary body returns below 0.30 m are filtered; LEFT2 uses 0.75 m for
+     its measured 0.70-0.72 m multipath return. Test a real obstacle beyond the
+     active threshold and confirm that it still stops the robot.
 
 4. Perception-to-cost path
    - Put a vehicle/person in camera view.
@@ -166,8 +175,13 @@ Change only one layer at a time:
 - Radar side mismatch: check radar launch order, TF link, and radar cost-grid inputs.
 - GNSS recovery holds: check `/localization/mode`, GNSS topic freshness, covariance,
   and internet/NTRIP status before changing offsets.
+- GNSS publishes but mode is `DR_ONLY`: check XY covariance trace first. The
+  current monitor requires `covariance[0] + covariance[7] <= 1.0`, GNSS rate
+  >= 0.8 Hz, jump <= 1.0 m, and age <= 4.0 s. A live `/fix` alone is not enough.
 - High CPU: take `snapshot` first, then compare after changing component container,
   DDS/QoS, marker rate, or debug image settings.
+- High CPU with many debug terminals: close duplicate `ros2 topic echo`/`hz`
+  processes before evaluating YOLO, cost-grid, or planning rates.
 
 ## 9. End Of Test
 

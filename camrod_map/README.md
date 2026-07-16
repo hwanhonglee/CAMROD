@@ -33,12 +33,13 @@ ros2 launch camrod_map area_export.launch.py \
 
 ### Map Profile Selection
 
-> HH_260622 - The default validation profile is `copy_park`, backed by `lanelet2_maps_(copy_park).osm`.
+> HH_260716 - The default validation profile is `copy_park_moved`, backed by `lanelet2_maps_(copy_park_moved).osm` (map version 13). Its WGS84 origin is `36.8435737, 128.0925646`, with EPSG:32652 metadata `419093.912713, 4077903.915218`.
 
 `config/map_info.yaml` carries both the Lanelet2 OSM path and the WGS84/UTM origin. Bringup/planning launch files infer a normalized `map_profile` from either `map_profile` or the OSM filename suffix in parentheses. Profile-specific semantic YAML files are then selected automatically when present:
 
 | Profile input | OSM example | Semantic files selected |
 |---|---|---|
+| `map_profile: copy_park_moved` | `lanelet2_maps_(copy_park_moved).osm` | synchronized generic `drop_zones.yaml`, `camping_sites.yaml` (profile fallback) |
 | `map_profile: copy_park` | `lanelet2_maps_(copy_park).osm` | `drop_zones (copy_park).yaml`, `camping_sites (copy_park).yaml` |
 | `map_profile: copy_c_track` | `lanelet2_maps_(copy_c_track).osm` | `drop_zones (copy_c_track).yaml`, `camping_sites (copy_c_track).yaml` |
 | empty / unknown | `lanelet2_maps.osm` | `drop_zones.yaml`, `camping_sites.yaml` |

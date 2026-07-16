@@ -1664,20 +1664,32 @@ def generate_launch_description():
     # HH_260707: When the opt-in component path is enabled, the front camera is
     # started by camera_yolo_container.launch.py while the rear camera remains in
     # sensing.launch.py for docking. Sim mode still disables all hardware cameras.
+    # HH_260716 - The container must also honor the high-level camera/front/YOLO
+    # switches. Previously use_camera_yolo_container=true started both components
+    # even when enable_camera=false or perception_enable_yolo=false.
+    camera_yolo_container_active = PythonExpression([
+        "'true' if '", lc['sim'], "' != 'true' and '",
+        lc['use_camera_yolo_container'], "' == 'true' and '",
+        lc['enable_camera'], "' == 'true' and '",
+        lc['enable_front_camera'], "' == 'true' and '",
+        lc['perception_enable_yolo'], "' == 'true' else 'false'",
+    ])
     regular_front_camera_enable = PythonExpression([
         "'false' if '", lc['sim'], "' == 'true' or '",
-        lc['use_camera_yolo_container'], "' == 'true' else '",
+        camera_yolo_container_active, "' == 'true' else '",
         lc['enable_front_camera'], "'",
     ])
     regular_yolo_enable = PythonExpression([
         "'false' if '", lc['sim'], "' == 'true' or '",
-        lc['use_camera_yolo_container'], "' == 'true' else '",
+        camera_yolo_container_active, "' == 'true' else '",
         lc['perception_enable_yolo'], "'",
     ])
-    camera_yolo_container_condition = IfCondition(PythonExpression([
-        "'", lc['sim'], "' != 'true' and '",
-        lc['use_camera_yolo_container'], "' == 'true'",
-    ]))
+    camera_yolo_container_condition = IfCondition(camera_yolo_container_active)
+    front_camera_pipeline_enable = PythonExpression([
+        "'true' if '", lc['sim'], "' != 'true' and '",
+        lc['enable_camera'], "' == 'true' and '",
+        lc['enable_front_camera'], "' == 'true' else 'false'",
+    ])
 
     sensing_args = {
         # sensing.launch.py declares `sensing_namespace` (not `module_namespace`).
@@ -1716,7 +1728,9 @@ def generate_launch_description():
         # Camera-aware perception fallback:
         # perception.launch.py disables camera branches automatically when
         # camera is disabled or the device path does not exist.
-        'enable_camera': sim_switch(lc['sim'], 'false', lc['enable_camera']),
+        # Perception consumes the front camera specifically. Do not leave its
+        # camera/YOLO branch enabled when only the rear camera is requested.
+        'enable_camera': front_camera_pipeline_enable,
         'camera_device_path': lc['camera_device_path'],
         'perception_mode': lc['perception_mode'],
     }
@@ -1793,6 +1807,10 @@ def generate_launch_description():
         'enable_filter': lc['localization_enable_filter'],
         'enable_monitor': lc['localization_enable_monitor'],
         'enable_map_helper': lc['localization_enable_map_helper'],
+        # HH_260713: Map and GNSS projection must consume the exact same map-info
+        # file.  Falling back inside camrod_localization can silently select the
+        # package copy while full bringup loads its bringup-local map copy.
+        'map_info_file': lc['map_info_file'],
         'filter_type': localization_filter_type,
         'wheel_bridge_enable': lc['wheel_bridge_enable'],
         'wheel_input_topic': wheel_input_topic_for_filter,
