@@ -18,6 +18,8 @@
 
 > HH_260707 - `obstacle_fusion_node` is tuned for real-time freshness under all-on field load: `sync_queue_size: 8` limits stale message backlog, debug-image decode/draw/publish work is skipped when no subscriber exists, and debug image output is rate-limited to 2 Hz by default. The obstacle topics and message contracts are unchanged.
 
+> HH_260716 - Full bringup normally loads the front camera and YOLO into `/camera_yolo_container`. `/perception/camera/detections_2d` is continuously published while inference runs, but `/perception/camera/yolo_image` is generated only when RViz or another subscriber is present. A silent annotated-image topic with zero subscribers is therefore expected, not a stopped YOLO node.
+
 ---
 
 ## 2. 🗺️ System Position
@@ -229,7 +231,7 @@ Default `extrinsic_z = -0.075` (camera is 7.5 cm below LiDAR). Adjust in `percep
 | `/perception/camera_lidar/detections_3d` | `vision_msgs/Detection3DArray` | optional consumers | ~10 Hz | 3D detections with EMA-smoothed LiDAR-derived positions |
 | `/perception/camera_lidar/markers` | `visualization_msgs/MarkerArray` | RViz | ~10 Hz | Sphere + text markers at fused detection positions |
 | `/perception/camera_lidar/euclidean_markers` | `visualization_msgs/MarkerArray` | RViz | ~10 Hz | Euclidean cluster centroids with YOLO label overlay |
-| `/perception/camera/yolo_image` | `sensor_msgs/Image` | RViz | ~10 Hz | YOLOv9 annotated image (published by `yolov9mit_ros`) |
+| `/perception/camera/yolo_image` | `sensor_msgs/Image` | RViz | on demand, load-dependent | YOLOv9 annotated image; subscriber-gated by `yolov9mit_ros` |
 
 ---
 
@@ -349,11 +351,18 @@ ros2 node list | grep -E "obstacle_fusion|obstacle_lidar|yolov9mit"
 # 2. Check that filtered LiDAR cloud is arriving
 ros2 topic hz /sensing/lidar/points_filtered
 
-# 3. Check that camera_info is arriving (required before fusion starts)
-ros2 topic hz /sensing/camera/processed/camera_info
+# 3. Check that the active front-camera topics are arriving
+ros2 topic hz /sensing/camera/econ_front/image_rect/compressed
+ros2 topic hz /sensing/camera/econ_front/camera_info
 
 # 4. Check YOLO detections are arriving (Mode A)
 ros2 topic hz /perception/camera/detections_2d
+
+# Optional: this subscription enables the on-demand annotated image
+ros2 topic hz /perception/camera/yolo_image
+
+# Equivalent packaged probe from an installed workspace
+ros2 run camrod_bringup field_test_tool.sh camera-yolo 12
 
 # 5. Check obstacle output is publishing
 ros2 topic hz /perception/obstacles

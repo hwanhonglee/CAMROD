@@ -127,7 +127,7 @@ planner_server:
       # YH_260706: nav2_smac_planner 는 이 repo 에 vendored 소스빌드(camrod_planning/external)라
       #   /opt 경로엔 lattice 파일이 없다. 워크스페이스 install share 경로로 변경(vendored .so 와 정확히 일치).
       #   /opt 백업: /opt/ros/humble/share/nav2_smac_planner/sample_primitives/5cm_resolution/1m_turning_radius/ackermann/output.json
-      lattice_filepath: "/home/nvidia/camrod_docking_test_Ws/install/nav2_smac_planner/share/nav2_smac_planner/sample_primitives/5cm_resolution/1m_turning_radius/ackermann/output.json"
+      lattice_filepath: "/home/nvidia/camrod_ws/install/nav2_smac_planner/share/nav2_smac_planner/sample_primitives/5cm_resolution/1m_turning_radius/ackermann/output.json"
       # HH_260619 - Make centerline cost dominate over shorter corner-cutting
       # routes. The lanelet cost grid now encodes center=low, off-center=high,
       # boundary=near-lethal, so Lattice must weight cost enough to respect it.

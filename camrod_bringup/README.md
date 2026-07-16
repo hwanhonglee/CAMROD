@@ -39,7 +39,7 @@ ros2 launch camrod_bringup bringup.launch.py \
 
 # Use the current Park validation map/profile
 ros2 launch camrod_bringup bringup.launch.py sim:=true \
-  map_path:="/home/hong/camrod_ws/src/lanelet2_maps_(copy_park).osm"
+  map_path:="/home/nvidia/camrod_ws/src/lanelet2_maps_(copy_park_moved).osm"
 
 # Full-stack GNSS DR fallback integration test (sim)
 ros2 launch camrod_bringup gnss_dr_test.launch.py
@@ -55,6 +55,9 @@ ros2 run camrod_bringup field_test_tool.sh snapshot
 # Verify bringup/package/install config synchronization
 ros2 run camrod_bringup field_test_tool.sh config
 
+# Verify front-camera input and live YOLO inference/output
+ros2 run camrod_bringup field_test_tool.sh camera-yolo 12
+
 # Camping-site route + site maneuver + drop-zone reverse parking validation
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p skip_manual_goal:=true \
@@ -64,7 +67,7 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p report_file:=/tmp/camrod_sim_validation_camping_full.json
 ```
 
-> HH_260622 - `map_info.yaml` now defaults to the `copy_park` validation map. `_bringup_impl.py` also infers `map_profile` from `map_profile` or the OSM filename and loads matching `drop_zones (<profile>).yaml` / `camping_sites (<profile>).yaml` when those files exist.
+> HH_260716 - `map_info.yaml` defaults to the moved Park validation map (`copy_park_moved`). `_bringup_impl.py` forwards that same map-info file to map and localization, then loads matching semantic profile files when present or the synchronized generic drop-zone/camping-site files otherwise.
 > HH_260630 - When `sim:=true`, bringup selects `camrod_system/config/system_checker_sim.yaml` in addition to the `diagnostics/sim` profile. Fake-sensor runs therefore check the simulated public topic graph without requiring real GNSS/IMU/LiDAR/camera/Ranger driver nodes.
 > HH_260630 - UI manual engage and camping-site destination buttons publish `/platform/drive_enable` together with the relevant planning engage latch. `/platform/set_enabled` remains a CLI/debug fallback, not the normal operator path.
 > HH_260630 - Package config trees are synchronized into `camrod_bringup/config`; bringup passes `config/system/diagnostics` to `camrod_system` so the synchronized system checker profiles are actually used.
@@ -76,6 +79,7 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
 > HH_260706 - v2.0.1 keeps `camrod_bringup/config/sensing/*` synchronized with package-level sensing configs for GNSS, LiDAR cost grid, and ground segmentation.
 > HH_260707 - Runtime-load update keeps the full stack enabled while reducing internal backlog/marker/debug-image work: perception sync queue 8, debug-image subscriber gating, LiDAR/cost-grid cached rebuild gates, seven-radar sim heartbeat, and filtered system diagnostic input.
 > HH_260708 - Outdoor field testing now has `field_test_tool.sh` plus [docs/field_test_runbook.md](docs/field_test_runbook.md). Use it to check config sync, log bringup, capture diagnostics/Hz/CPU snapshots, close/open software gates, and preserve evidence for radar, LiDAR, perception-cost, GNSS recovery, path, campsite, and drop-zone issues.
+> HH_260716 - `field_test_tool.sh config` now checks all paired package configs and their installed copies. `camera-yolo` verifies continuous detections plus subscriber-gated annotated images; an idle `/perception/camera/yolo_image` with zero subscribers is not a stopped YOLO node.
 
 ---
 
