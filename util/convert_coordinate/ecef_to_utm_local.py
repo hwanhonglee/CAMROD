@@ -16,8 +16,10 @@ class EcefToUtmLocal(Node):
         self.declare_parameter('frame_id', 'map')
 
         # 네 맵 원점 (UTM/평면좌표)
-        self.declare_parameter('origin_x', 419092.66)
-        self.declare_parameter('origin_y', 4077909.06)
+        # HH_260713 - EPSG:32652 projection of Park map origin
+        # (36.8435737, 128.0925646), kept in sync with map_info.yaml.
+        self.declare_parameter('origin_x', 419093.912713)
+        self.declare_parameter('origin_y', 4077903.915218)
         self.declare_parameter('origin_z', 0.0)
 
         # 맵 좌표계 EPSG (기본 UTM 52N)

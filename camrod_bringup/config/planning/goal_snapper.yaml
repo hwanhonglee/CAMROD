@@ -4,8 +4,8 @@
   ros__parameters:
     # Launch passes resolved map_path; keep YAML default empty to avoid host-specific hardcoding.
     map_path: ""
-    offset_lat: 36.8436194
-    offset_lon: 128.0925490
+    offset_lat: 36.8435737
+    offset_lon: 128.0925646
     offset_alt: 0.0
     input_goal_topic: "/goal_pose"
     # HH_260623 - Private input for planning_state_machine auto return goals.

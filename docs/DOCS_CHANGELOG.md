@@ -5,6 +5,21 @@ For code changes see git log and release tags.
 
 ---
 
+## [v2.0.2-docs] — 2026-07-16 (HH_260716)
+
+### Changed — field map, sensing, localization, and validation baseline
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Set v2.0.2 current release; summarized moved Park map, radar thresholds, JECH NTRIP, camera/YOLO gating, GNSS health gates, and full config/install sync |
+| `camrod_bringup/README.md` | Updated active map path/profile and added the reusable camera/YOLO probe |
+| `camrod_bringup/docs/field_test_runbook.md` | Added all-package install checks, radar minimum-range validation, GNSS covariance triage, YOLO subscriber-gating notes, and duplicate debug-process load guidance |
+| `camrod_map/README.md` | Documented `copy_park_moved`, map version 13, and synchronized projection metadata |
+| `camrod_sensing/README.md` | Updated JECH mountpoint, single/dual GNSS rates, 15-degree radar profile, and measured self-echo dead zones |
+| `camrod_localization/README.md` | Updated monitor thresholds and clarified why live GNSS may still result in `DR_ONLY` |
+| `camrod_perception/README.md` | Documented the component-container path, continuous detection health topic, and subscriber-gated YOLO image behavior |
+| `docs/V2_0_2_RELEASE_NOTES.md` | Added operator-facing change inventory, validation checklist, and known runtime observations |
+
 ## [lights-docs] — 2026-07-08 (260708)
 
 ### Added — exterior light feature docs

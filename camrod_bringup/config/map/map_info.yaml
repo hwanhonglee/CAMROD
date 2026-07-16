@@ -5,19 +5,27 @@
     # Lanelet2 OSM path for the active camping-site (park) map.
     # Use an absolute path so bringup/module launches load the same file.
     # c_track backup: "/home/nvidia/camrod_ws/src/lanelet2_maps_(c_track_test_moved).osm" (map_profile: copy_c_track)
-    map_path: "/home/nvidia/camrod_docking_test_Ws/src/lanelet2_maps_(copy_park).osm"
-    map_profile: "copy_park"
+    # HH_260713 - OSM geometry (not the shared origin) was moved so B2 aligns
+    # with the stationary GNSS mean measured inside B2 at 16:08 KST.
+    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps_(copy_park_moved).osm"
+    map_profile: "copy_park_moved"
 
     # WGS84 origin used by LocalCartesian projectors.
     # Camping-site (park) map origin (from map_projector_info (copy_park).yaml).
     # c_track backup: 36.729291686 / 127.442957302 / 0.0
     offset_lat: 36.8435737
     offset_lon: 128.0925646
+    # Field GNSS sample kept for reference; this is not the projector origin.
+    #offset_alt: 0.0
+    #offset_lat: 36.843619 # 36.843619
+    #offset_lon: 128.092549 # 128.092549
     offset_alt: 0.0
 
     # Optional UTM-origin metadata for downstream tools that prefer metric origin fields.
-    offset_utm_easting: 0.0
-    offset_utm_northing: 0.0
+    # EPSG:32652 coordinates of offset_lat/offset_lon. These are metadata for
+    # the optional UTM input path; the active NavSatFix path uses LLH->ECEF->ENU.
+    offset_utm_easting: 419093.912713
+    offset_utm_northing: 4077903.915218
     offset_utm_alt: 0.0
 
     # Optional map yaw correction (degrees).
