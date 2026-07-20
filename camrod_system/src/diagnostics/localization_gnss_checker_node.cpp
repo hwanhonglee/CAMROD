@@ -37,7 +37,8 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
-#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+// HH_260720 - Diagnose generated CAMROD GNSS localization poses.
+#include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -46,7 +47,7 @@
 using DiagnosticStatus  = diagnostic_msgs::msg::DiagnosticStatus;
 using StatusWrapper     = diagnostic_updater::DiagnosticStatusWrapper;
 using PoseWithCovStamped =
-  geometry_msgs::msg::PoseWithCovarianceStamped;
+  avg_msgs::msg::AvgPoseWithCovarianceStamped;
 
 // ── GNSS 로컬라이제이션 품질 상태 구조체 ─────────────────────────────────
 

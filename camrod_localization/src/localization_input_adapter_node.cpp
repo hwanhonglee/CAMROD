@@ -11,16 +11,19 @@
 #include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <avg_msgs/msg/nav_sat_fix.hpp>
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
-#include <avg_msgs/msg/odometry.hpp>
-#include <avg_msgs/msg/twist_stamped.hpp>
-#include <avg_msgs/msg/point.hpp>
+#include <avg_msgs/conversions.hpp>
+#include <avg_msgs/msg/avg_odometry.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
+#include <avg_msgs/msg/avg_twist_stamped.hpp>
 #include <avg_msgs/msg/avg_localization_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
 
 #include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/nav_sat_fix.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
@@ -88,7 +91,7 @@ Ecef llhToEcef(double lat_rad, double lon_rad, double alt)
   return ecef;
 }
 
-avg_msgs::msg::Point ecefToEnu(
+geometry_msgs::msg::Point ecefToEnu(
   const Ecef & ref, const Ecef & cur, double lat_ref, double lon_ref)
 {
   const double sin_lat = std::sin(lat_ref);
@@ -100,16 +103,16 @@ avg_msgs::msg::Point ecefToEnu(
   const double dy = cur.y - ref.y;
   const double dz = cur.z - ref.z;
 
-  avg_msgs::msg::Point enu;
+  geometry_msgs::msg::Point enu;
   enu.x = -sin_lon * dx + cos_lon * dy;
   enu.y = -sin_lat * cos_lon * dx - sin_lat * sin_lon * dy + cos_lat * dz;
   enu.z = cos_lat * cos_lon * dx + cos_lat * sin_lon * dy + sin_lat * dz;
   return enu;
 }
 
-avg_msgs::msg::Point rotatePointXY(const avg_msgs::msg::Point & in, double yaw_rad)
+geometry_msgs::msg::Point rotatePointXY(const geometry_msgs::msg::Point & in, double yaw_rad)
 {
-  avg_msgs::msg::Point out = in;
+  geometry_msgs::msg::Point out = in;
   if (std::abs(yaw_rad) < 1e-12) {
     return out;
   }
@@ -169,8 +172,14 @@ public:
     // UTM pose is treated as a metric XY source and shifted by configured offsets.
     utm_pose_topic_ = declare_parameter<std::string>("utm_pose_topic", "");
     gnss_pose_topic_ = declare_parameter<std::string>("gnss_pose_topic", "/sensing/gnss/pose");
+    // HH_260720 - Expose the GNSS pose to standard-ROS visualization consumers explicitly.
+    gnss_pose_ros_topic_ = declare_parameter<std::string>(
+      "gnss_pose_ros_topic", "/sensing/gnss/pose_ros");
     gnss_pose_cov_topic_ = declare_parameter<std::string>(
       "gnss_pose_cov_topic", "/sensing/gnss/pose_with_covariance");
+    // HH_260720 - Publish a clearly named standard-ROS boundary for robot_localization.
+    gnss_pose_cov_ros_topic_ = declare_parameter<std::string>(
+      "gnss_pose_cov_ros_topic", "/sensing/gnss/pose_with_covariance_ros");
     map_frame_id_ = declare_parameter<std::string>("map_frame_id", "map");
     publish_gnss_covariance_ = declare_parameter<bool>("publish_gnss_covariance", true);
     // HH_260526: Replace use_navsat_position_covariance toggle with explicit source mode.
@@ -205,28 +214,32 @@ public:
       "pose_covariance_diagonal",
       std::vector<double>{1.0, 1.0, 1.0, 999.0, 999.0, 1.0});
 
+    // HH_260720 - Adapt robot_localization's standard output into generated primary topics.
     odom_input_topic_ = declare_parameter<std::string>(
-      "odom_input_topic", "/localization/odometry/filtered");
+      "odom_input_topic", "/localization/primary/odometry_ros");
+    odom_output_topic_ = declare_parameter<std::string>(
+      "odom_output_topic", "/localization/primary/odometry");
     odom_pose_topic_ = declare_parameter<std::string>(
-      "odom_pose_topic", "/localization/pose");
+      "odom_pose_topic", "/localization/primary/pose");
     odom_pose_cov_topic_ = declare_parameter<std::string>(
-      "odom_pose_cov_topic", "/localization/pose_with_covariance");
+      "odom_pose_cov_topic", "/localization/primary/pose_with_covariance");
     odom_output_frame_id_ = declare_parameter<std::string>("odom_output_frame_id", "");
 
     wheel_input_topic_ = declare_parameter<std::string>(
       // HH_260410: Prefer platform status odometry as the primary wheel source.
       "wheel_input_topic", "/platform/status/odometry");
     wheel_output_topic_ = declare_parameter<std::string>(
-      // HH_260410: Keep unified wheel output under /platform/status namespace.
-      "wheel_output_topic", "/platform/status/wheel_odometry");
+      // HH_260720 - Localization owns the generated wheel stream after frame normalization.
+      "wheel_output_topic", "/localization/input/wheel_odometry");
     wheel_nav_output_topic_ = declare_parameter<std::string>(
-      "wheel_nav_output_topic", "/platform/wheel/nav_odometry");
+      // HH_260720 - Standard wheel odometry exists only as the robot_localization boundary.
+      "wheel_nav_output_topic", "/localization/input/wheel_odometry_ros");
     wheel_odom_frame_ = declare_parameter<std::string>("wheel_odom_frame_id", "odom");
     wheel_base_frame_ = declare_parameter<std::string>("wheel_base_frame_id", "robot_base_link");
     wheel_input_type_ = normalizeWheelInputType(
-      declare_parameter<std::string>("wheel_input_type", "nav_odom"));
-    // HH_260410: Runtime fallback input. Prefer primary /platform/status/*
-    // and only consume fallback when primary becomes stale/missing.
+      // HH_260720 - Platform status odometry is a concrete generated AvgOdometry message.
+      declare_parameter<std::string>("wheel_input_type", "avg_odom"));
+    // HH_260720 - Prefer generated platform odometry and use raw vendor fallback only when stale.
     wheel_fallback_input_topic_ = declare_parameter<std::string>(
       "wheel_fallback_input_topic", "/rmp401/odom");
     wheel_fallback_input_type_ = normalizeWheelInputType(
@@ -245,23 +258,30 @@ public:
 
     if (enable_navsat_to_pose_) {
       gnss_pose_pub_ =
-        create_publisher<avg_msgs::msg::PoseStamped>(gnss_pose_topic_, rclcpp::QoS(10));
+        create_publisher<avg_msgs::msg::AvgPoseStamped>(gnss_pose_topic_, rclcpp::QoS(10));
+      // HH_260720 - Keep the standard mirror separate from the canonical generated topic.
+      gnss_pose_ros_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
+        gnss_pose_ros_topic_, rclcpp::QoS(10));
       if (publish_gnss_covariance_) {
         gnss_pose_cov_pub_ =
-          create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(gnss_pose_cov_topic_, rclcpp::QoS(10));
+          create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(gnss_pose_cov_topic_, rclcpp::QoS(10));
+        gnss_pose_cov_ros_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
+          gnss_pose_cov_ros_topic_, rclcpp::QoS(10));
       }
     }
 
     if (enable_odometry_to_pose_) {
+      odom_pub_ = create_publisher<avg_msgs::msg::AvgOdometry>(
+        odom_output_topic_, rclcpp::QoS(50));
       odom_pose_pub_ =
-        create_publisher<avg_msgs::msg::PoseStamped>(odom_pose_topic_, rclcpp::QoS(10));
+        create_publisher<avg_msgs::msg::AvgPoseStamped>(odom_pose_topic_, rclcpp::QoS(10));
       odom_pose_cov_pub_ =
-        create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(odom_pose_cov_topic_, rclcpp::QoS(10));
+        create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(odom_pose_cov_topic_, rclcpp::QoS(10));
     }
 
     if (enable_wheel_odometry_bridge_) {
       wheel_odom_pub_ =
-        create_publisher<avg_msgs::msg::Odometry>(wheel_output_topic_, rclcpp::QoS(50));
+        create_publisher<avg_msgs::msg::AvgOdometry>(wheel_output_topic_, rclcpp::QoS(50));
       wheel_nav_odom_pub_ =
         create_publisher<nav_msgs::msg::Odometry>(wheel_nav_output_topic_, rclcpp::QoS(50));
     }
@@ -274,7 +294,7 @@ public:
     using std::placeholders::_1;
 
     if (enable_navsat_to_pose_) {
-      navsat_sub_ = create_subscription<avg_msgs::msg::NavSatFix>(
+      navsat_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
         navsat_topic_, rclcpp::SensorDataQoS(),
         std::bind(&LocalizationInputAdapterNode::onNavSatFix, this, _1));
 
@@ -286,31 +306,32 @@ public:
       }
 
       if (!raw_pose_topic_.empty()) {
-        raw_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+        raw_pose_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
           raw_pose_topic_, rclcpp::QoS(10),
           std::bind(&LocalizationInputAdapterNode::onRawPose, this, _1));
       }
 
       if (!utm_pose_topic_.empty()) {
-        utm_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+        utm_pose_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
           utm_pose_topic_, rclcpp::QoS(10),
           std::bind(&LocalizationInputAdapterNode::onUtmPose, this, _1));
       }
     }
 
     if (enable_odometry_to_pose_) {
-      odom_sub_ = create_subscription<avg_msgs::msg::Odometry>(
+      // HH_260720 - robot_localization is an external standard-message boundary.
+      odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
         odom_input_topic_, rclcpp::SensorDataQoS(),
         std::bind(&LocalizationInputAdapterNode::onOdom, this, _1));
     }
 
     if (enable_wheel_odometry_bridge_) {
       if (wheel_input_type_ == "twist") {
-        wheel_twist_sub_ = create_subscription<avg_msgs::msg::TwistStamped>(
+        wheel_twist_sub_ = create_subscription<avg_msgs::msg::AvgTwistStamped>(
           wheel_input_topic_, rclcpp::SensorDataQoS(),
           std::bind(&LocalizationInputAdapterNode::onWheelTwist, this, _1));
       } else if (wheel_input_type_ == "avg_odom") {
-        wheel_avg_odom_sub_ = create_subscription<avg_msgs::msg::Odometry>(
+        wheel_avg_odom_sub_ = create_subscription<avg_msgs::msg::AvgOdometry>(
           wheel_input_topic_, rclcpp::SensorDataQoS(),
           std::bind(&LocalizationInputAdapterNode::onWheelAvgOdom, this, _1));
       } else if (wheel_input_type_ == "nav_odom") {
@@ -329,11 +350,11 @@ public:
             get_logger(),
             "wheel_fallback_input_topic/type is same as primary. Skip fallback subscription.");
         } else if (wheel_fallback_input_type_ == "twist") {
-          wheel_twist_fallback_sub_ = create_subscription<avg_msgs::msg::TwistStamped>(
+          wheel_twist_fallback_sub_ = create_subscription<avg_msgs::msg::AvgTwistStamped>(
             wheel_fallback_input_topic_, rclcpp::SensorDataQoS(),
             std::bind(&LocalizationInputAdapterNode::onWheelTwistFallback, this, _1));
         } else if (wheel_fallback_input_type_ == "avg_odom") {
-          wheel_avg_odom_fallback_sub_ = create_subscription<avg_msgs::msg::Odometry>(
+          wheel_avg_odom_fallback_sub_ = create_subscription<avg_msgs::msg::AvgOdometry>(
             wheel_fallback_input_topic_, rclcpp::SensorDataQoS(),
             std::bind(&LocalizationInputAdapterNode::onWheelAvgOdomFallback, this, _1));
         } else if (wheel_fallback_input_type_ == "nav_odom") {
@@ -443,14 +464,14 @@ private:
     return false;
   }
 
-  void onNavSatFix(const avg_msgs::msg::NavSatFix::ConstSharedPtr msg)
+  void onNavSatFix(const sensor_msgs::msg::NavSatFix::ConstSharedPtr msg)
   {
     const double lat_rad = deg2rad(msg->latitude);
     const double lon_rad = deg2rad(msg->longitude);
     const double alt = msg->altitude;
 
     const Ecef cur_ecef = llhToEcef(lat_rad, lon_rad, alt);
-    avg_msgs::msg::Point p = ecefToEnu(reference_ecef_, cur_ecef, offset_lat_rad_, offset_lon_rad_);
+    geometry_msgs::msg::Point p = ecefToEnu(reference_ecef_, cur_ecef, offset_lat_rad_, offset_lon_rad_);
 
     if (rotate_latlon_xy_by_yaw_offset_) {
       p = rotatePointXY(p, yaw_offset_rad_);
@@ -481,7 +502,7 @@ private:
     last_position_stamp_ = stamp;
     has_last_position_ = true;
 
-    avg_msgs::msg::PoseStamped pose;
+    geometry_msgs::msg::PoseStamped pose;
     pose.header = msg->header;
     pose.header.frame_id = map_frame_id_;
     pose.pose.position = p;
@@ -492,10 +513,11 @@ private:
     // HH_260604: Publish GNSS pose orientation from the selected heading instead of fixed yaw.
     pose.pose.orientation = heading_orientation;
 
-    gnss_pose_pub_->publish(pose);
+    // HH_260720 - Publish the canonical GNSS pose and its explicit visualization mirror together.
+    publishGnssPose(pose);
 
     if (publish_gnss_covariance_) {
-      avg_msgs::msg::PoseWithCovarianceStamped pose_cov;
+      geometry_msgs::msg::PoseWithCovarianceStamped pose_cov;
       pose_cov.header = pose.header;
       pose_cov.pose.pose = pose.pose;
       pose_cov.pose.covariance = pose_covariance_;
@@ -526,14 +548,14 @@ private:
         pose_cov.pose.covariance[7] = var_y;
         pose_cov.pose.covariance[14] = var_z;
       }
-      gnss_pose_cov_pub_->publish(pose_cov);
+      publishGnssPoseCovariance(pose_cov);
     }
 
     publishLocalizationStatus("navsat_to_pose", msg->header.stamp);
   }
 
   void publishMetricPose(
-    const avg_msgs::msg::PoseStamped::ConstSharedPtr msg,
+    const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg,
     double offset_easting,
     double offset_northing,
     double offset_alt,
@@ -542,7 +564,7 @@ private:
     if (!enable_navsat_to_pose_) {
       return;
     }
-    avg_msgs::msg::PoseStamped out = *msg;
+    geometry_msgs::msg::PoseStamped out = *msg;
     out.header.frame_id = map_frame_id_;
     out.pose.position.x -= offset_easting;
     out.pose.position.y -= offset_northing;
@@ -552,19 +574,20 @@ private:
       out.pose.position = rotatePointXY(out.pose.position, yaw_offset_rad_);
     }
 
-    gnss_pose_pub_->publish(out);
+    // HH_260720 - Keep every metric GNSS input on the same dual-output contract.
+    publishGnssPose(out);
 
     if (publish_gnss_covariance_) {
-      avg_msgs::msg::PoseWithCovarianceStamped cov;
+      geometry_msgs::msg::PoseWithCovarianceStamped cov;
       cov.header = out.header;
       cov.pose.pose = out.pose;
       cov.pose.covariance = pose_covariance_;
-      gnss_pose_cov_pub_->publish(cov);
+      publishGnssPoseCovariance(cov);
     }
     publishLocalizationStatus(status_source, msg->header.stamp);
   }
 
-  void onUtmPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onUtmPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     publishMetricPose(
       msg,
@@ -574,55 +597,72 @@ private:
       "utm_pose_bridge");
   }
 
-  void onRawPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onRawPose(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     // HH_260606 // Keep raw-pose bridging in one handler; the duplicate legacy
     // definition broke camrod_localization builds without changing behavior.
     if (!enable_navsat_to_pose_) {
       return;
     }
-    avg_msgs::msg::PoseStamped out = *msg;
+    geometry_msgs::msg::PoseStamped out = *msg;
     out.header.frame_id = map_frame_id_;
-    gnss_pose_pub_->publish(out);
+    // HH_260720 - Keep every raw-pose input on the same dual-output contract.
+    publishGnssPose(out);
     if (publish_gnss_covariance_) {
-      avg_msgs::msg::PoseWithCovarianceStamped cov;
+      geometry_msgs::msg::PoseWithCovarianceStamped cov;
       cov.header = out.header;
       cov.pose.pose = out.pose;
       cov.pose.covariance = pose_covariance_;
-      gnss_pose_cov_pub_->publish(cov);
+      publishGnssPoseCovariance(cov);
     }
     publishLocalizationStatus("raw_pose_bridge", msg->header.stamp);
   }
 
-  void onOdom(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
+  // HH_260720 - Convert the EKF standard output once, then remain generated internally.
+  void onOdom(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
   {
-    avg_msgs::msg::PoseStamped pose;
-    pose.header = msg->header;
-    pose.pose = msg->pose.pose;
+    nav_msgs::msg::Odometry normalized_odometry = *msg;
     if (!odom_output_frame_id_.empty()) {
-      pose.header.frame_id = odom_output_frame_id_;
+      normalized_odometry.header.frame_id = odom_output_frame_id_;
     }
-    odom_pose_pub_->publish(pose);
+    odom_pub_->publish(avg_msgs::conversions::fromRos(normalized_odometry));
 
-    avg_msgs::msg::PoseWithCovarianceStamped pose_cov;
-    pose_cov.header = msg->header;
-    pose_cov.pose = msg->pose;
-    if (!odom_output_frame_id_.empty()) {
-      pose_cov.header.frame_id = odom_output_frame_id_;
-    }
-    odom_pose_cov_pub_->publish(pose_cov);
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header = normalized_odometry.header;
+    pose.pose = normalized_odometry.pose.pose;
+    odom_pose_pub_->publish(avg_msgs::conversions::fromRos(pose));
+
+    geometry_msgs::msg::PoseWithCovarianceStamped pose_cov;
+    pose_cov.header = normalized_odometry.header;
+    pose_cov.pose = normalized_odometry.pose;
+    odom_pose_cov_pub_->publish(avg_msgs::conversions::fromRos(pose_cov));
 
     publishLocalizationStatus("odometry_to_pose", msg->header.stamp);
   }
 
-  void onWheelTwist(const avg_msgs::msg::TwistStamped::ConstSharedPtr msg)
+  // HH_260720 - Publish generated GNSS covariance plus the explicit EKF mirror together.
+  void publishGnssPoseCovariance(
+    const geometry_msgs::msg::PoseWithCovarianceStamped & pose_covariance)
+  {
+    gnss_pose_cov_pub_->publish(avg_msgs::conversions::fromRos(pose_covariance));
+    gnss_pose_cov_ros_pub_->publish(pose_covariance);
+  }
+
+  // HH_260720 - Publish generated GNSS data internally and standard ROS only at the named boundary.
+  void publishGnssPose(const geometry_msgs::msg::PoseStamped & pose)
+  {
+    gnss_pose_pub_->publish(avg_msgs::conversions::fromRos(pose));
+    gnss_pose_ros_pub_->publish(pose);
+  }
+
+  void onWheelTwist(const avg_msgs::msg::AvgTwistStamped::ConstSharedPtr msg)
   {
     markPrimaryWheelRx();
     setActiveWheelSource(WheelSource::kPrimary, "primary_twist");
     publishWheelFromTwist(*msg, "wheel_twist_bridge");
   }
 
-  void onWheelTwistFallback(const avg_msgs::msg::TwistStamped::ConstSharedPtr msg)
+  void onWheelTwistFallback(const avg_msgs::msg::AvgTwistStamped::ConstSharedPtr msg)
   {
     if (!shouldUseFallback()) {
       return;
@@ -632,14 +672,14 @@ private:
     publishWheelFromTwist(*msg, "wheel_twist_fallback_bridge");
   }
 
-  void onWheelAvgOdom(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
+  void onWheelAvgOdom(const avg_msgs::msg::AvgOdometry::ConstSharedPtr msg)
   {
     markPrimaryWheelRx();
     setActiveWheelSource(WheelSource::kPrimary, "primary_avg_odom");
     publishWheelFromAvgOdom(*msg, "wheel_avg_odom_bridge");
   }
 
-  void onWheelAvgOdomFallback(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
+  void onWheelAvgOdomFallback(const avg_msgs::msg::AvgOdometry::ConstSharedPtr msg)
   {
     if (!shouldUseFallback()) {
       return;
@@ -667,10 +707,10 @@ private:
   }
 
   void publishWheelFromTwist(
-    const avg_msgs::msg::TwistStamped & msg,
+    const avg_msgs::msg::AvgTwistStamped & msg,
     const std::string & status_source)
   {
-    avg_msgs::msg::Odometry odom;
+    avg_msgs::msg::AvgOdometry odom;
     odom.header = msg.header;
     odom.header.frame_id = wheel_odom_frame_;
     odom.child_frame_id = wheel_base_frame_;
@@ -681,10 +721,10 @@ private:
   }
 
   void publishWheelFromAvgOdom(
-    const avg_msgs::msg::Odometry & msg,
+    const avg_msgs::msg::AvgOdometry & msg,
     const std::string & status_source)
   {
-    avg_msgs::msg::Odometry odom = msg;
+    avg_msgs::msg::AvgOdometry odom = msg;
     if (odom.header.frame_id.empty()) {
       odom.header.frame_id = wheel_odom_frame_;
     }
@@ -699,8 +739,7 @@ private:
     const nav_msgs::msg::Odometry & msg,
     const std::string & status_source)
   {
-    avg_msgs::msg::Odometry odom;
-    odom.header = msg.header;
+    avg_msgs::msg::AvgOdometry odom = avg_msgs::conversions::fromRos(msg);
     // HH_260410: Keep configured fallback frame handling when incoming nav odom
     // does not carry frame IDs.
     if (odom.header.frame_id.empty()) {
@@ -708,8 +747,6 @@ private:
     }
     // HH_260413: Force child frame to configured base frame to keep TF consistent.
     odom.child_frame_id = wheel_base_frame_;
-    odom.pose = msg.pose;
-    odom.twist = msg.twist;
     wheel_odom_pub_->publish(odom);
     nav_msgs::msg::Odometry nav_out = msg;
     nav_out.child_frame_id = wheel_base_frame_;
@@ -762,14 +799,10 @@ private:
       seen_fallback_wheel_ ? "true" : "false");
   }
 
-  nav_msgs::msg::Odometry toNavOdometry(const avg_msgs::msg::Odometry & msg) const
+  nav_msgs::msg::Odometry toNavOdometry(const avg_msgs::msg::AvgOdometry & msg) const
   {
-    nav_msgs::msg::Odometry out;
-    out.header = msg.header;
-    out.child_frame_id = msg.child_frame_id;
-    out.pose = msg.pose;
-    out.twist = msg.twist;
-    return out;
+    // HH_260720 - Keep the standard ROS wheel-odometry mirror as an explicit adapter.
+    return avg_msgs::conversions::toRos(msg);
   }
 
   void publishLocalizationStatus(
@@ -797,7 +830,8 @@ private:
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
 
   std::string navsat_topic_, utm_pose_topic_, raw_pose_topic_;
-  std::string gnss_pose_topic_, gnss_pose_cov_topic_, map_frame_id_;
+  std::string gnss_pose_topic_, gnss_pose_ros_topic_;
+  std::string gnss_pose_cov_topic_, gnss_pose_cov_ros_topic_, map_frame_id_;
   bool publish_gnss_covariance_{true};
   // HH_260604: Keep GNSS heading state for dual-antenna heading selection.
   bool enable_gnss_heading_{false};
@@ -836,23 +870,28 @@ private:
   double jump_reject_reset_s_{2.0};
 
   bool has_last_position_{false};
-  avg_msgs::msg::Point last_position_;
+  geometry_msgs::msg::Point last_position_;
   rclcpp::Time last_position_stamp_{0, 0, RCL_ROS_TIME};
 
   std::vector<double> pose_cov_diag_;
   std::array<double, 36> pose_covariance_{};
 
-  rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr gnss_pose_pub_;
-  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr gnss_pose_cov_pub_;
-  rclcpp::Subscription<avg_msgs::msg::NavSatFix>::SharedPtr navsat_sub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseStamped>::SharedPtr gnss_pose_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr gnss_pose_ros_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr gnss_pose_cov_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
+    gnss_pose_cov_ros_pub_;
+  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr navsat_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr gnss_heading_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr utm_pose_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr raw_pose_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr utm_pose_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr raw_pose_sub_;
 
-  std::string odom_input_topic_, odom_pose_topic_, odom_pose_cov_topic_, odom_output_frame_id_;
-  rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr odom_pose_pub_;
-  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr odom_pose_cov_pub_;
-  rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  std::string odom_input_topic_, odom_output_topic_, odom_pose_topic_, odom_pose_cov_topic_;
+  std::string odom_output_frame_id_;
+  rclcpp::Publisher<avg_msgs::msg::AvgOdometry>::SharedPtr odom_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseStamped>::SharedPtr odom_pose_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr odom_pose_cov_pub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
 
   std::string wheel_input_topic_, wheel_output_topic_, wheel_nav_output_topic_;
   std::string wheel_odom_frame_, wheel_base_frame_, wheel_input_type_;
@@ -864,13 +903,13 @@ private:
   rclcpp::Time last_fallback_wheel_rx_time_{0, 0, RCL_ROS_TIME};
   WheelSource active_wheel_source_{WheelSource::kNone};
   rclcpp::Time last_wheel_source_switch_time_{0, 0, RCL_ROS_TIME};
-  rclcpp::Publisher<avg_msgs::msg::Odometry>::SharedPtr wheel_odom_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgOdometry>::SharedPtr wheel_odom_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr wheel_nav_odom_pub_;
-  rclcpp::Subscription<avg_msgs::msg::TwistStamped>::SharedPtr wheel_twist_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr wheel_avg_odom_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgTwistStamped>::SharedPtr wheel_twist_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr wheel_avg_odom_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr wheel_nav_odom_sub_;
-  rclcpp::Subscription<avg_msgs::msg::TwistStamped>::SharedPtr wheel_twist_fallback_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr wheel_avg_odom_fallback_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgTwistStamped>::SharedPtr wheel_twist_fallback_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr wheel_avg_odom_fallback_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr wheel_nav_odom_fallback_sub_;
 };
 

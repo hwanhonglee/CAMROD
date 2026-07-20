@@ -38,7 +38,8 @@
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
-#include <nav_msgs/msg/occupancy_grid.hpp>
+// HH_260720 - Diagnose the generated CAMROD lanelet cost grid.
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -84,10 +85,10 @@ protected:
   void setup_tasks_() override
   {
     // lanelet_cost_grid_node 와 동일한 QoS (transient_local + reliable)
-    sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
+    sub_ = create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
       cost_grid_topic_,
       rclcpp::QoS(1).transient_local().reliable(),
-      [this](const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg) { onGrid(msg); });
+      [this](const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg) { onGrid(msg); });
 
     add_task("/map/cost_grid",
       [this](StatusWrapper & stat) { checkGrid(stat); });
@@ -98,7 +99,7 @@ protected:
   }
 
 private:
-  void onGrid(const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg)
+  void onGrid(const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(mtx_);
     auto now = this->now();
@@ -238,7 +239,7 @@ private:
   uint32_t grid_height_{0};
   float grid_res_{0.0f};
   std::deque<rclcpp::Time> timestamps_;
-  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr sub_;
 };
 
 // ── main ──────────────────────────────────────────────────────────────────

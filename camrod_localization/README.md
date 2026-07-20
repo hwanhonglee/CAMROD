@@ -1,5 +1,7 @@
 # 📍 camrod_localization — GNSS/IMU/wheel fusion (EKF default) & localization state
 
+<!-- HH_260720 - Align documented generated topics with the current localization contracts. -->
+
 ## 1. 📋 Summary
 
 `camrod_localization` is the state estimation pipeline for the CAMROD robot. The default runtime backend is EKF (`filter_type:=ekf`); the custom ESKF backend remains available only for explicit `filter_type:=eskf` experiments. The pipeline fuses GNSS (NavSatFix), IMU, and wheel odometry into a consistent `map`-frame pose. A map helper node snaps poses to the Lanelet2 centerline and matches the robot to a configured drop zone at startup for automatic pose initialization.
@@ -32,7 +34,7 @@ ros2 launch camrod_localization localization.launch.py \
 # Monitor localization mode
 ros2 topic echo /localization/mode
 ros2 topic echo /localization/confidence
-ros2 topic echo /localization/initial_match_ok
+ros2 topic echo /localization/drop_zone/match_ok
 ```
 
 ---
@@ -73,9 +75,9 @@ graph LR
   PLAT -->|"`/platform/status/odometry\n/rmp401/odom`"| LOC
   MAP -.->|"`Lanelet2 map\nmap_info.yaml`"| LOC
 
-  LOC ==>|"`/localization/pose\n/localization/mode\n/localization/initial_match_ok\nTF map→odom→robot_base_link`"| PLAN
+  LOC ==>|"`/localization/pose\n/localization/mode\n/localization/drop_zone/match_ok\nTF map→odom→robot_base_link`"| PLAN
   LOC -->|"`/localization/pose\n/localization/mode`"| PPLAT
-  LOC -->|"`/localization/mode\n/localization/initial_match_ok\n/localization/confidence`"| SYS
+  LOC -->|"`/localization/mode\n/localization/drop_zone/match_ok\n/localization/confidence`"| SYS
 
   class SENS sensing
   class PLAT,PPLAT platform
@@ -95,6 +97,8 @@ graph LR
 
 ## 🏗️ Runtime Architecture
 
+<!-- HH_260720 - Show the actual default EKF runtime instead of the optional ESKF branch. -->
+
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#ECFDF5', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#10B981', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph TD
@@ -112,6 +116,7 @@ graph TD
     direction LR
     GNSS((/sensing/gnss/ublox_gps_node/fix))
     IMU((/sensing/imu/data))
+    IMUROS((/sensing/imu/data_ros))
     WHEEL((/platform/status/odometry))
     WFBACK((/rmp401/odom))
   end
@@ -120,26 +125,26 @@ graph TD
     direction TB
     ADAPT(localization_input_adapter_node)
     GNSSPOSE((/sensing/gnss/pose_with_covariance))
-    WHEELOUT((/platform/status/wheel_odometry))
+    GNSSPOSEROS((/sensing/gnss/pose_with_covariance_ros))
+    WHEELOUT((/localization/input/wheel_odometry))
+    WHEELOUTROS((/localization/input/wheel_odometry_ros))
   end
 
-  subgraph ESKF_SG ["🧮 ESKF"]
+  subgraph EKF_SG ["🧮 Default EKF"]
     direction TB
-    ESKF(localization_eskf_node)
-    POSE((/localization/pose))
-    POSECOV((/localization/pose_with_covariance))
-    ODO((/localization/odometry/filtered))
+    EKF(robot_localization/ekf_filter)
+    PRIMARYROS((/localization/primary/odometry_ros))
+    PRIMARY((/localization/primary/*))
     TF((TF: map→odom→robot_base_link))
-    ESTAT((/localization/eskf/status))
   end
 
   subgraph MAPHELP_SG ["🗺️ Map Helper"]
     direction TB
     DZFILE[(drop_zones.yaml)]
     MAPHELP(localization_map_helper_node)
-    LPOSE((/localization/lanelet_pose))
-    INITPOSE((/localization/initialpose3d))
-    MATCHOK((/localization/initial_match_ok))
+    LPOSE((/localization/centerline_pose))
+    INITPOSE((/localization/drop_zone/initial_pose))
+    MATCHOK((/localization/drop_zone/match_ok))
   end
 
   subgraph MON_SG ["📊 Monitor"]
@@ -155,26 +160,27 @@ graph TD
     SEL(localization_pose_selector_node)
     SELPOSE((/localization/pose))
     SELPOSECOV((/localization/pose_with_covariance))
-    SELODO((/localization/odometry/filtered))
+    SELODO((/localization/odometry))
   end
 
   GNSS ==> ADAPT
   WHEEL --> ADAPT
   WFBACK -.-> ADAPT
   ADAPT --> GNSSPOSE
+  ADAPT --> GNSSPOSEROS
   ADAPT --> WHEELOUT
+  ADAPT --> WHEELOUTROS
 
-  IMU ==> ESKF
-  GNSSPOSE ==> ESKF
-  WHEELOUT --> ESKF
-  ESKF ==> POSE
-  ESKF --> POSECOV
-  ESKF --> ODO
-  ESKF --> TF
-  ESKF --> ESTAT
+  IMUROS ==> EKF
+  GNSSPOSEROS ==> EKF
+  WHEELOUTROS --> EKF
+  EKF ==> PRIMARYROS
+  EKF --> TF
+  PRIMARYROS ==> ADAPT
+  ADAPT ==> PRIMARY
 
-  POSE --> MAPHELP
-  POSECOV --> MAPHELP
+  SELPOSE --> MAPHELP
+  SELPOSECOV --> MAPHELP
   DZFILE -.-> MAPHELP
   MAPHELP --> LPOSE
   MAPHELP --> INITPOSE
@@ -183,37 +189,36 @@ graph TD
   GNSSPOSE --> MON
   IMU --> MON
   WHEELOUT --> MON
-  ESTAT --> MON
   MON ==> MODE
   MON --> STATE
   MON --> CONF
 
-  POSE --> SEL
-  POSECOV --> SEL
-  ODO --> SEL
+  PRIMARY --> SEL
   MODE --> SEL
   SEL --> SELPOSE
   SEL --> SELPOSECOV
   SEL --> SELODO
 
-  class GNSS,IMU,WHEEL,WFBACK sensing
-  class ADAPT,ESKF,MAPHELP,MON,SEL localization
+  class GNSS,IMU,IMUROS,WHEEL,WFBACK sensing
+  class ADAPT,EKF,MAPHELP,MON,SEL localization
   class DZFILE config
-  class GNSSPOSE,WHEELOUT,POSE,POSECOV,ODO,TF,ESTAT,LPOSE,INITPOSE,MATCHOK,MODE,STATE,CONF,SELPOSE,SELPOSECOV,SELODO topic
-  class POSE,ESKF,MATCHOK highlight
+  class GNSSPOSE,GNSSPOSEROS,WHEELOUT,WHEELOUTROS,PRIMARYROS,PRIMARY,TF,LPOSE,INITPOSE,MATCHOK,MODE,STATE,CONF,SELPOSE,SELPOSECOV,SELODO topic
+  class PRIMARY,EKF,MATCHOK highlight
 ```
 
-*Figure 2 — Runtime node graph. Critical path: sensing ==> ESKF ==> `/localization/pose`; map helper publishes `/localization/initial_match_ok` to unblock Nav2.*
+*Figure 2 — Default runtime graph. Critical path: sensing ==> EKF ==> generated primary pose ==> `/localization/pose`; map helper publishes `/localization/drop_zone/match_ok` to unblock Nav2.*
 
 ### Node Summary
 
+<!-- HH_260720 - Describe the EKF boundary conversion and sensor-only monitor mode. -->
+
 | Node | Key Inputs | Key Outputs | Notable Params |
 |---|---|---|---|
-| `localization_input_adapter_node` | `/sensing/gnss/ublox_gps_node/fix`, `/platform/status/odometry`, `/rmp401/odom` | `/sensing/gnss/pose_with_covariance`, `/platform/status/wheel_odometry` | `gnss_covariance_floor_xy`: 1e-6 m², `wheel_primary_timeout_s`: 0.7 s, `max_position_jump_m`: 8.0 m |
-| `localization_eskf_node` | `/sensing/imu/data`, `/sensing/gnss/pose_with_covariance`, `/platform/status/wheel_odometry` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry/filtered`, TF, `/localization/eskf/status` | `nhc_mode`: enabled, `zupt_mode`: enabled, `gnss_gate_mahalanobis`: 64.0, `gyro_noise`: 0.015 rad/s, `gnss_position_noise`: 4.0 m, `reinit_distance_threshold`: 3.0 m |
-| `localization_monitor_node` | `/sensing/gnss/pose_with_covariance`, `/sensing/imu/data`, `/platform/status/wheel_odometry`, `/localization/eskf/status` | `/localization/mode`, `/localization/state`, `/localization/confidence` | `gnss_timeout_s`: 4.0, `imu_timeout_s`: 1.0, `wheel_timeout_s`: 1.0, `gnss_cov_trace_fail`: 1.0, `gnss_min_hz`: 0.8, `dr_max_duration_s`: 30.0 |
-| `localization_map_helper_node` | `/localization/pose`, `/localization/pose_with_covariance`, Lanelet2 map, `drop_zones.yaml` | `/localization/lanelet_pose`, `/localization/initialpose3d`, `/localization/initial_match_ok` | `max_search_radius`: 30 m, `lateral_stddev`: 0.3, `match_radius`: 2.0 m, `stable_count`: 10 |
-| `localization_pose_selector_node` | `/localization/primary/pose_with_covariance`, `/localization/fallback/*`, `/localization/mode` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry/filtered` | `primary_timeout_s`: 0.5 s, `fallback_on_mode_at_or_above`: 3 (INVALID) |
+| `localization_input_adapter_node` | `/sensing/gnss/ublox_gps_node/fix`, `/platform/status/odometry`, `/rmp401/odom`, `/localization/primary/odometry_ros` | generated GNSS/wheel topics and `/localization/primary/*` | `gnss_covariance_floor_xy`: 1e-6 m², `wheel_primary_timeout_s`: 0.7 s, `max_position_jump_m`: 8.0 m |
+| `robot_localization/ekf_filter` | `/sensing/imu/data_ros`, `/sensing/gnss/pose_with_covariance_ros`, `/localization/input/wheel_odometry_ros` | `/localization/primary/odometry_ros`, `odom→robot_base_link` TF | `frequency`: 10 Hz, `two_d_mode`: enabled, `world_frame`: odom, GNSS position/yaw enabled |
+| `localization_monitor_node` | `/sensing/gnss/pose_with_covariance`, `/sensing/imu/data`, `/localization/input/wheel_odometry` | `/localization/mode`, `/localization/state`, `/localization/confidence` | `filter_status_mode`: none, `gnss_timeout_s`: 4.0, `imu_timeout_s`: 1.0, `wheel_timeout_s`: 1.0 |
+| `localization_map_helper_node` | `/localization/pose`, `/localization/pose_with_covariance`, Lanelet2 map, `drop_zones.yaml` | `/localization/centerline_pose`, `/localization/drop_zone/initial_pose`, `/localization/drop_zone/match_ok` | `max_search_radius`: 30 m, `lateral_stddev`: 0.3, `match_radius`: 2.0 m, `stable_count`: 10 |
+| `localization_pose_selector_node` | `/localization/primary/pose_with_covariance`, `/localization/fallback/*`, `/localization/mode` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry` | `primary_timeout_s`: 0.5 s, `fallback_on_mode_at_or_above`: 3 (INVALID) |
 
 ---
 
@@ -223,26 +228,31 @@ graph TD
 
 | Topic | Type | Required | Producer | Rate | Meaning |
 |---|---|---|---|---|---|
-| `/sensing/imu/data` | `sensor_msgs/Imu` | Yes | camrod_sensing | ~100 Hz | IMU acceleration and gyroscope; drives ESKF prediction step |
+<!-- HH_260720 - Internal inputs use generated types; `_ros` topics are explicit boundaries. -->
+| `/sensing/imu/data` | `avg_msgs/AvgImu` | Yes | camrod_sensing | ~100 Hz | Generated IMU acceleration and gyroscope for CAMROD consumers |
+| `/sensing/imu/data_ros` | `sensor_msgs/Imu` | EKF only | IMU driver | ~100 Hz | Raw standard boundary for robot_localization |
 | `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | Yes | camrod_sensing | ~1 Hz | Raw GNSS fix; converted to map-frame PoseWithCovarianceStamped by adapter |
-| `/platform/status/odometry` | `nav_msgs/Odometry` | Yes | camrod_platform | ~20 Hz | Primary wheel odometry; speed + yaw-rate for ESKF correction |
+| `/platform/status/odometry` | `avg_msgs/AvgOdometry` | Yes | camrod_platform | ~20 Hz | Generated primary platform odometry |
 | `/rmp401/odom` | `nav_msgs/Odometry` | No | camrod_platform | ~20 Hz | Fallback wheel odometry; used when primary stream is stale for > 0.7 s |
 
 ### Outputs
 
+<!-- HH_260720 - Drop-zone readiness is filter-independent and defaults to EKF. -->
+
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
-| `/localization/pose` | `geometry_msgs/PoseStamped` | camrod_planning, camrod_platform | ~50 Hz | Map-frame robot pose (ESKF fused) |
-| `/localization/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | camrod_planning (Nav2 costmap) | ~50 Hz | Map-frame pose with covariance |
-| `/localization/odometry/filtered` | `nav_msgs/Odometry` | camrod_planning (Nav2, cmd_vel_gate) | ~50 Hz | Filtered odometry with velocity |
+<!-- HH_260720 - Document generated internal outputs and explicit ROS mirrors. -->
+| `/localization/pose` | `avg_msgs/AvgPoseStamped` | camrod_planning, camrod_platform | ~50 Hz | Selected map-frame robot pose |
+| `/localization/pose_with_covariance` | `avg_msgs/AvgPoseWithCovarianceStamped` | CAMROD localization consumers | ~50 Hz | Selected pose with covariance |
+| `/localization/odometry` | `avg_msgs/AvgOdometry` | camrod_planning, camrod_control | ~50 Hz | Selected odometry with velocity |
+| `/localization/pose_ros`, `/localization/odometry_ros` | standard ROS geometry/nav messages | Nav2, RViz, TF tooling | ~50 Hz | Explicit ecosystem boundary mirrors |
 | `/localization/mode` | `AvgLocalizationMode` | camrod_planning, camrod_system | ~5 Hz | NORMAL=0 / DEGRADED=1 / DR_ONLY=2 / INVALID=3 |
-| `/localization/initial_match_ok` | `std_msgs/Bool` | camrod_system, camrod_planning | on change | `true` once robot has matched a drop zone and ESKF is initialized |
-| `/localization/confidence` | `std_msgs/Float32` | camrod_system | ~5 Hz | Filter confidence score [0–1] |
-| `/localization/state` | `std_msgs/Bool` | camrod_system | ~5 Hz | Overall localization health flag |
-| `/localization/lanelet_pose` | `geometry_msgs/PoseStamped` | camrod_planning | ~20 Hz | Pose projected onto nearest Lanelet2 centerline |
-| `/localization/initialpose3d` | `geometry_msgs/PoseWithCovarianceStamped` | camrod_planning (Nav2 initialpose) | once | Drop-zone-matched initial pose published once at startup |
-| `/localization/eskf/status` | (ESKF diagnostics) | localization_monitor_node | ~5 Hz | Internal filter status (innovation, covariance trace) |
-| TF `map→odom→robot_base_link` | `tf2_msgs/TFMessage` | all packages | ~50 Hz | Authoritative transform tree published by ESKF node |
+| `/localization/drop_zone/match_ok` | `avg_msgs/AvgBool` | camrod_system, camrod_planning | on change | `true` once the selected EKF pose stably matches a configured drop zone |
+| `/localization/confidence` | `avg_msgs/AvgFloat32` | camrod_system | ~5 Hz | Filter confidence score [0-1] |
+| `/localization/state` | `avg_msgs/AvgBool` | camrod_system | ~5 Hz | Overall localization health flag |
+| `/localization/centerline_pose` | `avg_msgs/AvgPoseWithCovarianceStamped` | camrod_planning | ~20 Hz | Pose projected onto nearest Lanelet2 centerline |
+| `/localization/drop_zone/initial_pose` | `avg_msgs/AvgPoseWithCovarianceStamped` | CAMROD consumers | once | Drop-zone-matched generated initial pose |
+| TF `map→odom→robot_base_link` | `tf2_msgs/TFMessage` | all packages | configured filter rate | `map→odom` static transform plus authoritative EKF `odom→robot_base_link` transform |
 
 ---
 
@@ -283,15 +293,16 @@ stateDiagram-v2
 | `DR_ONLY` | 2 | GNSS fails any health gate (freshness, covariance, jump, rate, or filter acceptance) while wheel remains healthy; dead-reckoning on IMU + wheel |
 | `INVALID` | 3 | Insufficient data or filter diverged; pose unreliable |
 
-### 6.2 ESKF Update Sources
+### 6.2 Default EKF Inputs
 
-| Source | Update Type | Gating |
+<!-- HH_260720 - Document the enabled robot_localization EKF variables, not optional ESKF gates. -->
+
+| Source | Fused Variables | Gating |
 |---|---|---|
-| GNSS pose (x, y) | Position correction | Mahalanobis 64.0 (auto-profile: normal=64, unstable=400) |
-| Wheel speed + yaw-rate | Velocity + heading rate | Mahalanobis 9.0 |
-| NHC | Lateral body velocity ≈ 0 | Mahalanobis 9.0 |
-| ZUPT | Zero velocity at standstill | Mahalanobis 36.0 |
-| GNSS COG heading | Yaw update at speed ≥ 0.8 m/s | Mahalanobis 9.0 (optional; disabled by default) |
+| GNSS pose mirror | x, y, z and yaw | Position rejection threshold 3.0; yaw threshold 1000.0 |
+| Wheel odometry mirror | vx, vy and yaw rate | No additional rejection threshold configured |
+| IMU mirror | roll, pitch and angular velocity | Gravity removed; absolute IMU yaw disabled |
+| Lanelet centerline pose | none | Input remains configured but every variable is disabled |
 
 ---
 
@@ -301,15 +312,16 @@ stateDiagram-v2
 
 **Trigger:** GNSS pose/covariance is older than `gnss_timeout_s` (4.0 s), XY covariance trace exceeds `gnss_cov_trace_fail` (1.0), rate falls below `gnss_min_hz` (0.8 Hz), a per-sample jump exceeds `gnss_jump_fail_m` (1.0 m), or an enabled filter-status stream rejects the GNSS update.
 
-**Internal logic:** The monitor transitions mode from NORMAL → DEGRADED → DR_ONLY. The ESKF continues prediction using IMU and wheel odometry (NHC + ZUPT active). If DR continues beyond `dr_max_duration_s` (30 s) or covariance trace exceeds `dr_max_cov_trace` (200.0), mode becomes INVALID. The cmd_vel gate in camrod_planning imposes a 2 s hold when GNSS recovers (DR_ONLY → NORMAL).
+<!-- HH_260720 - Explain GNSS loss using the active EKF and control gate ownership. -->
+**Internal logic:** The monitor transitions mode from NORMAL → DEGRADED → DR_ONLY while the EKF predicts from IMU and wheel odometry. If DR continues beyond `dr_max_duration_s` (30 s), the mode becomes INVALID. The command gate in `camrod_control` holds motion for 2 s when GNSS recovers from DR_ONLY to NORMAL.
 
-> ⚠️ **Warning** `/localization/mode` changes to `DR_ONLY`; planning gate blocks motion 2 s on re-acquisition.
+> ⚠️ **Warning** `/localization/mode` changes to `DR_ONLY`; the `camrod_control` command gate blocks motion for 2 s on re-acquisition.
 
 **Operator-visible symptom:** Pose drifts slowly; no immediate stop unless DR timeout triggers INVALID. After recovery, brief 2 s pause.
 
-> 🔧 **Debug hint** Related params: `gnss_timeout_s`, `dr_max_duration_s`, `dr_max_cov_trace`, `max_position_jump_m`, `reinit_on_gnss_reject`, `reinit_distance_threshold`
+> 🔧 **Debug hint** Related params: `gnss_timeout_s`, `dr_max_duration_s`, `gnss_cov_trace_fail`, `max_position_jump_m`, `pose0_rejection_threshold`
 
-**Related topics:** `/localization/mode`, `/sensing/gnss/pose_with_covariance`, `/localization/eskf/status`
+**Related topics:** `/localization/mode`, `/sensing/gnss/pose_with_covariance`, `/localization/primary/odometry_ros`
 
 > HH_260716 - A live `/fix` topic is only transport evidence. `DR_ONLY` can still be correct when `covariance[0] + covariance[7] > 1.0`; check the covariance topic and monitor parameters before changing the map origin or declaring GNSS lost.
 
@@ -319,13 +331,14 @@ stateDiagram-v2
 
 **Trigger:** `/sensing/imu/data` stops arriving for longer than `imu_timeout_s` (default 1.0 s).
 
-**Internal logic:** The ESKF prediction step stalls. Monitor transitions mode to DEGRADED or INVALID depending on remaining sensor health. Without IMU prediction, the filter cannot maintain continuous odom-frame integration.
+<!-- HH_260720 - Describe loss behavior for robot_localization EKF. -->
+**Internal logic:** The EKF loses its angular-velocity input. The monitor transitions to DEGRADED or INVALID depending on remaining sensor health; wheel odometry can still provide translational velocity and yaw rate.
 
 > ⚠️ **Warning** `/localization/mode` transitions to DEGRADED; TF output may become stale.
 
 **Operator-visible symptom:** Pose update rate drops; Nav2 may log TF extrapolation warnings.
 
-> 🔧 **Debug hint** Related params: `imu_timeout_s`, `max_imu_dt` (0.5 s clamp), `gyro_noise`, `accel_noise`
+> 🔧 **Debug hint** Related params: `imu_timeout_s`, EKF `sensor_timeout`, `imu0_config`, `imu0_queue_size`
 
 **Related topics:** `/sensing/imu/data`, `/localization/mode`, TF `map→odom→robot_base_link`
 
@@ -335,15 +348,16 @@ stateDiagram-v2
 
 **Trigger:** `/platform/status/odometry` stops arriving for longer than `wheel_primary_timeout_s` (default 0.7 s).
 
-**Internal logic:** The adapter switches to the fallback source `/rmp401/odom`. If the fallback also times out, the wheel correction update is suspended. The ESKF continues with IMU prediction only; NHC still provides lateral constraint but speed becomes uncertain. Monitor transitions mode to DEGRADED.
+<!-- HH_260720 - Keep wheel fallback behavior aligned with the EKF input adapter. -->
+**Internal logic:** The adapter switches to the fallback source `/rmp401/odom`. If the fallback also times out, the EKF continues with GNSS and IMU but loses wheel velocity and yaw-rate correction. The monitor transitions to DEGRADED.
 
 > ⚠️ **Warning** `/localization/mode` may move to DEGRADED; wheel-speed and yaw-rate updates cease.
 
 **Operator-visible symptom:** Heading drift increases, especially in DR_ONLY mode where wheel yaw-rate is the primary heading reference.
 
-> 🔧 **Debug hint** Related params: `wheel_primary_timeout_s`, `wheel_fallback_input_topic`, `wheel_speed_noise`, `wheel_yaw_rate_noise`, `wheel_yaw_rate_mode`
+> 🔧 **Debug hint** Related params: `wheel_primary_timeout_s`, `wheel_fallback_input_topic`, EKF `odom0_config`, `odom0_queue_size`
 
-**Related topics:** `/platform/status/odometry`, `/rmp401/odom`, `/platform/status/wheel_odometry`, `/localization/mode`
+**Related topics:** `/platform/status/odometry`, `/rmp401/odom`, `/localization/input/wheel_odometry`, `/localization/mode`
 
 ---
 
@@ -351,15 +365,15 @@ stateDiagram-v2
 
 **Trigger:** `localization_map_helper_node` cannot find any drop zone entry from `drop_zones.yaml` within `match_radius` (default 2.0 m) of the robot's initial GNSS pose.
 
-**Internal logic:** The node waits for `stable_count` (10) consecutive poses within `match_radius` before publishing the initialpose. If no match is found, `/localization/initial_match_ok` remains `false`. Planning waits for this signal if `require_localization_ready: true` is set.
+**Internal logic:** The node waits for `stable_count` (10) consecutive poses within `match_radius` before publishing the initial pose. If no match is found, `/localization/drop_zone/match_ok` remains `false`. Planning waits for this signal if `require_localization_ready: true` is set.
 
-> ⚠️ **Warning** `/localization/initial_match_ok` stays `false`; Nav2 does not auto-start if `require_localization_ready` is active.
+> ⚠️ **Warning** `/localization/drop_zone/match_ok` stays `false`; Nav2 does not auto-start if `require_localization_ready` is active.
 
-**Operator-visible symptom:** Robot does not start navigating; `ros2 topic echo /localization/initial_match_ok` returns `false`. Nav2 lifecycle stays in `inactive` if `require_localization_ready` is set.
+**Operator-visible symptom:** Robot does not start navigating; `ros2 topic echo /localization/drop_zone/match_ok` returns `false`. Nav2 lifecycle stays in `inactive` if `require_localization_ready` is set.
 
 > 🔧 **Debug hint** Related params: `match_radius`, `stable_count`, `drop_zone_yaw_source`, `drop_zone_center_mode`, `publish_once`
 
-**Related topics:** `/localization/initial_match_ok`, `/localization/initialpose3d`, `/localization/initial_match_id`, `/localization/initial_match_distance`
+**Related topics:** `/localization/drop_zone/match_ok`, `/localization/drop_zone/initial_pose`, `/localization/drop_zone/match_id`, `/localization/drop_zone/match_distance`
 
 ---
 
@@ -371,26 +385,28 @@ sequenceDiagram
   autonumber
   participant GNSS as 📡 GNSS
   participant Adapter as 🔄 Adapter
-  participant ESKF as 🧮 ESKF
+  participant EKF as 🧮 EKF
   participant MapHelper as 🗺️ MapHelper
   participant Planning as 🧭 Planning
 
+  %% HH_260720 - Show the default EKF initialization sequence.
   Note over GNSS,Adapter: Sensor data streams start at boot
   GNSS->>Adapter: NavSatFix (UTM conversion)
-  Adapter->>ESKF: /sensing/gnss/pose_with_covariance
-  Note over ESKF: Filter begins prediction with IMU + wheel
-  ESKF->>MapHelper: /localization/pose_with_covariance
+  Adapter->>EKF: /sensing/gnss/pose_with_covariance_ros
+  Note over EKF: Filter begins prediction with IMU + wheel
+  EKF->>Adapter: /localization/primary/odometry_ros
+  Adapter->>MapHelper: /localization/pose_with_covariance
 
   Note over MapHelper: Search drop_zones.yaml within match_radius = 2.0 m
   Note over MapHelper: Accumulate stable_count = 10 matching poses
 
-  MapHelper->>ESKF: /localization/initialpose3d (reinit ESKF at drop zone yaw)
-  MapHelper->>Planning: /localization/initial_match_ok = true
+  MapHelper->>EKF: initial pose reset at drop-zone yaw
+  MapHelper->>Planning: /localization/drop_zone/match_ok = true
 
   Note over Planning: Ready — Nav2 lifecycle goes active
 ```
 
-*Figure 4 — Drop zone initialization sequence. ESKF is re-initialized at the matched drop zone yaw before Nav2 is unblocked.*
+*Figure 4 — Default EKF drop-zone initialization sequence before Nav2 is unblocked.*
 
 ---
 
@@ -400,8 +416,9 @@ sequenceDiagram
 # Full localization stack
 ros2 launch camrod_localization localization.launch.py
 
-# With explicit ESKF config override
+# HH_260720 - ESKF is opt-in and must be selected explicitly.
 ros2 launch camrod_localization localization.launch.py \
+  filter_type:=eskf \
   filter_eskf_param_file:=/path/to/eskf.yaml
 
 # Without map helper (no Lanelet2 map available)
@@ -415,6 +432,8 @@ ros2 launch camrod_localization localization.launch.py \
 ```
 
 Key launch arguments:
+
+<!-- HH_260720 - Keep the optional ESKF file visibly separate from the EKF default. -->
 
 | Argument | Default | Description |
 |---|---|---|
@@ -435,11 +454,13 @@ Key launch arguments:
 
 ## 🛠️ Config
 
+<!-- HH_260720 - List the runtime default before the experimental alternative. -->
+
 | File | Purpose |
 |---|---|
 | `config/source/input_adapter.yaml` | GNSS NavSatFix → PoseWithCovariance conversion, wheel topic bridging, covariance floors (`gnss_covariance_floor_xy`: 1e-6 m²), position jump rejection (`max_position_jump_m`: 8.0 m) |
-| `config/filter/eskf.yaml` | ESKF noise params (`gyro_noise`: 0.015 rad/s, `gnss_position_noise`: 4.0 m), Mahalanobis gates, NHC/ZUPT, IMU sign corrections, GNSS auto-profile switching, stop detection (`stop_speed_threshold`: 0.10 m/s) |
-| `config/filter/ekf.yaml` | robot_localization EKF parameters (used when `filter_type:=ekf`). Node log level set to WARN in `filter.launch.py` — suppress verbose INFO (e.g. `set_pose` request logs emitted on every GNSS-reattach) |
+| `config/filter/ekf.yaml` | Default robot_localization EKF parameters. The node log level is WARN in `filter.launch.py` |
+| `config/filter/eskf.yaml` | Optional ESKF experiment parameters; unused unless `filter_type:=eskf` is explicitly set |
 | `config/filter/monitor.yaml` | Sensor timeouts (`gnss_timeout_s`: 4.0, `imu_timeout_s`: 1.0, `wheel_timeout_s`: 1.0), GNSS health gates (`gnss_cov_trace_fail`: 1.0, `gnss_jump_fail_m`: 1.0, `gnss_min_hz`: 0.8), recovery debounce (1.5 s), and DR timeout (`dr_max_duration_s`: 30.0) |
 | `config/filter/pose_selector.yaml` | Primary/fallback source topology, `fallback_on_mode_at_or_above`: 3 (INVALID), `primary_timeout_s`: 0.5 s |
 | `config/reference/map_helper.yaml` | Centerline snapper covariance (`lateral_stddev`: 0.3), drop zone match radius 2.0 m, `stable_count`: 10, `drop_zone_yaw_source`: zone |
@@ -453,14 +474,15 @@ Key launch arguments:
 # Monitor localization mode (should reach NORMAL quickly after GNSS lock)
 ros2 topic echo /localization/mode
 
-# Verify filter output rate (~50 Hz)
+# HH_260720 - Verify the selected pose stream (20 Hz in the current sim profile).
 ros2 topic hz /localization/pose
 
 # Check initial match state
-ros2 topic echo /localization/initial_match_ok
+ros2 topic echo /localization/drop_zone/match_ok
 
-# Inspect ESKF internal status (innovation, covariance trace)
-ros2 topic echo /localization/eskf/status
+# HH_260720 - Inspect the active EKF output and selected generated pose source.
+ros2 topic echo /localization/primary/odometry_ros
+ros2 topic echo /localization/pose_source
 
 # Check confidence score
 ros2 topic echo /localization/confidence
@@ -475,10 +497,11 @@ ros2 run tf2_tools view_frames
 
 ### Pose drifts after GNSS recovery
 
-1. Check if the GNSS recovery hold in `camrod_planning` has expired: `ros2 topic echo /localization/mode` — if mode is NORMAL, the hold should clear within 2 s.
-2. Verify ESKF reinitialization: `ros2 topic echo /localization/eskf/status` — check if `reinit_on_gnss_reject` triggered during the DR period.
-3. Increase `gnss_profile_switch_accept_count` (default 8) to require more consecutive good measurements before switching back to normal GNSS profile.
-4. Inspect GNSS covariance: `ros2 topic echo /sensing/gnss/pose_with_covariance` — large covariance diagonal after recovery indicates RTK re-convergence is still in progress.
+<!-- HH_260720 - Troubleshoot the active EKF instead of optional ESKF profile controls. -->
+1. Check if the GNSS recovery hold in `camrod_control` has expired: `ros2 topic echo /localization/mode` — if mode is NORMAL, the hold should clear within 2 s.
+2. Compare `/sensing/gnss/pose_with_covariance_ros` with `/localization/primary/odometry_ros` to see whether the EKF accepts the recovered position.
+3. Check `pose0_rejection_threshold` and the GNSS covariance before changing either value.
+4. Inspect `/localization/pose_source`; it must remain `primary_filter` during normal EKF operation.
 
 ---
 
@@ -487,25 +510,27 @@ ros2 run tf2_tools view_frames
 1. Verify `config/drop_zones.yaml` coordinates match the actual deployment map origin.
 2. Check `match_radius` (default 2.0 m) — if GNSS error at startup exceeds 2 m, the match will fail; increase `match_radius` temporarily.
 3. Check `stable_count` (default 10) — if GNSS fix is unstable, the stable sequence may match a wrong zone transiently; increasing `stable_count` reduces false matches.
-4. Monitor `/localization/initial_match_id` and `/localization/initial_match_distance` to see which zone was matched and at what distance.
+4. Monitor `/localization/drop_zone/match_id` and `/localization/drop_zone/match_distance` to see which zone was matched and at what distance.
 
 ---
 
 ### Mode stuck at INVALID
 
+<!-- HH_260720 - Remove ESKF-only restart and covariance instructions from the EKF path. -->
 1. Check all three sensor streams: `ros2 topic hz /sensing/imu/data`, `ros2 topic hz /sensing/gnss/ublox_gps_node/fix`, `ros2 topic hz /platform/status/odometry`.
 2. Verify GNSS NavSatFix has a valid fix (status ≥ 0): `ros2 topic echo /sensing/gnss/ublox_gps_node/fix --field status.status`.
-3. Check if `dr_max_duration_s` (30 s) was exceeded — if the filter transitioned to INVALID due to DR timeout, a hard restart of `localization_eskf_node` may be required.
-4. Check `dr_max_cov_trace` (200.0) — inspect covariance trace in `/localization/eskf/status`; if consistently above 200, the filter has diverged and needs reinit.
+3. Check whether `dr_max_duration_s` (30 s) was exceeded and whether the monitor has received fresh generated GNSS, IMU, and wheel messages.
+4. Check `/localization/primary/odometry_ros` and `/localization/pose_source`; a missing primary stream keeps the selector stale.
 
 ---
 
 ### Pose jumps
 
+<!-- HH_260720 - Use the EKF's active GNSS rejection settings. -->
 1. Check `max_position_jump_m` (default 8.0 m) in `config/source/input_adapter.yaml` — the adapter rejects single-frame GNSS jumps above this threshold.
-2. Verify `reinit_distance_threshold` (default 3.0 m) in `config/filter/eskf.yaml` — if GNSS and ESKF state diverge by more than this, the filter reinitializes from GNSS.
-3. Check for RTK fix-to-float transitions: covariance in `/sensing/gnss/pose_with_covariance` spikes when RTK degrades; ESKF should gate these via Mahalanobis check.
-4. Inspect `gnss_profile_mode: auto` behavior — the filter switches to `unstable` profile (gate relaxed to 400.0) after `gnss_profile_switch_reject_count` (2) consecutive rejects, which may allow a larger correction on the next valid fix.
+2. Check `pose0_rejection_threshold` in `config/filter/ekf.yaml`; it gates GNSS position innovation.
+3. Check for RTK fix-to-float transitions in `/sensing/gnss/pose_with_covariance`; covariance should increase as quality degrades.
+4. Compare the standard EKF output with the generated selected pose to distinguish fusion jumps from selector or conversion issues.
 
 ---
 
@@ -527,14 +552,14 @@ ros2 run tf2_tools view_frames
 
 > HH_260702: Localization health is diagnostic evidence, while planning stop authority stays in planning/platform gates.
 
-The default operator flow keeps `/localization/pose`, `/localization/mode`, and `/localization/initial_match_ok` as the shared pose/mode contract for planning, parking, system diagnostics, and UI. Drop-zone matching is still useful for return-to-drop-zone missions, but manual-goal field tests may disable or downgrade that checker through the diagnostics profile instead of adding an arbitrary GNSS yaw/pose offset in code.
+The default operator flow keeps `/localization/pose`, `/localization/mode`, and `/localization/drop_zone/match_ok` as the shared pose/mode contract for planning, control, system diagnostics, and UI. Drop-zone matching is still useful for return-to-drop-zone missions, but manual-goal field tests may disable or downgrade that checker through the diagnostics profile instead of adding an arbitrary GNSS yaw/pose offset in code.
 
 When debugging outdoor heading or lane alignment, verify these topics together before changing offsets:
 
 ```bash
 ros2 topic echo /localization/pose --once
 ros2 topic echo /localization/mode --once
-ros2 topic echo /localization/initial_match_ok --once
+ros2 topic echo /localization/drop_zone/match_ok --once
 ros2 topic hz /sensing/gnss/ublox_gps_node/fix
 ros2 topic hz /sensing/imu/data
 ```

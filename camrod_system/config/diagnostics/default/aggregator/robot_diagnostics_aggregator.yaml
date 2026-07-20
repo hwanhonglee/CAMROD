@@ -140,7 +140,7 @@ diagnostic_aggregator:
         path: 'Localization/Init'
         contains: ['/localization/init']
 
-      # ── Localization: ESKF / Fallback 소스 전환 ───────────────────────
+      # HH_260720 - Group active-filter and fallback source-selection diagnostics.
       localization_source:
         type: 'diagnostic_aggregator/GenericAnalyzer'
         path: 'Localization/Source'

@@ -7,12 +7,13 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
-#include <avg_msgs/msg/odometry.hpp>
-#include <avg_msgs/msg/imu.hpp>
-#include <avg_msgs/msg/bool.hpp>
-#include <avg_msgs/msg/float32.hpp>
+// HH_260720 - Use generated CAMROD interfaces for every internal localization contract.
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
+#include <avg_msgs/msg/avg_odometry.hpp>
+#include <avg_msgs/msg/avg_imu.hpp>
+#include <avg_msgs/msg/avg_bool.hpp>
+#include <avg_msgs/msg/avg_float32.hpp>
 
 #include <avg_msgs/msg/avg_localization_status_stream.hpp>
 #include <avg_msgs/msg/avg_localization_mode.hpp>
@@ -39,7 +40,9 @@ public:
   LocalizationMonitorNode()
   : Node("localization_monitor")
   {
-    diag_topic_ = declare_parameter<std::string>("diag_topic", "/localization/eskf/status");
+    // HH_260720 - Use a filter-neutral status contract; EKF operation keeps this input disabled.
+    filter_status_topic_ = declare_parameter<std::string>(
+      "filter_status_topic", "/localization/filter/status");
     // HH_260526: Replace use_filter_status toggle with explicit mode.
     // filter_status_mode options: stream | none.
     filter_status_mode_ = normalizeModeToken(
@@ -49,8 +52,8 @@ public:
     gnss_pose_cov_topic_ = declare_parameter<std::string>(
       "gnss_pose_cov_topic", "/sensing/gnss/pose_with_covariance");
     imu_topic_ = declare_parameter<std::string>("imu_topic", "/sensing/imu/data");
-    // HH_260410: Monitor uses the same unified wheel topic as EKF/ESKF.
-    wheel_topic_ = declare_parameter<std::string>("wheel_topic", "/platform/status/wheel_odometry");
+    // HH_260720 - Monitor the canonical generated wheel topic used by localization.
+    wheel_topic_ = declare_parameter<std::string>("wheel_topic", "/localization/input/wheel_odometry");
 
     gnss_timeout_s_ = declare_parameter<double>("gnss_timeout_s", 1.0);
     imu_timeout_s_ = declare_parameter<double>("imu_timeout_s", 0.5);
@@ -86,13 +89,14 @@ public:
 
     mode_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMode>("/localization/mode", rclcpp::QoS(10));
     status_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationStatus>("/localization/status", rclcpp::QoS(10));
-    confidence_pub_ = create_publisher<avg_msgs::msg::Float32>("/localization/confidence", rclcpp::QoS(10));
-    state_pub_ = create_publisher<avg_msgs::msg::Bool>(
+    // HH_260720 - Publish generated CAMROD scalar messages instead of namespace aliases.
+    confidence_pub_ = create_publisher<avg_msgs::msg::AvgFloat32>("/localization/confidence", rclcpp::QoS(10));
+    state_pub_ = create_publisher<avg_msgs::msg::AvgBool>(
       "/localization/state", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
-    degraded_pub_ = create_publisher<avg_msgs::msg::Bool>(
+    degraded_pub_ = create_publisher<avg_msgs::msg::AvgBool>(
       "/localization/state/degraded", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
     // HH_260507: DR timeout publisher — true when DR exceeds time or covariance limit.
-    dr_timeout_pub_ = create_publisher<avg_msgs::msg::Bool>(
+    dr_timeout_pub_ = create_publisher<avg_msgs::msg::AvgBool>(
       "/localization/state/dr_timeout", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
 
     if (publish_localization_status_) {
@@ -102,25 +106,25 @@ public:
 
     using std::placeholders::_1;
 
-    if (filter_status_mode_ == "stream" && !diag_topic_.empty()) {
+    if (filter_status_mode_ == "stream" && !filter_status_topic_.empty()) {
       diag_sub_ = create_subscription<avg_msgs::msg::AvgLocalizationStatusStream>(
-        diag_topic_, rclcpp::QoS(20),
+        filter_status_topic_, rclcpp::QoS(20),
         std::bind(&LocalizationMonitorNode::onDiag, this, _1));
     }
 
-    gnss_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+    gnss_pose_sub_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       gnss_pose_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationMonitorNode::onGnssPose, this, _1));
 
-    gnss_pose_cov_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+    gnss_pose_cov_sub_ = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       gnss_pose_cov_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationMonitorNode::onGnssPoseCov, this, _1));
 
-    imu_sub_ = create_subscription<avg_msgs::msg::Imu>(
+    imu_sub_ = create_subscription<avg_msgs::msg::AvgImu>(
       imu_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationMonitorNode::onImu, this, _1));
 
-    wheel_sub_ = create_subscription<avg_msgs::msg::Odometry>(
+    wheel_sub_ = create_subscription<avg_msgs::msg::AvgOdometry>(
       wheel_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationMonitorNode::onWheel, this, _1));
 
@@ -130,7 +134,7 @@ public:
   }
 
 private:
-  void onGnssPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onGnssPose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     last_gnss_pose_time_ = rclcpp::Time(msg->header.stamp);
 
@@ -151,7 +155,7 @@ private:
     has_prev_gnss_ = true;
   }
 
-  void onGnssPoseCov(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  void onGnssPoseCov(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     last_gnss_cov_time_ = rclcpp::Time(msg->header.stamp);
     last_gnss_cov_trace_ = msg->pose.covariance[0] + msg->pose.covariance[7];
@@ -173,12 +177,12 @@ private:
     has_prev_gnss_ = true;
   }
 
-  void onImu(const avg_msgs::msg::Imu::ConstSharedPtr msg)
+  void onImu(const avg_msgs::msg::AvgImu::ConstSharedPtr msg)
   {
     last_imu_time_ = rclcpp::Time(msg->header.stamp);
   }
 
-  void onWheel(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
+  void onWheel(const avg_msgs::msg::AvgOdometry::ConstSharedPtr msg)
   {
     last_wheel_time_ = rclcpp::Time(msg->header.stamp);
   }
@@ -290,7 +294,7 @@ private:
           dr_elapsed, cov_trace, dr_max_duration_s_, dr_max_cov_trace_);
       }
     }
-    avg_msgs::msg::Bool dr_timeout_msg;
+    avg_msgs::msg::AvgBool dr_timeout_msg;
     dr_timeout_msg.data = dr_timeout_;
     dr_timeout_pub_->publish(dr_timeout_msg);
 
@@ -298,13 +302,13 @@ private:
     status.mode = mode;
     status.confidence = confidence;
 
-    avg_msgs::msg::Float32 confidence_msg;
+    avg_msgs::msg::AvgFloat32 confidence_msg;
     confidence_msg.data = static_cast<float>(confidence);
 
-    avg_msgs::msg::Bool state_msg;
+    avg_msgs::msg::AvgBool state_msg;
     state_msg.data = imu_ok && (gnss_good || wheel_good);
 
-    avg_msgs::msg::Bool degraded_msg;
+    avg_msgs::msg::AvgBool degraded_msg;
     degraded_msg.data = (mode.value >= avg_msgs::msg::AvgLocalizationMode().DEGRADED);
 
     mode_pub_->publish(mode);
@@ -397,10 +401,9 @@ private:
     published_status_label_ = status_label;
   }
 
-  std::string diag_topic_;
-  // HH_260422: true -> subscribe to diag_topic_ and factor gnss_update_accepted / wheel_update_accepted
-  //   into the gnss_good / wheel_good decision.
-  //   false -> decide mode from sensor freshness and covariance only (ignores ESKF internal acceptance state).
+  std::string filter_status_topic_;
+  // HH_260720 - Stream mode factors active-filter acceptance flags into sensor health;
+  // none mode decides health from sensor freshness and covariance only.
   std::string filter_status_mode_{"stream"};
 
   std::string gnss_pose_topic_;
@@ -441,17 +444,17 @@ private:
 
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMode>::SharedPtr mode_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationStatus>::SharedPtr status_pub_;
-  rclcpp::Publisher<avg_msgs::msg::Float32>::SharedPtr confidence_pub_;
-  rclcpp::Publisher<avg_msgs::msg::Bool>::SharedPtr state_pub_;
-  rclcpp::Publisher<avg_msgs::msg::Bool>::SharedPtr degraded_pub_;
-  rclcpp::Publisher<avg_msgs::msg::Bool>::SharedPtr dr_timeout_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgFloat32>::SharedPtr confidence_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgBool>::SharedPtr state_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgBool>::SharedPtr degraded_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgBool>::SharedPtr dr_timeout_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
 
   rclcpp::Subscription<avg_msgs::msg::AvgLocalizationStatusStream>::SharedPtr diag_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr gnss_pose_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr gnss_pose_cov_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Imu>::SharedPtr imu_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr wheel_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr gnss_pose_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr gnss_pose_cov_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgImu>::SharedPtr imu_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr wheel_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   rclcpp::Time last_gnss_pose_time_{0, 0, RCL_ROS_TIME};

@@ -13,16 +13,17 @@
       - localization
       - perception
       - planning
+      - control
       - platform
 
-    # HH_260630 - Sim still requires exactly one final-parking implementation.
+    # HH_260720 - Sim still requires exactly one final parking controller.
     required_alternative_groups:
       - final_parking
 
     final_parking:
       alternatives:
-        - parking
-        - docking
+        - reverse_parking_controller
+        - apriltag_parking_controller
 
     # Package: camrod_map
     # Same map publishers as hardware mode; local-first visualization is still checked.
@@ -32,7 +33,8 @@
         - /map/lanelet_boundary_cost_grid
       required_topics:
         - "/map/markers|visualization_msgs/msg/MarkerArray|1"
-        - "/map/cost_grid/lanelet|nav_msgs/msg/OccupancyGrid|1"
+        # HH_260720 - Sim validates the same generated CAMROD contracts as hardware mode.
+        - "/map/cost_grid/lanelet|avg_msgs/msg/AvgOccupancyGrid|1"
 
     # Packages: camrod_bringup + camrod_sensing
     # Fake sensors replace hardware GNSS/IMU/LiDAR/Radar/camera drivers in sim.
@@ -44,19 +46,20 @@
         - /sensing/inflation_cost_grid
       required_topics:
         - "/sensing/gnss/ublox_gps_node/fix|sensor_msgs/msg/NavSatFix|1"
-        - "/sensing/imu/data|sensor_msgs/msg/Imu|1"
-        - "/sensing/platform_velocity_converter/twist_with_covariance|geometry_msgs/msg/TwistWithCovarianceStamped|1"
+        # HH_260720 - Monitor the generated internal IMU stream.
+        - "/sensing/imu/data|avg_msgs/msg/AvgImu|1"
+        - "/sensing/platform_velocity_converter/twist_with_covariance|avg_msgs/msg/AvgTwistWithCovarianceStamped|1"
         - "/sensing/lidar/points_filtered|sensor_msgs/msg/PointCloud2|1"
-        - "/sensing/cost_grid/lidar|nav_msgs/msg/OccupancyGrid|1"
-        - "/sensing/radar/front1/range|sensor_msgs/msg/Range|1"
-        - "/sensing/radar/front2/range|sensor_msgs/msg/Range|1"
-        - "/sensing/radar/left1/range|sensor_msgs/msg/Range|1"
-        - "/sensing/radar/left2/range|sensor_msgs/msg/Range|1"
-        - "/sensing/radar/right1/range|sensor_msgs/msg/Range|1"
-        - "/sensing/radar/right2/range|sensor_msgs/msg/Range|1"
-        - "/sensing/radar/rear/range|sensor_msgs/msg/Range|1"
-        - "/sensing/cost_grid/radar|nav_msgs/msg/OccupancyGrid|1"
-        - "/planning/cost_grid/inflation|nav_msgs/msg/OccupancyGrid|1"
+        - "/sensing/cost_grid/lidar|avg_msgs/msg/AvgOccupancyGrid|1"
+        - "/sensing/radar/front1/range|avg_msgs/msg/AvgRange|1"
+        - "/sensing/radar/front2/range|avg_msgs/msg/AvgRange|1"
+        - "/sensing/radar/left1/range|avg_msgs/msg/AvgRange|1"
+        - "/sensing/radar/left2/range|avg_msgs/msg/AvgRange|1"
+        - "/sensing/radar/right1/range|avg_msgs/msg/AvgRange|1"
+        - "/sensing/radar/right2/range|avg_msgs/msg/AvgRange|1"
+        - "/sensing/radar/rear/range|avg_msgs/msg/AvgRange|1"
+        - "/sensing/cost_grid/radar|avg_msgs/msg/AvgOccupancyGrid|1"
+        - "/planning/cost_grid/inflation|avg_msgs/msg/AvgOccupancyGrid|1"
 
     # Package: camrod_localization
     # Real filter stack remains active; only its upstream sensor sources are synthetic.
@@ -68,17 +71,18 @@
         - /localization/monitor
         - /localization/map_helper
       required_topics:
-        - "/sensing/gnss/pose|geometry_msgs/msg/PoseStamped|1"
-        - "/sensing/gnss/pose_with_covariance|geometry_msgs/msg/PoseWithCovarianceStamped|1"
-        - "/platform/status/wheel_odometry|nav_msgs/msg/Odometry|1"
-        - "/localization/pose|geometry_msgs/msg/PoseStamped|1"
-        - "/localization/pose_with_covariance|geometry_msgs/msg/PoseWithCovarianceStamped|1"
-        - "/localization/odometry/filtered|nav_msgs/msg/Odometry|1"
+        # HH_260720 - Localization simulation traffic uses generated avg_msgs internally.
+        - "/sensing/gnss/pose|avg_msgs/msg/AvgPoseStamped|1"
+        - "/sensing/gnss/pose_with_covariance|avg_msgs/msg/AvgPoseWithCovarianceStamped|1"
+        - "/localization/input/wheel_odometry|avg_msgs/msg/AvgOdometry|1"
+        - "/localization/pose|avg_msgs/msg/AvgPoseStamped|1"
+        - "/localization/pose_with_covariance|avg_msgs/msg/AvgPoseWithCovarianceStamped|1"
+        - "/localization/odometry|avg_msgs/msg/AvgOdometry|1"
         - "/localization/mode|avg_msgs/msg/AvgLocalizationMode|1"
-        - "/localization/state|std_msgs/msg/Bool|1"
-        - "/localization/state/degraded|std_msgs/msg/Bool|1"
-        - "/localization/state/dr_timeout|std_msgs/msg/Bool|1"
-        - "/localization/centerline_pose|geometry_msgs/msg/PoseWithCovarianceStamped|1"
+        - "/localization/state|avg_msgs/msg/AvgBool|1"
+        - "/localization/state/degraded|avg_msgs/msg/AvgBool|1"
+        - "/localization/state/dr_timeout|avg_msgs/msg/AvgBool|1"
+        - "/localization/centerline_pose|avg_msgs/msg/AvgPoseWithCovarianceStamped|1"
 
     # Package: camrod_perception
     # Sim is LiDAR-only; camera publishers are intentionally absent.
@@ -105,44 +109,51 @@
         - /planning/planning_state_machine
         - /planning/path_visualizer
         - /planning/obstacle_replan_monitor
-        - /planning/cmd_vel_gate
       required_topics:
-        - "/planning/goal_pose_snapped_ros|geometry_msgs/msg/PoseStamped|1"
-        - "/planning/lanelet_pose_ros|geometry_msgs/msg/PoseStamped|1"
-        - "/planning/local_path|nav_msgs/msg/Path|1"
+        # HH_260720 - Sim diagnostics observe generated planning mirrors.
+        - "/planning/goal_pose_snapped|avg_msgs/msg/AvgPoseStamped|1"
+        - "/planning/lanelet_pose|avg_msgs/msg/AvgPoseStamped|1"
+        - "/planning/local_path|avg_msgs/msg/AvgPath|1"
         - "/planning/state_machine/state|avg_msgs/msg/PlanningState|1"
         - "/planning/state_machine/mission_source|avg_msgs/msg/PlanningMissionKey|1"
         - "/planning/state_machine/scenario_id|avg_msgs/msg/PlanningScenario|1"
-        - "/planning/engaged|std_msgs/msg/Bool|1"
-        - "/planning/cmd_vel|geometry_msgs/msg/Twist|1"
-
-    parking:
+    # HH_260720 - Control graph remains active in sim; CAN-only checks are disabled by launch.
+    control:
       required_nodes:
-        - /parking/site_maneuver
-        - /parking/drop_zone_parking
+        - /control/cmd_vel_safety_gate
+        - /control/camping_site_maneuver_controller
+        - /control/drop_zone_maneuver_controller
       required_topics:
-        - "/parking/site_maneuver/status|avg_msgs/msg/ModuleState|1"
-        - "/parking/drop_zone/status|avg_msgs/msg/ModuleState|1"
+        - "/control/cmd_vel_raw|avg_msgs/msg/AvgTwist|1"
+        - "/control/cmd_vel|avg_msgs/msg/AvgTwist|1"
+        - "/control/command_enabled|avg_msgs/msg/AvgBool|1"
+        - "/control/cmd_vel_safety_gate/status|avg_msgs/msg/ModuleState|1"
+        # HH_260720 - Check the controller's canonical status topic.
+        - "/control/camping_site_maneuver_controller/status|avg_msgs/msg/ModuleState|1"
+        - "/control/drop_zone_maneuver_controller/status|avg_msgs/msg/ModuleState|1"
 
-    docking:
+    reverse_parking_controller:
       required_nodes:
-        - /docking/docking_server
-        - /docking/lifecycle_manager_docking
+        - /parking/reverse_parking_controller
+      required_topics:
+        - "/parking/reverse_parking_controller/status|avg_msgs/msg/ModuleState|1"
+
+    apriltag_parking_controller:
+      required_nodes:
+        - /parking/apriltag_parking_controller
+        - /perception/apriltag_parking_detector
+      required_topics:
+        - "/parking/apriltag_parking_controller/status|avg_msgs/msg/ModuleState|1"
 
     # Package: camrod_platform
-    # Sim skips ranger_base_node/CAN but keeps the final gate and normalized status topics.
+    # HH_260720 - Sim skips Ranger CAN; control remains the only command gate.
     platform:
       required_nodes:
-        - /platform/cmd_vel_gate
         - /ranger_platform_bridge
         - /platform/robot_visualization
       required_topics:
-        - "/platform/cmd_vel|geometry_msgs/msg/Twist|1"
-        - "/platform/drive_enabled|std_msgs/msg/Bool|1"
-        - "/platform/status/odometry|nav_msgs/msg/Odometry|1"
-        - "/platform/status/velocity|geometry_msgs/msg/TwistStamped|1"
-        - "/platform/status/wheel|geometry_msgs/msg/TwistStamped|1"
-        - "/platform/status/estop|std_msgs/msg/Bool|1"
-        - "/platform/status/battery_state|sensor_msgs/msg/BatteryState|1"
-        - "/platform/status/is_charging|std_msgs/msg/Bool|1"
+        # HH_260720 - Fake CAN state is normalized into the same generated platform contracts.
+        - "/platform/status/odometry|avg_msgs/msg/AvgOdometry|1"
+        - "/platform/status/velocity|avg_msgs/msg/AvgTwistStamped|1"
+        - "/platform/status/wheel|avg_msgs/msg/AvgTwistStamped|1"
         - "/platform/status|avg_msgs/msg/AvgPlatformStatus|1"

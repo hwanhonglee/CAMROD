@@ -10,6 +10,8 @@
 
     centerline_input_pose_topic: "/localization/pose"
     centerline_output_pose_topic: "/localization/centerline_pose"
+    # HH_260720 - Standard ROS mirror for robot_localization and RViz only.
+    centerline_output_pose_ros_topic: "/localization/centerline_pose_ros"
 
     max_search_radius: 30.0
     longitudinal_stddev: 0.5
@@ -47,6 +49,8 @@
     drop_zone_yaw_source: zone
 
     drop_zone_initial_pose_topic: "/localization/drop_zone/initial_pose"
+    # HH_260720 - Standard ROS mirror for RViz only.
+    drop_zone_initial_pose_ros_topic: "/localization/drop_zone/initial_pose_ros"
     status_topic: "/localization/drop_zone/match_ok"
     match_id_topic: "/localization/drop_zone/match_id"
     match_distance_topic: "/localization/drop_zone/match_distance"

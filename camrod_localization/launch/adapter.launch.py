@@ -55,7 +55,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "wheel_input_type",
-            default_value="nav_odom",
+            # HH_260720 - Platform status publishes generated AvgOdometry.
+            default_value="avg_odom",
             description="Wheel bridge input type: twist|avg_odom|nav_odom",
         ),
         DeclareLaunchArgument(
@@ -76,14 +77,15 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "wheel_output_topic",
-            # HH_260410: Use status namespace for unified wheel odometry output.
-            default_value="/platform/status/wheel_odometry",
-            description="Unified wheel odometry output topic (avg_msgs/msg/Odometry alias)",
+            # HH_260720 - Generated normalized wheel odometry is localization-owned.
+            default_value="/localization/input/wheel_odometry",
+            description="Generated AvgOdometry wheel output topic",
         ),
         DeclareLaunchArgument(
             "wheel_nav_output_topic",
-            default_value="/platform/wheel/nav_odometry",
-            description="Unified wheel odometry output topic (nav_msgs/msg/Odometry)",
+            # HH_260720 - Explicit standard-ROS boundary for robot_localization.
+            default_value="/localization/input/wheel_odometry_ros",
+            description="Standard wheel odometry boundary topic",
         ),
 
         Node(

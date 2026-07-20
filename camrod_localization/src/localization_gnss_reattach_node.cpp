@@ -9,9 +9,10 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+// HH_260720 - Keep localization data on generated CAMROD interfaces.
 #include <avg_msgs/msg/avg_localization_mode.hpp>
-#include <avg_msgs/msg/odometry.hpp>
-#include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <avg_msgs/msg/avg_odometry.hpp>
+#include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 
 namespace camrod::localization
@@ -42,9 +43,9 @@ double yawFromQuaternion(
   return std::atan2(siny_cosp, cosy_cosp);
 }
 
-void setQuaternionFromYaw(
-  geometry_msgs::msg::Quaternion & q,
-  double yaw)
+// HH_260720 - Populate either a CAMROD or external ROS quaternion without an alias.
+template<typename QuaternionT>
+void setQuaternionFromYaw(QuaternionT & q, double yaw)
 {
   const double half = 0.5 * yaw;
   q.x = 0.0;
@@ -65,7 +66,7 @@ public:
     gnss_pose_cov_topic_ = declare_parameter<std::string>(
       "gnss_pose_cov_topic", "/sensing/gnss/pose_with_covariance");
     wheel_odom_topic_ = declare_parameter<std::string>(
-      "wheel_odom_topic", "/platform/status/wheel_odometry");
+      "wheel_odom_topic", "/localization/input/wheel_odometry");
     localization_mode_topic_ = declare_parameter<std::string>(
       "localization_mode_topic", "/localization/mode");
 
@@ -153,13 +154,13 @@ public:
     }
 
     using std::placeholders::_1;
-    localization_pose_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+    localization_pose_sub_ = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       localization_pose_cov_topic_, rclcpp::QoS(20),
       std::bind(&LocalizationGnssReattachNode::onLocalizationPose, this, _1));
-    gnss_pose_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+    gnss_pose_sub_ = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       gnss_pose_cov_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationGnssReattachNode::onGnssPose, this, _1));
-    wheel_sub_ = create_subscription<avg_msgs::msg::Odometry>(
+    wheel_sub_ = create_subscription<avg_msgs::msg::AvgOdometry>(
       wheel_odom_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationGnssReattachNode::onWheelOdom, this, _1));
     mode_sub_ = create_subscription<avg_msgs::msg::AvgLocalizationMode>(
@@ -183,7 +184,8 @@ public:
 
     ekf_set_pose_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
       ekf_set_pose_topic_, rclcpp::QoS(1));
-    avg_pose_reset_pub_ = create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(
+    // HH_260720 - Publish reset requests as a real generated CAMROD message.
+    avg_pose_reset_pub_ = create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       avg_pose_reset_topic_, rclcpp::QoS(1));
 
     timer_ = create_wall_timer(
@@ -216,7 +218,7 @@ private:
     return (now() - sample.stamp).seconds() <= timeout_s;
   }
 
-  void onLocalizationPose(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  void onLocalizationPose(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     PoseSample current;
     current.stamp = rclcpp::Time(msg->header.stamp);
@@ -248,7 +250,7 @@ private:
     localization_pose_ = current;
   }
 
-  void onGnssPose(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  void onGnssPose(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     PoseSample current;
     current.stamp = rclcpp::Time(msg->header.stamp);
@@ -266,7 +268,7 @@ private:
     gnss_pose_ = current;
   }
 
-  void onWheelOdom(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
+  void onWheelOdom(const avg_msgs::msg::AvgOdometry::ConstSharedPtr msg)
   {
     if (!detached_) {
       return;
@@ -433,15 +435,14 @@ private:
 
   void publishAvgInitialPose(const PoseSample & localization, const PoseSample & gnss, const rclcpp::Time & stamp)
   {
-    avg_msgs::msg::PoseWithCovarianceStamped msg;
+    avg_msgs::msg::AvgPoseWithCovarianceStamped msg;
     msg.header.stamp = stamp;
     msg.header.frame_id = "map";
     msg.pose.pose.position.x = gnss.x;
     msg.pose.pose.position.y = gnss.y;
     msg.pose.pose.position.z = localization.z;
-    geometry_msgs::msg::Quaternion q;
-    setQuaternionFromYaw(q, resetYaw(localization, gnss));
-    msg.pose.pose.orientation = q;
+    // HH_260720 - Fill the generated quaternion directly; no ROS-message alias is used.
+    setQuaternionFromYaw(msg.pose.pose.orientation, resetYaw(localization, gnss));
     msg.pose.covariance.fill(0.0);
     const double cov_x = std::max(std::max(0.0, gnss.cov_x), min_reset_cov_xy_);
     const double cov_y = std::max(std::max(0.0, gnss.cov_y), min_reset_cov_xy_);
@@ -478,15 +479,14 @@ private:
     }
 
     if (reset_target_mode_ == "avg_pose_topic" || reset_target_mode_ == "both") {
-      avg_msgs::msg::PoseWithCovarianceStamped msg;
+      avg_msgs::msg::AvgPoseWithCovarianceStamped msg;
       msg.header.stamp = stamp;
       msg.header.frame_id = "map";
       msg.pose.pose.position.x = target.x;
       msg.pose.pose.position.y = target.y;
       msg.pose.pose.position.z = target.z;
-      geometry_msgs::msg::Quaternion q;
-      setQuaternionFromYaw(q, target.yaw);
-      msg.pose.pose.orientation = q;
+      // HH_260720 - Fill the generated quaternion directly; no ROS-message alias is used.
+      setQuaternionFromYaw(msg.pose.pose.orientation, target.yaw);
       msg.pose.covariance.fill(0.0);
       msg.pose.covariance[0] = cov_x;
       msg.pose.covariance[7] = cov_y;
@@ -613,14 +613,14 @@ private:
   std::optional<PoseSample> prev_localization_pose_;
   std::optional<PoseSample> gnss_pose_;
 
-  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr localization_pose_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr gnss_pose_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr wheel_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr localization_pose_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr gnss_pose_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr wheel_sub_;
   rclcpp::Subscription<avg_msgs::msg::AvgLocalizationMode>::SharedPtr mode_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose_fallback_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr ekf_set_pose_pub_;
-  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr avg_pose_reset_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr avg_pose_reset_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

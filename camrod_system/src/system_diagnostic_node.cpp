@@ -50,7 +50,9 @@ public:
         "sensing",
         "localization",
         "planning",
-        // HH_260617: Include camrod_parking status in semantic /system/status.
+        // HH_260720 - Control is a first-class runtime module after command/maneuver extraction.
+        "control",
+        // HH_260720 - Include control-owned parking status in semantic /system/status.
         "parking",
         "platform",
         "perception",
@@ -117,6 +119,10 @@ private:
     if (starts_with(normalized, "/planning/") || starts_with(key, "planning_")) {
       return "planning";
     }
+    // HH_260720 - Classify control gate and maneuver diagnostics independently from planning.
+    if (starts_with(normalized, "/control/") || starts_with(key, "control_")) {
+      return "control";
+    }
     if (starts_with(normalized, "/perception/") || starts_with(key, "perception_")) {
       return "perception";
     }
@@ -129,8 +135,8 @@ private:
     if (starts_with(normalized, "/ui/") || starts_with(key, "ui_")) {
       return "ui";
     }
-    if (starts_with(normalized, "/docking/") || starts_with(key, "docking_")) {
-      return "docking";
+    if (starts_with(normalized, "/parking/") || starts_with(key, "parking_")) {
+      return "parking";
     }
     if (starts_with(normalized, "/system/") || starts_with(key, "system_") ||
       starts_with(key, "system/"))

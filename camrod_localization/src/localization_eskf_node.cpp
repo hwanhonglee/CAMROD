@@ -10,15 +10,12 @@
 
 #include <avg_msgs/conversions.hpp>
 #include <builtin_interfaces/msg/time.hpp>
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
-#include <avg_msgs/msg/transform_stamped.hpp>
-#include <avg_msgs/msg/twist_stamped.hpp>
-#include <avg_msgs/msg/twist_with_covariance_stamped.hpp>
-#include <avg_msgs/msg/odometry.hpp>
+#include <avg_msgs/msg/avg_imu.hpp>
+#include <avg_msgs/msg/avg_odometry.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
+#include <avg_msgs/msg/avg_twist_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <avg_msgs/msg/imu.hpp>
-#include <avg_msgs/msg/float32.hpp>
 
 #include <avg_msgs/msg/avg_localization_status_stream.hpp>
 #include <avg_msgs/msg/avg_localization_msgs.hpp>
@@ -26,6 +23,9 @@
 
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_ros/transform_broadcaster.h>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 
 using avg_msgs::msg::AvgLocalizationStatusStream;
 
@@ -71,7 +71,8 @@ tf2::Quaternion yawToQuat(double yaw)
 }
 
 // Converts quaternion to yaw (rad).
-double yawFromQuat(const geometry_msgs::msg::Quaternion & q)
+template<typename QuaternionT>
+double yawFromQuat(const QuaternionT & q)
 {
   const double siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
   const double cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
@@ -93,9 +94,9 @@ public:
     imu_topic_ = declare_parameter<std::string>("imu_topic", "/sensing/imu/data");
     gnss_topic_ = declare_parameter<std::string>(
       "gnss_topic", "/sensing/gnss/pose_with_covariance");
-    // HH_260410: Keep wheel source naming consistent under /platform/status namespace.
+    // HH_260720 - Consume localization's generated normalized wheel input.
     wheel_topic_ = declare_parameter<std::string>(
-      "wheel_topic", "/platform/status/wheel_odometry");
+      "wheel_topic", "/localization/input/wheel_odometry");
     // HH_260527: Optional external pose reset topic for ESKF.
     // Empty string disables subscriber.
     set_pose_topic_ = declare_parameter<std::string>("set_pose_topic", "");
@@ -106,15 +107,18 @@ public:
     publish_uninitialized_tf_ = declare_parameter<bool>("publish_uninitialized_tf", false);
     // HH_260415: Stamp TF with node ROS time to avoid TF extrapolation when sensor clocks drift.
     tf_use_node_time_ = declare_parameter<bool>("tf_use_node_time", true);
-    pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
+    // HH_260720 - ESKF publishes the primary estimate; pose_selector owns public outputs.
+    pose_topic_ = declare_parameter<std::string>(
+      "pose_topic", "/localization/primary/pose");
     pose_cov_topic_ = declare_parameter<std::string>(
-      "pose_cov_topic", "/localization/pose_with_covariance");
+      "pose_cov_topic", "/localization/primary/pose_with_covariance");
     odom_topic_ = declare_parameter<std::string>(
-      "odom_topic", "/localization/odometry/filtered");
+      "odom_topic", "/localization/primary/odometry");
     twist_topic_ = declare_parameter<std::string>(
-      "twist_topic", "/localization/twist");
-    diag_topic_ = declare_parameter<std::string>(
-      "diag_topic", "/localization/eskf/status");
+      "twist_topic", "/localization/primary/twist");
+    // HH_260720 - Publish optional filter diagnostics on the filter-neutral contract.
+    filter_status_topic_ = declare_parameter<std::string>(
+      "filter_status_topic", "/localization/filter/status");
     publish_localization_status_ = declare_parameter<bool>("publish_localization_status", false);
     localization_status_topic_ = declare_parameter<std::string>(
       "localization_status_topic", "/localization/status");
@@ -269,12 +273,14 @@ public:
     }
 
     // Publishers
-    odom_pub_ = create_publisher<avg_msgs::msg::Odometry>(odom_topic_, rclcpp::QoS(10));
-    pose_pub_ = create_publisher<avg_msgs::msg::PoseStamped>(pose_topic_, rclcpp::QoS(10));
-    pose_cov_pub_ = create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(
+    // HH_260720 - Localization outputs are generated avg_msgs contracts.
+    odom_pub_ = create_publisher<avg_msgs::msg::AvgOdometry>(odom_topic_, rclcpp::QoS(10));
+    pose_pub_ = create_publisher<avg_msgs::msg::AvgPoseStamped>(pose_topic_, rclcpp::QoS(10));
+    pose_cov_pub_ = create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       pose_cov_topic_, rclcpp::QoS(10));
-    twist_pub_ = create_publisher<avg_msgs::msg::TwistStamped>(twist_topic_, rclcpp::QoS(10));
-    diag_pub_ = create_publisher<AvgLocalizationStatusStream>(diag_topic_, rclcpp::QoS(10));
+    twist_pub_ = create_publisher<avg_msgs::msg::AvgTwistStamped>(twist_topic_, rclcpp::QoS(10));
+    diag_pub_ = create_publisher<AvgLocalizationStatusStream>(
+      filter_status_topic_, rclcpp::QoS(10));
     if (publish_localization_status_) {
       avg_localization_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(
         localization_status_topic_, rclcpp::QoS(10));
@@ -292,23 +298,24 @@ public:
     }
 
     using std::placeholders::_1;
-    imu_sub_ = create_subscription<avg_msgs::msg::Imu>(
+    imu_sub_ = create_subscription<avg_msgs::msg::AvgImu>(
       imu_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationEskfNode::onImu, this, _1));
-    gnss_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+    gnss_sub_ = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       gnss_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationEskfNode::onGnss, this, _1));
-    wheel_sub_ = create_subscription<avg_msgs::msg::Odometry>(
+    wheel_sub_ = create_subscription<avg_msgs::msg::AvgOdometry>(
       wheel_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationEskfNode::onWheelOdom, this, _1));
     if (!set_pose_topic_.empty()) {
-      set_pose_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+      // HH_260720 - /initialpose remains an explicit RViz geometry_msgs boundary.
+      set_pose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
         set_pose_topic_, rclcpp::QoS(10),
         std::bind(&LocalizationEskfNode::onSetPose, this, _1));
       RCLCPP_INFO(get_logger(), "ESKF external set_pose enabled: topic=%s", set_pose_topic_.c_str());
     }
     if (!gnss_cog_topic_.empty()) {
-      gnss_cog_sub_ = create_subscription<avg_msgs::msg::TwistWithCovarianceStamped>(
+      gnss_cog_sub_ = create_subscription<geometry_msgs::msg::TwistWithCovarianceStamped>(
         gnss_cog_topic_, rclcpp::SensorDataQoS(),
         std::bind(&LocalizationEskfNode::onGnssCog, this, _1));
       RCLCPP_INFO(get_logger(), "GNSS COG heading enabled: topic=%s min_speed=%.2f m/s",
@@ -359,7 +366,7 @@ private:
     return zupt_mode_ == "enabled";
   }
 
-  void onSetPose(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  void onSetPose(const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     const auto & p = msg->pose.pose.position;
     const auto & q = msg->pose.pose.orientation;
@@ -406,7 +413,7 @@ private:
   }
 
   // Handles the `onImu` callback.
-  void onImu(const avg_msgs::msg::Imu::ConstSharedPtr msg)
+  void onImu(const avg_msgs::msg::AvgImu::ConstSharedPtr msg)
   {
     const rclcpp::Time stamp = msg->header.stamp;
     Eigen::Vector3d acc(msg->linear_acceleration.x, msg->linear_acceleration.y, 0.0);
@@ -467,7 +474,7 @@ private:
   }
 
   // Handles the `onGnss` callback.
-  void onGnss(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  void onGnss(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     if (!last_imu_) {
       RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 2000,
@@ -609,7 +616,7 @@ private:
   }
 
   // Handles the `onWheelOdom` callback.
-  void onWheelOdom(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
+  void onWheelOdom(const avg_msgs::msg::AvgOdometry::ConstSharedPtr msg)
   {
     if (!last_imu_) {
       return;
@@ -811,7 +818,7 @@ private:
       return;
     }
 
-    avg_msgs::msg::Odometry odom;
+    avg_msgs::msg::AvgOdometry odom;
     odom.header.stamp = stamp;
     odom.header.frame_id = odom_frame_;
     odom.child_frame_id = base_frame_;
@@ -840,21 +847,21 @@ private:
 
     odom_pub_->publish(odom);
 
-    avg_msgs::msg::PoseStamped pose_msg;
+    avg_msgs::msg::AvgPoseStamped pose_msg;
     pose_msg.header = odom.header;
     // HH_260125 publish pose in map frame for downstream map-aligned consumers (cost grids).
     pose_msg.header.frame_id = map_frame_;
     pose_msg.pose = odom.pose.pose;
     pose_pub_->publish(pose_msg);
 
-    avg_msgs::msg::PoseWithCovarianceStamped pose_cov_msg;
+    avg_msgs::msg::AvgPoseWithCovarianceStamped pose_cov_msg;
     pose_cov_msg.header = odom.header;
     // HH_260125 keep covariance pose aligned to map frame for consistency.
     pose_cov_msg.header.frame_id = map_frame_;
     pose_cov_msg.pose = odom.pose;
     pose_cov_pub_->publish(pose_cov_msg);
 
-    avg_msgs::msg::TwistStamped twist_msg;
+    avg_msgs::msg::AvgTwistStamped twist_msg;
     twist_msg.header = odom.header;
     twist_msg.twist = odom.twist.twist;
     twist_pub_->publish(twist_msg);
@@ -862,10 +869,11 @@ private:
     if (publish_localization_status_ && avg_localization_pub_) {
       avg_msgs::msg::AvgLocalizationMsgs avg_msg;
       avg_msg.stamp = odom.header.stamp;
-      avg_msg.localization_odom = avg_msgs::conversions::fromRos(odom);
-      avg_msg.localization_pose = avg_msgs::conversions::fromRos(pose_msg);
-      avg_msg.localization_pose_cov = avg_msgs::conversions::fromRos(pose_cov_msg);
-      avg_msg.localization_twist = avg_msgs::conversions::fromRos(twist_msg);
+      // HH_260720 - Aggregate fields already use the same generated interfaces.
+      avg_msg.localization_odom = odom;
+      avg_msg.localization_pose = pose_msg;
+      avg_msg.localization_pose_cov = pose_cov_msg;
+      avg_msg.localization_twist = twist_msg;
       avg_msg.localization_status_stream = last_diag_;
       avg_msg.gnss_update_accepted = last_diag_.gnss_update_accepted;
       avg_msg.gnss_innovation_norm = last_diag_.gnss_innovation_norm;
@@ -889,7 +897,7 @@ private:
   }
 
   // Publishes `Tf` output.
-  void publishTf(const avg_msgs::msg::Odometry & odom)
+  void publishTf(const avg_msgs::msg::AvgOdometry & odom)
   {
     builtin_interfaces::msg::Time tf_stamp = odom.header.stamp;
     if (tf_use_node_time_) {
@@ -898,18 +906,18 @@ private:
     }
     // Publish only odom->base by default. map->odom is handled by a single
     // launch-level static publisher for EKF/ESKF consistency.
-    avg_msgs::msg::TransformStamped odom_to_base;
-    odom_to_base.header = odom.header;
+    geometry_msgs::msg::TransformStamped odom_to_base;
+    odom_to_base.header = avg_msgs::conversions::toRos(odom.header);
     odom_to_base.header.stamp = tf_stamp;
     odom_to_base.child_frame_id = odom.child_frame_id;
     odom_to_base.transform.translation.x = odom.pose.pose.position.x;
     odom_to_base.transform.translation.y = odom.pose.pose.position.y;
     odom_to_base.transform.translation.z = odom.pose.pose.position.z;
-    odom_to_base.transform.rotation = odom.pose.pose.orientation;
+    odom_to_base.transform.rotation = avg_msgs::conversions::toRos(odom.pose.pose.orientation);
 
-    std::vector<avg_msgs::msg::TransformStamped> tfs;
+    std::vector<geometry_msgs::msg::TransformStamped> tfs;
     if (publish_map_to_odom_tf_) {
-      avg_msgs::msg::TransformStamped map_to_odom;
+      geometry_msgs::msg::TransformStamped map_to_odom;
       map_to_odom.header.stamp = tf_stamp;
       map_to_odom.header.frame_id = map_frame_;
       map_to_odom.child_frame_id = odom_frame_;
@@ -1015,7 +1023,7 @@ private:
   // course-over-ground heading and apply it as a direct yaw measurement.
   // Replaces manual imu_yaw_init_offset_deg — heading self-calibrates during motion.
   void onGnssCog(
-    const avg_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr msg)
+    const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr msg)
   {
     if (!initialized_) {
       return;
@@ -1048,7 +1056,7 @@ private:
       return;
     }
 
-    avg_msgs::msg::Odometry odom;
+    avg_msgs::msg::AvgOdometry odom;
     odom.header.stamp = this->get_clock()->now();
     odom.header.frame_id = odom_frame_;
     odom.child_frame_id = base_frame_;
@@ -1128,7 +1136,7 @@ private:
 
   // HH_260604: Extract a valid yaw measurement from GNSS pose orientation and covariance.
   bool gnssPoseHeadingMeasurement(
-    const avg_msgs::msg::PoseWithCovarianceStamped & msg,
+    const avg_msgs::msg::AvgPoseWithCovarianceStamped & msg,
     double & yaw,
     double & yaw_variance) const
   {
@@ -1153,7 +1161,7 @@ private:
   }
 
   // HH_260604: Apply GNSS pose yaw as a one-dimensional heading update.
-  void applyGnssPoseHeading(const avg_msgs::msg::PoseWithCovarianceStamped & msg)
+  void applyGnssPoseHeading(const avg_msgs::msg::AvgPoseWithCovarianceStamped & msg)
   {
     if (!initialized_) {
       return;
@@ -1290,7 +1298,7 @@ private:
   std::string pose_cov_topic_;
   std::string odom_topic_;
   std::string twist_topic_;
-  std::string diag_topic_;
+  std::string filter_status_topic_;
   std::string localization_status_topic_;
   bool publish_tf_{true};                   // HH_260422: true -> broadcast odom->base TF (required by nav2 and rviz)
   bool publish_map_to_odom_tf_{true};       // HH_260422: true -> also broadcast map->odom TF (replaces static publisher)
@@ -1308,7 +1316,7 @@ private:
   // HH_260508: force-init from first COG — eliminates imu_yaw_init_offset_deg calibration.
   bool gnss_cog_force_init_{true};
   bool gnss_cog_heading_initialized_{false};
-  rclcpp::Subscription<avg_msgs::msg::TwistWithCovarianceStamped>::SharedPtr gnss_cog_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr gnss_cog_sub_;
   // HH_260604: Track dual-antenna GNSS pose heading fusion state.
   bool enable_gnss_pose_heading_{true};
   double gnss_pose_heading_noise_floor_rad_{0.017};
@@ -1392,14 +1400,14 @@ private:
   rclcpp::Time last_pub_stamp_;
 
   // ROS interfaces
-  rclcpp::Subscription<avg_msgs::msg::Imu>::SharedPtr imu_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr gnss_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr wheel_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr set_pose_sub_;
-  rclcpp::Publisher<avg_msgs::msg::Odometry>::SharedPtr odom_pub_;
-  rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
-  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
-  rclcpp::Publisher<avg_msgs::msg::TwistStamped>::SharedPtr twist_pub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgImu>::SharedPtr imu_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr gnss_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr wheel_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr set_pose_sub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgOdometry>::SharedPtr odom_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseStamped>::SharedPtr pose_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgTwistStamped>::SharedPtr twist_pub_;
   rclcpp::Publisher<AvgLocalizationStatusStream>::SharedPtr diag_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;

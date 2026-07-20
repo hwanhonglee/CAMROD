@@ -1,5 +1,5 @@
-# Localization Pose Checker 설정 파일
-# 로컬라이제이션 출력 레벨: ESKF/Fusion 최종 위치 추정 품질 관제
+# HH_260720 - Check final selected localization output independently of filter backend.
+# Localization pose checker configuration.
 # (GNSS 입력 품질은 robot_gnss_quality_checker 가 담당)
 
 localization_pose_checker:

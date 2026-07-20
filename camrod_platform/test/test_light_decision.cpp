@@ -42,7 +42,8 @@ TEST(LightDecision, PlatformEstopForcesHazard)
 {
   LightDecisionInput input = routeInput(10.0, {{1.0F, 15.0F, 25.0F}});
   input.estop_platform = true;
-  input.site_maneuver_active = true;
+  // HH_260721 - Exercise the explicit campsite maneuver activity contract.
+  input.camping_site_maneuver_controller_active = true;
   input.cmd_vel_lateral_mps = 0.2;
   const auto result = decideIndicator(input, defaultParams());
   EXPECT_EQ(result.mode, IndicatorMode::kHazard);
@@ -61,7 +62,7 @@ TEST(LightDecision, StateMachineEstopForcesHazard)
 TEST(LightDecision, CrabLeftWhenManeuverActiveAndLateralPositive)
 {
   LightDecisionInput input;
-  input.site_maneuver_active = true;
+  input.camping_site_maneuver_controller_active = true;
   input.cmd_vel_lateral_mps = 0.24;
   const auto result = decideIndicator(input, defaultParams());
   EXPECT_EQ(result.mode, IndicatorMode::kLeft);
@@ -71,7 +72,7 @@ TEST(LightDecision, CrabLeftWhenManeuverActiveAndLateralPositive)
 TEST(LightDecision, CrabRightWhenLateralNegative)
 {
   LightDecisionInput input;
-  input.site_maneuver_active = true;
+  input.camping_site_maneuver_controller_active = true;
   input.cmd_vel_lateral_mps = -0.24;
   const auto result = decideIndicator(input, defaultParams());
   EXPECT_EQ(result.mode, IndicatorMode::kRight);
@@ -81,7 +82,7 @@ TEST(LightDecision, CrabRightWhenLateralNegative)
 TEST(LightDecision, CrabIgnoredBelowLateralThreshold)
 {
   LightDecisionInput input;
-  input.site_maneuver_active = true;
+  input.camping_site_maneuver_controller_active = true;
   input.cmd_vel_lateral_mps = 0.03;
   const auto result = decideIndicator(input, defaultParams());
   EXPECT_EQ(result.mode, IndicatorMode::kOff);
@@ -90,7 +91,7 @@ TEST(LightDecision, CrabIgnoredBelowLateralThreshold)
 TEST(LightDecision, LateralWithoutManeuverDoesNotSignal)
 {
   LightDecisionInput input;
-  input.site_maneuver_active = false;
+  input.camping_site_maneuver_controller_active = false;
   input.cmd_vel_lateral_mps = 0.24;
   const auto result = decideIndicator(input, defaultParams());
   EXPECT_EQ(result.mode, IndicatorMode::kOff);
@@ -99,7 +100,7 @@ TEST(LightDecision, LateralWithoutManeuverDoesNotSignal)
 TEST(LightDecision, CrabBeatsTurnWindow)
 {
   LightDecisionInput input = routeInput(20.0, {{1.0F, 15.0F, 25.0F}});
-  input.site_maneuver_active = true;
+  input.camping_site_maneuver_controller_active = true;
   input.cmd_vel_lateral_mps = -0.24;
   const auto result = decideIndicator(input, defaultParams());
   EXPECT_EQ(result.mode, IndicatorMode::kRight);

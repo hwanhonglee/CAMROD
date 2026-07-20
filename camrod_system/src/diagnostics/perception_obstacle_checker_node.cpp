@@ -56,8 +56,7 @@
 
 using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
-using PointCloud2      = sensor_msgs::msg::PointCloud2;
-using Detection2DArray = vision_msgs::msg::Detection2DArray;
+// HH_260720 - Keep raw sensor/detector boundary types explicit; no message aliases.
 
 // ── 소스별 런타임 상태 ────────────────────────────────────────────────────
 
@@ -82,8 +81,8 @@ struct ObstacleSource
   std::deque<rclcpp::Time> timestamps;
 
   // 구독 (타입에 따라 하나만 사용)
-  rclcpp::Subscription<PointCloud2>::SharedPtr      pc2_sub;
-  rclcpp::Subscription<Detection2DArray>::SharedPtr det_sub;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pc2_sub;
+  rclcpp::Subscription<vision_msgs::msg::Detection2DArray>::SharedPtr det_sub;
 };
 
 // ── PerceptionObstacleCheckerNode ─────────────────────────────────────────
@@ -138,9 +137,9 @@ protected:
   {
     for (auto & src : sources_) {
       if (src->type == "Detection2DArray") {
-        src->det_sub = create_subscription<Detection2DArray>(
+        src->det_sub = create_subscription<vision_msgs::msg::Detection2DArray>(
           src->topic, rclcpp::QoS(10),
-          [this, src](const Detection2DArray::ConstSharedPtr msg) {
+          [this, src](const vision_msgs::msg::Detection2DArray::ConstSharedPtr msg) {
             std::lock_guard<std::mutex> lock(src->mtx);
             const auto now     = this->now();
             src->last_msg_time = now;
@@ -160,9 +159,9 @@ protected:
 
       } else {
         // PointCloud2 (기본)
-        src->pc2_sub = create_subscription<PointCloud2>(
+        src->pc2_sub = create_subscription<sensor_msgs::msg::PointCloud2>(
           src->topic, rclcpp::QoS(10),
-          [this, src](const PointCloud2::ConstSharedPtr msg) {
+          [this, src](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
             std::lock_guard<std::mutex> lock(src->mtx);
             const auto now     = this->now();
             src->last_msg_time = now;

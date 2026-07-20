@@ -13,8 +13,7 @@
 
 using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
-using OccupancyGridUpdate = map_msgs::msg::OccupancyGridUpdate;
-using OccupancyGrid    = nav_msgs::msg::OccupancyGrid;
+// HH_260720 - Keep Nav2 boundary message types explicit; do not hide them behind aliases.
 
 // HH_260630 - Track Nav2 costmap freshness and publish rate with the same
 // diagnostic style used by sensing/preprocessing checkers.
@@ -41,8 +40,8 @@ struct CostmapState
   double       resolution{0.0};
   std::deque<rclcpp::Time> timestamps;
 
-  rclcpp::Subscription<OccupancyGrid>::SharedPtr sub;
-  rclcpp::Subscription<OccupancyGridUpdate>::SharedPtr update_sub;
+  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub;
+  rclcpp::Subscription<map_msgs::msg::OccupancyGridUpdate>::SharedPtr update_sub;
 };
 
 class PlanningCostmapCheckerNode : public robot_diagnostics_base::BaseChecker
@@ -107,19 +106,19 @@ protected:
     auto costmap_qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
     auto update_qos = rclcpp::QoS(rclcpp::KeepLast(5)).reliable();
 
-    global_.sub = create_subscription<OccupancyGrid>(
+    global_.sub = create_subscription<nav_msgs::msg::OccupancyGrid>(
       global_.topic, costmap_qos,
-      [this](const OccupancyGrid::ConstSharedPtr msg) { onCostmap(msg, global_); });
-    global_.update_sub = create_subscription<OccupancyGridUpdate>(
+      [this](const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg) { onCostmap(msg, global_); });
+    global_.update_sub = create_subscription<map_msgs::msg::OccupancyGridUpdate>(
       global_.update_topic, update_qos,
-      [this](const OccupancyGridUpdate::ConstSharedPtr msg) { onCostmapUpdate(msg, global_); });
+      [this](const map_msgs::msg::OccupancyGridUpdate::ConstSharedPtr msg) { onCostmapUpdate(msg, global_); });
 
-    local_.sub = create_subscription<OccupancyGrid>(
+    local_.sub = create_subscription<nav_msgs::msg::OccupancyGrid>(
       local_.topic, costmap_qos,
-      [this](const OccupancyGrid::ConstSharedPtr msg) { onCostmap(msg, local_); });
-    local_.update_sub = create_subscription<OccupancyGridUpdate>(
+      [this](const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg) { onCostmap(msg, local_); });
+    local_.update_sub = create_subscription<map_msgs::msg::OccupancyGridUpdate>(
       local_.update_topic, update_qos,
-      [this](const OccupancyGridUpdate::ConstSharedPtr msg) { onCostmapUpdate(msg, local_); });
+      [this](const map_msgs::msg::OccupancyGridUpdate::ConstSharedPtr msg) { onCostmapUpdate(msg, local_); });
 
     add_task("/planning/global_costmap",
       [this](StatusWrapper & stat) { checkCostmap(stat, global_); });
@@ -153,7 +152,9 @@ private:
     }
   }
 
-  void onCostmap(const OccupancyGrid::ConstSharedPtr msg, CostmapState & costmap)
+  void onCostmap(
+    const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg,
+    CostmapState & costmap)
   {
     std::lock_guard<std::mutex> lock(costmap.mtx);
     const auto now = this->now();
@@ -163,7 +164,9 @@ private:
     recordFreshness(costmap, now, "full");
   }
 
-  void onCostmapUpdate(const OccupancyGridUpdate::ConstSharedPtr msg, CostmapState & costmap)
+  void onCostmapUpdate(
+    const map_msgs::msg::OccupancyGridUpdate::ConstSharedPtr msg,
+    CostmapState & costmap)
   {
     std::lock_guard<std::mutex> lock(costmap.mtx);
     const auto now = this->now();

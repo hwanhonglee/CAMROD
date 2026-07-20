@@ -555,7 +555,8 @@
     <span class="chip">/planning/local_path<small>A안 방향 판정</small></span>
     <span class="chip">/localization/pose<small>heading θ</small></span>
     <span class="chip">/planning/state_machine/state<small>ERROR_STOP → 비상등</small></span>
-    <span class="chip">/platform/status/estop<small>estop → 비상등</small></span>
+    <!-- HH_260720 - E-stop is a field of the unified generated platform status. -->
+    <span class="chip">/platform/status<small>estop field → 비상등</small></span>
     <span class="chip">/planning/state_machine/estop<small>소프트 estop → 비상등</small></span>
     <span class="chip">/platform/headlight/command<small>UI 버튼 (신규)</small></span>
   </div>

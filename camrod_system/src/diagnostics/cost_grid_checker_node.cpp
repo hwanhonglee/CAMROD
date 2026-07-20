@@ -6,7 +6,8 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
-#include <nav_msgs/msg/occupancy_grid.hpp>
+// HH_260720 - Diagnose generated CAMROD sensing cost grids.
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -92,9 +93,9 @@ protected:
     for (auto & grid : grids_) {
       // HH_260630 - Use volatile/reliable subscription so it connects to both
       // volatile path grids and transient-local sensor/merged grid publishers.
-      grid->sub = create_subscription<nav_msgs::msg::OccupancyGrid>(
+      grid->sub = create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
         grid->output_topic, rclcpp::QoS(10).reliable(),
-        [this, grid](const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg) {
+        [this, grid](const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg) {
           onGrid(msg, grid);
         });
 
@@ -129,11 +130,11 @@ private:
     uint32_t height{0};
     double resolution{0.0};
     std::deque<rclcpp::Time> timestamps;
-    rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub;
+    rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr sub;
   };
 
   void onGrid(
-    const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg,
+    const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg,
     const std::shared_ptr<GridState> & grid)
   {
     std::lock_guard<std::mutex> lock(grid->mtx);

@@ -34,9 +34,10 @@
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
-#include <geometry_msgs/msg/twist_stamped.hpp>
-#include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
-#include <sensor_msgs/msg/imu.hpp>
+// HH_260720 - Diagnose generated CAMROD velocity-converter contracts.
+#include <avg_msgs/msg/avg_twist_stamped.hpp>
+#include <avg_msgs/msg/avg_twist_with_covariance_stamped.hpp>
+#include <avg_msgs/msg/avg_imu.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -89,25 +90,25 @@ protected:
 
   void setup_tasks_() override
   {
-    vel_sub_ = create_subscription<geometry_msgs::msg::TwistStamped>(
+    vel_sub_ = create_subscription<avg_msgs::msg::AvgTwistStamped>(
       velocity_topic_, rclcpp::SensorDataQoS(),
-      [this](const geometry_msgs::msg::TwistStamped::ConstSharedPtr) {
+      [this](const avg_msgs::msg::AvgTwistStamped::ConstSharedPtr) {
         std::lock_guard<std::mutex> lock(mtx_);
         vel_last_time_ = this->now();
         vel_has_msg_   = true;
       });
 
-    imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
+    imu_sub_ = create_subscription<avg_msgs::msg::AvgImu>(
       imu_topic_, rclcpp::SensorDataQoS(),
-      [this](const sensor_msgs::msg::Imu::ConstSharedPtr) {
+      [this](const avg_msgs::msg::AvgImu::ConstSharedPtr) {
         std::lock_guard<std::mutex> lock(mtx_);
         imu_last_time_ = this->now();
         imu_has_msg_   = true;
       });
 
-    out_sub_ = create_subscription<geometry_msgs::msg::TwistWithCovarianceStamped>(
+    out_sub_ = create_subscription<avg_msgs::msg::AvgTwistWithCovarianceStamped>(
       output_topic_, rclcpp::QoS(10),
-      [this](const geometry_msgs::msg::TwistWithCovarianceStamped::ConstSharedPtr) {
+      [this](const avg_msgs::msg::AvgTwistWithCovarianceStamped::ConstSharedPtr) {
         std::lock_guard<std::mutex> lock(mtx_);
         auto now = this->now();
         out_last_time_ = now;
@@ -231,9 +232,9 @@ private:
   bool out_has_msg_{false};
   std::deque<rclcpp::Time> out_timestamps_;
 
-  rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr vel_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::TwistWithCovarianceStamped>::SharedPtr out_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgTwistStamped>::SharedPtr vel_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgImu>::SharedPtr imu_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgTwistWithCovarianceStamped>::SharedPtr out_sub_;
 };
 
 // ── main ──────────────────────────────────────────────────────────────────

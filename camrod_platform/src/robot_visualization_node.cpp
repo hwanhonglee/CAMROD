@@ -5,27 +5,31 @@
 #include <utility>
 #include <vector>
 
+// HH_260720 - Separate generated CAMROD data contracts from RViz and TF ROS boundaries.
 #include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_platform_msgs.hpp>
+#include <avg_msgs/msg/avg_point32.hpp>
+#include <avg_msgs/msg/avg_polygon_stamped.hpp>
 #include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/polygon_stamped.hpp>
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
-#include <avg_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/polygon_stamped.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <avg_msgs/msg/color_rgba.hpp>
+#include <std_msgs/msg/color_rgba.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Vector3.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/transform_broadcaster.h>
-#include <avg_msgs/msg/marker_array.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "camrod_sensor_kit/robot_params.hpp"  // HH_260109 renamed package
-#include <avg_msgs/msg/marker.hpp>
-#include <avg_msgs/msg/quaternion.hpp>
-#include <avg_msgs/msg/point.hpp>
-#include <avg_msgs/msg/point32.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <geometry_msgs/msg/quaternion.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/point32.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 
 namespace camrod
 {
@@ -43,9 +47,9 @@ std::string normalizeModeToken(std::string value)
 constexpr double kLabelScale = 0.22;
 
 // Builds an avg_msgs color object using RGBA components in [0.0, 1.0].
-avg_msgs::msg::ColorRGBA makeColor(float r, float g, float b, float a)
+std_msgs::msg::ColorRGBA makeColor(float r, float g, float b, float a)
 {
-  avg_msgs::msg::ColorRGBA color;
+  std_msgs::msg::ColorRGBA color;
   color.r = r;
   color.g = g;
   color.b = b;
@@ -54,9 +58,9 @@ avg_msgs::msg::ColorRGBA makeColor(float r, float g, float b, float a)
 }
 
 // Builds a 3D point helper object.
-avg_msgs::msg::Point makePoint(double x, double y, double z)
+geometry_msgs::msg::Point makePoint(double x, double y, double z)
 {
-  avg_msgs::msg::Point point;
+  geometry_msgs::msg::Point point;
   point.x = x;
   point.y = y;
   point.z = z;
@@ -64,11 +68,11 @@ avg_msgs::msg::Point makePoint(double x, double y, double z)
 }
 
 // Converts roll/pitch/yaw (rad) to quaternion.
-avg_msgs::msg::Quaternion quaternionFromRPY(double roll, double pitch, double yaw)
+geometry_msgs::msg::Quaternion quaternionFromRPY(double roll, double pitch, double yaw)
 {
   tf2::Quaternion q;
   q.setRPY(roll, pitch, yaw);
-  avg_msgs::msg::Quaternion quat;
+  geometry_msgs::msg::Quaternion quat;
   quat.x = q.x();
   quat.y = q.y();
   quat.z = q.z();
@@ -198,25 +202,27 @@ public:
     }
 
     auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
-    marker_pub_ = create_publisher<avg_msgs::msg::MarkerArray>(marker_topic_, qos);
-    boundary_pub_ = create_publisher<avg_msgs::msg::PolygonStamped>(boundary_topic_, qos);
+    marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(marker_topic_, qos);
+    // HH_260720 - Publish the planning boundary as a generated CAMROD polygon.
+    boundary_pub_ = create_publisher<avg_msgs::msg::AvgPolygonStamped>(boundary_topic_, qos);
     if (publish_platform_status_) {
       avg_platform_pub_ = create_publisher<AvgPlatformMsgs>(platform_status_topic_, qos);
     }
     if (publish_tf_) {
       tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
     }
-    initialpose_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+    // HH_260720 - Keep RViz initial pose as an explicit external ROS boundary.
+    initialpose_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
       "/localization/initialpose", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
-      std::bind(&RobotVisualizationNode::onInitialPose, this, std::placeholders::_1));
-    localization_pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+      std::bind(&RobotVisualizationNode::onInitialPoseRos, this, std::placeholders::_1));
+    localization_pose_sub_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       localization_pose_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
       std::bind(&RobotVisualizationNode::onLocalizationPose, this, std::placeholders::_1));
-    gnss_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+    gnss_sub_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       gnss_pose_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
       std::bind(&RobotVisualizationNode::onGnssPose, this, std::placeholders::_1));
     if (ground_z_source_ == "lanelet_map") {
-      map_marker_sub_ = create_subscription<avg_msgs::msg::MarkerArray>(
+      map_marker_sub_ = create_subscription<visualization_msgs::msg::MarkerArray>(
         "/map/markers", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable(),
         std::bind(&RobotVisualizationNode::onMapMarkers, this, std::placeholders::_1));
     }
@@ -248,7 +254,7 @@ private:
     if (!publish_tf_ || !tf_broadcaster_) {
       return;
     }
-    avg_msgs::msg::TransformStamped base_tf;
+    geometry_msgs::msg::TransformStamped base_tf;
     base_tf.header.stamp = this->now();
     base_tf.header.frame_id = map_frame_id_;
     base_tf.child_frame_id = base_frame_id_;
@@ -270,14 +276,14 @@ private:
       }
     }
     publishBaseTransform();
-    avg_msgs::msg::MarkerArray markers;
+    visualization_msgs::msg::MarkerArray markers;
     int32_t marker_id = 0;
     tf2::Quaternion base_tf;
     base_tf.setRPY(base_pose_.roll, base_pose_.pitch, base_pose_.yaw);
     base_tf.normalize();
     tf2::Matrix3x3 base_rot(base_tf);
-    const avg_msgs::msg::Quaternion base_orientation = tf2::toMsg(base_tf);
-    const avg_msgs::msg::Point base_translation =
+    const geometry_msgs::msg::Quaternion base_orientation = tf2::toMsg(base_tf);
+    const geometry_msgs::msg::Point base_translation =
       makePoint(base_pose_.x, base_pose_.y, base_pose_.z);
     const std::string base_label_ns = group_robot_marker_namespaces_
       ? "robot/base"
@@ -301,18 +307,18 @@ private:
         base_translation.z + rotated.z());
     };
 
-    const avg_msgs::msg::Quaternion identity_orientation = quaternionFromRPY(0.0, 0.0, 0.0);
+    const geometry_msgs::msg::Quaternion identity_orientation = quaternionFromRPY(0.0, 0.0, 0.0);
     markers.markers.emplace_back(
       createAxesMarker(
         "tf/world", marker_id++, makePoint(0.0, 0.0, 0.0),
         identity_orientation, 2.0, now, "world"));
-    avg_msgs::msg::Marker world_label;
+    visualization_msgs::msg::Marker world_label;
     world_label.header.frame_id = "world";
     world_label.header.stamp = now;
     world_label.ns = "tf/world";
     world_label.id = marker_id++;
-    world_label.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
-    world_label.action = avg_msgs::msg::Marker::ADD;
+    world_label.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    world_label.action = visualization_msgs::msg::Marker::ADD;
     world_label.pose.position = makePoint(0.0, 0.0, 0.6);
     world_label.scale.z = kLabelScale;
     world_label.color = makeColor(0.8f, 0.8f, 0.8f, 0.9f);
@@ -323,13 +329,13 @@ private:
       createAxesMarker(
         "tf/map", marker_id++, makePoint(0.0, 0.0, 0.0),
         identity_orientation, 1.5, now, map_frame_id_));
-    avg_msgs::msg::Marker map_label;
+    visualization_msgs::msg::Marker map_label;
     map_label.header.frame_id = map_frame_id_;
     map_label.header.stamp = now;
     map_label.ns = "tf/map";
     map_label.id = marker_id++;
-    map_label.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
-    map_label.action = avg_msgs::msg::Marker::ADD;
+    map_label.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    map_label.action = visualization_msgs::msg::Marker::ADD;
     map_label.pose.position = makePoint(0.0, 0.0, 0.5);
     map_label.scale.z = kLabelScale;
     map_label.color = makeColor(0.9f, 0.9f, 0.6f, 0.9f);
@@ -352,13 +358,13 @@ private:
 
     // Vehicle bounding box
     if (show_chassis_marker_) {
-      avg_msgs::msg::Marker body_marker;
+      visualization_msgs::msg::Marker body_marker;
       body_marker.header.frame_id = map_frame_id_;
       body_marker.header.stamp = now;
       body_marker.ns = body_ns;
       body_marker.id = marker_id++;
-      body_marker.type = avg_msgs::msg::Marker::CUBE;
-      body_marker.action = avg_msgs::msg::Marker::ADD;
+      body_marker.type = visualization_msgs::msg::Marker::CUBE;
+      body_marker.action = visualization_msgs::msg::Marker::ADD;
       body_marker.pose.position = transformLocal(body_center_x, body_center_y, body_center_z);
       body_marker.pose.orientation = base_orientation;
       body_marker.scale.x = body_length;
@@ -369,19 +375,19 @@ private:
     }
 
     const double axis_length = 0.8;
-    avg_msgs::msg::Point base_origin = base_translation;
+    geometry_msgs::msg::Point base_origin = base_translation;
     markers.markers.emplace_back(
       createAxesMarker(
         base_axes_ns, marker_id++, base_origin, base_orientation, axis_length, now,
         map_frame_id_));
 
-    avg_msgs::msg::Marker base_label;
+    visualization_msgs::msg::Marker base_label;
     base_label.header.frame_id = map_frame_id_;
     base_label.header.stamp = now;
     base_label.ns = base_label_ns;
     base_label.id = marker_id++;
-    base_label.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
-    base_label.action = avg_msgs::msg::Marker::ADD;
+    base_label.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    base_label.action = visualization_msgs::msg::Marker::ADD;
     base_label.pose.position = transformLocal(0.0, 0.0, body_top_z + 0.3);
     base_label.scale.z = kLabelScale;
     base_label.color = makeColor(1.0f, 1.0f, 1.0f, 0.9f);
@@ -389,13 +395,13 @@ private:
     markers.markers.emplace_back(base_label);
 
     // Footprint outline at z = 0
-    avg_msgs::msg::Marker footprint_marker;
+    visualization_msgs::msg::Marker footprint_marker;
     footprint_marker.header.frame_id = map_frame_id_;
     footprint_marker.header.stamp = now;
     footprint_marker.ns = footprint_ns;
     footprint_marker.id = marker_id++;
-    footprint_marker.type = avg_msgs::msg::Marker::LINE_STRIP;
-    footprint_marker.action = avg_msgs::msg::Marker::ADD;
+    footprint_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    footprint_marker.action = visualization_msgs::msg::Marker::ADD;
     footprint_marker.scale.x = 0.02;
     footprint_marker.color = makeColor(0.15f, 0.8f, 0.9f, 0.8f);
     footprint_marker.pose.position = base_translation;
@@ -407,13 +413,13 @@ private:
     footprint_marker.points.push_back(makePoint(body_front, body_left, 0.0));
     markers.markers.emplace_back(footprint_marker);
 
-    avg_msgs::msg::Marker boundary_marker;
+    visualization_msgs::msg::Marker boundary_marker;
     boundary_marker.header.frame_id = map_frame_id_;
     boundary_marker.header.stamp = now;
     boundary_marker.ns = boundary_ns;
     boundary_marker.id = marker_id++;
-    boundary_marker.type = avg_msgs::msg::Marker::LINE_STRIP;
-    boundary_marker.action = avg_msgs::msg::Marker::ADD;
+    boundary_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    boundary_marker.action = visualization_msgs::msg::Marker::ADD;
     boundary_marker.scale.x = 0.03;
     boundary_marker.color = makeColor(1.0f, 0.85f, 0.0f, 0.95f);
     boundary_marker.pose.position = base_translation;
@@ -422,7 +428,7 @@ private:
     const double boundary_rear = body_rear + planning_boundary_margin_;
     const double boundary_left = body_left + planning_boundary_margin_;
     const double boundary_right = body_right + planning_boundary_margin_;
-    std::vector<avg_msgs::msg::Point> boundary_local_points{
+    std::vector<geometry_msgs::msg::Point> boundary_local_points{
       makePoint(boundary_front, boundary_left, 0.0),
       makePoint(boundary_front, -boundary_right, 0.0),
       makePoint(-boundary_rear, -boundary_right, 0.0),
@@ -431,13 +437,13 @@ private:
     boundary_marker.points = boundary_local_points;
     markers.markers.emplace_back(boundary_marker);
 
-    avg_msgs::msg::PolygonStamped polygon_msg;
+    avg_msgs::msg::AvgPolygonStamped polygon_msg;
     polygon_msg.header.frame_id = map_frame_id_;
     polygon_msg.header.stamp = now;
     for (size_t i = 0; i < 4; ++i) {
       const auto map_point =
         transformLocal(boundary_local_points[i].x, boundary_local_points[i].y, 0.0);
-      avg_msgs::msg::Point32 p32;
+      avg_msgs::msg::AvgPoint32 p32;
       p32.x = map_point.x;
       p32.y = map_point.y;
       p32.z = 0.0;
@@ -458,13 +464,13 @@ private:
           sensor_ns, marker_id++, sensor_position, sensor_orientation, 0.5, now,
           map_frame_id_));
 
-      avg_msgs::msg::Marker text_marker;
+      visualization_msgs::msg::Marker text_marker;
       text_marker.header.frame_id = map_frame_id_;
       text_marker.header.stamp = now;
       text_marker.ns = sensor_ns;
       text_marker.id = marker_id++;
-      text_marker.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
-      text_marker.action = avg_msgs::msg::Marker::ADD;
+      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+      text_marker.action = visualization_msgs::msg::Marker::ADD;
       text_marker.pose.position = transformLocal(pose.x, pose.y, pose.z + 0.1);
       text_marker.pose.orientation = base_orientation;
       text_marker.scale.z = kLabelScale;
@@ -479,13 +485,13 @@ private:
         if (radius <= 0.0) {
           continue;
         }
-        avg_msgs::msg::Marker ring_marker;
+        visualization_msgs::msg::Marker ring_marker;
         ring_marker.header.frame_id = map_frame_id_;
         ring_marker.header.stamp = now;
         ring_marker.ns = "range_rings";
         ring_marker.id = marker_id++;
-        ring_marker.type = avg_msgs::msg::Marker::LINE_STRIP;
-        ring_marker.action = avg_msgs::msg::Marker::ADD;
+        ring_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+        ring_marker.action = visualization_msgs::msg::Marker::ADD;
         ring_marker.pose.position = base_translation;
         ring_marker.pose.orientation = base_orientation;
         ring_marker.scale.x = 0.015;
@@ -504,22 +510,24 @@ private:
   }
 
   // Creates a PoseStamped message from the current base pose state.
-  avg_msgs::msg::PoseStamped makeBasePoseStamped(const rclcpp::Time & stamp) const
+  avg_msgs::msg::AvgPoseStamped makeBasePoseStamped(const rclcpp::Time & stamp) const
   {
-    avg_msgs::msg::PoseStamped pose;
+    avg_msgs::msg::AvgPoseStamped pose;
     pose.header.stamp = stamp;
     pose.header.frame_id = map_frame_id_;
     pose.pose.position.x = base_pose_.x;
     pose.pose.position.y = base_pose_.y;
     pose.pose.position.z = base_pose_.z;
-    pose.pose.orientation = quaternionFromRPY(base_pose_.roll, base_pose_.pitch, base_pose_.yaw);
+    // HH_260720 - Convert the visualization quaternion into the generated pose explicitly.
+    pose.pose.orientation = avg_msgs::conversions::fromRos(
+      quaternionFromRPY(base_pose_.roll, base_pose_.pitch, base_pose_.yaw));
     return pose;
   }
 
   // Creates a PoseWithCovarianceStamped wrapper around the base pose for status outputs.
-  avg_msgs::msg::PoseWithCovarianceStamped makeBasePoseCov(const rclcpp::Time & stamp) const
+  avg_msgs::msg::AvgPoseWithCovarianceStamped makeBasePoseCov(const rclcpp::Time & stamp) const
   {
-    avg_msgs::msg::PoseWithCovarianceStamped pose_cov;
+    avg_msgs::msg::AvgPoseWithCovarianceStamped pose_cov;
     pose_cov.header.stamp = stamp;
     pose_cov.header.frame_id = map_frame_id_;
     pose_cov.pose.pose = makeBasePoseStamped(stamp).pose;
@@ -535,8 +543,8 @@ private:
 
   // Publishes consolidated platform status payload for system-level consumers.
   void publishAvgPlatform(
-    const avg_msgs::msg::MarkerArray & markers,
-    const avg_msgs::msg::PolygonStamped & planning_boundary,
+    const visualization_msgs::msg::MarkerArray & markers,
+    const avg_msgs::msg::AvgPolygonStamped & planning_boundary,
     const rclcpp::Time & stamp)
   {
     if (!publish_platform_status_ || !avg_platform_pub_) {
@@ -549,9 +557,9 @@ private:
     msg.state.level = ModuleState::OK;
     msg.state.message = "robot_visualization";
     msg.robot_markers = avg_msgs::conversions::fromRos(markers);
-    msg.planning_boundary = avg_msgs::conversions::fromRos(planning_boundary);
-    msg.localization_pose = avg_msgs::conversions::fromRos(makeBasePoseStamped(stamp));
-    msg.localization_pose_cov = avg_msgs::conversions::fromRos(makeBasePoseCov(stamp));
+    msg.planning_boundary = planning_boundary;
+    msg.localization_pose = makeBasePoseStamped(stamp);
+    msg.localization_pose_cov = makeBasePoseCov(stamp);
     msg.robot_info.robot_specifications.wheelbase = params_.wheelbase;
     msg.robot_info.robot_specifications.track_width = params_.track_width;
     msg.robot_info.robot_specifications.length = params_.length;
@@ -597,7 +605,7 @@ private:
   }
 
   // Updates base pose from `/localization/initialpose` and republishes markers immediately.
-  void onInitialPose(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  void onInitialPose(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     const auto & pose = msg->pose.pose;
     base_pose_.x = pose.position.x;
@@ -605,7 +613,8 @@ private:
     const double pose_z = pose_z_source_ == "pose" ? pose.position.z : 0.0;
     base_pose_.z = pose_z + ground_z_offset_ + mapGroundOffset();
     tf2::Quaternion q;
-    tf2::fromMsg(pose.orientation, q);
+    // HH_260720 - Convert the generated orientation only at the tf2 ROS API boundary.
+    tf2::fromMsg(avg_msgs::conversions::toRos(pose.orientation), q);
     double roll, pitch, yaw;
     tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
     base_pose_.roll = roll;
@@ -617,10 +626,17 @@ private:
     // HH_260304-00:00 Suppress per-fix initial-pose spam while GNSS pose is streaming.
   }
 
-  // Adapts localization pose topic into initialpose-format handling and freshness tracking.
-  void onLocalizationPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  // HH_260720 - Convert the RViz initial-pose input once before internal processing.
+  void onInitialPoseRos(const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
   {
-    auto converted = std::make_shared<avg_msgs::msg::PoseWithCovarianceStamped>();
+    onInitialPose(std::make_shared<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
+      avg_msgs::conversions::fromRos(*msg)));
+  }
+
+  // Adapts localization pose topic into initialpose-format handling and freshness tracking.
+  void onLocalizationPose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
+  {
+    auto converted = std::make_shared<avg_msgs::msg::AvgPoseWithCovarianceStamped>();
     converted->header = msg->header;
     converted->pose.pose = msg->pose;
     // HH_260408: Preserve latest localization yaw for GNSS fallback path.
@@ -633,7 +649,7 @@ private:
   }
 
   // Uses GNSS pose only as fallback when localization is stale or unavailable.
-  void onGnssPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onGnssPose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     // HH_260327: GNSS is fallback-only input for platform marker alignment.
     // If localization pose is fresh, keep marker anchored to localization.
@@ -646,7 +662,7 @@ private:
         return;
       }
     }
-    auto converted = std::make_shared<avg_msgs::msg::PoseWithCovarianceStamped>();
+    auto converted = std::make_shared<avg_msgs::msg::AvgPoseWithCovarianceStamped>();
     converted->header = msg->header;
     converted->pose.pose = msg->pose;
     // HH_260408: Keep heading stable while using GNSS position fallback.
@@ -664,7 +680,7 @@ private:
   }
 
   // Samples lanelet map marker heights once to estimate ground Z for visualization placement.
-  void onMapMarkers(const avg_msgs::msg::MarkerArray::ConstSharedPtr msg)
+  void onMapMarkers(const visualization_msgs::msg::MarkerArray::ConstSharedPtr msg)
   {
     if (ground_z_source_ != "lanelet_map" || map_ground_ready_) {
       return;
@@ -722,20 +738,20 @@ private:
   bool group_robot_marker_namespaces_{true};
   bool has_localization_pose_{false};
   rclcpp::Time last_localization_pose_stamp_{0, 0, RCL_ROS_TIME};
-  avg_msgs::msg::Quaternion last_localization_orientation_{};
+  avg_msgs::msg::AvgQuaternion last_localization_orientation_{};
   bool has_localization_orientation_{false};
   double marker_publish_period_s_{1.0};
   rclcpp::Time last_marker_publish_time_{0, 0, RCL_ROS_TIME};
 
-  rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
-  rclcpp::Publisher<avg_msgs::msg::PolygonStamped>::SharedPtr boundary_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPolygonStamped>::SharedPtr boundary_pub_;
   rclcpp::Publisher<AvgPlatformMsgs>::SharedPtr avg_platform_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr localization_pose_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr gnss_sub_;
-  rclcpp::Subscription<avg_msgs::msg::MarkerArray>::SharedPtr map_marker_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr localization_pose_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr gnss_sub_;
+  rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr map_marker_sub_;
 
   double map_ground_z_{0.0};
   double map_ground_sum_{0.0};
@@ -744,7 +760,7 @@ private:
   bool publish_platform_status_{false};
 
   // Composes base orientation with local sensor offset orientation.
-  avg_msgs::msg::Quaternion composeOrientation(double roll, double pitch, double yaw) const
+  geometry_msgs::msg::Quaternion composeOrientation(double roll, double pitch, double yaw) const
   {
     tf2::Quaternion base_q;
     base_q.setRPY(base_pose_.roll, base_pose_.pitch, base_pose_.yaw);
@@ -756,20 +772,20 @@ private:
   }
 
   // Creates an RGB axis marker (X=red, Y=green, Z=blue) anchored at a point/orientation.
-  avg_msgs::msg::Marker createAxesMarker(
+  visualization_msgs::msg::Marker createAxesMarker(
     const std::string & ns, int32_t id,
-    const avg_msgs::msg::Point & origin,
-    const avg_msgs::msg::Quaternion & orientation,
+    const geometry_msgs::msg::Point & origin,
+    const geometry_msgs::msg::Quaternion & orientation,
     double length, const rclcpp::Time & stamp,
     const std::string & frame_id) const
   {
-    avg_msgs::msg::Marker marker;
+    visualization_msgs::msg::Marker marker;
     marker.header.frame_id = frame_id;
     marker.header.stamp = stamp;
     marker.ns = ns;
     marker.id = id;
-    marker.type = avg_msgs::msg::Marker::LINE_LIST;
-    marker.action = avg_msgs::msg::Marker::ADD;
+    marker.type = visualization_msgs::msg::Marker::LINE_LIST;
+    marker.action = visualization_msgs::msg::Marker::ADD;
     marker.scale.x = 0.04;
 
     tf2::Quaternion q;
@@ -779,7 +795,7 @@ private:
 
     auto tipPoint = [&](const tf2::Vector3 & axis) {
       tf2::Vector3 tip = origin_vec + rot * axis;
-      avg_msgs::msg::Point p;
+      geometry_msgs::msg::Point p;
       p.x = tip.x();
       p.y = tip.y();
       p.z = tip.z();

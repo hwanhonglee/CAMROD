@@ -34,9 +34,10 @@
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/bool.hpp>
-#include <std_msgs/msg/float32.hpp>
-#include <std_msgs/msg/string.hpp>
+// HH_260720 - Diagnose generated CAMROD initialization state values.
+#include <avg_msgs/msg/avg_bool.hpp>
+#include <avg_msgs/msg/avg_float32.hpp>
+#include <avg_msgs/msg/avg_string.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -58,9 +59,9 @@ struct InitState
   float  match_distance{std::numeric_limits<float>::infinity()};
   std::string match_id;
 
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr    ok_sub;
-  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr dist_sub;
-  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr  id_sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr    ok_sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgFloat32>::SharedPtr dist_sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgString>::SharedPtr  id_sub;
 };
 
 // ── LocalizationInitCheckerNode ───────────────────────────────────────────
@@ -106,25 +107,25 @@ protected:
 
   void setup_tasks_() override
   {
-    state_.ok_sub = create_subscription<std_msgs::msg::Bool>(
+    state_.ok_sub = create_subscription<avg_msgs::msg::AvgBool>(
       ok_topic_, rclcpp::QoS(1),
-      [this](const std_msgs::msg::Bool::ConstSharedPtr msg) {
+      [this](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
         std::lock_guard<std::mutex> lock(state_.mtx);
         state_.last_msg_time = this->now();
         state_.has_msg       = true;
         state_.match_ok      = msg->data;
       });
 
-    state_.dist_sub = create_subscription<std_msgs::msg::Float32>(
+    state_.dist_sub = create_subscription<avg_msgs::msg::AvgFloat32>(
       distance_topic_, rclcpp::QoS(1),
-      [this](const std_msgs::msg::Float32::ConstSharedPtr msg) {
+      [this](const avg_msgs::msg::AvgFloat32::ConstSharedPtr msg) {
         std::lock_guard<std::mutex> lock(state_.mtx);
         state_.match_distance = msg->data;
       });
 
-    state_.id_sub = create_subscription<std_msgs::msg::String>(
+    state_.id_sub = create_subscription<avg_msgs::msg::AvgString>(
       id_topic_, rclcpp::QoS(1),
-      [this](const std_msgs::msg::String::ConstSharedPtr msg) {
+      [this](const avg_msgs::msg::AvgString::ConstSharedPtr msg) {
         std::lock_guard<std::mutex> lock(state_.mtx);
         state_.match_id = msg->data;
       });

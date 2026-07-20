@@ -17,7 +17,7 @@
  *   wheel_names: ["main"]
  *
  *   main:
- *     topic:              "/platform/status/wheel_odometry"
+ *     topic:              "/localization/input/wheel_odometry"
  *     expected_hz:        20.0
  *     hz_warn_ratio:      0.7
  *     hz_error_ratio:     0.4
@@ -33,7 +33,8 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
-#include <nav_msgs/msg/odometry.hpp>
+// HH_260720 - Diagnose generated CAMROD wheel odometry.
+#include <avg_msgs/msg/avg_odometry.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -70,7 +71,7 @@ struct WheelState
   std::deque<rclcpp::Time> timestamps;
 
   // 구독자
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr sub;
 };
 
 static bool has_nan6(double a, double b, double c, double d, double e, double f)
@@ -104,7 +105,7 @@ protected:
       auto wheel = std::make_shared<WheelState>();
       wheel->name = name;
 
-      declare_parameter(name + ".topic",               std::string("/platform/status/wheel_odometry"));
+      declare_parameter(name + ".topic",               std::string("/localization/input/wheel_odometry"));
       declare_parameter(name + ".expected_hz",         20.0);
       declare_parameter(name + ".hz_warn_ratio",       0.7);
       declare_parameter(name + ".hz_error_ratio",      0.4);
@@ -127,9 +128,9 @@ protected:
   void setup_tasks_() override
   {
     for (auto & wheel : wheel_list_) {
-      wheel->sub = create_subscription<nav_msgs::msg::Odometry>(
+      wheel->sub = create_subscription<avg_msgs::msg::AvgOdometry>(
         wheel->topic, rclcpp::SensorDataQoS(),
-        [this, wheel](const nav_msgs::msg::Odometry::ConstSharedPtr msg) {
+        [this, wheel](const avg_msgs::msg::AvgOdometry::ConstSharedPtr msg) {
           onOdometry(msg, wheel);
         });
 
@@ -144,7 +145,7 @@ protected:
 
 private:
   void onOdometry(
-    const nav_msgs::msg::Odometry::ConstSharedPtr msg,
+    const avg_msgs::msg::AvgOdometry::ConstSharedPtr msg,
     const std::shared_ptr<WheelState> & wheel)
   {
     std::lock_guard<std::mutex> lock(wheel->mtx);

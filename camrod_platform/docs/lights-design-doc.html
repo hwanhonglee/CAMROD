@@ -175,7 +175,7 @@
     <tr><td>방향 판정</td><td><b>B안 — lanelet <code>turn_direction</code> 태그 조회</b> (지도에 태그 존재 검증됨)</td></tr>
     <tr><td>비상등 트리거</td><td>ERROR_STOP / estop만 · 우선순위 비상등 &gt; 지시등 &gt; 소등</td></tr>
     <tr><td>통신 두절 시</td><td>MCU가 <b>비상등 점멸</b> (단, 최초 프레임 수신 후부터 판정 — 부팅 오점등 방지)</td></tr>
-    <tr><td>크랩 기동 중</td><td><b>이동 방향 지시등</b> (site_maneuver 활성 + <code>linear.y</code> 부호)</td></tr>
+    <tr><td>크랩 기동 중</td><td><b>이동 방향 지시등</b> (camping_site_maneuver_controller 활성 + <code>linear.y</code> 부호)</td></tr>
     <tr><td>그리드 폴백 주행</td><td>소등 유지 (자동 폴백 전환 자체가 기본 OFF임을 확인)</td></tr>
     <tr><td>깜빡임 생성</td><td>MCU 자율 (약 1.25 Hz) · PC는 모드+하트비트만 전송</td></tr>
     <tr><td>배선</td><td>Relay IN=<b>D10</b> · 좌 D5(데이터)/D6(백업) · 우 D7(데이터)/D8(백업) — D13→D12→D10 변경(부트로더 점멸 회피 유지)</td></tr>
@@ -199,7 +199,7 @@
     <div class="farrow">→</div>
     <div class="fbox src"><b>턴 구간 <em>(신규)</em></b><span><code style="font-size:11px">/planning/route_turn_segments</code><br>+ global_path + pose</span></div>
     <div class="farrow">→</div>
-    <div class="fbox src"><b>크랩 신호</b><span>site_maneuver 상태<br>+ cmd_vel <code>linear.y</code></span></div>
+    <div class="fbox src"><b>크랩 신호</b><span>camping_site_maneuver_controller 상태<br>+ cmd_vel <code>linear.y</code></span></div>
   </div>
   <div class="fdown">↓</div>
   <div class="flow-row">
@@ -303,7 +303,7 @@
     ERROR_STOP <span class="mut" style="font-size:12px">or</span> estop(HW/소프트)
     <span class="out">HAZARD 점멸</span></div>
   <div class="prio-item p2"><span class="rank">2</span>
-    크랩 기동 중 (site_maneuver 활성 + |linear.y| &gt; 0.05)
+    크랩 기동 중 (camping_site_maneuver_controller 활성 + |linear.y| &gt; 0.05)
     <span class="out">이동 방향 지시</span></div>
   <div class="prio-item p3"><span class="rank">3</span>
     턴 구간 D_pre 진입 ~ 통과 전
@@ -320,17 +320,21 @@
 <table>
   <thead><tr><th>토픽</th><th>타입</th><th>방향</th><th>비고</th></tr></thead>
   <tbody>
-    <tr><td><code>/platform/headlight/command</code></td><td><code>std_msgs/Bool</code></td><td>UI → controller</td><td>신규</td></tr>
-    <tr><td><code>/planning/route_turn_segments</code></td><td><code>Float32MultiArray</code></td><td>planner → controller</td><td>신규 · transient_local · <code>[0]=전체 경로 길이(동기화 가드)</code>, 이후 <code>[방향, s₀, s₁]×N</code></td></tr>
+    <!-- HH_260720 - Document generated internal contracts instead of removed aliases. -->
+    <tr><td><code>/platform/headlight/command</code></td><td><code>avg_msgs/AvgBool</code></td><td>UI → controller</td><td>내부 제어 계약</td></tr>
+    <tr><td><code>/planning/route_turn_segments</code></td><td><code>avg_msgs/RouteTurnSegmentArray</code></td><td>planner → controller</td><td>transient_local · 전체 경로 길이와 방향 구간 필드</td></tr>
     <tr><td><code>/platform/lights/command</code></td><td><b><code>avg_msgs/AvgLightCommand</code></b></td><td>controller → bridge</td><td>신규 msg: <code>header + bool headlight + uint8 indicator{OFF,LEFT,RIGHT,HAZARD}</code></td></tr>
     <tr><td><code>/platform/lights/status</code></td><td>동일 msg</td><td>bridge → 진단/UI</td><td>MCU ack 반영</td></tr>
   </tbody>
 </table>
 </div>
 <p style="font-size:13.5px; color:var(--muted)">
-  기존 구독 토픽: <code>/planning/state_machine/state</code> · <code>/platform/status/estop</code> ·
-  <code>/planning/state_machine/estop</code> · <code>/planning/global_path</code> ·
-  <code>/localization/pose</code> · <code>/parking/site_maneuver/status</code> · <code>/planning/cmd_vel</code>
+  <!-- HH_260720 - Read e-stop from the unified generated platform status. -->
+  기존 구독 토픽: <code>/planning/state_machine/state</code> · <code>/platform/status</code> ·
+  <code>/planning/state_machine/estop</code> · <code>/planning/global_path_avg</code> ·
+  <!-- HH_260720 - Control owns maneuver status and the final generated command. -->
+  <code>/localization/pose</code> · <code>/control/camping_site_maneuver_controller/status</code> ·
+  <code>/control/cmd_vel</code>
 </p>
 
 <!-- ================================================== 5. 시리얼 프로토콜 -->
@@ -474,7 +478,8 @@ camrod_bringup/launch/_bringup_impl.py                  [수정 · lights 모듈
 
 <footer>
   CAMROD v2.0.0 (develop) 기준 · 기본 플래너 LaneletRoute / 컨트롤러 RPP / 폴백 자동전환 OFF /
-  주차 기본 rule_based 확인됨 · 방향 판정 원리 비교는
+  <!-- HH_260720 - Reverse parking is the default control-owned method. -->
+  주차 기본 reverse 확인됨 · 방향 판정 원리 비교는
   별도 문서 「방향 지시 판정 · A안 vs B안」 참조
 </footer>
 </main>

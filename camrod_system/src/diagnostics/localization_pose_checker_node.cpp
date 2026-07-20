@@ -37,7 +37,8 @@
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
-#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+// HH_260720 - Diagnose the generated CAMROD fused pose contract.
+#include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -45,7 +46,7 @@
 
 using DiagnosticStatus   = diagnostic_msgs::msg::DiagnosticStatus;
 using StatusWrapper      = diagnostic_updater::DiagnosticStatusWrapper;
-using PoseWithCovStamped = geometry_msgs::msg::PoseWithCovarianceStamped;
+using PoseWithCovStamped = avg_msgs::msg::AvgPoseWithCovarianceStamped;
 
 // ── 로컬라이제이션 포즈 출력 상태 구조체 ─────────────────────────────────
 

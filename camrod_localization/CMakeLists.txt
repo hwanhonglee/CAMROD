@@ -55,7 +55,8 @@ ament_target_dependencies(localization_input_adapter_node
 )
 
 # ------------------------------------------------------------------------------
-# 2. Monitor / supervisor
+# HH_260720 - Build the explicitly named localization health monitor.
+# 2. Localization health monitor
 #   - Sensor freshness monitoring
 #   - Filter diagnostics evaluation
 #   - Mode / confidence / degraded-state publishing
