@@ -23,12 +23,11 @@ from typing import Optional
 import rclpy
 import uvicorn
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
-from avg_msgs.msg import AvgAmrServiceState, UiDestinationCommand
+from avg_msgs.msg import AvgAmrServiceState, AvgPlatformStatus, UiDestinationCommand
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from rclpy.node import Node
-from std_msgs.msg import Int32
 
 
 class UiGuestNode(Node):
@@ -43,7 +42,7 @@ class UiGuestNode(Node):
             self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
         )
         self.battery_topic = str(
-            self.declare_parameter("battery_topic", "/battery_percentage").value
+            self.declare_parameter("battery_topic", "/platform/status").value
         )
         self.grace_period_s = int(self.declare_parameter("grace_period_s", 60).value)
 
@@ -78,7 +77,7 @@ class UiGuestNode(Node):
             10,
         )
         self.sub_battery = self.create_subscription(
-            Int32,
+            AvgPlatformStatus,
             self.battery_topic,
             self._on_battery,
             10,
@@ -119,8 +118,11 @@ class UiGuestNode(Node):
         self._schedule_broadcast({"amr_state": state, "phase": self._phase_of(state)})
         self.get_logger().info(f"[guest] AMR state received: {state}")
 
-    def _on_battery(self, msg: Int32) -> None:
-        pct = max(0, min(100, int(msg.data)))
+    def _on_battery(self, msg: AvgPlatformStatus) -> None:
+        # HH_260720 - Read battery percentage from the canonical generated platform status.
+        if not msg.battery_state_available:
+            return
+        pct = max(0, min(100, int(round(msg.battery_percentage))))
         with self._lock:
             self._battery = pct
         self._schedule_broadcast({"battery": pct})

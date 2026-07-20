@@ -93,32 +93,27 @@ def generate_launch_description():
         default_value='/platform/drive_enable',
         description='Platform drive-enable topic armed together with UI engage commands',
     )
-    site_maneuver_return_topic_arg = DeclareLaunchArgument(
-        'site_maneuver_return_topic',
-        default_value='/parking/site_maneuver/return',
-        description='Rule-based campsite return trigger used by the UI return button',
+    camping_site_maneuver_controller_operation_topic_arg = DeclareLaunchArgument(
+        'camping_site_maneuver_controller_operation_topic',
+        # HH_260720 - Campsite maneuver commands are owned by camrod_control.
+        default_value='/control/camping_site_maneuver_controller/operation',
+        description='Typed campsite operation topic used by the UI return button',
     )
-    site_maneuver_adopt_topic_arg = DeclareLaunchArgument(
-        'site_maneuver_adopt_topic',
-        default_value='/parking/site_maneuver/adopt',
-        description='Rule-based campsite parked-state adoption trigger used when UI selects the current site',
+    platform_status_topic_arg = DeclareLaunchArgument(
+        'platform_status_topic',
+        default_value='/platform/status',
+        description='Generated platform CAN and BMS status topic',
+    )
+    camping_site_maneuver_controller_adopt_topic_arg = DeclareLaunchArgument(
+        'camping_site_maneuver_controller_adopt_topic',
+        default_value='/control/camping_site_maneuver_controller/adopt',
+        description='Campsite parked-state adoption trigger used when UI selects the current site',
     )
     arrival_pose_topic_arg = DeclareLaunchArgument(
         'arrival_pose_topic',
         default_value='/localization/pose',
         description='Pose topic used to detect already-arrived campsite selections',
     )
-    manual_dock_enabled_arg = DeclareLaunchArgument(
-        'manual_dock_enabled',
-        default_value='true',
-        description='Initial state of Manual Docking toggle in UI settings tab',
-    )
-    auto_dock_enabled_arg = DeclareLaunchArgument(
-        'auto_dock_enabled',
-        default_value='false',
-        description='Initial state of Auto Docking toggle in UI settings tab',
-    )
-
     ui_backend = Node(
         package='camrod_ui',
         executable='ui_backend_node',
@@ -136,9 +131,10 @@ def generate_launch_description():
             'planning_engage_topic': LaunchConfiguration('planning_engage_topic'),
             'planning_mission_engage_topic': LaunchConfiguration('planning_mission_engage_topic'),
             'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
-            'site_maneuver_return_topic': LaunchConfiguration('site_maneuver_return_topic'),
-            'site_maneuver_adopt_topic': LaunchConfiguration('site_maneuver_adopt_topic'),
+            'camping_site_maneuver_controller_operation_topic': LaunchConfiguration('camping_site_maneuver_controller_operation_topic'),
+            'camping_site_maneuver_controller_adopt_topic': LaunchConfiguration('camping_site_maneuver_controller_adopt_topic'),
             'arrival_pose_topic': LaunchConfiguration('arrival_pose_topic'),
+            'platform_status_topic': LaunchConfiguration('platform_status_topic'),
             # HH_260701 - If the robot is already inside the selected campsite,
             # show the arrival/return UI instead of sending a fresh Nav2 goal.
             'immediate_site_arrival_enabled': True,
@@ -159,8 +155,6 @@ def generate_launch_description():
             'fallback_mission_key': 'camping_site_1',
             'fallback_to_first_known_goal': True,
             'camping_sites_yaml': LaunchConfiguration('camping_sites_yaml'),
-            'manual_dock_enabled': LaunchConfiguration('manual_dock_enabled'),
-            'auto_dock_enabled': LaunchConfiguration('auto_dock_enabled'),
         }],
     )
 
@@ -173,10 +167,9 @@ def generate_launch_description():
         planning_engage_topic_arg,
         planning_mission_engage_topic_arg,
         platform_drive_enable_topic_arg,
-        site_maneuver_return_topic_arg,
-        site_maneuver_adopt_topic_arg,
+        camping_site_maneuver_controller_operation_topic_arg,
+        platform_status_topic_arg,
+        camping_site_maneuver_controller_adopt_topic_arg,
         arrival_pose_topic_arg,
-        manual_dock_enabled_arg,
-        auto_dock_enabled_arg,
         ui_backend,
     ])

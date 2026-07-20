@@ -20,11 +20,9 @@ camrod_voice/
 │   └── voice.launch.py
 ├── resource/audio/ko-KR/
 │   ├── battery/
-│   ├── docking/
 │   ├── navigation/
 │   ├── safety/
-│   ├── system/
-│   └── undocking/
+│   └── system/
 └── src/
     ├── audio_player.cpp
     ├── main.cpp
@@ -47,9 +45,7 @@ camrod_voice/
 | Subscribe | `/voice/voice_announcer/say` | `avg_msgs/AudioRequest` | Audio request input |
 | Publish | `/voice/voice_announcer/state` | `avg_msgs/VoiceState` | Playback state |
 | Subscribe | `/planning/state_machine/state` | `avg_msgs/PlanningState` | Navigation state changes |
-| Subscribe | `/platform/status/estop` | `std_msgs/Bool` | E-stop edge events |
-| Subscribe | `/battery_percentage` | `std_msgs/Int32` | Battery threshold announcements |
-| Subscribe | `/docking/is_charging` | `std_msgs/Bool` | Charging/docking success edge |
+| Subscribe | `/platform/status` | `avg_msgs/AvgPlatformStatus` | E-stop, normalized battery, and charging edges |
 
 ## Audio Keys
 
@@ -72,12 +68,11 @@ Priority convention: `0=info`, `1=notice`, `2=warning`, `3=critical`. Critical r
 | State `GOAL_REACHED` | `navigation.arrived_campsite` | 1 |
 | State `RETURNING` or `WAIT_DZ` | `navigation.return_to_dropzone` | 1 |
 | State `WARN_RECOVERY` | `safety.obstacle` | 2 |
-| State `WAIT_DZ -> RUNNING` | `undocking.started` | 1 |
 | E-stop `false -> true` | `safety.estop` | 3 |
 | E-stop `true -> false` | `safety.estop_released` | 3 |
-| Battery `<= low threshold` | `battery.low` | 1 |
-| Battery `<= critical threshold` | `battery.critical` | 2 |
-| Charging `false -> true` | `docking.succeeded` | 1 |
+| Battery `<= 0.20` | `battery.low` | 1 |
+| Battery `<= 0.10` | `battery.critical` | 2 |
+| Charging `false -> true` | `battery.charging` | 1 |
 
 ## Launch
 
@@ -99,13 +94,20 @@ System dependencies: `libsdl2-dev`, `libsdl2-mixer-dev`. `setup_camrod.sh` insta
 
 > HH_260617: Voice event adaptation consumes semantic planning and charging states.
 
-`voice_event_adapter_node.py` should listen to `avg_msgs/PlanningState`, platform e-stop, battery/charging topics, and parking/docking completion signals. `setup_camrod.sh` installs `libsdl2-mixer-dev`; if that package is missing, `colcon_build.sh` skips `camrod_voice` on development PCs instead of blocking GNSS/planning/parking builds.
+<!-- HH_260720 - Voice consumes generated planning and unified platform contracts only. -->
+`voice_event_adapter_node.py` listens to `avg_msgs/PlanningState` and
+`avg_msgs/AvgPlatformStatus`. `setup_camrod.sh` installs `libsdl2-mixer-dev`; if
+that package is missing, `colcon_build.sh` skips `camrod_voice` on development
+PCs instead of blocking the motion stack build.
 
 ## 2026-07-02 Runtime Update
 
 > HH_260702: Voice is operator feedback only and must not be treated as safety authority.
 
-The voice adapter follows `/planning/state_machine/state`, `/platform/status/estop`, battery, and charging edges. It should announce obstacle/estop/recovery events after the planning/platform gates have already made the control decision. In high-load tests, disabling voice is acceptable for CPU recovery and does not remove any stop, engage, or parking interlock.
+The voice adapter follows `/planning/state_machine/state` and the e-stop,
+battery, and charging fields on `/platform/status`. It announces events after
+the control gate has made the motion decision; disabling voice does not remove
+any control condition.
 
 ```bash
 ros2 launch camrod_voice voice.launch.py enable_voice_adapter:=false

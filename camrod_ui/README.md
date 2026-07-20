@@ -11,7 +11,7 @@
 On the ROS side it bridges operator intent to planning topics without making any autonomy decisions itself.
 
 > **Non-goals:** Makes no autonomy decisions — only proxies operator intent. Does not plan paths, monitor localization, or enforce safety constraints. WebSocket is for real-time UI push only; it does not replace the REST API.
-> HH_260702 - Operator engage controls now arm the platform drive-enable latch together with the matching planning engage topic. Campsite return uses `/parking/site_maneuver/return`, then re-arms mission/platform gates for the return-to-drop-zone leg; final motion safety remains enforced by planning/platform gates.
+> HH_260720 - Operator engage controls arm the platform drive-enable latch with the planning engage topic. Campsite return publishes a typed operation to `/control/camping_site_maneuver_controller/operation`; final motion authorization remains in the control gate.
 
 ---
 
@@ -73,12 +73,12 @@ graph LR
   UI -->|/platform/drive_enable| PLAT([🤖 camrod_platform]):::planning
   UI -->|/planning/mission_key| PLAN
   UI -->|/goal_pose| PLAN
-  PARK([🅿️ camrod_docking]):::docking -.->|destination sites| UI
+  PARK([camrod_control parking]):::parking -.->|destination sites| UI
 
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
-  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef hardware     fill:#FAFAFA,stroke:#6B7280,stroke-width:1.5px,color:#374151;
 ```
 
@@ -138,34 +138,30 @@ sequenceDiagram
   participant SM as 🧭 StateMachine
   participant Nav2 as 🧠 Nav2
   participant Gate as 🚦 CmdVelGate
-  participant Parking as 🅿️ SiteManeuver
-  participant Dock as 🅿️ DockingServer
+  participant Control as 🅿️ SiteManeuver
+  participant Parking as 🅿️ ParkingController
 
   Browser->>Backend: POST /ui/destination?site=B3&run=true
   Backend->>Backend: validate site B3 → camping_site_3
   Backend->>SM: /ui/selected_destination UiDestinationCommand(site=B3, run=true)
   Backend->>SM: /planning/mission_key PlanningMissionKey(camping_site_3)
   Backend->>Nav2: site_goal /goal_pose PoseStamped(x,y,z,yaw from camping_sites.yaml)
-  Backend->>Gate: /planning/mission_engage Bool(true)
-  Backend->>Gate: /platform/drive_enable Bool(true)
-  Gate-->>Nav2: planning/platform gates open → velocity flows
-  Parking-->>Backend: /AMR_service_state UNLOAD_WAIT
+  Backend->>Gate: /planning/mission_engage AvgBool(true)
+  Backend->>Gate: /platform/drive_enable AvgBool(true)
+  Gate-->>Control: command authorization opens
+  Control-->>Backend: /AMR_service_state UNLOAD_WAIT
   Backend-->>Browser: WebSocket {"arrived": "B3", "amr_state": 6}
-  Backend->>Gate: /planning/mission_engage Bool(false)
-  Backend->>Gate: /platform/drive_enable Bool(false)
+  Backend->>Gate: /planning/mission_engage AvgBool(false)
+  Backend->>Gate: /platform/drive_enable AvgBool(false)
   Browser->>Backend: WebSocket {"usage_complete": true}
-  Backend->>Parking: /parking/site_maneuver/return Bool(true)
-  Backend->>Gate: /planning/mission_engage Bool(true)
-  Backend->>Gate: /platform/drive_enable Bool(true)
-
-  Note over Dock: Parallel docking branch
-  alt mission_key contains "dock"
-    SM->>Dock: send docking action goal
-    Dock-->>SM: docking result (succeeded/aborted)
-    Dock-->>Backend: /AMR_arrive Bool(true)
-    Backend->>Gate: /planning/mission_engage Bool(false)
-    Backend->>Gate: /platform/drive_enable Bool(false)
-  end
+  Backend->>Control: /control/camping_site_maneuver_controller/operation MotionOperation(RETURN)
+  Backend->>Gate: /planning/mission_engage AvgBool(true)
+  Backend->>Gate: /platform/drive_enable AvgBool(true)
+  Control->>SM: return route handoff
+  SM->>Parking: drop-zone arrival handoff
+  Parking-->>Backend: charging state through /platform/status
+  Backend->>Gate: /planning/mission_engage AvgBool(false)
+  Backend->>Gate: /platform/drive_enable AvgBool(false)
 ```
 
 ### Operator Mode State Machine
@@ -415,7 +411,7 @@ After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the 
 - [`../README.md`](../README.md) — Top-level CAMROD workspace overview
 - [`../camrod_system/README.md`](../camrod_system/README.md) — produces `/system/diagnostics_agg`
 - [`../camrod_planning/README.md`](../camrod_planning/README.md) — consumes `/planning/engage`, `/goal_pose`, `/planning/mission_key`
-- [`../camrod_docking/README.md`](../camrod_docking/README.md) — camping site definitions used by destination dispatch
+- [`../camrod_control/README.md`](../camrod_control/README.md) - maneuver and parking status consumed by the UI
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
 
 ## 2026-06-17 Runtime Update
@@ -429,7 +425,7 @@ the same site in the UI now adopts the parked state instead of sending another
 route goal. `ui_backend_node` checks the latest `/localization/pose` against the
 configured campsite polygon or center radius, publishes an
 `AvgAmrServiceState.UNLOAD_WAIT` arrival notification, and sends
-`UiDestinationCommand(run=true)` on `/parking/site_maneuver/adopt`. The parking
+`UiDestinationCommand(run=true)` on `/control/camping_site_maneuver_controller/adopt`. The control
 node then enters `WAIT_RETURN`, so the operator can use the return button even
 when the original entry did not come from the UI camping-site button.
 
@@ -438,8 +434,8 @@ when the original entry did not come from the UI camping-site button.
 | Button destination | `PlanningMissionKey.mission_key` |
 | Site center | `/planning/goal_pose` / `/goal_pose` |
 | Lanelet snap route | produced by `camrod_planning` as `/planning/goal_pose_snapped_ros` (`geometry_msgs`) and `/planning/goal_pose_snapped` (`avg_msgs`) |
-| Parking phase | produced by `camrod_parking` status topics |
-| Already-at-site adoption | `/parking/site_maneuver/adopt` with `avg_msgs/UiDestinationCommand` |
+| Parking phase | produced by `camrod_control` parking controller status topics |
+| Already-at-site adoption | `/control/camping_site_maneuver_controller/adopt` with `avg_msgs/UiDestinationCommand` |
 
 Important destination parameters:
 
@@ -449,4 +445,4 @@ Important destination parameters:
 | `immediate_site_arrival_enabled` | `true` | Enables already-at-site adoption on UI destination selection |
 | `site_arrival_center_radius_m` | `2.5` | Fallback radius around the configured campsite center when no polygon match is available |
 | `site_arrival_pose_timeout_s` | `2.0` | Maximum age of the pose used for already-at-site detection |
-| `site_maneuver_adopt_topic` | `/parking/site_maneuver/adopt` | Parking handoff topic used to enter `WAIT_RETURN` after manual site entry |
+| `camping_site_maneuver_controller_adopt_topic` | `/control/camping_site_maneuver_controller/adopt` | Control handoff used to enter `WAIT_RETURN` after manual site entry |
