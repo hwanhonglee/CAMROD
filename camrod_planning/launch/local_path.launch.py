@@ -23,7 +23,8 @@ def generate_launch_description():
         DeclareLaunchArgument('local_path_global_path_topic', default_value='/planning/global_path'),
         DeclareLaunchArgument('local_path_fallback_global_path_topic', default_value=''),
         DeclareLaunchArgument('enable_tracking_error', default_value='true'),
-        DeclareLaunchArgument('tracking_error_topic', default_value='/planning/ltracking_error'),
+        # HH_260720 - Keep the standalone launch topic consistent with planning.launch.py.
+        DeclareLaunchArgument('tracking_error_topic', default_value='/planning/tracking_error'),
 
         Node(
             package='camrod_planning',

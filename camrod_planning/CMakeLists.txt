@@ -86,6 +86,8 @@ add_library(lanelet_route_planner SHARED
   src/lanelet_route_planner.cpp
 )
 ament_target_dependencies(lanelet_route_planner
+  # HH_260720 - Publish generated route lanelet and turn-segment metadata.
+  avg_msgs
   camrod_map
   geometry_msgs
   lanelet2_core
@@ -115,9 +117,9 @@ ament_target_dependencies(path_tracking_error_node
 add_executable(nav2_lifecycle_startup_retry_node src/nav2_lifecycle_startup_retry_node.cpp)
 ament_target_dependencies(nav2_lifecycle_startup_retry_node
   rclcpp
-  geometry_msgs
+  # HH_260720 - Internal localization readiness uses generated CAMROD messages.
+  avg_msgs
   nav2_msgs
-  std_msgs
   std_srvs
 )
 
@@ -126,12 +128,13 @@ add_library(engage_aware_progress_checker SHARED
   src/engage_aware_progress_checker.cpp
 )
 ament_target_dependencies(engage_aware_progress_checker
+  # HH_260720 - Read the generated control command state inside the Nav2 plugin.
+  avg_msgs
   geometry_msgs
   nav2_core
   pluginlib
   rclcpp
   rclcpp_lifecycle
-  std_msgs
 )
 pluginlib_export_plugin_description_file(nav2_core progress_checker_plugins.xml)
 
@@ -159,7 +162,6 @@ install(
 # HH_260312-00:00 Install planning status_stream + state machine scripts.
 install(
   PROGRAMS
-    scripts/planning_cmd_vel_gate_node.py
     scripts/planning_state_machine_node.py
     scripts/planning_progress_node.py
     scripts/nav2_selector_latch_node.py
@@ -168,9 +170,21 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# HH_260720 - Exclude generated Python caches from planning runtime resources.
 install(
   DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME}
+  PATTERN "__pycache__" EXCLUDE
+  PATTERN "*.pyc" EXCLUDE
+)
+
+# HH_260720 - Install the bundled SmacLattice primitives so launch files never depend on a user home path.
+install(
+  DIRECTORY external/nav2_smac_planner/lattice_primitives/sample_primitives
+  DESTINATION share/${PROJECT_NAME}/lattice_primitives
+  # HH_260720 - Do not package caches generated while validating lattice tools.
+  PATTERN "__pycache__" EXCLUDE
+  PATTERN "*.pyc" EXCLUDE
 )
 
 if(BUILD_TESTING)

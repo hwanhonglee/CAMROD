@@ -13,6 +13,7 @@ import yaml
 from action_msgs.msg import GoalStatus, GoalStatusArray
 from avg_msgs.msg import (
     AvgAmrServiceState,
+    AvgBool,
     AvgPoseStamped,
     PlanningMissionKey,
     PlanningRecallRequest,
@@ -20,9 +21,8 @@ from avg_msgs.msg import (
     PlanningState,
 )
 from avg_msgs.srv import RequestGoalByKey
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped as RosPoseStamped
 from rclpy.node import Node
-from std_msgs.msg import Bool
 
 # HH_260528 Prefer status_msgs, fallback to diagnostic_msgs for robustness.
 try:
@@ -116,12 +116,10 @@ class PlanningStateMachineNode(Node):
         ).value
         self.state_status_ignored_names = self._param_string_set(ignored_state_names)
         self.state_status_ignored_prefixes = self._param_string_set(ignored_state_prefixes)
-        # HH_260618: This Python node consumes ROS-native geometry_msgs poses.
-        # C++ planning nodes keep avg_msgs on /planning/lanelet_pose and
-        # /planning/goal_pose_snapped; use the *_ros mirrors here.
-        self.pose_topic = str(self.declare_parameter("pose_topic", "/planning/lanelet_pose_ros").value)
+        # HH_260720 - Consume canonical generated CAMROD poses for internal state decisions.
+        self.pose_topic = str(self.declare_parameter("pose_topic", "/planning/lanelet_pose").value)
         self.goal_topic = str(
-            self.declare_parameter("goal_topic", "/planning/goal_pose_snapped_ros").value
+            self.declare_parameter("goal_topic", "/planning/goal_pose_snapped").value
         )
         # HH_260319 Mirror auto-goals to Nav2 ROS-facing goal topic if configured.
         self.goal_topic_ros = str(
@@ -170,17 +168,16 @@ class PlanningStateMachineNode(Node):
         self.scenario_command_topic = str(
             self.declare_parameter("scenario_command_topic", "/planning/state_machine/scenario_command").value
         )
-        # HH_260622 - Parking nodes publish detailed phase telemetry on
-        # /AMR_service_state; planning mirrors that into scenario/state output
-        # without letting UI's generic MOVING_TO_SITE messages override planning.
-        self.enable_parking_phase_state_override = bool(
-            self.declare_parameter("enable_parking_phase_state_override", True).value
+        # HH_260720 - Control maneuvers and parking publish phase telemetry on
+        # /AMR_service_state; planning mirrors only the explicit phase owners.
+        self.enable_maneuver_phase_state_override = bool(
+            self.declare_parameter("enable_maneuver_phase_state_override", True).value
         )
-        self.parking_phase_state_topic = str(
-            self.declare_parameter("parking_phase_state_topic", "/AMR_service_state").value
+        self.maneuver_phase_state_topic = str(
+            self.declare_parameter("maneuver_phase_state_topic", "/AMR_service_state").value
         )
-        self.parking_phase_override_timeout_s = float(
-            self.declare_parameter("parking_phase_override_timeout_s", 0.0).value
+        self.maneuver_phase_override_timeout_s = float(
+            self.declare_parameter("maneuver_phase_override_timeout_s", 0.0).value
         )
 
         self.mission_source_topic = str(
@@ -200,6 +197,12 @@ class PlanningStateMachineNode(Node):
         # HH_260624 - Publish the raw station-center return target for RViz/debug only.
         self.drop_zone_goal_raw_topic = str(
             self.declare_parameter("drop_zone_goal_raw_topic", "/planning/drop_zone_goal_raw").value
+        )
+        # HH_260720 - Expose the semantic drop-zone target to RViz on a named ROS boundary.
+        self.drop_zone_goal_raw_ros_topic = str(
+            self.declare_parameter(
+                "drop_zone_goal_raw_ros_topic", "/planning/drop_zone_goal_raw_ros"
+            ).value
         )
         # HH_260624 - RViz/UI manual /goal_pose clicks lose semantic meaning after
         # goal_snapper moves them to a lanelet. Watch the raw goal too so a manual
@@ -275,14 +278,6 @@ class PlanningStateMachineNode(Node):
             self.declare_parameter("pending_mission_key_overrides_goal_match", True).value
         )
 
-        # HH_260528 Scenario-2 completion gate.
-        self.require_docking_for_idle = bool(
-            self.declare_parameter("require_docking_for_idle", False).value
-        )
-        self.docking_status_topic = str(
-            self.declare_parameter("docking_status_topic", "/docking/is_charging").value
-        )
-
         self.min_goal_publish_interval_s = float(
             self.declare_parameter("min_goal_publish_interval_s", 1.0).value
         )
@@ -290,7 +285,7 @@ class PlanningStateMachineNode(Node):
             self.declare_parameter("goal_reached_distance_m", 0.2).value
         )
         # HH_260622 - Parking handoff must wait for Nav2 terminal success, not
-        # only geometric distance, otherwise site_maneuver can race bt_navigator.
+        # only geometric distance, otherwise camping_site_maneuver_controller can race bt_navigator.
         self.require_nav2_success_for_goal_reached = bool(
             self.declare_parameter("require_nav2_success_for_goal_reached", True).value
         )
@@ -312,11 +307,10 @@ class PlanningStateMachineNode(Node):
         self.return_goal_reached_distance_m = float(
             self.declare_parameter("return_goal_reached_distance_m", 0.3).value
         )
-        # HH_260623 - Keep the return GOAL_REACHED state visible long enough
-        # for drop_zone_parking to receive the handoff; a single 5 Hz tick was
-        # too easy to miss and could leave the robot stopped before parking.
-        self.drop_zone_parking_handoff_hold_s = float(
-            self.declare_parameter("drop_zone_parking_handoff_hold_s", 1.0).value
+        # HH_260720 - Keep GOAL_REACHED visible long enough for drop-zone
+        # alignment to receive its handoff before reverse parking starts.
+        self.reverse_parking_controller_handoff_hold_s = float(
+            self.declare_parameter("reverse_parking_controller_handoff_hold_s", 1.0).value
         )
         self.loop_rate_hz = float(self.declare_parameter("loop_rate_hz", 5.0).value)
 
@@ -328,9 +322,9 @@ class PlanningStateMachineNode(Node):
 
         self.last_state_stamp: Optional[rclpy.time.Time] = None
         self.module_levels: Dict[str, int] = {}
-        self.last_pose: Optional[PoseStamped] = None
-        self.last_manual_goal: Optional[PoseStamped] = None
-        self.active_goal: Optional[PoseStamped] = None
+        self.last_pose: Optional[AvgPoseStamped] = None
+        self.last_manual_goal: Optional[AvgPoseStamped] = None
+        self.active_goal: Optional[AvgPoseStamped] = None
         self.active_goal_source: str = "none"
         self.active_mission_key: str = ""
 
@@ -343,7 +337,6 @@ class PlanningStateMachineNode(Node):
         self.recall_target_key: str = ""
         self.recall_site_name: str = ""
         self.last_recalled_mission_key: str = ""
-        self.docking_charging: bool = False
 
         self.prev_state_level: Optional[int] = None
         self._ok_level = self._status_level_int(StatusStatus.OK)
@@ -351,45 +344,52 @@ class PlanningStateMachineNode(Node):
         self._error_level = self._status_level_int(StatusStatus.ERROR)
 
         self._last_goal_publish_time = self.get_clock().now()
-        self._last_self_goal: Optional[PoseStamped] = None
+        self._last_self_goal: Optional[AvgPoseStamped] = None
         self._pending_mission_key_request: str = ""
         self._pending_mission_key_time = self.get_clock().now()
         self._active_goal_time = self.get_clock().now()
         self._nav2_goal_succeeded = False
         self._nav2_terminal_status = 0
         self._nav2_terminal_time: Optional[rclpy.time.Time] = None
-        self._parking_phase_override_state: str = ""
-        self._parking_phase_override_scenario_id: Optional[int] = None
-        self._parking_phase_override_source: str = ""
-        self._parking_phase_override_time: Optional[rclpy.time.Time] = None
+        self._maneuver_phase_override_state: str = ""
+        self._maneuver_phase_override_scenario_id: Optional[int] = None
+        self._maneuver_phase_override_source: str = ""
+        self._maneuver_phase_override_time: Optional[rclpy.time.Time] = None
 
         self._goal_reached_since: Optional[rclpy.time.Time] = None
         self._goal_reached_latched = False
-        # HH_260618: Return-to-drop-zone completion must be published once as
-        # GOAL_REACHED/RETURN_TO_DROP_ZONE before switching to WAIT_DROP_ZONE so
-        # camrod_parking/drop_zone_parking can start its reverse-parking phase.
+        # HH_260720 - Publish drop-zone route completion once before WAIT_DROP_ZONE
+        # so control alignment and reverse parking can take ownership.
         self._drop_zone_arrival_notified = False
         self._drop_zone_arrival_notified_time: Optional[rclpy.time.Time] = None
 
-        self.pub_goal = self.create_publisher(PoseStamped, self.goal_topic, 10)
+        self.pub_goal = self.create_publisher(AvgPoseStamped, self.goal_topic, 10)
         self.pub_goal_ros = None
         if self.goal_topic_ros and self.goal_topic_ros != self.goal_topic:
-            self.pub_goal_ros = self.create_publisher(PoseStamped, self.goal_topic_ros, 10)
+            # HH_260720 - Keep only the Nav2-facing goal output on geometry_msgs.
+            self.pub_goal_ros = self.create_publisher(RosPoseStamped, self.goal_topic_ros, 10)
         self.pub_auto_goal_snapper = None
         if self.auto_goal_snapper_input_topic:
             self.pub_auto_goal_snapper = self.create_publisher(
-                PoseStamped, self.auto_goal_snapper_input_topic, 10
+                AvgPoseStamped, self.auto_goal_snapper_input_topic, 10
             )
         self.pub_drop_zone_goal_raw = None
         if self.drop_zone_goal_raw_topic:
+            # HH_260720 - Publish the exact station pose as a generated internal contract.
             self.pub_drop_zone_goal_raw = self.create_publisher(
-                PoseStamped, self.drop_zone_goal_raw_topic, 10
+                AvgPoseStamped, self.drop_zone_goal_raw_topic, 10
+            )
+        self.pub_drop_zone_goal_raw_ros = None
+        if self.drop_zone_goal_raw_ros_topic:
+            # HH_260720 - Keep the standard drop-zone pose isolated to visualization consumers.
+            self.pub_drop_zone_goal_raw_ros = self.create_publisher(
+                RosPoseStamped, self.drop_zone_goal_raw_ros_topic, 10
             )
 
         # HH_260617: Publish CAMROD semantic state/status messages instead of
         # std_msgs/String/Int32 wrappers.
         self.pub_state = self.create_publisher(PlanningState, self.state_topic, 10)
-        self.pub_estop = self.create_publisher(Bool, self.estop_topic, 10)
+        self.pub_estop = self.create_publisher(AvgBool, self.estop_topic, 10)
         self.pub_diag = self.create_publisher(StatusArray, self.diag_topic, 10)
         self.pub_mission_source = self.create_publisher(
             PlanningMissionKey, self.mission_source_topic, 10
@@ -397,19 +397,22 @@ class PlanningStateMachineNode(Node):
         self.pub_scenario_id = self.create_publisher(PlanningScenario, self.scenario_id_topic, 10)
 
         self.create_subscription(StatusArray, self.state_status_topic, self._on_state, 10)
-        self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
-        self.create_subscription(PoseStamped, self.goal_topic, self._on_goal, 10)
+        self.create_subscription(AvgPoseStamped, self.pose_topic, self._on_pose, 10)
+        self.create_subscription(AvgPoseStamped, self.goal_topic, self._on_goal, 10)
         if self.enable_raw_drop_zone_goal_match and self.raw_goal_topic:
-            self.create_subscription(PoseStamped, self.raw_goal_topic, self._on_raw_goal, 10)
+            # HH_260720 - RViz raw goal remains an explicit ROS boundary.
+            self.create_subscription(RosPoseStamped, self.raw_goal_topic, self._on_raw_goal, 10)
         self.create_subscription(GoalStatusArray, self.nav_status_topic, self._on_nav_status, 10)
-        if self.enable_parking_phase_state_override:
+        if self.enable_maneuver_phase_state_override:
             self.create_subscription(
                 AvgAmrServiceState,
-                self.parking_phase_state_topic,
-                self._on_parking_phase_state,
+                self.maneuver_phase_state_topic,
+                self._on_maneuver_phase_state,
                 10,
             )
-        self.create_subscription(Bool, self.return_topic, self._on_return_to_drop_zone, 10)
+        self.create_subscription(
+            PlanningRecallRequest, self.return_topic, self._on_return_to_drop_zone, 10
+        )
         self.create_subscription(
             PlanningRecallRequest, self.recall_topic, self._on_camping_site_recall, 10
         )
@@ -420,9 +423,6 @@ class PlanningStateMachineNode(Node):
             PlanningScenario, self.scenario_command_topic, self._on_scenario_command, 10
         )
         self.create_service(RequestGoalByKey, self.request_mission_service, self._on_mission_key_service)
-
-        if self.require_docking_for_idle:
-            self.create_subscription(Bool, self.docking_status_topic, self._on_docking_status, 10)
 
         period = 1.0 / max(0.5, self.loop_rate_hz)
         self.create_timer(period, self._tick)
@@ -438,8 +438,9 @@ class PlanningStateMachineNode(Node):
             f"auto_goal_snapper_keys={','.join(sorted(self.auto_goal_snapper_keys)) or '(none)'} "
             f"drop_zone_id={self.drop_zone_id} "
             f"drop_zone_goal_raw={self.drop_zone_goal_raw_topic or '(disabled)'} "
+            f"drop_zone_goal_raw_ros={self.drop_zone_goal_raw_ros_topic or '(disabled)'} "
             f"nav_status={self.nav_status_topic} "
-            f"parking_phase_state={self.parking_phase_state_topic if self.enable_parking_phase_state_override else '(disabled)'} "
+            f"maneuver_phase_state={self.maneuver_phase_state_topic if self.enable_maneuver_phase_state_override else '(disabled)'} "
             f"return={self.return_topic} "
             f"recall={self.recall_topic} "
             f"scenario_cmd={self.scenario_command_topic} "
@@ -726,10 +727,10 @@ class PlanningStateMachineNode(Node):
                 current_levels[module] = level
         self.module_levels = current_levels
 
-    def _on_pose(self, msg: PoseStamped) -> None:
+    def _on_pose(self, msg: AvgPoseStamped) -> None:
         self.last_pose = msg
 
-    def _on_raw_goal(self, msg: PoseStamped) -> None:
+    def _on_raw_goal(self, msg: RosPoseStamped) -> None:
         matched = self._match_drop_zone_raw_goal(msg)
         if matched is None:
             return
@@ -744,16 +745,13 @@ class PlanningStateMachineNode(Node):
             f"xy=({matched.x:.2f},{matched.y:.2f}) yaw={matched.yaw_deg:.1f}deg"
         )
 
-    def _on_docking_status(self, msg: Bool) -> None:
-        self.docking_charging = bool(msg.data)
-
     @staticmethod
-    def _dist_xy(a: PoseStamped, b: PoseStamped) -> float:
+    def _dist_xy(a: AvgPoseStamped, b: AvgPoseStamped) -> float:
         dx = a.pose.position.x - b.pose.position.x
         dy = a.pose.position.y - b.pose.position.y
         return math.hypot(dx, dy)
 
-    def _match_mission_key(self, goal: PoseStamped) -> str:
+    def _match_mission_key(self, goal: AvgPoseStamped) -> str:
         best_name = ""
         best_dist = float("inf")
         goal_frame = str(goal.header.frame_id).strip()
@@ -769,7 +767,7 @@ class PlanningStateMachineNode(Node):
             return best_name
         return ""
 
-    def _match_drop_zone_raw_goal(self, goal: PoseStamped) -> Optional[Keypoint]:
+    def _match_drop_zone_raw_goal(self, goal: RosPoseStamped) -> Optional[Keypoint]:
         if not self.drop_zone_keypoints:
             return None
         goal_frame = str(goal.header.frame_id).strip()
@@ -805,7 +803,7 @@ class PlanningStateMachineNode(Node):
     def _publish_drop_zone_goal_raw_for_keypoint(self, keypoint: Keypoint) -> None:
         if self.pub_drop_zone_goal_raw is None:
             return
-        msg = PoseStamped()
+        msg = AvgPoseStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = keypoint.frame_id
         msg.pose.position.x = keypoint.x
@@ -815,6 +813,19 @@ class PlanningStateMachineNode(Node):
         msg.pose.orientation.z = math.sin(yaw * 0.5)
         msg.pose.orientation.w = math.cos(yaw * 0.5)
         self.pub_drop_zone_goal_raw.publish(msg)
+        if self.pub_drop_zone_goal_raw_ros is not None:
+            # HH_260720 - Convert the generated semantic target only at the RViz boundary.
+            ros_msg = RosPoseStamped()
+            ros_msg.header.stamp = msg.header.stamp
+            ros_msg.header.frame_id = msg.header.frame_id
+            ros_msg.pose.position.x = msg.pose.position.x
+            ros_msg.pose.position.y = msg.pose.position.y
+            ros_msg.pose.position.z = msg.pose.position.z
+            ros_msg.pose.orientation.x = msg.pose.orientation.x
+            ros_msg.pose.orientation.y = msg.pose.orientation.y
+            ros_msg.pose.orientation.z = msg.pose.orientation.z
+            ros_msg.pose.orientation.w = msg.pose.orientation.w
+            self.pub_drop_zone_goal_raw_ros.publish(ros_msg)
 
     def _is_site_key(self, key: str) -> bool:
         return bool(key) and key.startswith(self.site_mission_key_prefix) and not key.endswith("_road")
@@ -853,11 +864,11 @@ class PlanningStateMachineNode(Node):
         self.scenario_id = scenario_id
         self.get_logger().info(f"scenario_id -> {self.scenario_id} ({reason})")
 
-    def _on_goal(self, msg: PoseStamped) -> None:
+    def _on_goal(self, msg: AvgPoseStamped) -> None:
         if self._last_self_goal is not None and self._dist_xy(self._last_self_goal, msg) < 0.02:
             return
 
-        self._clear_parking_phase_override("new_route_goal")
+        self._clear_maneuver_phase_override("new_route_goal")
         raw_matched_mission_key = self._match_mission_key(msg)
         matched_mission_key = raw_matched_mission_key
         goal_source = "manual"
@@ -891,7 +902,7 @@ class PlanningStateMachineNode(Node):
             and self._dist_xy(self.active_goal, msg) <= self.return_goal_key_preserve_distance_m
         ):
             # HH_260618: Do not let a near-identical route-goal echo clear the
-            # drop_zone mission key; drop_zone_parking depends on this semantic key.
+            # HH_260720 - Preserve the drop_zone semantic key for alignment and parking.
             matched_mission_key = self.return_mission_key
         if (
             not matched_mission_key
@@ -899,9 +910,8 @@ class PlanningStateMachineNode(Node):
             and self.active_goal is not None
             and self._dist_xy(self.active_goal, msg) <= self.site_goal_key_preserve_distance_m
         ):
-            # HH_260618: Preserve campsite semantic ownership for duplicate or
-            # near-identical snapped route goals. camrod_parking/site_maneuver
-            # starts from PlanningState.GOAL_REACHED + camping_site_*.
+            # HH_260720 - Preserve campsite ownership for duplicate snapped-goal echoes;
+            # the camping-site controller starts from GOAL_REACHED plus the mission key.
             matched_mission_key = self.active_mission_key
 
         self.last_manual_goal = msg
@@ -972,37 +982,38 @@ class PlanningStateMachineNode(Node):
         self._nav2_terminal_time = self.get_clock().now()
         self._nav2_goal_succeeded = latest_terminal.status == GoalStatus.STATUS_SUCCEEDED
 
-    def _clear_parking_phase_override(self, reason: str) -> None:
-        if self._parking_phase_override_scenario_id is None:
+    def _clear_maneuver_phase_override(self, reason: str) -> None:
+        if self._maneuver_phase_override_scenario_id is None:
             return
         self.get_logger().info(
-            "parking phase override cleared: "
-            f"scenario={self._parking_phase_override_scenario_id} reason={reason}"
+            "maneuver phase override cleared: "
+            f"scenario={self._maneuver_phase_override_scenario_id} reason={reason}"
         )
-        self._parking_phase_override_state = ""
-        self._parking_phase_override_scenario_id = None
-        self._parking_phase_override_source = ""
-        self._parking_phase_override_time = None
+        self._maneuver_phase_override_state = ""
+        self._maneuver_phase_override_scenario_id = None
+        self._maneuver_phase_override_source = ""
+        self._maneuver_phase_override_time = None
 
-    def _on_parking_phase_state(self, msg: AvgAmrServiceState) -> None:
+    def _on_maneuver_phase_state(self, msg: AvgAmrServiceState) -> None:
         description = str(msg.description).strip()
         source = description.split(":", 1)[0] if ":" in description else ""
-        if source not in {"site_maneuver", "drop_zone_parking"}:
+        # HH_260720 - Accept phase updates only from explicit control/parking owners.
+        if source not in {"camping_site_maneuver_controller", "drop_zone_maneuver_controller", "reverse_parking_controller"}:
             return
 
         state_id = int(msg.state)
         if (
-            source == "site_maneuver"
+            source == "camping_site_maneuver_controller"
             and state_id == int(AvgAmrServiceState.RETURN_WITH_CARGO)
             and "DONE" in description
             and self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE
             and self.active_mission_key == self.return_mission_key
         ):
-            # HH_260701 - site_maneuver DONE can arrive just after it requests
+            # HH_260701 - camping_site_maneuver_controller DONE can arrive just after it requests
             # the drop-zone route. Do not let that late phase event mask the
-            # RETURN_TO_DROP_ZONE GOAL_REACHED handoff used by drop_zone_parking.
+            # RETURN_TO_DROP_ZONE GOAL_REACHED handoff used by drop_zone_maneuver_controller.
             self.get_logger().info(
-                "ignored site_maneuver DONE override during active drop-zone return"
+                "ignored camping_site_maneuver_controller DONE override during active drop-zone return"
             )
             return
         override_state = ""
@@ -1032,41 +1043,40 @@ class PlanningStateMachineNode(Node):
         if override_scenario is None:
             return
 
-        self._parking_phase_override_state = override_state
-        self._parking_phase_override_scenario_id = int(override_scenario)
-        self._parking_phase_override_source = description
-        self._parking_phase_override_time = self.get_clock().now()
+        self._maneuver_phase_override_state = override_state
+        self._maneuver_phase_override_scenario_id = int(override_scenario)
+        self._maneuver_phase_override_source = description
+        self._maneuver_phase_override_time = self.get_clock().now()
         self.get_logger().info(
-            "parking phase override: "
+            "maneuver phase override: "
             f"state={override_state} scenario={override_scenario} source={description}"
         )
 
-    def _active_parking_phase_override(self) -> tuple[str, Optional[int], str]:
-        if self._parking_phase_override_scenario_id is None or self._parking_phase_override_time is None:
+    def _active_maneuver_phase_override(self) -> tuple[str, Optional[int], str]:
+        if self._maneuver_phase_override_scenario_id is None or self._maneuver_phase_override_time is None:
             return "", None, ""
-        # HH_260622 - Parking phase messages are state-transition events, not
+        # HH_260720 - Maneuver phase messages are state-transition events, not
         # periodic telemetry. A non-positive timeout keeps the latest phase
         # authoritative until a new route/mission/return command explicitly
         # clears it.
-        if self.parking_phase_override_timeout_s <= 0.0:
+        if self.maneuver_phase_override_timeout_s <= 0.0:
             return (
-                self._parking_phase_override_state,
-                self._parking_phase_override_scenario_id,
-                self._parking_phase_override_source,
+                self._maneuver_phase_override_state,
+                self._maneuver_phase_override_scenario_id,
+                self._maneuver_phase_override_source,
             )
-        age_s = (self.get_clock().now() - self._parking_phase_override_time).nanoseconds / 1e9
-        if age_s > max(0.1, self.parking_phase_override_timeout_s):
-            self._clear_parking_phase_override("timeout")
+        age_s = (self.get_clock().now() - self._maneuver_phase_override_time).nanoseconds / 1e9
+        if age_s > max(0.1, self.maneuver_phase_override_timeout_s):
+            self._clear_maneuver_phase_override("timeout")
             return "", None, ""
         return (
-            self._parking_phase_override_state,
-            self._parking_phase_override_scenario_id,
-            self._parking_phase_override_source,
+            self._maneuver_phase_override_state,
+            self._maneuver_phase_override_scenario_id,
+            self._maneuver_phase_override_source,
         )
 
-    def _on_return_to_drop_zone(self, msg: Bool) -> None:
-        if not msg.data:
-            return
+    def _on_return_to_drop_zone(self, msg: PlanningRecallRequest) -> None:
+        # HH_260720 - A recall request carries its origin instead of a context-free Bool.
         # HH_260623 - Do not publish another drop-zone route when the robot is
         # already at the drop-zone keypoint or in the return-arrival handoff.
         # The duplicate route looked like a small forward goal in RViz and could
@@ -1081,12 +1091,15 @@ class PlanningStateMachineNode(Node):
             self.return_requested = False
             self.get_logger().info("ignored return_to_drop_zone: already at drop_zone")
             return
-        self._clear_parking_phase_override("return_to_drop_zone")
+        self._clear_maneuver_phase_override("return_to_drop_zone")
         self.return_requested = True
         if self._publish_auto_goal(self.return_mission_key, "return_request", force=True):
             self.return_requested = False
             self.warn_goal_sent = False
-            self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "return_topic")
+            self._set_scenario(
+                self.SCENARIO_RETURN_TO_DROP_ZONE,
+                msg.source.strip() or "return_topic",
+            )
 
     def _on_camping_site_recall(self, msg: PlanningRecallRequest) -> None:
         site_name = msg.site_name.strip()
@@ -1103,7 +1116,7 @@ class PlanningStateMachineNode(Node):
 
     def _on_scenario_command(self, msg: PlanningScenario) -> None:
         requested = int(msg.scenario_id)
-        self._clear_parking_phase_override("scenario_command")
+        self._clear_maneuver_phase_override("scenario_command")
         if requested not in (
             self.SCENARIO_WAIT_DROP_ZONE,
             self.SCENARIO_DELIVERY_TO_SITE,
@@ -1174,7 +1187,7 @@ class PlanningStateMachineNode(Node):
         if not force and dt < self.min_goal_publish_interval_s:
             return False
 
-        msg = PoseStamped()
+        msg = AvgPoseStamped()
         msg.header.stamp = now.to_msg()
         msg.header.frame_id = kp.frame_id
         msg.pose.position.x = kp.x
@@ -1191,7 +1204,7 @@ class PlanningStateMachineNode(Node):
         if publish_via_snapper:
             self.pub_auto_goal_snapper.publish(msg)
             if key_name == self.return_mission_key and self.pub_drop_zone_goal_raw is not None:
-                self.pub_drop_zone_goal_raw.publish(msg)
+                self._publish_drop_zone_goal_raw_for_keypoint(kp)
             self._pending_mission_key_request = key_name
             self._pending_mission_key_time = now
             self._last_self_goal = None
@@ -1204,7 +1217,18 @@ class PlanningStateMachineNode(Node):
         else:
             self.pub_goal.publish(msg)
             if self.pub_goal_ros is not None:
-                self.pub_goal_ros.publish(msg)
+                # HH_260720 - Convert the generated goal only at the Nav2 ROS boundary.
+                ros_goal = RosPoseStamped()
+                ros_goal.header.stamp = msg.header.stamp
+                ros_goal.header.frame_id = msg.header.frame_id
+                ros_goal.pose.position.x = msg.pose.position.x
+                ros_goal.pose.position.y = msg.pose.position.y
+                ros_goal.pose.position.z = msg.pose.position.z
+                ros_goal.pose.orientation.x = msg.pose.orientation.x
+                ros_goal.pose.orientation.y = msg.pose.orientation.y
+                ros_goal.pose.orientation.z = msg.pose.orientation.z
+                ros_goal.pose.orientation.w = msg.pose.orientation.w
+                self.pub_goal_ros.publish(ros_goal)
             self._last_self_goal = msg
 
         self._last_goal_publish_time = now
@@ -1224,7 +1248,7 @@ class PlanningStateMachineNode(Node):
             self.get_logger().warn("received empty mission-key request on topic")
             return
 
-        self._clear_parking_phase_override("mission_key_request")
+        self._clear_maneuver_phase_override("mission_key_request")
         if not self.mission_key_publish_route_goal:
             if self._goal_keypoint(key_name) is None:
                 self.get_logger().warn(f"keypoint '{key_name}' not found")
@@ -1331,7 +1355,7 @@ class PlanningStateMachineNode(Node):
         return_kp = self._return_keypoint()
         if return_kp is None:
             return False
-        pseudo_goal = PoseStamped()
+        pseudo_goal = AvgPoseStamped()
         pseudo_goal.header.frame_id = return_kp.frame_id
         pseudo_goal.pose.position.x = return_kp.x
         pseudo_goal.pose.position.y = return_kp.y
@@ -1350,24 +1374,23 @@ class PlanningStateMachineNode(Node):
             if not self._goal_reached(self.return_goal_reached_distance_m):
                 return False
 
-        if self.require_docking_for_idle and not self.docking_charging:
-            return False
+        # HH_260720 - Planning reports arrival only; reverse parking and control own charging state.
         return True
 
     def _publish_state_outputs(self, estop: bool) -> None:
         now_msg = self.get_clock().now().to_msg()
         effective_state = self.state
         effective_scenario_id = int(self.scenario_id)
-        parking_override_state, parking_override_scenario_id, parking_override_source = (
-            self._active_parking_phase_override()
+        maneuver_override_state, maneuver_override_scenario_id, maneuver_override_source = (
+            self._active_maneuver_phase_override()
         )
         if (
-            parking_override_scenario_id is not None
+            maneuver_override_scenario_id is not None
             and not estop
             and self.state not in {"ERROR_STOP", "WARN_RECOVERY"}
         ):
-            effective_state = parking_override_state
-            effective_scenario_id = int(parking_override_scenario_id)
+            effective_state = maneuver_override_state
+            effective_scenario_id = int(maneuver_override_scenario_id)
 
         state_msg = PlanningState()
         state_msg.header.stamp = now_msg
@@ -1397,7 +1420,7 @@ class PlanningStateMachineNode(Node):
         scenario_msg.source = self.active_goal_source
         self.pub_scenario_id.publish(scenario_msg)
 
-        b = Bool()
+        b = AvgBool()
         b.data = bool(estop)
         self.pub_estop.publish(b)
 
@@ -1422,7 +1445,7 @@ class PlanningStateMachineNode(Node):
         st.values.append(KeyValue(key="raw_scenario_id", value=str(self.scenario_id)))
         st.values.append(KeyValue(key="active_goal_source", value=self.active_goal_source))
         st.values.append(KeyValue(key="active_mission_key", value=self.active_mission_key))
-        st.values.append(KeyValue(key="parking_phase_override", value=parking_override_source))
+        st.values.append(KeyValue(key="maneuver_phase_override", value=maneuver_override_source))
         active_goal_distance = self._active_goal_distance()
         st.values.append(
             KeyValue(
@@ -1519,19 +1542,18 @@ class PlanningStateMachineNode(Node):
                         self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, "auto_return")
                         self.state = "RETURNING"
 
-            # HH_260528 Scenario 2 completion: arrive drop-zone (+ optional docking).
+            # HH_260720 - Drop-zone arrival hands motion ownership to control and parking.
             drop_zone_arrival_announced = False
             if self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE and self._drop_zone_arrived_with_condition():
                 if not self._drop_zone_arrival_notified:
-                    # HH_260623: Publish a short explicit GOAL_REACHED
-                    # return-state hold before idling; drop_zone_parking uses
-                    # this as the automatic reverse-parking trigger.
+                    # HH_260720 - Hold route arrival before drop-zone alignment
+                    # and automatic reverse parking take ownership.
                     self.state = "GOAL_REACHED"
                     self._drop_zone_arrival_notified = True
                     self._drop_zone_arrival_notified_time = now
                     drop_zone_arrival_announced = True
                 else:
-                    hold_s = max(0.0, self.drop_zone_parking_handoff_hold_s)
+                    hold_s = max(0.0, self.reverse_parking_controller_handoff_hold_s)
                     if self._drop_zone_arrival_notified_time is None:
                         elapsed_s = hold_s
                     else:

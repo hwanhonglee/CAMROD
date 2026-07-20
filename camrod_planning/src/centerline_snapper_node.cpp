@@ -4,12 +4,13 @@
 #include <limits>
 #include <string>
 
+// HH_260720 - Use generated CAMROD localization/planning pose contracts.
 #include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
-#include <avg_msgs/msg/quaternion.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
+#include <avg_msgs/msg/avg_quaternion.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_io/Io.h>
@@ -57,9 +58,9 @@ struct NearestResult
 };
 
 // Implements `yawToQuat` behavior.
-avg_msgs::msg::Quaternion yawToQuat(double yaw)
+avg_msgs::msg::AvgQuaternion yawToQuat(double yaw)
 {
-  avg_msgs::msg::Quaternion q;
+  avg_msgs::msg::AvgQuaternion q;
   const double half_yaw = yaw * 0.5;
   q.x = 0.0;
   q.y = 0.0;
@@ -68,7 +69,7 @@ avg_msgs::msg::Quaternion yawToQuat(double yaw)
   return q;
 }
 
-double yawFromQuat(const avg_msgs::msg::Quaternion & q)
+double yawFromQuat(const avg_msgs::msg::AvgQuaternion & q)
 {
   return std::atan2(
     2.0 * (q.w * q.z + q.x * q.y),
@@ -150,11 +151,12 @@ public:
         output_pose_cov_topic_.c_str());
     }
 
-    pub_pose_ = create_publisher<avg_msgs::msg::PoseStamped>(
+    // HH_260720 - Publish the canonical lanelet pose as a generated CAMROD message.
+    pub_pose_ = create_publisher<avg_msgs::msg::AvgPoseStamped>(
       output_pose_topic_, rclcpp::QoS(10));
     pub_pose_ros_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       output_pose_topic_ros_, rclcpp::QoS(10));
-    pub_pose_cov_ = create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(
+    pub_pose_cov_ = create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       output_pose_cov_topic_, rclcpp::QoS(10));
     if (publish_planning_status_) {
       pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
@@ -162,10 +164,10 @@ public:
     }
     // HH_260305-00:00 Use reliable/latest-only pose QoS.
     // Best-effort drop under load makes snapped pose lag and causes downstream local-path jitter.
-    sub_pose_ = create_subscription<avg_msgs::msg::PoseStamped>(
+    sub_pose_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       input_pose_topic_, rclcpp::QoS(1).reliable(),
       std::bind(&CenterlineSnapperNode::onPose, this, std::placeholders::_1));
-    sub_pose_cov_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+    sub_pose_cov_ = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       input_pose_cov_topic_, rclcpp::QoS(1).reliable(),
       std::bind(&CenterlineSnapperNode::onPoseCovariance, this, std::placeholders::_1));
 
@@ -206,7 +208,7 @@ private:
   }
 
   // Handles the `onPose` callback.
-  void onPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onPose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     const double px = msg->pose.position.x;
     const double py = msg->pose.position.y;
@@ -239,7 +241,7 @@ private:
         max_search_radius_);
       return;
     }
-    avg_msgs::msg::PoseStamped out_pose;
+    avg_msgs::msg::AvgPoseStamped out_pose;
     out_pose.header = msg->header;
     out_pose.pose.position.x = nearest.nearest_point.x();
     out_pose.pose.position.y = nearest.nearest_point.y();
@@ -253,7 +255,7 @@ private:
     out_pose.pose.position.z = snapped_z;
     out_pose.pose.orientation = yawToQuat(nearest.heading);
 
-    avg_msgs::msg::PoseWithCovarianceStamped out_cov;
+    avg_msgs::msg::AvgPoseWithCovarianceStamped out_cov;
     out_cov.header = out_pose.header;
     out_cov.pose.pose = out_pose.pose;
 
@@ -284,13 +286,13 @@ private:
     has_last_publish_ = true;
   }
 
-  void onPoseCovariance(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  void onPoseCovariance(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     latest_yaw_variance_ = msg->pose.covariance[35];
   }
 
   // Publishes `RosPose` output.
-  void publishRosPose(const avg_msgs::msg::PoseStamped & pose)
+  void publishRosPose(const avg_msgs::msg::AvgPoseStamped & pose)
   {
     if (!pub_pose_ros_) {
       return;
@@ -309,7 +311,7 @@ private:
   }
 
   // Publishes `AvgPlanning` output.
-  void publishAvgPlanning(const avg_msgs::msg::PoseStamped & lanelet_pose)
+  void publishAvgPlanning(const avg_msgs::msg::AvgPoseStamped & lanelet_pose)
   {
     if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
@@ -320,7 +322,8 @@ private:
     msg.state.module_name = "planning";
     msg.state.level = ModuleState::OK;
     msg.state.message = "centerline_snapper";
-    msg.lanelet_pose = avg_msgs::conversions::fromRos(lanelet_pose);
+    // HH_260720 - The lanelet pose is already a generated CAMROD message.
+    msg.lanelet_pose = lanelet_pose;
     pub_avg_planning_->publish(msg);
   }
 
@@ -425,12 +428,12 @@ private:
     return zs[zs.size() / 2];
   }
 
-  rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr pub_pose_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseStamped>::SharedPtr pub_pose_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose_ros_;
-  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_pose_cov_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr pub_pose_cov_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_pose_;
-  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr sub_pose_cov_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_pose_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr sub_pose_cov_;
   bool publish_planning_status_{false};
 };
 
