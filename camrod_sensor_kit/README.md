@@ -57,7 +57,7 @@ graph LR
   SKIT -.->|/tf_static| SENS([🎯 camrod_sensing]):::sensing
   SKIT -.->|/tf_static| LOC([📍 camrod_localization]):::localization
   SKIT -.->|/tf_static| PLAN([🧭 camrod_planning]):::planning
-  SKIT -.->|/tf_static| PARK([🅿️ camrod_docking]):::docking
+  SKIT -.->|/tf_static| PARK([parking controllers]):::parking
   SKIT -.->|loadRobotParams| PLAT
   SKIT -.->|loadRobotParams| SENS
 
@@ -65,7 +65,7 @@ graph LR
   classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
 ```
@@ -371,11 +371,14 @@ If both `camrod_sensor_kit` standalone and a parent bringup launch start `robot_
 - [`../README.md`](../README.md) — Top-level CAMROD workspace overview
 - [`../camrod_platform/README.md`](../camrod_platform/README.md) — consumes `RobotParams` for footprint and drive model
 - [`../camrod_sensing/README.md`](../camrod_sensing/README.md) — consumes `/tf_static` for all sensor frame lookups
-- [`../camrod_docking/README.md`](../camrod_docking/README.md) — consumes `/tf_static` for parking geometry
+- [`../camrod_control/README.md`](../camrod_control/README.md) - parking controllers consume `/tf_static` for geometry
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
 
 ## 2026-06-17 Runtime Update
 
 > HH_260617: Sensor-kit TF remains shared geometry for planning, platform, localization, sensing, and parking consumers.
 
-`camrod_parking` relies on the same base frame convention as the rest of the stack: `Twist.linear.y > 0` means body-left crab motion in the robot base frame, and drop-zone yaw alignment compares the current `/localization/pose` yaw against the configured map-frame station yaw.
+<!-- HH_260720 - Document the control-owned maneuver frame convention. -->
+`camrod_control` uses the shared base frame convention: `AvgTwist.linear.y > 0`
+means body-left crab motion, and drop-zone alignment compares
+`/localization/pose` with the configured map-frame station yaw.

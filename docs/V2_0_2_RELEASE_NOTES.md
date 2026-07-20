@@ -8,7 +8,8 @@ Target remote: `hwanhong`
 
 - Active Park Lanelet2 geometry moved to `lanelet2_maps_(copy_park_moved).osm`
   and the map profile, WGS84 origin, UTM metadata, semantic drop zones, camping
-  sites, fake start pose, docking pose, and coordinate utilities were aligned.
+  <!-- HH_260720 - Use the current parking terminology. -->
+  sites, fake start pose, parking pose, and coordinate utilities were aligned.
 - Bringup forwards one `map_info_file` to both map and localization so the
   Lanelet2 geometry and GNSS projection cannot silently use different origins.
 - Radar detection angles are 15 degrees on all seven channels. The cost grid

@@ -43,14 +43,15 @@ Use this legend **consistently across all diagrams**:
 
 ---
 
+<!-- HH_260720 - Use parking terminology for control-owned diagrams. -->
 ## 3. Diagram Types — When to Use Which
 
 | Diagram | Mermaid type | When to use |
 |---------|-------------|-------------|
 | **Context** | `graph LR` | Show upstream/downstream packages (System Position) |
 | **Runtime** | `graph TD` | Show internal nodes, topics, data flow (Runtime Architecture) |
-| **State** | `stateDiagram-v2` | Show mode transitions (localization mode, mission state, docking lifecycle) |
-| **Sequence** | `sequenceDiagram` | Show cross-package interaction order (recall flow, init flow, docking mission) |
+| **State** | `stateDiagram-v2` | Show mode transitions (localization mode, mission state, parking lifecycle) |
+| **Sequence** | `sequenceDiagram` | Show cross-package interaction order (recall flow, init flow, parking mission) |
 | **Flowchart** | `graph TD` | Decision trees, sentinel logic, gate logic |
 
 Prefer **2–4 small purpose-built diagrams** over one large diagram.

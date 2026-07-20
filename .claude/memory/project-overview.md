@@ -11,8 +11,9 @@ CAMROD = "Autonomous Camping Delivery Robot". A **ROS 2 Humble** workspace (Ubun
 
 Mission loop: deliver → dwell → recall → return. Operator drives it via a web UI (site dropdown) or RViz 2D Nav Goal.
 
-Core capabilities: point-to-point Nav2 navigation on Lanelet2 maps; multi-sensor obstacle detection (LiDAR + camera + mmWave radar); GNSS/RTK localization with IMU + wheel dead-reckoning fallback; AprilTag docking; FastAPI+React operator UI (port 8010).
+<!-- HH_260720 - Describe AprilTag as a parking method owned by control. -->
+Core capabilities: point-to-point Nav2 navigation on Lanelet2 maps; multi-sensor obstacle detection (LiDAR + camera + mmWave radar); GNSS/RTK localization with IMU + wheel dead-reckoning fallback; reverse or AprilTag parking; FastAPI+React operator UI (port 8010).
 
 Key hardware: Agilex Ranger base, SparkFun ZED-F9P GNSS + ArduSimple simpleRTK2B dual-antenna heading, Microstrain CV7/GQ7 IMU, Vanjee 3D LiDAR, dual ECON ISX031 cameras (front compressed / rear raw AprilTag), SEN0592 7-channel near-range radar, Jetson Orin field target (also runs x86_64).
 
-Repo root: `/home/avg/camrod_develop`. The actual git repo + all source lives in `src/` (upstream: github.com/hwanhonglee/CAMROD). Current release **v2.0.0** (2026-07-06 field safety/tuning baseline). See [[workspace-layout]], [[safety-critical-path]], [[build-and-run]], [[field-baseline-and-conventions]].
+Repo root: `/home/hong/camrod_ws`. The actual git repo and source live in `src/` (upstream: github.com/hwanhonglee/CAMROD). See [[workspace-layout]], [[safety-critical-path]], [[build-and-run]], [[field-baseline-and-conventions]].
