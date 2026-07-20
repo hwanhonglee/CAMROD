@@ -41,6 +41,7 @@ is launched and checked by `camrod_system`.
 | `config/control/cmd_vel_safety_gate.yaml` | Bringup mirror of command authorization and motion-safety policy |
 | `config/control/control.yaml` | Bringup mirror of campsite/drop-zone maneuver tuning |
 | `config/control/parking.yaml` | Bringup mirror of reverse and AprilTag parking tuning |
+| `config/perception/apriltag_parking_detector.yaml` | Inactive-by-default AprilTag detector placeholder mirror |
 | `config/control/yaw_alignment_zones.yaml` | Optional command-gate yaw zones |
 | `config/planning/` | Nav2 and mission-state configuration |
 | `config/map/drop_zones.yaml` | Drop-zone station position and reverse-axis yaw |
@@ -54,8 +55,9 @@ mirrors; bringup additionally supplies resolved map/config paths.
 
 ## Simulation Validation
 
-The validation runner checks sensor rates, directional gate stops, manual Nav2
-movement, and the complete campsite round trip.
+The validation runner checks sensor rates, directional gate stops, Nav2
+replanning, and the complete campsite/charging round trip. The validated release
+uses `parking_method:=reverse`; AprilTag nodes are not exercised.
 
 ```bash
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
@@ -64,9 +66,25 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p skip_manual_goal:=true \
   -p run_camping:=true \
   -p camping_wait_drop_zone:=true \
-  -p camping_timeout_s:=420.0 \
-  -p report_file:=/tmp/camrod_control_sim_full_camping.json
+  -p camping_timeout_s:=600.0 \
+  -p simulate_platform_status:=true \
+  -p run_charging_recall:=true \
+  -p charging_recall_mission_key:=camping_site_1 \
+  -p report_file:=/tmp/camrod_v204_charging_recall_final.json
 ```
 
 The full camping check requires campsite crab/zero-turn/exit, return navigation,
-drop-zone yaw alignment, reverse parking start, and final `PARKED` state.
+drop-zone yaw alignment, `REVERSE_APPROACH`, `WAIT_FOR_CHARGING`, `PARKED`, and
+the charging recall transition through `DEPARTING_CHARGER` to a new site route.
+
+Directional gate and replan validation:
+
+```bash
+ros2 run camrod_bringup sim_validation_runner.py --ros-args \
+  -p quick:=true \
+  -p run_gate_matrix:=true \
+  -p skip_manual_goal:=true \
+  -p run_obstacle_replan:=true \
+  -p run_camping:=false \
+  -p report_file:=/tmp/camrod_v204_obstacle_final.json
+```

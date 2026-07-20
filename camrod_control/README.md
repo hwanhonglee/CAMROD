@@ -1,6 +1,7 @@
 # camrod_control
 
-`camrod_control` owns vehicle-motion maneuvers, final parking controllers, and the supervised velocity command path.
+`camrod_control` owns vehicle-motion maneuvers, final parking controllers, and
+the supervised velocity command path. All active runtime nodes are native C++.
 
 <!-- HH_260720 - Document the new package boundary and canonical velocity topics. -->
 
@@ -29,6 +30,8 @@ parking method only after yaw convergence.
 `launch/cmd_vel_safety_gate.launch.py` only selects topics, namespace, and the parameter file.
 All field-tuned gate policy is grouped in `config/cmd_vel_safety_gate.yaml`; full bringup may
 still override those values from `launch_defaults.yaml` without duplicating them in the launch file.
+Authorization, charging departure, and directional cost logic are split into
+testable policy classes instead of being embedded in the ROS callback surface.
 
 Canonical command path:
 
@@ -45,12 +48,33 @@ Nav2 /control/nav2_cmd_vel_ros -----------^             |
 
 ```text
 camrod_control/
+  include/camrod_control/
+    charging_departure_policy.hpp
+    cmd_vel_gate_policy.hpp
+    directional_cost_guard.hpp
+    parking_geometry.hpp
+    control_support.hpp
   src/
-    cmd_vel_safety_gate_node.py
-    camping_site_maneuver_controller_node.py
-    drop_zone_maneuver_controller_node.py
-    reverse_parking_controller_node.py
+    cmd_vel_safety_gate_node.cpp
+    directional_cost_guard.cpp
+    camping_site_maneuver_controller_node.cpp
+    drop_zone_maneuver_controller_node.cpp
+    reverse_parking_controller_node.cpp
     apriltag_parking_controller_node.cpp
-    control_support.py        shared math, diagnostics, and boundary conversions
-    parking_geometry.py       shared reverse-axis geometry
+  test/
+    test_control_policies.cpp
+    test_parking_geometry.cpp
 ```
+
+<!-- HH_260721 - Record the charging-complete parking contract and directional guard behavior. -->
+
+`reverse_parking_controller` enters `WAIT_FOR_CHARGING` after its configured
+reverse distance and reports `PARKED` only after `/platform/status.is_charging`
+becomes true. `complete_without_charging` is `false` and the default wait timeout
+is 20 seconds.
+
+The directional guard checks live LiDAR/radar costs for forward, reverse, crab,
+and rotation commands. Static lanelet checks are direction-configurable for
+site maneuvers. LiDAR/radar cost nodes first remove costs outside the active
+route lanelets plus `route_lanelet_margin_m` (0.35 m); live obstacle checks stay
+active during configured static-cost maneuver exceptions.

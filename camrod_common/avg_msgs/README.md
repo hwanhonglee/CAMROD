@@ -139,7 +139,7 @@ graph LR
 |---|---|---|---|---|
 | 📨 `ModuleState` | msg | `stamp`, `module_name`, `level` (OK=0/WARN=1/ERROR=2), `message`, `missing_nodes[]`, `missing_topics[]`, `missing_lifecycle_nodes[]` | camrod_system checkers | camrod_system aggregator, camrod_ui |
 | 📨 `SystemStatus` | msg | `stamp`, `system_ok`, `message`, `ModuleState[] modules` | camrod_system | camrod_ui, camrod_bringup |
-| 📨 `AvgBringupMsgs` | msg | `stamp`, `ModuleState state`, sim/rviz/ESKF flags, map_path, origin lat/lon/alt, per-module `*_ready` booleans | camrod_bringup | all packages monitoring bringup state |
+| 📨 `AvgBringupMsgs` | msg | `stamp`, `ModuleState state`, runtime flags, map_path, origin lat/lon/alt, per-module `*_ready` booleans | camrod_bringup | all packages monitoring bringup state |
 | 📨 `AvgSystemMsgs` | msg | `stamp`, `ModuleState state`, `SystemStatus system_status`, `active_modules[]`, `status_count` | camrod_system | camrod_ui, camrod_bringup |
 | 📨 `AvgSensingMsgs` | msg | `stamp`, `ModuleState state`, sub-messages: `AvgSensingLidar`, `AvgSensingCamera`, `AvgSensingImu`, `AvgSensingGnss`, `AvgSensingRadar` | camrod_sensing | camrod_platform, camrod_bringup |
 | 📨 `AvgSensingLidar` | msg | `PointCloud2 points_filtered`, `OccupancyGrid near_cost_grid` | camrod_sensing | camrod_platform |

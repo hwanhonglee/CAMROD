@@ -1,10 +1,10 @@
-# 📍 camrod_localization — GNSS/IMU/wheel fusion (EKF default) & localization state
+# 📍 camrod_localization — GNSS/IMU/wheel EKF fusion & localization state
 
-<!-- HH_260720 - Align documented generated topics with the current localization contracts. -->
+<!-- HH_260721 - Document robot_localization EKF as the single runtime backend. -->
 
 ## 1. 📋 Summary
 
-`camrod_localization` is the state estimation pipeline for the CAMROD robot. The default runtime backend is EKF (`filter_type:=ekf`); the custom ESKF backend remains available only for explicit `filter_type:=eskf` experiments. The pipeline fuses GNSS (NavSatFix), IMU, and wheel odometry into a consistent `map`-frame pose. A map helper node snaps poses to the Lanelet2 centerline and matches the robot to a configured drop zone at startup for automatic pose initialization.
+`camrod_localization` is the state estimation pipeline for the CAMROD robot. It uses the `robot_localization` EKF to fuse GNSS, IMU, and wheel odometry into a consistent `map`-frame pose. A map helper snaps poses to the Lanelet2 centerline and matches the robot to a configured drop zone at startup for automatic pose initialization.
 
 | | |
 |---|---|
@@ -416,10 +416,9 @@ sequenceDiagram
 # Full localization stack
 ros2 launch camrod_localization localization.launch.py
 
-# HH_260720 - ESKF is opt-in and must be selected explicitly.
+# HH_260721 - Override the single EKF parameter file when field tuning is required.
 ros2 launch camrod_localization localization.launch.py \
-  filter_type:=eskf \
-  filter_eskf_param_file:=/path/to/eskf.yaml
+  filter_ekf_param_file:=/path/to/ekf.yaml
 
 # Without map helper (no Lanelet2 map available)
 ros2 launch camrod_localization localization.launch.py \
@@ -433,34 +432,32 @@ ros2 launch camrod_localization localization.launch.py \
 
 Key launch arguments:
 
-<!-- HH_260720 - Keep the optional ESKF file visibly separate from the EKF default. -->
+<!-- HH_260721 - List only arguments supported by the EKF-only launch contract. -->
 
 | Argument | Default | Description |
 |---|---|---|
 | `enable_adapter` | `true` | GNSS/wheel input adapter |
-| `enable_filter` | `true` | Localization state estimator (EKF/ESKF) |
+| `enable_filter` | `true` | robot_localization EKF state estimator |
 | `enable_monitor` | `true` | Sensor health and mode monitor |
 | `enable_map_helper` | `true` | Lanelet centerline snapper + drop zone matcher |
-| `filter_type` | `ekf` | Explicit filter selector: `ekf` or `eskf` |
 | `wheel_input_topic` | `/platform/status/odometry` | Primary wheel odometry topic |
 | `wheel_fallback_input_topic` | `/rmp401/odom` | Fallback wheel odometry topic |
 | `wheel_primary_timeout_s` | `0.7` | Timeout before fallback switch [s] |
 | `map_path` | `""` (resolved from `map_info.yaml`) | Lanelet2 `.osm` path for map helper |
 | `drop_zones_yaml` | `config/drop_zones.yaml` | Drop zone definitions for initialization |
-| `filter_eskf_param_file` | `config/filter/eskf.yaml` | ESKF noise and gate parameters |
+| `filter_ekf_param_file` | `config/filter/ekf.yaml` | EKF fusion and covariance parameters |
 | `monitor_param_file` | `config/filter/monitor.yaml` | Sensor timeout and mode decision thresholds |
 
 ---
 
 ## 🛠️ Config
 
-<!-- HH_260720 - List the runtime default before the experimental alternative. -->
+<!-- HH_260721 - List the maintained EKF runtime configuration. -->
 
 | File | Purpose |
 |---|---|
 | `config/source/input_adapter.yaml` | GNSS NavSatFix → PoseWithCovariance conversion, wheel topic bridging, covariance floors (`gnss_covariance_floor_xy`: 1e-6 m²), position jump rejection (`max_position_jump_m`: 8.0 m) |
 | `config/filter/ekf.yaml` | Default robot_localization EKF parameters. The node log level is WARN in `filter.launch.py` |
-| `config/filter/eskf.yaml` | Optional ESKF experiment parameters; unused unless `filter_type:=eskf` is explicitly set |
 | `config/filter/monitor.yaml` | Sensor timeouts (`gnss_timeout_s`: 4.0, `imu_timeout_s`: 1.0, `wheel_timeout_s`: 1.0), GNSS health gates (`gnss_cov_trace_fail`: 1.0, `gnss_jump_fail_m`: 1.0, `gnss_min_hz`: 0.8), recovery debounce (1.5 s), and DR timeout (`dr_max_duration_s`: 30.0) |
 | `config/filter/pose_selector.yaml` | Primary/fallback source topology, `fallback_on_mode_at_or_above`: 3 (INVALID), `primary_timeout_s`: 0.5 s |
 | `config/reference/map_helper.yaml` | Centerline snapper covariance (`lateral_stddev`: 0.3), drop zone match radius 2.0 m, `stable_count`: 10, `drop_zone_yaw_source`: zone |
@@ -542,11 +539,11 @@ ros2 run tf2_tools view_frames
 - [../camrod_planning/README.md](../camrod_planning/README.md) — Planning stack, GNSS recovery hold, `require_localization_ready`
 - [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — Canonical param naming conventions
 
-## 2026-06-17 Runtime Update
+## 2026-07-21 Runtime Update
 
-> HH_260617: EKF remains the default localization backend for both real and sim bringup.
+> HH_260721 - EKF is the single localization backend for both real and sim bringup.
 
-`bringup.launch.py` forwards `filter_type:=ekf` by default. Planning and parking consume `/localization/pose`; parking controllers do not perform localization fusion themselves. Drop-zone reverse parking depends on fresh `PoseStamped` data and will refuse to start if `pose_timeout_s` is exceeded.
+Planning and parking consume `/localization/pose`; parking controllers do not perform localization fusion themselves. Drop-zone reverse parking depends on a fresh generated pose and refuses to start if `pose_timeout_s` is exceeded.
 
 ## 2026-07-02 Runtime Update
 
