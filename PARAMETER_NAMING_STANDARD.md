@@ -25,8 +25,8 @@ and records the legacy-to-canonical cleanup history.
 
 - HH_260617: Raw vendor topics stay at their vendor/default names, e.g. Ranger `/battery_state`.
 - HH_260617: CAMROD consumers should use normalized topics under `/platform/status/*`.
-- HH_260617: Compatibility topics such as `/docking/is_charging` may be republished from the
-  normalized platform source, but the platform bridge remains the single owner of that conversion.
+- HH_260720 - Do not republish compatibility status aliases. Consumers use the generated
+  `AvgPlatformStatus` contract on `/platform/status`.
 
 ## 2) Migration Policy
 
@@ -126,9 +126,9 @@ The following trees were updated to canonical keys:
 - `camrod_bringup/config/platform/**`
 - `camrod_bringup/config/perception/**`
 
-And planning launch now passes canonical gate parameter key:
+HH_260720 - The control launch now passes the canonical gate parameter keys:
 
-- `camrod_planning/launch/cmd_vel_gate.launch.py`
+- `camrod_control/launch/cmd_vel_safety_gate.launch.py`
 
 ## 5) Removed Legacy `_sec` Aliases
 

@@ -31,4 +31,5 @@ metadata:
 - GNSS diagnostics accept 1 Hz field-rate floor (no false ERROR_STOP)
 - Diagnostics policy: map/perception/lidar/radar diag errors show in `/system/status` but no longer force planning ERROR_STOP by themselves; costmap diagnostics demoted to WARN. Filtered LiDAR/Radar cost grids + gate checks are the motion-safety authority.
 
-Full-stack field runs with RViz/UI/voice/cameras/YOLO/docking are load probes — on Jetson Orin they can saturate CPU/GPU and delay LiDAR/cost-grid/radar diagnostics. Prefer the lighter outdoor profile for drive validation after sim checks pass. See [[project-overview]], [[safety-critical-path]], [[build-and-run]].
+<!-- HH_260720 - Refer to the current AprilTag parking pipeline. -->
+Full-stack field runs with RViz/UI/voice/cameras/YOLO/AprilTag parking are load probes; on Jetson Orin they can saturate CPU/GPU and delay LiDAR/cost-grid/radar diagnostics. Prefer the lighter outdoor profile for drive validation after sim checks pass. See [[project-overview]], [[safety-critical-path]], [[build-and-run]].

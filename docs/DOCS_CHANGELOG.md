@@ -5,6 +5,22 @@ For code changes see git log and release tags.
 
 ---
 
+## [v2.0.3-docs] - 2026-07-21 (HH_260721)
+
+<!-- HH_260721 - Track the control consolidation and reverse-only release evidence. -->
+
+### Changed - control ownership and reverse-parking validation baseline
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Set v2.0.3 as the current validated baseline and linked its release notes |
+| `camrod_control/README.md` | Documented gate, maneuver, parking, charging-departure, and command-topic ownership |
+| `camrod_bringup/README.md` | Documented the four byte-identical control configuration mirrors and reverse-only validation command |
+| package READMEs | Replaced legacy docking, parking, platform-gate, and message-alias descriptions with current interfaces |
+| `docs/V2_0_3_RELEASE_NOTES.md` | Added migration inventory, build/package evidence, complete reverse-only simulation results, and known limits |
+
+---
+
 ## [v2.0.2-docs] — 2026-07-16 (HH_260716)
 
 ### Changed — field map, sensing, localization, and validation baseline
