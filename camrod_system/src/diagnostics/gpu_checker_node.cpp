@@ -34,7 +34,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── Container environment detected ────────────────────────────────────────────────────
@@ -259,11 +259,11 @@ private:
       // HH_260617: Simulation/dev PCs may not expose NVIDIA GPU. When the
       // selected diagnostics profile marks GPU optional, publish OK instead
       // of blocking planning/control validation.
-      stat.summary(DiagnosticStatus::OK, "GPU check disabled or not required");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "GPU check disabled or not required");
       stat.add("gpu_required", "false");
       return;
     }
-    stat.summary(DiagnosticStatus::STALE, "nvidia-smi not found");
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "nvidia-smi not found");
     if (in_container_) {
       stat.add("hint",
         "Container environment: check NVIDIA Container Toolkit or "
@@ -280,7 +280,7 @@ private:
         if (g.index == std::to_string(idx)) { gpu = &g; break; }
       }
       if (!gpu) {
-        stat.summary(DiagnosticStatus::STALE, "GPU" + std::to_string(idx) + " unavailable");
+        stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "GPU" + std::to_string(idx) + " unavailable");
         return;
       }
 
@@ -296,23 +296,23 @@ private:
         issues += s;
       };
       char tmp[32];
-      if (lvl_util >= DiagnosticStatus::WARN) {
+      if (lvl_util >= diagnostic_msgs::msg::DiagnosticStatus::WARN) {
         std::snprintf(tmp, sizeof(tmp), "util %.0f%%", gpu->util);
         append(tmp);
       }
-      if (lvl_mem >= DiagnosticStatus::WARN) {
+      if (lvl_mem >= diagnostic_msgs::msg::DiagnosticStatus::WARN) {
         std::snprintf(tmp, sizeof(tmp), "mem %.0f%%", mem_pct);
         append(tmp);
       }
-      if (lvl_temp >= DiagnosticStatus::WARN) {
+      if (lvl_temp >= diagnostic_msgs::msg::DiagnosticStatus::WARN) {
         std::snprintf(tmp, sizeof(tmp), "temp %.0f C", gpu->temp);
         append(tmp);
       }
 
       std::string prefix = "GPU" + std::to_string(idx);
       std::string message;
-      if      (overall == DiagnosticStatus::ERROR) message = prefix + " ERROR: " + issues;
-      else if (overall == DiagnosticStatus::WARN)  message = prefix + " WARN: "  + issues;
+      if      (overall == diagnostic_msgs::msg::DiagnosticStatus::ERROR) message = prefix + " ERROR: " + issues;
+      else if (overall == diagnostic_msgs::msg::DiagnosticStatus::WARN)  message = prefix + " WARN: "  + issues;
       else                                          message = prefix + " OK (" + gpu->name + ")";
 
       stat.summary(overall, message);
@@ -330,7 +330,7 @@ private:
       }
 
     } catch (const std::exception & e) {
-      stat.summary(DiagnosticStatus::STALE,
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE,
         std::string("nvidia-smi error: ") + e.what());
     }
   }

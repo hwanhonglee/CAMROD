@@ -54,7 +54,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 // HH_260720 - Keep raw sensor/detector boundary types explicit; no message aliases.
 
@@ -193,7 +193,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!src.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + src.topic);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + src.topic);
       stat.add("topic", src.topic);
       return;
     }
@@ -203,7 +203,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)", elapsed, src.stale_timeout);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -219,33 +219,33 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     if (src.expected_hz > 0.0) {
       const double ratio = actual_hz / src.expected_hz;
       lvl = check_low(ratio, src.hz_warn_ratio, src.hz_error_ratio);
-      if      (lvl == S::ERROR) msg_str = "Output rate critically low";
-      else if (lvl == S::WARN)  msg_str = "Output rate low";
+      if      (lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg_str = "Output rate critically low";
+      else if (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg_str = "Output rate low";
     }
 
     // Count 하한 체크
     if (src.min_count > 0 && src.actual_count < src.min_count) {
-      if (S::ERROR > lvl) {
-        lvl     = S::ERROR;
+      if (diagnostic_msgs::msg::DiagnosticStatus::ERROR > lvl) {
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         msg_str = (src.type == "Detection2DArray") ? "Detection count too low" : "Point count too low";
       }
     }
 
     // Count 상한 체크
     if (src.max_count > 0 && src.actual_count > src.max_count) {
-      if (S::WARN > lvl) {
-        lvl     = S::WARN;
+      if (diagnostic_msgs::msg::DiagnosticStatus::WARN > lvl) {
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = (src.type == "Detection2DArray") ? "Detection count too high" : "Point count too high";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];
       const char * unit = (src.type == "Detection2DArray") ? "det" : "pts";
       std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, %ld %s)",

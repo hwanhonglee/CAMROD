@@ -8,7 +8,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "robot_diagnostics_base/base_checker.hpp"
 
-using diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using diagnostic_updater::DiagnosticStatusWrapper;
 using robot_diagnostics_base::BaseChecker;
 
@@ -57,7 +57,7 @@ private:
   void check_state(DiagnosticStatusWrapper & stat)
   {
     if (!have_state_) {
-      stat.summary(DiagnosticStatus::STALE, "no planning state received: " + state_topic_);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "no planning state received: " + state_topic_);
       stat.add("topic", state_topic_);
       return;
     }
@@ -66,22 +66,22 @@ private:
     if (age_s > stale_timeout_s_) {
       char buf[128];
       std::snprintf(buf, sizeof(buf), "planning state stale %.2fs", age_s);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("topic", state_topic_);
       stat.add("last_msg_sec_ago", age_s);
       return;
     }
 
-    int level = DiagnosticStatus::OK;
+    int level = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string message = "planning state ok";
     if (latest_state_.state == avg_msgs::msg::PlanningState::ERROR_STOP) {
-      level = DiagnosticStatus::ERROR;
+      level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       message = "planning state ERROR_STOP";
     } else if (latest_state_.state == avg_msgs::msg::PlanningState::WARN_RECOVERY) {
-      level = DiagnosticStatus::WARN;
+      level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       message = "planning state WARN_RECOVERY";
     } else if (latest_state_.estop) {
-      level = DiagnosticStatus::WARN;
+      level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       message = "planning estop asserted";
     }
 

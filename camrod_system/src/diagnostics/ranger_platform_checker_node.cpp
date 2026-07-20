@@ -46,7 +46,7 @@
 #include <ranger_msgs/msg/actuator_state_array.hpp>
 #include <ranger_msgs/msg/system_state.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── CAN 오류 코드 비트 (ugv_sdk/details/interface/agilex_types.h) ──────────
@@ -317,7 +317,7 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_system_state) {
-      stat.summary(DiagnosticStatus::STALE,
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE,
         "No topic messages: " + system_state_topic_);
       stat.add("topic", system_state_topic_);
       return;
@@ -328,14 +328,14 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "CAN communication stale (%.2fs without response, timeout=%.1fs)", elapsed, stale_timeout_);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("elapsed_sec", elapsed);
       return;
     }
 
     char buf[48];
     std::snprintf(buf, sizeof(buf), "OK (%.2fs ago)", elapsed);
-    stat.summary(DiagnosticStatus::OK, std::string(buf));
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, std::string(buf));
     stat.add("last_msg_sec_ago", elapsed);
     stat.add("motion_mode", motion_mode_name(state_.motion_mode));
   }
@@ -346,7 +346,7 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_system_state) {
-      stat.summary(DiagnosticStatus::STALE, "No system_state messages");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No system_state messages");
       return;
     }
 
@@ -355,16 +355,16 @@ private:
     const char * msg_str;
 
     if (vs == VEH_NORMAL) {
-      lvl     = DiagnosticStatus::OK;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::OK;
       msg_str = "NORMAL";
     } else if (vs == VEH_ESTOP) {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "Emergency stop (E-STOP) active";
     } else if (vs == VEH_EXCEPTION) {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "System exception (EXCEPTION)";
     } else {
-      lvl     = DiagnosticStatus::WARN;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       msg_str = "Unknown vehicle state";
     }
 
@@ -379,7 +379,7 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_system_state) {
-      stat.summary(DiagnosticStatus::STALE, "No system_state messages");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No system_state messages");
       return;
     }
 
@@ -391,19 +391,19 @@ private:
     const char * msg_str;
 
     if (cm == CTRL_CAN) {
-      lvl     = DiagnosticStatus::OK;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::OK;
       msg_str = "CAN command control mode (OK)";
     } else if (cm == CTRL_RC) {
-      lvl     = DiagnosticStatus::WARN;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       msg_str = "RC remote control active - CAN commands ignored";
     } else if (cm == CTRL_STANDBY) {
-      lvl     = DiagnosticStatus::WARN;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       msg_str = "STANDBY mode - CAN control inactive";
     } else if (cm == CTRL_UART) {
-      lvl     = DiagnosticStatus::WARN;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       msg_str = "UART control mode (unexpected)";
     } else {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "Unknown control mode";
     }
 
@@ -417,14 +417,14 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_system_state) {
-      stat.summary(DiagnosticStatus::STALE, "No system_state messages");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No system_state messages");
       return;
     }
 
     const uint16_t ec = state_.error_code;
 
     if (ec == 0) {
-      stat.summary(DiagnosticStatus::OK, "No errors");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "No errors");
       stat.add("error_code_hex", "0x0000");
       return;
     }
@@ -439,9 +439,9 @@ private:
     bool has_warn =
       (ec & ERR_BATTERY_WARN) || (ec & ERR_RC_SIGNAL_LOSS);
 
-    int8_t lvl = has_error ? DiagnosticStatus::ERROR
-               : has_warn  ? DiagnosticStatus::WARN
-               : DiagnosticStatus::WARN;
+    int8_t lvl = has_error ? diagnostic_msgs::msg::DiagnosticStatus::ERROR
+               : has_warn  ? diagnostic_msgs::msg::DiagnosticStatus::WARN
+               : diagnostic_msgs::msg::DiagnosticStatus::WARN;
 
     char hex[12];
     std::snprintf(hex, sizeof(hex), "0x%04X", static_cast<unsigned>(ec));
@@ -469,7 +469,7 @@ private:
     if (!state_.has_battery) {
       // battery_state 없으면 system_state 전압으로 대체
       if (!state_.has_system_state) {
-        stat.summary(DiagnosticStatus::STALE, "No battery_state messages");
+        stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No battery_state messages");
         return;
       }
       double v = state_.battery_voltage_sys;
@@ -496,7 +496,7 @@ private:
     int8_t lvl = std::max({volt_lvl, soc_lvl, temp_lvl});
 
     char buf[80];
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       std::snprintf(buf, sizeof(buf),
         "OK (%.1f V, %.0f%%, %.1f C)",
         state_.batt_voltage, state_.batt_percentage, state_.batt_temperature);
@@ -527,7 +527,7 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_odom) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + odom_topic_);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + odom_topic_);
       stat.add("topic", odom_topic_);
       return;
     }
@@ -538,7 +538,7 @@ private:
       std::snprintf(buf, sizeof(buf),
         "Odometry stale (%.2fs without response, timeout=%.1fs)",
         elapsed, odom_stale_timeout_);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("elapsed_sec", elapsed);
       return;
     }
@@ -553,7 +553,7 @@ private:
       }
     }
 
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str;
 
     if (odom_expected_hz_ > 0.0) {
@@ -561,7 +561,7 @@ private:
       lvl = check_low(ratio, odom_hz_warn_ratio_, odom_hz_error_ratio_);
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];
       std::snprintf(buf, sizeof(buf), "OK (%.0f Hz)", actual_hz);
       msg_str = buf;
@@ -569,7 +569,7 @@ private:
       char buf[64];
       std::snprintf(buf, sizeof(buf),
         "Input rate %s (%.0f / %.0f Hz)",
-        lvl == DiagnosticStatus::ERROR ? "critically low" : "low",
+        lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR ? "critically low" : "low",
         actual_hz, odom_expected_hz_);
       msg_str = buf;
     }
@@ -591,7 +591,7 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!state_.has_actuator) {
-      stat.summary(DiagnosticStatus::STALE, "No actuator_state messages");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No actuator_state messages");
       stat.add("topic", actuator_state_topic_);
       return;
     }
@@ -601,11 +601,11 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "Actuator data stale (%.2fs)", elapsed);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       return;
     }
 
-    int8_t worst_lvl = DiagnosticStatus::OK;
+    int8_t worst_lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string worst_msg = "OK";
     int fault_count = 0;
 
@@ -617,7 +617,7 @@ private:
 
       // 드라이버 상태 비트 체크
       if (drv_state & (DRV_FAULT | DRV_SENSOR_FAULT)) {
-        worst_lvl = DiagnosticStatus::ERROR;
+        worst_lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         char buf[64];
         std::snprintf(buf, sizeof(buf),
           "Actuator[%u] driver fault", act.id);
@@ -625,8 +625,8 @@ private:
         fault_count++;
       } else if (drv_state & (DRV_OVERHEAT | DRV_MOTOR_OVERHEAT |
                                DRV_OVERLOAD | DRV_INPUT_VOLT_LOW)) {
-        if (worst_lvl < DiagnosticStatus::WARN) {
-          worst_lvl = DiagnosticStatus::WARN;
+        if (worst_lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN) {
+          worst_lvl = diagnostic_msgs::msg::DiagnosticStatus::WARN;
           char buf[64];
           std::snprintf(buf, sizeof(buf),
             "Actuator[%u] warning bit active", act.id);
@@ -684,7 +684,7 @@ private:
       stat.add(std::string(key), std::string(val));
     }
 
-    if (worst_lvl == DiagnosticStatus::OK) {
+    if (worst_lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[48];
       std::snprintf(buf, sizeof(buf),
         "OK (%zu actuators)", state_.actuators.size());

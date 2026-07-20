@@ -107,8 +107,7 @@ struct PoseRPY
 class RobotVisualizationNode : public rclcpp::Node
 {
 public:
-  using AvgPlatformMsgs = avg_msgs::msg::AvgPlatformMsgs;
-  using ModuleState = avg_msgs::msg::ModuleState;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   RobotVisualizationNode()
   // HH_260112 Use short node name; namespace applies the module prefix.
@@ -206,7 +205,7 @@ public:
     // HH_260720 - Publish the planning boundary as a generated CAMROD polygon.
     boundary_pub_ = create_publisher<avg_msgs::msg::AvgPolygonStamped>(boundary_topic_, qos);
     if (publish_platform_status_) {
-      avg_platform_pub_ = create_publisher<AvgPlatformMsgs>(platform_status_topic_, qos);
+      avg_platform_pub_ = create_publisher<avg_msgs::msg::AvgPlatformMsgs>(platform_status_topic_, qos);
     }
     if (publish_tf_) {
       tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
@@ -550,11 +549,11 @@ private:
     if (!publish_platform_status_ || !avg_platform_pub_) {
       return;
     }
-    AvgPlatformMsgs msg;
+    avg_msgs::msg::AvgPlatformMsgs msg;
     msg.stamp = stamp;
     msg.state.stamp = stamp;
     msg.state.module_name = "platform";
-    msg.state.level = ModuleState::OK;
+    msg.state.level = avg_msgs::msg::ModuleState::OK;
     msg.state.message = "robot_visualization";
     msg.robot_markers = avg_msgs::conversions::fromRos(markers);
     msg.planning_boundary = planning_boundary;
@@ -745,7 +744,7 @@ private:
 
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgPolygonStamped>::SharedPtr boundary_pub_;
-  rclcpp::Publisher<AvgPlatformMsgs>::SharedPtr avg_platform_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPlatformMsgs>::SharedPtr avg_platform_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose_sub_;

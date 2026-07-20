@@ -53,11 +53,15 @@ public:
       // HH_260720 - Subscribe directly to the generated drop-zone readiness contract.
       localization_ready_sub_ = create_subscription<avg_msgs::msg::AvgBool>(
         localization_ready_topic_, 10,
-        std::bind(&Nav2LifecycleStartupRetryNode::on_localization_ready, this, std::placeholders::_1));
+        std::bind(
+          &Nav2LifecycleStartupRetryNode::on_localization_ready, this,
+          std::placeholders::_1));
       // HH_260720 - Subscribe directly to the generated localization covariance contract.
       pose_cov_sub_ = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
         localization_pose_cov_topic_, 10,
-        std::bind(&Nav2LifecycleStartupRetryNode::on_localization_pose_cov, this, std::placeholders::_1));
+        std::bind(
+          &Nav2LifecycleStartupRetryNode::on_localization_pose_cov, this,
+          std::placeholders::_1));
     }
 
     RCLCPP_INFO(

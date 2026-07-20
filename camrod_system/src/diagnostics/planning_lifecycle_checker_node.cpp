@@ -36,10 +36,9 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
-using GetState         = lifecycle_msgs::srv::GetState;
-using LifecycleState   = lifecycle_msgs::msg::State;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
 // ── lifecycle 노드 1개의 상태 ─────────────────────────────────────────────
 
@@ -48,12 +47,12 @@ struct LifecycleNodeState
   std::string name;
 
   // 폴링 클라이언트
-  rclcpp::Client<GetState>::SharedPtr client;
+  rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedPtr client;
 
   // 캐시된 상태 (mutex 보호)
   std::mutex  mtx;
   bool        has_response{false};
-  uint8_t     state_id{LifecycleState::PRIMARY_STATE_UNKNOWN};
+  uint8_t     state_id{lifecycle_msgs::msg::State::PRIMARY_STATE_UNKNOWN};
   std::string state_label{"UNKNOWN"};
   rclcpp::Time last_response_time{0, 0, RCL_ROS_TIME};
 };
@@ -95,7 +94,7 @@ protected:
     for (const auto & name : node_names_) {
       auto state = std::make_shared<LifecycleNodeState>();
       state->name   = name;
-      state->client = create_client<GetState>(name + "/get_state");
+      state->client = create_client<lifecycle_msgs::srv::GetState>(name + "/get_state");
 
       // 진단 task 등록 (태스크 이름에서 슬래시를 그대로 사용)
       add_task("/planning/lifecycle" + name,
@@ -124,9 +123,9 @@ private:
         continue;
       }
 
-      auto req = std::make_shared<GetState::Request>();
+      auto req = std::make_shared<lifecycle_msgs::srv::GetState::Request>();
       node->client->async_send_request(req,
-        [this, node](rclcpp::Client<GetState>::SharedFuture future) {
+        [this, node](rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedFuture future) {
           auto response = future.get();
           std::lock_guard<std::mutex> lock(node->mtx);
           node->state_id        = response->current_state.id;
@@ -148,10 +147,10 @@ private:
     // 서비스가 아직 한번도 응답 안 한 경우
     if (!node->has_response) {
       if (!node->client->service_is_ready()) {
-        stat.summary(DiagnosticStatus::ERROR,
+        stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR,
           node->name + " - get_state service unavailable (node not running)");
       } else {
-        stat.summary(DiagnosticStatus::STALE,
+        stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE,
           node->name + " - waiting for response");
       }
       stat.add("node", node->name);
@@ -165,7 +164,7 @@ private:
       std::snprintf(buf, sizeof(buf),
         "%s - no polling response (%.1fs > %.1fs)",
         node->name.c_str(), elapsed, stale_timeout_);
-      stat.summary(DiagnosticStatus::ERROR, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, std::string(buf));
       stat.add("node",              node->name);
       stat.add("last_response_sec", elapsed);
       return;
@@ -176,24 +175,24 @@ private:
     std::string msg_str;
 
     switch (node->state_id) {
-      case LifecycleState::PRIMARY_STATE_ACTIVE:
-        lvl     = DiagnosticStatus::OK;
+      case lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE:
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::OK;
         msg_str = node->name + " ACTIVE";
         break;
-      case LifecycleState::PRIMARY_STATE_INACTIVE:
-        lvl     = DiagnosticStatus::WARN;
+      case lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE:
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = node->name + " INACTIVE - transitioning or stopped";
         break;
-      case LifecycleState::PRIMARY_STATE_UNCONFIGURED:
-        lvl     = DiagnosticStatus::ERROR;
+      case lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED:
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         msg_str = node->name + " UNCONFIGURED - not initialized";
         break;
-      case LifecycleState::PRIMARY_STATE_FINALIZED:
-        lvl     = DiagnosticStatus::ERROR;
+      case lifecycle_msgs::msg::State::PRIMARY_STATE_FINALIZED:
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         msg_str = node->name + " FINALIZED - finalized";
         break;
       default:
-        lvl     = DiagnosticStatus::ERROR;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         msg_str = node->name + " UNKNOWN state";
         break;
     }

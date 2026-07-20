@@ -162,7 +162,7 @@ void drain_serial_rx(int fd)
 class Sen0592RadarNode : public rclcpp::Node
 {
 public:
-  using AvgSensingRadar = avg_msgs::msg::AvgSensingRadar;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   // Implements `Sen0592RadarNode` behavior.
   Sen0592RadarNode() : Node("sen0592_radar_node")
@@ -272,7 +272,7 @@ public:
     const auto sensor_max_ranges = this->get_parameter("sensor_max_ranges_m").as_double_array();
     const auto sensor_range_config_mm = this->get_parameter("sensor_range_config_mm").as_integer_array();
     const auto sensor_angle_config = this->get_parameter("sensor_angle_config_values").as_integer_array();
-    avg_radar_pub_ = this->create_publisher<AvgSensingRadar>(radar_status_topic_, 10);
+    avg_radar_pub_ = this->create_publisher<avg_msgs::msg::AvgSensingRadar>(radar_status_topic_, 10);
 
     sensors_.resize(n);
     pubs_.resize(n);
@@ -689,8 +689,8 @@ private:
   std::vector<rclcpp::Publisher<avg_msgs::msg::AvgRange>::SharedPtr> pubs_;
   std::vector<rclcpp::Publisher<sensor_msgs::msg::Range>::SharedPtr> standard_ros_pubs_;
   std::vector<rclcpp::Time> last_range_pub_stamp_;
-  rclcpp::Publisher<AvgSensingRadar>::SharedPtr avg_radar_pub_;
-  AvgSensingRadar avg_radar_msg_;
+  rclcpp::Publisher<avg_msgs::msg::AvgSensingRadar>::SharedPtr avg_radar_pub_;
+  avg_msgs::msg::AvgSensingRadar avg_radar_msg_;
 
   std::vector<std::thread> threads_;
   std::atomic<bool> stop_{false};

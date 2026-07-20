@@ -44,9 +44,9 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus   = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper      = diagnostic_updater::DiagnosticStatusWrapper;
-using PoseWithCovStamped = avg_msgs::msg::AvgPoseWithCovarianceStamped;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
 // ── 로컬라이제이션 포즈 출력 상태 구조체 ─────────────────────────────────
 
@@ -75,7 +75,7 @@ struct PoseState
 
   std::deque<rclcpp::Time> timestamps;  // Hz 계산용 rolling window (2s)
 
-  rclcpp::Subscription<PoseWithCovStamped>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr sub;
 };
 
 // ── LocalizationPoseCheckerNode ───────────────────────────────────────────
@@ -117,9 +117,9 @@ protected:
 
   void setup_tasks_() override
   {
-    state_.sub = create_subscription<PoseWithCovStamped>(
+    state_.sub = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       state_.pose_topic, rclcpp::QoS(10),
-      [this](const PoseWithCovStamped::ConstSharedPtr msg) { onPose(msg); });
+      [this](const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg) { onPose(msg); });
 
     add_task("/localization/pose",
       [this](StatusWrapper & stat) { checkPose(stat); });
@@ -130,7 +130,7 @@ protected:
   }
 
 private:
-  void onPose(const PoseWithCovStamped::ConstSharedPtr msg)
+  void onPose(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     const double cur_x     = msg->pose.pose.position.x;
     const double cur_y     = msg->pose.pose.position.y;
@@ -166,7 +166,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!state_.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + state_.pose_topic);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + state_.pose_topic);
       stat.add("topic", state_.pose_topic);
       return;
     }
@@ -176,7 +176,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)", elapsed, state_.stale_timeout);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -193,7 +193,7 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     // 1. Position jump (최우선 — 갑작스러운 위치 점프)
@@ -201,7 +201,7 @@ private:
         state_.max_jump_m > 0.0 &&
         state_.last_jump_m > state_.max_jump_m)
     {
-      lvl = DiagnosticStatus::ERROR;
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
         "Position jump detected (%.2fm > %.2fm)", state_.last_jump_m, state_.max_jump_m);
@@ -215,8 +215,8 @@ private:
       state_.cov_error_threshold);
     if (cov_lvl > lvl) {
       lvl = cov_lvl;
-      if      (cov_lvl == S::ERROR) msg_str = "Output covariance critical (pose unusable)";
-      else if (cov_lvl == S::WARN)  msg_str = "Output covariance high (pose uncertain)";
+      if      (cov_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg_str = "Output covariance critical (pose unusable)";
+      else if (cov_lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg_str = "Output covariance high (pose uncertain)";
     }
 
     // 3. Rate 체크
@@ -225,11 +225,11 @@ private:
       int8_t hz_lvl = check_low(ratio, state_.hz_warn_ratio, state_.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "Output rate critically low" : "Output rate low";
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ? "Output rate critically low" : "Output rate low";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[80];
       std::snprintf(buf, sizeof(buf),
         "OK (%.0f Hz, cov_trace=%.4f)", actual_hz, state_.xy_cov_trace);

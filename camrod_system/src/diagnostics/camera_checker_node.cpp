@@ -23,7 +23,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 struct CameraState
@@ -189,7 +189,7 @@ private:
     std::lock_guard<std::mutex> lock(cam.mtx);
 
     if (!cam.has_image) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + cam.image_topic);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + cam.image_topic);
       stat.add("topic", cam.image_topic);
       return;
     }
@@ -199,7 +199,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)", elapsed, cam.stale_timeout);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -213,31 +213,31 @@ private:
       }
     }
 
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     if (cam.expected_fps > 0.0) {
       double ratio = actual_fps / cam.expected_fps;
       lvl = check_low(ratio, cam.fps_warn_ratio, cam.fps_error_ratio);
-      if      (lvl == S::ERROR) msg_str = "FPS critically low";
-      else if (lvl == S::WARN)  msg_str = "FPS low";
+      if      (lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg_str = "FPS critically low";
+      else if (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg_str = "FPS low";
     }
 
     if (cam.expected_width > 0) {
-      lvl = std::max(lvl, check_flag(cam.actual_width == cam.expected_width, S::WARN));
-      if (lvl == S::WARN) msg_str = "Resolution mismatch";
+      lvl = std::max(lvl, check_flag(cam.actual_width == cam.expected_width, diagnostic_msgs::msg::DiagnosticStatus::WARN));
+      if (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN) msg_str = "Resolution mismatch";
     }
     if (cam.expected_height > 0) {
-      lvl = std::max(lvl, check_flag(cam.actual_height == cam.expected_height, S::WARN));
-      if (lvl == S::WARN) msg_str = "Resolution mismatch";
+      lvl = std::max(lvl, check_flag(cam.actual_height == cam.expected_height, diagnostic_msgs::msg::DiagnosticStatus::WARN));
+      if (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN) msg_str = "Resolution mismatch";
     }
 
     if (!cam.expected_encoding.empty()) {
-      lvl = std::max(lvl, check_flag(cam.actual_encoding == cam.expected_encoding, S::WARN));
-      if (lvl == S::WARN) msg_str = "Encoding mismatch";
+      lvl = std::max(lvl, check_flag(cam.actual_encoding == cam.expected_encoding, diagnostic_msgs::msg::DiagnosticStatus::WARN));
+      if (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN) msg_str = "Encoding mismatch";
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];
       std::snprintf(buf, sizeof(buf), "OK (%.1f fps)", actual_fps);
       msg_str = buf;

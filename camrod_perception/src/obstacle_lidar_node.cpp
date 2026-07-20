@@ -72,7 +72,7 @@ public:
     marker_lifetime_s_ = this->declare_parameter<double>("marker_lifetime_s", 0.15);
     draw_text_ = this->declare_parameter<bool>("draw_text", true);
 
-    // HH_260326: Use avg_msgs aliases so perception interfaces stay consistent.
+    // HH_260721 - Publish the explicit generated obstacle contract without message aliases.
     sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       input_topic_,
       rclcpp::SensorDataQoS(),

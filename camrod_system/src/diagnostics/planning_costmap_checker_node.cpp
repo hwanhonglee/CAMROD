@@ -11,7 +11,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 // HH_260720 - Keep Nav2 boundary message types explicit; do not hide them behind aliases.
 
@@ -184,7 +184,7 @@ private:
       // CPU load. Let config decide whether missing/stale costmaps are fatal
       // diagnostics; cmd_vel safety still uses live sensor cost grids directly.
       stat.summary(
-        costmap.stale_is_error ? DiagnosticStatus::STALE : DiagnosticStatus::WARN,
+        costmap.stale_is_error ? diagnostic_msgs::msg::DiagnosticStatus::STALE : diagnostic_msgs::msg::DiagnosticStatus::WARN,
         "no topic messages: " + costmap.topic);
       stat.add("topic", costmap.topic);
       stat.add("updates_topic", costmap.update_topic);
@@ -200,7 +200,7 @@ private:
         "no costmap update for %.1fs (timeout=%.1fs)",
         elapsed, costmap.stale_timeout);
       stat.summary(
-        costmap.stale_is_error ? DiagnosticStatus::ERROR : DiagnosticStatus::WARN,
+        costmap.stale_is_error ? diagnostic_msgs::msg::DiagnosticStatus::ERROR : diagnostic_msgs::msg::DiagnosticStatus::WARN,
         std::string(buf));
       char tmp[32];
       std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed);
@@ -221,20 +221,20 @@ private:
       }
     }
 
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
     if (costmap.expected_hz > 0.0) {
       const double ratio = actual_hz / costmap.expected_hz;
       const int8_t hz_lvl = check_low(ratio, costmap.hz_warn_ratio, costmap.hz_error_ratio);
       if (hz_lvl > lvl) {
-        const bool demoted_error = !costmap.rate_is_error && hz_lvl >= S::ERROR;
-        lvl = demoted_error ? S::WARN : hz_lvl;
-        msg_str = (hz_lvl == S::ERROR && !demoted_error) ?
+        const bool demoted_error = !costmap.rate_is_error && hz_lvl >= diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+        lvl = demoted_error ? diagnostic_msgs::msg::DiagnosticStatus::WARN : hz_lvl;
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR && !demoted_error) ?
           "publish rate critically low" : "publish rate low";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[80];
       std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, %.1fs ago)", actual_hz, elapsed);
       msg_str = buf;

@@ -61,7 +61,7 @@ namespace robot_diagnostics_base
 class BaseChecker : public rclcpp::Node
 {
 public:
-  using S       = diagnostic_msgs::msg::DiagnosticStatus;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
   using TaskFn  = std::function<void(diagnostic_updater::DiagnosticStatusWrapper &)>;
 
   explicit BaseChecker(
@@ -87,23 +87,23 @@ public:
   /** 높을수록 위험 (CPU 사용률, 온도, 메모리 등). */
   static int8_t check_high(double value, double warn, double error)
   {
-    if (value >= error) return S::ERROR;
-    if (value >= warn)  return S::WARN;
-    return S::OK;
+    if (value >= error) return diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    if (value >= warn)  return diagnostic_msgs::msg::DiagnosticStatus::WARN;
+    return diagnostic_msgs::msg::DiagnosticStatus::OK;
   }
 
   /** 낮을수록 위험 (배터리 전압, 신호 강도 등). */
   static int8_t check_low(double value, double warn, double error)
   {
-    if (value <= error) return S::ERROR;
-    if (value <= warn)  return S::WARN;
-    return S::OK;
+    if (value <= error) return diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    if (value <= warn)  return diagnostic_msgs::msg::DiagnosticStatus::WARN;
+    return diagnostic_msgs::msg::DiagnosticStatus::OK;
   }
 
   /** Boolean 상태 (센서 연결 여부, Fault Flag 등). */
-  static int8_t check_flag(bool ok, int8_t on_false = S::ERROR)
+  static int8_t check_flag(bool ok, int8_t on_false = diagnostic_msgs::msg::DiagnosticStatus::ERROR)
   {
-    return ok ? static_cast<int8_t>(S::OK) : on_false;
+    return ok ? static_cast<int8_t>(diagnostic_msgs::msg::DiagnosticStatus::OK) : on_false;
   }
 
   /**
@@ -116,9 +116,9 @@ public:
     std::initializer_list<T> ok_states,
     std::initializer_list<T> warn_states = {})
   {
-    for (const auto & s : ok_states)   { if (state == s) return S::OK;   }
-    for (const auto & s : warn_states) { if (state == s) return S::WARN; }
-    return S::ERROR;
+    for (const auto & s : ok_states)   { if (state == s) return diagnostic_msgs::msg::DiagnosticStatus::OK;   }
+    for (const auto & s : warn_states) { if (state == s) return diagnostic_msgs::msg::DiagnosticStatus::WARN; }
+    return diagnostic_msgs::msg::DiagnosticStatus::ERROR;
   }
 
   template<typename T>
@@ -127,9 +127,9 @@ public:
     const std::vector<T> & ok_states,
     const std::vector<T> & warn_states = {})
   {
-    for (const auto & s : ok_states)   { if (state == s) return S::OK;   }
-    for (const auto & s : warn_states) { if (state == s) return S::WARN; }
-    return S::ERROR;
+    for (const auto & s : ok_states)   { if (state == s) return diagnostic_msgs::msg::DiagnosticStatus::OK;   }
+    for (const auto & s : warn_states) { if (state == s) return diagnostic_msgs::msg::DiagnosticStatus::WARN; }
+    return diagnostic_msgs::msg::DiagnosticStatus::ERROR;
   }
 
   /**

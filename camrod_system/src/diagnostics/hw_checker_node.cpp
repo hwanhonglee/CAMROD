@@ -48,7 +48,7 @@
 
 namespace fs = std::filesystem;
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── Container environment detected ────────────────────────────────────────────────────
@@ -399,8 +399,8 @@ private:
     char buf[64];
     std::snprintf(buf, sizeof(buf), "CPU %.1f%%", usage);
     std::string msg = buf;
-    if      (lvl == DiagnosticStatus::WARN)  msg += " (High)";
-    else if (lvl == DiagnosticStatus::ERROR) msg += " (Critical)";
+    if      (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg += " (High)";
+    else if (lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg += " (Critical)";
 
     stat.summary(lvl, msg);
     char val[32];
@@ -422,7 +422,7 @@ private:
   {
     auto mem = read_mem_info(proc_base_);
     if (!mem) {
-      stat.summary(DiagnosticStatus::STALE, proc_base_ + "/meminfo read failed");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, proc_base_ + "/meminfo read failed");
       return;
     }
 
@@ -435,8 +435,8 @@ private:
     char buf[128];
     std::snprintf(buf, sizeof(buf), "Memory %.1f%% (%lu / %lu MB)", usage, used, total);
     std::string msg = buf;
-    if      (lvl == DiagnosticStatus::WARN)  msg += " (High)";
-    else if (lvl == DiagnosticStatus::ERROR) msg += " (Critical)";
+    if      (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg += " (High)";
+    else if (lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg += " (Critical)";
 
     stat.summary(lvl, msg);
     char tmp[32];
@@ -467,7 +467,7 @@ private:
   {
     struct statvfs st {};
     if (statvfs(disk_path_.c_str(), &st) != 0) {
-      stat.summary(DiagnosticStatus::STALE, "statvfs failed: " + disk_path_);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "statvfs failed: " + disk_path_);
       return;
     }
 
@@ -480,8 +480,8 @@ private:
     char buf[128];
     std::snprintf(buf, sizeof(buf), "Disk %.1f%% (%.1f / %.1f GB)", usage, used_gb, total_gb);
     std::string msg = buf;
-    if      (lvl == DiagnosticStatus::WARN)  msg += " (High)";
-    else if (lvl == DiagnosticStatus::ERROR) msg += " (Critical)";
+    if      (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg += " (High)";
+    else if (lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg += " (Critical)";
 
     stat.summary(lvl, msg);
     char tmp[32];
@@ -495,14 +495,14 @@ private:
   void check_cpu_temp(StatusWrapper & stat)
   {
     if (!has_cpu_temp_) {
-      stat.summary(DiagnosticStatus::STALE,
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE,
         "CPU temperature sensor missing (sys_base=" + sys_base_ + ")");
       return;
     }
 
     auto temp_opt = read_cpu_temp(sys_base_);
     if (!temp_opt) {
-      stat.summary(DiagnosticStatus::STALE, "CPU temperature sensor missing");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "CPU temperature sensor missing");
       return;
     }
 
@@ -512,8 +512,8 @@ private:
     char buf[64];
     std::snprintf(buf, sizeof(buf), "CPU Temp %.1f C", temp);
     std::string msg = buf;
-    if      (lvl == DiagnosticStatus::WARN)  msg += " (High)";
-    else if (lvl == DiagnosticStatus::ERROR) msg += " (Critical)";
+    if      (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg += " (High)";
+    else if (lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg += " (Critical)";
 
     stat.summary(lvl, msg);
     char tmp[16];

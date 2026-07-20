@@ -38,10 +38,9 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
-using GoalStatusArray  = action_msgs::msg::GoalStatusArray;
-using GoalStatus       = action_msgs::msg::GoalStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
 struct NavStatusState
 {
@@ -50,11 +49,11 @@ struct NavStatusState
   rclcpp::Time last_msg_time{0, 0, RCL_ROS_TIME};
   bool has_msg{false};
 
-  int8_t current_status{GoalStatus::STATUS_UNKNOWN};
+  int8_t current_status{action_msgs::msg::GoalStatus::STATUS_UNKNOWN};
 
   std::deque<rclcpp::Time> abort_times;
 
-  rclcpp::Subscription<GoalStatusArray>::SharedPtr sub;
+  rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub;
 };
 
 class PlanningNavStatusCheckerNode : public robot_diagnostics_base::BaseChecker
@@ -91,9 +90,9 @@ protected:
 
   void setup_tasks_() override
   {
-    state_.sub = create_subscription<GoalStatusArray>(
+    state_.sub = create_subscription<action_msgs::msg::GoalStatusArray>(
       nav_status_topic_, rclcpp::QoS(10),
-      [this](const GoalStatusArray::ConstSharedPtr msg) { onNavStatus(msg); });
+      [this](const action_msgs::msg::GoalStatusArray::ConstSharedPtr msg) { onNavStatus(msg); });
 
     add_task("/planning/nav_status",
       [this](StatusWrapper & stat) { checkNavStatus(stat); });
@@ -106,27 +105,27 @@ protected:
   }
 
 private:
-  void onNavStatus(const GoalStatusArray::ConstSharedPtr msg)
+  void onNavStatus(const action_msgs::msg::GoalStatusArray::ConstSharedPtr msg)
   {
     auto now = this->now();
 
     // Select the dominant status from the status list.
     // Priority: EXECUTING > ACCEPTED > CANCELING > terminal states.
-    int8_t dominant = GoalStatus::STATUS_UNKNOWN;
+    int8_t dominant = action_msgs::msg::GoalStatus::STATUS_UNKNOWN;
     bool   aborted  = false;
 
     for (const auto & s : msg->status_list) {
-      if (s.status == GoalStatus::STATUS_EXECUTING) {
-        dominant = GoalStatus::STATUS_EXECUTING;
-      } else if (s.status == GoalStatus::STATUS_ACCEPTED &&
-                 dominant != GoalStatus::STATUS_EXECUTING) {
-        dominant = GoalStatus::STATUS_ACCEPTED;
-      } else if (s.status == GoalStatus::STATUS_ABORTED) {
+      if (s.status == action_msgs::msg::GoalStatus::STATUS_EXECUTING) {
+        dominant = action_msgs::msg::GoalStatus::STATUS_EXECUTING;
+      } else if (s.status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED &&
+                 dominant != action_msgs::msg::GoalStatus::STATUS_EXECUTING) {
+        dominant = action_msgs::msg::GoalStatus::STATUS_ACCEPTED;
+      } else if (s.status == action_msgs::msg::GoalStatus::STATUS_ABORTED) {
         aborted = true;
-        if (dominant == GoalStatus::STATUS_UNKNOWN) {
-          dominant = GoalStatus::STATUS_ABORTED;
+        if (dominant == action_msgs::msg::GoalStatus::STATUS_UNKNOWN) {
+          dominant = action_msgs::msg::GoalStatus::STATUS_ABORTED;
         }
-      } else if (dominant == GoalStatus::STATUS_UNKNOWN) {
+      } else if (dominant == action_msgs::msg::GoalStatus::STATUS_UNKNOWN) {
         dominant = s.status;
       }
     }
@@ -151,13 +150,13 @@ private:
   static const char * statusLabel(int8_t s)
   {
     switch (s) {
-      case GoalStatus::STATUS_UNKNOWN:   return "UNKNOWN";
-      case GoalStatus::STATUS_ACCEPTED:  return "ACCEPTED";
-      case GoalStatus::STATUS_EXECUTING: return "EXECUTING";
-      case GoalStatus::STATUS_CANCELING: return "CANCELING";
-      case GoalStatus::STATUS_SUCCEEDED: return "SUCCEEDED";
-      case GoalStatus::STATUS_CANCELED:  return "CANCELED";
-      case GoalStatus::STATUS_ABORTED:   return "ABORTED";
+      case action_msgs::msg::GoalStatus::STATUS_UNKNOWN:   return "UNKNOWN";
+      case action_msgs::msg::GoalStatus::STATUS_ACCEPTED:  return "ACCEPTED";
+      case action_msgs::msg::GoalStatus::STATUS_EXECUTING: return "EXECUTING";
+      case action_msgs::msg::GoalStatus::STATUS_CANCELING: return "CANCELING";
+      case action_msgs::msg::GoalStatus::STATUS_SUCCEEDED: return "SUCCEEDED";
+      case action_msgs::msg::GoalStatus::STATUS_CANCELED:  return "CANCELED";
+      case action_msgs::msg::GoalStatus::STATUS_ABORTED:   return "ABORTED";
       default:                           return "UNKNOWN";
     }
   }
@@ -171,12 +170,12 @@ private:
       // publish anything. Lifecycle checks cover server liveness; this checker
       // should report abort/status quality, not force ERROR while idle.
       if (idle_ok_without_status_) {
-        stat.summary(DiagnosticStatus::OK, "idle (no nav status yet)");
+        stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "idle (no nav status yet)");
         stat.add("topic", nav_status_topic_);
         stat.add("idle_ok_without_status", "true");
         return;
       }
-      stat.summary(DiagnosticStatus::WARN, "No topic messages: " + nav_status_topic_);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, "No topic messages: " + nav_status_topic_);
       stat.add("topic", nav_status_topic_);
       return;
     }
@@ -189,14 +188,14 @@ private:
       // handled below when new status samples arrive.
       if (
         terminal_status_stale_ok_ &&
-        (state_.current_status == GoalStatus::STATUS_SUCCEEDED ||
-         state_.current_status == GoalStatus::STATUS_CANCELED))
+        (state_.current_status == action_msgs::msg::GoalStatus::STATUS_SUCCEEDED ||
+         state_.current_status == action_msgs::msg::GoalStatus::STATUS_CANCELED))
       {
         char buf[128];
         std::snprintf(buf, sizeof(buf),
           "idle: %s (last status %.1fs ago)",
           statusLabel(state_.current_status), elapsed);
-        stat.summary(DiagnosticStatus::OK, std::string(buf));
+        stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, std::string(buf));
         stat.add("current_status", std::string(statusLabel(state_.current_status)));
         stat.add("terminal_status_stale_ok", "true");
         stat.add("last_msg_sec_ago", elapsed);
@@ -205,7 +204,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No nav status for %.1fs (timeout=%.1fs)", elapsed, stale_timeout_);
-      stat.summary(DiagnosticStatus::WARN, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       stat.add("status_freshness_critical", "false");
       return;
@@ -213,38 +212,38 @@ private:
 
     int abort_count = static_cast<int>(state_.abort_times.size());
 
-    int8_t     lvl = DiagnosticStatus::OK;
+    int8_t     lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str;
 
     if (abort_count > abort_error_) {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
         "Repeated ABORTED (%d in 60s > %d)", abort_count, abort_error_);
       msg_str = buf;
     } else if (abort_count > abort_warn_) {
-      lvl     = DiagnosticStatus::WARN;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
         "High ABORTED frequency (%d in 60s > %d)", abort_count, abort_warn_);
       msg_str = buf;
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       switch (state_.current_status) {
-        case GoalStatus::STATUS_EXECUTING:
-        case GoalStatus::STATUS_ACCEPTED:
+        case action_msgs::msg::GoalStatus::STATUS_EXECUTING:
+        case action_msgs::msg::GoalStatus::STATUS_ACCEPTED:
           msg_str = std::string("navigation active: ") + statusLabel(state_.current_status);
           break;
-        case GoalStatus::STATUS_ABORTED:
-          lvl     = DiagnosticStatus::WARN;
+        case action_msgs::msg::GoalStatus::STATUS_ABORTED:
+          lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
           msg_str = "ABORTED - recent path planning failed";
           break;
-        case GoalStatus::STATUS_SUCCEEDED:
-        case GoalStatus::STATUS_CANCELED:
+        case action_msgs::msg::GoalStatus::STATUS_SUCCEEDED:
+        case action_msgs::msg::GoalStatus::STATUS_CANCELED:
           msg_str = std::string("idle: ") + statusLabel(state_.current_status);
           break;
-        case GoalStatus::STATUS_UNKNOWN:
+        case action_msgs::msg::GoalStatus::STATUS_UNKNOWN:
         default:
           msg_str = "idle (no status)";
           break;

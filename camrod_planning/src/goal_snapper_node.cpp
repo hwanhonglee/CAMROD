@@ -87,8 +87,7 @@ bool pointInPolygon2D(const std::vector<std::pair<double, double>> & poly, doubl
 class GoalSnapperNode : public rclcpp::Node
 {
 public:
-  using AvgPlanningMsgs = avg_msgs::msg::AvgPlanningMsgs;
-  using ModuleState = avg_msgs::msg::ModuleState;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   GoalSnapperNode()
   // HH_260112 Use short node name; namespace applies the module prefix.
@@ -236,7 +235,7 @@ public:
     pub_goal_ros_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       output_goal_topic_ros_, rclcpp::QoS(10));
     if (publish_planning_status_) {
-      pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
+      pub_avg_planning_ = create_publisher<avg_msgs::msg::AvgPlanningMsgs>(
         planning_status_topic_, rclcpp::QoS(10));
     }
     // HH_260720 - RViz/operator goals enter through one explicit ROS boundary.
@@ -376,9 +375,9 @@ private:
     const double py = msg->pose.position.y;
     const double now_sec = this->get_clock()->now().seconds();
     const bool has_previous_pose = has_pose_jump_check_pose_;
-    const double pose_jump_distance = has_previous_pose
-      ? std::hypot(px - last_pose_jump_check_x_, py - last_pose_jump_check_y_)
-      : 0.0;
+    const double pose_jump_distance = has_previous_pose ?
+      std::hypot(px - last_pose_jump_check_x_, py - last_pose_jump_check_y_) :
+      0.0;
     last_pose_jump_check_x_ = px;
     last_pose_jump_check_y_ = py;
     has_pose_jump_check_pose_ = true;
@@ -397,7 +396,8 @@ private:
     if (has_last_component_pose_) {
       const double dt = now_sec - last_component_update_sec_;
       const double moved = std::hypot(px - last_component_pose_x_, py - last_component_pose_y_);
-      const bool skip_by_time = component_update_min_period_s_ > 0.0 && dt < component_update_min_period_s_;
+      const bool skip_by_time = component_update_min_period_s_ > 0.0 &&
+        dt < component_update_min_period_s_;
       const bool skip_by_movement =
         component_update_min_displacement_m_ > 0.0 && moved < component_update_min_displacement_m_;
       if (skip_by_time && skip_by_movement) {
@@ -408,7 +408,8 @@ private:
     lanelet::ConstLanelet seed;
     if (!findBestLaneletForPoint(px, py, seed)) {
       RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000,
+        get_logger(),
+        *get_clock(), 2000,
         "goal_snapper: current pose is not near any lanelet (r=%.1fm), keep previous connected component",
         current_lanelet_search_radius_);
       return;
@@ -500,7 +501,8 @@ private:
       enqueue_neighbors(routing_graph_->previous(current, component_include_lane_changes_));
     }
 
-    const bool seed_changed = (!has_component_seed_) || (seed_lanelet.id() != component_seed_lanelet_id_);
+    const bool seed_changed = (!has_component_seed_) ||
+      (seed_lanelet.id() != component_seed_lanelet_id_);
     component_seed_lanelet_id_ = seed_lanelet.id();
     has_component_seed_ = true;
     connected_lanelet_ids_ = std::move(new_ids);
@@ -756,7 +758,9 @@ private:
       if (has_active_released_goal_ && isSameGoal(next_goal, active_released_goal_)) {
         continue;
       }
-      publishReleasedGoal(next_goal, next_goal.pose.position.x, next_goal.pose.position.y, 0.0, "queue", "released_after_reached");
+      publishReleasedGoal(
+        next_goal, next_goal.pose.position.x, next_goal.pose.position.y, 0.0,
+        "queue", "released_after_reached");
       return;
     }
   }
@@ -945,11 +949,11 @@ private:
     if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
     }
-    AvgPlanningMsgs msg;
+    avg_msgs::msg::AvgPlanningMsgs msg;
     msg.stamp = now();
     msg.state.stamp = msg.stamp;
     msg.state.module_name = "planning";
-    msg.state.level = ModuleState::OK;
+    msg.state.level = avg_msgs::msg::ModuleState::OK;
     msg.state.message = "goal_snapper";
     // HH_260720 - The snapped goal is already a generated CAMROD pose.
     msg.goal_pose = goal_pose;
@@ -1008,7 +1012,9 @@ private:
     }
 
     for (const auto & ll : map_->laneletLayer) {
-      if (!ignore_component_filters && restrict_to_connected_lanelet_component_ && component_ready) {
+      if (!ignore_component_filters && restrict_to_connected_lanelet_component_ &&
+        component_ready)
+      {
         if (connected_lanelet_ids_.count(ll.id()) == 0U) {
           continue;
         }
@@ -1097,7 +1103,7 @@ private:
     const auto is_passable = [this, &grid](const int index) {
         const int value = static_cast<int>(grid.data[static_cast<size_t>(index)]);
         return value >= 0 && value < cost_grid_block_threshold_;
-    };
+      };
 
     const int start_index = start_y * width + start_x;
     const auto start_offset = static_cast<size_t>(start_index);
@@ -1115,7 +1121,8 @@ private:
     cost_grid_component_mask_.clear();
     if (!is_passable(start_index)) {
       RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000,
+        get_logger(),
+        *get_clock(), 2000,
         "goal_snapper: current cost-grid cell is blocked cost=%d; reachable goal filter is not ready",
         static_cast<int>(grid.data[static_cast<size_t>(start_index)]));
       return;
@@ -1167,7 +1174,7 @@ private:
     cell_x = static_cast<int>(std::floor((x - info.origin.position.x) / info.resolution));
     cell_y = static_cast<int>(std::floor((y - info.origin.position.y) / info.resolution));
     return cell_x >= 0 && cell_y >= 0 &&
-      cell_x < static_cast<int>(info.width) && cell_y < static_cast<int>(info.height);
+           cell_x < static_cast<int>(info.width) && cell_y < static_cast<int>(info.height);
   }
 
   bool isPointInCostGridComponent(double x, double y)
@@ -1192,7 +1199,7 @@ private:
     const int width = static_cast<int>(latest_cost_grid_.info.width);
     const auto index = static_cast<size_t>(cell_y * width + cell_x);
     return index < cost_grid_component_mask_.size() &&
-      cost_grid_component_mask_[index] != 0U;
+           cost_grid_component_mask_[index] != 0U;
   }
 
   // Implements `pointInsideLanelet` behavior.
@@ -1208,7 +1215,7 @@ private:
     for (const auto & pt : left) {
       poly.emplace_back(pt.x(), pt.y());
     }
-    for (size_t i = right.size(); i-- > 0;) {
+    for (size_t i = right.size(); i-- > 0; ) {
       poly.emplace_back(right[i].x(), right[i].y());
     }
     return pointInPolygon2D(poly, x, y);
@@ -1323,7 +1330,7 @@ private:
 
   rclcpp::Publisher<avg_msgs::msg::AvgPoseStamped>::SharedPtr pub_goal_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_goal_ros_;
-  rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_aux_goal_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_current_pose_;
