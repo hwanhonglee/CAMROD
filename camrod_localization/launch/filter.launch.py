@@ -5,8 +5,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
@@ -14,7 +13,6 @@ def generate_launch_description():
     localization_share = get_package_share_directory("camrod_localization")
 
     ekf_param_file = os.path.join(localization_share, "config", "filter", "ekf.yaml")
-    eskf_param_file = os.path.join(localization_share, "config", "filter", "eskf.yaml")
     pose_selector_param_file = os.path.join(
         localization_share, "config", "filter", "pose_selector.yaml"
     )
@@ -29,21 +27,11 @@ def generate_launch_description():
                 default_value="localization",
                 description="Namespace for localization filter nodes",
             ),
-            DeclareLaunchArgument(
-                "filter_type",
-                default_value="ekf",
-                description="Localization filter type: ekf|eskf",
-            ),
-            # HH_260522: remove legacy dual-toggle behavior and keep explicit branch selection only.
+            # HH_260721 - Run robot_localization EKF as the only localization filter backend.
             DeclareLaunchArgument(
                 "ekf_params_file",
                 default_value=ekf_param_file,
                 description="EKF parameter file",
-            ),
-            DeclareLaunchArgument(
-                "eskf_params_file",
-                default_value=eskf_param_file,
-                description="ESKF parameter file",
             ),
             DeclareLaunchArgument(
                 "pose_selector_params_file",
@@ -55,7 +43,7 @@ def generate_launch_description():
                 default_value=gnss_reattach_param_file,
                 description="GNSS reattach helper parameter file",
             ),
-            # HH_260522: launch EKF only when filter_type=ekf.
+            # HH_260721 - Publish EKF odometry on the explicit standard ROS boundary.
             Node(
                 package="robot_localization",
                 executable="ekf_node",
@@ -71,33 +59,6 @@ def generate_launch_description():
                 remappings=[
                     ("odometry/filtered", "/localization/primary/odometry_ros"),
                 ],
-                condition=IfCondition(
-                    PythonExpression(
-                        [
-                            "'",
-                            LaunchConfiguration("filter_type"),
-                            "' == 'ekf'",
-                        ]
-                    )
-                ),
-            ),
-            # HH_260522: launch ESKF only when filter_type=eskf.
-            Node(
-                package="camrod_localization",
-                executable="eskf",
-                name="eskf",
-                namespace=LaunchConfiguration("module_namespace"),
-                output="screen",
-                parameters=[LaunchConfiguration("eskf_params_file")],
-                condition=IfCondition(
-                    PythonExpression(
-                        [
-                            "'",
-                            LaunchConfiguration("filter_type"),
-                            "' == 'eskf'",
-                        ]
-                    )
-                ),
             ),
             Node(
                 package="camrod_localization",

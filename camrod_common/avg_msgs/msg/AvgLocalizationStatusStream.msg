@@ -1,4 +1,4 @@
-# HH_260311-00:00 Internal ESKF status_stream migrated to avg_msgs.
+# HH_260721 - Keep optional localization innovation diagnostics filter-neutral.
 avg_msgs/AvgHeader header
 float32 gnss_innovation_norm
 bool gnss_update_accepted

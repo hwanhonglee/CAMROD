@@ -27,8 +27,6 @@ find_package(lanelet2_io REQUIRED)
 find_package(lanelet2_projection REQUIRED)
 find_package(camrod_map REQUIRED)
 
-find_package(Eigen3 REQUIRED)
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
 find_package(yaml-cpp REQUIRED)
 
 # ------------------------------------------------------------------------------
@@ -96,28 +94,8 @@ target_link_libraries(localization_map_helper_node
 )
 
 # ------------------------------------------------------------------------------
-# 4. ESKF core
-# ------------------------------------------------------------------------------
-add_executable(eskf
-  src/localization_eskf_node.cpp
-)
-ament_target_dependencies(eskf
-  rclcpp
-  avg_msgs
-  geometry_msgs
-  nav_msgs
-  sensor_msgs
-  std_msgs
-  tf2
-  tf2_ros
-)
-target_include_directories(eskf PRIVATE
-  ${EIGEN3_INCLUDE_DIR}
-)
-target_link_libraries(eskf Eigen3::Eigen)
-
-# ------------------------------------------------------------------------------
-# 5. Pose selector (kept as-is)
+# HH_260721 - Keep one robot_localization EKF backend and remove the unused custom ESKF target.
+# 4. Pose selector
 # ------------------------------------------------------------------------------
 add_executable(localization_pose_selector_node
   src/localization_pose_selector_node.cpp
@@ -132,7 +110,7 @@ ament_target_dependencies(localization_pose_selector_node
 )
 
 # ------------------------------------------------------------------------------
-# 6. GNSS reattach helper
+# 5. GNSS reattach helper
 #   - Detect persistent localization<->GNSS divergence
 #   - Publish reset pose for EKF set_pose / optional avg initialpose path
 # ------------------------------------------------------------------------------
@@ -152,7 +130,6 @@ install(TARGETS
   localization_input_adapter_node
   localization_monitor_node
   localization_map_helper_node
-  eskf
   localization_pose_selector_node
   localization_gnss_reattach_node
   DESTINATION lib/${PROJECT_NAME}
@@ -169,7 +146,33 @@ install(DIRECTORY
 # ------------------------------------------------------------------------------
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  # HH_260721 - Lint owned localization code without re-linting vendored robot_localization.
+  set(AMENT_LINT_AUTO_FILE_EXCLUDE external)
+  set(AMENT_LINT_AUTO_EXCLUDE
+    ament_cmake_copyright
+    ament_cmake_cpplint
+    ament_cmake_flake8
+    ament_cmake_uncrustify
+    ament_cmake_xmllint
+  )
   ament_lint_auto_find_test_dependencies()
+
+  # HH_260721 - Scope C++, Python, and XML checks to this package's maintained files.
+  find_package(ament_cmake_cpplint REQUIRED)
+  ament_cpplint(
+    src
+    FILTERS "-legal/copyright" "-build/include_order"
+    MAX_LINE_LENGTH 120
+  )
+  find_package(ament_cmake_flake8 REQUIRED)
+  ament_flake8(
+    launch
+    CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/test/ament_flake8.ini"
+  )
+  find_package(ament_cmake_uncrustify REQUIRED)
+  ament_uncrustify(src)
+  find_package(ament_cmake_xmllint REQUIRED)
+  ament_xmllint(package.xml)
 endif()
 
 # ------------------------------------------------------------------------------

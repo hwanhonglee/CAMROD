@@ -1,37 +1,6 @@
 /**
- * Localization Source Checker Node
- *
- * localization_pose_selector_node 가 발행하는 소스 토픽을 구독하여
- * 현재 로컬라이제이션 소스가 정상 경로(ESKF)인지 폴백 소스인지를
- * /diagnostics 토픽으로 발행한다.
- *
- * Primary = ESKF (정상), Fallback = fallback source (폴백)
- * 폴백 활성화는 곧 ESKF 이상 또는 GNSS/IMU 품질 저하를 의미한다.
- *
- * 진단 항목
- * ---------
- *   /localization/source
- *     - Staleness            : 토픽 미수신 경과 시간
- *     - Source OK            : "primary_eskf" → OK
- *                              "fallback_source" → WARN (폴백 활성)
- *                              그 외 값       → ERROR (알 수 없는 소스)
- *     - Fallback duration    : 폴백 활성 지속 시간
- *                              > fallback_warn_s  → WARN
- *                              > fallback_error_s → ERROR
- *     - Switch count         : 분당 소스 전환 횟수
- *                              > switch_warn  → WARN  (불안정 전환)
- *                              > switch_error → ERROR (과도한 전환)
- *
- * 파라미터 구성
- * -------------
- *   source_topic:          "/localization/pose_source"
- *   primary_source:        "primary_eskf"
- *   fallback_source:       "fallback_source"
- *   stale_timeout_s:       3.0
- *   fallback_warn_s:       10.0   # 폴백 지속 > 이 값 → WARN
- *   fallback_error_s:      60.0   # 폴백 지속 > 이 값 → ERROR
- *   switch_warn:           3      # 최근 60s 내 전환 횟수 > 이 값 → WARN
- *   switch_error:          10     # 최근 60s 내 전환 횟수 > 이 값 → ERROR
+ * HH_260721 - Diagnose whether the pose selector uses the primary EKF output
+ * or its configured dead-reckoning fallback, including staleness and flapping.
  */
 
 #include <cmath>
@@ -46,9 +15,6 @@
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
-
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
-using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── 소스 상태 구조체 ─────────────────────────────────────────────────────
 
@@ -87,28 +53,29 @@ public:
 protected:
   void declare_parameters_() override
   {
-    declare_parameter("source_topic",       std::string("/localization/pose_source"));
-    declare_parameter("primary_source",     std::string("primary_eskf"));
-    declare_parameter("fallback_source",    std::string("fallback_source"));
-    declare_parameter("stale_timeout_s",      3.0);
-    declare_parameter("fallback_warn_s",  10.0);
+    declare_parameter("source_topic", std::string("/localization/pose_source"));
+    // HH_260721 - Match the filter-neutral label published by the pose selector.
+    declare_parameter("primary_source", std::string("primary_filter"));
+    declare_parameter("fallback_source", std::string("fallback_source"));
+    declare_parameter("stale_timeout_s", 3.0);
+    declare_parameter("fallback_warn_s", 10.0);
     declare_parameter("fallback_error_s", 60.0);
-    declare_parameter("switch_warn",        3);
-    declare_parameter("switch_error",       10);
+    declare_parameter("switch_warn", 3);
+    declare_parameter("switch_error", 10);
   }
 
   void load_parameters_() override
   {
-    source_topic_       = get_parameter("source_topic").as_string();
-    primary_source_     = get_parameter("primary_source").as_string();
-    fallback_source_    = get_parameter("fallback_source").as_string();
+    source_topic_ = get_parameter("source_topic").as_string();
+    primary_source_ = get_parameter("primary_source").as_string();
+    fallback_source_ = get_parameter("fallback_source").as_string();
     stale_timeout_ = get_param<double>("stale_timeout_s", stale_timeout_);
-    fallback_warn_sec_  = get_param<double>(
+    fallback_warn_sec_ = get_param<double>(
       "fallback_warn_s", fallback_warn_sec_);
     fallback_error_sec_ = get_param<double>(
       "fallback_error_s", fallback_error_sec_);
-    switch_warn_        = get_parameter("switch_warn").as_int();
-    switch_error_       = get_parameter("switch_error").as_int();
+    switch_warn_ = get_parameter("switch_warn").as_int();
+    switch_error_ = get_parameter("switch_error").as_int();
   }
 
   void setup_tasks_() override
@@ -122,10 +89,12 @@ protected:
         onSource(msg);
       });
 
-    add_task("/localization/source",
-      [this](StatusWrapper & stat) { checkSource(stat); });
+    add_task(
+      "/localization/source",
+      [this](diagnostic_updater::DiagnosticStatusWrapper & stat) {checkSource(stat);});
 
-    RCLCPP_INFO(get_logger(),
+    RCLCPP_INFO(
+      get_logger(),
       "Localization source checker started "
       "(primary=%s, fallback=%s, fallback_error=%.0fs)",
       primary_source_.c_str(), fallback_source_.c_str(), fallback_error_sec_);
@@ -143,7 +112,8 @@ private:
       state_.switch_times.push_back(now);
       // 60s 이전 기록 제거
       while (!state_.switch_times.empty() &&
-             (now - state_.switch_times.front()).seconds() > 60.0) {
+        (now - state_.switch_times.front()).seconds() > 60.0)
+      {
         state_.switch_times.pop_front();
       }
     }
@@ -154,24 +124,26 @@ private:
 
     if (entering_fallback) {
       state_.fallback_start_time = now;
-      state_.in_fallback         = true;
+      state_.in_fallback = true;
     } else if (msg->data == primary_source_) {
       state_.in_fallback = false;
     }
 
-    state_.prev_source    = state_.current_source;
+    state_.prev_source = state_.current_source;
     state_.current_source = msg->data;
-    state_.last_msg_time  = now;
-    state_.has_msg        = true;
+    state_.last_msg_time = now;
+    state_.has_msg = true;
   }
 
-  void checkSource(StatusWrapper & stat)
+  void checkSource(diagnostic_updater::DiagnosticStatusWrapper & stat)
   {
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!state_.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + source_topic_);
+      stat.summary(
+        diagnostic_msgs::msg::DiagnosticStatus::STALE,
+        "No topic messages: " + source_topic_);
       stat.add("topic", source_topic_);
       return;
     }
@@ -179,25 +151,26 @@ private:
     double elapsed = (this->now() - state_.last_msg_time).seconds();
     if (elapsed > stale_timeout_) {
       char buf[96];
-      std::snprintf(buf, sizeof(buf),
+      std::snprintf(
+        buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)", elapsed, stale_timeout_);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
 
     // ── 소스 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str;
 
     if (state_.current_source == primary_source_) {
-      lvl     = DiagnosticStatus::OK;
-      msg_str = "Primary ESKF active";
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
+      msg_str = "Primary EKF filter active";
     } else if (state_.current_source == fallback_source_) {
-      lvl     = DiagnosticStatus::WARN;
-      msg_str = "Fallback source active - ESKF unhealthy";
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+      msg_str = "Fallback source active - primary EKF unavailable";
     } else {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "Unknown source: " + state_.current_source;
     }
 
@@ -205,16 +178,22 @@ private:
     double fallback_duration = 0.0;
     if (state_.in_fallback) {
       fallback_duration = (this->now() - state_.fallback_start_time).seconds();
-      if (fallback_duration > fallback_error_sec_ && lvl < DiagnosticStatus::ERROR) {
-        lvl     = DiagnosticStatus::ERROR;
+      if (fallback_duration > fallback_error_sec_ &&
+        lvl < diagnostic_msgs::msg::DiagnosticStatus::ERROR)
+      {
+        lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         char buf[80];
-        std::snprintf(buf, sizeof(buf),
+        std::snprintf(
+          buf, sizeof(buf),
           "Fallback active too long (%.0fs > %.0fs)", fallback_duration, fallback_error_sec_);
         msg_str = buf;
-      } else if (fallback_duration > fallback_warn_sec_ && lvl < DiagnosticStatus::WARN) {
-        lvl     = DiagnosticStatus::WARN;
+      } else if (fallback_duration > fallback_warn_sec_ &&
+        lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN)
+      {
+        lvl = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         char buf[80];
-        std::snprintf(buf, sizeof(buf),
+        std::snprintf(
+          buf, sizeof(buf),
           "Fallback active (%.0fs / warn=%.0fs)", fallback_duration, fallback_warn_sec_);
         msg_str = buf;
       }
@@ -222,16 +201,22 @@ private:
 
     // ── 전환 횟수 체크 ──────────────────────────────────────────────────
     int switch_count = static_cast<int>(state_.switch_times.size());
-    if (switch_count > switch_error_ && lvl < DiagnosticStatus::ERROR) {
-      lvl     = DiagnosticStatus::ERROR;
+    if (switch_count > switch_error_ &&
+      lvl < diagnostic_msgs::msg::DiagnosticStatus::ERROR)
+    {
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       char buf[80];
-      std::snprintf(buf, sizeof(buf),
+      std::snprintf(
+        buf, sizeof(buf),
         "Excessive source switching (%d in 60s > %d)", switch_count, switch_error_);
       msg_str = buf;
-    } else if (switch_count > switch_warn_ && lvl < DiagnosticStatus::WARN) {
-      lvl     = DiagnosticStatus::WARN;
+    } else if (switch_count > switch_warn_ &&
+      lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN)
+    {
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       char buf[80];
-      std::snprintf(buf, sizeof(buf),
+      std::snprintf(
+        buf, sizeof(buf),
         "Unstable source switching (%d in 60s > %d)", switch_count, switch_warn_);
       msg_str = buf;
     }
@@ -239,13 +224,13 @@ private:
     stat.summary(lvl, msg_str);
 
     // ── 상세 값 추가 ────────────────────────────────────────────────────
-    stat.add("current_source",    state_.current_source);
-    stat.add("primary_source",    primary_source_);
-    stat.add("fallback_source",   fallback_source_);
+    stat.add("current_source", state_.current_source);
+    stat.add("primary_source", primary_source_);
+    stat.add("fallback_source", fallback_source_);
 
     char tmp[48];
     std::snprintf(tmp, sizeof(tmp), "%d", switch_count);
-    stat.add("switch_count_60s",  std::string(tmp));
+    stat.add("switch_count_60s", std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%d / %d", switch_warn_, switch_error_);
     stat.add("switch_warn/error", std::string(tmp));
 
@@ -255,18 +240,18 @@ private:
     stat.add("fallback_warn/error_sec", std::string(tmp));
 
     std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed);
-    stat.add("last_msg_sec_ago",  std::string(tmp));
+    stat.add("last_msg_sec_ago", std::string(tmp));
   }
 
   // 파라미터
   std::string source_topic_;
-  std::string primary_source_{"primary_eskf"};
+  std::string primary_source_{"primary_filter"};
   std::string fallback_source_{"fallback_source"};
   double stale_timeout_{3.0};
   double fallback_warn_sec_{10.0};
   double fallback_error_sec_{60.0};
-  int    switch_warn_{3};
-  int    switch_error_{10};
+  int switch_warn_{3};
+  int switch_error_{10};
 
   SourceState state_;
 };

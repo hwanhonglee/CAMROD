@@ -23,15 +23,15 @@ std::string normalizeToken(std::string value)
 {
   std::transform(
     value.begin(), value.end(), value.begin(),
-    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    [](unsigned char c) {return static_cast<char>(std::tolower(c));});
   return value;
 }
 
 double normalizeYaw(double yaw)
 {
   constexpr double kTwoPi = 2.0 * M_PI;
-  while (yaw > M_PI) yaw -= kTwoPi;
-  while (yaw < -M_PI) yaw += kTwoPi;
+  while (yaw > M_PI) {yaw -= kTwoPi;}
+  while (yaw < -M_PI) {yaw += kTwoPi;}
   return yaw;
 }
 
@@ -225,11 +225,12 @@ private:
     current.x = msg->pose.pose.position.x;
     current.y = msg->pose.pose.position.y;
     current.z = msg->pose.pose.position.z;
-    current.yaw = normalizeYaw(yawFromQuaternion(
-      msg->pose.pose.orientation.x,
-      msg->pose.pose.orientation.y,
-      msg->pose.pose.orientation.z,
-      msg->pose.pose.orientation.w));
+    current.yaw = normalizeYaw(
+      yawFromQuaternion(
+        msg->pose.pose.orientation.x,
+        msg->pose.pose.orientation.y,
+        msg->pose.pose.orientation.z,
+        msg->pose.pose.orientation.w));
     current.cov_x = msg->pose.covariance[0];
     current.cov_y = msg->pose.covariance[7];
     current.cov_yaw = msg->pose.covariance[35];
@@ -257,11 +258,12 @@ private:
     current.x = msg->pose.pose.position.x;
     current.y = msg->pose.pose.position.y;
     current.z = msg->pose.pose.position.z;
-    current.yaw = normalizeYaw(yawFromQuaternion(
-      msg->pose.pose.orientation.x,
-      msg->pose.pose.orientation.y,
-      msg->pose.pose.orientation.z,
-      msg->pose.pose.orientation.w));
+    current.yaw = normalizeYaw(
+      yawFromQuaternion(
+        msg->pose.pose.orientation.x,
+        msg->pose.pose.orientation.y,
+        msg->pose.pose.orientation.z,
+        msg->pose.pose.orientation.w));
     current.cov_x = msg->pose.covariance[0];
     current.cov_y = msg->pose.covariance[7];
     current.cov_yaw = msg->pose.covariance[35];
@@ -301,11 +303,12 @@ private:
     requested.x = msg->pose.pose.position.x;
     requested.y = msg->pose.pose.position.y;
     requested.z = msg->pose.pose.position.z;
-    requested.yaw = normalizeYaw(yawFromQuaternion(
-      msg->pose.pose.orientation.x,
-      msg->pose.pose.orientation.y,
-      msg->pose.pose.orientation.z,
-      msg->pose.pose.orientation.w));
+    requested.yaw = normalizeYaw(
+      yawFromQuaternion(
+        msg->pose.pose.orientation.x,
+        msg->pose.pose.orientation.y,
+        msg->pose.pose.orientation.z,
+        msg->pose.pose.orientation.w));
     requested.cov_x = msg->pose.covariance[0];
     requested.cov_y = msg->pose.covariance[7];
 
@@ -376,8 +379,8 @@ private:
   bool gnssYawOk(const PoseSample & gnss) const
   {
     return std::isfinite(gnss.cov_yaw) &&
-      gnss.cov_yaw > 0.0 &&
-      gnss.cov_yaw <= max_gnss_yaw_covariance_;
+           gnss.cov_yaw > 0.0 &&
+           gnss.cov_yaw <= max_gnss_yaw_covariance_;
   }
 
   double resetYaw(const PoseSample & localization, const PoseSample & gnss) const
@@ -412,7 +415,9 @@ private:
       gap_m);
   }
 
-  void publishEkfSetPose(const PoseSample & localization, const PoseSample & gnss, const rclcpp::Time & stamp)
+  void publishEkfSetPose(
+    const PoseSample & localization, const PoseSample & gnss,
+    const rclcpp::Time & stamp)
   {
     geometry_msgs::msg::PoseWithCovarianceStamped msg;
     msg.header.stamp = stamp;
@@ -433,7 +438,9 @@ private:
     ekf_set_pose_pub_->publish(msg);
   }
 
-  void publishAvgInitialPose(const PoseSample & localization, const PoseSample & gnss, const rclcpp::Time & stamp)
+  void publishAvgInitialPose(
+    const PoseSample & localization, const PoseSample & gnss,
+    const rclcpp::Time & stamp)
   {
     avg_msgs::msg::AvgPoseWithCovarianceStamped msg;
     msg.header.stamp = stamp;
@@ -512,7 +519,8 @@ private:
     }
     last_reattach_attempt_ = stamp;
     reattach_attempt_count_++;
-    const std::string mode_label = have_mode_ ? std::to_string(latest_mode_value_) : std::string("n/a");
+    const std::string mode_label = have_mode_ ? std::to_string(latest_mode_value_) : std::string(
+      "n/a");
 
     RCLCPP_WARN(
       get_logger(),
@@ -613,12 +621,14 @@ private:
   std::optional<PoseSample> prev_localization_pose_;
   std::optional<PoseSample> gnss_pose_;
 
-  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr localization_pose_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr
+    localization_pose_sub_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr gnss_pose_sub_;
   rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr wheel_sub_;
   rclcpp::Subscription<avg_msgs::msg::AvgLocalizationMode>::SharedPtr mode_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr initialpose_fallback_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
+    initialpose_fallback_sub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr ekf_set_pose_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr avg_pose_reset_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
