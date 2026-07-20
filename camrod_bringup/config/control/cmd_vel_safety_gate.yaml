@@ -1,0 +1,151 @@
+# HH_260721 - Keep this package config synchronized with the bringup control mirror.
+# HH_260720 - Keep safety-gate policy in one auditable parameter file instead
+# of duplicating every field-tuned value as a launch argument.
+/**:
+  ros__parameters:
+    # Command topology
+    input_topic: "/control/cmd_vel_raw"
+    navigation_input_topic: "/control/nav2_cmd_vel_ros"
+    output_topic: "/control/cmd_vel"
+    ros_output_topic: "/control/cmd_vel_ros"
+    engage_topic: "/planning/engage"
+    mission_engage_topic: "/planning/mission_engage"
+    mission_request_topic: "/planning/mission_key"
+    state_topic: "/control/command_enabled"
+    status_topic: "/control/cmd_vel_safety_gate/status"
+    platform_drive_enable_topic: "/platform/drive_enable"
+
+    # Platform and charging interlocks
+    require_platform_drive_enable: true
+    platform_safety_source_mode: "platform_status"
+    platform_status_topic: "/platform/status"
+    platform_status_timeout_s: 0.5
+    block_on_platform_status_stale: true
+    block_on_charging: true
+    allow_mission_departure_while_charging: true
+    charging_departure_grace_s: 15.0
+    charger_departure_mission_prefixes: "camping_site_"
+    mission_request_dedup_s: 1.0
+    block_on_platform_error_code: true
+    require_can_control_mode: true
+    critical_battery_stop_enabled: true
+    critical_battery_percentage: 0.10
+    additional_estop_topics: "/planning/state_machine/estop"
+    dr_timeout_source_mode: "localization_monitor"
+    allow_on_start: false
+    publish_zero_when_blocked: true
+
+    # Localization recovery hold
+    enable_gnss_recovery_hold: true
+    localization_mode_topic: "/localization/mode"
+    gnss_recovery_hold_s: 2.0
+    gnss_recovery_min_source_s: 1.5
+    gnss_recovery_hold_cooldown_s: 10.0
+    gnss_recovery_source_mode_min: 2
+    gnss_recovery_target_mode: 0
+
+    # Dynamic cost-grid stop
+    enable_cost_stop: true
+    cost_grid_topic: "/planning/cost_grid/inflation"
+    pose_topic: "/localization/pose"
+    odometry_topic: "/localization/fallback/odometry"
+    pose_source_preference: "pose_topic"
+    enable_pose_raw_fallback: false
+    cost_stop_threshold: 85
+    cost_stop_lookahead_m: 2.0
+    cost_stop_width_m: 1.27
+    cost_stop_hold_s: 1.0
+    cost_stop_latch_enable: true
+    cost_stop_clear_required_s: 2.0
+    cost_stop_latch_log_interval_s: 1.0
+    cost_grid_stale_stop_enable: true
+    cost_grid_stale_timeout_s: 1.0
+    cost_grid_stale_log_interval_s: 1.0
+    cost_stop_require_dynamic_source: true
+    cost_stop_dynamic_source_labels: "lidar,radar"
+    front_dynamic_stop_use_local_path: true
+    front_dynamic_path_width_m: 1.27
+    front_dynamic_path_max_start_distance_m: 1.5
+
+    # Static lanelet guard
+    lanelet_safety_enable: true
+    lanelet_safety_grid_topic: "/map/cost_grid/lanelet"
+    lanelet_safety_threshold: 85
+    lanelet_safety_current_threshold: 85
+    lanelet_safety_lookahead_m: 1.0
+    lanelet_safety_width_m: 0.8
+    lanelet_safety_stop_on_unknown: true
+    lanelet_safety_allow_rotation_in_place: true
+    lanelet_safety_check_reverse: false
+    lanelet_safety_check_lateral: false
+    lanelet_safety_min_translation_mps: 0.02
+    lanelet_safety_front_use_local_path: true
+    lanelet_safety_front_path_max_start_distance_m: 1.5
+    lanelet_safety_front_path_width_m: 0.25
+    lanelet_safety_front_path_allow_route_reentry: true
+    lanelet_safety_current_allow_route_reentry: true
+    lanelet_safety_current_route_reentry_max_distance_m: 4.0
+    lanelet_safety_current_route_reentry_require_front_cmd: true
+
+    # Bounded maneuver exceptions keep live LiDAR and radar stops enabled.
+    drop_zone_maneuver_controller_status_topic: "/control/drop_zone_maneuver_controller/status"
+    drop_zone_maneuver_controller_static_bypass_phases: "EXIT_STRAIGHT,ALIGN_EXIT_YAW"
+    camping_site_maneuver_controller_status_topic: "/control/camping_site_maneuver_controller/status"
+    camping_site_maneuver_controller_static_bypass_phases: "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT"
+
+    # Speed-dependent front corridor
+    enable_speed_dependent_lookahead: true
+    front_lookahead_min_m: 2.60
+    front_lookahead_max_m: 3.5
+    front_lookahead_friction: 0.4
+    front_reaction_time_s: 0.20
+    front_lookahead_margin_m: 0.45
+
+    # Side, rear, crab, reverse, and rotation protection
+    enable_side_rear_cost_stop: true
+    enable_body_near_dynamic_stop: true
+    body_near_side_lookahead_m: 1.20
+    body_near_rear_lookahead_m: 0.80
+    body_near_maneuver_side_lookahead_m: 1.20
+    body_near_maneuver_rear_lookahead_m: 0.80
+    side_cost_threshold: 85
+    side_lookahead_m: 1.2
+    side_corridor_width_m: 1.69160
+    rear_cost_threshold: 85
+    rear_lookahead_m: 1.2
+    rear_corridor_width_m: 1.27
+    lateral_cmd_bypass_static_cost_stop: true
+    lateral_cmd_bypass_min_mps: 0.02
+    reverse_cmd_bypass_static_cost_stop: true
+    reverse_cmd_bypass_min_mps: 0.02
+    lateral_cmd_dynamic_obstacle_threshold: 85
+    rotation_cmd_dynamic_obstacle_stop: true
+    rotation_cmd_dynamic_obstacle_radius_m: 1.5
+    rotation_cmd_dynamic_obstacle_threshold: 85
+    enable_unavoidable_stop: true
+    unavoidable_lethal_threshold: 90
+    unavoidable_cluster_min_cells: 25
+    unavoidable_cluster_min_ratio: 0.25
+
+    # Optional yaw zone and normal route-heading guard
+    enable_yaw_alignment_zone: false
+    yaw_alignment_frame_id: "map"
+    yaw_alignment_zones_file: ""
+    yaw_alignment_exit_margin_m: 0.3
+    enable_route_heading_alignment: true
+    route_heading_path_topic: "/planning/local_path"
+    route_heading_frame_id: "map"
+    route_heading_min_cmd_x_mps: 0.03
+    route_heading_lateral_cmd_epsilon_mps: 0.02
+    route_heading_lookahead_m: 2.0
+    route_heading_error_enter_deg: 75.0
+    route_heading_error_exit_deg: 35.0
+    route_heading_angular_kp: 0.8
+    route_heading_max_angular_z: 0.35
+    route_heading_max_linear_x: 0.0
+    route_heading_min_path_points: 2
+
+    # Output shaping and stale-input behavior
+    speed_scale: 1.0
+    input_timeout_s: 0.35
+    zero_publish_rate_hz: 10.0
