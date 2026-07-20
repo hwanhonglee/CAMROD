@@ -20,7 +20,7 @@ planner_server:
     # HH_260528: Reduce costmap wait to improve plan response latency.
     # Large timeout (12s) caused slow recoveries after global-costmap clear.
     costmap_wait_timeout_sec: 2.5
-    # Runtime-selectable planner IDs (published to /planning/planner_selector).
+    # HH_260720 - Runtime-selectable planner IDs use /planning/planner_selector_ros.
     # HH_260626: Load LaneletRoute by default so normal plans follow connected
     # lanelet successors before any grid fallback planner is tried.
     planner_plugins: ["LaneletRoute", "Smac2D", "NavFn", "ThetaStar", "SmacHybrid", "SmacLattice"]
@@ -124,10 +124,8 @@ planner_server:
       # HH_260528: Cap Smac planning budget for faster failover to NavFn.
       max_planning_time: 1.2
       lookup_table_size: 20.0
-      # YH_260706: nav2_smac_planner 는 이 repo 에 vendored 소스빌드(camrod_planning/external)라
-      #   /opt 경로엔 lattice 파일이 없다. 워크스페이스 install share 경로로 변경(vendored .so 와 정확히 일치).
-      #   /opt 백업: /opt/ros/humble/share/nav2_smac_planner/sample_primitives/5cm_resolution/1m_turning_radius/ackermann/output.json
-      lattice_filepath: "/home/nvidia/camrod_ws/install/nav2_smac_planner/share/nav2_smac_planner/sample_primitives/5cm_resolution/1m_turning_radius/ackermann/output.json"
+      # HH_260720 - nav2_lanelet.launch.py replaces this marker with the installed package-share path.
+      lattice_filepath: "__resolved_by_nav2_lanelet_launch__"
       # HH_260619 - Make centerline cost dominate over shorter corner-cutting
       # routes. The lanelet cost grid now encodes center=low, off-center=high,
       # boundary=near-lethal, so Lattice must weight cost enough to respect it.
@@ -156,7 +154,8 @@ controller_server:
     # Increase tolerance to avoid frequent FollowPath abort/recovery
     # loops during transient sensor/costmap jitter.
     failure_tolerance: 20.0
-    odom_topic: /localization/odometry/filtered
+    # HH_260720 - Nav2 consumes the explicit nav_msgs boundary mirror.
+    odom_topic: /localization/odometry_ros
     # Keep deadband thresholds permissive so low-speed commands are
     # not quantized to zero during startup alignment.
     min_x_velocity_threshold: 0.0001
@@ -168,17 +167,17 @@ controller_server:
     # Nav2 controller server reads *_checker_* keys; validator keys are ignored.
     progress_checker_plugin: "progress_checker"
     goal_checker_plugins: ["goal_checker"]
-    # Runtime-selectable controller IDs (published to /planning/controller_selector):
+    # HH_260720 - Controller IDs use /planning/controller_selector_ros:
     # RPP | DWB | MPPI | Graceful | RotationShim
     controller_plugins: ["RPP", "DWB", "MPPI", "Graceful", "RotationShim"]
     # HH_260625: RPP is the real-platform default; MPPI remains selectable.
     default_controller: RPP
 
     progress_checker:
-      # HH_260618: Pause progress timeout while /planning/engaged is false so
+      # HH_260720 - Pause progress timeout while control command output is disabled.
       # an operator can inspect/revise goals before explicitly engaging motion.
       plugin: "camrod_planning::EngageAwareProgressChecker"
-      engaged_topic: /planning/engaged
+      engaged_topic: /control/command_enabled
       default_engaged: false
       # Relax progress checks to avoid false abort during TF/costmap
       # warm-up right after new goal acceptance.
@@ -192,16 +191,16 @@ controller_server:
       # HH_260623 - Use robot_base_link center as the arrival reference. A
       # wide 0.8 m tolerance made Nav2 succeed when only the front footprint
       # reached the marker, before the robot center reached the goal pose.
-      # YH_260707: 0.15 → 0.3. 도킹 Phase1 staging 은 "dock 앞에 대략 정렬"만 하면 되고
-      #   정밀 정렬은 Phase2(후방 카메라+마커)가 담당한다. lanelet 경로 종단이 staging 에서
-      #   ~0.2m 떨어진 지점에서 끝나 0.15m 로는 goal 미달성 → nav 미완료 → INITIAL_PERCEPTION
-      #   전환 실패했다. 0.3 으로 완화(여전히 center 기준, 과거 0.8 처럼 느슨하지 않음).
+      # HH_260720 - A 0.3 m tolerance is sufficient for the lanelet snap handoff;
+      # the control or parking owner performs the precise local maneuver afterward.
+      # Some lanelet routes end about 0.2 m from the semantic handoff pose, so 0.15 m
+      # could prevent Nav2 completion while 0.3 m remains much tighter than 0.8 m.
       xy_goal_tolerance: 0.3
       yaw_goal_tolerance: 3.14
       stateful: False
 
     # DWB controller profile. Runtime selection is done by
-    # /planning/controller_selector topic (std_msgs/String: "RPP" or "DWB").
+    # HH_260720 - /planning/controller_selector_ros is the Nav2 std_msgs boundary.
     DWB:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: False
@@ -419,7 +418,8 @@ bt_navigator:
     global_frame: map
     # Keep BT transform helpers aligned with lanelet-snapped base frame.
     robot_base_frame: robot_base_link
-    odom_topic: /localization/odometry/filtered
+    # HH_260720 - Nav2 consumes the explicit nav_msgs boundary mirror.
+    odom_topic: /localization/odometry_ros
     # HH_260619 - Plan from the lanelet-snapped pose so the published global/local
     # route starts on the nominal lane centerline. The real localization pose is
     # still used by control; this avoids drawing a misleading short connector

@@ -16,7 +16,8 @@
     # HH_260526: Motion source mode.
     # motion_source: cmd_vel | constant_speed
     motion_source: "cmd_vel"
-    cmd_vel_motion_topic: "/platform/cmd_vel"
+    # HH_260720 - Sim integrates the same final control topic consumed by Ranger.
+    cmd_vel_motion_topic: "/control/cmd_vel"
     cmd_vel_timeout_s: 0.5
     # HH_260618: Hold the last non-zero command briefly in sim because Nav2 may
     # interleave zero/non-zero Twist samples during controller updates. Without
@@ -108,28 +109,10 @@
     # HH_260618: Cost-grid health fallback does not need to follow pose/IMU rate.
     # HH_260618: Dummy diagnostic grid is not the real obstacle pipeline; lower to reduce load.
     dummy_lidar_cost_grid_publish_rate_hz: 3.0
-    # Align incoming /localization/pose yaw to nearest global-path tangent.
-    # Position is preserved; only yaw is replaced and published to output topic.
-    localization_pose_yaw_align_enable: true
-    localization_pose_input_topic: "/localization/pose"
-    localization_pose_output_topic: "/localization/pose_yaw_aligned"
-    localization_pose_yaw_path_topic: "/planning/global_path"
-    localization_pose_yaw_min_segment_length: 0.1
-    # Yaw stabilization for pose_yaw_aligned:
-    # - alpha=1.0 means no smoothing
-    # - max_rate limits abrupt orientation jumps when nearest segment changes
-    localization_pose_yaw_smoothing_alpha: 0.35
-    localization_pose_yaw_max_rate_deg_s: 120.0
-    # Optional debug mode to isolate yaw-only behavior:
-    # keeps aligned pose position fixed while still updating yaw.
-    localization_pose_lock_position: false
-    localization_pose_lock_on_first_msg: true
-    localization_pose_lock_x: 0.0
-    localization_pose_lock_y: 0.0
-    localization_pose_lock_z: 0.0
+    # HH_260720 - Sim EKF gets heading directly from the ROS IMU and wheel yaw rate.
     # 2026-02-02 11:05 Centerline resample step (m) when synthesizing from bounds.
     centerline_step: 1.0
-    # 2026-03-03: Hold vehicle still at startup so GNSS/ESKF can settle before motion begins.
+    # HH_260720 - Hold the vehicle still while the default GNSS/EKF pipeline settles.
     startup_hold_s: 5.0
     # GNSS failure simulation for DR fallback testing.
     # HH_260617: Keep failure injection disabled by default so sim:=true

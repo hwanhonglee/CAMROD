@@ -3,20 +3,21 @@
 # Publishes camping_site goal + engage, then validates that cmd_vel continues
 # through a simulated GNSS failure (DR_ONLY mode) and recovers correctly.
 #
+# HH_260720 - Validate the default EKF dead-reckoning and explicit control gate path.
 # Pipeline under test:
-#   fake_sensor(GNSS off) → ESKF DR(IMU+Wheel) → pose_selector(primary)
-#   → nav2 → cmd_vel_raw → planning_gate(engage=true) → cmd_vel
-#   → platform_gate → /platform/cmd_vel → fake_sensor(motion)
+#   fake_sensor(GNSS off) -> robot_localization EKF(IMU+Wheel) -> pose_selector(primary)
+#   -> nav2 -> /planning/cmd_vel_raw -> cmd_vel_safety_gate -> /control/cmd_vel
 
 import math
 import time
 
 import rclpy
-from avg_msgs.msg import AvgLocalizationMode
-from geometry_msgs.msg import PoseStamped, Quaternion, Twist
+# HH_260720 - Keep only the raw goal as ROS geometry; internal state/control use avg_msgs.
+from avg_msgs.msg import AvgBool, AvgLocalizationMode, AvgPoseStamped, AvgTwist
+from geometry_msgs.msg import PoseStamped as RosPoseStamped
+from geometry_msgs.msg import Quaternion as RosQuaternion
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
-from std_msgs.msg import Bool
 
 
 # Camping site 1 target pose (from camrod_bringup/config/planning/camping_sites.yaml).
@@ -29,8 +30,8 @@ START_X = 16.8676
 START_Y = -117.408
 
 
-def _yaw_to_quat(yaw_rad: float) -> Quaternion:
-    q = Quaternion()
+def _yaw_to_quat(yaw_rad: float) -> RosQuaternion:
+    q = RosQuaternion()
     q.z = math.sin(yaw_rad * 0.5)
     q.w = math.cos(yaw_rad * 0.5)
     return q
@@ -50,7 +51,7 @@ class GnssDrTestNode(Node):
     PHASE_ENGAGE = "ENGAGE"
     PHASE_DRIVING_GNSS = "DRIVING_GNSS"
     PHASE_DRIVING_DR = "DRIVING_DR"
-    # GNSS가 돌아온 직후 cmd_vel_gate가 2초 hold를 걸어 Nav2/costmap이 안정화될 시간을 줌.
+    # HH_260720 - The safety gate holds motion while EKF and Nav2 settle after GNSS recovery.
     # 이 구간에서 cmd_vel_raw(Nav2)는 나오지만 cmd_vel(gate 출력)은 0이어야 함.
     PHASE_RECOVERY_HOLD = "RECOVERY_HOLD"
     PHASE_DRIVING_RECOVERED = "DRIVING_RECOVERED"
@@ -66,7 +67,7 @@ class GnssDrTestNode(Node):
         self.goal_delay_s = float(self.declare_parameter("goal_delay_s", 13.0).value)
         # How long after goal to wait before publishing engage.
         self.engage_delay_s = float(self.declare_parameter("engage_delay_s", 3.0).value)
-        # GNSS recovery hold duration (must match planning_cmd_vel_gate gnss_recovery_hold_s).
+        # HH_260720 - Match the control safety gate GNSS recovery hold duration.
         # Gate node blocks cmd_vel for this many seconds after DR_ONLY → NORMAL transition
         # so that Nav2 path and costmap can settle on the recovered pose.
         self.gnss_recovery_hold_s = float(
@@ -87,9 +88,7 @@ class GnssDrTestNode(Node):
         self._current_mode_value = -1
         self._current_mode_label = "UNKNOWN"
         self._mode_history: list[tuple[float, str]] = []
-        # Guard DR detection — only count DR_ONLY as "GNSS failure" after
-        # the system has first reached NORMAL mode (avoids false-positive at cold start
-        # when ESKF is still initializing and has not yet accepted its first GNSS update).
+        # HH_260720 - Count DR_ONLY as GNSS failure only after EKF first reaches NORMAL.
         self._saw_normal_mode = False
 
         # Position tracking.
@@ -125,22 +124,19 @@ class GnssDrTestNode(Node):
             reliability=QoSReliabilityPolicy.RELIABLE,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
         )
-        self.pub_goal = self.create_publisher(PoseStamped, "/goal_pose", 10)
-        self.pub_engage = self.create_publisher(Bool, "/planning/engage", latched_qos)
+        self.pub_goal = self.create_publisher(RosPoseStamped, "/goal_pose", 10)
+        self.pub_engage = self.create_publisher(AvgBool, "/planning/engage", latched_qos)
 
         # Subscribers.
         self.create_subscription(
             AvgLocalizationMode, "/localization/mode", self._on_mode, 10
         )
         self.create_subscription(
-            PoseStamped, "/localization/pose", self._on_pose, 10
+            AvgPoseStamped, "/localization/pose", self._on_pose, 10
         )
-        self.create_subscription(
-            Twist, "/planning/cmd_vel_raw", self._on_cmd_raw, 10
-        )
-        self.create_subscription(
-            Twist, "/planning/cmd_vel", self._on_cmd_vel, 10
-        )
+        # HH_260720 - Observe the control package before and after its safety gate.
+        self.create_subscription(AvgTwist, "/control/cmd_vel_raw", self._on_cmd_raw, 10)
+        self.create_subscription(AvgTwist, "/control/cmd_vel", self._on_cmd_vel, 10)
 
         self.timer = self.create_timer(0.2, self._on_tick)
         self.get_logger().info(
@@ -186,7 +182,7 @@ class GnssDrTestNode(Node):
                 f"(cmd_vel expected=0 until t={self._t_recovery_hold_end:.1f}s)"
             )
 
-    def _on_pose(self, msg: PoseStamped) -> None:
+    def _on_pose(self, msg: AvgPoseStamped) -> None:
         self._localization_ready = True
         x = msg.pose.position.x
         y = msg.pose.position.y
@@ -196,11 +192,11 @@ class GnssDrTestNode(Node):
             t = self._elapsed()
             self._positions_during_dr.append((t, x, y))
 
-    def _on_cmd_raw(self, msg: Twist) -> None:
+    def _on_cmd_raw(self, msg: AvgTwist) -> None:
         self._cmd_raw_count += 1
         self._cmd_raw_last_t = self._elapsed()
 
-    def _on_cmd_vel(self, msg: Twist) -> None:
+    def _on_cmd_vel(self, msg: AvgTwist) -> None:
         self._cmd_vel_count += 1
         t = self._elapsed()
         self._cmd_vel_last_t = t
@@ -225,7 +221,7 @@ class GnssDrTestNode(Node):
                 self._cmd_vel_nonzero_after_hold += 1
 
     def _send_goal(self) -> None:
-        msg = PoseStamped()
+        msg = RosPoseStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = "map"
         msg.pose.position.x = self.goal_x
@@ -241,7 +237,7 @@ class GnssDrTestNode(Node):
         self._phase = self.PHASE_WAIT_PATH
 
     def _send_engage(self, enabled: bool) -> None:
-        msg = Bool()
+        msg = AvgBool()
         msg.data = enabled
         self.pub_engage.publish(msg)
         self._t_engage_sent = self._elapsed()

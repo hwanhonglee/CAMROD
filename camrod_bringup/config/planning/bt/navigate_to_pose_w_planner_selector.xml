@@ -3,7 +3,7 @@
   - Optional planners: Smac2D, NavFn, SmacHybrid, SmacLattice
   - Default controller: RPP
   - Optional controllers: MPPI, DWB, Graceful, RotationShim
-  - Switch planner by publishing std_msgs/String to /planning/planner_selector
+  - HH_260720 - Switch planner through the explicit std_msgs boundary.
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
@@ -12,8 +12,8 @@
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
         <!-- HH_260626 - Default to connected lanelet routing; grid planners
              remain fallback/selectable for recovery and debugging. -->
-        <PlannerSelector selected_planner="{selected_planner}" default_planner="LaneletRoute" topic_name="/planning/planner_selector"/>
-        <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector"/>
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="LaneletRoute" topic_name="/planning/planner_selector_ros"/>
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector_ros"/>
         <!-- HH_260619 - Lock the global route after each accepted goal.
              GoalUpdatedController computes a new global path only on the first
              tick, goal preemption, or recovery restart. The local path extractor

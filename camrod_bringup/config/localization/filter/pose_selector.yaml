@@ -11,8 +11,13 @@
     mode_topic: "/localization/mode"
 
     selected_pose_topic: "/localization/pose"
+    # HH_260720 - Standard ROS mirrors are reserved for Nav2, RViz, and TF tooling.
+    selected_pose_ros_topic: "/localization/pose_ros"
     selected_pose_cov_topic: "/localization/pose_with_covariance"
-    selected_odom_topic: "/localization/odometry/filtered"
+    selected_pose_cov_ros_topic: "/localization/pose_with_covariance_ros"
+    selected_odom_topic: "/localization/odometry"
+    # HH_260720 - Nav2 consumes the explicit standard-ROS mirror, not an avg_msgs alias.
+    selected_odom_ros_topic: "/localization/odometry_ros"
     selected_source_topic: "/localization/pose_source"
 
     primary_source_label: "primary_filter"
@@ -20,13 +25,12 @@
 
     base_frame_id: "robot_base_link"
 
-    # HH_260506: Keep odom->base TF single-sourced from EKF/ESKF.
+    # HH_260720 - Keep odom->base TF single-sourced from the active filter.
     # Avoid dual-parent / conflicting TF publications from pose_selector.
     publish_selected_tf: false
 
     # LocalizationMode: NORMAL=0, DEGRADED=1, DR_ONLY=2, INVALID=3
-    # HH_260422: Changed 2→3 to keep ESKF DR_ONLY pose as primary source when GNSS fails,
-    # avoiding unnecessary switching to an external fallback source.
+    # HH_260720 - Keep the active filter's DR_ONLY pose primary until mode is INVALID.
     fallback_on_mode_at_or_above: 3
 
     primary_timeout_s: 0.5

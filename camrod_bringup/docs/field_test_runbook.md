@@ -128,7 +128,8 @@ Run these in order and take a `snapshot` after any failure.
    - Send a reachable goal in RViz or UI.
    - Confirm `/planning/global_path` is lanelet-centered.
    - Confirm `/planning/local_path` updates near the robot.
-   - Confirm `/planning/cmd_vel_raw`, `/planning/cmd_vel`, and `/platform/cmd_vel`
+   <!-- HH_260720 - Check the single control gate and Ranger boundary outputs. -->
+   - Confirm `/control/cmd_vel_raw`, `/control/cmd_vel`, and `/control/cmd_vel_ros`
      are consistent with gate state.
 
 2. Front obstacle stop
@@ -136,7 +137,7 @@ Run these in order and take a `snapshot` after any failure.
    - Confirm cost appears in `/sensing/cost_grid/lidar` and/or
      `/sensing/cost_grid/radar`.
    - Confirm `/planning/cost_grid/inflation` updates.
-   - Confirm `planning_cmd_vel_gate` reports the stop source.
+   - Confirm `cmd_vel_safety_gate` reports the stop source.
 
 3. Side and rear radar stop
    - Test left, right, and rear separately.

@@ -8,7 +8,7 @@
 # - Keep executable-name patterns only for C++ binaries/drivers.
 # Startup order reference:
 # platform -> map -> fake_sensors(sim) -> sensing -> perception
-# -> localization -> planning -> system -> bringup -> rviz
+# -> localization -> planning -> control -> parking -> system -> bringup -> rviz
 
 patterns:
   # [orchestrator]
@@ -18,6 +18,7 @@ patterns:
   # [platform]
   - robot_state_publisher
   - robot_visualization_node
+  - __node:=ranger_platform_bridge
   - __node:=sensor_kit_status
   - __node:=platform_status
 
@@ -57,22 +58,15 @@ patterns:
   - __node:=perception_status
 
   # [localization]
-  - navsat_to_pose_node
-  - pose_cov_bridge_node
+  # HH_260720 - Match only current localization executables and explicit node names.
+  - localization_input_adapter_node
   - ekf_node
-  - localization_eskf_node
-  - __node:=eskf_filter
-  # HH_260527: New ESKF runtime naming.
   - eskf
   - __node:=eskf
-  - navsat_transform_node
-  - wheel_odometry_bridge_node
-  - odometry_to_pose_node
-  - localization_supervisor_node
-  - __node:=supervisor
-  - drop_zone_matcher_node
-  - localization_state_watcher_node
-  - __node:=state_watcher
+  - localization_pose_selector_node
+  - localization_gnss_reattach_node
+  - localization_monitor_node
+  - localization_map_helper_node
   - __node:=localization_status
 
   # [planning]
@@ -92,10 +86,17 @@ patterns:
   - __node:=lifecycle_manager_planning
   - __node:=planning_status
 
+  # [control]
+  # HH_260720 - Clear stale control gates and bounded maneuver controllers.
+  - __node:=cmd_vel_safety_gate
+  - __node:=camping_site_maneuver_controller
+  - __node:=drop_zone_maneuver_controller
+
   # [parking]
-  # HH_260617: Rule-based campsite crab maneuver and drop-zone reverse parking.
-  - __node:=site_maneuver
-  - __node:=drop_zone_parking
+  # HH_260720 - Exactly one selectable reverse-parking implementation runs.
+  - __node:=reverse_parking_controller
+  - __node:=apriltag_parking_controller
+  - __node:=apriltag_parking_detector
 
   # [system]
   - __node:=map_validator
@@ -112,16 +113,6 @@ patterns:
 
   # [bringup]
   - __node:=bringup_status
-
-  # [docking]
-  - __node:=odom_yaw_corrector
-  - apriltag_container
-  - __node:=rectify_node
-  - __node:=apriltag
-  - __node:=docking_apriltag_bridge
-  - __node:=docking_server
-  - __node:=lifecycle_manager_docking
-  - __node:=manual_dock_server
 
   # [voice]
   - __node:=voice_announcer

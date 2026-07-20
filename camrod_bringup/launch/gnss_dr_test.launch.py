@@ -42,7 +42,8 @@ def generate_launch_description():
             "enable_imu": "false",
             "enable_radar": "false",
             "enable_ntrip": "false",
-            "planning_cmd_vel_gate_allow_on_start": "false",
+            # HH_260720 - Configure the control safety gate directly.
+            "control_cmd_vel_gate_allow_on_start": "false",
         }.items(),
     )
 
@@ -50,7 +51,7 @@ def generate_launch_description():
     # goal_delay_s=13: send goal 13 s after test node start (~14 s from bringup).
     # engage_delay_s=3: send engage 3 s after goal.
     # test_duration_s=85: covers failure at ~25 s and recovery at ~55 s.
-    # gnss_recovery_hold_s must match planning_cmd_vel_gate's gnss_recovery_hold_s.
+    # HH_260720 - gnss_recovery_hold_s must match the control safety gate.
     test_node = TimerAction(
         period=1.0,
         actions=[

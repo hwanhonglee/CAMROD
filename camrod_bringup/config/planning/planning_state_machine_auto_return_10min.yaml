@@ -4,9 +4,10 @@
     # Use isolated diagnostics topic for long synthetic scenario validation.
     # This prevents simulated checker ERROR levels from forcing ERROR_STOP.
     state_status_topic: "/system/diagnostics_agg_test"
-    pose_topic: "/planning/lanelet_pose_ros"
+    # HH_260720 - Consume the generated CAMROD lanelet pose and snapped goal.
+    pose_topic: "/planning/lanelet_pose"
     # State machine tracks snapped goal topic and mirrors to ROS goal output.
-    goal_topic: "/planning/goal_pose_snapped_ros"
+    goal_topic: "/planning/goal_pose_snapped"
     goal_topic_ros: "/planning/goal_pose_snapped_ros"
     # HH_260623 - Auto return/drop-zone goals are raw station poses and must be
     # snapped before Nav2; campsite UI goals still use /goal_pose.
@@ -18,11 +19,11 @@
     # 0=WAIT_DROP_ZONE, 1=DELIVERY_TO_SITE, 2=RETURN_TO_DROP_ZONE, 3=RECALL_TO_SITE
     scenario_id_topic: "/planning/state_machine/scenario_id"
     scenario_command_topic: "/planning/state_machine/scenario_command"
-    # HH_260622 - Sim/validation profiles mirror parking phases into planning state.
-    enable_parking_phase_state_override: true
-    parking_phase_state_topic: "/AMR_service_state"
-    # HH_260622 - Parking phase transition events persist until an explicit mission/route change clears them.
-    parking_phase_override_timeout_s: 0.0
+    # HH_260720 - Validation profiles mirror maneuver phases into planning state.
+    enable_maneuver_phase_state_override: true
+    maneuver_phase_state_topic: "/AMR_service_state"
+    # HH_260720 - Maneuver phase transitions persist until an explicit mission or route change.
+    maneuver_phase_override_timeout_s: 0.0
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     camping_site_recall_topic: "/planning/state_machine/camping_site_recall"
     mission_source_topic: "/planning/state_machine/mission_source"
@@ -32,6 +33,8 @@
     drop_zone_id: "drop_zone"
     # HH_260624 - RViz/debug copy of the raw station-center return target.
     drop_zone_goal_raw_topic: "/planning/drop_zone_goal_raw"
+    # HH_260720 - Standard ROS mirror for RViz only.
+    drop_zone_goal_raw_ros_topic: "/planning/drop_zone_goal_raw_ros"
     # HH_260624 - Preserve manual /goal_pose drop-zone semantics before goal_snapper snaps to lanelet.
     raw_goal_topic: "/goal_pose"
     enable_raw_drop_zone_goal_match: true
@@ -69,8 +72,6 @@
     # snapped route goal, even if stale geometry matches another keypoint.
     pending_mission_key_preserve_s: 5.0
     pending_mission_key_overrides_goal_match: true
-    require_docking_for_idle: false
-    docking_status_topic: "/docking/is_charging"
 
     min_goal_publish_interval_s: 1.0
     # HH_260623 - Long auto-return tests use the same center-based arrival
@@ -78,6 +79,6 @@
     goal_reached_distance_m: 0.2
     # HH_260623 - Return handoff stays slightly wider for drop-zone geometry.
     return_goal_reached_distance_m: 0.3
-    # HH_260623 - Hold return GOAL_REACHED for parking handoff reliability.
-    drop_zone_parking_handoff_hold_s: 1.0
+    # HH_260720 - Hold route arrival for control alignment handoff reliability.
+    reverse_parking_controller_handoff_hold_s: 1.0
     loop_rate_hz: 5.0

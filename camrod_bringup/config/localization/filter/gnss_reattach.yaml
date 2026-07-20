@@ -2,7 +2,7 @@
   ros__parameters:
     localization_pose_cov_topic: "/localization/pose_with_covariance"
     gnss_pose_cov_topic: "/sensing/gnss/pose_with_covariance"
-    wheel_odom_topic: "/platform/status/wheel_odometry"
+    wheel_odom_topic: "/localization/input/wheel_odometry"
     localization_mode_topic: "/localization/mode"
 
     # HH_260527: reset_target_mode options:
@@ -12,7 +12,8 @@
     reset_target_mode: "both"
     # HH_260528: Match robot_localization ekf_node set_pose subscriber.
     ekf_set_pose_topic: "/localization/set_pose"
-    avg_pose_reset_topic: "/localization/eskf/set_pose"
+    # HH_260720 - Keep generated reset requests independent of a filter implementation name.
+    avg_pose_reset_topic: "/localization/filter/set_pose"
 
     detach_distance_m: 3.0
     attach_distance_m: 1.5

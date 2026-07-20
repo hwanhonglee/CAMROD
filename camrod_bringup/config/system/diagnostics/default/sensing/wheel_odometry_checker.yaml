@@ -10,7 +10,8 @@ wheel_odometry_checker:
 
     main:
       # HH_260410: Unified wheel odometry topic consumed by localization filters.
-      topic: "/platform/status/wheel_odometry"
+      # HH_260721 - Monitor the canonical localization adapter output.
+      topic: "/localization/input/wheel_odometry"
       # HH_260630 - ranger_platform_bridge republishes wheel odometry at the
       # Ranger status cadence observed in full bringup.
       expected_hz: 50.0

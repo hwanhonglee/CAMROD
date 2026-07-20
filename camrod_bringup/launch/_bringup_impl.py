@@ -36,16 +36,6 @@ _MISSING = object()
 # HH_260617: Optional modules are skipped on x86 when their launch files remain
 # installed but their native/third-party executables are unavailable.
 OPTIONAL_MODULE_EXECUTABLES = {
-    'camrod_parking': (
-        ('camrod_parking', 'site_maneuver_node'),
-        ('camrod_parking', 'drop_zone_parking_node'),
-    ),
-    'camrod_docking': (
-        ('camrod_docking', 'odom_yaw_corrector'),
-        ('camrod_docking', 'docking_apriltag_bridge'),
-        ('opennav_docking', 'opennav_docking'),
-        ('camrod_docking', 'manual_dock_server_node'),
-    ),
     'camrod_voice': (
         ('camrod_voice', 'voice_announcer_node'),
         ('camrod_voice', 'voice_event_adapter_node'),
@@ -80,7 +70,10 @@ OVERRIDE_SPECS = {
         'centerline_snapper_param_file': ('planning/centerline_snapper_param_file',),
         'goal_replanner_param_file': ('planning/goal_replanner_param_file',),
         'obstacle_replan_monitor_param_file': ('planning/obstacle_replan_monitor_param_file',),
-        'cmd_vel_gate_yaw_alignment_zones_file': ('planning/cmd_vel_gate_yaw_alignment_zones_file',),
+    },
+    # HH_260720 - Resolve safety-gate file overrides under the owning module.
+    'control': {
+        'cmd_vel_gate_yaw_alignment_zones_file': ('control/cmd_vel_gate_yaw_alignment_zones_file',),
     },
     'sensing': {
         'camera_params_file':    ('sensing/camera_params_file',),
@@ -584,32 +577,34 @@ def generate_launch_description():
             planning_state_machine_cfg_entry,
             'planning/planning_state_machine.yaml',
         )
+    # HH_260720 - Use one canonical parking method key; removed backend/mode aliases.
     parking_method_default = str(
-        cfg_get(
-            launch_cfg,
-            'parking/method',
-            cfg_get(
-                launch_cfg,
-                'parking/backend',
-                cfg_get(launch_cfg, 'parking/mode', 'rule_based'),
-            ),
-        )
+        cfg_get(launch_cfg, 'parking/method', 'reverse')
     ).strip().lower()
-    if parking_method_default not in ('rule_based', 'parking', 'docking'):
-        parking_method_default = 'rule_based'
+    if parking_method_default not in ('reverse', 'apriltag'):
+        parking_method_default = 'reverse'
     parking_cfg_entry = cfg_get(launch_cfg, 'parking/param_file', '__module_default__')
     if str(parking_cfg_entry).strip() in ('', '__module_default__', 'module_default', 'default'):
-        # HH_260618: parking is a selectable final-parking method. Do not require
-        # the camrod_parking package when parking_method selects camrod_docking;
-        # this keeps public docking-only builds usable when rule-based parking is not shipped.
         parking_param_default = optional_pkg_path(
-            'camrod_parking', os.path.join('config', 'parking.yaml')
+            'camrod_control', os.path.join('config', 'parking.yaml')
         )
     else:
         parking_param_default = resolve_cfg_file(
             config_root_default,
             parking_cfg_entry,
-            'parking/parking.yaml',
+            'control/parking.yaml',
+        )
+    # HH_260720 - Resolve motion-maneuver parameters independently from parking parameters.
+    control_cfg_entry = cfg_get(launch_cfg, 'control/param_file', '__module_default__')
+    if str(control_cfg_entry).strip() in ('', '__module_default__', 'module_default', 'default'):
+        control_param_default = optional_pkg_path(
+            'camrod_control', os.path.join('config', 'control.yaml')
+        )
+    else:
+        control_param_default = resolve_cfg_file(
+            config_root_default,
+            control_cfg_entry,
+            'control/control.yaml',
         )
     map_info_launch_default = (
         map_info_path
@@ -644,8 +639,9 @@ def generate_launch_description():
             'Primary wheel timeout before fallback (seconds)',
         ),
         # Keep unified wheel output in /platform/status namespace.
-        ('wheel_output_topic', cfg_get(launch_cfg, 'localization/wheel_output_topic', '/platform/status/wheel_odometry'), 'Unified wheel odometry topic (avg_msgs/Odometry)'),
-        ('wheel_nav_output_topic', cfg_get(launch_cfg, 'localization/wheel_nav_output_topic', '/platform/wheel/nav_odometry'), 'Unified wheel odometry topic (nav_msgs/Odometry)'),
+        # HH_260720 - Generated wheel input plus an explicit robot_localization boundary.
+        ('wheel_output_topic', cfg_get(launch_cfg, 'localization/wheel_output_topic', '/localization/input/wheel_odometry'), 'Generated AvgOdometry wheel input'),
+        ('wheel_nav_output_topic', cfg_get(launch_cfg, 'localization/wheel_nav_output_topic', '/localization/input/wheel_odometry_ros'), 'Standard wheel odometry boundary'),
         ('eskf_force_rmp401_odom', cfg_get(launch_cfg, 'localization/eskf_force_rmp401_odom', False), 'Force ESKF wheel source to /rmp401/odom'),
         ('eskf_rmp401_odom_topic', cfg_get(launch_cfg, 'localization/eskf_rmp401_odom_topic', '/rmp401/odom'), 'Temporary ESKF wheel source topic'),
         ('localization_enable_adapter', cfg_get(launch_cfg, 'localization/enable_adapter', True), 'Enable localization adapter launch'),
@@ -700,601 +696,610 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'planning/local_path_pose_topic', '/localization/pose'),
             'Pose topic for local_path_extractor',
         ),
-        # Require explicit planning engage trigger before publishing /planning/cmd_vel.
+        # HH_260720 - Require explicit mission/operator engage before control output.
         (
-            'planning_cmd_vel_gate_enable',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_enable', True),
-            'Enable planning cmd_vel gate',
+            'control_cmd_vel_gate_enable',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_enable', True),
+            'Enable the control cmd_vel safety gate',
         ),
         (
-            'planning_cmd_vel_raw_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_raw_topic', '/planning/cmd_vel_raw'),
-            'Raw cmd_vel topic from Nav2 controller',
+            'control_cmd_vel_raw_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_raw_topic', '/control/cmd_vel_raw'),
+            'Raw motion-command candidate topic consumed by control',
         ),
         (
-            'planning_cmd_vel_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_topic', '/planning/cmd_vel'),
-            'Final gated cmd_vel topic',
+            'control_navigation_cmd_vel_ros_topic',
+            cfg_get(
+                launch_cfg,
+                'control/navigation_cmd_vel_ros_topic',
+                '/control/nav2_cmd_vel_ros',
+            ),
+            'Standard Nav2 command boundary consumed by control',
+        ),
+        (
+            'control_cmd_vel_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_topic', '/control/cmd_vel'),
+            'Final cmd_vel topic published by the control safety gate',
+        ),
+        (
+            'control_cmd_vel_ros_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_ros_topic', '/control/cmd_vel_ros'),
+            'Standard Ranger driver command boundary published by control',
         ),
         (
             'planning_engage_topic',
-            cfg_get(launch_cfg, 'planning/engage_topic', '/planning/engage'),
+            cfg_get(launch_cfg, 'control/engage_topic', '/planning/engage'),
             'Planning manual engage trigger topic',
         ),
         (
             'planning_mission_engage_topic',
-            cfg_get(launch_cfg, 'planning/mission_engage_topic', '/planning/mission_engage'),
+            cfg_get(launch_cfg, 'control/mission_engage_topic', '/planning/mission_engage'),
             'Planning UI mission engage trigger topic',
         ),
         (
-            'planning_engaged_state_topic',
-            cfg_get(launch_cfg, 'planning/engaged_state_topic', '/planning/engaged'),
-            'Planning engage state topic',
-        ),
-        # HH_260522: unified source selector for planning cmd_vel gate e-stop input.
-        (
-            'planning_cmd_vel_gate_estop_source_mode',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_estop_source_mode', 'platform_status'),
-            'Planning estop source mode: platform_status|topic|enabled|on|disabled|off|none',
-        ),
-        # Default planning gate e-stop source is platform status topic.
-        (
-            'planning_cmd_vel_gate_estop_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_estop_topic', '/platform/status/estop'),
-            'Planning estop topic',
+            'control_command_enabled_topic',
+            cfg_get(launch_cfg, 'control/command_enabled_topic', '/control/command_enabled'),
+            'Effective command-enabled state from the control safety gate',
         ),
         (
-            'planning_cmd_vel_gate_additional_estop_topics',
+            'platform_drive_enable_topic',
+            # HH_260720 - The operator arm is consumed by the final control gate.
+            cfg_get(launch_cfg, 'control/platform_drive_enable_topic', '/platform/drive_enable'),
+            'Operator platform-arm topic consumed by the control safety gate',
+        ),
+        # HH_260720 - Hardware e-stop is carried by AvgPlatformStatus; configure only soft sources.
+        (
+            'control_cmd_vel_gate_additional_estop_topics',
             cfg_get(
                 launch_cfg,
-                'planning/cmd_vel_gate_additional_estop_topics',
+                'control/cmd_vel_gate_additional_estop_topics',
                 '/planning/state_machine/estop',
             ),
-            'Additional planning estop topics, comma separated',
+            'Additional control gate estop topics, comma separated',
         ),
         (
-            'planning_cmd_vel_gate_dr_timeout_source_mode',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_dr_timeout_source_mode', 'localization_monitor'),
+            'control_cmd_vel_gate_dr_timeout_source_mode',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_dr_timeout_source_mode', 'localization_monitor'),
             'Planning DR-timeout source mode: localization_monitor|topic|enabled|on|disabled|off|none',
         ),
         (
-            'planning_cmd_vel_gate_allow_on_start',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_allow_on_start', False),
+            'control_cmd_vel_gate_allow_on_start',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_allow_on_start', False),
             'Allow planning cmd_vel on startup without engage',
         ),
         # HH_260707 - Hold only after sustained DR_ONLY recovery and debounce repeated GNSS flaps.
         (
-            'planning_cmd_vel_gate_enable_gnss_recovery_hold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_enable_gnss_recovery_hold', True),
-            'Enable GNSS recovery hold in planning cmd_vel gate',
+            'control_cmd_vel_gate_enable_gnss_recovery_hold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_enable_gnss_recovery_hold', True),
+            'Enable GNSS recovery hold in the control cmd_vel gate',
         ),
         (
-            'planning_cmd_vel_gate_localization_mode_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_localization_mode_topic', '/localization/mode'),
+            'control_cmd_vel_gate_localization_mode_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_localization_mode_topic', '/localization/mode'),
             'Localization mode topic for GNSS recovery hold',
         ),
         (
-            'planning_cmd_vel_gate_gnss_recovery_hold_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_hold_s', 2.0),
+            'control_cmd_vel_gate_gnss_recovery_hold_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_gnss_recovery_hold_s', 2.0),
             'Hold duration after localization recovery (s)',
         ),
         (
-            'planning_cmd_vel_gate_gnss_recovery_min_source_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_min_source_s', 1.5),
+            'control_cmd_vel_gate_gnss_recovery_min_source_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_gnss_recovery_min_source_s', 1.5),
             'Minimum DR/degraded duration before planning applies GNSS recovery hold',
         ),
         (
-            'planning_cmd_vel_gate_gnss_recovery_hold_cooldown_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_hold_cooldown_s', 10.0),
+            'control_cmd_vel_gate_gnss_recovery_hold_cooldown_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_gnss_recovery_hold_cooldown_s', 10.0),
             'Cooldown before planning can apply another GNSS recovery hold',
         ),
         (
-            'planning_cmd_vel_gate_gnss_recovery_source_mode_min',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_source_mode_min', 2),
+            'control_cmd_vel_gate_gnss_recovery_source_mode_min',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_gnss_recovery_source_mode_min', 2),
             'Minimum source localization mode value to trigger recovery hold',
         ),
         (
-            'planning_cmd_vel_gate_gnss_recovery_target_mode',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_gnss_recovery_target_mode', 0),
+            'control_cmd_vel_gate_gnss_recovery_target_mode',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_gnss_recovery_target_mode', 0),
             'Target localization mode value for recovery hold trigger',
         ),
-        # Cost-based stop parameters for planning cmd_vel gate.
+        # HH_260720 - Cost-based stop parameters belong to the control gate.
         (
-            'planning_cmd_vel_gate_cost_stop_enable',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_enable', True),
+            'control_cmd_vel_gate_cost_stop_enable',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_enable', True),
             'Enable cost-based stop in cmd_vel gate',
         ),
         (
-            'planning_cmd_vel_gate_cost_grid_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_grid_topic', '/planning/cost_grid/inflation'),
+            'control_cmd_vel_gate_cost_grid_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_grid_topic', '/planning/cost_grid/inflation'),
             'Cost grid topic for cost-stop',
         ),
         (
-            'planning_cmd_vel_gate_cost_pose_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_pose_topic', '/localization/pose'),
+            'control_cmd_vel_gate_cost_pose_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_pose_topic', '/localization/pose'),
             'Pose topic for cost-stop',
         ),
         (
-            'planning_cmd_vel_gate_cost_odometry_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_odometry_topic', '/localization/odometry/filtered'),
+            'control_cmd_vel_gate_cost_odometry_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_odometry_topic', '/localization/odometry'),
             'Odometry topic for cost-stop pose source',
         ),
         # HH_260618: Default to real localization pose for safety/cmd_vel gates.
         (
-            'planning_cmd_vel_gate_pose_source_preference',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_pose_source_preference', 'pose_topic'),
+            'control_cmd_vel_gate_pose_source_preference',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_pose_source_preference', 'pose_topic'),
             'Cost-stop pose source preference: odometry|tf_robot_base|pose_topic',
         ),
         (
-            'planning_cmd_vel_gate_enable_pose_raw_fallback',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_enable_pose_raw_fallback', False),
+            'control_cmd_vel_gate_enable_pose_raw_fallback',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_enable_pose_raw_fallback', False),
             'Allow raw pose fallback without TF frame transform',
         ),
         (
-            'planning_cmd_vel_gate_cost_threshold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_threshold', 85),
+            'control_cmd_vel_gate_cost_threshold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_threshold', 85),
             'Cost threshold for stop',
         ),
         (
-            'planning_cmd_vel_gate_cost_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_lookahead_m', 2.0),
+            'control_cmd_vel_gate_cost_lookahead_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_lookahead_m', 2.0),
             'Lookahead distance for cost-stop',
         ),
         (
-            'planning_cmd_vel_gate_cost_width_m',
+            'control_cmd_vel_gate_cost_width_m',
             # HH_260623 - Default is measured body width plus 0.10 m margin per side.
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_width_m', 1.27),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_width_m', 1.27),
             'Corridor width for front dynamic cost-stop',
         ),
         (
-            'planning_cmd_vel_gate_cost_hold_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_hold_s', 1.0),
+            'control_cmd_vel_gate_cost_hold_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_hold_s', 1.0),
             'Hold duration for cost-stop',
         ),
         # HH_260703 - Dynamic obstacle stops should not release on single-frame
         # sensor flicker; require a continuous clear window before re-enabling.
         (
-            'planning_cmd_vel_gate_cost_stop_latch_enable',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_latch_enable', True),
+            'control_cmd_vel_gate_cost_stop_latch_enable',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_latch_enable', True),
             'Latch dynamic cost-stop until the obstacle corridor is continuously clear',
         ),
         (
-            'planning_cmd_vel_gate_cost_stop_clear_required_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_clear_required_s', 2.0),
+            'control_cmd_vel_gate_cost_stop_clear_required_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_clear_required_s', 2.0),
             'Continuous clear duration required to release dynamic cost-stop latch',
         ),
         (
-            'planning_cmd_vel_gate_cost_stop_latch_log_interval_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_latch_log_interval_s', 1.0),
+            'control_cmd_vel_gate_cost_stop_latch_log_interval_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_latch_log_interval_s', 1.0),
             'Log interval while waiting for dynamic cost-stop latch release',
         ),
         # HH_260703 - Fail closed if the merged inflation cost grid is missing
         # or stale; this protects cmd_vel even when diagnostics are only WARN.
         (
-            'planning_cmd_vel_gate_cost_grid_stale_stop_enable',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_grid_stale_stop_enable', True),
+            'control_cmd_vel_gate_cost_grid_stale_stop_enable',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_grid_stale_stop_enable', True),
             'Block cmd_vel when the merged cost grid is missing or stale',
         ),
         (
-            'planning_cmd_vel_gate_cost_grid_stale_timeout_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_grid_stale_timeout_s', 1.0),
+            'control_cmd_vel_gate_cost_grid_stale_timeout_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_grid_stale_timeout_s', 1.0),
             'Maximum merged cost-grid age before cmd_vel fail-safe stop',
         ),
         (
-            'planning_cmd_vel_gate_cost_grid_stale_log_interval_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_grid_stale_log_interval_s', 1.0),
+            'control_cmd_vel_gate_cost_grid_stale_log_interval_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_grid_stale_log_interval_s', 1.0),
             'Log interval for merged cost-grid stale fail-safe blocks',
         ),
         # HH_260622: The merged inflation grid includes static route/lanelet
         # guidance. Only configured dynamic sources may trigger cost-stop.
         (
-            'planning_cmd_vel_gate_cost_stop_require_dynamic_source',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_require_dynamic_source', True),
+            'control_cmd_vel_gate_cost_stop_require_dynamic_source',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_require_dynamic_source', True),
             'Require dynamic source attribution before merged-grid cost-stop blocks cmd_vel',
         ),
         (
-            'planning_cmd_vel_gate_cost_stop_dynamic_source_labels',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_cost_stop_dynamic_source_labels', 'lidar,radar'),
+            'control_cmd_vel_gate_cost_stop_dynamic_source_labels',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_dynamic_source_labels', 'lidar,radar'),
             'Comma-separated source labels that can trigger dynamic cost-stop',
         ),
         (
-            'planning_cmd_vel_gate_front_dynamic_stop_use_local_path',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_dynamic_stop_use_local_path', True),
+            'control_cmd_vel_gate_front_dynamic_stop_use_local_path',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_front_dynamic_stop_use_local_path', True),
             'Use local path corridor for front dynamic obstacle release',
         ),
         (
-            'planning_cmd_vel_gate_front_dynamic_path_width_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_dynamic_path_width_m', 1.27),
+            'control_cmd_vel_gate_front_dynamic_path_width_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_front_dynamic_path_width_m', 1.27),
             'Front dynamic local-path corridor width (m)',
         ),
         (
-            'planning_cmd_vel_gate_front_dynamic_path_max_start_distance_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_dynamic_path_max_start_distance_m', 1.5),
+            'control_cmd_vel_gate_front_dynamic_path_max_start_distance_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_front_dynamic_path_max_start_distance_m', 1.5),
             'Max robot-to-local-path start distance for front dynamic release (m)',
         ),
         # HH_260618: Raw lanelet hard-stop parameters. This stays separate
         # from /planning/cost_grid/inflation because inflation clears the ego
         # footprint for planner startup and cannot be the final lanelet guard.
         (
-            'planning_cmd_vel_gate_lanelet_safety_enable',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_enable', True),
+            'control_cmd_vel_gate_lanelet_safety_enable',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_enable', True),
             'Enable raw lanelet-grid safety stop',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_grid_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_grid_topic', '/map/cost_grid/lanelet'),
+            'control_cmd_vel_gate_lanelet_safety_grid_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_grid_topic', '/map/cost_grid/lanelet'),
             'Raw lanelet cost grid topic for safety stop',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_threshold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_threshold', 85),
+            'control_cmd_vel_gate_lanelet_safety_threshold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_threshold', 85),
             'Raw lanelet corridor threshold for safety stop',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_current_threshold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_current_threshold', 85),
+            'control_cmd_vel_gate_lanelet_safety_current_threshold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_current_threshold', 85),
             'Raw lanelet current-cell threshold for safety stop',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_lookahead_m', 1.0),
+            'control_cmd_vel_gate_lanelet_safety_lookahead_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_lookahead_m', 1.0),
             'Raw lanelet safety lookahead distance (m)',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_width_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_width_m', 0.8),
+            'control_cmd_vel_gate_lanelet_safety_width_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_width_m', 0.8),
             'Raw lanelet safety corridor width (m)',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_stop_on_unknown',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_stop_on_unknown', True),
+            'control_cmd_vel_gate_lanelet_safety_stop_on_unknown',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_stop_on_unknown', True),
             'Treat unknown/out-of-grid lanelet safety cells as blocked',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_allow_rotation_in_place',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_allow_rotation_in_place', True),
+            'control_cmd_vel_gate_lanelet_safety_allow_rotation_in_place',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_allow_rotation_in_place', True),
             'Allow pure in-place rotation during lanelet safety stop',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_check_reverse',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_check_reverse', False),
+            'control_cmd_vel_gate_lanelet_safety_check_reverse',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_check_reverse', False),
             'Apply raw lanelet safety stop to reverse motion',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_check_lateral',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_check_lateral', False),
+            'control_cmd_vel_gate_lanelet_safety_check_lateral',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_check_lateral', False),
             'Apply raw lanelet safety stop to lateral crab motion',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_min_translation_mps',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_min_translation_mps', 0.02),
+            'control_cmd_vel_gate_lanelet_safety_min_translation_mps',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_min_translation_mps', 0.02),
             'Minimum cmd_vel translation treated as lanelet-safety motion',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_front_use_local_path',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_use_local_path', True),
+            'control_cmd_vel_gate_lanelet_safety_front_use_local_path',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_front_use_local_path', True),
             'Use active local-path corridor for forward lanelet-safety sampling',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', 1.5),
+            'control_cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m', 1.5),
             'Maximum pose-to-local-path distance for path-based lanelet safety',
         ),
         # HH_260622: Use a narrow center corridor for local-path lanelet safety;
         # full robot-width raw boundary checks falsely stop at merges.
         (
-            'planning_cmd_vel_gate_lanelet_safety_front_path_width_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_path_width_m', 0.25),
+            'control_cmd_vel_gate_lanelet_safety_front_path_width_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_front_path_width_m', 0.25),
             'Center corridor width for path-based lanelet safety',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry', True),
+            'control_cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry', True),
             'Allow FRONT_PATH static-cost bypass during bounded route re-entry',
         ),
         # HH_260622: Allow bounded route re-entry for manually placed/sim poses
         # that start slightly outside lanelet while a valid local path exists.
         (
-            'planning_cmd_vel_gate_lanelet_safety_current_allow_route_reentry',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_current_allow_route_reentry', True),
+            'control_cmd_vel_gate_lanelet_safety_current_allow_route_reentry',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_current_allow_route_reentry', True),
             'Allow current-cell lanelet bypass when close to active local path',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m', 4.0),
+            'control_cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m', 4.0),
             'Maximum distance to active local path for current-cell route re-entry',
         ),
         (
-            'planning_cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', True),
+            'control_cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd', True),
             'Require forward cmd_vel for current-cell route re-entry bypass',
         ),
-        # HH_260624 - Drop-zone exit is explicit parking motion; pass its
-        # status to planning so only static lanelet cost is bypassed there.
+        # HH_260720 - Drop-zone exit is explicit control motion; bypass only
+        # static lanelet cost during its bounded phases.
         (
-            'planning_cmd_vel_gate_parking_drop_zone_status_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_parking_drop_zone_status_topic', '/parking/drop_zone/status'),
-            'Parking drop-zone status topic for bounded static lanelet bypass',
+            'control_cmd_vel_gate_drop_zone_maneuver_controller_status_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_drop_zone_maneuver_controller_status_topic', '/control/drop_zone_maneuver_controller/status'),
+            'Drop-zone maneuver status topic for bounded static lanelet bypass',
         ),
         (
-            'planning_cmd_vel_gate_parking_drop_zone_static_bypass_phases',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_parking_drop_zone_static_bypass_phases', 'EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
-            'Parking drop-zone phases allowed to cross static lanelet cost',
+            'control_cmd_vel_gate_drop_zone_maneuver_controller_static_bypass_phases',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_drop_zone_maneuver_controller_static_bypass_phases', 'EXIT_STRAIGHT,ALIGN_EXIT_YAW'),
+            'Drop-zone maneuver phases allowed to cross static lanelet cost',
         ),
-        # HH_260701 - Site maneuver owns campsite entry/return body motion;
+        # HH_260720 - Site maneuver owns campsite entry/return body motion;
         # forward the phase list so only static lanelet cost is bypassed there.
         (
-            'planning_cmd_vel_gate_parking_site_status_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_parking_site_status_topic', '/parking/site_maneuver/status'),
-            'Parking site status topic for bounded static lanelet bypass',
+            'control_cmd_vel_gate_camping_site_maneuver_controller_status_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_camping_site_maneuver_controller_status_topic', '/control/camping_site_maneuver_controller/status'),
+            'Site maneuver status topic for bounded static lanelet bypass',
         ),
         (
-            'planning_cmd_vel_gate_parking_site_static_bypass_phases',
+            'control_cmd_vel_gate_camping_site_maneuver_controller_static_bypass_phases',
             cfg_get(
                 launch_cfg,
-                'planning/cmd_vel_gate_parking_site_static_bypass_phases',
+                'control/cmd_vel_gate_camping_site_maneuver_controller_static_bypass_phases',
                 'ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT',
             ),
-            'Parking site phases allowed to cross static lanelet cost',
+            'Site maneuver phases allowed to cross static lanelet cost',
         ),
         # Speed-dependent front lookahead.
         (
-            'planning_cmd_vel_gate_speed_dependent_lookahead',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_speed_dependent_lookahead', True),
+            'control_cmd_vel_gate_speed_dependent_lookahead',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_speed_dependent_lookahead', True),
             'Enable speed-dependent front lookahead',
         ),
         (
-            'planning_cmd_vel_gate_front_lookahead_min_m',
+            'control_cmd_vel_gate_front_lookahead_min_m',
             # HH_260702 - Stop earlier so Nav2 has room to publish an avoidance path.
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_min_m', 2.60),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_front_lookahead_min_m', 2.60),
             'Min front lookahead (m)',
         ),
         (
-            'planning_cmd_vel_gate_front_lookahead_max_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_max_m', 3.5),
+            'control_cmd_vel_gate_front_lookahead_max_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_front_lookahead_max_m', 3.5),
             'Max front lookahead (m)',
         ),
         (
-            'planning_cmd_vel_gate_front_lookahead_friction',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_friction', 0.4),
+            'control_cmd_vel_gate_front_lookahead_friction',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_front_lookahead_friction', 0.4),
             'Wet road friction for braking distance',
         ),
         (
-            'planning_cmd_vel_gate_front_reaction_time_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_reaction_time_s', 0.20),
+            'control_cmd_vel_gate_front_reaction_time_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_front_reaction_time_s', 0.20),
             'Latency budget for front lookahead (s)',
         ),
         (
-            'planning_cmd_vel_gate_front_lookahead_margin_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_front_lookahead_margin_m', 0.45),
+            'control_cmd_vel_gate_front_lookahead_margin_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_front_lookahead_margin_m', 0.45),
             'Static safety margin for front lookahead (m)',
         ),
         # HH_260622: Side/rear cost-stop samples the merged grid, but blocks
         # only when dynamic source attribution owns the high-cost cell.
         (
-            'planning_cmd_vel_gate_side_rear_cost_stop',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_rear_cost_stop', True),
+            'control_cmd_vel_gate_side_rear_cost_stop',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_side_rear_cost_stop', True),
             'Enable side/rear cost-stop',
         ),
         (
-            'planning_cmd_vel_gate_body_near_dynamic_stop',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_dynamic_stop', True),
+            'control_cmd_vel_gate_body_near_dynamic_stop',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_body_near_dynamic_stop', True),
             'Enable near-body dynamic side/rear stop during translation',
         ),
         (
-            'planning_cmd_vel_gate_body_near_side_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_side_lookahead_m', 1.20),
+            'control_cmd_vel_gate_body_near_side_lookahead_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_body_near_side_lookahead_m', 1.20),
             'Near-body side dynamic stop distance (m)',
         ),
         (
-            'planning_cmd_vel_gate_body_near_rear_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_rear_lookahead_m', 0.80),
+            'control_cmd_vel_gate_body_near_rear_lookahead_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_body_near_rear_lookahead_m', 0.80),
             'Near-body rear dynamic stop distance (m)',
         ),
         (
-            'planning_cmd_vel_gate_body_near_maneuver_side_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_maneuver_side_lookahead_m', 1.20),
+            'control_cmd_vel_gate_body_near_maneuver_side_lookahead_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_body_near_maneuver_side_lookahead_m', 1.20),
             'Adaptive maneuver side dynamic stop distance (m)',
         ),
         (
-            'planning_cmd_vel_gate_body_near_maneuver_rear_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_body_near_maneuver_rear_lookahead_m', 0.80),
+            'control_cmd_vel_gate_body_near_maneuver_rear_lookahead_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_body_near_maneuver_rear_lookahead_m', 0.80),
             'Adaptive maneuver rear dynamic stop distance (m)',
         ),
         (
-            'planning_cmd_vel_gate_side_cost_threshold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_cost_threshold', 85),
+            'control_cmd_vel_gate_side_cost_threshold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_side_cost_threshold', 85),
             'Cost threshold for side stop',
         ),
         (
-            'planning_cmd_vel_gate_side_lookahead_m',
+            'control_cmd_vel_gate_side_lookahead_m',
             # HH_260630: Sim and sensor cost grids place side hits near 1.0 m
             # from robot center; keep crab stop ahead of that cell center.
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_lookahead_m', 1.2),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_side_lookahead_m', 1.2),
             'Side lookahead distance (m)',
         ),
         (
-            'planning_cmd_vel_gate_side_corridor_width_m',
+            'control_cmd_vel_gate_side_corridor_width_m',
             # HH_260623 - Side corridor width covers full body length plus front/rear margins.
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_side_corridor_width_m', 1.69160),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_side_corridor_width_m', 1.69160),
             'Side corridor width (m)',
         ),
         (
-            'planning_cmd_vel_gate_rear_cost_threshold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_cost_threshold', 85),
+            'control_cmd_vel_gate_rear_cost_threshold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_rear_cost_threshold', 85),
             'Cost threshold for rear stop',
         ),
         (
-            'planning_cmd_vel_gate_rear_lookahead_m',
+            'control_cmd_vel_gate_rear_lookahead_m',
             # HH_260630: Rear obstacle cell centers can sit past 0.9 m after
             # grid quantization, so 0.8 m can leak reverse motion.
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_lookahead_m', 1.2),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_rear_lookahead_m', 1.2),
             'Rear lookahead distance (m)',
         ),
         (
-            'planning_cmd_vel_gate_rear_corridor_width_m',
+            'control_cmd_vel_gate_rear_corridor_width_m',
             # HH_260623 - Rear corridor width covers full body width plus left/right margins.
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rear_corridor_width_m', 1.27),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_rear_corridor_width_m', 1.27),
             'Rear corridor width (m)',
         ),
         # HH_260618: Site-crab lateral parking is mission-owned; let it cross
         # static lanelet/global-path front/side/rear cost while preserving live LiDAR/Radar stops.
         (
-            'planning_cmd_vel_gate_lateral_cmd_bypass_static_cost_stop',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lateral_cmd_bypass_static_cost_stop', True),
+            'control_cmd_vel_gate_lateral_cmd_bypass_static_cost_stop',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lateral_cmd_bypass_static_cost_stop', True),
             'Bypass static front/side/rear cost for explicit lateral site-crab cmd_vel',
         ),
         (
-            'planning_cmd_vel_gate_lateral_cmd_bypass_min_mps',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lateral_cmd_bypass_min_mps', 0.02),
+            'control_cmd_vel_gate_lateral_cmd_bypass_min_mps',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lateral_cmd_bypass_min_mps', 0.02),
             'Minimum lateral cmd_vel for site-crab static cost bypass',
         ),
         # HH_260618: Reverse campsite parking also leaves the lanelet corridor,
         # so it needs the same static-cost bypass while preserving live obstacle stops.
         (
-            'planning_cmd_vel_gate_reverse_cmd_bypass_static_cost_stop',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_reverse_cmd_bypass_static_cost_stop', True),
+            'control_cmd_vel_gate_reverse_cmd_bypass_static_cost_stop',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_reverse_cmd_bypass_static_cost_stop', True),
             'Bypass static front/side/rear cost for explicit reverse site-parking cmd_vel',
         ),
         (
-            'planning_cmd_vel_gate_reverse_cmd_bypass_min_mps',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_reverse_cmd_bypass_min_mps', 0.02),
+            'control_cmd_vel_gate_reverse_cmd_bypass_min_mps',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_reverse_cmd_bypass_min_mps', 0.02),
             'Minimum reverse cmd_vel for site-parking static cost bypass',
         ),
         (
-            'planning_cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold', 85),
+            'control_cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold', 85),
             'LiDAR/Radar source threshold that still blocks lateral site-crab',
         ),
         # HH_260624 - Keep dynamic LiDAR/Radar obstacle stops active for pure
         # in-place parking rotations even when static lanelet cost is bypassed.
         (
-            'planning_cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop', True),
+            'control_cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop', True),
             'Block pure rotation when live dynamic cost is near the robot body',
         ),
         (
-            'planning_cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m', 1.5),
+            'control_cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m', 1.5),
             'Dynamic obstacle disk radius for pure rotation',
         ),
         (
-            'planning_cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold', 85),
+            'control_cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold', 85),
             'LiDAR/Radar cost threshold that blocks pure rotation',
         ),
         (
-            'planning_cmd_vel_gate_unavoidable_stop_enable',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_stop_enable', True),
+            'control_cmd_vel_gate_unavoidable_stop_enable',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_unavoidable_stop_enable', True),
             'Enable unavoidable stop cluster check',
         ),
         # Fixed from 253 (OccupancyGrid max is 100; 253 never triggers).
         (
-            'planning_cmd_vel_gate_unavoidable_lethal_threshold',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_lethal_threshold', 90),
+            'control_cmd_vel_gate_unavoidable_lethal_threshold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_unavoidable_lethal_threshold', 90),
             'Lethal cost threshold for unavoidable stop',
         ),
         (
-            'planning_cmd_vel_gate_unavoidable_cluster_min_cells',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_cluster_min_cells', 25),
+            'control_cmd_vel_gate_unavoidable_cluster_min_cells',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_unavoidable_cluster_min_cells', 25),
             'Min cluster cells for unavoidable stop',
         ),
         (
-            'planning_cmd_vel_gate_unavoidable_cluster_min_ratio',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_unavoidable_cluster_min_ratio', 0.25),
+            'control_cmd_vel_gate_unavoidable_cluster_min_ratio',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_unavoidable_cluster_min_ratio', 0.25),
             'Min cluster ratio for unavoidable stop',
         ),
         # Optional map-keypoint yaw alignment gate.
         (
-            'planning_cmd_vel_gate_yaw_alignment_enable',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_yaw_alignment_enable', False),
+            'control_cmd_vel_gate_yaw_alignment_enable',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_yaw_alignment_enable', False),
             'Enable yaw alignment gate in cmd_vel gate',
         ),
         (
-            'planning_cmd_vel_gate_yaw_alignment_frame_id',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_yaw_alignment_frame_id', 'map'),
+            'control_cmd_vel_gate_yaw_alignment_frame_id',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_yaw_alignment_frame_id', 'map'),
             'Frame id for yaw alignment zones',
         ),
         (
-            'planning_cmd_vel_gate_yaw_alignment_exit_margin_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_yaw_alignment_exit_margin_m', 0.3),
+            'control_cmd_vel_gate_yaw_alignment_exit_margin_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_yaw_alignment_exit_margin_m', 0.3),
             'Exit hysteresis margin for yaw alignment zones (m)',
         ),
         # HH_260618: Route-heading guard for normal Nav2 driving.
         (
-            'planning_cmd_vel_gate_route_heading_enable',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_enable', True),
-            'Enable route-heading alignment guard in planning cmd_vel gate',
+            'control_cmd_vel_gate_route_heading_enable',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_enable', True),
+            'Enable route-heading alignment guard in the control cmd_vel gate',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_path_topic',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_path_topic', '/planning/local_path'),
+            'control_cmd_vel_gate_route_heading_path_topic',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_path_topic', '/planning/local_path'),
             'Path topic used by route-heading alignment guard',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_frame_id',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_frame_id', 'map'),
+            'control_cmd_vel_gate_route_heading_frame_id',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_frame_id', 'map'),
             'Fallback frame for route-heading alignment path',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_min_cmd_x_mps',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_min_cmd_x_mps', 0.03),
+            'control_cmd_vel_gate_route_heading_min_cmd_x_mps',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_min_cmd_x_mps', 0.03),
             'Minimum forward cmd_vel before route-heading alignment engages',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps', 0.02),
+            'control_cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps', 0.02),
             'Lateral cmd_vel threshold treated as explicit crab motion',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_lookahead_m',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_lookahead_m', 2.0),
+            'control_cmd_vel_gate_route_heading_lookahead_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_lookahead_m', 2.0),
             'Path tangent lookahead distance for route-heading alignment',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_error_enter_deg',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_error_enter_deg', 75.0),
+            'control_cmd_vel_gate_route_heading_error_enter_deg',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_error_enter_deg', 75.0),
             'Yaw error threshold to start route-heading alignment',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_error_exit_deg',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_error_exit_deg', 35.0),
+            'control_cmd_vel_gate_route_heading_error_exit_deg',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_error_exit_deg', 35.0),
             'Yaw error threshold to release route-heading alignment',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_angular_kp',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_angular_kp', 0.8),
+            'control_cmd_vel_gate_route_heading_angular_kp',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_angular_kp', 0.8),
             'Angular proportional gain for route-heading alignment',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_max_angular_z',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_max_angular_z', 0.35),
+            'control_cmd_vel_gate_route_heading_max_angular_z',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_max_angular_z', 0.35),
             'Max angular speed for route-heading alignment',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_max_linear_x',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_max_linear_x', 0.0),
+            'control_cmd_vel_gate_route_heading_max_linear_x',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_max_linear_x', 0.0),
             'Max forward speed while route-heading alignment is active',
         ),
         (
-            'planning_cmd_vel_gate_route_heading_min_path_points',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_route_heading_min_path_points', 2),
+            'control_cmd_vel_gate_route_heading_min_path_points',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_route_heading_min_path_points', 2),
             'Minimum path points required for route-heading alignment',
         ),
-        # HH_260507: Speed scale for all cmd_vel output in planning gate.
+        # HH_260720 - Scale all cmd_vel output in the control gate.
         (
-            'planning_cmd_vel_gate_speed_scale',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_speed_scale', 1.0),
+            'control_cmd_vel_gate_speed_scale',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_speed_scale', 1.0),
             'Speed scale applied to all cmd_vel output (0.0-1.0)',
         ),
         (
-            'planning_cmd_vel_gate_input_timeout_s',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_input_timeout_s', 0.35),
+            'control_cmd_vel_gate_input_timeout_s',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_input_timeout_s', 0.35),
             'Publish zero when raw planning cmd_vel input is stale for this many seconds',
         ),
         (
-            'planning_cmd_vel_gate_zero_publish_rate_hz',
-            cfg_get(launch_cfg, 'planning/cmd_vel_gate_zero_publish_rate_hz', 10.0),
+            'control_cmd_vel_gate_zero_publish_rate_hz',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_zero_publish_rate_hz', 10.0),
             'Zero Twist publish rate while raw planning cmd_vel input is stale',
         ),
 
@@ -1368,6 +1373,8 @@ def generate_launch_description():
         ('sensing_namespace', cfg_get(launch_cfg, 'namespaces/sensing', 'sensing'), 'Sensing namespace'),
         ('localization_namespace', cfg_get(launch_cfg, 'namespaces/localization', 'localization'), 'Localization namespace'),
         ('planning_namespace', cfg_get(launch_cfg, 'namespaces/planning', 'planning'), 'Planning namespace'),
+        # HH_260720 - Control has an explicit namespace independent from planning and parking.
+        ('control_namespace', cfg_get(launch_cfg, 'namespaces/control', 'control'), 'Control namespace'),
         ('platform_namespace', cfg_get(launch_cfg, 'namespaces/platform', 'platform'), 'Platform namespace'),
         ('parking_namespace', cfg_get(launch_cfg, 'namespaces/parking', 'parking'), 'Parking namespace'),
         ('perception_namespace', cfg_get(launch_cfg, 'namespaces/perception', 'perception'), 'Perception namespace'),
@@ -1377,69 +1384,6 @@ def generate_launch_description():
         ('gnss_namespace', cfg_get(launch_cfg, 'namespaces/gnss', 'sensing/gnss'), 'GNSS namespace'),
 
         ('gnss_rtcm_topic', cfg_get(launch_cfg, 'topics/gnss_rtcm', '/sensing/gnss/rtcm'), 'GNSS RTCM topic'),
-        # Real-platform cmd_vel policy knobs.
-        (
-            'platform_cmd_vel_gate_enable',
-            cfg_get(launch_cfg, 'platform/cmd_vel_gate_enable', False),
-            'Enable cmd_vel gate in platform module',
-        ),
-        (
-            'platform_cmd_vel_in_topic',
-            cfg_get(launch_cfg, 'platform/cmd_vel_in_topic', '/planning/cmd_vel'),
-            'Platform cmd_vel gate input topic',
-        ),
-        (
-            'platform_cmd_vel_out_topic',
-            cfg_get(launch_cfg, 'platform/cmd_vel_out_topic', '/platform/cmd_vel'),
-            'Platform cmd_vel gate output topic',
-        ),
-        (
-            'platform_drive_enable_topic',
-            cfg_get(launch_cfg, 'platform/drive_enable_topic', '/platform/drive_enable'),
-            'Platform drive-enable topic used by platform gate and UI engage buttons',
-        ),
-        (
-            'platform_cmd_vel_input_timeout_s',
-            cfg_get(launch_cfg, 'platform/cmd_vel_input_timeout_s', 0.50),
-            'Publish zero when platform cmd_vel input is stale for this many seconds',
-        ),
-        (
-            'platform_cmd_vel_zero_publish_rate_hz',
-            cfg_get(launch_cfg, 'platform/cmd_vel_zero_publish_rate_hz', 10.0),
-            'Zero Twist publish rate while platform cmd_vel input is stale',
-        ),
-        (
-            'platform_engage_source_mode',
-            cfg_get(launch_cfg, 'platform/engage_source_mode', 'planning_engaged'),
-            'Platform engage source mode: planning_engage|planning_engaged|topic|enabled|on|disabled|off|none',
-        ),
-        (
-            'platform_planning_engage_topic',
-            # HH_260625 - Platform consumes the effective planning state so UI
-            # mission engage can drive without the manual 2D-goal engage latch.
-            cfg_get(
-                launch_cfg,
-                'platform/planning_engage_topic',
-                cfg_get(launch_cfg, 'planning/engaged_state_topic', '/planning/engaged'),
-            ),
-            'Planning engage-state topic consumed by platform cmd_vel gate',
-        ),
-        (
-            'platform_drive_allow_on_start',
-            cfg_get(launch_cfg, 'platform/drive_allow_on_start', False),
-            'Arm platform cmd_vel gate on startup',
-        ),
-        # Ranger base node is the single source for /platform/status/* outputs.
-        (
-            'platform_estop_source_mode',
-            cfg_get(launch_cfg, 'platform/estop_source_mode', 'platform_status'),
-            'Platform estop source mode: platform_status|topic|enabled|on|disabled|off|none',
-        ),
-        (
-            'platform_estop_topic',
-            cfg_get(launch_cfg, 'platform/estop_topic', '/platform/status/estop'),
-            'Platform e-stop status topic',
-        ),
         # HH_260528: Platform type selector.
         ('platform_type', cfg_get(launch_cfg, 'platform/type', 'ranger'), 'Platform type: ranger|rmp401'),
         # Keep platform top launch lean. Ranger detailed params are in ranger_params_file.
@@ -1455,14 +1399,29 @@ def generate_launch_description():
         ('platform_lights_enable', cfg_get(launch_cfg, 'platform/lights_enable', True), 'Enable light_controller node in platform launch'),
         ('platform_lights_mcu_bridge_enable', cfg_get(launch_cfg, 'platform/lights_mcu_bridge_enable', True), 'Enable light MCU serial bridge (real hardware only; sim forces false)'),
 
-        # HH_260618: Mutually exclusive final parking method selector.
-        #   rule_based/parking: camrod_parking owns site crab + rear parking.
-        #   docking           : camrod_docking/opennav owns marker-based docking.
-        ('parking_method', parking_method_default, 'Final parking method: rule_based|docking'),
-        # HH_260617: Rule-based site crab maneuver and reverse parking module.
-        ('enable_parking', cfg_get(launch_cfg, 'parking/enable_parking', True), 'Enable camrod_parking module'),
-        ('enable_site_maneuver', cfg_get(launch_cfg, 'parking/enable_site_maneuver', True), 'Enable campsite crab/rotate maneuver node'),
-        ('enable_drop_zone_parking', cfg_get(launch_cfg, 'parking/enable_drop_zone_parking', True), 'Enable drop-zone reverse parking node'),
+        # HH_260720 - Select reverse or AprilTag parking inside camrod_control.
+        ('parking_method', parking_method_default, 'Parking implementation: reverse|apriltag'),
+        ('enable_parking', cfg_get(launch_cfg, 'parking/enable_parking', True), 'Enable final parking control'),
+        ('enable_camping_site_maneuver_controller', cfg_get(launch_cfg, 'control/enable_camping_site_maneuver_controller', True), 'Enable campsite crab/rotate control node'),
+        ('enable_drop_zone_maneuver_controller', cfg_get(launch_cfg, 'control/enable_drop_zone_maneuver_controller', True), 'Enable drop-zone exit/yaw control node'),
+        ('control_param_file', control_param_default, 'Control maneuver parameter YAML path'),
+        # HH_260720 - Keep CAN/charging gate settings under the owning control module.
+        ('control_cmd_vel_gate_status_topic', cfg_get(launch_cfg, 'control/cmd_vel_gate_status_topic', '/control/cmd_vel_safety_gate/status'), 'Control safety-gate status topic'),
+        ('control_cmd_vel_gate_platform_safety_source_mode', cfg_get(launch_cfg, 'control/cmd_vel_gate_platform_safety_source_mode', 'platform_status'), 'Platform safety source mode'),
+        ('control_cmd_vel_gate_platform_status_topic', cfg_get(launch_cfg, 'control/cmd_vel_gate_platform_status_topic', '/platform/status'), 'Normalized platform status topic'),
+        ('control_cmd_vel_gate_platform_status_timeout_s', cfg_get(launch_cfg, 'control/cmd_vel_gate_platform_status_timeout_s', 0.5), 'Platform status timeout'),
+        ('control_cmd_vel_gate_block_on_platform_status_stale', cfg_get(launch_cfg, 'control/cmd_vel_gate_block_on_platform_status_stale', True), 'Block on missing or stale platform status'),
+        ('control_cmd_vel_gate_block_on_charging', cfg_get(launch_cfg, 'control/cmd_vel_gate_block_on_charging', True), 'Block normal commands while charging'),
+        ('control_cmd_vel_gate_allow_mission_departure_while_charging', cfg_get(launch_cfg, 'control/cmd_vel_gate_allow_mission_departure_while_charging', True), 'Allow a new mission to release from charger'),
+        ('control_cmd_vel_gate_charging_departure_grace_s', cfg_get(launch_cfg, 'control/cmd_vel_gate_charging_departure_grace_s', 15.0), 'Bounded charger departure window'),
+        # HH_260720 - A concrete campsite mission request authorizes charger departure.
+        ('control_cmd_vel_gate_mission_request_topic', cfg_get(launch_cfg, 'control/cmd_vel_gate_mission_request_topic', '/planning/mission_key'), 'Mission request topic used for charger departure'),
+        ('control_cmd_vel_gate_charger_departure_mission_prefixes', cfg_get(launch_cfg, 'control/cmd_vel_gate_charger_departure_mission_prefixes', 'camping_site_'), 'Mission prefixes allowed to depart the charger'),
+        ('control_cmd_vel_gate_mission_request_dedup_s', cfg_get(launch_cfg, 'control/cmd_vel_gate_mission_request_dedup_s', 1.0), 'Repeated mission request deduplication window'),
+        ('control_cmd_vel_gate_block_on_platform_error_code', cfg_get(launch_cfg, 'control/cmd_vel_gate_block_on_platform_error_code', True), 'Block on non-zero platform CAN error mask'),
+        ('control_cmd_vel_gate_require_can_control_mode', cfg_get(launch_cfg, 'control/cmd_vel_gate_require_can_control_mode', True), 'Require Ranger CAN command mode'),
+        ('control_cmd_vel_gate_critical_battery_stop_enabled', cfg_get(launch_cfg, 'control/cmd_vel_gate_critical_battery_stop_enabled', True), 'Block at critical BMS SOC'),
+        ('control_cmd_vel_gate_critical_battery_percentage', cfg_get(launch_cfg, 'control/cmd_vel_gate_critical_battery_percentage', 0.10), 'Critical BMS SOC ratio'),
         ('parking_param_file', parking_param_default, 'Parking parameter YAML path'),
 
         ('map_path', map_path_default, 'Lanelet2 map path'),
@@ -1503,10 +1462,6 @@ def generate_launch_description():
         ('sim_obstacle_direction', cfg_get(launch_cfg, 'sim/obstacle_direction', 'front'), 'Fake obstacle direction: front|left|right|rear'),
         ('sim_obstacle_lateral_offset', cfg_get(launch_cfg, 'sim/obstacle_lateral_offset', 0.0), 'Fake obstacle lateral offset in vehicle-left axis (m)'),
 
-        ('enable_docking',        cfg_get(launch_cfg, 'docking/enable_docking',        True),  'Enable docking module'),
-        ('enable_auto_docking',   cfg_get(launch_cfg, 'docking/enable_auto_docking',   False), 'Enable battery-triggered automatic docking'),
-        ('enable_manual_docking', cfg_get(launch_cfg, 'docking/enable_manual_docking', True),  'Enable UI-triggered manual docking server'),
-
         ('enable_voice',         cfg_get(launch_cfg, 'voice/enable_voice',         True),  'Enable voice announcer module'),
         ('enable_voice_adapter', cfg_get(launch_cfg, 'voice/enable_voice_adapter', True),  'Enable voice event adapter node'),
         ('voice_namespace',      cfg_get(launch_cfg, 'namespaces/voice',           'voice'), 'Voice module namespace'),
@@ -1518,22 +1473,19 @@ def generate_launch_description():
     ]
 
     lc = {name: LaunchConfiguration(name) for name, _, _ in arg_specs}
-    # HH_260623 - Removed the old parking_backend launch argument;
-    # parking_method is the single selector for rule_based versus docking.
-    parking_method_expr = ["'", lc['parking_method'], "'.lower()"]
-    parking_method_rule_based_expr = PythonExpression([
-        "(", *parking_method_expr, ") in ('rule_based', 'parking') and ",
-        "'", lc['enable_parking'], "'.lower() in ('1', 'true', 'yes', 'on')",
-    ])
-    parking_method_docking_expr = PythonExpression([
-        "(", *parking_method_expr, ") == 'docking' and ",
-        "'", lc['enable_docking'], "'.lower() in ('1', 'true', 'yes', 'on')",
-    ])
+    # HH_260720 - Both final parking implementations are selected inside camrod_control.
+    parking_enabled_condition = IfCondition(lc['enable_parking'])
+    # HH_260720 - Navigation and parking maneuvers share the same final command safety gate.
+    control_command_gate_condition = IfCondition(PythonExpression([
+        "'true' if '", lc['enable_planning'], "' == 'true' or '",
+        lc['enable_parking'], "' == 'true' else 'false'",
+    ]))
 
     # Module config defaults-first policy.
     # Bringup passes file paths only when an explicit override is configured.
     localization_overrides = build_cfg_override_map(config_root_default, launch_cfg, OVERRIDE_SPECS['localization'])
     planning_overrides = build_cfg_override_map(config_root_default, launch_cfg, OVERRIDE_SPECS['planning'])
+    control_overrides = build_cfg_override_map(config_root_default, launch_cfg, OVERRIDE_SPECS['control'])
     sensing_overrides = build_cfg_override_map(config_root_default, launch_cfg, OVERRIDE_SPECS['sensing'])
     platform_overrides = build_cfg_override_map(config_root_default, launch_cfg, OVERRIDE_SPECS['platform'])
     map_overrides = build_cfg_override_map(config_root_default, launch_cfg, OVERRIDE_SPECS['map'])
@@ -1593,25 +1545,9 @@ def generate_launch_description():
         return True, ''
 
     platform_args = {
-        'module_namespace': lc['platform_namespace'],
+        # HH_260720 - Use the platform-specific launch argument to prevent nested namespace leaks.
+        'platform_namespace': lc['platform_namespace'],
         'sensor_kit_namespace': lc['sensor_kit_namespace'],
-        # Keep gate enabled in sim for fake-motion loop;
-        # default to launch-default policy on real platform.
-        'cmd_vel_gate_enable': sim_switch(
-            lc['sim'], 'true', lc['platform_cmd_vel_gate_enable']
-        ),
-        'cmd_vel_in_topic': lc['platform_cmd_vel_in_topic'],
-        'cmd_vel_out_topic': lc['platform_cmd_vel_out_topic'],
-        'drive_enable_topic': lc['platform_drive_enable_topic'],
-        'cmd_vel_input_timeout_s': lc['platform_cmd_vel_input_timeout_s'],
-        'cmd_vel_zero_publish_rate_hz': lc['platform_cmd_vel_zero_publish_rate_hz'],
-        'engage_source_mode': lc['platform_engage_source_mode'],
-        'platform_planning_engage_topic': lc['platform_planning_engage_topic'],
-        # HH_260618: Sim RViz goals must create paths only; platform motion still
-        # requires the configured drive_allow_on_start policy or explicit engage.
-        'drive_allow_on_start': lc['platform_drive_allow_on_start'],
-        'estop_source_mode': lc['platform_estop_source_mode'],
-        'estop_topic': lc['platform_estop_topic'],
         'platform_type': sim_switch(
             lc['sim'], 'rmp401', lc['platform_type']
         ),
@@ -1663,7 +1599,8 @@ def generate_launch_description():
 
     # HH_260707: When the opt-in component path is enabled, the front camera is
     # started by camera_yolo_container.launch.py while the rear camera remains in
-    # sensing.launch.py for docking. Sim mode still disables all hardware cameras.
+    # sensing.launch.py for future perception consumers. Sim disables hardware cameras.
+    # HH_260720 - Camera launch does not carry an implicit AprilTag parking dependency.
     # HH_260716 - The container must also honor the high-level camera/front/YOLO
     # switches. Previously use_camera_yolo_container=true started both components
     # even when enable_camera=false or perception_enable_yolo=false.
@@ -1859,22 +1796,14 @@ def generate_launch_description():
         # Keep centerline anchor on fused localization pose.
         'centerline_input_pose_topic': '/localization/pose',
         'local_path_pose_topic': lc['local_path_pose_topic'],
-        'cmd_vel_gate_enable': lc['planning_cmd_vel_gate_enable'],
-        'cmd_vel_raw_topic': lc['planning_cmd_vel_raw_topic'],
-        'cmd_vel_output_topic': lc['planning_cmd_vel_topic'],
-        'planning_engage_topic': lc['planning_engage_topic'],
-        'planning_mission_engage_topic': lc['planning_mission_engage_topic'],
-        'planning_engaged_state_topic': lc['planning_engaged_state_topic'],
-        # All planning_cmd_vel_gate_* args forward as cmd_vel_gate_* (strip 'planning_' prefix).
-        **{k[len('planning_'):]: lc[k] for k in lc if k.startswith('planning_cmd_vel_gate_')},
+        # HH_260720 - Planning emits an unapproved navigation command for camrod_control.
+        # HH_260720 - Keep Nav2 standard Twist on the explicit ROS boundary.
+        'navigation_cmd_vel_topic': lc['control_navigation_cmd_vel_ros_topic'],
         'module_namespace': lc['planning_namespace'],
         # HH_260528: Keep selector IDs as raw values (not file-path overrides).
         'nav2_selected_planner': lc['planning_nav2_selected_planner'],
         'nav2_selected_controller': lc['planning_nav2_selected_controller'],
     }
-    # HH_260624 - Do not auto-arm planning in sim. Goals may plan, but
-    # /planning/cmd_vel remains gated until /planning/engaged=true.
-    planning_args['cmd_vel_gate_allow_on_start'] = lc['planning_cmd_vel_gate_allow_on_start']
     set_if_not_empty(planning_args, 'nav2_base_param_file', planning_overrides['nav2_base_param_file'])
     set_if_not_empty(planning_args, 'nav2_vehicle_param_file', selected_nav2_vehicle_override)
     set_if_not_empty(planning_args, 'nav2_lanelet_param_file', planning_overrides['nav2_lanelet_param_file'])
@@ -1890,10 +1819,29 @@ def generate_launch_description():
         planning_overrides['obstacle_replan_monitor_param_file'],
     )
     set_if_not_empty(planning_args, 'local_path_extractor_param_file', planning_overrides['local_path_extractor_param_file'])
+    # HH_260720 - Build the camrod_control safety-gate argument contract.
+    safety_gate_args = {
+        'module_namespace': lc['control_namespace'],
+        'cmd_vel_gate_enable': lc['control_cmd_vel_gate_enable'],
+        'cmd_vel_raw_topic': lc['control_cmd_vel_raw_topic'],
+        'navigation_cmd_vel_ros_topic': lc['control_navigation_cmd_vel_ros_topic'],
+        'cmd_vel_output_topic': lc['control_cmd_vel_topic'],
+        'cmd_vel_ros_output_topic': lc['control_cmd_vel_ros_topic'],
+        'planning_engage_topic': lc['planning_engage_topic'],
+        'planning_mission_engage_topic': lc['planning_mission_engage_topic'],
+        'command_enabled_topic': lc['control_command_enabled_topic'],
+        # HH_260720 - Drive-enable and command timeout are enforced by this single gate.
+        'platform_drive_enable_topic': lc['platform_drive_enable_topic'],
+        **{k[len('control_'):]: lc[k] for k in lc if k.startswith('control_cmd_vel_gate_')},
+    }
+    # HH_260720 - Sim has no CAN heartbeat; hardware remains fail-closed.
+    safety_gate_args['cmd_vel_gate_platform_safety_source_mode'] = sim_switch(
+        lc['sim'], 'disabled', lc['control_cmd_vel_gate_platform_safety_source_mode']
+    )
     set_if_not_empty(
-        planning_args,
+        safety_gate_args,
         'cmd_vel_gate_yaw_alignment_zones_file',
-        planning_overrides['cmd_vel_gate_yaw_alignment_zones_file'],
+        control_overrides['cmd_vel_gate_yaw_alignment_zones_file'],
     )
 
     diagnostics_profile_runtime = PythonExpression([
@@ -1938,30 +1886,26 @@ def generate_launch_description():
         'module_namespace': lc['system_namespace'],
     }
 
-    parking_args = {
-        'parking_namespace': lc['parking_namespace'],
-        'enable_site_maneuver': lc['enable_site_maneuver'],
-        'enable_drop_zone_parking': lc['enable_drop_zone_parking'],
-        # HH_260617: Parking remains behind the existing planning/platform cmd_vel gates.
-        'cmd_vel_topic': lc['planning_cmd_vel_raw_topic'],
-        'pose_topic': '/localization/pose',
+    # HH_260720 - Maneuver launch owns crab, zero-turn, and drop-zone alignment.
+    maneuver_args = {
+        'control_namespace': lc['control_namespace'],
+        'enable_camping_site_maneuver_controller': lc['enable_camping_site_maneuver_controller'],
+        'enable_drop_zone_maneuver_controller': lc['enable_drop_zone_maneuver_controller'],
+        'command_topic': lc['control_cmd_vel_raw_topic'],
+        'vehicle_pose_topic': '/localization/pose',
         'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
-        # HH_260618: Share campsite coordinates with rule-based site maneuver so
-        # it can recover raw site_goal context for mission-key UI requests.
         'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
-        'param_file': lc['parking_param_file'],
+        'parameter_file': lc['control_param_file'],
     }
 
-    docking_args = {
-        'enable_auto_docking':   lc['enable_auto_docking'],
-        'enable_manual_docking': lc['enable_manual_docking'],
-        # HH_260618: Full bringup routes docking velocity through the same
-        # planning/platform gates as rule-based parking; mutual launch conditions
-        # prevent the two final-parking methods from publishing simultaneously.
-        'cmd_vel_topic': lc['planning_cmd_vel_raw_topic'],
-        # HH_260617: Full stack localization owns odom→base_link TF for the
-        # selected EKF/ESKF backend. odom_yaw_corrector must stay off here.
-        'enable_odom_corrector': 'false',
+    # HH_260720 - Parking launch selects reverse or AprilTag implementation internally.
+    parking_args = {
+        'parking_namespace': lc['parking_namespace'],
+        'parking_method': lc['parking_method'],
+        'command_topic': lc['control_cmd_vel_raw_topic'],
+        'vehicle_pose_topic': '/localization/pose',
+        'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
+        'parameter_file': lc['parking_param_file'],
     }
 
     voice_args = {
@@ -1982,8 +1926,10 @@ def generate_launch_description():
         'planning_engage_topic': lc['planning_engage_topic'],
         'planning_mission_engage_topic': lc['planning_mission_engage_topic'],
         'platform_drive_enable_topic': lc['platform_drive_enable_topic'],
-        'site_maneuver_adopt_topic': '/parking/site_maneuver/adopt',
+        'camping_site_maneuver_controller_operation_topic': '/control/camping_site_maneuver_controller/operation',
+        'camping_site_maneuver_controller_adopt_topic': '/control/camping_site_maneuver_controller/adopt',
         'arrival_pose_topic': '/localization/pose',
+        'platform_status_topic': '/platform/status',
     }
 
     module_specs = [
@@ -1995,8 +1941,9 @@ def generate_launch_description():
         ('camrod_perception', 'perception.launch.py', perception_args, None),
         ('camrod_localization', 'localization.launch.py', localization_args, None),
         ('camrod_planning', 'planning.launch.py', planning_args, IfCondition(lc['enable_planning'])),
-        ('camrod_parking', 'parking.launch.py', parking_args, IfCondition(parking_method_rule_based_expr)),
-        ('camrod_docking',  'docking.launch.py',  docking_args, IfCondition(parking_method_docking_expr)),
+        ('camrod_control', 'cmd_vel_safety_gate.launch.py', safety_gate_args, control_command_gate_condition),
+        ('camrod_control', 'maneuvers.launch.py', maneuver_args, parking_enabled_condition),
+        ('camrod_control', 'parking.launch.py', parking_args, parking_enabled_condition),
         ('camrod_voice',    'voice.launch.py',    voice_args,   IfCondition(lc['enable_voice'])),
         # Launch unified diagnostics stack via top-level system.launch.py.
         ('camrod_system', 'system.launch.py', system_args, None),

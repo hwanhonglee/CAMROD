@@ -11,12 +11,27 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from rcl_interfaces.msg import SetParametersResult
 
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Quaternion
-from geometry_msgs.msg import Twist
-from geometry_msgs.msg import TwistWithCovarianceStamped
-from nav_msgs.msg import OccupancyGrid, Odometry, Path
-from sensor_msgs.msg import NavSatFix, NavSatStatus
-from sensor_msgs.msg import Imu, PointCloud2, PointField, Range
+# HH_260720 - Simulate standard driver boundaries, then use generated messages internally.
+from avg_msgs.msg import (
+    AvgImu,
+    AvgOccupancyGrid,
+    AvgOdometry,
+    AvgPoseStamped,
+    AvgQuaternion,
+    AvgRange,
+    AvgTwist,
+    AvgTwistWithCovarianceStamped,
+)
+from geometry_msgs.msg import PoseWithCovarianceStamped as RosPoseWithCovarianceStamped
+from geometry_msgs.msg import Quaternion as RosQuaternion
+from nav_msgs.msg import Odometry as RosOdometry
+from sensor_msgs.msg import Imu as RosImu
+from sensor_msgs.msg import NavSatFix as RosNavSatFix
+from sensor_msgs.msg import NavSatStatus as RosNavSatStatus
+from sensor_msgs.msg import PointCloud2 as RosPointCloud2
+from sensor_msgs.msg import PointField as RosPointField
+from sensor_msgs.msg import Range as RosRange
+from std_msgs.msg import Header as RosHeader
 from sensor_msgs_py import point_cloud2
 
 
@@ -58,9 +73,49 @@ def ecef_to_enu(ref_ecef, cur_ecef, lat_ref, lon_ref):
 
 
 # Implements `yaw_to_quat` behavior.
-def yaw_to_quat(yaw):
+def yaw_to_ros_quaternion(yaw):
     half = yaw * 0.5
-    return Quaternion(x=0.0, y=0.0, z=math.sin(half), w=math.cos(half))
+    return RosQuaternion(x=0.0, y=0.0, z=math.sin(half), w=math.cos(half))
+
+
+# HH_260720 - Build the generated quaternion used by internal pose contracts.
+def yaw_to_avg_quaternion(yaw):
+    half = yaw * 0.5
+    return AvgQuaternion(x=0.0, y=0.0, z=math.sin(half), w=math.cos(half))
+
+
+# HH_260720 - Mirror the simulated driver IMU into the generated internal contract.
+def imu_from_ros(message):
+    output = AvgImu()
+    output.header.stamp = message.header.stamp
+    output.header.frame_id = message.header.frame_id
+    output.orientation.x = message.orientation.x
+    output.orientation.y = message.orientation.y
+    output.orientation.z = message.orientation.z
+    output.orientation.w = message.orientation.w
+    output.orientation_covariance = list(message.orientation_covariance)
+    output.angular_velocity.x = message.angular_velocity.x
+    output.angular_velocity.y = message.angular_velocity.y
+    output.angular_velocity.z = message.angular_velocity.z
+    output.angular_velocity_covariance = list(message.angular_velocity_covariance)
+    output.linear_acceleration.x = message.linear_acceleration.x
+    output.linear_acceleration.y = message.linear_acceleration.y
+    output.linear_acceleration.z = message.linear_acceleration.z
+    output.linear_acceleration_covariance = list(message.linear_acceleration_covariance)
+    return output
+
+
+# HH_260720 - Convert simulated radar data only for the explicit RViz boundary.
+def range_to_ros(message):
+    output = RosRange()
+    output.header.stamp = message.header.stamp
+    output.header.frame_id = message.header.frame_id
+    output.radiation_type = message.radiation_type
+    output.field_of_view = message.field_of_view
+    output.min_range = message.min_range
+    output.max_range = message.max_range
+    output.range = message.range
+    return output
 
 
 # Implements `quat_to_yaw` behavior.
@@ -108,7 +163,8 @@ class FakeSensorPublisher(Node):
             self.motion_source = "cmd_vel"
         self.motion_uses_cmd_vel = self.motion_source == "cmd_vel"
         self.cmd_vel_motion_topic = str(
-            self.declare_parameter("cmd_vel_motion_topic", "/platform/cmd_vel").value
+            # HH_260720 - Follow the direct control-to-Ranger command contract.
+            self.declare_parameter("cmd_vel_motion_topic", "/control/cmd_vel").value
         )
         self.cmd_vel_timeout_s = float(
             self.declare_parameter("cmd_vel_timeout_s", 0.5).value
@@ -244,6 +300,21 @@ class FakeSensorPublisher(Node):
                 ],
             ).value
         )
+        # HH_260720 - Match the real radar node's standard-ROS visualization boundary.
+        self.fake_radar_standard_ros_topics = list(
+            self.declare_parameter(
+                "fake_radar_standard_ros_topics",
+                [
+                    "/sensing/radar/front1/range_ros",
+                    "/sensing/radar/front2/range_ros",
+                    "/sensing/radar/left1/range_ros",
+                    "/sensing/radar/left2/range_ros",
+                    "/sensing/radar/right1/range_ros",
+                    "/sensing/radar/right2/range_ros",
+                    "/sensing/radar/rear/range_ros",
+                ],
+            ).value
+        )
         self.fake_radar_frame_ids = list(
             self.declare_parameter(
                 "fake_radar_frame_ids",
@@ -311,57 +382,7 @@ class FakeSensorPublisher(Node):
         self.dr_odometry_topic = str(
             self.declare_parameter("dr_odometry_topic", "/localization/fallback/odometry").value
         )
-        # Optional helper: align localization pose yaw to nearest active path tangent.
-        # Position is kept from incoming /localization/pose, only orientation(yaw) is replaced.
-        self.localization_pose_yaw_align_enable = bool(
-            self.declare_parameter("localization_pose_yaw_align_enable", True).value
-        )
-        self.localization_pose_input_topic = str(
-            self.declare_parameter("localization_pose_input_topic", "/localization/pose").value
-        )
-        self.localization_pose_output_topic = str(
-            self.declare_parameter(
-                "localization_pose_output_topic", "/localization/pose_yaw_aligned"
-            ).value
-        )
-        self.localization_pose_yaw_path_topic = str(
-            self.declare_parameter(
-                "localization_pose_yaw_path_topic", "/planning/global_path"
-            ).value
-        )
-        self.localization_pose_yaw_min_segment_length = float(
-            self.declare_parameter("localization_pose_yaw_min_segment_length", 0.10).value
-        )
-        # Optional stabilization for /localization/pose_yaw_aligned.
-        # Keeps yaw continuous when nearest path segments change.
-        self.localization_pose_yaw_smoothing_alpha = float(
-            self.declare_parameter("localization_pose_yaw_smoothing_alpha", 1.0).value
-        )
-        self.localization_pose_yaw_max_rate_deg_s = float(
-            self.declare_parameter("localization_pose_yaw_max_rate_deg_s", 180.0).value
-        )
-        # Optional debug mode: lock aligned pose position to one fixed point.
-        # This is useful to isolate yaw-only behavior while keeping localization pipeline alive.
-        self.localization_pose_lock_position = bool(
-            self.declare_parameter("localization_pose_lock_position", False).value
-        )
-        self.localization_pose_lock_on_first_msg = bool(
-            self.declare_parameter("localization_pose_lock_on_first_msg", True).value
-        )
-        self.localization_pose_lock_x = float(
-            self.declare_parameter("localization_pose_lock_x", 0.0).value
-        )
-        self.localization_pose_lock_y = float(
-            self.declare_parameter("localization_pose_lock_y", 0.0).value
-        )
-        self.localization_pose_lock_z = float(
-            self.declare_parameter("localization_pose_lock_z", 0.0).value
-        )
-        self._yaw_path_points = []
-        self._yaw_path_ready = False
-        self._last_aligned_yaw = None
-        self._last_aligned_yaw_time = None
-        self._lock_position_initialized = False
+        # HH_260720 - EKF uses simulated IMU orientation and yaw rate directly.
         # 2026-02-02 11:05: Resample centerline from bounds when explicit centerline is missing.
         self.centerline_step = self.declare_parameter("centerline_step", 1.0).value
         # GNSS failure simulation for DR fallback testing.
@@ -432,12 +453,16 @@ class FakeSensorPublisher(Node):
             self._free_nav_y = y0
             self._free_nav_yaw = yaw0
 
-        # Publish fake sensors with module-prefixed topics.
-        self.pub_navsat = self.create_publisher(NavSatFix, "/sensing/gnss/ublox_gps_node/fix", 10)
-        self.pub_imu = self.create_publisher(Imu, "/sensing/imu/data", 10)
-        # Keep fake wheel output aligned with unified wheel_odometry topic.
-        self.pub_wheel = self.create_publisher(Odometry, "/platform/status/wheel_odometry", 10)
-        self.pub_wheel_bridge_in = self.create_publisher(Odometry, self.wheel_bridge_input_topic, 10)
+        # HH_260720 - Publish only raw simulated hardware streams with standard ROS types.
+        self.pub_navsat = self.create_publisher(
+            RosNavSatFix, "/sensing/gnss/ublox_gps_node/fix", 10
+        )
+        # HH_260720 - Sim exposes the same raw `_ros` boundary and generated stream as hardware.
+        self.pub_imu_ros = self.create_publisher(RosImu, "/sensing/imu/data_ros", 10)
+        self.pub_imu = self.create_publisher(AvgImu, "/sensing/imu/data", 10)
+        self.pub_wheel_bridge_in = self.create_publisher(
+            RosOdometry, self.wheel_bridge_input_topic, 10
+        )
         # Use transient-local QoS for fallback odometry so late-joining
         # consumers (e.g. pose selector) can subscribe without durability mismatch.
         odom_qos = QoSProfile(
@@ -445,32 +470,46 @@ class FakeSensorPublisher(Node):
             reliability=QoSReliabilityPolicy.RELIABLE,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
         )
-        self.pub_dr_odom = self.create_publisher(Odometry, self.dr_odometry_topic, odom_qos)
-        self.pub_obstacles = self.create_publisher(PointCloud2, self.obstacle_cloud_topic, 10)
+        self.pub_dr_odom = self.create_publisher(
+            AvgOdometry, self.dr_odometry_topic, odom_qos
+        )
+        self.pub_obstacles = self.create_publisher(
+            RosPointCloud2, self.obstacle_cloud_topic, 10
+        )
         self.pub_lidar_filtered = self.create_publisher(
-            PointCloud2, self.lidar_filtered_topic, 10
+            RosPointCloud2, self.lidar_filtered_topic, 10
         )
         self.pub_fake_radar_ranges = []
+        self.pub_fake_radar_standard_ros_ranges = []
         if self.publish_fake_radar_ranges:
             for topic in self.fake_radar_topics:
-                self.pub_fake_radar_ranges.append(self.create_publisher(Range, topic, 10))
+                self.pub_fake_radar_ranges.append(
+                    self.create_publisher(AvgRange, topic, 10)
+                )
+            # HH_260720 - Publish standard radar mirrors only on explicitly named topics.
+            for topic in self.fake_radar_standard_ros_topics:
+                self.pub_fake_radar_standard_ros_ranges.append(
+                    self.create_publisher(RosRange, topic, 10)
+                )
         self.pub_velocity_converter_output = None
         if self.publish_velocity_converter_output:
             self.pub_velocity_converter_output = self.create_publisher(
-                TwistWithCovarianceStamped, self.velocity_converter_output_topic, 10
+                AvgTwistWithCovarianceStamped,
+                self.velocity_converter_output_topic,
+                10,
             )
         self.pub_dummy_lidar_cost_grid = None
         if self.publish_dummy_lidar_cost_grid:
             self.pub_dummy_lidar_cost_grid = self.create_publisher(
-                OccupancyGrid, self.dummy_lidar_cost_grid_topic, 10
+                AvgOccupancyGrid, self.dummy_lidar_cost_grid_topic, 10
             )
         self.sub_cmd_vel = None
         if self.motion_uses_cmd_vel:
             self.sub_cmd_vel = self.create_subscription(
-                Twist, self.cmd_vel_motion_topic, self._on_cmd_vel, 10
+                AvgTwist, self.cmd_vel_motion_topic, self._on_cmd_vel, 10
             )
         self.sub_initialpose = self.create_subscription(
-            PoseWithCovarianceStamped,
+            RosPoseWithCovarianceStamped,
             self.initialpose_topic,
             self._on_initialpose,
             10,
@@ -482,49 +521,11 @@ class FakeSensorPublisher(Node):
             and self.initialpose_topic_fallback != self.initialpose_topic
         ):
             self.sub_initialpose_fallback = self.create_subscription(
-                PoseWithCovarianceStamped,
+                RosPoseWithCovarianceStamped,
                 self.initialpose_topic_fallback,
                 self._on_initialpose,
                 10,
             )
-
-        # Optional pose-yaw align bridge for fake/sim mode.
-        self.pub_localization_pose_yaw_aligned = None
-        self.sub_localization_pose_input = None
-        self.sub_localization_pose_path = None
-        if self.localization_pose_yaw_align_enable:
-            if self.localization_pose_input_topic == self.localization_pose_output_topic:
-                self.get_logger().error(
-                    "localization pose yaw align disabled: input_topic equals output_topic "
-                    "(would create feedback loop)."
-                )
-            else:
-                self.pub_localization_pose_yaw_aligned = self.create_publisher(
-                    PoseStamped, self.localization_pose_output_topic, 10
-                )
-                self.sub_localization_pose_input = self.create_subscription(
-                    PoseStamped,
-                    self.localization_pose_input_topic,
-                    self._on_localization_pose_input,
-                    10,
-                )
-                self.sub_localization_pose_path = self.create_subscription(
-                    Path,
-                    self.localization_pose_yaw_path_topic,
-                    self._on_localization_pose_yaw_path,
-                    10,
-                )
-                self.get_logger().info(
-                    "localization yaw align enabled: "
-                    f"input={self.localization_pose_input_topic} "
-                    f"output={self.localization_pose_output_topic} "
-                    f"path={self.localization_pose_yaw_path_topic}"
-                )
-                if self.localization_pose_lock_position:
-                    self.get_logger().warn(
-                        "localization pose lock-position is enabled "
-                        "(debug mode; aligned pose position is fixed)."
-                    )
 
         period = 1.0 / max(self.publish_rate_hz, 1.0)
         self.timer = self.create_timer(period, self._on_timer)
@@ -533,7 +534,7 @@ class FakeSensorPublisher(Node):
         )
 
     # Handles the `_on_cmd_vel` callback.
-    def _on_cmd_vel(self, msg: Twist):
+    def _on_cmd_vel(self, msg: AvgTwist):
         vx = float(msg.linear.x)
         vy = float(msg.linear.y)
         vmax = max(0.0, float(self.max_cmd_speed_mps))
@@ -559,7 +560,7 @@ class FakeSensorPublisher(Node):
             self._last_nonzero_cmd_time = self._last_cmd_time
 
     # Handles external initial-pose reset requests (e.g., RViz `P` tool).
-    def _on_initialpose(self, msg: PoseWithCovarianceStamped):
+    def _on_initialpose(self, msg: RosPoseWithCovarianceStamped):
         pose = msg.pose.pose
         x = float(pose.position.x)
         y = float(pose.position.y)
@@ -932,92 +933,6 @@ class FakeSensorPublisher(Node):
         yaw = math.atan2(p1[1] - p0[1], p1[0] - p0[0])
         return (x, y, z, lat, lon), yaw
 
-    # Handles the `_on_localization_pose_yaw_path` callback.
-    def _on_localization_pose_yaw_path(self, msg: Path):
-        if not msg or len(msg.poses) < 2:
-            self._yaw_path_points = []
-            self._yaw_path_ready = False
-            return
-        points = []
-        for ps in msg.poses:
-            points.append((ps.pose.position.x, ps.pose.position.y))
-        self._yaw_path_points = points
-        self._yaw_path_ready = len(points) >= 2
-
-    # Computes `NearestPathYaw` values.
-    def _nearest_path_yaw(self, x: float, y: float):
-        if not self._yaw_path_ready or len(self._yaw_path_points) < 2:
-            return None
-        best_dist2 = float("inf")
-        best_yaw = None
-        min_seg_len = max(1e-6, float(self.localization_pose_yaw_min_segment_length))
-        for i in range(len(self._yaw_path_points) - 1):
-            x0, y0 = self._yaw_path_points[i]
-            x1, y1 = self._yaw_path_points[i + 1]
-            dx = x1 - x0
-            dy = y1 - y0
-            seg_len2 = dx * dx + dy * dy
-            if seg_len2 < min_seg_len * min_seg_len:
-                continue
-            # project current pose to segment
-            t = ((x - x0) * dx + (y - y0) * dy) / seg_len2
-            t = max(0.0, min(1.0, t))
-            px = x0 + t * dx
-            py = y0 + t * dy
-            dist2 = (x - px) * (x - px) + (y - py) * (y - py)
-            if dist2 < best_dist2:
-                best_dist2 = dist2
-                best_yaw = math.atan2(dy, dx)
-        return best_yaw
-
-    # Handles the `_on_localization_pose_input` callback.
-    def _on_localization_pose_input(self, msg: PoseStamped):
-        if self.pub_localization_pose_yaw_aligned is None:
-            return
-        out = PoseStamped()
-        out.header = msg.header
-        out.pose = msg.pose
-
-        x = msg.pose.position.x
-        y = msg.pose.position.y
-        z = msg.pose.position.z
-        if self.localization_pose_lock_position:
-            if self.localization_pose_lock_on_first_msg and not self._lock_position_initialized:
-                self.localization_pose_lock_x = x
-                self.localization_pose_lock_y = y
-                self.localization_pose_lock_z = z
-                self._lock_position_initialized = True
-            x = self.localization_pose_lock_x
-            y = self.localization_pose_lock_y
-            z = self.localization_pose_lock_z
-            out.pose.position.x = x
-            out.pose.position.y = y
-            out.pose.position.z = z
-
-        yaw = self._nearest_path_yaw(x, y)
-        if yaw is not None:
-            now_sec = time.time()
-            if self._last_aligned_yaw is not None and self._last_aligned_yaw_time is not None:
-                # 1) unwrap to nearest equivalent angle around previous yaw
-                dyaw = normalize_angle(yaw - self._last_aligned_yaw)
-                # 2) optional yaw-rate limit
-                max_rate = max(0.0, float(self.localization_pose_yaw_max_rate_deg_s)) * math.pi / 180.0
-                dt = max(1e-3, now_sec - self._last_aligned_yaw_time)
-                if max_rate > 0.0:
-                    max_step = max_rate * dt
-                    if dyaw > max_step:
-                        dyaw = max_step
-                    elif dyaw < -max_step:
-                        dyaw = -max_step
-                yaw = self._last_aligned_yaw + dyaw
-                # 3) optional smoothing (1.0 = no smoothing)
-                alpha = min(1.0, max(0.0, float(self.localization_pose_yaw_smoothing_alpha)))
-                yaw = self._last_aligned_yaw + alpha * normalize_angle(yaw - self._last_aligned_yaw)
-            self._last_aligned_yaw = yaw
-            self._last_aligned_yaw_time = now_sec
-            out.pose.orientation = yaw_to_quat(yaw)
-        self.pub_localization_pose_yaw_aligned.publish(out)
-
     # Implements `_on_timer` behavior.
     def _on_timer(self):
         now = self.get_clock().now().to_msg()
@@ -1082,20 +997,24 @@ class FakeSensorPublisher(Node):
             dist = self._motion_distance
             (x, y, z, lat, lon), yaw = self._sample_path(dist)
 
-        # Create a pose message for downstream odometry/cloud outputs.
-        pose_msg = PoseStamped()
+        # HH_260720 - Keep the simulated internal pose generated; raw clouds get a ROS header.
+        pose_msg = AvgPoseStamped()
         pose_msg.header.stamp = now
         pose_msg.header.frame_id = self.frame_id
         pose_msg.pose.position.x = x
         pose_msg.pose.position.y = y
         pose_msg.pose.position.z = z
-        pose_msg.pose.orientation = yaw_to_quat(yaw)
+        pose_msg.pose.orientation = yaw_to_avg_quaternion(yaw)
 
-        navsat = NavSatFix()
+        raw_sensor_header = RosHeader()
+        raw_sensor_header.stamp = now
+        raw_sensor_header.frame_id = self.frame_id
+
+        navsat = RosNavSatFix()
         navsat.header.stamp = now
         navsat.header.frame_id = self.frame_id
-        navsat.status.status = NavSatStatus.STATUS_FIX
-        navsat.status.service = NavSatStatus.SERVICE_GPS
+        navsat.status.status = RosNavSatStatus.STATUS_FIX
+        navsat.status.service = RosNavSatStatus.SERVICE_GPS
         navsat.latitude = lat
         navsat.longitude = lon
         navsat.altitude = self.origin_alt
@@ -1103,7 +1022,7 @@ class FakeSensorPublisher(Node):
         # gnss_cov_trace_fail (0.3 m^2) accepts the fake GNSS (trace = 0.08 < 0.3).
         # COVARIANCE_TYPE_DIAGONAL_KNOWN = 2; without this the adapter falls back to
         # pose_covariance_diagonal=[1,1,...] giving trace=2.0 which fails the monitor.
-        navsat.position_covariance_type = NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
+        navsat.position_covariance_type = RosNavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
         navsat.position_covariance[0] = 0.04   # σ_x = 0.2 m
         navsat.position_covariance[4] = 0.04   # σ_y = 0.2 m
         navsat.position_covariance[8] = 0.10   # σ_z = 0.32 m
@@ -1123,11 +1042,11 @@ class FakeSensorPublisher(Node):
         if self._gnss_active:
             self.pub_navsat.publish(navsat)
 
-        imu_msg = Imu()
+        imu_msg = RosImu()
         imu_msg.header.stamp = now
         imu_msg.header.frame_id = self.base_frame_id
-        imu_msg.orientation = yaw_to_quat(yaw)
-        # 2026-02-02 11:55: Provide yaw rate so ESKF can integrate heading.
+        imu_msg.orientation = yaw_to_ros_quaternion(yaw)
+        # HH_260720 - Provide yaw rate to the default EKF wheel-input boundary.
         yaw_rate = 0.0
         if (not holding and not self._was_holding and
                 self._last_yaw is not None and self._last_yaw_time is not None):
@@ -1141,9 +1060,11 @@ class FakeSensorPublisher(Node):
         imu_msg.linear_acceleration.x = 0.0
         imu_msg.linear_acceleration.y = 0.0
         imu_msg.linear_acceleration.z = 0.0
-        self.pub_imu.publish(imu_msg)
+        self.pub_imu_ros.publish(imu_msg)
+        self.pub_imu.publish(imu_from_ros(imu_msg))
 
-        wheel_msg = Odometry()
+        # HH_260720 - Feed one raw wheel source; platform/localization bridges own Avg outputs.
+        wheel_msg = RosOdometry()
         wheel_msg.header.stamp = now
         wheel_msg.header.frame_id = "odom"
         wheel_msg.child_frame_id = self.base_frame_id
@@ -1152,15 +1073,12 @@ class FakeSensorPublisher(Node):
         wheel_msg.twist.twist.linear.y = lateral_speed
         # HH_260618: Publish the simulated yaw-rate on wheel/DR odometry so
         # localization and Nav2 see the same in-place rotation that free_nav
-        # integrates from /platform/cmd_vel.
+        # HH_260720 - Integrate motion from the final /control/cmd_vel output.
         wheel_msg.twist.twist.angular.z = yaw_rate
-        self.pub_wheel.publish(wheel_msg)
-        # Mirror wheel odometry onto wheel-bridge input topic for
-        # sim-time localization/TF/controller reproducibility.
         self.pub_wheel_bridge_in.publish(wheel_msg)
 
         if self.pub_velocity_converter_output is not None:
-            twist_cov = TwistWithCovarianceStamped()
+            twist_cov = AvgTwistWithCovarianceStamped()
             twist_cov.header.stamp = now
             twist_cov.header.frame_id = self.base_frame_id
             twist_cov.twist.twist.linear.x = wheel_speed
@@ -1174,7 +1092,7 @@ class FakeSensorPublisher(Node):
             twist_cov.twist.covariance[35] = 0.20
             self.pub_velocity_converter_output.publish(twist_cov)
 
-        dr_msg = Odometry()
+        dr_msg = AvgOdometry()
         dr_msg.header.stamp = now
         dr_msg.header.frame_id = self.frame_id
         dr_msg.child_frame_id = self.base_frame_id
@@ -1228,11 +1146,11 @@ class FakeSensorPublisher(Node):
                     )
                 )
         fields = [
-            PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
-            PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
-            PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+            RosPointField(name="x", offset=0, datatype=RosPointField.FLOAT32, count=1),
+            RosPointField(name="y", offset=4, datatype=RosPointField.FLOAT32, count=1),
+            RosPointField(name="z", offset=8, datatype=RosPointField.FLOAT32, count=1),
         ]
-        cloud_msg = point_cloud2.create_cloud(pose_msg.header, fields, obstacle_points)
+        cloud_msg = point_cloud2.create_cloud(raw_sensor_header, fields, obstacle_points)
         if self.publish_fake_lidar_obstacle_cloud:
             self.pub_obstacles.publish(cloud_msg)
             self.pub_lidar_filtered.publish(cloud_msg)
@@ -1245,7 +1163,7 @@ class FakeSensorPublisher(Node):
             (now_sec - self._last_dummy_lidar_cost_grid_pub_sec) >= dummy_grid_period_s
         ):
             self._last_dummy_lidar_cost_grid_pub_sec = now_sec
-            grid = OccupancyGrid()
+            grid = AvgOccupancyGrid()
             grid.header.stamp = now
             grid.header.frame_id = self.frame_id
             grid.info.resolution = float(self.dummy_lidar_cost_grid_resolution)
@@ -1280,19 +1198,22 @@ class FakeSensorPublisher(Node):
             )
             min_range = max(0.0, float(self.fake_radar_min_range_m))
             hit = idx in hit_indices and min_range <= distance <= max_range
-            msg = Range()
+            msg = AvgRange()
             msg.header.stamp = stamp
             msg.header.frame_id = (
                 self.fake_radar_frame_ids[idx]
                 if idx < len(self.fake_radar_frame_ids)
                 else ""
             )
-            msg.radiation_type = Range.ULTRASOUND
+            msg.radiation_type = AvgRange.ULTRASOUND
             msg.field_of_view = float(self.fake_radar_field_of_view_rad)
             msg.min_range = min_range
             msg.max_range = float(max_range)
             msg.range = distance if hit else float(max_range + 0.001)
             pub.publish(msg)
+            if idx < len(self.pub_fake_radar_standard_ros_ranges):
+                # HH_260720 - Keep simulated RViz radar data synchronized with avg_msgs data.
+                self.pub_fake_radar_standard_ros_ranges[idx].publish(range_to_ros(msg))
 
     # Normalizes obstacle_direction parameter and falls back safely.
     def _normalize_obstacle_direction(self, value):
