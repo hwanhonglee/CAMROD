@@ -30,6 +30,8 @@
   <exec_depend>camrod_map</exec_depend>
   <exec_depend>camrod_perception</exec_depend>
   <exec_depend>camrod_planning</exec_depend>
+  <!-- HH_260720 - Bringup launches the extracted control and selected parking modules. -->
+  <exec_depend>camrod_control</exec_depend>
   <exec_depend>camrod_sensing</exec_depend>
   <exec_depend>camrod_platform</exec_depend>
   <exec_depend>camrod_system</exec_depend>

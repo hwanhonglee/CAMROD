@@ -22,22 +22,23 @@ bringup:
     wheel_bridge_enable: true
     # Use platform status odometry as primary source.
     wheel_input_topic: /platform/status/odometry
-    # HH_260527: wheel_input_type options:
-    #   nav_odom: nav_msgs/Odometry input
-    #   avg_odom: avg_msgs/Odometry input
-    #   twist: avg_msgs/TwistStamped input
-    wheel_input_type: nav_odom
+    # HH_260720 - Wheel input types distinguish generated data from vendor boundaries.
+    #   nav_odom: nav_msgs/Odometry external input
+    #   avg_odom: avg_msgs/AvgOdometry internal input
+    #   twist: avg_msgs/AvgTwistStamped internal input
+    # HH_260720 - Platform publishes the generated AvgOdometry internal contract.
+    wheel_input_type: avg_odom
     # Keep /rmp401/odom as fallback-only source.
     wheel_fallback_input_topic: /rmp401/odom
-    # HH_260527: wheel_fallback_input_type options:
-    #   nav_odom: nav_msgs/Odometry input
-    #   avg_odom: avg_msgs/Odometry input
-    #   twist: avg_msgs/TwistStamped input
+    # HH_260720 - The RMP401 fallback remains a standard vendor boundary.
+    #   nav_odom: nav_msgs/Odometry external input
+    #   avg_odom: avg_msgs/AvgOdometry internal input
+    #   twist: avg_msgs/AvgTwistStamped internal input
     wheel_fallback_input_type: nav_odom
     wheel_primary_timeout_s: 0.7
-    # Unified wheel output topic used by EKF/ESKF.
-    wheel_output_topic: /platform/status/wheel_odometry
-    wheel_nav_output_topic: /platform/wheel/nav_odometry
+    # HH_260720 - Localization owns generated wheel data and the explicit EKF mirror.
+    wheel_output_topic: /localization/input/wheel_odometry
+    wheel_nav_output_topic: /localization/input/wheel_odometry_ros
     # 2026-04-22: Keep explicit-only escape hatch.
     # Set true only when you intentionally want ESKF primary input fixed to /rmp401/odom.
     eskf_force_rmp401_odom: false
@@ -77,9 +78,8 @@ bringup:
     enable_nav2_lifecycle_retry: false
     # false  → nav2_autostart=true: Nav2 activates immediately on bringup.
     #          bt_navigator will start planning as soon as ANY goal arrives (RViz, UI, etc.).
-    #          Path follows lanelet centerline — looks like "auto driving" but cmd_vel gate
-    #          HH_260624 - Effective engage may come from manual or UI mission latch;
-    #          blocks actual movement until /planning/engaged becomes true.
+    #          Path follows lanelet centerline, but the control safety gate blocks
+    #          actual movement until /control/command_enabled becomes true.
     # true   → nav2_autostart=false: Nav2 waits for localization_ready before activating.
     #          Use true for production runs to prevent premature path planning.
     require_localization_ready: false
@@ -92,204 +92,6 @@ bringup:
     state_machine_camping_sites_yaml: planning/camping_sites.yaml
     # Keep local-path pose topic aligned with standalone localization.launch.py behavior.
     local_path_pose_topic: /localization/pose
-    # ---- Planning cmd_vel gate ----
-    # HH_260623 - Manual 2D-goal engage and UI mission engage are separate latches.
-    # Final /planning/cmd_vel opens when either latch is true.
-    cmd_vel_gate_enable: true
-    cmd_vel_raw_topic: /planning/cmd_vel_raw
-    cmd_vel_topic: /planning/cmd_vel
-    engage_topic: /planning/engage
-    mission_engage_topic: /planning/mission_engage
-    engaged_state_topic: /planning/engaged
-    # HH_260522: unified source selector for planning cmd_vel gate e-stop input.
-    #   platform_status/topic/enabled/on: subscribe /platform/status/estop
-    #   disabled/off/none: ignore e-stop topic
-    cmd_vel_gate_estop_source_mode: platform_status
-    # e-stop source is platform CAN->status bridge by default.
-    cmd_vel_gate_estop_topic: /platform/status/estop
-    # HH_260701 - State-machine ERROR_STOP is a planning soft-estop and must
-    # close Nav2 cmd_vel, not only parking/site maneuver handoff.
-    cmd_vel_gate_additional_estop_topics: /planning/state_machine/estop
-    # HH_260522: unified source selector for DR-timeout stop trigger.
-    #   localization_monitor/topic/enabled/on: subscribe /localization/state/dr_timeout
-    #   disabled/off/none: ignore DR-timeout trigger
-    cmd_vel_gate_dr_timeout_source_mode: localization_monitor
-    cmd_vel_gate_allow_on_start: false
-    # After localization mode recovers (DR_ONLY -> NORMAL), keep
-    # cmd_vel blocked briefly so pose/TF consumers settle before re-accelerating.
-    cmd_vel_gate_enable_gnss_recovery_hold: true
-    cmd_vel_gate_localization_mode_topic: /localization/mode
-    cmd_vel_gate_gnss_recovery_hold_s: 2.0
-    # HH_260707 - Avoid repeated recovery holds from short GNSS/NTRIP flaps.
-    cmd_vel_gate_gnss_recovery_min_source_s: 1.5
-    cmd_vel_gate_gnss_recovery_hold_cooldown_s: 10.0
-    # AvgLocalizationMode enum used in this workspace: NORMAL=0, DR_ONLY=2.
-    cmd_vel_gate_gnss_recovery_source_mode_min: 2
-    cmd_vel_gate_gnss_recovery_target_mode: 0
-    # Cost-based stop uses combined inflation grid (lanelet+LiDAR+Radar+global_path).
-    cmd_vel_gate_cost_stop_enable: true
-    cmd_vel_gate_cost_grid_topic: /planning/cost_grid/inflation
-    # HH_260618: Safety/cmd_vel gates use real localization pose. Do not use
-    # /planning/lanelet_pose here: snapped pose can stay on-lane while the robot
-    # is physically outside the drivable lanelet/cost corridor.
-    cmd_vel_gate_cost_pose_topic: /localization/pose
-    # HH_260527: Primary-only selector default; use selected localization odometry.
-    cmd_vel_gate_cost_odometry_topic: /localization/odometry/filtered
-    # HH_260522: pose source preference options:
-    #   odometry: prefer /localization/odometry/filtered candidate first
-    #   tf_robot_base: prefer TF(map<-robot_base_link) first
-    #   pose_topic: prefer the configured cost pose topic first.
-    # HH_260618: Prefer the configured real localization pose for safety checks.
-    cmd_vel_gate_pose_source_preference: pose_topic
-    cmd_vel_gate_enable_pose_raw_fallback: false
-    cmd_vel_gate_cost_threshold: 85
-    # Legacy fixed lookahead; used only when enable_speed_dependent_lookahead=false.
-    cmd_vel_gate_cost_lookahead_m: 2.0
-    # HH_260623 - Measured body width plus 0.10 m planning margin per side.
-    cmd_vel_gate_cost_width_m: 1.27
-    cmd_vel_gate_cost_hold_s: 1.0
-    # HH_260703 - Keep dynamic obstacle stops latched until lidar/radar report
-    # a continuous clear corridor; this prevents field stop/go oscillation.
-    cmd_vel_gate_cost_stop_latch_enable: true
-    cmd_vel_gate_cost_stop_clear_required_s: 2.0
-    cmd_vel_gate_cost_stop_latch_log_interval_s: 1.0
-    # HH_260703 - If the merged inflation cost grid stalls, cmd_vel must fail
-    # closed even before diagnostics/state-machine e-stop catches up.
-    cmd_vel_gate_cost_grid_stale_stop_enable: true
-    cmd_vel_gate_cost_grid_stale_timeout_s: 1.0
-    cmd_vel_gate_cost_grid_stale_log_interval_s: 1.0
-    # HH_260622 - The merged inflation grid also carries static lanelet/global
-    # path guidance. Only live dynamic sensor sources may block cmd_vel here.
-    cmd_vel_gate_cost_stop_require_dynamic_source: true
-    cmd_vel_gate_cost_stop_dynamic_source_labels: lidar,radar
-    # HH_260702 - When Nav2 publishes an avoidance local path, validate that
-    # path corridor before blocking on the old body-front obstacle rectangle.
-    cmd_vel_gate_front_dynamic_stop_use_local_path: true
-    cmd_vel_gate_front_dynamic_path_width_m: 1.27
-    cmd_vel_gate_front_dynamic_path_max_start_distance_m: 1.5
-    # HH_260618: Raw lanelet hard-stop before inflation ego-clear. This blocks
-    # translational cmd_vel when the current/corridor cell is lane-boundary or
-    # outside lanelet, while still allowing in-place yaw correction.
-    cmd_vel_gate_lanelet_safety_enable: true
-    cmd_vel_gate_lanelet_safety_grid_topic: /map/cost_grid/lanelet
-    cmd_vel_gate_lanelet_safety_threshold: 85
-    cmd_vel_gate_lanelet_safety_current_threshold: 85
-    cmd_vel_gate_lanelet_safety_lookahead_m: 1.0
-    cmd_vel_gate_lanelet_safety_width_m: 0.8
-    cmd_vel_gate_lanelet_safety_stop_on_unknown: true
-    cmd_vel_gate_lanelet_safety_allow_rotation_in_place: true
-    # HH_260618: Keep reverse/lateral free for explicit parking/site maneuver
-    # phases; those phases need their own mission-state boundary guard.
-    cmd_vel_gate_lanelet_safety_check_reverse: false
-    cmd_vel_gate_lanelet_safety_check_lateral: false
-    cmd_vel_gate_lanelet_safety_min_translation_mps: 0.02
-    # HH_260619 - Forward lanelet safety follows the active local path first;
-    # fallback remains the raw robot-yaw rectangle when the path is unavailable.
-    cmd_vel_gate_lanelet_safety_front_use_local_path: true
-    cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m: 1.5
-    # HH_260622 - FRONT_PATH uses only the selected route center corridor so
-    # merge/branch lanelet boundary pixels do not block valid centerline travel.
-    cmd_vel_gate_lanelet_safety_front_path_width_m: 0.25
-    # HH_260624 - Allow bounded static FRONT_PATH bypass while re-entering lanelet from site/drop-zone.
-    cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry: true
-    # HH_260622 - Allow bounded route re-entry when a sim/manual pose starts
-    # just outside lanelet but the active local path is already close and valid.
-    cmd_vel_gate_lanelet_safety_current_allow_route_reentry: true
-    cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m: 4.0
-    cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd: true
-    # HH_260624 - During explicit drop-zone straight exit, bypass only static
-    # lanelet/drop-zone cost for these parking phases; dynamic obstacle stops remain active.
-    cmd_vel_gate_parking_drop_zone_status_topic: /parking/drop_zone/status
-    cmd_vel_gate_parking_drop_zone_static_bypass_phases: EXIT_STRAIGHT,ALIGN_EXIT_YAW
-    # HH_260701 - Campsite entry/return is parking-owned body-frame motion;
-    # bypass only static lanelet/global-path cost in these phases.
-    cmd_vel_gate_parking_site_status_topic: /parking/site_maneuver/status
-    cmd_vel_gate_parking_site_static_bypass_phases: ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT
-    # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
-    cmd_vel_gate_speed_dependent_lookahead: true
-    # HH_260630 - Minimum front dynamic-stop scan covers the front radar mount
-    # plus about 1.0m of obstacle clearance ahead of the sensor.
-    cmd_vel_gate_front_lookahead_min_m: 2.60
-    cmd_vel_gate_front_lookahead_max_m: 3.5
-    cmd_vel_gate_front_lookahead_friction: 0.4
-    cmd_vel_gate_front_reaction_time_s: 0.20
-    cmd_vel_gate_front_lookahead_margin_m: 0.45
-    # Side/rear cost-stop samples the same merged grid, but still requires a
-    # dynamic source attribution before blocking.
-    cmd_vel_gate_side_rear_cost_stop: true
-    # HH_260707 - Side/rear dynamic guards include sensor mounting offset plus
-    # SEN0592 detection range; shorter center-based windows missed side radar hits.
-    cmd_vel_gate_body_near_dynamic_stop: true
-    cmd_vel_gate_body_near_side_lookahead_m: 1.20
-    cmd_vel_gate_body_near_rear_lookahead_m: 0.80
-    # HH_260707 - Crab/reverse still use dynamic-source attribution, so keeping
-    # the same physical radar envelope does not re-enable static lanelet stops.
-    cmd_vel_gate_body_near_maneuver_side_lookahead_m: 1.20
-    cmd_vel_gate_body_near_maneuver_rear_lookahead_m: 0.80
-    # HH_260630: Match radar/lidar dynamic stop threshold so side hits are not
-    # ignored by a higher side-only threshold.
-    cmd_vel_gate_side_cost_threshold: 85
-    # HH_260630: Side lidar/radar cells land near 0.9-1.0 m from robot center,
-    # so crab-motion stop must look beyond the old 0.8 m window.
-    cmd_vel_gate_side_lookahead_m: 1.2
-    # HH_260623 - Side scan width covers full body length plus front/rear margins.
-    cmd_vel_gate_side_corridor_width_m: 1.69160
-    # HH_260630: Match radar/lidar dynamic stop threshold so rear hits are not
-    # ignored by a higher rear-only threshold.
-    cmd_vel_gate_rear_cost_threshold: 85
-    # HH_260630: Rear dynamic cells can land just past 0.9 m after cost-grid
-    # discretization and sensor/footprint offsets.
-    cmd_vel_gate_rear_lookahead_m: 1.2
-    # HH_260623 - Rear scan width covers full body width plus left/right margins.
-    cmd_vel_gate_rear_corridor_width_m: 1.27
-    # HH_260618: Explicit site-crab lateral parking may cross static
-    # lanelet/global-path front/side/rear cost, but LiDAR/Radar dynamic source cost still
-    # stops the robot.
-    cmd_vel_gate_lateral_cmd_bypass_static_cost_stop: true
-    cmd_vel_gate_lateral_cmd_bypass_min_mps: 0.02
-    # HH_260618: Reverse campsite parking may cross static lanelet/global-path
-    # cost after lanelet-snap arrival; LiDAR/Radar source cost remains active.
-    cmd_vel_gate_reverse_cmd_bypass_static_cost_stop: true
-    cmd_vel_gate_reverse_cmd_bypass_min_mps: 0.02
-    cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold: 85
-    # HH_260624 - Static lanelet cost may be bypassed during in-place 180deg
-    # site turns, but live LiDAR/Radar cost around the body still stops rotation.
-    cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop: true
-    cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m: 1.5
-    cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold: 85
-    # Unavoidable-stop cluster detection for lethal costs (front only).
-    cmd_vel_gate_unavoidable_stop_enable: true
-    # Fixed from 253 (OccupancyGrid max is 100; 253 never triggers).
-    cmd_vel_gate_unavoidable_lethal_threshold: 90
-    cmd_vel_gate_unavoidable_cluster_min_cells: 25
-    cmd_vel_gate_unavoidable_cluster_min_ratio: 0.25
-    # Optional yaw-alignment zone gate at specific map keypoints.
-    # Zone coordinates/yaw should come from lanelet2-derived map keypoints.
-    cmd_vel_gate_yaw_alignment_enable: false
-    cmd_vel_gate_yaw_alignment_frame_id: map
-    cmd_vel_gate_yaw_alignment_exit_margin_m: 0.3
-    # Keep module default unless bringup-level override is required.
-    cmd_vel_gate_yaw_alignment_zones_file: planning/yaw_alignment_zones.yaml
-    # HH_260706: Route-heading guard uses slower rotation and a longer tangent
-    # lookahead to reduce startup left-right oscillation under delayed field data.
-    cmd_vel_gate_route_heading_enable: true
-    cmd_vel_gate_route_heading_path_topic: /planning/local_path
-    cmd_vel_gate_route_heading_frame_id: map
-    cmd_vel_gate_route_heading_min_cmd_x_mps: 0.03
-    cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps: 0.02
-    cmd_vel_gate_route_heading_lookahead_m: 2.0
-    cmd_vel_gate_route_heading_error_enter_deg: 75.0
-    cmd_vel_gate_route_heading_error_exit_deg: 35.0
-    cmd_vel_gate_route_heading_angular_kp: 0.8
-    cmd_vel_gate_route_heading_max_angular_z: 0.35
-    cmd_vel_gate_route_heading_max_linear_x: 0.0
-    cmd_vel_gate_route_heading_min_path_points: 2
-    # HH_260507: Scale all cmd_vel output by this factor before sending to /planning/cmd_vel.
-    cmd_vel_gate_speed_scale: 0.5
-    # HH_260626: Publish zero if Nav2 raw cmd_vel stops arriving.
-    cmd_vel_gate_input_timeout_s: 0.35
-    cmd_vel_gate_zero_publish_rate_hz: 10.0
-
     # ---- Nav2 profile selection ----
     # HH_260522: unified controller selector.
     #   rpp: use nav2_vehicle_param_file profile
@@ -386,34 +188,7 @@ bringup:
     lights_enable: true
     lights_mcu_bridge_enable: true
     lights_param_file: platform/lights.yaml
-    # Real platform uses the platform cmd_vel gate so /platform/cmd_vel and
-    # /platform/drive_enabled exist for system checks and Ranger output.
-    cmd_vel_gate_enable: true
-    cmd_vel_in_topic: /planning/cmd_vel
-    cmd_vel_out_topic: /platform/cmd_vel
-    # HH_260630 - UI engage/camping-site buttons publish this topic together
-    # with planning engage so the platform gate does not need a separate CLI call.
-    drive_enable_topic: /platform/drive_enable
-    # HH_260626: Final zero-output guard if /planning/cmd_vel stops arriving.
-    cmd_vel_input_timeout_s: 0.50
-    cmd_vel_zero_publish_rate_hz: 10.0
-    # HH_260522: unified source selectors for platform cmd_vel gate.
-    # HH_260625 - Use /planning/engaged as the planning-side effective state.
-    # The platform gate still requires /platform/drive_enable separately.
-    #   engage_source_mode: planning_engage/planning_engaged/topic/enabled/on | disabled/off/none
-    #   estop_source_mode: platform_status/topic/enabled/on | disabled/off/none
-    engage_source_mode: planning_engaged
-    planning_engage_topic: /planning/engaged
-    estop_source_mode: platform_status
-    # HH_260618: Sim and real platform both stay closed by default; RViz/manual
-    # goals require /planning/engage=true, while accepted UI missions publish
-    # /planning/mission_engage=true and open /planning/engaged automatically.
-    drive_allow_on_start: false
-    # Ranger base node consumes /platform/cmd_vel and publishes CAN-derived status.
-    estop_topic: /platform/status/estop
-    # HH_260625: Real outdoor bringup must start ranger_base_node so the final
-    # /platform/cmd_vel gate has a hardware command subscriber. Keep
-    # /platform/drive_enable as the operator safety arm.
+    # HH_260720 - Ranger consumes the final /control/cmd_vel_ros boundary and publishes CAN status.
     ranger_driver_enable: true
     ranger_auto_setup_can: true
     ranger_can_bitrate: 500000
@@ -422,18 +197,232 @@ bringup:
     # bringup override profile when using bringup.launch.py.
     ranger_params_file: platform/ranger_driver.yaml
 
+  control:
+    # HH_260720 - Crab, zero-turn, drop-zone exit, and parking-yaw alignment live here.
+    enable_camping_site_maneuver_controller: true
+    enable_drop_zone_maneuver_controller: true
+    param_file: __module_default__
+    # HH_260720 - Navigation and maneuver commands enter camrod_control here.
+    cmd_vel_gate_enable: true
+    cmd_vel_raw_topic: /control/cmd_vel_raw
+    cmd_vel_topic: /control/cmd_vel
+    # HH_260720 - Standard ROS commands exist only at Nav2 and Ranger boundaries.
+    navigation_cmd_vel_ros_topic: /control/nav2_cmd_vel_ros
+    cmd_vel_ros_topic: /control/cmd_vel_ros
+    engage_topic: /planning/engage
+    mission_engage_topic: /planning/mission_engage
+    command_enabled_topic: /control/command_enabled
+    # HH_260720 - Operator arming is enforced by cmd_vel_safety_gate_node.
+    platform_drive_enable_topic: /platform/drive_enable
+    cmd_vel_gate_require_platform_drive_enable: true
+    # HH_260720 - Concrete mission requests authorize charger departure.
+    cmd_vel_gate_mission_request_topic: /planning/mission_key
+    # HH_260720 - Platform e-stop is part of AvgPlatformStatus; list only soft e-stops.
+    # State-machine ERROR_STOP is a planning soft-estop and must
+    # close Nav2 cmd_vel, not only parking/site maneuver handoff.
+    cmd_vel_gate_additional_estop_topics: /planning/state_machine/estop
+    # HH_260522: unified source selector for DR-timeout stop trigger.
+    #   localization_monitor/topic/enabled/on: subscribe /localization/state/dr_timeout
+    #   disabled/off/none: ignore DR-timeout trigger
+    cmd_vel_gate_dr_timeout_source_mode: localization_monitor
+    cmd_vel_gate_allow_on_start: false
+    # After localization mode recovers (DR_ONLY -> NORMAL), keep
+    # cmd_vel blocked briefly so pose/TF consumers settle before re-accelerating.
+    cmd_vel_gate_enable_gnss_recovery_hold: true
+    cmd_vel_gate_localization_mode_topic: /localization/mode
+    cmd_vel_gate_gnss_recovery_hold_s: 2.0
+    # HH_260707 - Avoid repeated recovery holds from short GNSS/NTRIP flaps.
+    cmd_vel_gate_gnss_recovery_min_source_s: 1.5
+    cmd_vel_gate_gnss_recovery_hold_cooldown_s: 10.0
+    # AvgLocalizationMode enum used in this workspace: NORMAL=0, DR_ONLY=2.
+    cmd_vel_gate_gnss_recovery_source_mode_min: 2
+    cmd_vel_gate_gnss_recovery_target_mode: 0
+    # Cost-based stop uses combined inflation grid (lanelet+LiDAR+Radar+global_path).
+    cmd_vel_gate_cost_stop_enable: true
+    cmd_vel_gate_cost_grid_topic: /planning/cost_grid/inflation
+    # HH_260618: Safety/cmd_vel gates use real localization pose. Do not use
+    # /planning/lanelet_pose here: snapped pose can stay on-lane while the robot
+    # is physically outside the drivable lanelet/cost corridor.
+    cmd_vel_gate_cost_pose_topic: /localization/pose
+    # HH_260527: Primary-only selector default; use selected localization odometry.
+    cmd_vel_gate_cost_odometry_topic: /localization/odometry
+    # HH_260522: pose source preference options:
+    #   odometry: prefer /localization/odometry candidate first
+    #   tf_robot_base: prefer TF(map<-robot_base_link) first
+    #   pose_topic: prefer the configured cost pose topic first.
+    # HH_260618: Prefer the configured real localization pose for safety checks.
+    cmd_vel_gate_pose_source_preference: pose_topic
+    cmd_vel_gate_enable_pose_raw_fallback: false
+    cmd_vel_gate_cost_threshold: 85
+    # Legacy fixed lookahead; used only when enable_speed_dependent_lookahead=false.
+    cmd_vel_gate_cost_lookahead_m: 2.0
+    # HH_260623 - Measured body width plus 0.10 m planning margin per side.
+    cmd_vel_gate_cost_width_m: 1.27
+    cmd_vel_gate_cost_hold_s: 1.0
+    # HH_260703 - Keep dynamic obstacle stops latched until lidar/radar report
+    # a continuous clear corridor; this prevents field stop/go oscillation.
+    cmd_vel_gate_cost_stop_latch_enable: true
+    cmd_vel_gate_cost_stop_clear_required_s: 2.0
+    cmd_vel_gate_cost_stop_latch_log_interval_s: 1.0
+    # HH_260703 - If the merged inflation cost grid stalls, cmd_vel must fail
+    # closed even before diagnostics/state-machine e-stop catches up.
+    cmd_vel_gate_cost_grid_stale_stop_enable: true
+    cmd_vel_gate_cost_grid_stale_timeout_s: 1.0
+    cmd_vel_gate_cost_grid_stale_log_interval_s: 1.0
+    # HH_260622 - The merged inflation grid also carries static lanelet/global
+    # path guidance. Only live dynamic sensor sources may block cmd_vel here.
+    cmd_vel_gate_cost_stop_require_dynamic_source: true
+    cmd_vel_gate_cost_stop_dynamic_source_labels: lidar,radar
+    # HH_260702 - When Nav2 publishes an avoidance local path, validate that
+    # path corridor before blocking on the old body-front obstacle rectangle.
+    cmd_vel_gate_front_dynamic_stop_use_local_path: true
+    cmd_vel_gate_front_dynamic_path_width_m: 1.27
+    cmd_vel_gate_front_dynamic_path_max_start_distance_m: 1.5
+    # HH_260618: Raw lanelet hard-stop before inflation ego-clear. This blocks
+    # translational cmd_vel when the current/corridor cell is lane-boundary or
+    # outside lanelet, while still allowing in-place yaw correction.
+    cmd_vel_gate_lanelet_safety_enable: true
+    cmd_vel_gate_lanelet_safety_grid_topic: /map/cost_grid/lanelet
+    cmd_vel_gate_lanelet_safety_threshold: 85
+    cmd_vel_gate_lanelet_safety_current_threshold: 85
+    cmd_vel_gate_lanelet_safety_lookahead_m: 1.0
+    cmd_vel_gate_lanelet_safety_width_m: 0.8
+    cmd_vel_gate_lanelet_safety_stop_on_unknown: true
+    cmd_vel_gate_lanelet_safety_allow_rotation_in_place: true
+    # HH_260618: Keep reverse/lateral free for explicit parking/site maneuver
+    # phases; those phases need their own mission-state boundary guard.
+    cmd_vel_gate_lanelet_safety_check_reverse: false
+    cmd_vel_gate_lanelet_safety_check_lateral: false
+    cmd_vel_gate_lanelet_safety_min_translation_mps: 0.02
+    # HH_260619 - Forward lanelet safety follows the active local path first;
+    # fallback remains the raw robot-yaw rectangle when the path is unavailable.
+    cmd_vel_gate_lanelet_safety_front_use_local_path: true
+    cmd_vel_gate_lanelet_safety_front_path_max_start_distance_m: 1.5
+    # HH_260622 - FRONT_PATH uses only the selected route center corridor so
+    # merge/branch lanelet boundary pixels do not block valid centerline travel.
+    cmd_vel_gate_lanelet_safety_front_path_width_m: 0.25
+    # HH_260624 - Allow bounded static FRONT_PATH bypass while re-entering lanelet from site/drop-zone.
+    cmd_vel_gate_lanelet_safety_front_path_allow_route_reentry: true
+    # HH_260622 - Allow bounded route re-entry when a sim/manual pose starts
+    # just outside lanelet but the active local path is already close and valid.
+    cmd_vel_gate_lanelet_safety_current_allow_route_reentry: true
+    cmd_vel_gate_lanelet_safety_current_route_reentry_max_distance_m: 4.0
+    cmd_vel_gate_lanelet_safety_current_route_reentry_require_front_cmd: true
+    # HH_260720 - During explicit drop-zone exit, bypass only static lanelet
+    # cost for these control phases; dynamic obstacle stops remain active.
+    cmd_vel_gate_drop_zone_maneuver_controller_status_topic: /control/drop_zone_maneuver_controller/status
+    cmd_vel_gate_drop_zone_maneuver_controller_static_bypass_phases: EXIT_STRAIGHT,ALIGN_EXIT_YAW
+    # HH_260720 - Campsite entry/return is control-owned body-frame motion;
+    # bypass only static lanelet/global-path cost in these phases.
+    cmd_vel_gate_camping_site_maneuver_controller_status_topic: /control/camping_site_maneuver_controller/status
+    cmd_vel_gate_camping_site_maneuver_controller_static_bypass_phases: ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT
+    # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
+    cmd_vel_gate_speed_dependent_lookahead: true
+    # HH_260630 - Minimum front dynamic-stop scan covers the front radar mount
+    # plus about 1.0m of obstacle clearance ahead of the sensor.
+    cmd_vel_gate_front_lookahead_min_m: 2.60
+    cmd_vel_gate_front_lookahead_max_m: 3.5
+    cmd_vel_gate_front_lookahead_friction: 0.4
+    cmd_vel_gate_front_reaction_time_s: 0.20
+    cmd_vel_gate_front_lookahead_margin_m: 0.45
+    # Side/rear cost-stop samples the same merged grid, but still requires a
+    # dynamic source attribution before blocking.
+    cmd_vel_gate_side_rear_cost_stop: true
+    # HH_260707 - Side/rear dynamic guards include sensor mounting offset plus
+    # SEN0592 detection range; shorter center-based windows missed side radar hits.
+    cmd_vel_gate_body_near_dynamic_stop: true
+    cmd_vel_gate_body_near_side_lookahead_m: 1.20
+    cmd_vel_gate_body_near_rear_lookahead_m: 0.80
+    # HH_260707 - Crab/reverse still use dynamic-source attribution, so keeping
+    # the same physical radar envelope does not re-enable static lanelet stops.
+    cmd_vel_gate_body_near_maneuver_side_lookahead_m: 1.20
+    cmd_vel_gate_body_near_maneuver_rear_lookahead_m: 0.80
+    # HH_260630: Match radar/lidar dynamic stop threshold so side hits are not
+    # ignored by a higher side-only threshold.
+    cmd_vel_gate_side_cost_threshold: 85
+    # HH_260630: Side lidar/radar cells land near 0.9-1.0 m from robot center,
+    # so crab-motion stop must look beyond the old 0.8 m window.
+    cmd_vel_gate_side_lookahead_m: 1.2
+    # HH_260623 - Side scan width covers full body length plus front/rear margins.
+    cmd_vel_gate_side_corridor_width_m: 1.69160
+    # HH_260630: Match radar/lidar dynamic stop threshold so rear hits are not
+    # ignored by a higher rear-only threshold.
+    cmd_vel_gate_rear_cost_threshold: 85
+    # HH_260630: Rear dynamic cells can land just past 0.9 m after cost-grid
+    # discretization and sensor/footprint offsets.
+    cmd_vel_gate_rear_lookahead_m: 1.2
+    # HH_260623 - Rear scan width covers full body width plus left/right margins.
+    cmd_vel_gate_rear_corridor_width_m: 1.27
+    # HH_260618: Explicit site-crab lateral parking may cross static
+    # lanelet/global-path front/side/rear cost, but LiDAR/Radar dynamic source cost still
+    # stops the robot.
+    cmd_vel_gate_lateral_cmd_bypass_static_cost_stop: true
+    cmd_vel_gate_lateral_cmd_bypass_min_mps: 0.02
+    # HH_260618: Reverse campsite parking may cross static lanelet/global-path
+    # cost after lanelet-snap arrival; LiDAR/Radar source cost remains active.
+    cmd_vel_gate_reverse_cmd_bypass_static_cost_stop: true
+    cmd_vel_gate_reverse_cmd_bypass_min_mps: 0.02
+    cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold: 85
+    # HH_260624 - Static lanelet cost may be bypassed during in-place 180deg
+    # site turns, but live LiDAR/Radar cost around the body still stops rotation.
+    cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop: true
+    cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m: 1.5
+    cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold: 85
+    # Unavoidable-stop cluster detection for lethal costs (front only).
+    cmd_vel_gate_unavoidable_stop_enable: true
+    # Fixed from 253 (OccupancyGrid max is 100; 253 never triggers).
+    cmd_vel_gate_unavoidable_lethal_threshold: 90
+    cmd_vel_gate_unavoidable_cluster_min_cells: 25
+    cmd_vel_gate_unavoidable_cluster_min_ratio: 0.25
+    # Optional yaw-alignment zone gate at specific map keypoints.
+    # Zone coordinates/yaw should come from lanelet2-derived map keypoints.
+    cmd_vel_gate_yaw_alignment_enable: false
+    cmd_vel_gate_yaw_alignment_frame_id: map
+    cmd_vel_gate_yaw_alignment_exit_margin_m: 0.3
+    # HH_260720 - Use the control-owned yaw-alignment zone file.
+    cmd_vel_gate_yaw_alignment_zones_file: control/yaw_alignment_zones.yaml
+    # HH_260706: Route-heading guard uses slower rotation and a longer tangent
+    # lookahead to reduce startup left-right oscillation under delayed field data.
+    cmd_vel_gate_route_heading_enable: true
+    cmd_vel_gate_route_heading_path_topic: /planning/local_path
+    cmd_vel_gate_route_heading_frame_id: map
+    cmd_vel_gate_route_heading_min_cmd_x_mps: 0.03
+    cmd_vel_gate_route_heading_lateral_cmd_epsilon_mps: 0.02
+    cmd_vel_gate_route_heading_lookahead_m: 2.0
+    cmd_vel_gate_route_heading_error_enter_deg: 75.0
+    cmd_vel_gate_route_heading_error_exit_deg: 35.0
+    cmd_vel_gate_route_heading_angular_kp: 0.8
+    cmd_vel_gate_route_heading_max_angular_z: 0.35
+    cmd_vel_gate_route_heading_max_linear_x: 0.0
+    cmd_vel_gate_route_heading_min_path_points: 2
+    # HH_260720 - Scale output before publishing /control/cmd_vel.
+    cmd_vel_gate_speed_scale: 0.5
+    # HH_260626: Publish zero if Nav2 raw cmd_vel stops arriving.
+    cmd_vel_gate_input_timeout_s: 0.35
+    cmd_vel_gate_zero_publish_rate_hz: 10.0
+
+    # HH_260720 - CAN/DBC feedback closes the command gate on stale status, faults, and charging.
+    cmd_vel_gate_status_topic: /control/cmd_vel_safety_gate/status
+    cmd_vel_gate_platform_safety_source_mode: platform_status
+    cmd_vel_gate_platform_status_topic: /platform/status
+    cmd_vel_gate_platform_status_timeout_s: 0.5
+    cmd_vel_gate_block_on_platform_status_stale: true
+    cmd_vel_gate_block_on_charging: true
+    # HH_260720 - A new campsite mission gets a bounded charger departure window.
+    cmd_vel_gate_allow_mission_departure_while_charging: true
+    cmd_vel_gate_charging_departure_grace_s: 15.0
+    cmd_vel_gate_charger_departure_mission_prefixes: camping_site_
+    cmd_vel_gate_mission_request_dedup_s: 1.0
+    cmd_vel_gate_block_on_platform_error_code: true
+    cmd_vel_gate_require_can_control_mode: true
+    cmd_vel_gate_critical_battery_stop_enabled: true
+    cmd_vel_gate_critical_battery_percentage: 0.10
+
   parking:
-    # HH_260618: Select exactly one final parking method.
-    #   rule_based: use private camrod_parking for campsite crab + rear parking.
-    #   docking   : use camrod_docking/opennav marker-based docking.
-    # A run without either method is considered a system readiness fault.
-    method: rule_based
-    # HH_260617: Rule-based parking runs after Nav2 lanelet-snap arrival and
-    # publishes through /planning/cmd_vel_raw so existing safety gates remain active.
+    # HH_260720 - Select one final parking controller implemented by camrod_control.
+    method: reverse
     enable_parking: true
-    enable_site_maneuver: true
-    enable_drop_zone_parking: true
-    param_file: parking/parking.yaml
+    param_file: __module_default__
 
   perception:
     enable_lidar_obstacle: true
@@ -473,6 +462,7 @@ bringup:
     sensing: sensing
     localization: localization
     planning: planning
+    control: control
     platform: platform
     parking: parking
     perception: perception
@@ -498,16 +488,6 @@ bringup:
     map_param_file: __module_default__
     lanelet_cost_grid_param_file: map/lanelet_cost_grid.yaml
     map_visualization_param_file: map/map_visualization.yaml
-
-  docking:
-    # HH_260618: This module launches only when parking.method=docking.
-    # Keep these feature flags separate from the backend selector so the same
-    # launch file can switch between AprilTag docking and rule-based parking.
-    # HH_260617: enable_odom_corrector is always false in full bringup because
-    # localization owns odom→base_link TF for the selected EKF/ESKF backend.
-    enable_docking: true
-    enable_auto_docking: false      # battery-triggered auto docking; set true after BMS integration.
-    enable_manual_docking: true     # UI/action-triggered manual docking
 
   voice:
     enable_voice: true

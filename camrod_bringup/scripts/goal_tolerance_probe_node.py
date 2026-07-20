@@ -19,8 +19,8 @@ Usage:
 import math
 
 import rclpy
-from geometry_msgs.msg import PoseStamped
-from nav_msgs.msg import Odometry
+# HH_260720 - Probe generated localization and planning contracts directly.
+from avg_msgs.msg import AvgOdometry, AvgPoseStamped
 from rclpy.node import Node
 
 
@@ -33,7 +33,7 @@ class GoalToleranceProbe(Node):
             "goal_topic", "/planning/goal_pose_snapped"
         ).value
         self.odom_topic = self.declare_parameter(
-            "odom_topic", "/localization/odometry/filtered"
+            "odom_topic", "/localization/odometry"
         ).value
         # Speed below which the robot is considered stopped.
         self.stopped_speed = float(
@@ -51,22 +51,23 @@ class GoalToleranceProbe(Node):
 
         self._errors: list[float] = []
 
-        self.create_subscription(PoseStamped, self.pose_topic, self._on_pose, 10)
-        self.create_subscription(PoseStamped, self.goal_topic, self._on_goal, 10)
-        self.create_subscription(Odometry, self.odom_topic, self._on_odom, 20)
+        self.create_subscription(AvgPoseStamped, self.pose_topic, self._on_pose, 10)
+        self.create_subscription(AvgPoseStamped, self.goal_topic, self._on_goal, 10)
+        # HH_260720 - Probe the generated selected odometry contract.
+        self.create_subscription(AvgOdometry, self.odom_topic, self._on_odom, 20)
 
         self.get_logger().info(
             f"goal_tolerance_probe ready — goal={self.goal_topic} pose={self.pose_topic}"
         )
 
-    def _on_goal(self, msg: PoseStamped) -> None:
+    def _on_goal(self, msg: AvgPoseStamped) -> None:
         self._goal = (msg.pose.position.x, msg.pose.position.y)
         self._stopped_since = None
 
-    def _on_pose(self, msg: PoseStamped) -> None:
+    def _on_pose(self, msg: AvgPoseStamped) -> None:
         self._pose = (msg.pose.position.x, msg.pose.position.y)
 
-    def _on_odom(self, msg: Odometry) -> None:
+    def _on_odom(self, msg: AvgOdometry) -> None:
         vx = msg.twist.twist.linear.x
         vy = msg.twist.twist.linear.y
         speed = math.hypot(vx, vy)

@@ -14,10 +14,18 @@ from typing import Any
 import rclpy
 import yaml
 from ament_index_python.packages import get_package_share_directory
-from geometry_msgs.msg import PoseStamped, Quaternion, Twist
+# HH_260720 - Use generated CAMROD state/path/control contracts with one ROS goal boundary.
+from avg_msgs.msg import (
+    AvgBool,
+    AvgPath,
+    AvgPlatformStatus,
+    AvgTwist,
+    PlanningMissionKey,
+    PlanningState,
+)
+from geometry_msgs.msg import PoseStamped as RosPoseStamped
+from geometry_msgs.msg import Quaternion as RosQuaternion
 from rclpy.node import Node
-from rosidl_runtime_py.utilities import get_message
-from std_msgs.msg import Bool, String
 
 
 @dataclass
@@ -65,16 +73,19 @@ class PlanningScenarioLeaderboard(Node):
             ).value
         )
         self.global_path_topic = str(
-            self.declare_parameter("global_path_topic", "/planning/global_path").value
+            self.declare_parameter(
+                "global_path_topic", "/planning/global_path_avg"
+            ).value
         )
         self.local_path_topic = str(
             self.declare_parameter("local_path_topic", "/planning/local_path").value
         )
         self.cmd_vel_topic = str(
-            self.declare_parameter("cmd_vel_topic", "/planning/cmd_vel").value
+            # HH_260720 - Score motion after the control safety gate.
+            self.declare_parameter("cmd_vel_topic", "/control/cmd_vel").value
         )
-        self.estop_topic = str(
-            self.declare_parameter("estop_topic", "/platform/status/estop").value
+        self.platform_status_topic = str(
+            self.declare_parameter("platform_status_topic", "/platform/status").value
         )
         self.state_topic = str(
             self.declare_parameter("state_topic", "/planning/state_machine/state").value
@@ -108,19 +119,34 @@ class PlanningScenarioLeaderboard(Node):
         # Optional JSON report output path.
         self.report_file = str(self.declare_parameter("report_file", "").value)
 
-        self.pub_goal = self.create_publisher(PoseStamped, self.goal_topic, 10)
-        self.pub_mission_key = self.create_publisher(String, self.mission_key_topic, 10)
-        self.pub_engage = self.create_publisher(Bool, self.engage_topic, 10)
+        self.pub_goal = self.create_publisher(RosPoseStamped, self.goal_topic, 10)
+        self.pub_mission_key = self.create_publisher(
+            PlanningMissionKey, self.mission_key_topic, 10
+        )
+        self.pub_engage = self.create_publisher(AvgBool, self.engage_topic, 10)
 
-        self.create_subscription(Twist, self.cmd_vel_topic, self._on_cmd_vel, 10)
-        self.create_subscription(Bool, self.estop_topic, self._on_estop, 10)
-        self.create_subscription(String, self.state_topic, self._on_state, 10)
+        self.create_subscription(AvgTwist, self.cmd_vel_topic, self._on_cmd_vel, 10)
         self.create_subscription(
-            String, self.mission_source_topic, self._on_mission_source, 10
+            AvgPlatformStatus,
+            self.platform_status_topic,
+            self._on_platform_status,
+            10,
+        )
+        self.create_subscription(PlanningState, self.state_topic, self._on_state, 10)
+        self.create_subscription(
+            PlanningMissionKey,
+            self.mission_source_topic,
+            self._on_mission_source,
+            10,
         )
 
-        self._global_sub = None
-        self._local_sub = None
+        # HH_260720 - Path contracts are fixed generated interfaces, so no dynamic type lookup.
+        self._global_sub = self.create_subscription(
+            AvgPath, self.global_path_topic, self._on_global_path, 10
+        )
+        self._local_sub = self.create_subscription(
+            AvgPath, self.local_path_topic, self._on_local_path, 10
+        )
         self._global_count = 0
         self._local_count = 0
         self._global_last_points = 0
@@ -133,7 +159,7 @@ class PlanningScenarioLeaderboard(Node):
         self._mission_source_history: list[tuple[float, str]] = []
 
     # Handles cmd_vel callbacks and tracks non-zero command activity timing.
-    def _on_cmd_vel(self, msg: Twist) -> None:
+    def _on_cmd_vel(self, msg: AvgTwist) -> None:
         cmd_abs = (
             abs(msg.linear.x)
             + abs(msg.linear.y)
@@ -145,17 +171,17 @@ class PlanningScenarioLeaderboard(Node):
         if cmd_abs >= self.cmd_vel_abs_threshold:
             self._last_nonzero_cmd_recv = time.monotonic()
 
-    # Handles estop callbacks.
-    def _on_estop(self, msg: Bool) -> None:
-        self._estop = bool(msg.data)
+    # HH_260720 - Read estop from the normalized platform snapshot.
+    def _on_platform_status(self, msg: AvgPlatformStatus) -> None:
+        self._estop = bool(msg.estop)
 
     # Handles planning state-machine state topic updates.
-    def _on_state(self, msg: String) -> None:
-        self._state_history.append((time.monotonic(), str(msg.data)))
+    def _on_state(self, msg: PlanningState) -> None:
+        self._state_history.append((time.monotonic(), str(msg.label)))
 
     # Handles planning state-machine mission-source topic updates.
-    def _on_mission_source(self, msg: String) -> None:
-        self._mission_source_history.append((time.monotonic(), str(msg.data)))
+    def _on_mission_source(self, msg: PlanningMissionKey) -> None:
+        self._mission_source_history.append((time.monotonic(), str(msg.mission_key)))
 
     # Handles global-path callbacks.
     def _on_global_path(self, msg: Any) -> None:
@@ -169,52 +195,33 @@ class PlanningScenarioLeaderboard(Node):
         self._local_last_recv = time.monotonic()
         self._local_last_points = len(getattr(msg, "poses", []))
 
-    # Resolves a topic's runtime message type and returns the corresponding Python class.
-    def _resolve_topic_class(self, topic: str, timeout_sec: float):
-        end_time = time.monotonic() + timeout_sec
-        while time.monotonic() < end_time and rclpy.ok():
-            for name, types in self.get_topic_names_and_types():
-                if name == topic and types:
-                    return get_message(types[0])
-            rclpy.spin_once(self, timeout_sec=0.1)
-        return None
-
-    # Lazily creates dynamic subscriptions for path topics that can differ by message type.
+    # Confirms that both generated path publishers are visible before scoring.
     def setup_dynamic_path_subscriptions(self) -> bool:
-        global_cls = self._resolve_topic_class(self.global_path_topic, self.wait_for_topics_s)
-        local_cls = self._resolve_topic_class(self.local_path_topic, self.wait_for_topics_s)
-        if global_cls is None or local_cls is None:
-            self.get_logger().error(
-                "failed to resolve path topic types: "
-                f"global={self.global_path_topic} local={self.local_path_topic}"
-            )
-            return False
-
-        self._global_sub = self.create_subscription(
-            global_cls, self.global_path_topic, self._on_global_path, 10
+        end_time = time.monotonic() + self.wait_for_topics_s
+        while time.monotonic() < end_time and rclpy.ok():
+            visible_topics = {name for name, _types in self.get_topic_names_and_types()}
+            if self.global_path_topic in visible_topics and self.local_path_topic in visible_topics:
+                return True
+            rclpy.spin_once(self, timeout_sec=0.1)
+        self.get_logger().error(
+            "generated path publishers unavailable: "
+            f"global={self.global_path_topic} local={self.local_path_topic}"
         )
-        self._local_sub = self.create_subscription(
-            local_cls, self.local_path_topic, self._on_local_path, 10
-        )
-        self.get_logger().info(
-            f"path subscriptions ready: {self.global_path_topic}({global_cls.__name__}), "
-            f"{self.local_path_topic}({local_cls.__name__})"
-        )
-        return True
+        return False
 
     # Publishes engage command.
     def publish_engage(self, engaged: bool) -> None:
-        msg = Bool()
+        msg = AvgBool()
         msg.data = bool(engaged)
         self.pub_engage.publish(msg)
 
     # Publishes a goal pose in map frame.
     def publish_goal(self, x: float, y: float, z: float, yaw_deg: float) -> None:
         yaw_rad = math.radians(yaw_deg)
-        q = Quaternion()
+        q = RosQuaternion()
         q.w = math.cos(yaw_rad * 0.5)
         q.z = math.sin(yaw_rad * 0.5)
-        goal = PoseStamped()
+        goal = RosPoseStamped()
         goal.header.stamp = self.get_clock().now().to_msg()
         goal.header.frame_id = "map"
         goal.pose.position.x = float(x)
@@ -228,9 +235,12 @@ class PlanningScenarioLeaderboard(Node):
 
     # Publishes a state-machine mission key (e.g. camping_site_1, drop_zone).
     def publish_mission_key(self, mission_key: str) -> None:
-        msg = String()
-        msg.data = str(mission_key).strip()
-        if not msg.data:
+        msg = PlanningMissionKey()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.mission_key = str(mission_key).strip()
+        msg.source = "planning_scenario_leaderboard"
+        msg.publish_route_goal = True
+        if not msg.mission_key:
             return
         self.pub_mission_key.publish(msg)
         rclpy.spin_once(self, timeout_sec=0.05)

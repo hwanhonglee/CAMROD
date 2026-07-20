@@ -1,6 +1,5 @@
-# Localization Mode Checker 설정 파일
-# 로컬라이제이션 레벨: 전체 로컬라이제이션 상태 관제
-# supervisor 의 자가진단(mode·confidence·sensor 상태)을 Diagnostic 으로 노출
+# HH_260720 - Describe the current localization monitor contract with its explicit node name.
+# Localization mode checker exposes monitor mode, confidence, and sensor health as diagnostics.
 
 localization_mode_checker:
   ros__parameters:
@@ -15,6 +14,6 @@ localization_mode_checker:
     conf_warn:  0.6                          # confidence < 이 값 → WARN
     conf_error: 0.3                          # confidence < 이 값 → ERROR
 
-    # Innovation norm 임계값 (supervisor 기본값과 동일하게 설정)
+    # HH_260720 - Keep innovation thresholds aligned with localization_monitor_node.
     innov_warn:  3.0                         # GNSS/Wheel innovation norm > 이 값 → WARN
     innov_error: 6.0                         # GNSS/Wheel innovation norm > 이 값 → ERROR

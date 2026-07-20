@@ -15,14 +15,30 @@ from ament_index_python.packages import get_package_share_directory
 import rclpy
 from action_msgs.msg import GoalStatus, GoalStatusArray
 from action_msgs.srv import CancelGoal
-from avg_msgs.msg import ModuleState, PlanningMissionKey, PlanningState
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Quaternion, Twist
-from nav_msgs.msg import Odometry, OccupancyGrid, Path
+# HH_260720 - Validate generated CAMROD contracts and name ROS ecosystem boundaries explicitly.
+from avg_msgs.msg import (
+    AvgBool,
+    AvgImu,
+    AvgOccupancyGrid,
+    AvgOdometry,
+    AvgPath,
+    AvgPoseStamped,
+    AvgRange,
+    AvgString,
+    AvgTwist,
+    ModuleState,
+    MotionOperation,
+    PlanningMissionKey,
+    PlanningState,
+)
+from geometry_msgs.msg import PoseStamped as RosPoseStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped as RosPoseWithCovarianceStamped
+from geometry_msgs.msg import Quaternion as RosQuaternion
 from rcl_interfaces.srv import SetParameters
 from rclpy.node import Node
 from rclpy.parameter import Parameter
-from sensor_msgs.msg import Imu, PointCloud2, Range
-from std_msgs.msg import Bool, String
+from sensor_msgs.msg import PointCloud2 as RosPointCloud2
+from std_msgs.msg import String as RosString
 
 
 RADAR_TOPICS = {
@@ -41,21 +57,21 @@ class CheckResult:
     metrics: dict[str, float | int | str | bool] = field(default_factory=dict)
 
 
-def yaw_from_quat(q: Quaternion) -> float:
+def yaw_from_quat(q) -> float:
     return math.atan2(
         2.0 * (q.w * q.z + q.x * q.y),
         1.0 - 2.0 * (q.y * q.y + q.z * q.z),
     )
 
 
-def quat_from_yaw(yaw: float) -> Quaternion:
-    q = Quaternion()
+def quat_from_yaw(yaw: float) -> RosQuaternion:
+    q = RosQuaternion()
     q.z = math.sin(yaw * 0.5)
     q.w = math.cos(yaw * 0.5)
     return q
 
 
-def twist_abs(msg: Twist) -> float:
+def twist_abs(msg: AvgTwist) -> float:
     return (
         abs(msg.linear.x)
         + abs(msg.linear.y)
@@ -96,6 +112,10 @@ class SimValidationRunner(Node):
         self.skip_manual_goal = bool(
             self.declare_parameter("skip_manual_goal", False).value
         )
+        # HH_260720 - Allow long maneuver scenarios to reuse a previously validated gate matrix.
+        self.run_gate_matrix = bool(
+            self.declare_parameter("run_gate_matrix", True).value
+        )
         self.run_obstacle_replan = bool(
             self.declare_parameter("run_obstacle_replan", False).value
         )
@@ -122,29 +142,40 @@ class SimValidationRunner(Node):
         )
         self.results: list[CheckResult] = []
 
-        self.pub_goal = self.create_publisher(PoseStamped, "/goal_pose", 10)
+        self.pub_goal = self.create_publisher(RosPoseStamped, "/goal_pose", 10)
         self.pub_prepare_goal = self.create_publisher(
-            PoseStamped, "/planning/auto_goal_raw", 10
+            AvgPoseStamped, "/planning/auto_goal_raw", 10
         )
         self.pub_initialpose = self.create_publisher(
-            PoseWithCovarianceStamped, "/initialpose", 10
+            RosPoseWithCovarianceStamped, "/initialpose", 10
         )
-        self.pub_engage = self.create_publisher(Bool, "/planning/engage", 10)
-        self.pub_mission_engage = self.create_publisher(Bool, "/planning/mission_engage", 10)
-        self.pub_drive_enable = self.create_publisher(Bool, "/platform/drive_enable", 10)
+        self.pub_engage = self.create_publisher(AvgBool, "/planning/engage", 10)
+        self.pub_mission_engage = self.create_publisher(
+            AvgBool, "/planning/mission_engage", 10
+        )
+        self.pub_drive_enable = self.create_publisher(
+            AvgBool, "/platform/drive_enable", 10
+        )
         self.pub_mission_key = self.create_publisher(
             PlanningMissionKey, "/planning/mission_key", 10
         )
-        self.pub_site_return = self.create_publisher(Bool, "/parking/site_maneuver/return", 10)
-        self.pub_site_cancel = self.create_publisher(Bool, "/parking/site_maneuver/cancel", 10)
-        self.pub_drop_cancel = self.create_publisher(Bool, "/parking/drop_zone/cancel", 10)
-        self.pub_raw = self.create_publisher(Twist, "/planning/cmd_vel_raw", 10)
+        # HH_260720 - Drive each controller through its typed operation contract.
+        self.pub_site_operation = self.create_publisher(
+            MotionOperation, "/control/camping_site_maneuver_controller/operation", 10
+        )
+        self.pub_drop_maneuver_operation = self.create_publisher(
+            MotionOperation, "/control/drop_zone_maneuver_controller/operation", 10
+        )
+        self.pub_parking_operation = self.create_publisher(
+            MotionOperation, "/parking/operation", 10
+        )
+        self.pub_raw = self.create_publisher(AvgTwist, "/control/cmd_vel_raw", 10)
 
         self.param_client = self.create_client(
             SetParameters, f"{self.fake_sensor_node}/set_parameters"
         )
         self.gate_param_client = self.create_client(
-            SetParameters, "/planning/cmd_vel_gate/set_parameters"
+            SetParameters, "/control/cmd_vel_safety_gate/set_parameters"
         )
         self.cancel_clients = {
             "follow_path": self.create_client(
@@ -159,50 +190,53 @@ class SimValidationRunner(Node):
         self.first_seen: dict[str, float] = {}
         self.last_seen: dict[str, float] = {}
         self.max_abs_since: dict[str, float] = {}
-        self.latest_pose: PoseStamped | None = None
-        self.latest_lanelet_pose: PoseStamped | None = None
+        self.latest_pose: AvgPoseStamped | None = None
+        self.latest_lanelet_pose: AvgPoseStamped | None = None
         self.latest_state: PlanningState | None = None
         self.latest_mission_source: PlanningMissionKey | None = None
         self.latest_site_status: ModuleState | None = None
-        self.latest_drop_status: ModuleState | None = None
+        self.latest_drop_maneuver_status: ModuleState | None = None
+        self.latest_reverse_parking_controller_status: ModuleState | None = None
         self.latest_replan_status = ""
         self.latest_planner_selector = ""
         self.replan_statuses_seen: set[str] = set()
         self.planner_selectors_seen: set[str] = set()
         self.latest_nav_status: GoalStatusArray | None = None
         self.latest_follow_status: GoalStatusArray | None = None
-        self.latest_raw_goal: PoseStamped | None = None
-        self.latest_route_goal: PoseStamped | None = None
-        self.latest_cost_grids: dict[str, OccupancyGrid] = {}
+        self.latest_raw_goal: RosPoseStamped | None = None
+        self.latest_route_goal: AvgPoseStamped | None = None
+        self.latest_cost_grids: dict[str, AvgOccupancyGrid] = {}
         self.global_path_count = 0
         self.local_path_count = 0
         self.global_path_points = 0
         self.local_path_points = 0
 
-        self._subscribe_count("/sensing/imu/data", Imu)
-        self._subscribe_count("/sensing/lidar/points_filtered", PointCloud2)
-        self._subscribe_count("/perception/obstacles", PointCloud2)
+        # HH_260720 - Observe the generated IMU contract instead of the hardware ROS boundary.
+        self._subscribe_count("/sensing/imu/data", AvgImu)
+        self._subscribe_count("/sensing/lidar/points_filtered", RosPointCloud2)
+        self._subscribe_count("/perception/obstacles", RosPointCloud2)
         self._subscribe_cost_grid("/sensing/cost_grid/lidar")
         self._subscribe_cost_grid("/sensing/cost_grid/radar")
         self._subscribe_cost_grid("/planning/cost_grid/inflation")
-        self._subscribe_count("/platform/status/wheel_odometry", Odometry)
+        self._subscribe_count("/localization/input/wheel_odometry", AvgOdometry)
         for topics in RADAR_TOPICS.values():
             for topic in topics:
-                self._subscribe_count(topic, Range)
+                self._subscribe_count(topic, AvgRange)
 
-        self.create_subscription(PoseStamped, "/localization/pose", self._on_pose, 10)
-        self.create_subscription(PoseStamped, "/goal_pose", self._on_raw_goal, 10)
+        self.create_subscription(AvgPoseStamped, "/localization/pose", self._on_pose, 10)
+        self.create_subscription(RosPoseStamped, "/goal_pose", self._on_raw_goal, 10)
         self.create_subscription(
-            PoseStamped, "/planning/goal_pose_snapped_ros", self._on_route_goal, 10
+            AvgPoseStamped, "/planning/goal_pose_snapped", self._on_route_goal, 10
         )
         self.create_subscription(
-            PoseStamped, "/planning/lanelet_pose_ros", self._on_lanelet_pose, 10
+            AvgPoseStamped, "/planning/lanelet_pose", self._on_lanelet_pose, 10
         )
-        self.create_subscription(Path, "/planning/global_path", self._on_global_path, 10)
-        self.create_subscription(Path, "/planning/local_path", self._on_local_path, 10)
-        self.create_subscription(Twist, "/planning/cmd_vel_raw", self._on_raw_cmd, 10)
-        self.create_subscription(Twist, "/planning/cmd_vel", self._on_planning_cmd, 10)
-        self.create_subscription(Twist, "/platform/cmd_vel", self._on_platform_cmd, 10)
+        self.create_subscription(
+            AvgPath, "/planning/global_path_avg", self._on_global_path, 10
+        )
+        self.create_subscription(AvgPath, "/planning/local_path", self._on_local_path, 10)
+        self.create_subscription(AvgTwist, "/control/cmd_vel_raw", self._on_raw_cmd, 10)
+        self.create_subscription(AvgTwist, "/control/cmd_vel", self._on_control_cmd, 10)
         self.create_subscription(
             PlanningState, "/planning/state_machine/state", self._on_state, 10
         )
@@ -213,16 +247,29 @@ class SimValidationRunner(Node):
             10,
         )
         self.create_subscription(
-            ModuleState, "/parking/site_maneuver/status", self._on_site_status, 10
+            ModuleState,
+            "/control/camping_site_maneuver_controller/status",
+            self._on_site_status,
+            10,
         )
         self.create_subscription(
-            ModuleState, "/parking/drop_zone/status", self._on_drop_status, 10
+            ModuleState,
+            "/control/drop_zone_maneuver_controller/status",
+            self._on_drop_maneuver_status,
+            10,
         )
         self.create_subscription(
-            String, "/planning/obstacle_replan/status", self._on_replan_status, 10
+            ModuleState,
+            "/parking/reverse_parking_controller/status",
+            self._on_reverse_parking_controller_status,
+            10,
         )
         self.create_subscription(
-            String, "/planning/planner_selector", self._on_planner_selector, 10
+            AvgString, "/planning/obstacle_replan/status", self._on_replan_status, 10
+        )
+        self.create_subscription(
+            # HH_260720 - Observe the explicit Nav2 std_msgs selector boundary.
+            RosString, "/planning/planner_selector_ros", self._on_planner_selector, 10
         )
         self.create_subscription(
             GoalStatusArray,
@@ -242,7 +289,7 @@ class SimValidationRunner(Node):
 
     def _subscribe_cost_grid(self, topic: str) -> None:
         self.create_subscription(
-            OccupancyGrid,
+            AvgOccupancyGrid,
             topic,
             lambda msg, t=topic: self._on_cost_grid(t, msg),
             10,
@@ -254,48 +301,45 @@ class SimValidationRunner(Node):
         self.first_seen.setdefault(topic, now_s)
         self.last_seen[topic] = now_s
 
-    def _record_twist(self, topic: str, msg: Twist) -> None:
+    def _record_twist(self, topic: str, msg: AvgTwist) -> None:
         self._count(topic)
         self.max_abs_since[topic] = max(self.max_abs_since.get(topic, 0.0), twist_abs(msg))
 
-    def _on_cost_grid(self, topic: str, msg: OccupancyGrid) -> None:
+    def _on_cost_grid(self, topic: str, msg: AvgOccupancyGrid) -> None:
         self.latest_cost_grids[topic] = msg
         self._count(topic)
 
-    def _on_pose(self, msg: PoseStamped) -> None:
+    def _on_pose(self, msg: AvgPoseStamped) -> None:
         self.latest_pose = msg
         self._count("/localization/pose")
 
-    def _on_lanelet_pose(self, msg: PoseStamped) -> None:
+    def _on_lanelet_pose(self, msg: AvgPoseStamped) -> None:
         self.latest_lanelet_pose = msg
-        self._count("/planning/lanelet_pose_ros")
+        self._count("/planning/lanelet_pose")
 
-    def _on_raw_goal(self, msg: PoseStamped) -> None:
+    def _on_raw_goal(self, msg: RosPoseStamped) -> None:
         self.latest_raw_goal = msg
         self._count("/goal_pose")
 
-    def _on_route_goal(self, msg: PoseStamped) -> None:
+    def _on_route_goal(self, msg: AvgPoseStamped) -> None:
         self.latest_route_goal = msg
-        self._count("/planning/goal_pose_snapped_ros")
+        self._count("/planning/goal_pose_snapped")
 
-    def _on_global_path(self, msg: Path) -> None:
+    def _on_global_path(self, msg: AvgPath) -> None:
         self.global_path_count += 1
         self.global_path_points = len(msg.poses)
-        self._count("/planning/global_path")
+        self._count("/planning/global_path_avg")
 
-    def _on_local_path(self, msg: Path) -> None:
+    def _on_local_path(self, msg: AvgPath) -> None:
         self.local_path_count += 1
         self.local_path_points = len(msg.poses)
         self._count("/planning/local_path")
 
-    def _on_raw_cmd(self, msg: Twist) -> None:
-        self._record_twist("/planning/cmd_vel_raw", msg)
+    def _on_raw_cmd(self, msg: AvgTwist) -> None:
+        self._record_twist("/control/cmd_vel_raw", msg)
 
-    def _on_planning_cmd(self, msg: Twist) -> None:
-        self._record_twist("/planning/cmd_vel", msg)
-
-    def _on_platform_cmd(self, msg: Twist) -> None:
-        self._record_twist("/platform/cmd_vel", msg)
+    def _on_control_cmd(self, msg: AvgTwist) -> None:
+        self._record_twist("/control/cmd_vel", msg)
 
     def _on_state(self, msg: PlanningState) -> None:
         self.latest_state = msg
@@ -307,18 +351,22 @@ class SimValidationRunner(Node):
 
     def _on_site_status(self, msg: ModuleState) -> None:
         self.latest_site_status = msg
-        self._count("/parking/site_maneuver/status")
+        self._count("/control/camping_site_maneuver_controller/status")
 
-    def _on_drop_status(self, msg: ModuleState) -> None:
-        self.latest_drop_status = msg
-        self._count("/parking/drop_zone/status")
+    def _on_drop_maneuver_status(self, msg: ModuleState) -> None:
+        self.latest_drop_maneuver_status = msg
+        self._count("/control/drop_zone_maneuver_controller/status")
 
-    def _on_replan_status(self, msg: String) -> None:
+    def _on_reverse_parking_controller_status(self, msg: ModuleState) -> None:
+        self.latest_reverse_parking_controller_status = msg
+        self._count("/parking/reverse_parking_controller/status")
+
+    def _on_replan_status(self, msg: AvgString) -> None:
         self.latest_replan_status = msg.data
         if msg.data:
             self.replan_statuses_seen.add(msg.data.split(":", 1)[0])
 
-    def _on_planner_selector(self, msg: String) -> None:
+    def _on_planner_selector(self, msg: RosString) -> None:
         self.latest_planner_selector = msg.data
         if msg.data:
             self.planner_selectors_seen.add(msg.data)
@@ -345,15 +393,14 @@ class SimValidationRunner(Node):
         return bool(pred())
 
     def publish_bool(self, pub, value: bool, repeats: int = 4) -> None:
-        msg = Bool()
+        msg = AvgBool()
         msg.data = bool(value)
         for _ in range(repeats):
             pub.publish(msg)
             self.spin_for(0.05)
 
     def publish_engage(self, value: bool) -> None:
-        # HH_260630: Sim drive tests must arm both planning and platform gates;
-        # otherwise Nav2 publishes /planning/cmd_vel while /platform/cmd_vel stays zero.
+        # HH_260720 - The final control gate requires both planning engage and operator arm.
         if value:
             self.publish_bool(self.pub_drive_enable, True)
         self.publish_bool(self.pub_engage, value)
@@ -420,7 +467,7 @@ class SimValidationRunner(Node):
             end = time.monotonic() + 2.0
             while rclpy.ok() and not future.done() and time.monotonic() < end:
                 rclpy.spin_once(self, timeout_sec=0.05)
-        zero = Twist()
+        zero = AvgTwist()
         for _ in range(8):
             self.pub_raw.publish(zero)
             self.spin_for(0.05)
@@ -428,14 +475,32 @@ class SimValidationRunner(Node):
 
     def cancel_parking_maneuvers(self) -> None:
         # HH_260701 - Full-run validation executes manual-goal and camping
-        # checks in one process. Clear any rule-based parking phase that may
+        # checks in one process. Clear any control/parking phase that may
         # have been triggered by stale /goal_pose during setup probes.
-        self.publish_bool(self.pub_site_cancel, True, repeats=3)
-        self.publish_bool(self.pub_drop_cancel, True, repeats=3)
+        # HH_260720 - Cancel through generated controller operations; legacy Bool topics are gone.
+        self.publish_operation(
+            self.pub_site_operation, MotionOperation.CANCEL, repeats=3
+        )
+        self.publish_operation(
+            self.pub_drop_maneuver_operation, MotionOperation.CANCEL, repeats=3
+        )
+        self.publish_operation(
+            self.pub_parking_operation, MotionOperation.CANCEL, repeats=3
+        )
         self.spin_for(0.3)
 
+    def publish_operation(self, publisher, operation: int, repeats: int = 3) -> None:
+        message = MotionOperation()
+        message.header.stamp = self.get_clock().now().to_msg()
+        message.operation = int(operation)
+        message.source = "sim_validation"
+        for _ in range(repeats):
+            publisher.publish(message)
+            self.spin_for(0.05)
+
     def reset_cmd_metrics(self) -> None:
-        for topic in ("/planning/cmd_vel_raw", "/planning/cmd_vel", "/platform/cmd_vel"):
+        # HH_260720 - Measure the raw candidate and single final control output separately.
+        for topic in ("/control/cmd_vel_raw", "/control/cmd_vel"):
             self.max_abs_since[topic] = 0.0
 
     def cost_grid_max(self, topic: str) -> int:
@@ -458,8 +523,8 @@ class SimValidationRunner(Node):
             timeout_s,
         )
 
-    def make_cmd(self, direction: str) -> Twist:
-        msg = Twist()
+    def make_cmd(self, direction: str) -> AvgTwist:
+        msg = AvgTwist()
         if direction == "front":
             msg.linear.x = 0.35
         elif direction == "rear":
@@ -472,7 +537,7 @@ class SimValidationRunner(Node):
             msg.angular.z = 0.35
         return msg
 
-    def publish_raw_for(self, cmd: Twist, duration_s: float) -> None:
+    def publish_raw_for(self, cmd: AvgTwist, duration_s: float) -> None:
         end = time.monotonic() + duration_s
         while rclpy.ok() and time.monotonic() < end:
             self.pub_raw.publish(cmd)
@@ -532,10 +597,11 @@ class SimValidationRunner(Node):
         self.spin_for(duration_s)
         expected = {
             "/localization/pose": 7.0,
-            "/planning/lanelet_pose_ros": 7.0,
+            # HH_260720 - Baseline checks observe the generated planning pose.
+            "/planning/lanelet_pose": 7.0,
             "/sensing/imu/data": 7.0,
             "/sensing/lidar/points_filtered": 7.0,
-            "/platform/status/wheel_odometry": 7.0,
+            "/localization/input/wheel_odometry": 7.0,
             "/sensing/cost_grid/lidar": 5.0,
             "/sensing/cost_grid/radar": 5.0,
             "/planning/cost_grid/inflation": 3.0,
@@ -632,8 +698,8 @@ class SimValidationRunner(Node):
                 self.spin_for(0.3)
                 self.reset_cmd_metrics()
                 self.publish_raw_for(self.make_cmd(direction), 1.2)
-                out = self.max_abs_since.get("/planning/cmd_vel", 0.0)
-                metrics[f"{direction}_{label}_planning_cmd_max"] = round(out, 3)
+                out = self.max_abs_since.get("/control/cmd_vel", 0.0)
+                metrics[f"{direction}_{label}_control_cmd_max"] = round(out, 3)
                 ok = out <= 0.03
                 if not ok:
                     all_ok = False
@@ -649,33 +715,45 @@ class SimValidationRunner(Node):
             )
         )
 
-    def publish_initialpose(self, pose: PoseStamped) -> None:
-        msg = PoseWithCovarianceStamped()
-        msg.header = pose.header
-        msg.pose.pose = pose.pose
+    def publish_initialpose(self, pose) -> None:
+        # HH_260720 - Convert the internal Avg pose only at the RViz reset boundary.
+        msg = RosPoseWithCovarianceStamped()
+        msg.header.stamp = pose.header.stamp
+        msg.header.frame_id = pose.header.frame_id
+        self.copy_pose(msg.pose.pose, pose.pose)
         for _ in range(4):
             self.pub_initialpose.publish(msg)
             self.spin_for(0.05)
 
-    def publish_goal_pose(self, pose: PoseStamped) -> None:
+    def publish_goal_pose(self, pose: RosPoseStamped) -> None:
         for _ in range(4):
-            msg = PoseStamped()
-            msg.header = pose.header
+            msg = RosPoseStamped()
+            msg.header.frame_id = pose.header.frame_id
             msg.header.stamp = self.get_clock().now().to_msg()
-            msg.pose = pose.pose
+            self.copy_pose(msg.pose, pose.pose)
             self.pub_goal.publish(msg)
             self.spin_for(0.05)
 
-    def publish_prepare_goal_pose(self, pose: PoseStamped) -> None:
+    def publish_prepare_goal_pose(self, pose: RosPoseStamped) -> None:
         for _ in range(4):
-            msg = PoseStamped()
-            msg.header = pose.header
+            msg = AvgPoseStamped()
+            msg.header.frame_id = pose.header.frame_id
             msg.header.stamp = self.get_clock().now().to_msg()
-            msg.pose = pose.pose
+            self.copy_pose(msg.pose, pose.pose)
             self.pub_prepare_goal.publish(msg)
             self.spin_for(0.05)
 
-    def prepare_camping_start_pose(self, goal_pose: PoseStamped) -> bool:
+    @staticmethod
+    def copy_pose(target, source) -> None:
+        target.position.x = source.position.x
+        target.position.y = source.position.y
+        target.position.z = source.position.z
+        target.orientation.x = source.orientation.x
+        target.orientation.y = source.orientation.y
+        target.orientation.z = source.orientation.z
+        target.orientation.w = source.orientation.w
+
+    def prepare_camping_start_pose(self, goal_pose: RosPoseStamped) -> bool:
         if not self.camping_prepare_near_route:
             return True
         before = self.latest_route_goal
@@ -684,7 +762,7 @@ class SimValidationRunner(Node):
         self.cancel_all_actions()
         # HH_260630: Probe goal_snapper through its auxiliary input so the
         # preparation step does not look like a user/UI camping goal to
-        # site_maneuver or the state-machine raw-goal listener.
+        # camping_site_maneuver_controller or the state-machine raw-goal listener.
         self.publish_prepare_goal_pose(goal_pose)
 
         def route_goal_updated() -> bool:
@@ -702,7 +780,7 @@ class SimValidationRunner(Node):
         if route_goal is None:
             return False
         yaw = yaw_from_quat(route_goal.pose.orientation)
-        start = PoseStamped()
+        start = RosPoseStamped()
         start.header.stamp = self.get_clock().now().to_msg()
         start.header.frame_id = route_goal.header.frame_id or "map"
         offset_m = max(0.0, abs(self.camping_start_offset_m))
@@ -713,7 +791,10 @@ class SimValidationRunner(Node):
         start.pose.position.x = route_goal.pose.position.x - offset_m * math.cos(yaw)
         start.pose.position.y = route_goal.pose.position.y - offset_m * math.sin(yaw)
         start.pose.position.z = route_goal.pose.position.z
-        start.pose.orientation = route_goal.pose.orientation
+        start.pose.orientation.x = route_goal.pose.orientation.x
+        start.pose.orientation.y = route_goal.pose.orientation.y
+        start.pose.orientation.z = route_goal.pose.orientation.z
+        start.pose.orientation.w = route_goal.pose.orientation.w
         self.publish_initialpose(start)
         self.cancel_all_actions()
         prepared = self.wait_for(
@@ -736,8 +817,10 @@ class SimValidationRunner(Node):
             planning_share = get_package_share_directory("camrod_planning")
             candidates.extend(
                 [
-                    os.path.join(planning_share, "config", "camping_sites (copy_c_track).yaml"),
+                    # HH_260720 - Follow the active park-map fallback before legacy profile files.
                     os.path.join(planning_share, "config", "camping_sites.yaml"),
+                    os.path.join(planning_share, "config", "camping_sites (copy_park).yaml"),
+                    os.path.join(planning_share, "config", "camping_sites (copy_c_track).yaml"),
                 ]
             )
         except Exception:
@@ -755,7 +838,7 @@ class SimValidationRunner(Node):
         )
         return candidates
 
-    def load_camping_goal(self, mission_key: str) -> PoseStamped | None:
+    def load_camping_goal(self, mission_key: str) -> RosPoseStamped | None:
         for path in self._candidate_camping_site_files():
             if not path or not os.path.exists(path):
                 continue
@@ -770,7 +853,7 @@ class SimValidationRunner(Node):
                     continue
                 # HH_260630: Sim UI validation mirrors ui_backend_node behavior:
                 # publish semantic mission_key first, then the raw campsite goal pose.
-                pose = PoseStamped()
+                pose = RosPoseStamped()
                 pose.header.stamp = self.get_clock().now().to_msg()
                 pose.header.frame_id = str(site.get("frame_id", "map"))
                 pose.pose.position.x = float(site.get("x", 0.0))
@@ -796,7 +879,7 @@ class SimValidationRunner(Node):
         self.publish_initialpose(base)
         self.spin_for(0.8)
         yaw = yaw_from_quat(base.pose.orientation)
-        goal = PoseStamped()
+        goal = RosPoseStamped()
         goal.header.stamp = self.get_clock().now().to_msg()
         goal.header.frame_id = "map"
         goal.pose.position.x = base.pose.position.x + self.manual_goal_distance_m * math.cos(yaw)
@@ -829,7 +912,7 @@ class SimValidationRunner(Node):
                     {
                         "global_path_points": self.global_path_points,
                         "local_path_points": self.local_path_points,
-                        "cmd_max": round(self.max_abs_since.get("/planning/cmd_vel", 0.0), 3),
+                        "cmd_max": round(self.max_abs_since.get("/control/cmd_vel", 0.0), 3),
                         "moved_m": 0.0,
                         "succeeded": False,
                     },
@@ -857,7 +940,7 @@ class SimValidationRunner(Node):
         self.cancel_all_actions()
         global_new = self.global_path_count > base_global
         local_new = self.local_path_count > base_local
-        cmd_max = self.max_abs_since.get("/planning/cmd_vel", 0.0)
+        cmd_max = self.max_abs_since.get("/control/cmd_vel", 0.0)
         ok = bool(global_new and local_new and cmd_max > 0.03 and moved_m > 0.5 and succeeded)
         self.results.append(
             CheckResult(
@@ -896,7 +979,7 @@ class SimValidationRunner(Node):
         self.publish_initialpose(base)
         self.spin_for(0.8)
         yaw = yaw_from_quat(base.pose.orientation)
-        goal = PoseStamped()
+        goal = RosPoseStamped()
         goal.header.stamp = self.get_clock().now().to_msg()
         goal.header.frame_id = "map"
         goal.pose.position.x = (
@@ -954,7 +1037,7 @@ class SimValidationRunner(Node):
             if blocked_seen_at is not None and (time.monotonic() - blocked_seen_at) >= 2.0:
                 break
 
-        cmd_max = self.max_abs_since.get("/planning/cmd_vel", 0.0)
+        cmd_max = self.max_abs_since.get("/control/cmd_vel", 0.0)
         self.clear_obstacle()
         self.publish_engage(False)
         self.cancel_all_actions()
@@ -1041,20 +1124,31 @@ class SimValidationRunner(Node):
         seen_crab_out = False
         seen_done = False
         seen_drop_zone_return = False
-        seen_drop_parking = False
-        seen_drop_parked = False
-        seen_drop_error = False
+        seen_drop_maneuver_alignment = False
+        seen_reverse_parking_controller_started = False
+        seen_reverse_parking_controller_parked = False
+        seen_drop_sequence_error = False
         reached_nav = False
         seen_goal_reached_state = False
         seen_site_key = False
         state_labels: set[str] = set()
         scenario_labels: set[str] = set()
         site_status_messages: set[str] = set()
-        drop_status_messages: set[str] = set()
+        drop_maneuver_status_messages: set[str] = set()
+        reverse_parking_controller_status_messages: set[str] = set()
         while rclpy.ok() and (time.monotonic() - start) < self.camping_timeout_s:
             rclpy.spin_once(self, timeout_sec=0.05)
             site_msg = self.latest_site_status.message if self.latest_site_status else ""
-            drop_msg = self.latest_drop_status.message if self.latest_drop_status else ""
+            drop_maneuver_msg = (
+                self.latest_drop_maneuver_status.message
+                if self.latest_drop_maneuver_status
+                else ""
+            )
+            reverse_parking_controller_msg = (
+                self.latest_reverse_parking_controller_status.message
+                if self.latest_reverse_parking_controller_status
+                else ""
+            )
             state_label = self.latest_state.label if self.latest_state else ""
             active_key = self.latest_state.active_mission_key if self.latest_state else ""
             scenario_label = self.latest_state.scenario_label if self.latest_state else ""
@@ -1064,8 +1158,10 @@ class SimValidationRunner(Node):
                 scenario_labels.add(scenario_label)
             if site_msg:
                 site_status_messages.add(site_msg)
-            if drop_msg:
-                drop_status_messages.add(drop_msg)
+            if drop_maneuver_msg:
+                drop_maneuver_status_messages.add(drop_maneuver_msg)
+            if reverse_parking_controller_msg:
+                reverse_parking_controller_status_messages.add(reverse_parking_controller_msg)
             seen_goal_reached_state = seen_goal_reached_state or state_label == "GOAL_REACHED"
             seen_site_key = seen_site_key or active_key.startswith("camping_site_")
             seen_drop_zone_return = (
@@ -1076,33 +1172,47 @@ class SimValidationRunner(Node):
             if any(token in site_msg for token in ("CRAB_IN", "ROTATE_180", "WAIT_RETURN")):
                 seen_site_phase = True
             if "WAIT_RETURN" in site_msg:
-                ret = Bool()
-                ret.data = True
-                self.pub_site_return.publish(ret)
+                self.publish_operation(
+                    self.pub_site_operation, MotionOperation.RETURN, repeats=1
+                )
             # HH_260701 - RETURNING can be emitted before the campsite exit is
             # actually complete. Require the concrete site maneuver phases so
             # the smoke test catches engage/gate issues that stop CRAB_OUT.
             seen_align_return_yaw = seen_align_return_yaw or "ALIGN_RETURN_YAW" in site_msg
             seen_crab_out = seen_crab_out or "CRAB_OUT" in site_msg
             seen_done = seen_done or "DONE" in site_msg
-            # HH_260701 - Optional full-roundtrip mode keeps running after
-            # campsite DONE until drop-zone reverse parking reaches PARKED.
-            seen_drop_parking = seen_drop_parking or any(
-                token in drop_msg for token in ("ALIGN_REAR_YAW", "REVERSE_APPROACH")
+            # HH_260720 - Validate drop-zone alignment and reverse parking as
+            # separate control and parking responsibilities.
+            seen_drop_maneuver_alignment = (
+                seen_drop_maneuver_alignment
+                or "ALIGN_PARKING_YAW" in drop_maneuver_msg
             )
-            seen_drop_parked = seen_drop_parked or "PARKED" in drop_msg
-            seen_drop_error = seen_drop_error or "ERROR" in drop_msg
+            seen_reverse_parking_controller_started = (
+                seen_reverse_parking_controller_started
+                or "REVERSE_APPROACH" in reverse_parking_controller_msg
+            )
+            seen_reverse_parking_controller_parked = (
+                seen_reverse_parking_controller_parked or "PARKED" in reverse_parking_controller_msg
+            )
+            seen_drop_sequence_error = (
+                seen_drop_sequence_error
+                or "ERROR" in drop_maneuver_msg
+                or "ERROR" in reverse_parking_controller_msg
+            )
             if self.terminal_success_seen(self.latest_nav_status, known_nav_goals):
                 reached_nav = True
             if seen_site_phase and seen_crab_out and seen_done:
                 if not self.camping_wait_drop_zone:
                     break
-                if seen_drop_parked or seen_drop_error:
+                if seen_reverse_parking_controller_parked or seen_drop_sequence_error:
                     break
         self.publish_engage(False)
         self.publish_mission_engage(False)
         self.cancel_all_actions()
-        cmd_max = self.max_abs_since.get("/planning/cmd_vel", 0.0)
+        # HH_260720 - Always stop site/drop-zone/parking controllers after a
+        # focused camping run, including timeout and failed-sequence cases.
+        self.cancel_parking_maneuvers()
+        cmd_max = self.max_abs_since.get("/control/cmd_vel", 0.0)
         global_new = self.global_path_count > base_global
         local_new = self.local_path_count > base_local
         route_reached = bool(reached_nav or seen_goal_reached_state)
@@ -1118,9 +1228,10 @@ class SimValidationRunner(Node):
             not self.camping_wait_drop_zone
             or (
                 seen_drop_zone_return
-                and seen_drop_parking
-                and seen_drop_parked
-                and not seen_drop_error
+                and seen_drop_maneuver_alignment
+                and seen_reverse_parking_controller_started
+                and seen_reverse_parking_controller_parked
+                and not seen_drop_sequence_error
             )
         )
         ok = bool(site_ok and drop_zone_ok)
@@ -1152,7 +1263,16 @@ class SimValidationRunner(Node):
         latest_state_key = self.latest_state.active_mission_key if self.latest_state else ""
         latest_scenario = self.latest_state.scenario_label if self.latest_state else ""
         latest_site_status = self.latest_site_status.message if self.latest_site_status else ""
-        latest_drop_status = self.latest_drop_status.message if self.latest_drop_status else ""
+        latest_drop_maneuver_status = (
+            self.latest_drop_maneuver_status.message
+            if self.latest_drop_maneuver_status
+            else ""
+        )
+        latest_reverse_parking_controller_status = (
+            self.latest_reverse_parking_controller_status.message
+            if self.latest_reverse_parking_controller_status
+            else ""
+        )
         self.results.append(
             CheckResult(
                 "camping_site_smoke",
@@ -1165,8 +1285,9 @@ class SimValidationRunner(Node):
                     f"align_return_yaw={seen_align_return_yaw} "
                     f"crab_out={seen_crab_out} done={seen_done} "
                     f"drop_return={seen_drop_zone_return} "
-                    f"drop_parking={seen_drop_parking} "
-                    f"drop_parked={seen_drop_parked} "
+                    f"drop_alignment={seen_drop_maneuver_alignment} "
+                    f"reverse_started={seen_reverse_parking_controller_started} "
+                    f"reverse_parked={seen_reverse_parking_controller_parked} "
                     f"state={latest_state_label} "
                     f"key={latest_state_key} route_dist={route_dist:.2f}"
                 ),
@@ -1180,20 +1301,27 @@ class SimValidationRunner(Node):
                     "done": seen_done,
                     "wait_drop_zone": self.camping_wait_drop_zone,
                     "drop_zone_return": seen_drop_zone_return,
-                    "drop_zone_parking": seen_drop_parking,
-                    "drop_zone_parked": seen_drop_parked,
-                    "drop_zone_error": seen_drop_error,
+                    "drop_zone_alignment": seen_drop_maneuver_alignment,
+                    "reverse_parking_controller_started": seen_reverse_parking_controller_started,
+                    "reverse_parking_controller_parked": seen_reverse_parking_controller_parked,
+                    "drop_zone_sequence_error": seen_drop_sequence_error,
                     "goal_reached_state_seen": seen_goal_reached_state,
                     "site_key_seen": seen_site_key,
                     "latest_state": latest_state_label,
                     "latest_active_mission_key": latest_state_key,
                     "latest_scenario": latest_scenario,
                     "latest_site_status": latest_site_status,
-                    "latest_drop_status": latest_drop_status,
+                    "latest_drop_maneuver_status": latest_drop_maneuver_status,
+                    "latest_reverse_parking_controller_status": latest_reverse_parking_controller_status,
                     "state_labels_seen": ",".join(sorted(state_labels)),
                     "scenario_labels_seen": ",".join(sorted(scenario_labels)),
                     "site_statuses_seen": " | ".join(sorted(site_status_messages)),
-                    "drop_statuses_seen": " | ".join(sorted(drop_status_messages)),
+                    "drop_maneuver_statuses_seen": " | ".join(
+                        sorted(drop_maneuver_status_messages)
+                    ),
+                    "reverse_parking_controller_statuses_seen": " | ".join(
+                        sorted(reverse_parking_controller_status_messages)
+                    ),
                     "route_distance_m": round(route_dist, 2),
                     "site_route_distance_m": round(site_route_dist, 2),
                     "site_distance_m": round(site_dist, 2),
@@ -1208,7 +1336,9 @@ class SimValidationRunner(Node):
         self.cancel_all_actions()
         self.check_baseline_rates()
         self.check_radar_ranges()
-        self.check_gate_stop_matrix()
+        # HH_260720 - Keep the default full suite while supporting focused long-duration runs.
+        if self.run_gate_matrix:
+            self.check_gate_stop_matrix()
         if not self.skip_manual_goal:
             self.check_manual_goal()
         if self.run_obstacle_replan:

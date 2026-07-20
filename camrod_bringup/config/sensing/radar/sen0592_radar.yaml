@@ -68,3 +68,12 @@
       - "right1/range"
       - "right2/range"
       - "rear/range"
+    # HH_260720 - Standard sensor_msgs mirrors are reserved for RViz and ROS-native tools.
+    standard_ros_topics:
+      - "front1/range_ros"
+      - "front2/range_ros"
+      - "left1/range_ros"
+      - "left2/range_ros"
+      - "right1/range_ros"
+      - "right2/range_ros"
+      - "rear/range_ros"

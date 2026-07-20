@@ -36,6 +36,15 @@
     # side/rear detections can still become blocking radar costs.
     ego_clear_radius_m: 0.50
 
+    # HH_260720 - Match LiDAR route-lanelet filtering before radar costs reach
+    # either the final command gate or the merged planning cost grid.
+    route_lanelet_filter_enable: true
+    route_lanelet_mask_topic: "/map/cost_grid/route_lanelet_mask"
+    route_lanelet_margin_m: 0.35
+    route_lanelet_allowed_max_cost: 50
+    route_lanelet_mask_max_age_s: 2.5
+    route_lanelet_filter_fail_open_when_robot_outside: true
+
     # Runtime
     max_message_age_s: 0.35
     publish_rate_hz: 10.0

@@ -46,7 +46,8 @@
     # imu0_config order:
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
     # Enabled: roll/pitch orientation + angular velocity. Yaw comes from GNSS pose2.
-    imu0: /sensing/imu/data
+    # HH_260720 - robot_localization consumes the explicit standard driver boundary.
+    imu0: /sensing/imu/data_ros
     imu0_config: [false, false, false,
                   true,  true,  false,
                   false, false, false,
@@ -60,7 +61,8 @@
     # GNSS absolute position (map frame).
     # map→odom identity TF is published by ekf_map_to_odom_static_tf in localization.launch.py
     # (ekf_publish_map_to_odom_static_tf default=true) so EKF can transform this to odom world_frame.
-    pose0: /sensing/gnss/pose_with_covariance
+    # HH_260720 - Generated GNSS remains internal; EKF consumes its standard mirror.
+    pose0: /sensing/gnss/pose_with_covariance_ros
     pose0_config: [true,  true,  true,
                    false, false, false,
                    false, false, false,
@@ -74,53 +76,24 @@
     # — catches multipath / float-mode jumps while passing normal RTK corrections (<5 cm).
     pose0_rejection_threshold: 3.0
 
-    # Primary wheel odometry — forward velocity + yaw rate only (non-holonomic).
-    # HH_260410 Topic renamed for consistent /platform/status/* naming.
-    odom0: /platform/status/wheel_odometry
+    # HH_260720 - One explicit standard wheel boundary provides vx, vy=0, and yaw rate.
+    odom0: /localization/input/wheel_odometry_ros
     odom0_config: [false, false, false,
                    false, false, false,
-                   true,  false, false,
+                   true,  true,  false,
                    false, false, true,
                    false, false, false]
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 20
 
-    # Secondary wheel odometry (nav_msgs) — vx, vy≈0, yaw rate.
-    # vy≈0 acts as a soft non-holonomic constraint (lateral velocity should be ~0).
-    odom1: /platform/wheel/nav_odometry
-    odom1_config: [false, false, false,
-                  false, false, false,
-                  true,  true,  false,
-                  false, false, true,
-                  false, false, false]
-    odom1_differential: false
-    odom1_relative: false
-    odom1_queue_size: 20
-
-    # HH_260526: Lanelet snap DISABLED in EKF.
-    # The feedback loop (EKF→adapter→pose→map_helper→lanelet_pose→EKF) was the primary cause
-    # of GNSS not attaching at startup:
-    #   1. map_helper snaps initial (0,0) EKF estimate to nearest lanelet (wrong position)
-    #   2. EKF fuses lanelet with K≈0.98 (lanelet R=0.09 < GNSS R=0.1 → more trusted than GNSS)
-    #   3. GNSS arrives at actual position → innovation > rejection_threshold → GNSS rejected
-    #   4. EKF stays locked to wrong lanelet position
-    # With RTK GNSS available, the road-snap constraint is redundant.
-    # Re-enable only if GNSS-absent DR mode requires lateral lane-keeping correction.
-    pose1: /localization/centerline_pose
-    pose1_config: [false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, false]
-    pose1_differential: false
-    pose1_relative: false
-    pose1_queue_size: 10
-    pose1_rejection_threshold: 3.0
+    # HH_260720 - Do not register the disabled lanelet-snap feedback as an EKF input.
+    # Map snapping remains a downstream localization output only.
 
     # HH_260625: Fuse dual-antenna GNSS heading as yaw only.
     # pose2_config order matches the EKF state vector above.
-    pose2: /sensing/gnss/pose_with_covariance
+    # HH_260720 - Reuse the same explicit GNSS mirror for stationary heading.
+    pose2: /sensing/gnss/pose_with_covariance_ros
     pose2_config: [false, false, false,
                   false, false, true,
                   false, false, false,

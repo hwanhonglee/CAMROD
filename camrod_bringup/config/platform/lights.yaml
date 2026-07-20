@@ -3,14 +3,17 @@
 /platform/light_controller:
   ros__parameters:
     # ---- Inputs ----
-    estop_platform_topic: "/platform/status/estop"
+    # HH_260720 - Hardware e-stop is carried by the generated platform status.
+    platform_status_topic: "/platform/status"
     # State machine mirrors ERROR_STOP onto this soft-estop topic (HH_260701),
     # so hazard covers both hardware estop and planning ERROR_STOP.
     estop_state_machine_topic: "/planning/state_machine/estop"
     headlight_command_topic: "/platform/headlight/command"
-    site_maneuver_status_topic: "/parking/site_maneuver/status"
-    cmd_vel_topic: "/planning/cmd_vel"
-    global_path_topic: "/planning/global_path"
+    # HH_260720 - Lights observe the admitted control command and maneuver phase.
+    camping_site_maneuver_controller_status_topic: "/control/camping_site_maneuver_controller/status"
+    cmd_vel_topic: "/control/cmd_vel"
+    # HH_260720 - Consume the generated CAMROD global-path mirror.
+    global_path_topic: "/planning/global_path_avg"
     pose_topic: "/localization/pose"
     route_turn_segments_topic: "/planning/route_turn_segments"
     # ---- Output ----
@@ -24,7 +27,7 @@
     pose_timeout_s: 2.5
     site_status_timeout_s: 3.0
     cmd_vel_timeout_s: 1.0
-    # data[0] of route_turn_segments must match the global path length within
+    # The typed route-turn message length must match the global path within
     # this tolerance; otherwise turn windows are ignored for that cycle
     # (route change propagating — fail dark, never signal from a stale pair).
     route_length_tolerance_m: 1.0

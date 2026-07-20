@@ -160,7 +160,7 @@ topics:
     group: localization/init
     timeout_s: 10.0
 
-  # ── Localization: ESKF / Fallback 소스 전환 ───────────────────────────
+  # HH_260720 - Group active-filter and fallback source-selection diagnostics.
   - name: "localization_source_checker: /localization/source"
     group: localization/source
     timeout_s: 5.0
@@ -293,21 +293,32 @@ topics:
     group: planning/manifest
     timeout_s: 5.0
 
-  # HH_260618 - Final parking is a capability-level alternative group
-  # (camrod_parking OR camrod_docking), so common diagnostics must not require
-  # method-specific runtime status names.
+  # HH_260720 - Control owns the gate, maneuvers, and selected final parking controller.
+  - name: "system_checker/control"
+    group: control/manifest
+    timeout_s: 5.0
+
   - name: "system_checker/final_parking"
     group: parking/manifest
     timeout_s: 3.0
 
-  # HH_260618 - Method-specific rule-based parking statuses are classified if
-  # received. diagnostics_aggregator does not pre-create stale entries, so these
-  # do not penalize parking_method=docking runs.
-  - name: "parking/site_maneuver"
+  - name: "control/camping_site_maneuver_controller"
+    group: control/runtime
+    timeout_s: 3.0
+
+  - name: "control/drop_zone_maneuver_controller"
+    group: control/runtime
+    timeout_s: 3.0
+
+  - name: "control/cmd_vel_safety_gate"
+    group: control/runtime
+    timeout_s: 3.0
+
+  - name: "parking/reverse_parking_controller"
     group: parking/runtime
     timeout_s: 3.0
 
-  - name: "parking/drop_zone_parking"
+  - name: "parking/apriltag_parking_controller"
     group: parking/runtime
     timeout_s: 3.0
 

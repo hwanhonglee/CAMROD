@@ -210,7 +210,8 @@ cmd_config() {
     "sensing:camrod_bringup/config/sensing:camrod_sensing/config"
     "system:camrod_bringup/config/system:camrod_system/config"
     "sensor_kit:camrod_bringup/config/sensor_kit:camrod_sensor_kit/config"
-    "parking:camrod_bringup/config/parking:camrod_parking/config"
+    # HH_260720 - Parking and maneuver configuration now belongs to camrod_control.
+    "control:camrod_bringup/config/control:camrod_control/config"
     "localization:camrod_bringup/config/localization:camrod_localization/config"
   )
   local item label bringup_rel package_rel bringup_dir package_dir package_name
@@ -248,20 +249,21 @@ cmd_config() {
 }
 
 critical_topics() {
+  # HH_260720 - Observe the control gate contract used by hardware bringup.
   cat <<'EOF'
 /system/status
 /system/diagnostics_agg
 /localization/mode
 /localization/pose
 /planning/state_machine/state
-/planning/engaged
-/planning/global_path
+/control/command_enabled
+/planning/global_path_avg
 /planning/local_path
-/planning/cmd_vel_raw
-/planning/cmd_vel
-/platform/cmd_vel
-/platform/status/estop
-/platform/status/wheel_odometry
+/control/cmd_vel_raw
+/control/cmd_vel
+/control/cmd_vel_ros
+/platform/status
+/localization/input/wheel_odometry
 /planning/cost_grid/inflation
 /sensing/cost_grid/lidar
 /sensing/cost_grid/radar
@@ -410,8 +412,9 @@ cmd_watch() {
     echo_once_short "/system/status" "system"
     echo_once_short "/localization/mode" "localization_mode"
     echo_once_short "/planning/state_machine/state" "planning_state"
-    echo_once_short "/planning/engaged" "planning_engaged"
-    echo_once_short "/platform/status/estop" "platform_estop"
+    echo_once_short "/control/command_enabled" "control_command_enabled"
+    # HH_260720 - Inspect the unified generated CAN/BMS platform status.
+    echo_once_short "/platform/status" "platform_status"
     echo
     echo "-- top cpu"
     ps -eo pcpu,pmem,comm,args --sort=-pcpu | head -12
