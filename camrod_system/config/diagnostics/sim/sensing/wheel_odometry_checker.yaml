@@ -6,6 +6,7 @@
     wheel_names: ["main"]
 
     main:
+      # HH_260721 - Keep simulation diagnostics on the canonical adapter output.
       topic: "/localization/input/wheel_odometry"
       expected_hz: 10.0
       hz_warn_ratio: 0.7
