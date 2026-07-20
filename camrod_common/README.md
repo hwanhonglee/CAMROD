@@ -28,7 +28,7 @@ graph LR
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef iface        fill:#F0FDFA,stroke:#14B8A6,stroke-width:1.5px,color:#115E59;
@@ -45,7 +45,7 @@ graph LR
   AVG -. msg/srv types .-> PER([👁️ camrod_perception]):::perception
   AVG -. msg/srv types .-> SYS([🩺 camrod_system]):::system
   AVG -. msg/srv types .-> SKIT([🔧 camrod_sensor_kit]):::system
-  AVG -. msg/srv types .-> DOCK([🅿️ camrod_docking]):::docking
+  AVG -. msg/srv types .-> PARK([camrod_control parking]):::parking
   AVG -. msg/srv types .-> UI([🖥️ camrod_ui]):::ui
 ```
 
@@ -59,9 +59,8 @@ graph LR
 
 | Message | Description |
 |---|---|
-| `AvgAprilTagDetection` | Single AprilTag detection (id, family, pose) |
-| `AvgAprilTagDetectionArray` | Array of AprilTag detections |
-| `AvgAprilTagPose` | AprilTag pose in reference frame |
+<!-- HH_260720 - The parking detector publishes one controller-ready semantic pose. -->
+| `AvgAprilTagPose` | AprilTag parking target pose, id, age, and detection validity |
 | `AvgGnssPose` | GNSS-derived position and orientation |
 | `AvgLocalizationStatus` | Localization module health (mode, confidence, sensor flags, innovation) |
 | `AvgPerceptionMsgs` | Perception module status payload |
@@ -110,7 +109,11 @@ colcon build
 
 > HH_260617: `avg_msgs` is the common contract for planning, system, platform, UI, voice, and parking integration.
 
-Current semantic mission interfaces include `PlanningState`, `PlanningScenario`, `PlanningMissionKey`, `PlanningRecallRequest`, and `UiDestinationCommand`. `ModuleState` remains the shared module-health/status payload and is used by `camrod_parking` status topics, `camrod_system`, and package-level validators.
+<!-- HH_260720 - Semantic interfaces are concrete generated contracts, including control parking. -->
+Current semantic mission interfaces include `PlanningState`,
+`PlanningScenario`, `PlanningMissionKey`, `PlanningRecallRequest`, and
+`UiDestinationCommand`. `ModuleState` is used by `camrod_control` status topics,
+`camrod_system`, and package-level validators.
 
 ## 2026-07-02 Runtime Update
 

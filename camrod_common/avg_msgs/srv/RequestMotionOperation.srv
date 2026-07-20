@@ -1,0 +1,6 @@
+# HH_260720 - Replace duplicate std_srvs/Trigger control services with a typed request.
+uint8 operation
+string source
+---
+bool accepted
+string message

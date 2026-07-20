@@ -38,8 +38,7 @@ if(Python3_LIBRARIES)
 endif()
 
 set(msg_files
-  # HH_260629: Generated avg-owned mirrors for internal topics.
-  # Existing alias headers remain only as compatibility glue during migration.
+  # HH_260720 - Generate concrete avg-owned contracts; standard ROS types are boundary-only.
   "msg/AvgHeader.msg"
   "msg/AvgBool.msg"
   "msg/AvgString.msg"
@@ -87,9 +86,7 @@ set(msg_files
   "msg/AvgMarker.msg"
   "msg/AvgMarkerArray.msg"
   "msg/AvgAmrServiceState.msg"
-  "msg/AvgAprilTagPoint.msg"
-  "msg/AvgAprilTagDetection.msg"
-  "msg/AvgAprilTagDetectionArray.msg"
+  # HH_260720 - Parking exposes one controller-ready tag pose without detection aliases.
   "msg/AvgAprilTagPose.msg" 
   "msg/ModuleState.msg"
   "msg/SystemStatus.msg"
@@ -112,7 +109,12 @@ set(msg_files
   "msg/PlanningRecallRequest.msg" # HH_260617: camping-site recall request
   "msg/PlanningScenario.msg" # HH_260617: planning scenario command/status
   "msg/PlanningState.msg" # HH_260617: planning state-machine status
+  # HH_260720 - Add typed route metadata used by planning, map, and platform control.
+  "msg/RouteLaneletIds.msg"
+  "msg/RouteTurnSegment.msg"
+  "msg/RouteTurnSegmentArray.msg"
   "msg/UiDestinationCommand.msg" # HH_260617: UI destination command
+  "msg/MotionOperation.msg" # HH_260720 - Typed start/cancel/return command for control nodes.
   "msg/AvgSensingMsgs.msg"
   "msg/AvgLocalizationMsgs.msg"
   "msg/AvgPlanningMsgs.msg"
@@ -128,11 +130,7 @@ set(msg_files
 
 set(srv_files
   "srv/RequestGoalByKey.srv"
-)
-
-# HH_260528: Added ManualDock action for camrod_docking manual_dock_server_node.
-set(action_files
-  "action/ManualDock.action"
+  "srv/RequestMotionOperation.srv" # HH_260720 - Typed control-operation request service.
 )
 
 set(${PROJECT_NAME}_MEMBER_OF_GROUPS "rosidl_interface_packages")
@@ -140,7 +138,7 @@ set(${PROJECT_NAME}_MEMBER_OF_GROUPS "rosidl_interface_packages")
 rosidl_generate_interfaces(${PROJECT_NAME}
   ${msg_files}
   ${srv_files}
-  ${action_files}
+  # HH_260720 - Parking control no longer requires a generated ROS action contract.
   DEPENDENCIES
     builtin_interfaces
     action_msgs
@@ -157,6 +155,14 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 install(
   DIRECTORY include/
   DESTINATION include
+)
+# HH_260720 - Install the real utility headers at ROSIDL's exported include root;
+# no forwarding or message-alias headers are kept in the source tree.
+install(
+  FILES
+    include/avg_msgs/conversions.hpp
+    include/avg_msgs/point_cloud2_iterator.hpp
+  DESTINATION include/${PROJECT_NAME}/avg_msgs
 )
 
 ament_export_include_directories(include)
