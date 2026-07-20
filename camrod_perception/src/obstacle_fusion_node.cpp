@@ -6,9 +6,10 @@
 #include <mutex>
 #include <vector>
 
-#include <avg_msgs/msg/camera_info.hpp>
-#include <avg_msgs/msg/detection2_d_array.hpp>
-#include <avg_msgs/msg/point_cloud2.hpp>
+// HH_260720 - Name sensor/vision ROS pipeline boundaries directly instead of avg_msgs aliases.
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <vision_msgs/msg/detection2_d_array.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/compressed_image.hpp> // HJ_260529
 #include <sensor_msgs/msg/image.hpp>
@@ -39,7 +40,7 @@
 
 class CameraLidarFusionNode : public rclcpp::Node {
   using SyncPolicy = message_filters::sync_policies::ApproximateTime<
-      avg_msgs::msg::PointCloud2,
+      sensor_msgs::msg::PointCloud2,
       sensor_msgs::msg::CompressedImage>; // HJ_260529: compressed image
 
 public:
@@ -128,9 +129,9 @@ public:
     initExtrinsic();
     initColorLut();
 
-    camera_info_sub_ = create_subscription<avg_msgs::msg::CameraInfo>(
+    camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
         camera_info_topic_, rclcpp::SensorDataQoS(),
-        [this](const avg_msgs::msg::CameraInfo::ConstSharedPtr &msg) {
+        [this](const sensor_msgs::msg::CameraInfo::ConstSharedPtr &msg) {
           if (cam_ready_)
             return;
           P_ = (cv::Mat_<double>(3, 3) << msg->p[0], msg->p[1], msg->p[2],
@@ -147,9 +148,9 @@ public:
                       msg->p[0], msg->p[5], msg->p[2], msg->p[6]);
         });
 
-    det_sub_cache_ = create_subscription<avg_msgs::msg::Detection2DArray>(
+    det_sub_cache_ = create_subscription<vision_msgs::msg::Detection2DArray>(
         detection_topic_, rclcpp::SensorDataQoS(), // HJ_260529
-        [this](const avg_msgs::msg::Detection2DArray::ConstSharedPtr &msg) {
+        [this](const vision_msgs::msg::Detection2DArray::ConstSharedPtr &msg) {
           std::lock_guard<std::mutex> lock(det_mutex_);
           latest_det_ = msg;
         });
@@ -174,7 +175,7 @@ public:
                                       std::placeholders::_2));
 
     pub_obstacles_ =
-        create_publisher<avg_msgs::msg::PointCloud2>(output_topic_, 10);
+        create_publisher<sensor_msgs::msg::PointCloud2>(output_topic_, 10);
     pub_image_ =
         create_publisher<sensor_msgs::msg::Image>(out_image_topic_, 10);
     pub_det3d_ = create_publisher<vision_msgs::msg::Detection3DArray>(
@@ -247,7 +248,7 @@ private:
     cv::Rodrigues(R, rvec_);
   }
 
-  void callback(const avg_msgs::msg::PointCloud2::ConstSharedPtr &cloud_msg,
+  void callback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &cloud_msg,
                 const sensor_msgs::msg::CompressedImage::ConstSharedPtr
                     &img_msg) // HJ_260529
   {
@@ -260,7 +261,7 @@ private:
 
     cloud_msg_frame_ = cloud_msg->header.frame_id;
 
-    avg_msgs::msg::Detection2DArray::ConstSharedPtr det_msg;
+    vision_msgs::msg::Detection2DArray::ConstSharedPtr det_msg;
     {
       std::lock_guard<std::mutex> lock(det_mutex_);
       det_msg = latest_det_;
@@ -312,9 +313,9 @@ private:
   // Nav2 costmap.
   void publishObstacleCloud(
       const std::vector<ProjPt> &proj,
-      const avg_msgs::msg::Detection2DArray::ConstSharedPtr &det_msg,
+      const vision_msgs::msg::Detection2DArray::ConstSharedPtr &det_msg,
       const std_msgs::msg::Header &header) {
-    avg_msgs::msg::PointCloud2 out;
+    sensor_msgs::msg::PointCloud2 out;
     out.header = header;
     out.header.stamp = this->get_clock()->now();
 
@@ -358,7 +359,7 @@ private:
   }
 
   std::vector<ProjPt>
-  projectCloud(const avg_msgs::msg::PointCloud2::ConstSharedPtr &cloud_msg,
+  projectCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &cloud_msg,
                int img_w, int img_h) {
     scratch_obj_.clear();
     scratch_obj_.reserve(cloud_msg->width * cloud_msg->height);
@@ -415,7 +416,7 @@ private:
 
   vision_msgs::msg::Detection3DArray associateDetections(
       const std::vector<ProjPt> &proj,
-      const avg_msgs::msg::Detection2DArray::ConstSharedPtr &det_msg,
+      const vision_msgs::msg::Detection2DArray::ConstSharedPtr &det_msg,
       cv::Mat *img, visualization_msgs::msg::MarkerArray &markers) {
     const int kMinPts = min_pts_;
     const int kNClose = std::max(1, n_closest_);
@@ -602,7 +603,7 @@ private:
   }
 
   void fuseEuclideanClusters(
-      const avg_msgs::msg::Detection2DArray::ConstSharedPtr &det_msg,
+      const vision_msgs::msg::Detection2DArray::ConstSharedPtr &det_msg,
       const rclcpp::Time &stamp, int img_w, int img_h, cv::Mat *img) {
     visualization_msgs::msg::MarkerArray::ConstSharedPtr euc_msg;
     {
@@ -806,7 +807,7 @@ private:
   std::vector<cv::Point2f> scratch_uv_;
 
   // --- detection cache ---
-  avg_msgs::msg::Detection2DArray::ConstSharedPtr latest_det_;
+  vision_msgs::msg::Detection2DArray::ConstSharedPtr latest_det_;
   std::mutex det_mutex_;
 
   // --- Euclidean cluster cache ---
@@ -814,18 +815,18 @@ private:
   std::mutex euclidean_mutex_;
 
   // --- subscribers ---
-  rclcpp::Subscription<avg_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Detection2DArray>::SharedPtr
+  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
+  rclcpp::Subscription<vision_msgs::msg::Detection2DArray>::SharedPtr
       det_sub_cache_;
   rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr
       euclidean_sub_;
-  message_filters::Subscriber<avg_msgs::msg::PointCloud2> lidar_sub_;
+  message_filters::Subscriber<sensor_msgs::msg::PointCloud2> lidar_sub_;
   message_filters::Subscriber<sensor_msgs::msg::CompressedImage>
       image_sub_; // HJ_260529
   std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
 
   // --- publishers ---
-  rclcpp::Publisher<avg_msgs::msg::PointCloud2>::SharedPtr pub_obstacles_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_obstacles_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_image_;
   rclcpp::Publisher<vision_msgs::msg::Detection3DArray>::SharedPtr pub_det3d_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr

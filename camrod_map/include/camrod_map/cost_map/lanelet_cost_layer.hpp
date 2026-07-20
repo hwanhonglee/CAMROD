@@ -3,7 +3,8 @@
 
 #include <nav2_costmap_2d/costmap_layer.hpp>
 #include <nav2_costmap_2d/layered_costmap.hpp>
-#include <avg_msgs/msg/occupancy_grid.hpp>
+// HH_260720 - Consume the generated CAMROD lanelet cost-grid interface.
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
 #include <pluginlib/class_list_macros.hpp>
 #include <tf2_ros/buffer.h>
 #include <rclcpp/rclcpp.hpp>
@@ -30,16 +31,16 @@ public:
 
 private:
   // Receives and caches the latest external occupancy-grid update.
-  void gridCallback(const avg_msgs::msg::OccupancyGrid::ConstSharedPtr msg);
+  void gridCallback(const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg);
 
-  rclcpp::Subscription<avg_msgs::msg::OccupancyGrid>::SharedPtr sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr sub_;
   std::string source_topic_;
   unsigned char lethal_threshold_{65};
   unsigned char unknown_value_{nav2_costmap_2d::NO_INFORMATION};
   bool write_unknown_{false};
   bool start_current_{false};
 
-  avg_msgs::msg::OccupancyGrid::ConstSharedPtr latest_grid_;
+  avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr latest_grid_;
   bool has_data_{false};
 };
 }  // namespace camrod_map::cost_map

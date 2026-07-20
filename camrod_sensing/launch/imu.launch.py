@@ -78,7 +78,8 @@ def generate_launch_description():
 
         DeclareLaunchArgument('velocity_converter_param_file', default_value=default_converter_params),
         DeclareLaunchArgument('velocity_topic',   default_value='/platform/status/velocity'),
-        DeclareLaunchArgument('imu_topic',        default_value='data'),
+        DeclareLaunchArgument('imu_topic',        default_value='data_ros'),
+        DeclareLaunchArgument('imu_data_output_topic', default_value='data'),
         DeclareLaunchArgument('output_topic',     default_value='twist_with_covariance'),
         DeclareLaunchArgument('imu_status_topic', default_value='status'),
 
@@ -86,11 +87,12 @@ def generate_launch_description():
 
         GroupAction([
             PushRosNamespace(module_namespace),
+            # HH_260720 - Both CV7 and GQ7 drivers publish standard ROS IMU on data_ros.
+            SetRemap(src='imu/data', dst='data_ros'),
 
             # ── CV7 model (direct node launch, respawn for serial lock recovery) ───
             GroupAction([
                 SetRemap(src='/ekf/status', dst='ekf/status'),
-                SetRemap(src='imu/data',    dst='data'),
                 Node(
                     package='microstrain_inertial_driver',
                     executable='microstrain_inertial_driver_node',
@@ -138,6 +140,7 @@ def generate_launch_description():
                     'module_namespace':   '',
                     'velocity_topic':     LaunchConfiguration('velocity_topic'),
                     'imu_topic':          LaunchConfiguration('imu_topic'),
+                    'imu_data_output_topic': LaunchConfiguration('imu_data_output_topic'),
                     'output_topic':       LaunchConfiguration('output_topic'),
                     'imu_status_topic':   LaunchConfiguration('imu_status_topic'),
                 }.items(),

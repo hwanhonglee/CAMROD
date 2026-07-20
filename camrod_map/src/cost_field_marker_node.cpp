@@ -5,18 +5,19 @@
 #include <algorithm>
 #include <cmath>
 
+// HH_260720 - Consume generated CAMROD grids and convert only the RViz marker boundary.
 #include <avg_msgs/conversions.hpp>
-#include <avg_msgs/msg/occupancy_grid.hpp>
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <avg_msgs/msg/marker_array.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <avg_msgs/msg/avg_map_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/header.hpp>
-#include <avg_msgs/msg/marker.hpp>
-#include <avg_msgs/msg/color_rgba.hpp>
-#include <avg_msgs/msg/point.hpp>
-#include <avg_msgs/msg/set_parameters_result.hpp>
+#include <avg_msgs/msg/avg_header.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <std_msgs/msg/color_rgba.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 
 namespace camrod_map
 {
@@ -56,10 +57,10 @@ public:
     if (grid_qos_transient_local_) {
       grid_qos.transient_local();
     }
-    grid_sub_ = create_subscription<avg_msgs::msg::OccupancyGrid>(
+    grid_sub_ = create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
       grid_topic_, grid_qos,
       std::bind(&CostFieldMarkerNode::onGrid, this, std::placeholders::_1));
-    marker_pub_ = create_publisher<avg_msgs::msg::MarkerArray>(
+    marker_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       marker_topic_, rclcpp::QoS(1).transient_local().reliable());
     if (publish_map_status_) {
       avg_map_pub_ = create_publisher<avg_msgs::msg::AvgMapMsgs>(
@@ -85,9 +86,9 @@ private:
     return dt >= min_publish_period_s_;
   }
 
-  void publishFromGrid(const avg_msgs::msg::OccupancyGrid & grid_msg)
+  void publishFromGrid(const avg_msgs::msg::AvgOccupancyGrid & grid_msg)
   {
-    avg_msgs::msg::MarkerArray arr;
+    visualization_msgs::msg::MarkerArray arr;
     auto marker = initMarker(grid_msg.header);
     const double stride = static_cast<double>(sample_stride_);
     marker.scale.x = grid_msg.info.resolution * cell_scale_ratio_ * stride;
@@ -124,7 +125,7 @@ private:
         if (v < 0 && !show_unknown_) {
           continue;
         }
-        avg_msgs::msg::Point p;
+        geometry_msgs::msg::Point p;
         const double lx = (static_cast<double>(x) + 0.5 * stride) * res;
         const double ly = (static_cast<double>(y) + 0.5 * stride) * res;
         p.x = origin_x + cy * lx - sy * ly;
@@ -160,7 +161,7 @@ private:
   }
 
   void publishAvgMapMessage(
-    const avg_msgs::msg::MarkerArray & markers,
+    const visualization_msgs::msg::MarkerArray & markers,
     const builtin_interfaces::msg::Time & stamp,
     const std::string & message)
   {
@@ -178,14 +179,15 @@ private:
   }
 
   // Initialization helper Marker: initializes message defaults before frame-specific fields are filled.
-  avg_msgs::msg::Marker initMarker(const avg_msgs::msg::Header & header) const
+  visualization_msgs::msg::Marker initMarker(const avg_msgs::msg::AvgHeader & header) const
   {
-    avg_msgs::msg::Marker m;
-    m.header = header;
+    visualization_msgs::msg::Marker m;
+    // HH_260720 - Convert the grid header explicitly for RViz.
+    m.header = avg_msgs::conversions::toRos(header);
     m.ns = "inflation_cost_grid";
     m.id = 0;
-    m.type = avg_msgs::msg::Marker::CUBE_LIST;
-    m.action = avg_msgs::msg::Marker::ADD;
+    m.type = visualization_msgs::msg::Marker::CUBE_LIST;
+    m.action = visualization_msgs::msg::Marker::ADD;
     m.pose.orientation.w = 1.0;
     m.scale.x = marker_scale_;  // default; will be overridden by resolution
     m.scale.y = marker_scale_;
@@ -194,9 +196,9 @@ private:
     return m;
   }
 
-  avg_msgs::msg::ColorRGBA colorFromValue(int8_t v) const
+  std_msgs::msg::ColorRGBA colorFromValue(int8_t v) const
   {
-    avg_msgs::msg::ColorRGBA c;
+    std_msgs::msg::ColorRGBA c;
     c.a = static_cast<float>(alpha_);
     if (v < 0) {  // unknown
       if (palette_ == "pastel") {
@@ -255,7 +257,7 @@ private:
     return c;
   }
 
-  avg_msgs::msg::SetParametersResult onParamChange(
+  rcl_interfaces::msg::SetParametersResult onParamChange(
     const std::vector<rclcpp::Parameter> & params)
   {
     for (const auto & p : params) {
@@ -290,7 +292,7 @@ private:
       }
     }
     updateRepublishTimer();
-    avg_msgs::msg::SetParametersResult r;
+    rcl_interfaces::msg::SetParametersResult r;
     r.successful = true;
     r.reason = "updated";
     return r;
@@ -310,7 +312,7 @@ private:
       std::bind(&CostFieldMarkerNode::onRepublishTimer, this));
   }
 
-  void onGrid(const avg_msgs::msg::OccupancyGrid::ConstSharedPtr msg)
+  void onGrid(const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg)
   {
     if (!msg) {
       return;
@@ -337,7 +339,9 @@ private:
     if (stale_timeout_s_ > 0.0 && last_grid_rx_.nanoseconds() > 0) {
       const double dt = (now() - last_grid_rx_).seconds();
       if (dt > stale_timeout_s_ && !last_markers_.markers.empty()) {
-        publishDeleteAll(last_markers_.markers.front().header);
+        // HH_260720 - Convert a cached RViz header back to the internal header contract.
+        publishDeleteAll(avg_msgs::conversions::fromRos(
+          last_markers_.markers.front().header));
         latest_grid_.reset();
         pending_grid_update_ = false;
         return;
@@ -367,14 +371,15 @@ private:
     }
   }
 
-  void publishDeleteAll(const avg_msgs::msg::Header & header)
+  void publishDeleteAll(const avg_msgs::msg::AvgHeader & header)
   {
-    avg_msgs::msg::MarkerArray arr;
-    avg_msgs::msg::Marker del;
-    del.header = header;
+    visualization_msgs::msg::MarkerArray arr;
+    visualization_msgs::msg::Marker del;
+    // HH_260720 - Convert the generated grid header explicitly for RViz.
+    del.header = avg_msgs::conversions::toRos(header);
     del.ns = "inflation_cost_grid";
     del.id = 0;
-    del.action = avg_msgs::msg::Marker::DELETEALL;
+    del.action = visualization_msgs::msg::Marker::DELETEALL;
     arr.markers.push_back(del);
     marker_pub_->publish(arr);
     publishAvgMapMessage(arr, header.stamp, "inflation markers cleared");
@@ -400,11 +405,11 @@ private:
   double republish_period_s_{0.0};
   int sample_stride_{1};
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_handle_;
-  rclcpp::Subscription<avg_msgs::msg::OccupancyGrid>::SharedPtr grid_sub_;
-  rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr grid_sub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;
-  avg_msgs::msg::MarkerArray last_markers_;
-  avg_msgs::msg::OccupancyGrid::ConstSharedPtr latest_grid_;
+  visualization_msgs::msg::MarkerArray last_markers_;
+  avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr latest_grid_;
   bool pending_grid_update_{false};
   rclcpp::Time last_grid_rx_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_publish_time_{0, 0, RCL_ROS_TIME};

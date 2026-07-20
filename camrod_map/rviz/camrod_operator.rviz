@@ -178,7 +178,8 @@ Visualization Manager:
             Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /localization/pose
+            # HH_260720 - RViz consumes the explicit standard-ROS localization mirror.
+            Value: /localization/pose_ros
           Value: true
         - Alpha: 1
           Axes Length: 1
@@ -213,7 +214,8 @@ Visualization Manager:
             Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /localization/drop_zone/initial_pose
+            # HH_260720 - RViz consumes the explicit standard-ROS drop-zone mirror.
+            Value: /localization/drop_zone/initial_pose_ros
           Value: true
         - Alpha: 1
           Axes Length: 1
@@ -248,7 +250,8 @@ Visualization Manager:
             Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /localization/centerline_pose
+            # HH_260720 - RViz consumes the explicit standard-ROS centerline mirror.
+            Value: /localization/centerline_pose_ros
           Value: false
       Enabled: true
       Name: Localization
@@ -364,7 +367,8 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /sensing/gnss/pose
+                # HH_260720 - RViz consumes the explicit standard-ROS GNSS pose mirror.
+                Value: /sensing/gnss/pose_ros
               Value: true
             - Alpha: 1
               Axes Length: 1
@@ -399,7 +403,8 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /sensing/gnss/pose_with_covariance
+                # HH_260720 - RViz consumes the explicit standard-ROS GNSS covariance mirror.
+                Value: /sensing/gnss/pose_with_covariance_ros
               Value: true
           Enabled: true
           Name: GNSS
@@ -417,7 +422,8 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Best Effort
-                Value: /sensing/radar/front1/range
+                # HH_260720 - RViz consumes the standard Range mirror, not the internal AvgRange.
+                Value: /sensing/radar/front1/range_ros
               Value: true
             - Alpha: 0.30000001192092896
               Buffer Length: 1
@@ -431,7 +437,8 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Best Effort
-                Value: /sensing/radar/front2/range
+                # HH_260720 - RViz consumes the standard Range mirror, not the internal AvgRange.
+                Value: /sensing/radar/front2/range_ros
               Value: true
             - Alpha: 0.30000001192092896
               Buffer Length: 1
@@ -445,7 +452,8 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Best Effort
-                Value: /sensing/radar/left1/range
+                # HH_260720 - RViz consumes the standard Range mirror, not the internal AvgRange.
+                Value: /sensing/radar/left1/range_ros
               Value: true
             - Alpha: 0.30000001192092896
               Buffer Length: 1
@@ -459,7 +467,8 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Best Effort
-                Value: /sensing/radar/left2/range
+                # HH_260720 - RViz consumes the standard Range mirror, not the internal AvgRange.
+                Value: /sensing/radar/left2/range_ros
               Value: true
             - Alpha: 0.30000001192092896
               Buffer Length: 1
@@ -473,7 +482,8 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Best Effort
-                Value: /sensing/radar/rear/range
+                # HH_260720 - RViz consumes the standard Range mirror, not the internal AvgRange.
+                Value: /sensing/radar/rear/range_ros
               Value: true
             - Alpha: 0.30000001192092896
               Buffer Length: 1
@@ -487,7 +497,8 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Best Effort
-                Value: /sensing/radar/right1/range
+                # HH_260720 - RViz consumes the standard Range mirror, not the internal AvgRange.
+                Value: /sensing/radar/right1/range_ros
               Value: true
             - Alpha: 0.30000001192092896
               Buffer Length: 1
@@ -501,7 +512,8 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Best Effort
-                Value: /sensing/radar/right2/range
+                # HH_260720 - RViz consumes the standard Range mirror, not the internal AvgRange.
+                Value: /sensing/radar/right2/range_ros
               Value: true
           Enabled: true
           Name: Radar
@@ -644,7 +656,8 @@ Visualization Manager:
                 Filter size: 3
                 History Policy: Keep Last
                 Reliability Policy: Reliable
-                Value: /planning/local_path
+                # HH_260720 - RViz consumes the explicit standard-ROS local-path mirror.
+                Value: /planning/local_path_ros
               Value: true
             - Class: rviz_default_plugins/MarkerArray
               Enabled: true
@@ -686,7 +699,8 @@ Visualization Manager:
             Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /parking/site_maneuver/reverse_path
+            # HH_260720 - Display the explicit standard-ROS visualization boundary.
+            Value: /control/camping_site_maneuver_controller/path_ros
           Value: true
         - Alpha: 1
           Buffer Length: 1
@@ -714,7 +728,8 @@ Visualization Manager:
             Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /parking/drop_zone/reverse_path
+            # HH_260720 - Reverse-parking visualization is an explicit nav_msgs boundary.
+            Value: /parking/reverse_parking_controller/path_ros
           Value: true
         - Alpha: 1
           Buffer Length: 1
@@ -742,7 +757,8 @@ Visualization Manager:
             Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /parking/drop_zone/exit_path
+            # HH_260720 - Drop-zone exit visualization is an explicit nav_msgs boundary.
+            Value: /control/drop_zone_maneuver_controller/exit_path_ros
           Value: true
         - Alpha: 0.6000000238418579
           Class: rviz_default_plugins/Map
@@ -803,7 +819,8 @@ Visualization Manager:
             Filter size: 3
             History Policy: Keep Last
             Reliability Policy: Reliable
-            Value: /planning/drop_zone_goal_raw
+            # HH_260720 - RViz consumes the explicit standard-ROS semantic-goal mirror.
+            Value: /planning/drop_zone_goal_raw_ros
           Value: true
         - Alpha: 1
           Axes Length: 1

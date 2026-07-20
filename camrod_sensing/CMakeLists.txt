@@ -178,12 +178,15 @@ ament_target_dependencies(
   sen0592_radar_node
   rclcpp
   avg_msgs
+  # HH_260720 - Link the explicit standard Range visualization boundary.
+  sensor_msgs
 )
 
 # ------------------------------------------------------------------------------
 # Radar cost grid
 # ------------------------------------------------------------------------------
 add_executable(radar_cost_grid_node src/radar_cost_grid_node.cpp)
+target_include_directories(radar_cost_grid_node PRIVATE include)
 ament_target_dependencies(
   radar_cost_grid_node
   rclcpp
@@ -197,6 +200,7 @@ ament_target_dependencies(
 # LiDAR cost grid
 # ------------------------------------------------------------------------------
 add_executable(lidar_cost_grid_node src/lidar_cost_grid_node.cpp)
+target_include_directories(lidar_cost_grid_node PRIVATE include)
 ament_target_dependencies(
   lidar_cost_grid_node
   rclcpp
@@ -234,5 +238,17 @@ install(
   DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME}
 )
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  # HH_260720 - Verify route-lanelet clipping and metric margin behavior
+  # independently from live sensors and Lanelet2 map loading.
+  ament_add_gtest(
+    test_route_lanelet_cost_filter
+    test/test_route_lanelet_cost_filter.cpp
+  )
+  target_include_directories(test_route_lanelet_cost_filter PRIVATE include)
+  ament_target_dependencies(test_route_lanelet_cost_filter avg_msgs)
+endif()
 
 ament_package()

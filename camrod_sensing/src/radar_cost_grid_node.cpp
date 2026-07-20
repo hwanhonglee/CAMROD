@@ -4,17 +4,19 @@
 #include <string>
 #include <vector>
 
+// HH_260720 - Use generated CAMROD range/grid contracts and ROS geometry only for TF.
 #include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_sensing_radar.hpp>
-#include <avg_msgs/msg/point_stamped.hpp>
-#include <avg_msgs/msg/occupancy_grid.hpp>
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <avg_msgs/msg/range.hpp>
+#include <avg_msgs/msg/avg_range.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
-#include <avg_msgs/msg/point.hpp>
+
+#include "camrod_sensing/route_lanelet_cost_filter.hpp"
 
 namespace camrod::sensing
 {
@@ -61,6 +63,19 @@ public:
     radar_status_topic_ = declare_parameter<std::string>(
       "radar_status_topic", "/sensing/radar/status");
     publish_radar_status_ = declare_parameter<bool>("publish_radar_status", false);
+    // HH_260720 - Apply the same active-route obstacle corridor to radar and
+    // LiDAR so the safety gate and merged planning grid cannot disagree.
+    route_lanelet_filter_enable_ =
+      declare_parameter<bool>("route_lanelet_filter_enable", true);
+    route_lanelet_mask_topic_ = declare_parameter<std::string>(
+      "route_lanelet_mask_topic", "/map/cost_grid/route_lanelet_mask");
+    route_lanelet_margin_m_ = declare_parameter<double>("route_lanelet_margin_m", 0.35);
+    route_lanelet_allowed_max_cost_ =
+      declare_parameter<int>("route_lanelet_allowed_max_cost", 50);
+    route_lanelet_mask_max_age_s_ =
+      declare_parameter<double>("route_lanelet_mask_max_age_s", 2.5);
+    route_lanelet_filter_fail_open_when_robot_outside_ = declare_parameter<bool>(
+      "route_lanelet_filter_fail_open_when_robot_outside", true);
     input_topics_ = declare_parameter<std::vector<std::string>>(
       "input_topics",
       // HH_260623 - Use the latest 7-channel radar topic set from todo/camrod_sensing.
@@ -76,15 +91,22 @@ public:
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-    pub_grid_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+    // HH_260720 - Publish radar cost data on the generated CAMROD grid contract.
+    pub_grid_ = create_publisher<avg_msgs::msg::AvgOccupancyGrid>(
       output_topic_, rclcpp::QoS(1).transient_local().reliable());
     avg_radar_pub_ = create_publisher<AvgSensingRadar>(radar_status_topic_, rclcpp::QoS(10));
+    // HH_260720 - Receive the latest active-route mask across startup order.
+    route_lanelet_mask_sub_ = create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
+      route_lanelet_mask_topic_, rclcpp::QoS(1).transient_local().reliable(),
+      [this](const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg) {
+        onRouteLaneletMask(msg);
+      });
 
     samples_.resize(input_topics_.size());
     for (std::size_t i = 0; i < input_topics_.size(); ++i) {
-      subs_.push_back(create_subscription<avg_msgs::msg::Range>(
+      subs_.push_back(create_subscription<avg_msgs::msg::AvgRange>(
         input_topics_[i], rclcpp::SensorDataQoS(),
-        [this, i](avg_msgs::msg::Range::ConstSharedPtr msg) { onRange(i, msg); }));
+        [this, i](avg_msgs::msg::AvgRange::ConstSharedPtr msg) { onRange(i, msg); }));
     }
 
     if (publish_rate_hz_ <= 0.0) {
@@ -99,13 +121,13 @@ public:
 private:
   struct RangeSample
   {
-    avg_msgs::msg::Range msg;
+    avg_msgs::msg::AvgRange msg;
     rclcpp::Time recv_time{0, 0, RCL_ROS_TIME};
     bool valid{false};
   };
 
   // Handles the `onRange` callback.
-  void onRange(std::size_t idx, const avg_msgs::msg::Range::ConstSharedPtr msg)
+  void onRange(std::size_t idx, const avg_msgs::msg::AvgRange::ConstSharedPtr msg)
   {
     if (!msg || idx >= samples_.size()) {
       return;
@@ -113,6 +135,60 @@ private:
     samples_[idx].msg = *msg;
     samples_[idx].recv_time = now();
     samples_[idx].valid = true;
+  }
+
+  // HH_260720 - Cache route-mask validity once per map update.
+  void onRouteLaneletMask(const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg)
+  {
+    if (!msg) {
+      return;
+    }
+    route_lanelet_mask_ = msg;
+    route_lanelet_mask_receive_time_ = now();
+    route_lanelet_mask_has_allowed_cells_ =
+      route_lanelet_cost_filter::hasAllowedCell(*msg, route_lanelet_allowed_max_cost_);
+  }
+
+  bool shouldApplyRouteLaneletFilter(
+    const geometry_msgs::msg::PointStamped & base_in_output, const rclcpp::Time & now_time)
+  {
+    if (!route_lanelet_filter_enable_) {
+      return false;
+    }
+    if (!route_lanelet_mask_ || !route_lanelet_mask_has_allowed_cells_) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "route lanelet obstacle filter waiting for a valid active-route mask; passing costs through");
+      return false;
+    }
+    if (route_lanelet_mask_max_age_s_ > 0.0 &&
+      (now_time - route_lanelet_mask_receive_time_).seconds() > route_lanelet_mask_max_age_s_)
+    {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "route lanelet obstacle mask is stale; passing costs through");
+      return false;
+    }
+    if (route_lanelet_mask_->header.frame_id != output_frame_id_) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "route lanelet obstacle mask frame mismatch (%s != %s); passing costs through",
+        route_lanelet_mask_->header.frame_id.c_str(), output_frame_id_.c_str());
+      return false;
+    }
+    if (route_lanelet_filter_fail_open_when_robot_outside_ &&
+      !route_lanelet_cost_filter::isWorldPointAllowed(
+        *route_lanelet_mask_, base_in_output.point.x, base_in_output.point.y,
+        route_lanelet_margin_m_, route_lanelet_allowed_max_cost_))
+    {
+      // HH_260720 - Preserve unfiltered obstacle protection during deliberate
+      // off-route campsite and parking maneuvers.
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "robot is outside the active route lanelet corridor; passing obstacle costs through");
+      return false;
+    }
+    return true;
   }
 
   // Implements `mapDistanceToCost` behavior.
@@ -135,7 +211,7 @@ private:
 
   // Implements `markDisk` behavior.
   void markDisk(
-    avg_msgs::msg::OccupancyGrid & grid,
+    avg_msgs::msg::AvgOccupancyGrid & grid,
     const double grid_origin_x,
     const double grid_origin_y,
     const double x,
@@ -169,7 +245,7 @@ private:
 
   // Implements `clearDisk` behavior.
   void clearDisk(
-    avg_msgs::msg::OccupancyGrid & grid,
+    avg_msgs::msg::AvgOccupancyGrid & grid,
     const double grid_origin_x,
     const double grid_origin_y,
     const double x,
@@ -206,9 +282,9 @@ private:
 
   // Implements `transformHitToOutput` behavior.
   bool transformHitToOutput(
-    const avg_msgs::msg::Range & msg,
+    const avg_msgs::msg::AvgRange & msg,
     const double ignore_below_range_m,
-    avg_msgs::msg::PointStamped & hit_output)
+    geometry_msgs::msg::PointStamped & hit_output)
   {
     if (!std::isfinite(msg.range)) {
       return false;
@@ -223,8 +299,9 @@ private:
       return false;
     }
 
-    avg_msgs::msg::PointStamped hit_sensor;
-    hit_sensor.header = msg.header;
+    geometry_msgs::msg::PointStamped hit_sensor;
+    // HH_260720 - Convert the generated range header only for the tf2 ROS point.
+    hit_sensor.header = avg_msgs::conversions::toRos(msg.header);
     if (hit_sensor.header.stamp.sec == 0 && hit_sensor.header.stamp.nanosec == 0) {
       hit_sensor.header.stamp = now();
     }
@@ -257,7 +334,7 @@ private:
   // Publishes `Grid` output.
   void publishGrid()
   {
-    avg_msgs::msg::PointStamped base_origin;
+    geometry_msgs::msg::PointStamped base_origin;
     // HH_260315-00:00 Anchor rolling grid with latest available TF.
     base_origin.header.stamp = rclcpp::Time(0, 0, get_clock()->get_clock_type());
     base_origin.header.frame_id = base_frame_id_;
@@ -265,7 +342,7 @@ private:
     base_origin.point.y = 0.0;
     base_origin.point.z = 0.0;
 
-    avg_msgs::msg::PointStamped base_in_output;
+    geometry_msgs::msg::PointStamped base_in_output;
     try {
       base_in_output = tf_buffer_->transform(
         base_origin, output_frame_id_, tf2::durationFromSec(0.05));
@@ -280,7 +357,7 @@ private:
     const double grid_origin_x = base_in_output.point.x + origin_x_;
     const double grid_origin_y = base_in_output.point.y + origin_y_;
 
-    avg_msgs::msg::OccupancyGrid grid;
+    avg_msgs::msg::AvgOccupancyGrid grid;
     grid.header.stamp = now();
     grid.header.frame_id = output_frame_id_;
     grid.info.map_load_time = grid.header.stamp;
@@ -313,7 +390,7 @@ private:
         continue;
       }
 
-      avg_msgs::msg::PointStamped hit_output;
+      geometry_msgs::msg::PointStamped hit_output;
       if (!transformHitToOutput(sample.msg, ignoreBelowRangeForIndex(i), hit_output)) {
         continue;
       }
@@ -326,12 +403,26 @@ private:
         grid, grid_origin_x, grid_origin_y, hit_output.point.x, hit_output.point.y, value);
     }
 
+    // HH_260720 - Clip fully-painted radar disks at the route lanelet margin,
+    // preventing a hit in an adjacent lane from entering the driven corridor.
+    if (shouldApplyRouteLaneletFilter(base_in_output, now_time)) {
+      const auto removed = route_lanelet_cost_filter::removeCostsOutsideRouteLanelets(
+        grid, *route_lanelet_mask_, route_lanelet_margin_m_,
+        route_lanelet_allowed_max_cost_, free_value_);
+      if (removed > 0U) {
+        RCLCPP_DEBUG_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "removed %zu radar cost cells outside active route lanelets + %.2f m margin",
+          removed, route_lanelet_margin_m_);
+      }
+    }
+
     pub_grid_->publish(grid);
     publishAvgRadar(grid);
   }
 
   // Implements `assignRangeByTopic` behavior.
-  void assignRangeByTopic(AvgSensingRadar & avg_msg, std::size_t idx, const avg_msgs::msg::Range & msg)
+  void assignRangeByTopic(AvgSensingRadar & avg_msg, std::size_t idx, const avg_msgs::msg::AvgRange & msg)
   {
     if (idx >= input_topics_.size()) {
       return;
@@ -339,30 +430,31 @@ private:
     const auto & topic = input_topics_[idx];
     // HH_260623 - Publish front1/front2 separately; merged front output was removed.
     if (topic.find("front1") != std::string::npos) {
-      avg_msg.front1 = avg_msgs::conversions::fromRos(msg);
+      avg_msg.front1 = msg;
     } else if (topic.find("front2") != std::string::npos) {
-      avg_msg.front2 = avg_msgs::conversions::fromRos(msg);
+      avg_msg.front2 = msg;
     } else if (topic.find("right1") != std::string::npos) {
-      avg_msg.right1 = avg_msgs::conversions::fromRos(msg);
+      avg_msg.right1 = msg;
     } else if (topic.find("right2") != std::string::npos) {
-      avg_msg.right2 = avg_msgs::conversions::fromRos(msg);
+      avg_msg.right2 = msg;
     } else if (topic.find("left1") != std::string::npos) {
-      avg_msg.left1 = avg_msgs::conversions::fromRos(msg);
+      avg_msg.left1 = msg;
     } else if (topic.find("left2") != std::string::npos) {
-      avg_msg.left2 = avg_msgs::conversions::fromRos(msg);
+      avg_msg.left2 = msg;
     } else if (topic.find("rear") != std::string::npos) {
-      avg_msg.rear = avg_msgs::conversions::fromRos(msg);
+      avg_msg.rear = msg;
     }
   }
 
   // Publishes `AvgRadar` output.
-  void publishAvgRadar(const avg_msgs::msg::OccupancyGrid & grid)
+  void publishAvgRadar(const avg_msgs::msg::AvgOccupancyGrid & grid)
   {
     if (!publish_radar_status_ || !avg_radar_pub_) {
       return;
     }
     AvgSensingRadar avg_msg;
-    avg_msg.near_cost_grid = avg_msgs::conversions::fromRos(grid);
+    // HH_260720 - Bundle the already-generated CAMROD grid without reconversion.
+    avg_msg.near_cost_grid = grid;
     for (std::size_t i = 0; i < samples_.size(); ++i) {
       if (!samples_[i].valid) {
         continue;
@@ -394,15 +486,25 @@ private:
   double max_message_age_s_{0.35};
   double publish_rate_hz_{10.0};
   bool publish_radar_status_{false};
+  bool route_lanelet_filter_enable_{true};
+  std::string route_lanelet_mask_topic_{"/map/cost_grid/route_lanelet_mask"};
+  double route_lanelet_margin_m_{0.35};
+  int route_lanelet_allowed_max_cost_{50};
+  double route_lanelet_mask_max_age_s_{2.5};
+  bool route_lanelet_filter_fail_open_when_robot_outside_{true};
+  bool route_lanelet_mask_has_allowed_cells_{false};
   std::vector<std::string> input_topics_;
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-  rclcpp::Publisher<avg_msgs::msg::OccupancyGrid>::SharedPtr pub_grid_;
+  rclcpp::Publisher<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr pub_grid_;
   rclcpp::Publisher<AvgSensingRadar>::SharedPtr avg_radar_pub_;
-  std::vector<rclcpp::Subscription<avg_msgs::msg::Range>::SharedPtr> subs_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr route_lanelet_mask_sub_;
+  std::vector<rclcpp::Subscription<avg_msgs::msg::AvgRange>::SharedPtr> subs_;
   std::vector<RangeSample> samples_;
+  avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr route_lanelet_mask_;
+  rclcpp::Time route_lanelet_mask_receive_time_{0, 0, RCL_ROS_TIME};
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

@@ -11,11 +11,11 @@
 
 #include <avg_msgs/conversions.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <avg_msgs/msg/marker_array.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <avg_msgs/msg/avg_map_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker.hpp>
 
 namespace camrod_map
 {
@@ -47,7 +47,8 @@ public:
     timer_mode_ = republish_period_s_ > 0.0;
 
     auto marker_qos = rclcpp::QoS(1).transient_local().reliable();
-    pub_ = create_publisher<avg_msgs::msg::MarkerArray>(output_topic_, marker_qos);
+    // HH_260720 - Aggregate explicit RViz marker messages without avg_msgs aliases.
+    pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(output_topic_, marker_qos);
     if (publish_map_status_) {
       avg_map_pub_ = create_publisher<avg_msgs::msg::AvgMapMsgs>(
         map_status_topic_, rclcpp::QoS(10));
@@ -62,10 +63,10 @@ public:
       Source source;
       source.topic = input_topics_[i];
       source.watch_stale = stale_topic_set.find(source.topic) != stale_topic_set.end();
-      source.sub = create_subscription<avg_msgs::msg::MarkerArray>(
+      source.sub = create_subscription<visualization_msgs::msg::MarkerArray>(
         source.topic,
         rclcpp::QoS(1).transient_local().reliable(),
-        [this, i](avg_msgs::msg::MarkerArray::ConstSharedPtr msg) {
+        [this, i](visualization_msgs::msg::MarkerArray::ConstSharedPtr msg) {
           onMarkers(i, std::move(msg));
         });
       sources_.push_back(std::move(source));
@@ -83,19 +84,19 @@ private:
   struct Source
   {
     std::string topic;
-    avg_msgs::msg::MarkerArray latest;
+    visualization_msgs::msg::MarkerArray latest;
     rclcpp::Time last_rx;
     bool watch_stale{false};
-    rclcpp::Subscription<avg_msgs::msg::MarkerArray>::SharedPtr sub;
+    rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr sub;
   };
 
   // containsDeleteAll: Predicate/helper used to decide branch behavior safely.
-  static bool containsDeleteAll(const avg_msgs::msg::MarkerArray & msg)
+  static bool containsDeleteAll(const visualization_msgs::msg::MarkerArray & msg)
   {
     return std::any_of(
       msg.markers.begin(), msg.markers.end(),
-      [](const avg_msgs::msg::Marker & marker) {
-        return marker.action == avg_msgs::msg::Marker::DELETEALL;
+      [](const visualization_msgs::msg::Marker & marker) {
+        return marker.action == visualization_msgs::msg::Marker::DELETEALL;
       });
   }
 
@@ -104,20 +105,20 @@ private:
     return static_cast<int32_t>(source_index * 10000 + marker_index);
   }
 
-  avg_msgs::msg::Marker makeDeleteMarker(
+  visualization_msgs::msg::Marker makeDeleteMarker(
     const std::string & frame_id, const std::string & ns,
     size_t source_index, size_t marker_index) const
   {
-    avg_msgs::msg::Marker marker;
+    visualization_msgs::msg::Marker marker;
     marker.header.frame_id = frame_id.empty() ? "map" : frame_id;
     marker.header.stamp = now();
     marker.ns = ns;
     marker.id = markerId(source_index, marker_index);
-    marker.action = avg_msgs::msg::Marker::DELETE;
+    marker.action = visualization_msgs::msg::Marker::DELETE;
     return marker;
   }
 
-  void onMarkers(size_t source_index, avg_msgs::msg::MarkerArray::ConstSharedPtr msg)
+  void onMarkers(size_t source_index, visualization_msgs::msg::MarkerArray::ConstSharedPtr msg)
   {
     auto & source = sources_.at(source_index);
     source.last_rx = now();
@@ -153,7 +154,7 @@ private:
       }
     }
 
-    avg_msgs::msg::MarkerArray out;
+    visualization_msgs::msg::MarkerArray out;
 
     for (size_t source_index = 0; source_index < sources_.size(); ++source_index) {
       auto & source = sources_[source_index];
@@ -162,7 +163,7 @@ private:
       current_namespaces.reserve(source.latest.markers.size());
 
       for (const auto & marker : source.latest.markers) {
-        if (marker.action == avg_msgs::msg::Marker::DELETEALL) {
+        if (marker.action == visualization_msgs::msg::Marker::DELETEALL) {
           continue;
         }
 
@@ -211,7 +212,7 @@ private:
     dirty_ = false;
   }
 
-  void publishAvgMapMessage(const avg_msgs::msg::MarkerArray & markers)
+  void publishAvgMapMessage(const visualization_msgs::msg::MarkerArray & markers)
   {
     if (!publish_map_status_ || !avg_map_pub_) {
       return;
@@ -265,7 +266,7 @@ private:
   std::vector<std::vector<std::string>> prev_namespaces_;
   double min_publish_period_s_{0.05};
   rclcpp::Time last_publish_time_{0, 0, RCL_ROS_TIME};
-  rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;
   rclcpp::TimerBase::SharedPtr republish_timer_;
 };

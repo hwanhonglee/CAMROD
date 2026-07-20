@@ -1,7 +1,8 @@
+// HH_260720 - Name PCL input and RViz marker ROS boundaries directly.
 #include <rclcpp/rclcpp.hpp>
-#include <avg_msgs/msg/marker.hpp>
-#include <avg_msgs/msg/marker_array.hpp>
-#include <avg_msgs/msg/point_cloud2.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -72,13 +73,13 @@ public:
     draw_text_ = this->declare_parameter<bool>("draw_text", true);
 
     // HH_260326: Use avg_msgs aliases so perception interfaces stay consistent.
-    sub_ = this->create_subscription<avg_msgs::msg::PointCloud2>(
+    sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       input_topic_,
       rclcpp::SensorDataQoS(),
       std::bind(&EuclideanBBoxNode::cb, this, std::placeholders::_1));
 
     pub_bbox_ =
-      this->create_publisher<avg_msgs::msg::MarkerArray>(bbox_topic_, 10);
+      this->create_publisher<visualization_msgs::msg::MarkerArray>(bbox_topic_, 10);
 
     RCLCPP_INFO(this->get_logger(),
       "Euclidean+BBox started. input=%s",
@@ -87,7 +88,7 @@ public:
 
 private:
   // Runs ROI filtering + Euclidean clustering and publishes bounding box markers.
-  void cb(const avg_msgs::msg::PointCloud2::SharedPtr msg)
+  void cb(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
   {
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *cloud);
@@ -162,13 +163,13 @@ private:
       }
     }
 
-    avg_msgs::msg::MarkerArray arr;
+    visualization_msgs::msg::MarkerArray arr;
 
-    avg_msgs::msg::Marker del;
+    visualization_msgs::msg::Marker del;
     del.header = msg->header;
     del.ns = "euclidean_bbox";
     del.id = 0;
-    del.action = avg_msgs::msg::Marker::DELETEALL;
+    del.action = visualization_msgs::msg::Marker::DELETEALL;
     arr.markers.push_back(del);
 
     int marker_id = 1;
@@ -187,12 +188,12 @@ private:
       float cy = (b.min_y + b.max_y) * 0.5f;
       float cz = (b.min_z + b.max_z) * 0.5f;
 
-      avg_msgs::msg::Marker cube;
+      visualization_msgs::msg::Marker cube;
       cube.header = msg->header;
       cube.ns = "euclidean_bbox";
       cube.id = marker_id++;
-      cube.type = avg_msgs::msg::Marker::CUBE;
-      cube.action = avg_msgs::msg::Marker::ADD;
+      cube.type = visualization_msgs::msg::Marker::CUBE;
+      cube.action = visualization_msgs::msg::Marker::ADD;
       cube.lifetime = life;
 
       cube.pose.position.x = cx;
@@ -213,12 +214,12 @@ private:
 
       if (draw_text_)
       {
-        avg_msgs::msg::Marker text;
+        visualization_msgs::msg::Marker text;
         text.header = msg->header;
         text.ns = "euclidean_text";
         text.id = marker_id++;
-        text.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
-        text.action = avg_msgs::msg::Marker::ADD;
+        text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+        text.action = visualization_msgs::msg::Marker::ADD;
         text.lifetime = life;
 
         text.pose.position.x = cx;
@@ -246,14 +247,14 @@ private:
   void publishDeleteAll(const std::string &frame_id,
                         const rclcpp::Time &stamp)
   {
-    avg_msgs::msg::MarkerArray arr;
+    visualization_msgs::msg::MarkerArray arr;
 
-    avg_msgs::msg::Marker del;
+    visualization_msgs::msg::Marker del;
     del.header.frame_id = frame_id;
     del.header.stamp = stamp;
     del.ns = "euclidean_bbox";
     del.id = 0;
-    del.action = avg_msgs::msg::Marker::DELETEALL;
+    del.action = visualization_msgs::msg::Marker::DELETEALL;
 
     arr.markers.push_back(del);
     pub_bbox_->publish(arr);
@@ -271,8 +272,8 @@ private:
   double marker_lifetime_s_;
   bool draw_text_;
 
-  rclcpp::Subscription<avg_msgs::msg::PointCloud2>::SharedPtr sub_;
-  rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr pub_bbox_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_bbox_;
 };
 
 // Entrypoint that runs the LiDAR clustering node.

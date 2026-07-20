@@ -4,7 +4,7 @@
 #include "camrod_map/cost_map/lanelet_cost_layer.hpp"
 
 #include <algorithm>
-#include <avg_msgs/msg/occupancy_grid.hpp>
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
 
 namespace camrod_map::cost_map
 {
@@ -49,7 +49,8 @@ void LaneletCostLayer::onInitialize()
   // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
   RCLCPP_DEBUG(node->get_logger(), "lanelet_cost_layer subscribing %s", source_topic_.c_str());
 
-  sub_ = node->create_subscription<avg_msgs::msg::OccupancyGrid>(
+  // HH_260720 - Subscribe without the former nav_msgs namespace alias.
+  sub_ = node->create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
     source_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local(),
     std::bind(&LaneletCostLayer::gridCallback, this, std::placeholders::_1));
 
@@ -57,7 +58,7 @@ void LaneletCostLayer::onInitialize()
 }
 
 // Stores the latest incoming occupancy grid for the next costmap update cycle.
-void LaneletCostLayer::gridCallback(const avg_msgs::msg::OccupancyGrid::ConstSharedPtr msg)
+void LaneletCostLayer::gridCallback(const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg)
 {
   latest_grid_ = msg;
   has_data_ = true;

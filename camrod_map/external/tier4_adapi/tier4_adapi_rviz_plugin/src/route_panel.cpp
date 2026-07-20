@@ -139,14 +139,16 @@ void RoutePanel::onInitialize()
   pub_return_to_drop_zone_ = node->create_publisher<std_msgs::msg::Bool>(
     "/planning/state_machine/return_to_drop_zone", rclcpp::QoS(10));
   sub_engaged_ = node->create_subscription<std_msgs::msg::Bool>(
-    "/planning/engaged", rclcpp::QoS(10),
+    // HH_260720 - Display the effective control gate state.
+    "/control/command_enabled", rclcpp::QoS(10),
     std::bind(&RoutePanel::onPlanningEngaged, this, std::placeholders::_1));
   sub_estop_ = node->create_subscription<std_msgs::msg::Bool>(
     // HH_260409: Read shared e-stop state from platform status topic.
     "/platform/status/estop", rclcpp::QoS(10),
     std::bind(&RoutePanel::onPlanningEstop, this, std::placeholders::_1));
   sub_cmd_vel_ = node->create_subscription<geometry_msgs::msg::Twist>(
-    "/planning/cmd_vel", rclcpp::QoS(10),
+    // HH_260720 - Display velocity after the control safety gate.
+    "/control/cmd_vel", rclcpp::QoS(10),
     std::bind(&RoutePanel::onPlanningCmdVel, this, std::placeholders::_1));
   planning_status_timer_ = node->create_wall_timer(
     std::chrono::milliseconds(200), std::bind(&RoutePanel::updatePlanningStateLabels, this));
