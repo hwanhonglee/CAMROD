@@ -45,14 +45,23 @@ install(
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
-  set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
-  set(ament_cmake_cpplint_FOUND TRUE)
+  # HH_260721 - Keep bringup lint focused on maintained launch and simulation utilities.
+  set(AMENT_LINT_AUTO_EXCLUDE
+    ament_cmake_copyright
+    ament_cmake_cpplint
+    ament_cmake_flake8
+    ament_cmake_pep257
+  )
   ament_lint_auto_find_test_dependencies()
+
+  # HH_260721 - Preserve the established quoting convention and validate owned Python paths.
+  find_package(ament_cmake_flake8 REQUIRED)
+  ament_flake8(
+    launch scripts
+    CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/test/ament_flake8.ini"
+  )
+  find_package(ament_cmake_pep257 REQUIRED)
+  ament_pep257(launch scripts --add-ignore D213)
 endif()
 
 ament_package()

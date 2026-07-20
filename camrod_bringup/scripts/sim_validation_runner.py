@@ -22,6 +22,7 @@ from avg_msgs.msg import (
     AvgOccupancyGrid,
     AvgOdometry,
     AvgPath,
+    AvgPlatformStatus,
     AvgPoseStamped,
     AvgRange,
     AvgString,
@@ -83,6 +84,8 @@ def twist_abs(msg: AvgTwist) -> float:
 
 
 class SimValidationRunner(Node):
+
+    # HH_260721 - Separate the class declaration from its first method for lint readability.
     def __init__(self) -> None:
         super().__init__("sim_validation_runner")
         self.report_file = str(self.declare_parameter("report_file", "").value)
@@ -108,6 +111,21 @@ class SimValidationRunner(Node):
         )
         self.camping_wait_drop_zone = bool(
             self.declare_parameter("camping_wait_drop_zone", False).value
+        )
+        # HH_260721 - Optionally emulate normalized CAN/BMS feedback for reverse parking.
+        self.simulate_platform_status = bool(
+            self.declare_parameter("simulate_platform_status", False).value
+        )
+        self.run_charging_recall = bool(
+            self.declare_parameter("run_charging_recall", False).value
+        )
+        self.charging_recall_mission_key = str(
+            self.declare_parameter(
+                "charging_recall_mission_key", "camping_site_1"
+            ).value
+        )
+        self.fake_platform_battery_percentage = float(
+            self.declare_parameter("fake_platform_battery_percentage", 0.80).value
         )
         self.skip_manual_goal = bool(
             self.declare_parameter("skip_manual_goal", False).value
@@ -170,6 +188,10 @@ class SimValidationRunner(Node):
             MotionOperation, "/parking/operation", 10
         )
         self.pub_raw = self.create_publisher(AvgTwist, "/control/cmd_vel_raw", 10)
+        # HH_260721 - Feed the same generated platform contract used by hardware CAN.
+        self.pub_platform_status = self.create_publisher(
+            AvgPlatformStatus, "/platform/status", 10
+        )
 
         self.param_client = self.create_client(
             SetParameters, f"{self.fake_sensor_node}/set_parameters"
@@ -197,6 +219,8 @@ class SimValidationRunner(Node):
         self.latest_site_status: ModuleState | None = None
         self.latest_drop_maneuver_status: ModuleState | None = None
         self.latest_reverse_parking_controller_status: ModuleState | None = None
+        self.latest_gate_status: ModuleState | None = None
+        self.fake_platform_charging = False
         self.latest_replan_status = ""
         self.latest_planner_selector = ""
         self.replan_statuses_seen: set[str] = set()
@@ -265,6 +289,12 @@ class SimValidationRunner(Node):
             10,
         )
         self.create_subscription(
+            ModuleState,
+            "/control/cmd_vel_safety_gate/status",
+            self._on_gate_status,
+            10,
+        )
+        self.create_subscription(
             AvgString, "/planning/obstacle_replan/status", self._on_replan_status, 10
         )
         self.create_subscription(
@@ -282,6 +312,10 @@ class SimValidationRunner(Node):
             "/planning/follow_path/_action/status",
             self._on_follow_status,
             10,
+        )
+        # HH_260721 - Publish a fresh 20 Hz platform heartbeat when CAN simulation is enabled.
+        self.platform_status_timer = self.create_timer(
+            0.05, self._publish_fake_platform_status
         )
 
     def _subscribe_count(self, topic: str, msg_type) -> None:
@@ -360,6 +394,28 @@ class SimValidationRunner(Node):
     def _on_reverse_parking_controller_status(self, msg: ModuleState) -> None:
         self.latest_reverse_parking_controller_status = msg
         self._count("/parking/reverse_parking_controller/status")
+
+    def _on_gate_status(self, msg: ModuleState) -> None:
+        # HH_260721 - Observe CHARGING and DEPARTING_CHARGER transitions directly.
+        self.latest_gate_status = msg
+        self._count("/control/cmd_vel_safety_gate/status")
+
+    def _publish_fake_platform_status(self) -> None:
+        if not self.simulate_platform_status:
+            return
+        msg = AvgPlatformStatus()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "robot_base_link"
+        msg.vehicle_state = 0
+        msg.control_mode = 1
+        msg.error_code = 0
+        msg.estop = False
+        msg.battery_state_available = True
+        msg.battery_percentage = max(
+            0.0, min(1.0, self.fake_platform_battery_percentage)
+        )
+        msg.is_charging = self.fake_platform_charging
+        self.pub_platform_status.publish(msg)
 
     def _on_replan_status(self, msg: AvgString) -> None:
         self.latest_replan_status = msg.data
@@ -1074,6 +1130,8 @@ class SimValidationRunner(Node):
         self.cancel_all_actions()
         self.cancel_parking_maneuvers()
         self.clear_obstacle()
+        # HH_260721 - Start the round trip disconnected from the simulated charger.
+        self.fake_platform_charging = False
         self.publish_engage(True)
         self.publish_mission_engage(True)
         mission_key = self.camping_mission_key.strip() or "camping_site_1"
@@ -1128,6 +1186,18 @@ class SimValidationRunner(Node):
         seen_reverse_parking_controller_started = False
         seen_reverse_parking_controller_parked = False
         seen_drop_sequence_error = False
+        seen_reverse_wait_for_charging = False
+        seen_gate_charging_state = False
+        charging_recall_requested = False
+        charging_recall_request_time = 0.0
+        charging_recall_goal_pose: AvgPoseStamped | None = None
+        charging_recall_key_seen = False
+        charging_recall_departure_state_seen = False
+        charging_recall_cmd_released = False
+        charging_recall_disconnect_seen = False
+        charging_recall_site_arrived = False
+        charging_recall_global_path_base = 0
+        charging_recall_local_path_base = 0
         reached_nav = False
         seen_goal_reached_state = False
         seen_site_key = False
@@ -1148,6 +1218,9 @@ class SimValidationRunner(Node):
                 self.latest_reverse_parking_controller_status.message
                 if self.latest_reverse_parking_controller_status
                 else ""
+            )
+            gate_status_msg = (
+                self.latest_gate_status.message if self.latest_gate_status else ""
             )
             state_label = self.latest_state.label if self.latest_state else ""
             active_key = self.latest_state.active_mission_key if self.latest_state else ""
@@ -1192,19 +1265,93 @@ class SimValidationRunner(Node):
                 or "REVERSE_APPROACH" in reverse_parking_controller_msg
             )
             seen_reverse_parking_controller_parked = (
-                seen_reverse_parking_controller_parked or "PARKED" in reverse_parking_controller_msg
+                seen_reverse_parking_controller_parked
+                or "PARKED" in reverse_parking_controller_msg
+            )
+            # HH_260721 - Emulate charger contact only after reverse parking reaches its stop pose.
+            if "WAIT_FOR_CHARGING" in reverse_parking_controller_msg:
+                seen_reverse_wait_for_charging = True
+                if self.simulate_platform_status:
+                    self.fake_platform_charging = True
+            seen_gate_charging_state = (
+                seen_gate_charging_state or "state=CHARGING" in gate_status_msg
             )
             seen_drop_sequence_error = (
                 seen_drop_sequence_error
                 or "ERROR" in drop_maneuver_msg
                 or "ERROR" in reverse_parking_controller_msg
             )
+
+            # HH_260721 - Recall a campsite from PARKED while BMS still reports charging.
+            if (
+                self.run_charging_recall
+                and seen_reverse_parking_controller_parked
+                and not charging_recall_requested
+            ):
+                recall_key = self.charging_recall_mission_key.strip() or mission_key
+                charging_recall_goal_pose = self.load_camping_goal(recall_key)
+                if charging_recall_goal_pose is None:
+                    seen_drop_sequence_error = True
+                    break
+                recall_msg = PlanningMissionKey()
+                recall_msg.header.stamp = self.get_clock().now().to_msg()
+                recall_msg.mission_key = recall_key
+                recall_msg.source = "sim_charging_recall"
+                recall_msg.publish_route_goal = False
+                self.publish_engage(True)
+                self.publish_mission_engage(True)
+                self.reset_cmd_metrics()
+                charging_recall_global_path_base = self.global_path_count
+                charging_recall_local_path_base = self.local_path_count
+                for _ in range(4):
+                    self.pub_mission_key.publish(recall_msg)
+                    self.spin_for(0.05)
+                self.publish_goal_pose(charging_recall_goal_pose)
+                charging_recall_requested = True
+                charging_recall_request_time = time.monotonic()
+
+            if charging_recall_requested:
+                recall_key = self.charging_recall_mission_key.strip() or mission_key
+                charging_recall_key_seen = (
+                    charging_recall_key_seen or active_key == recall_key
+                )
+                charging_recall_departure_state_seen = (
+                    charging_recall_departure_state_seen
+                    or "state=DEPARTING_CHARGER" in gate_status_msg
+                )
+                # HH_260721 - The first admitted command represents physical charger separation.
+                if (
+                    self.fake_platform_charging
+                    and self.max_abs_since.get("/control/cmd_vel", 0.0) > 0.03
+                ):
+                    charging_recall_cmd_released = True
+                    self.fake_platform_charging = False
+                charging_recall_disconnect_seen = (
+                    charging_recall_disconnect_seen
+                    or (charging_recall_cmd_released and not self.fake_platform_charging)
+                )
+                post_recall_site_phase = any(
+                    token in site_msg
+                    for token in ("CRAB_IN", "REVERSE_IN", "ROTATE_180", "WAIT_RETURN")
+                )
+                charging_recall_site_arrived = (
+                    charging_recall_site_arrived
+                    or (
+                        time.monotonic() > charging_recall_request_time + 1.0
+                        and charging_recall_key_seen
+                        and post_recall_site_phase
+                    )
+                )
             if self.terminal_success_seen(self.latest_nav_status, known_nav_goals):
                 reached_nav = True
             if seen_site_phase and seen_crab_out and seen_done:
                 if not self.camping_wait_drop_zone:
                     break
-                if seen_reverse_parking_controller_parked or seen_drop_sequence_error:
+                if seen_drop_sequence_error:
+                    break
+                if not self.run_charging_recall and seen_reverse_parking_controller_parked:
+                    break
+                if self.run_charging_recall and charging_recall_site_arrived:
                     break
         self.publish_engage(False)
         self.publish_mission_engage(False)
@@ -1212,6 +1359,7 @@ class SimValidationRunner(Node):
         # HH_260720 - Always stop site/drop-zone/parking controllers after a
         # focused camping run, including timeout and failed-sequence cases.
         self.cancel_parking_maneuvers()
+        self.fake_platform_charging = False
         cmd_max = self.max_abs_since.get("/control/cmd_vel", 0.0)
         global_new = self.global_path_count > base_global
         local_new = self.local_path_count > base_local
@@ -1234,7 +1382,24 @@ class SimValidationRunner(Node):
                 and not seen_drop_sequence_error
             )
         )
-        ok = bool(site_ok and drop_zone_ok)
+        # HH_260721 - Require the complete charging recall contract only when requested.
+        charging_recall_ok = (
+            not self.run_charging_recall
+            or (
+                self.simulate_platform_status
+                and seen_reverse_wait_for_charging
+                and seen_gate_charging_state
+                and charging_recall_requested
+                and charging_recall_key_seen
+                and charging_recall_departure_state_seen
+                and charging_recall_cmd_released
+                and charging_recall_disconnect_seen
+                and self.global_path_count > charging_recall_global_path_base
+                and self.local_path_count > charging_recall_local_path_base
+                and charging_recall_site_arrived
+            )
+        )
+        ok = bool(site_ok and drop_zone_ok and charging_recall_ok)
         route_dist = (
             math.hypot(
                 self.latest_pose.pose.position.x - self.latest_route_goal.pose.position.x,
@@ -1288,6 +1453,7 @@ class SimValidationRunner(Node):
                     f"drop_alignment={seen_drop_maneuver_alignment} "
                     f"reverse_started={seen_reverse_parking_controller_started} "
                     f"reverse_parked={seen_reverse_parking_controller_parked} "
+                    f"charging_recall={charging_recall_ok} "
                     f"state={latest_state_label} "
                     f"key={latest_state_key} route_dist={route_dist:.2f}"
                 ),
@@ -1305,6 +1471,15 @@ class SimValidationRunner(Node):
                     "reverse_parking_controller_started": seen_reverse_parking_controller_started,
                     "reverse_parking_controller_parked": seen_reverse_parking_controller_parked,
                     "drop_zone_sequence_error": seen_drop_sequence_error,
+                    "reverse_wait_for_charging": seen_reverse_wait_for_charging,
+                    "gate_charging_state": seen_gate_charging_state,
+                    "charging_recall_requested": charging_recall_requested,
+                    "charging_recall_key_seen": charging_recall_key_seen,
+                    "charging_recall_departure_state": charging_recall_departure_state_seen,
+                    "charging_recall_cmd_released": charging_recall_cmd_released,
+                    "charging_recall_disconnect": charging_recall_disconnect_seen,
+                    "charging_recall_site_arrived": charging_recall_site_arrived,
+                    "charging_recall_ok": charging_recall_ok,
                     "goal_reached_state_seen": seen_goal_reached_state,
                     "site_key_seen": seen_site_key,
                     "latest_state": latest_state_label,
@@ -1312,7 +1487,9 @@ class SimValidationRunner(Node):
                     "latest_scenario": latest_scenario,
                     "latest_site_status": latest_site_status,
                     "latest_drop_maneuver_status": latest_drop_maneuver_status,
-                    "latest_reverse_parking_controller_status": latest_reverse_parking_controller_status,
+                    "latest_reverse_parking_controller_status": (
+                        latest_reverse_parking_controller_status
+                    ),
                     "state_labels_seen": ",".join(sorted(state_labels)),
                     "scenario_labels_seen": ",".join(sorted(scenario_labels)),
                     "site_statuses_seen": " | ".join(sorted(site_status_messages)),

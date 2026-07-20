@@ -49,7 +49,6 @@ OVERRIDE_SPECS = {
     'localization': {
         'adapter_param_file': ('localization/adapter_param_file',),
         'filter_ekf_param_file': ('localization/filter_ekf_param_file',),
-        'filter_eskf_param_file': ('localization/filter_eskf_param_file',),
         'filter_gnss_reattach_param_file': ('localization/filter_gnss_reattach_param_file',),
         'drop_zones_yaml': ('localization/drop_zones_yaml',),
         'filter_pose_selector_param_file': ('localization/filter_pose_selector_param_file',),
@@ -110,6 +109,7 @@ OVERRIDE_SPECS = {
         'fake_sensors_param_file': ('sim/fake_sensors_param_file',),
     },
 }
+
 
 # Resolves package-relative path.
 def pkg_path(pkg: str, rel: str) -> str:
@@ -494,7 +494,10 @@ def generate_launch_description():
         config_root_default = pkg_config_root
     config_root_default = os.path.abspath(config_root_default)
 
-    bringup_cfg = lambda rel: os.path.join(config_root_default, rel)
+    # HH_260721 - Use a named helper so config-root resolution remains traceable in diagnostics.
+    def bringup_cfg(rel):
+        return os.path.join(config_root_default, rel)
+
     cli_launch_defaults_file = cli_launch_arg('launch_defaults_file')
     env_launch_defaults_file = os.environ.get('CAMROD_LAUNCH_DEFAULTS_FILE', '')
     launch_defaults_file_default = (
@@ -621,12 +624,17 @@ def generate_launch_description():
         # Ensure stale duplicate processes are also cleaned on Ctrl+C shutdown.
         ('clean_on_shutdown', cfg_get(launch_cfg, 'runtime/clean_on_shutdown', True), 'Kill stale processes on bringup shutdown'),
         ('sim', cfg_get(launch_cfg, 'runtime/sim', True), 'Simulation mode'),
+        # HH_260721 - Let charging tests opt into the hardware gate contract in simulation.
+        (
+            'sim_platform_status_enable',
+            cfg_get(launch_cfg, 'runtime/sim_platform_status_enable', False),
+            'Require simulated normalized platform status at the command gate',
+        ),
         ('rviz', cfg_get(launch_cfg, 'runtime/rviz', True), 'Enable RViz'),
         # Stagger module includes to reduce startup CPU/memory spikes.
         ('module_launch_gap_s', cfg_get(launch_cfg, 'runtime/module_launch_gap_s', 1.0), 'Gap (seconds) between module launch includes'),
 
-        # HH_260522: use one explicit filter selector for bringup/localization wiring.
-        ('filter_type', cfg_get(launch_cfg, 'localization/filter_type', 'ekf'), 'Localization filter type: ekf|eskf'),
+        # HH_260721 - robot_localization EKF is the only supported localization backend.
         ('wheel_bridge_enable', cfg_get(launch_cfg, 'localization/wheel_bridge_enable', True), 'Enable wheel bridge'),
         # Bringup-level wheel source wiring for unified wheel bridge.
         ('wheel_input_topic', cfg_get(launch_cfg, 'localization/wheel_input_topic', '/platform/status/odometry'), 'Wheel bridge primary input topic'),
@@ -642,8 +650,6 @@ def generate_launch_description():
         # HH_260720 - Generated wheel input plus an explicit robot_localization boundary.
         ('wheel_output_topic', cfg_get(launch_cfg, 'localization/wheel_output_topic', '/localization/input/wheel_odometry'), 'Generated AvgOdometry wheel input'),
         ('wheel_nav_output_topic', cfg_get(launch_cfg, 'localization/wheel_nav_output_topic', '/localization/input/wheel_odometry_ros'), 'Standard wheel odometry boundary'),
-        ('eskf_force_rmp401_odom', cfg_get(launch_cfg, 'localization/eskf_force_rmp401_odom', False), 'Force ESKF wheel source to /rmp401/odom'),
-        ('eskf_rmp401_odom_topic', cfg_get(launch_cfg, 'localization/eskf_rmp401_odom_topic', '/rmp401/odom'), 'Temporary ESKF wheel source topic'),
         ('localization_enable_adapter', cfg_get(launch_cfg, 'localization/enable_adapter', True), 'Enable localization adapter launch'),
         ('localization_enable_filter', cfg_get(launch_cfg, 'localization/enable_filter', True), 'Enable localization filter launch'),
         ('localization_enable_monitor', cfg_get(launch_cfg, 'localization/enable_monitor', True), 'Enable localization monitor launch'),
@@ -1166,11 +1172,7 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_reverse_cmd_bypass_min_mps', 0.02),
             'Minimum reverse cmd_vel for site-parking static cost bypass',
         ),
-        (
-            'control_cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold', 85),
-            'LiDAR/Radar source threshold that still blocks lateral site-crab',
-        ),
+        # HH_260721 - The gate now uses side_cost_threshold for all lateral obstacle sources.
         # HH_260624 - Keep dynamic LiDAR/Radar obstacle stops active for pure
         # in-place parking rotations even when static lanelet cost is bypassed.
         (
@@ -1681,37 +1683,9 @@ def generate_launch_description():
         'perception_namespace': lc['perception_namespace'],
     }
 
-    # Legacy escape hatch for forced ESKF source.
-    # 2026-04-22: Keep this explicit-only so non-Ranger platforms can use their
-    # own DR topics without unintended /rmp401/odom override.
-    eskf_force_rmp401_effective = lc['eskf_force_rmp401_odom']
-    # HH_260617: Keep the configured localization filter in sim and hardware.
-    # The project baseline is EKF; use launch override `filter_type:=eskf` only for
-    # explicit ESKF experiments.
-    localization_filter_type = lc['filter_type']
-
-    # Default path is primary /platform/status/* + runtime fallback /rmp401/odom.
-    # HH_260522: force /rmp401/odom override only in explicit ESKF mode.
-    wheel_input_topic_for_filter = PythonExpression([
-        "'",
-        lc['eskf_rmp401_odom_topic'],
-        "' if (('",
-        eskf_force_rmp401_effective,
-        "' == 'true') and ('",
-        localization_filter_type,
-        "' == 'eskf')) else '",
-        lc['wheel_input_topic'],
-        "'",
-    ])
-    wheel_input_type_for_filter = PythonExpression([
-        "'nav_odom' if (('",
-        eskf_force_rmp401_effective,
-        "' == 'true') and ('",
-        localization_filter_type,
-        "' == 'eskf')) else '",
-        lc['wheel_input_type'],
-        "'",
-    ])
+    # HH_260721 - Keep the configured platform wheel source on the single EKF path.
+    wheel_input_topic_for_filter = lc['wheel_input_topic']
+    wheel_input_type_for_filter = lc['wheel_input_type']
 
     # HH_260618: In sim mode, relax EKF GNSS rejection so the fake GNSS start
     # pose becomes the planning/control truth instead of leaving EKF at map origin.
@@ -1719,14 +1693,6 @@ def generate_launch_description():
     _ekf_real_cfg = localization_overrides.get('filter_ekf_param_file', '')
     _ekf_cfg = sim_switch(lc['sim'], _ekf_sim_cfg, _ekf_real_cfg or '')
 
-    # HH_260428: In sim mode, override the ESKF param file to remove hardware-specific
-    # sign inversions (imu_yaw_sign / imu_gyro_z_sign = -1 for physically inverted IMU)
-    # and disable wheel yaw-rate correction (fake wheel always has angular.z = 0).
-    # Without this, ESKF negates the fake IMU yaw → local path points ~180° wrong,
-    # and the wheel zero-angular.z fights IMU yaw rate → orientation shakes.
-    _eskf_sim_cfg = os.path.join(config_root_default, 'localization', 'filter', 'eskf_sim.yaml')
-    _eskf_real_cfg = localization_overrides.get('filter_eskf_param_file', '')
-    _eskf_cfg = sim_switch(lc['sim'], _eskf_sim_cfg, _eskf_real_cfg or '')
     # HH_260617: In sim planning tests, automatic GNSS reattach can teleport the
     # EKF pose away from the active Nav2 path. Keep the node for manual
     # initialpose reset bridging, but use a sim parameter file that disables
@@ -1748,7 +1714,6 @@ def generate_launch_description():
         # file.  Falling back inside camrod_localization can silently select the
         # package copy while full bringup loads its bringup-local map copy.
         'map_info_file': lc['map_info_file'],
-        'filter_type': localization_filter_type,
         'wheel_bridge_enable': lc['wheel_bridge_enable'],
         'wheel_input_topic': wheel_input_topic_for_filter,
         'wheel_input_type': wheel_input_type_for_filter,
@@ -1766,9 +1731,6 @@ def generate_launch_description():
     # HH_260618: Apply sim EKF override after apply_cfg_overrides so it is not
     # overwritten by user-level localization/filter_ekf_param_file entries.
     localization_args['filter_ekf_param_file'] = _ekf_cfg
-    # HH_260428: Apply sim ESKF override after apply_cfg_overrides so it is not
-    # overwritten by user-level localization/filter_eskf_param_file entries.
-    localization_args['filter_eskf_param_file'] = _eskf_cfg
     localization_args['filter_gnss_reattach_param_file'] = _gnss_reattach_cfg
 
     planning_args = {
@@ -1834,10 +1796,12 @@ def generate_launch_description():
         'platform_drive_enable_topic': lc['platform_drive_enable_topic'],
         **{k[len('control_'):]: lc[k] for k in lc if k.startswith('control_cmd_vel_gate_')},
     }
-    # HH_260720 - Sim has no CAN heartbeat; hardware remains fail-closed.
-    safety_gate_args['cmd_vel_gate_platform_safety_source_mode'] = sim_switch(
-        lc['sim'], 'disabled', lc['control_cmd_vel_gate_platform_safety_source_mode']
-    )
+    # HH_260721 - Normal sim disables CAN gating; charging validation supplies a fake heartbeat.
+    safety_gate_args['cmd_vel_gate_platform_safety_source_mode'] = PythonExpression([
+        "'", lc['control_cmd_vel_gate_platform_safety_source_mode'], "' if ('",
+        lc['sim'], "' != 'true' or '", lc['sim_platform_status_enable'],
+        "' == 'true') else 'disabled'",
+    ])
     set_if_not_empty(
         safety_gate_args,
         'cmd_vel_gate_yaw_alignment_zones_file',
