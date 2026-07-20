@@ -5,6 +5,22 @@ For code changes see git log and release tags.
 
 ---
 
+## [v2.0.4-docs] - 2026-07-21 (HH_260721)
+
+<!-- HH_260721 - Track the native control, EKF-only, and charging-recall release evidence. -->
+
+### Changed - native control and full reverse-parking validation
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Set v2.0.4 as the validated baseline and updated charging/build commands |
+| `camrod_control/README.md` | Replaced the stale Python tree with native C++ nodes and policy helpers |
+| `camrod_bringup/README.md` | Added charging recall, directional gate, replan, and config-mirror commands |
+| `camrod_localization/README.md` | Documented robot_localization EKF as the only runtime backend |
+| `docs/V2_0_4_RELEASE_NOTES.md` | Recorded implementation scope, exact simulation evidence, package tests, and known limits |
+
+---
+
 ## [v2.0.3-docs] - 2026-07-21 (HH_260721)
 
 <!-- HH_260721 - Track the control consolidation and reverse-only release evidence. -->
