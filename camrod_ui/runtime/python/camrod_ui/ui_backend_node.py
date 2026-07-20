@@ -15,18 +15,23 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 import rclpy
-import rclpy.action
 import yaml
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
-from avg_msgs.action import ManualDock
-from avg_msgs.msg import AvgAmrServiceState, PlanningMissionKey, UiDestinationCommand
+from avg_msgs.msg import (
+    AvgAmrServiceState,
+    AvgBool,
+    AvgPlatformStatus,
+    AvgPoseStamped,
+    MotionOperation,
+    PlanningMissionKey,
+    UiDestinationCommand,
+)
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
-from std_msgs.msg import Bool, Int32
 
 import uvicorn
 
@@ -52,10 +57,6 @@ class ApiState:
     )
     battery_percentage: int = -1
     ws_site_states: Dict[str, bool] = field(default_factory=dict)
-    # YH_260624 - Expose docking toggle state to UI so App.js can initialise
-    # the manual/auto dock toggles from the launch-time parameter values.
-    manual_dock_enabled: bool = True
-    auto_dock_enabled: bool = False
 
 
 @dataclass
@@ -106,17 +107,21 @@ class UiBackendNode(Node):
         self.planning_goal_pose_topic = str(
             self.declare_parameter("planning_goal_pose_topic", "/goal_pose").value
         )
-        self.battery_topic = str(
-            self.declare_parameter("battery_topic", "/battery_percentage").value
+        self.platform_status_topic = str(
+            self.declare_parameter("platform_status_topic", "/platform/status").value
         )
         self.amr_service_state_topic = str(
             self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
         )
-        self.site_maneuver_return_topic = str(
-            self.declare_parameter("site_maneuver_return_topic", "/parking/site_maneuver/return").value
+        self.camping_site_maneuver_controller_operation_topic = str(
+            # HH_260720 - UI commands the control-owned campsite maneuver directly.
+            self.declare_parameter(
+                "camping_site_maneuver_controller_operation_topic",
+                "/control/camping_site_maneuver_controller/operation",
+            ).value
         )
-        self.site_maneuver_adopt_topic = str(
-            self.declare_parameter("site_maneuver_adopt_topic", "/parking/site_maneuver/adopt").value
+        self.camping_site_maneuver_controller_adopt_topic = str(
+            self.declare_parameter("camping_site_maneuver_controller_adopt_topic", "/control/camping_site_maneuver_controller/adopt").value
         )
         self.arrival_pose_topic = str(
             self.declare_parameter("arrival_pose_topic", "/localization/pose").value
@@ -161,30 +166,12 @@ class UiBackendNode(Node):
         self.diagnostics_agg_topic = str(
             self.declare_parameter("diagnostics_agg_topic", "/system/diagnostics_agg").value
         )
-        self.auto_dock_enabled_topic = str(
-            self.declare_parameter("auto_dock_enabled_topic", "/docking/auto_dock_enabled").value
-        )
-        self.manual_dock_action = str(
-            self.declare_parameter("manual_dock_action", "/docking/manual_dock").value
-        )
-        self.manual_dock_id = str(
-            self.declare_parameter("manual_dock_id", "home_dock").value
-        )
-        self._init_manual_dock_enabled = bool(
-            self.declare_parameter("manual_dock_enabled", True).value
-        )
-        self._init_auto_dock_enabled = bool(
-            self.declare_parameter("auto_dock_enabled", False).value
-        )
-
         self._keypoints_by_mission_key = self._load_camping_site_keypoints(self.camping_sites_yaml)
         self._lock = threading.Lock()
         self._state = ApiState(
             ws_site_states={s: False for s in self.site_names},
-            manual_dock_enabled=self._init_manual_dock_enabled,
-            auto_dock_enabled=self._init_auto_dock_enabled,
         )
-        self._latest_arrival_pose: Optional[PoseStamped] = None
+        self._latest_arrival_pose: Optional[AvgPoseStamped] = None
         self._latest_arrival_pose_time_s = 0.0
         # HH_260706 - HTTP site selection dispatches immediately; ignore the
         # local topic echo so the same camping-site command is not applied twice.
@@ -208,10 +195,10 @@ class UiBackendNode(Node):
             self._on_diagnostics_agg,
             10,
         )
-        self.sub_battery = self.create_subscription(
-            Int32,
-            self.battery_topic,
-            self._on_battery,
+        self.sub_platform_status = self.create_subscription(
+            AvgPlatformStatus,
+            self.platform_status_topic,
+            self._on_platform_status,
             10,
         )
         self.sub_amr_service_state = self.create_subscription(
@@ -221,7 +208,7 @@ class UiBackendNode(Node):
             10,
         )
         self.sub_arrival_pose = self.create_subscription(
-            PoseStamped,
+            AvgPoseStamped,
             self.arrival_pose_topic,
             self._on_arrival_pose,
             10,
@@ -233,33 +220,26 @@ class UiBackendNode(Node):
         self.pub_destination = self.create_publisher(
             UiDestinationCommand, self.ui_destination_topic, 10
         )
-        self.pub_engage = self.create_publisher(Bool, self.planning_engage_topic, 10)
+        self.pub_engage = self.create_publisher(AvgBool, self.planning_engage_topic, 10)
         self.pub_mission_engage = self.create_publisher(
-            Bool, self.planning_mission_engage_topic, 10
+            AvgBool, self.planning_mission_engage_topic, 10
         )
         self.pub_platform_drive_enable = self.create_publisher(
-            Bool, self.platform_drive_enable_topic, 10
+            AvgBool, self.platform_drive_enable_topic, 10
         )
         # 260708: Headlight button publisher (light_controller passes it to the MCU).
-        self.pub_headlight = self.create_publisher(Bool, self.headlight_command_topic, 10)
-        self.pub_site_maneuver_return = self.create_publisher(
-            Bool, self.site_maneuver_return_topic, 10
+        self.pub_headlight = self.create_publisher(AvgBool, self.headlight_command_topic, 10)
+        self.pub_camping_site_maneuver_controller_operation = self.create_publisher(
+            MotionOperation, self.camping_site_maneuver_controller_operation_topic, 10
         )
-        self.pub_site_maneuver_adopt = self.create_publisher(
-            UiDestinationCommand, self.site_maneuver_adopt_topic, 10
+        self.pub_camping_site_maneuver_controller_adopt = self.create_publisher(
+            UiDestinationCommand, self.camping_site_maneuver_controller_adopt_topic, 10
         )
         self.pub_mission_key = self.create_publisher(
             PlanningMissionKey, self.planning_mission_key_topic, 10
         )
         self.pub_goal_pose = self.create_publisher(PoseStamped, self.planning_goal_pose_topic, 10)
         self.pub_amr_service_state = self.create_publisher(AvgAmrServiceState, self.amr_service_state_topic, 10)
-        self.pub_auto_dock_enabled = self.create_publisher(Bool, self.auto_dock_enabled_topic, 10)
-
-        # Action clients.
-        self._dock_action_client = rclpy.action.ActionClient(self, ManualDock, self.manual_dock_action)
-        self._dock_goal_handle: Any = None
-        self._dock_goal_lock = threading.Lock()
-
         self._server_thread: Optional[threading.Thread] = None
         if self.enable_http_server:
             self._start_fastapi_server()
@@ -272,8 +252,8 @@ class UiBackendNode(Node):
             f"engage_topic={self.planning_engage_topic} "
             f"mission_engage_topic={self.planning_mission_engage_topic} "
             f"platform_drive_enable_topic={self.platform_drive_enable_topic} "
-            f"site_maneuver_return_topic={self.site_maneuver_return_topic} "
-            f"site_maneuver_adopt_topic={self.site_maneuver_adopt_topic} "
+            f"camping_site_maneuver_controller_operation_topic={self.camping_site_maneuver_controller_operation_topic} "
+            f"camping_site_maneuver_controller_adopt_topic={self.camping_site_maneuver_controller_adopt_topic} "
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"arrival_pose_topic={self.arrival_pose_topic} "
@@ -526,13 +506,16 @@ class UiBackendNode(Node):
                 self._state.ready,
             )
 
-    def _on_battery(self, msg: Int32) -> None:
-        pct = max(0, min(100, int(msg.data)))
+    def _on_platform_status(self, msg: AvgPlatformStatus) -> None:
+        # HH_260720 - UI battery state comes from the canonical generated platform status.
+        if not msg.battery_state_available:
+            return
+        pct = max(0, min(100, int(round(float(msg.battery_percentage) * 100.0))))
         with self._lock:
             self._state.battery_percentage = pct
         self._schedule_broadcast({"battery": pct})
 
-    def _on_arrival_pose(self, msg: PoseStamped) -> None:
+    def _on_arrival_pose(self, msg: AvgPoseStamped) -> None:
         self._latest_arrival_pose = msg
         self._latest_arrival_pose_time_s = self._now_s()
 
@@ -569,7 +552,7 @@ class UiBackendNode(Node):
             # HH_260630 - Return-to-drop-zone must re-open the mission/platform
             # gates after the site arrival hold closed them.
             if state == int(AvgAmrServiceState.RETURNING_TO_DROP_ZONE):
-                self._publish_site_maneuver_return(source="amr_service_state:RETURNING_TO_DROP_ZONE")
+                self._publish_camping_site_maneuver_controller_return(source="amr_service_state:RETURNING_TO_DROP_ZONE")
             # HH_260701 - Clear only the manual engage latch during return states.
             # Mission engage owns the platform drive gate here; dropping platform
             # enable on RETURN_WITH_CARGO can stop CRAB_OUT before the campsite
@@ -635,31 +618,34 @@ class UiBackendNode(Node):
 
     # ── Goal and engage publishing ────────────────────────────────────────────
 
-    def _publish_site_maneuver_return(self, source: str) -> None:
-        msg = Bool()
-        msg.data = True
-        self.pub_site_maneuver_return.publish(msg)
+    def _publish_camping_site_maneuver_controller_return(self, source: str) -> None:
+        # HH_260720 - Publish a semantic RETURN operation instead of a context-free Bool.
+        msg = MotionOperation()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.operation = MotionOperation.RETURN
+        msg.source = source
+        self.pub_camping_site_maneuver_controller_operation.publish(msg)
         self.get_logger().info(
-            f"site maneuver return ({source}) -> {self.site_maneuver_return_topic}: true"
+            f"site maneuver return ({source}) -> {self.camping_site_maneuver_controller_operation_topic}"
         )
 
-    def _publish_site_maneuver_adopt(self, site: str, mission_key: str, source: str) -> None:
+    def _publish_camping_site_maneuver_controller_adopt(self, site: str, mission_key: str, source: str) -> None:
         msg = UiDestinationCommand()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.site = site
         msg.run = True
         msg.mission_key = mission_key
         msg.source = source
-        self.pub_site_maneuver_adopt.publish(msg)
+        self.pub_camping_site_maneuver_controller_adopt.publish(msg)
         self.get_logger().info(
-            f"site maneuver adopt ({source}) -> {self.site_maneuver_adopt_topic}: "
+            f"site maneuver adopt ({source}) -> {self.camping_site_maneuver_controller_adopt_topic}: "
             f"site={site} mission_key={mission_key}"
         )
 
     def _publish_platform_drive_enable(self, enabled: bool, source: str) -> None:
         if not self.publish_platform_drive_enable_with_engage:
             return
-        msg = Bool()
+        msg = AvgBool()
         msg.data = bool(enabled)
         self.pub_platform_drive_enable.publish(msg)
         self.get_logger().info(
@@ -699,7 +685,7 @@ class UiBackendNode(Node):
     def _publish_engage(
         self, enabled: bool, source: str, *, sync_drive_enable: bool = True
     ) -> None:
-        msg = Bool()
+        msg = AvgBool()
         msg.data = bool(enabled)
         self.pub_engage.publish(msg)
         if sync_drive_enable:
@@ -718,7 +704,7 @@ class UiBackendNode(Node):
         )
 
     def _publish_mission_engage(self, enabled: bool, source: str) -> None:
-        msg = Bool()
+        msg = AvgBool()
         msg.data = bool(enabled)
         self.pub_mission_engage.publish(msg)
         self._publish_platform_drive_enable(enabled, source=source)
@@ -832,7 +818,7 @@ class UiBackendNode(Node):
             # HH_260701 - If the robot was manually driven into a campsite,
             # selecting that site in the UI should adopt the parked state instead
             # of dispatching a fresh Nav2 goal back through the lanelet route.
-            self._publish_site_maneuver_adopt(site, mission_key, source=f"{source}:already_at_site")
+            self._publish_camping_site_maneuver_controller_adopt(site, mission_key, source=f"{source}:already_at_site")
             self._publish_amr_service_state(
                 AvgAmrServiceState.UNLOAD_WAIT,
                 source=f"{source}:already_at_site:{match_reason}",
@@ -919,8 +905,6 @@ class UiBackendNode(Node):
                 "diagnostics_agg_error_count": self._state.diagnostics_agg_error_count,
                 "destination": dict(self._state.destination),
                 "battery_percentage": self._state.battery_percentage,
-                "manual_dock_enabled": self._state.manual_dock_enabled,
-                "auto_dock_enabled": self._state.auto_dock_enabled,
             }
 
     # ── Public API methods (called by HTTP handlers) ──────────────────────────
@@ -930,9 +914,9 @@ class UiBackendNode(Node):
         self._schedule_broadcast({"engage": bool(value)})
         return {"success": True, "message": "engage command published", "value": bool(value)}
 
-    # 260708: Headlight toggle — publishes the Bool consumed by light_controller.
+    # HH_260720 - Headlight toggle publishes the generated control command contract.
     def set_headlight(self, value: bool) -> Dict[str, Any]:
-        msg = Bool()
+        msg = AvgBool()
         msg.data = bool(value)
         self.pub_headlight.publish(msg)
         with self._lock:
@@ -994,66 +978,6 @@ class UiBackendNode(Node):
             source="http_ui_destination",
         )
         return {"success": True, "destination": payload, "dispatch": dispatch}
-
-    # ── Docking API methods ───────────────────────────────────────────────────
-
-    def set_auto_dock_enabled(self, enabled: bool) -> Dict[str, Any]:
-        msg = Bool()
-        msg.data = bool(enabled)
-        self.pub_auto_dock_enabled.publish(msg)
-        with self._lock:
-            self._state.auto_dock_enabled = bool(enabled)
-        return {"success": True, "message": f"auto_dock_enabled set to {enabled}"}
-
-    def send_manual_dock(self, dock_id: str) -> Dict[str, Any]:
-        if not self._dock_action_client.wait_for_server(timeout_sec=3.0):
-            return {"success": False, "message": "docking action server not available"}
-
-        goal = ManualDock.Goal()
-        goal.dock_id = dock_id
-
-        def _on_feedback(feedback_handle: Any) -> None:
-            fb = feedback_handle.feedback
-            self._schedule_broadcast({
-                "dock_feedback": {
-                    "phase": str(fb.phase_label),
-                    "state": int(fb.state),
-                    "retries": int(fb.num_retries),
-                }
-            })
-
-        def _on_result(future: Any) -> None:
-            wrapped = future.result()
-            self._schedule_broadcast({
-                "dock_result": {
-                    "success": bool(wrapped.result.success),
-                    "message": str(wrapped.result.message),
-                    "elapsed": float(wrapped.result.total_elapsed_sec),
-                }
-            })
-            with self._dock_goal_lock:
-                self._dock_goal_handle = None
-
-        def _on_goal_accepted(future: Any) -> None:
-            goal_handle = future.result()
-            if not goal_handle.accepted:
-                self._schedule_broadcast({"dock_result": {"success": False, "message": "goal rejected"}})
-                return
-            with self._dock_goal_lock:
-                self._dock_goal_handle = goal_handle
-            goal_handle.get_result_async().add_done_callback(_on_result)
-
-        send_future = self._dock_action_client.send_goal_async(goal, feedback_callback=_on_feedback)
-        send_future.add_done_callback(_on_goal_accepted)
-        return {"success": True, "message": f"dock goal sent: {dock_id}"}
-
-    def cancel_dock(self) -> Dict[str, Any]:
-        with self._dock_goal_lock:
-            handle = self._dock_goal_handle
-        if handle is None:
-            return {"success": False, "message": "no active docking goal"}
-        handle.cancel_goal_async()
-        return {"success": True, "message": "dock cancel requested"}
 
     # ── FastAPI server ────────────────────────────────────────────────────────
 
@@ -1169,7 +1093,7 @@ class UiBackendNode(Node):
                     # Guest recall request is state=4 and is published by ui_guest_node.
                     if payload.get("usage_complete"):
                         node._publish_amr_service_state(AvgAmrServiceState.RETURNING_TO_DROP_ZONE, source="ws:usage_complete")
-                        node._publish_site_maneuver_return(source="ws:usage_complete")
+                        node._publish_camping_site_maneuver_controller_return(source="ws:usage_complete")
                         node._publish_engage(
                             False,
                             source="ws:usage_complete:manual_clear",
@@ -1254,34 +1178,6 @@ class UiBackendNode(Node):
             run_bool = run.lower() in {"1", "true", "yes", "on"}
             result = node.set_destination(site=site, run=run_bool)
             return JSONResponse(result, status_code=200 if result.get("success") else 400)
-
-        # ── Docking endpoints ─────────────────────────────────────────────────
-
-        @app.post("/api/manual_dock")
-        async def post_manual_dock(request: Request) -> JSONResponse:
-            try:
-                body = await request.json()
-                dock_id = str(body.get("dock_id", node.manual_dock_id))
-            except Exception:
-                dock_id = node.manual_dock_id
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, node.send_manual_dock, dock_id)
-            return JSONResponse(result, status_code=200 if result.get("success") else 503)
-
-        @app.post("/api/cancel_dock")
-        async def post_cancel_dock() -> JSONResponse:
-            result = node.cancel_dock()
-            return JSONResponse(result, status_code=200 if result.get("success") else 409)
-
-        @app.post("/api/auto_dock_enable")
-        async def post_auto_dock_enable(request: Request) -> JSONResponse:
-            try:
-                body = await request.json()
-                enabled = bool(body.get("enabled", False))
-            except Exception:
-                enabled = False
-            result = node.set_auto_dock_enabled(enabled)
-            return JSONResponse(result, status_code=200)
 
         # ── Static frontend serving ───────────────────────────────────────────
         # Starlette 0.18 StaticFiles rejects symlinked files (commonprefix check

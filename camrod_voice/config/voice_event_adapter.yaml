@@ -4,6 +4,7 @@
     enable_nav_audio: true
     enable_estop_audio: true
     enable_battery_audio: true
-    enable_docking_audio: true
-    battery_low_threshold: 20
-    battery_critical_threshold: 10
+    # HH_260720 - Announce charging from the unified /platform/status message.
+    enable_charging_audio: true
+    battery_low_threshold: 0.20
+    battery_critical_threshold: 0.10
