@@ -7,34 +7,34 @@
   <maintainer email="hwanhong57@gmail.com">hong</maintainer>
   <license>Apache-2.0</license>
 
-  <!-- HH_260720 - Build flattened Python and C++ controllers in one control package. -->
+  <!-- HH_260721 - Build the flattened native C++ control runtime. -->
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>action_msgs</depend>
-  <depend>ament_index_python</depend>
+  <!-- HH_260721 - Launch files resolve package shares through ament index at runtime. -->
+  <exec_depend>ament_index_python</exec_depend>
   <depend>avg_msgs</depend>
   <depend>diagnostic_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>rcl_interfaces</depend>
   <depend>rclcpp</depend>
-  <depend>rclpy</depend>
-  <!-- HH_260720 - Consume normalized Ranger BMS state for charging and critical-SOC stops. -->
-  <depend>sensor_msgs</depend>
+  <!-- HH_260721 - Consume normalized Ranger BMS state through AvgPlatformStatus only. -->
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
   <depend>visualization_msgs</depend>
-  <exec_depend>python3-yaml</exec_depend>
+  <!-- HH_260721 - Parse station and optional yaw-alignment configuration natively. -->
+  <depend>yaml-cpp</depend>
   <!-- HH_260720 - AprilTag parking conditionally launches its perception detector. -->
   <exec_depend>camrod_perception</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
-  <test_depend>python3-pytest</test_depend>
-  <test_depend>ament_cmake_pytest</test_depend>
+  <!-- HH_260721 - Exercise native control policies without a running ROS graph. -->
+  <test_depend>ament_cmake_gtest</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

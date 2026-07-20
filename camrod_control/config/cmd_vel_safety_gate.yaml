@@ -108,6 +108,7 @@
     body_near_rear_lookahead_m: 0.80
     body_near_maneuver_side_lookahead_m: 1.20
     body_near_maneuver_rear_lookahead_m: 0.80
+    # HH_260721 - One threshold governs lateral merged and live-source obstacle checks.
     side_cost_threshold: 85
     side_lookahead_m: 1.2
     side_corridor_width_m: 1.69160
@@ -118,7 +119,6 @@
     lateral_cmd_bypass_min_mps: 0.02
     reverse_cmd_bypass_static_cost_stop: true
     reverse_cmd_bypass_min_mps: 0.02
-    lateral_cmd_dynamic_obstacle_threshold: 85
     rotation_cmd_dynamic_obstacle_stop: true
     rotation_cmd_dynamic_obstacle_radius_m: 1.5
     rotation_cmd_dynamic_obstacle_threshold: 85
