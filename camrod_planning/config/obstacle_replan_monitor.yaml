@@ -6,14 +6,15 @@
     dynamic_cost_grid_topics:
       - "/sensing/cost_grid/lidar"
       - "/sensing/cost_grid/radar"
-    # HH_260702 - Monitor the active local path because cmd_vel_gate blocks
-    # FRONT_PATH against /planning/local_path.
+    # HH_260720 - Monitor the active path checked by cmd_vel_safety_gate FRONT_PATH.
     path_topic: "/planning/local_path"
-    goal_topic: "/planning/goal_pose_snapped_ros"
+    # HH_260720 - Monitor the generated planning goal; Nav2 conversion happens at action send.
+    goal_topic: "/planning/goal_pose_snapped"
     pose_topic: "/localization/pose"
     navigate_action_name: "/planning/navigate_to_pose"
     navigate_status_topic: "/planning/navigate_to_pose/_action/status"
-    planner_selector_topic: "/planning/planner_selector"
+    # HH_260720 - Explicit std_msgs boundary consumed by the Nav2 selector plugin.
+    planner_selector_topic: "/planning/planner_selector_ros"
     status_topic: "/planning/obstacle_replan/status"
 
     # HH_260702 - Keep global route geometry stable during normal driving.

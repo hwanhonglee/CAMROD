@@ -19,10 +19,12 @@ class Nav2SelectorLatchNode(Node):
             self.declare_parameter("controller_id", "MPPI").value
         ).strip()
         self._planner_topic = str(
-            self.declare_parameter("planner_topic", "/planning/planner_selector").value
+            # HH_260720 - Nav2 selector plugins require std_msgs on an explicit ROS boundary.
+            self.declare_parameter("planner_topic", "/planning/planner_selector_ros").value
         ).strip()
         self._controller_topic = str(
-            self.declare_parameter("controller_topic", "/planning/controller_selector").value
+            # HH_260720 - Nav2 selector plugins require std_msgs on an explicit ROS boundary.
+            self.declare_parameter("controller_topic", "/planning/controller_selector_ros").value
         ).strip()
         self._repeat_hz = float(self.declare_parameter("repeat_hz", 1.0).value)
 

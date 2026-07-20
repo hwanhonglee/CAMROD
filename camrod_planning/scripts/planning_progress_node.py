@@ -7,19 +7,16 @@ lengths from that point to the goal to compute remaining distance.
 Remaining time = remaining_distance / smoothed_speed (min 0.1 m/s floor).
 
 Published topics:
-  /planning/progress/remaining_distance_m  (std_msgs/Float32)
-  /planning/progress/remaining_time_s      (std_msgs/Float32)
-  /planning/progress/completion_pct        (std_msgs/Float32)  0–100 %
+  /planning/progress/remaining_distance_m  (avg_msgs/AvgFloat32)
+  /planning/progress/remaining_time_s      (avg_msgs/AvgFloat32)
+  /planning/progress/completion_pct        (avg_msgs/AvgFloat32)  0-100 %
 """
 
 import math
 
 import rclpy
-from geometry_msgs.msg import PoseStamped
-from nav_msgs.msg import Odometry
-from nav_msgs.msg import Path
+from avg_msgs.msg import AvgFloat32, AvgOdometry, AvgPath, AvgPoseStamped
 from rclpy.node import Node
-from std_msgs.msg import Float32
 
 
 class PlanningProgressNode(Node):
@@ -27,13 +24,13 @@ class PlanningProgressNode(Node):
         super().__init__("planning_progress_node")
 
         self._path_topic = self.declare_parameter(
-            "path_topic", "/planning/global_path"
+            "path_topic", "/planning/global_path_avg"
         ).value
         self._pose_topic = self.declare_parameter(
             "pose_topic", "/localization/pose"
         ).value
         self._odom_topic = self.declare_parameter(
-            "odom_topic", "/localization/odometry/filtered"
+            "odom_topic", "/localization/odometry"
         ).value
         self._publish_rate_hz = float(
             self.declare_parameter("publish_rate_hz", 2.0).value
@@ -53,18 +50,20 @@ class PlanningProgressNode(Node):
         self._speed_ema: float = 0.0
 
         self._pub_dist = self.create_publisher(
-            Float32, "/planning/progress/remaining_distance_m", 10
+            AvgFloat32, "/planning/progress/remaining_distance_m", 10
         )
         self._pub_time = self.create_publisher(
-            Float32, "/planning/progress/remaining_time_s", 10
+            AvgFloat32, "/planning/progress/remaining_time_s", 10
         )
         self._pub_pct = self.create_publisher(
-            Float32, "/planning/progress/completion_pct", 10
+            AvgFloat32, "/planning/progress/completion_pct", 10
         )
 
-        self.create_subscription(Path, self._path_topic, self._on_path, 10)
-        self.create_subscription(PoseStamped, self._pose_topic, self._on_pose, 10)
-        self.create_subscription(Odometry, self._odom_topic, self._on_odom, 20)
+        # HH_260720 - Consume generated CAMROD path and pose contracts.
+        self.create_subscription(AvgPath, self._path_topic, self._on_path, 10)
+        self.create_subscription(AvgPoseStamped, self._pose_topic, self._on_pose, 10)
+        # HH_260720 - Consume the generated internal odometry contract.
+        self.create_subscription(AvgOdometry, self._odom_topic, self._on_odom, 20)
         self.create_timer(1.0 / max(0.1, self._publish_rate_hz), self._publish)
 
         self.get_logger().info(
@@ -72,7 +71,7 @@ class PlanningProgressNode(Node):
             f"pose={self._pose_topic} rate={self._publish_rate_hz:.1f} Hz"
         )
 
-    def _on_path(self, msg: Path) -> None:
+    def _on_path(self, msg: AvgPath) -> None:
         pts = [
             (float(ps.pose.position.x), float(ps.pose.position.y))
             for ps in msg.poses
@@ -84,10 +83,10 @@ class PlanningProgressNode(Node):
         self._path = pts
         self._total_path_dist = total
 
-    def _on_pose(self, msg: PoseStamped) -> None:
+    def _on_pose(self, msg: AvgPoseStamped) -> None:
         self._pose = (float(msg.pose.position.x), float(msg.pose.position.y))
 
-    def _on_odom(self, msg: Odometry) -> None:
+    def _on_odom(self, msg: AvgOdometry) -> None:
         vx = msg.twist.twist.linear.x
         vy = msg.twist.twist.linear.y
         speed = math.hypot(vx, vy)
@@ -125,15 +124,16 @@ class PlanningProgressNode(Node):
         effective_speed = max(self._speed_floor_mps, self._speed_ema)
         remaining_time = remaining / effective_speed
 
-        dist_msg = Float32()
+        # HH_260720 - Publish generated CAMROD progress values instead of std_msgs aliases.
+        dist_msg = AvgFloat32()
         dist_msg.data = float(remaining)
         self._pub_dist.publish(dist_msg)
 
-        time_msg = Float32()
+        time_msg = AvgFloat32()
         time_msg.data = float(remaining_time)
         self._pub_time.publish(time_msg)
 
-        pct_msg = Float32()
+        pct_msg = AvgFloat32()
         pct_msg.data = float(pct)
         self._pub_pct.publish(pct_msg)
 

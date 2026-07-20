@@ -9,7 +9,8 @@
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
-#include "std_msgs/msg/bool.hpp"
+// HH_260720 - Consume the generated control gate state without a std_msgs alias.
+#include "avg_msgs/msg/avg_bool.hpp"
 
 namespace camrod_planning
 {
@@ -30,7 +31,8 @@ public:
     clock_ = node_->get_clock();
     declare_if_missing(plugin_name_ + ".required_movement_radius", 0.03);
     declare_if_missing(plugin_name_ + ".movement_time_allowance", 120.0);
-    declare_if_missing(plugin_name_ + ".engaged_topic", std::string("/planning/engaged"));
+    // HH_260720 - Pause progress checks from the control gate's effective command state.
+    declare_if_missing(plugin_name_ + ".engaged_topic", std::string("/control/command_enabled"));
     declare_if_missing(plugin_name_ + ".default_engaged", false);
 
     node_->get_parameter(plugin_name_ + ".required_movement_radius", required_movement_radius_);
@@ -40,12 +42,10 @@ public:
     node_->get_parameter(plugin_name_ + ".engaged_topic", engaged_topic_);
     node_->get_parameter(plugin_name_ + ".default_engaged", engaged_);
 
-    // HH_260618 - Reset Nav2 progress timing while CAMROD drive engage is false.
-    // This lets operators set/revise goals and inspect paths without causing a
-    // FollowPath abort before they explicitly publish /planning/engage=true.
-    engaged_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
+    // HH_260720 - Reset Nav2 progress timing from the generated effective command state.
+    engaged_sub_ = node_->create_subscription<avg_msgs::msg::AvgBool>(
       engaged_topic_, rclcpp::QoS(1).transient_local().reliable(),
-      [this](const std_msgs::msg::Bool::ConstSharedPtr msg) {
+      [this](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
         engaged_ = msg->data;
         if (!engaged_) {
           baseline_pose_set_ = false;
@@ -136,11 +136,11 @@ private:
 
   rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
   rclcpp::Clock::SharedPtr clock_;
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr engaged_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr engaged_sub_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
 
   std::string plugin_name_;
-  std::string engaged_topic_{"/planning/engaged"};
+  std::string engaged_topic_{"/control/command_enabled"};
   bool engaged_{false};
   double required_movement_radius_{0.03};
   rclcpp::Duration movement_time_allowance_{0, 0};

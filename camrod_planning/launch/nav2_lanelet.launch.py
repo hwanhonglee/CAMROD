@@ -106,8 +106,11 @@ def build_nav2_selector_latch_node(context, *args, **kwargs):
     planner_id = resolve_selector_choice(requested_planner, inferred_planner)
     controller_id = resolve_selector_choice(requested_controller, inferred_controller)
 
-    planner_topic = f"/{module_ns}/planner_selector" if module_ns else "/planner_selector"
-    controller_topic = f"/{module_ns}/controller_selector" if module_ns else "/controller_selector"
+    # HH_260720 - Keep Nav2's std_msgs selector endpoints on explicit ROS boundary topics.
+    planner_topic = f'/{module_ns}/planner_selector_ros' if module_ns else '/planner_selector_ros'
+    controller_topic = (
+        f'/{module_ns}/controller_selector_ros' if module_ns else '/controller_selector_ros'
+    )
 
     return [
         Node(
@@ -186,6 +189,16 @@ def generate_launch_description():
         'behavior_trees',
         'navigate_through_poses_w_replanning_and_recovery.xml',
     )
+    # HH_260720 - Resolve the installed SmacLattice primitive without a host-specific path.
+    default_lattice_filepath = os.path.join(
+        pkg_share,
+        'lattice_primitives',
+        'sample_primitives',
+        '5cm_resolution',
+        '1m_turning_radius',
+        'ackermann',
+        'output.json',
+    )
 
     # -------------------------------------------------------------------------
     # Launch Arguments
@@ -254,6 +267,13 @@ def generate_launch_description():
         default_value='planning',
         description='Namespace for planning/Nav2 nodes',
     )
+    # HH_260720 - Route Nav2 output into the control-owned raw command channel.
+    navigation_cmd_vel_topic_arg = DeclareLaunchArgument(
+        'navigation_cmd_vel_topic',
+        # HH_260720 - Nav2's standard Twist enters control through an explicit ROS boundary.
+        default_value='/control/nav2_cmd_vel_ros',
+        description='Raw navigation command consumed by camrod_control',
+    )
     nav2_autostart_arg = DeclareLaunchArgument(
         'nav2_autostart',
         default_value='true',
@@ -286,6 +306,7 @@ def generate_launch_description():
     origin_alt = LaunchConfiguration('origin_alt')
     nav2_robot_base_frame = LaunchConfiguration('nav2_robot_base_frame')
     module_namespace = LaunchConfiguration('module_namespace')
+    navigation_cmd_vel_topic = LaunchConfiguration('navigation_cmd_vel_topic')
     nav2_autostart = LaunchConfiguration('nav2_autostart')
     nav2_bt_xml_nav_to_pose = LaunchConfiguration('nav2_bt_xml_nav_to_pose')
     nav2_bt_xml_nav_through_poses = LaunchConfiguration('nav2_bt_xml_nav_through_poses')
@@ -303,6 +324,8 @@ def generate_launch_description():
             'offset_lat': origin_lat,
             'offset_lon': origin_lon,
             'offset_alt': origin_alt,
+            # HH_260720 - Override the YAML marker with the package-share primitive path.
+            'lattice_filepath': default_lattice_filepath,
         },
         convert_types=True,
     )
@@ -331,7 +354,8 @@ def generate_launch_description():
     nav2_combo_params = RewrittenYaml(
         source_file=nav2_combo_param_file,
         root_key='planning',
-        param_rewrites={},
+        # HH_260720 - Keep optional SmacLattice combo profiles portable as well.
+        param_rewrites={'lattice_filepath': default_lattice_filepath},
         convert_types=True,
     )
 
@@ -377,7 +401,8 @@ def generate_launch_description():
             'ros__parameters': {
                 'global_frame': 'map',
                 'robot_base_frame': nav2_robot_base_frame,
-                'odom_topic': '/localization/odometry/filtered',
+                # HH_260720 - Nav2 requires the explicit nav_msgs odometry mirror.
+                'odom_topic': '/localization/odometry_ros',
                 # HH_260421: Force package-share-resolved BT XML paths to avoid
                 # host-specific absolute-path breakage.
                 'default_nav_to_pose_bt_xml': nav2_bt_xml_nav_to_pose,
@@ -439,9 +464,8 @@ def generate_launch_description():
         # HH_260304-00:00 overlay it on top of /planning/local_path and make the local plan
         # HH_260304-00:00 look duplicated or branch to a wrong loop segment.
         remappings=[
-            # HH_260331: Route controller output to raw topic.
-            # Final /planning/cmd_vel is published by planning cmd_vel gate after engage trigger.
-            ('cmd_vel', '/planning/cmd_vel_raw'),
+            # HH_260720 - Nav2 produces an unapproved candidate for the control safety gate.
+            ('cmd_vel', navigation_cmd_vel_topic),
             ('received_global_plan', '/planning/local_path_controller'),
             ('transformed_global_plan', '/planning/local_path_dwb'),
         ],
@@ -468,9 +492,8 @@ def generate_launch_description():
                 'transform_tolerance': 0.5,
             }],
             remappings=[
-                # HH_260331: Keep /planning/cmd_vel as controller-only stream.
-                # Recovery behaviors publish to a separate topic for clearer runtime control/debug.
-                ('cmd_vel', '/planning/cmd_vel_recovery'),
+                # HH_260720 - Route recovery commands through the same control safety gate.
+                ('cmd_vel', navigation_cmd_vel_topic),
             ],
         )
     else:
@@ -600,6 +623,7 @@ def generate_launch_description():
         origin_alt_arg,
         nav2_robot_base_frame_arg,
         module_namespace_arg,
+        navigation_cmd_vel_topic_arg,
         nav2_autostart_arg,
         nav2_bt_xml_nav_to_pose_arg,
         nav2_bt_xml_nav_through_poses_arg,

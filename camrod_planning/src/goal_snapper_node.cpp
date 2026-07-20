@@ -10,11 +10,12 @@
 #include <utility>
 #include <vector>
 
+// HH_260720 - Use generated CAMROD planning contracts and explicit Nav2/RViz boundaries.
 #include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/quaternion.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/avg_quaternion.hpp>
 #include <action_msgs/msg/goal_status.hpp>
 #include <action_msgs/msg/goal_status_array.hpp>
 #include <builtin_interfaces/msg/time.hpp>
@@ -25,7 +26,7 @@
 #include <lanelet2_projection/LocalCartesian.h>
 #include <lanelet2_routing/RoutingGraph.h>
 #include <lanelet2_traffic_rules/TrafficRulesFactory.h>
-#include <nav_msgs/msg/occupancy_grid.hpp>
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "camrod_map/custom_regulatory_elements.hpp"
@@ -49,9 +50,9 @@ struct NearestResult
 };
 
 // Implements `yawToQuat` behavior.
-avg_msgs::msg::Quaternion yawToQuat(double yaw)
+avg_msgs::msg::AvgQuaternion yawToQuat(double yaw)
 {
-  avg_msgs::msg::Quaternion q;
+  avg_msgs::msg::AvgQuaternion q;
   const double half_yaw = yaw * 0.5;
   q.x = 0.0;
   q.y = 0.0;
@@ -100,7 +101,7 @@ public:
     cfg_.offset_alt = declare_parameter<double>("offset_alt", 0.0);
     input_goal_topic_ = declare_parameter<std::string>("input_goal_topic", "/goal_pose");
     // HH_260623 - Keep internal return/drop-zone raw goals separate from the public
-    // site_goal topic so camrod_parking/site_maneuver does not consume them as campsite goals.
+    // HH_260720 - Keep intermediate snap candidates away from the camping-site controller input.
     auxiliary_input_goal_topic_ =
       declare_parameter<std::string>("auxiliary_input_goal_topic", "");
     output_goal_topic_ = declare_parameter<std::string>("output_goal_topic", "/planning/goal_pose");
@@ -159,8 +160,7 @@ public:
     cost_grid_block_threshold_ = std::clamp(
       static_cast<int>(declare_parameter<int>("cost_grid_block_threshold", 100)), 1, 101);
 
-    // HH_260329 Debounce duplicate goal callbacks when the same topic is
-    // subscribed by both avg_msgs and geometry_msgs interfaces.
+    // HH_260720 - Debounce repeated operator commands without dual-type alias subscriptions.
     duplicate_goal_xy_eps_m_ = declare_parameter<double>("duplicate_goal_xy_eps_m", 0.05);
     duplicate_goal_z_eps_m_ = declare_parameter<double>("duplicate_goal_z_eps_m", 0.10);
     duplicate_goal_time_window_s_ = declare_parameter<double>("duplicate_goal_time_window_s", 0.25);
@@ -231,7 +231,7 @@ public:
       }
     }
 
-    pub_goal_ = create_publisher<avg_msgs::msg::PoseStamped>(
+    pub_goal_ = create_publisher<avg_msgs::msg::AvgPoseStamped>(
       output_goal_topic_, rclcpp::QoS(10));
     pub_goal_ros_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       output_goal_topic_ros_, rclcpp::QoS(10));
@@ -239,19 +239,14 @@ public:
       pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
         planning_status_topic_, rclcpp::QoS(10));
     }
-    sub_goal_ = create_subscription<avg_msgs::msg::PoseStamped>(
-      input_goal_topic_, rclcpp::QoS(10),
-      std::bind(&GoalSnapperNode::onGoal, this, std::placeholders::_1));
+    // HH_260720 - RViz/operator goals enter through one explicit ROS boundary.
     sub_goal_ros_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       input_goal_topic_, rclcpp::QoS(10),
       std::bind(&GoalSnapperNode::onGoalRos, this, std::placeholders::_1));
     if (!auxiliary_input_goal_topic_.empty() && auxiliary_input_goal_topic_ != input_goal_topic_) {
-      sub_aux_goal_ = create_subscription<avg_msgs::msg::PoseStamped>(
+      sub_aux_goal_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
         auxiliary_input_goal_topic_, rclcpp::QoS(10),
         std::bind(&GoalSnapperNode::onAuxGoal, this, std::placeholders::_1));
-      sub_aux_goal_ros_ = create_subscription<geometry_msgs::msg::PoseStamped>(
-        auxiliary_input_goal_topic_, rclcpp::QoS(10),
-        std::bind(&GoalSnapperNode::onAuxGoalRos, this, std::placeholders::_1));
     }
 
     if (
@@ -260,12 +255,12 @@ public:
       sequential_goal_release_enable_ ||
       reissue_active_goal_on_pose_jump_)
     {
-      sub_current_pose_ = create_subscription<avg_msgs::msg::PoseStamped>(
+      sub_current_pose_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
         current_pose_topic_, rclcpp::QoS(10),
         std::bind(&GoalSnapperNode::onCurrentPose, this, std::placeholders::_1));
     }
     if (restrict_to_cost_grid_component_) {
-      sub_cost_grid_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
+      sub_cost_grid_ = create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
         cost_grid_topic_, rclcpp::QoS(1),
         std::bind(&GoalSnapperNode::onCostGrid, this, std::placeholders::_1));
     }
@@ -375,7 +370,7 @@ private:
   }
 
   // Handles current lanelet pose updates for connected-component filtering.
-  void onCurrentPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onCurrentPose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     const double px = msg->pose.position.x;
     const double py = msg->pose.position.y;
@@ -428,7 +423,7 @@ private:
   }
 
   // Handles Nav2 lanelet cost-grid updates used for reachable goal filtering.
-  void onCostGrid(const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg)
+  void onCostGrid(const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg)
   {
     latest_cost_grid_ = *msg;
     has_latest_cost_grid_ = true;
@@ -594,20 +589,14 @@ private:
     return best;
   }
 
-  // Handles the `onGoal` callback.
-  void onGoal(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
-  {
-    snapAvgGoal(*msg, "avg");
-  }
-
   // HH_260623 - Internal auto goals use the same snap logic but carry a distinct
   // log label to prove that return/drop-zone routing did not come from UI/RViz.
-  void onAuxGoal(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onAuxGoal(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     snapAvgGoal(*msg, "aux_avg");
   }
 
-  void snapAvgGoal(const avg_msgs::msg::PoseStamped & msg, const char * source_label)
+  void snapAvgGoal(const avg_msgs::msg::AvgPoseStamped & msg, const char * source_label)
   {
     const double px = msg.pose.position.x;
     const double py = msg.pose.position.y;
@@ -626,7 +615,7 @@ private:
       return;
     }
 
-    avg_msgs::msg::PoseStamped out;
+    avg_msgs::msg::AvgPoseStamped out;
     out.header = msg.header;
     out.pose.position.x = nearest.nearest_point.x();
     out.pose.position.y = nearest.nearest_point.y();
@@ -639,13 +628,6 @@ private:
   void onGoalRos(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     snapRosGoal(*msg, "ros");
-  }
-
-  // HH_260623 - ROS-native auxiliary input is used by planning_state_machine for
-  // drop-zone return requests that still need lanelet snapping before Nav2.
-  void onAuxGoalRos(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
-  {
-    snapRosGoal(*msg, "aux_ros");
   }
 
   void snapRosGoal(const geometry_msgs::msg::PoseStamped & msg, const char * source_label)
@@ -669,7 +651,7 @@ private:
       return;
     }
 
-    avg_msgs::msg::PoseStamped out_avg;
+    avg_msgs::msg::AvgPoseStamped out_avg;
     out_avg.header.stamp = msg.header.stamp;
     out_avg.header.frame_id = msg.header.frame_id;
     out_avg.pose.position.x = nearest.nearest_point.x();
@@ -680,7 +662,7 @@ private:
   }
 
   void handleSnappedGoal(
-    const avg_msgs::msg::PoseStamped & goal_pose,
+    const avg_msgs::msg::AvgPoseStamped & goal_pose,
     double input_x, double input_y, double snap_distance, const char * source_label)
   {
     if (!sequential_goal_release_enable_) {
@@ -704,7 +686,7 @@ private:
   }
 
   void publishReleasedGoal(
-    const avg_msgs::msg::PoseStamped & goal_pose,
+    const avg_msgs::msg::AvgPoseStamped & goal_pose,
     double input_x, double input_y, double snap_distance,
     const char * source_label, const char * release_reason)
   {
@@ -729,7 +711,7 @@ private:
   }
 
   void enqueuePendingGoal(
-    const avg_msgs::msg::PoseStamped & goal_pose,
+    const avg_msgs::msg::AvgPoseStamped & goal_pose,
     double input_x, double input_y, double snap_distance, const char * source_label)
   {
     if (sequential_goal_queue_policy_ == "drop_if_busy") {
@@ -870,8 +852,8 @@ private:
   }
 
   bool isSameGoal(
-    const avg_msgs::msg::PoseStamped & lhs,
-    const avg_msgs::msg::PoseStamped & rhs) const
+    const avg_msgs::msg::AvgPoseStamped & lhs,
+    const avg_msgs::msg::AvgPoseStamped & rhs) const
   {
     if (!lhs.header.frame_id.empty() && !rhs.header.frame_id.empty() &&
       lhs.header.frame_id != rhs.header.frame_id)
@@ -939,7 +921,7 @@ private:
   }
 
   // Publishes `RosGoal` output.
-  void publishRosGoal(const avg_msgs::msg::PoseStamped & goal_pose)
+  void publishRosGoal(const avg_msgs::msg::AvgPoseStamped & goal_pose)
   {
     if (!pub_goal_ros_) {
       return;
@@ -958,7 +940,7 @@ private:
   }
 
   // Publishes `AvgPlanning` output.
-  void publishAvgPlanning(const avg_msgs::msg::PoseStamped & goal_pose)
+  void publishAvgPlanning(const avg_msgs::msg::AvgPoseStamped & goal_pose)
   {
     if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
@@ -969,7 +951,8 @@ private:
     msg.state.module_name = "planning";
     msg.state.level = ModuleState::OK;
     msg.state.message = "goal_snapper";
-    msg.goal_pose = avg_msgs::conversions::fromRos(goal_pose);
+    // HH_260720 - The snapped goal is already a generated CAMROD pose.
+    msg.goal_pose = goal_pose;
     pub_avg_planning_->publish(msg);
   }
 
@@ -1286,8 +1269,8 @@ private:
   bool reissue_active_goal_on_pose_jump_{true};
   double pose_jump_reissue_distance_m_{1.5};
   double pose_jump_reissue_min_interval_s_{1.0};
-  std::deque<avg_msgs::msg::PoseStamped> pending_goals_;
-  avg_msgs::msg::PoseStamped active_released_goal_;
+  std::deque<avg_msgs::msg::AvgPoseStamped> pending_goals_;
+  avg_msgs::msg::AvgPoseStamped active_released_goal_;
   bool has_active_released_goal_{false};
   bool active_goal_reached_{false};
   bool active_goal_nav2_succeeded_{false};
@@ -1328,7 +1311,7 @@ private:
   double uncontained_global_snap_min_improvement_m_{5.0};
   std::string cost_grid_topic_{"/map/cost_grid/lanelet"};
   int cost_grid_block_threshold_{100};
-  nav_msgs::msg::OccupancyGrid latest_cost_grid_;
+  avg_msgs::msg::AvgOccupancyGrid latest_cost_grid_;
   bool has_latest_cost_grid_{false};
   uint64_t cost_grid_revision_{0U};
   uint64_t cost_grid_component_revision_{0U};
@@ -1338,15 +1321,13 @@ private:
   std::vector<uint8_t> cost_grid_component_mask_;
   bool has_cost_grid_component_{false};
 
-  rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr pub_goal_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseStamped>::SharedPtr pub_goal_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_goal_ros_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_goal_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_aux_goal_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_aux_goal_ros_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_current_pose_;
-  rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr sub_cost_grid_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_aux_goal_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_current_pose_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr sub_cost_grid_;
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub_nav_status_;
   rclcpp::TimerBase::SharedPtr queue_timer_;
   bool publish_planning_status_{false};

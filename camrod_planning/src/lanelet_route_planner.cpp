@@ -13,6 +13,10 @@
 #include <vector>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
+// HH_260720 - Publish typed CAMROD route metadata instead of generic ROS arrays.
+#include "avg_msgs/msg/route_lanelet_ids.hpp"
+#include "avg_msgs/msg/route_turn_segment.hpp"
+#include "avg_msgs/msg/route_turn_segment_array.hpp"
 #include "lanelet2_core/LaneletMap.h"
 #include "lanelet2_io/Io.h"
 #include "lanelet2_io/Projection.h"
@@ -23,8 +27,6 @@
 #include "nav2_core/global_planner.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
-#include "std_msgs/msg/float32_multi_array.hpp"
-#include "std_msgs/msg/int64_multi_array.hpp"
 
 #include "camrod_map/custom_regulatory_elements.hpp"
 
@@ -152,11 +154,11 @@ public:
 
     // HH_260619 - Publish exact routing lanelet IDs so route-aware cost grids do
     // not infer ambiguous lanelets from overlapping merge polygons.
-    route_lanelet_ids_pub_ = node_->create_publisher<std_msgs::msg::Int64MultiArray>(
+    route_lanelet_ids_pub_ = node_->create_publisher<avg_msgs::msg::RouteLaneletIds>(
       route_lanelet_ids_topic_, rclcpp::QoS(1).reliable().transient_local());
     // HH_260708 - Publish turn_direction tag windows as route arc-length ranges so
     // the exterior light controller can pre-signal turns without loading the map.
-    route_turn_segments_pub_ = node_->create_publisher<std_msgs::msg::Float32MultiArray>(
+    route_turn_segments_pub_ = node_->create_publisher<avg_msgs::msg::RouteTurnSegmentArray>(
       route_turn_segments_topic_, rclcpp::QoS(1).reliable().transient_local());
 
     startInitialization();
@@ -737,17 +739,17 @@ private:
     if (!route_lanelet_ids_pub_) {
       return;
     }
-    std_msgs::msg::Int64MultiArray msg;
-    msg.data.reserve(route_lanelets.size());
+    avg_msgs::msg::RouteLaneletIds msg;
+    msg.header.stamp = node_->now();
+    msg.header.frame_id = frame_id_;
+    msg.lanelet_ids.reserve(route_lanelets.size());
     for (const auto & route_lanelet : route_lanelets) {
-      msg.data.push_back(static_cast<int64_t>(route_lanelet.id()));
+      msg.lanelet_ids.push_back(static_cast<int64_t>(route_lanelet.id()));
     }
     route_lanelet_ids_pub_->publish(msg);
   }
 
-  // HH_260708 - Layout: data[0] = total route length [m] (sync guard against the
-  // matching /planning/global_path), then repeated [direction, S0, S1] triples
-  // with direction +1=left / -1=right and S in route arc-length meters.
+  // HH_260720 - Publish named route-turn fields with +1=left and -1=right.
   void publishRouteTurnSegments(
     double total_route_length_m,
     const std::vector<std::array<float, 3>> & turn_segments) const
@@ -755,13 +757,17 @@ private:
     if (!route_turn_segments_pub_) {
       return;
     }
-    std_msgs::msg::Float32MultiArray msg;
-    msg.data.reserve(1U + turn_segments.size() * 3U);
-    msg.data.push_back(static_cast<float>(total_route_length_m));
+    avg_msgs::msg::RouteTurnSegmentArray msg;
+    msg.header.stamp = node_->now();
+    msg.header.frame_id = frame_id_;
+    msg.total_route_length_m = static_cast<float>(total_route_length_m);
+    msg.segments.reserve(turn_segments.size());
     for (const auto & segment : turn_segments) {
-      msg.data.push_back(segment[0]);
-      msg.data.push_back(segment[1]);
-      msg.data.push_back(segment[2]);
+      avg_msgs::msg::RouteTurnSegment typed_segment;
+      typed_segment.direction = static_cast<int8_t>(std::lround(segment[0]));
+      typed_segment.start_distance_m = segment[1];
+      typed_segment.end_distance_m = segment[2];
+      msg.segments.push_back(typed_segment);
     }
     route_turn_segments_pub_->publish(msg);
   }
@@ -875,9 +881,9 @@ private:
   double async_initialization_plan_wait_timeout_s_{60.0};
   std::string route_lanelet_ids_topic_{"/planning/route_lanelet_ids"};
   std::string route_turn_segments_topic_{"/planning/route_turn_segments"};
-  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Int64MultiArray>::SharedPtr
+  rclcpp_lifecycle::LifecyclePublisher<avg_msgs::msg::RouteLaneletIds>::SharedPtr
     route_lanelet_ids_pub_;
-  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float32MultiArray>::SharedPtr
+  rclcpp_lifecycle::LifecyclePublisher<avg_msgs::msg::RouteTurnSegmentArray>::SharedPtr
     route_turn_segments_pub_;
   lanelet::LaneletMapPtr map_;
   lanelet::traffic_rules::TrafficRulesUPtr traffic_rules_;

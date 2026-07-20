@@ -6,6 +6,8 @@
     # Nav2 SmoothPath keeps its path on the BT blackboard and does not publish a
     # stable /planning/plan_smoothed topic in this stack.
     global_path_topic: "/planning/global_path"
+    # HH_260720 - Canonical generated CAMROD mirror for non-Nav2 consumers.
+    global_path_avg_topic: "/planning/global_path_avg"
     fallback_global_path_topic: ""
     preferred_path_hold_s: 1.0
     # HH_260702 - Use the latest global route slice as the operator/safety path.
@@ -18,6 +20,8 @@
     # HH_260702 - Use fused localization pose as the anchor for global-route slicing.
     pose_topic: "/localization/pose"
     output_topic: "/planning/local_path"
+    # HH_260720 - Standard nav_msgs mirror for RViz and ROS-native tools only.
+    output_topic_ros: "/planning/local_path_ros"
     # Local path is an explicit slice of the current global route.
     # HH_260618: Keep input-triggered refresh, but lower timer heartbeat to reduce CPU/topic load.
     publish_rate_hz: 15.0

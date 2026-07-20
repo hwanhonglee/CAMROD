@@ -6,10 +6,11 @@
 #include <string>
 #include <utility>
 
-#include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
+// HH_260720 - Use generated localization contracts for internal Nav2 startup gating.
+#include "avg_msgs/msg/avg_bool.hpp"
+#include "avg_msgs/msg/avg_pose_with_covariance_stamped.hpp"
 #include "nav2_msgs/srv/manage_lifecycle_nodes.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
 namespace camrod_planning
@@ -49,10 +50,12 @@ public:
       std::bind(&Nav2LifecycleStartupRetryNode::on_timer, this));
 
     if (require_localization_ready_) {
-      localization_ready_sub_ = create_subscription<std_msgs::msg::Bool>(
+      // HH_260720 - Subscribe directly to the generated drop-zone readiness contract.
+      localization_ready_sub_ = create_subscription<avg_msgs::msg::AvgBool>(
         localization_ready_topic_, 10,
         std::bind(&Nav2LifecycleStartupRetryNode::on_localization_ready, this, std::placeholders::_1));
-      pose_cov_sub_ = create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+      // HH_260720 - Subscribe directly to the generated localization covariance contract.
+      pose_cov_sub_ = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
         localization_pose_cov_topic_, 10,
         std::bind(&Nav2LifecycleStartupRetryNode::on_localization_pose_cov, this, std::placeholders::_1));
     }
@@ -68,14 +71,15 @@ public:
 
 private:
   // HH_260527: Updates drop-zone match latch used by startup gating.
-  void on_localization_ready(const std_msgs::msg::Bool::SharedPtr msg)
+  // HH_260720 - Accept immutable generated messages to use the current rclcpp callback API.
+  void on_localization_ready(const avg_msgs::msg::AvgBool::ConstSharedPtr msg)
   {
     localization_ready_ = static_cast<bool>(msg->data);
   }
 
   // Updates covariance sanity latch for localization readiness gating.
   void on_localization_pose_cov(
-    const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg)
+    const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     pose_cov_received_ = true;
     last_pose_cov_rx_time_ = now();
@@ -159,7 +163,8 @@ private:
         }
         auto req = std::make_shared<nav2_msgs::srv::ManageLifecycleNodes::Request>();
         req->command = nav2_msgs::srv::ManageLifecycleNodes::Request::STARTUP;
-        startup_future_ = manager_client_->async_send_request(req);
+        // HH_260720 - Store the explicit shared future without deprecated implicit conversion.
+        startup_future_ = manager_client_->async_send_request(req).future.share();
         startup_future_pending_ = true;
         next_startup_time_ =
           now_time + rclcpp::Duration::from_seconds(startup_cooldown_s_);
@@ -196,7 +201,8 @@ private:
     }
 
     auto req = std::make_shared<std_srvs::srv::Trigger::Request>();
-    active_future_ = is_active_client_->async_send_request(req);
+    // HH_260720 - Store the explicit shared future without deprecated implicit conversion.
+    active_future_ = is_active_client_->async_send_request(req).future.share();
     active_future_pending_ = true;
   }
 
@@ -240,8 +246,8 @@ private:
   bool active_future_pending_{false};
   bool startup_future_pending_{false};
 
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr localization_ready_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr localization_ready_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr pose_cov_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

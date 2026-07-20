@@ -7,22 +7,22 @@ from typing import Dict, List, Optional, Tuple
 
 import rclpy
 from action_msgs.msg import GoalStatus, GoalStatusArray
-from geometry_msgs.msg import PoseStamped
+from avg_msgs.msg import AvgOccupancyGrid, AvgPath, AvgPoseStamped, AvgString
+from geometry_msgs.msg import PoseStamped as RosPoseStamped
 from nav2_msgs.action import NavigateToPose
-from nav_msgs.msg import OccupancyGrid, Path
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
-from std_msgs.msg import String
+from std_msgs.msg import String as RosString
 
 
 @dataclass
 class GridRecord:
     topic: str
-    grid: OccupancyGrid
+    grid: AvgOccupancyGrid
     received_time: Time
 
 
@@ -51,7 +51,7 @@ class ObstacleReplanMonitor(Node):
             self.declare_parameter("path_topic", "/planning/local_path").value
         ).strip() or "/planning/local_path"
         self._goal_topic = str(
-            self.declare_parameter("goal_topic", "/planning/goal_pose_snapped_ros").value
+            self.declare_parameter("goal_topic", "/planning/goal_pose_snapped").value
         ).strip()
         self._pose_topic = str(
             self.declare_parameter("pose_topic", "/localization/pose").value
@@ -65,7 +65,10 @@ class ObstacleReplanMonitor(Node):
             ).value
         ).strip()
         self._planner_selector_topic = str(
-            self.declare_parameter("planner_selector_topic", "/planning/planner_selector").value
+            # HH_260720 - Publish std_msgs only to the explicit Nav2 selector boundary.
+            self.declare_parameter(
+                "planner_selector_topic", "/planning/planner_selector_ros"
+            ).value
         ).strip()
         self._status_topic = str(
             self.declare_parameter("status_topic", "/planning/obstacle_replan/status").value
@@ -132,9 +135,9 @@ class ObstacleReplanMonitor(Node):
             self.declare_parameter("ignore_unknown_cells", True).value
         )
 
-        self._latest_path: Optional[Path] = None
-        self._latest_goal: Optional[PoseStamped] = None
-        self._latest_pose: Optional[PoseStamped] = None
+        self._latest_path: Optional[AvgPath] = None
+        self._latest_goal: Optional[AvgPoseStamped] = None
+        self._latest_pose: Optional[AvgPoseStamped] = None
         self._grids: Dict[str, GridRecord] = {}
         self._navigation_active = False
         self._blocked_since: Optional[Time] = None
@@ -156,24 +159,25 @@ class ObstacleReplanMonitor(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
 
-        self.create_subscription(Path, self._path_topic, self._on_path, path_qos)
-        self.create_subscription(PoseStamped, self._goal_topic, self._on_goal, 10)
-        self.create_subscription(PoseStamped, self._pose_topic, self._on_pose, 10)
+        # HH_260720 - Use generated CAMROD path, pose, grid, and status contracts.
+        self.create_subscription(AvgPath, self._path_topic, self._on_path, path_qos)
+        self.create_subscription(AvgPoseStamped, self._goal_topic, self._on_goal, 10)
+        self.create_subscription(AvgPoseStamped, self._pose_topic, self._on_pose, 10)
         self.create_subscription(
             GoalStatusArray, self._navigate_status_topic, self._on_nav_status, 10
         )
         for topic in self._dynamic_grid_topics:
             self.create_subscription(
-                OccupancyGrid,
+                AvgOccupancyGrid,
                 topic,
                 lambda msg, topic_name=topic: self._on_grid(topic_name, msg),
                 10,
             )
 
         self._planner_selector_pub = self.create_publisher(
-            String, self._planner_selector_topic, selector_qos
+            RosString, self._planner_selector_topic, selector_qos
         )
-        self._status_pub = self.create_publisher(String, self._status_topic, 10)
+        self._status_pub = self.create_publisher(AvgString, self._status_topic, 10)
         self._navigate_client = ActionClient(self, NavigateToPose, self._navigate_action_name)
 
         monitor_period = 1.0 / max(0.5, self._monitor_rate_hz)
@@ -190,19 +194,19 @@ class ObstacleReplanMonitor(Node):
             f"lookahead={self._lookahead_m:.1f}m hold={self._block_hold_s:.1f}s"
         )
 
-    def _on_path(self, msg: Path) -> None:
+    def _on_path(self, msg: AvgPath) -> None:
         self._latest_path = msg
 
-    def _on_goal(self, msg: PoseStamped) -> None:
+    def _on_goal(self, msg: AvgPoseStamped) -> None:
         self._latest_goal = msg
         self._blocked_since = None
         self._last_blocked_sample_time = None
         self._last_blockage_sample = None
 
-    def _on_pose(self, msg: PoseStamped) -> None:
+    def _on_pose(self, msg: AvgPoseStamped) -> None:
         self._latest_pose = msg
 
-    def _on_grid(self, topic: str, msg: OccupancyGrid) -> None:
+    def _on_grid(self, topic: str, msg: AvgOccupancyGrid) -> None:
         self._grids[topic] = GridRecord(topic=topic, grid=msg, received_time=self.get_clock().now())
 
     def _on_nav_status(self, msg: GoalStatusArray) -> None:
@@ -327,7 +331,8 @@ class ObstacleReplanMonitor(Node):
         self._publish_planner_selector()
 
         goal_msg = NavigateToPose.Goal()
-        goal_msg.pose = self._latest_goal
+        # HH_260720 - Convert the generated snapped goal only at the Nav2 action boundary.
+        goal_msg.pose = self._goal_pose_to_ros(self._latest_goal)
         goal_msg.pose.header.stamp = now_time.to_msg()
         goal_msg.behavior_tree = ""
         send_future = self._navigate_client.send_goal_async(goal_msg)
@@ -355,12 +360,28 @@ class ObstacleReplanMonitor(Node):
         )
 
     def _publish_planner_selector(self, planner_id: Optional[str] = None) -> None:
-        msg = String()
+        # HH_260720 - PlannerSelector is a Nav2 ROS boundary.
+        msg = RosString()
         msg.data = planner_id if planner_id is not None else self._fallback_planner_id
         self._planner_selector_pub.publish(msg)
 
+    @staticmethod
+    def _goal_pose_to_ros(message: AvgPoseStamped) -> RosPoseStamped:
+        # HH_260720 - Explicit field copies prevent standard ROS types from leaking internally.
+        output = RosPoseStamped()
+        output.header.stamp = message.header.stamp
+        output.header.frame_id = message.header.frame_id
+        output.pose.position.x = message.pose.position.x
+        output.pose.position.y = message.pose.position.y
+        output.pose.position.z = message.pose.position.z
+        output.pose.orientation.x = message.pose.orientation.x
+        output.pose.orientation.y = message.pose.orientation.y
+        output.pose.orientation.z = message.pose.orientation.z
+        output.pose.orientation.w = message.pose.orientation.w
+        return output
+
     def _publish_status(self, text: str) -> None:
-        msg = String()
+        msg = AvgString()
         msg.data = text
         self._status_pub.publish(msg)
 
@@ -476,7 +497,9 @@ class ObstacleReplanMonitor(Node):
                 blocked = True
         return blocked, max_cost, max_topic
 
-    def _grid_cost_at(self, grid: OccupancyGrid, point_x: float, point_y: float) -> Optional[int]:
+    def _grid_cost_at(
+        self, grid: AvgOccupancyGrid, point_x: float, point_y: float
+    ) -> Optional[int]:
         info = grid.info
         if info.width == 0 or info.height == 0 or info.resolution <= 0.0:
             return None
@@ -500,7 +523,7 @@ class ObstacleReplanMonitor(Node):
             return None
         return cost
 
-    def _closest_path_index(self, path: Path, pose: PoseStamped) -> int:
+    def _closest_path_index(self, path: AvgPath, pose: AvgPoseStamped) -> int:
         pose_x = pose.pose.position.x
         pose_y = pose.pose.position.y
         best_index = 0

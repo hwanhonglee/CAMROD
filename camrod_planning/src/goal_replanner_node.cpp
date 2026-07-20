@@ -4,13 +4,14 @@
 #include <optional>
 #include <string>
 
+// HH_260720 - Use generated CAMROD poses and explicit Nav2 action/path/status boundaries.
 #include <avg_msgs/conversions.hpp>
-#include <avg_msgs/msg/goal_status_array.hpp>
+#include <action_msgs/msg/goal_status_array.hpp>
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/path.hpp>
-#include <avg_msgs/action/compute_path_to_pose.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <nav_msgs/msg/path.hpp>
+#include <nav2_msgs/action/compute_path_to_pose.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 
@@ -121,7 +122,7 @@ public:
 
     action_client_ = rclcpp_action::create_client<ComputePathToPose>(this, action_name_);
     if (publish_result_path_) {
-      path_pub_ = create_publisher<avg_msgs::msg::Path>(
+      path_pub_ = create_publisher<nav_msgs::msg::Path>(
         output_path_topic_, rclcpp::QoS(1).transient_local().reliable());
     }
     if (publish_planning_status_) {
@@ -129,16 +130,16 @@ public:
         planning_status_topic_, rclcpp::QoS(10));
     }
 
-    sub_goal_ = create_subscription<avg_msgs::msg::PoseStamped>(
+    sub_goal_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       goal_topic_, rclcpp::SystemDefaultsQoS(),
       std::bind(&GoalReplannerNode::onGoal, this, std::placeholders::_1));
     if (use_topic_start_pose_ || replan_on_start_change_) {
-      sub_start_ = create_subscription<avg_msgs::msg::PoseStamped>(
+      sub_start_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
         start_topic_, rclcpp::SystemDefaultsQoS(),
         std::bind(&GoalReplannerNode::onStart, this, std::placeholders::_1));
     }
     if (pause_when_navigate_active_) {
-      sub_nav_status_ = create_subscription<avg_msgs::msg::GoalStatusArray>(
+      sub_nav_status_ = create_subscription<action_msgs::msg::GoalStatusArray>(
         navigate_status_topic_, rclcpp::QoS(10).reliable(),
         std::bind(&GoalReplannerNode::onNavigateStatus, this, std::placeholders::_1));
     }
@@ -203,8 +204,8 @@ private:
 
   // Implements `distance2D` behavior.
   static double distance2D(
-    const avg_msgs::msg::PoseStamped & a,
-    const avg_msgs::msg::PoseStamped & b)
+    const avg_msgs::msg::AvgPoseStamped & a,
+    const avg_msgs::msg::AvgPoseStamped & b)
   {
     const double dx = a.pose.position.x - b.pose.position.x;
     const double dy = a.pose.position.y - b.pose.position.y;
@@ -213,8 +214,8 @@ private:
 
   // Implements `yawDiffRad` behavior.
   static double yawDiffRad(
-    const avg_msgs::msg::PoseStamped & a,
-    const avg_msgs::msg::PoseStamped & b)
+    const avg_msgs::msg::AvgPoseStamped & a,
+    const avg_msgs::msg::AvgPoseStamped & b)
   {
     const auto & qa = a.pose.orientation;
     const auto & qb = b.pose.orientation;
@@ -228,7 +229,7 @@ private:
   }
 
   // Handles the `onNavigateStatus` callback.
-  void onNavigateStatus(const avg_msgs::msg::GoalStatusArray::ConstSharedPtr msg)
+  void onNavigateStatus(const action_msgs::msg::GoalStatusArray::ConstSharedPtr msg)
   {
     if (!msg) {
       return;
@@ -341,13 +342,13 @@ private:
   }
 
   // Handles the `onGoal` callback.
-  void onGoal(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onGoal(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     if (!msg) {
       return;
     }
 
-    avg_msgs::msg::PoseStamped incoming = *msg;
+    avg_msgs::msg::AvgPoseStamped incoming = *msg;
     if (incoming.header.frame_id.empty()) {
       incoming.header.frame_id = frame_id_;
     }
@@ -411,7 +412,7 @@ private:
   }
 
   // Handles the `onStart` callback.
-  void onStart(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onStart(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     if (!msg) {
       return;
@@ -529,9 +530,11 @@ private:
         "start_topic has no message yet; fallback to TF start (map->robot_base_link)");
     }
     if (goal_msg.use_start) {
-      goal_msg.start = latest_start_;
+      // HH_260720 - Convert the generated start pose only for the Nav2 action request.
+      goal_msg.start = avg_msgs::conversions::toRos(latest_start_);
     }
-    goal_msg.goal = latest_goal_;
+    // HH_260720 - Convert the generated goal pose only for the Nav2 action request.
+    goal_msg.goal = avg_msgs::conversions::toRos(latest_goal_);
     const bool use_fallback_planner_this_request =
       retry_with_fallback_planner_ &&
       force_fallback_planner_once_ &&
@@ -686,9 +689,9 @@ private:
 
   // Publishes `AvgPlanning` output.
   void publishAvgPlanning(
-    const std::optional<avg_msgs::msg::Path> & global_path,
-    const std::optional<avg_msgs::msg::GoalStatusArray> & navigate_status,
-    const std::optional<avg_msgs::msg::PoseStamped> & goal_pose)
+    const std::optional<nav_msgs::msg::Path> & global_path,
+    const std::optional<action_msgs::msg::GoalStatusArray> & navigate_status,
+    const std::optional<avg_msgs::msg::AvgPoseStamped> & goal_pose)
   {
     if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
@@ -706,7 +709,8 @@ private:
       msg.navigate_to_pose_status = avg_msgs::conversions::fromRos(navigate_status.value());
     }
     if (goal_pose.has_value()) {
-      msg.goal_pose = avg_msgs::conversions::fromRos(goal_pose.value());
+      // HH_260720 - The goal is already a generated CAMROD pose.
+      msg.goal_pose = goal_pose.value();
     }
     pub_avg_planning_->publish(msg);
   }
@@ -765,22 +769,22 @@ private:
   uint64_t request_seq_counter_{0};
   uint64_t active_request_seq_{0};
 
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_goal_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_start_;
-  rclcpp::Subscription<avg_msgs::msg::GoalStatusArray>::SharedPtr sub_nav_status_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_goal_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_start_;
+  rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub_nav_status_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp_action::Client<ComputePathToPose>::SharedPtr action_client_;
   GoalHandleComputePathToPose::SharedPtr active_goal_handle_;
-  rclcpp::Publisher<avg_msgs::msg::Path>::SharedPtr path_pub_;
+  rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
 
   rclcpp::Time request_sent_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_request_sent_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time next_allowed_request_time_{0, 0, RCL_ROS_TIME};
-  avg_msgs::msg::PoseStamped latest_goal_;
-  avg_msgs::msg::PoseStamped latest_start_;
-  avg_msgs::msg::PoseStamped last_submitted_goal_;
-  avg_msgs::msg::PoseStamped last_submitted_start_;
+  avg_msgs::msg::AvgPoseStamped latest_goal_;
+  avg_msgs::msg::AvgPoseStamped latest_start_;
+  avg_msgs::msg::AvgPoseStamped last_submitted_goal_;
+  avg_msgs::msg::AvgPoseStamped last_submitted_start_;
 };
 
 }  // namespace camrod_planning

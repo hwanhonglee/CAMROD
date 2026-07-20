@@ -5,10 +5,10 @@ import math
 from typing import Sequence, Tuple
 
 import rclpy
+from avg_msgs.msg import AvgPath, AvgPoint
 from geometry_msgs.msg import Point
-from nav_msgs.msg import Path
 from rclpy.node import Node
-from std_msgs.msg import ColorRGBA
+from std_msgs.msg import ColorRGBA, Header
 from visualization_msgs.msg import Marker, MarkerArray
 
 
@@ -16,7 +16,7 @@ Color = Tuple[float, float, float, float]
 
 
 def _path_point(
-    point: Point,
+    point: AvgPoint,
     z_offset: float,
     *,
     flatten_path_z: bool,
@@ -29,6 +29,14 @@ def _path_point(
     return out
 
 
+# HH_260720 - Convert a generated CAMROD header only for RViz marker output.
+def _to_ros_header(header) -> Header:
+    out = Header()
+    out.stamp = header.stamp
+    out.frame_id = header.frame_id
+    return out
+
+
 def _make_color(color: Color):
     msg = ColorRGBA()
     msg.r, msg.g, msg.b, msg.a = color
@@ -36,13 +44,13 @@ def _make_color(color: Color):
 
 
 class PathVisualizerNode(Node):
-    """Converts nav_msgs/Path into thick line and direction arrow markers."""
+    """Converts generated CAMROD paths into RViz markers."""
 
     def __init__(self) -> None:
         super().__init__("path_visualizer")
 
         self.global_path_topic = self.declare_parameter(
-            "global_path_topic", "/planning/global_path"
+            "global_path_topic", "/planning/global_path_avg"
         ).value
         self.local_path_topic = self.declare_parameter(
             "local_path_topic", "/planning/local_path"
@@ -84,15 +92,16 @@ class PathVisualizerNode(Node):
             self.declare_parameter("publish_without_subscribers", False).value
         )
 
-        self.global_path: Path | None = None
-        self.local_path: Path | None = None
+        self.global_path: AvgPath | None = None
+        self.local_path: AvgPath | None = None
         self.last_global_path_rx = None
         self.last_marker_array: MarkerArray | None = None
         self.last_marker_publish_time = None
         self.markers_dirty = True
         self.pub = self.create_publisher(MarkerArray, self.marker_topic, 1)
-        self.create_subscription(Path, self.global_path_topic, self._on_global_path, 10)
-        self.create_subscription(Path, self.local_path_topic, self._on_local_path, 10)
+        # HH_260720 - Subscribe to generated CAMROD paths without nav_msgs aliases.
+        self.create_subscription(AvgPath, self.global_path_topic, self._on_global_path, 10)
+        self.create_subscription(AvgPath, self.local_path_topic, self._on_local_path, 10)
         if self.republish_period_s > 0.0:
             self.create_timer(self.republish_period_s, self._republish)
 
@@ -101,17 +110,17 @@ class PathVisualizerNode(Node):
             f"local={self.local_path_topic} marker={self.marker_topic}"
         )
 
-    def _on_global_path(self, msg: Path) -> None:
+    def _on_global_path(self, msg: AvgPath) -> None:
         self.global_path = msg
         self.last_global_path_rx = self.get_clock().now()
         self._publish()
 
-    def _on_local_path(self, msg: Path) -> None:
+    def _on_local_path(self, msg: AvgPath) -> None:
         self.local_path = msg
         self._clear_stale_global_path_if_mismatched(msg)
         self._publish()
 
-    def _clear_stale_global_path_if_mismatched(self, local_path: Path) -> None:
+    def _clear_stale_global_path_if_mismatched(self, local_path: AvgPath) -> None:
         # HH_260619 - Avoid showing an old global route together with the newest
         # local path. Nav2 global routes are event-driven, while local paths are
         # republished continuously; if the global source topic is stale or silent
@@ -214,7 +223,7 @@ class PathVisualizerNode(Node):
     def _append_path_markers(
         self,
         marker_array: MarkerArray,
-        path: Path,
+        path: AvgPath,
         marker_id: int,
         *,
         namespace: str,
@@ -232,7 +241,7 @@ class PathVisualizerNode(Node):
         # HH_260618 - Publish thick path markers above cost grids so global/local
         # trajectories remain readable in RViz even when cost layers overlap.
         line = Marker()
-        line.header = path.header
+        line.header = _to_ros_header(path.header)
         line.header.stamp = self.get_clock().now().to_msg()
         line.ns = namespace
         line.id = marker_id
@@ -276,7 +285,7 @@ class PathVisualizerNode(Node):
     def _append_direction_arrows(
         self,
         marker_array: MarkerArray,
-        path: Path,
+        path: AvgPath,
         marker_id: int,
         *,
         namespace: str,
@@ -303,7 +312,7 @@ class PathVisualizerNode(Node):
                 continue
             distance_since_arrow = 0.0
             arrow = Marker()
-            arrow.header = path.header
+            arrow.header = _to_ros_header(path.header)
             arrow.header.stamp = self.get_clock().now().to_msg()
             arrow.ns = namespace
             arrow.id = marker_id
@@ -340,7 +349,7 @@ class PathVisualizerNode(Node):
     def _append_endpoint_spheres(
         self,
         marker_array: MarkerArray,
-        path: Path,
+        path: AvgPath,
         marker_id: int,
         *,
         namespace: str,
@@ -349,7 +358,7 @@ class PathVisualizerNode(Node):
     ) -> int:
         for endpoint_name, pose in (("start", path.poses[0]), ("goal", path.poses[-1])):
             marker = Marker()
-            marker.header = path.header
+            marker.header = _to_ros_header(path.header)
             marker.header.stamp = self.get_clock().now().to_msg()
             marker.ns = namespace + "_" + endpoint_name
             marker.id = marker_id

@@ -6,9 +6,12 @@
 #include <string>
 
 #include <avg_msgs/msg/avg_tracking_error.hpp>
-#include <avg_msgs/msg/path.hpp>
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/quaternion.hpp>
+// HH_260720 - Use generated CAMROD pose/local-path contracts and an explicit Nav2 path boundary.
+#include <avg_msgs/conversions.hpp>
+#include <avg_msgs/msg/avg_path.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/avg_quaternion.hpp>
+#include <nav_msgs/msg/path.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace camrod_planning
@@ -24,21 +27,26 @@ public:
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/planning/lanelet_pose");
     local_path_topic_ = declare_parameter<std::string>("local_path_topic", "/planning/local_path");
     global_path_topic_ = declare_parameter<std::string>("global_path_topic", "/planning/global_path");
-    output_topic_ = declare_parameter<std::string>("output_topic", "/planning/ltracking_error");
+    // HH_260720 - Correct the public topic name so its purpose is immediately readable.
+    output_topic_ = declare_parameter<std::string>("output_topic", "/planning/tracking_error");
     prefer_local_path_ = declare_parameter<bool>("prefer_local_path", true);
     pose_timeout_s_ = declare_parameter<double>("pose_timeout_s", 1.0);
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 15.0);
     publish_on_input_update_ = declare_parameter<bool>("publish_on_input_update", true);
 
-    sub_pose_ = create_subscription<avg_msgs::msg::PoseStamped>(
+    sub_pose_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       pose_topic_, rclcpp::QoS(10).reliable(),
       std::bind(&PathTrackingErrorNode::onPose, this, std::placeholders::_1));
-    sub_local_path_ = create_subscription<avg_msgs::msg::Path>(
+    sub_local_path_ = create_subscription<avg_msgs::msg::AvgPath>(
       local_path_topic_, rclcpp::QoS(1).reliable(),
       std::bind(&PathTrackingErrorNode::onLocalPath, this, std::placeholders::_1));
-    sub_global_path_ = create_subscription<avg_msgs::msg::Path>(
+    // HH_260720 - Convert the Nav2 global path once at its ROS boundary.
+    sub_global_path_ = create_subscription<nav_msgs::msg::Path>(
       global_path_topic_, rclcpp::QoS(1).reliable(),
-      std::bind(&PathTrackingErrorNode::onGlobalPath, this, std::placeholders::_1));
+      [this](const nav_msgs::msg::Path::ConstSharedPtr msg) {
+        onGlobalPath(std::make_shared<avg_msgs::msg::AvgPath>(
+          avg_msgs::conversions::fromRos(*msg)));
+      });
 
     pub_tracking_error_ = create_publisher<avg_msgs::msg::AvgTrackingError>(
       output_topic_, rclcpp::QoS(10));
@@ -80,7 +88,7 @@ private:
   }
 
   // Extracts yaw from quaternion.
-  static double yawFromQuaternion(const avg_msgs::msg::Quaternion & q)
+  static double yawFromQuaternion(const avg_msgs::msg::AvgQuaternion & q)
   {
     return std::atan2(
       2.0 * (q.w * q.z + q.x * q.y),
@@ -89,8 +97,8 @@ private:
 
   // Computes signed lateral and heading error against a single path.
   ErrorSample computeErrorForPath(
-    const avg_msgs::msg::Path & path,
-    const avg_msgs::msg::PoseStamped & pose) const
+    const avg_msgs::msg::AvgPath & path,
+    const avg_msgs::msg::AvgPoseStamped & pose) const
   {
     ErrorSample out;
     if (path.poses.empty()) {
@@ -211,7 +219,7 @@ private:
   }
 
   // Handles pose update.
-  void onPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onPose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     if (!msg) {
       return;
@@ -225,7 +233,7 @@ private:
   }
 
   // Handles local-path update.
-  void onLocalPath(const avg_msgs::msg::Path::ConstSharedPtr msg)
+  void onLocalPath(const avg_msgs::msg::AvgPath::ConstSharedPtr msg)
   {
     if (!msg) {
       return;
@@ -238,7 +246,7 @@ private:
   }
 
   // Handles global-path update.
-  void onGlobalPath(const avg_msgs::msg::Path::ConstSharedPtr msg)
+  void onGlobalPath(const avg_msgs::msg::AvgPath::ConstSharedPtr msg)
   {
     if (!msg) {
       return;
@@ -320,13 +328,13 @@ private:
 
   rclcpp::Time last_pose_rx_{0, 0, RCL_ROS_TIME};
 
-  avg_msgs::msg::PoseStamped latest_pose_;
-  avg_msgs::msg::Path latest_local_path_;
-  avg_msgs::msg::Path latest_global_path_;
+  avg_msgs::msg::AvgPoseStamped latest_pose_;
+  avg_msgs::msg::AvgPath latest_local_path_;
+  avg_msgs::msg::AvgPath latest_global_path_;
 
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_pose_;
-  rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr sub_local_path_;
-  rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr sub_global_path_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_pose_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPath>::SharedPtr sub_local_path_;
+  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr sub_global_path_;
   rclcpp::Publisher<avg_msgs::msg::AvgTrackingError>::SharedPtr pub_tracking_error_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

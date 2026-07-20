@@ -5,13 +5,15 @@
 #include <string>
 #include <vector>
 
+// HH_260720 - Convert Nav2 global paths once and use generated CAMROD local-path contracts.
 #include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_planning_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/point.hpp>
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/quaternion.hpp>
-#include <avg_msgs/msg/path.hpp>
+#include <avg_msgs/msg/avg_path.hpp>
+#include <avg_msgs/msg/avg_point.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/avg_quaternion.hpp>
+#include <nav_msgs/msg/path.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace camrod_planning
@@ -31,6 +33,9 @@ public:
     frame_id_ = declare_parameter<std::string>("frame_id", "map");
     global_path_topic_ =
       declare_parameter<std::string>("global_path_topic", "/planning/global_path");
+    // HH_260720 - Mirror the Nav2 path once for internal generated-message consumers.
+    global_path_avg_topic_ = declare_parameter<std::string>(
+      "global_path_avg_topic", "/planning/global_path_avg");
     // HH_260619 - Prefer the actual published route by default. Nav2 SmoothPath
     // is used inside the BT blackboard here and must not be assumed to publish
     // a stable /planning/plan_smoothed topic.
@@ -40,6 +45,9 @@ public:
     // HH_260316-00:00 Default to lanelet-snapped pose to keep local path aligned to centerline.
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/planning/lanelet_pose");
     output_topic_ = declare_parameter<std::string>("output_topic", "/planning/local_path");
+    // HH_260720 - Expose a standard nav_msgs path only at the RViz and Nav2 boundary.
+    output_topic_ros_ = declare_parameter<std::string>(
+      "output_topic_ros", "/planning/local_path_ros");
     // HH_260702 - /planning/local_path is always a map-fixed global-path slice.
     // Controller debug paths are intentionally not consumed here because they can
     // be stale or robot-frame relative while the global route has already changed.
@@ -92,22 +100,30 @@ public:
     // SensorDataQoS(best_effort) can drop updates under load, which makes local path look late.
     auto pose_qos = rclcpp::QoS(1).reliable();
     auto local_path_qos = rclcpp::QoS(1).reliable();
-    sub_global_path_ = create_subscription<avg_msgs::msg::Path>(
+    // HH_260720 - Receive planner_server output through the explicit Nav2 ROS boundary.
+    sub_global_path_ = create_subscription<nav_msgs::msg::Path>(
       global_path_topic_, global_path_qos,
-      [this](const avg_msgs::msg::Path::ConstSharedPtr msg) {
-        onGlobalPath(msg, true);
+      [this](const nav_msgs::msg::Path::ConstSharedPtr msg) {
+        onGlobalPath(std::make_shared<avg_msgs::msg::AvgPath>(
+          avg_msgs::conversions::fromRos(*msg)), true);
       });
     if (!fallback_global_path_topic_.empty() && fallback_global_path_topic_ != global_path_topic_) {
-      sub_fallback_global_path_ = create_subscription<avg_msgs::msg::Path>(
+      sub_fallback_global_path_ = create_subscription<nav_msgs::msg::Path>(
         fallback_global_path_topic_, global_path_qos,
-        [this](const avg_msgs::msg::Path::ConstSharedPtr msg) {
-          onGlobalPath(msg, false);
+        [this](const nav_msgs::msg::Path::ConstSharedPtr msg) {
+          onGlobalPath(std::make_shared<avg_msgs::msg::AvgPath>(
+            avg_msgs::conversions::fromRos(*msg)), false);
         });
     }
-    sub_pose_ = create_subscription<avg_msgs::msg::PoseStamped>(
+    sub_pose_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       pose_topic_, pose_qos,
       std::bind(&LocalPathExtractorNode::onPose, this, std::placeholders::_1));
-    pub_local_path_ = create_publisher<avg_msgs::msg::Path>(output_topic_, local_path_qos);
+    pub_local_path_ = create_publisher<avg_msgs::msg::AvgPath>(output_topic_, local_path_qos);
+    // HH_260720 - Keep the standard path mirror separate from the generated internal topic.
+    pub_local_path_ros_ = create_publisher<nav_msgs::msg::Path>(
+      output_topic_ros_, local_path_qos);
+    pub_global_path_avg_ = create_publisher<avg_msgs::msg::AvgPath>(
+      global_path_avg_topic_, rclcpp::QoS(1).reliable().transient_local());
     if (publish_planning_status_) {
       pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
         planning_status_topic_, rclcpp::QoS(10));
@@ -142,8 +158,8 @@ private:
 
   // Implements `dist2` behavior.
   static double dist2(
-    const avg_msgs::msg::Point & a,
-    const avg_msgs::msg::Point & b)
+    const avg_msgs::msg::AvgPoint & a,
+    const avg_msgs::msg::AvgPoint & b)
   {
     const double dx = a.x - b.x;
     const double dy = a.y - b.y;
@@ -152,8 +168,8 @@ private:
 
   // Implements `segmentLen2D` behavior.
   static double segmentLen2D(
-    const avg_msgs::msg::PoseStamped & a,
-    const avg_msgs::msg::PoseStamped & b)
+    const avg_msgs::msg::AvgPoseStamped & a,
+    const avg_msgs::msg::AvgPoseStamped & b)
   {
     return std::hypot(
       b.pose.position.x - a.pose.position.x,
@@ -173,7 +189,7 @@ private:
   }
 
   // Implements `yawFromQuaternion` behavior.
-  static double yawFromQuaternion(const avg_msgs::msg::Quaternion & q)
+  static double yawFromQuaternion(const avg_msgs::msg::AvgQuaternion & q)
   {
     return std::atan2(
       2.0 * (q.w * q.z + q.x * q.y),
@@ -187,9 +203,9 @@ private:
   }
 
   // Implements `quatFromYaw` behavior.
-  static avg_msgs::msg::Quaternion quatFromYaw(double yaw)
+  static avg_msgs::msg::AvgQuaternion quatFromYaw(double yaw)
   {
-    avg_msgs::msg::Quaternion q;
+    avg_msgs::msg::AvgQuaternion q;
     const double half = yaw * 0.5;
     q.x = 0.0;
     q.y = 0.0;
@@ -221,7 +237,7 @@ private:
   }
 
   // Handles the `onGlobalPath` callback.
-  void onGlobalPath(const avg_msgs::msg::Path::ConstSharedPtr msg, bool preferred_source)
+  void onGlobalPath(const avg_msgs::msg::AvgPath::ConstSharedPtr msg, bool preferred_source)
   {
     const auto rx_time = now();
     const bool preferred_is_fresh =
@@ -234,6 +250,13 @@ private:
         return;
       }
       has_global_path_ = false;
+      // HH_260720 - Clear the canonical internal path mirror with the Nav2 source.
+      if (pub_global_path_avg_) {
+        avg_msgs::msg::AvgPath empty_path;
+        empty_path.header.stamp = now();
+        empty_path.header.frame_id = frame_id_;
+        pub_global_path_avg_->publish(empty_path);
+      }
       publishEmptyPath();
       return;
     }
@@ -257,6 +280,10 @@ private:
     }
 
     global_path_ = *msg;
+    // HH_260720 - Publish the converted path for CAMROD-only consumers.
+    if (pub_global_path_avg_) {
+      pub_global_path_avg_->publish(global_path_);
+    }
     if (global_path_.header.frame_id.empty()) {
       global_path_.header.frame_id = frame_id_;
     }
@@ -284,7 +311,7 @@ private:
   }
 
   // Handles the `onPose` callback.
-  void onPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onPose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     if (!msg) {
       return;
@@ -481,7 +508,7 @@ private:
     const size_t capped_end = std::min(
       end, begin + static_cast<size_t>(max_pts - 1));
 
-    avg_msgs::msg::Path out;
+    avg_msgs::msg::AvgPath out;
     out.header.stamp = now();
     out.header.frame_id = global_path_.header.frame_id.empty()
       ? frame_id_ : global_path_.header.frame_id;
@@ -503,7 +530,8 @@ private:
       return;
     }
     smoothPath(out);
-    pub_local_path_->publish(out);
+    // HH_260720 - Publish generated and standard boundary paths from one source object.
+    publishLocalPath(out);
     publishAvgPlanning(out, false);
     last_output_empty_ = false;
     last_empty_publish_time_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
@@ -513,7 +541,7 @@ private:
 
   // HH_260513: Applies symmetric moving-average to path XY and recomputes orientations.
   // End points are clamped (not padded) so orientation at start/end is preserved.
-  void smoothPath(avg_msgs::msg::Path & path) const
+  void smoothPath(avg_msgs::msg::AvgPath & path) const
   {
     const int w = smooth_window_;
     if (w <= 1 || static_cast<int>(path.poses.size()) < 2) {
@@ -571,18 +599,19 @@ private:
     {
       return;
     }
-    avg_msgs::msg::Path out;
+    avg_msgs::msg::AvgPath out;
     out.header.stamp = stamp;
     out.header.frame_id = global_path_.header.frame_id.empty()
       ? frame_id_ : global_path_.header.frame_id;
-    pub_local_path_->publish(out);
+    // HH_260720 - Clear both path representations together to prevent stale RViz output.
+    publishLocalPath(out);
     publishAvgPlanning(out, true);
     last_output_empty_ = true;
     last_empty_publish_time_ = stamp;
   }
 
   // Publishes `AvgPlanning` output.
-  void publishAvgPlanning(const avg_msgs::msg::Path & local_path, bool is_empty)
+  void publishAvgPlanning(const avg_msgs::msg::AvgPath & local_path, bool is_empty)
   {
     if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
@@ -593,16 +622,26 @@ private:
     msg.state.module_name = "planning";
     msg.state.level = ModuleState::OK;
     msg.state.message = is_empty ? "local_path_extractor.empty" : "local_path_extractor";
-    msg.local_path = avg_msgs::conversions::fromRos(local_path);
+    // HH_260720 - The local path is already a generated CAMROD message.
+    msg.local_path = local_path;
     pub_avg_planning_->publish(msg);
+  }
+
+  // HH_260720 - Keep the CAMROD path canonical and convert once for standard ROS consumers.
+  void publishLocalPath(const avg_msgs::msg::AvgPath & local_path)
+  {
+    pub_local_path_->publish(local_path);
+    pub_local_path_ros_->publish(avg_msgs::conversions::toRos(local_path));
   }
 
   bool enabled_{true};
   std::string frame_id_{"map"};
   std::string global_path_topic_;
+  std::string global_path_avg_topic_;
   std::string fallback_global_path_topic_;
   std::string pose_topic_;
   std::string output_topic_;
+  std::string output_topic_ros_;
   std::string planning_status_topic_;
   double publish_rate_hz_{15.0};
   bool publish_on_input_update_{true};
@@ -627,8 +666,8 @@ private:
 
   bool has_pose_{false};
   bool has_global_path_{false};
-  avg_msgs::msg::PoseStamped latest_pose_;
-  avg_msgs::msg::Path global_path_;
+  avg_msgs::msg::AvgPoseStamped latest_pose_;
+  avg_msgs::msg::AvgPath global_path_;
   size_t last_closest_idx_{0};
   bool force_full_reacquire_{true};
   bool route_completed_latched_{false};
@@ -638,10 +677,12 @@ private:
   rclcpp::Time last_preferred_path_rx_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_empty_publish_time_{0, 0, RCL_ROS_TIME};
 
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr sub_pose_;
-  rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr sub_global_path_;
-  rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr sub_fallback_global_path_;
-  rclcpp::Publisher<avg_msgs::msg::Path>::SharedPtr pub_local_path_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_pose_;
+  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr sub_global_path_;
+  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr sub_fallback_global_path_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPath>::SharedPtr pub_local_path_;
+  rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_local_path_ros_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPath>::SharedPtr pub_global_path_avg_;
   rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::TimerBase::SharedPtr timer_;
   bool publish_planning_status_{false};
