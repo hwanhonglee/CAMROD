@@ -4,17 +4,21 @@
 
 ## 1. 📋 Summary
 
-`camrod_perception` converts raw sensor streams from `camrod_sensing` into obstacle representations consumed by `camrod_planning` and `camrod_system`. It contains two independent nodes and optionally integrates an external YOLOv9 camera detector.
+<!-- HH_260720 - Perception now owns the AprilTag parking detector as well as obstacle perception. -->
+`camrod_perception` converts raw sensor streams from `camrod_sensing` into
+obstacle representations and the controller-ready AprilTag parking pose.
 
 | Node | Role |
 |---|---|
 | `obstacle_fusion_node` | Projects filtered LiDAR points into the camera image; retains only points falling inside YOLO 2D bounding boxes; publishes the filtered cloud as `/perception/obstacles` for Nav2 costmap inflation |
 | `obstacle_lidar_node` | Runs Euclidean cluster extraction (PCL) on the same filtered cloud after an axis-aligned ROI filter; publishes AABB markers for RViz visualization |
+| `apriltag_parking_detector_node` | Detects the configured parking tag and publishes `AvgAprilTagPose` for the control parking controller |
 | `yolov9mit_ros` (external) | YOLOv9 TensorRT inference node providing 2D bounding boxes; started by `yolo.launch.py`; can be disabled with `enable_yolo:=false` |
 
 **Non-goals:** Object tracking with persistent IDs across restarts, semantic mapping.
 
-> 📌 **Note** — AprilTag detection lives in `camrod_docking`, NOT here. This package handles only LiDAR obstacles and camera-LiDAR fusion for general obstacle detection.
+AprilTag detection is intentionally separated from motion: perception publishes
+the tag pose and `camrod_control` decides parking commands.
 
 > HH_260707 - `obstacle_fusion_node` is tuned for real-time freshness under all-on field load: `sync_queue_size: 8` limits stale message backlog, debug-image decode/draw/publish work is skipped when no subscriber exists, and debug image output is rate-limited to 2 Hz by default. The obstacle topics and message contracts are unchanged.
 
@@ -429,15 +433,17 @@ ros2 topic hz /perception/lidar/bboxes
 | [../README.md](../README.md) | Monorepo overview, workspace build instructions |
 | [../camrod_sensing/README.md](../camrod_sensing/README.md) | LiDAR preprocessor, camera preprocessor, topic names |
 | [../camrod_planning/README.md](../camrod_planning/README.md) | Nav2 costmap that consumes `/perception/obstacles` |
-| [../camrod_docking/README.md](../camrod_docking/README.md) | AprilTag docking — separate perception pipeline, not this package |
+| [../camrod_control/README.md](../camrod_control/README.md) | AprilTag and reverse parking controllers |
 | [../camrod_system/README.md](../camrod_system/README.md) | `perception_obstacle_checker` that subscribes to `/perception/obstacles` |
 | [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) | Parameter naming conventions (`*_s`, `*_hz`) |
 
 ## 2026-06-17 Runtime Update
 
-> HH_260617: Perception feeds planning cost checks; parking still routes through the planning/platform gates.
+> HH_260720 - Perception feeds the single control gate and never authorizes motion itself.
 
-Obstacle/cost outputs are consumed by planning safety checks before `/planning/cmd_vel` is released. Because parking publishes to `/planning/cmd_vel_raw`, the same cost-stop and platform interlock path can block parking motion if the configured side/rear corridors detect unsafe occupancy.
+Obstacle/cost outputs are consumed by the control safety gate. Parking publishes
+to `/control/cmd_vel_raw`, so the same directional cost checks can block unsafe
+side or rear motion.
 
 ## 2026-07-02 Runtime Update
 
@@ -451,12 +457,14 @@ The active obstacle path is:
   -> /perception/obstacles
   -> camrod_sensing lidar_cost_grid_node
   -> /map/cost_grid/lidar_*
-  -> camrod_planning cmd_vel gate / replan monitor
+  -> camrod_control cmd_vel_safety_gate / planning replan monitor
 ```
 
 This means camera-LiDAR fusion can contribute to the LiDAR cost grid when the configured `obstacle_cloud_topic` points at `/perception/obstacles`. If YOLO or camera sync is disabled, `obstacle_fusion_node` falls back to pass-through LiDAR behavior so the safety path does not disappear.
 
-The node is not the final stop authority. Planning and platform gates still decide whether `/planning/cmd_vel_raw` becomes `/planning/cmd_vel` and `/platform/cmd_vel`. During all-on tests, check both perception freshness and cost-grid freshness:
+The node is not the final stop authority. `cmd_vel_safety_gate` decides whether
+`/control/cmd_vel_raw` becomes `/control/cmd_vel` and `/control/cmd_vel_ros`.
+During all-on tests, check both perception freshness and cost-grid freshness:
 
 ```bash
 ros2 topic hz /perception/obstacles

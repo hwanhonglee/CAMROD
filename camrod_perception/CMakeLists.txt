@@ -14,6 +14,10 @@ find_package(nav_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+# HH_260720 - Establish one OpenCV target set before cv_bridge/image_geometry/PCL are imported.
+find_package(opencv4_vendor REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core calib3d imgproc imgcodecs)
+find_package(cv_bridge REQUIRED)
 find_package(vision_msgs REQUIRED)
 find_package(image_geometry REQUIRED)
 find_package(avg_msgs REQUIRED)
@@ -21,9 +25,8 @@ find_package(visualization_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common kdtree search filters segmentation)
 find_package(pcl_conversions REQUIRED)
-find_package(cv_bridge REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc)
 find_package(message_filters REQUIRED)
+find_package(apriltag REQUIRED)
 
 include_directories(
   ${PCL_INCLUDE_DIRS}
@@ -69,9 +72,29 @@ target_link_libraries(obstacle_lidar_node
   Eigen3::Eigen
 )
 
+# HH_260720 - Build the rear-camera AprilTag detector used only by AprilTag parking.
+add_executable(apriltag_parking_detector_node src/apriltag_parking_detector_node.cpp)
+ament_target_dependencies(apriltag_parking_detector_node
+  # HH_260720 - Link the generated AprilTag parking pose and conversion helpers.
+  avg_msgs
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  std_msgs
+  tf2
+  tf2_ros
+  cv_bridge
+)
+target_include_directories(apriltag_parking_detector_node PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(apriltag_parking_detector_node
+  apriltag::apriltag
+  ${OpenCV_LIBS}
+)
+
 install(TARGETS
   obstacle_fusion_node
   obstacle_lidar_node
+  apriltag_parking_detector_node
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY config launch

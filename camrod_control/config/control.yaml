@@ -1,0 +1,118 @@
+# HH_260721 - Keep this package config synchronized with the bringup control mirror.
+# HH_260720 - Non-Nav2 motion primitives and drop-zone alignment are owned by camrod_control.
+
+/control/camping_site_maneuver_controller:
+  ros__parameters:
+    cmd_vel_topic: "/control/cmd_vel_raw"
+    pose_topic: "/localization/pose"
+    site_goal_topic: "/goal_pose"
+    # HH_260720 - Control consumes generated planning poses; `_ros` mirrors are Nav2/RViz only.
+    route_goal_topic: "/planning/goal_pose_snapped"
+    lanelet_pose_topic: "/planning/lanelet_pose"
+    planning_state_topic: "/planning/state_machine/state"
+    # HH_260720 - START/RETURN/CANCEL use one generated operation topic.
+    operation_topic: "/control/camping_site_maneuver_controller/operation"
+    adopt_destination_topic: "/control/camping_site_maneuver_controller/adopt"
+    diagnostics_topic: "/system/diagnostics"
+    amr_service_state_topic: "/AMR_service_state"
+    reverse_path_topic: "/control/camping_site_maneuver_controller/path_ros"
+
+    enable_auto_start_from_planning_state: true
+    site_mission_key_prefix: "camping_site_"
+    use_goal_pair_for_lateral_offset: true
+    require_goal_pair_for_auto_start: true
+    site_entry_mode: "crab"
+    enable_manual_site_goal_auto_start: true
+    manual_site_min_offset_m: 1.0
+    camping_sites_yaml: ""
+    site_goal_frame_id: "map"
+    default_lateral_offset_m: 1.2
+    min_lateral_offset_m: 0.2
+    max_lateral_offset_m: 7.0
+    route_goal_reached_distance_m: 0.3
+    adopt_site_arrival_distance_m: 3.0
+    goal_pair_max_age_s: 0.0
+    default_lateral_direction: "left"
+
+    # HH_260720 - Preserve all field-tuned campsite control values during the package move.
+    crab_speed_mps: 0.24
+    entry_position_tolerance_m: 0.15
+    return_position_tolerance_m: 0.18
+    crab_timeout_speed_scale: 0.4
+    crab_timeout_margin_s: 8.0
+    reverse_return_timeout_margin_s: 45.0
+    reverse_return_progress_tolerance_m: 0.45
+    reverse_return_lateral_tolerance_m: 0.40
+    max_forward_residual_m: 0.8
+    rotate_kp: 1.2
+    max_angular_speed_radps: 0.35
+    rotate_yaw_tolerance_deg: 4.0
+    site_rotate_direction_policy: "site_index_lanelet_side"
+    right_lanelet_site_indices: [1, 3, 5, 7, 9, 11]
+    left_lanelet_site_indices: [2, 4, 6, 8, 10, 12, 13]
+    reverse_entry_speed_mps: 0.16
+    reverse_entry_yaw_kp: 1.0
+    reverse_entry_lateral_kp: -0.25
+    reverse_entry_max_angular_speed_radps: 0.25
+    reverse_entry_use_site_goal_yaw: true
+    reverse_entry_site_yaw_mode: "reverse_axis"
+    reverse_entry_auto_select_yaw_equivalent: true
+    reverse_entry_lateral_tolerance_m: 0.35
+    reverse_entry_debug_period_s: 1.0
+    unload_wait_s: 5.0
+    auto_return_after_unload_wait: false
+    reset_wait_return_on_site_goal: true
+    request_return_to_drop_zone_on_done: true
+    align_return_yaw_before_crab_out: true
+    cancel_nav2_on_site_phase: true
+    nav2_cancel_period_s: 0.5
+    nav2_cancel_action_topics:
+      - /planning/follow_path/_action/cancel_goal
+      - /planning/navigate_to_pose/_action/cancel_goal
+    return_request_retry_period_s: 1.0
+    control_rate_hz: 10.0
+    idle_tick_rate_hz: 1.0
+    status_publish_rate_hz: 1.0
+
+/control/drop_zone_maneuver_controller:
+  ros__parameters:
+    command_topic: "/control/cmd_vel_raw"
+    vehicle_pose_topic: "/localization/pose"
+    planning_state_topic: "/planning/state_machine/state"
+    # HH_260720 - Drop-zone control consumes the generated lanelet pose directly.
+    lanelet_pose_topic: "/planning/lanelet_pose"
+    drop_zone_goal_topic: "/planning/drop_zone_goal_raw"
+    # HH_260720 - ALIGN_FOR_PARKING/EXIT/CANCEL use one generated operation topic.
+    operation_topic: "/control/drop_zone_maneuver_controller/operation"
+    exit_complete_topic: "/control/drop_zone/exit_complete"
+    status_topic: "/control/drop_zone_maneuver_controller/status"
+    exit_path_topic: "/control/drop_zone_maneuver_controller/exit_path_ros"
+    # HH_260720 - Start whichever parking method is selected by the control launch.
+    parking_operation_topic: "/parking/operation"
+    diagnostics_topic: "/system/diagnostics"
+    amr_service_state_topic: "/AMR_service_state"
+
+    drop_zones_yaml: ""
+    drop_zone_id: "drop_zone"
+    use_drop_zone_pose_as_station: true
+    station_x_m: 0.0
+    station_y_m: 0.0
+    station_yaw_deg: 0.0
+    enable_auto_alignment: true
+    return_scenario_id: 2
+    return_mission_key: "drop_zone"
+    # HH_260720 - The map yaw points from the lanelet snap pose into the drop-zone station.
+    station_yaw_represents_reverse_axis: true
+    automatically_select_reverse_approach_yaw: false
+
+    # HH_260720 - Preserve the previous drop-zone exit and yaw-alignment tuning.
+    yaw_tolerance_deg: 5.0
+    yaw_proportional_gain: 1.2
+    maximum_angular_speed_radps: 0.35
+    exit_distance_m: 1.2
+    exit_speed_mps: 0.16
+    exit_timeout_s: 30.0
+    pose_timeout_s: 2.0
+    control_rate_hz: 10.0
+    idle_rate_hz: 1.0
+    status_rate_hz: 1.0

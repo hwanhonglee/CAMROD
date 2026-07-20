@@ -1,0 +1,23 @@
+# HH_260720 - Configure the camrod_perception parking-tag detector.
+/perception/apriltag_parking_detector:
+  ros__parameters:
+    # HH_260720 - Consume the image_proc rectified rear-camera stream.
+    image_topic: "/sensing/camera/econ_rear/image_rect"
+    camera_info_topic: "/sensing/camera/econ_rear/camera_info"
+    camera_frame_id: "camera_rear"   # HH_260720 - Canonical sensor-kit optical frame.
+
+    tag_family: "tag36h11"        # tag36h11 | tagStandard41h12
+    target_tag_id: 3              # Parking tag ID; -1 accepts every detected tag.
+    tag_size: 0.16                # HH_260720 - Measured black-border outer size in meters.
+
+    quad_decimate: 2.0            # HH_260720 - Reduce detector pixels for real-time operation.
+    n_threads: 2
+
+    # HH_260720 - Track a local ROI and periodically search the full frame for reacquisition.
+    roi_scale: 3.0
+    roi_full_search_interval: 30
+    max_reproj_error_px: 2.0
+
+    publish_tf: true
+    publish_debug_image: true     # HH_260720 - Disable after field calibration to reduce CPU load.
+    debug_jpeg_quality: 80
