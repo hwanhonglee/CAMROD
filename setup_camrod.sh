@@ -11,9 +11,9 @@
 #
 # WARN: --update overwrites any local changes inside external/ directories.
 # HH_260630: setup covers the current split runtime:
-#   - camrod_parking is a local source package, not an external dependency.
+#   - HH_260720 - Parking controllers are owned by the local camrod_control package.
 #   - camrod_voice requires SDL2_mixer; setup installs libsdl2-mixer-dev.
-#   - camrod_docking/Isaac ROS remains Jetson-only and is skipped on x86_64.
+#   - HH_260720 - AprilTag parking is a local placeholder with no docking runtime dependency.
 #   - Ranger/SocketCAN tools are installed here; runtime CAN activation is handled
 #     by camrod_platform/scripts/setup_can0.sh or the matching systemd service.
 #   - camrod_ui frontend build is handled by colcon_build.sh before packaging.
@@ -197,7 +197,7 @@ REQUIRED_SYS_PKGS=(
   # YH_260706: Global planners listed in planner_server planner_plugins (nav2_base.yaml).
   #   Missing → planner_server on_configure throws (pluginlib class not found) and rolls back
   #   → planning lifecycle never activates → /planning/navigate_to_pose has no server
-  #   → docking Phase 1 aborts instantly with error 903 (FAILED_TO_STAGE).
+  #   → planning lifecycle never activates and NavigateToPose has no server.
   ros-humble-nav2-navfn-planner       # planner_plugins: "NavFn"
   ros-humble-nav2-theta-star-planner  # planner_plugins: "ThetaStar"
   # YH_260706: Controllers listed in controller_server controller_plugins (nav2_base.yaml).
@@ -223,73 +223,13 @@ REQUIRED_SYS_PKGS=(
   ros-humble-rtcm-msgs              # ublox GNSS RTK (camrod_sensing)
   ros-humble-test-msgs              # ROS 2 test message dependency.
   python3-serial                    # ublox/radar serial communication.
-  python3-yaml                      # HH_260617: camrod_parking/camrod_bringup YAML config parsing
-  python3-setuptools                # HH_260617: ament_python entry point install for camrod_parking/ui
+  python3-yaml                      # HH_260720 - camrod_control/camrod_bringup YAML config parsing
+  python3-setuptools                # HH_260720 - Python node installation for control/ui
   can-utils                         # HH_260629: SocketCAN diagnostics for Ranger bringup.
   iproute2                          # HH_260629: Provides `ip link` for setup_can0.sh.
   libpugixml-dev                    # Lanelet2 XML parser for camrod_map.
   libnanoflann-dev                  # PCL/point-cloud KNN support for perception.
 )
-
-# HH_260615 - camrod_docking registers the Isaac ROS apt repository and runtime packages.
-# Runs only on aarch64 Jetson/JetPack targets; x86_64 prints a skip notice.
-setup_isaac_ros_apt() {
-  local _arch
-  _arch="$(uname -m)"
-  if [[ "${_arch}" != "aarch64" && "${_arch}" != "arm64" ]]; then
-    log "skip Isaac ROS apt setup (${_arch} is not aarch64)"
-    log "  x86_64 builds skip camrod_docking: colcon build --packages-skip camrod_docking"
-    return 0
-  fi
-
-  if [[ ! -f /etc/apt/sources.list.d/isaac-ros.list ]]; then
-    log "register NVIDIA Isaac ROS apt repository (arm64)"
-    apt_install_pkgs "Isaac ROS apt repository tools" curl gnupg lsb-release
-    curl -fsSL https://isaac.download.nvidia.com/isaac-ros/repos.key \
-      | gpg --dearmor \
-      | sudo tee /usr/share/keyrings/isaac-ros-archive-keyring.gpg > /dev/null
-    echo "deb [arch=arm64 signed-by=/usr/share/keyrings/isaac-ros-archive-keyring.gpg] \
-https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release-3.0" \
-      | sudo tee /etc/apt/sources.list.d/isaac-ros.list > /dev/null
-    sudo apt-get update
-  else
-    log "Isaac ROS apt repository already registered"
-  fi
-
-  local _isaac_pkgs=(
-    ros-humble-isaac-ros-common
-    ros-humble-isaac-ros-nitros
-    ros-humble-isaac-ros-apriltag
-    ros-humble-isaac-ros-image-proc
-    ros-humble-isaac-ros-image-pipeline
-  )
-  local _missing_isaac=()
-  for _ipkg in "${_isaac_pkgs[@]}"; do
-    dpkg -l "${_ipkg}" 2>/dev/null | grep -q "^ii" || _missing_isaac+=("${_ipkg}")
-  done
-  if [[ ${#_missing_isaac[@]} -gt 0 ]]; then
-    log "install Isaac ROS packages: ${_missing_isaac[*]}"
-    apt_install_pkgs "Isaac ROS runtime packages" "${_missing_isaac[@]}"
-  else
-    log "Isaac ROS packages already installed"
-  fi
-  unset _arch _isaac_pkgs _ipkg _missing_isaac
-
-  # HH_260616 - isaac_ros CMake exports hard-code the build-time numpy include path
-  # (/usr/local/lib/python3.10/dist-packages/numpy/core/include). User-installed
-  # numpy under /home/.../.local can break CMake generation, so ensure numpy also
-  # exists in the system sudo-pip path.
-  if [[ ! -d /usr/local/lib/python3.10/dist-packages/numpy ]]; then
-    log "install numpy into system path for Isaac ROS CMake compatibility"
-    # HH_260630: Pin to the active user numpy version to avoid ABI drift in
-    # cv_bridge and other C extension packages.
-    _numpy_ver="$(python3 -c 'import numpy; print(numpy.__version__)' 2>/dev/null || echo '1.26.4')"
-    sudo pip3 install "numpy==${_numpy_ver}"
-    unset _numpy_ver
-  else
-    log "numpy system path exists"
-  fi
-}
 
 # HH_260611: Keep nvjpeg dependency handling Jetson-only so x86_64 sensing/GNSS
 # builds do not warn about unavailable CUDA/JetPack runtime libraries.
@@ -326,39 +266,6 @@ if [[ ${#_missing[@]} -gt 0 ]]; then
 fi
 unset _pkg _missing
 
-# HH_260615 - Register Isaac ROS apt only when the camrod_docking module exists.
-if [[ -d "${SRC_ROOT}/camrod_docking" ]]; then
-  _arch="$(uname -m)"
-  setup_isaac_ros_apt
-
-  # HH_260616: Match colcon_build.sh behavior. On x86_64 camrod_docking is
-  # skipped because Isaac ROS/VPI is Jetson-only in this workspace, so setup
-  # must not fail while installing optional docking runtime packages.
-  if [[ "${_arch}" == "aarch64" || "${_arch}" == "arm64" ]]; then
-    # Install non-Isaac docking dependencies via apt on Jetson targets.
-    _docking_apt_pkgs=(
-      ros-humble-image-pipeline
-      ros-humble-negotiated
-      ros-humble-opennav-docking
-    )
-    _docking_missing=()
-    for _dpkg in "${_docking_apt_pkgs[@]}"; do
-      dpkg -l "${_dpkg}" 2>/dev/null | grep -q "^ii" || _docking_missing+=("${_dpkg}")
-    done
-    if [[ ${#_docking_missing[@]} -gt 0 ]]; then
-      log "install docking packages: ${_docking_missing[*]}"
-      apt_install_pkgs "docking packages" "${_docking_missing[@]}" || \
-        log "WARN: docking apt install failed — docking may be unavailable"
-    else
-      log "docking packages already installed"
-    fi
-    unset _docking_apt_pkgs _docking_missing _dpkg
-  else
-    log "skip docking apt packages (${_arch}; camrod_docking is skipped by colcon_build.sh)"
-  fi
-  unset _arch
-fi
-
 if [[ -d "${SRC_ROOT}/camrod_sensing" ]]; then
   # HH_260611: Report missing nvjpeg only on Jetson targets where the camera
   # pipeline actually depends on NVIDIA's nvjpeg runtime.
@@ -387,14 +294,7 @@ clone_ext "https://github.com/ros-perception/laser_geometry.git"             "ro
 # HH_260428: Agilex platform drivers — set CAMROD_AGILEX_BASE to use custom forks.
 clone_ext "${AGILEX_BASE}/ugv_sdk.git"                                        "main"         "camrod_platform/external/ugv_sdk"
 clone_ext "${AGILEX_BASE}/ranger_ros2.git"                                    "humble"       "camrod_platform/external/ranger_ros2"
-# HH_260528: Replaced camrod_parking external repos with camrod_docking equivalents.
-# camrod_docking uses Isaac ROS AprilTag (GPU-accelerated) instead of cpu-based apriltag_ros.
-# opencv4_vendor/yaml_cpp_vendor are custom forks embedded in the CAMROD repo itself
-# (camrod_docking/external/) and do not need separate clone_ext calls.
-# opennav_docking is cloned below (open-navigation fork, humble branch).
-# camrod_docking externals installed via apt (see setup_isaac_ros_apt above):
-#   isaac_ros_common, isaac_ros_nitros, isaac_ros_apriltag, isaac_ros_image_pipeline (apt)
-#   image_pipeline, negotiated, opennav_docking (apt)
+# HH_260720 - AprilTag parking dependencies are declared by camrod_control and camrod_perception.
 
 # ── VIO bridge SDK installers (disable/vio_bridge — not built by default) ────
 # HH_260428: These large SDK binaries are NOT stored in git. Download manually
@@ -427,16 +327,9 @@ if [[ "${DO_ROSDEP}" -eq 1 ]]; then
     catkin
     OpenCV
     cuda_cudart
-    isaac_ros_apriltag
-    isaac_ros_apriltag_interfaces
-    isaac_ros_image_proc
     libsdl2-dev
     libsdl2-mixer-dev
     opencv
-    opennav_docking
-    opennav_docking_core
-    opennav_docking_bt
-    opennav_docking_msgs
   )
 
   log "rosdep install (skip keys: ${_ROSDEP_SKIP_KEYS[*]})"

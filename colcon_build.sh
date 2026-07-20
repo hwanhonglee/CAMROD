@@ -121,16 +121,11 @@ _clean_stale_install_artifacts() {
   # longer part of this x86_64 build graph. If left in place, setup.bash tries
   # to source missing local_setup.bash files and launch reports unrelated
   # packages as "not built".
-  # HH_260617: Keep camrod_parking out of this stale-prefix cleanup list because
-  # it is now a first-class source package built from src/camrod_parking.
+  # HH_260720 - Parking controllers are built inside camrod_control; no legacy package prefix remains.
   local prefix
   for prefix in \
     "${WS_ROOT}/install/apriltag_msgs" \
     "${WS_ROOT}/install/apriltag_ros" \
-    "${WS_ROOT}/install/opennav_docking_msgs" \
-    "${WS_ROOT}/install/opennav_docking_bt" \
-    "${WS_ROOT}/install/opennav_docking_core" \
-    "${WS_ROOT}/install/opennav_docking" \
     "${WS_ROOT}/install/ntrip_client_node" \
     "${WS_ROOT}/install/ublox_dgnss" \
     "${WS_ROOT}/install/ublox_dgnss_node" \
@@ -196,7 +191,6 @@ sanitize_path_var COLCON_PREFIX_PATH
 
 # HH_260428: Collect all external/ base directories for colcon --base-paths.
 # Excludes .git internals, build/install/log artifacts, and disabled packages.
-ARCH="$(uname -m)"
 mapfile -t EXTERNAL_BASES < <(
   cd "${WS_ROOT}" && find src -type d -name external \
     -not -path 'src/todo/*' \
@@ -207,22 +201,7 @@ mapfile -t EXTERNAL_BASES < <(
     -not -path '*/disable/*' | sort
 )
 BUILD_SKIP_PACKAGES=()
-if [[ "${ARCH}" != "aarch64" && "${ARCH}" != "arm64" ]]; then
-  # HH_260611: Isaac ROS / VPI docking dependencies are Jetson-only in this workspace.
-  # Keep x86_64 development builds focused on buildable CAMROD modules such as sensing/GNSS.
-  _filtered_external_bases=()
-  for _base in "${EXTERNAL_BASES[@]}"; do
-    [[ "${_base}" == "src/camrod_docking/external" ]] && continue
-    _filtered_external_bases+=("${_base}")
-  done
-  EXTERNAL_BASES=("${_filtered_external_bases[@]}")
-  if [[ -d "src/camrod_docking/external/opencv4_vendor" ]]; then
-    EXTERNAL_BASES+=("src/camrod_docking/external/opencv4_vendor")
-  fi
-  BUILD_SKIP_PACKAGES+=(camrod_docking)
-  log "skip camrod_docking and docking external packages on ${ARCH} (Isaac ROS/VPI not available)"
-  unset _base _filtered_external_bases
-fi
+# HH_260720 - The removed docking package no longer needs architecture-specific build skips.
 
 # HH_260616: Keep planning/sensing development builds usable on machines where the
 # optional voice stack has not been provisioned yet. setup_camrod.sh installs
@@ -273,17 +252,6 @@ if [[ -d "${_TIER4}" ]]; then
   fi
 fi
 unset _TIER4 _ARCH
-
-# HH_260428: nova_carter_docking is an NVIDIA Isaac ROS example; not buildable
-# without isaac_ros_apriltag_interfaces (Jetson-only). No CAMROD package depends on it.
-# HH_260528: Path updated from camrod_parking to camrod_docking.
-_NCD="${SRC_ROOT}/camrod_docking/external/opennav_docking/nova_carter_docking"
-if [[ -d "${_NCD}" && ! -e "${_NCD}/COLCON_IGNORE" ]]; then
-  echo "# auto: NVIDIA Isaac ROS example (requires isaac_ros_apriltag_interfaces)" \
-    > "${_NCD}/COLCON_IGNORE"
-  log "marked nova_carter_docking COLCON_IGNORE"
-fi
-unset _NCD
 
 log "colcon build  base-paths: ${BASE_PATHS[*]}"
 colcon --log-base "${WS_ROOT}/log" build \
