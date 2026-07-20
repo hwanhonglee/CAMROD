@@ -1,20 +1,18 @@
 /**:
   ros__parameters:
-    diag_topic: "/localization/eskf/status"
-    # HH_260527: filter_status_mode options:
-    #   stream: subscribe/use filter status diagnostics from diag_topic
+    # HH_260720 - Keep the optional status stream filter-neutral; EKF default uses none.
+    filter_status_topic: "/localization/filter/status"
+    # filter_status_mode options:
+    #   stream: subscribe/use filter status diagnostics from filter_status_topic
     #   none: run monitor without filter status diagnostics input
-    # HH_260422: Temporarily disabled for sim — ESKF diagnostic mixing caused
-    # gnss_update_accepted to oscillate, masking a stable GNSS lock. The root
-    # cause (shared last_diag_ between GNSS/wheel callbacks) was fixed in the
-    # ESKF node; re-enable after confirming stability in hardware runs.
+    # HH_260720 - robot_localization EKF has no AvgLocalizationStatusStream output.
     filter_status_mode: none
 
     gnss_pose_topic: "/sensing/gnss/pose"
     gnss_pose_cov_topic: "/sensing/gnss/pose_with_covariance"
     imu_topic: "/sensing/imu/data"
-    # HH_260410 Monitor uses the same unified wheel topic as EKF/ESKF.
-    wheel_topic: "/platform/status/wheel_odometry"
+    # HH_260720 - Monitor the canonical generated wheel topic.
+    wheel_topic: "/localization/input/wheel_odometry"
 
     # HH_260625: Live GNSS pose stamps can arrive ~2s behind node time while
     # RTK is otherwise healthy. Keep the monitor tolerant enough to avoid
@@ -38,8 +36,7 @@
 
     # HH_260507: DR timeout — stop robot if DR continues too long or covariance grows too large.
     # 0.0 disables each check independently.
-    # covariance_trace = sum of ESKF state diagonal (x,y + bias states); at 1Hz GPS input
-    # this stabilizes around 80-110. Set to 200 to allow normal 1Hz GPS operation.
+    # HH_260720 - Covariance timeout applies only when filter_status_mode is stream.
     dr_max_duration_s: 30.0
     dr_max_cov_trace: 200.0
 

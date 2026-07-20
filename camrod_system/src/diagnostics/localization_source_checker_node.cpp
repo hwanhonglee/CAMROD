@@ -40,7 +40,8 @@
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/string.hpp>
+// HH_260720 - Diagnose the generated CAMROD localization-source label.
+#include <avg_msgs/msg/avg_string.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -68,7 +69,7 @@ struct SourceState
   // 최근 60s 내 전환 시각 기록
   std::deque<rclcpp::Time> switch_times;
 
-  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgString>::SharedPtr sub;
 };
 
 // ── LocalizationSourceCheckerNode ─────────────────────────────────────────
@@ -115,9 +116,9 @@ protected:
     // latched (transient_local) QoS — pose_selector 와 동일하게
     auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
 
-    state_.sub = create_subscription<std_msgs::msg::String>(
+    state_.sub = create_subscription<avg_msgs::msg::AvgString>(
       source_topic_, qos,
-      [this](const std_msgs::msg::String::ConstSharedPtr msg) {
+      [this](const avg_msgs::msg::AvgString::ConstSharedPtr msg) {
         onSource(msg);
       });
 
@@ -131,7 +132,7 @@ protected:
   }
 
 private:
-  void onSource(const std_msgs::msg::String::ConstSharedPtr msg)
+  void onSource(const avg_msgs::msg::AvgString::ConstSharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(state_.mtx);
     auto now = this->now();

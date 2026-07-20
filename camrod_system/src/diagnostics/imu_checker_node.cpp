@@ -35,7 +35,8 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/imu.hpp>
+// HH_260720 - Diagnose the canonical generated CAMROD IMU stream.
+#include <avg_msgs/msg/avg_imu.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -74,7 +75,7 @@ struct ImuState
   std::deque<rclcpp::Time> timestamps;
 
   // 구독자
-  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgImu>::SharedPtr sub;
 };
 
 static bool has_nan(double x, double y, double z)
@@ -130,9 +131,9 @@ protected:
   void setup_tasks_() override
   {
     for (auto & imu : imu_list_) {
-      imu->sub = create_subscription<sensor_msgs::msg::Imu>(
+      imu->sub = create_subscription<avg_msgs::msg::AvgImu>(
         imu->topic, rclcpp::SensorDataQoS(),
-        [this, imu](const sensor_msgs::msg::Imu::ConstSharedPtr msg) {
+        [this, imu](const avg_msgs::msg::AvgImu::ConstSharedPtr msg) {
           onImu(msg, imu);
         });
 
@@ -147,7 +148,7 @@ protected:
 
 private:
   void onImu(
-    const sensor_msgs::msg::Imu::ConstSharedPtr msg,
+    const avg_msgs::msg::AvgImu::ConstSharedPtr msg,
     const std::shared_ptr<ImuState> & imu)
   {
     std::lock_guard<std::mutex> lock(imu->mtx);

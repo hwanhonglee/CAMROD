@@ -7,8 +7,8 @@ ranger_platform_checker:
 
     # 구독 토픽
     system_state_topic:   "/system_state"
-    # HH_260617: Use normalized BMS topic from camrod_platform bridge, not raw ranger_base output.
-    battery_state_topic:  "/platform/status/battery_state"
+    # HH_260720 - Read normalized CAN/BMS fields from the generated platform status.
+    platform_status_topic: "/platform/status"
     actuator_state_topic: "/actuator_state"
     odom_topic:           "/odom"
 

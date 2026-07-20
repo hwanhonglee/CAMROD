@@ -53,14 +53,15 @@ def generate_launch_description():
         DeclareLaunchArgument("wheel_bridge_enable",              default_value="true"),
         # HH_260410: Prefer platform status odometry as primary wheel source.
         DeclareLaunchArgument("wheel_input_topic",                default_value="/platform/status/odometry"),
-        DeclareLaunchArgument("wheel_input_type",                 default_value="nav_odom"),
+        # HH_260720 - Use the generated AvgOdometry platform contract by default.
+        DeclareLaunchArgument("wheel_input_type",                 default_value="avg_odom"),
         # HH_260410: Use /rmp401/odom only as fallback when status topic is stale/missing.
         DeclareLaunchArgument("wheel_fallback_input_topic",       default_value="/rmp401/odom"),
         DeclareLaunchArgument("wheel_fallback_input_type",        default_value="nav_odom"),
         DeclareLaunchArgument("wheel_primary_timeout_s",          default_value="0.7"),
-        # HH_260410: Use status namespace for unified wheel odometry output.
-        DeclareLaunchArgument("wheel_output_topic",               default_value="/platform/status/wheel_odometry"),
-        DeclareLaunchArgument("wheel_nav_output_topic",           default_value="/platform/wheel/nav_odometry"),
+        # HH_260720 - Localization owns generated wheel output and its explicit EKF boundary.
+        DeclareLaunchArgument("wheel_output_topic",               default_value="/localization/input/wheel_odometry"),
+        DeclareLaunchArgument("wheel_nav_output_topic",           default_value="/localization/input/wheel_odometry_ros"),
         DeclareLaunchArgument("ekf_publish_map_to_odom_static_tf", default_value="true"),
 
         _inc(adapter_launch,
@@ -100,13 +101,16 @@ def generate_launch_description():
              params_file=LaunchConfiguration("map_helper_param_file"),
         ),
 
-        # HH_260410: EKF mode only publishes odom->base; this static TF keeps the map TF tree connected.
-        # HH_260522: Publish this static TF only when filter_type is explicitly ekf.
+        # HH_260720 - Keep the EKF map-to-odom link explicit and use current tf2 CLI options.
         Node(
             package="tf2_ros",
             executable="static_transform_publisher",
             name="ekf_map_to_odom_static_tf",
-            arguments=["0", "0", "0", "0", "0", "0", "map", "odom"],
+            arguments=[
+                "--x", "0", "--y", "0", "--z", "0",
+                "--yaw", "0", "--pitch", "0", "--roll", "0",
+                "--frame-id", "map", "--child-frame-id", "odom",
+            ],
             output="screen",
             condition=IfCondition(PythonExpression([
                 "'", LaunchConfiguration("ekf_publish_map_to_odom_static_tf"),

@@ -12,7 +12,8 @@ planning_path_checker:
       - "local_path"
 
     global_path:
-      topic: "/planning/global_path"
+      # HH_260720 - Diagnose the generated path mirror; Nav2 owns the ROS boundary path.
+      topic: "/planning/global_path_avg"
       # HH_260702 - Global paths are event-style outputs, not continuous streams.
       # A valid global path can remain unchanged for a whole route; local_path
       # freshness is the runtime control-path health signal.

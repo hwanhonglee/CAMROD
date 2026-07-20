@@ -1,10 +1,11 @@
 // 260708 - Exterior light controller.
 // Decides the lamp state (headlight relay + WS2815 turn indicators) from:
-//   priority 1: hazard  — /platform/status/estop OR /planning/state_machine/estop
+//   priority 1: hazard  — /platform/status OR /planning/state_machine/estop
 //               (the state machine mirrors ERROR_STOP onto its estop topic, HH_260701)
-//   priority 2: crab    — site_maneuver active (ModuleState WARN) + |cmd_vel.linear.y|
+//   priority 2: crab    — camping_site_maneuver_controller active (ModuleState WARN) + |cmd_vel.linear.y|
 //   priority 3: turn    — lanelet turn_direction windows from /planning/route_turn_segments
-//               matched against the robot arc length on /planning/global_path
+// HH_260720 - Read the generated global-path mirror instead of the Nav2 ROS boundary.
+//               matched against the robot arc length on /planning/global_path_avg
 //   priority 4: off
 // Headlight is an independent pass-through channel from the UI button.
 // Pure decision logic lives in include/camrod_platform/light_decision.hpp (gtest).
@@ -17,13 +18,14 @@
 #include <vector>
 
 #include "avg_msgs/msg/avg_light_command.hpp"
+#include "avg_msgs/msg/avg_bool.hpp"
+#include "avg_msgs/msg/avg_path.hpp"
+#include "avg_msgs/msg/avg_platform_status.hpp"
+#include "avg_msgs/msg/avg_pose_stamped.hpp"
+#include "avg_msgs/msg/avg_twist.hpp"
 #include "avg_msgs/msg/module_state.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"
-#include "geometry_msgs/msg/twist.hpp"
-#include "nav_msgs/msg/path.hpp"
+#include "avg_msgs/msg/route_turn_segment_array.hpp"
 #include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/bool.hpp"
-#include "std_msgs/msg/float32_multi_array.hpp"
 
 #include "camrod_platform/light_decision.hpp"
 
@@ -36,17 +38,19 @@ public:
   LightControllerNode()
   : rclcpp::Node("light_controller")
   {
-    estop_platform_topic_ = declare_parameter<std::string>(
-      "estop_platform_topic", "/platform/status/estop");
+    platform_status_topic_ = declare_parameter<std::string>(
+      "platform_status_topic", "/platform/status");
     estop_state_machine_topic_ = declare_parameter<std::string>(
       "estop_state_machine_topic", "/planning/state_machine/estop");
     headlight_command_topic_ = declare_parameter<std::string>(
       "headlight_command_topic", "/platform/headlight/command");
-    site_maneuver_status_topic_ = declare_parameter<std::string>(
-      "site_maneuver_status_topic", "/parking/site_maneuver/status");
-    cmd_vel_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/planning/cmd_vel");
+    camping_site_maneuver_controller_status_topic_ = declare_parameter<std::string>(
+      // HH_260720 - Observe the control-owned campsite maneuver phase.
+      "camping_site_maneuver_controller_status_topic", "/control/camping_site_maneuver_controller/status");
+    cmd_vel_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/control/cmd_vel");
+    // HH_260720 - Subscribe to the generated CAMROD path mirror, not Nav2's ROS boundary.
     global_path_topic_ = declare_parameter<std::string>(
-      "global_path_topic", "/planning/global_path");
+      "global_path_topic", "/planning/global_path_avg");
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
     route_turn_segments_topic_ = declare_parameter<std::string>(
       "route_turn_segments_topic", "/planning/route_turn_segments");
@@ -64,31 +68,34 @@ public:
 
     publish_rate_hz_ = std::clamp(publish_rate_hz_, 0.5, 50.0);
 
-    sub_estop_platform_ = create_subscription<std_msgs::msg::Bool>(
-      estop_platform_topic_, 10,
-      [this](std_msgs::msg::Bool::ConstSharedPtr msg) {estop_platform_ = msg->data;});
-    sub_estop_state_machine_ = create_subscription<std_msgs::msg::Bool>(
+    // HH_260720 - Hardware e-stop comes from the canonical generated platform status.
+    sub_platform_status_ = create_subscription<avg_msgs::msg::AvgPlatformStatus>(
+      platform_status_topic_, 10,
+      [this](avg_msgs::msg::AvgPlatformStatus::ConstSharedPtr msg) {
+        estop_platform_ = msg->estop;
+      });
+    sub_estop_state_machine_ = create_subscription<avg_msgs::msg::AvgBool>(
       estop_state_machine_topic_, 10,
-      [this](std_msgs::msg::Bool::ConstSharedPtr msg) {estop_state_machine_ = msg->data;});
-    sub_headlight_ = create_subscription<std_msgs::msg::Bool>(
+      [this](avg_msgs::msg::AvgBool::ConstSharedPtr msg) {estop_state_machine_ = msg->data;});
+    sub_headlight_ = create_subscription<avg_msgs::msg::AvgBool>(
       headlight_command_topic_, 10,
-      [this](std_msgs::msg::Bool::ConstSharedPtr msg) {headlight_on_ = msg->data;});
+      [this](avg_msgs::msg::AvgBool::ConstSharedPtr msg) {headlight_on_ = msg->data;});
     sub_site_status_ = create_subscription<avg_msgs::msg::ModuleState>(
-      site_maneuver_status_topic_, 10,
+      camping_site_maneuver_controller_status_topic_, 10,
       [this](avg_msgs::msg::ModuleState::ConstSharedPtr msg) {
         // Active maneuver phases publish WARN; IDLE/DONE publish OK.
-        site_maneuver_active_ = msg->level == avg_msgs::msg::ModuleState::WARN;
+        camping_site_maneuver_controller_active_ = msg->level == avg_msgs::msg::ModuleState::WARN;
         site_status_stamp_ = now();
       });
-    sub_cmd_vel_ = create_subscription<geometry_msgs::msg::Twist>(
+    sub_cmd_vel_ = create_subscription<avg_msgs::msg::AvgTwist>(
       cmd_vel_topic_, 10,
-      [this](geometry_msgs::msg::Twist::ConstSharedPtr msg) {
+      [this](avg_msgs::msg::AvgTwist::ConstSharedPtr msg) {
         cmd_vel_lateral_mps_ = msg->linear.y;
         cmd_vel_stamp_ = now();
       });
-    sub_pose_ = create_subscription<geometry_msgs::msg::PoseStamped>(
+    sub_pose_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       pose_topic_, 10,
-      [this](geometry_msgs::msg::PoseStamped::ConstSharedPtr msg) {
+      [this](avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg) {
         pose_x_ = msg->pose.position.x;
         pose_y_ = msg->pose.position.y;
         pose_stamp_ = now();
@@ -97,12 +104,13 @@ public:
     // Planner publishes both route topics reliable + transient_local so a late
     // subscriber immediately receives the active route (HH_260629 pattern).
     const auto latched_qos = rclcpp::QoS(1).reliable().transient_local();
-    sub_global_path_ = create_subscription<nav_msgs::msg::Path>(
+    sub_global_path_ = create_subscription<avg_msgs::msg::AvgPath>(
       global_path_topic_, latched_qos,
-      [this](nav_msgs::msg::Path::ConstSharedPtr msg) {onGlobalPath(*msg);});
-    sub_turn_segments_ = create_subscription<std_msgs::msg::Float32MultiArray>(
+      [this](avg_msgs::msg::AvgPath::ConstSharedPtr msg) {onGlobalPath(*msg);});
+    // HH_260720 - Consume named turn-segment fields instead of packed float triples.
+    sub_turn_segments_ = create_subscription<avg_msgs::msg::RouteTurnSegmentArray>(
       route_turn_segments_topic_, latched_qos,
-      [this](std_msgs::msg::Float32MultiArray::ConstSharedPtr msg) {onTurnSegments(*msg);});
+      [this](avg_msgs::msg::RouteTurnSegmentArray::ConstSharedPtr msg) {onTurnSegments(*msg);});
 
     pub_lights_ = create_publisher<avg_msgs::msg::AvgLightCommand>(lights_command_topic_, 10);
 
@@ -117,7 +125,7 @@ public:
   }
 
 private:
-  void onGlobalPath(const nav_msgs::msg::Path & msg)
+  void onGlobalPath(const avg_msgs::msg::AvgPath & msg)
   {
     path_points_.clear();
     path_cumulative_s_.clear();
@@ -137,21 +145,16 @@ private:
     path_total_length_m_ = cumulative;
   }
 
-  void onTurnSegments(const std_msgs::msg::Float32MultiArray & msg)
+  void onTurnSegments(const avg_msgs::msg::RouteTurnSegmentArray & msg)
   {
     turn_segments_.clear();
-    segments_total_length_m_ = -1.0;
-    if (msg.data.empty()) {
-      return;
-    }
-    segments_total_length_m_ = static_cast<double>(msg.data[0]);
-    const std::size_t triple_count = (msg.data.size() - 1U) / 3U;
-    turn_segments_.reserve(triple_count);
-    for (std::size_t i = 0; i < triple_count; ++i) {
+    segments_total_length_m_ = static_cast<double>(msg.total_route_length_m);
+    turn_segments_.reserve(msg.segments.size());
+    for (const auto & typed_segment : msg.segments) {
       TurnSegment segment;
-      segment.direction = msg.data[1U + i * 3U];
-      segment.start_s = msg.data[2U + i * 3U];
-      segment.end_s = msg.data[3U + i * 3U];
+      segment.direction = typed_segment.direction;
+      segment.start_s = typed_segment.start_distance_m;
+      segment.end_s = typed_segment.end_distance_m;
       turn_segments_.push_back(segment);
     }
   }
@@ -190,8 +193,8 @@ private:
     LightDecisionInput input;
     input.estop_platform = estop_platform_;
     input.estop_state_machine = estop_state_machine_;
-    input.site_maneuver_active =
-      site_maneuver_active_ && isFresh(site_status_stamp_, site_status_timeout_s_);
+    input.camping_site_maneuver_controller_active =
+      camping_site_maneuver_controller_active_ && isFresh(site_status_stamp_, site_status_timeout_s_);
     input.cmd_vel_lateral_mps =
       isFresh(cmd_vel_stamp_, cmd_vel_timeout_s_) ? cmd_vel_lateral_mps_ : 0.0;
 
@@ -222,10 +225,10 @@ private:
     }
   }
 
-  std::string estop_platform_topic_;
+  std::string platform_status_topic_;
   std::string estop_state_machine_topic_;
   std::string headlight_command_topic_;
-  std::string site_maneuver_status_topic_;
+  std::string camping_site_maneuver_controller_status_topic_;
   std::string cmd_vel_topic_;
   std::string global_path_topic_;
   std::string pose_topic_;
@@ -242,7 +245,7 @@ private:
   bool estop_platform_{false};
   bool estop_state_machine_{false};
   bool headlight_on_{false};
-  bool site_maneuver_active_{false};
+  bool camping_site_maneuver_controller_active_{false};
   double cmd_vel_lateral_mps_{0.0};
   double pose_x_{0.0};
   double pose_y_{0.0};
@@ -259,14 +262,14 @@ private:
   IndicatorMode last_mode_{IndicatorMode::kOff};
   bool last_headlight_{false};
 
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_estop_platform_;
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_estop_state_machine_;
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr sub_headlight_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPlatformStatus>::SharedPtr sub_platform_status_;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr sub_estop_state_machine_;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr sub_headlight_;
   rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr sub_site_status_;
-  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr sub_cmd_vel_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_pose_;
-  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr sub_global_path_;
-  rclcpp::Subscription<std_msgs::msg::Float32MultiArray>::SharedPtr sub_turn_segments_;
+  rclcpp::Subscription<avg_msgs::msg::AvgTwist>::SharedPtr sub_cmd_vel_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_pose_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPath>::SharedPtr sub_global_path_;
+  rclcpp::Subscription<avg_msgs::msg::RouteTurnSegmentArray>::SharedPtr sub_turn_segments_;
   rclcpp::Publisher<avg_msgs::msg::AvgLightCommand>::SharedPtr pub_lights_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

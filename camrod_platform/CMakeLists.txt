@@ -10,10 +10,9 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
-# HH_260617: Ranger BMS bridge publishes sensor_msgs/BatteryState from CAN 0x361.
+# HH_260720 - Ranger's standard BatteryState is a raw driver input to the generated platform status.
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(std_srvs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
@@ -36,16 +35,6 @@ ament_target_dependencies(robot_visualization_node
 )
 target_link_libraries(robot_visualization_node
   camrod_sensor_kit::camrod_sensor_kit_lib
-)
-
-add_executable(cmd_vel_gate_node
-  src/cmd_vel_gate_node.cpp
-)
-ament_target_dependencies(cmd_vel_gate_node
-  rclcpp
-  geometry_msgs
-  std_msgs
-  std_srvs
 )
 
 # 260708: Exterior light controller — headlight relay + WS2815 turn indicators
@@ -74,7 +63,6 @@ ament_target_dependencies(mcu_serial_bridge_node
 
 install(TARGETS
   robot_visualization_node
-  cmd_vel_gate_node
   light_controller_node
   mcu_serial_bridge_node
   DESTINATION lib/${PROJECT_NAME}
@@ -91,7 +79,7 @@ if(ranger_msgs_FOUND)
   ament_target_dependencies(ranger_platform_bridge_node
     rclcpp
     nav_msgs
-    # HH_260617: Required by /platform/status/battery_state publisher.
+    # HH_260720 - Required to consume Ranger's raw BMS BatteryState boundary.
     sensor_msgs
     geometry_msgs
     std_msgs

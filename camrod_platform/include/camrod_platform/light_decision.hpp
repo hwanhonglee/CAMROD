@@ -34,7 +34,8 @@ struct LightDecisionInput
 {
   bool estop_platform{false};
   bool estop_state_machine{false};
-  bool site_maneuver_active{false};
+  // HH_260721 - Name the maneuver source explicitly for indicator arbitration.
+  bool camping_site_maneuver_controller_active{false};
   double cmd_vel_lateral_mps{0.0};
   // True only when pose/path are fresh and the route sync guard passed.
   bool route_context_valid{false};
@@ -72,7 +73,7 @@ inline LightDecisionResult decideIndicator(
       input.estop_platform ? "hazard:estop_platform" : "hazard:estop_state_machine"};
   }
 
-  if (input.site_maneuver_active &&
+  if (input.camping_site_maneuver_controller_active &&
     std::abs(input.cmd_vel_lateral_mps) > params.crab_lateral_threshold_mps)
   {
     if (input.cmd_vel_lateral_mps > 0.0) {

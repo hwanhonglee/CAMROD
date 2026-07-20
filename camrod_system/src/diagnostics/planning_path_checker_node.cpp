@@ -18,7 +18,7 @@
  *   nav_status_topic: "/planning/navigate_to_pose/_action/status"
  *
  *   global_path:
- *     topic:            "/planning/global_path"
+ *     topic:            "/planning/global_path_avg"
  *     stale_timeout:    3.0
  *     min_points_warn:  5
  *     min_points_error: 2
@@ -37,7 +37,8 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
-#include <nav_msgs/msg/path.hpp>
+// HH_260720 - Diagnose generated CAMROD global/local path mirrors.
+#include <avg_msgs/msg/avg_path.hpp>
 #include <action_msgs/msg/goal_status_array.hpp>
 #include <action_msgs/msg/goal_status.hpp>
 
@@ -47,7 +48,7 @@
 
 using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
-using Path             = nav_msgs::msg::Path;
+using Path             = avg_msgs::msg::AvgPath;
 using GoalStatusArray  = action_msgs::msg::GoalStatusArray;
 using GoalStatus       = action_msgs::msg::GoalStatus;
 
@@ -186,7 +187,8 @@ private:
 
     const double elapsed = (this->now() - src.last_path_time).seconds();
     // HH_260702 - A non-positive timeout disables staleness for event-style
-    // paths such as /planning/global_path. Point-count checks still run.
+    // HH_260720 - Event-style paths such as /planning/global_path_avg do not expire.
+    // Point-count checks still run.
     if (src.stale_timeout > 0.0 && elapsed > src.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),

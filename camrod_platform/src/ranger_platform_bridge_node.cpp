@@ -2,12 +2,10 @@
 // /platform/status/* interface consumed by the CAMROD stack.
 //
 // Individual status topics (functional — consumed by other nodes):
-//   /platform/status/odometry  (nav_msgs/Odometry)          <- localization_input_adapter
-//   /platform/status/velocity  (geometry_msgs/TwistStamped) <- platform_velocity_converter
-//   /platform/status/wheel     (geometry_msgs/TwistStamped) <- diagnostics
-//   /platform/status/estop     (std_msgs/Bool)               <- cmd_vel_gate
-//   /platform/status/is_charging (std_msgs/Bool)              <- docking/mission
-//   /docking/is_charging       (std_msgs/Bool)                <- existing docking contract
+//   /platform/status/odometry  (avg_msgs/AvgOdometry)    <- localization_input_adapter
+//   /platform/status/velocity  (avg_msgs/AvgTwistStamped) <- platform_velocity_converter
+//   /platform/status/wheel     (avg_msgs/AvgTwistStamped) <- diagnostics
+// HH_260720 - Platform owns one canonical CAN status interface without compatibility topics.
 //
 // Comprehensive status topic (all DBC data aggregated):
 //   /platform/status           (avg_msgs/AvgPlatformStatus)  <- monitoring / external tools
@@ -26,17 +24,19 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>  // HH_260720 - Format CAN error masks in platform status messages.
 #include <string>
 #include <vector>
 
 #include <avg_msgs/conversions.hpp>
+#include <avg_msgs/msg/avg_odometry.hpp>
 #include <avg_msgs/msg/avg_platform_status.hpp>
+#include <avg_msgs/msg/avg_twist_stamped.hpp>
 #include <avg_msgs/msg/module_state.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
-#include <std_msgs/msg/bool.hpp>
 
 #include <ranger_msgs/msg/actuator_state_array.hpp>
 #include <ranger_msgs/msg/system_state.hpp>
@@ -65,19 +65,9 @@ public:
       "status_velocity_topic",  "/platform/status/velocity");
     status_wheel_topic_    = declare_parameter<std::string>(
       "status_wheel_topic",     "/platform/status/wheel");
-    status_estop_topic_    = declare_parameter<std::string>(
-      "status_estop_topic",     "/platform/status/estop");
-    // HH_260617: Normalize Ranger BMS CAN 0x361 into platform and docking status topics.
+    // HH_260720 - Normalize Ranger BMS CAN 0x361 into platform-owned status topics.
     battery_state_topic_   = declare_parameter<std::string>(
       "battery_state_topic",    "/battery_state");
-    status_battery_topic_  = declare_parameter<std::string>(
-      "status_battery_topic",   "/platform/status/battery_state");
-    status_charging_topic_ = declare_parameter<std::string>(
-      "status_charging_topic",  "/platform/status/is_charging");
-    docking_charging_topic_ = declare_parameter<std::string>(
-      "docking_charging_topic", "/docking/is_charging");
-    publish_docking_charging_ = declare_parameter<bool>(
-      "publish_docking_charging", true);
     charging_current_threshold_a_ = declare_parameter<double>(
       "charging_current_threshold_a", 0.3);
     charging_current_positive_is_charging_ = declare_parameter<bool>(
@@ -105,22 +95,13 @@ public:
     using std::placeholders::_1;
 
     // Individual functional publishers
-    odom_pub_     = create_publisher<nav_msgs::msg::Odometry>(
+    // HH_260720 - Convert Ranger driver messages once at the platform boundary.
+    odom_pub_     = create_publisher<avg_msgs::msg::AvgOdometry>(
       status_odom_topic_,     rclcpp::QoS(50));
-    velocity_pub_ = create_publisher<geometry_msgs::msg::TwistStamped>(
+    velocity_pub_ = create_publisher<avg_msgs::msg::AvgTwistStamped>(
       status_velocity_topic_, rclcpp::QoS(50));
-    wheel_pub_    = create_publisher<geometry_msgs::msg::TwistStamped>(
+    wheel_pub_    = create_publisher<avg_msgs::msg::AvgTwistStamped>(
       status_wheel_topic_,    rclcpp::QoS(50));
-    estop_pub_    = create_publisher<std_msgs::msg::Bool>(
-      status_estop_topic_,    rclcpp::QoS(10));
-    battery_pub_  = create_publisher<sensor_msgs::msg::BatteryState>(
-      status_battery_topic_,  rclcpp::QoS(10));
-    charging_pub_ = create_publisher<std_msgs::msg::Bool>(
-      status_charging_topic_, rclcpp::QoS(10));
-    if (publish_docking_charging_) {
-      docking_charging_pub_ = create_publisher<std_msgs::msg::Bool>(
-        docking_charging_topic_, rclcpp::QoS(10));
-    }
 
     // HH_260428: Comprehensive DBC status publisher — aggregates all available CAN data
     // (0x211, 0x251-0x268, 0x271, 0x281, 0x291) into a single AvgPlatformStatus message.
@@ -159,14 +140,11 @@ public:
       get_logger(),
       "ranger_platform_bridge ready: "
       "odom=%s fallback=%s (%.1fs) actuator=%s system_state=%s battery=%s"
-      " -> odom=%s vel=%s wheel=%s estop=%s battery=%s charging=%s docking_charging=%s status=%s frame=%s",
+      " -> odom=%s vel=%s wheel=%s status=%s frame=%s",
       odom_input_topic_.c_str(), odom_fallback_topic_.c_str(), odom_fallback_timeout_s_,
       actuator_state_topic_.c_str(), system_state_topic_.c_str(), battery_state_topic_.c_str(),
       status_odom_topic_.c_str(), status_velocity_topic_.c_str(),
-      status_wheel_topic_.c_str(), status_estop_topic_.c_str(),
-      status_battery_topic_.c_str(), status_charging_topic_.c_str(),
-      publish_docking_charging_ ? docking_charging_topic_.c_str() : "(disabled)",
-      platform_status_topic_.c_str(), status_frame_id_.c_str());
+      status_wheel_topic_.c_str(), platform_status_topic_.c_str(), status_frame_id_.c_str());
   }
 
 private:
@@ -174,16 +152,16 @@ private:
   // Called by both primary and fallback odom callbacks.
   void publishOdomStatus(const nav_msgs::msg::Odometry::ConstSharedPtr & msg)
   {
-    odom_pub_->publish(*msg);
+    odom_pub_->publish(avg_msgs::conversions::fromRos(*msg));
 
     geometry_msgs::msg::TwistStamped vel;
     vel.header = msg->header;
     vel.twist  = msg->twist.twist;
-    velocity_pub_->publish(vel);
+    velocity_pub_->publish(avg_msgs::conversions::fromRos(vel));
 
     // Cache latest odom for AvgPlatformStatus aggregation
     latest_odom_ = msg;
-    publishAggregatedStatus(msg->header.stamp);
+    // HH_260720 - Do not refresh /platform/status from odometry; its heartbeat represents CAN system_state.
   }
 
   // HH_260428: Primary odom handler (ranger_base /odom, CAN 0x221/0x311/0x312).
@@ -280,7 +258,7 @@ private:
     if (steer_count > 0) {
       wheel.twist.angular.z = steer_angle_sum / steer_count;
     }
-    wheel_pub_->publish(wheel);
+    wheel_pub_->publish(avg_msgs::conversions::fromRos(wheel));
 
     // Cache for AvgPlatformStatus
     latest_wheel_       = wheel;
@@ -309,10 +287,6 @@ private:
       estop = estop || (msg->error_code != 0);
     }
 
-    std_msgs::msg::Bool estop_msg;
-    estop_msg.data = estop;
-    estop_pub_->publish(estop_msg);
-
     if (estop != last_estop_) {
       last_estop_ = estop;
       RCLCPP_WARN(
@@ -324,6 +298,7 @@ private:
 
     // Cache all CAN 0x211 + 0x291 fields for AvgPlatformStatus
     latest_system_state_ = msg;
+    // HH_260720 - Publishing only on CAN 0x211 makes control-side stale detection meaningful.
     publishAggregatedStatus(msg->header.stamp);
   }
 
@@ -382,17 +357,23 @@ private:
 
   void onBatteryState(const sensor_msgs::msg::BatteryState::ConstSharedPtr msg)
   {
-    battery_pub_->publish(*msg);
-
+    // HH_260720 - ranger_base exposes integer SOC (0..100); ROS BatteryState requires 0.0..1.0.
+    sensor_msgs::msg::BatteryState normalized = *msg;
+    if (std::isfinite(normalized.percentage)) {
+      if (normalized.percentage > 1.0F) {
+        normalized.percentage *= 0.01F;
+      }
+      normalized.percentage = std::clamp(normalized.percentage, 0.0F, 1.0F);
+    }
     const bool charging_sample = inferChargingFromBattery(*msg);
     updateChargingDebounce(charging_sample);
 
-    std_msgs::msg::Bool charging_msg;
-    charging_msg.data = charging_debounced_;
-    charging_pub_->publish(charging_msg);
-    if (docking_charging_pub_) {
-      docking_charging_pub_->publish(charging_msg);
-    }
+    // HH_260720 - Surface the debounced charging state in both canonical platform outputs.
+    normalized.power_supply_status = charging_debounced_ ?
+      sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_CHARGING :
+      sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_NOT_CHARGING;
+    latest_battery_state_ = normalized;
+    has_battery_state_ = true;
   }
 
   // HH_260428: Publish AvgPlatformStatus aggregating all available CAN data.
@@ -435,6 +416,16 @@ private:
       s.battery_voltage  = static_cast<double>(latest_system_state_->battery_voltage);
       s.motion_mode      = latest_system_state_->motion_mode;
     }
+    if (has_battery_state_) {
+      // HH_260720 - Expose normalized CAN BMS data through one generated status message.
+      s.battery_percentage = latest_battery_state_.percentage;
+      s.battery_current_a = latest_battery_state_.current;
+      // HH_260720 - Preserve the normalized CAN BMS temperature for diagnostics.
+      s.battery_temperature_c = latest_battery_state_.temperature;
+      s.battery_power_supply_status = latest_battery_state_.power_supply_status;
+      s.battery_state_available = true;
+      s.is_charging = charging_debounced_;
+    }
 
     // HH_260428: Motor arrays from actuator_state (CAN 0x251-0x258/0x271/0x281).
     s.motor_rpm   = latest_motor_rpm_;
@@ -449,6 +440,14 @@ private:
     {
       s.state.level   = avg_msgs::msg::ModuleState::ERROR;
       s.state.message = last_estop_ ? "ESTOP active" : "vehicle_state EXCEPTION";
+    } else if (latest_system_state_ && latest_system_state_->error_code != 0) {
+      // HH_260720 - A non-zero CAN error mask is a platform fault even when e-stop mirroring is disabled.
+      s.state.level   = avg_msgs::msg::ModuleState::ERROR;
+      char error_message[48];
+      std::snprintf(
+        error_message, sizeof(error_message), "CAN error_code=0x%04X",
+        static_cast<unsigned>(latest_system_state_->error_code));
+      s.state.message = error_message;
     } else if (latest_system_state_ && latest_system_state_->control_mode != 0x01 /* CAN */) {
       s.state.level   = avg_msgs::msg::ModuleState::WARN;
       s.state.message = "control_mode is not CAN";
@@ -474,17 +473,12 @@ private:
   std::string  status_odom_topic_;
   std::string  status_velocity_topic_;
   std::string  status_wheel_topic_;
-  std::string  status_estop_topic_;
   std::string  battery_state_topic_;
-  std::string  status_battery_topic_;
-  std::string  status_charging_topic_;
-  std::string  docking_charging_topic_;
   std::string  platform_status_topic_;
   std::string  status_frame_id_;
   bool         publish_topics_{true};
   bool         estop_on_exception_{true};
   bool         estop_on_error_code_{false};
-  bool         publish_docking_charging_{true};
   bool         charging_current_positive_is_charging_{true};
   double       charging_current_threshold_a_{0.3};
   int          charging_min_consecutive_samples_{2};
@@ -500,15 +494,13 @@ private:
   std::vector<float>                                latest_motor_rpm_;
   std::vector<float>                                latest_motor_speed_;
   std::vector<float>                                latest_motor_angle_;
+  sensor_msgs::msg::BatteryState                    latest_battery_state_;
+  bool                                              has_battery_state_{false};
 
   // Publishers
-  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr                odom_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr       velocity_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr       wheel_pub_;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr                    estop_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr         battery_pub_;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr                    charging_pub_;
-  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr                    docking_charging_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgOdometry>::SharedPtr             odom_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgTwistStamped>::SharedPtr         velocity_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgTwistStamped>::SharedPtr         wheel_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgPlatformStatus>::SharedPtr       platform_status_pub_;
 
   // Subscriptions

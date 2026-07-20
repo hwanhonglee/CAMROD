@@ -7,16 +7,19 @@
 #include <avg_msgs/conversions.hpp>
 #include <rclcpp/rclcpp.hpp>
 
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
-#include <avg_msgs/msg/odometry.hpp>
-#include <avg_msgs/msg/string.hpp>
+#include <avg_msgs/msg/avg_header.hpp>
+#include <avg_msgs/msg/avg_odometry.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
+#include <avg_msgs/msg/avg_string.hpp>
 #include <avg_msgs/msg/avg_localization_mode.hpp>
 #include <avg_msgs/msg/avg_localization_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/header.hpp>
 
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 
 using avg_msgs::msg::AvgLocalizationMode;
@@ -66,10 +69,19 @@ public:
 
     selected_pose_topic_ = declare_parameter<std::string>(
       "selected_pose_topic", "/localization/pose");
+    // HH_260720 - Standard ROS mirrors are explicit external-tool boundaries.
+    selected_pose_ros_topic_ = declare_parameter<std::string>(
+      "selected_pose_ros_topic", "/localization/pose_ros");
     selected_pose_cov_topic_ = declare_parameter<std::string>(
       "selected_pose_cov_topic", "/localization/pose_with_covariance");
+    selected_pose_cov_ros_topic_ = declare_parameter<std::string>(
+      "selected_pose_cov_ros_topic", "/localization/pose_with_covariance_ros");
+    // HH_260720 - Publish the selected internal odometry with a semantic public name.
     selected_odom_topic_ = declare_parameter<std::string>(
-      "selected_odom_topic", "/localization/odometry/filtered");
+      "selected_odom_topic", "/localization/odometry");
+    // HH_260720 - Publish an explicit nav_msgs mirror only for ROS ecosystem consumers.
+    selected_odom_ros_topic_ = declare_parameter<std::string>(
+      "selected_odom_ros_topic", "/localization/odometry_ros");
     selected_source_topic_ = declare_parameter<std::string>(
       "selected_source_topic", "/localization/pose_source");
 
@@ -101,11 +113,17 @@ public:
     rclcpp::QoS latched_qos(rclcpp::KeepLast(1));
     latched_qos.transient_local().reliable();
 
-    pose_pub_ = create_publisher<avg_msgs::msg::PoseStamped>(selected_pose_topic_, latched_qos);
-    pose_cov_pub_ = create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(
+    pose_pub_ = create_publisher<avg_msgs::msg::AvgPoseStamped>(selected_pose_topic_, latched_qos);
+    pose_ros_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
+      selected_pose_ros_topic_, latched_qos);
+    pose_cov_pub_ = create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       selected_pose_cov_topic_, latched_qos);
-    odom_pub_ = create_publisher<avg_msgs::msg::Odometry>(selected_odom_topic_, latched_qos);
-    source_pub_ = create_publisher<avg_msgs::msg::String>(selected_source_topic_, latched_qos);
+    pose_cov_ros_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
+      selected_pose_cov_ros_topic_, latched_qos);
+    // HH_260720 - The canonical selected odometry is a real generated avg_msgs interface.
+    odom_pub_ = create_publisher<avg_msgs::msg::AvgOdometry>(selected_odom_topic_, latched_qos);
+    odom_ros_pub_ = create_publisher<nav_msgs::msg::Odometry>(selected_odom_ros_topic_, latched_qos);
+    source_pub_ = create_publisher<avg_msgs::msg::AvgString>(selected_source_topic_, latched_qos);
 
     if (publish_localization_status_) {
       avg_localization_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(
@@ -118,10 +136,10 @@ public:
 
     using std::placeholders::_1;
 
-    primary_pose_cov_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+    primary_pose_cov_sub_ = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       primary_pose_cov_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationPoseSelectorNode::onPrimaryPoseCov, this, _1));
-    primary_odom_sub_ = create_subscription<avg_msgs::msg::Odometry>(
+    primary_odom_sub_ = create_subscription<avg_msgs::msg::AvgOdometry>(
       primary_odom_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LocalizationPoseSelectorNode::onPrimaryOdom, this, _1));
 
@@ -129,12 +147,12 @@ public:
     fallback_qos.transient_local().reliable();
 
     if (!fallback_pose_cov_topic_.empty()) {
-      fallback_pose_cov_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+      fallback_pose_cov_sub_ = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
         fallback_pose_cov_topic_, fallback_qos,
         std::bind(&LocalizationPoseSelectorNode::onFallbackPoseCov, this, _1));
     }
     if (!fallback_odom_topic_.empty()) {
-      fallback_odom_sub_ = create_subscription<avg_msgs::msg::Odometry>(
+      fallback_odom_sub_ = create_subscription<avg_msgs::msg::AvgOdometry>(
         fallback_odom_topic_, fallback_qos,
         std::bind(&LocalizationPoseSelectorNode::onFallbackOdom, this, _1));
     }
@@ -164,7 +182,7 @@ public:
   }
 
 private:
-  static rclcpp::Time stampFromHeader(const avg_msgs::msg::Header & header)
+  static rclcpp::Time stampFromHeader(const avg_msgs::msg::AvgHeader & header)
   {
     return rclcpp::Time(header.stamp);
   }
@@ -180,7 +198,7 @@ private:
     evaluateAndPublish(this->now());
   }
 
-  void onPrimaryPoseCov(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  void onPrimaryPoseCov(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     primary_pose_cov_ = *msg;
     primary_has_pose_cov_ = true;
@@ -188,7 +206,7 @@ private:
     evaluateAndPublish(this->now());
   }
 
-  void onPrimaryOdom(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
+  void onPrimaryOdom(const avg_msgs::msg::AvgOdometry::ConstSharedPtr msg)
   {
     primary_odom_ = *msg;
     primary_has_odom_ = true;
@@ -196,7 +214,7 @@ private:
     evaluateAndPublish(this->now());
   }
 
-  void onFallbackPoseCov(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  void onFallbackPoseCov(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     fallback_pose_cov_ = *msg;
     fallback_has_pose_cov_ = true;
@@ -204,7 +222,7 @@ private:
     evaluateAndPublish(this->now());
   }
 
-  void onFallbackOdom(const avg_msgs::msg::Odometry::ConstSharedPtr msg)
+  void onFallbackOdom(const avg_msgs::msg::AvgOdometry::ConstSharedPtr msg)
   {
     fallback_odom_ = *msg;
     fallback_has_odom_ = true;
@@ -318,9 +336,9 @@ private:
       return;
     }
 
-    avg_msgs::msg::PoseWithCovarianceStamped out_pose_cov;
-    avg_msgs::msg::Odometry out_odom;
-    avg_msgs::msg::PoseStamped out_pose;
+    avg_msgs::msg::AvgPoseWithCovarianceStamped out_pose_cov;
+    avg_msgs::msg::AvgOdometry out_odom;
+    avg_msgs::msg::AvgPoseStamped out_pose;
 
     if (selected_source_ == Source::kPrimary) {
       if (primary_has_pose_cov_) {
@@ -356,8 +374,12 @@ private:
     pose_cov_pub_->publish(out_pose_cov);
     pose_pub_->publish(out_pose);
     odom_pub_->publish(out_odom);
+    // HH_260720 - Keep external-tool conversion visible instead of relying on aliases.
+    pose_ros_pub_->publish(avg_msgs::conversions::toRos(out_pose));
+    pose_cov_ros_pub_->publish(avg_msgs::conversions::toRos(out_pose_cov));
+    odom_ros_pub_->publish(avg_msgs::conversions::toRos(out_odom));
 
-    avg_msgs::msg::String source_msg;
+    avg_msgs::msg::AvgString source_msg;
     source_msg.data =
       (selected_source_ == Source::kPrimary) ? primary_source_label_ : fallback_source_label_;
     source_pub_->publish(source_msg);
@@ -369,9 +391,9 @@ private:
     if (publish_localization_status_ && avg_localization_pub_) {
       avg_msgs::msg::AvgLocalizationMsgs avg_msg;
       avg_msg.stamp = out_pose.header.stamp;
-      avg_msg.localization_pose = avg_msgs::conversions::fromRos(out_pose);
-      avg_msg.localization_pose_cov = avg_msgs::conversions::fromRos(out_pose_cov);
-      avg_msg.localization_odom = avg_msgs::conversions::fromRos(out_odom);
+      avg_msg.localization_pose = out_pose;
+      avg_msg.localization_pose_cov = out_pose_cov;
+      avg_msg.localization_odom = out_odom;
       avg_msg.state.stamp = out_pose.header.stamp;
       avg_msg.state.module_name = "localization";
       avg_msg.state.level = avg_msgs::msg::ModuleState::OK;
@@ -387,8 +409,8 @@ private:
   }
 
   void publishSelectedTf(
-    const avg_msgs::msg::PoseWithCovarianceStamped & pose_cov_msg,
-    const avg_msgs::msg::Odometry & odom_msg)
+    const avg_msgs::msg::AvgPoseWithCovarianceStamped & pose_cov_msg,
+    const avg_msgs::msg::AvgOdometry & odom_msg)
   {
     geometry_msgs::msg::TransformStamped tf_msg;
 
@@ -399,10 +421,8 @@ private:
       tf_msg.transform.translation.x = pose_cov_msg.pose.pose.position.x;
       tf_msg.transform.translation.y = pose_cov_msg.pose.pose.position.y;
       tf_msg.transform.translation.z = pose_cov_msg.pose.pose.position.z;
-      tf_msg.transform.rotation.x = pose_cov_msg.pose.pose.orientation.x;
-      tf_msg.transform.rotation.y = pose_cov_msg.pose.pose.orientation.y;
-      tf_msg.transform.rotation.z = pose_cov_msg.pose.pose.orientation.z;
-      tf_msg.transform.rotation.w = pose_cov_msg.pose.pose.orientation.w;
+      tf_msg.transform.rotation = avg_msgs::conversions::toRos(
+        pose_cov_msg.pose.pose.orientation);
       tf_broadcaster_->sendTransform(tf_msg);
       return;
     }
@@ -415,10 +435,8 @@ private:
       tf_msg.transform.translation.x = odom_msg.pose.pose.position.x;
       tf_msg.transform.translation.y = odom_msg.pose.pose.position.y;
       tf_msg.transform.translation.z = odom_msg.pose.pose.position.z;
-      tf_msg.transform.rotation.x = odom_msg.pose.pose.orientation.x;
-      tf_msg.transform.rotation.y = odom_msg.pose.pose.orientation.y;
-      tf_msg.transform.rotation.z = odom_msg.pose.pose.orientation.z;
-      tf_msg.transform.rotation.w = odom_msg.pose.pose.orientation.w;
+      tf_msg.transform.rotation = avg_msgs::conversions::toRos(
+        odom_msg.pose.pose.orientation);
       tf_broadcaster_->sendTransform(tf_msg);
     }
   }
@@ -435,8 +453,11 @@ private:
   std::string mode_topic_;
 
   std::string selected_pose_topic_;
+  std::string selected_pose_ros_topic_;
   std::string selected_pose_cov_topic_;
+  std::string selected_pose_cov_ros_topic_;
   std::string selected_odom_topic_;
+  std::string selected_odom_ros_topic_;
   std::string selected_source_topic_;
 
   std::string primary_source_label_;
@@ -469,7 +490,7 @@ private:
   rclcpp::Time last_published_stamp_{0, 0, RCL_ROS_TIME};
   std::string last_source_label_;
 
-  // HH_260422: primary_has_pose_cov_ / primary_has_odom_ become true once the primary source (ESKF) publishes data.
+  // HH_260720 - Primary availability becomes true when the selected localization filter publishes.
   //   sourceHasData(kPrimary) = primary_has_pose_cov_ || primary_has_odom_.
   //   If both are false, primary cannot be selected and fallback is forced regardless of mode.
   bool primary_has_pose_cov_{false};
@@ -479,21 +500,24 @@ private:
   bool fallback_has_pose_cov_{false};
   bool fallback_has_odom_{false};
 
-  avg_msgs::msg::PoseWithCovarianceStamped primary_pose_cov_;
-  avg_msgs::msg::PoseWithCovarianceStamped fallback_pose_cov_;
-  avg_msgs::msg::Odometry primary_odom_;
-  avg_msgs::msg::Odometry fallback_odom_;
+  avg_msgs::msg::AvgPoseWithCovarianceStamped primary_pose_cov_;
+  avg_msgs::msg::AvgPoseWithCovarianceStamped fallback_pose_cov_;
+  avg_msgs::msg::AvgOdometry primary_odom_;
+  avg_msgs::msg::AvgOdometry fallback_odom_;
 
-  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr primary_pose_cov_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr primary_odom_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr fallback_pose_cov_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Odometry>::SharedPtr fallback_odom_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr primary_pose_cov_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr primary_odom_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr fallback_pose_cov_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr fallback_odom_sub_;
   rclcpp::Subscription<AvgLocalizationMode>::SharedPtr mode_sub_;
 
-  rclcpp::Publisher<avg_msgs::msg::PoseStamped>::SharedPtr pose_pub_;
-  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
-  rclcpp::Publisher<avg_msgs::msg::Odometry>::SharedPtr odom_pub_;
-  rclcpp::Publisher<avg_msgs::msg::String>::SharedPtr source_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseStamped>::SharedPtr pose_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_ros_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr pose_cov_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_cov_ros_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgOdometry>::SharedPtr odom_pub_;
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_ros_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgString>::SharedPtr source_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
 
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;

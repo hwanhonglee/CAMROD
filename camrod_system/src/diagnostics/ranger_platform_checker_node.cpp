@@ -7,7 +7,7 @@
  * 구독 토픽
  * ---------
  *   /system_state    (ranger_msgs/SystemState)
- *   /platform/status/battery_state (sensor_msgs/BatteryState)
+ *   /platform/status (avg_msgs/AvgPlatformStatus)
  *   /actuator_state  (ranger_msgs/ActuatorStateArray)
  *   /odom            (nav_msgs/Odometry)
  *
@@ -37,7 +37,7 @@
 
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/battery_state.hpp>
+#include <avg_msgs/msg/avg_platform_status.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -107,7 +107,7 @@ struct PlatformState
   double   battery_voltage_sys{0.0};
   uint8_t  motion_mode{0};
 
-  // /platform/status/battery_state
+  // HH_260720 - Battery data comes from the canonical generated platform status.
   bool has_battery{false};
   rclcpp::Time battery_time{0, 0, RCL_ROS_TIME};
   float batt_voltage{0.0f};
@@ -141,9 +141,7 @@ protected:
   void declare_parameters_() override
   {
     declare_parameter("system_state_topic",  std::string("/system_state"));
-    // HH_260617: Default to normalized CAMROD platform BMS topic. Raw Ranger
-    // /battery_state is still available as a launch/config override if needed.
-    declare_parameter("battery_state_topic", std::string("/platform/status/battery_state"));
+    declare_parameter("platform_status_topic", std::string("/platform/status"));
     declare_parameter("actuator_state_topic",std::string("/actuator_state"));
     declare_parameter("odom_topic",          std::string("/odom"));
 
@@ -173,7 +171,7 @@ protected:
   void load_parameters_() override
   {
     system_state_topic_  = get_parameter("system_state_topic").as_string();
-    battery_state_topic_ = get_parameter("battery_state_topic").as_string();
+    platform_status_topic_ = get_parameter("platform_status_topic").as_string();
     actuator_state_topic_= get_parameter("actuator_state_topic").as_string();
     odom_topic_          = get_parameter("odom_topic").as_string();
 
@@ -209,11 +207,11 @@ protected:
         onSystemState(msg);
       });
 
-    // HH_260617: Subscribe to normalized platform BMS topic by default.
-    battery_sub_ = create_subscription<sensor_msgs::msg::BatteryState>(
-      battery_state_topic_, 10,
-      [this](const sensor_msgs::msg::BatteryState::ConstSharedPtr msg) {
-        onBattery(msg);
+    // HH_260720 - Subscribe once to the generated platform/BMS aggregation.
+    platform_status_sub_ = create_subscription<avg_msgs::msg::AvgPlatformStatus>(
+      platform_status_topic_, 10,
+      [this](const avg_msgs::msg::AvgPlatformStatus::ConstSharedPtr msg) {
+        onPlatformStatus(msg);
       });
 
     // /actuator_state 구독
@@ -255,10 +253,10 @@ protected:
     RCLCPP_INFO(get_logger(),
       "Ranger platform checker started\n"
       "  system_state : %s\n"
-      "  battery_state: %s\n"
+      "  platform_status: %s\n"
       "  actuator_state: %s\n"
       "  odom         : %s",
-      system_state_topic_.c_str(), battery_state_topic_.c_str(),
+      system_state_topic_.c_str(), platform_status_topic_.c_str(),
       actuator_state_topic_.c_str(), odom_topic_.c_str());
   }
 
@@ -277,15 +275,15 @@ private:
     state_.motion_mode         = msg->motion_mode;
   }
 
-  void onBattery(const sensor_msgs::msg::BatteryState::ConstSharedPtr msg)
+  void onPlatformStatus(const avg_msgs::msg::AvgPlatformStatus::ConstSharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(state_.mtx);
-    state_.has_battery      = true;
+    state_.has_battery      = msg->battery_state_available;
     state_.battery_time     = this->now();
-    state_.batt_voltage     = msg->voltage;
-    state_.batt_current     = msg->current;
-    state_.batt_percentage  = msg->percentage;
-    state_.batt_temperature = msg->temperature;
+    state_.batt_voltage     = static_cast<float>(msg->battery_voltage);
+    state_.batt_current     = msg->battery_current_a;
+    state_.batt_percentage  = msg->battery_percentage;
+    state_.batt_temperature = msg->battery_temperature_c;
   }
 
   void onActuator(const ranger_msgs::msg::ActuatorStateArray::ConstSharedPtr msg)
@@ -704,7 +702,7 @@ private:
   PlatformState state_;
 
   std::string system_state_topic_;
-  std::string battery_state_topic_;
+  std::string platform_status_topic_;
   std::string actuator_state_topic_;
   std::string odom_topic_;
 
@@ -730,7 +728,7 @@ private:
   double act_drv_volt_error_{38.0};
 
   rclcpp::Subscription<ranger_msgs::msg::SystemState>::SharedPtr    system_state_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr   battery_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPlatformStatus>::SharedPtr platform_status_sub_;
   rclcpp::Subscription<ranger_msgs::msg::ActuatorStateArray>::SharedPtr actuator_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr          odom_sub_;
 };

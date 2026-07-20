@@ -15,15 +15,9 @@
     status_odom_topic: "/platform/status/odometry"     # Normalized odometry status output topic.
     status_velocity_topic: "/platform/status/velocity" # Normalized velocity status output topic.
     status_wheel_topic: "/platform/status/wheel"       # Wheel-state status output topic.
-    status_estop_topic: "/platform/status/estop"       # Derived e-stop status output topic.
     # HH_260617: BMS CAN 0x361 is published by ranger_base as /battery_state.
-    # The bridge republishes it under /platform/status and derives charger contact
-    # for docking/parking stop logic.
+    # HH_260720 - The bridge stores BMS data in the canonical AvgPlatformStatus message.
     battery_state_topic: "/battery_state"              # Raw BatteryState from Ranger BMS CAN 0x361.
-    status_battery_topic: "/platform/status/battery_state" # Normalized platform battery topic.
-    status_charging_topic: "/platform/status/is_charging"  # Platform-level charging/contact bool.
-    docking_charging_topic: "/docking/is_charging"     # Existing docking contract consumed by planning/voice.
-    publish_docking_charging: true
     charging_current_threshold_a: 0.3                  # Current above threshold means charging by default.
     charging_current_positive_is_charging: true        # Flip to false if measured BMS current is negative while charging.
     charging_min_consecutive_samples: 2                # Debounce BMS current spikes.

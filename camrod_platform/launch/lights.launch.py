@@ -16,7 +16,8 @@ def generate_launch_description():
         get_package_share_directory('camrod_platform'), 'config', 'lights.yaml')
 
     return LaunchDescription([
-        DeclareLaunchArgument('module_namespace', default_value='platform'),
+        # HH_260720 - Use a dedicated argument name so sensor-kit includes cannot overwrite it.
+        DeclareLaunchArgument('lights_namespace', default_value='platform'),
         DeclareLaunchArgument('lights_enable', default_value='true'),
         # The serial bridge is separate so sim / bench runs without the MCU
         # can keep the controller (and its /platform/lights/command output)
@@ -28,7 +29,7 @@ def generate_launch_description():
             package='camrod_platform',
             executable='light_controller_node',
             name='light_controller',
-            namespace=LaunchConfiguration('module_namespace'),
+            namespace=LaunchConfiguration('lights_namespace'),
             output='screen',
             parameters=[LaunchConfiguration('lights_param_file')],
             condition=IfCondition(LaunchConfiguration('lights_enable')),
@@ -37,7 +38,7 @@ def generate_launch_description():
             package='camrod_platform',
             executable='mcu_serial_bridge_node',
             name='mcu_serial_bridge',
-            namespace=LaunchConfiguration('module_namespace'),
+            namespace=LaunchConfiguration('lights_namespace'),
             output='screen',
             parameters=[LaunchConfiguration('lights_param_file')],
             condition=IfCondition(LaunchConfiguration('lights_mcu_bridge_enable')),

@@ -6,16 +6,17 @@
     base_frame_id: "robot_base_link"
     imu_topic: "/sensing/imu/data"
     gnss_topic: "/sensing/gnss/pose_with_covariance"
-    # HH_260410 Topic renamed for consistent /platform/status/* naming.
-    wheel_topic: "/platform/status/wheel_odometry"
+    # HH_260720 - Consume localization's generated normalized wheel input.
+    wheel_topic: "/localization/input/wheel_odometry"
     # HH_260527: External reset topic used by GNSS reattach helper.
-    set_pose_topic: "/localization/eskf/set_pose"
+    # HH_260720 - Use the filter-neutral generated reset contract.
+    set_pose_topic: "/localization/filter/set_pose"
     # HH_260527: Publish ESKF output to PRIMARY topics; pose_selector owns /localization/* final outputs.
     pose_topic: "/localization/primary/pose"
     pose_cov_topic: "/localization/primary/pose_with_covariance"
     odom_topic: "/localization/primary/odometry"
     twist_topic: "/localization/twist"
-    diag_topic: "/localization/eskf/status"
+    filter_status_topic: "/localization/filter/status"
     publish_tf: true
     # HH_260415: Use ROS node time for TF stamping to avoid lidar->map extrapolation crashes.
     tf_use_node_time: true

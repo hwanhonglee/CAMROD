@@ -8,14 +8,17 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/pose_with_covariance_stamped.hpp>
-#include <avg_msgs/msg/bool.hpp>
-#include <avg_msgs/msg/string.hpp>
-#include <avg_msgs/msg/float32.hpp>
+// HH_260720 - Use generated CAMROD interfaces for map-assisted localization data.
+#include <avg_msgs/conversions.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
+#include <avg_msgs/msg/avg_bool.hpp>
+#include <avg_msgs/msg/avg_string.hpp>
+#include <avg_msgs/msg/avg_float32.hpp>
 #include <avg_msgs/msg/avg_localization_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/quaternion.hpp>
+#include <avg_msgs/msg/avg_quaternion.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 
 #include <lanelet2_core/LaneletMap.h>
 #include <lanelet2_io/Io.h>
@@ -58,9 +61,9 @@ struct NearestResult
   double heading{0.0};
 };
 
-avg_msgs::msg::Quaternion yawToQuat(double yaw)
+avg_msgs::msg::AvgQuaternion yawToQuat(double yaw)
 {
-  avg_msgs::msg::Quaternion q;
+  avg_msgs::msg::AvgQuaternion q;
   const double half = yaw * 0.5;
   q.x = 0.0;
   q.y = 0.0;
@@ -69,7 +72,7 @@ avg_msgs::msg::Quaternion yawToQuat(double yaw)
   return q;
 }
 
-double yawFromQuat(const avg_msgs::msg::Quaternion & q)
+double yawFromQuat(const avg_msgs::msg::AvgQuaternion & q)
 {
   const double siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
   const double cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
@@ -121,6 +124,9 @@ public:
       "centerline_input_pose_topic", "/localization/pose");
     centerline_output_pose_topic_ = declare_parameter<std::string>(
       "centerline_output_pose_topic", "/localization/centerline_pose");
+    // HH_260720 - Name the robot_localization and RViz boundary explicitly.
+    centerline_output_pose_ros_topic_ = declare_parameter<std::string>(
+      "centerline_output_pose_ros_topic", "/localization/centerline_pose_ros");
     max_search_radius_ = declare_parameter<double>("max_search_radius", 30.0);
     longitudinal_stddev_ = declare_parameter<double>("longitudinal_stddev", 0.5);
     lateral_stddev_ = declare_parameter<double>("lateral_stddev", 0.3);
@@ -153,6 +159,9 @@ public:
       declare_parameter<std::string>("drop_zone_yaw_source", "zone"));
     drop_zone_initial_pose_topic_ = declare_parameter<std::string>(
       "drop_zone_initial_pose_topic", "/localization/drop_zone/initial_pose");
+    // HH_260720 - Name the RViz drop-zone pose boundary explicitly.
+    drop_zone_initial_pose_ros_topic_ = declare_parameter<std::string>(
+      "drop_zone_initial_pose_ros_topic", "/localization/drop_zone/initial_pose_ros");
     status_topic_ = declare_parameter<std::string>(
       "status_topic", "/localization/drop_zone/match_ok");
     match_id_topic_ = declare_parameter<std::string>(
@@ -165,21 +174,29 @@ public:
         RCLCPP_FATAL(get_logger(), "Failed to load lanelet map");
         throw std::runtime_error("Failed to load lanelet map");
       }
+      // HH_260720 - Keep snapped centerline poses on the generated CAMROD contract.
       centerline_pub_ =
-        create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(centerline_output_pose_topic_, rclcpp::QoS(10));
-      centerline_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+        create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(centerline_output_pose_topic_, rclcpp::QoS(10));
+      // HH_260720 - Keep the standard pose mirror out of the internal localization contract.
+      centerline_ros_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
+        centerline_output_pose_ros_topic_, rclcpp::QoS(10));
+      centerline_sub_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
         centerline_input_pose_topic_, rclcpp::SensorDataQoS(),
         std::bind(&LocalizationMapHelperNode::onCenterlinePose, this, std::placeholders::_1));
     }
 
     if (enable_drop_zone_matcher_) {
       loadDropZones();
-      status_pub_ = create_publisher<avg_msgs::msg::Bool>(status_topic_, rclcpp::QoS(1));
-      match_id_pub_ = create_publisher<avg_msgs::msg::String>(match_id_topic_, rclcpp::QoS(1));
-      match_distance_pub_ = create_publisher<avg_msgs::msg::Float32>(match_distance_topic_, rclcpp::QoS(1));
+      status_pub_ = create_publisher<avg_msgs::msg::AvgBool>(status_topic_, rclcpp::QoS(1));
+      match_id_pub_ = create_publisher<avg_msgs::msg::AvgString>(match_id_topic_, rclcpp::QoS(1));
+      match_distance_pub_ = create_publisher<avg_msgs::msg::AvgFloat32>(match_distance_topic_, rclcpp::QoS(1));
       drop_zone_initial_pose_pub_ =
-        create_publisher<avg_msgs::msg::PoseWithCovarianceStamped>(drop_zone_initial_pose_topic_, rclcpp::QoS(1));
-      drop_zone_sub_ = create_subscription<avg_msgs::msg::PoseWithCovarianceStamped>(
+        create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(drop_zone_initial_pose_topic_, rclcpp::QoS(1));
+      // HH_260720 - Publish a separate standard pose only for ROS visualization tools.
+      drop_zone_initial_pose_ros_pub_ =
+        create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
+        drop_zone_initial_pose_ros_topic_, rclcpp::QoS(1));
+      drop_zone_sub_ = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
         drop_zone_pose_topic_, rclcpp::SensorDataQoS(),
         std::bind(&LocalizationMapHelperNode::onDropZonePose, this, std::placeholders::_1));
     }
@@ -287,7 +304,7 @@ private:
     return best;
   }
 
-  void onCenterlinePose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onCenterlinePose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     if (!map_) {
       return;
@@ -324,7 +341,7 @@ private:
       return;
     }
 
-    avg_msgs::msg::PoseWithCovarianceStamped out;
+    avg_msgs::msg::AvgPoseWithCovarianceStamped out;
     out.header = msg->header;
     out.pose.pose.position.x = nearest.nearest_point.x();
     out.pose.pose.position.y = nearest.nearest_point.y();
@@ -349,6 +366,8 @@ private:
     out.pose.covariance[35] = yaw_stddev_ * yaw_stddev_;
 
     centerline_pub_->publish(out);
+    // HH_260720 - Mirror the generated centerline pose at the named standard-ROS boundary.
+    centerline_ros_pub_->publish(avg_msgs::conversions::toRos(out));
     last_centerline_publish_stamp_ = stamp;
     last_centerline_input_x_ = px;
     last_centerline_input_y_ = py;
@@ -400,7 +419,7 @@ private:
     }
   }
 
-  void onDropZonePose(const avg_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr msg)
+  void onDropZonePose(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     const double px = msg->pose.pose.position.x;
     const double py = msg->pose.pose.position.y;
@@ -420,9 +439,9 @@ private:
       }
     }
 
-    avg_msgs::msg::Bool ok_msg;
-    avg_msgs::msg::String id_msg;
-    avg_msgs::msg::Float32 dist_msg;
+    avg_msgs::msg::AvgBool ok_msg;
+    avg_msgs::msg::AvgString id_msg;
+    avg_msgs::msg::AvgFloat32 dist_msg;
     dist_msg.data = std::isfinite(best_dist) ? static_cast<float>(best_dist) : -1.0f;
 
     if (best_zone && best_dist <= match_radius_) {
@@ -446,7 +465,7 @@ private:
 
     if (ok_msg.data && publish_drop_zone_initial_pose_) {
       if (!publish_once_ || !published_initialpose_) {
-        avg_msgs::msg::PoseWithCovarianceStamped out;
+        avg_msgs::msg::AvgPoseWithCovarianceStamped out;
         out.header = msg->header;
         out.pose.pose.position.x = best_zone->center.x;
         out.pose.pose.position.y = best_zone->center.y;
@@ -457,6 +476,8 @@ private:
           : msg->pose.pose.orientation;
         out.pose.covariance = msg->pose.covariance;
         drop_zone_initial_pose_pub_->publish(out);
+        // HH_260720 - Mirror the generated drop-zone pose for RViz without changing control data.
+        drop_zone_initial_pose_ros_pub_->publish(avg_msgs::conversions::toRos(out));
         published_initialpose_ = true;
       }
     }
@@ -485,6 +506,7 @@ private:
   double offset_lat_{0.0}, offset_lon_{0.0}, offset_alt_{0.0};
   std::string centerline_input_pose_topic_;
   std::string centerline_output_pose_topic_;
+  std::string centerline_output_pose_ros_topic_;
   double max_search_radius_{30.0};
   double longitudinal_stddev_{0.5};
   double lateral_stddev_{0.3};
@@ -499,8 +521,9 @@ private:
   bool has_last_centerline_publish_{false};
   double map_ground_z_{0.0};
   lanelet::LaneletMapPtr map_;
-  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr centerline_pub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr centerline_sub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr centerline_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr centerline_ros_pub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr centerline_sub_;
 
   std::string drop_zones_yaml_;
   std::string drop_zone_pose_topic_;
@@ -517,14 +540,17 @@ private:
   std::vector<DropZone> zones_;
 
   std::string drop_zone_initial_pose_topic_;
+  std::string drop_zone_initial_pose_ros_topic_;
   std::string status_topic_;
   std::string match_id_topic_;
   std::string match_distance_topic_;
-  rclcpp::Publisher<avg_msgs::msg::Bool>::SharedPtr status_pub_;
-  rclcpp::Publisher<avg_msgs::msg::String>::SharedPtr match_id_pub_;
-  rclcpp::Publisher<avg_msgs::msg::Float32>::SharedPtr match_distance_pub_;
-  rclcpp::Publisher<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr drop_zone_initial_pose_pub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseWithCovarianceStamped>::SharedPtr drop_zone_sub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgBool>::SharedPtr status_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgString>::SharedPtr match_id_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgFloat32>::SharedPtr match_distance_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr drop_zone_initial_pose_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
+    drop_zone_initial_pose_ros_pub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr drop_zone_sub_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMsgs>::SharedPtr avg_localization_pub_;
 };

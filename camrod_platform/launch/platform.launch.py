@@ -30,31 +30,11 @@ def generate_launch_description():
         DeclareLaunchArgument("sensor_kit_base_frame_id",  default_value="sensor_kit_base_link"),
         DeclareLaunchArgument("params_file",               default_value=pkg_share("camrod_sensor_kit", os.path.join("config", "robot_params.yaml"))),
         DeclareLaunchArgument("robot_visualization_param_file", default_value=plat(os.path.join("config", "robot_visualization.yaml"))),
-        DeclareLaunchArgument("module_namespace",          default_value="platform"),
+        # HH_260720 - Keep the platform namespace independent from nested module arguments.
+        DeclareLaunchArgument("platform_namespace",        default_value="platform"),
         DeclareLaunchArgument("sensor_kit_namespace",      default_value="sensor_kit"),
         # HH_260527: Removed unused compatibility args
         # (enable_module_validator, system_namespace).
-        DeclareLaunchArgument("cmd_vel_gate_enable",       default_value="true"),
-        DeclareLaunchArgument("cmd_vel_in_topic",          default_value="/planning/cmd_vel"),
-        DeclareLaunchArgument("cmd_vel_out_topic",         default_value="/platform/cmd_vel"),
-        DeclareLaunchArgument("drive_enable_topic",        default_value="/platform/drive_enable"),
-        # HH_260625 - Platform listens to the effective planning engage state.
-        # Raw /planning/engage remains manual-only; UI missions use /planning/mission_engage.
-        DeclareLaunchArgument("platform_planning_engage_topic", default_value="/planning/engaged"),
-        # HH_260522: unified source selector for engage signal.
-        #   planning_engage/planning_engaged/topic/enabled/on: subscribe configured topic
-        #   disabled/off/none: ignore engage topic
-        DeclareLaunchArgument("engage_source_mode",        default_value="planning_engaged"),
-        DeclareLaunchArgument("drive_state_topic",         default_value="/platform/drive_enabled"),
-        # HH_260522: unified source selector for e-stop signal.
-        #   platform_status/topic/enabled/on: subscribe /platform/status/estop
-        #   disabled/off/none: ignore e-stop topic
-        DeclareLaunchArgument("estop_source_mode",         default_value="platform_status"),
-        # HH_260410: Use Ranger CAN derived /platform/status/estop as the default gate source.
-        DeclareLaunchArgument("estop_topic",               default_value="/platform/status/estop"),
-        DeclareLaunchArgument("drive_allow_on_start",      default_value="false"),
-        DeclareLaunchArgument("cmd_vel_input_timeout_s",   default_value="0.50"),
-        DeclareLaunchArgument("cmd_vel_zero_publish_rate_hz", default_value="10.0"),
         # HH_260528: Select platform type profile.
         #   ranger: launch Ranger CAN driver path
         #   rmp401: skip Ranger CAN path, keep external /rmp401 topics
@@ -74,15 +54,9 @@ def generate_launch_description():
         DeclareLaunchArgument("lights_param_file",         default_value=plat(os.path.join("config", "lights.yaml"))),
 
         _inc(plat(os.path.join("launch", "robot_visualization.launch.py")),
-             "module_namespace", "map_frame_id", "base_frame_id",
-             "params_file", "robot_visualization_param_file"),
-
-        _inc(plat(os.path.join("launch", "cmd_vel_gate.launch.py")),
-             "module_namespace", "cmd_vel_gate_enable",
-             "cmd_vel_in_topic", "cmd_vel_out_topic",
-             "drive_enable_topic", "platform_planning_engage_topic", "engage_source_mode",
-             "drive_state_topic", "estop_source_mode", "estop_topic", "drive_allow_on_start",
-             "cmd_vel_input_timeout_s", "cmd_vel_zero_publish_rate_hz"),
+             "map_frame_id", "base_frame_id", "params_file", "robot_visualization_param_file",
+             # HH_260720 - Pass the platform namespace explicitly to the visualization child.
+             module_namespace=LaunchConfiguration("platform_namespace")),
 
         _inc(plat(os.path.join("launch", "ranger.launch.py")),
              "platform_type",
@@ -99,6 +73,7 @@ def generate_launch_description():
              condition=IfCondition(LaunchConfiguration("sensor_kit_bridge_enable"))),
 
         _inc(plat(os.path.join("launch", "lights.launch.py")),
-             "module_namespace", "lights_enable",
-             "lights_mcu_bridge_enable", "lights_param_file"),
+             "lights_enable", "lights_mcu_bridge_enable", "lights_param_file",
+             # HH_260720 - Isolate the platform light namespace from sensor-kit launch arguments.
+             lights_namespace=LaunchConfiguration("platform_namespace")),
     ])

@@ -66,9 +66,10 @@ def generate_launch_description():
                 # HH_260528: suppress verbose INFO logs from robot_localization
                 # (e.g. "Received set_pose request" printed on every GNSS-reattach cycle).
                 ros_arguments=["--log-level", "localization.ekf_filter:=warn"],
-                # HH_260527: Feed pose_selector primary input directly from EKF output.
+                # HH_260720 - Keep robot_localization output on an explicit standard boundary;
+                # localization_input_adapter converts it to generated primary topics.
                 remappings=[
-                    ("odometry/filtered", "/localization/primary/odometry"),
+                    ("odometry/filtered", "/localization/primary/odometry_ros"),
                 ],
                 condition=IfCondition(
                     PythonExpression(

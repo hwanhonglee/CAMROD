@@ -37,7 +37,8 @@
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/bool.hpp>
+// HH_260720 - Diagnose generated CAMROD localization health values.
+#include <avg_msgs/msg/avg_bool.hpp>
 #include <avg_msgs/msg/avg_localization_status.hpp>
 #include <avg_msgs/msg/avg_localization_mode.hpp>
 
@@ -73,7 +74,7 @@ struct ModeState
 
   // 구독자
   rclcpp::Subscription<AvgStatus>::SharedPtr status_sub;
-  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr health_sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr health_sub;
 };
 
 // ── LocalizationModeCheckerNode ───────────────────────────────────────────
@@ -122,9 +123,9 @@ protected:
 
     // ── Health 구독 (transient_local QoS — supervisor 기본값) ───────────
     auto health_qos = rclcpp::QoS(1).transient_local();
-    state_.health_sub = create_subscription<std_msgs::msg::Bool>(
+    state_.health_sub = create_subscription<avg_msgs::msg::AvgBool>(
       health_topic_, health_qos,
-      [this](const std_msgs::msg::Bool::ConstSharedPtr msg) {
+      [this](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
         std::lock_guard<std::mutex> lock(state_.mtx);
         state_.health = msg->data;
       });

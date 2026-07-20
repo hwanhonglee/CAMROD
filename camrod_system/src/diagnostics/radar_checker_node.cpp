@@ -40,7 +40,8 @@
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/range.hpp>
+// HH_260720 - Diagnose generated CAMROD radar range streams.
+#include <avg_msgs/msg/avg_range.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -78,7 +79,7 @@ struct RadarState
   std::deque<rclcpp::Time> timestamps;  // Hz 계산용 rolling window (2s)
 
   // 구독자
-  rclcpp::Subscription<sensor_msgs::msg::Range>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgRange>::SharedPtr sub;
 };
 
 // ── RadarCheckerNode ──────────────────────────────────────────────────────
@@ -142,9 +143,9 @@ protected:
   void setup_tasks_() override
   {
     for (auto & radar : radars_) {
-      radar->sub = create_subscription<sensor_msgs::msg::Range>(
+      radar->sub = create_subscription<avg_msgs::msg::AvgRange>(
         radar->topic, rclcpp::SensorDataQoS(),
-        [this, radar](const sensor_msgs::msg::Range::ConstSharedPtr msg) {
+        [this, radar](const avg_msgs::msg::AvgRange::ConstSharedPtr msg) {
           onRange(msg, radar);
         });
 
@@ -159,7 +160,7 @@ protected:
 
 private:
   void onRange(
-    const sensor_msgs::msg::Range::ConstSharedPtr msg,
+    const avg_msgs::msg::AvgRange::ConstSharedPtr msg,
     const std::shared_ptr<RadarState> & radar)
   {
     std::lock_guard<std::mutex> lock(radar->mtx);

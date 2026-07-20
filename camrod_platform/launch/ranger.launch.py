@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 # HH_260428: Ranger platform launch — starts ranger_base_node and ranger_platform_bridge_node.
 # ranger_base_node  : reads CAN bus (port_name) and publishes /odom, /system_state,
-#                     /actuator_state, /battery_state. Subscribes to /platform/cmd_vel
-#                     (remapped from its internal /cmd_vel) for motion commands.
+#                     /actuator_state, /battery_state. Subscribes to /control/cmd_vel_ros
+#                     (remapped from its internal /cmd_vel) for final motion commands.
 # ranger_platform_bridge_node : normalises ranger topics to /platform/status/* interface.
 #   Primary odom  : /odom (ranger_base output, hardcoded here so it never conflicts
 #                   with other platforms publishing on their own odom topics).
 #   Fallback odom : odom_fallback_topic param (default /rmp401/odom for substitute platform).
 #   Actuator state: /actuator_state -> /platform/status/wheel (CAN 0x281/0x271, id-based).
-#   System state  : /system_state  -> /platform/status/estop  (CAN 0x211).
-#   HH_260617: Battery state : /battery_state -> /platform/status/battery_state and /docking/is_charging
-#                   (BMS CAN 0x361 current-based charger contact).
+#   HH_260720 - System/BMS state: raw /system_state and /battery_state are normalized
+#                   into the single generated /platform/status contract.
 
 import os
 import shlex
@@ -126,7 +125,9 @@ def _launch_setup(context, *args, **kwargs):
             'update_rate':     int(p.get('update_rate', 50)),
             'robot_model':     p.get('robot_model', 'ranger'),
         }],
-        remappings=[('/cmd_vel', '/platform/cmd_vel')],  # HH_260428: receives gated cmd_vel
+        # HH_260720 - Ranger consumes the single final output from camrod_control directly.
+        # HH_260720 - Ranger requires geometry_msgs/Twist at the explicit driver boundary.
+        remappings=[('/cmd_vel', '/control/cmd_vel_ros')],
     )
 
     bridge_node = Node(
