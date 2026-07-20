@@ -6,15 +6,16 @@
 #include <string>
 #include <vector>
 
+// HH_260720 - Use generated CAMROD grids and explicit ROS types at sensor/TF boundaries.
 #include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_sensing_lidar.hpp>
-#include <avg_msgs/msg/header.hpp>
-#include <avg_msgs/msg/marker.hpp>
-#include <avg_msgs/msg/marker_array.hpp>
-#include <avg_msgs/msg/occupancy_grid.hpp>
-#include <avg_msgs/msg/point_cloud2.hpp>
-#include <avg_msgs/msg/point_stamped.hpp>
-#include <avg_msgs/msg/transform_stamped.hpp>
+#include <std_msgs/msg/header.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <geometry_msgs/msg/point_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <avg_msgs/point_cloud2_iterator.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2/LinearMath/Transform.h>
@@ -22,6 +23,8 @@
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
+
+#include "camrod_sensing/route_lanelet_cost_filter.hpp"
 
 namespace camrod::sensing {
 
@@ -86,14 +89,38 @@ public:
         "lidar_status_topic", "/sensing/lidar/status");
     publish_lidar_status_ =
         declare_parameter<bool>("publish_lidar_status", false);
+    // HH_260720 - Restrict dynamic obstacle costs to the active route lanelet
+    // corridor before both the control gate and merged planning grid consume it.
+    route_lanelet_filter_enable_ =
+        declare_parameter<bool>("route_lanelet_filter_enable", true);
+    route_lanelet_mask_topic_ = declare_parameter<std::string>(
+        "route_lanelet_mask_topic", "/map/cost_grid/route_lanelet_mask");
+    route_lanelet_margin_m_ =
+        declare_parameter<double>("route_lanelet_margin_m", 0.35);
+    route_lanelet_allowed_max_cost_ =
+        declare_parameter<int>("route_lanelet_allowed_max_cost", 50);
+    route_lanelet_mask_max_age_s_ =
+        declare_parameter<double>("route_lanelet_mask_max_age_s", 2.5);
+    route_lanelet_filter_fail_open_when_robot_outside_ = declare_parameter<bool>(
+        "route_lanelet_filter_fail_open_when_robot_outside", true);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-    pub_grid_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+    // HH_260720 - Publish the fused LiDAR cost grid as a generated CAMROD message.
+    pub_grid_ = create_publisher<avg_msgs::msg::AvgOccupancyGrid>(
         output_topic_, rclcpp::QoS(1).transient_local().reliable());
     avg_lidar_pub_ =
         create_publisher<AvgSensingLidar>(lidar_status_topic_, rclcpp::QoS(10));
+
+    // HH_260720 - Transient-local QoS receives the latest static/route mask
+    // even when this sensor node starts after the map node.
+    route_lanelet_mask_sub_ =
+        create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
+        route_lanelet_mask_topic_, rclcpp::QoS(1).transient_local().reliable(),
+        [this](const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg) {
+          onRouteLaneletMask(msg);
+        });
 
     configureInputs();
 
@@ -109,13 +136,13 @@ public:
 private:
   struct CloudInput {
     std::string topic;
-    avg_msgs::msg::PointCloud2::ConstSharedPtr cloud;
+    sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud;
     rclcpp::Time rx_time{0, 0, RCL_ROS_TIME};
   };
 
   struct MarkerInput {
     std::string topic;
-    avg_msgs::msg::MarkerArray::ConstSharedPtr markers;
+    visualization_msgs::msg::MarkerArray::ConstSharedPtr markers;
     rclcpp::Time rx_time{0, 0, RCL_ROS_TIME};
   };
 
@@ -144,9 +171,9 @@ private:
       cloud_inputs_[i].topic = input_topics_[i];
       cloud_inputs_[i].rx_time =
           rclcpp::Time(0, 0, get_clock()->get_clock_type());
-      sub_clouds_.push_back(create_subscription<avg_msgs::msg::PointCloud2>(
+      sub_clouds_.push_back(create_subscription<sensor_msgs::msg::PointCloud2>(
           input_topics_[i], rclcpp::SensorDataQoS(),
-          [this, i](const avg_msgs::msg::PointCloud2::ConstSharedPtr msg) {
+          [this, i](const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
             onCloud(i, msg);
           }));
     }
@@ -156,9 +183,9 @@ private:
       marker_inputs_[i].topic = perception_marker_topics_[i];
       marker_inputs_[i].rx_time =
           rclcpp::Time(0, 0, get_clock()->get_clock_type());
-      sub_markers_.push_back(create_subscription<avg_msgs::msg::MarkerArray>(
+      sub_markers_.push_back(create_subscription<visualization_msgs::msg::MarkerArray>(
           perception_marker_topics_[i], rclcpp::SensorDataQoS(),
-          [this, i](const avg_msgs::msg::MarkerArray::ConstSharedPtr msg) {
+          [this, i](const visualization_msgs::msg::MarkerArray::ConstSharedPtr msg) {
             onMarkers(i, msg);
           }));
     }
@@ -170,7 +197,7 @@ private:
 
   // Handles the `onCloud` callback.
   void onCloud(const std::size_t idx,
-               const avg_msgs::msg::PointCloud2::ConstSharedPtr msg) {
+               const sensor_msgs::msg::PointCloud2::ConstSharedPtr msg) {
     if (!msg || idx >= cloud_inputs_.size()) {
       return;
     }
@@ -184,13 +211,83 @@ private:
 
   // Handles the `onMarkers` callback.
   void onMarkers(const std::size_t idx,
-                 const avg_msgs::msg::MarkerArray::ConstSharedPtr msg) {
+                 const visualization_msgs::msg::MarkerArray::ConstSharedPtr msg) {
     if (!msg || idx >= marker_inputs_.size()) {
       return;
     }
     marker_inputs_[idx].markers = msg;
     marker_inputs_[idx].rx_time = now();
     ++input_sequence_;
+  }
+
+  // HH_260720 - Cache route-mask validity once per map update and invalidate
+  // the LiDAR output cache whenever the active route changes.
+  void onRouteLaneletMask(
+      const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg) {
+    if (!msg) {
+      return;
+    }
+    route_lanelet_mask_ = msg;
+    route_lanelet_mask_receive_time_ = now();
+    route_lanelet_mask_has_allowed_cells_ =
+        route_lanelet_cost_filter::hasAllowedCell(
+            *msg, route_lanelet_allowed_max_cost_);
+    ++input_sequence_;
+  }
+
+  bool shouldApplyRouteLaneletFilter(
+      const geometry_msgs::msg::PointStamped &base_in_output,
+      const rclcpp::Time &now_time) {
+    if (!route_lanelet_filter_enable_) {
+      return false;
+    }
+    if (!route_lanelet_mask_ || !route_lanelet_mask_has_allowed_cells_) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "route lanelet obstacle filter waiting for a valid active-route mask; passing costs through");
+      return false;
+    }
+    if (route_lanelet_mask_max_age_s_ > 0.0 &&
+        (now_time - route_lanelet_mask_receive_time_).seconds() >
+            route_lanelet_mask_max_age_s_) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "route lanelet obstacle mask is stale; passing costs through");
+      return false;
+    }
+    if (route_lanelet_mask_->header.frame_id != output_frame_id_) {
+      RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "route lanelet obstacle mask frame mismatch (%s != %s); passing costs through",
+          route_lanelet_mask_->header.frame_id.c_str(), output_frame_id_.c_str());
+      return false;
+    }
+    if (route_lanelet_filter_fail_open_when_robot_outside_ &&
+        !route_lanelet_cost_filter::isWorldPointAllowed(
+            *route_lanelet_mask_, base_in_output.point.x,
+            base_in_output.point.y, route_lanelet_margin_m_,
+            route_lanelet_allowed_max_cost_)) {
+      // HH_260720 - Campsite crab/rotation and drop-zone parking intentionally
+      // leave the route corridor; retain all live obstacle costs in those phases.
+      RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "robot is outside the active route lanelet corridor; passing obstacle costs through");
+      return false;
+    }
+    return true;
+  }
+
+  void applyRouteLaneletFilter(avg_msgs::msg::AvgOccupancyGrid &grid) {
+    const auto removed =
+        route_lanelet_cost_filter::removeCostsOutsideRouteLanelets(
+            grid, *route_lanelet_mask_, route_lanelet_margin_m_,
+            route_lanelet_allowed_max_cost_, free_value_);
+    if (removed > 0U) {
+      RCLCPP_DEBUG_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "removed %zu LiDAR cost cells outside active route lanelets + %.2f m margin",
+          removed, route_lanelet_margin_m_);
+    }
   }
 
   // Implements `squaredDistance2d` behavior.
@@ -220,7 +317,7 @@ private:
   }
 
   // Implements `markDisk` behavior.
-  void markDiskWithRadius(avg_msgs::msg::OccupancyGrid &grid,
+  void markDiskWithRadius(avg_msgs::msg::AvgOccupancyGrid &grid,
                           const double grid_origin_x,
                           const double grid_origin_y, const double x,
                           const double y, const double radius_m,
@@ -254,7 +351,7 @@ private:
   }
 
   // Implements `markDisk` behavior.
-  void markDisk(avg_msgs::msg::OccupancyGrid &grid, const double grid_origin_x,
+  void markDisk(avg_msgs::msg::AvgOccupancyGrid &grid, const double grid_origin_x,
                 const double grid_origin_y, const double x, const double y,
                 const int value) {
     markDiskWithRadius(grid, grid_origin_x, grid_origin_y, x, y,
@@ -262,7 +359,7 @@ private:
   }
 
   // Implements `clearDisk` behavior.
-  void clearDisk(avg_msgs::msg::OccupancyGrid &grid, const double grid_origin_x,
+  void clearDisk(avg_msgs::msg::AvgOccupancyGrid &grid, const double grid_origin_x,
                  const double grid_origin_y, const double x, const double y) {
     const int cx =
         static_cast<int>(std::floor((x - grid_origin_x) / resolution_));
@@ -288,8 +385,8 @@ private:
   }
 
   // Implements `getBasePoseInOutput` behavior.
-  bool getBasePoseInOutput(avg_msgs::msg::PointStamped &base_in_output) {
-    avg_msgs::msg::PointStamped base_origin;
+  bool getBasePoseInOutput(geometry_msgs::msg::PointStamped &base_in_output) {
+    geometry_msgs::msg::PointStamped base_origin;
     // HH_260315-00:00 Use latest TF for rolling grid anchoring.
     // Requesting "now()" can intermittently fail with small future
     // extrapolation during startup/high-load, which causes marker/grid flicker.
@@ -314,8 +411,8 @@ private:
   }
 
   // Implements `getCloudTransform` behavior.
-  bool getCloudTransform(const avg_msgs::msg::Header &cloud_header,
-                         avg_msgs::msg::TransformStamped &tf_out) {
+  bool getCloudTransform(const std_msgs::msg::Header &cloud_header,
+                         geometry_msgs::msg::TransformStamped &tf_out) {
     if (cloud_header.frame_id.empty()) {
       return false;
     }
@@ -350,13 +447,13 @@ private:
   }
 
   // Implements `transformMarkerPoint` behavior.
-  bool transformMarkerPoint(const avg_msgs::msg::Marker &marker,
-                            avg_msgs::msg::PointStamped &point_out) {
+  bool transformMarkerPoint(const visualization_msgs::msg::Marker &marker,
+                            geometry_msgs::msg::PointStamped &point_out) {
     if (marker.header.frame_id.empty()) {
       return false;
     }
 
-    avg_msgs::msg::PointStamped point;
+    geometry_msgs::msg::PointStamped point;
     point.header = marker.header;
     if (point.header.stamp.sec == 0 && point.header.stamp.nanosec == 0) {
       point.header.stamp = now();
@@ -387,14 +484,14 @@ private:
 
   // Implements `markCloudInput` behavior.
   void markCloudInput(const CloudInput &input,
-                      avg_msgs::msg::OccupancyGrid &grid,
-                      const avg_msgs::msg::PointStamped &base_in_output,
+                      avg_msgs::msg::AvgOccupancyGrid &grid,
+                      const geometry_msgs::msg::PointStamped &base_in_output,
                       const double grid_origin_x, const double grid_origin_y) {
     if (!input.cloud) {
       return;
     }
 
-    avg_msgs::msg::TransformStamped cloud_tf_msg;
+    geometry_msgs::msg::TransformStamped cloud_tf_msg;
     if (!getCloudTransform(input.cloud->header, cloud_tf_msg)) {
       return;
     }
@@ -477,24 +574,24 @@ private:
 
   // Implements `markMarkerInput` behavior.
   void markMarkerInput(const MarkerInput &input,
-                       avg_msgs::msg::OccupancyGrid &grid,
-                       const avg_msgs::msg::PointStamped &base_in_output,
+                       avg_msgs::msg::AvgOccupancyGrid &grid,
+                       const geometry_msgs::msg::PointStamped &base_in_output,
                        const double grid_origin_x, const double grid_origin_y) {
     if (!input.markers) {
       return;
     }
 
     for (const auto &marker : input.markers->markers) {
-      if (marker.action != avg_msgs::msg::Marker::ADD) {
+      if (marker.action != visualization_msgs::msg::Marker::ADD) {
         continue;
       }
-      if (marker.type != avg_msgs::msg::Marker::CUBE &&
-          marker.type != avg_msgs::msg::Marker::SPHERE &&
-          marker.type != avg_msgs::msg::Marker::CYLINDER) {
+      if (marker.type != visualization_msgs::msg::Marker::CUBE &&
+          marker.type != visualization_msgs::msg::Marker::SPHERE &&
+          marker.type != visualization_msgs::msg::Marker::CYLINDER) {
         continue;
       }
 
-      avg_msgs::msg::PointStamped point_out;
+      geometry_msgs::msg::PointStamped point_out;
       if (!transformMarkerPoint(marker, point_out)) {
         continue;
       }
@@ -523,7 +620,7 @@ private:
 
   // Publishes `Grid` output.
   void publishGrid() {
-    avg_msgs::msg::PointStamped base_in_output;
+    geometry_msgs::msg::PointStamped base_in_output;
     if (!getBasePoseInOutput(base_in_output)) {
       return;
     }
@@ -532,8 +629,11 @@ private:
     const double grid_origin_y = base_in_output.point.y + origin_y_;
     const auto now_time = now();
     const auto fresh_mask = freshInputMask(now_time);
+    const bool route_lanelet_filter_active =
+        shouldApplyRouteLaneletFilter(base_in_output, now_time);
 
-    if (canReuseCachedGrid(base_in_output, fresh_mask)) {
+    if (canReuseCachedGrid(
+        base_in_output, fresh_mask, route_lanelet_filter_active)) {
       cached_grid_.header.stamp = now_time;
       cached_grid_.info.map_load_time = now_time;
       pub_grid_->publish(cached_grid_);
@@ -541,7 +641,7 @@ private:
       return;
     }
 
-    avg_msgs::msg::OccupancyGrid grid;
+    avg_msgs::msg::AvgOccupancyGrid grid;
     grid.header.stamp = now_time;
     grid.header.frame_id = output_frame_id_;
     grid.info.map_load_time = grid.header.stamp;
@@ -577,7 +677,8 @@ private:
     }
 
     if (!has_fresh_input) {
-      cacheBuiltGrid(grid, base_in_output, fresh_mask);
+      cacheBuiltGrid(
+          grid, base_in_output, fresh_mask, route_lanelet_filter_active);
       pub_grid_->publish(grid);
       return;
     }
@@ -587,7 +688,14 @@ private:
                 base_in_output.point.y);
     }
 
-    cacheBuiltGrid(grid, base_in_output, fresh_mask);
+    // HH_260720 - Filter after all obstacle disks are painted so their
+    // inflation cannot leak in from an adjacent, non-route lanelet.
+    if (route_lanelet_filter_active) {
+      applyRouteLaneletFilter(grid);
+    }
+
+    cacheBuiltGrid(
+        grid, base_in_output, fresh_mask, route_lanelet_filter_active);
     pub_grid_->publish(cached_grid_);
     publishAvgLidar(cached_grid_);
   }
@@ -618,13 +726,15 @@ private:
     return mask;
   }
 
-  bool canReuseCachedGrid(const avg_msgs::msg::PointStamped &base_in_output,
-                          std::uint64_t fresh_mask) const {
+  bool canReuseCachedGrid(const geometry_msgs::msg::PointStamped &base_in_output,
+                          std::uint64_t fresh_mask,
+                          bool route_lanelet_filter_active) const {
     if (!cached_grid_valid_) {
       return false;
     }
     if (input_sequence_ != last_built_input_sequence_ ||
-        fresh_mask != last_built_fresh_mask_) {
+        fresh_mask != last_built_fresh_mask_ ||
+        route_lanelet_filter_active != last_built_route_lanelet_filter_active_) {
       return false;
     }
     const double dx = base_in_output.point.x - last_base_x_;
@@ -633,24 +743,27 @@ private:
            (rebuild_min_pose_delta_m_ * rebuild_min_pose_delta_m_);
   }
 
-  void cacheBuiltGrid(const avg_msgs::msg::OccupancyGrid &grid,
-                      const avg_msgs::msg::PointStamped &base_in_output,
-                      std::uint64_t fresh_mask) {
+  void cacheBuiltGrid(const avg_msgs::msg::AvgOccupancyGrid &grid,
+                      const geometry_msgs::msg::PointStamped &base_in_output,
+                      std::uint64_t fresh_mask,
+                      bool route_lanelet_filter_active) {
     cached_grid_ = grid;
     cached_grid_valid_ = true;
     last_built_input_sequence_ = input_sequence_;
     last_built_fresh_mask_ = fresh_mask;
+    last_built_route_lanelet_filter_active_ = route_lanelet_filter_active;
     last_base_x_ = base_in_output.point.x;
     last_base_y_ = base_in_output.point.y;
   }
 
   // Publishes `AvgLidar` output.
-  void publishAvgLidar(const avg_msgs::msg::OccupancyGrid &grid) {
+  void publishAvgLidar(const avg_msgs::msg::AvgOccupancyGrid &grid) {
     if (!publish_lidar_status_ || !avg_lidar_pub_) {
       return;
     }
     AvgSensingLidar avg_msg;
-    avg_msg.near_cost_grid = avg_msgs::conversions::fromRos(grid);
+    // HH_260720 - The cost grid is already a generated CAMROD interface.
+    avg_msg.near_cost_grid = grid;
     if (latest_primary_cloud_) {
       avg_msg.points_filtered =
           avg_msgs::conversions::fromRos(*latest_primary_cloud_);
@@ -689,26 +802,38 @@ private:
   double publish_rate_hz_{10.0};
   double rebuild_min_pose_delta_m_{0.05};
   bool publish_lidar_status_{false};
+  bool route_lanelet_filter_enable_{true};
+  std::string route_lanelet_mask_topic_{"/map/cost_grid/route_lanelet_mask"};
+  double route_lanelet_margin_m_{0.35};
+  int route_lanelet_allowed_max_cost_{50};
+  double route_lanelet_mask_max_age_s_{2.5};
+  bool route_lanelet_filter_fail_open_when_robot_outside_{true};
+  bool route_lanelet_mask_has_allowed_cells_{false};
   std::uint64_t input_sequence_{0};
   std::uint64_t last_built_input_sequence_{~std::uint64_t{0}};
   std::uint64_t last_built_fresh_mask_{0};
   bool cached_grid_valid_{false};
-  avg_msgs::msg::OccupancyGrid cached_grid_;
+  bool last_built_route_lanelet_filter_active_{false};
+  avg_msgs::msg::AvgOccupancyGrid cached_grid_;
   double last_base_x_{0.0};
   double last_base_y_{0.0};
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-  rclcpp::Publisher<avg_msgs::msg::OccupancyGrid>::SharedPtr pub_grid_;
+  rclcpp::Publisher<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr pub_grid_;
   rclcpp::Publisher<AvgSensingLidar>::SharedPtr avg_lidar_pub_;
-  std::vector<rclcpp::Subscription<avg_msgs::msg::PointCloud2>::SharedPtr>
+  rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr
+      route_lanelet_mask_sub_;
+  std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr>
       sub_clouds_;
-  std::vector<rclcpp::Subscription<avg_msgs::msg::MarkerArray>::SharedPtr>
+  std::vector<rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr>
       sub_markers_;
   std::vector<CloudInput> cloud_inputs_;
   std::vector<MarkerInput> marker_inputs_;
-  avg_msgs::msg::PointCloud2::ConstSharedPtr latest_primary_cloud_;
+  sensor_msgs::msg::PointCloud2::ConstSharedPtr latest_primary_cloud_;
+  avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr route_lanelet_mask_;
+  rclcpp::Time route_lanelet_mask_receive_time_{0, 0, RCL_ROS_TIME};
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

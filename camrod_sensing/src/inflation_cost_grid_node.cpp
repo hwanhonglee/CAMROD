@@ -1,7 +1,7 @@
-// HH_260424: Renamed from local_cost_grid_node. Merges all cost sources
+// HH_260720 - Merge lanelet, LiDAR, radar, and route costs for Nav2 and cmd_vel_safety_gate.
 //   (lanelet centerline, LiDAR, Radar, global_path) into one robot-centred
 //   /planning/cost_grid/inflation. Each output cell takes the max cost across
-//   all fresh inputs. Used by the Nav2 local costmap and cmd_vel_gate.
+//   all fresh inputs.
 
 #include <cmath>
 #include <cstdint>
@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-#include <avg_msgs/msg/occupancy_grid.hpp>
-#include <avg_msgs/msg/point_stamped.hpp>
+// HH_260720 - Inflate generated CAMROD cost grids without standard-message aliases.
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
@@ -79,7 +79,7 @@ public:
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-    pub_grid_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+    pub_grid_ = create_publisher<avg_msgs::msg::AvgOccupancyGrid>(
         output_topic_, rclcpp::QoS(1).transient_local().reliable());
 
     const std::size_t n = input_topics_.size();
@@ -98,9 +98,9 @@ public:
       //   TRANSIENT_LOCAL publishers (sensor grids) and VOLATILE publishers
       //   (planning grids).
       auto qos = rclcpp::QoS(1).reliable();
-      subs_.push_back(create_subscription<avg_msgs::msg::OccupancyGrid>(
+      subs_.push_back(create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
           input_topics_[i], qos,
-          [this, i](avg_msgs::msg::OccupancyGrid::ConstSharedPtr msg) {
+          [this, i](avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg) {
             input_grids_[i] = msg;
             input_recv_times_[i] = now();
             ++input_versions_[i];
@@ -124,7 +124,7 @@ public:
 private:
   // Returns the cost at world position (wx, wy) from a grid, or free_value_ if
   // outside bounds.
-  int sampleGrid(const avg_msgs::msg::OccupancyGrid &grid, double wx,
+  int sampleGrid(const avg_msgs::msg::AvgOccupancyGrid &grid, double wx,
                  double wy) const {
     const double rx = wx - grid.info.origin.position.x;
     const double ry = wy - grid.info.origin.position.y;
@@ -227,7 +227,7 @@ private:
       return;
     }
 
-    avg_msgs::msg::OccupancyGrid out;
+    avg_msgs::msg::AvgOccupancyGrid out;
     out.header.stamp = now_time;
     out.header.frame_id = output_frame_id_;
     out.info.map_load_time = out.header.stamp;
@@ -327,7 +327,7 @@ private:
   std::vector<std::uint64_t> input_versions_;
   std::vector<std::uint64_t> last_built_versions_;
   bool cached_grid_valid_{false};
-  avg_msgs::msg::OccupancyGrid cached_grid_;
+  avg_msgs::msg::AvgOccupancyGrid cached_grid_;
   double last_base_x_{0.0};
   double last_base_y_{0.0};
   double last_base_yaw_{0.0};
@@ -335,10 +335,10 @@ private:
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-  rclcpp::Publisher<avg_msgs::msg::OccupancyGrid>::SharedPtr pub_grid_;
-  std::vector<rclcpp::Subscription<avg_msgs::msg::OccupancyGrid>::SharedPtr>
+  rclcpp::Publisher<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr pub_grid_;
+  std::vector<rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr>
       subs_;
-  std::vector<avg_msgs::msg::OccupancyGrid::ConstSharedPtr> input_grids_;
+  std::vector<avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr> input_grids_;
   std::vector<rclcpp::Time> input_recv_times_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

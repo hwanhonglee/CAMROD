@@ -95,11 +95,9 @@ def generate_launch_description():
     default_launch_config     = os.path.join(pkg_dir, 'config', 'camera', 'camera_launch_config.yaml')
     cyclonedds_config         = os.path.join(pkg_dir, 'config', 'camera', 'cyclonedds.xml')
 
-    # HH_260629: Standalone camera.launch has no outer /sensing namespace, so default
-    # directly to /sensing/camera for downstream consumers
-    # (yolov9mit, obstacle_fusion, docking AprilTag, diagnostics) that hardcode
-    # /sensing/camera/... topics. sensing.launch.py overrides this to 'camera' because
-    # its PushRosNamespace("sensing") already adds the /sensing prefix.
+    # HH_260720 - Standalone launch defaults to /sensing/camera for YOLO, obstacle
+    # fusion, AprilTag parking, and diagnostics. sensing.launch.py overrides this
+    # to `camera` because its outer namespace already adds `/sensing`.
     camera_namespace = LaunchConfiguration('camera_namespace')
 
     return LaunchDescription([
@@ -162,7 +160,7 @@ def generate_launch_description():
 
         # ── Rear camera node ────────────────────────────────────────────────────
         # FQN: /sensing/camera/econ_rear/camera_rear_publisher
-        # Publishes image_raw (uncompressed) required by Isaac ROS AprilTag in docking.
+        # HH_260720 - Publish raw rear images for the perception-owned AprilTag parking detector.
         Node(
             package='camrod_sensing',
             executable='camera_rear_publisher_node',

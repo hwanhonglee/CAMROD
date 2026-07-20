@@ -14,7 +14,9 @@
 #include <avg_msgs/conversions.hpp>
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <avg_msgs/msg/range.hpp>
+// HH_260720 - Publish SEN0592 measurements on the generated CAMROD range contract.
+#include <avg_msgs/msg/avg_range.hpp>
+#include <sensor_msgs/msg/range.hpp>
 
 #include <avg_msgs/msg/avg_sensing_radar.hpp>
 
@@ -222,6 +224,14 @@ public:
         "/sensing/radar/right1/range", "/sensing/radar/right2/range",
         "/sensing/radar/rear/range"
       });
+    // HH_260720 - Reserve standard Range topics for RViz and other ROS-native tools.
+    standard_ros_topics_ = this->declare_parameter<std::vector<std::string>>(
+      "standard_ros_topics", {
+        "/sensing/radar/front1/range_ros", "/sensing/radar/front2/range_ros",
+        "/sensing/radar/left1/range_ros", "/sensing/radar/left2/range_ros",
+        "/sensing/radar/right1/range_ros", "/sensing/radar/right2/range_ros",
+        "/sensing/radar/rear/range_ros"
+      });
 
     baud_ = this->get_parameter("baud").as_int();
     slave_id_ = static_cast<uint8_t>(this->get_parameter("slave_id").as_int());
@@ -251,8 +261,12 @@ public:
       });
 
     const auto n = ports_.size();
-    if (sensor_names_.size() != n || frame_ids_.size() != n || topics_.size() != n) {
-      throw std::runtime_error("sensor_names, frame_ids, ports, topics must have the same length");
+    if (
+      sensor_names_.size() != n || frame_ids_.size() != n || topics_.size() != n ||
+      standard_ros_topics_.size() != n)
+    {
+      throw std::runtime_error(
+              "sensor_names, frame_ids, ports, topics, standard_ros_topics must have the same length");
     }
 
     const auto sensor_max_ranges = this->get_parameter("sensor_max_ranges_m").as_double_array();
@@ -262,6 +276,7 @@ public:
 
     sensors_.resize(n);
     pubs_.resize(n);
+    standard_ros_pubs_.resize(n);
     // HH_260414: Keep per-sensor publish stamps monotonic to avoid TF extrapolation
     // bursts when system time jitters backwards briefly.
     last_range_pub_stamp_.assign(n, rclcpp::Time(0, 0, this->get_clock()->get_clock_type()));
@@ -287,7 +302,10 @@ public:
       sensors_[i].angle_config_value =
         (i < static_cast<size_t>(sensor_angle_config.size()) && sensor_angle_config[i] > 0)
         ? static_cast<int>(sensor_angle_config[i]) : 0;
-      pubs_[i] = this->create_publisher<avg_msgs::msg::Range>(topics_[i], range_qos);
+      pubs_[i] = this->create_publisher<avg_msgs::msg::AvgRange>(topics_[i], range_qos);
+      // HH_260720 - Convert radar data only on the explicitly named standard-ROS boundary.
+      standard_ros_pubs_[i] = this->create_publisher<sensor_msgs::msg::Range>(
+        standard_ros_topics_[i], range_qos);
     }
 
     stop_.store(false);
@@ -468,7 +486,7 @@ private:
 
   void publish_range_value(size_t idx, float range_m)
   {
-    auto msg = avg_msgs::msg::Range();
+    auto msg = avg_msgs::msg::AvgRange();
     auto stamp = this->get_clock()->now();
     if (idx < last_range_pub_stamp_.size() && stamp <= last_range_pub_stamp_[idx]) {
       stamp = last_range_pub_stamp_[idx] + rclcpp::Duration::from_nanoseconds(1);
@@ -480,7 +498,7 @@ private:
     msg.header.frame_id = sensors_[idx].frame_id;
 
     // Ultrasonic
-    msg.radiation_type = avg_msgs::msg::Range::ULTRASOUND;
+    msg.radiation_type = avg_msgs::msg::AvgRange::ULTRASOUND;
     msg.field_of_view = static_cast<float>(fov_rad_);
     msg.min_range = static_cast<float>(min_range_m_);
     // HH_260422: Use per-sensor max_range so cost grid node filters per direction automatically.
@@ -488,6 +506,8 @@ private:
     msg.range = range_m;
 
     pubs_[idx]->publish(msg);
+    // HH_260720 - Keep RViz radar visualization synchronized with the canonical message.
+    standard_ros_pubs_[idx]->publish(avg_msgs::conversions::toRos(msg));
     publish_radar_status(idx, msg);
   }
 
@@ -506,7 +526,7 @@ private:
   }
 
   // Publishes `_avg_radar` output.
-  void publish_radar_status(size_t idx, const avg_msgs::msg::Range & msg)
+  void publish_radar_status(size_t idx, const avg_msgs::msg::AvgRange & msg)
   {
     if (!publish_radar_status_.load() || !avg_radar_pub_) {
       return;
@@ -517,19 +537,19 @@ private:
         const auto & topic = topics_[idx];
         // HH_260623 - Publish front1/front2 separately; merged front output was removed.
         if (topic.find("front1") != std::string::npos) {
-          avg_radar_msg_.front1 = avg_msgs::conversions::fromRos(msg);
+          avg_radar_msg_.front1 = msg;
         } else if (topic.find("front2") != std::string::npos) {
-          avg_radar_msg_.front2 = avg_msgs::conversions::fromRos(msg);
+          avg_radar_msg_.front2 = msg;
         } else if (topic.find("right1") != std::string::npos) {
-          avg_radar_msg_.right1 = avg_msgs::conversions::fromRos(msg);
+          avg_radar_msg_.right1 = msg;
         } else if (topic.find("right2") != std::string::npos) {
-          avg_radar_msg_.right2 = avg_msgs::conversions::fromRos(msg);
+          avg_radar_msg_.right2 = msg;
         } else if (topic.find("left1") != std::string::npos) {
-          avg_radar_msg_.left1 = avg_msgs::conversions::fromRos(msg);
+          avg_radar_msg_.left1 = msg;
         } else if (topic.find("left2") != std::string::npos) {
-          avg_radar_msg_.left2 = avg_msgs::conversions::fromRos(msg);
+          avg_radar_msg_.left2 = msg;
         } else if (topic.find("rear") != std::string::npos) {
-          avg_radar_msg_.rear = avg_msgs::conversions::fromRos(msg);
+          avg_radar_msg_.rear = msg;
         }
       }
       avg_radar_pub_->publish(avg_radar_msg_);
@@ -650,6 +670,7 @@ private:
   std::vector<std::string> frame_ids_;
   std::vector<std::string> ports_;
   std::vector<std::string> topics_;
+  std::vector<std::string> standard_ros_topics_;
 
   int baud_{115200};
   uint8_t slave_id_{1};
@@ -665,7 +686,8 @@ private:
   bool configure_hardware_on_startup_{false};
 
   std::vector<SensorRuntime> sensors_;
-  std::vector<rclcpp::Publisher<avg_msgs::msg::Range>::SharedPtr> pubs_;
+  std::vector<rclcpp::Publisher<avg_msgs::msg::AvgRange>::SharedPtr> pubs_;
+  std::vector<rclcpp::Publisher<sensor_msgs::msg::Range>::SharedPtr> standard_ros_pubs_;
   std::vector<rclcpp::Time> last_range_pub_stamp_;
   rclcpp::Publisher<AvgSensingRadar>::SharedPtr avg_radar_pub_;
   AvgSensingRadar avg_radar_msg_;

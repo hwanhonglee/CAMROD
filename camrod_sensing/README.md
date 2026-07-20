@@ -47,7 +47,7 @@ graph LR
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
@@ -70,7 +70,7 @@ graph LR
     PERC([👁️ camrod_perception]):::perception
     PLAN_OUT([🧭 camrod_planning]):::planning
     MAP_VIZ([🗺️ camrod_map]):::mapping
-    PARK([🅿️ camrod_docking]):::docking
+    PARK([camrod_perception AprilTag detector]):::parking
   end
 
   PLAT  ==>|/platform/status/velocity| SENS
@@ -106,7 +106,7 @@ graph TD
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
@@ -214,7 +214,7 @@ graph TD
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
   classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
   classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef docking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
+  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
   classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
@@ -242,7 +242,8 @@ graph TD
 
 > **Diagram legend** 📡 Topic · 🧩 ROS node · ==> required input · -.-> optional input
 
-*Figure 3 — Four input grids are merged by cell-wise MAX into the single inflation grid consumed by Nav2 local costmap and `cmd_vel_gate`.*
+<!-- HH_260720 - Name the final command gate by its current control-package node name. -->
+*Figure 3 — Four input grids are merged by cell-wise MAX into the single inflation grid consumed by Nav2 local costmap and `camrod_control/cmd_vel_safety_gate`.*
 
 ---
 
@@ -252,28 +253,33 @@ graph TD
 
 | Topic | Type | Required | Producer | Rate | Meaning |
 |---|---|---|---|---|---|
-| `/platform/status/velocity` | `geometry_msgs/TwistStamped` | Yes | camrod_platform | ~20 Hz | Forward speed used by `platform_velocity_converter` to project odometric velocity |
-| `/map/cost_grid/lanelet` | `nav_msgs/OccupancyGrid` | Yes (stale ≤ 5 s) | camrod_map | Static (transient_local) | Lanelet centerline cost layer merged into inflation grid |
-| `/planning/cost_grid/global_path` | `nav_msgs/OccupancyGrid` | No (stale ≤ 10 s) | camrod_planning | On replan | Route-strip bias merged into inflation grid |
+<!-- HH_260720 - Document generated internal contracts and explicit sensor boundaries. -->
+| `/platform/status/velocity` | `avg_msgs/AvgTwistStamped` | Yes | camrod_platform | ~20 Hz | Generated forward speed used by `platform_velocity_converter` |
+| `/map/cost_grid/lanelet` | `avg_msgs/AvgOccupancyGrid` | Yes (stale ≤ 5 s) | camrod_map | Static (transient_local) | All-lanelet centerline cost layer merged into inflation grid |
+| `/map/cost_grid/route_lanelet_mask` | `avg_msgs/AvgOccupancyGrid` | No until route exists | camrod_map | On route update + 1 Hz | Active-route lanelet mask used to clip dynamic sensor costs |
+| `/planning/cost_grid/global_path` | `avg_msgs/AvgOccupancyGrid` | No (stale ≤ 10 s) | camrod_planning | On replan | Route-strip bias merged into inflation grid |
 
 ### Outputs (consumed by other packages)
 
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
 | `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | camrod_perception, camrod_planning | ~6 Hz field target | Ground-filtered, voxel-downsampled obstacle points in `lidar_link` frame |
-| `/sensing/cost_grid/lidar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 180×180 @ 0.10 m robot-centred obstacle grid from LiDAR and perception objects |
-| `/sensing/cost_grid/radar` | `nav_msgs/OccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_map | 10 Hz | 120×120 @ 0.10 m robot-centred near-field obstacle grid from radar |
-| `/planning/cost_grid/inflation` | `nav_msgs/OccupancyGrid` | camrod_planning (Nav2 local costmap, `cmd_vel_gate`) | 6 Hz | 180×180 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
+<!-- HH_260720 - Cost grids are generated CAMROD messages, not nav_msgs aliases. -->
+| `/sensing/cost_grid/lidar` | `avg_msgs/AvgOccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_control | 10 Hz | Route-clipped 180×180 @ 0.10 m obstacle grid from LiDAR and perception objects |
+| `/sensing/cost_grid/radar` | `avg_msgs/AvgOccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_control | 10 Hz | Route-clipped 120×120 @ 0.10 m near-field obstacle grid from radar |
+| `/planning/cost_grid/inflation` | `avg_msgs/AvgOccupancyGrid` | camrod_planning and `camrod_control/cmd_vel_safety_gate` | 6 Hz | 180×180 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
 | `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz single / 5 Hz dual target | Raw GNSS fix with RTK status; field diagnostics accept >= 0.8 Hz |
-| `/sensing/gnss/pose` | `geometry_msgs/PoseStamped` | camrod_localization (`localization_monitor_node`) | follows fix | GNSS-derived pose in `map` frame (no covariance) |
-| `/sensing/gnss/pose_with_covariance` | `geometry_msgs/PoseWithCovarianceStamped` | camrod_localization (EKF/monitor) | follows fix | GNSS-derived pose with position covariance for filter fusion and mode health |
-| `/sensing/imu/data` | `sensor_msgs/Imu` | camrod_localization (ESKF), `platform_velocity_converter` | 100 Hz | Filtered orientation + angular velocity + linear acceleration in `imu_link` frame |
-| `/sensing/platform_velocity_converter/twist_with_covariance` | `geometry_msgs/TwistWithCovarianceStamped` | camrod_localization (ESKF) | ~20 Hz | Platform forward velocity with fixed covariance for wheel-odometry fusion |
+| `/sensing/gnss/pose` | `avg_msgs/AvgPoseStamped` | CAMROD localization nodes | follows fix | Generated GNSS pose in `map` frame |
+| `/sensing/gnss/pose_with_covariance` | `avg_msgs/AvgPoseWithCovarianceStamped` | CAMROD localization monitor | follows fix | Generated GNSS pose and covariance |
+| `/sensing/gnss/pose_with_covariance_ros` | `geometry_msgs/PoseWithCovarianceStamped` | robot_localization only | follows fix | Explicit EKF boundary mirror |
+| `/sensing/imu/data_ros` | `sensor_msgs/Imu` | converter and robot_localization | 100 Hz | Raw standard IMU driver boundary |
+| `/sensing/imu/data` | `avg_msgs/AvgImu` | CAMROD localization monitor and diagnostics | 100 Hz | Generated internal IMU stream |
+| `/sensing/platform_velocity_converter/twist_with_covariance` | `avg_msgs/AvgTwistWithCovarianceStamped` | CAMROD localization | ~20 Hz | Generated platform velocity with covariance |
 | `/sensing/camera/econ_front/image_rect/compressed` | `sensor_msgs/CompressedImage` | camrod_perception (YOLOv9) | 10 Hz | GPU-rectified 1920×1080 JPEG in `camera_front` frame (VPI VIC + NvJPEG) |
 | `/sensing/camera/econ_front/camera_info` | `sensor_msgs/CameraInfo` | camrod_perception | 10 Hz | Calibrated intrinsics — equidistant 4-coefficient (k1–k4) |
-| `/sensing/camera/econ_rear/image_raw` | `sensor_msgs/Image` | camrod_docking (Isaac ROS AprilTag) | 10 Hz | Uncompressed 1920×1080 in `camera_rear` frame; required by RectifyNode |
+| `/sensing/camera/econ_rear/image_raw` | `sensor_msgs/Image` | camrod_perception AprilTag detector | 10 Hz | Uncompressed rear image at the camera-driver boundary |
 | `/sensing/camera/econ_rear/image_raw/compressed` | `sensor_msgs/CompressedImage` | monitoring | 2 Hz | Rate-limited CPU-JPEG rear stream |
-| `/sensing/camera/econ_rear/camera_info` | `sensor_msgs/CameraInfo` | camrod_docking | 10 Hz | Rear camera intrinsics |
+| `/sensing/camera/econ_rear/camera_info` | `sensor_msgs/CameraInfo` | camrod_perception AprilTag detector | 10 Hz | Rear camera intrinsics |
 
 ---
 
@@ -295,11 +301,11 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | Fresh PointCloud2/MarkerArray input; publishes at 10 Hz |
-| Internal logic | `lidar_cost_grid_node` projects each filtered point into the `map` frame via TF2 and increments the corresponding cell. HH_260707 - `/sensing/lidar/filtered_cloud` is also consumed as a height-gated fallback (`cloud_min_z_m: -0.55`, `cloud_max_z_m: 1.00`) so near vehicle/body returns can create cost even when ground segmentation emits an empty obstacle cloud. HH_260702 - `/perception/obstacles` and selected perception markers are merged into the same grid so camera/LiDAR vehicle detections affect planning even when the raw filtered-cloud footprint is sparse. Cost is linearly scaled between `min_cost` (65) and `max_cost` (95) over the distance range 0.4-9.0 m. HH_260707 - perception markers are marked at cost 90 with `perception_marker_min_radius_m: 0.35`, `perception_marker_max_radius_m: 0.75`, and `perception_marker_radius_scale: 0.35`, keeping detections visible to planning without restoring the oversized lane-wide disks seen in field tests. HH_260630 - an ego-clear disk of radius 0.55 m around the robot base is set free so side/rear obstacles just outside the body are not erased before safety gating. HH_260707 - LiDAR/perception inputs remain fresh for 1.50 s to avoid empty-grid flicker during CPU-load stalls. HH_260707 - unchanged inputs and sub-5 cm pose motion reuse the cached grid instead of rebuilding the full OccupancyGrid every tick. |
+| Internal logic | `lidar_cost_grid_node` projects each filtered point into `map` and merges the height-gated fallback cloud plus perception objects/markers. Costs scale from 65 to 95, and the 0.55 m ego disk remains clear. HH_260720 - after all obstacle disks are painted, cells outside `/map/cost_grid/route_lanelet_mask` plus `route_lanelet_margin_m` are cleared. The filter fails open before a route exists, when the mask is stale, or while the robot deliberately leaves the route during campsite/drop-zone maneuvers. Unchanged inputs and sub-5 cm pose motion reuse the cached generated grid. |
 | Output effect | `/sensing/cost_grid/lidar`: 180×180 @ 0.10 m (18 m square centred on robot). |
 | Operator-visible symptom | Silent topic → LiDAR/perception inputs are not publishing. Grid frozen → TF `robot_base_link → map` is stale (localization not running). |
-| Related params | `input_topic`, `extra_input_topics`, `cloud_min_z_m`, `cloud_max_z_m`, `perception_marker_topics`, `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `perception_marker_min_radius_m`, `perception_marker_max_radius_m`, `perception_marker_radius_scale`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz`, `rebuild_min_pose_delta_m` |
-| Related topics | `/sensing/lidar/points_filtered`, `/sensing/lidar/filtered_cloud`, `/perception/obstacles`, `/perception/lidar/bboxes`, `/perception/camera_lidar/markers` → `/sensing/cost_grid/lidar` |
+| Related params | `input_topic`, `extra_input_topics`, `cloud_min_z_m`, `cloud_max_z_m`, `perception_marker_topics`, `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `route_lanelet_filter_enable`, `route_lanelet_margin_m`, `route_lanelet_mask_max_age_s`, `route_lanelet_filter_fail_open_when_robot_outside`, `max_message_age_s`, `publish_rate_hz`, `rebuild_min_pose_delta_m` |
+| Related topics | obstacle inputs + `/map/cost_grid/route_lanelet_mask` → `/sensing/cost_grid/lidar` |
 
 ### Radar (SEN0592 ×7)
 
@@ -319,12 +325,12 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | Each incoming Range message (async per sensor) |
-| Internal logic | `radar_cost_grid_node` projects each Range into the `map` frame using the sensor's TF frame ID (`radar_*_link`). Cost is scaled between `min_cost` (85) and `max_cost` (95) over 0.3–2.0 m after invalid/no-target values and stable near-zero self echoes are filtered. HH_260716 - Six channels use a 0.30 m minimum obstacle range based on stationary vehicle measurements. LEFT2 uses 0.75 m because its full-stack sample repeatedly alternated between the near-body return and a 0.70–0.72 m body/multipath return; LEFT1 retains normal left-side coverage. The 0.50 m ego-clear disk is applied before live radar marking, so valid side/rear detections are not erased after projection. Messages older than 0.35 s are discarded. |
+| Internal logic | `radar_cost_grid_node` projects each generated `AvgRange` into `map`. Costs scale from 85 to 95 after invalid/no-target and measured self-echo ranges are removed. HH_260720 - completed radar disks are clipped to the same active-route mask and 0.35 m margin as LiDAR, with the same startup/stale/off-route fail-open behavior. Messages older than 0.35 s are discarded. |
 | Output effect | `/sensing/cost_grid/radar`: 120×120 @ 0.10 m (12 m square centred on robot), published at 10 Hz. |
 | No-target behavior | HH_260701 - SEN0592 no-target/invalid responses publish a heartbeat slightly above `max_range`; diagnostics treat this as fresh no-target data and cost-grid consumers ignore it as an obstacle. |
 | Operator-visible symptom | Empty grid → serial port permission denied or CH9344 driver not loaded. Near-field obstacles missing → ego_clear_radius_m is too large; current value 0.50 m is already minimal. |
-| Related params | `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `max_message_age_s`, `publish_rate_hz` |
-| Related topics | `/sensing/radar/*/range` → `/sensing/cost_grid/radar` |
+| Related params | `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `route_lanelet_filter_enable`, `route_lanelet_margin_m`, `route_lanelet_mask_max_age_s`, `route_lanelet_filter_fail_open_when_robot_outside`, `max_message_age_s`, `publish_rate_hz` |
+| Related topics | `/sensing/radar/*/range` + `/map/cost_grid/route_lanelet_mask` → `/sensing/cost_grid/radar` |
 
 ### Camera — dual econ (front + rear)
 
@@ -356,7 +362,7 @@ graph TD
 |---|---|
 | Trigger | Node startup; `imu_model` launch argument selects `cv7` (default) or `gq7` |
 | Internal logic | **cv7:** `microstrain_inertial_driver` node launched directly with `respawn=true` (recovers serial lock). Filter output 100 Hz, ENU frame, GNSS aiding disabled. **gq7:** upstream `microstrain_launch.py` + optional `ntrip_client` for RTK-heading. Model auto-resolves param file: `config/imu/microstrain_cv7.yaml` or `microstrain_gq7.yaml`. |
-| Output effect | `/sensing/imu/data` (sensor_msgs/Imu) at 100 Hz in `imu_link` frame. |
+| Output effect | HH_260720 - Raw `/sensing/imu/data_ros` is converted to generated `/sensing/imu/data` at 100 Hz. |
 | Operator-visible symptom | Wrong model selected → driver connects on wrong port, zeroed or noisy orientation. Check: `ls /dev/serial/by-id/usb-Lord_Microstrain*`. |
 | Related params | `imu_model`, `imu_param_file`, `imu_data_rate`, `use_enu_frame`, `timestamp_source`, `frame_id` |
 | Related topics | `/sensing/imu/data` |
@@ -401,14 +407,15 @@ Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single ante
 
 ### Velocity converter
 
+<!-- HH_260720 - Correct the converter contract: the default EKF consumes the explicit ROS boundary topics, not this auxiliary twist output. -->
 | Field | Detail |
 |---|---|
-| Trigger | Each `/platform/status/velocity` message |
-| Internal logic | `platform_velocity_converter_node` combines the platform forward speed (from camrod_platform) with the IMU angular rate (from `/sensing/imu/data`) and emits a `TwistWithCovarianceStamped`. Fixed covariances: linear [0.05, 0.05, 0.10] m²/s², angular [0.2, 0.2, 0.2] rad²/s². |
-| Output effect | `/sensing/platform_velocity_converter/twist_with_covariance` — the primary odometric input to the ESKF in camrod_localization. |
+| Trigger | Each `/sensing/imu/data_ros` message for the generated IMU stream; each `/platform/status/velocity` message for the auxiliary motion stream |
+| Internal logic | `platform_velocity_converter_node` converts the hardware-driver `sensor_msgs/Imu` stream to `avg_msgs/AvgImu`. It also combines platform forward speed with IMU angular rate and emits `avg_msgs/AvgTwistWithCovarianceStamped`. |
+| Output effect | `/sensing/imu/data` is the generated internal IMU contract used by localization monitoring. `/sensing/platform_velocity_converter/twist_with_covariance` is an auxiliary diagnostics stream; the default EKF directly consumes `/sensing/imu/data_ros` and `/localization/input/wheel_odometry_ros`. |
 | Operator-visible symptom | Topic silent → either platform velocity or IMU is not publishing. The node requires IMU (`require_imu: true`). |
 | Related params | `linear_variance`, `angular_variance`, `require_imu` |
-| Related topics | `/platform/status/velocity`, `/sensing/imu/data` → `/sensing/platform_velocity_converter/twist_with_covariance` |
+| Related topics | `/sensing/imu/data_ros` → `/sensing/imu/data`; `/platform/status/velocity` + `/sensing/imu/data_ros` → `/sensing/platform_velocity_converter/twist_with_covariance` |
 
 ### Inflation cost grid (sensor fusion)
 
@@ -416,7 +423,7 @@ Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single ante
 |---|---|
 | Trigger | Any updated input grid; publishes at 6 Hz |
 | Internal logic | `inflation_cost_grid_node` maintains up to four input grids and computes a cell-wise **maximum** merge: lanelet cost (stale limit 5.0 s), lidar cost (1.50 s), radar cost (0.50 s), global_path cost (10.0 s). The output is a 180×180 @ 0.10 m grid (18 m square centred on robot) clipped to a robot-frame window of 8.0 m front, 1.5 m rear, and 2.2 m side. HH_260703 - Static lanelet/global-path costs are masked inside the 0.50 m ego footprint, but live LiDAR/Radar costs are preserved there for safety gating. Messages older than their per-input limit are treated as absent. |
-| Output effect | `/planning/cost_grid/inflation` at 6 Hz; consumed by Nav2 local costmap and `cmd_vel_gate`. |
+| Output effect | `/planning/cost_grid/inflation` at 6 Hz; consumed by Nav2 local costmap and `camrod_control/cmd_vel_safety_gate`. |
 | Operator-visible symptom | If inflation grid stops updating at 6 Hz, check each input: LiDAR grid must arrive within 1.50 s, radar within 0.50 s; lanelet grid arrives once (transient_local) and is valid for 5.0 s after last receipt. |
 | Related params | `resolution`, `width`, `height`, `ego_clear_radius_m`, `publish_rate_hz`, `input_topics`, `input_max_ages_s` |
 | Related topics | `/map/cost_grid/lanelet`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`, `/planning/cost_grid/global_path` → `/planning/cost_grid/inflation` |
@@ -642,10 +649,11 @@ One or more `/sensing/radar/*/range` topics are silent.
 
 ### Camera image not reaching `apriltag_node`
 
-`camrod_docking` does not detect dock markers even when the dock is in view.
+<!-- HH_260720 - AprilTag detection is owned by perception and parking motion by control. -->
+`apriltag_parking_detector_node` does not detect the configured parking tag even when it is in view.
 
 1. Confirm the **rear** camera (not front) is publishing: `ros2 topic hz /sensing/camera/econ_rear/image_raw`. The `apriltag_node` consumes the uncompressed rear stream.
-2. Verify the topic remapping in `camrod_docking/launch/docking.launch.py` maps `/sensing/camera/econ_rear/image_raw` to the Isaac ROS `RectifyNode` input.
+2. Verify `camrod_perception/config/apriltag_parking_detector.yaml` matches the rear image and camera-info topics.
 3. Check exposure: if the environment is very dark or the dock marker is overexposed, image quality may prevent detection. The rear camera uses OpenCV JPEG and does not have manual exposure control.
 
 ---
@@ -674,7 +682,7 @@ Embedded video playback halted; module v4l2src0 reported: Internal data stream e
 
 OpenCV's `cv::CAP_V4L2` backend handles the Tegra VI initialization internally (via direct `ioctl` calls that trigger the media controller), so it succeeds where GStreamer fails.
 
-The rear camera (`/dev/video1`, same ISX031 hardware) has the same GStreamer failure. It already had a `cv::CAP_V4L2` fallback in its original implementation. The front camera did not — it threw `std::runtime_error` and crashed. The fallback was added on 2026-06-17. HH_260630 - rear compressed publishing is monitoring-only and rate-limited by `compressed_publish_rate_hz` (default 2 Hz), while `/sensing/camera/econ_rear/image_raw` and `/sensing/camera/econ_rear/camera_info` remain unchanged for docking and diagnostics.
+The rear camera (`/dev/video1`, same ISX031 hardware) has the same GStreamer failure. It already had a `cv::CAP_V4L2` fallback in its original implementation. The front camera did not — it threw `std::runtime_error` and crashed. The fallback was added on 2026-06-17. HH_260720 - rear compressed publishing is monitoring-only and rate-limited by `compressed_publish_rate_hz` (default 2 Hz), while `/sensing/camera/econ_rear/image_raw` and `/sensing/camera/econ_rear/camera_info` remain unchanged for AprilTag parking and diagnostics.
 
 ---
 
@@ -746,7 +754,7 @@ ros2 topic hz /sensing/camera/econ_front/image_rect/compressed
 - [../camrod_perception/README.md](../camrod_perception/README.md) — consumes `/sensing/lidar/points_filtered` and `camera/image_rect/compressed`
 - [../camrod_planning/README.md](../camrod_planning/README.md) — consumes `/planning/cost_grid/inflation`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`
 - [../camrod_platform/README.md](../camrod_platform/README.md) — produces `/platform/status/velocity` consumed by velocity converter
-- [../camrod_docking/README.md](../camrod_docking/README.md) — consumes `camera/image_rect/compressed` for AprilTag-based dock detection
+- [../camrod_perception/README.md](../camrod_perception/README.md) - consumes rear camera data for AprilTag parking detection
 - [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions used across the stack
 
 ## 2026-06-17 Runtime Update
@@ -764,6 +772,6 @@ Radar remains launched through the existing `radar_sensor.launch.py` path and sh
 - HH_260707: `/sensing/lidar/cost_grid` consumes `/sensing/lidar/points_filtered`, height-gated `/sensing/lidar/filtered_cloud`, `/perception/obstacles`, `/perception/lidar/bboxes`, and `/perception/camera_lidar/markers`. Perception markers are written as cost 90 with a 0.35-0.75 m radius window and remain valid for the same 1.50 s freshness window as filtered LiDAR.
 - HH_260707: LiDAR preprocessing uses shallow QoS and reusable point-cloud buffers, and LiDAR/inflation cost grids skip full rebuilds when inputs and vehicle pose/yaw are effectively unchanged.
 - HH_260702: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; software range filters still ignore no-target values and stable near-zero self echoes.
-- HH_260702: Full-stack tests with RViz/UI/voice/camera/YOLO/docking enabled can saturate the Jetson and delay cost-grid publication. Treat that mode as a load probe, then repeat drive validation with the lighter outdoor profile.
+- HH_260720 - Full-stack tests with RViz/UI/voice/camera/YOLO/AprilTag parking enabled can saturate the Jetson and delay cost-grid publication. Treat that mode as a load probe, then repeat drive validation with the lighter outdoor profile.
 - HH_260708: ZED-F9P single-antenna GNSS is documented and configured as `/dev/ttyACM0`; diagnostics tolerate 1 Hz effective fix/pose rates while preserving freshness/fix/covariance/jump checks.
 - HH_260716: The field NTRIP mountpoint is `JECH-RTCM32`; seven radar channels use 15-degree angles with 0.30 m common self-echo filtering and a 0.75 m LEFT2 body/multipath override.

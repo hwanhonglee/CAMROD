@@ -1,7 +1,7 @@
 // HH_260528 - camera_rear_publisher_node — rear econ camera publisher.
 // Based on todo/econ_camera/src/econ_camera_node.cpp.
 // Uses OpenCV GStreamer pipeline + CPU JPEG encoding (no GPU dependency).
-// Publishes image_raw (uncompressed) required by Isaac ROS AprilTag in docking.
+// HH_260720 - Publish the raw rear-camera boundary consumed by the AprilTag parking detector.
 //
 // HH_260601 - replace camera_info_url file loading with inline ROS parameter calibration
 //            (camera_matrix, distortion_coefficients, rectification_matrix, projection_matrix).

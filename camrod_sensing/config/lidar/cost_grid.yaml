@@ -52,6 +52,15 @@
     # LiDAR obstacles just outside the body are not erased before safety gating.
     ego_clear_radius_m: 0.55
 
+    # HH_260720 - Keep dynamic cost only inside the active route lanelets plus
+    # this metric margin. Fail open during startup and intentional off-route maneuvers.
+    route_lanelet_filter_enable: true
+    route_lanelet_mask_topic: "/map/cost_grid/route_lanelet_mask"
+    route_lanelet_margin_m: 0.35
+    route_lanelet_allowed_max_cost: 50
+    route_lanelet_mask_max_age_s: 2.5
+    route_lanelet_filter_fail_open_when_robot_outside: true
+
     # Runtime
     # HH_260702 - Keep LiDAR/perception objects alive through brief CPU-load
     # stalls so the grid does not flicker empty between 6 Hz filtered frames.

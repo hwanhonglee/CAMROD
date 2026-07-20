@@ -9,15 +9,16 @@
 #include <utility>
 #include <vector>
 
+// HH_260720 - Consume generated CAMROD grids and convert only the RViz marker boundary.
 #include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_map_msgs.hpp>
-#include <avg_msgs/msg/color_rgba.hpp>
-#include <avg_msgs/msg/header.hpp>
-#include <avg_msgs/msg/marker.hpp>
-#include <avg_msgs/msg/marker_array.hpp>
+#include <std_msgs/msg/color_rgba.hpp>
+#include <avg_msgs/msg/avg_header.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 #include <avg_msgs/msg/module_state.hpp>
-#include <avg_msgs/msg/occupancy_grid.hpp>
-#include <avg_msgs/msg/point.hpp>
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
+#include <geometry_msgs/msg/point.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace camrod_map
@@ -127,13 +128,13 @@ public:
       if (stream.grid_qos_transient_local) {
         grid_qos.transient_local();
       }
-      stream.sub = create_subscription<avg_msgs::msg::OccupancyGrid>(
+      stream.sub = create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
         stream.grid_topic,
         grid_qos,
-        [this, i](avg_msgs::msg::OccupancyGrid::ConstSharedPtr msg) {
+        [this, i](avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg) {
           onGrid(i, std::move(msg));
         });
-      stream.pub = create_publisher<avg_msgs::msg::MarkerArray>(
+      stream.pub = create_publisher<visualization_msgs::msg::MarkerArray>(
         stream.marker_topic, rclcpp::QoS(1).transient_local().reliable());
 
       streams_.push_back(std::move(stream));
@@ -175,10 +176,10 @@ private:
     double republish_period_s{0.0};
     int sample_stride{1};
 
-    rclcpp::Subscription<avg_msgs::msg::OccupancyGrid>::SharedPtr sub;
-    rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr pub;
-    avg_msgs::msg::MarkerArray last_markers;
-    avg_msgs::msg::OccupancyGrid::ConstSharedPtr latest_grid;
+    rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr sub;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub;
+    visualization_msgs::msg::MarkerArray last_markers;
+    avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr latest_grid;
     bool pending_grid_update{false};
     rclcpp::Time last_grid_rx{0, 0, RCL_ROS_TIME};
     rclcpp::Time last_publish_time{0, 0, RCL_ROS_TIME};
@@ -194,16 +195,17 @@ private:
     return dt >= stream.min_publish_period_s;
   }
 
-  avg_msgs::msg::Marker initMarker(
-    const avg_msgs::msg::Header & header,
+  visualization_msgs::msg::Marker initMarker(
+    const avg_msgs::msg::AvgHeader & header,
     const StreamRuntime & stream) const
   {
-    avg_msgs::msg::Marker marker;
-    marker.header = header;
+    visualization_msgs::msg::Marker marker;
+    // HH_260720 - Convert the generated grid header explicitly for RViz.
+    marker.header = avg_msgs::conversions::toRos(header);
     marker.ns = "inflation_cost_grid";
     marker.id = 0;
-    marker.type = avg_msgs::msg::Marker::CUBE_LIST;
-    marker.action = avg_msgs::msg::Marker::ADD;
+    marker.type = visualization_msgs::msg::Marker::CUBE_LIST;
+    marker.action = visualization_msgs::msg::Marker::ADD;
     marker.pose.orientation.w = 1.0;
     marker.scale.x = stream.marker_scale;
     marker.scale.y = stream.marker_scale;
@@ -212,9 +214,9 @@ private:
     return marker;
   }
 
-  avg_msgs::msg::ColorRGBA colorFromValue(int8_t value, const StreamRuntime & stream) const
+  std_msgs::msg::ColorRGBA colorFromValue(int8_t value, const StreamRuntime & stream) const
   {
-    avg_msgs::msg::ColorRGBA color;
+    std_msgs::msg::ColorRGBA color;
     color.a = static_cast<float>(stream.alpha);
     if (value < 0) {
       if (stream.palette == "pastel") {
@@ -282,7 +284,7 @@ private:
   }
 
   void publishAvgMapMessage(
-    const avg_msgs::msg::MarkerArray & markers,
+    const visualization_msgs::msg::MarkerArray & markers,
     const builtin_interfaces::msg::Time & stamp,
     const std::string & message)
   {
@@ -299,23 +301,24 @@ private:
     avg_map_pub_->publish(msg);
   }
 
-  void publishDeleteAll(StreamRuntime & stream, const avg_msgs::msg::Header & header)
+  void publishDeleteAll(StreamRuntime & stream, const avg_msgs::msg::AvgHeader & header)
   {
-    avg_msgs::msg::MarkerArray arr;
-    avg_msgs::msg::Marker del;
-    del.header = header;
+    visualization_msgs::msg::MarkerArray arr;
+    visualization_msgs::msg::Marker del;
+    // HH_260720 - Convert the generated grid header explicitly for RViz.
+    del.header = avg_msgs::conversions::toRos(header);
     del.ns = "inflation_cost_grid";
     del.id = 0;
-    del.action = avg_msgs::msg::Marker::DELETEALL;
+    del.action = visualization_msgs::msg::Marker::DELETEALL;
     arr.markers.push_back(del);
     stream.pub->publish(arr);
     publishAvgMapMessage(arr, header.stamp, "multi cost markers cleared: " + stream.marker_topic);
     stream.last_markers.markers.clear();
   }
 
-  void publishFromGrid(StreamRuntime & stream, const avg_msgs::msg::OccupancyGrid & grid_msg)
+  void publishFromGrid(StreamRuntime & stream, const avg_msgs::msg::AvgOccupancyGrid & grid_msg)
   {
-    avg_msgs::msg::MarkerArray arr;
+    visualization_msgs::msg::MarkerArray arr;
     auto marker = initMarker(grid_msg.header, stream);
     const double stride = static_cast<double>(stream.sample_stride);
     marker.scale.x = grid_msg.info.resolution * stream.cell_scale_ratio * stride;
@@ -352,7 +355,7 @@ private:
         if (value < 0 && !stream.show_unknown) {
           continue;
         }
-        avg_msgs::msg::Point point;
+        geometry_msgs::msg::Point point;
         const double lx = (static_cast<double>(x) + 0.5 * stride) * res;
         const double ly = (static_cast<double>(y) + 0.5 * stride) * res;
         point.x = origin_x + cy * lx - sy * ly;
@@ -385,7 +388,7 @@ private:
     stream.pending_grid_update = false;
   }
 
-  void onGrid(size_t index, avg_msgs::msg::OccupancyGrid::ConstSharedPtr msg)
+  void onGrid(size_t index, avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg)
   {
     if (!msg || index >= streams_.size()) {
       return;
@@ -420,7 +423,9 @@ private:
     if (stream.stale_timeout_s > 0.0 && stream.last_grid_rx.nanoseconds() > 0) {
       const double dt = (now() - stream.last_grid_rx).seconds();
       if (dt > stream.stale_timeout_s && !stream.last_markers.markers.empty()) {
-        publishDeleteAll(stream, stream.last_markers.markers.front().header);
+        // HH_260720 - Convert a cached RViz header back to the internal header contract.
+        publishDeleteAll(stream, avg_msgs::conversions::fromRos(
+          stream.last_markers.markers.front().header));
         stream.latest_grid.reset();
         stream.pending_grid_update = false;
         return;

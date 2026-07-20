@@ -1,11 +1,12 @@
 #include <mutex>
 #include <string>
 
+// HH_260720 - Name the external ROS image boundary directly; internal status remains generated.
 #include <avg_msgs/conversions.hpp>
 #include <avg_msgs/msg/avg_sensing_camera.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <avg_msgs/msg/camera_info.hpp>
-#include <avg_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/image.hpp>
 
 namespace camping_cart::sensing
 {
@@ -35,15 +36,15 @@ public:
     require_camera_info_ = declare_parameter<bool>("require_camera_info", false);
 
     using std::placeholders::_1;
-    image_sub_ = create_subscription<avg_msgs::msg::Image>(
+    image_sub_ = create_subscription<sensor_msgs::msg::Image>(
       input_image_topic_, rclcpp::SensorDataQoS(),
       std::bind(&CameraPreprocessorNode::onImage, this, _1));
-    camera_info_sub_ = create_subscription<avg_msgs::msg::CameraInfo>(
+    camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
       input_camera_info_topic_, rclcpp::SensorDataQoS(),
       std::bind(&CameraPreprocessorNode::onCameraInfo, this, _1));
 
-    image_pub_ = create_publisher<avg_msgs::msg::Image>(output_image_topic_, rclcpp::QoS(10));
-    camera_info_pub_ = create_publisher<avg_msgs::msg::CameraInfo>(
+    image_pub_ = create_publisher<sensor_msgs::msg::Image>(output_image_topic_, rclcpp::QoS(10));
+    camera_info_pub_ = create_publisher<sensor_msgs::msg::CameraInfo>(
       output_camera_info_topic_, rclcpp::QoS(10));
     avg_camera_pub_ = create_publisher<AvgSensingCamera>(camera_status_topic_, rclcpp::QoS(10));
 
@@ -56,7 +57,7 @@ public:
 
 private:
   // Handles the `onCameraInfo` callback.
-  void onCameraInfo(const avg_msgs::msg::CameraInfo::ConstSharedPtr msg)
+  void onCameraInfo(const sensor_msgs::msg::CameraInfo::ConstSharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(mutex_);
     last_camera_info_ = *msg;
@@ -73,7 +74,7 @@ private:
   }
 
   // Handles the `onImage` callback.
-  void onImage(const avg_msgs::msg::Image::ConstSharedPtr msg)
+  void onImage(const sensor_msgs::msg::Image::ConstSharedPtr msg)
   {
     if (require_camera_info_ && !camera_info_ready_) {
       RCLCPP_DEBUG_THROTTLE(
@@ -82,7 +83,7 @@ private:
       return;
     }
 
-    avg_msgs::msg::Image out = *msg;
+    sensor_msgs::msg::Image out = *msg;
     if (!frame_id_override_.empty()) {
       out.header.frame_id = frame_id_override_;
     }
@@ -114,14 +115,14 @@ private:
   bool require_camera_info_{false};
   bool publish_camera_status_{false};
 
-  rclcpp::Subscription<avg_msgs::msg::Image>::SharedPtr image_sub_;
-  rclcpp::Subscription<avg_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
-  rclcpp::Publisher<avg_msgs::msg::Image>::SharedPtr image_pub_;
-  rclcpp::Publisher<avg_msgs::msg::CameraInfo>::SharedPtr camera_info_pub_;
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
+  rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_pub_;
   rclcpp::Publisher<AvgSensingCamera>::SharedPtr avg_camera_pub_;
 
   std::mutex mutex_;
-  avg_msgs::msg::CameraInfo last_camera_info_;
+  sensor_msgs::msg::CameraInfo last_camera_info_;
   bool camera_info_ready_{false};
 };
 

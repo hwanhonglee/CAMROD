@@ -4,9 +4,9 @@
 #include <vector>
 
 #include <avg_msgs/conversions.hpp>
-#include <avg_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/point.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <avg_msgs/msg/marker_array.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <avg_msgs/msg/avg_map_msgs.hpp>
 #include <avg_msgs/msg/module_state.hpp>
@@ -16,14 +16,14 @@
 #include <lanelet2_projection/UTM.h>
 
 #include "camrod_map/custom_regulatory_elements.hpp"
-#include <avg_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker.hpp>
 
 namespace
 {
 // Builds avg_msgs::Point helper objects for marker generation.
-avg_msgs::msg::Point makePoint(double x, double y, double z)
+geometry_msgs::msg::Point makePoint(double x, double y, double z)
 {
-  avg_msgs::msg::Point p;
+  geometry_msgs::msg::Point p;
   p.x = x;
   p.y = y;
   p.z = z;
@@ -117,7 +117,8 @@ public:
       return;
     }
 
-    pub_markers_ = create_publisher<avg_msgs::msg::MarkerArray>(
+  // HH_260720 - Publish procedural cost-field visualization on the explicit RViz boundary.
+  pub_markers_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       config_.output_topic, rclcpp::QoS(1).transient_local());
     if (publish_map_status_) {
       avg_map_pub_ = create_publisher<avg_msgs::msg::AvgMapMsgs>(
@@ -134,7 +135,7 @@ private:
   // Builds lanelet-segment cost markers and publishes the latest marker array.
   void publishMarkers()
   {
-    avg_msgs::msg::MarkerArray arr;
+    visualization_msgs::msg::MarkerArray arr;
     arr.markers.reserve(loadedPointCount());
 
     const rclcpp::Time stamp = this->now();
@@ -142,8 +143,8 @@ private:
 
     struct Seg
     {
-      avg_msgs::msg::Point p0;
-      avg_msgs::msg::Point p1;
+      geometry_msgs::msg::Point p0;
+      geometry_msgs::msg::Point p1;
       double cost;
     };
 
@@ -191,13 +192,13 @@ private:
       const double norm = std::clamp(seg.cost / clip_cost, 0.0, 1.0);
       auto color = colorFromCost(norm);
 
-      avg_msgs::msg::Marker line;
+      visualization_msgs::msg::Marker line;
       line.header.frame_id = config_.map_frame_id;
       line.header.stamp = stamp;
       line.ns = "cost_field";
       line.id = id++;
-      line.type = avg_msgs::msg::Marker::LINE_LIST;
-      line.action = avg_msgs::msg::Marker::ADD;
+      line.type = visualization_msgs::msg::Marker::LINE_LIST;
+      line.action = visualization_msgs::msg::Marker::ADD;
       line.scale.x = 0.25;
       line.color.r = color[0];
       line.color.g = color[1];
@@ -230,7 +231,7 @@ private:
   }
 
   // Publishes unified avg_msgs map status payload for cost-field outputs.
-  void publishAvgMapMessage(const avg_msgs::msg::MarkerArray & markers, const rclcpp::Time & stamp)
+  void publishAvgMapMessage(const visualization_msgs::msg::MarkerArray & markers, const rclcpp::Time & stamp)
   {
     if (!publish_map_status_ || !avg_map_pub_) {
       return;
@@ -301,7 +302,7 @@ private:
   bool publish_map_status_{false};
   std::string map_status_topic_{"/map/status"};
   lanelet::LaneletMapPtr map_;
-  rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_markers_;
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

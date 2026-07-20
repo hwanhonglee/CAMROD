@@ -11,12 +11,15 @@
 #include <utility>
 #include <vector>
 
+// HH_260720 - Use generated CAMROD grids/poses and direct Nav2 path boundary types.
 #include <avg_msgs/conversions.hpp>
-#include <avg_msgs/msg/occupancy_grid.hpp>
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/path.hpp>
+#include <avg_msgs/msg/avg_occupancy_grid.hpp>
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <avg_msgs/msg/route_lanelet_ids.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <nav_msgs/msg/path.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <std_msgs/msg/int64_multi_array.hpp>
 #include <tf2/exceptions.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
@@ -35,8 +38,7 @@
 #include <lanelet2_projection/UTM.h>
 
 #include "camrod_map/custom_regulatory_elements.hpp"  // HH_260101 register speed_bump
-#include <avg_msgs/msg/point.hpp>
-#include <avg_msgs/msg/set_parameters_result.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 
 // HH_251231 Simple lanelet-based OccupancyGrid publisher for Nav2 costmap layer.
 // Marks lanelet interior as low cost (0), outside as lethal (100).
@@ -83,14 +85,12 @@ public:
     // 2026-02-26: Optional boundary overlay when cost_mode == lanelet.
     // -1 disables boundary overlay, otherwise [0..100] is painted on lane boundaries.
     lanelet_boundary_value_ = declare_parameter<int>("lanelet_boundary_value", -1);
-    // HH_260617: Clear high boundary cost on OSM boundaries tagged lane_change=yes.
-    // This preserves solid lane edges while allowing planner/cmd_vel gate crossing at mapped lane-change gaps.
+    // HH_260720 - Preserve solid edges while allowing planned safety-gate crossings at mapped gaps.
     lane_change_clearance_enable_ = declare_parameter<bool>("lane_change_clearance_enable", false);
     lane_change_clearance_value_ = declare_parameter<int>("lane_change_clearance_value", 0);
     lane_change_clearance_use_dashed_fallback_ =
       declare_parameter<bool>("lane_change_clearance_use_dashed_fallback", false);
-    // HH_260618: Tune lane-change clearance independently from normal boundary margin.
-    // This lets legal lateral crossings survive cmd_vel_gate corridor sampling.
+    // HH_260720 - Tune lane-change clearance independently from safety-gate corridor sampling.
     lane_change_clearance_half_width_m_ =
       declare_parameter<double>("lane_change_clearance_half_width_m", -1.0);
     lane_change_clearance_clip_to_lanelet_ =
@@ -267,7 +267,7 @@ public:
       declare_parameter<int>("secondary.lane_change_clearance_value", 0);
     secondary_lane_change_clearance_use_dashed_fallback_ =
       declare_parameter<bool>("secondary.lane_change_clearance_use_dashed_fallback", false);
-    // HH_260618: Secondary profile feeds Nav2/cmd_vel_gate, so crossing clearance
+    // HH_260720 - Secondary profile feeds Nav2 and cmd_vel_safety_gate, so crossing clearance
     // can be wider than the visual boundary strip without weakening solid edges.
     secondary_lane_change_clearance_half_width_m_ =
       declare_parameter<double>("secondary.lane_change_clearance_half_width_m", -1.0);
@@ -307,12 +307,12 @@ public:
     }
 
     if (primary_enable_) {
-      grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+      grid_pub_ = create_publisher<avg_msgs::msg::AvgOccupancyGrid>(
         output_topic_, rclcpp::QoS(1).transient_local());
     }
     if (secondary_enable_) {
       // Secondary profile publisher (same node, different topic/profile).
-      secondary_grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+      secondary_grid_pub_ = create_publisher<avg_msgs::msg::AvgOccupancyGrid>(
         secondary_output_topic_, rclcpp::QoS(1).transient_local());
     }
     if (publish_map_status_) {
@@ -372,28 +372,30 @@ public:
     using std::placeholders::_1;
     // HH_260305-00:00 Use reliable/latest-only pose QoS for deterministic rebuild timing.
     // Best-effort drops can leave local/global path cost grids stale at old poses.
-    pose_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+    // HH_260720 - Consume the canonical localization pose through its generated CAMROD type.
+    pose_sub_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       pose_topic_, rclcpp::QoS(1).reliable(),
       std::bind(&LaneletCostGridNode::onPose, this, _1));
     auto path_qos = rclcpp::QoS(1).reliable();
     if (path_qos_transient_local_) {
       path_qos.transient_local();
     }
-    path_sub_ = create_subscription<avg_msgs::msg::Path>(
+    path_sub_ = create_subscription<nav_msgs::msg::Path>(
       path_topic_, path_qos,
       std::bind(&LaneletCostGridNode::onPathPrimary, this, _1));
     if (!route_lanelet_ids_topic_.empty()) {
-      route_lanelet_ids_sub_ = create_subscription<std_msgs::msg::Int64MultiArray>(
+      // HH_260720 - Consume typed route lanelet IDs instead of a generic integer array.
+      route_lanelet_ids_sub_ = create_subscription<avg_msgs::msg::RouteLaneletIds>(
         route_lanelet_ids_topic_, rclcpp::QoS(1).reliable().transient_local(),
         std::bind(&LaneletCostGridNode::onRouteLaneletIds, this, _1));
     }
     if (!path_fallback_topic_.empty() && path_fallback_topic_ != path_topic_) {
-      path_fallback_sub_ = create_subscription<avg_msgs::msg::Path>(
+      path_fallback_sub_ = create_subscription<nav_msgs::msg::Path>(
         path_fallback_topic_, path_qos,
         std::bind(&LaneletCostGridNode::onPathFallback, this, _1));
     }
     if (!goal_topic_.empty()) {
-      goal_sub_ = create_subscription<avg_msgs::msg::PoseStamped>(
+      goal_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
         goal_topic_, rclcpp::QoS(10),
         std::bind(&LaneletCostGridNode::onGoal, this, _1));
     }
@@ -521,11 +523,12 @@ private:
     }
   }
 
-  void onPose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onPose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
   {
     ++pose_cb_count_;
-    avg_msgs::msg::PoseStamped pose_in_map;
-    if (!transformToMap(*msg, pose_in_map)) {
+    geometry_msgs::msg::PoseStamped pose_in_map;
+    // HH_260720 - Convert only for the tf2 ROS API used by this grid builder.
+    if (!transformToMap(avg_msgs::conversions::toRos(*msg), pose_in_map)) {
       return;
     }
     current_pose_ = pose_in_map;
@@ -557,14 +560,14 @@ private:
     }
   }
 
-  void onPathPrimary(const avg_msgs::msg::Path::ConstSharedPtr msg)
+  void onPathPrimary(const nav_msgs::msg::Path::ConstSharedPtr msg)
   {
     if (onPathCommon(msg)) {
       last_primary_path_rx_ = now();
     }
   }
 
-  void onPathFallback(const avg_msgs::msg::Path::ConstSharedPtr msg)
+  void onPathFallback(const nav_msgs::msg::Path::ConstSharedPtr msg)
   {
     if (fallback_holdoff_until_.nanoseconds() > 0 && now() < fallback_holdoff_until_) {
       return;
@@ -581,10 +584,10 @@ private:
 
   // HH_260619: Receive the exact LaneletRoutePlanner lanelet sequence. This is
   // more reliable than re-inferring route lanelets from centerline points at merge polygons.
-  void onRouteLaneletIds(const std_msgs::msg::Int64MultiArray::ConstSharedPtr msg)
+  void onRouteLaneletIds(const avg_msgs::msg::RouteLaneletIds::ConstSharedPtr msg)
   {
     std::unordered_set<lanelet::Id> new_route_lanelet_ids;
-    for (const auto lanelet_id : msg->data) {
+    for (const auto lanelet_id : msg->lanelet_ids) {
       new_route_lanelet_ids.insert(static_cast<lanelet::Id>(lanelet_id));
     }
     const bool new_received = !new_route_lanelet_ids.empty();
@@ -618,7 +621,7 @@ private:
     double length{0.0};
   };
 
-  PathSignature makePathSignature(const avg_msgs::msg::Path & path) const
+  PathSignature makePathSignature(const nav_msgs::msg::Path & path) const
   {
     PathSignature sig;
     sig.size = path.poses.size();
@@ -665,7 +668,7 @@ private:
            secondary_window_mode_ == "path_bbox";
   }
 
-  bool onPathCommon(const avg_msgs::msg::Path::ConstSharedPtr msg)
+  bool onPathCommon(const nav_msgs::msg::Path::ConstSharedPtr msg)
   {
     ++path_cb_count_;
     if (msg->poses.size() < 2) {
@@ -684,12 +687,12 @@ private:
       }
       return true;
     }
-    avg_msgs::msg::Path path_map;
+    nav_msgs::msg::Path path_map;
     path_map.header = msg->header;
     path_map.header.frame_id = frame_id_;
     path_map.poses.reserve(msg->poses.size());
     for (const auto & ps : msg->poses) {
-      avg_msgs::msg::PoseStamped ps_map;
+      geometry_msgs::msg::PoseStamped ps_map;
       if (!transformToMap(ps, ps_map)) {
         continue;
       }
@@ -772,7 +775,7 @@ private:
     return true;
   }
 
-  void onGoal(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  void onGoal(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     if (msg && (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0)) {
       last_goal_rx_ = rclcpp::Time(msg->header.stamp);
@@ -780,7 +783,7 @@ private:
       last_goal_rx_ = now();
     }
     if (msg) {
-      avg_msgs::msg::PoseStamped goal_map;
+      geometry_msgs::msg::PoseStamped goal_map;
       if (transformToMap(*msg, goal_map)) {
         latest_goal_pose_ = goal_map;
         has_latest_goal_pose_ = true;
@@ -814,7 +817,7 @@ private:
     }
   }
 
-  avg_msgs::msg::SetParametersResult onParamChange(
+  rcl_interfaces::msg::SetParametersResult onParamChange(
     const std::vector<rclcpp::Parameter> & params)
   {
     for (const auto & p : params) {
@@ -952,13 +955,13 @@ private:
       } else if (p.get_name() == "secondary.enable") {
         secondary_enable_ = p.as_bool();
         if (secondary_enable_ && !secondary_grid_pub_) {
-          secondary_grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+          secondary_grid_pub_ = create_publisher<avg_msgs::msg::AvgOccupancyGrid>(
             secondary_output_topic_, rclcpp::QoS(1).transient_local());
         }
       } else if (p.get_name() == "secondary.output_topic") {
         secondary_output_topic_ = p.as_string();
         if (secondary_enable_) {
-          secondary_grid_pub_ = create_publisher<avg_msgs::msg::OccupancyGrid>(
+          secondary_grid_pub_ = create_publisher<avg_msgs::msg::AvgOccupancyGrid>(
             secondary_output_topic_, rclcpp::QoS(1).transient_local());
         }
       } else if (p.get_name() == "secondary.cost_mode") {
@@ -1052,7 +1055,7 @@ private:
     if (has_pose_) {
       requestBuild(true);
     }
-    avg_msgs::msg::SetParametersResult res;
+    rcl_interfaces::msg::SetParametersResult res;
     res.successful = true;
     res.reason = "updated";
     return res;
@@ -1067,7 +1070,7 @@ private:
         "pose not received yet; skip grid publish");
       return;
     }
-    avg_msgs::msg::OccupancyGrid grid;
+    avg_msgs::msg::AvgOccupancyGrid grid;
     grid.header.frame_id = frame_id_;
     grid.info.resolution = resolution_;
 
@@ -1331,7 +1334,38 @@ private:
         }
       }
     } else if (cost_mode_ == "lanelet") {
-      for (const auto & ll : map_->laneletLayer) {
+      // HH_260720 - Apply the exact active-route selection to full-lanelet
+      // masks as well as centerline grids. This profile feeds the sensor cost
+      // filter without changing the all-lanelet Nav2 base grid.
+      std::vector<lanelet::ConstLanelet> route_lanelets;
+      std::vector<lanelet::ConstLanelet> empty_lanelets;
+      const std::vector<lanelet::ConstLanelet> * lanelets_to_render = &all_lanelets_;
+      if (route_lanelet_filter_enable_) {
+        route_lanelets = collectActiveRouteLanelets();
+        if (!route_lanelets.empty()) {
+          lanelets_to_render = &route_lanelets;
+        } else if (route_lanelet_filter_wait_for_route_) {
+          route_wait_placeholder = true;
+          lanelets_to_render = &empty_lanelets;
+          std::fill(grid.data.begin(), grid.data.end(), -1);
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "route lanelet mask waiting for route IDs; publishing unknown placeholder grid");
+        } else {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "route lanelet mask has no route IDs; using all lanelets");
+        }
+      }
+
+      std::vector<lanelet::ConstLanelet> window_lanelets;
+      if (!route_wait_placeholder) {
+        window_lanelets = filterLaneletsForGridWindow(
+          *lanelets_to_render, grid, std::max(computeRasterPadding(), resolution_));
+        lanelets_to_render = &window_lanelets;
+      }
+
+      for (const auto & ll : *lanelets_to_render) {
         lanelet::BasicPolygon2d lane_poly;
         if (!buildLaneletPolygon(ll, lane_poly)) {
           continue;
@@ -1689,7 +1723,7 @@ private:
     last_build_time_ = now();
   }
 
-  bool isPoseInsideCachedGrid(const avg_msgs::msg::PoseStamped & pose) const
+  bool isPoseInsideCachedGrid(const geometry_msgs::msg::PoseStamped & pose) const
   {
     const auto & grid = (secondary_enable_ && !secondary_last_grid_.data.empty()) ?
       secondary_last_grid_ : last_grid_;
@@ -1727,7 +1761,7 @@ private:
   // clearPublishedGrid: Clears cached outputs and publishes a safe empty/reset state.
   void clearPublishedGrid()
   {
-    avg_msgs::msg::OccupancyGrid empty;
+    avg_msgs::msg::AvgOccupancyGrid empty;
     empty.header.stamp = now();
     empty.header.frame_id = frame_id_;
     empty.info.resolution = resolution_;
@@ -1745,7 +1779,7 @@ private:
     }
     if (secondary_enable_ && secondary_grid_pub_) {
       // Keep both topics consistent when we clear due to stale/empty path state.
-      avg_msgs::msg::OccupancyGrid secondary_empty = empty;
+      avg_msgs::msg::AvgOccupancyGrid secondary_empty = empty;
       secondary_empty.info.resolution = secondary_resolution_;
       secondary_last_grid_ = secondary_empty;
       secondary_grid_pub_->publish(secondary_last_grid_);
@@ -1753,7 +1787,7 @@ private:
     }
   }
 
-  void publishAvgMapGrid(const avg_msgs::msg::OccupancyGrid & grid, const std::string & message)
+  void publishAvgMapGrid(const avg_msgs::msg::AvgOccupancyGrid & grid, const std::string & message)
   {
     if (!publish_map_status_ || !avg_map_pub_) {
       return;
@@ -1764,7 +1798,8 @@ private:
     msg.state.module_name = "map";
     msg.state.level = avg_msgs::msg::ModuleState::OK;
     msg.state.message = message;
-    msg.lanelet_cost_grid = avg_msgs::conversions::fromRos(grid);
+    // HH_260720 - The lanelet grid is already a generated CAMROD message.
+    msg.lanelet_cost_grid = grid;
     avg_map_pub_->publish(msg);
   }
 
@@ -1828,7 +1863,7 @@ private:
 
   bool laneletBoundsIntersectGridWindow(
     const std::array<double, 4> & bounds,
-    const avg_msgs::msg::OccupancyGrid & grid,
+    const avg_msgs::msg::AvgOccupancyGrid & grid,
     const double padding) const
   {
     const double grid_min_x = grid.info.origin.position.x - padding;
@@ -1843,7 +1878,7 @@ private:
 
   bool laneletIntersectsGridWindow(
     const lanelet::ConstLanelet & ll,
-    const avg_msgs::msg::OccupancyGrid & grid,
+    const avg_msgs::msg::AvgOccupancyGrid & grid,
     const double padding) const
   {
     for (std::size_t i = 0; i < all_lanelet_ids_.size(); ++i) {
@@ -1856,7 +1891,7 @@ private:
 
   std::vector<lanelet::ConstLanelet> filterLaneletsForGridWindow(
     const std::vector<lanelet::ConstLanelet> & lanelets,
-    const avg_msgs::msg::OccupancyGrid & grid,
+    const avg_msgs::msg::AvgOccupancyGrid & grid,
     const double padding) const
   {
     std::vector<lanelet::ConstLanelet> filtered;
@@ -1876,7 +1911,7 @@ private:
   void fillPolygon(
     const lanelet::BasicPolygon2d & poly, bool opposite_heading,
     double robot_cos, double robot_sin,
-    avg_msgs::msg::OccupancyGrid & grid,
+    avg_msgs::msg::AvgOccupancyGrid & grid,
     bool use_distance_gradient)
   {
     // simple rasterization by bounding box scan; no anti-aliasing
@@ -1932,7 +1967,7 @@ private:
     const lanelet::ConstPoint3d & p0,
     const lanelet::ConstPoint3d & p1,
     int value,
-    avg_msgs::msg::OccupancyGrid & grid,
+    avg_msgs::msg::AvgOccupancyGrid & grid,
     const lanelet::BasicPolygon2d * clip_poly = nullptr,
     double half_width_override_m = -1.0)
   {
@@ -2011,7 +2046,7 @@ private:
   int64_t clearLaneChangeBoundary(
     const lanelet::ConstLineString3d & boundary,
     const int clear_value,
-    avg_msgs::msg::OccupancyGrid & grid,
+    avg_msgs::msg::AvgOccupancyGrid & grid,
     const lanelet::BasicPolygon2d * clip_poly,
     const double clearance_half_width_m)
   {
@@ -2029,7 +2064,7 @@ private:
   }
 
   // HH_260617: Applies OSM lane_change=yes clearance to every lanelet boundary after normal cost painting.
-  void applyLaneChangeClearance(avg_msgs::msg::OccupancyGrid & grid)
+  void applyLaneChangeClearance(avg_msgs::msg::AvgOccupancyGrid & grid)
   {
     if (!lane_change_clearance_enable_ || !map_) {
       return;
@@ -2066,7 +2101,7 @@ private:
   // fillLaneletArea: Rasterizes lane/path geometry into cost-grid cells.
   void fillLaneletArea(
     const lanelet::ConstLanelet & ll, int value,
-    avg_msgs::msg::OccupancyGrid & grid)
+    avg_msgs::msg::AvgOccupancyGrid & grid)
   {
     lanelet::BasicPolygon2d poly;
     if (!buildLaneletPolygon(ll, poly)) {
@@ -2249,11 +2284,11 @@ private:
   // fillPathStrip: Rasterizes lane/path geometry into cost-grid cells.
   void fillPathStrip(
     const lanelet::BasicPolygon2d & poly,
-    const avg_msgs::msg::Point & p0,
-    const avg_msgs::msg::Point & p1,
+    const geometry_msgs::msg::Point & p0,
+    const geometry_msgs::msg::Point & p1,
     bool opposite_heading,
     double robot_cos, double robot_sin,
-    avg_msgs::msg::OccupancyGrid & grid,
+    avg_msgs::msg::AvgOccupancyGrid & grid,
     const std::vector<lanelet::BasicPolygon2d> * clip_polys,
     double strip_half_width)
   {
@@ -2342,7 +2377,7 @@ private:
   void fillRouteClearanceStrip(
     const lanelet::BasicPolygon2d & poly,
     const int value,
-    avg_msgs::msg::OccupancyGrid & grid,
+    avg_msgs::msg::AvgOccupancyGrid & grid,
     const std::vector<lanelet::BasicPolygon2d> * clip_polys)
   {
     if (poly.empty()) {
@@ -2380,7 +2415,7 @@ private:
     }
   }
 
-  void applyRouteBoundaryClearance(avg_msgs::msg::OccupancyGrid & grid)
+  void applyRouteBoundaryClearance(avg_msgs::msg::AvgOccupancyGrid & grid)
   {
     if (!route_boundary_clearance_enable_ || !path_received_ || path_.poses.size() < 2) {
       return;
@@ -2427,7 +2462,7 @@ private:
   // fillPolygonPoseGradient: Rasterizes lane/path geometry into cost-grid cells.
   void fillPolygonPoseGradient(
     const lanelet::BasicPolygon2d & poly, int max_value,
-    avg_msgs::msg::OccupancyGrid & grid,
+    avg_msgs::msg::AvgOccupancyGrid & grid,
     bool use_cell_intersection = true)
   {
     if (poly.empty() || !has_pose_) {
@@ -2478,7 +2513,7 @@ private:
     const lanelet::ConstPoint3d & p1,
     bool opposite_heading,
     double robot_cos, double robot_sin,
-    avg_msgs::msg::OccupancyGrid & grid,
+    avg_msgs::msg::AvgOccupancyGrid & grid,
     bool use_lateral_gradient,
     const lanelet::BasicPolygon2d * clip_poly = nullptr)
   {
@@ -2583,7 +2618,7 @@ private:
   // fillPolygonConst: Rasterizes lane/path geometry into cost-grid cells.
   void fillPolygonConst(
     const lanelet::BasicPolygon2d & poly, int value,
-    avg_msgs::msg::OccupancyGrid & grid,
+    avg_msgs::msg::AvgOccupancyGrid & grid,
     bool use_cell_intersection = true)
   {
     if (poly.empty()) return;
@@ -2644,7 +2679,7 @@ private:
   }
 
   // Logs sampled known-cell ratio outside lanelet polygons for debug validation.
-  void logCoverageStats(const avg_msgs::msg::OccupancyGrid & grid)
+  void logCoverageStats(const avg_msgs::msg::AvgOccupancyGrid & grid)
   {
     if (all_lanelet_polys_.empty()) {
       return;
@@ -2741,7 +2776,7 @@ private:
   }
 
   // Converts pose quaternion to yaw angle (radians).
-  double yawFromPose(const avg_msgs::msg::PoseStamped & pose) const
+  double yawFromPose(const geometry_msgs::msg::PoseStamped & pose) const
   {
     const auto & q = pose.pose.orientation;
     const double siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
@@ -2751,8 +2786,8 @@ private:
 
   // HH_260125 Transform helper: ensure all poses are in map frame.
   bool transformToMap(
-    const avg_msgs::msg::PoseStamped & in,
-    avg_msgs::msg::PoseStamped & out)
+    const geometry_msgs::msg::PoseStamped & in,
+    geometry_msgs::msg::PoseStamped & out)
   {
     if (in.header.frame_id.empty() || in.header.frame_id == frame_id_) {
       out = in;
@@ -2935,9 +2970,9 @@ private:
   double map_max_y_{0.0};
 
   lanelet::LaneletMapPtr map_;
-  avg_msgs::msg::PoseStamped current_pose_;
-  avg_msgs::msg::PoseStamped latest_goal_pose_;
-  avg_msgs::msg::Path path_;
+  geometry_msgs::msg::PoseStamped current_pose_;
+  geometry_msgs::msg::PoseStamped latest_goal_pose_;
+  nav_msgs::msg::Path path_;
   rclcpp::Time last_primary_path_rx_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_any_path_rx_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_goal_rx_{0, 0, RCL_ROS_TIME};
@@ -2947,16 +2982,16 @@ private:
   bool has_pose_{false};
   bool path_received_{false};
   bool has_built_grid_{false};
-  avg_msgs::msg::OccupancyGrid last_grid_;
-  avg_msgs::msg::OccupancyGrid secondary_last_grid_;
+  avg_msgs::msg::AvgOccupancyGrid last_grid_;
+  avg_msgs::msg::AvgOccupancyGrid secondary_last_grid_;
   rclcpp::Time last_build_time_{0, 0, RCL_ROS_TIME};
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr pose_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr path_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Path>::SharedPtr path_fallback_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
-  rclcpp::Subscription<std_msgs::msg::Int64MultiArray>::SharedPtr route_lanelet_ids_sub_;
-  rclcpp::Publisher<avg_msgs::msg::OccupancyGrid>::SharedPtr grid_pub_;
-  rclcpp::Publisher<avg_msgs::msg::OccupancyGrid>::SharedPtr secondary_grid_pub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr pose_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_fallback_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
+  rclcpp::Subscription<avg_msgs::msg::RouteLaneletIds>::SharedPtr route_lanelet_ids_sub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr grid_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr secondary_grid_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgMapMsgs>::SharedPtr avg_map_pub_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_handle_;
   rclcpp::TimerBase::SharedPtr republish_timer_;

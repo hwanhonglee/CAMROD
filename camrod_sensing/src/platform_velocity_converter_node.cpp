@@ -4,11 +4,12 @@
 #include <string>
 
 #include <avg_msgs/conversions.hpp>
+#include <avg_msgs/msg/avg_imu.hpp>
 #include <avg_msgs/msg/avg_sensing_imu.hpp>
-#include <avg_msgs/msg/twist_stamped.hpp>
-#include <avg_msgs/msg/twist_with_covariance_stamped.hpp>
+#include <avg_msgs/msg/avg_twist_stamped.hpp>
+#include <avg_msgs/msg/avg_twist_with_covariance_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <avg_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 namespace camrod::sensing
 {
@@ -24,7 +25,9 @@ public:
   {
     // HH_260109 Use platform velocity + IMU to publish twist_with_covariance.
     velocity_topic_ = declare_parameter<std::string>("velocity_topic", "/platform/status/velocity");
-    imu_topic_ = declare_parameter<std::string>("imu_topic", "/sensing/imu/data");
+    imu_topic_ = declare_parameter<std::string>("imu_topic", "/sensing/imu/data_ros");
+    imu_output_topic_ = declare_parameter<std::string>(
+      "imu_output_topic", "/sensing/imu/data");
     output_topic_ = declare_parameter<std::string>(
       // HH_260331: Keep IMU-derived platform velocity topic under /sensing/imu/*.
       "output_topic", "/sensing/platform_velocity_converter/twist_with_covariance");
@@ -38,14 +41,17 @@ public:
       "angular_variance", std::vector<double>{0.2, 0.2, 0.2});
 
     using std::placeholders::_1;
-    velocity_sub_ = create_subscription<avg_msgs::msg::TwistStamped>(
+    // HH_260720 - Consume the platform bridge's generated internal velocity contract.
+    velocity_sub_ = create_subscription<avg_msgs::msg::AvgTwistStamped>(
       velocity_topic_, rclcpp::SensorDataQoS(),
       std::bind(&PlatformVelocityConverterNode::onVelocity, this, _1));
-    imu_sub_ = create_subscription<avg_msgs::msg::Imu>(
+    imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
       imu_topic_, rclcpp::SensorDataQoS(),
       std::bind(&PlatformVelocityConverterNode::onImu, this, _1));
-    output_pub_ = create_publisher<avg_msgs::msg::TwistWithCovarianceStamped>(
+    output_pub_ = create_publisher<avg_msgs::msg::AvgTwistWithCovarianceStamped>(
       output_topic_, rclcpp::QoS(10));
+    // HH_260720 - Publish the canonical generated IMU stream for localization.
+    imu_data_pub_ = create_publisher<avg_msgs::msg::AvgImu>(imu_output_topic_, rclcpp::QoS(50));
     avg_imu_pub_ = create_publisher<AvgSensingImu>(imu_status_topic_, rclcpp::QoS(10));
 
     // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
@@ -57,15 +63,16 @@ public:
 
 private:
   // Handles the `onImu` callback.
-  void onImu(const avg_msgs::msg::Imu::ConstSharedPtr msg)
+  void onImu(const sensor_msgs::msg::Imu::ConstSharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(mutex_);
     last_imu_ = *msg;
     imu_ready_ = true;
+    imu_data_pub_->publish(avg_msgs::conversions::fromRos(*msg));
   }
 
   // Handles the `onVelocity` callback.
-  void onVelocity(const avg_msgs::msg::TwistStamped::ConstSharedPtr msg)
+  void onVelocity(const avg_msgs::msg::AvgTwistStamped::ConstSharedPtr msg)
   {
     if (require_imu_ && !imu_ready_) {
       RCLCPP_DEBUG_THROTTLE(
@@ -74,7 +81,8 @@ private:
       return;
     }
 
-    avg_msgs::msg::TwistWithCovarianceStamped out;
+    avg_msgs::msg::AvgTwistWithCovarianceStamped out;
+    // HH_260720 - Generated Avg messages can be copied without a compatibility alias.
     out.header = msg->header;
     out.twist.twist = msg->twist;
 
@@ -88,7 +96,8 @@ private:
 
     if (imu_ready_) {
       std::lock_guard<std::mutex> lock(mutex_);
-      out.twist.twist.angular = last_imu_.angular_velocity;
+      // HH_260720 - Convert the driver vector into the generated AvgVector3 field.
+      out.twist.twist.angular = avg_msgs::conversions::fromRos(last_imu_.angular_velocity);
       const auto imu_cov = last_imu_.angular_velocity_covariance;
       if (imu_cov[0] >= 0.0) {
         cov[21] = imu_cov[0];
@@ -111,7 +120,7 @@ private:
     output_pub_->publish(out);
     if (publish_imu_status_ && avg_imu_pub_) {
       AvgSensingImu avg_msg;
-      avg_msg.platform_twist_cov = avg_msgs::conversions::fromRos(out);
+      avg_msg.platform_twist_cov = out;
       if (imu_ready_) {
         std::lock_guard<std::mutex> lock(mutex_);
         avg_msg.imu_data = avg_msgs::conversions::fromRos(last_imu_);
@@ -133,19 +142,21 @@ private:
   std::string velocity_topic_;
   std::string imu_topic_;
   std::string output_topic_;
+  std::string imu_output_topic_;
   std::string imu_status_topic_;
   bool require_imu_{true};
   bool publish_imu_status_{false};
   std::vector<double> linear_variance_;
   std::vector<double> angular_variance_;
 
-  rclcpp::Subscription<avg_msgs::msg::TwistStamped>::SharedPtr velocity_sub_;
-  rclcpp::Subscription<avg_msgs::msg::Imu>::SharedPtr imu_sub_;
-  rclcpp::Publisher<avg_msgs::msg::TwistWithCovarianceStamped>::SharedPtr output_pub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgTwistStamped>::SharedPtr velocity_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgTwistWithCovarianceStamped>::SharedPtr output_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgImu>::SharedPtr imu_data_pub_;
   rclcpp::Publisher<AvgSensingImu>::SharedPtr avg_imu_pub_;
 
   std::mutex mutex_;
-  avg_msgs::msg::Imu last_imu_;
+  sensor_msgs::msg::Imu last_imu_;
   bool imu_ready_{false};
 };
 

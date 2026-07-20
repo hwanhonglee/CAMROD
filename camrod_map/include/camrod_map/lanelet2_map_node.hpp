@@ -9,19 +9,20 @@
 #include <string>
 #include <vector>
 
-#include <avg_msgs/msg/pose_stamped.hpp>
-#include <avg_msgs/msg/set_parameters_result.hpp>
+// HH_260720 - Use generated CAMROD poses and direct RViz marker message types.
+#include <avg_msgs/msg/avg_pose_stamped.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/node_interfaces/node_parameters_interface.hpp>
 #include <tf2_ros/static_transform_broadcaster.h>
-#include <avg_msgs/msg/marker_array.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include <avg_msgs/msg/avg_map_msgs.hpp>
 
 #include "camrod_map/lanelet2_map_loader.hpp"
-#include <avg_msgs/msg/marker.hpp>
-#include <avg_msgs/msg/color_rgba.hpp>
-#include <avg_msgs/msg/point.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <std_msgs/msg/color_rgba.hpp>
+#include <geometry_msgs/msg/point.hpp>
 #include <lanelet2_core/primitives/Area.h>
 
 namespace camrod
@@ -74,49 +75,49 @@ private:
   void publishDetailedFullVisualization();
   void publishCachedVisualization();
   void publishAvgMapMessage(
-    const avg_msgs::msg::MarkerArray & markers,
+    const visualization_msgs::msg::MarkerArray & markers,
     const rclcpp::Time & stamp);
   void publishStaticTF();
-  void onProgressivePose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg);
-  avg_msgs::msg::SetParametersResult onParameterChange(
+  void onProgressivePose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg);
+  rcl_interfaces::msg::SetParametersResult onParameterChange(
     const std::vector<rclcpp::Parameter> & params);
   bool reloadMapWithConfig(const Lanelet2MapNodeConfig & new_config);
   std::size_t addLaneletCenterlines(
-    avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+    visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
     const rclcpp::Time & stamp) const;
   std::size_t addLaneletBounds(
-    avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+    visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
     const rclcpp::Time & stamp) const;
   std::size_t addAreas(
-    avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+    visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
     const rclcpp::Time & stamp) const;
   std::size_t addLineStrings(
-    avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+    visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
     const rclcpp::Time & stamp) const;
   std::size_t addPoints(
-    avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+    visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
     const rclcpp::Time & stamp) const;
   std::size_t addLaneletDirections(
-    avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+    visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
     const rclcpp::Time & stamp) const;
   std::size_t addLaneletIds(
-    avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+    visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
     const rclcpp::Time & stamp) const;
   std::size_t addSemanticMarkers(
-    avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+    visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
     const rclcpp::Time & stamp) const;
-  static avg_msgs::msg::Marker initLineMarker(
+  static visualization_msgs::msg::Marker initLineMarker(
     const std::string & ns, int32_t id, const std::string & frame_id,
-    const avg_msgs::msg::ColorRGBA & color, double width, const rclcpp::Time & stamp);
-  avg_msgs::msg::ColorRGBA colorFromSubtype(
-    const std::string & subtype, const avg_msgs::msg::ColorRGBA & fallback) const;
+    const std_msgs::msg::ColorRGBA & color, double width, const rclcpp::Time & stamp);
+  std_msgs::msg::ColorRGBA colorFromSubtype(
+    const std::string & subtype, const std_msgs::msg::ColorRGBA & fallback) const;
   double lineWidthFromSubtype(const std::string & subtype) const;
   static std::string sanitizeNamespace(const std::string & prefix, const std::string & subtype);
   static std::string groupedNamespace(const std::string & group, const std::string & subtype);
-  static avg_msgs::msg::ColorRGBA makeColor(float r, float g, float b, float a = 1.0f);
-  avg_msgs::msg::Point makePoint(double x, double y, double z) const;
-  avg_msgs::msg::Point makeMapPoint(double x, double y, double z) const;  // HH_260623 - Project OSM geometry onto the configured visualization ground plane.
-  static avg_msgs::msg::Point computeCentroid(const lanelet::ConstLineString3d & line_string);  // HH_260114 Compute semantic centroid.
+  static std_msgs::msg::ColorRGBA makeColor(float r, float g, float b, float a = 1.0f);
+  geometry_msgs::msg::Point makePoint(double x, double y, double z) const;
+  geometry_msgs::msg::Point makeMapPoint(double x, double y, double z) const;  // HH_260623 - Project OSM geometry onto the configured visualization ground plane.
+  static geometry_msgs::msg::Point computeCentroid(const lanelet::ConstLineString3d & line_string);  // HH_260114 Compute semantic centroid.
   bool isNearVisualizationCenter(double x, double y) const;
   bool isLineStringNear(const lanelet::ConstLineString3d & line_string) const;
   bool isLaneletNear(const lanelet::ConstLanelet & lanelet) const;
@@ -124,14 +125,14 @@ private:
   bool computeFlatArrow(
     const lanelet::ConstLineString3d & centerline, std::size_t tail_idx, std::size_t head_idx,
     double lane_width,
-    avg_msgs::msg::Point & tail_left,
-    avg_msgs::msg::Point & tail_right,
-    avg_msgs::msg::Point & head_point) const;
+    geometry_msgs::msg::Point & tail_left,
+    geometry_msgs::msg::Point & tail_right,
+    geometry_msgs::msg::Point & head_point) const;
   double laneWidthAt(const lanelet::ConstLanelet & lanelet, std::size_t idx) const;
   void addTrafficLightBulbs(  // HH_260114 Render tri-color traffic light bulbs.
-    const avg_msgs::msg::Point & base_center,
+    const geometry_msgs::msg::Point & base_center,
     const std::string & bulb_namespace,
-    avg_msgs::msg::MarkerArray & markers,
+    visualization_msgs::msg::MarkerArray & markers,
     int32_t & id_counter,
     const rclcpp::Time & stamp) const;
 
@@ -143,13 +144,13 @@ private:
 
   double computeGroundZ(const lanelet::LaneletMap & map) const;
 
-  rclcpp::Publisher<avg_msgs::msg::MarkerArray>::SharedPtr viz_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr viz_pub_;
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
   rclcpp::TimerBase::SharedPtr viz_timer_;
   rclcpp::TimerBase::SharedPtr progressive_full_viz_timer_;
   rclcpp::TimerBase::SharedPtr progressive_detailed_full_viz_timer_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr progressive_pose_sub_;
-  rclcpp::Subscription<avg_msgs::msg::PoseStamped>::SharedPtr progressive_fallback_pose_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr progressive_pose_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr progressive_fallback_pose_sub_;
   bool logged_full_marker_stats_{false};
   bool logged_detailed_full_marker_stats_{false};
   bool logged_local_marker_stats_{false};
@@ -172,7 +173,7 @@ private:
   // HH_260413: Optional periodic re-publish period for static map markers.
   // 0.0 disables timer and publishes once (transient_local keeps late subscribers synced).
   double visualization_republish_period_s_{0.0};
-  avg_msgs::msg::MarkerArray cached_markers_;
+  visualization_msgs::msg::MarkerArray cached_markers_;
   bool publish_map_status_{false};
   std::string map_status_topic_{"/map/status"};
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;

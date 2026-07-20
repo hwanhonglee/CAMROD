@@ -48,8 +48,14 @@ def generate_launch_description():
     )
     declare_imu_topic = DeclareLaunchArgument(
         "imu_topic",
-        default_value="data",
+        # HH_260720 - The hardware driver writes its standard ROS message to data_ros.
+        default_value="data_ros",
         description="IMU input topic (relative to module namespace)",
+    )
+    declare_imu_data_output_topic = DeclareLaunchArgument(
+        "imu_data_output_topic",
+        default_value="data",
+        description="Generated avg_msgs IMU output topic",
     )
     declare_output_topic = DeclareLaunchArgument(
         "output_topic",
@@ -73,6 +79,7 @@ def generate_launch_description():
             {
                 "velocity_topic": LaunchConfiguration("velocity_topic"),
                 "imu_topic": LaunchConfiguration("imu_topic"),
+                "imu_output_topic": LaunchConfiguration("imu_data_output_topic"),
                 "output_topic": LaunchConfiguration("output_topic"),
                 "imu_status_topic": LaunchConfiguration("imu_status_topic"),
             },
@@ -84,6 +91,7 @@ def generate_launch_description():
         declare_namespace,
         declare_velocity_topic,
         declare_imu_topic,
+        declare_imu_data_output_topic,
         declare_output_topic,
         declare_diag_topic,
         velocity_converter_node,

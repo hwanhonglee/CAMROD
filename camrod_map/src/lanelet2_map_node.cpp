@@ -7,9 +7,9 @@
 #include <functional>
 
 #include <avg_msgs/conversions.hpp>
-#include <avg_msgs/msg/point.hpp>
-#include <avg_msgs/msg/transform_stamped.hpp>
-#include <avg_msgs/msg/color_rgba.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <std_msgs/msg/color_rgba.hpp>
 
 #include <avg_msgs/msg/module_state.hpp>
 
@@ -19,8 +19,8 @@
 
 #include <unordered_map>
 #include <unordered_set>
-#include <avg_msgs/msg/marker.hpp>
-#include <avg_msgs/msg/marker_array.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 namespace camrod
 {
@@ -113,7 +113,8 @@ Lanelet2MapNode::Lanelet2MapNode()
 
   auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
   // HH_260109 Publish map markers under /map prefix.
-  viz_pub_ = this->create_publisher<avg_msgs::msg::MarkerArray>(
+  // HH_260720 - Publish map visualization through the explicit RViz ROS boundary.
+  viz_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
     "/map/markers", qos);
   if (publish_map_status_) {
     avg_map_pub_ = this->create_publisher<avg_msgs::msg::AvgMapMsgs>(
@@ -214,13 +215,13 @@ void Lanelet2MapNode::startVisualization()
 
   auto pose_callback = std::bind(&Lanelet2MapNode::onProgressivePose, this, std::placeholders::_1);
   if (!progressive_visualization_pose_topic_.empty()) {
-    progressive_pose_sub_ = this->create_subscription<avg_msgs::msg::PoseStamped>(
+    progressive_pose_sub_ = this->create_subscription<avg_msgs::msg::AvgPoseStamped>(
       progressive_visualization_pose_topic_, rclcpp::QoS(10), pose_callback);
   }
   if (!progressive_visualization_fallback_pose_topic_.empty() &&
     progressive_visualization_fallback_pose_topic_ != progressive_visualization_pose_topic_)
   {
-    progressive_fallback_pose_sub_ = this->create_subscription<avg_msgs::msg::PoseStamped>(
+    progressive_fallback_pose_sub_ = this->create_subscription<avg_msgs::msg::AvgPoseStamped>(
       progressive_visualization_fallback_pose_topic_, rclcpp::QoS(10), pose_callback);
   }
 
@@ -265,7 +266,7 @@ void Lanelet2MapNode::publishVisualization(
   active_visualization_filter_ = filter;
   const auto viz_t0 = std::chrono::steady_clock::now();
 
-  avg_msgs::msg::MarkerArray markers;
+  visualization_msgs::msg::MarkerArray markers;
   int32_t marker_id = 0;
 
   const auto stamp = now();
@@ -344,12 +345,12 @@ void Lanelet2MapNode::publishVisualization(
     RCLCPP_WARN(get_logger(), "Loaded map contains no lanelets to visualize for %s mode.", mode_label);
   }
 
-  avg_msgs::msg::Marker clear_marker;
+  visualization_msgs::msg::Marker clear_marker;
   clear_marker.header.frame_id = config_.map_frame_id;
   clear_marker.header.stamp = stamp;
   clear_marker.ns = "lanelet/clear";
   clear_marker.id = 0;
-  clear_marker.action = avg_msgs::msg::Marker::DELETEALL;
+  clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
   markers.markers.insert(markers.markers.begin(), std::move(clear_marker));
 
   cached_markers_ = markers;
@@ -441,7 +442,7 @@ void Lanelet2MapNode::publishCachedVisualization()
   viz_pub_->publish(cached_markers_);
 }
 
-void Lanelet2MapNode::onProgressivePose(const avg_msgs::msg::PoseStamped::ConstSharedPtr msg)
+void Lanelet2MapNode::onProgressivePose(const avg_msgs::msg::AvgPoseStamped::ConstSharedPtr msg)
 {
   if (!progressive_visualization_enable_ ||
     progressive_local_visualization_published_ ||
@@ -484,10 +485,10 @@ void Lanelet2MapNode::onProgressivePose(const avg_msgs::msg::PoseStamped::ConstS
     [this]() { publishFullVisualization(); });
 }
 
-avg_msgs::msg::SetParametersResult Lanelet2MapNode::onParameterChange(
+rcl_interfaces::msg::SetParametersResult Lanelet2MapNode::onParameterChange(
   const std::vector<rclcpp::Parameter> & params)
 {
-  avg_msgs::msg::SetParametersResult result;
+  rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
 
   Lanelet2MapNodeConfig new_config = config_;
@@ -631,7 +632,7 @@ bool Lanelet2MapNode::reloadMapWithConfig(const Lanelet2MapNodeConfig & new_conf
 }
 
 std::size_t Lanelet2MapNode::addLaneletCenterlines(
-  avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+  visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   // HH_260114 Light color centerlines, continuous line style.
@@ -643,7 +644,7 @@ std::size_t Lanelet2MapNode::addLaneletCenterlines(
     }
     auto marker = initLineMarker(
       "lanelet/centerline", id_counter++, config_.map_frame_id, color, 0.12, stamp);
-    marker.type = avg_msgs::msg::Marker::LINE_STRIP;
+    marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
 
     for (const auto & point : lanelet.centerline()) {
       marker.points.push_back(makeMapPoint(point.x(), point.y(), point.z()));
@@ -655,7 +656,7 @@ std::size_t Lanelet2MapNode::addLaneletCenterlines(
 }
 
 std::size_t Lanelet2MapNode::addLaneletBounds(
-  avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+  visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   // HH_260114 Slightly thinner bounds with mid-tone gray.
@@ -687,7 +688,7 @@ std::size_t Lanelet2MapNode::addLaneletBounds(
 }
 
 std::size_t Lanelet2MapNode::addAreas(
-  avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+  visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
@@ -699,7 +700,7 @@ std::size_t Lanelet2MapNode::addAreas(
     }
     auto marker = initLineMarker(
       "lanelet/area", id_counter++, config_.map_frame_id, area_color, 0.08, stamp);
-    marker.type = avg_msgs::msg::Marker::LINE_STRIP;
+    marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
 
     for (const auto & bound : area.outerBound()) {
       for (const auto & point : bound) {
@@ -719,7 +720,7 @@ std::size_t Lanelet2MapNode::addAreas(
 }
 
 std::size_t Lanelet2MapNode::addLineStrings(
-  avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+  visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
@@ -752,7 +753,7 @@ std::size_t Lanelet2MapNode::addLineStrings(
 }
 
 std::size_t Lanelet2MapNode::addPoints(
-  avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+  visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
@@ -765,13 +766,13 @@ std::size_t Lanelet2MapNode::addPoints(
       subtype = "point";
     }
 
-    avg_msgs::msg::Marker marker;
+    visualization_msgs::msg::Marker marker;
     marker.header.frame_id = config_.map_frame_id;
     marker.header.stamp = stamp;
     const auto grouped_ns = groupedNamespace("point", subtype);
     marker.ns = grouped_ns;
     marker.id = id_counter++;
-    marker.type = avg_msgs::msg::Marker::SPHERE;
+    marker.type = visualization_msgs::msg::Marker::SPHERE;
     const double scale = subtype == "traffic_light" ? 0.6 : 0.4;
     marker.scale.x = scale;
     marker.scale.y = scale;
@@ -787,7 +788,7 @@ std::size_t Lanelet2MapNode::addPoints(
 }
 
 std::size_t Lanelet2MapNode::addLaneletDirections(
-  avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+  visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
@@ -811,12 +812,12 @@ std::size_t Lanelet2MapNode::addLaneletDirections(
         continue;
       }
       const double lane_width = laneWidthAt(lanelet, i);
-      avg_msgs::msg::Point tail_left, tail_right, head_point;
+      geometry_msgs::msg::Point tail_left, tail_right, head_point;
       if (!computeFlatArrow(centerline, i, i + 1, lane_width, tail_left, tail_right, head_point)) {
         continue;
       }
 
-      avg_msgs::msg::Marker marker;
+      visualization_msgs::msg::Marker marker;
       marker.header.frame_id = config_.map_frame_id;
       marker.header.stamp = stamp;
       marker.ns = "lanelet/direction";
@@ -824,8 +825,8 @@ std::size_t Lanelet2MapNode::addLaneletDirections(
       marker.scale.y = 1.0;
       marker.scale.z = 1.0;
       marker.id = id_counter++;
-      marker.type = avg_msgs::msg::Marker::TRIANGLE_LIST;
-      marker.action = avg_msgs::msg::Marker::ADD;
+      marker.type = visualization_msgs::msg::Marker::TRIANGLE_LIST;
+      marker.action = visualization_msgs::msg::Marker::ADD;
       marker.color = color;
 
       marker.points.push_back(tail_left);
@@ -843,7 +844,7 @@ std::size_t Lanelet2MapNode::addLaneletDirections(
 }
 
 std::size_t Lanelet2MapNode::addLaneletIds(
-  avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+  visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
@@ -855,20 +856,20 @@ std::size_t Lanelet2MapNode::addLaneletIds(
     if (centerline.empty()) {
       continue;
     }
-    avg_msgs::msg::Marker marker;
+    visualization_msgs::msg::Marker marker;
     marker.header.frame_id = config_.map_frame_id;
     marker.header.stamp = stamp;
     marker.ns = "lanelet/id";
     marker.id = id_counter++;
-    marker.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
-    marker.action = avg_msgs::msg::Marker::ADD;
+    marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    marker.action = visualization_msgs::msg::Marker::ADD;
     // HH_260114 Make lanelet text smaller and softer.
     marker.scale.z = 1.0;
     marker.color = makeColor(0.55f, 0.55f, 0.60f, 0.45f);
     marker.text = std::to_string(lanelet.id());
     const size_t mid_index = centerline.size() / 2;
     const double label_base_z = align_z_to_ground_ ? map_ground_z_ : centerline[mid_index].z();
-    avg_msgs::msg::Point p = makePoint(
+    geometry_msgs::msg::Point p = makePoint(
       centerline[mid_index].x(),
       centerline[mid_index].y(),
       label_base_z + 1.0);
@@ -881,14 +882,14 @@ std::size_t Lanelet2MapNode::addLaneletIds(
 }
 
 std::size_t Lanelet2MapNode::addSemanticMarkers(
-  avg_msgs::msg::MarkerArray & markers, int32_t & id_counter,
+  visualization_msgs::msg::MarkerArray & markers, int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   std::size_t count = 0;
   struct SemanticStyle
   {
     std::string ns;
-    avg_msgs::msg::ColorRGBA color;
+    std_msgs::msg::ColorRGBA color;
     int marker_type;
     double sx;
     double sy;
@@ -897,9 +898,9 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
   };
   // HH_251215: Autoware-like semantic style palette
   const std::unordered_map<std::string, SemanticStyle> semantic_styles = {
-    {"traffic_light", {"semantic/traffic_light/body", makeColor(0.20f, 0.24f, 0.32f, 0.95f), avg_msgs::msg::Marker::CUBE, 0.35, 0.35, 2.3, true}},
-    {"traffic_sign", {"semantic/traffic_sign", makeColor(0.45f, 0.70f, 0.78f, 0.92f), avg_msgs::msg::Marker::CUBE, 0.4, 2.4, 1.8, true}},
-    {"speed_bump", {"semantic/speed_bump", makeColor(1.0f, 0.55f, 0.0f), avg_msgs::msg::Marker::CUBE, 1.6, 0.8, 0.25, false}}
+    {"traffic_light", {"semantic/traffic_light/body", makeColor(0.20f, 0.24f, 0.32f, 0.95f), visualization_msgs::msg::Marker::CUBE, 0.35, 0.35, 2.3, true}},
+    {"traffic_sign", {"semantic/traffic_sign", makeColor(0.45f, 0.70f, 0.78f, 0.92f), visualization_msgs::msg::Marker::CUBE, 0.4, 2.4, 1.8, true}},
+    {"speed_bump", {"semantic/speed_bump", makeColor(1.0f, 0.55f, 0.0f), visualization_msgs::msg::Marker::CUBE, 1.6, 0.8, 0.25, false}}
   };
 
   for (const auto & line_string : loaded_map_->lineStringLayer) {
@@ -916,7 +917,7 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
     }
     const auto & style = it->second;
 
-    avg_msgs::msg::Marker marker;
+    visualization_msgs::msg::Marker marker;
     marker.header.frame_id = config_.map_frame_id;
     marker.header.stamp = stamp;
     marker.ns = style.ns;
@@ -927,7 +928,7 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
 
     const bool is_traffic_sign = tags.subtype == "traffic_sign" || tags.type == "traffic_sign";
 
-    if (style.marker_type == avg_msgs::msg::Marker::LINE_STRIP) {
+    if (style.marker_type == visualization_msgs::msg::Marker::LINE_STRIP) {
       marker.scale.x = style.sx;
       for (const auto & point : line_string) {
         marker.points.push_back(makeMapPoint(point.x(), point.y(), point.z()));
@@ -955,14 +956,14 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
     ++count;
 
     if (style.add_text) {
-      avg_msgs::msg::Marker text_marker;
+      visualization_msgs::msg::Marker text_marker;
       text_marker.header = marker.header;
       text_marker.ns = "semantic/text";
       text_marker.id = id_counter++;
-      text_marker.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
+      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
       text_marker.scale.z = 0.9;
       text_marker.color = makeColor(1.0f, 1.0f, 1.0f);
-      text_marker.pose.position = marker.type == avg_msgs::msg::Marker::LINE_STRIP
+      text_marker.pose.position = marker.type == visualization_msgs::msg::Marker::LINE_STRIP
         ? marker.points.front()
         : marker.pose.position;
       text_marker.pose.position.z += 1.0;
@@ -986,10 +987,10 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
       continue;
     }
     const auto & style = it->second;
-    avg_msgs::msg::Point centroid = makeMapPoint(point.x(), point.y(), point.z());
+    geometry_msgs::msg::Point centroid = makeMapPoint(point.x(), point.y(), point.z());
     const bool is_traffic_sign = tags.subtype == "traffic_sign" || tags.type == "traffic_sign";
 
-    avg_msgs::msg::Marker marker;
+    visualization_msgs::msg::Marker marker;
     marker.header.frame_id = config_.map_frame_id;
     marker.header.stamp = stamp;
     marker.ns = style.ns;
@@ -1017,11 +1018,11 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
     ++count;
 
     if (style.add_text) {
-      avg_msgs::msg::Marker text_marker;
+      visualization_msgs::msg::Marker text_marker;
       text_marker.header = marker.header;
       text_marker.ns = "semantic/text";
       text_marker.id = id_counter++;
-      text_marker.type = avg_msgs::msg::Marker::TEXT_VIEW_FACING;
+      text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
       text_marker.scale.z = 0.8;
       text_marker.color = makeColor(1.0f, 1.0f, 1.0f);
       text_marker.pose.position = marker.pose.position;
@@ -1035,25 +1036,25 @@ std::size_t Lanelet2MapNode::addSemanticMarkers(
 }
 
 // Initialization helper LineMarker: initializes message defaults before frame-specific fields are filled.
-avg_msgs::msg::Marker Lanelet2MapNode::initLineMarker(
+visualization_msgs::msg::Marker Lanelet2MapNode::initLineMarker(
   const std::string & ns, int32_t id, const std::string & frame_id,
-  const avg_msgs::msg::ColorRGBA & color, double width, const rclcpp::Time & stamp)
+  const std_msgs::msg::ColorRGBA & color, double width, const rclcpp::Time & stamp)
 {
-  avg_msgs::msg::Marker marker;
+  visualization_msgs::msg::Marker marker;
   marker.header.frame_id = frame_id;
   marker.header.stamp = stamp;
   marker.ns = ns;
   marker.id = id;
-  marker.type = avg_msgs::msg::Marker::LINE_STRIP;
-  marker.action = avg_msgs::msg::Marker::ADD;
+  marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+  marker.action = visualization_msgs::msg::Marker::ADD;
   marker.scale.x = width;
   marker.color = color;
   return marker;
 }
 
-avg_msgs::msg::ColorRGBA Lanelet2MapNode::makeColor(float r, float g, float b, float a)
+std_msgs::msg::ColorRGBA Lanelet2MapNode::makeColor(float r, float g, float b, float a)
 {
-  avg_msgs::msg::ColorRGBA c;
+  std_msgs::msg::ColorRGBA c;
   c.r = r;
   c.g = g;
   c.b = b;
@@ -1061,9 +1062,9 @@ avg_msgs::msg::ColorRGBA Lanelet2MapNode::makeColor(float r, float g, float b, f
   return c;
 }
 
-avg_msgs::msg::Point Lanelet2MapNode::makePoint(double x, double y, double z) const
+geometry_msgs::msg::Point Lanelet2MapNode::makePoint(double x, double y, double z) const
 {
-  avg_msgs::msg::Point p;
+  geometry_msgs::msg::Point p;
   p.x = x;
   p.y = y;
   p.z = z;
@@ -1071,16 +1072,16 @@ avg_msgs::msg::Point Lanelet2MapNode::makePoint(double x, double y, double z) co
 }
 
 // makeMapPoint: Constructs a map-geometry point and optionally flattens OSM altitude for 2D RViz/planning alignment.
-avg_msgs::msg::Point Lanelet2MapNode::makeMapPoint(double x, double y, double z) const
+geometry_msgs::msg::Point Lanelet2MapNode::makeMapPoint(double x, double y, double z) const
 {
   return makePoint(x, y, align_z_to_ground_ ? map_ground_z_ : z);
 }
 
 // HH_260114 Semantic marker centroid for placement.
-avg_msgs::msg::Point Lanelet2MapNode::computeCentroid(
+geometry_msgs::msg::Point Lanelet2MapNode::computeCentroid(
   const lanelet::ConstLineString3d & line_string)
 {
-  avg_msgs::msg::Point centroid;
+  geometry_msgs::msg::Point centroid;
   if (line_string.empty()) {
     return centroid;
   }
@@ -1150,17 +1151,17 @@ bool Lanelet2MapNode::isAreaNear(const lanelet::ConstArea & area) const
 }
 
 void Lanelet2MapNode::addTrafficLightBulbs(  // HH_260114 Autoware-style tri-color bulbs.
-  const avg_msgs::msg::Point & base_center,
+  const geometry_msgs::msg::Point & base_center,
   const std::string & bulb_namespace,
-  avg_msgs::msg::MarkerArray & markers,
+  visualization_msgs::msg::MarkerArray & markers,
   int32_t & id_counter,
   const rclcpp::Time & stamp) const
 {
   // HH_251215: emulate Autoware bulb layout (red/amber/green row)
   struct BulbStyle
   {
-    avg_msgs::msg::Point offset;
-    avg_msgs::msg::ColorRGBA color;
+    geometry_msgs::msg::Point offset;
+    std_msgs::msg::ColorRGBA color;
   };
   const double spacing = 0.45;
   const double radius = 0.24;
@@ -1171,12 +1172,12 @@ void Lanelet2MapNode::addTrafficLightBulbs(  // HH_260114 Autoware-style tri-col
   };
 
   for (size_t idx = 0; idx < bulbs.size(); ++idx) {
-    avg_msgs::msg::Marker bulb_marker;
+    visualization_msgs::msg::Marker bulb_marker;
     bulb_marker.header.frame_id = config_.map_frame_id;
     bulb_marker.header.stamp = stamp;
     bulb_marker.ns = bulb_namespace;
     bulb_marker.id = id_counter++;
-    bulb_marker.type = avg_msgs::msg::Marker::SPHERE;
+    bulb_marker.type = visualization_msgs::msg::Marker::SPHERE;
     bulb_marker.scale.x = radius;
     bulb_marker.scale.y = radius;
     bulb_marker.scale.z = radius;
@@ -1193,9 +1194,9 @@ void Lanelet2MapNode::addTrafficLightBulbs(  // HH_260114 Autoware-style tri-col
 bool Lanelet2MapNode::computeFlatArrow(
   const lanelet::ConstLineString3d & centerline, const std::size_t tail_idx, const std::size_t head_idx,
   double lane_width,
-  avg_msgs::msg::Point & tail_left,
-  avg_msgs::msg::Point & tail_right,
-  avg_msgs::msg::Point & head_point) const
+  geometry_msgs::msg::Point & tail_left,
+  geometry_msgs::msg::Point & tail_right,
+  geometry_msgs::msg::Point & head_point) const
 {
   if (centerline.size() < 2 || tail_idx >= centerline.size() || head_idx >= centerline.size()) {
     return false;
@@ -1224,7 +1225,7 @@ bool Lanelet2MapNode::computeFlatArrow(
   const double base_z = align_z_to_ground_ ? map_ground_z_ : (tail.z() + head.z()) * 0.5;
 
   // Build arrow around the midpoint of the segment to avoid forward shift
-  avg_msgs::msg::Point mid = makePoint(
+  geometry_msgs::msg::Point mid = makePoint(
     (tail.x() + head.x()) * 0.5,
     (tail.y() + head.y()) * 0.5,
     base_z);
@@ -1238,7 +1239,7 @@ bool Lanelet2MapNode::computeFlatArrow(
     mid.y - dir_y * (body_length * 0.5) + perp_y * half_width,
     base_z);
 
-  avg_msgs::msg::Point center_head = makePoint(
+  geometry_msgs::msg::Point center_head = makePoint(
     mid.x + dir_x * (body_length * 0.5),
     mid.y + dir_y * (body_length * 0.5),
     base_z);
@@ -1272,8 +1273,8 @@ double Lanelet2MapNode::laneWidthAt(const lanelet::ConstLanelet & lanelet, std::
   return width > 0.1 ? width : 3.0;
 }
 
-avg_msgs::msg::ColorRGBA Lanelet2MapNode::colorFromSubtype(
-  const std::string & subtype, const avg_msgs::msg::ColorRGBA & fallback) const
+std_msgs::msg::ColorRGBA Lanelet2MapNode::colorFromSubtype(
+  const std::string & subtype, const std_msgs::msg::ColorRGBA & fallback) const
 {
   if (subtype == "stop_line") {
     return makeColor(1.0f, 1.0f, 0.0f);
@@ -1347,7 +1348,7 @@ std::string Lanelet2MapNode::groupedNamespace(
 
 void Lanelet2MapNode::publishStaticTF()
 {
-  avg_msgs::msg::TransformStamped tf_msg;
+  geometry_msgs::msg::TransformStamped tf_msg;
   tf_msg.header.frame_id = config_.world_frame_id;
   tf_msg.child_frame_id = config_.map_frame_id;
   tf_msg.header.stamp = now();
@@ -1363,7 +1364,7 @@ void Lanelet2MapNode::publishStaticTF()
 }
 
 void Lanelet2MapNode::publishAvgMapMessage(
-  const avg_msgs::msg::MarkerArray & markers,
+  const visualization_msgs::msg::MarkerArray & markers,
   const rclcpp::Time & stamp)
 {
   if (!publish_map_status_ || !avg_map_pub_) {

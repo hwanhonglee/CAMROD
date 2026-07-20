@@ -151,7 +151,8 @@ def generate_launch_description():
         DeclareLaunchArgument("gnss_log_level",   default_value="error"),
 
         DeclareLaunchArgument("imu_velocity_topic",    default_value="/platform/status/velocity"),
-        DeclareLaunchArgument("imu_input_topic",       default_value="data"),
+        DeclareLaunchArgument("imu_input_topic",       default_value="data_ros"),
+        DeclareLaunchArgument("imu_data_output_topic", default_value="data"),
         # Keep canonical absolute topic so diagnostics observe one stable velocity-converter stream.
         DeclareLaunchArgument(
             "imu_output_topic",
@@ -198,6 +199,7 @@ def generate_launch_description():
                  velocity_converter_param_file=LaunchConfiguration("imu_converter_param_file"),
                  velocity_topic=LaunchConfiguration("imu_velocity_topic"),
                  imu_topic=LaunchConfiguration("imu_input_topic"),
+                 imu_data_output_topic=LaunchConfiguration("imu_data_output_topic"),
                  output_topic=LaunchConfiguration("imu_output_topic"),
                  imu_status_topic=LaunchConfiguration("imu_status_topic"),
                  module_namespace="imu",
@@ -221,8 +223,7 @@ def generate_launch_description():
                  module_namespace="radar",
             ),
 
-            # HH_260424: inflation_cost_grid fuses lanelet + LiDAR + Radar + global_path into
-            #   /planning/cost_grid/inflation. Used by Nav2 local costmap and cmd_vel_gate.
+            # HH_260720 - Feed the merged grid to Nav2 and cmd_vel_safety_gate.
             Node(
                 package="camrod_sensing",
                 executable="inflation_cost_grid_node",
