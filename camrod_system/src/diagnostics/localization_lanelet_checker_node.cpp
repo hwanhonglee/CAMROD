@@ -45,9 +45,9 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus   = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper      = diagnostic_updater::DiagnosticStatusWrapper;
-using PoseWithCovStamped = avg_msgs::msg::AvgPoseWithCovarianceStamped;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
 // ── 상태 구조체 ──────────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ struct LaneletState
 
   std::deque<rclcpp::Time> timestamps;  // Hz 계산용 rolling window (2s)
 
-  rclcpp::Subscription<PoseWithCovStamped>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr sub;
 };
 
 // ── LocalizationLaneletCheckerNode ───────────────────────────────────────
@@ -104,9 +104,9 @@ protected:
 
   void setup_tasks_() override
   {
-    state_.sub = create_subscription<PoseWithCovStamped>(
+    state_.sub = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       lanelet_topic_, rclcpp::QoS(10),
-      [this](const PoseWithCovStamped::ConstSharedPtr msg) { onPose(msg); });
+      [this](const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg) { onPose(msg); });
 
     add_task("/localization/lanelet",
       [this](StatusWrapper & stat) { checkLanelet(stat); });
@@ -117,7 +117,7 @@ protected:
   }
 
 private:
-  void onPose(const PoseWithCovStamped::ConstSharedPtr msg)
+  void onPose(const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg)
   {
     // covariance[14] = z not observed (9999). XY 만 사용.
     const double cov_trace = msg->pose.covariance[0] + msg->pose.covariance[7];
@@ -145,7 +145,7 @@ private:
 
     // ── Staleness 체크 (핵심: 맵 밖 이탈 = 발행 중단) ─────────────────
     if (!state_.has_msg) {
-      stat.summary(DiagnosticStatus::STALE,
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE,
         "No topic messages: " + lanelet_topic_ +
         " (centerline_snapper not started or outside map)");
       stat.add("topic", lanelet_topic_);
@@ -158,7 +158,7 @@ private:
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs - suspected outside map (timeout=%.1fs)",
         elapsed, stale_timeout_);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -175,7 +175,7 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     // 1. Covariance trace (snapping 불확실도)
@@ -185,8 +185,8 @@ private:
       cov_error_threshold_);
     if (cov_lvl > lvl) {
       lvl = cov_lvl;
-      if      (cov_lvl == S::ERROR) msg_str = "Lanelet covariance critical (snapping unusable)";
-      else if (cov_lvl == S::WARN)  msg_str = "Lanelet covariance high (snapping uncertain)";
+      if      (cov_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg_str = "Lanelet covariance critical (snapping unusable)";
+      else if (cov_lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg_str = "Lanelet covariance high (snapping uncertain)";
     }
 
     // 2. Rate 체크
@@ -195,12 +195,12 @@ private:
       int8_t hz_lvl = check_low(ratio, hz_warn_ratio_, hz_error_ratio_);
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "Lanelet output rate critically low (intermittent map loss)"
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ? "Lanelet output rate critically low (intermittent map loss)"
                                        : "Lanelet output rate low (intermittent snapping failure)";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[80];
       std::snprintf(buf, sizeof(buf),
         "OK (%.0f Hz, cov_trace=%.4f)", actual_hz, state_.xy_cov_trace);

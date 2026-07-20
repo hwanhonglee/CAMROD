@@ -40,7 +40,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── 휠 오도메트리 상태 구조체 ─────────────────────────────────────────────
@@ -177,7 +177,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!wheel.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + wheel.topic);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + wheel.topic);
       stat.add("topic", wheel.topic);
       return;
     }
@@ -187,7 +187,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)", elapsed, wheel.stale_timeout);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -202,41 +202,41 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     // NaN/Inf 체크 (최우선)
     if (wheel.vel_nan) {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "twist velocity contains NaN/Inf";
     }
 
     // Rate 체크
-    if (lvl < DiagnosticStatus::ERROR && wheel.expected_hz > 0.0) {
+    if (lvl < diagnostic_msgs::msg::DiagnosticStatus::ERROR && wheel.expected_hz > 0.0) {
       double ratio = actual_hz / wheel.expected_hz;
       int8_t hz_lvl = check_low(ratio, wheel.hz_warn_ratio, wheel.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
-        msg_str = (hz_lvl == DiagnosticStatus::ERROR) ?
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ?
           "Input rate critically low" : "Input rate low";
       }
     }
 
     // 최대 속도 체크
     double speed = std::abs(wheel.vx);
-    if (lvl < DiagnosticStatus::ERROR) {
+    if (lvl < diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
       if (wheel.max_speed_error_ms > 0.0 && speed > wheel.max_speed_error_ms) {
-        lvl     = DiagnosticStatus::ERROR;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         msg_str = "Velocity abnormal (above ERROR threshold)";
       } else if (wheel.max_speed_warn_ms > 0.0 && speed > wheel.max_speed_warn_ms &&
-                 lvl < DiagnosticStatus::WARN)
+                 lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN)
       {
-        lvl     = DiagnosticStatus::WARN;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = "Velocity abnormal (above WARN threshold)";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];
       std::snprintf(buf, sizeof(buf), "OK (%.0f Hz, vx=%.2f m/s)", actual_hz, wheel.vx);
       msg_str = buf;

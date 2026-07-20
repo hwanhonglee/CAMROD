@@ -20,6 +20,8 @@ from rclpy.node import Node
 
 
 class PlanningProgressNode(Node):
+
+    # HH_260721 - Separate the class declaration from its first method for lint readability.
     def __init__(self):
         super().__init__("planning_progress_node")
 

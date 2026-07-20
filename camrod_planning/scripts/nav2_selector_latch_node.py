@@ -8,6 +8,8 @@ from std_msgs.msg import String
 
 
 class Nav2SelectorLatchNode(Node):
+
+    # HH_260721 - Separate the class declaration from its first method for lint readability.
     def __init__(self) -> None:
         super().__init__("nav2_selector_latch")
 

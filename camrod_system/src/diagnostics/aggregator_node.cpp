@@ -12,18 +12,17 @@
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
-using DiagnosticArray  = diagnostic_msgs::msg::DiagnosticArray;
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using SteadyClock      = std::chrono::steady_clock;
 using TimePoint        = std::chrono::steady_clock::time_point;
 
 // ── 유틸리티 ──────────────────────────────────────────────────────────────
 
 static const std::map<uint8_t, std::string> LEVEL_NAMES = {
-  {DiagnosticStatus::OK,    "OK"},
-  {DiagnosticStatus::WARN,  "WARN"},
-  {DiagnosticStatus::ERROR, "ERROR"},
-  {DiagnosticStatus::STALE, "STALE"},
+  {diagnostic_msgs::msg::DiagnosticStatus::OK,    "OK"},
+  {diagnostic_msgs::msg::DiagnosticStatus::WARN,  "WARN"},
+  {diagnostic_msgs::msg::DiagnosticStatus::ERROR, "ERROR"},
+  {diagnostic_msgs::msg::DiagnosticStatus::STALE, "STALE"},
 };
 
 static std::string level_name(uint8_t lvl)
@@ -64,11 +63,11 @@ public:
 
     // HH_260617: Use relative diagnostics topics so the system namespace owns the
     // public `/system/diagnostics*` API instead of relying on absolute-topic remaps.
-    sub_ = create_subscription<DiagnosticArray>(
+    sub_ = create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
       "diagnostics", 10,
-      [this](const DiagnosticArray::SharedPtr msg) { diagnostics_callback(msg); });
+      [this](const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg) { diagnostics_callback(msg); });
 
-    pub_   = create_publisher<DiagnosticArray>("diagnostics_agg", 10);
+    pub_   = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("diagnostics_agg", 10);
     timer_ = create_timer(
       this, get_clock(),
       std::chrono::duration<double>(1.0 / publish_rate_hz),
@@ -134,7 +133,7 @@ private:
     return publish_rate_hz;
   }
 
-  void diagnostics_callback(const DiagnosticArray::SharedPtr msg)
+  void diagnostics_callback(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg)
   {
     auto now = SteadyClock::now();
     for (const auto & status : msg->status) {
@@ -168,17 +167,17 @@ private:
     return it != topic_configs_.end() ? it->second.group : "unknown";
   }
 
-  DiagnosticStatus check_stale(const std::string & name, const DiagnosticStatus & status,
+  diagnostic_msgs::msg::DiagnosticStatus check_stale(const std::string & name, const diagnostic_msgs::msg::DiagnosticStatus & status,
     TimePoint last_seen)
   {
     double elapsed =
       std::chrono::duration<double>(SteadyClock::now() - last_seen).count();
 
     if (elapsed > get_timeout(name)) {
-      DiagnosticStatus stale;
+      diagnostic_msgs::msg::DiagnosticStatus stale;
       stale.name        = status.name;
       stale.hardware_id = status.hardware_id;
-      stale.level       = DiagnosticStatus::STALE;
+      stale.level       = diagnostic_msgs::msg::DiagnosticStatus::STALE;
       std::ostringstream oss;
       oss << "STALE (last seen " << std::fixed;
       oss.precision(1);
@@ -195,13 +194,13 @@ private:
       return;
     }
 
-    DiagnosticArray agg_msg;
+    diagnostic_msgs::msg::DiagnosticArray agg_msg;
     agg_msg.header.stamp = get_clock()->now();
 
     std::map<std::string, uint8_t> group_worst;
 
     for (auto & [name, entry] : status_map_) {
-      DiagnosticStatus s = check_stale(name, entry.status, entry.last_seen);
+      diagnostic_msgs::msg::DiagnosticStatus s = check_stale(name, entry.status, entry.last_seen);
       agg_msg.status.push_back(s);
 
       std::string group = get_group(s.name);
@@ -231,7 +230,7 @@ private:
 
   // 상태 엔트리
   struct StatusEntry {
-    DiagnosticStatus status;
+    diagnostic_msgs::msg::DiagnosticStatus status;
     TimePoint        last_seen;
   };
 
@@ -241,8 +240,8 @@ private:
   double                                           default_timeout_{5.0};
   bool                                             enable_summary_log_{false};
 
-  rclcpp::Subscription<DiagnosticArray>::SharedPtr sub_;
-  rclcpp::Publisher<DiagnosticArray>::SharedPtr    pub_;
+  rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr sub_;
+  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr    pub_;
   rclcpp::TimerBase::SharedPtr                     timer_;
 };
 

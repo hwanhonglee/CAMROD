@@ -45,7 +45,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── MapCostGridCheckerNode ─────────────────────────────────────────────────
@@ -138,7 +138,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!has_msg_) {
-      stat.summary(DiagnosticStatus::STALE,
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE,
         "No topic messages: " + cost_grid_topic_ +
         " (map load failed or pose/path input missing)");
       stat.add("topic", cost_grid_topic_);
@@ -151,7 +151,7 @@ private:
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs) - check pose/path input",
         elapsed, stale_timeout_);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -166,7 +166,7 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     // 1. Unknown ratio (경로 없거나 맵 범위 밖 → 격자 의미 unavailable)
@@ -174,7 +174,7 @@ private:
       actual_unknown_ratio_, unknown_ratio_warn_, unknown_ratio_error_);
     if (unk_lvl > lvl) {
       lvl = unk_lvl;
-      msg_str = (unk_lvl == S::ERROR) ?
+      msg_str = (unk_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ?
         "Lane grid fully unknown - map load failed or no path" :
         "Lane grid unknown ratio high - no path or outside map coverage";
     }
@@ -185,13 +185,13 @@ private:
       int8_t hz_lvl = check_low(ratio, hz_warn_ratio_, hz_error_ratio_);
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ?
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ?
           "Lane grid publish rate critically low - check pose/path trigger" :
           "Lane grid publish rate low";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[80];
       std::snprintf(buf, sizeof(buf),
         "OK (%.1f Hz, unknown=%.0f%%)",

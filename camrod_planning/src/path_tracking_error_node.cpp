@@ -26,7 +26,8 @@ public:
   {
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/planning/lanelet_pose");
     local_path_topic_ = declare_parameter<std::string>("local_path_topic", "/planning/local_path");
-    global_path_topic_ = declare_parameter<std::string>("global_path_topic", "/planning/global_path");
+    global_path_topic_ =
+      declare_parameter<std::string>("global_path_topic", "/planning/global_path");
     // HH_260720 - Correct the public topic name so its purpose is immediately readable.
     output_topic_ = declare_parameter<std::string>("output_topic", "/planning/tracking_error");
     prefer_local_path_ = declare_parameter<bool>("prefer_local_path", true);
@@ -44,8 +45,9 @@ public:
     sub_global_path_ = create_subscription<nav_msgs::msg::Path>(
       global_path_topic_, rclcpp::QoS(1).reliable(),
       [this](const nav_msgs::msg::Path::ConstSharedPtr msg) {
-        onGlobalPath(std::make_shared<avg_msgs::msg::AvgPath>(
-          avg_msgs::conversions::fromRos(*msg)));
+        onGlobalPath(
+          std::make_shared<avg_msgs::msg::AvgPath>(
+            avg_msgs::conversions::fromRos(*msg)));
       });
 
     pub_tracking_error_ = create_publisher<avg_msgs::msg::AvgTrackingError>(
@@ -61,7 +63,8 @@ public:
     RCLCPP_INFO(
       get_logger(),
       "path_tracking_error: pose=%s local_path=%s global_path=%s output=%s prefer_local=%s",
-      pose_topic_.c_str(), local_path_topic_.c_str(), global_path_topic_.c_str(), output_topic_.c_str(),
+      pose_topic_.c_str(), local_path_topic_.c_str(),
+      global_path_topic_.c_str(), output_topic_.c_str(),
       prefer_local_path_ ? "true" : "false");
   }
 
@@ -285,7 +288,9 @@ private:
 
     std::string active_source;
     ErrorSample active_sample;
-    chooseActiveSample(prefer_local_path_, local_sample, global_sample, active_source, active_sample);
+    chooseActiveSample(
+      prefer_local_path_, local_sample, global_sample, active_source,
+      active_sample);
 
     avg_msgs::msg::AvgTrackingError msg;
     const auto stamp_now = now();

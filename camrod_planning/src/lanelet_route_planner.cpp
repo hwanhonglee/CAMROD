@@ -64,7 +64,9 @@ geometry_msgs::msg::Quaternion yawToQuaternion(const double yaw)
   return quaternion;
 }
 
-bool pointInPolygon2D(const std::vector<std::pair<double, double>> & polygon, const double x, const double y)
+bool pointInPolygon2D(
+  const std::vector<std::pair<double, double>> & polygon, const double x,
+  const double y)
 {
   if (polygon.size() < 3U) {
     return false;
@@ -124,7 +126,9 @@ public:
     declareIfMissing(plugin_name_ + ".interpolation_resolution_m", 0.20);
     declareIfMissing(plugin_name_ + ".same_lane_forward_epsilon_m", 0.30);
     declareIfMissing(plugin_name_ + ".flatten_path_z", true);
-    declareIfMissing(plugin_name_ + ".route_lanelet_ids_topic", std::string("/planning/route_lanelet_ids"));
+    declareIfMissing(
+      plugin_name_ + ".route_lanelet_ids_topic",
+      std::string("/planning/route_lanelet_ids"));
     declareIfMissing(plugin_name_ + ".async_initialization", true);
     declareIfMissing(plugin_name_ + ".async_initialization_plan_wait_timeout_s", 60.0);
     declareIfMissing(
@@ -140,7 +144,9 @@ public:
     node_->get_parameter(plugin_name_ + ".allow_lane_changes", allow_lane_changes_);
     node_->get_parameter(plugin_name_ + ".max_snap_distance_m", max_snap_distance_m_);
     node_->get_parameter(plugin_name_ + ".interpolation_resolution_m", interpolation_resolution_m_);
-    node_->get_parameter(plugin_name_ + ".same_lane_forward_epsilon_m", same_lane_forward_epsilon_m_);
+    node_->get_parameter(
+      plugin_name_ + ".same_lane_forward_epsilon_m",
+      same_lane_forward_epsilon_m_);
     node_->get_parameter(plugin_name_ + ".flatten_path_z", flatten_path_z_);
     node_->get_parameter(plugin_name_ + ".route_lanelet_ids_topic", route_lanelet_ids_topic_);
     node_->get_parameter(plugin_name_ + ".async_initialization", async_initialization_);
@@ -527,7 +533,9 @@ private:
     }
   }
 
-  bool pointInsideLanelet(const lanelet::ConstLanelet & lanelet, const double x, const double y) const
+  bool pointInsideLanelet(
+    const lanelet::ConstLanelet & lanelet, const double x,
+    const double y) const
   {
     const auto left_bound = lanelet.leftBound();
     const auto right_bound = lanelet.rightBound();
@@ -540,7 +548,7 @@ private:
     for (const auto & point : left_bound) {
       polygon.emplace_back(point.x(), point.y());
     }
-    for (std::size_t point_index = right_bound.size(); point_index-- > 0U;) {
+    for (std::size_t point_index = right_bound.size(); point_index-- > 0U; ) {
       polygon.emplace_back(right_bound[point_index].x(), right_bound[point_index].y());
     }
     return pointInPolygon2D(polygon, x, y);
@@ -574,7 +582,7 @@ private:
 
     const double margin = max_snap_distance_m_;
     return x >= min_x - margin && x <= max_x + margin &&
-      y >= min_y - margin && y <= max_y + margin;
+           y >= min_y - margin && y <= max_y + margin;
   }
 
   ProjectedPoint projectToCenterline(
@@ -647,10 +655,14 @@ private:
       candidate.valid = true;
 
       if (candidate.inside) {
-        if (!best_inside.valid || candidate.projection.distance_sq < best_inside.projection.distance_sq) {
+        if (!best_inside.valid ||
+          candidate.projection.distance_sq < best_inside.projection.distance_sq)
+        {
           best_inside = candidate;
         }
-      } else if (!best_near.valid || candidate.projection.distance_sq < best_near.projection.distance_sq) {
+      } else if (!best_near.valid ||
+        candidate.projection.distance_sq < best_near.projection.distance_sq)
+      {
         best_near = candidate;
       }
     }
@@ -682,7 +694,7 @@ private:
     std::vector<lanelet::ConstLanelet> best_route;
     double best_route_length = std::numeric_limits<double>::max();
     for (const auto & following_lanelet : routing_graph_->following(
-      start_match.lanelet, allow_lane_changes_))
+        start_match.lanelet, allow_lane_changes_))
     {
       const auto route = routing_graph_->shortestPath(
         following_lanelet, goal_match.lanelet, 0, allow_lane_changes_);
@@ -703,7 +715,8 @@ private:
     return best_route;
   }
 
-  static std::vector<lanelet::ConstLanelet> toVector(const lanelet::routing::LaneletPath & lanelet_path)
+  static std::vector<lanelet::ConstLanelet> toVector(
+    const lanelet::routing::LaneletPath & lanelet_path)
   {
     std::vector<lanelet::ConstLanelet> output;
     output.reserve(lanelet_path.size());
@@ -772,7 +785,9 @@ private:
     route_turn_segments_pub_->publish(msg);
   }
 
-  ProjectedPoint pointAtArcLength(const lanelet::ConstLanelet & lanelet, const double target_s) const
+  ProjectedPoint pointAtArcLength(
+    const lanelet::ConstLanelet & lanelet,
+    const double target_s) const
   {
     ProjectedPoint output;
     const auto & centerline = lanelet.centerline();

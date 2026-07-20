@@ -21,10 +21,9 @@ namespace camrod_planning
 class GoalReplannerNode : public rclcpp::Node
 {
 public:
-  using AvgPlanningMsgs = avg_msgs::msg::AvgPlanningMsgs;
-  using ModuleState = avg_msgs::msg::ModuleState;
-  using ComputePathToPose = nav2_msgs::action::ComputePathToPose;
-  using GoalHandleComputePathToPose = rclcpp_action::ClientGoalHandle<ComputePathToPose>;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
+  using GoalHandleComputePathToPose =
+    rclcpp_action::ClientGoalHandle<nav2_msgs::action::ComputePathToPose>;
 
   // Implements `GoalReplannerNode` behavior.
   GoalReplannerNode()
@@ -64,7 +63,8 @@ public:
       use_topic_start_pose_ = false;
     } else {
       use_topic_start_pose_ = false;
-      RCLCPP_WARN(get_logger(),
+      RCLCPP_WARN(
+        get_logger(),
         "Unknown start mode '%s'. Use one of: "
         "robot_base_link | lanelet_pose | localization_pose | start_topic. "
         "Fallback to robot_base_link TF start.",
@@ -120,13 +120,15 @@ public:
     immediate_replan_on_goal_ = declare_parameter<bool>("immediate_replan_on_goal", true);
     immediate_replan_on_start_ = declare_parameter<bool>("immediate_replan_on_start", true);
 
-    action_client_ = rclcpp_action::create_client<ComputePathToPose>(this, action_name_);
+    action_client_ = rclcpp_action::create_client<nav2_msgs::action::ComputePathToPose>(
+      this,
+      action_name_);
     if (publish_result_path_) {
       path_pub_ = create_publisher<nav_msgs::msg::Path>(
         output_path_topic_, rclcpp::QoS(1).transient_local().reliable());
     }
     if (publish_planning_status_) {
-      pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
+      pub_avg_planning_ = create_publisher<avg_msgs::msg::AvgPlanningMsgs>(
         planning_status_topic_, rclcpp::QoS(10));
     }
 
@@ -519,7 +521,7 @@ private:
       return;
     }
 
-    ComputePathToPose::Goal goal_msg;
+    nav2_msgs::action::ComputePathToPose::Goal goal_msg;
     goal_msg.use_start = use_topic_start_pose_ && has_start_;
     if (goal_msg.use_start && force_tf_start_once_) {
       goal_msg.use_start = false;
@@ -543,16 +545,17 @@ private:
     goal_msg.planner_id = use_fallback_planner_this_request ?
       fallback_planner_id_ : planner_id_;
     if (goal_msg.use_start) {
-      goal_msg.start.header.frame_id = goal_msg.start.header.frame_id.empty()
-        ? frame_id_ : goal_msg.start.header.frame_id;
+      goal_msg.start.header.frame_id = goal_msg.start.header.frame_id.empty() ?
+        frame_id_ : goal_msg.start.header.frame_id;
     }
-    goal_msg.goal.header.frame_id = goal_msg.goal.header.frame_id.empty()
-      ? frame_id_ : goal_msg.goal.header.frame_id;
+    goal_msg.goal.header.frame_id = goal_msg.goal.header.frame_id.empty() ?
+      frame_id_ : goal_msg.goal.header.frame_id;
 
     const uint64_t req_seq = ++request_seq_counter_;
     active_request_seq_ = req_seq;
 
-    auto send_goal_options = rclcpp_action::Client<ComputePathToPose>::SendGoalOptions();
+    auto send_goal_options =
+      rclcpp_action::Client<nav2_msgs::action::ComputePathToPose>::SendGoalOptions();
     send_goal_options.goal_response_callback =
       [this, req_seq](GoalHandleComputePathToPose::SharedPtr goal_handle) {
         if (req_seq != active_request_seq_) {
@@ -649,7 +652,8 @@ private:
         }
         has_last_submitted_ = false;
         if (retry_after_failure_s_ > 0.0) {
-          next_allowed_request_time_ = now() + rclcpp::Duration::from_seconds(retry_after_failure_s_);
+          next_allowed_request_time_ = now() +
+            rclcpp::Duration::from_seconds(retry_after_failure_s_);
         }
         RCLCPP_WARN(
           get_logger(), "ComputePathToPose finished with code %d",
@@ -696,11 +700,11 @@ private:
     if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
     }
-    AvgPlanningMsgs msg;
+    avg_msgs::msg::AvgPlanningMsgs msg;
     msg.stamp = now();
     msg.state.stamp = msg.stamp;
     msg.state.module_name = "planning";
-    msg.state.level = ModuleState::OK;
+    msg.state.level = avg_msgs::msg::ModuleState::OK;
     msg.state.message = "goal_replanner";
     if (global_path.has_value()) {
       msg.global_path = avg_msgs::conversions::fromRos(global_path.value());
@@ -773,10 +777,10 @@ private:
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_start_;
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub_nav_status_;
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp_action::Client<ComputePathToPose>::SharedPtr action_client_;
+  rclcpp_action::Client<nav2_msgs::action::ComputePathToPose>::SharedPtr action_client_;
   GoalHandleComputePathToPose::SharedPtr active_goal_handle_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
-  rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
 
   rclcpp::Time request_sent_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_request_sent_time_{0, 0, RCL_ROS_TIME};

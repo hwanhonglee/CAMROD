@@ -30,7 +30,7 @@ namespace camrod::sensing {
 
 class LidarCostGridNode : public rclcpp::Node {
 public:
-  using AvgSensingLidar = avg_msgs::msg::AvgSensingLidar;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   // Implements `LidarCostGridNode` behavior.
   LidarCostGridNode() : Node("lidar_cost_grid") {
@@ -111,7 +111,7 @@ public:
     pub_grid_ = create_publisher<avg_msgs::msg::AvgOccupancyGrid>(
         output_topic_, rclcpp::QoS(1).transient_local().reliable());
     avg_lidar_pub_ =
-        create_publisher<AvgSensingLidar>(lidar_status_topic_, rclcpp::QoS(10));
+        create_publisher<avg_msgs::msg::AvgSensingLidar>(lidar_status_topic_, rclcpp::QoS(10));
 
     // HH_260720 - Transient-local QoS receives the latest static/route mask
     // even when this sensor node starts after the map node.
@@ -761,7 +761,7 @@ private:
     if (!publish_lidar_status_ || !avg_lidar_pub_) {
       return;
     }
-    AvgSensingLidar avg_msg;
+    avg_msgs::msg::AvgSensingLidar avg_msg;
     // HH_260720 - The cost grid is already a generated CAMROD interface.
     avg_msg.near_cost_grid = grid;
     if (latest_primary_cloud_) {
@@ -822,7 +822,7 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr pub_grid_;
-  rclcpp::Publisher<AvgSensingLidar>::SharedPtr avg_lidar_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgSensingLidar>::SharedPtr avg_lidar_pub_;
   rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr
       route_lanelet_mask_sub_;
   std::vector<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr>

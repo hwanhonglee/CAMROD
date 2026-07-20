@@ -42,7 +42,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── IMU 상태 구조체 ───────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!imu.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + imu.topic);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + imu.topic);
       stat.add("topic", imu.topic);
       return;
     }
@@ -194,7 +194,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)", elapsed, imu.stale_timeout);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -209,46 +209,46 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     // NaN/Inf 체크 (최우선)
     if (imu.gyro_nan) {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "angular_velocity contains NaN/Inf";
     } else if (imu.accel_nan) {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "linear_acceleration contains NaN/Inf";
     }
 
     // Rate 체크
-    if (lvl < DiagnosticStatus::ERROR && imu.expected_hz > 0.0) {
+    if (lvl < diagnostic_msgs::msg::DiagnosticStatus::ERROR && imu.expected_hz > 0.0) {
       double ratio = actual_hz / imu.expected_hz;
       int8_t hz_lvl = check_low(ratio, imu.hz_warn_ratio, imu.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
-        msg_str = (hz_lvl == DiagnosticStatus::ERROR) ?
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ?
           "Input rate critically low" : "Input rate low";
       }
     }
 
     // Accel magnitude 체크
-    if (lvl < DiagnosticStatus::ERROR) {
+    if (lvl < diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
       if (imu.accel_magnitude_error > 0.0 &&
           imu.accel_magnitude > imu.accel_magnitude_error)
       {
-        lvl     = DiagnosticStatus::ERROR;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         msg_str = "Acceleration magnitude abnormal (above ERROR threshold)";
       } else if (imu.accel_magnitude_warn > 0.0 &&
                  imu.accel_magnitude > imu.accel_magnitude_warn &&
-                 lvl < DiagnosticStatus::WARN)
+                 lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN)
       {
-        lvl     = DiagnosticStatus::WARN;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = "Acceleration magnitude abnormal (above WARN threshold)";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];
       std::snprintf(buf, sizeof(buf), "OK (%.0f Hz)", actual_hz);
       msg_str = buf;

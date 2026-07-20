@@ -13,7 +13,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // HH_260630 - Cost-grid checker covers sensor-derived and merged grid outputs.
@@ -170,7 +170,7 @@ private:
     std::lock_guard<std::mutex> lock(grid.mtx);
 
     if (!grid.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "no topic messages: " + grid.output_topic);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "no topic messages: " + grid.output_topic);
       stat.add("topic", grid.output_topic);
       stat.add("grid_name", grid.name);
       return;
@@ -181,7 +181,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "no messages for %.1fs (timeout=%.1fs)", elapsed, grid.stale_timeout);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       stat.add("topic", grid.output_topic);
       stat.add("grid_name", grid.name);
@@ -196,7 +196,7 @@ private:
       }
     }
 
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     if (grid.expected_hz > 0.0) {
@@ -204,7 +204,7 @@ private:
       int8_t hz_lvl = check_low(ratio, grid.hz_warn_ratio, grid.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "publish rate critically low" : "publish rate low";
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ? "publish rate critically low" : "publish rate low";
       }
     }
 
@@ -212,10 +212,10 @@ private:
       grid.actual_unknown_ratio, grid.unknown_ratio_warn, grid.unknown_ratio_error);
     if (unk_lvl > lvl) {
       lvl = unk_lvl;
-      msg_str = (unk_lvl == S::ERROR) ? "grid fully unknown" : "grid unknown ratio high";
+      msg_str = (unk_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ? "grid fully unknown" : "grid unknown ratio high";
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];
       std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, unknown=%.0f%%)",
         actual_hz, grid.actual_unknown_ratio * 100.0);

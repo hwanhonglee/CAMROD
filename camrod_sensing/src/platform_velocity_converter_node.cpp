@@ -17,7 +17,7 @@ namespace camrod::sensing
 class PlatformVelocityConverterNode : public rclcpp::Node
 {
 public:
-  using AvgSensingImu = avg_msgs::msg::AvgSensingImu;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   PlatformVelocityConverterNode()
   // HH_260112 Use short node name; namespace applies the module prefix.
@@ -52,7 +52,7 @@ public:
       output_topic_, rclcpp::QoS(10));
     // HH_260720 - Publish the canonical generated IMU stream for localization.
     imu_data_pub_ = create_publisher<avg_msgs::msg::AvgImu>(imu_output_topic_, rclcpp::QoS(50));
-    avg_imu_pub_ = create_publisher<AvgSensingImu>(imu_status_topic_, rclcpp::QoS(10));
+    avg_imu_pub_ = create_publisher<avg_msgs::msg::AvgSensingImu>(imu_status_topic_, rclcpp::QoS(10));
 
     // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
     RCLCPP_DEBUG(
@@ -119,7 +119,7 @@ private:
     std::copy(cov.begin(), cov.end(), out.twist.covariance.begin());
     output_pub_->publish(out);
     if (publish_imu_status_ && avg_imu_pub_) {
-      AvgSensingImu avg_msg;
+      avg_msgs::msg::AvgSensingImu avg_msg;
       avg_msg.platform_twist_cov = out;
       if (imu_ready_) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -153,7 +153,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Publisher<avg_msgs::msg::AvgTwistWithCovarianceStamped>::SharedPtr output_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgImu>::SharedPtr imu_data_pub_;
-  rclcpp::Publisher<AvgSensingImu>::SharedPtr avg_imu_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgSensingImu>::SharedPtr avg_imu_pub_;
 
   std::mutex mutex_;
   sensor_msgs::msg::Imu last_imu_;

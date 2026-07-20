@@ -43,7 +43,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── VelocityConverterCheckerNode ──────────────────────────────────────────
@@ -154,26 +154,26 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     // velocity 입력 stale → 운동 정보 unavailable → ERROR
     if (vel_stale) {
-      lvl = S::ERROR;
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = vel_has_msg_ ?
         "velocity input timeout" : "velocity input missing";
     }
 
     // IMU 입력 stale → angular velocity 부정확 → WARN
-    if (imu_stale && lvl < S::WARN) {
-      lvl = S::WARN;
+    if (imu_stale && lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN) {
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       msg_str = imu_has_msg_ ?
         "IMU input timeout (angular velocity unreliable)" : "IMU input missing";
     }
 
     // Silent drop 감지: velocity 정상인데 출력 unavailable → require_imu 로 드롭 의심 → ERROR
-    if (!vel_stale && out_stale && lvl < S::ERROR) {
-      lvl = S::ERROR;
+    if (!vel_stale && out_stale && lvl < diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "Velocity received but output blocked (suspected IMU wait drop)";
     }
 
@@ -183,11 +183,11 @@ private:
       int8_t hz_lvl = check_low(ratio, hz_warn_ratio_, hz_error_ratio_);
       if (hz_lvl > lvl) {
         lvl = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "Output rate critically low" : "Output rate low";
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ? "Output rate critically low" : "Output rate low";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];
       std::snprintf(buf, sizeof(buf), "OK (%.1f Hz)", actual_hz);
       msg_str = buf;

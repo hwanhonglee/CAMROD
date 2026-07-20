@@ -39,7 +39,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── LiDAR 상태 구조체 ─────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!lidar.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + lidar.topic);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + lidar.topic);
       stat.add("topic", lidar.topic);
       return;
     }
@@ -189,7 +189,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)", elapsed, lidar.stale_timeout);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -205,15 +205,15 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     // Scan rate 체크 (비율 낮을수록 위험 → check_low)
     if (lidar.expected_hz > 0.0) {
       double ratio = actual_hz / lidar.expected_hz;
       lvl = check_low(ratio, lidar.hz_warn_ratio, lidar.hz_error_ratio);
-      if      (lvl == S::ERROR) msg_str = "Scan rate critically low";
-      else if (lvl == S::WARN)  msg_str = "Scan rate low";
+      if      (lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg_str = "Scan rate critically low";
+      else if (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg_str = "Scan rate low";
     }
 
     // Point count 하한 체크 (낮을수록 위험 → check_low)
@@ -221,7 +221,7 @@ private:
       const auto cnt = static_cast<double>(lidar.actual_point_count);
       const auto min_d = static_cast<double>(lidar.min_point_count);
       // 임계 아래면 ERROR, 임계의 절반이면 ERROR 유지
-      int8_t cnt_lvl = (cnt < min_d) ? S::ERROR : S::OK;
+      int8_t cnt_lvl = (cnt < min_d) ? diagnostic_msgs::msg::DiagnosticStatus::ERROR : diagnostic_msgs::msg::DiagnosticStatus::OK;
       if (cnt_lvl > lvl) {
         lvl = cnt_lvl;
         msg_str = "Point count too low";
@@ -232,7 +232,7 @@ private:
     if (lidar.max_point_count > 0) {
       const auto cnt = static_cast<double>(lidar.actual_point_count);
       const auto max_d = static_cast<double>(lidar.max_point_count);
-      int8_t cnt_lvl = (cnt > max_d) ? S::WARN : S::OK;
+      int8_t cnt_lvl = (cnt > max_d) ? diagnostic_msgs::msg::DiagnosticStatus::WARN : diagnostic_msgs::msg::DiagnosticStatus::OK;
       if (cnt_lvl > lvl) {
         lvl = cnt_lvl;
         msg_str = "Point count too high";
@@ -248,12 +248,12 @@ private:
         lidar.max_nan_ratio);
       if (nan_lvl > lvl) {
         lvl = nan_lvl;
-        if      (nan_lvl == S::ERROR) msg_str = "NaN ratio critical";
-        else if (nan_lvl == S::WARN)  msg_str = "NaN ratio high";
+        if      (nan_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg_str = "NaN ratio critical";
+        else if (nan_lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg_str = "NaN ratio high";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];
       std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, %u pts)",
         actual_hz, lidar.actual_point_count);

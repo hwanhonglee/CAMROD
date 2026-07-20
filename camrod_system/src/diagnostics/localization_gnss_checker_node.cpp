@@ -44,10 +44,9 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus  = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper     = diagnostic_updater::DiagnosticStatusWrapper;
-using PoseWithCovStamped =
-  avg_msgs::msg::AvgPoseWithCovarianceStamped;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
 // ── GNSS 로컬라이제이션 품질 상태 구조체 ─────────────────────────────────
 
@@ -76,7 +75,7 @@ struct LocalizationGnssState
   std::deque<rclcpp::Time> timestamps;  // Hz 계산용 rolling window (2s)
 
   // 구독자
-  rclcpp::Subscription<PoseWithCovStamped>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr sub;
 };
 
 // ── LocalizationGnssCheckerNode ───────────────────────────────────────────
@@ -131,9 +130,9 @@ protected:
   void setup_tasks_() override
   {
     for (auto & gnss : gnss_list_) {
-      gnss->sub = create_subscription<PoseWithCovStamped>(
+      gnss->sub = create_subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
         gnss->topic, rclcpp::SensorDataQoS(),
-        [this, gnss](const PoseWithCovStamped::ConstSharedPtr msg) {
+        [this, gnss](const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg) {
           onPose(msg, gnss);
         });
 
@@ -149,7 +148,7 @@ protected:
 
 private:
   void onPose(
-    const PoseWithCovStamped::ConstSharedPtr msg,
+    const avg_msgs::msg::AvgPoseWithCovarianceStamped::ConstSharedPtr msg,
     const std::shared_ptr<LocalizationGnssState> & gnss)
   {
     const double cur_x = msg->pose.pose.position.x;
@@ -188,7 +187,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!gnss.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + gnss.topic);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + gnss.topic);
       stat.add("topic", gnss.topic);
       return;
     }
@@ -198,7 +197,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)", elapsed, gnss.stale_timeout);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -213,14 +212,14 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     // Position jump 체크 (최우선: 이상 위치 점프)
     if (gnss.has_prev_pos && gnss.max_jump_m > 0.0 &&
         gnss.last_jump_m > gnss.max_jump_m)
     {
-      lvl = DiagnosticStatus::ERROR;
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
         "Position jump detected (%.2fm > %.2fm)", gnss.last_jump_m, gnss.max_jump_m);
@@ -234,8 +233,8 @@ private:
       gnss.cov_error_threshold);
     if (cov_lvl > lvl) {
       lvl = cov_lvl;
-      if      (cov_lvl == S::ERROR) msg_str = "GNSS covariance critical (fusion unavailable)";
-      else if (cov_lvl == S::WARN)  msg_str = "GNSS covariance high (fusion quality degraded)";
+      if      (cov_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg_str = "GNSS covariance critical (fusion unavailable)";
+      else if (cov_lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg_str = "GNSS covariance high (fusion quality degraded)";
     }
 
     // Rate 체크
@@ -244,11 +243,11 @@ private:
       int8_t hz_lvl = check_low(ratio, gnss.hz_warn_ratio, gnss.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "Input rate critically low" : "Input rate low";
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ? "Input rate critically low" : "Input rate low";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[80];
       std::snprintf(buf, sizeof(buf),
         "OK (%.1f Hz, cov_trace=%.3f)", actual_hz, gnss.xy_cov_trace);

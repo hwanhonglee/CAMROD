@@ -47,7 +47,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── 레이다 상태 구조체 ─────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!radar.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + radar.topic);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + radar.topic);
       stat.add("topic", radar.topic);
       return;
     }
@@ -208,7 +208,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)", elapsed, radar.stale_timeout);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -224,7 +224,7 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     // 발행 속도 체크 (낮을수록 위험 → check_low)
@@ -233,19 +233,19 @@ private:
       int8_t hz_lvl = check_low(ratio, radar.hz_warn_ratio, radar.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "Publish rate critically low" : "Publish rate low";
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ? "Publish rate critically low" : "Publish rate low";
       }
     }
 
     // NaN / Inf / 음수 체크 → 항상 ERROR (쓰레기값)
     if (radar.range_is_invalid) {
-      lvl = S::ERROR;
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "Invalid range value (NaN/Inf/negative)";
     }
 
     // range 유효 범위 이탈 체크 → WARN (쓰레기값이 아닌 경우만)
-    if (radar.range_out_of_bounds && S::WARN > lvl) {
-      lvl = S::WARN;
+    if (radar.range_out_of_bounds && diagnostic_msgs::msg::DiagnosticStatus::WARN > lvl) {
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       msg_str = "Range outside measurement limits";
     }
 
@@ -254,18 +254,18 @@ private:
         (radar.stuck_min_warn_m > 0.0 || radar.stuck_min_error_m > 0.0))
     {
       double r = static_cast<double>(radar.actual_range_m);
-      int8_t stuck_lvl = S::OK;
+      int8_t stuck_lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
       if (radar.stuck_min_error_m > 0.0 && r <= radar.stuck_min_error_m) {
-        stuck_lvl = S::ERROR;
+        stuck_lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       } else if (radar.stuck_min_warn_m > 0.0 && r <= radar.stuck_min_warn_m) {
-        stuck_lvl = S::WARN;
+        stuck_lvl = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       }
       if (stuck_lvl > lvl) {
         lvl = stuck_lvl;
         // HH_260702 - This checker is shared by front/side/rear sensors; keep
         // the diagnostic message direction-neutral and rely on the task name
         // (/sensor/radar/<NAME>) for the physical sensor position.
-        msg_str = (stuck_lvl == S::ERROR) ? "Sensor near-field blockage suspected (ERROR)" : "Sensor near-field blockage suspected (WARN)";
+        msg_str = (stuck_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ? "Sensor near-field blockage suspected (ERROR)" : "Sensor near-field blockage suspected (WARN)";
       }
     }
 
@@ -274,19 +274,19 @@ private:
         (radar.stuck_max_warn_m > 0.0 || radar.stuck_max_error_m > 0.0))
     {
       double r = static_cast<double>(radar.actual_range_m);
-      int8_t stuck_lvl = S::OK;
+      int8_t stuck_lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
       if (radar.stuck_max_error_m > 0.0 && r >= radar.stuck_max_error_m) {
-        stuck_lvl = S::ERROR;
+        stuck_lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       } else if (radar.stuck_max_warn_m > 0.0 && r >= radar.stuck_max_warn_m) {
-        stuck_lvl = S::WARN;
+        stuck_lvl = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       }
       if (stuck_lvl > lvl) {
         lvl = stuck_lvl;
-        msg_str = (stuck_lvl == S::ERROR) ? "Sensor no-target stuck suspected (ERROR)" : "Sensor no-target stuck suspected (WARN)";
+        msg_str = (stuck_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ? "Sensor no-target stuck suspected (ERROR)" : "Sensor no-target stuck suspected (WARN)";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];
       if (radar.range_no_target) {
         std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, no target)", actual_hz);

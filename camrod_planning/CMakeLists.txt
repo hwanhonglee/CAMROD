@@ -139,7 +139,14 @@ ament_target_dependencies(engage_aware_progress_checker
 pluginlib_export_plugin_description_file(nav2_core progress_checker_plugins.xml)
 
 install(
-  TARGETS goal_snapper_node centerline_snapper_node goal_replanner_node local_path_extractor_node path_tracking_error_node nav2_lifecycle_startup_retry_node
+  # HH_260721 - Keep maintained target names readable and within the CMake lint limit.
+  TARGETS
+    goal_snapper_node
+    centerline_snapper_node
+    goal_replanner_node
+    local_path_extractor_node
+    path_tracking_error_node
+    nav2_lifecycle_startup_retry_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -189,9 +196,41 @@ install(
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  set(ament_cmake_copyright_FOUND TRUE)
-  set(ament_cmake_cpplint_FOUND TRUE)
+  # HH_260721 - Lint CAMROD-owned planning files without re-linting vendored Nav2 sources.
+  set(AMENT_LINT_AUTO_FILE_EXCLUDE external)
+  set(AMENT_LINT_AUTO_EXCLUDE
+    ament_cmake_copyright
+    ament_cmake_cpplint
+    ament_cmake_flake8
+    ament_cmake_lint_cmake
+    ament_cmake_pep257
+    ament_cmake_uncrustify
+    ament_cmake_xmllint
+  )
   ament_lint_auto_find_test_dependencies()
+
+  # HH_260721 - Apply the repository's maintained Python and C++ style to owned paths only.
+  find_package(ament_cmake_lint_cmake REQUIRED)
+  ament_lint_cmake(CMakeLists.txt)
+  find_package(ament_cmake_flake8 REQUIRED)
+  ament_flake8(
+    launch scripts
+    CONFIG_FILE "${CMAKE_CURRENT_SOURCE_DIR}/test/ament_flake8.ini"
+  )
+  find_package(ament_cmake_pep257 REQUIRED)
+  ament_pep257(launch scripts --add-ignore D213)
+  find_package(ament_cmake_uncrustify REQUIRED)
+  ament_uncrustify(src)
+  find_package(ament_cmake_xmllint REQUIRED)
+  file(GLOB_RECURSE CAMROD_PLANNING_XML CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/*.xml"
+  )
+  ament_xmllint(
+    package.xml
+    global_planner_plugins.xml
+    progress_checker_plugins.xml
+    ${CAMROD_PLANNING_XML}
+  )
 endif()
 
 ament_package()

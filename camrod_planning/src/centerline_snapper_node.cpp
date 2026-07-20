@@ -26,7 +26,7 @@ std::string normalizeModeToken(std::string value)
 {
   std::transform(
     value.begin(), value.end(), value.begin(),
-    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    [](unsigned char c) {return static_cast<char>(std::tolower(c));});
   return value;
 }
 
@@ -81,8 +81,7 @@ double yawFromQuat(const avg_msgs::msg::AvgQuaternion & q)
 class CenterlineSnapperNode : public rclcpp::Node
 {
 public:
-  using AvgPlanningMsgs = avg_msgs::msg::AvgPlanningMsgs;
-  using ModuleState = avg_msgs::msg::ModuleState;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   CenterlineSnapperNode()
   // HH_260112 Use short node name; namespace applies the module prefix.
@@ -159,7 +158,7 @@ public:
     pub_pose_cov_ = create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
       output_pose_cov_topic_, rclcpp::QoS(10));
     if (publish_planning_status_) {
-      pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
+      pub_avg_planning_ = create_publisher<avg_msgs::msg::AvgPlanningMsgs>(
         planning_status_topic_, rclcpp::QoS(10));
     }
     // HH_260305-00:00 Use reliable/latest-only pose QoS.
@@ -316,11 +315,11 @@ private:
     if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
     }
-    AvgPlanningMsgs msg;
+    avg_msgs::msg::AvgPlanningMsgs msg;
     msg.stamp = now();
     msg.state.stamp = msg.stamp;
     msg.state.module_name = "planning";
-    msg.state.level = ModuleState::OK;
+    msg.state.level = avg_msgs::msg::ModuleState::OK;
     msg.state.message = "centerline_snapper";
     // HH_260720 - The lanelet pose is already a generated CAMROD message.
     msg.lanelet_pose = lanelet_pose;
@@ -431,7 +430,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::AvgPoseStamped>::SharedPtr pub_pose_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_pose_ros_;
   rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr pub_pose_cov_;
-  rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_pose_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr sub_pose_cov_;
   bool publish_planning_status_{false};

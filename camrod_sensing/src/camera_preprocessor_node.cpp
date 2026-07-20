@@ -14,7 +14,7 @@ namespace camping_cart::sensing
 class CameraPreprocessorNode : public rclcpp::Node
 {
 public:
-  using AvgSensingCamera = avg_msgs::msg::AvgSensingCamera;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   CameraPreprocessorNode()
   // HH_260112 Use short node name; namespace applies the module prefix.
@@ -46,7 +46,7 @@ public:
     image_pub_ = create_publisher<sensor_msgs::msg::Image>(output_image_topic_, rclcpp::QoS(10));
     camera_info_pub_ = create_publisher<sensor_msgs::msg::CameraInfo>(
       output_camera_info_topic_, rclcpp::QoS(10));
-    avg_camera_pub_ = create_publisher<AvgSensingCamera>(camera_status_topic_, rclcpp::QoS(10));
+    avg_camera_pub_ = create_publisher<avg_msgs::msg::AvgSensingCamera>(camera_status_topic_, rclcpp::QoS(10));
 
     // 2026-01-27 17:45: Remove HH tags and keep startup logs quiet by default.
     RCLCPP_DEBUG(
@@ -67,7 +67,7 @@ private:
     camera_info_ready_ = true;
     camera_info_pub_->publish(last_camera_info_);
     if (publish_camera_status_ && avg_camera_pub_) {
-      AvgSensingCamera avg_msg;
+      avg_msgs::msg::AvgSensingCamera avg_msg;
       avg_msg.camera_info = avg_msgs::conversions::fromRos(last_camera_info_);
       avg_camera_pub_->publish(avg_msg);
     }
@@ -94,13 +94,13 @@ private:
     if (camera_info_ready_) {
       std::lock_guard<std::mutex> lock(mutex_);
       if (publish_camera_status_ && avg_camera_pub_) {
-        AvgSensingCamera avg_msg;
+        avg_msgs::msg::AvgSensingCamera avg_msg;
         avg_msg.image = avg_msgs::conversions::fromRos(out);
         avg_msg.camera_info = avg_msgs::conversions::fromRos(last_camera_info_);
         avg_camera_pub_->publish(avg_msg);
       }
     } else if (publish_camera_status_ && avg_camera_pub_) {
-      AvgSensingCamera avg_msg;
+      avg_msgs::msg::AvgSensingCamera avg_msg;
       avg_msg.image = avg_msgs::conversions::fromRos(out);
       avg_camera_pub_->publish(avg_msg);
     }
@@ -119,7 +119,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_pub_;
-  rclcpp::Publisher<AvgSensingCamera>::SharedPtr avg_camera_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgSensingCamera>::SharedPtr avg_camera_pub_;
 
   std::mutex mutex_;
   sensor_msgs::msg::CameraInfo last_camera_info_;

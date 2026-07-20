@@ -30,7 +30,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── /proc/net/wireless 파싱 ───────────────────────────────────────────────
@@ -208,7 +208,7 @@ private:
 
     // 인터페이스 존재 여부
     if (access(base.c_str(), F_OK) != 0) {
-      stat.summary(DiagnosticStatus::ERROR,
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR,
                    "Interface missing: " + iface_);
       stat.add("interface", iface_);
       return;
@@ -223,12 +223,12 @@ private:
     stat.add("carrier",    carrier ? "connected" : "no carrier");
 
     if (operstate == "up" && carrier) {
-      stat.summary(DiagnosticStatus::OK, "WiFi connected (" + iface_ + ")");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "WiFi connected (" + iface_ + ")");
     } else if (operstate == "down") {
-      stat.summary(DiagnosticStatus::ERROR, "Interface down: " + iface_);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, "Interface down: " + iface_);
     } else {
       // operstate == "unknown" 또는 carrier unavailable
-      stat.summary(DiagnosticStatus::WARN,
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN,
                    "Link unstable (operstate=" + operstate + ")");
     }
   }
@@ -241,7 +241,7 @@ private:
     // /proc/net/wireless 에 항목이 없으면 WiFi 미연결 상태
     auto info = read_wireless(iface_);
     if (!info.valid) {
-      stat.summary(DiagnosticStatus::STALE,
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE,
                    "/proc/net/wireless missing " + iface_ + " (disconnected?)");
       return;
     }
@@ -265,8 +265,8 @@ private:
                   "RSSI %.0f dBm quality %.0f%%",
                   info.signal_dbm, info.link_quality_pct);
     std::string msg_str = msg;
-    if      (lvl == DiagnosticStatus::WARN)  msg_str += " (Weak)";
-    else if (lvl == DiagnosticStatus::ERROR) msg_str += " (Very Weak)";
+    if      (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg_str += " (Weak)";
+    else if (lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg_str += " (Very Weak)";
 
     stat.summary(lvl, msg_str);
   }
@@ -278,7 +278,7 @@ private:
 
     auto cur = read_netdev(iface_);
     if (!cur.valid) {
-      stat.summary(DiagnosticStatus::STALE,
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE,
                    "/proc/net/dev missing " + iface_ + "");
       prev_stats_ = cur;
       return;
@@ -323,8 +323,8 @@ private:
                   "RX drop %.2f%%  TX drop %.2f%%",
                   rx_drop_rate, tx_drop_rate);
     std::string msg_str = msg;
-    if      (lvl == DiagnosticStatus::WARN)  msg_str += " (High drop)";
-    else if (lvl == DiagnosticStatus::ERROR) msg_str += " (Critical drop)";
+    if      (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg_str += " (High drop)";
+    else if (lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg_str += " (Critical drop)";
 
     stat.summary(lvl, msg_str);
   }

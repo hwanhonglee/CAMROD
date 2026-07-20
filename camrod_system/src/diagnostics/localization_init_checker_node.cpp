@@ -43,7 +43,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── 초기화 상태 구조체 ────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ private:
     std::lock_guard<std::mutex> lock(state_.mtx);
 
     if (!enabled_) {
-      stat.summary(DiagnosticStatus::OK, "Drop zone init check disabled");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "Drop zone init check disabled");
       stat.add("enabled", "false");
       return;
     }
@@ -155,12 +155,12 @@ private:
       double since_start =
         (rclcpp::Clock(RCL_ROS_TIME).now() - node_start_time_).seconds();
       if (since_start > stale_timeout_) {
-        stat.summary(DiagnosticStatus::STALE,
+        stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE,
           "No topic messages: " + ok_topic_);
         stat.add("topic", ok_topic_);
       } else {
         // 노드 시작 직후 drop_zone_matcher 가 아직 안 뜬 경우
-        stat.summary(DiagnosticStatus::WARN,
+        stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN,
           "Waiting for init status before drop_zone_matcher starts");
         stat.add("since_node_start_s", since_start);
       }
@@ -175,7 +175,7 @@ private:
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)",
         elapsed_since_msg, stale_timeout_);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_age_s", elapsed_since_msg);
       return;
     }
@@ -184,12 +184,12 @@ private:
     double since_start =
       (rclcpp::Clock(RCL_ROS_TIME).now() - node_start_time_).seconds();
 
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str;
 
     if (state_.match_ok) {
       // 매칭 성공 → OK. 거리 품질도 추가로 체크
-      lvl     = DiagnosticStatus::OK;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::OK;
       msg_str = "Drop zone matching complete";
       if (!state_.match_id.empty()) {
         msg_str += " (id=" + state_.match_id + ")";
@@ -199,14 +199,14 @@ private:
       if (since_start < grace_period_s_) {
         // HH_260617: Sim profile can keep startup grace at OK so localization
         // dummy data does not block planning/control smoke tests.
-        lvl = warn_during_grace_ ? DiagnosticStatus::WARN : DiagnosticStatus::OK;
+        lvl = warn_during_grace_ ? diagnostic_msgs::msg::DiagnosticStatus::WARN : diagnostic_msgs::msg::DiagnosticStatus::OK;
         char buf[80];
         std::snprintf(buf, sizeof(buf),
           "Initializing (%.0fs / grace=%.0fs)",
           since_start, grace_period_s_);
         msg_str = buf;
       } else {
-        lvl     = DiagnosticStatus::ERROR;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         msg_str = "Drop zone matching failed: grace period exceeded";
       }
     }
@@ -214,14 +214,14 @@ private:
     // 거리 체크 (매칭 여부와 무관)
     if (std::isfinite(state_.match_distance)) {
       if (state_.match_distance > static_cast<float>(dist_error_m_) &&
-          lvl < DiagnosticStatus::ERROR)
+          lvl < diagnostic_msgs::msg::DiagnosticStatus::ERROR)
       {
-        lvl     = DiagnosticStatus::ERROR;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         msg_str = "Drop zone distance exceeded: outside zone";
       } else if (state_.match_distance > static_cast<float>(dist_warn_m_) &&
-                 lvl < DiagnosticStatus::WARN)
+                 lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN)
       {
-        lvl     = DiagnosticStatus::WARN;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = "Drop zone distance high: near zone boundary";
       }
     }

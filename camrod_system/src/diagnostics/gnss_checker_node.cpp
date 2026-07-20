@@ -36,7 +36,7 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 
 // ── GNSS 상태 구조체 ──────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!gnss.has_msg) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + gnss.topic);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + gnss.topic);
       stat.add("topic", gnss.topic);
       return;
     }
@@ -159,7 +159,7 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No messages for %.1fs (timeout=%.1fs)", elapsed, gnss.stale_timeout);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
@@ -174,12 +174,12 @@ private:
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str = "OK";
 
     // Fix status 체크 (최우선)
     if (gnss.fix_status == sensor_msgs::msg::NavSatStatus::STATUS_NO_FIX) {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "GNSS fix unavailable (NO_FIX)";
     }
 
@@ -189,21 +189,21 @@ private:
       int8_t hz_lvl = check_low(ratio, gnss.hz_warn_ratio, gnss.hz_error_ratio);
       if (hz_lvl > lvl) {
         lvl     = hz_lvl;
-        msg_str = (hz_lvl == S::ERROR) ? "Input rate critically low" : "Input rate low";
+        msg_str = (hz_lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) ? "Input rate critically low" : "Input rate low";
       }
     }
 
     // Covariance type 체크 (UNKNOWN / APPROXIMATED → WARN)
-    if (lvl < DiagnosticStatus::WARN) {
+    if (lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN) {
       if (gnss.covariance_type == sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_UNKNOWN ||
           gnss.covariance_type == sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_APPROXIMATED)
       {
-        lvl     = DiagnosticStatus::WARN;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = "Covariance type uncertain (UNKNOWN/APPROXIMATED)";
       }
     }
 
-    if (lvl == DiagnosticStatus::OK) {
+    if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];
       std::snprintf(buf, sizeof(buf), "OK (%.1f Hz, fix=%d)", actual_hz, gnss.fix_status);
       msg_str = buf;

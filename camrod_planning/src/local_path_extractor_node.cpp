@@ -22,8 +22,7 @@ namespace camrod_planning
 class LocalPathExtractorNode : public rclcpp::Node
 {
 public:
-  using AvgPlanningMsgs = avg_msgs::msg::AvgPlanningMsgs;
-  using ModuleState = avg_msgs::msg::ModuleState;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   // Implements `LocalPathExtractorNode` behavior.
   LocalPathExtractorNode()
@@ -104,15 +103,17 @@ public:
     sub_global_path_ = create_subscription<nav_msgs::msg::Path>(
       global_path_topic_, global_path_qos,
       [this](const nav_msgs::msg::Path::ConstSharedPtr msg) {
-        onGlobalPath(std::make_shared<avg_msgs::msg::AvgPath>(
-          avg_msgs::conversions::fromRos(*msg)), true);
+        onGlobalPath(
+          std::make_shared<avg_msgs::msg::AvgPath>(
+            avg_msgs::conversions::fromRos(*msg)), true);
       });
     if (!fallback_global_path_topic_.empty() && fallback_global_path_topic_ != global_path_topic_) {
       sub_fallback_global_path_ = create_subscription<nav_msgs::msg::Path>(
         fallback_global_path_topic_, global_path_qos,
         [this](const nav_msgs::msg::Path::ConstSharedPtr msg) {
-          onGlobalPath(std::make_shared<avg_msgs::msg::AvgPath>(
-            avg_msgs::conversions::fromRos(*msg)), false);
+          onGlobalPath(
+            std::make_shared<avg_msgs::msg::AvgPath>(
+              avg_msgs::conversions::fromRos(*msg)), false);
         });
     }
     sub_pose_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
@@ -125,7 +126,7 @@ public:
     pub_global_path_avg_ = create_publisher<avg_msgs::msg::AvgPath>(
       global_path_avg_topic_, rclcpp::QoS(1).reliable().transient_local());
     if (publish_planning_status_) {
-      pub_avg_planning_ = create_publisher<AvgPlanningMsgs>(
+      pub_avg_planning_ = create_publisher<avg_msgs::msg::AvgPlanningMsgs>(
         planning_status_topic_, rclcpp::QoS(10));
     }
 
@@ -484,7 +485,9 @@ private:
       const auto & goal_pos = global_path_.poses.back().pose.position;
       const auto & cur_pos = latest_pose_.pose.position;
       const double goal_dist = std::hypot(cur_pos.x - goal_pos.x, cur_pos.y - goal_pos.y);
-      if (!route_completed_latched_ && closest >= end_threshold && goal_dist <= goal_reached_distance_m_) {
+      if (!route_completed_latched_ && closest >= end_threshold &&
+        goal_dist <= goal_reached_distance_m_)
+      {
         route_completed_latched_ = true;
       }
       if (route_completed_latched_) {
@@ -510,8 +513,8 @@ private:
 
     avg_msgs::msg::AvgPath out;
     out.header.stamp = now();
-    out.header.frame_id = global_path_.header.frame_id.empty()
-      ? frame_id_ : global_path_.header.frame_id;
+    out.header.frame_id = global_path_.header.frame_id.empty() ?
+      frame_id_ : global_path_.header.frame_id;
     out.poses.reserve(capped_end - begin + 1);
     out.poses.push_back(global_path_.poses[begin]);
     for (size_t i = begin + 1; i <= capped_end; ++i) {
@@ -601,8 +604,8 @@ private:
     }
     avg_msgs::msg::AvgPath out;
     out.header.stamp = stamp;
-    out.header.frame_id = global_path_.header.frame_id.empty()
-      ? frame_id_ : global_path_.header.frame_id;
+    out.header.frame_id = global_path_.header.frame_id.empty() ?
+      frame_id_ : global_path_.header.frame_id;
     // HH_260720 - Clear both path representations together to prevent stale RViz output.
     publishLocalPath(out);
     publishAvgPlanning(out, true);
@@ -616,11 +619,11 @@ private:
     if (!publish_planning_status_ || !pub_avg_planning_) {
       return;
     }
-    AvgPlanningMsgs msg;
+    avg_msgs::msg::AvgPlanningMsgs msg;
     msg.stamp = now();
     msg.state.stamp = msg.stamp;
     msg.state.module_name = "planning";
-    msg.state.level = ModuleState::OK;
+    msg.state.level = avg_msgs::msg::ModuleState::OK;
     msg.state.message = is_empty ? "local_path_extractor.empty" : "local_path_extractor";
     // HH_260720 - The local path is already a generated CAMROD message.
     msg.local_path = local_path;
@@ -683,7 +686,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::AvgPath>::SharedPtr pub_local_path_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_local_path_ros_;
   rclcpp::Publisher<avg_msgs::msg::AvgPath>::SharedPtr pub_global_path_avg_;
-  rclcpp::Publisher<AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::TimerBase::SharedPtr timer_;
   bool publish_planning_status_{false};
   int smooth_window_{5};

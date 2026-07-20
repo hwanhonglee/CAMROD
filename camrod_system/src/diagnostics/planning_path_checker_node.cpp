@@ -46,11 +46,9 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
-using Path             = avg_msgs::msg::AvgPath;
-using GoalStatusArray  = action_msgs::msg::GoalStatusArray;
-using GoalStatus       = action_msgs::msg::GoalStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
 // ── 경로 소스별 상태 ──────────────────────────────────────────────────────
 
@@ -69,7 +67,7 @@ struct PathSource
   bool         has_path{false};
   std::size_t  point_count{0};
 
-  rclcpp::Subscription<Path>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgPath>::SharedPtr sub;
 };
 
 // ── PlanningPathCheckerNode ───────────────────────────────────────────────
@@ -120,13 +118,13 @@ protected:
   void setup_tasks_() override
   {
     // nav status 구독 (모든 경로 소스 공용)
-    nav_sub_ = create_subscription<GoalStatusArray>(
+    nav_sub_ = create_subscription<action_msgs::msg::GoalStatusArray>(
       nav_status_topic_, rclcpp::QoS(10),
-      [this](const GoalStatusArray::ConstSharedPtr msg) {
+      [this](const action_msgs::msg::GoalStatusArray::ConstSharedPtr msg) {
         bool active = false;
         for (const auto & s : msg->status_list) {
-          if (s.status == GoalStatus::STATUS_EXECUTING ||
-              s.status == GoalStatus::STATUS_ACCEPTED)
+          if (s.status == action_msgs::msg::GoalStatus::STATUS_EXECUTING ||
+              s.status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED)
           {
             active = true;
             break;
@@ -137,9 +135,9 @@ protected:
       });
 
     for (auto & src : sources_) {
-      src->sub = create_subscription<Path>(
+      src->sub = create_subscription<avg_msgs::msg::AvgPath>(
         src->topic, rclcpp::QoS(1).reliable(),
-        [this, src](const Path::ConstSharedPtr msg) {
+        [this, src](const avg_msgs::msg::AvgPath::ConstSharedPtr msg) {
           std::lock_guard<std::mutex> lock(src->mtx);
           src->last_path_time = this->now();
           src->has_path       = true;
@@ -170,7 +168,7 @@ private:
 
     // navigation idle 이면 판정 없이 OK
     if (!nav_active) {
-      stat.summary(DiagnosticStatus::OK, "navigation idle");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, "navigation idle");
       stat.add("nav_active",  "false");
       stat.add("point_count", static_cast<int>(src.point_count));
       return;
@@ -178,7 +176,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!src.has_path) {
-      stat.summary(DiagnosticStatus::ERROR,
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR,
         "No path while navigating: " + src.topic);
       stat.add("nav_active", "true");
       stat.add("topic",      src.topic);
@@ -194,7 +192,7 @@ private:
       std::snprintf(buf, sizeof(buf),
         "Path stale while navigating (%.1fs > %.1fs)",
         elapsed, src.stale_timeout);
-      stat.summary(DiagnosticStatus::ERROR, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, std::string(buf));
       char tmp[32];
       std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed);
       stat.add("last_path_sec_ago", std::string(tmp));
@@ -203,18 +201,18 @@ private:
     }
 
     // ── Point count 체크 ────────────────────────────────────────────────
-    int8_t      lvl = DiagnosticStatus::OK;
+    int8_t      lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str;
 
     if (src.point_count < src.min_points_error) {
-      lvl = DiagnosticStatus::ERROR;
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
         "Path point count too low (%zu < %zu)",
         src.point_count, src.min_points_error);
       msg_str = buf;
     } else if (src.point_count < src.min_points_warn) {
-      lvl = DiagnosticStatus::WARN;
+      lvl = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
         "Path point count low (%zu < %zu)",
@@ -248,7 +246,7 @@ private:
 
   std::mutex                                            nav_mtx_;
   bool                                                  nav_active_{false};
-  rclcpp::Subscription<GoalStatusArray>::SharedPtr      nav_sub_;
+  rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr      nav_sub_;
 };
 
 // ── main ──────────────────────────────────────────────────────────────────

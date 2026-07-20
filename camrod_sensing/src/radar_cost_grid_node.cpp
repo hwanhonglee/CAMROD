@@ -24,7 +24,7 @@ namespace camrod::sensing
 class RadarCostGridNode : public rclcpp::Node
 {
 public:
-  using AvgSensingRadar = avg_msgs::msg::AvgSensingRadar;
+  // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   // Implements `RadarCostGridNode` behavior.
   RadarCostGridNode()
@@ -94,7 +94,7 @@ public:
     // HH_260720 - Publish radar cost data on the generated CAMROD grid contract.
     pub_grid_ = create_publisher<avg_msgs::msg::AvgOccupancyGrid>(
       output_topic_, rclcpp::QoS(1).transient_local().reliable());
-    avg_radar_pub_ = create_publisher<AvgSensingRadar>(radar_status_topic_, rclcpp::QoS(10));
+    avg_radar_pub_ = create_publisher<avg_msgs::msg::AvgSensingRadar>(radar_status_topic_, rclcpp::QoS(10));
     // HH_260720 - Receive the latest active-route mask across startup order.
     route_lanelet_mask_sub_ = create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
       route_lanelet_mask_topic_, rclcpp::QoS(1).transient_local().reliable(),
@@ -422,7 +422,7 @@ private:
   }
 
   // Implements `assignRangeByTopic` behavior.
-  void assignRangeByTopic(AvgSensingRadar & avg_msg, std::size_t idx, const avg_msgs::msg::AvgRange & msg)
+  void assignRangeByTopic(avg_msgs::msg::AvgSensingRadar & avg_msg, std::size_t idx, const avg_msgs::msg::AvgRange & msg)
   {
     if (idx >= input_topics_.size()) {
       return;
@@ -452,7 +452,7 @@ private:
     if (!publish_radar_status_ || !avg_radar_pub_) {
       return;
     }
-    AvgSensingRadar avg_msg;
+    avg_msgs::msg::AvgSensingRadar avg_msg;
     // HH_260720 - Bundle the already-generated CAMROD grid without reconversion.
     avg_msg.near_cost_grid = grid;
     for (std::size_t i = 0; i < samples_.size(); ++i) {
@@ -499,7 +499,7 @@ private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr pub_grid_;
-  rclcpp::Publisher<AvgSensingRadar>::SharedPtr avg_radar_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgSensingRadar>::SharedPtr avg_radar_pub_;
   rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr route_lanelet_mask_sub_;
   std::vector<rclcpp::Subscription<avg_msgs::msg::AvgRange>::SharedPtr> subs_;
   std::vector<RangeSample> samples_;

@@ -46,10 +46,9 @@
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
 
-using DiagnosticStatus  = diagnostic_msgs::msg::DiagnosticStatus;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper     = diagnostic_updater::DiagnosticStatusWrapper;
-using AvgStatus         = avg_msgs::msg::AvgLocalizationStatus;
-using AvgMode           = avg_msgs::msg::AvgLocalizationMode;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
 // ── 로컬라이제이션 모드 상태 구조체 ──────────────────────────────────────
 
@@ -62,7 +61,7 @@ struct ModeState
   bool has_status{false};
 
   // 최근 상태값
-  uint8_t mode_value{AvgMode::INVALID};
+  uint8_t mode_value{avg_msgs::msg::AvgLocalizationMode::INVALID};
   std::string mode_label{"INVALID"};
   float confidence{0.0f};
   bool gnss_ok{false};
@@ -73,7 +72,7 @@ struct ModeState
   bool health{false};
 
   // 구독자
-  rclcpp::Subscription<AvgStatus>::SharedPtr status_sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgLocalizationStatus>::SharedPtr status_sub;
   rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr health_sub;
 };
 
@@ -117,9 +116,9 @@ protected:
   void setup_tasks_() override
   {
     // ── Status 구독 ─────────────────────────────────────────────────────
-    state_.status_sub = create_subscription<AvgStatus>(
+    state_.status_sub = create_subscription<avg_msgs::msg::AvgLocalizationStatus>(
       status_topic_, rclcpp::QoS(10),
-      [this](const AvgStatus::ConstSharedPtr msg) { onStatus(msg); });
+      [this](const avg_msgs::msg::AvgLocalizationStatus::ConstSharedPtr msg) { onStatus(msg); });
 
     // ── Health 구독 (transient_local QoS — supervisor 기본값) ───────────
     auto health_qos = rclcpp::QoS(1).transient_local();
@@ -139,7 +138,7 @@ protected:
   }
 
 private:
-  void onStatus(const AvgStatus::ConstSharedPtr msg)
+  void onStatus(const avg_msgs::msg::AvgLocalizationStatus::ConstSharedPtr msg)
   {
     std::lock_guard<std::mutex> lock(state_.mtx);
     state_.last_status_time      = this->now();
@@ -159,10 +158,10 @@ private:
   static std::string modeLabel(uint8_t v)
   {
     switch (v) {
-      case AvgMode::NORMAL:   return "NORMAL";
-      case AvgMode::DEGRADED: return "DEGRADED";
-      case AvgMode::DR_ONLY:  return "DR_ONLY";
-      case AvgMode::INVALID:  return "INVALID";
+      case avg_msgs::msg::AvgLocalizationMode::NORMAL:   return "NORMAL";
+      case avg_msgs::msg::AvgLocalizationMode::DEGRADED: return "DEGRADED";
+      case avg_msgs::msg::AvgLocalizationMode::DR_ONLY:  return "DR_ONLY";
+      case avg_msgs::msg::AvgLocalizationMode::INVALID:  return "INVALID";
       default:                return "UNKNOWN";
     }
   }
@@ -173,7 +172,7 @@ private:
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!state_.has_status) {
-      stat.summary(DiagnosticStatus::STALE, "No topic messages: " + status_topic_);
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + status_topic_);
       stat.add("topic", status_topic_);
       return;
     }
@@ -183,49 +182,49 @@ private:
       char buf[96];
       std::snprintf(buf, sizeof(buf),
         "No status for %.1fs (timeout=%.1fs)", elapsed, stale_timeout_);
-      stat.summary(DiagnosticStatus::STALE, std::string(buf));
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, std::string(buf));
       stat.add("last_msg_sec_ago", elapsed);
       return;
     }
 
     // ── 레벨 판정 ───────────────────────────────────────────────────────
-    int8_t lvl = DiagnosticStatus::OK;
+    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str;
 
     // 1. Mode 레벨 (최우선)
     switch (state_.mode_value) {
-      case AvgMode::NORMAL:
-        lvl     = DiagnosticStatus::OK;
+      case avg_msgs::msg::AvgLocalizationMode::NORMAL:
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::OK;
         msg_str = "NORMAL - localization healthy";
         break;
-      case AvgMode::DEGRADED:
-        lvl     = DiagnosticStatus::WARN;
+      case avg_msgs::msg::AvgLocalizationMode::DEGRADED:
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = "DEGRADED - limited performance (GNSS/Wheel missing)";
         break;
-      case AvgMode::DR_ONLY:
-        lvl     = DiagnosticStatus::WARN;
+      case avg_msgs::msg::AvgLocalizationMode::DR_ONLY:
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = "DR_ONLY - dead reckoning only (GNSS missing)";
         break;
-      case AvgMode::INVALID:
-        lvl     = DiagnosticStatus::ERROR;
+      case avg_msgs::msg::AvgLocalizationMode::INVALID:
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         msg_str = "INVALID - localization unavailable (IMU missing or all sensors failed)";
         break;
       default:
-        lvl     = DiagnosticStatus::ERROR;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
         msg_str = "UNKNOWN mode value";
         break;
     }
 
     // 2. Confidence 체크
     if (state_.confidence < static_cast<float>(conf_error_) &&
-        lvl < DiagnosticStatus::ERROR)
+        lvl < diagnostic_msgs::msg::DiagnosticStatus::ERROR)
     {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "Confidence critically low (conf < " + std::to_string(conf_error_) + ")";
     } else if (state_.confidence < static_cast<float>(conf_warn_) &&
-               lvl < DiagnosticStatus::WARN)
+               lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN)
     {
-      lvl     = DiagnosticStatus::WARN;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       msg_str = "Confidence low (conf < " + std::to_string(conf_warn_) + ")";
     }
 
@@ -233,17 +232,17 @@ private:
     // HH_260617: Sim profiles can disable sensor flag enforcement because the
     // localization monitor may publish NORMAL confidence while hardware-specific
     // gnss/imu/wheel flags are intentionally synthetic or unavailable.
-    if (require_sensor_flags_ && lvl < DiagnosticStatus::WARN) {
+    if (require_sensor_flags_ && lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN) {
       if (!state_.gnss_ok) {
-        lvl     = DiagnosticStatus::WARN;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = "GNSS input missing or invalid";
       } else if (!state_.wheel_ok) {
-        lvl     = DiagnosticStatus::WARN;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = "Wheel odometry input missing";
       } else if (!state_.imu_ok) {
         // IMU 없으면 supervisor에서 INVALID로 이미 처리됨
         // 여기선 다른 조건이 OK인 경우에만 추가 WARN
-        lvl     = DiagnosticStatus::WARN;
+        lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
         msg_str = "IMU input missing";
       }
     }
@@ -252,14 +251,14 @@ private:
     float max_innov = std::max(
       state_.gnss_innovation_norm, state_.wheel_innovation_norm);
     if (max_innov > static_cast<float>(innov_error_) &&
-        lvl < DiagnosticStatus::ERROR)
+        lvl < diagnostic_msgs::msg::DiagnosticStatus::ERROR)
     {
-      lvl     = DiagnosticStatus::ERROR;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       msg_str = "Innovation norm critical (measurement rejection likely)";
     } else if (max_innov > static_cast<float>(innov_warn_) &&
-               lvl < DiagnosticStatus::WARN)
+               lvl < diagnostic_msgs::msg::DiagnosticStatus::WARN)
     {
-      lvl     = DiagnosticStatus::WARN;
+      lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       msg_str = "Innovation norm high (fusion quality degraded)";
     }
 
