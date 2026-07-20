@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://download.ros.org/schema/package_format3.xsd"?>
+<package format="3">
+  <name>opencv4_vendor</name>
+  <version>4.5.4</version>
+  <description>Common vendored OpenCV ABI for CAMROD vision packages.</description>
+  <maintainer email="hwanhong57@gmail.com">hong</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- HH_260720 - This generic dependency moved out of the removed docking package. -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

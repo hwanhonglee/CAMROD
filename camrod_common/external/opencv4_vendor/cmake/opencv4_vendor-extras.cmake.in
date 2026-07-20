@@ -1,0 +1,11 @@
+# HH_260720 - Force dependents to use the same OpenCV build as cv_bridge.
+set(_opencv4_install "${opencv4_vendor_DIR}/../../../opt/opencv4_vendor")
+
+if(EXISTS "${_opencv4_install}/lib/cmake/opencv4/OpenCVConfig.cmake")
+  set(OpenCV_DIR "${_opencv4_install}/lib/cmake/opencv4" CACHE INTERNAL "")
+elseif(EXISTS "${_opencv4_install}/share/OpenCV/OpenCVConfig.cmake")
+  set(OpenCV_DIR "${_opencv4_install}/share/OpenCV" CACHE INTERNAL "")
+endif()
+
+list(APPEND CMAKE_INSTALL_RPATH "${_opencv4_install}/lib")
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
