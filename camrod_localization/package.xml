@@ -29,10 +29,7 @@
   <depend>yaml-cpp</depend>
   <depend>rclpy</depend>
   <depend>avg_msgs</depend>
-  <build_depend>eigen</build_depend>
-  <build_depend>python3-dev</build_depend>
-  <exec_depend>eigen</exec_depend>
-  <exec_depend>python3</exec_depend>
+  <!-- HH_260721 - The runtime uses robot_localization EKF; custom ESKF dependencies were removed. -->
 
   <!-- Test dependencies -->
   <test_depend>ament_lint_auto</test_depend>

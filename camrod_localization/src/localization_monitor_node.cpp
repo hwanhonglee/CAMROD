@@ -29,7 +29,7 @@ std::string normalizeModeToken(std::string value)
 {
   std::transform(
     value.begin(), value.end(), value.begin(),
-    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    [](unsigned char c) {return static_cast<char>(std::tolower(c));});
   return value;
 }
 }  // namespace
@@ -53,7 +53,9 @@ public:
       "gnss_pose_cov_topic", "/sensing/gnss/pose_with_covariance");
     imu_topic_ = declare_parameter<std::string>("imu_topic", "/sensing/imu/data");
     // HH_260720 - Monitor the canonical generated wheel topic used by localization.
-    wheel_topic_ = declare_parameter<std::string>("wheel_topic", "/localization/input/wheel_odometry");
+    wheel_topic_ = declare_parameter<std::string>(
+      "wheel_topic",
+      "/localization/input/wheel_odometry");
 
     gnss_timeout_s_ = declare_parameter<double>("gnss_timeout_s", 1.0);
     imu_timeout_s_ = declare_parameter<double>("imu_timeout_s", 0.5);
@@ -87,10 +89,16 @@ public:
       filter_status_mode_ = "stream";
     }
 
-    mode_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMode>("/localization/mode", rclcpp::QoS(10));
-    status_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationStatus>("/localization/status", rclcpp::QoS(10));
+    mode_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationMode>(
+      "/localization/mode", rclcpp::QoS(
+        10));
+    status_pub_ = create_publisher<avg_msgs::msg::AvgLocalizationStatus>(
+      "/localization/status", rclcpp::QoS(
+        10));
     // HH_260720 - Publish generated CAMROD scalar messages instead of namespace aliases.
-    confidence_pub_ = create_publisher<avg_msgs::msg::AvgFloat32>("/localization/confidence", rclcpp::QoS(10));
+    confidence_pub_ = create_publisher<avg_msgs::msg::AvgFloat32>(
+      "/localization/confidence", rclcpp::QoS(
+        10));
     state_pub_ = create_publisher<avg_msgs::msg::AvgBool>(
       "/localization/state", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local());
     degraded_pub_ = create_publisher<avg_msgs::msg::AvgBool>(
@@ -236,13 +244,13 @@ private:
       wheel_ok && wheel_update_accepted;
 
     double confidence = 1.0;
-    if (!gnss_good) confidence -= 0.35;
-    if (!wheel_good) confidence -= 0.15;
-    if (!imu_ok) confidence -= 0.40;
-    if (gnss_innov_warn_bad) confidence -= 0.20;
-    if (!gnss_cov_ok) confidence -= 0.15;
-    if (!gnss_jump_ok) confidence -= 0.15;
-    if (!gnss_rate_ok) confidence -= 0.10;
+    if (!gnss_good) {confidence -= 0.35;}
+    if (!wheel_good) {confidence -= 0.15;}
+    if (!imu_ok) {confidence -= 0.40;}
+    if (gnss_innov_warn_bad) {confidence -= 0.20;}
+    if (!gnss_cov_ok) {confidence -= 0.15;}
+    if (!gnss_jump_ok) {confidence -= 0.15;}
+    if (!gnss_rate_ok) {confidence -= 0.10;}
     confidence = std::clamp(confidence, 0.0, 1.0);
 
     avg_msgs::msg::AvgLocalizationMode mode;
@@ -439,7 +447,8 @@ private:
   std::string pending_status_label_;
   rclcpp::Time pending_mode_since_{0, 0, RCL_ROS_TIME};
 
-  bool publish_localization_status_{false}; // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs)
+  // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs).
+  bool publish_localization_status_{false};
   std::string localization_status_topic_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgLocalizationMode>::SharedPtr mode_pub_;

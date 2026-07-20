@@ -40,8 +40,8 @@ double deg2rad(double deg)
 double normalizeYaw(double yaw)
 {
   const double two_pi = 2.0 * M_PI;
-  while (yaw > M_PI) yaw -= two_pi;
-  while (yaw < -M_PI) yaw += two_pi;
+  while (yaw > M_PI) {yaw -= two_pi;}
+  while (yaw < -M_PI) {yaw += two_pi;}
   return yaw;
 }
 
@@ -127,7 +127,7 @@ std::string normalizeWheelInputType(std::string type)
 {
   std::transform(
     type.begin(), type.end(), type.begin(),
-    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    [](unsigned char c) {return static_cast<char>(std::tolower(c));});
   return type;
 }
 
@@ -264,7 +264,9 @@ public:
         gnss_pose_ros_topic_, rclcpp::QoS(10));
       if (publish_gnss_covariance_) {
         gnss_pose_cov_pub_ =
-          create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(gnss_pose_cov_topic_, rclcpp::QoS(10));
+          create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
+          gnss_pose_cov_topic_, rclcpp::QoS(
+            10));
         gnss_pose_cov_ros_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
           gnss_pose_cov_ros_topic_, rclcpp::QoS(10));
       }
@@ -276,7 +278,9 @@ public:
       odom_pose_pub_ =
         create_publisher<avg_msgs::msg::AvgPoseStamped>(odom_pose_topic_, rclcpp::QoS(10));
       odom_pose_cov_pub_ =
-        create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(odom_pose_cov_topic_, rclcpp::QoS(10));
+        create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
+        odom_pose_cov_topic_, rclcpp::QoS(
+          10));
     }
 
     if (enable_wheel_odometry_bridge_) {
@@ -288,7 +292,9 @@ public:
 
     if (publish_localization_status_) {
       avg_localization_pub_ =
-        create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(localization_status_topic_, rclcpp::QoS(10));
+        create_publisher<avg_msgs::msg::AvgLocalizationMsgs>(
+        localization_status_topic_, rclcpp::QoS(
+          10));
     }
 
     using std::placeholders::_1;
@@ -345,7 +351,8 @@ public:
 
       if (!wheel_fallback_input_topic_.empty() && !wheel_fallback_input_type_.empty()) {
         if (wheel_fallback_input_topic_ == wheel_input_topic_ &&
-            wheel_fallback_input_type_ == wheel_input_type_) {
+          wheel_fallback_input_type_ == wheel_input_type_)
+        {
           RCLCPP_WARN(
             get_logger(),
             "wheel_fallback_input_topic/type is same as primary. Skip fallback subscription.");
@@ -394,7 +401,9 @@ private:
     bool has_sample{false};
   };
 
-  bool headingFresh(const HeadingSample & sample, const rclcpp::Time & stamp, double timeout_s) const
+  bool headingFresh(
+    const HeadingSample & sample, const rclcpp::Time & stamp,
+    double timeout_s) const
   {
     if (!sample.has_sample || timeout_s < 0.0) {
       return sample.has_sample;
@@ -403,12 +412,14 @@ private:
     return age <= timeout_s;
   }
 
-  bool headingUsable(const HeadingSample & sample, const rclcpp::Time & stamp, double timeout_s) const
+  bool headingUsable(
+    const HeadingSample & sample, const rclcpp::Time & stamp,
+    double timeout_s) const
   {
     return headingFresh(sample, stamp, timeout_s) &&
-      std::isfinite(sample.yaw_covariance) &&
-      sample.yaw_covariance > 0.0 &&
-      sample.yaw_covariance <= gnss_heading_max_covariance_;
+           std::isfinite(sample.yaw_covariance) &&
+           sample.yaw_covariance > 0.0 &&
+           sample.yaw_covariance <= gnss_heading_max_covariance_;
   }
 
   void rememberHeading(const HeadingSample & sample)
@@ -427,9 +438,9 @@ private:
       return;
     }
     const double raw_cov = msg->orientation_covariance[8];
-    const double yaw_cov = (std::isfinite(raw_cov) && raw_cov > 0.0)
-      ? std::max(raw_cov, gnss_heading_covariance_floor_)
-      : gnss_heading_unavailable_covariance_;
+    const double yaw_cov = (std::isfinite(raw_cov) && raw_cov > 0.0) ?
+      std::max(raw_cov, gnss_heading_covariance_floor_) :
+      gnss_heading_unavailable_covariance_;
 
     const double yaw = normalizeYaw(yawFromQuat(msg->orientation) + gnss_heading_yaw_offset_rad_);
     gnss_heading_.orientation = yawToQuat(yaw);
@@ -450,7 +461,8 @@ private:
     double & yaw_covariance) const
   {
     if (enable_gnss_heading_ &&
-        headingUsable(gnss_heading_, stamp, gnss_heading_timeout_s_)) {
+      headingUsable(gnss_heading_, stamp, gnss_heading_timeout_s_))
+    {
       orientation = gnss_heading_.orientation;
       yaw_covariance = gnss_heading_.yaw_covariance;
       return true;
@@ -471,7 +483,9 @@ private:
     const double alt = msg->altitude;
 
     const Ecef cur_ecef = llhToEcef(lat_rad, lon_rad, alt);
-    geometry_msgs::msg::Point p = ecefToEnu(reference_ecef_, cur_ecef, offset_lat_rad_, offset_lon_rad_);
+    geometry_msgs::msg::Point p = ecefToEnu(
+      reference_ecef_, cur_ecef, offset_lat_rad_,
+      offset_lon_rad_);
 
     if (rotate_latlon_xy_by_yaw_offset_) {
       p = rotatePointXY(p, yaw_offset_rad_);
@@ -489,7 +503,8 @@ private:
       if (dt > 1e-3) {
         const double speed = dist / dt;
         if (dist > max_position_jump_m_ && speed > jump_reject_max_speed_mps_ &&
-            dt < jump_reject_reset_s_) {
+          dt < jump_reject_reset_s_)
+        {
           RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 2000,
             "Reject GNSS jump dist=%.3f speed=%.3f", dist, speed);
@@ -524,9 +539,9 @@ private:
       // HH_260604: Expose only yaw covariance when a fresh GNSS heading is available.
       pose_cov.pose.covariance[21] = gnss_heading_unavailable_covariance_;
       pose_cov.pose.covariance[28] = gnss_heading_unavailable_covariance_;
-      pose_cov.pose.covariance[35] = has_fresh_heading
-        ? heading_yaw_covariance
-        : gnss_heading_unavailable_covariance_;
+      pose_cov.pose.covariance[35] = has_fresh_heading ?
+        heading_yaw_covariance :
+        gnss_heading_unavailable_covariance_;
 
       if (navsat_covariance_source_ == "navsat" && msg->position_covariance_type != 0) {
         // HH_260415: Protect filter stability by applying minimum GNSS covariance floors.
@@ -534,15 +549,15 @@ private:
         const double nav_y = msg->position_covariance[4];
         const double nav_z = msg->position_covariance[8];
 
-        const double var_x = (std::isfinite(nav_x) && nav_x > 0.0)
-          ? std::max(nav_x, gnss_covariance_floor_xy_)
-          : pose_cov.pose.covariance[0];
-        const double var_y = (std::isfinite(nav_y) && nav_y > 0.0)
-          ? std::max(nav_y, gnss_covariance_floor_xy_)
-          : pose_cov.pose.covariance[7];
-        const double var_z = (std::isfinite(nav_z) && nav_z > 0.0)
-          ? std::max(nav_z, gnss_covariance_floor_z_)
-          : pose_cov.pose.covariance[14];
+        const double var_x = (std::isfinite(nav_x) && nav_x > 0.0) ?
+          std::max(nav_x, gnss_covariance_floor_xy_) :
+          pose_cov.pose.covariance[0];
+        const double var_y = (std::isfinite(nav_y) && nav_y > 0.0) ?
+          std::max(nav_y, gnss_covariance_floor_xy_) :
+          pose_cov.pose.covariance[7];
+        const double var_z = (std::isfinite(nav_z) && nav_z > 0.0) ?
+          std::max(nav_z, gnss_covariance_floor_z_) :
+          pose_cov.pose.covariance[14];
 
         pose_cov.pose.covariance[0] = var_x;
         pose_cov.pose.covariance[7] = var_y;

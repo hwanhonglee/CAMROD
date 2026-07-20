@@ -3,7 +3,7 @@ avg_msgs/ModuleState state
 
 bool sim
 bool rviz
-bool use_eskf
+# HH_260721 - Localization has one EKF backend, so no filter-selection flag is exposed.
 bool enable_goal_replanner
 bool enable_state_machine
 bool enable_module_validators

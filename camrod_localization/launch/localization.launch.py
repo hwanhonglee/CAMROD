@@ -7,7 +7,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
@@ -37,16 +37,27 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_filter",                    default_value="true"),
         DeclareLaunchArgument("enable_monitor",                   default_value="true"),
         DeclareLaunchArgument("enable_map_helper",                default_value="true"),
-        DeclareLaunchArgument("adapter_param_file",               default_value=_lc("config/source/input_adapter.yaml")),
-        # HH_260522: Unified filter selection to a single explicit switch (ekf|eskf).
-        DeclareLaunchArgument("filter_type",                      default_value="ekf"),
+        DeclareLaunchArgument(
+            "adapter_param_file", default_value=_lc("config/source/input_adapter.yaml")
+        ),
+        # HH_260721 - Expose only the robot_localization EKF parameter file.
         DeclareLaunchArgument("filter_ekf_param_file",            default_value=_lc("config/filter/ekf.yaml")),
-        DeclareLaunchArgument("filter_eskf_param_file",           default_value=_lc("config/filter/eskf.yaml")),
-        DeclareLaunchArgument("filter_pose_selector_param_file",  default_value=_lc("config/filter/pose_selector.yaml")),
-        DeclareLaunchArgument("filter_gnss_reattach_param_file",  default_value=_lc("config/filter/gnss_reattach.yaml")),
+        DeclareLaunchArgument(
+            "filter_pose_selector_param_file",
+            default_value=_lc("config/filter/pose_selector.yaml"),
+        ),
+        DeclareLaunchArgument(
+            "filter_gnss_reattach_param_file",
+            default_value=_lc("config/filter/gnss_reattach.yaml"),
+        ),
         DeclareLaunchArgument("monitor_param_file",               default_value=_lc("config/filter/monitor.yaml")),
-        DeclareLaunchArgument("map_helper_param_file",            default_value=_lc("config/reference/map_helper.yaml")),
-        DeclareLaunchArgument("map_info_file",                    default_value=os.path.join(map_share, "config", "map_info.yaml")),
+        DeclareLaunchArgument(
+            "map_helper_param_file", default_value=_lc("config/reference/map_helper.yaml")
+        ),
+        DeclareLaunchArgument(
+            "map_info_file",
+            default_value=os.path.join(map_share, "config", "map_info.yaml"),
+        ),
         DeclareLaunchArgument("drop_zones_yaml",                  default_value=_lc("config/drop_zones.yaml")),
         DeclareLaunchArgument("map_path",                         default_value=""),
         # HH_260409: Bringup-level wheel source overrides.
@@ -61,7 +72,10 @@ def generate_launch_description():
         DeclareLaunchArgument("wheel_primary_timeout_s",          default_value="0.7"),
         # HH_260720 - Localization owns generated wheel output and its explicit EKF boundary.
         DeclareLaunchArgument("wheel_output_topic",               default_value="/localization/input/wheel_odometry"),
-        DeclareLaunchArgument("wheel_nav_output_topic",           default_value="/localization/input/wheel_odometry_ros"),
+        DeclareLaunchArgument(
+            "wheel_nav_output_topic",
+            default_value="/localization/input/wheel_odometry_ros",
+        ),
         DeclareLaunchArgument("ekf_publish_map_to_odom_static_tf", default_value="true"),
 
         _inc(adapter_launch,
@@ -73,18 +87,14 @@ def generate_launch_description():
              condition=IfCondition(LaunchConfiguration("enable_adapter")),
              params_file=LaunchConfiguration("adapter_param_file"),
              map_info_file=LaunchConfiguration("map_info_file"),
-             # HH_260527: Avoid duplicate primary pose publishers in ESKF mode.
-             # EKF publishes odometry only, so keep bridge ON for EKF; OFF for ESKF.
-             enable_odometry_to_pose=PythonExpression([
-                 "'true' if '", LaunchConfiguration("filter_type"), "' == 'ekf' else 'false'"
-             ]),
+             # HH_260721 - Convert the single EKF odometry output into generated primary poses.
+             enable_odometry_to_pose="true",
         ),
 
         _inc(filter_launch,
-             "module_namespace", "filter_type",
+             "module_namespace",
              condition=IfCondition(LaunchConfiguration("enable_filter")),
              ekf_params_file=LaunchConfiguration("filter_ekf_param_file"),
-             eskf_params_file=LaunchConfiguration("filter_eskf_param_file"),
              pose_selector_params_file=LaunchConfiguration("filter_pose_selector_param_file"),
              gnss_reattach_params_file=LaunchConfiguration("filter_gnss_reattach_param_file"),
         ),
@@ -112,9 +122,6 @@ def generate_launch_description():
                 "--frame-id", "map", "--child-frame-id", "odom",
             ],
             output="screen",
-            condition=IfCondition(PythonExpression([
-                "'", LaunchConfiguration("ekf_publish_map_to_odom_static_tf"),
-                "' == 'true' and '", LaunchConfiguration("filter_type"), "' == 'ekf'",
-            ])),
+            condition=IfCondition(LaunchConfiguration("ekf_publish_map_to_odom_static_tf")),
         ),
     ])

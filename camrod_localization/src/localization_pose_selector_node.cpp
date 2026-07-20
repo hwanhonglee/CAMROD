@@ -22,7 +22,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 
-using avg_msgs::msg::AvgLocalizationMode;
+// HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
 namespace
 {
@@ -103,7 +103,7 @@ public:
     switch_hysteresis_s_ = declare_parameter<double>("switch_hysteresis_s", 0.5);
     fallback_on_mode_at_or_above_ = declare_parameter<int>(
       "fallback_on_mode_at_or_above",
-      static_cast<int>(AvgLocalizationMode::DR_ONLY));
+      static_cast<int>(avg_msgs::msg::AvgLocalizationMode::DR_ONLY));
 
     primary_timeout_s_ = std::max(0.05, primary_timeout_s_);
     fallback_timeout_s_ = std::max(0.05, fallback_timeout_s_);
@@ -122,7 +122,8 @@ public:
       selected_pose_cov_ros_topic_, latched_qos);
     // HH_260720 - The canonical selected odometry is a real generated avg_msgs interface.
     odom_pub_ = create_publisher<avg_msgs::msg::AvgOdometry>(selected_odom_topic_, latched_qos);
-    odom_ros_pub_ = create_publisher<nav_msgs::msg::Odometry>(selected_odom_ros_topic_, latched_qos);
+    odom_ros_pub_ =
+      create_publisher<nav_msgs::msg::Odometry>(selected_odom_ros_topic_, latched_qos);
     source_pub_ = create_publisher<avg_msgs::msg::AvgString>(selected_source_topic_, latched_qos);
 
     if (publish_localization_status_) {
@@ -156,7 +157,7 @@ public:
         fallback_odom_topic_, fallback_qos,
         std::bind(&LocalizationPoseSelectorNode::onFallbackOdom, this, _1));
     }
-    mode_sub_ = create_subscription<AvgLocalizationMode>(
+    mode_sub_ = create_subscription<avg_msgs::msg::AvgLocalizationMode>(
       mode_topic_, rclcpp::QoS(20),
       std::bind(&LocalizationPoseSelectorNode::onMode, this, _1));
 
@@ -192,7 +193,7 @@ private:
     return (a.nanoseconds() >= b.nanoseconds()) ? a : b;
   }
 
-  void onMode(const AvgLocalizationMode::ConstSharedPtr msg)
+  void onMode(const avg_msgs::msg::AvgLocalizationMode::ConstSharedPtr msg)
   {
     mode_value_ = static_cast<int>(msg->value);
     evaluateAndPublish(this->now());
@@ -265,11 +266,11 @@ private:
   bool sourceFresh(const Source source, const rclcpp::Time & now) const
   {
     if (source == Source::kPrimary) {
-      if (!sourceHasData(source)) return false;
+      if (!sourceHasData(source)) {return false;}
       return (now - last_primary_msg_time_).seconds() <= primary_timeout_s_;
     }
-    if (!fallback_enabled_) return false;
-    if (!sourceHasData(source)) return false;
+    if (!fallback_enabled_) {return false;}
+    if (!sourceHasData(source)) {return false;}
     return (now - last_fallback_msg_time_).seconds() <= fallback_timeout_s_;
   }
 
@@ -471,14 +472,15 @@ private:
   double switch_hysteresis_s_{0.5};
   int fallback_on_mode_at_or_above_{2};
 
-  bool publish_localization_status_{false}; // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs)
+  // HH_260422: true -> also publish /localization/status (AvgLocalizationMsgs).
+  bool publish_localization_status_{false};
   bool publish_selected_tf_{true};          // HH_260422: true -> broadcast selected pose as TF transform
   bool fallback_enabled_{true};             // HH_260527: false when fallback topics are intentionally left empty
 
   // HH_260422: mode_value_ holds the latest enum received from /localization/mode (published by localization_monitor).
   //   When mode_value_ >= fallback_on_mode_at_or_above_ (default DR_ONLY=2), selector switches to fallback source.
   //   Data flow: localization_monitor -> /localization/mode -> pose_selector (source switch).
-  int mode_value_{static_cast<int>(AvgLocalizationMode::INVALID)};
+  int mode_value_{static_cast<int>(avg_msgs::msg::AvgLocalizationMode::INVALID)};
 
   // HH_260422: selected_initialized_ becomes true after the first source selection completes.
   //   While false: evaluateAndPublish() skips all source-switching logic.
@@ -507,9 +509,10 @@ private:
 
   rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr primary_pose_cov_sub_;
   rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr primary_odom_sub_;
-  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr fallback_pose_cov_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr
+    fallback_pose_cov_sub_;
   rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr fallback_odom_sub_;
-  rclcpp::Subscription<AvgLocalizationMode>::SharedPtr mode_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgLocalizationMode>::SharedPtr mode_sub_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgPoseStamped>::SharedPtr pose_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pose_ros_pub_;

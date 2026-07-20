@@ -33,7 +33,7 @@ std::string normalizeModeToken(std::string value)
 {
   std::transform(
     value.begin(), value.end(), value.begin(),
-    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    [](unsigned char c) {return static_cast<char>(std::tolower(c));});
   return value;
 }
 
@@ -148,7 +148,8 @@ public:
       "drop_zone_pose_topic", "/localization/pose_with_covariance");
     match_radius_ = declare_parameter<double>("match_radius", 2.0);
     stable_count_ = declare_parameter<int>("stable_count", 10);
-    publish_drop_zone_initial_pose_ = declare_parameter<bool>("publish_drop_zone_initial_pose", true);
+    publish_drop_zone_initial_pose_ =
+      declare_parameter<bool>("publish_drop_zone_initial_pose", true);
     publish_once_ = declare_parameter<bool>("publish_once", true);
     // HH_260526: Replace boolean toggles with source modes for readability.
     // drop_zone_center_mode: yaml_center | corners_mean.
@@ -176,7 +177,9 @@ public:
       }
       // HH_260720 - Keep snapped centerline poses on the generated CAMROD contract.
       centerline_pub_ =
-        create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(centerline_output_pose_topic_, rclcpp::QoS(10));
+        create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
+        centerline_output_pose_topic_, rclcpp::QoS(
+          10));
       // HH_260720 - Keep the standard pose mirror out of the internal localization contract.
       centerline_ros_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
         centerline_output_pose_ros_topic_, rclcpp::QoS(10));
@@ -189,9 +192,13 @@ public:
       loadDropZones();
       status_pub_ = create_publisher<avg_msgs::msg::AvgBool>(status_topic_, rclcpp::QoS(1));
       match_id_pub_ = create_publisher<avg_msgs::msg::AvgString>(match_id_topic_, rclcpp::QoS(1));
-      match_distance_pub_ = create_publisher<avg_msgs::msg::AvgFloat32>(match_distance_topic_, rclcpp::QoS(1));
+      match_distance_pub_ = create_publisher<avg_msgs::msg::AvgFloat32>(
+        match_distance_topic_, rclcpp::QoS(
+          1));
       drop_zone_initial_pose_pub_ =
-        create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(drop_zone_initial_pose_topic_, rclcpp::QoS(1));
+        create_publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>(
+        drop_zone_initial_pose_topic_, rclcpp::QoS(
+          1));
       // HH_260720 - Publish a separate standard pose only for ROS visualization tools.
       drop_zone_initial_pose_ros_pub_ =
         create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
@@ -471,9 +478,9 @@ private:
         out.pose.pose.position.y = best_zone->center.y;
         out.pose.pose.position.z = best_zone->center.z;
         out.pose.pose.orientation =
-          (drop_zone_yaw_source_ == "zone")
-          ? yawToQuat(best_zone->yaw_deg * M_PI / 180.0)
-          : msg->pose.pose.orientation;
+          (drop_zone_yaw_source_ == "zone") ?
+          yawToQuat(best_zone->yaw_deg * M_PI / 180.0) :
+          msg->pose.pose.orientation;
         out.pose.covariance = msg->pose.covariance;
         drop_zone_initial_pose_pub_->publish(out);
         // HH_260720 - Mirror the generated drop-zone pose for RViz without changing control data.
@@ -547,7 +554,8 @@ private:
   rclcpp::Publisher<avg_msgs::msg::AvgBool>::SharedPtr status_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgString>::SharedPtr match_id_pub_;
   rclcpp::Publisher<avg_msgs::msg::AvgFloat32>::SharedPtr match_distance_pub_;
-  rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr drop_zone_initial_pose_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr
+    drop_zone_initial_pose_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
     drop_zone_initial_pose_ros_pub_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr drop_zone_sub_;

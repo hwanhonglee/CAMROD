@@ -45,7 +45,8 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "enable_odometry_to_pose",
             default_value="true",
-            description="Enable odometry->pose bridge path (typically true for EKF, false for ESKF)",
+            # HH_260721 - EKF odometry always uses this generated pose conversion path.
+            description="Enable EKF odometry-to-pose conversion",
         ),
         DeclareLaunchArgument(
             "wheel_input_topic",
