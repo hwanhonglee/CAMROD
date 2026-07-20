@@ -125,6 +125,7 @@ def quat_to_yaw(quat):
     cosy_cosp = 1.0 - 2.0 * (quat.y * quat.y + quat.z * quat.z)
     return math.atan2(siny_cosp, cosy_cosp)
 
+
 # Implements `normalize_angle` behavior.
 def normalize_angle(angle):
     while angle > math.pi:

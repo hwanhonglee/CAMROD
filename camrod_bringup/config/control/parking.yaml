@@ -34,7 +34,9 @@
     require_station_on_reverse_axis: true
     station_axis_tolerance_m: 0.25
     stop_when_charging: true
-    complete_without_charging: true
+    # HH_260721 - Complete reverse parking only after normalized CAN confirms charging.
+    complete_without_charging: false
+    charging_wait_timeout_s: 20.0
     pose_timeout_s: 2.0
     control_rate_hz: 10.0
     idle_rate_hz: 1.0

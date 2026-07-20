@@ -4,6 +4,8 @@ bringup:
     # Run one more cleanup pass on Ctrl+C shutdown to prevent duplicate nodes.
     clean_on_shutdown: true
     sim: false
+    # HH_260721 - Enable only when a validator publishes fresh normalized platform status.
+    sim_platform_status_enable: false
     rviz: true
     # Stagger module startup to reduce bringup burst load.
     module_launch_gap_s: 1.0
@@ -13,12 +15,7 @@ bringup:
     enable_filter: true
     enable_monitor: true
     enable_map_helper: true
-    # HH_260522: switch default localization backend to EKF for stability-first
-    # operation on real hardware (reduced standstill yaw drift sensitivity vs ESKF tuning).
-    # HH_260522: filter_type options:
-    #   ekf: robot_localization EKF backend
-    #   eskf: camrod localization ESKF backend
-    filter_type: ekf
+    # HH_260721 - Use robot_localization EKF as the single supported filter backend.
     wheel_bridge_enable: true
     # Use platform status odometry as primary source.
     wheel_input_topic: /platform/status/odometry
@@ -39,14 +36,9 @@ bringup:
     # HH_260720 - Localization owns generated wheel data and the explicit EKF mirror.
     wheel_output_topic: /localization/input/wheel_odometry
     wheel_nav_output_topic: /localization/input/wheel_odometry_ros
-    # 2026-04-22: Keep explicit-only escape hatch.
-    # Set true only when you intentionally want ESKF primary input fixed to /rmp401/odom.
-    eskf_force_rmp401_odom: false
-    eskf_rmp401_odom_topic: /rmp401/odom
     # Localization launch refactor - explicit override keys per sub-launch.
     adapter_param_file: localization/source/input_adapter.yaml
     filter_ekf_param_file: localization/filter/ekf.yaml
-    filter_eskf_param_file: localization/filter/eskf.yaml
     filter_gnss_reattach_param_file: localization/filter/gnss_reattach.yaml
     filter_pose_selector_param_file: localization/filter/pose_selector.yaml
     monitor_param_file: localization/filter/monitor.yaml
@@ -362,7 +354,7 @@ bringup:
     # cost after lanelet-snap arrival; LiDAR/Radar source cost remains active.
     cmd_vel_gate_reverse_cmd_bypass_static_cost_stop: true
     cmd_vel_gate_reverse_cmd_bypass_min_mps: 0.02
-    cmd_vel_gate_lateral_cmd_dynamic_obstacle_threshold: 85
+    # HH_260721 - side_cost_threshold is the single lateral obstacle threshold.
     # HH_260624 - Static lanelet cost may be bypassed during in-place 180deg
     # site turns, but live LiDAR/Radar cost around the body still stops rotation.
     cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop: true

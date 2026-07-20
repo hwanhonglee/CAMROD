@@ -61,8 +61,6 @@ patterns:
   # HH_260720 - Match only current localization executables and explicit node names.
   - localization_input_adapter_node
   - ekf_node
-  - eskf
-  - __node:=eskf
   - localization_pose_selector_node
   - localization_gnss_reattach_node
   - localization_monitor_node

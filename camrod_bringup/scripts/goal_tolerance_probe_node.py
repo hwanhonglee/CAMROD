@@ -25,6 +25,8 @@ from rclpy.node import Node
 
 
 class GoalToleranceProbe(Node):
+
+    # HH_260721 - Separate the class declaration from its first method for lint readability.
     def __init__(self):
         super().__init__("goal_tolerance_probe")
 
