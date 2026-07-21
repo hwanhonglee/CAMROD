@@ -15,7 +15,8 @@
     adopt_destination_topic: "/control/camping_site_maneuver_controller/adopt"
     status_topic: "/control/camping_site_maneuver_controller/status"
     diagnostics_topic: "/system/diagnostics"
-    amr_service_state_topic: "/AMR_service_state"
+    # HH_260721 - Service progress is independent from chassis naming and diagnostic severity.
+    service_state_topic: "/service/state"
     reverse_path_topic: "/control/camping_site_maneuver_controller/path_ros"
 
     enable_auto_start_from_planning_state: true
@@ -83,6 +84,8 @@
   ros__parameters:
     command_topic: "/control/cmd_vel_raw"
     vehicle_pose_topic: "/localization/pose"
+    # HH_260721 - Distinguish charger departure from ordinary drop-zone departure.
+    platform_status_topic: "/platform/status"
     planning_state_topic: "/planning/state_machine/state"
     # HH_260720 - Drop-zone control consumes the generated lanelet pose directly.
     lanelet_pose_topic: "/planning/lanelet_pose"
@@ -95,7 +98,8 @@
     # HH_260720 - Start whichever parking method is selected by the control launch.
     parking_operation_topic: "/parking/operation"
     diagnostics_topic: "/system/diagnostics"
-    amr_service_state_topic: "/AMR_service_state"
+    # HH_260721 - Publish drop-zone departure/parking progress on the shared service topic.
+    service_state_topic: "/service/state"
 
     drop_zones_yaml: ""
     drop_zone_id: "drop_zone"

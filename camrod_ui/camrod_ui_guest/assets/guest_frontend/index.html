@@ -471,12 +471,12 @@
 
   <!-- Status card -->
   <div class="card">
-    <div class="card-title">로봇 상태</div>
+    <div class="card-title">Robot status</div>
     <div class="status-row">
       <div class="status-indicator" id="statusDot"></div>
       <div class="status-info">
-        <div class="status-phase" id="statusPhase">대기</div>
-        <div class="status-label" id="statusLabel">연결 중...</div>
+        <div class="status-phase" id="statusPhase">Preparing</div>
+        <div class="status-label" id="statusLabel">Connecting...</div>
       </div>
     </div>
     <div class="dest-tag" id="destTag" style="display:none">
@@ -515,6 +515,8 @@
   let graceTimer = null;
   let currentPhase = 'unknown';
   let currentState = -1;
+  // HH_260721 - Preserve the exact shared service state instead of reducing it to a generic phase.
+  let currentServiceStateName = 'PREPARING';
   let selectedSite = null;
   let sites = [];
   let lastDestSite = null;  // remember destination while moving/arrived
@@ -546,12 +548,15 @@
         buildSiteGrid();
       }
       if (d.battery !== undefined) updateBattery(d.battery);
+      if (d.service_state_name !== undefined) {
+        currentServiceStateName = String(d.service_state_name || 'PREPARING');
+      }
       if (d.phase !== undefined) {
         currentPhase = d.phase;
-        if (d.amr_state !== undefined) currentState = d.amr_state;
+        if (d.service_state !== undefined) currentState = d.service_state;
         updateUI();
-      } else if (d.amr_state !== undefined) {
-        currentState = d.amr_state;
+      } else if (d.service_state !== undefined) {
+        currentState = d.service_state;
         updateUI();
       }
     };
@@ -606,6 +611,27 @@
   }
 
   /* ── UI state machine ── */
+  // HH_260721 - Keep every visible runtime state English and aligned with AvgServiceState.
+  const SERVICE_STATE_LABELS = Object.freeze({
+    PREPARING: 'Preparing',
+    DROP_ZONE_WAIT: 'Waiting at drop zone',
+    MOVING_TO_SITE: 'Moving to site',
+    SITE_ARRIVED: 'Arrived at site',
+    RETURNING_TO_DROP_ZONE: 'Returning to drop zone',
+    GUEST_RECALL_SERVICE: 'Guest recall requested',
+    SITE_ENTRY: 'Entering site',
+    UNLOAD_WAIT: 'Waiting for unloading',
+    RECALL_TO_SITE_ROAD: 'Moving to recall point',
+    GUEST_LOADING_WAIT: 'Waiting for loading',
+    RETURN_WITH_CARGO: 'Leaving site with cargo',
+    DROP_ZONE_PARKING: 'Reverse parking',
+    WAITING_FOR_RETURN_REQUEST: 'Waiting for return request',
+    WAITING_FOR_CHARGING: 'Waiting for charger connection',
+    CHARGING: 'Charging',
+    DEPARTING_CHARGER: 'Departing charger',
+    DEPARTING_DROP_ZONE: 'Departing drop zone',
+  });
+
   function updateUI() {
     const dot      = document.getElementById('statusDot');
     const phaseLbl = document.getElementById('statusPhase');
@@ -625,8 +651,17 @@
 
     if (phase === 'idle') {
       dot.classList.add('si-idle');
-      phaseLbl.textContent = '대기 중';
-      stateLbl.textContent = 'Drop Zone에서 대기 중';
+      phaseLbl.textContent = 'Waiting';
+      stateLbl.textContent = 'Waiting at drop zone';
+      siteCard.style.display = sites.length ? 'block' : 'none';
+      completeCard.style.display = 'none';
+      setSiteGridEnabled(true);
+      lastDestSite = null;
+
+    } else if (phase === 'charging') {
+      dot.classList.add('si-idle');
+      phaseLbl.textContent = 'Charging';
+      stateLbl.textContent = 'Charging at drop zone';
       siteCard.style.display = sites.length ? 'block' : 'none';
       completeCard.style.display = 'none';
       setSiteGridEnabled(true);
@@ -634,12 +669,12 @@
 
     } else if (phase === 'moving') {
       dot.classList.add('si-moving');
-      phaseLbl.textContent = '이동 중';
-      stateLbl.textContent = '사이트로 이동 중...';
+      phaseLbl.textContent = 'Moving';
+      stateLbl.textContent = 'Robot is moving';
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-moving');
-      banner.textContent = '로봇이 사이트로 이동 중입니다. 잠시 기다려주세요.';
+      banner.textContent = 'The robot is moving. Please wait.';
       if (lastDestSite) {
         document.getElementById('destTagSite').textContent = lastDestSite;
         destTag.style.display = 'inline-flex';
@@ -647,33 +682,47 @@
 
     } else if (phase === 'arrived') {
       dot.classList.add('si-arrived');
-      phaseLbl.textContent = '도착';
-      stateLbl.textContent = '사이트에 도착했습니다';
+      phaseLbl.textContent = 'Arrived';
+      stateLbl.textContent = 'Robot is waiting at the site';
       siteCard.style.display = 'none';
       completeCard.style.display = 'block';
       banner.classList.add('show', 'info-arrived');
-      banner.textContent = '로봇이 도착했습니다. 이용 후 완료 버튼을 눌러주세요.';
+      banner.textContent = 'The robot has arrived. Send the return request when ready.';
       if (lastDestSite) {
         document.getElementById('destTagSite').textContent = lastDestSite;
         destTag.style.display = 'inline-flex';
       }
 
-    } else if (phase === 'returning' || phase === 'recall') {
+    } else if (phase === 'parking' || phase === 'waiting_for_charging') {
       dot.classList.add('si-returning');
-      phaseLbl.textContent = phase === 'recall' ? '호출됨' : '복귀 중';
-      stateLbl.textContent = phase === 'recall' ? '로봇이 호출되었습니다' : 'Drop Zone으로 복귀 중';
+      phaseLbl.textContent = phase === 'parking' ? 'Parking' : 'Waiting for charging';
+      stateLbl.textContent = phase === 'parking'
+        ? 'Reverse parking at drop zone'
+        : 'Waiting for charger connection';
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
       banner.classList.add('show', 'info-returning');
-      banner.textContent = 'DropZone으로 복귀 중입니다.';
+      banner.textContent = stateLbl.textContent;
+
+    } else if (phase === 'returning' || phase === 'recall') {
+      dot.classList.add('si-returning');
+      phaseLbl.textContent = phase === 'recall' ? 'Recall requested' : 'Returning';
+      stateLbl.textContent = phase === 'recall'
+        ? 'The robot was recalled'
+        : 'Returning to drop zone';
+      siteCard.style.display = 'none';
+      completeCard.style.display = 'none';
+      banner.classList.add('show', 'info-returning');
+      banner.textContent = 'The robot is returning to the drop zone.';
 
     } else {
       dot.classList.add('si-busy');
-      phaseLbl.textContent = '처리 중';
-      stateLbl.textContent = '처리 중...';
+      phaseLbl.textContent = 'Processing';
+      stateLbl.textContent = 'Waiting for a valid service state';
       siteCard.style.display = 'none';
       completeCard.style.display = 'none';
     }
+    phaseLbl.textContent = SERVICE_STATE_LABELS[currentServiceStateName] || phaseLbl.textContent;
   }
 
   /* ── Site grid ── */
@@ -691,7 +740,7 @@
   }
 
   function selectSite(site) {
-    if (currentPhase !== 'idle') return;
+    if (!isDispatchReady()) return;
     selectedSite = site;
     document.querySelectorAll('.site-btn').forEach(b => {
       b.classList.toggle('selected', b.dataset.site === site);
@@ -711,9 +760,14 @@
     }
   }
 
+  // HH_260721 - Charging is a dispatch-ready state because control owns charger departure.
+  function isDispatchReady() {
+    return currentPhase === 'idle' || currentPhase === 'charging';
+  }
+
   /* ── Confirm dialog ── */
   function openConfirm() {
-    if (!selectedSite || currentPhase !== 'idle') return;
+    if (!selectedSite || !isDispatchReady()) return;
     document.getElementById('confirmSiteTag').textContent = selectedSite + ' 사이트';
     document.getElementById('confirmOverlay').classList.add('show');
   }
@@ -724,7 +778,7 @@
 
   function confirmNavigate() {
     closeConfirm();
-    if (!selectedSite || currentPhase !== 'idle') return;
+    if (!selectedSite || !isDispatchReady()) return;
     if (ws && ws.readyState === WebSocket.OPEN) {
       lastDestSite = selectedSite;
       ws.send(JSON.stringify({ action: 'navigate', site: selectedSite }));

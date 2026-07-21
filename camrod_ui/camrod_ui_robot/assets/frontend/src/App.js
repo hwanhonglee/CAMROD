@@ -10,7 +10,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
-import AMRAnimation from './AMRAnimation';
+import RobotAnimation from './RobotAnimation';
 
 // HH_260619 - Developer/test builds bypass the public operating-hours gate by default.
 // Enable the kiosk time gate explicitly with REACT_APP_OPERATING_HOURS_GATE_ENABLED=true.
@@ -24,26 +24,84 @@ const OPERATING_HOURS_GATE_ENABLED =
 const OPERATING_HOURS_START = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_START, 3);
 const OPERATING_HOURS_END = parseHourEnv(process.env.REACT_APP_OPERATING_HOURS_END, 23);
 
-// HH_260630 - Mirror avg_msgs/AvgAmrServiceState values used by backend and parking.
-const AMR_STATE = Object.freeze({
+// HH_260721 - Mirror the platform-neutral service lifecycle used by backend and control.
+const SERVICE_STATE = Object.freeze({
   DROP_ZONE_WAIT: 0,
+  MOVING_TO_SITE: 1,
   SITE_ARRIVED: 2,
   RETURNING_TO_DROP_ZONE: 3,
+  GUEST_RECALL_SERVICE: 4,
+  SITE_ENTRY: 5,
   UNLOAD_WAIT: 6,
+  RECALL_TO_SITE_ROAD: 7,
   GUEST_LOADING_WAIT: 8,
   RETURN_WITH_CARGO: 9,
   DROP_ZONE_PARKING: 10,
+  // HH_260721 - Mirror explicit wait, charging, and departure states from avg_msgs.
+  WAITING_FOR_RETURN_REQUEST: 11,
+  WAITING_FOR_CHARGING: 12,
+  CHARGING: 13,
+  DEPARTING_CHARGER: 14,
+  DEPARTING_DROP_ZONE: 15,
+});
+const SERVICE_STATE_NAME_BY_ID = Object.freeze(
+  Object.fromEntries(Object.entries(SERVICE_STATE).map(([name, id]) => [id, name]))
+);
+const SERVICE_STATE_LABELS = Object.freeze({
+  // HH_260721 - Display operational progress in English on every robot UI screen.
+  PREPARING: 'Preparing',
+  DROP_ZONE_WAIT: 'Waiting at drop zone',
+  MOVING_TO_SITE: 'Moving to site',
+  SITE_ARRIVED: 'Arrived at site',
+  RETURNING_TO_DROP_ZONE: 'Returning to drop zone',
+  GUEST_RECALL_SERVICE: 'Guest recall requested',
+  SITE_ENTRY: 'Entering site',
+  UNLOAD_WAIT: 'Waiting for unloading',
+  RECALL_TO_SITE_ROAD: 'Moving to recall point',
+  GUEST_LOADING_WAIT: 'Waiting for loading',
+  RETURN_WITH_CARGO: 'Leaving site with cargo',
+  DROP_ZONE_PARKING: 'Reverse parking',
+  WAITING_FOR_RETURN_REQUEST: 'Waiting for return request',
+  WAITING_FOR_CHARGING: 'Waiting for charger connection',
+  CHARGING: 'Charging',
+  DEPARTING_CHARGER: 'Departing charger',
+  DEPARTING_DROP_ZONE: 'Departing drop zone',
+});
+const SYSTEM_HEALTH_LABELS = Object.freeze({
+  // HH_260721 - Keep health labels English and independent from service progress.
+  STARTING: 'System starting',
+  OK: 'System normal',
+  WARNING: 'System warning',
+  ERROR: 'System error',
 });
 const ARRIVAL_STATES = new Set([
-  AMR_STATE.SITE_ARRIVED,
-  AMR_STATE.UNLOAD_WAIT,
-  AMR_STATE.GUEST_LOADING_WAIT,
+  SERVICE_STATE.SITE_ARRIVED,
+  SERVICE_STATE.UNLOAD_WAIT,
+  SERVICE_STATE.GUEST_LOADING_WAIT,
+  SERVICE_STATE.WAITING_FOR_RETURN_REQUEST,
 ]);
 const RETURNING_STATES = new Set([
-  AMR_STATE.RETURNING_TO_DROP_ZONE,
-  AMR_STATE.RETURN_WITH_CARGO,
-  AMR_STATE.DROP_ZONE_PARKING,
+  SERVICE_STATE.RETURNING_TO_DROP_ZONE,
+  SERVICE_STATE.RETURN_WITH_CARGO,
+  SERVICE_STATE.DROP_ZONE_PARKING,
+  SERVICE_STATE.WAITING_FOR_CHARGING,
 ]);
+
+// HH_260721 - Reuse one health/service presentation on waiting and destination screens.
+function RuntimeStatus({ systemHealth, serviceStateName }) {
+  return (
+    <div className="ch-runtime-status" aria-live="polite">
+      <span className={`ch-runtime-line health-${systemHealth.toLowerCase()}`}>
+        <span className="ch-runtime-dot" />
+        {SYSTEM_HEALTH_LABELS[systemHealth] || SYSTEM_HEALTH_LABELS.STARTING}
+      </span>
+      <span className="ch-runtime-line service-state">
+        <span className="ch-runtime-dot" />
+        {SERVICE_STATE_LABELS[serviceStateName] || serviceStateName}
+      </span>
+    </div>
+  );
+}
 
 // ── 탐방로 공통 이미지 캐러셀 컴포넌트 ──────────────────────────────────────
 function TrailCarousel({ title, images }) {
@@ -93,7 +151,7 @@ function TrailCarousel({ title, images }) {
 function DiagnosticsMonitor() {
   const [items, setItems] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [expanded, setExpanded] = useState({ error: true, stale: true, warn: true, ok: false });
+  const [expanded, setExpanded] = useState({ error: true, warn: true, ok: false });
   // HH_260720 - Keep only the parking control; the removed docking stack has no UI actions.
   const [parkingOn, setParkingOn] = useState(false);
 
@@ -108,13 +166,13 @@ function DiagnosticsMonitor() {
     return () => clearInterval(t);
   }, []);
 
-  const LEVEL_STR  = { 0: 'OK', 1: 'WARN', 2: 'ERROR', 3: 'STALE' };
-  const DOT_COLOR  = { 0: '#5dca5d', 1: '#d4a030', 2: '#e24b4a', 3: '#9e6644' };
-  const HEAD_COLOR = { 0: '#6ec86e', 1: '#e0b06c', 2: '#e06c6c', 3: '#cc8855' };
+  // HH_260721 - Operator diagnostics use one unambiguous three-level health scale.
+  const LEVEL_STR  = { 0: 'OK', 1: 'WARN', 2: 'ERROR' };
+  const DOT_COLOR  = { 0: '#5dca5d', 1: '#d4a030', 2: '#e24b4a' };
+  const HEAD_COLOR = { 0: '#6ec86e', 1: '#e0b06c', 2: '#e06c6c' };
 
   const groups = [
     { key: 'error', label: 'Error',  lvls: [2],    items: items.filter(i => i.level === 2) },
-    { key: 'stale', label: 'Stale',  lvls: [3],    items: items.filter(i => i.level === 3) },
     { key: 'warn',  label: 'Warn',   lvls: [1],    items: items.filter(i => i.level === 1) },
     { key: 'ok',    label: 'OK',     lvls: [0],    items: items.filter(i => i.level === 0) },
   ].filter(g => g.items.length > 0);
@@ -763,6 +821,9 @@ function App() {
   const [batteryPct, setBatteryPct] = useState(null); // null = 아직 수신 전
   const [togglePage, setTogglePage] = useState(0);   // 0: B1~B6, 1: B7~B12, 2: B13
   const [engageState, setEngageState] = useState(false);
+  // HH_260721 - Display operational progress independently from diagnostic health.
+  const [serviceStateName, setServiceStateName] = useState('PREPARING');
+  const [systemHealth, setSystemHealth] = useState('STARTING');
   const [headlightState, setHeadlightState] = useState(false); // 260708: 전조등 토글
   const [signalLevel, setSignalLevel] = useState(() => {
     if (!navigator.onLine) return 0;
@@ -988,30 +1049,39 @@ function App() {
       if ('site' in data && 'state' in data) {
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
-      // AMR 도착 알림: {"arrived": "B1"} 수신 (state=3)
+      // HH_260721 - Handle arrival and lifecycle updates through the shared service contract.
       if ('arrived' in data) {
         setArrivedSite(data.arrived);
         setShowArrivalComplete(true);
       }
-      // AMR service lifecycle: 0=drop-zone wait, 6=site unload wait, 9/10=returning.
-      if ('amr_state' in data) {
-        const amrState = Number(data.amr_state);
-        if (amrState === AMR_STATE.DROP_ZONE_WAIT) {
+      // Service lifecycle: 0=drop-zone wait, 6=site unload wait, 9/10=returning.
+      if ('service_state' in data) {
+        const serviceState = Number(data.service_state);
+        const nextStateName = data.service_state_name || SERVICE_STATE_NAME_BY_ID[serviceState];
+        if (nextStateName) setServiceStateName(nextStateName);
+        if (
+          serviceState === SERVICE_STATE.DROP_ZONE_WAIT
+          || serviceState === SERVICE_STATE.CHARGING
+        ) {
+          // HH_260721 - Charging remains a stopped standby state with destination selection enabled.
           setArrivedSite(null);
           setShowArrivalComplete(false);
           setIsReturning(false);
           setShowWaiting(true);
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
-        } else if (ARRIVAL_STATES.has(amrState) && data.site) {
+        } else if (ARRIVAL_STATES.has(serviceState) && data.site) {
           setArrivedSite(data.site);
           setShowArrivalComplete(true);
           setIsReturning(false);
-        } else if (RETURNING_STATES.has(amrState) || data.returning) {
+        } else if (RETURNING_STATES.has(serviceState) || data.returning) {
           setShowArrivalComplete(false);
           setArrivedSite(null);
           setIsReturning(true);
         }
+      }
+      if ('system_health' in data) {
+        setSystemHealth(String(data.system_health || 'STARTING').toUpperCase());
       }
       // HJ_260601: 게스트 호출 알림: {"guest_recall": true} 수신
       if (data.guest_recall) {
@@ -1183,6 +1253,10 @@ function App() {
               </div>
             </div>
             <div className="wh-right-group">
+              <RuntimeStatus
+                systemHealth={systemHealth}
+                serviceStateName={serviceStateName}
+              />
               <div className="wh-wifi">
                 <WifiIcon level={signalLevel} />
                 <span className="wh-wifi-label">WIFI</span>
@@ -1208,7 +1282,7 @@ function App() {
           <button className="waiting-grid-btn" onClick={handleWaitingClick}>
             <span className="waiting-grid-btn-icon">
               <div style={{ width: '100%', height: '100%' }}>
-                <AMRAnimation />
+                <RobotAnimation />
               </div>
             </span>
             {outsideHoursMsg
@@ -1373,6 +1447,10 @@ function App() {
             </div>
           </div>
           <div className="ch-right">
+            <RuntimeStatus
+              systemHealth={systemHealth}
+              serviceStateName={serviceStateName}
+            />
             <div className="wh-wifi ch-wifi">
               <WifiIcon level={signalLevel} />
               <span className="wh-wifi-label">WIFI</span>

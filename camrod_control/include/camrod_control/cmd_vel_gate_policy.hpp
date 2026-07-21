@@ -38,6 +38,14 @@ struct PlatformSafetyState
   std::optional<double> battery_percentage;
 };
 
+// HH_260721 - Keep command authorization state separate from component health severity.
+enum class CmdVelGateHealth
+{
+  kOk,
+  kWarning,
+  kError,
+};
+
 class CmdVelGatePolicy
 {
 public:
@@ -147,6 +155,29 @@ public:
     return blockReasons(now_sec, charging, charging_motion_override).empty();
   }
 
+  // HH_260721 - Disengaged, drive-disabled, and charging holds are normal standby states.
+  static CmdVelGateHealth classifyHealth(const std::vector<std::string> & reasons)
+  {
+    bool degraded = false;
+    for (const auto & reason : reasons) {
+      if (reason == "estop" || startsWith(reason, "vehicle_state=") ||
+        startsWith(reason, "platform_error=") || startsWith(reason, "platform_status_"))
+      {
+        return CmdVelGateHealth::kError;
+      }
+      if (!isExpectedOperationalHold(reason)) {
+        degraded = true;
+      }
+    }
+    return degraded ? CmdVelGateHealth::kWarning : CmdVelGateHealth::kOk;
+  }
+
+  static bool isExpectedOperationalHold(const std::string & reason)
+  {
+    return startsWith(reason, "engage=false(") ||
+           reason == "platform_drive_enable=false" || reason == "charging";
+  }
+
   const PlatformSafetyState & platformState() const
   {
     return platform_state_;
@@ -191,6 +222,11 @@ public:
   }
 
 private:
+  static bool startsWith(const std::string & value, const std::string & prefix)
+  {
+    return value.rfind(prefix, 0) == 0;
+  }
+
   void appendPlatformReasons(
     const double now_sec,
     const bool charging,

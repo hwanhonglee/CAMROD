@@ -11,8 +11,9 @@
 #include <utility>
 #include <vector>
 
-#include "avg_msgs/msg/avg_amr_service_state.hpp"
+#include "avg_msgs/msg/avg_service_state.hpp"
 #include "avg_msgs/msg/avg_bool.hpp"
+#include "avg_msgs/msg/avg_platform_status.hpp"
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
 #include "avg_msgs/msg/module_state.hpp"
@@ -77,6 +78,9 @@ public:
     command_topic_ = declare_parameter<std::string>("command_topic", "/control/cmd_vel_raw");
     vehicle_pose_topic_ =
       declare_parameter<std::string>("vehicle_pose_topic", "/localization/pose");
+    // HH_260721 - Classify departure from live charging feedback instead of inferring it from UI state.
+    platform_status_topic_ = declare_parameter<std::string>(
+      "platform_status_topic", "/platform/status");
     planning_state_topic_ = declare_parameter<std::string>(
       "planning_state_topic", "/planning/state_machine/state");
     lanelet_pose_topic_ = declare_parameter<std::string>(
@@ -95,8 +99,8 @@ public:
     parking_operation_topic_ = declare_parameter<std::string>(
       "parking_operation_topic", "/parking/operation");
     diagnostics_topic_ = declare_parameter<std::string>("diagnostics_topic", "/system/diagnostics");
-    amr_service_state_topic_ = declare_parameter<std::string>(
-      "amr_service_state_topic", "/AMR_service_state");
+    service_state_topic_ = declare_parameter<std::string>(
+      "service_state_topic", "/service/state");
 
     drop_zones_yaml_ = declare_parameter<std::string>("drop_zones_yaml", "");
     drop_zone_id_ = declare_parameter<std::string>("drop_zone_id", "drop_zone");
@@ -132,8 +136,8 @@ public:
     status_publisher_ = create_publisher<avg_msgs::msg::ModuleState>(status_topic_, 10);
     diagnostics_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
       diagnostics_topic_, 10);
-    service_state_publisher_ = create_publisher<avg_msgs::msg::AvgAmrServiceState>(
-      amr_service_state_topic_, 10);
+    service_state_publisher_ = create_publisher<avg_msgs::msg::AvgServiceState>(
+      service_state_topic_, 10);
     exit_path_publisher_ = create_publisher<nav_msgs::msg::Path>(exit_path_topic_, 10);
     exit_complete_publisher_ = create_publisher<avg_msgs::msg::AvgBool>(exit_complete_topic_, 10);
     parking_operation_publisher_ = create_publisher<avg_msgs::msg::MotionOperation>(
@@ -144,6 +148,11 @@ public:
       [this](const avg_msgs::msg::AvgPoseStamped::SharedPtr message) {
         last_vehicle_pose_ = *message;
         last_vehicle_pose_time_ = now();
+      });
+    platform_status_subscription_ = create_subscription<avg_msgs::msg::AvgPlatformStatus>(
+      platform_status_topic_, 10,
+      [this](const avg_msgs::msg::AvgPlatformStatus::SharedPtr message) {
+        is_charging_ = message->is_charging;
       });
     lanelet_pose_subscription_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
       lanelet_pose_topic_, 10,
@@ -297,6 +306,8 @@ private:
     exit_start_y_m_ = last_vehicle_pose_->pose.position.y;
     exit_heading_yaw_rad_ = camrod_control::yawFromPose(*last_vehicle_pose_);
     target_body_yaw_rad_ = selectExitYaw();
+    // HH_260721 - Preserve departure origin while charger feedback clears during physical exit.
+    exit_started_while_charging_ = is_charging_;
     setPhase(DropZoneManeuverPhase::kExitStraight, "start=" + source);
     return {true, "drop-zone exit started"};
   }
@@ -325,13 +336,19 @@ private:
 
   void publishServiceState(const std::string & detail) const
   {
-    avg_msgs::msg::AvgAmrServiceState message;
+    avg_msgs::msg::AvgServiceState message;
     if (phase_ == DropZoneManeuverPhase::kExitStraight ||
       phase_ == DropZoneManeuverPhase::kAlignExitYaw)
     {
-      message.state = avg_msgs::msg::AvgAmrServiceState::MOVING_TO_SITE;
+      // HH_260721 - Distinguish charger departure from an uncharged drop-zone departure.
+      message.state = exit_started_while_charging_ ?
+        avg_msgs::msg::AvgServiceState::DEPARTING_CHARGER :
+        avg_msgs::msg::AvgServiceState::DEPARTING_DROP_ZONE;
+      message.state_name = exit_started_while_charging_ ?
+        "DEPARTING_CHARGER" : "DEPARTING_DROP_ZONE";
     } else if (phase_ == DropZoneManeuverPhase::kAlignParkingYaw) {
-      message.state = avg_msgs::msg::AvgAmrServiceState::DROP_ZONE_PARKING;
+      message.state = avg_msgs::msg::AvgServiceState::DROP_ZONE_PARKING;
+      message.state_name = "DROP_ZONE_PARKING";
     } else {
       return;
     }
@@ -506,17 +523,15 @@ private:
     {
       return;
     }
-    uint8_t module_level = avg_msgs::msg::ModuleState::WARN;
-    if (phase_ == DropZoneManeuverPhase::kError) {
-      module_level = avg_msgs::msg::ModuleState::ERROR;
-    } else if (phase_ == DropZoneManeuverPhase::kIdle) {
-      module_level = avg_msgs::msg::ModuleState::OK;
-    }
+    // HH_260721 - Straight exit and yaw alignment are healthy operating progress.
+    const uint8_t module_level = phase_ == DropZoneManeuverPhase::kError ?
+      avg_msgs::msg::ModuleState::ERROR : avg_msgs::msg::ModuleState::OK;
     const std::string message =
       "phase=" + phaseName(phase_) +
       " target_yaw_deg=" + fixed(target_body_yaw_rad_ * 180.0 / M_PI, 2);
     status_publisher_->publish(
-      camrod_control::makeModuleState(*this, "control", module_level, message));
+      camrod_control::makeModuleState(
+        *this, "control", module_level, message, phaseName(phase_)));
     const uint8_t diagnostic_level = module_level == avg_msgs::msg::ModuleState::ERROR ?
       diagnostic_msgs::msg::DiagnosticStatus::ERROR :
       module_level == avg_msgs::msg::ModuleState::WARN ?
@@ -538,6 +553,7 @@ private:
 
   std::string command_topic_;
   std::string vehicle_pose_topic_;
+  std::string platform_status_topic_;
   std::string planning_state_topic_;
   std::string lanelet_pose_topic_;
   std::string drop_zone_goal_topic_;
@@ -547,7 +563,7 @@ private:
   std::string exit_path_topic_;
   std::string parking_operation_topic_;
   std::string diagnostics_topic_;
-  std::string amr_service_state_topic_;
+  std::string service_state_topic_;
   std::string drop_zones_yaml_;
   std::string drop_zone_id_;
   bool use_drop_zone_pose_as_station_{true};
@@ -578,17 +594,20 @@ private:
   double exit_start_y_m_{0.0};
   double exit_heading_yaw_rad_{0.0};
   double target_body_yaw_rad_{0.0};
+  bool is_charging_{false};
+  bool exit_started_while_charging_{false};
   std::string last_auto_alignment_key_;
   rclcpp::Time last_status_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr command_publisher_;
   rclcpp::Publisher<avg_msgs::msg::ModuleState>::SharedPtr status_publisher_;
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_publisher_;
-  rclcpp::Publisher<avg_msgs::msg::AvgAmrServiceState>::SharedPtr service_state_publisher_;
+  rclcpp::Publisher<avg_msgs::msg::AvgServiceState>::SharedPtr service_state_publisher_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr exit_path_publisher_;
   rclcpp::Publisher<avg_msgs::msg::AvgBool>::SharedPtr exit_complete_publisher_;
   rclcpp::Publisher<avg_msgs::msg::MotionOperation>::SharedPtr parking_operation_publisher_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr vehicle_pose_subscription_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPlatformStatus>::SharedPtr platform_status_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr lanelet_pose_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr drop_zone_goal_subscription_;
   rclcpp::Subscription<avg_msgs::msg::PlanningState>::SharedPtr planning_state_subscription_;

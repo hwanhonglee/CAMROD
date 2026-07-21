@@ -1,6 +1,7 @@
 import React from 'react';
 
-export default function AMRAnimation() {
+// HH_260721 - Use chassis-neutral component naming for the Ranger operator UI.
+export default function RobotAnimation() {
   return (
     <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"
       style={{ width: '100%', height: '100%' }}>

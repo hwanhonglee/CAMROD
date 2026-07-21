@@ -2,7 +2,7 @@
 // Decides the lamp state (headlight relay + WS2815 turn indicators) from:
 //   priority 1: hazard  — /platform/status OR /planning/state_machine/estop
 //               (the state machine mirrors ERROR_STOP onto its estop topic, HH_260701)
-//   priority 2: crab    — camping_site_maneuver_controller active (ModuleState WARN) + |cmd_vel.linear.y|
+//   priority 2: crab    — camping_site_maneuver_controller active phase + |cmd_vel.linear.y|
 //   priority 3: turn    — lanelet turn_direction windows from /planning/route_turn_segments
 // HH_260720 - Read the generated global-path mirror instead of the Nav2 ROS boundary.
 //               matched against the robot arc length on /planning/global_path_avg
@@ -83,8 +83,9 @@ public:
     sub_site_status_ = create_subscription<avg_msgs::msg::ModuleState>(
       camping_site_maneuver_controller_status_topic_, 10,
       [this](avg_msgs::msg::ModuleState::ConstSharedPtr msg) {
-        // Active maneuver phases publish WARN; IDLE/DONE publish OK.
-        camping_site_maneuver_controller_active_ = msg->level == avg_msgs::msg::ModuleState::WARN;
+        // HH_260721 - Indicator behavior follows the explicit phase, never a health severity.
+        camping_site_maneuver_controller_active_ =
+          isCampingSiteManeuverActive(msg->operating_state);
         site_status_stamp_ = now();
       });
     sub_cmd_vel_ = create_subscription<avg_msgs::msg::AvgTwist>(

@@ -38,6 +38,18 @@ TEST(LightDecision, OffByDefault)
   EXPECT_EQ(result.source, "off");
 }
 
+// HH_260721 - Keep normal waiting and maneuver phases independent from WARN/ERROR health levels.
+TEST(LightDecision, CampingSiteActivityUsesOperatingState)
+{
+  EXPECT_TRUE(isCampingSiteManeuverActive("CRAB_IN"));
+  EXPECT_TRUE(isCampingSiteManeuverActive("WAIT_RETURN"));
+  EXPECT_TRUE(isCampingSiteManeuverActive("CRAB_OUT"));
+  EXPECT_FALSE(isCampingSiteManeuverActive("IDLE"));
+  EXPECT_FALSE(isCampingSiteManeuverActive("DONE"));
+  EXPECT_FALSE(isCampingSiteManeuverActive("ERROR"));
+  EXPECT_FALSE(isCampingSiteManeuverActive(""));
+}
+
 TEST(LightDecision, PlatformEstopForcesHazard)
 {
   LightDecisionInput input = routeInput(10.0, {{1.0F, 15.0F, 25.0F}});

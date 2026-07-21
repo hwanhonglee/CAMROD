@@ -20,12 +20,15 @@ inline avg_msgs::msg::ModuleState makeModuleState(
   rclcpp::Node & node,
   const std::string & module_name,
   const uint8_t level,
-  const std::string & message)
+  const std::string & message,
+  const std::string & operating_state = "")
 {
   avg_msgs::msg::ModuleState output;
   output.stamp = node.get_clock()->now();
   output.module_name = module_name;
   output.level = level;
+  // HH_260721 - Keep operational progress independent from OK/WARN/ERROR health.
+  output.operating_state = operating_state;
   output.message = message;
   return output;
 }

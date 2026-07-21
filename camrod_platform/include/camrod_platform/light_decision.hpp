@@ -65,6 +65,13 @@ inline bool routeLengthMatches(
   return std::abs(path_length_m - segments_total_m) <= tolerance_m;
 }
 
+// HH_260721 - Interpret campsite activity from its operating phase instead of health severity.
+inline bool isCampingSiteManeuverActive(const std::string & operating_state)
+{
+  return !operating_state.empty() && operating_state != "IDLE" &&
+         operating_state != "DONE" && operating_state != "ERROR";
+}
+
 inline LightDecisionResult decideIndicator(
   const LightDecisionInput & input, const LightDecisionParams & params)
 {

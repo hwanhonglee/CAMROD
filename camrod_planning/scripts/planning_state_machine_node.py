@@ -12,7 +12,7 @@ import rclpy
 import yaml
 from action_msgs.msg import GoalStatus, GoalStatusArray
 from avg_msgs.msg import (
-    AvgAmrServiceState,
+    AvgServiceState,
     AvgBool,
     AvgPoseStamped,
     PlanningMissionKey,
@@ -183,12 +183,12 @@ class PlanningStateMachineNode(Node):
             self.declare_parameter("scenario_command_topic", "/planning/state_machine/scenario_command").value
         )
         # HH_260720 - Control maneuvers and parking publish phase telemetry on
-        # /AMR_service_state; planning mirrors only the explicit phase owners.
+        # /service/state; planning mirrors only the explicit phase owners.
         self.enable_maneuver_phase_state_override = bool(
             self.declare_parameter("enable_maneuver_phase_state_override", True).value
         )
         self.maneuver_phase_state_topic = str(
-            self.declare_parameter("maneuver_phase_state_topic", "/AMR_service_state").value
+            self.declare_parameter("maneuver_phase_state_topic", "/service/state").value
         )
         self.maneuver_phase_override_timeout_s = float(
             self.declare_parameter("maneuver_phase_override_timeout_s", 0.0).value
@@ -436,7 +436,7 @@ class PlanningStateMachineNode(Node):
         self.create_subscription(GoalStatusArray, self.nav_status_topic, self._on_nav_status, 10)
         if self.enable_maneuver_phase_state_override:
             self.create_subscription(
-                AvgAmrServiceState,
+                AvgServiceState,
                 self.maneuver_phase_state_topic,
                 self._on_maneuver_phase_state,
                 10,
@@ -1106,17 +1106,23 @@ class PlanningStateMachineNode(Node):
         self._maneuver_phase_override_source = ""
         self._maneuver_phase_override_time = None
 
-    def _on_maneuver_phase_state(self, msg: AvgAmrServiceState) -> None:
+    def _on_maneuver_phase_state(self, msg: AvgServiceState) -> None:
         description = str(msg.description).strip()
         source = description.split(":", 1)[0] if ":" in description else ""
         # HH_260720 - Accept phase updates only from explicit control/parking owners.
-        if source not in {"camping_site_maneuver_controller", "drop_zone_maneuver_controller", "reverse_parking_controller"}:
+        # HH_260721 - Apply the same charging lifecycle for default and AprilTag parking.
+        if source not in {
+            "camping_site_maneuver_controller",
+            "drop_zone_maneuver_controller",
+            "reverse_parking_controller",
+            "apriltag_parking_controller",
+        }:
             return
 
         state_id = int(msg.state)
         if (
             source == "camping_site_maneuver_controller"
-            and state_id == int(AvgAmrServiceState.RETURN_WITH_CARGO)
+            and state_id == int(AvgServiceState.RETURN_WITH_CARGO)
             and "DONE" in description
             and self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE
             and self.active_mission_key == self.return_mission_key
@@ -1130,25 +1136,37 @@ class PlanningStateMachineNode(Node):
             return
         override_state = ""
         override_scenario: Optional[int] = None
-        if state_id == int(AvgAmrServiceState.SITE_ENTRY):
+        if state_id == int(AvgServiceState.SITE_ENTRY):
             override_state = "RUNNING"
             override_scenario = self.SCENARIO_SITE_ENTRY
-        elif state_id == int(AvgAmrServiceState.UNLOAD_WAIT):
+        elif state_id == int(AvgServiceState.UNLOAD_WAIT):
             override_state = "GOAL_REACHED"
             override_scenario = self.SCENARIO_UNLOAD_WAIT
-        elif state_id == int(AvgAmrServiceState.RECALL_TO_SITE_ROAD):
+        elif state_id == int(AvgServiceState.WAITING_FOR_RETURN_REQUEST):
+            # HH_260721 - Return-request wait remains a healthy site-arrival state.
+            override_state = "GOAL_REACHED"
+            override_scenario = self.SCENARIO_UNLOAD_WAIT
+        elif state_id == int(AvgServiceState.RECALL_TO_SITE_ROAD):
             override_state = "RUNNING"
             override_scenario = self.SCENARIO_RECALL_TO_SITE_ROAD
-        elif state_id == int(AvgAmrServiceState.GUEST_LOADING_WAIT):
+        elif state_id == int(AvgServiceState.GUEST_LOADING_WAIT):
             override_state = "GOAL_REACHED"
             override_scenario = self.SCENARIO_GUEST_LOADING_WAIT
-        elif state_id == int(AvgAmrServiceState.RETURN_WITH_CARGO):
+        elif state_id == int(AvgServiceState.RETURN_WITH_CARGO):
             override_state = "RETURNING"
             override_scenario = self.SCENARIO_RETURN_WITH_CARGO
-        elif state_id == int(AvgAmrServiceState.DROP_ZONE_PARKING):
+        elif state_id == int(AvgServiceState.DROP_ZONE_PARKING):
             override_state = "RUNNING"
             override_scenario = self.SCENARIO_DROP_ZONE_PARKING
-        elif state_id == int(AvgAmrServiceState.DROP_ZONE_WAIT):
+        elif state_id == int(AvgServiceState.WAITING_FOR_CHARGING):
+            # HH_260721 - Charger confirmation is parking progress, not a warning or failure.
+            override_state = "RUNNING"
+            override_scenario = self.SCENARIO_DROP_ZONE_PARKING
+        elif state_id in {
+            int(AvgServiceState.DROP_ZONE_WAIT),
+            int(AvgServiceState.CHARGING),
+        }:
+            # HH_260721 - Both charged and uncharged parked states are ready for a new mission.
             override_state = "WAIT_DZ"
             override_scenario = self.SCENARIO_WAIT_DROP_ZONE
 

@@ -12,7 +12,8 @@
     path_topic: "/parking/reverse_parking_controller/path_ros"
     drop_zone_goal_topic: "/planning/drop_zone_goal_raw"
     diagnostics_topic: "/system/diagnostics"
-    amr_service_state_topic: "/AMR_service_state"
+    # HH_260721 - Parking publishes operational progress separately from health diagnostics.
+    service_state_topic: "/service/state"
 
     drop_zones_yaml: ""
     drop_zone_id: "drop_zone"
@@ -54,7 +55,8 @@
     operation_topic: "/parking/operation"
     status_topic: "/parking/apriltag_parking_controller/status"
     diagnostics_topic: "/system/diagnostics"
-    amr_service_state_topic: "/AMR_service_state"
+    # HH_260721 - Parking publishes operational progress separately from health diagnostics.
+    service_state_topic: "/service/state"
 
     require_charging_for_completion: true
     heading_gain: 1.5

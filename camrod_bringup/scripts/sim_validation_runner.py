@@ -25,12 +25,14 @@ from avg_msgs.msg import (
     AvgPlatformStatus,
     AvgPoseStamped,
     AvgRange,
+    AvgServiceState,
     AvgString,
     AvgTwist,
     ModuleState,
     MotionOperation,
     PlanningMissionKey,
     PlanningState,
+    UiDestinationCommand,
 )
 from geometry_msgs.msg import PoseStamped as RosPoseStamped
 from geometry_msgs.msg import PoseWithCovarianceStamped as RosPoseWithCovarianceStamped
@@ -119,6 +121,10 @@ class SimValidationRunner(Node):
         self.run_charging_recall = bool(
             self.declare_parameter("run_charging_recall", False).value
         )
+        # HH_260721 - Optionally validate charging recall through the real UI command boundary.
+        self.charging_recall_via_ui = bool(
+            self.declare_parameter("charging_recall_via_ui", False).value
+        )
         self.charging_recall_mission_key = str(
             self.declare_parameter(
                 "charging_recall_mission_key", "camping_site_1"
@@ -177,6 +183,10 @@ class SimValidationRunner(Node):
         self.pub_mission_key = self.create_publisher(
             PlanningMissionKey, "/planning/mission_key", 10
         )
+        # HH_260721 - Exercise the UI backend instead of bypassing station departure sequencing.
+        self.pub_ui_destination = self.create_publisher(
+            UiDestinationCommand, "/ui/selected_destination", 10
+        )
         # HH_260720 - Drive each controller through its typed operation contract.
         self.pub_site_operation = self.create_publisher(
             MotionOperation, "/control/camping_site_maneuver_controller/operation", 10
@@ -220,6 +230,9 @@ class SimValidationRunner(Node):
         self.latest_drop_maneuver_status: ModuleState | None = None
         self.latest_reverse_parking_controller_status: ModuleState | None = None
         self.latest_gate_status: ModuleState | None = None
+        # HH_260721 - Validate the public service contract in addition to controller internals.
+        self.latest_service_state: AvgServiceState | None = None
+        self.service_state_names_seen: list[str] = []
         self.fake_platform_charging = False
         self.latest_replan_status = ""
         self.latest_planner_selector = ""
@@ -263,6 +276,9 @@ class SimValidationRunner(Node):
         self.create_subscription(AvgTwist, "/control/cmd_vel", self._on_control_cmd, 10)
         self.create_subscription(
             PlanningState, "/planning/state_machine/state", self._on_state, 10
+        )
+        self.create_subscription(
+            AvgServiceState, "/service/state", self._on_service_state, 10
         )
         self.create_subscription(
             PlanningMissionKey,
@@ -378,6 +394,14 @@ class SimValidationRunner(Node):
     def _on_state(self, msg: PlanningState) -> None:
         self.latest_state = msg
         self._count("/planning/state_machine/state")
+
+    def _on_service_state(self, msg: AvgServiceState) -> None:
+        # HH_260721 - Preserve transition order while suppressing repeated state events.
+        self.latest_service_state = msg
+        state_name = str(msg.state_name).strip() or f"STATE_{int(msg.state)}"
+        if not self.service_state_names_seen or self.service_state_names_seen[-1] != state_name:
+            self.service_state_names_seen.append(state_name)
+        self._count("/service/state")
 
     def _on_mission_source(self, msg: PlanningMissionKey) -> None:
         self.latest_mission_source = msg
@@ -1196,6 +1220,8 @@ class SimValidationRunner(Node):
         seen_site_phase = False
         # HH_260721 - Track the retrace-heading verification separately from the site turn.
         seen_align_retrace_yaw = False
+        # HH_260721 - Roadside stops must rotate only after returning to the lanelet snap pose.
+        seen_align_return_route_yaw = False
         seen_rotate_180 = False
         seen_crab_out = False
         seen_done = False
@@ -1206,11 +1232,17 @@ class SimValidationRunner(Node):
         seen_drop_sequence_error = False
         seen_reverse_wait_for_charging = False
         seen_gate_charging_state = False
+        seen_service_waiting_for_return_request = False
+        seen_service_waiting_for_charging = False
+        seen_service_charging = False
         charging_recall_requested = False
         charging_recall_request_time = 0.0
         charging_recall_goal_pose: AvgPoseStamped | None = None
         charging_recall_key_seen = False
         charging_recall_departure_state_seen = False
+        charging_recall_service_departure_seen = False
+        charging_recall_exit_straight_seen = False
+        charging_recall_exit_alignment_seen = False
         charging_recall_cmd_released = False
         charging_recall_disconnect_seen = False
         charging_recall_site_arrived = False
@@ -1240,6 +1272,11 @@ class SimValidationRunner(Node):
             gate_status_msg = (
                 self.latest_gate_status.message if self.latest_gate_status else ""
             )
+            service_state_name = (
+                str(self.latest_service_state.state_name).strip()
+                if self.latest_service_state
+                else ""
+            )
             state_label = self.latest_state.label if self.latest_state else ""
             active_key = self.latest_state.active_mission_key if self.latest_state else ""
             scenario_label = self.latest_state.scenario_label if self.latest_state else ""
@@ -1262,7 +1299,11 @@ class SimValidationRunner(Node):
             )
             if any(token in site_msg for token in ("CRAB_IN", "ROTATE_180", "WAIT_RETURN")):
                 seen_site_phase = True
-            if "WAIT_RETURN" in site_msg:
+            if (
+                "WAIT_RETURN" in site_msg
+                and service_state_name == "WAITING_FOR_RETURN_REQUEST"
+            ):
+                # HH_260721 - Do not leave the site before the public return-wait state is observable.
                 self.publish_operation(
                     self.pub_site_operation, MotionOperation.RETURN, repeats=1
                 )
@@ -1274,6 +1315,10 @@ class SimValidationRunner(Node):
                 seen_rotate_180 = seen_rotate_180 or "ROTATE_180" in site_msg
                 seen_align_retrace_yaw = (
                     seen_align_retrace_yaw or "ALIGN_RETRACE_YAW" in site_msg
+                )
+                # HH_260721 - Capture the on-lane turn used by constrained roadside sites.
+                seen_align_return_route_yaw = (
+                    seen_align_return_route_yaw or "ALIGN_RETURN_ROUTE_YAW" in site_msg
                 )
             seen_crab_out = seen_crab_out or "CRAB_OUT" in site_msg
             seen_done = seen_done or "DONE" in site_msg
@@ -1299,6 +1344,31 @@ class SimValidationRunner(Node):
             seen_gate_charging_state = (
                 seen_gate_charging_state or "state=CHARGING" in gate_status_msg
             )
+            # HH_260721 - Assert externally visible wait and charging states, not only node phases.
+            seen_service_waiting_for_return_request = (
+                seen_service_waiting_for_return_request
+                or service_state_name == "WAITING_FOR_RETURN_REQUEST"
+            )
+            seen_service_waiting_for_charging = (
+                seen_service_waiting_for_charging
+                or service_state_name == "WAITING_FOR_CHARGING"
+            )
+            seen_service_charging = (
+                seen_service_charging or service_state_name == "CHARGING"
+            )
+            # HH_260721 - Capture UI-visible charger departure and both bounded exit phases.
+            charging_recall_service_departure_seen = (
+                charging_recall_service_departure_seen
+                or service_state_name == "DEPARTING_CHARGER"
+            )
+            charging_recall_exit_straight_seen = (
+                charging_recall_exit_straight_seen
+                or "EXIT_STRAIGHT" in drop_maneuver_msg
+            )
+            charging_recall_exit_alignment_seen = (
+                charging_recall_exit_alignment_seen
+                or "ALIGN_EXIT_YAW" in drop_maneuver_msg
+            )
             seen_drop_sequence_error = (
                 seen_drop_sequence_error
                 or "ERROR" in drop_maneuver_msg
@@ -1317,20 +1387,33 @@ class SimValidationRunner(Node):
                 if charging_recall_goal_pose is None:
                     seen_drop_sequence_error = True
                     break
-                recall_msg = PlanningMissionKey()
-                recall_msg.header.stamp = self.get_clock().now().to_msg()
-                recall_msg.mission_key = recall_key
-                recall_msg.source = "sim_charging_recall"
-                recall_msg.publish_route_goal = False
-                self.publish_engage(True)
-                self.publish_mission_engage(True)
                 self.reset_cmd_metrics()
                 charging_recall_global_path_base = self.global_path_count
                 charging_recall_local_path_base = self.local_path_count
-                for _ in range(4):
-                    self.pub_mission_key.publish(recall_msg)
-                    self.spin_for(0.05)
-                self.publish_goal_pose(charging_recall_goal_pose)
+                if self.charging_recall_via_ui:
+                    # HH_260721 - Let ui_backend own charger exit, engage, and delayed goal release.
+                    site_number = recall_key.removeprefix("camping_site_")
+                    destination = UiDestinationCommand()
+                    destination.header.stamp = self.get_clock().now().to_msg()
+                    destination.site = f"B{site_number}"
+                    destination.run = True
+                    destination.mission_key = recall_key
+                    destination.source = "sim_charging_recall_ui"
+                    for _ in range(4):
+                        self.pub_ui_destination.publish(destination)
+                        self.spin_for(0.05)
+                else:
+                    recall_msg = PlanningMissionKey()
+                    recall_msg.header.stamp = self.get_clock().now().to_msg()
+                    recall_msg.mission_key = recall_key
+                    recall_msg.source = "sim_charging_recall"
+                    recall_msg.publish_route_goal = False
+                    self.publish_engage(True)
+                    self.publish_mission_engage(True)
+                    for _ in range(4):
+                        self.pub_mission_key.publish(recall_msg)
+                        self.spin_for(0.05)
+                    self.publish_goal_pose(charging_recall_goal_pose)
                 charging_recall_requested = True
                 charging_recall_request_time = time.monotonic()
 
@@ -1373,7 +1456,15 @@ class SimValidationRunner(Node):
                     break
                 if seen_drop_sequence_error:
                     break
-                if not self.run_charging_recall and seen_reverse_parking_controller_parked:
+                if (
+                    not self.run_charging_recall
+                    and seen_reverse_parking_controller_parked
+                    and (
+                        not self.simulate_platform_status
+                        or seen_service_charging
+                    )
+                ):
+                    # HH_260721 - Wait for the externally visible CHARGING event before ending the run.
                     break
                 if self.run_charging_recall and charging_recall_site_arrived:
                     break
@@ -1388,11 +1479,16 @@ class SimValidationRunner(Node):
         global_new = self.global_path_count > base_global
         local_new = self.local_path_count > base_local
         route_reached = bool(reached_nav or seen_goal_reached_state)
-        # HH_260721 - Roadside sites must not rotate; regular sites must retain both turn phases.
+        # HH_260721 - Roadside sites rotate on-lane after exit;
+        # regular sites retain their in-site turn.
         service_mode_ok = (
-            not seen_rotate_180 and not seen_align_retrace_yaw
+            not seen_rotate_180
+            and not seen_align_retrace_yaw
+            and seen_align_return_route_yaw
             if camping_service_mode == "roadside_stop"
-            else seen_rotate_180 and seen_align_retrace_yaw
+            else seen_rotate_180
+            and seen_align_retrace_yaw
+            and not seen_align_return_route_yaw
         )
         site_ok = bool(
             global_new
@@ -1402,6 +1498,7 @@ class SimValidationRunner(Node):
             and seen_crab_out
             and seen_done
             and service_mode_ok
+            and seen_service_waiting_for_return_request
         )
         drop_zone_ok = (
             not self.camping_wait_drop_zone
@@ -1410,6 +1507,13 @@ class SimValidationRunner(Node):
                 and seen_drop_maneuver_alignment
                 and seen_reverse_parking_controller_started
                 and seen_reverse_parking_controller_parked
+                and (
+                    not self.simulate_platform_status
+                    or (
+                        seen_service_waiting_for_charging
+                        and seen_service_charging
+                    )
+                )
                 and not seen_drop_sequence_error
             )
         )
@@ -1423,6 +1527,14 @@ class SimValidationRunner(Node):
                 and charging_recall_requested
                 and charging_recall_key_seen
                 and charging_recall_departure_state_seen
+                and (
+                    not self.charging_recall_via_ui
+                    or (
+                        charging_recall_service_departure_seen
+                        and charging_recall_exit_straight_seen
+                        and charging_recall_exit_alignment_seen
+                    )
+                )
                 and charging_recall_cmd_released
                 and charging_recall_disconnect_seen
                 and self.global_path_count > charging_recall_global_path_base
@@ -1481,11 +1593,15 @@ class SimValidationRunner(Node):
                     f"service_mode={camping_service_mode} service_mode_ok={service_mode_ok} "
                     f"rotate_180={seen_rotate_180} "
                     f"align_retrace_yaw={seen_align_retrace_yaw} "
+                    f"align_return_route_yaw={seen_align_return_route_yaw} "
                     f"crab_out={seen_crab_out} done={seen_done} "
                     f"drop_return={seen_drop_zone_return} "
                     f"drop_alignment={seen_drop_maneuver_alignment} "
                     f"reverse_started={seen_reverse_parking_controller_started} "
                     f"reverse_parked={seen_reverse_parking_controller_parked} "
+                    f"service_wait_return={seen_service_waiting_for_return_request} "
+                    f"service_wait_charging={seen_service_waiting_for_charging} "
+                    f"service_charging={seen_service_charging} "
                     f"charging_recall={charging_recall_ok} "
                     f"state={latest_state_label} "
                     f"key={latest_state_key} route_dist={route_dist:.2f}"
@@ -1499,6 +1615,7 @@ class SimValidationRunner(Node):
                     "service_mode_ok": service_mode_ok,
                     "rotate_180": seen_rotate_180,
                     "align_retrace_yaw": seen_align_retrace_yaw,
+                    "align_return_route_yaw": seen_align_return_route_yaw,
                     "crab_out": seen_crab_out,
                     "done": seen_done,
                     "wait_drop_zone": self.camping_wait_drop_zone,
@@ -1509,9 +1626,21 @@ class SimValidationRunner(Node):
                     "drop_zone_sequence_error": seen_drop_sequence_error,
                     "reverse_wait_for_charging": seen_reverse_wait_for_charging,
                     "gate_charging_state": seen_gate_charging_state,
+                    "service_waiting_for_return_request": (
+                        seen_service_waiting_for_return_request
+                    ),
+                    "service_waiting_for_charging": seen_service_waiting_for_charging,
+                    "service_charging": seen_service_charging,
+                    "service_state_sequence": " -> ".join(self.service_state_names_seen),
                     "charging_recall_requested": charging_recall_requested,
+                    "charging_recall_via_ui": self.charging_recall_via_ui,
                     "charging_recall_key_seen": charging_recall_key_seen,
                     "charging_recall_departure_state": charging_recall_departure_state_seen,
+                    "charging_recall_service_departure": (
+                        charging_recall_service_departure_seen
+                    ),
+                    "charging_recall_exit_straight": charging_recall_exit_straight_seen,
+                    "charging_recall_exit_alignment": charging_recall_exit_alignment_seen,
                     "charging_recall_cmd_released": charging_recall_cmd_released,
                     "charging_recall_disconnect": charging_recall_disconnect_seen,
                     "charging_recall_site_arrived": charging_recall_site_arrived,
