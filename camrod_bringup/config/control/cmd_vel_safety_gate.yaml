@@ -32,6 +32,8 @@
     critical_battery_percentage: 0.10
     additional_estop_topics: "/planning/state_machine/estop"
     dr_timeout_source_mode: "localization_monitor"
+    # HH_260721 - Keep the fallback DR timeout topic explicit even when monitor mode is selected.
+    dr_timeout_topic: "/localization/dr_timeout"
     allow_on_start: false
     publish_zero_when_blocked: true
 
@@ -51,6 +53,7 @@
     odometry_topic: "/localization/fallback/odometry"
     pose_source_preference: "pose_topic"
     enable_pose_raw_fallback: false
+    robot_base_frame: "robot_base_link"
     cost_stop_threshold: 85
     cost_stop_lookahead_m: 2.0
     cost_stop_width_m: 1.27
@@ -61,6 +64,15 @@
     cost_grid_stale_stop_enable: true
     cost_grid_stale_timeout_s: 1.0
     cost_grid_stale_log_interval_s: 1.0
+    # HH_260721 - List every live source used to distinguish dynamic obstacles from static cost.
+    cost_source_debug_enable: true
+    cost_source_debug_max_age_s: 1.0
+    cost_source_debug_topics:
+      - "/map/cost_grid/lanelet"
+      - "/sensing/cost_grid/lidar"
+      - "/sensing/cost_grid/radar"
+      - "/planning/cost_grid/global_path"
+    cost_source_debug_labels: ["lanelet", "lidar", "radar", "global_path"]
     cost_stop_require_dynamic_source: true
     cost_stop_dynamic_source_labels: "lidar,radar"
     front_dynamic_stop_use_local_path: true
