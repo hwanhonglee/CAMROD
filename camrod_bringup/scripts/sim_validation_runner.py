@@ -1178,7 +1178,8 @@ class SimValidationRunner(Node):
             self.spin_for(0.05)
         self.publish_goal_pose(goal_pose)
         seen_site_phase = False
-        seen_align_return_yaw = False
+        # HH_260721 - Track the retrace-heading verification separately from the site turn.
+        seen_align_retrace_yaw = False
         seen_crab_out = False
         seen_done = False
         seen_drop_zone_return = False
@@ -1251,7 +1252,10 @@ class SimValidationRunner(Node):
             # HH_260701 - RETURNING can be emitted before the campsite exit is
             # actually complete. Require the concrete site maneuver phases so
             # the smoke test catches engage/gate issues that stop CRAB_OUT.
-            seen_align_return_yaw = seen_align_return_yaw or "ALIGN_RETURN_YAW" in site_msg
+            # HH_260721 - Observe the same-lanelet retrace alignment without a second 180 turn.
+            seen_align_retrace_yaw = (
+                seen_align_retrace_yaw or "ALIGN_RETRACE_YAW" in site_msg
+            )
             seen_crab_out = seen_crab_out or "CRAB_OUT" in site_msg
             seen_done = seen_done or "DONE" in site_msg
             # HH_260720 - Validate drop-zone alignment and reverse parking as
@@ -1448,7 +1452,7 @@ class SimValidationRunner(Node):
                 else (
                     f"global={global_new} local={local_new} cmd={cmd_max:.3f} "
                     f"nav_success={reached_nav} site_phase={seen_site_phase} "
-                    f"align_return_yaw={seen_align_return_yaw} "
+                    f"align_retrace_yaw={seen_align_retrace_yaw} "
                     f"crab_out={seen_crab_out} done={seen_done} "
                     f"drop_return={seen_drop_zone_return} "
                     f"drop_alignment={seen_drop_maneuver_alignment} "
@@ -1463,7 +1467,7 @@ class SimValidationRunner(Node):
                     "nav_success": reached_nav,
                     "route_reached": route_reached,
                     "site_phase": seen_site_phase,
-                    "align_return_yaw": seen_align_return_yaw,
+                    "align_retrace_yaw": seen_align_retrace_yaw,
                     "crab_out": seen_crab_out,
                     "done": seen_done,
                     "wait_drop_zone": self.camping_wait_drop_zone,
