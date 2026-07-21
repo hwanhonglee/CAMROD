@@ -38,13 +38,16 @@
 //   t = -R * [extrinsic_x, extrinsic_y, extrinsic_z]^T
 //   default: extrinsic_z = -0.075 (camera 7.5 cm below LiDAR)
 
-class CameraLidarFusionNode : public rclcpp::Node {
+class CameraLidarFusionNode : public rclcpp::Node
+{
   using SyncPolicy = message_filters::sync_policies::ApproximateTime<
-      sensor_msgs::msg::PointCloud2,
-      sensor_msgs::msg::CompressedImage>; // HJ_260529: compressed image
+    sensor_msgs::msg::PointCloud2,
+    sensor_msgs::msg::CompressedImage>;   // HJ_260529: compressed image
 
 public:
-  CameraLidarFusionNode() : Node("obstacle_fusion"), cam_ready_(false) {
+  CameraLidarFusionNode()
+  : Node("obstacle_fusion"), cam_ready_(false)
+  {
     // Clustering / tracking parameters
     n_closest_ = declare_parameter<int>("n_closest", 5);
     min_pts_ = declare_parameter<int>("min_pts_in_bbox", 3);
@@ -56,7 +59,7 @@ public:
     // hardcoded 0.3 m). Points closer than this in the effective forward axis
     // (eff_Y = raw_X) are ignored.
     lidar_min_forward_m_ = static_cast<float>(
-        declare_parameter<double>("lidar_min_forward_m", 1.0));
+      declare_parameter<double>("lidar_min_forward_m", 1.0));
 
     // Extrinsic translation: camera position relative to LiDAR effective frame
     // [m]
@@ -66,102 +69,114 @@ public:
 
     // Topic parameters
     input_cloud_topic_ = declare_parameter<std::string>(
-        "input_cloud_topic", "/sensing/lidar/points_filtered");
+      "input_cloud_topic", "/sensing/lidar/points_filtered");
     detection_topic_ = declare_parameter<std::string>(
-        "detection_topic", "/perception/camera/detections_2d");
+      "detection_topic", "/perception/camera/detections_2d");
     camera_info_topic_ = declare_parameter<std::string>(
-        "camera_info_topic", "/sensing/camera/processed/camera_info");
+      "camera_info_topic", "/sensing/camera/processed/camera_info");
     image_topic_ = declare_parameter<std::string>(
-        "image_topic", "/sensing/camera/processed/image");
-    bbox_topic_ = declare_parameter<std::string>("bbox_topic",
-                                                 "/perception/lidar/bboxes");
+      "image_topic", "/sensing/camera/processed/image");
+    bbox_topic_ = declare_parameter<std::string>(
+      "bbox_topic",
+      "/perception/lidar/bboxes");
     output_topic_ =
-        declare_parameter<std::string>("output_topic", "/perception/obstacles");
+      declare_parameter<std::string>("output_topic", "/perception/obstacles");
     out_image_topic_ = declare_parameter<std::string>(
-        "out_image_topic", "/perception/camera_lidar/image");
+      "out_image_topic", "/perception/camera_lidar/image");
     out_det3d_topic_ = declare_parameter<std::string>(
-        "out_det3d_topic", "/perception/camera_lidar/detections_3d");
+      "out_det3d_topic", "/perception/camera_lidar/detections_3d");
     out_markers_topic_ = declare_parameter<std::string>(
-        "out_markers_topic", "/perception/camera_lidar/markers");
+      "out_markers_topic", "/perception/camera_lidar/markers");
     out_euclidean_topic_ = declare_parameter<std::string>(
-        "out_euclidean_topic", "/perception/camera_lidar/euclidean_markers");
+      "out_euclidean_topic", "/perception/camera_lidar/euclidean_markers");
     // HH_260707: Keep fusion outputs enabled while avoiding stale image/cloud
     // backlog and expensive debug image work when RViz is not consuming it.
     sync_queue_size_ = std::max(
-        1, static_cast<int>(declare_parameter<int>("sync_queue_size", 8)));
+      1, static_cast<int>(declare_parameter<int>("sync_queue_size", 8)));
     debug_image_publish_rate_hz_ =
-        declare_parameter<double>("debug_image_publish_rate_hz", 2.0);
+      declare_parameter<double>("debug_image_publish_rate_hz", 2.0);
     debug_draw_stride_ = std::max(
-        1, static_cast<int>(declare_parameter<int>("debug_draw_stride", 4)));
+      1, static_cast<int>(declare_parameter<int>("debug_draw_stride", 4)));
     publish_debug_image_without_subscribers_ = declare_parameter<bool>(
-        "publish_debug_image_without_subscribers", false);
+      "publish_debug_image_without_subscribers", false);
     image_width_ = declare_parameter<int>("image_width", 1920);
     image_height_ = declare_parameter<int>("image_height", 1080);
 
     param_cb_ = add_on_set_parameters_callback(
-        [this](const std::vector<rclcpp::Parameter> &params) {
-          for (const auto &p : params) {
-            if (p.get_name() == "n_closest")
-              n_closest_ = p.as_int();
-            if (p.get_name() == "min_pts_in_bbox")
-              min_pts_ = p.as_int();
-            if (p.get_name() == "ema_alpha")
-              ema_alpha_ = p.as_double();
-            if (p.get_name() == "assoc_dist")
-              assoc_dist_ = p.as_double();
-            if (p.get_name() == "max_miss")
-              max_miss_ = p.as_int();
-            if (p.get_name() == "lidar_min_forward_m")
-              lidar_min_forward_m_ =
-                  static_cast<float>(p.as_double()); // HJ_260529
-            if (p.get_name() == "debug_image_publish_rate_hz")
-              debug_image_publish_rate_hz_ = p.as_double();
-            if (p.get_name() == "debug_draw_stride")
-              debug_draw_stride_ = std::max(1, static_cast<int>(p.as_int()));
-            if (p.get_name() == "publish_debug_image_without_subscribers")
-              publish_debug_image_without_subscribers_ = p.as_bool();
+      [this](const std::vector<rclcpp::Parameter> & params) {
+        for (const auto & p : params) {
+          if (p.get_name() == "n_closest") {
+            n_closest_ = p.as_int();
           }
-          rcl_interfaces::msg::SetParametersResult result;
-          result.successful = true;
-          return result;
-        });
+          if (p.get_name() == "min_pts_in_bbox") {
+            min_pts_ = p.as_int();
+          }
+          if (p.get_name() == "ema_alpha") {
+            ema_alpha_ = p.as_double();
+          }
+          if (p.get_name() == "assoc_dist") {
+            assoc_dist_ = p.as_double();
+          }
+          if (p.get_name() == "max_miss") {
+            max_miss_ = p.as_int();
+          }
+          if (p.get_name() == "lidar_min_forward_m") {
+            lidar_min_forward_m_ =
+            static_cast<float>(p.as_double());       // HJ_260529
+          }
+          if (p.get_name() == "debug_image_publish_rate_hz") {
+            debug_image_publish_rate_hz_ = p.as_double();
+          }
+          if (p.get_name() == "debug_draw_stride") {
+            debug_draw_stride_ = std::max(1, static_cast<int>(p.as_int()));
+          }
+          if (p.get_name() == "publish_debug_image_without_subscribers") {
+            publish_debug_image_without_subscribers_ = p.as_bool();
+          }
+        }
+        rcl_interfaces::msg::SetParametersResult result;
+        result.successful = true;
+        return result;
+      });
 
     initExtrinsic();
     initColorLut();
 
     camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
-        camera_info_topic_, rclcpp::SensorDataQoS(),
-        [this](const sensor_msgs::msg::CameraInfo::ConstSharedPtr &msg) {
-          if (cam_ready_)
-            return;
-          P_ = (cv::Mat_<double>(3, 3) << msg->p[0], msg->p[1], msg->p[2],
-                msg->p[4], msg->p[5], msg->p[6], msg->p[8], msg->p[9],
-                msg->p[10]);
-          D_zero_ = cv::Mat::zeros(4, 1, CV_64F);
-          if (msg->width > 0 && msg->height > 0) {
-            image_width_ = static_cast<int>(msg->width);
-            image_height_ = static_cast<int>(msg->height);
-          }
-          cam_ready_ = true;
-          RCLCPP_INFO(get_logger(),
-                      "Camera info received: fx=%.1f fy=%.1f cx=%.1f cy=%.1f",
-                      msg->p[0], msg->p[5], msg->p[2], msg->p[6]);
-        });
+      camera_info_topic_, rclcpp::SensorDataQoS(),
+      [this](const sensor_msgs::msg::CameraInfo::ConstSharedPtr & msg) {
+        if (cam_ready_) {
+          return;
+        }
+        P_ = (cv::Mat_<double>(3, 3) << msg->p[0], msg->p[1], msg->p[2],
+          msg->p[4], msg->p[5], msg->p[6], msg->p[8], msg->p[9],
+          msg->p[10]);
+        D_zero_ = cv::Mat::zeros(4, 1, CV_64F);
+        if (msg->width > 0 && msg->height > 0) {
+          image_width_ = static_cast<int>(msg->width);
+          image_height_ = static_cast<int>(msg->height);
+        }
+        cam_ready_ = true;
+        RCLCPP_INFO(
+          get_logger(),
+          "Camera info received: fx=%.1f fy=%.1f cx=%.1f cy=%.1f",
+          msg->p[0], msg->p[5], msg->p[2], msg->p[6]);
+      });
 
     det_sub_cache_ = create_subscription<vision_msgs::msg::Detection2DArray>(
-        detection_topic_, rclcpp::SensorDataQoS(), // HJ_260529
-        [this](const vision_msgs::msg::Detection2DArray::ConstSharedPtr &msg) {
-          std::lock_guard<std::mutex> lock(det_mutex_);
-          latest_det_ = msg;
-        });
+      detection_topic_, rclcpp::SensorDataQoS(),   // HJ_260529
+      [this](const vision_msgs::msg::Detection2DArray::ConstSharedPtr & msg) {
+        std::lock_guard<std::mutex> lock(det_mutex_);
+        latest_det_ = msg;
+      });
 
     euclidean_sub_ = create_subscription<visualization_msgs::msg::MarkerArray>(
-        bbox_topic_, rclcpp::SensorDataQoS(), // HJ_260529
-        [this](
-            const visualization_msgs::msg::MarkerArray::ConstSharedPtr &msg) {
-          std::lock_guard<std::mutex> lock(euclidean_mutex_);
-          latest_euclidean_ = msg;
-        });
+      bbox_topic_, rclcpp::SensorDataQoS(),   // HJ_260529
+      [this](
+        const visualization_msgs::msg::MarkerArray::ConstSharedPtr & msg) {
+        std::lock_guard<std::mutex> lock(euclidean_mutex_);
+        latest_euclidean_ = msg;
+      });
 
     // HJ_260529: both LiDAR and camera publish with SensorDataQoS (BEST_EFFORT)
     const auto sensor_qos = rclcpp::SensorDataQoS().get_rmw_qos_profile();
@@ -169,47 +184,54 @@ public:
     image_sub_.subscribe(this, image_topic_, sensor_qos);
 
     sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
-        SyncPolicy(sync_queue_size_), lidar_sub_, image_sub_);
-    sync_->registerCallback(std::bind(&CameraLidarFusionNode::callback, this,
-                                      std::placeholders::_1,
-                                      std::placeholders::_2));
+      SyncPolicy(sync_queue_size_), lidar_sub_, image_sub_);
+    sync_->registerCallback(
+      std::bind(
+        &CameraLidarFusionNode::callback, this,
+        std::placeholders::_1,
+        std::placeholders::_2));
 
     pub_obstacles_ =
-        create_publisher<sensor_msgs::msg::PointCloud2>(output_topic_, 10);
+      create_publisher<sensor_msgs::msg::PointCloud2>(output_topic_, 10);
     pub_image_ =
-        create_publisher<sensor_msgs::msg::Image>(out_image_topic_, 10);
+      create_publisher<sensor_msgs::msg::Image>(out_image_topic_, 10);
     pub_det3d_ = create_publisher<vision_msgs::msg::Detection3DArray>(
-        out_det3d_topic_, 10);
+      out_det3d_topic_, 10);
     pub_markers_ = create_publisher<visualization_msgs::msg::MarkerArray>(
-        out_markers_topic_, 10);
+      out_markers_topic_, 10);
     pub_euclidean_ = create_publisher<visualization_msgs::msg::MarkerArray>(
-        out_euclidean_topic_, 10);
+      out_euclidean_topic_, 10);
 
-    RCLCPP_INFO(get_logger(),
-                "obstacle_fusion started: cloud=%s det=%s bbox=%s "
-                "sync_queue=%d debug_image_rate=%.1fHz",
-                input_cloud_topic_.c_str(), detection_topic_.c_str(),
-                bbox_topic_.c_str(), sync_queue_size_,
-                debug_image_publish_rate_hz_);
-    RCLCPP_INFO(get_logger(), "extrinsic t=[%.3f, %.3f, %.3f]", extrinsic_x_,
-                extrinsic_y_, extrinsic_z_);
+    RCLCPP_INFO(
+      get_logger(),
+      "obstacle_fusion started: cloud=%s det=%s bbox=%s "
+      "sync_queue=%d debug_image_rate=%.1fHz",
+      input_cloud_topic_.c_str(), detection_topic_.c_str(),
+      bbox_topic_.c_str(), sync_queue_size_,
+      debug_image_publish_rate_hz_);
+    RCLCPP_INFO(
+      get_logger(), "extrinsic t=[%.3f, %.3f, %.3f]", extrinsic_x_,
+      extrinsic_y_, extrinsic_z_);
   }
 
 private:
-  struct ProjPt {
+  struct ProjPt
+  {
     cv::Point2f uv;
     float x, y, z;    // camera frame [m]
     float lx, ly, lz; // raw LiDAR frame [m]
   };
 
-  struct Track {
+  struct Track
+  {
     std::string label;
     float lx, ly, lz;
     int miss_count;
     int id;
   };
 
-  void initColorLut() {
+  void initColorLut()
+  {
     for (int i = 0; i <= 120; ++i) {
       cv::Mat hsv(1, 1, CV_8UC3, cv::Scalar(i, 255, 255));
       cv::Mat bgr;
@@ -218,10 +240,12 @@ private:
     }
   }
 
-  bool shouldPublishDebugImage() {
+  bool shouldPublishDebugImage()
+  {
     if (!publish_debug_image_without_subscribers_ &&
-        pub_image_->get_subscription_count() == 0 &&
-        pub_image_->get_intra_process_subscription_count() == 0) {
+      pub_image_->get_subscription_count() == 0 &&
+      pub_image_->get_intra_process_subscription_count() == 0)
+    {
       return false;
     }
     if (debug_image_publish_rate_hz_ <= 0.0) {
@@ -240,22 +264,25 @@ private:
     return false;
   }
 
-  void initExtrinsic() {
+  void initExtrinsic()
+  {
     cv::Mat R = (cv::Mat_<double>(3, 3) << 1, 0, 0, 0, 0, -1, 0, 1, 0);
     cv::Mat p =
-        (cv::Mat_<double>(3, 1) << extrinsic_x_, extrinsic_y_, extrinsic_z_);
+      (cv::Mat_<double>(3, 1) << extrinsic_x_, extrinsic_y_, extrinsic_z_);
     tvec_ = -R * p;
     cv::Rodrigues(R, rvec_);
   }
 
-  void callback(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &cloud_msg,
-                const sensor_msgs::msg::CompressedImage::ConstSharedPtr
-                    &img_msg) // HJ_260529
+  void callback(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg,
+    const sensor_msgs::msg::CompressedImage::ConstSharedPtr
+    & img_msg)                // HJ_260529
   {
     if (!cam_ready_) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                           "Waiting for camera_info on %s…",
-                           camera_info_topic_.c_str());
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Waiting for camera_info on %s…",
+        camera_info_topic_.c_str());
       return;
     }
 
@@ -273,7 +300,7 @@ private:
     int img_h = image_height_;
     if (publish_debug_image || img_w <= 0 || img_h <= 0) {
       img = cv_bridge::toCvCopy(img_msg, "bgr8")
-                ->image; // HJ_260529: cv_bridge handles CompressedImage
+        ->image;         // HJ_260529: cv_bridge handles CompressedImage
       img_w = img.cols;
       img_h = img.rows;
       image_width_ = img_w;
@@ -289,7 +316,7 @@ private:
     vision_msgs::msg::Detection3DArray out3d;
     if (det_msg) {
       out3d = associateDetections(
-          proj, det_msg, publish_debug_image ? &img : nullptr, markers);
+        proj, det_msg, publish_debug_image ? &img : nullptr, markers);
     }
     out3d.header.stamp = cloud_msg->header.stamp;
     out3d.header.frame_id = cloud_msg_frame_;
@@ -299,22 +326,24 @@ private:
     pub_det3d_->publish(out3d);
     pub_markers_->publish(markers);
 
-    fuseEuclideanClusters(det_msg, cloud_msg->header.stamp, img_w, img_h,
-                          publish_debug_image ? &img : nullptr);
+    fuseEuclideanClusters(
+      det_msg, cloud_msg->header.stamp, img_w, img_h,
+      publish_debug_image ? &img : nullptr);
 
     if (publish_debug_image) {
       pub_image_->publish(
-          *cv_bridge::CvImage(std_msgs::msg::Header{}, "bgr8", img)
-               .toImageMsg());
+        *cv_bridge::CvImage(std_msgs::msg::Header{}, "bgr8", img)
+        .toImageMsg());
     }
   }
 
   // Collects YOLO-bbox-filtered LiDAR points and publishes to output_topic_ for
   // Nav2 costmap.
   void publishObstacleCloud(
-      const std::vector<ProjPt> &proj,
-      const vision_msgs::msg::Detection2DArray::ConstSharedPtr &det_msg,
-      const std_msgs::msg::Header &header) {
+    const std::vector<ProjPt> & proj,
+    const vision_msgs::msg::Detection2DArray::ConstSharedPtr & det_msg,
+    const std_msgs::msg::Header & header)
+  {
     sensor_msgs::msg::PointCloud2 out;
     out.header = header;
     out.header.stamp = this->get_clock()->now();
@@ -324,18 +353,19 @@ private:
 
     std::vector<std::array<float, 3>> pts;
     if (det_msg) {
-      for (const auto &d2 : det_msg->detections) {
+      for (const auto & d2 : det_msg->detections) {
         const float x0 = static_cast<float>(d2.bbox.center.position.x -
-                                            d2.bbox.size_x / 2.0);
+          d2.bbox.size_x / 2.0);
         const float x1 = static_cast<float>(d2.bbox.center.position.x +
-                                            d2.bbox.size_x / 2.0);
+          d2.bbox.size_x / 2.0);
         const float y0 = static_cast<float>(d2.bbox.center.position.y -
-                                            d2.bbox.size_y / 2.0);
+          d2.bbox.size_y / 2.0);
         const float y1 = static_cast<float>(d2.bbox.center.position.y +
-                                            d2.bbox.size_y / 2.0);
-        for (const auto &pp : proj) {
+          d2.bbox.size_y / 2.0);
+        for (const auto & pp : proj) {
           if (pp.uv.x >= x0 && pp.uv.x <= x1 && pp.uv.y >= y0 &&
-              pp.uv.y <= y1) {
+            pp.uv.y <= y1)
+          {
             pts.push_back({pp.lx, pp.ly, pp.lz});
           }
         }
@@ -346,7 +376,7 @@ private:
     sensor_msgs::PointCloud2Iterator<float> ix(out, "x");
     sensor_msgs::PointCloud2Iterator<float> iy(out, "y");
     sensor_msgs::PointCloud2Iterator<float> iz(out, "z");
-    for (const auto &p : pts) {
+    for (const auto & p : pts) {
       *ix = p[0];
       ++ix;
       *iy = p[1];
@@ -359,8 +389,10 @@ private:
   }
 
   std::vector<ProjPt>
-  projectCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &cloud_msg,
-               int img_w, int img_h) {
+  projectCloud(
+    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & cloud_msg,
+    int img_w, int img_h)
+  {
     scratch_obj_.clear();
     scratch_obj_.reserve(cloud_msg->width * cloud_msg->height);
 
@@ -369,18 +401,22 @@ private:
     sensor_msgs::PointCloud2ConstIterator<float> iter_z(*cloud_msg, "z");
 
     for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
-      if (!std::isfinite(*iter_x))
+      if (!std::isfinite(*iter_x)) {
         continue;
+      }
       // CCW 90° around Z: Vanjee 750 raw (X fwd, Y left) → eff (X right, Y fwd)
       const float lx = -(*iter_y);
       const float ly = (*iter_x);
       const float lz = (*iter_z);
-      if (ly < lidar_min_forward_m_)
+      if (ly < lidar_min_forward_m_) {
         continue; // HJ_260529
+      }
       scratch_obj_.push_back({lx, ly, lz});
     }
-    if (scratch_obj_.empty())
-      return {};
+    if (scratch_obj_.empty()) {
+      // HH_260721 - Return an explicit empty projection result without formatter ambiguity.
+      return std::vector<ProjPt>();
+    }
 
     scratch_uv_.clear();
     cv::projectPoints(scratch_obj_, rvec_, tvec_, P_, D_zero_, scratch_uv_);
@@ -389,35 +425,41 @@ private:
     result.reserve(scratch_obj_.size());
     for (size_t i = 0; i < scratch_uv_.size(); ++i) {
       if (scratch_uv_[i].x < 0 || scratch_uv_[i].x >= img_w ||
-          scratch_uv_[i].y < 0 || scratch_uv_[i].y >= img_h)
+        scratch_uv_[i].y < 0 || scratch_uv_[i].y >= img_h)
+      {
         continue;
-      const auto &o = scratch_obj_[i];
+      }
+      const auto & o = scratch_obj_[i];
       // o is in effective frame: eff_X=-raw_Y, eff_Y=raw_X, eff_Z=raw_Z
       // lx/ly/lz store raw sensor coords (raw_X=eff_Y, raw_Y=-eff_X,
       // raw_Z=eff_Z)
-      result.push_back({scratch_uv_[i], o.x,
-                        static_cast<float>(-o.z + extrinsic_z_), o.y, o.y, -o.x,
-                        o.z});
+      result.push_back(
+        {scratch_uv_[i], o.x,
+          static_cast<float>(-o.z + extrinsic_z_), o.y, o.y, -o.x,
+          o.z});
     }
     return result;
   }
 
-  void drawPoints(cv::Mat &img, const std::vector<ProjPt> &pts) {
+  void drawPoints(cv::Mat & img, const std::vector<ProjPt> & pts)
+  {
     constexpr float kMinD = 1.0f, kMaxD = 50.0f;
     const std::size_t stride =
-        static_cast<std::size_t>(std::max(1, debug_draw_stride_));
+      static_cast<std::size_t>(std::max(1, debug_draw_stride_));
     for (std::size_t i = 0; i < pts.size(); i += stride) {
-      const auto &pp = pts[i];
+      const auto & pp = pts[i];
       float t = std::clamp((pp.z - kMinD) / (kMaxD - kMinD), 0.0f, 1.0f);
-      cv::circle(img, pp.uv, 2,
-                 color_lut_[static_cast<int>((1.0f - t) * 120.0f)], cv::FILLED);
+      cv::circle(
+        img, pp.uv, 2,
+        color_lut_[static_cast<int>((1.0f - t) * 120.0f)], cv::FILLED);
     }
   }
 
   vision_msgs::msg::Detection3DArray associateDetections(
-      const std::vector<ProjPt> &proj,
-      const vision_msgs::msg::Detection2DArray::ConstSharedPtr &det_msg,
-      cv::Mat *img, visualization_msgs::msg::MarkerArray &markers) {
+    const std::vector<ProjPt> & proj,
+    const vision_msgs::msg::Detection2DArray::ConstSharedPtr & det_msg,
+    cv::Mat * img, visualization_msgs::msg::MarkerArray & markers)
+  {
     const int kMinPts = min_pts_;
     const int kNClose = std::max(1, n_closest_);
     vision_msgs::msg::Detection3DArray out;
@@ -428,7 +470,7 @@ private:
 
     std::vector<bool> matched(tracks_.size(), false);
 
-    for (const auto &d2 : det_msg->detections) {
+    for (const auto & d2 : det_msg->detections) {
       const double cx = d2.bbox.center.position.x;
       const double cy = d2.bbox.center.position.y;
       const double bw = d2.bbox.size_x;
@@ -439,39 +481,42 @@ private:
       const float y1 = static_cast<float>(cy + bh / 2);
 
       const std::string label =
-          d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id;
+        d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id;
 
-      struct BboxPt {
+      struct BboxPt
+      {
         float z, lx, ly, lz;
       };
       std::vector<BboxPt> bbox_pts;
-      for (const auto &pp : proj) {
+      for (const auto & pp : proj) {
         if (pp.uv.x >= x0 && pp.uv.x <= x1 && pp.uv.y >= y0 && pp.uv.y <= y1) {
           bbox_pts.push_back({pp.z, pp.lx, pp.ly, pp.lz});
         }
       }
 
       const cv::Rect rect(static_cast<int>(x0), static_cast<int>(y0),
-                          static_cast<int>(bw), static_cast<int>(bh));
+        static_cast<int>(bw), static_cast<int>(bh));
 
       if (static_cast<int>(bbox_pts.size()) < kMinPts) {
         if (img) {
           cv::rectangle(*img, rect, {0, 165, 255}, 2);
-          cv::putText(*img, label,
-                      {static_cast<int>(x0), static_cast<int>(y0) - 5},
-                      cv::FONT_HERSHEY_SIMPLEX, 0.55, {0, 165, 255}, 2);
+          cv::putText(
+            *img, label,
+            {static_cast<int>(x0), static_cast<int>(y0) - 5},
+            cv::FONT_HERSHEY_SIMPLEX, 0.55, {0, 165, 255}, 2);
         }
         continue;
       }
 
       const size_t n_use =
-          std::min(static_cast<size_t>(kNClose), bbox_pts.size());
+        std::min(static_cast<size_t>(kNClose), bbox_pts.size());
       if (bbox_pts.size() > n_use) {
-        std::nth_element(bbox_pts.begin(),
-                         bbox_pts.begin() + static_cast<std::ptrdiff_t>(n_use),
-                         bbox_pts.end(), [](const BboxPt &a, const BboxPt &b) {
-                           return a.z < b.z;
-                         });
+        std::nth_element(
+          bbox_pts.begin(),
+          bbox_pts.begin() + static_cast<std::ptrdiff_t>(n_use),
+          bbox_pts.end(), [](const BboxPt & a, const BboxPt & b) {
+            return a.z < b.z;
+          });
       }
 
       float lsx = 0, lsy = 0, lsz = 0;
@@ -487,8 +532,9 @@ private:
       int best_idx = -1;
       float best_dist2 = static_cast<float>(assoc_dist_ * assoc_dist_);
       for (size_t ti = 0; ti < tracks_.size(); ++ti) {
-        if (matched[ti] || tracks_[ti].label != label)
+        if (matched[ti] || tracks_[ti].label != label) {
           continue;
+        }
         float dx = tracks_[ti].lx - lpos_x;
         float dy = tracks_[ti].ly - lpos_y;
         float dz = tracks_[ti].lz - lpos_z;
@@ -501,7 +547,7 @@ private:
 
       int marker_id;
       if (best_idx >= 0) {
-        Track &tk = tracks_[best_idx];
+        Track & tk = tracks_[best_idx];
         const float a = static_cast<float>(ema_alpha_);
         tk.lx = a * lpos_x + (1.0f - a) * tk.lx;
         tk.ly = a * lpos_y + (1.0f - a) * tk.ly;
@@ -537,7 +583,7 @@ private:
 
       const rclcpp::Time stamp = det_msg->header.stamp;
       const float lidar_dist =
-          std::sqrt(lpos_x * lpos_x + lpos_y * lpos_y + lpos_z * lpos_z);
+        std::sqrt(lpos_x * lpos_x + lpos_y * lpos_y + lpos_z * lpos_z);
 
       visualization_msgs::msg::Marker sphere;
       sphere.header.frame_id = cloud_msg_frame_;
@@ -582,38 +628,46 @@ private:
 
       if (img) {
         cv::rectangle(*img, rect, {0, 255, 0}, 2);
-        std::snprintf(buf, sizeof(buf), "%s %.2fm (%zu pts)", label.c_str(),
-                      lidar_dist, bbox_pts.size());
-        cv::putText(*img, buf, {static_cast<int>(x0), static_cast<int>(y0) - 5},
-                    cv::FONT_HERSHEY_SIMPLEX, 0.55, {0, 255, 0}, 2);
+        std::snprintf(
+          buf, sizeof(buf), "%s %.2fm (%zu pts)", label.c_str(),
+          lidar_dist, bbox_pts.size());
+        cv::putText(
+          *img, buf, {static_cast<int>(x0), static_cast<int>(y0) - 5},
+          cv::FONT_HERSHEY_SIMPLEX, 0.55, {0, 255, 0}, 2);
       }
     }
 
     for (size_t ti = 0; ti < tracks_.size(); ++ti) {
-      if (!matched[ti])
+      if (!matched[ti]) {
         ++tracks_[ti].miss_count;
+      }
     }
-    tracks_.erase(std::remove_if(tracks_.begin(), tracks_.end(),
-                                 [this](const Track &t) {
-                                   return t.miss_count > max_miss_;
-                                 }),
-                  tracks_.end());
+    tracks_.erase(
+      std::remove_if(
+        tracks_.begin(), tracks_.end(),
+        [this](const Track & t) {
+          return t.miss_count > max_miss_;
+        }),
+      tracks_.end());
 
     return out;
   }
 
   void fuseEuclideanClusters(
-      const vision_msgs::msg::Detection2DArray::ConstSharedPtr &det_msg,
-      const rclcpp::Time &stamp, int img_w, int img_h, cv::Mat *img) {
+    const vision_msgs::msg::Detection2DArray::ConstSharedPtr & det_msg,
+    const rclcpp::Time & stamp, int img_w, int img_h, cv::Mat * img)
+  {
     visualization_msgs::msg::MarkerArray::ConstSharedPtr euc_msg;
     {
       std::lock_guard<std::mutex> lock(euclidean_mutex_);
       euc_msg = latest_euclidean_;
     }
-    if (!euc_msg || euc_msg->markers.empty())
+    if (!euc_msg || euc_msg->markers.empty()) {
       return;
+    }
 
-    struct ClusterInfo {
+    struct ClusterInfo
+    {
       float raw_x, raw_y, raw_z, dist;
       cv::Point2f uv;
       bool in_image;
@@ -621,11 +675,13 @@ private:
     std::vector<ClusterInfo> cls;
     cls.reserve(euc_msg->markers.size());
 
-    for (const auto &mk : euc_msg->markers) {
-      if (mk.action != visualization_msgs::msg::Marker::ADD)
+    for (const auto & mk : euc_msg->markers) {
+      if (mk.action != visualization_msgs::msg::Marker::ADD) {
         continue;
-      if (mk.type != visualization_msgs::msg::Marker::CUBE)
+      }
+      if (mk.type != visualization_msgs::msg::Marker::CUBE) {
         continue;
+      }
 
       const float raw_x = static_cast<float>(mk.pose.position.x);
       const float raw_y = static_cast<float>(mk.pose.position.y);
@@ -647,7 +703,7 @@ private:
         cv::projectPoints(obj_pt, rvec_, tvec_, P_, D_zero_, img_pt);
         ci.uv = img_pt[0];
         ci.in_image = (ci.uv.x >= 0 && ci.uv.x < img_w && ci.uv.y >= 0 &&
-                       ci.uv.y < img_h);
+          ci.uv.y < img_h);
       }
       cls.push_back(ci);
     }
@@ -657,25 +713,28 @@ private:
     if (det_msg) {
       std::vector<bool> used(cls.size(), false);
 
-      for (const auto &d2 : det_msg->detections) {
+      for (const auto & d2 : det_msg->detections) {
         const float cx = static_cast<float>(d2.bbox.center.position.x);
         const float cy = static_cast<float>(d2.bbox.center.position.y);
         const float hw = static_cast<float>(d2.bbox.size_x) * 0.5f;
         const float hh = static_cast<float>(d2.bbox.size_y) * 0.5f;
         const std::string lbl =
-            d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id;
+          d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id;
 
         int best = -1;
         float best_d = std::numeric_limits<float>::max();
 
         for (size_t i = 0; i < cls.size(); ++i) {
-          if (!cls[i].in_image || used[i])
+          if (!cls[i].in_image || used[i]) {
             continue;
+          }
           const float mx = hw * 0.1f, my = hh * 0.1f;
-          if (cls[i].uv.x < cx - hw - mx || cls[i].uv.x > cx + hw + mx)
+          if (cls[i].uv.x<cx - hw - mx || cls[i].uv.x> cx + hw + mx) {
             continue;
-          if (cls[i].uv.y < cy - hh - my || cls[i].uv.y > cy + hh + my)
+          }
+          if (cls[i].uv.y<cy - hh - my || cls[i].uv.y> cy + hh + my) {
             continue;
+          }
           const float dx = cls[i].uv.x - cx, dy = cls[i].uv.y - cy;
           const float d = dx * dx + dy * dy;
           if (d < best_d) {
@@ -699,7 +758,7 @@ private:
     next_euclidean_id_ = 0;
 
     for (size_t i = 0; i < cls.size(); ++i) {
-      const auto &ci = cls[i];
+      const auto & ci = cls[i];
       const bool is_matched = (labels[i] != "unknown");
       const int base_id = (next_euclidean_id_++) * 2;
 
@@ -746,16 +805,18 @@ private:
 
       if (img && ci.in_image) {
         const cv::Point pt(static_cast<int>(ci.uv.x),
-                           static_cast<int>(ci.uv.y));
+          static_cast<int>(ci.uv.y));
         const cv::Scalar color =
-            is_matched ? cv::Scalar(0, 255, 255) : cv::Scalar(128, 128, 128);
+          is_matched ? cv::Scalar(0, 255, 255) : cv::Scalar(128, 128, 128);
         cv::circle(*img, pt, 8, color, 2);
         cv::drawMarker(*img, pt, color, cv::MARKER_CROSS, 14, 2);
         char lbuf[64];
-        std::snprintf(lbuf, sizeof(lbuf), "%s %.1fm", labels[i].c_str(),
-                      ci.dist);
-        cv::putText(*img, lbuf, {pt.x + 10, pt.y - 5}, cv::FONT_HERSHEY_SIMPLEX,
-                    0.5, color, 2);
+        std::snprintf(
+          lbuf, sizeof(lbuf), "%s %.1fm", labels[i].c_str(),
+          ci.dist);
+        cv::putText(
+          *img, lbuf, {pt.x + 10, pt.y - 5}, cv::FONT_HERSHEY_SIMPLEX,
+          0.5, color, 2);
       }
     }
 
@@ -781,7 +842,7 @@ private:
   std::string input_cloud_topic_, detection_topic_, camera_info_topic_;
   std::string image_topic_, bbox_topic_, output_topic_;
   std::string out_image_topic_, out_det3d_topic_, out_markers_topic_,
-      out_euclidean_topic_;
+    out_euclidean_topic_;
 
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_cb_;
 
@@ -817,12 +878,12 @@ private:
   // --- subscribers ---
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
   rclcpp::Subscription<vision_msgs::msg::Detection2DArray>::SharedPtr
-      det_sub_cache_;
+    det_sub_cache_;
   rclcpp::Subscription<visualization_msgs::msg::MarkerArray>::SharedPtr
-      euclidean_sub_;
+    euclidean_sub_;
   message_filters::Subscriber<sensor_msgs::msg::PointCloud2> lidar_sub_;
   message_filters::Subscriber<sensor_msgs::msg::CompressedImage>
-      image_sub_; // HJ_260529
+  image_sub_;     // HJ_260529
   std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
 
   // --- publishers ---
@@ -830,12 +891,13 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_image_;
   rclcpp::Publisher<vision_msgs::msg::Detection3DArray>::SharedPtr pub_det3d_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
-      pub_markers_;
+    pub_markers_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr
-      pub_euclidean_;
+    pub_euclidean_;
 };
 
-int main(int argc, char **argv) {
+int main(int argc, char ** argv)
+{
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<CameraLidarFusionNode>());
   rclcpp::shutdown();

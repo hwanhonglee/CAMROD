@@ -25,10 +25,11 @@ class EuclideanBBoxNode : public rclcpp::Node
 {
 public:
   // Initializes clustering parameters and ROS interfaces for LiDAR obstacle box extraction.
-  EuclideanBBoxNode() : Node("obstacle_lidar_node")
+  EuclideanBBoxNode()
+  : Node("obstacle_lidar_node")
   {
-    input_topic_  = this->declare_parameter<std::string>("input_topic", "/sensing/lidar/points");
-    bbox_topic_   = this->declare_parameter<std::string>("bbox_topic", "/perception/lidar/bboxes");
+    input_topic_ = this->declare_parameter<std::string>("input_topic", "/sensing/lidar/points");
+    bbox_topic_ = this->declare_parameter<std::string>("bbox_topic", "/perception/lidar/bboxes");
 
     constexpr double kClusterToleranceDefault = 0.4;
     constexpr int kMinClusterSizeDefault = 10;
@@ -62,12 +63,12 @@ public:
         "Unknown roi_filter_mode '%s'. Using default 'box' mode.",
         roi_filter_mode.c_str());
     }
-    x_min_   = this->declare_parameter<double>("x_min", 0.0);
-    x_max_   = this->declare_parameter<double>("x_max", 5.0);
-    y_min_   = this->declare_parameter<double>("y_min", -3.0);
-    y_max_   = this->declare_parameter<double>("y_max",  3.0);
-    z_min_   = this->declare_parameter<double>("z_min", -3.0);
-    z_max_   = this->declare_parameter<double>("z_max",  5.0);
+    x_min_ = this->declare_parameter<double>("x_min", 0.0);
+    x_max_ = this->declare_parameter<double>("x_max", 5.0);
+    y_min_ = this->declare_parameter<double>("y_min", -3.0);
+    y_max_ = this->declare_parameter<double>("y_max", 3.0);
+    z_min_ = this->declare_parameter<double>("z_min", -3.0);
+    z_max_ = this->declare_parameter<double>("z_max", 5.0);
 
     marker_lifetime_s_ = this->declare_parameter<double>("marker_lifetime_s", 0.15);
     draw_text_ = this->declare_parameter<bool>("draw_text", true);
@@ -81,7 +82,8 @@ public:
     pub_bbox_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>(bbox_topic_, 10);
 
-    RCLCPP_INFO(this->get_logger(),
+    RCLCPP_INFO(
+      this->get_logger(),
       "Euclidean+BBox started. input=%s",
       input_topic_.c_str());
   }
@@ -93,24 +95,22 @@ private:
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *cloud);
 
-    if (cloud->empty()) return;
+    if (cloud->empty()) {return;}
 
     // ROI filter to keep only points within configured spatial bounds.
     pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>());
-    for (const auto &p : cloud->points)
-    {
-      if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) continue;
+    for (const auto & p : cloud->points) {
+      if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) {continue;}
 
-      if (roi_filter_enabled_)
-      {
-        if (p.x < x_min_ || p.x > x_max_) continue;
-        if (p.y < y_min_ || p.y > y_max_) continue;
-        if (p.z < z_min_ || p.z > z_max_) continue;
+      if (roi_filter_enabled_) {
+        if (p.x < x_min_ || p.x > x_max_) {continue;}
+        if (p.y < y_min_ || p.y > y_max_) {continue;}
+        if (p.z < z_min_ || p.z > z_max_) {continue;}
       }
       filtered->points.push_back(p);
     }
 
-    if (filtered->empty()) return;
+    if (filtered->empty()) {return;}
 
     // Build KD-tree for Euclidean cluster extraction.
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>());
@@ -127,8 +127,7 @@ private:
     ec.setInputCloud(filtered);
     ec.extract(cluster_indices);
 
-    if (cluster_indices.empty())
-    {
+    if (cluster_indices.empty()) {
       publishDeleteAll(msg->header.frame_id, msg->header.stamp);
       return;
     }
@@ -136,16 +135,14 @@ private:
     std::vector<AABB> boxes(cluster_indices.size());
     std::vector<float> min_dists(cluster_indices.size(), std::numeric_limits<float>::max());
 
-    for (size_t i = 0; i < cluster_indices.size(); ++i)
-    {
-      auto &b = boxes[i];
+    for (size_t i = 0; i < cluster_indices.size(); ++i) {
+      auto & b = boxes[i];
       b.min_x = b.min_y = b.min_z = std::numeric_limits<float>::infinity();
       b.max_x = b.max_y = b.max_z = -std::numeric_limits<float>::infinity();
       b.count = 0;
 
-      for (auto idx : cluster_indices[i].indices)
-      {
-        const auto &p = filtered->points[idx];
+      for (auto idx : cluster_indices[i].indices) {
+        const auto & p = filtered->points[idx];
 
         b.min_x = std::min(b.min_x, p.x);
         b.min_y = std::min(b.min_y, p.y);
@@ -158,8 +155,8 @@ private:
         b.count++;
 
         // Track minimum radial distance for per-cluster text diagnostics.
-        float d = std::sqrt(p.x*p.x + p.y*p.y);
-        if (d < min_dists[i]) min_dists[i] = d;
+        float d = std::sqrt(p.x * p.x + p.y * p.y);
+        if (d < min_dists[i]) {min_dists[i] = d;}
       }
     }
 
@@ -176,9 +173,8 @@ private:
     const rclcpp::Duration life =
       rclcpp::Duration::from_seconds(marker_lifetime_s_);
 
-    for (size_t c = 0; c < boxes.size(); ++c)
-    {
-      const auto &b = boxes[c];
+    for (size_t c = 0; c < boxes.size(); ++c) {
+      const auto & b = boxes[c];
 
       float sx = b.max_x - b.min_x;
       float sy = b.max_y - b.min_y;
@@ -212,8 +208,7 @@ private:
 
       arr.markers.push_back(cube);
 
-      if (draw_text_)
-      {
+      if (draw_text_) {
         visualization_msgs::msg::Marker text;
         text.header = msg->header;
         text.ns = "euclidean_text";
@@ -244,8 +239,9 @@ private:
   }
 
   // Clears previous markers when no valid cluster exists in the current frame.
-  void publishDeleteAll(const std::string &frame_id,
-                        const rclcpp::Time &stamp)
+  void publishDeleteAll(
+    const std::string & frame_id,
+    const rclcpp::Time & stamp)
   {
     visualization_msgs::msg::MarkerArray arr;
 
@@ -277,7 +273,7 @@ private:
 };
 
 // Entrypoint that runs the LiDAR clustering node.
-int main(int argc, char **argv)
+int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<EuclideanBBoxNode>());

@@ -41,20 +41,22 @@ public:
   : Node("apriltag_parking_detector")
   {
     // HH_260720 - Declare descriptive rear-camera parking detector parameters.
-    image_topic_      = declare_parameter<std::string>("image_topic",
-                          "/sensing/camera/econ_rear/image_rect");
-    info_topic_       = declare_parameter<std::string>("camera_info_topic",
-                          "/sensing/camera/econ_rear/camera_info");
-    tag_family_       = declare_parameter<std::string>("tag_family", "tag36h11");
-    target_tag_id_    = declare_parameter<int>("target_tag_id", 0);  // -1 accepts every tag.
-    tag_size_m_       = declare_parameter<double>("tag_size", 0.15);  // Black-border size in meters.
-    quad_decimate_    = declare_parameter<double>("quad_decimate", 2.0);
-    n_threads_        = declare_parameter<int>("n_threads", 2);
-    camera_frame_id_  = declare_parameter<std::string>("camera_frame_id", "camera_rear");
-    publish_tf_       = declare_parameter<bool>("publish_tf", true);
+    image_topic_ = declare_parameter<std::string>(
+      "image_topic",
+      "/sensing/camera/econ_rear/image_rect");
+    info_topic_ = declare_parameter<std::string>(
+      "camera_info_topic",
+      "/sensing/camera/econ_rear/camera_info");
+    tag_family_ = declare_parameter<std::string>("tag_family", "tag36h11");
+    target_tag_id_ = declare_parameter<int>("target_tag_id", 0);     // -1 accepts every tag.
+    tag_size_m_ = declare_parameter<double>("tag_size", 0.15);        // Black-border size in meters.
+    quad_decimate_ = declare_parameter<double>("quad_decimate", 2.0);
+    n_threads_ = declare_parameter<int>("n_threads", 2);
+    camera_frame_id_ = declare_parameter<std::string>("camera_frame_id", "camera_rear");
+    publish_tf_ = declare_parameter<bool>("publish_tf", true);
     max_reproj_error_ = declare_parameter<double>("max_reproj_error_px", 2.0);
     publish_debug_image_ = declare_parameter<bool>("publish_debug_image", true);
-    debug_jpeg_quality_  = declare_parameter<int>("debug_jpeg_quality", 80);
+    debug_jpeg_quality_ = declare_parameter<int>("debug_jpeg_quality", 80);
 
     // HH_260720 - Track the previous detection ROI and periodically reacquire globally.
     roi_scale_ = declare_parameter<double>("roi_scale", 3.0);
@@ -76,17 +78,17 @@ public:
     td_ = apriltag_detector_create();
     apriltag_detector_add_family(td_, tf_family_);
     td_->quad_decimate = static_cast<float>(quad_decimate_);
-    td_->quad_sigma    = 0.0f;
-    td_->nthreads      = n_threads_;
-    td_->refine_edges  = 1;
+    td_->quad_sigma = 0.0f;
+    td_->nthreads = n_threads_;
+    td_->refine_edges = 1;
 
     // HH_260720 - Match IPPE square points to apriltag's detected corner order.
     const double s = tag_size_m_ / 2.0;
     obj_pts_ = {
-      { -s,  s, 0.0 },
-      {  s,  s, 0.0 },
-      {  s, -s, 0.0 },
-      { -s, -s, 0.0 }
+      {-s, s, 0.0},
+      {s, s, 0.0},
+      {s, -s, 0.0},
+      {-s, -s, 0.0}
     };
 
     // HH_260720 - Match the camera driver's best-effort sensor-data QoS.
@@ -112,40 +114,42 @@ public:
 
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
-    RCLCPP_INFO(get_logger(),
+    RCLCPP_INFO(
+      get_logger(),
       "AprilTag parking detector ready: family=%s target_id=%d size=%.3fm decimate=%.1f",
       tag_family_.c_str(), target_tag_id_, tag_size_m_, quad_decimate_);
   }
 
   ~AprilTagParkingDetectorNode() override
   {
-    if (td_) apriltag_detector_destroy(td_);
-    if (tf_family_ && family_destroy_fn_) family_destroy_fn_(tf_family_);
+    if (td_) {apriltag_detector_destroy(td_);}
+    if (tf_family_ && family_destroy_fn_) {family_destroy_fn_(tf_family_);}
   }
 
 private:
   // HH_260720 - Cache the projection matrix for the rectified image stream.
   void infoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg)
   {
-    if (calib_ready_) return;
+    if (calib_ready_) {return;}
 
     // HH_260720 - Rectified pixels use CameraInfo.P and no distortion coefficients.
     if (msg->p[0] > 1e-6) {
       camera_matrix_ = (cv::Mat_<double>(3, 3) <<
-            msg->p[0], msg->p[1], msg->p[2],
-            msg->p[4], msg->p[5], msg->p[6],
-            msg->p[8], msg->p[9], msg->p[10]);
+        msg->p[0], msg->p[1], msg->p[2],
+        msg->p[4], msg->p[5], msg->p[6],
+        msg->p[8], msg->p[9], msg->p[10]);
     } else {
       // HH_260720 - Fall back to K for camera drivers that leave P empty.
       RCLCPP_WARN(get_logger(), "CameraInfo.P is empty; using K for rectified pixels");
       camera_matrix_ = (cv::Mat_<double>(3, 3) <<
-            msg->k[0], msg->k[1], msg->k[2],
-            msg->k[3], msg->k[4], msg->k[5],
-            msg->k[6], msg->k[7], msg->k[8]);
+        msg->k[0], msg->k[1], msg->k[2],
+        msg->k[3], msg->k[4], msg->k[5],
+        msg->k[6], msg->k[7], msg->k[8]);
     }
 
     calib_ready_ = true;
-    RCLCPP_INFO(get_logger(),
+    RCLCPP_INFO(
+      get_logger(),
       "rear camera calibration ready: fx=%.1f fy=%.1f cx=%.1f cy=%.1f",
       camera_matrix_.at<double>(0, 0), camera_matrix_.at<double>(1, 1),
       camera_matrix_.at<double>(0, 2), camera_matrix_.at<double>(1, 2));
@@ -155,8 +159,9 @@ private:
   void imageCallback(const sensor_msgs::msg::Image::SharedPtr msg)
   {
     if (!calib_ready_) {
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                           "waiting for rear CameraInfo; skipping detection");
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "waiting for rear CameraInfo; skipping detection");
       return;
     }
 
@@ -164,9 +169,10 @@ private:
     try {
       cv_ptr = cv_bridge::toCvShare(msg, sensor_msgs::image_encodings::MONO8);
     } catch (const cv_bridge::Exception & e) {
-      RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000,
-                            "cv_bridge conversion failed (encoding='%s'): %s",
-                            msg->encoding.c_str(), e.what());
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "cv_bridge conversion failed (encoding='%s'): %s",
+        msg->encoding.c_str(), e.what());
       return;
     }
     const cv::Mat & gray = cv_ptr->image;
@@ -178,7 +184,8 @@ private:
     // HH_260720 - Use ROI tracking while forcing periodic full-frame reacquisition.
     bool use_roi = roi_valid_;
     if (use_roi && roi_full_search_interval_ > 0 &&
-        ++frames_since_full_search_ >= roi_full_search_interval_) {
+      ++frames_since_full_search_ >= roi_full_search_interval_)
+    {
       use_roi = false;
     }
 
@@ -191,16 +198,16 @@ private:
       use_roi = false;
       detections = detectInRegion(gray, cv::Rect());
     }
-    if (!use_roi) frames_since_full_search_ = 0;
+    if (!use_roi) {frames_since_full_search_ = 0;}
 
     // HH_260720 - Render debug overlays only while a debug topic has subscribers.
     cv::Mat debug_img;
     const bool want_debug_raw = debug_img_pub_ &&
-                                debug_img_pub_->get_subscription_count() > 0;
+      debug_img_pub_->get_subscription_count() > 0;
     const bool want_debug_compressed = debug_img_compressed_pub_ &&
-                                       debug_img_compressed_pub_->get_subscription_count() > 0;
+      debug_img_compressed_pub_->get_subscription_count() > 0;
     const bool draw_debug = publish_debug_image_ &&
-                            (want_debug_raw || want_debug_compressed);
+      (want_debug_raw || want_debug_compressed);
     if (draw_debug) {
       cv::cvtColor(gray, debug_img, cv::COLOR_GRAY2BGR);
       if (use_roi) {
@@ -213,7 +220,7 @@ private:
       apriltag_detection_t * det;
       zarray_get(detections, i, &det);
 
-      if (target_tag_id_ >= 0 && det->id != target_tag_id_) continue;
+      if (target_tag_id_ >= 0 && det->id != target_tag_id_) {continue;}
 
       // HH_260720 - Rectified corners require no additional distortion correction.
       std::vector<cv::Point2f> corners(4);
@@ -231,24 +238,25 @@ private:
         rvecs, tvecs, false, cv::SOLVEPNP_IPPE_SQUARE,
         cv::noArray(), cv::noArray(), reproj_errs);
 
-      if (n_sol < 1) continue;
+      if (n_sol < 1) {continue;}
 
       // HH_260720 - Select the candidate with minimum reprojection error.
       int best = 0;
       for (int s = 1; s < n_sol; ++s) {
-        if (reproj_errs[s] < reproj_errs[best]) best = s;
+        if (reproj_errs[s] < reproj_errs[best]) {best = s;}
       }
 
       if (reproj_errs[best] > max_reproj_error_) {
-        RCLCPP_DEBUG(get_logger(), "id=%d reprojection error %.2fpx exceeds %.2fpx; rejected",
-                     det->id, reproj_errs[best], max_reproj_error_);
+        RCLCPP_DEBUG(
+          get_logger(), "id=%d reprojection error %.2fpx exceeds %.2fpx; rejected",
+          det->id, reproj_errs[best], max_reproj_error_);
         continue;
       }
 
       // HH_260720 - Use temporal rotation continuity when planar solutions are similarly likely.
       if (n_sol >= 2) {
         double ratio = reproj_errs[best == 0 ? 1 : 0] /
-                       std::max(reproj_errs[best], 1e-9);
+          std::max(reproj_errs[best], 1e-9);
         if (ratio < 1.5 && has_prev_rvec_) {
           // HH_260720 - Prefer the candidate nearest the previous frame rotation.
           double d0 = cv::norm(rvecs[0] - prev_rvec_);
@@ -261,24 +269,29 @@ private:
 
       if (draw_debug) {
         for (int c = 0; c < 4; ++c) {
-          cv::line(debug_img, corners[c], corners[(c + 1) % 4],
-                   cv::Scalar(0, 255, 0), 2);
+          cv::line(
+            debug_img, corners[c], corners[(c + 1) % 4],
+            cv::Scalar(0, 255, 0), 2);
           cv::circle(debug_img, corners[c], 4, cv::Scalar(0, 0, 255), -1);
         }
         // HH_260720 - Overlay tag ID, range, and camera-frame position.
         const cv::Mat & tv = tvecs[best];
         const double dist = cv::norm(tv);
         char label[96], pos_label[96];
-        snprintf(label, sizeof(label), "id=%d  %.2fm  err=%.2fpx",
-                 det->id, dist, reproj_errs[best]);
-        snprintf(pos_label, sizeof(pos_label), "x=%.2f y=%.2f z=%.2f [m]",
-                 tv.at<double>(0), tv.at<double>(1), tv.at<double>(2));
+        snprintf(
+          label, sizeof(label), "id=%d  %.2fm  err=%.2fpx",
+          det->id, dist, reproj_errs[best]);
+        snprintf(
+          pos_label, sizeof(pos_label), "x=%.2f y=%.2f z=%.2f [m]",
+          tv.at<double>(0), tv.at<double>(1), tv.at<double>(2));
         const int cx = static_cast<int>(det->c[0]);
         const int cy = static_cast<int>(det->c[1]);
-        cv::putText(debug_img, label, cv::Point(cx - 60, cy - 38),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
-        cv::putText(debug_img, pos_label, cv::Point(cx - 60, cy - 15),
-                    cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
+        cv::putText(
+          debug_img, label, cv::Point(cx - 60, cy - 38),
+          cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
+        cv::putText(
+          debug_img, pos_label, cv::Point(cx - 60, cy - 15),
+          cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
       }
 
       publishPose(msg->header.stamp, det->id, rvecs[best], tvecs[best]);
@@ -294,7 +307,8 @@ private:
         zarray_get(detections, i, &det);
         ids += std::to_string(det->id) + " ";
       }
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
         "visible tag IDs [%s] do not match target_tag_id=%d or failed reprojection validation",
         ids.c_str(), target_tag_id_);
     }
@@ -303,17 +317,19 @@ private:
 
     if (draw_debug) {
       if (want_debug_raw) {
-        auto dbg_msg = cv_bridge::CvImage(msg->header,
-                                          sensor_msgs::image_encodings::BGR8,
-                                          debug_img).toImageMsg();
+        auto dbg_msg = cv_bridge::CvImage(
+          msg->header,
+          sensor_msgs::image_encodings::BGR8,
+          debug_img).toImageMsg();
         debug_img_pub_->publish(*dbg_msg);
       }
       if (want_debug_compressed) {
         sensor_msgs::msg::CompressedImage comp;
         comp.header = msg->header;
         comp.format = "jpeg";
-        cv::imencode(".jpg", debug_img, comp.data,
-                     {cv::IMWRITE_JPEG_QUALITY, debug_jpeg_quality_});
+        cv::imencode(
+          ".jpg", debug_img, comp.data,
+          {cv::IMWRITE_JPEG_QUALITY, debug_jpeg_quality_});
         debug_img_compressed_pub_->publish(comp);
       }
     }
@@ -362,7 +378,7 @@ private:
     for (int i = 0; i < zarray_size(detections); ++i) {
       apriltag_detection_t * det;
       zarray_get(detections, i, &det);
-      if (target_tag_id_ < 0 || det->id == target_tag_id_) return true;
+      if (target_tag_id_ < 0 || det->id == target_tag_id_) {return true;}
     }
     return false;
   }
@@ -372,11 +388,11 @@ private:
   {
     cv::Rect2f bbox = cv::boundingRect(corners);
     const float side = std::max(bbox.width, bbox.height) * static_cast<float>(roi_scale_);
-    const float cx = bbox.x + bbox.width  / 2.0f;
+    const float cx = bbox.x + bbox.width / 2.0f;
     const float cy = bbox.y + bbox.height / 2.0f;
     cv::Rect roi(static_cast<int>(cx - side / 2.0f),
-                 static_cast<int>(cy - side / 2.0f),
-                 static_cast<int>(side), static_cast<int>(side));
+      static_cast<int>(cy - side / 2.0f),
+      static_cast<int>(side), static_cast<int>(side));
     roi &= cv::Rect(0, 0, img_size.width, img_size.height);
     // HH_260720 - Reject ROIs too small for stable quad detection.
     roi_valid_ = (roi.width >= 32 && roi.height >= 32);
@@ -384,16 +400,17 @@ private:
   }
 
   // HH_260720 - Publish camera-frame tag pose and optional named TF.
-  void publishPose(const rclcpp::Time & stamp, int tag_id,
-                   const cv::Mat & rvec, const cv::Mat & tvec)
+  void publishPose(
+    const rclcpp::Time & stamp, int tag_id,
+    const cv::Mat & rvec, const cv::Mat & tvec)
   {
     cv::Mat R;
     cv::Rodrigues(rvec, R);
 
     tf2::Matrix3x3 tf_R(
-      R.at<double>(0,0), R.at<double>(0,1), R.at<double>(0,2),
-      R.at<double>(1,0), R.at<double>(1,1), R.at<double>(1,2),
-      R.at<double>(2,0), R.at<double>(2,1), R.at<double>(2,2));
+      R.at<double>(0, 0), R.at<double>(0, 1), R.at<double>(0, 2),
+      R.at<double>(1, 0), R.at<double>(1, 1), R.at<double>(1, 2),
+      R.at<double>(2, 0), R.at<double>(2, 1), R.at<double>(2, 2));
     tf2::Quaternion q;
     tf_R.getRotation(q);
     q.normalize();
@@ -449,7 +466,8 @@ private:
   // apriltag
   apriltag_detector_t * td_{nullptr};
   apriltag_family_t * tf_family_{nullptr};
-  void (*family_destroy_fn_)(apriltag_family_t *){nullptr};
+  // HH_260721 - Use assignment initialization that remains stable under ROS uncrustify.
+  void (* family_destroy_fn_)(apriltag_family_t *) = nullptr;
 
   // HH_260720 - Projection matrix for rectified image pixels.
   cv::Mat camera_matrix_;
