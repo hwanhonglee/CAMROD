@@ -10,9 +10,23 @@ does not produce vehicle commands.
 | Component | Responsibility |
 |---|---|
 | `system_checker` | Required node/topic/type/publisher manifest checks |
-| `system_diagnostic` | Module-state summary and missing/stale/error reporting |
+| `system_diagnostic` | Module-state summary and missing-update/error reporting |
 | diagnostics checkers | Sensor, localization, planning, platform and hardware health |
 | diagnostics aggregator | Stable grouped diagnostics output |
+
+<!-- HH_260721 - Document health severity separately from normal runtime operation. -->
+Diagnostic health uses `OK`, `WARN`, and `ERROR`. `WARN` means a recoverable
+degraded condition that can become a failure if it persists. A ROS diagnostic
+`STALE` input or a checker update timeout is normalized to `ERROR`, with the
+stale source retained in the detail message. Normal preparation, standby,
+waiting, driving, maneuvering, and parking remain `OK` and are reported through
+`ModuleState.operating_state` or `AvgServiceState` on `/service/state`.
+<!-- HH_260721 - Give normal wait and charging phases explicit service examples. -->
+Examples include `WAITING_FOR_RETURN_REQUEST`, `WAITING_FOR_CHARGING`,
+`CHARGING`, `DEPARTING_CHARGER`, and `DEPARTING_DROP_ZONE`; these are lifecycle
+states, not `WARN` or `ERROR` conditions.
+Required modules may report `STARTING + OK` during the configured 10-second
+startup grace; no first diagnostic after that grace becomes `FAULT + ERROR`.
 
 ## Control And Parking Manifests
 

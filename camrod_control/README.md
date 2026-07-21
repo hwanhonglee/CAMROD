@@ -21,12 +21,18 @@ a second 180-degree turn. An opposite-side through-exit is not inferred from a
 site center. It requires an explicit opposite lanelet snap pose in the semantic
 map before that mode can be enabled safely.
 
-<!-- HH_260721 - Document the constrained roadside policy selected by semantic map metadata. -->
+<!-- HH_260721 - Document the operator-visible site wait state. -->
+The controller publishes `UNLOAD_WAIT` while settling at the site and then
+`WAITING_FOR_RETURN_REQUEST` while it is stationary and accepting the return
+button. Neither state is a diagnostic warning.
+
+<!-- HH_260721 - Document the constrained roadside exit and on-lane return alignment. -->
 B12 and B13 use `service_mode: roadside_stop` with a shared B11-side service
-pose. Their flow is `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT`; both
-zero-turn phases are skipped, and `CRAB_OUT` reverses the entry crab sign to
-retrace the same lateral segment without changing heading. Campsites without
-that field continue to use the normal turnaround flow above.
+pose. Their flow is `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT ->
+ALIGN_RETURN_ROUTE_YAW`. The controller first retraces the lateral entry
+segment without rotating near the B12/B13 obstacles, then turns 180 degrees at
+the lanelet snap pose so planning can select the reversed shortest route.
+Campsites without that field continue to use the normal turnaround flow above.
 
 <!-- HH_260721 - Document the post-maneuver planning synchronization guard. -->
 After `CRAB_OUT`, planning waits until `/planning/lanelet_pose` has converged
@@ -49,6 +55,13 @@ parking method only after yaw convergence.
 After parking, a new campsite call starts `EXIT_STRAIGHT`, then
 `ALIGN_EXIT_YAW` toward the current lanelet pose. The route goal must remain
 pending until `/control/drop_zone/exit_complete` reports success.
+
+<!-- HH_260721 - Document final parking and charger departure service states. -->
+Final parking publishes `DROP_ZONE_PARKING`, followed by
+`WAITING_FOR_CHARGING` while stopped for charger contact and `CHARGING` after
+CAN feedback confirms charging. A new campsite call publishes
+`DEPARTING_CHARGER` when that feedback was active, or `DEPARTING_DROP_ZONE`
+when the robot was parked without an active charger.
 
 <!-- HH_260720 - Keep launch topology separate from safety policy tuning. -->
 
