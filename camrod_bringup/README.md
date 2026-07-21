@@ -53,6 +53,12 @@ Package-owned defaults remain canonical under `camrod_control/config/`. The
 four files under `camrod_bringup/config/control/` are byte-identical deployment
 mirrors; bringup additionally supplies resolved map/config paths.
 
+<!-- HH_260721 - Record the active profile's semantic mirror contract. -->
+For `copy_park_moved`, the generic and explicit profile drop-zone/campsite YAML
+files are byte-identical across package and bringup trees. B12/B13 carry the
+shared `roadside_stop` service pose; all other campsite entries retain the
+normal turnaround default.
+
 ## Simulation Validation
 
 The validation runner checks sensor rates, directional gate stops, Nav2
@@ -81,15 +87,17 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p run_gate_matrix:=false \
   -p skip_manual_goal:=true \
   -p run_camping:=true \
+  -p camping_mission_key:=camping_site_12 \
   -p camping_wait_drop_zone:=true \
   -p camping_timeout_s:=600.0 \
   -p simulate_platform_status:=true \
   -p run_charging_recall:=true \
-  -p charging_recall_mission_key:=camping_site_1 \
-  -p report_file:=/tmp/camrod_v204_charging_correct_flags_1158.json
+  -p charging_recall_mission_key:=camping_site_12 \
+  -p report_file:=/tmp/camrod_v205_b12_charging_recall.json
 ```
 
-The full camping check requires campsite crab/zero-turn/exit, return navigation,
+<!-- HH_260721 - Validate either normal turnaround or constrained roadside phase contracts. -->
+The full camping check requires the service-mode-specific campsite phases, return navigation,
 drop-zone yaw alignment, `REVERSE_APPROACH`, `WAIT_FOR_CHARGING`, `PARKED`, and
 the charging recall transition through `DEPARTING_CHARGER` to a new site route.
 
@@ -109,5 +117,5 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p run_obstacle_replan:=true \
   -p run_camping:=false \
   -p simulate_platform_status:=true \
-  -p report_file:=/tmp/camrod_v204_obstacle_postrefactor_1204.json
+  -p report_file:=/tmp/camrod_v205_obstacle_gate.json
 ```

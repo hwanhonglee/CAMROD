@@ -39,6 +39,13 @@ At a campsite lanelet snap pose, planning yields local motion to
 `/control/camping_site_maneuver_controller`. After crab exit completes, the maneuver requests the
 return route and planning resumes Nav2 ownership.
 
+<!-- HH_260721 - Route semantic campsite keys through optional operational service poses. -->
+`camping_sites.yaml` keeps each physical area centroid and polygon, but planning
+uses `service_x/service_y/service_yaw_deg` when present. This routes B12 and B13
+to their shared roadside stop while preserving `camping_site_12` and
+`camping_site_13` as distinct mission keys. Entries without `service_*` fields
+continue to use `x/y/yaw_deg`.
+
 <!-- HH_260721 - Explain why return requests may remain pending briefly. -->
 The return request remains pending until the lanelet snap pose is fresh and is
 within the configured distance of `/localization/pose`. This keeps the Nav2

@@ -127,7 +127,7 @@ Thread safety between the two contexts is managed by a `threading.Lock` on `ApiS
 
 ### Destination Dispatch Sequence
 
-**HH_260617 terminology:** `mission_key` is the semantic site id (`camping_site_3`), `site_goal` is the raw site-center pose on `/goal_pose`, and `route_goal` is the lanelet-snapped Nav2 pose produced by camrod_planning. Public topic names stay unchanged for compatibility.
+**HH_260617 terminology:** `mission_key` is the semantic site id (`camping_site_3`), `site_goal` is the operational site target on `/goal_pose`, and `route_goal` is the lanelet-snapped Nav2 pose produced by camrod_planning. Public topic names stay unchanged for compatibility.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#FFF7ED', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#F97316', 'lineColor': '#475569'}}}%%
@@ -331,9 +331,20 @@ camping_sites:
     yaw_deg: 90.0
   - type: camping_site_2
     ...
+  # HH_260721 - Optional operational pose for a physically inaccessible semantic area.
+  - type: camping_site_12
+    x: 8.57397
+    y: 21.3498
+    service_mode: roadside_stop
+    service_x: 12.7921
+    service_y: 22.52
+    service_yaw_deg: -74.495
 ```
 
 Site names `B1`–`B13` map to `camping_site_1`–`camping_site_13` by the `B<N>` convention. Custom mappings can be provided via the `site_to_mission_key_map` node parameter.
+<!-- HH_260721 - Keep area occupancy geometry separate from the dispatched operational pose. -->
+When `service_*` is present, the backend publishes that pose while retaining
+the original `corners` for physical-area arrival/adoption checks.
 
 ---
 
@@ -418,7 +429,7 @@ After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the 
 
 > HH_260617: UI destination dispatch follows the mission/site/route naming contract.
 
-A camping-site button publishes semantic intent and raw site-center pose only once per button action. Planning owns snapping to lanelet route goals. Parking starts later from `PlanningState`, not directly from the UI button, so UI dispatch does not bypass Nav2 or the safety gates.
+A camping-site button publishes semantic intent and its configured operational pose only once per button action. Planning owns snapping to lanelet route goals. Parking starts later from `PlanningState`, not directly from the UI button, so UI dispatch does not bypass Nav2 or the safety gates.
 
 HH_260701 - If the robot was manually driven into a campsite first, selecting
 the same site in the UI now adopts the parked state instead of sending another
@@ -435,7 +446,7 @@ When `/platform/status.is_charging=true` or the latest service state is
 backend publishes the mission key to open charging departure, sends
 `MotionOperation.EXIT` to `/control/drop_zone_maneuver_controller/operation`,
 and waits for `/control/drop_zone/exit_complete=true`. Only then does it publish
-the selected site center on `/goal_pose`. A failed or cancelled exit clears the
+the selected operational site pose on `/goal_pose`. A failed or cancelled exit clears the
 pending destination and disables motion.
 
 | UI concept | ROS contract |

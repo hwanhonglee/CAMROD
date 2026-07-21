@@ -21,6 +21,28 @@ Target remotes: `hwanhonglee/CAMROD`, `tele-genius/CAMROD`
   yaw alignment have completed.
 - Corrected event-driven cost-grid and dynamically discovered parking
   diagnostics so healthy simulation reaches an overall `OK` state.
+- Regenerated all active `copy_park_moved` drop-zone and campsite coordinates
+  with the runtime LocalCartesian projection instead of retaining stale YAML.
+- Added map-authored roadside service behavior for inaccessible B12/B13 while
+  preserving their semantic mission keys and physical area polygons.
+- Removed the duplicate standalone `ground_segmentation` source package. The
+  ROS 2 wrapper remains the single owner of its integrated header-only core.
+
+## Active Map And Roadside Sites
+
+<!-- HH_260721 - Record the final active-map coordinate export and B12/B13 operating policy. -->
+
+- `area_exporter` now carries optional `service_mode`, `service_x/y/z`, and
+  `service_yaw_deg` OSM tags into campsite YAML.
+- The active drop-zone is `(-13.5777, 40.7413)` with yaw `-82.2127 deg`.
+- B12's reprojected area centroid is `(8.57397, 21.3498)` and B13's is
+  `(1.02362, 28.2433)`.
+- Both constrained sites use the B11-side roadside service pose
+  `(12.7921, 22.52, -74.495 deg)`.
+- UI, planning, control, and the validator all prefer that operational pose,
+  while physical `corners` remain available for area occupancy/adoption logic.
+- Their phase contract is `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT`.
+  `ROTATE_180` and `ALIGN_RETRACE_YAW` are forbidden for `roadside_stop`.
 
 ## Campsite Retrace And Return
 
@@ -71,12 +93,24 @@ away.
 
 <!-- HH_260721 - Separate automated evidence from hardware-only validation. -->
 
-- Full reverse-parking simulation validation: `OVERALL=PASS`.
-- Maintained-package test selection: 171 tests, 0 errors, 0 failures, 8 skipped.
+- Normal campsite turnaround simulation: `OVERALL=PASS`, with both
+  `ROTATE_180` and `ALIGN_RETRACE_YAW` observed.
+- B12 roadside simulation: `OVERALL=PASS`, with both rotation phases absent
+  and `CRAB_OUT/DONE` observed.
+- Full B12 to drop-zone reverse-parking and charging-recall simulation:
+  `OVERALL=PASS`; charging, departure override, command release, disconnect,
+  new route, and B12 re-arrival were all observed.
+- Directional gate and obstacle-replan simulation: `OVERALL=PASS`; all 12
+  LiDAR/radar/combined direction cases produced zero final command.
+- Maintained-package test selection: 171 tests, 0 errors, 0 failures, 16 skipped.
 - Follow-up planning tests: 42 tests, 0 errors, 0 failures, 8 skipped.
 - Follow-up bringup tests: 21 tests, 0 errors, 0 failures, 0 skipped.
-- `./colcon_build.sh`: UI production bundle and 63 ROS packages built;
+- `./colcon_build.sh`: UI production bundle and 62 ROS packages built;
   `camrod_voice` remained skipped because SDL2_mixer is unavailable.
+- The dependency-layout audit confirmed that runtime launches reference only
+  `ground_segmentation_ros2`; the build wrapper now rejects both copies existing.
+- The retained ground-segmentation package passed all four registered checks,
+  then started with the expected PointCloud2 subscriber and obstacle publisher.
 - Python byte-compilation, YAML parsing, configuration-mirror comparison, and
   `git diff --check` passed.
 
@@ -91,3 +125,6 @@ away.
 - The frontend has no unit-test script. Its production bundle compiled, and the
   parked/charging departure state sequence was exercised through the ROS UI
   backend in simulation.
+- The B12/B13 roadside pose is derived from map geometry near B11. Rock,
+  terrain, vehicle footprint, and passenger-clearance margins must be measured
+  on the real site before unattended use.
