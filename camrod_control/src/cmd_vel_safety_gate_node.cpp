@@ -400,9 +400,10 @@ private:
     motion_cost_stop_config_.campsite_static_bypass_phases = parseLabelSet(
       declare_parameter<std::string>(
         "camping_site_maneuver_controller_static_bypass_phases",
-        "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT"),
+        // HH_260721 - Match the explicit same-lanelet retrace alignment phase.
+        "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"),
       {"align_entry_yaw", "reverse_in", "crab_in", "rotate_180",
-        "align_return_yaw", "reverse_out", "crab_out"});
+        "align_retrace_yaw", "reverse_out", "crab_out"});
     motion_cost_stop_.setConfig(motion_cost_stop_config_);
   }
 

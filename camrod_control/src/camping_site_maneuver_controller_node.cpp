@@ -51,7 +51,7 @@ enum class CampingSiteManeuverPhase
   kRotate180,
   kUnloadWait,
   kWaitReturn,
-  kAlignReturnYaw,
+  kAlignRetraceYaw,
   kReverseOut,
   kCrabOut,
   kDone,
@@ -75,8 +75,8 @@ std::string phaseName(const CampingSiteManeuverPhase phase)
       return "UNLOAD_WAIT";
     case CampingSiteManeuverPhase::kWaitReturn:
       return "WAIT_RETURN";
-    case CampingSiteManeuverPhase::kAlignReturnYaw:
-      return "ALIGN_RETURN_YAW";
+    case CampingSiteManeuverPhase::kAlignRetraceYaw:
+      return "ALIGN_RETRACE_YAW";
     case CampingSiteManeuverPhase::kReverseOut:
       return "REVERSE_OUT";
     case CampingSiteManeuverPhase::kCrabOut:
@@ -229,8 +229,9 @@ public:
       declare_parameter<bool>("reset_wait_return_on_site_goal", true);
     request_return_to_drop_zone_on_done_ = declare_parameter<bool>(
       "request_return_to_drop_zone_on_done", true);
-    align_return_yaw_before_crab_out_ = declare_parameter<bool>(
-      "align_return_yaw_before_crab_out", true);
+    // HH_260721 - Retracing the entry lanelet keeps the 180-degree yaw reached inside the site.
+    align_retrace_yaw_before_crab_out_ = declare_parameter<bool>(
+      "align_retrace_yaw_before_crab_out", true);
     return_request_retry_period_s_ =
       declare_parameter<double>("return_request_retry_period_s", 1.0);
     return_to_drop_zone_topic_ = declare_parameter<std::string>(
@@ -351,7 +352,7 @@ private:
            phase_ == CampingSiteManeuverPhase::kRotate180 ||
            phase_ == CampingSiteManeuverPhase::kUnloadWait ||
            phase_ == CampingSiteManeuverPhase::kWaitReturn ||
-           phase_ == CampingSiteManeuverPhase::kAlignReturnYaw ||
+           phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
            phase_ == CampingSiteManeuverPhase::kReverseOut ||
            phase_ == CampingSiteManeuverPhase::kCrabOut;
   }
@@ -578,7 +579,8 @@ private:
     rotate_direction_sign_ = 0.0;
     rotate_direction_label_ = "adopted";
     crab_direction_ = direction;
-    return_crab_direction_ = align_return_yaw_before_crab_out_ ? -direction : direction;
+    // HH_260721 - After a 180-degree turn the same body-frame crab sign moves back to entry.
+    return_crab_direction_ = direction;
     crab_offset_m_ = offset;
     crab_source_ = source_name;
     goal_pair_forward_m_ = relative.first;
@@ -929,10 +931,13 @@ private:
   {
     if (site_entry_mode_ == "reverse") {
       setPhase(CampingSiteManeuverPhase::kReverseOut, reason);
-    } else if (align_return_yaw_before_crab_out_) {
-      target_yaw_ = start_yaw_;
-      return_crab_direction_ = -crab_direction_;
-      setPhase(CampingSiteManeuverPhase::kAlignReturnYaw, reason + "; restore_lanelet_yaw");
+    } else if (align_retrace_yaw_before_crab_out_) {
+      // HH_260721 - Verify retrace yaw without undoing the site's required 180-degree turn.
+      target_yaw_ = camrod_control::normalizeAngle(start_yaw_ + M_PI);
+      return_crab_direction_ = crab_direction_;
+      setPhase(
+        CampingSiteManeuverPhase::kAlignRetraceYaw,
+        reason + "; preserve_retrace_yaw");
     } else {
       return_crab_direction_ = crab_direction_;
       setPhase(CampingSiteManeuverPhase::kCrabOut, reason);
@@ -1102,7 +1107,7 @@ private:
       phase_ == CampingSiteManeuverPhase::kWaitReturn)
     {
       message.state = avg_msgs::msg::AvgAmrServiceState::UNLOAD_WAIT;
-    } else if (phase_ == CampingSiteManeuverPhase::kAlignReturnYaw ||
+    } else if (phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
       phase_ == CampingSiteManeuverPhase::kReverseOut ||
       phase_ == CampingSiteManeuverPhase::kCrabOut ||
       phase_ == CampingSiteManeuverPhase::kDone)
@@ -1331,9 +1336,9 @@ private:
       }
     } else if (phase_ == CampingSiteManeuverPhase::kWaitReturn) {
       publishZero();
-    } else if (phase_ == CampingSiteManeuverPhase::kAlignReturnYaw) {
+    } else if (phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw) {
       if (publishRotate()) {
-        setPhase(CampingSiteManeuverPhase::kCrabOut, "return yaw restored");
+        setPhase(CampingSiteManeuverPhase::kCrabOut, "entry-lanelet retrace yaw confirmed");
       }
     } else if (phase_ == CampingSiteManeuverPhase::kReverseOut) {
       if (reverseOutReached()) {
@@ -1455,7 +1460,7 @@ private:
   bool auto_return_after_unload_wait_{false};
   bool reset_wait_return_on_site_goal_{true};
   bool request_return_to_drop_zone_on_done_{true};
-  bool align_return_yaw_before_crab_out_{true};
+  bool align_retrace_yaw_before_crab_out_{true};
   double return_request_retry_period_s_{1.0};
   std::string return_to_drop_zone_topic_;
   bool cancel_nav2_on_site_phase_{true};
