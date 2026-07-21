@@ -20,7 +20,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include "action_msgs/srv/cancel_goal.hpp"
-#include "avg_msgs/msg/avg_amr_service_state.hpp"
+#include "avg_msgs/msg/avg_service_state.hpp"
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
 #include "avg_msgs/msg/module_state.hpp"
@@ -52,6 +52,8 @@ enum class CampingSiteManeuverPhase
   kUnloadWait,
   kWaitReturn,
   kAlignRetraceYaw,
+  // HH_260721 - Rotate at the lanelet snap pose after leaving a constrained roadside stop.
+  kAlignReturnRouteYaw,
   kReverseOut,
   kCrabOut,
   kDone,
@@ -95,6 +97,8 @@ std::string phaseName(const CampingSiteManeuverPhase phase)
       return "WAIT_RETURN";
     case CampingSiteManeuverPhase::kAlignRetraceYaw:
       return "ALIGN_RETRACE_YAW";
+    case CampingSiteManeuverPhase::kAlignReturnRouteYaw:
+      return "ALIGN_RETURN_ROUTE_YAW";
     case CampingSiteManeuverPhase::kReverseOut:
       return "REVERSE_OUT";
     case CampingSiteManeuverPhase::kCrabOut:
@@ -147,8 +151,8 @@ public:
     status_topic_ = declare_parameter<std::string>(
       "status_topic", "/control/camping_site_maneuver_controller/status");
     diagnostics_topic_ = declare_parameter<std::string>("diagnostics_topic", "/system/diagnostics");
-    amr_service_state_topic_ = declare_parameter<std::string>(
-      "amr_service_state_topic", "/AMR_service_state");
+    service_state_topic_ = declare_parameter<std::string>(
+      "service_state_topic", "/service/state");
     reverse_path_topic_ = declare_parameter<std::string>(
       "reverse_path_topic", "/control/camping_site_maneuver_controller/path_ros");
 
@@ -277,8 +281,8 @@ public:
       diagnostics_topic_, 10);
     return_request_publisher_ = create_publisher<avg_msgs::msg::PlanningRecallRequest>(
       return_to_drop_zone_topic_, 10);
-    service_state_publisher_ = create_publisher<avg_msgs::msg::AvgAmrServiceState>(
-      amr_service_state_topic_, 10);
+    service_state_publisher_ = create_publisher<avg_msgs::msg::AvgServiceState>(
+      service_state_topic_, 10);
     reverse_path_publisher_ = create_publisher<nav_msgs::msg::Path>(reverse_path_topic_, 10);
     for (const std::string & topic : nav2_cancel_action_topics_) {
       nav2_cancel_clients_.push_back(create_client<action_msgs::srv::CancelGoal>(topic));
@@ -371,6 +375,7 @@ private:
            phase_ == CampingSiteManeuverPhase::kUnloadWait ||
            phase_ == CampingSiteManeuverPhase::kWaitReturn ||
            phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
+           phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw ||
            phase_ == CampingSiteManeuverPhase::kReverseOut ||
            phase_ == CampingSiteManeuverPhase::kCrabOut;
   }
@@ -981,12 +986,12 @@ private:
   void beginReturnExit(const std::string & reason)
   {
     if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
-      // HH_260721 - Exit a roadside stop along the entry trace without rotating in constrained terrain.
+      // HH_260721 - Leave constrained terrain first; the 180-degree return alignment runs on-lane.
       target_yaw_ = start_yaw_;
       return_crab_direction_ = -crab_direction_;
       setPhase(
         CampingSiteManeuverPhase::kCrabOut,
-        reason + "; roadside return without zero-turn");
+        reason + "; roadside exit before on-lane return alignment");
     } else if (site_entry_mode_ == "reverse") {
       setPhase(CampingSiteManeuverPhase::kReverseOut, reason);
     } else if (align_retrace_yaw_before_crab_out_) {
@@ -1154,23 +1159,29 @@ private:
 
   void publishServiceState(const std::string & detail) const
   {
-    avg_msgs::msg::AvgAmrServiceState message;
+    avg_msgs::msg::AvgServiceState message;
     if (phase_ == CampingSiteManeuverPhase::kAlignEntryYaw ||
       phase_ == CampingSiteManeuverPhase::kReverseIn ||
       phase_ == CampingSiteManeuverPhase::kCrabIn ||
       phase_ == CampingSiteManeuverPhase::kRotate180)
     {
-      message.state = avg_msgs::msg::AvgAmrServiceState::SITE_ENTRY;
-    } else if (phase_ == CampingSiteManeuverPhase::kUnloadWait ||
-      phase_ == CampingSiteManeuverPhase::kWaitReturn)
-    {
-      message.state = avg_msgs::msg::AvgAmrServiceState::UNLOAD_WAIT;
+      message.state = avg_msgs::msg::AvgServiceState::SITE_ENTRY;
+      message.state_name = "SITE_ENTRY";
+    } else if (phase_ == CampingSiteManeuverPhase::kUnloadWait) {
+      message.state = avg_msgs::msg::AvgServiceState::UNLOAD_WAIT;
+      message.state_name = "UNLOAD_WAIT";
+    } else if (phase_ == CampingSiteManeuverPhase::kWaitReturn) {
+      // HH_260721 - Distinguish unloading dwell from the operator return-request wait.
+      message.state = avg_msgs::msg::AvgServiceState::WAITING_FOR_RETURN_REQUEST;
+      message.state_name = "WAITING_FOR_RETURN_REQUEST";
     } else if (phase_ == CampingSiteManeuverPhase::kAlignRetraceYaw ||
+      phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw ||
       phase_ == CampingSiteManeuverPhase::kReverseOut ||
       phase_ == CampingSiteManeuverPhase::kCrabOut ||
       phase_ == CampingSiteManeuverPhase::kDone)
     {
-      message.state = avg_msgs::msg::AvgAmrServiceState::RETURN_WITH_CARGO;
+      message.state = avg_msgs::msg::AvgServiceState::RETURN_WITH_CARGO;
+      message.state_name = "RETURN_WITH_CARGO";
     } else {
       return;
     }
@@ -1406,6 +1417,14 @@ private:
       if (publishRotate()) {
         setPhase(CampingSiteManeuverPhase::kCrabOut, "entry-lanelet retrace yaw confirmed");
       }
+    } else if (phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw) {
+      if (publishRotate()) {
+        // HH_260721 - Publish the drop-zone request only after yaw selects the reversed lanelet path.
+        setPhase(
+          CampingSiteManeuverPhase::kDone,
+          "aligned with reversed route at lanelet snap pose");
+        publishReturnRequest("done_after_return_route_alignment");
+      }
     } else if (phase_ == CampingSiteManeuverPhase::kReverseOut) {
       if (reverseOutReached()) {
         publishZero();
@@ -1420,8 +1439,16 @@ private:
     } else if (phase_ == CampingSiteManeuverPhase::kCrabOut) {
       if (returnReached()) {
         publishZero();
-        setPhase(CampingSiteManeuverPhase::kDone, "returned to lanelet snap pose");
-        publishReturnRequest("done");
+        if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
+          // HH_260721 - Roadside stops rotate on the lane, not beside B12/B13 obstacles.
+          target_yaw_ = camrod_control::normalizeAngle(start_yaw_ + M_PI);
+          setPhase(
+            CampingSiteManeuverPhase::kAlignReturnRouteYaw,
+            "roadside exit reached lanelet snap pose; align with reversed route");
+        } else {
+          setPhase(CampingSiteManeuverPhase::kDone, "returned to lanelet snap pose");
+          publishReturnRequest("done");
+        }
       } else if (elapsed > crab_duration_s_ + crab_timeout_margin_s_) {
         setError("crab return timeout before reaching lanelet snap pose");
       } else {
@@ -1441,21 +1468,17 @@ private:
     {
       return;
     }
-    uint8_t module_level = avg_msgs::msg::ModuleState::WARN;
-    if (phase_ == CampingSiteManeuverPhase::kError) {
-      module_level = avg_msgs::msg::ModuleState::ERROR;
-    } else if (phase_ == CampingSiteManeuverPhase::kIdle ||
-      phase_ == CampingSiteManeuverPhase::kDone)
-    {
-      module_level = avg_msgs::msg::ModuleState::OK;
-    }
+    // HH_260721 - Entry, unload wait, return wait, and exit are normal operating states.
+    const uint8_t module_level = phase_ == CampingSiteManeuverPhase::kError ?
+      avg_msgs::msg::ModuleState::ERROR : avg_msgs::msg::ModuleState::OK;
     const std::string message =
       "phase=" + phaseName(phase_) +
       " service_mode=" + serviceModeName(active_service_mode_) +
       " return_published=" + (return_published_ ? "True" : "False") +
       " return_ack=" + (return_acknowledged_ ? "True" : "False");
     status_publisher_->publish(
-      camrod_control::makeModuleState(*this, "control", module_level, message));
+      camrod_control::makeModuleState(
+        *this, "control", module_level, message, phaseName(phase_)));
     const uint8_t diagnostic_level = module_level == avg_msgs::msg::ModuleState::ERROR ?
       diagnostic_msgs::msg::DiagnosticStatus::ERROR :
       module_level == avg_msgs::msg::ModuleState::WARN ?
@@ -1484,7 +1507,7 @@ private:
   std::string adopt_destination_topic_;
   std::string status_topic_;
   std::string diagnostics_topic_;
-  std::string amr_service_state_topic_;
+  std::string service_state_topic_;
   std::string reverse_path_topic_;
   bool enable_auto_start_from_planning_state_{true};
   std::string site_mission_key_prefix_{"camping_site_"};
@@ -1592,7 +1615,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::ModuleState>::SharedPtr status_publisher_;
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_publisher_;
   rclcpp::Publisher<avg_msgs::msg::PlanningRecallRequest>::SharedPtr return_request_publisher_;
-  rclcpp::Publisher<avg_msgs::msg::AvgAmrServiceState>::SharedPtr service_state_publisher_;
+  rclcpp::Publisher<avg_msgs::msg::AvgServiceState>::SharedPtr service_state_publisher_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr reverse_path_publisher_;
   std::vector<rclcpp::Client<action_msgs::srv::CancelGoal>::SharedPtr> nav2_cancel_clients_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr pose_subscription_;

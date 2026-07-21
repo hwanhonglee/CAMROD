@@ -34,6 +34,9 @@ public:
     diagnostic_topic_ = declare_parameter<std::string>("diagnostic_topic", "/diagnostics");
     publish_period_s_ = declare_parameter<double>("publish_period_s", 0.5);
     stale_timeout_s_ = declare_parameter<double>("stale_timeout_s", 2.0);
+    // HH_260721 - Allow normal startup before treating a missing required module as an error.
+    startup_grace_s_ = declare_parameter<double>("startup_grace_s", 10.0);
+    startup_time_sec_ = now().seconds();
     source_diagnostic_topic_ =
       declare_parameter<std::string>("source_diagnostic_topic", "/diagnostics");
     system_status_topic_ = declare_parameter<std::string>("system_status_topic", "status");
@@ -233,7 +236,7 @@ private:
     std::vector<std::string> warn_modules;
     std::vector<std::string> error_modules;
     for (const auto & module : module_states) {
-      if (module.level >= avg_msgs::msg::ModuleState::ERROR) {
+      if (module.level == avg_msgs::msg::ModuleState::ERROR) {
         error_modules.push_back(module.module_name);
       } else if (module.level == avg_msgs::msg::ModuleState::WARN) {
         warn_modules.push_back(module.module_name);
@@ -278,8 +281,13 @@ private:
       avg_msgs::msg::ModuleState module;
       module.stamp = stamp;
       module.module_name = name;
-      module.level = avg_msgs::msg::ModuleState::WARN;
-      module.message = "no status yet";
+      // HH_260721 - Startup is healthy preparation; missing diagnostics after grace are errors.
+      const bool within_startup_grace = now_sec - startup_time_sec_ <= startup_grace_s_;
+      module.level = within_startup_grace ?
+        avg_msgs::msg::ModuleState::OK : avg_msgs::msg::ModuleState::ERROR;
+      module.operating_state = within_startup_grace ? "STARTING" : "FAULT";
+      module.message = within_startup_grace ?
+        "waiting for first diagnostic" : "required diagnostics not received";
       modules[name] = module;
     }
 
@@ -322,10 +330,19 @@ private:
     module.stamp = stamp;
     module.module_name = category;
     module.level = map_diagnostic_level(snap.level);
+    // HH_260721 - Carry a structured operating phase when the source provides one.
+    module.operating_state = value_for(snap.values, "operating_state");
+    if (module.operating_state.empty()) {
+      module.operating_state = value_for(snap.values, "phase");
+    }
+    if (module.operating_state.empty()) {
+      module.operating_state = value_for(snap.values, "state");
+    }
     module.message = status_key + ": " + snap.message;
     if (snap.stamp_sec <= 0.0 || now_sec - snap.stamp_sec > stale_timeout_s_) {
-      module.level = std::max<uint8_t>(module.level, avg_msgs::msg::ModuleState::WARN);
-      module.message = status_key + ": stale";
+      // HH_260721 - A required diagnostic stream that stops updating is an operator error.
+      module.level = avg_msgs::msg::ModuleState::ERROR;
+      module.message = status_key + ": diagnostic update stale";
     }
     module.missing_nodes = split_csv(value_for(snap.values, "missing_nodes"));
     module.missing_topics = split_csv(value_for(snap.values, "missing_topics"));
@@ -340,6 +357,7 @@ private:
 
   static uint8_t map_diagnostic_level(int level)
   {
+    // HH_260721 - Normalize ROS STALE to ERROR in the three-level operator health contract.
     if (level >= diagnostic_msgs::msg::DiagnosticStatus::ERROR) {
       return avg_msgs::msg::ModuleState::ERROR;
     }
@@ -353,8 +371,12 @@ private:
     avg_msgs::msg::ModuleState & aggregate,
     const avg_msgs::msg::ModuleState & candidate)
   {
-    if (aggregate.message == "no status yet" || candidate.level >= aggregate.level) {
+    if (aggregate.message == "waiting for first diagnostic" ||
+      aggregate.message == "required diagnostics not received" ||
+      candidate.level >= aggregate.level)
+    {
       aggregate.level = candidate.level;
+      aggregate.operating_state = candidate.operating_state;
       aggregate.message = candidate.message;
     }
     append_unique(aggregate.missing_nodes, candidate.missing_nodes);
@@ -396,8 +418,11 @@ private:
     avg_msg.state.module_name = "system";
     avg_msg.state.level = system_status.system_ok ?
       avg_msgs::msg::ModuleState::OK : avg_msgs::msg::ModuleState::WARN;
+    // HH_260721 - READY/DEGRADED is operational state; level remains health severity.
+    avg_msg.state.operating_state = system_status.system_ok ? "READY" : "DEGRADED";
     if (!error_modules.empty()) {
       avg_msg.state.level = avg_msgs::msg::ModuleState::ERROR;
+      avg_msg.state.operating_state = "FAULT";
     }
     avg_msg.state.message = system_status.message;
     avg_msg.system_status = system_status;
@@ -451,8 +476,8 @@ private:
     if (has_error) {
       std::string summary = "[SYSTEM] ERROR";
       summary += "\n  ERROR:\n";
-      summary += describe_modules(modules, avg_msgs::msg::ModuleState::ERROR, true);
-      const auto warn = describe_modules(modules, avg_msgs::msg::ModuleState::WARN, false);
+      summary += describe_modules(modules, avg_msgs::msg::ModuleState::ERROR);
+      const auto warn = describe_modules(modules, avg_msgs::msg::ModuleState::WARN);
       if (!warn.empty()) {
         summary += "\n  WARN:\n" + warn;
       }
@@ -460,20 +485,18 @@ private:
     }
     if (has_warn) {
       return "[SYSTEM] WARN\n  WARN:\n" +
-        describe_modules(modules, avg_msgs::msg::ModuleState::WARN, false);
+        describe_modules(modules, avg_msgs::msg::ModuleState::WARN);
     }
     return "[SYSTEM] OK\n  all modules healthy";
   }
 
   static std::string describe_modules(
     const std::vector<avg_msgs::msg::ModuleState> & modules,
-    uint8_t level,
-    bool include_higher)
+    uint8_t level)
   {
     std::string out;
     for (const auto & module : modules) {
-      const bool match = include_higher ? module.level >= level : module.level == level;
-      if (!match) {
+      if (module.level != level) {
         continue;
       }
       out += "    - " + format_module_line(module) + "\n";
@@ -588,6 +611,8 @@ private:
   std::string avg_system_msgs_topic_;
   double publish_period_s_{0.5};
   double stale_timeout_s_{2.0};
+  double startup_grace_s_{10.0};
+  double startup_time_sec_{0.0};
   bool log_status_summary_{true};
   double log_status_summary_period_s_{5.0};
   std::string last_console_summary_;

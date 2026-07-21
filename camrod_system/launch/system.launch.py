@@ -272,6 +272,8 @@ def generate_launch_description():
                         'avg_system_msgs_topic': 'msgs',
                         'publish_period_s': 0.5,
                         'stale_timeout_s': 2.0,
+                        # HH_260721 - Keep startup normal, then fail missing required diagnostics.
+                        'startup_grace_s': 10.0,
                         'log_status_summary': True,
                         'log_status_summary_period_s': 5.0,
                     }],

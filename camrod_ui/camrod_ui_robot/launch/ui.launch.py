@@ -115,6 +115,12 @@ def generate_launch_description():
         default_value='/control/drop_zone_maneuver_controller/operation',
         description='Typed drop-zone exit operation topic',
     )
+    parking_operation_topic_arg = DeclareLaunchArgument(
+        'parking_operation_topic',
+        # HH_260721 - Cancel final parking before the UI starts charger departure.
+        default_value='/parking/operation',
+        description='Typed final-parking operation topic used during ownership handoff',
+    )
     drop_zone_exit_complete_topic_arg = DeclareLaunchArgument(
         'drop_zone_exit_complete_topic',
         default_value='/control/drop_zone/exit_complete',
@@ -137,6 +143,8 @@ def generate_launch_description():
             'frontend_dir': LaunchConfiguration('frontend_dir'),
             # HH_260617: UI follows the system namespace for aggregated diagnostics.
             'diagnostics_agg_topic': '/system/diagnostics_agg',
+            # HH_260721 - Consume the platform-neutral operational service lifecycle.
+            'service_state_topic': '/service/state',
             'site_names': [f'B{i}' for i in range(1, 14)],
             'ui_destination_topic': '/ui/selected_destination',
             'planning_engage_topic': LaunchConfiguration('planning_engage_topic'),
@@ -146,6 +154,7 @@ def generate_launch_description():
             'camping_site_maneuver_controller_adopt_topic': LaunchConfiguration('camping_site_maneuver_controller_adopt_topic'),
             # HH_260721 - Defer site goals until the control-owned station exit completes.
             'drop_zone_maneuver_controller_operation_topic': LaunchConfiguration('drop_zone_maneuver_controller_operation_topic'),
+            'parking_operation_topic': LaunchConfiguration('parking_operation_topic'),
             'drop_zone_exit_complete_topic': LaunchConfiguration('drop_zone_exit_complete_topic'),
             'arrival_pose_topic': LaunchConfiguration('arrival_pose_topic'),
             'platform_status_topic': LaunchConfiguration('platform_status_topic'),
@@ -185,6 +194,7 @@ def generate_launch_description():
         platform_status_topic_arg,
         camping_site_maneuver_controller_adopt_topic_arg,
         drop_zone_maneuver_controller_operation_topic_arg,
+        parking_operation_topic_arg,
         drop_zone_exit_complete_topic_arg,
         arrival_pose_topic_arg,
         ui_backend,

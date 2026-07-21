@@ -85,7 +85,8 @@ set(msg_files
   "msg/AvgDetection2DArray.msg"
   "msg/AvgMarker.msg"
   "msg/AvgMarkerArray.msg"
-  "msg/AvgAmrServiceState.msg"
+  # HH_260721 - Use the platform-neutral service lifecycle contract.
+  "msg/AvgServiceState.msg"
   # HH_260720 - Parking exposes one controller-ready tag pose without detection aliases.
   "msg/AvgAprilTagPose.msg" 
   "msg/ModuleState.msg"

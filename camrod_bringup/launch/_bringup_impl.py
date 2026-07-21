@@ -1898,6 +1898,8 @@ def generate_launch_description():
         'platform_drive_enable_topic': lc['platform_drive_enable_topic'],
         'camping_site_maneuver_controller_operation_topic': '/control/camping_site_maneuver_controller/operation',
         'camping_site_maneuver_controller_adopt_topic': '/control/camping_site_maneuver_controller/adopt',
+        # HH_260721 - Let the UI release final parking before drop-zone departure.
+        'parking_operation_topic': '/parking/operation',
         'arrival_pose_topic': '/localization/pose',
         'platform_status_topic': '/platform/status',
     }

@@ -96,6 +96,38 @@ body {
   gap: 0.8rem;
 }
 
+/* HH_260721 - Keep health severity and normal service progress visibly distinct. */
+.ch-runtime-status {
+  min-width: 10.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3rem;
+  color: #ffffff;
+}
+
+.ch-runtime-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ch-runtime-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  flex: 0 0 0.65rem;
+  border-radius: 50%;
+  background: #aeb7c2;
+}
+
+.ch-runtime-line.health-ok .ch-runtime-dot { background: #64d17b; }
+.ch-runtime-line.health-warning .ch-runtime-dot { background: #f0bd4f; }
+.ch-runtime-line.health-error .ch-runtime-dot { background: #ff6961; }
+.ch-runtime-line.service-state .ch-runtime-dot { background: #79b8ff; }
+
 .control-back-btn {
   margin-top: 1rem;
   width: calc(100% - 6.4rem);
@@ -1275,6 +1307,35 @@ h1 {
 }
 
 @media (max-width: 600px) {
+  /* HH_260721 - Place runtime state in a dedicated header-bottom row on narrow screens. */
+  .waiting-header,
+  .control-header {
+    position: relative;
+  }
+
+  .wh-right-group .ch-runtime-status,
+  .ch-right .ch-runtime-status {
+    position: absolute;
+    left: 0.8rem;
+    right: 0.8rem;
+    bottom: 0.2rem;
+    min-width: 0;
+    flex-direction: row;
+    justify-content: center;
+    gap: 0.8rem;
+  }
+
+  .ch-runtime-line {
+    gap: 0.25rem;
+    font-size: 0.68rem;
+  }
+
+  .ch-runtime-dot {
+    width: 0.42rem;
+    height: 0.42rem;
+    flex-basis: 0.42rem;
+  }
+
   .toggle-grid {
     grid-template-columns: repeat(2, 1fr);
   }

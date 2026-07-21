@@ -47,7 +47,8 @@ def generate_launch_description():
         parameters=[{
             'host': LaunchConfiguration('guest_host'),
             'port': LaunchConfiguration('guest_port'),
-            'amr_service_state_topic': '/AMR_service_state',
+            # HH_260721 - Use the same platform-neutral service lifecycle as the robot UI.
+            'service_state_topic': '/service/state',
             'battery_topic': '/battery_percentage',
             'grace_period_s': LaunchConfiguration('grace_period_s'),
             'ui_destination_topic': LaunchConfiguration('ui_destination_topic'),

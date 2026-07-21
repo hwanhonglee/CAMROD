@@ -29,7 +29,7 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
-#include <avg_msgs/msg/avg_amr_service_state.hpp>
+#include <avg_msgs/msg/avg_service_state.hpp>
 #include <avg_msgs/msg/module_state.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
@@ -84,8 +84,8 @@ public:
       "status_topic", "/parking/apriltag_parking_controller/status");
     diagnostics_topic_ = declare_parameter<std::string>(
       "diagnostics_topic", "/system/diagnostics");
-    amr_service_state_topic_ = declare_parameter<std::string>(
-      "amr_service_state_topic", "/AMR_service_state");
+    service_state_topic_ = declare_parameter<std::string>(
+      "service_state_topic", "/service/state");
 
     // HH_260720 - Keep the imported Ranger gains explicit until hardware tuning is repeated.
     heading_gain_ = declare_parameter<double>("heading_gain", 1.5);
@@ -146,15 +146,20 @@ public:
     platform_status_sub_ = create_subscription<avg_msgs::msg::AvgPlatformStatus>(
       platform_status_topic_, 10,
       [this](const avg_msgs::msg::AvgPlatformStatus::SharedPtr message) {
+        const bool charging_changed = charging_detected_ != message->is_charging;
         charging_detected_ = message->is_charging;
+        if (charging_changed && state_ == State::PARKED) {
+          // HH_260721 - Refresh the shared parked state when CAN charging changes.
+          publishServiceState();
+        }
       });
 
     cmd_pub_ = create_publisher<avg_msgs::msg::AvgTwist>(cmd_vel_topic_, 10);
     status_pub_ = create_publisher<avg_msgs::msg::ModuleState>(status_topic_, 10);
     diagnostics_pub_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
       diagnostics_topic_, 10);
-    amr_service_state_pub_ = create_publisher<avg_msgs::msg::AvgAmrServiceState>(
-      amr_service_state_topic_, 10);
+    service_state_pub_ = create_publisher<avg_msgs::msg::AvgServiceState>(
+      service_state_topic_, 10);
 
     // HH_260720 - Publish parking geometry and traveled path for RViz inspection.
     odom_frame_id_ = declare_parameter<std::string>("odometry_frame_id", "odom");
@@ -689,7 +694,7 @@ private:
         stateName(state_), stateName(s));
       state_ = s;
       state_enter_time_ = now();
-      publishAmrServiceState();
+      publishServiceState();
       publishStatus(true);
     }
   }
@@ -713,17 +718,24 @@ private:
     return "?";
   }
 
-  void publishAmrServiceState()
+  void publishServiceState()
   {
     if (state_ == State::IDLE || state_ == State::ERROR) {
       return;
     }
-    avg_msgs::msg::AvgAmrServiceState message;
-    message.state = state_ == State::PARKED ?
-      avg_msgs::msg::AvgAmrServiceState::DROP_ZONE_WAIT :
-      avg_msgs::msg::AvgAmrServiceState::DROP_ZONE_PARKING;
+    avg_msgs::msg::AvgServiceState message;
+    if (state_ == State::PARKED) {
+      // HH_260721 - Keep AprilTag and default parking completion semantics identical.
+      message.state = charging_detected_ ?
+        avg_msgs::msg::AvgServiceState::CHARGING :
+        avg_msgs::msg::AvgServiceState::DROP_ZONE_WAIT;
+      message.state_name = charging_detected_ ? "CHARGING" : "DROP_ZONE_WAIT";
+    } else {
+      message.state = avg_msgs::msg::AvgServiceState::DROP_ZONE_PARKING;
+      message.state_name = "DROP_ZONE_PARKING";
+    }
     message.description = std::string("apriltag_parking_controller:") + stateName(state_);
-    amr_service_state_pub_->publish(message);
+    service_state_pub_->publish(message);
   }
 
   void publishStatus(bool force = false)
@@ -744,7 +756,8 @@ private:
     uint8_t level = avg_msgs::msg::ModuleState::OK;
     if (state_ == State::ERROR) {
       level = avg_msgs::msg::ModuleState::ERROR;
-    } else if (state_ != State::IDLE && state_ != State::PARKED) {
+    } else if (state_ == State::RETRY_FORWARD_EXIT) {
+      // HH_260721 - A retry is degraded but recoverable; normal parking progress remains OK.
       level = avg_msgs::msg::ModuleState::WARN;
     }
 
@@ -753,6 +766,8 @@ private:
     // HH_260720 - Identify the selected implementation directly in shared status streams.
     module_state.module_name = "apriltag_parking_controller";
     module_state.level = level;
+    // HH_260721 - Expose parking progress without overloading the health level.
+    module_state.operating_state = stateName(state_);
     module_state.message = buf;
     status_pub_->publish(module_state);
 
@@ -779,7 +794,7 @@ private:
   // HH_260720 - Descriptive parameters and runtime state for maintainability.
   std::string base_frame_id_, cmd_vel_topic_, tag_pose_topic_, odom_topic_;
   std::string platform_status_topic_, operation_topic_, status_topic_;
-  std::string diagnostics_topic_, amr_service_state_topic_;
+  std::string diagnostics_topic_, service_state_topic_;
   bool require_charging_for_completion_{true};
   double heading_gain_, lateral_to_heading_gain_;
   double maximum_angular_speed_radps_, maximum_approach_angle_rad_;
@@ -840,7 +855,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr cmd_pub_;
   rclcpp::Publisher<avg_msgs::msg::ModuleState>::SharedPtr status_pub_;
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_pub_;
-  rclcpp::Publisher<avg_msgs::msg::AvgAmrServiceState>::SharedPtr amr_service_state_pub_;
+  rclcpp::Publisher<avg_msgs::msg::AvgServiceState>::SharedPtr service_state_pub_;
   rclcpp::Service<avg_msgs::srv::RequestMotionOperation>::SharedPtr operation_service_;
   rclcpp::TimerBase::SharedPtr control_timer_;
 };

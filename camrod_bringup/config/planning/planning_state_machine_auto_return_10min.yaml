@@ -26,7 +26,8 @@
     scenario_command_topic: "/planning/state_machine/scenario_command"
     # HH_260720 - Validation profiles mirror maneuver phases into planning state.
     enable_maneuver_phase_state_override: true
-    maneuver_phase_state_topic: "/AMR_service_state"
+    # HH_260721 - Consume operational progress independently from diagnostic health.
+    maneuver_phase_state_topic: "/service/state"
     # HH_260720 - Maneuver phase transitions persist until an explicit mission or route change.
     maneuver_phase_override_timeout_s: 0.0
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"

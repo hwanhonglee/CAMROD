@@ -156,6 +156,26 @@ TEST(CmdVelGatePolicy, BlocksCanFaultStaleStatusChargingAndCriticalSoc)
   EXPECT_TRUE(policy.enabled(21.0, true, true));
 }
 
+TEST(CmdVelGatePolicy, SeparatesNormalStandbyFromWarningAndErrorHolds)
+{
+  // HH_260721 - Health severity must describe faults, not whether motion is currently authorized.
+  EXPECT_EQ(
+    CmdVelGatePolicy::classifyHealth(
+      {"engage=false(manual=false,mission=false)", "platform_drive_enable=false"}),
+    CmdVelGateHealth::kOk);
+  EXPECT_EQ(
+    CmdVelGatePolicy::classifyHealth({"charging"}), CmdVelGateHealth::kOk);
+  EXPECT_EQ(
+    CmdVelGatePolicy::classifyHealth({"cost_stop_latched"}),
+    CmdVelGateHealth::kWarning);
+  EXPECT_EQ(
+    CmdVelGatePolicy::classifyHealth({"platform_status_stale=1.20s"}),
+    CmdVelGateHealth::kError);
+  EXPECT_EQ(
+    CmdVelGatePolicy::classifyHealth({"platform_error=0x0100(motor_driver)"}),
+    CmdVelGateHealth::kError);
+}
+
 TEST(ChargingMissionOverride, AcceptsOnlyFreshCampsiteRequestDuringCharging)
 {
   ChargingMissionOverride policy;

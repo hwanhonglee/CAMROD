@@ -40,6 +40,10 @@ planner_server:
       max_snap_distance_m: 8.0
       interpolation_resolution_m: 0.20
       same_lane_forward_epsilon_m: 0.30
+      # HH_260721 - A campsite return facing against the lane direction uses the reversed outbound shortest path.
+      enable_reverse_lanelet_shortest_path: true
+      # HH_260721 - Normal heading noise must not select reverse routing; the site maneuver turns about 180 degrees.
+      reverse_lanelet_start_heading_threshold_deg: 120.0
       # HH_260707 - Keep LaneletRoute output on the 2D planning plane.
       flatten_path_z: true
       # HH_260708: Build the heavy Lanelet2 map/routing graph in the background.
@@ -429,7 +433,8 @@ bt_navigator:
     # HH_260619 - Use snapped XY but current robot yaw for the planner start.
     # This prevents opposite centerline segment headings from generating a
     # backward/S-shaped path only around the first few meters.
-    start_pose_override_yaw_source: snapped_pose
+    # HH_260721 - Preserve the completed 180-degree return alignment so the planner selects reverse_shortest.
+    start_pose_override_yaw_source: current_pose
     # Tolerate EKF/TF jitter observed during full bringup load.
     transform_tolerance: 0.5
 

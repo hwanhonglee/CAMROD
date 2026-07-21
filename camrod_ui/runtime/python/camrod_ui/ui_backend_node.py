@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # HH_260421: UI backend simplified to direct destination-driven engage/goal dispatch.
 # HH_260520: Migrated HTTP server to FastAPI+uvicorn with WebSocket support.
-#            Added /battery_percentage and /AMR_service_state sub/pub.
+#            Added /battery_percentage and /service/state sub/pub.
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import rclpy
 import yaml
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from avg_msgs.msg import (
-    AvgAmrServiceState,
+    AvgServiceState,
     AvgBool,
     AvgPlatformStatus,
     AvgPoseStamped,
@@ -27,7 +27,8 @@ from avg_msgs.msg import (
     UiDestinationCommand,
 )
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+# HH_260721 - Keep only the FastAPI symbols used by the runtime backend.
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from geometry_msgs.msg import PoseStamped
@@ -36,6 +37,27 @@ from rclpy.node import Node
 import uvicorn
 
 from camrod_ui.api_common import to_diag_level_int
+
+# HH_260721 - Keep symbolic service names stable across ROS, REST, and WebSocket clients.
+SERVICE_STATE_NAMES = {
+    AvgServiceState.DROP_ZONE_WAIT: "DROP_ZONE_WAIT",
+    AvgServiceState.MOVING_TO_SITE: "MOVING_TO_SITE",
+    AvgServiceState.SITE_ARRIVED: "SITE_ARRIVED",
+    AvgServiceState.RETURNING_TO_DROP_ZONE: "RETURNING_TO_DROP_ZONE",
+    AvgServiceState.GUEST_RECALL_SERVICE: "GUEST_RECALL_SERVICE",
+    AvgServiceState.SITE_ENTRY: "SITE_ENTRY",
+    AvgServiceState.UNLOAD_WAIT: "UNLOAD_WAIT",
+    AvgServiceState.RECALL_TO_SITE_ROAD: "RECALL_TO_SITE_ROAD",
+    AvgServiceState.GUEST_LOADING_WAIT: "GUEST_LOADING_WAIT",
+    AvgServiceState.RETURN_WITH_CARGO: "RETURN_WITH_CARGO",
+    AvgServiceState.DROP_ZONE_PARKING: "DROP_ZONE_PARKING",
+    # HH_260721 - Mirror explicit normal wait, charging, and departure states.
+    AvgServiceState.WAITING_FOR_RETURN_REQUEST: "WAITING_FOR_RETURN_REQUEST",
+    AvgServiceState.WAITING_FOR_CHARGING: "WAITING_FOR_CHARGING",
+    AvgServiceState.CHARGING: "CHARGING",
+    AvgServiceState.DEPARTING_CHARGER: "DEPARTING_CHARGER",
+    AvgServiceState.DEPARTING_DROP_ZONE: "DEPARTING_DROP_ZONE",
+}
 
 
 @dataclass
@@ -52,6 +74,10 @@ class ApiState:
     diagnostics: List[Dict[str, Any]] = field(default_factory=list)
     diagnostics_agg_count: int = 0
     diagnostics_agg_error_count: int = 0
+    system_health: str = "STARTING"
+    service_state: int = -1
+    service_state_name: str = "PREPARING"
+    service_state_description: str = "Waiting for service state"
     destination: Dict[str, Any] = field(
         default_factory=lambda: {"site": "", "run": False}
     )
@@ -112,8 +138,8 @@ class UiBackendNode(Node):
         self.platform_status_topic = str(
             self.declare_parameter("platform_status_topic", "/platform/status").value
         )
-        self.amr_service_state_topic = str(
-            self.declare_parameter("amr_service_state_topic", "/AMR_service_state").value
+        self.service_state_topic = str(
+            self.declare_parameter("service_state_topic", "/service/state").value
         )
         self.camping_site_maneuver_controller_operation_topic = str(
             # HH_260720 - UI commands the control-owned campsite maneuver directly.
@@ -131,6 +157,10 @@ class UiBackendNode(Node):
                 "drop_zone_maneuver_controller_operation_topic",
                 "/control/drop_zone_maneuver_controller/operation",
             ).value
+        )
+        # HH_260721 - Release the final parking controller before station departure starts.
+        self.parking_operation_topic = str(
+            self.declare_parameter("parking_operation_topic", "/parking/operation").value
         )
         self.drop_zone_exit_complete_topic = str(
             self.declare_parameter(
@@ -189,7 +219,7 @@ class UiBackendNode(Node):
         self._latest_arrival_pose_time_s = 0.0
         # HH_260721 - Keep only the latest requested site while drop-zone exit owns motion.
         self._latest_platform_is_charging = False
-        self._latest_amr_service_state: Optional[int] = None
+        self._latest_service_state: Optional[int] = None
         self._pending_site_after_drop_zone_exit: Optional[tuple[str, str, str]] = None
         self._drop_zone_exit_active = False
         # HH_260706 - HTTP site selection dispatches immediately; ignore the
@@ -220,10 +250,10 @@ class UiBackendNode(Node):
             self._on_platform_status,
             10,
         )
-        self.sub_amr_service_state = self.create_subscription(
-            AvgAmrServiceState,
-            self.amr_service_state_topic,
-            self._on_amr_service_state,
+        self.sub_service_state = self.create_subscription(
+            AvgServiceState,
+            self.service_state_topic,
+            self._on_service_state,
             10,
         )
         self.sub_arrival_pose = self.create_subscription(
@@ -263,11 +293,14 @@ class UiBackendNode(Node):
         self.pub_drop_zone_maneuver_controller_operation = self.create_publisher(
             MotionOperation, self.drop_zone_maneuver_controller_operation_topic, 10
         )
+        self.pub_parking_operation = self.create_publisher(
+            MotionOperation, self.parking_operation_topic, 10
+        )
         self.pub_mission_key = self.create_publisher(
             PlanningMissionKey, self.planning_mission_key_topic, 10
         )
         self.pub_goal_pose = self.create_publisher(PoseStamped, self.planning_goal_pose_topic, 10)
-        self.pub_amr_service_state = self.create_publisher(AvgAmrServiceState, self.amr_service_state_topic, 10)
+        self.pub_service_state = self.create_publisher(AvgServiceState, self.service_state_topic, 10)
         self._server_thread: Optional[threading.Thread] = None
         if self.enable_http_server:
             self._start_fastapi_server()
@@ -283,6 +316,7 @@ class UiBackendNode(Node):
             f"camping_site_maneuver_controller_operation_topic={self.camping_site_maneuver_controller_operation_topic} "
             f"camping_site_maneuver_controller_adopt_topic={self.camping_site_maneuver_controller_adopt_topic} "
             f"drop_zone_operation_topic={self.drop_zone_maneuver_controller_operation_topic} "
+            f"parking_operation_topic={self.parking_operation_topic} "
             f"drop_zone_exit_complete_topic={self.drop_zone_exit_complete_topic} "
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
@@ -452,7 +486,7 @@ class UiBackendNode(Node):
         *,
         already_at_site: bool = False,
     ) -> None:
-        payload = {"arrived": site, "site": site, "amr_state": int(state)}
+        payload = {"arrived": site, "site": site, "service_state": int(state)}
         if already_at_site:
             payload["already_at_site"] = True
         self._schedule_broadcast(payload)
@@ -488,25 +522,36 @@ class UiBackendNode(Node):
         module_messages: Dict[str, str] = {}
 
         error_count = 0
+        warning_count = 0
         error_level = to_diag_level_int(DiagnosticStatus.ERROR)
+        warning_level = to_diag_level_int(DiagnosticStatus.WARN)
+        stale_level = to_diag_level_int(DiagnosticStatus.STALE)
 
         for status in msg.status:
-            level = to_diag_level_int(status.level)
+            raw_level = to_diag_level_int(status.level)
+            # HH_260721 - A diagnostic stream with no fresh data is an operator-visible error.
+            level = error_level if raw_level == stale_level else raw_level
+            message = (
+                f"diagnostic update stale: {status.message}"
+                if raw_level == stale_level else status.message
+            )
             module = self._extract_module_name(status)
             prev = module_levels.get(module, -1)
             if level >= prev:
                 module_levels[module] = level
-                module_messages[module] = status.message
+                module_messages[module] = message
 
-            if level >= error_level:
+            if level == error_level:
                 error_count += 1
+            elif level == warning_level:
+                warning_count += 1
 
             diagnostics.append(
                 {
                     "name": status.name,
                     "module": module,
                     "level": level,
-                    "message": status.message,
+                    "message": message,
                     "values": [{"key": kv.key, "value": kv.value} for kv in status.values],
                 }
             )
@@ -520,7 +565,7 @@ class UiBackendNode(Node):
             for module in sorted(module_levels.keys())
         ]
 
-        ready = bool(msg.status) and (error_count == 0)
+        ready = bool(msg.status) and error_count == 0
         if not msg.status:
             ready_message = "no diagnostics yet"
         elif error_count > 0:
@@ -528,22 +573,51 @@ class UiBackendNode(Node):
         else:
             ready_message = "ready"
 
+        system_health = (
+            "ERROR" if error_count > 0 else
+            "WARNING" if warning_count > 0 else
+            "OK"
+        )
+
         with self._lock:
+            health_changed = self._state.system_health != system_health
             self._state.diagnostics = diagnostics
             self._state.module_states = module_states
             self._state.diagnostics_agg_count = len(msg.status)
             self._state.diagnostics_agg_error_count = error_count
+            self._state.system_health = system_health
             self._state.ready = ready
             self._state.ready_message = ready_message
             self._state.operation_mode = self._compute_operation_mode(
                 self._state.engaged,
                 self._state.ready,
             )
+        if health_changed:
+            # HH_260721 - Broadcast health transitions without mixing them with service progress.
+            self._schedule_broadcast({"system_health": system_health})
 
     def _on_platform_status(self, msg: AvgPlatformStatus) -> None:
         # HH_260720 - UI battery state comes from the canonical generated platform status.
         # HH_260721 - Charging state also decides whether a campsite goal must wait for departure.
-        self._latest_platform_is_charging = bool(msg.is_charging)
+        charging = bool(msg.is_charging)
+        charging_changed = charging != self._latest_platform_is_charging
+        self._latest_platform_is_charging = charging
+        if charging_changed and charging:
+            # HH_260721 - Display confirmed CAN charging independently from parking completion.
+            self._publish_service_state(
+                AvgServiceState.CHARGING,
+                source="platform_status:charging_started",
+            )
+        elif (
+            charging_changed
+            and not charging
+            and self._latest_service_state == int(AvgServiceState.CHARGING)
+        ):
+            # HH_260721 - Return to uncharged standby only when no departure state replaced charging.
+            self._publish_service_state(
+                AvgServiceState.DROP_ZONE_WAIT,
+                source="platform_status:charging_stopped",
+            )
         if not msg.battery_state_available:
             return
         pct = max(0, min(100, int(round(float(msg.battery_percentage) * 100.0))))
@@ -574,11 +648,18 @@ class UiBackendNode(Node):
             self._schedule_broadcast(
                 {"departure_failed": True, "site": site, "message": "drop-zone exit failed"}
             )
+            # HH_260721 - Do not leave the UI in a departure state after a failed exit.
+            self._publish_service_state(
+                AvgServiceState.CHARGING
+                if self._latest_platform_is_charging
+                else AvgServiceState.DROP_ZONE_WAIT,
+                source="drop_zone_exit_failed",
+            )
             return
         pose_published = self._publish_site_goal_pose(site, mission_key, source)
         if pose_published:
-            self._publish_amr_service_state(
-                AvgAmrServiceState.MOVING_TO_SITE,
+            self._publish_service_state(
+                AvgServiceState.MOVING_TO_SITE,
                 source=f"{source}:drop_zone_exit_complete",
             )
         self.get_logger().info(
@@ -586,78 +667,123 @@ class UiBackendNode(Node):
             f"site={site} mission_key={mission_key}"
         )
 
-    def _on_amr_service_state(self, msg: AvgAmrServiceState) -> None:
+    def _on_service_state(self, msg: AvgServiceState) -> None:
         state = int(msg.state)
         # HH_260721 - DROP_ZONE_WAIT is the semantic parked state used by departure sequencing.
-        self._latest_amr_service_state = state
+        self._latest_service_state = state
+        state_name = str(msg.state_name).strip() or SERVICE_STATE_NAMES.get(
+            state, f"UNKNOWN_{state}"
+        )
+        description = str(msg.description).strip() or state_name
+        with self._lock:
+            self._state.service_state = state
+            self._state.service_state_name = state_name
+            self._state.service_state_description = description
+        # HH_260721 - Every client receives explicit operational state, not a health warning surrogate.
+        self._schedule_broadcast({
+            "service_state": state,
+            "service_state_name": state_name,
+            "service_state_description": description,
+        })
         self.get_logger().info(
-            f"AMR service state received: {state} ({msg.description})"
+            f"Service state received: {state_name}({state}) ({description})"
         )
         arrival_states = {
-            int(AvgAmrServiceState.SITE_ARRIVED),
-            int(AvgAmrServiceState.UNLOAD_WAIT),
-            int(AvgAmrServiceState.GUEST_LOADING_WAIT),
+            int(AvgServiceState.SITE_ARRIVED),
+            int(AvgServiceState.UNLOAD_WAIT),
+            int(AvgServiceState.GUEST_LOADING_WAIT),
+            int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
         }
         returning_states = {
-            int(AvgAmrServiceState.RETURNING_TO_DROP_ZONE),
-            int(AvgAmrServiceState.RETURN_WITH_CARGO),
-            int(AvgAmrServiceState.DROP_ZONE_PARKING),
+            int(AvgServiceState.RETURNING_TO_DROP_ZONE),
+            int(AvgServiceState.RETURN_WITH_CARGO),
+            int(AvgServiceState.DROP_ZONE_PARKING),
+        }
+        stationary_drop_zone_states = {
+            int(AvgServiceState.DROP_ZONE_WAIT),
+            int(AvgServiceState.CHARGING),
+        }
+        departure_states = {
+            int(AvgServiceState.DEPARTING_CHARGER),
+            int(AvgServiceState.DEPARTING_DROP_ZONE),
         }
         if state in arrival_states:
             with self._lock:
                 site = self._state.destination.get("site", "")
             if site:
-                self._notify_site_arrival(site, state, source=f"amr_service_state:{state}")
+                self._notify_site_arrival(site, state, source=f"service_state:{state}")
             if self.publish_mission_engage_from_destination:
-                self._publish_mission_engage(False, source=f"amr_service_state:{state}")
-            self._publish_engage(False, source=f"amr_service_state:{state}")
-        elif state == AvgAmrServiceState.DROP_ZONE_WAIT:
-            self._schedule_broadcast({"amr_state": 0})
+                self._publish_mission_engage(False, source=f"service_state:{state}")
+            self._publish_engage(False, source=f"service_state:{state}")
+        elif state in stationary_drop_zone_states:
+            # HH_260721 - Charged and uncharged standby are both stopped, selectable states.
+            self._schedule_broadcast({"service_state": state})
             if self.publish_mission_engage_from_destination:
-                self._publish_mission_engage(False, source="amr_service_state:DROP_ZONE_WAIT")
-            self._publish_engage(False, source="amr_service_state:DROP_ZONE_WAIT")
+                self._publish_mission_engage(False, source=f"service_state:{state}")
+            self._publish_engage(False, source=f"service_state:{state}")
+        elif state == int(AvgServiceState.WAITING_FOR_CHARGING):
+            # HH_260721 - Charger confirmation wait holds zero command and remains healthy.
+            self._schedule_broadcast({"service_state": state, "returning": True})
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(False, source="service_state:WAITING_FOR_CHARGING")
+            self._publish_engage(False, source="service_state:WAITING_FOR_CHARGING")
+        elif state in departure_states:
+            # HH_260721 - Keep command authorization open until drop-zone exit completion.
+            self._schedule_broadcast({"service_state": state})
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(True, source=f"service_state:{state}")
         elif state in returning_states:
-            self._schedule_broadcast({"amr_state": state, "returning": True})
+            self._schedule_broadcast({"service_state": state, "returning": True})
             # HH_260630 - Return-to-drop-zone must re-open the mission/platform
             # gates after the site arrival hold closed them.
-            if state == int(AvgAmrServiceState.RETURNING_TO_DROP_ZONE):
-                self._publish_camping_site_maneuver_controller_return(source="amr_service_state:RETURNING_TO_DROP_ZONE")
+            if state == int(AvgServiceState.RETURNING_TO_DROP_ZONE):
+                self._publish_camping_site_maneuver_controller_return(source="service_state:RETURNING_TO_DROP_ZONE")
             # HH_260701 - Clear only the manual engage latch during return states.
             # Mission engage owns the platform drive gate here; dropping platform
             # enable on RETURN_WITH_CARGO can stop CRAB_OUT before the campsite
             # maneuver reaches DONE.
             self._publish_engage(
                 False,
-                source=f"amr_service_state:{state}:manual_clear",
+                source=f"service_state:{state}:manual_clear",
                 sync_drive_enable=False,
             )
             if self.publish_mission_engage_from_destination:
-                self._publish_mission_engage(True, source=f"amr_service_state:{state}")
-        elif state == AvgAmrServiceState.GUEST_RECALL_SERVICE:
+                self._publish_mission_engage(True, source=f"service_state:{state}")
+        elif state == AvgServiceState.GUEST_RECALL_SERVICE:
             # HJ_260601: Notify robot UI that guest requested a recall.
             self._schedule_broadcast({"guest_recall": True})
 
-    def _publish_amr_service_state(self, state: int, source: str) -> None:
+    def _publish_service_state(self, state: int, source: str) -> None:
         # HH_260706 - Keep ROS state descriptions and logs ASCII/English; UI
         # localization should be handled in the frontend display layer.
         desc_map = {
-            AvgAmrServiceState.DROP_ZONE_WAIT:         "Waiting at drop zone",
-            AvgAmrServiceState.MOVING_TO_SITE:         "Moving from drop zone to site",
-            AvgAmrServiceState.SITE_ARRIVED:           "Arrived at site",
-            AvgAmrServiceState.RETURNING_TO_DROP_ZONE: "Returning from site to drop zone",
-            AvgAmrServiceState.GUEST_RECALL_SERVICE:   "Guest recall requested",
-            AvgAmrServiceState.SITE_ENTRY:             "Entering site",
-            AvgAmrServiceState.UNLOAD_WAIT:            "Waiting for unload at site",
-            AvgAmrServiceState.GUEST_LOADING_WAIT:     "Waiting for guest loading",
-            AvgAmrServiceState.RETURN_WITH_CARGO:      "Leaving site with cargo",
-            AvgAmrServiceState.DROP_ZONE_PARKING:      "Parking at drop zone",
+            AvgServiceState.DROP_ZONE_WAIT:         "Waiting at drop zone",
+            AvgServiceState.MOVING_TO_SITE:         "Moving from drop zone to site",
+            AvgServiceState.SITE_ARRIVED:           "Arrived at site",
+            AvgServiceState.RETURNING_TO_DROP_ZONE: "Returning from site to drop zone",
+            AvgServiceState.GUEST_RECALL_SERVICE:   "Guest recall requested",
+            AvgServiceState.SITE_ENTRY:             "Entering site",
+            AvgServiceState.UNLOAD_WAIT:            "Waiting for unload at site",
+            AvgServiceState.RECALL_TO_SITE_ROAD:    "Moving to the site road recall point",
+            AvgServiceState.GUEST_LOADING_WAIT:     "Waiting for guest loading",
+            AvgServiceState.RETURN_WITH_CARGO:      "Leaving site with cargo",
+            AvgServiceState.DROP_ZONE_PARKING:      "Parking at drop zone",
+            # HH_260721 - Keep API descriptions explicit and English-only.
+            AvgServiceState.WAITING_FOR_RETURN_REQUEST: "Waiting for return request",
+            AvgServiceState.WAITING_FOR_CHARGING:   "Waiting for charger connection",
+            AvgServiceState.CHARGING:               "Charging",
+            AvgServiceState.DEPARTING_CHARGER:      "Departing charger",
+            AvgServiceState.DEPARTING_DROP_ZONE:    "Departing drop zone",
         }
-        msg = AvgAmrServiceState()
+        msg = AvgServiceState()
         msg.state = state
+        msg.state_name = SERVICE_STATE_NAMES.get(state, f"UNKNOWN_{state}")
         msg.description = desc_map.get(state, f"unknown state {state}")
-        self.pub_amr_service_state.publish(msg)
+        # HH_260721 - Update local intent synchronously so CAN edges cannot overwrite departure.
+        self._latest_service_state = int(state)
+        self.pub_service_state.publish(msg)
         self.get_logger().info(
-            f"AMR service state ({source}) -> {self.amr_service_state_topic}: "
+            f"Service state ({source}) -> {self.service_state_topic}: "
             f"{state} ({msg.description})"
         )
 
@@ -721,6 +847,18 @@ class UiBackendNode(Node):
         self.get_logger().info(
             f"drop-zone operation ({source}) -> "
             f"{self.drop_zone_maneuver_controller_operation_topic}: {int(operation)}"
+        )
+
+    # HH_260721 - Prevent a parked controller from publishing standby during charger release.
+    def _publish_parking_operation(self, operation: int, source: str) -> None:
+        msg = MotionOperation()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.operation = int(operation)
+        msg.source = source
+        self.pub_parking_operation.publish(msg)
+        self.get_logger().info(
+            f"parking operation ({source}) -> {self.parking_operation_topic}: "
+            f"{int(operation)}"
         )
 
     def _publish_platform_drive_enable(self, enabled: bool, source: str) -> None:
@@ -916,13 +1054,13 @@ class UiBackendNode(Node):
             # selecting that site in the UI should adopt the parked state instead
             # of dispatching a fresh Nav2 goal back through the lanelet route.
             self._publish_camping_site_maneuver_controller_adopt(site, mission_key, source=f"{source}:already_at_site")
-            self._publish_amr_service_state(
-                AvgAmrServiceState.UNLOAD_WAIT,
+            self._publish_service_state(
+                AvgServiceState.UNLOAD_WAIT,
                 source=f"{source}:already_at_site:{match_reason}",
             )
             self._notify_site_arrival(
                 site,
-                int(AvgAmrServiceState.UNLOAD_WAIT),
+                int(AvgServiceState.UNLOAD_WAIT),
                 source=f"{source}:already_at_site:{match_reason}",
                 already_at_site=True,
             )
@@ -948,7 +1086,11 @@ class UiBackendNode(Node):
         # HH_260721 - A parked/charging robot must leave the station before Nav2 gets a site goal.
         departure_required = (
             self._latest_platform_is_charging
-            or self._latest_amr_service_state == int(AvgAmrServiceState.DROP_ZONE_WAIT)
+            or self._latest_service_state
+            in {
+                int(AvgServiceState.DROP_ZONE_WAIT),
+                int(AvgServiceState.CHARGING),
+            }
         )
         mission_key = self._resolve_mission_key_for_site(site) or ""
         if departure_required and mission_key:
@@ -956,11 +1098,21 @@ class UiBackendNode(Node):
             self._pending_site_after_drop_zone_exit = (site, mission_key, source)
             if not self._drop_zone_exit_active:
                 self._drop_zone_exit_active = True
+                # HH_260721 - Transfer motion ownership from final parking to station departure.
+                self._publish_parking_operation(
+                    MotionOperation.CANCEL, source=f"{source}:site_departure"
+                )
                 self._publish_drop_zone_operation(
                     MotionOperation.EXIT, source=f"{source}:site_departure"
                 )
-            self._publish_amr_service_state(
-                AvgAmrServiceState.MOVING_TO_SITE,
+            # HH_260721 - Show physical departure before the Nav2 site route is released.
+            departure_state = (
+                AvgServiceState.DEPARTING_CHARGER
+                if self._latest_platform_is_charging
+                else AvgServiceState.DEPARTING_DROP_ZONE
+            )
+            self._publish_service_state(
+                departure_state,
                 source=f"{source}:drop_zone_departure",
             )
             return {
@@ -971,7 +1123,7 @@ class UiBackendNode(Node):
                 "message": "site goal pending drop-zone straight exit and yaw alignment",
             }
 
-        self._publish_amr_service_state(AvgAmrServiceState.MOVING_TO_SITE, source=f"{source}:start")
+        self._publish_service_state(AvgServiceState.MOVING_TO_SITE, source=f"{source}:start")
         goal_result = self._publish_goal_for_site(site=site, source=source)
         return {
             "site": site,
@@ -1026,6 +1178,10 @@ class UiBackendNode(Node):
                 "diagnostics": list(self._state.diagnostics),
                 "diagnostics_agg_count": self._state.diagnostics_agg_count,
                 "diagnostics_agg_error_count": self._state.diagnostics_agg_error_count,
+                "system_health": self._state.system_health,
+                "service_state": self._state.service_state,
+                "service_state_name": self._state.service_state_name,
+                "service_state_description": self._state.service_state_description,
                 "destination": dict(self._state.destination),
                 "battery_percentage": self._state.battery_percentage,
             }
@@ -1147,10 +1303,20 @@ class UiBackendNode(Node):
                 states = dict(node._state.ws_site_states)
                 engage = node._state.engaged
                 battery = node._state.battery_percentage
+                system_health = node._state.system_health
+                service_state = node._state.service_state
+                service_state_name = node._state.service_state_name
+                service_state_description = node._state.service_state_description
             await ws.send_json({"states": states})
             await ws.send_json({"engage": engage})
             if battery >= 0:
                 await ws.send_json({"battery": battery})
+            await ws.send_json({"system_health": system_health})
+            await ws.send_json({
+                "service_state": service_state,
+                "service_state_name": service_state_name,
+                "service_state_description": service_state_description,
+            })
 
             try:
                 while True:
@@ -1215,7 +1381,7 @@ class UiBackendNode(Node):
                     # HH_260617: usage_complete is return-to-drop-zone state=3.
                     # Guest recall request is state=4 and is published by ui_guest_node.
                     if payload.get("usage_complete"):
-                        node._publish_amr_service_state(AvgAmrServiceState.RETURNING_TO_DROP_ZONE, source="ws:usage_complete")
+                        node._publish_service_state(AvgServiceState.RETURNING_TO_DROP_ZONE, source="ws:usage_complete")
                         node._publish_camping_site_maneuver_controller_return(source="ws:usage_complete")
                         node._publish_engage(
                             False,

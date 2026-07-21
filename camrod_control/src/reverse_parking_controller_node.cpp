@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "avg_msgs/msg/avg_amr_service_state.hpp"
+#include "avg_msgs/msg/avg_service_state.hpp"
 #include "avg_msgs/msg/avg_platform_status.hpp"
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
@@ -86,8 +86,8 @@ public:
     drop_zone_goal_topic_ = declare_parameter<std::string>(
       "drop_zone_goal_topic", "/planning/drop_zone_goal_raw");
     diagnostics_topic_ = declare_parameter<std::string>("diagnostics_topic", "/system/diagnostics");
-    amr_service_state_topic_ = declare_parameter<std::string>(
-      "amr_service_state_topic", "/AMR_service_state");
+    service_state_topic_ = declare_parameter<std::string>(
+      "service_state_topic", "/service/state");
 
     drop_zones_yaml_ = declare_parameter<std::string>("drop_zones_yaml", "");
     drop_zone_id_ = declare_parameter<std::string>("drop_zone_id", "drop_zone");
@@ -129,8 +129,8 @@ public:
     status_publisher_ = create_publisher<avg_msgs::msg::ModuleState>(status_topic_, 10);
     diagnostics_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
       diagnostics_topic_, 10);
-    service_state_publisher_ = create_publisher<avg_msgs::msg::AvgAmrServiceState>(
-      amr_service_state_topic_, 10);
+    service_state_publisher_ = create_publisher<avg_msgs::msg::AvgServiceState>(
+      service_state_topic_, 10);
     path_publisher_ = create_publisher<nav_msgs::msg::Path>(path_topic_, 10);
 
     vehicle_pose_subscription_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
@@ -142,7 +142,12 @@ public:
     platform_status_subscription_ = create_subscription<avg_msgs::msg::AvgPlatformStatus>(
       platform_status_topic_, 10,
       [this](const avg_msgs::msg::AvgPlatformStatus::SharedPtr message) {
+        const bool charging_changed = is_charging_ != message->is_charging;
         is_charging_ = message->is_charging;
+        if (charging_changed && phase_ == ReverseParkingPhase::kParked) {
+          // HH_260721 - Keep the parked service state synchronized with live CAN charging feedback.
+          publishServiceState("platform charging state changed");
+        }
       });
     operation_subscription_ = create_subscription<avg_msgs::msg::MotionOperation>(
       operation_topic_, 10,
@@ -268,13 +273,20 @@ private:
 
   void publishServiceState(const std::string & detail)
   {
-    avg_msgs::msg::AvgAmrServiceState message;
-    if (phase_ == ReverseParkingPhase::kReverseApproach ||
-      phase_ == ReverseParkingPhase::kWaitForCharging)
-    {
-      message.state = avg_msgs::msg::AvgAmrServiceState::DROP_ZONE_PARKING;
+    avg_msgs::msg::AvgServiceState message;
+    if (phase_ == ReverseParkingPhase::kReverseApproach) {
+      message.state = avg_msgs::msg::AvgServiceState::DROP_ZONE_PARKING;
+      message.state_name = "DROP_ZONE_PARKING";
+    } else if (phase_ == ReverseParkingPhase::kWaitForCharging) {
+      // HH_260721 - Report charger confirmation wait as normal operating progress.
+      message.state = avg_msgs::msg::AvgServiceState::WAITING_FOR_CHARGING;
+      message.state_name = "WAITING_FOR_CHARGING";
     } else if (phase_ == ReverseParkingPhase::kParked) {
-      message.state = avg_msgs::msg::AvgAmrServiceState::DROP_ZONE_WAIT;
+      // HH_260721 - A parked robot is CHARGING only while CAN confirms active charging.
+      message.state = is_charging_ ?
+        avg_msgs::msg::AvgServiceState::CHARGING :
+        avg_msgs::msg::AvgServiceState::DROP_ZONE_WAIT;
+      message.state_name = is_charging_ ? "CHARGING" : "DROP_ZONE_WAIT";
     } else {
       return;
     }
@@ -449,16 +461,14 @@ private:
     {
       return;
     }
-    uint8_t module_level = avg_msgs::msg::ModuleState::WARN;
-    if (phase_ == ReverseParkingPhase::kError) {
-      module_level = avg_msgs::msg::ModuleState::ERROR;
-    } else if (phase_ == ReverseParkingPhase::kIdle || phase_ == ReverseParkingPhase::kParked) {
-      module_level = avg_msgs::msg::ModuleState::OK;
-    }
+    // HH_260721 - Reverse motion and charging confirmation are healthy parking progress.
+    const uint8_t module_level = phase_ == ReverseParkingPhase::kError ?
+      avg_msgs::msg::ModuleState::ERROR : avg_msgs::msg::ModuleState::OK;
     const std::string message =
       "phase=" + phaseName(phase_) + " charging=" + (is_charging_ ? "True" : "False");
     status_publisher_->publish(
-      camrod_control::makeModuleState(*this, "parking", module_level, message));
+      camrod_control::makeModuleState(
+        *this, "parking", module_level, message, phaseName(phase_)));
     const uint8_t diagnostic_level = module_level == avg_msgs::msg::ModuleState::ERROR ?
       diagnostic_msgs::msg::DiagnosticStatus::ERROR :
       module_level == avg_msgs::msg::ModuleState::WARN ?
@@ -485,7 +495,7 @@ private:
   std::string path_topic_;
   std::string drop_zone_goal_topic_;
   std::string diagnostics_topic_;
-  std::string amr_service_state_topic_;
+  std::string service_state_topic_;
   std::string drop_zones_yaml_;
   std::string drop_zone_id_;
   bool use_drop_zone_pose_as_station_{true};
@@ -522,7 +532,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr command_publisher_;
   rclcpp::Publisher<avg_msgs::msg::ModuleState>::SharedPtr status_publisher_;
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_publisher_;
-  rclcpp::Publisher<avg_msgs::msg::AvgAmrServiceState>::SharedPtr service_state_publisher_;
+  rclcpp::Publisher<avg_msgs::msg::AvgServiceState>::SharedPtr service_state_publisher_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_publisher_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr vehicle_pose_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPlatformStatus>::SharedPtr platform_status_subscription_;

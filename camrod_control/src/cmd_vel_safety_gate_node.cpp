@@ -788,23 +788,22 @@ private:
     avg_msgs::msg::ModuleState status;
     status.stamp = now();
     status.module_name = "cmd_vel_safety_gate";
-    const bool hard_fault = std::any_of(
-      reasons.begin(), reasons.end(), [](const std::string & reason) {
-        return reason == "estop" || reason.rfind("vehicle_state=", 0) == 0 ||
-        reason.rfind("platform_error=", 0) == 0 ||
-        reason.rfind("platform_status_", 0) == 0;
-      });
-    status.level = enabled ? avg_msgs::msg::ModuleState::OK :
-      hard_fault ? avg_msgs::msg::ModuleState::ERROR : avg_msgs::msg::ModuleState::WARN;
+    // HH_260721 - A deliberate mission/charging hold is healthy standby, not a warning.
+    const auto health = CmdVelGatePolicy::classifyHealth(reasons);
+    status.level = health == CmdVelGateHealth::kError ? avg_msgs::msg::ModuleState::ERROR :
+      health == CmdVelGateHealth::kWarning ? avg_msgs::msg::ModuleState::WARN :
+      avg_msgs::msg::ModuleState::OK;
     const std::string operating_state = charging_motion_override_active && enabled ?
       "DEPARTING_CHARGER" :
       enabled ? "ENABLED" :
       std::find(reasons.begin(), reasons.end(), "charging") != reasons.end() ? "CHARGING" :
-      "BLOCKED";
+      health == CmdVelGateHealth::kOk ? "STANDBY" :
+      health == CmdVelGateHealth::kError ? "FAULT_HOLD" : "SAFETY_HOLD";
     status.message = "state=" + operating_state + " reasons=" +
       (reasons.empty() ? "none" : join(reasons, ",")) +
       " charging=" + std::string(charging_mission_override_.charging() ? "true" : "false") +
       " battery=" + batteryText();
+    status.operating_state = operating_state;
     status_publisher_->publish(status);
   }
 
@@ -1331,15 +1330,28 @@ private:
 
   void logBlockReasons(const double now_sec)
   {
-    if (now_sec - last_block_log_sec_ < 2.0) {
-      return;
-    }
-    last_block_log_sec_ = now_sec;
     const auto reasons = gate_policy_.blockReasons(
       now_sec, charging_mission_override_.charging(), charging_mission_override_.isActive(now_sec));
-    RCLCPP_WARN(
-      get_logger(), "cmd_vel BLOCKED: %s",
-      reasons.empty() ? "unknown" : join(reasons, ", ").c_str());
+    const std::string signature = reasons.empty() ? "unknown" : join(reasons, ", ");
+    const auto health = CmdVelGatePolicy::classifyHealth(reasons);
+    // HH_260721 - Log normal standby once per reason change; repeat only degraded/fault holds.
+    if (health == CmdVelGateHealth::kOk) {
+      if (signature != last_block_log_signature_) {
+        last_block_log_signature_ = signature;
+        RCLCPP_INFO(get_logger(), "cmd_vel STANDBY: %s", signature.c_str());
+      }
+      return;
+    }
+    if (signature == last_block_log_signature_ && now_sec - last_block_log_sec_ < 2.0) {
+      return;
+    }
+    last_block_log_signature_ = signature;
+    last_block_log_sec_ = now_sec;
+    if (health == CmdVelGateHealth::kError) {
+      RCLCPP_ERROR(get_logger(), "cmd_vel FAULT HOLD: %s", signature.c_str());
+    } else {
+      RCLCPP_WARN(get_logger(), "cmd_vel SAFETY HOLD: %s", signature.c_str());
+    }
   }
 
   void logMotionCostStopDecision(
@@ -1399,6 +1411,7 @@ private:
   std::string campsite_phase_;
   // HH_260721 - Retain the last effective authorization state to suppress heartbeat log noise.
   std::string last_authorization_log_signature_;
+  std::string last_block_log_signature_;
 
   bool require_platform_drive_enable_{true};
   bool platform_safety_enabled_{true};
