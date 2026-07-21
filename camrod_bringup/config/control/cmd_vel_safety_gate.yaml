@@ -103,7 +103,8 @@
     drop_zone_maneuver_controller_status_topic: "/control/drop_zone_maneuver_controller/status"
     drop_zone_maneuver_controller_static_bypass_phases: "EXIT_STRAIGHT,ALIGN_EXIT_YAW"
     camping_site_maneuver_controller_status_topic: "/control/camping_site_maneuver_controller/status"
-    camping_site_maneuver_controller_static_bypass_phases: "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT"
+    # HH_260721 - Bypass static lanelet cost during bounded entry-lanelet retrace alignment.
+    camping_site_maneuver_controller_static_bypass_phases: "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"
 
     # Speed-dependent front corridor
     enable_speed_dependent_lookahead: true

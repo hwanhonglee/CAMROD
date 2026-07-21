@@ -99,9 +99,10 @@ struct MotionCostStopConfig
 
   // HH_260721 - Keep static-cost exceptions bounded to configured maneuver phases.
   std::set<std::string> drop_zone_static_bypass_phases{"exit_straight", "align_exit_yaw"};
+  // HH_260721 - Name the campsite exception after its same-lanelet retrace behavior.
   std::set<std::string> campsite_static_bypass_phases{
     "align_entry_yaw", "reverse_in", "crab_in", "rotate_180",
-    "align_return_yaw", "reverse_out", "crab_out"};
+    "align_retrace_yaw", "reverse_out", "crab_out"};
 };
 
 struct MotionCostStopDecision

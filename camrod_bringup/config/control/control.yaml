@@ -64,7 +64,8 @@
     auto_return_after_unload_wait: false
     reset_wait_return_on_site_goal: true
     request_return_to_drop_zone_on_done: true
-    align_return_yaw_before_crab_out: true
+    # HH_260721 - Keep the single 180-degree site turn while crabbing back to the entry lanelet.
+    align_retrace_yaw_before_crab_out: true
     cancel_nav2_on_site_phase: true
     nav2_cancel_period_s: 0.5
     nav2_cancel_action_topics:

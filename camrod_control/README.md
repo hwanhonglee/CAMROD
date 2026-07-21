@@ -13,6 +13,19 @@ Runtime responsibilities:
 - `reverse_parking_controller`: final yaw-aware reverse motion only
 - `apriltag_parking_controller`: final AprilTag-based parking controller
 
+<!-- HH_260721 - State the same-lane campsite return contract without implying a second turn. -->
+The configured campsite flow is `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT ->
+WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT`. `ALIGN_RETRACE_YAW` verifies the
+180-degree retrace heading already reached inside the site; it does not command
+a second 180-degree turn. An opposite-side through-exit is not inferred from a
+site center. It requires an explicit opposite lanelet snap pose in the semantic
+map before that mode can be enabled safely.
+
+<!-- HH_260721 - Document the post-maneuver planning synchronization guard. -->
+After `CRAB_OUT`, planning waits until `/planning/lanelet_pose` has converged
+to `/localization/pose` before publishing the drop-zone route. This prevents
+Nav2 from reusing a stale pre-maneuver start pose.
+
 <!-- HH_260721 - Clarify charging mission override and method-independent parking handoff. -->
 
 `cmd_vel_safety_gate` normally blocks commands while
@@ -24,6 +37,11 @@ or closes again when the departure window expires.
 `drop_zone_maneuver_controller` reads semantic drop-zone yaw as the reverse travel axis,
 aligns the robot body 180 degrees away from that axis, and starts the selected
 parking method only after yaw convergence.
+
+<!-- HH_260721 - Document the bounded departure order used for a new campsite call. -->
+After parking, a new campsite call starts `EXIT_STRAIGHT`, then
+`ALIGN_EXIT_YAW` toward the current lanelet pose. The route goal must remain
+pending until `/control/drop_zone/exit_complete` reports success.
 
 <!-- HH_260720 - Keep launch topology separate from safety policy tuning. -->
 
@@ -105,6 +123,12 @@ camrod_control/
 reverse distance and reports `PARKED` only after `/platform/status.is_charging`
 becomes true. `complete_without_charging` is `false` and the default wait timeout
 is 20 seconds.
+
+<!-- HH_260721 - Keep normalized platform status single-writer in simulation and hardware. -->
+On hardware, Ranger CAN provides `/battery_state` and `/system_state`. Ordinary
+simulation emulates those same raw boundaries. In both modes only
+`ranger_platform_bridge` publishes the normalized `/platform/status`, avoiding
+conflicting charging values from multiple publishers.
 
 `motion_cost_stop` checks live LiDAR/radar costs for forward, reverse, crab,
 and zero-turn commands, then holds a stop latch until the clear interval passes.
