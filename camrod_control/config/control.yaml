@@ -13,6 +13,7 @@
     # HH_260720 - START/RETURN/CANCEL use one generated operation topic.
     operation_topic: "/control/camping_site_maneuver_controller/operation"
     adopt_destination_topic: "/control/camping_site_maneuver_controller/adopt"
+    status_topic: "/control/camping_site_maneuver_controller/status"
     diagnostics_topic: "/system/diagnostics"
     amr_service_state_topic: "/AMR_service_state"
     reverse_path_topic: "/control/camping_site_maneuver_controller/path_ros"
@@ -70,6 +71,9 @@
       - /planning/follow_path/_action/cancel_goal
       - /planning/navigate_to_pose/_action/cancel_goal
     return_request_retry_period_s: 1.0
+    return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
+    # HH_260721 - Keep pose freshness behavior visible in the package configuration.
+    pose_timeout_s: 2.0
     control_rate_hz: 10.0
     idle_tick_rate_hz: 1.0
     status_publish_rate_hz: 1.0

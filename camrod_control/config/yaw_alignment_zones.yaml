@@ -18,11 +18,11 @@ yaw_alignment_zones:
   frame_id: "map"
 
   zones:
+    # HH_260721 - Yaw alignment is planar, so zones contain only consumed 2D fields.
     - id: "drop_zone_exit_align"
       # Zone center position in map frame (lanelet keypoint).
       x: 16.8676
       y: -117.408
-      z: -97.794
 
       # Target heading at zone center.
       yaw_deg: -0.41903
@@ -53,7 +53,6 @@ yaw_alignment_zones:
     - id: "camping_site_1_align"
       x: -13.1858
       y: -93.0608
-      z: -96.9358
       yaw_deg: -179.992
       activation_radius_m: 1.2
       lock_radius_m: 0.7
