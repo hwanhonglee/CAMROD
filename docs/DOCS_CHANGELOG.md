@@ -1,5 +1,18 @@
 # Documentation Changelog
 
+<!-- HH_260721 - Track the campsite retrace and parked departure validation release. -->
+## [v2.0.5-docs] - 2026-07-21 (HH_260721)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Set v2.0.5 as the validated baseline and clarified same-lane campsite retrace |
+| package READMEs | Updated control phase names, planning handoff guards, simulation charging feedback, UI departure ordering, and diagnostics behavior |
+| `docs/V2_0_5_RELEASE_NOTES.md` | Recorded the complete reverse-parking simulation, build/test evidence, synchronized configuration, and hardware-only limits |
+
+---
+
 <!-- HH_260721 - Record the corrected non-hardware release-validation invocation. -->
 ## [2.0.4-validation] - 2026-07-21 (HH_260721)
 
