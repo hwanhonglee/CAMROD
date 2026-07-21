@@ -16,6 +16,9 @@
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <!-- HH_260721 - Fake hardware publishes Ranger/BMS driver-boundary messages in simulation. -->
+  <depend>ranger_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <!-- avg_msgs is used across module interfaces at build/runtime. -->
   <depend>avg_msgs</depend>

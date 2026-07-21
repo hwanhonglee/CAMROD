@@ -1044,7 +1044,8 @@ def generate_launch_description():
             cfg_get(
                 launch_cfg,
                 'control/cmd_vel_gate_camping_site_maneuver_controller_static_bypass_phases',
-                'ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT',
+                # HH_260721 - Match the campsite controller's explicit retrace-yaw phase.
+                'ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT',
             ),
             'Site maneuver phases allowed to cross static lanelet cost',
         ),
@@ -1587,6 +1588,11 @@ def generate_launch_description():
         'bringup_namespace': lc['bringup_namespace'],
         'sensing_namespace': lc['sensing_namespace'],
         'fake_enable_cost_grids': 'false',
+        # HH_260721 - Disable raw CAN/BMS simulation when the validator owns /platform/status.
+        'publish_simulated_platform_status': PythonExpression([
+            "'false' if str('", lc['sim_platform_status_enable'],
+            "').lower() in ['1', 'true', 'yes', 'on'] else 'true'"
+        ]),
         'map_path': lc['map_path'],
         'origin_lat': lc['origin_lat'],
         'origin_lon': lc['origin_lon'],
