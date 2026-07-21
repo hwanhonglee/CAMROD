@@ -21,10 +21,14 @@ from avg_msgs.msg import (
     AvgRange,
     AvgTwist,
     AvgTwistWithCovarianceStamped,
+    ModuleState,
+    PlanningMissionKey,
 )
 from geometry_msgs.msg import PoseWithCovarianceStamped as RosPoseWithCovarianceStamped
 from geometry_msgs.msg import Quaternion as RosQuaternion
 from nav_msgs.msg import Odometry as RosOdometry
+from ranger_msgs.msg import SystemState as RangerSystemState
+from sensor_msgs.msg import BatteryState as RosBatteryState
 from sensor_msgs.msg import Imu as RosImu
 from sensor_msgs.msg import NavSatFix as RosNavSatFix
 from sensor_msgs.msg import NavSatStatus as RosNavSatStatus
@@ -183,6 +187,58 @@ class FakeSensorPublisher(Node):
         )
         self.max_cmd_speed_mps = float(
             self.declare_parameter("max_cmd_speed_mps", 2.5).value
+        )
+        # HH_260721 - Emulate raw CAN/BMS driver-boundary feedback only in ordinary simulation.
+        self.publish_simulated_platform_status = bool(
+            self.declare_parameter("publish_simulated_platform_status", True).value
+        )
+        self.simulated_battery_state_topic = str(
+            self.declare_parameter(
+                "simulated_battery_state_topic", "/battery_state"
+            ).value
+        )
+        self.simulated_system_state_topic = str(
+            self.declare_parameter(
+                "simulated_system_state_topic", "/system_state"
+            ).value
+        )
+        self.reverse_parking_status_topic = str(
+            self.declare_parameter(
+                "reverse_parking_status_topic",
+                "/parking/reverse_parking_controller/status",
+            ).value
+        )
+        self.simulated_mission_key_topic = str(
+            self.declare_parameter(
+                "simulated_mission_key_topic", "/planning/mission_key"
+            ).value
+        )
+        self.simulated_charger_contact_delay_s = max(
+            0.0,
+            float(
+                self.declare_parameter(
+                    "simulated_charger_contact_delay_s", 1.0
+                ).value
+            ),
+        )
+        self.simulated_charger_disconnect_delay_s = max(
+            0.0,
+            float(
+                self.declare_parameter(
+                    "simulated_charger_disconnect_delay_s", 1.0
+                ).value
+            ),
+        )
+        self.simulated_battery_percentage = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    self.declare_parameter(
+                        "simulated_battery_percentage", 0.80
+                    ).value
+                ),
+            ),
         )
         # Accept RViz "2D Pose Estimate" reset input.
         self.initialpose_topic = str(
@@ -443,6 +499,10 @@ class FakeSensorPublisher(Node):
         self._last_nonzero_cmd_angular_z = 0.0
         self._last_nonzero_cmd_time = None
         self._last_dummy_lidar_cost_grid_pub_sec = 0.0
+        # HH_260721 - Keep charger contact and departure timing explicit in simulation state.
+        self._simulated_parking_wait_since = None
+        self._simulated_charger_departure_since = None
+        self._simulated_is_charging = False
         # HH_260428: Free nav state — initialized from the path start point so the
         # robot begins at the same location regardless of mode.
         self._free_nav_x = 0.0
@@ -527,6 +587,30 @@ class FakeSensorPublisher(Node):
                 self._on_initialpose,
                 10,
             )
+        self.pub_simulated_battery_state = None
+        self.pub_simulated_system_state = None
+        self.sub_reverse_parking_status = None
+        self.sub_simulated_mission_key = None
+        if self.publish_simulated_platform_status:
+            # HH_260721 - Feed the real platform bridge from raw simulated CAN/BMS boundaries.
+            self.pub_simulated_battery_state = self.create_publisher(
+                RosBatteryState, self.simulated_battery_state_topic, 10
+            )
+            self.pub_simulated_system_state = self.create_publisher(
+                RangerSystemState, self.simulated_system_state_topic, 10
+            )
+            self.sub_reverse_parking_status = self.create_subscription(
+                ModuleState,
+                self.reverse_parking_status_topic,
+                self._on_reverse_parking_status,
+                10,
+            )
+            self.sub_simulated_mission_key = self.create_subscription(
+                PlanningMissionKey,
+                self.simulated_mission_key_topic,
+                self._on_simulated_mission_key,
+                10,
+            )
 
         period = 1.0 / max(self.publish_rate_hz, 1.0)
         self.timer = self.create_timer(period, self._on_timer)
@@ -559,6 +643,75 @@ class FakeSensorPublisher(Node):
             self._last_nonzero_cmd_linear_y = self._cmd_linear_y
             self._last_nonzero_cmd_angular_z = self._cmd_angular_z
             self._last_nonzero_cmd_time = self._last_cmd_time
+
+    # HH_260721 - Convert reverse-parking contact phases into deterministic simulated charging.
+    def _on_reverse_parking_status(self, msg: ModuleState):
+        status = str(msg.message)
+        now_sec = time.time()
+        if "phase=REVERSE_APPROACH" in status:
+            self._simulated_parking_wait_since = None
+            self._simulated_charger_departure_since = None
+            self._simulated_is_charging = False
+        elif "phase=WAIT_FOR_CHARGING" in status:
+            if self._simulated_parking_wait_since is None:
+                self._simulated_parking_wait_since = now_sec
+        elif "phase=IDLE" in status:
+            self._simulated_parking_wait_since = None
+
+    # HH_260721 - A concrete campsite mission releases simulated charger contact after a short delay.
+    def _on_simulated_mission_key(self, msg: PlanningMissionKey):
+        mission_key = str(msg.mission_key).strip()
+        if self._simulated_is_charging and mission_key.startswith("camping_site_"):
+            self._simulated_charger_departure_since = time.time()
+
+    # HH_260721 - Publish raw Ranger/BMS feedback so one bridge owns normalized platform status.
+    def _publish_simulated_platform_heartbeat(self, stamp, now_sec):
+        if (
+            self.pub_simulated_battery_state is None
+            or self.pub_simulated_system_state is None
+        ):
+            return
+        if (
+            not self._simulated_is_charging
+            and self._simulated_parking_wait_since is not None
+            and now_sec - self._simulated_parking_wait_since
+            >= self.simulated_charger_contact_delay_s
+        ):
+            self._simulated_is_charging = True
+            self._simulated_charger_departure_since = None
+            self.get_logger().info("simulated charger contact established")
+        if (
+            self._simulated_is_charging
+            and self._simulated_charger_departure_since is not None
+            and now_sec - self._simulated_charger_departure_since
+            >= self.simulated_charger_disconnect_delay_s
+        ):
+            self._simulated_is_charging = False
+            self._simulated_parking_wait_since = None
+            self._simulated_charger_departure_since = None
+            self.get_logger().info("simulated charger contact released for campsite mission")
+
+        battery = RosBatteryState()
+        battery.header.stamp = stamp
+        battery.header.frame_id = self.base_frame_id
+        battery.percentage = float(self.simulated_battery_percentage)
+        battery.current = 2.0 if self._simulated_is_charging else -1.0
+        battery.power_supply_status = (
+            RosBatteryState.POWER_SUPPLY_STATUS_CHARGING
+            if self._simulated_is_charging
+            else RosBatteryState.POWER_SUPPLY_STATUS_DISCHARGING
+        )
+        self.pub_simulated_battery_state.publish(battery)
+
+        system_state = RangerSystemState()
+        system_state.header.stamp = stamp
+        system_state.header.frame_id = self.base_frame_id
+        system_state.vehicle_state = RangerSystemState.VEHICLE_STATE_NORMAL
+        system_state.control_mode = RangerSystemState.CONTROL_MODE_CAN
+        system_state.error_code = 0
+        system_state.battery_voltage = 48.0
+        system_state.motion_mode = RangerSystemState.MOTION_MODE_DUAL_ACKERMAN
+        self.pub_simulated_system_state.publish(system_state)
 
     # Handles external initial-pose reset requests (e.g., RViz `P` tool).
     def _on_initialpose(self, msg: RosPoseWithCovarianceStamped):
@@ -938,6 +1091,8 @@ class FakeSensorPublisher(Node):
     def _on_timer(self):
         now = self.get_clock().now().to_msg()
         now_sec = time.time()
+        # HH_260721 - Keep CAN/BMS simulation independent from vehicle-pose integration.
+        self._publish_simulated_platform_heartbeat(now, now_sec)
         elapsed = now_sec - self._t0
         dt = max(1e-3, now_sec - self._last_timer_time)
         self._last_timer_time = now_sec

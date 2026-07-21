@@ -192,6 +192,11 @@ def generate_launch_description():
         default_value='false',
         description='Enable lidar/radar cost-grid nodes inside fake_sensors.launch (usually false when sensing.launch is active)',
     )
+    simulated_platform_status_arg = DeclareLaunchArgument(
+        'publish_simulated_platform_status',
+        default_value='true',
+        description='Publish deterministic raw CAN/BMS feedback in ordinary simulation',
+    )
     bringup_namespace_arg = DeclareLaunchArgument(
         'bringup_namespace',
         default_value='bringup',
@@ -273,6 +278,10 @@ def generate_launch_description():
                 'obstacle_height': ParameterValue(obstacle_height, value_type=float),
                 'obstacle_direction': obstacle_direction,
                 'obstacle_lateral_offset': ParameterValue(obstacle_lateral_offset, value_type=float),
+                # HH_260721 - Dedicated validators can disable ordinary raw CAN/BMS simulation.
+                'publish_simulated_platform_status': ParameterValue(
+                    LaunchConfiguration('publish_simulated_platform_status'), value_type=bool
+                ),
             },
         ],
     )
@@ -307,6 +316,7 @@ def generate_launch_description():
         lidar_grid_param_arg,
         radar_grid_param_arg,
         fake_enable_cost_grids_arg,
+        simulated_platform_status_arg,
         bringup_namespace_arg,
         sensing_namespace_arg,
         map_path_arg,

@@ -25,6 +25,15 @@
     cmd_vel_nonzero_hold_s: 0.20
     cmd_vel_deadband: 0.0001
     max_cmd_speed_mps: 2.5
+    # HH_260721 - Ordinary sim feeds raw CAN/BMS boundaries through the single platform bridge.
+    publish_simulated_platform_status: true
+    simulated_battery_state_topic: "/battery_state"
+    simulated_system_state_topic: "/system_state"
+    reverse_parking_status_topic: "/parking/reverse_parking_controller/status"
+    simulated_mission_key_topic: "/planning/mission_key"
+    simulated_charger_contact_delay_s: 1.0
+    simulated_charger_disconnect_delay_s: 1.0
+    simulated_battery_percentage: 0.80
     # Feed wheel_odometry_bridge input in sim so localization wheel
     # stream is available even without real /rmp401/odom hardware source.
     wheel_bridge_input_topic: "/rmp401/odom"
