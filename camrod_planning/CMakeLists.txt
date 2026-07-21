@@ -199,6 +199,7 @@ if(BUILD_TESTING)
   # HH_260721 - Lint CAMROD-owned planning files without re-linting vendored Nav2 sources.
   set(AMENT_LINT_AUTO_FILE_EXCLUDE external)
   set(AMENT_LINT_AUTO_EXCLUDE
+    ament_cmake_cppcheck
     ament_cmake_copyright
     ament_cmake_cpplint
     ament_cmake_flake8
@@ -210,6 +211,8 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 
   # HH_260721 - Apply the repository's maintained Python and C++ style to owned paths only.
+  find_package(ament_cmake_cppcheck REQUIRED)
+  ament_cppcheck(src LANGUAGE c++)
   find_package(ament_cmake_lint_cmake REQUIRED)
   ament_lint_cmake(CMakeLists.txt)
   find_package(ament_cmake_flake8 REQUIRED)

@@ -149,6 +149,7 @@ if(BUILD_TESTING)
   # HH_260721 - Lint owned localization code without re-linting vendored robot_localization.
   set(AMENT_LINT_AUTO_FILE_EXCLUDE external)
   set(AMENT_LINT_AUTO_EXCLUDE
+    ament_cmake_cppcheck
     ament_cmake_copyright
     ament_cmake_cpplint
     ament_cmake_flake8
@@ -158,6 +159,8 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 
   # HH_260721 - Scope C++, Python, and XML checks to this package's maintained files.
+  find_package(ament_cmake_cppcheck REQUIRED)
+  ament_cppcheck(src LANGUAGE c++)
   find_package(ament_cmake_cpplint REQUIRED)
   ament_cpplint(
     src
