@@ -59,6 +59,16 @@ The validation runner checks sensor rates, directional gate stops, Nav2
 replanning, and the complete campsite/charging round trip. The validated release
 uses `parking_method:=reverse`; AprilTag nodes are not exercised.
 
+<!-- HH_260721 - Document both sides of the simulated platform-status contract. -->
+Start bringup with the gate subscribed to the runner's simulated Ranger/BMS
+status before running the charging-recall scenario:
+
+```bash
+ros2 launch camrod_bringup bringup.launch.py \
+  sim:=true rviz:=false parking_method:=reverse \
+  sim_platform_status_enable:=true
+```
+
 ```bash
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p quick:=true \
@@ -70,7 +80,7 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p simulate_platform_status:=true \
   -p run_charging_recall:=true \
   -p charging_recall_mission_key:=camping_site_1 \
-  -p report_file:=/tmp/camrod_v204_charging_recall_final.json
+  -p report_file:=/tmp/camrod_v204_charging_correct_flags_1158.json
 ```
 
 The full camping check requires campsite crab/zero-turn/exit, return navigation,
@@ -86,5 +96,6 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p skip_manual_goal:=true \
   -p run_obstacle_replan:=true \
   -p run_camping:=false \
-  -p report_file:=/tmp/camrod_v204_obstacle_final.json
+  -p simulate_platform_status:=true \
+  -p report_file:=/tmp/camrod_v204_obstacle_postrefactor_1204.json
 ```

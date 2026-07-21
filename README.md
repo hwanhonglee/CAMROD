@@ -84,10 +84,17 @@ window expires, command output closes again.
 cd /home/hong/camrod_ws
 ./src/colcon_build.sh
 source install/setup.bash
-ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=false parking_method:=reverse
+# HH_260721 - Enable the simulated platform-status input used by charging recall validation.
+ros2 launch camrod_bringup bringup.launch.py \
+  sim:=true rviz:=false parking_method:=reverse \
+  sim_platform_status_enable:=true
 ```
 
 Full simulation validation:
+
+<!-- HH_260721 - Keep the validation runner's fake BMS publisher paired with the gate subscription above. -->
+`simulate_platform_status:=true` requires the bringup launch option
+`sim_platform_status_enable:=true` shown above.
 
 ```bash
 ros2 run camrod_bringup sim_validation_runner.py --ros-args \
