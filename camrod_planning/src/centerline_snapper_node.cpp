@@ -115,6 +115,10 @@ public:
     max_heading_error_deg_ = declare_parameter<double>("max_heading_error_deg", 100.0);
     heading_filter_max_yaw_variance_ =
       declare_parameter<double>("heading_filter_max_yaw_variance", 1.0);
+    // HH_260721 - Heading disambiguation may choose a nearby parallel lane,
+    // but it must never jump far away after an in-place 180-degree maneuver.
+    heading_filter_max_extra_distance_m_ =
+      declare_parameter<double>("heading_filter_max_extra_distance_m", 2.0);
     // HH_260526: Replace use_map_z/flatten_to_ground booleans with one explicit mode.
     // HH_260623 - "ground" means the 2D planning plane (Z=0), not raw OSM median altitude.
     // centerline_z_mode options: input | map | ground.
@@ -380,7 +384,16 @@ private:
       }
     }
     if (heading_filter_allowed && best_heading_aligned.valid) {
-      return best_heading_aligned;
+      // HH_260721 - Prefer heading only among spatially credible candidates.
+      // Campsite retrace intentionally reverses body yaw on the same centerline;
+      // without this bound the old filter selected a lanelet over 15 m away.
+      const double nearest_distance = best.valid ? std::sqrt(best.sq_dist) : 0.0;
+      const double aligned_distance = std::sqrt(best_heading_aligned.sq_dist);
+      const double allowed_distance =
+        nearest_distance + std::max(0.0, heading_filter_max_extra_distance_m_);
+      if (!best.valid || aligned_distance <= allowed_distance) {
+        return best_heading_aligned;
+      }
     }
     return best;
   }
@@ -401,6 +414,7 @@ private:
   bool heading_filter_enable_{true};
   double max_heading_error_deg_{100.0};
   double heading_filter_max_yaw_variance_{1.0};
+  double heading_filter_max_extra_distance_m_{2.0};
   double latest_yaw_variance_{std::numeric_limits<double>::infinity()};
   std::string centerline_z_mode_{"ground"};  // HH_260623 - Default to 2D planning plane.
   double map_z_offset_{0.0};

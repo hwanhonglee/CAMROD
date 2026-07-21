@@ -4,6 +4,11 @@
     state_status_topic: "/system/diagnostics_agg"
     # HH_260720 - Consume the generated CAMROD lanelet pose and snapped goal.
     pose_topic: "/planning/lanelet_pose"
+    # HH_260721 - Publish a drop-zone return route only after the lanelet snap
+    # has converged to the current vehicle pose following campsite crab exit.
+    return_start_vehicle_pose_topic: "/localization/pose"
+    return_start_pose_max_distance_m: 1.5
+    return_start_pose_stale_timeout_s: 1.0
     # HH_260617: Canonical goal naming used in logs/docs:
     #   mission_key = semantic site/key name on mission_key_topic (e.g. camping_site_1)
     #   site_goal   = raw site-center PoseStamped on /goal_pose from UI/RViz

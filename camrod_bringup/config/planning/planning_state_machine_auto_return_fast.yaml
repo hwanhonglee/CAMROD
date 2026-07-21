@@ -5,6 +5,11 @@
     state_status_topic: "/system/diagnostics_agg"
     # HH_260720 - Consume the generated CAMROD lanelet pose and snapped goal.
     pose_topic: "/planning/lanelet_pose"
+    # HH_260721 - Keep automatic return routing synchronized with the actual
+    # vehicle pose after any off-lane campsite maneuver.
+    return_start_vehicle_pose_topic: "/localization/pose"
+    return_start_pose_max_distance_m: 1.5
+    return_start_pose_stale_timeout_s: 1.0
     # State machine tracks snapped goal stream only.
     goal_topic: "/planning/goal_pose_snapped"
     # Mirror auto-goals to Nav2 ROS-facing goal topic as well.

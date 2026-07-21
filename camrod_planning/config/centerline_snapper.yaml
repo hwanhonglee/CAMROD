@@ -21,6 +21,9 @@
     heading_filter_enable: true
     max_heading_error_deg: 100.0
     heading_filter_max_yaw_variance: 1.0
+    # HH_260721 - Do not trade more than this distance for heading alignment;
+    # campsite retrace yaw is intentionally opposite on the same centerline.
+    heading_filter_max_extra_distance_m: 2.0
     # HH_260527: centerline_z_mode options:
     #   input: keep input pose Z
     #   map: use lanelet centerline Z + map_z_offset
