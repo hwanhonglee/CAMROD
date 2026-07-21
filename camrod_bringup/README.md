@@ -41,7 +41,7 @@ is launched and checked by `camrod_system`.
 | `config/control/cmd_vel_safety_gate.yaml` | Bringup mirror of command authorization and motion-safety policy |
 | `config/control/control.yaml` | Bringup mirror of campsite/drop-zone maneuver tuning |
 | `config/control/parking.yaml` | Bringup mirror of reverse and AprilTag parking tuning |
-| `config/perception/apriltag_parking_detector.yaml` | Inactive-by-default AprilTag detector placeholder mirror |
+| `config/perception/apriltag_parking_detector.yaml` | Bringup mirror for the implemented AprilTag parking detector; inactive when reverse parking is selected |
 | `config/control/yaw_alignment_zones.yaml` | Optional command-gate yaw zones |
 | `config/planning/` | Nav2 and mission-state configuration |
 | `config/map/drop_zones.yaml` | Drop-zone station position and reverse-axis yaw |
