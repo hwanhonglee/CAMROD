@@ -1282,10 +1282,11 @@ class SimValidationRunner(Node):
                 or "ERROR" in reverse_parking_controller_msg
             )
 
-            # HH_260721 - Recall a campsite from PARKED while BMS still reports charging.
+            # HH_260721 - Recall only after both parking and the gate confirm the simulated charge.
             if (
                 self.run_charging_recall
                 and seen_reverse_parking_controller_parked
+                and seen_gate_charging_state
                 and not charging_recall_requested
             ):
                 recall_key = self.charging_recall_mission_key.strip() or mission_key
