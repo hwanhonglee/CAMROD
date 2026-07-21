@@ -45,8 +45,29 @@ decides whether a bounded campsite departure request may move the robot.
 
 ## Launch
 
+<!-- HH_260721 - Document the real-hardware CAN prerequisite separately from simulation. -->
+For real Ranger hardware, first confirm that the powered SocketCAN adapter has
+created `can0`:
+
+```bash
+ip link show can0
+```
+
+Install the boot-time CAN setup once. This avoids requiring an interactive sudo
+credential inside `ros2 launch`:
+
+```bash
+sudo /home/hong/camrod_ws/src/camrod_platform/scripts/install_can0_service.sh
+systemctl --no-pager --full status camrod-can0.service
+```
+
+Then start the platform normally:
+
 ```bash
 ros2 launch camrod_platform platform.launch.py
 ```
+
+If `can0` does not exist, connect or power the CAN adapter before using real
+hardware mode. Use `sim:=true` from `camrod_bringup` only for a non-hardware run.
 
 Ranger driver command input is intentionally the only standard `Twist` boundary in this package.
