@@ -118,6 +118,20 @@ class PlanningStateMachineNode(Node):
         self.state_status_ignored_prefixes = self._param_string_set(ignored_state_prefixes)
         # HH_260720 - Consume canonical generated CAMROD poses for internal state decisions.
         self.pose_topic = str(self.declare_parameter("pose_topic", "/planning/lanelet_pose").value)
+        # HH_260721 - Delay a return route until the lanelet snap has caught up
+        # with the vehicle after a campsite maneuver. This prevents Nav2 from
+        # planning from a stale pre-maneuver lanelet pose.
+        self.return_start_vehicle_pose_topic = str(
+            self.declare_parameter(
+                "return_start_vehicle_pose_topic", "/localization/pose"
+            ).value
+        )
+        self.return_start_pose_max_distance_m = float(
+            self.declare_parameter("return_start_pose_max_distance_m", 1.5).value
+        )
+        self.return_start_pose_stale_timeout_s = float(
+            self.declare_parameter("return_start_pose_stale_timeout_s", 1.0).value
+        )
         self.goal_topic = str(
             self.declare_parameter("goal_topic", "/planning/goal_pose_snapped").value
         )
@@ -323,6 +337,12 @@ class PlanningStateMachineNode(Node):
         self.last_state_stamp: Optional[rclpy.time.Time] = None
         self.module_levels: Dict[str, int] = {}
         self.last_pose: Optional[AvgPoseStamped] = None
+        # HH_260721 - Keep independent receipt times because message stamps can
+        # use hardware or simulation clocks that differ during startup.
+        self.last_pose_received_time: Optional[rclpy.time.Time] = None
+        self.last_return_start_vehicle_pose: Optional[AvgPoseStamped] = None
+        self.last_return_start_vehicle_pose_received_time: Optional[rclpy.time.Time] = None
+        self._last_return_start_wait_log_time: Optional[rclpy.time.Time] = None
         self.last_manual_goal: Optional[AvgPoseStamped] = None
         self.active_goal: Optional[AvgPoseStamped] = None
         self.active_goal_source: str = "none"
@@ -398,6 +418,17 @@ class PlanningStateMachineNode(Node):
 
         self.create_subscription(StatusArray, self.state_status_topic, self._on_state, 10)
         self.create_subscription(AvgPoseStamped, self.pose_topic, self._on_pose, 10)
+        if self.return_start_vehicle_pose_topic == self.pose_topic:
+            # HH_260721 - A shared topic is valid when an integrator explicitly
+            # disables the independent localization-versus-lanelet comparison.
+            self.last_return_start_vehicle_pose = self.last_pose
+        elif self.return_start_vehicle_pose_topic:
+            self.create_subscription(
+                AvgPoseStamped,
+                self.return_start_vehicle_pose_topic,
+                self._on_return_start_vehicle_pose,
+                10,
+            )
         self.create_subscription(AvgPoseStamped, self.goal_topic, self._on_goal, 10)
         if self.enable_raw_drop_zone_goal_match and self.raw_goal_topic:
             # HH_260720 - RViz raw goal remains an explicit ROS boundary.
@@ -431,6 +462,8 @@ class PlanningStateMachineNode(Node):
             "planning_state_machine: "
             f"state={self.state_status_topic} "
             f"pose={self.pose_topic} "
+            f"return_start_vehicle_pose={self.return_start_vehicle_pose_topic or '(disabled)'} "
+            f"return_start_pose_max_distance_m={self.return_start_pose_max_distance_m:.2f} "
             f"goal={self.goal_topic} "
             f"raw_goal={self.raw_goal_topic if self.enable_raw_drop_zone_goal_match else '(disabled)'} "
             f"goal_ros={self.goal_topic_ros} "
@@ -729,6 +762,81 @@ class PlanningStateMachineNode(Node):
 
     def _on_pose(self, msg: AvgPoseStamped) -> None:
         self.last_pose = msg
+        self.last_pose_received_time = self.get_clock().now()
+        # HH_260721 - Preserve explicit same-topic configurations without a
+        # duplicate subscription or callback ordering dependency.
+        if self.return_start_vehicle_pose_topic == self.pose_topic:
+            self.last_return_start_vehicle_pose = msg
+            self.last_return_start_vehicle_pose_received_time = self.last_pose_received_time
+
+    def _on_return_start_vehicle_pose(self, msg: AvgPoseStamped) -> None:
+        # HH_260721 - The unsnapped vehicle pose is used only to reject a stale
+        # lanelet start pose before a drop-zone return route is created.
+        self.last_return_start_vehicle_pose = msg
+        self.last_return_start_vehicle_pose_received_time = self.get_clock().now()
+
+    def _return_start_pose_ready(self) -> bool:
+        # HH_260721 - A non-positive distance explicitly disables this guard for
+        # specialized deployments while preserving the existing route behavior.
+        if self.return_start_pose_max_distance_m <= 0.0:
+            return True
+        if self.last_pose is None or self.last_return_start_vehicle_pose is None:
+            self._log_return_start_pose_wait("waiting for lanelet and vehicle poses")
+            return False
+        if (
+            self.last_pose.header.frame_id
+            and self.last_return_start_vehicle_pose.header.frame_id
+            and self.last_pose.header.frame_id
+            != self.last_return_start_vehicle_pose.header.frame_id
+        ):
+            self._log_return_start_pose_wait(
+                "frame mismatch "
+                f"lanelet={self.last_pose.header.frame_id} "
+                f"vehicle={self.last_return_start_vehicle_pose.header.frame_id}"
+            )
+            return False
+
+        now = self.get_clock().now()
+        stale_timeout_s = max(0.0, self.return_start_pose_stale_timeout_s)
+        if stale_timeout_s > 0.0:
+            if (
+                self.last_pose_received_time is None
+                or self.last_return_start_vehicle_pose_received_time is None
+            ):
+                self._log_return_start_pose_wait("waiting for fresh pose timestamps")
+                return False
+            lanelet_age_s = (now - self.last_pose_received_time).nanoseconds / 1e9
+            vehicle_age_s = (
+                now - self.last_return_start_vehicle_pose_received_time
+            ).nanoseconds / 1e9
+            if lanelet_age_s > stale_timeout_s or vehicle_age_s > stale_timeout_s:
+                self._log_return_start_pose_wait(
+                    f"stale pose lanelet_age={lanelet_age_s:.2f}s "
+                    f"vehicle_age={vehicle_age_s:.2f}s"
+                )
+                return False
+
+        distance_m = self._dist_xy(self.last_pose, self.last_return_start_vehicle_pose)
+        if distance_m > self.return_start_pose_max_distance_m:
+            self._log_return_start_pose_wait(
+                f"lanelet/vehicle distance={distance_m:.2f}m "
+                f"limit={self.return_start_pose_max_distance_m:.2f}m"
+            )
+            return False
+        return True
+
+    def _log_return_start_pose_wait(self, reason: str) -> None:
+        # HH_260721 - Return retries run at 5 Hz, so rate-limit this operational
+        # message while retaining the exact reason in logs.
+        now = self.get_clock().now()
+        if self._last_return_start_wait_log_time is not None:
+            elapsed_s = (
+                now - self._last_return_start_wait_log_time
+            ).nanoseconds / 1e9
+            if elapsed_s < 2.0:
+                return
+        self._last_return_start_wait_log_time = now
+        self.get_logger().warn(f"delaying drop-zone return route: {reason}")
 
     def _on_raw_goal(self, msg: RosPoseStamped) -> None:
         matched = self._match_drop_zone_raw_goal(msg)
@@ -1176,6 +1284,11 @@ class PlanningStateMachineNode(Node):
 
     def _publish_auto_goal(self, key_name: str, source: str, force: bool = False) -> bool:
         if key_name == self.return_mission_key:
+            # HH_260721 - A campsite maneuver moves outside the lanelet planner.
+            # Wait for centerline snapping to reflect the completed crab exit
+            # before Nav2 captures its route start pose.
+            if not self._return_start_pose_ready():
+                return False
             self._select_nearest_return_keypoint_for_current_pose(source)
         kp = self._goal_keypoint(key_name)
         if kp is None:

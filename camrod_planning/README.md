@@ -39,6 +39,18 @@ At a campsite lanelet snap pose, planning yields local motion to
 `/control/camping_site_maneuver_controller`. After crab exit completes, the maneuver requests the
 return route and planning resumes Nav2 ownership.
 
+<!-- HH_260721 - Explain why return requests may remain pending briefly. -->
+The return request remains pending until the lanelet snap pose is fresh and is
+within the configured distance of `/localization/pose`. This keeps the Nav2
+return path anchored to the completed campsite exit instead of an older route
+position.
+
+<!-- HH_260721 - Document bounded heading disambiguation after a 180-degree maneuver. -->
+`centerline_snapper` uses vehicle heading only among spatially nearby lanelet
+candidates. If a heading-aligned centerline is substantially farther than the
+nearest geometry, the nearest geometry wins so an in-place turn cannot move the
+route start to another road.
+
 At the drop-zone lanelet snap pose, planning yields to
 `/control/drop_zone_maneuver_controller`. After body-yaw alignment, control starts the
 selected parking implementation. `reverse_parking_controller:PARKED` moves the mission to
