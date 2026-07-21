@@ -122,10 +122,12 @@ _clean_stale_install_artifacts() {
   # to source missing local_setup.bash files and launch reports unrelated
   # packages as "not built".
   # HH_260720 - Parking controllers are built inside camrod_control; no legacy package prefix remains.
+  # HH_260721 - The ground-segmentation core is integrated into its ROS 2 node package.
   local prefix
   for prefix in \
     "${WS_ROOT}/install/apriltag_msgs" \
     "${WS_ROOT}/install/apriltag_ros" \
+    "${WS_ROOT}/install/ground_segmentation" \
     "${WS_ROOT}/install/ntrip_client_node" \
     "${WS_ROOT}/install/ublox_dgnss" \
     "${WS_ROOT}/install/ublox_dgnss_node" \
@@ -188,6 +190,18 @@ sanitize_path_var() {
 sanitize_path_var AMENT_PREFIX_PATH
 sanitize_path_var CMAKE_PREFIX_PATH
 sanitize_path_var COLCON_PREFIX_PATH
+
+# HH_260721 - Reject the retired standalone ground-segmentation package instead
+# of silently building two identical copies on machines with stale source trees.
+_reject_legacy_ground_segmentation_package() {
+  local legacy_package="${SRC_ROOT}/camrod_sensing/external/ground_segmentation/package.xml"
+  local runtime_package="${SRC_ROOT}/camrod_sensing/external/ground_segmentation_ros2/package.xml"
+  if [[ -f "${legacy_package}" && -f "${runtime_package}" ]]; then
+    log "ERROR: remove legacy camrod_sensing/external/ground_segmentation; its headers are integrated into ground_segmentation_ros2" >&2
+    return 1
+  fi
+}
+_reject_legacy_ground_segmentation_package
 
 # HH_260428: Collect all external/ base directories for colcon --base-paths.
 # Excludes .git internals, build/install/log artifacts, and disabled packages.

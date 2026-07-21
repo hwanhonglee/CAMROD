@@ -291,6 +291,8 @@ clone_ext "https://github.com/ros-perception/vision_msgs.git"                "ro
 clone_ext "https://github.com/ros-perception/vision_opencv.git"              "3.2.1"        "camrod_common/external/vision_opencv"
 clone_ext "https://github.com/ros-perception/perception_pcl.git"             "humble"       "camrod_sensing/external/perception_pcl"
 clone_ext "https://github.com/ros-perception/laser_geometry.git"             "ros2"         "camrod_planning/external/laser_geometry"
+# HH_260721 - Do not clone the standalone ground_segmentation repository. Its
+# header-only core is tracked inside ground_segmentation_ros2, the only runtime package.
 # HH_260428: Agilex platform drivers — set CAMROD_AGILEX_BASE to use custom forks.
 clone_ext "${AGILEX_BASE}/ugv_sdk.git"                                        "main"         "camrod_platform/external/ugv_sdk"
 clone_ext "${AGILEX_BASE}/ranger_ros2.git"                                    "humble"       "camrod_platform/external/ranger_ros2"
