@@ -169,6 +169,8 @@ graph LR
 | 📨 `AvgTrackingError` | msg | `stamp`, `frame_id`; local and global `lateral_deviation`, `heading_error`, `distance_to_path` (with valid flags); active path source and active deviations | camrod_planning | camrod_platform, monitoring tools |
 <!-- HH_260720 - Document the single AprilTag parking pose contract. -->
 | 📨 `AvgAprilTagPose` | msg | tag id, validity, age, and target pose | camrod_perception | camrod_control |
+<!-- HH_260721 - Document service progress independently from diagnostic health. -->
+| 📨 `AvgServiceState` | msg | service lifecycle from preparation and driving through site wait, parking, charging, and charger departure | camrod_control, camrod_ui | camrod_planning, camrod_system, camrod_ui |
 
 ### 📞 Services (`srv/`)
 
@@ -331,9 +333,11 @@ If a node crashes with `rcutils_logging` type errors or `rmw` deserialization fa
 
 > HH_260621: Reservation-aware UI and recall flows use explicit service/scenario constants so UI, planning, and diagnostics can distinguish delivery entry from road-only guest recall.
 
+<!-- HH_260721 - Service lifecycle is operational state, separate from module health. -->
+
 | Interface | Added contract |
 |---|---|
-| `AvgAmrServiceState` | `SITE_ENTRY`, `UNLOAD_WAIT`, `RECALL_TO_SITE_ROAD`, `GUEST_LOADING_WAIT`, `RETURN_WITH_CARGO`, `DROP_ZONE_PARKING` |
+| `AvgServiceState` | Existing values remain stable; `WAITING_FOR_RETURN_REQUEST`, `WAITING_FOR_CHARGING`, `CHARGING`, `DEPARTING_CHARGER`, and `DEPARTING_DROP_ZONE` expose normal wait and departure progress without misusing health severity |
 | `PlanningScenario` | `SITE_ENTRY`, `UNLOAD_WAIT`, `RECALL_TO_SITE_ROAD`, `GUEST_LOADING_WAIT`, `RETURN_WITH_CARGO`, `DROP_ZONE_PARKING` |
 | `PlanningRecallRequest` | `ui_guest_node` now publishes this message directly to `/planning/state_machine/camping_site_recall` so recall can target `<site>_road` instead of the campsite centroid |
 

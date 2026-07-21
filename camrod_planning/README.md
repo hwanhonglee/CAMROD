@@ -23,7 +23,7 @@ reverse parking.
 |---|---|---|
 | Input | `/goal_pose` | Manual or UI destination request |
 | Input | `/planning/mission_key` | Semantic destination such as `camping_site_1` |
-| Input | `/AMR_service_state` | Control/parking phase handoff into mission state |
+| Input | `/service/state` | Control/parking phase handoff into mission state |
 | Output | `/planning/global_path` | Lanelet/Nav2 global path |
 <!-- HH_260720 - Document the generated global-path mirror used by CAMROD-owned consumers. -->
 | Output | `/planning/global_path_avg` | Generated CAMROD mirror of the Nav2 global path |
@@ -52,6 +52,16 @@ within the configured distance of `/localization/pose`. This keeps the Nav2
 return path anchored to the completed campsite exit instead of an older route
 position.
 
+<!-- HH_260721 - Document campsite return routing without changing map-wide one-way semantics. -->
+When the route start yaw differs from the matched lanelet direction by at least
+`reverse_lanelet_start_heading_threshold_deg`, `LaneletRoutePlanner` reverses
+the legal goal-to-start shortest path. A campsite return therefore retraces the
+approximately 53 m drop-zone arrival path instead of taking the approximately
+149 m one-way loop. Replanning the same snapped destination keeps the initially
+selected reverse direction even if localization yaw changes temporarily; a new
+destination clears that decision. Other plans retain the OSM `one_way` routing
+graph.
+
 <!-- HH_260721 - Document bounded heading disambiguation after a 180-degree maneuver. -->
 `centerline_snapper` uses vehicle heading only among spatially nearby lanelet
 candidates. If a heading-aligned centerline is substantially farther than the
@@ -60,8 +70,13 @@ route start to another road.
 
 At the drop-zone lanelet snap pose, planning yields to
 `/control/drop_zone_maneuver_controller`. After body-yaw alignment, control starts the
-selected parking implementation. `reverse_parking_controller:PARKED` moves the mission to
-`WAIT_DZ`.
+selected parking implementation.
+
+<!-- HH_260721 - Keep normal charging progress distinct from planning failures. -->
+`DROP_ZONE_WAIT` and `CHARGING` move the mission to `WAIT_DZ`.
+`WAITING_FOR_CHARGING` keeps the parking scenario active until charger feedback
+arrives, while `WAITING_FOR_RETURN_REQUEST` keeps the campsite unload scenario
+stationary until an explicit return request.
 
 Raw commands always pass through `camrod_control` and `camrod_platform` before
 they can reach the Ranger base.
