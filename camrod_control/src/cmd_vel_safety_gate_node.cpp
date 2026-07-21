@@ -26,10 +26,11 @@
 #include "avg_msgs/msg/avg_twist.hpp"
 #include "avg_msgs/msg/module_state.hpp"
 #include "avg_msgs/msg/planning_mission_key.hpp"
-#include "camrod_control/charging_departure_policy.hpp"
+#include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
-#include "camrod_control/control_support.hpp"
-#include "camrod_control/directional_cost_guard.hpp"
+#include "camrod_control/motion_geometry.hpp"
+#include "camrod_control/motion_cost_stop.hpp"
+#include "camrod_control/ros_message_conversion.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -65,7 +66,7 @@ std::set<std::string> parseLabelSet(
   std::stringstream stream(value);
   std::string item;
   while (std::getline(stream, item, ',')) {
-    const auto normalized = DirectionalCostGuard::normalizeLabel(item);
+    const auto normalized = MotionCostStop::normalizeLabel(item);
     const auto first = normalized.find_first_not_of(" \t\r\n");
     const auto last = normalized.find_last_not_of(" \t\r\n");
     if (first != std::string::npos) {
@@ -165,8 +166,8 @@ public:
     }
 
     loadGatePolicyConfig();
-    loadChargingDepartureConfig();
-    loadCostGuardConfig();
+    loadChargingMissionOverrideConfig();
+    loadMotionCostStopConfig();
     loadAlignmentConfig();
     loadRuntimeConfig();
     createPublishersAndSubscriptions();
@@ -191,7 +192,7 @@ private:
   {
     require_platform_drive_enable_ = declare_parameter<bool>(
       "require_platform_drive_enable", true);
-    const std::string platform_mode = DirectionalCostGuard::normalizeLabel(
+    const std::string platform_mode = MotionCostStop::normalizeLabel(
       declare_parameter<std::string>("platform_safety_source_mode", "platform_status"));
     platform_safety_enabled_ = platform_mode != "disabled" && platform_mode != "off" &&
       platform_mode != "none";
@@ -216,22 +217,23 @@ private:
     gate_policy_.setConfig(gate_config_);
   }
 
-  void loadChargingDepartureConfig()
+  void loadChargingMissionOverrideConfig()
   {
-    // HH_260721 - A fresh campsite mission opens only a bounded charger departure window.
-    charging_config_.allow_mission_departure_while_charging = declare_parameter<bool>(
+    // HH_260721 - Map existing field parameters to the explicit charging motion override model.
+    charging_override_config_.allow_motion_while_charging = declare_parameter<bool>(
       "allow_mission_departure_while_charging", true);
-    charging_config_.grace_s = declare_parameter<double>(
+    charging_override_config_.duration_s = declare_parameter<double>(
       "charging_departure_grace_s", 15.0);
-    charging_config_.mission_request_dedup_s = declare_parameter<double>(
+    charging_override_config_.request_dedup_s = declare_parameter<double>(
       "mission_request_dedup_s", 1.0);
-    charging_config_.mission_prefixes = parseLabelSet(
+    charging_override_config_.mission_prefixes = parseLabelSet(
       declare_parameter<std::string>("charger_departure_mission_prefixes", "camping_site_"),
       {"camping_site_"});
-    charging_policy_.setConfig(charging_config_);
+    charging_mission_override_.setConfig(charging_override_config_);
   }
 
-  void loadCostGuardConfig()
+  // HH_260721 - Load all translation, crab, zero-turn, lanelet, and latch stop settings together.
+  void loadMotionCostStopConfig()
   {
     // HH_260721 - Preserve every field-tuned obstacle and lanelet parameter in the native guard.
     cost_grid_topic_ = declare_parameter<std::string>(
@@ -241,31 +243,33 @@ private:
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
     odometry_topic_ = declare_parameter<std::string>(
       "odometry_topic", "/localization/fallback/odometry");
-    pose_source_preference_ = DirectionalCostGuard::normalizeLabel(
+    pose_source_preference_ = MotionCostStop::normalizeLabel(
       declare_parameter<std::string>("pose_source_preference", "odometry"));
     enable_pose_raw_fallback_ = declare_parameter<bool>("enable_pose_raw_fallback", false);
     robot_base_frame_ = declare_parameter<std::string>("robot_base_frame", "robot_base_link");
 
-    cost_config_.enabled = declare_parameter<bool>("enable_cost_stop", true);
-    cost_config_.cost_stop_threshold = declare_parameter<int>("cost_stop_threshold", 85);
-    cost_config_.fixed_front_lookahead_m = declare_parameter<double>(
+    motion_cost_stop_config_.enabled = declare_parameter<bool>("enable_cost_stop", true);
+    motion_cost_stop_config_.cost_stop_threshold =
+      declare_parameter<int>("cost_stop_threshold", 85);
+    motion_cost_stop_config_.fixed_front_lookahead_m = declare_parameter<double>(
       "cost_stop_lookahead_m", 2.0);
-    cost_config_.front_width_m = declare_parameter<double>("cost_stop_width_m", 1.27);
-    cost_config_.stop_hold_s = declare_parameter<double>("cost_stop_hold_s", 1.0);
-    cost_config_.latch_enabled = declare_parameter<bool>("cost_stop_latch_enable", true);
-    cost_config_.clear_required_s = declare_parameter<double>(
+    motion_cost_stop_config_.front_width_m = declare_parameter<double>("cost_stop_width_m", 1.27);
+    motion_cost_stop_config_.stop_hold_s = declare_parameter<double>("cost_stop_hold_s", 1.0);
+    motion_cost_stop_config_.latch_enabled =
+      declare_parameter<bool>("cost_stop_latch_enable", true);
+    motion_cost_stop_config_.clear_required_s = declare_parameter<double>(
       "cost_stop_clear_required_s", 2.0);
     cost_stop_latch_log_interval_s_ = declare_parameter<double>(
       "cost_stop_latch_log_interval_s", 1.0);
-    cost_config_.stale_stop_enabled = declare_parameter<bool>(
+    motion_cost_stop_config_.stale_stop_enabled = declare_parameter<bool>(
       "cost_grid_stale_stop_enable", true);
-    cost_config_.stale_timeout_s = declare_parameter<double>(
+    motion_cost_stop_config_.stale_timeout_s = declare_parameter<double>(
       "cost_grid_stale_timeout_s", 1.0);
     cost_grid_stale_log_interval_s_ = declare_parameter<double>(
       "cost_grid_stale_log_interval_s", 1.0);
 
     cost_source_debug_enable_ = declare_parameter<bool>("cost_source_debug_enable", true);
-    cost_config_.source_max_age_s = declare_parameter<double>(
+    motion_cost_stop_config_.source_max_age_s = declare_parameter<double>(
       "cost_source_debug_max_age_s", 1.0);
     cost_source_topics_ = declare_parameter<std::vector<std::string>>(
       "cost_source_debug_topics",
@@ -273,107 +277,119 @@ private:
         "/planning/cost_grid/global_path"});
     cost_source_labels_ = declare_parameter<std::vector<std::string>>(
       "cost_source_debug_labels", {"lanelet", "lidar", "radar", "global_path"});
-    cost_config_.require_dynamic_source = declare_parameter<bool>(
+    motion_cost_stop_config_.require_dynamic_source = declare_parameter<bool>(
       "cost_stop_require_dynamic_source", true);
-    cost_config_.dynamic_source_labels = parseLabelSet(
+    motion_cost_stop_config_.dynamic_source_labels = parseLabelSet(
       declare_parameter<std::string>("cost_stop_dynamic_source_labels", "lidar,radar"),
       {"lidar", "radar"});
-    cost_config_.dynamic_front_use_local_path = declare_parameter<bool>(
+    motion_cost_stop_config_.dynamic_front_use_local_path = declare_parameter<bool>(
       "front_dynamic_stop_use_local_path", true);
-    cost_config_.dynamic_front_path_width_m = declare_parameter<double>(
-      "front_dynamic_path_width_m", cost_config_.front_width_m);
-    cost_config_.dynamic_front_path_max_start_distance_m = declare_parameter<double>(
+    motion_cost_stop_config_.dynamic_front_path_width_m = declare_parameter<double>(
+      "front_dynamic_path_width_m", motion_cost_stop_config_.front_width_m);
+    motion_cost_stop_config_.dynamic_front_path_max_start_distance_m = declare_parameter<double>(
       "front_dynamic_path_max_start_distance_m", 1.5);
 
-    cost_config_.use_speed_dependent_lookahead = declare_parameter<bool>(
+    motion_cost_stop_config_.use_speed_dependent_lookahead = declare_parameter<bool>(
       "enable_speed_dependent_lookahead", true);
-    cost_config_.front_lookahead_min_m = declare_parameter<double>(
+    motion_cost_stop_config_.front_lookahead_min_m = declare_parameter<double>(
       "front_lookahead_min_m", 2.10);
-    cost_config_.front_lookahead_max_m = declare_parameter<double>(
+    motion_cost_stop_config_.front_lookahead_max_m = declare_parameter<double>(
       "front_lookahead_max_m", 3.0);
-    cost_config_.front_friction = declare_parameter<double>("front_lookahead_friction", 0.4);
-    cost_config_.front_reaction_time_s = declare_parameter<double>(
+    motion_cost_stop_config_.front_friction = declare_parameter<double>(
+      "front_lookahead_friction",
+      0.4);
+    motion_cost_stop_config_.front_reaction_time_s = declare_parameter<double>(
       "front_reaction_time_s", 0.15);
-    cost_config_.front_margin_m = declare_parameter<double>("front_lookahead_margin_m", 0.3);
+    motion_cost_stop_config_.front_margin_m = declare_parameter<double>(
+      "front_lookahead_margin_m",
+      0.3);
 
-    cost_config_.side_rear_enabled = declare_parameter<bool>(
+    motion_cost_stop_config_.side_rear_enabled = declare_parameter<bool>(
       "enable_side_rear_cost_stop", true);
-    cost_config_.body_near_enabled = declare_parameter<bool>(
+    motion_cost_stop_config_.body_near_enabled = declare_parameter<bool>(
       "enable_body_near_dynamic_stop", true);
-    cost_config_.body_near_side_m = declare_parameter<double>(
+    motion_cost_stop_config_.body_near_side_m = declare_parameter<double>(
       "body_near_side_lookahead_m", 0.75);
-    cost_config_.body_near_rear_m = declare_parameter<double>(
+    motion_cost_stop_config_.body_near_rear_m = declare_parameter<double>(
       "body_near_rear_lookahead_m", 0.55);
-    cost_config_.maneuver_body_near_side_m = declare_parameter<double>(
+    motion_cost_stop_config_.maneuver_body_near_side_m = declare_parameter<double>(
       "body_near_maneuver_side_lookahead_m", 0.55);
-    cost_config_.maneuver_body_near_rear_m = declare_parameter<double>(
+    motion_cost_stop_config_.maneuver_body_near_rear_m = declare_parameter<double>(
       "body_near_maneuver_rear_lookahead_m", 0.45);
-    cost_config_.side_threshold = declare_parameter<int>("side_cost_threshold", 85);
-    cost_config_.side_lookahead_m = declare_parameter<double>("side_lookahead_m", 1.2);
-    cost_config_.side_width_m = declare_parameter<double>("side_corridor_width_m", 1.69160);
-    cost_config_.rear_threshold = declare_parameter<int>("rear_cost_threshold", 85);
-    cost_config_.rear_lookahead_m = declare_parameter<double>("rear_lookahead_m", 1.2);
-    cost_config_.rear_width_m = declare_parameter<double>("rear_corridor_width_m", 1.27);
-    cost_config_.min_translation_mps = declare_parameter<double>(
+    motion_cost_stop_config_.side_threshold = declare_parameter<int>("side_cost_threshold", 85);
+    motion_cost_stop_config_.side_lookahead_m = declare_parameter<double>("side_lookahead_m", 1.2);
+    motion_cost_stop_config_.side_width_m = declare_parameter<double>(
+      "side_corridor_width_m",
+      1.69160);
+    motion_cost_stop_config_.rear_threshold = declare_parameter<int>("rear_cost_threshold", 85);
+    motion_cost_stop_config_.rear_lookahead_m = declare_parameter<double>("rear_lookahead_m", 1.2);
+    motion_cost_stop_config_.rear_width_m =
+      declare_parameter<double>("rear_corridor_width_m", 1.27);
+    motion_cost_stop_config_.min_translation_mps = declare_parameter<double>(
       "lanelet_safety_min_translation_mps", 0.02);
-    cost_config_.static_lateral_bypass = declare_parameter<bool>(
+    motion_cost_stop_config_.static_lateral_bypass = declare_parameter<bool>(
       "lateral_cmd_bypass_static_cost_stop", true);
-    cost_config_.static_lateral_bypass_min_mps = declare_parameter<double>(
+    motion_cost_stop_config_.static_lateral_bypass_min_mps = declare_parameter<double>(
       "lateral_cmd_bypass_min_mps", 0.02);
-    cost_config_.static_reverse_bypass = declare_parameter<bool>(
+    motion_cost_stop_config_.static_reverse_bypass = declare_parameter<bool>(
       "reverse_cmd_bypass_static_cost_stop", true);
-    cost_config_.static_reverse_bypass_min_mps = declare_parameter<double>(
+    motion_cost_stop_config_.static_reverse_bypass_min_mps = declare_parameter<double>(
       "reverse_cmd_bypass_min_mps", 0.02);
     // HH_260721 - Use side_cost_threshold as the single lateral dynamic-cost threshold.
-    cost_config_.rotation_dynamic_stop = declare_parameter<bool>(
+    motion_cost_stop_config_.rotation_dynamic_stop = declare_parameter<bool>(
       "rotation_cmd_dynamic_obstacle_stop", true);
-    cost_config_.rotation_radius_m = declare_parameter<double>(
+    motion_cost_stop_config_.rotation_radius_m = declare_parameter<double>(
       "rotation_cmd_dynamic_obstacle_radius_m", 1.5);
-    cost_config_.rotation_threshold = declare_parameter<int>(
+    motion_cost_stop_config_.rotation_threshold = declare_parameter<int>(
       "rotation_cmd_dynamic_obstacle_threshold", 85);
-    cost_config_.unavoidable_stop_enabled = declare_parameter<bool>(
+    motion_cost_stop_config_.unavoidable_stop_enabled = declare_parameter<bool>(
       "enable_unavoidable_stop", true);
-    cost_config_.unavoidable_threshold = declare_parameter<int>(
+    motion_cost_stop_config_.unavoidable_threshold = declare_parameter<int>(
       "unavoidable_lethal_threshold", 90);
-    cost_config_.unavoidable_min_cells = declare_parameter<int>(
+    motion_cost_stop_config_.unavoidable_min_cells = declare_parameter<int>(
       "unavoidable_cluster_min_cells", 25);
-    cost_config_.unavoidable_min_ratio = declare_parameter<double>(
+    motion_cost_stop_config_.unavoidable_min_ratio = declare_parameter<double>(
       "unavoidable_cluster_min_ratio", 0.25);
 
-    cost_config_.lanelet_enabled = declare_parameter<bool>("lanelet_safety_enable", true);
-    cost_config_.lanelet_threshold = declare_parameter<int>("lanelet_safety_threshold", 85);
-    cost_config_.lanelet_current_threshold = declare_parameter<int>(
+    motion_cost_stop_config_.lanelet_enabled =
+      declare_parameter<bool>("lanelet_safety_enable", true);
+    motion_cost_stop_config_.lanelet_threshold = declare_parameter<int>(
+      "lanelet_safety_threshold",
+      85);
+    motion_cost_stop_config_.lanelet_current_threshold = declare_parameter<int>(
       "lanelet_safety_current_threshold", 85);
-    cost_config_.lanelet_lookahead_m = declare_parameter<double>(
+    motion_cost_stop_config_.lanelet_lookahead_m = declare_parameter<double>(
       "lanelet_safety_lookahead_m", 1.0);
-    cost_config_.lanelet_width_m = declare_parameter<double>("lanelet_safety_width_m", 0.8);
-    cost_config_.lanelet_stop_on_unknown = declare_parameter<bool>(
+    motion_cost_stop_config_.lanelet_width_m = declare_parameter<double>(
+      "lanelet_safety_width_m",
+      0.8);
+    motion_cost_stop_config_.lanelet_stop_on_unknown = declare_parameter<bool>(
       "lanelet_safety_stop_on_unknown", true);
-    cost_config_.lanelet_allow_rotation = declare_parameter<bool>(
+    motion_cost_stop_config_.lanelet_allow_rotation = declare_parameter<bool>(
       "lanelet_safety_allow_rotation_in_place", true);
-    cost_config_.lanelet_check_reverse = declare_parameter<bool>(
+    motion_cost_stop_config_.lanelet_check_reverse = declare_parameter<bool>(
       "lanelet_safety_check_reverse", false);
-    cost_config_.lanelet_check_lateral = declare_parameter<bool>(
+    motion_cost_stop_config_.lanelet_check_lateral = declare_parameter<bool>(
       "lanelet_safety_check_lateral", false);
-    cost_config_.lanelet_front_use_local_path = declare_parameter<bool>(
+    motion_cost_stop_config_.lanelet_front_use_local_path = declare_parameter<bool>(
       "lanelet_safety_front_use_local_path", true);
-    cost_config_.lanelet_path_max_start_distance_m = declare_parameter<double>(
+    motion_cost_stop_config_.lanelet_path_max_start_distance_m = declare_parameter<double>(
       "lanelet_safety_front_path_max_start_distance_m", 1.5);
-    cost_config_.lanelet_path_width_m = declare_parameter<double>(
+    motion_cost_stop_config_.lanelet_path_width_m = declare_parameter<double>(
       "lanelet_safety_front_path_width_m", 0.25);
-    cost_config_.lanelet_front_path_allow_route_reentry = declare_parameter<bool>(
+    motion_cost_stop_config_.lanelet_front_path_allow_route_reentry = declare_parameter<bool>(
       "lanelet_safety_front_path_allow_route_reentry", true);
-    cost_config_.lanelet_current_allow_route_reentry = declare_parameter<bool>(
+    motion_cost_stop_config_.lanelet_current_allow_route_reentry = declare_parameter<bool>(
       "lanelet_safety_current_allow_route_reentry", true);
-    cost_config_.lanelet_route_reentry_max_distance_m = declare_parameter<double>(
+    motion_cost_stop_config_.lanelet_route_reentry_max_distance_m = declare_parameter<double>(
       "lanelet_safety_current_route_reentry_max_distance_m", 4.0);
-    cost_config_.lanelet_route_reentry_require_front_cmd = declare_parameter<bool>(
+    motion_cost_stop_config_.lanelet_route_reentry_require_front_cmd = declare_parameter<bool>(
       "lanelet_safety_current_route_reentry_require_front_cmd", true);
 
     drop_zone_status_topic_ = declare_parameter<std::string>(
       "drop_zone_maneuver_controller_status_topic",
       "/control/drop_zone_maneuver_controller/status");
-    cost_config_.drop_zone_static_bypass_phases = parseLabelSet(
+    motion_cost_stop_config_.drop_zone_static_bypass_phases = parseLabelSet(
       declare_parameter<std::string>(
         "drop_zone_maneuver_controller_static_bypass_phases",
         "EXIT_STRAIGHT,ALIGN_EXIT_YAW"),
@@ -381,13 +397,13 @@ private:
     campsite_status_topic_ = declare_parameter<std::string>(
       "camping_site_maneuver_controller_status_topic",
       "/control/camping_site_maneuver_controller/status");
-    cost_config_.campsite_static_bypass_phases = parseLabelSet(
+    motion_cost_stop_config_.campsite_static_bypass_phases = parseLabelSet(
       declare_parameter<std::string>(
         "camping_site_maneuver_controller_static_bypass_phases",
         "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETURN_YAW,REVERSE_OUT,CRAB_OUT"),
       {"align_entry_yaw", "reverse_in", "crab_in", "rotate_180",
         "align_return_yaw", "reverse_out", "crab_out"});
-    cost_guard_.setConfig(cost_config_);
+    motion_cost_stop_.setConfig(motion_cost_stop_config_);
   }
 
   void loadAlignmentConfig()
@@ -427,7 +443,7 @@ private:
     additional_estop_topics_ = parseTopicList(
       declare_parameter<std::string>(
         "additional_estop_topics", "/planning/state_machine/estop"));
-    const std::string dr_mode = DirectionalCostGuard::normalizeLabel(
+    const std::string dr_mode = MotionCostStop::normalizeLabel(
       declare_parameter<std::string>("dr_timeout_source_mode", "localization_monitor"));
     dr_timeout_enabled_ = dr_mode != "disabled" && dr_mode != "off" && dr_mode != "none";
     dr_timeout_topic_ = declare_parameter<std::string>(
@@ -483,7 +499,7 @@ private:
       mission_engage_topic_, 10, [this](const avg_msgs::msg::AvgBool::SharedPtr message) {
         gate_policy_.setMissionEngage(message->data);
         if (!message->data) {
-          charging_policy_.cancelDeparture();
+          charging_mission_override_.cancel();
         }
         onAuthorizationChanged("mission_engage");
       });
@@ -509,13 +525,13 @@ private:
       drop_zone_status_topic_, 10,
       [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
         drop_zone_phase_ = phaseFromStatus(message->message);
-        cost_guard_.setManeuverPhases(drop_zone_phase_, campsite_phase_);
+        motion_cost_stop_.setManeuverPhases(drop_zone_phase_, campsite_phase_);
       });
     campsite_status_subscription_ = create_subscription<avg_msgs::msg::ModuleState>(
       campsite_status_topic_, 10,
       [this](const avg_msgs::msg::ModuleState::SharedPtr message) {
         campsite_phase_ = phaseFromStatus(message->message);
-        cost_guard_.setManeuverPhases(drop_zone_phase_, campsite_phase_);
+        motion_cost_stop_.setManeuverPhases(drop_zone_phase_, campsite_phase_);
       });
 
     for (const auto & topic : additional_estop_topics_) {
@@ -540,26 +556,26 @@ private:
         std::bind(&CmdVelSafetyGateNode::onLocalizationMode, this, std::placeholders::_1));
     }
 
-    if (cost_config_.enabled) {
+    if (motion_cost_stop_config_.enabled) {
       rclcpp::QoS cost_qos(10);
       cost_qos.reliable().transient_local();
       merged_grid_subscription_ = create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
         cost_grid_topic_, cost_qos,
         [this](const avg_msgs::msg::AvgOccupancyGrid::SharedPtr message) {
           merged_grid_frame_ = message->header.frame_id;
-          cost_guard_.setMergedGrid(*message, nowSec());
-          refreshCostGuardPose();
+          motion_cost_stop_.setMergedGrid(*message, nowSec());
+          refreshMotionCostStopPose();
         });
-      if (cost_config_.lanelet_enabled) {
+      if (motion_cost_stop_config_.lanelet_enabled) {
         lanelet_grid_subscription_ = create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
           lanelet_grid_topic_, cost_qos,
           [this](const avg_msgs::msg::AvgOccupancyGrid::SharedPtr message) {
             lanelet_grid_frame_ = message->header.frame_id;
-            cost_guard_.setLaneletGrid(*message, nowSec());
-            refreshCostGuardPose();
+            motion_cost_stop_.setLaneletGrid(*message, nowSec());
+            refreshMotionCostStopPose();
           });
       }
-      if (cost_source_debug_enable_ || cost_config_.require_dynamic_source) {
+      if (cost_source_debug_enable_ || motion_cost_stop_config_.require_dynamic_source) {
         for (std::size_t index = 0; index < cost_source_topics_.size(); ++index) {
           const std::string label = index < cost_source_labels_.size() ?
             cost_source_labels_[index] : cost_source_topics_[index];
@@ -567,32 +583,34 @@ private:
             create_subscription<avg_msgs::msg::AvgOccupancyGrid>(
               cost_source_topics_[index], cost_qos,
               [this, label](const avg_msgs::msg::AvgOccupancyGrid::SharedPtr message) {
-                cost_guard_.setSourceGrid(label, *message, nowSec());
+                motion_cost_stop_.setSourceGrid(label, *message, nowSec());
               }));
         }
       }
     }
 
-    if (cost_config_.enabled || enable_yaw_alignment_zone_ || enable_route_heading_alignment_) {
+    if (motion_cost_stop_config_.enabled || enable_yaw_alignment_zone_ ||
+      enable_route_heading_alignment_)
+    {
       pose_subscription_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
         pose_topic_, 10, [this](const avg_msgs::msg::AvgPoseStamped::SharedPtr message) {
           latest_pose_ = *message;
-          refreshCostGuardPose();
+          refreshMotionCostStopPose();
         });
       odometry_subscription_ = create_subscription<avg_msgs::msg::AvgOdometry>(
         odometry_topic_, 10, [this](const avg_msgs::msg::AvgOdometry::SharedPtr message) {
           latest_odometry_ = *message;
-          cost_guard_.setOdometrySpeed(message->twist.twist.linear.x);
-          refreshCostGuardPose();
+          motion_cost_stop_.setOdometrySpeed(message->twist.twist.linear.x);
+          refreshMotionCostStopPose();
         });
     }
-    if (enable_route_heading_alignment_ || cost_config_.lanelet_front_use_local_path ||
-      cost_config_.dynamic_front_use_local_path)
+    if (enable_route_heading_alignment_ || motion_cost_stop_config_.lanelet_front_use_local_path ||
+      motion_cost_stop_config_.dynamic_front_use_local_path)
     {
       route_path_subscription_ = create_subscription<avg_msgs::msg::AvgPath>(
         route_heading_path_topic_, 10, [this](const avg_msgs::msg::AvgPath::SharedPtr message) {
           latest_path_ = *message;
-          cost_guard_.setLocalPath(*message);
+          motion_cost_stop_.setLocalPath(*message);
         });
     }
   }
@@ -602,15 +620,15 @@ private:
     const double now_sec = nowSec();
     last_input_command_sec_ = now_sec;
     command_input_stale_ = false;
-    refreshCostGuardPose();
+    refreshMotionCostStopPose();
 
     // HH_260721 - Re-evaluate a latched obstacle before authorization so clear time can advance.
-    if (cost_guard_.latched()) {
-      const auto latch_decision = cost_guard_.evaluate(command, now_sec);
+    if (motion_cost_stop_.latched()) {
+      const auto latch_decision = motion_cost_stop_.evaluate(command, now_sec);
       updatePolicyCostState();
       if (latch_decision.blocked) {
         publishZero();
-        logCostDecision(latch_decision, now_sec);
+        logMotionCostStopDecision(latch_decision, now_sec);
         return;
       }
     }
@@ -631,13 +649,13 @@ private:
       command = *heading_override;
     }
 
-    const auto cost_decision = cost_guard_.evaluate(command, now_sec);
+    const auto cost_decision = motion_cost_stop_.evaluate(command, now_sec);
     updatePolicyCostState();
     if (cost_decision.blocked) {
       if (publish_zero_when_blocked_) {
         publishZero();
       }
-      logCostDecision(cost_decision, now_sec);
+      logMotionCostStopDecision(cost_decision, now_sec);
       return;
     }
     publishCommand(scaleCommand(command));
@@ -650,12 +668,12 @@ private:
     request.source = message->source;
     request.stamp_sec = message->header.stamp.sec;
     request.stamp_nanosec = message->header.stamp.nanosec;
-    if (!charging_policy_.requestDeparture(request, nowSec())) {
+    if (!charging_mission_override_.activateForMission(request, nowSec())) {
       return;
     }
     RCLCPP_INFO(
-      get_logger(), "charging departure authorized for mission=%s grace=%.1fs",
-      message->mission_key.c_str(), charging_config_.grace_s);
+      get_logger(), "charging motion override activated for mission=%s duration=%.1fs",
+      message->mission_key.c_str(), charging_override_config_.duration_s);
     publishState();
   }
 
@@ -673,7 +691,7 @@ private:
         static_cast<double>(message->battery_percentage), 0.0, 1.0);
     }
     gate_policy_.setPlatformState(state);
-    charging_policy_.setCharging(message->is_charging);
+    charging_mission_override_.setCharging(message->is_charging);
     gate_policy_.setEstopSource(platform_status_topic_, message->estop);
     publishState();
     if (!effectiveEnabled(nowSec()) && publish_zero_when_blocked_) {
@@ -730,7 +748,7 @@ private:
     }
     // HH_260721 - Log authorization only when its effective reason set changes.
     const auto reasons = gate_policy_.blockReasons(
-      now_sec, charging_policy_.charging(), charging_policy_.overrideActive(now_sec));
+      now_sec, charging_mission_override_.charging(), charging_mission_override_.isActive(now_sec));
     const std::string signature = reasons.empty() ? "enabled" : join(reasons, ",");
     if (signature != last_authorization_log_signature_) {
       last_authorization_log_signature_ = signature;
@@ -744,12 +762,12 @@ private:
   {
     updatePolicyCostState();
     return gate_policy_.enabled(
-      now_sec, charging_policy_.charging(), charging_policy_.overrideActive(now_sec));
+      now_sec, charging_mission_override_.charging(), charging_mission_override_.isActive(now_sec));
   }
 
   void updatePolicyCostState()
   {
-    gate_policy_.setCostState(cost_guard_.latched(), cost_guard_.holdUntilSec());
+    gate_policy_.setCostState(motion_cost_stop_.latched(), motion_cost_stop_.holdUntilSec());
     gate_policy_.setGnssRecoveryHoldUntil(gnss_recovery_hold_until_sec_);
   }
 
@@ -757,8 +775,9 @@ private:
   {
     const double now_sec = nowSec();
     updatePolicyCostState();
-    const bool departure = charging_policy_.overrideActive(now_sec);
-    const auto reasons = gate_policy_.blockReasons(now_sec, charging_policy_.charging(), departure);
+    const bool charging_motion_override_active = charging_mission_override_.isActive(now_sec);
+    const auto reasons = gate_policy_.blockReasons(
+      now_sec, charging_mission_override_.charging(), charging_motion_override_active);
     const bool enabled = reasons.empty();
 
     avg_msgs::msg::AvgBool state;
@@ -776,13 +795,14 @@ private:
       });
     status.level = enabled ? avg_msgs::msg::ModuleState::OK :
       hard_fault ? avg_msgs::msg::ModuleState::ERROR : avg_msgs::msg::ModuleState::WARN;
-    const std::string operating_state = departure && enabled ? "DEPARTING_CHARGER" :
+    const std::string operating_state = charging_motion_override_active && enabled ?
+      "DEPARTING_CHARGER" :
       enabled ? "ENABLED" :
       std::find(reasons.begin(), reasons.end(), "charging") != reasons.end() ? "CHARGING" :
       "BLOCKED";
     status.message = "state=" + operating_state + " reasons=" +
       (reasons.empty() ? "none" : join(reasons, ",")) +
-      " charging=" + std::string(charging_policy_.charging() ? "true" : "false") +
+      " charging=" + std::string(charging_mission_override_.charging() ? "true" : "false") +
       " battery=" + batteryText();
     status_publisher_->publish(status);
   }
@@ -848,7 +868,7 @@ private:
       });
   }
 
-  void refreshCostGuardPose()
+  void refreshMotionCostStopPose()
   {
     std::string target_frame =
       !merged_grid_frame_.empty() ? merged_grid_frame_ : lanelet_grid_frame_;
@@ -856,7 +876,7 @@ private:
       target_frame = route_heading_frame_id_;
     }
     if (const auto pose = resolvePose(target_frame); pose.has_value()) {
-      cost_guard_.setPose(*pose);
+      motion_cost_stop_.setPose(*pose);
     }
   }
 
@@ -952,10 +972,10 @@ private:
     const avg_msgs::msg::AvgTwist & command)
   {
     if (!enable_route_heading_alignment_ || !latest_path_.has_value() ||
-      cost_config_.drop_zone_static_bypass_phases.count(
-        DirectionalCostGuard::normalizeLabel(drop_zone_phase_)) > 0U ||
-      cost_config_.campsite_static_bypass_phases.count(
-        DirectionalCostGuard::normalizeLabel(campsite_phase_)) > 0U ||
+      motion_cost_stop_config_.drop_zone_static_bypass_phases.count(
+        MotionCostStop::normalizeLabel(drop_zone_phase_)) > 0U ||
+      motion_cost_stop_config_.campsite_static_bypass_phases.count(
+        MotionCostStop::normalizeLabel(campsite_phase_)) > 0U ||
       std::abs(command.linear.y) > route_heading_lateral_cmd_epsilon_mps_ ||
       command.linear.x < -route_heading_min_cmd_x_mps_)
     {
@@ -1225,66 +1245,66 @@ private:
       } else if (name == "publish_zero_when_blocked") {
         publish_zero_when_blocked_ = parameter.as_bool();
       } else if (name == "cost_stop_threshold") {
-        cost_config_.cost_stop_threshold = parameter.as_int();
+        motion_cost_stop_config_.cost_stop_threshold = parameter.as_int();
       } else if (name == "cost_stop_hold_s") {
-        cost_config_.stop_hold_s = parameter.as_double();
+        motion_cost_stop_config_.stop_hold_s = parameter.as_double();
       } else if (name == "cost_stop_latch_enable") {
-        cost_config_.latch_enabled = parameter.as_bool();
+        motion_cost_stop_config_.latch_enabled = parameter.as_bool();
       } else if (name == "cost_stop_clear_required_s") {
-        cost_config_.clear_required_s = parameter.as_double();
+        motion_cost_stop_config_.clear_required_s = parameter.as_double();
       } else if (name == "cost_grid_stale_stop_enable") {
-        cost_config_.stale_stop_enabled = parameter.as_bool();
+        motion_cost_stop_config_.stale_stop_enabled = parameter.as_bool();
       } else if (name == "cost_grid_stale_timeout_s") {
-        cost_config_.stale_timeout_s = parameter.as_double();
+        motion_cost_stop_config_.stale_timeout_s = parameter.as_double();
       } else if (name == "cost_stop_lookahead_m") {
-        cost_config_.fixed_front_lookahead_m = parameter.as_double();
+        motion_cost_stop_config_.fixed_front_lookahead_m = parameter.as_double();
       } else if (name == "cost_stop_width_m") {
-        cost_config_.front_width_m = parameter.as_double();
+        motion_cost_stop_config_.front_width_m = parameter.as_double();
       } else if (name == "cost_stop_require_dynamic_source") {
-        cost_config_.require_dynamic_source = parameter.as_bool();
+        motion_cost_stop_config_.require_dynamic_source = parameter.as_bool();
       } else if (name == "cost_stop_dynamic_source_labels") {
-        cost_config_.dynamic_source_labels = parseLabelSet(
+        motion_cost_stop_config_.dynamic_source_labels = parseLabelSet(
           parameter.as_string(), {"lidar", "radar"});
       } else if (name == "front_dynamic_stop_use_local_path") {
-        cost_config_.dynamic_front_use_local_path = parameter.as_bool();
+        motion_cost_stop_config_.dynamic_front_use_local_path = parameter.as_bool();
       } else if (name == "front_dynamic_path_width_m") {
-        cost_config_.dynamic_front_path_width_m = parameter.as_double();
+        motion_cost_stop_config_.dynamic_front_path_width_m = parameter.as_double();
       } else if (name == "lanelet_safety_enable") {
-        cost_config_.lanelet_enabled = parameter.as_bool();
+        motion_cost_stop_config_.lanelet_enabled = parameter.as_bool();
       } else if (name == "lanelet_safety_threshold") {
-        cost_config_.lanelet_threshold = parameter.as_int();
+        motion_cost_stop_config_.lanelet_threshold = parameter.as_int();
       } else if (name == "lanelet_safety_current_threshold") {
-        cost_config_.lanelet_current_threshold = parameter.as_int();
+        motion_cost_stop_config_.lanelet_current_threshold = parameter.as_int();
       } else if (name == "lanelet_safety_lookahead_m") {
-        cost_config_.lanelet_lookahead_m = parameter.as_double();
+        motion_cost_stop_config_.lanelet_lookahead_m = parameter.as_double();
       } else if (name == "lanelet_safety_width_m") {
-        cost_config_.lanelet_width_m = parameter.as_double();
+        motion_cost_stop_config_.lanelet_width_m = parameter.as_double();
       } else if (name == "lanelet_safety_stop_on_unknown") {
-        cost_config_.lanelet_stop_on_unknown = parameter.as_bool();
+        motion_cost_stop_config_.lanelet_stop_on_unknown = parameter.as_bool();
       } else if (name == "enable_speed_dependent_lookahead") {
-        cost_config_.use_speed_dependent_lookahead = parameter.as_bool();
+        motion_cost_stop_config_.use_speed_dependent_lookahead = parameter.as_bool();
       } else if (name == "front_lookahead_min_m") {
-        cost_config_.front_lookahead_min_m = parameter.as_double();
+        motion_cost_stop_config_.front_lookahead_min_m = parameter.as_double();
       } else if (name == "front_lookahead_max_m") {
-        cost_config_.front_lookahead_max_m = parameter.as_double();
+        motion_cost_stop_config_.front_lookahead_max_m = parameter.as_double();
       } else if (name == "front_lookahead_friction") {
-        cost_config_.front_friction = parameter.as_double();
+        motion_cost_stop_config_.front_friction = parameter.as_double();
       } else if (name == "front_reaction_time_s") {
-        cost_config_.front_reaction_time_s = parameter.as_double();
+        motion_cost_stop_config_.front_reaction_time_s = parameter.as_double();
       } else if (name == "front_lookahead_margin_m") {
-        cost_config_.front_margin_m = parameter.as_double();
+        motion_cost_stop_config_.front_margin_m = parameter.as_double();
       } else if (name == "side_cost_threshold") {
-        cost_config_.side_threshold = parameter.as_int();
+        motion_cost_stop_config_.side_threshold = parameter.as_int();
       } else if (name == "rear_cost_threshold") {
-        cost_config_.rear_threshold = parameter.as_int();
+        motion_cost_stop_config_.rear_threshold = parameter.as_int();
       } else if (name == "rotation_cmd_dynamic_obstacle_stop") {
-        cost_config_.rotation_dynamic_stop = parameter.as_bool();
+        motion_cost_stop_config_.rotation_dynamic_stop = parameter.as_bool();
       } else if (name == "rotation_cmd_dynamic_obstacle_radius_m") {
-        cost_config_.rotation_radius_m = parameter.as_double();
+        motion_cost_stop_config_.rotation_radius_m = parameter.as_double();
       } else if (name == "rotation_cmd_dynamic_obstacle_threshold") {
-        cost_config_.rotation_threshold = parameter.as_int();
+        motion_cost_stop_config_.rotation_threshold = parameter.as_int();
       } else if (name == "enable_unavoidable_stop") {
-        cost_config_.unavoidable_stop_enabled = parameter.as_bool();
+        motion_cost_stop_config_.unavoidable_stop_enabled = parameter.as_bool();
       } else if (name == "enable_yaw_alignment_zone") {
         enable_yaw_alignment_zone_ = parameter.as_bool();
         reload_yaw_zones = true;
@@ -1296,7 +1316,7 @@ private:
         route_heading_active_ = false;
       }
     }
-    cost_guard_.setConfig(cost_config_);
+    motion_cost_stop_.setConfig(motion_cost_stop_config_);
     if (recreate_timeout_timer) {
       recreateCommandTimeoutTimer();
     }
@@ -1315,13 +1335,14 @@ private:
     }
     last_block_log_sec_ = now_sec;
     const auto reasons = gate_policy_.blockReasons(
-      now_sec, charging_policy_.charging(), charging_policy_.overrideActive(now_sec));
+      now_sec, charging_mission_override_.charging(), charging_mission_override_.isActive(now_sec));
     RCLCPP_WARN(
       get_logger(), "cmd_vel BLOCKED: %s",
       reasons.empty() ? "unknown" : join(reasons, ", ").c_str());
   }
 
-  void logCostDecision(const CostGuardDecision & decision, const double now_sec)
+  void logMotionCostStopDecision(
+    const MotionCostStopDecision & decision, const double now_sec)
   {
     const double interval = decision.stale_grid ? cost_grid_stale_log_interval_s_ :
       cost_stop_latch_log_interval_s_;
@@ -1340,11 +1361,11 @@ private:
   }
 
   CmdVelGatePolicyConfig gate_config_;
-  ChargingDepartureConfig charging_config_;
-  DirectionalCostGuardConfig cost_config_;
+  ChargingMissionOverrideConfig charging_override_config_;
+  MotionCostStopConfig motion_cost_stop_config_;
   CmdVelGatePolicy gate_policy_;
-  ChargingDeparturePolicy charging_policy_;
-  DirectionalCostGuard cost_guard_;
+  ChargingMissionOverride charging_mission_override_;
+  MotionCostStop motion_cost_stop_;
 
   std::string input_topic_;
   std::string navigation_input_topic_;

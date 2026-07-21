@@ -107,7 +107,7 @@ public:
   std::vector<std::string> blockReasons(
     const double now_sec,
     const bool charging,
-    const bool charging_departure_override) const
+    const bool charging_motion_override) const
   {
     // HH_260721 - Return one authoritative reason list for admission, status, and logs.
     std::vector<std::string> reasons;
@@ -126,7 +126,7 @@ public:
       reasons.emplace_back("platform_drive_enable=false");
     }
 
-    appendPlatformReasons(now_sec, charging, charging_departure_override, reasons);
+    appendPlatformReasons(now_sec, charging, charging_motion_override, reasons);
     if (cost_latched_) {
       reasons.emplace_back("cost_stop_latched");
     } else if (cost_hold_until_sec_ > now_sec) {
@@ -142,9 +142,9 @@ public:
   bool enabled(
     const double now_sec,
     const bool charging,
-    const bool charging_departure_override) const
+    const bool charging_motion_override) const
   {
-    return blockReasons(now_sec, charging, charging_departure_override).empty();
+    return blockReasons(now_sec, charging, charging_motion_override).empty();
   }
 
   const PlatformSafetyState & platformState() const
@@ -194,7 +194,7 @@ private:
   void appendPlatformReasons(
     const double now_sec,
     const bool charging,
-    const bool charging_departure_override,
+    const bool charging_motion_override,
     std::vector<std::string> & reasons) const
   {
     if (!config_.platform_safety_enabled) {
@@ -221,7 +221,7 @@ private:
     if (config_.block_on_platform_error_code && platform_state_.error_code != 0U) {
       reasons.emplace_back("platform_error=" + formatPlatformErrorCode(platform_state_.error_code));
     }
-    if (config_.block_on_charging && charging && !charging_departure_override) {
+    if (config_.block_on_charging && charging && !charging_motion_override) {
       reasons.emplace_back("charging");
     }
     if (config_.critical_battery_stop_enabled && platform_state_.battery_percentage.has_value() &&

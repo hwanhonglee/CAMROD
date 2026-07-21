@@ -4,7 +4,7 @@
 
 #include <cmath>
 
-#include "camrod_control/control_support.hpp"
+#include "camrod_control/motion_geometry.hpp"
 
 namespace camrod_control
 {

@@ -24,10 +24,10 @@ find_package(yaml-cpp REQUIRED)
 
 include_directories(include)
 
-# HH_260721 - Compile the final velocity gate from separated policy and geometry sources.
+# HH_260721 - Compile the final velocity gate with explicit command and motion-cost stop components.
 add_executable(cmd_vel_safety_gate_node
   src/cmd_vel_safety_gate_node.cpp
-  src/directional_cost_guard.cpp
+  src/motion_cost_stop.cpp
 )
 ament_target_dependencies(cmd_vel_safety_gate_node
   rclcpp
@@ -122,17 +122,17 @@ install(FILES README.md
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  # HH_260721 - Run native policy and parking geometry regression tests.
+  # HH_260721 - Run native gate, cost-stop, charging, and reverse-axis regression tests.
   ament_add_gtest(test_control_policies
     test/test_control_policies.cpp
-    src/directional_cost_guard.cpp
+    src/motion_cost_stop.cpp
   )
   target_include_directories(test_control_policies PRIVATE include)
   ament_target_dependencies(test_control_policies avg_msgs)
 
-  ament_add_gtest(test_parking_geometry test/test_parking_geometry.cpp)
-  target_include_directories(test_parking_geometry PRIVATE include)
-  ament_target_dependencies(test_parking_geometry avg_msgs geometry_msgs diagnostic_msgs rclcpp)
+  ament_add_gtest(test_reverse_parking_axis test/test_reverse_parking_axis.cpp)
+  target_include_directories(test_reverse_parking_axis PRIVATE include)
+  ament_target_dependencies(test_reverse_parking_axis avg_msgs geometry_msgs diagnostic_msgs rclcpp)
 endif()
 
 ament_package()

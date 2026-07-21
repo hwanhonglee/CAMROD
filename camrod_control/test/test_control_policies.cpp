@@ -1,4 +1,4 @@
-// HH_260721 - Verify native command gate, charging departure, and directional cost policies.
+// HH_260721 - Verify command gating, charging mission override, and all-direction cost stopping.
 
 #include <cmath>
 #include <cstdint>
@@ -10,9 +10,9 @@
 #include "avg_msgs/msg/avg_path.hpp"
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
-#include "camrod_control/charging_departure_policy.hpp"
+#include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
-#include "camrod_control/directional_cost_guard.hpp"
+#include "camrod_control/motion_cost_stop.hpp"
 #include "gtest/gtest.h"
 
 namespace camrod_control
@@ -67,9 +67,9 @@ avg_msgs::msg::AvgPath makePath(const std::vector<std::pair<double, double>> & p
   return path;
 }
 
-DirectionalCostGuardConfig baseCostConfig()
+MotionCostStopConfig baseCostConfig()
 {
-  DirectionalCostGuardConfig config;
+  MotionCostStopConfig config;
   config.stale_stop_enabled = false;
   config.lanelet_enabled = false;
   config.require_dynamic_source = false;
@@ -86,11 +86,11 @@ DirectionalCostGuardConfig baseCostConfig()
   return config;
 }
 
-DirectionalCostGuard makeGuard(DirectionalCostGuardConfig config = baseCostConfig())
+MotionCostStop makeMotionCostStop(MotionCostStopConfig config = baseCostConfig())
 {
-  DirectionalCostGuard guard(config);
-  guard.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test"});
-  return guard;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test"});
+  return cost_stop;
 }
 
 avg_msgs::msg::AvgTwist command(const double x, const double y = 0.0, const double yaw = 0.0)
@@ -156,71 +156,71 @@ TEST(CmdVelGatePolicy, BlocksCanFaultStaleStatusChargingAndCriticalSoc)
   EXPECT_TRUE(policy.enabled(21.0, true, true));
 }
 
-TEST(ChargingDeparturePolicy, AcceptsOnlyFreshCampsiteRequestDuringCharging)
+TEST(ChargingMissionOverride, AcceptsOnlyFreshCampsiteRequestDuringCharging)
 {
-  ChargingDeparturePolicy policy;
+  ChargingMissionOverride policy;
   policy.setCharging(true);
   MissionRequestIdentity drop_zone{"drop_zone", "ui", 1, 0};
   MissionRequestIdentity campsite{"camping_site_3", "ui", 2, 0};
-  EXPECT_FALSE(policy.requestDeparture(drop_zone, 100.0));
-  EXPECT_TRUE(policy.requestDeparture(campsite, 100.0));
-  EXPECT_TRUE(policy.overrideActive(114.9));
-  EXPECT_FALSE(policy.requestDeparture(campsite, 100.5));
-  EXPECT_FALSE(policy.overrideActive(115.1));
+  EXPECT_FALSE(policy.activateForMission(drop_zone, 100.0));
+  EXPECT_TRUE(policy.activateForMission(campsite, 100.0));
+  EXPECT_TRUE(policy.isActive(114.9));
+  EXPECT_FALSE(policy.activateForMission(campsite, 100.5));
+  EXPECT_FALSE(policy.isActive(115.1));
   policy.setCharging(false);
-  EXPECT_FALSE(policy.overrideActive(101.0));
+  EXPECT_FALSE(policy.isActive(101.0));
 }
 
-TEST(DirectionalCostGuard, ForwardThresholdAndBelowThreshold)
+TEST(MotionCostStop, ForwardThresholdAndBelowThreshold)
 {
-  auto guard = makeGuard();
-  guard.setMergedGrid(makeGrid({{1.0, 0.0, 90}}), 0.0);
-  EXPECT_TRUE(guard.evaluate(command(0.2), 0.0).blocked);
+  auto cost_stop = makeMotionCostStop();
+  cost_stop.setMergedGrid(makeGrid({{1.0, 0.0, 90}}), 0.0);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.0).blocked);
 
-  guard = makeGuard();
-  guard.setMergedGrid(makeGrid({{1.0, 0.0, 60}}), 0.0);
-  EXPECT_FALSE(guard.evaluate(command(0.2), 0.0).blocked);
+  cost_stop = makeMotionCostStop();
+  cost_stop.setMergedGrid(makeGrid({{1.0, 0.0, 60}}), 0.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
 }
 
-TEST(DirectionalCostGuard, CrabAndReverseUseTravelDirection)
+TEST(MotionCostStop, CrabAndReverseUseTravelDirection)
 {
-  auto guard = makeGuard();
-  guard.setMergedGrid(makeGrid({{1.0, 0.0, 90}}), 0.0);
-  EXPECT_FALSE(guard.evaluate(command(0.0, 0.2), 0.0).blocked);
+  auto cost_stop = makeMotionCostStop();
+  cost_stop.setMergedGrid(makeGrid({{1.0, 0.0, 90}}), 0.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.2), 0.0).blocked);
   const auto left_obstacle = makeGrid({{0.0, 0.5, 90}});
-  guard.setMergedGrid(left_obstacle, 0.1);
+  cost_stop.setMergedGrid(left_obstacle, 0.1);
   // HH_260721 - Site-motion static bypass still requires live source cost to stop.
-  guard.setSourceGrid("radar", left_obstacle, 0.1);
-  EXPECT_TRUE(guard.evaluate(command(0.0, 0.2), 0.1).blocked);
+  cost_stop.setSourceGrid("radar", left_obstacle, 0.1);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0, 0.2), 0.1).blocked);
 
-  guard = makeGuard();
-  guard.setMergedGrid(makeGrid({{1.0, 0.0, 90}}), 0.0);
-  EXPECT_FALSE(guard.evaluate(command(-0.2), 0.0).blocked);
+  cost_stop = makeMotionCostStop();
+  cost_stop.setMergedGrid(makeGrid({{1.0, 0.0, 90}}), 0.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(-0.2), 0.0).blocked);
   const auto rear_obstacle = makeGrid({{-0.35, 0.0, 90}});
-  guard.setMergedGrid(rear_obstacle, 0.1);
-  guard.setSourceGrid("radar", rear_obstacle, 0.1);
-  EXPECT_TRUE(guard.evaluate(command(-0.2), 0.1).blocked);
+  cost_stop.setMergedGrid(rear_obstacle, 0.1);
+  cost_stop.setSourceGrid("radar", rear_obstacle, 0.1);
+  EXPECT_TRUE(cost_stop.evaluate(command(-0.2), 0.1).blocked);
 }
 
-TEST(DirectionalCostGuard, RotationStopsOnlyOnLiveDynamicSource)
+TEST(MotionCostStop, RotationStopsOnlyOnLiveDynamicSource)
 {
   auto config = baseCostConfig();
   config.require_dynamic_source = true;
-  auto guard = makeGuard(config);
-  guard.setMergedGrid(makeGrid({{0.5, 0.0, 90}}), 0.0);
-  EXPECT_FALSE(guard.evaluate(command(0.0, 0.0, 0.3), 0.0).blocked);
-  guard.setSourceGrid("lidar", makeGrid({{0.5, 0.0, 90}}), 0.1);
-  EXPECT_TRUE(guard.evaluate(command(0.0, 0.0, 0.3), 0.1).blocked);
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setMergedGrid(makeGrid({{0.5, 0.0, 90}}), 0.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.0, 0.3), 0.0).blocked);
+  cost_stop.setSourceGrid("lidar", makeGrid({{0.5, 0.0, 90}}), 0.1);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0, 0.0, 0.3), 0.1).blocked);
 }
 
-TEST(DirectionalCostGuard, LaneletRotationPolicyChecksCurrentCellWhenDisabled)
+TEST(MotionCostStop, LaneletRotationPolicyChecksCurrentCellWhenDisabled)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
   config.lanelet_current_allow_route_reentry = false;
   config.lanelet_allow_rotation = true;
-  auto guard = makeGuard(config);
-  guard.setMergedGrid(makeGrid(), 0.0);
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setMergedGrid(makeGrid(), 0.0);
   // HH_260721 - Fill the pose neighborhood so grid-edge rounding cannot hide current cost.
   const auto occupied_current_cell = makeGrid(
     {
@@ -228,61 +228,61 @@ TEST(DirectionalCostGuard, LaneletRotationPolicyChecksCurrentCellWhenDisabled)
       {0.0, -0.1, 100}, {0.0, 0.0, 100}, {0.0, 0.1, 100},
       {0.1, -0.1, 100}, {0.1, 0.0, 100}, {0.1, 0.1, 100},
     });
-  guard.setLaneletGrid(occupied_current_cell, 0.0);
+  cost_stop.setLaneletGrid(occupied_current_cell, 0.0);
 
   // HH_260721 - Site zero-turn may bypass lanelet cost only when explicitly configured.
-  EXPECT_FALSE(guard.evaluate(command(0.0, 0.0, 0.3), 0.0).blocked);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.0, 0.3), 0.0).blocked);
   config.lanelet_allow_rotation = false;
-  guard.setConfig(config);
-  const auto blocked = guard.evaluate(command(0.0, 0.0, 0.3), 0.1);
+  cost_stop.setConfig(config);
+  const auto blocked = cost_stop.evaluate(command(0.0, 0.0, 0.3), 0.1);
   EXPECT_TRUE(blocked.lanelet_violation) << blocked.reason;
 }
 
-TEST(DirectionalCostGuard, ClearAvoidancePathPassesAndBlockedPathStops)
+TEST(MotionCostStop, ClearAvoidancePathPassesAndBlockedPathStops)
 {
   auto config = baseCostConfig();
   config.require_dynamic_source = true;
   config.dynamic_front_use_local_path = true;
-  auto guard = makeGuard(config);
+  auto cost_stop = makeMotionCostStop(config);
   const auto obstacle_grid = makeGrid({{1.0, 0.0, 90}});
-  guard.setMergedGrid(obstacle_grid, 0.0);
-  guard.setSourceGrid("lidar", obstacle_grid, 0.0);
-  guard.setLocalPath(makePath({{0.0, 0.0}, {0.5, 0.8}, {2.0, 0.8}}));
-  EXPECT_FALSE(guard.evaluate(command(0.2), 0.0).blocked);
+  cost_stop.setMergedGrid(obstacle_grid, 0.0);
+  cost_stop.setSourceGrid("lidar", obstacle_grid, 0.0);
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {0.5, 0.8}, {2.0, 0.8}}));
+  EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
 
-  guard.setLocalPath(makePath({{0.0, 0.0}, {2.0, 0.0}}));
-  EXPECT_TRUE(guard.evaluate(command(0.2), 0.1).blocked);
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {2.0, 0.0}}));
+  EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.1).blocked);
 }
 
-TEST(DirectionalCostGuard, DynamicLatchNeedsContinuousClearWindow)
+TEST(MotionCostStop, DynamicLatchNeedsContinuousClearWindow)
 {
   auto config = baseCostConfig();
   config.latch_enabled = true;
   config.clear_required_s = 2.0;
-  auto guard = makeGuard(config);
-  guard.setMergedGrid(makeGrid({{1.0, 0.0, 90}}), 0.0);
-  EXPECT_TRUE(guard.evaluate(command(0.2), 0.0).blocked);
-  EXPECT_TRUE(guard.latched());
-  guard.setMergedGrid(makeGrid(), 0.1);
-  EXPECT_TRUE(guard.evaluate(command(0.2), 0.1).blocked);
-  EXPECT_TRUE(guard.evaluate(command(0.2), 2.0).blocked);
-  EXPECT_FALSE(guard.evaluate(command(0.2), 2.2).blocked);
-  EXPECT_FALSE(guard.latched());
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setMergedGrid(makeGrid({{1.0, 0.0, 90}}), 0.0);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+  EXPECT_TRUE(cost_stop.latched());
+  cost_stop.setMergedGrid(makeGrid(), 0.1);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.1).blocked);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.2), 2.0).blocked);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.2), 2.2).blocked);
+  EXPECT_FALSE(cost_stop.latched());
 }
 
-TEST(DirectionalCostGuard, MissingAndStaleMergedGridFailClosed)
+TEST(MotionCostStop, MissingAndStaleMergedGridFailClosed)
 {
   auto config = baseCostConfig();
   config.stale_stop_enabled = true;
   config.stale_timeout_s = 1.0;
-  auto guard = makeGuard(config);
-  EXPECT_TRUE(guard.evaluate(command(0.2), 0.0).stale_grid);
-  guard.setMergedGrid(makeGrid(), 0.0);
-  EXPECT_FALSE(guard.evaluate(command(0.2), 0.5).blocked);
-  EXPECT_TRUE(guard.evaluate(command(0.2), 1.1).stale_grid);
+  auto cost_stop = makeMotionCostStop(config);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.0).stale_grid);
+  cost_stop.setMergedGrid(makeGrid(), 0.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.5).blocked);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.2), 1.1).stale_grid);
 }
 
-TEST(DirectionalCostGuard, LaneletPathAllowsNearbyBoundaryButStopsPathCost)
+TEST(MotionCostStop, LaneletPathAllowsNearbyBoundaryButStopsPathCost)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
@@ -291,69 +291,69 @@ TEST(DirectionalCostGuard, LaneletPathAllowsNearbyBoundaryButStopsPathCost)
   config.lanelet_lookahead_m = 1.0;
   // HH_260721 - This case validates normal in-lane driving, not bounded route re-entry.
   config.lanelet_current_allow_route_reentry = false;
-  auto guard = makeGuard(config);
-  guard.setMergedGrid(makeGrid(), 0.0);
-  guard.setLocalPath(makePath({{0.0, 0.0}, {2.0, 0.0}}));
-  guard.setLaneletGrid(makeGrid({{1.0, 0.6, 100}}), 0.0);
-  EXPECT_FALSE(guard.evaluate(command(0.2), 0.0).blocked);
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setMergedGrid(makeGrid(), 0.0);
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {2.0, 0.0}}));
+  cost_stop.setLaneletGrid(makeGrid({{1.0, 0.6, 100}}), 0.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
   // HH_260721 - Use a finite blocked lanelet segment instead of a quantization-sensitive pixel.
   const auto path_blocked_lanelet_grid = makeGrid(
     {
       {0.9, -0.1, 100}, {0.9, 0.0, 100}, {0.9, 0.1, 100},
       {1.0, -0.1, 100}, {1.0, 0.0, 100}, {1.0, 0.1, 100},
       {1.1, -0.1, 100}, {1.1, 0.0, 100}, {1.1, 0.1, 100}});
-  ASSERT_GE(DirectionalCostGuard::sampleGridCost(path_blocked_lanelet_grid, 1.0, 0.0), 85);
-  guard.setLaneletGrid(path_blocked_lanelet_grid, 0.1);
-  const auto blocked_decision = guard.evaluate(command(0.2), 0.1);
+  ASSERT_GE(MotionCostStop::sampleGridCost(path_blocked_lanelet_grid, 1.0, 0.0), 85);
+  cost_stop.setLaneletGrid(path_blocked_lanelet_grid, 0.1);
+  const auto blocked_decision = cost_stop.evaluate(command(0.2), 0.1);
   EXPECT_TRUE(blocked_decision.lanelet_violation) << blocked_decision.reason;
 }
 
-TEST(DirectionalCostGuard, ReverseParkingIgnoresDisabledLaneletDirectionButStopsDynamicObstacle)
+TEST(MotionCostStop, ReverseParkingIgnoresDisabledLaneletDirectionButStopsDynamicObstacle)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
   config.lanelet_current_allow_route_reentry = false;
   config.lanelet_check_reverse = false;
   config.require_dynamic_source = true;
-  auto guard = makeGuard(config);
-  guard.setMergedGrid(makeGrid(), 0.0);
-  // HH_260721 - Fill the pose neighborhood so floating-point cell edges cannot weaken this guard.
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setMergedGrid(makeGrid(), 0.0);
+  // HH_260721 - Fill the pose neighborhood so floating-point cell edges cannot weaken this cost_stop.
   const auto current_lanelet_cost = makeGrid(
     {
       {-0.1, -0.1, 100}, {-0.1, 0.0, 100}, {-0.1, 0.1, 100},
       {0.0, -0.1, 100}, {0.0, 0.0, 100}, {0.0, 0.1, 100},
       {0.1, -0.1, 100}, {0.1, 0.0, 100}, {0.1, 0.1, 100},
     });
-  ASSERT_GE(DirectionalCostGuard::sampleGridCost(current_lanelet_cost, 0.0, 0.0), 85);
-  guard.setLaneletGrid(current_lanelet_cost, 0.0);
+  ASSERT_GE(MotionCostStop::sampleGridCost(current_lanelet_cost, 0.0, 0.0), 85);
+  cost_stop.setLaneletGrid(current_lanelet_cost, 0.0);
 
   // HH_260721 - Final parking may leave the lanelet, while live rear obstacles remain mandatory.
-  EXPECT_FALSE(guard.evaluate(command(-0.2), 0.0).blocked);
+  EXPECT_FALSE(cost_stop.evaluate(command(-0.2), 0.0).blocked);
   const auto rear_obstacle = makeGrid({{-0.4, 0.0, 100}});
-  guard.setSourceGrid("lidar", rear_obstacle, 0.1);
-  EXPECT_TRUE(guard.evaluate(command(-0.2), 0.1).dynamic_obstacle);
+  cost_stop.setSourceGrid("lidar", rear_obstacle, 0.1);
+  EXPECT_TRUE(cost_stop.evaluate(command(-0.2), 0.1).dynamic_obstacle);
 
   config.lanelet_check_reverse = true;
-  guard.setConfig(config);
-  EXPECT_TRUE(guard.evaluate(command(-0.2), 0.2).lanelet_violation);
+  cost_stop.setConfig(config);
+  EXPECT_TRUE(cost_stop.evaluate(command(-0.2), 0.2).lanelet_violation);
 }
 
-TEST(DirectionalCostGuard, ManeuverPhaseBypassesStaticButNotDynamicCost)
+TEST(MotionCostStop, ManeuverPhaseBypassesStaticButNotDynamicCost)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
   config.require_dynamic_source = true;
-  auto guard = makeGuard(config);
-  guard.setManeuverPhases("", "CRAB_IN");
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setManeuverPhases("", "CRAB_IN");
   const auto blocked_grid = makeGrid({{0.0, 0.5, 100}});
-  guard.setMergedGrid(blocked_grid, 0.0);
-  guard.setLaneletGrid(blocked_grid, 0.0);
-  EXPECT_FALSE(guard.evaluate(command(0.0, 0.2), 0.0).blocked);
-  guard.setSourceGrid("radar", blocked_grid, 0.1);
-  EXPECT_TRUE(guard.evaluate(command(0.0, 0.2), 0.1).dynamic_obstacle);
+  cost_stop.setMergedGrid(blocked_grid, 0.0);
+  cost_stop.setLaneletGrid(blocked_grid, 0.0);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.2), 0.0).blocked);
+  cost_stop.setSourceGrid("radar", blocked_grid, 0.1);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0, 0.2), 0.1).dynamic_obstacle);
 }
 
-TEST(DirectionalCostGuard, RotatedGridOriginSamplingIsCorrect)
+TEST(MotionCostStop, RotatedGridOriginSamplingIsCorrect)
 {
   auto grid = makeGrid({}, 0.1, 3.14159265358979323846 * 0.5);
   grid.info.origin.position.x = 4.0;
@@ -365,10 +365,10 @@ TEST(DirectionalCostGuard, RotatedGridOriginSamplingIsCorrect)
   const double local_y = (grid_y + 0.5) * grid.info.resolution;
   const double world_x = grid.info.origin.position.x - local_y;
   const double world_y = grid.info.origin.position.y + local_x;
-  EXPECT_EQ(DirectionalCostGuard::sampleGridCost(grid, world_x, world_y), 92);
+  EXPECT_EQ(MotionCostStop::sampleGridCost(grid, world_x, world_y), 92);
 }
 
-TEST(DirectionalCostGuard, LargeSubthresholdClusterIsUnavoidable)
+TEST(MotionCostStop, LargeSubthresholdClusterIsUnavoidable)
 {
   auto config = baseCostConfig();
   config.cost_stop_threshold = 95;
@@ -388,9 +388,9 @@ TEST(DirectionalCostGuard, LargeSubthresholdClusterIsUnavoidable)
       }
     }
   }
-  auto guard = makeGuard(config);
-  guard.setMergedGrid(cluster_grid, 0.0);
-  EXPECT_TRUE(guard.evaluate(command(0.2), 0.0).blocked);
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setMergedGrid(cluster_grid, 0.0);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.0).blocked);
 }
 
 }  // namespace camrod_control

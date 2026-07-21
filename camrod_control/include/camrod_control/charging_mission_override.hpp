@@ -1,6 +1,6 @@
 #pragma once
 
-// HH_260721 - Isolate bounded charger-departure authorization from ROS callbacks.
+// HH_260721 - Model the temporary command-gate override for a campsite mission while charging.
 
 #include <algorithm>
 #include <cctype>
@@ -12,11 +12,11 @@
 namespace camrod_control
 {
 
-struct ChargingDepartureConfig
+struct ChargingMissionOverrideConfig
 {
-  bool allow_mission_departure_while_charging{true};
-  double grace_s{15.0};
-  double mission_request_dedup_s{1.0};
+  bool allow_motion_while_charging{true};
+  double duration_s{15.0};
+  double request_dedup_s{1.0};
   std::set<std::string> mission_prefixes{"camping_site_"};
 };
 
@@ -34,19 +34,19 @@ struct MissionRequestIdentity
   }
 };
 
-class ChargingDeparturePolicy
+class ChargingMissionOverride
 {
 public:
-  explicit ChargingDeparturePolicy(ChargingDepartureConfig config = {})
+  explicit ChargingMissionOverride(ChargingMissionOverrideConfig config = {})
   : config_(std::move(config))
   {
   }
 
-  void setConfig(ChargingDepartureConfig config)
+  void setConfig(ChargingMissionOverrideConfig config)
   {
     config_ = std::move(config);
-    config_.grace_s = std::max(0.0, config_.grace_s);
-    config_.mission_request_dedup_s = std::max(0.0, config_.mission_request_dedup_s);
+    config_.duration_s = std::max(0.0, config_.duration_s);
+    config_.request_dedup_s = std::max(0.0, config_.request_dedup_s);
   }
 
   void setCharging(const bool charging)
@@ -62,18 +62,18 @@ public:
     return charging_;
   }
 
-  bool requestDeparture(MissionRequestIdentity request, const double now_sec)
+  bool activateForMission(MissionRequestIdentity request, const double now_sec)
   {
     // HH_260721 - Accept only a new campsite request while CAN reports active charging.
     request.mission_key = normalizeLabel(request.mission_key);
-    if (!charging_ || !config_.allow_mission_departure_while_charging ||
+    if (!charging_ || !config_.allow_motion_while_charging ||
       !matchesMissionPrefix(request.mission_key))
     {
       return false;
     }
 
     if (has_last_request_ && request == last_request_ &&
-      now_sec - last_request_time_sec_ < config_.mission_request_dedup_s)
+      now_sec - last_request_time_sec_ < config_.request_dedup_s)
     {
       return false;
     }
@@ -81,27 +81,27 @@ public:
     has_last_request_ = true;
     last_request_ = std::move(request);
     last_request_time_sec_ = now_sec;
-    override_until_sec_ = now_sec + config_.grace_s;
+    override_until_sec_ = now_sec + config_.duration_s;
     return true;
   }
 
-  void cancelDeparture()
+  void cancel()
   {
     override_until_sec_ = 0.0;
   }
 
-  bool overrideActive(const double now_sec) const
+  bool isActive(const double now_sec) const
   {
-    return config_.allow_mission_departure_while_charging && charging_ &&
+    return config_.allow_motion_while_charging && charging_ &&
            override_until_sec_ > now_sec;
   }
 
-  double remainingSec(const double now_sec) const
+  double remainingTimeSec(const double now_sec) const
   {
-    return overrideActive(now_sec) ? std::max(0.0, override_until_sec_ - now_sec) : 0.0;
+    return isActive(now_sec) ? std::max(0.0, override_until_sec_ - now_sec) : 0.0;
   }
 
-  const ChargingDepartureConfig & config() const
+  const ChargingMissionOverrideConfig & config() const
   {
     return config_;
   }
@@ -138,7 +138,7 @@ private:
     return false;
   }
 
-  ChargingDepartureConfig config_;
+  ChargingMissionOverrideConfig config_;
   bool charging_{false};
   bool has_last_request_{false};
   MissionRequestIdentity last_request_;

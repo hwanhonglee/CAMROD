@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <exception>
 #include <string>
 
 #include <yaml-cpp/yaml.h>
@@ -14,19 +15,19 @@
 namespace camrod_control
 {
 
-struct StationPose
+struct DropZoneStationPose
 {
   double x_m{0.0};
   double y_m{0.0};
   double yaw_rad{0.0};
 };
 
-inline StationPose loadDropZoneStationPose(
+inline DropZoneStationPose loadDropZoneStationPose(
   const rclcpp::Logger & logger,
   const std::string & yaml_path,
   const std::string & drop_zone_id,
   const bool use_yaml,
-  const StationPose & fallback)
+  const DropZoneStationPose & fallback)
 {
   if (!use_yaml || yaml_path.empty()) {
     return fallback;
@@ -47,7 +48,7 @@ inline StationPose loadDropZoneStationPose(
         break;
       }
     }
-    return StationPose{
+    return DropZoneStationPose{
       selected["x"] ? selected["x"].as<double>() : fallback.x_m,
       selected["y"] ? selected["y"].as<double>() : fallback.y_m,
       (selected["yaw_deg"] ? selected["yaw_deg"].as<double>() :
