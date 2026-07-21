@@ -92,6 +92,7 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p camping_timeout_s:=600.0 \
   -p simulate_platform_status:=true \
   -p run_charging_recall:=true \
+  -p charging_recall_via_ui:=true \
   -p charging_recall_mission_key:=camping_site_12 \
   -p report_file:=/tmp/camrod_v205_b12_charging_recall.json
 ```
@@ -100,6 +101,10 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
 The full camping check requires the service-mode-specific campsite phases, return navigation,
 drop-zone yaw alignment, `REVERSE_APPROACH`, `WAIT_FOR_CHARGING`, `PARKED`, and
 the charging recall transition through `DEPARTING_CHARGER` to a new site route.
+<!-- HH_260721 - Keep the documented recall check on the same UI path used in operation. -->
+With `charging_recall_via_ui:=true`, the validator publishes
+`UiDestinationCommand` and requires `EXIT_STRAIGHT`, `ALIGN_EXIT_YAW`, and the
+public `DEPARTING_CHARGER` service state before the new route is released.
 
 <!-- HH_260721 - Record the operator/UI departure sequence validated in ordinary simulation. -->
 Selecting another campsite from `DROP_ZONE_WAIT` or charging state does not

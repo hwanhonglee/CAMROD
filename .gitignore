@@ -57,5 +57,4 @@ disable/vio_bridge/sdk_installers/*.deb
 
 # Node.js / frontend build artifacts
 node_modules/
-camrod_ui/runtime/assets/frontend/install/
-camrod_ui/runtime/assets/frontend/log/
+# HH_260721 - The active UI tree is camrod_ui_robot/assets/frontend; retire legacy runtime paths.
