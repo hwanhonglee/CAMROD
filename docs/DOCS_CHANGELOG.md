@@ -1,5 +1,19 @@
 # Documentation Changelog
 
+<!-- HH_260721 - Track active coordinate export and constrained roadside campsite behavior. -->
+## [v2.0.5-roadside-docs] - 2026-07-21 (HH_260721)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Split normal campsite turnaround from B12/B13 roadside return behavior |
+| package READMEs | Documented operational service poses across map, planning, control, UI, and bringup |
+| `docs/V2_0_5_RELEASE_NOTES.md` | Added active coordinate values, full simulation evidence, and physical roadside validation limit |
+| `camrod_sensing/README.md` | Documented the single ROS 2 ground-segmentation package and stale-tree build guard |
+
+---
+
 <!-- HH_260721 - Track the campsite retrace and parked departure validation release. -->
 ## [v2.0.5-docs] - 2026-07-21 (HH_260721)
 

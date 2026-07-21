@@ -39,7 +39,7 @@ ros2 launch camrod_map area_export.launch.py \
 
 | Profile input | OSM example | Semantic files selected |
 |---|---|---|
-| `map_profile: copy_park_moved` | `lanelet2_maps_(copy_park_moved).osm` | synchronized generic `drop_zones.yaml`, `camping_sites.yaml` (profile fallback) |
+| `map_profile: copy_park_moved` | `lanelet2_maps_(copy_park_moved).osm` | `drop_zones (copy_park_moved).yaml`, `camping_sites (copy_park_moved).yaml` |
 | `map_profile: copy_park` | `lanelet2_maps_(copy_park).osm` | `drop_zones (copy_park).yaml`, `camping_sites (copy_park).yaml` |
 | `map_profile: copy_c_track` | `lanelet2_maps_(copy_c_track).osm` | `drop_zones (copy_c_track).yaml`, `camping_sites (copy_c_track).yaml` |
 | empty / unknown | `lanelet2_maps.osm` | `drop_zones.yaml`, `camping_sites.yaml` |
@@ -532,6 +532,24 @@ The `area_exporter` node runs once at launch and exits. If the output file is em
 `camrod_control`. `planning/camping_sites.yaml` provides campsite center goals
 for UI and mission-key dispatch. Keep `yaw_deg` as the reverse travel axis so
 the maneuver controller can derive the required body yaw before parking.
+
+<!-- HH_260721 - Describe the active-map coordinate export and alternate service-pose schema. -->
+The `copy_park_moved` semantic YAML was regenerated from the active OSM with
+the same LocalCartesian projector used at runtime. The active drop-zone is
+`(-13.5777, 40.7413, -82.2127 deg)`. B12 and B13 retain their physical area
+centroids/corners, while these OSM tags define their operational stop:
+
+```yaml
+service_mode: roadside_stop
+service_x: 12.7921
+service_y: 22.52
+service_yaw_deg: -74.495
+```
+
+The exporter copies `service_*` tags into campsite YAML. UI, planning, control,
+and simulation prefer them when present and fall back to the physical area
+pose otherwise. The roadside pose is map-derived and still requires physical
+clearance confirmation before unattended B12/B13 operation.
 
 > HH_260622: `area_exporter` now uses the polygon centroid, not a simple vertex average, and exports normalized `corners` for both drop zones and camping sites. This keeps UI/planning targets closer to the true semantic-area center and provides polygon data for campsite-occupancy checks such as tent detection.
 

@@ -8,7 +8,7 @@ the supervised velocity command path. All active runtime nodes are native C++.
 Runtime responsibilities:
 
 - `cmd_vel_safety_gate`: engage, platform status, timeout, localization recovery, and cost-grid command gating
-- `camping_site_maneuver_controller`: campsite crab entry/exit and 180-degree rotation
+- `camping_site_maneuver_controller`: campsite service-pose crab entry/exit and policy-selected rotation
 - `drop_zone_maneuver_controller`: drop-zone departure and yaw alignment before reverse parking
 - `reverse_parking_controller`: final yaw-aware reverse motion only
 - `apriltag_parking_controller`: final AprilTag-based parking controller
@@ -20,6 +20,13 @@ WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT`. `ALIGN_RETRACE_YAW` verifies the
 a second 180-degree turn. An opposite-side through-exit is not inferred from a
 site center. It requires an explicit opposite lanelet snap pose in the semantic
 map before that mode can be enabled safely.
+
+<!-- HH_260721 - Document the constrained roadside policy selected by semantic map metadata. -->
+B12 and B13 use `service_mode: roadside_stop` with a shared B11-side service
+pose. Their flow is `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT`; both
+zero-turn phases are skipped, and `CRAB_OUT` reverses the entry crab sign to
+retrace the same lateral segment without changing heading. Campsites without
+that field continue to use the normal turnaround flow above.
 
 <!-- HH_260721 - Document the post-maneuver planning synchronization guard. -->
 After `CRAB_OUT`, planning waits until `/planning/lanelet_pose` has converged
@@ -94,7 +101,7 @@ camrod_control/
 | File | Responsibility |
 |---|---|
 | `src/cmd_vel_safety_gate_node.cpp` | Merges navigation and maneuver commands, applies engage/CAN/charging/localization/cost-stop conditions, and publishes the final CAMROD and Ranger boundary commands |
-| `src/camping_site_maneuver_controller_node.cpp` | Runs campsite reverse entry, crab entry/exit, 180-degree zero-turn, unload wait, and return-request phases |
+| `src/camping_site_maneuver_controller_node.cpp` | Loads each operational service pose/mode and runs reverse or crab entry, optional 180-degree turn, unload wait, same-trace exit, and return-request phases |
 | `src/drop_zone_maneuver_controller_node.cpp` | Exits the drop-zone station, aligns the body for the configured reverse axis, and starts the selected final-parking controller |
 | `src/reverse_parking_controller_node.cpp` | Performs yaw-corrected reverse parking and waits for normalized CAN charging confirmation |
 | `src/apriltag_parking_controller_node.cpp` | Performs tag-guided reverse approach, final insertion, retry, and charging-confirmed completion |

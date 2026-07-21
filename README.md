@@ -58,11 +58,16 @@ directly; no second platform gate or `/platform/cmd_vel` alias exists.
 ## Mission Sequence
 
 1. Planning drives to the selected campsite lanelet snap pose.
-2. `camping_site_maneuver_controller` performs crab entry and a 180-degree zero-turn.
+2. `camping_site_maneuver_controller` performs crab entry. Normal campsites
+   then perform a 180-degree zero-turn.
 3. A return request preserves the post-turn heading, crab-retraces the campsite
    entry lane, and hands route ownership back to planning after the exit pose is
    reached.
 <!-- HH_260721 - Describe the same-lane campsite retrace without implying a second physical 180-degree turn. -->
+<!-- HH_260721 - Keep inaccessible B12/B13 on the map-authored roadside service sequence. -->
+   B12 and B13 are exceptions: both use the B11-side roadside service pose,
+   skip `ROTATE_180` and `ALIGN_RETRACE_YAW`, then crab out with the opposite
+   body-frame direction because their heading never changed.
 4. Planning returns to the drop-zone lanelet snap pose.
 5. `drop_zone_maneuver_controller` aligns the body for the configured reverse axis.
 6. The selected controller under `camrod_control/parking` performs only final parking.
@@ -120,12 +125,12 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p run_gate_matrix:=false \
   -p skip_manual_goal:=true \
   -p run_camping:=true \
-  -p camping_mission_key:=camping_site_13 \
+  -p camping_mission_key:=camping_site_12 \
   -p camping_wait_drop_zone:=true \
   -p camping_timeout_s:=600.0 \
   -p simulate_platform_status:=true \
   -p run_charging_recall:=true \
-  -p charging_recall_mission_key:=camping_site_1
+  -p charging_recall_mission_key:=camping_site_12
 ```
 
 Package details are documented in each package README.
