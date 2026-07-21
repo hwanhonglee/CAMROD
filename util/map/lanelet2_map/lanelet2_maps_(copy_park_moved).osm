@@ -5122,11 +5122,23 @@
     <member type="way" role="outer" ref="1210" />
     <tag k="type" v="multipolygon" />
     <tag k="subtype" v="camping_site_13" />
+    <!-- HH_260721 - B13 is inaccessible; serve it from the shared B11-side roadside stop. -->
+    <tag k="service_mode" v="roadside_stop" />
+    <tag k="service_x" v="12.7921" />
+    <tag k="service_y" v="22.5200" />
+    <tag k="service_z" v="0.0" />
+    <tag k="service_yaw_deg" v="-74.495" />
   </relation>
   <relation id="1233">
     <member type="way" role="outer" ref="1232" />
     <tag k="type" v="multipolygon" />
     <tag k="subtype" v="camping_site_12" />
+    <!-- HH_260721 - Avoid the B12 rock approach with the shared B11-side roadside stop. -->
+    <tag k="service_mode" v="roadside_stop" />
+    <tag k="service_x" v="12.7921" />
+    <tag k="service_y" v="22.5200" />
+    <tag k="service_z" v="0.0" />
+    <tag k="service_yaw_deg" v="-74.495" />
   </relation>
   <relation id="1245">
     <member type="way" role="outer" ref="1244" />
