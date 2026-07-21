@@ -123,6 +123,18 @@ class UiBackendNode(Node):
         self.camping_site_maneuver_controller_adopt_topic = str(
             self.declare_parameter("camping_site_maneuver_controller_adopt_topic", "/control/camping_site_maneuver_controller/adopt").value
         )
+        # HH_260721 - Route site requests through the explicit drop-zone departure handoff.
+        self.drop_zone_maneuver_controller_operation_topic = str(
+            self.declare_parameter(
+                "drop_zone_maneuver_controller_operation_topic",
+                "/control/drop_zone_maneuver_controller/operation",
+            ).value
+        )
+        self.drop_zone_exit_complete_topic = str(
+            self.declare_parameter(
+                "drop_zone_exit_complete_topic", "/control/drop_zone/exit_complete"
+            ).value
+        )
         self.arrival_pose_topic = str(
             self.declare_parameter("arrival_pose_topic", "/localization/pose").value
         )
@@ -173,6 +185,11 @@ class UiBackendNode(Node):
         )
         self._latest_arrival_pose: Optional[AvgPoseStamped] = None
         self._latest_arrival_pose_time_s = 0.0
+        # HH_260721 - Keep only the latest requested site while drop-zone exit owns motion.
+        self._latest_platform_is_charging = False
+        self._latest_amr_service_state: Optional[int] = None
+        self._pending_site_after_drop_zone_exit: Optional[tuple[str, str, str]] = None
+        self._drop_zone_exit_active = False
         # HH_260706 - HTTP site selection dispatches immediately; ignore the
         # local topic echo so the same camping-site command is not applied twice.
         self._last_direct_destination_echo: Optional[tuple[str, bool, str, float]] = None
@@ -213,6 +230,12 @@ class UiBackendNode(Node):
             self._on_arrival_pose,
             10,
         )
+        self.sub_drop_zone_exit_complete = self.create_subscription(
+            AvgBool,
+            self.drop_zone_exit_complete_topic,
+            self._on_drop_zone_exit_complete,
+            10,
+        )
 
         # Publishers.
         # HH_260617: UI destination and planning mission-key topics now use
@@ -235,6 +258,9 @@ class UiBackendNode(Node):
         self.pub_camping_site_maneuver_controller_adopt = self.create_publisher(
             UiDestinationCommand, self.camping_site_maneuver_controller_adopt_topic, 10
         )
+        self.pub_drop_zone_maneuver_controller_operation = self.create_publisher(
+            MotionOperation, self.drop_zone_maneuver_controller_operation_topic, 10
+        )
         self.pub_mission_key = self.create_publisher(
             PlanningMissionKey, self.planning_mission_key_topic, 10
         )
@@ -254,6 +280,8 @@ class UiBackendNode(Node):
             f"platform_drive_enable_topic={self.platform_drive_enable_topic} "
             f"camping_site_maneuver_controller_operation_topic={self.camping_site_maneuver_controller_operation_topic} "
             f"camping_site_maneuver_controller_adopt_topic={self.camping_site_maneuver_controller_adopt_topic} "
+            f"drop_zone_operation_topic={self.drop_zone_maneuver_controller_operation_topic} "
+            f"drop_zone_exit_complete_topic={self.drop_zone_exit_complete_topic} "
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"arrival_pose_topic={self.arrival_pose_topic} "
@@ -508,6 +536,8 @@ class UiBackendNode(Node):
 
     def _on_platform_status(self, msg: AvgPlatformStatus) -> None:
         # HH_260720 - UI battery state comes from the canonical generated platform status.
+        # HH_260721 - Charging state also decides whether a campsite goal must wait for departure.
+        self._latest_platform_is_charging = bool(msg.is_charging)
         if not msg.battery_state_available:
             return
         pct = max(0, min(100, int(round(float(msg.battery_percentage) * 100.0))))
@@ -519,8 +549,41 @@ class UiBackendNode(Node):
         self._latest_arrival_pose = msg
         self._latest_arrival_pose_time_s = self._now_s()
 
+    # HH_260721 - Release the pending Nav2 site goal only after vertical exit and yaw alignment.
+    def _on_drop_zone_exit_complete(self, msg: AvgBool) -> None:
+        if not self._drop_zone_exit_active:
+            return
+        pending = self._pending_site_after_drop_zone_exit
+        self._drop_zone_exit_active = False
+        self._pending_site_after_drop_zone_exit = None
+        if pending is None:
+            return
+        site, mission_key, source = pending
+        if not bool(msg.data):
+            self.get_logger().error(
+                f"drop-zone departure failed; campsite goal cancelled: site={site}"
+            )
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(False, source="drop_zone_exit_failed")
+            self._schedule_broadcast(
+                {"departure_failed": True, "site": site, "message": "drop-zone exit failed"}
+            )
+            return
+        pose_published = self._publish_site_goal_pose(site, mission_key, source)
+        if pose_published:
+            self._publish_amr_service_state(
+                AvgAmrServiceState.MOVING_TO_SITE,
+                source=f"{source}:drop_zone_exit_complete",
+            )
+        self.get_logger().info(
+            "drop-zone departure complete; released campsite goal: "
+            f"site={site} mission_key={mission_key}"
+        )
+
     def _on_amr_service_state(self, msg: AvgAmrServiceState) -> None:
         state = int(msg.state)
+        # HH_260721 - DROP_ZONE_WAIT is the semantic parked state used by departure sequencing.
+        self._latest_amr_service_state = state
         self.get_logger().info(
             f"AMR service state received: {state} ({msg.description})"
         )
@@ -642,6 +705,18 @@ class UiBackendNode(Node):
             f"site={site} mission_key={mission_key}"
         )
 
+    # HH_260721 - Start or cancel the bounded drop-zone departure controller with a typed command.
+    def _publish_drop_zone_operation(self, operation: int, source: str) -> None:
+        msg = MotionOperation()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.operation = int(operation)
+        msg.source = source
+        self.pub_drop_zone_maneuver_controller_operation.publish(msg)
+        self.get_logger().info(
+            f"drop-zone operation ({source}) -> "
+            f"{self.drop_zone_maneuver_controller_operation_topic}: {int(operation)}"
+        )
+
     def _publish_platform_drive_enable(self, enabled: bool, source: str) -> None:
         if not self.publish_platform_drive_enable_with_engage:
             return
@@ -721,15 +796,8 @@ class UiBackendNode(Node):
             f"{str(bool(enabled)).lower()}"
         )
 
-    def _publish_goal_for_site(self, site: str, source: str) -> Dict[str, Any]:
-        mission_key = self._resolve_mission_key_for_site(site)
-        if not mission_key:
-            return {
-                "mission_key": "",
-                "goal_pose_published": False,
-                "message": f"no mission key resolved for site={site}",
-            }
-
+    # HH_260721 - Publish mission intent separately so charging departure can open before Nav2.
+    def _publish_site_mission_key(self, mission_key: str, source: str) -> None:
         if self.publish_mission_key:
             key_msg = PlanningMissionKey()
             key_msg.header.stamp = self.get_clock().now().to_msg()
@@ -741,6 +809,8 @@ class UiBackendNode(Node):
                 f"mission key ({source}) -> {self.planning_mission_key_topic}: {mission_key}"
             )
 
+    # HH_260721 - Publish the raw campsite center only when no control maneuver owns motion.
+    def _publish_site_goal_pose(self, site: str, mission_key: str, source: str) -> bool:
         pose_published = False
         goal = self._keypoints_by_mission_key.get(mission_key)
         if self.publish_goal_pose and goal is not None:
@@ -766,6 +836,19 @@ class UiBackendNode(Node):
             self.get_logger().warn(
                 f"site goal dispatch skipped: mission key '{mission_key}' is missing in camping_sites_yaml"
             )
+        return pose_published
+
+    def _publish_goal_for_site(self, site: str, source: str) -> Dict[str, Any]:
+        mission_key = self._resolve_mission_key_for_site(site)
+        if not mission_key:
+            return {
+                "mission_key": "",
+                "goal_pose_published": False,
+                "message": f"no mission key resolved for site={site}",
+            }
+
+        self._publish_site_mission_key(mission_key, source)
+        pose_published = self._publish_site_goal_pose(site, mission_key, source)
 
         return {
             "mission_key": mission_key,
@@ -801,6 +884,13 @@ class UiBackendNode(Node):
 
     def _apply_destination_command(self, site: str, run: bool, source: str) -> Dict[str, Any]:
         if not run:
+            # HH_260721 - A stop request cancels any goal waiting behind drop-zone departure.
+            if self._drop_zone_exit_active:
+                self._publish_drop_zone_operation(
+                    MotionOperation.CANCEL, source=f"{source}:destination_stop"
+                )
+            self._drop_zone_exit_active = False
+            self._pending_site_after_drop_zone_exit = None
             if self.publish_engage_from_destination:
                 self._publish_engage(False, source=f"{source}:destination")
             if self.publish_mission_engage_from_destination:
@@ -847,6 +937,32 @@ class UiBackendNode(Node):
             self._publish_engage(True, source=f"{source}:destination")
         if self.publish_mission_engage_from_destination:
             self._publish_mission_engage(True, source=f"{source}:destination")
+
+        # HH_260721 - A parked/charging robot must leave the station before Nav2 gets a site goal.
+        departure_required = (
+            self._latest_platform_is_charging
+            or self._latest_amr_service_state == int(AvgAmrServiceState.DROP_ZONE_WAIT)
+        )
+        mission_key = self._resolve_mission_key_for_site(site) or ""
+        if departure_required and mission_key:
+            self._publish_site_mission_key(mission_key, source)
+            self._pending_site_after_drop_zone_exit = (site, mission_key, source)
+            if not self._drop_zone_exit_active:
+                self._drop_zone_exit_active = True
+                self._publish_drop_zone_operation(
+                    MotionOperation.EXIT, source=f"{source}:site_departure"
+                )
+            self._publish_amr_service_state(
+                AvgAmrServiceState.MOVING_TO_SITE,
+                source=f"{source}:drop_zone_departure",
+            )
+            return {
+                "site": site,
+                "run": True,
+                "mission_key": mission_key,
+                "goal_pose_published": False,
+                "message": "site goal pending drop-zone straight exit and yaw alignment",
+            }
 
         self._publish_amr_service_state(AvgAmrServiceState.MOVING_TO_SITE, source=f"{source}:start")
         goal_result = self._publish_goal_for_site(site=site, source=source)

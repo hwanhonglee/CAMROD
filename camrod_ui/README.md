@@ -429,6 +429,15 @@ configured campsite polygon or center radius, publishes an
 node then enters `WAIT_RETURN`, so the operator can use the return button even
 when the original entry did not come from the UI camping-site button.
 
+<!-- HH_260721 - Describe parked-to-site dispatch as a maneuver handoff, not a direct goal. -->
+When `/platform/status.is_charging=true` or the latest service state is
+`DROP_ZONE_WAIT`, selecting a campsite stores the destination as pending. The
+backend publishes the mission key to open charging departure, sends
+`MotionOperation.EXIT` to `/control/drop_zone_maneuver_controller/operation`,
+and waits for `/control/drop_zone/exit_complete=true`. Only then does it publish
+the selected site center on `/goal_pose`. A failed or cancelled exit clears the
+pending destination and disables motion.
+
 | UI concept | ROS contract |
 |---|---|
 | Button destination | `PlanningMissionKey.mission_key` |
@@ -446,3 +455,5 @@ Important destination parameters:
 | `site_arrival_center_radius_m` | `2.5` | Fallback radius around the configured campsite center when no polygon match is available |
 | `site_arrival_pose_timeout_s` | `2.0` | Maximum age of the pose used for already-at-site detection |
 | `camping_site_maneuver_controller_adopt_topic` | `/control/camping_site_maneuver_controller/adopt` | Control handoff used to enter `WAIT_RETURN` after manual site entry |
+| `drop_zone_maneuver_controller_operation_topic` | `/control/drop_zone_maneuver_controller/operation` | Typed `EXIT`/`CANCEL` handoff used before leaving a parked drop zone |
+| `drop_zone_exit_complete_topic` | `/control/drop_zone/exit_complete` | Releases the pending campsite goal only after straight exit and lane-yaw alignment |

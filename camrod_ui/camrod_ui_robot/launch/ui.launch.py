@@ -109,6 +109,17 @@ def generate_launch_description():
         default_value='/control/camping_site_maneuver_controller/adopt',
         description='Campsite parked-state adoption trigger used when UI selects the current site',
     )
+    drop_zone_maneuver_controller_operation_topic_arg = DeclareLaunchArgument(
+        'drop_zone_maneuver_controller_operation_topic',
+        # HH_260721 - UI requests bounded station departure before releasing a campsite goal.
+        default_value='/control/drop_zone_maneuver_controller/operation',
+        description='Typed drop-zone exit operation topic',
+    )
+    drop_zone_exit_complete_topic_arg = DeclareLaunchArgument(
+        'drop_zone_exit_complete_topic',
+        default_value='/control/drop_zone/exit_complete',
+        description='Drop-zone straight-exit and yaw-alignment completion topic',
+    )
     arrival_pose_topic_arg = DeclareLaunchArgument(
         'arrival_pose_topic',
         default_value='/localization/pose',
@@ -133,6 +144,9 @@ def generate_launch_description():
             'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
             'camping_site_maneuver_controller_operation_topic': LaunchConfiguration('camping_site_maneuver_controller_operation_topic'),
             'camping_site_maneuver_controller_adopt_topic': LaunchConfiguration('camping_site_maneuver_controller_adopt_topic'),
+            # HH_260721 - Defer site goals until the control-owned station exit completes.
+            'drop_zone_maneuver_controller_operation_topic': LaunchConfiguration('drop_zone_maneuver_controller_operation_topic'),
+            'drop_zone_exit_complete_topic': LaunchConfiguration('drop_zone_exit_complete_topic'),
             'arrival_pose_topic': LaunchConfiguration('arrival_pose_topic'),
             'platform_status_topic': LaunchConfiguration('platform_status_topic'),
             # HH_260701 - If the robot is already inside the selected campsite,
@@ -170,6 +184,8 @@ def generate_launch_description():
         camping_site_maneuver_controller_operation_topic_arg,
         platform_status_topic_arg,
         camping_site_maneuver_controller_adopt_topic_arg,
+        drop_zone_maneuver_controller_operation_topic_arg,
+        drop_zone_exit_complete_topic_arg,
         arrival_pose_topic_arg,
         ui_backend,
     ])
