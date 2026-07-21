@@ -3,7 +3,8 @@ avg_msgs/ModuleState state
 
 bool sim
 bool rviz
-# HH_260721 - Localization has one EKF backend, so no filter-selection flag is exposed.
+# HH_260721 - Preserve the ESKF selection field for interface compatibility; EKF bringup leaves it false.
+bool use_eskf
 bool enable_goal_replanner
 bool enable_state_machine
 bool enable_module_validators
