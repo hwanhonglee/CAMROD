@@ -90,6 +90,12 @@ ros2 launch camrod_bringup bringup.launch.py \
   sim_platform_status_enable:=true
 ```
 
+<!-- HH_260721 - Keep real-hardware startup from depending on an interactive launch-time sudo prompt. -->
+For the default real-hardware launch, `can0` must already exist. Install the
+boot-time setup once with
+`sudo /home/hong/camrod_ws/src/camrod_platform/scripts/install_can0_service.sh`;
+see `camrod_platform/README.md` for verification steps.
+
 Full simulation validation:
 
 <!-- HH_260721 - Keep the validation runner's fake BMS publisher paired with the gate subscription above. -->

@@ -55,6 +55,17 @@ def _can_ready(port_name: str, bitrate: int, restart_ms: int) -> bool:
     )
 
 
+def _can_interface_exists(port_name: str) -> bool:
+    # HH_260721 - Distinguish missing CAN hardware from a present interface that only needs privileges.
+    result = subprocess.run(
+        ['ip', 'link', 'show', port_name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
 def _setup_can_interface(context, params: dict) -> None:
     platform_type = LaunchConfiguration('platform_type').perform(context)
     ranger_enabled = LaunchConfiguration('enable_ranger_base_node').perform(context)
@@ -68,6 +79,13 @@ def _setup_can_interface(context, params: dict) -> None:
     if _can_ready(port_name, bitrate, restart_ms):
         print(f'[ranger.launch] CAN {port_name} already up: bitrate={bitrate} restart-ms={restart_ms}')
         return
+
+    # HH_260721 - Sudo can configure an existing SocketCAN link but cannot create absent hardware.
+    if not _can_interface_exists(port_name):
+        raise RuntimeError(
+            f'CAN interface {port_name} does not exist. Connect and power the SocketCAN adapter, '
+            f'then verify `ip link show {port_name}`. For a non-hardware run, launch with `sim:=true`.'
+        )
 
     # HH_260629: Bring SocketCAN up before ranger_base_node opens it. `sudo -n`
     # avoids a hidden password prompt inside ros2 launch; configure sudoers or
@@ -84,7 +102,8 @@ def _setup_can_interface(context, params: dict) -> None:
         detail = (result.stderr or result.stdout or '').strip()
         raise RuntimeError(
             f'Failed to setup CAN {port_name}. '
-            f'Run sudo -v before launch or configure a boot/systemd CAN setup. detail={detail}'
+            f'The interface exists but requires network-administration privileges. '
+            f'Run sudo -v before launch or install camrod-can0.service once. detail={detail}'
         )
     if not _can_ready(port_name, bitrate, restart_ms):
         raise RuntimeError(f'CAN {port_name} setup finished but interface is not UP at {bitrate}bps')

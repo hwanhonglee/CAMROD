@@ -10,6 +10,7 @@
 | root `README.md` | Paired the simulated BMS publisher with `sim_platform_status_enable:=true` in bringup |
 | `camrod_bringup/README.md` | Added the exact reverse-parking charging-recall launch and final report paths |
 | `docs/V2_0_4_RELEASE_NOTES.md` | Updated final charging, obstacle, perception, and forced-cppcheck evidence |
+| `camrod_platform/README.md` | Distinguished ordinary-PC simulation from real Ranger CAN startup |
 
 Tracks changes to CAMROD documentation (READMEs, style guides, templates).
 For code changes see git log and release tags.

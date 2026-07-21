@@ -102,6 +102,10 @@ Result: `OVERALL=PASS`.
   battery transitions were not exercised. The available Ranger DBC exposes BMS
   charging feedback but no separate charger-disconnect command; departure uses
   a bounded motion authorization until charging feedback clears.
+<!-- HH_260721 - Separate ordinary-PC simulation startup from Ranger hardware startup. -->
+- The default launch is real-hardware mode and intentionally requires `can0`.
+  Ordinary PCs without a SocketCAN adapter must use `sim:=true`; a missing CAN
+  interface now reports this directly instead of incorrectly suggesting sudo.
 - AprilTag camera, TF, detector, controller, and charging-contact behavior were
   intentionally not tested. `image_proc` was not installed or modified.
 - The frontend has no unit-test script. Its production bundle compiled and its
