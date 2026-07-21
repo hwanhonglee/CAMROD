@@ -290,7 +290,10 @@ private:
         avg_msgs::msg::ModuleState module;
         module.stamp = stamp;
         module.module_name = category;
-        module.level = avg_msgs::msg::ModuleState::WARN;
+        // HH_260721 - Dynamic alternative groups are not degraded by default.
+        // Their first real checker result must be able to establish OK instead
+        // of being masked forever by a synthetic WARN seed.
+        module.level = avg_msgs::msg::ModuleState::OK;
         module.message = "discovered dynamically";
         modules[category] = module;
       }

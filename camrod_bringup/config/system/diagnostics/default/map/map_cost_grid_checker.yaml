@@ -4,9 +4,8 @@ map_cost_grid_checker:
 
     cost_grid_topic: "/map/cost_grid/lanelet"
 
-    # HH_260702 - Lanelet cost-grid builds are event driven and can take
-    # several seconds on the Orin under full sensing/perception load.
-    expected_hz:    0.2
+    # HH_260721 - Event-driven lane grids have no valid minimum rate; stale/unknown checks remain active.
+    expected_hz:    0.0
     hz_warn_ratio:  0.5
     hz_error_ratio: 0.2
 
