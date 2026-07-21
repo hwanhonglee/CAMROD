@@ -100,7 +100,6 @@ graph TD
   ENGAGED((/planning/engaged)):::topic    --> BACKEND
   DEST((/ui/selected_destination)):::topic --> BACKEND
   BATTERY((/battery_percentage)):::topic  --> BACKEND
-  ARRIVE((/AMR_arrive)):::topic           --> BACKEND
 
   BACKEND -->|HTTP/WS responses| BROWSER
   BACKEND --> ENGAGE((manual /planning/engage)):::topic
@@ -149,8 +148,8 @@ sequenceDiagram
   Backend->>Gate: /planning/mission_engage AvgBool(true)
   Backend->>Gate: /platform/drive_enable AvgBool(true)
   Gate-->>Control: command authorization opens
-  Control-->>Backend: /AMR_service_state UNLOAD_WAIT
-  Backend-->>Browser: WebSocket {"arrived": "B3", "amr_state": 6}
+  Control-->>Backend: /service/state WAITING_FOR_RETURN_REQUEST
+  Backend-->>Browser: WebSocket {"arrived": "B3", "service_state": 11}
   Backend->>Gate: /planning/mission_engage AvgBool(false)
   Backend->>Gate: /platform/drive_enable AvgBool(false)
   Browser->>Backend: WebSocket {"usage_complete": true}
@@ -159,7 +158,7 @@ sequenceDiagram
   Backend->>Gate: /platform/drive_enable AvgBool(true)
   Control->>SM: return route handoff
   SM->>Parking: drop-zone arrival handoff
-  Parking-->>Backend: charging state through /platform/status
+  Parking-->>Backend: WAITING_FOR_CHARGING then CHARGING
   Backend->>Gate: /planning/mission_engage AvgBool(false)
   Backend->>Gate: /platform/drive_enable AvgBool(false)
 ```
@@ -191,7 +190,15 @@ stateDiagram-v2
 - 🟡 `WAITING_FOR_READY` — `engaged=true` AND `ready=false`
 - 🔴 `STOP` — `engaged=false`
 
-`ready` is `true` when `/system/diagnostics_agg` has at least one entry and zero ERROR-level statuses.
+<!-- HH_260721 - Separate the three-level health contract from service operation progress. -->
+`ready` is `true` when `/system/diagnostics_agg` has at least one entry and zero
+ERROR-level statuses. Incoming ROS `STALE` entries are normalized to `ERROR`
+because missing fresh data is not safe for operation. The robot header displays
+this health independently from the symbolic `AvgServiceState` progress such as
+`DROP_ZONE_WAIT`, `MOVING_TO_SITE`, `WAITING_FOR_RETURN_REQUEST`,
+`WAITING_FOR_CHARGING`, `CHARGING`, and `DEPARTING_CHARGER`. Operator and guest
+status labels are English and these normal service states do not create a
+warning by themselves.
 
 ### Frontend Path Resolution
 
@@ -203,13 +210,14 @@ flowchart TD
   A --> B{"CAMROD_UI_FRONTEND_DIR\nset and exists?"}:::ui
   B -->|yes| Z[Use env var path]:::localization
 
-  B -->|no| D{"source tree\nruntime/assets/frontend/build\nexists?"}:::ui
+  %% HH_260721 - Match the diagram order and paths to the active UI launch resolver.
+  B -->|no| D{"source tree\ncamrod_ui_robot/assets/frontend/build\nexists?"}:::ui
   D -->|yes| Z
 
-  D -->|no| E{"installed share\ncamrod_ui/assets/frontend/build\nexists?"}:::ui
+  D -->|no| E{"installed share\ncamrod_ui_robot/assets/frontend/build\nexists?"}:::ui
   E -->|yes| Z
 
-  E -->|no| F["Fallback:\nshare/camrod_ui/assets/web"]:::highlight
+  E -->|no| F["Frontend unavailable\nHTTP 503"]:::highlight
   F --> Z
 
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
@@ -248,10 +256,10 @@ When `set_destination(site="B3", ...)` is called:
 | Topic | Type | Required | Producer | Rate | Meaning |
 |---|---|---|---|---|---|
 | `/system/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | Yes | camrod_system | 1 Hz | Module health; used to compute `ready` and `operation_mode` |
+| `/service/state` | `avg_msgs/AvgServiceState` | Yes | control, parking, UI | event | Normal service progress, separate from health severity |
 | `/planning/engaged` | `std_msgs/Bool` | Yes | camrod_planning | event | Current engagement state of `cmd_vel_gate` |
 | `/ui/selected_destination` | `avg_msgs/UiDestinationCommand` | No | self (republish) | event | Destination command; consumed to dispatch mission key and site goal |
 | `/battery_percentage` | `std_msgs/Int32` | No | external | event | Battery SOC 0–100; forwarded to WebSocket clients |
-| `/AMR_arrive` | `std_msgs/Bool` | No | external | event | Arrival signal; clears all site states and disengages |
 
 ### Outputs
 
@@ -409,7 +417,11 @@ Run `ros2 topic echo /system/diagnostics_agg` and look for `level: 2` entries. I
 <details>
 <summary><strong>Wrong frontend build served</strong></summary>
 
-Resolution order: `CAMROD_UI_FRONTEND_DIR` env → source tree `camrod_ui_robot/assets/frontend/build` → installed `share/camrod_ui/assets/frontend/build` → `share/camrod_ui/assets/web`.
+<!-- HH_260721 - Keep troubleshooting paths synchronized with setup.py data-file layout. -->
+Resolution order: `frontend_dir` launch argument / `CAMROD_UI_FRONTEND_DIR` →
+source tree `camrod_ui_robot/assets/frontend/build` → installed
+`share/camrod_ui/camrod_ui_robot/assets/frontend/build`. The backend returns
+HTTP 503 when no built frontend exists.
 
 After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the `build/` directory exists in the expected location. Set `CAMROD_UI_FRONTEND_DIR=/absolute/path/to/build` to force a specific directory. If the installed path is stale after `colcon build`, run `colcon build --packages-select camrod_ui` again.
 
@@ -435,19 +447,22 @@ HH_260701 - If the robot was manually driven into a campsite first, selecting
 the same site in the UI now adopts the parked state instead of sending another
 route goal. `ui_backend_node` checks the latest `/localization/pose` against the
 configured campsite polygon or center radius, publishes an
-`AvgAmrServiceState.UNLOAD_WAIT` arrival notification, and sends
+`AvgServiceState.WAITING_FOR_RETURN_REQUEST` arrival notification, and sends
 `UiDestinationCommand(run=true)` on `/control/camping_site_maneuver_controller/adopt`. The control
 node then enters `WAIT_RETURN`, so the operator can use the return button even
 when the original entry did not come from the UI camping-site button.
 
 <!-- HH_260721 - Describe parked-to-site dispatch as a maneuver handoff, not a direct goal. -->
 When `/platform/status.is_charging=true` or the latest service state is
-`DROP_ZONE_WAIT`, selecting a campsite stores the destination as pending. The
+`DROP_ZONE_WAIT` or `CHARGING`, selecting a campsite stores the destination as pending. The
 backend publishes the mission key to open charging departure, sends
-`MotionOperation.EXIT` to `/control/drop_zone_maneuver_controller/operation`,
+`MotionOperation.CANCEL` to `/parking/operation` to release final-parking state,
+then sends `MotionOperation.EXIT` to `/control/drop_zone_maneuver_controller/operation`,
 and waits for `/control/drop_zone/exit_complete=true`. Only then does it publish
 the selected operational site pose on `/goal_pose`. A failed or cancelled exit clears the
-pending destination and disables motion.
+pending destination and disables motion. During the handoff, the UI displays
+`DEPARTING_CHARGER` or `DEPARTING_DROP_ZONE`; it changes to `MOVING_TO_SITE`
+only after the bounded exit maneuver succeeds.
 
 | UI concept | ROS contract |
 |---|---|

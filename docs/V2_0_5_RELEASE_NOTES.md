@@ -19,6 +19,8 @@ Target remotes: `hwanhonglee/CAMROD`, `tele-genius/CAMROD`
   `/platform/status` publisher.
 - Delayed a parked or charging campsite goal until drop-zone straight exit and
   yaw alignment have completed.
+- Added explicit English service progress for return-request wait, charger
+  connection wait, charging, charger departure, and uncharged drop-zone departure.
 - Corrected event-driven cost-grid and dynamically discovered parking
   diagnostics so healthy simulation reaches an overall `OK` state.
 - Regenerated all active `copy_park_moved` drop-zone and campsite coordinates
@@ -41,8 +43,9 @@ Target remotes: `hwanhonglee/CAMROD`, `tele-genius/CAMROD`
   `(12.7921, 22.52, -74.495 deg)`.
 - UI, planning, control, and the validator all prefer that operational pose,
   while physical `corners` remain available for area occupancy/adoption logic.
-- Their phase contract is `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT`.
-  `ROTATE_180` and `ALIGN_RETRACE_YAW` are forbidden for `roadside_stop`.
+- Their phase contract is `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT ->
+  ALIGN_RETURN_ROUTE_YAW`. `ROTATE_180` and `ALIGN_RETRACE_YAW` are forbidden
+  for `roadside_stop`; heading reversal occurs at the lanelet snap pose.
 
 ## Campsite Retrace And Return
 
@@ -70,8 +73,10 @@ away.
 - The fake sensor node publishes raw `BatteryState` and Ranger `SystemState`;
   `ranger_platform_bridge` remains the sole normalized platform-status writer.
 - Selecting another campsite while parked or charging first requests
-  `EXIT_STRAIGHT`, then `ALIGN_EXIT_YAW`. The UI publishes the route goal only
-  after `/control/drop_zone/exit_complete=true`.
+  parking `CANCEL`, then `EXIT_STRAIGHT` and `ALIGN_EXIT_YAW`. Releasing final
+  parking ownership prevents charger-disconnect feedback from restoring
+  `DROP_ZONE_WAIT` and closing the command gate during departure. The UI
+  publishes the route goal only after `/control/drop_zone/exit_complete=true`.
 - Charger feedback clears after campsite departure, allowing the safety gate to
   leave its charging hold and pass the active mission command.
 
@@ -88,6 +93,10 @@ away.
   byte-identical after synchronization.
 - Renamed campsite phase and parameter values are synchronized across the
   controller, command gate, validator, package configs, and bringup configs.
+<!-- HH_260721 - Record removal of the obsolete UI build tree and path documentation. -->
+- Removed the ignored `camrod_ui/runtime/assets/frontend` build/install residue;
+  frontend resolution documentation now matches the active
+  `camrod_ui_robot/assets/frontend` source and install layout.
 
 ## Verification
 
@@ -100,6 +109,11 @@ away.
 - Full B12 to drop-zone reverse-parking and charging-recall simulation:
   `OVERALL=PASS`; charging, departure override, command release, disconnect,
   new route, and B12 re-arrival were all observed.
+<!-- HH_260721 - Record the externally visible English service-state sequence. -->
+- The validated public service sequence was `SITE_ENTRY -> UNLOAD_WAIT ->
+  WAITING_FOR_RETURN_REQUEST -> RETURN_WITH_CARGO -> DROP_ZONE_PARKING ->
+  WAITING_FOR_CHARGING -> CHARGING -> DEPARTING_CHARGER -> MOVING_TO_SITE ->
+  SITE_ENTRY`.
 - Directional gate and obstacle-replan simulation: `OVERALL=PASS`; all 12
   LiDAR/radar/combined direction cases produced zero final command.
 - Maintained-package test selection: 171 tests, 0 errors, 0 failures, 16 skipped.
