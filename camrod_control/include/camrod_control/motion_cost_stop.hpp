@@ -1,6 +1,6 @@
 #pragma once
 
-// HH_260721 - Define direction-aware obstacle and lanelet cost arbitration outside the ROS node.
+// HH_260721 - Stop and latch motion for obstacle or lanelet cost in every commanded direction.
 
 #include <cstdint>
 #include <map>
@@ -27,7 +27,7 @@ struct PlanarPose
   std::string source{"unknown"};
 };
 
-struct DirectionalCostGuardConfig
+struct MotionCostStopConfig
 {
   bool enabled{true};
   int cost_stop_threshold{85};
@@ -104,7 +104,7 @@ struct DirectionalCostGuardConfig
     "align_return_yaw", "reverse_out", "crab_out"};
 };
 
-struct CostGuardDecision
+struct MotionCostStopDecision
 {
   bool blocked{false};
   bool dynamic_obstacle{false};
@@ -113,13 +113,13 @@ struct CostGuardDecision
   std::string reason;
 };
 
-class DirectionalCostGuard
+class MotionCostStop
 {
 public:
-  explicit DirectionalCostGuard(DirectionalCostGuardConfig config = {});
+  explicit MotionCostStop(MotionCostStopConfig config = {});
 
-  void setConfig(const DirectionalCostGuardConfig & config);
-  const DirectionalCostGuardConfig & config() const;
+  void setConfig(const MotionCostStopConfig & config);
+  const MotionCostStopConfig & config() const;
   void setMergedGrid(const avg_msgs::msg::AvgOccupancyGrid & grid, double receive_sec);
   void setLaneletGrid(const avg_msgs::msg::AvgOccupancyGrid & grid, double receive_sec);
   void setSourceGrid(
@@ -131,7 +131,7 @@ public:
   void setLocalPath(const avg_msgs::msg::AvgPath & path);
   void setManeuverPhases(std::string drop_zone_phase, std::string campsite_phase);
 
-  CostGuardDecision evaluate(const avg_msgs::msg::AvgTwist & command, double now_sec);
+  MotionCostStopDecision evaluate(const avg_msgs::msg::AvgTwist & command, double now_sec);
   bool latched() const;
   double holdUntilSec() const;
   const std::string & latchReason() const;
@@ -179,16 +179,16 @@ private:
     GridHit hit;
   };
 
-  CostGuardDecision evaluateLanelet(const avg_msgs::msg::AvgTwist & command, double now_sec);
-  CostGuardDecision evaluateDynamicSources(
+  MotionCostStopDecision evaluateLanelet(const avg_msgs::msg::AvgTwist & command, double now_sec);
+  MotionCostStopDecision evaluateDynamicSources(
     const std::vector<Corridor> & corridors,
     double now_sec);
-  CostGuardDecision evaluateMergedGrid(
+  MotionCostStopDecision evaluateMergedGrid(
     const std::vector<Corridor> & corridors,
     bool static_bypass,
     double now_sec);
-  CostGuardDecision evaluateRotation(double now_sec);
-  CostGuardDecision evaluateLatch(double now_sec);
+  MotionCostStopDecision evaluateRotation(double now_sec);
+  MotionCostStopDecision evaluateLatch(double now_sec);
   std::vector<Corridor> corridorsForCommand(const avg_msgs::msg::AvgTwist & command) const;
   GridHit sampleCorridor(
     const avg_msgs::msg::AvgOccupancyGrid & grid,
@@ -226,7 +226,7 @@ private:
     int grid_y);
   static double yawFromGridOrigin(const avg_msgs::msg::AvgOccupancyGrid & grid);
 
-  DirectionalCostGuardConfig config_;
+  MotionCostStopConfig config_;
   TimedGrid merged_grid_;
   TimedGrid lanelet_grid_;
   std::map<std::string, TimedGrid> source_grids_;

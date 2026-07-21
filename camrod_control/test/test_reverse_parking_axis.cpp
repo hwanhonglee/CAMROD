@@ -2,13 +2,13 @@
 
 #include <cmath>
 
-#include "camrod_control/parking_geometry.hpp"
+#include "camrod_control/reverse_parking_axis.hpp"
 #include "gtest/gtest.h"
 
 namespace camrod_control
 {
 
-TEST(ParkingGeometry, DropZoneYawProducesReverseMotionTowardStation)
+TEST(ReverseParkingAxis, DropZoneYawProducesReverseMotionTowardStation)
 {
   const double station_yaw = 0.0;
   const double body_yaw = bodyYawForReverseAxis(station_yaw);
@@ -17,7 +17,7 @@ TEST(ParkingGeometry, DropZoneYawProducesReverseMotionTowardStation)
   EXPECT_GT(signedDistanceAlongAxis(0.0, 0.0, 2.0, 0.0, station_yaw), 0.0);
 }
 
-TEST(ParkingGeometry, StationYawUsedAsBodyFrontPointsReverseAway)
+TEST(ReverseParkingAxis, StationYawUsedAsBodyFrontPointsReverseAway)
 {
   const double station_yaw = 0.0;
   const double incorrect_reverse_axis = reverseAxisYawForBody(station_yaw);

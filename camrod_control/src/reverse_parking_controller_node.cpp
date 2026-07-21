@@ -18,9 +18,10 @@
 #include "avg_msgs/msg/module_state.hpp"
 #include "avg_msgs/msg/motion_operation.hpp"
 #include "avg_msgs/srv/request_motion_operation.hpp"
-#include "camrod_control/control_support.hpp"
-#include "camrod_control/parking_geometry.hpp"
-#include "camrod_control/station_pose.hpp"
+#include "camrod_control/control_diagnostics.hpp"
+#include "camrod_control/drop_zone_station_pose.hpp"
+#include "camrod_control/motion_geometry.hpp"
+#include "camrod_control/reverse_parking_axis.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -93,7 +94,7 @@ public:
     use_drop_zone_pose_as_station_ = declare_parameter<bool>("use_drop_zone_pose_as_station", true);
     station_pose_ = camrod_control::loadDropZoneStationPose(
       get_logger(), drop_zones_yaml_, drop_zone_id_, use_drop_zone_pose_as_station_,
-      camrod_control::StationPose{
+      camrod_control::DropZoneStationPose{
       declare_parameter<double>("station_x_m", 0.0),
       declare_parameter<double>("station_y_m", 0.0),
       declare_parameter<double>("station_yaw_deg", 0.0) * M_PI / 180.0});
@@ -194,7 +195,7 @@ private:
       RCLCPP_WARN(get_logger(), "ignored drop-zone goal update while reverse parking is active");
       return;
     }
-    station_pose_ = camrod_control::StationPose{
+    station_pose_ = camrod_control::DropZoneStationPose{
       message.pose.position.x,
       message.pose.position.y,
       camrod_control::yawFromPose(message)};
@@ -507,7 +508,7 @@ private:
   double idle_rate_hz_{1.0};
   double status_rate_hz_{1.0};
 
-  camrod_control::StationPose station_pose_;
+  camrod_control::DropZoneStationPose station_pose_;
   ReverseParkingPhase phase_{ReverseParkingPhase::kIdle};
   std::optional<avg_msgs::msg::AvgPoseStamped> last_vehicle_pose_;
   rclcpp::Time last_vehicle_pose_time_{0, 0, RCL_ROS_TIME};

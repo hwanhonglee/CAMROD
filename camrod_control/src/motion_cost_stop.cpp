@@ -1,6 +1,6 @@
-// HH_260721 - Implement lanelet-aware directional cost checks as a native policy component.
+// HH_260721 - Implement forward, reverse, crab, and zero-turn cost-stop decisions and latching.
 
-#include "camrod_control/directional_cost_guard.hpp"
+#include "camrod_control/motion_cost_stop.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -28,12 +28,12 @@ bool labelMatches(const std::string & value, const std::set<std::string> & accep
 
 }  // namespace
 
-DirectionalCostGuard::DirectionalCostGuard(DirectionalCostGuardConfig config)
+MotionCostStop::MotionCostStop(MotionCostStopConfig config)
 : config_(std::move(config))
 {
 }
 
-void DirectionalCostGuard::setConfig(const DirectionalCostGuardConfig & config)
+void MotionCostStop::setConfig(const MotionCostStopConfig & config)
 {
   config_ = config;
   if (!config_.latch_enabled) {
@@ -43,24 +43,24 @@ void DirectionalCostGuard::setConfig(const DirectionalCostGuardConfig & config)
   }
 }
 
-const DirectionalCostGuardConfig & DirectionalCostGuard::config() const
+const MotionCostStopConfig & MotionCostStop::config() const
 {
   return config_;
 }
 
-void DirectionalCostGuard::setMergedGrid(
+void MotionCostStop::setMergedGrid(
   const avg_msgs::msg::AvgOccupancyGrid & grid, const double receive_sec)
 {
   merged_grid_ = TimedGrid{grid, receive_sec, true};
 }
 
-void DirectionalCostGuard::setLaneletGrid(
+void MotionCostStop::setLaneletGrid(
   const avg_msgs::msg::AvgOccupancyGrid & grid, const double receive_sec)
 {
   lanelet_grid_ = TimedGrid{grid, receive_sec, true};
 }
 
-void DirectionalCostGuard::setSourceGrid(
+void MotionCostStop::setSourceGrid(
   const std::string & label,
   const avg_msgs::msg::AvgOccupancyGrid & grid,
   const double receive_sec)
@@ -68,29 +68,29 @@ void DirectionalCostGuard::setSourceGrid(
   source_grids_[normalizeLabel(label)] = TimedGrid{grid, receive_sec, true};
 }
 
-void DirectionalCostGuard::setPose(const PlanarPose & pose)
+void MotionCostStop::setPose(const PlanarPose & pose)
 {
   pose_ = pose;
 }
 
-void DirectionalCostGuard::setOdometrySpeed(const double forward_speed_mps)
+void MotionCostStop::setOdometrySpeed(const double forward_speed_mps)
 {
   forward_speed_mps_ = forward_speed_mps;
 }
 
-void DirectionalCostGuard::setLocalPath(const avg_msgs::msg::AvgPath & path)
+void MotionCostStop::setLocalPath(const avg_msgs::msg::AvgPath & path)
 {
   local_path_ = path;
 }
 
-void DirectionalCostGuard::setManeuverPhases(
+void MotionCostStop::setManeuverPhases(
   std::string drop_zone_phase, std::string campsite_phase)
 {
   drop_zone_phase_ = normalizeLabel(std::move(drop_zone_phase));
   campsite_phase_ = normalizeLabel(std::move(campsite_phase));
 }
 
-CostGuardDecision DirectionalCostGuard::evaluate(
+MotionCostStopDecision MotionCostStop::evaluate(
   const avg_msgs::msg::AvgTwist & command, const double now_sec)
 {
   if (!config_.enabled) {
@@ -151,22 +151,22 @@ CostGuardDecision DirectionalCostGuard::evaluate(
   return evaluateLatch(now_sec);
 }
 
-bool DirectionalCostGuard::latched() const
+bool MotionCostStop::latched() const
 {
   return latch_active_;
 }
 
-double DirectionalCostGuard::holdUntilSec() const
+double MotionCostStop::holdUntilSec() const
 {
   return hold_until_sec_;
 }
 
-const std::string & DirectionalCostGuard::latchReason() const
+const std::string & MotionCostStop::latchReason() const
 {
   return latch_reason_;
 }
 
-double DirectionalCostGuard::frontLookahead() const
+double MotionCostStop::frontLookahead() const
 {
   if (!config_.use_speed_dependent_lookahead) {
     return config_.fixed_front_lookahead_m;
@@ -180,7 +180,7 @@ double DirectionalCostGuard::frontLookahead() const
     requested, config_.front_lookahead_min_m, config_.front_lookahead_max_m);
 }
 
-CostGuardDecision DirectionalCostGuard::evaluateLanelet(
+MotionCostStopDecision MotionCostStop::evaluateLanelet(
   const avg_msgs::msg::AvgTwist & command, const double now_sec)
 {
   if (!config_.lanelet_enabled || !lanelet_grid_.available ||
@@ -284,7 +284,7 @@ CostGuardDecision DirectionalCostGuard::evaluateLanelet(
   return {};
 }
 
-CostGuardDecision DirectionalCostGuard::evaluateDynamicSources(
+MotionCostStopDecision MotionCostStop::evaluateDynamicSources(
   const std::vector<Corridor> & corridors, const double now_sec)
 {
   for (const auto & source : source_grids_) {
@@ -331,7 +331,7 @@ CostGuardDecision DirectionalCostGuard::evaluateDynamicSources(
   return {};
 }
 
-CostGuardDecision DirectionalCostGuard::evaluateMergedGrid(
+MotionCostStopDecision MotionCostStop::evaluateMergedGrid(
   const std::vector<Corridor> & corridors,
   const bool static_bypass,
   const double now_sec)
@@ -377,7 +377,7 @@ CostGuardDecision DirectionalCostGuard::evaluateMergedGrid(
   return {};
 }
 
-CostGuardDecision DirectionalCostGuard::evaluateRotation(const double now_sec)
+MotionCostStopDecision MotionCostStop::evaluateRotation(const double now_sec)
 {
   if (!config_.rotation_dynamic_stop) {
     return {};
@@ -402,7 +402,7 @@ CostGuardDecision DirectionalCostGuard::evaluateRotation(const double now_sec)
   return {};
 }
 
-CostGuardDecision DirectionalCostGuard::evaluateLatch(const double now_sec)
+MotionCostStopDecision MotionCostStop::evaluateLatch(const double now_sec)
 {
   if (!latch_active_) {
     return {};
@@ -426,7 +426,7 @@ CostGuardDecision DirectionalCostGuard::evaluateLatch(const double now_sec)
   return {true, true, false, false, "cost_stop_latched:" + latch_reason_};
 }
 
-std::vector<DirectionalCostGuard::Corridor> DirectionalCostGuard::corridorsForCommand(
+std::vector<MotionCostStop::Corridor> MotionCostStop::corridorsForCommand(
   const avg_msgs::msg::AvgTwist & command) const
 {
   std::vector<Corridor> corridors;
@@ -472,7 +472,7 @@ std::vector<DirectionalCostGuard::Corridor> DirectionalCostGuard::corridorsForCo
   return corridors;
 }
 
-DirectionalCostGuard::GridHit DirectionalCostGuard::sampleCorridor(
+MotionCostStop::GridHit MotionCostStop::sampleCorridor(
   const avg_msgs::msg::AvgOccupancyGrid & grid,
   const Corridor & corridor,
   const bool lanelet_mode) const
@@ -528,7 +528,7 @@ DirectionalCostGuard::GridHit DirectionalCostGuard::sampleCorridor(
   return hit;
 }
 
-DirectionalCostGuard::GridHit DirectionalCostGuard::sampleDisk(
+MotionCostStop::GridHit MotionCostStop::sampleDisk(
   const avg_msgs::msg::AvgOccupancyGrid & grid,
   const double radius_m,
   const int threshold) const
@@ -572,7 +572,7 @@ DirectionalCostGuard::GridHit DirectionalCostGuard::sampleDisk(
   return hit;
 }
 
-DirectionalCostGuard::PathSample DirectionalCostGuard::samplePathCorridor(
+MotionCostStop::PathSample MotionCostStop::samplePathCorridor(
   const avg_msgs::msg::AvgOccupancyGrid & grid,
   const double lookahead_m,
   const double width_m,
@@ -678,7 +678,7 @@ DirectionalCostGuard::PathSample DirectionalCostGuard::samplePathCorridor(
   return output;
 }
 
-std::optional<double> DirectionalCostGuard::closestPathDistance() const
+std::optional<double> MotionCostStop::closestPathDistance() const
 {
   if (!pose_.has_value() || !local_path_.has_value() || local_path_->poses.size() < 2U ||
     (!local_path_->header.frame_id.empty() && !pose_->frame_id.empty() &&
@@ -697,12 +697,12 @@ std::optional<double> DirectionalCostGuard::closestPathDistance() const
   return std::isfinite(closest) ? std::optional<double>(closest) : std::nullopt;
 }
 
-bool DirectionalCostGuard::sourceIsDynamic(const std::string & label) const
+bool MotionCostStop::sourceIsDynamic(const std::string & label) const
 {
   return labelMatches(normalizeLabel(label), config_.dynamic_source_labels);
 }
 
-bool DirectionalCostGuard::sourceGridBlocksPoint(
+bool MotionCostStop::sourceGridBlocksPoint(
   const GridHit & hit, const int threshold, const double now_sec) const
 {
   for (const auto & source : source_grids_) {
@@ -719,7 +719,7 @@ bool DirectionalCostGuard::sourceGridBlocksPoint(
   return false;
 }
 
-bool DirectionalCostGuard::staticBypassActive(const avg_msgs::msg::AvgTwist & command) const
+bool MotionCostStop::staticBypassActive(const avg_msgs::msg::AvgTwist & command) const
 {
   if (config_.campsite_static_bypass_phases.count(campsite_phase_) > 0U) {
     return true;
@@ -733,7 +733,7 @@ bool DirectionalCostGuard::staticBypassActive(const avg_msgs::msg::AvgTwist & co
   return pure_lateral || pure_reverse;
 }
 
-bool DirectionalCostGuard::laneletStaticBypassActive(
+bool MotionCostStop::laneletStaticBypassActive(
   const avg_msgs::msg::AvgTwist & command) const
 {
   const bool forward_drop_zone_exit =
@@ -745,13 +745,13 @@ bool DirectionalCostGuard::laneletStaticBypassActive(
          translational(command));
 }
 
-bool DirectionalCostGuard::translational(const avg_msgs::msg::AvgTwist & command) const
+bool MotionCostStop::translational(const avg_msgs::msg::AvgTwist & command) const
 {
   const double minimum = std::max(0.0, config_.min_translation_mps);
   return std::abs(command.linear.x) > minimum || std::abs(command.linear.y) > minimum;
 }
 
-bool DirectionalCostGuard::unavoidable(
+bool MotionCostStop::unavoidable(
   const std::vector<std::pair<int, int>> & cells, const int total_cells) const
 {
   std::set<std::pair<int, int>> remaining(cells.begin(), cells.end());
@@ -783,7 +783,7 @@ bool DirectionalCostGuard::unavoidable(
   return largest_cluster >= config_.unavoidable_min_cells && ratio >= config_.unavoidable_min_ratio;
 }
 
-void DirectionalCostGuard::markBlocked(
+void MotionCostStop::markBlocked(
   const std::string & reason, const bool latch, const double now_sec)
 {
   hold_until_sec_ = std::max(hold_until_sec_, now_sec + std::max(0.0, config_.stop_hold_s));
@@ -794,13 +794,13 @@ void DirectionalCostGuard::markBlocked(
   }
 }
 
-bool DirectionalCostGuard::validGrid(const avg_msgs::msg::AvgOccupancyGrid & grid)
+bool MotionCostStop::validGrid(const avg_msgs::msg::AvgOccupancyGrid & grid)
 {
   return grid.info.resolution > 0.0 && grid.info.width > 0U && grid.info.height > 0U &&
          grid.data.size() >= static_cast<std::size_t>(grid.info.width) * grid.info.height;
 }
 
-bool DirectionalCostGuard::worldToGrid(
+bool MotionCostStop::worldToGrid(
   const avg_msgs::msg::AvgOccupancyGrid & grid,
   const double world_x,
   const double world_y,
@@ -823,7 +823,7 @@ bool DirectionalCostGuard::worldToGrid(
          grid_y < static_cast<int>(grid.info.height);
 }
 
-std::pair<double, double> DirectionalCostGuard::gridToWorld(
+std::pair<double, double> MotionCostStop::gridToWorld(
   const avg_msgs::msg::AvgOccupancyGrid & grid, const int grid_x, const int grid_y)
 {
   const double local_x = (grid_x + 0.5) * grid.info.resolution;
@@ -834,7 +834,7 @@ std::pair<double, double> DirectionalCostGuard::gridToWorld(
     grid.info.origin.position.y + std::sin(yaw) * local_x + std::cos(yaw) * local_y};
 }
 
-double DirectionalCostGuard::yawFromGridOrigin(const avg_msgs::msg::AvgOccupancyGrid & grid)
+double MotionCostStop::yawFromGridOrigin(const avg_msgs::msg::AvgOccupancyGrid & grid)
 {
   const auto & orientation = grid.info.origin.orientation;
   const double sine = 2.0 *
@@ -844,7 +844,7 @@ double DirectionalCostGuard::yawFromGridOrigin(const avg_msgs::msg::AvgOccupancy
   return std::atan2(sine, cosine);
 }
 
-int DirectionalCostGuard::sampleGridCost(
+int MotionCostStop::sampleGridCost(
   const avg_msgs::msg::AvgOccupancyGrid & grid,
   const double world_x,
   const double world_y)
@@ -857,7 +857,7 @@ int DirectionalCostGuard::sampleGridCost(
   return grid.data[grid_y * static_cast<int>(grid.info.width) + grid_x];
 }
 
-std::string DirectionalCostGuard::normalizeLabel(std::string value)
+std::string MotionCostStop::normalizeLabel(std::string value)
 {
   std::transform(
     value.begin(), value.end(), value.begin(), [](const unsigned char character) {
