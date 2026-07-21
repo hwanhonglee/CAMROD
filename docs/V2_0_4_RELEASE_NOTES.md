@@ -30,10 +30,12 @@ Target remotes: `hwanhonglee/CAMROD`, `tele-genius/CAMROD`
 
 ## Reverse Parking And Charging Recall
 
-<!-- HH_260721 - Preserve the final installed-tree charging recall evidence. -->
+<!-- HH_260721 - Preserve the final installed-tree charging recall evidence and launch contract. -->
 
 Launch used `parking_method:=reverse` and a simulated normalized Ranger/BMS
-heartbeat. Result file: `/tmp/camrod_v204_charging_recall_final.json`.
+heartbeat with `sim_platform_status_enable:=true` on bringup and
+`simulate_platform_status:=true` on the runner. Result file:
+`/tmp/camrod_v204_charging_correct_flags_1158.json`.
 
 Result: `OVERALL=PASS`.
 
@@ -52,7 +54,7 @@ Result: `OVERALL=PASS`.
 
 <!-- HH_260721 - Record directional stops, replanning, and route-lanelet filtering. -->
 
-Result file: `/tmp/camrod_v204_obstacle_final.json`.
+Result file: `/tmp/camrod_v204_obstacle_postrefactor_1204.json`.
 
 Result: `OVERALL=PASS`.
 
@@ -71,6 +73,10 @@ Result: `OVERALL=PASS`.
 
 ## Build, Lint, And Configuration
 
+<!-- HH_260721 - Record the final cache-clean test result with cppcheck forced to execute. -->
+- The maintained-package aggregate completed with `171 tests, 0 errors,
+  0 failures, 0 skipped`; cppcheck 2.7 was explicitly enabled instead of
+  accepting the ROS wrapper's default skip behavior.
 - `./colcon_build.sh`: UI production bundle compiled and 63 ROS packages built.
   `camrod_voice` was skipped because SDL2_mixer is absent on this machine.
 - `camrod_control`: 17 native cases passed (15 policy and 2 reverse-parking axis).
@@ -78,6 +84,8 @@ Result: `OVERALL=PASS`.
 - `camrod_platform`: 17 light-decision cases passed.
 - `camrod_localization`: 7 owned-code lint checks passed.
 - `camrod_planning`: 6 owned-code lint checks passed.
+- `camrod_perception`: 6 owned-code lint checks passed; vendored YOLO sources
+  are excluded from package-owned style and static-analysis checks.
 - `camrod_bringup`: 4 owned-code lint checks passed.
 - `field_test_tool.sh config`: all package/bringup mirrors and installed config
   copies passed. The implemented AprilTag detector now has a bringup mirror.

@@ -1,5 +1,16 @@
 # Documentation Changelog
 
+<!-- HH_260721 - Record the corrected non-hardware release-validation invocation. -->
+## [2.0.4-validation] - 2026-07-21 (HH_260721)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Paired the simulated BMS publisher with `sim_platform_status_enable:=true` in bringup |
+| `camrod_bringup/README.md` | Added the exact reverse-parking charging-recall launch and final report paths |
+| `docs/V2_0_4_RELEASE_NOTES.md` | Updated final charging, obstacle, perception, and forced-cppcheck evidence |
+
 Tracks changes to CAMROD documentation (READMEs, style guides, templates).
 For code changes see git log and release tags.
 
