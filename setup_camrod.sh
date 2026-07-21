@@ -13,7 +13,7 @@
 # HH_260630: setup covers the current split runtime:
 #   - HH_260720 - Parking controllers are owned by the local camrod_control package.
 #   - camrod_voice requires SDL2_mixer; setup installs libsdl2-mixer-dev.
-#   - HH_260720 - AprilTag parking is a local placeholder with no docking runtime dependency.
+#   - HH_260721 - AprilTag detector/controller is implemented locally with no legacy docking dependency.
 #   - Ranger/SocketCAN tools are installed here; runtime CAN activation is handled
 #     by camrod_platform/scripts/setup_can0.sh or the matching systemd service.
 #   - camrod_ui frontend build is handled by colcon_build.sh before packaging.

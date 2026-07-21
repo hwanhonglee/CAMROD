@@ -1,6 +1,6 @@
 # CAMROD v2.0.4 Release Notes
 
-<!-- HH_260721 - Record the native control and complete reverse-parking validation baseline. -->
+<!-- HH_260721 - Record the native control baseline and its interface/configuration corrections. -->
 
 Release date: 2026-07-21
 Target branch: `develop`
@@ -10,14 +10,16 @@ Target remotes: `hwanhonglee/CAMROD`, `tele-genius/CAMROD`
 
 - Replaced the Python command gate and campsite, drop-zone, and reverse-parking
   runtimes with native C++ nodes under `camrod_control`.
-- Split gate behavior into command authorization, charging departure, and
-  directional cost policy classes with native GoogleTest coverage.
-- Kept AprilTag detector/controller code as a paste-ready placeholder. The
-  reverse parking method is the only method used in this release validation.
+- Split gate behavior into command authorization, charging-mission override,
+  and motion cost-stop classes with native GoogleTest coverage.
+- Added and connected the AprilTag detector/controller implementation. Reverse
+  parking is the only method exercised in this release validation; real
+  camera/TF/tag/contact validation remains and `image_proc` was not changed.
 - Changed reverse parking to require charging feedback before `PARKED`:
   `complete_without_charging: false`, `charging_wait_timeout_s: 20.0`.
-- Removed the custom ESKF executable, configs, launch selection, and message
-  field. Localization now has one `robot_localization` EKF backend.
+- Removed the custom ESKF executable, configs, and launch selection. The
+  compatibility message field remains reserved while localization uses the
+  `robot_localization` EKF backend.
 - Removed ROS message/service/action type aliases from maintained code. Internal
   CAMROD topics use generated `avg_msgs`; standard ROS messages remain only at
   explicit Nav2, Ranger, sensor-driver, RViz, and diagnostics boundaries.
@@ -71,14 +73,16 @@ Result: `OVERALL=PASS`.
 
 - `./colcon_build.sh`: UI production bundle compiled and 63 ROS packages built.
   `camrod_voice` was skipped because SDL2_mixer is absent on this machine.
-- `camrod_control`: 17 native cases passed (15 policy and 2 parking geometry).
+- `camrod_control`: 17 native cases passed (15 policy and 2 reverse-parking axis).
 - `camrod_sensing`: 3 route-lanelet cost-filter cases passed.
 - `camrod_platform`: 17 light-decision cases passed.
 - `camrod_localization`: 7 owned-code lint checks passed.
 - `camrod_planning`: 6 owned-code lint checks passed.
 - `camrod_bringup`: 4 owned-code lint checks passed.
 - `field_test_tool.sh config`: all package/bringup mirrors and installed config
-  copies passed. The AprilTag detector placeholder now has a bringup mirror.
+  copies passed. The implemented AprilTag detector now has a bringup mirror.
+- The final parameter audit matched gate 132/132, campsite 66/66, drop-zone
+  33/33, reverse parking 33/33, and AprilTag parking 34/34 declarations.
 - No active message/service/action alias declarations or active-package empty
   directories remain. Vendored sources are excluded from package-owned lint.
 

@@ -13,7 +13,7 @@ Runtime responsibilities:
 - `reverse_parking_controller`: final yaw-aware reverse motion only
 - `apriltag_parking_controller`: final AprilTag-based parking controller
 
-<!-- HH_260720 - Clarify charging departure and method-independent parking handoff. -->
+<!-- HH_260721 - Clarify charging mission override and method-independent parking handoff. -->
 
 `cmd_vel_safety_gate` normally blocks commands while
 the `is_charging` field of `/platform/status` is true. A new `camping_site_*` mission key opens
@@ -30,8 +30,8 @@ parking method only after yaw convergence.
 `launch/cmd_vel_safety_gate.launch.py` only selects topics, namespace, and the parameter file.
 All field-tuned gate policy is grouped in `config/cmd_vel_safety_gate.yaml`; full bringup may
 still override those values from `launch_defaults.yaml` without duplicating them in the launch file.
-Authorization, charging departure, and directional cost logic are split into
-testable policy classes instead of being embedded in the ROS callback surface.
+Authorization, charging mission override, and motion cost-stop logic are split
+into testable classes instead of being embedded in the ROS callback surface.
 
 Canonical command path:
 
@@ -49,32 +49,75 @@ Nav2 /control/nav2_cmd_vel_ros -----------^             |
 ```text
 camrod_control/
   include/camrod_control/
-    charging_departure_policy.hpp
+    charging_mission_override.hpp
     cmd_vel_gate_policy.hpp
-    directional_cost_guard.hpp
-    parking_geometry.hpp
-    control_support.hpp
+    control_diagnostics.hpp
+    drop_zone_station_pose.hpp
+    motion_geometry.hpp
+    motion_cost_stop.hpp
+    reverse_parking_axis.hpp
+    ros_message_conversion.hpp
   src/
     cmd_vel_safety_gate_node.cpp
-    directional_cost_guard.cpp
+    motion_cost_stop.cpp
     camping_site_maneuver_controller_node.cpp
     drop_zone_maneuver_controller_node.cpp
     reverse_parking_controller_node.cpp
     apriltag_parking_controller_node.cpp
   test/
     test_control_policies.cpp
-    test_parking_geometry.cpp
+    test_reverse_parking_axis.cpp
 ```
 
-<!-- HH_260721 - Record the charging-complete parking contract and directional guard behavior. -->
+<!-- HH_260721 - Describe each maintained control file by its concrete runtime responsibility. -->
+
+## File Responsibilities
+
+| File | Responsibility |
+|---|---|
+| `src/cmd_vel_safety_gate_node.cpp` | Merges navigation and maneuver commands, applies engage/CAN/charging/localization/cost-stop conditions, and publishes the final CAMROD and Ranger boundary commands |
+| `src/camping_site_maneuver_controller_node.cpp` | Runs campsite reverse entry, crab entry/exit, 180-degree zero-turn, unload wait, and return-request phases |
+| `src/drop_zone_maneuver_controller_node.cpp` | Exits the drop-zone station, aligns the body for the configured reverse axis, and starts the selected final-parking controller |
+| `src/reverse_parking_controller_node.cpp` | Performs yaw-corrected reverse parking and waits for normalized CAN charging confirmation |
+| `src/apriltag_parking_controller_node.cpp` | Performs tag-guided reverse approach, final insertion, retry, and charging-confirmed completion |
+| `src/motion_cost_stop.cpp` | Evaluates forward, reverse, crab, and zero-turn obstacle/lanelet costs and maintains the clear-time stop latch |
+| `include/camrod_control/cmd_vel_gate_policy.hpp` | Produces the authoritative command-block reason list from engage, e-stop, CAN, charging, battery, and hold state |
+| `include/camrod_control/charging_mission_override.hpp` | Opens a deduplicated, time-bounded charging stop override for an allowed campsite mission |
+| `include/camrod_control/motion_cost_stop.hpp` | Declares all-direction cost-stop configuration, decisions, grid inputs, corridor checks, and latch state |
+| `include/camrod_control/reverse_parking_axis.hpp` | Converts between station reverse-axis yaw and robot body yaw and measures signed axis distance |
+| `include/camrod_control/drop_zone_station_pose.hpp` | Loads the selected drop-zone station position and reverse-axis yaw from semantic map YAML |
+| `include/camrod_control/motion_geometry.hpp` | Provides planar angle, relative-position, clamp, and yaw/quaternion operations |
+| `include/camrod_control/ros_message_conversion.hpp` | Converts only explicit ROS boundary pose/twist messages to and from generated CAMROD messages |
+| `include/camrod_control/control_diagnostics.hpp` | Constructs control `ModuleState` and standard ROS diagnostic messages |
+| `launch/cmd_vel_safety_gate.launch.py` | Launches the final command gate and maps bringup override names to node parameters |
+| `launch/maneuvers.launch.py` | Launches campsite and drop-zone maneuver controllers with shared command and semantic-map paths |
+| `launch/parking.launch.py` | Selects exactly one reverse or AprilTag parking method and starts AprilTag perception only when selected |
+| `config/cmd_vel_safety_gate.yaml` | Defines gate topology, CAN/charging interlocks, localization holds, cost-stop behavior, and output shaping |
+| `config/control.yaml` | Defines campsite and drop-zone maneuver topics, geometry, speeds, tolerances, timeouts, and phase behavior |
+| `config/parking.yaml` | Defines separate reverse and AprilTag final-parking controller parameters |
+| `config/yaw_alignment_zones.yaml` | Defines optional planar map zones for command-gate heading locks; disabled by default |
+| `test/test_control_policies.cpp` | Regresses gate authorization, charging mission override, all-direction obstacle/lanelet stops, and latch clearing |
+| `test/test_reverse_parking_axis.cpp` | Regresses station yaw, body yaw, and signed reverse-axis conventions |
+
+<!-- HH_260721 - Record the charging-complete parking contract and motion cost-stop behavior. -->
 
 `reverse_parking_controller` enters `WAIT_FOR_CHARGING` after its configured
 reverse distance and reports `PARKED` only after `/platform/status.is_charging`
 becomes true. `complete_without_charging` is `false` and the default wait timeout
 is 20 seconds.
 
-The directional guard checks live LiDAR/radar costs for forward, reverse, crab,
-and rotation commands. Static lanelet checks are direction-configurable for
+`motion_cost_stop` checks live LiDAR/radar costs for forward, reverse, crab,
+and zero-turn commands, then holds a stop latch until the clear interval passes.
+Static lanelet checks are direction-configurable for
 site maneuvers. LiDAR/radar cost nodes first remove costs outside the active
 route lanelets plus `route_lanelet_margin_m` (0.35 m); live obstacle checks stay
 active during configured static-cost maneuver exceptions.
+
+<!-- HH_260721 - Distinguish loaded configuration from method-conditional and disabled files. -->
+
+Configuration activation:
+
+- `cmd_vel_safety_gate.yaml`: loaded by the active gate; every YAML key maps to a declared parameter.
+- `control.yaml`: loaded by both campsite and drop-zone controllers, which are enabled by default.
+- `parking.yaml`: loaded for the selected controller only. `reverse` is the default; the AprilTag section becomes active only with `parking_method:=apriltag`.
+- `yaw_alignment_zones.yaml`: optional and byte-mirrored into bringup, but not read while `enable_yaw_alignment_zone: false` remains the default.
