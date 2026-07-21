@@ -44,3 +44,13 @@ health into the parking category.
 
 Configuration is in `config/system_checker.yaml`,
 `config/system_checker_sim.yaml`, and `config/diagnostics/`.
+
+<!-- HH_260721 - Explain event-driven map diagnostics and method-selected parking discovery. -->
+`/map/cost_grid/lanelet` is event-driven by pose/path changes, so its checker
+does not enforce a minimum publish frequency. It still reports a missing first
+grid, stale data after 12 seconds, and excessive unknown cells.
+<!-- HH_260721 - Dynamic groups now accept their first real OK result. -->
+The `final_parking` category starts as a neutral dynamic group and becomes OK
+when exactly one reverse or AprilTag implementation is healthy. It no longer
+remains in WARN because of its discovery seed. A real parking failure is
+reported separately as `parking: phase=ERROR ...`.
