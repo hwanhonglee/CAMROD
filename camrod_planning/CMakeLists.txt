@@ -234,6 +234,29 @@ if(BUILD_TESTING)
     progress_checker_plugins.xml
     ${CAMROD_PLANNING_XML}
   )
+
+  # HH_260721 - Exercise the installed planner algorithm against the active campground map.
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_lanelet_route_planner test/test_lanelet_route_planner.cpp)
+  ament_target_dependencies(test_lanelet_route_planner
+    avg_msgs
+    camrod_map
+    geometry_msgs
+    lanelet2_core
+    lanelet2_io
+    lanelet2_projection
+    lanelet2_routing
+    lanelet2_traffic_rules
+    nav2_core
+    nav_msgs
+    pluginlib
+    rclcpp
+    rclcpp_lifecycle
+    std_msgs
+  )
+  target_include_directories(test_lanelet_route_planner PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../camrod_map/include>
+  )
 endif()
 
 ament_package()

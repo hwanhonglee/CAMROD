@@ -64,6 +64,22 @@ geometry_msgs::msg::Quaternion yawToQuaternion(const double yaw)
   return quaternion;
 }
 
+// HH_260721 - Compare vehicle and lanelet headings without depending on TF utilities.
+double quaternionToYaw(const geometry_msgs::msg::Quaternion & quaternion)
+{
+  const double sin_yaw = 2.0 *
+    (quaternion.w * quaternion.z + quaternion.x * quaternion.y);
+  const double cos_yaw = 1.0 - 2.0 *
+    (quaternion.y * quaternion.y + quaternion.z * quaternion.z);
+  return std::atan2(sin_yaw, cos_yaw);
+}
+
+// HH_260721 - Normalize heading differences before selecting a reverse lanelet route.
+double normalizeAngle(const double angle)
+{
+  return std::atan2(std::sin(angle), std::cos(angle));
+}
+
 bool pointInPolygon2D(
   const std::vector<std::pair<double, double>> & polygon, const double x,
   const double y)
@@ -125,6 +141,9 @@ public:
     declareIfMissing(plugin_name_ + ".max_snap_distance_m", 8.0);
     declareIfMissing(plugin_name_ + ".interpolation_resolution_m", 0.20);
     declareIfMissing(plugin_name_ + ".same_lane_forward_epsilon_m", 0.30);
+    // HH_260721 - Permit the geometric reverse of a legal route only after an explicit 180-degree turn.
+    declareIfMissing(plugin_name_ + ".enable_reverse_lanelet_shortest_path", true);
+    declareIfMissing(plugin_name_ + ".reverse_lanelet_start_heading_threshold_deg", 120.0);
     declareIfMissing(plugin_name_ + ".flatten_path_z", true);
     declareIfMissing(
       plugin_name_ + ".route_lanelet_ids_topic",
@@ -147,6 +166,12 @@ public:
     node_->get_parameter(
       plugin_name_ + ".same_lane_forward_epsilon_m",
       same_lane_forward_epsilon_m_);
+    node_->get_parameter(
+      plugin_name_ + ".enable_reverse_lanelet_shortest_path",
+      enable_reverse_lanelet_shortest_path_);
+    node_->get_parameter(
+      plugin_name_ + ".reverse_lanelet_start_heading_threshold_deg",
+      reverse_lanelet_start_heading_threshold_deg_);
     node_->get_parameter(plugin_name_ + ".flatten_path_z", flatten_path_z_);
     node_->get_parameter(plugin_name_ + ".route_lanelet_ids_topic", route_lanelet_ids_topic_);
     node_->get_parameter(plugin_name_ + ".async_initialization", async_initialization_);
@@ -157,6 +182,8 @@ public:
 
     interpolation_resolution_m_ = std::max(0.05, interpolation_resolution_m_);
     max_snap_distance_m_ = std::max(0.1, max_snap_distance_m_);
+    reverse_lanelet_start_heading_threshold_deg_ = std::clamp(
+      reverse_lanelet_start_heading_threshold_deg_, 90.0, 179.0);
 
     // HH_260619 - Publish exact routing lanelet IDs so route-aware cost grids do
     // not infer ambiguous lanelets from overlapping merge polygons.
@@ -183,6 +210,9 @@ public:
     initialization_complete_ = false;
     initialization_success_ = false;
     initialization_error_.clear();
+    // HH_260721 - A lifecycle restart must not inherit a reverse route decision from an old goal.
+    has_previous_route_goal_ = false;
+    reverse_route_goal_latched_ = false;
   }
 
   void activate() override
@@ -228,7 +258,37 @@ public:
       throw nav2_core::PlannerException("LaneletRoutePlanner could not snap goal to lanelet");
     }
 
-    const auto route_lanelets = findRoute(start_match, goal_match);
+    const double start_yaw = quaternionToYaw(start.pose.orientation);
+    const double start_heading_error_deg = std::abs(
+      normalizeAngle(start_yaw - start_match.projection.heading)) * 180.0 / M_PI;
+    // HH_260721 - Keep the selected reverse route across localization-triggered replans of one goal.
+    const bool same_route_goal = has_previous_route_goal_ &&
+      previous_route_goal_lanelet_id_ == goal_match.lanelet.id() &&
+      std::abs(previous_route_goal_arc_length_ - goal_match.projection.arc_length) <= 0.5;
+    if (!same_route_goal) {
+      reverse_route_goal_latched_ = false;
+    }
+    const bool reverse_requested_by_heading =
+      start_heading_error_deg >= reverse_lanelet_start_heading_threshold_deg_;
+    const bool reverse_requested_by_goal_latch =
+      same_route_goal && reverse_route_goal_latched_;
+    bool reverse_lanelet_route = enable_reverse_lanelet_shortest_path_ &&
+      (reverse_requested_by_heading || reverse_requested_by_goal_latch);
+    std::vector<lanelet::ConstLanelet> route_lanelets;
+    if (reverse_lanelet_route) {
+      // HH_260721 - Reverse the legal outbound shortest path instead of driving the 149 m loop.
+      route_lanelets = findReverseLaneletRoute(start_match, goal_match);
+      if (route_lanelets.empty()) {
+        RCLCPP_WARN(
+          node_->get_logger(),
+          "reverse lanelet route unavailable; falling back to one-way route: heading_error=%.1fdeg",
+          start_heading_error_deg);
+        reverse_lanelet_route = false;
+      }
+    }
+    if (!reverse_lanelet_route) {
+      route_lanelets = findRoute(start_match, goal_match);
+    }
     const auto route_t1 = std::chrono::steady_clock::now();
     if (route_lanelets.empty()) {
       throw nav2_core::PlannerException("LaneletRoutePlanner could not find lanelet route");
@@ -252,10 +312,17 @@ public:
       const bool is_first = route_index == 0U;
       const bool is_last = route_index + 1U == route_lanelets.size();
 
-      double segment_start_s = is_first ? start_match.projection.arc_length : 0.0;
+      // HH_260721 - Inverted lanelets measure arc length from the opposite endpoint.
+      const double first_arc_length = reverse_lanelet_route ?
+        centerlineLength(route_lanelet) - start_match.projection.arc_length :
+        start_match.projection.arc_length;
+      const double last_arc_length = reverse_lanelet_route ?
+        centerlineLength(route_lanelet) - goal_match.projection.arc_length :
+        goal_match.projection.arc_length;
+      double segment_start_s = is_first ? first_arc_length : 0.0;
       double segment_end_s = centerlineLength(route_lanelet);
       if (is_last) {
-        segment_end_s = goal_match.projection.arc_length;
+        segment_end_s = last_arc_length;
       }
 
       if (segment_end_s + 1.0e-6 < segment_start_s) {
@@ -269,8 +336,10 @@ public:
       if (turn_attribute != lanelet_attributes.end()) {
         turn_direction = turn_attribute->second.value();
       }
-      const float direction_value =
+      const float tagged_direction =
         turn_direction == "left" ? 1.0F : (turn_direction == "right" ? -1.0F : 0.0F);
+      // HH_260721 - A tagged left turn becomes a right turn when its lanelet path is reversed.
+      const float direction_value = reverse_lanelet_route ? -tagged_direction : tagged_direction;
       if (direction_value != 0.0F && contributed_length_m > 1.0e-3) {
         const auto window_start = static_cast<float>(route_cumulative_s);
         const auto window_end = static_cast<float>(route_cumulative_s + contributed_length_m);
@@ -294,6 +363,12 @@ public:
       throw nav2_core::PlannerException("LaneletRoutePlanner generated an empty route");
     }
 
+    // HH_260721 - Commit route direction only after the planner generated usable geometry.
+    has_previous_route_goal_ = true;
+    previous_route_goal_lanelet_id_ = goal_match.lanelet.id();
+    previous_route_goal_arc_length_ = goal_match.projection.arc_length;
+    reverse_route_goal_latched_ = reverse_lanelet_route;
+
     const auto geometry_t1 = std::chrono::steady_clock::now();
     updatePathOrientations(path);
     const auto plan_t1 = std::chrono::steady_clock::now();
@@ -307,10 +382,16 @@ public:
       std::chrono::duration<double, std::milli>(plan_t1 - plan_t0).count();
     RCLCPP_INFO(
       node_->get_logger(),
-      "LaneletRoutePlanner plan: start_ll=%ld goal_ll=%ld lanelets=%zu points=%zu "
+      "LaneletRoutePlanner plan: start_ll=%ld goal_ll=%ld mode=%s reverse_source=%s "
+      "heading_error=%.1fdeg "
+      "lanelets=%zu points=%zu "
       "timing snap=%.2fms route=%.2fms geometry=%.2fms total=%.2fms",
       static_cast<long>(start_match.lanelet.id()),
       static_cast<long>(goal_match.lanelet.id()),
+      reverse_lanelet_route ? "reverse_shortest" : "one_way",
+      reverse_requested_by_goal_latch ? "goal_latch" :
+      (reverse_requested_by_heading ? "heading" : "none"),
+      start_heading_error_deg,
       route_lanelets.size(), path.poses.size(),
       snap_ms, route_ms, geometry_ms, total_ms);
     return path;
@@ -715,6 +796,22 @@ private:
     return best_route;
   }
 
+  std::vector<lanelet::ConstLanelet> findReverseLaneletRoute(
+    const LaneletMatch & start_match,
+    const LaneletMatch & goal_match) const
+  {
+    // HH_260721 - Goal-to-start is traffic-rule legal; reversing it reproduces the shortest arrival path.
+    std::vector<lanelet::ConstLanelet> forward_route = findRoute(goal_match, start_match);
+    std::vector<lanelet::ConstLanelet> reverse_route;
+    reverse_route.reserve(forward_route.size());
+    for (auto route_iterator = forward_route.rbegin();
+      route_iterator != forward_route.rend(); ++route_iterator)
+    {
+      reverse_route.push_back(route_iterator->invert());
+    }
+    return reverse_route;
+  }
+
   static std::vector<lanelet::ConstLanelet> toVector(
     const lanelet::routing::LaneletPath & lanelet_path)
   {
@@ -890,6 +987,8 @@ private:
   double max_snap_distance_m_{8.0};
   double interpolation_resolution_m_{0.20};
   double same_lane_forward_epsilon_m_{0.30};
+  bool enable_reverse_lanelet_shortest_path_{true};
+  double reverse_lanelet_start_heading_threshold_deg_{120.0};
   bool allow_lane_changes_{true};
   bool flatten_path_z_{true};
   bool async_initialization_{true};
@@ -910,6 +1009,11 @@ private:
   bool initialization_complete_{false};
   bool initialization_success_{false};
   std::string initialization_error_;
+  // HH_260721 - Preserve route direction while Nav2 replans the same snapped destination.
+  bool has_previous_route_goal_{false};
+  lanelet::Id previous_route_goal_lanelet_id_{lanelet::InvalId};
+  double previous_route_goal_arc_length_{0.0};
+  bool reverse_route_goal_latched_{false};
 };
 
 }  // namespace camrod_planning
