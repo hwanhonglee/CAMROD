@@ -2,9 +2,9 @@
 
 <!-- HH_260720 - Document the consolidated parking and command-gate package boundaries. -->
 
-Current validated baseline: `v2.0.4` ([release notes](docs/V2_0_4_RELEASE_NOTES.md)).
+Current validated baseline: `v2.0.5` ([release notes](docs/V2_0_5_RELEASE_NOTES.md)).
 
-<!-- HH_260721 - Link the reverse-only validation baseline from the workspace entry point. -->
+<!-- HH_260721 - Link the campsite-retrace and charging-simulation validation baseline. -->
 
 CAMROD is a ROS 2 Humble autonomous mobile robot stack. Route planning, local
 vehicle maneuvers, reverse parking, and hardware command authorization are
@@ -59,8 +59,10 @@ directly; no second platform gate or `/platform/cmd_vel` alias exists.
 
 1. Planning drives to the selected campsite lanelet snap pose.
 2. `camping_site_maneuver_controller` performs crab entry and a 180-degree zero-turn.
-3. A return request triggers yaw restoration, crab exit, and route ownership
-   handoff to planning.
+3. A return request preserves the post-turn heading, crab-retraces the campsite
+   entry lane, and hands route ownership back to planning after the exit pose is
+   reached.
+<!-- HH_260721 - Describe the same-lane campsite retrace without implying a second physical 180-degree turn. -->
 4. Planning returns to the drop-zone lanelet snap pose.
 5. `drop_zone_maneuver_controller` aligns the body for the configured reverse axis.
 6. The selected controller under `camrod_control/parking` performs only final parking.
@@ -78,13 +80,23 @@ a bounded departure window, allowing the active control/planning command path to
 from the charger. If charging feedback does not clear before the
 window expires, command output closes again.
 
+<!-- HH_260721 - Document the drop-zone departure handoff required before a new route. -->
+When a campsite is selected while the robot is parked or charging at the drop
+zone, the UI publishes the campsite mission key first, then waits for
+`EXIT_STRAIGHT -> ALIGN_EXIT_YAW` from the drop-zone controller. The campsite
+`/goal_pose` is published only after `/control/drop_zone/exit_complete=true`.
+
 ## Build And Run
 
 ```bash
 cd /home/hong/camrod_ws
 ./src/colcon_build.sh
 source install/setup.bash
-# HH_260721 - Enable the simulated platform-status input used by charging recall validation.
+# HH_260721 - Ordinary simulation feeds raw Ranger/BMS feedback through the platform bridge.
+ros2 launch camrod_bringup bringup.launch.py \
+  sim:=true rviz:=false parking_method:=reverse
+
+# HH_260721 - Use the dedicated status publisher only for the charging-recall validator below.
 ros2 launch camrod_bringup bringup.launch.py \
   sim:=true rviz:=false parking_method:=reverse \
   sim_platform_status_enable:=true

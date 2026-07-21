@@ -59,6 +59,12 @@ The validation runner checks sensor rates, directional gate stops, Nav2
 replanning, and the complete campsite/charging round trip. The validated release
 uses `parking_method:=reverse`; AprilTag nodes are not exercised.
 
+<!-- HH_260721 - Explain ordinary simulation charging without the dedicated validator. -->
+For normal `sim:=true` runs, `fake_sensor_publisher` publishes deterministic
+`/battery_state` and `/system_state` feedback. `ranger_platform_bridge` remains
+the only `/platform/status` publisher, so reverse parking reaches
+`WAIT_FOR_CHARGING` and then `PARKED` without a CAN device.
+
 <!-- HH_260721 - Document both sides of the simulated platform-status contract. -->
 Start bringup with the gate subscribed to the runner's simulated Ranger/BMS
 status before running the charging-recall scenario:
@@ -86,6 +92,12 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
 The full camping check requires campsite crab/zero-turn/exit, return navigation,
 drop-zone yaw alignment, `REVERSE_APPROACH`, `WAIT_FOR_CHARGING`, `PARKED`, and
 the charging recall transition through `DEPARTING_CHARGER` to a new site route.
+
+<!-- HH_260721 - Record the operator/UI departure sequence validated in ordinary simulation. -->
+Selecting another campsite from `DROP_ZONE_WAIT` or charging state does not
+publish `/goal_pose` immediately. The UI sends a drop-zone `EXIT` operation and
+releases the pending goal only after `EXIT_STRAIGHT`, `ALIGN_EXIT_YAW`, and
+`/control/drop_zone/exit_complete=true`.
 
 Directional gate and replan validation:
 
