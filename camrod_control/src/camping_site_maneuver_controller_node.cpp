@@ -58,6 +58,24 @@ enum class CampingSiteManeuverPhase
   kError,
 };
 
+// HH_260721 - Separate full campsite turnaround behavior from roadside stop behavior.
+enum class CampsiteServiceMode
+{
+  kTurnaround,
+  kRoadsideStop,
+};
+
+std::string serviceModeName(const CampsiteServiceMode mode)
+{
+  return mode == CampsiteServiceMode::kRoadsideStop ? "roadside_stop" : "turnaround";
+}
+
+CampsiteServiceMode serviceModeFromName(const std::string & name)
+{
+  return name == "roadside_stop" ?
+         CampsiteServiceMode::kRoadsideStop : CampsiteServiceMode::kTurnaround;
+}
+
 std::string phaseName(const CampingSiteManeuverPhase phase)
 {
   switch (phase) {
@@ -391,6 +409,7 @@ private:
   void loadCampingSites()
   {
     camping_site_goals_.clear();
+    camping_site_service_modes_.clear();
     if (camping_sites_yaml_.empty()) {
       return;
     }
@@ -407,16 +426,29 @@ private:
         if (!item["x"] || !item["y"]) {
           continue;
         }
+        // HH_260721 - Prefer the map-authored operational pose while retaining legacy YAML fallback.
         const avg_msgs::msg::AvgPoseStamped pose = makePose(
           item["frame_id"] ? item["frame_id"].as<std::string>() : site_goal_frame_id_,
-          item["x"].as<double>(), item["y"].as<double>(),
-          item["z"] ? item["z"].as<double>() : 0.0,
-          item["yaw_deg"] ? item["yaw_deg"].as<double>() : 0.0);
+          item["service_x"] ? item["service_x"].as<double>() : item["x"].as<double>(),
+          item["service_y"] ? item["service_y"].as<double>() : item["y"].as<double>(),
+          item["service_z"] ? item["service_z"].as<double>() :
+          (item["z"] ? item["z"].as<double>() : 0.0),
+          item["service_yaw_deg"] ? item["service_yaw_deg"].as<double>() :
+          (item["yaw_deg"] ? item["yaw_deg"].as<double>() : 0.0));
+        const std::string configured_mode = item["service_mode"] ?
+          item["service_mode"].as<std::string>() : "turnaround";
+        const CampsiteServiceMode service_mode = serviceModeFromName(configured_mode);
+        if (configured_mode != "turnaround" && configured_mode != "roadside_stop") {
+          RCLCPP_WARN(
+            get_logger(), "unknown campsite service_mode '%s'; using turnaround",
+            configured_mode.c_str());
+        }
         for (const std::string field : {"type", "id", "name"}) {
           if (item[field]) {
             const std::string key = item[field].as<std::string>();
             if (!key.empty()) {
               camping_site_goals_[key] = pose;
+              camping_site_service_modes_[key] = service_mode;
             }
           }
         }
@@ -573,14 +605,17 @@ private:
     site_goal_time_ = now();
     route_goal_time_ = now();
     site_goal_key_ = key;
+    // HH_260721 - Restore the configured service policy when adopting a robot already at a site.
+    active_service_mode_ = serviceModeForKey(key);
     last_auto_key_ = "adopt:" + key + ":" + fixed(now().seconds(), 3);
     start_yaw_ = camrod_control::yawFromPose(adopted_route_goal);
     target_yaw_ = start_yaw_;
     rotate_direction_sign_ = 0.0;
     rotate_direction_label_ = "adopted";
     crab_direction_ = direction;
-    // HH_260721 - After a 180-degree turn the same body-frame crab sign moves back to entry.
-    return_crab_direction_ = direction;
+    // HH_260721 - Roadside stops retain heading, so their body-frame return sign must be reversed.
+    return_crab_direction_ = active_service_mode_ == CampsiteServiceMode::kRoadsideStop ?
+      -direction : direction;
     crab_offset_m_ = offset;
     crab_source_ = source_name;
     goal_pair_forward_m_ = relative.first;
@@ -602,7 +637,8 @@ private:
       CampingSiteManeuverPhase::kWaitReturn,
       "adopt=" + source + " key=" + key + " route=" + route_source +
       " dist=" + fixed(distance_to_site) + "m offset=" + fixed(offset) +
-      "m direction=" + signedFixed(direction) + " source=" + source_name);
+      "m direction=" + signedFixed(direction) + " service_mode=" +
+      serviceModeName(active_service_mode_) + " source=" + source_name);
     return true;
   }
 
@@ -616,15 +652,24 @@ private:
            poseDistance(*site_goal_, expected->second) <= 0.5;
   }
 
+  CampsiteServiceMode serviceModeForKey(const std::string & key) const
+  {
+    const auto configured_mode = camping_site_service_modes_.find(key);
+    return configured_mode == camping_site_service_modes_.end() ?
+           CampsiteServiceMode::kTurnaround : configured_mode->second;
+  }
+
   void ensureGoalPairForAutoStart(const std::string & key)
   {
+    // HH_260721 - Bind the mission key and service policy even when the UI pose already matches YAML.
+    site_goal_key_ = key;
+    active_service_mode_ = serviceModeForKey(key);
     const auto configured_goal = camping_site_goals_.find(key);
     if (configured_goal != camping_site_goals_.end() &&
       (!site_goal_.has_value() || !siteGoalMatchesKey(key)))
     {
       site_goal_ = stampPoseNow(configured_goal->second);
       site_goal_time_ = now();
-      site_goal_key_ = key;
       RCLCPP_INFO(
         get_logger(), "restored site_goal from camping_sites_yaml: key=%s x=%.2f y=%.2f",
         key.c_str(), site_goal_->pose.position.x, site_goal_->pose.position.y);
@@ -769,6 +814,8 @@ private:
       setError("fresh pose unavailable");
       return {false, "fresh pose unavailable"};
     }
+    // HH_260721 - A direct/manual goal remains a normal turnaround unless a mission key selects otherwise.
+    active_service_mode_ = serviceModeForKey(site_goal_key_);
     const auto motion = resolveLateralMotion();
     const double lateral_offset = std::get<0>(motion);
     const double direction = std::get<1>(motion);
@@ -780,7 +827,9 @@ private:
       setError("site/route goal pair unavailable for auto site maneuver");
       return {false, "site/route goal pair unavailable for auto site maneuver"};
     }
-    if (site_entry_mode_ == "reverse") {
+    if (site_entry_mode_ == "reverse" &&
+      active_service_mode_ != CampsiteServiceMode::kRoadsideStop)
+    {
       return startReverseEntrySequence(source, source_name, forward_residual);
     }
     if (lateral_offset <= 0.0 || crab_speed_mps_ <= 0.0) {
@@ -795,7 +844,8 @@ private:
     target_yaw_ = camrod_control::normalizeAngle(
       start_yaw_ + (rotate_direction_sign_ == 0.0 ? M_PI : rotate_direction_sign_ * M_PI));
     crab_direction_ = direction;
-    return_crab_direction_ = direction;
+    return_crab_direction_ = active_service_mode_ == CampsiteServiceMode::kRoadsideStop ?
+      -direction : direction;
     crab_offset_m_ = lateral_offset;
     crab_source_ = source_name;
     goal_pair_forward_m_ = forward_residual;
@@ -817,6 +867,7 @@ private:
       CampingSiteManeuverPhase::kCrabIn,
       "start=" + source + " offset=" + fixed(lateral_offset) +
       "m direction=" + signedFixed(direction) + " rotate=" + rotate_direction_label_ +
+      " service_mode=" + serviceModeName(active_service_mode_) +
       " source=" + source_name + " forward=" + fixed(forward_residual) +
       "m timeout_speed_scale=" + fixed(crab_timeout_speed_scale_) +
       " duration=" + fixed(crab_duration_s_, 1) + "s");
@@ -929,7 +980,14 @@ private:
 
   void beginReturnExit(const std::string & reason)
   {
-    if (site_entry_mode_ == "reverse") {
+    if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
+      // HH_260721 - Exit a roadside stop along the entry trace without rotating in constrained terrain.
+      target_yaw_ = start_yaw_;
+      return_crab_direction_ = -crab_direction_;
+      setPhase(
+        CampingSiteManeuverPhase::kCrabOut,
+        reason + "; roadside return without zero-turn");
+    } else if (site_entry_mode_ == "reverse") {
       setPhase(CampingSiteManeuverPhase::kReverseOut, reason);
     } else if (align_retrace_yaw_before_crab_out_) {
       // HH_260721 - Verify retrace yaw without undoing the site's required 180-degree turn.
@@ -1315,7 +1373,15 @@ private:
     } else if (phase_ == CampingSiteManeuverPhase::kCrabIn) {
       if (entryReached()) {
         publishZero();
-        setPhase(CampingSiteManeuverPhase::kRotate180, "crab entry pose reached");
+        // HH_260721 - Keep the route heading at constrained roadside service poses.
+        if (active_service_mode_ == CampsiteServiceMode::kRoadsideStop) {
+          target_yaw_ = start_yaw_;
+          setPhase(
+            CampingSiteManeuverPhase::kUnloadWait,
+            "roadside service pose reached; zero-turn skipped");
+        } else {
+          setPhase(CampingSiteManeuverPhase::kRotate180, "crab entry pose reached");
+        }
       } else if (elapsed > crab_duration_s_ + crab_timeout_margin_s_) {
         setError("crab entry timeout before reaching site offset");
       } else {
@@ -1385,6 +1451,7 @@ private:
     }
     const std::string message =
       "phase=" + phaseName(phase_) +
+      " service_mode=" + serviceModeName(active_service_mode_) +
       " return_published=" + (return_published_ ? "True" : "False") +
       " return_ack=" + (return_acknowledged_ ? "True" : "False");
     status_publisher_->publish(
@@ -1475,6 +1542,7 @@ private:
   double status_publish_rate_hz_{1.0};
 
   CampingSiteManeuverPhase phase_{CampingSiteManeuverPhase::kIdle};
+  CampsiteServiceMode active_service_mode_{CampsiteServiceMode::kTurnaround};
   std::optional<avg_msgs::msg::AvgPoseStamped> last_pose_;
   std::optional<avg_msgs::msg::AvgPoseStamped> site_goal_;
   std::optional<avg_msgs::msg::AvgPoseStamped> route_goal_;
@@ -1518,6 +1586,7 @@ private:
   rclcpp::Time last_reverse_entry_debug_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_status_publish_time_{0, 0, RCL_ROS_TIME};
   std::map<std::string, avg_msgs::msg::AvgPoseStamped> camping_site_goals_;
+  std::map<std::string, CampsiteServiceMode> camping_site_service_modes_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr command_publisher_;
   rclcpp::Publisher<avg_msgs::msg::ModuleState>::SharedPtr status_publisher_;

@@ -682,12 +682,16 @@ class PlanningStateMachineNode(Node):
             key_name = str(site.get("type", "")).strip() or f"camping_site_{index}"
             frame_id = str(site.get("frame_id", "map"))
             if key_name not in self.keypoints:
+                # HH_260721 - Route inaccessible campsites to their map-authored roadside service pose.
                 self.keypoints[key_name] = Keypoint(
                     name=key_name,
                     frame_id=frame_id,
-                    x=float(site.get("x", 0.0)),
-                    y=float(site.get("y", 0.0)),
-                    z=float(site.get("z", 0.0)),
+                    x=float(site.get("service_x", site.get("x", 0.0))),
+                    y=float(site.get("service_y", site.get("y", 0.0))),
+                    z=float(site.get("service_z", site.get("z", 0.0))),
+                    yaw_deg=float(
+                        site.get("service_yaw_deg", site.get("yaw_deg", 0.0))
+                    ),
                 )
 
             # HH_260528 Recall should target lanelet-snapped road point when provided.

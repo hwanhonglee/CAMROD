@@ -69,6 +69,8 @@ class MissionKeypoint:
     y: float
     z: float
     yaw_deg: float
+    # HH_260721 - Keep the maneuver policy attached to the operational campsite target.
+    service_mode: str = "turnaround"
     corners: List[tuple[float, float]] = field(default_factory=list)
 
 
@@ -343,14 +345,18 @@ class UiBackendNode(Node):
                         corners.append((float(corner["x"]), float(corner["y"])))
                     except (KeyError, TypeError, ValueError):
                         continue
+            # HH_260721 - Dispatch an alternate roadside pose when the map marks a site inaccessible.
+            service_mode = str(site.get("service_mode", "turnaround")).strip().lower()
+            service_mode = service_mode or "turnaround"
             keypoints[key] = MissionKeypoint(
                 key=key,
                 frame_id=str(site.get("frame_id", self.default_goal_frame_id)).strip()
                 or self.default_goal_frame_id,
-                x=float(site.get("x", 0.0)),
-                y=float(site.get("y", 0.0)),
-                z=float(site.get("z", 0.0)),
-                yaw_deg=float(site.get("yaw_deg", 0.0)),
+                x=float(site.get("service_x", site.get("x", 0.0))),
+                y=float(site.get("service_y", site.get("y", 0.0))),
+                z=float(site.get("service_z", site.get("z", 0.0))),
+                yaw_deg=float(site.get("service_yaw_deg", site.get("yaw_deg", 0.0))),
+                service_mode=service_mode,
                 corners=corners,
             )
 
@@ -809,7 +815,7 @@ class UiBackendNode(Node):
                 f"mission key ({source}) -> {self.planning_mission_key_topic}: {mission_key}"
             )
 
-    # HH_260721 - Publish the raw campsite center only when no control maneuver owns motion.
+    # HH_260721 - Publish the map-selected operational campsite target for route and control use.
     def _publish_site_goal_pose(self, site: str, mission_key: str, source: str) -> bool:
         pose_published = False
         goal = self._keypoints_by_mission_key.get(mission_key)
@@ -829,7 +835,8 @@ class UiBackendNode(Node):
             pose_published = True
             self.get_logger().info(
                 f"site goal ({source}) -> {self.planning_goal_pose_topic}: "
-                f"mission_key={mission_key} site={site} xy=({goal.x:.2f},{goal.y:.2f})"
+                f"mission_key={mission_key} site={site} service_mode={goal.service_mode} "
+                f"xy=({goal.x:.2f},{goal.y:.2f})"
             )
 
         if self.publish_goal_pose and goal is None:

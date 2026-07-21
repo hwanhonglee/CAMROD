@@ -894,7 +894,8 @@ class SimValidationRunner(Node):
         )
         return candidates
 
-    def load_camping_goal(self, mission_key: str) -> RosPoseStamped | None:
+    # HH_260721 - Resolve the same operational campsite record consumed by UI, planning, and control.
+    def load_camping_site_config(self, mission_key: str) -> dict | None:
         for path in self._candidate_camping_site_files():
             if not path or not os.path.exists(path):
                 continue
@@ -907,18 +908,27 @@ class SimValidationRunner(Node):
             for site in data.get("camping_sites", []) or []:
                 if str(site.get("type", "")).strip() != mission_key:
                     continue
-                # HH_260630: Sim UI validation mirrors ui_backend_node behavior:
-                # publish semantic mission_key first, then the raw campsite goal pose.
-                pose = RosPoseStamped()
-                pose.header.stamp = self.get_clock().now().to_msg()
-                pose.header.frame_id = str(site.get("frame_id", "map"))
-                pose.pose.position.x = float(site.get("x", 0.0))
-                pose.pose.position.y = float(site.get("y", 0.0))
-                pose.pose.position.z = float(site.get("z", 0.0))
-                pose.pose.orientation = quat_from_yaw(
-                    math.radians(float(site.get("yaw_deg", 0.0)))
+                return site
+        return None
+
+    def load_camping_goal(self, mission_key: str) -> RosPoseStamped | None:
+        site = self.load_camping_site_config(mission_key)
+        if site is not None:
+            # HH_260630: Sim UI validation mirrors ui_backend_node behavior:
+            # publish semantic mission_key first, then its operational goal pose.
+            # HH_260721 - Prefer a roadside service pose for map-annotated inaccessible sites.
+            pose = RosPoseStamped()
+            pose.header.stamp = self.get_clock().now().to_msg()
+            pose.header.frame_id = str(site.get("frame_id", "map"))
+            pose.pose.position.x = float(site.get("service_x", site.get("x", 0.0)))
+            pose.pose.position.y = float(site.get("service_y", site.get("y", 0.0)))
+            pose.pose.position.z = float(site.get("service_z", site.get("z", 0.0)))
+            pose.pose.orientation = quat_from_yaw(
+                math.radians(
+                    float(site.get("service_yaw_deg", site.get("yaw_deg", 0.0)))
                 )
-                return pose
+            )
+            return pose
         return None
 
     def check_manual_goal(self) -> None:
@@ -1135,6 +1145,12 @@ class SimValidationRunner(Node):
         self.publish_engage(True)
         self.publish_mission_engage(True)
         mission_key = self.camping_mission_key.strip() or "camping_site_1"
+        camping_site_config = self.load_camping_site_config(mission_key) or {}
+        # HH_260721 - Assert the phase contract selected by the campsite service policy.
+        camping_service_mode = (
+            str(camping_site_config.get("service_mode", "turnaround")).strip().lower()
+            or "turnaround"
+        )
         goal_pose = self.load_camping_goal(mission_key)
         if goal_pose is None:
             self.results.append(
@@ -1180,6 +1196,7 @@ class SimValidationRunner(Node):
         seen_site_phase = False
         # HH_260721 - Track the retrace-heading verification separately from the site turn.
         seen_align_retrace_yaw = False
+        seen_rotate_180 = False
         seen_crab_out = False
         seen_done = False
         seen_drop_zone_return = False
@@ -1252,10 +1269,12 @@ class SimValidationRunner(Node):
             # HH_260701 - RETURNING can be emitted before the campsite exit is
             # actually complete. Require the concrete site maneuver phases so
             # the smoke test catches engage/gate issues that stop CRAB_OUT.
-            # HH_260721 - Observe the same-lanelet retrace alignment without a second 180 turn.
-            seen_align_retrace_yaw = (
-                seen_align_retrace_yaw or "ALIGN_RETRACE_YAW" in site_msg
-            )
+            # HH_260721 - Capture only the initial site's turn policy before a charging recall starts.
+            if not seen_done:
+                seen_rotate_180 = seen_rotate_180 or "ROTATE_180" in site_msg
+                seen_align_retrace_yaw = (
+                    seen_align_retrace_yaw or "ALIGN_RETRACE_YAW" in site_msg
+                )
             seen_crab_out = seen_crab_out or "CRAB_OUT" in site_msg
             seen_done = seen_done or "DONE" in site_msg
             # HH_260720 - Validate drop-zone alignment and reverse parking as
@@ -1369,6 +1388,12 @@ class SimValidationRunner(Node):
         global_new = self.global_path_count > base_global
         local_new = self.local_path_count > base_local
         route_reached = bool(reached_nav or seen_goal_reached_state)
+        # HH_260721 - Roadside sites must not rotate; regular sites must retain both turn phases.
+        service_mode_ok = (
+            not seen_rotate_180 and not seen_align_retrace_yaw
+            if camping_service_mode == "roadside_stop"
+            else seen_rotate_180 and seen_align_retrace_yaw
+        )
         site_ok = bool(
             global_new
             and cmd_max > 0.03
@@ -1376,6 +1401,7 @@ class SimValidationRunner(Node):
             and seen_site_phase
             and seen_crab_out
             and seen_done
+            and service_mode_ok
         )
         drop_zone_ok = (
             not self.camping_wait_drop_zone
@@ -1452,6 +1478,8 @@ class SimValidationRunner(Node):
                 else (
                     f"global={global_new} local={local_new} cmd={cmd_max:.3f} "
                     f"nav_success={reached_nav} site_phase={seen_site_phase} "
+                    f"service_mode={camping_service_mode} service_mode_ok={service_mode_ok} "
+                    f"rotate_180={seen_rotate_180} "
                     f"align_retrace_yaw={seen_align_retrace_yaw} "
                     f"crab_out={seen_crab_out} done={seen_done} "
                     f"drop_return={seen_drop_zone_return} "
@@ -1467,6 +1495,9 @@ class SimValidationRunner(Node):
                     "nav_success": reached_nav,
                     "route_reached": route_reached,
                     "site_phase": seen_site_phase,
+                    "service_mode": camping_service_mode,
+                    "service_mode_ok": service_mode_ok,
+                    "rotate_180": seen_rotate_180,
                     "align_retrace_yaw": seen_align_retrace_yaw,
                     "crab_out": seen_crab_out,
                     "done": seen_done,
