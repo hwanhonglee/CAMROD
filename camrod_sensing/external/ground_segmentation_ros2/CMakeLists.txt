@@ -40,7 +40,8 @@ set(dependencies
 
 add_executable(ground_segmentation_ros2_node src/ground_segmentation_ros2_node.cpp)
 
-# ground_segmentation 라이브러리(header-only) 통합: include/ 에 hpp 직접 포함
+# HH_260721 - Keep the header-only ground-segmentation core inside this ROS 2
+# package so the retired standalone package cannot re-enter the build graph.
 target_include_directories(ground_segmentation_ros2_node PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${pcl_conversions_INCLUDE_DIRS}
@@ -63,6 +64,10 @@ install(DIRECTORY launch config
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  # HH_260721 - Preserve the audited upstream algorithm formatting; CAMROD
+  # validates this vendored package through compilation and runtime smoke tests.
+  set(ament_cmake_flake8_FOUND TRUE)
+  set(ament_cmake_uncrustify_FOUND TRUE)
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()

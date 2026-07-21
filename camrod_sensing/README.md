@@ -6,6 +6,12 @@
 
 > 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 near-range radar ×7 (CH9344 USB serial: front1, front2, left1, left2, right1, right2, rear), ECON dual cameras — front (`camera_front_publisher_node`, GPU VPI+NvJPEG, `/dev/video0`) + rear (`camera_rear_publisher_node`, raw `image_raw` plus rate-limited CPU JPEG monitoring, `/dev/video1`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial, selected via `imu_model`), u-blox SparkFun ZED-F9P (single antenna, current field device `/dev/ttyACM0`, `ublox_dual_antenna:=false`) or ArduSimple simpleRTK2B Heading (dual antenna, moving-baseline heading, `ublox_dual_antenna:=true`), NTRIP RTK correction stream (gnssdata.or.kr).
 
+<!-- HH_260721 - Document the single-package ground-segmentation source layout. -->
+> `external/ground_segmentation_ros2` is the only ground-segmentation package.
+> It owns the ROS 2 node and the integrated header-only algorithm; the redundant
+> standalone `external/ground_segmentation` package was removed and must not be
+> restored. `colcon_build.sh` rejects a stale source tree containing both copies.
+
 ---
 
 ## 2. 🚀 Quick Start
