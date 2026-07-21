@@ -98,4 +98,4 @@ Result: `OVERALL=PASS`.
   intentionally not tested. `image_proc` was not installed or modified.
 - The frontend has no unit-test script. Its production bundle compiled and its
   backend state transitions were exercised in simulation. `npm audit` reports
-  36 existing dependency advisories; no breaking automatic upgrade was applied.
+  38 existing dependency advisories; no breaking automatic upgrade was applied.
