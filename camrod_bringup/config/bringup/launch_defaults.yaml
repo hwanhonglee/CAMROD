@@ -140,9 +140,9 @@ bringup:
     enable_imu: true
     enable_gnss: true
     enable_ntrip: true
-    # HH_260611: Dual-antenna heading must be available even when enable_ntrip=false.
-    # NTRIP affects absolute RTK position only; simpleRTK2B heading uses moving-base RTCM
-    # from BASE UART2 into ROVER UART2, then ROVER publishes RELPOSNED over USB via ublox_gps_node.
+    # HH_260722 - Dual-antenna heading remains available without NTRIP: the Lite
+    # moving base sends RTCM from UART1 through XBee to rover UART2, and the
+    # Budget rover publishes RELPOSNED over USB through ublox_gps_node.
     # By default, use internal config defaults declared by sensing launch files.
     camera_params_file: sensing/camera/camera_params.yaml
     camera_device_path: /dev/video0
@@ -154,9 +154,9 @@ bringup:
     # HH_260611: Current rover default is simpleRTK2B Heading through ublox_gps.
     # Set false for the SparkFun ZED-F9P single-antenna profile.
     ublox_dual_antenna: true
-    # HH_260611: Keep false because direct CORS/NTRIP RTCM into rover USB breaks moving-baseline heading.
-    # Absolute RTK must come through the moving-base receiver path, not a second rover RTCM source.
-    ublox_dual_forward_ntrip_to_rover: false
+    # HH_260722 - UART2 carries moving-base RTCM for heading while rover USB
+    # independently receives external NTRIP RTCM for absolute RTK positioning.
+    ublox_dual_forward_ntrip_to_rover: true
     gnss_param_file: sensing/gnss/zed_f9p_rover.yaml
     ntrip_param_file: sensing/gnss/ntrip_client.yaml
     # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
