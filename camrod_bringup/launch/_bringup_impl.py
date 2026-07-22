@@ -1363,9 +1363,10 @@ def generate_launch_description():
         ('imu_param_file',  cfg_get(launch_cfg, 'sensing/imu_param_file',  '__module_default__'), 'IMU param file path (or __module_default__)'),
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
         ('enable_ntrip', cfg_get(launch_cfg, 'sensing/enable_ntrip', False), 'Enable GNSS NTRIP client'),
-        # HH_260611: Pass simpleRTK2B Heading controls through bringup to the ublox_gps launch.
+        # HH_260722 - Pass the independent UART2 heading and USB absolute-RTK
+        # routing control through bringup with the dual-GNSS field-test default.
         ('ublox_dual_antenna', cfg_get(launch_cfg, 'sensing/ublox_dual_antenna', True), 'Use ublox_gps for dual-antenna simpleRTK2B Heading'),
-        ('ublox_dual_forward_ntrip_to_rover', cfg_get(launch_cfg, 'sensing/ublox_dual_forward_ntrip_to_rover', False), 'Forward NTRIP RTCM into ublox_gps dual rover USB input'),
+        ('ublox_dual_forward_ntrip_to_rover', cfg_get(launch_cfg, 'sensing/ublox_dual_forward_ntrip_to_rover', True), 'Forward external NTRIP RTCM over rover USB for absolute RTK'),
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
         ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),
         ('use_camera_yolo_container', cfg_get(launch_cfg, 'perception/use_camera_yolo_container', False), 'Run front camera and YOLO in one component container'),
