@@ -62,6 +62,19 @@ if(BUILD_TESTING)
   )
   find_package(ament_cmake_pep257 REQUIRED)
   ament_pep257(launch scripts --add-ignore D213)
+
+  # HH_260722 - Prevent bringup from overriding the verified sensing GNSS route
+  # or deploying stale copies of the package-owned GNSS configuration.
+  find_package(ament_cmake_pytest REQUIRED)
+  # HH_260722 - Isolate package tests from incompatible user-site pytest plugins
+  # during both configure-time discovery and CTest execution.
+  set(ENV{PYTEST_DISABLE_PLUGIN_AUTOLOAD} "1")
+  ament_add_pytest_test(
+    test_gnss_defaults_sync
+    test/test_gnss_defaults_sync.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
 endif()
 
 ament_package()
