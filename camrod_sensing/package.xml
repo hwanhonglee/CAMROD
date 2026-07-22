@@ -36,6 +36,9 @@
   <!-- HH_260611: ublox_gps is the only GNSS driver path; the old dGNSS fallback was removed. -->
   <exec_depend>ublox_gps</exec_depend>
   <exec_depend>ntrip_client</exec_depend>
+  <!-- HH_260722 - moving_base_rtcm_writer consumes ROS RTCM and writes POWER+XBEE serial. -->
+  <exec_depend>rtcm_msgs</exec_depend>
+  <exec_depend>python3-serial</exec_depend>
   <exec_depend>ground_segmentation_ros2</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>

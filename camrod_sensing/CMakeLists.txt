@@ -234,6 +234,12 @@ install(
   DESTINATION include
 )
 
+# HH_260722 - Install the GNSS correction bridge launched by gnss.launch.py.
+install(
+  PROGRAMS scripts/rtcm_serial_writer.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(
   DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME}
@@ -251,10 +257,14 @@ if(BUILD_TESTING)
   target_include_directories(test_route_lanelet_cost_filter PRIVATE include)
   ament_target_dependencies(test_route_lanelet_cost_filter avg_msgs)
   # HH_260722 - Lock single/dual GNSS RTCM topic and USB-input launch behavior.
+  # Disable unrelated user-site pytest plugins during configure-time discovery;
+  # the current anyio plugin is incompatible with the ROS system pytest version.
+  set(ENV{PYTEST_DISABLE_PLUGIN_AUTOLOAD} "1")
   ament_add_pytest_test(
     test_gnss_launch_routing
     test/test_gnss_launch_routing.py
     TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
 endif()
 

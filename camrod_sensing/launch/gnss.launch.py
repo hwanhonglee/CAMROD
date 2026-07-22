@@ -3,6 +3,24 @@
 # and simpleRTK2B Heading dual-antenna modes. The old dGNSS fallback code was removed.
 # Python ntrip_ros.py remains the only NTRIP client because it provides GGA feedback
 # required for VRS/MAC networks like gnssdata.or.kr.
+#
+# HH_260722 - Use the hardware-verified correction ownership shown below as the
+# production dual-antenna default:
+#
+#   NTRIP CORS
+#       -> /gnss/ntrip_client/rtcm
+#       -> moving_base_rtcm_writer
+#       -> /dev/ttyUSB0 (POWER+XBEE / Lite moving-base UART1)
+#       -> Lite solves absolute RTK and emits 4072.0 + MSM4 + 1230
+#       -> board UART/XBee link
+#       -> /dev/ttyACM0 receiver UART2 (Budget heading rover)
+#       -> rover USB publishes NAV-PVT and NAV-RELPOSNED to ROS
+#
+# Do not connect the CORS topic directly to the heading rover in the field
+# topology.  Both the CORS caster and moving base currently use RTCM station ID
+# zero; mixing their independent reference/MSM streams on the rover invalidated
+# RELPOSNED in the A/B test.  The `forward_ntrip_to_rover` switch is retained for
+# diagnosis only.  It is not the production correction route.
 
 import os
 
@@ -16,8 +34,8 @@ from launch_ros.actions import Node
 def _resolve_rtcm_topics(rtcm_topic, dual_antenna, forward_ntrip_to_rover):
     """Return NTRIP publisher and ublox subscriber topics for the selected mode."""
     # HH_260722 - Dual heading uses a dedicated relative NTRIP topic. Enabling
-    # forwarding connects ublox to that same topic; disabling it preserves the
-    # heading-only bench topology without changing single-antenna behavior.
+    # forwarding connects ublox to that same topic; disabling it keeps CORS on
+    # the moving-base cascade without changing single-antenna behavior.
     ntrip_rtcm_topic = "ntrip_client/rtcm" if dual_antenna else rtcm_topic
     ublox_rtcm_topic = (
         ntrip_rtcm_topic
@@ -27,21 +45,32 @@ def _resolve_rtcm_topics(rtcm_topic, dual_antenna, forward_ntrip_to_rover):
     return ntrip_rtcm_topic, ublox_rtcm_topic
 
 
-def _dual_antenna_runtime_params(usb_rtcm_in):
+def _use_base_rtcm_writer(dual_antenna, forward_ntrip_to_rover, device):
+    """Select exactly one destination for an external correction stream."""
+    # HH_260722 - A direct-rover diagnostic must not silently keep correcting
+    # the base as well. That would recreate the two-reference collision this
+    # launch is designed to avoid.
+    return dual_antenna and not forward_ntrip_to_rover and bool(device)
+
+
+def _dual_antenna_runtime_params(usb_rtcm_in, warm_start_on_startup=False):
     """Build the runtime-only dual-antenna rover parameter overlay."""
-    # HH_260722 - UART2 moving-base heading and USB absolute RTK are independent
-    # receiver inputs; only the USB path follows the launch compatibility toggle.
+    # HH_260722 - UART2 carries the corrected moving-base stream. Direct rover
+    # USB RTCM is retained only as a diagnostic fallback.
     return {
         "dual_antenna": True,
         "dual_antenna.configure_usb": True,
         "dual_antenna.usb_rtcm_in": usb_rtcm_in,
         "dual_antenna.configure_navigation": False,
-        # HH_260611: Keep the dGNSS-verified no-reset startup path by default.
-        # GNSS warm reset is available as a manual fallback, but automatic reset can
-        # drop an already-fixed carrier solution back to float during launch repeats.
-        "dual_antenna.warm_start_on_startup": False,
+        # HH_260722 - Keep the no-reset startup path by default because an
+        # automatic reset can discard an already-fixed carrier solution. Expose
+        # one explicit recovery switch for the rare case where a direct-CORS
+        # diagnostic has left the rover tracking the wrong reference.
+        "dual_antenna.warm_start_on_startup": warm_start_on_startup,
         "dual_antenna.warm_start_wait_ms": 12000,
-        "rate": 5.0,
+        # HH_260722 - The field moving base emits navigation epochs at 1 Hz.
+        # Moving-base base and rover rates must match for RELPOSNED heading.
+        "rate": 1.0,
         "nav_rate": 1,
         "publish.nav.cov": True,
         "publish.nav.status": True,
@@ -49,8 +78,8 @@ def _dual_antenna_runtime_params(usb_rtcm_in):
         "publish.nav.heading": True,
         "publish.rxm.rtcm": True,
         "publish.nmea": False,
-        # HH_260722 - Block moving-base vendor RTCM only on the ROS/NTRIP path;
-        # CORS reference-station and MSM corrections remain unfiltered.
+        # HH_260722 - Production sends no ROS RTCM to the rover. Retain this
+        # 4072 filter only for the isolated direct-rover diagnostic path.
         "dual_antenna.block_rtcm_ids": [4072],
     }
 
@@ -63,6 +92,12 @@ def _launch_setup(context, *args, **kwargs):
         "1", "true", "yes", "on"
     }
     ntrip_param_file = context.perform_substitution(LaunchConfiguration("ntrip_param_file"))
+    base_rtcm_device = context.perform_substitution(
+        LaunchConfiguration("ublox_dual_base_rtcm_device")
+    ).strip()
+    base_rtcm_baud = context.perform_substitution(
+        LaunchConfiguration("ublox_dual_base_rtcm_baud")
+    ).strip()
 
     ublox_param_file = context.perform_substitution(LaunchConfiguration("ublox_param_file"))
     ublox_dual_antenna = context.perform_substitution(
@@ -70,6 +105,9 @@ def _launch_setup(context, *args, **kwargs):
     ).strip().lower() in {"1", "true", "yes", "on"}
     ublox_dual_forward_ntrip_to_rover = context.perform_substitution(
         LaunchConfiguration("ublox_dual_forward_ntrip_to_rover")
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    ublox_dual_warm_start_on_startup = context.perform_substitution(
+        LaunchConfiguration("ublox_dual_warm_start_on_startup")
     ).strip().lower() in {"1", "true", "yes", "on"}
     ntrip_rtcm_topic, ublox_rtcm_topic = _resolve_rtcm_topics(
         rtcm_topic,
@@ -80,7 +118,10 @@ def _launch_setup(context, *args, **kwargs):
     ublox_inline_params = {"rtcm_topic": ublox_rtcm_topic}
     if ublox_dual_antenna:
         ublox_inline_params.update(
-            _dual_antenna_runtime_params(ublox_dual_forward_ntrip_to_rover)
+            _dual_antenna_runtime_params(
+                ublox_dual_forward_ntrip_to_rover,
+                ublox_dual_warm_start_on_startup,
+            )
         )
 
     nodes = [
@@ -102,8 +143,49 @@ def _launch_setup(context, *args, **kwargs):
         ),
     ]
     if enable_ntrip:
+        # HH_260722 - One NTRIP publisher feeds exactly one correction owner in
+        # production: the moving-base serial writer. The rover stays subscribed
+        # to the isolated `rtcm` topic with USB RTCM input disabled, so UART2
+        # remains the rover's only RTCM reference stream.
         nodes.append(_ntrip_node(gnss_namespace, ntrip_param_file, ntrip_rtcm_topic, gnss_log_level))
+        if _use_base_rtcm_writer(
+            ublox_dual_antenna,
+            ublox_dual_forward_ntrip_to_rover,
+            base_rtcm_device,
+        ):
+            nodes.append(
+                _base_rtcm_writer_node(
+                    gnss_namespace,
+                    base_rtcm_device,
+                    int(base_rtcm_baud),
+                    ntrip_rtcm_topic,
+                    gnss_log_level,
+                )
+            )
     return nodes
+
+
+def _base_rtcm_writer_node(
+    namespace: str, device: str, baud: int, rtcm_topic: str, log_level: str
+) -> Node:
+    # HH_260722 - Write CORS RTCM to the moving base instead of the heading
+    # rover. Correcting the base first is what improves absolute NAV-PVT without
+    # sacrificing the moving-baseline RELPOSNED solution.
+    return Node(
+        package="camrod_sensing",
+        executable="rtcm_serial_writer.py",
+        name="moving_base_rtcm_writer",
+        namespace=namespace,
+        output="log",
+        arguments=["--ros-args", "--log-level", log_level],
+        parameters=[
+            {
+                "device": device,
+                "baud": baud,
+                "rtcm_topic": rtcm_topic,
+            }
+        ],
+    )
 
 
 def _ntrip_node(namespace: str, param_file: str, rtcm_topic: str, log_level: str) -> Node:
@@ -139,18 +221,48 @@ def generate_launch_description():
                               description="ublox_gps parameter file"),
         DeclareLaunchArgument("ublox_dual_antenna",  default_value="true",
                               description="Use ublox_gps for simpleRTK2B Heading moving-baseline rover"),
-        # HH_260722 - Dual-GNSS field-test mode uses UART2 moving-base RTCM for
-        # heading and USB NTRIP RTCM for absolute RTK; false keeps bench compatibility.
+        # HH_260722 - Field mode corrects the moving base and leaves rover USB
+        # RTCM off so absolute position and moving-baseline heading stay fixed.
         DeclareLaunchArgument(
             "ublox_dual_forward_ntrip_to_rover",
-            default_value="true",
+            # HH_260722 - External reference corrections go to the moving base.
+            # That receiver can stay RTK fixed while generating the time-matched
+            # 4072.0/MSM stream used by the heading rover. Direct rover injection
+            # is retained only as an explicit diagnostic fallback.
+            default_value="false",
             description=(
-                "Forward external NTRIP RTCM over rover USB for absolute RTK; "
-                "UART2 moving-base RTCM remains the independent heading input"
+                "Diagnostic fallback that routes NTRIP RTCM to rover USB instead "
+                "of the moving base; keep false for field operation"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "ublox_dual_warm_start_on_startup",
+            # HH_260722 - A normal launch must preserve a healthy fixed solution;
+            # enable this only once when recovering from a wrong-reference test.
+            default_value="false",
+            description=(
+                "Warm-reset the heading rover once after startup; use only to "
+                "recover from a stale/wrong RTCM reference, then return to false"
             ),
         ),
         DeclareLaunchArgument("ntrip_param_file",    default_value=os.path.join(cfg, "ntrip_client.yaml"),
                               description="Python ntrip_ros.py parameter file"),
+        DeclareLaunchArgument(
+            "ublox_dual_base_rtcm_device",
+            # HH_260722 - POWER+XBEE exposes the moving-base Lite UART through
+            # this FTDI device in the current field harness.
+            default_value="/dev/ttyUSB0",
+            description=(
+                "Moving-base serial/USB device that receives NTRIP RTCM; "
+                "set empty only for heading-only bench operation"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "ublox_dual_base_rtcm_baud",
+            # HH_260722 - Match the stored POWER+XBEE/Lite UART1 rate.
+            default_value="115200",
+            description="Baud rate for ublox_dual_base_rtcm_device",
+        ),
         DeclareLaunchArgument("enable_ntrip",        default_value="true",
                               description="Enable NTRIP client for RTCM corrections"),
         DeclareLaunchArgument("gnss_log_level",      default_value="error",
