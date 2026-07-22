@@ -134,13 +134,35 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "ublox_dual_forward_ntrip_to_rover",
-            # HH_260722 - Match the field dual-F9P topology while preserving a
-            # false override for heading-only bench validation.
-            default_value="true",
+            # HH_260722 - External corrections belong on the moving base so
+            # absolute RTK and the moving-baseline heading improve together.
+            default_value="false",
             description=(
-                "Forward external NTRIP RTCM over rover USB for absolute RTK; "
-                "UART2 moving-base RTCM remains the heading input"
+                "Diagnostic fallback that routes NTRIP RTCM to rover USB instead "
+                "of the moving base; keep false for field operation"
             ),
+        ),
+        DeclareLaunchArgument(
+            "ublox_dual_warm_start_on_startup",
+            # HH_260722 - Preserve healthy carrier state on ordinary launches.
+            default_value="false",
+            description=(
+                "One-shot heading-rover warm-reset recovery; keep false during "
+                "normal repeated launches"
+            ),
+        ),
+        DeclareLaunchArgument(
+            "ublox_dual_base_rtcm_device",
+            # HH_260722 - Pass the second F9P's POWER+XBEE UART through the full
+            # sensing launch; older code exposed only rover /dev/ttyACM0.
+            default_value="/dev/ttyUSB0",
+            description="POWER+XBEE serial device used to correct the moving base",
+        ),
+        DeclareLaunchArgument(
+            "ublox_dual_base_rtcm_baud",
+            # HH_260722 - Match the moving-base UART1 field configuration.
+            default_value="115200",
+            description="Baud rate of the moving-base POWER+XBEE serial device",
         ),
 
         # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
@@ -186,9 +208,13 @@ def generate_launch_description():
             _inc(gnss_launch,
                  "enable_ntrip",
                  condition=IfCondition(LaunchConfiguration("enable_gnss")),
-                 # HH_260611: Preserve the same ublox_gps dual-antenna controls through sensing.launch.py.
+                 # HH_260722 - Preserve both halves of the verified cascade
+                 # through the aggregate launch: rover output plus base correction.
                  ublox_dual_antenna=LaunchConfiguration("ublox_dual_antenna"),
                  ublox_dual_forward_ntrip_to_rover=LaunchConfiguration("ublox_dual_forward_ntrip_to_rover"),
+                 ublox_dual_warm_start_on_startup=LaunchConfiguration("ublox_dual_warm_start_on_startup"),
+                 ublox_dual_base_rtcm_device=LaunchConfiguration("ublox_dual_base_rtcm_device"),
+                 ublox_dual_base_rtcm_baud=LaunchConfiguration("ublox_dual_base_rtcm_baud"),
                  ublox_param_file=LaunchConfiguration("gnss_param_file"),
                  ntrip_param_file=LaunchConfiguration("ntrip_param_file"),
                  gnss_namespace=LaunchConfiguration("gnss_namespace"),

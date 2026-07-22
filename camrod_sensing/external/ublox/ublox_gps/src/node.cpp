@@ -310,8 +310,8 @@ void UbloxNode::getRosParams() {
   rtcm_topic_ = this->declare_parameter("rtcm_topic", std::string("rtcm"));
   dual_antenna_ = this->declare_parameter("dual_antenna", false);
   dual_antenna_configure_usb_ = this->declare_parameter("dual_antenna.configure_usb", dual_antenna_);
-  // HH_260722 - Default false keeps direct node use conservative; CAMROD dual
-  // launch explicitly enables USB CORS/NTRIP while leaving UART2 independent.
+  // HH_260722 - Keep rover USB RTCM disabled for the production moving-base
+  // cascade. CAMROD enables it only for an explicit direct-rover diagnostic.
   dual_antenna_usb_rtcm_in_ = this->declare_parameter("dual_antenna.usb_rtcm_in", false);
   dual_antenna_configure_navigation_ = this->declare_parameter(
     "dual_antenna.configure_navigation", false);
@@ -634,8 +634,8 @@ bool UbloxNode::configureDualAntennaRover() {
   }
   cfg.cfgdata.push_back(makeValsetU2(kCfgRateMeas, meas_rate_));
   cfg.cfgdata.push_back(makeValsetU2(kCfgRateNav, nav_rate_));
-  // HH_260722 - Apply independent correction inputs: UART2 for the moving base
-  // heading solution and optional USB RTCM for absolute CORS/NTRIP positioning.
+  // HH_260722 - Keep UART2 as the production moving-base correction input.
+  // Optional USB RTCM exists only for the isolated direct-rover diagnostic.
   // Baudrate is intentionally not written here so the u-center saved 115200 setting stays intact.
   cfg.cfgdata.push_back(makeValsetBool(kCfgUart1InProtUbx, false));
   cfg.cfgdata.push_back(makeValsetBool(kCfgUart1InProtNmea, false));
