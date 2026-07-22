@@ -31,14 +31,18 @@ ros2 launch camrod_sensing sensing.launch.py imu_model:=gq7
 # Sub-stacks (for isolated bringup or debug)
 ros2 launch camrod_sensing lidar.launch.py
 ros2 launch camrod_sensing radar.launch.py
-ros2 launch camrod_sensing gnss.launch.py                          # dual antenna (default)
+# HH_260722 - The default dual route requires both field GNSS ports.
+ls -l /dev/ttyACM0 /dev/ttyUSB0
+ros2 launch camrod_sensing gnss.launch.py                            # dual antenna, corrected base
 ros2 launch camrod_sensing gnss.launch.py ublox_dual_antenna:=false  # single antenna
 ros2 launch camrod_sensing gnss.launch.py enable_ntrip:=false        # dual, no NTRIP
-# HH_260722 - Compatibility mode: keep moving-base heading but do not feed NTRIP to rover USB.
-ros2 launch camrod_sensing gnss.launch.py ublox_dual_forward_ntrip_to_rover:=false
 ros2 launch camrod_sensing imu.launch.py
 ros2 launch camrod_sensing camera.launch.py
 ```
+
+<!-- HH_260722 - Distinguish standalone GNSS topics from aggregate sensing topics. -->
+`gnss.launch.py` alone uses `/gnss/*`. `sensing.launch.py` and full bringup use
+`/sensing/gnss/*`; package-wide topic tables below describe the aggregate path.
 
 > 💡 Verify: `ros2 topic hz /sensing/lidar/points_filtered` should show a stable obstacle-only stream around 6 Hz under field load; `ros2 topic echo /sensing/gnss/ublox_gps_node/fix --once` should return a `NavSatFix` with `status.status >= 0`.
 
@@ -168,15 +172,18 @@ graph TD
   end
 
   subgraph GNSS["🛰️ GNSS"]
-    HW4{{🛠️ u-blox ZED-F9P\n/dev/ttyACM0}}:::hardware
+    MB{{🛠️ Lite moving base\n/dev/ttyUSB0 POWER+XBEE}}:::hardware
+    ROVER{{🛠️ Budget heading rover\n/dev/ttyACM0 POWER+GPS}}:::hardware
     NTRIP[[ntrip_client]]:::system
+    WRITER[[moving_base_rtcm_writer]]:::system
     GNSSDRV[[ublox_gps_node]]:::system
     FIX((/sensing/gnss\n/ublox_gps_node/fix)):::topic
     ADAPT(localization_input_adapter):::sensing
     GNSSPOSE((/sensing/gnss/pose)):::topic
     GNSSCOV((/sensing/gnss\n/pose_with_covariance)):::topic
-    NTRIP ==> GNSSDRV
-    HW4 ==> GNSSDRV ==> FIX ==> ADAPT
+    NTRIP ==> WRITER ==> MB
+    MB ==>|corrected RTCM\nUART/XBee| ROVER
+    ROVER ==> GNSSDRV ==> FIX ==> ADAPT
     ADAPT ==> GNSSCOV
     ADAPT --> GNSSPOSE
   end
@@ -276,7 +283,7 @@ graph TD
 | `/sensing/cost_grid/lidar` | `avg_msgs/AvgOccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_control | 10 Hz | Route-clipped 180×180 @ 0.10 m obstacle grid from LiDAR and perception objects |
 | `/sensing/cost_grid/radar` | `avg_msgs/AvgOccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_control | 10 Hz | Route-clipped 120×120 @ 0.10 m near-field obstacle grid from radar |
 | `/planning/cost_grid/inflation` | `avg_msgs/AvgOccupancyGrid` | camrod_planning and `camrod_control/cmd_vel_safety_gate` | 6 Hz | 180×180 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
-| `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz single / 5 Hz dual target | Raw GNSS fix with RTK status; field diagnostics accept >= 0.8 Hz |
+| `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz single / 1 Hz dual field rate | Raw position and covariance; verify RTK carrier state on NAV-PVT; dual rate matches moving-base epochs and diagnostics accept >= 0.8 Hz |
 | `/sensing/gnss/pose` | `avg_msgs/AvgPoseStamped` | CAMROD localization nodes | follows fix | Generated GNSS pose in `map` frame |
 | `/sensing/gnss/pose_with_covariance` | `avg_msgs/AvgPoseWithCovarianceStamped` | CAMROD localization monitor | follows fix | Generated GNSS pose and covariance |
 | `/sensing/gnss/pose_with_covariance_ros` | `geometry_msgs/PoseWithCovarianceStamped` | robot_localization only | follows fix | Explicit EKF boundary mirror |
@@ -377,18 +384,22 @@ graph TD
 
 ### GNSS (HH_260611 - ublox_gps single/dual antenna)
 
-Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single antenna, `true` = simpleRTK2B Heading dual antenna). Both modes use `ublox_gps_node` and Python `ntrip_client` for NTRIP RTK corrections with GGA feedback, required for gnssdata.or.kr VRS network.
+Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single
+antenna, `true` = simpleRTK2B Heading dual antenna). Both modes use
+`ublox_gps_node` and Python `ntrip_client` with GGA feedback. Single mode sends
+NTRIP to the rover topic; the production dual mode sends NTRIP only to
+`moving_base_rtcm_writer`, which corrects the Lite moving base first.
 
 #### Single antenna — SparkFun ZED-F9P (`ublox_dual_antenna:=false`)
 
 | Field | Detail |
 |---|---|
 | Trigger | Node startup; `enable_ntrip` controls whether the NTRIP client is also started |
-| Internal logic | `ublox_gps_node` opens `/dev/ttyACM0` on the current field robot and requests 10 Hz measurement output (`rate: 10.0`, `nav_rate: 1`). TMODE3 is set to 0 (rover mode). UBX-NAV-PVT and NMEA are published. `ntrip_client` subscribes to `gnssdata.or.kr:2101`, mountpoint `JECH-RTCM32`, and forwards RTCM3.2 corrections. Fix converges from no-fix -> float -> RTK-fixed over ~60 s under open sky. HH_260708 - diagnostics accept a stable 1 Hz field-rate floor and the GNSS device intentionally stays on an operator-verified `/dev/ttyACM*` path rather than by-id. |
+| Internal logic | `ublox_gps_node` opens `/dev/ttyACM0` on the current field robot and requests 10 Hz measurement output (`rate: 10.0`, `nav_rate: 1`). TMODE3 is set to 0 (rover mode). UBX-NAV-PVT and NMEA are published. `ntrip_client` subscribes to `gnssdata.or.kr:2101`, active mountpoint `CNJU-RTCM32`, and forwards RTCM3.2 corrections to the rover. Fix converges from no-fix -> float -> RTK-fixed under open sky. HH_260708 - diagnostics accept a stable 1 Hz field-rate floor and the GNSS device intentionally stays on an operator-verified `/dev/ttyACM*` path rather than by-id. |
 | Output effect | `/sensing/gnss/ublox_gps_node/fix`; downstream adapter produces `/sensing/gnss/pose` and `/sensing/gnss/pose_with_covariance`. |
 | Operator-visible symptom | GNSS stays in float -> NTRIP not delivering RTCM. No fix -> check `/dev/ttyACM0`, cable state, and `config_on_startup: false`. |
 | Related params | `config/gnss/zed_f9p_rover.yaml`: `device` (`/dev/ttyACM0`), `rate`, `nav_rate`, `tmode3` |
-| Related topics | `/sensing/gnss/ublox_gps_node/fix`, `/sensing/gnss/ntrip_client/rtcm` |
+| Related topics | `/sensing/gnss/ublox_gps_node/fix`, `/sensing/gnss/rtcm` |
 
 #### Dual antenna — ArduSimple simpleRTK2B Heading (`ublox_dual_antenna:=true`)
 
@@ -396,23 +407,131 @@ Select the antenna mode via `ublox_dual_antenna` (`false` = SparkFun single ante
 | Field | Detail |
 |---|---|
 | Trigger | `ublox_gps_node` startup with `dual_antenna:=true`. `enable_ntrip` controls Python NTRIP client. |
-| Internal logic | The simpleRTK2B Lite moving base sends RTCM `4072.0`, MSM4 (`1074/1084/1094/1124`), and `1230` from UART1 through the XBee link to the Budget heading rover UART2. Independently, `NTRIP -> /sensing/gnss/ntrip_client/rtcm -> ublox_gps_node -> rover USB` supplies CORS `1005/1006`, MSM, and bias corrections for absolute RTK. The ROS path drops only `4072`; the direct UART2 path is unaffected. UART baudrates and stored navigation settings are not changed. |
+| Internal logic | NTRIP publishes `/sensing/gnss/ntrip_client/rtcm`; `moving_base_rtcm_writer` writes it to the Lite moving base through `/dev/ttyUSB0`. The corrected base sends RTCM `4072.0`, MSM4 (`1074/1084/1094/1124`), and `1230` through XBee to the Budget heading rover UART2. `/dev/ttyACM0` remains the rover's ROS output and does not receive CORS directly. This is the default path with `ublox_dual_forward_ntrip_to_rover:=false`. |
 | Output effect | Rover USB publishes absolute `UBX-NAV-PVT` and moving-baseline `UBX-NAV-RELPOSNED` together, exposed as `/sensing/gnss/ublox_gps_node/navpvt`, `/sensing/gnss/navrelposned`, `/sensing/gnss/navheading`, and `/sensing/gnss/ublox_gps_node/fix`. |
-| Operator-visible symptom | Heading fixed but absolute pose float means the UART2 moving baseline works while USB CORS corrections or their ambiguity solution do not. Absolute fixed but heading invalid means to check Lite UART1 -> XBee -> rover UART2 and RELPOSNED flags. |
-| Related params | `dual_antenna.usb_rtcm_in`, `dual_antenna.block_rtcm_ids`, `ublox_dual_forward_ntrip_to_rover`; set the last parameter `false` only for heading-only bench operation. |
+| Operator-visible symptom | Heading fixed but absolute pose float means the base-to-rover link works while moving-base CORS input or its ambiguity solution does not. Absolute fixed but heading invalid means to check Lite UART1 -> XBee -> rover UART2 and RELPOSNED flags. |
+| Related params | `dual_antenna.usb_rtcm_in`, `dual_antenna.block_rtcm_ids`, `ublox_dual_forward_ntrip_to_rover`, `ublox_dual_base_rtcm_device`, `ublox_dual_base_rtcm_baud`; set rover forwarding `false` when base-side RTCM forwarding is used. |
 | Related topics | `/sensing/gnss/ntrip_client/rtcm`, `/sensing/gnss/rxmrtcm`, `/sensing/gnss/ublox_gps_node/navpvt`, `/sensing/gnss/navrelposned`, `/sensing/gnss/navheading` |
+
+<!-- HH_260722 - Record the verified dual-antenna production topology and A/B evidence. -->
+#### Dual antenna production topology
+
+##### What changed on 2026-07-22 and why
+
+The previous dual mode sent two independent reference streams into the heading
+rover: moving-base RTCM on UART2 and CORS RTCM on rover USB. Both live streams
+were measured with RTCM station ID `0`. The CORS side used `1006` plus MSM5
+(`1075/1085/1095/1115/1125`); the moving-base side used `4072.0` plus MSM4
+(`1074/1084/1094/1124`) and `1230`. Blocking only message `4072` on the ROS
+path did not separate the remaining reference observations.
+
+The corrected implementation changes ownership rather than filtering arbitrary
+message types:
+
+| Item | Previous implementation | Corrected implementation |
+|---|---|---|
+| CORS destination | Heading rover `/dev/ttyACM0` | Lite moving base `/dev/ttyUSB0` |
+| Rover USB RTCM input | Enabled by default | Disabled by default |
+| Moving-base host port | Not opened by the launch | Opened by `moving_base_rtcm_writer` |
+| Rover correction source | CORS USB and moving-base UART2 mixed | Corrected moving-base UART2 only |
+| Dual update rate | Rover requested 5 Hz while field base emitted 1 Hz | Rover and stored base output both 1 Hz |
+| Aggregate sensing launch | Did not pass a moving-base port | Passes device and baud into `gnss.launch.py` |
+
+Hardware A/B acceptance results:
+
+- Direct CORS to rover USB, moving-base writer off: about 226 seconds without
+  recovery; NAV-PVT fixed `0/8` in the sampled window (`hAcc` median `462 mm`),
+  RELPOSNED valid/fixed `0/8`, flags `3`, baseline and heading zero.
+- CORS to moving base only: NAV-PVT fixed `18/18` (`hAcc` median `27.5 mm`),
+  RELPOSNED fixed/valid `18/18`, heading accuracy about `0.417 deg`.
+- Independent moving-base UBX poll while corrected: decoded carrier solution
+  fixed, `hAcc=36 mm`, `vAcc=54 mm`. A later rerun reached rover `hAcc=15 mm`,
+  `vAcc=22 mm`.
+- After the one-port negative tests, a one-shot rover warm start followed by a
+  normal launch recovered NAV-PVT `flags=131` in every sampled epoch
+  (`hAcc=37..43 mm`) and RELPOSNED `flags=311` in every sampled epoch. The
+  measured baseline was about `1.178 m` and heading accuracy about `0.489 deg`.
+
+Do not hard-code one historical baseline length as the acceptance criterion.
+Compare `rel_pos_length` with the antennas' current measured physical spacing
+and require it to remain stable while flags indicate moving/fixed/heading-valid.
+
+| Path | Owner | Physical link | ROS/software action | Purpose |
+|---|---|---|---|---|
+| Heading/relative baseline | Moving base -> heading rover | Existing UART/XBee -> rover UART2 | Keep rover launch at `1 Hz` and run `ublox_dual_forward_ntrip_to_rover:=false` | Preserve `NAV-RELPOSNED` fixed heading |
+| Absolute CORS RTK | NTRIP client -> moving base | Second USB/UART connection to the moving-base receiver | Set `ublox_dual_base_rtcm_device` so `moving_base_rtcm_writer` writes `/sensing/gnss/ntrip_client/rtcm` to the base-side serial input, not to rover USB | Let the base solve absolute RTK before it sends moving-baseline RTCM to the rover |
+| Rover USB | Heading rover -> ROS | Existing `/dev/ttyACM0` | Read `NAV-PVT`, `NAV-RELPOSNED`, and heading topics only; do not inject CORS here while validating heading | Keep the measured heading behavior stable |
+
+With both GNSS ports connected, the verified topology is now the no-argument
+default:
+
+```bash
+ros2 launch camrod_sensing gnss.launch.py
+```
+
+The following explicit form is equivalent and useful when auditing deployment
+overrides:
+
+```bash
+ros2 launch camrod_sensing gnss.launch.py \
+  ublox_dual_antenna:=true \
+  ublox_dual_forward_ntrip_to_rover:=false \
+  ublox_dual_base_rtcm_device:=/dev/ttyUSB0 \
+  ublox_dual_base_rtcm_baud:=115200
+```
+
+Expected improvement is not automatic from the extra USB cable alone: the launch must open that new moving-base port and write `/sensing/gnss/ntrip_client/rtcm` to it. If the base does not accept RTCM on that port, the rover pose will remain meter-level even though heading can stay fixed.
+
+##### Can the PC use only one GNSS port?
+
+With the current board wiring, not for both correction injection and final ROS
+output using software alone:
+
+- `/dev/ttyUSB0` is POWER+XBEE and terminates at the Lite moving base UART1. It
+  can accept CORS but does not carry the heading rover's NAV-RELPOSNED output.
+- `/dev/ttyACM0` is POWER+GPS and terminates at the Budget heading rover USB. It
+  carries both final NAV-PVT and NAV-RELPOSNED, but there is no transparent
+  bridge from that receiver back into the Lite moving base.
+
+One physical PC cable is possible with a USB hub, although Linux still exposes
+two logical serial devices. One logical GNSS port is possible when an independent
+Wi-Fi/LTE/radio NTRIP device feeds the Lite moving base; the PC then connects only
+to `/dev/ttyACM0` and reads NAV-PVT plus NAV-RELPOSNED.
+
+This distinction follows the receiver and board topology, not a ROS limitation:
+u-blox specifies that the moving base can apply external RTCM while generating
+the moving-base stream, and ArduSimple maps POWER+GPS to the heading rover while
+POWER+XBEE maps to the Lite UART1. See the
+[u-blox moving-base application note](https://content.u-blox.com/sites/default/files/documents/ZED-F9P-MovingBase_AppNote_UBX-19009093.pdf),
+[ZED-F9P integration manual](https://content.u-blox.com/sites/default/files/ZED-F9P_IntegrationManual_UBX-18010802.pdf),
+and [ArduSimple heading guide](https://www.ardusimple.com/simplertk2heading-hookup-guide/).
+
+A software-only station-ID separation was tested and rejected rather than left
+in production:
+
+- CORS rewritten from station `0` to `42`, moving base left at `0`: NAV-PVT was
+  fixed (`hAcc=14 mm`), but RELPOS flags were `279` (not moving) and its vector
+  was about 11 km, the distance to the CORS reference rather than antenna spacing.
+- CORS left at `0`, moving-base `CFG-RTCM-DF003_OUT` changed in RAM to station
+  `1`: the same failure repeated (`hAcc=17 mm`, RELPOS flags `279`, ~11 km).
+- Both streams had valid CRC and were reported as used by RXM-RTCM. On this
+  receiver/firmware, changing station IDs did not create two independent RTK
+  solutions; NAV-RELPOSNED still selected the distant CORS reference.
+
+The temporary station-ID rewrite executable was removed after this negative
+test. The moving-base RAM station ID was restored to `0` and verified by VALGET.
 
 ### NTRIP/RTK operating conditions
 
 | Field | Detail |
 |---|---|
 | Trigger | `ntrip_client` node startup (if `enable_ntrip:=true`) |
-| Internal logic | The NTRIP client connects to `gnssdata.or.kr:2101` using the active `CNJU-RTCM32` mountpoint and authenticated credentials. It sends a GGA sentence to the caster and receives continuous RTCM 3.2. In dual mode, the stream is published on `/sensing/gnss/ntrip_client/rtcm`, filtered only for message `4072`, then written to the rover USB. If the connection drops, the client retries up to 10 times with an 8 s wait (`reconnect_attempt_max: 10`, `reconnect_attempt_wait_seconds: 8`). |
-| Output effect | Absolute RTK is fixed only when decoded NAV-PVT `carrSoln=2`; `fix_type=3` alone means a 3D fix, not RTK Fixed. In the ROS `NavPVT` message this is `flags & FLAGS_CARRIER_PHASE_MASK == CARRIER_PHASE_FIXED`. Heading is fixed independently when NAV-RELPOSNED reports moving baseline, valid relative position, valid heading, and fixed carrier solution. |
-| Operator-visible symptom | `carrSoln` stays at 1 (float) for > 5 min under clear sky → base corrections are received but ambiguity resolution is failing. Common causes: multipath environment, rover antenna quality, or RTCM stream has gaps. |
+| Internal logic | The NTRIP client connects to `gnssdata.or.kr:2101` using the active `CNJU-RTCM32` mountpoint and authenticated credentials. It sends a GGA sentence to the caster and receives continuous RTCM 3.2. In dual mode, `moving_base_rtcm_writer` writes that stream to the Lite moving base through POWER+XBEE. The corrected base then generates `4072.0`, MSM4, and `1230` for the heading rover; CORS is not mixed into rover USB. If the connection drops, the client retries up to 10 times with an 8 s wait (`reconnect_attempt_max: 10`, `reconnect_attempt_wait_seconds: 8`). |
+| Output effect | Absolute RTK is fixed only when the decoded NAV-PVT carrier solution is fixed; `fix_type=3` alone means a 3D fix, not RTK Fixed. In the ROS `NavPVT` message this is `(flags & 0xC0) == 0x80`. Heading is fixed independently when NAV-RELPOSNED reports moving baseline, valid relative position, valid heading, and fixed carrier solution. |
+| Operator-visible symptom | NAV-PVT remains carrier-float (`(flags & 0xC0) == 0x40`) for > 5 min under clear sky → base corrections are received but ambiguity resolution is failing. Common causes: multipath environment, antenna quality, or RTCM stream gaps. |
 | Required conditions | Active internet connection, CORS network reachable, open-sky GNSS antenna with good ground plane, F9P firmware ≥ HPG 1.13. |
 | Related params | `host`, `port`, `mountpoint`, `username`, `password`, `rtcm_timeout_seconds`, `reconnect_attempt_max`, `reconnect_attempt_wait_seconds` |
-| Related topics | `/sensing/gnss/ublox_gps_node/fix`, `/sensing/gnss/rtcm` |
+| Related topics | Single: `/sensing/gnss/rtcm`; dual production: `/sensing/gnss/ntrip_client/rtcm`; output: `/sensing/gnss/ublox_gps_node/fix` |
 
 ### Velocity converter
 
@@ -490,7 +609,10 @@ ros2 launch camrod_sensing camera.launch.py
 | `enable_gnss` | `true` | u-blox F9P GNSS driver |
 | `enable_ntrip` | `true` | NTRIP RTK correction client |
 | `ublox_dual_antenna` | `true` | Enable simpleRTK2B moving-baseline heading rover mode |
-| `ublox_dual_forward_ntrip_to_rover` | `true` | Feed external NTRIP RTCM to rover USB for absolute RTK; `false` keeps heading-only bench routing |
+| `ublox_dual_forward_ntrip_to_rover` | `false` | Keep CORS off rover USB; `true` switches to a direct-rover diagnostic and suppresses the moving-base writer |
+| `ublox_dual_warm_start_on_startup` | `false` | One-shot recovery after a wrong-reference diagnostic; return to `false` after the rover reacquires |
+| `ublox_dual_base_rtcm_device` | `/dev/ttyUSB0` | POWER+XBEE FTDI port used to correct the Lite moving base |
+| `ublox_dual_base_rtcm_baud` | `115200` | Moving-base FTDI baud rate |
 | `enable_imu` | `true` | MicroStrain IMU driver |
 | `imu_model` | `cv7` | IMU hardware model: `cv7` (CV7-AHRS) or `gq7` (GQ7 with optional NTRIP) |
 | `imu_param_file` | `__model_default__` | IMU param YAML; auto-resolves to `config/imu/microstrain_<model>.yaml` |
@@ -616,9 +738,11 @@ ros2 topic echo /sensing/camera/econ_rear/camera_info --once
 
 ### GNSS stays in float
 
-`NavSatFix.status.status` does not reach RTK-fixed after > 5 minutes under open sky.
+NAV-PVT remains carrier-float (`(flags & 0xC0) == 0x40`) after more than 5
+minutes under open sky.
 
-> ⚠️ If `carrSoln` stays at 1 (float) for > 5 min under clear sky, ambiguity resolution is failing — check for multipath, antenna quality, or RTCM stream gaps.
+> ⚠️ If the flags stay carrier-float for > 5 min under clear sky, ambiguity
+> resolution is failing — check for multipath, antenna quality, or RTCM gaps.
 
 1. Confirm RTCM stream is arriving: `ros2 topic hz /sensing/gnss/ntrip_client/rtcm`. If silent, the NTRIP client is not connected.
 2. Check network reachability: `ping www.gnssdata.or.kr`. Firewall or mobile data restrictions can block port 2101.
@@ -630,29 +754,40 @@ ros2 topic echo /sensing/camera/econ_rear/camera_info --once
 <!-- HH_260722 - Record hardware acceptance checks for simultaneous absolute RTK and heading. -->
 ### Dual GNSS hardware acceptance
 
-Launch the dual-GNSS field-test topology:
+Confirm both role-specific ports and launch the default dual-GNSS topology:
+
+```bash
+ls -l /dev/ttyACM0 /dev/ttyUSB0
+ros2 launch camrod_sensing gnss.launch.py
+```
+
+If a previous direct-CORS/one-port diagnostic leaves RELPOSNED at flags `3` or
+pointing to a distant CORS reference, perform exactly one warm-start launch:
 
 ```bash
 ros2 launch camrod_sensing gnss.launch.py \
-  ublox_dual_antenna:=true \
-  ublox_dual_forward_ntrip_to_rover:=true \
-  enable_ntrip:=true
+  ublox_dual_forward_ntrip_to_rover:=false \
+  ublox_dual_base_rtcm_device:=/dev/ttyUSB0 \
+  ublox_dual_warm_start_on_startup:=true
 ```
+
+After RTK Fixed and moving-baseline heading return, restart normally (or omit
+the argument) so an ordinary relaunch does not reset a healthy carrier solution.
 
 Verify the ROS correction connection without printing credential parameters:
 
 ```bash
-ros2 topic info /sensing/gnss/ntrip_client/rtcm -v
-# Publisher count >= 1 and Subscription count >= 1
-ros2 topic hz /sensing/gnss/ntrip_client/rtcm
+ros2 topic info /gnss/ntrip_client/rtcm -v
+# HH_260722 - Expect one publisher and one subscriber (the moving-base writer).
+ros2 topic hz /gnss/ntrip_client/rtcm
 ```
 
-On `/sensing/gnss/rxmrtcm`, confirm CORS `1005/1006`, MSM, and `1230`
-arrive through USB while the receiver also reports the moving-base UART2 stream.
-For absolute RTK Fixed, decoded NAV-PVT must have differential solution enabled
-and `carrSoln=2` (ROS flags carrier-phase mask equals fixed). For Heading Fixed,
-NAV-RELPOSNED must have moving baseline, relative-position-valid,
-heading-valid, and `carrSoln=2` (ROS flags carrier-solution mask equals fixed).
+On `/gnss/rxmrtcm`, confirm moving-base `4072.0`, MSM4, and `1230`
+arrive through rover UART2.
+For absolute RTK Fixed, NAV-PVT must have differential solution enabled and
+`(flags & 0xC0) == 0x80`. For Heading Fixed, NAV-RELPOSNED must have moving
+baseline, relative-position-valid, heading-valid, and fixed-carrier bits; the
+verified receiver normally reports decimal flags `311` (`0x137`).
 Do not use NAV-PVT `fix_type=3` alone as an RTK Fixed criterion.
 
 ### Radar serial port not found
@@ -797,6 +932,8 @@ ros2 topic hz /sensing/camera/econ_front/image_rect/compressed
 - [../camrod_perception/README.md](../camrod_perception/README.md) — consumes `/sensing/lidar/points_filtered` and `camera/image_rect/compressed`
 - [../camrod_planning/README.md](../camrod_planning/README.md) — consumes `/planning/cost_grid/inflation`, `/sensing/cost_grid/lidar`, `/sensing/cost_grid/radar`
 - [../camrod_platform/README.md](../camrod_platform/README.md) — produces `/platform/status/velocity` consumed by velocity converter
+- [../camrod_bringup/README.md](../camrod_bringup/README.md) — forwards the synchronized dual-GNSS defaults into the full robot launch
+- [../camrod_bringup/docs/field_test_runbook.md](../camrod_bringup/docs/field_test_runbook.md) — dual-port preflight and hardware acceptance checklist
 - [../camrod_perception/README.md](../camrod_perception/README.md) - consumes rear camera data for AprilTag parking detection
 - [../PARAMETER_NAMING_STANDARD.md](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions used across the stack
 
@@ -804,13 +941,16 @@ ros2 topic hz /sensing/camera/econ_front/image_rect/compressed
 
 > HH_260617 - Current GNSS baseline is `ublox_gps_node` with simpleRTK2B Heading dual-antenna support.
 
+Radar remains launched through the existing `radar_sensor.launch.py` path and should be validated by checking `/sensing/radar/*` plus `/system/status` sensing entries.
+
+## 2026-07-22 GNSS Runtime Update
+
 <!-- HH_260722 - Supersede the old heading-only correction topology. -->
 The simpleRTK2B Heading rover publishes RELPOSNED heading and absolute RTK pose
-through its USB connection. Current field defaults forward external NTRIP RTCM
-to rover USB while moving-base RTCM independently enters UART2. Set
-`ublox_dual_forward_ntrip_to_rover:=false` only for heading-only bench tests.
-
-Radar remains launched through the existing `radar_sensor.launch.py` path and should be validated by checking `/sensing/radar/*` plus `/system/status` sensing entries.
+through its USB connection. Current field defaults send external NTRIP RTCM to
+the Lite moving base through `/dev/ttyUSB0`; its corrected moving-base RTCM then
+enters the heading rover through UART2. Direct CORS injection into rover USB is
+disabled because the two reference streams broke heading in the field A/B test.
 
 ## 2026-07-02 Runtime Update
 
@@ -821,4 +961,4 @@ Radar remains launched through the existing `radar_sensor.launch.py` path and sh
 - HH_260702: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; software range filters still ignore no-target values and stable near-zero self echoes.
 - HH_260720 - Full-stack tests with RViz/UI/voice/camera/YOLO/AprilTag parking enabled can saturate the Jetson and delay cost-grid publication. Treat that mode as a load probe, then repeat drive validation with the lighter outdoor profile.
 - HH_260708: ZED-F9P single-antenna GNSS is documented and configured as `/dev/ttyACM0`; diagnostics tolerate 1 Hz effective fix/pose rates while preserving freshness/fix/covariance/jump checks.
-- HH_260716: The field NTRIP mountpoint is `JECH-RTCM32`; seven radar channels use 15-degree angles with 0.30 m common self-echo filtering and a 0.75 m LEFT2 body/multipath override.
+- HH_260722 - The active field NTRIP mountpoint is `CNJU-RTCM32`; seven radar channels use 15-degree angles with 0.30 m common self-echo filtering and a 0.75 m LEFT2 body/multipath override.

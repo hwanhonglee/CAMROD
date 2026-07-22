@@ -14,6 +14,8 @@ git status --short --branch
 source /opt/ros/humble/setup.bash
 source /home/nvidia/camrod_ws/install/setup.bash
 ros2 run camrod_bringup field_test_tool.sh config
+# HH_260722 - Confirm both role-specific GNSS ports before real bringup.
+ls -l /dev/ttyACM0 /dev/ttyUSB0
 ```
 
 Expected:
@@ -22,6 +24,8 @@ Expected:
 - Every paired bringup/package config must match, and the full config trees must
   match their `install/<package>/share/<package>/config` copies. A source-only
   `OK` is not sufficient after changing deployment YAML.
+- `/dev/ttyACM0` is the POWER+GPS heading rover used for NAV-PVT and
+  NAV-RELPOSNED; `/dev/ttyUSB0` is POWER+XBEE into the Lite moving base.
 
 ## 2. Start Bringup With Logging
 
@@ -59,6 +63,8 @@ This stores:
 - ROS node/topic/service lists
 - `/system/status` and diagnostics samples
 - localization/planning/gate samples
+- dual-GNSS NTRIP ownership, NAV-PVT, NAV-RELPOSNED, RXM-RTCM, and both
+  serial-device roles
 - CPU and memory snapshots
 - short Hz samples for LiDAR, radar, cost grids, perception, paths, and cmd_vel
 
@@ -103,6 +109,34 @@ The important questions are:
   detector sees the object?
 - Are `/planning/global_path` and `/planning/local_path` changing in the
   expected way?
+
+<!-- HH_260722 - Add repeatable acceptance checks for the default two-port GNSS route. -->
+### Dual-GNSS acceptance
+
+The ordinary hardware bringup command must start the corrected moving-base
+route without GNSS overrides. In a second terminal, check:
+
+```bash
+ros2 node list | grep /sensing/gnss/moving_base_rtcm_writer
+ros2 topic info /sensing/gnss/ntrip_client/rtcm -v
+ros2 topic echo /sensing/gnss/ublox_gps_node/navpvt --once
+ros2 topic echo /sensing/gnss/navrelposned --once
+ros2 topic echo /sensing/gnss/rxmrtcm --once
+```
+
+Acceptance requires:
+
+- exactly one NTRIP publisher and one subscriber, owned by
+  `moving_base_rtcm_writer`;
+- NAV-PVT carrier solution fixed (`(flags & 0xC0) == 0x80`) with
+  centimeter-scale `hAcc`;
+- NAV-RELPOSNED moving baseline, relative position valid, heading valid, and
+  carrier solution fixed (normally decimal flags `311`), with a stable physical
+  antenna baseline.
+
+Do not enable `ublox_dual_warm_start_on_startup` during normal operation. Use
+it for one launch only after an explicit direct-rover/one-port diagnostic leaves
+the rover tracking the wrong reference, then restart with the default `false`.
 
 ## 6. Gate Commands
 

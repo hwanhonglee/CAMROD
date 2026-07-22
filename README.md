@@ -2,9 +2,9 @@
 
 <!-- HH_260720 - Document the consolidated parking and command-gate package boundaries. -->
 
-Current validated baseline: `v2.0.5` ([release notes](docs/V2_0_5_RELEASE_NOTES.md)).
+<!-- HH_260722 - Link the dual-GNSS hardware-validation release baseline. -->
 
-<!-- HH_260721 - Link the campsite-retrace and charging-simulation validation baseline. -->
+Current validated baseline: `v2.0.6` ([release notes](docs/V2_0_6_RELEASE_NOTES.md)).
 
 CAMROD is a ROS 2 Humble autonomous mobile robot stack. Route planning, local
 vehicle maneuvers, reverse parking, and hardware command authorization are
@@ -112,6 +112,15 @@ For the default real-hardware launch, `can0` must already exist. Install the
 boot-time setup once with
 `sudo /home/hong/camrod_ws/src/camrod_platform/scripts/install_can0_service.sh`;
 see `camrod_platform/README.md` for verification steps.
+
+<!-- HH_260722 - Record the real-hardware dual-GNSS port and correction defaults. -->
+The default hardware GNSS route requires two logical ports: `/dev/ttyUSB0`
+feeds NTRIP to the Lite moving base, while `/dev/ttyACM0` reads NAV-PVT and
+NAV-RELPOSNED from the heading rover. Full bringup applies this route without
+extra GNSS arguments; see
+[camrod_sensing/README.md](camrod_sensing/README.md) and
+[camrod_bringup/README.md](camrod_bringup/README.md) for wiring, acceptance
+flags, and recovery steps.
 
 Full simulation validation:
 
