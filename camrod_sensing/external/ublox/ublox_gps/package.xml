@@ -29,6 +29,9 @@
   <depend>ublox_msgs</depend>
   <depend>ublox_serialization</depend>
 
+  <!-- HH_260722 - Unit-test the dual-rover ROS RTCM allow/drop policy. -->
+  <test_depend>ament_cmake_gtest</test_depend>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>

@@ -134,8 +134,13 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "ublox_dual_forward_ntrip_to_rover",
-            default_value="false",
-            description="Forward NTRIP RTCM into ublox_gps dual rover USB input; keep false for moving-baseline heading",
+            # HH_260722 - Match the field dual-F9P topology while preserving a
+            # false override for heading-only bench validation.
+            default_value="true",
+            description=(
+                "Forward external NTRIP RTCM over rover USB for absolute RTK; "
+                "UART2 moving-base RTCM remains the heading input"
+            ),
         ),
 
         # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.

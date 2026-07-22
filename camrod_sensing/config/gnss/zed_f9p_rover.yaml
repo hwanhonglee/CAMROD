@@ -4,7 +4,8 @@
     # Do not switch GNSS to by-id; USB role checks are done against ttyACM*.
     device: /dev/ttyACM0
     frame_id: gps
-    # HH_260611: Make the RTCM input topic configurable so dual mode can avoid rover USB RTCM.
+    # HH_260722 - Launch selects the ROS RTCM topic for either field forwarding
+    # or the backward-compatible heading-only bench topology.
     rtcm_topic: rtcm
     debug: 1 # 4 is logging data
 
@@ -15,6 +16,9 @@
     # HH_260611: Keep the base YAML single-antenna safe; launch files enable these for simpleRTK2B Heading.
     dual_antenna: false
     dual_antenna.configure_usb: false
+    # HH_260722 - Keep the shared base YAML single-antenna safe; dual launch
+    # enables USB NTRIP input explicitly for the field heading rover.
+    dual_antenna.usb_rtcm_in: false
     dual_antenna.configure_navigation: false
     dual_antenna.block_rtcm_ids: [4072]
 
