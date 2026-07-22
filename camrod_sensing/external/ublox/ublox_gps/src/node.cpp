@@ -70,6 +70,7 @@
 #include <ublox_gps/hpg_rov_product.hpp>
 #include <ublox_gps/node.hpp>
 #include <ublox_gps/raw_data_product.hpp>
+#include <ublox_gps/ros_rtcm_filter.hpp>
 #include <ublox_gps/tim_product.hpp>
 #include <ublox_gps/ublox_firmware6.hpp>
 #include <ublox_gps/ublox_firmware7.hpp>
@@ -113,21 +114,6 @@ constexpr uint32_t kCfgMsgoutUbxNavRelPosNedUsb = 0x20910090;
 constexpr uint32_t kCfgMsgoutUbxNavHpPosLlhUsb = 0x20910036;
 constexpr uint32_t kCfgMsgoutUbxRxmRtcmUsb = 0x2091026b;
 
-// HH_260611: Identify RTCM3 message ids so dual mode can block conflicting
-// correction streams, especially moving-baseline 4072, before forwarding to USB.
-bool extractRtcm3MessageType(const std::vector<uint8_t> & frame, uint16_t & message_type) {
-  if (frame.size() < 5 || frame[0] != 0xD3) {
-    return false;
-  }
-  const uint16_t payload_length =
-    (static_cast<uint16_t>(frame[1] & 0x03) << 8) | static_cast<uint16_t>(frame[2]);
-  if (payload_length < 2 || frame.size() < static_cast<size_t>(payload_length) + 6) {
-    return false;
-  }
-  message_type =
-    (static_cast<uint16_t>(frame[3]) << 4) | (static_cast<uint16_t>(frame[4]) >> 4);
-  return true;
-}
 }  // namespace
 
 /**
@@ -249,15 +235,11 @@ UbloxNode::UbloxNode(const rclcpp::NodeOptions & options) : rclcpp::Node("ublox_
 }
 
 void UbloxNode::rtcmCallback(const rtcm_msgs::msg::Message::SharedPtr msg) {
-  // HH_260611: In simpleRTK2B Heading mode, do not forward blocked ROS/NTRIP
-  // RTCM messages into the rover USB path because that can break moving-baseline heading.
+  // HH_260722 - Filter only the ROS/NTRIP stream. UART2 moving-base RTCM is
+  // connected directly to the receiver and does not pass through this callback.
   uint16_t message_type = 0;
-  if (dual_antenna_ &&
-      extractRtcm3MessageType(msg->message, message_type) &&
-      std::find(
-        dual_antenna_block_rtcm_ids_.begin(),
-        dual_antenna_block_rtcm_ids_.end(),
-        static_cast<int64_t>(message_type)) != dual_antenna_block_rtcm_ids_.end()) {
+  if (shouldDropRosRtcm(
+      msg->message, dual_antenna_, dual_antenna_block_rtcm_ids_, message_type)) {
     RCLCPP_WARN_THROTTLE(
       this->get_logger(), *this->get_clock(), 5000,
       "Dropping RTCM %u from ROS input in dual-antenna mode to preserve moving-baseline heading.",
@@ -328,6 +310,9 @@ void UbloxNode::getRosParams() {
   rtcm_topic_ = this->declare_parameter("rtcm_topic", std::string("rtcm"));
   dual_antenna_ = this->declare_parameter("dual_antenna", false);
   dual_antenna_configure_usb_ = this->declare_parameter("dual_antenna.configure_usb", dual_antenna_);
+  // HH_260722 - Default false keeps direct node use conservative; CAMROD dual
+  // launch explicitly enables USB CORS/NTRIP while leaving UART2 independent.
+  dual_antenna_usb_rtcm_in_ = this->declare_parameter("dual_antenna.usb_rtcm_in", false);
   dual_antenna_configure_navigation_ = this->declare_parameter(
     "dual_antenna.configure_navigation", false);
   dual_antenna_block_rtcm_ids_ = this->declare_parameter(
@@ -337,6 +322,7 @@ void UbloxNode::getRosParams() {
   dual_antenna_warm_start_wait_ms_ = this->declare_parameter(
     "dual_antenna.warm_start_wait_ms", static_cast<int64_t>(12000));
   if (!dual_antenna_) {
+    dual_antenna_usb_rtcm_in_ = false;
     dual_antenna_block_rtcm_ids_.clear();
     dual_antenna_warm_start_on_startup_ = false;
   }
@@ -648,8 +634,8 @@ bool UbloxNode::configureDualAntennaRover() {
   }
   cfg.cfgdata.push_back(makeValsetU2(kCfgRateMeas, meas_rate_));
   cfg.cfgdata.push_back(makeValsetU2(kCfgRateNav, nav_rate_));
-  // HH_260611: Mirror the verified rover I/O profile for simpleRTK2B
-  // Heading. Rover consumes moving-base RTCM on UART2 only; USB is UBX output/control only.
+  // HH_260722 - Apply independent correction inputs: UART2 for the moving base
+  // heading solution and optional USB RTCM for absolute CORS/NTRIP positioning.
   // Baudrate is intentionally not written here so the u-center saved 115200 setting stays intact.
   cfg.cfgdata.push_back(makeValsetBool(kCfgUart1InProtUbx, false));
   cfg.cfgdata.push_back(makeValsetBool(kCfgUart1InProtNmea, false));
@@ -665,7 +651,7 @@ bool UbloxNode::configureDualAntennaRover() {
   cfg.cfgdata.push_back(makeValsetBool(kCfgUart2OutProtRtcm3x, false));
   cfg.cfgdata.push_back(makeValsetBool(kCfgUsbInProtUbx, true));
   cfg.cfgdata.push_back(makeValsetBool(kCfgUsbInProtNmea, false));
-  cfg.cfgdata.push_back(makeValsetBool(kCfgUsbInProtRtcm3x, false));
+  cfg.cfgdata.push_back(makeValsetBool(kCfgUsbInProtRtcm3x, dual_antenna_usb_rtcm_in_));
   cfg.cfgdata.push_back(makeValsetBool(kCfgUsbOutProtUbx, true));
   cfg.cfgdata.push_back(makeValsetBool(kCfgUsbOutProtNmea, false));
   cfg.cfgdata.push_back(makeValsetBool(kCfgUsbOutProtRtcm3x, false));
@@ -676,6 +662,20 @@ bool UbloxNode::configureDualAntennaRover() {
   cfg.cfgdata.push_back(makeValsetU1(kCfgMsgoutUbxNavRelPosNedUsb, 1));
   cfg.cfgdata.push_back(makeValsetU1(kCfgMsgoutUbxRxmRtcmUsb, 1));
 
+  // HH_260722 - Make correction routing visible without printing NTRIP
+  // credentials or payload data.
+  std::ostringstream blocked_ids;
+  for (size_t index = 0; index < dual_antenna_block_rtcm_ids_.size(); ++index) {
+    if (index > 0) {
+      blocked_ids << ',';
+    }
+    blocked_ids << dual_antenna_block_rtcm_ids_[index];
+  }
+  RCLCPP_INFO(
+    this->get_logger(),
+    "Dual-antenna RTCM routing: UART2 moving-base input=ON, "
+    "USB external RTCM input=%s, blocked ROS RTCM ids=[%s]",
+    dual_antenna_usb_rtcm_in_ ? "ON" : "OFF", blocked_ids.str().c_str());
   RCLCPP_INFO(this->get_logger(), "Applying dual-antenna rover dGNSS-compatible I/O VALSET config.");
   if (!gps_->configure(cfg)) {
     RCLCPP_ERROR(this->get_logger(), "Failed to apply dual-antenna rover USB VALSET config.");

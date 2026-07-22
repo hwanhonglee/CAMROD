@@ -240,6 +240,10 @@ class UbloxNode final : public rclcpp::Node {
   bool dual_antenna_{false};
   //! Apply dGNSS-compatible rover I/O VALSET parameters for UART2 moving-base and USB UBX.
   bool dual_antenna_configure_usb_{false};
+  // HH_260722 - Control external CORS/NTRIP RTCM on rover USB independently
+  // from the always-enabled UART2 moving-base RTCM input.
+  //! Accept external RTCM corrections on USB in dual-antenna rover mode.
+  bool dual_antenna_usb_rtcm_in_{false};
   //! Also apply NAVSPG/TMODE rover navigation settings; disabled by default to preserve receiver-stored config.
   bool dual_antenna_configure_navigation_{false};
   //! RTCM message ids to drop from ROS/NTRIP input in dual-antenna mode.

@@ -241,6 +241,7 @@ install(
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
   # HH_260720 - Verify route-lanelet clipping and metric margin behavior
   # independently from live sensors and Lanelet2 map loading.
   ament_add_gtest(
@@ -249,6 +250,12 @@ if(BUILD_TESTING)
   )
   target_include_directories(test_route_lanelet_cost_filter PRIVATE include)
   ament_target_dependencies(test_route_lanelet_cost_filter avg_msgs)
+  # HH_260722 - Lock single/dual GNSS RTCM topic and USB-input launch behavior.
+  ament_add_pytest_test(
+    test_gnss_launch_routing
+    test/test_gnss_launch_routing.py
+    TIMEOUT 30
+  )
 endif()
 
 ament_package()

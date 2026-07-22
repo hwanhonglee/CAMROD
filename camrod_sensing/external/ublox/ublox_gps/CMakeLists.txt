@@ -108,4 +108,12 @@ install(
 ament_export_include_directories("include/${PROJECT_NAME}")
 ament_export_targets(export_${PROJECT_NAME})
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  # HH_260722 - Verify that only configured ROS/NTRIP RTCM ids are blocked;
+  # the test does not require a receiver or expose correction payloads.
+  ament_add_gtest(test_ros_rtcm_filter test/test_ros_rtcm_filter.cpp)
+  target_include_directories(test_ros_rtcm_filter PRIVATE include)
+endif()
+
 ament_package()
