@@ -1363,10 +1363,13 @@ def generate_launch_description():
         ('imu_param_file',  cfg_get(launch_cfg, 'sensing/imu_param_file',  '__module_default__'), 'IMU param file path (or __module_default__)'),
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
         ('enable_ntrip', cfg_get(launch_cfg, 'sensing/enable_ntrip', False), 'Enable GNSS NTRIP client'),
-        # HH_260722 - Pass the independent UART2 heading and USB absolute-RTK
-        # routing control through bringup with the dual-GNSS field-test default.
+        # HH_260722 - Keep every GNSS correction-routing default controlled by
+        # launch_defaults.yaml and pass the verified two-port topology unchanged.
         ('ublox_dual_antenna', cfg_get(launch_cfg, 'sensing/ublox_dual_antenna', True), 'Use ublox_gps for dual-antenna simpleRTK2B Heading'),
-        ('ublox_dual_forward_ntrip_to_rover', cfg_get(launch_cfg, 'sensing/ublox_dual_forward_ntrip_to_rover', True), 'Forward external NTRIP RTCM over rover USB for absolute RTK'),
+        ('ublox_dual_forward_ntrip_to_rover', cfg_get(launch_cfg, 'sensing/ublox_dual_forward_ntrip_to_rover', False), 'Diagnostic only: forward NTRIP directly to rover USB'),
+        ('ublox_dual_warm_start_on_startup', cfg_get(launch_cfg, 'sensing/ublox_dual_warm_start_on_startup', False), 'One-shot heading-rover warm-start recovery'),
+        ('ublox_dual_base_rtcm_device', cfg_get(launch_cfg, 'sensing/ublox_dual_base_rtcm_device', '/dev/ttyUSB0'), 'Moving-base POWER+XBEE serial device'),
+        ('ublox_dual_base_rtcm_baud', cfg_get(launch_cfg, 'sensing/ublox_dual_base_rtcm_baud', 115200), 'Moving-base POWER+XBEE serial baud rate'),
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
         ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),
         ('use_camera_yolo_container', cfg_get(launch_cfg, 'perception/use_camera_yolo_container', False), 'Run front camera and YOLO in one component container'),
@@ -1385,7 +1388,9 @@ def generate_launch_description():
         ('sensor_kit_namespace', cfg_get(launch_cfg, 'namespaces/sensor_kit', 'sensor_kit'), 'Sensor-kit namespace'),
         ('bringup_namespace', cfg_get(launch_cfg, 'namespaces/bringup', 'bringup'), 'Bringup namespace'),
         ('system_namespace', cfg_get(launch_cfg, 'namespaces/system', 'system'), 'System namespace'),
-        ('gnss_namespace', cfg_get(launch_cfg, 'namespaces/gnss', 'sensing/gnss'), 'GNSS namespace'),
+        # HH_260722 - sensing.launch.py already pushes /sensing; keep the GNSS
+        # fallback relative so a missing config cannot create /sensing/sensing.
+        ('gnss_namespace', cfg_get(launch_cfg, 'namespaces/gnss', 'gnss'), 'GNSS namespace'),
 
         ('gnss_rtcm_topic', cfg_get(launch_cfg, 'topics/gnss_rtcm', '/sensing/gnss/rtcm'), 'GNSS RTCM topic'),
         # HH_260528: Platform type selector.
@@ -1657,9 +1662,13 @@ def generate_launch_description():
         'enable_imu':      sim_switch(lc['sim'], 'false', lc['enable_imu']),
         'imu_model':       lc['imu_model'],
         'enable_gnss': sim_switch(lc['sim'], 'false', lc['enable_gnss']),
-        # HH_260611: Forward ublox_gps dual-antenna runtime controls from bringup.
+        # HH_260722 - Forward the complete verified GNSS cascade from bringup;
+        # omitting any of these would let a child-launch default drift silently.
         'ublox_dual_antenna': lc['ublox_dual_antenna'],
         'ublox_dual_forward_ntrip_to_rover': lc['ublox_dual_forward_ntrip_to_rover'],
+        'ublox_dual_warm_start_on_startup': lc['ublox_dual_warm_start_on_startup'],
+        'ublox_dual_base_rtcm_device': lc['ublox_dual_base_rtcm_device'],
+        'ublox_dual_base_rtcm_baud': lc['ublox_dual_base_rtcm_baud'],
         'camera_device_path': lc['camera_device_path'],
         # HH_260527: Removed unused pass-through args
         # (system_namespace, gnss_navsatfix_topic, enable_module_validator).

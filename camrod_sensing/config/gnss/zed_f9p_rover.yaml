@@ -4,8 +4,9 @@
     # Do not switch GNSS to by-id; USB role checks are done against ttyACM*.
     device: /dev/ttyACM0
     frame_id: gps
-    # HH_260722 - Launch selects the ROS RTCM topic for either field forwarding
-    # or the backward-compatible heading-only bench topology.
+    # HH_260722 - Keep this rover-side topic isolated from NTRIP in dual mode.
+    # External CORS goes to the Lite moving base on /dev/ttyUSB0; only the
+    # corrected moving-base stream reaches this receiver through UART2.
     rtcm_topic: rtcm
     debug: 1 # 4 is logging data
 
@@ -16,14 +17,17 @@
     # HH_260611: Keep the base YAML single-antenna safe; launch files enable these for simpleRTK2B Heading.
     dual_antenna: false
     dual_antenna.configure_usb: false
-    # HH_260722 - Keep the shared base YAML single-antenna safe; dual launch
-    # enables USB NTRIP input explicitly for the field heading rover.
+    # HH_260722 - Keep rover USB RTCM disabled in the dual field topology.
+    # Launch may turn it on only for the direct-injection diagnostic fallback.
     dual_antenna.usb_rtcm_in: false
     dual_antenna.configure_navigation: false
+    # HH_260722 - Apply this filter only to diagnostic ROS/USB RTCM. It cannot
+    # separate two complete reference streams, so production leaves USB RTCM off.
     dual_antenna.block_rtcm_ids: [4072]
 
     # HH_260326: Increase GNSS fix rate for localization consistency validation.
-    # Keep nav_rate=1 and raise measurement rate from 1 Hz -> 10 Hz.
+    # HH_260722 - Keep this shared single-antenna profile at 10 Hz. The dual
+    # launch overlay sets 1 Hz so moving-base and rover navigation epochs match.
     rate: 10.0
     nav_rate: 1
     # Rover mode: disable TMODE3 (Survey-In / Base Station mode)

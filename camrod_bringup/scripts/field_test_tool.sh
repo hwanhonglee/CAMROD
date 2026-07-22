@@ -250,6 +250,7 @@ cmd_config() {
 
 critical_topics() {
   # HH_260720 - Observe the control gate contract used by hardware bringup.
+  # HH_260722 - Capture raw dual-GNSS position, baseline, and RTCM evidence.
   cat <<'EOF'
 /system/status
 /system/diagnostics_agg
@@ -272,6 +273,10 @@ critical_topics() {
 /perception/camera/detections_2d
 /sensing/lidar/points_filtered
 /sensing/lidar/filtered_cloud
+/sensing/gnss/ntrip_client/rtcm
+/sensing/gnss/ublox_gps_node/navpvt
+/sensing/gnss/navrelposned
+/sensing/gnss/rxmrtcm
 /sensing/radar/front1/range
 /sensing/radar/front2/range
 /sensing/radar/left1/range
@@ -300,7 +305,8 @@ cmd_snapshot() {
   run_shell_to_log "${log_dir}/meta/uname.txt" uname -a
   run_eval_to_log "${log_dir}/meta/git.txt" "cd '${SRC_ROOT}' && git status --short --branch && git log --oneline --decorate -5"
   run_eval_to_log "${log_dir}/meta/config_sync.txt" "'${SCRIPT_DIR}/field_test_tool.sh' config"
-  run_eval_to_log "${log_dir}/meta/serial_ports.txt" "ls -l /dev/ttyACM* /dev/ttyCH9344USB* 2>/dev/null || true"
+  # HH_260722 - Record both heading-rover ACM and moving-base FTDI ports.
+  run_eval_to_log "${log_dir}/meta/serial_ports.txt" "ls -l /dev/ttyACM* /dev/ttyUSB* /dev/ttyCH9344USB* 2>/dev/null || true"
   run_eval_to_log "${log_dir}/meta/can0.txt" "ip -details link show can0 2>&1 || true"
   run_eval_to_log "${log_dir}/meta/top.txt" "top -b -n 1 -o %CPU | head -60"
   run_eval_to_log "${log_dir}/meta/ps_cpu.txt" "ps -eo pid,ppid,pcpu,pmem,comm,args --sort=-pcpu | head -80"
