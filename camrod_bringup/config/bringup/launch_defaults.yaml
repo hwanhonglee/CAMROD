@@ -134,6 +134,8 @@ bringup:
     # HH_260702 - Keep radar range details on the topics/checkers; enable this
     # only for bench debugging so field logs stay system-summary focused.
     radar_log_status: false
+    # Keep the compatibility rasterizer alive, but its config consumes only
+    # /perception/obstacles. Raw/preprocessed LiDAR cost is temporarily disabled.
     enable_lidar_cost_grid: true
     enable_inflation_cost_grid: true
     enable_lidar_driver: true
@@ -258,7 +260,7 @@ bringup:
     # HH_260623 - Measured body width plus 0.10 m planning margin per side.
     cmd_vel_gate_cost_width_m: 1.27
     cmd_vel_gate_cost_hold_s: 1.0
-    # HH_260703 - Keep dynamic obstacle stops latched until lidar/radar report
+    # HH_260703 - Keep dynamic obstacle stops latched until perception/radar report
     # a continuous clear corridor; this prevents field stop/go oscillation.
     cmd_vel_gate_cost_stop_latch_enable: true
     cmd_vel_gate_cost_stop_clear_required_s: 2.0
@@ -271,7 +273,7 @@ bringup:
     # HH_260622 - The merged inflation grid also carries static lanelet/global
     # path guidance. Only live dynamic sensor sources may block cmd_vel here.
     cmd_vel_gate_cost_stop_require_dynamic_source: true
-    cmd_vel_gate_cost_stop_dynamic_source_labels: lidar,radar
+    cmd_vel_gate_cost_stop_dynamic_source_labels: perception,radar
     # HH_260702 - When Nav2 publishes an avoidance local path, validate that
     # path corridor before blocking on the old body-front obstacle rectangle.
     cmd_vel_gate_front_dynamic_stop_use_local_path: true

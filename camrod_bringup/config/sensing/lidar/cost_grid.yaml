@@ -1,17 +1,18 @@
 /sensing/lidar/lidar_cost_grid:
   ros__parameters:
-    # HH_260421: Consume filtered lidar cloud so near-cost grid reflects
-    # obstacle-only points instead of full raw returns.
-    input_topic: "/sensing/lidar/points_filtered"
-    # HH_260702 - Also consume perception outputs so camera/LiDAR detections
-    # become planning costs even when the filtered-cloud obstacle footprint is sparse.
-    # HH_260707 - Use pre-ground-segmentation LiDAR as a height-gated fallback
-    # for near vehicles when ground segmentation emits an empty obstacle cloud.
-    extra_input_topics:
-      - "/sensing/lidar/filtered_cloud"
+    # Temporary field profile: raw/preprocessed LiDAR points do not directly
+    # create cost. Keep this compatibility grid topic as the rasterizer for
+    # camera+LiDAR perception results only; radar remains a separate input.
+    input_topic: "/perception/obstacles"
+    input_topics:
       - "/perception/obstacles"
+    # Explicit field switch. Set true and restart to add the two filtered
+    # LiDAR clouds below without changing perception or radar cost inputs.
+    raw_lidar_cost_enabled: false
+    raw_lidar_input_topics:
+      - "/sensing/lidar/points_filtered"
+      - "/sensing/lidar/filtered_cloud"
     perception_marker_topics:
-      - "/perception/lidar/bboxes"
       - "/perception/camera_lidar/markers"
     output_topic: "/sensing/cost_grid/lidar"
     base_frame_id: "robot_base_link"

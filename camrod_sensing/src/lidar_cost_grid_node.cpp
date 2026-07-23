@@ -44,6 +44,12 @@ public:
         "input_topics", std::vector<std::string>{});
     extra_input_topics_ = declare_parameter<std::vector<std::string>>(
         "extra_input_topics", std::vector<std::string>{});
+    raw_lidar_cost_enabled_ =
+        declare_parameter<bool>("raw_lidar_cost_enabled", true);
+    raw_lidar_input_topics_ = declare_parameter<std::vector<std::string>>(
+        "raw_lidar_input_topics",
+        std::vector<std::string>{"/sensing/lidar/points_filtered",
+                                 "/sensing/lidar/filtered_cloud"});
     perception_marker_topics_ = declare_parameter<std::vector<std::string>>(
         "perception_marker_topics", std::vector<std::string>{});
     output_topic_ = declare_parameter<std::string>("output_topic",
@@ -165,6 +171,11 @@ private:
         appendUniqueTopic(input_topics_, topic);
       }
     }
+    if (raw_lidar_cost_enabled_) {
+      for (const auto &topic : raw_lidar_input_topics_) {
+        appendUniqueTopic(input_topics_, topic);
+      }
+    }
 
     cloud_inputs_.resize(input_topics_.size());
     for (std::size_t i = 0; i < input_topics_.size(); ++i) {
@@ -191,8 +202,10 @@ private:
     }
 
     RCLCPP_INFO(
-        get_logger(), "lidar_cost_grid: clouds=%zu markers=%zu output=%s",
-        cloud_inputs_.size(), marker_inputs_.size(), output_topic_.c_str());
+        get_logger(),
+        "lidar_cost_grid: clouds=%zu markers=%zu raw_lidar_cost=%s output=%s",
+        cloud_inputs_.size(), marker_inputs_.size(),
+        raw_lidar_cost_enabled_ ? "on" : "off", output_topic_.c_str());
   }
 
   // Handles the `onCloud` callback.
@@ -774,6 +787,8 @@ private:
   std::string input_topic_;
   std::vector<std::string> input_topics_;
   std::vector<std::string> extra_input_topics_;
+  bool raw_lidar_cost_enabled_{true};
+  std::vector<std::string> raw_lidar_input_topics_;
   std::vector<std::string> perception_marker_topics_;
   std::string output_topic_;
   std::string lidar_status_topic_;

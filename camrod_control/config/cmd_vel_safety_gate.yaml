@@ -69,12 +69,13 @@
     cost_source_debug_max_age_s: 1.0
     cost_source_debug_topics:
       - "/map/cost_grid/lanelet"
+      # Compatibility topic currently contains perception-filtered obstacles only.
       - "/sensing/cost_grid/lidar"
       - "/sensing/cost_grid/radar"
       - "/planning/cost_grid/global_path"
-    cost_source_debug_labels: ["lanelet", "lidar", "radar", "global_path"]
+    cost_source_debug_labels: ["lanelet", "perception", "radar", "global_path"]
     cost_stop_require_dynamic_source: true
-    cost_stop_dynamic_source_labels: "lidar,radar"
+    cost_stop_dynamic_source_labels: "perception,radar"
     front_dynamic_stop_use_local_path: true
     front_dynamic_path_width_m: 1.27
     front_dynamic_path_max_start_distance_m: 1.5
