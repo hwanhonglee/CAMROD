@@ -27,6 +27,7 @@ find_package(PCL REQUIRED COMPONENTS common kdtree search filters segmentation)
 find_package(pcl_conversions REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(apriltag REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 include_directories(
   ${PCL_INCLUDE_DIRS}
@@ -72,6 +73,18 @@ target_link_libraries(obstacle_lidar_node
   Eigen3::Eigen
 )
 
+add_executable(campsite_occupancy_node src/campsite_occupancy_node.cpp)
+ament_target_dependencies(campsite_occupancy_node
+  avg_msgs
+  rclcpp
+  geometry_msgs
+  vision_msgs
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+)
+target_link_libraries(campsite_occupancy_node yaml-cpp)
+
 # HH_260720 - Build the rear-camera AprilTag detector used only by AprilTag parking.
 add_executable(apriltag_parking_detector_node src/apriltag_parking_detector_node.cpp)
 ament_target_dependencies(apriltag_parking_detector_node
@@ -94,6 +107,7 @@ target_link_libraries(apriltag_parking_detector_node
 install(TARGETS
   obstacle_fusion_node
   obstacle_lidar_node
+  campsite_occupancy_node
   apriltag_parking_detector_node
   DESTINATION lib/${PROJECT_NAME})
 

@@ -22,6 +22,7 @@ from avg_msgs.msg import (
     AvgBool,
     AvgPlatformStatus,
     AvgPoseStamped,
+    CampsiteOccupancy,
     MotionOperation,
     PlanningMissionKey,
     UiDestinationCommand,
@@ -83,6 +84,7 @@ class ApiState:
     )
     battery_percentage: int = -1
     ws_site_states: Dict[str, bool] = field(default_factory=dict)
+    occupied_sites: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -197,6 +199,11 @@ class UiBackendNode(Node):
         )
 
         self.camping_sites_yaml = str(self.declare_parameter("camping_sites_yaml", "").value)
+        self.campsite_occupancy_topic = str(
+            self.declare_parameter(
+                "campsite_occupancy_topic", "/perception/camping_sites/occupancy"
+            ).value
+        )
         self.site_names = [
             str(site)
             for site in self.declare_parameter("site_names", [f"B{i}" for i in range(1, 14)]).value
@@ -268,6 +275,12 @@ class UiBackendNode(Node):
             self._on_drop_zone_exit_complete,
             10,
         )
+        self.sub_campsite_occupancy = self.create_subscription(
+            CampsiteOccupancy,
+            self.campsite_occupancy_topic,
+            self._on_campsite_occupancy,
+            10,
+        )
 
         # Publishers.
         # HH_260617: UI destination and planning mission-key topics now use
@@ -321,6 +334,7 @@ class UiBackendNode(Node):
             f"mission_key_topic={self.planning_mission_key_topic} "
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"arrival_pose_topic={self.arrival_pose_topic} "
+            f"campsite_occupancy_topic={self.campsite_occupancy_topic} "
             f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'}"
         )
 
@@ -802,7 +816,7 @@ class UiBackendNode(Node):
             return
         result = self._apply_destination_command(site=site, run=run, source=source)
         # Broadcast guest-origin destination calls to the robot-side UI.
-        if source == "guest" and run:
+        if source == "guest" and run and not result.get("blocked", False):
             self._schedule_broadcast({"guest_navigate": site})
         self.get_logger().info(
             "destination dispatch summary: "
@@ -810,6 +824,43 @@ class UiBackendNode(Node):
             f"mission_key={result.get('mission_key', '')} "
             f"site_goal={str(bool(result.get('goal_pose_published', False))).lower()}"
         )
+
+    def _on_campsite_occupancy(self, msg: CampsiteOccupancy) -> None:
+        occupied_keys = {str(key).strip() for key in msg.occupied_mission_keys if key}
+        occupied_sites = sorted(
+            site
+            for site in self.site_names
+            if (self._resolve_mission_key_for_site(site) or "") in occupied_keys
+        )
+        active_occupied_site = ""
+        with self._lock:
+            self._state.occupied_sites = occupied_sites
+            for site in occupied_sites:
+                self._state.ws_site_states[site] = False
+            active_site = str(self._state.destination.get("site", "")).strip()
+            active_run = bool(self._state.destination.get("run", False))
+            if active_run and active_site in occupied_sites:
+                active_occupied_site = active_site
+                self._state.destination = {"site": active_site, "run": False}
+
+        self._schedule_broadcast({"occupied_sites": occupied_sites})
+        if active_occupied_site:
+            self.get_logger().warn(
+                f"active campsite became occupied; stopping dispatch: {active_occupied_site}"
+            )
+            self._apply_destination_command(
+                site=active_occupied_site,
+                run=False,
+                source="perception_occupancy",
+            )
+            self._schedule_broadcast(
+                {
+                    "states": {s: False for s in self.site_names},
+                    "engage": False,
+                    "error": "campsite_occupied",
+                    "site": active_occupied_site,
+                }
+            )
 
     # ── Goal and engage publishing ────────────────────────────────────────────
 
@@ -900,6 +951,12 @@ class UiBackendNode(Node):
         if site_text.startswith("B") and site_text[1:].isdigit():
             return f"camping_site_{int(site_text[1:])}"
         return None
+
+    def _is_site_occupied(self, site: str) -> bool:
+        mission_key = self._resolve_mission_key_for_site(site) or ""
+        with self._lock:
+            occupied_sites = set(self._state.occupied_sites)
+        return bool(mission_key) and site in occupied_sites
 
     def _publish_engage(
         self, enabled: bool, source: str, *, sync_drive_enable: bool = True
@@ -1048,6 +1105,23 @@ class UiBackendNode(Node):
                 "message": "run=false -> engage off, goal dispatch skipped",
             }
 
+        mission_key = self._resolve_mission_key_for_site(site) or ""
+        if self._is_site_occupied(site):
+            self.get_logger().warn(
+                f"occupied campsite selection blocked: site={site} mission_key={mission_key}"
+            )
+            self._schedule_broadcast(
+                {"error": "campsite_occupied", "site": site, "occupied": True}
+            )
+            return {
+                "site": site,
+                "run": False,
+                "mission_key": mission_key,
+                "goal_pose_published": False,
+                "blocked": True,
+                "message": "campsite occupied by detected tent",
+            }
+
         already_arrived, mission_key, distance_m, match_reason = self._site_arrival_match(site)
         if already_arrived:
             # HH_260701 - If the robot was manually driven into a campsite,
@@ -1184,6 +1258,7 @@ class UiBackendNode(Node):
                 "service_state_description": self._state.service_state_description,
                 "destination": dict(self._state.destination),
                 "battery_percentage": self._state.battery_percentage,
+                "occupied_sites": list(self._state.occupied_sites),
             }
 
     # ── Public API methods (called by HTTP handlers) ──────────────────────────
@@ -1232,6 +1307,13 @@ class UiBackendNode(Node):
                 "success": False,
                 "message": f"unknown site: {normalized_site}",
                 "valid_sites": list(self.site_names),
+            }
+        if run and self._is_site_occupied(normalized_site):
+            return {
+                "success": False,
+                "message": "campsite occupied by detected tent",
+                "site": normalized_site,
+                "error": "campsite_occupied",
             }
 
         with self._lock:
@@ -1307,7 +1389,9 @@ class UiBackendNode(Node):
                 service_state = node._state.service_state
                 service_state_name = node._state.service_state_name
                 service_state_description = node._state.service_state_description
+                occupied_sites = list(node._state.occupied_sites)
             await ws.send_json({"states": states})
+            await ws.send_json({"occupied_sites": occupied_sites})
             await ws.send_json({"engage": engage})
             if battery >= 0:
                 await ws.send_json({"battery": battery})
@@ -1345,6 +1429,13 @@ class UiBackendNode(Node):
                                 "error": "unknown_site",
                                 "site": site,
                                 "valid_sites": list(node.site_names),
+                            })
+                            continue
+                        if new_state and node._is_site_occupied(site):
+                            await ws.send_json({
+                                "error": "campsite_occupied",
+                                "site": site,
+                                "occupied": True,
                             })
                             continue
                         if new_state:

@@ -110,6 +110,7 @@ set(msg_files
   "msg/PlanningRecallRequest.msg" # HH_260617: camping-site recall request
   "msg/PlanningScenario.msg" # HH_260617: planning scenario command/status
   "msg/PlanningState.msg" # HH_260617: planning state-machine status
+  "msg/CampsiteOccupancy.msg" # Perception-owned occupied campsite state
   # HH_260720 - Add typed route metadata used by planning, map, and platform control.
   "msg/RouteLaneletIds.msg"
   "msg/RouteTurnSegment.msg"

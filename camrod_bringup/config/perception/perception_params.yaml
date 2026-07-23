@@ -76,8 +76,25 @@
     tensorrt_device: 0
     min_confidence: 0.5
     min_iou: 0.5
+    # Limit inference to the diagnostics contract and leave CPU headroom for
+    # localization/planning under the full hardware stack.
+    throttle_fps: 5.0
     imshow: false
     input_image_topic: "/sensing/camera/econ_front/image_rect"   # HH_260529
     transport_hint: "compressed"
     output_image_topic: "/perception/camera/yolo_image"
     output_boundingbox_topic: "/perception/camera/detections_2d"
+
+/perception/campsite_occupancy:
+  ros__parameters:
+    detection_topic: "/perception/camera_lidar/detections_3d"
+    output_topic: "/perception/camping_sites/occupancy"
+    map_frame_id: "map"
+    tent_class_labels: ["tent", "80"]
+    minimum_confidence: 0.50
+    confirm_hits: 3
+    confirm_window_s: 2.0
+    # Preserve a confirmed occupied site for the current field session even
+    # after the robot drives out of camera view.
+    occupied_hold_s: 3600.0
+    publish_rate_hz: 2.0

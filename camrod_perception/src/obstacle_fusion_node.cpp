@@ -480,8 +480,8 @@ private:
       const float y0 = static_cast<float>(cy - bh / 2);
       const float y1 = static_cast<float>(cy + bh / 2);
 
-      const std::string label =
-        d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id;
+      const std::string label = !d2.id.empty() ? d2.id :
+        (d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id);
 
       struct BboxPt
       {
@@ -564,21 +564,31 @@ private:
         marker_id = tracks_.back().id * 2;
       }
 
-      // Convert back from effective frame to camera frame for Detection3D
-      const float pos_x = -lpos_y;
-      const float pos_y = static_cast<float>(-lpos_z + extrinsic_z_);
-      const float pos_z = lpos_x;
-
       vision_msgs::msg::Detection3D d3;
       d3.header.frame_id = cloud_msg_frame_;
+      d3.header.stamp = det_msg->header.stamp;
+      d3.id = std::to_string(marker_id / 2);
       if (!d2.results.empty()) {
         auto res = d2.results[0];
-        res.pose.pose.position.x = pos_x;
-        res.pose.pose.position.y = pos_y;
-        res.pose.pose.position.z = pos_z;
+        // Detection3D is declared in the LiDAR cloud frame, so its pose must
+        // remain in raw LiDAR coordinates. The previous camera-frame values
+        // under a LiDAR header made map transforms and semantic geofencing invalid.
+        res.pose.pose.position.x = lpos_x;
+        res.pose.pose.position.y = lpos_y;
+        res.pose.pose.position.z = lpos_z;
         res.pose.pose.orientation.w = 1.0;
+        if (!d2.id.empty()) {
+          res.hypothesis.class_id = d2.id;
+        }
         d3.results.push_back(res);
       }
+      d3.bbox.center.position.x = lpos_x;
+      d3.bbox.center.position.y = lpos_y;
+      d3.bbox.center.position.z = lpos_z;
+      d3.bbox.center.orientation.w = 1.0;
+      d3.bbox.size.x = 0.4;
+      d3.bbox.size.y = 0.4;
+      d3.bbox.size.z = 0.4;
       out.detections.push_back(d3);
 
       const rclcpp::Time stamp = det_msg->header.stamp;
@@ -718,8 +728,8 @@ private:
         const float cy = static_cast<float>(d2.bbox.center.position.y);
         const float hw = static_cast<float>(d2.bbox.size_x) * 0.5f;
         const float hh = static_cast<float>(d2.bbox.size_y) * 0.5f;
-        const std::string lbl =
-          d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id;
+        const std::string lbl = !d2.id.empty() ? d2.id :
+          (d2.results.empty() ? "?" : d2.results[0].hypothesis.class_id);
 
         int best = -1;
         float best_d = std::numeric_limits<float>::max();
