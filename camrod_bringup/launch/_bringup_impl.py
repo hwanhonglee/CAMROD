@@ -1368,7 +1368,7 @@ def generate_launch_description():
         ('ublox_dual_antenna', cfg_get(launch_cfg, 'sensing/ublox_dual_antenna', True), 'Use ublox_gps for dual-antenna simpleRTK2B Heading'),
         ('ublox_dual_forward_ntrip_to_rover', cfg_get(launch_cfg, 'sensing/ublox_dual_forward_ntrip_to_rover', False), 'Diagnostic only: forward NTRIP directly to rover USB'),
         ('ublox_dual_warm_start_on_startup', cfg_get(launch_cfg, 'sensing/ublox_dual_warm_start_on_startup', False), 'One-shot heading-rover warm-start recovery'),
-        ('ublox_dual_base_rtcm_device', cfg_get(launch_cfg, 'sensing/ublox_dual_base_rtcm_device', '/dev/ttyUSB0'), 'Moving-base POWER+XBEE serial device'),
+        ('ublox_dual_base_rtcm_device', cfg_get(launch_cfg, 'sensing/ublox_dual_base_rtcm_device', '/dev/ttyUSB4'), 'Moving-base POWER+XBEE serial device'),
         ('ublox_dual_base_rtcm_baud', cfg_get(launch_cfg, 'sensing/ublox_dual_base_rtcm_baud', 115200), 'Moving-base POWER+XBEE serial baud rate'),
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
         ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),

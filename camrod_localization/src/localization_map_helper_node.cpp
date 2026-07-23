@@ -184,7 +184,7 @@ public:
       centerline_ros_pub_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
         centerline_output_pose_ros_topic_, rclcpp::QoS(10));
       centerline_sub_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
-        centerline_input_pose_topic_, rclcpp::SensorDataQoS(),
+        centerline_input_pose_topic_, rclcpp::QoS(1).reliable(),
         std::bind(&LocalizationMapHelperNode::onCenterlinePose, this, std::placeholders::_1));
     }
 
@@ -279,7 +279,15 @@ private:
   {
     NearestResult best;
     const double max_sq = max_search_radius_ * max_search_radius_;
-    for (const auto & ll : map_->laneletLayer) {
+    // Query a small spatially indexed candidate set instead of walking every
+    // lanelet and centerline segment for each 10 Hz localization update.
+    // Multiple candidates keep the result correct around adjacent/overlapping
+    // lanelets where polygon distance and centerline distance can differ.
+    constexpr unsigned int kNearestLaneletCandidates = 8U;
+    const auto candidates = lanelet::geometry::findNearest(
+      map_->laneletLayer, lanelet::BasicPoint2d(x, y), kNearestLaneletCandidates);
+    for (const auto & candidate : candidates) {
+      const auto & ll = candidate.second;
       const auto & cl = ll.centerline();
       if (cl.size() < 2) {
         continue;

@@ -218,7 +218,7 @@ def test_dual_defaults_correct_moving_base_without_direct_rover_injection():
     assert declarations["ublox_dual_antenna"] == "true"
     assert declarations["ublox_dual_forward_ntrip_to_rover"] == "false"
     assert declarations["ublox_dual_warm_start_on_startup"] == "false"
-    assert declarations["ublox_dual_base_rtcm_device"] == "/dev/ttyUSB0"
+    assert declarations["ublox_dual_base_rtcm_device"] == "/dev/ttyUSB4"
     assert declarations["ublox_dual_base_rtcm_baud"] == "115200"
 
 
@@ -232,7 +232,7 @@ def test_sensing_launch_matches_and_forwards_dual_gnss_defaults():
         "ublox_dual_antenna": "true",
         "ublox_dual_forward_ntrip_to_rover": "false",
         "ublox_dual_warm_start_on_startup": "false",
-        "ublox_dual_base_rtcm_device": "/dev/ttyUSB0",
+        "ublox_dual_base_rtcm_device": "/dev/ttyUSB4",
         "ublox_dual_base_rtcm_baud": "115200",
     }
     assert {key: defaults[key] for key in expected} == expected

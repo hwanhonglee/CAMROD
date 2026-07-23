@@ -24,8 +24,9 @@
     # HH_260623 - Keep localization helper centerline outputs on the 2D planning plane.
     centerline_z_mode: ground
     map_z_offset: 0.0
-    # HH_260618: Throttle nearest-centerline lookup to 10 Hz under high-rate pose input.
-    centerline_min_update_period_s: 0.10
+    # EKF itself publishes at 10 Hz. 0.10 s aliases with normal timestamp
+    # jitter and can accidentally halve the snapped-pose rate to 5 Hz.
+    centerline_min_update_period_s: 0.05
     centerline_min_displacement_m: 0.08
 
     # --------------------------------------------------------------------------

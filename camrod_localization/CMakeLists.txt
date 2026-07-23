@@ -176,6 +176,14 @@ if(BUILD_TESTING)
   ament_uncrustify(src)
   find_package(ament_cmake_xmllint REQUIRED)
   ament_xmllint(package.xml)
+
+  # HH_260723 - robot_localization silently stops loading numbered sensor
+  # inputs at the first gap, so verify GNSS position/yaw inputs remain contiguous.
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_test(
+    NAME test_ekf_sensor_inputs
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_ekf_sensor_inputs.py
+  )
 endif()
 
 # ------------------------------------------------------------------------------
