@@ -154,6 +154,8 @@ graph LR
 | 📨 `AvgGnssPose` | msg | `header`, `Pose pose` (map frame), `float64[36] covariance`, `fix_type`, `num_satellites`, `hdop`, `vdop` | camrod_sensing | camrod_localization |
 | 📨 `AvgMapMsgs` | msg | `stamp`, `ModuleState state`, lanelet/planning cost grids, lanelet/lidar/radar/inflation marker arrays | camrod_map | camrod_planning, camrod_platform, camrod_bringup |
 | 📨 `AvgPerceptionMsgs` | msg | `stamp`, `ModuleState state`, `PointCloud2 obstacles`, `CameraInfo`, `Detection2DArray detections` | camrod_perception | camrod_planning, camrod_system |
+<!-- HH_260723 - Document the semantic occupied-campsite interface. -->
+| 📨 `CampsiteOccupancy` | msg | `header`, `occupied_mission_keys[]`, `source` | camrod_perception | camrod_control, camrod_ui |
 | 📨 `AvgPlanningMsgs` | msg | `stamp`, `ModuleState state`, goal/lanelet poses, nav action status, global/local paths, costmaps, path cost markers | camrod_planning | camrod_platform, camrod_bringup |
 | 📨 `PlanningMissionKey` | msg | `header`, `mission_key`, `source`, `publish_route_goal` | camrod_ui, camrod_planning | camrod_planning, camrod_ui, logging |
 | 📨 `PlanningRecallRequest` | msg | `header`, `site_name`, `source` | camrod_ui / external recall clients | camrod_planning |

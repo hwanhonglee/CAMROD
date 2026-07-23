@@ -2,13 +2,20 @@
 
 <!-- HH_260720 - Document the consolidated parking and command-gate package boundaries. -->
 
-<!-- HH_260722 - Link the dual-GNSS hardware-validation release baseline. -->
+<!-- HH_260723 - Promote the localization, routing, perception, and campsite-occupancy field release. -->
 
 Current validated baseline: `v2.0.6` ([release notes](docs/V2_0_6_RELEASE_NOTES.md)).
 
 CAMROD is a ROS 2 Humble autonomous mobile robot stack. Route planning, local
 vehicle maneuvers, reverse parking, and hardware command authorization are
 separate runtime responsibilities.
+
+The v2.0.6 field profile keeps ordinary goals on forward one-way Lanelet
+routing, enables reversed shortest-path routing only for an explicit campsite
+return, publishes YOLO detections and camera-LiDAR fusion from the composable
+camera container, blocks occupied tent campsites in control and UI, and keeps
+raw preprocessed LiDAR out of the compatibility cost grid unless its explicit
+runtime switch is enabled.
 
 ## Package Responsibilities
 
@@ -113,8 +120,8 @@ boot-time setup once with
 `sudo /home/hong/camrod_ws/src/camrod_platform/scripts/install_can0_service.sh`;
 see `camrod_platform/README.md` for verification steps.
 
-<!-- HH_260722 - Record the real-hardware dual-GNSS port and correction defaults. -->
-The default hardware GNSS route requires two logical ports: `/dev/ttyUSB0`
+<!-- HH_260723 - Record the current real-hardware dual-GNSS port and correction defaults. -->
+The default hardware GNSS route requires two logical ports: `/dev/ttyUSB4`
 feeds NTRIP to the Lite moving base, while `/dev/ttyACM0` reads NAV-PVT and
 NAV-RELPOSNED from the heading rover. Full bringup applies this route without
 extra GNSS arguments; see

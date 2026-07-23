@@ -73,6 +73,7 @@ target_link_libraries(obstacle_lidar_node
   Eigen3::Eigen
 )
 
+# HH_260723 - Build semantic tent-to-campsite occupancy inference.
 add_executable(campsite_occupancy_node src/campsite_occupancy_node.cpp)
 ament_target_dependencies(campsite_occupancy_node
   avg_msgs

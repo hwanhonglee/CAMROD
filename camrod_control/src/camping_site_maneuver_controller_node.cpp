@@ -336,6 +336,8 @@ public:
           }
         }
       });
+    // HH_260723 - Reject duplicate campsite entry from the transient semantic
+    // occupancy state and stop an approach if the target becomes occupied.
     campsite_occupancy_subscription_ =
       create_subscription<avg_msgs::msg::CampsiteOccupancy>(
       campsite_occupancy_topic_, rclcpp::QoS(1).transient_local().reliable(),

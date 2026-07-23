@@ -1227,6 +1227,7 @@ h1 {
   letter-spacing: 0.05em;
 }
 
+/* HH_260723 - Make a perception-confirmed occupied campsite visibly unavailable. */
 .toggle-card.occupied {
   background: linear-gradient(145deg, #eeeeee, #d3d3d3);
   border: 2px solid #a33a3a;

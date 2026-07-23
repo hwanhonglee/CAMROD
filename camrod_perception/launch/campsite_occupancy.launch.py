@@ -1,4 +1,4 @@
-"""Launch semantic campsite occupancy detection."""
+"""HH_260723 - Launch semantic campsite occupancy detection."""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument

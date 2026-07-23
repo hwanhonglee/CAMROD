@@ -570,7 +570,7 @@ private:
       d3.id = std::to_string(marker_id / 2);
       if (!d2.results.empty()) {
         auto res = d2.results[0];
-        // Detection3D is declared in the LiDAR cloud frame, so its pose must
+        // HH_260723 - Detection3D is declared in the LiDAR cloud frame, so its pose must
         // remain in raw LiDAR coordinates. The previous camera-frame values
         // under a LiDAR header made map transforms and semantic geofencing invalid.
         res.pose.pose.position.x = lpos_x;

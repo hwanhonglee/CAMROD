@@ -94,7 +94,7 @@
     # Map snapping remains a downstream localization output only.
 
     # HH_260625: Sim keeps GNSS yaw as a yaw-only correction.
-    # robot_localization requires contiguous pose input indices.
+    # HH_260723 - robot_localization requires contiguous pose input indices.
     # pose1_config order matches the EKF state vector above.
     # HH_260720 - Reuse the same explicit GNSS mirror for stationary heading.
     pose1: /sensing/gnss/pose_with_covariance_ros

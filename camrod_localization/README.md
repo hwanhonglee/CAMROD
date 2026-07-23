@@ -250,7 +250,8 @@ graph TD
 | `/localization/drop_zone/match_ok` | `avg_msgs/AvgBool` | camrod_system, camrod_planning | on change | `true` once the selected EKF pose stably matches a configured drop zone |
 | `/localization/confidence` | `avg_msgs/AvgFloat32` | camrod_system | ~5 Hz | Filter confidence score [0-1] |
 | `/localization/state` | `avg_msgs/AvgBool` | camrod_system | ~5 Hz | Overall localization health flag |
-| `/localization/centerline_pose` | `avg_msgs/AvgPoseWithCovarianceStamped` | camrod_planning | ~20 Hz | Pose projected onto nearest Lanelet2 centerline |
+<!-- HH_260723 - Describe continuous cached snaps and input-relative diagnostics. -->
+| `/localization/centerline_pose` | `avg_msgs/AvgPoseWithCovarianceStamped` | diagnostics and optional planning tools | follows `/localization/pose` | Pose projected onto the nearest Lanelet2 centerline; a throttled search republishes the last valid snap with the current header |
 | `/localization/drop_zone/initial_pose` | `avg_msgs/AvgPoseWithCovarianceStamped` | CAMROD consumers | once | Drop-zone-matched generated initial pose |
 | TF `map→odom→robot_base_link` | `tf2_msgs/TFMessage` | all packages | configured filter rate | `map→odom` static transform plus authoritative EKF `odom→robot_base_link` transform |
 
@@ -460,7 +461,7 @@ Key launch arguments:
 | `config/filter/ekf.yaml` | Default robot_localization EKF parameters. The node log level is WARN in `filter.launch.py` |
 | `config/filter/monitor.yaml` | Sensor timeouts (`gnss_timeout_s`: 4.0, `imu_timeout_s`: 1.0, `wheel_timeout_s`: 1.0), GNSS health gates (`gnss_cov_trace_fail`: 1.0, `gnss_jump_fail_m`: 1.0, `gnss_min_hz`: 0.8), recovery debounce (1.5 s), and DR timeout (`dr_max_duration_s`: 30.0) |
 | `config/filter/pose_selector.yaml` | Primary/fallback source topology, `fallback_on_mode_at_or_above`: 3 (INVALID), `primary_timeout_s`: 0.5 s |
-| `config/reference/map_helper.yaml` | Centerline snapper covariance (`lateral_stddev`: 0.3), drop zone match radius 2.0 m, `stable_count`: 10, `drop_zone_yaw_source`: zone |
+| `config/reference/map_helper.yaml` | Centerline snapper covariance (`lateral_stddev`: 0.3), indexed nearest-lanelet lookup, cached output during search throttling, drop zone match radius 2.0 m, `stable_count`: 10, `drop_zone_yaw_source`: zone |
 | `config/drop_zones.yaml` | Drop zone definitions (id, x, y, z, yaw_deg in map frame) used for initial pose matching |
 
 ---

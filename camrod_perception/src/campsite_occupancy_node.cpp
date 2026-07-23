@@ -24,6 +24,8 @@
 namespace camrod::perception
 {
 
+// HH_260723 - Convert confirmed semantic tent detections inside campsite
+// polygons into a transient-local occupied-mission contract.
 class CampsiteOccupancyNode : public rclcpp::Node
 {
 public:

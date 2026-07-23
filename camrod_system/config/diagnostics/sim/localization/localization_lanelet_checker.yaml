@@ -4,6 +4,8 @@
   ros__parameters:
     publish_rate_hz: 1.0
     lanelet_topic: "/localization/centerline_pose"
+    # HH_260723 - Compare snap output with the simulated upstream pose cadence.
+    input_pose_topic: "/localization/pose"
     expected_hz: 10.0
     hz_warn_ratio: 0.5
     hz_error_ratio: 0.2

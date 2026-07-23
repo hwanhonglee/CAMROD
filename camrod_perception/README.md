@@ -12,6 +12,7 @@ obstacle representations and the controller-ready AprilTag parking pose.
 |---|---|
 | `obstacle_fusion_node` | Projects filtered LiDAR points into the camera image; retains only points falling inside YOLO 2D bounding boxes; publishes the filtered cloud as `/perception/obstacles` for Nav2 costmap inflation |
 | `obstacle_lidar_node` | Runs Euclidean cluster extraction (PCL) on the same filtered cloud after an axis-aligned ROI filter; publishes AABB markers for RViz visualization |
+| `campsite_occupancy_node` | Confirms semantic `tent` Detection3D hits inside configured campsite polygons and publishes occupied mission keys |
 | `apriltag_parking_detector_node` | Detects the configured parking tag and publishes `AvgAprilTagPose` for the control parking controller |
 | `yolov9mit_ros` (external) | YOLOv9 TensorRT inference node providing 2D bounding boxes; started by `yolo.launch.py`; can be disabled with `enable_yolo:=false` |
 
@@ -23,6 +24,11 @@ the tag pose and `camrod_control` decides parking commands.
 > HH_260707 - `obstacle_fusion_node` is tuned for real-time freshness under all-on field load: `sync_queue_size: 8` limits stale message backlog, debug-image decode/draw/publish work is skipped when no subscriber exists, and debug image output is rate-limited to 2 Hz by default. The obstacle topics and message contracts are unchanged.
 
 > HH_260716 - Full bringup normally loads the front camera and YOLO into `/camera_yolo_container`. `/perception/camera/detections_2d` is continuously published while inference runs, but `/perception/camera/yolo_image` is generated only when RViz or another subscriber is present. A silent annotated-image topic with zero subscribers is therefore expected, not a stopped YOLO node.
+
+> HH_260723 - Scoped bringup includes keep the sensing container-ownership flag
+> out of perception, so `obstacle_fusion_node` remains enabled while the camera
+> and YOLO components share `/camera_yolo_container`. YOLO class names propagate
+> into Detection3D; `tent` detections drive campsite occupancy.
 
 ---
 
@@ -219,10 +225,10 @@ Default `extrinsic_z = -0.075` (camera is 7.5 cm below LiDAR). Adjust in `percep
 | Topic | Type | Required | Producer | Rate | Meaning |
 |---|---|---|---|---|---|
 | `/sensing/lidar/points_filtered` | `avg_msgs/PointCloud2` | Yes | camrod_sensing `lidar_preprocessor_node` | ~10 Hz | Preprocessed LiDAR cloud (downsampled, NaN-filtered) |
-| `/sensing/camera/processed/camera_info` | `avg_msgs/CameraInfo` | Yes (fusion) | camrod_sensing `camera_preprocessor_node` | 10 Hz | Rectified intrinsics used to project LiDAR into image plane |
-| `/sensing/camera/processed/image` | `sensor_msgs/Image` | Yes (fusion) | camrod_sensing | 10 Hz | Rectified colour image; used for image-space point overlay and fusion |
-| `/perception/camera/detections_2d` | `avg_msgs/Detection2DArray` | No | `yolov9mit_ros` (external) | ~10 Hz | 2D bounding boxes from YOLOv9; absence triggers pass-through mode |
-| `/perception/lidar/bboxes` | `avg_msgs/MarkerArray` | No | `obstacle_lidar_node` (self) | ~10 Hz | Euclidean cluster AABB markers used for cluster-centroid fusion |
+| `/sensing/camera/econ_front/camera_info` | `sensor_msgs/CameraInfo` | Yes (fusion) | camrod_sensing front camera | 10 Hz | Rectified intrinsics used to project LiDAR into image plane |
+| `/sensing/camera/econ_front/image_rect/compressed` | `sensor_msgs/CompressedImage` | Yes (fusion) | camrod_sensing front camera | 10 Hz | Rectified colour image used for image-space point overlay and fusion |
+| `/perception/camera/detections_2d` | `vision_msgs/Detection2DArray` | No | `yolov9mit_ros` (external) | up to 5 Hz | Semantic 2D boxes from YOLOv9; an empty array is a healthy no-object frame |
+| `/perception/lidar/bboxes` | `visualization_msgs/MarkerArray` | No | `obstacle_lidar_node` (self) | ~10 Hz | Euclidean cluster AABB markers used for cluster-centroid fusion |
 | TF `lidar_link → camera_front` | TF2 | Yes (fusion) | robot URDF / static TF | static | Extrinsic transform for projection; supplemented by `extrinsic_z` param |
 
 ### Outputs
@@ -233,6 +239,7 @@ Default `extrinsic_z = -0.075` (camera is 7.5 cm below LiDAR). Adjust in `percep
 | `/perception/lidar/bboxes` | `avg_msgs/MarkerArray` | RViz, `obstacle_fusion_node` | ~10 Hz | AABB cube + text markers per Euclidean cluster |
 | `/perception/camera_lidar/image` | `sensor_msgs/Image` | RViz | ~10 Hz | Annotated image with projected LiDAR points and detection boxes |
 | `/perception/camera_lidar/detections_3d` | `vision_msgs/Detection3DArray` | optional consumers | ~10 Hz | 3D detections with EMA-smoothed LiDAR-derived positions |
+| `/perception/camping_sites/occupancy` | `avg_msgs/CampsiteOccupancy` | camrod_control, camrod_ui | 2 Hz + transient state | Confirmed occupied campsite mission keys inferred from tent detections |
 | `/perception/camera_lidar/markers` | `visualization_msgs/MarkerArray` | RViz | ~10 Hz | Sphere + text markers at fused detection positions |
 | `/perception/camera_lidar/euclidean_markers` | `visualization_msgs/MarkerArray` | RViz | ~10 Hz | Euclidean cluster centroids with YOLO label overlay |
 | `/perception/camera/yolo_image` | `sensor_msgs/Image` | RViz | on demand, load-dependent | YOLOv9 annotated image; subscriber-gated by `yolov9mit_ros` |
@@ -300,6 +307,7 @@ ros2 launch camrod_perception perception.launch.py \
 | `launch/obstacle_fusion.launch.py` | Starts `obstacle_fusion_node` only |
 | `launch/obstacle_lidar.launch.py` | Starts `obstacle_lidar_node` (conditioned on `enable_lidar_obstacle`) |
 | `launch/yolo.launch.py` | Starts `yolov9mit_ros` node (conditioned on `enable_yolo`); resolves model and label paths from `yolov9mit_ros` package share |
+| `launch/campsite_occupancy.launch.py` | Starts semantic tent-to-campsite occupancy inference when camera fusion is active |
 
 ### Launch Arguments
 

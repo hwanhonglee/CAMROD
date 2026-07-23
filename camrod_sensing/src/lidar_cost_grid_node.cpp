@@ -44,6 +44,8 @@ public:
         "input_topics", std::vector<std::string>{});
     extra_input_topics_ = declare_parameter<std::vector<std::string>>(
         "extra_input_topics", std::vector<std::string>{});
+    // HH_260723 - Keep direct filtered-cloud rasterization behind an explicit
+    // startup switch while perception and radar retain their independent paths.
     raw_lidar_cost_enabled_ =
         declare_parameter<bool>("raw_lidar_cost_enabled", true);
     raw_lidar_input_topics_ = declare_parameter<std::vector<std::string>>(

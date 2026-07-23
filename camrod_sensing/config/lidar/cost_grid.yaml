@@ -1,12 +1,12 @@
 /sensing/lidar/lidar_cost_grid:
   ros__parameters:
-    # Temporary field profile: raw/preprocessed LiDAR points do not directly
+    # HH_260723 - Raw/preprocessed LiDAR points do not directly
     # create cost. Keep this compatibility grid topic as the rasterizer for
     # camera+LiDAR perception results only; radar remains a separate input.
     input_topic: "/perception/obstacles"
     input_topics:
       - "/perception/obstacles"
-    # Explicit field switch. Set true and restart to add the two filtered
+    # HH_260723 - Set this explicit switch true and restart to add the two filtered
     # LiDAR clouds below without changing perception or radar cost inputs.
     raw_lidar_cost_enabled: false
     raw_lidar_input_topics:

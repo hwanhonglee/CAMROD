@@ -18,6 +18,7 @@
     # HH_260721 - Service progress is independent from chassis naming and diagnostic severity.
     service_state_topic: "/service/state"
     reverse_path_topic: "/control/camping_site_maneuver_controller/path_ros"
+    # HH_260723 - Block entry into a campsite confirmed occupied by perception.
     campsite_occupancy_topic: "/perception/camping_sites/occupancy"
 
     enable_auto_start_from_planning_state: true

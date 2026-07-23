@@ -26,6 +26,12 @@ The controller publishes `UNLOAD_WAIT` while settling at the site and then
 `WAITING_FOR_RETURN_REQUEST` while it is stationary and accepting the return
 button. Neither state is a diagnostic warning.
 
+<!-- HH_260723 - Block duplicate use of a campsite confirmed occupied by perception. -->
+`camping_site_maneuver_controller` subscribes to
+`/perception/camping_sites/occupancy`. It rejects automatic or manual entry into
+an occupied mission key and stops an in-progress approach if that site becomes
+occupied before entry completes.
+
 <!-- HH_260721 - Document the constrained roadside exit and on-lane return alignment. -->
 B12 and B13 use `service_mode: roadside_stop` with a shared B11-side service
 pose. Their flow is `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT ->

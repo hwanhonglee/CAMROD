@@ -269,6 +269,8 @@ When `set_destination(site="B3", ...)` is called:
 | `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | camrod_planning (state machine) | event | `mission_key`: semantic site/key name (e.g., `camping_site_3`) |
 | `/goal_pose` | `geometry_msgs/PoseStamped` | camrod_planning goal_snapper | event | `site_goal`: raw site-center pose in `map`, later snapped to a lanelet route goal |
 | `/ui/selected_destination` | `avg_msgs/UiDestinationCommand` | self (loop-back) | event | Destination command republished for inspection |
+<!-- HH_260723 - Surface semantic campsite occupancy to the operator UI. -->
+| `/perception/camping_sites/occupancy` | `avg_msgs/CampsiteOccupancy` | UI backend | 2 Hz + transient state | Occupied mission keys; matching destination buttons are disabled and dispatch is rejected |
 
 ---
 
