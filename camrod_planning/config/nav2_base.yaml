@@ -40,9 +40,12 @@ planner_server:
       max_snap_distance_m: 8.0
       interpolation_resolution_m: 0.20
       same_lane_forward_epsilon_m: 0.30
-      # HH_260721 - A campsite return facing against the lane direction uses the reversed outbound shortest path.
+      # HH_260723 - Only an explicit campsite return request may use the
+      # reversed outbound shortest path; ordinary goals always retain one-way routing.
       enable_reverse_lanelet_shortest_path: true
-      # HH_260721 - Normal heading noise must not select reverse routing; the site maneuver turns about 180 degrees.
+      reverse_lanelet_request_topic: "/planning/state_machine/return_to_drop_zone"
+      reverse_lanelet_request_timeout_s: 10.0
+      # The campsite maneuver turns about 180 degrees before requesting its route.
       reverse_lanelet_start_heading_threshold_deg: 120.0
       # HH_260707 - Keep LaneletRoute output on the 2D planning plane.
       flatten_path_z: true

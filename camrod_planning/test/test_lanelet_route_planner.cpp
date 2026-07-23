@@ -1,8 +1,10 @@
 // HH_260721 - Verify forward and yaw-selected reverse routes against the active campground OSM.
 
 #include <cmath>
+#include <chrono>
 #include <filesystem>
 #include <memory>
+#include <thread>
 
 #include "gtest/gtest.h"
 #include "rclcpp/rclcpp.hpp"
@@ -74,18 +76,56 @@ protected:
     planner_ = std::make_unique<camrod_planning::LaneletRoutePlanner>();
     planner_->configure(node_, "LaneletRoute", nullptr, nullptr);
     planner_->activate();
+
+    request_node_ = std::make_shared<rclcpp::Node>("reverse_route_request_test");
+    request_publisher_ =
+      request_node_->create_publisher<avg_msgs::msg::PlanningRecallRequest>(
+      "/planning/state_machine/return_to_drop_zone", rclcpp::QoS(10));
+    executor_.add_node(node_->get_node_base_interface());
+    executor_.add_node(request_node_);
   }
 
   void TearDown() override
   {
     planner_->deactivate();
     planner_->cleanup();
+    executor_.remove_node(request_node_);
+    executor_.remove_node(node_->get_node_base_interface());
+    request_publisher_.reset();
+    request_node_.reset();
     planner_.reset();
     node_.reset();
   }
 
+  bool authorizeReverseRoute()
+  {
+    for (int attempt = 0; attempt < 100; ++attempt) {
+      if (request_publisher_->get_subscription_count() > 0U) {
+        break;
+      }
+      executor_.spin_some();
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    if (request_publisher_->get_subscription_count() == 0U) {
+      return false;
+    }
+
+    avg_msgs::msg::PlanningRecallRequest request;
+    request.site_name = "camping_site_12";
+    request.source = "test_campsite_return";
+    request_publisher_->publish(request);
+    for (int attempt = 0; attempt < 20; ++attempt) {
+      executor_.spin_some();
+      std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    return true;
+  }
+
   std::shared_ptr<rclcpp_lifecycle::LifecycleNode> node_;
   std::unique_ptr<camrod_planning::LaneletRoutePlanner> planner_;
+  std::shared_ptr<rclcpp::Node> request_node_;
+  rclcpp::Publisher<avg_msgs::msg::PlanningRecallRequest>::SharedPtr request_publisher_;
+  rclcpp::executors::SingleThreadedExecutor executor_;
 };
 
 TEST_F(LaneletRoutePlannerTest, UsesShortPathFromDropZoneToRoadsideSite)
@@ -100,6 +140,7 @@ TEST_F(LaneletRoutePlannerTest, UsesShortPathFromDropZoneToRoadsideSite)
 
 TEST_F(LaneletRoutePlannerTest, ReversesShortestPathAfterSiteTurnaround)
 {
+  ASSERT_TRUE(authorizeReverseRoute());
   const auto path = planner_->createPlan(
     makePose(12.7921, 22.52, 103.0),
     makePose(-13.5777, 40.7413, -82.2));
@@ -117,6 +158,15 @@ TEST_F(LaneletRoutePlannerTest, ReversesShortestPathAfterSiteTurnaround)
     makePose(12.7921, 22.52, 23.0),
     makePose(-13.5777, 40.7413, -82.2));
   EXPECT_LT(pathLength(replanned_path), 80.0);
+}
+
+TEST_F(LaneletRoutePlannerTest, KeepsOneWayRouteForOrdinaryOppositeHeadingGoal)
+{
+  const auto path = planner_->createPlan(
+    makePose(12.7921, 22.52, 103.0),
+    makePose(-13.5777, 40.7413, -82.2));
+
+  EXPECT_GT(pathLength(path), 120.0);
 }
 
 TEST_F(LaneletRoutePlannerTest, KeepsOneWayRouteBelowReverseHeadingThreshold)
