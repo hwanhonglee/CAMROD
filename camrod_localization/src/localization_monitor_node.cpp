@@ -307,8 +307,20 @@ private:
     dr_timeout_pub_->publish(dr_timeout_msg);
 
     avg_msgs::msg::AvgLocalizationStatus status;
+    status.header.stamp = now;
+    status.header.frame_id = "map";
     status.mode = mode;
-    status.confidence = confidence;
+    status.confidence = static_cast<float>(confidence);
+    // HH_260723 - Publish the health values used to compute mode/confidence.
+    // Leaving these fields default-initialized made diagnostics report GNSS,
+    // IMU, and wheel inputs missing even while the monitor was in NORMAL mode.
+    status.gnss_ok = gnss_good;
+    status.imu_ok = imu_ok;
+    status.wheel_ok = wheel_good;
+    status.gnss_innovation_norm = diag_available ?
+      last_diag_.gnss_innovation_norm : 0.0F;
+    status.wheel_innovation_norm = diag_available ?
+      last_diag_.wheel_innovation_norm : 0.0F;
 
     avg_msgs::msg::AvgFloat32 confidence_msg;
     confidence_msg.data = static_cast<float>(confidence);

@@ -142,7 +142,7 @@ bringup:
     enable_ntrip: true
     # HH_260722 - Dual-antenna heading remains available without NTRIP: the Lite
     # moving base sends RTCM through XBee to rover UART2, and the Budget rover
-    # publishes NAV-PVT plus NAV-RELPOSNED over /dev/ttyACM0.
+    # publishes NAV-PVT plus NAV-RELPOSNED over /dev/ttyACM1.
     # By default, use internal config defaults declared by sensing launch files.
     camera_params_file: sensing/camera/camera_params.yaml
     camera_device_path: /dev/video0
@@ -154,14 +154,14 @@ bringup:
     # HH_260611: Current rover default is simpleRTK2B Heading through ublox_gps.
     # Set false for the SparkFun ZED-F9P single-antenna profile.
     ublox_dual_antenna: true
-    # HH_260722 - Send CORS only to the Lite moving base on /dev/ttyUSB0. Keep
+    # HH_260722 - Send CORS only to the Lite moving base on /dev/ttyUSB4. Keep
     # rover USB RTCM off so the corrected moving-base stream remains the rover's
     # only reference and absolute RTK plus heading can stay fixed together.
     ublox_dual_forward_ntrip_to_rover: false
     # HH_260722 - Preserve healthy carrier state during normal repeated launches.
     ublox_dual_warm_start_on_startup: false
     # HH_260722 - POWER+XBEE FTDI port connected to the Lite moving-base UART1.
-    ublox_dual_base_rtcm_device: /dev/ttyUSB0
+    ublox_dual_base_rtcm_device: /dev/ttyUSB4
     # HH_260722 - Match the stored Lite moving-base UART1 baud rate.
     ublox_dual_base_rtcm_baud: 115200
     gnss_param_file: sensing/gnss/zed_f9p_rover.yaml

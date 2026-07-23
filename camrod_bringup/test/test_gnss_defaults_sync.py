@@ -14,7 +14,7 @@ _EXPECTED_DEFAULTS = {
     "ublox_dual_antenna": True,
     "ublox_dual_forward_ntrip_to_rover": False,
     "ublox_dual_warm_start_on_startup": False,
-    "ublox_dual_base_rtcm_device": "/dev/ttyUSB0",
+    "ublox_dual_base_rtcm_device": "/dev/ttyUSB4",
     "ublox_dual_base_rtcm_baud": 115200,
 }
 

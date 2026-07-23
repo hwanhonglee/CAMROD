@@ -45,7 +45,7 @@
     # HH_260625: CV7-AHRS yaw is unaided here, so do not fuse it as map heading.
     # imu0_config order:
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
-    # Enabled: roll/pitch orientation + angular velocity. Yaw comes from GNSS pose2.
+    # Enabled: roll/pitch orientation + angular velocity. Yaw comes from GNSS pose1.
     # HH_260720 - robot_localization consumes the explicit standard driver boundary.
     imu0: /sensing/imu/data_ros
     imu0_config: [false, false, false,
@@ -91,20 +91,22 @@
     # Map snapping remains a downstream localization output only.
 
     # HH_260625: Fuse dual-antenna GNSS heading as yaw only.
-    # pose2_config order matches the EKF state vector above.
+    # robot_localization stops scanning pose inputs at the first missing index,
+    # so this yaw-only input must be pose1 directly after pose0.
+    # pose1_config order matches the EKF state vector above.
     # HH_260720 - Reuse the same explicit GNSS mirror for stationary heading.
-    pose2: /sensing/gnss/pose_with_covariance_ros
-    pose2_config: [false, false, false,
+    pose1: /sensing/gnss/pose_with_covariance_ros
+    pose1_config: [false, false, false,
                   false, false, true,
                   false, false, false,
                   false, false, false,
                   false, false, false]
-    pose2_differential: false
-    pose2_relative: false
-    pose2_queue_size: 10
+    pose1_differential: false
+    pose1_relative: false
+    pose1_queue_size: 10
     # HH_260625: Allow startup recovery from a bad IMU-yaw seed.
     # Measurement covariance still controls GNSS heading update weight.
-    pose2_rejection_threshold: 1000.0
+    pose1_rejection_threshold: 1000.0
 
     # State vector: [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
     # HH_260526: Position noise reduced 0.05→0.01, velocity noise 0.5→0.05.
