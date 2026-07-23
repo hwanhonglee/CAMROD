@@ -53,14 +53,16 @@ return path anchored to the completed campsite exit instead of an older route
 position.
 
 <!-- HH_260721 - Document campsite return routing without changing map-wide one-way semantics. -->
-When the route start yaw differs from the matched lanelet direction by at least
+After an explicit campsite request arrives on
+`reverse_lanelet_request_topic`, and the route start yaw differs from the
+matched lanelet direction by at least
 `reverse_lanelet_start_heading_threshold_deg`, `LaneletRoutePlanner` reverses
 the legal goal-to-start shortest path. A campsite return therefore retraces the
 approximately 53 m drop-zone arrival path instead of taking the approximately
-149 m one-way loop. Replanning the same snapped destination keeps the initially
-selected reverse direction even if localization yaw changes temporarily; a new
-destination clears that decision. Other plans retain the OSM `one_way` routing
-graph.
+149 m one-way loop. The request is consumed by that goal, and replanning the
+same snapped destination keeps its selected reverse direction. Ordinary goals
+cannot enter reverse routing from vehicle yaw alone and retain the OSM
+`one_way` routing graph.
 
 <!-- HH_260721 - Document bounded heading disambiguation after a 180-degree maneuver. -->
 `centerline_snapper` uses vehicle heading only among spatially nearby lanelet

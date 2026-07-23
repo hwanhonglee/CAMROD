@@ -14,6 +14,7 @@
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 // HH_260720 - Publish typed CAMROD route metadata instead of generic ROS arrays.
+#include "avg_msgs/msg/planning_recall_request.hpp"
 #include "avg_msgs/msg/route_lanelet_ids.hpp"
 #include "avg_msgs/msg/route_turn_segment.hpp"
 #include "avg_msgs/msg/route_turn_segment_array.hpp"
@@ -144,6 +145,12 @@ public:
     // HH_260721 - Permit the geometric reverse of a legal route only after an explicit 180-degree turn.
     declareIfMissing(plugin_name_ + ".enable_reverse_lanelet_shortest_path", true);
     declareIfMissing(plugin_name_ + ".reverse_lanelet_start_heading_threshold_deg", 120.0);
+    // HH_260723 - A reverse lanelet route is a campsite-return exception, not a
+    // general response to localization yaw or an operator selecting a goal.
+    declareIfMissing(
+      plugin_name_ + ".reverse_lanelet_request_topic",
+      std::string("/planning/state_machine/return_to_drop_zone"));
+    declareIfMissing(plugin_name_ + ".reverse_lanelet_request_timeout_s", 10.0);
     declareIfMissing(plugin_name_ + ".flatten_path_z", true);
     declareIfMissing(
       plugin_name_ + ".route_lanelet_ids_topic",
@@ -172,6 +179,12 @@ public:
     node_->get_parameter(
       plugin_name_ + ".reverse_lanelet_start_heading_threshold_deg",
       reverse_lanelet_start_heading_threshold_deg_);
+    node_->get_parameter(
+      plugin_name_ + ".reverse_lanelet_request_topic",
+      reverse_lanelet_request_topic_);
+    node_->get_parameter(
+      plugin_name_ + ".reverse_lanelet_request_timeout_s",
+      reverse_lanelet_request_timeout_s_);
     node_->get_parameter(plugin_name_ + ".flatten_path_z", flatten_path_z_);
     node_->get_parameter(plugin_name_ + ".route_lanelet_ids_topic", route_lanelet_ids_topic_);
     node_->get_parameter(plugin_name_ + ".async_initialization", async_initialization_);
@@ -184,6 +197,22 @@ public:
     max_snap_distance_m_ = std::max(0.1, max_snap_distance_m_);
     reverse_lanelet_start_heading_threshold_deg_ = std::clamp(
       reverse_lanelet_start_heading_threshold_deg_, 90.0, 179.0);
+    reverse_lanelet_request_timeout_s_ = std::max(0.1, reverse_lanelet_request_timeout_s_);
+
+    if (!reverse_lanelet_request_topic_.empty()) {
+      reverse_lanelet_request_sub_ =
+        node_->create_subscription<avg_msgs::msg::PlanningRecallRequest>(
+        reverse_lanelet_request_topic_, rclcpp::QoS(10),
+        [this](const avg_msgs::msg::PlanningRecallRequest::ConstSharedPtr message) {
+          std::lock_guard<std::mutex> lock(reverse_lanelet_request_mutex_);
+          reverse_lanelet_request_pending_ = true;
+          reverse_lanelet_request_time_ = node_->now();
+          RCLCPP_INFO(
+            node_->get_logger(),
+            "authorized next reverse lanelet route: site=%s source=%s",
+            message->site_name.c_str(), message->source.c_str());
+        });
+    }
 
     // HH_260619 - Publish exact routing lanelet IDs so route-aware cost grids do
     // not infer ambiguous lanelets from overlapping merge polygons.
@@ -202,6 +231,7 @@ public:
     joinInitializationThread();
     route_lanelet_ids_pub_.reset();
     route_turn_segments_pub_.reset();
+    reverse_lanelet_request_sub_.reset();
     traffic_rules_.reset();
     routing_graph_.reset();
     map_.reset();
@@ -213,6 +243,11 @@ public:
     // HH_260721 - A lifecycle restart must not inherit a reverse route decision from an old goal.
     has_previous_route_goal_ = false;
     reverse_route_goal_latched_ = false;
+    {
+      std::lock_guard<std::mutex> request_lock(reverse_lanelet_request_mutex_);
+      reverse_lanelet_request_pending_ = false;
+      reverse_lanelet_request_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+    }
   }
 
   void activate() override
@@ -261,6 +296,7 @@ public:
     const double start_yaw = quaternionToYaw(start.pose.orientation);
     const double start_heading_error_deg = std::abs(
       normalizeAngle(start_yaw - start_match.projection.heading)) * 180.0 / M_PI;
+    const bool reverse_requested_explicitly = hasActiveReverseLaneletRequest();
     // HH_260721 - Keep the selected reverse route across localization-triggered replans of one goal.
     const bool same_route_goal = has_previous_route_goal_ &&
       previous_route_goal_lanelet_id_ == goal_match.lanelet.id() &&
@@ -273,7 +309,8 @@ public:
     const bool reverse_requested_by_goal_latch =
       same_route_goal && reverse_route_goal_latched_;
     bool reverse_lanelet_route = enable_reverse_lanelet_shortest_path_ &&
-      (reverse_requested_by_heading || reverse_requested_by_goal_latch);
+      ((reverse_requested_explicitly && reverse_requested_by_heading) ||
+      reverse_requested_by_goal_latch);
     std::vector<lanelet::ConstLanelet> route_lanelets;
     if (reverse_lanelet_route) {
       // HH_260721 - Reverse the legal outbound shortest path instead of driving the 149 m loop.
@@ -368,6 +405,10 @@ public:
     previous_route_goal_lanelet_id_ = goal_match.lanelet.id();
     previous_route_goal_arc_length_ = goal_match.projection.arc_length;
     reverse_route_goal_latched_ = reverse_lanelet_route;
+    // HH_260723 - Bind a return authorization to one successfully generated
+    // goal. Replans of that goal use reverse_route_goal_latched_; an unrelated
+    // later goal cannot inherit the campsite exception.
+    consumeReverseLaneletRequest();
 
     const auto geometry_t1 = std::chrono::steady_clock::now();
     updatePathOrientations(path);
@@ -390,7 +431,8 @@ public:
       static_cast<long>(goal_match.lanelet.id()),
       reverse_lanelet_route ? "reverse_shortest" : "one_way",
       reverse_requested_by_goal_latch ? "goal_latch" :
-      (reverse_requested_by_heading ? "heading" : "none"),
+      (reverse_requested_explicitly && reverse_requested_by_heading ?
+      "return_request" : "none"),
       start_heading_error_deg,
       route_lanelets.size(), path.poses.size(),
       snap_ms, route_ms, geometry_ms, total_ms);
@@ -398,6 +440,26 @@ public:
   }
 
 private:
+  bool hasActiveReverseLaneletRequest()
+  {
+    std::lock_guard<std::mutex> lock(reverse_lanelet_request_mutex_);
+    if (!reverse_lanelet_request_pending_) {
+      return false;
+    }
+    const double age_s = (node_->now() - reverse_lanelet_request_time_).seconds();
+    if (age_s < 0.0 || age_s > reverse_lanelet_request_timeout_s_) {
+      reverse_lanelet_request_pending_ = false;
+      return false;
+    }
+    return true;
+  }
+
+  void consumeReverseLaneletRequest()
+  {
+    std::lock_guard<std::mutex> lock(reverse_lanelet_request_mutex_);
+    reverse_lanelet_request_pending_ = false;
+  }
+
   template<typename ParameterT>
   void declareIfMissing(const std::string & parameter_name, const ParameterT & value)
   {
@@ -989,6 +1051,9 @@ private:
   double same_lane_forward_epsilon_m_{0.30};
   bool enable_reverse_lanelet_shortest_path_{true};
   double reverse_lanelet_start_heading_threshold_deg_{120.0};
+  std::string reverse_lanelet_request_topic_{
+    "/planning/state_machine/return_to_drop_zone"};
+  double reverse_lanelet_request_timeout_s_{10.0};
   bool allow_lane_changes_{true};
   bool flatten_path_z_{true};
   bool async_initialization_{true};
@@ -999,6 +1064,8 @@ private:
     route_lanelet_ids_pub_;
   rclcpp_lifecycle::LifecyclePublisher<avg_msgs::msg::RouteTurnSegmentArray>::SharedPtr
     route_turn_segments_pub_;
+  rclcpp::Subscription<avg_msgs::msg::PlanningRecallRequest>::SharedPtr
+    reverse_lanelet_request_sub_;
   lanelet::LaneletMapPtr map_;
   lanelet::traffic_rules::TrafficRulesUPtr traffic_rules_;
   lanelet::routing::RoutingGraphUPtr routing_graph_;
@@ -1014,6 +1081,9 @@ private:
   lanelet::Id previous_route_goal_lanelet_id_{lanelet::InvalId};
   double previous_route_goal_arc_length_{0.0};
   bool reverse_route_goal_latched_{false};
+  std::mutex reverse_lanelet_request_mutex_;
+  bool reverse_lanelet_request_pending_{false};
+  rclcpp::Time reverse_lanelet_request_time_{0, 0, RCL_ROS_TIME};
 };
 
 }  // namespace camrod_planning
