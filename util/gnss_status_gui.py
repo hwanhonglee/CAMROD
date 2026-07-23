@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+HH_260723 - Provide a field GNSS dashboard without changing the sensing graph.
+
 Tkinter GUI dashboard for u-blox GNSS status:
   - Fix type            (ublox_msgs/NavPVT.fix_type)
   - Flags                (ublox_msgs/NavPVT.flags, ublox_msgs/NavRELPOSNED9.flags)

@@ -8,8 +8,9 @@
     # ── Server connection ─────────────────────────────────────────────────────
     host: gnssdata.or.kr
     port: 2101
-    mountpoint: "CNJU-RTCM32"
-    # HH_260722 - Inactive legacy alternative: mountpoint: "JECH-RTCM32"
+    # HH_260723 - Use the field-selected JECH RTCM 3.2 stream in both package and bringup mirrors.
+    mountpoint: "JECH-RTCM32"
+    # Inactive legacy alternative: mountpoint: "CNJU-RTCM32"
     username: "hwanhong57@gmail.com"
     password: "gnss"
 

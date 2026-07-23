@@ -5,6 +5,12 @@
 `camrod_bringup` starts the CAMROD stack in dependency order and provides the
 field/simulation configuration tree.
 
+<!-- HH_260723 - Document scoped module launch arguments and camera ownership. -->
+Every included module runs in its own launch-configuration scope. When
+`camera_yolo_container.launch.py` owns the front camera, sensing receives a
+local `enable_front_camera=false` only to avoid a duplicate device open; that
+value cannot leak into perception and disable camera-LiDAR fusion.
+
 ## Launch Order
 
 ```text
@@ -39,12 +45,12 @@ is launched and checked by `camrod_system`.
 Real-hardware bringup now uses the same correction route as standalone sensing:
 
 ```text
-NTRIP -> moving_base_rtcm_writer -> /dev/ttyUSB0 Lite moving base
+NTRIP -> moving_base_rtcm_writer -> /dev/ttyUSB4 Lite moving base
       -> UART/XBee corrected moving-base RTCM -> /dev/ttyACM0 heading rover
       -> NAV-PVT + NAV-RELPOSNED
 ```
 
-`/dev/ttyACM0` is the POWER+GPS heading-rover output. `/dev/ttyUSB0` is the
+`/dev/ttyACM0` is the POWER+GPS heading-rover output. `/dev/ttyUSB4` is the
 POWER+XBEE FTDI input to the Lite moving base. With both present, the ordinary
 real-hardware command above needs no GNSS overrides.
 
@@ -53,7 +59,7 @@ real-hardware command above needs no GNSS overrides.
 | `ublox_dual_antenna` | `true` |
 | `ublox_dual_forward_ntrip_to_rover` | `false` |
 | `ublox_dual_warm_start_on_startup` | `false` |
-| `ublox_dual_base_rtcm_device` | `/dev/ttyUSB0` |
+| `ublox_dual_base_rtcm_device` | `/dev/ttyUSB4` |
 | `ublox_dual_base_rtcm_baud` | `115200` |
 
 Verify the live ownership and solutions without printing NTRIP credentials:
@@ -84,6 +90,9 @@ Detailed wiring, A/B results, and recovery behavior are documented in
 | `config/control/control.yaml` | Bringup mirror of campsite/drop-zone maneuver tuning |
 | `config/control/parking.yaml` | Bringup mirror of reverse and AprilTag parking tuning |
 | `config/perception/apriltag_parking_detector.yaml` | Bringup mirror for the implemented AprilTag parking detector; inactive when reverse parking is selected |
+| `config/perception/perception_params.yaml` | Bringup mirror for camera-LiDAR fusion, YOLO throttling, and campsite occupancy |
+| `config/sensing/lidar/cost_grid.yaml` | Bringup mirror for perception-only dynamic cost and the `raw_lidar_cost_enabled` recovery switch |
+| `config/system/diagnostics/*/localization/localization_lanelet_checker.yaml` | Lanelet output diagnostics evaluated against the live upstream localization pose rate |
 | `config/control/yaw_alignment_zones.yaml` | Optional command-gate yaw zones |
 | `config/planning/` | Nav2 and mission-state configuration |
 | `config/map/drop_zones.yaml` | Drop-zone station position and reverse-axis yaw |

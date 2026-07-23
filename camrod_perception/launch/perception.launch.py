@@ -94,6 +94,8 @@ def generate_launch_description():
         #   lidar_only: force LiDAR-only pipeline
         #   camera_lidar: require camera-lidar pipeline
         DeclareLaunchArgument('perception_mode',        default_value='auto'),
+        # HH_260723 - Keep front-camera availability explicit so container
+        # ownership cannot be mistaken for a disabled perception pipeline.
         DeclareLaunchArgument('enable_camera',          default_value='true'),
         DeclareLaunchArgument('enable_front_camera',    default_value='true'),
         DeclareLaunchArgument('sim',                    default_value='false'),
@@ -115,6 +117,7 @@ def generate_launch_description():
         _inc(pkg_share('camrod_perception', os.path.join('launch', 'yolo.launch.py')),
              'module_namespace', 'perception_param_file', enable_yolo=LaunchConfiguration('enable_yolo_effective')),
 
+        # HH_260723 - Occupancy depends on semantic camera-LiDAR Detection3D.
         _inc(pkg_share('camrod_perception', os.path.join('launch', 'campsite_occupancy.launch.py')),
              'module_namespace', 'perception_param_file', 'camping_sites_yaml',
              condition=IfCondition(LaunchConfiguration('enable_obstacle_fusion_effective'))),

@@ -153,8 +153,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "ublox_dual_base_rtcm_device",
-            # HH_260722 - Pass the second F9P's POWER+XBEE UART through the full
-            # sensing launch; older code exposed only rover /dev/ttyACM0.
+            # HH_260723 - Expose the current POWER+XBEE moving-base correction
+            # port through the full sensing launch.
             default_value="/dev/ttyUSB4",
             description="POWER+XBEE serial device used to correct the moving base",
         ),

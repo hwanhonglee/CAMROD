@@ -1520,7 +1520,7 @@ def generate_launch_description():
         }
         if condition is not None:
             kwargs['condition'] = condition
-        # Keep launch arguments local to each module. In particular, the sensing
+        # HH_260723 - Keep launch arguments local to each module. In particular, the sensing
         # include receives enable_front_camera=false when the composable
         # camera+YOLO path owns that device. Without a scoped group that child
         # value leaked into the following perception include and incorrectly
@@ -1683,7 +1683,7 @@ def generate_launch_description():
         'enable_lidar_obstacle': lc['perception_enable_lidar_obstacle'],
         # In sim mode, default to LiDAR-only perception to avoid GPU/TensorRT dependency.
         'enable_yolo': regular_yolo_enable,
-        # Pass raw parent switches under distinct child inputs. Building a
+        # HH_260723 - Pass raw parent switches under distinct child inputs. Building a
         # derived `enable_camera` substitution here made the child launch
         # resolve its own argument recursively and disabled obstacle_fusion
         # whenever the camera+YOLO component container was selected.

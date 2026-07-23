@@ -31,8 +31,8 @@ ros2 launch camrod_sensing sensing.launch.py imu_model:=gq7
 # Sub-stacks (for isolated bringup or debug)
 ros2 launch camrod_sensing lidar.launch.py
 ros2 launch camrod_sensing radar.launch.py
-# HH_260722 - The default dual route requires both field GNSS ports.
-ls -l /dev/ttyACM0 /dev/ttyUSB0
+# HH_260723 - The default dual route requires both current field GNSS ports.
+ls -l /dev/ttyACM0 /dev/ttyUSB4
 ros2 launch camrod_sensing gnss.launch.py                            # dual antenna, corrected base
 ros2 launch camrod_sensing gnss.launch.py ublox_dual_antenna:=false  # single antenna
 ros2 launch camrod_sensing gnss.launch.py enable_ntrip:=false        # dual, no NTRIP
@@ -172,7 +172,7 @@ graph TD
   end
 
   subgraph GNSS["🛰️ GNSS"]
-    MB{{🛠️ Lite moving base\n/dev/ttyUSB0 POWER+XBEE}}:::hardware
+    MB{{🛠️ Lite moving base\n/dev/ttyUSB4 POWER+XBEE}}:::hardware
     ROVER{{🛠️ Budget heading rover\n/dev/ttyACM0 POWER+GPS}}:::hardware
     NTRIP[[ntrip_client]]:::system
     WRITER[[moving_base_rtcm_writer]]:::system
@@ -280,7 +280,8 @@ graph TD
 |---|---|---|---|---|
 | `/sensing/lidar/points_filtered` | `sensor_msgs/PointCloud2` | camrod_perception, camrod_planning | ~6 Hz field target | Ground-filtered, voxel-downsampled obstacle points in `lidar_link` frame |
 <!-- HH_260720 - Cost grids are generated CAMROD messages, not nav_msgs aliases. -->
-| `/sensing/cost_grid/lidar` | `avg_msgs/AvgOccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_control | 10 Hz | Route-clipped 180×180 @ 0.10 m obstacle grid from LiDAR and perception objects |
+<!-- HH_260723 - The compatibility grid defaults to perception-only dynamic obstacles. -->
+| `/sensing/cost_grid/lidar` | `avg_msgs/AvgOccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_control | 10 Hz | Route-clipped 180×180 @ 0.10 m grid from `/perception/obstacles`; raw filtered LiDAR is optional |
 | `/sensing/cost_grid/radar` | `avg_msgs/AvgOccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_control | 10 Hz | Route-clipped 120×120 @ 0.10 m near-field obstacle grid from radar |
 | `/planning/cost_grid/inflation` | `avg_msgs/AvgOccupancyGrid` | camrod_planning and `camrod_control/cmd_vel_safety_gate` | 6 Hz | 180×180 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
 | `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz single / 1 Hz dual field rate | Raw position and covariance; verify RTK carrier state on NAV-PVT; dual rate matches moving-base epochs and diagnostics accept >= 0.8 Hz |
@@ -316,10 +317,10 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | Fresh PointCloud2/MarkerArray input; publishes at 10 Hz |
-| Internal logic | `lidar_cost_grid_node` projects each filtered point into `map` and merges the height-gated fallback cloud plus perception objects/markers. Costs scale from 65 to 95, and the 0.55 m ego disk remains clear. HH_260720 - after all obstacle disks are painted, cells outside `/map/cost_grid/route_lanelet_mask` plus `route_lanelet_margin_m` are cleared. The filter fails open before a route exists, when the mask is stale, or while the robot deliberately leaves the route during campsite/drop-zone maneuvers. Unchanged inputs and sub-5 cm pose motion reuse the cached generated grid. |
+| Internal logic | HH_260723 - `lidar_cost_grid_node` rasterizes `/perception/obstacles` and configured perception markers by default. `raw_lidar_cost_enabled: false` excludes both preprocessed filtered-cloud inputs; setting it to `true` restores them after restart. Costs scale from 65 to 95, the 0.55 m ego disk remains clear, and cells outside the active route-lanelet mask plus margin are cleared when that mask is valid. |
 | Output effect | `/sensing/cost_grid/lidar`: 180×180 @ 0.10 m (18 m square centred on robot). |
 | Operator-visible symptom | Silent topic → LiDAR/perception inputs are not publishing. Grid frozen → TF `robot_base_link → map` is stale (localization not running). |
-| Related params | `input_topic`, `extra_input_topics`, `cloud_min_z_m`, `cloud_max_z_m`, `perception_marker_topics`, `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `route_lanelet_filter_enable`, `route_lanelet_margin_m`, `route_lanelet_mask_max_age_s`, `route_lanelet_filter_fail_open_when_robot_outside`, `max_message_age_s`, `publish_rate_hz`, `rebuild_min_pose_delta_m` |
+| Related params | `input_topic`, `extra_input_topics`, `raw_lidar_cost_enabled`, `raw_lidar_input_topics`, `cloud_min_z_m`, `cloud_max_z_m`, `perception_marker_topics`, `resolution`, `width`, `height`, `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `route_lanelet_filter_enable`, `route_lanelet_margin_m`, `route_lanelet_mask_max_age_s`, `route_lanelet_filter_fail_open_when_robot_outside`, `max_message_age_s`, `publish_rate_hz`, `rebuild_min_pose_delta_m` |
 | Related topics | obstacle inputs + `/map/cost_grid/route_lanelet_mask` → `/sensing/cost_grid/lidar` |
 
 ### Radar (SEN0592 ×7)
@@ -395,7 +396,7 @@ NTRIP to the rover topic; the production dual mode sends NTRIP only to
 | Field | Detail |
 |---|---|
 | Trigger | Node startup; `enable_ntrip` controls whether the NTRIP client is also started |
-| Internal logic | `ublox_gps_node` opens `/dev/ttyACM0` on the current field robot and requests 10 Hz measurement output (`rate: 10.0`, `nav_rate: 1`). TMODE3 is set to 0 (rover mode). UBX-NAV-PVT and NMEA are published. `ntrip_client` subscribes to `gnssdata.or.kr:2101`, active mountpoint `CNJU-RTCM32`, and forwards RTCM3.2 corrections to the rover. Fix converges from no-fix -> float -> RTK-fixed under open sky. HH_260708 - diagnostics accept a stable 1 Hz field-rate floor and the GNSS device intentionally stays on an operator-verified `/dev/ttyACM*` path rather than by-id. |
+| Internal logic | `ublox_gps_node` opens `/dev/ttyACM0` on the current field robot and requests 10 Hz measurement output (`rate: 10.0`, `nav_rate: 1`). TMODE3 is set to 0 (rover mode). UBX-NAV-PVT and NMEA are published. `ntrip_client` subscribes to `gnssdata.or.kr:2101`, active mountpoint `JECH-RTCM32`, and forwards RTCM3.2 corrections to the rover. Fix converges from no-fix -> float -> RTK-fixed under open sky. HH_260708 - diagnostics accept a stable 1 Hz field-rate floor and the GNSS device intentionally stays on an operator-verified `/dev/ttyACM*` path rather than by-id. |
 | Output effect | `/sensing/gnss/ublox_gps_node/fix`; downstream adapter produces `/sensing/gnss/pose` and `/sensing/gnss/pose_with_covariance`. |
 | Operator-visible symptom | GNSS stays in float -> NTRIP not delivering RTCM. No fix -> check `/dev/ttyACM0`, cable state, and `config_on_startup: false`. |
 | Related params | `config/gnss/zed_f9p_rover.yaml`: `device` (`/dev/ttyACM0`), `rate`, `nav_rate`, `tmode3` |
@@ -403,11 +404,11 @@ NTRIP to the rover topic; the production dual mode sends NTRIP only to
 
 #### Dual antenna — ArduSimple simpleRTK2B Heading (`ublox_dual_antenna:=true`)
 
-<!-- HH_260722 - Document the field wiring and independent absolute/relative RTK paths. -->
+<!-- HH_260723 - Document the current field wiring and independent absolute/relative RTK paths. -->
 | Field | Detail |
 |---|---|
 | Trigger | `ublox_gps_node` startup with `dual_antenna:=true`. `enable_ntrip` controls Python NTRIP client. |
-| Internal logic | NTRIP publishes `/sensing/gnss/ntrip_client/rtcm`; `moving_base_rtcm_writer` writes it to the Lite moving base through `/dev/ttyUSB0`. The corrected base sends RTCM `4072.0`, MSM4 (`1074/1084/1094/1124`), and `1230` through XBee to the Budget heading rover UART2. `/dev/ttyACM0` remains the rover's ROS output and does not receive CORS directly. This is the default path with `ublox_dual_forward_ntrip_to_rover:=false`. |
+| Internal logic | NTRIP publishes `/sensing/gnss/ntrip_client/rtcm`; `moving_base_rtcm_writer` writes it to the Lite moving base through `/dev/ttyUSB4`. The corrected base sends RTCM `4072.0`, MSM4 (`1074/1084/1094/1124`), and `1230` through XBee to the Budget heading rover UART2. `/dev/ttyACM0` remains the rover's ROS output and does not receive CORS directly. This is the default path with `ublox_dual_forward_ntrip_to_rover:=false`. |
 | Output effect | Rover USB publishes absolute `UBX-NAV-PVT` and moving-baseline `UBX-NAV-RELPOSNED` together, exposed as `/sensing/gnss/ublox_gps_node/navpvt`, `/sensing/gnss/navrelposned`, `/sensing/gnss/navheading`, and `/sensing/gnss/ublox_gps_node/fix`. |
 | Operator-visible symptom | Heading fixed but absolute pose float means the base-to-rover link works while moving-base CORS input or its ambiguity solution does not. Absolute fixed but heading invalid means to check Lite UART1 -> XBee -> rover UART2 and RELPOSNED flags. |
 | Related params | `dual_antenna.usb_rtcm_in`, `dual_antenna.block_rtcm_ids`, `ublox_dual_forward_ntrip_to_rover`, `ublox_dual_base_rtcm_device`, `ublox_dual_base_rtcm_baud`; set rover forwarding `false` when base-side RTCM forwarding is used. |
@@ -430,7 +431,7 @@ message types:
 
 | Item | Previous implementation | Corrected implementation |
 |---|---|---|
-| CORS destination | Heading rover `/dev/ttyACM0` | Lite moving base `/dev/ttyUSB0` |
+| CORS destination | Heading rover `/dev/ttyACM0` | Lite moving base `/dev/ttyUSB4` |
 | Rover USB RTCM input | Enabled by default | Disabled by default |
 | Moving-base host port | Not opened by the launch | Opened by `moving_base_rtcm_writer` |
 | Rover correction source | CORS USB and moving-base UART2 mixed | Corrected moving-base UART2 only |
@@ -476,7 +477,7 @@ overrides:
 ros2 launch camrod_sensing gnss.launch.py \
   ublox_dual_antenna:=true \
   ublox_dual_forward_ntrip_to_rover:=false \
-  ublox_dual_base_rtcm_device:=/dev/ttyUSB0 \
+  ublox_dual_base_rtcm_device:=/dev/ttyUSB4 \
   ublox_dual_base_rtcm_baud:=115200
 ```
 
@@ -487,7 +488,7 @@ Expected improvement is not automatic from the extra USB cable alone: the launch
 With the current board wiring, not for both correction injection and final ROS
 output using software alone:
 
-- `/dev/ttyUSB0` is POWER+XBEE and terminates at the Lite moving base UART1. It
+- `/dev/ttyUSB4` is POWER+XBEE and terminates at the Lite moving base UART1. It
   can accept CORS but does not carry the heading rover's NAV-RELPOSNED output.
 - `/dev/ttyACM0` is POWER+GPS and terminates at the Budget heading rover USB. It
   carries both final NAV-PVT and NAV-RELPOSNED, but there is no transparent
@@ -526,7 +527,7 @@ test. The moving-base RAM station ID was restored to `0` and verified by VALGET.
 | Field | Detail |
 |---|---|
 | Trigger | `ntrip_client` node startup (if `enable_ntrip:=true`) |
-| Internal logic | The NTRIP client connects to `gnssdata.or.kr:2101` using the active `CNJU-RTCM32` mountpoint and authenticated credentials. It sends a GGA sentence to the caster and receives continuous RTCM 3.2. In dual mode, `moving_base_rtcm_writer` writes that stream to the Lite moving base through POWER+XBEE. The corrected base then generates `4072.0`, MSM4, and `1230` for the heading rover; CORS is not mixed into rover USB. If the connection drops, the client retries up to 10 times with an 8 s wait (`reconnect_attempt_max: 10`, `reconnect_attempt_wait_seconds: 8`). |
+| Internal logic | The NTRIP client connects to `gnssdata.or.kr:2101` using the active `JECH-RTCM32` mountpoint and authenticated credentials. It sends a GGA sentence to the caster and receives continuous RTCM 3.2. In dual mode, `moving_base_rtcm_writer` writes that stream to the Lite moving base through POWER+XBEE. The corrected base then generates `4072.0`, MSM4, and `1230` for the heading rover; CORS is not mixed into rover USB. If the connection drops, the client retries up to 10 times with an 8 s wait (`reconnect_attempt_max: 10`, `reconnect_attempt_wait_seconds: 8`). |
 | Output effect | Absolute RTK is fixed only when the decoded NAV-PVT carrier solution is fixed; `fix_type=3` alone means a 3D fix, not RTK Fixed. In the ROS `NavPVT` message this is `(flags & 0xC0) == 0x80`. Heading is fixed independently when NAV-RELPOSNED reports moving baseline, valid relative position, valid heading, and fixed carrier solution. |
 | Operator-visible symptom | NAV-PVT remains carrier-float (`(flags & 0xC0) == 0x40`) for > 5 min under clear sky → base corrections are received but ambiguity resolution is failing. Common causes: multipath environment, antenna quality, or RTCM stream gaps. |
 | Required conditions | Active internet connection, CORS network reachable, open-sky GNSS antenna with good ground plane, F9P firmware ≥ HPG 1.13. |
@@ -611,7 +612,7 @@ ros2 launch camrod_sensing camera.launch.py
 | `ublox_dual_antenna` | `true` | Enable simpleRTK2B moving-baseline heading rover mode |
 | `ublox_dual_forward_ntrip_to_rover` | `false` | Keep CORS off rover USB; `true` switches to a direct-rover diagnostic and suppresses the moving-base writer |
 | `ublox_dual_warm_start_on_startup` | `false` | One-shot recovery after a wrong-reference diagnostic; return to `false` after the rover reacquires |
-| `ublox_dual_base_rtcm_device` | `/dev/ttyUSB0` | POWER+XBEE FTDI port used to correct the Lite moving base |
+| `ublox_dual_base_rtcm_device` | `/dev/ttyUSB4` | POWER+XBEE FTDI port used to correct the Lite moving base |
 | `ublox_dual_base_rtcm_baud` | `115200` | Moving-base FTDI baud rate |
 | `enable_imu` | `true` | MicroStrain IMU driver |
 | `imu_model` | `cv7` | IMU hardware model: `cv7` (CV7-AHRS) or `gq7` (GQ7 with optional NTRIP) |
@@ -748,16 +749,16 @@ minutes under open sky.
 2. Check network reachability: `ping www.gnssdata.or.kr`. Firewall or mobile data restrictions can block port 2101.
 3. Check the NTRIP node log for authentication errors: `ros2 node info /sensing/gnss/ntrip_client`.
 4. If RTCM is arriving but float persists, the antenna may have poor sky view or multipath. Try a different antenna location.
-<!-- HH_260722 - Match troubleshooting guidance to the active NTRIP configuration. -->
-5. Verify that the active `CNJU-RTCM32` mountpoint is appropriate for the site; change it only after confirming the required station with an NTRIP browser.
+<!-- HH_260723 - Match troubleshooting guidance to the active NTRIP configuration. -->
+5. Verify that the active `JECH-RTCM32` mountpoint is appropriate for the site; change it only after confirming the required station with an NTRIP browser.
 
-<!-- HH_260722 - Record hardware acceptance checks for simultaneous absolute RTK and heading. -->
+<!-- HH_260723 - Record hardware acceptance checks for simultaneous absolute RTK and heading. -->
 ### Dual GNSS hardware acceptance
 
 Confirm both role-specific ports and launch the default dual-GNSS topology:
 
 ```bash
-ls -l /dev/ttyACM0 /dev/ttyUSB0
+ls -l /dev/ttyACM0 /dev/ttyUSB4
 ros2 launch camrod_sensing gnss.launch.py
 ```
 
@@ -767,7 +768,7 @@ pointing to a distant CORS reference, perform exactly one warm-start launch:
 ```bash
 ros2 launch camrod_sensing gnss.launch.py \
   ublox_dual_forward_ntrip_to_rover:=false \
-  ublox_dual_base_rtcm_device:=/dev/ttyUSB0 \
+  ublox_dual_base_rtcm_device:=/dev/ttyUSB4 \
   ublox_dual_warm_start_on_startup:=true
 ```
 
@@ -943,12 +944,12 @@ ros2 topic hz /sensing/camera/econ_front/image_rect/compressed
 
 Radar remains launched through the existing `radar_sensor.launch.py` path and should be validated by checking `/sensing/radar/*` plus `/system/status` sensing entries.
 
-## 2026-07-22 GNSS Runtime Update
+## 2026-07-23 GNSS Runtime Update
 
-<!-- HH_260722 - Supersede the old heading-only correction topology. -->
+<!-- HH_260723 - Synchronize the current moving-base correction port and mountpoint. -->
 The simpleRTK2B Heading rover publishes RELPOSNED heading and absolute RTK pose
 through its USB connection. Current field defaults send external NTRIP RTCM to
-the Lite moving base through `/dev/ttyUSB0`; its corrected moving-base RTCM then
+the Lite moving base through `/dev/ttyUSB4`; its corrected moving-base RTCM then
 enters the heading rover through UART2. Direct CORS injection into rover USB is
 disabled because the two reference streams broke heading in the field A/B test.
 
@@ -961,4 +962,4 @@ disabled because the two reference streams broke heading in the field A/B test.
 - HH_260702: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; software range filters still ignore no-target values and stable near-zero self echoes.
 - HH_260720 - Full-stack tests with RViz/UI/voice/camera/YOLO/AprilTag parking enabled can saturate the Jetson and delay cost-grid publication. Treat that mode as a load probe, then repeat drive validation with the lighter outdoor profile.
 - HH_260708: ZED-F9P single-antenna GNSS is documented and configured as `/dev/ttyACM0`; diagnostics tolerate 1 Hz effective fix/pose rates while preserving freshness/fix/covariance/jump checks.
-- HH_260722 - The active field NTRIP mountpoint is `CNJU-RTCM32`; seven radar channels use 15-degree angles with 0.30 m common self-echo filtering and a 0.75 m LEFT2 body/multipath override.
+- HH_260723 - The active field NTRIP mountpoint is `JECH-RTCM32`; seven radar channels use 15-degree angles with 0.30 m common self-echo filtering and a 0.75 m LEFT2 body/multipath override.

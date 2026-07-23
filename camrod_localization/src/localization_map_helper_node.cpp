@@ -279,7 +279,7 @@ private:
   {
     NearestResult best;
     const double max_sq = max_search_radius_ * max_search_radius_;
-    // Query a small spatially indexed candidate set instead of walking every
+    // HH_260723 - Query a small spatially indexed candidate set instead of walking every
     // lanelet and centerline segment for each 10 Hz localization update.
     // Multiple candidates keep the result correct around adjacent/overlapping
     // lanelets where polygon distance and centerline distance can differ.
@@ -344,6 +344,16 @@ private:
         (!use_period || skip_by_period) &&
         (!use_distance || skip_by_distance))
       {
+        // HH_260723 - Keep output cadence aligned with localization input while
+        // reusing the last valid snap during a throttled nearest-lanelet lookup.
+        // Previously returning here made healthy 10-20 Hz input look like an
+        // intermittent snapping failure to the diagnostics checker.
+        if (has_last_centerline_output_) {
+          auto cached = last_centerline_output_;
+          cached.header = msg->header;
+          centerline_pub_->publish(cached);
+          centerline_ros_pub_->publish(avg_msgs::conversions::toRos(cached));
+        }
         return;
       }
     }
@@ -380,6 +390,8 @@ private:
     out.pose.covariance[28] = 9999.0;
     out.pose.covariance[35] = yaw_stddev_ * yaw_stddev_;
 
+    last_centerline_output_ = out;
+    has_last_centerline_output_ = true;
     centerline_pub_->publish(out);
     // HH_260720 - Mirror the generated centerline pose at the named standard-ROS boundary.
     centerline_ros_pub_->publish(avg_msgs::conversions::toRos(out));
@@ -534,6 +546,8 @@ private:
   double last_centerline_input_x_{0.0};
   double last_centerline_input_y_{0.0};
   bool has_last_centerline_publish_{false};
+  avg_msgs::msg::AvgPoseWithCovarianceStamped last_centerline_output_;
+  bool has_last_centerline_output_{false};
   double map_ground_z_{0.0};
   lanelet::LaneletMapPtr map_;
   rclcpp::Publisher<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr centerline_pub_;

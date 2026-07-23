@@ -1,4 +1,4 @@
-// HH_260721 - Verify forward and yaw-selected reverse routes against the active campground OSM.
+// HH_260723 - Verify ordinary one-way routes and explicitly authorized campsite returns.
 
 #include <cmath>
 #include <chrono>

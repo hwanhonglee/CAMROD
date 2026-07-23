@@ -3,6 +3,7 @@ import unittest
 
 import yaml
 
+# HH_260723 - Guard the contiguous GNSS position/yaw inputs required by robot_localization.
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "config" / "filter"
 

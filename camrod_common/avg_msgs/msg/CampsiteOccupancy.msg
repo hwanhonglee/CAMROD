@@ -1,4 +1,4 @@
-# Semantic campsite occupancy inferred from perception detections.
+# HH_260723 - Carry semantic campsite occupancy inferred from perception detections.
 avg_msgs/AvgHeader header
 
 # Canonical keys from camping_sites.yaml (for example, "camping_site_3").

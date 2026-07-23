@@ -1050,6 +1050,7 @@ function App() {
       if ('site' in data && 'state' in data) {
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
+      // HH_260723 - Apply perception occupancy before allowing a campsite selection.
       if ('occupied_sites' in data && Array.isArray(data.occupied_sites)) {
         setOccupiedSites(data.occupied_sites);
         setSelectedSite(prev => data.occupied_sites.includes(prev) ? null : prev);
@@ -1150,6 +1151,7 @@ function App() {
   };
 
   const handleToggle = (site) => {
+    // HH_260723 - Keep confirmed occupied sites out of the dispatch flow.
     if (occupiedSites.includes(site)) {
       return;
     }

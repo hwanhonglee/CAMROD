@@ -91,7 +91,7 @@
     # Map snapping remains a downstream localization output only.
 
     # HH_260625: Fuse dual-antenna GNSS heading as yaw only.
-    # robot_localization stops scanning pose inputs at the first missing index,
+    # HH_260723 - robot_localization stops scanning pose inputs at the first missing index,
     # so this yaw-only input must be pose1 directly after pose0.
     # pose1_config order matches the EKF state vector above.
     # HH_260720 - Reuse the same explicit GNSS mirror for stationary heading.

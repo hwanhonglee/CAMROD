@@ -204,7 +204,7 @@ vision_msgs::msg::Detection2DArray::SharedPtr YOLOV9MIT_Node::objects_to_bboxes(
         det.bbox.size_x = obj.rect.width;
         det.bbox.size_y = obj.rect.height;
         vision_msgs::msg::ObjectHypothesisWithPose hypothesis;
-        // Publish the semantic label, not the TensorRT class-array index.
+        // HH_260723 - Publish the semantic label, not the TensorRT class-array index.
         // Downstream fusion and campsite occupancy must be able to distinguish
         // e.g. "tent" without duplicating this model's label table.
         hypothesis.hypothesis.class_id = class_names_[obj.class_id];

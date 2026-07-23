@@ -1,7 +1,20 @@
 # Documentation Changelog
 
+<!-- HH_260723 - Track the v2.0.6 localization, routing, perception, and occupancy field release. -->
+## [v2.0.6-field-docs] - 2026-07-23 (HH_260723)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Promoted v2.0.6 and summarized the explicit reverse-route, camera/YOLO, campsite-occupancy, and perception-only cost profile |
+| package READMEs | Synchronized localization diagnostics, semantic detections, occupied-site blocking, and raw-LiDAR cost-switch contracts |
+| `docs/V2_0_6_RELEASE_NOTES.md` | Recorded root causes, runtime interfaces, verification evidence, and remaining field limits |
+
+---
+
 <!-- HH_260722 - Track the hardware-verified dual-GNSS v2.0.6 production default. -->
-## [v2.0.6-docs] - 2026-07-22 (HH_260722)
+## [v2.0.6-dual-gnss-docs] - 2026-07-22 (HH_260722)
 
 ### Changed
 
@@ -11,7 +24,7 @@
 | `camrod_sensing/README.md` | Replaced the direct-rover diagram and stale mountpoint/topic guidance with the corrected moving-base cascade, A/B evidence, and no-argument default launch |
 | `camrod_bringup/README.md` | Documented the five synchronized GNSS defaults, config-mirror contract, and live acceptance commands |
 | `camrod_bringup/docs/field_test_runbook.md` | Added dual-port preflight, snapshot evidence, RTK/heading acceptance flags, and one-shot recovery guidance |
-| `docs/V2_0_6_RELEASE_NOTES.md` | Recorded implementation scope, hardware measurements, verification evidence, and the two-logical-port limit |
+| `docs/V2_0_6_DUAL_GNSS_RELEASE_NOTES.md` | Recorded implementation scope, hardware measurements, verification evidence, and the two-logical-port limit |
 
 ---
 

@@ -826,6 +826,8 @@ class UiBackendNode(Node):
         )
 
     def _on_campsite_occupancy(self, msg: CampsiteOccupancy) -> None:
+        # HH_260723 - Disable occupied destinations and cancel an active
+        # dispatch before the controller can enter the confirmed campsite.
         occupied_keys = {str(key).strip() for key in msg.occupied_mission_keys if key}
         occupied_sites = sorted(
             site
