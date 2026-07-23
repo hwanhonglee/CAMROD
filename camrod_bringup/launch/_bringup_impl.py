@@ -1520,7 +1520,16 @@ def generate_launch_description():
         }
         if condition is not None:
             kwargs['condition'] = condition
-        return IncludeLaunchDescription(**kwargs)
+        # Keep launch arguments local to each module. In particular, the sensing
+        # include receives enable_front_camera=false when the composable
+        # camera+YOLO path owns that device. Without a scoped group that child
+        # value leaked into the following perception include and incorrectly
+        # disabled camera fusion even though the camera and YOLO components were
+        # running.
+        return GroupAction(
+            actions=[IncludeLaunchDescription(**kwargs)],
+            scoped=True,
+        )
 
     # HH_260611: Treat optional modules as optional at launch time so stale/missing
     # package artifacts do not block GNSS and sensing validation on this x86_64 PC.
@@ -1636,12 +1645,6 @@ def generate_launch_description():
         lc['perception_enable_yolo'], "'",
     ])
     camera_yolo_container_condition = IfCondition(camera_yolo_container_active)
-    front_camera_pipeline_enable = PythonExpression([
-        "'true' if '", lc['sim'], "' != 'true' and '",
-        lc['enable_camera'], "' == 'true' and '",
-        lc['enable_front_camera'], "' == 'true' else 'false'",
-    ])
-
     sensing_args = {
         # sensing.launch.py declares `sensing_namespace` (not `module_namespace`).
         'sensing_namespace': lc['sensing_namespace'],
@@ -1680,14 +1683,16 @@ def generate_launch_description():
         'enable_lidar_obstacle': lc['perception_enable_lidar_obstacle'],
         # In sim mode, default to LiDAR-only perception to avoid GPU/TensorRT dependency.
         'enable_yolo': regular_yolo_enable,
-        # Camera-aware perception fallback:
-        # perception.launch.py disables camera branches automatically when
-        # camera is disabled or the device path does not exist.
-        # Perception consumes the front camera specifically. Do not leave its
-        # camera/YOLO branch enabled when only the rear camera is requested.
-        'enable_camera': front_camera_pipeline_enable,
+        # Pass raw parent switches under distinct child inputs. Building a
+        # derived `enable_camera` substitution here made the child launch
+        # resolve its own argument recursively and disabled obstacle_fusion
+        # whenever the camera+YOLO component container was selected.
+        'enable_camera': lc['enable_camera'],
+        'enable_front_camera': lc['enable_front_camera'],
+        'sim': lc['sim'],
         'camera_device_path': lc['camera_device_path'],
         'perception_mode': lc['perception_mode'],
+        'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
     }
     apply_cfg_overrides(perception_args, perception_overrides)
 

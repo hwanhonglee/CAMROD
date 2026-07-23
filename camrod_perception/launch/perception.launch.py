@@ -34,9 +34,13 @@ def _truthy(raw: str) -> bool:
 def _resolve_camera_pipeline(context, *args, **kwargs):
     mode_raw = context.perform_substitution(LaunchConfiguration('perception_mode')).strip().lower()
     camera_requested = _truthy(context.perform_substitution(LaunchConfiguration('enable_camera')))
+    front_camera_requested = _truthy(
+        context.perform_substitution(LaunchConfiguration('enable_front_camera')))
+    sim = _truthy(context.perform_substitution(LaunchConfiguration('sim')))
     yolo_requested = _truthy(context.perform_substitution(LaunchConfiguration('enable_yolo')))
     camera_path = context.perform_substitution(LaunchConfiguration('camera_device_path')).strip()
 
+    camera_requested = camera_requested and front_camera_requested and not sim
     if mode_raw == 'lidar_only':
         camera_requested = False
         yolo_requested = False
@@ -91,7 +95,10 @@ def generate_launch_description():
         #   camera_lidar: require camera-lidar pipeline
         DeclareLaunchArgument('perception_mode',        default_value='auto'),
         DeclareLaunchArgument('enable_camera',          default_value='true'),
+        DeclareLaunchArgument('enable_front_camera',    default_value='true'),
+        DeclareLaunchArgument('sim',                    default_value='false'),
         DeclareLaunchArgument('camera_device_path',     default_value='/dev/video0'),
+        DeclareLaunchArgument('camping_sites_yaml',     default_value=''),
 
         SetLaunchConfiguration('enable_camera_effective', 'false'),
         SetLaunchConfiguration('enable_yolo_effective', 'false'),
@@ -107,4 +114,8 @@ def generate_launch_description():
 
         _inc(pkg_share('camrod_perception', os.path.join('launch', 'yolo.launch.py')),
              'module_namespace', 'perception_param_file', enable_yolo=LaunchConfiguration('enable_yolo_effective')),
+
+        _inc(pkg_share('camrod_perception', os.path.join('launch', 'campsite_occupancy.launch.py')),
+             'module_namespace', 'perception_param_file', 'camping_sites_yaml',
+             condition=IfCondition(LaunchConfiguration('enable_obstacle_fusion_effective'))),
     ])

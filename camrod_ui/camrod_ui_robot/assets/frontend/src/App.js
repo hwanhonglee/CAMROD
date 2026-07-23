@@ -816,6 +816,7 @@ function App() {
     SITE_NAMES.forEach(site => { init[site] = false; });
     return init;
   });
+  const [occupiedSites, setOccupiedSites] = useState([]);
 
   const [connected, setConnected] = useState(false);
   const [batteryPct, setBatteryPct] = useState(null); // null = 아직 수신 전
@@ -1049,6 +1050,10 @@ function App() {
       if ('site' in data && 'state' in data) {
         setStates(prev => ({ ...prev, [data.site]: data.state }));
       }
+      if ('occupied_sites' in data && Array.isArray(data.occupied_sites)) {
+        setOccupiedSites(data.occupied_sites);
+        setSelectedSite(prev => data.occupied_sites.includes(prev) ? null : prev);
+      }
       // HH_260721 - Handle arrival and lifecycle updates through the shared service contract.
       if ('arrived' in data) {
         setArrivedSite(data.arrived);
@@ -1145,6 +1150,9 @@ function App() {
   };
 
   const handleToggle = (site) => {
+    if (occupiedSites.includes(site)) {
+      return;
+    }
     if (states[site]) {
       // 이미 ON → OFF 불가, 아무것도 하지 않음
       return;
@@ -1160,7 +1168,7 @@ function App() {
 
   // ── 프리뷰에서 "Yes" 클릭 → 실제 ON publish ─────────────────────────────
   const handleConfirmMove = () => {
-    if (selectedSite) {
+    if (selectedSite && !occupiedSites.includes(selectedSite)) {
       applyToggle(selectedSite, true);
       setSelectedSite(null);
     }
@@ -1548,12 +1556,13 @@ function App() {
               {SITE_NAMES.slice(togglePage * 6, togglePage * 6 + 6).map(site => (
                 <button
                   key={site}
-                  className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${anyOn && !states[site] ? 'locked' : ''} ${isReturning ? 'locked' : ''}`}
+                  className={`toggle-card ${states[site] ? 'on' : ''} ${selectedSite === site ? 'selected' : ''} ${anyOn && !states[site] ? 'locked' : ''} ${isReturning ? 'locked' : ''} ${occupiedSites.includes(site) ? 'occupied' : ''}`}
                   onClick={() => handleToggle(site)}
-                  disabled={isReturning}
+                  disabled={isReturning || occupiedSites.includes(site)}
                 >
                   <span className="site-label">{site}</span>
                   {states[site] && <span className="site-on-badge">ON</span>}
+                  {occupiedSites.includes(site) && <span className="site-occupied-badge">사용 중</span>}
                 </button>
               ))}
               {togglePage === Math.ceil(SITE_NAMES.length / 6) - 1 && (

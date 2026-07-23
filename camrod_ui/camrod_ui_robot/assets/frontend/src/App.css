@@ -1227,6 +1227,26 @@ h1 {
   letter-spacing: 0.05em;
 }
 
+.toggle-card.occupied {
+  background: linear-gradient(145deg, #eeeeee, #d3d3d3);
+  border: 2px solid #a33a3a;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.toggle-card.occupied .site-label {
+  color: #6f3434;
+}
+
+.site-occupied-badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: #a33a3a;
+  border-radius: 20px;
+  padding: 0.15rem 0.6rem;
+}
+
 /* ENGAGE 버튼 */
 .engage-card {
   background: linear-gradient(145deg, #e8f0fe, #d0deff);

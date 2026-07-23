@@ -34,6 +34,7 @@
   <depend>std_msgs</depend>
   <!-- HH_260720 - Rear-camera parking-tag detection uses the system AprilTag C library. -->
   <depend>apriltag</depend>
+  <depend>yaml-cpp</depend>
   <!-- HH_260720 - Preserve the original external rectification pipeline. -->
   <exec_depend>image_proc</exec_depend>
   <exec_depend>rclcpp_components</exec_depend>

@@ -23,6 +23,7 @@
 #include "avg_msgs/msg/avg_service_state.hpp"
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
+#include "avg_msgs/msg/campsite_occupancy.hpp"
 #include "avg_msgs/msg/module_state.hpp"
 #include "avg_msgs/msg/motion_operation.hpp"
 #include "avg_msgs/msg/planning_recall_request.hpp"
@@ -155,6 +156,8 @@ public:
       "service_state_topic", "/service/state");
     reverse_path_topic_ = declare_parameter<std::string>(
       "reverse_path_topic", "/control/camping_site_maneuver_controller/path_ros");
+    campsite_occupancy_topic_ = declare_parameter<std::string>(
+      "campsite_occupancy_topic", "/perception/camping_sites/occupancy");
 
     enable_auto_start_from_planning_state_ = declare_parameter<bool>(
       "enable_auto_start_from_planning_state", true);
@@ -333,6 +336,17 @@ public:
           }
         }
       });
+    campsite_occupancy_subscription_ =
+      create_subscription<avg_msgs::msg::CampsiteOccupancy>(
+      campsite_occupancy_topic_, rclcpp::QoS(1).transient_local().reliable(),
+      [this](const avg_msgs::msg::CampsiteOccupancy::SharedPtr message) {
+        occupied_mission_keys_.clear();
+        occupied_mission_keys_.insert(
+          message->occupied_mission_keys.begin(), message->occupied_mission_keys.end());
+        if (isEntryPhase() && isSiteOccupied(site_goal_key_)) {
+          setError("occupied campsite entry blocked: " + site_goal_key_);
+        }
+      });
     operation_service_ = create_service<avg_msgs::srv::RequestMotionOperation>(
       "/control/camping_site_maneuver_controller/request_operation",
       [this](
@@ -378,6 +392,19 @@ private:
            phase_ == CampingSiteManeuverPhase::kAlignReturnRouteYaw ||
            phase_ == CampingSiteManeuverPhase::kReverseOut ||
            phase_ == CampingSiteManeuverPhase::kCrabOut;
+  }
+
+  bool isEntryPhase() const
+  {
+    return phase_ == CampingSiteManeuverPhase::kAlignEntryYaw ||
+           phase_ == CampingSiteManeuverPhase::kReverseIn ||
+           phase_ == CampingSiteManeuverPhase::kCrabIn ||
+           phase_ == CampingSiteManeuverPhase::kRotate180;
+  }
+
+  bool isSiteOccupied(const std::string & mission_key) const
+  {
+    return !mission_key.empty() && occupied_mission_keys_.count(mission_key) > 0U;
   }
 
   avg_msgs::msg::AvgPoseStamped makePose(
@@ -537,6 +564,12 @@ private:
 
   bool adoptWaitReturnState(const std::string & key, const std::string & source)
   {
+    if (isSiteOccupied(key)) {
+      RCLCPP_WARN(
+        get_logger(), "camping_site_maneuver_controller adopt blocked: occupied site %s",
+        key.c_str());
+      return false;
+    }
     if (phase_ != CampingSiteManeuverPhase::kIdle &&
       phase_ != CampingSiteManeuverPhase::kDone &&
       phase_ != CampingSiteManeuverPhase::kError &&
@@ -746,6 +779,14 @@ private:
     std::string automatic_key;
     const std::string mission_key = message.active_mission_key;
     if (mission_key.rfind(site_mission_key_prefix_, 0) == 0) {
+      if (isSiteOccupied(mission_key)) {
+        publishZero();
+        setPhase(
+          CampingSiteManeuverPhase::kError,
+          "occupied campsite auto-entry blocked: " + mission_key);
+        last_auto_key_ = mission_key;
+        return;
+      }
       ensureGoalPairForAutoStart(mission_key);
       automatic_key = mission_key;
     } else if (manualSiteGoalIsReady(message)) {
@@ -814,6 +855,13 @@ private:
       phase_ != CampingSiteManeuverPhase::kError)
     {
       return {false, "site maneuver already active: " + phaseName(phase_)};
+    }
+    if (isSiteOccupied(site_goal_key_)) {
+      publishZero();
+      setPhase(
+        CampingSiteManeuverPhase::kError,
+        "occupied campsite entry blocked: " + site_goal_key_);
+      return {false, "occupied campsite entry blocked: " + site_goal_key_};
     }
     if (!poseIsFresh()) {
       setError("fresh pose unavailable");
@@ -1509,6 +1557,7 @@ private:
   std::string diagnostics_topic_;
   std::string service_state_topic_;
   std::string reverse_path_topic_;
+  std::string campsite_occupancy_topic_;
   bool enable_auto_start_from_planning_state_{true};
   std::string site_mission_key_prefix_{"camping_site_"};
   bool use_goal_pair_for_lateral_offset_{true};
@@ -1610,6 +1659,7 @@ private:
   rclcpp::Time last_status_publish_time_{0, 0, RCL_ROS_TIME};
   std::map<std::string, avg_msgs::msg::AvgPoseStamped> camping_site_goals_;
   std::map<std::string, CampsiteServiceMode> camping_site_service_modes_;
+  std::set<std::string> occupied_mission_keys_;
 
   rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr command_publisher_;
   rclcpp::Publisher<avg_msgs::msg::ModuleState>::SharedPtr status_publisher_;
@@ -1626,6 +1676,8 @@ private:
   rclcpp::Subscription<avg_msgs::msg::MotionOperation>::SharedPtr operation_subscription_;
   rclcpp::Subscription<avg_msgs::msg::UiDestinationCommand>::SharedPtr
     adopt_destination_subscription_;
+  rclcpp::Subscription<avg_msgs::msg::CampsiteOccupancy>::SharedPtr
+    campsite_occupancy_subscription_;
   rclcpp::Service<avg_msgs::srv::RequestMotionOperation>::SharedPtr operation_service_;
   rclcpp::TimerBase::SharedPtr control_timer_;
 };
