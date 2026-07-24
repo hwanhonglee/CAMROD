@@ -253,11 +253,13 @@ critical_topics() {
   # HH_260722 - Capture raw dual-GNSS position, baseline, and RTCM evidence.
   cat <<'EOF'
 /system/status
+/service/state
 /system/diagnostics_agg
 /localization/mode
 /localization/pose
 /planning/state_machine/state
 /control/command_enabled
+/control/cmd_vel_safety_gate/status
 /planning/global_path_avg
 /planning/local_path
 /control/cmd_vel_raw
@@ -416,9 +418,12 @@ cmd_watch() {
     clear || true
     date --iso-8601=seconds
     echo_once_short "/system/status" "system"
+    # HH_260724 - Show operator-visible service progress and gate reasons in the live terminal view.
+    echo_once_short "/service/state" "service_state"
     echo_once_short "/localization/mode" "localization_mode"
     echo_once_short "/planning/state_machine/state" "planning_state"
     echo_once_short "/control/command_enabled" "control_command_enabled"
+    echo_once_short "/control/cmd_vel_safety_gate/status" "control_gate_status"
     # HH_260720 - Inspect the unified generated CAN/BMS platform status.
     echo_once_short "/platform/status" "platform_status"
     echo
