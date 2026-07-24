@@ -213,7 +213,7 @@ private:
     gate_config_.critical_battery_stop_enabled = declare_parameter<bool>(
       "critical_battery_stop_enabled", true);
     gate_config_.critical_battery_percentage = declare_parameter<double>(
-      "critical_battery_percentage", 0.10);
+      "critical_battery_percentage", 0.20);
     gate_policy_.setConfig(gate_config_);
   }
 
@@ -226,6 +226,10 @@ private:
       "charging_departure_grace_s", 15.0);
     charging_override_config_.request_dedup_s = declare_parameter<double>(
       "mission_request_dedup_s", 1.0);
+    charging_override_config_.require_battery_for_departure = declare_parameter<bool>(
+      "require_battery_for_mission_departure", true);
+    charging_override_config_.minimum_departure_battery_percentage = declare_parameter<double>(
+      "minimum_mission_departure_battery_percentage", 0.35);
     charging_override_config_.mission_prefixes = parseLabelSet(
       declare_parameter<std::string>("charger_departure_mission_prefixes", "camping_site_"),
       {"camping_site_"});
@@ -692,6 +696,7 @@ private:
         static_cast<double>(message->battery_percentage), 0.0, 1.0);
     }
     gate_policy_.setPlatformState(state);
+    charging_mission_override_.setBatteryPercentage(state.battery_percentage);
     charging_mission_override_.setCharging(message->is_charging);
     gate_policy_.setEstopSource(platform_status_topic_, message->estop);
     publishState();

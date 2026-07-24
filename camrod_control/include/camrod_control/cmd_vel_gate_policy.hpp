@@ -25,7 +25,7 @@ struct CmdVelGatePolicyConfig
   bool block_on_platform_error_code{true};
   bool require_can_control_mode{true};
   bool critical_battery_stop_enabled{true};
-  double critical_battery_percentage{0.10};
+  double critical_battery_percentage{0.20};
 };
 
 struct PlatformSafetyState

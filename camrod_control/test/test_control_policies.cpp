@@ -147,10 +147,13 @@ TEST(CmdVelGatePolicy, BlocksCanFaultStaleStatusChargingAndCriticalSoc)
       "motor_driver"), std::string::npos);
 
   platform.error_code = 0;
-  platform.battery_percentage = 0.05;
+  platform.battery_percentage = 0.19;
   policy.setPlatformState(platform);
   EXPECT_FALSE(policy.enabled(21.0, false, false));
-  platform.battery_percentage = 0.50;
+  platform.battery_percentage = 0.20;
+  policy.setPlatformState(platform);
+  EXPECT_FALSE(policy.enabled(21.0, false, false));
+  platform.battery_percentage = 0.21;
   policy.setPlatformState(platform);
   EXPECT_FALSE(policy.enabled(21.0, true, false));
   EXPECT_TRUE(policy.enabled(21.0, true, true));
@@ -183,6 +186,10 @@ TEST(ChargingMissionOverride, AcceptsOnlyFreshCampsiteRequestDuringCharging)
   MissionRequestIdentity drop_zone{"drop_zone", "ui", 1, 0};
   MissionRequestIdentity campsite{"camping_site_3", "ui", 2, 0};
   EXPECT_FALSE(policy.activateForMission(drop_zone, 100.0));
+  EXPECT_FALSE(policy.activateForMission(campsite, 100.0));
+  policy.setBatteryPercentage(0.34);
+  EXPECT_FALSE(policy.activateForMission(campsite, 100.0));
+  policy.setBatteryPercentage(0.35);
   EXPECT_TRUE(policy.activateForMission(campsite, 100.0));
   EXPECT_TRUE(policy.isActive(114.9));
   EXPECT_FALSE(policy.activateForMission(campsite, 100.5));
