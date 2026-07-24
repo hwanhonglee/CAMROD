@@ -148,10 +148,12 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p camping_wait_drop_zone:=true \
   -p camping_timeout_s:=600.0 \
   -p simulate_platform_status:=true \
+  -p run_low_battery_finish_then_return:=true \
   -p run_charging_recall:=true \
   -p charging_recall_via_ui:=true \
+  -p run_charging_recall_battery_gate:=true \
   -p charging_recall_mission_key:=camping_site_12 \
-  -p report_file:=/tmp/camrod_v205_b12_charging_recall.json
+  -p report_file:=/tmp/camrod_v207_b12_battery_policy.json
 ```
 
 <!-- HH_260721 - Validate either normal turnaround or constrained roadside phase contracts. -->
@@ -162,6 +164,21 @@ the charging recall transition through `DEPARTING_CHARGER` to a new site route.
 With `charging_recall_via_ui:=true`, the validator publishes
 `UiDestinationCommand` and requires `EXIT_STRAIGHT`, `ALIGN_EXIT_YAW`, and the
 public `DEPARTING_CHARGER` service state before the new route is released.
+With `run_low_battery_finish_then_return:=true`, it drops the simulated SOC
+during the active campsite mission and requires the UI backend to finish the
+site phase, wait at `WAITING_FOR_RETURN_REQUEST` without moving, then continue
+to drop-zone charging only after the validator sends the same `RETURN`
+operation as the user return button.
+With `run_charging_recall_battery_gate:=true`, it first drops the simulated
+platform SOC to `charging_recall_low_battery_percentage` (default `0.34`) and
+requires that the UI/gate do not emit charger departure or released motion. It
+then restores the normal fake SOC and validates the ordinary charging recall.
+
+<!-- HH_260724 - Include operational service and gate states in terminal field status. -->
+For terminal-side operation, `camrod_bringup/scripts/field_test_tool.sh watch`
+prints `/service/state` and `/control/cmd_vel_safety_gate/status` in addition
+to system health, localization, planning state, command enable, and platform
+status. `snapshot` and `hz` include the same topics for post-run evidence.
 
 <!-- HH_260721 - Record the operator/UI departure sequence validated in ordinary simulation. -->
 Selecting another campsite from `DROP_ZONE_WAIT` or charging state does not
@@ -179,5 +196,5 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p run_obstacle_replan:=true \
   -p run_camping:=false \
   -p simulate_platform_status:=true \
-  -p report_file:=/tmp/camrod_v205_obstacle_gate.json
+  -p report_file:=/tmp/camrod_v207_obstacle_gate.json
 ```
