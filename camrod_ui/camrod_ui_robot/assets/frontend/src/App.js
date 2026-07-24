@@ -87,6 +87,34 @@ const RETURNING_STATES = new Set([
   SERVICE_STATE.WAITING_FOR_CHARGING,
 ]);
 
+const formatMissionBlockMessage = (data) => {
+  const minimum = Number.isFinite(Number(data.minimum_battery_percentage))
+    ? Number(data.minimum_battery_percentage)
+    : 35;
+  const battery = Number(data.battery_percentage);
+  if (Number.isFinite(battery) && battery >= 0) {
+    return `배터리 잔량이 ${battery}%입니다. 새 사이트 이동은 ${minimum}% 이상에서만 가능합니다.`;
+  }
+  return `배터리 상태를 아직 받지 못했습니다. 새 사이트 이동은 ${minimum}% 이상 확인 후 가능합니다.`;
+};
+
+const formatBatteryReturnMessage = (data) => {
+  const minimum = Number.isFinite(Number(data.minimum_battery_percentage))
+    ? Number(data.minimum_battery_percentage)
+    : 35;
+  const battery = Number(data.battery_percentage);
+  const prefix = Number.isFinite(battery) && battery >= 0
+    ? `배터리 잔량이 ${battery}%입니다.`
+    : '배터리 잔량이 낮습니다.';
+  if (data.battery_return_started) {
+    return `${prefix} 복귀 요청이 확인되어 충전 구역으로 이동합니다.`;
+  }
+  if (data.battery_return_waiting_for_user) {
+    return `${prefix} 짐을 모두 내린 뒤 이용 완료 버튼을 눌러주세요. 확인 전에는 이동하지 않습니다.`;
+  }
+  return `${prefix} ${minimum}% 미만이면 새 임무를 받지 않고, 현재 임무 완료 후 충전 구역 복귀를 대기합니다.`;
+};
+
 // HH_260721 - Reuse one health/service presentation on waiting and destination screens.
 function RuntimeStatus({ systemHealth, serviceStateName }) {
   return (
@@ -786,7 +814,7 @@ function BatteryIcon({ pct }) {
   const fillColor =
     pct === null ? '#d0d0d0'
     : pct <= 15  ? '#e53935'
-    : pct <= 30  ? '#f57c00'
+    : pct <= 35  ? '#f57c00'
     : '#2d6e40';
 
   // 내부 채움 가용 너비: x=3.5 ~ x=38.5 → 35px
@@ -860,6 +888,8 @@ function App() {
   const [showMoveVerify, setShowMoveVerify] = useState(false);  // 사이트명 입력 확인 팝업
   const [moveVerifyInput, setMoveVerifyInput] = useState('');
   const [moveVerifyError, setMoveVerifyError] = useState(false);
+  const [missionBlockMessage, setMissionBlockMessage] = useState('');
+  const [batteryReturnMessage, setBatteryReturnMessage] = useState('');
 
   const openSettingsLoginModal = () => {
     setActiveModal(null);
@@ -1042,6 +1072,28 @@ function App() {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
+      if (data.error === 'battery_below_mission_minimum') {
+        const cleared = {};
+        SITE_NAMES.forEach(site => { cleared[site] = false; });
+        setStates(cleared);
+        setSelectedSite(null);
+        setShowMoveConfirm(false);
+        setShowMoveVerify(false);
+        setMoveVerifyInput('');
+        setMoveVerifyError(false);
+        setEngageState(false);
+        setMissionBlockMessage(formatMissionBlockMessage(data));
+        return;
+      }
+
+      if ('battery_return_pending' in data) {
+        if (data.battery_return_pending) {
+          setBatteryReturnMessage(formatBatteryReturnMessage(data));
+        } else {
+          setBatteryReturnMessage('');
+        }
+      }
+
       // 초기 연결 시: {"states": {"B1": false, ...}} 전체 상태 수신
       if ('states' in data) {
         setStates(prev => ({ ...prev, ...data.states }));
@@ -1195,6 +1247,7 @@ function App() {
 
   // ── 실제 토글 적용 & WebSocket 전송 ─────────────────────────────────────
   const applyToggle = (site, newState) => {
+    setMissionBlockMessage('');
     const updated = {};
     SITE_NAMES.forEach(s => { updated[s] = false; });
     if (newState) updated[site] = true;
@@ -1434,6 +1487,21 @@ function App() {
           <div className="guest-recall-overlay">
             <div className="guest-recall-box">
               <p className="guest-recall-msg">{guestNavigateSite} 사이트에서 호출되었습니다</p>
+            </div>
+          </div>
+        )}
+        {batteryReturnMessage && (
+          <div className="move-confirm-overlay mission-block-overlay" onClick={() => setBatteryReturnMessage('')}>
+            <div className="move-confirm-box mission-block-box" onClick={e => e.stopPropagation()}>
+              <p className="move-confirm-msg mission-block-msg">{batteryReturnMessage}</p>
+              <div className="move-confirm-btns">
+                <button
+                  className="move-confirm-no mission-block-close"
+                  onClick={() => setBatteryReturnMessage('')}
+                >
+                  확인
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1697,6 +1765,38 @@ function App() {
                     setMoveVerifyError(true);
                   }
                 }}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {missionBlockMessage && (
+        <div className="move-confirm-overlay mission-block-overlay" onClick={() => setMissionBlockMessage('')}>
+          <div className="move-confirm-box mission-block-box" onClick={e => e.stopPropagation()}>
+            <p className="move-confirm-msg mission-block-msg">{missionBlockMessage}</p>
+            <div className="move-confirm-btns">
+              <button
+                className="move-confirm-no mission-block-close"
+                onClick={() => setMissionBlockMessage('')}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {batteryReturnMessage && (
+        <div className="move-confirm-overlay mission-block-overlay" onClick={() => setBatteryReturnMessage('')}>
+          <div className="move-confirm-box mission-block-box" onClick={e => e.stopPropagation()}>
+            <p className="move-confirm-msg mission-block-msg">{batteryReturnMessage}</p>
+            <div className="move-confirm-btns">
+              <button
+                className="move-confirm-no mission-block-close"
+                onClick={() => setBatteryReturnMessage('')}
               >
                 확인
               </button>
