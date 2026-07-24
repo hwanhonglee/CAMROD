@@ -10,6 +10,8 @@
 | `camrod_ui/README.md` | Documented Manual driving display and `/service/state=OPERATOR_STOPPED` cancel/stop behavior |
 | `camrod_system/README.md` | Documented suppression of expected Nav2 ABORTED diagnostics during campsite maneuver ownership |
 | `camrod_bringup/README.md` | Documented live terminal watch visibility for manual/mission engage and platform drive-enable |
+| root `README.md` | Added the operator-visible manual driving and stop/cancel state summary |
+| `docs/V2_0_7_RELEASE_NOTES.md` | Added operator stop, manual driving, Nav2 ABORTED suppression, and follow-up verification evidence |
 
 ---
 

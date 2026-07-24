@@ -20,7 +20,14 @@ Target remote: `hwanhonglee/CAMROD`
   return request.
 - Added persistent UI and terminal visibility for the new operational states:
   the UI header shows service state plus battery policy, and the field-test
-  watch/snapshot topics include `/service/state` and the cmd_vel gate status.
+  watch/snapshot topics include `/service/state`, manual/mission engage,
+  platform drive-enable, and the cmd_vel gate status.
+- Added explicit manual driving and operator-stop visibility. Manual ENGAGE
+  without a campsite selection displays `Manual driving`; operator stop/cancel
+  publishes `/service/state=OPERATOR_STOPPED` after cancelling Nav2, campsite,
+  drop-zone, and parking motion owners.
+- Updated `planning_nav_status_checker` so expected Nav2 cancel/ABORTED samples
+  during campsite maneuver ownership do not raise `System warning`.
 - Documented final parking state semantics: the parking controller can be
   internally `PARKED` while externally `/service/state` is `CHARGING` when CAN
   charging feedback is present.
@@ -51,6 +58,15 @@ selected, the robot remains parked/charging.
   charging.
 - `/service/state=DEPARTING_CHARGER`: a new accepted campsite mission is
   releasing the robot from the charger.
+- `/service/state=OPERATOR_STOPPED`: operator stop/cancel closed the engage
+  gates, cleared the active UI site, requested Nav2 action cancel, and cancelled
+  local maneuver controllers.
+
+During `SITE_ENTRY`, `UNLOAD_WAIT`, `WAITING_FOR_RETURN_REQUEST`, return
+maneuver, parking handoff, and `OPERATOR_STOPPED`, Nav2 may report terminal
+ABORTED/CANCELED samples because motion ownership has moved to a local control
+phase. These samples are not treated as system-health warnings. A planning abort
+while still in `MOVING_TO_SITE` remains a warning/error condition.
 
 ## Configuration Sync
 
@@ -62,6 +78,12 @@ selected, the robot remains parked/charging.
 - `camrod_control/src/cmd_vel_safety_gate_node.cpp`
 - `camrod_control/include/camrod_control/cmd_vel_gate_policy.hpp`
 - `camrod_control/include/camrod_control/charging_mission_override.hpp`
+- `camrod_common/avg_msgs/msg/AvgServiceState.msg`
+- `camrod_system/src/diagnostics/planning_nav_status_checker_node.cpp`
+- `camrod_system/config/diagnostics/default/planning/planning_nav_status_checker.yaml`
+- `camrod_system/config/diagnostics/sim/planning/planning_nav_status_checker.yaml`
+- `camrod_bringup/config/system/diagnostics/default/planning/planning_nav_status_checker.yaml`
+- `camrod_bringup/config/system/diagnostics/sim/planning/planning_nav_status_checker.yaml`
 - `camrod_ui/camrod_ui_robot/launch/ui.launch.py`
 - `camrod_ui/runtime/python/camrod_ui/ui_backend_node.py`
 - `camrod_ui/camrod_ui_robot/assets/frontend/src/App.js`
@@ -82,6 +104,10 @@ mission dispatch requires `35.0`.
   `run_low_battery_finish_then_return:=true`,
   `charging_recall_via_ui:=true`, and
   `run_charging_recall_battery_gate:=true`
+- `./src/colcon_build.sh --packages-up-to avg_msgs camrod_system camrod_ui camrod_bringup --allow-overriding avg_msgs camrod_system camrod_ui camrod_bringup`
+- `colcon test --packages-select camrod_system camrod_ui --event-handlers console_direct+`
+- `./camrod_bringup/scripts/field_test_tool.sh config`
+- `python3 -m py_compile camrod_ui/runtime/python/camrod_ui/ui_backend_node.py camrod_bringup/scripts/sim_validation_runner.py`
 - `git diff --check`
 
 The final simulation report passed and confirmed:
@@ -115,3 +141,5 @@ SITE_ENTRY -> UNLOAD_WAIT -> WAITING_FOR_RETURN_REQUEST
 - The 35% threshold is an admission threshold, not a full-charge target.
 - Wireless-charging success still depends on CAN charging feedback. Without
   that feedback the service state remains `WAITING_FOR_CHARGING`.
+- `System warning` is health severity from diagnostics, not the service phase
+  itself. Site entry and operator-stopped states remain normal service states.

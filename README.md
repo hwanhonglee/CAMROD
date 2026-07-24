@@ -17,6 +17,15 @@ campsite missions require at least 35% SOC. If SOC falls below 35% during an
 active campsite mission, the robot finishes the current site phase and waits for
 the normal user return request before moving back to the drop zone.
 
+<!-- HH_260724 - Clarify operator-visible manual driving and stop/cancel state. -->
+Manual ENGAGE without a campsite selection is shown as `Manual driving` in the
+robot UI. Operator stop/cancel clears active site buttons, cancels Nav2 and local
+maneuver owners, closes engage gates, and publishes
+`/service/state=OPERATOR_STOPPED`. During campsite entry, Nav2 cancel/ABORTED
+events are expected because the local campsite maneuver owns motion; they no
+longer raise a system warning while `/service/state` is in the site maneuver
+handoff.
+
 ## Package Responsibilities
 
 | Package | Responsibility |
