@@ -728,6 +728,21 @@ body {
 .move-confirm-no:hover { background: #e0e0e0; }
 .move-confirm-no:active { transform: scale(0.96); }
 
+.mission-block-box {
+  width: min(88vw, 520px);
+  min-width: 0;
+}
+
+.mission-block-msg {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.mission-block-close {
+  max-width: 240px;
+  margin: 0 auto;
+}
+
 /* ── 사이트명 입력 확인 팝업 ──────────────────────────────────────────────── */
 .move-verify-overlay {
   position: fixed;

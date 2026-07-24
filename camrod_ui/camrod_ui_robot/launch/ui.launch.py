@@ -6,6 +6,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _resolve_default_frontend_dir() -> str:
@@ -131,6 +132,27 @@ def generate_launch_description():
         default_value='/localization/pose',
         description='Pose topic used to detect already-arrived campsite selections',
     )
+    # HH_260724 - Expose the UI backend battery policy so bringup can mirror it.
+    require_battery_for_mission_dispatch_arg = DeclareLaunchArgument(
+        'require_battery_for_mission_dispatch',
+        default_value='true',
+        description='Require battery feedback before accepting a new campsite dispatch',
+    )
+    minimum_mission_dispatch_battery_percent_arg = DeclareLaunchArgument(
+        'minimum_mission_dispatch_battery_percent',
+        default_value='35.0',
+        description='Minimum SOC percent for new campsite dispatch',
+    )
+    low_battery_return_after_current_mission_arg = DeclareLaunchArgument(
+        'low_battery_return_after_current_mission',
+        default_value='true',
+        description='Latch low battery during a campsite mission and wait for user return',
+    )
+    low_battery_return_threshold_percent_arg = DeclareLaunchArgument(
+        'low_battery_return_threshold_percent',
+        default_value='35.0',
+        description='SOC percent that starts the finish-current-mission return latch',
+    )
     ui_backend = Node(
         package='camrod_ui',
         executable='ui_backend_node',
@@ -172,6 +194,23 @@ def generate_launch_description():
             # while the manual UI engage button keeps controlling /planning/engage.
             'publish_engage_from_destination': False,
             'publish_mission_engage_from_destination': True,
+            # HH_260724 - Block new campsite dispatch unless the charger has restored SOC margin.
+            'require_battery_for_mission_dispatch': ParameterValue(
+                LaunchConfiguration('require_battery_for_mission_dispatch'),
+                value_type=bool,
+            ),
+            'minimum_mission_dispatch_battery_percent': ParameterValue(
+                LaunchConfiguration('minimum_mission_dispatch_battery_percent'),
+                value_type=float,
+            ),
+            'low_battery_return_after_current_mission': ParameterValue(
+                LaunchConfiguration('low_battery_return_after_current_mission'),
+                value_type=bool,
+            ),
+            'low_battery_return_threshold_percent': ParameterValue(
+                LaunchConfiguration('low_battery_return_threshold_percent'),
+                value_type=float,
+            ),
             'publish_platform_drive_enable_with_engage': True,
             'default_goal_frame_id': 'map',
             # HH_260617: Fallback destination uses the same mission-key contract.
@@ -197,5 +236,9 @@ def generate_launch_description():
         parking_operation_topic_arg,
         drop_zone_exit_complete_topic_arg,
         arrival_pose_topic_arg,
+        require_battery_for_mission_dispatch_arg,
+        minimum_mission_dispatch_battery_percent_arg,
+        low_battery_return_after_current_mission_arg,
+        low_battery_return_threshold_percent_arg,
         ui_backend,
     ])

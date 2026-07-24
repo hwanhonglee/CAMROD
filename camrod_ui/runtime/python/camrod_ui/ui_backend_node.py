@@ -189,6 +189,45 @@ class UiBackendNode(Node):
         self.publish_mission_engage_from_destination = bool(
             self.declare_parameter("publish_mission_engage_from_destination", False).value
         )
+        # HH_260724 - New campsite departures are admitted only with enough battery margin.
+        self.require_battery_for_mission_dispatch = bool(
+            self.declare_parameter("require_battery_for_mission_dispatch", True).value
+        )
+        self.minimum_mission_dispatch_battery_percent = max(
+            0,
+            min(
+                100,
+                int(
+                    round(
+                        float(
+                            self.declare_parameter(
+                                "minimum_mission_dispatch_battery_percent", 35.0
+                            ).value
+                        )
+                    )
+                ),
+            ),
+        )
+        self.low_battery_return_after_current_mission = bool(
+            self.declare_parameter(
+                "low_battery_return_after_current_mission", True
+            ).value
+        )
+        self.low_battery_return_threshold_percent = max(
+            0,
+            min(
+                100,
+                int(
+                    round(
+                        float(
+                            self.declare_parameter(
+                                "low_battery_return_threshold_percent", 35.0
+                            ).value
+                        )
+                    )
+                ),
+            ),
+        )
         self.publish_platform_drive_enable_with_engage = bool(
             self.declare_parameter("publish_platform_drive_enable_with_engage", True).value
         )
@@ -229,6 +268,9 @@ class UiBackendNode(Node):
         self._latest_service_state: Optional[int] = None
         self._pending_site_after_drop_zone_exit: Optional[tuple[str, str, str]] = None
         self._drop_zone_exit_active = False
+        self._low_battery_return_pending = False
+        self._low_battery_return_started = False
+        self._low_battery_return_wait_notified = False
         # HH_260706 - HTTP site selection dispatches immediately; ignore the
         # local topic echo so the same camping-site command is not applied twice.
         self._last_direct_destination_echo: Optional[tuple[str, bool, str, float]] = None
@@ -492,6 +534,165 @@ class UiBackendNode(Node):
             return True, mission_key, center_distance, "near_site_center"
         return False, mission_key, center_distance, "outside_site"
 
+    def _mission_dispatch_battery_block(self, site: str) -> Optional[Dict[str, Any]]:
+        if not self.require_battery_for_mission_dispatch:
+            return None
+        already_arrived, _, _, _ = self._site_arrival_match(site)
+        if already_arrived:
+            return None
+        with self._lock:
+            battery_percentage = int(self._state.battery_percentage)
+        if battery_percentage < 0:
+            message = (
+                "battery state unavailable; campsite dispatch requires "
+                f">={self.minimum_mission_dispatch_battery_percent}%"
+            )
+        elif battery_percentage >= self.minimum_mission_dispatch_battery_percent:
+            return None
+        else:
+            message = (
+                f"battery {battery_percentage}% is below mission minimum "
+                f"{self.minimum_mission_dispatch_battery_percent}%"
+            )
+        return {
+            "error": "battery_below_mission_minimum",
+            "site": site,
+            "battery_percentage": battery_percentage,
+            "minimum_battery_percentage": self.minimum_mission_dispatch_battery_percent,
+            "message": message,
+        }
+
+    def _low_battery_mission_state(self, state: Optional[int]) -> bool:
+        if state is None:
+            return False
+        return int(state) in {
+            int(AvgServiceState.DEPARTING_CHARGER),
+            int(AvgServiceState.DEPARTING_DROP_ZONE),
+            int(AvgServiceState.MOVING_TO_SITE),
+            int(AvgServiceState.SITE_ARRIVED),
+            int(AvgServiceState.SITE_ENTRY),
+            int(AvgServiceState.UNLOAD_WAIT),
+            int(AvgServiceState.RECALL_TO_SITE_ROAD),
+            int(AvgServiceState.GUEST_LOADING_WAIT),
+            int(AvgServiceState.WAITING_FOR_RETURN_REQUEST),
+        }
+
+    def _low_battery_station_state(self, state: Optional[int]) -> bool:
+        if state is None:
+            return False
+        return int(state) in {
+            int(AvgServiceState.DROP_ZONE_WAIT),
+            int(AvgServiceState.WAITING_FOR_CHARGING),
+            int(AvgServiceState.CHARGING),
+        }
+
+    def _low_battery_return_payload(
+        self,
+        battery_percentage: int,
+        *,
+        started: bool = False,
+        waiting_for_user: bool = False,
+        pending: bool = True,
+    ) -> Dict[str, Any]:
+        message = (
+            "battery below mission return threshold; finish current campsite "
+            "mission, wait for user return request, then return to drop zone"
+        )
+        if started:
+            message = "battery low; user return request accepted; returning to drop zone"
+        elif waiting_for_user:
+            message = "battery low; waiting for user return request before drop-zone return"
+        return {
+            "battery_return_pending": bool(pending),
+            "battery_return_started": bool(started),
+            "battery_return_waiting_for_user": bool(waiting_for_user),
+            "battery_percentage": int(battery_percentage),
+            "minimum_battery_percentage": self.low_battery_return_threshold_percent,
+            "message": message,
+        }
+
+    def _clear_low_battery_return_if_stationary(self, state: Optional[int]) -> None:
+        if not self._low_battery_station_state(state):
+            return
+        if (
+            not self._low_battery_return_pending
+            and not self._low_battery_return_started
+            and not self._low_battery_return_wait_notified
+        ):
+            return
+        self._low_battery_return_pending = False
+        self._low_battery_return_started = False
+        self._low_battery_return_wait_notified = False
+        self._schedule_broadcast(
+            {
+                "battery_return_pending": False,
+                "battery_return_started": False,
+                "battery_return_waiting_for_user": False,
+            }
+        )
+
+    def _maybe_notify_low_battery_waiting_for_user(self) -> None:
+        if (
+            not self._low_battery_return_pending
+            or self._low_battery_return_started
+            or self._low_battery_return_wait_notified
+        ):
+            return
+        if self._latest_service_state != int(AvgServiceState.WAITING_FOR_RETURN_REQUEST):
+            return
+        self._low_battery_return_wait_notified = True
+        with self._lock:
+            battery_percentage = int(self._state.battery_percentage)
+        self._schedule_broadcast(
+            self._low_battery_return_payload(
+                battery_percentage,
+                waiting_for_user=True,
+                pending=True,
+            )
+        )
+
+    def _mark_low_battery_return_started_if_needed(self) -> None:
+        if not self._low_battery_return_pending or self._low_battery_return_started:
+            return
+        self._low_battery_return_started = True
+        with self._lock:
+            battery_percentage = int(self._state.battery_percentage)
+        self._schedule_broadcast(
+            self._low_battery_return_payload(
+                battery_percentage,
+                started=True,
+                pending=True,
+            )
+        )
+
+    def _update_low_battery_return_policy(self, battery_percentage: int, source: str) -> None:
+        if not self.low_battery_return_after_current_mission:
+            return
+        self._clear_low_battery_return_if_stationary(self._latest_service_state)
+        if battery_percentage < 0:
+            return
+        if battery_percentage >= self.low_battery_return_threshold_percent:
+            return
+        if not self._low_battery_mission_state(self._latest_service_state):
+            return
+        if not self._low_battery_return_pending:
+            self._low_battery_return_pending = True
+            self._low_battery_return_started = False
+            self._low_battery_return_wait_notified = False
+            self.get_logger().warn(
+                "low battery return pending: "
+                f"battery={battery_percentage}% "
+                f"threshold={self.low_battery_return_threshold_percent}%"
+            )
+            self._schedule_broadcast(
+                self._low_battery_return_payload(
+                    battery_percentage,
+                    started=False,
+                    pending=True,
+                )
+            )
+        self._maybe_notify_low_battery_waiting_for_user()
+
     def _notify_site_arrival(
         self,
         site: str,
@@ -634,10 +835,14 @@ class UiBackendNode(Node):
             )
         if not msg.battery_state_available:
             return
-        pct = max(0, min(100, int(round(float(msg.battery_percentage) * 100.0))))
+        battery_fraction = float(msg.battery_percentage)
+        if not math.isfinite(battery_fraction):
+            return
+        pct = max(0, min(100, int(math.floor(battery_fraction * 100.0))))
         with self._lock:
             self._state.battery_percentage = pct
         self._schedule_broadcast({"battery": pct})
+        self._update_low_battery_return_policy(pct, source="platform_status")
 
     def _on_arrival_pose(self, msg: AvgPoseStamped) -> None:
         self._latest_arrival_pose = msg
@@ -747,6 +952,7 @@ class UiBackendNode(Node):
             if self.publish_mission_engage_from_destination:
                 self._publish_mission_engage(True, source=f"service_state:{state}")
         elif state in returning_states:
+            self._mark_low_battery_return_started_if_needed()
             self._schedule_broadcast({"service_state": state, "returning": True})
             # HH_260630 - Return-to-drop-zone must re-open the mission/platform
             # gates after the site arrival hold closed them.
@@ -766,6 +972,12 @@ class UiBackendNode(Node):
         elif state == AvgServiceState.GUEST_RECALL_SERVICE:
             # HJ_260601: Notify robot UI that guest requested a recall.
             self._schedule_broadcast({"guest_recall": True})
+        with self._lock:
+            battery_percentage = int(self._state.battery_percentage)
+        self._update_low_battery_return_policy(
+            battery_percentage,
+            source=f"service_state:{state_name}",
+        )
 
     def _publish_service_state(self, state: int, source: str) -> None:
         # HH_260706 - Keep ROS state descriptions and logs ASCII/English; UI
@@ -1154,6 +1366,26 @@ class UiBackendNode(Node):
                 ),
             }
 
+        battery_block = self._mission_dispatch_battery_block(site)
+        if battery_block is not None:
+            self.get_logger().warn(
+                "campsite dispatch blocked by battery gate: "
+                f"site={site} battery={battery_block.get('battery_percentage')} "
+                f"minimum={battery_block.get('minimum_battery_percentage')}"
+            )
+            self._schedule_broadcast(battery_block)
+            return {
+                "site": site,
+                "run": False,
+                "mission_key": mission_key,
+                "goal_pose_published": False,
+                "blocked": True,
+                "message": str(battery_block["message"]),
+                "error": "battery_below_mission_minimum",
+                "battery_percentage": battery_block["battery_percentage"],
+                "minimum_battery_percentage": battery_block["minimum_battery_percentage"],
+            }
+
         if self.publish_engage_from_destination:
             self._publish_engage(True, source=f"{source}:destination")
         if self.publish_mission_engage_from_destination:
@@ -1317,6 +1549,10 @@ class UiBackendNode(Node):
                 "site": normalized_site,
                 "error": "campsite_occupied",
             }
+        if run:
+            battery_block = self._mission_dispatch_battery_block(normalized_site)
+            if battery_block is not None:
+                return {"success": False, **battery_block}
 
         with self._lock:
             self._state.ws_site_states = {s: (s == normalized_site and run) for s in self.site_names}
@@ -1440,6 +1676,11 @@ class UiBackendNode(Node):
                                 "occupied": True,
                             })
                             continue
+                        if new_state:
+                            battery_block = node._mission_dispatch_battery_block(site)
+                            if battery_block is not None:
+                                await ws.send_json(battery_block)
+                                continue
                         if new_state:
                             # Deactivate all other sites, activate this one.
                             with node._lock:
