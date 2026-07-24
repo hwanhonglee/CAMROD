@@ -177,8 +177,9 @@ then restores the normal fake SOC and validates the ordinary charging recall.
 <!-- HH_260724 - Include operational service and gate states in terminal field status. -->
 For terminal-side operation, `camrod_bringup/scripts/field_test_tool.sh watch`
 prints `/service/state` and `/control/cmd_vel_safety_gate/status` in addition
-to system health, localization, planning state, command enable, and platform
-status. `snapshot` and `hz` include the same topics for post-run evidence.
+to system health, localization, planning state, manual/mission engage,
+platform drive-enable, command enable, and platform status. `snapshot` and `hz`
+include the same topics for post-run evidence.
 
 <!-- HH_260721 - Record the operator/UI departure sequence validated in ordinary simulation. -->
 Selecting another campsite from `DROP_ZONE_WAIT` or charging state does not

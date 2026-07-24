@@ -43,6 +43,7 @@ const SERVICE_STATE = Object.freeze({
   CHARGING: 13,
   DEPARTING_CHARGER: 14,
   DEPARTING_DROP_ZONE: 15,
+  OPERATOR_STOPPED: 16,
 });
 const SERVICE_STATE_NAME_BY_ID = Object.freeze(
   Object.fromEntries(Object.entries(SERVICE_STATE).map(([name, id]) => [id, name]))
@@ -66,6 +67,8 @@ const SERVICE_STATE_LABELS = Object.freeze({
   CHARGING: 'Charging',
   DEPARTING_CHARGER: 'Departing charger',
   DEPARTING_DROP_ZONE: 'Departing drop zone',
+  OPERATOR_STOPPED: 'Operator stopped',
+  MANUAL_DRIVING: 'Manual driving',
 });
 const SYSTEM_HEALTH_LABELS = Object.freeze({
   // HH_260721 - Keep health labels English and independent from service progress.
@@ -85,6 +88,17 @@ const RETURNING_STATES = new Set([
   SERVICE_STATE.RETURN_WITH_CARGO,
   SERVICE_STATE.DROP_ZONE_PARKING,
   SERVICE_STATE.WAITING_FOR_CHARGING,
+]);
+const MOVING_SERVICE_STATES = new Set([
+  SERVICE_STATE.MOVING_TO_SITE,
+  SERVICE_STATE.SITE_ENTRY,
+  SERVICE_STATE.RECALL_TO_SITE_ROAD,
+  SERVICE_STATE.DEPARTING_CHARGER,
+  SERVICE_STATE.DEPARTING_DROP_ZONE,
+]);
+const MANUAL_DRIVE_DISPLAY_STATES = new Set([
+  'PREPARING',
+  'DROP_ZONE_WAIT',
 ]);
 const CRITICAL_BATTERY_STOP_PERCENT = 20;
 const MISSION_DISPATCH_MINIMUM_PERCENT = 35;
@@ -1015,6 +1029,14 @@ function App() {
 
   // 현재 ON인 사이트 (이동 중인 사이트)
   const activeSite = SITE_NAMES.find(s => states[s]) || null;
+  // HH_260724 - Manual ENGAGE is motion intent even when no campsite button owns the mission.
+  const manualDriveActive =
+    Boolean(engageState)
+    && !activeSite
+    && !selectedSite
+    && !arrivedSite
+    && !isReturning
+    && MANUAL_DRIVE_DISPLAY_STATES.has(serviceStateName);
 
   // ── 운영시간 게이트 확인 ───────────────────────────────────────────────
   const isWithinOperatingHours = () => {
@@ -1046,14 +1068,14 @@ function App() {
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
     }
-    if (!anyOn && !showWaiting && !isReturning) {
+    if (!anyOn && !manualDriveActive && !showWaiting && !isReturning) {
       idleTimerRef.current = setTimeout(() => {
         setShowWaiting(true);
       }, 10000);
     }
-  }, [anyOn, showWaiting, isReturning]);
+  }, [anyOn, manualDriveActive, showWaiting, isReturning]);
     useEffect(() => {
-    if (anyOn) {
+    if (anyOn || manualDriveActive) {
       // ON이 하나라도 있으면 타이머 해제 & 대기 화면 진입 방지
       if (idleTimerRef.current) {
         clearTimeout(idleTimerRef.current);
@@ -1072,7 +1094,7 @@ function App() {
     return () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
-  }, [anyOn, showWaiting, isReturning]);
+  }, [anyOn, manualDriveActive, showWaiting, isReturning]);
 
   // ── 인터넷 신호 강도 감지 (navigator.connection + online/offline) ─────
   useEffect(() => {
@@ -1178,6 +1200,28 @@ function App() {
           setShowWaiting(true);
           setShowGuestRecall(false);
           setGuestNavigateSite(null);
+        } else if (serviceState === SERVICE_STATE.OPERATOR_STOPPED) {
+          // HH_260724 - Operator stop/cancel clears mission selection but remains visible as service state.
+          const cleared = {};
+          SITE_NAMES.forEach(site => { cleared[site] = false; });
+          setStates(cleared);
+          setSelectedSite(null);
+          setShowMoveConfirm(false);
+          setShowMoveVerify(false);
+          setMoveVerifyInput('');
+          setMoveVerifyError(false);
+          setArrivedSite(null);
+          setShowArrivalComplete(false);
+          setIsReturning(false);
+          setShowGuestRecall(false);
+          setGuestNavigateSite(null);
+        } else if (MOVING_SERVICE_STATES.has(serviceState)) {
+          // HH_260724 - Once backend has accepted motion, do not leave the confirmation preview open.
+          setSelectedSite(null);
+          setShowMoveConfirm(false);
+          setShowMoveVerify(false);
+          setMoveVerifyInput('');
+          setMoveVerifyError(false);
         } else if (ARRIVAL_STATES.has(serviceState) && data.site) {
           setArrivedSite(data.site);
           setShowArrivalComplete(true);
@@ -1209,6 +1253,8 @@ function App() {
       // HH_260708 - Mirror planning engage state broadcast by the backend.
       if ('engage' in data) {
         setEngageState(data.engage);
+      } else if ('engaged' in data) {
+        setEngageState(data.engaged);
       }
       // HH_260708 - Mirror exterior headlight state from the platform light bridge.
       if ('headlight' in data) {
@@ -1242,9 +1288,22 @@ function App() {
 
   // ── 개별 사이트 토글 핸들러 ─────────────────────────────────────────────
   const handleEngage = () => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ engage: !engageState }));
+    if (engageState) {
+      // HH_260724 - ENGAGE OFF is an operator stop, so route it through the full backend stop path.
+      fetch('/ui/stop', { method: 'POST' })
+        .then((res) => { if (res.ok) setEngageState(false); })
+        .catch(() => {});
+      return;
     }
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ engage: true }));
+    }
+  };
+
+  const handleManualStop = () => {
+    // HH_260724 - Manual driving stop must cancel Nav2 and publish OPERATOR_STOPPED.
+    fetch('/ui/stop', { method: 'POST' }).catch(() => {});
+    setEngageState(false);
   };
 
   // 260708: 전조등 ON/OFF — /ui/headlight → /platform/headlight/command
@@ -1322,6 +1381,7 @@ function App() {
   const dateStr = currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
   const timeStr = currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
+  const displayedServiceStateName = manualDriveActive ? 'MANUAL_DRIVING' : serviceStateName;
 
   // 대기 화면: 모든 토글 OFF 상태일 때 표시, 클릭/터치 시 토글 화면으로 전환
   if (showWaiting) {
@@ -1372,7 +1432,7 @@ function App() {
             <div className="wh-right-group">
               <RuntimeStatus
                 systemHealth={systemHealth}
-                serviceStateName={serviceStateName}
+                serviceStateName={displayedServiceStateName}
                 batteryPolicy={currentBatteryPolicy}
               />
               <div className="wh-wifi">
@@ -1582,7 +1642,7 @@ function App() {
           <div className="ch-right">
             <RuntimeStatus
               systemHealth={systemHealth}
-              serviceStateName={serviceStateName}
+              serviceStateName={displayedServiceStateName}
               batteryPolicy={currentBatteryPolicy}
             />
             <div className="wh-wifi ch-wifi">
@@ -1653,6 +1713,20 @@ function App() {
               <div className="preview-yn-btns">
                 <button className="preview-stop-btn" onClick={handleStopMove}>예</button>
               </div>
+            </>
+          ) : manualDriveActive ? (
+            <>
+              <span className="preview-placeholder-title">Manual Drive</span>
+              <p className="preview-moving">배송 로봇이 수동 주행중입니다.</p>
+              <p className="preview-question">운행을 정지하시겠습니까?</p>
+              <div className="preview-yn-btns">
+                <button className="preview-stop-btn" onClick={handleManualStop}>예</button>
+              </div>
+            </>
+          ) : serviceStateName === 'OPERATOR_STOPPED' ? (
+            <>
+              <span className="preview-placeholder-title">Operator Stopped</span>
+              <p className="preview-returning">운행이 정지되었습니다.</p>
             </>
           ) : (
             <>

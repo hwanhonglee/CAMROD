@@ -258,6 +258,9 @@ critical_topics() {
 /localization/mode
 /localization/pose
 /planning/state_machine/state
+/planning/engage
+/planning/mission_engage
+/platform/drive_enable
 /control/command_enabled
 /control/cmd_vel_safety_gate/status
 /planning/global_path_avg
@@ -422,6 +425,10 @@ cmd_watch() {
     echo_once_short "/service/state" "service_state"
     echo_once_short "/localization/mode" "localization_mode"
     echo_once_short "/planning/state_machine/state" "planning_state"
+    # HH_260724 - Manual ENGAGE and mission engage are separate command-admission latches.
+    echo_once_short "/planning/engage" "manual_engage"
+    echo_once_short "/planning/mission_engage" "mission_engage"
+    echo_once_short "/platform/drive_enable" "platform_drive_enable"
     echo_once_short "/control/command_enabled" "control_command_enabled"
     echo_once_short "/control/cmd_vel_safety_gate/status" "control_gate_status"
     # HH_260720 - Inspect the unified generated CAN/BMS platform status.
