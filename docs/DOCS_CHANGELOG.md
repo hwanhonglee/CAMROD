@@ -1,5 +1,20 @@
 # Documentation Changelog
 
+<!-- HH_260724 - Track the low-battery campsite mission policy and v2.0.7 release docs. -->
+## [v2.0.7-battery-policy-docs] - 2026-07-24 (HH_260724)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Promoted v2.0.7 and added the sim validation flag for finish-current-mission low-battery return |
+| `camrod_bringup/README.md` | Documented the low-battery user-return simulation and 34% blocked recall probe |
+| `camrod_control/README.md` | Documented the 20% hard stop, 35% charger departure gate, and parked-versus-charging state semantics |
+| `camrod_ui/README.md` | Documented the 35% campsite dispatch gate and user-confirmed low-battery return latch parameters |
+| `docs/V2_0_7_RELEASE_NOTES.md` | Recorded the battery policy scope, state semantics, synchronized config values, and validation evidence |
+
+---
+
 <!-- HH_260723 - Track the v2.0.6 localization, routing, perception, and occupancy field release. -->
 ## [v2.0.6-field-docs] - 2026-07-23 (HH_260723)
 

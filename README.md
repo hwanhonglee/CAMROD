@@ -2,20 +2,20 @@
 
 <!-- HH_260720 - Document the consolidated parking and command-gate package boundaries. -->
 
-<!-- HH_260723 - Promote the localization, routing, perception, and campsite-occupancy field release. -->
+<!-- HH_260724 - Promote the battery-aware campsite mission and charging-release policy. -->
 
-Current validated baseline: `v2.0.6` ([release notes](docs/V2_0_6_RELEASE_NOTES.md)).
+Current validated baseline: `v2.0.7` ([release notes](docs/V2_0_7_RELEASE_NOTES.md)).
 
 CAMROD is a ROS 2 Humble autonomous mobile robot stack. Route planning, local
 vehicle maneuvers, reverse parking, and hardware command authorization are
 separate runtime responsibilities.
 
-The v2.0.6 field profile keeps ordinary goals on forward one-way Lanelet
-routing, enables reversed shortest-path routing only for an explicit campsite
-return, publishes YOLO detections and camera-LiDAR fusion from the composable
-camera container, blocks occupied tent campsites in control and UI, and keeps
-raw preprocessed LiDAR out of the compatibility cost grid unless its explicit
-runtime switch is enabled.
+The v2.0.7 field profile keeps the v2.0.6 localization, routing, perception,
+and campsite-occupancy baseline, then adds battery-aware campsite admission and
+charging departure. Critical SOC at or below 20% hard-stops command output; new
+campsite missions require at least 35% SOC. If SOC falls below 35% during an
+active campsite mission, the robot finishes the current site phase and waits for
+the normal user return request before moving back to the drop zone.
 
 ## Package Responsibilities
 
@@ -145,8 +145,12 @@ ros2 run camrod_bringup sim_validation_runner.py --ros-args \
   -p camping_wait_drop_zone:=true \
   -p camping_timeout_s:=600.0 \
   -p simulate_platform_status:=true \
+  -p run_low_battery_finish_then_return:=true \
   -p run_charging_recall:=true \
-  -p charging_recall_mission_key:=camping_site_12
+  -p charging_recall_via_ui:=true \
+  -p run_charging_recall_battery_gate:=true \
+  -p charging_recall_mission_key:=camping_site_12 \
+  -p report_file:=/tmp/camrod_v207_b12_battery_policy.json
 ```
 
 Package details are documented in each package README.

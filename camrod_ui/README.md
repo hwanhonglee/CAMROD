@@ -456,8 +456,10 @@ when the original entry did not come from the UI camping-site button.
 
 <!-- HH_260721 - Describe parked-to-site dispatch as a maneuver handoff, not a direct goal. -->
 When `/platform/status.is_charging=true` or the latest service state is
-`DROP_ZONE_WAIT` or `CHARGING`, selecting a campsite stores the destination as pending. The
-backend publishes the mission key to open charging departure, sends
+`DROP_ZONE_WAIT` or `CHARGING`, selecting a campsite is accepted only when the
+latest battery percentage is available and at or above
+`minimum_mission_dispatch_battery_percent` (default `35`). Accepted selections
+store the destination as pending. The backend publishes the mission key to open charging departure, sends
 `MotionOperation.CANCEL` to `/parking/operation` to release final-parking state,
 then sends `MotionOperation.EXIT` to `/control/drop_zone_maneuver_controller/operation`,
 and waits for `/control/drop_zone/exit_complete=true`. Only then does it publish
@@ -465,6 +467,23 @@ the selected operational site pose on `/goal_pose`. A failed or cancelled exit c
 pending destination and disables motion. During the handoff, the UI displays
 `DEPARTING_CHARGER` or `DEPARTING_DROP_ZONE`; it changes to `MOVING_TO_SITE`
 only after the bounded exit maneuver succeeds.
+
+If battery drops below `low_battery_return_threshold_percent` during an active
+campsite mission, the backend does not stop the robot immediately. It broadcasts
+a UI warning, lets the current site phase reach `WAITING_FOR_RETURN_REQUEST`,
+and waits there until the operator/user sends the ordinary return request. It
+does not auto-send `MotionOperation.RETURN`, so the robot will not leave while
+people may still be unloading cargo. New campsite dispatch remains blocked
+until battery reaches the dispatch minimum again.
+
+<!-- HH_260724 - Make the battery policy visible as persistent UI state, not only as a modal edge. -->
+The robot UI header always shows diagnostic health, `/service/state`, and the
+current battery mission policy. The battery line reports critical stop at
+`<=20%`, mission hold below `35%`, finish-current-mission return pending,
+waiting for user return, or active low-battery return. The `/ui/state` snapshot
+also carries `battery_return_pending`, `battery_return_started`, and
+`battery_return_waiting_for_user` so browser refreshes preserve the displayed
+state.
 
 | UI concept | ROS contract |
 |---|---|
@@ -485,3 +504,7 @@ Important destination parameters:
 | `camping_site_maneuver_controller_adopt_topic` | `/control/camping_site_maneuver_controller/adopt` | Control handoff used to enter `WAIT_RETURN` after manual site entry |
 | `drop_zone_maneuver_controller_operation_topic` | `/control/drop_zone_maneuver_controller/operation` | Typed `EXIT`/`CANCEL` handoff used before leaving a parked drop zone |
 | `drop_zone_exit_complete_topic` | `/control/drop_zone/exit_complete` | Releases the pending campsite goal only after straight exit and lane-yaw alignment |
+| `require_battery_for_mission_dispatch` | `true` | Requires a fresh battery percentage before accepting a new campsite dispatch |
+| `minimum_mission_dispatch_battery_percent` | `35.0` | Minimum SOC for a new campsite dispatch; return-to-drop-zone remains available |
+| `low_battery_return_after_current_mission` | `true` | Latches low battery during a campsite mission and requires the next user return request to go back to charge |
+| `low_battery_return_threshold_percent` | `35.0` | SOC threshold that starts the finish-current-mission return latch |

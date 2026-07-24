@@ -49,9 +49,13 @@ Nav2 from reusing a stale pre-maneuver start pose.
 
 `cmd_vel_safety_gate` normally blocks commands while
 the `is_charging` field of `/platform/status` is true. A new `camping_site_*` mission key opens
-a bounded `DEPARTING_CHARGER` window so `drop_zone_maneuver_controller` can leave the
-station. The gate returns to normal `ENABLED` after charging feedback clears,
-or closes again when the departure window expires.
+a bounded `DEPARTING_CHARGER` window only when battery feedback is present and
+at or above `minimum_mission_departure_battery_percentage` (default `0.35`), so
+`drop_zone_maneuver_controller` can leave the station. The gate returns to
+normal `ENABLED` after charging feedback clears, or closes again when the
+departure window expires.
+The same gate keeps the hard critical-SOC stop at
+`critical_battery_percentage` (default `0.20`) regardless of mission state.
 
 `drop_zone_maneuver_controller` reads semantic drop-zone yaw as the reverse travel axis,
 aligns the robot body 180 degrees away from that axis, and starts the selected
@@ -63,9 +67,11 @@ After parking, a new campsite call starts `EXIT_STRAIGHT`, then
 pending until `/control/drop_zone/exit_complete` reports success.
 
 <!-- HH_260721 - Document final parking and charger departure service states. -->
-Final parking publishes `DROP_ZONE_PARKING`, followed by
-`WAITING_FOR_CHARGING` while stopped for charger contact and `CHARGING` after
-CAN feedback confirms charging. A new campsite call publishes
+Final parking publishes `DROP_ZONE_PARKING`. The parking controller may
+transiently report `WAITING_FOR_CHARGING` after it reaches the expected contact
+pose but before CAN confirms charger power. Once `/platform/status.is_charging`
+is true, the externally visible service state is `CHARGING` even though the
+parking controller's internal phase is still `PARKED`. A new campsite call publishes
 `DEPARTING_CHARGER` when that feedback was active, or `DEPARTING_DROP_ZONE`
 when the robot was parked without an active charger.
 
