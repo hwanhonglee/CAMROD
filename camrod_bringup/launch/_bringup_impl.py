@@ -1346,6 +1346,27 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'system/api_ui_port', 8010),
             'API UI backend bind port',
         ),
+        # HH_260724 - Keep UI mission-admission thresholds visible in bringup config.
+        (
+            'api_ui_require_battery_for_mission_dispatch',
+            cfg_get(launch_cfg, 'system/api_ui_require_battery_for_mission_dispatch', True),
+            'Require battery feedback before accepting new campsite dispatch',
+        ),
+        (
+            'api_ui_minimum_mission_dispatch_battery_percent',
+            cfg_get(launch_cfg, 'system/api_ui_minimum_mission_dispatch_battery_percent', 35.0),
+            'Minimum SOC percent for new campsite dispatch',
+        ),
+        (
+            'api_ui_low_battery_return_after_current_mission',
+            cfg_get(launch_cfg, 'system/api_ui_low_battery_return_after_current_mission', True),
+            'Latch low battery during a campsite mission and wait for user return',
+        ),
+        (
+            'api_ui_low_battery_return_threshold_percent',
+            cfg_get(launch_cfg, 'system/api_ui_low_battery_return_threshold_percent', 35.0),
+            'SOC percent that starts the finish-current-mission return latch',
+        ),
 
         ('enable_radar', cfg_get(launch_cfg, 'sensing/enable_radar', False), 'Enable serial radar'),
         ('radar_log_status', cfg_get(launch_cfg, 'sensing/radar_log_status', False), 'Print per-port radar status lines'),
@@ -1427,10 +1448,13 @@ def generate_launch_description():
         ('control_cmd_vel_gate_mission_request_topic', cfg_get(launch_cfg, 'control/cmd_vel_gate_mission_request_topic', '/planning/mission_key'), 'Mission request topic used for charger departure'),
         ('control_cmd_vel_gate_charger_departure_mission_prefixes', cfg_get(launch_cfg, 'control/cmd_vel_gate_charger_departure_mission_prefixes', 'camping_site_'), 'Mission prefixes allowed to depart the charger'),
         ('control_cmd_vel_gate_mission_request_dedup_s', cfg_get(launch_cfg, 'control/cmd_vel_gate_mission_request_dedup_s', 1.0), 'Repeated mission request deduplication window'),
+        # HH_260724 - Match the package YAML charger-departure SOC gate in full bringup.
+        ('control_cmd_vel_gate_require_battery_for_mission_departure', cfg_get(launch_cfg, 'control/cmd_vel_gate_require_battery_for_mission_departure', True), 'Require battery feedback before charger departure'),
+        ('control_cmd_vel_gate_minimum_mission_departure_battery_percentage', cfg_get(launch_cfg, 'control/cmd_vel_gate_minimum_mission_departure_battery_percentage', 0.35), 'Minimum SOC ratio for charger departure'),
         ('control_cmd_vel_gate_block_on_platform_error_code', cfg_get(launch_cfg, 'control/cmd_vel_gate_block_on_platform_error_code', True), 'Block on non-zero platform CAN error mask'),
         ('control_cmd_vel_gate_require_can_control_mode', cfg_get(launch_cfg, 'control/cmd_vel_gate_require_can_control_mode', True), 'Require Ranger CAN command mode'),
         ('control_cmd_vel_gate_critical_battery_stop_enabled', cfg_get(launch_cfg, 'control/cmd_vel_gate_critical_battery_stop_enabled', True), 'Block at critical BMS SOC'),
-        ('control_cmd_vel_gate_critical_battery_percentage', cfg_get(launch_cfg, 'control/cmd_vel_gate_critical_battery_percentage', 0.10), 'Critical BMS SOC ratio'),
+        ('control_cmd_vel_gate_critical_battery_percentage', cfg_get(launch_cfg, 'control/cmd_vel_gate_critical_battery_percentage', 0.20), 'Critical BMS SOC ratio'),
         ('parking_param_file', parking_param_default, 'Parking parameter YAML path'),
 
         ('map_path', map_path_default, 'Lanelet2 map path'),
@@ -1903,6 +1927,11 @@ def generate_launch_description():
         'enable_ui_backend': lc['enable_api_ui'],
         'ui_host': lc['api_ui_host'],
         'ui_port': lc['api_ui_port'],
+        # HH_260724 - Pass the bringup-level SOC policy to camrod_ui.launch.py.
+        'require_battery_for_mission_dispatch': lc['api_ui_require_battery_for_mission_dispatch'],
+        'minimum_mission_dispatch_battery_percent': lc['api_ui_minimum_mission_dispatch_battery_percent'],
+        'low_battery_return_after_current_mission': lc['api_ui_low_battery_return_after_current_mission'],
+        'low_battery_return_threshold_percent': lc['api_ui_low_battery_return_threshold_percent'],
         # Share bringup camping-sites YAML with UI backend so
         # /ui/selected_destination can dispatch exact goal_pose coordinates.
         'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],

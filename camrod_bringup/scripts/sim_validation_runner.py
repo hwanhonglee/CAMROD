@@ -121,6 +121,28 @@ class SimValidationRunner(Node):
         self.run_charging_recall = bool(
             self.declare_parameter("run_charging_recall", False).value
         )
+        self.run_charging_recall_battery_gate = bool(
+            self.declare_parameter("run_charging_recall_battery_gate", False).value
+        )
+        self.run_low_battery_finish_then_return = bool(
+            self.declare_parameter("run_low_battery_finish_then_return", False).value
+        )
+        self.low_battery_mission_percentage = float(
+            self.declare_parameter("low_battery_mission_percentage", 0.34).value
+        )
+        self.low_battery_return_manual_observe_s = float(
+            self.declare_parameter("low_battery_return_manual_observe_s", 2.0).value
+        )
+        self.charging_recall_low_battery_percentage = float(
+            self.declare_parameter(
+                "charging_recall_low_battery_percentage", 0.34
+            ).value
+        )
+        self.charging_recall_battery_gate_observe_s = float(
+            self.declare_parameter(
+                "charging_recall_battery_gate_observe_s", 2.0
+            ).value
+        )
         # HH_260721 - Optionally validate charging recall through the real UI command boundary.
         self.charging_recall_via_ui = bool(
             self.declare_parameter("charging_recall_via_ui", False).value
@@ -955,6 +977,38 @@ class SimValidationRunner(Node):
             return pose
         return None
 
+    def publish_charging_recall_request(
+        self,
+        recall_key: str,
+        goal_pose: RosPoseStamped,
+        source: str,
+    ) -> None:
+        if self.charging_recall_via_ui:
+            # HH_260724 - Exercise the UI battery dispatch gate before the route is released.
+            site_number = recall_key.removeprefix("camping_site_")
+            destination = UiDestinationCommand()
+            destination.header.stamp = self.get_clock().now().to_msg()
+            destination.site = f"B{site_number}"
+            destination.run = True
+            destination.mission_key = recall_key
+            destination.source = source
+            for _ in range(4):
+                self.pub_ui_destination.publish(destination)
+                self.spin_for(0.05)
+            return
+
+        recall_msg = PlanningMissionKey()
+        recall_msg.header.stamp = self.get_clock().now().to_msg()
+        recall_msg.mission_key = recall_key
+        recall_msg.source = source
+        recall_msg.publish_route_goal = False
+        self.publish_engage(True)
+        self.publish_mission_engage(True)
+        for _ in range(4):
+            self.pub_mission_key.publish(recall_msg)
+            self.spin_for(0.05)
+        self.publish_goal_pose(goal_pose)
+
     def check_manual_goal(self) -> None:
         self.cancel_all_actions()
         self.clear_obstacle()
@@ -1248,6 +1302,33 @@ class SimValidationRunner(Node):
         charging_recall_site_arrived = False
         charging_recall_global_path_base = 0
         charging_recall_local_path_base = 0
+        charging_recall_battery_gate_enabled = (
+            self.run_charging_recall
+            and self.run_charging_recall_battery_gate
+        )
+        charging_recall_low_battery_requested = False
+        charging_recall_low_battery_done = False
+        charging_recall_low_battery_departure_seen = False
+        charging_recall_low_battery_cmd_released = False
+        charging_recall_low_battery_global_base = 0
+        charging_recall_low_battery_local_base = 0
+        charging_recall_low_battery_global_delta = 0
+        charging_recall_low_battery_local_delta = 0
+        charging_recall_low_battery_request_time = 0.0
+        charging_recall_low_battery_ok = not charging_recall_battery_gate_enabled
+        charging_recall_recovered_battery_percentage = self.fake_platform_battery_percentage
+        low_battery_finish_return_enabled = (
+            self.run_low_battery_finish_then_return
+            and self.simulate_platform_status
+            and self.camping_wait_drop_zone
+        )
+        low_battery_finish_triggered = False
+        low_battery_finish_wait_seen = False
+        low_battery_finish_wait_start = 0.0
+        low_battery_finish_no_auto_return = True
+        low_battery_finish_manual_return_sent = False
+        low_battery_finish_return_started = False
+        low_battery_finish_recovered = False
         reached_nav = False
         seen_goal_reached_state = False
         seen_site_key = False
@@ -1300,13 +1381,43 @@ class SimValidationRunner(Node):
             if any(token in site_msg for token in ("CRAB_IN", "ROTATE_180", "WAIT_RETURN")):
                 seen_site_phase = True
             if (
+                low_battery_finish_return_enabled
+                and not low_battery_finish_triggered
+                and (
+                    seen_site_phase
+                    or service_state_name
+                    in {"MOVING_TO_SITE", "SITE_ENTRY", "UNLOAD_WAIT"}
+                )
+            ):
+                self.fake_platform_battery_percentage = max(
+                    0.0, min(1.0, self.low_battery_mission_percentage)
+                )
+                self.spin_for(0.25)
+                low_battery_finish_triggered = True
+            if (
                 "WAIT_RETURN" in site_msg
                 and service_state_name == "WAITING_FOR_RETURN_REQUEST"
             ):
                 # HH_260721 - Do not leave the site before the public return-wait state is observable.
-                self.publish_operation(
-                    self.pub_site_operation, MotionOperation.RETURN, repeats=1
-                )
+                if low_battery_finish_return_enabled:
+                    if not low_battery_finish_wait_seen:
+                        low_battery_finish_wait_seen = True
+                        low_battery_finish_wait_start = time.monotonic()
+                    observe_s = max(0.0, self.low_battery_return_manual_observe_s)
+                    if (
+                        not low_battery_finish_manual_return_sent
+                        and time.monotonic() >= low_battery_finish_wait_start + observe_s
+                    ):
+                        self.publish_operation(
+                            self.pub_site_operation,
+                            MotionOperation.RETURN,
+                            repeats=1,
+                        )
+                        low_battery_finish_manual_return_sent = True
+                else:
+                    self.publish_operation(
+                        self.pub_site_operation, MotionOperation.RETURN, repeats=1
+                    )
             # HH_260701 - RETURNING can be emitted before the campsite exit is
             # actually complete. Require the concrete site maneuver phases so
             # the smoke test catches engage/gate issues that stop CRAB_OUT.
@@ -1322,6 +1433,24 @@ class SimValidationRunner(Node):
                 )
             seen_crab_out = seen_crab_out or "CRAB_OUT" in site_msg
             seen_done = seen_done or "DONE" in site_msg
+            low_battery_return_started_now = (
+                "CRAB_OUT" in site_msg
+                or service_state_name == "RETURN_WITH_CARGO"
+            )
+            if (
+                low_battery_finish_return_enabled
+                and low_battery_finish_wait_seen
+                and low_battery_return_started_now
+                and not low_battery_finish_manual_return_sent
+            ):
+                low_battery_finish_no_auto_return = False
+            low_battery_finish_return_started = (
+                low_battery_finish_return_started
+                or (
+                    low_battery_finish_manual_return_sent
+                    and low_battery_return_started_now
+                )
+            )
             # HH_260720 - Validate drop-zone alignment and reverse parking as
             # separate control and parking responsibilities.
             seen_drop_maneuver_alignment = (
@@ -1356,6 +1485,16 @@ class SimValidationRunner(Node):
             seen_service_charging = (
                 seen_service_charging or service_state_name == "CHARGING"
             )
+            if (
+                low_battery_finish_return_enabled
+                and seen_service_charging
+                and not low_battery_finish_recovered
+            ):
+                self.fake_platform_battery_percentage = max(
+                    0.0, min(1.0, charging_recall_recovered_battery_percentage)
+                )
+                self.spin_for(0.25)
+                low_battery_finish_recovered = True
             # HH_260721 - Capture UI-visible charger departure and both bounded exit phases.
             charging_recall_service_departure_seen = (
                 charging_recall_service_departure_seen
@@ -1375,12 +1514,83 @@ class SimValidationRunner(Node):
                 or "ERROR" in reverse_parking_controller_msg
             )
 
+            if (
+                charging_recall_battery_gate_enabled
+                and seen_reverse_parking_controller_parked
+                and seen_gate_charging_state
+                and not charging_recall_low_battery_requested
+            ):
+                recall_key = self.charging_recall_mission_key.strip() or mission_key
+                charging_recall_goal_pose = self.load_camping_goal(recall_key)
+                if charging_recall_goal_pose is None:
+                    seen_drop_sequence_error = True
+                    break
+                self.fake_platform_battery_percentage = max(
+                    0.0, min(1.0, self.charging_recall_low_battery_percentage)
+                )
+                self.spin_for(0.25)
+                self.reset_cmd_metrics()
+                charging_recall_low_battery_global_base = self.global_path_count
+                charging_recall_low_battery_local_base = self.local_path_count
+                self.publish_charging_recall_request(
+                    recall_key,
+                    charging_recall_goal_pose,
+                    "sim_charging_recall_low_battery",
+                )
+                charging_recall_low_battery_requested = True
+                charging_recall_low_battery_request_time = time.monotonic()
+
+            if (
+                charging_recall_low_battery_requested
+                and not charging_recall_low_battery_done
+            ):
+                charging_recall_low_battery_departure_seen = (
+                    charging_recall_low_battery_departure_seen
+                    or service_state_name == "DEPARTING_CHARGER"
+                    or "state=DEPARTING_CHARGER" in gate_status_msg
+                )
+                charging_recall_low_battery_cmd_released = (
+                    charging_recall_low_battery_cmd_released
+                    or self.max_abs_since.get("/control/cmd_vel", 0.0) > 0.03
+                )
+                observe_s = max(0.1, self.charging_recall_battery_gate_observe_s)
+                if time.monotonic() > charging_recall_low_battery_request_time + observe_s:
+                    charging_recall_low_battery_global_delta = (
+                        self.global_path_count - charging_recall_low_battery_global_base
+                    )
+                    charging_recall_low_battery_local_delta = (
+                        self.local_path_count - charging_recall_low_battery_local_base
+                    )
+                    route_goal_blocked = charging_recall_low_battery_global_delta == 0
+                    ui_boundary_ok = self.charging_recall_via_ui and route_goal_blocked
+                    motion_boundary_ok = (
+                        not charging_recall_low_battery_departure_seen
+                        and not charging_recall_low_battery_cmd_released
+                    )
+                    charging_recall_low_battery_ok = bool(
+                        motion_boundary_ok
+                        and (
+                            ui_boundary_ok
+                            or not self.charging_recall_via_ui
+                        )
+                    )
+                    self.fake_platform_battery_percentage = max(
+                        0.0, min(1.0, charging_recall_recovered_battery_percentage)
+                    )
+                    self.spin_for(0.25)
+                    self.reset_cmd_metrics()
+                    charging_recall_low_battery_done = True
+
             # HH_260721 - Recall only after both parking and the gate confirm the simulated charge.
             if (
                 self.run_charging_recall
                 and seen_reverse_parking_controller_parked
                 and seen_gate_charging_state
                 and not charging_recall_requested
+                and (
+                    not charging_recall_battery_gate_enabled
+                    or charging_recall_low_battery_done
+                )
             ):
                 recall_key = self.charging_recall_mission_key.strip() or mission_key
                 charging_recall_goal_pose = self.load_camping_goal(recall_key)
@@ -1390,30 +1600,13 @@ class SimValidationRunner(Node):
                 self.reset_cmd_metrics()
                 charging_recall_global_path_base = self.global_path_count
                 charging_recall_local_path_base = self.local_path_count
-                if self.charging_recall_via_ui:
-                    # HH_260721 - Let ui_backend own charger exit, engage, and delayed goal release.
-                    site_number = recall_key.removeprefix("camping_site_")
-                    destination = UiDestinationCommand()
-                    destination.header.stamp = self.get_clock().now().to_msg()
-                    destination.site = f"B{site_number}"
-                    destination.run = True
-                    destination.mission_key = recall_key
-                    destination.source = "sim_charging_recall_ui"
-                    for _ in range(4):
-                        self.pub_ui_destination.publish(destination)
-                        self.spin_for(0.05)
-                else:
-                    recall_msg = PlanningMissionKey()
-                    recall_msg.header.stamp = self.get_clock().now().to_msg()
-                    recall_msg.mission_key = recall_key
-                    recall_msg.source = "sim_charging_recall"
-                    recall_msg.publish_route_goal = False
-                    self.publish_engage(True)
-                    self.publish_mission_engage(True)
-                    for _ in range(4):
-                        self.pub_mission_key.publish(recall_msg)
-                        self.spin_for(0.05)
-                    self.publish_goal_pose(charging_recall_goal_pose)
+                self.publish_charging_recall_request(
+                    recall_key,
+                    charging_recall_goal_pose,
+                    "sim_charging_recall_ui"
+                    if self.charging_recall_via_ui
+                    else "sim_charging_recall",
+                )
                 charging_recall_requested = True
                 charging_recall_request_time = time.monotonic()
 
@@ -1542,7 +1735,24 @@ class SimValidationRunner(Node):
                 and charging_recall_site_arrived
             )
         )
-        ok = bool(site_ok and drop_zone_ok and charging_recall_ok)
+        low_battery_finish_return_ok = (
+            not low_battery_finish_return_enabled
+            or (
+                low_battery_finish_triggered
+                and low_battery_finish_wait_seen
+                and low_battery_finish_no_auto_return
+                and low_battery_finish_manual_return_sent
+                and low_battery_finish_return_started
+                and low_battery_finish_recovered
+            )
+        )
+        ok = bool(
+            site_ok
+            and drop_zone_ok
+            and low_battery_finish_return_ok
+            and charging_recall_low_battery_ok
+            and charging_recall_ok
+        )
         route_dist = (
             math.hypot(
                 self.latest_pose.pose.position.x - self.latest_route_goal.pose.position.x,
@@ -1602,6 +1812,8 @@ class SimValidationRunner(Node):
                     f"service_wait_return={seen_service_waiting_for_return_request} "
                     f"service_wait_charging={seen_service_waiting_for_charging} "
                     f"service_charging={seen_service_charging} "
+                    f"low_battery_finish_return={low_battery_finish_return_ok} "
+                    f"charging_recall_battery_gate={charging_recall_low_battery_ok} "
                     f"charging_recall={charging_recall_ok} "
                     f"state={latest_state_label} "
                     f"key={latest_state_key} route_dist={route_dist:.2f}"
@@ -1632,8 +1844,54 @@ class SimValidationRunner(Node):
                     "service_waiting_for_charging": seen_service_waiting_for_charging,
                     "service_charging": seen_service_charging,
                     "service_state_sequence": " -> ".join(self.service_state_names_seen),
+                    "low_battery_finish_return_enabled": (
+                        low_battery_finish_return_enabled
+                    ),
+                    "low_battery_mission_percentage": round(
+                        self.low_battery_mission_percentage, 3
+                    ),
+                    "low_battery_finish_triggered": low_battery_finish_triggered,
+                    "low_battery_finish_wait_seen": low_battery_finish_wait_seen,
+                    "low_battery_return_manual_observe_s": round(
+                        max(0.0, self.low_battery_return_manual_observe_s), 3
+                    ),
+                    "low_battery_finish_no_auto_return": (
+                        low_battery_finish_no_auto_return
+                    ),
+                    "low_battery_finish_manual_return_sent": (
+                        low_battery_finish_manual_return_sent
+                    ),
+                    "low_battery_finish_return_started": (
+                        low_battery_finish_return_started
+                    ),
+                    "low_battery_finish_recovered": low_battery_finish_recovered,
+                    "low_battery_finish_return_ok": low_battery_finish_return_ok,
                     "charging_recall_requested": charging_recall_requested,
                     "charging_recall_via_ui": self.charging_recall_via_ui,
+                    "charging_recall_battery_gate_enabled": (
+                        charging_recall_battery_gate_enabled
+                    ),
+                    "charging_recall_low_battery_percentage": round(
+                        self.charging_recall_low_battery_percentage, 3
+                    ),
+                    "charging_recall_low_battery_requested": (
+                        charging_recall_low_battery_requested
+                    ),
+                    "charging_recall_low_battery_block": (
+                        charging_recall_low_battery_ok
+                    ),
+                    "charging_recall_low_battery_departure_seen": (
+                        charging_recall_low_battery_departure_seen
+                    ),
+                    "charging_recall_low_battery_cmd_released": (
+                        charging_recall_low_battery_cmd_released
+                    ),
+                    "charging_recall_low_battery_global_paths": (
+                        charging_recall_low_battery_global_delta
+                    ),
+                    "charging_recall_low_battery_local_paths": (
+                        charging_recall_low_battery_local_delta
+                    ),
                     "charging_recall_key_seen": charging_recall_key_seen,
                     "charging_recall_departure_state": charging_recall_departure_state_seen,
                     "charging_recall_service_departure": (

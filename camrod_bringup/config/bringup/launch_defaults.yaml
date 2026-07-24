@@ -410,15 +410,18 @@ bringup:
     cmd_vel_gate_platform_status_timeout_s: 0.5
     cmd_vel_gate_block_on_platform_status_stale: true
     cmd_vel_gate_block_on_charging: true
-    # HH_260720 - A new campsite mission gets a bounded charger departure window.
+    # HH_260724 - A new campsite mission gets a bounded charger departure window only above the SOC margin.
     cmd_vel_gate_allow_mission_departure_while_charging: true
     cmd_vel_gate_charging_departure_grace_s: 15.0
     cmd_vel_gate_charger_departure_mission_prefixes: camping_site_
     cmd_vel_gate_mission_request_dedup_s: 1.0
+    cmd_vel_gate_require_battery_for_mission_departure: true
+    cmd_vel_gate_minimum_mission_departure_battery_percentage: 0.35
     cmd_vel_gate_block_on_platform_error_code: true
     cmd_vel_gate_require_can_control_mode: true
+    # HH_260724 - Match camrod_control/config/cmd_vel_safety_gate.yaml critical SOC.
     cmd_vel_gate_critical_battery_stop_enabled: true
-    cmd_vel_gate_critical_battery_percentage: 0.10
+    cmd_vel_gate_critical_battery_percentage: 0.20
 
   parking:
     # HH_260720 - Select one final parking controller implemented by camrod_control.
@@ -458,6 +461,11 @@ bringup:
     # HH_260706 - Bind operator UI to all interfaces for robot-IP access.
     api_ui_host: 0.0.0.0
     api_ui_port: 8010
+    # HH_260724 - Surface UI backend battery policy in the top-level bringup config.
+    api_ui_require_battery_for_mission_dispatch: true
+    api_ui_minimum_mission_dispatch_battery_percent: 35.0
+    api_ui_low_battery_return_after_current_mission: true
+    api_ui_low_battery_return_threshold_percent: 35.0
 
   namespaces:
     map: map
