@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Set
 
 import rclpy
 import yaml
+from action_msgs.srv import CancelGoal
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from avg_msgs.msg import (
     AvgServiceState,
@@ -58,6 +59,7 @@ SERVICE_STATE_NAMES = {
     AvgServiceState.CHARGING: "CHARGING",
     AvgServiceState.DEPARTING_CHARGER: "DEPARTING_CHARGER",
     AvgServiceState.DEPARTING_DROP_ZONE: "DEPARTING_DROP_ZONE",
+    AvgServiceState.OPERATOR_STOPPED: "OPERATOR_STOPPED",
 }
 
 
@@ -169,6 +171,16 @@ class UiBackendNode(Node):
                 "drop_zone_exit_complete_topic", "/control/drop_zone/exit_complete"
             ).value
         )
+        self.nav2_cancel_action_topics = [
+            str(topic)
+            for topic in self.declare_parameter(
+                "nav2_cancel_action_topics",
+                [
+                    "/planning/follow_path/_action/cancel_goal",
+                    "/planning/navigate_to_pose/_action/cancel_goal",
+                ],
+            ).value
+        ]
         self.arrival_pose_topic = str(
             self.declare_parameter("arrival_pose_topic", "/localization/pose").value
         )
@@ -356,6 +368,10 @@ class UiBackendNode(Node):
         )
         self.pub_goal_pose = self.create_publisher(PoseStamped, self.planning_goal_pose_topic, 10)
         self.pub_service_state = self.create_publisher(AvgServiceState, self.service_state_topic, 10)
+        # HH_260724 - UI cancel/stop must cancel the active Nav2 actions, not only close engage.
+        self.nav2_cancel_clients = [
+            self.create_client(CancelGoal, topic) for topic in self.nav2_cancel_action_topics
+        ]
         self._server_thread: Optional[threading.Thread] = None
         if self.enable_http_server:
             self._start_fastapi_server()
@@ -918,6 +934,9 @@ class UiBackendNode(Node):
             int(AvgServiceState.RETURN_WITH_CARGO),
             int(AvgServiceState.DROP_ZONE_PARKING),
         }
+        operator_stop_states = {
+            int(AvgServiceState.OPERATOR_STOPPED),
+        }
         stationary_drop_zone_states = {
             int(AvgServiceState.DROP_ZONE_WAIT),
             int(AvgServiceState.CHARGING),
@@ -969,6 +988,20 @@ class UiBackendNode(Node):
             )
             if self.publish_mission_engage_from_destination:
                 self._publish_mission_engage(True, source=f"service_state:{state}")
+        elif state in operator_stop_states:
+            # HH_260724 - Operator cancel/stop is an explicit stopped state, separate from diagnostics WARN.
+            with self._lock:
+                self._state.ws_site_states = {s: False for s in self.site_names}
+                self._state.destination = {"site": "", "run": False}
+            self._schedule_broadcast({
+                "service_state": state,
+                "returning": False,
+                "states": {s: False for s in self.site_names},
+                "engage": False,
+            })
+            if self.publish_mission_engage_from_destination:
+                self._publish_mission_engage(False, source=f"service_state:{state}")
+            self._publish_engage(False, source=f"service_state:{state}")
         elif state == AvgServiceState.GUEST_RECALL_SERVICE:
             # HJ_260601: Notify robot UI that guest requested a recall.
             self._schedule_broadcast({"guest_recall": True})
@@ -1000,6 +1033,7 @@ class UiBackendNode(Node):
             AvgServiceState.CHARGING:               "Charging",
             AvgServiceState.DEPARTING_CHARGER:      "Departing charger",
             AvgServiceState.DEPARTING_DROP_ZONE:    "Departing drop zone",
+            AvgServiceState.OPERATOR_STOPPED:        "Stopped by operator",
         }
         msg = AvgServiceState()
         msg.state = state
@@ -1089,6 +1123,17 @@ class UiBackendNode(Node):
             f"site maneuver return ({source}) -> {self.camping_site_maneuver_controller_operation_topic}"
         )
 
+    def _publish_camping_site_operation(self, operation: int, source: str) -> None:
+        msg = MotionOperation()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.operation = int(operation)
+        msg.source = source
+        self.pub_camping_site_maneuver_controller_operation.publish(msg)
+        self.get_logger().info(
+            f"site maneuver operation ({source}) -> "
+            f"{self.camping_site_maneuver_controller_operation_topic}: {int(operation)}"
+        )
+
     def _publish_camping_site_maneuver_controller_adopt(self, site: str, mission_key: str, source: str) -> None:
         msg = UiDestinationCommand()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -1125,6 +1170,57 @@ class UiBackendNode(Node):
             f"parking operation ({source}) -> {self.parking_operation_topic}: "
             f"{int(operation)}"
         )
+
+    def _cancel_active_motion(self, source: str) -> None:
+        # HH_260724 - Operator cancel/stop should leave no stale Nav2 or maneuver owner active.
+        request = CancelGoal.Request()
+        request.goal_info.goal_id.uuid = [0] * 16
+        request.goal_info.stamp.sec = 0
+        request.goal_info.stamp.nanosec = 0
+        sent_topics: List[str] = []
+        for topic, client in zip(self.nav2_cancel_action_topics, self.nav2_cancel_clients):
+            if not client.service_is_ready():
+                continue
+            client.async_send_request(request)
+            sent_topics.append(topic)
+        self._publish_camping_site_operation(
+            MotionOperation.CANCEL, source=f"{source}:operator_stop"
+        )
+        self._publish_drop_zone_operation(
+            MotionOperation.CANCEL, source=f"{source}:operator_stop"
+        )
+        self._publish_parking_operation(
+            MotionOperation.CANCEL, source=f"{source}:operator_stop"
+        )
+        if sent_topics:
+            self.get_logger().info(
+                f"Nav2 cancel requested ({source}): {', '.join(sent_topics)}"
+            )
+        else:
+            self.get_logger().warn(
+                f"Nav2 cancel skipped ({source}): cancel services not ready"
+            )
+
+    def _stop_active_service(self, source: str) -> None:
+        # HH_260724 - Stop/cancel is a state transition, not only a command-gate update.
+        self._drop_zone_exit_active = False
+        self._pending_site_after_drop_zone_exit = None
+        self._cancel_active_motion(source=source)
+        if self.publish_mission_engage_from_destination:
+            self._publish_mission_engage(False, source=source)
+        self._publish_engage(False, source=source)
+        with self._lock:
+            self._state.ws_site_states = {s: False for s in self.site_names}
+            self._state.destination = {"site": "", "run": False}
+        self._publish_service_state(
+            AvgServiceState.OPERATOR_STOPPED,
+            source=f"{source}:operator_stop",
+        )
+        self._schedule_broadcast({
+            "states": {s: False for s in self.site_names},
+            "engage": False,
+            "returning": False,
+        })
 
     def _publish_platform_drive_enable(self, enabled: bool, source: str) -> None:
         if not self.publish_platform_drive_enable_with_engage:
@@ -1300,23 +1396,14 @@ class UiBackendNode(Node):
 
     def _apply_destination_command(self, site: str, run: bool, source: str) -> Dict[str, Any]:
         if not run:
-            # HH_260721 - A stop request cancels any goal waiting behind drop-zone departure.
-            if self._drop_zone_exit_active:
-                self._publish_drop_zone_operation(
-                    MotionOperation.CANCEL, source=f"{source}:destination_stop"
-                )
-            self._drop_zone_exit_active = False
-            self._pending_site_after_drop_zone_exit = None
-            if self.publish_engage_from_destination:
-                self._publish_engage(False, source=f"{source}:destination")
-            if self.publish_mission_engage_from_destination:
-                self._publish_mission_engage(False, source=f"{source}:destination")
+            # HH_260724 - Destination OFF is an operator stop, so cancel Nav2 and service progress.
+            self._stop_active_service(source=f"{source}:destination_stop")
             return {
                 "site": site,
                 "run": False,
                 "mission_key": "",
                 "goal_pose_published": False,
-                "message": "run=false -> engage off, goal dispatch skipped",
+                "message": "run=false -> operator stop, engage off, goal cancelled",
             }
 
         mission_key = self._resolve_mission_key_for_site(site) or ""
@@ -1534,8 +1621,7 @@ class UiBackendNode(Node):
         return {"success": True, "message": "auto command published"}
 
     def set_stop(self) -> Dict[str, Any]:
-        self._publish_engage(False, source="http_stop")
-        self._schedule_broadcast({"engage": False})
+        self._stop_active_service(source="http_stop")
         return {"success": True, "message": "stop command published"}
 
     def set_destination(self, site: str, run: bool) -> Dict[str, Any]:
@@ -1704,12 +1790,12 @@ class UiBackendNode(Node):
                             await node._broadcast({"engage": True})
                         else:
                             with node._lock:
-                                node._state.ws_site_states[site] = False
-                            if node.publish_mission_engage_from_destination:
-                                node._publish_mission_engage(False, source="ws_toggle_off")
-                            node._publish_engage(False, source="ws_toggle_off")
+                                node._state.ws_site_states = {s: False for s in node.site_names}
+                            # HH_260724 - Let the destination subscriber perform the full operator-stop transition.
                             node._publish_destination_command(site, run=False, source="ws_toggle_off")
-                            await node._broadcast({"site": site, "state": False})
+                            await node._broadcast(
+                                {"states": {s: False for s in node.site_names}}
+                            )
                             await node._broadcast({"engage": False})
 
                     # {"engage": true/false}

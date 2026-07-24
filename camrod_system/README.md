@@ -23,10 +23,20 @@ waiting, driving, maneuvering, and parking remain `OK` and are reported through
 `ModuleState.operating_state` or `AvgServiceState` on `/service/state`.
 <!-- HH_260721 - Give normal wait and charging phases explicit service examples. -->
 Examples include `WAITING_FOR_RETURN_REQUEST`, `WAITING_FOR_CHARGING`,
-`CHARGING`, `DEPARTING_CHARGER`, and `DEPARTING_DROP_ZONE`; these are lifecycle
-states, not `WARN` or `ERROR` conditions.
+`CHARGING`, `DEPARTING_CHARGER`, `DEPARTING_DROP_ZONE`, and
+`OPERATOR_STOPPED`; these are lifecycle states, not `WARN` or `ERROR`
+conditions.
 Required modules may report `STARTING + OK` during the configured 10-second
 startup grace; no first diagnostic after that grace becomes `FAULT + ERROR`.
+
+<!-- HH_260724 - Site entry hands motion ownership from Nav2 to the campsite maneuver controller. -->
+During campsite entry and unload phases, Nav2 cancel/abort status is expected
+because `camrod_control` owns the local maneuver. `planning_nav_status_checker`
+subscribes to `/service/state` and suppresses repeated ABORTED health warnings
+while the service state is `SITE_ENTRY`, `UNLOAD_WAIT`,
+`WAITING_FOR_RETURN_REQUEST`, return/parking maneuver states, or
+`OPERATOR_STOPPED`. A planning abort during `MOVING_TO_SITE` is still reported
+as WARN/ERROR.
 
 ## Control And Parking Manifests
 

@@ -196,9 +196,9 @@ ERROR-level statuses. Incoming ROS `STALE` entries are normalized to `ERROR`
 because missing fresh data is not safe for operation. The robot header displays
 this health independently from the symbolic `AvgServiceState` progress such as
 `DROP_ZONE_WAIT`, `MOVING_TO_SITE`, `WAITING_FOR_RETURN_REQUEST`,
-`WAITING_FOR_CHARGING`, `CHARGING`, and `DEPARTING_CHARGER`. Operator and guest
-status labels are English and these normal service states do not create a
-warning by themselves.
+`WAITING_FOR_CHARGING`, `CHARGING`, `DEPARTING_CHARGER`, and
+`OPERATOR_STOPPED`. Operator and guest status labels are English and these
+normal service states do not create a warning by themselves.
 
 ### Frontend Path Resolution
 
@@ -484,6 +484,14 @@ waiting for user return, or active low-battery return. The `/ui/state` snapshot
 also carries `battery_return_pending`, `battery_return_started`, and
 `battery_return_waiting_for_user` so browser refreshes preserve the displayed
 state.
+
+<!-- HH_260724 - Manual engage and operator cancel must be visible without pretending they are campsite missions. -->
+Manual ENGAGE is displayed as `Manual driving` in the UI header when no campsite
+button owns the current mission. Turning ENGAGE off, pressing the moving-state
+stop button, or cancelling a destination dispatch now routes through `/ui/stop`
+or `run=false`: the backend publishes `engage=false`, closes mission engage,
+requests Nav2 action cancel, cancels local maneuver controllers, clears active
+site buttons, and publishes `/service/state=OPERATOR_STOPPED`.
 
 | UI concept | ROS contract |
 |---|---|

@@ -18,6 +18,8 @@ int32 WAITING_FOR_CHARGING=12
 int32 CHARGING=13
 int32 DEPARTING_CHARGER=14
 int32 DEPARTING_DROP_ZONE=15
+# HH_260724 - Operator stop/cancel is neither parked nor actively servicing a site.
+int32 OPERATOR_STOPPED=16
 
 int32 state
 string state_name

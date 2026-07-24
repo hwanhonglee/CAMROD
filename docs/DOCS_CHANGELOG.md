@@ -1,5 +1,18 @@
 # Documentation Changelog
 
+<!-- HH_260724 - Track manual engage and operator-stop visibility after v2.0.7 tagging. -->
+## [manual-engage-operator-stop-docs] - 2026-07-24 (HH_260724)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| `camrod_ui/README.md` | Documented Manual driving display and `/service/state=OPERATOR_STOPPED` cancel/stop behavior |
+| `camrod_system/README.md` | Documented suppression of expected Nav2 ABORTED diagnostics during campsite maneuver ownership |
+| `camrod_bringup/README.md` | Documented live terminal watch visibility for manual/mission engage and platform drive-enable |
+
+---
+
 <!-- HH_260724 - Track the low-battery campsite mission policy and v2.0.7 release docs. -->
 ## [v2.0.7-battery-policy-docs] - 2026-07-24 (HH_260724)
 

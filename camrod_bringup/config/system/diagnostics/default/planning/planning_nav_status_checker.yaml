@@ -10,5 +10,8 @@ planning_nav_status_checker:
     stale_timeout_s: 0.0
     idle_ok_without_status: true
     terminal_status_stale_ok: true
+    # HH_260724 - Site maneuver phases intentionally cancel Nav2; do not raise system WARN for that handoff.
+    service_state_topic: "/service/state"
+    suppress_abort_during_service_maneuver: true
     abort_warn: 2
     abort_error: 5

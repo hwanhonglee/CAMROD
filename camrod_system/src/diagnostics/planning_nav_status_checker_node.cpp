@@ -23,6 +23,8 @@
  *   abort_error:       5     # abort count in 60s > this value -> ERROR
  *   terminal_status_stale_ok: true
  *                     # quiet status after SUCCEEDED/CANCELED is normal idle
+ *   service_state_topic: "/service/state"
+ *                     # suppress expected Nav2 abort/cancel noise during site maneuvers
  */
 
 #include <cstdio>
@@ -33,6 +35,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <action_msgs/msg/goal_status_array.hpp>
 #include <action_msgs/msg/goal_status.hpp>
+#include <avg_msgs/msg/avg_service_state.hpp>
 
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
@@ -52,8 +55,11 @@ struct NavStatusState
   int8_t current_status{action_msgs::msg::GoalStatus::STATUS_UNKNOWN};
 
   std::deque<rclcpp::Time> abort_times;
+  int32_t latest_service_state{-1};
+  bool has_service_state{false};
 
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgServiceState>::SharedPtr service_state_sub;
 };
 
 class PlanningNavStatusCheckerNode : public robot_diagnostics_base::BaseChecker
@@ -76,6 +82,8 @@ protected:
     declare_parameter("terminal_status_stale_ok", true);
     declare_parameter("abort_warn",    2);
     declare_parameter("abort_error",   5);
+    declare_parameter("service_state_topic", std::string("/service/state"));
+    declare_parameter("suppress_abort_during_service_maneuver", true);
   }
 
   void load_parameters_() override
@@ -86,6 +94,9 @@ protected:
     terminal_status_stale_ok_ = get_parameter("terminal_status_stale_ok").as_bool();
     abort_warn_       = get_parameter("abort_warn").as_int();
     abort_error_      = get_parameter("abort_error").as_int();
+    service_state_topic_ = get_parameter("service_state_topic").as_string();
+    suppress_abort_during_service_maneuver_ =
+      get_parameter("suppress_abort_during_service_maneuver").as_bool();
   }
 
   void setup_tasks_() override
@@ -93,15 +104,27 @@ protected:
     state_.sub = create_subscription<action_msgs::msg::GoalStatusArray>(
       nav_status_topic_, rclcpp::QoS(10),
       [this](const action_msgs::msg::GoalStatusArray::ConstSharedPtr msg) { onNavStatus(msg); });
+    state_.service_state_sub = create_subscription<avg_msgs::msg::AvgServiceState>(
+      service_state_topic_, rclcpp::QoS(10),
+      [this](const avg_msgs::msg::AvgServiceState::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(state_.mtx);
+        state_.latest_service_state = msg->state;
+        state_.has_service_state = true;
+        if (serviceManeuverSuppressActiveLocked()) {
+          state_.abort_times.clear();
+        }
+      });
 
     add_task("/planning/nav_status",
       [this](StatusWrapper & stat) { checkNavStatus(stat); });
 
     RCLCPP_INFO(get_logger(),
       "Planning nav status checker started "
-      "(topic=%s, stale=%.1fs, terminal_stale_ok=%s, abort_warn=%d, abort_error=%d)",
-      nav_status_topic_.c_str(), stale_timeout_,
-      terminal_status_stale_ok_ ? "true" : "false", abort_warn_, abort_error_);
+      "(topic=%s, service_state=%s, stale=%.1fs, terminal_stale_ok=%s, "
+      "suppress_service_maneuver=%s, abort_warn=%d, abort_error=%d)",
+      nav_status_topic_.c_str(), service_state_topic_.c_str(), stale_timeout_,
+      terminal_status_stale_ok_ ? "true" : "false",
+      suppress_abort_during_service_maneuver_ ? "true" : "false", abort_warn_, abort_error_);
   }
 
 private:
@@ -136,7 +159,11 @@ private:
     state_.current_status = dominant;
 
     if (aborted) {
-      state_.abort_times.push_back(now);
+      if (serviceManeuverSuppressActiveLocked()) {
+        state_.abort_times.clear();
+      } else {
+        state_.abort_times.push_back(now);
+      }
     }
 
     // Remove abort samples older than the 60s rolling window.
@@ -158,6 +185,26 @@ private:
       case action_msgs::msg::GoalStatus::STATUS_CANCELED:  return "CANCELED";
       case action_msgs::msg::GoalStatus::STATUS_ABORTED:   return "ABORTED";
       default:                           return "UNKNOWN";
+    }
+  }
+
+  bool serviceManeuverSuppressActiveLocked() const
+  {
+    if (!suppress_abort_during_service_maneuver_ || !state_.has_service_state) {
+      return false;
+    }
+    switch (state_.latest_service_state) {
+      case avg_msgs::msg::AvgServiceState::SITE_ENTRY:
+      case avg_msgs::msg::AvgServiceState::UNLOAD_WAIT:
+      case avg_msgs::msg::AvgServiceState::GUEST_LOADING_WAIT:
+      case avg_msgs::msg::AvgServiceState::WAITING_FOR_RETURN_REQUEST:
+      case avg_msgs::msg::AvgServiceState::RETURN_WITH_CARGO:
+      case avg_msgs::msg::AvgServiceState::DROP_ZONE_PARKING:
+      case avg_msgs::msg::AvgServiceState::WAITING_FOR_CHARGING:
+      case avg_msgs::msg::AvgServiceState::OPERATOR_STOPPED:
+        return true;
+      default:
+        return false;
     }
   }
 
@@ -210,22 +257,24 @@ private:
       return;
     }
 
+    const bool service_maneuver_suppressed = serviceManeuverSuppressActiveLocked();
     int abort_count = static_cast<int>(state_.abort_times.size());
+    int effective_abort_count = service_maneuver_suppressed ? 0 : abort_count;
 
     int8_t     lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string msg_str;
 
-    if (abort_count > abort_error_) {
+    if (effective_abort_count > abort_error_) {
       lvl     = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
-        "Repeated ABORTED (%d in 60s > %d)", abort_count, abort_error_);
+        "Repeated ABORTED (%d in 60s > %d)", effective_abort_count, abort_error_);
       msg_str = buf;
-    } else if (abort_count > abort_warn_) {
+    } else if (effective_abort_count > abort_warn_) {
       lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
       char buf[80];
       std::snprintf(buf, sizeof(buf),
-        "High ABORTED frequency (%d in 60s > %d)", abort_count, abort_warn_);
+        "High ABORTED frequency (%d in 60s > %d)", effective_abort_count, abort_warn_);
       msg_str = buf;
     }
 
@@ -236,8 +285,12 @@ private:
           msg_str = std::string("navigation active: ") + statusLabel(state_.current_status);
           break;
         case action_msgs::msg::GoalStatus::STATUS_ABORTED:
-          lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-          msg_str = "ABORTED - recent path planning failed";
+          if (service_maneuver_suppressed) {
+            msg_str = "service maneuver owns motion; Nav2 abort/cancel ignored";
+          } else {
+            lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+            msg_str = "ABORTED - recent path planning failed";
+          }
           break;
         case action_msgs::msg::GoalStatus::STATUS_SUCCEEDED:
         case action_msgs::msg::GoalStatus::STATUS_CANCELED:
@@ -253,10 +306,14 @@ private:
     stat.summary(lvl, msg_str);
 
     stat.add("current_status",     std::string(statusLabel(state_.current_status)));
+    stat.add("service_maneuver_suppressed", service_maneuver_suppressed ? "true" : "false");
+    stat.add("latest_service_state", static_cast<int>(state_.latest_service_state));
 
     char tmp[32];
     std::snprintf(tmp, sizeof(tmp), "%d", abort_count);
     stat.add("abort_count_60s",    std::string(tmp));
+    std::snprintf(tmp, sizeof(tmp), "%d", effective_abort_count);
+    stat.add("effective_abort_count_60s", std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%d / %d", abort_warn_, abort_error_);
     stat.add("abort_warn/error",   std::string(tmp));
     std::snprintf(tmp, sizeof(tmp), "%.2f", elapsed);
@@ -264,9 +321,11 @@ private:
   }
 
   std::string nav_status_topic_;
+  std::string service_state_topic_;
   double      stale_timeout_{5.0};
   bool        idle_ok_without_status_{true};
   bool        terminal_status_stale_ok_{true};
+  bool        suppress_abort_during_service_maneuver_{true};
   int         abort_warn_{2};
   int         abort_error_{5};
 
