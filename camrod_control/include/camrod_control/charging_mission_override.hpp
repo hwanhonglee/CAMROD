@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <cmath>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -17,6 +19,8 @@ struct ChargingMissionOverrideConfig
   bool allow_motion_while_charging{true};
   double duration_s{15.0};
   double request_dedup_s{1.0};
+  bool require_battery_for_departure{true};
+  double minimum_departure_battery_percentage{0.35};
   std::set<std::string> mission_prefixes{"camping_site_"};
 };
 
@@ -47,6 +51,8 @@ public:
     config_ = std::move(config);
     config_.duration_s = std::max(0.0, config_.duration_s);
     config_.request_dedup_s = std::max(0.0, config_.request_dedup_s);
+    config_.minimum_departure_battery_percentage = std::clamp(
+      config_.minimum_departure_battery_percentage, 0.0, 1.0);
   }
 
   void setCharging(const bool charging)
@@ -62,6 +68,24 @@ public:
     return charging_;
   }
 
+  void setBatteryPercentage(std::optional<double> battery_percentage)
+  {
+    if (battery_percentage.has_value() && std::isfinite(*battery_percentage)) {
+      battery_percentage_ = std::clamp(*battery_percentage, 0.0, 1.0);
+    } else {
+      battery_percentage_.reset();
+    }
+  }
+
+  bool batteryReadyForDeparture() const
+  {
+    if (!config_.require_battery_for_departure) {
+      return true;
+    }
+    return battery_percentage_.has_value() &&
+           *battery_percentage_ >= config_.minimum_departure_battery_percentage;
+  }
+
   bool activateForMission(MissionRequestIdentity request, const double now_sec)
   {
     // HH_260721 - Accept only a new campsite request while CAN reports active charging.
@@ -69,6 +93,9 @@ public:
     if (!charging_ || !config_.allow_motion_while_charging ||
       !matchesMissionPrefix(request.mission_key))
     {
+      return false;
+    }
+    if (!batteryReadyForDeparture()) {
       return false;
     }
 
@@ -140,6 +167,7 @@ private:
 
   ChargingMissionOverrideConfig config_;
   bool charging_{false};
+  std::optional<double> battery_percentage_;
   bool has_last_request_{false};
   MissionRequestIdentity last_request_;
   double last_request_time_sec_{-1.0e9};

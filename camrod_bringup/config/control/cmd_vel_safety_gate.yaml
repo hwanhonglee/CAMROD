@@ -22,14 +22,19 @@
     platform_status_timeout_s: 0.5
     block_on_platform_status_stale: true
     block_on_charging: true
+    # HH_260724 - Charger departure is a mission release, not a full-charge target.
     allow_mission_departure_while_charging: true
     charging_departure_grace_s: 15.0
     charger_departure_mission_prefixes: "camping_site_"
     mission_request_dedup_s: 1.0
+    # HH_260724 - Require 35% SOC before a parked/charging robot may start a new campsite mission.
+    require_battery_for_mission_departure: true
+    minimum_mission_departure_battery_percentage: 0.35
     block_on_platform_error_code: true
     require_can_control_mode: true
+    # HH_260724 - Keep an unconditional hard stop at 20% SOC.
     critical_battery_stop_enabled: true
-    critical_battery_percentage: 0.10
+    critical_battery_percentage: 0.20
     additional_estop_topics: "/planning/state_machine/estop"
     dr_timeout_source_mode: "localization_monitor"
     # HH_260721 - Keep the fallback DR timeout topic explicit even when monitor mode is selected.
