@@ -1492,6 +1492,12 @@ class UiBackendNode(Node):
                 "service_state_description": self._state.service_state_description,
                 "destination": dict(self._state.destination),
                 "battery_percentage": self._state.battery_percentage,
+                # HH_260724 - Initial UI snapshots carry the active battery policy state,
+                # not only edge-triggered websocket updates.
+                "battery_return_pending": self._low_battery_return_pending,
+                "battery_return_started": self._low_battery_return_started,
+                "battery_return_waiting_for_user": self._low_battery_return_wait_notified,
+                "minimum_battery_percentage": self.low_battery_return_threshold_percent,
                 "occupied_sites": list(self._state.occupied_sites),
             }
 

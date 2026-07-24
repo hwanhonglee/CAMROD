@@ -86,6 +86,14 @@ const RETURNING_STATES = new Set([
   SERVICE_STATE.DROP_ZONE_PARKING,
   SERVICE_STATE.WAITING_FOR_CHARGING,
 ]);
+const CRITICAL_BATTERY_STOP_PERCENT = 20;
+const MISSION_DISPATCH_MINIMUM_PERCENT = 35;
+
+const emptyBatteryReturnState = () => ({
+  pending: false,
+  started: false,
+  waitingForUser: false,
+});
 
 const formatMissionBlockMessage = (data) => {
   const minimum = Number.isFinite(Number(data.minimum_battery_percentage))
@@ -115,8 +123,33 @@ const formatBatteryReturnMessage = (data) => {
   return `${prefix} ${minimum}% 미만이면 새 임무를 받지 않고, 현재 임무 완료 후 충전 구역 복귀를 대기합니다.`;
 };
 
+const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
+  // HH_260724 - Keep the battery policy visible after the modal is dismissed.
+  const battery = Number(batteryPct);
+  const batteryText = Number.isFinite(battery) && battery >= 0 ? `${battery}%` : '';
+  if (batteryReturnState.started) {
+    return { tone: 'warning', label: `Low battery return active ${batteryText}`.trim() };
+  }
+  if (batteryReturnState.waitingForUser) {
+    return { tone: 'warning', label: `Waiting for user return ${batteryText}`.trim() };
+  }
+  if (batteryReturnState.pending) {
+    return { tone: 'warning', label: `Finish mission then return ${batteryText}`.trim() };
+  }
+  if (!Number.isFinite(battery) || battery < 0) {
+    return { tone: 'warning', label: 'Battery status pending' };
+  }
+  if (battery <= CRITICAL_BATTERY_STOP_PERCENT) {
+    return { tone: 'error', label: `Critical battery stop ${battery}%` };
+  }
+  if (battery < MISSION_DISPATCH_MINIMUM_PERCENT) {
+    return { tone: 'warning', label: `Mission hold below ${MISSION_DISPATCH_MINIMUM_PERCENT}% (${battery}%)` };
+  }
+  return { tone: 'ok', label: `Mission battery ready ${battery}%` };
+};
+
 // HH_260721 - Reuse one health/service presentation on waiting and destination screens.
-function RuntimeStatus({ systemHealth, serviceStateName }) {
+function RuntimeStatus({ systemHealth, serviceStateName, batteryPolicy }) {
   return (
     <div className="ch-runtime-status" aria-live="polite">
       <span className={`ch-runtime-line health-${systemHealth.toLowerCase()}`}>
@@ -127,6 +160,12 @@ function RuntimeStatus({ systemHealth, serviceStateName }) {
         <span className="ch-runtime-dot" />
         {SERVICE_STATE_LABELS[serviceStateName] || serviceStateName}
       </span>
+      {batteryPolicy && (
+        <span className={`ch-runtime-line battery-policy policy-${batteryPolicy.tone}`}>
+          <span className="ch-runtime-dot" />
+          {batteryPolicy.label}
+        </span>
+      )}
     </div>
   );
 }
@@ -890,6 +929,7 @@ function App() {
   const [moveVerifyError, setMoveVerifyError] = useState(false);
   const [missionBlockMessage, setMissionBlockMessage] = useState('');
   const [batteryReturnMessage, setBatteryReturnMessage] = useState('');
+  const [batteryReturnState, setBatteryReturnState] = useState(emptyBatteryReturnState);
 
   const openSettingsLoginModal = () => {
     setActiveModal(null);
@@ -1073,6 +1113,10 @@ function App() {
       const data = JSON.parse(event.data);
 
       if (data.error === 'battery_below_mission_minimum') {
+        const blockedBattery = Number(data.battery_percentage);
+        if (Number.isFinite(blockedBattery) && blockedBattery >= 0) {
+          setBatteryPct(blockedBattery);
+        }
         const cleared = {};
         SITE_NAMES.forEach(site => { cleared[site] = false; });
         setStates(cleared);
@@ -1088,8 +1132,14 @@ function App() {
 
       if ('battery_return_pending' in data) {
         if (data.battery_return_pending) {
+          setBatteryReturnState({
+            pending: true,
+            started: Boolean(data.battery_return_started),
+            waitingForUser: Boolean(data.battery_return_waiting_for_user),
+          });
           setBatteryReturnMessage(formatBatteryReturnMessage(data));
         } else {
+          setBatteryReturnState(emptyBatteryReturnState());
           setBatteryReturnMessage('');
         }
       }
@@ -1152,6 +1202,9 @@ function App() {
       // HH_260708 - Mirror backend battery percentage for the operator header.
       if ('battery' in data) {
         setBatteryPct(data.battery);
+      } else if ('battery_percentage' in data) {
+        const snapshotBattery = Number(data.battery_percentage);
+        setBatteryPct(Number.isFinite(snapshotBattery) ? snapshotBattery : null);
       }
       // HH_260708 - Mirror planning engage state broadcast by the backend.
       if ('engage' in data) {
@@ -1268,6 +1321,7 @@ function App() {
   // ── 공통 시간 문자열 (대기/컨트롤 화면 공유) ──────────────────────────────
   const dateStr = currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
   const timeStr = currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
 
   // 대기 화면: 모든 토글 OFF 상태일 때 표시, 클릭/터치 시 토글 화면으로 전환
   if (showWaiting) {
@@ -1319,6 +1373,7 @@ function App() {
               <RuntimeStatus
                 systemHealth={systemHealth}
                 serviceStateName={serviceStateName}
+                batteryPolicy={currentBatteryPolicy}
               />
               <div className="wh-wifi">
                 <WifiIcon level={signalLevel} />
@@ -1528,6 +1583,7 @@ function App() {
             <RuntimeStatus
               systemHealth={systemHealth}
               serviceStateName={serviceStateName}
+              batteryPolicy={currentBatteryPolicy}
             />
             <div className="wh-wifi ch-wifi">
               <WifiIcon level={signalLevel} />

@@ -127,6 +127,9 @@ body {
 .ch-runtime-line.health-warning .ch-runtime-dot { background: #f0bd4f; }
 .ch-runtime-line.health-error .ch-runtime-dot { background: #ff6961; }
 .ch-runtime-line.service-state .ch-runtime-dot { background: #79b8ff; }
+.ch-runtime-line.battery-policy.policy-ok .ch-runtime-dot { background: #64d17b; }
+.ch-runtime-line.battery-policy.policy-warning .ch-runtime-dot { background: #f0bd4f; }
+.ch-runtime-line.battery-policy.policy-error .ch-runtime-dot { background: #ff6961; }
 
 .control-back-btn {
   margin-top: 1rem;
@@ -1358,12 +1361,12 @@ h1 {
     min-width: 0;
     flex-direction: row;
     justify-content: center;
-    gap: 0.8rem;
+    gap: 0.55rem;
   }
 
   .ch-runtime-line {
     gap: 0.25rem;
-    font-size: 0.68rem;
+    font-size: 0.62rem;
   }
 
   .ch-runtime-dot {
