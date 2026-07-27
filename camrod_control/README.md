@@ -169,6 +169,18 @@ site maneuvers. LiDAR/radar cost nodes first remove costs outside the active
 route lanelets plus `route_lanelet_margin_m` (0.35 m); live obstacle checks stay
 active during configured static-cost maneuver exceptions.
 
+<!-- HH_260727 - State that raw lanelet boundaries apply to the complete robot polygon. -->
+For raw lanelet/map-boundary cost, the gate checks the complete polygon from
+`/platform/robot/planning_boundary`, including its edges and covered grid-cell
+centers. A rectangle matching the configured front/rear/left/right extents is
+used until that polygon arrives. Translation, crab motion, reverse motion, and
+in-place rotation are blocked if any part of the body reaches cost 100
+(`lanelet_safety_footprint_threshold`) or an unknown/out-of-grid cell;
+the map's soft/rasterized boundary penalty 98 remains traversable on narrow
+lanes. Maneuver/static-cost bypass phases skip only legacy center/corridor
+checks and never this full-footprint check. `robot_base_link` alone is no
+longer the boundary decision point.
+
 <!-- HH_260721 - Distinguish loaded configuration from method-conditional and disabled files. -->
 
 Configuration activation:

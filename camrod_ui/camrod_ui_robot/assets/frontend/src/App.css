@@ -2342,6 +2342,85 @@ h1 {
   letter-spacing: 0.04em;
 }
 
+/* HH_260727 - Ranger 횡/종 조향 전환 런타임 튜닝. */
+.steering-tuning-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.4fr);
+  align-items: center;
+  gap: 1.4rem;
+  padding: 0.75rem 1.2rem;
+  background: #f4f8f4;
+  border-bottom: 1px solid #cdd9cf;
+  flex-shrink: 0;
+}
+
+.steering-tuning-title {
+  color: #173f24;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.steering-tuning-help {
+  margin-top: 0.2rem;
+  color: #536158;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.steering-tuning-status {
+  margin-top: 0.3rem;
+  color: #b33a32;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.steering-tuning-status.available {
+  color: #287a45;
+}
+
+.steering-tuning-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.3rem;
+  color: #254d31;
+  font-family: 'Consolas', 'Menlo', monospace;
+}
+
+.steering-tuning-value strong {
+  font-size: 1.35rem;
+}
+
+.steering-tuning-value span {
+  margin-left: 0.55rem;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  background: #dcebdd;
+  color: #2d6e40;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.steering-tuning-slider {
+  width: 100%;
+  accent-color: #2d6e40;
+  cursor: pointer;
+}
+
+.steering-tuning-scale {
+  display: flex;
+  justify-content: space-between;
+  color: #68736a;
+  font-size: 0.7rem;
+}
+
+@media (max-width: 900px) {
+  .steering-tuning-card {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+}
+
 .manual-dock-btn {
   padding: 0.9rem 2.4rem;
   border: none;

@@ -235,6 +235,10 @@ function DiagnosticsMonitor() {
   const [expanded, setExpanded] = useState({ error: true, warn: true, ok: false });
   // HH_260720 - Keep only the parking control; the removed docking stack has no UI actions.
   const [parkingOn, setParkingOn] = useState(false);
+  const [steeringRate, setSteeringRate] = useState(0.5);
+  const [steeringTuningAvailable, setSteeringTuningAvailable] = useState(false);
+  const [steeringTuningStatus, setSteeringTuningStatus] = useState('드라이버 연결 확인 중');
+  const steeringTuningTimerRef = useRef(null);
 
   useEffect(() => {
     const fetch_ = () =>
@@ -246,6 +250,57 @@ function DiagnosticsMonitor() {
     const t = setInterval(fetch_, 2000);
     return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    fetch('/ui/platform_tuning')
+      .then(async response => {
+        const body = await response.json();
+        if (!response.ok || !body.success) throw new Error(body.message || '설정 조회 실패');
+        setSteeringRate(Number(body.steering_transition_rate_radps));
+        setSteeringTuningAvailable(true);
+        setSteeringTuningStatus('런타임 조절 가능');
+      })
+      .catch(error => {
+        setSteeringTuningAvailable(false);
+        setSteeringTuningStatus(error.message || 'Ranger 드라이버 연결 안 됨');
+      });
+    return () => {
+      if (steeringTuningTimerRef.current) {
+        clearTimeout(steeringTuningTimerRef.current);
+      }
+    };
+  }, []);
+
+  const applySteeringRate = (nextRate) => {
+    const clamped = Math.max(0.05, Math.min(2.0, Number(nextRate)));
+    setSteeringTuningStatus('적용 중…');
+    fetch(
+      `/ui/platform_tuning?steering_transition_rate_radps=${encodeURIComponent(clamped.toFixed(2))}`,
+      { method: 'POST' }
+    )
+      .then(async response => {
+        const body = await response.json();
+        if (!response.ok || !body.success) throw new Error(body.message || '적용 실패');
+        setSteeringTuningAvailable(true);
+        setSteeringRate(Number(body.steering_transition_rate_radps));
+        setSteeringTuningStatus('즉시 적용됨');
+      })
+      .catch(error => {
+        setSteeringTuningStatus(error.message || '적용 실패');
+      });
+  };
+
+  const handleSteeringRateChange = (event) => {
+    const nextRate = Number(event.target.value);
+    setSteeringRate(nextRate);
+    if (steeringTuningTimerRef.current) {
+      clearTimeout(steeringTuningTimerRef.current);
+    }
+    steeringTuningTimerRef.current = setTimeout(
+      () => applySteeringRate(nextRate),
+      300
+    );
+  };
 
   // HH_260721 - Operator diagnostics use one unambiguous three-level health scale.
   const LEVEL_STR  = { 0: 'OK', 1: 'WARN', 2: 'ERROR' };
@@ -273,6 +328,40 @@ function DiagnosticsMonitor() {
           </span>
         </button>
 
+      </div>
+
+      <div className="steering-tuning-card">
+        <div className="steering-tuning-copy">
+          <div className="steering-tuning-title">횡↔종 조향 전환 속도</div>
+          <div className="steering-tuning-help">
+            바퀴 방향이 종방향과 횡방향 사이에서 회전하는 최대 속도입니다.
+            변경값은 재시작 없이 즉시 적용됩니다.
+          </div>
+          <div className={`steering-tuning-status ${steeringTuningAvailable ? 'available' : ''}`}>
+            {steeringTuningStatus}
+          </div>
+        </div>
+        <div className="steering-tuning-control">
+          <div className="steering-tuning-value">
+            <strong>{steeringRate.toFixed(2)}</strong> rad/s
+            <span>{Math.round(steeringRate * 100)}%</span>
+          </div>
+          <input
+            className="steering-tuning-slider"
+            type="range"
+            min="0.05"
+            max="2.0"
+            step="0.05"
+            value={steeringRate}
+            onChange={handleSteeringRateChange}
+            aria-label="횡 종 조향 전환 속도"
+          />
+          <div className="steering-tuning-scale">
+            <span>느림 0.05</span>
+            <span>기준 1.00</span>
+            <span>빠름 2.00</span>
+          </div>
+        </div>
       </div>
 
     <div className="diag-monitor">
@@ -1176,7 +1265,10 @@ function App() {
       }
       // HH_260723 - Apply perception occupancy before allowing a campsite selection.
       if ('occupied_sites' in data && Array.isArray(data.occupied_sites)) {
-        setOccupiedSites(data.occupied_sites);
+        setOccupiedSites(prev => (
+          prev.length === data.occupied_sites.length
+          && prev.every((site, index) => site === data.occupied_sites[index])
+        ) ? prev : data.occupied_sites);
         setSelectedSite(prev => data.occupied_sites.includes(prev) ? null : prev);
       }
       // HH_260721 - Handle arrival and lifecycle updates through the shared service contract.

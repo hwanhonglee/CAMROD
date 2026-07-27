@@ -34,6 +34,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from geometry_msgs.msg import PoseStamped
+from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
+from rcl_interfaces.srv import GetParameters, SetParameters
 from rclpy.node import Node
 
 import uvicorn
@@ -136,11 +138,23 @@ class UiBackendNode(Node):
         self.planning_mission_key_topic = str(
             self.declare_parameter("planning_mission_key_topic", "/planning/mission_key").value
         )
+        # HH_260727 - Keep regulated site dispatch separate from RViz /goal_pose.
         self.planning_goal_pose_topic = str(
-            self.declare_parameter("planning_goal_pose_topic", "/goal_pose").value
+            self.declare_parameter(
+                "planning_goal_pose_topic", "/planning/site_goal_pose_ros"
+            ).value
         )
         self.platform_status_topic = str(
             self.declare_parameter("platform_status_topic", "/platform/status").value
+        )
+        self.ranger_base_node_name = str(
+            self.declare_parameter("ranger_base_node_name", "/ranger_base_node").value
+        ).rstrip("/")
+        self.steering_transition_parameter = str(
+            self.declare_parameter(
+                "steering_transition_parameter",
+                "steering_transition_rate_radps",
+            ).value
         )
         self.service_state_topic = str(
             self.declare_parameter("service_state_topic", "/service/state").value
@@ -368,6 +382,14 @@ class UiBackendNode(Node):
         )
         self.pub_goal_pose = self.create_publisher(PoseStamped, self.planning_goal_pose_topic, 10)
         self.pub_service_state = self.create_publisher(AvgServiceState, self.service_state_topic, 10)
+        # HH_260727 - Runtime tuning uses the standard ROS parameter services, so the UI
+        # changes the driver immediately without restarting the platform.
+        self.get_ranger_parameters_client = self.create_client(
+            GetParameters, f"{self.ranger_base_node_name}/get_parameters"
+        )
+        self.set_ranger_parameters_client = self.create_client(
+            SetParameters, f"{self.ranger_base_node_name}/set_parameters"
+        )
         # HH_260724 - UI cancel/stop must cancel the active Nav2 actions, not only close engage.
         self.nav2_cancel_clients = [
             self.create_client(CancelGoal, topic) for topic in self.nav2_cancel_action_topics
@@ -393,6 +415,7 @@ class UiBackendNode(Node):
             f"goal_pose_topic={self.planning_goal_pose_topic} "
             f"arrival_pose_topic={self.arrival_pose_topic} "
             f"campsite_occupancy_topic={self.campsite_occupancy_topic} "
+            f"ranger_base_node={self.ranger_base_node_name} "
             f"camping_sites_yaml={self.camping_sites_yaml if self.camping_sites_yaml else '(none)'}"
         )
 
@@ -730,10 +753,14 @@ class UiBackendNode(Node):
 
     def _schedule_broadcast(self, payload: dict) -> None:
         """Schedule a broadcast from a ROS2 callback thread into the asyncio loop."""
-        if self._main_loop is not None:
-            asyncio.run_coroutine_threadsafe(
-                self._broadcast(payload), self._main_loop
-            )
+        if self._main_loop is None:
+            return
+        with self._ws_clients_lock:
+            if not self._ws_clients:
+                return
+        asyncio.run_coroutine_threadsafe(
+            self._broadcast(payload), self._main_loop
+        )
 
     async def _broadcast(self, payload: dict) -> None:
         with self._ws_clients_lock:
@@ -856,8 +883,10 @@ class UiBackendNode(Node):
             return
         pct = max(0, min(100, int(math.floor(battery_fraction * 100.0))))
         with self._lock:
+            battery_changed = self._state.battery_percentage != pct
             self._state.battery_percentage = pct
-        self._schedule_broadcast({"battery": pct})
+        if battery_changed:
+            self._schedule_broadcast({"battery": pct})
         self._update_low_battery_return_policy(pct, source="platform_status")
 
     def _on_arrival_pose(self, msg: AvgPoseStamped) -> None:
@@ -891,6 +920,10 @@ class UiBackendNode(Node):
                 source="drop_zone_exit_failed",
             )
             return
+        # HH_260727 - The state-machine mission-key latch expires while the
+        # station-exit maneuver runs, so refresh it immediately before the goal.
+        release_source = f"{source}:drop_zone_exit_complete"
+        self._publish_site_mission_key(mission_key, release_source)
         pose_published = self._publish_site_goal_pose(site, mission_key, source)
         if pose_published:
             self._publish_service_state(
@@ -1082,6 +1115,7 @@ class UiBackendNode(Node):
         )
         active_occupied_site = ""
         with self._lock:
+            occupancy_changed = self._state.occupied_sites != occupied_sites
             self._state.occupied_sites = occupied_sites
             for site in occupied_sites:
                 self._state.ws_site_states[site] = False
@@ -1091,7 +1125,8 @@ class UiBackendNode(Node):
                 active_occupied_site = active_site
                 self._state.destination = {"site": active_site, "run": False}
 
-        self._schedule_broadcast({"occupied_sites": occupied_sites})
+        if occupancy_changed:
+            self._schedule_broadcast({"occupied_sites": occupied_sites})
         if active_occupied_site:
             self.get_logger().warn(
                 f"active campsite became occupied; stopping dispatch: {active_occupied_site}"
@@ -1670,6 +1705,93 @@ class UiBackendNode(Node):
         )
         return {"success": True, "destination": payload, "dispatch": dispatch}
 
+    async def _await_ros_future(self, future: Any, timeout_s: float = 1.5) -> Any:
+        deadline = asyncio.get_running_loop().time() + timeout_s
+        while not future.done():
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError("ROS parameter service timed out")
+            await asyncio.sleep(0.02)
+        return future.result()
+
+    async def get_platform_tuning(self) -> Dict[str, Any]:
+        if not self.get_ranger_parameters_client.service_is_ready():
+            return {
+                "success": False,
+                "available": False,
+                "message": f"{self.ranger_base_node_name} parameter service is unavailable",
+            }
+        request = GetParameters.Request()
+        request.names = [self.steering_transition_parameter]
+        try:
+            response = await self._await_ros_future(
+                self.get_ranger_parameters_client.call_async(request)
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"success": False, "available": False, "message": str(exc)}
+        if not response.values:
+            return {"success": False, "available": True, "message": "parameter not returned"}
+        value = response.values[0]
+        if value.type != ParameterType.PARAMETER_DOUBLE:
+            return {
+                "success": False,
+                "available": True,
+                "message": "driver parameter is not a double",
+            }
+        return {
+            "success": True,
+            "available": True,
+            "steering_transition_rate_radps": float(value.double_value),
+            # HH_260727 - UI ratio is relative to the documented 1.0 rad/s reference.
+            "steering_transition_ratio": float(value.double_value),
+            "min_radps": 0.05,
+            "max_radps": 2.0,
+        }
+
+    async def set_platform_tuning(
+        self, steering_transition_rate_radps: float
+    ) -> Dict[str, Any]:
+        requested = float(steering_transition_rate_radps)
+        if not math.isfinite(requested) or not 0.05 <= requested <= 2.0:
+            return {
+                "success": False,
+                "available": True,
+                "message": "steering_transition_rate_radps must be in [0.05, 2.0]",
+            }
+        if not self.set_ranger_parameters_client.service_is_ready():
+            return {
+                "success": False,
+                "available": False,
+                "message": f"{self.ranger_base_node_name} parameter service is unavailable",
+            }
+
+        parameter = Parameter()
+        parameter.name = self.steering_transition_parameter
+        parameter.value = ParameterValue(
+            type=ParameterType.PARAMETER_DOUBLE,
+            double_value=requested,
+        )
+        request = SetParameters.Request()
+        request.parameters = [parameter]
+        try:
+            response = await self._await_ros_future(
+                self.set_ranger_parameters_client.call_async(request)
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"success": False, "available": False, "message": str(exc)}
+        if not response.results or not response.results[0].successful:
+            reason = response.results[0].reason if response.results else "no result"
+            return {"success": False, "available": True, "message": reason}
+
+        payload = {
+            "success": True,
+            "available": True,
+            "steering_transition_rate_radps": requested,
+            "steering_transition_ratio": requested,
+            "message": "steering transition rate updated dynamically",
+        }
+        self._schedule_broadcast({"platform_tuning": payload})
+        return payload
+
     # ── FastAPI server ────────────────────────────────────────────────────────
 
     def _resolve_frontend_dir(self) -> Optional[Path]:
@@ -1859,6 +1981,21 @@ class UiBackendNode(Node):
             with node._lock:
                 diags = list(node._state.diagnostics)
             return JSONResponse({"status": diags})
+
+        @app.get("/ui/platform_tuning")
+        async def get_platform_tuning() -> JSONResponse:
+            result = await node.get_platform_tuning()
+            return JSONResponse(result, status_code=200 if result.get("success") else 503)
+
+        @app.post("/ui/platform_tuning")
+        async def post_platform_tuning(
+            steering_transition_rate_radps: float = 0.5,
+        ) -> JSONResponse:
+            result = await node.set_platform_tuning(steering_transition_rate_radps)
+            status = 200 if result.get("success") else (
+                503 if not result.get("available", False) else 400
+            )
+            return JSONResponse(result, status_code=status)
 
         @app.post("/ui/engage")
         async def post_engage(value: str = "false") -> JSONResponse:

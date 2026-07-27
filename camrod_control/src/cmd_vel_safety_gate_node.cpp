@@ -22,6 +22,7 @@
 #include "avg_msgs/msg/avg_odometry.hpp"
 #include "avg_msgs/msg/avg_path.hpp"
 #include "avg_msgs/msg/avg_platform_status.hpp"
+#include "avg_msgs/msg/avg_polygon_stamped.hpp"
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
 #include "avg_msgs/msg/module_state.hpp"
@@ -362,6 +363,20 @@ private:
       85);
     motion_cost_stop_config_.lanelet_current_threshold = declare_parameter<int>(
       "lanelet_safety_current_threshold", 85);
+    motion_cost_stop_config_.lanelet_footprint_enabled = declare_parameter<bool>(
+      "lanelet_safety_footprint_enable", true);
+    motion_cost_stop_config_.lanelet_footprint_threshold = declare_parameter<int>(
+      "lanelet_safety_footprint_threshold", 100);
+    planning_boundary_topic_ = declare_parameter<std::string>(
+      "robot_planning_boundary_topic", "/platform/robot/planning_boundary");
+    motion_cost_stop_config_.footprint_front_m = declare_parameter<double>(
+      "lanelet_safety_footprint_front_m", 1.30137);
+    motion_cost_stop_config_.footprint_rear_m = declare_parameter<double>(
+      "lanelet_safety_footprint_rear_m", 0.39023);
+    motion_cost_stop_config_.footprint_left_m = declare_parameter<double>(
+      "lanelet_safety_footprint_left_m", 0.63505);
+    motion_cost_stop_config_.footprint_right_m = declare_parameter<double>(
+      "lanelet_safety_footprint_right_m", 0.63495);
     motion_cost_stop_config_.lanelet_lookahead_m = declare_parameter<double>(
       "lanelet_safety_lookahead_m", 1.0);
     motion_cost_stop_config_.lanelet_width_m = declare_parameter<double>(
@@ -578,6 +593,18 @@ private:
             lanelet_grid_frame_ = message->header.frame_id;
             motion_cost_stop_.setLaneletGrid(*message, nowSec());
             refreshMotionCostStopPose();
+          });
+        planning_boundary_subscription_ =
+          create_subscription<avg_msgs::msg::AvgPolygonStamped>(
+          planning_boundary_topic_, cost_qos,
+          [this](const avg_msgs::msg::AvgPolygonStamped::SharedPtr message) {
+            refreshMotionCostStopPose();
+            std::vector<std::pair<double, double>> polygon;
+            polygon.reserve(message->polygon.points.size());
+            for (const auto & point : message->polygon.points) {
+              polygon.emplace_back(point.x, point.y);
+            }
+            motion_cost_stop_.setFootprintPolygonWorld(polygon);
           });
       }
       if (cost_source_debug_enable_ || motion_cost_stop_config_.require_dynamic_source) {
@@ -1280,6 +1307,18 @@ private:
         motion_cost_stop_config_.lanelet_threshold = parameter.as_int();
       } else if (name == "lanelet_safety_current_threshold") {
         motion_cost_stop_config_.lanelet_current_threshold = parameter.as_int();
+      } else if (name == "lanelet_safety_footprint_enable") {
+        motion_cost_stop_config_.lanelet_footprint_enabled = parameter.as_bool();
+      } else if (name == "lanelet_safety_footprint_threshold") {
+        motion_cost_stop_config_.lanelet_footprint_threshold = parameter.as_int();
+      } else if (name == "lanelet_safety_footprint_front_m") {
+        motion_cost_stop_config_.footprint_front_m = parameter.as_double();
+      } else if (name == "lanelet_safety_footprint_rear_m") {
+        motion_cost_stop_config_.footprint_rear_m = parameter.as_double();
+      } else if (name == "lanelet_safety_footprint_left_m") {
+        motion_cost_stop_config_.footprint_left_m = parameter.as_double();
+      } else if (name == "lanelet_safety_footprint_right_m") {
+        motion_cost_stop_config_.footprint_right_m = parameter.as_double();
       } else if (name == "lanelet_safety_lookahead_m") {
         motion_cost_stop_config_.lanelet_lookahead_m = parameter.as_double();
       } else if (name == "lanelet_safety_width_m") {
@@ -1468,6 +1507,7 @@ private:
   std::optional<avg_msgs::msg::AvgOdometry> latest_odometry_;
   std::optional<avg_msgs::msg::AvgPath> latest_path_;
   std::string last_cost_reason_;
+  std::string planning_boundary_topic_;
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -1493,6 +1533,8 @@ private:
     localization_mode_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr merged_grid_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr lanelet_grid_subscription_;
+  rclcpp::Subscription<avg_msgs::msg::AvgPolygonStamped>::SharedPtr
+    planning_boundary_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr pose_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr odometry_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPath>::SharedPtr route_path_subscription_;

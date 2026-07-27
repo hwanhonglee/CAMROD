@@ -173,7 +173,8 @@ controller_server:
     # Restore canonical Nav2 checker parameter names.
     # Nav2 controller server reads *_checker_* keys; validator keys are ignored.
     progress_checker_plugin: "progress_checker"
-    goal_checker_plugins: ["goal_checker"]
+    # HH_260727 - Manual RViz goals select a stricter yaw-aware arrival policy.
+    goal_checker_plugins: ["goal_checker", "manual_goal_checker"]
     # HH_260720 - Controller IDs use /planning/controller_selector_ros:
     # RPP | DWB | MPPI | Graceful | RotationShim
     controller_plugins: ["RPP", "DWB", "MPPI", "Graceful", "RotationShim"]
@@ -205,6 +206,14 @@ controller_server:
       xy_goal_tolerance: 0.3
       yaw_goal_tolerance: 3.14
       stateful: False
+
+    # HH_260727 - Preserve the RViz goal arrow through final arrival instead of
+    # accepting any heading as the regulated lanelet handoff checker does.
+    manual_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.174533
+      stateful: True
 
     # DWB controller profile. Runtime selection is done by
     # HH_260720 - /planning/controller_selector_ros is the Nav2 std_msgs boundary.

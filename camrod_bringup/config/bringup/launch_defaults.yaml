@@ -286,6 +286,14 @@ bringup:
     cmd_vel_gate_lanelet_safety_grid_topic: /map/cost_grid/lanelet
     cmd_vel_gate_lanelet_safety_threshold: 85
     cmd_vel_gate_lanelet_safety_current_threshold: 85
+    cmd_vel_gate_lanelet_safety_footprint_enable: true
+    # HH_260727 - Permit soft boundary cost 98; stop the full footprint at off-lane 100.
+    cmd_vel_gate_lanelet_safety_footprint_threshold: 100
+    cmd_vel_gate_robot_planning_boundary_topic: /platform/robot/planning_boundary
+    cmd_vel_gate_lanelet_safety_footprint_front_m: 1.30137
+    cmd_vel_gate_lanelet_safety_footprint_rear_m: 0.39023
+    cmd_vel_gate_lanelet_safety_footprint_left_m: 0.63505
+    cmd_vel_gate_lanelet_safety_footprint_right_m: 0.63495
     cmd_vel_gate_lanelet_safety_lookahead_m: 1.0
     cmd_vel_gate_lanelet_safety_width_m: 0.8
     cmd_vel_gate_lanelet_safety_stop_on_unknown: true
@@ -466,6 +474,12 @@ bringup:
     api_ui_minimum_mission_dispatch_battery_percent: 35.0
     api_ui_low_battery_return_after_current_mission: true
     api_ui_low_battery_return_threshold_percent: 35.0
+    # HH_260727 - Open the local GTK/WebKit operator surface by default.
+    # Disable for headless bringup or when rendering the UI on another device.
+    enable_operator_ui_window: true
+    operator_ui_window_url: http://127.0.0.1:8010
+    operator_ui_window_width: 1280
+    operator_ui_window_height: 800
 
   namespaces:
     map: map

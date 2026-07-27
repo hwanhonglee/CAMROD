@@ -183,7 +183,7 @@ include the same topics for post-run evidence.
 
 <!-- HH_260721 - Record the operator/UI departure sequence validated in ordinary simulation. -->
 Selecting another campsite from `DROP_ZONE_WAIT` or charging state does not
-publish `/goal_pose` immediately. The UI sends a drop-zone `EXIT` operation and
+publish `/planning/site_goal_pose_ros` immediately. The UI sends a drop-zone `EXIT` operation and
 releases the pending goal only after `EXIT_STRAIGHT`, `ALIGN_EXIT_YAW`, and
 `/control/drop_zone/exit_complete=true`.
 

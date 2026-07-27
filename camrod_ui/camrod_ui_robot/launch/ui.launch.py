@@ -1,8 +1,12 @@
 import os
 
-from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
+from ament_index_python.packages import (
+    PackageNotFoundError,
+    get_package_prefix,
+    get_package_share_directory,
+)
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -68,6 +72,27 @@ def generate_launch_description():
         'ui_port',
         default_value='8010',
         description='UI backend bind port',
+    )
+    # HH_260727 - Show the local operator surface without requiring a full Brave session.
+    enable_operator_ui_window_arg = DeclareLaunchArgument(
+        'enable_operator_ui_window',
+        default_value='true',
+        description='Open the local operator UI in a lightweight GTK/WebKit window',
+    )
+    operator_ui_window_url_arg = DeclareLaunchArgument(
+        'operator_ui_window_url',
+        default_value='http://127.0.0.1:8010',
+        description='URL loaded by the lightweight operator UI window',
+    )
+    operator_ui_window_width_arg = DeclareLaunchArgument(
+        'operator_ui_window_width',
+        default_value='1280',
+        description='Initial lightweight operator UI window width in pixels',
+    )
+    operator_ui_window_height_arg = DeclareLaunchArgument(
+        'operator_ui_window_height',
+        default_value='800',
+        description='Initial lightweight operator UI window height in pixels',
     )
     frontend_dir_arg = DeclareLaunchArgument(
         'frontend_dir',
@@ -180,6 +205,9 @@ def generate_launch_description():
             'drop_zone_exit_complete_topic': LaunchConfiguration('drop_zone_exit_complete_topic'),
             'arrival_pose_topic': LaunchConfiguration('arrival_pose_topic'),
             'platform_status_topic': LaunchConfiguration('platform_status_topic'),
+            # HH_260727 - Standard ROS parameter service target for live steering tuning.
+            'ranger_base_node_name': '/ranger_base_node',
+            'steering_transition_parameter': 'steering_transition_rate_radps',
             # HH_260701 - If the robot is already inside the selected campsite,
             # show the arrival/return UI instead of sending a fresh Nav2 goal.
             'immediate_site_arrival_enabled': True,
@@ -187,7 +215,9 @@ def generate_launch_description():
             'site_arrival_pose_timeout_s': 2.0,
             # HH_260617: Replace ambiguous goal-key naming with semantic mission-key dispatch.
             'planning_mission_key_topic': '/planning/mission_key',
-            'planning_goal_pose_topic': '/goal_pose',
+            # HH_260727 - UI site goals use the regulated goal-snapper input;
+            # RViz keeps /goal_pose as an independent manual planning input.
+            'planning_goal_pose_topic': '/planning/site_goal_pose_ros',
             'publish_mission_key': True,
             'publish_goal_pose': True,
             # HH_260630 - Destination/camping-site buttons use the mission latch,
@@ -220,10 +250,41 @@ def generate_launch_description():
         }],
     )
 
+    # HH_260727 - This is a non-ROS GTK process, so launch it directly instead
+    # of using launch_ros Node (which would append unsupported --ros-args).
+    operator_ui_window = TimerAction(
+        period=1.0,
+        actions=[
+            ExecuteProcess(
+                cmd=[
+                    os.path.join(
+                        get_package_prefix('camrod_ui'),
+                        'lib',
+                        'camrod_ui',
+                        'camrod_ui_window',
+                    ),
+                    '--url',
+                    LaunchConfiguration('operator_ui_window_url'),
+                    '--width',
+                    LaunchConfiguration('operator_ui_window_width'),
+                    '--height',
+                    LaunchConfiguration('operator_ui_window_height'),
+                ],
+                name='camrod_ui_window',
+                output='screen',
+            )
+        ],
+        condition=IfCondition(LaunchConfiguration('enable_operator_ui_window')),
+    )
+
     return LaunchDescription([
         enable_ui_backend_arg,
         ui_host_arg,
         ui_port_arg,
+        enable_operator_ui_window_arg,
+        operator_ui_window_url_arg,
+        operator_ui_window_width_arg,
+        operator_ui_window_height_arg,
         frontend_dir_arg,
         camping_sites_yaml_arg,
         planning_engage_topic_arg,
@@ -241,4 +302,5 @@ def generate_launch_description():
         low_battery_return_after_current_mission_arg,
         low_battery_return_threshold_percent_arg,
         ui_backend,
+        operator_ui_window,
     ])

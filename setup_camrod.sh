@@ -188,6 +188,9 @@ REQUIRED_SYS_PKGS=(
   ros-humble-magic-enum
   python3-fastapi
   python3-uvicorn
+  # HH_260727 - Local lightweight operator UI runtime; WebKit has no rosdep key.
+  python3-gi
+  gir1.2-webkit2-4.0
   libsdl2-dev        # HH_260615 - camrod_voice SDL2 audio backend.
   libsdl2-mixer-dev  # HH_260615 - camrod_voice WAV playback via Mix_* API.
   # HH_260630: Explicitly install deps that rosdep may not resolve in

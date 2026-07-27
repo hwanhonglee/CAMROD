@@ -26,6 +26,25 @@ bool labelMatches(const std::string & value, const std::set<std::string> & accep
   return false;
 }
 
+bool pointInPolygon(
+  const double x,
+  const double y,
+  const std::vector<std::pair<double, double>> & polygon)
+{
+  bool inside = false;
+  for (std::size_t i = 0, j = polygon.size() - 1; i < polygon.size(); j = i++) {
+    const auto & current = polygon[i];
+    const auto & previous = polygon[j];
+    const bool crosses = ((current.second > y) != (previous.second > y)) &&
+      (x < (previous.first - current.first) * (y - current.second) /
+      (previous.second - current.second) + current.first);
+    if (crosses) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 }  // namespace
 
 MotionCostStop::MotionCostStop(MotionCostStopConfig config)
@@ -73,6 +92,24 @@ void MotionCostStop::setPose(const PlanarPose & pose)
   pose_ = pose;
 }
 
+void MotionCostStop::setFootprintPolygonWorld(
+  const std::vector<std::pair<double, double>> & polygon_world)
+{
+  if (!pose_.has_value() || polygon_world.size() < 3) {
+    return;
+  }
+  const double cosine = std::cos(pose_->yaw);
+  const double sine = std::sin(pose_->yaw);
+  std::vector<std::pair<double, double>> local;
+  local.reserve(polygon_world.size());
+  for (const auto & point : polygon_world) {
+    const double dx = point.first - pose_->x;
+    const double dy = point.second - pose_->y;
+    local.emplace_back(cosine * dx + sine * dy, -sine * dx + cosine * dy);
+  }
+  footprint_polygon_local_ = std::move(local);
+}
+
 void MotionCostStop::setOdometrySpeed(const double forward_speed_mps)
 {
   forward_speed_mps_ = forward_speed_mps;
@@ -112,14 +149,11 @@ MotionCostStopDecision MotionCostStop::evaluate(
   }
 
   if (!translational(command)) {
-    // HH_260721 - Honor the lanelet rotation policy before checking live body obstacles.
-    if (std::abs(command.angular.z) > config_.min_translation_mps &&
-      !config_.lanelet_allow_rotation)
-    {
-      const auto lanelet_decision = evaluateLanelet(command, now_sec);
-      if (lanelet_decision.blocked) {
-        return lanelet_decision;
-      }
+    // HH_260727 - A rotating asymmetric body can touch the raw map boundary even while
+    // robot_base_link stays clear, so evaluate the full footprint first.
+    const auto lanelet_decision = evaluateLanelet(command, now_sec);
+    if (lanelet_decision.blocked) {
+      return lanelet_decision;
     }
     const auto rotation_decision = evaluateRotation(now_sec);
     if (rotation_decision.blocked) {
@@ -184,14 +218,36 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
   const avg_msgs::msg::AvgTwist & command, const double now_sec)
 {
   if (!config_.lanelet_enabled || !lanelet_grid_.available ||
-    !validGrid(lanelet_grid_.grid) || !pose_.has_value() ||
-    laneletStaticBypassActive(command))
+    !validGrid(lanelet_grid_.grid) || !pose_.has_value())
   {
     return {};
   }
   if (!pose_->frame_id.empty() && !lanelet_grid_.grid.header.frame_id.empty() &&
     pose_->frame_id != lanelet_grid_.grid.header.frame_id)
   {
+    return {};
+  }
+
+  const bool any_motion =
+    std::abs(command.linear.x) > config_.min_translation_mps ||
+    std::abs(command.linear.y) > config_.min_translation_mps ||
+    std::abs(command.angular.z) > config_.min_translation_mps;
+
+  // HH_260727 - A maneuver/static exception may skip only the legacy
+  // base-link current-cell and directional corridor checks. The complete
+  // planning footprint remains a fail-closed boundary for every motion.
+  if (config_.lanelet_footprint_enabled && any_motion) {
+    const auto footprint_hit = sampleFootprint(
+      lanelet_grid_.grid, config_.lanelet_footprint_threshold,
+      config_.lanelet_stop_on_unknown);
+    if (footprint_hit.blocked) {
+      const std::string reason = "lanelet_footprint_" + footprint_hit.detail;
+      markBlocked(reason, false, now_sec);
+      return {true, false, true, false, reason};
+    }
+  }
+
+  if (laneletStaticBypassActive(command)) {
     return {};
   }
 
@@ -566,6 +622,126 @@ MotionCostStop::GridHit MotionCostStop::sampleDisk(
         hit.cost = cost;
         hit.detail = "cost";
         return hit;
+      }
+    }
+  }
+  return hit;
+}
+
+MotionCostStop::GridHit MotionCostStop::sampleFootprint(
+  const avg_msgs::msg::AvgOccupancyGrid & grid,
+  const int threshold,
+  const bool stop_on_unknown) const
+{
+  GridHit hit;
+  if (!pose_.has_value() || !validGrid(grid)) {
+    return hit;
+  }
+
+  std::vector<std::pair<double, double>> local = footprint_polygon_local_;
+  if (local.size() < 3) {
+    local = {
+      {config_.footprint_front_m, config_.footprint_left_m},
+      {config_.footprint_front_m, -config_.footprint_right_m},
+      {-config_.footprint_rear_m, -config_.footprint_right_m},
+      {-config_.footprint_rear_m, config_.footprint_left_m}};
+  }
+
+  const double cosine = std::cos(pose_->yaw);
+  const double sine = std::sin(pose_->yaw);
+  std::vector<std::pair<double, double>> world;
+  world.reserve(local.size());
+  for (const auto & point : local) {
+    world.emplace_back(
+      pose_->x + cosine * point.first - sine * point.second,
+      pose_->y + sine * point.first + cosine * point.second);
+  }
+
+  auto check_point = [&](const double world_x, const double world_y) {
+      int grid_x = 0;
+      int grid_y = 0;
+      if (!worldToGrid(grid, world_x, world_y, grid_x, grid_y)) {
+        if (stop_on_unknown) {
+          hit.blocked = true;
+          hit.world_x = world_x;
+          hit.world_y = world_y;
+          hit.detail = "out_of_grid";
+        }
+        return;
+      }
+      const int cost = grid.data[grid_y * static_cast<int>(grid.info.width) + grid_x];
+      ++hit.total_cells;
+      if (cost >= threshold) {
+        const auto center = gridToWorld(grid, grid_x, grid_y);
+        hit.blocked = true;
+        hit.world_x = center.first;
+        hit.world_y = center.second;
+        hit.cost = cost;
+        hit.detail = "cost";
+      }
+    };
+
+  // HH_260727 - Sample every polygon edge at half-cell spacing. This catches contact with
+  // a boundary cell even when that cell's center lies just outside the body.
+  const double edge_step = std::max(0.01, grid.info.resolution * 0.5);
+  for (std::size_t index = 0; index < world.size() && !hit.blocked; ++index) {
+    const auto & start = world[index];
+    const auto & end = world[(index + 1) % world.size()];
+    const double length = std::hypot(end.first - start.first, end.second - start.second);
+    const int steps = std::max(1, static_cast<int>(std::ceil(length / edge_step)));
+    for (int step = 0; step <= steps && !hit.blocked; ++step) {
+      const double ratio = static_cast<double>(step) / static_cast<double>(steps);
+      check_point(
+        start.first + ratio * (end.first - start.first),
+        start.second + ratio * (end.second - start.second));
+    }
+  }
+  if (hit.blocked) {
+    return hit;
+  }
+
+  // HH_260727 - Check the grid-cell centers covered by the polygon so interior cost can
+  // never be hidden by clear vertices or edges.
+  double min_grid_x = std::numeric_limits<double>::infinity();
+  double min_grid_y = std::numeric_limits<double>::infinity();
+  double max_grid_x = -std::numeric_limits<double>::infinity();
+  double max_grid_y = -std::numeric_limits<double>::infinity();
+  const double origin_yaw = yawFromGridOrigin(grid);
+  const double origin_cosine = std::cos(origin_yaw);
+  const double origin_sine = std::sin(origin_yaw);
+  for (const auto & point : world) {
+    const double dx = point.first - grid.info.origin.position.x;
+    const double dy = point.second - grid.info.origin.position.y;
+    const double local_x = origin_cosine * dx + origin_sine * dy;
+    const double local_y = -origin_sine * dx + origin_cosine * dy;
+    min_grid_x = std::min(min_grid_x, local_x / grid.info.resolution);
+    min_grid_y = std::min(min_grid_y, local_y / grid.info.resolution);
+    max_grid_x = std::max(max_grid_x, local_x / grid.info.resolution);
+    max_grid_y = std::max(max_grid_y, local_y / grid.info.resolution);
+  }
+
+  const int x_begin = std::max(0, static_cast<int>(std::floor(min_grid_x)) - 1);
+  const int y_begin = std::max(0, static_cast<int>(std::floor(min_grid_y)) - 1);
+  const int x_end = std::min(
+    static_cast<int>(grid.info.width) - 1,
+    static_cast<int>(std::ceil(max_grid_x)) + 1);
+  const int y_end = std::min(
+    static_cast<int>(grid.info.height) - 1,
+    static_cast<int>(std::ceil(max_grid_y)) + 1);
+  for (int grid_y = y_begin; grid_y <= y_end && !hit.blocked; ++grid_y) {
+    for (int grid_x = x_begin; grid_x <= x_end && !hit.blocked; ++grid_x) {
+      const auto cell = gridToWorld(grid, grid_x, grid_y);
+      if (!pointInPolygon(cell.first, cell.second, world)) {
+        continue;
+      }
+      const int cost = grid.data[grid_y * static_cast<int>(grid.info.width) + grid_x];
+      ++hit.total_cells;
+      if (cost >= threshold) {
+        hit.blocked = true;
+        hit.world_x = cell.first;
+        hit.world_y = cell.second;
+        hit.cost = cost;
+        hit.detail = "cost";
       }
     }
   }

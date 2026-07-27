@@ -412,6 +412,12 @@ public:
 
     const auto geometry_t1 = std::chrono::steady_clock::now();
     updatePathOrientations(path);
+    // HH_260727 - Keep the legal lanelet geometry while honoring the operator's
+    // requested arrival heading. Regulated UI goals already carry the snapped
+    // lane heading; manual RViz goals may intentionally request either heading
+    // at the same location and RotationShim completes that final alignment.
+    path.poses.back().pose.orientation =
+      yawToQuaternion(quaternionToYaw(goal.pose.orientation));
     const auto plan_t1 = std::chrono::steady_clock::now();
     const double snap_ms =
       std::chrono::duration<double, std::milli>(snap_t1 - plan_t0).count();

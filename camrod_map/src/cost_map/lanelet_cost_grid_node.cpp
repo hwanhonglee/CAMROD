@@ -599,13 +599,19 @@ private:
     route_lanelet_ids_ = std::move(new_route_lanelet_ids);
     route_lanelet_ids_received_ = new_received;
     invalidatePathLaneletCache();
-    if (has_pose_ && (
-        route_lanelet_filter_enable_ ||
-        route_boundary_clearance_enable_ ||
-        secondary_route_lanelet_filter_enable_ ||
-        secondary_route_boundary_clearance_enable_))
-    {
-      requestBuild(true);
+    const bool rebuild_primary =
+      primary_enable_ &&
+      route_lanelet_filter_enable_;
+    const bool rebuild_secondary =
+      secondary_enable_ &&
+      secondary_route_lanelet_filter_enable_;
+    if (has_pose_ && (rebuild_primary || rebuild_secondary)) {
+      // HH_260727 - Route IDs normally affect only the small primary sensor
+      // mask. Rebuilding the independent 960x960 all-lane Nav2 base here took
+      // 7-9 seconds on the live stack and caused avoidable CPU saturation.
+      // Path-dependent boundary clearance is rebuilt after the matching new
+      // global path arrives, not against the previous path in this callback.
+      requestBuild(true, rebuild_primary, rebuild_secondary);
     }
   }
 
@@ -660,12 +666,28 @@ private:
            std::abs(a.length - b.length) > eps;
   }
 
-  bool pathInputAffectsBuild() const
+  bool primaryPathInputAffectsBuild() const
   {
     return cost_mode_ == "path" ||
-           secondary_cost_mode_ == "path" ||
            window_mode_ == "path_bbox" ||
-           secondary_window_mode_ == "path_bbox";
+           route_boundary_clearance_enable_ ||
+           // HH_260727 - Grid planners do not publish exact route IDs. Their
+           // first successful global path must therefore build the primary
+           // active-route mask instead of leaving sensing permanently fail-open.
+           (!route_lanelet_ids_received_ && route_lanelet_filter_enable_);
+  }
+
+  bool secondaryPathInputAffectsBuild() const
+  {
+    return secondary_cost_mode_ == "path" ||
+           secondary_window_mode_ == "path_bbox" ||
+           secondary_route_boundary_clearance_enable_ ||
+           (!route_lanelet_ids_received_ && secondary_route_lanelet_filter_enable_);
+  }
+
+  bool pathInputAffectsBuild() const
+  {
+    return primaryPathInputAffectsBuild() || secondaryPathInputAffectsBuild();
   }
 
   bool onPathCommon(const nav_msgs::msg::Path::ConstSharedPtr msg)
@@ -770,7 +792,8 @@ private:
     last_path_signature_valid_ = true;
     invalidatePathLaneletCache();
     if (has_pose_ && rebuild_on_path_ && pathInputAffectsBuild()) {
-      requestBuild(true);
+      requestBuild(
+        true, primaryPathInputAffectsBuild(), secondaryPathInputAffectsBuild());
     }
     return true;
   }
@@ -1539,14 +1562,14 @@ private:
       grid.info.width, grid.info.height, grid.info.resolution, grid.header.frame_id.c_str());
   }
 
-  // Builds/publishes all configured profiles (primary + optional secondary).
-  void buildGrid()
+  // Builds/publishes the requested profiles (primary + optional secondary).
+  void buildGrid(bool build_primary = true, bool build_secondary = true)
   {
     // 1) Primary profile — skipped by default (primary_enable=false).
-    if (primary_enable_) {
+    if (build_primary && primary_enable_) {
       buildSingleGrid();
     }
-    if (!secondary_enable_ || !secondary_grid_pub_) {
+    if (!build_secondary || !secondary_enable_ || !secondary_grid_pub_) {
       return;
     }
 
@@ -1684,8 +1707,12 @@ private:
   }
 
   // Requests a cost-grid rebuild, honoring throttle/no-path guards unless forced.
-  void requestBuild(bool force)
+  void requestBuild(
+    bool force, bool build_primary = true, bool build_secondary = true)
   {
+    if (!build_primary && !build_secondary) {
+      return;
+    }
     if (!map_ || (!has_pose_ && requiresPoseForBuild())) {
       return;
     }
@@ -1705,7 +1732,7 @@ private:
       }
     }
     const auto build_t0 = std::chrono::steady_clock::now();
-    buildGrid();
+    buildGrid(build_primary, build_secondary);
     const auto build_t1 = std::chrono::steady_clock::now();
     if (debug_build_timing_) {
       const double ms = std::chrono::duration<double, std::milli>(build_t1 - build_t0).count();

@@ -100,6 +100,13 @@ def build_nav2_selector_latch_node(context, *args, **kwargs):
     combo_file = LaunchConfiguration('nav2_combo_param_file').perform(context)
     requested_planner = LaunchConfiguration('nav2_selected_planner').perform(context)
     requested_controller = LaunchConfiguration('nav2_selected_controller').perform(context)
+    regulated_goal_checker = LaunchConfiguration(
+        'nav2_regulated_goal_checker'
+    ).perform(context)
+    manual_planner = LaunchConfiguration('nav2_manual_planner').perform(context)
+    manual_controller = LaunchConfiguration('nav2_manual_controller').perform(context)
+    manual_goal_checker = LaunchConfiguration('nav2_manual_goal_checker').perform(context)
+    goal_source_topic = LaunchConfiguration('nav2_goal_source_topic').perform(context)
     module_ns = LaunchConfiguration('module_namespace').perform(context).strip('/')
 
     inferred_planner, inferred_controller = infer_nav2_combo_ids(combo_file)
@@ -110,6 +117,11 @@ def build_nav2_selector_latch_node(context, *args, **kwargs):
     planner_topic = f'/{module_ns}/planner_selector_ros' if module_ns else '/planner_selector_ros'
     controller_topic = (
         f'/{module_ns}/controller_selector_ros' if module_ns else '/controller_selector_ros'
+    )
+    # HH_260727 - Goal source also selects the matching arrival/yaw policy.
+    goal_checker_topic = (
+        f'/{module_ns}/goal_checker_selector_ros'
+        if module_ns else '/goal_checker_selector_ros'
     )
 
     return [
@@ -125,8 +137,14 @@ def build_nav2_selector_latch_node(context, *args, **kwargs):
             parameters=[{
                 'planner_id': planner_id,
                 'controller_id': controller_id,
+                'regulated_goal_checker_id': regulated_goal_checker,
+                'manual_planner_id': manual_planner,
+                'manual_controller_id': manual_controller,
+                'manual_goal_checker_id': manual_goal_checker,
+                'goal_source_topic': goal_source_topic,
                 'planner_topic': planner_topic,
                 'controller_topic': controller_topic,
+                'goal_checker_topic': goal_checker_topic,
                 'repeat_hz': 1.0,
             }],
         )
@@ -237,6 +255,36 @@ def generate_launch_description():
         'nav2_selected_controller',
         default_value='__auto__',
         description='Controller selector ID (auto resolves from nav2_combo_param_file)',
+    )
+    # HH_260727 - Keep regulated mission defaults configurable while giving
+    # manual RViz goals an explicit route/yaw-aware selector policy.
+    nav2_regulated_goal_checker_arg = DeclareLaunchArgument(
+        'nav2_regulated_goal_checker',
+        default_value='goal_checker',
+        description='Goal checker selector ID for regulated UI/mission goals',
+    )
+    nav2_manual_planner_arg = DeclareLaunchArgument(
+        'nav2_manual_planner',
+        # HH_260727 - Default manual clicks to the lanelet graph. Smac2D remains
+        # an explicit diagnostic override, but its raster path can staircase and
+        # cannot publish the route IDs required by the radar/lidar route mask.
+        default_value='LaneletRoute',
+        description='Planner selector ID for manual RViz goals (default: LaneletRoute)',
+    )
+    nav2_manual_controller_arg = DeclareLaunchArgument(
+        'nav2_manual_controller',
+        default_value='RotationShim',
+        description='Controller selector ID for manual RViz goals',
+    )
+    nav2_manual_goal_checker_arg = DeclareLaunchArgument(
+        'nav2_manual_goal_checker',
+        default_value='manual_goal_checker',
+        description='Goal checker selector ID for manual RViz goals',
+    )
+    nav2_goal_source_topic_arg = DeclareLaunchArgument(
+        'nav2_goal_source_topic',
+        default_value='/planning/goal_source',
+        description='Goal source latch topic (regulated or manual)',
     )
     enable_path_cost_grids_arg = DeclareLaunchArgument(
         'enable_path_cost_grids',
@@ -615,6 +663,11 @@ def generate_launch_description():
         nav2_combo_param_arg,
         nav2_selected_planner_arg,
         nav2_selected_controller_arg,
+        nav2_regulated_goal_checker_arg,
+        nav2_manual_planner_arg,
+        nav2_manual_controller_arg,
+        nav2_manual_goal_checker_arg,
+        nav2_goal_source_topic_arg,
         enable_path_cost_grids_arg,
         path_cost_grids_param_arg,
         map_path_arg,

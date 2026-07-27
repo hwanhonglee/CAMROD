@@ -90,6 +90,18 @@
     lanelet_safety_grid_topic: "/map/cost_grid/lanelet"
     lanelet_safety_threshold: 85
     lanelet_safety_current_threshold: 85
+    # HH_260727 - Check the actual asymmetric planning boundary, not only robot_base_link.
+    lanelet_safety_footprint_enable: true
+    # HH_260727 - 98 is the soft/rasterized lane edge; 100 is truly off-lane.
+    # This preserves whole-body containment without immobilizing narrow mapped lanes.
+    lanelet_safety_footprint_threshold: 100
+    robot_planning_boundary_topic: "/platform/robot/planning_boundary"
+    # Fallback dimensions match robot_params/Nav2 footprint if the boundary
+    # publisher has not produced its transient-local polygon yet.
+    lanelet_safety_footprint_front_m: 1.30137
+    lanelet_safety_footprint_rear_m: 0.39023
+    lanelet_safety_footprint_left_m: 0.63505
+    lanelet_safety_footprint_right_m: 0.63495
     lanelet_safety_lookahead_m: 1.0
     lanelet_safety_width_m: 0.8
     lanelet_safety_stop_on_unknown: true
