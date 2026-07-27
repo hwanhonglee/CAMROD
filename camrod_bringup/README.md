@@ -45,22 +45,33 @@ is launched and checked by `camrod_system`.
 Real-hardware bringup now uses the same correction route as standalone sensing:
 
 ```text
-NTRIP -> moving_base_rtcm_writer -> /dev/ttyUSB4 Lite moving base
+NTRIP -> moving_base_rtcm_writer -> FTDI DN03DF8V Lite moving base
       -> UART/XBee corrected moving-base RTCM -> /dev/ttyACM0 heading rover
       -> NAV-PVT + NAV-RELPOSNED
 ```
 
-`/dev/ttyACM0` is the POWER+GPS heading-rover output. `/dev/ttyUSB4` is the
-POWER+XBEE FTDI input to the Lite moving base. With both present, the ordinary
-real-hardware command above needs no GNSS overrides.
+`/dev/ttyACM0` is the POWER+GPS heading-rover output. The stable path
+`/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0`
+is the POWER+XBEE input to the Lite moving base regardless of its changing
+`/dev/ttyUSB*` assignment.
+With both present, the ordinary real-hardware command above needs no GNSS
+overrides.
 
-| Launch default | Value |
+The selected `gnss_param_file` is now the single source for both physical
+ports. The package and bringup copies use the same node-specific keys:
+
+| Config key / launch default | Value |
 |---|---|
 | `ublox_dual_antenna` | `true` |
 | `ublox_dual_forward_ntrip_to_rover` | `false` |
 | `ublox_dual_warm_start_on_startup` | `false` |
-| `ublox_dual_base_rtcm_device` | `/dev/ttyUSB4` |
-| `ublox_dual_base_rtcm_baud` | `115200` |
+| `/**/ublox_gps_node.device` | `/dev/ttyACM0` |
+| `/**/moving_base_rtcm_writer.device` | `/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0` |
+| `/**/moving_base_rtcm_writer.baud` | `115200` |
+
+The optional `ublox_dual_base_rtcm_device` and
+`ublox_dual_base_rtcm_baud` launch arguments default to `__config__`; use them
+only for an explicit temporary override.
 
 Verify the live ownership and solutions without printing NTRIP credentials:
 

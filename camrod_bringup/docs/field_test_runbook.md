@@ -14,8 +14,9 @@ git status --short --branch
 source /opt/ros/humble/setup.bash
 source /home/nvidia/camrod_ws/install/setup.bash
 ros2 run camrod_bringup field_test_tool.sh config
-# HH_260722 - Confirm both role-specific GNSS ports before real bringup.
-ls -l /dev/ttyACM0 /dev/ttyUSB0
+# HH_260727 - Confirm both role-specific GNSS ports before real bringup.
+ls -l /dev/ttyACM0 \
+  /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0
 ```
 
 Expected:
@@ -25,7 +26,11 @@ Expected:
   match their `install/<package>/share/<package>/config` copies. A source-only
   `OK` is not sufficient after changing deployment YAML.
 - `/dev/ttyACM0` is the POWER+GPS heading rover used for NAV-PVT and
-  NAV-RELPOSNED; `/dev/ttyUSB0` is POWER+XBEE into the Lite moving base.
+  NAV-RELPOSNED. The FTDI DN03DF8V by-id path is POWER+XBEE into the Lite
+  moving base; its `/dev/ttyUSB*` assignment may change between boots.
+- Both values come from the node-specific sections of
+  `config/sensing/gnss/zed_f9p_rover.yaml`; launch device/baud arguments default
+  to `__config__`.
 
 ## 2. Start Bringup With Logging
 

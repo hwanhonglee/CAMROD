@@ -10,7 +10,7 @@
 #   NTRIP CORS
 #       -> /gnss/ntrip_client/rtcm
 #       -> moving_base_rtcm_writer
-#       -> /dev/ttyUSB0 (POWER+XBEE / Lite moving-base UART1)
+#       -> FTDI DN03DF8V by-id (POWER+XBEE / Lite moving-base UART1)
 #       -> Lite solves absolute RTK and emits 4072.0 + MSM4 + 1230
 #       -> board UART/XBee link
 #       -> /dev/ttyACM0 receiver UART2 (Budget heading rover)
@@ -49,7 +49,8 @@ def _use_base_rtcm_writer(dual_antenna, forward_ntrip_to_rover, device):
     """Select exactly one destination for an external correction stream."""
     # HH_260722 - A direct-rover diagnostic must not silently keep correcting
     # the base as well. That would recreate the two-reference collision this
-    # launch is designed to avoid.
+    # launch is designed to avoid. ``__config__`` means the selected GNSS YAML
+    # supplies the writer port; an explicitly empty override disables it.
     return dual_antenna and not forward_ntrip_to_rover and bool(device)
 
 
@@ -156,8 +157,9 @@ def _launch_setup(context, *args, **kwargs):
             nodes.append(
                 _base_rtcm_writer_node(
                     gnss_namespace,
+                    ublox_param_file,
                     base_rtcm_device,
-                    int(base_rtcm_baud),
+                    base_rtcm_baud,
                     ntrip_rtcm_topic,
                     gnss_log_level,
                 )
@@ -166,11 +168,25 @@ def _launch_setup(context, *args, **kwargs):
 
 
 def _base_rtcm_writer_node(
-    namespace: str, device: str, baud: int, rtcm_topic: str, log_level: str
+    namespace: str,
+    param_file: str,
+    device_override: str,
+    baud_override: str,
+    rtcm_topic: str,
+    log_level: str,
 ) -> Node:
     # HH_260722 - Write CORS RTCM to the moving base instead of the heading
     # rover. Correcting the base first is what improves absolute NAV-PVT without
     # sacrificing the moving-baseline RELPOSNED solution.
+    runtime_params = {"rtcm_topic": rtcm_topic}
+    # HH_260727 - The normal path takes device/baud from the writer-specific
+    # section of zed_f9p_rover.yaml. Keep explicit launch arguments only as
+    # diagnostics/field overrides, and apply them after the YAML when present.
+    if device_override != "__config__":
+        runtime_params["device"] = device_override
+    if baud_override != "__config__":
+        runtime_params["baud"] = int(baud_override)
+
     return Node(
         package="camrod_sensing",
         executable="rtcm_serial_writer.py",
@@ -179,11 +195,8 @@ def _base_rtcm_writer_node(
         output="log",
         arguments=["--ros-args", "--log-level", log_level],
         parameters=[
-            {
-                "device": device,
-                "baud": baud,
-                "rtcm_topic": rtcm_topic,
-            }
+            param_file,
+            runtime_params,
         ],
     )
 
@@ -249,19 +262,21 @@ def generate_launch_description():
                               description="Python ntrip_ros.py parameter file"),
         DeclareLaunchArgument(
             "ublox_dual_base_rtcm_device",
-            # HH_260722 - POWER+XBEE exposes the moving-base Lite UART through
-            # this FTDI device in the current field harness.
-            default_value="/dev/ttyUSB0",
+            # HH_260727 - The production value belongs to the selected GNSS
+            # config. An explicit path remains available as a CLI override.
+            default_value="__config__",
             description=(
-                "Moving-base serial/USB device that receives NTRIP RTCM; "
-                "set empty only for heading-only bench operation"
+                "Moving-base serial override; __config__ reads the writer section "
+                "of ublox_param_file, empty disables the writer"
             ),
         ),
         DeclareLaunchArgument(
             "ublox_dual_base_rtcm_baud",
-            # HH_260722 - Match the stored POWER+XBEE/Lite UART1 rate.
-            default_value="115200",
-            description="Baud rate for ublox_dual_base_rtcm_device",
+            default_value="__config__",
+            description=(
+                "Moving-base baud override; __config__ reads the writer section "
+                "of ublox_param_file"
+            ),
         ),
         DeclareLaunchArgument("enable_ntrip",        default_value="true",
                               description="Enable NTRIP client for RTCM corrections"),

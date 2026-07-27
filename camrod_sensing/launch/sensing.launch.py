@@ -153,16 +153,18 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "ublox_dual_base_rtcm_device",
-            # HH_260723 - Expose the current POWER+XBEE moving-base correction
-            # port through the full sensing launch.
-            default_value="/dev/ttyUSB4",
-            description="POWER+XBEE serial device used to correct the moving base",
+            # HH_260727 - Resolve the normal value from gnss_param_file so this
+            # aggregate launch and bringup cannot drift from standalone GNSS.
+            default_value="__config__",
+            description=(
+                "Optional moving-base serial override; __config__ uses "
+                "gnss_param_file"
+            ),
         ),
         DeclareLaunchArgument(
             "ublox_dual_base_rtcm_baud",
-            # HH_260722 - Match the moving-base UART1 field configuration.
-            default_value="115200",
-            description="Baud rate of the moving-base POWER+XBEE serial device",
+            default_value="__config__",
+            description="Optional moving-base baud override; __config__ uses gnss_param_file",
         ),
 
         # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.

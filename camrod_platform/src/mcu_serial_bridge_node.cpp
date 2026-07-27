@@ -35,7 +35,8 @@ public:
     lights_status_topic_ = declare_parameter<std::string>(
       "lights_status_topic", "/platform/lights/status");
     serial_port_ = declare_parameter<std::string>(
-      "serial_port", "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0");
+      "serial_port",
+      "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG003YCF-if00-port0");
     serial_baud_ = declare_parameter<int>("serial_baud", 115200);
     tx_rate_hz_ = declare_parameter<double>("tx_rate_hz", 5.0);
     reconnect_backoff_s_ = declare_parameter<double>("reconnect_backoff_s", 2.0);

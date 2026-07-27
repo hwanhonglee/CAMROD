@@ -31,8 +31,9 @@ ros2 launch camrod_sensing sensing.launch.py imu_model:=gq7
 # Sub-stacks (for isolated bringup or debug)
 ros2 launch camrod_sensing lidar.launch.py
 ros2 launch camrod_sensing radar.launch.py
-# HH_260723 - The default dual route requires both current field GNSS ports.
-ls -l /dev/ttyACM0 /dev/ttyUSB4
+# HH_260727 - The default dual route requires both role-specific GNSS ports.
+ls -l /dev/ttyACM0 \
+  /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0
 ros2 launch camrod_sensing gnss.launch.py                            # dual antenna, corrected base
 ros2 launch camrod_sensing gnss.launch.py ublox_dual_antenna:=false  # single antenna
 ros2 launch camrod_sensing gnss.launch.py enable_ntrip:=false        # dual, no NTRIP
@@ -172,7 +173,7 @@ graph TD
   end
 
   subgraph GNSS["🛰️ GNSS"]
-    MB{{🛠️ Lite moving base\n/dev/ttyUSB4 POWER+XBEE}}:::hardware
+    MB{{🛠️ Lite moving base\nFTDI DN03DF8V POWER+XBEE}}:::hardware
     ROVER{{🛠️ Budget heading rover\n/dev/ttyACM0 POWER+GPS}}:::hardware
     NTRIP[[ntrip_client]]:::system
     WRITER[[moving_base_rtcm_writer]]:::system
@@ -408,10 +409,10 @@ NTRIP to the rover topic; the production dual mode sends NTRIP only to
 | Field | Detail |
 |---|---|
 | Trigger | `ublox_gps_node` startup with `dual_antenna:=true`. `enable_ntrip` controls Python NTRIP client. |
-| Internal logic | NTRIP publishes `/sensing/gnss/ntrip_client/rtcm`; `moving_base_rtcm_writer` writes it to the Lite moving base through `/dev/ttyUSB4`. The corrected base sends RTCM `4072.0`, MSM4 (`1074/1084/1094/1124`), and `1230` through XBee to the Budget heading rover UART2. `/dev/ttyACM0` remains the rover's ROS output and does not receive CORS directly. This is the default path with `ublox_dual_forward_ntrip_to_rover:=false`. |
+| Internal logic | NTRIP publishes `/sensing/gnss/ntrip_client/rtcm`; `moving_base_rtcm_writer` writes it to the Lite moving base through the FTDI DN03DF8V by-id path (currently `/dev/ttyUSB0`). The corrected base sends RTCM `4072.0`, MSM4 (`1074/1084/1094/1124`), and `1230` through XBee to the Budget heading rover UART2. `/dev/ttyACM0` remains the rover's ROS output and does not receive CORS directly. This is the default path with `ublox_dual_forward_ntrip_to_rover:=false`. |
 | Output effect | Rover USB publishes absolute `UBX-NAV-PVT` and moving-baseline `UBX-NAV-RELPOSNED` together, exposed as `/sensing/gnss/ublox_gps_node/navpvt`, `/sensing/gnss/navrelposned`, `/sensing/gnss/navheading`, and `/sensing/gnss/ublox_gps_node/fix`. |
 | Operator-visible symptom | Heading fixed but absolute pose float means the base-to-rover link works while moving-base CORS input or its ambiguity solution does not. Absolute fixed but heading invalid means to check Lite UART1 -> XBee -> rover UART2 and RELPOSNED flags. |
-| Related params | `dual_antenna.usb_rtcm_in`, `dual_antenna.block_rtcm_ids`, `ublox_dual_forward_ntrip_to_rover`, `ublox_dual_base_rtcm_device`, `ublox_dual_base_rtcm_baud`; set rover forwarding `false` when base-side RTCM forwarding is used. |
+| Related params | `config/gnss/zed_f9p_rover.yaml`: `/**/ublox_gps_node.device`, `/**/moving_base_rtcm_writer.device`, `/**/moving_base_rtcm_writer.baud`; launch routing: `dual_antenna.usb_rtcm_in`, `dual_antenna.block_rtcm_ids`, `ublox_dual_forward_ntrip_to_rover`. |
 | Related topics | `/sensing/gnss/ntrip_client/rtcm`, `/sensing/gnss/rxmrtcm`, `/sensing/gnss/ublox_gps_node/navpvt`, `/sensing/gnss/navrelposned`, `/sensing/gnss/navheading` |
 
 <!-- HH_260722 - Record the verified dual-antenna production topology and A/B evidence. -->
@@ -431,12 +432,12 @@ message types:
 
 | Item | Previous implementation | Corrected implementation |
 |---|---|---|
-| CORS destination | Heading rover `/dev/ttyACM0` | Lite moving base `/dev/ttyUSB4` |
+| CORS destination | Heading rover `/dev/ttyACM0` | Lite moving base FTDI DN03DF8V |
 | Rover USB RTCM input | Enabled by default | Disabled by default |
 | Moving-base host port | Not opened by the launch | Opened by `moving_base_rtcm_writer` |
 | Rover correction source | CORS USB and moving-base UART2 mixed | Corrected moving-base UART2 only |
 | Dual update rate | Rover requested 5 Hz while field base emitted 1 Hz | Rover and stored base output both 1 Hz |
-| Aggregate sensing launch | Did not pass a moving-base port | Passes device and baud into `gnss.launch.py` |
+| Aggregate sensing launch | Did not pass a moving-base port | Passes one GNSS config whose node-specific blocks configure both rover and writer |
 
 Hardware A/B acceptance results:
 
@@ -460,7 +461,7 @@ and require it to remain stable while flags indicate moving/fixed/heading-valid.
 | Path | Owner | Physical link | ROS/software action | Purpose |
 |---|---|---|---|---|
 | Heading/relative baseline | Moving base -> heading rover | Existing UART/XBee -> rover UART2 | Keep rover launch at `1 Hz` and run `ublox_dual_forward_ntrip_to_rover:=false` | Preserve `NAV-RELPOSNED` fixed heading |
-| Absolute CORS RTK | NTRIP client -> moving base | Second USB/UART connection to the moving-base receiver | Set `ublox_dual_base_rtcm_device` so `moving_base_rtcm_writer` writes `/sensing/gnss/ntrip_client/rtcm` to the base-side serial input, not to rover USB | Let the base solve absolute RTK before it sends moving-baseline RTCM to the rover |
+| Absolute CORS RTK | NTRIP client -> moving base | Second USB/UART connection to the moving-base receiver | Set `/**/moving_base_rtcm_writer.device` in `zed_f9p_rover.yaml` so the writer sends `/sensing/gnss/ntrip_client/rtcm` to the base-side serial input, not rover USB | Let the base solve absolute RTK before it sends moving-baseline RTCM to the rover |
 | Rover USB | Heading rover -> ROS | Existing `/dev/ttyACM0` | Read `NAV-PVT`, `NAV-RELPOSNED`, and heading topics only; do not inject CORS here while validating heading | Keep the measured heading behavior stable |
 
 With both GNSS ports connected, the verified topology is now the no-argument
@@ -477,7 +478,7 @@ overrides:
 ros2 launch camrod_sensing gnss.launch.py \
   ublox_dual_antenna:=true \
   ublox_dual_forward_ntrip_to_rover:=false \
-  ublox_dual_base_rtcm_device:=/dev/ttyUSB4 \
+  ublox_dual_base_rtcm_device:=/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0 \
   ublox_dual_base_rtcm_baud:=115200
 ```
 
@@ -488,8 +489,9 @@ Expected improvement is not automatic from the extra USB cable alone: the launch
 With the current board wiring, not for both correction injection and final ROS
 output using software alone:
 
-- `/dev/ttyUSB4` is POWER+XBEE and terminates at the Lite moving base UART1. It
-  can accept CORS but does not carry the heading rover's NAV-RELPOSNED output.
+- The FTDI DN03DF8V by-id path (currently `/dev/ttyUSB0`) is POWER+XBEE and
+  terminates at the Lite moving base UART1. It can accept CORS but does not
+  carry the heading rover's NAV-RELPOSNED output.
 - `/dev/ttyACM0` is POWER+GPS and terminates at the Budget heading rover USB. It
   carries both final NAV-PVT and NAV-RELPOSNED, but there is no transparent
   bridge from that receiver back into the Lite moving base.
@@ -612,8 +614,8 @@ ros2 launch camrod_sensing camera.launch.py
 | `ublox_dual_antenna` | `true` | Enable simpleRTK2B moving-baseline heading rover mode |
 | `ublox_dual_forward_ntrip_to_rover` | `false` | Keep CORS off rover USB; `true` switches to a direct-rover diagnostic and suppresses the moving-base writer |
 | `ublox_dual_warm_start_on_startup` | `false` | One-shot recovery after a wrong-reference diagnostic; return to `false` after the rover reacquires |
-| `ublox_dual_base_rtcm_device` | `/dev/ttyUSB4` | POWER+XBEE FTDI port used to correct the Lite moving base |
-| `ublox_dual_base_rtcm_baud` | `115200` | Moving-base FTDI baud rate |
+| `ublox_dual_base_rtcm_device` | `__config__` | Uses `/**/moving_base_rtcm_writer.device` from `gnss_param_file`; an explicit path overrides it |
+| `ublox_dual_base_rtcm_baud` | `__config__` | Uses `/**/moving_base_rtcm_writer.baud` from `gnss_param_file`; an explicit value overrides it |
 | `enable_imu` | `true` | MicroStrain IMU driver |
 | `imu_model` | `cv7` | IMU hardware model: `cv7` (CV7-AHRS) or `gq7` (GQ7 with optional NTRIP) |
 | `imu_param_file` | `__model_default__` | IMU param YAML; auto-resolves to `config/imu/microstrain_<model>.yaml` |
@@ -758,7 +760,8 @@ minutes under open sky.
 Confirm both role-specific ports and launch the default dual-GNSS topology:
 
 ```bash
-ls -l /dev/ttyACM0 /dev/ttyUSB4
+ls -l /dev/ttyACM0 \
+  /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0
 ros2 launch camrod_sensing gnss.launch.py
 ```
 
@@ -768,7 +771,6 @@ pointing to a distant CORS reference, perform exactly one warm-start launch:
 ```bash
 ros2 launch camrod_sensing gnss.launch.py \
   ublox_dual_forward_ntrip_to_rover:=false \
-  ublox_dual_base_rtcm_device:=/dev/ttyUSB4 \
   ublox_dual_warm_start_on_startup:=true
 ```
 
@@ -949,9 +951,10 @@ Radar remains launched through the existing `radar_sensor.launch.py` path and sh
 <!-- HH_260723 - Synchronize the current moving-base correction port and mountpoint. -->
 The simpleRTK2B Heading rover publishes RELPOSNED heading and absolute RTK pose
 through its USB connection. Current field defaults send external NTRIP RTCM to
-the Lite moving base through `/dev/ttyUSB4`; its corrected moving-base RTCM then
-enters the heading rover through UART2. Direct CORS injection into rover USB is
-disabled because the two reference streams broke heading in the field A/B test.
+the Lite moving base through the FTDI DN03DF8V by-id path (currently
+`/dev/ttyUSB0`); its corrected moving-base RTCM then enters the heading rover
+through UART2. Direct CORS injection into rover USB is disabled because the two
+reference streams broke heading in the field A/B test.
 
 ## 2026-07-02 Runtime Update
 

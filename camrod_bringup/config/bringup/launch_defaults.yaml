@@ -123,6 +123,9 @@ bringup:
     planning_state_machine_param_file: planning/planning_state_machine.yaml
 
   sensing:
+    # Disable this only when sensing.launch.py is already running separately.
+    # This prevents duplicate camera/IMU/LiDAR processes during split-stack tests.
+    enable_module: true
     enable_camera: true
     # HH_260528: Per-camera enable flags for dual econ camera setup.
     #   enable_front_camera: true  → start camera_front_publisher_node (GPU VPI pipeline)
@@ -156,16 +159,15 @@ bringup:
     # HH_260611: Current rover default is simpleRTK2B Heading through ublox_gps.
     # Set false for the SparkFun ZED-F9P single-antenna profile.
     ublox_dual_antenna: true
-    # HH_260723 - Send CORS only to the Lite moving base on /dev/ttyUSB4. Keep
+    # HH_260727 - Send CORS only to the Lite moving base. Its device and baud
+    # are owned by the moving_base_rtcm_writer section of gnss_param_file, so
+    # standalone sensing and bringup read their respective synchronized config.
+    # Keep
     # rover USB RTCM off so the corrected moving-base stream remains the rover's
     # only reference and absolute RTK plus heading can stay fixed together.
     ublox_dual_forward_ntrip_to_rover: false
     # HH_260722 - Preserve healthy carrier state during normal repeated launches.
     ublox_dual_warm_start_on_startup: false
-    # HH_260723 - POWER+XBEE FTDI port connected to the Lite moving-base UART1.
-    ublox_dual_base_rtcm_device: /dev/ttyUSB4
-    # HH_260722 - Match the stored Lite moving-base UART1 baud rate.
-    ublox_dual_base_rtcm_baud: 115200
     gnss_param_file: sensing/gnss/zed_f9p_rover.yaml
     ntrip_param_file: sensing/gnss/ntrip_client.yaml
     # HH_260528: imu_mode → imu_model; cv7_param_file/gq7_param_file → imu_param_file.
