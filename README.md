@@ -140,11 +140,14 @@ boot-time setup once with
 `sudo /home/hong/camrod_ws/src/camrod_platform/scripts/install_can0_service.sh`;
 see `camrod_platform/README.md` for verification steps.
 
-<!-- HH_260723 - Record the current real-hardware dual-GNSS port and correction defaults. -->
-The default hardware GNSS route requires two logical ports: `/dev/ttyUSB4`
-feeds NTRIP to the Lite moving base, while `/dev/ttyACM0` reads NAV-PVT and
-NAV-RELPOSNED from the heading rover. Full bringup applies this route without
-extra GNSS arguments; see
+<!-- HH_260727 - Record the current real-hardware dual-GNSS port and correction defaults. -->
+The default hardware GNSS route requires two logical ports. The stable FTDI
+path `/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0`
+feeds NTRIP to the Lite moving base independently of its `/dev/ttyUSB*`
+assignment, while
+`/dev/ttyACM0` reads NAV-PVT and NAV-RELPOSNED from the heading rover. Full
+bringup applies this route without extra GNSS arguments. Both ports are owned
+by node-specific sections in the selected `zed_f9p_rover.yaml`; see
 [camrod_sensing/README.md](camrod_sensing/README.md) and
 [camrod_bringup/README.md](camrod_bringup/README.md) for wiring, acceptance
 flags, and recovery steps.

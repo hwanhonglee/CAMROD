@@ -1,12 +1,16 @@
-/**:
+# HH_260727 - Keep both physical GNSS ports in this one deployment profile.
+# Node-specific wildcard selectors let the same file work under /gnss and
+# /sensing/gnss without exposing the rover USB port to the RTCM writer.
+/**/ublox_gps_node:
   ros__parameters:
     # HH_260708 - Use the operator-verified ttyACM port for the field harness.
     # Do not switch GNSS to by-id; USB role checks are done against ttyACM*.
     device: /dev/ttyACM0
     frame_id: gps
     # HH_260722 - Keep this rover-side topic isolated from NTRIP in dual mode.
-    # External CORS goes to the Lite moving base on /dev/ttyUSB0; only the
-    # corrected moving-base stream reaches this receiver through UART2.
+    # External CORS goes to the Lite moving base through FTDI DN03DF8V
+    # by its stable by-id path; only the corrected moving-base stream reaches
+    # this receiver through UART2, regardless of ttyUSB enumeration.
     rtcm_topic: rtcm
     debug: 1 # 4 is logging data
 
@@ -64,3 +68,11 @@
     # Optional: disable printing all INF messages to keep logs clean
     inf:
       all: false
+
+/**/moving_base_rtcm_writer:
+  ros__parameters:
+    # POWER+XBEE FTDI connected to the Lite moving-base UART1.
+    # Use this stable identity because the Quectel modem shares ttyUSB indices
+    # and must not receive RTCM.
+    device: /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0
+    baud: 115200

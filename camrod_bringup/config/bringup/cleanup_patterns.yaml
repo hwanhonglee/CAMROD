@@ -48,6 +48,9 @@ patterns:
   - sen0592_radar_node
   - ublox_gps_node
   - __node:=ntrip_client
+  # HH_260727 - Prevent two writers from opening the same POWER+XBEE FTDI
+  # when switching from standalone sensing to full bringup.
+  - __node:=moving_base_rtcm_writer
   - radar_cost_grid_node
   - lidar_cost_grid_node
   - __node:=sensing_status

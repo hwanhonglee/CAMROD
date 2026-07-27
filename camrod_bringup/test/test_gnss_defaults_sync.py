@@ -10,12 +10,16 @@ _BRINGUP_ROOT = Path(__file__).resolve().parents[1]
 _WORKSPACE_SRC = _BRINGUP_ROOT.parent
 _IMPL_PATH = _BRINGUP_ROOT / "launch" / "_bringup_impl.py"
 
-_EXPECTED_DEFAULTS = {
+_EXPECTED_ROUTE_DEFAULTS = {
     "ublox_dual_antenna": True,
     "ublox_dual_forward_ntrip_to_rover": False,
     "ublox_dual_warm_start_on_startup": False,
-    "ublox_dual_base_rtcm_device": "/dev/ttyUSB4",
-    "ublox_dual_base_rtcm_baud": 115200,
+}
+
+_EXPECTED_BRINGUP_FALLBACKS = {
+    **_EXPECTED_ROUTE_DEFAULTS,
+    "ublox_dual_base_rtcm_device": "__config__",
+    "ublox_dual_base_rtcm_baud": "__config__",
 }
 
 
@@ -62,14 +66,20 @@ def test_launch_defaults_select_verified_two_port_route():
     config_path = _BRINGUP_ROOT / "config" / "bringup" / "launch_defaults.yaml"
     config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     sensing = config["bringup"]["sensing"]
-    assert {key: sensing[key] for key in _EXPECTED_DEFAULTS} == _EXPECTED_DEFAULTS
+    assert {
+        key: sensing[key] for key in _EXPECTED_ROUTE_DEFAULTS
+    } == _EXPECTED_ROUTE_DEFAULTS
+    assert sensing["gnss_param_file"] == "sensing/gnss/zed_f9p_rover.yaml"
+    # Device and baud now have one source: the selected GNSS parameter file.
+    assert "ublox_dual_base_rtcm_device" not in sensing
+    assert "ublox_dual_base_rtcm_baud" not in sensing
 
 
 # HH_260722 - Keep code fallbacks and the full child-launch pass-through aligned
 # with launch_defaults.yaml even when a custom config omits these fields.
 def test_bringup_implementation_forwards_every_gnss_default():
-    assert _gnss_cfg_get_fallbacks() == _EXPECTED_DEFAULTS
-    assert _EXPECTED_DEFAULTS.keys() <= _sensing_argument_keys()
+    assert _gnss_cfg_get_fallbacks() == _EXPECTED_BRINGUP_FALLBACKS
+    assert _EXPECTED_BRINGUP_FALLBACKS.keys() <= _sensing_argument_keys()
 
 
 # HH_260722 - Treat package GNSS YAML as canonical and the bringup copies as
@@ -79,3 +89,24 @@ def test_bringup_gnss_configs_match_sensing_package():
         bringup_config = _BRINGUP_ROOT / "config" / "sensing" / "gnss" / filename
         sensing_config = _WORKSPACE_SRC / "camrod_sensing" / "config" / "gnss" / filename
         assert bringup_config.read_bytes() == sensing_config.read_bytes()
+
+
+def test_synced_gnss_config_owns_both_receiver_ports():
+    config_path = (
+        _BRINGUP_ROOT / "config" / "sensing" / "gnss" / "zed_f9p_rover.yaml"
+    )
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    rover = config["/**/ublox_gps_node"]["ros__parameters"]
+    moving_base = config["/**/moving_base_rtcm_writer"]["ros__parameters"]
+
+    assert rover["device"] == "/dev/ttyACM0"
+    assert moving_base["device"] == (
+        "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0"
+    )
+    assert moving_base["baud"] == 115200
+
+
+def test_cleanup_removes_stale_moving_base_writer():
+    cleanup_path = _BRINGUP_ROOT / "config" / "bringup" / "cleanup_patterns.yaml"
+    cleanup = yaml.safe_load(cleanup_path.read_text(encoding="utf-8"))
+    assert "__node:=moving_base_rtcm_writer" in cleanup["patterns"]

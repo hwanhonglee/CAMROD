@@ -1432,6 +1432,11 @@ def generate_launch_description():
             'Initial local operator UI window height in pixels',
         ),
 
+        (
+            'enable_sensing_module',
+            cfg_get(launch_cfg, 'sensing/enable_module', True),
+            'Enable the aggregate sensing launch (disable when sensing is already running)',
+        ),
         ('enable_radar', cfg_get(launch_cfg, 'sensing/enable_radar', False), 'Enable serial radar'),
         ('radar_log_status', cfg_get(launch_cfg, 'sensing/radar_log_status', False), 'Print per-port radar status lines'),
         ('enable_camera', cfg_get(launch_cfg, 'sensing/enable_camera', True), 'Enable camera publisher stack'),
@@ -1448,13 +1453,21 @@ def generate_launch_description():
         ('imu_param_file',  cfg_get(launch_cfg, 'sensing/imu_param_file',  '__module_default__'), 'IMU param file path (or __module_default__)'),
         ('enable_gnss', cfg_get(launch_cfg, 'sensing/enable_gnss', False), 'Enable GNSS driver stack'),
         ('enable_ntrip', cfg_get(launch_cfg, 'sensing/enable_ntrip', False), 'Enable GNSS NTRIP client'),
-        # HH_260722 - Keep every GNSS correction-routing default controlled by
-        # launch_defaults.yaml and pass the verified two-port topology unchanged.
+        # HH_260727 - Device/baud normally come from the writer-specific section
+        # of gnss_param_file. These launch arguments are explicit overrides only.
         ('ublox_dual_antenna', cfg_get(launch_cfg, 'sensing/ublox_dual_antenna', True), 'Use ublox_gps for dual-antenna simpleRTK2B Heading'),
         ('ublox_dual_forward_ntrip_to_rover', cfg_get(launch_cfg, 'sensing/ublox_dual_forward_ntrip_to_rover', False), 'Diagnostic only: forward NTRIP directly to rover USB'),
         ('ublox_dual_warm_start_on_startup', cfg_get(launch_cfg, 'sensing/ublox_dual_warm_start_on_startup', False), 'One-shot heading-rover warm-start recovery'),
-        ('ublox_dual_base_rtcm_device', cfg_get(launch_cfg, 'sensing/ublox_dual_base_rtcm_device', '/dev/ttyUSB4'), 'Moving-base POWER+XBEE serial device'),
-        ('ublox_dual_base_rtcm_baud', cfg_get(launch_cfg, 'sensing/ublox_dual_base_rtcm_baud', 115200), 'Moving-base POWER+XBEE serial baud rate'),
+        (
+            'ublox_dual_base_rtcm_device',
+            cfg_get(
+                launch_cfg,
+                'sensing/ublox_dual_base_rtcm_device',
+                '__config__',
+            ),
+            'Moving-base serial override (__config__ uses gnss_param_file)',
+        ),
+        ('ublox_dual_base_rtcm_baud', cfg_get(launch_cfg, 'sensing/ublox_dual_base_rtcm_baud', '__config__'), 'Moving-base baud override (__config__ uses gnss_param_file)'),
         ('perception_enable_lidar_obstacle', cfg_get(launch_cfg, 'perception/enable_lidar_obstacle', True), 'Enable perception LiDAR obstacle node'),
         ('perception_enable_yolo', cfg_get(launch_cfg, 'perception/enable_yolo', True), 'Enable perception YOLO node'),
         ('use_camera_yolo_container', cfg_get(launch_cfg, 'perception/use_camera_yolo_container', False), 'Run front camera and YOLO in one component container'),
@@ -2022,7 +2035,12 @@ def generate_launch_description():
         ('camrod_map', 'map.launch.py', map_args, None),
         ('camrod_bringup', 'fake_sensors.launch.py', fake_sensors_args, IfCondition(lc['sim'])),
         ('camrod_bringup', 'camera_yolo_container.launch.py', camera_yolo_container_args, camera_yolo_container_condition),
-        ('camrod_sensing', 'sensing.launch.py', sensing_args, None),
+        (
+            'camrod_sensing',
+            'sensing.launch.py',
+            sensing_args,
+            IfCondition(lc['enable_sensing_module']),
+        ),
         ('camrod_perception', 'perception.launch.py', perception_args, None),
         ('camrod_localization', 'localization.launch.py', localization_args, None),
         ('camrod_planning', 'planning.launch.py', planning_args, IfCondition(lc['enable_planning'])),

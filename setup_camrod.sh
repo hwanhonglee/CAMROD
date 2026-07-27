@@ -19,9 +19,11 @@
 #   - camrod_ui frontend build is handled by colcon_build.sh before packaging.
 #   - sim validation is installed by camrod_bringup and run after bringup, not here.
 #   - colcon tests/lint are separate from setup because ament lint policy is package-specific.
-# HH_260703: current field setup assumptions:
-#   - ZED-F9P GNSS rover config uses /dev/ttyACM1; CV7 IMU currently
-#     enumerates as ttyACM0; CH9344 USB ports are radar.
+# HH_260727: current field setup assumptions:
+#   - ZED-F9P heading rover uses /dev/ttyACM0; moving-base corrections use the
+#     FTDI DN03DF8V by-id path. CV7 uses its LORD/MicroStrain by-id path when
+#     connected; never substitute the GNSS ACM or light-controller FTDI port.
+#   - CH9344 USB ports are radar.
 #   - LiDAR runtime is tuned in package configs, not installed here.
 #   - planning soft-estop wiring is built/installed by colcon_build.sh.
 # HH_260706: v2.0.1 UI/IP and adaptive safety tuning are config/runtime changes

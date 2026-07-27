@@ -7,6 +7,8 @@ from pathlib import Path
 import sys
 import types
 
+import yaml
+
 
 # HH_260722 - Stub only the launch API surface used by gnss.launch.py so routing
 # contracts remain testable on build machines without a sourced ROS environment.
@@ -82,15 +84,19 @@ class _StubLaunchContext:
         return str(self._values[launch_configuration.name])
 
 
-def _dual_launch_context(forward_ntrip_to_rover):
+def _dual_launch_context(
+    forward_ntrip_to_rover,
+    base_rtcm_device="__config__",
+    base_rtcm_baud="__config__",
+):
     return _StubLaunchContext(
         gnss_namespace="gnss",
         rtcm_topic="rtcm",
         gnss_log_level="error",
         enable_ntrip="true",
         ntrip_param_file="/tmp/ntrip.yaml",
-        ublox_dual_base_rtcm_device="/dev/ttyUSB0",
-        ublox_dual_base_rtcm_baud="115200",
+        ublox_dual_base_rtcm_device=base_rtcm_device,
+        ublox_dual_base_rtcm_baud=base_rtcm_baud,
         ublox_param_file="/tmp/rover.yaml",
         ublox_dual_antenna="true",
         ublox_dual_forward_ntrip_to_rover=str(forward_ntrip_to_rover).lower(),
@@ -175,16 +181,38 @@ def test_external_corrections_have_exactly_one_receiver_destination():
 
 
 def test_base_rtcm_writer_targets_ntrip_topic_and_device():
-    """Base-side writer carries the NTRIP topic to the explicit receiver port."""
+    """An explicit CLI port overrides the selected GNSS config."""
     node = _GNSS_LAUNCH._base_rtcm_writer_node(
-        "gnss", "/dev/test-moving-base", 115200, "ntrip_client/rtcm", "error"
+        "gnss",
+        "/tmp/rover.yaml",
+        "/dev/test-moving-base",
+        "230400",
+        "ntrip_client/rtcm",
+        "error",
     )
     assert node.node_executable == "rtcm_serial_writer.py"
     assert node.node_name == "moving_base_rtcm_writer"
-    params = node.node_parameters[0]
+    assert node.node_parameters[0] == "/tmp/rover.yaml"
+    params = node.node_parameters[1]
     assert params["device"] == "/dev/test-moving-base"
-    assert params["baud"] == 115200
+    assert params["baud"] == 230400
     assert params["rtcm_topic"] == "ntrip_client/rtcm"
+
+
+def test_base_rtcm_writer_uses_selected_gnss_config_by_default():
+    """Sentinel defaults leave device and baud owned by the GNSS YAML."""
+    node = _GNSS_LAUNCH._base_rtcm_writer_node(
+        "gnss",
+        "/tmp/rover.yaml",
+        "__config__",
+        "__config__",
+        "ntrip_client/rtcm",
+        "error",
+    )
+    assert node.node_parameters == [
+        "/tmp/rover.yaml",
+        {"rtcm_topic": "ntrip_client/rtcm"},
+    ]
 
 
 # HH_260722 - Verify the complete launch setup, not only helper return values:
@@ -200,6 +228,13 @@ def test_dual_launch_creates_exactly_one_external_correction_owner():
     }
     production_ublox = next(node for node in production if node.node_name == "ublox_gps_node")
     assert production_ublox.node_parameters[-1]["dual_antenna.usb_rtcm_in"] is False
+    production_writer = next(
+        node for node in production if node.node_name == "moving_base_rtcm_writer"
+    )
+    assert production_writer.node_parameters == [
+        "/tmp/rover.yaml",
+        {"rtcm_topic": "ntrip_client/rtcm"},
+    ]
 
     diagnostic = _GNSS_LAUNCH._launch_setup(_dual_launch_context(True))
     diagnostic_names = {node.node_name for node in diagnostic}
@@ -218,8 +253,8 @@ def test_dual_defaults_correct_moving_base_without_direct_rover_injection():
     assert declarations["ublox_dual_antenna"] == "true"
     assert declarations["ublox_dual_forward_ntrip_to_rover"] == "false"
     assert declarations["ublox_dual_warm_start_on_startup"] == "false"
-    assert declarations["ublox_dual_base_rtcm_device"] == "/dev/ttyUSB4"
-    assert declarations["ublox_dual_base_rtcm_baud"] == "115200"
+    assert declarations["ublox_dual_base_rtcm_device"] == "__config__"
+    assert declarations["ublox_dual_base_rtcm_baud"] == "__config__"
 
 
 # HH_260722 - Lock the aggregate sensing defaults and pass-through names to the
@@ -232,8 +267,8 @@ def test_sensing_launch_matches_and_forwards_dual_gnss_defaults():
         "ublox_dual_antenna": "true",
         "ublox_dual_forward_ntrip_to_rover": "false",
         "ublox_dual_warm_start_on_startup": "false",
-        "ublox_dual_base_rtcm_device": "/dev/ttyUSB4",
-        "ublox_dual_base_rtcm_baud": "115200",
+        "ublox_dual_base_rtcm_device": "__config__",
+        "ublox_dual_base_rtcm_baud": "__config__",
     }
     assert {key: defaults[key] for key in expected} == expected
     assert expected.keys() <= _gnss_include_keywords(sensing_launch)
@@ -245,3 +280,26 @@ def test_dual_warm_start_is_explicit_recovery_only():
         usb_rtcm_in=False, warm_start_on_startup=True
     )
     assert params["dual_antenna.warm_start_on_startup"] is True
+
+
+def test_gnss_config_owns_distinct_rover_and_moving_base_ports():
+    """One YAML safely configures both physical receivers by node name."""
+    config_path = _GNSS_LAUNCH_PATH.parents[1] / "config" / "gnss" / "zed_f9p_rover.yaml"
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    rover = config["/**/ublox_gps_node"]["ros__parameters"]
+    moving_base = config["/**/moving_base_rtcm_writer"]["ros__parameters"]
+
+    assert rover["device"] == "/dev/ttyACM0"
+    assert moving_base["device"] == (
+        "/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0"
+    )
+    assert moving_base["baud"] == 115200
+    assert rover["device"] != moving_base["device"]
+
+
+def test_explicit_empty_base_device_disables_writer():
+    """Bench heading mode can still opt out without editing the YAML."""
+    nodes = _GNSS_LAUNCH._launch_setup(
+        _dual_launch_context(False, base_rtcm_device="")
+    )
+    assert {node.node_name for node in nodes} == {"ublox_gps_node", "ntrip_client"}

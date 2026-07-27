@@ -310,8 +310,9 @@ cmd_snapshot() {
   run_shell_to_log "${log_dir}/meta/uname.txt" uname -a
   run_eval_to_log "${log_dir}/meta/git.txt" "cd '${SRC_ROOT}' && git status --short --branch && git log --oneline --decorate -5"
   run_eval_to_log "${log_dir}/meta/config_sync.txt" "'${SCRIPT_DIR}/field_test_tool.sh' config"
-  # HH_260722 - Record both heading-rover ACM and moving-base FTDI ports.
-  run_eval_to_log "${log_dir}/meta/serial_ports.txt" "ls -l /dev/ttyACM* /dev/ttyUSB* /dev/ttyCH9344USB* 2>/dev/null || true"
+  # HH_260727 - Record numeric devices and their stable identities so a reboot
+  # or USB power cycle cannot silently swap GNSS, IMU, modem, and light roles.
+  run_eval_to_log "${log_dir}/meta/serial_ports.txt" "ls -l /dev/serial/by-id /dev/serial/by-path /dev/ttyACM* /dev/ttyUSB* /dev/ttyCH9344USB* 2>/dev/null || true"
   run_eval_to_log "${log_dir}/meta/can0.txt" "ip -details link show can0 2>&1 || true"
   run_eval_to_log "${log_dir}/meta/top.txt" "top -b -n 1 -o %CPU | head -60"
   run_eval_to_log "${log_dir}/meta/ps_cpu.txt" "ps -eo pid,ppid,pcpu,pmem,comm,args --sort=-pcpu | head -80"
