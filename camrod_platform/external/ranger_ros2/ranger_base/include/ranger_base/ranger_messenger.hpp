@@ -14,6 +14,7 @@
 #include <string>
 #include <memory>
 #include <cmath>
+#include <vector>
 
 //ros include
 #include <rclcpp/rclcpp.hpp>
@@ -24,6 +25,7 @@
 #include <tf2_ros/transform_broadcaster.h>
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
@@ -73,6 +75,9 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   void PublishStateToROS();
   void PublishSimStateToROS(double linear, double angular);
   void TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr msg);
+  double LimitSteeringAngle(double target_angle);
+  rcl_interfaces::msg::SetParametersResult OnParametersChanged(
+    const std::vector<rclcpp::Parameter>& parameters);
   double CalculateSteeringAngle(geometry_msgs::msg::Twist msg, double& radius);
   void UpdateOdometry(double linear, double angular, double angle, double dt);
   geometry_msgs::msg::Quaternion createQuaternionMsgFromYaw(double yaw);
@@ -96,9 +101,17 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   std::string odom_topic_name_;
   int update_rate_;
   bool publish_odom_tf_;
+  // HH_260727 - Maximum rate used while the wheel direction changes between longitudinal
+  // and lateral motion. This is a dynamic ROS parameter.
+  double steering_transition_rate_radps_;
 
   uint8_t motion_mode_ = 0;
   bool parking_mode_;
+  bool steering_command_initialized_ = false;
+  double last_steering_command_rad_ = 0.0;
+  rclcpp::Time last_steering_command_time_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr
+    parameter_callback_handle_;
 
   rclcpp::Publisher<ranger_msgs::msg::SystemState>::SharedPtr system_state_pub_;
   rclcpp::Publisher<ranger_msgs::msg::MotionState>::SharedPtr motion_state_pub_;

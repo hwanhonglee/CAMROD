@@ -83,6 +83,15 @@ struct MotionCostStopConfig
   bool lanelet_enabled{true};
   int lanelet_threshold{85};
   int lanelet_current_threshold{85};
+  // HH_260727 - Check the complete configured planning footprint against raw
+  // lanelet cost, not only the robot_base_link cell. A separate lethal
+  // threshold lets narrow lanes retain their soft 98 boundary penalty.
+  bool lanelet_footprint_enabled{true};
+  int lanelet_footprint_threshold{100};
+  double footprint_front_m{1.30137};
+  double footprint_rear_m{0.39023};
+  double footprint_left_m{0.63505};
+  double footprint_right_m{0.63495};
   double lanelet_lookahead_m{1.0};
   double lanelet_width_m{0.8};
   bool lanelet_stop_on_unknown{true};
@@ -128,6 +137,8 @@ public:
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     double receive_sec);
   void setPose(const PlanarPose & pose);
+  void setFootprintPolygonWorld(
+    const std::vector<std::pair<double, double>> & polygon_world);
   void setOdometrySpeed(double forward_speed_mps);
   void setLocalPath(const avg_msgs::msg::AvgPath & path);
   void setManeuverPhases(std::string drop_zone_phase, std::string campsite_phase);
@@ -199,6 +210,10 @@ private:
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     double radius_m,
     int threshold) const;
+  GridHit sampleFootprint(
+    const avg_msgs::msg::AvgOccupancyGrid & grid,
+    int threshold,
+    bool stop_on_unknown) const;
   PathSample samplePathCorridor(
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     double lookahead_m,
@@ -232,6 +247,9 @@ private:
   TimedGrid lanelet_grid_;
   std::map<std::string, TimedGrid> source_grids_;
   std::optional<PlanarPose> pose_;
+  // HH_260727 - Stored in robot_base_link coordinates and transformed with the freshest
+  // localization pose for every safety evaluation.
+  std::vector<std::pair<double, double>> footprint_polygon_local_;
   std::optional<avg_msgs::msg::AvgPath> local_path_;
   double forward_speed_mps_{0.0};
   std::string drop_zone_phase_;

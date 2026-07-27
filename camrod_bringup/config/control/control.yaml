@@ -5,7 +5,9 @@
   ros__parameters:
     cmd_vel_topic: "/control/cmd_vel_raw"
     pose_topic: "/localization/pose"
-    site_goal_topic: "/goal_pose"
+    # HH_260727 - Camping-site maneuvers consume regulated UI/mission goals only;
+    # RViz /goal_pose remains a generic manual Nav2 command.
+    site_goal_topic: "/planning/site_goal_pose_ros"
     # HH_260720 - Control consumes generated planning poses; `_ros` mirrors are Nav2/RViz only.
     route_goal_topic: "/planning/goal_pose_snapped"
     lanelet_pose_topic: "/planning/lanelet_pose"
@@ -26,8 +28,6 @@
     use_goal_pair_for_lateral_offset: true
     require_goal_pair_for_auto_start: true
     site_entry_mode: "crab"
-    enable_manual_site_goal_auto_start: true
-    manual_site_min_offset_m: 1.0
     camping_sites_yaml: ""
     site_goal_frame_id: "map"
     default_lateral_offset_m: 1.2

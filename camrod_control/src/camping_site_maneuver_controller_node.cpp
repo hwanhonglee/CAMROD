@@ -137,7 +137,10 @@ public:
     // HH_260721 - Preserve the v2.0.3 semantic interfaces without Python wrappers.
     command_topic_ = declare_parameter<std::string>("cmd_vel_topic", "/control/cmd_vel_raw");
     pose_topic_ = declare_parameter<std::string>("pose_topic", "/localization/pose");
-    site_goal_topic_ = declare_parameter<std::string>("site_goal_topic", "/goal_pose");
+    // HH_260727 - Bare-node defaults follow the regulated UI/mission boundary;
+    // RViz /goal_pose must never arm a campsite maneuver.
+    site_goal_topic_ = declare_parameter<std::string>(
+      "site_goal_topic", "/planning/site_goal_pose_ros");
     route_goal_topic_ = declare_parameter<std::string>(
       "route_goal_topic", "/planning/goal_pose_snapped");
     lanelet_pose_topic_ = declare_parameter<std::string>(
@@ -176,10 +179,6 @@ public:
         get_logger(), "unknown site_entry_mode='%s'; using crab", site_entry_mode_.c_str());
       site_entry_mode_ = "crab";
     }
-    enable_manual_site_goal_auto_start_ = declare_parameter<bool>(
-      "enable_manual_site_goal_auto_start", true);
-    manual_site_min_offset_m_ =
-      std::abs(declare_parameter<double>("manual_site_min_offset_m", 1.0));
     camping_sites_yaml_ = declare_parameter<std::string>("camping_sites_yaml", "");
     site_goal_frame_id_ = declare_parameter<std::string>("site_goal_frame_id", "map");
     default_lateral_offset_m_ = declare_parameter<double>("default_lateral_offset_m", 1.2);
@@ -778,6 +777,11 @@ private:
     {
       return;
     }
+    // HH_260727 - RViz/manual navigation is free-space driving only. Ignore
+    // stale UI site-goal pairs so arrival cannot start a campsite maneuver.
+    if (message.active_goal_source == "manual") {
+      return;
+    }
     std::string automatic_key;
     const std::string mission_key = message.active_mission_key;
     if (mission_key.rfind(site_mission_key_prefix_, 0) == 0) {
@@ -791,13 +795,9 @@ private:
       }
       ensureGoalPairForAutoStart(mission_key);
       automatic_key = mission_key;
-    } else if (manualSiteGoalIsReady(message)) {
-      automatic_key = "manual_site:" + fixed(site_goal_time_.seconds(), 3) +
-        ":" + fixed(route_goal_time_.seconds(), 3);
-    } else if (siteGoalPairIsReady()) {
-      automatic_key = "site_pair:" + fixed(site_goal_time_.seconds(), 3) +
-        ":" + fixed(route_goal_time_.seconds(), 3);
     } else {
+      // HH_260727 - A stale site/route pose pair is not mission authority.
+      // Auto-entry requires an explicit regulated camping_site_* mission key.
       return;
     }
     if (automatic_key == last_auto_key_) {
@@ -1062,18 +1062,6 @@ private:
     return goal_pair_maximum_age_s_ <= 0.0 ||
            ((now() - site_goal_time_).seconds() <= goal_pair_maximum_age_s_ &&
            (now() - route_goal_time_).seconds() <= goal_pair_maximum_age_s_);
-  }
-
-  bool siteGoalPairIsReady() const
-  {
-    return site_goal_.has_value() && route_goal_.has_value() && goalPairIsFresh() &&
-           poseDistance(*site_goal_, *route_goal_) >= manual_site_min_offset_m_;
-  }
-
-  bool manualSiteGoalIsReady(const avg_msgs::msg::PlanningState & message) const
-  {
-    return enable_manual_site_goal_auto_start_ && message.active_goal_source == "manual" &&
-           siteGoalPairIsReady();
   }
 
   bool routeGoalReachedForAutoStart() const
@@ -1565,8 +1553,6 @@ private:
   bool use_goal_pair_for_lateral_offset_{true};
   bool require_goal_pair_for_auto_start_{true};
   std::string site_entry_mode_{"crab"};
-  bool enable_manual_site_goal_auto_start_{true};
-  double manual_site_min_offset_m_{1.0};
   std::string camping_sites_yaml_;
   std::string site_goal_frame_id_{"map"};
   double default_lateral_offset_m_{1.2};

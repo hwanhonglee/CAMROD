@@ -44,6 +44,8 @@ setup(
         "console_scripts": [
             "ui_backend_node = camrod_ui.ui_backend_node:main",
             "ui_guest_node = camrod_ui.ui_guest_node:main",
+            # HH_260727 - Native lightweight shell for the operator web UI.
+            "camrod_ui_window = camrod_ui.operator_ui_window:main",
         ],
     },
 )

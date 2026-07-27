@@ -23,6 +23,8 @@ from avg_msgs.msg import (
 from avg_msgs.srv import RequestGoalByKey
 from geometry_msgs.msg import PoseStamped as RosPoseStamped
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 
 # HH_260528 Prefer status_msgs, fallback to diagnostic_msgs for robustness.
 try:
@@ -135,16 +137,18 @@ class PlanningStateMachineNode(Node):
         self.goal_topic = str(
             self.declare_parameter("goal_topic", "/planning/goal_pose_snapped").value
         )
-        # HH_260319 Mirror auto-goals to Nav2 ROS-facing goal topic if configured.
-        self.goal_topic_ros = str(
-            self.declare_parameter("goal_topic_ros", "/planning/goal_pose_snapped_ros").value
+        # HH_260727 - Preserve the manual-vs-regulated contract through the
+        # planning state machine so an RViz goal never inherits site semantics.
+        self.goal_source_topic = str(
+            self.declare_parameter("goal_source_topic", "/planning/goal_source").value
         )
-        # HH_260623 - Auto return/drop-zone goals are station-center poses, not
-        # lanelet route poses. Publish those raw poses through a private goal_snapper
-        # input so Nav2 receives a valid lanelet-snapped route goal while parking
-        # keeps the original station pose for reverse parking.
+        # HH_260727 - Every state-machine-generated goal is regulated. Route it
+        # through the source-aware snapper so selector latches settle before Nav2
+        # receives the goal and no prior manual policy leaks into auto driving.
         self.auto_goal_snapper_input_topic = str(
-            self.declare_parameter("auto_goal_snapper_input_topic", "").value
+            self.declare_parameter(
+                "auto_goal_snapper_input_topic", "/planning/auto_goal_raw"
+            ).value
         )
         self.state_topic = str(
             self.declare_parameter("state_topic", "/planning/state_machine/state").value
@@ -218,27 +222,20 @@ class PlanningStateMachineNode(Node):
                 "drop_zone_goal_raw_ros_topic", "/planning/drop_zone_goal_raw_ros"
             ).value
         )
-        # HH_260624 - RViz/UI manual /goal_pose clicks lose semantic meaning after
-        # goal_snapper moves them to a lanelet. Watch the raw goal too so a manual
-        # drop-zone click still starts RETURN_TO_DROP_ZONE and reverse parking.
-        self.raw_goal_topic = str(self.declare_parameter("raw_goal_topic", "/goal_pose").value)
+        # HH_260727 - Only regulated UI/mission poses may carry drop-zone
+        # semantics. RViz /goal_pose remains an operator test command even when
+        # its default drive geometry is projected onto the legal lanelet route.
+        self.raw_goal_topic = str(
+            self.declare_parameter(
+                "raw_goal_topic", "/planning/site_goal_pose_ros"
+            ).value
+        )
         self.enable_raw_drop_zone_goal_match = bool(
             self.declare_parameter("enable_raw_drop_zone_goal_match", True).value
         )
         self.drop_zone_raw_goal_match_distance_m = float(
             self.declare_parameter("drop_zone_raw_goal_match_distance_m", 3.0).value
         )
-        raw_auto_snap_keys = self.declare_parameter(
-            "auto_goal_snapper_keys", [self.return_mission_key]
-        ).value
-        if isinstance(raw_auto_snap_keys, str):
-            self.auto_goal_snapper_keys = {
-                item.strip() for item in raw_auto_snap_keys.split(",") if item.strip()
-            }
-        else:
-            self.auto_goal_snapper_keys = {
-                str(item).strip() for item in raw_auto_snap_keys if str(item).strip()
-            }
         self.default_recall_mission_key = str(
             self.declare_parameter("default_recall_mission_key", "camping_site_1").value
         )
@@ -343,9 +340,9 @@ class PlanningStateMachineNode(Node):
         self.last_return_start_vehicle_pose: Optional[AvgPoseStamped] = None
         self.last_return_start_vehicle_pose_received_time: Optional[rclpy.time.Time] = None
         self._last_return_start_wait_log_time: Optional[rclpy.time.Time] = None
-        self.last_manual_goal: Optional[AvgPoseStamped] = None
         self.active_goal: Optional[AvgPoseStamped] = None
         self.active_goal_source: str = "none"
+        self.goal_input_source: str = "regulated"
         self.active_mission_key: str = ""
 
         self.state: str = "INIT"
@@ -364,7 +361,6 @@ class PlanningStateMachineNode(Node):
         self._error_level = self._status_level_int(StatusStatus.ERROR)
 
         self._last_goal_publish_time = self.get_clock().now()
-        self._last_self_goal: Optional[AvgPoseStamped] = None
         self._pending_mission_key_request: str = ""
         self._pending_mission_key_time = self.get_clock().now()
         self._active_goal_time = self.get_clock().now()
@@ -383,11 +379,6 @@ class PlanningStateMachineNode(Node):
         self._drop_zone_arrival_notified = False
         self._drop_zone_arrival_notified_time: Optional[rclpy.time.Time] = None
 
-        self.pub_goal = self.create_publisher(AvgPoseStamped, self.goal_topic, 10)
-        self.pub_goal_ros = None
-        if self.goal_topic_ros and self.goal_topic_ros != self.goal_topic:
-            # HH_260720 - Keep only the Nav2-facing goal output on geometry_msgs.
-            self.pub_goal_ros = self.create_publisher(RosPoseStamped, self.goal_topic_ros, 10)
         self.pub_auto_goal_snapper = None
         if self.auto_goal_snapper_input_topic:
             self.pub_auto_goal_snapper = self.create_publisher(
@@ -430,8 +421,17 @@ class PlanningStateMachineNode(Node):
                 10,
             )
         self.create_subscription(AvgPoseStamped, self.goal_topic, self._on_goal, 10)
+        goal_source_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.create_subscription(
+            String, self.goal_source_topic, self._on_goal_source, goal_source_qos
+        )
         if self.enable_raw_drop_zone_goal_match and self.raw_goal_topic:
-            # HH_260720 - RViz raw goal remains an explicit ROS boundary.
+            # HH_260727 - Match only the regulated UI/mission input before snapping.
             self.create_subscription(RosPoseStamped, self.raw_goal_topic, self._on_raw_goal, 10)
         self.create_subscription(GoalStatusArray, self.nav_status_topic, self._on_nav_status, 10)
         if self.enable_maneuver_phase_state_override:
@@ -465,10 +465,9 @@ class PlanningStateMachineNode(Node):
             f"return_start_vehicle_pose={self.return_start_vehicle_pose_topic or '(disabled)'} "
             f"return_start_pose_max_distance_m={self.return_start_pose_max_distance_m:.2f} "
             f"goal={self.goal_topic} "
+            f"goal_source={self.goal_source_topic} "
             f"raw_goal={self.raw_goal_topic if self.enable_raw_drop_zone_goal_match else '(disabled)'} "
-            f"goal_ros={self.goal_topic_ros} "
             f"auto_goal_snapper_input={self.auto_goal_snapper_input_topic or '(disabled)'} "
-            f"auto_goal_snapper_keys={','.join(sorted(self.auto_goal_snapper_keys)) or '(none)'} "
             f"drop_zone_id={self.drop_zone_id} "
             f"drop_zone_goal_raw={self.drop_zone_goal_raw_topic or '(disabled)'} "
             f"drop_zone_goal_raw_ros={self.drop_zone_goal_raw_ros_topic or '(disabled)'} "
@@ -847,7 +846,7 @@ class PlanningStateMachineNode(Node):
         if matched is None:
             return
 
-        self._select_return_keypoint(matched, "manual_raw_goal")
+        self._select_return_keypoint(matched, "regulated_raw_goal")
         self._pending_mission_key_request = self.return_mission_key
         self._pending_mission_key_time = self.get_clock().now()
         self._publish_drop_zone_goal_raw_for_keypoint(matched)
@@ -976,18 +975,26 @@ class PlanningStateMachineNode(Node):
         self.scenario_id = scenario_id
         self.get_logger().info(f"scenario_id -> {self.scenario_id} ({reason})")
 
-    def _on_goal(self, msg: AvgPoseStamped) -> None:
-        if self._last_self_goal is not None and self._dist_xy(self._last_self_goal, msg) < 0.02:
-            return
+    def _on_goal_source(self, msg: String) -> None:
+        requested = str(msg.data).strip().lower()
+        # HH_260727 - Unknown values retain the regulated mission policy; only
+        # an explicit manual source may suppress campsite/drop-zone semantics.
+        self.goal_input_source = "manual" if requested.startswith("manual") else "regulated"
 
+    def _on_goal(self, msg: AvgPoseStamped) -> None:
         self._clear_maneuver_phase_override("new_route_goal")
-        raw_matched_mission_key = self._match_mission_key(msg)
+        manual_navigation = self.goal_input_source == "manual"
+        raw_matched_mission_key = "" if manual_navigation else self._match_mission_key(msg)
         matched_mission_key = raw_matched_mission_key
-        goal_source = "manual"
+        goal_source = self.goal_input_source
+        if manual_navigation:
+            # HH_260727 - A free RViz goal overrides any stale UI mission key.
+            # Its pose/yaw still flow to Nav2, but it cannot start site maneuvers.
+            self._pending_mission_key_request = ""
         # HH_260616: A camping-site center can be several meters away from the
         # lanelet-snapped route_goal. If a mission_key request just preceded this
         # route_goal, keep that semantic key instead of clearing active_mission_key.
-        if self._pending_mission_key_request:
+        if not manual_navigation and self._pending_mission_key_request:
             pending_age_s = (
                 self.get_clock().now() - self._pending_mission_key_time
             ).nanoseconds / 1e9
@@ -1007,7 +1014,8 @@ class PlanningStateMachineNode(Node):
                 goal_source = f"auto_snapper:{self._pending_mission_key_request}"
             self._pending_mission_key_request = ""
         if (
-            not matched_mission_key
+            not manual_navigation
+            and not matched_mission_key
             and self.scenario_id == self.SCENARIO_RETURN_TO_DROP_ZONE
             and self.active_mission_key == self.return_mission_key
             and self.active_goal is not None
@@ -1017,7 +1025,8 @@ class PlanningStateMachineNode(Node):
             # HH_260720 - Preserve the drop_zone semantic key for alignment and parking.
             matched_mission_key = self.return_mission_key
         if (
-            not matched_mission_key
+            not manual_navigation
+            and not matched_mission_key
             and self._is_site_key(self.active_mission_key)
             and self.active_goal is not None
             and self._dist_xy(self.active_goal, msg) <= self.site_goal_key_preserve_distance_m
@@ -1026,7 +1035,6 @@ class PlanningStateMachineNode(Node):
             # the camping-site controller starts from GOAL_REACHED plus the mission key.
             matched_mission_key = self.active_mission_key
 
-        self.last_manual_goal = msg
         self.active_goal = msg
         self.active_goal_source = goal_source
         self.active_mission_key = matched_mission_key
@@ -1038,17 +1046,23 @@ class PlanningStateMachineNode(Node):
         self._goal_reached_latched = False
         self._drop_zone_arrival_notified = False
 
-        if self._is_site_key(self.active_mission_key):
-            self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "manual_site_goal")
+        if manual_navigation:
+            self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "manual_navigation")
+        elif self._is_site_key(self.active_mission_key):
+            self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "regulated_site_goal")
         elif self.active_mission_key == self.return_mission_key:
-            reason = "auto_return_goal" if goal_source.startswith("auto_snapper:") else "manual_return_goal"
+            reason = (
+                "auto_return_goal"
+                if goal_source.startswith("auto_snapper:")
+                else "regulated_return_goal"
+            )
             self._set_scenario(self.SCENARIO_RETURN_TO_DROP_ZONE, reason)
         else:
             # HH_260618: A fresh unmatched manual/UI goal must enter a driving
             # scenario instead of leaving stale WAIT_DZ/RETURN_TO_DROP_ZONE state.
             # Otherwise the state output and route ownership can disagree with
             # the operator's latest goal.
-            self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "manual_goal")
+            self._set_scenario(self.SCENARIO_DELIVERY_TO_SITE, "regulated_goal")
 
     def _reset_nav2_goal_status(self) -> None:
         # HH_260622 - Treat every route-goal update as a new Nav2 handoff.
@@ -1332,43 +1346,29 @@ class PlanningStateMachineNode(Node):
         msg.pose.orientation.z = math.sin(yaw * 0.5)
         msg.pose.orientation.w = math.cos(yaw * 0.5)
 
-        publish_via_snapper = (
-            self.pub_auto_goal_snapper is not None
-            and key_name in self.auto_goal_snapper_keys
-        )
-        if publish_via_snapper:
-            self.pub_auto_goal_snapper.publish(msg)
-            if key_name == self.return_mission_key and self.pub_drop_zone_goal_raw is not None:
-                self._publish_drop_zone_goal_raw_for_keypoint(kp)
-            self._pending_mission_key_request = key_name
-            self._pending_mission_key_time = now
-            self._last_self_goal = None
-            self.get_logger().info(
-                "published raw auto-goal through goal_snapper: "
-                f"key={key_name} source={source} topic={self.auto_goal_snapper_input_topic} "
-                f"drop_zone_id={kp.source_id or kp.name} yaw={kp.yaw_deg:.1f}deg "
-                f"xy=({kp.x:.2f},{kp.y:.2f})"
+        if self.pub_auto_goal_snapper is None:
+            self.get_logger().error(
+                "auto-goal rejected: source-aware goal_snapper input is disabled"
             )
-        else:
-            self.pub_goal.publish(msg)
-            if self.pub_goal_ros is not None:
-                # HH_260720 - Convert the generated goal only at the Nav2 ROS boundary.
-                ros_goal = RosPoseStamped()
-                ros_goal.header.stamp = msg.header.stamp
-                ros_goal.header.frame_id = msg.header.frame_id
-                ros_goal.pose.position.x = msg.pose.position.x
-                ros_goal.pose.position.y = msg.pose.position.y
-                ros_goal.pose.position.z = msg.pose.position.z
-                ros_goal.pose.orientation.x = msg.pose.orientation.x
-                ros_goal.pose.orientation.y = msg.pose.orientation.y
-                ros_goal.pose.orientation.z = msg.pose.orientation.z
-                ros_goal.pose.orientation.w = msg.pose.orientation.w
-                self.pub_goal_ros.publish(ros_goal)
-            self._last_self_goal = msg
+            return False
+
+        # HH_260727 - Latch the semantic key before publishing. The snapper then
+        # emits `regulated` and waits for selector settlement before its route goal.
+        self._pending_mission_key_request = key_name
+        self._pending_mission_key_time = now
+        self.pub_auto_goal_snapper.publish(msg)
+        if key_name == self.return_mission_key and self.pub_drop_zone_goal_raw is not None:
+            self._publish_drop_zone_goal_raw_for_keypoint(kp)
+        self.get_logger().info(
+            "published regulated auto-goal through goal_snapper: "
+            f"key={key_name} source={source} topic={self.auto_goal_snapper_input_topic} "
+            f"drop_zone_id={kp.source_id or kp.name} yaw={kp.yaw_deg:.1f}deg "
+            f"xy=({kp.x:.2f},{kp.y:.2f})"
+        )
 
         self._last_goal_publish_time = now
         self.active_goal = msg
-        self.active_goal_source = f"{source}:snap_request" if publish_via_snapper else source
+        self.active_goal_source = f"{source}:snap_request"
         self.active_mission_key = key_name
         self._reset_nav2_goal_status()
         self.startup_goal_sent = True

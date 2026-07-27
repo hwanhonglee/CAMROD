@@ -35,6 +35,7 @@ ament_target_dependencies(goal_snapper_node
   action_msgs
   rclcpp
   geometry_msgs
+  std_msgs
   nav_msgs
   camrod_map
   lanelet2_core

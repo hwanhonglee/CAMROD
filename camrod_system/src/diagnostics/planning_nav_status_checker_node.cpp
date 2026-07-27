@@ -28,8 +28,8 @@
  */
 
 #include <cstdio>
-#include <deque>
 #include <mutex>
+#include <set>
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
@@ -40,6 +40,8 @@
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
+
+#include "planning_nav_status_tracker.hpp"
 
 // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
@@ -53,8 +55,19 @@ struct NavStatusState
   bool has_msg{false};
 
   int8_t current_status{action_msgs::msg::GoalStatus::STATUS_UNKNOWN};
+  bool current_abort_suppressed{false};
 
-  std::deque<rclcpp::Time> abort_times;
+  // HH_260727: Deduplicate retained Nav2 terminal statuses by goal UUID.
+  camrod_system::diagnostics::PlanningNavStatusTracker status_tracker;
+
+  // HH_260727: Service maneuvers intentionally clear prior Nav2 abort history.
+  // Keep the cleared UUIDs separately so retained GoalStatusArray entries do
+  // not get reintroduced into the fresh tracker after suppression ends.
+  std::set<camrod_system::diagnostics::PlanningNavStatusTracker::GoalUuid>
+    observed_abort_goals;
+  std::set<camrod_system::diagnostics::PlanningNavStatusTracker::GoalUuid>
+    service_suppressed_abort_goals;
+
   int32_t latest_service_state{-1};
   bool has_service_state{false};
 
@@ -111,7 +124,10 @@ protected:
         state_.latest_service_state = msg->state;
         state_.has_service_state = true;
         if (serviceManeuverSuppressActiveLocked()) {
-          state_.abort_times.clear();
+          state_.service_suppressed_abort_goals.insert(
+            state_.observed_abort_goals.begin(), state_.observed_abort_goals.end());
+          state_.status_tracker =
+            camrod_system::diagnostics::PlanningNavStatusTracker{};
         }
       });
 
@@ -135,7 +151,6 @@ private:
     // Select the dominant status from the status list.
     // Priority: EXECUTING > ACCEPTED > CANCELING > terminal states.
     int8_t dominant = action_msgs::msg::GoalStatus::STATUS_UNKNOWN;
-    bool   aborted  = false;
 
     for (const auto & s : msg->status_list) {
       if (s.status == action_msgs::msg::GoalStatus::STATUS_EXECUTING) {
@@ -144,7 +159,6 @@ private:
                  dominant != action_msgs::msg::GoalStatus::STATUS_EXECUTING) {
         dominant = action_msgs::msg::GoalStatus::STATUS_ACCEPTED;
       } else if (s.status == action_msgs::msg::GoalStatus::STATUS_ABORTED) {
-        aborted = true;
         if (dominant == action_msgs::msg::GoalStatus::STATUS_UNKNOWN) {
           dominant = action_msgs::msg::GoalStatus::STATUS_ABORTED;
         }
@@ -158,20 +172,42 @@ private:
     state_.has_msg        = true;
     state_.current_status = dominant;
 
-    if (aborted) {
-      if (serviceManeuverSuppressActiveLocked()) {
-        state_.abort_times.clear();
-      } else {
-        state_.abort_times.push_back(now);
+    // HH_260727: GoalStatusArray keeps terminal entries across publications.
+    // Feed every eligible UUID/state pair to the tracker, which records each
+    // aborted goal once instead of incrementing once per array callback.
+    const bool service_maneuver_suppressed = serviceManeuverSuppressActiveLocked();
+    bool has_aborted_status = false;
+    bool has_unsuppressed_aborted_status = false;
+    for (const auto & s : msg->status_list) {
+      if (s.status == action_msgs::msg::GoalStatus::STATUS_ABORTED) {
+        has_aborted_status = true;
+        state_.observed_abort_goals.insert(s.goal_info.goal_id.uuid);
+        if (service_maneuver_suppressed) {
+          state_.service_suppressed_abort_goals.insert(s.goal_info.goal_id.uuid);
+        }
       }
-    }
 
-    // Remove abort samples older than the 60s rolling window.
-    while (!state_.abort_times.empty() &&
-           (now - state_.abort_times.front()).seconds() > 60.0)
-    {
-      state_.abort_times.pop_front();
+      // HH_260727: A terminal status retained from a service-owned maneuver
+      // remains ignored after the maneuver, while genuinely new goal UUIDs
+      // continue to contribute to the rolling abort count.
+      if (
+        state_.service_suppressed_abort_goals.find(s.goal_info.goal_id.uuid) !=
+        state_.service_suppressed_abort_goals.end())
+      {
+        continue;
+      }
+      if (s.status == action_msgs::msg::GoalStatus::STATUS_ABORTED) {
+        has_unsuppressed_aborted_status = true;
+      }
+      state_.status_tracker.observe(
+        s.goal_info.goal_id.uuid, s.status, now.nanoseconds());
     }
+    // HH_260727: A service-owned ABORTED entry can remain in Nav2's retained
+    // array after the service state returns to idle. Keep that same UUID from
+    // turning the single-status summary back into WARN after suppression ends.
+    state_.current_abort_suppressed =
+      has_aborted_status && !has_unsuppressed_aborted_status;
+    state_.status_tracker.prune(now.nanoseconds());
   }
 
   static const char * statusLabel(int8_t s)
@@ -210,7 +246,12 @@ private:
 
   void checkNavStatus(StatusWrapper & stat)
   {
+    const auto now = this->now();
     std::lock_guard<std::mutex> lock(state_.mtx);
+
+    // HH_260727: Expire the rolling window even if Nav2 is idle and no new
+    // GoalStatusArray callback arrives.
+    state_.status_tracker.prune(now.nanoseconds());
 
     if (!state_.has_msg) {
       // HH_260617: Before the first Nav2 goal, the action status topic may not
@@ -227,7 +268,7 @@ private:
       return;
     }
 
-    double elapsed = (this->now() - state_.last_msg_time).seconds();
+    double elapsed = (now - state_.last_msg_time).seconds();
     if (stale_timeout_ > 0.0 && elapsed > stale_timeout_) {
       // HH_260618: Nav2 action status is event-driven enough that it can stop
       // publishing after SUCCEEDED/CANCELED. Treat terminal stale as normal idle;
@@ -258,7 +299,7 @@ private:
     }
 
     const bool service_maneuver_suppressed = serviceManeuverSuppressActiveLocked();
-    int abort_count = static_cast<int>(state_.abort_times.size());
+    int abort_count = static_cast<int>(state_.status_tracker.abortCount());
     int effective_abort_count = service_maneuver_suppressed ? 0 : abort_count;
 
     int8_t     lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
@@ -285,7 +326,7 @@ private:
           msg_str = std::string("navigation active: ") + statusLabel(state_.current_status);
           break;
         case action_msgs::msg::GoalStatus::STATUS_ABORTED:
-          if (service_maneuver_suppressed) {
+          if (service_maneuver_suppressed || state_.current_abort_suppressed) {
             msg_str = "service maneuver owns motion; Nav2 abort/cancel ignored";
           } else {
             lvl     = diagnostic_msgs::msg::DiagnosticStatus::WARN;
@@ -307,6 +348,8 @@ private:
 
     stat.add("current_status",     std::string(statusLabel(state_.current_status)));
     stat.add("service_maneuver_suppressed", service_maneuver_suppressed ? "true" : "false");
+    stat.add(
+      "current_abort_suppressed", state_.current_abort_suppressed ? "true" : "false");
     stat.add("latest_service_state", static_cast<int>(state_.latest_service_state));
 
     char tmp[32];

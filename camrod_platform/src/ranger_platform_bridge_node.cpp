@@ -77,6 +77,13 @@ public:
     // HH_260428: Comprehensive aggregated DBC status topic (AvgPlatformStatus).
     platform_status_topic_ = declare_parameter<std::string>(
       "platform_status_topic",  "/platform/status");
+    platform_status_publish_rate_hz_ = declare_parameter<double>(
+      "platform_status_publish_rate_hz", 10.0);
+    if (!std::isfinite(platform_status_publish_rate_hz_)) {
+      platform_status_publish_rate_hz_ = 10.0;
+    }
+    platform_status_publish_rate_hz_ =
+      std::clamp(platform_status_publish_rate_hz_, 1.0, 50.0);
     // HH_260506: Frame id used by aggregated AvgPlatformStatus header.
     status_frame_id_      = declare_parameter<std::string>(
       "status_frame_id", "robot_base_link");
@@ -140,11 +147,12 @@ public:
       get_logger(),
       "ranger_platform_bridge ready: "
       "odom=%s fallback=%s (%.1fs) actuator=%s system_state=%s battery=%s"
-      " -> odom=%s vel=%s wheel=%s status=%s frame=%s",
+      " -> odom=%s vel=%s wheel=%s status=%s frame=%s status_rate=%.1fHz",
       odom_input_topic_.c_str(), odom_fallback_topic_.c_str(), odom_fallback_timeout_s_,
       actuator_state_topic_.c_str(), system_state_topic_.c_str(), battery_state_topic_.c_str(),
       status_odom_topic_.c_str(), status_velocity_topic_.c_str(),
-      status_wheel_topic_.c_str(), platform_status_topic_.c_str(), status_frame_id_.c_str());
+      status_wheel_topic_.c_str(), platform_status_topic_.c_str(), status_frame_id_.c_str(),
+      platform_status_publish_rate_hz_);
   }
 
 private:
@@ -272,6 +280,14 @@ private:
   // AvgPlatformStatus aggregation.
   void onSystemState(const ranger_msgs::msg::SystemState::ConstSharedPtr msg)
   {
+    const bool critical_state_changed =
+      !latest_system_state_ ||
+      latest_system_state_->vehicle_state != msg->vehicle_state ||
+      latest_system_state_->control_mode != msg->control_mode ||
+      latest_system_state_->error_code != msg->error_code ||
+      latest_system_state_->motion_mode != msg->motion_mode ||
+      charging_state_changed_;
+
     // HH_260428: estop logic from CAN 0x211 vehicle_state + optional error_code.
     // VEHICLE_STATE_ESTOP always triggers; EXCEPTION triggers when estop_on_exception_=true.
     const bool is_estop =
@@ -298,8 +314,21 @@ private:
 
     // Cache all CAN 0x211 + 0x291 fields for AvgPlatformStatus
     latest_system_state_ = msg;
-    // HH_260720 - Publishing only on CAN 0x211 makes control-side stale detection meaningful.
-    publishAggregatedStatus(msg->header.stamp);
+    // HH_260727 - Keep safety transitions immediate while reducing unchanged aggregate status traffic.
+    // A 10 Hz steady heartbeat remains well inside the control gate's 0.5 s stale timeout.
+    const auto now = this->now();
+    const double elapsed_s = has_published_platform_status_ ?
+      (now - last_platform_status_publish_time_).seconds() : 0.0;
+    const bool heartbeat_due =
+      !has_published_platform_status_ ||
+      elapsed_s < 0.0 ||
+      elapsed_s >= (1.0 / platform_status_publish_rate_hz_);
+    if (critical_state_changed || heartbeat_due) {
+      publishAggregatedStatus(msg->header.stamp);
+      last_platform_status_publish_time_ = now;
+      has_published_platform_status_ = true;
+      charging_state_changed_ = false;
+    }
   }
 
   bool inferChargingFromBattery(const sensor_msgs::msg::BatteryState & msg) const
@@ -346,6 +375,7 @@ private:
     }
     if (charging_candidate_count_ >= required) {
       charging_debounced_ = charging_sample;
+      charging_state_changed_ = true;
       charging_candidate_count_ = 0;
       RCLCPP_INFO(
         get_logger(), "charging status -> %s (threshold=%.2f A, positive_is_charging=%s)",
@@ -476,6 +506,7 @@ private:
   std::string  battery_state_topic_;
   std::string  platform_status_topic_;
   std::string  status_frame_id_;
+  double       platform_status_publish_rate_hz_{10.0};
   bool         publish_topics_{true};
   bool         estop_on_exception_{true};
   bool         estop_on_error_code_{false};
@@ -485,6 +516,9 @@ private:
   bool         charging_debounced_{false};
   bool         charging_candidate_{false};
   int          charging_candidate_count_{0};
+  bool         charging_state_changed_{false};
+  bool         has_published_platform_status_{false};
+  rclcpp::Time last_platform_status_publish_time_{0, 0, RCL_ROS_TIME};
 
   // Cached latest state for AvgPlatformStatus aggregation
   nav_msgs::msg::Odometry::ConstSharedPtr          latest_odom_;

@@ -9,6 +9,8 @@
 
 #include "ranger_base/ranger_messenger.hpp"
 
+#include <algorithm>
+
 #include "ranger_base/kinematics_model.hpp"
 
 using namespace rclcpp;
@@ -24,6 +26,9 @@ RangerROSMessenger::RangerROSMessenger(rclcpp::Node::SharedPtr& node){
 
   node_ = node;
   LoadParameters();
+  parameter_callback_handle_ = node_->add_on_set_parameters_callback(
+    std::bind(
+      &RangerROSMessenger::OnParametersChanged, this, std::placeholders::_1));
 
   // connect to robot and setup ROS subscription
   if (robot_type_ == RangerSubType::kRangerMiniV1) {
@@ -68,15 +73,19 @@ void RangerROSMessenger::LoadParameters() {
   update_rate_ = node_->declare_parameter<int>("update_rate", 50);
   odom_topic_name_ = node_->declare_parameter<std::string>("odom_topic_name", "odom");
   publish_odom_tf_ = node_->declare_parameter<bool>("publish_odom_tf",false);
+  steering_transition_rate_radps_ = node_->declare_parameter<double>(
+    "steering_transition_rate_radps", 0.5);
+  steering_transition_rate_radps_ =
+    std::max(0.05, std::min(2.0, steering_transition_rate_radps_));
 
   RCLCPP_INFO(node_->get_logger(),
       "Successfully loaded the following parameters: \n port_name: %s\n "
       "robot_model: %s\n odom_frame: %s\n base_frame: %s\n "
       "update_rate: %d\n odom_topic_name: %s\n "
-      "publish_odom_tf: %d\n",
+      "publish_odom_tf: %d\n steering_transition_rate_radps: %.2f\n",
       port_name_.c_str(), robot_model_.c_str(), odom_frame_.c_str(),
       base_frame_.c_str(), update_rate_, odom_topic_name_.c_str(),
-      publish_odom_tf_);
+      publish_odom_tf_, steering_transition_rate_radps_);
 
   // load robot parameters
   if (robot_model_ == "ranger_mini_v1") {
@@ -424,6 +433,7 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
       if (steer_cmd < -robot_params_.max_steer_angle_ackermann) {
         steer_cmd = -robot_params_.max_steer_angle_ackermann;
       }
+      steer_cmd = LimitSteeringAngle(steer_cmd);
       robot_->SetMotionCommand(msg->linear.x, steer_cmd);
       break;
     }
@@ -447,6 +457,7 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
       if (steer_cmd < -robot_params_.max_steer_angle_parallel) {
         steer_cmd = -robot_params_.max_steer_angle_parallel;
       }
+      steer_cmd = LimitSteeringAngle(steer_cmd);
       double vel = 1.0;
       
       if (msg->linear.x == 0.0 && msg->linear.y != 0.0) {
@@ -489,6 +500,62 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
       break;
     }
   }
+}
+
+double RangerROSMessenger::LimitSteeringAngle(const double target_angle) {
+  const auto now = node_->get_clock()->now();
+  if (!steering_command_initialized_) {
+    // HH_260727 - Start from the measured steering state so restarting the driver while the
+    // wheels are lateral cannot create a full-angle command discontinuity.
+    last_steering_command_rad_ = robot_->GetRobotState().motion_state.steering_angle;
+    last_steering_command_time_ = now;
+    steering_command_initialized_ = true;
+  }
+
+  double dt = (now - last_steering_command_time_).seconds();
+  if (!std::isfinite(dt) || dt <= 0.0) {
+    dt = 1.0 / std::max(1, update_rate_);
+  }
+  // HH_260727 - A stale cmd_vel stream must not turn into one large steering jump.
+  dt = std::min(dt, 0.1);
+  const double max_delta = steering_transition_rate_radps_ * dt;
+  const double delta = target_angle - last_steering_command_rad_;
+  if (delta > max_delta) {
+    last_steering_command_rad_ += max_delta;
+  } else if (delta < -max_delta) {
+    last_steering_command_rad_ -= max_delta;
+  } else {
+    last_steering_command_rad_ = target_angle;
+  }
+  last_steering_command_time_ = now;
+  return last_steering_command_rad_;
+}
+
+rcl_interfaces::msg::SetParametersResult RangerROSMessenger::OnParametersChanged(
+  const std::vector<rclcpp::Parameter>& parameters) {
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  for (const auto& parameter : parameters) {
+    if (parameter.get_name() != "steering_transition_rate_radps") {
+      continue;
+    }
+    if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+      result.successful = false;
+      result.reason = "steering_transition_rate_radps must be a double";
+      return result;
+    }
+    const double requested = parameter.as_double();
+    if (!std::isfinite(requested) || requested < 0.05 || requested > 2.0) {
+      result.successful = false;
+      result.reason = "steering_transition_rate_radps must be in [0.05, 2.0]";
+      return result;
+    }
+    steering_transition_rate_radps_ = requested;
+    RCLCPP_INFO(
+      node_->get_logger(), "steering transition rate updated dynamically: %.2f rad/s",
+      steering_transition_rate_radps_);
+  }
+  return result;
 }
 
 

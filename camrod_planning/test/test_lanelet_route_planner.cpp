@@ -16,6 +16,14 @@
 namespace
 {
 
+// HH_260727 - Keep this unit test isolated from a concurrently running CAMROD ROS graph.
+constexpr char kTestRouteLaneletIdsTopic[] =
+  "/test/lanelet_route_planner/route_lanelet_ids";
+constexpr char kTestRouteTurnSegmentsTopic[] =
+  "/test/lanelet_route_planner/route_turn_segments";
+constexpr char kTestReverseRouteRequestTopic[] =
+  "/test/lanelet_route_planner/return_to_drop_zone";
+
 geometry_msgs::msg::PoseStamped makePose(
   const double x, const double y, const double yaw_degrees)
 {
@@ -38,6 +46,16 @@ double pathLength(const nav_msgs::msg::Path & path)
     length += std::hypot(current.x - previous.x, current.y - previous.y);
   }
   return length;
+}
+
+double poseYaw(const geometry_msgs::msg::PoseStamped & pose)
+{
+  const auto & orientation = pose.pose.orientation;
+  const double sin_yaw =
+    2.0 * (orientation.w * orientation.z + orientation.x * orientation.y);
+  const double cos_yaw =
+    1.0 - 2.0 * (orientation.y * orientation.y + orientation.z * orientation.z);
+  return std::atan2(sin_yaw, cos_yaw);
 }
 
 class LaneletRoutePlannerTest : public testing::Test
@@ -73,6 +91,13 @@ protected:
     node_->declare_parameter<bool>("LaneletRoute.enable_reverse_lanelet_shortest_path", true);
     node_->declare_parameter<double>(
       "LaneletRoute.reverse_lanelet_start_heading_threshold_deg", 120.0);
+    // HH_260727 - Never publish test routes or requests on live planning topics.
+    node_->declare_parameter<std::string>(
+      "LaneletRoute.route_lanelet_ids_topic", kTestRouteLaneletIdsTopic);
+    node_->declare_parameter<std::string>(
+      "LaneletRoute.route_turn_segments_topic", kTestRouteTurnSegmentsTopic);
+    node_->declare_parameter<std::string>(
+      "LaneletRoute.reverse_lanelet_request_topic", kTestReverseRouteRequestTopic);
     planner_ = std::make_unique<camrod_planning::LaneletRoutePlanner>();
     planner_->configure(node_, "LaneletRoute", nullptr, nullptr);
     planner_->activate();
@@ -80,7 +105,7 @@ protected:
     request_node_ = std::make_shared<rclcpp::Node>("reverse_route_request_test");
     request_publisher_ =
       request_node_->create_publisher<avg_msgs::msg::PlanningRecallRequest>(
-      "/planning/state_machine/return_to_drop_zone", rclcpp::QoS(10));
+      kTestReverseRouteRequestTopic, rclcpp::QoS(10));
     executor_.add_node(node_->get_node_base_interface());
     executor_.add_node(request_node_);
   }
@@ -130,12 +155,18 @@ protected:
 
 TEST_F(LaneletRoutePlannerTest, UsesShortPathFromDropZoneToRoadsideSite)
 {
+  const auto goal = makePose(12.7921, 22.52, -77.0);
   const auto path = planner_->createPlan(
     makePose(-13.5777, 40.7413, 10.4),
-    makePose(12.7921, 22.52, -77.0));
+    goal);
 
   ASSERT_GT(path.poses.size(), 100U);
   EXPECT_LT(pathLength(path), 80.0);
+  // HH_260727 - Preserve an operator-requested final heading instead of centerline tangent yaw.
+  const double final_yaw_error = std::atan2(
+    std::sin(poseYaw(path.poses.back()) - poseYaw(goal)),
+    std::cos(poseYaw(path.poses.back()) - poseYaw(goal)));
+  EXPECT_NEAR(final_yaw_error, 0.0, 1.0e-6);
 }
 
 TEST_F(LaneletRoutePlannerTest, ReversesShortestPathAfterSiteTurnaround)

@@ -10,27 +10,25 @@
     <RecoveryNode number_of_retries="6" name="NavigateRecovery">
       <PipelineSequence name="NavigateGoalLocked">
         <!-- PlannerSelector sets {selected_planner} on the blackboard -->
-        <!-- HH_260626 - Default to connected lanelet routing; grid planners
-             remain fallback/selectable for recovery and debugging. -->
+        <!-- HH_260727 - Default to connected lanelet routing; grid planners are
+             selectable only through the explicit manual/regulated source policy. -->
         <PlannerSelector selected_planner="{selected_planner}" default_planner="LaneletRoute" topic_name="/planning/planner_selector_ros"/>
         <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector_ros"/>
+        <!-- HH_260727 - Manual goals require yaw completion; regulated site goals
+             retain the lanelet handoff tolerance. -->
+        <GoalCheckerSelector selected_goal_checker="{selected_goal_checker}" default_goal_checker="goal_checker" topic_name="/planning/goal_checker_selector_ros"/>
         <!-- HH_260619 - Lock the global route after each accepted goal.
              GoalUpdatedController computes a new global path only on the first
              tick, goal preemption, or recovery restart. The local path extractor
              then slices the fixed global route around the live robot pose. -->
         <GoalUpdatedController>
           <RecoveryNode number_of_retries="1" name="ComputePathToPose">
-            <!-- HH_260626 - Try connected/selected route first, then grid fallbacks. -->
-            <Fallback name="ComputePathPlannerFallback">
-              <!-- HH_260619 - Pass the navigator-provided snapped start pose.
-                   Without start="{start}", ComputePathToPose silently plans from
-                   current TF and draws a short off-center connector near the robot. -->
-              <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="{selected_planner}"/>
-              <!-- HH_260702 - Prefer curvature-aware fallback before 2D grid fallback. -->
-              <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="SmacLattice"/>
-              <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="Smac2D"/>
-              <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="NavFn"/>
-            </Fallback>
+            <!-- HH_260727 - The goal-source latch owns planner policy; a hidden
+                 fallback must not turn regulated failures into unrestricted routes. -->
+            <!-- HH_260619 - Pass the navigator-provided snapped start pose.
+                 Without start="{start}", ComputePathToPose silently plans from
+                 current TF and draws a short off-center connector near the robot. -->
+            <ComputePathToPose goal="{goal}" start="{start}" path="{path}" planner_id="{selected_planner}"/>
             <Sequence name="ClearGlobalCostmapAndSettle-Context">
               <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
               <!-- HH_260528 - Costmap clear->replan race guard.
@@ -44,7 +42,7 @@
              outside the rolling/global costmap window and falsely abort smoothing. -->
         <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{path}" controller_id="{selected_controller}"/>
+          <FollowPath path="{path}" controller_id="{selected_controller}" goal_checker_id="{selected_goal_checker}"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
         </RecoveryNode>
       </PipelineSequence>

@@ -7,7 +7,10 @@
     offset_lat: 36.8435737
     offset_lon: 128.0925646
     offset_alt: 0.0
-    input_goal_topic: "/goal_pose"
+    # HH_260727 - UI/mission goals remain lanelet-regulated, while RViz's
+    # standard /goal_pose preserves the operator-selected x/y/yaw.
+    input_goal_topic: "/planning/site_goal_pose_ros"
+    manual_input_goal_topic: "/goal_pose"
     # HH_260623 - Private input for planning_state_machine auto return goals.
     # It keeps drop-zone station-center poses away from the public campsite site_goal topic.
     auxiliary_input_goal_topic: "/planning/auto_goal_raw"
@@ -15,6 +18,9 @@
     output_goal_topic: "/planning/goal_pose_snapped"
     # HH_260528: ROS PoseStamped mirror for direct Nav2 consumption.
     output_goal_topic_ros: "/planning/goal_pose_snapped_ros"
+    output_goal_source_topic: "/planning/goal_source"
+    # HH_260727 - Allow source-specific Nav2 selectors to settle before goal delivery.
+    goal_source_settle_delay_s: 0.12
     # Restore practical search radius for multi-goal operation.
     # 30 m often rejects valid second goals (no new snapped goal => no replanning).
     max_search_radius: 120.0
@@ -44,6 +50,8 @@
     component_update_min_displacement_m: 0.5
     routing_location: "de"
     routing_participant: "vehicle:car"
+    # HH_260727 - Do not snap regulated UI goals to crosswalk/non-vehicle lanelets.
+    routable_lanelet_only: true
     # HH_260617: Snap only to the same traversable OccupancyGrid component
     # as the current pose. This prevents Nav2 from receiving a lanelet-routing
     # goal that is disconnected in the actual costmap raster.
@@ -72,6 +80,9 @@
     sequential_goal_reached_distance_m: 0.25
     sequential_goal_stop_hold_s: 0.5
     sequential_goal_duplicate_xy_eps_m: 0.20
+    # HH_260727 - Same-position manual goals with a different arrow direction
+    # are distinct commands and must not be swallowed by duplicate filtering.
+    sequential_goal_duplicate_yaw_eps_rad: 0.05
     sequential_goal_max_queue_size: 10
     sequential_goal_status_topic: "/planning/navigate_to_pose/_action/status"
     # HH_260618: Release queued waypoints only after Nav2 reports SUCCEEDED, not

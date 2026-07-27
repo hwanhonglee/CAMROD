@@ -89,6 +89,29 @@ camrod_system_add_checker(planning_path_checker_node src/diagnostics/planning_pa
 # HH_260617: Validate semantic planning state before parking/control progression.
 camrod_system_add_checker(planning_state_checker_node src/diagnostics/planning_state_checker_node.cpp)
 
+# HH_260727: Exercise Nav2 goal UUID/state abort deduplication without starting
+# the full navigation stack.
+if(BUILD_TESTING)
+  add_executable(
+    test_planning_nav_status_tracker
+    test/test_planning_nav_status_tracker.cpp
+  )
+  target_compile_features(test_planning_nav_status_tracker PUBLIC cxx_std_17)
+  target_include_directories(
+    test_planning_nav_status_tracker
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/diagnostics
+  )
+  ament_target_dependencies(
+    test_planning_nav_status_tracker
+    action_msgs
+    unique_identifier_msgs
+  )
+  add_test(
+    NAME planning_nav_status_tracker
+    COMMAND test_planning_nav_status_tracker
+  )
+endif()
+
 add_executable(aggregator_node src/diagnostics/aggregator_node.cpp)
 target_compile_features(aggregator_node PUBLIC cxx_std_17)
 ament_target_dependencies(aggregator_node rclcpp diagnostic_msgs)

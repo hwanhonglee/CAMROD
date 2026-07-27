@@ -947,6 +947,45 @@ def generate_launch_description():
             'Raw lanelet current-cell threshold for safety stop',
         ),
         (
+            'control_cmd_vel_gate_lanelet_safety_footprint_enable',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_enable', True),
+            'Check the complete robot planning footprint against raw lanelet cost',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_footprint_threshold',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_threshold', 100),
+            'Whole-footprint hard boundary threshold (100=off-lane only)',
+        ),
+        (
+            'control_cmd_vel_gate_robot_planning_boundary_topic',
+            cfg_get(
+                launch_cfg,
+                'control/cmd_vel_gate_robot_planning_boundary_topic',
+                '/platform/robot/planning_boundary',
+            ),
+            'Configured robot planning-boundary polygon topic',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_footprint_front_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 1.30137),
+            'Fallback planning footprint front extent (m)',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_footprint_rear_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.39023),
+            'Fallback planning footprint rear extent (m)',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_footprint_left_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_left_m', 0.63505),
+            'Fallback planning footprint left extent (m)',
+        ),
+        (
+            'control_cmd_vel_gate_lanelet_safety_footprint_right_m',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_right_m', 0.63495),
+            'Fallback planning footprint right extent (m)',
+        ),
+        (
             'control_cmd_vel_gate_lanelet_safety_lookahead_m',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_lookahead_m', 1.0),
             'Raw lanelet safety lookahead distance (m)',
@@ -1366,6 +1405,31 @@ def generate_launch_description():
             'api_ui_low_battery_return_threshold_percent',
             cfg_get(launch_cfg, 'system/api_ui_low_battery_return_threshold_percent', 35.0),
             'SOC percent that starts the finish-current-mission return latch',
+        ),
+        # HH_260727 - Pass the lightweight local UI surface through bringup.
+        (
+            'enable_operator_ui_window',
+            cfg_get(launch_cfg, 'system/enable_operator_ui_window', True),
+            'Open the local GTK/WebKit operator UI window',
+        ),
+        (
+            'operator_ui_window_url',
+            cfg_get(
+                launch_cfg,
+                'system/operator_ui_window_url',
+                'http://127.0.0.1:8010',
+            ),
+            'URL loaded by the local operator UI window',
+        ),
+        (
+            'operator_ui_window_width',
+            cfg_get(launch_cfg, 'system/operator_ui_window_width', 1280),
+            'Initial local operator UI window width in pixels',
+        ),
+        (
+            'operator_ui_window_height',
+            cfg_get(launch_cfg, 'system/operator_ui_window_height', 800),
+            'Initial local operator UI window height in pixels',
         ),
 
         ('enable_radar', cfg_get(launch_cfg, 'sensing/enable_radar', False), 'Enable serial radar'),
@@ -1932,6 +1996,11 @@ def generate_launch_description():
         'minimum_mission_dispatch_battery_percent': lc['api_ui_minimum_mission_dispatch_battery_percent'],
         'low_battery_return_after_current_mission': lc['api_ui_low_battery_return_after_current_mission'],
         'low_battery_return_threshold_percent': lc['api_ui_low_battery_return_threshold_percent'],
+        # HH_260727 - Keep headless opt-out and window geometry explicit at top level.
+        'enable_operator_ui_window': lc['enable_operator_ui_window'],
+        'operator_ui_window_url': lc['operator_ui_window_url'],
+        'operator_ui_window_width': lc['operator_ui_window_width'],
+        'operator_ui_window_height': lc['operator_ui_window_height'],
         # Share bringup camping-sites YAML with UI backend so
         # /ui/selected_destination can dispatch exact goal_pose coordinates.
         'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],
@@ -1971,7 +2040,8 @@ def generate_launch_description():
         ui_condition = IfCondition(
             PythonExpression([
                 "'", lc['enable_plugin_api'], "' == 'true' or '",
-                lc['enable_api_ui'], "' == 'true'",
+                lc['enable_api_ui'], "' == 'true' or '",
+                lc['enable_operator_ui_window'], "' == 'true'",
             ])
         )
         module_specs.append(('camrod_ui', 'ui.launch.py', api_args, ui_condition))

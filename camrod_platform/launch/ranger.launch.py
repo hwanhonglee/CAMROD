@@ -143,6 +143,10 @@ def _launch_setup(context, *args, **kwargs):
             'publish_odom_tf': p.get('publish_odom_tf', False),
             'update_rate':     int(p.get('update_rate', 50)),
             'robot_model':     p.get('robot_model', 'ranger'),
+            # HH_260727 - Dynamic wheel-direction transition limit for longitudinal↔lateral changes.
+            'steering_transition_rate_radps': float(
+                p.get('steering_transition_rate_radps', 0.5)
+            ),
         }],
         # HH_260720 - Ranger consumes the single final output from camrod_control directly.
         # HH_260720 - Ranger requires geometry_msgs/Twist at the explicit driver boundary.

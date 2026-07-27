@@ -50,6 +50,33 @@ DISABLE_ESLINT_PLUGIN=true npm run build
 curl http://localhost:8010/ui/health
 ```
 
+### Lightweight local window (without Brave)
+
+`camrod_ui_window` opens the same HTTP UI in a GTK/WebKit window. Start
+`ui_backend_node` first, then run:
+
+```bash
+# Default URL: http://127.0.0.1:8010
+camrod_ui_window
+
+# Remote robot URL and custom initial size
+camrod_ui_window --url http://192.168.0.10:8010 --width 1440 --height 900
+
+# ui.launch.py opens the lightweight window by default; opt out on headless hosts
+ros2 launch camrod_ui ui.launch.py enable_operator_ui_window:=false
+
+# The same opt-out and geometry arguments are exposed by full bringup
+ros2 launch camrod_bringup bringup.launch.py enable_operator_ui_window:=false
+```
+
+The optional window requires the system runtime packages
+`python3-gi` and `gir1.2-webkit2-4.0`. Closing the window or pressing
+`Ctrl+C` exits the launcher cleanly. This removes the need to keep a full Brave
+session open locally, while the existing HTTP UI remains available to remote
+browsers. HH_260727 - If the window starts before the backend is listening, it
+retries once per second and stops retrying after the first successful React
+page load.
+
 ---
 
 ## 🗺️ System Position
@@ -72,7 +99,7 @@ graph LR
   UI -->|destination /planning/mission_engage| PLAN
   UI -->|/platform/drive_enable| PLAT([🤖 camrod_platform]):::planning
   UI -->|/planning/mission_key| PLAN
-  UI -->|/goal_pose| PLAN
+  UI -->|/planning/site_goal_pose_ros| PLAN
   PARK([camrod_control parking]):::parking -.->|destination sites| UI
 
   classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
@@ -106,7 +133,7 @@ graph TD
   BACKEND --> MISSIONENGAGE((destination /planning/mission_engage)):::topic
   BACKEND --> DRIVEENABLE((/platform/drive_enable)):::topic
   BACKEND --> MISSIONKEY((/planning/mission_key)):::topic
-  BACKEND --> GOALPOSE((/goal_pose)):::topic
+  BACKEND --> GOALPOSE((/planning/site_goal_pose_ros)):::topic
   BACKEND --> DEST2((/ui/selected_destination)):::topic
 
   classDef ui       fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
@@ -126,7 +153,11 @@ Thread safety between the two contexts is managed by a `threading.Lock` on `ApiS
 
 ### Destination Dispatch Sequence
 
-**HH_260617 terminology:** `mission_key` is the semantic site id (`camping_site_3`), `site_goal` is the operational site target on `/goal_pose`, and `route_goal` is the lanelet-snapped Nav2 pose produced by camrod_planning. Public topic names stay unchanged for compatibility.
+**HH_260727 terminology:** `mission_key` is the semantic site id
+(`camping_site_3`), `site_goal` is the regulated operational target on
+`/planning/site_goal_pose_ros`, and `route_goal` is the lanelet-snapped Nav2
+pose produced by camrod_planning. RViz `/goal_pose` is reserved for unrestricted
+manual navigation.
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#FFF7ED', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#F97316', 'lineColor': '#475569'}}}%%
@@ -144,7 +175,7 @@ sequenceDiagram
   Backend->>Backend: validate site B3 → camping_site_3
   Backend->>SM: /ui/selected_destination UiDestinationCommand(site=B3, run=true)
   Backend->>SM: /planning/mission_key PlanningMissionKey(camping_site_3)
-  Backend->>Nav2: site_goal /goal_pose PoseStamped(x,y,z,yaw from camping_sites.yaml)
+  Backend->>Nav2: site_goal /planning/site_goal_pose_ros PoseStamped(x,y,z,yaw from camping_sites.yaml)
   Backend->>Gate: /planning/mission_engage AvgBool(true)
   Backend->>Gate: /platform/drive_enable AvgBool(true)
   Gate-->>Control: command authorization opens
@@ -267,7 +298,7 @@ When `set_destination(site="B3", ...)` is called:
 |---|---|---|---|---|
 | `/planning/engage` | `std_msgs/Bool` | camrod_planning (`cmd_vel_gate`) | event | Engage (`true`) or disengage (`false`) autonomy |
 | `/planning/mission_key` | `avg_msgs/PlanningMissionKey` | camrod_planning (state machine) | event | `mission_key`: semantic site/key name (e.g., `camping_site_3`) |
-| `/goal_pose` | `geometry_msgs/PoseStamped` | camrod_planning goal_snapper | event | `site_goal`: raw site-center pose in `map`, later snapped to a lanelet route goal |
+| `/planning/site_goal_pose_ros` | `geometry_msgs/PoseStamped` | camrod_planning goal snapper/state machine | event | Regulated `site_goal`: raw site-center pose in `map`, later snapped to a lanelet route goal |
 | `/ui/selected_destination` | `avg_msgs/UiDestinationCommand` | self (loop-back) | event | Destination command republished for inspection |
 <!-- HH_260723 - Surface semantic campsite occupancy to the operator UI. -->
 | `/perception/camping_sites/occupancy` | `avg_msgs/CampsiteOccupancy` | UI backend | 2 Hz + transient state | Occupied mission keys; matching destination buttons are disabled and dispatch is rejected |
@@ -287,6 +318,9 @@ ros2 launch camrod_ui ui.launch.py [ARG:=VALUE ...]
 | `ui_port` | `8010` | HTTP bind port |
 | `frontend_dir` | auto-resolved (see above) | Static web frontend directory |
 | `camping_sites_yaml` | `camrod_planning/config/camping_sites.yaml` | Named goal positions YAML |
+| `enable_operator_ui_window` | `true` | Start the lightweight GTK/WebKit window |
+| `operator_ui_url` | `http://127.0.0.1:8010` | URL loaded by the local window |
+| `operator_ui_width` / `operator_ui_height` | `1280` / `800` | Initial window dimensions |
 
 Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 
@@ -311,6 +345,7 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 | 🟢 `GET` | `/ui/state` | — | `ApiState` JSON snapshot | Full system state: engaged, ready, operation_mode, module_states, diagnostics, destination, battery_percentage |
 | 🟢 `GET` | `/ui/health` | — | `{"ok": true, "node": "ui_backend"}` | Liveness check |
 | 🟢 `GET` | `/ui/destination` | — | `{"destination": {…}, "valid_sites": […]}` | Current destination and valid site list |
+| 🟢 `GET` | `/ui/platform_tuning` | — | Current steering transition rate and bounds | Read Ranger wheel-direction slew tuning |
 | 🟢 `GET` | `/ui/diagnostics` | — | `{"status": […]}` | Diagnostics list from `/system/diagnostics_agg` |
 | 🟢 `GET` | `/api/diagnostics` | — | `{"status": […]}` | Same as `/ui/diagnostics` (legacy path) |
 | 🔵 `POST` | `/ui/engage` | `?value=true\|false` | `{"success": bool, "value": bool}` | Publish engage command directly |
@@ -318,6 +353,7 @@ Node-level parameters (set in `ui.launch.py`, not exposed as launch args):
 | 🔵 `POST` | `/ui/auto` | — | `{"success": true}` | Shortcut: engage=true |
 | 🔵 `POST` | `/ui/stop` | — | `{"success": true}` | Shortcut: engage=false |
 | 🔵 `POST` | `/ui/destination` | `?site=B1&run=true\|false` | `{"success": bool, "destination": {…}, "dispatch": {…}}` | Select destination and optionally dispatch goal+engage |
+| 🔵 `POST` | `/ui/platform_tuning` | `?steering_transition_rate_radps=0.5` | Applied value and bounds | Update the Ranger steering transition rate at runtime |
 | 🔌 `WS` | `/ws` | — | JSON push messages | Real-time push: `{"states": {…}}`, `{"engage": bool}`, `{"battery": int}`, `{"arrived": site}` |
 | 🟢 `GET` | `/{full_path}` | — | Static file or `index.html` | Serve React SPA |
 
@@ -381,7 +417,7 @@ curl -X POST "http://localhost:8010/ui/destination?site=B3&run=true"
 
 # Watch what the backend publishes
 ros2 topic echo /planning/engage
-ros2 topic echo /goal_pose
+ros2 topic echo /planning/site_goal_pose_ros
 ros2 topic echo /planning/mission_key
 ```
 
@@ -435,7 +471,7 @@ After a React rebuild (`DISABLE_ESLINT_PLUGIN=true npm run build`), confirm the 
 
 - [`../README.md`](../README.md) — Top-level CAMROD workspace overview
 - [`../camrod_system/README.md`](../camrod_system/README.md) — produces `/system/diagnostics_agg`
-- [`../camrod_planning/README.md`](../camrod_planning/README.md) — consumes `/planning/engage`, `/goal_pose`, `/planning/mission_key`
+- [`../camrod_planning/README.md`](../camrod_planning/README.md) — consumes `/planning/engage`, regulated `/planning/site_goal_pose_ros`, manual `/goal_pose`, and `/planning/mission_key`
 - [`../camrod_control/README.md`](../camrod_control/README.md) - maneuver and parking status consumed by the UI
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
 
@@ -463,7 +499,7 @@ store the destination as pending. The backend publishes the mission key to open 
 `MotionOperation.CANCEL` to `/parking/operation` to release final-parking state,
 then sends `MotionOperation.EXIT` to `/control/drop_zone_maneuver_controller/operation`,
 and waits for `/control/drop_zone/exit_complete=true`. Only then does it publish
-the selected operational site pose on `/goal_pose`. A failed or cancelled exit clears the
+the selected operational site pose on `/planning/site_goal_pose_ros`. A failed or cancelled exit clears the
 pending destination and disables motion. During the handoff, the UI displays
 `DEPARTING_CHARGER` or `DEPARTING_DROP_ZONE`; it changes to `MOVING_TO_SITE`
 only after the bounded exit maneuver succeeds.
@@ -496,7 +532,7 @@ site buttons, and publishes `/service/state=OPERATOR_STOPPED`.
 | UI concept | ROS contract |
 |---|---|
 | Button destination | `PlanningMissionKey.mission_key` |
-| Site center | `/planning/goal_pose` / `/goal_pose` |
+| Regulated UI site center | `/planning/site_goal_pose_ros` |
 | Lanelet snap route | produced by `camrod_planning` as `/planning/goal_pose_snapped_ros` (`geometry_msgs`) and `/planning/goal_pose_snapped` (`avg_msgs`) |
 | Parking phase | produced by `camrod_control` parking controller status topics |
 | Already-at-site adoption | `/control/camping_site_maneuver_controller/adopt` with `avg_msgs/UiDestinationCommand` |

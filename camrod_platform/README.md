@@ -71,3 +71,21 @@ If `can0` does not exist, connect or power the CAN adapter before using real
 hardware mode. Use `sim:=true` from `camrod_bringup` only for a non-hardware run.
 
 Ranger driver command input is intentionally the only standard `Twist` boundary in this package.
+
+## Steering-mode transition rate
+
+<!-- HH_260727 - Document the field-adjustable longitudinal/lateral wheel transition. -->
+
+`ranger_base_node.steering_transition_rate_radps` limits the wheel-angle
+transition used by dual-Ackermann and parallel steering. The v2.0.8 default is
+`0.5 rad/s` (approximately 3.1 s for a 0-to-90-degree transition); accepted
+runtime values are `0.05` through `2.0 rad/s`.
+
+It can be changed without restarting:
+
+```bash
+ros2 param set /ranger_base_node steering_transition_rate_radps 0.4
+```
+
+The same value is available from the operator UI's platform-tuning slider and
+is applied through the Ranger node's standard dynamic-parameter service.

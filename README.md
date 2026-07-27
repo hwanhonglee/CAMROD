@@ -2,20 +2,30 @@
 
 <!-- HH_260720 - Document the consolidated parking and command-gate package boundaries. -->
 
+<!-- HH_260723 - Promote the localization, routing, perception, and campsite-occupancy field release. -->
+
 <!-- HH_260724 - Promote the battery-aware campsite mission and charging-release policy. -->
 
-Current validated baseline: `v2.0.7` ([release notes](docs/V2_0_7_RELEASE_NOTES.md)).
+<!-- HH_260727 - Promote the source-aware goal, full-footprint, and runtime-tuning release. -->
+
+Current validated baseline: `v2.0.8` ([release notes](docs/V2_0_8_RELEASE_NOTES.md)).
 
 CAMROD is a ROS 2 Humble autonomous mobile robot stack. Route planning, local
 vehicle maneuvers, reverse parking, and hardware command authorization are
 separate runtime responsibilities.
 
-The v2.0.7 field profile keeps the v2.0.6 localization, routing, perception,
-and campsite-occupancy baseline, then adds battery-aware campsite admission and
-charging departure. Critical SOC at or below 20% hard-stops command output; new
-campsite missions require at least 35% SOC. If SOC falls below 35% during an
-active campsite mission, the robot finishes the current site phase and waits for
-the normal user return request before moving back to the drop zone.
+The v2.0.8 field profile retains the v2.0.7 battery-aware campsite admission
+and charging-departure policy: critical SOC at or below 20% hard-stops command
+output, and new campsite missions require at least 35% SOC. If SOC falls below
+35% during an active campsite mission, the robot finishes the current site
+phase and waits for the normal user return request before moving back to the
+drop zone.
+
+It also adds dynamic Ranger steering-transition tuning, complete-footprint
+map-boundary enforcement, source-specific RViz/UI goal policies, a lightweight
+operator WebKit window, and measured UI/status load reductions. Existing
+one-way Lanelet routing, campsite return, camera-LiDAR fusion, and
+occupied-campsite protections remain in force.
 
 <!-- HH_260724 - Clarify operator-visible manual driving and stop/cancel state. -->
 Manual ENGAGE without a campsite selection is shown as `Manual driving` in the
@@ -105,7 +115,8 @@ window expires, command output closes again.
 When a campsite is selected while the robot is parked or charging at the drop
 zone, the UI publishes the campsite mission key first, then waits for
 `EXIT_STRAIGHT -> ALIGN_EXIT_YAW` from the drop-zone controller. The campsite
-`/goal_pose` is published only after `/control/drop_zone/exit_complete=true`.
+`/planning/site_goal_pose_ros` is published only after
+`/control/drop_zone/exit_complete=true`.
 
 ## Build And Run
 

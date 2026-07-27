@@ -12,6 +12,9 @@
         <!-- HH_260618 - Keep SIM-grid BT default aligned with the curvature-preserving route default. -->
         <PlannerSelector selected_planner="{selected_planner}" default_planner="SmacLattice" topic_name="/planning/planner_selector_ros"/>
         <ControllerSelector selected_controller="{selected_controller}" default_controller="RPP" topic_name="/planning/controller_selector_ros"/>
+        <!-- HH_260727 - Select strict manual yaw completion independently from
+             the regulated lanelet handoff checker. -->
+        <GoalCheckerSelector selected_goal_checker="{selected_goal_checker}" default_goal_checker="goal_checker" topic_name="/planning/goal_checker_selector_ros"/>
         <!-- HH_260619 - Keep the SIM global route fixed per goal; local path
              updates remain continuous through /planning/local_path slicing. -->
         <GoalUpdatedController>
@@ -28,7 +31,7 @@
              collision checking to avoid false aborts on long rolling-costmap paths. -->
         <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" smoother_id="SimpleSmoother" check_for_collisions="false"/>
         <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{path}" controller_id="{selected_controller}"/>
+          <FollowPath path="{path}" controller_id="{selected_controller}" goal_checker_id="{selected_goal_checker}"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
         </RecoveryNode>
       </PipelineSequence>

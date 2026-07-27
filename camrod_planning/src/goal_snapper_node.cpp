@@ -5,6 +5,7 @@
 #include <deque>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -28,6 +29,7 @@
 #include <lanelet2_traffic_rules/TrafficRulesFactory.h>
 #include <avg_msgs/msg/avg_occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/string.hpp>
 
 #include "camrod_map/custom_regulatory_elements.hpp"
 
@@ -49,6 +51,22 @@ struct NearestResult
   double heading{0.0};
 };
 
+struct QueuedGoal
+{
+  avg_msgs::msg::AvgPoseStamped pose;
+  std::string policy_source{"regulated"};
+};
+
+struct DelayedRelease
+{
+  avg_msgs::msg::AvgPoseStamped pose;
+  double input_x{0.0};
+  double input_y{0.0};
+  double snap_distance{0.0};
+  std::string source_label;
+  std::string release_reason;
+};
+
 // Implements `yawToQuat` behavior.
 avg_msgs::msg::AvgQuaternion yawToQuat(double yaw)
 {
@@ -59,6 +77,33 @@ avg_msgs::msg::AvgQuaternion yawToQuat(double yaw)
   q.z = std::sin(half_yaw);
   q.w = std::cos(half_yaw);
   return q;
+}
+
+// HH_260727 - Preserve manual RViz orientation while guaranteeing a valid unit quaternion.
+avg_msgs::msg::AvgQuaternion normalizedQuaternion(
+  double x, double y, double z, double w)
+{
+  const double norm = std::sqrt(x * x + y * y + z * z + w * w);
+  if (norm < 1e-9) {
+    return yawToQuat(0.0);
+  }
+  avg_msgs::msg::AvgQuaternion q;
+  q.x = x / norm;
+  q.y = y / norm;
+  q.z = z / norm;
+  q.w = w / norm;
+  return q;
+}
+
+double quaternionAngularDistance(
+  const avg_msgs::msg::AvgQuaternion & lhs,
+  const avg_msgs::msg::AvgQuaternion & rhs)
+{
+  const auto a = normalizedQuaternion(lhs.x, lhs.y, lhs.z, lhs.w);
+  const auto b = normalizedQuaternion(rhs.x, rhs.y, rhs.z, rhs.w);
+  const double dot = std::clamp(
+    std::fabs(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w), 0.0, 1.0);
+  return 2.0 * std::acos(dot);
 }
 
 // Implements `pointInPolygon2D` behavior.
@@ -98,7 +143,12 @@ public:
     cfg_.offset_lat = declare_parameter<double>("offset_lat", 0.0);
     cfg_.offset_lon = declare_parameter<double>("offset_lon", 0.0);
     cfg_.offset_alt = declare_parameter<double>("offset_alt", 0.0);
-    input_goal_topic_ = declare_parameter<std::string>("input_goal_topic", "/goal_pose");
+    // Regulated mission/UI goals are snapped to a routable lanelet. RViz keeps
+    // the standard /goal_pose boundary as a separate manual, yaw-preserving input.
+    input_goal_topic_ = declare_parameter<std::string>(
+      "input_goal_topic", "/planning/site_goal_pose_ros");
+    manual_input_goal_topic_ = declare_parameter<std::string>(
+      "manual_input_goal_topic", "/goal_pose");
     // HH_260623 - Keep internal return/drop-zone raw goals separate from the public
     // HH_260720 - Keep intermediate snap candidates away from the camping-site controller input.
     auxiliary_input_goal_topic_ =
@@ -107,6 +157,12 @@ public:
     // HH_260317 Publish ROS-native snapped goal for Nav2 consumers.
     output_goal_topic_ros_ = declare_parameter<std::string>(
       "output_goal_topic_ros", "/planning/goal_pose_snapped_ros");
+    output_goal_source_topic_ = declare_parameter<std::string>(
+      "output_goal_source_topic", "/planning/goal_source");
+    // HH_260727 - Give the source latch time to publish all three Nav2 selectors
+    // before bt_navigator receives the goal on a separate DDS topic.
+    goal_source_settle_delay_s_ = std::max(
+      0.0, declare_parameter<double>("goal_source_settle_delay_s", 0.12));
     publish_planning_status_ = declare_parameter<bool>("publish_planning_status", false);
     planning_status_topic_ =
       declare_parameter<std::string>("planning_status_topic", "/planning/status");
@@ -138,6 +194,7 @@ public:
     routing_location_ = declare_parameter<std::string>("routing_location", "de");
     routing_participant_ = declare_parameter<std::string>(
       "routing_participant", "vehicle:car");
+    routable_lanelet_only_ = declare_parameter<bool>("routable_lanelet_only", true);
     // HH_260617: Keep snapped goals inside the same traversable raster component
     // used by Nav2. Lanelet routing may be connected while the OccupancyGrid is
     // still disconnected by map gaps, which causes "no valid path" at runtime.
@@ -176,6 +233,8 @@ public:
       declare_parameter<double>("sequential_goal_stop_hold_s", 0.5);
     sequential_goal_duplicate_xy_eps_m_ =
       declare_parameter<double>("sequential_goal_duplicate_xy_eps_m", 0.20);
+    sequential_goal_duplicate_yaw_eps_rad_ =
+      declare_parameter<double>("sequential_goal_duplicate_yaw_eps_rad", 0.05);
     sequential_goal_max_queue_size_ =
       std::max(1, static_cast<int>(declare_parameter<int>("sequential_goal_max_queue_size", 10)));
     sequential_goal_status_topic_ = declare_parameter<std::string>(
@@ -213,6 +272,12 @@ public:
       return;
     }
 
+    if (routable_lanelet_only_ && !buildTrafficRules()) {
+      RCLCPP_WARN(
+        get_logger(),
+        "goal snapper: traffic rules unavailable; routable filter falls back to subtype=road");
+    }
+
     if (restrict_to_connected_lanelet_component_) {
       if (!buildRoutingGraph()) {
         if (allow_component_fallback_to_global_) {
@@ -234,14 +299,26 @@ public:
       output_goal_topic_, rclcpp::QoS(10));
     pub_goal_ros_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       output_goal_topic_ros_, rclcpp::QoS(10));
+    pub_goal_source_ = create_publisher<std_msgs::msg::String>(
+      output_goal_source_topic_, rclcpp::QoS(1).reliable().transient_local());
     if (publish_planning_status_) {
       pub_avg_planning_ = create_publisher<avg_msgs::msg::AvgPlanningMsgs>(
         planning_status_topic_, rclcpp::QoS(10));
     }
-    // HH_260720 - RViz/operator goals enter through one explicit ROS boundary.
+    // Regulated mission/UI goals use the strict lanelet snap path.
     sub_goal_ros_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       input_goal_topic_, rclcpp::QoS(10),
       std::bind(&GoalSnapperNode::onGoalRos, this, std::placeholders::_1));
+    if (!manual_input_goal_topic_.empty() && manual_input_goal_topic_ != input_goal_topic_) {
+      sub_manual_goal_ros_ = create_subscription<geometry_msgs::msg::PoseStamped>(
+        manual_input_goal_topic_, rclcpp::QoS(10),
+        std::bind(&GoalSnapperNode::onManualGoalRos, this, std::placeholders::_1));
+    } else if (!manual_input_goal_topic_.empty()) {
+      RCLCPP_WARN(
+        get_logger(),
+        "manual_input_goal_topic matches regulated input '%s'; manual passthrough disabled",
+        input_goal_topic_.c_str());
+    }
     if (!auxiliary_input_goal_topic_.empty() && auxiliary_input_goal_topic_ != input_goal_topic_) {
       sub_aux_goal_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
         auxiliary_input_goal_topic_, rclcpp::QoS(10),
@@ -278,12 +355,17 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "goal_snapper ready: map=%s input=%s aux_input=%s output(avg)=%s output(ros)=%s lane_component=%s cost_grid_component=%s sequential_release=%s",
+      "goal_snapper ready: map=%s regulated_input=%s manual_input=%s aux_input=%s "
+      "output(avg)=%s output(ros)=%s source=%s lane_component=%s "
+      "cost_grid_component=%s routable_only=%s sequential_release=%s",
       cfg_.map_path.c_str(), input_goal_topic_.c_str(),
+      manual_input_goal_topic_.empty() ? "(disabled)" : manual_input_goal_topic_.c_str(),
       auxiliary_input_goal_topic_.empty() ? "(disabled)" : auxiliary_input_goal_topic_.c_str(),
       output_goal_topic_.c_str(), output_goal_topic_ros_.c_str(),
+      output_goal_source_topic_.c_str(),
       restrict_to_connected_lanelet_component_ ? "enabled" : "disabled",
       restrict_to_cost_grid_component_ ? "enabled" : "disabled",
+      routable_lanelet_only_ ? "enabled" : "disabled",
       sequential_goal_release_enable_ ? "enabled" : "disabled");
   }
 
@@ -313,11 +395,16 @@ private:
     return true;
   }
 
-  // Builds routing graph used for connected-lanelet component extraction.
-  bool buildRoutingGraph()
+  // HH_260727 - Build traffic rules independently so strict UI goals can reject
+  // crosswalk/non-vehicle lanelets without paying for a second RoutingGraph.
+  bool buildTrafficRules()
   {
     if (!map_) {
       return false;
+    }
+
+    if (traffic_rules_) {
+      return true;
     }
 
     auto try_build = [this](const std::string & participant) -> bool {
@@ -335,19 +422,7 @@ private:
         if (!traffic_rules_) {
           return false;
         }
-
-        try {
-          routing_graph_ = lanelet::routing::RoutingGraph::build(*map_, *traffic_rules_);
-        } catch (const std::exception & e) {
-          RCLCPP_WARN(
-            get_logger(),
-            "goal_snapper: routing graph build failed (location=%s participant=%s): %s",
-            routing_location_.c_str(), participant.c_str(), e.what());
-          routing_graph_.reset();
-          return false;
-        }
-
-        return static_cast<bool>(routing_graph_);
+        return true;
       };
 
     // HH_260528 Try configured participant first, then generic vehicle fallback.
@@ -366,6 +441,26 @@ private:
     }
 
     return false;
+  }
+
+  // Builds routing graph used for connected-lanelet component extraction.
+  bool buildRoutingGraph()
+  {
+    if (!map_ || (!traffic_rules_ && !buildTrafficRules())) {
+      return false;
+    }
+
+    try {
+      routing_graph_ = lanelet::routing::RoutingGraph::build(*map_, *traffic_rules_);
+    } catch (const std::exception & e) {
+      RCLCPP_WARN(
+        get_logger(),
+        "goal_snapper: routing graph build failed (location=%s participant=%s): %s",
+        routing_location_.c_str(), routing_participant_.c_str(), e.what());
+      routing_graph_.reset();
+      return false;
+    }
+    return static_cast<bool>(routing_graph_);
   }
 
   // Handles current lanelet pose updates for connected-component filtering.
@@ -532,6 +627,9 @@ private:
     double best_near_sq = std::numeric_limits<double>::max();
 
     for (const auto & ll : map_->laneletLayer) {
+      if (!isRoutableLanelet(ll)) {
+        continue;
+      }
       const double d2 = distanceSqToCenterline(ll, x, y);
       if (!(d2 < max_sq)) {
         continue;
@@ -558,6 +656,17 @@ private:
       return true;
     }
     return false;
+  }
+
+  bool isRoutableLanelet(const lanelet::ConstLanelet & ll) const
+  {
+    if (!routable_lanelet_only_) {
+      return true;
+    }
+    if (traffic_rules_) {
+      return traffic_rules_->canPass(ll);
+    }
+    return ll.attributeOr("subtype", std::string("")) == "road";
   }
 
   // Returns squared distance from a 2D point to a lanelet centerline.
@@ -603,7 +712,10 @@ private:
     const double px = msg.pose.position.x;
     const double py = msg.pose.position.y;
     const double pz = msg.pose.position.z;
-    if (shouldSkipDuplicateGoal(msg.header.frame_id, msg.header.stamp, px, py, pz)) {
+    if (shouldSkipDuplicateGoal(
+        source_label, msg.header.frame_id, msg.header.stamp, px, py, pz,
+        msg.pose.orientation))
+    {
       RCLCPP_DEBUG_THROTTLE(
         get_logger(), *get_clock(), 500,
         "goal_snapper: skipped duplicate %s goal in frame=%s",
@@ -623,13 +735,46 @@ private:
     out.pose.position.y = nearest.nearest_point.y();
     out.pose.position.z = snapped_z;
     out.pose.orientation = yawToQuat(nearest.heading);
-    handleSnappedGoal(out, px, py, std::sqrt(nearest.sq_dist), source_label);
+    handleSnappedGoal(
+      out, px, py, std::sqrt(nearest.sq_dist), source_label, "regulated");
   }
 
   // Handles the `onGoalRos` callback.
   void onGoalRos(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
-    snapRosGoal(*msg, "ros");
+    snapRosGoal(*msg, "regulated_ros");
+  }
+
+  // HH_260727 - RViz's standard /goal_pose keeps the requested x/y/yaw at the
+  // input boundary. The default manual LaneletRoute planner projects the drive
+  // geometry onto a legal lanelet and preserves the requested final yaw; an
+  // explicitly selected grid planner can still consume the exact pose.
+  void onManualGoalRos(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
+  {
+    const double px = msg->pose.position.x;
+    const double py = msg->pose.position.y;
+    const double pz = msg->pose.position.z;
+    const auto orientation = normalizedQuaternion(
+      msg->pose.orientation.x, msg->pose.orientation.y,
+      msg->pose.orientation.z, msg->pose.orientation.w);
+    if (shouldSkipDuplicateGoal(
+        "manual_ros", msg->header.frame_id, msg->header.stamp, px, py, pz, orientation))
+    {
+      RCLCPP_DEBUG_THROTTLE(
+        get_logger(), *get_clock(), 500,
+        "goal_snapper: skipped duplicate manual goal in frame=%s",
+        msg->header.frame_id.c_str());
+      return;
+    }
+
+    avg_msgs::msg::AvgPoseStamped out;
+    out.header.stamp = msg->header.stamp;
+    out.header.frame_id = msg->header.frame_id;
+    out.pose.position.x = px;
+    out.pose.position.y = py;
+    out.pose.position.z = pz;
+    out.pose.orientation = orientation;
+    handleSnappedGoal(out, px, py, 0.0, "manual_ros", "manual");
   }
 
   void snapRosGoal(const geometry_msgs::msg::PoseStamped & msg, const char * source_label)
@@ -639,7 +784,12 @@ private:
     const double px = msg.pose.position.x;
     const double py = msg.pose.position.y;
     const double pz = msg.pose.position.z;
-    if (shouldSkipDuplicateGoal(msg.header.frame_id, msg.header.stamp, px, py, pz)) {
+    const auto orientation = normalizedQuaternion(
+      msg.pose.orientation.x, msg.pose.orientation.y,
+      msg.pose.orientation.z, msg.pose.orientation.w);
+    if (shouldSkipDuplicateGoal(
+        source_label, msg.header.frame_id, msg.header.stamp, px, py, pz, orientation))
+    {
       RCLCPP_DEBUG_THROTTLE(
         get_logger(), *get_clock(), 500,
         "goal_snapper: skipped duplicate %s goal in frame=%s",
@@ -660,21 +810,25 @@ private:
     out_avg.pose.position.y = nearest.nearest_point.y();
     out_avg.pose.position.z = snapped_z;
     out_avg.pose.orientation = yawToQuat(nearest.heading);
-    handleSnappedGoal(out_avg, px, py, std::sqrt(nearest.sq_dist), source_label);
+    handleSnappedGoal(
+      out_avg, px, py, std::sqrt(nearest.sq_dist), source_label, "regulated");
   }
 
   void handleSnappedGoal(
     const avg_msgs::msg::AvgPoseStamped & goal_pose,
-    double input_x, double input_y, double snap_distance, const char * source_label)
+    double input_x, double input_y, double snap_distance, const char * source_label,
+    const std::string & policy_source)
   {
     if (!sequential_goal_release_enable_) {
-      publishReleasedGoal(goal_pose, input_x, input_y, snap_distance, source_label, "direct");
+      publishReleasedGoal(
+        goal_pose, input_x, input_y, snap_distance, source_label, "direct", policy_source);
       return;
     }
 
     releasePendingGoalIfReady();
     if (!has_active_released_goal_ || activeGoalReadyForNext()) {
-      publishReleasedGoal(goal_pose, input_x, input_y, snap_distance, source_label, "released");
+      publishReleasedGoal(
+        goal_pose, input_x, input_y, snap_distance, source_label, "released", policy_source);
       return;
     }
 
@@ -684,37 +838,80 @@ private:
         "goal_snapper(%s): skipped active duplicate queued goal", source_label);
       return;
     }
-    enqueuePendingGoal(goal_pose, input_x, input_y, snap_distance, source_label);
+    enqueuePendingGoal(
+      goal_pose, input_x, input_y, snap_distance, source_label, policy_source);
   }
 
   void publishReleasedGoal(
     const avg_msgs::msg::AvgPoseStamped & goal_pose,
     double input_x, double input_y, double snap_distance,
-    const char * source_label, const char * release_reason)
+    const char * source_label, const char * release_reason,
+    const std::string & policy_source)
   {
-    pub_goal_->publish(goal_pose);
-    publishRosGoal(goal_pose);
+    publishGoalSource(policy_source);
     active_released_goal_ = goal_pose;
+    active_goal_policy_source_ = policy_source;
     has_active_released_goal_ = true;
     active_goal_reached_ = false;
     active_goal_nav2_succeeded_ = false;
     active_goal_reached_sec_ = 0.0;
     active_released_sec_ = now().seconds();
 
+    DelayedRelease release;
+    release.pose = goal_pose;
+    release.input_x = input_x;
+    release.input_y = input_y;
+    release.snap_distance = snap_distance;
+    release.source_label = source_label;
+    release.release_reason = release_reason;
+
+    if (goal_source_settle_delay_s_ <= 0.0) {
+      emitReleasedGoal(release);
+      return;
+    }
+
+    if (source_settle_timer_) {
+      source_settle_timer_->cancel();
+      source_settle_timer_.reset();
+    }
+    delayed_release_ = std::move(release);
+    const auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::duration<double>(goal_source_settle_delay_s_));
+    source_settle_timer_ = create_wall_timer(
+      std::max(delay, std::chrono::milliseconds(1)),
+      [this]() {
+        if (source_settle_timer_) {
+          source_settle_timer_->cancel();
+        }
+        if (!delayed_release_.has_value()) {
+          return;
+        }
+        const auto release = *delayed_release_;
+        delayed_release_.reset();
+        emitReleasedGoal(release);
+      });
+  }
+
+  void emitReleasedGoal(const DelayedRelease & release)
+  {
+    pub_goal_->publish(release.pose);
+    publishRosGoal(release.pose);
+
     // HH_260316 Keep explicit runtime trace for path-failure diagnosis.
     // This confirms whether BT/NavigateToPose is using snapped goal coordinates.
     RCLCPP_INFO(
       get_logger(),
       "goal_snapper(%s): in=(%.2f, %.2f) out=(%.2f, %.2f) dist=%.2f mode=%s pending=%zu",
-      source_label, input_x, input_y,
-      goal_pose.pose.position.x, goal_pose.pose.position.y,
-      snap_distance, release_reason, pending_goals_.size());
-    publishAvgPlanning(goal_pose);
+      release.source_label.c_str(), release.input_x, release.input_y,
+      release.pose.pose.position.x, release.pose.pose.position.y,
+      release.snap_distance, release.release_reason.c_str(), pending_goals_.size());
+    publishAvgPlanning(release.pose);
   }
 
   void enqueuePendingGoal(
     const avg_msgs::msg::AvgPoseStamped & goal_pose,
-    double input_x, double input_y, double snap_distance, const char * source_label)
+    double input_x, double input_y, double snap_distance, const char * source_label,
+    const std::string & policy_source)
   {
     if (sequential_goal_queue_policy_ == "drop_if_busy") {
       RCLCPP_INFO_THROTTLE(
@@ -726,14 +923,14 @@ private:
 
     if (sequential_goal_queue_policy_ == "replace_pending") {
       pending_goals_.clear();
-    } else if (!pending_goals_.empty() && isSameGoal(goal_pose, pending_goals_.back())) {
+    } else if (!pending_goals_.empty() && isSameGoal(goal_pose, pending_goals_.back().pose)) {
       return;
     }
 
     while (static_cast<int>(pending_goals_.size()) >= sequential_goal_max_queue_size_) {
       pending_goals_.pop_front();
     }
-    pending_goals_.push_back(goal_pose);
+    pending_goals_.push_back(QueuedGoal{goal_pose, policy_source});
     RCLCPP_INFO(
       get_logger(),
       "goal_snapper(%s): queued pending goal in=(%.2f, %.2f) out=(%.2f, %.2f) dist=%.2f policy=%s pending=%zu",
@@ -755,12 +952,12 @@ private:
     while (!pending_goals_.empty()) {
       const auto next_goal = pending_goals_.front();
       pending_goals_.pop_front();
-      if (has_active_released_goal_ && isSameGoal(next_goal, active_released_goal_)) {
+      if (has_active_released_goal_ && isSameGoal(next_goal.pose, active_released_goal_)) {
         continue;
       }
       publishReleasedGoal(
-        next_goal, next_goal.pose.position.x, next_goal.pose.position.y, 0.0,
-        "queue", "released_after_reached");
+        next_goal.pose, next_goal.pose.pose.position.x, next_goal.pose.pose.position.y, 0.0,
+        "queue", "released_after_reached", next_goal.policy_source);
       return;
     }
   }
@@ -776,6 +973,7 @@ private:
     if (
       !reissue_active_goal_on_pose_jump_ ||
       !has_active_released_goal_ ||
+      delayed_release_.has_value() ||
       active_goal_reached_ ||
       pose_jump_distance < pose_jump_reissue_distance_m_)
     {
@@ -792,6 +990,7 @@ private:
 
     auto goal_pose = active_released_goal_;
     goal_pose.header.stamp = this->get_clock()->now();
+    publishGoalSource(active_goal_policy_source_);
     pub_goal_->publish(goal_pose);
     publishRosGoal(goal_pose);
     active_released_goal_ = goal_pose;
@@ -868,7 +1067,11 @@ private:
       lhs.pose.position.x - rhs.pose.position.x,
       lhs.pose.position.y - rhs.pose.position.y);
     const double dz = std::fabs(lhs.pose.position.z - rhs.pose.position.z);
-    return dxy <= sequential_goal_duplicate_xy_eps_m_ && dz <= duplicate_goal_z_eps_m_;
+    const double dyaw = quaternionAngularDistance(
+      lhs.pose.orientation, rhs.pose.orientation);
+    return dxy <= sequential_goal_duplicate_xy_eps_m_ &&
+           dz <= duplicate_goal_z_eps_m_ &&
+           dyaw <= sequential_goal_duplicate_yaw_eps_rad_;
   }
 
   // Implements `snapGoal` behavior.
@@ -943,6 +1146,16 @@ private:
     pub_goal_ros_->publish(out);
   }
 
+  void publishGoalSource(const std::string & policy_source)
+  {
+    if (!pub_goal_source_) {
+      return;
+    }
+    std_msgs::msg::String source;
+    source.data = policy_source == "manual" ? "manual" : "regulated";
+    pub_goal_source_->publish(source);
+  }
+
   // Publishes `AvgPlanning` output.
   void publishAvgPlanning(const avg_msgs::msg::AvgPoseStamped & goal_pose)
   {
@@ -962,32 +1175,41 @@ private:
 
   // Skips duplicate goals that arrive from dual subscriptions on the same topic.
   bool shouldSkipDuplicateGoal(
+    const std::string & source_label,
     const std::string & frame_id,
     const builtin_interfaces::msg::Time & stamp,
-    double x, double y, double z)
+    double x, double y, double z,
+    const avg_msgs::msg::AvgQuaternion & orientation)
   {
     const double now_sec = this->get_clock()->now().seconds();
     if (has_last_goal_) {
+      const bool same_source = source_label == last_goal_source_label_;
       const bool same_frame = (frame_id == last_goal_frame_id_);
       const double dxy = std::hypot(x - last_goal_x_, y - last_goal_y_);
       const double dz = std::fabs(z - last_goal_z_);
+      const double dyaw = quaternionAngularDistance(orientation, last_goal_orientation_);
       const bool close_pose =
-        (dxy <= duplicate_goal_xy_eps_m_) && (dz <= duplicate_goal_z_eps_m_);
+        (dxy <= duplicate_goal_xy_eps_m_) &&
+        (dz <= duplicate_goal_z_eps_m_) &&
+        (dyaw <= sequential_goal_duplicate_yaw_eps_rad_);
       const bool same_stamp =
         (stamp.sec == last_goal_stamp_sec_) && (stamp.nanosec == last_goal_stamp_nanosec_);
       const bool near_time = (now_sec - last_goal_received_sec_) <= duplicate_goal_time_window_s_;
-      if (same_frame && close_pose && (same_stamp || near_time)) {
+      if (same_source && same_frame && close_pose && (same_stamp || near_time)) {
         return true;
       }
     }
 
     has_last_goal_ = true;
+    last_goal_source_label_ = source_label;
     last_goal_frame_id_ = frame_id;
     last_goal_stamp_sec_ = stamp.sec;
     last_goal_stamp_nanosec_ = stamp.nanosec;
     last_goal_x_ = x;
     last_goal_y_ = y;
     last_goal_z_ = z;
+    last_goal_orientation_ = normalizedQuaternion(
+      orientation.x, orientation.y, orientation.z, orientation.w);
     last_goal_received_sec_ = now_sec;
     return false;
   }
@@ -1012,6 +1234,9 @@ private:
     }
 
     for (const auto & ll : map_->laneletLayer) {
+      if (!isRoutableLanelet(ll)) {
+        continue;
+      }
       if (!ignore_component_filters && restrict_to_connected_lanelet_component_ &&
         component_ready)
       {
@@ -1240,9 +1465,12 @@ private:
   lanelet::LaneletMapPtr map_;
 
   std::string input_goal_topic_;
+  std::string manual_input_goal_topic_;
   std::string auxiliary_input_goal_topic_;
   std::string output_goal_topic_;
   std::string output_goal_topic_ros_;
+  std::string output_goal_source_topic_;
+  double goal_source_settle_delay_s_{0.12};
   std::string planning_status_topic_;
   double max_search_radius_{30.0};
   bool require_lanelet_containment_{true};
@@ -1255,12 +1483,14 @@ private:
   double duplicate_goal_z_eps_m_{0.10};
   double duplicate_goal_time_window_s_{0.25};
   bool has_last_goal_{false};
+  std::string last_goal_source_label_;
   std::string last_goal_frame_id_;
   int32_t last_goal_stamp_sec_{0};
   uint32_t last_goal_stamp_nanosec_{0};
   double last_goal_x_{0.0};
   double last_goal_y_{0.0};
   double last_goal_z_{0.0};
+  avg_msgs::msg::AvgQuaternion last_goal_orientation_;
   double last_goal_received_sec_{0.0};
 
   // HH_260618 Sequential release state for non-preemptive waypoint behavior.
@@ -1269,6 +1499,7 @@ private:
   double sequential_goal_reached_distance_m_{0.25};
   double sequential_goal_stop_hold_s_{0.5};
   double sequential_goal_duplicate_xy_eps_m_{0.20};
+  double sequential_goal_duplicate_yaw_eps_rad_{0.05};
   int sequential_goal_max_queue_size_{10};
   std::string sequential_goal_status_topic_{"/planning/navigate_to_pose/_action/status"};
   bool sequential_goal_require_nav2_terminal_{true};
@@ -1276,8 +1507,9 @@ private:
   bool reissue_active_goal_on_pose_jump_{true};
   double pose_jump_reissue_distance_m_{1.5};
   double pose_jump_reissue_min_interval_s_{1.0};
-  std::deque<avg_msgs::msg::AvgPoseStamped> pending_goals_;
+  std::deque<QueuedGoal> pending_goals_;
   avg_msgs::msg::AvgPoseStamped active_released_goal_;
+  std::string active_goal_policy_source_{"regulated"};
   bool has_active_released_goal_{false};
   bool active_goal_reached_{false};
   bool active_goal_nav2_succeeded_{false};
@@ -1300,6 +1532,7 @@ private:
   double component_update_min_displacement_m_{0.5};
   std::string routing_location_{"de"};
   std::string routing_participant_{"vehicle:car"};
+  bool routable_lanelet_only_{true};
   lanelet::traffic_rules::TrafficRulesUPtr traffic_rules_;
   lanelet::routing::RoutingGraphUPtr routing_graph_;
   std::unordered_set<lanelet::Id> connected_lanelet_ids_;
@@ -1330,13 +1563,17 @@ private:
 
   rclcpp::Publisher<avg_msgs::msg::AvgPoseStamped>::SharedPtr pub_goal_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_goal_ros_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_goal_source_;
   rclcpp::Publisher<avg_msgs::msg::AvgPlanningMsgs>::SharedPtr pub_avg_planning_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_goal_ros_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_manual_goal_ros_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_aux_goal_;
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_current_pose_;
   rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr sub_cost_grid_;
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub_nav_status_;
   rclcpp::TimerBase::SharedPtr queue_timer_;
+  rclcpp::TimerBase::SharedPtr source_settle_timer_;
+  std::optional<DelayedRelease> delayed_release_;
   bool publish_planning_status_{false};
 };
 
