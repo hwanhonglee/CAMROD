@@ -99,11 +99,23 @@ systemd reconnect service. It is an explicit administrator action and is not
 started by ROS bringup:
 
 ```bash
+# Pair and trust the exact target first.
+bluetoothctl pair AA:BB:CC:DD:EE:FF
+bluetoothctl trust AA:BB:CC:DD:EE:FF
 sudo ./setup_bt_audio.sh AA:BB:CC:DD:EE:FF "CamrodAmp"
 ```
 
-The MAC address and device name are validated before any system file is
-written. The installed copy is available under
+<!-- HH_260728 - Keep provisioning prerequisites and no-overwrite behavior
+     synchronized with the guarded helper. -->
+The MAC address, device name, backend commands, and `Paired: yes` state are
+validated before any system file is written. PipeWire requires both `pw-cli`
+and the actually used routing command `wpctl`; PulseAudio requires `pactl`, and
+BlueALSA requires `bluealsa-aplay`. An identical rerun is idempotent. If the
+per-MAC connection script or systemd unit already exists with different
+content, the helper stops without overwriting either target; review and back up
+the existing file before explicitly removing it for reprovisioning.
+
+The installed copy is available under
 `share/camrod_voice/scripts/setup_bt_audio.sh`.
 
 ## 2026-06-17 Runtime Update
