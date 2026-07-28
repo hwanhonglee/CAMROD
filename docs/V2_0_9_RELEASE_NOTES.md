@@ -16,6 +16,32 @@ This release changes radar self-return handling, the normal-forward side-near
 guard, sensor-location diagnostics, their synchronized deployment
 configuration, tests, and operator documentation.
 
+## Final field-safety follow-up
+
+<!-- HH_260728 - Record the field-safety follow-up included in the final v2.0.9 tag. -->
+
+- A dynamic stop latch retains the original Radar/LiDAR source and exact
+  corridor, local-path snapshot, or rotation probe that triggered it. A
+  stop-induced zero command, direction change, or replanning cannot clear that
+  saved hazard.
+- The clear timer advances only with fresh, advancing merged-grid and trigger
+  source evidence. Missing, stale, or non-advancing evidence keeps the robot
+  stopped; confirmed continuous clear evidence is followed by the configured
+  stop hold.
+- Final normal-forward side checking uses a raw, base-centred
+  `body_near_side_lookahead_m: 0.60`. With Radar
+  `obstacle_radius_m: 0.30`, a hit near `|y|=1.0 m` remains clear for forward
+  travel while a closer hit near `|y|=0.8 m` blocks. Crab and reverse retain
+  the `1.20 m` maneuver envelope.
+- Field storage diagnostics use WARN at 90% and ERROR at 95%.
+- The opt-in Bluetooth audio helper validates dependencies, pairing, and target
+  files before installing its reconnect service; ROS bringup never starts it
+  automatically.
+- The indicator MCU refreshes both LED strips only when illuminated state
+  changes, avoiding repeated `FastLED.show()` UART starvation.
+- Final follow-up validation passed all 64 registered tests and compiled the
+  indicator MCU Arduino sketch successfully.
+
 ## Radar behavior
 
 - The old common 0.30 m and LEFT2 0.75 m one-sided ignore floors are disabled.
@@ -63,7 +89,9 @@ configuration, tests, and operator documentation.
 
 ## Direction-specific safety
 
-- Normal forward travel uses `body_near_side_lookahead_m: 0.75`.
+- Final normal forward travel uses `body_near_side_lookahead_m: 0.60`. The
+  initial 0.75 m release profile is superseded by this tagged value because
+  Radar returns already carry the configured 0.30 m obstacle disk.
 - Crab and reverse retain
   `body_near_maneuver_side_lookahead_m: 1.20`.
 - A farther side return therefore does not immobilize straight travel merely
@@ -104,8 +132,8 @@ Source and bringup IMU/GNSS parameter files remain byte-identical to v2.0.8.
   changing live measurements cannot bypass the summary throttle.
 - Source and bringup radar/control mirrors are checked byte-for-byte, with YAML
   parsing and whitespace validation included in the release checks.
-- The selected sensing/control/system/bringup build completes and all 83
-  registered tests pass with zero failures, errors, or skips.
+- The initial selected sensing/control/system/bringup release build completed
+  and all 83 then-registered tests passed with zero failures, errors, or skips.
 
 One live bringup observation intentionally remains fail-safe for continued
 operator testing. LEFT2 `0.221-0.225 m` fell just below the configured

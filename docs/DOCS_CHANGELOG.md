@@ -1,13 +1,13 @@
 # Documentation Changelog
 
-<!-- HH_260728 - Track the post-v2.0.9 obstacle latch and operations follow-up. -->
-## [post-v2.0.9-field-safety] - 2026-07-28 (HH_260728)
+<!-- HH_260728 - Track the final v2.0.9 obstacle latch and operations follow-up. -->
+## [v2.0.9-final-field-safety] - 2026-07-28 (HH_260728)
 
 ### Changed
 
 | Doc | What changed |
 |-----|--------------|
-| root `README.md` | Recorded command-independent obstacle latch release, the 0.60 m post-release forward-side probe, and the 90/95% disk diagnostic policy |
+| root `README.md` | Recorded command-independent obstacle latch release, the final 0.60 m forward-side probe, and the 90/95% disk diagnostic policy |
 | `camrod_bringup/README.md` | Synchronized the 0.60/1.20 m straight/maneuver mirror contract and radar-inflated side expectations |
 | `camrod_control/README.md` | Documented retained trigger geometry, fresh-grid clear evidence, and base-centred 0.60 m forward-side semantics |
 | `camrod_bringup/docs/field_test_runbook.md` | Added zero/direction-change latch checks and 1.0/0.8 m radar-inflated side regressions |
@@ -28,7 +28,7 @@
 | `camrod_sensing/README.md` | Documented generated/ROS radar topics, narrow fixed notches, bounded authorization-aware startup learning, and farther-return preservation |
 | `camrod_system/README.md` | Documented per-sensor component/location/frame/mount metadata, STALE preservation, simultaneous fault lines, and the global throttled detail cap |
 | `camrod_sensor_kit/README.md` | Synchronized the documented IMU mount pose with the canonical `robot_params.yaml` value |
-| `camrod_control/README.md` | Distinguished the 0.75 m normal-forward side guard from the 1.20 m crab/reverse envelope and documented transient raw authorization state |
+| `camrod_control/README.md` | Documented the initial 0.75 m normal-forward profile, superseded in the final tag by the 0.60 m raw probe, and the retained 1.20 m crab/reverse envelope |
 | `camrod_bringup/README.md` | Added radar and command-gate deployment mirror contracts |
 | `camrod_bringup/docs/field_test_runbook.md` | Added startup calibration, engage-cancel, close-obstacle, and direction-dependent stop checks |
 | `docs/V2_0_9_RELEASE_NOTES.md` | Recorded implementation scope, live radar measurements, validation, unchanged port routing, and field-test limits |
