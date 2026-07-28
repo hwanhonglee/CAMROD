@@ -92,6 +92,22 @@ camrod_system_add_checker(planning_state_checker_node src/diagnostics/planning_s
 # HH_260727: Exercise Nav2 goal UUID/state abort deduplication without starting
 # the full navigation stack.
 if(BUILD_TESTING)
+  # HH_260728 - Verify physical sensor metadata survives stale conversion and
+  # remains compact enough for the multi-sensor SYSTEM console summary.
+  add_executable(
+    test_diagnostic_detail
+    test/test_diagnostic_detail.cpp
+  )
+  target_compile_features(test_diagnostic_detail PUBLIC cxx_std_17)
+  ament_target_dependencies(
+    test_diagnostic_detail
+    diagnostic_msgs
+  )
+  add_test(
+    NAME diagnostic_detail
+    COMMAND test_diagnostic_detail
+  )
+
   add_executable(
     test_planning_nav_status_tracker
     test/test_planning_nav_status_tracker.cpp

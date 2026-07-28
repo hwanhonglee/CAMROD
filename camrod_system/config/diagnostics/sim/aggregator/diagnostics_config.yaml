@@ -63,11 +63,27 @@ topics:
   - name: "gnss_checker: /sensor/gnss/main"
     group: sensing/gnss
     timeout_s: 3.0
+    # HH_260728 - Keep the same physical registry in sim; GNSS mount remains
+    # explicitly unverified until its real antenna coordinates are surveyed.
+    metadata:
+      component_id: "gnss.main"
+      location: "unverified"
+      frame_id: "gnss_link"
+      mount_xyz_m: "0.00000,0.00000,0.00000"
+      mount_rpy_deg: "0.0,0.0,0.0"
+      pose_verified: "false"
 
   # ── Sensing: IMU ──────────────────────────────────────────────────────
   - name: "imu_checker: /sensor/imu/main"
     group: sensing/imu
     timeout_s: 2.0
+    metadata:
+      component_id: "imu.main"
+      location: "front_upper_center"
+      frame_id: "imu_link"
+      mount_xyz_m: "1.13100,0.00000,0.75600"
+      mount_rpy_deg: "0.0,0.0,0.0"
+      pose_verified: "true"
 
   # ── Sensing: LiDAR ────────────────────────────────────────────────────
   # HH_260630: lidar/main remains listed for raw diagnostics visibility, but
@@ -75,63 +91,155 @@ topics:
   - name: "lidar_checker: /sensor/lidar/main"
     group: sensing/lidar
     timeout_s: 3.0
+    metadata:
+      component_id: "lidar.main"
+      location: "front_upper_center"
+      frame_id: "lidar_link"
+      mount_xyz_m: "1.20636,0.00000,0.59538"
+      mount_rpy_deg: "0.0,0.0,0.0"
+      pose_verified: "true"
 
   - name: "lidar_checker: /sensor/lidar/filtered"
     group: sensing/lidar
     timeout_s: 3.0
+    metadata:
+      component_id: "lidar.filtered"
+      location: "front_upper_center"
+      frame_id: "lidar_link"
+      mount_xyz_m: "1.20636,0.00000,0.59538"
+      mount_rpy_deg: "0.0,0.0,0.0"
+      pose_verified: "true"
 
   # ── Sensing: Radar (SEN0592 7채널) ────────────────────────────────────
   # HH_260623 - Keep simulated diagnostics aligned with the latest dual-front radar layout.
   - name: "radar_checker: /sensor/radar/FRONT1"
     group: sensing/radar
     timeout_s: 3.0
+    metadata:
+      component_id: "radar.front1"
+      location: "front_right"
+      frame_id: "radar_front1_link"
+      mount_xyz_m: "1.07087,-0.11005,0.33378"
+      mount_rpy_deg: "0.0,0.0,0.0"
+      pose_verified: "true"
 
   - name: "radar_checker: /sensor/radar/FRONT2"
     group: sensing/radar
     timeout_s: 3.0
+    metadata:
+      component_id: "radar.front2"
+      location: "front_left"
+      frame_id: "radar_front2_link"
+      mount_xyz_m: "1.07087,0.11005,0.33378"
+      mount_rpy_deg: "0.0,0.0,0.0"
+      pose_verified: "true"
 
   - name: "radar_checker: /sensor/radar/REAR"
     group: sensing/radar
     timeout_s: 3.0
+    metadata:
+      component_id: "radar.rear"
+      location: "rear_center"
+      frame_id: "radar_rear_link"
+      mount_xyz_m: "-0.17433,0.00000,0.33978"
+      mount_rpy_deg: "0.0,0.0,180.0"
+      pose_verified: "true"
 
   - name: "radar_checker: /sensor/radar/LEFT2"
     group: sensing/radar
     timeout_s: 3.0
+    metadata:
+      component_id: "radar.left2"
+      location: "left_rear"
+      frame_id: "radar_left2_link"
+      mount_xyz_m: "0.15966,0.41005,0.29013"
+      mount_rpy_deg: "0.0,0.0,90.0"
+      pose_verified: "true"
 
   - name: "radar_checker: /sensor/radar/LEFT1"
     group: sensing/radar
     timeout_s: 3.0
+    metadata:
+      component_id: "radar.left1"
+      location: "left_front"
+      frame_id: "radar_left1_link"
+      mount_xyz_m: "0.73488,0.41005,0.29013"
+      mount_rpy_deg: "0.0,0.0,90.0"
+      pose_verified: "true"
 
   - name: "radar_checker: /sensor/radar/RIGHT2"
     group: sensing/radar
     timeout_s: 3.0
+    metadata:
+      component_id: "radar.right2"
+      location: "right_rear"
+      frame_id: "radar_right2_link"
+      mount_xyz_m: "0.15966,-0.41005,0.29013"
+      mount_rpy_deg: "0.0,0.0,-90.0"
+      pose_verified: "true"
 
   - name: "radar_checker: /sensor/radar/RIGHT1"
     group: sensing/radar
     timeout_s: 3.0
+    metadata:
+      component_id: "radar.right1"
+      location: "right_front"
+      frame_id: "radar_right1_link"
+      mount_xyz_m: "0.73488,-0.41005,0.29013"
+      mount_rpy_deg: "0.0,0.0,-90.0"
+      pose_verified: "true"
 
   # ── Sensing: Camera ───────────────────────────────────────────────────
   - name: "camera_checker: /sensor/camera/econ_front"
     group: sensing/camera
     timeout_s: 3.0
+    metadata:
+      component_id: "camera.econ_front"
+      location: "front_center"
+      frame_id: "camera_front_link"
+      mount_xyz_m: "1.20637,0.00000,0.49568"
+      mount_rpy_deg: "0.0,0.0,0.0"
+      pose_verified: "true"
 
   - name: "camera_checker: /sensor/camera/econ_rear"
     group: sensing/camera
     timeout_s: 3.0
+    metadata:
+      component_id: "camera.econ_rear"
+      location: "rear_center"
+      frame_id: "camera_rear_link"
+      mount_xyz_m: "-0.17633,0.00000,0.30013"
+      mount_rpy_deg: "0.0,0.0,180.0"
+      pose_verified: "true"
 
   # ── Sensing: Wheel Odometry ───────────────────────────────────────────
   - name: "wheel_odometry_checker: /sensor/wheel/main"
     group: sensing/wheel
     timeout_s: 3.0
+    metadata:
+      component_id: "wheel_odometry.main"
+      location: "drive_wheels"
+      frame_id: "robot_base_link"
+      pose_verified: "true"
 
   # ── Sensing/Planning: Cost Grid outputs ───────────────────────────────
   - name: "cost_grid_checker: /sensing/cost_grid/lidar"
     group: sensing/cost_grid
     timeout_s: 5.0
+    metadata:
+      component_id: "lidar.cost_grid"
+      location: "derived_from_front_upper_center_lidar"
+      frame_id: "map"
+      pose_verified: "true"
 
   - name: "cost_grid_checker: /sensing/cost_grid/radar"
     group: sensing/cost_grid
     timeout_s: 5.0
+    metadata:
+      component_id: "radar.cost_grid"
+      location: "derived_from_seven_body_radars"
+      frame_id: "map"
+      pose_verified: "true"
 
   # HH_260630 - Inflation grid is produced by camrod_sensing and consumed by planning.
   - name: "cost_grid_checker: /planning/cost_grid/inflation"
@@ -142,11 +250,23 @@ topics:
   - name: "velocity_converter_checker: /sensing/velocity_converter"
     group: sensing/velocity
     timeout_s: 3.0
+    metadata:
+      component_id: "velocity_converter"
+      location: "virtual_wheel_imu_fusion"
+      frame_id: "robot_base_link"
+      pose_verified: "true"
 
   # ── Localization: GNSS 입력 품질 ──────────────────────────────────────
   - name: "localization_gnss_checker: /localization/gnss/main"
     group: localization/gnss
     timeout_s: 5.0
+    metadata:
+      component_id: "gnss.localization_input"
+      location: "unverified"
+      frame_id: "gnss_link"
+      mount_xyz_m: "0.00000,0.00000,0.00000"
+      mount_rpy_deg: "0.0,0.0,0.0"
+      pose_verified: "false"
 
   # ── Localization: 모드·신뢰도 ─────────────────────────────────────────
   - name: "localization_mode_checker: /localization/mode"

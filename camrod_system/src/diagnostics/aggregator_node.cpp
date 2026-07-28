@@ -12,6 +12,8 @@
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 
+#include "camrod_system/diagnostic_detail.hpp"
+
 // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 using SteadyClock      = std::chrono::steady_clock;
 using TimePoint        = std::chrono::steady_clock::time_point;
@@ -37,6 +39,14 @@ struct TopicConfig {
   std::string name;
   std::string group;
   double      timeout_s{5.0};
+  // HH_260728 - The registry owns physical identity so every checker, stale
+  // conversion, UI detail, and SYSTEM log uses one consistent mount label.
+  std::string component_id;
+  std::string location;
+  std::string frame_id;
+  std::string mount_xyz_m;
+  std::string mount_rpy_deg;
+  std::string pose_verified;
 };
 
 // ── DiagnosticsAggregator ─────────────────────────────────────────────────
@@ -110,6 +120,21 @@ private:
         tc.name        = t["name"].as<std::string>();
         tc.group       = t["group"] ? t["group"].as<std::string>() : "unknown";
         tc.timeout_s = t["timeout_s"] ? t["timeout_s"].as<double>() : default_timeout_;
+        if (t["metadata"]) {
+          const auto metadata = t["metadata"];
+          tc.component_id =
+            metadata["component_id"] ? metadata["component_id"].as<std::string>() : "";
+          tc.location =
+            metadata["location"] ? metadata["location"].as<std::string>() : "";
+          tc.frame_id =
+            metadata["frame_id"] ? metadata["frame_id"].as<std::string>() : "";
+          tc.mount_xyz_m =
+            metadata["mount_xyz_m"] ? metadata["mount_xyz_m"].as<std::string>() : "";
+          tc.mount_rpy_deg =
+            metadata["mount_rpy_deg"] ? metadata["mount_rpy_deg"].as<std::string>() : "";
+          tc.pose_verified =
+            metadata["pose_verified"] ? metadata["pose_verified"].as<std::string>() : "";
+        }
         topic_configs_[tc.name] = tc;
       }
     }
@@ -174,9 +199,10 @@ private:
       std::chrono::duration<double>(SteadyClock::now() - last_seen).count();
 
     if (elapsed > get_timeout(name)) {
-      diagnostic_msgs::msg::DiagnosticStatus stale;
-      stale.name        = status.name;
-      stale.hardware_id = status.hardware_id;
+      // HH_260728 - Preserve checker values and registry mount metadata when a
+      // stream becomes stale; losing them made the fault location disappear
+      // at the exact moment an operator needed it.
+      auto stale = status;
       stale.level       = diagnostic_msgs::msg::DiagnosticStatus::STALE;
       std::ostringstream oss;
       oss << "STALE (last seen " << std::fixed;
@@ -186,6 +212,29 @@ private:
       return stale;
     }
     return status;
+  }
+
+  void add_registry_metadata(
+    diagnostic_msgs::msg::DiagnosticStatus & status,
+    const std::string & name) const
+  {
+    const auto config = topic_configs_.find(name);
+    if (config == topic_configs_.end()) {
+      return;
+    }
+    const auto & topic = config->second;
+    camrod_system::diagnostic_detail::upsertValue(
+      status, "component_id", topic.component_id);
+    camrod_system::diagnostic_detail::upsertValue(
+      status, "sensor_location", topic.location);
+    camrod_system::diagnostic_detail::upsertValue(
+      status, "sensor_frame", topic.frame_id);
+    camrod_system::diagnostic_detail::upsertValue(
+      status, "mount_xyz_m", topic.mount_xyz_m);
+    camrod_system::diagnostic_detail::upsertValue(
+      status, "mount_rpy_deg", topic.mount_rpy_deg);
+    camrod_system::diagnostic_detail::upsertValue(
+      status, "pose_verified", topic.pose_verified);
   }
 
   void publish_aggregated()
@@ -201,6 +250,7 @@ private:
 
     for (auto & [name, entry] : status_map_) {
       diagnostic_msgs::msg::DiagnosticStatus s = check_stale(name, entry.status, entry.last_seen);
+      add_registry_metadata(s, name);
       agg_msg.status.push_back(s);
 
       std::string group = get_group(s.name);

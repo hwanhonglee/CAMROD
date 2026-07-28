@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -12,6 +14,8 @@
 #include "diagnostic_msgs/msg/diagnostic_status.hpp"
 #include "diagnostic_msgs/msg/key_value.hpp"
 #include "rclcpp/rclcpp.hpp"
+
+#include "camrod_system/diagnostic_detail.hpp"
 
 namespace camrod_system
 {
@@ -45,6 +49,10 @@ public:
     // detailed checker data remains available on /system/status and diagnostics topics.
     log_status_summary_ = declare_parameter<bool>("log_status_summary", true);
     log_status_summary_period_s_ = declare_parameter<double>("log_status_summary_period_s", 5.0);
+    // HH_260728 - Bound multi-sensor detail without collapsing the individual
+    // sensor locations back into a single module-level line.
+    max_status_detail_lines_ = static_cast<int>(std::max<std::int64_t>(
+      1, declare_parameter<int>("max_status_detail_lines", 24)));
     known_modules_ = declare_parameter<std::vector<std::string>>(
       "known_modules",
       std::vector<std::string>{
@@ -445,8 +453,14 @@ private:
 
     const bool has_error = !error_modules.empty();
     const bool has_warn = !warn_modules.empty();
-    const std::string summary = build_console_summary(modules, has_error, has_warn);
-    const bool changed = summary != last_console_summary_;
+    const std::string summary =
+      build_console_summary(modules, has_error, has_warn, now_sec);
+    // HH_260728 - Live values such as range/rate remain visible in each
+    // periodic report, but do not bypass the configured log throttle merely
+    // because a measurement or message text changed. Fault membership and
+    // severity changes still log immediately.
+    const std::string signature = build_console_signature(modules, now_sec);
+    const bool changed = signature != last_console_summary_signature_;
     const bool periodic_due =
       (has_error || has_warn) &&
       log_status_summary_period_s_ > 0.0 &&
@@ -457,7 +471,7 @@ private:
       return;
     }
 
-    last_console_summary_ = summary;
+    last_console_summary_signature_ = signature;
     last_console_summary_log_sec_ = now_sec;
     if (has_error) {
       RCLCPP_ERROR(get_logger(), "%s", summary.c_str());
@@ -468,16 +482,23 @@ private:
     }
   }
 
-  static std::string build_console_summary(
+  std::string build_console_summary(
     const std::vector<avg_msgs::msg::ModuleState> & modules,
     bool has_error,
-    bool has_warn)
+    bool has_warn,
+    double now_sec) const
   {
+    int remaining_detail_lines = max_status_detail_lines_;
+    bool limit_reported = false;
     if (has_error) {
       std::string summary = "[SYSTEM] ERROR";
       summary += "\n  ERROR:\n";
-      summary += describe_modules(modules, avg_msgs::msg::ModuleState::ERROR);
-      const auto warn = describe_modules(modules, avg_msgs::msg::ModuleState::WARN);
+      summary += describe_diagnostic_issues(
+        modules, avg_msgs::msg::ModuleState::ERROR, now_sec,
+        remaining_detail_lines, limit_reported);
+      const auto warn = describe_diagnostic_issues(
+        modules, avg_msgs::msg::ModuleState::WARN, now_sec,
+        remaining_detail_lines, limit_reported);
       if (!warn.empty()) {
         summary += "\n  WARN:\n" + warn;
       }
@@ -485,26 +506,114 @@ private:
     }
     if (has_warn) {
       return "[SYSTEM] WARN\n  WARN:\n" +
-        describe_modules(modules, avg_msgs::msg::ModuleState::WARN);
+        describe_diagnostic_issues(
+        modules, avg_msgs::msg::ModuleState::WARN, now_sec,
+        remaining_detail_lines, limit_reported);
     }
     return "[SYSTEM] OK\n  all modules healthy";
   }
 
-  static std::string describe_modules(
+  std::string build_console_signature(
     const std::vector<avg_msgs::msg::ModuleState> & modules,
-    uint8_t level)
+    double now_sec) const
   {
-    std::string out;
-    for (const auto & module : modules) {
-      if (module.level != level) {
+    std::ostringstream signature;
+    for (const auto & entry : snapshots_) {
+      const auto level = snapshot_level(entry.second, now_sec);
+      if (level == avg_msgs::msg::ModuleState::OK) {
         continue;
       }
+      signature << "snapshot|" << entry.first << "|" << static_cast<int>(level) << "\n";
+    }
+    for (const auto & module : modules) {
+      if (module.level == avg_msgs::msg::ModuleState::OK) {
+        continue;
+      }
+      signature << "module|" << module.module_name << "|" <<
+        static_cast<int>(module.level) << "\n";
+    }
+    return signature.str();
+  }
+
+  uint8_t snapshot_level(const ModuleSnapshot & snapshot, double now_sec) const
+  {
+    if (snapshot.stamp_sec <= 0.0 || now_sec - snapshot.stamp_sec > stale_timeout_s_) {
+      return avg_msgs::msg::ModuleState::ERROR;
+    }
+    return map_diagnostic_level(snapshot.level);
+  }
+
+  std::string describe_diagnostic_issues(
+    const std::vector<avg_msgs::msg::ModuleState> & modules,
+    uint8_t level,
+    double now_sec,
+    int & remaining_detail_lines,
+    bool & limit_reported) const
+  {
+    std::string out;
+    std::set<std::string> categories_with_detail;
+    const auto append_limit = [&]() {
+        if (!limit_reported) {
+          out += "    - additional diagnostic details omitted (global limit=" +
+            std::to_string(max_status_detail_lines_) + ")\n";
+          limit_reported = true;
+        }
+      };
+
+    // HH_260728 - List every non-OK diagnostic snapshot rather than replacing
+    // equal-severity sensors inside one "sensing" ModuleState. This makes
+    // simultaneous FRONT1/LEFT2 (or front/rear camera) faults independently visible.
+    for (const auto & entry : snapshots_) {
+      if (snapshot_level(entry.second, now_sec) != level) {
+        continue;
+      }
+      if (remaining_detail_lines <= 0) {
+        append_limit();
+        break;
+      }
+      out += "    - " + format_snapshot_line(entry.first, entry.second, now_sec) + "\n";
+      categories_with_detail.insert(entry.second.category);
+      --remaining_detail_lines;
+    }
+
+    // Preserve synthetic required-module faults (startup grace expired before
+    // any source diagnostic) because they do not have a backing snapshot.
+    for (const auto & module : modules) {
+      if (module.level != level ||
+        categories_with_detail.find(module.module_name) != categories_with_detail.end())
+      {
+        continue;
+      }
+      if (remaining_detail_lines <= 0) {
+        append_limit();
+        break;
+      }
       out += "    - " + format_module_line(module) + "\n";
+      --remaining_detail_lines;
     }
     if (!out.empty()) {
       out.pop_back();
     }
     return out;
+  }
+
+  std::string format_snapshot_line(
+    const std::string & status_key,
+    const ModuleSnapshot & snapshot,
+    double now_sec) const
+  {
+    std::string message = snapshot.message;
+    if (snapshot.stamp_sec <= 0.0 || now_sec - snapshot.stamp_sec > stale_timeout_s_) {
+      message = "diagnostic update stale";
+    }
+    std::string item = console_safe_ascii(snapshot.category) + ": " +
+      compact_message(message, 140);
+    const auto metadata = diagnostic_detail::formatValues(snapshot.values);
+    if (!metadata.empty()) {
+      item += " {" + compact_message(metadata, 260) + "}";
+    }
+    item += " [" + compact_message(status_key, 120) + "]";
+    return item;
   }
 
   static std::string format_module_line(const avg_msgs::msg::ModuleState & module)
@@ -615,7 +724,8 @@ private:
   double startup_time_sec_{0.0};
   bool log_status_summary_{true};
   double log_status_summary_period_s_{5.0};
-  std::string last_console_summary_;
+  int max_status_detail_lines_{24};
+  std::string last_console_summary_signature_;
   double last_console_summary_log_sec_{0.0};
   std::vector<std::string> known_modules_;
   std::map<std::string, ModuleSnapshot> snapshots_;
