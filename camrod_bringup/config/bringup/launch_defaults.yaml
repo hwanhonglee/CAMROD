@@ -343,7 +343,8 @@ bringup:
     # HH_260707 - Side/rear dynamic guards include sensor mounting offset plus
     # SEN0592 detection range; shorter center-based windows missed side radar hits.
     cmd_vel_gate_body_near_dynamic_stop: true
-    cmd_vel_gate_body_near_side_lookahead_m: 1.20
+    # HH_260728 - Normal forward travel uses 0.75 m; crab/reverse remains 1.20 m.
+    cmd_vel_gate_body_near_side_lookahead_m: 0.75
     cmd_vel_gate_body_near_rear_lookahead_m: 0.80
     # HH_260707 - Crab/reverse still use dynamic-source attribution, so keeping
     # the same physical radar envelope does not re-enable static lanelet stops.

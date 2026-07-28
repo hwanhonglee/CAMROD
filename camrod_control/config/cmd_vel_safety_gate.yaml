@@ -12,6 +12,8 @@
     mission_engage_topic: "/planning/mission_engage"
     mission_request_topic: "/planning/mission_key"
     state_topic: "/control/command_enabled"
+    # HH_260728 - Transient-local raw authorization for restart-safe sensing calibration.
+    planning_engaged_topic: "/control/planning_engaged"
     status_topic: "/control/cmd_vel_safety_gate/status"
     platform_drive_enable_topic: "/platform/drive_enable"
 
@@ -135,7 +137,10 @@
     # Side, rear, crab, reverse, and rotation protection
     enable_side_rear_cost_stop: true
     enable_body_near_dynamic_stop: true
-    body_near_side_lookahead_m: 1.20
+    # HH_260728 - Normal forward travel checks the planning half-width plus
+    # raster/safety allowance, not an old 1.20 m base-centred side corridor.
+    # Maneuver side protection below remains 1.20 m for crab/reverse motion.
+    body_near_side_lookahead_m: 0.75
     body_near_rear_lookahead_m: 0.80
     body_near_maneuver_side_lookahead_m: 1.20
     body_near_maneuver_rear_lookahead_m: 0.80
