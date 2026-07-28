@@ -35,19 +35,20 @@ gets its full calibration interval from its own first valid sample, so a
 late-starting port is not silently finalized with zero samples. A
 transient-local manual-or-mission authorization state also prevents a restarted
 radar node from learning while driving or while a cost stop is latched. Farther
-side returns remain obstacles. Normal forward travel uses a 0.75 m body-near
-side guard while crab and reverse retain the 1.20 m maneuver envelope. Sensor
+side returns remain obstacles. The final tagged profile uses a 0.60 m
+normal-forward raw side probe, superseding the initial 0.75 m profile, while
+crab and reverse retain the 1.20 m maneuver envelope. Sensor
 diagnostics also retain the logical location, TF frame, mount pose, and live
 measurement through the final `[SYSTEM]` summary. The v2.0.8 battery, UI,
 planning, full-footprint boundary, and hardware-port policies are otherwise
 unchanged.
 
-<!-- HH_260728 - Record the post-v2.0.9 field-safety follow-up on develop. -->
-The current `develop` follow-up retains the radar source, original
+<!-- HH_260728 - Record the final v2.0.9 field-safety follow-up in the tagged release. -->
+The final `v2.0.9` field-safety follow-up retains the radar source, original
 corridor/path/rotation probe, and fresh-grid evidence that triggered a dynamic
 obstacle stop. A stop-induced zero or changed-direction command can no longer
 clear that latch; release requires 2 seconds of fresh clear evidence followed
-by the configured 1-second hold. The post-release normal-forward raw side probe
+by the configured 1-second hold. The final normal-forward raw side probe
 is 0.60 m from `robot_base_link`; crab/reverse retains 1.20 m. With the radar
 grid's 0.30 m obstacle radius, a side hit near base-centred `|y|=1.0 m` stays
 clear during forward travel while a closer hit near `|y|=0.8 m` blocks.
