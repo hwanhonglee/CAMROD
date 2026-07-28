@@ -89,3 +89,12 @@ ros2 param set /ranger_base_node steering_transition_rate_radps 0.4
 
 The same value is available from the operator UI's platform-tuning slider and
 is applied through the Ranger node's standard dynamic-parameter service.
+
+## Indicator MCU serial servicing
+
+<!-- HH_260728 - Document the WS2815 refresh/UART starvation correction. -->
+The external light MCU refreshes both WS2815 strips only when the computed
+left/right illuminated state changes. Repeated `FastLED.show()` calls disable
+interrupts long enough to starve the two-byte UART RX buffer at 115200 baud;
+state-change-only refresh preserves incoming light commands while keeping both
+sides blink-synchronized.
