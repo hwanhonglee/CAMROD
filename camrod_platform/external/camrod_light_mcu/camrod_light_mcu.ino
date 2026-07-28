@@ -159,15 +159,29 @@ void loop() {
 
   // Local blink generation: phase from millis so all sides stay in sync.
   const bool blink_on = (now_ms % BLINK_PERIOD_MS) < (BLINK_PERIOD_MS / 2);
-  const CRGB lit = blink_on ? INDICATOR_COLOR : CRGB::Black;
 
   const bool left_active =
       active_mode == MODE_LEFT || active_mode == MODE_HAZARD;
   const bool right_active =
       active_mode == MODE_RIGHT || active_mode == MODE_HAZARD;
-  fill_solid(left_leds, NUM_LEDS_PER_SIDE, left_active ? lit : CRGB::Black);
-  fill_solid(right_leds, NUM_LEDS_PER_SIDE, right_active ? lit : CRGB::Black);
-  FastLED.show();
+  const bool left_lit = left_active && blink_on;
+  const bool right_lit = right_active && blink_on;
+
+  // HH_260728 - FastLED.show() disables interrupts for ~1.8 ms (2 x 30 WS2815 LEDs) while
+  // the UART RX buffer holds only 2 bytes, so calling it every loop drops most
+  // incoming bytes at 115200 baud. Refresh the strips only on a state change;
+  // setup() already showed both sides black, matching the initial prev state.
+  static bool prev_left_lit = false;
+  static bool prev_right_lit = false;
+  if (left_lit != prev_left_lit || right_lit != prev_right_lit) {
+    prev_left_lit = left_lit;
+    prev_right_lit = right_lit;
+    fill_solid(left_leds, NUM_LEDS_PER_SIDE,
+               left_lit ? INDICATOR_COLOR : CRGB::Black);
+    fill_solid(right_leds, NUM_LEDS_PER_SIDE,
+               right_lit ? INDICATOR_COLOR : CRGB::Black);
+    FastLED.show();
+  }
 
   // Headlight relay: independent channel, holds last state on link loss.
   digitalWrite(PIN_RELAY_HEADLIGHT, headlight_on ? HIGH : LOW);
