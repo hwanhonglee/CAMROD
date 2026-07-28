@@ -19,16 +19,51 @@
     min_cost: 85
     max_cost: 95
     cost_range_min_m: 0.3
-    # HH_260625: Ignore stable SEN0592 near-zero self echoes seen outdoors.
-    # HH_260716 - A 20 s stationary vehicle sample showed body returns up to
-    # 0.253 m (front ~0.17m, side ~0.25m, rear ~0.12m). Treat 0.30 m as the
-    # common self-echo dead zone; hits at 0.30 m or farther remain stop inputs.
-    ignore_below_range_m: 0.30
-    # HH_260703 - Per-sensor overrides are ordered exactly like input_topics.
-    # HH_260716 - LEFT2 also produced a repeated 0.70-0.72 m body/multipath
-    # return in the stationary full-stack sample. LEFT1 retains normal left-side
-    # coverage while LEFT2 uses a 0.75 m dead zone to prevent stop-latch chatter.
-    ignore_below_ranges_m: [0.30, 0.30, 0.30, 0.75, 0.30, 0.30, 0.30]
+    # HH_260728 - Do not use one-sided self-echo floors: the former LEFT2
+    # 0.75 m floor also hid real obstacles from 0.30 through 0.74 m. Retain
+    # these legacy parameters at zero and reject only the measured notches.
+    ignore_below_range_m: 0.0
+    ignore_below_ranges_m: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    # HH_260728 - Stationary 15 s field sample, input_topics order:
+    # FRONT1 0.102-0.167, FRONT2 0.100-0.111, LEFT1 0.185-0.252,
+    # LEFT2 0.234-0.253 / 0.685-0.699 / intermittent 0.794-0.800,
+    # RIGHT1 0.256-0.274, RIGHT2 0.251-0.272, REAR 0.107-0.130 m.
+    # Each tuple (sensor index, center, half width) is a narrow notch; all
+    # other valid values, including LEFT2 0.50 m and the observed 0.68-0.80 m
+    # external returns, remain obstacle costs. Repeated indices provide
+    # multiple bands for one sensor.
+    self_echo_filter_enable: true
+    self_echo_sensor_indices: [0, 0, 1, 2, 2, 3, 4, 5, 6, 6]
+    self_echo_centers_m:      [0.111, 0.162, 0.107, 0.204, 0.246, 0.247, 0.265, 0.263, 0.130, 0.162]
+    self_echo_half_widths_m:  [0.012, 0.010, 0.010, 0.022, 0.012, 0.020, 0.012, 0.015, 0.025, 0.006]
+
+    # HH_260728 - A hardware restart produced different stable body modes
+    # (FRONT1 ~0.186, RIGHT1 ~0.754, RIGHT2 ~0.680 m). Give each sensor a full
+    # disengaged 8 s beginning with its first valid sample, learn only its
+    # dominant tight cluster, append one narrow notch, and freeze it until the
+    # node restarts. Calibration waits for the transient-local authoritative
+    # manual-or-mission engage state and is cancelled whenever it is true.
+    # Keep the robot stationary with the radar area clear during this interval;
+    # a deliberately placed object is indistinguishable from body reflection to
+    # a scalar sensor.
+    startup_self_echo_calibration_enable: true
+    startup_self_echo_calibration_duration_s: 8.0
+    # HH_260728 - Start the 8 s window independently at each sensor's first
+    # valid sample; reject a disconnected/late port after this absolute timeout.
+    startup_self_echo_first_sample_timeout_s: 15.0
+    startup_self_echo_calibration_min_samples: 15
+    startup_self_echo_cluster_gap_m: 0.020
+    startup_self_echo_min_cluster_fraction: 0.50
+    startup_self_echo_min_half_width_m: 0.012
+    startup_self_echo_max_half_width_m: 0.030
+    startup_self_echo_margin_m: 0.005
+    # Only a direct return close to the sensor may become a boot-local self
+    # notch. LEFT2/RIGHT returns around 0.68-0.80 m project well outside the
+    # robot boundary and remain real obstacle costs rather than being learned.
+    startup_self_echo_candidate_max_range_m: 0.30
+    startup_self_echo_candidate_max_ranges_m: [0.25, 0.25, 0.30, 0.30, 0.30, 0.30, 0.20]
+    startup_self_echo_authorization_topic: "/control/planning_engaged"
     # HH_260422: Near-field only; per-sensor max_range limits detections before cost mapping.
     cost_range_max_m: 2.0
     obstacle_radius_m: 0.30
