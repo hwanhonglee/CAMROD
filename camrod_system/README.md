@@ -52,6 +52,11 @@ coordinates come from the sensor-kit robot parameters. The GNSS mount is
 deliberately reported as `unverified` with `pose_verified=false` because its
 current `0,0,0` configuration has not been surveyed.
 
+<!-- HH_260728 - Document the field storage warning policy. -->
+Hardware storage diagnostics report WARN at 90% filesystem use and ERROR at
+95%. Normal operation in the 80% range therefore remains visible in the
+diagnostic values without elevating the complete system summary.
+
 <!-- HH_260724 - Site entry hands motion ownership from Nav2 to the campsite maneuver controller. -->
 During campsite entry and unload phases, Nav2 cancel/abort status is expected
 because `camrod_control` owns the local maneuver. `planning_nav_status_checker`

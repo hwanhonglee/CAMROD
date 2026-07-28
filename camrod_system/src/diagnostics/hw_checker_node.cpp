@@ -283,7 +283,10 @@ protected:
     declare_parameter("memory.warn_threshold",   75.0);
     declare_parameter("memory.error_threshold",  90.0);
     declare_parameter("disk.enabled",            true);
-    declare_parameter("disk.warn_threshold",     80.0);
+    // HH_260728 - Field storage remains serviceable below 90%; avoid raising a
+    // system warning for the normal 80% operating range while retaining the
+    // existing 95% critical threshold.
+    declare_parameter("disk.warn_threshold",     90.0);
     declare_parameter("disk.error_threshold",    95.0);
     declare_parameter("disk.path",               std::string("/"));
     declare_parameter("cpu_temp.enabled",         true);
@@ -526,7 +529,8 @@ private:
   bool   disk_enabled_{true},     cpu_temp_enabled_{true};
   double cpu_warn_{70.0},      cpu_error_{90.0};
   double mem_warn_{75.0},      mem_error_{90.0};
-  double disk_warn_{80.0},     disk_error_{95.0};
+  // HH_260728 - Keep the member fallback aligned with the declared/default YAML policy.
+  double disk_warn_{90.0},     disk_error_{95.0};
   double cpu_temp_warn_{75.0}, cpu_temp_error_{90.0};
   std::string disk_path_{"/"};
   bool   has_cpu_temp_{false};

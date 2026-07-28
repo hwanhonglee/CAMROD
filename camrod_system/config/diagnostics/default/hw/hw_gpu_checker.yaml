@@ -18,7 +18,8 @@ hw_checker:
 
     disk:
       enabled: true           # 디스크 모니터링 활성화 여부
-      warn_threshold: 80.0    # 디스크 사용률 WARN 기준 (%)
+      # HH_260728 - 현장 운용 정책상 90% 미만은 경고하지 않고 95%부터 ERROR를 유지한다.
+      warn_threshold: 90.0    # 디스크 사용률 WARN 기준 (%)
       error_threshold: 95.0   # 디스크 사용률 ERROR 기준 (%)
       path: "/"               # 감시할 디스크 경로
                               # 컨테이너에서 호스트 디스크를 보려면:
