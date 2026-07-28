@@ -276,6 +276,9 @@ def generate_launch_description():
                         'startup_grace_s': 10.0,
                         'log_status_summary': True,
                         'log_status_summary_period_s': 5.0,
+                        # HH_260728 - Keep simultaneous per-sensor location
+                        # details visible while bounding repeated console output.
+                        'max_status_detail_lines': 24,
                     }],
                 ),
                 Node(
