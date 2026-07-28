@@ -206,10 +206,19 @@ Run these in order and take a `snapshot` after any failure.
      prints both lines independently with `component`, logical `location`, TF
      `frame`, mount pose, and live range/rate values. A STALE transition must
      retain the same identity fields.
-   - During normal forward travel, side-near checking extends 0.75 m from
-     `robot_base_link`; crab/reverse maneuver checking remains 1.20 m. Confirm
-     a side return outside forward clearance does not stop straight travel but
-     does stop a command toward that side.
+   - During normal forward travel, the raw side-near probe extends 0.60 m from
+     `robot_base_link`; it is not an extra clearance measured from the body
+     edge. Crab/reverse maneuver checking remains 1.20 m.
+   <!-- HH_260728 - Include radar cost inflation in the straight-side regression. -->
+   - With `obstacle_radius_m: 0.30` and the 0.10 m radar grid, confirm a
+     base-centred side hit near `|y|=1.0 m` does not stop straight travel, while
+     a closer hit near `|y|=0.8 m` does stop it. The farther hit must still stop
+     a crab command toward that side.
+   <!-- HH_260728 - Reproduce and prevent stop-induced command-direction latch release. -->
+   - With a radar obstacle on the commanded path, confirm the gate remains
+     latched after the upstream command becomes zero or changes direction.
+     Remove the obstacle and confirm release only after 2 s of continuously
+     fresh clear radar/merged-grid evidence, followed by the 1 s stop hold.
 
 4. Perception-to-cost path
    - Put a vehicle/person in camera view.
