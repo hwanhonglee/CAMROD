@@ -65,6 +65,8 @@
     cost_stop_lookahead_m: 2.0
     cost_stop_width_m: 1.27
     cost_stop_hold_s: 1.0
+    # HH_260728 - Release is evaluated against the source/path/corridor that
+    # triggered the stop; a later zero or changed-direction cmd_vel cannot clear it.
     cost_stop_latch_enable: true
     cost_stop_clear_required_s: 2.0
     cost_stop_latch_log_interval_s: 1.0
@@ -137,10 +139,10 @@
     # Side, rear, crab, reverse, and rotation protection
     enable_side_rear_cost_stop: true
     enable_body_near_dynamic_stop: true
-    # HH_260728 - Normal forward travel checks the planning half-width plus
-    # raster/safety allowance, not an old 1.20 m base-centred side corridor.
-    # Maneuver side protection below remains 1.20 m for crab/reverse motion.
-    body_near_side_lookahead_m: 0.75
+    # HH_260728 - Radar hits already carry a 0.30 m cost disk. A 0.60 m raw
+    # forward probe lets a base-centred 1.0 m side return pass straight travel;
+    # crab/reverse keeps the separate 1.20 m maneuver envelope below.
+    body_near_side_lookahead_m: 0.60
     body_near_rear_lookahead_m: 0.80
     body_near_maneuver_side_lookahead_m: 1.20
     body_near_maneuver_rear_lookahead_m: 0.80

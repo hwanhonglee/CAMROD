@@ -318,14 +318,17 @@ private:
       "enable_side_rear_cost_stop", true);
     motion_cost_stop_config_.body_near_enabled = declare_parameter<bool>(
       "enable_body_near_dynamic_stop", true);
+    // HH_260728 - Radar points are already expanded by 0.30 m in the source
+    // grid. A 0.60 m raw forward probe keeps a base-centred 1.0 m side return
+    // outside straight travel while the 1.20 m maneuver envelope remains strict.
     motion_cost_stop_config_.body_near_side_m = declare_parameter<double>(
-      "body_near_side_lookahead_m", 0.75);
+      "body_near_side_lookahead_m", 0.60);
     motion_cost_stop_config_.body_near_rear_m = declare_parameter<double>(
-      "body_near_rear_lookahead_m", 0.55);
+      "body_near_rear_lookahead_m", 0.80);
     motion_cost_stop_config_.maneuver_body_near_side_m = declare_parameter<double>(
-      "body_near_maneuver_side_lookahead_m", 0.55);
+      "body_near_maneuver_side_lookahead_m", 1.20);
     motion_cost_stop_config_.maneuver_body_near_rear_m = declare_parameter<double>(
-      "body_near_maneuver_rear_lookahead_m", 0.45);
+      "body_near_maneuver_rear_lookahead_m", 0.80);
     motion_cost_stop_config_.side_threshold = declare_parameter<int>("side_cost_threshold", 85);
     motion_cost_stop_config_.side_lookahead_m = declare_parameter<double>("side_lookahead_m", 1.2);
     motion_cost_stop_config_.side_width_m = declare_parameter<double>(
