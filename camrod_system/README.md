@@ -29,6 +29,29 @@ conditions.
 Required modules may report `STARTING + OK` during the configured 10-second
 startup grace; no first diagnostic after that grace becomes `FAULT + ERROR`.
 
+<!-- HH_260728 - Preserve physical sensor identity through aggregation. -->
+## Sensor Fault Location Detail
+
+The diagnostics registry now attaches `component_id`, `sensor_location`,
+`sensor_frame`, `mount_xyz_m`, `mount_rpy_deg`, and `pose_verified` to physical
+sensor statuses. These values survive STALE conversion and remain visible on
+`/system/diagnostics_agg`, in UI diagnostic detail, and in the terminal
+`[SYSTEM]` summary. They describe sensor-health diagnostics; an obstacle stop
+from the already-merged radar cost grid remains source/region-level and is not
+mislabelled as one channel when several radar disks may overlap.
+
+The terminal summary lists every simultaneous non-OK checker rather than only
+the last worst item in a module. For example, FRONT1 and LEFT2 can appear as
+separate lines with `front_right` and `left_rear`, their TF frames, ranges, and
+actual/expected rates. Output uses one global 24-detail-line cap across ERROR
+and WARN. Live measurement changes are shown in the five-second periodic report
+but cannot bypass that throttle; changed fault membership or severity still
+reports immediately. This also prevents changing CPU percentages or sensor
+rates in message text from recreating one-Hz multi-line log spam. Mount
+coordinates come from the sensor-kit robot parameters. The GNSS mount is
+deliberately reported as `unverified` with `pose_verified=false` because its
+current `0,0,0` configuration has not been surveyed.
+
 <!-- HH_260724 - Site entry hands motion ownership from Nav2 to the campsite maneuver controller. -->
 During campsite entry and unload phases, Nav2 cancel/abort status is expected
 because `camrod_control` owns the local maneuver. `planning_nav_status_checker`
@@ -59,6 +82,7 @@ health into the parking category.
 | Topic | Purpose |
 |---|---|
 | `/system/diagnostics` | Source diagnostics |
+| `/system/diagnostics_agg` | Filtered diagnostics with component/location/frame/mount metadata |
 | `/system/status` | Aggregated system state |
 | `/control/cmd_vel_safety_gate/status` | Command policy state |
 | `/control/camping_site_maneuver_controller/status` | Campsite local maneuver state |

@@ -8,7 +8,9 @@
 
 <!-- HH_260727 - Promote the source-aware goal, full-footprint, and runtime-tuning release. -->
 
-Current validated baseline: `v2.0.8` ([release notes](docs/V2_0_8_RELEASE_NOTES.md)).
+<!-- HH_260728 - Promote the bounded radar self-return and forward-side-guard release. -->
+
+Current validated baseline: `v2.0.9` ([release notes](docs/V2_0_9_RELEASE_NOTES.md)).
 
 CAMROD is a ROS 2 Humble autonomous mobile robot stack. Route planning, local
 vehicle maneuvers, reverse parking, and hardware command authorization are
@@ -26,6 +28,19 @@ map-boundary enforcement, source-specific RViz/UI goal policies, a lightweight
 operator WebKit window, and measured UI/status load reductions. Existing
 one-way Lanelet routing, campsite return, camera-LiDAR fusion, and
 occupied-campsite protections remain in force.
+
+The v2.0.9 delta replaces broad one-sided radar ignore floors with measured
+narrow notches and a bounded, disengaged startup calibration. Each channel now
+gets its full calibration interval from its own first valid sample, so a
+late-starting port is not silently finalized with zero samples. A
+transient-local manual-or-mission authorization state also prevents a restarted
+radar node from learning while driving or while a cost stop is latched. Farther
+side returns remain obstacles. Normal forward travel uses a 0.75 m body-near
+side guard while crab and reverse retain the 1.20 m maneuver envelope. Sensor
+diagnostics also retain the logical location, TF frame, mount pose, and live
+measurement through the final `[SYSTEM]` summary. The v2.0.8 battery, UI,
+planning, full-footprint boundary, and hardware-port policies are otherwise
+unchanged.
 
 <!-- HH_260724 - Clarify operator-visible manual driving and stop/cancel state. -->
 Manual ENGAGE without a campsite selection is shown as `Manual driving` in the
