@@ -447,6 +447,37 @@ TEST(MotionCostStop, ClearAvoidancePathPassesAndBlockedPathStops)
   EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.1).blocked);
 }
 
+// HH_260728 - A forward command should not stop for a side return outside the
+// planning footprint plus clearance. The same return must remain blocking when
+// the robot is commanded toward it laterally.
+TEST(MotionCostStop, ForwardUsesNarrowBodySideCheckButManeuverKeepsWideProtection)
+{
+  auto config = baseCostConfig();
+  config.body_near_enabled = true;
+  config.body_near_side_m = 0.75;
+  config.maneuver_body_near_side_m = 1.20;
+  config.side_width_m = 1.69160;
+
+  const auto outside_forward_clearance = makeGrid({{0.0, 0.8, 90}});
+  auto forward_stop = makeMotionCostStop(config);
+  forward_stop.setMergedGrid(outside_forward_clearance, 0.0);
+  forward_stop.setSourceGrid("radar", outside_forward_clearance, 0.0);
+  EXPECT_FALSE(forward_stop.evaluate(command(0.2), 0.0).blocked);
+
+  auto lateral_stop = makeMotionCostStop(config);
+  lateral_stop.setMergedGrid(outside_forward_clearance, 0.0);
+  lateral_stop.setSourceGrid("radar", outside_forward_clearance, 0.0);
+  const auto lateral_decision = lateral_stop.evaluate(command(0.0, 0.2), 0.0);
+  EXPECT_TRUE(lateral_decision.blocked);
+  EXPECT_NE(lateral_decision.reason.find("left"), std::string::npos);
+
+  const auto inside_forward_clearance = makeGrid({{0.0, 0.6, 90}});
+  auto close_stop = makeMotionCostStop(config);
+  close_stop.setMergedGrid(inside_forward_clearance, 0.0);
+  close_stop.setSourceGrid("radar", inside_forward_clearance, 0.0);
+  EXPECT_TRUE(close_stop.evaluate(command(0.2), 0.0).blocked);
+}
+
 TEST(MotionCostStop, DynamicLatchNeedsContinuousClearWindow)
 {
   auto config = baseCostConfig();

@@ -156,6 +156,11 @@ public:
     mission_request_topic_ = declare_parameter<std::string>(
       "mission_request_topic", "/planning/mission_key");
     state_topic_ = declare_parameter<std::string>("state_topic", "/control/command_enabled");
+    // HH_260728 - Publish raw planning authorization separately from effective
+    // command enable. Unlike command_enabled, this remains true during a cost
+    // stop and therefore safely cancels radar startup learning after a restart.
+    planning_engaged_topic_ = declare_parameter<std::string>(
+      "planning_engaged_topic", "/control/planning_engaged");
     status_topic_ = declare_parameter<std::string>(
       "status_topic", "/control/cmd_vel_safety_gate/status");
     platform_drive_enable_topic_ = declare_parameter<std::string>(
@@ -497,6 +502,8 @@ private:
     rclcpp::QoS state_qos(1);
     state_qos.reliable().transient_local();
     state_publisher_ = create_publisher<avg_msgs::msg::AvgBool>(state_topic_, state_qos);
+    planning_engaged_publisher_ =
+      create_publisher<avg_msgs::msg::AvgBool>(planning_engaged_topic_, state_qos);
     status_publisher_ = create_publisher<avg_msgs::msg::ModuleState>(status_topic_, state_qos);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
@@ -816,6 +823,12 @@ private:
     avg_msgs::msg::AvgBool state;
     state.data = enabled;
     state_publisher_->publish(state);
+
+    // HH_260728 - Transient-local authorization lets a restarted sensing node
+    // immediately learn whether either manual or mission engage is active.
+    avg_msgs::msg::AvgBool planning_engaged;
+    planning_engaged.data = gate_policy_.planningEngaged();
+    planning_engaged_publisher_->publish(planning_engaged);
 
     avg_msgs::msg::ModuleState status;
     status.stamp = now();
@@ -1432,6 +1445,7 @@ private:
   std::string mission_engage_topic_;
   std::string mission_request_topic_;
   std::string state_topic_;
+  std::string planning_engaged_topic_;
   std::string status_topic_;
   std::string platform_drive_enable_topic_;
   std::string platform_status_topic_;
@@ -1518,6 +1532,7 @@ private:
   rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr command_publisher_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr ros_command_publisher_;
   rclcpp::Publisher<avg_msgs::msg::AvgBool>::SharedPtr state_publisher_;
+  rclcpp::Publisher<avg_msgs::msg::AvgBool>::SharedPtr planning_engaged_publisher_;
   rclcpp::Publisher<avg_msgs::msg::ModuleState>::SharedPtr status_publisher_;
   rclcpp::Subscription<avg_msgs::msg::AvgTwist>::SharedPtr command_subscription_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr navigation_command_subscription_;

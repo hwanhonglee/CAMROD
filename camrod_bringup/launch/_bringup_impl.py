@@ -1134,7 +1134,9 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_body_near_side_lookahead_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_body_near_side_lookahead_m', 1.20),
+            # HH_260728 - Match source/bringup YAML for normal forward travel;
+            # maneuver_body_near_side keeps the separate 1.20 m envelope.
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_body_near_side_lookahead_m', 0.75),
             'Near-body side dynamic stop distance (m)',
         ),
         (
