@@ -1,5 +1,23 @@
 # Documentation Changelog
 
+<!-- HH_260728 - Track the bounded radar self-return and forward-side-guard release. -->
+## [v2.0.9-docs] - 2026-07-28 (HH_260728)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Promoted v2.0.9 while retaining the complete v2.0.8 battery, UI, planning, and full-footprint baseline |
+| `camrod_sensing/README.md` | Documented generated/ROS radar topics, narrow fixed notches, bounded authorization-aware startup learning, and farther-return preservation |
+| `camrod_system/README.md` | Documented per-sensor component/location/frame/mount metadata, STALE preservation, simultaneous fault lines, and the global throttled detail cap |
+| `camrod_sensor_kit/README.md` | Synchronized the documented IMU mount pose with the canonical `robot_params.yaml` value |
+| `camrod_control/README.md` | Distinguished the 0.75 m normal-forward side guard from the 1.20 m crab/reverse envelope and documented transient raw authorization state |
+| `camrod_bringup/README.md` | Added radar and command-gate deployment mirror contracts |
+| `camrod_bringup/docs/field_test_runbook.md` | Added startup calibration, engage-cancel, close-obstacle, and direction-dependent stop checks |
+| `docs/V2_0_9_RELEASE_NOTES.md` | Recorded implementation scope, live radar measurements, validation, unchanged port routing, and field-test limits |
+
+---
+
 <!-- HH_260724 - Track manual engage and operator-stop visibility after v2.0.7 tagging. -->
 ## [manual-engage-operator-stop-docs] - 2026-07-24 (HH_260724)
 

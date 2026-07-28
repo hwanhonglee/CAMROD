@@ -93,6 +93,10 @@ Nav2 /control/nav2_cmd_vel_ros -----------^             |
 
 `/control/cmd_vel` is the generated CAMROD command contract. The gate publishes
 `/control/cmd_vel_ros` only as the explicit `geometry_msgs/Twist` boundary required by Ranger.
+It also publishes transient-local `/control/planning_engaged`, the raw
+manual-or-mission authorization state. This remains distinct from
+`/control/command_enabled`, which can be false during a cost, CAN, or e-stop
+hold, and lets restarted sensing nodes refuse unsafe runtime calibration.
 
 <!-- HH_260720 - Flatten runtime sources and remove the redundant Python package wrapper. -->
 
@@ -168,6 +172,14 @@ Static lanelet checks are direction-configurable for
 site maneuvers. LiDAR/radar cost nodes first remove costs outside the active
 route lanelets plus `route_lanelet_margin_m` (0.35 m); live obstacle checks stay
 active during configured static-cost maneuver exceptions.
+
+<!-- HH_260728 - Document the field-tuned straight-travel side guard separately
+     from the deliberately wider maneuver envelope. -->
+Normal forward travel checks live side costs through the 0.75 m body-near
+distance, which covers the planning half-width plus raster allowance without
+letting farther side returns immobilize a narrow lane. Crab and reverse
+commands retain the 1.20 m side envelope, and a command toward either side
+remains blocked by radar/LiDAR cost in that maneuver envelope.
 
 <!-- HH_260727 - State that raw lanelet boundaries apply to the complete robot polygon. -->
 For raw lanelet/map-boundary cost, the gate checks the complete polygon from

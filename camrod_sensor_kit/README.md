@@ -150,7 +150,7 @@ graph TD
     BASE[🤖 robot_base_link\nfixed joints only]:::platform
     subgraph SKIT["sensor_kit_base_link — sensor mount origin"]
       SKB[🔧 sensor_kit_base_link]:::system
-      IMU[📡 imu_link\n0.28, 0.0, 0.2]:::sensing
+      IMU[📡 imu_link\n1.131, 0.0, 0.756]:::sensing
       GNSS[📡 gnss_link\n0.0, 0.0, 0.0]:::sensing
       LIDAR[📡 lidar_link\n1.20636, 0.0, 0.59538]:::sensing
       CAMF[📡 camera_front_link\n1.20637, 0.0, 0.49568]:::sensing
@@ -288,7 +288,7 @@ All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **de
 
 | Sensor | x (m) | y (m) | z (m) | roll (deg) | pitch (deg) | yaw (deg) |
 |---|---|---|---|---|---|---|
-| `imu` | 0.28 | 0.0 | 0.2 | 0.0 | 0.0 | 0.0 |
+| `imu` | 1.131 | 0.0 | 0.756 | 0.0 | 0.0 | 0.0 |
 | `gnss` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
 | `lidar` | 1.20636 | 0.0 | 0.59538 | 0.0 | 0.0 | 0.0 |
 | `camera.front` | 1.20637 | 0.0 | 0.49568 | 0.0 | 0.0 | 0.0 |

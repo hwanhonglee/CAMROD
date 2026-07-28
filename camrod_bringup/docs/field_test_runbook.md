@@ -182,9 +182,34 @@ Run these in order and take a `snapshot` after any failure.
    - Test left, right, and rear separately.
    - Confirm the correct radar topic updates.
    - Confirm the cost-grid side matches the physical side.
-   - Stationary body returns below 0.30 m are filtered; LEFT2 uses 0.75 m for
-     its measured 0.70-0.72 m multipath return. Test a real obstacle beyond the
-     active threshold and confirm that it still stops the robot.
+   <!-- HH_260728 - Verify narrow self-return notches without recreating the
+        old one-sided LEFT2 blind zone. -->
+   - With the area clear, confirm stationary readings inside the configured
+     self-echo bands do not create radar cost.
+   - Place an obstacle at approximately 0.50 m from LEFT2. It is below the old
+     0.75 m floor but outside the new notches, so it must create cost and stop.
+   - Move the obstacle through several distances on each channel. Values outside
+     the configured narrow bands must remain obstacles; never widen a band from
+     a single startup sample containing a wall or person.
+   - On every bringup, keep the robot disengaged, stationary, and the immediate
+     radar area clear until the log reports calibration `frozen`. Each healthy
+     channel collects for 8 s from its own first valid sample; a channel that
+     never starts, or first appears at/after the deadline, is rejected after
+     15 s. In the worst allowed timely delayed-start case, final freeze can
+     therefore take up to about 23 s.
+   - Confirm `/control/planning_engaged=false` is received before collection.
+     If either manual or mission engage becomes true, calibration must report
+     cancellation and retain fail-safe obstacle costs. Restart the radar cost
+     node while authorization is already true and confirm transient-local state
+     cancels learning immediately even if `command_enabled` is cost-held false.
+   - Force or observe two simultaneous sensor warnings and confirm `[SYSTEM]`
+     prints both lines independently with `component`, logical `location`, TF
+     `frame`, mount pose, and live range/rate values. A STALE transition must
+     retain the same identity fields.
+   - During normal forward travel, side-near checking extends 0.75 m from
+     `robot_base_link`; crab/reverse maneuver checking remains 1.20 m. Confirm
+     a side return outside forward clearance does not stop straight travel but
+     does stop a command toward that side.
 
 4. Perception-to-cost path
    - Put a vehicle/person in camera view.

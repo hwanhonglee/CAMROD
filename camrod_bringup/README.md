@@ -97,6 +97,8 @@ Detailed wiring, A/B results, and recovery behavior are documented in
 | `config/bringup/launch_defaults.yaml` | Module enable flags and launch defaults |
 | `config/sensing/gnss/zed_f9p_rover.yaml` | Deployment mirror of rover device, RTCM isolation, rate, and publish settings |
 | `config/sensing/gnss/ntrip_client.yaml` | Deployment mirror of the active NTRIP caster and retry settings |
+| `config/sensing/radar/cost_grid.yaml` | Deployment mirror of measured radar notches and bounded startup calibration |
+| `config/system/diagnostics/{default,sim}/aggregator/diagnostics_config.yaml` | Deployment mirrors of per-sensor component, location, TF frame, and mount-pose metadata |
 | `config/control/cmd_vel_safety_gate.yaml` | Bringup mirror of command authorization and motion-safety policy |
 | `config/control/control.yaml` | Bringup mirror of campsite/drop-zone maneuver tuning |
 | `config/control/parking.yaml` | Bringup mirror of reverse and AprilTag parking tuning |
@@ -120,6 +122,12 @@ GNSS parameter defaults remain canonical under `camrod_sensing/config/gnss/`.
 The two files under `camrod_bringup/config/sensing/gnss/` are byte-identical
 deployment mirrors; `field_test_tool.sh config` and the bringup regression test
 reject drift between them.
+
+<!-- HH_260728 - Define the radar and straight/maneuver safety mirror contract. -->
+Radar cost defaults remain canonical under `camrod_sensing/config/radar/`,
+with a byte-identical bringup deployment mirror. The command-gate mirror keeps
+normal forward side checking at 0.75 m and crab/reverse checking at 1.20 m.
+`field_test_tool.sh config` rejects drift before a field launch.
 
 <!-- HH_260721 - Record the active profile's semantic mirror contract. -->
 For `copy_park_moved`, the generic and explicit profile drop-zone/campsite YAML

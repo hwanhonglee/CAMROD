@@ -331,7 +331,7 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | `poll_period_s` timer (60 ms cycle) |
-| Internal logic | `sen0592_radar_node` polls seven DFRobot SEN0592 sensors over seven CH9344 USB serial ports at 115200 baud. HH_260702 - current field port order is FRONT1=USB0, FRONT2=USB1, LEFT1=USB4, LEFT2=USB5, RIGHT1=USB2, RIGHT2=USB3, REAR=USB6 because the LEFT/RIGHT harness branches are crossed. Normal bringup skips startup hardware register writes because this harness returns read data reliably but times out on write echoes; software `sensor_max_ranges_m` still limits each direction: FRONT1/FRONT2 1.50 m, LEFT1/LEFT2/RIGHT1/RIGHT2 0.80 m, REAR 0.50 m. Each sensor publishes one `sensor_msgs/Range` message per fresh valid/no-target reply. |
+| Internal logic | `sen0592_radar_node` polls seven DFRobot SEN0592 sensors over seven CH9344 USB serial ports at 115200 baud. HH_260702 - current field port order is FRONT1=USB0, FRONT2=USB1, LEFT1=USB4, LEFT2=USB5, RIGHT1=USB2, RIGHT2=USB3, REAR=USB6 because the LEFT/RIGHT harness branches are crossed. Normal bringup skips startup hardware register writes because this harness returns read data reliably but times out on write echoes; software `sensor_max_ranges_m` still limits each direction: FRONT1/FRONT2 1.50 m, LEFT1/LEFT2/RIGHT1/RIGHT2 0.80 m, REAR 0.50 m. Each sensor publishes generated `AvgRange` for internal consumers and a `sensor_msgs/Range` `_ros` mirror for RViz per fresh valid/no-target reply. |
 | Output effect | Seven topics: `/sensing/radar/{front1,front2,left1,left2,right1,right2,rear}/range`. |
 | Operator-visible symptom | If any topic is silent, the corresponding CH9344 port may not be enumerated. Run `ls /dev/ttyCH9344USB*` to verify all seven ports exist. |
 | Related params | `ports`, `sensor_names`, `frame_ids`, `sensor_max_ranges_m`, `poll_period_s`, `baud`, `configure_hardware_on_startup`, `sensor_angle_config_values` |
@@ -342,12 +342,12 @@ graph TD
 | Field | Detail |
 |---|---|
 | Trigger | Each incoming Range message (async per sensor) |
-| Internal logic | `radar_cost_grid_node` projects each generated `AvgRange` into `map`. Costs scale from 85 to 95 after invalid/no-target and measured self-echo ranges are removed. HH_260720 - completed radar disks are clipped to the same active-route mask and 0.35 m margin as LiDAR, with the same startup/stale/off-route fail-open behavior. Messages older than 0.35 s are discarded. |
+| Internal logic | `radar_cost_grid_node` projects each generated `AvgRange` into `map`. Costs scale from 85 to 95 after invalid/no-target values and measured self-echo notches are removed. HH_260728 - the previous one-sided 0.30 m common / 0.75 m LEFT2 floors were replaced with per-sensor `(index, center, half-width)` bands measured on the stationary vehicle. Only values inside those narrow bands are removed, so a LEFT2 obstacle at 0.50 m is again safety-relevant. Because a radar hardware restart produced different stable body modes, each sensor now receives a complete disengaged 8 s collection window beginning at its own first valid sample. A port with no first valid sample, or one first seen at/after the absolute 15 s deadline, is rejected; accepted sensors append at most one dominant tight boot-local notch and then freeze independently. Collection does not begin until the transient-local `/control/planning_engaged=false` state is received. That state combines manual and mission engage and remains true through a cost-stop hold, so active or restarted driving cannot become calibration data. Learning candidates are limited to 0.20–0.30 m by sensor; farther LEFT2/RIGHT returns that project outside the robot boundary stay as obstacles. Active authorization, insufficient samples, a weak mode, or a band wider than 0.03 m prevents learning instead of widening the blind area. HH_260720 - completed radar disks are clipped to the same active-route mask and 0.35 m margin as LiDAR, with the same startup/stale/off-route fail-open behavior. Messages older than 0.35 s are discarded. |
 | Output effect | `/sensing/cost_grid/radar`: 120×120 @ 0.10 m (12 m square centred on robot), published at 10 Hz. |
 | No-target behavior | HH_260701 - SEN0592 no-target/invalid responses publish a heartbeat slightly above `max_range`; diagnostics treat this as fresh no-target data and cost-grid consumers ignore it as an obstacle. |
 | Operator-visible symptom | Empty grid → serial port permission denied or CH9344 driver not loaded. Near-field obstacles missing → ego_clear_radius_m is too large; current value 0.50 m is already minimal. |
-| Related params | `cost_range_min_m`, `cost_range_max_m`, `ego_clear_radius_m`, `route_lanelet_filter_enable`, `route_lanelet_margin_m`, `route_lanelet_mask_max_age_s`, `route_lanelet_filter_fail_open_when_robot_outside`, `max_message_age_s`, `publish_rate_hz` |
-| Related topics | `/sensing/radar/*/range` + `/map/cost_grid/route_lanelet_mask` → `/sensing/cost_grid/radar` |
+| Related params | `cost_range_min_m`, `cost_range_max_m`, `self_echo_filter_enable`, `self_echo_sensor_indices`, `self_echo_centers_m`, `self_echo_half_widths_m`, `startup_self_echo_calibration_*`, `ego_clear_radius_m`, `route_lanelet_filter_enable`, `route_lanelet_margin_m`, `route_lanelet_mask_max_age_s`, `route_lanelet_filter_fail_open_when_robot_outside`, `max_message_age_s`, `publish_rate_hz` |
+| Related topics | `/sensing/radar/*/range` + `/control/planning_engaged` + `/map/cost_grid/route_lanelet_mask` → `/sensing/cost_grid/radar` |
 
 ### Camera — dual econ (front + rear)
 
@@ -665,10 +665,10 @@ ros2 launch camrod_sensing camera.launch.py
 | Param | Value | Meaning |
 |---|---|---|
 | `poll_period_s` | `0.06` s | Sensor polling interval (≈16.7 Hz cycle) |
-| `sensor_angle_config_values` | `[1, 1, 1, 1, 1, 1, 1]` | Detection angle: 1 = 15° for all seven channels |
+| `sensor_angle_config_values` | `[0, 0, 0, 0, 0, 0, 0]` | Preserve each sensor's hardware-stored angle; normal bringup does not write register `0x0208` |
 | `sensor_max_ranges_m` | `[1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]` | Per-sensor max range (FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR) |
 | `ports` | `[USB0, USB1, USB4, USB5, USB2, USB3, USB6]` | CH9344 serial port assignments for FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR |
-| Cost-grid dead zone | `[0.30, 0.30, 0.30, 0.75, 0.30, 0.30, 0.30]` m | Reject stationary body/self echoes; LEFT2 has the measured multipath override |
+| Cost-grid self-echo policy | narrow measured notches + per-sensor startup notch | No one-sided distance floor; all valid values outside accepted bands remain obstacle costs |
 
 </details>
 
@@ -962,7 +962,7 @@ reference streams broke heading in the field A/B test.
 
 - HH_260707: `/sensing/lidar/cost_grid` consumes `/sensing/lidar/points_filtered`, height-gated `/sensing/lidar/filtered_cloud`, `/perception/obstacles`, `/perception/lidar/bboxes`, and `/perception/camera_lidar/markers`. Perception markers are written as cost 90 with a 0.35-0.75 m radius window and remain valid for the same 1.50 s freshness window as filtered LiDAR.
 - HH_260707: LiDAR preprocessing uses shallow QoS and reusable point-cloud buffers, and LiDAR/inflation cost grids skip full rebuilds when inputs and vehicle pose/yaw are effectively unchanged.
-- HH_260702: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; software range filters still ignore no-target values and stable near-zero self echoes.
+- HH_260728: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; no-target values remain invalid while only measured narrow self-echo bands are removed. Do not restore one-sided distance floors because they hide closer real obstacles.
 - HH_260720 - Full-stack tests with RViz/UI/voice/camera/YOLO/AprilTag parking enabled can saturate the Jetson and delay cost-grid publication. Treat that mode as a load probe, then repeat drive validation with the lighter outdoor profile.
 - HH_260708: ZED-F9P single-antenna GNSS is documented and configured as `/dev/ttyACM0`; diagnostics tolerate 1 Hz effective fix/pose rates while preserving freshness/fix/covariance/jump checks.
-- HH_260723 - The active field NTRIP mountpoint is `JECH-RTCM32`; seven radar channels use 15-degree angles with 0.30 m common self-echo filtering and a 0.75 m LEFT2 body/multipath override.
+- HH_260728 - The active field NTRIP mountpoint is `JECH-RTCM32`; seven radar channels retain their hardware-stored angles while the cost grid uses the measured per-sensor self-echo notch profile. `sensor_angle_config_values: [0, ...]` means normal bringup does not rewrite angle register `0x0208`.
