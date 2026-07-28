@@ -1,4 +1,7 @@
+#include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
@@ -6,6 +9,7 @@
 
 // HH_260720 - Use generated CAMROD range/grid contracts and ROS geometry only for TF.
 #include <avg_msgs/conversions.hpp>
+#include <avg_msgs/msg/avg_bool.hpp>
 #include <avg_msgs/msg/avg_sensing_radar.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <avg_msgs/msg/avg_occupancy_grid.hpp>
@@ -16,6 +20,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include "camrod_sensing/radar_self_echo_filter.hpp"
 #include "camrod_sensing/route_lanelet_cost_filter.hpp"
 
 namespace camrod::sensing
@@ -51,6 +56,43 @@ public:
     // Use this to keep side sensors more sensitive than front/rear self echoes.
     ignore_below_ranges_m_ = declare_parameter<std::vector<double>>(
       "ignore_below_ranges_m", std::vector<double>{});
+    // HH_260728 - Reject only narrow, measured self-return notches instead of
+    // hiding every obstacle below a per-sensor floor. Flat arrays permit more
+    // than one reflection band for a sensor such as LEFT2.
+    self_echo_filter_enable_ = declare_parameter<bool>("self_echo_filter_enable", true);
+    self_echo_sensor_indices_ = declare_parameter<std::vector<std::int64_t>>(
+      "self_echo_sensor_indices", std::vector<std::int64_t>{});
+    self_echo_centers_m_ = declare_parameter<std::vector<double>>(
+      "self_echo_centers_m", std::vector<double>{});
+    self_echo_half_widths_m_ = declare_parameter<std::vector<double>>(
+      "self_echo_half_widths_m", std::vector<double>{});
+    // HH_260728 - Hardware restarts can select a different stable body/multipath
+    // return. Learn one dominant tight notch per sensor during the initial
+    // disengaged interval, then freeze it for the complete node lifetime.
+    startup_self_echo_calibration_enable_ =
+      declare_parameter<bool>("startup_self_echo_calibration_enable", true);
+    startup_self_echo_calibration_duration_s_ =
+      declare_parameter<double>("startup_self_echo_calibration_duration_s", 8.0);
+    startup_self_echo_first_sample_timeout_s_ =
+      declare_parameter<double>("startup_self_echo_first_sample_timeout_s", 15.0);
+    startup_self_echo_calibration_min_samples_ =
+      declare_parameter<int>("startup_self_echo_calibration_min_samples", 15);
+    startup_self_echo_cluster_gap_m_ =
+      declare_parameter<double>("startup_self_echo_cluster_gap_m", 0.020);
+    startup_self_echo_min_cluster_fraction_ =
+      declare_parameter<double>("startup_self_echo_min_cluster_fraction", 0.50);
+    startup_self_echo_min_half_width_m_ =
+      declare_parameter<double>("startup_self_echo_min_half_width_m", 0.012);
+    startup_self_echo_max_half_width_m_ =
+      declare_parameter<double>("startup_self_echo_max_half_width_m", 0.030);
+    startup_self_echo_margin_m_ =
+      declare_parameter<double>("startup_self_echo_margin_m", 0.005);
+    startup_self_echo_candidate_max_range_m_ =
+      declare_parameter<double>("startup_self_echo_candidate_max_range_m", 0.30);
+    startup_self_echo_candidate_max_ranges_m_ = declare_parameter<std::vector<double>>(
+      "startup_self_echo_candidate_max_ranges_m", std::vector<double>{});
+    startup_self_echo_authorization_topic_ = declare_parameter<std::string>(
+      "startup_self_echo_authorization_topic", "/control/planning_engaged");
     // HH_260422: Default lowered to 2.0m — radar is near-field only; per-sensor max_range in Range
     //   message limits detections before they reach the cost mapping stage.
     cost_range_max_m_ = declare_parameter<double>("cost_range_max_m", 2.0);
@@ -88,6 +130,23 @@ public:
         "/sensing/radar/right2/range",
         "/sensing/radar/rear/range"});
 
+    configureSelfEchoFilter();
+    startup_self_echo_samples_.resize(input_topics_.size());
+    startup_self_echo_first_sample_elapsed_s_.assign(
+      input_topics_.size(), std::numeric_limits<double>::quiet_NaN());
+    startup_self_echo_sensor_finalized_.assign(input_topics_.size(), false);
+    startup_self_echo_started_at_ = std::chrono::steady_clock::now();
+    if (startup_self_echo_calibration_enable_) {
+      RCLCPP_INFO(
+        get_logger(),
+        "startup radar self-echo calibration gives each sensor %.1f s after its first valid "
+        "sample (first-sample timeout %.1f s); awaiting transient authorization state",
+        startup_self_echo_calibration_duration_s_,
+        startup_self_echo_first_sample_timeout_s_);
+    } else {
+      startup_self_echo_calibration_finalized_ = true;
+    }
+
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
@@ -101,6 +160,35 @@ public:
       [this](const avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr msg) {
         onRouteLaneletMask(msg);
       });
+    if (startup_self_echo_calibration_enable_ &&
+      !startup_self_echo_authorization_topic_.empty())
+    {
+      startup_self_echo_authorization_sub_ = create_subscription<avg_msgs::msg::AvgBool>(
+        startup_self_echo_authorization_topic_,
+        rclcpp::QoS(1).reliable().transient_local(),
+        [this](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+          if (!msg) {
+            return;
+          }
+          startup_self_echo_authorization_received_ = true;
+          startup_self_echo_motion_authorized_ = msg->data;
+          // HH_260728 - The safety gate publishes manual-or-mission engage as
+          // transient local state. A restarted cost-grid node therefore
+          // cancels learning even while effective command output is cost-held.
+          if (!msg->data || startup_self_echo_calibration_finalized_) {
+            return;
+          }
+          startup_self_echo_calibration_finalized_ = true;
+          startup_self_echo_samples_.clear();
+          RCLCPP_WARN(
+            get_logger(),
+            "startup radar self-echo calibration cancelled because planning authorization is active");
+        });
+    } else if (startup_self_echo_calibration_enable_) {
+      RCLCPP_WARN(
+        get_logger(),
+        "startup radar self-echo calibration has no authorization topic; no samples will be learned");
+    }
 
     samples_.resize(input_topics_.size());
     for (std::size_t i = 0; i < input_topics_.size(); ++i) {
@@ -135,6 +223,27 @@ private:
     samples_[idx].msg = *msg;
     samples_[idx].recv_time = now();
     samples_[idx].valid = true;
+    if (startup_self_echo_calibration_enable_ &&
+      !startup_self_echo_calibration_finalized_ &&
+      startup_self_echo_authorization_received_ &&
+      !startup_self_echo_motion_authorized_ &&
+      idx < startup_self_echo_sensor_finalized_.size() &&
+      !startup_self_echo_sensor_finalized_[idx] &&
+      std::isfinite(msg->range) && std::isfinite(msg->min_range) &&
+      std::isfinite(msg->max_range) &&
+      msg->range >= msg->min_range && msg->range <= msg->max_range &&
+      msg->range <= startupSelfEchoCandidateMaxRangeForIndex(idx) &&
+      startup_self_echo_samples_[idx].size() < 1000U)
+    {
+      if (!std::isfinite(startup_self_echo_first_sample_elapsed_s_[idx])) {
+        startup_self_echo_first_sample_elapsed_s_[idx] =
+          startupSelfEchoElapsedSeconds();
+        RCLCPP_INFO(
+          get_logger(), "startup self-echo collection started for %s",
+          input_topics_[idx].c_str());
+      }
+      startup_self_echo_samples_[idx].push_back(msg->range);
+    }
   }
 
   // HH_260720 - Cache route-mask validity once per map update.
@@ -280,6 +389,123 @@ private:
     return ignore_below_range_m_;
   }
 
+  double startupSelfEchoCandidateMaxRangeForIndex(const std::size_t idx) const
+  {
+    if (idx < startup_self_echo_candidate_max_ranges_m_.size() &&
+      std::isfinite(startup_self_echo_candidate_max_ranges_m_[idx]) &&
+      startup_self_echo_candidate_max_ranges_m_[idx] > 0.0)
+    {
+      return startup_self_echo_candidate_max_ranges_m_[idx];
+    }
+    return std::max(0.0, startup_self_echo_candidate_max_range_m_);
+  }
+
+  void configureSelfEchoFilter()
+  {
+    self_echo_bands_.clear();
+    if (!self_echo_filter_enable_) {
+      RCLCPP_INFO(get_logger(), "radar self-echo notch filter disabled");
+      return;
+    }
+
+    std::string error;
+    if (!radar_self_echo_filter::buildBands(
+        self_echo_sensor_indices_, self_echo_centers_m_, self_echo_half_widths_m_,
+        input_topics_.size(), self_echo_bands_, error))
+    {
+      // HH_260728 - Fail safe: malformed fixed calibration also disables startup
+      // learning, leaving every valid range available instead of applying a
+      // partial or boot-local blind zone.
+      RCLCPP_ERROR(
+        get_logger(), "invalid radar self-echo profile; filter disabled: %s", error.c_str());
+      self_echo_bands_.clear();
+      self_echo_filter_enable_ = false;
+      startup_self_echo_calibration_enable_ = false;
+      startup_self_echo_calibration_finalized_ = true;
+      return;
+    }
+
+    RCLCPP_INFO(
+      get_logger(), "radar self-echo notch filter active with %zu measured bands",
+      self_echo_bands_.size());
+  }
+
+  void maybeFinalizeStartupSelfEchoCalibration()
+  {
+    // HH_260728 - Freeze startup-only learning after its bounded disengaged
+    // interval; no runtime observation can widen or move these notches later.
+    if (!startup_self_echo_calibration_enable_ ||
+      startup_self_echo_calibration_finalized_)
+    {
+      return;
+    }
+    const double elapsed_s = startupSelfEchoElapsedSeconds();
+    const auto minimum_samples = static_cast<std::size_t>(
+      std::max(1, startup_self_echo_calibration_min_samples_));
+    for (std::size_t i = 0; i < startup_self_echo_samples_.size(); ++i) {
+      const auto action = radar_self_echo_filter::startupCalibrationAction(
+        startup_self_echo_sensor_finalized_[i],
+        startup_self_echo_first_sample_elapsed_s_[i],
+        elapsed_s,
+        startup_self_echo_calibration_duration_s_,
+        startup_self_echo_first_sample_timeout_s_);
+      if (action == radar_self_echo_filter::StartupCalibrationAction::kWait ||
+        action == radar_self_echo_filter::StartupCalibrationAction::kDone)
+      {
+        continue;
+      }
+      if (action == radar_self_echo_filter::StartupCalibrationAction::kRejectNoTimelySample) {
+        startup_self_echo_sensor_finalized_[i] = true;
+        RCLCPP_WARN(
+          get_logger(),
+          "startup self-echo calibration rejected for %s: no valid authorized sample before %.1f s",
+          input_topics_[i].c_str(), startup_self_echo_first_sample_timeout_s_);
+        continue;
+      }
+
+      radar_self_echo_filter::Band learned;
+      std::string error;
+      if (!radar_self_echo_filter::learnDominantBand(
+          i, startup_self_echo_samples_[i], minimum_samples,
+          startup_self_echo_cluster_gap_m_, startup_self_echo_min_cluster_fraction_,
+          startup_self_echo_min_half_width_m_, startup_self_echo_max_half_width_m_,
+          startup_self_echo_margin_m_, learned, error))
+      {
+        RCLCPP_WARN(
+          get_logger(), "startup self-echo calibration rejected for %s: %s (%zu samples)",
+          input_topics_[i].c_str(), error.c_str(), startup_self_echo_samples_[i].size());
+      } else {
+        self_echo_bands_.push_back(learned);
+        ++startup_self_echo_learned_count_;
+        RCLCPP_INFO(
+          get_logger(),
+          "startup self-echo notch %s: center=%.3f m half_width=%.3f m (%zu samples)",
+          input_topics_[i].c_str(), learned.center_m, learned.half_width_m,
+          startup_self_echo_samples_[i].size());
+      }
+      startup_self_echo_sensor_finalized_[i] = true;
+      startup_self_echo_samples_[i].clear();
+    }
+
+    if (std::all_of(
+        startup_self_echo_sensor_finalized_.begin(),
+        startup_self_echo_sensor_finalized_.end(),
+        [](const bool finalized) { return finalized; }))
+    {
+      startup_self_echo_calibration_finalized_ = true;
+      startup_self_echo_samples_.clear();
+      RCLCPP_INFO(
+        get_logger(), "startup radar self-echo calibration frozen with %zu learned bands",
+        startup_self_echo_learned_count_);
+    }
+  }
+
+  double startupSelfEchoElapsedSeconds() const
+  {
+    return std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - startup_self_echo_started_at_).count();
+  }
+
   // Implements `transformHitToOutput` behavior.
   bool transformHitToOutput(
     const avg_msgs::msg::AvgRange & msg,
@@ -334,6 +560,8 @@ private:
   // Publishes `Grid` output.
   void publishGrid()
   {
+    maybeFinalizeStartupSelfEchoCalibration();
+
     geometry_msgs::msg::PointStamped base_origin;
     // HH_260315-00:00 Anchor rolling grid with latest available TF.
     base_origin.header.stamp = rclcpp::Time(0, 0, get_clock()->get_clock_type());
@@ -387,6 +615,11 @@ private:
         continue;
       }
       if ((now_time - sample.recv_time).seconds() > max_message_age_s_) {
+        continue;
+      }
+      if (self_echo_filter_enable_ &&
+        radar_self_echo_filter::matches(i, sample.msg.range, self_echo_bands_))
+      {
         continue;
       }
 
@@ -480,6 +713,31 @@ private:
   double cost_range_min_m_{0.3};
   double ignore_below_range_m_{0.0};
   std::vector<double> ignore_below_ranges_m_;
+  bool self_echo_filter_enable_{true};
+  std::vector<std::int64_t> self_echo_sensor_indices_;
+  std::vector<double> self_echo_centers_m_;
+  std::vector<double> self_echo_half_widths_m_;
+  std::vector<radar_self_echo_filter::Band> self_echo_bands_;
+  bool startup_self_echo_calibration_enable_{true};
+  double startup_self_echo_calibration_duration_s_{8.0};
+  double startup_self_echo_first_sample_timeout_s_{15.0};
+  int startup_self_echo_calibration_min_samples_{15};
+  double startup_self_echo_cluster_gap_m_{0.020};
+  double startup_self_echo_min_cluster_fraction_{0.50};
+  double startup_self_echo_min_half_width_m_{0.012};
+  double startup_self_echo_max_half_width_m_{0.030};
+  double startup_self_echo_margin_m_{0.005};
+  double startup_self_echo_candidate_max_range_m_{0.30};
+  std::vector<double> startup_self_echo_candidate_max_ranges_m_;
+  std::string startup_self_echo_authorization_topic_{"/control/planning_engaged"};
+  std::chrono::steady_clock::time_point startup_self_echo_started_at_;
+  bool startup_self_echo_calibration_finalized_{false};
+  bool startup_self_echo_authorization_received_{false};
+  bool startup_self_echo_motion_authorized_{false};
+  std::vector<std::vector<double>> startup_self_echo_samples_;
+  std::vector<double> startup_self_echo_first_sample_elapsed_s_;
+  std::vector<bool> startup_self_echo_sensor_finalized_;
+  std::size_t startup_self_echo_learned_count_{0U};
   double cost_range_max_m_{2.0};
   double obstacle_radius_m_{0.30};
   double ego_clear_radius_m_{0.50};
@@ -501,6 +759,8 @@ private:
   rclcpp::Publisher<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr pub_grid_;
   rclcpp::Publisher<avg_msgs::msg::AvgSensingRadar>::SharedPtr avg_radar_pub_;
   rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr route_lanelet_mask_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr
+    startup_self_echo_authorization_sub_;
   std::vector<rclcpp::Subscription<avg_msgs::msg::AvgRange>::SharedPtr> subs_;
   std::vector<RangeSample> samples_;
   avg_msgs::msg::AvgOccupancyGrid::ConstSharedPtr route_lanelet_mask_;

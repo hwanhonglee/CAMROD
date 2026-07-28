@@ -256,6 +256,13 @@ if(BUILD_TESTING)
   )
   target_include_directories(test_route_lanelet_cost_filter PRIVATE include)
   ament_target_dependencies(test_route_lanelet_cost_filter avg_msgs)
+  # HH_260728 - Lock the measured per-sensor notch behavior independently of
+  # TF, hardware, and the live cost-grid node.
+  ament_add_gtest(
+    test_radar_self_echo_filter
+    test/test_radar_self_echo_filter.cpp
+  )
+  target_include_directories(test_radar_self_echo_filter PRIVATE include)
   # HH_260722 - Lock single/dual GNSS RTCM topic and USB-input launch behavior.
   # Disable unrelated user-site pytest plugins during configure-time discovery;
   # the current anyio plugin is incompatible with the ROS system pytest version.
