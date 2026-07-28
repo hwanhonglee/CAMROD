@@ -1,5 +1,22 @@
 # Documentation Changelog
 
+<!-- HH_260728 - Track the post-v2.0.9 obstacle latch and operations follow-up. -->
+## [post-v2.0.9-field-safety] - 2026-07-28 (HH_260728)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Recorded command-independent obstacle latch release, the 0.60 m post-release forward-side probe, and the 90/95% disk diagnostic policy |
+| `camrod_bringup/README.md` | Synchronized the 0.60/1.20 m straight/maneuver mirror contract and radar-inflated side expectations |
+| `camrod_control/README.md` | Documented retained trigger geometry, fresh-grid clear evidence, and base-centred 0.60 m forward-side semantics |
+| `camrod_bringup/docs/field_test_runbook.md` | Added zero/direction-change latch checks and 1.0/0.8 m radar-inflated side regressions |
+| `camrod_system/README.md` | Documented the 90% WARN and 95% ERROR storage thresholds |
+| `camrod_platform/README.md` | Documented state-change-only WS2815 refresh to preserve MCU serial RX |
+| `camrod_voice/README.md` | Added the opt-in, validated Bluetooth amplifier service helper |
+
+---
+
 <!-- HH_260728 - Track the bounded radar self-return and forward-side-guard release. -->
 ## [v2.0.9-docs] - 2026-07-28 (HH_260728)
 

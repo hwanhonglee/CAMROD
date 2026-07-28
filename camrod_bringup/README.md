@@ -126,8 +126,11 @@ reject drift between them.
 <!-- HH_260728 - Define the radar and straight/maneuver safety mirror contract. -->
 Radar cost defaults remain canonical under `camrod_sensing/config/radar/`,
 with a byte-identical bringup deployment mirror. The command-gate mirror keeps
-normal forward side checking at 0.75 m and crab/reverse checking at 1.20 m.
-`field_test_tool.sh config` rejects drift before a field launch.
+the normal-forward raw side probe at 0.60 m from `robot_base_link` and
+crab/reverse checking at 1.20 m. Radar's 0.30 m obstacle radius leaves a
+base-centred side hit near `|y|=1.0 m` clear while a closer hit near
+`|y|=0.8 m` blocks forward motion. `field_test_tool.sh config` rejects drift
+before a field launch.
 
 <!-- HH_260721 - Record the active profile's semantic mirror contract. -->
 For `copy_park_moved`, the generic and explicit profile drop-zone/campsite YAML

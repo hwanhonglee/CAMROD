@@ -42,6 +42,17 @@ measurement through the final `[SYSTEM]` summary. The v2.0.8 battery, UI,
 planning, full-footprint boundary, and hardware-port policies are otherwise
 unchanged.
 
+<!-- HH_260728 - Record the post-v2.0.9 field-safety follow-up on develop. -->
+The current `develop` follow-up retains the radar source, original
+corridor/path/rotation probe, and fresh-grid evidence that triggered a dynamic
+obstacle stop. A stop-induced zero or changed-direction command can no longer
+clear that latch; release requires 2 seconds of fresh clear evidence followed
+by the configured 1-second hold. The post-release normal-forward raw side probe
+is 0.60 m from `robot_base_link`; crab/reverse retains 1.20 m. With the radar
+grid's 0.30 m obstacle radius, a side hit near base-centred `|y|=1.0 m` stays
+clear during forward travel while a closer hit near `|y|=0.8 m` blocks.
+The disk diagnostic WARN threshold is 90% (ERROR remains 95%).
+
 <!-- HH_260724 - Clarify operator-visible manual driving and stop/cancel state. -->
 Manual ENGAGE without a campsite selection is shown as `Manual driving` in the
 robot UI. Operator stop/cancel clears active site buttons, cancels Nav2 and local

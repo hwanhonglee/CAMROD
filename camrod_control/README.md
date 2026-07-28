@@ -168,6 +168,11 @@ conflicting charging values from multiple publishers.
 
 `motion_cost_stop` checks live LiDAR/radar costs for forward, reverse, crab,
 and zero-turn commands, then holds a stop latch until the clear interval passes.
+<!-- HH_260728 - Document command-independent dynamic-obstacle latch release. -->
+The latch preserves the source and exact corridor/path/rotation probe that
+triggered the stop. Stop-induced zero commands, changed directions, replanning,
+or stale trigger-sensor data cannot count as clear; the configured clear window
+starts only on fresh clear grids for the saved hazard.
 Static lanelet checks are direction-configurable for
 site maneuvers. LiDAR/radar cost nodes first remove costs outside the active
 route lanelets plus `route_lanelet_margin_m` (0.35 m); live obstacle checks stay
@@ -175,11 +180,13 @@ active during configured static-cost maneuver exceptions.
 
 <!-- HH_260728 - Document the field-tuned straight-travel side guard separately
      from the deliberately wider maneuver envelope. -->
-Normal forward travel checks live side costs through the 0.75 m body-near
-distance, which covers the planning half-width plus raster allowance without
-letting farther side returns immobilize a narrow lane. Crab and reverse
-commands retain the 1.20 m side envelope, and a command toward either side
-remains blocked by radar/LiDAR cost in that maneuver envelope.
+Normal forward travel uses a 0.60 m raw side probe measured from
+`robot_base_link`, not an additional 0.60 m beyond the body edge. Radar then
+paints each return with `obstacle_radius_m: 0.30`; at the 0.10 m grid
+resolution, a base-centred side hit near `|y|=1.0 m` remains clear for forward
+travel while a closer hit near `|y|=0.8 m` overlaps the probe and blocks.
+Crab and reverse commands retain the 1.20 m side envelope, and a command toward
+either side remains blocked by radar/LiDAR cost in that maneuver envelope.
 
 <!-- HH_260727 - State that raw lanelet boundaries apply to the complete robot polygon. -->
 For raw lanelet/map-boundary cost, the gate checks the complete polygon from
