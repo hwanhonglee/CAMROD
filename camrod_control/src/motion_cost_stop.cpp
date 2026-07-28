@@ -56,9 +56,7 @@ void MotionCostStop::setConfig(const MotionCostStopConfig & config)
 {
   config_ = config;
   if (!config_.latch_enabled) {
-    latch_active_ = false;
-    clear_since_sec_.reset();
-    latch_reason_.clear();
+    clearLatch();
   }
 }
 
@@ -132,6 +130,16 @@ MotionCostStopDecision MotionCostStop::evaluate(
 {
   if (!config_.enabled) {
     return {};
+  }
+
+  // HH_260728 - A stop is released only by fresh clear evidence for the exact
+  // source and geometry that triggered it. The new command cannot substitute
+  // a zero/rotation corridor for the original front/side/rear hazard.
+  if (latch_active_) {
+    const auto latch_decision = evaluateLatchedHazard(now_sec);
+    if (latch_decision.blocked) {
+      return latch_decision;
+    }
   }
 
   // HH_260721 - Treat a missing or stale merged grid as a fail-closed motion condition.
@@ -311,7 +319,7 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
         corridor.threshold,
         route_reentry ? config_.lanelet_route_reentry_max_distance_m :
         config_.lanelet_path_max_start_distance_m,
-        config_.lanelet_stop_on_unknown);
+        config_.lanelet_stop_on_unknown, local_path_);
       if (path_sample.path_available) {
         if (!path_sample.hit.blocked) {
           continue;
@@ -365,13 +373,27 @@ MotionCostStopDecision MotionCostStop::evaluateDynamicSources(
       if (corridor.label == "FRONT" && config_.dynamic_front_use_local_path) {
         const auto path_sample = samplePathCorridor(
           source.second.grid, corridor.lookahead_m, config_.dynamic_front_path_width_m,
-          corridor.threshold, config_.dynamic_front_path_max_start_distance_m, false);
+          corridor.threshold, config_.dynamic_front_path_max_start_distance_m, false,
+          local_path_);
         if (path_sample.path_available) {
           if (!path_sample.hit.blocked) {
             continue;
           }
           const std::string reason = "dynamic_front_path:" + source.first;
-          markBlocked(reason, true, now_sec);
+          LatchContext context;
+          context.probe_kind = LatchProbeKind::kPath;
+          context.corridor = corridor;
+          context.path_snapshot = local_path_;
+          context.source_label = source.first;
+          context.source_receive_sec_at_trigger = source.second.receive_sec;
+          context.source_stamp_sec_at_trigger = messageStampSec(source.second.grid);
+          context.merged_receive_sec_at_trigger = merged_grid_.receive_sec;
+          context.merged_stamp_sec_at_trigger = messageStampSec(merged_grid_.grid);
+          context.path_width_m = config_.dynamic_front_path_width_m;
+          context.path_max_start_distance_m =
+            config_.dynamic_front_path_max_start_distance_m;
+          context.reason = reason;
+          activateLatch(std::move(context), now_sec);
           return {true, true, false, false, reason};
         }
       }
@@ -379,7 +401,16 @@ MotionCostStopDecision MotionCostStop::evaluateDynamicSources(
       const auto hit = sampleCorridor(source.second.grid, corridor, false);
       if (hit.blocked) {
         const std::string reason = "dynamic_" + normalizeLabel(corridor.label) + ":" + source.first;
-        markBlocked(reason, true, now_sec);
+        LatchContext context;
+        context.probe_kind = LatchProbeKind::kCorridor;
+        context.corridor = corridor;
+        context.source_label = source.first;
+        context.source_receive_sec_at_trigger = source.second.receive_sec;
+        context.source_stamp_sec_at_trigger = messageStampSec(source.second.grid);
+        context.merged_receive_sec_at_trigger = merged_grid_.receive_sec;
+        context.merged_stamp_sec_at_trigger = messageStampSec(merged_grid_.grid);
+        context.reason = reason;
+        activateLatch(std::move(context), now_sec);
         return {true, true, false, false, reason};
       }
     }
@@ -403,10 +434,13 @@ MotionCostStopDecision MotionCostStop::evaluateMergedGrid(
 
   for (const auto & corridor : corridors) {
     GridHit hit;
+    bool path_probe = false;
     if (corridor.label == "FRONT" && config_.dynamic_front_use_local_path) {
       const auto path_sample = samplePathCorridor(
         merged_grid_.grid, corridor.lookahead_m, config_.dynamic_front_path_width_m,
-        corridor.threshold, config_.dynamic_front_path_max_start_distance_m, false);
+        corridor.threshold, config_.dynamic_front_path_max_start_distance_m, false,
+        local_path_);
+      path_probe = path_sample.path_available;
       hit = path_sample.path_available ? path_sample.hit :
         sampleCorridor(merged_grid_.grid, corridor, false);
     } else {
@@ -414,19 +448,46 @@ MotionCostStopDecision MotionCostStop::evaluateMergedGrid(
     }
 
     if (hit.blocked) {
-      const bool dynamic_at_hit = sourceGridBlocksPoint(hit, corridor.threshold, now_sec);
+      const auto blocking_source = sourceGridBlockingPoint(hit, corridor.threshold, now_sec);
+      const bool dynamic_at_hit = blocking_source.has_value();
       if ((config_.require_dynamic_source || static_bypass) && !dynamic_at_hit) {
         continue;
       }
-      const std::string reason = "merged_" + normalizeLabel(corridor.label);
-      markBlocked(reason, true, now_sec);
+      const std::string reason = "merged_" + normalizeLabel(corridor.label) +
+        (blocking_source.has_value() ? ":" + *blocking_source : "");
+      LatchContext context;
+      context.probe_kind = path_probe ? LatchProbeKind::kPath : LatchProbeKind::kCorridor;
+      context.corridor = corridor;
+      context.path_snapshot = path_probe ? local_path_ : std::nullopt;
+      context.source_label = blocking_source;
+      if (blocking_source.has_value()) {
+        context.source_receive_sec_at_trigger =
+          source_grids_.at(*blocking_source).receive_sec;
+        context.source_stamp_sec_at_trigger =
+          messageStampSec(source_grids_.at(*blocking_source).grid);
+      }
+      context.merged_receive_sec_at_trigger = merged_grid_.receive_sec;
+      context.merged_stamp_sec_at_trigger = messageStampSec(merged_grid_.grid);
+      context.path_width_m = config_.dynamic_front_path_width_m;
+      context.path_max_start_distance_m =
+        config_.dynamic_front_path_max_start_distance_m;
+      context.probe_merged_grid = true;
+      context.reason = reason;
+      activateLatch(std::move(context), now_sec);
       return {true, dynamic_at_hit, false, false, reason};
     }
     if (corridor.check_unavoidable && config_.unavoidable_stop_enabled &&
       unavoidable(hit.lethal_cells, hit.total_cells))
     {
       const std::string reason = "dynamic_front_unavoidable";
-      markBlocked(reason, true, now_sec);
+      LatchContext context;
+      context.probe_kind = LatchProbeKind::kCorridor;
+      context.corridor = corridor;
+      context.merged_receive_sec_at_trigger = merged_grid_.receive_sec;
+      context.merged_stamp_sec_at_trigger = messageStampSec(merged_grid_.grid);
+      context.probe_merged_grid = true;
+      context.reason = reason;
+      activateLatch(std::move(context), now_sec);
       return {true, true, false, false, reason};
     }
   }
@@ -451,11 +512,84 @@ MotionCostStopDecision MotionCostStop::evaluateRotation(const double now_sec)
       config_.rotation_threshold);
     if (hit.blocked) {
       const std::string reason = "dynamic_rotation:" + source.first;
-      markBlocked(reason, true, now_sec);
+      LatchContext context;
+      context.probe_kind = LatchProbeKind::kRotation;
+      context.source_label = source.first;
+      context.source_receive_sec_at_trigger = source.second.receive_sec;
+      context.source_stamp_sec_at_trigger = messageStampSec(source.second.grid);
+      context.merged_receive_sec_at_trigger = merged_grid_.receive_sec;
+      context.merged_stamp_sec_at_trigger = messageStampSec(merged_grid_.grid);
+      context.rotation_radius_m = config_.rotation_radius_m;
+      context.rotation_threshold = config_.rotation_threshold;
+      context.reason = reason;
+      activateLatch(std::move(context), now_sec);
       return {true, true, false, false, reason};
     }
   }
   return {};
+}
+
+MotionCostStopDecision MotionCostStop::evaluateLatchedHazard(const double now_sec)
+{
+  if (!latch_context_.has_value()) {
+    return keepLatch("trigger_context_missing", now_sec, true);
+  }
+  const LatchContext & context = *latch_context_;
+  if (!latchEvidenceFresh(context, now_sec)) {
+    return keepLatch("trigger_evidence_not_fresh", now_sec, true);
+  }
+
+  const TimedGrid * probe_grid = nullptr;
+  if (context.probe_merged_grid) {
+    probe_grid = &merged_grid_;
+  } else if (context.source_label.has_value()) {
+    const auto source = source_grids_.find(*context.source_label);
+    if (source != source_grids_.end()) {
+      probe_grid = &source->second;
+    }
+  }
+  if (probe_grid == nullptr || !probe_grid->available || !validGrid(probe_grid->grid)) {
+    return keepLatch("trigger_grid_unavailable", now_sec, true);
+  }
+
+  GridHit hit;
+  if (context.probe_kind == LatchProbeKind::kRotation) {
+    hit = sampleDisk(
+      probe_grid->grid, std::max(0.05, context.rotation_radius_m),
+      context.rotation_threshold);
+  } else if (context.probe_kind == LatchProbeKind::kPath) {
+    const auto path_sample = samplePathCorridor(
+      probe_grid->grid, context.corridor.lookahead_m,
+      context.path_width_m, context.corridor.threshold,
+      context.path_max_start_distance_m, false,
+      context.path_snapshot);
+    if (!path_sample.path_available) {
+      return keepLatch("trigger_path_unavailable", now_sec, true);
+    }
+    hit = path_sample.hit;
+  } else {
+    hit = sampleCorridor(probe_grid->grid, context.corridor, false);
+  }
+
+  if (hit.blocked) {
+    // HH_260728 - Refresh the trigger timestamps only while the saved hazard is
+    // still occupied. A later clear frame must be newer than this evidence.
+    LatchContext refreshed = context;
+    refreshed.merged_receive_sec_at_trigger = merged_grid_.receive_sec;
+    refreshed.merged_stamp_sec_at_trigger = messageStampSec(merged_grid_.grid);
+    if (refreshed.source_label.has_value()) {
+      const auto source = source_grids_.find(*refreshed.source_label);
+      if (source != source_grids_.end()) {
+        refreshed.source_receive_sec_at_trigger = source->second.receive_sec;
+        refreshed.source_stamp_sec_at_trigger = messageStampSec(source->second.grid);
+      }
+    }
+    const std::string reason = refreshed.reason;
+    activateLatch(std::move(refreshed), now_sec);
+    return {true, true, false, false, reason};
+  }
+
+  return evaluateLatch(now_sec);
 }
 
 MotionCostStopDecision MotionCostStop::evaluateLatch(const double now_sec)
@@ -464,22 +598,176 @@ MotionCostStopDecision MotionCostStop::evaluateLatch(const double now_sec)
     return {};
   }
   if (!config_.latch_enabled || config_.clear_required_s <= 0.0) {
-    latch_active_ = false;
-    clear_since_sec_.reset();
-    latch_reason_.clear();
+    hold_until_sec_ = std::max(
+      hold_until_sec_, now_sec + std::max(0.0, config_.stop_hold_s));
+    clearLatch();
     return {};
   }
   if (!clear_since_sec_.has_value()) {
     clear_since_sec_ = now_sec;
+    const double merged_stamp_sec = messageStampSec(merged_grid_.grid);
+    clear_merged_evidence_start_sec_ =
+      merged_stamp_sec > 0.0 ? merged_stamp_sec : merged_grid_.receive_sec;
+    clear_source_evidence_start_sec_.reset();
+    if (latch_context_.has_value() && latch_context_->source_label.has_value()) {
+      const auto source = source_grids_.find(*latch_context_->source_label);
+      if (source != source_grids_.end()) {
+        const double source_stamp_sec = messageStampSec(source->second.grid);
+        clear_source_evidence_start_sec_ =
+          source_stamp_sec > 0.0 ? source_stamp_sec : source->second.receive_sec;
+      }
+    }
   }
   if (now_sec - *clear_since_sec_ >= config_.clear_required_s) {
-    latch_active_ = false;
-    clear_since_sec_.reset();
-    latch_reason_.clear();
+    const auto evidence_sec = [](const TimedGrid & timed_grid) {
+        const double stamp_sec = messageStampSec(timed_grid.grid);
+        return stamp_sec > 0.0 ? stamp_sec : timed_grid.receive_sec;
+      };
+    const bool merged_advanced =
+      clear_merged_evidence_start_sec_.has_value() &&
+      evidence_sec(merged_grid_) > *clear_merged_evidence_start_sec_;
+    bool source_advanced = true;
+    if (latch_context_.has_value() && latch_context_->source_label.has_value()) {
+      const auto source = source_grids_.find(*latch_context_->source_label);
+      source_advanced =
+        source != source_grids_.end() &&
+        clear_source_evidence_start_sec_.has_value() &&
+        evidence_sec(source->second) > *clear_source_evidence_start_sec_;
+    }
+    // HH_260728 - A single clear grid cannot prove a continuous-clear window,
+    // even when clear_required_s is tuned below the grid freshness timeout.
+    if (!merged_advanced || !source_advanced) {
+      return keepLatch("clear_evidence_not_advanced", now_sec, false);
+    }
+    // HH_260728 - Start the configured post-clear hold at confirmed release,
+    // rather than inheriting a nearly expired hold from the previous callback.
+    hold_until_sec_ = std::max(
+      hold_until_sec_, now_sec + std::max(0.0, config_.stop_hold_s));
+    clearLatch();
     return {};
   }
-  hold_until_sec_ = std::max(hold_until_sec_, now_sec + std::max(0.0, config_.stop_hold_s));
-  return {true, true, false, false, "cost_stop_latched:" + latch_reason_};
+  return keepLatch("", now_sec, false);
+}
+
+MotionCostStopDecision MotionCostStop::keepLatch(
+  const std::string & detail,
+  const double now_sec,
+  const bool reset_clear_timer)
+{
+  if (reset_clear_timer) {
+    clear_since_sec_.reset();
+    clear_merged_evidence_start_sec_.reset();
+    clear_source_evidence_start_sec_.reset();
+  }
+  hold_until_sec_ = std::max(
+    hold_until_sec_, now_sec + std::max(0.0, config_.stop_hold_s));
+  std::string reason = "cost_stop_latched:" + latch_reason_;
+  if (!detail.empty()) {
+    reason += ":" + detail;
+  }
+  return {true, true, false, false, reason};
+}
+
+bool MotionCostStop::latchEvidenceFresh(
+  const LatchContext & context,
+  const double now_sec) const
+{
+  if (!pose_.has_value() || !merged_grid_.available || !validGrid(merged_grid_.grid)) {
+    return false;
+  }
+  const auto frame_matches_pose = [this](const TimedGrid & timed_grid) {
+      return pose_->frame_id.empty() || timed_grid.grid.header.frame_id.empty() ||
+             pose_->frame_id == timed_grid.grid.header.frame_id;
+    };
+  const auto timestamp_is_fresh = [now_sec](
+    const TimedGrid & timed_grid, const double timeout_s)
+    {
+      const double stamp_sec = messageStampSec(timed_grid.grid);
+      return stamp_sec <= 0.0 || timeout_s <= 0.0 ||
+             std::max(0.0, now_sec - stamp_sec) <= timeout_s;
+    };
+  const auto evidence_advanced = [](
+    const TimedGrid & timed_grid,
+    const double trigger_receive_sec,
+    const double trigger_stamp_sec)
+    {
+      const double current_stamp_sec = messageStampSec(timed_grid.grid);
+      if (current_stamp_sec > 0.0 && trigger_stamp_sec > 0.0) {
+        return current_stamp_sec > trigger_stamp_sec;
+      }
+      return timed_grid.receive_sec > trigger_receive_sec;
+    };
+  if (!frame_matches_pose(merged_grid_)) {
+    return false;
+  }
+  if (context.merged_stamp_sec_at_trigger > 0.0 &&
+    messageStampSec(merged_grid_.grid) <= 0.0)
+  {
+    return false;
+  }
+  if (config_.stale_timeout_s > 0.0 &&
+    (std::max(0.0, now_sec - merged_grid_.receive_sec) > config_.stale_timeout_s ||
+    !timestamp_is_fresh(merged_grid_, config_.stale_timeout_s)))
+  {
+    return false;
+  }
+  if (!clear_since_sec_.has_value() &&
+    !evidence_advanced(
+      merged_grid_, context.merged_receive_sec_at_trigger,
+      context.merged_stamp_sec_at_trigger))
+  {
+    return false;
+  }
+
+  if (!context.source_label.has_value()) {
+    return true;
+  }
+  const auto source = source_grids_.find(*context.source_label);
+  if (source == source_grids_.end() || !source->second.available ||
+    !validGrid(source->second.grid) || !frame_matches_pose(source->second))
+  {
+    return false;
+  }
+  if (context.source_stamp_sec_at_trigger > 0.0 &&
+    messageStampSec(source->second.grid) <= 0.0)
+  {
+    return false;
+  }
+  if (config_.source_max_age_s > 0.0 &&
+    (std::max(0.0, now_sec - source->second.receive_sec) > config_.source_max_age_s ||
+    !timestamp_is_fresh(source->second, config_.source_max_age_s)))
+  {
+    return false;
+  }
+  return clear_since_sec_.has_value() ||
+         evidence_advanced(
+    source->second, context.source_receive_sec_at_trigger,
+    context.source_stamp_sec_at_trigger);
+}
+
+void MotionCostStop::activateLatch(LatchContext context, const double now_sec)
+{
+  hold_until_sec_ = std::max(
+    hold_until_sec_, now_sec + std::max(0.0, config_.stop_hold_s));
+  if (!config_.latch_enabled) {
+    return;
+  }
+  latch_reason_ = context.reason;
+  latch_context_ = std::move(context);
+  latch_active_ = true;
+  clear_since_sec_.reset();
+  clear_merged_evidence_start_sec_.reset();
+  clear_source_evidence_start_sec_.reset();
+}
+
+void MotionCostStop::clearLatch()
+{
+  latch_active_ = false;
+  latch_context_.reset();
+  clear_since_sec_.reset();
+  clear_merged_evidence_start_sec_.reset();
+  clear_source_evidence_start_sec_.reset();
+  latch_reason_.clear();
 }
 
 std::vector<MotionCostStop::Corridor> MotionCostStop::corridorsForCommand(
@@ -754,23 +1042,24 @@ MotionCostStop::PathSample MotionCostStop::samplePathCorridor(
   const double width_m,
   const int threshold,
   const double max_start_distance_m,
-  const bool stop_on_unknown) const
+  const bool stop_on_unknown,
+  const std::optional<avg_msgs::msg::AvgPath> & path) const
 {
   PathSample output;
-  if (!pose_.has_value() || !local_path_.has_value() ||
-    local_path_->poses.size() < 2U || !validGrid(grid))
+  if (!pose_.has_value() || !path.has_value() ||
+    path->poses.size() < 2U || !validGrid(grid))
   {
     return output;
   }
-  if (!local_path_->header.frame_id.empty() && !grid.header.frame_id.empty() &&
-    local_path_->header.frame_id != grid.header.frame_id)
+  if (!path->header.frame_id.empty() && !grid.header.frame_id.empty() &&
+    path->header.frame_id != grid.header.frame_id)
   {
     return output;
   }
 
   std::vector<std::pair<double, double>> points;
-  points.reserve(local_path_->poses.size());
-  for (const auto & stamped_pose : local_path_->poses) {
+  points.reserve(path->poses.size());
+  for (const auto & stamped_pose : path->poses) {
     const double x = stamped_pose.pose.position.x;
     const double y = stamped_pose.pose.position.y;
     if (std::isfinite(x) && std::isfinite(y)) {
@@ -878,7 +1167,7 @@ bool MotionCostStop::sourceIsDynamic(const std::string & label) const
   return labelMatches(normalizeLabel(label), config_.dynamic_source_labels);
 }
 
-bool MotionCostStop::sourceGridBlocksPoint(
+std::optional<std::string> MotionCostStop::sourceGridBlockingPoint(
   const GridHit & hit, const int threshold, const double now_sec) const
 {
   for (const auto & source : source_grids_) {
@@ -889,10 +1178,10 @@ bool MotionCostStop::sourceGridBlocksPoint(
       continue;
     }
     if (sampleGridCost(source.second.grid, hit.world_x, hit.world_y) >= threshold) {
-      return true;
+      return source.first;
     }
   }
-  return false;
+  return std::nullopt;
 }
 
 bool MotionCostStop::staticBypassActive(const avg_msgs::msg::AvgTwist & command) const
@@ -1008,6 +1297,12 @@ std::pair<double, double> MotionCostStop::gridToWorld(
   return {
     grid.info.origin.position.x + std::cos(yaw) * local_x - std::sin(yaw) * local_y,
     grid.info.origin.position.y + std::sin(yaw) * local_x + std::cos(yaw) * local_y};
+}
+
+double MotionCostStop::messageStampSec(const avg_msgs::msg::AvgOccupancyGrid & grid)
+{
+  return static_cast<double>(grid.header.stamp.sec) +
+         static_cast<double>(grid.header.stamp.nanosec) * 1.0e-9;
 }
 
 double MotionCostStop::yawFromGridOrigin(const avg_msgs::msg::AvgOccupancyGrid & grid)

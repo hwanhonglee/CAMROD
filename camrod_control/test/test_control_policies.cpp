@@ -53,6 +53,46 @@ avg_msgs::msg::AvgOccupancyGrid makeGrid(
   return grid;
 }
 
+avg_msgs::msg::AvgOccupancyGrid makeRadarDiskCostGrid(
+  const double center_x,
+  const double center_y,
+  const double radius_m,
+  const int cost = 90,
+  const double resolution = 0.1)
+{
+  auto grid = makeGrid({}, resolution);
+  const int center_grid_x = static_cast<int>(
+    std::floor((center_x - grid.info.origin.position.x) / resolution));
+  const int center_grid_y = static_cast<int>(
+    std::floor((center_y - grid.info.origin.position.y) / resolution));
+  const int radius_cells = static_cast<int>(std::ceil(radius_m / resolution));
+  // HH_260728 - Match radar_cost_grid_node::markDisk exactly: the live node
+  // rasterizes a cell-radius circle around the cell containing the raw return.
+  for (int dy = -radius_cells; dy <= radius_cells; ++dy) {
+    for (int dx = -radius_cells; dx <= radius_cells; ++dx) {
+      if (dx * dx + dy * dy > radius_cells * radius_cells) {
+        continue;
+      }
+      const int x = center_grid_x + dx;
+      const int y = center_grid_y + dy;
+      if (x >= 0 && y >= 0 && x < static_cast<int>(grid.info.width) &&
+        y < static_cast<int>(grid.info.height))
+      {
+        grid.data[y * static_cast<int>(grid.info.width) + x] = cost;
+      }
+    }
+  }
+  return grid;
+}
+
+void setGridStamp(avg_msgs::msg::AvgOccupancyGrid & grid, const double stamp_sec)
+{
+  const double integral = std::floor(stamp_sec);
+  grid.header.stamp.sec = static_cast<std::int32_t>(integral);
+  grid.header.stamp.nanosec =
+    static_cast<std::uint32_t>(std::llround((stamp_sec - integral) * 1.0e9));
+}
+
 avg_msgs::msg::AvgPath makePath(const std::vector<std::pair<double, double>> & points)
 {
   avg_msgs::msg::AvgPath path;
@@ -447,18 +487,18 @@ TEST(MotionCostStop, ClearAvoidancePathPassesAndBlockedPathStops)
   EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.1).blocked);
 }
 
-// HH_260728 - A forward command should not stop for a side return outside the
-// planning footprint plus clearance. The same return must remain blocking when
-// the robot is commanded toward it laterally.
+// HH_260728 - Model the live radar cost disk, not a single occupied pixel. A
+// return centered 1.0 m to the side must pass during forward travel after its
+// 0.30 m inflation, while the same return remains blocking for a lateral move.
 TEST(MotionCostStop, ForwardUsesNarrowBodySideCheckButManeuverKeepsWideProtection)
 {
   auto config = baseCostConfig();
   config.body_near_enabled = true;
-  config.body_near_side_m = 0.75;
+  config.body_near_side_m = 0.60;
   config.maneuver_body_near_side_m = 1.20;
   config.side_width_m = 1.69160;
 
-  const auto outside_forward_clearance = makeGrid({{0.0, 0.8, 90}});
+  const auto outside_forward_clearance = makeRadarDiskCostGrid(0.0, 1.0, 0.30);
   auto forward_stop = makeMotionCostStop(config);
   forward_stop.setMergedGrid(outside_forward_clearance, 0.0);
   forward_stop.setSourceGrid("radar", outside_forward_clearance, 0.0);
@@ -471,7 +511,7 @@ TEST(MotionCostStop, ForwardUsesNarrowBodySideCheckButManeuverKeepsWideProtectio
   EXPECT_TRUE(lateral_decision.blocked);
   EXPECT_NE(lateral_decision.reason.find("left"), std::string::npos);
 
-  const auto inside_forward_clearance = makeGrid({{0.0, 0.6, 90}});
+  const auto inside_forward_clearance = makeRadarDiskCostGrid(0.0, 0.8, 0.30);
   auto close_stop = makeMotionCostStop(config);
   close_stop.setMergedGrid(inside_forward_clearance, 0.0);
   close_stop.setSourceGrid("radar", inside_forward_clearance, 0.0);
@@ -489,9 +529,181 @@ TEST(MotionCostStop, DynamicLatchNeedsContinuousClearWindow)
   EXPECT_TRUE(cost_stop.latched());
   cost_stop.setMergedGrid(makeGrid(), 0.1);
   EXPECT_TRUE(cost_stop.evaluate(command(0.2), 0.1).blocked);
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.2), 1.0).blocked);
+  cost_stop.setMergedGrid(makeGrid(), 2.0);
   EXPECT_TRUE(cost_stop.evaluate(command(0.2), 2.0).blocked);
+  cost_stop.setMergedGrid(makeGrid(), 2.2);
   EXPECT_FALSE(cost_stop.evaluate(command(0.2), 2.2).blocked);
   EXPECT_FALSE(cost_stop.latched());
+}
+
+TEST(MotionCostStop, LatchedFrontObstacleIgnoresZeroAndChangedDirectionCommands)
+{
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.latch_enabled = true;
+  config.clear_required_s = 2.0;
+  config.rotation_radius_m = 1.5;
+  auto cost_stop = makeMotionCostStop(config);
+  const auto front_obstacle = makeGrid({{1.8, 0.0, 90}});
+  cost_stop.setMergedGrid(front_obstacle, 0.0);
+  cost_stop.setSourceGrid("radar", front_obstacle, 0.0);
+
+  ASSERT_TRUE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+  ASSERT_TRUE(cost_stop.latched());
+
+  // HH_260728 - Reproduce the field stop/go cycle: upstream changes the command
+  // after a stop, but the original FRONT corridor must remain the release probe.
+  const std::vector<avg_msgs::msg::AvgTwist> changed_commands{
+    command(0.0), command(-0.2), command(0.0, 0.2), command(0.0, 0.0, 0.3)};
+  const std::vector<double> times{0.5, 1.5, 2.5, 3.5};
+  for (std::size_t index = 0; index < times.size(); ++index) {
+    cost_stop.setMergedGrid(front_obstacle, times[index]);
+    cost_stop.setSourceGrid("radar", front_obstacle, times[index]);
+    EXPECT_TRUE(cost_stop.evaluate(changed_commands[index], times[index]).blocked);
+    EXPECT_TRUE(cost_stop.latched());
+  }
+}
+
+TEST(MotionCostStop, StaleTriggerSourceCannotProveLatchClear)
+{
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.latch_enabled = true;
+  config.clear_required_s = 2.0;
+  config.source_max_age_s = 1.0;
+  auto cost_stop = makeMotionCostStop(config);
+  const auto front_obstacle = makeGrid({{1.8, 0.0, 90}});
+  cost_stop.setMergedGrid(front_obstacle, 0.0);
+  cost_stop.setSourceGrid("radar", front_obstacle, 0.0);
+  ASSERT_TRUE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+
+  // HH_260728 - A fresh merged clear grid is insufficient when the radar that
+  // triggered the stop has stopped publishing; absence of evidence is fail-closed.
+  for (const double now_sec : {0.5, 1.5, 2.5, 3.5}) {
+    cost_stop.setMergedGrid(makeGrid(), now_sec);
+    EXPECT_TRUE(cost_stop.evaluate(command(0.0), now_sec).blocked);
+    EXPECT_TRUE(cost_stop.latched());
+  }
+}
+
+TEST(MotionCostStop, FreshTriggerSourceClearReleasesLatchAndStartsHold)
+{
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.latch_enabled = true;
+  config.clear_required_s = 2.0;
+  config.stop_hold_s = 1.0;
+  auto cost_stop = makeMotionCostStop(config);
+  const auto front_obstacle = makeGrid({{1.8, 0.0, 90}});
+  cost_stop.setMergedGrid(front_obstacle, 0.0);
+  cost_stop.setSourceGrid("radar", front_obstacle, 0.0);
+  ASSERT_TRUE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+
+  // HH_260728 - Only continuously fresh clear frames from both the trigger
+  // source and merged grid advance the release timer.
+  for (const double now_sec : {0.1, 1.0, 2.0}) {
+    const auto clear_grid = makeGrid();
+    cost_stop.setMergedGrid(clear_grid, now_sec);
+    cost_stop.setSourceGrid("radar", clear_grid, now_sec);
+    EXPECT_TRUE(cost_stop.evaluate(command(0.0), now_sec).blocked);
+    EXPECT_TRUE(cost_stop.latched());
+  }
+  const auto clear_grid = makeGrid();
+  cost_stop.setMergedGrid(clear_grid, 2.2);
+  cost_stop.setSourceGrid("radar", clear_grid, 2.2);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0), 2.2).blocked);
+  EXPECT_FALSE(cost_stop.latched());
+  EXPECT_GE(cost_stop.holdUntilSec(), 3.2);
+}
+
+TEST(MotionCostStop, TriggerPathSnapshotSurvivesReplanWhileLatched)
+{
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.latch_enabled = true;
+  config.dynamic_front_use_local_path = true;
+  auto cost_stop = makeMotionCostStop(config);
+  const auto front_obstacle = makeGrid({{1.8, 0.0, 90}});
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {2.0, 0.0}}));
+  cost_stop.setMergedGrid(front_obstacle, 0.0);
+  cost_stop.setSourceGrid("radar", front_obstacle, 0.0);
+  ASSERT_TRUE(cost_stop.evaluate(command(0.2), 0.0).blocked);
+
+  // HH_260728 - Replanning around the stopped robot cannot erase the physical
+  // obstacle that caused the latch; its original path probe remains authoritative.
+  cost_stop.setLocalPath(makePath({{0.0, 0.0}, {0.5, 0.8}, {2.0, 0.8}}));
+  cost_stop.setMergedGrid(front_obstacle, 2.5);
+  cost_stop.setSourceGrid("radar", front_obstacle, 2.5);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0), 2.5).blocked);
+  EXPECT_TRUE(cost_stop.latched());
+}
+
+TEST(MotionCostStop, ZeroStampedOrReplayedClearGridCannotReleaseLatch)
+{
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.latch_enabled = true;
+  config.clear_required_s = 0.5;
+  config.stale_timeout_s = 1.0;
+  config.source_max_age_s = 1.0;
+  auto cost_stop = makeMotionCostStop(config);
+
+  auto obstacle = makeGrid({{1.8, 0.0, 90}});
+  setGridStamp(obstacle, 10.0);
+  cost_stop.setMergedGrid(obstacle, 10.0);
+  cost_stop.setSourceGrid("radar", obstacle, 10.0);
+  ASSERT_TRUE(cost_stop.evaluate(command(0.2), 10.0).blocked);
+
+  const auto zero_stamped_clear = makeGrid();
+  cost_stop.setMergedGrid(zero_stamped_clear, 10.1);
+  cost_stop.setSourceGrid("radar", zero_stamped_clear, 10.1);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0), 10.1).blocked);
+  EXPECT_TRUE(cost_stop.latched());
+
+  auto replayed_clear = makeGrid();
+  setGridStamp(replayed_clear, 10.1);
+  // HH_260728 - Receiving the same old clear payload again may refresh the
+  // callback time, but it cannot satisfy a continuous-new-evidence window.
+  cost_stop.setMergedGrid(replayed_clear, 10.2);
+  cost_stop.setSourceGrid("radar", replayed_clear, 10.2);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0), 10.2).blocked);
+  cost_stop.setMergedGrid(replayed_clear, 10.8);
+  cost_stop.setSourceGrid("radar", replayed_clear, 10.8);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0), 10.8).blocked);
+  EXPECT_TRUE(cost_stop.latched());
+
+  auto fresh_clear = makeGrid();
+  setGridStamp(fresh_clear, 10.8);
+  cost_stop.setMergedGrid(fresh_clear, 10.8);
+  cost_stop.setSourceGrid("radar", fresh_clear, 10.8);
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0), 10.8).blocked);
+  EXPECT_FALSE(cost_stop.latched());
+}
+
+TEST(MotionCostStop, RotationLatchKeepsTriggerGeometryAfterDynamicRetune)
+{
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.latch_enabled = true;
+  config.rotation_radius_m = 1.5;
+  config.rotation_threshold = 85;
+  auto cost_stop = makeMotionCostStop(config);
+  const auto obstacle = makeGrid({{1.0, 0.0, 90}});
+  cost_stop.setMergedGrid(obstacle, 0.0);
+  cost_stop.setSourceGrid("radar", obstacle, 0.0);
+  ASSERT_TRUE(cost_stop.evaluate(command(0.0, 0.0, 0.2), 0.0).blocked);
+
+  // HH_260728 - A dynamic UI retune applies to the next trigger; it cannot
+  // shrink the saved release probe for an obstacle that is already latched.
+  config.rotation_radius_m = 0.2;
+  config.rotation_threshold = 100;
+  cost_stop.setConfig(config);
+  cost_stop.setMergedGrid(obstacle, 0.5);
+  cost_stop.setSourceGrid("radar", obstacle, 0.5);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0), 0.5).blocked);
+  EXPECT_TRUE(cost_stop.latched());
 }
 
 TEST(MotionCostStop, MissingAndStaleMergedGridFailClosed)

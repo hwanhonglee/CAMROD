@@ -264,6 +264,8 @@ bringup:
     cmd_vel_gate_cost_hold_s: 1.0
     # HH_260703 - Keep dynamic obstacle stops latched until perception/radar report
     # a continuous clear corridor; this prevents field stop/go oscillation.
+    # HH_260728 - "Clear" refers to the original trigger source and geometry,
+    # never the zero or changed-direction command produced after the stop.
     cmd_vel_gate_cost_stop_latch_enable: true
     cmd_vel_gate_cost_stop_clear_required_s: 2.0
     cmd_vel_gate_cost_stop_latch_log_interval_s: 1.0
@@ -343,8 +345,9 @@ bringup:
     # HH_260707 - Side/rear dynamic guards include sensor mounting offset plus
     # SEN0592 detection range; shorter center-based windows missed side radar hits.
     cmd_vel_gate_body_near_dynamic_stop: true
-    # HH_260728 - Normal forward travel uses 0.75 m; crab/reverse remains 1.20 m.
-    cmd_vel_gate_body_near_side_lookahead_m: 0.75
+    # HH_260728 - With the radar grid's 0.30 m obstacle disk, the 0.60 m raw
+    # forward probe excludes a base-centred 1.0 m side return. Maneuvers stay 1.20 m.
+    cmd_vel_gate_body_near_side_lookahead_m: 0.60
     cmd_vel_gate_body_near_rear_lookahead_m: 0.80
     # HH_260707 - Crab/reverse still use dynamic-source attribution, so keeping
     # the same physical radar envelope does not re-enable static lanelet stops.

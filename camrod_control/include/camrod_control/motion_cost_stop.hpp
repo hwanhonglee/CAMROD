@@ -51,7 +51,7 @@ struct MotionCostStopConfig
 
   bool side_rear_enabled{true};
   bool body_near_enabled{true};
-  double body_near_side_m{1.20};
+  double body_near_side_m{0.60};
   double body_near_rear_m{0.80};
   double maneuver_body_near_side_m{1.20};
   double maneuver_body_near_rear_m{0.80};
@@ -191,6 +191,33 @@ private:
     GridHit hit;
   };
 
+  enum class LatchProbeKind
+  {
+    kCorridor,
+    kPath,
+    kRotation
+  };
+
+  // HH_260728 - Preserve the exact dynamic hazard that started a stop. Incoming
+  // zero or changed-direction commands must not redefine what "clear" means.
+  struct LatchContext
+  {
+    LatchProbeKind probe_kind{LatchProbeKind::kCorridor};
+    Corridor corridor;
+    std::optional<avg_msgs::msg::AvgPath> path_snapshot;
+    std::optional<std::string> source_label;
+    double source_receive_sec_at_trigger{0.0};
+    double source_stamp_sec_at_trigger{0.0};
+    double merged_receive_sec_at_trigger{0.0};
+    double merged_stamp_sec_at_trigger{0.0};
+    double path_width_m{0.0};
+    double path_max_start_distance_m{0.0};
+    double rotation_radius_m{0.0};
+    int rotation_threshold{85};
+    bool probe_merged_grid{false};
+    std::string reason;
+  };
+
   MotionCostStopDecision evaluateLanelet(const avg_msgs::msg::AvgTwist & command, double now_sec);
   MotionCostStopDecision evaluateDynamicSources(
     const std::vector<Corridor> & corridors,
@@ -200,7 +227,15 @@ private:
     bool static_bypass,
     double now_sec);
   MotionCostStopDecision evaluateRotation(double now_sec);
+  MotionCostStopDecision evaluateLatchedHazard(double now_sec);
   MotionCostStopDecision evaluateLatch(double now_sec);
+  MotionCostStopDecision keepLatch(
+    const std::string & detail,
+    double now_sec,
+    bool reset_clear_timer);
+  bool latchEvidenceFresh(const LatchContext & context, double now_sec) const;
+  void activateLatch(LatchContext context, double now_sec);
+  void clearLatch();
   std::vector<Corridor> corridorsForCommand(const avg_msgs::msg::AvgTwist & command) const;
   GridHit sampleCorridor(
     const avg_msgs::msg::AvgOccupancyGrid & grid,
@@ -220,10 +255,14 @@ private:
     double width_m,
     int threshold,
     double max_start_distance_m,
-    bool stop_on_unknown) const;
+    bool stop_on_unknown,
+    const std::optional<avg_msgs::msg::AvgPath> & path) const;
   std::optional<double> closestPathDistance() const;
   bool sourceIsDynamic(const std::string & label) const;
-  bool sourceGridBlocksPoint(const GridHit & hit, int threshold, double now_sec) const;
+  std::optional<std::string> sourceGridBlockingPoint(
+    const GridHit & hit,
+    int threshold,
+    double now_sec) const;
   bool staticBypassActive(const avg_msgs::msg::AvgTwist & command) const;
   bool laneletStaticBypassActive(const avg_msgs::msg::AvgTwist & command) const;
   bool translational(const avg_msgs::msg::AvgTwist & command) const;
@@ -240,6 +279,7 @@ private:
     const avg_msgs::msg::AvgOccupancyGrid & grid,
     int grid_x,
     int grid_y);
+  static double messageStampSec(const avg_msgs::msg::AvgOccupancyGrid & grid);
   static double yawFromGridOrigin(const avg_msgs::msg::AvgOccupancyGrid & grid);
 
   MotionCostStopConfig config_;
@@ -255,7 +295,10 @@ private:
   std::string drop_zone_phase_;
   std::string campsite_phase_;
   bool latch_active_{false};
+  std::optional<LatchContext> latch_context_;
   std::optional<double> clear_since_sec_;
+  std::optional<double> clear_merged_evidence_start_sec_;
+  std::optional<double> clear_source_evidence_start_sec_;
   double hold_until_sec_{0.0};
   std::string latch_reason_;
 };

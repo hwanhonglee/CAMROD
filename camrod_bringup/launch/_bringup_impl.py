@@ -864,6 +864,8 @@ def generate_launch_description():
         ),
         # HH_260703 - Dynamic obstacle stops should not release on single-frame
         # sensor flicker; require a continuous clear window before re-enabling.
+        # HH_260728 - The gate retains the original trigger source/path/corridor,
+        # so a stop-induced zero command cannot advance the clear window.
         (
             'control_cmd_vel_gate_cost_stop_latch_enable',
             cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_stop_latch_enable', True),
@@ -1134,9 +1136,8 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_body_near_side_lookahead_m',
-            # HH_260728 - Match source/bringup YAML for normal forward travel;
-            # maneuver_body_near_side keeps the separate 1.20 m envelope.
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_body_near_side_lookahead_m', 0.75),
+            # HH_260728 - Match the inflation-aware source/bringup forward probe.
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_body_near_side_lookahead_m', 0.60),
             'Near-body side dynamic stop distance (m)',
         ),
         (
