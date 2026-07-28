@@ -10,6 +10,7 @@ CAMROD voice announcement module. It plays pre-recorded WAV files through a prio
 camrod_voice/
 ├── CMakeLists.txt
 ├── package.xml
+├── setup_bt_audio.sh
 ├── config/
 │   └── voice_event_adapter.yaml
 ├── include/voice_announcer/
@@ -89,6 +90,21 @@ ros2 launch camrod_voice voice.launch.py voice_namespace:=voice locale:=ko-KR
 ```
 
 System dependencies: `libsdl2-dev`, `libsdl2-mixer-dev`. `setup_camrod.sh` installs them when apt is available. On machines without `SDL2_mixer`, `colcon_build.sh` skips `camrod_voice` so other packages can still build.
+
+## Bluetooth amplifier provisioning
+
+<!-- HH_260728 - Document the opt-in system service helper and its safety boundary. -->
+`setup_bt_audio.sh` registers one already-paired Bluetooth audio amplifier as a
+systemd reconnect service. It is an explicit administrator action and is not
+started by ROS bringup:
+
+```bash
+sudo ./setup_bt_audio.sh AA:BB:CC:DD:EE:FF "CamrodAmp"
+```
+
+The MAC address and device name are validated before any system file is
+written. The installed copy is available under
+`share/camrod_voice/scripts/setup_bt_audio.sh`.
 
 ## 2026-06-17 Runtime Update
 

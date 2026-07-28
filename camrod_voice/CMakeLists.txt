@@ -72,6 +72,13 @@ install(PROGRAMS
   RENAME voice_event_adapter_node
 )
 
+# HH_260728 - Install the audited Bluetooth amplifier provisioning helper as
+# an explicit administrator tool; it is never run automatically by bringup.
+install(PROGRAMS
+  setup_bt_audio.sh
+  DESTINATION share/${PROJECT_NAME}/scripts
+)
+
 # ── Install launch / config / resource ───────────────────────────────────────
 install(DIRECTORY launch/   DESTINATION share/${PROJECT_NAME}/launch)
 install(DIRECTORY config/   DESTINATION share/${PROJECT_NAME}/config)
