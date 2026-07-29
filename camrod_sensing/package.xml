@@ -12,6 +12,8 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
+  <!-- HH_260729 - SEN0592 startup-only parameter descriptors use this message API directly. -->
+  <depend>rcl_interfaces</depend>
   <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
   <depend>visualization_msgs</depend>
@@ -20,6 +22,8 @@
   <depend>tf2</depend>
   <depend>tf2_ros</depend>
   <depend>tf2_geometry_msgs</depend>
+  <!-- HH_260729 - Lightweight disabled-hardware publishers use rclpy with the
+       same avg_msgs/sensor_msgs boundaries as the physical sensor drivers. -->
   <depend>rclpy</depend>
   <depend>avg_msgs</depend>
   <depend>pcl_conversions</depend>
@@ -47,6 +51,12 @@
   <test_depend>ament_cmake_gtest</test_depend>
   <!-- HH_260722 - Unit-test GNSS launch routing without connected hardware. -->
   <test_depend>ament_cmake_pytest</test_depend>
+  <!-- HH_260729 - Radar/GNSS configuration synchronization tests parse YAML. -->
+  <test_depend>python3-yaml</test_depend>
+  <!-- HH_260729 - Decode the embedded camera dummy JPEG with the same OpenCV
+       boundary used by cv_bridge/YOLO. -->
+  <test_depend>python3-opencv</test_depend>
+  <test_depend>python3-numpy</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

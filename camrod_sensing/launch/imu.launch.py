@@ -90,47 +90,53 @@ def generate_launch_description():
             # HH_260720 - Both CV7 and GQ7 drivers publish standard ROS IMU on data_ros.
             SetRemap(src='imu/data', dst='data_ros'),
 
-            # ── CV7 model (direct node launch, respawn for serial lock recovery) ───
+            # HH_260729: `enable_imu` owns only the physical acquisition stack.
+            # Keep the velocity converter alive when the driver is disabled so
+            # the explicit stationary dummy `data_ros` stream still produces the
+            # same canonical AvgImu/twist contracts as real hardware.
             GroupAction([
-                SetRemap(src='/ekf/status', dst='ekf/status'),
+                # ── CV7 model (direct node launch, respawn for serial lock recovery) ───
+                GroupAction([
+                    SetRemap(src='/ekf/status', dst='ekf/status'),
+                    Node(
+                        package='microstrain_inertial_driver',
+                        executable='microstrain_inertial_driver_node',
+                        name='microstrain_inertial_driver',
+                        output='screen',
+                        parameters=[
+                            microstrain_default_params,
+                            LaunchConfiguration('_imu_param_file_resolved'),
+                        ],
+                        respawn=True,
+                        respawn_delay=2.0,
+                    ),
+                ], condition=IfCondition(PythonExpression(["'", imu_model, "' == 'cv7'"]))),
+
+                # ── GQ7 model (upstream microstrain_launch.py + optional NTRIP) ────────
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(
+                        os.path.join(_microstrain_share, 'launch', 'microstrain_launch.py')),
+                    launch_arguments={
+                        'params_file': LaunchConfiguration('_imu_param_file_resolved'),
+                    }.items(),
+                    condition=IfCondition(PythonExpression(["'", imu_model, "' == 'gq7'"])),
+                ),
                 Node(
-                    package='microstrain_inertial_driver',
-                    executable='microstrain_inertial_driver_node',
-                    name='microstrain_inertial_driver',
+                    package='ntrip_client',
+                    executable='ntrip_ros.py',
+                    name='ntrip_client',
                     output='screen',
                     parameters=[
-                        microstrain_default_params,
-                        LaunchConfiguration('_imu_param_file_resolved'),
+                        LaunchConfiguration('ntrip_param_file'),
+                        {'rtcm_message_package': 'rtcm_msgs'},
+                        {'rtcm_topic': '/rtcm'},
                     ],
-                    respawn=True,
-                    respawn_delay=2.0,
+                    remappings=[('fix', '/gnss_1/llh_position')],
+                    condition=IfCondition(PythonExpression([
+                        "'", imu_model, "' == 'gq7' and '", use_ntrip, "' == 'true'",
+                    ])),
                 ),
-            ], condition=IfCondition(PythonExpression(["'", imu_model, "' == 'cv7'"]))),
-
-            # ── GQ7 model (upstream microstrain_launch.py + optional NTRIP) ────────
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    os.path.join(_microstrain_share, 'launch', 'microstrain_launch.py')),
-                launch_arguments={
-                    'params_file': LaunchConfiguration('_imu_param_file_resolved'),
-                }.items(),
-                condition=IfCondition(PythonExpression(["'", imu_model, "' == 'gq7'"])),
-            ),
-            Node(
-                package='ntrip_client',
-                executable='ntrip_ros.py',
-                name='ntrip_client',
-                output='screen',
-                parameters=[
-                    LaunchConfiguration('ntrip_param_file'),
-                    {'rtcm_message_package': 'rtcm_msgs'},
-                    {'rtcm_topic': '/rtcm'},
-                ],
-                remappings=[('fix', '/gnss_1/llh_position')],
-                condition=IfCondition(PythonExpression([
-                    "'", imu_model, "' == 'gq7' and '", use_ntrip, "' == 'true'",
-                ])),
-            ),
+            ], condition=IfCondition(enable_imu)),
 
             # ── Velocity converter (both models) ────────────────────────────────────
             IncludeLaunchDescription(
@@ -145,5 +151,5 @@ def generate_launch_description():
                     'imu_status_topic':   LaunchConfiguration('imu_status_topic'),
                 }.items(),
             ),
-        ], condition=IfCondition(enable_imu)),
+        ]),
     ])

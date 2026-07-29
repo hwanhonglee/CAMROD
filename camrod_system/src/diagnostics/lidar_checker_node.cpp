@@ -26,15 +26,19 @@
  *     max_nan_ratio:   0.1   # 0.0 = 체크 안 함 (NaN·Inf 포인트 비율 상한)
  */
 
+#include <cmath>
 #include <deque>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
+#include <avg_msgs/msg/avg_bool.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 
+#include <camrod_system/dummy_source_monitor.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
@@ -56,6 +60,8 @@ struct LidarState
   int64_t min_point_count{0};
   int64_t max_point_count{0};
   double max_nan_ratio{0.0};
+  std::string dummy_active_topic;
+  double dummy_active_timeout{1.0};
 
   // 런타임 상태 (mutex 보호)
   std::mutex mtx;
@@ -67,6 +73,8 @@ struct LidarState
 
   // 구독자
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr dummy_active_sub;
+  camrod_system::DummySourceMonitor dummy_monitor;
 };
 
 // ── LidarCheckerNode ──────────────────────────────────────────────────────
@@ -104,6 +112,10 @@ protected:
       declare_parameter(name + ".min_point_count", int64_t(0));
       declare_parameter(name + ".max_point_count", int64_t(0));
       declare_parameter(name + ".max_nan_ratio",   0.0);
+      declare_parameter(
+        name + ".dummy_active_topic",
+        std::string("/sensing/lidar/dummy_active"));
+      declare_parameter(name + ".dummy_active_timeout_s", 1.0);
 
       lidar->topic           = get_parameter(name + ".topic").as_string();
       lidar->expected_hz     = get_parameter(name + ".expected_hz").as_double();
@@ -113,6 +125,20 @@ protected:
       lidar->min_point_count = get_parameter(name + ".min_point_count").as_int();
       lidar->max_point_count = get_parameter(name + ".max_point_count").as_int();
       lidar->max_nan_ratio   = get_parameter(name + ".max_nan_ratio").as_double();
+      lidar->dummy_active_topic =
+        get_parameter(name + ".dummy_active_topic").as_string();
+      lidar->dummy_active_timeout =
+        get_parameter(name + ".dummy_active_timeout_s").as_double();
+
+      if (lidar->dummy_active_topic.empty()) {
+        throw std::runtime_error(name + ".dummy_active_topic must not be empty");
+      }
+      if (!std::isfinite(lidar->dummy_active_timeout) ||
+        lidar->dummy_active_timeout <= 0.0)
+      {
+        throw std::runtime_error(
+                name + ".dummy_active_timeout_s must be finite and > 0");
+      }
 
       lidars_.push_back(lidar);
     }
@@ -127,12 +153,21 @@ protected:
           onCloud(msg, lidar);
         });
 
+      // HH_260729 - A dummy publisher must continuously assert its source
+      // identity. False/stale heartbeat keeps physical LiDAR failures visible.
+      lidar->dummy_active_sub = create_subscription<avg_msgs::msg::AvgBool>(
+        lidar->dummy_active_topic, rclcpp::QoS(10),
+        [this, lidar](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+          lidar->dummy_monitor.update(msg->data, this->now());
+        });
+
       add_task("/sensor/lidar/" + lidar->name,
         [this, lidar](StatusWrapper & stat) { checkLidar(stat, *lidar); });
 
       RCLCPP_INFO(get_logger(),
-        "LiDAR checker started: %s (topic=%s, expected_hz=%.1f)",
-        lidar->name.c_str(), lidar->topic.c_str(), lidar->expected_hz);
+        "LiDAR checker started: %s (topic=%s, expected_hz=%.1f, dummy=%s timeout=%.2fs)",
+        lidar->name.c_str(), lidar->topic.c_str(), lidar->expected_hz,
+        lidar->dummy_active_topic.c_str(), lidar->dummy_active_timeout);
     }
   }
 
@@ -176,6 +211,35 @@ private:
   void checkLidar(StatusWrapper & stat, LidarState & lidar)
   {
     std::lock_guard<std::mutex> lock(lidar.mtx);
+    const auto now = this->now();
+
+    // HH_260729 - Empty/low-rate dummy clouds are an intentional degraded
+    // source. Report WARN before physical rate/point-count checks, and resume
+    // those checks immediately when the explicit heartbeat expires.
+    double dummy_age_s = -1.0;
+    if (lidar.dummy_monitor.isActive(
+        now, lidar.dummy_active_timeout, dummy_age_s))
+    {
+      const double data_age_s =
+        lidar.has_msg ? (now - lidar.last_msg_time).seconds() : -1.0;
+      const bool data_fresh =
+        lidar.has_msg && data_age_s >= 0.0 && data_age_s <= lidar.stale_timeout;
+      stat.summary(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        "DUMMY DATA (hardware disabled): sensor=" + lidar.name +
+        " topic=" + lidar.topic +
+        (data_fresh ? " dummy_cloud=fresh" : " dummy_cloud=pending_or_stale"));
+      stat.add("data_source", "dummy");
+      stat.add("hardware_enabled", "false");
+      stat.add("dummy_active_topic", lidar.dummy_active_topic);
+      stat.add("dummy_active_age_s", dummy_age_s);
+      stat.add("dummy_data_received", lidar.has_msg ? "true" : "false");
+      if (lidar.has_msg) {
+        stat.add("dummy_data_age_s", data_age_s);
+        stat.add("dummy_point_count", lidar.actual_point_count);
+      }
+      return;
+    }
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!lidar.has_msg) {
@@ -184,7 +248,7 @@ private:
       return;
     }
 
-    double elapsed = (this->now() - lidar.last_msg_time).seconds();
+    double elapsed = (now - lidar.last_msg_time).seconds();
     if (elapsed > lidar.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),

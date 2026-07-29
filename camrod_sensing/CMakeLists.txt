@@ -9,6 +9,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
@@ -174,9 +175,11 @@ ament_target_dependencies(
 # Radar sensor node
 # ------------------------------------------------------------------------------
 add_executable(sen0592_radar_node src/sen0592_radar_node.cpp)
+target_include_directories(sen0592_radar_node PRIVATE include)
 ament_target_dependencies(
   sen0592_radar_node
   rclcpp
+  rcl_interfaces
   avg_msgs
   # HH_260720 - Link the explicit standard Range visualization boundary.
   sensor_msgs
@@ -190,6 +193,7 @@ target_include_directories(radar_cost_grid_node PRIVATE include)
 ament_target_dependencies(
   radar_cost_grid_node
   rclcpp
+  rcl_interfaces
   avg_msgs
   tf2
   tf2_ros
@@ -234,9 +238,14 @@ install(
   DESTINATION include
 )
 
-# HH_260722 - Install the GNSS correction bridge launched by gnss.launch.py.
+# HH_260722 - Install Python sensor-boundary helpers launched by this package.
+# HH_260729 - Disabled-hardware dummy publishers keep explicit transport and
+# diagnostic contracts alive without opening physical sensor devices.
 install(
-  PROGRAMS scripts/rtcm_serial_writer.py
+  PROGRAMS
+    scripts/rtcm_serial_writer.py
+    scripts/radar_dummy_publisher.py
+    scripts/sensing_dummy_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -263,6 +272,13 @@ if(BUILD_TESTING)
     test/test_radar_self_echo_filter.cpp
   )
   target_include_directories(test_radar_self_echo_filter PRIVATE include)
+  # HH_260729 - Lock the no-target value and per-channel dummy marker naming
+  # used when one SEN0592 port is intentionally disabled.
+  ament_add_gtest(
+    test_radar_dummy_contract
+    test/test_radar_dummy_contract.cpp
+  )
+  target_include_directories(test_radar_dummy_contract PRIVATE include)
   # HH_260722 - Lock single/dual GNSS RTCM topic and USB-input launch behavior.
   # Disable unrelated user-site pytest plugins during configure-time discovery;
   # the current anyio plugin is incompatible with the ROS system pytest version.
@@ -270,6 +286,30 @@ if(BUILD_TESTING)
   ament_add_pytest_test(
     test_gnss_launch_routing
     test/test_gnss_launch_routing.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260729 - Keep disabled-hardware dummy outputs aligned with all seven
+  # canonical radar and RViz topic boundaries from the SEN0592 YAML.
+  ament_add_pytest_test(
+    test_radar_dummy_publisher
+    test/test_radar_dummy_publisher.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260729 - Validate low-rate GNSS/IMU/LiDAR/camera dummy schemas without
+  # starting hardware drivers or a ROS graph.
+  ament_add_pytest_test(
+    test_sensing_dummy_publisher
+    test/test_sensing_dummy_publisher.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260729 - Evaluate the aggregate launch expressions so each disabled
+  # physical group gets exactly one dummy and every real/external source wins.
+  ament_add_pytest_test(
+    test_sensing_dummy_launch
+    test/test_sensing_dummy_launch.py
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )

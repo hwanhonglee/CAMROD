@@ -75,6 +75,30 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260729 - Keep the seven-channel radar mapping and readable self-echo
+  # profile byte-synchronized between sensing and full bringup deployments.
+  ament_add_pytest_test(
+    test_radar_defaults_sync
+    test/test_radar_defaults_sync.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260729 - Keep non-radar hardware dummy heartbeat diagnostics explicit
+  # and byte-synchronized between package and deployment checker profiles.
+  ament_add_pytest_test(
+    test_dummy_checker_config_sync
+    test/test_dummy_checker_config_sync.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260729 - Lock aggregate real/dummy routing, including component-camera
+  # ownership and the sim-wide no-auxiliary-dummy policy.
+  ament_add_pytest_test(
+    test_sensor_dummy_launch_routing
+    test/test_sensor_dummy_launch_routing.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
 endif()
 
 ament_package()

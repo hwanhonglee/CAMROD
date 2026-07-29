@@ -15,6 +15,13 @@ velocity_converter_checker:
     imu_topic:      "/sensing/imu/data"
     output_topic:   "/sensing/platform_velocity_converter/twist_with_covariance"
 
+    # HH_260729 - Either upstream hardware source may be intentionally
+    # substituted. The checker names active sources and always reports WARN.
+    platform_dummy_active_topic: "/platform/dummy_active"
+    platform_dummy_active_timeout_s: 1.0
+    imu_dummy_active_topic: "/sensing/imu/dummy_active"
+    imu_dummy_active_timeout_s: 1.0
+
     velocity_stale_timeout_s:  1.0   # velocity 입력 timeout (s)
     imu_stale_timeout_s:       1.0   # IMU 입력 timeout (s)
     output_stale_timeout_s:    1.0   # 출력 timeout (s)

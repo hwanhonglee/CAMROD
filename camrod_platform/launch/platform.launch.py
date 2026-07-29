@@ -40,6 +40,15 @@ def generate_launch_description():
         #   rmp401: skip Ranger CAN path, keep external /rmp401 topics
         DeclareLaunchArgument("platform_type",             default_value="ranger"),
         DeclareLaunchArgument("ranger_driver_enable",      default_value="true"),
+        # HH_260729 - Keep raw platform topic contracts available for
+        # hardware-disabled tests without ever presenting a drivable state.
+        # Set false when another simulator already owns the raw Ranger topics.
+        DeclareLaunchArgument(
+            "ranger_dummy_when_disabled", default_value="true"
+        ),
+        DeclareLaunchArgument(
+            "ranger_dummy_publish_rate_hz", default_value="5.0"
+        ),
         # HH_260528: Toggle Ranger status bridge independently from CAN driver.
         DeclareLaunchArgument("ranger_bridge_enable",      default_value="true"),
         DeclareLaunchArgument("ranger_auto_setup_can",     default_value="true"),
@@ -61,6 +70,12 @@ def generate_launch_description():
         _inc(plat(os.path.join("launch", "ranger.launch.py")),
              "platform_type",
              enable_ranger_base_node=LaunchConfiguration("ranger_driver_enable"),
+             enable_ranger_dummy_when_disabled=LaunchConfiguration(
+                 "ranger_dummy_when_disabled"
+             ),
+             dummy_publish_rate_hz=LaunchConfiguration(
+                 "ranger_dummy_publish_rate_hz"
+             ),
              enable_ranger_bridge_node=LaunchConfiguration("ranger_bridge_enable"),
              auto_setup_can=LaunchConfiguration("ranger_auto_setup_can"),
              can_bitrate=LaunchConfiguration("ranger_can_bitrate"),

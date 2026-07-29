@@ -9,6 +9,10 @@ imu_checker:
 
     main:
       topic: "/sensing/imu/data"
+      # HH_260729 - Never label an intentional dummy stream as healthy IMU
+      # hardware; fresh true is WARN, while false/stale is fail-visible.
+      dummy_active_topic: "/sensing/imu/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_hz: 100.0         # Expected hardware IMU receive rate (Hz)
       hz_warn_ratio: 0.7         # WARN when actual_hz / expected_hz is below this ratio
       hz_error_ratio: 0.4        # ERROR when actual_hz / expected_hz is below this ratio

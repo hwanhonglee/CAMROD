@@ -43,6 +43,7 @@ find_package(yaml-cpp REQUIRED)
 add_executable(localization_input_adapter_node
   src/localization_input_adapter_node.cpp
 )
+target_include_directories(localization_input_adapter_node PRIVATE include)
 ament_target_dependencies(localization_input_adapter_node
   rclcpp
   avg_msgs
@@ -146,6 +147,7 @@ install(DIRECTORY
 # ------------------------------------------------------------------------------
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
   # HH_260721 - Lint owned localization code without re-linting vendored robot_localization.
   set(AMENT_LINT_AUTO_FILE_EXCLUDE external)
   set(AMENT_LINT_AUTO_EXCLUDE
@@ -157,6 +159,14 @@ if(BUILD_TESTING)
     ament_cmake_xmllint
   )
   ament_lint_auto_find_test_dependencies()
+
+  # HH_260729 - A disabled GNSS heartbeat must never become an ENU pose.
+  ament_add_gtest(
+    test_navsat_fix_validation
+    test/test_navsat_fix_validation.cpp
+  )
+  target_include_directories(test_navsat_fix_validation PRIVATE include)
+  ament_target_dependencies(test_navsat_fix_validation sensor_msgs)
 
   # HH_260721 - Scope C++, Python, and XML checks to this package's maintained files.
   find_package(ament_cmake_cppcheck REQUIRED)

@@ -24,14 +24,18 @@
  *     stale_timeout:  2.0
  */
 
+#include <cmath>
 #include <deque>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
+#include <avg_msgs/msg/avg_bool.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 
+#include <camrod_system/dummy_source_monitor.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
@@ -50,6 +54,8 @@ struct GnssState
   double hz_warn_ratio{0.8};
   double hz_error_ratio{0.5};
   double stale_timeout{2.0};
+  std::string dummy_active_topic;
+  double dummy_active_timeout{1.0};
 
   // 런타임 상태 (mutex 보호)
   std::mutex mtx;
@@ -61,6 +67,8 @@ struct GnssState
 
   // 구독자
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr dummy_active_sub;
+  camrod_system::DummySourceMonitor dummy_monitor;
 };
 
 // ── GnssCheckerNode ───────────────────────────────────────────────────────
@@ -94,12 +102,30 @@ protected:
       declare_parameter(name + ".hz_warn_ratio",  0.8);
       declare_parameter(name + ".hz_error_ratio", 0.5);
       declare_parameter(name + ".stale_timeout_s",  2.0);
+      declare_parameter(
+        name + ".dummy_active_topic",
+        std::string("/sensing/gnss/dummy_active"));
+      declare_parameter(name + ".dummy_active_timeout_s", 1.0);
 
       gnss->topic          = get_parameter(name + ".topic").as_string();
       gnss->expected_hz    = get_parameter(name + ".expected_hz").as_double();
       gnss->hz_warn_ratio  = get_parameter(name + ".hz_warn_ratio").as_double();
       gnss->hz_error_ratio = get_parameter(name + ".hz_error_ratio").as_double();
       gnss->stale_timeout = get_param<double>(name + ".stale_timeout_s", gnss->stale_timeout);
+      gnss->dummy_active_topic =
+        get_parameter(name + ".dummy_active_topic").as_string();
+      gnss->dummy_active_timeout =
+        get_parameter(name + ".dummy_active_timeout_s").as_double();
+
+      if (gnss->dummy_active_topic.empty()) {
+        throw std::runtime_error(name + ".dummy_active_topic must not be empty");
+      }
+      if (!std::isfinite(gnss->dummy_active_timeout) ||
+        gnss->dummy_active_timeout <= 0.0)
+      {
+        throw std::runtime_error(
+                name + ".dummy_active_timeout_s must be finite and > 0");
+      }
 
       gnss_list_.push_back(gnss);
     }
@@ -114,12 +140,21 @@ protected:
           onNavSatFix(msg, gnss);
         });
 
+      // HH_260729 - Only a fresh explicit true heartbeat authorizes dummy
+      // diagnostic mode. False or stale heartbeats retain physical failures.
+      gnss->dummy_active_sub = create_subscription<avg_msgs::msg::AvgBool>(
+        gnss->dummy_active_topic, rclcpp::QoS(10),
+        [this, gnss](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+          gnss->dummy_monitor.update(msg->data, this->now());
+        });
+
       add_task("/sensor/gnss/" + gnss->name,
         [this, gnss](StatusWrapper & stat) { checkGnss(stat, *gnss); });
 
       RCLCPP_INFO(get_logger(),
-        "GNSS checker started: %s (topic=%s, expected_hz=%.1f)",
-        gnss->name.c_str(), gnss->topic.c_str(), gnss->expected_hz);
+        "GNSS checker started: %s (topic=%s, expected_hz=%.1f, dummy=%s timeout=%.2fs)",
+        gnss->name.c_str(), gnss->topic.c_str(), gnss->expected_hz,
+        gnss->dummy_active_topic.c_str(), gnss->dummy_active_timeout);
     }
   }
 
@@ -146,6 +181,34 @@ private:
   void checkGnss(StatusWrapper & stat, GnssState & gnss)
   {
     std::lock_guard<std::mutex> lock(gnss.mtx);
+    const auto now = this->now();
+
+    // HH_260729 - An intentional dummy is always degraded WARN, never
+    // hardware OK. Its explicit fresh heartbeat suppresses only physical
+    // missing/rate/fix errors; once stale, the checks below resume.
+    double dummy_age_s = -1.0;
+    if (gnss.dummy_monitor.isActive(
+        now, gnss.dummy_active_timeout, dummy_age_s))
+    {
+      const double data_age_s =
+        gnss.has_msg ? (now - gnss.last_msg_time).seconds() : -1.0;
+      const bool data_fresh =
+        gnss.has_msg && data_age_s >= 0.0 && data_age_s <= gnss.stale_timeout;
+      stat.summary(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        "DUMMY DATA (hardware disabled): sensor=" + gnss.name +
+        " topic=" + gnss.topic +
+        (data_fresh ? " dummy_fix=fresh" : " dummy_fix=pending_or_stale"));
+      stat.add("data_source", "dummy");
+      stat.add("hardware_enabled", "false");
+      stat.add("dummy_active_topic", gnss.dummy_active_topic);
+      stat.add("dummy_active_age_s", dummy_age_s);
+      stat.add("dummy_data_received", gnss.has_msg ? "true" : "false");
+      if (gnss.has_msg) {
+        stat.add("dummy_data_age_s", data_age_s);
+      }
+      return;
+    }
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!gnss.has_msg) {
@@ -154,7 +217,7 @@ private:
       return;
     }
 
-    double elapsed = (this->now() - gnss.last_msg_time).seconds();
+    double elapsed = (now - gnss.last_msg_time).seconds();
     if (elapsed > gnss.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),

@@ -13,6 +13,10 @@ lidar_checker:
       # entry checks raw freshness/rate only. Motion quality is judged after
       # preprocessing via the filtered entry below.
       topic: "/sensing/lidar/vanjee/points_raw"
+      # HH_260729 - Raw and filtered dummy clouds share one explicit source
+      # heartbeat and remain WARN rather than appearing as healthy hardware.
+      dummy_active_topic: "/sensing/lidar/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_hz: 10.0
       hz_warn_ratio: 0.5
       hz_error_ratio: 0.2
@@ -23,6 +27,8 @@ lidar_checker:
 
     filtered:
       topic: "/sensing/lidar/points_filtered"
+      dummy_active_topic: "/sensing/lidar/dummy_active"
+      dummy_active_timeout_s: 1.0
       # HH_260701 - ground_segmentation is the intentional bottleneck after
       # 10 Hz preprocessor output; 6 Hz is the profiled stable planning input.
       # HH_260702 - This entry is the motion-relevant LiDAR health check:

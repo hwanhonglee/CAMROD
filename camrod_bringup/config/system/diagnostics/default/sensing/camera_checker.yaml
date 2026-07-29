@@ -14,6 +14,10 @@ camera_checker:
       image_topic: "/sensing/camera/econ_front/image_rect/compressed"
       image_type: "compressed"
       camera_info_topic: "/sensing/camera/econ_front/camera_info"
+      # HH_260729 - Cameras are independently switchable, so each source owns
+      # its own fresh true dummy heartbeat and explicit degraded WARN.
+      dummy_active_topic: "/sensing/camera/econ_front/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_fps: 10.0
       fps_warn_ratio: 0.8
       fps_error_ratio: 0.5
@@ -26,6 +30,8 @@ camera_checker:
       image_topic: "/sensing/camera/econ_rear/image_raw"
       image_type: "raw"
       camera_info_topic: "/sensing/camera/econ_rear/camera_info"
+      dummy_active_topic: "/sensing/camera/econ_rear/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_fps: 10.0
       fps_warn_ratio: 0.8
       fps_error_ratio: 0.5

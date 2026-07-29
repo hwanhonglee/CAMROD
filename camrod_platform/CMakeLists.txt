@@ -68,6 +68,14 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# HH_260729 - Keep raw Ranger topic contracts alive with an explicit
+# ESTOP/non-drivable heartbeat only while the physical CAN driver is disabled.
+install(
+  PROGRAMS
+    scripts/platform_dummy_publisher.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # HH_260428: ranger_platform_bridge_node — built only when ranger_msgs is available
 # (ranger_ros2 external cloned by build_camrod.sh). Bridges CAN-derived ranger topics
 # to /platform/status/* with primary/fallback odom, id-based actuator state extraction,
@@ -99,8 +107,18 @@ install(DIRECTORY config launch scripts systemd
 # 260708: Deterministic light-decision unit test (no ROS runtime needed).
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
   ament_add_gtest(test_light_decision test/test_light_decision.cpp)
   target_include_directories(test_light_decision PRIVATE include)
+  # HH_260729 - Lock the dummy payload to zero/ESTOP/faulted state and prove
+  # that ranger.launch never activates the real driver and dummy together.
+  set(ENV{PYTEST_DISABLE_PLUGIN_AUTOLOAD} "1")
+  ament_add_pytest_test(
+    test_platform_dummy_publisher
+    test/test_platform_dummy_publisher.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
 endif()
 
 ament_package()

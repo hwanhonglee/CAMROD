@@ -7,7 +7,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
@@ -23,6 +23,9 @@ def generate_launch_description():
     )
 
     enable_radar = LaunchConfiguration("enable_radar")
+    enable_radar_dummy_when_disabled = LaunchConfiguration(
+        "enable_radar_dummy_when_disabled"
+    )
     enable_radar_cost_grid = LaunchConfiguration("enable_radar_cost_grid")
     radar_sensor_param_file = LaunchConfiguration("radar_sensor_param_file")
     radar_cost_grid_param_file = LaunchConfiguration("radar_cost_grid_param_file")
@@ -31,6 +34,16 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument("enable_radar", default_value="true"),
+        # HH_260729 - Keep canonical radar topics alive for hardware-free field
+        # tests. The dummy is mutually exclusive with the serial driver and
+        # publishes explicit dummy_active status for diagnostics.
+        DeclareLaunchArgument(
+            "enable_radar_dummy_when_disabled",
+            default_value="true",
+            description=(
+                "Publish no-target radar heartbeat data while enable_radar is false"
+            ),
+        ),
         DeclareLaunchArgument("enable_radar_cost_grid", default_value="true"),
         # HH_260623 - Standalone radar.launch has no outer /sensing namespace,
         # so default directly to /sensing/radar for downstream consumers.
@@ -47,6 +60,24 @@ def generate_launch_description():
                 "radar_log_status": radar_log_status,
             }.items(),
             condition=IfCondition(enable_radar),
+        ),
+
+        Node(
+            package="camrod_sensing",
+            executable="radar_dummy_publisher.py",
+            name="radar_dummy_publisher",
+            namespace=module_namespace,
+            output="screen",
+            parameters=[radar_sensor_param_file],
+            # HH_260729 - PythonExpression is used instead of nested launch
+            # conditions for ROS 2 Humble compatibility. Never let the dummy
+            # and physical serial driver publish the same topics together.
+            condition=IfCondition(PythonExpression([
+                "'true' if str('", enable_radar,
+                "').lower() not in ['1', 'true', 'yes', 'on'] and str('",
+                enable_radar_dummy_when_disabled,
+                "').lower() in ['1', 'true', 'yes', 'on'] else 'false'",
+            ])),
         ),
 
         Node(

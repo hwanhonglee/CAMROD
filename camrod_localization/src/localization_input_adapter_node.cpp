@@ -27,6 +27,8 @@
 #include <geometry_msgs/msg/twist_with_covariance_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 
+#include "camrod_localization/navsat_fix_validation.hpp"
+
 namespace
 {
 constexpr double WGS84_A = 6378137.0;
@@ -478,6 +480,16 @@ private:
 
   void onNavSatFix(const sensor_msgs::msg::NavSatFix::ConstSharedPtr msg)
   {
+    if (!camrod_localization::navSatFixIsUsable(*msg)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Reject unusable GNSS fix before localization conversion: "
+        "status=%d lat=%.9f lon=%.9f alt=%.3f",
+        static_cast<int>(msg->status.status),
+        msg->latitude, msg->longitude, msg->altitude);
+      return;
+    }
+
     const double lat_rad = deg2rad(msg->latitude);
     const double lon_rad = deg2rad(msg->longitude);
     const double alt = msg->altitude;

@@ -1,78 +1,124 @@
+# HH_260729 - Radar cost-grid parameters are grouped by processing stage:
+#   1) ROS I/O, 2) grid, 3) cost painting, 4) fixed exclusions,
+#   5) startup learning, 6) route filtering, 7) evidence/timing/status.
+# Every parameter in this file is STARTUP-ONLY; edit YAML and restart.
 /sensing/radar/radar_cost_grid:
   ros__parameters:
+    # =========================================================================
+    # 1. ROS I/O AND FRAMES
+    # =========================================================================
     output_topic: "/sensing/cost_grid/radar"
     base_frame_id: "robot_base_link"
     output_frame_id: "map"
 
-    # Grid geometry
+    # HH_260729 - Fresh global or per-channel dummy markers hard-disable cost
+    # painting. This is independent of the numeric max_range+0.001 no-target
+    # contract, so enable_radar:=false cannot create a LEFT2 (or other) cost.
+    dummy_active_topic: "/sensing/radar/dummy_active"
+    dummy_active_timeout_s: 1.0
+
+    # Index order used by startup_return_max_ranges_m.
+    input_topics:
+      - "/sensing/radar/front1/range"   # 0 FRONT1
+      - "/sensing/radar/front2/range"   # 1 FRONT2
+      - "/sensing/radar/left1/range"    # 2 LEFT1
+      - "/sensing/radar/left2/range"    # 3 LEFT2
+      - "/sensing/radar/right1/range"   # 4 RIGHT1
+      - "/sensing/radar/right2/range"   # 5 RIGHT2
+      - "/sensing/radar/rear/range"     # 6 REAR
+
+    # =========================================================================
+    # 2. GRID GEOMETRY
+    # =========================================================================
     resolution: 0.10
     width: 120
     height: 120
     origin_x: -6.0
     origin_y: -6.0
-
-    # Cost model
     free_value: 0
     unknown_value: -1
-    # HH_260630: Treat any valid SEN0592 hit inside its per-sensor max range as
-    # safety-relevant. Invalid/no-target values are filtered by the radar driver.
+
+    # =========================================================================
+    # 3. OBSTACLE COST PAINTING
+    # =========================================================================
+    # Valid hits at/below near distance receive max_cost. Cost then decreases
+    # with distance and reaches min_cost at/beyond far distance.
     min_cost: 85
     max_cost: 95
-    cost_range_min_m: 0.3
-    # HH_260728 - Do not use one-sided self-echo floors: the former LEFT2
-    # 0.75 m floor also hid real obstacles from 0.30 through 0.74 m. Retain
-    # these legacy parameters at zero and reject only the measured notches.
-    ignore_below_range_m: 0.0
-    ignore_below_ranges_m: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-
-    # HH_260728 - Stationary 15 s field sample, input_topics order:
-    # FRONT1 0.102-0.167, FRONT2 0.100-0.111, LEFT1 0.185-0.252,
-    # LEFT2 0.234-0.253 / 0.685-0.699 / intermittent 0.794-0.800,
-    # RIGHT1 0.256-0.274, RIGHT2 0.251-0.272, REAR 0.107-0.130 m.
-    # Each tuple (sensor index, center, half width) is a narrow notch; all
-    # other valid values, including LEFT2 0.50 m and the observed 0.68-0.80 m
-    # external returns, remain obstacle costs. Repeated indices provide
-    # multiple bands for one sensor.
-    self_echo_filter_enable: true
-    self_echo_sensor_indices: [0, 0, 1, 2, 2, 3, 4, 5, 6, 6]
-    self_echo_centers_m:      [0.111, 0.162, 0.107, 0.204, 0.246, 0.247, 0.265, 0.263, 0.130, 0.162]
-    self_echo_half_widths_m:  [0.012, 0.010, 0.010, 0.022, 0.012, 0.020, 0.012, 0.015, 0.025, 0.006]
-
-    # HH_260728 - A hardware restart produced different stable body modes
-    # (FRONT1 ~0.186, RIGHT1 ~0.754, RIGHT2 ~0.680 m). Give each sensor a full
-    # disengaged 8 s beginning with its first valid sample, learn only its
-    # dominant tight cluster, append one narrow notch, and freeze it until the
-    # node restarts. Calibration waits for the transient-local authoritative
-    # manual-or-mission engage state and is cancelled whenever it is true.
-    # Keep the robot stationary with the radar area clear during this interval;
-    # a deliberately placed object is indistinguishable from body reflection to
-    # a scalar sensor.
-    startup_self_echo_calibration_enable: true
-    startup_self_echo_calibration_duration_s: 8.0
-    # HH_260728 - Start the 8 s window independently at each sensor's first
-    # valid sample; reject a disconnected/late port after this absolute timeout.
-    startup_self_echo_first_sample_timeout_s: 15.0
-    startup_self_echo_calibration_min_samples: 15
-    startup_self_echo_cluster_gap_m: 0.020
-    startup_self_echo_min_cluster_fraction: 0.50
-    startup_self_echo_min_half_width_m: 0.012
-    startup_self_echo_max_half_width_m: 0.030
-    startup_self_echo_margin_m: 0.005
-    # Only a direct return close to the sensor may become a boot-local self
-    # notch. LEFT2/RIGHT returns around 0.68-0.80 m project well outside the
-    # robot boundary and remain real obstacle costs rather than being learned.
-    startup_self_echo_candidate_max_range_m: 0.30
-    startup_self_echo_candidate_max_ranges_m: [0.25, 0.25, 0.30, 0.30, 0.30, 0.30, 0.20]
-    startup_self_echo_authorization_topic: "/control/planning_engaged"
-    # HH_260422: Near-field only; per-sensor max_range limits detections before cost mapping.
-    cost_range_max_m: 2.0
+    cost_near_distance_m: 0.30
+    cost_far_distance_m: 2.00
     obstacle_radius_m: 0.30
-    # HH_260703 - radar_cost_grid clears ego before marking live hits, so valid
-    # side/rear detections can still become blocking radar costs.
+
+    # The grid is pre-cleared around base_link, then current radar hits are
+    # painted afterward; valid side/rear hits therefore remain blocking.
     ego_clear_radius_m: 0.50
 
-    # HH_260720 - Match LiDAR route-lanelet filtering before radar costs reach
-    # either the final command gate or the merged planning cost grid.
+    # =========================================================================
+    # 4. FIXED RANGE EXCLUSIONS
+    # =========================================================================
+    # Format: "SENSOR:min_m:max_m" (inclusive).
+    # Only these narrow field-classified persistent returns are excluded.
+    fixed_return_filter_enable: true
+    fixed_return_bands:
+      - "FRONT1:0.099:0.123"
+      # HH_260729 - All-true live sample remained at 0.204..0.211 m.
+      - "FRONT1:0.152:0.220"
+      - "FRONT2:0.097:0.117"
+      - "LEFT1:0.182:0.226"
+      - "LEFT1:0.234:0.258"
+      # HH_260729 - 15 s all-true audit measured the body-return tail at
+      # 0.216..0.271 m. Keep the separate 0.629..0.637 m returns as obstacles.
+      - "LEFT2:0.210:0.280"
+      # HH_260729 - Current clear-area body return on RIGHT1/USB2.
+      - "RIGHT1:0.055:0.080"
+      - "RIGHT1:0.253:0.277"
+      - "RIGHT2:0.248:0.278"
+      # HH_260729 - All-true REAR/USB6 sample spanned 0.131..0.179 m.
+      - "REAR:0.090:0.190"
+
+    # HH_260729 - After applying angle level 1, a stationary 15 s audit in the
+    # current, not-completely-clear field area also found persistent unfiltered
+    # returns at LEFT2 0.365..0.382 m, RIGHT1 0.391..0.406 m, and RIGHT2
+    # 0.362..0.369 m. They are intentionally NOT exclusions: a scalar sensor
+    # cannot distinguish a nearby object at those safety-critical distances
+    # from floor/chassis echo. Add a band only after a supervised clear-area
+    # measurement proves that the same tight cluster remains.
+
+    # SAFETY LIMITATION:
+    # SEN0592 publishes scalar range only. A real obstacle at the same range is
+    # indistinguishable and is also excluded. Side bands project slightly past
+    # the planning footprint on the nominal centerline; keep them only for the
+    # current field experiment. Mounting/beam shielding is the production fix.
+
+    # =========================================================================
+    # 5. STARTUP RETURN LEARNING
+    # =========================================================================
+    # While planning is disengaged, collect one tight dominant return per
+    # sensor, append one temporary exclusion band, then freeze until restart.
+    # The area beside every radar MUST be clear and the robot MUST be stationary.
+    # HH_260729 - Disabled for field driving. Automatic learning in a non-empty
+    # area can misclassify a real obstacle as a body return. Re-enable only for
+    # a supervised, stationary clear-area calibration.
+    startup_return_learning_enable: false
+    startup_return_learning_duration_s: 8.0
+    startup_return_first_sample_timeout_s: 15.0
+    startup_return_min_samples: 15
+    startup_return_cluster_gap_m: 0.020
+    startup_return_min_cluster_fraction: 0.50
+    startup_return_min_half_width_m: 0.012
+    startup_return_max_half_width_m: 0.030
+    startup_return_margin_m: 0.005
+
+    # Maximum range eligible for startup learning, in input_topics order.
+    # Side 0.30 m windows extend beyond the planning footprint; this is the
+    # same explicit field-test blind-zone tradeoff described above.
+    startup_return_default_max_range_m: 0.30
+    startup_return_max_ranges_m: [0.25, 0.25, 0.30, 0.30, 0.30, 0.30, 0.20]
+    startup_return_authorization_topic: "/control/planning_engaged"
+
+    # =========================================================================
+    # 6. ACTIVE-ROUTE FILTER
+    # =========================================================================
     route_lanelet_filter_enable: true
     route_lanelet_mask_topic: "/map/cost_grid/route_lanelet_mask"
     route_lanelet_margin_m: 0.35
@@ -80,17 +126,17 @@
     route_lanelet_mask_max_age_s: 2.5
     route_lanelet_filter_fail_open_when_robot_outside: true
 
-    # Runtime
+    # =========================================================================
+    # 7. ACTIVE-HIT EVIDENCE, TIMING, AND OPTIONAL AGGREGATE STATUS
+    # =========================================================================
+    # HH_260729 - Publish one lightweight diagnostic string per completed grid:
+    #   "clear", or only fresh/unfiltered hits that remain after route clipping.
+    # Active entries name SENSOR, source frame, range, map x/y, and cost.
+    obstacle_evidence_topic: "/sensing/radar/obstacle_evidence"
+    # WARN active evidence at most once per interval; <= 0 disables only WARN.
+    obstacle_evidence_warn_interval_s: 1.0
+
     max_message_age_s: 0.35
     publish_rate_hz: 10.0
     publish_radar_status: false
     radar_status_topic: "/sensing/radar/status"
-    # HH_260623 - Match latest 7-channel SEN0592 radar topics.
-    input_topics:
-      - "/sensing/radar/front1/range"
-      - "/sensing/radar/front2/range"
-      - "/sensing/radar/left1/range"
-      - "/sensing/radar/left2/range"
-      - "/sensing/radar/right1/range"
-      - "/sensing/radar/right2/range"
-      - "/sensing/radar/rear/range"

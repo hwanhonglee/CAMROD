@@ -95,7 +95,14 @@ private:
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::fromROSMsg(*msg, *cloud);
 
-    if (cloud->empty()) {return;}
+    // HH_260729: An empty cloud is a valid "no obstacle" frame (including the
+    // explicit LiDAR-disabled dummy stream).  Publish DELETEALL as a heartbeat
+    // instead of silently dropping the frame and making perception diagnostics
+    // look like the node crashed.
+    if (cloud->empty()) {
+      publishDeleteAll(msg->header.frame_id, msg->header.stamp);
+      return;
+    }
 
     // ROI filter to keep only points within configured spatial bounds.
     pcl::PointCloud<pcl::PointXYZ>::Ptr filtered(new pcl::PointCloud<pcl::PointXYZ>());
@@ -110,7 +117,10 @@ private:
       filtered->points.push_back(p);
     }
 
-    if (filtered->empty()) {return;}
+    if (filtered->empty()) {
+      publishDeleteAll(msg->header.frame_id, msg->header.stamp);
+      return;
+    }
 
     // Build KD-tree for Euclidean cluster extraction.
     pcl::search::KdTree<pcl::PointXYZ>::Ptr tree(new pcl::search::KdTree<pcl::PointXYZ>());

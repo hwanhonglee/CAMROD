@@ -1,7 +1,7 @@
 /**
  * Radar Checker Node
  *
- * sensor_msgs/Range 토픽을 구독하여 레이다(SEN0592) 상태를 /diagnostics 토픽으로 발행한다.
+ * avg_msgs/AvgRange 토픽을 구독하여 레이다(SEN0592) 상태를 /diagnostics 토픽으로 발행한다.
  *
  * 진단 항목 (센서별 단일 태스크)
  * --------------------------------
@@ -14,7 +14,8 @@
  *
  * 파라미터 구성
  * -------------
- *   radar_names: ["FRONT1", "FRONT2", "REAR"]   ← 모니터링할 레이다 이름 목록
+ *   radar_names: ["FRONT1", "FRONT2"]       ← 실제 구독/검사할 레이다
+ *   disabled_radar_names: ["RIGHT1", "REAR"] ← 의도적으로 제외한 레이다
  *
  *   FRONT1:
  *     topic:              "/sensing/radar/front1/range"
@@ -36,13 +37,18 @@
 #include <cmath>
 #include <deque>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
+// HH_260729 - Distinguish an intentional hardware-off dummy stream from a
+// physical radar failure without reporting the dummy stream as healthy.
+#include <avg_msgs/msg/avg_bool.hpp>
 // HH_260720 - Diagnose generated CAMROD radar range streams.
 #include <avg_msgs/msg/avg_range.hpp>
 
+#include <camrod_system/dummy_source_monitor.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
@@ -57,6 +63,13 @@ struct RadarState
   // 설정
   std::string name;
   std::string topic;
+  std::string location{"unknown"};
+  std::string frame_id{"unknown"};
+  std::string port{"unknown"};
+  bool enabled{true};
+  std::string disabled_reason;
+  double measured_body_echo_min_m{-1.0};
+  double measured_body_echo_max_m{-1.0};
   double expected_hz{16.0};
   double hz_warn_ratio{0.7};
   double hz_error_ratio{0.4};
@@ -67,6 +80,8 @@ struct RadarState
   double stuck_min_error_m{0.0};
   double stuck_max_warn_m{0.0};    // 0.0 = 비활성화
   double stuck_max_error_m{0.0};
+  std::string dummy_active_topic;
+  double dummy_active_timeout_s{1.0};
 
   // 런타임 상태 (mutex 보호)
   std::mutex mtx;
@@ -80,6 +95,8 @@ struct RadarState
 
   // 구독자
   rclcpp::Subscription<avg_msgs::msg::AvgRange>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr dummy_active_sub;
+  camrod_system::DummySourceMonitor dummy_monitor;
 };
 
 // ── RadarCheckerNode ──────────────────────────────────────────────────────
@@ -97,22 +114,60 @@ protected:
   void declare_parameters_() override
   {
     declare_parameter("radar_names", std::vector<std::string>{});
+    // HH_260729 - An intentionally disabled field channel is a known degraded
+    // configuration, not a missing-topic hardware failure.
+    declare_parameter("disabled_radar_names", std::vector<std::string>{});
+    // HH_260729 - A fresh true heartbeat means the radar driver is
+    // intentionally replaced by the test dummy publisher. Stale/false always
+    // falls back to the normal fail-visible physical radar diagnosis.
+    declare_parameter(
+      "dummy_active_topic", std::string("/sensing/radar/dummy_active"));
+    declare_parameter("dummy_active_timeout_s", 1.0);
   }
 
   void load_parameters_() override
   {
     auto names = get_parameter("radar_names").as_string_array();
+    auto disabled_names = get_parameter("disabled_radar_names").as_string_array();
+    global_dummy_active_topic_ = get_parameter("dummy_active_topic").as_string();
+    global_dummy_active_timeout_s_ = get_parameter("dummy_active_timeout_s").as_double();
+
+    if (global_dummy_active_topic_.empty()) {
+      throw std::runtime_error("dummy_active_topic must not be empty");
+    }
+    if (!std::isfinite(global_dummy_active_timeout_s_) ||
+      global_dummy_active_timeout_s_ <= 0.0)
+    {
+      throw std::runtime_error("dummy_active_timeout_s must be finite and > 0");
+    }
+
+    const auto declare_and_load_identity =
+      [this](RadarState & radar, const std::string & lower_name) {
+        declare_parameter(
+          radar.name + ".topic",
+          std::string("/sensing/radar/" + lower_name + "/range"));
+        declare_parameter(radar.name + ".location", std::string("unknown"));
+        declare_parameter(
+          radar.name + ".frame_id",
+          std::string("radar_" + lower_name + "_link"));
+        declare_parameter(radar.name + ".port", std::string("unknown"));
+
+        radar.topic = get_parameter(radar.name + ".topic").as_string();
+        radar.location = get_parameter(radar.name + ".location").as_string();
+        radar.frame_id = get_parameter(radar.name + ".frame_id").as_string();
+        radar.port = get_parameter(radar.name + ".port").as_string();
+      };
 
     for (const auto & name : names) {
       auto radar = std::make_shared<RadarState>();
       radar->name = name;
+      radar->enabled = true;
 
       // 토픽 기본값: 이름을 소문자로 변환 → /sensing/radar/<name>/range
       std::string lower_name = name;
       std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
 
-      declare_parameter(name + ".topic",
-        std::string("/sensing/radar/" + lower_name + "/range"));
+      declare_and_load_identity(*radar, lower_name);
       declare_parameter(name + ".expected_hz",       16.0);
       declare_parameter(name + ".hz_warn_ratio",     0.7);
       declare_parameter(name + ".hz_error_ratio",    0.4);
@@ -123,8 +178,13 @@ protected:
       declare_parameter(name + ".stuck_min_error_m", 0.0);
       declare_parameter(name + ".stuck_max_warn_m",  0.0);
       declare_parameter(name + ".stuck_max_error_m", 0.0);
+      // HH_260729 - sensor_enabled[i]:=false keeps the other six physical
+      // channels live and marks only this channel as intentional dummy data.
+      declare_parameter(
+        name + ".dummy_active_topic",
+        std::string("/sensing/radar/" + lower_name + "/dummy_active"));
+      declare_parameter(name + ".dummy_active_timeout_s", 1.0);
 
-      radar->topic             = get_parameter(name + ".topic").as_string();
       radar->expected_hz       = get_parameter(name + ".expected_hz").as_double();
       radar->hz_warn_ratio     = get_parameter(name + ".hz_warn_ratio").as_double();
       radar->hz_error_ratio    = get_parameter(name + ".hz_error_ratio").as_double();
@@ -135,13 +195,65 @@ protected:
       radar->stuck_min_error_m = get_parameter(name + ".stuck_min_error_m").as_double();
       radar->stuck_max_warn_m  = get_parameter(name + ".stuck_max_warn_m").as_double();
       radar->stuck_max_error_m = get_parameter(name + ".stuck_max_error_m").as_double();
+      radar->dummy_active_topic =
+        get_parameter(name + ".dummy_active_topic").as_string();
+      radar->dummy_active_timeout_s =
+        get_parameter(name + ".dummy_active_timeout_s").as_double();
+
+      if (radar->dummy_active_topic.empty()) {
+        throw std::runtime_error(name + ".dummy_active_topic must not be empty");
+      }
+      if (!std::isfinite(radar->dummy_active_timeout_s) ||
+        radar->dummy_active_timeout_s <= 0.0)
+      {
+        throw std::runtime_error(
+                name + ".dummy_active_timeout_s must be finite and > 0");
+      }
 
       radars_.push_back(radar);
+    }
+
+    for (const auto & name : disabled_names) {
+      auto radar = std::make_shared<RadarState>();
+      radar->name = name;
+      radar->enabled = false;
+
+      std::string lower_name = name;
+      std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+      declare_and_load_identity(*radar, lower_name);
+      declare_parameter(
+        name + ".disabled_reason",
+        std::string("intentionally disabled for field test"));
+      declare_parameter(name + ".measured_body_echo_min_m", -1.0);
+      declare_parameter(name + ".measured_body_echo_max_m", -1.0);
+      radar->disabled_reason =
+        get_parameter(name + ".disabled_reason").as_string();
+      radar->measured_body_echo_min_m =
+        get_parameter(name + ".measured_body_echo_min_m").as_double();
+      radar->measured_body_echo_max_m =
+        get_parameter(name + ".measured_body_echo_max_m").as_double();
+      disabled_radars_.push_back(radar);
     }
   }
 
   void setup_tasks_() override
   {
+    // HH_260729 - Volatile subscriber remains compatible with either a
+    // continuously published volatile heartbeat or a transient-local dummy
+    // publisher. Freshness, rather than durability alone, authorizes dummy
+    // diagnostic mode.
+    global_dummy_active_sub_ = create_subscription<avg_msgs::msg::AvgBool>(
+      global_dummy_active_topic_, rclcpp::QoS(10),
+      [this](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+        global_dummy_monitor_.update(msg->data, this->now());
+      });
+
+    RCLCPP_INFO(
+      get_logger(),
+      "Radar global dummy-state monitor: topic=%s timeout=%.2fs "
+      "(fresh true => WARN DUMMY DATA; false/stale => physical diagnosis)",
+      global_dummy_active_topic_.c_str(), global_dummy_active_timeout_s_);
+
     for (auto & radar : radars_) {
       radar->sub = create_subscription<avg_msgs::msg::AvgRange>(
         radar->topic, rclcpp::SensorDataQoS(),
@@ -149,16 +261,93 @@ protected:
           onRange(msg, radar);
         });
 
+      // HH_260729 - Per-channel markers isolate sensor_enabled[i]:=false
+      // without hiding missing/stale failures from any other radar.
+      radar->dummy_active_sub = create_subscription<avg_msgs::msg::AvgBool>(
+        radar->dummy_active_topic, rclcpp::QoS(10),
+        [this, radar](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+          radar->dummy_monitor.update(msg->data, this->now());
+        });
+
       add_task("/sensor/radar/" + radar->name,
         [this, radar](StatusWrapper & stat) { checkRadar(stat, *radar); });
 
       RCLCPP_INFO(get_logger(),
-        "Radar checker started: %s (topic=%s, expected_hz=%.1f)",
-        radar->name.c_str(), radar->topic.c_str(), radar->expected_hz);
+        "Radar checker started: %s "
+        "(location=%s frame=%s port=%s topic=%s expected_hz=%.1f "
+        "channel_dummy=%s timeout=%.2fs)",
+        radar->name.c_str(), radar->location.c_str(), radar->frame_id.c_str(),
+        radar->port.c_str(), radar->topic.c_str(), radar->expected_hz,
+        radar->dummy_active_topic.c_str(), radar->dummy_active_timeout_s);
+    }
+
+    for (auto & radar : disabled_radars_) {
+      add_task(
+        "/sensor/radar/" + radar->name,
+        [this, radar](StatusWrapper & stat) { checkDisabledRadar(stat, *radar); });
+      RCLCPP_WARN(
+        get_logger(),
+        "Radar checker marks %s intentionally disabled "
+        "(location=%s frame=%s port=%s reason=%s)",
+        radar->name.c_str(), radar->location.c_str(), radar->frame_id.c_str(),
+        radar->port.c_str(), radar->disabled_reason.c_str());
     }
   }
 
 private:
+  static void addRadarIdentity(StatusWrapper & stat, const RadarState & radar)
+  {
+    stat.add("sensor_name", radar.name);
+    stat.add("sensor_location", radar.location);
+    stat.add("sensor_frame", radar.frame_id);
+    stat.add("port", radar.port);
+    stat.add("topic", radar.topic);
+    stat.add("enabled", radar.enabled ? "true" : "false");
+  }
+
+  static std::string measuredBodyEchoText(const RadarState & radar)
+  {
+    const bool has_min =
+      std::isfinite(radar.measured_body_echo_min_m) &&
+      radar.measured_body_echo_min_m >= 0.0;
+    const bool has_max =
+      std::isfinite(radar.measured_body_echo_max_m) &&
+      radar.measured_body_echo_max_m >= 0.0;
+    if (!has_min && !has_max) {
+      return "not_recorded";
+    }
+
+    const double minimum = has_min ?
+      radar.measured_body_echo_min_m : radar.measured_body_echo_max_m;
+    const double maximum = has_max ?
+      radar.measured_body_echo_max_m : radar.measured_body_echo_min_m;
+    char text[64];
+    if (std::abs(maximum - minimum) < 1.0e-6) {
+      std::snprintf(text, sizeof(text), "%.3f m", minimum);
+    } else {
+      std::snprintf(text, sizeof(text), "%.3f..%.3f m", minimum, maximum);
+    }
+    return text;
+  }
+
+  void checkDisabledRadar(StatusWrapper & stat, const RadarState & radar)
+  {
+    // HH_260729 - WARN keeps the known coverage loss operator-visible without
+    // misclassifying an intentionally absent publisher as STALE/ERROR.
+    const std::string echo = measuredBodyEchoText(radar);
+    const std::string message =
+      "INTENTIONALLY DISABLED: " + radar.name +
+      " location=" + radar.location +
+      " frame=" + radar.frame_id +
+      " port=" + radar.port +
+      " reason=" + radar.disabled_reason +
+      " measured_body_echo=" + echo;
+    stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, message);
+    addRadarIdentity(stat, radar);
+    stat.add("disabled_reason", radar.disabled_reason);
+    stat.add("measured_body_echo_m", echo);
+  }
+
   void onRange(
     const avg_msgs::msg::AvgRange::ConstSharedPtr msg,
     const std::shared_ptr<RadarState> & radar)
@@ -195,15 +384,67 @@ private:
   void checkRadar(StatusWrapper & stat, RadarState & radar)
   {
     std::lock_guard<std::mutex> lock(radar.mtx);
+    const auto now = this->now();
+    // HH_260729 - Preserve physical identity even on first-message and stale
+    // returns so the operator never has to translate a topic back to a mount.
+    addRadarIdentity(stat, radar);
+
+    // HH_260729 - Test dummy data is intentionally degraded, never hardware
+    // OK. While its explicit heartbeat is fresh, suppress physical
+    // missing/stale/range errors and expose all channel identity in the WARN
+    // summary. When the heartbeat expires, normal fail-visible checks below
+    // resume automatically.
+    double global_dummy_age_s = -1.0;
+    double channel_dummy_age_s = -1.0;
+    const bool global_dummy_active = global_dummy_monitor_.isActive(
+      now, global_dummy_active_timeout_s_, global_dummy_age_s);
+    const bool channel_dummy_active = radar.dummy_monitor.isActive(
+      now, radar.dummy_active_timeout_s, channel_dummy_age_s);
+    if (global_dummy_active || channel_dummy_active) {
+      const double range_age_s = radar.has_msg ?
+        (now - radar.last_msg_time).seconds() : -1.0;
+      const bool range_fresh =
+        radar.has_msg && range_age_s >= 0.0 && range_age_s <= radar.stale_timeout;
+      const std::string dummy_scope =
+        global_dummy_active && channel_dummy_active ? "global+channel" :
+        (global_dummy_active ? "global" : "channel");
+      const std::string message =
+        "DUMMY DATA (hardware disabled, scope=" + dummy_scope + "): sensor=" + radar.name +
+        " location=" + radar.location +
+        " frame=" + radar.frame_id +
+        " port=" + radar.port +
+        " topic=" + radar.topic +
+        (range_fresh ? " dummy_range=fresh" : " dummy_range=pending_or_stale");
+      stat.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, message);
+      stat.add("data_source", "dummy");
+      stat.add("hardware_enabled", "false");
+      stat.add("dummy_scope", dummy_scope);
+      stat.add(
+        "global_dummy_active", global_dummy_active ? "true" : "false");
+      stat.add("global_dummy_active_topic", global_dummy_active_topic_);
+      if (global_dummy_active) {
+        stat.add("global_dummy_active_age_s", global_dummy_age_s);
+      }
+      stat.add(
+        "channel_dummy_active", channel_dummy_active ? "true" : "false");
+      stat.add("channel_dummy_active_topic", radar.dummy_active_topic);
+      if (channel_dummy_active) {
+        stat.add("channel_dummy_active_age_s", channel_dummy_age_s);
+      }
+      stat.add("dummy_range_received", radar.has_msg ? "true" : "false");
+      if (radar.has_msg) {
+        stat.add("dummy_range_age_s", range_age_s);
+      }
+      return;
+    }
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!radar.has_msg) {
       stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + radar.topic);
-      stat.add("topic", radar.topic);
       return;
     }
 
-    double elapsed = (this->now() - radar.last_msg_time).seconds();
+    double elapsed = (now - radar.last_msg_time).seconds();
     if (elapsed > radar.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
@@ -318,6 +559,11 @@ private:
   }
 
   std::vector<std::shared_ptr<RadarState>> radars_;
+  std::vector<std::shared_ptr<RadarState>> disabled_radars_;
+  std::string global_dummy_active_topic_{"/sensing/radar/dummy_active"};
+  double global_dummy_active_timeout_s_{1.0};
+  camrod_system::DummySourceMonitor global_dummy_monitor_;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr global_dummy_active_sub_;
 };
 
 // ── main ──────────────────────────────────────────────────────────────────

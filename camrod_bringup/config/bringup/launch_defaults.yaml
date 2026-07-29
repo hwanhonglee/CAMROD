@@ -133,6 +133,12 @@ bringup:
     enable_front_camera: true
     enable_rear_camera: true
     enable_radar: true
+    # HH_260729 - A disabled hardware input still publishes a low-rate, explicit
+    # DUMMY/WARN heartbeat on its canonical schema.  This covers front/rear
+    # camera, GNSS, IMU, LiDAR, all seven radars, and Ranger CAN feedback.
+    # sim:=true forces these off because fake_sensors owns the synthetic topics.
+    # Processing/safety switches never publish a fake-success output.
+    publish_sensor_dummies_when_disabled: true
     enable_radar_cost_grid: true
     # HH_260702 - Keep radar range details on the topics/checkers; enable this
     # only for bench debugging so field logs stay system-summary focused.
