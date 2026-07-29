@@ -185,23 +185,23 @@ Run these in order and take a `snapshot` after any failure.
    <!-- HH_260728 - Verify narrow self-return notches without recreating the
         old one-sided LEFT2 blind zone. -->
    - With the area clear, confirm stationary readings inside the configured
-     self-echo bands do not create radar cost.
+     fixed-return bands do not create radar cost.
    - Place an obstacle at approximately 0.50 m from LEFT2. It is below the old
      0.75 m floor but outside the new notches, so it must create cost and stop.
    - Move the obstacle through several distances on each channel. Values outside
      the configured narrow bands must remain obstacles; never widen a band from
      a single startup sample containing a wall or person.
-   - On every bringup, keep the robot disengaged, stationary, and the immediate
-     radar area clear until the log reports calibration `frozen`. Each healthy
-     channel collects for 8 s from its own first valid sample; a channel that
-     never starts, or first appears at/after the deadline, is rejected after
-     15 s. In the worst allowed timely delayed-start case, final freeze can
-     therefore take up to about 23 s.
-   - Confirm `/control/planning_engaged=false` is received before collection.
-     If either manual or mission engage becomes true, calibration must report
-     cancellation and retain fail-safe obstacle costs. Restart the radar cost
-     node while authorization is already true and confirm transient-local state
-     cancels learning immediately even if `command_enabled` is cost-held false.
+   - HH_260729 - The active field profile has
+     `startup_return_learning_enable: false`; normal bringup must not report a
+     newly learned exclusion. For a supervised calibration only, clear every
+     sensor area, keep the robot stationary/disengaged, enable the parameter,
+     and restart. Each healthy channel then collects for 8 s from its own first
+     valid sample; a channel that first appears at/after the 15 s deadline is
+     rejected. Restore the parameter to false before driving.
+   - During that supervised calibration, confirm
+     `/control/planning_engaged=false` is received before collection. If either
+     manual or mission engage becomes true, calibration must report
+     cancellation and retain fail-safe obstacle costs.
    - Force or observe two simultaneous sensor warnings and confirm `[SYSTEM]`
      prints both lines independently with `component`, logical `location`, TF
      `frame`, mount pose, and live range/rate values. A STALE transition must
@@ -219,20 +219,43 @@ Run these in order and take a `snapshot` after any failure.
      latched after the upstream command becomes zero or changes direction.
      Remove the obstacle and confirm release only after 2 s of continuously
      fresh clear radar/merged-grid evidence, followed by the 1 s stop hold.
+   - Restart with `enable_radar:=false`. Confirm there is no
+     `sen0592_radar_node`, all seven checkers say `DUMMY DATA`, and every dummy
+     range is `max_range + 0.001 m`.
+   - Confirm the radar cost-grid log names all seven channels under the
+     dummy-state barrier, `/sensing/radar/obstacle_evidence` remains exactly
+     `clear`, and no radar source appears in a cmd_vel stop reason. A visible
+     LEFT2 Range marker or DUMMY diagnostic is transport status, not an
+     obstacle.
 
 4. Perception-to-cost path
    - Put a vehicle/person in camera view.
    - Confirm perception publishes first.
    - Confirm compact object cost appears in LiDAR/perception cost grid.
    - Confirm the inflation grid sees it before the robot is close.
+   - With the component path enabled, confirm exactly one front image publisher
+     and no front-camera dummy publisher. The front camera and YOLO must remain
+     alive for at least 5 minutes while
+     `/perception/camera/detections_2d` publishes.
+   - Confirm `/dev/video1` rear raw image is near 10 Hz and the compressed
+     monitoring stream is near 2 Hz. A low-rate warning must say `FPS low`;
+     it must not be mislabeled as an encoding mismatch.
 
-5. Camping site mission
+5. Raw lanelet footprint boundary
+   - Run once with `enable_radar:=false` in a verified clear route corridor.
+   - If `lanelet_footprint_cost` appears, capture the pose, planning-boundary
+     polygon, and exact raw lanelet grid cell before changing any threshold.
+   - Confirm every point of `/platform/robot/planning_boundary` stays inside
+     the allowed map corridor. Do not disable the whole-footprint guard merely
+     to make the test move.
+
+6. Camping site mission
    - Select a camping site in UI.
    - Confirm lanelet route to snapped entry.
    - Confirm crab entry from snapped lane position.
    - Confirm 180-degree dwell after entering the site.
 
-6. Return mission
+7. Return mission
    - Press return in UI.
    - Confirm crab exits without replaying the 180-degree turn.
    - Confirm route returns to the drop-zone lanelet.

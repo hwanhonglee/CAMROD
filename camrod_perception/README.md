@@ -30,6 +30,14 @@ the tag pose and `camrod_control` decides parking commands.
 > and YOLO components share `/camera_yolo_container`. YOLO class names propagate
 > into Detection3D; `tent` detections drive campsite occupancy.
 
+> HH_260729 - Bringup freezes component ownership in the parent scope before
+> starting scoped child launches, preventing a front-camera dummy from sharing
+> the physical image topic. The YOLO compressed-image callback also validates
+> non-empty decoded BGR input and catches cv_bridge/OpenCV/processing exceptions.
+> A malformed JPEG is dropped with throttled stage, byte-count, format, frame,
+> timestamp, and exception detail instead of terminating the shared component
+> container.
+
 ---
 
 ## 2. 🗺️ System Position
@@ -431,6 +439,20 @@ ros2 topic hz /perception/lidar/bboxes
 1. `ros2 topic hz /sensing/camera/processed/camera_info` — if 0 Hz, the camrod_sensing camera pipeline is not running
 2. Verify `camera_info_topic` param in `perception_params.yaml` matches the actual topic name published by `camrod_sensing`
 3. If running in lidar-only mode intentionally, consider setting `enable_yolo:=false` and relying on pass-through mode — camera_info is still required by `obstacle_fusion_node` before it will process any cloud messages
+
+---
+
+### Camera/YOLO component exits or drops compressed frames
+
+1. Confirm there is exactly one publisher on
+   `/sensing/camera/econ_front/image_rect/compressed`; component ownership must
+   not start a front dummy beside `/dev/video0`.
+2. Inspect the `Dropping compressed image` detail for decode stage, payload
+   bytes, format, frame ID, and timestamp. One bad frame must not kill the
+   container.
+3. If valid physical frames still fail, check the component process maps for
+   mixed OpenCV ABIs and verify NvJPEG output independently before changing
+   YOLO thresholds or models.
 
 ---
 

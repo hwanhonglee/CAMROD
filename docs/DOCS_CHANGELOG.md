@@ -1,5 +1,28 @@
 # Documentation Changelog
 
+<!-- HH_260729 - Track the v2.1.0 disabled-hardware, radar, and camera hardening release. -->
+## [v2.1.0-docs] - 2026-07-29 (HH_260729)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Promoted v2.1.0 and summarized fail-visible disabled-hardware contracts, radar dummy cost isolation/evidence, camera ownership/crash containment, and retained footprint/latch/storage safety |
+| `docs/V2_1_0_RELEASE_NOTES.md` | Recorded the actual source/config delta, reviewed pre-fix ROS-log evidence, synchronized configuration surfaces, automated coverage, and explicit lack of a post-fix real-robot acceptance run |
+| `camrod_bringup/README.md` | Documented the scoped component-camera ownership handoff and common disabled-sensor dummy policy |
+| `camrod_sensing/README.md` | Reorganized SEN0592 hardware/software parameters, named fixed-return intervals, disabled startup learning, dummy behavior, obstacle evidence, and disabled-sensor schemas |
+| `camrod_platform/README.md` | Documented the mutually exclusive, ESTOP/non-drivable Ranger dummy contract |
+| `camrod_localization/README.md` | Documented rejection of disabled-GNSS `NO_FIX` placeholders before geographic conversion and EKF input |
+| `camrod_system/README.md` | Documented fresh-marker DUMMY/WARN semantics, physical-failure fallback, and global/per-channel radar dummy identity |
+| `camrod_bringup/docs/field_test_runbook.md` | Added radar-off cost-barrier, front/rear camera/YOLO lifetime/rate, and raw lanelet-footprint evidence checks |
+| root `TODOLIST.txt` | Moved all unperformed physical radar, camera, lanelet, off-road/reverse recovery, lateral-control latency, driving, CPU, planning, voice, OpenCV ABI, and port acceptance work into a prioritized field checklist |
+
+No post-fix real-robot bringup, engage, or driving test was performed while
+preparing these documents. The v2.1.0 tag records the source/configuration/test
+baseline; physical acceptance remains explicitly open in `TODOLIST.txt`.
+
+---
+
 <!-- HH_260728 - Track the final v2.0.9 obstacle latch and operations follow-up. -->
 ## [v2.0.9-final-field-safety] - 2026-07-28 (HH_260728)
 

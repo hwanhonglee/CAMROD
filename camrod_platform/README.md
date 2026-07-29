@@ -70,6 +70,23 @@ ros2 launch camrod_platform platform.launch.py
 If `can0` does not exist, connect or power the CAN adapter before using real
 hardware mode. Use `sim:=true` from `camrod_bringup` only for a non-hardware run.
 
+### Disabled Ranger driver
+
+<!-- HH_260729 - Keep a deliberate CAN disable distinct from a crashed driver,
+while preserving a fail-closed platform state. -->
+
+With `ranger_driver_enable:=false` and `ranger_dummy_when_disabled:=true`,
+`platform_dummy_publisher.py` opens no CAN device and publishes the raw Ranger
+topic schema at 5 Hz. Odometry and actuator velocities are zero with high
+uncertainty, battery data is unknown/not-present, and system state is forced to
+RC + ESTOP with an explicit error code. `/platform/dummy_active=true` makes
+wheel/velocity diagnostics report DUMMY/WARN. The normalized platform status
+therefore remains non-drivable and cannot be mistaken for healthy CAN.
+
+The real Ranger node and dummy are mutually exclusive. `platform_type:=rmp401`
+and top-level `sim:=true` suppress the Ranger dummy because their simulator owns
+the platform topics.
+
 Ranger driver command input is intentionally the only standard `Twist` boundary in this package.
 
 ## Steering-mode transition rate

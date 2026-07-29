@@ -5,11 +5,15 @@
 `camrod_bringup` starts the CAMROD stack in dependency order and provides the
 field/simulation configuration tree.
 
-<!-- HH_260723 - Document scoped module launch arguments and camera ownership. -->
+<!-- HH_260729 - Document frozen parent-scope camera ownership. -->
 Every included module runs in its own launch-configuration scope. When
 `camera_yolo_container.launch.py` owns the front camera, sensing receives a
-local `enable_front_camera=false` only to avoid a duplicate device open; that
-value cannot leak into perception and disable camera-LiDAR fusion.
+local `enable_front_camera=false` plus `front_camera_source_external=true`.
+Bringup resolves that ownership once under the distinct parent key
+`camera_yolo_container_active_resolved` before any child arguments are applied.
+The child's local false therefore cannot be fed back into the ownership
+expression, cannot start a duplicate front-camera dummy, and cannot leak into
+perception to disable camera-LiDAR fusion.
 
 ## Launch Order
 
@@ -38,6 +42,28 @@ ros2 launch camrod_bringup bringup.launch.py sim:=false parking_method:=reverse
 
 `parking_method` accepts only `reverse` or `apriltag`. Exactly one parking node
 is launched and checked by `camrod_system`.
+
+### Deliberately disabled hardware
+
+<!-- HH_260729 - One shared policy covers hardware acquisition flags without
+turning processing/safety switches into fake-success publishers. -->
+
+`sensing.publish_sensor_dummies_when_disabled: true` keeps canonical low-rate
+schemas available when a physical camera, GNSS, IMU, LiDAR, radar, or Ranger CAN
+input is set false. Every replacement publishes a fresh `dummy_active` marker,
+so diagnostics show its exact sensor/location as **DUMMY DATA / WARN**, never
+hardware-OK. GNSS is `NO_FIX`, LiDAR is an empty cloud, and radar is no-target
+with both a group marker and one marker per replaced channel. A single
+`sensor_enabled[i]: false` opens no radar port and publishes only that channel's
+2 Hz no-target/marker heartbeat; enabled radar channels never publish a dummy
+marker. HH_260729 - the radar cost grid also subscribes to the group and
+per-channel markers and suppresses cost painting while they are fresh, in
+addition to rejecting the numeric no-target value. Ranger feedback is forced
+non-drivable/ESTOP.
+
+Top-level `sim:=true` forces these auxiliary publishers off because the
+simulation publisher already owns the same topics. Cost-grid, planning,
+control, UI, and other processing switches never receive fake-success outputs.
 
 <!-- HH_260722 - Document the hardware-verified dual-GNSS defaults used by full bringup. -->
 ## Dual-GNSS Field Default
@@ -97,7 +123,7 @@ Detailed wiring, A/B results, and recovery behavior are documented in
 | `config/bringup/launch_defaults.yaml` | Module enable flags and launch defaults |
 | `config/sensing/gnss/zed_f9p_rover.yaml` | Deployment mirror of rover device, RTCM isolation, rate, and publish settings |
 | `config/sensing/gnss/ntrip_client.yaml` | Deployment mirror of the active NTRIP caster and retry settings |
-| `config/sensing/radar/cost_grid.yaml` | Deployment mirror of measured radar notches and bounded startup calibration |
+| `config/sensing/radar/cost_grid.yaml` | Deployment mirror of named fixed-return bands, explicit dummy-state cost barrier, and supervised startup calibration |
 | `config/system/diagnostics/{default,sim}/aggregator/diagnostics_config.yaml` | Deployment mirrors of per-sensor component, location, TF frame, and mount-pose metadata |
 | `config/control/cmd_vel_safety_gate.yaml` | Bringup mirror of command authorization and motion-safety policy |
 | `config/control/control.yaml` | Bringup mirror of campsite/drop-zone maneuver tuning |

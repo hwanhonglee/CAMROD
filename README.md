@@ -10,7 +10,9 @@
 
 <!-- HH_260728 - Promote the bounded radar self-return and forward-side-guard release. -->
 
-Current validated baseline: `v2.0.9` ([release notes](docs/V2_0_9_RELEASE_NOTES.md)).
+<!-- HH_260729 - Promote the fail-visible disabled-sensor and radar/camera hardening release. -->
+
+Current release baseline: `v2.1.0` ([release notes](docs/V2_1_0_RELEASE_NOTES.md)).
 
 CAMROD is a ROS 2 Humble autonomous mobile robot stack. Route planning, local
 vehicle maneuvers, reverse parking, and hardware command authorization are
@@ -53,6 +55,38 @@ is 0.60 m from `robot_base_link`; crab/reverse retains 1.20 m. With the radar
 grid's 0.30 m obstacle radius, a side hit near base-centred `|y|=1.0 m` stays
 clear during forward travel while a closer hit near `|y|=0.8 m` blocks.
 The disk diagnostic WARN threshold is 90% (ERROR remains 95%).
+
+<!-- HH_260729 - Summarize the v2.1.0 disabled-hardware, radar, and camera boundary changes. -->
+The v2.1.0 delta adds explicit, low-rate dummy contracts for deliberately
+disabled camera, GNSS, IMU, LiDAR, radar, and Ranger hardware. A fresh
+`dummy_active` heartbeat makes diagnostics report the exact component and
+location as `DUMMY DATA / WARN`; it never reports dummy input as healthy
+hardware. The placeholders are fail-safe: GNSS remains `NO_FIX`, LiDAR is an
+empty cloud, radar publishes no-target ranges, and Ranger feedback remains
+ESTOP/non-drivable. Simulation keeps these auxiliary publishers off because its
+fake-sensor publisher already owns the same schemas.
+
+Radar now uses a narrow-angle, near-field physical profile with verified
+register readback, named fixed-return intervals, and disabled automatic startup
+learning in the driving profile. Fresh global or per-channel radar dummy
+markers independently block cost painting, so `enable_radar:=false` cannot
+become a LEFT2 or other radar obstacle. Accepted live hits publish diagnostic
+channel/frame/range/map-point evidence without changing occupancy-grid stop
+authority.
+
+The camera/YOLO launch path resolves component ownership before entering the
+scoped sensing include, preventing the real front camera from being accompanied
+by a front dummy. Dummy JPEG generation is decode-tested, and malformed
+compressed input is rejected and logged inside the YOLO callback instead of
+terminating the shared component container. The v2.0.9 complete-footprint
+lanelet guard, retained dynamic-obstacle latch, and 90/95% disk thresholds
+remain in force.
+
+No post-fix full real-robot drive acceptance was performed while packaging this
+source/configuration baseline. The remaining radar clear-area, camera-rate,
+lanelet-footprint, off-road/reverse recovery, lateral-control latency,
+goal/path/cmd_vel, CPU, planning, voice, OpenCV ABI, and port checks are tracked
+in [`TODOLIST.txt`](TODOLIST.txt).
 
 <!-- HH_260724 - Clarify operator-visible manual driving and stop/cancel state. -->
 Manual ENGAGE without a campsite selection is shown as `Manual driving` in the

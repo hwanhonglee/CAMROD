@@ -284,6 +284,7 @@ graph TD
 <!-- HH_260723 - The compatibility grid defaults to perception-only dynamic obstacles. -->
 | `/sensing/cost_grid/lidar` | `avg_msgs/AvgOccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_control | 10 Hz | Route-clipped 180×180 @ 0.10 m grid from `/perception/obstacles`; raw filtered LiDAR is optional |
 | `/sensing/cost_grid/radar` | `avg_msgs/AvgOccupancyGrid` | `inflation_cost_grid`, camrod_planning, camrod_control | 10 Hz | Route-clipped 120×120 @ 0.10 m near-field obstacle grid from radar |
+| `/sensing/radar/obstacle_evidence` | `avg_msgs/AvgString` | Operator diagnostics | 10 Hz | `clear`, or only fresh unfiltered radar hits that remain in the published grid, with sensor, frame, range, map x/y, and cost |
 | `/planning/cost_grid/inflation` | `avg_msgs/AvgOccupancyGrid` | camrod_planning and `camrod_control/cmd_vel_safety_gate` | 6 Hz | 180×180 @ 0.10 m merged grid: max(lanelet, lidar, radar, global_path) |
 | `/sensing/gnss/ublox_gps_node/fix` | `sensor_msgs/NavSatFix` | camrod_localization (`localization_input_adapter`) | 10 Hz single / 1 Hz dual field rate | Raw position and covariance; verify RTK carrier state on NAV-PVT; dual rate matches moving-base epochs and diagnostics accept >= 0.8 Hz |
 | `/sensing/gnss/pose` | `avg_msgs/AvgPoseStamped` | CAMROD localization nodes | follows fix | Generated GNSS pose in `map` frame |
@@ -327,27 +328,111 @@ graph TD
 ### Radar (SEN0592 ×7)
 
 <!-- HH_260623 - Updated radar documentation to match the latest todo/camrod_sensing 7-channel layout. -->
+<!-- HH_260729 - Separate physical-register settings, software acceptance,
+message metadata, and channel wiring with the same names used in YAML. -->
 
 | Field | Detail |
 |---|---|
-| Trigger | `poll_period_s` timer (60 ms cycle) |
-| Internal logic | `sen0592_radar_node` polls seven DFRobot SEN0592 sensors over seven CH9344 USB serial ports at 115200 baud. HH_260702 - current field port order is FRONT1=USB0, FRONT2=USB1, LEFT1=USB4, LEFT2=USB5, RIGHT1=USB2, RIGHT2=USB3, REAR=USB6 because the LEFT/RIGHT harness branches are crossed. Normal bringup skips startup hardware register writes because this harness returns read data reliably but times out on write echoes; software `sensor_max_ranges_m` still limits each direction: FRONT1/FRONT2 1.50 m, LEFT1/LEFT2/RIGHT1/RIGHT2 0.80 m, REAR 0.50 m. Each sensor publishes generated `AvgRange` for internal consumers and a `sensor_msgs/Range` `_ros` mirror for RViz per fresh valid/no-target reply. |
-| Output effect | Seven topics: `/sensing/radar/{front1,front2,left1,left2,right1,right2,rear}/range`. |
-| Operator-visible symptom | If any topic is silent, the corresponding CH9344 port may not be enumerated. Run `ls /dev/ttyCH9344USB*` to verify all seven ports exist. |
-| Related params | `ports`, `sensor_names`, `frame_ids`, `sensor_max_ranges_m`, `poll_period_s`, `baud`, `configure_hardware_on_startup`, `sensor_angle_config_values` |
-| Related topics | `/sensing/radar/{front1,front2,left1,left2,right1,right2,rear}/range` |
+| Trigger | Enabled channel: `poll_period_s` timer (60 ms cycle). Disabled channel: `disabled_channel_dummy_publish_rate_hz` (2 Hz). |
+| Internal logic | `sen0592_radar_node` polls seven DFRobot SEN0592 ultrasonic sensors over seven CH9344 USB serial ports at 115200 baud. HH_260702 - current field port order is FRONT1=USB0, FRONT2=USB1, LEFT1=USB4, LEFT2=USB5, RIGHT1=USB2, RIGHT2=USB3, REAR=USB6 because the LEFT/RIGHT harness branches are crossed. `hardware_angle_levels` is the requested/read-back `0x0208` level (1–4, narrowest to widest), while `hardware_range_levels` is the requested/read-back `0x021F` level (1–5). HH_260729 - startup reads before writing, changes only mismatched registers, and accepts FC03 readback—not a sometimes-missing FC06 echo—as authority. The active near-field profile requests angle level 1 on all channels, range level 2 (~1.5 m) on front/sides, and level 1 (~0.5 m) at the rear. Exact acceptance remains software logic: FRONT1/FRONT2 1.50 m, LEFT/RIGHT 0.80 m, REAR 0.50 m. Use `sensor_enabled[i]: false` plus a restart to disable one channel. The driver then opens no serial port for that channel and publishes only `max_range + 0.001 m` no-target heartbeats plus its per-channel `dummy_active=true` marker. `range_message_field_of_view_rad` is visualization metadata only and does not change the physical beam. Each enabled sensor publishes generated `AvgRange` for internal consumers and a `sensor_msgs/Range` `_ros` mirror for RViz per fresh valid/no-target reply. |
+| Output effect | Seven AvgRange topics and `_ros` mirrors: `/sensing/radar/{front1,front2,left1,left2,right1,right2,rear}/range[_ros]`. A disabled channel additionally owns only its `/sensing/radar/<channel>/dummy_active` marker. |
+| Operator-visible symptom | If any enabled topic is silent, inspect the startup per-sensor hardware readback and verify the corresponding CH9344 port with `ls /dev/ttyCH9344USB*`. A deliberately disabled channel stays fresh with a no-target value and is identified as dummy by its channel marker; an enabled/physical channel never publishes that marker. |
+| Parameter updates | Hardware topology, timing, range/angle configuration, names, frames, ports, and topics are startup-only/read-only ROS parameters and require a restart. Only `log_status` and `publish_radar_status` are dynamically changeable while the node is running. |
+| Related params | `hardware_write_on_startup`, `hardware_angle_levels`, `hardware_range_levels`, `sensor_enabled`, `disabled_channel_dummy_publish_rate_hz`, `software_min_range_m`, `software_default_max_range_m`, `software_max_ranges_m`, `range_message_field_of_view_rad`, `sensor_names`, `frame_ids`, `ports`, `topics`, `standard_ros_topics`, `log_status`, `publish_radar_status` |
+| Related topics | `/sensing/radar/{front1,front2,left1,left2,right1,right2,rear}/range`, matching `_ros` and `dummy_active` topics |
+
+Register meanings follow the
+[DFRobot SEN0592 Modbus register reference](https://wiki.dfrobot.com/sen0592/docs/19640):
+`0x0208` is an angle **level** (1–4, default 4), and `0x021F` is a range
+**level** (1≈0.5 m, 2≈1.5 m, 3≈2.5 m, 4≈3.5 m, 5≈5.0 m).
+
+HH_260729 full-bringup readback originally found FRONT1/FRONT2/REAR angle level
+4, all four LEFT/RIGHT angle levels 2, and range level 5 on all channels. The
+requested near-field profile now writes and verifies angle level 1 everywhere,
+range level 2 on front/sides, and range level 1 at the rear. `0x0208` is one
+combined angle/sensitivity level; it cannot preserve a wide horizontal beam
+while narrowing only vertical coverage. That beam shape requires rotating the
+asymmetric physical sensor around its forward axis.
+
+HH_260729 post-write stationary sampling confirmed all seven register
+readbacks. In the current area—which was explicitly not completely clear—the
+existing self-return filter still passed persistent candidates at LEFT2
+0.365–0.382 m, RIGHT1 0.391–0.406 m, and RIGHT2 0.362–0.369 m. They remain
+obstacles because filtering them would also hide a real object only 0.36–0.41 m
+from the corresponding sensor. Repeat the sample in a supervised, completely
+clear area before classifying any of these three intervals as floor/chassis
+echo.
+
+#### Disabled-hardware dummy behavior
+
+<!-- HH_260729 - Keep intentionally disabled hardware distinguishable from both
+a crashed driver and verified physical data. -->
+
+`publish_sensor_dummies_when_disabled:=true` is the single policy for physical
+input switches. It does not add another `enable_*` flag per sensor. In a real,
+non-simulation launch, each disabled input keeps its public message schema alive
+with a deliberately lightweight placeholder:
+
+| Disabled input | Placeholder contract | Safety meaning |
+|---|---|---|
+| `enable_gnss:=false` | `NavSatFix STATUS_NO_FIX` with NaN LLH plus unusable heading covariance | The localization adapter rejects it before LLH conversion |
+| `enable_imu:=false` | Stationary `sensor_msgs/Imu` with high covariance | The converter stays alive, but diagnostics identify dummy IMU |
+| `enable_lidar_driver:=false` | Valid empty raw and filtered XYZ clouds | Clears stale markers without inventing an obstacle or a measured free space |
+| Camera master/front/rear `false` | 1×1 black image/JPEG and `CameraInfo` | Preserves transport only; never reported as a working camera |
+| `enable_radar:=false` | Seven no-target ranges at each maximum + 0.001 m | The radar cost grid rejects the numeric no-target value and independently suppresses every channel while its fresh dummy marker is active |
+
+Every group publishes a fresh `dummy_active=true` marker. Sensor and downstream
+diagnostics report **DUMMY DATA / WARN (physical hardware disabled)** and include
+the sensor name, topic, and configured mounting location; they never label the
+placeholder as hardware-OK. If the marker becomes false or stale, the ordinary
+missing/stale ERROR behavior returns immediately.
+
+Radar uses a dedicated 10 Hz publisher so all seven `AvgRange` topics and their
+`sensor_msgs/Range` `_ros` RViz mirrors retain the real driver's no-target
+contract. It publishes the existing group marker and seven channel markers.
+An individual `sensor_enabled[i]: false` likewise opens no serial port and
+publishes only that channel's no-target heartbeat and channel marker at the
+configured low rate; enabled physical channels never own a channel marker. In
+`sim:=true`, bringup always forces all of these auxiliary dummies off because
+`fake_sensor_publisher.py` already owns the synthetic topics.
+
+This policy applies only to hardware acquisition. Disabling NTRIP, a cost grid,
+perception, planning, control, UI, or another processing/safety feature does not
+create a fake-success output; doing so could hide a disabled safety layer.
 
 ### Radar cost grid
+
+<!-- HH_260729 - Use stage-based names, named sensors, and exact
+minimum/maximum body-return intervals. -->
 
 | Field | Detail |
 |---|---|
 | Trigger | Each incoming Range message (async per sensor) |
-| Internal logic | `radar_cost_grid_node` projects each generated `AvgRange` into `map`. Costs scale from 85 to 95 after invalid/no-target values and measured self-echo notches are removed. HH_260728 - the previous one-sided 0.30 m common / 0.75 m LEFT2 floors were replaced with per-sensor `(index, center, half-width)` bands measured on the stationary vehicle. Only values inside those narrow bands are removed, so a LEFT2 obstacle at 0.50 m is again safety-relevant. Because a radar hardware restart produced different stable body modes, each sensor now receives a complete disengaged 8 s collection window beginning at its own first valid sample. A port with no first valid sample, or one first seen at/after the absolute 15 s deadline, is rejected; accepted sensors append at most one dominant tight boot-local notch and then freeze independently. Collection does not begin until the transient-local `/control/planning_engaged=false` state is received. That state combines manual and mission engage and remains true through a cost-stop hold, so active or restarted driving cannot become calibration data. Learning candidates are limited to 0.20–0.30 m by sensor; farther LEFT2/RIGHT returns that project outside the robot boundary stay as obstacles. Active authorization, insufficient samples, a weak mode, or a band wider than 0.03 m prevents learning instead of widening the blind area. HH_260720 - completed radar disks are clipped to the same active-route mask and 0.35 m margin as LiDAR, with the same startup/stale/off-route fail-open behavior. Messages older than 0.35 s are discarded. |
-| Output effect | `/sensing/cost_grid/radar`: 120×120 @ 0.10 m (12 m square centred on robot), published at 10 Hz. |
-| No-target behavior | HH_260701 - SEN0592 no-target/invalid responses publish a heartbeat slightly above `max_range`; diagnostics treat this as fresh no-target data and cost-grid consumers ignore it as an obstacle. |
-| Operator-visible symptom | Empty grid → serial port permission denied or CH9344 driver not loaded. Near-field obstacles missing → ego_clear_radius_m is too large; current value 0.50 m is already minimal. |
-| Related params | `cost_range_min_m`, `cost_range_max_m`, `self_echo_filter_enable`, `self_echo_sensor_indices`, `self_echo_centers_m`, `self_echo_half_widths_m`, `startup_self_echo_calibration_*`, `ego_clear_radius_m`, `route_lanelet_filter_enable`, `route_lanelet_margin_m`, `route_lanelet_mask_max_age_s`, `route_lanelet_filter_fail_open_when_robot_outside`, `max_message_age_s`, `publish_rate_hz` |
-| Related topics | `/sensing/radar/*/range` + `/control/planning_engaged` + `/map/cost_grid/route_lanelet_mask` → `/sensing/cost_grid/radar` |
+| Internal logic | `radar_cost_grid_node` projects each generated `AvgRange` into `map`. Hits at or below `cost_near_distance_m` receive `max_cost`; cost then decreases to `min_cost` at `cost_far_distance_m`. Invalid/no-target values and the named `fixed_return_bands` are removed first. HH_260729 - fresh `/sensing/radar/dummy_active` or derived per-channel dummy markers independently suppress cost painting for the marked channels; a stale marker stops suppressing after `dummy_active_timeout_s`, so a later physical restart remains fail-visible. Only values inside the exact fixed bands are excluded; all other valid returns remain obstacle costs, so a LEFT2 obstacle at 0.50 m is safety-relevant. Automatic startup learning is disabled in the field-driving profile so an object present during startup cannot become a boot-local blind interval. When explicitly enabled for supervised clear-area calibration, each sensor receives a complete disengaged 8 s window beginning at its first valid sample, subject to the absolute 15 s first-sample deadline and transient-local `/control/planning_engaged=false` authorization. Candidates remain limited by `startup_return_max_ranges_m` to 0.20–0.30 m per sensor, and insufficient, weak, or broad clusters are rejected. HH_260720 - completed radar disks are clipped to the same active-route mask and 0.35 m margin as LiDAR, with the same startup/stale/off-route fail-open behavior. Route clipping is skipped for an empty/dummy grid to avoid a misleading active-route-mask warning. Messages older than 0.35 s are discarded. |
+| Output effect | `/sensing/cost_grid/radar`: 120×120 @ 0.10 m (12 m square centred on robot), published at 10 Hz. `/sensing/radar/obstacle_evidence` publishes `clear` or entries such as `SENSOR=RIGHT1 frame_id=radar_right1_link range_m=0.068 output_frame=map x=... y=... cost=95`. Only fresh, valid, unfiltered hits whose painted cells survive route clipping are included. |
+| No-target behavior | HH_260729 - SEN0592 no-target/invalid responses publish a heartbeat slightly above `max_range`; diagnostics treat this as fresh no-target data and cost-grid consumers ignore it as an obstacle. Dummy state is also checked directly, so disabled hardware has two independent no-cost barriers. |
+| Operator-visible symptom | Empty grid → serial port permission denied or CH9344 driver not loaded. Near-field obstacles missing → ego_clear_radius_m is too large; current value 0.50 m is already minimal. Active accepted hits also emit a throttled WARN containing the exact radar channel and projected location. |
+| Parameter updates | All cost-grid parameters are startup-only. Runtime `ros2 param set` is rejected; edit the selected YAML and restart. |
+| Related params | `dummy_active_topic`, `dummy_active_timeout_s`, `cost_near_distance_m`, `cost_far_distance_m`, `fixed_return_filter_enable`, `fixed_return_bands`, `startup_return_*`, `ego_clear_radius_m`, `route_lanelet_filter_enable`, `route_lanelet_margin_m`, `route_lanelet_mask_max_age_s`, `route_lanelet_filter_fail_open_when_robot_outside`, `obstacle_evidence_topic`, `obstacle_evidence_warn_interval_s`, `max_message_age_s`, `publish_rate_hz` |
+| Related topics | `/sensing/radar/*/range` + `/control/planning_engaged` + `/map/cost_grid/route_lanelet_mask` → `/sensing/cost_grid/radar` + `/sensing/radar/obstacle_evidence` |
+
+The `fixed_return_bands` below are inclusive range intervals in metres.
+They are persistent returns classified during the current clear-area field
+experiment, not a general minimum-distance floor. A scalar SEN0592 cannot prove
+whether an equal-distance return came from the body or a real object. In
+particular, the side bands extend slightly beyond the planning footprint along
+the nominal sensor centerline, so they are an explicit temporary blind-zone
+tradeoff pending mounting/beam shielding:
+
+| Radar | Ignored fixed intervals (m) |
+|---|---|
+| FRONT1 | 0.099–0.123; 0.152–0.220 |
+| FRONT2 | 0.097–0.117 |
+| LEFT1 | 0.182–0.226; 0.234–0.258 |
+| LEFT2 | 0.210–0.280 |
+| RIGHT1 | 0.055–0.080; 0.253–0.277 |
+| RIGHT2 | 0.248–0.278 |
+| REAR | 0.090–0.190 |
 
 ### Camera — dual econ (front + rear)
 
@@ -602,6 +687,7 @@ ros2 launch camrod_sensing camera.launch.py
 |---|---|---|
 | `sensing_namespace` | `sensing` | ROS 2 namespace for all sensing nodes |
 | `enable_lidar_driver` | `true` | Vanjee LiDAR driver + preprocessor |
+| `publish_sensor_dummies_when_disabled` | `true` | Publish explicit low-rate DUMMY/WARN contracts for disabled physical inputs; bringup forces `false` in sim |
 | `enable_lidar_cost_grid` | `true` | LiDAR obstacle cost grid |
 | `enable_radar` | `true` | SEN0592 radar driver |
 | `enable_radar_cost_grid` | `true` | Radar obstacle cost grid |
@@ -616,7 +702,7 @@ ros2 launch camrod_sensing camera.launch.py
 | `ublox_dual_warm_start_on_startup` | `false` | One-shot recovery after a wrong-reference diagnostic; return to `false` after the rover reacquires |
 | `ublox_dual_base_rtcm_device` | `__config__` | Uses `/**/moving_base_rtcm_writer.device` from `gnss_param_file`; an explicit path overrides it |
 | `ublox_dual_base_rtcm_baud` | `__config__` | Uses `/**/moving_base_rtcm_writer.baud` from `gnss_param_file`; an explicit value overrides it |
-| `enable_imu` | `true` | MicroStrain IMU driver |
+| `enable_imu` | `true` | Physical MicroStrain IMU driver; velocity converter remains active for explicit dummy input |
 | `imu_model` | `cv7` | IMU hardware model: `cv7` (CV7-AHRS) or `gq7` (GQ7 with optional NTRIP) |
 | `imu_param_file` | `__model_default__` | IMU param YAML; auto-resolves to `config/imu/microstrain_<model>.yaml` |
 | `camera_device_path` | `/dev/video0` | Front camera V4L2 device (rear is always `/dev/video1`) |
@@ -636,8 +722,8 @@ ros2 launch camrod_sensing camera.launch.py
 | `config/lidar/preprocessor.yaml` | Ground filter (RANSAC), range limits, voxel size, frame ID override |
 | `config/lidar/cost_grid.yaml` | LiDAR grid geometry, cost thresholds, ego clear radius |
 | `config/lidar/vanjee/config.yaml` | Vanjee LiDAR driver hardware config |
-| `config/radar/sen0592_radar.yaml` | Serial ports, per-sensor range limits, detection angle config |
-| `config/radar/cost_grid.yaml` | Radar grid geometry, near-field cost range |
+| `config/radar/sen0592_radar.yaml` | Categorized seven-channel serial wiring, physical register levels, software acceptance limits, and ROS output metadata |
+| `config/radar/cost_grid.yaml` | Categorized radar grid geometry, distance-scaled cost painting, named fixed-return exclusions, and guarded startup return learning |
 | `config/inflation_cost_grid.yaml` | Merged grid geometry, per-input staleness limits |
 | `config/imu/microstrain_cv7.yaml` | CV7-AHRS driver: port, rates, frame, filter aiding flags |
 | `config/imu/microstrain_gq7.yaml` | GQ7 driver config (used with `imu_model:=gq7`) |
@@ -662,13 +748,43 @@ ros2 launch camrod_sensing camera.launch.py
 
 <details><summary>Radar driver — <code>config/radar/sen0592_radar.yaml</code></summary>
 
+<!-- HH_260729 - Mirror the five YAML categories and canonical parameter names. -->
+
 | Param | Value | Meaning |
 |---|---|---|
 | `poll_period_s` | `0.06` s | Sensor polling interval (≈16.7 Hz cycle) |
-| `sensor_angle_config_values` | `[0, 0, 0, 0, 0, 0, 0]` | Preserve each sensor's hardware-stored angle; normal bringup does not write register `0x0208` |
-| `sensor_max_ranges_m` | `[1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]` | Per-sensor max range (FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR) |
+| `sensor_enabled` | `[true, true, true, true, true, true, true]` | Explicit per-channel enable. `false` prevents that port from opening and replaces only that channel with no-target range + `_ros` + `dummy_active=true` heartbeats; restart required. |
+| `disabled_channel_dummy_publish_rate_hz` | `2.0` Hz | Low-load heartbeat rate for channels disabled through `sensor_enabled`; startup-only. |
+| `hardware_write_on_startup` | `true` | Read first, write only mismatched `0x0208`/`0x021F` registers, and require exact FC03 readback. |
+| `hardware_angle_levels` | `[1, 1, 1, 1, 1, 1, 1]` | Physical `0x0208` level in FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR order. Level 1 is the narrowest combined angle/sensitivity setting; horizontal and vertical are not independently configurable. |
+| `hardware_range_levels` | `[2, 2, 2, 2, 2, 2, 1]` | Physical `0x021F` near-field profile: ~1.5 m front/sides and ~0.5 m rear. Exact shorter operating cutoffs are still applied in software. |
+| `software_min_range_m` | `0.02` m | Common lower bound accepted by the driver. |
+| `software_default_max_range_m` | `4.50` m | Fallback upper bound if no per-channel value is supplied. |
+| `software_max_ranges_m` | `[1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]` | Always-active exact software cutoff in sensor order; longer replies become no-target heartbeats. |
+| `range_message_field_of_view_rad` | `0.26` rad | `sensor_msgs/Range` visualization metadata only; it does not change the SEN0592 beam and is ignored by the cost grid. |
 | `ports` | `[USB0, USB1, USB4, USB5, USB2, USB3, USB6]` | CH9344 serial port assignments for FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR |
-| Cost-grid self-echo policy | narrow measured notches + per-sensor startup notch | No one-sided distance floor; all valid values outside accepted bands remain obstacle costs |
+| Runtime mutability | startup fields read-only | Restart for topology/timing/hardware/software range changes; only `log_status` and `publish_radar_status` are dynamic. |
+| Cost-grid fixed-return policy | narrow measured bands + at most one per-sensor startup band | No one-sided distance floor; all valid values outside accepted bands remain obstacle costs. |
+
+</details>
+
+<details><summary>Radar fixed/startup return filters — <code>config/radar/cost_grid.yaml</code></summary>
+
+<!-- HH_260729 - Describe the cost-grid stages with their canonical YAML names. -->
+
+| Param | Active value | Meaning |
+|---|---|---|
+| `cost_near_distance_m` / `cost_far_distance_m` | `0.30` / `2.00` m | `max_cost` applies through the near distance, then decreases to `min_cost` at the far distance. |
+| `fixed_return_filter_enable` | `true` | Exclude only the measured fixed body-return bands listed below. |
+| `fixed_return_bands` | `SENSOR:min_m:max_m` list | Named inclusive fixed intervals; each sensor name must match the sensor segment of `input_topics`. |
+| Fixed intervals | FRONT1 `0.099–0.123`, `0.152–0.220`; FRONT2 `0.097–0.117`; LEFT1 `0.182–0.226`, `0.234–0.258`; LEFT2 `0.210–0.280`; RIGHT1 `0.055–0.080`, `0.253–0.277`; RIGHT2 `0.248–0.278`; REAR `0.090–0.190` m | Field-classified persistent returns, including the HH_260729 all-true live sample (FRONT1 `0.204–0.211`, LEFT2 body-return tail `0.216–0.271`, REAR up to `0.179` m). The separate LEFT2 `0.629–0.637` m cluster remains an obstacle. Other valid ranges remain obstacles, but an equal-range real object is indistinguishable and is also suppressed. |
+| `startup_return_learning_enable` | `false` | Disabled for field driving so an object present at startup cannot become a temporary blind interval; enable only for supervised stationary clear-area calibration. |
+| `startup_return_learning_duration_s` / `startup_return_first_sample_timeout_s` | `8.0` / `15.0` s | Give each sensor 8 s from its first valid sample, but reject a sensor that first appears at or after the absolute 15 s startup deadline. |
+| `startup_return_max_ranges_m` | `[0.25, 0.25, 0.30, 0.30, 0.30, 0.30, 0.20]` | Maximum learning candidate range in FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR order. |
+| `startup_return_authorization_topic` | `/control/planning_engaged` | Learning is allowed only after an explicit disengaged state and stops immediately when planning engages. |
+| `dummy_active_topic` / `dummy_active_timeout_s` | `/sensing/radar/dummy_active` / `1.0` s | Fresh global or per-channel dummy state suppresses cost painting independently of the numeric no-target contract; stale state never masks a restarted physical channel. |
+| `obstacle_evidence_topic` | `/sensing/radar/obstacle_evidence` | Publish `clear` or the exact fresh, unfiltered channels still represented in the final radar grid. |
+| `obstacle_evidence_warn_interval_s` | `1.0` s | Throttle active-hit WARN output without changing the 10 Hz evidence topic. |
 
 </details>
 
@@ -962,7 +1078,7 @@ reference streams broke heading in the field A/B test.
 
 - HH_260707: `/sensing/lidar/cost_grid` consumes `/sensing/lidar/points_filtered`, height-gated `/sensing/lidar/filtered_cloud`, `/perception/obstacles`, `/perception/lidar/bboxes`, and `/perception/camera_lidar/markers`. Perception markers are written as cost 90 with a 0.35-0.75 m radius window and remain valid for the same 1.50 s freshness window as filtered LiDAR.
 - HH_260707: LiDAR preprocessing uses shallow QoS and reusable point-cloud buffers, and LiDAR/inflation cost grids skip full rebuilds when inputs and vehicle pose/yaw are effectively unchanged.
-- HH_260728: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; no-target values remain invalid while only measured narrow self-echo bands are removed. Do not restore one-sided distance floors because they hide closer real obstacles.
+- HH_260728: Radar validation target is ~10 Hz per range topic and 10 Hz for `/sensing/cost_grid/radar`; no-target values remain invalid while only measured narrow fixed-return bands are removed. Do not restore one-sided distance floors because they hide closer real obstacles.
 - HH_260720 - Full-stack tests with RViz/UI/voice/camera/YOLO/AprilTag parking enabled can saturate the Jetson and delay cost-grid publication. Treat that mode as a load probe, then repeat drive validation with the lighter outdoor profile.
 - HH_260708: ZED-F9P single-antenna GNSS is documented and configured as `/dev/ttyACM0`; diagnostics tolerate 1 Hz effective fix/pose rates while preserving freshness/fix/covariance/jump checks.
-- HH_260728 - The active field NTRIP mountpoint is `JECH-RTCM32`; seven radar channels retain their hardware-stored angles while the cost grid uses the measured per-sensor self-echo notch profile. `sensor_angle_config_values: [0, ...]` means normal bringup does not rewrite angle register `0x0208`.
+- HH_260729 - The active field NTRIP mountpoint is `JECH-RTCM32`. Radar configuration is grouped by physical hardware, software acceptance, ROS output, and channel wiring. Startup now reads before changing mismatched registers, requests the near-field profile `hardware_angle_levels=[1,1,1,1,1,1,1]` and `hardware_range_levels=[2,2,2,2,2,2,1]`, and requires exact FC03 readback; `software_max_ranges_m` applies the final shorter cutoffs. Use `sensor_enabled` for explicit per-channel dummy replacement. The cost grid uses named `fixed_return_bands` plus guarded `startup_return_*` learning. Driver topology/configuration parameters are startup-only/read-only, while `log_status` and `publish_radar_status` remain dynamic.
