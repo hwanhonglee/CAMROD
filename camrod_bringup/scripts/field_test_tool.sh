@@ -25,6 +25,10 @@ Usage:
   field_test_tool.sh snapshot [log_dir]
       Save git, process, ROS graph, diagnostics, topic info, and short Hz samples.
 
+  field_test_tool.sh record-recovery [log_dir]
+      Record the TODO 11-13 route-recovery/steering evidence until Ctrl+C.
+      Also saves active parameters and a PASS/FAIL field-result template.
+
   field_test_tool.sh hz [seconds]
       Measure the field-critical topic rates.
 
@@ -299,6 +303,163 @@ rate_only_topics() {
 EOF
 }
 
+# HH_260729 / TODOLIST 11-13 - Keep every route-hold, retained-goal,
+# full-footprint, obstacle, and steering-feedback source on one rosbag clock.
+recovery_topics() {
+  cat <<'EOF'
+/rosout
+/tf
+/tf_static
+/service/state
+/localization/pose
+/planning/state_machine/state
+/planning/engage
+/planning/mission_engage
+/planning/goal_pose_snapped
+/planning/goal_source
+/planning/navigate_to_pose/_action/status
+/planning/global_path_avg
+/planning/local_path
+/control/command_enabled
+/control/cmd_vel_safety_gate/status
+/control/cmd_vel_raw
+/control/cmd_vel
+/control/cmd_vel_ros
+/platform/drive_enable
+/platform/status
+/platform/status/wheel
+/actuator_state
+/platform/robot/planning_boundary
+/map/cost_grid/lanelet
+/planning/cost_grid/inflation
+/sensing/cost_grid/lidar
+/sensing/cost_grid/radar
+EOF
+}
+
+write_recovery_result_template() {
+  local output_file="$1"
+  local commit
+  commit="$(git -C "${SRC_ROOT}" rev-parse HEAD 2>/dev/null || echo unknown)"
+  cat >"${output_file}" <<EOF
+CAMROD TODO 11-13 REAL-ROBOT FIELD RESULT
+date/time:
+operator:
+location:
+commit: ${commit}
+bag directory:
+bringup log:
+weather/ground:
+battery start/end:
+physical e-stop checked: YES / NO
+second safety operator present: YES / NO
+
+[TODO 11] ROUTE_SAFETY_HOLD AND SAME-GOAL RECOVERY
+trigger reason:
+trigger direction:
+command_enabled became false: YES / NO
+ROUTE_SAFETY_HOLD observed: YES / NO
+outside/stale evidence stayed blocked: YES / NO
+continuous clear observed (required >= 1.0 s):
+Nav2 ABORTED during hold: YES / NO
+same goal/source reissued after enabled (required >= 0.5 s): YES / NO / N/A
+reissue count (required <= 2):
+PASS / FAIL:
+notes:
+
+[TODO 12] CONSTRAINED OPPOSITE ESCAPE AND FIRST RE-ENGAGE
+same/zero/rotation remained blocked: YES / NO
+rear obstacle blocked opposite escape: YES / NO
+clear opposite escape moved at supervised low speed: YES / NO
+safe corridor re-entered: YES / NO
+first re-engage produced path and cmd_vel: YES / NO
+operator cancel caused no automatic restart: YES / NO
+PASS / FAIL:
+notes:
+
+[TODO 13] STEERING-LAG VELOCITY ENVELOPE
+left-offset run complete: YES / NO
+right-offset run complete: YES / NO
+target/limited/scale logs captured: YES / NO
+scale=0 observed for steering error >= 0.35 rad: YES / NO / NOT REACHED
+full scale observed only at error <= 0.05 rad: YES / NO
+repeated centerline crossing: YES / NO
+lanelet footprint cost 100 contact: YES / NO
+measured pose->controller->gate->wheel delays:
+PASS / FAIL:
+notes:
+
+OVERALL RESULT: PASS / FAIL / FIELD RETEST REQUIRED
+EOF
+}
+
+cmd_record_recovery() {
+  source_ros
+  local log_dir="${1:-}"
+  [[ -n "${log_dir}" ]] || log_dir="$(new_log_dir)"
+  local bag_dir="${log_dir}/route_recovery_bag"
+  [[ ! -e "${bag_dir}" ]] || die "bag directory already exists: ${bag_dir}"
+  mkdir -p "${log_dir}/meta"
+
+  # HH_260729 / TODOLIST 11-13 - Freeze the exact source/config identity before
+  # motion so field evidence can be traced back to one commit and parameter set.
+  run_shell_to_log "${log_dir}/meta/date.txt" date --iso-8601=seconds
+  run_eval_to_log \
+    "${log_dir}/meta/git.txt" \
+    "cd '${SRC_ROOT}' && git status --short --branch && git log -1 --format=fuller"
+  run_eval_to_log \
+    "${log_dir}/meta/config_sync.txt" \
+    "'${SCRIPT_DIR}/field_test_tool.sh' config"
+  {
+    echo '$ active recovery parameters'
+    ros2 param get /control/cmd_vel_safety_gate route_safety_recovery_enable
+    ros2 param get /control/cmd_vel_safety_gate route_safety_recovery_clear_required_s
+    ros2 param get /control/cmd_vel_safety_gate route_safety_opposite_direction_cosine_max
+    ros2 param get /control/cmd_vel_safety_gate route_safety_opposite_recovery_probe_distance_m
+    ros2 param get /control/cmd_vel_safety_gate route_safety_recovery_pose_max_age_s
+    ros2 param get /planning/goal_snapper reissue_active_goal_after_route_recovery
+    ros2 param get /planning/goal_snapper route_recovery_reissue_clear_delay_s
+    ros2 param get /planning/goal_snapper route_recovery_max_reissues_per_goal
+    ros2 param get /ranger_base_node steering_transition_rate_radps
+    ros2 param get /ranger_base_node steering_transition_velocity_scale_enabled
+    ros2 param get /ranger_base_node steering_transition_full_speed_error_rad
+    ros2 param get /ranger_base_node steering_transition_stop_error_rad
+    ros2 param get /ranger_base_node steering_transition_min_velocity_scale
+  } >"${log_dir}/meta/recovery_parameters.txt" 2>&1 || true
+  write_recovery_result_template "${log_dir}/FIELD_RESULT.txt"
+
+  declare -A available_topics=()
+  while IFS= read -r topic; do
+    [[ -n "${topic}" ]] && available_topics["${topic}"]=1
+  done < <(ros2 topic list)
+
+  local topics=()
+  local missing=()
+  while IFS= read -r topic; do
+    [[ -n "${topic}" ]] || continue
+    # HH_260729 / TODOLIST 11-13 - Pass initially missing topics to rosbag too.
+    # Its discovery loop can attach after a lifecycle node activates or respawns;
+    # the missing list remains a preflight warning, not a permanent exclusion.
+    topics+=("${topic}")
+    if [[ -z "${available_topics[${topic}]+present}" ]]; then
+      missing+=("${topic}")
+    fi
+  done < <(recovery_topics)
+  [[ "${#topics[@]}" -gt 0 ]] || die "none of the recovery topics are available"
+
+  printf '%s\n' "${topics[@]}" >"${log_dir}/meta/recorded_topics.txt"
+  printf '%s\n' "${missing[@]}" >"${log_dir}/meta/missing_topics.txt"
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    warn "some recovery topics are missing; inspect ${log_dir}/meta/missing_topics.txt"
+  fi
+
+  log "recording TODO 11-13 evidence to ${bag_dir}"
+  log "keep this terminal open through the test; press Ctrl+C only after all runs"
+  log "complete the PASS/FAIL form at ${log_dir}/FIELD_RESULT.txt"
+  ros2 bag record --output "${bag_dir}" "${topics[@]}"
+  log "recovery recording complete: ${log_dir}"
+}
+
 cmd_snapshot() {
   source_ros
   local log_dir="${1:-}"
@@ -488,6 +649,7 @@ case "${cmd}" in
   help|-h|--help) usage ;;
   config) cmd_config "$@" ;;
   snapshot) cmd_snapshot "$@" ;;
+  record-recovery) cmd_record_recovery "$@" ;;
   hz) cmd_hz "$@" ;;
   camera-yolo) cmd_camera_yolo "$@" ;;
   watch) cmd_watch "$@" ;;

@@ -13,6 +13,7 @@
 #include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
+#include "camrod_control/route_safety_recovery.hpp"
 #include "gtest/gtest.h"
 
 namespace camrod_control
@@ -268,6 +269,131 @@ TEST(MotionCostStop, CrabAndReverseUseTravelDirection)
   cost_stop.setMergedGrid(rear_obstacle, 0.1);
   cost_stop.setSourceGrid("radar", rear_obstacle, 0.1);
   EXPECT_TRUE(cost_stop.evaluate(command(-0.2), 0.1).blocked);
+}
+
+TEST(RouteSafetyRecovery, PreservesTriggerDirectionUntilContinuousClear)
+{
+  RouteSafetyRecoveryConfig config;
+  config.clear_required_s = 1.0;
+  RouteSafetyRecovery recovery(config);
+  const MotionCostStopDecision violation{
+    true, false, true, false, "lanelet_footprint_cost"};
+
+  EXPECT_TRUE(recovery.observeViolation(violation, command(0.3), 10.0));
+  EXPECT_TRUE(recovery.active());
+  EXPECT_DOUBLE_EQ(recovery.triggerCommand().linear.x, 0.3);
+
+  // HH_260729 / TODOLIST 11-12 - Later zero or lateral commands cannot replace
+  // the saved forward trigger that defines route-clear evidence.
+  EXPECT_FALSE(recovery.observeViolation(violation, command(0.0, 0.2), 10.1));
+  EXPECT_DOUBLE_EQ(recovery.triggerCommand().linear.x, 0.3);
+  EXPECT_DOUBLE_EQ(recovery.triggerCommand().linear.y, 0.0);
+
+  EXPECT_FALSE(recovery.updateProbe(MotionCostStopDecision{}, 11.0));
+  EXPECT_TRUE(recovery.active());
+  EXPECT_FALSE(recovery.updateProbe(violation, 11.5));
+  EXPECT_FALSE(recovery.updateProbe(MotionCostStopDecision{}, 12.0));
+  EXPECT_TRUE(recovery.updateProbe(MotionCostStopDecision{}, 13.0));
+  EXPECT_FALSE(recovery.active());
+}
+
+TEST(RouteSafetyRecovery, AllowsOnlyOppositeTranslationAsRecovery)
+{
+  RouteSafetyRecovery recovery;
+  const MotionCostStopDecision violation{
+    true, false, true, false, "lanelet_front_cost"};
+  ASSERT_TRUE(recovery.observeViolation(violation, command(0.3), 1.0));
+
+  EXPECT_TRUE(recovery.permitsOppositeRecovery(command(-0.1)));
+  EXPECT_FALSE(recovery.permitsOppositeRecovery(command(0.1)));
+  EXPECT_FALSE(recovery.permitsOppositeRecovery(command(0.0, 0.1)));
+  EXPECT_FALSE(recovery.permitsOppositeRecovery(command(0.0, 0.0, 0.2)));
+}
+
+TEST(MotionCostStop, RouteRecoveryProbeFailsClosedOnStaleLaneletEvidence)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_footprint_enabled = true;
+  config.stale_timeout_s = 1.0;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 5.0});
+
+  const auto missing = cost_stop.evaluateLaneletRecovery(command(0.2), 5.0, 0.5);
+  EXPECT_TRUE(missing.blocked);
+  EXPECT_TRUE(missing.lanelet_violation);
+  EXPECT_TRUE(missing.stale_grid);
+
+  cost_stop.setLaneletGrid(makeGrid(), 5.0);
+  EXPECT_FALSE(cost_stop.evaluateLaneletRecovery(command(0.2), 5.5, 0.5).blocked);
+  const auto stale = cost_stop.evaluateLaneletRecovery(command(0.2), 6.1, 2.0);
+  EXPECT_TRUE(stale.blocked);
+  EXPECT_EQ(stale.reason, "lanelet_recovery_grid_stale");
+}
+
+TEST(MotionCostStop, RouteRecoveryProbeFailsClosedOnStalePoseEvidence)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  MotionCostStop cost_stop(config);
+  cost_stop.setLaneletGrid(makeGrid(), 5.0);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 4.0});
+
+  const auto stale_pose =
+    cost_stop.evaluateLaneletRecovery(command(0.2), 5.0, 0.5);
+  EXPECT_TRUE(stale_pose.blocked);
+  EXPECT_TRUE(stale_pose.lanelet_violation);
+  EXPECT_TRUE(stale_pose.stale_grid);
+  EXPECT_EQ(stale_pose.reason, "lanelet_recovery_pose_stale");
+}
+
+TEST(MotionCostStop, OppositeRecoveryRequiresProjectedFullFootprintClear)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_footprint_enabled = true;
+  config.lanelet_footprint_threshold = 100;
+  config.footprint_front_m = 0.2;
+  config.footprint_rear_m = 0.2;
+  config.footprint_left_m = 0.2;
+  config.footprint_right_m = 0.2;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.15, 0.0, 100}}), 1.0);
+
+  ASSERT_TRUE(cost_stop.evaluate(command(-0.1), 1.0).blocked);
+  EXPECT_FALSE(
+    cost_stop.evaluateRouteRecoveryCommand(command(-0.1), 1.1, 0.3, 0.5).blocked);
+  const auto still_on_boundary =
+    cost_stop.evaluateRouteRecoveryCommand(command(-0.1), 1.2, 0.05, 0.5);
+  EXPECT_TRUE(still_on_boundary.blocked);
+  EXPECT_NE(
+    still_on_boundary.reason.find("route_recovery_predicted_lanelet_footprint"),
+    std::string::npos);
+}
+
+TEST(MotionCostStop, OppositeRecoveryStillStopsForDynamicObstacle)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_footprint_enabled = true;
+  config.footprint_front_m = 0.2;
+  config.footprint_rear_m = 0.2;
+  config.footprint_left_m = 0.2;
+  config.footprint_right_m = 0.2;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  const auto rear_obstacle = makeGrid({{-0.3, 0.0, 90}});
+  cost_stop.setMergedGrid(rear_obstacle, 1.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.15, 0.0, 100}}), 1.0);
+  cost_stop.setSourceGrid("radar", rear_obstacle, 1.0);
+
+  const auto decision =
+    cost_stop.evaluateRouteRecoveryCommand(command(-0.1), 1.0, 0.3, 0.5);
+  EXPECT_TRUE(decision.blocked);
+  EXPECT_TRUE(decision.dynamic_obstacle);
+  EXPECT_NE(decision.reason.find("dynamic_rear"), std::string::npos);
 }
 
 TEST(MotionCostStop, RotationStopsOnlyOnLiveDynamicSource)

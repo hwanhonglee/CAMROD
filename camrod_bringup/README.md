@@ -126,6 +126,7 @@ Detailed wiring, A/B results, and recovery behavior are documented in
 | `config/sensing/radar/cost_grid.yaml` | Deployment mirror of named fixed-return bands, explicit dummy-state cost barrier, and supervised startup calibration |
 | `config/system/diagnostics/{default,sim}/aggregator/diagnostics_config.yaml` | Deployment mirrors of per-sensor component, location, TF frame, and mount-pose metadata |
 | `config/control/cmd_vel_safety_gate.yaml` | Bringup mirror of command authorization and motion-safety policy |
+| `config/planning/goal_snapper.yaml` | Bringup mirror of source-aware goal release and bounded route-recovery reissue |
 | `config/control/control.yaml` | Bringup mirror of campsite/drop-zone maneuver tuning |
 | `config/control/parking.yaml` | Bringup mirror of reverse and AprilTag parking tuning |
 | `config/perception/apriltag_parking_detector.yaml` | Bringup mirror for the implemented AprilTag parking detector; inactive when reverse parking is selected |
@@ -142,6 +143,15 @@ Detailed wiring, A/B results, and recovery behavior are documented in
 Package-owned defaults remain canonical under `camrod_control/config/`. The
 four files under `camrod_bringup/config/control/` are byte-identical deployment
 mirrors; bringup additionally supplies resolved map/config paths.
+
+<!-- HH_260729 - Keep route recovery and platform steering mitigation identical in deployment. -->
+The active post-v2.1.0 recovery settings are byte-mirrored between
+`camrod_control/config/cmd_vel_safety_gate.yaml` and bringup, between
+`camrod_planning/config/goal_snapper.yaml` and bringup, and between
+`camrod_platform/config/ranger_driver.yaml` and bringup. The runtime transition
+is visible on `/control/command_enabled`,
+`/control/cmd_vel_safety_gate/status`, and the Nav2 action status topic; no UI
+service-state value is used as safety authority.
 
 <!-- HH_260722 - Define the sensing-to-bringup GNSS configuration mirror contract. -->
 GNSS parameter defaults remain canonical under `camrod_sensing/config/gnss/`.
@@ -228,6 +238,14 @@ prints `/service/state` and `/control/cmd_vel_safety_gate/status` in addition
 to system health, localization, planning state, manual/mission engage,
 platform drive-enable, command enable, and platform status. `snapshot` and `hz`
 include the same topics for post-run evidence.
+
+<!-- HH_260729 / TODOLIST 11-13 - Preserve a dedicated real-robot acceptance timeline. -->
+`field_test_tool.sh record-recovery <log_dir>` records the lanelet route hold,
+Nav2 action result and retained goal, planning boundary and cost grids,
+raw/final commands, Ranger actuator/wheel feedback, TF, and steering-transition
+`/rosout` logs until Ctrl+C. It also freezes active recovery parameters and
+creates `FIELD_RESULT.txt`; this post-fix bag is required before TODO 11-13 can
+be marked field-PASS.
 
 <!-- HH_260721 - Record the operator/UI departure sequence validated in ordinary simulation. -->
 Selecting another campsite from `DROP_ZONE_WAIT` or charging state does not

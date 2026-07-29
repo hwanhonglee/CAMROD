@@ -25,6 +25,7 @@ struct PlanarPose
   double yaw{0.0};
   std::string frame_id;
   std::string source{"unknown"};
+  double observation_sec{0.0};
 };
 
 struct MotionCostStopConfig
@@ -144,6 +145,21 @@ public:
   void setManeuverPhases(std::string drop_zone_phase, std::string campsite_phase);
 
   MotionCostStopDecision evaluate(const avg_msgs::msg::AvgTwist & command, double now_sec);
+  // HH_260729 - A stopped Nav2 action no longer emits a useful command, so the
+  // gate periodically revalidates the saved route direction through this
+  // fail-closed lanelet-only probe before resuming or reissuing the goal.
+  MotionCostStopDecision evaluateLaneletRecovery(
+    const avg_msgs::msg::AvgTwist & command,
+    double now_sec,
+    double pose_max_age_s);
+  // HH_260729 - A bounded opposite-direction escape may ignore only the
+  // footprint's present lanelet contact. It must put the complete footprint
+  // inside the lanelet after the probe distance and still pass dynamic costs.
+  MotionCostStopDecision evaluateRouteRecoveryCommand(
+    const avg_msgs::msg::AvgTwist & command,
+    double now_sec,
+    double probe_distance_m,
+    double pose_max_age_s);
   bool latched() const;
   double holdUntilSec() const;
   const std::string & latchReason() const;
@@ -218,7 +234,10 @@ private:
     std::string reason;
   };
 
-  MotionCostStopDecision evaluateLanelet(const avg_msgs::msg::AvgTwist & command, double now_sec);
+  MotionCostStopDecision evaluateLanelet(
+    const avg_msgs::msg::AvgTwist & command,
+    double now_sec,
+    bool update_hold = true);
   MotionCostStopDecision evaluateDynamicSources(
     const std::vector<Corridor> & corridors,
     double now_sec);

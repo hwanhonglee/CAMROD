@@ -71,6 +71,14 @@ if(BUILD_TESTING)
   # uncomment the line when this package is not in a git repo
   #set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  # HH_260729 - The steering transition envelope is pure math and must remain
+  # testable without CAN hardware or a Ranger SDK connection.
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(
+    test_steering_transition_policy
+    test/test_steering_transition_policy.cpp)
+  target_include_directories(test_steering_transition_policy PRIVATE include)
 endif()
 
 ament_package()

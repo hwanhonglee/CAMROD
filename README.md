@@ -82,6 +82,18 @@ terminating the shared component container. The v2.0.9 complete-footprint
 lanelet guard, retained dynamic-obstacle latch, and 90/95% disk thresholds
 remain in force.
 
+<!-- HH_260729 - Keep post-tag route-recovery work distinct from the immutable v2.1.0 tag. -->
+The current `develop` branch also contains a post-v2.1.0 remediation for
+`TODOLIST.txt` items 11-13. A route-boundary stop now reports
+`ROUTE_SAFETY_HOLD`, preserves the violating command direction, permits only a
+bounded opposite-direction escape whose projected full footprint is clear, and
+keeps all live obstacle checks active. If Nav2 aborted during that hold,
+`goal_snapper` can reissue the exact retained goal after the gate is continuously
+enabled; unrelated failures and operator cancel do not trigger automatic
+restart. Ranger translational speed is also reduced while commanded steering
+still differs from the rate-limited wheel angle. See
+[post-v2.1.0 TODO remediation](docs/V2_1_0_TODO_REMEDIATION.md).
+
 No post-fix full real-robot drive acceptance was performed while packaging this
 source/configuration baseline. The remaining radar clear-area, camera-rate,
 lanelet-footprint, off-road/reverse recovery, lateral-control latency,

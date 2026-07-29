@@ -12,6 +12,7 @@
 #include <optional>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,6 +34,7 @@
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/ros_message_conversion.hpp"
+#include "camrod_control/route_safety_recovery.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rcl_interfaces/msg/parameter_descriptor.hpp"
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
@@ -60,6 +62,48 @@ std::string join(const std::vector<std::string> & values, const std::string & se
     output << values[index];
   }
   return output.str();
+}
+
+std::string fixed(const double value, const int precision)
+{
+  std::ostringstream output;
+  output << std::fixed << std::setprecision(precision) << value;
+  return output.str();
+}
+
+std::optional<std::string> routeRecoveryConfigError(
+  const RouteSafetyRecoveryConfig & config,
+  const double log_interval_s)
+{
+  // HH_260729 - Recovery parameters control a bounded exception to the present
+  // lanelet contact check. Reject unsafe runtime values instead of silently
+  // turning freshness/clear-time checks off or projecting across another lane.
+  if (!std::isfinite(config.clear_required_s) ||
+    config.clear_required_s < 0.1 || config.clear_required_s > 30.0)
+  {
+    return "route_safety_recovery_clear_required_s must be in [0.1, 30.0]";
+  }
+  if (!std::isfinite(config.opposite_direction_cosine_max) ||
+    config.opposite_direction_cosine_max < -1.0 ||
+    config.opposite_direction_cosine_max > 0.0)
+  {
+    return "route_safety_opposite_direction_cosine_max must be in [-1.0, 0.0]";
+  }
+  if (!std::isfinite(config.opposite_recovery_probe_distance_m) ||
+    config.opposite_recovery_probe_distance_m < 0.05 ||
+    config.opposite_recovery_probe_distance_m > 0.5)
+  {
+    return "route_safety_opposite_recovery_probe_distance_m must be in [0.05, 0.5]";
+  }
+  if (!std::isfinite(config.pose_max_age_s) ||
+    config.pose_max_age_s < 0.05 || config.pose_max_age_s > 5.0)
+  {
+    return "route_safety_recovery_pose_max_age_s must be in [0.05, 5.0]";
+  }
+  if (!std::isfinite(log_interval_s) || log_interval_s < 0.1 || log_interval_s > 60.0) {
+    return "route_safety_recovery_log_interval_s must be in [0.1, 60.0]";
+  }
+  return std::nullopt;
 }
 
 std::set<std::string> parseLabelSet(
@@ -427,6 +471,31 @@ private:
     motion_cost_stop_config_.lanelet_route_reentry_require_front_cmd = declare_parameter<bool>(
       "lanelet_safety_current_route_reentry_require_front_cmd", true);
 
+    // HH_260729 - Keep a lanelet stop visible to Nav2's engage-aware progress
+    // checker and revalidate the exact trigger direction before resuming it.
+    route_safety_recovery_config_.enabled = declare_parameter<bool>(
+      "route_safety_recovery_enable", true);
+    route_safety_recovery_config_.clear_required_s = declare_parameter<double>(
+      "route_safety_recovery_clear_required_s", 1.0);
+    route_safety_recovery_config_.allow_opposite_recovery_command = declare_parameter<bool>(
+      "route_safety_allow_opposite_recovery_command", true);
+    route_safety_recovery_config_.opposite_direction_cosine_max = declare_parameter<double>(
+      "route_safety_opposite_direction_cosine_max", -0.5);
+    route_safety_recovery_config_.opposite_recovery_probe_distance_m =
+      declare_parameter<double>("route_safety_opposite_recovery_probe_distance_m", 0.25);
+    route_safety_recovery_config_.pose_max_age_s =
+      declare_parameter<double>("route_safety_recovery_pose_max_age_s", 0.5);
+    route_safety_log_interval_s_ = declare_parameter<double>(
+      "route_safety_recovery_log_interval_s", 1.0);
+    route_safety_recovery_config_.minimum_translation_mps =
+      motion_cost_stop_config_.min_translation_mps;
+    if (const auto error = routeRecoveryConfigError(
+        route_safety_recovery_config_, route_safety_log_interval_s_))
+    {
+      throw std::runtime_error(*error);
+    }
+    route_safety_recovery_.setConfig(route_safety_recovery_config_);
+
     drop_zone_status_topic_ = declare_parameter<std::string>(
       "drop_zone_maneuver_controller_status_topic",
       "/control/drop_zone_maneuver_controller/status");
@@ -537,6 +606,12 @@ private:
     manual_engage_subscription_ = create_subscription<avg_msgs::msg::AvgBool>(
       engage_topic_, 10, [this](const avg_msgs::msg::AvgBool::SharedPtr message) {
         gate_policy_.setManualEngage(message->data);
+        if (!gate_policy_.planningEngaged()) {
+          // HH_260729 - Operator cancel is authoritative. Clear the local hold
+          // display while the planning side retains the goal for a later,
+          // explicit re-engage after the robot has been repositioned.
+          route_safety_recovery_.reset();
+        }
         onAuthorizationChanged("manual_engage");
       });
     mission_engage_subscription_ = create_subscription<avg_msgs::msg::AvgBool>(
@@ -544,6 +619,9 @@ private:
         gate_policy_.setMissionEngage(message->data);
         if (!message->data) {
           charging_mission_override_.cancel();
+        }
+        if (!gate_policy_.planningEngaged()) {
+          route_safety_recovery_.reset();
         }
         onAuthorizationChanged("mission_engage");
       });
@@ -664,11 +742,13 @@ private:
       pose_subscription_ = create_subscription<avg_msgs::msg::AvgPoseStamped>(
         pose_topic_, 10, [this](const avg_msgs::msg::AvgPoseStamped::SharedPtr message) {
           latest_pose_ = *message;
+          latest_pose_receive_sec_ = nowSec();
           refreshMotionCostStopPose();
         });
       odometry_subscription_ = create_subscription<avg_msgs::msg::AvgOdometry>(
         odometry_topic_, 10, [this](const avg_msgs::msg::AvgOdometry::SharedPtr message) {
           latest_odometry_ = *message;
+          latest_odometry_receive_sec_ = nowSec();
           motion_cost_stop_.setOdometrySpeed(message->twist.twist.linear.x);
           refreshMotionCostStopPose();
         });
@@ -687,9 +767,25 @@ private:
   void onCommand(avg_msgs::msg::AvgTwist command)
   {
     const double now_sec = nowSec();
+    bool opposite_route_recovery = false;
     last_input_command_sec_ = now_sec;
     command_input_stale_ = false;
     refreshMotionCostStopPose();
+
+    // HH_260729 - Do not let a zero or changed Nav2 command redefine the route
+    // that must become safe. An explicitly opposite command may still recover
+    // the vehicle, but it passes the complete ordinary safety evaluation below.
+    if (route_safety_recovery_.active()) {
+      refreshRouteSafetyRecovery(now_sec);
+      if (route_safety_recovery_.active() &&
+        !route_safety_recovery_.permitsOppositeRecovery(command))
+      {
+        publishZero();
+        logRouteSafetyHold(now_sec);
+        return;
+      }
+      opposite_route_recovery = route_safety_recovery_.active();
+    }
 
     // HH_260721 - Re-evaluate a latched obstacle before authorization so clear time can advance.
     if (motion_cost_stop_.latched()) {
@@ -718,16 +814,68 @@ private:
       command = *heading_override;
     }
 
-    const auto cost_decision = motion_cost_stop_.evaluate(command, now_sec);
+    if (opposite_route_recovery &&
+      !route_safety_recovery_.permitsOppositeRecovery(command))
+    {
+      publishZero();
+      logRouteSafetyHold(now_sec);
+      return;
+    }
+    const auto cost_decision = opposite_route_recovery ?
+      motion_cost_stop_.evaluateRouteRecoveryCommand(
+      command, now_sec, route_safety_recovery_.oppositeRecoveryProbeDistance(),
+      route_safety_recovery_.poseMaxAge()) :
+      motion_cost_stop_.evaluate(command, now_sec);
+    const bool route_hold_started =
+      route_safety_recovery_.observeViolation(cost_decision, command, now_sec);
     updatePolicyCostState();
     if (cost_decision.blocked) {
       if (publish_zero_when_blocked_) {
         publishZero();
       }
+      if (route_hold_started) {
+        RCLCPP_WARN(
+          get_logger(),
+          "route safety hold activated: reason=%s trigger=(x=%.3f,y=%.3f,wz=%.3f)",
+          cost_decision.reason.c_str(), command.linear.x, command.linear.y, command.angular.z);
+      }
       logMotionCostStopDecision(cost_decision, now_sec);
       return;
     }
     publishCommand(scaleCommand(command));
+  }
+
+  void refreshRouteSafetyRecovery(const double now_sec)
+  {
+    if (!route_safety_recovery_.active()) {
+      return;
+    }
+    refreshMotionCostStopPose();
+    const auto decision = motion_cost_stop_.evaluateLaneletRecovery(
+      route_safety_recovery_.triggerCommand(), now_sec,
+      route_safety_recovery_.poseMaxAge());
+    if (route_safety_recovery_.updateProbe(decision, now_sec)) {
+      RCLCPP_INFO(
+        get_logger(),
+        "route safety hold released after continuous fresh lanelet clear; "
+        "same mission direction may resume");
+      last_route_safety_log_sec_ = -1.0e9;
+    }
+  }
+
+  void logRouteSafetyHold(const double now_sec)
+  {
+    if (now_sec - last_route_safety_log_sec_ < route_safety_log_interval_s_) {
+      return;
+    }
+    last_route_safety_log_sec_ = now_sec;
+    RCLCPP_WARN(
+      get_logger(),
+      "cmd_vel route safety hold: trigger=%s latest=%s clear=%.2fs "
+      "opposite_recovery_only=true",
+      route_safety_recovery_.triggerReason().c_str(),
+      route_safety_recovery_.latestReason().c_str(),
+      route_safety_recovery_.clearElapsed(now_sec));
   }
 
   void onMissionRequest(const avg_msgs::msg::PlanningMissionKey::SharedPtr message)
@@ -817,8 +965,7 @@ private:
       publishZero();
     }
     // HH_260721 - Log authorization only when its effective reason set changes.
-    const auto reasons = gate_policy_.blockReasons(
-      now_sec, charging_mission_override_.charging(), charging_mission_override_.isActive(now_sec));
+    const auto reasons = currentBlockReasons(now_sec);
     const std::string signature = reasons.empty() ? "enabled" : join(reasons, ",");
     if (signature != last_authorization_log_signature_) {
       last_authorization_log_signature_ = signature;
@@ -835,6 +982,18 @@ private:
       now_sec, charging_mission_override_.charging(), charging_mission_override_.isActive(now_sec));
   }
 
+  std::vector<std::string> currentBlockReasons(const double now_sec)
+  {
+    updatePolicyCostState();
+    auto reasons = gate_policy_.blockReasons(
+      now_sec, charging_mission_override_.charging(),
+      charging_mission_override_.isActive(now_sec));
+    if (route_safety_recovery_.active()) {
+      reasons.push_back("route_safety_hold=" + route_safety_recovery_.triggerReason());
+    }
+    return reasons;
+  }
+
   void updatePolicyCostState()
   {
     gate_policy_.setCostState(motion_cost_stop_.latched(), motion_cost_stop_.holdUntilSec());
@@ -844,10 +1003,12 @@ private:
   void publishState()
   {
     const double now_sec = nowSec();
-    updatePolicyCostState();
+    // HH_260729 - Continue route-clear evaluation after Nav2 stops publishing
+    // commands. This is what lets command_enabled pause and later resume the
+    // engage-aware progress checker without restarting any node.
+    refreshRouteSafetyRecovery(now_sec);
     const bool charging_motion_override_active = charging_mission_override_.isActive(now_sec);
-    const auto reasons = gate_policy_.blockReasons(
-      now_sec, charging_mission_override_.charging(), charging_motion_override_active);
+    const auto reasons = currentBlockReasons(now_sec);
     const bool enabled = reasons.empty();
 
     avg_msgs::msg::AvgBool state;
@@ -868,16 +1029,20 @@ private:
     status.level = health == CmdVelGateHealth::kError ? avg_msgs::msg::ModuleState::ERROR :
       health == CmdVelGateHealth::kWarning ? avg_msgs::msg::ModuleState::WARN :
       avg_msgs::msg::ModuleState::OK;
+    const bool route_safety_hold = route_safety_recovery_.active();
     const std::string operating_state = charging_motion_override_active && enabled ?
       "DEPARTING_CHARGER" :
       enabled ? "ENABLED" :
+      health == CmdVelGateHealth::kError ? "FAULT_HOLD" :
+      route_safety_hold ? "ROUTE_SAFETY_HOLD" :
       std::find(reasons.begin(), reasons.end(), "charging") != reasons.end() ? "CHARGING" :
       health == CmdVelGateHealth::kOk ? "STANDBY" :
-      health == CmdVelGateHealth::kError ? "FAULT_HOLD" : "SAFETY_HOLD";
+      "SAFETY_HOLD";
     status.message = "state=" + operating_state + " reasons=" +
       (reasons.empty() ? "none" : join(reasons, ",")) +
       " charging=" + std::string(charging_mission_override_.charging() ? "true" : "false") +
-      " battery=" + batteryText();
+      " battery=" + batteryText() +
+      " route_clear_s=" + fixed(route_safety_recovery_.clearElapsed(now_sec), 2);
     status.operating_state = operating_state;
     status_publisher_->publish(status);
   }
@@ -971,6 +1136,7 @@ private:
         pose.yaw = quaternionYaw(latest_pose_->pose.orientation);
         pose.frame_id = latest_pose_->header.frame_id;
         pose.source = "pose_topic";
+        pose.observation_sec = latest_pose_receive_sec_;
         if (const auto transformed = transformPose(pose, target_frame); transformed.has_value()) {
           return transformed;
         }
@@ -982,6 +1148,7 @@ private:
         pose.yaw = quaternionYaw(latest_odometry_->pose.pose.orientation);
         pose.frame_id = latest_odometry_->header.frame_id;
         pose.source = "odometry";
+        pose.observation_sec = latest_odometry_receive_sec_;
         if (const auto transformed = transformPose(pose, target_frame); transformed.has_value()) {
           return transformed;
         }
@@ -999,6 +1166,9 @@ private:
             1.0 - 2.0 * (q.y * q.y + q.z * q.z));
           pose.frame_id = target_frame;
           pose.source = "tf_robot_base";
+          pose.observation_sec =
+            static_cast<double>(transform.header.stamp.sec) +
+            static_cast<double>(transform.header.stamp.nanosec) * 1e-9;
           return pose;
         } catch (const tf2::TransformException &) {
           continue;
@@ -1034,6 +1204,7 @@ private:
       output.yaw = normalizeAngle(transform_yaw + source.yaw);
       output.frame_id = target_frame;
       output.source = source.source + "_tf";
+      output.observation_sec = source.observation_sec;
       return output;
     } catch (const tf2::TransformException &) {
       if (enable_pose_raw_fallback_) {
@@ -1306,6 +1477,33 @@ private:
     const std::vector<rclcpp::Parameter> & parameters)
   {
     // HH_260721 - Retain runtime tuning for safety thresholds without changing topic topology.
+    // HH_260729 - Validate a complete candidate first so an atomic update
+    // cannot partly mutate the active safety policy before being rejected.
+    auto route_candidate = route_safety_recovery_config_;
+    double route_log_interval_candidate = route_safety_log_interval_s_;
+    for (const auto & parameter : parameters) {
+      const std::string & name = parameter.get_name();
+      if (name == "route_safety_recovery_clear_required_s") {
+        route_candidate.clear_required_s = parameter.as_double();
+      } else if (name == "route_safety_opposite_direction_cosine_max") {
+        route_candidate.opposite_direction_cosine_max = parameter.as_double();
+      } else if (name == "route_safety_opposite_recovery_probe_distance_m") {
+        route_candidate.opposite_recovery_probe_distance_m = parameter.as_double();
+      } else if (name == "route_safety_recovery_pose_max_age_s") {
+        route_candidate.pose_max_age_s = parameter.as_double();
+      } else if (name == "route_safety_recovery_log_interval_s") {
+        route_log_interval_candidate = parameter.as_double();
+      }
+    }
+    if (const auto error = routeRecoveryConfigError(
+        route_candidate, route_log_interval_candidate))
+    {
+      rcl_interfaces::msg::SetParametersResult result;
+      result.successful = false;
+      result.reason = *error;
+      return result;
+    }
+
     bool recreate_timeout_timer = false;
     bool reload_yaw_zones = false;
     for (const auto & parameter : parameters) {
@@ -1370,6 +1568,20 @@ private:
         motion_cost_stop_config_.lanelet_width_m = parameter.as_double();
       } else if (name == "lanelet_safety_stop_on_unknown") {
         motion_cost_stop_config_.lanelet_stop_on_unknown = parameter.as_bool();
+      } else if (name == "route_safety_recovery_enable") {
+        route_safety_recovery_config_.enabled = parameter.as_bool();
+      } else if (name == "route_safety_recovery_clear_required_s") {
+        route_safety_recovery_config_.clear_required_s = parameter.as_double();
+      } else if (name == "route_safety_allow_opposite_recovery_command") {
+        route_safety_recovery_config_.allow_opposite_recovery_command = parameter.as_bool();
+      } else if (name == "route_safety_opposite_direction_cosine_max") {
+        route_safety_recovery_config_.opposite_direction_cosine_max = parameter.as_double();
+      } else if (name == "route_safety_opposite_recovery_probe_distance_m") {
+        route_safety_recovery_config_.opposite_recovery_probe_distance_m = parameter.as_double();
+      } else if (name == "route_safety_recovery_pose_max_age_s") {
+        route_safety_recovery_config_.pose_max_age_s = parameter.as_double();
+      } else if (name == "route_safety_recovery_log_interval_s") {
+        route_safety_log_interval_s_ = parameter.as_double();
       } else if (name == "enable_speed_dependent_lookahead") {
         motion_cost_stop_config_.use_speed_dependent_lookahead = parameter.as_bool();
       } else if (name == "front_lookahead_min_m") {
@@ -1406,6 +1618,9 @@ private:
       }
     }
     motion_cost_stop_.setConfig(motion_cost_stop_config_);
+    route_safety_recovery_config_.minimum_translation_mps =
+      motion_cost_stop_config_.min_translation_mps;
+    route_safety_recovery_.setConfig(route_safety_recovery_config_);
     if (recreate_timeout_timer) {
       recreateCommandTimeoutTimer();
     }
@@ -1419,8 +1634,7 @@ private:
 
   void logBlockReasons(const double now_sec)
   {
-    const auto reasons = gate_policy_.blockReasons(
-      now_sec, charging_mission_override_.charging(), charging_mission_override_.isActive(now_sec));
+    const auto reasons = currentBlockReasons(now_sec);
     const std::string signature = reasons.empty() ? "unknown" : join(reasons, ", ");
     const auto health = CmdVelGatePolicy::classifyHealth(reasons);
     // HH_260721 - Log normal standby once per reason change; repeat only degraded/fault holds.
@@ -1495,9 +1709,11 @@ private:
   CmdVelGatePolicyConfig gate_config_;
   ChargingMissionOverrideConfig charging_override_config_;
   MotionCostStopConfig motion_cost_stop_config_;
+  RouteSafetyRecoveryConfig route_safety_recovery_config_;
   CmdVelGatePolicy gate_policy_;
   ChargingMissionOverride charging_mission_override_;
   MotionCostStop motion_cost_stop_;
+  RouteSafetyRecovery route_safety_recovery_;
 
   std::string input_topic_;
   std::string navigation_input_topic_;
@@ -1556,6 +1772,7 @@ private:
   double zero_publish_rate_hz_{10.0};
   double cost_stop_latch_log_interval_s_{1.0};
   double cost_grid_stale_log_interval_s_{1.0};
+  double route_safety_log_interval_s_{1.0};
   double radar_obstacle_evidence_max_age_s_{0.50};
   double route_heading_min_cmd_x_mps_{0.03};
   double route_heading_lateral_cmd_epsilon_mps_{0.02};
@@ -1573,6 +1790,7 @@ private:
   double last_gnss_recovery_hold_sec_{-1.0e9};
   double last_block_log_sec_{-1.0e9};
   double last_cost_log_sec_{-1.0e9};
+  double last_route_safety_log_sec_{-1.0e9};
   double radar_obstacle_evidence_receive_sec_{-1.0e9};
   bool radar_obstacle_evidence_received_{false};
 
@@ -1587,6 +1805,8 @@ private:
   std::optional<int> last_localization_mode_;
   std::optional<avg_msgs::msg::AvgPoseStamped> latest_pose_;
   std::optional<avg_msgs::msg::AvgOdometry> latest_odometry_;
+  double latest_pose_receive_sec_{0.0};
+  double latest_odometry_receive_sec_{0.0};
   std::optional<avg_msgs::msg::AvgPath> latest_path_;
   std::string last_cost_reason_;
   std::string planning_boundary_topic_;

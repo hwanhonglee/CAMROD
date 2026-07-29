@@ -73,6 +73,48 @@ This stores:
 - CPU and memory snapshots
 - short Hz samples for LiDAR, radar, cost grids, perception, paths, and cmd_vel
 
+## 3A. Record TODO 11-13 On One Clock
+
+<!-- HH_260729 / TODOLIST 11-13 - A normal snapshot does not preserve the
+     complete route hold, action result, footprint/cost, and wheel timeline. -->
+
+Start this in a separate terminal before creating a supervised lanelet-boundary
+contact or centerline-alignment run:
+
+```bash
+source /opt/ros/humble/setup.bash
+source /home/nvidia/camrod_ws/install/setup.bash
+LOG_DIR="$HOME/camrod_field_logs/$(date +%Y%m%d_%H%M%S)_todo11_13"
+ros2 run camrod_bringup field_test_tool.sh record-recovery "$LOG_DIR"
+```
+
+Keep the command running through the boundary trigger, blocked commands,
+opposite escape, route clear, optional Nav2 reissue, operator-cancel check, and
+both left/right steering runs. Press Ctrl+C only after all runs.
+
+The directory contains:
+
+- `route_recovery_bag`: route/action/goal, gate, full footprint, lanelet and
+  obstacle grids, raw/final commands, platform/wheel/actuator feedback, TF, and
+  `/rosout` Ranger target/limited/scale logs;
+- `meta/recovery_parameters.txt`: the actual gate, goal-recovery, and Ranger
+  values used by the running nodes;
+- `meta/config_sync.txt`, `meta/git.txt`, recorded/missing topic lists;
+- `FIELD_RESULT.txt`: TODO 11, 12, and 13 PASS/FAIL fields.
+
+The bag is necessary because each artifact answers a different question:
+`bringup.log` explains decisions, gate status proves authorization, cost grids
+and footprint prove geometry, raw/final commands prove where motion was
+blocked, action/goal topics prove mission continuity, and actuator/wheel
+feedback measures the physical steering delay. A commit and synchronized
+configuration make the run reproducible, but do not by themselves constitute a
+real-robot PASS.
+
+The pre-fix Orin logs referenced by the v2.1.0 validation document explain why
+the changes were needed, but they cannot pass these post-fix acceptance tests.
+Likewise, a nominal simulation startup log proves node/config loading only; it
+does not replace the real footprint, obstacle, CAN wheel, and latency evidence.
+
 ## 4. Live Watch
 
 ```bash
@@ -248,6 +290,24 @@ Run these in order and take a `snapshot` after any failure.
    - Confirm every point of `/platform/robot/planning_boundary` stays inside
      the allowed map corridor. Do not disable the whole-footprint guard merely
      to make the test move.
+   <!-- HH_260729 - Validate bounded route recovery and retained-goal reissue. -->
+   - Start `field_test_tool.sh record-recovery <log_dir>` first and keep the
+     generated `FIELD_RESULT.txt` beside the bag.
+   - During an active UI mission, create a supervised boundary contact and
+     confirm `/control/command_enabled=false` plus
+     `operating_state=ROUTE_SAFETY_HOLD`. Save the trigger reason/vector.
+   - Keep the pose outside or the lanelet grid stale. The hold must not clear,
+     and zero/rotation/same-direction commands must remain zero at
+     `/control/cmd_vel_ros`.
+   - Command a slow opposite translation. It may pass only when the projected
+     full footprint 0.25 m ahead is clear. Place a rear obstacle in that escape
+     corridor and confirm the command returns to zero with the dynamic source
+     in the stop reason.
+   - Re-enter the safe corridor and keep pose/grid fresh. Require 1.0 s
+     continuous clear, then `ENABLED`. If Nav2 had reported `ABORTED`, require
+     the same goal/source to be reissued after 0.5 s without site reselection.
+     Verify no more than two reissues and no automatic restart after operator
+     cancel.
 
 6. Camping site mission
    - Select a camping site in UI.
@@ -260,6 +320,19 @@ Run these in order and take a `snapshot` after any failure.
    - Confirm crab exits without replaying the 180-degree turn.
    - Confirm route returns to the drop-zone lanelet.
    - Confirm drop-zone reverse parking uses drop-zone yaw, not campsite crab yaw.
+
+8. Steering transition and lateral overshoot
+   - Start on both left and right of the centerline with small yaw error.
+   - Record localization stamp, centerline error, raw/final cmd_vel, Ranger
+     target/limited steering logs, wheel feedback, and boundary distance on one
+     clock.
+   - During longitudinal-to-lateral and lateral-to-longitudinal changes, require
+     translation scale 0 above 0.35 rad steering lag, linear recovery through
+     the interval, and full speed only at or below 0.05 rad.
+   - Confirm the robot converges from both sides without crossing repeatedly or
+     touching lanelet cost 100. Do not tune prediction, gain, hysteresis, or
+     footprint thresholds until the measured delay for each pipeline segment is
+     attached to the field report.
 
 ## 8. What To Change First
 

@@ -12,6 +12,7 @@
 #include <algorithm>
 
 #include "ranger_base/kinematics_model.hpp"
+#include "ranger_base/steering_transition_policy.hpp"
 
 using namespace rclcpp;
 using namespace ranger_msgs::msg;
@@ -77,15 +78,35 @@ void RangerROSMessenger::LoadParameters() {
     "steering_transition_rate_radps", 0.5);
   steering_transition_rate_radps_ =
     std::max(0.05, std::min(2.0, steering_transition_rate_radps_));
+  steering_transition_velocity_scale_enabled_ = node_->declare_parameter<bool>(
+    "steering_transition_velocity_scale_enabled", true);
+  steering_transition_full_speed_error_rad_ = node_->declare_parameter<double>(
+    "steering_transition_full_speed_error_rad", 0.05);
+  steering_transition_stop_error_rad_ = node_->declare_parameter<double>(
+    "steering_transition_stop_error_rad", 0.35);
+  steering_transition_min_velocity_scale_ = node_->declare_parameter<double>(
+    "steering_transition_min_velocity_scale", 0.0);
+  steering_transition_full_speed_error_rad_ =
+    std::max(0.0, steering_transition_full_speed_error_rad_);
+  steering_transition_stop_error_rad_ = std::max(
+    steering_transition_full_speed_error_rad_ + 1.0e-6,
+    steering_transition_stop_error_rad_);
+  steering_transition_min_velocity_scale_ = std::max(
+    0.0, std::min(1.0, steering_transition_min_velocity_scale_));
 
   RCLCPP_INFO(node_->get_logger(),
       "Successfully loaded the following parameters: \n port_name: %s\n "
       "robot_model: %s\n odom_frame: %s\n base_frame: %s\n "
       "update_rate: %d\n odom_topic_name: %s\n "
-      "publish_odom_tf: %d\n steering_transition_rate_radps: %.2f\n",
+      "publish_odom_tf: %d\n steering_transition_rate_radps: %.2f\n "
+      "steering_transition_velocity_scale: %d full=%.2f stop=%.2f min=%.2f\n",
       port_name_.c_str(), robot_model_.c_str(), odom_frame_.c_str(),
       base_frame_.c_str(), update_rate_, odom_topic_name_.c_str(),
-      publish_odom_tf_, steering_transition_rate_radps_);
+      publish_odom_tf_, steering_transition_rate_radps_,
+      steering_transition_velocity_scale_enabled_,
+      steering_transition_full_speed_error_rad_,
+      steering_transition_stop_error_rad_,
+      steering_transition_min_velocity_scale_);
 
   // load robot parameters
   if (robot_model_ == "ranger_mini_v1") {
@@ -398,7 +419,9 @@ void RangerROSMessenger::UpdateOdometry(double linear, double angular,
 }
 
 void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr msg) {
-  double steer_cmd;
+  // HH_260729 - Keep the transition-envelope input defined even when the
+  // compiler cannot prove that motion-mode selection initializes this branch.
+  double steer_cmd = 0.0;
   double radius;
 
   // analyze Twist msg and switch motion_mode
@@ -433,8 +456,22 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
       if (steer_cmd < -robot_params_.max_steer_angle_ackermann) {
         steer_cmd = -robot_params_.max_steer_angle_ackermann;
       }
-      steer_cmd = LimitSteeringAngle(steer_cmd);
-      robot_->SetMotionCommand(msg->linear.x, steer_cmd);
+      const double target_steering_rad = steer_cmd;
+      steer_cmd = LimitSteeringAngle(target_steering_rad);
+      const double velocity_scale = SteeringTransitionVelocityScale(
+        target_steering_rad, steer_cmd,
+        steering_transition_velocity_scale_enabled_,
+        steering_transition_full_speed_error_rad_,
+        steering_transition_stop_error_rad_,
+        steering_transition_min_velocity_scale_);
+      robot_->SetMotionCommand(msg->linear.x * velocity_scale, steer_cmd);
+      if (velocity_scale < 0.999) {
+        RCLCPP_INFO_THROTTLE(
+          node_->get_logger(), *node_->get_clock(), 1000,
+          "steering transition limits velocity: mode=ackermann target=%.3f "
+          "limited=%.3f scale=%.2f",
+          target_steering_rad, steer_cmd, velocity_scale);
+      }
       break;
     }
     case MotionState::MOTION_MODE_PARALLEL: {
@@ -451,13 +488,6 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
         steer_cmd = -steer_cmd;
       }
       
-      if (steer_cmd > robot_params_.max_steer_angle_parallel) {
-        steer_cmd = robot_params_.max_steer_angle_parallel;
-      }
-      if (steer_cmd < -robot_params_.max_steer_angle_parallel) {
-        steer_cmd = -robot_params_.max_steer_angle_parallel;
-      }
-      steer_cmd = LimitSteeringAngle(steer_cmd);
       double vel = 1.0;
       
       if (msg->linear.x == 0.0 && msg->linear.y != 0.0) {
@@ -472,9 +502,34 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
       } else {
           vel = msg->linear.x >= 0 ? 1.0 : -1.0;
       }
-      robot_->SetMotionCommand(vel * sqrt(msg->linear.x * msg->linear.x +
-                                          msg->linear.y * msg->linear.y),
-                               steer_cmd);
+      // HH_260729 - Resolve the final parallel-steering sign before limiting.
+      // Limiting first allowed the later sign flip to bypass the configured
+      // wheel-angle slew rate during longitudinal/lateral transitions.
+      if (steer_cmd > robot_params_.max_steer_angle_parallel) {
+        steer_cmd = robot_params_.max_steer_angle_parallel;
+      }
+      if (steer_cmd < -robot_params_.max_steer_angle_parallel) {
+        steer_cmd = -robot_params_.max_steer_angle_parallel;
+      }
+      const double target_steering_rad = steer_cmd;
+      steer_cmd = LimitSteeringAngle(target_steering_rad);
+      const double velocity_scale = SteeringTransitionVelocityScale(
+        target_steering_rad, steer_cmd,
+        steering_transition_velocity_scale_enabled_,
+        steering_transition_full_speed_error_rad_,
+        steering_transition_stop_error_rad_,
+        steering_transition_min_velocity_scale_);
+      robot_->SetMotionCommand(
+        vel * sqrt(msg->linear.x * msg->linear.x + msg->linear.y * msg->linear.y) *
+        velocity_scale,
+        steer_cmd);
+      if (velocity_scale < 0.999) {
+        RCLCPP_INFO_THROTTLE(
+          node_->get_logger(), *node_->get_clock(), 1000,
+          "steering transition limits velocity: mode=parallel target=%.3f "
+          "limited=%.3f scale=%.2f",
+          target_steering_rad, steer_cmd, velocity_scale);
+      }
       break;
     }
     case MotionState::MOTION_MODE_SPINNING: {
@@ -535,25 +590,90 @@ rcl_interfaces::msg::SetParametersResult RangerROSMessenger::OnParametersChanged
   const std::vector<rclcpp::Parameter>& parameters) {
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
+  double requested_rate = steering_transition_rate_radps_;
+  bool requested_scaling_enabled = steering_transition_velocity_scale_enabled_;
+  double requested_full_speed_error = steering_transition_full_speed_error_rad_;
+  double requested_stop_error = steering_transition_stop_error_rad_;
+  double requested_minimum_scale = steering_transition_min_velocity_scale_;
+  bool changed = false;
+
   for (const auto& parameter : parameters) {
-    if (parameter.get_name() != "steering_transition_rate_radps") {
-      continue;
+    const auto& name = parameter.get_name();
+    if (name == "steering_transition_rate_radps") {
+      if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+        result.successful = false;
+        result.reason = "steering_transition_rate_radps must be a double";
+        return result;
+      }
+      requested_rate = parameter.as_double();
+      if (!std::isfinite(requested_rate) || requested_rate < 0.05 || requested_rate > 2.0) {
+        result.successful = false;
+        result.reason = "steering_transition_rate_radps must be in [0.05, 2.0]";
+        return result;
+      }
+      changed = true;
+    } else if (name == "steering_transition_velocity_scale_enabled") {
+      if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
+        result.successful = false;
+        result.reason = "steering_transition_velocity_scale_enabled must be a bool";
+        return result;
+      }
+      requested_scaling_enabled = parameter.as_bool();
+      changed = true;
+    } else if (
+      name == "steering_transition_full_speed_error_rad" ||
+      name == "steering_transition_stop_error_rad" ||
+      name == "steering_transition_min_velocity_scale")
+    {
+      if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+        result.successful = false;
+        result.reason = name + " must be a double";
+        return result;
+      }
+      const double requested = parameter.as_double();
+      if (!std::isfinite(requested)) {
+        result.successful = false;
+        result.reason = name + " must be finite";
+        return result;
+      }
+      if (name == "steering_transition_full_speed_error_rad") {
+        requested_full_speed_error = requested;
+      } else if (name == "steering_transition_stop_error_rad") {
+        requested_stop_error = requested;
+      } else {
+        requested_minimum_scale = requested;
+      }
+      changed = true;
     }
-    if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
-      result.successful = false;
-      result.reason = "steering_transition_rate_radps must be a double";
-      return result;
-    }
-    const double requested = parameter.as_double();
-    if (!std::isfinite(requested) || requested < 0.05 || requested > 2.0) {
-      result.successful = false;
-      result.reason = "steering_transition_rate_radps must be in [0.05, 2.0]";
-      return result;
-    }
-    steering_transition_rate_radps_ = requested;
+  }
+  if (requested_full_speed_error < 0.0 ||
+    requested_stop_error <= requested_full_speed_error)
+  {
+    result.successful = false;
+    result.reason =
+      "steering transition errors require 0 <= full_speed_error < stop_error";
+    return result;
+  }
+  if (requested_minimum_scale < 0.0 || requested_minimum_scale > 1.0) {
+    result.successful = false;
+    result.reason = "steering_transition_min_velocity_scale must be in [0, 1]";
+    return result;
+  }
+  if (changed) {
+    steering_transition_rate_radps_ = requested_rate;
+    steering_transition_velocity_scale_enabled_ = requested_scaling_enabled;
+    steering_transition_full_speed_error_rad_ = requested_full_speed_error;
+    steering_transition_stop_error_rad_ = requested_stop_error;
+    steering_transition_min_velocity_scale_ = requested_minimum_scale;
     RCLCPP_INFO(
-      node_->get_logger(), "steering transition rate updated dynamically: %.2f rad/s",
-      steering_transition_rate_radps_);
+      node_->get_logger(),
+      "steering transition updated dynamically: rate=%.2f rad/s scale=%s "
+      "full=%.2f stop=%.2f min=%.2f",
+      steering_transition_rate_radps_,
+      steering_transition_velocity_scale_enabled_ ? "true" : "false",
+      steering_transition_full_speed_error_rad_,
+      steering_transition_stop_error_rad_,
+      steering_transition_min_velocity_scale_);
   }
   return result;
 }
