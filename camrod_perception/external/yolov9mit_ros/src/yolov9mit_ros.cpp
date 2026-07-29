@@ -1,5 +1,6 @@
 #include "yolov9mit_ros/yolov9mit_ros.hpp"
 
+#include <exception>
 #include <filesystem>
 #include <opencv2/opencv.hpp>
 #include <vision_msgs/msg/detection2_d.hpp>
@@ -175,14 +176,81 @@ void YOLOV9MIT_Node::image_callback(const sensor_msgs::msg::Image::ConstSharedPt
 void YOLOV9MIT_Node::compressed_image_callback(
     const sensor_msgs::msg::CompressedImage::ConstSharedPtr &msg)
 {
+    if (!msg)
+    {
+        log_compressed_frame_error(msg, "input", "null CompressedImage pointer");
+        return;
+    }
+    if (msg->data.empty())
+    {
+        log_compressed_frame_error(msg, "input", "empty compressed payload");
+        return;
+    }
+
     if (throttle_interval_.count() > 0.0)
     {
         const auto now = std::chrono::steady_clock::now();
         if (now - last_inference_time_ < throttle_interval_) return;
         last_inference_time_ = now;
     }
-    const cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
-    process_image(image, msg->header);
+
+    try
+    {
+        const auto converted = cv_bridge::toCvCopy(msg, "bgr8");
+        if (!converted || converted->image.empty())
+        {
+            log_compressed_frame_error(
+                msg, "decode", "cv_bridge returned an empty image");
+            return;
+        }
+        if (converted->image.type() != CV_8UC3)
+        {
+            log_compressed_frame_error(
+                msg, "decode",
+                "unexpected decoded type=" + std::to_string(converted->image.type()) +
+                " (expected CV_8UC3)");
+            return;
+        }
+
+        process_image(converted->image, msg->header);
+    }
+    catch (const cv_bridge::Exception & e)
+    {
+        log_compressed_frame_error(msg, "cv_bridge", e.what());
+    }
+    catch (const cv::Exception & e)
+    {
+        log_compressed_frame_error(msg, "opencv", e.what());
+    }
+    catch (const std::exception & e)
+    {
+        log_compressed_frame_error(msg, "processing", e.what());
+    }
+    catch (...)
+    {
+        log_compressed_frame_error(msg, "processing", "unknown exception");
+    }
+}
+
+void YOLOV9MIT_Node::log_compressed_frame_error(
+    const sensor_msgs::msg::CompressedImage::ConstSharedPtr & msg,
+    const char * stage,
+    const std::string & detail)
+{
+    const size_t payload_size = msg ? msg->data.size() : 0U;
+    const char * format = msg ? msg->format.c_str() : "<null>";
+    const char * frame_id = msg ? msg->header.frame_id.c_str() : "<null>";
+    const int32_t stamp_sec = msg ? msg->header.stamp.sec : 0;
+    const uint32_t stamp_nanosec = msg ? msg->header.stamp.nanosec : 0U;
+
+    // HH_260729 - A malformed camera frame must not terminate the component
+    // container shared by the camera publisher and YOLO node.
+    RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Dropping compressed image: stage=%s detail='%s' bytes=%zu "
+        "format='%s' frame_id='%s' stamp=%d.%09u",
+        stage, detail.c_str(), payload_size, format, frame_id,
+        stamp_sec, stamp_nanosec);
 }
 
 vision_msgs::msg::Detection2DArray::SharedPtr YOLOV9MIT_Node::objects_to_bboxes(
