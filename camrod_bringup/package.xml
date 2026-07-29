@@ -45,6 +45,8 @@
   <test_depend>ament_lint_common</test_depend>
   <!-- HH_260722 - Test GNSS launch-default and configuration-mirror synchronization. -->
   <test_depend>ament_cmake_pytest</test_depend>
+  <!-- HH_260729 - Radar/GNSS default synchronization tests parse YAML. -->
+  <test_depend>python3-yaml</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

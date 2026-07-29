@@ -10,6 +10,11 @@ gnss_checker:
     main:
       # HH_260617 - ublox_gps_node publishes NavSatFix as a private topic under its node name.
       topic: "/sensing/gnss/ublox_gps_node/fix"
+      # HH_260729 - A fresh true heartbeat marks intentionally substituted
+      # integration-test data. The checker reports explicit DUMMY DATA WARN;
+      # false/stale heartbeat restores the normal physical-sensor diagnosis.
+      dummy_active_topic: "/sensing/gnss/dummy_active"
+      dummy_active_timeout_s: 1.0
       # HH_260703 - Field ZED-F9P currently publishes NavSatFix at 1 Hz even
       # with the driver rate parameter set higher. Keep freshness/fix checks
       # active without forcing ERROR_STOP from this stable field rate.

@@ -29,16 +29,20 @@
  *   hz_error_ratio:          0.4
  */
 
+#include <cmath>
 #include <deque>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
 // HH_260720 - Diagnose generated CAMROD velocity-converter contracts.
+#include <avg_msgs/msg/avg_bool.hpp>
 #include <avg_msgs/msg/avg_twist_stamped.hpp>
 #include <avg_msgs/msg/avg_twist_with_covariance_stamped.hpp>
 #include <avg_msgs/msg/avg_imu.hpp>
 
+#include <camrod_system/dummy_source_monitor.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
@@ -73,6 +77,12 @@ protected:
     declare_parameter("expected_output_hz",     10.0);
     declare_parameter("hz_warn_ratio",          0.7);
     declare_parameter("hz_error_ratio",         0.4);
+    declare_parameter(
+      "platform_dummy_active_topic", std::string("/platform/dummy_active"));
+    declare_parameter("platform_dummy_active_timeout_s", 1.0);
+    declare_parameter(
+      "imu_dummy_active_topic", std::string("/sensing/imu/dummy_active"));
+    declare_parameter("imu_dummy_active_timeout_s", 1.0);
   }
 
   void load_parameters_() override
@@ -86,6 +96,26 @@ protected:
     expected_output_hz_      = get_parameter("expected_output_hz").as_double();
     hz_warn_ratio_           = get_parameter("hz_warn_ratio").as_double();
     hz_error_ratio_          = get_parameter("hz_error_ratio").as_double();
+    platform_dummy_active_topic_ =
+      get_parameter("platform_dummy_active_topic").as_string();
+    platform_dummy_active_timeout_ =
+      get_parameter("platform_dummy_active_timeout_s").as_double();
+    imu_dummy_active_topic_ =
+      get_parameter("imu_dummy_active_topic").as_string();
+    imu_dummy_active_timeout_ =
+      get_parameter("imu_dummy_active_timeout_s").as_double();
+
+    if (platform_dummy_active_topic_.empty() || imu_dummy_active_topic_.empty()) {
+      throw std::runtime_error("velocity converter dummy-active topics must not be empty");
+    }
+    if (!std::isfinite(platform_dummy_active_timeout_) ||
+      platform_dummy_active_timeout_ <= 0.0 ||
+      !std::isfinite(imu_dummy_active_timeout_) ||
+      imu_dummy_active_timeout_ <= 0.0)
+    {
+      throw std::runtime_error(
+              "velocity converter dummy-active timeouts must be finite and > 0");
+    }
   }
 
   void setup_tasks_() override
@@ -121,12 +151,28 @@ protected:
         }
       });
 
+    // HH_260729 - The converter has two independent hardware dependencies.
+    // Preserve which one is intentionally substituted instead of collapsing
+    // a platform/IMU dummy into a generic healthy output.
+    platform_dummy_active_sub_ = create_subscription<avg_msgs::msg::AvgBool>(
+      platform_dummy_active_topic_, rclcpp::QoS(10),
+      [this](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+        platform_dummy_monitor_.update(msg->data, this->now());
+      });
+    imu_dummy_active_sub_ = create_subscription<avg_msgs::msg::AvgBool>(
+      imu_dummy_active_topic_, rclcpp::QoS(10),
+      [this](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+        imu_dummy_monitor_.update(msg->data, this->now());
+      });
+
     add_task("/sensing/velocity_converter",
       [this](StatusWrapper & stat) { checkConverter(stat); });
 
     RCLCPP_INFO(get_logger(),
-      "velocity_converter checker started (vel=%s, imu=%s, out=%s)",
-      velocity_topic_.c_str(), imu_topic_.c_str(), output_topic_.c_str());
+      "velocity_converter checker started "
+      "(vel=%s, imu=%s, out=%s, platform_dummy=%s, imu_dummy=%s)",
+      velocity_topic_.c_str(), imu_topic_.c_str(), output_topic_.c_str(),
+      platform_dummy_active_topic_.c_str(), imu_dummy_active_topic_.c_str());
   }
 
 private:
@@ -139,6 +185,44 @@ private:
     double vel_elapsed = vel_has_msg_ ? (now - vel_last_time_).seconds() : -1.0;
     double imu_elapsed = imu_has_msg_ ? (now - imu_last_time_).seconds() : -1.0;
     double out_elapsed = out_has_msg_ ? (now - out_last_time_).seconds() : -1.0;
+
+    // HH_260729 - A fresh true heartbeat from either input dependency is
+    // explicitly degraded WARN. False/stale heartbeats fall through to the
+    // existing missing/silent-drop errors below.
+    double platform_dummy_age_s = -1.0;
+    double imu_dummy_age_s = -1.0;
+    const bool platform_dummy_active = platform_dummy_monitor_.isActive(
+      now, platform_dummy_active_timeout_, platform_dummy_age_s);
+    const bool imu_dummy_active = imu_dummy_monitor_.isActive(
+      now, imu_dummy_active_timeout_, imu_dummy_age_s);
+    if (platform_dummy_active || imu_dummy_active) {
+      const std::string dummy_sources =
+        platform_dummy_active && imu_dummy_active ? "platform,imu" :
+        (platform_dummy_active ? "platform" : "imu");
+      stat.summary(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        "DUMMY DATA (hardware disabled): sources=" + dummy_sources +
+        " velocity_topic=" + velocity_topic_ +
+        " imu_topic=" + imu_topic_ +
+        " output_topic=" + output_topic_);
+      stat.add("data_source", "dummy");
+      stat.add("dummy_sources", dummy_sources);
+      stat.add(
+        "platform_dummy_active", platform_dummy_active ? "true" : "false");
+      stat.add("platform_dummy_active_topic", platform_dummy_active_topic_);
+      if (platform_dummy_active) {
+        stat.add("platform_dummy_active_age_s", platform_dummy_age_s);
+      }
+      stat.add("imu_dummy_active", imu_dummy_active ? "true" : "false");
+      stat.add("imu_dummy_active_topic", imu_dummy_active_topic_);
+      if (imu_dummy_active) {
+        stat.add("imu_dummy_active_age_s", imu_dummy_age_s);
+      }
+      stat.add("velocity_input", vel_has_msg_ ? "available" : "pending_or_missing");
+      stat.add("imu_input", imu_has_msg_ ? "available" : "pending_or_missing");
+      stat.add("output", out_has_msg_ ? "available" : "pending_or_missing");
+      return;
+    }
 
     bool vel_stale = !vel_has_msg_ || (vel_elapsed > velocity_stale_timeout_);
     bool imu_stale = !imu_has_msg_ || (imu_elapsed > imu_stale_timeout_);
@@ -221,6 +305,10 @@ private:
   double expected_output_hz_{10.0};
   double hz_warn_ratio_{0.7};
   double hz_error_ratio_{0.4};
+  std::string platform_dummy_active_topic_{"/platform/dummy_active"};
+  double platform_dummy_active_timeout_{1.0};
+  std::string imu_dummy_active_topic_{"/sensing/imu/dummy_active"};
+  double imu_dummy_active_timeout_{1.0};
 
   // 런타임 상태
   std::mutex mtx_;
@@ -235,6 +323,10 @@ private:
   rclcpp::Subscription<avg_msgs::msg::AvgTwistStamped>::SharedPtr vel_sub_;
   rclcpp::Subscription<avg_msgs::msg::AvgImu>::SharedPtr imu_sub_;
   rclcpp::Subscription<avg_msgs::msg::AvgTwistWithCovarianceStamped>::SharedPtr out_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr platform_dummy_active_sub_;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr imu_dummy_active_sub_;
+  camrod_system::DummySourceMonitor platform_dummy_monitor_;
+  camrod_system::DummySourceMonitor imu_dummy_monitor_;
 };
 
 // ── main ──────────────────────────────────────────────────────────────────

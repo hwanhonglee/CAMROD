@@ -1,43 +1,84 @@
+# HH_260729 - SEN0592 configuration is grouped by where each value acts:
+#   1) serial communication, 2) physical sensor registers,
+#   3) software acceptance, 4) ROS output, 5) channel wiring.
+# All values are STARTUP-ONLY except log_status and publish_radar_status.
 /**:
   ros__parameters:
+    # =========================================================================
+    # 1. SERIAL COMMUNICATION  [STARTUP-ONLY]
+    # =========================================================================
     baud: 115200
     slave_id: 1
-
-    # Polling / communication tuning
     poll_period_s: 0.06
     response_deadline_s: 0.20
     inter_frame_sleep_s: 0.003
-    # HH_260702 - Normal bringup skips SEN0592 hardware register writes because
-    # this harness returns read data reliably but times out on write echoes.
-    # Software max_range filtering below still protects cost-grid consumers.
-    configure_hardware_on_startup: false
+    # HH_260729 - A disabled channel opens no port, but keeps diagnostics and
+    # consumers alive with no-target + per-channel dummy marker heartbeats.
+    disabled_channel_dummy_publish_rate_hz: 2.0
 
-    # Range message settings
-    min_range_m: 0.02
-    max_range_m: 4.50          # global fallback; overridden per-sensor by sensor_max_ranges_m
-    field_of_view_rad: 0.26
+    # =========================================================================
+    # 2. PHYSICAL SENSOR REGISTERS  [STARTUP-ONLY]
+    # =========================================================================
+    # false: do not write; read back and verify the levels below.
+    # true : read first, write only mismatched registers, then require identical
+    #        FC03 readback. Missing FC06 echo alone is not treated as failure.
+    # HH_260729 - Apply the requested near-field/narrow-angle physical profile.
+    hardware_write_on_startup: true
 
-    # Per-sensor detection angle written to register 0x0208 at startup.
-    # Values: 1=15° 2=30° 3=45° 4=60° 5=75°. 0 = skip (sensor retains hardware value).
-    # HH_260629 - Latest vehicle radar profile uses seven sensors:
-    # FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
-    sensor_angle_config_values: [0, 0, 0, 0, 0, 0, 0]
+    # 0x0208 is one combined angle/sensitivity level, not independent horizontal
+    # and vertical controls. Level 1 is the narrowest available in both axes.
+    # A wide-horizontal/narrow-vertical beam requires rotating the physical
+    # asymmetric sensor face around its forward axis; software cannot do that.
+    hardware_angle_levels: [1, 1, 1, 1, 1, 1, 1]
 
-    # Per-sensor max detection range (m). Order: FRONT1, FRONT2, LEFT1, LEFT2, RIGHT1, RIGHT2, REAR.
-    sensor_max_ranges_m: [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]
-    # Hardware range limit (mm) written to register 0x021F. Same order as above.
-    sensor_range_config_mm: [1500, 1500, 800, 800, 800, 800, 500]
+    # 0x021F range level: 1≈0.5 m, 2≈1.5 m, 3≈2.5 m,
+    #                     4≈3.5 m, 5≈5.0 m.
+    # Front/side channels retain enough physical reach for their current
+    # 1.50/0.80 m software safety cutoffs; rear uses the 0.50 m near-field level.
+    hardware_range_levels: [2, 2, 2, 2, 2, 2, 1]
 
-    # Aggregated sensing message output
-    publish_radar_status: false
+    # =========================================================================
+    # 3. SOFTWARE ACCEPTANCE  [STARTUP-ONLY]
+    # =========================================================================
+    # false disables exactly one channel: no port open; its range and _ros
+    # topics publish max_range+0.001 m with dummy_active=true at the rate above.
+    # HH_260729 - Keep all seven physical channels enabled. The narrow,
+    # measured RIGHT1/REAR body-return intervals are handled explicitly in
+    # cost_grid.yaml so other distances on those sensors remain obstacles.
+    sensor_enabled: [true, true, true, true, true, true, true]
+
+    software_min_range_m: 0.02
+    software_default_max_range_m: 4.50
+    # Exact per-channel cutoff. Longer replies become no-target heartbeats.
+    software_max_ranges_m: [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]
+
+    # =========================================================================
+    # 4. ROS OUTPUT
+    # =========================================================================
+    # Visualization metadata only; it does not change the physical beam and is
+    # not used by radar_cost_grid.
+    range_message_field_of_view_rad: 0.26
     radar_status_topic: "status"
+    publish_radar_status: false   # DYNAMIC: aggregate AvgSensingRadar output
+    log_status: false             # DYNAMIC: per-port console status rows
 
-    # Sensor mapping
-    # HH_260702 - Keep standalone sensing launch aligned with full bringup:
-    #   name[i] -> frame_ids[i] -> ports[i] -> topics[i].
-    #   Current field harness has LEFT and RIGHT branch ports crossed:
-    #   USB0, USB1, USB4, USB5, USB2, USB3, USB6.
+    # =========================================================================
+    # 5. CHANNEL ORDER AND WIRING  [STARTUP-ONLY]
+    # =========================================================================
+    # Every list below uses exactly this index order.
+    #
+    # idx  sensor   port  enabled  angle  HW range  SW max
+    #  0   FRONT1   USB0    yes      1       2      1.50 m
+    #  1   FRONT2   USB1    yes      1       2      1.50 m
+    #  2   LEFT1    USB4    yes      1       2      0.80 m
+    #  3   LEFT2    USB5    yes      1       2      0.80 m
+    #  4   RIGHT1   USB2    yes      1       2      0.80 m
+    #  5   RIGHT2   USB3    yes      1       2      0.80 m
+    #  6   REAR     USB6    yes      1       1      0.50 m
+    #
+    # HH_260702 - LEFT/RIGHT USB numbers reflect the crossed field harness.
     sensor_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]
+
     frame_ids:
       - "radar_front1_link"
       - "radar_front2_link"
@@ -47,9 +88,6 @@
       - "radar_right2_link"
       - "radar_rear_link"
 
-    # CH9344 multi-port device paths.
-    # HH_260702 - Match the current swapped LEFT/RIGHT field harness while
-    # preserving logical topics and TF frames for downstream cost grids.
     ports:
       - "/dev/ttyCH9344USB0"
       - "/dev/ttyCH9344USB1"
@@ -59,7 +97,7 @@
       - "/dev/ttyCH9344USB3"
       - "/dev/ttyCH9344USB6"
 
-    # topic names (relative to namespace)
+    # Generated CAMROD messages used by cost-grid and diagnostics.
     topics:
       - "front1/range"
       - "front2/range"
@@ -68,7 +106,8 @@
       - "right1/range"
       - "right2/range"
       - "rear/range"
-    # HH_260720 - Standard sensor_msgs mirrors are reserved for RViz and ROS-native tools.
+
+    # Standard sensor_msgs/Range mirrors used by RViz/ROS-native tools.
     standard_ros_topics:
       - "front1/range_ros"
       - "front2/range_ros"

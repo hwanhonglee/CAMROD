@@ -108,6 +108,38 @@ if(BUILD_TESTING)
     COMMAND test_diagnostic_detail
   )
 
+  # HH_260729 - Keep low-FPS diagnostics from being relabeled by later
+  # resolution/encoding checks of equal or lower severity.
+  add_executable(
+    test_camera_diagnostic_status
+    test/test_camera_diagnostic_status.cpp
+  )
+  target_compile_features(test_camera_diagnostic_status PUBLIC cxx_std_17)
+  ament_target_dependencies(
+    test_camera_diagnostic_status
+    diagnostic_msgs
+  )
+  add_test(
+    NAME camera_diagnostic_status
+    COMMAND test_camera_diagnostic_status
+  )
+
+  # HH_260729 - Verify that only a fresh explicit true dummy heartbeat can
+  # downgrade an intentionally disabled hardware source to WARN.
+  add_executable(
+    test_dummy_source_monitor
+    test/test_dummy_source_monitor.cpp
+  )
+  target_compile_features(test_dummy_source_monitor PUBLIC cxx_std_17)
+  ament_target_dependencies(
+    test_dummy_source_monitor
+    rclcpp
+  )
+  add_test(
+    NAME dummy_source_monitor
+    COMMAND test_dummy_source_monitor
+  )
+
   add_executable(
     test_planning_nav_status_tracker
     test/test_planning_nav_status_tracker.cpp

@@ -9,16 +9,21 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <deque>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
+#include <avg_msgs/msg/avg_bool.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/compressed_image.hpp>
 #include <sensor_msgs/msg/image.hpp>
 
+#include <camrod_system/camera_diagnostic_status.hpp>
+#include <camrod_system/dummy_source_monitor.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
@@ -39,6 +44,8 @@ struct CameraState
   uint32_t expected_width{0};
   uint32_t expected_height{0};
   std::string expected_encoding{};
+  std::string dummy_active_topic;
+  double dummy_active_timeout{1.0};
 
   // 런타임 상태 (mutex 보호)
   std::mutex mtx;
@@ -53,6 +60,8 @@ struct CameraState
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub;
   rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr compressed_image_sub;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr info_sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr dummy_active_sub;
+  camrod_system::DummySourceMonitor dummy_monitor;
 };
 
 class CameraCheckerNode : public robot_diagnostics_base::BaseChecker
@@ -91,6 +100,10 @@ protected:
       declare_parameter(name + ".expected_width",    int64_t(0));
       declare_parameter(name + ".expected_height",   int64_t(0));
       declare_parameter(name + ".expected_encoding", std::string(""));
+      declare_parameter(
+        name + ".dummy_active_topic",
+        std::string("/sensing/camera/" + name + "/dummy_active"));
+      declare_parameter(name + ".dummy_active_timeout_s", 1.0);
 
       cam->image_topic       = get_parameter(name + ".image_topic").as_string();
       cam->image_type        = get_parameter(name + ".image_type").as_string();
@@ -115,6 +128,20 @@ protected:
       cam->expected_height   = static_cast<uint32_t>(
         get_parameter(name + ".expected_height").as_int());
       cam->expected_encoding = get_parameter(name + ".expected_encoding").as_string();
+      cam->dummy_active_topic =
+        get_parameter(name + ".dummy_active_topic").as_string();
+      cam->dummy_active_timeout =
+        get_parameter(name + ".dummy_active_timeout_s").as_double();
+
+      if (cam->dummy_active_topic.empty()) {
+        throw std::runtime_error(name + ".dummy_active_topic must not be empty");
+      }
+      if (!std::isfinite(cam->dummy_active_timeout) ||
+        cam->dummy_active_timeout <= 0.0)
+      {
+        throw std::runtime_error(
+                name + ".dummy_active_timeout_s must be finite and > 0");
+      }
 
       cameras_.push_back(cam);
     }
@@ -160,13 +187,23 @@ protected:
           }
         });
 
+      // HH_260729 - Front and rear cameras can be disabled independently, so
+      // each source owns a separate explicit dummy heartbeat.
+      cam->dummy_active_sub = create_subscription<avg_msgs::msg::AvgBool>(
+        cam->dummy_active_topic,
+        rclcpp::QoS(1).reliable().transient_local(),
+        [this, cam](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+          cam->dummy_monitor.update(msg->data, this->now());
+        });
+
       add_task("/sensor/camera/" + cam->name,
         [this, cam](StatusWrapper & stat) { check_camera(stat, *cam); });
 
       RCLCPP_INFO(get_logger(),
-        "Camera checker started: %s (image=%s, type=%s, expected_fps=%.0f)",
+        "Camera checker started: %s "
+        "(image=%s, type=%s, expected_fps=%.0f, dummy=%s timeout=%.2fs)",
         cam->name.c_str(), cam->image_topic.c_str(), cam->image_type.c_str(),
-        cam->expected_fps);
+        cam->expected_fps, cam->dummy_active_topic.c_str(), cam->dummy_active_timeout);
     }
   }
 
@@ -187,6 +224,35 @@ private:
   void check_camera(StatusWrapper & stat, CameraState & cam)
   {
     std::lock_guard<std::mutex> lock(cam.mtx);
+    const auto now = this->now();
+
+    // HH_260729 - A black/low-rate integration-test stream remains degraded
+    // WARN and never masquerades as a healthy physical camera. Heartbeat
+    // expiry restores normal missing/stale/FPS/resolution checks.
+    double dummy_age_s = -1.0;
+    if (cam.dummy_monitor.isActive(
+        now, cam.dummy_active_timeout, dummy_age_s))
+    {
+      const double data_age_s =
+        cam.has_image ? (now - cam.last_image_time).seconds() : -1.0;
+      const bool data_fresh =
+        cam.has_image && data_age_s >= 0.0 && data_age_s <= cam.stale_timeout;
+      stat.summary(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        "DUMMY DATA (hardware disabled): sensor=" + cam.name +
+        " topic=" + cam.image_topic +
+        (data_fresh ? " dummy_image=fresh" : " dummy_image=pending_or_stale"));
+      stat.add("data_source", "dummy");
+      stat.add("hardware_enabled", "false");
+      stat.add("dummy_active_topic", cam.dummy_active_topic);
+      stat.add("dummy_active_age_s", dummy_age_s);
+      stat.add("dummy_data_received", cam.has_image ? "true" : "false");
+      if (cam.has_image) {
+        stat.add("dummy_data_age_s", data_age_s);
+      }
+      stat.add("camera_info", cam.has_camera_info ? "available" : "pending_or_missing");
+      return;
+    }
 
     if (!cam.has_image) {
       stat.summary(diagnostic_msgs::msg::DiagnosticStatus::STALE, "No topic messages: " + cam.image_topic);
@@ -194,7 +260,7 @@ private:
       return;
     }
 
-    double elapsed = (this->now() - cam.last_image_time).seconds();
+    double elapsed = (now - cam.last_image_time).seconds();
     if (elapsed > cam.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),
@@ -213,29 +279,22 @@ private:
       }
     }
 
-    int8_t lvl = diagnostic_msgs::msg::DiagnosticStatus::OK;
-    std::string msg_str = "OK";
-
+    int8_t fps_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
     if (cam.expected_fps > 0.0) {
       double ratio = actual_fps / cam.expected_fps;
-      lvl = check_low(ratio, cam.fps_warn_ratio, cam.fps_error_ratio);
-      if      (lvl == diagnostic_msgs::msg::DiagnosticStatus::ERROR) msg_str = "FPS critically low";
-      else if (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN)  msg_str = "FPS low";
+      fps_level = check_low(ratio, cam.fps_warn_ratio, cam.fps_error_ratio);
     }
 
-    if (cam.expected_width > 0) {
-      lvl = std::max(lvl, check_flag(cam.actual_width == cam.expected_width, diagnostic_msgs::msg::DiagnosticStatus::WARN));
-      if (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN) msg_str = "Resolution mismatch";
-    }
-    if (cam.expected_height > 0) {
-      lvl = std::max(lvl, check_flag(cam.actual_height == cam.expected_height, diagnostic_msgs::msg::DiagnosticStatus::WARN));
-      if (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN) msg_str = "Resolution mismatch";
-    }
-
-    if (!cam.expected_encoding.empty()) {
-      lvl = std::max(lvl, check_flag(cam.actual_encoding == cam.expected_encoding, diagnostic_msgs::msg::DiagnosticStatus::WARN));
-      if (lvl == diagnostic_msgs::msg::DiagnosticStatus::WARN) msg_str = "Encoding mismatch";
-    }
+    const bool resolution_mismatch =
+      (cam.expected_width > 0 && cam.actual_width != cam.expected_width) ||
+      (cam.expected_height > 0 && cam.actual_height != cam.expected_height);
+    const bool encoding_mismatch =
+      !cam.expected_encoding.empty() &&
+      cam.actual_encoding != cam.expected_encoding;
+    const auto diagnostic = camrod_system::evaluate_camera_diagnostic(
+      fps_level, resolution_mismatch, encoding_mismatch);
+    const int8_t lvl = diagnostic.level;
+    std::string msg_str = diagnostic.message;
 
     if (lvl == diagnostic_msgs::msg::DiagnosticStatus::OK) {
       char buf[64];

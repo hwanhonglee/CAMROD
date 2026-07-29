@@ -7,9 +7,20 @@ radar_checker:
   ros__parameters:
     publish_rate_hz: 1.0          # 진단 발행 주기 (Hz)
 
-    # 모니터링할 레이다 이름 목록 (sen0592_radar_node 의 sensor_names 와 일치)
-    # HH_260623 - Match latest 7-channel SEN0592 radar names.
+    # HH_260729 - All seven physical channels are active. For an explicit
+    # field-test isolation, add disabled_radar_names with the sensor names.
+    # The empty setting is intentionally omitted because ROS 2 Humble can
+    # convert an empty YAML array to an invalid tuple when a node is run
+    # directly; the node's declared default is already an empty string array.
     radar_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]
+
+    # HH_260729 - enable_radar:=false uses this global marker and reports all
+    # seven channels as WARN "DUMMY DATA". Each sensor block also owns a
+    # channel marker for sensor_enabled[i]:=false, so one disabled radar never
+    # hides failures from the remaining physical channels. A false/stale
+    # marker always restores the normal missing/stale/range diagnosis.
+    dummy_active_topic: "/sensing/radar/dummy_active"
+    dummy_active_timeout_s: 1.0
 
     # ── 각 센서 설정 ──────────────────────────────────────────────────────
     #
@@ -23,21 +34,29 @@ radar_checker:
 
     REAR:
       topic: "/sensing/radar/rear/range"
-      # HH_260702 - Measured 7-channel SEN0592 field rate is about 9 Hz per
-      # channel because no-target replies take about 100 ms; 16 Hz causes false timeouts.
+      location: "rear_center"
+      frame_id: "radar_rear_link"
+      port: "/dev/ttyCH9344USB6"
+      dummy_active_topic: "/sensing/radar/rear/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_hz:         8.0
-      hz_warn_ratio:      0.7     # 11.2 Hz 미만이면 WARN
-      hz_error_ratio:     0.4     #  6.4 Hz 미만이면 ERROR
+      hz_warn_ratio:      0.7
+      hz_error_ratio:     0.4
       stale_timeout_s:      1.0
-      min_range_m:        0.02    # 센서 측정 하한 (m)
-      max_range_m:        4.5     # 센서 측정 상한 (m)
-      stuck_min_warn_m:   0.05    # 0.05 m 이하 고착 → WARN  (전방 차폐 의심)
-      stuck_min_error_m:  0.03    # 0.03 m 이하 고착 → ERROR (전방 차폐 확실)
-      stuck_max_warn_m:   4.4     # 4.4 m 이상 고착 → WARN  (무감지 의심)
-      stuck_max_error_m:  0.0     # 비활성화
+      min_range_m:        0.02
+      max_range_m:        4.5
+      stuck_min_warn_m:   0.05
+      stuck_min_error_m:  0.03
+      stuck_max_warn_m:   4.4
+      stuck_max_error_m:  0.0
 
     LEFT2:
       topic: "/sensing/radar/left2/range"
+      location: "left_rear"
+      frame_id: "radar_left2_link"
+      port: "/dev/ttyCH9344USB5"
+      dummy_active_topic: "/sensing/radar/left2/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_hz:         8.0
       hz_warn_ratio:      0.7
       hz_error_ratio:     0.4
@@ -53,6 +72,11 @@ radar_checker:
 
     LEFT1:
       topic: "/sensing/radar/left1/range"
+      location: "left_front"
+      frame_id: "radar_left1_link"
+      port: "/dev/ttyCH9344USB4"
+      dummy_active_topic: "/sensing/radar/left1/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_hz:         8.0
       hz_warn_ratio:      0.7
       hz_error_ratio:     0.4
@@ -68,6 +92,11 @@ radar_checker:
 
     RIGHT2:
       topic: "/sensing/radar/right2/range"
+      location: "right_rear"
+      frame_id: "radar_right2_link"
+      port: "/dev/ttyCH9344USB3"
+      dummy_active_topic: "/sensing/radar/right2/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_hz:         8.0
       hz_warn_ratio:      0.7
       hz_error_ratio:     0.4
@@ -83,14 +112,17 @@ radar_checker:
 
     RIGHT1:
       topic: "/sensing/radar/right1/range"
+      location: "right_front"
+      frame_id: "radar_right1_link"
+      port: "/dev/ttyCH9344USB2"
+      dummy_active_topic: "/sensing/radar/right1/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_hz:         8.0
       hz_warn_ratio:      0.7
       hz_error_ratio:     0.4
       stale_timeout_s:      1.0
       min_range_m:        0.02
       max_range_m:        4.5
-      # HH_260707 - Keep near-body chassis echoes visible as WARN so mounting
-      # or self-occlusion issues remain operator-visible during field tests.
       stuck_min_warn_m:   0.05
       stuck_min_error_m:  0.0
       stuck_max_warn_m:   4.4
@@ -98,6 +130,11 @@ radar_checker:
 
     FRONT1:
       topic: "/sensing/radar/front1/range"
+      location: "front_right"
+      frame_id: "radar_front1_link"
+      port: "/dev/ttyCH9344USB0"
+      dummy_active_topic: "/sensing/radar/front1/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_hz:         8.0
       hz_warn_ratio:      0.7
       hz_error_ratio:     0.4
@@ -111,6 +148,11 @@ radar_checker:
 
     FRONT2:
       topic: "/sensing/radar/front2/range"
+      location: "front_left"
+      frame_id: "radar_front2_link"
+      port: "/dev/ttyCH9344USB1"
+      dummy_active_topic: "/sensing/radar/front2/dummy_active"
+      dummy_active_timeout_s: 1.0
       expected_hz:         8.0
       hz_warn_ratio:      0.7
       hz_error_ratio:     0.4

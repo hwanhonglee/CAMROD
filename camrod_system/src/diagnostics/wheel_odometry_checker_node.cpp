@@ -29,13 +29,16 @@
 #include <cmath>
 #include <deque>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 // HH_260720 - Diagnose generated CAMROD wheel odometry.
+#include <avg_msgs/msg/avg_bool.hpp>
 #include <avg_msgs/msg/avg_odometry.hpp>
 
+#include <camrod_system/dummy_source_monitor.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
@@ -56,6 +59,8 @@ struct WheelState
   double stale_timeout{1.0};
   double max_speed_warn_ms{3.0};
   double max_speed_error_ms{5.0};
+  std::string dummy_active_topic;
+  double dummy_active_timeout{1.0};
 
   // 런타임 상태 (mutex 보호)
   std::mutex mtx;
@@ -72,6 +77,8 @@ struct WheelState
 
   // 구독자
   rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr dummy_active_sub;
+  camrod_system::DummySourceMonitor dummy_monitor;
 };
 
 static bool has_nan6(double a, double b, double c, double d, double e, double f)
@@ -112,6 +119,10 @@ protected:
       declare_parameter(name + ".stale_timeout_s",       1.0);
       declare_parameter(name + ".max_speed_warn_ms",   3.0);
       declare_parameter(name + ".max_speed_error_ms",  5.0);
+      declare_parameter(
+        name + ".dummy_active_topic",
+        std::string("/platform/dummy_active"));
+      declare_parameter(name + ".dummy_active_timeout_s", 1.0);
 
       wheel->topic              = get_parameter(name + ".topic").as_string();
       wheel->expected_hz        = get_parameter(name + ".expected_hz").as_double();
@@ -120,6 +131,20 @@ protected:
       wheel->stale_timeout = get_param<double>(name + ".stale_timeout_s", wheel->stale_timeout);
       wheel->max_speed_warn_ms  = get_parameter(name + ".max_speed_warn_ms").as_double();
       wheel->max_speed_error_ms = get_parameter(name + ".max_speed_error_ms").as_double();
+      wheel->dummy_active_topic =
+        get_parameter(name + ".dummy_active_topic").as_string();
+      wheel->dummy_active_timeout =
+        get_parameter(name + ".dummy_active_timeout_s").as_double();
+
+      if (wheel->dummy_active_topic.empty()) {
+        throw std::runtime_error(name + ".dummy_active_topic must not be empty");
+      }
+      if (!std::isfinite(wheel->dummy_active_timeout) ||
+        wheel->dummy_active_timeout <= 0.0)
+      {
+        throw std::runtime_error(
+                name + ".dummy_active_timeout_s must be finite and > 0");
+      }
 
       wheel_list_.push_back(wheel);
     }
@@ -134,12 +159,22 @@ protected:
           onOdometry(msg, wheel);
         });
 
+      // HH_260729 - Platform dummy feedback is intentionally degraded. Its
+      // heartbeat must remain fresh; stale/false restores normal wheel errors.
+      wheel->dummy_active_sub = create_subscription<avg_msgs::msg::AvgBool>(
+        wheel->dummy_active_topic, rclcpp::QoS(10),
+        [this, wheel](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+          wheel->dummy_monitor.update(msg->data, this->now());
+        });
+
       add_task("/sensor/wheel/" + wheel->name,
         [this, wheel](StatusWrapper & stat) { checkWheel(stat, *wheel); });
 
       RCLCPP_INFO(get_logger(),
-        "Wheel odometry checker started: %s (topic=%s, expected_hz=%.0f)",
-        wheel->name.c_str(), wheel->topic.c_str(), wheel->expected_hz);
+        "Wheel odometry checker started: %s "
+        "(topic=%s, expected_hz=%.0f, dummy=%s timeout=%.2fs)",
+        wheel->name.c_str(), wheel->topic.c_str(), wheel->expected_hz,
+        wheel->dummy_active_topic.c_str(), wheel->dummy_active_timeout);
     }
   }
 
@@ -174,6 +209,35 @@ private:
   void checkWheel(StatusWrapper & stat, WheelState & wheel)
   {
     std::lock_guard<std::mutex> lock(wheel.mtx);
+    const auto now = this->now();
+
+    // HH_260729 - Preserve source provenance even when the platform dummy has
+    // not yet produced derived wheel odometry. Never report dummy data as OK.
+    double dummy_age_s = -1.0;
+    if (wheel.dummy_monitor.isActive(
+        now, wheel.dummy_active_timeout, dummy_age_s))
+    {
+      const double data_age_s =
+        wheel.has_msg ? (now - wheel.last_msg_time).seconds() : -1.0;
+      const bool data_fresh =
+        wheel.has_msg && data_age_s >= 0.0 && data_age_s <= wheel.stale_timeout;
+      stat.summary(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        "DUMMY DATA (platform hardware disabled): sensor=" + wheel.name +
+        " topic=" + wheel.topic +
+        (data_fresh ? " dummy_odometry=fresh" :
+        " dummy_odometry=pending_or_stale"));
+      stat.add("data_source", "dummy");
+      stat.add("dummy_source", "platform");
+      stat.add("hardware_enabled", "false");
+      stat.add("dummy_active_topic", wheel.dummy_active_topic);
+      stat.add("dummy_active_age_s", dummy_age_s);
+      stat.add("dummy_data_received", wheel.has_msg ? "true" : "false");
+      if (wheel.has_msg) {
+        stat.add("dummy_data_age_s", data_age_s);
+      }
+      return;
+    }
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!wheel.has_msg) {
@@ -182,7 +246,7 @@ private:
       return;
     }
 
-    double elapsed = (this->now() - wheel.last_msg_time).seconds();
+    double elapsed = (now - wheel.last_msg_time).seconds();
     if (elapsed > wheel.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),

@@ -85,6 +85,11 @@
     cost_source_debug_labels: ["lanelet", "perception", "radar", "global_path"]
     cost_stop_require_dynamic_source: true
     cost_stop_dynamic_source_labels: "perception,radar"
+    # HH_260729 - Diagnostic-only companion to the aggregate radar grid.
+    # It adds SENSOR/frame/range/map point/cost to radar stop logs; occupancy
+    # grid evaluation remains the sole authority for stopping and releasing.
+    radar_obstacle_evidence_topic: "/sensing/radar/obstacle_evidence"
+    radar_obstacle_evidence_max_age_s: 0.50
     front_dynamic_stop_use_local_path: true
     front_dynamic_path_width_m: 1.27
     front_dynamic_path_max_start_distance_m: 1.5

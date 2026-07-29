@@ -22,6 +22,7 @@ from launch.actions import (
     LogInfo,
     OpaqueFunction,
     RegisterEventHandler,
+    SetLaunchConfiguration,
     TimerAction,
 )
 from launch.conditions import IfCondition
@@ -382,8 +383,12 @@ def apply_cfg_overrides(args: dict, overrides: dict[str, str]) -> None:
 
 
 def sim_switch(sim_cfg: Any, sim_value: str, real_value: Any) -> PythonExpression:
+    # HH_260729 - Match launch IfCondition truthy spellings. This prevents
+    # sim:=1/True/yes/on from starting hardware or auxiliary dummy publishers
+    # alongside fake_sensors.launch.py.
     return PythonExpression([
-        f"'{sim_value}' if '", sim_cfg, "' == 'true' else '", real_value, "'"
+        f"'{sim_value}' if str('", sim_cfg,
+        "').lower() in ['1', 'true', 'yes', 'on'] else '", real_value, "'"
     ])
 
 
@@ -1441,6 +1446,17 @@ def generate_launch_description():
             'Enable the aggregate sensing launch (disable when sensing is already running)',
         ),
         ('enable_radar', cfg_get(launch_cfg, 'sensing/enable_radar', False), 'Enable serial radar'),
+        # HH_260729 - One master policy covers every hardware acquisition
+        # enable flag without adding another per-sensor enable_* switch.
+        (
+            'publish_sensor_dummies_when_disabled',
+            cfg_get(
+                launch_cfg,
+                'sensing/publish_sensor_dummies_when_disabled',
+                True,
+            ),
+            'Publish explicit low-rate DUMMY/WARN data while hardware inputs are disabled',
+        ),
         ('radar_log_status', cfg_get(launch_cfg, 'sensing/radar_log_status', False), 'Print per-port radar status lines'),
         ('enable_camera', cfg_get(launch_cfg, 'sensing/enable_camera', True), 'Enable camera publisher stack'),
         # HH_260528: Per-camera enable flags for dual econ camera setup.
@@ -1450,7 +1466,7 @@ def generate_launch_description():
         ('enable_lidar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_lidar_cost_grid', True), 'Enable lidar cost-grid'),
         ('enable_inflation_cost_grid', cfg_get(launch_cfg, 'sensing/enable_inflation_cost_grid', True), 'Enable inflation cost-grid (lanelet+lidar+radar+global_path merger)'),
         ('enable_lidar_driver', cfg_get(launch_cfg, 'sensing/enable_lidar_driver', False), 'Enable lidar driver'),
-        ('enable_imu',      cfg_get(launch_cfg, 'sensing/enable_imu',      True),  'Enable IMU driver + velocity converter'),
+        ('enable_imu',      cfg_get(launch_cfg, 'sensing/enable_imu',      True),  'Enable physical IMU driver (converter remains available for dummy input)'),
         # HH_260528: Unified IMU model selector (imu_mode → imu_model).
         ('imu_model',       cfg_get(launch_cfg, 'sensing/imu_model',       'cv7'), 'IMU model: cv7 | gq7'),
         ('imu_param_file',  cfg_get(launch_cfg, 'sensing/imu_param_file',  '__module_default__'), 'IMU param file path (or __module_default__)'),
@@ -1677,6 +1693,11 @@ def generate_launch_description():
         'ranger_driver_enable': sim_switch(
             lc['sim'], 'false', lc['platform_ranger_driver_enable']
         ),
+        # HH_260729 - The Ranger dummy is non-drivable/estop feedback, not a
+        # healthy CAN simulation.  fake_sensors owns platform topics in sim.
+        'ranger_dummy_when_disabled': sim_switch(
+            lc['sim'], 'false', lc['publish_sensor_dummies_when_disabled']
+        ),
         'ranger_bridge_enable': lc['platform_ranger_bridge_enable'],
         'ranger_auto_setup_can': lc['platform_ranger_auto_setup_can'],
         'ranger_can_bitrate': lc['platform_ranger_can_bitrate'],
@@ -1731,21 +1752,45 @@ def generate_launch_description():
     # HH_260716 - The container must also honor the high-level camera/front/YOLO
     # switches. Previously use_camera_yolo_container=true started both components
     # even when enable_camera=false or perception_enable_yolo=false.
-    camera_yolo_container_active = PythonExpression([
-        "'true' if '", lc['sim'], "' != 'true' and '",
-        lc['use_camera_yolo_container'], "' == 'true' and '",
-        lc['enable_camera'], "' == 'true' and '",
-        lc['enable_front_camera'], "' == 'true' and '",
-        lc['perception_enable_yolo'], "' == 'true' else 'false'",
+    # HH_260729 - Use the same IfCondition-compatible truthy spellings as
+    # sim_switch so sim:=1/yes/on cannot start the hardware camera container.
+    camera_yolo_container_active_expression = PythonExpression([
+        "'true' if str('", lc['sim'],
+        "').lower() not in ['1', 'true', 'yes', 'on'] and str('",
+        lc['use_camera_yolo_container'],
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        lc['enable_camera'],
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        lc['enable_front_camera'],
+        "').lower() in ['1', 'true', 'yes', 'on'] and str('",
+        lc['perception_enable_yolo'],
+        "').lower() in ['1', 'true', 'yes', 'on'] else 'false'",
     ])
+    # HH_260729 - Resolve component ownership once in the parent launch scope.
+    # sensing.launch.py receives its own enable_front_camera=false override when
+    # the component owns that device. Passing the deferred expression directly
+    # let the child scope feed that false value back into the expression, which
+    # incorrectly started a 1x1 front-camera dummy beside the live component
+    # and could abort the camera+YOLO container on its first mixed-size frame.
+    resolve_camera_yolo_container_active = SetLaunchConfiguration(
+        'camera_yolo_container_active_resolved',
+        camera_yolo_container_active_expression,
+    )
+    camera_yolo_container_active = LaunchConfiguration(
+        'camera_yolo_container_active_resolved'
+    )
     regular_front_camera_enable = PythonExpression([
-        "'false' if '", lc['sim'], "' == 'true' or '",
-        camera_yolo_container_active, "' == 'true' else '",
+        "'false' if str('", lc['sim'],
+        "').lower() in ['1', 'true', 'yes', 'on'] or str('",
+        camera_yolo_container_active,
+        "').lower() in ['1', 'true', 'yes', 'on'] else '",
         lc['enable_front_camera'], "'",
     ])
     regular_yolo_enable = PythonExpression([
-        "'false' if '", lc['sim'], "' == 'true' or '",
-        camera_yolo_container_active, "' == 'true' else '",
+        "'false' if str('", lc['sim'],
+        "').lower() in ['1', 'true', 'yes', 'on'] or str('",
+        camera_yolo_container_active,
+        "').lower() in ['1', 'true', 'yes', 'on'] else '",
         lc['perception_enable_yolo'], "'",
     ])
     camera_yolo_container_condition = IfCondition(camera_yolo_container_active)
@@ -1759,6 +1804,15 @@ def generate_launch_description():
         'enable_camera': sim_switch(lc['sim'], 'false', lc['enable_camera']),
         'enable_front_camera': regular_front_camera_enable,
         'enable_rear_camera':  sim_switch(lc['sim'], 'false', lc['enable_rear_camera']),
+        # The component container owns the physical front camera when active;
+        # tell sensing.launch so it does not mistake the scoped regular-camera
+        # false value for a disabled sensor and start a duplicate dummy.
+        'front_camera_source_external': camera_yolo_container_active,
+        'publish_sensor_dummies_when_disabled': sim_switch(
+            lc['sim'],
+            'false',
+            lc['publish_sensor_dummies_when_disabled'],
+        ),
         'enable_ntrip': sim_switch(lc['sim'], 'false', lc['enable_ntrip']),
         'enable_radar': sim_switch(lc['sim'], 'false', lc['enable_radar']),
         'radar_log_status': lc['radar_log_status'],
@@ -1801,7 +1855,7 @@ def generate_launch_description():
     apply_cfg_overrides(perception_args, perception_overrides)
 
     camera_yolo_container_args = {
-        'enable_container': lc['use_camera_yolo_container'],
+        'enable_container': camera_yolo_container_active,
         'camera_params_file': sensing_args.get('camera_params_file', pkg_path('camrod_sensing', 'config/camera/camera_params.yaml')),
         'perception_param_file': perception_args.get('perception_param_file', pkg_path('camrod_perception', 'config/perception_params.yaml')),
         'front_camera_namespace': '/sensing/camera/econ_front',
@@ -2150,6 +2204,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         *args,
+        resolve_camera_yolo_container_active,
         clean_action,
         start_after_cleanup,
         start_without_cleanup,

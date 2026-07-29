@@ -153,6 +153,34 @@ def _launch_setup(context, *args, **kwargs):
         remappings=[('/cmd_vel', '/control/cmd_vel_ros')],
     )
 
+    # HH_260729 - The real CAN driver and this raw-topic dummy are mutually
+    # exclusive. platform_type=rmp401 (the normal sim selection) also disables
+    # the dummy, and callers can explicitly disable it when another simulator
+    # owns /odom, /actuator_state, /system_state, or /battery_state.
+    ranger_dummy_node = Node(
+        package='camrod_platform',
+        executable='platform_dummy_publisher.py',
+        name='platform_dummy_publisher',
+        output='screen',
+        condition=IfCondition(PythonExpression([
+            "'",
+            LaunchConfiguration("platform_type"),
+            "'.strip().lower() == 'ranger' and '",
+            LaunchConfiguration("enable_ranger_base_node"),
+            "'.strip().lower() in ['0','false','no','off'] and '",
+            LaunchConfiguration("enable_ranger_dummy_when_disabled"),
+            "'.strip().lower() in ['1','true','yes','on']",
+        ])),
+        parameters=[{
+            'use_sim_time': p.get('use_sim_time', False),
+            'publish_rate_hz': LaunchConfiguration(
+                'dummy_publish_rate_hz'
+            ),
+            'odom_frame_id': p.get('odom_frame', 'odom'),
+            'base_frame_id': p.get('base_frame', 'robot_base_link'),
+        }],
+    )
+
     bridge_node = Node(
         package='camrod_platform',
         executable='ranger_platform_bridge_node',
@@ -162,7 +190,7 @@ def _launch_setup(context, *args, **kwargs):
         parameters=[params_file],  # HH_260428: reads odom_topic_name, odom_fallback_topic, etc.
     )
 
-    return [ranger_base_node, bridge_node]
+    return [ranger_base_node, ranger_dummy_node, bridge_node]
 
 
 def generate_launch_description():
@@ -177,6 +205,20 @@ def generate_launch_description():
         DeclareLaunchArgument('platform_type', default_value='ranger'),
         # HH_260528: Independent toggles for Ranger CAN and bridge.
         DeclareLaunchArgument('enable_ranger_base_node', default_value='true'),
+        DeclareLaunchArgument(
+            'enable_ranger_dummy_when_disabled',
+            default_value='true',
+            description=(
+                'Publish explicit ESTOP/non-drivable raw Ranger heartbeats '
+                'when the physical base node is false; disable if a simulator '
+                'already owns those topics'
+            ),
+        ),
+        DeclareLaunchArgument(
+            'dummy_publish_rate_hz',
+            default_value='5.0',
+            description='Low-load disabled-platform dummy heartbeat rate',
+        ),
         DeclareLaunchArgument('enable_ranger_bridge_node', default_value='true'),
         DeclareLaunchArgument('auto_setup_can', default_value='true'),
         DeclareLaunchArgument('can_bitrate', default_value='500000'),

@@ -24,6 +24,7 @@
 #include "avg_msgs/msg/avg_platform_status.hpp"
 #include "avg_msgs/msg/avg_polygon_stamped.hpp"
 #include "avg_msgs/msg/avg_pose_stamped.hpp"
+#include "avg_msgs/msg/avg_string.hpp"
 #include "avg_msgs/msg/avg_twist.hpp"
 #include "avg_msgs/msg/module_state.hpp"
 #include "avg_msgs/msg/planning_mission_key.hpp"
@@ -33,6 +34,7 @@
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/ros_message_conversion.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "rcl_interfaces/msg/parameter_descriptor.hpp"
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2/time.hpp"
@@ -292,6 +294,18 @@ private:
     motion_cost_stop_config_.dynamic_source_labels = parseLabelSet(
       declare_parameter<std::string>("cost_stop_dynamic_source_labels", "lidar,radar"),
       {"lidar", "radar"});
+    // HH_260729 - The radar grid is intentionally kept as one lightweight
+    // occupancy grid. Receive its parallel diagnostic provenance so stop logs
+    // can identify the exact channel without changing any stop decision.
+    rcl_interfaces::msg::ParameterDescriptor evidence_topic_descriptor;
+    evidence_topic_descriptor.read_only = true;
+    evidence_topic_descriptor.description =
+      "Startup-only diagnostic provenance topic; restart the safety gate to change";
+    radar_obstacle_evidence_topic_ = declare_parameter<std::string>(
+      "radar_obstacle_evidence_topic", "/sensing/radar/obstacle_evidence",
+      evidence_topic_descriptor);
+    radar_obstacle_evidence_max_age_s_ = declare_parameter<double>(
+      "radar_obstacle_evidence_max_age_s", 0.50);
     motion_cost_stop_config_.dynamic_front_use_local_path = declare_parameter<bool>(
       "front_dynamic_stop_use_local_path", true);
     motion_cost_stop_config_.dynamic_front_path_width_m = declare_parameter<double>(
@@ -628,6 +642,19 @@ private:
                 motion_cost_stop_.setSourceGrid(label, *message, nowSec());
               }));
         }
+      }
+      if (!radar_obstacle_evidence_topic_.empty()) {
+        radar_obstacle_evidence_subscription_ =
+          create_subscription<avg_msgs::msg::AvgString>(
+          radar_obstacle_evidence_topic_, rclcpp::QoS(10).reliable(),
+          [this](const avg_msgs::msg::AvgString::SharedPtr message) {
+            if (!message) {
+              return;
+            }
+            radar_obstacle_evidence_ = message->data;
+            radar_obstacle_evidence_receive_sec_ = nowSec();
+            radar_obstacle_evidence_received_ = true;
+          });
       }
     }
 
@@ -1313,6 +1340,8 @@ private:
       } else if (name == "cost_stop_dynamic_source_labels") {
         motion_cost_stop_config_.dynamic_source_labels = parseLabelSet(
           parameter.as_string(), {"lidar", "radar"});
+      } else if (name == "radar_obstacle_evidence_max_age_s") {
+        radar_obstacle_evidence_max_age_s_ = parameter.as_double();
       } else if (name == "front_dynamic_stop_use_local_path") {
         motion_cost_stop_config_.dynamic_front_use_local_path = parameter.as_bool();
       } else if (name == "front_dynamic_path_width_m") {
@@ -1424,7 +1453,37 @@ private:
     }
     last_cost_reason_ = decision.reason;
     last_cost_log_sec_ = now_sec;
-    RCLCPP_WARN(get_logger(), "cmd_vel cost stop: %s", decision.reason.c_str());
+    std::string detail = decision.reason;
+    if (decision.reason.find("radar") != std::string::npos) {
+      const bool evidence_fresh =
+        radar_obstacle_evidence_received_ &&
+        now_sec - radar_obstacle_evidence_receive_sec_ >= 0.0 &&
+        now_sec - radar_obstacle_evidence_receive_sec_ <=
+        radar_obstacle_evidence_max_age_s_;
+      const bool active_evidence =
+        evidence_fresh && !radar_obstacle_evidence_.empty() &&
+        radar_obstacle_evidence_ != "clear";
+      const bool latched_reason =
+        decision.reason.find("cost_stop_latched:") != std::string::npos;
+
+      if (active_evidence) {
+        detail += "; radar_hit=" + radar_obstacle_evidence_;
+        if (!latched_reason) {
+          radar_trigger_evidence_ = radar_obstacle_evidence_;
+        }
+      } else if (latched_reason && !radar_trigger_evidence_.empty()) {
+        // HH_260729 - Keep the original channel visible while the safety latch
+        // waits for clear evidence, even after the live evidence topic says clear.
+        detail += "; radar_trigger=" + radar_trigger_evidence_;
+      } else {
+        if (!latched_reason) {
+          radar_trigger_evidence_.clear();
+        }
+        // Missing provenance must never weaken or release the occupancy-grid stop.
+        detail += "; radar_hit=channel_unknown(no_fresh_provenance)";
+      }
+    }
+    RCLCPP_WARN(get_logger(), "cmd_vel cost stop: %s", detail.c_str());
   }
 
   // HH_260721 - Read ROS time through the non-const Humble clock API.
@@ -1470,6 +1529,9 @@ private:
   std::string lanelet_grid_frame_;
   std::string drop_zone_phase_;
   std::string campsite_phase_;
+  std::string radar_obstacle_evidence_topic_;
+  std::string radar_obstacle_evidence_;
+  std::string radar_trigger_evidence_;
   // HH_260721 - Retain the last effective authorization state to suppress heartbeat log noise.
   std::string last_authorization_log_signature_;
   std::string last_block_log_signature_;
@@ -1494,6 +1556,7 @@ private:
   double zero_publish_rate_hz_{10.0};
   double cost_stop_latch_log_interval_s_{1.0};
   double cost_grid_stale_log_interval_s_{1.0};
+  double radar_obstacle_evidence_max_age_s_{0.50};
   double route_heading_min_cmd_x_mps_{0.03};
   double route_heading_lateral_cmd_epsilon_mps_{0.02};
   double route_heading_lookahead_m_{2.0};
@@ -1510,6 +1573,8 @@ private:
   double last_gnss_recovery_hold_sec_{-1.0e9};
   double last_block_log_sec_{-1.0e9};
   double last_cost_log_sec_{-1.0e9};
+  double radar_obstacle_evidence_receive_sec_{-1.0e9};
+  bool radar_obstacle_evidence_received_{false};
 
   std::vector<std::string> additional_estop_topics_;
   std::vector<std::string> cost_source_topics_;
@@ -1556,6 +1621,8 @@ private:
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr pose_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgOdometry>::SharedPtr odometry_subscription_;
   rclcpp::Subscription<avg_msgs::msg::AvgPath>::SharedPtr route_path_subscription_;
+  rclcpp::Subscription<avg_msgs::msg::AvgString>::SharedPtr
+    radar_obstacle_evidence_subscription_;
   std::vector<rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr> estop_subscriptions_;
   std::vector<rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr>
   source_grid_subscriptions_;

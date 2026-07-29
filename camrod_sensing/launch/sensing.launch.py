@@ -14,8 +14,9 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node, PushRosNamespace
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _inc(path, *through, condition=None, **overrides):
@@ -48,16 +49,27 @@ def _resolve_camera_enable(context, *args, **kwargs):
     has_device = bool(device_path) and os.path.exists(device_path)
     front_executable = _camera_executable_exists("camera_front_publisher_node")
     rear_executable = _camera_executable_exists("camera_rear_publisher_node")
-    has_requested_executable = (
-        (front_requested and front_executable) or
-        (rear_requested and rear_executable)
-    )
     # HH_260617: Camera publisher nodes are Jetson-only in the current CMake.
     # Do not include camera.launch.py on x86_64 just because /dev/video0 exists.
-    effective = requested and has_device and has_requested_executable
+    # HH_260729: Resolve each camera separately.  If only one executable/device
+    # path is usable, the other channel must receive an explicit dummy instead
+    # of being silently treated as enabled by the aggregate OR condition.
+    front_effective = requested and front_requested and has_device and front_executable
+    rear_effective = requested and rear_requested and has_device and rear_executable
+    effective = front_effective or rear_effective
+    missing_requested_executable = (
+        (front_requested and not front_executable) or
+        (rear_requested and not rear_executable)
+    )
 
     actions = [
         SetLaunchConfiguration("enable_camera_effective", "true" if effective else "false"),
+        SetLaunchConfiguration(
+            "enable_front_camera_effective", "true" if front_effective else "false"
+        ),
+        SetLaunchConfiguration(
+            "enable_rear_camera_effective", "true" if rear_effective else "false"
+        ),
     ]
     if requested and not has_device:
         actions.append(
@@ -68,7 +80,7 @@ def _resolve_camera_enable(context, *args, **kwargs):
                 )
             )
         )
-    if requested and has_device and not has_requested_executable:
+    if requested and has_device and missing_requested_executable:
         actions.append(
             LogInfo(
                 msg=(
@@ -115,6 +127,15 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_gnss",                 default_value="true"),
         DeclareLaunchArgument("enable_imu",                  default_value="true"),
         DeclareLaunchArgument("enable_radar",                default_value="true"),
+        # HH_260729 - One non-enable policy switch covers every physical input.
+        # Bringup forces it false in sim, where fake_sensors already owns data.
+        DeclareLaunchArgument(
+            "publish_sensor_dummies_when_disabled",
+            default_value="true",
+        ),
+        # The composable camera+YOLO container may own the real front camera
+        # outside this scoped sensing include; suppress a duplicate front dummy.
+        DeclareLaunchArgument("front_camera_source_external", default_value="false"),
         DeclareLaunchArgument("enable_radar_cost_grid",      default_value="true"),
         # HH_260702 - Keep per-radar range details on topics/checkers by default;
         # enable this only for bench debugging so the field console stays concise.
@@ -189,16 +210,100 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("imu_status_topic", default_value="status"),
         SetLaunchConfiguration("enable_camera_effective", "false"),
+        SetLaunchConfiguration("enable_front_camera_effective", "false"),
+        SetLaunchConfiguration("enable_rear_camera_effective", "false"),
         OpaqueFunction(function=_resolve_camera_enable),
 
         GroupAction([
             PushRosNamespace(sensing_namespace),
 
+            # HH_260729: Publish only the disabled physical channels from one
+            # low-overhead process.  Each stream carries a fresh dummy_active
+            # marker so diagnostics show DUMMY/WARN, never healthy hardware.
+            Node(
+                package="camrod_sensing",
+                executable="sensing_dummy_publisher.py",
+                name="sensing_dummy_publisher",
+                output="log",
+                parameters=[{
+                    "publish_rate_hz": 2.0,
+                    "publish_gnss": ParameterValue(
+                        PythonExpression([
+                            "str('", LaunchConfiguration(
+                                "publish_sensor_dummies_when_disabled"
+                            ), "').lower() in ('1','true','yes','on') and not ",
+                            "str('", LaunchConfiguration("enable_gnss"),
+                            "').lower() in ('1','true','yes','on')",
+                        ]),
+                        value_type=bool,
+                    ),
+                    "publish_imu": ParameterValue(
+                        PythonExpression([
+                            "str('", LaunchConfiguration(
+                                "publish_sensor_dummies_when_disabled"
+                            ), "').lower() in ('1','true','yes','on') and not ",
+                            "str('", LaunchConfiguration("enable_imu"),
+                            "').lower() in ('1','true','yes','on')",
+                        ]),
+                        value_type=bool,
+                    ),
+                    "publish_lidar": ParameterValue(
+                        PythonExpression([
+                            "str('", LaunchConfiguration(
+                                "publish_sensor_dummies_when_disabled"
+                            ), "').lower() in ('1','true','yes','on') and not ",
+                            "str('", LaunchConfiguration("enable_lidar_driver"),
+                            "').lower() in ('1','true','yes','on')",
+                        ]),
+                        value_type=bool,
+                    ),
+                    "publish_front_camera": ParameterValue(
+                        PythonExpression([
+                            "str('", LaunchConfiguration(
+                                "publish_sensor_dummies_when_disabled"
+                            ), "').lower() in ('1','true','yes','on') and not ",
+                            "str('", LaunchConfiguration("front_camera_source_external"),
+                            "').lower() in ('1','true','yes','on') and not ",
+                            "str('", LaunchConfiguration("enable_front_camera_effective"),
+                            "').lower() in ('1','true','yes','on')",
+                        ]),
+                        value_type=bool,
+                    ),
+                    "publish_rear_camera": ParameterValue(
+                        PythonExpression([
+                            "str('", LaunchConfiguration(
+                                "publish_sensor_dummies_when_disabled"
+                            ), "').lower() in ('1','true','yes','on') and not ",
+                            "str('", LaunchConfiguration("enable_rear_camera_effective"),
+                            "').lower() in ('1','true','yes','on')",
+                        ]),
+                        value_type=bool,
+                    ),
+                }],
+                condition=IfCondition(PythonExpression([
+                    "str('", LaunchConfiguration(
+                        "publish_sensor_dummies_when_disabled"
+                    ), "').lower() in ('1','true','yes','on') and (",
+                    "not str('", LaunchConfiguration("enable_gnss"),
+                    "').lower() in ('1','true','yes','on') or ",
+                    "not str('", LaunchConfiguration("enable_imu"),
+                    "').lower() in ('1','true','yes','on') or ",
+                    "not str('", LaunchConfiguration("enable_lidar_driver"),
+                    "').lower() in ('1','true','yes','on') or (",
+                    "not str('", LaunchConfiguration("front_camera_source_external"),
+                    "').lower() in ('1','true','yes','on') and not str('",
+                    LaunchConfiguration("enable_front_camera_effective"),
+                    "').lower() in ('1','true','yes','on')) or ",
+                    "not str('", LaunchConfiguration("enable_rear_camera_effective"),
+                    "').lower() in ('1','true','yes','on'))",
+                ])),
+            ),
+
             _inc(camera_launch,
                  condition=IfCondition(LaunchConfiguration("enable_camera_effective")),
                  camera_params_file=LaunchConfiguration("camera_params_file"),
-                 enable_front_camera=LaunchConfiguration("enable_front_camera"),
-                 enable_rear_camera=LaunchConfiguration("enable_rear_camera"),
+                 enable_front_camera=LaunchConfiguration("enable_front_camera_effective"),
+                 enable_rear_camera=LaunchConfiguration("enable_rear_camera_effective"),
                  # HH_260629: PushRosNamespace("sensing") above already adds /sensing,
                  # so pass the relative 'camera' (camera.launch standalone defaults to
                  # 'sensing/camera'). Avoids /sensing/sensing/camera double prefix.
@@ -250,9 +355,13 @@ def generate_launch_description():
             ),
 
             _inc(radar_launch,
-                 "enable_radar", "enable_radar_cost_grid",
+                 "enable_radar",
+                 "enable_radar_cost_grid",
                  "radar_sensor_param_file", "radar_cost_grid_param_file",
                  "radar_log_status",
+                 enable_radar_dummy_when_disabled=LaunchConfiguration(
+                     "publish_sensor_dummies_when_disabled"
+                 ),
                  module_namespace="radar",
             ),
 

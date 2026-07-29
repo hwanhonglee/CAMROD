@@ -30,6 +30,73 @@ TEST(RadarSelfEchoFilter, BuildsMultipleNotchesForOneSensor)
   EXPECT_FALSE(camrod::sensing::radar_self_echo_filter::matches(1U, 0.165, bands));
 }
 
+// HH_260729 - Named min/max specs expose the physical sensor and ignored
+// interval directly while preserving multiple narrow bands for one radar.
+TEST(RadarSelfEchoFilter, BuildsReadableNamedMinMaxSpecs)
+{
+  const std::vector<std::string> input_topics{
+    "/sensing/radar/front1/range",
+    "/sensing/radar/front2/range",
+    "/sensing/radar/left1/range"};
+  std::vector<Band> bands;
+  std::string error;
+  ASSERT_TRUE(camrod::sensing::radar_self_echo_filter::buildBandsFromSpecs(
+    std::vector<std::string>{
+      "FRONT1:0.152:0.202",
+      "front1:0.231:0.261",
+      "LEFT1:0.095:0.119"},
+    input_topics, bands, error));
+  EXPECT_TRUE(error.empty());
+  ASSERT_EQ(bands.size(), 3U);
+
+  EXPECT_EQ(bands[0].sensor_index, 0U);
+  EXPECT_NEAR(bands[0].center_m, 0.177, 1e-9);
+  EXPECT_NEAR(bands[0].half_width_m, 0.025, 1e-9);
+  EXPECT_EQ(bands[1].sensor_index, 0U);
+  EXPECT_EQ(bands[2].sensor_index, 2U);
+  EXPECT_TRUE(camrod::sensing::radar_self_echo_filter::matches(0U, 0.152, bands));
+  EXPECT_TRUE(camrod::sensing::radar_self_echo_filter::matches(2U, 0.119, bands));
+  EXPECT_FALSE(camrod::sensing::radar_self_echo_filter::matches(1U, 0.177, bands));
+}
+
+// HH_260729 - A typo must leave zero notches rather than accepting the entries
+// before it and silently hiding real obstacles on only part of the robot.
+TEST(RadarSelfEchoFilter, MalformedOrUnknownNamedSpecFailsSafe)
+{
+  const std::vector<std::string> input_topics{
+    "/sensing/radar/front1/range",
+    "/sensing/radar/rear/range"};
+  std::vector<Band> bands{{0U, 0.1, 0.01}};
+  std::string error;
+
+  EXPECT_FALSE(camrod::sensing::radar_self_echo_filter::buildBandsFromSpecs(
+    std::vector<std::string>{"FRONT1:0.10", "REAR:0.12:0.14"},
+    input_topics, bands, error));
+  EXPECT_TRUE(bands.empty());
+  EXPECT_FALSE(error.empty());
+
+  bands.push_back(Band{0U, 0.1, 0.01});
+  EXPECT_FALSE(camrod::sensing::radar_self_echo_filter::buildBandsFromSpecs(
+    std::vector<std::string>{"FRONT3:0.10:0.12"},
+    input_topics, bands, error));
+  EXPECT_TRUE(bands.empty());
+  EXPECT_NE(error.find("unknown sensor FRONT3"), std::string::npos);
+
+  bands.push_back(Band{0U, 0.1, 0.01});
+  EXPECT_FALSE(camrod::sensing::radar_self_echo_filter::buildBandsFromSpecs(
+    std::vector<std::string>{"FRONT1:0.20:0.10"},
+    input_topics, bands, error));
+  EXPECT_TRUE(bands.empty());
+  EXPECT_FALSE(error.empty());
+
+  bands.push_back(Band{0U, 0.1, 0.01});
+  EXPECT_FALSE(camrod::sensing::radar_self_echo_filter::buildBandsFromSpecs(
+    std::vector<std::string>{"FRONT1:0.10:0.25"},
+    input_topics, bands, error));
+  EXPECT_TRUE(bands.empty());
+  EXPECT_NE(error.find("wider than"), std::string::npos);
+}
+
 // HH_260728 - A notch rejects only the measured body return. In particular,
 // LEFT2 must regain every other obstacle distance hidden by the old one-sided
 // 0.75 m threshold. The observed 0.68-0.80 m external returns remain costs.

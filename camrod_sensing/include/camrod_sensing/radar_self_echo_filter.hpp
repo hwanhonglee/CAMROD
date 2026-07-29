@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +11,11 @@
 
 namespace camrod::sensing::radar_self_echo_filter
 {
+
+// HH_260729 - A fixed self-return exclusion is a narrow measured notch.
+// Reject broader entries as likely unit/decimal mistakes so a readable config
+// typo cannot create a large undetectable obstacle interval.
+constexpr double kMaxNamedBandWidthM = 0.10;
 
 struct Band
 {
@@ -114,6 +120,197 @@ inline bool buildBands(
 
   bands = std::move(validated);
   return true;
+}
+
+// HH_260729 - Derive the operator-facing sensor name from the topic immediately
+// above its range leaf (for example /radar/front1/range -> FRONT1). Keeping the
+// name tied to input_topics prevents a readable calibration profile from
+// silently drifting away from the subscription order.
+inline bool sensorLabelFromTopic(
+  const std::string & topic,
+  std::string & label,
+  std::string & error)
+{
+  label.clear();
+  error.clear();
+
+  std::size_t topic_end = topic.size();
+  while (topic_end > 0U && topic[topic_end - 1U] == '/') {
+    --topic_end;
+  }
+  if (topic_end == 0U) {
+    error = "input topic is empty";
+    return false;
+  }
+
+  const auto leaf_separator = topic.rfind('/', topic_end - 1U);
+  if (leaf_separator == std::string::npos || leaf_separator == 0U) {
+    error = "input topic must contain a sensor segment and a range leaf";
+    return false;
+  }
+
+  std::size_t sensor_end = leaf_separator;
+  while (sensor_end > 0U && topic[sensor_end - 1U] == '/') {
+    --sensor_end;
+  }
+  if (sensor_end == 0U) {
+    error = "input topic has no sensor segment";
+    return false;
+  }
+  const auto sensor_separator = topic.rfind('/', sensor_end - 1U);
+  const std::size_t sensor_begin =
+    sensor_separator == std::string::npos ? 0U : sensor_separator + 1U;
+  if (sensor_begin >= sensor_end) {
+    error = "input topic has no sensor segment";
+    return false;
+  }
+
+  label = topic.substr(sensor_begin, sensor_end - sensor_begin);
+  for (char & character : label) {
+    const auto value = static_cast<unsigned char>(character);
+    if (!std::isalnum(value) && character != '_') {
+      label.clear();
+      error = "sensor topic segment must contain only letters, digits, or underscore";
+      return false;
+    }
+    character = static_cast<char>(std::toupper(value));
+  }
+  return true;
+}
+
+// HH_260729 - Parse the preferred human-readable fixed profile. Each entry is
+// SENSOR:min_m:max_m, where SENSOR is derived from input_topics. Any malformed
+// or unknown entry clears the complete result so a typo cannot create a
+// partial blind zone.
+inline bool buildBandsFromSpecs(
+  const std::vector<std::string> & specs,
+  const std::vector<std::string> & input_topics,
+  std::vector<Band> & bands,
+  std::string & error)
+{
+  bands.clear();
+  error.clear();
+
+  std::vector<std::string> sensor_labels;
+  sensor_labels.reserve(input_topics.size());
+  for (std::size_t i = 0U; i < input_topics.size(); ++i) {
+    std::string label;
+    std::string label_error;
+    if (!sensorLabelFromTopic(input_topics[i], label, label_error)) {
+      error = "cannot derive sensor label for input topic " +
+        std::to_string(i) + ": " + label_error;
+      return false;
+    }
+    if (std::find(sensor_labels.begin(), sensor_labels.end(), label) !=
+      sensor_labels.end())
+    {
+      error = "duplicate sensor label derived from input_topics: " + label;
+      return false;
+    }
+    sensor_labels.push_back(std::move(label));
+  }
+
+  std::vector<std::int64_t> sensor_indices;
+  std::vector<double> centers_m;
+  std::vector<double> half_widths_m;
+  sensor_indices.reserve(specs.size());
+  centers_m.reserve(specs.size());
+  half_widths_m.reserve(specs.size());
+
+  for (std::size_t i = 0U; i < specs.size(); ++i) {
+    const auto & spec = specs[i];
+    if (spec.empty() ||
+      std::any_of(spec.begin(), spec.end(), [](const char character) {
+        return std::isspace(static_cast<unsigned char>(character)) != 0;
+      }))
+    {
+      error = "self-echo band spec " + std::to_string(i) +
+        " must be nonempty and contain no whitespace";
+      return false;
+    }
+
+    const auto first_separator = spec.find(':');
+    const auto second_separator =
+      first_separator == std::string::npos ?
+      std::string::npos : spec.find(':', first_separator + 1U);
+    if (first_separator == std::string::npos ||
+      second_separator == std::string::npos ||
+      spec.find(':', second_separator + 1U) != std::string::npos ||
+      first_separator == 0U ||
+      second_separator == first_separator + 1U ||
+      second_separator + 1U >= spec.size())
+    {
+      error = "self-echo band spec " + std::to_string(i) +
+        " must use SENSOR:min_m:max_m";
+      return false;
+    }
+
+    std::string label = spec.substr(0U, first_separator);
+    for (char & character : label) {
+      const auto value = static_cast<unsigned char>(character);
+      if (!std::isalnum(value) && character != '_') {
+        error = "self-echo band spec " + std::to_string(i) +
+          " has an invalid sensor label";
+        return false;
+      }
+      character = static_cast<char>(std::toupper(value));
+    }
+    const auto sensor = std::find(sensor_labels.begin(), sensor_labels.end(), label);
+    if (sensor == sensor_labels.end()) {
+      error = "self-echo band spec " + std::to_string(i) +
+        " references unknown sensor " + label;
+      return false;
+    }
+
+    double minimum_m = 0.0;
+    double maximum_m = 0.0;
+    try {
+      std::size_t parsed = 0U;
+      const std::string minimum_text =
+        spec.substr(first_separator + 1U, second_separator - first_separator - 1U);
+      minimum_m = std::stod(minimum_text, &parsed);
+      if (parsed != minimum_text.size()) {
+        error = "self-echo band spec " + std::to_string(i) +
+          " has an invalid minimum range";
+        return false;
+      }
+      const std::string maximum_text = spec.substr(second_separator + 1U);
+      maximum_m = std::stod(maximum_text, &parsed);
+      if (parsed != maximum_text.size()) {
+        error = "self-echo band spec " + std::to_string(i) +
+          " has an invalid maximum range";
+        return false;
+      }
+    } catch (...) {
+      error = "self-echo band spec " + std::to_string(i) +
+        " has a non-numeric range";
+      return false;
+    }
+
+    const double width_m = maximum_m - minimum_m;
+    const double center_m = minimum_m + width_m * 0.5;
+    if (!std::isfinite(minimum_m) || !std::isfinite(maximum_m) ||
+      minimum_m <= 0.0 || maximum_m <= minimum_m ||
+      !std::isfinite(width_m) || !std::isfinite(center_m))
+    {
+      error = "self-echo band spec " + std::to_string(i) +
+        " requires finite ranges with 0 < min_m < max_m";
+      return false;
+    }
+    if (width_m > kMaxNamedBandWidthM + 1e-9) {
+      error = "self-echo band spec " + std::to_string(i) +
+        " is wider than the 0.10 m fixed-return safety limit";
+      return false;
+    }
+
+    sensor_indices.push_back(
+      static_cast<std::int64_t>(std::distance(sensor_labels.begin(), sensor)));
+    centers_m.push_back(center_m);
+    half_widths_m.push_back(width_m * 0.5);
+  }
+
+  return buildBands(
+    sensor_indices, centers_m, half_widths_m, input_topics.size(), bands, error);
 }
 
 inline bool matches(

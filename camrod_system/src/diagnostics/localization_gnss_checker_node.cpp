@@ -33,13 +33,16 @@
 #include <cmath>
 #include <deque>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 // HH_260720 - Diagnose generated CAMROD GNSS localization poses.
+#include <avg_msgs/msg/avg_bool.hpp>
 #include <avg_msgs/msg/avg_pose_with_covariance_stamped.hpp>
 
+#include <camrod_system/dummy_source_monitor.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
@@ -62,6 +65,8 @@ struct LocalizationGnssState
   double cov_warn_threshold{4.0};
   double cov_error_threshold{25.0};
   double max_jump_m{5.0};
+  std::string dummy_active_topic;
+  double dummy_active_timeout{1.0};
 
   // 런타임 상태 (mutex 보호)
   std::mutex mtx;
@@ -76,6 +81,8 @@ struct LocalizationGnssState
 
   // 구독자
   rclcpp::Subscription<avg_msgs::msg::AvgPoseWithCovarianceStamped>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr dummy_active_sub;
+  camrod_system::DummySourceMonitor dummy_monitor;
 };
 
 // ── LocalizationGnssCheckerNode ───────────────────────────────────────────
@@ -113,6 +120,10 @@ protected:
       declare_parameter(name + ".cov_warn_threshold",   4.0);
       declare_parameter(name + ".cov_error_threshold",  25.0);
       declare_parameter(name + ".max_jump_m",           5.0);
+      declare_parameter(
+        name + ".dummy_active_topic",
+        std::string("/sensing/gnss/dummy_active"));
+      declare_parameter(name + ".dummy_active_timeout_s", 1.0);
 
       gnss->topic               = get_parameter(name + ".topic").as_string();
       gnss->expected_hz         = get_parameter(name + ".expected_hz").as_double();
@@ -122,6 +133,20 @@ protected:
       gnss->cov_warn_threshold  = get_parameter(name + ".cov_warn_threshold").as_double();
       gnss->cov_error_threshold = get_parameter(name + ".cov_error_threshold").as_double();
       gnss->max_jump_m          = get_parameter(name + ".max_jump_m").as_double();
+      gnss->dummy_active_topic =
+        get_parameter(name + ".dummy_active_topic").as_string();
+      gnss->dummy_active_timeout =
+        get_parameter(name + ".dummy_active_timeout_s").as_double();
+
+      if (gnss->dummy_active_topic.empty()) {
+        throw std::runtime_error(name + ".dummy_active_topic must not be empty");
+      }
+      if (!std::isfinite(gnss->dummy_active_timeout) ||
+        gnss->dummy_active_timeout <= 0.0)
+      {
+        throw std::runtime_error(
+                name + ".dummy_active_timeout_s must be finite and > 0");
+      }
 
       gnss_list_.push_back(gnss);
     }
@@ -136,13 +161,24 @@ protected:
           onPose(msg, gnss);
         });
 
+      // HH_260729 - NO_FIX dummy input is intentionally rejected by the
+      // localization adapter, so this pose checker sees no output. A fresh
+      // source heartbeat converts that expected absence to explicit WARN.
+      gnss->dummy_active_sub = create_subscription<avg_msgs::msg::AvgBool>(
+        gnss->dummy_active_topic, rclcpp::QoS(10),
+        [this, gnss](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+          gnss->dummy_monitor.update(msg->data, this->now());
+        });
+
       add_task("/localization/gnss/" + gnss->name,
         [this, gnss](StatusWrapper & stat) { checkGnss(stat, *gnss); });
 
       RCLCPP_INFO(get_logger(),
-        "Localization GNSS checker started: %s (topic=%s, cov_error=%.1f, max_jump=%.1fm)",
+        "Localization GNSS checker started: %s "
+        "(topic=%s, cov_error=%.1f, max_jump=%.1fm, dummy=%s timeout=%.2fs)",
         gnss->name.c_str(), gnss->topic.c_str(),
-        gnss->cov_error_threshold, gnss->max_jump_m);
+        gnss->cov_error_threshold, gnss->max_jump_m,
+        gnss->dummy_active_topic.c_str(), gnss->dummy_active_timeout);
     }
   }
 
@@ -184,6 +220,35 @@ private:
   void checkGnss(StatusWrapper & stat, LocalizationGnssState & gnss)
   {
     std::lock_guard<std::mutex> lock(gnss.mtx);
+    const auto now = this->now();
+
+    // HH_260729 - A fresh GNSS dummy heartbeat explicitly explains the
+    // intentionally absent localization pose. It remains WARN and never
+    // claims that dummy GNSS is fusion-ready.
+    double dummy_age_s = -1.0;
+    if (gnss.dummy_monitor.isActive(
+        now, gnss.dummy_active_timeout, dummy_age_s))
+    {
+      const double pose_age_s =
+        gnss.has_msg ? (now - gnss.last_msg_time).seconds() : -1.0;
+      const bool pose_fresh =
+        gnss.has_msg && pose_age_s >= 0.0 && pose_age_s <= gnss.stale_timeout;
+      stat.summary(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        "DUMMY DATA (GNSS hardware disabled; pose intentionally unavailable): sensor=" +
+        gnss.name + " topic=" + gnss.topic +
+        (pose_fresh ? " prior_pose=fresh" : " pose=absent_or_stale"));
+      stat.add("data_source", "dummy");
+      stat.add("hardware_enabled", "false");
+      stat.add("fusion_available", "false");
+      stat.add("dummy_active_topic", gnss.dummy_active_topic);
+      stat.add("dummy_active_age_s", dummy_age_s);
+      stat.add("pose_received", gnss.has_msg ? "true" : "false");
+      if (gnss.has_msg) {
+        stat.add("pose_age_s", pose_age_s);
+      }
+      return;
+    }
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!gnss.has_msg) {
@@ -192,7 +257,7 @@ private:
       return;
     }
 
-    double elapsed = (this->now() - gnss.last_msg_time).seconds();
+    double elapsed = (now - gnss.last_msg_time).seconds();
     if (elapsed > gnss.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),

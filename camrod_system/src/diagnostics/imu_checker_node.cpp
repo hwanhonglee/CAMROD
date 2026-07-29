@@ -31,13 +31,16 @@
 #include <cmath>
 #include <deque>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 // HH_260720 - Diagnose the canonical generated CAMROD IMU stream.
+#include <avg_msgs/msg/avg_bool.hpp>
 #include <avg_msgs/msg/avg_imu.hpp>
 
+#include <camrod_system/dummy_source_monitor.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <robot_diagnostics_base/base_checker.hpp>
@@ -58,6 +61,8 @@ struct ImuState
   double stale_timeout{0.5};
   double accel_magnitude_warn{30.0};
   double accel_magnitude_error{50.0};
+  std::string dummy_active_topic;
+  double dummy_active_timeout{1.0};
 
   // 런타임 상태 (mutex 보호)
   std::mutex mtx;
@@ -76,6 +81,8 @@ struct ImuState
 
   // 구독자
   rclcpp::Subscription<avg_msgs::msg::AvgImu>::SharedPtr sub;
+  rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr dummy_active_sub;
+  camrod_system::DummySourceMonitor dummy_monitor;
 };
 
 static bool has_nan(double x, double y, double z)
@@ -115,6 +122,10 @@ protected:
       declare_parameter(name + ".stale_timeout_s",          0.5);
       declare_parameter(name + ".accel_magnitude_warn",   30.0);
       declare_parameter(name + ".accel_magnitude_error",  50.0);
+      declare_parameter(
+        name + ".dummy_active_topic",
+        std::string("/sensing/imu/dummy_active"));
+      declare_parameter(name + ".dummy_active_timeout_s", 1.0);
 
       imu->topic                 = get_parameter(name + ".topic").as_string();
       imu->expected_hz           = get_parameter(name + ".expected_hz").as_double();
@@ -123,6 +134,20 @@ protected:
       imu->stale_timeout = get_param<double>(name + ".stale_timeout_s", imu->stale_timeout);
       imu->accel_magnitude_warn  = get_parameter(name + ".accel_magnitude_warn").as_double();
       imu->accel_magnitude_error = get_parameter(name + ".accel_magnitude_error").as_double();
+      imu->dummy_active_topic =
+        get_parameter(name + ".dummy_active_topic").as_string();
+      imu->dummy_active_timeout =
+        get_parameter(name + ".dummy_active_timeout_s").as_double();
+
+      if (imu->dummy_active_topic.empty()) {
+        throw std::runtime_error(name + ".dummy_active_topic must not be empty");
+      }
+      if (!std::isfinite(imu->dummy_active_timeout) ||
+        imu->dummy_active_timeout <= 0.0)
+      {
+        throw std::runtime_error(
+                name + ".dummy_active_timeout_s must be finite and > 0");
+      }
 
       imu_list_.push_back(imu);
     }
@@ -137,12 +162,21 @@ protected:
           onImu(msg, imu);
         });
 
+      // HH_260729 - A fresh explicit true heartbeat marks an intentional
+      // dummy source; false/stale continues through normal physical checks.
+      imu->dummy_active_sub = create_subscription<avg_msgs::msg::AvgBool>(
+        imu->dummy_active_topic, rclcpp::QoS(10),
+        [this, imu](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
+          imu->dummy_monitor.update(msg->data, this->now());
+        });
+
       add_task("/sensor/imu/" + imu->name,
         [this, imu](StatusWrapper & stat) { checkImu(stat, *imu); });
 
       RCLCPP_INFO(get_logger(),
-        "IMU checker started: %s (topic=%s, expected_hz=%.0f)",
-        imu->name.c_str(), imu->topic.c_str(), imu->expected_hz);
+        "IMU checker started: %s (topic=%s, expected_hz=%.0f, dummy=%s timeout=%.2fs)",
+        imu->name.c_str(), imu->topic.c_str(), imu->expected_hz,
+        imu->dummy_active_topic.c_str(), imu->dummy_active_timeout);
     }
   }
 
@@ -181,6 +215,34 @@ private:
   void checkImu(StatusWrapper & stat, ImuState & imu)
   {
     std::lock_guard<std::mutex> lock(imu.mtx);
+    const auto now = this->now();
+
+    // HH_260729 - Dummy data remains operator-visible WARN and cannot be
+    // mistaken for healthy physical IMU data. Heartbeat expiry restores the
+    // missing/stale/rate/data-quality diagnosis below.
+    double dummy_age_s = -1.0;
+    if (imu.dummy_monitor.isActive(
+        now, imu.dummy_active_timeout, dummy_age_s))
+    {
+      const double data_age_s =
+        imu.has_msg ? (now - imu.last_msg_time).seconds() : -1.0;
+      const bool data_fresh =
+        imu.has_msg && data_age_s >= 0.0 && data_age_s <= imu.stale_timeout;
+      stat.summary(
+        diagnostic_msgs::msg::DiagnosticStatus::WARN,
+        "DUMMY DATA (hardware disabled): sensor=" + imu.name +
+        " topic=" + imu.topic +
+        (data_fresh ? " dummy_imu=fresh" : " dummy_imu=pending_or_stale"));
+      stat.add("data_source", "dummy");
+      stat.add("hardware_enabled", "false");
+      stat.add("dummy_active_topic", imu.dummy_active_topic);
+      stat.add("dummy_active_age_s", dummy_age_s);
+      stat.add("dummy_data_received", imu.has_msg ? "true" : "false");
+      if (imu.has_msg) {
+        stat.add("dummy_data_age_s", data_age_s);
+      }
+      return;
+    }
 
     // ── Staleness 체크 ──────────────────────────────────────────────────
     if (!imu.has_msg) {
@@ -189,7 +251,7 @@ private:
       return;
     }
 
-    double elapsed = (this->now() - imu.last_msg_time).seconds();
+    double elapsed = (now - imu.last_msg_time).seconds();
     if (elapsed > imu.stale_timeout) {
       char buf[96];
       std::snprintf(buf, sizeof(buf),

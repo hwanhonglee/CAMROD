@@ -9,6 +9,11 @@ localization_gnss_checker:
 
     main:
       topic: "/sensing/gnss/pose_with_covariance"
+      # HH_260729 - A NO_FIX dummy is rejected before pose generation. Fresh
+      # true therefore explains the expected missing pose as degraded WARN;
+      # false/stale heartbeat restores the normal localization error.
+      dummy_active_topic: "/sensing/gnss/dummy_active"
+      dummy_active_timeout_s: 1.0
       # HH_260703 - The field GNSS pose topic is stable at 1 Hz. Treat stale,
       # high covariance, or large jumps as faults, not this measured base rate.
       expected_hz: 1.0

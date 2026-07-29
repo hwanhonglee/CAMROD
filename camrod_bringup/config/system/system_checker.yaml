@@ -40,33 +40,29 @@
     # Nodes publish hardware sensor streams plus fused cost grids consumed by localization/planning.
     sensing:
       required_nodes:
-        - /sensing/gnss/ublox_gps_node
-        - /sensing/imu/microstrain_inertial_driver
+        # HH_260729 - Hardware acquisition nodes are intentionally not pinned
+        # here.  Each enable_*:=false path publishes the exact same typed input
+        # contract plus a dummy_active heartbeat, and the dedicated checker
+        # reports that source as DUMMY/WARN.  Requiring a physical driver name
+        # would turn a deliberate hardware-free test into a graph error.
         - /sensing/imu/platform_velocity_converter
-        - /sensing/lidar/vanjee/vanjee_driver
-        - /sensing/lidar/lidar_preprocessor
-        - /sensing/lidar/ground_segmentation
         - /sensing/lidar/lidar_cost_grid
-        - /sensing/radar/sen0592_radar_node
         - /sensing/radar/radar_cost_grid
-        - /sensing/camera/econ_front/camera_front_publisher
-        - /sensing/camera/econ_rear/camera_rear_publisher
         - /sensing/inflation_cost_grid
       required_topics:
-        # gnss.launch.py / ublox_gps_node -> GNSS fix and dual-antenna yaw.
+        # Real drivers and their mutually-exclusive disabled-hardware dummies
+        # publish these common contracts.  Sensor checkers expose source detail.
         - "/sensing/gnss/ublox_gps_node/fix|sensor_msgs/msg/NavSatFix|1"
         - "/sensing/gnss/navheading|sensor_msgs/msg/Imu|1"
-        # imu.launch.py / microstrain_inertial_driver -> CV7 IMU data.
-        # HH_260720 - Monitor the generated internal IMU stream.
+        # platform_velocity_converter stays active for either real or stationary
+        # dummy data_ros input and owns these generated Avg message contracts.
         - "/sensing/imu/data|avg_msgs/msg/AvgImu|1"
-        # platform_velocity_converter_node -> wheel/IMU twist input for filters.
-        # HH_260720 - Converter and cost-grid outputs are generated avg_msgs contracts.
         - "/sensing/platform_velocity_converter/twist_with_covariance|avg_msgs/msg/AvgTwistWithCovarianceStamped|1"
-        # lidar_driver.launch.py -> raw Vanjee points and filtered obstacle cloud.
+        # A disabled LiDAR emits valid empty clouds rather than fake obstacles.
         - "/sensing/lidar/vanjee/points_raw|sensor_msgs/msg/PointCloud2|1"
         - "/sensing/lidar/points_filtered|sensor_msgs/msg/PointCloud2|1"
         - "/sensing/cost_grid/lidar|avg_msgs/msg/AvgOccupancyGrid|1"
-        # radar_sensor.launch.py -> seven SEN0592 range streams and radar cost grid.
+        # HH_260729 - All seven physical SEN0592 channels are active.
         - "/sensing/radar/front1/range|avg_msgs/msg/AvgRange|1"
         - "/sensing/radar/front2/range|avg_msgs/msg/AvgRange|1"
         - "/sensing/radar/left1/range|avg_msgs/msg/AvgRange|1"
@@ -95,8 +91,10 @@
       required_topics:
         # localization_input_adapter_node -> GNSS pose and wheel odometry bridges.
         # HH_260720 - Localization's internal inputs and selected outputs use generated messages.
-        - "/sensing/gnss/pose|avg_msgs/msg/AvgPoseStamped|1"
-        - "/sensing/gnss/pose_with_covariance|avg_msgs/msg/AvgPoseWithCovarianceStamped|1"
+        # HH_260729 - GNSS-disabled dummy data is STATUS_NO_FIX and must not
+        # produce a localization pose.  Its dedicated sensor/localization
+        # checkers report DUMMY/WARN, so graph readiness only requires the wheel
+        # bridge and public localization state here.
         - "/localization/input/wheel_odometry|avg_msgs/msg/AvgOdometry|1"
         # robot_localization/camrod selector -> public localization outputs.
         - "/localization/pose|avg_msgs/msg/AvgPoseStamped|1"
@@ -182,7 +180,9 @@
     # HH_260720 - Platform bridges hardware state; Ranger consumes /control/cmd_vel directly.
     platform:
       required_nodes:
-        - /ranger_base_node
+        # HH_260729 - ranger_driver_enable:=false uses a mutually-exclusive,
+        # non-drivable dummy CAN feedback source.  Keep readiness tied to the
+        # normalized bridge contract rather than the physical driver name.
         - /ranger_platform_bridge
         - /platform/robot_visualization
       required_topics:
