@@ -39,6 +39,10 @@ private:
     void process_image(const cv::Mat & image, const std_msgs::msg::Header & header);
     void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &);
     void compressed_image_callback(const sensor_msgs::msg::CompressedImage::ConstSharedPtr &);
+    void log_compressed_frame_error(
+        const sensor_msgs::msg::CompressedImage::ConstSharedPtr &,
+        const char * stage,
+        const std::string & detail);
     vision_msgs::msg::Detection2DArray::SharedPtr objects_to_bboxes(
         const std::vector<yolov9mit::Object> &, const std_msgs::msg::Header &);
 };
