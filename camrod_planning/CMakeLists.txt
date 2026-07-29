@@ -45,6 +45,7 @@ ament_target_dependencies(goal_snapper_node
   lanelet2_traffic_rules
 )
 target_include_directories(goal_snapper_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../camrod_map/include>
 )
 
@@ -258,6 +259,11 @@ if(BUILD_TESTING)
   target_include_directories(test_lanelet_route_planner PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../camrod_map/include>
   )
+
+  # HH_260729 - Exercise bounded Nav2 goal recovery without a running map,
+  # action server, or control gate.
+  ament_add_gtest(test_route_goal_recovery test/test_route_goal_recovery.cpp)
+  target_include_directories(test_route_goal_recovery PRIVATE include)
 endif()
 
 ament_package()

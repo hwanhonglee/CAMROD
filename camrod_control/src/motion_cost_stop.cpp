@@ -193,6 +193,123 @@ MotionCostStopDecision MotionCostStop::evaluate(
   return evaluateLatch(now_sec);
 }
 
+MotionCostStopDecision MotionCostStop::evaluateLaneletRecovery(
+  const avg_msgs::msg::AvgTwist & command,
+  const double now_sec,
+  const double pose_max_age_s)
+{
+  if (!config_.enabled || !config_.lanelet_enabled) {
+    return {};
+  }
+  // HH_260729 - Recovery must not interpret absent, stale, or frame-mismatched
+  // route evidence as clear. The normal command path also has merged-grid
+  // fail-closed checks; this probe is intentionally self-contained.
+  if (!lanelet_grid_.available || !validGrid(lanelet_grid_.grid)) {
+    return {true, false, true, true, "lanelet_recovery_grid_missing"};
+  }
+  if (config_.stale_timeout_s > 0.0 &&
+    std::max(0.0, now_sec - lanelet_grid_.receive_sec) > config_.stale_timeout_s)
+  {
+    return {true, false, true, true, "lanelet_recovery_grid_stale"};
+  }
+  if (!pose_.has_value()) {
+    return {true, false, true, true, "lanelet_recovery_pose_missing"};
+  }
+  if (pose_max_age_s > 0.0 &&
+    (pose_->observation_sec <= 0.0 ||
+    std::max(0.0, now_sec - pose_->observation_sec) > pose_max_age_s))
+  {
+    return {true, false, true, true, "lanelet_recovery_pose_stale"};
+  }
+  if (!pose_->frame_id.empty() && !lanelet_grid_.grid.header.frame_id.empty() &&
+    pose_->frame_id != lanelet_grid_.grid.header.frame_id)
+  {
+    return {true, false, true, true, "lanelet_recovery_frame_mismatch"};
+  }
+  return evaluateLanelet(command, now_sec, false);
+}
+
+MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
+  const avg_msgs::msg::AvgTwist & command,
+  const double now_sec,
+  const double probe_distance_m,
+  const double pose_max_age_s)
+{
+  if (!config_.enabled) {
+    return {};
+  }
+
+  const double translation_norm = std::hypot(command.linear.x, command.linear.y);
+  if (translation_norm <= std::max(0.0, config_.min_translation_mps)) {
+    return {true, false, true, false, "route_recovery_translation_required"};
+  }
+  if (!pose_.has_value()) {
+    return {true, false, true, true, "route_recovery_pose_missing"};
+  }
+  if (pose_max_age_s > 0.0 &&
+    (pose_->observation_sec <= 0.0 ||
+    std::max(0.0, now_sec - pose_->observation_sec) > pose_max_age_s))
+  {
+    return {true, false, true, true, "route_recovery_pose_stale"};
+  }
+
+  // HH_260729 - A dynamic-obstacle latch remains authoritative during route
+  // recovery. Moving away from a map boundary never bypasses live evidence.
+  if (latch_active_) {
+    const auto latch_decision = evaluateLatchedHazard(now_sec);
+    if (latch_decision.blocked) {
+      return latch_decision;
+    }
+  }
+  if (config_.stale_stop_enabled && config_.stale_timeout_s > 0.0) {
+    if (!merged_grid_.available || !validGrid(merged_grid_.grid)) {
+      markBlocked("merged_cost_grid_missing", false, now_sec);
+      return {true, false, false, true, "merged_cost_grid_missing"};
+    }
+    if (std::max(0.0, now_sec - merged_grid_.receive_sec) > config_.stale_timeout_s) {
+      markBlocked("merged_cost_grid_stale", false, now_sec);
+      return {true, false, false, true, "merged_cost_grid_stale"};
+    }
+  }
+
+  // Project only a short translation in the commanded body-frame direction.
+  // The current footprint may already touch cost 100, but the projected full
+  // footprint must be clear; a command parallel to or deeper into the boundary
+  // therefore remains blocked.
+  const PlanarPose current_pose = *pose_;
+  const double distance = std::max(0.05, probe_distance_m);
+  const double body_x = command.linear.x / translation_norm;
+  const double body_y = command.linear.y / translation_norm;
+  const double cosine = std::cos(current_pose.yaw);
+  const double sine = std::sin(current_pose.yaw);
+  pose_->x += distance * (cosine * body_x - sine * body_y);
+  pose_->y += distance * (sine * body_x + cosine * body_y);
+  const auto projected_lanelet_decision = evaluateLanelet(command, now_sec, false);
+  *pose_ = current_pose;
+  if (projected_lanelet_decision.blocked) {
+    auto decision = projected_lanelet_decision;
+    decision.reason = "route_recovery_predicted_" + decision.reason;
+    return decision;
+  }
+
+  // Evaluate obstacle sources from the actual current pose and requested escape
+  // corridor. Only the present lanelet contact receives the bounded exception.
+  const auto corridors = corridorsForCommand(command);
+  if (corridors.empty()) {
+    return {true, false, true, false, "route_recovery_corridor_missing"};
+  }
+  const auto source_decision = evaluateDynamicSources(corridors, now_sec);
+  if (source_decision.blocked) {
+    return source_decision;
+  }
+  const auto merged_decision = evaluateMergedGrid(
+    corridors, staticBypassActive(command), now_sec);
+  if (merged_decision.blocked) {
+    return merged_decision;
+  }
+  return evaluateLatch(now_sec);
+}
+
 bool MotionCostStop::latched() const
 {
   return latch_active_;
@@ -223,7 +340,9 @@ double MotionCostStop::frontLookahead() const
 }
 
 MotionCostStopDecision MotionCostStop::evaluateLanelet(
-  const avg_msgs::msg::AvgTwist & command, const double now_sec)
+  const avg_msgs::msg::AvgTwist & command,
+  const double now_sec,
+  const bool update_hold)
 {
   if (!config_.lanelet_enabled || !lanelet_grid_.available ||
     !validGrid(lanelet_grid_.grid) || !pose_.has_value())
@@ -250,7 +369,9 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
       config_.lanelet_stop_on_unknown);
     if (footprint_hit.blocked) {
       const std::string reason = "lanelet_footprint_" + footprint_hit.detail;
-      markBlocked(reason, false, now_sec);
+      if (update_hold) {
+        markBlocked(reason, false, now_sec);
+      }
       return {true, false, true, false, reason};
     }
   }
@@ -279,11 +400,15 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
 
   const int current_cost = sampleGridCost(lanelet_grid_.grid, pose_->x, pose_->y);
   if (current_cost < 0 && config_.lanelet_stop_on_unknown && !route_reentry) {
-    markBlocked("lanelet_current_out_of_grid", false, now_sec);
+    if (update_hold) {
+      markBlocked("lanelet_current_out_of_grid", false, now_sec);
+    }
     return {true, false, true, false, "lanelet_current_out_of_grid"};
   }
   if (current_cost >= config_.lanelet_current_threshold && !route_reentry) {
-    markBlocked("lanelet_current_cost", false, now_sec);
+    if (update_hold) {
+      markBlocked("lanelet_current_cost", false, now_sec);
+    }
     return {true, false, true, false, "lanelet_current_cost"};
   }
   if (rotation_command) {
@@ -333,7 +458,9 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
           continue;
         }
         const std::string reason = "lanelet_front_path_" + path_sample.hit.detail;
-        markBlocked(reason, false, now_sec);
+        if (update_hold) {
+          markBlocked(reason, false, now_sec);
+        }
         return {true, false, true, false, reason};
       }
     }
@@ -341,7 +468,9 @@ MotionCostStopDecision MotionCostStop::evaluateLanelet(
     const auto hit = sampleCorridor(lanelet_grid_.grid, corridor, true);
     if (hit.blocked) {
       const std::string reason = "lanelet_" + normalizeLabel(corridor.label) + "_" + hit.detail;
-      markBlocked(reason, false, now_sec);
+      if (update_hold) {
+        markBlocked(reason, false, now_sec);
+      }
       return {true, false, true, false, reason};
     }
   }

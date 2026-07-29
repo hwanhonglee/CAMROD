@@ -107,6 +107,25 @@ ros2 param set /ranger_base_node steering_transition_rate_radps 0.4
 The same value is available from the operator UI's platform-tuning slider and
 is applied through the Ranger node's standard dynamic-parameter service.
 
+<!-- HH_260729 - Prevent translational motion from outrunning rate-limited wheel direction. -->
+Ranger now also scales commanded translational velocity from the error between
+the target steering angle and the rate-limited angle actually sent to the SDK.
+With the deployment defaults, error at or below `0.05 rad` keeps full velocity,
+error at or above `0.35 rad` commands zero translation, and the interval is
+linear. `steering_transition_min_velocity_scale` defaults to `0.0`.
+
+The same envelope applies to dual-Ackermann and parallel steering. Parallel
+steering sign and hardware-angle clamp are finalized before rate limiting, so a
+longitudinal-to-lateral sign change cannot bypass the slew limit. All four
+parameters are dynamically validated:
+
+```bash
+ros2 param set /ranger_base_node steering_transition_velocity_scale_enabled true
+ros2 param set /ranger_base_node steering_transition_full_speed_error_rad 0.05
+ros2 param set /ranger_base_node steering_transition_stop_error_rad 0.35
+ros2 param set /ranger_base_node steering_transition_min_velocity_scale 0.0
+```
+
 ## Indicator MCU serial servicing
 
 <!-- HH_260728 - Document the WS2815 refresh/UART starvation correction. -->

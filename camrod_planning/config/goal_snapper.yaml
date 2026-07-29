@@ -95,3 +95,11 @@
     reissue_active_goal_on_pose_jump: true
     pose_jump_reissue_distance_m: 1.5
     pose_jump_reissue_min_interval_s: 1.0
+
+    # HH_260729 - Reissue a retained goal only when its Nav2 action aborted
+    # during an explicit route-safety hold and the gate later becomes enabled.
+    reissue_active_goal_after_route_recovery: true
+    route_recovery_status_topic: "/control/cmd_vel_safety_gate/status"
+    route_recovery_reissue_clear_delay_s: 0.5
+    route_recovery_reissue_min_interval_s: 2.0
+    route_recovery_max_reissues_per_goal: 2

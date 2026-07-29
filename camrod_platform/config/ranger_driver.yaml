@@ -13,6 +13,13 @@
     # HH_260727 - Runtime-adjustable wheel-direction slew limit. 0.5 rad/s turns 0→90 deg
     # in about 3.1 s and is exposed on the operator diagnostics UI.
     steering_transition_rate_radps: 0.5
+    # HH_260729 - A rate-limited steering angle is delayed geometry. Hold
+    # translation for large lag and restore full speed only near the new angle,
+    # so an old wheel direction cannot carry the robot across the centerline.
+    steering_transition_velocity_scale_enabled: true
+    steering_transition_full_speed_error_rad: 0.05
+    steering_transition_stop_error_rad: 0.35
+    steering_transition_min_velocity_scale: 0.0
 
     publish_platform_status_topics: true        # Enables bridged platform status topic publication.
     status_odom_topic: "/platform/status/odometry"     # Normalized odometry status output topic.

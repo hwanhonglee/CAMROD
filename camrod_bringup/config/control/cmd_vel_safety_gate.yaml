@@ -125,6 +125,24 @@
     lanelet_safety_current_allow_route_reentry: true
     lanelet_safety_current_route_reentry_max_distance_m: 4.0
     lanelet_safety_current_route_reentry_require_front_cmd: true
+    # HH_260729 - Pause Nav2 progress during a route violation and require the
+    # saved trigger direction to remain clear before the same mission resumes.
+    route_safety_recovery_enable: true
+    # Runtime updates outside [0.1, 30.0] s are rejected.
+    route_safety_recovery_clear_required_s: 1.0
+    # Runtime updates outside [0.1, 60.0] s are rejected.
+    route_safety_recovery_log_interval_s: 1.0
+    # An opposite command is recovery motion, not proof that the original
+    # forward/lateral route is clear. Only current boundary contact is excepted:
+    # the projected complete footprint and all dynamic obstacle guards must pass.
+    route_safety_allow_opposite_recovery_command: true
+    # Runtime updates must stay in [-1.0, 0.0].
+    route_safety_opposite_direction_cosine_max: -0.5
+    # The endpoint probe is intentionally bounded to [0.05, 0.5] m.
+    route_safety_opposite_recovery_probe_distance_m: 0.25
+    # A timer callback cannot turn a previously received localization sample
+    # into fresh route-clear evidence; valid runtime range is [0.05, 5.0] s.
+    route_safety_recovery_pose_max_age_s: 0.5
 
     # Bounded maneuver exceptions keep live LiDAR and radar stops enabled.
     drop_zone_maneuver_controller_status_topic: "/control/drop_zone_maneuver_controller/status"

@@ -117,6 +117,17 @@ Startup, return, recall, scenario, and recovery goals all enter through
 does not publish directly to Nav2, so an earlier manual selector cannot leak
 into a later automatic mission.
 
+<!-- HH_260729 - Bound automatic reissue to a route-safety ABORT of the retained goal. -->
+`goal_snapper` retains the currently released snapped goal and source across a
+control-side `ROUTE_SAFETY_HOLD`. It reissues that exact goal only after all of
+the following have occurred: the hold was observed, Nav2 reported `ABORTED`,
+the command gate returned to `ENABLED`, and that enabled state remained clear
+for 0.5 s. Reissue uses a 2.0 s minimum interval and is limited to two attempts
+per goal. A fresh operator/UI goal resets the counter. Success or a new
+accepted/executing status clears the pending abort; an unrelated planning
+failure, a canceled action without route hold, or an operator stop cannot start
+this recovery by itself.
+
 ## Launch
 
 ```bash

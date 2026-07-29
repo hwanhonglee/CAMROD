@@ -104,6 +104,12 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   // HH_260727 - Maximum rate used while the wheel direction changes between longitudinal
   // and lateral motion. This is a dynamic ROS parameter.
   double steering_transition_rate_radps_;
+  // HH_260729 - Do not command full translation while the rate-limited wheel
+  // angle still represents an older controller command.
+  bool steering_transition_velocity_scale_enabled_;
+  double steering_transition_full_speed_error_rad_;
+  double steering_transition_stop_error_rad_;
+  double steering_transition_min_velocity_scale_;
 
   uint8_t motion_mode_ = 0;
   bool parking_mode_;

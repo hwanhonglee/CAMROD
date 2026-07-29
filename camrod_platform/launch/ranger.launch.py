@@ -147,6 +147,20 @@ def _launch_setup(context, *args, **kwargs):
             'steering_transition_rate_radps': float(
                 p.get('steering_transition_rate_radps', 0.5)
             ),
+            # HH_260729 - Forward the steering-lag velocity envelope with the
+            # driver rate so package and bringup YAML stay authoritative.
+            'steering_transition_velocity_scale_enabled': _truthy(
+                p.get('steering_transition_velocity_scale_enabled', True)
+            ),
+            'steering_transition_full_speed_error_rad': float(
+                p.get('steering_transition_full_speed_error_rad', 0.05)
+            ),
+            'steering_transition_stop_error_rad': float(
+                p.get('steering_transition_stop_error_rad', 0.35)
+            ),
+            'steering_transition_min_velocity_scale': float(
+                p.get('steering_transition_min_velocity_scale', 0.0)
+            ),
         }],
         # HH_260720 - Ranger consumes the single final output from camrod_control directly.
         # HH_260720 - Ranger requires geometry_msgs/Twist at the explicit driver boundary.

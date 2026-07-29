@@ -200,6 +200,30 @@ lanes. Maneuver/static-cost bypass phases skip only legacy center/corridor
 checks and never this full-footprint check. `robot_base_link` alone is no
 longer the boundary decision point.
 
+<!-- HH_260729 - Document bounded recovery without weakening ordinary footprint checks. -->
+When this full-footprint or directional lanelet check stops an active command,
+the gate enters `ROUTE_SAFETY_HOLD` and saves the original translation vector.
+The same direction remains blocked until fresh lanelet grid and pose evidence
+proves the saved full-footprint route clear for 1.0 s. Missing, stale, or
+frame-mismatched evidence fails closed; pose evidence older than 0.5 s is stale.
+A reverse/escape command is considered
+only when its translation cosine against the trigger is at most `-0.5`; zero,
+rotation, and changed lateral commands cannot redefine the trigger.
+
+The escape exception is bounded to present map-boundary contact. At the default
+0.25 m probe distance, the projected complete footprint must be clear of cost
+100 and unknown/out-of-grid cells. The actual current escape corridor must still
+pass LiDAR, radar, merged-grid, retained dynamic-latch, engage, ESTOP, CAN,
+charging, battery, and command-timeout checks. Ordinary motion never uses this
+exception, and no lanelet threshold or footprint extent is reduced.
+
+<!-- HH_260729 - Record the runtime bounds that prevent recovery tuning from
+     disabling freshness or extending the lanelet-contact exception. -->
+Runtime updates are rejected unless clear time is in `[0.1, 30.0] s`, pose
+freshness is in `[0.05, 5.0] s`, opposite projection is in `[0.05, 0.5] m`,
+direction cosine is in `[-1.0, 0.0]`, and log interval is in `[0.1, 60.0] s`.
+Rejection is atomic: the prior active safety configuration remains unchanged.
+
 <!-- HH_260721 - Distinguish loaded configuration from method-conditional and disabled files. -->
 
 Configuration activation:

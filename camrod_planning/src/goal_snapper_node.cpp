@@ -31,6 +31,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 
+#include "camrod_planning/route_goal_recovery.hpp"
 #include "camrod_map/custom_regulatory_elements.hpp"
 
 namespace
@@ -254,6 +255,19 @@ public:
       declare_parameter<double>("pose_jump_reissue_distance_m", 1.5);
     pose_jump_reissue_min_interval_s_ =
       declare_parameter<double>("pose_jump_reissue_min_interval_s", 1.0);
+    // HH_260729 - Recover only a retained goal that Nav2 aborted while the
+    // command gate explicitly reported ROUTE_SAFETY_HOLD.
+    route_goal_recovery_config_.enabled = declare_parameter<bool>(
+      "reissue_active_goal_after_route_recovery", true);
+    route_goal_recovery_status_topic_ = declare_parameter<std::string>(
+      "route_recovery_status_topic", "/control/cmd_vel_safety_gate/status");
+    route_goal_recovery_config_.clear_delay_s = declare_parameter<double>(
+      "route_recovery_reissue_clear_delay_s", 0.5);
+    route_goal_recovery_config_.minimum_reissue_interval_s = declare_parameter<double>(
+      "route_recovery_reissue_min_interval_s", 2.0);
+    route_goal_recovery_config_.maximum_reissues_per_goal = declare_parameter<int>(
+      "route_recovery_max_reissues_per_goal", 2);
+    route_goal_recovery_.setConfig(route_goal_recovery_config_);
     if (
       sequential_goal_queue_policy_ != "append" &&
       sequential_goal_queue_policy_ != "replace_pending" &&
@@ -342,10 +356,21 @@ public:
     }
     // HH_260622 - Subscribe to Nav2 status whenever pose-jump reissue is enabled.
     // Otherwise a succeeded direct goal can stay "active" and be reissued after RViz initialpose resets.
-    if (sequential_goal_release_enable_ || reissue_active_goal_on_pose_jump_) {
+    if (
+      sequential_goal_release_enable_ || reissue_active_goal_on_pose_jump_ ||
+      route_goal_recovery_config_.enabled)
+    {
       sub_nav_status_ = create_subscription<action_msgs::msg::GoalStatusArray>(
         sequential_goal_status_topic_, rclcpp::QoS(10),
         std::bind(&GoalSnapperNode::onNavStatus, this, std::placeholders::_1));
+    }
+    if (route_goal_recovery_config_.enabled && !route_goal_recovery_status_topic_.empty()) {
+      sub_route_recovery_status_ = create_subscription<avg_msgs::msg::ModuleState>(
+        route_goal_recovery_status_topic_, rclcpp::QoS(1).reliable().transient_local(),
+        std::bind(&GoalSnapperNode::onRouteRecoveryStatus, this, std::placeholders::_1));
+      route_recovery_timer_ = create_wall_timer(
+        std::chrono::milliseconds(100),
+        std::bind(&GoalSnapperNode::maybeReissueActiveGoalAfterRouteRecovery, this));
     }
     if (sequential_goal_release_enable_) {
       queue_timer_ = create_wall_timer(
@@ -534,6 +559,8 @@ private:
     if (!has_active_released_goal_ || !msg) {
       return;
     }
+    const action_msgs::msg::GoalStatus * latest_status = nullptr;
+    double latest_status_stamp_sec = -1.0;
     for (const auto & status : msg->status_list) {
       const double status_stamp_sec =
         static_cast<double>(status.goal_info.stamp.sec) +
@@ -545,15 +572,77 @@ private:
       if (!status_is_newer) {
         continue;
       }
-      if (status.status == action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
-        active_goal_nav2_succeeded_ = true;
-        markActiveGoalReached("nav2_status");
-        if (sequential_goal_release_enable_) {
-          releasePendingGoalIfReady();
-        }
-        return;
+      if (latest_status == nullptr || status_stamp_sec <= 0.0 ||
+        status_stamp_sec >= latest_status_stamp_sec)
+      {
+        latest_status = &status;
+        latest_status_stamp_sec = status_stamp_sec;
       }
     }
+    if (latest_status == nullptr) {
+      return;
+    }
+    if (latest_status->status == action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+      active_goal_nav2_succeeded_ = true;
+      route_goal_recovery_.observeNavActiveOrSucceeded();
+      markActiveGoalReached("nav2_status");
+      if (sequential_goal_release_enable_) {
+        releasePendingGoalIfReady();
+      }
+      return;
+    }
+    if (latest_status->status == action_msgs::msg::GoalStatus::STATUS_ABORTED) {
+      route_goal_recovery_.observeNavAborted();
+      return;
+    }
+    if (
+      latest_status->status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED ||
+      latest_status->status == action_msgs::msg::GoalStatus::STATUS_EXECUTING)
+    {
+      route_goal_recovery_.observeNavActiveOrSucceeded();
+    }
+  }
+
+  void onRouteRecoveryStatus(const avg_msgs::msg::ModuleState::ConstSharedPtr msg)
+  {
+    if (!msg) {
+      return;
+    }
+    const bool route_hold = msg->operating_state == "ROUTE_SAFETY_HOLD";
+    const bool gate_enabled =
+      msg->operating_state == "ENABLED" || msg->operating_state == "DEPARTING_CHARGER";
+    route_goal_recovery_.observeRouteHold(route_hold, gate_enabled, now().seconds());
+  }
+
+  void maybeReissueActiveGoalAfterRouteRecovery()
+  {
+    const double now_sec = now().seconds();
+    if (!has_active_released_goal_ || active_goal_reached_ ||
+      delayed_release_.has_value() || !route_goal_recovery_.ready(now_sec))
+    {
+      return;
+    }
+
+    // HH_260729 - Reissue the exact snapped goal and source. It remains the
+    // same mission; only Nav2's aborted action/path context is replaced.
+    auto goal_pose = active_released_goal_;
+    goal_pose.header.stamp = get_clock()->now();
+    publishGoalSource(active_goal_policy_source_);
+    pub_goal_->publish(goal_pose);
+    publishRosGoal(goal_pose);
+    active_released_goal_ = goal_pose;
+    active_released_sec_ = now_sec;
+    active_goal_nav2_succeeded_ = false;
+    route_goal_recovery_.markReissued(now_sec);
+
+    RCLCPP_WARN(
+      get_logger(),
+      "goal_snapper: route safety recovered after Nav2 ABORTED; "
+      "reissued retained %s goal (%.2f, %.2f), attempt=%d",
+      active_goal_policy_source_.c_str(),
+      goal_pose.pose.position.x, goal_pose.pose.position.y,
+      route_goal_recovery_.reissueCount());
+    publishAvgPlanning(goal_pose);
   }
 
   // Recomputes connected lanelet id set from the given seed lanelet.
@@ -856,6 +945,7 @@ private:
     active_goal_nav2_succeeded_ = false;
     active_goal_reached_sec_ = 0.0;
     active_released_sec_ = now().seconds();
+    route_goal_recovery_.resetForGoal();
 
     DelayedRelease release;
     release.pose = goal_pose;
@@ -1507,6 +1597,10 @@ private:
   bool reissue_active_goal_on_pose_jump_{true};
   double pose_jump_reissue_distance_m_{1.5};
   double pose_jump_reissue_min_interval_s_{1.0};
+  camrod_planning::RouteGoalRecoveryConfig route_goal_recovery_config_;
+  camrod_planning::RouteGoalRecovery route_goal_recovery_;
+  std::string route_goal_recovery_status_topic_{
+    "/control/cmd_vel_safety_gate/status"};
   std::deque<QueuedGoal> pending_goals_;
   avg_msgs::msg::AvgPoseStamped active_released_goal_;
   std::string active_goal_policy_source_{"regulated"};
@@ -1571,8 +1665,10 @@ private:
   rclcpp::Subscription<avg_msgs::msg::AvgPoseStamped>::SharedPtr sub_current_pose_;
   rclcpp::Subscription<avg_msgs::msg::AvgOccupancyGrid>::SharedPtr sub_cost_grid_;
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr sub_nav_status_;
+  rclcpp::Subscription<avg_msgs::msg::ModuleState>::SharedPtr sub_route_recovery_status_;
   rclcpp::TimerBase::SharedPtr queue_timer_;
   rclcpp::TimerBase::SharedPtr source_settle_timer_;
+  rclcpp::TimerBase::SharedPtr route_recovery_timer_;
   std::optional<DelayedRelease> delayed_release_;
   bool publish_planning_status_{false};
 };

@@ -1,5 +1,29 @@
 # Documentation Changelog
 
+<!-- HH_260729 - Track the post-tag route recovery and steering-lag remediation separately. -->
+## [post-v2.1.0-route-recovery] - 2026-07-29 (HH_260729)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| root `README.md` | Identified the route recovery and Ranger steering-lag work as an unreleased delta after the immutable v2.1.0 baseline |
+| `docs/V2_1_0_TODO_REMEDIATION.md` | Recorded baseline equality, root causes, requirement-to-code traceability, safety invariants, state transitions, parameters, changed ownership boundaries, and validation evidence |
+| root `TODOLIST.txt` | Added plain-language explanations, the purpose of every field command/artifact, safety stop conditions, and code/config/test ownership for items 11-13; marked items 11-12 software-implemented but field-pending, and separated the item 13 driver mitigation from measurement-dependent controller tuning |
+| `camrod_control/README.md` | Documented route hold, fail-closed clear proof, constrained opposite-direction escape, and rejected unsafe runtime ranges |
+| `camrod_planning/README.md` | Documented retained-goal reissue prerequisites, delay, and retry bound |
+| `camrod_platform/README.md` | Documented steering-error velocity scaling and runtime parameter ranges |
+| `camrod_bringup/README.md` | Documented the three synchronized deployment mirrors, route recovery status topics, and dedicated TODO 11-13 evidence recorder |
+| `camrod_bringup/docs/field_test_runbook.md` | Added repeatable lanelet exit, reverse escape, automatic replan, left/right steering-transition checks, rosbag capture, active-parameter evidence, and PASS/FAIL form |
+| `camrod_bringup/scripts/field_test_tool.sh` | Added `record-recovery` to collect the complete real-robot TODO 11-13 timeline and evidence metadata |
+
+The v2.1.0 tag itself was not rewritten. Real-robot acceptance remains open and
+must be recorded against the eventual commit/tag in `TODOLIST.txt`. Native
+policy/driver tests and an ordinary-simulation startup/status smoke test passed;
+forced bringup shutdown still exposes pre-existing planning respawn exceptions.
+
+---
+
 <!-- HH_260729 - Track the v2.1.0 disabled-hardware, radar, and camera hardening release. -->
 ## [v2.1.0-docs] - 2026-07-29 (HH_260729)
 
