@@ -57,6 +57,28 @@ Hardware storage diagnostics report WARN at 90% filesystem use and ERROR at
 95%. Normal operation in the 80% range therefore remains visible in the
 diagnostic values without elevating the complete system summary.
 
+<!-- HH_260729 - Describe disabled-hardware health without fake OK status. -->
+## Disabled-Hardware Dummy Diagnostics
+
+GNSS, IMU, LiDAR, front/rear camera, radar, Ranger velocity, and wheel
+checkers subscribe to a reliable transient-local `dummy_active` marker beside
+their normal data. A fresh positive marker changes an otherwise healthy
+transport heartbeat to `DUMMY DATA / WARN (physical hardware disabled)` and
+preserves the same component, location, frame, mount pose, and topic fields
+used for a physical failure. A false, missing, or older-than-one-second marker
+restores ordinary missing/stale/error evaluation immediately.
+
+Radar has both `/sensing/radar/dummy_active` and one marker per channel, so a
+globally disabled stack and a single `sensor_enabled[i]: false` port are
+distinguished without hiding the sensor identity. Dummy data never satisfies
+hardware-OK. The localization GNSS checker and velocity converter checkers use
+the same rule for downstream placeholder messages.
+
+HH_260729 - Camera diagnostics preserve the highest-priority failing reason.
+A low-rate stream therefore remains `FPS low`/`FPS critically low` when
+resolution and encoding match; a later successful encoding check can no longer
+rename that warning to `Encoding mismatch`.
+
 <!-- HH_260724 - Site entry hands motion ownership from Nav2 to the campsite maneuver controller. -->
 During campsite entry and unload phases, Nav2 cancel/abort status is expected
 because `camrod_control` owns the local maneuver. `planning_nav_status_checker`

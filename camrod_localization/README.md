@@ -220,6 +220,15 @@ graph TD
 | `localization_map_helper_node` | `/localization/pose`, `/localization/pose_with_covariance`, Lanelet2 map, `drop_zones.yaml` | `/localization/centerline_pose`, `/localization/drop_zone/initial_pose`, `/localization/drop_zone/match_ok` | `max_search_radius`: 30 m, `lateral_stddev`: 0.3, `match_radius`: 2.0 m, `stable_count`: 10 |
 | `localization_pose_selector_node` | `/localization/primary/pose_with_covariance`, `/localization/fallback/*`, `/localization/mode` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry` | `primary_timeout_s`: 0.5 s, `fallback_on_mode_at_or_above`: 3 (INVALID) |
 
+<!-- HH_260729 - Keep disabled-GNSS transport alive without manufacturing a
+map pose. -->
+When physical GNSS is deliberately disabled, the sensing dummy publishes
+`NavSatFix STATUS_NO_FIX` with non-finite latitude/longitude/altitude and
+unusable covariance. `localization_input_adapter_node` validates fix status,
+coordinates, covariance type, and finite covariance before UTM conversion, so
+the placeholder never becomes `/sensing/gnss/pose_with_covariance` or an EKF
+measurement. Diagnostics still report the input explicitly as DUMMY/WARN.
+
 ---
 
 ## 🔌 Interface Contract
