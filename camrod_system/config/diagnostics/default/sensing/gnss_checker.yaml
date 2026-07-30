@@ -3,10 +3,13 @@
 
 gnss_checker:
   ros__parameters:
+    # --- Publish rate ---
     publish_rate_hz: 1.0
 
+    # --- Monitored GNSS sources ---
     gnss_names: ["main"]
 
+    # --- Per-source settings: main ---
     main:
       # HH_260617 - ublox_gps_node publishes NavSatFix as a private topic under its node name.
       topic: "/sensing/gnss/ublox_gps_node/fix"

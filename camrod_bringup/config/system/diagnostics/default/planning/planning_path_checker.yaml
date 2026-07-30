@@ -1,16 +1,26 @@
 # Planning path checker configuration.
 # Monitors path topics while navigation is active.
+# Layout: 1) publish rate, 2) monitored topics, 3) per-path blocks.
 
 planning_path_checker:
   ros__parameters:
+    # =========================================================================
+    # 1. PUBLISH RATE
+    # =========================================================================
     publish_rate_hz: 1.0
 
+    # =========================================================================
+    # 2. MONITORED TOPICS
+    # =========================================================================
     nav_status_topic: "/planning/navigate_to_pose/_action/status"
 
     path_names:
       - "global_path"
       - "local_path"
 
+    # =========================================================================
+    # 3. PER-PATH BLOCKS
+    # =========================================================================
     global_path:
       # HH_260720 - Diagnose the generated path mirror; Nav2 owns the ROS boundary path.
       topic: "/planning/global_path_avg"

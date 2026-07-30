@@ -92,6 +92,18 @@ camrod_system_add_checker(planning_state_checker_node src/diagnostics/planning_s
 # HH_260727: Exercise Nav2 goal UUID/state abort deduplication without starting
 # the full navigation stack.
 if(BUILD_TESTING)
+  # HH_260730 - Required graph readiness has a bounded STARTING grace and
+  # rejects zero/multiple owners of alternative capabilities deterministically.
+  add_executable(
+    test_graph_readiness
+    test/test_graph_readiness.cpp
+  )
+  target_compile_features(test_graph_readiness PUBLIC cxx_std_17)
+  add_test(
+    NAME graph_readiness
+    COMMAND test_graph_readiness
+  )
+
   # HH_260728 - Verify physical sensor metadata survives stale conversion and
   # remains compact enough for the multi-sensor SYSTEM console summary.
   add_executable(

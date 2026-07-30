@@ -1,4 +1,10 @@
+# Bringup launch defaults. One numbered section per override block:
+# runtime, localization, planning, sensing, platform, control, parking,
+# perception, system, namespaces, topics, map, voice, sim.
 bringup:
+  # =========================================================================
+  # 1. RUNTIME
+  # =========================================================================
   runtime:
     clean_before_launch: true
     # Run one more cleanup pass on Ctrl+C shutdown to prevent duplicate nodes.
@@ -10,6 +16,9 @@ bringup:
     # Stagger module startup to reduce bringup burst load.
     module_launch_gap_s: 1.0
 
+  # =========================================================================
+  # 2. LOCALIZATION
+  # =========================================================================
   localization:
     enable_adapter: true
     enable_filter: true
@@ -36,6 +45,7 @@ bringup:
     # HH_260720 - Localization owns generated wheel data and the explicit EKF mirror.
     wheel_output_topic: /localization/input/wheel_odometry
     wheel_nav_output_topic: /localization/input/wheel_odometry_ros
+
     # Localization launch refactor - explicit override keys per sub-launch.
     adapter_param_file: localization/source/input_adapter.yaml
     filter_ekf_param_file: localization/filter/ekf.yaml
@@ -47,6 +57,9 @@ bringup:
     # HH_260623 - Let bringup inject the active camrod_map drop_zones exporter output.
     drop_zones_yaml: __module_default__
 
+  # =========================================================================
+  # 3. PLANNING
+  # =========================================================================
   planning:
     # ---- Planning core toggles ----
     # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
@@ -122,6 +135,9 @@ bringup:
     local_path_extractor_param_file: planning/local_path_extractor.yaml
     planning_state_machine_param_file: planning/planning_state_machine.yaml
 
+  # =========================================================================
+  # 4. SENSING
+  # =========================================================================
   sensing:
     # Disable this only when sensing.launch.py is already running separately.
     # This prevents duplicate camera/IMU/LiDAR processes during split-stack tests.
@@ -184,12 +200,16 @@ bringup:
     vanjee_config_path: sensing/lidar/vanjee/config.yaml
     ground_seg_param_file: sensing/lidar/ground_seg_params.yaml
 
+  # =========================================================================
+  # 5. PLATFORM
+  # =========================================================================
   platform:
     # By default, use internal config defaults declared by platform launch files.
     # HH_260506: Route sensor_kit TF geometry through bringup config so mount offsets
     # edited in camrod_bringup/config/sensor_kit/robot_params.yaml are applied.
     params_file: sensor_kit/robot_params.yaml
     robot_visualization_param_file: platform/robot_visualization.yaml
+
     # 260708: Exterior lights — light_controller decides HAZARD/crab/turn/OFF,
     # mcu_serial_bridge streams JSON to the Arduino Nano (headlight relay D10,
     # WS2815 left D5/right D7). Sim keeps the controller but forces the serial
@@ -197,6 +217,7 @@ bringup:
     lights_enable: true
     lights_mcu_bridge_enable: true
     lights_param_file: platform/lights.yaml
+
     # HH_260720 - Ranger consumes the final /control/cmd_vel_ros boundary and publishes CAN status.
     ranger_driver_enable: true
     ranger_auto_setup_can: true
@@ -206,11 +227,15 @@ bringup:
     # bringup override profile when using bringup.launch.py.
     ranger_params_file: platform/ranger_driver.yaml
 
+  # =========================================================================
+  # 6. CONTROL
+  # =========================================================================
   control:
     # HH_260720 - Crab, zero-turn, drop-zone exit, and parking-yaw alignment live here.
     enable_camping_site_maneuver_controller: true
     enable_drop_zone_maneuver_controller: true
     param_file: __module_default__
+
     # HH_260720 - Navigation and maneuver commands enter camrod_control here.
     cmd_vel_gate_enable: true
     cmd_vel_raw_topic: /control/cmd_vel_raw
@@ -235,6 +260,7 @@ bringup:
     #   disabled/off/none: ignore DR-timeout trigger
     cmd_vel_gate_dr_timeout_source_mode: localization_monitor
     cmd_vel_gate_allow_on_start: false
+
     # After localization mode recovers (DR_ONLY -> NORMAL), keep
     # cmd_vel blocked briefly so pose/TF consumers settle before re-accelerating.
     cmd_vel_gate_enable_gnss_recovery_hold: true
@@ -246,6 +272,7 @@ bringup:
     # AvgLocalizationMode enum used in this workspace: NORMAL=0, DR_ONLY=2.
     cmd_vel_gate_gnss_recovery_source_mode_min: 2
     cmd_vel_gate_gnss_recovery_target_mode: 0
+
     # Cost-based stop uses combined inflation grid (lanelet+LiDAR+Radar+global_path).
     cmd_vel_gate_cost_stop_enable: true
     cmd_vel_gate_cost_grid_topic: /planning/cost_grid/inflation
@@ -289,6 +316,7 @@ bringup:
     cmd_vel_gate_front_dynamic_stop_use_local_path: true
     cmd_vel_gate_front_dynamic_path_width_m: 1.27
     cmd_vel_gate_front_dynamic_path_max_start_distance_m: 1.5
+
     # HH_260618: Raw lanelet hard-stop before inflation ego-clear. This blocks
     # translational cmd_vel when the current/corridor cell is lane-boundary or
     # outside lanelet, while still allowing in-place yaw correction.
@@ -336,6 +364,7 @@ bringup:
     cmd_vel_gate_camping_site_maneuver_controller_status_topic: /control/camping_site_maneuver_controller/status
     # HH_260721 - Match the campsite controller's explicit entry-lanelet retrace phase.
     cmd_vel_gate_camping_site_maneuver_controller_static_bypass_phases: ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT
+
     # Speed-dependent front lookahead: lookahead = v²/(2·g·mu) + reaction·v + margin.
     cmd_vel_gate_speed_dependent_lookahead: true
     # HH_260630 - Minimum front dynamic-stop scan covers the front radar mount
@@ -390,12 +419,14 @@ bringup:
     cmd_vel_gate_rotation_cmd_dynamic_obstacle_stop: true
     cmd_vel_gate_rotation_cmd_dynamic_obstacle_radius_m: 1.5
     cmd_vel_gate_rotation_cmd_dynamic_obstacle_threshold: 85
+
     # Unavoidable-stop cluster detection for lethal costs (front only).
     cmd_vel_gate_unavoidable_stop_enable: true
     # Fixed from 253 (OccupancyGrid max is 100; 253 never triggers).
     cmd_vel_gate_unavoidable_lethal_threshold: 90
     cmd_vel_gate_unavoidable_cluster_min_cells: 25
     cmd_vel_gate_unavoidable_cluster_min_ratio: 0.25
+
     # Optional yaw-alignment zone gate at specific map keypoints.
     # Zone coordinates/yaw should come from lanelet2-derived map keypoints.
     cmd_vel_gate_yaw_alignment_enable: false
@@ -403,6 +434,7 @@ bringup:
     cmd_vel_gate_yaw_alignment_exit_margin_m: 0.3
     # HH_260720 - Use the control-owned yaw-alignment zone file.
     cmd_vel_gate_yaw_alignment_zones_file: control/yaw_alignment_zones.yaml
+
     # HH_260706: Route-heading guard uses slower rotation and a longer tangent
     # lookahead to reduce startup left-right oscillation under delayed field data.
     cmd_vel_gate_route_heading_enable: true
@@ -417,6 +449,7 @@ bringup:
     cmd_vel_gate_route_heading_max_angular_z: 0.35
     cmd_vel_gate_route_heading_max_linear_x: 0.0
     cmd_vel_gate_route_heading_min_path_points: 2
+
     # HH_260720 - Scale output before publishing /control/cmd_vel.
     cmd_vel_gate_speed_scale: 0.5
     # HH_260626: Publish zero if Nav2 raw cmd_vel stops arriving.
@@ -443,12 +476,18 @@ bringup:
     cmd_vel_gate_critical_battery_stop_enabled: true
     cmd_vel_gate_critical_battery_percentage: 0.20
 
+  # =========================================================================
+  # 7. PARKING
+  # =========================================================================
   parking:
     # HH_260720 - Select one final parking controller implemented by camrod_control.
     method: reverse
     enable_parking: true
     param_file: __module_default__
 
+  # =========================================================================
+  # 8. PERCEPTION
+  # =========================================================================
   perception:
     enable_lidar_obstacle: true
     enable_yolo: true
@@ -463,6 +502,9 @@ bringup:
     # By default, use internal config defaults declared by perception launch files.
     perception_param_file: perception/perception_params.yaml
 
+  # =========================================================================
+  # 9. SYSTEM
+  # =========================================================================
   system:
     # Enable full camrod_system diagnostics launch by default in bringup.
     # HH_260522: diagnostics profile choices are directory names under:
@@ -474,6 +516,7 @@ bringup:
     system_checker_param_file: __module_default__
     # Set true only when ranger_msgs-dependent platform checker is available.
     enable_platform_checker: false
+
     # Keep plugin API bridge enabled by default.
     enable_plugin_api: true
     # Lightweight HTTP UI backend for API/state monitoring.
@@ -486,6 +529,7 @@ bringup:
     api_ui_minimum_mission_dispatch_battery_percent: 35.0
     api_ui_low_battery_return_after_current_mission: true
     api_ui_low_battery_return_threshold_percent: 35.0
+
     # HH_260727 - Open the local GTK/WebKit operator surface by default.
     # Disable for headless bringup or when rendering the UI on another device.
     enable_operator_ui_window: true
@@ -493,6 +537,9 @@ bringup:
     operator_ui_window_width: 1280
     operator_ui_window_height: 800
 
+  # =========================================================================
+  # 10. NAMESPACES
+  # =========================================================================
   namespaces:
     map: map
     sensing: sensing
@@ -510,9 +557,15 @@ bringup:
     gnss: gnss
     voice: voice
 
+  # =========================================================================
+  # 11. TOPICS
+  # =========================================================================
   topics:
     gnss_rtcm: /sensing/gnss/rtcm
 
+  # =========================================================================
+  # 12. MAP
+  # =========================================================================
   map:
     # Map origin defaults are loaded from config/map/map_info.yaml.
     # launch_defaults keeps only explicit bringup-level overrides.
@@ -525,10 +578,16 @@ bringup:
     lanelet_cost_grid_param_file: map/lanelet_cost_grid.yaml
     map_visualization_param_file: map/map_visualization.yaml
 
+  # =========================================================================
+  # 13. VOICE
+  # =========================================================================
   voice:
     enable_voice: true
     enable_voice_adapter: true
 
+  # =========================================================================
+  # 14. SIM
+  # =========================================================================
   sim:
     lanelet_id: -1
     # Synthetic obstacle controls for cost-stop scenario tests.

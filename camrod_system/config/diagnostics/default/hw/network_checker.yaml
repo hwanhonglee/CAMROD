@@ -1,6 +1,8 @@
+# Layout: monitored interface, then connection / signal / packet-quality groups.
 network_checker:
   ros__parameters:
 
+    # ── Monitored interface ──────────────────────────────────────────────
     # HH_260625: EAC-6000 exposes WiFi as wlP7p1s0, not wlan0.
     interface: "wlP7p1s0"
 

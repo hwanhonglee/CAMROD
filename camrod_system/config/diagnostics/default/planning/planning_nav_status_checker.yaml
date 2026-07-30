@@ -3,6 +3,7 @@ planning_nav_status_checker:
     publish_rate_hz: 1.0
 
     nav_status_topic: "/planning/navigate_to_pose/_action/status"
+
     # HH_260702 - Action status freshness is advisory. Path/state/lifecycle
     # checkers are the motion-health authority, so a quiet status topic must
     # not raise SYSTEM ERROR while the robot is driving normally.
@@ -10,8 +11,10 @@ planning_nav_status_checker:
     stale_timeout_s: 0.0
     idle_ok_without_status: true
     terminal_status_stale_ok: true
+
     # HH_260724 - Site maneuver phases intentionally cancel Nav2; do not raise system WARN for that handoff.
     service_state_topic: "/service/state"
     suppress_abort_during_service_maneuver: true
+
     abort_warn: 2
     abort_error: 5

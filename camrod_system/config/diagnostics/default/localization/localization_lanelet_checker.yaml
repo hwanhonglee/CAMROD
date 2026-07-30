@@ -1,17 +1,21 @@
 localization_lanelet_checker:
   ros__parameters:
+    # --- Publish rate ---
     publish_rate_hz: 1.0
 
+    # --- Monitored topics ---
     lanelet_topic: "/localization/centerline_pose"
     # HH_260723 - Compare snap output with the upstream EKF pose cadence.
     input_pose_topic: "/localization/pose"
 
+    # --- Rate thresholds ---
     # HH_260723 - Keep 10 Hz as the ceiling; the checker evaluates the lower
     # live input rate when system-wide CPU pressure slows both topics.
     expected_hz:    10.0
     hz_warn_ratio:  0.7    # output / min(expected, input) < this value -> WARN
     hz_error_ratio: 0.4    # actual / expected < 이 값 → ERROR
 
+    # --- Staleness ---
     stale_timeout_s:  1.0    # 이 시간(초) 이상 메시지 없으면 STALE (맵 밖 이탈)
 
     # XY 공분산 trace (cov[0] + cov[7]) 임계값

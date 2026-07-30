@@ -13,6 +13,8 @@
 #include "diagnostic_msgs/msg/key_value.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include "camrod_system/graph_readiness.hpp"
+
 namespace camrod_system
 {
 
@@ -230,20 +232,38 @@ private:
     const std::string & name,
     const std::vector<std::string> & missing,
     const std::string & category,
-    const std::string & missing_key)
+    const std::string & missing_key,
+    bool in_startup_grace)
   {
     diagnostic_msgs::msg::DiagnosticStatus status;
     status.name = name;
     status.values.push_back(make_kv("category", category));
+    const auto decision =
+      graph_readiness::requiredGraph(missing.empty(), in_startup_grace);
+    status.level = diagnostic_level(decision.severity);
+    status.values.push_back(
+      make_kv("operating_state", std::string(decision.operating_state)));
     if (!missing.empty()) {
-      status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-      status.message = "missing";
+      status.message = in_startup_grace ?
+        "missing during startup grace" : "missing after startup grace";
       status.values.push_back(make_kv(missing_key, join_vector(missing)));
     } else {
-      status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
       status.message = "ok";
     }
     return status;
+  }
+
+  static std::uint8_t diagnostic_level(graph_readiness::Severity severity)
+  {
+    switch (severity) {
+      case graph_readiness::Severity::kOk:
+        return diagnostic_msgs::msg::DiagnosticStatus::OK;
+      case graph_readiness::Severity::kWarn:
+        return diagnostic_msgs::msg::DiagnosticStatus::WARN;
+      case graph_readiness::Severity::kError:
+        return diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+    }
+    return diagnostic_msgs::msg::DiagnosticStatus::ERROR;
   }
 
   static std::string get_status_value(
@@ -284,7 +304,8 @@ private:
   diagnostic_msgs::msg::DiagnosticStatus build_module_status(
     const RequiredModuleSpec & module,
     const std::set<std::string> & node_names,
-    const std::map<std::string, std::vector<std::string>> & topic_names_and_types)
+    const std::map<std::string, std::vector<std::string>> & topic_names_and_types,
+    bool in_startup_grace)
   {
     std::vector<std::string> missing_nodes;
     std::vector<std::string> missing_topics;
@@ -329,13 +350,20 @@ private:
     status.values.push_back(make_kv("type_mismatches", join_vector(type_mismatches)));
     status.values.push_back(make_kv("publisher_missing", join_vector(publisher_missing)));
 
-    if (!missing_nodes.empty() || !missing_topics.empty() ||
-      !type_mismatches.empty() || !publisher_missing.empty())
-    {
-      status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-      status.message = "module graph incomplete";
+    const bool graph_complete =
+      missing_nodes.empty() && missing_topics.empty() &&
+      type_mismatches.empty() && publisher_missing.empty();
+    const auto decision =
+      graph_readiness::requiredGraph(graph_complete, in_startup_grace);
+    status.level = diagnostic_level(decision.severity);
+    status.values.push_back(
+      make_kv("operating_state", std::string(decision.operating_state)));
+
+    if (!graph_complete) {
+      status.message = in_startup_grace ?
+        "module graph incomplete during startup grace" :
+        "module graph incomplete after startup grace";
     } else {
-      status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
       status.message = "module graph ok";
     }
     return status;
@@ -344,7 +372,8 @@ private:
   diagnostic_msgs::msg::DiagnosticStatus build_alternative_group_status(
     const RequiredAlternativeGroupSpec & group,
     const std::set<std::string> & node_names,
-    const std::map<std::string, std::vector<std::string>> & topic_names_and_types)
+    const std::map<std::string, std::vector<std::string>> & topic_names_and_types,
+    bool in_startup_grace)
   {
     std::vector<std::string> checked_alternatives;
     std::vector<std::string> healthy_alternatives;
@@ -353,7 +382,8 @@ private:
     for (const auto & alternative : group.alternatives) {
       checked_alternatives.push_back(alternative.name);
       const auto alternative_status =
-        build_module_status(alternative, node_names, topic_names_and_types);
+        build_module_status(
+          alternative, node_names, topic_names_and_types, in_startup_grace);
       if (alternative_status.level == diagnostic_msgs::msg::DiagnosticStatus::OK) {
         healthy_alternatives.push_back(alternative.name);
       } else {
@@ -370,21 +400,23 @@ private:
     status.values.push_back(make_kv("checked_alternatives", join_vector(checked_alternatives)));
     status.values.push_back(make_kv("healthy_alternatives", join_vector(healthy_alternatives)));
     status.values.push_back(make_kv("failed_alternatives", join_vector(failed_alternatives)));
+    const auto decision =
+      graph_readiness::alternativeGroup(healthy_alternatives.size(), in_startup_grace);
+    status.level = diagnostic_level(decision.severity);
+    status.values.push_back(
+      make_kv("operating_state", std::string(decision.operating_state)));
 
     if (healthy_alternatives.size() == 1U) {
-      status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
       status.message = "exactly one alternative graph ok";
       status.values.push_back(make_kv("selected_alternative", healthy_alternatives.front()));
     } else if (healthy_alternatives.empty()) {
-      // HH_260630 - A required capability with no healthy implementation is
-      // autonomy-blocking, not merely degraded.
-      status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-      status.message = "no required alternative graph ok";
+      status.message = in_startup_grace ?
+        "waiting for required alternative graph" :
+        "no required alternative graph ok";
       status.values.push_back(make_kv("selected_alternative", ""));
     } else {
       // HH_260630 - Multiple healthy implementations would split authority
       // over the same final parking command path.
-      status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
       status.message = "multiple required alternative graphs ok";
       status.values.push_back(make_kv("selected_alternative", ""));
     }
@@ -440,7 +472,7 @@ private:
       const double report_elapsed_s =
         std::chrono::duration<double>(now_steady - last_report_steady_).count();
       if (report_elapsed_s > 2.0) {
-        RCLCPP_WARN(
+        RCLCPP_ERROR(
           get_logger(),
           "system check missing nodes=%s topics=%s",
           join_or_dash(missing_nodes).c_str(),
@@ -452,15 +484,22 @@ private:
     diagnostic_msgs::msg::DiagnosticArray diag;
     diag.header.stamp = now();
     diag.status.push_back(
-      build_status("system_checker/nodes", missing_nodes, "system", "missing_nodes"));
+      build_status(
+        "system_checker/nodes", missing_nodes, "system", "missing_nodes",
+        in_startup_grace));
     diag.status.push_back(
-      build_status("system_checker/topics", missing_topics, "system", "missing_topics"));
+      build_status(
+        "system_checker/topics", missing_topics, "system", "missing_topics",
+        in_startup_grace));
     for (const auto & module : required_module_specs_) {
-      diag.status.push_back(build_module_status(module, node_names, topic_names_and_types));
+      diag.status.push_back(
+        build_module_status(
+          module, node_names, topic_names_and_types, in_startup_grace));
     }
     for (const auto & group : required_alternative_group_specs_) {
       diag.status.push_back(
-        build_alternative_group_status(group, node_names, topic_names_and_types));
+        build_alternative_group_status(
+          group, node_names, topic_names_and_types, in_startup_grace));
     }
     pub_diag_->publish(diag);
   }

@@ -3,11 +3,13 @@
 
 wheel_odometry_checker:
   ros__parameters:
+    # --- Publish rate ---
     publish_rate_hz: 1.0          # 진단 발행 주기 (Hz)
 
     # 모니터링할 휠 이름 목록
     wheel_names: ["main"]
 
+    # --- Per-wheel settings: main ---
     main:
       # HH_260410: Unified wheel odometry topic consumed by localization filters.
       # HH_260721 - Monitor the canonical localization adapter output.

@@ -10,16 +10,22 @@
 
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
   <depend>avg_msgs</depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
   <exec_depend>rcl_interfaces</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-fastapi</exec_depend>
   <exec_depend>python3-uvicorn</exec_depend>
   <!-- HH_260727 - GTK/WebKit runtime for the optional lightweight operator window. -->
   <exec_depend>python3-gi</exec_depend>
+
+  <!-- HH_260730 - Register UI state-policy regressions with colcon test. -->
+  <test_depend>python3-pytest</test_depend>
 
   <export>
     <build_type>ament_python</build_type>

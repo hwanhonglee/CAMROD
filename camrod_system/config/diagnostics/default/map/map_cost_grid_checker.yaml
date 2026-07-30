@@ -1,14 +1,18 @@
 map_cost_grid_checker:
   ros__parameters:
+    # --- Publish rate ---
     publish_rate_hz: 1.0
 
+    # --- Monitored topic ---
     cost_grid_topic: "/map/cost_grid/lanelet"
 
+    # --- Rate thresholds ---
     # HH_260721 - Event-driven lane grids have no valid minimum rate; stale/unknown checks remain active.
     expected_hz:    0.0
     hz_warn_ratio:  0.5
     hz_error_ratio: 0.2
 
+    # --- Staleness ---
     stale_timeout_s: 12.0
 
     # Unknown(-1) cell ratio thresholds.

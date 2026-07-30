@@ -6,15 +6,25 @@
 #   PlatformVelocityConverterNode 는 require_imu=true (기본값) 일 때
 #   IMU 가 오지 않으면 velocity 를 DEBUG 레벨로만 로그하고 출력을 차단한다.
 #   → velocity_input=OK 이고 output=STALE 이면 ERROR 로 노출
+# Layout: 1) publish rate, 2) monitored topics, 3) dummy source markers, 4) stale timeouts, 5) output rate thresholds.
 
 velocity_converter_checker:
   ros__parameters:
+    # =========================================================================
+    # 1. PUBLISH RATE
+    # =========================================================================
     publish_rate_hz: 1.0
 
+    # =========================================================================
+    # 2. MONITORED TOPICS
+    # =========================================================================
     velocity_topic: "/platform/status/velocity"
     imu_topic:      "/sensing/imu/data"
     output_topic:   "/sensing/platform_velocity_converter/twist_with_covariance"
 
+    # =========================================================================
+    # 3. DUMMY SOURCE MARKERS
+    # =========================================================================
     # HH_260729 - Either upstream hardware source may be intentionally
     # substituted. The checker names active sources and always reports WARN.
     platform_dummy_active_topic: "/platform/dummy_active"
@@ -22,10 +32,16 @@ velocity_converter_checker:
     imu_dummy_active_topic: "/sensing/imu/dummy_active"
     imu_dummy_active_timeout_s: 1.0
 
+    # =========================================================================
+    # 4. STALE TIMEOUTS
+    # =========================================================================
     velocity_stale_timeout_s:  1.0   # velocity 입력 timeout (s)
     imu_stale_timeout_s:       1.0   # IMU 입력 timeout (s)
     output_stale_timeout_s:    1.0   # 출력 timeout (s)
 
+    # =========================================================================
+    # 5. OUTPUT RATE THRESHOLDS
+    # =========================================================================
     # HH_260630 - platform_velocity_converter publishes on each 50 Hz platform
     # velocity update when IMU is available.
     expected_output_hz:  50.0

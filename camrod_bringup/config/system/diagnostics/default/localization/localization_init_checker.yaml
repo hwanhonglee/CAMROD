@@ -1,12 +1,15 @@
 localization_init_checker:
   ros__parameters:
+    # --- Publish rate / enable ---
     publish_rate_hz: 1.0
     enabled: false             # HH_260702 - Manual field goals do not require drop-zone start matching.
 
+    # --- Monitored topics ---
     ok_topic:       "/localization/drop_zone/match_ok"
     distance_topic: "/localization/drop_zone/match_distance"
     id_topic:       "/localization/drop_zone/match_id"
 
+    # --- Stale / grace / distance thresholds ---
     stale_timeout_s: 5.0       # No messages longer than this becomes STALE.
     grace_period_s: 30.0       # Unmatched during startup grace is WARN, then ERROR.
     dist_warn_m: 3.0           # Distance above this value becomes WARN.

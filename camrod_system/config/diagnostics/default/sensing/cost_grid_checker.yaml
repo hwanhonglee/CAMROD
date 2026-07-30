@@ -1,10 +1,18 @@
+# Cost grid checker configuration, organized as:
+#   1) general, 2) thresholds, 3) per-grid settings.
 cost_grid_checker:
   ros__parameters:
+    # =========================================================================
+    # 1. GENERAL
+    # =========================================================================
     publish_rate_hz: 1.0
 
     # HH_260630 - Monitor raw sensor-derived grids and the merged inflation grid.
     grid_names: ["lidar", "radar", "inflation"]
 
+    # =========================================================================
+    # 2. THRESHOLDS
+    # =========================================================================
     hz_warn_ratio: 0.7
     hz_error_ratio: 0.4
     stale_timeout_s: 2.0
@@ -14,6 +22,9 @@ cost_grid_checker:
     unknown_ratio_warn: 1.01
     unknown_ratio_error: 1.01
 
+    # =========================================================================
+    # 3. PER-GRID SETTINGS
+    # =========================================================================
     lidar:
       diagnostic_name: "/sensing/cost_grid/lidar"
       output_topic: "/sensing/cost_grid/lidar"

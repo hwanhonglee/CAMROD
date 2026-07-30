@@ -1,16 +1,22 @@
+# =========================================================================
+# 1. HW CHECKER (CPU / MEMORY / DISK / CPU TEMP)
+# =========================================================================
 /system/hw_checker:
   ros__parameters:
     # HH_260617: Keep CPU/memory/disk checks in sim but avoid CPU-temp false
     # negatives on developer PCs without exposed thermal sensors.
     publish_rate_hz: 1.0
+
     cpu:
       enabled: true
       warn_threshold: 90.0
       error_threshold: 98.0
+
     memory:
       enabled: true
       warn_threshold: 90.0
       error_threshold: 98.0
+
     disk:
       enabled: true
       # HH_260618: Sim planning/control smoke tests should not fail because the
@@ -19,19 +25,25 @@
       warn_threshold: 99.0
       error_threshold: 100.0
       path: "/"
+
     cpu_temp:
       enabled: false
       warn_threshold: 75.0
       error_threshold: 90.0
+
     container:
       host_proc_path: ""
       host_sys_path: ""
       host_rootfs_path: ""
 
+# =========================================================================
+# 2. GPU CHECKER
+# =========================================================================
 /system/gpu_checker:
   ros__parameters:
     # HH_260617: GPU is not required for sim planning/control smoke tests.
     publish_rate_hz: 1.0
+
     gpu:
       required: false
       util_warn_threshold: 85.0
@@ -40,5 +52,6 @@
       mem_error_threshold: 95.0
       temp_warn_threshold: 75.0
       temp_error_threshold: 85.0
+
     container:
       nvidia_smi_path: ""

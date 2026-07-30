@@ -1,12 +1,22 @@
 # LiDAR checker configuration.
+# Layout: 1) publish rate, 2) monitored streams, 3) per-stream blocks.
 
 lidar_checker:
   ros__parameters:
+    # =========================================================================
+    # 1. PUBLISH RATE
+    # =========================================================================
     publish_rate_hz: 1.0
 
+    # =========================================================================
+    # 2. MONITORED LIDAR STREAMS
+    # =========================================================================
     # Each name below becomes a /sensor/lidar/<name> diagnostic entry.
     lidar_names: ["main", "filtered"]
 
+    # =========================================================================
+    # 3. PER-STREAM BLOCKS
+    # =========================================================================
     main:
       # HH_260630 - Raw Vanjee output used by lidar_preprocessor_node.
       # HH_260702 - Raw frames can contain vendor NaN placeholders, so this

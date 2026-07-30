@@ -16,6 +16,7 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "camrod_system/diagnostic_detail.hpp"
+#include "camrod_system/graph_readiness.hpp"
 
 namespace camrod_system
 {
@@ -289,11 +290,14 @@ private:
       avg_msgs::msg::ModuleState module;
       module.stamp = stamp;
       module.module_name = name;
-      // HH_260721 - Startup is healthy preparation; missing diagnostics after grace are errors.
-      const bool within_startup_grace = now_sec - startup_time_sec_ <= startup_grace_s_;
-      module.level = within_startup_grace ?
-        avg_msgs::msg::ModuleState::OK : avg_msgs::msg::ModuleState::ERROR;
-      module.operating_state = within_startup_grace ? "STARTING" : "FAULT";
+      // HH_260730 - Missing required diagnostics are not healthy.  They remain
+      // a bounded STARTING/WARN condition only during launch grace, then
+      // become FAULT/ERROR until a real graph diagnostic arrives.
+      const bool within_startup_grace = now_sec - startup_time_sec_ < startup_grace_s_;
+      const auto readiness =
+        graph_readiness::requiredGraph(false, within_startup_grace);
+      module.level = module_level(readiness.severity);
+      module.operating_state = std::string(readiness.operating_state);
       module.message = within_startup_grace ?
         "waiting for first diagnostic" : "required diagnostics not received";
       modules[name] = module;
@@ -373,6 +377,19 @@ private:
       return avg_msgs::msg::ModuleState::WARN;
     }
     return avg_msgs::msg::ModuleState::OK;
+  }
+
+  static uint8_t module_level(graph_readiness::Severity severity)
+  {
+    switch (severity) {
+      case graph_readiness::Severity::kOk:
+        return avg_msgs::msg::ModuleState::OK;
+      case graph_readiness::Severity::kWarn:
+        return avg_msgs::msg::ModuleState::WARN;
+      case graph_readiness::Severity::kError:
+        return avg_msgs::msg::ModuleState::ERROR;
+    }
+    return avg_msgs::msg::ModuleState::ERROR;
   }
 
   static void merge_module_state(

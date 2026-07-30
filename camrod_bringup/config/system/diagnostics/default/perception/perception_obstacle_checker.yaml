@@ -1,4 +1,5 @@
 # Perception obstacle checker configuration.
+# Layout: 1) publish rate, 2) monitored stream list, 3) per-stream settings.
 #
 # HH_260702 - Keep these thresholds tolerant under full outdoor load. Detection
 # health is reported in diagnostics, while motion blocking is handled by live
@@ -10,12 +11,21 @@
 
 perception_obstacle_checker:
   ros__parameters:
+    # =========================================================================
+    # 1. PUBLISH RATE
+    # =========================================================================
     publish_rate_hz: 1.0
 
+    # =========================================================================
+    # 2. MONITORED OBSTACLE STREAMS
+    # =========================================================================
     obstacle_names:
       - "camera_detections"
       - "fused_obstacles"
 
+    # =========================================================================
+    # 3. PER-STREAM SETTINGS
+    # =========================================================================
     camera_detections:
       topic: "/perception/camera/detections_2d"
       type: "Detection2DArray"

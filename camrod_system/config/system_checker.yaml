@@ -1,10 +1,17 @@
 # HH_260630 - Graph readiness manifest for full CAMROD bringup.
 # Format: "topic|ros_type|min_publishers"; leave ros_type empty to check graph presence only.
+# Layout: 1) check timing, 2) required modules and alternatives, 3) module manifests.
 /system/system_checker:
   ros__parameters:
+    # =========================================================================
+    # 1. CHECK TIMING
+    # =========================================================================
     check_period_s: 1.0
     startup_grace_s: 30.0
 
+    # =========================================================================
+    # 2. REQUIRED MODULES AND ALTERNATIVE GROUPS
+    # =========================================================================
     required_modules:
       - map
       - sensing
@@ -23,6 +30,9 @@
         - reverse_parking_controller
         - apriltag_parking_controller
 
+    # =========================================================================
+    # 3. MODULE MANIFESTS
+    # =========================================================================
     # Package: camrod_map
     # Nodes publish lanelet visualization and the lane-boundary cost grid used by planning.
     map:
@@ -54,14 +64,17 @@
         # publish these common contracts.  Sensor checkers expose source detail.
         - "/sensing/gnss/ublox_gps_node/fix|sensor_msgs/msg/NavSatFix|1"
         - "/sensing/gnss/navheading|sensor_msgs/msg/Imu|1"
+
         # platform_velocity_converter stays active for either real or stationary
         # dummy data_ros input and owns these generated Avg message contracts.
         - "/sensing/imu/data|avg_msgs/msg/AvgImu|1"
         - "/sensing/platform_velocity_converter/twist_with_covariance|avg_msgs/msg/AvgTwistWithCovarianceStamped|1"
+
         # A disabled LiDAR emits valid empty clouds rather than fake obstacles.
         - "/sensing/lidar/vanjee/points_raw|sensor_msgs/msg/PointCloud2|1"
         - "/sensing/lidar/points_filtered|sensor_msgs/msg/PointCloud2|1"
         - "/sensing/cost_grid/lidar|avg_msgs/msg/AvgOccupancyGrid|1"
+
         # HH_260729 - All seven physical SEN0592 channels are active.
         - "/sensing/radar/front1/range|avg_msgs/msg/AvgRange|1"
         - "/sensing/radar/front2/range|avg_msgs/msg/AvgRange|1"
@@ -71,11 +84,13 @@
         - "/sensing/radar/right2/range|avg_msgs/msg/AvgRange|1"
         - "/sensing/radar/rear/range|avg_msgs/msg/AvgRange|1"
         - "/sensing/cost_grid/radar|avg_msgs/msg/AvgOccupancyGrid|1"
+
         # camera.launch.py -> front compressed stream and rear raw stream.
         - "/sensing/camera/econ_front/image_rect/compressed|sensor_msgs/msg/CompressedImage|1"
         - "/sensing/camera/econ_front/camera_info|sensor_msgs/msg/CameraInfo|1"
         - "/sensing/camera/econ_rear/image_raw|sensor_msgs/msg/Image|1"
         - "/sensing/camera/econ_rear/camera_info|sensor_msgs/msg/CameraInfo|1"
+
         # inflation_cost_grid_node -> merged static/dynamic safety grid.
         - "/planning/cost_grid/inflation|avg_msgs/msg/AvgOccupancyGrid|1"
 
@@ -96,15 +111,18 @@
         # checkers report DUMMY/WARN, so graph readiness only requires the wheel
         # bridge and public localization state here.
         - "/localization/input/wheel_odometry|avg_msgs/msg/AvgOdometry|1"
+
         # robot_localization/camrod selector -> public localization outputs.
         - "/localization/pose|avg_msgs/msg/AvgPoseStamped|1"
         - "/localization/pose_with_covariance|avg_msgs/msg/AvgPoseWithCovarianceStamped|1"
         - "/localization/odometry|avg_msgs/msg/AvgOdometry|1"
+
         # localization_monitor_node -> mode/state used by cmd_vel gates and UI diagnostics.
         - "/localization/mode|avg_msgs/msg/AvgLocalizationMode|1"
         - "/localization/state|avg_msgs/msg/AvgBool|1"
         - "/localization/state/degraded|avg_msgs/msg/AvgBool|1"
         - "/localization/state/dr_timeout|avg_msgs/msg/AvgBool|1"
+
         # localization_map_helper_node -> lanelet-aligned pose for planning snap tools.
         - "/localization/centerline_pose|avg_msgs/msg/AvgPoseWithCovarianceStamped|1"
 
@@ -137,12 +155,15 @@
         # HH_260720 - Diagnose the internal Avg pose/path topics, not their Nav2/RViz mirrors.
         - "/planning/goal_pose_snapped|avg_msgs/msg/AvgPoseStamped|1"
         - "/planning/lanelet_pose|avg_msgs/msg/AvgPoseStamped|1"
+
         # local_path_extractor -> stable map-fixed path slice used by RViz and safety gates.
         - "/planning/local_path|avg_msgs/msg/AvgPath|1"
+
         # planning_state_machine_node -> semantic mission state for parking/UI.
         - "/planning/state_machine/state|avg_msgs/msg/PlanningState|1"
         - "/planning/state_machine/mission_source|avg_msgs/msg/PlanningMissionKey|1"
         - "/planning/state_machine/scenario_id|avg_msgs/msg/PlanningScenario|1"
+
     # Package: camrod_control
     # HH_260720 - Control owns command gating plus campsite/drop-zone maneuvers.
     control:
@@ -156,6 +177,7 @@
         - "/control/cmd_vel|avg_msgs/msg/AvgTwist|1"
         - "/control/command_enabled|avg_msgs/msg/AvgBool|1"
         - "/control/cmd_vel_safety_gate/status|avg_msgs/msg/ModuleState|1"
+
         # HH_260720 - Check the controller's canonical status topic.
         - "/control/camping_site_maneuver_controller/status|avg_msgs/msg/ModuleState|1"
         - "/control/drop_zone_maneuver_controller/status|avg_msgs/msg/ModuleState|1"
