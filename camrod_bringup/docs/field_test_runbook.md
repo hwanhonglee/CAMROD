@@ -17,6 +17,7 @@ ros2 run camrod_bringup field_test_tool.sh config
 # HH_260727 - Confirm both role-specific GNSS ports before real bringup.
 ls -l /dev/ttyACM0 \
   /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0
+df -h /home/nvidia
 ```
 
 Expected:
@@ -31,6 +32,10 @@ Expected:
 - Both values come from the node-specific sections of
   `config/sensing/gnss/zed_f9p_rover.yaml`; launch device/baud arguments default
   to `__config__`.
+- Keep enough free storage for the selected rosbag duration. The 2026-07-30
+  preflight had about 16 GB free and 12 GB of old `.ros` data; do not delete old
+  evidence implicitly, but clear or archive it with operator approval before a
+  long recording if free space is marginal.
 
 ## 2. Start Bringup With Logging
 
@@ -99,7 +104,8 @@ The directory contains:
   `/rosout` Ranger target/limited/scale logs;
 - `meta/recovery_parameters.txt`: the actual gate, goal-recovery, and Ranger
   values used by the running nodes;
-- `meta/config_sync.txt`, `meta/git.txt`, recorded/missing topic lists;
+- `meta/config_sync.txt`, `meta/git.txt`, requested, initially available,
+  initially missing, and actually recorded topic lists plus `bag_info.txt`;
 - `FIELD_RESULT.txt`: TODO 11, 12, and 13 PASS/FAIL fields.
 
 The bag is necessary because each artifact answers a different question:
@@ -136,15 +142,86 @@ Use this while UI/RViz tests are running. It shows:
 ros2 run camrod_bringup field_test_tool.sh hz 5
 ```
 
+### 5.1 Localization rate and header-age probe
+
+<!-- HH_260730 - One synchronized probe distinguishes a slow physical GNSS
+input from EKF/selector delay and system-wide scheduling stalls. -->
+
+With production bringup already running, all software engage gates closed, and
+the platform physically unable to move, capture the complete real localization
+chain in one 60-second window:
+
+```bash
+ros2 run camrod_bringup field_test_tool.sh pose-latency 60
+```
+
+The command prints a table and writes a JSON report under
+`$HOME/camrod_field_logs/<timestamp>/pose_latency.json`. To select the report
+path explicitly:
+
+```bash
+ros2 run camrod_bringup field_test_tool.sh pose-latency \
+  60 /tmp/camrod_pose_latency.json
+```
+
+The eight rows cover physical GNSS, generated GNSS pose, IMU, platform wheel
+odometry, normalized wheel input, EKF output, adapter output, and final selected
+pose. Each row reports receive rate, inter-arrival p50/p95/max, and
+`now - header.stamp` p50/p95/max. A missing publisher, graph type mismatch,
+invalid/zero/future header, no valid message, or only one valid message returns
+a non-zero exit code and is retained in the JSON `errors` list.
+
+Run this probe once with RViz/WebKit/Brave and development builds stopped.
+Measure CPU over the same window with `field_test_tool.sh profile 60
+pose_latency_baseline`. Interpret the chain using
+`pose_latency_diagnosis.md`; do not raise the dual-GNSS 1 Hz runtime rate based
+on this stationary test alone.
+
 For the front camera and YOLO path specifically:
 
 ```bash
-ros2 run camrod_bringup field_test_tool.sh camera-yolo 12
+ros2 run camrod_bringup field_test_tool.sh camera-yolo 300
 ```
 
 `/perception/camera/yolo_image` is generated only while it has a subscriber.
 With no RViz/CLI image subscriber it can be silent even though TensorRT inference
 and `/perception/camera/detections_2d` are healthy.
+
+<!-- HH_260730 / TODOLIST 2 - Rate alone did not expose zero-length NvJPEG output. -->
+The command now runs an independent payload probe for the same interval. It
+requires exactly one compressed-image publisher and a non-dummy CameraInfo
+shape, decodes every received JPEG with OpenCV, and reports minimum/maximum
+payload bytes, decoded count, failures, shape mismatches, and dummy activity.
+Any invalid payload makes the command fail even when `ros2 topic hz` looks
+normal. The default duration is 300 seconds when the argument is omitted.
+
+### CPU/UI comparison
+
+Use one settled bringup per configuration and keep the same goal/path/cmd_vel
+state. Do not compare a planning-idle run with an active-planning run.
+
+```bash
+# A: RViz + lightweight WebKit window
+ros2 run camrod_bringup field_test_tool.sh launch \
+  rviz:=true enable_operator_ui_window:=true
+ros2 run camrod_bringup field_test_tool.sh profile 300 rviz_webkit
+
+# B: WebKit window only
+ros2 run camrod_bringup field_test_tool.sh launch \
+  rviz:=false enable_operator_ui_window:=true
+ros2 run camrod_bringup field_test_tool.sh profile 300 webkit_only
+
+# C: no local visualization window; HTTP UI backend remains available
+ros2 run camrod_bringup field_test_tool.sh launch \
+  rviz:=false enable_operator_ui_window:=false
+ros2 run camrod_bringup field_test_tool.sh profile 300 windows_off
+```
+
+Stop the previous bringup completely before starting the next configuration.
+Each profile captures `tegrastats`, one-second `top` samples, before/after
+process lists, memory/disk state, and the critical path/cost/camera rates over
+the same five-minute interval. Close unrelated build jobs and duplicate debug
+subscribers first; their CPU is not part of the robot runtime.
 
 If a behavior is wrong, collect this immediately before changing parameters.
 The important questions are:
@@ -192,6 +269,12 @@ Close software gates:
 ```bash
 ros2 run camrod_bringup field_test_tool.sh stop-gates
 ```
+
+`stop-gates` uses the stack-native `avg_msgs/msg/AvgBool` type, attempts all
+three manual/mission/platform close commands even if one owner is missing, and
+then requires both `/control/planning_engaged=false` and
+`/control/command_enabled=false`. A failure means the physical e-stop must
+remain engaged; it is not reported as a successful software stop.
 
 Open software gates only with explicit supervision:
 

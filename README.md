@@ -12,7 +12,9 @@
 
 <!-- HH_260729 - Promote the fail-visible disabled-sensor and radar/camera hardening release. -->
 
-Current release baseline: `v2.1.0` ([release notes](docs/V2_1_0_RELEASE_NOTES.md)).
+<!-- HH_260730 - Promote the measured field-readiness and state-contract release. -->
+
+Current release baseline: `v2.1.1` ([release notes](docs/V2_1_1_RELEASE_NOTES.md)).
 
 CAMROD is a ROS 2 Humble autonomous mobile robot stack. Route planning, local
 vehicle maneuvers, reverse parking, and hardware command authorization are
@@ -82,8 +84,8 @@ terminating the shared component container. The v2.0.9 complete-footprint
 lanelet guard, retained dynamic-obstacle latch, and 90/95% disk thresholds
 remain in force.
 
-<!-- HH_260729 - Keep post-tag route-recovery work distinct from the immutable v2.1.0 tag. -->
-The current `develop` branch also contains a post-v2.1.0 remediation for
+<!-- HH_260730 - Summarize the v2.1.1 field-readiness release. -->
+The v2.1.1 delta packages the post-v2.1.0 remediation for
 `TODOLIST.txt` items 11-13. A route-boundary stop now reports
 `ROUTE_SAFETY_HOLD`, preserves the violating command direction, permits only a
 bounded opposite-direction escape whose projected full footprint is clear, and
@@ -93,6 +95,17 @@ enabled; unrelated failures and operator cancel do not trigger automatic
 restart. Ranger translational speed is also reduced while commanded steering
 still differs from the rate-limited wheel angle. See
 [post-v2.1.0 TODO remediation](docs/V2_1_0_TODO_REMEDIATION.md).
+
+It also removes a localization selector callback-order delay, aligns the real
+EKF and controller at 15 Hz, gives manual and UI navigation the same RPP
+path-tracking profile while retaining manual final-yaw handling, and increases
+lookahead to reduce straight-line steering oscillation. UI and voice now share
+an explicit initialization/readiness/mission-state contract. Planning display
+and obstacle-monitor work is coalesced to their useful output rates, and field
+recording captures GNSS, wheel, EKF, controller, gate, radar evidence, and
+platform feedback on one timeline. Radar stop thresholds and fixed-return
+bands are unchanged in v2.1.1; LEFT2/RIGHT2 require the recorded clear-area
+field comparison in `TODOLIST.txt`.
 
 No post-fix full real-robot drive acceptance was performed while packaging this
 source/configuration baseline. The remaining radar clear-area, camera-rate,
