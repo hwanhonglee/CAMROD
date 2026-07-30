@@ -47,6 +47,12 @@ camrod_voice/
 | Publish | `/voice/voice_announcer/state` | `avg_msgs/VoiceState` | Playback state |
 | Subscribe | `/planning/state_machine/state` | `avg_msgs/PlanningState` | Navigation state changes |
 | Subscribe | `/platform/status` | `avg_msgs/AvgPlatformStatus` | E-stop, normalized battery, and charging edges |
+| Subscribe | `/system/status` | `avg_msgs/SystemStatus` | Required module health and startup state |
+| Subscribe | `/localization/mode` | `avg_msgs/AvgLocalizationMode` | Localization admission state |
+| Subscribe | `/control/cmd_vel_safety_gate/status` | `avg_msgs/ModuleState` | Final command-gate health and operating state |
+| Subscribe | `/control/planning_engaged` | `avg_msgs/AvgBool` | Unified manual-or-mission engage state |
+| Subscribe | `/tf`, `/tf_static` | TF | `map` to `robot_base_link` availability |
+| Action check | `/planning/navigate_to_pose` | `nav2_msgs/NavigateToPose` | Goal action-server availability |
 
 ## Audio Keys
 
@@ -64,16 +70,49 @@ Priority convention: `0=info`, `1=notice`, `2=warning`, `3=critical`. Critical r
 
 | Event | Audio key | Priority |
 |-------|-----------|----------|
-| Startup timer | `system.startup` | 0 |
-| State `READY` | `system.ready` | 1 |
-| State `GOAL_REACHED` | `navigation.arrived_campsite` | 1 |
-| State `RETURNING` or `WAIT_DZ` | `navigation.return_to_dropzone` | 1 |
-| State `WARN_RECOVERY` | `safety.obstacle` | 2 |
+| Startup timer | `system.startup` | 1 |
+| First complete readiness transition | `system.ready` | 1 |
+| Engaged, gate-enabled `RUNNING` site/manual route | `navigation.to_campsite` | 1 |
+| Engaged, gate-enabled released drop-zone route | `navigation.return_to_dropzone` | 1 |
+| `GOAL_REACHED` after an announced site/manual route | `navigation.arrived_campsite` | 1 |
+| Engaged control gate enters cost/route-safety hold | `safety.obstacle` | 2 |
 | E-stop `false -> true` | `safety.estop` | 3 |
 | E-stop `true -> false` | `safety.estop_released` | 3 |
 | Battery `<= 0.20` | `battery.low` | 1 |
 | Battery `<= 0.10` | `battery.critical` | 2 |
 | Charging `false -> true` | `battery.charging` | 1 |
+
+`WAIT_DZ` is a stopped drop-zone wait state and intentionally has no navigation
+audio. A generic planning `WARN_RECOVERY` also has no obstacle audio because it
+can represent localization, graph, or lifecycle health; obstacle speech is tied
+to the final control gate's cost/route hold instead.
+
+## Readiness contract
+
+`system.ready` is announced once per adapter process, after `system.startup`,
+only when all of these conditions are simultaneously true:
+
+1. `/system/status` contains every configured required module (`map`, `sensing`,
+   `localization`, `planning`, `control`, `platform`, and `system` by default),
+   no module is health level `ERROR`, and none reports a startup/fault/inactive
+   state. An explicit `WARN`, including intentional `DUMMY DATA`, remains
+   degraded-but-operational and is still shown by system diagnostics. Required
+   graph gaps report `STARTING` during startup grace and `FAULT/ERROR`
+   afterward, so missing planner, controller, behavior, or navigator servers
+   block readiness. The
+   `/planning/navigate_to_pose` action server must also be discoverable.
+2. Planning has published an idle semantic state: `READY` or `WAIT_DZ`.
+3. `/localization/mode` is `NORMAL` and TF `map -> robot_base_link` is available.
+4. The final command gate reports no `ERROR` and is `STANDBY` or `CHARGING`.
+5. `/platform/status` has been received with e-stop released and
+   `error_code == 0`.
+6. `/control/planning_engaged` has been received and is false.
+
+During a mission, movement audio additionally waits for unified engage to be
+true and for the final command gate to report `ENABLED` (or
+`DEPARTING_CHARGER`). Losing and reacquiring localization does not repeat the
+one-shot ready announcement. An explicit disengage/re-engage may repeat the
+movement announcement once, after the gate enables again.
 
 ## Launch
 

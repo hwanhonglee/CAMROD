@@ -1,9 +1,11 @@
 planning_lifecycle_checker:
   ros__parameters:
+    # --- Rates and stale threshold ---
     publish_rate_hz: 1.0           # 진단 발행 주기 (Hz)
     poll_rate_hz: 2.0              # lifecycle get_state 폴링 주기 (Hz)
     stale_timeout_s: 5.0          # 마지막 응답 후 이 시간(초) 초과 시 ERROR
 
+    # --- Monitored lifecycle nodes ---
     node_names:
       - "/planning/planner_server"
       - "/planning/controller_server"

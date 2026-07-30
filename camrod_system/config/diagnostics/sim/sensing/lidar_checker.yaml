@@ -2,15 +2,19 @@
 # not launch the raw Vanjee driver/preprocessor chain.
 /system/lidar_checker:
   ros__parameters:
+    # --- Publish rate and monitored streams ---
     publish_rate_hz: 1.0
     lidar_names: ["filtered"]
 
+    # --- Per-stream block: filtered ---
     filtered:
       topic: "/sensing/lidar/points_filtered"
+      # Rate thresholds
       expected_hz: 10.0
       hz_warn_ratio: 0.7
       hz_error_ratio: 0.4
       stale_timeout_s: 2.0
+      # Point count and NaN ratio limits
       min_point_count: 1
       max_point_count: 0
       max_nan_ratio: 0.0

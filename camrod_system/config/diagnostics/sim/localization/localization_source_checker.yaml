@@ -1,12 +1,15 @@
 /system/localization_source_checker:
   ros__parameters:
+    # --- Publish rate ---
     publish_rate_hz: 1.0
 
+    # --- Monitored source topic and source names ---
     source_topic: "/localization/pose_source"
     # HH_260617: EKF sim pose_selector publishes primary_filter; this is OK.
     primary_source: "primary_filter"
     fallback_source: "fallback_source"
 
+    # --- Warn/error thresholds ---
     stale_timeout_s: 5.0
     fallback_warn_s: 10.0
     fallback_error_s: 60.0

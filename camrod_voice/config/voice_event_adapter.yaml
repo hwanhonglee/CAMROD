@@ -1,10 +1,46 @@
+# Voice event adapter parameters are grouped into numbered sections:
+#   1) audio enables and thresholds, 2) topics, 3) readiness and mission.
 /voice/voice_event_adapter:
   ros__parameters:
+    # =========================================================================
+    # 1. AUDIO ENABLES AND THRESHOLDS
+    # =========================================================================
     startup_delay_s: 3.0
     enable_nav_audio: true
     enable_estop_audio: true
     enable_battery_audio: true
     # HH_260720 - Announce charging from the unified /platform/status message.
     enable_charging_audio: true
+
     battery_low_threshold: 0.20
     battery_critical_threshold: 0.10
+
+    # =========================================================================
+    # 2. TOPICS
+    # =========================================================================
+    platform_status_topic: "/platform/status"
+    system_status_topic: "/system/status"
+    localization_mode_topic: "/localization/mode"
+    control_gate_status_topic: "/control/cmd_vel_safety_gate/status"
+    planning_engaged_topic: "/control/planning_engaged"
+    navigate_to_pose_action: "/planning/navigate_to_pose"
+
+    # =========================================================================
+    # 3. READINESS AND MISSION
+    # =========================================================================
+    readiness_required_modules:
+      - map
+      - sensing
+      - localization
+      - planning
+      - control
+      - platform
+      - system
+    readiness_map_frame: "map"
+    readiness_base_frame: "robot_base_link"
+    readiness_check_period_s: 0.5
+
+    # NORMAL=0. DEGRADED/DR_ONLY/INVALID are not mission-ready.
+    max_ready_localization_mode: 0
+
+    return_mission_key: "drop_zone"

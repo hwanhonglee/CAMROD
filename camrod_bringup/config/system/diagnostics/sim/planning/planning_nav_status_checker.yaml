@@ -3,6 +3,7 @@
   ros__parameters:
     publish_rate_hz: 1.0
     nav_status_topic: "/planning/navigate_to_pose/_action/status"
+
     # HH_260702 - Keep sim aligned with real diagnostics: action-status
     # freshness is advisory and should not raise SYSTEM ERROR.
     stale_timeout_s: 0.0
@@ -10,8 +11,10 @@
     # HH_260618: Sim planning smoke tests can finish and then stay idle without
     # continuous Nav2 action-status samples.
     terminal_status_stale_ok: true
+
     # HH_260724 - Sim site entry uses the same Nav2-to-maneuver ownership handoff as the robot.
     service_state_topic: "/service/state"
     suppress_abort_during_service_maneuver: true
+
     abort_warn: 2
     abort_error: 5

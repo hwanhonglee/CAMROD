@@ -8,14 +8,17 @@ planning_costmap_checker:
     # full costmap publication can be sparse while the local layer is alive.
     global_costmap_updates_topic: "/planning/global_costmap/costmap_updates"
     local_costmap_updates_topic: "/planning/local_costmap/costmap_updates"
+
     # HH_260630 - Match nav2_base.yaml costmap publish_frequency values.
     global_expected_hz: 0.5
     local_expected_hz: 2.0
     hz_warn_ratio: 0.7
     hz_error_ratio: 0.4
     hz_window_s: 6.0
+
     global_stale_timeout_s: 3.0
     local_stale_timeout_s: 1.5
+
     # HH_260703 - Nav2 costmap publication can pause under field CPU load and
     # is already ignored by planning_state_machine for auto-estop decisions.
     # Keep it visible as WARN so UI/logs report performance without blocking.

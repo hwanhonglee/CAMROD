@@ -221,15 +221,19 @@ stateDiagram-v2
 - 🟡 `WAITING_FOR_READY` — `engaged=true` AND `ready=false`
 - 🔴 `STOP` — `engaged=false`
 
-<!-- HH_260721 - Separate the three-level health contract from service operation progress. -->
-`ready` is `true` when `/system/diagnostics_agg` has at least one entry and zero
-ERROR-level statuses. Incoming ROS `STALE` entries are normalized to `ERROR`
-because missing fresh data is not safe for operation. The robot header displays
-this health independently from the symbolic `AvgServiceState` progress such as
-`DROP_ZONE_WAIT`, `MOVING_TO_SITE`, `WAITING_FOR_RETURN_REQUEST`,
-`WAITING_FOR_CHARGING`, `CHARGING`, `DEPARTING_CHARGER`, and
-`OPERATOR_STOPPED`. Operator and guest status labels are English and these
-normal service states do not create a warning by themselves.
+<!-- HH_260730 - Keep UI readiness aligned with the voice readiness contract. -->
+`ready` requires present, non-starting map, sensing, localization, planning,
+control, platform, and system modules with no `ERROR`, NORMAL localization,
+map-to-base TF, the Nav2 action server, a valid control-gate state, a
+non-faulted platform, and the canonical planning-engaged state. `WARN` remains
+visible as degraded health but is operational; this lets an intentional
+`enable_*:=false` DUMMY DATA test leave initialization without pretending the
+hardware is OK. Required graph gaps carry `STARTING` during startup grace and
+become `FAULT/ERROR` afterward, so they still block readiness. Manual RViz and
+regulated UI goals share the mission phases
+`GOAL_RECEIVED`, `PATH_PREPARING`, `DRIVING`, `SAFETY_STOP`, and `ARRIVED`.
+Until all startup prerequisites have first become ready, the mission phase is
+`INITIALIZING`, regardless of an early `/service/state` value.
 
 ### Frontend Path Resolution
 
@@ -286,9 +290,15 @@ When `set_destination(site="B3", ...)` is called:
 
 | Topic | Type | Required | Producer | Rate | Meaning |
 |---|---|---|---|---|---|
-| `/system/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | Yes | camrod_system | 1 Hz | Module health; used to compute `ready` and `operation_mode` |
+| `/system/diagnostics_agg` | `diagnostic_msgs/DiagnosticArray` | Yes | camrod_system | 1 Hz | Detailed diagnostic health shown independently from readiness |
+| `/system/status` | `avg_msgs/SystemStatus` | Yes | camrod_system | 2 Hz | Required module health and operating state |
+| `/planning/state_machine/state` | `avg_msgs/PlanningState` | Yes | camrod_planning | event | Source-aware manual/UI mission progress |
+| `/planning/goal_source` | `std_msgs/String` | Yes | camrod_planning | transient state | Distinguishes manual RViz and regulated UI goals |
+| `/planning/navigate_to_pose/_action/status` | `action_msgs/GoalStatusArray` | Yes | Nav2 | event | Goal acceptance and path preparation progress |
+| `/control/planning_engaged` | `avg_msgs/AvgBool` | Yes | camrod_control | transient state | Canonical manual-or-mission engage state |
+| `/control/cmd_vel_safety_gate/status` | `avg_msgs/ModuleState` | Yes | camrod_control | transient state | Gate readiness and safety/boundary hold |
+| `/localization/mode` | `avg_msgs/AvgLocalizationMode` | Yes | camrod_localization | event | NORMAL localization prerequisite |
 | `/service/state` | `avg_msgs/AvgServiceState` | Yes | control, parking, UI | event | Normal service progress, separate from health severity |
-| `/planning/engaged` | `std_msgs/Bool` | Yes | camrod_planning | event | Current engagement state of `cmd_vel_gate` |
 | `/ui/selected_destination` | `avg_msgs/UiDestinationCommand` | No | self (republish) | event | Destination command; consumed to dispatch mission key and site goal |
 | `/battery_percentage` | `std_msgs/Int32` | No | external | event | Battery SOC 0–100; forwarded to WebSocket clients |
 
@@ -446,9 +456,13 @@ Add the site to `site_names` via node parameter and ensure the corresponding ent
 <details>
 <summary><strong>WAITING_FOR_READY never clears</strong></summary>
 
-The UI enters `WAITING_FOR_READY` when `engaged=true` but `ready=false`. `ready` is false when `/system/diagnostics_agg` has zero entries or at least one ERROR-level entry.
-
-Run `ros2 topic echo /system/diagnostics_agg` and look for `level: 2` entries. If `/system/diagnostics_agg` is empty, `camrod_system` may not be running: `ros2 node list | grep diagnostics_agg`.
+The UI enters `WAITING_FOR_READY` when `engaged=true` but a readiness
+prerequisite is missing, starting, faulted, or in `ERROR`. An ordinary `WARN`
+is shown as degraded system health without forcing this state. Inspect
+`ready_message` from `GET /ui/state`, then
+check `/system/status`, `/localization/mode`, `map→robot_base_link` TF,
+`/control/cmd_vel_safety_gate/status`, `/control/planning_engaged`, and the
+`/planning/navigate_to_pose` action server named by that message.
 
 </details>
 

@@ -3,8 +3,10 @@
 /system/planning_costmap_checker:
   ros__parameters:
     publish_rate_hz: 1.0
+
     global_costmap_topic: "/planning/global_costmap/costmap"
     local_costmap_topic: "/planning/local_costmap/costmap"
+
     # HH_260630: Nav2 costmaps can stay latched while navigation is idle.
     # Keep readiness green here; goal-run validation measures live traffic separately.
     global_expected_hz: 0.0
@@ -12,5 +14,6 @@
     hz_warn_ratio: 0.7
     hz_error_ratio: 0.4
     hz_window_s: 6.0
+
     global_stale_timeout_s: 3600.0
     local_stale_timeout_s: 3600.0

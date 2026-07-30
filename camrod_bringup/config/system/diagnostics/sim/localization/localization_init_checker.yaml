@@ -4,11 +4,14 @@
     # Keep topics but make drop-zone distance non-blocking in sim diagnostics.
     publish_rate_hz: 1.0
     enabled: false
+
     ok_topic: "/localization/drop_zone/match_ok"
     distance_topic: "/localization/drop_zone/match_distance"
     id_topic: "/localization/drop_zone/match_id"
+
     stale_timeout_s: 10.0
     grace_period_s: 9999.0
     warn_during_grace: false
+
     dist_warn_m: 9999.0
     dist_error_m: 9999.0

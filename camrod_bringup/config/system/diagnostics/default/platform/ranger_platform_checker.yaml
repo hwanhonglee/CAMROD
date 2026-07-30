@@ -1,10 +1,17 @@
 # Ranger Platform Checker 설정 파일
 # ranger_ros2 가 발행하는 섀시 토픽 기반 플랫폼 진단
+# Layout: 1) publish rate, 2) subscribed topics, 3) stale timeout, 4) odometry check, 5) battery thresholds, 6) actuator thresholds.
 
 ranger_platform_checker:
   ros__parameters:
+    # =========================================================================
+    # 1. PUBLISH RATE
+    # =========================================================================
     publish_rate_hz: 1.0              # 진단 발행 주기 (Hz)
 
+    # =========================================================================
+    # 2. SUBSCRIBED TOPICS
+    # =========================================================================
     # 구독 토픽
     system_state_topic:   "/system_state"
     # HH_260720 - Read normalized CAN/BMS fields from the generated platform status.
@@ -12,15 +19,24 @@ ranger_platform_checker:
     actuator_state_topic: "/actuator_state"
     odom_topic:           "/odom"
 
+    # =========================================================================
+    # 3. STALE TIMEOUT
+    # =========================================================================
     # system_state / actuator_state STALE 판정 타임아웃 (초)
     stale_timeout_s: 1.0
 
+    # =========================================================================
+    # 4. ODOMETRY CHECK
+    # =========================================================================
     # 오도메트리 체크
     odom_expected_hz:    50.0      # ranger_ros2 기본 update_rate
     odom_hz_warn_ratio:  0.7       # actual/expected < 이 값 → WARN
     odom_hz_error_ratio: 0.4       # actual/expected < 이 값 → ERROR
     odom_stale_timeout_s:  1.0       # 이 시간(초) 이상 무응답 → STALE
 
+    # =========================================================================
+    # 5. BATTERY THRESHOLDS
+    # =========================================================================
     # 배터리 임계값 (Ranger 공칭 전압: 46~50V)
     battery:
       voltage_warn:  43.0          # V 이하 → WARN
@@ -30,6 +46,9 @@ ranger_platform_checker:
       temp_warn:     45.0          # °C 이상 → WARN
       temp_error:    55.0          # °C 이상 → ERROR
 
+    # =========================================================================
+    # 6. ACTUATOR THRESHOLDS
+    # =========================================================================
     # 액추에이터 임계값
     actuator:
       driver_temp_warn:    60.0    # °C 이상 → WARN

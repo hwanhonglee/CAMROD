@@ -71,6 +71,10 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
   RENAME voice_event_adapter_node
 )
+install(FILES
+  src/voice_event_policy.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 # HH_260728 - Install the audited Bluetooth amplifier provisioning helper as
 # an explicit administrator tool; it is never run automatically by bringup.
@@ -83,5 +87,17 @@ install(PROGRAMS
 install(DIRECTORY launch/   DESTINATION share/${PROJECT_NAME}/launch)
 install(DIRECTORY config/   DESTINATION share/${PROJECT_NAME}/config)
 install(DIRECTORY resource/ DESTINATION share/${PROJECT_NAME}/resource)
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  # Isolate tests from user-site pytest plugins that may target a newer pytest.
+  set(ENV{PYTEST_DISABLE_PLUGIN_AUTOLOAD} "1")
+  ament_add_pytest_test(
+    test_voice_event_policy
+    test/test_voice_event_policy.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+endif()
 
 ament_package()

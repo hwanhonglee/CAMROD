@@ -35,6 +35,9 @@ setup(
         *_collect_data_files("camrod_ui_guest/assets/guest_frontend", f"share/{package_name}/camrod_ui_guest/assets/guest_frontend"),
     ],
     install_requires=["setuptools", "fastapi", "uvicorn[standard]"],
+    # HH_260730 - Let `colcon test` discover the pure readiness/mission policy
+    # regression suite instead of relying on an out-of-band direct invocation.
+    tests_require=["pytest"],
     zip_safe=True,
     maintainer="hong",
     maintainer_email="hwanhong57@gmail.com",

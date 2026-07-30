@@ -48,27 +48,16 @@ const SERVICE_STATE = Object.freeze({
 const SERVICE_STATE_NAME_BY_ID = Object.freeze(
   Object.fromEntries(Object.entries(SERVICE_STATE).map(([name, id]) => [id, name]))
 );
-const SERVICE_STATE_LABELS = Object.freeze({
-  // HH_260721 - Display operational progress in English on every robot UI screen.
-  PREPARING: 'Preparing',
-  DROP_ZONE_WAIT: 'Waiting at drop zone',
-  MOVING_TO_SITE: 'Moving to site',
-  SITE_ARRIVED: 'Arrived at site',
-  RETURNING_TO_DROP_ZONE: 'Returning to drop zone',
-  GUEST_RECALL_SERVICE: 'Guest recall requested',
-  SITE_ENTRY: 'Entering site',
-  UNLOAD_WAIT: 'Waiting for unloading',
-  RECALL_TO_SITE_ROAD: 'Moving to recall point',
-  GUEST_LOADING_WAIT: 'Waiting for loading',
-  RETURN_WITH_CARGO: 'Leaving site with cargo',
-  DROP_ZONE_PARKING: 'Reverse parking',
-  WAITING_FOR_RETURN_REQUEST: 'Waiting for return request',
-  WAITING_FOR_CHARGING: 'Waiting for charger connection',
-  CHARGING: 'Charging',
-  DEPARTING_CHARGER: 'Departing charger',
-  DEPARTING_DROP_ZONE: 'Departing drop zone',
-  OPERATOR_STOPPED: 'Operator stopped',
-  MANUAL_DRIVING: 'Manual driving',
+// HH_260730 - Manual RViz and regulated UI goals share one runtime vocabulary.
+const MISSION_PHASE_LABELS = Object.freeze({
+  INITIALIZING: 'Initialization',
+  READY: 'Ready',
+  GOAL_RECEIVED: 'Goal received',
+  PATH_PREPARING: 'Preparing path',
+  DRIVING: 'Driving',
+  SAFETY_STOP: 'Safety stop',
+  ARRIVED: 'Arrived',
+  STOPPED: 'Stopped',
 });
 const SYSTEM_HEALTH_LABELS = Object.freeze({
   // HH_260721 - Keep health labels English and independent from service progress.
@@ -96,9 +85,11 @@ const MOVING_SERVICE_STATES = new Set([
   SERVICE_STATE.DEPARTING_CHARGER,
   SERVICE_STATE.DEPARTING_DROP_ZONE,
 ]);
-const MANUAL_DRIVE_DISPLAY_STATES = new Set([
-  'PREPARING',
-  'DROP_ZONE_WAIT',
+const ACTIVE_MANUAL_PHASES = new Set([
+  'GOAL_RECEIVED',
+  'PATH_PREPARING',
+  'DRIVING',
+  'SAFETY_STOP',
 ]);
 const CRITICAL_BATTERY_STOP_PERCENT = 20;
 const MISSION_DISPATCH_MINIMUM_PERCENT = 35;
@@ -163,7 +154,7 @@ const batteryPolicyStatus = (batteryPct, batteryReturnState) => {
 };
 
 // HH_260721 - Reuse one health/service presentation on waiting and destination screens.
-function RuntimeStatus({ systemHealth, serviceStateName, batteryPolicy }) {
+function RuntimeStatus({ systemHealth, missionPhase, batteryPolicy }) {
   return (
     <div className="ch-runtime-status" aria-live="polite">
       <span className={`ch-runtime-line health-${systemHealth.toLowerCase()}`}>
@@ -172,7 +163,7 @@ function RuntimeStatus({ systemHealth, serviceStateName, batteryPolicy }) {
       </span>
       <span className="ch-runtime-line service-state">
         <span className="ch-runtime-dot" />
-        {SERVICE_STATE_LABELS[serviceStateName] || serviceStateName}
+        {MISSION_PHASE_LABELS[missionPhase] || MISSION_PHASE_LABELS.INITIALIZING}
       </span>
       {batteryPolicy && (
         <span className={`ch-runtime-line battery-policy policy-${batteryPolicy.tone}`}>
@@ -995,6 +986,8 @@ function App() {
   // HH_260721 - Display operational progress independently from diagnostic health.
   const [serviceStateName, setServiceStateName] = useState('PREPARING');
   const [systemHealth, setSystemHealth] = useState('STARTING');
+  const [missionPhase, setMissionPhase] = useState('INITIALIZING');
+  const [missionSource, setMissionSource] = useState('none');
   const [headlightState, setHeadlightState] = useState(false); // 260708: 전조등 토글
   const [signalLevel, setSignalLevel] = useState(() => {
     if (!navigator.onLine) return 0;
@@ -1118,14 +1111,17 @@ function App() {
 
   // 현재 ON인 사이트 (이동 중인 사이트)
   const activeSite = SITE_NAMES.find(s => states[s]) || null;
-  // HH_260724 - Manual ENGAGE is motion intent even when no campsite button owns the mission.
+  // HH_260730 - A manual mission exists only after a source-aware RViz goal,
+  // not merely because the operator has armed engage.
   const manualDriveActive =
-    Boolean(engageState)
+    missionSource === 'manual'
     && !activeSite
     && !selectedSite
     && !arrivedSite
     && !isReturning
-    && MANUAL_DRIVE_DISPLAY_STATES.has(serviceStateName);
+    && ACTIVE_MANUAL_PHASES.has(missionPhase);
+  const displayedReturning =
+    isReturning && missionPhase !== 'INITIALIZING';
 
   // ── 운영시간 게이트 확인 ───────────────────────────────────────────────
   const isWithinOperatingHours = () => {
@@ -1327,6 +1323,14 @@ function App() {
       if ('system_health' in data) {
         setSystemHealth(String(data.system_health || 'STARTING').toUpperCase());
       }
+      if ('mission_phase' in data) {
+        setMissionPhase(
+          String(data.mission_phase || 'INITIALIZING').toUpperCase()
+        );
+      }
+      if ('mission_source' in data) {
+        setMissionSource(String(data.mission_source || 'none').toLowerCase());
+      }
       // HJ_260601: 게스트 호출 알림: {"guest_recall": true} 수신
       if (data.guest_recall) {
         setShowGuestRecall(true);
@@ -1473,8 +1477,6 @@ function App() {
   const dateStr = currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
   const timeStr = currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
-  const displayedServiceStateName = manualDriveActive ? 'MANUAL_DRIVING' : serviceStateName;
-
   // 대기 화면: 모든 토글 OFF 상태일 때 표시, 클릭/터치 시 토글 화면으로 전환
   if (showWaiting) {
     const modalData = SIDE_BUTTONS.find(b => b.id === activeModal);
@@ -1524,7 +1526,7 @@ function App() {
             <div className="wh-right-group">
               <RuntimeStatus
                 systemHealth={systemHealth}
-                serviceStateName={displayedServiceStateName}
+                missionPhase={missionPhase}
                 batteryPolicy={currentBatteryPolicy}
               />
               <div className="wh-wifi">
@@ -1734,7 +1736,7 @@ function App() {
           <div className="ch-right">
             <RuntimeStatus
               systemHealth={systemHealth}
-              serviceStateName={displayedServiceStateName}
+              missionPhase={missionPhase}
               batteryPolicy={currentBatteryPolicy}
             />
             <div className="wh-wifi ch-wifi">
@@ -1760,7 +1762,14 @@ function App() {
 
         {/* ── 왼쪽: 사이트 이미지 프리뷰 패널 ── */}
         <div className="preview-panel">
-          {selectedSite ? (
+          {missionPhase === 'INITIALIZING' ? (
+            <>
+              <span className="preview-placeholder-title">Initialization</span>
+              <span className="preview-placeholder">
+                센서, 위치, 지도 및 주행 시스템을 확인하고 있습니다
+              </span>
+            </>
+          ) : selectedSite ? (
             <>
               <img
                 src={`${process.env.PUBLIC_URL}/${SITE_IMAGES[selectedSite]}`}
@@ -1787,7 +1796,7 @@ function App() {
                 복귀
               </button>
             </>
-          ) : isReturning ? (
+          ) : displayedReturning ? (
             <>
               <span className="preview-placeholder-title">Drop Zone</span>
               <p className="preview-returning">로봇이 Drop Zone (대기 장소)로 이동중입니다.</p>
@@ -1808,8 +1817,10 @@ function App() {
             </>
           ) : manualDriveActive ? (
             <>
-              <span className="preview-placeholder-title">Manual Drive</span>
-              <p className="preview-moving">배송 로봇이 수동 주행중입니다.</p>
+              <span className="preview-placeholder-title">Manual RViz Goal</span>
+              <p className="preview-moving">
+                {MISSION_PHASE_LABELS[missionPhase] || missionPhase}
+              </p>
               <p className="preview-question">운행을 정지하시겠습니까?</p>
               <div className="preview-yn-btns">
                 <button className="preview-stop-btn" onClick={handleManualStop}>예</button>

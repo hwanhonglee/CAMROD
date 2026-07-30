@@ -2,11 +2,18 @@
 #
 # 진단 태스크 이름 형식: "radar_checker: /sensor/radar/<NAME>"
 # (diagnostic_updater 가 "<node_name>: <task_name>" 으로 자동 생성)
+# Layout: 1) publish rate, 2) monitored channels, 3) global dummy marker, 4) per-channel blocks.
 
 radar_checker:
   ros__parameters:
+    # =========================================================================
+    # 1. PUBLISH RATE
+    # =========================================================================
     publish_rate_hz: 1.0          # 진단 발행 주기 (Hz)
 
+    # =========================================================================
+    # 2. MONITORED RADAR CHANNELS
+    # =========================================================================
     # HH_260729 - All seven physical channels are active. For an explicit
     # field-test isolation, add disabled_radar_names with the sensor names.
     # The empty setting is intentionally omitted because ROS 2 Humble can
@@ -14,6 +21,9 @@ radar_checker:
     # directly; the node's declared default is already an empty string array.
     radar_names: ["FRONT1", "FRONT2", "LEFT1", "LEFT2", "RIGHT1", "RIGHT2", "REAR"]
 
+    # =========================================================================
+    # 3. GLOBAL DUMMY MARKER
+    # =========================================================================
     # HH_260729 - enable_radar:=false uses this global marker and reports all
     # seven channels as WARN "DUMMY DATA". Each sensor block also owns a
     # channel marker for sensor_enabled[i]:=false, so one disabled radar never
@@ -22,6 +32,9 @@ radar_checker:
     dummy_active_topic: "/sensing/radar/dummy_active"
     dummy_active_timeout_s: 1.0
 
+    # =========================================================================
+    # 4. PER-CHANNEL BLOCKS
+    # =========================================================================
     # ── 각 센서 설정 ──────────────────────────────────────────────────────
     #
     # stuck_min_*  : range 가 최솟값 근처에 고착 → 센서 전방 차폐·물리 충격 의심

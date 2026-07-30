@@ -3,12 +3,15 @@
     # HH_260617: Sim fake sensors can start before the converter and TF settle;
     # keep the same topics but allow a slightly larger startup/stale window.
     publish_rate_hz: 1.0
+
     velocity_topic: "/platform/status/velocity"
     imu_topic: "/sensing/imu/data"
     output_topic: "/sensing/platform_velocity_converter/twist_with_covariance"
+
     velocity_stale_timeout_s: 3.0
     imu_stale_timeout_s: 3.0
     output_stale_timeout_s: 3.0
+
     expected_output_hz: 10.0
     hz_warn_ratio: 0.5
     hz_error_ratio: 0.2

@@ -3,11 +3,14 @@
 /system/localization_mode_checker:
   ros__parameters:
     publish_rate_hz: 1.0
+
     status_topic: "/localization/status"
     health_topic: "/localization/state"
     stale_timeout_s: 3.0
+
     conf_warn: 0.5
     conf_error: 0.2
     innov_warn: 10.0
     innov_error: 50.0
+
     require_sensor_flags: false

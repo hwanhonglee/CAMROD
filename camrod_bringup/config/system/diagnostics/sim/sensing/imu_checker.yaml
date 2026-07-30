@@ -2,14 +2,18 @@
 # CV7 hardware rate. Keep the same topic while validating sim health at 10 Hz.
 /system/imu_checker:
   ros__parameters:
+    # --- Publish rate and monitored streams ---
     publish_rate_hz: 1.0
     imu_names: ["main"]
 
+    # --- Per-stream block: main ---
     main:
       topic: "/sensing/imu/data"
+      # Rate thresholds
       expected_hz: 10.0
       hz_warn_ratio: 0.7
       hz_error_ratio: 0.4
       stale_timeout_s: 2.0
+      # Acceleration magnitude thresholds
       accel_magnitude_warn: 30.0
       accel_magnitude_error: 50.0

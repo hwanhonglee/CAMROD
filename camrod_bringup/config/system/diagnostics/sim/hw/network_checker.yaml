@@ -4,12 +4,15 @@
     # Disable all network tasks so /system/status reflects planning/control health,
     # not the developer PC's wlan0 availability.
     interface: "wlan0"
+
     connection:
       enabled: false
+
     signal:
       enabled: false
       rssi_warn: -70.0
       rssi_error: -85.0
+
     quality:
       enabled: false
       drop_rate_warn: 1.0

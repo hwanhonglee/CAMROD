@@ -2,15 +2,19 @@
 # simulation tick rate. Hardware Ranger cadence remains in the default profile.
 /system/wheel_odometry_checker:
   ros__parameters:
+    # --- Publish rate and monitored streams ---
     publish_rate_hz: 1.0
     wheel_names: ["main"]
 
+    # --- Per-stream block: main ---
     main:
       # HH_260721 - Keep simulation diagnostics on the canonical adapter output.
       topic: "/localization/input/wheel_odometry"
+      # Rate thresholds
       expected_hz: 10.0
       hz_warn_ratio: 0.7
       hz_error_ratio: 0.4
       stale_timeout_s: 2.0
+      # Speed thresholds
       max_speed_warn_ms: 3.0
       max_speed_error_ms: 5.0

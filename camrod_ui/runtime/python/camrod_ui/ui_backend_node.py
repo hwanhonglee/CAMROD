@@ -16,16 +16,21 @@ from typing import Any, Dict, List, Optional, Set
 
 import rclpy
 import yaml
+from action_msgs.msg import GoalStatus, GoalStatusArray
 from action_msgs.srv import CancelGoal
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from avg_msgs.msg import (
     AvgServiceState,
     AvgBool,
+    AvgLocalizationMode,
     AvgPlatformStatus,
     AvgPoseStamped,
     CampsiteOccupancy,
+    ModuleState,
     MotionOperation,
     PlanningMissionKey,
+    PlanningState,
+    SystemStatus,
     UiDestinationCommand,
 )
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
@@ -34,13 +39,20 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from geometry_msgs.msg import PoseStamped
+from nav2_msgs.action import NavigateToPose
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import GetParameters, SetParameters
+from rclpy.action import ActionClient
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.time import Time
+from std_msgs.msg import String
+from tf2_ros import Buffer, TransformListener
 
 import uvicorn
 
 from camrod_ui.api_common import to_diag_level_int
+from camrod_ui.ui_state_policy import UiStatePolicy
 
 # HH_260721 - Keep symbolic service names stable across ROS, REST, and WebSocket clients.
 SERVICE_STATE_NAMES = {
@@ -80,6 +92,8 @@ class ApiState:
     diagnostics_agg_count: int = 0
     diagnostics_agg_error_count: int = 0
     system_health: str = "STARTING"
+    mission_phase: str = UiStatePolicy.INITIALIZING
+    mission_source: str = "none"
     service_state: int = -1
     service_state_name: str = "PREPARING"
     service_state_description: str = "Waiting for service state"
@@ -282,8 +296,91 @@ class UiBackendNode(Node):
         self.diagnostics_agg_topic = str(
             self.declare_parameter("diagnostics_agg_topic", "/system/diagnostics_agg").value
         )
+        self.system_status_topic = str(
+            self.declare_parameter("system_status_topic", "/system/status").value
+        )
+        self.planning_state_topic = str(
+            self.declare_parameter(
+                "planning_state_topic", "/planning/state_machine/state"
+            ).value
+        )
+        self.planning_route_goal_topic = str(
+            self.declare_parameter(
+                "planning_route_goal_topic", "/planning/goal_pose_snapped_ros"
+            ).value
+        )
+        self.planning_goal_source_topic = str(
+            self.declare_parameter(
+                "planning_goal_source_topic", "/planning/goal_source"
+            ).value
+        )
+        self.planning_nav_status_topic = str(
+            self.declare_parameter(
+                "planning_nav_status_topic",
+                "/planning/navigate_to_pose/_action/status",
+            ).value
+        )
+        self.planning_engaged_state_topic = str(
+            self.declare_parameter(
+                "planning_engaged_state_topic", "/control/planning_engaged"
+            ).value
+        )
+        self.localization_mode_topic = str(
+            self.declare_parameter(
+                "localization_mode_topic", "/localization/mode"
+            ).value
+        )
+        self.control_gate_status_topic = str(
+            self.declare_parameter(
+                "control_gate_status_topic",
+                "/control/cmd_vel_safety_gate/status",
+            ).value
+        )
+        self.navigate_to_pose_action = str(
+            self.declare_parameter(
+                "navigate_to_pose_action", "/planning/navigate_to_pose"
+            ).value
+        )
+        self.readiness_required_modules = [
+            str(name)
+            for name in self.declare_parameter(
+                "readiness_required_modules",
+                [
+                    "map",
+                    "sensing",
+                    "localization",
+                    "planning",
+                    "control",
+                    "platform",
+                    "system",
+                ],
+            ).value
+        ]
+        self.readiness_map_frame = str(
+            self.declare_parameter("readiness_map_frame", "map").value
+        )
+        self.readiness_base_frame = str(
+            self.declare_parameter(
+                "readiness_base_frame", "robot_base_link"
+            ).value
+        )
+        self.readiness_check_period_s = max(
+            0.1,
+            float(
+                self.declare_parameter(
+                    "readiness_check_period_s", 0.5
+                ).value
+            ),
+        )
+        self.max_ready_localization_mode = int(
+            self.declare_parameter("max_ready_localization_mode", 0).value
+        )
         self._keypoints_by_mission_key = self._load_camping_site_keypoints(self.camping_sites_yaml)
         self._lock = threading.Lock()
+        self._runtime_policy = UiStatePolicy(
+            self.readiness_required_modules,
+            max_ready_localization_mode=self.max_ready_localization_mode,
+        )
         self._state = ApiState(
             ws_site_states={s: False for s in self.site_names},
         )
@@ -318,6 +415,60 @@ class UiBackendNode(Node):
             self.diagnostics_agg_topic,
             self._on_diagnostics_agg,
             10,
+        )
+        state_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.sub_system_status = self.create_subscription(
+            SystemStatus,
+            self.system_status_topic,
+            self._on_system_status,
+            10,
+        )
+        self.sub_planning_state = self.create_subscription(
+            PlanningState,
+            self.planning_state_topic,
+            self._on_planning_state,
+            10,
+        )
+        self.sub_planning_route_goal = self.create_subscription(
+            PoseStamped,
+            self.planning_route_goal_topic,
+            self._on_planning_route_goal,
+            10,
+        )
+        self.sub_planning_goal_source = self.create_subscription(
+            String,
+            self.planning_goal_source_topic,
+            self._on_planning_goal_source,
+            state_qos,
+        )
+        self.sub_planning_nav_status = self.create_subscription(
+            GoalStatusArray,
+            self.planning_nav_status_topic,
+            self._on_planning_nav_status,
+            10,
+        )
+        self.sub_planning_engaged_state = self.create_subscription(
+            AvgBool,
+            self.planning_engaged_state_topic,
+            self._on_planning_engaged_state,
+            state_qos,
+        )
+        self.sub_localization_mode = self.create_subscription(
+            AvgLocalizationMode,
+            self.localization_mode_topic,
+            self._on_localization_mode,
+            10,
+        )
+        self.sub_control_gate_status = self.create_subscription(
+            ModuleState,
+            self.control_gate_status_topic,
+            self._on_control_gate_status,
+            state_qos,
         )
         self.sub_platform_status = self.create_subscription(
             AvgPlatformStatus,
@@ -394,6 +545,16 @@ class UiBackendNode(Node):
         self.nav2_cancel_clients = [
             self.create_client(CancelGoal, topic) for topic in self.nav2_cancel_action_topics
         ]
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(
+            self._tf_buffer, self, spin_thread=False
+        )
+        self._navigate_action_client = ActionClient(
+            self, NavigateToPose, self.navigate_to_pose_action
+        )
+        self._readiness_timer = self.create_timer(
+            self.readiness_check_period_s, self._on_readiness_timer
+        )
         self._server_thread: Optional[threading.Thread] = None
         if self.enable_http_server:
             self._start_fastapi_server()
@@ -774,6 +935,139 @@ class UiBackendNode(Node):
 
     # ── ROS2 subscription callbacks ─────────────────────────────────────────
 
+    def _update_runtime_state(self, update: Any) -> None:
+        with self._lock:
+            previous = (
+                self._state.ready,
+                self._state.ready_message,
+                self._state.engaged,
+                self._state.operation_mode,
+                self._state.mission_phase,
+                self._state.mission_source,
+            )
+            update()
+            reasons = self._runtime_policy.readiness_reasons(
+                require_idle=False
+            )
+            self._state.ready = self._runtime_policy.ready
+            self._state.ready_message = (
+                "ready" if not reasons else ", ".join(reasons)
+            )
+            self._state.engaged = self._runtime_policy.engaged
+            self._state.operation_mode = self._compute_operation_mode(
+                self._state.engaged,
+                self._state.ready,
+            )
+            self._state.mission_phase = self._runtime_policy.mission_phase
+            self._state.mission_source = self._runtime_policy.mission_source
+            current = (
+                self._state.ready,
+                self._state.ready_message,
+                self._state.engaged,
+                self._state.operation_mode,
+                self._state.mission_phase,
+                self._state.mission_source,
+            )
+        if current != previous:
+            self._schedule_broadcast(
+                {
+                    "ready": current[0],
+                    "ready_message": current[1],
+                    "engaged": current[2],
+                    "operation_mode": current[3],
+                    "mission_phase": current[4],
+                    "mission_source": current[5],
+                }
+            )
+
+    def _on_readiness_timer(self) -> None:
+        try:
+            tf_ready = self._tf_buffer.can_transform(
+                self.readiness_map_frame,
+                self.readiness_base_frame,
+                Time(),
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().debug(f"UI readiness TF check failed: {exc}")
+            tf_ready = False
+
+        def update() -> None:
+            self._runtime_policy.update_tf(bool(tf_ready))
+            self._runtime_policy.update_action_server(
+                self._navigate_action_client.server_is_ready()
+            )
+
+        self._update_runtime_state(update)
+
+    def _on_system_status(self, msg: SystemStatus) -> None:
+        modules = {
+            str(module.module_name): (
+                int(module.level),
+                str(module.operating_state),
+            )
+            for module in msg.modules
+        }
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_system(modules)
+        )
+
+    def _on_planning_state(self, msg: PlanningState) -> None:
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_planning(
+                state=msg.label,
+                scenario=msg.scenario_label,
+                active_mission_key=msg.active_mission_key,
+                active_goal_source=msg.active_goal_source,
+            )
+        )
+
+    def _on_planning_route_goal(self, _msg: PoseStamped) -> None:
+        self._update_runtime_state(
+            self._runtime_policy.update_goal_received
+        )
+
+    def _on_planning_goal_source(self, msg: String) -> None:
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_goal_source(msg.data)
+        )
+
+    def _on_planning_nav_status(self, msg: GoalStatusArray) -> None:
+        statuses = [int(status.status) for status in msg.status_list]
+        nav_status = GoalStatus.STATUS_UNKNOWN
+        for candidate in (
+            GoalStatus.STATUS_EXECUTING,
+            GoalStatus.STATUS_CANCELING,
+            GoalStatus.STATUS_ACCEPTED,
+        ):
+            if candidate in statuses:
+                nav_status = candidate
+                break
+        else:
+            if statuses:
+                nav_status = statuses[-1]
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_nav_status(nav_status)
+        )
+
+    def _on_planning_engaged_state(self, msg: AvgBool) -> None:
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_engaged(bool(msg.data))
+        )
+
+    def _on_localization_mode(self, msg: AvgLocalizationMode) -> None:
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_localization(int(msg.value))
+        )
+
+    def _on_control_gate_status(self, msg: ModuleState) -> None:
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_gate(
+                level=int(msg.level),
+                operating_state=msg.operating_state,
+                message=msg.message,
+            )
+        )
+
     def _on_diagnostics_agg(self, msg: DiagnosticArray) -> None:
         diagnostics: List[Dict[str, Any]] = []
         module_levels: Dict[str, int] = {}
@@ -823,14 +1117,6 @@ class UiBackendNode(Node):
             for module in sorted(module_levels.keys())
         ]
 
-        ready = bool(msg.status) and error_count == 0
-        if not msg.status:
-            ready_message = "no diagnostics yet"
-        elif error_count > 0:
-            ready_message = f"diagnostics errors: {error_count}"
-        else:
-            ready_message = "ready"
-
         system_health = (
             "ERROR" if error_count > 0 else
             "WARNING" if warning_count > 0 else
@@ -844,12 +1130,6 @@ class UiBackendNode(Node):
             self._state.diagnostics_agg_count = len(msg.status)
             self._state.diagnostics_agg_error_count = error_count
             self._state.system_health = system_health
-            self._state.ready = ready
-            self._state.ready_message = ready_message
-            self._state.operation_mode = self._compute_operation_mode(
-                self._state.engaged,
-                self._state.ready,
-            )
         if health_changed:
             # HH_260721 - Broadcast health transitions without mixing them with service progress.
             self._schedule_broadcast({"system_health": system_health})
@@ -857,6 +1137,12 @@ class UiBackendNode(Node):
     def _on_platform_status(self, msg: AvgPlatformStatus) -> None:
         # HH_260720 - UI battery state comes from the canonical generated platform status.
         # HH_260721 - Charging state also decides whether a campsite goal must wait for departure.
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_platform(
+                estop=bool(msg.estop),
+                error_code=int(msg.error_code),
+            )
+        )
         charging = bool(msg.is_charging)
         charging_changed = charging != self._latest_platform_is_charging
         self._latest_platform_is_charging = charging
@@ -1312,12 +1598,9 @@ class UiBackendNode(Node):
         if sync_drive_enable:
             self._publish_platform_drive_enable(enabled, source=source)
 
-        with self._lock:
-            self._state.engaged = bool(enabled)
-            self._state.operation_mode = self._compute_operation_mode(
-                self._state.engaged,
-                self._state.ready,
-            )
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_engaged(bool(enabled))
+        )
 
         self.get_logger().info(
             f"engage command ({source}) -> {self.planning_engage_topic}: "
@@ -1330,12 +1613,9 @@ class UiBackendNode(Node):
         self.pub_mission_engage.publish(msg)
         self._publish_platform_drive_enable(enabled, source=source)
 
-        with self._lock:
-            self._state.engaged = bool(enabled)
-            self._state.operation_mode = self._compute_operation_mode(
-                self._state.engaged,
-                self._state.ready,
-            )
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_engaged(bool(enabled))
+        )
 
         self.get_logger().info(
             f"mission engage command ({source}) -> {self.planning_mission_engage_topic}: "
@@ -1508,6 +1788,11 @@ class UiBackendNode(Node):
                 "minimum_battery_percentage": battery_block["minimum_battery_percentage"],
             }
 
+        # HH_260730 - Record accepted UI intent before engage so regulated and
+        # manual goals expose the same goal-received -> path-preparing order.
+        self._update_runtime_state(
+            lambda: self._runtime_policy.update_goal_received("regulated")
+        )
         if self.publish_engage_from_destination:
             self._publish_engage(True, source=f"{source}:destination")
         if self.publish_mission_engage_from_destination:
@@ -1609,6 +1894,8 @@ class UiBackendNode(Node):
                 "diagnostics_agg_count": self._state.diagnostics_agg_count,
                 "diagnostics_agg_error_count": self._state.diagnostics_agg_error_count,
                 "system_health": self._state.system_health,
+                "mission_phase": self._state.mission_phase,
+                "mission_source": self._state.mission_source,
                 "service_state": self._state.service_state,
                 "service_state_name": self._state.service_state_name,
                 "service_state_description": self._state.service_state_description,
@@ -1836,8 +2123,12 @@ class UiBackendNode(Node):
             with node._lock:
                 states = dict(node._state.ws_site_states)
                 engage = node._state.engaged
+                ready = node._state.ready
+                ready_message = node._state.ready_message
                 battery = node._state.battery_percentage
                 system_health = node._state.system_health
+                mission_phase = node._state.mission_phase
+                mission_source = node._state.mission_source
                 service_state = node._state.service_state
                 service_state_name = node._state.service_state_name
                 service_state_description = node._state.service_state_description
@@ -1845,6 +2136,12 @@ class UiBackendNode(Node):
             await ws.send_json({"states": states})
             await ws.send_json({"occupied_sites": occupied_sites})
             await ws.send_json({"engage": engage})
+            await ws.send_json({
+                "ready": ready,
+                "ready_message": ready_message,
+                "mission_phase": mission_phase,
+                "mission_source": mission_source,
+            })
             if battery >= 0:
                 await ws.send_json({"battery": battery})
             await ws.send_json({"system_health": system_health})

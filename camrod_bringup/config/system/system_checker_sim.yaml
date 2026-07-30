@@ -2,11 +2,18 @@
 # Sim keeps the same public planning/localization/platform contracts, but real
 # hardware driver nodes are replaced by /bringup/fake_sensor_publisher.
 # Format: "topic|ros_type|min_publishers"; leave ros_type empty to check graph presence only.
+# Layout: 1) check timing, 2) required modules and alternatives, 3) module manifests.
 /system/system_checker:
   ros__parameters:
+    # =========================================================================
+    # 1. CHECK TIMING
+    # =========================================================================
     check_period_s: 1.0
     startup_grace_s: 30.0
 
+    # =========================================================================
+    # 2. REQUIRED MODULES AND ALTERNATIVE GROUPS
+    # =========================================================================
     required_modules:
       - map
       - sensing
@@ -25,6 +32,9 @@
         - reverse_parking_controller
         - apriltag_parking_controller
 
+    # =========================================================================
+    # 3. MODULE MANIFESTS
+    # =========================================================================
     # Package: camrod_map
     # Same map publishers as hardware mode; local-first visualization is still checked.
     map:
@@ -46,11 +56,14 @@
         - /sensing/inflation_cost_grid
       required_topics:
         - "/sensing/gnss/ublox_gps_node/fix|sensor_msgs/msg/NavSatFix|1"
+
         # HH_260720 - Monitor the generated internal IMU stream.
         - "/sensing/imu/data|avg_msgs/msg/AvgImu|1"
         - "/sensing/platform_velocity_converter/twist_with_covariance|avg_msgs/msg/AvgTwistWithCovarianceStamped|1"
+
         - "/sensing/lidar/points_filtered|sensor_msgs/msg/PointCloud2|1"
         - "/sensing/cost_grid/lidar|avg_msgs/msg/AvgOccupancyGrid|1"
+
         - "/sensing/radar/front1/range|avg_msgs/msg/AvgRange|1"
         - "/sensing/radar/front2/range|avg_msgs/msg/AvgRange|1"
         - "/sensing/radar/left1/range|avg_msgs/msg/AvgRange|1"
@@ -59,6 +72,7 @@
         - "/sensing/radar/right2/range|avg_msgs/msg/AvgRange|1"
         - "/sensing/radar/rear/range|avg_msgs/msg/AvgRange|1"
         - "/sensing/cost_grid/radar|avg_msgs/msg/AvgOccupancyGrid|1"
+
         - "/planning/cost_grid/inflation|avg_msgs/msg/AvgOccupancyGrid|1"
 
     # Package: camrod_localization
@@ -75,6 +89,7 @@
         - "/sensing/gnss/pose|avg_msgs/msg/AvgPoseStamped|1"
         - "/sensing/gnss/pose_with_covariance|avg_msgs/msg/AvgPoseWithCovarianceStamped|1"
         - "/localization/input/wheel_odometry|avg_msgs/msg/AvgOdometry|1"
+
         - "/localization/pose|avg_msgs/msg/AvgPoseStamped|1"
         - "/localization/pose_with_covariance|avg_msgs/msg/AvgPoseWithCovarianceStamped|1"
         - "/localization/odometry|avg_msgs/msg/AvgOdometry|1"
@@ -117,6 +132,7 @@
         - "/planning/state_machine/state|avg_msgs/msg/PlanningState|1"
         - "/planning/state_machine/mission_source|avg_msgs/msg/PlanningMissionKey|1"
         - "/planning/state_machine/scenario_id|avg_msgs/msg/PlanningScenario|1"
+
     # HH_260720 - Control graph remains active in sim; CAN-only checks are disabled by launch.
     control:
       required_nodes:
@@ -128,6 +144,7 @@
         - "/control/cmd_vel|avg_msgs/msg/AvgTwist|1"
         - "/control/command_enabled|avg_msgs/msg/AvgBool|1"
         - "/control/cmd_vel_safety_gate/status|avg_msgs/msg/ModuleState|1"
+
         # HH_260720 - Check the controller's canonical status topic.
         - "/control/camping_site_maneuver_controller/status|avg_msgs/msg/ModuleState|1"
         - "/control/drop_zone_maneuver_controller/status|avg_msgs/msg/ModuleState|1"
