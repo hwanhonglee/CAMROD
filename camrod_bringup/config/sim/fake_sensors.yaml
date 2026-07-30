@@ -1,8 +1,15 @@
+# Fake sensor publisher parameters, grouped into numbered sections:
+# map/origin, motion input, simulated platform status, odometry topics,
+# centerline path, frames, synthetic obstacles, fake LiDAR/radar sources,
+# dummy diagnostic outputs, startup, GNSS failure injection, navigation mode.
 # 2026-02-02 10:32 Sync from package config into bringup/config
 # 2026-01-30 Update map path/origin for lanelet2_maps.osm.
 # Align node parameter keys with /bringup namespace + short names.
 /bringup/fake_sensor_publisher:
   ros__parameters:
+    # =========================================================================
+    # 1. MAP AND ORIGIN
+    # =========================================================================
     # Launch passes resolved map_path; keep YAML default empty to avoid host-specific hardcoding.
     map_path: ""
     origin_lat: 36.8435737
@@ -12,6 +19,10 @@
     # - lanelet_id >= 0      : follow one specific lanelet relation id
     # - lanelet_id == -1     : auto/all-centerline mode
     lanelet_id: -1
+
+    # =========================================================================
+    # 2. MOTION SOURCE AND COMMAND INPUT
+    # =========================================================================
     speed_mps: 1.4
     # HH_260526: Motion source mode.
     # motion_source: cmd_vel | constant_speed
@@ -25,6 +36,10 @@
     cmd_vel_nonzero_hold_s: 0.20
     cmd_vel_deadband: 0.0001
     max_cmd_speed_mps: 2.5
+
+    # =========================================================================
+    # 3. SIMULATED PLATFORM STATUS
+    # =========================================================================
     # HH_260721 - Ordinary sim feeds raw CAN/BMS boundaries through the single platform bridge.
     publish_simulated_platform_status: true
     simulated_battery_state_topic: "/battery_state"
@@ -34,11 +49,19 @@
     simulated_charger_contact_delay_s: 1.0
     simulated_charger_disconnect_delay_s: 1.0
     simulated_battery_percentage: 0.80
+
+    # =========================================================================
+    # 4. ODOMETRY TOPICS
+    # =========================================================================
     # Feed wheel_odometry_bridge input in sim so localization wheel
     # stream is available even without real /rmp401/odom hardware source.
     wheel_bridge_input_topic: "/rmp401/odom"
     # VIO stack is disabled. Publish DR odometry to fallback stream.
     dr_odometry_topic: "/localization/fallback/odometry"
+
+    # =========================================================================
+    # 5. CENTERLINE PATH AND PUBLISH RATE
+    # =========================================================================
     # Debug:
     # - true  : keep fake sensor position fixed on the path anchor
     # - false : move along centerline by speed_mps
@@ -49,6 +72,7 @@
     loop: true
     # 2026-02-05 14:37: Skip crosswalk lanelets to prevent stitching jumps.
     exclude_crosswalk: true
+
     # Optional initial anchor on centerline path:
     # - start_from_pose=true  -> nearest point to (start_x,start_y)
     # - start_from_pose=false -> first point of stitched centerline path
@@ -66,8 +90,16 @@
     # 2026-02-02: Close near-loop centerlines for continuous laps.
     close_loop: true
     close_loop_max_gap: 3.0
+
+    # =========================================================================
+    # 6. FRAMES
+    # =========================================================================
     frame_id: "map"
     base_frame_id: "robot_base_link"
+
+    # =========================================================================
+    # 7. SYNTHETIC OBSTACLES
+    # =========================================================================
     # Keep synthetic obstacle outside default stop corridor.
     # Use ros2 param set at runtime (e.g. 1.0~3.0) when explicitly testing cost-stop.
     obstacle_offset: 12.0
@@ -83,6 +115,10 @@
     # filtered-lidar topics so sensing cost-grid can consume filtered points.
     obstacle_cloud_topic: "/perception/obstacles"
     lidar_filtered_topic: "/sensing/lidar/points_filtered"
+
+    # =========================================================================
+    # 8. FAKE LIDAR AND RADAR SOURCES
+    # =========================================================================
     # HH_260630: Keep LiDAR and radar fake obstacle sources independently
     # switchable so sim safety tests can isolate each cost-grid input.
     publish_fake_lidar_obstacle_cloud: true
@@ -97,6 +133,7 @@
       - "/sensing/radar/right1/range"
       - "/sensing/radar/right2/range"
       - "/sensing/radar/rear/range"
+
     fake_radar_frame_ids:
       - "radar_front1_link"
       - "radar_front2_link"
@@ -105,7 +142,12 @@
       - "radar_right1_link"
       - "radar_right2_link"
       - "radar_rear_link"
+
     fake_radar_max_ranges_m: [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50]
+
+    # =========================================================================
+    # 9. DUMMY CONVERTER AND COST-GRID OUTPUTS
+    # =========================================================================
     # HH_260617: Sim hardware drivers are disabled; publish deterministic dummy
     # converter/cost-grid outputs so diagnostics do not block planning/control tests.
     publish_velocity_converter_output: true
@@ -118,11 +160,19 @@
     # HH_260618: Cost-grid health fallback does not need to follow pose/IMU rate.
     # HH_260618: Dummy diagnostic grid is not the real obstacle pipeline; lower to reduce load.
     dummy_lidar_cost_grid_publish_rate_hz: 3.0
+
+    # =========================================================================
+    # 10. CENTERLINE RESAMPLING AND STARTUP HOLD
+    # =========================================================================
     # HH_260720 - Sim EKF gets heading directly from the ROS IMU and wheel yaw rate.
     # 2026-02-02 11:05 Centerline resample step (m) when synthesizing from bounds.
     centerline_step: 1.0
     # HH_260720 - Hold the vehicle still while the default GNSS/EKF pipeline settles.
     startup_hold_s: 5.0
+
+    # =========================================================================
+    # 11. GNSS FAILURE SIMULATION
+    # =========================================================================
     # GNSS failure simulation for DR fallback testing.
     # HH_260617: Keep failure injection disabled by default so sim:=true
     # validates planning/control with steady dummy localization and sensing.
@@ -131,6 +181,10 @@
     # Example: failure_after=15, recovery_after=45 -> GNSS off for 30s then back on.
     gnss_failure_after_s: -1.0
     gnss_recovery_after_s: -1.0
+
+    # =========================================================================
+    # 12. NAVIGATION MODE AND INITIAL POSE
+    # =========================================================================
     # HH_260526: Navigation model mode.
     # simulation_nav_mode: centerline | free_nav
     # HH_260527: Default to free_nav so RViz initial pose (P) relocates

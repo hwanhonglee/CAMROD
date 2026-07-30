@@ -20,16 +20,20 @@
     rtcm_message_package: rtcm_msgs
     # HH_260327: Accept slightly longer GGA strings to avoid reconnect churn.
     nmea_max_length: 96
+
     # HH_260722 - Keep /rtcm as the node-level fallback. gnss.launch.py overrides
     # it with namespace-relative rtcm in single mode and isolated
     # ntrip_client/rtcm in dual mode for the moving-base writer.
     rtcm_topic: /rtcm
+
     ntrip_version: "None"
     ssl: false
     cert: "None"
     key: "None"
     ca_cert: "None"
+
     rtcm_frame_id: "gps"
+
     # HH_260327: Relax timeout/retry cadence for unstable RTCM network periods.
     rtcm_timeout_seconds: 10
     reconnect_attempt_max: 10

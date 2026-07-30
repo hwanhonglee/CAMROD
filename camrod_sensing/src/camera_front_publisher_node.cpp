@@ -1,11 +1,16 @@
 #include "camrod_sensing/camera_front_publisher_node.hpp"
+#include "camrod_sensing/camera_front_contract.hpp"
+
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <cstring>
 #include <fcntl.h>
 #include <linux/videodev2.h>
+#include <limits>
+#include <stdexcept>
 #include <sys/ioctl.h>
 #include <vpi/Status.h>
-#include "cv_bridge/cv_bridge.h"
 #include <std_msgs/msg/header.hpp>
 
 namespace camrod::sensing
@@ -18,6 +23,69 @@ std::string normalizeModeToken(std::string value)
     value.begin(), value.end(), value.begin(),
     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return value;
+}
+
+const char * nvjpegStatusName(nvjpegStatus_t status)
+{
+  switch (status) {
+    case NVJPEG_STATUS_SUCCESS:
+      return "success";
+    case NVJPEG_STATUS_NOT_INITIALIZED:
+      return "not initialized";
+    case NVJPEG_STATUS_INVALID_PARAMETER:
+      return "invalid parameter";
+    case NVJPEG_STATUS_BAD_JPEG:
+      return "bad JPEG";
+    case NVJPEG_STATUS_JPEG_NOT_SUPPORTED:
+      return "JPEG not supported";
+    case NVJPEG_STATUS_ALLOCATOR_FAILURE:
+      return "allocator failure";
+    case NVJPEG_STATUS_EXECUTION_FAILED:
+      return "execution failed";
+    case NVJPEG_STATUS_ARCH_MISMATCH:
+      return "architecture mismatch";
+    case NVJPEG_STATUS_INTERNAL_ERROR:
+      return "internal error";
+    case NVJPEG_STATUS_IMPLEMENTATION_NOT_SUPPORTED:
+      return "implementation not supported";
+    case NVJPEG_STATUS_INCOMPLETE_BITSTREAM:
+      return "incomplete bitstream";
+  }
+  return "unknown";
+}
+
+sensor_msgs::msg::Image makeBgrImageMessage(
+  const cv::Mat & bgr,
+  const std_msgs::msg::Header & header)
+{
+  if (bgr.empty() || bgr.type() != CV_8UC3) {
+    throw std::invalid_argument("Raw front camera image must be non-empty CV_8UC3");
+  }
+
+  const std::size_t row_bytes =
+    static_cast<std::size_t>(bgr.cols) * bgr.elemSize();
+  const std::size_t rows = static_cast<std::size_t>(bgr.rows);
+  if (row_bytes > std::numeric_limits<std::uint32_t>::max() ||
+    rows > std::numeric_limits<std::size_t>::max() / row_bytes)
+  {
+    throw std::length_error("Raw front camera image exceeds sensor_msgs/Image limits");
+  }
+
+  sensor_msgs::msg::Image message;
+  message.header = header;
+  message.height = static_cast<std::uint32_t>(bgr.rows);
+  message.width = static_cast<std::uint32_t>(bgr.cols);
+  message.encoding = "bgr8";
+  message.is_bigendian = false;
+  message.step = static_cast<std::uint32_t>(row_bytes);
+  message.data.resize(rows * row_bytes);
+
+  for (int row = 0; row < bgr.rows; ++row) {
+    std::memcpy(
+      message.data.data() + static_cast<std::size_t>(row) * row_bytes,
+      bgr.ptr(row), row_bytes);
+  }
+  return message;
 }
 }  // namespace
 
@@ -52,6 +120,18 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
   int exposure_time_us;
   this->get_parameter("exposure_time_us", exposure_time_us);
   this->get_parameter("jpeg_quality", jpeg_quality_);
+  max_jpeg_payload_size_ =
+    camera_front_contract::maxJpegPayloadBytes(image_width_, image_height_);
+  if (max_jpeg_payload_size_ == 0U) {
+    throw std::invalid_argument(
+            "Front camera image_width/image_height must be positive, even YUV420 dimensions");
+  }
+  if (fps_ <= 0) {
+    throw std::invalid_argument("Front camera fps must be positive");
+  }
+  if (jpeg_quality_ < 1 || jpeg_quality_ > 100) {
+    throw std::invalid_argument("Front camera jpeg_quality must be in [1, 100]");
+  }
   if (intrinsics_source_ != "none" && intrinsics_source_ != "custom") {
     RCLCPP_WARN(
       this->get_logger(),
@@ -131,27 +211,17 @@ CameraFrontPublisherNode::CameraFrontPublisherNode(const rclcpp::NodeOptions & o
     "~/camera_info", rclcpp::SensorDataQoS());
 
   loadCameraInfo();
-  initVpiRemap();
-
-  // NVJPEG: GPU hardware JPEG encoding — eliminates CPU JPEG cost
-  cudaStreamCreate(&cuda_stream_);
-  nvjpegCreateSimple(&nvjpeg_handle_);
-  nvjpegEncoderStateCreate(nvjpeg_handle_, &nvjpeg_state_, cuda_stream_);
-  nvjpegEncoderParamsCreate(nvjpeg_handle_, &nvjpeg_params_, cuda_stream_);
-  nvjpegEncoderParamsSetQuality(nvjpeg_params_, jpeg_quality_, cuda_stream_);
-  nvjpegEncoderParamsSetSamplingFactors(nvjpeg_params_, NVJPEG_CSS_420, cuda_stream_);
-
-  const int y_size  = image_width_ * image_height_;
-  const int uv_size = y_size / 4;
-  cudaMalloc(reinterpret_cast<void**>(&d_y_), y_size);
-  cudaMalloc(reinterpret_cast<void**>(&d_u_), uv_size);
-  cudaMalloc(reinterpret_cast<void**>(&d_v_), uv_size);
 
   u_plane_ = cv::Mat(image_height_ / 2, image_width_ / 2, CV_8UC1);
   v_plane_ = cv::Mat(image_height_ / 2, image_width_ / 2, CV_8UC1);
 
   compressed_msg_.header.frame_id = camera_frame_id_;
   compressed_msg_.format = "jpeg";
+
+  // Initialize NvJPEG before VPI so a constructor-time CUDA/NvJPEG error cannot
+  // strand raw VPI resources while the partially constructed object unwinds.
+  initNvJpeg();
+  initVpiRemap();
 
   // captureThread stays fast (never blocked by DDS serialization)
   // publishThread handles the slow path (DDS overhead from subscribers)
@@ -176,13 +246,254 @@ CameraFrontPublisherNode::~CameraFrontPublisherNode()
   if (vpi_nv12_in_wrapper_)  { vpiImageDestroy(vpi_nv12_in_wrapper_); }
   if (vpi_nv12_out_wrapper_) { vpiImageDestroy(vpi_nv12_out_wrapper_); }
   if (vpi_remap_payload_)    { vpiPayloadDestroy(vpi_remap_payload_); }
-  if (d_v_)          { cudaFree(d_v_); }
-  if (d_u_)          { cudaFree(d_u_); }
-  if (d_y_)          { cudaFree(d_y_); }
-  if (nvjpeg_params_){ nvjpegEncoderParamsDestroy(nvjpeg_params_); }
-  if (nvjpeg_state_) { nvjpegEncoderStateDestroy(nvjpeg_state_); }
-  if (nvjpeg_handle_){ nvjpegDestroy(nvjpeg_handle_); }
-  if (cuda_stream_)  { cudaStreamDestroy(cuda_stream_); }
+  cleanupNvJpeg();
+}
+
+void CameraFrontPublisherNode::initNvJpeg()
+{
+  const auto require_cuda = [this](cudaError_t status, const char * operation) {
+      if (status == cudaSuccess) {
+        return;
+      }
+      const char * error_name = cudaGetErrorName(status);
+      const char * error_text = cudaGetErrorString(status);
+      const std::string message =
+        std::string(operation) + " failed: " +
+        (error_name != nullptr ? error_name : "unknown CUDA error") + " (" +
+        (error_text != nullptr ? error_text : "no error text") + ")";
+      RCLCPP_ERROR(this->get_logger(), "%s", message.c_str());
+      cleanupNvJpeg();
+      throw std::runtime_error(message);
+    };
+  const auto require_nvjpeg = [this](nvjpegStatus_t status, const char * operation) {
+      if (status == NVJPEG_STATUS_SUCCESS) {
+        return;
+      }
+      const std::string message =
+        std::string(operation) + " failed: " + nvjpegStatusName(status) +
+        " (status=" + std::to_string(static_cast<int>(status)) + ")";
+      RCLCPP_ERROR(this->get_logger(), "%s", message.c_str());
+      cleanupNvJpeg();
+      throw std::runtime_error(message);
+    };
+
+  require_cuda(cudaStreamCreate(&cuda_stream_), "cudaStreamCreate");
+  require_nvjpeg(nvjpegCreateSimple(&nvjpeg_handle_), "nvjpegCreateSimple");
+  require_nvjpeg(
+    nvjpegEncoderStateCreate(nvjpeg_handle_, &nvjpeg_state_, cuda_stream_),
+    "nvjpegEncoderStateCreate");
+  require_nvjpeg(
+    nvjpegEncoderParamsCreate(nvjpeg_handle_, &nvjpeg_params_, cuda_stream_),
+    "nvjpegEncoderParamsCreate");
+  require_nvjpeg(
+    nvjpegEncoderParamsSetQuality(nvjpeg_params_, jpeg_quality_, cuda_stream_),
+    "nvjpegEncoderParamsSetQuality");
+  require_nvjpeg(
+    nvjpegEncoderParamsSetSamplingFactors(
+      nvjpeg_params_, NVJPEG_CSS_420, cuda_stream_),
+    "nvjpegEncoderParamsSetSamplingFactors");
+
+  const std::size_t y_size =
+    static_cast<std::size_t>(image_width_) * static_cast<std::size_t>(image_height_);
+  const std::size_t uv_size = y_size / 4U;
+  require_cuda(
+    cudaMalloc(reinterpret_cast<void **>(&d_y_), y_size),
+    "cudaMalloc(Y)");
+  require_cuda(
+    cudaMalloc(reinterpret_cast<void **>(&d_u_), uv_size),
+    "cudaMalloc(U)");
+  require_cuda(
+    cudaMalloc(reinterpret_cast<void **>(&d_v_), uv_size),
+    "cudaMalloc(V)");
+  require_cuda(
+    cudaStreamSynchronize(cuda_stream_),
+    "cudaStreamSynchronize(NvJPEG initialization)");
+}
+
+void CameraFrontPublisherNode::cleanupNvJpeg()
+{
+  const auto warn_cuda = [this](cudaError_t status, const char * operation) {
+      if (status != cudaSuccess) {
+        RCLCPP_WARN(
+          this->get_logger(), "%s failed during cleanup: %s (%s)",
+          operation, cudaGetErrorName(status), cudaGetErrorString(status));
+      }
+    };
+  const auto warn_nvjpeg = [this](nvjpegStatus_t status, const char * operation) {
+      if (status != NVJPEG_STATUS_SUCCESS) {
+        RCLCPP_WARN(
+          this->get_logger(), "%s failed during cleanup: %s (status=%d)",
+          operation, nvjpegStatusName(status), static_cast<int>(status));
+      }
+    };
+
+  if (d_v_ != nullptr) {
+    warn_cuda(cudaFree(d_v_), "cudaFree(V)");
+    d_v_ = nullptr;
+  }
+  if (d_u_ != nullptr) {
+    warn_cuda(cudaFree(d_u_), "cudaFree(U)");
+    d_u_ = nullptr;
+  }
+  if (d_y_ != nullptr) {
+    warn_cuda(cudaFree(d_y_), "cudaFree(Y)");
+    d_y_ = nullptr;
+  }
+  if (nvjpeg_params_ != nullptr) {
+    warn_nvjpeg(
+      nvjpegEncoderParamsDestroy(nvjpeg_params_),
+      "nvjpegEncoderParamsDestroy");
+    nvjpeg_params_ = nullptr;
+  }
+  if (nvjpeg_state_ != nullptr) {
+    warn_nvjpeg(
+      nvjpegEncoderStateDestroy(nvjpeg_state_),
+      "nvjpegEncoderStateDestroy");
+    nvjpeg_state_ = nullptr;
+  }
+  if (nvjpeg_handle_ != nullptr) {
+    warn_nvjpeg(nvjpegDestroy(nvjpeg_handle_), "nvjpegDestroy");
+    nvjpeg_handle_ = nullptr;
+  }
+  if (cuda_stream_ != nullptr) {
+    warn_cuda(cudaStreamDestroy(cuda_stream_), "cudaStreamDestroy");
+    cuda_stream_ = nullptr;
+  }
+}
+
+bool CameraFrontPublisherNode::encodeRectifiedJpeg()
+{
+  const auto cuda_ok = [this](cudaError_t status, const char * operation) {
+      if (status == cudaSuccess) {
+        return true;
+      }
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Front JPEG dropped: %s failed: %s (%s)",
+        operation, cudaGetErrorName(status), cudaGetErrorString(status));
+      return false;
+    };
+  const auto nvjpeg_ok = [this](nvjpegStatus_t status, const char * operation) {
+      if (status == NVJPEG_STATUS_SUCCESS) {
+        return true;
+      }
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Front JPEG dropped: %s failed: %s (status=%d)",
+        operation, nvjpegStatusName(status), static_cast<int>(status));
+      return false;
+    };
+
+  const std::size_t y_size =
+    static_cast<std::size_t>(image_width_) * static_cast<std::size_t>(image_height_);
+  const std::size_t uv_size = y_size / 4U;
+  if (!cuda_ok(
+      cudaMemcpyAsync(
+        d_y_, nv12_rect_buf_.data, y_size,
+        cudaMemcpyHostToDevice, cuda_stream_),
+      "cudaMemcpyAsync(Y)") ||
+    !cuda_ok(
+      cudaMemcpyAsync(
+        d_u_, u_plane_.data, uv_size,
+        cudaMemcpyHostToDevice, cuda_stream_),
+      "cudaMemcpyAsync(U)") ||
+    !cuda_ok(
+      cudaMemcpyAsync(
+        d_v_, v_plane_.data, uv_size,
+        cudaMemcpyHostToDevice, cuda_stream_),
+      "cudaMemcpyAsync(V)"))
+  {
+    return false;
+  }
+
+  nvjpegImage_t yuv_img = {};
+  yuv_img.channel[0] = d_y_;
+  yuv_img.pitch[0] = static_cast<unsigned int>(image_width_);
+  yuv_img.channel[1] = d_u_;
+  yuv_img.pitch[1] = static_cast<unsigned int>(image_width_ / 2);
+  yuv_img.channel[2] = d_v_;
+  yuv_img.pitch[2] = static_cast<unsigned int>(image_width_ / 2);
+
+  const bool encode_ok = nvjpeg_ok(
+    nvjpegEncodeYUV(
+      nvjpeg_handle_, nvjpeg_state_, nvjpeg_params_,
+      &yuv_img, NVJPEG_CSS_420, image_width_, image_height_, cuda_stream_),
+    "nvjpegEncodeYUV");
+  const bool encode_sync_ok = cuda_ok(
+    cudaStreamSynchronize(cuda_stream_),
+    "cudaStreamSynchronize(encode)");
+  if (!encode_ok || !encode_sync_ok) {
+    return false;
+  }
+
+  std::size_t jpeg_size = 0U;
+  const bool size_retrieve_ok = nvjpeg_ok(
+    nvjpegEncodeRetrieveBitstream(
+      nvjpeg_handle_, nvjpeg_state_, nullptr, &jpeg_size, cuda_stream_),
+    "nvjpegEncodeRetrieveBitstream(size)");
+  const bool size_sync_ok = cuda_ok(
+    cudaStreamSynchronize(cuda_stream_),
+    "cudaStreamSynchronize(size retrieve)");
+  if (!size_retrieve_ok || !size_sync_ok) {
+    return false;
+  }
+  if (jpeg_size == 0U || jpeg_size > max_jpeg_payload_size_) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "Front JPEG dropped: invalid queried payload size %zu (maximum %zu)",
+      jpeg_size, max_jpeg_payload_size_);
+    return false;
+  }
+
+  try {
+    compressed_msg_.data.resize(jpeg_size);
+  } catch (const std::exception & error) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "Front JPEG dropped: could not allocate %zu-byte payload: %s",
+      jpeg_size, error.what());
+    return false;
+  }
+
+  const std::size_t buffer_size = compressed_msg_.data.size();
+  const bool data_retrieve_ok = nvjpeg_ok(
+    nvjpegEncodeRetrieveBitstream(
+      nvjpeg_handle_, nvjpeg_state_, compressed_msg_.data.data(),
+      &jpeg_size, cuda_stream_),
+    "nvjpegEncodeRetrieveBitstream(data)");
+  const bool data_sync_ok = cuda_ok(
+    cudaStreamSynchronize(cuda_stream_),
+    "cudaStreamSynchronize(data retrieve)");
+  if (!data_retrieve_ok || !data_sync_ok) {
+    compressed_msg_.data.clear();
+    return false;
+  }
+  if (jpeg_size == 0U || jpeg_size > buffer_size ||
+    jpeg_size > max_jpeg_payload_size_)
+  {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "Front JPEG dropped: invalid retrieved payload size %zu "
+      "(buffer %zu, maximum %zu)",
+      jpeg_size, buffer_size, max_jpeg_payload_size_);
+    compressed_msg_.data.clear();
+    return false;
+  }
+  compressed_msg_.data.resize(jpeg_size);
+
+  const auto payload_status = camera_front_contract::validateJpegPayload(
+    compressed_msg_.data.data(), compressed_msg_.data.size(),
+    max_jpeg_payload_size_);
+  if (payload_status != camera_front_contract::JpegPayloadStatus::kValid) {
+    RCLCPP_WARN_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "Front JPEG dropped: invalid %zu-byte payload (%s)",
+      compressed_msg_.data.size(),
+      camera_front_contract::jpegPayloadStatusName(payload_status));
+    compressed_msg_.data.clear();
+    return false;
+  }
+  return true;
 }
 
 void CameraFrontPublisherNode::captureThread()
@@ -197,20 +508,22 @@ void CameraFrontPublisherNode::captureThread()
     if (use_v4l2_fallback_) {
       // V4L2 direct returns BGR; VPI/NvJPEG pipeline requires NV12 semi-planar.
       // BGR → I420 (planar YUV420) → NV12 (interleave U and V into semi-planar UV).
-      // Use actual frame dimensions (not image_width_/image_height_ params) so the
-      // conversion is safe even when params are not applied (e.g. standalone launch).
-      const int src_h = frame.rows;
-      const int src_w = frame.cols;
-      if (frame.channels() != 3) {
-        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-          "V4L2 frame has %d channels (expected 3/BGR) — skipping", frame.channels());
+      const auto bgr_status = camera_front_contract::validateBgrFrameShape(
+        frame.data != nullptr, frame.rows, frame.cols, frame.channels(),
+        frame.elemSize1(), frame.step[0], image_width_, image_height_);
+      if (bgr_status != camera_front_contract::FrameShapeStatus::kValid) {
+        RCLCPP_WARN_THROTTLE(
+          this->get_logger(), *this->get_clock(), 5000,
+          "V4L2 frame dropped: %s (actual rows=%d cols=%d channels=%d step=%zu; "
+          "expected BGR %dx%d)",
+          camera_front_contract::frameShapeStatusName(bgr_status),
+          frame.rows, frame.cols, frame.channels(), frame.step[0],
+          image_width_, image_height_);
         continue;
       }
-      if (src_h != image_height_ || src_w != image_width_) {
-        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-          "V4L2 frame size %dx%d differs from configured %dx%d",
-          src_w, src_h, image_width_, image_height_);
-      }
+
+      const int src_h = frame.rows;
+      const int src_w = frame.cols;
       cv::Mat i420;
       cv::cvtColor(frame, i420, cv::COLOR_BGR2YUV_I420);
       cv::Mat nv12(src_h * 3 / 2, src_w, CV_8UC1);
@@ -225,6 +538,20 @@ void CameraFrontPublisherNode::captureThread()
         dst_uv[2 * i + 1] = src_v[i];
       }
       frame = std::move(nv12);
+    }
+
+    const auto nv12_status = camera_front_contract::validateNv12FrameShape(
+      frame.data != nullptr, frame.rows, frame.cols, frame.channels(),
+      frame.elemSize1(), frame.step[0], image_width_, image_height_);
+    if (nv12_status != camera_front_contract::FrameShapeStatus::kValid) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Captured NV12 frame dropped: %s "
+        "(actual rows=%d cols=%d channels=%d step=%zu; expected %dx%d NV12)",
+        camera_front_contract::frameShapeStatusName(nv12_status),
+        frame.rows, frame.cols, frame.channels(), frame.step[0],
+        image_width_, image_height_);
+      continue;
     }
 
     {
@@ -252,7 +579,20 @@ void CameraFrontPublisherNode::publishThread()
       new_frame_available_ = false;
     }
 
+    const auto nv12_status = camera_front_contract::validateNv12FrameShape(
+      nv12_frame.data != nullptr, nv12_frame.rows, nv12_frame.cols,
+      nv12_frame.channels(), nv12_frame.elemSize1(), nv12_frame.step[0],
+      image_width_, image_height_);
+    if (nv12_status != camera_front_contract::FrameShapeStatus::kValid) {
+      RCLCPP_WARN_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "Queued NV12 frame dropped: %s",
+        camera_front_contract::frameShapeStatusName(nv12_status));
+      continue;
+    }
+
     auto timestamp = this->now();
+    compressed_msg_.header.stamp = timestamp;
 
     camera_info_msg_.header.stamp = timestamp;
     camera_info_pub_->publish(camera_info_msg_);
@@ -298,46 +638,21 @@ void CameraFrontPublisherNode::publishThread()
       if (image_raw_pub_->get_subscription_count() > 0) {
         cv::Mat bgr;
         cv::cvtColor(nv12_frame, bgr, cv::COLOR_YUV2BGR_NV12);
-        auto img_msg = cv_bridge::CvImage(compressed_msg_.header, "bgr8", bgr).toImageMsg();
-        image_raw_pub_->publish(std::move(*img_msg));
+        image_raw_pub_->publish(
+          makeBgrImageMessage(bgr, compressed_msg_.header));
       }
 
-      // Upload planar YUV to GPU (async on cuda_stream_)
-      const int y_size  = image_width_ * image_height_;
-      const int uv_size = y_size / 4;
-      cudaMemcpyAsync(d_y_, nv12_rect_buf_.data, y_size,  cudaMemcpyHostToDevice, cuda_stream_);
-      cudaMemcpyAsync(d_u_, u_plane_.data,        uv_size, cudaMemcpyHostToDevice, cuda_stream_);
-      cudaMemcpyAsync(d_v_, v_plane_.data,        uv_size, cudaMemcpyHostToDevice, cuda_stream_);
+      if (!encodeRectifiedJpeg()) {
+        continue;
+      }
 
-      // NVJPEG: GPU hardware JPEG encode (planar YUV420)
-      nvjpegImage_t yuv_img = {};
-      yuv_img.channel[0] = d_y_;  yuv_img.pitch[0] = image_width_;
-      yuv_img.channel[1] = d_u_;  yuv_img.pitch[1] = image_width_ / 2;
-      yuv_img.channel[2] = d_v_;  yuv_img.pitch[2] = image_width_ / 2;
-
-      nvjpegEncodeYUV(nvjpeg_handle_, nvjpeg_state_, nvjpeg_params_,
-                      &yuv_img, NVJPEG_CSS_420, image_width_, image_height_, cuda_stream_);
-      cudaStreamSynchronize(cuda_stream_);
-
-      size_t jpeg_size = 0;
-      nvjpegEncodeRetrieveBitstream(nvjpeg_handle_, nvjpeg_state_, nullptr, &jpeg_size, cuda_stream_);
-      cudaStreamSynchronize(cuda_stream_);
-      compressed_msg_.data.resize(jpeg_size);
-      nvjpegEncodeRetrieveBitstream(nvjpeg_handle_, nvjpeg_state_,
-                                    compressed_msg_.data.data(), &jpeg_size, cuda_stream_);
-      cudaStreamSynchronize(cuda_stream_);
-
-      compressed_msg_.header.stamp = timestamp;
       rect_pub_->publish(compressed_msg_);
     } else if (image_raw_pub_->get_subscription_count() > 0) {
       // VPI pipeline not ready (no calibration / V4L2 fallback): publish unrectified BGR
       cv::Mat bgr;
       cv::cvtColor(nv12_frame, bgr, cv::COLOR_YUV2BGR_NV12);
-      auto img_msg = cv_bridge::CvImage(
-        std_msgs::msg::Header(), "bgr8", bgr).toImageMsg();
-      img_msg->header.stamp = timestamp;
-      img_msg->header.frame_id = camera_frame_id_;
-      image_raw_pub_->publish(std::move(*img_msg));
+      image_raw_pub_->publish(
+        makeBgrImageMessage(bgr, compressed_msg_.header));
     }
   }
 }

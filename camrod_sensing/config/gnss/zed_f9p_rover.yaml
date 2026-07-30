@@ -1,8 +1,15 @@
+# This file is organized as: 1) device and connection, 2) startup and
+# dual-antenna options, 3) rates and rover mode, 4) message output,
+# 5) moving base RTCM writer node.
+
 # HH_260727 - Keep both physical GNSS ports in this one deployment profile.
 # Node-specific wildcard selectors let the same file work under /gnss and
 # /sensing/gnss without exposing the rover USB port to the RTCM writer.
 /**/ublox_gps_node:
   ros__parameters:
+    # =========================================================================
+    # 1. DEVICE AND CONNECTION
+    # =========================================================================
     # HH_260708 - Use the operator-verified ttyACM port for the field harness.
     # Do not switch GNSS to by-id; USB role checks are done against ttyACM*.
     device: /dev/ttyACM0
@@ -14,6 +21,9 @@
     rtcm_topic: rtcm
     debug: 1 # 4 is logging data
 
+    # =========================================================================
+    # 2. STARTUP AND DUAL-ANTENNA OPTIONS
+    # =========================================================================
     # HH_260330: Avoid startup abort on some F9P units reporting
     # "Failed to read the GNSS config" during CFG polling.
     # Keep receiver running even if runtime CFG read/write is flaky.
@@ -29,6 +39,9 @@
     # separate two complete reference streams, so production leaves USB RTCM off.
     dual_antenna.block_rtcm_ids: [4072]
 
+    # =========================================================================
+    # 3. RATES AND ROVER MODE
+    # =========================================================================
     # HH_260326: Increase GNSS fix rate for localization consistency validation.
     # HH_260722 - Keep this shared single-antenna profile at 10 Hz. The dual
     # launch overlay sets 1 Hz so moving-base and rover navigation epochs match.
@@ -44,6 +57,9 @@
     # uart1:
     #   baudrate: 9600
 
+    # =========================================================================
+    # 4. MESSAGE OUTPUT
+    # =========================================================================
     # Publish only what we need to reduce CFG-MSG configuration and avoid NACKs.
     # NAV-PVT is the key message for:
     # - lat/lon/height
@@ -69,6 +85,9 @@
     inf:
       all: false
 
+# =========================================================================
+# 5. MOVING BASE RTCM WRITER
+# =========================================================================
 /**/moving_base_rtcm_writer:
   ros__parameters:
     # POWER+XBEE FTDI connected to the Lite moving-base UART1.

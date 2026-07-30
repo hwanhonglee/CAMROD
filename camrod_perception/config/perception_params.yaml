@@ -1,3 +1,9 @@
+# Perception parameters, one numbered section per node: 1) obstacle fusion,
+# 2) obstacle LiDAR clustering, 3) YOLO detector, 4) campsite occupancy.
+
+# =========================================================================
+# 1. OBSTACLE FUSION
+# =========================================================================
 # HH_260629: Shared perception parameters for camrod_perception and camrod_bringup.
 # Keep the package and bringup copies synchronized before field runs.
 # Fusion uses direct econ_front topics; /sensing/camera/processed is not published.
@@ -14,27 +20,33 @@
     out_det3d_topic:     "/perception/camera_lidar/detections_3d"
     out_markers_topic:   "/perception/camera_lidar/markers"
     out_euclidean_topic: "/perception/camera_lidar/euclidean_markers"
+
     # HH_260707: Keep fusion outputs enabled, but avoid stale sync backlog and
     # debug-image decode/draw work unless an operator UI/RViz is consuming it.
     sync_queue_size: 8
     debug_image_publish_rate_hz: 2.0
     debug_draw_stride: 4
     publish_debug_image_without_subscribers: false
+
     image_width: 1920
     image_height: 1080
+
     # HH_260522: unified fusion filter selector.
     #   camera_bbox/enabled/on: keep only points inside camera detections
     #   pass_through/disabled/off/none: ignore camera detections and publish projected LiDAR points
     fusion_filter_mode: "camera_bbox"
     # If true, publish pass-through points when detections are missing/empty.
     keep_lidar_when_no_detections: true
+
     # Extrinsic: camera position relative to LiDAR effective frame [m]
     # R (LiDAR eff→camera) is fixed by Vanjee 750 mounting: cam_X=eff_X, cam_Y=-eff_Z, cam_Z=eff_Y
     extrinsic_x: 0.0
     extrinsic_y: 0.0 # 0.0
     extrinsic_z: -0.07    # HH_260623: Camera is 10 cm below LiDAR.
+
     # HH_260529: Replace fusion_filter_mode with lidar_min_forward_m; points closer than this [m] are ignored.
     lidar_min_forward_m: 1.0
+
     # Clustering / tracking
     n_closest:     5
     min_pts_in_bbox: 3
@@ -42,14 +54,19 @@
     assoc_dist:    1.0
     max_miss:      5
 
+# =========================================================================
+# 2. OBSTACLE LIDAR CLUSTERING
+# =========================================================================
 /perception/obstacle_lidar:
   ros__parameters:
     input_topic: "/sensing/lidar/points_filtered"                 # LiDAR cloud input for Euclidean clustering.
     bbox_topic: "/perception/lidar/bboxes"                        # MarkerArray output topic for cluster AABB results.
+
     # HH_260406: Canonical DBSCAN/Euclidean clustering params.
     cluster_tolerance: 0.25                                       # Neighbor distance threshold for cluster growth [m].
     min_cluster_size: 12                                          # Minimum number of points required for a valid cluster.
     max_cluster_size: 8000                                        # Maximum number of points allowed for a valid cluster.
+
     # HH_260522: Unified ROI filter selector.
     #   box/enabled/on: apply ROI bounds
     #   disabled/off/none: skip ROI bounds
@@ -60,12 +77,17 @@
     y_max: 3.0                                                    # ROI maximum Y bound [m].
     z_min: -3.0                                                   # ROI minimum Z bound [m].
     z_max: 5.0                                                    # ROI maximum Z bound [m].
+
     min_size_x: 0.10                                              # Reserved threshold for minimum box length in X [m].
     min_size_y: 0.10                                              # Reserved threshold for minimum box width in Y [m].
     min_size_z: 0.10                                              # Reserved threshold for minimum box height in Z [m].
+
     marker_lifetime_s: 0.15                                       # Marker lifetime before auto-expire [s].
     draw_text: true                                               # Enables per-cluster text marker (id/points/distance).
 
+# =========================================================================
+# 3. YOLO DETECTOR
+# =========================================================================
 # HH_260629: Explicit YOLO topics prevent fallback to compiled defaults.
 # model_path / class_label_path are resolved at launch time by yolo.launch.py.
 /perception/yolov9mit:
@@ -74,27 +96,37 @@
     class_label_path: ""                                         # resolved by yolo.launch.py
     model_type: "tensorrt"
     tensorrt_device: 0
+
     min_confidence: 0.5
     min_iou: 0.5
+
     # HH_260723 - Limit inference to the diagnostics contract and leave CPU headroom for
     # localization/planning under the full hardware stack.
     throttle_fps: 5.0
     imshow: false
+
     input_image_topic: "/sensing/camera/econ_front/image_rect"   # HH_260529
     transport_hint: "compressed"
+    # HH_260730 / TODOLIST 2 - Reject corrupt/decompression-bomb inputs before OpenCV.
+    max_compressed_payload_bytes: 16777216
     output_image_topic: "/perception/camera/yolo_image"
     output_boundingbox_topic: "/perception/camera/detections_2d"
 
+# =========================================================================
+# 4. CAMPSITE OCCUPANCY
+# =========================================================================
 # HH_260723 - Confirm semantic tent detections before publishing occupied mission keys.
 /perception/campsite_occupancy:
   ros__parameters:
     detection_topic: "/perception/camera_lidar/detections_3d"
     output_topic: "/perception/camping_sites/occupancy"
     map_frame_id: "map"
+
     tent_class_labels: ["tent", "80"]
     minimum_confidence: 0.50
     confirm_hits: 3
     confirm_window_s: 2.0
+
     # HH_260723 - Preserve a confirmed occupied site for the current field session even
     # after the robot drives out of camera view.
     occupied_hold_s: 3600.0

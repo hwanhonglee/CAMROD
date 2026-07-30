@@ -7,7 +7,9 @@
     # HH_260331: Standardize sensing velocity topic naming.
     output_topic: "/sensing/platform_velocity_converter/twist_with_covariance"
     imu_status_topic: "/sensing/imu/status"
+
     publish_imu_status: false
     require_imu: true
+
     linear_variance: [0.05, 0.05, 0.1]
     angular_variance: [0.2, 0.2, 0.2]

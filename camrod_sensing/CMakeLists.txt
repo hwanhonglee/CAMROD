@@ -84,7 +84,8 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
     find_package(OpenCV REQUIRED)
     find_package(CUDAToolkit REQUIRED)
-    # HJ_260626: cv_bridge moved up so camera_front_publisher_component can depend on it.
+    # Rear camera uses cv_bridge; front constructs sensor_msgs/Image directly to
+    # avoid loading the system OpenCV ABI into its OpenCV 4.8 component process.
     find_package(cv_bridge REQUIRED)
     find_package(vpi REQUIRED
       PATHS
@@ -113,7 +114,6 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
       rclcpp_components
       sensor_msgs
       avg_msgs
-      cv_bridge   # HJ_260626: front node now includes cv_bridge/cv_bridge.h
     )
     target_link_libraries(
       camera_front_publisher_component
@@ -140,7 +140,6 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
 
     # HH_260528: Rear camera publisher — econ_camera_node (OpenCV + GStreamer, no GPU).
     # HH_260601: removed yaml-cpp dependency; calibration now loaded from ROS parameters.
-    # HJ_260626: find_package(cv_bridge) moved above the front component.
     add_executable(camera_rear_publisher_node src/camera_rear_publisher_node.cpp)
     ament_target_dependencies(
       camera_rear_publisher_node
@@ -279,6 +278,12 @@ if(BUILD_TESTING)
     test/test_radar_dummy_contract.cpp
   )
   target_include_directories(test_radar_dummy_contract PRIVATE include)
+  # Validate front-camera frame/JPEG boundaries without camera, CUDA, or decoding.
+  ament_add_gtest(
+    test_camera_front_contract
+    test/test_camera_front_contract.cpp
+  )
+  target_include_directories(test_camera_front_contract PRIVATE include)
   # HH_260722 - Lock single/dual GNSS RTCM topic and USB-input launch behavior.
   # Disable unrelated user-site pytest plugins during configure-time discovery;
   # the current anyio plugin is incompatible with the ROS system pytest version.

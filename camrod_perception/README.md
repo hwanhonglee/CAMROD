@@ -33,10 +33,16 @@ the tag pose and `camrod_control` decides parking commands.
 > HH_260729 - Bringup freezes component ownership in the parent scope before
 > starting scoped child launches, preventing a front-camera dummy from sharing
 > the physical image topic. The YOLO compressed-image callback also validates
-> non-empty decoded BGR input and catches cv_bridge/OpenCV/processing exceptions.
+> non-empty decoded BGR input and catches OpenCV/processing exceptions.
 > A malformed JPEG is dropped with throttled stage, byte-count, format, frame,
 > timestamp, and exception detail instead of terminating the shared component
 > container.
+
+> HH_260730 - YOLO now decodes compressed input and constructs debug
+> `sensor_msgs/Image` output directly with its OpenCV 4.8 ABI. Removing
+> `cv_bridge` from this component eliminates the OpenCV 4.5/4.8 mixture that
+> existed in `/camera_yolo_container`. Inputs above the configured 16 MiB bound
+> are rejected before decode.
 
 ---
 
@@ -450,9 +456,12 @@ ros2 topic hz /perception/lidar/bboxes
 2. Inspect the `Dropping compressed image` detail for decode stage, payload
    bytes, format, frame ID, and timestamp. One bad frame must not kill the
    container.
-3. If valid physical frames still fail, check the component process maps for
-   mixed OpenCV ABIs and verify NvJPEG output independently before changing
-   YOLO thresholds or models.
+3. Run `field_test_tool.sh camera-yolo 300`. Its independent subscriber reports
+   JPEG payload min/max bytes, decode failures, dimensions, dummy activity, and
+   publisher ownership.
+4. `ldd libyolov9mit_ros.so` and the running component process maps must contain
+   only OpenCV `.408`; `libcv_bridge` and OpenCV 4.5 in that process are a
+   failed deployment/build, not a YOLO threshold problem.
 
 ---
 
