@@ -101,6 +101,7 @@ target_link_libraries(localization_map_helper_node
 add_executable(localization_pose_selector_node
   src/localization_pose_selector_node.cpp
 )
+target_include_directories(localization_pose_selector_node PRIVATE include)
 ament_target_dependencies(localization_pose_selector_node
   rclcpp
   avg_msgs
@@ -167,6 +168,13 @@ if(BUILD_TESTING)
   )
   target_include_directories(test_navsat_fix_validation PRIVATE include)
   ament_target_dependencies(test_navsat_fix_validation sensor_msgs)
+
+  # HH_260730 - Prevent callback order from adding one EKF cycle of selected-pose lag.
+  ament_add_gtest(
+    test_pose_selector_freshness
+    test/test_pose_selector_freshness.cpp
+  )
+  target_include_directories(test_pose_selector_freshness PRIVATE include)
 
   # HH_260721 - Scope C++, Python, and XML checks to this package's maintained files.
   find_package(ament_cmake_cppcheck REQUIRED)

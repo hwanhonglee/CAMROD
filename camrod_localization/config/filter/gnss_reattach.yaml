@@ -1,10 +1,19 @@
+# This file is organized as: 1) input topics, 2) reset outputs,
+# 3) detach/reattach thresholds, 4) mode gate and timeouts,
+# 5) covariance and reset settings, 6) manual initialpose reset.
 /**:
   ros__parameters:
+    # =========================================================================
+    # 1. INPUT TOPICS
+    # =========================================================================
     localization_pose_cov_topic: "/localization/pose_with_covariance"
     gnss_pose_cov_topic: "/sensing/gnss/pose_with_covariance"
     wheel_odom_topic: "/localization/input/wheel_odometry"
     localization_mode_topic: "/localization/mode"
 
+    # =========================================================================
+    # 2. RESET OUTPUTS
+    # =========================================================================
     # HH_260527: reset_target_mode options:
     #   ekf_topic: publish geometry_msgs reset to /localization/set_pose
     #   avg_pose_topic: publish avg_msgs reset to avg_pose_reset_topic
@@ -15,6 +24,9 @@
     # HH_260720 - Keep generated reset requests independent of a filter implementation name.
     avg_pose_reset_topic: "/localization/filter/set_pose"
 
+    # =========================================================================
+    # 3. DETACH / REATTACH THRESHOLDS
+    # =========================================================================
     detach_distance_m: 3.0
     attach_distance_m: 1.5
     detach_hold_s: 0.5
@@ -27,6 +39,9 @@
     motion_step_clip_m: 5.0
     wheel_motion_speed_threshold_mps: 0.12
 
+    # =========================================================================
+    # 4. MODE GATE AND TIMEOUTS
+    # =========================================================================
     # Optional mode gate (AvgLocalizationMode enum: NORMAL=0, DEGRADED=1, DR_ONLY=2, INVALID=3).
     require_mode_gate: false
     require_mode_at_or_above: 2
@@ -34,6 +49,9 @@
     localization_timeout_s: 1.0
     gnss_timeout_s: 2.0
 
+    # =========================================================================
+    # 5. COVARIANCE AND RESET SETTINGS
+    # =========================================================================
     max_gnss_cov_trace: 25.0
     max_gnss_yaw_covariance: 100.0
     min_reset_cov_xy: 0.05
@@ -42,6 +60,9 @@
     # an EKF yaw that may have been seeded by unaided IMU yaw.
     use_localization_yaw: false
 
+    # =========================================================================
+    # 6. MANUAL INITIALPOSE RESET
+    # =========================================================================
     # HH_260527: Manual RViz 2D Pose Estimate (/localization/initialpose) bridge.
     enable_initialpose_reset: true
     initialpose_topic: "/localization/initialpose"

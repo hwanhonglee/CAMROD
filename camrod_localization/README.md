@@ -215,10 +215,10 @@ graph TD
 | Node | Key Inputs | Key Outputs | Notable Params |
 |---|---|---|---|
 | `localization_input_adapter_node` | `/sensing/gnss/ublox_gps_node/fix`, `/platform/status/odometry`, `/rmp401/odom`, `/localization/primary/odometry_ros` | generated GNSS/wheel topics and `/localization/primary/*` | `gnss_covariance_floor_xy`: 1e-6 m², `wheel_primary_timeout_s`: 0.7 s, `max_position_jump_m`: 8.0 m |
-| `robot_localization/ekf_filter` | `/sensing/imu/data_ros`, `/sensing/gnss/pose_with_covariance_ros`, `/localization/input/wheel_odometry_ros` | `/localization/primary/odometry_ros`, `odom→robot_base_link` TF | `frequency`: 10 Hz, `two_d_mode`: enabled, `world_frame`: odom, GNSS position/yaw enabled |
+| `robot_localization/ekf_filter` | `/sensing/imu/data_ros`, `/sensing/gnss/pose_with_covariance_ros`, `/localization/input/wheel_odometry_ros` | `/localization/primary/odometry_ros`, `odom→robot_base_link` TF | `frequency`: 15 Hz, `two_d_mode`: enabled, `world_frame`: odom, GNSS position/yaw enabled |
 | `localization_monitor_node` | `/sensing/gnss/pose_with_covariance`, `/sensing/imu/data`, `/localization/input/wheel_odometry` | `/localization/mode`, `/localization/state`, `/localization/confidence` | `filter_status_mode`: none, `gnss_timeout_s`: 4.0, `imu_timeout_s`: 1.0, `wheel_timeout_s`: 1.0 |
 | `localization_map_helper_node` | `/localization/pose`, `/localization/pose_with_covariance`, Lanelet2 map, `drop_zones.yaml` | `/localization/centerline_pose`, `/localization/drop_zone/initial_pose`, `/localization/drop_zone/match_ok` | `max_search_radius`: 30 m, `lateral_stddev`: 0.3, `match_radius`: 2.0 m, `stable_count`: 10 |
-| `localization_pose_selector_node` | `/localization/primary/pose_with_covariance`, `/localization/fallback/*`, `/localization/mode` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry` | `primary_timeout_s`: 0.5 s, `fallback_on_mode_at_or_above`: 3 (INVALID) |
+| `localization_pose_selector_node` | `/localization/primary/pose_with_covariance`, `/localization/primary/odometry`, `/localization/fallback/*`, `/localization/mode` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry` | Selects the freshest header-stamped pose payload regardless of pose/odometry callback order; `primary_timeout_s`: 0.5 s, `fallback_on_mode_at_or_above`: 3 (INVALID) |
 
 <!-- HH_260729 - Keep disabled-GNSS transport alive without manufacturing a
 map pose. -->
@@ -251,10 +251,10 @@ measurement. Diagnostics still report the input explicitly as DUMMY/WARN.
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
 <!-- HH_260720 - Document generated internal outputs and explicit ROS mirrors. -->
-| `/localization/pose` | `avg_msgs/AvgPoseStamped` | camrod_planning, camrod_platform | ~50 Hz | Selected map-frame robot pose |
-| `/localization/pose_with_covariance` | `avg_msgs/AvgPoseWithCovarianceStamped` | CAMROD localization consumers | ~50 Hz | Selected pose with covariance |
-| `/localization/odometry` | `avg_msgs/AvgOdometry` | camrod_planning, camrod_control | ~50 Hz | Selected odometry with velocity |
-| `/localization/pose_ros`, `/localization/odometry_ros` | standard ROS geometry/nav messages | Nav2, RViz, TF tooling | ~50 Hz | Explicit ecosystem boundary mirrors |
+| `/localization/pose` | `avg_msgs/AvgPoseStamped` | camrod_planning, camrod_platform | real ~15 Hz, sim ~20 Hz | Selected map-frame robot pose |
+| `/localization/pose_with_covariance` | `avg_msgs/AvgPoseWithCovarianceStamped` | CAMROD localization consumers | real ~15 Hz, sim ~20 Hz | Selected pose with covariance |
+| `/localization/odometry` | `avg_msgs/AvgOdometry` | camrod_planning, camrod_control | real ~15 Hz, sim ~20 Hz | Selected odometry with velocity |
+| `/localization/pose_ros`, `/localization/odometry_ros` | standard ROS geometry/nav messages | Nav2, RViz, TF tooling | real ~15 Hz, sim ~20 Hz | Explicit ecosystem boundary mirrors |
 | `/localization/mode` | `AvgLocalizationMode` | camrod_planning, camrod_system | ~5 Hz | NORMAL=0 / DEGRADED=1 / DR_ONLY=2 / INVALID=3 |
 | `/localization/drop_zone/match_ok` | `avg_msgs/AvgBool` | camrod_system, camrod_planning | on change | `true` once the selected EKF pose stably matches a configured drop zone |
 | `/localization/confidence` | `avg_msgs/AvgFloat32` | camrod_system | ~5 Hz | Filter confidence score [0-1] |
@@ -469,7 +469,7 @@ Key launch arguments:
 | `config/source/input_adapter.yaml` | GNSS NavSatFix → PoseWithCovariance conversion, wheel topic bridging, covariance floors (`gnss_covariance_floor_xy`: 1e-6 m²), position jump rejection (`max_position_jump_m`: 8.0 m) |
 | `config/filter/ekf.yaml` | Default robot_localization EKF parameters. The node log level is WARN in `filter.launch.py` |
 | `config/filter/monitor.yaml` | Sensor timeouts (`gnss_timeout_s`: 4.0, `imu_timeout_s`: 1.0, `wheel_timeout_s`: 1.0), GNSS health gates (`gnss_cov_trace_fail`: 1.0, `gnss_jump_fail_m`: 1.0, `gnss_min_hz`: 0.8), recovery debounce (1.5 s), and DR timeout (`dr_max_duration_s`: 30.0) |
-| `config/filter/pose_selector.yaml` | Primary/fallback source topology, `fallback_on_mode_at_or_above`: 3 (INVALID), `primary_timeout_s`: 0.5 s |
+| `config/filter/pose_selector.yaml` | Primary/fallback source topology, freshest-header callback-order policy, `fallback_on_mode_at_or_above`: 3 (INVALID), `primary_timeout_s`: 0.5 s |
 | `config/reference/map_helper.yaml` | Centerline snapper covariance (`lateral_stddev`: 0.3), indexed nearest-lanelet lookup, cached output during search throttling, drop zone match radius 2.0 m, `stable_count`: 10, `drop_zone_yaw_source`: zone |
 | `config/drop_zones.yaml` | Drop zone definitions (id, x, y, z, yaw_deg in map frame) used for initial pose matching |
 

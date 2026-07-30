@@ -1,15 +1,27 @@
+# This file is organized as: 1) input topics, 2) reset outputs,
+# 3) detach/reattach thresholds, 4) mode gate and timeouts,
+# 5) covariance and reset settings, 6) manual initialpose reset.
 /**:
   ros__parameters:
+    # =========================================================================
+    # 1. INPUT TOPICS
+    # =========================================================================
     localization_pose_cov_topic: "/localization/pose_with_covariance"
     gnss_pose_cov_topic: "/sensing/gnss/pose_with_covariance"
     wheel_odom_topic: "/localization/input/wheel_odometry"
     localization_mode_topic: "/localization/mode"
 
+    # =========================================================================
+    # 2. RESET OUTPUTS
+    # =========================================================================
     reset_target_mode: "both"
     ekf_set_pose_topic: "/localization/set_pose"
     # HH_260720 - Keep generated reset requests independent of a filter implementation name.
     avg_pose_reset_topic: "/localization/filter/set_pose"
 
+    # =========================================================================
+    # 3. DETACH / REATTACH THRESHOLDS
+    # =========================================================================
     # HH_260617: Disable automatic GNSS reattach in sim planning tests.
     # Fake sensors and Nav2 can intentionally diverge while validating route
     # planning; auto reset teleports /localization/pose and invalidates the
@@ -24,17 +36,26 @@
     motion_step_clip_m: 5.0
     wheel_motion_speed_threshold_mps: 9999.0
 
+    # =========================================================================
+    # 4. MODE GATE AND TIMEOUTS
+    # =========================================================================
     require_mode_gate: false
     require_mode_at_or_above: 2
 
     localization_timeout_s: 1.0
     gnss_timeout_s: 2.0
 
+    # =========================================================================
+    # 5. COVARIANCE AND RESET SETTINGS
+    # =========================================================================
     max_gnss_cov_trace: 25.0
     min_reset_cov_xy: 0.05
     reset_cov_yaw: 0.5
     use_localization_yaw: true
 
+    # =========================================================================
+    # 6. MANUAL INITIALPOSE RESET
+    # =========================================================================
     enable_initialpose_reset: true
     initialpose_topic: "/localization/initialpose"
     enable_initialpose_fallback_topic: true

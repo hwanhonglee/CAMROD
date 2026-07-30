@@ -1,5 +1,6 @@
 /**:
   ros__parameters:
+    # --- Status output ---
     publish_localization_status: false
     localization_status_topic: "/localization/status"
 
@@ -32,6 +33,7 @@
     gnss_covariance_floor_xy: 0.1
     gnss_covariance_floor_z: 0.25
 
+    # --- Dual-antenna GNSS heading ---
     # HH_260611: Enable dual-antenna GNSS heading from ublox_gps NAV-RELPOSNED.
     # HH_260604: COG heading removed — dual-antenna moving-baseline RTK is the sole heading source.
     enable_gnss_heading: true
@@ -46,6 +48,7 @@
     gnss_heading_unavailable_covariance: 1000000.0
     hold_last_gnss_heading: true
 
+    # --- Position jump rejection ---
     max_position_jump_m: 8.0
     jump_reject_max_speed_mps: 20.0
     jump_reject_reset_s: 2.0

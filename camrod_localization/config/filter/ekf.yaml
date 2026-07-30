@@ -1,9 +1,18 @@
+# This file is organized as: 1) filter core and frames, 2) initial estimate
+# covariance, 3) imu0 input, 4) pose0 GNSS position input, 5) odom0 wheel
+# input, 6) pose1 GNSS heading input, 7) process noise covariance.
 /**:
 # HH_260109 Use node-agnostic parameters so launch applies them regardless of namespace.
   ros__parameters:
+    # =========================================================================
+    # 1. FILTER CORE AND FRAMES
+    # =========================================================================
     # HH_260625: Full sensing + RViz on Orin repeatedly exceeded the 20 Hz EKF
-    # budget. Use 10 Hz so localization stays alive without flooding the CPU.
-    frequency: 10.0
+    # budget.
+    # HH_260730: Run at the controller's 15 Hz cadence. The former 10 Hz output
+    # forced every third 15 Hz controller cycle to reuse an old pose/TF; 15 Hz
+    # removes that sampling mismatch without returning to the failed 20 Hz load.
+    frequency: 15.0
     sensor_timeout: 0.2
     two_d_mode: true
     map_frame: map
@@ -21,6 +30,10 @@
     # Extrapolate filter state to current time on each publish cycle so TF/pose
     # consumers get the most recent estimate rather than the last fused timestamp.
     predict_to_current_time: true
+
+    # =========================================================================
+    # 2. INITIAL ESTIMATE COVARIANCE
+    # =========================================================================
     # HH_260526: Initial position uncertainty set to 1.0 m² so the first GNSS measurement
     # is well-trusted (K_init ≈ 0.91) and EKF converges to GNSS position within 1-2 epochs.
     # robot_localization default is 1e-9 (near-zero) which gives K≈0 and prevents attachment.
@@ -42,6 +55,9 @@
                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01, 0.0,
                                   0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.0,  0.01]
 
+    # =========================================================================
+    # 3. IMU INPUT (imu0)
+    # =========================================================================
     # HH_260625: CV7-AHRS yaw is unaided here, so do not fuse it as map heading.
     # imu0_config order:
     # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
@@ -58,6 +74,9 @@
     imu0_relative: false
     imu0_queue_size: 20
 
+    # =========================================================================
+    # 4. GNSS POSITION INPUT (pose0)
+    # =========================================================================
     # GNSS absolute position (map frame).
     # map→odom identity TF is published by ekf_map_to_odom_static_tf in localization.launch.py
     # (ekf_publish_map_to_odom_static_tf default=true) so EKF can transform this to odom world_frame.
@@ -76,6 +95,9 @@
     # — catches multipath / float-mode jumps while passing normal RTK corrections (<5 cm).
     pose0_rejection_threshold: 3.0
 
+    # =========================================================================
+    # 5. WHEEL ODOMETRY INPUT (odom0)
+    # =========================================================================
     # HH_260720 - One explicit standard wheel boundary provides vx, vy=0, and yaw rate.
     odom0: /localization/input/wheel_odometry_ros
     odom0_config: [false, false, false,
@@ -90,6 +112,9 @@
     # HH_260720 - Do not register the disabled lanelet-snap feedback as an EKF input.
     # Map snapping remains a downstream localization output only.
 
+    # =========================================================================
+    # 6. GNSS HEADING INPUT (pose1)
+    # =========================================================================
     # HH_260625: Fuse dual-antenna GNSS heading as yaw only.
     # HH_260723 - robot_localization stops scanning pose inputs at the first missing index,
     # so this yaw-only input must be pose1 directly after pose0.
@@ -108,6 +133,9 @@
     # Measurement covariance still controls GNSS heading update weight.
     pose1_rejection_threshold: 1000.0
 
+    # =========================================================================
+    # 7. PROCESS NOISE COVARIANCE
+    # =========================================================================
     # State vector: [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
     # HH_260526: Position noise reduced 0.05→0.01, velocity noise 0.5→0.05.
     #   Position Q=0.05 → steady-state K≈0.51 (51% GNSS gain, 0.5m GNSS jump → 0.25m EKF jump).
