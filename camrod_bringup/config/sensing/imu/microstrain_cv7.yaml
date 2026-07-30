@@ -1,3 +1,4 @@
+# Layout: General/Connection -> Frame/TF -> CV7-AHRS must-set items -> Filter aiding -> Filter lifecycle -> Publisher rates -> IMU covariance.
 /**:
   ros__parameters:
 

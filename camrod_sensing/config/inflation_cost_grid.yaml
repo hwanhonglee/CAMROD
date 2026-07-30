@@ -1,9 +1,18 @@
+# Inflation cost-grid parameters are grouped as:
+#   1) output topic and frames, 2) grid geometry and window,
+#   3) cost model, 4) runtime, 5) input topics and staleness.
 /sensing/inflation_cost_grid:
   ros__parameters:
+    # =========================================================================
+    # 1. OUTPUT TOPIC AND FRAMES
+    # =========================================================================
     output_topic: "/planning/cost_grid/inflation"
     base_frame_id: "robot_base_link"
     output_frame_id: "map"
 
+    # =========================================================================
+    # 2. GRID GEOMETRY AND WINDOW
+    # =========================================================================
     # HH_260702 - Keep the output map-axis aligned for Nav2/gate consumers, but
     # preserve enough forward dynamic cost for early avoidance release checks.
     resolution: 0.10
@@ -16,12 +25,18 @@
     rear_extent_m: 1.5
     side_extent_m: 2.2
 
+    # =========================================================================
+    # 3. COST MODEL
+    # =========================================================================
     # Cost model
     free_value: 0
     # HH_260703 - Static guide costs are cleared inside the footprint, but live
     # LiDAR/Radar costs stay visible so side/rear safety stops are not erased.
     ego_clear_radius_m: 0.50
 
+    # =========================================================================
+    # 4. RUNTIME
+    # =========================================================================
     # Runtime
     # HH_260618: Match Nav2 local-costmap cadence; 10 Hz was redundant for a 6 Hz consumer.
     publish_rate_hz: 6.0
@@ -31,6 +46,9 @@
     rebuild_min_yaw_delta_rad: 0.03
     cached_republish_period_s: 0.0
 
+    # =========================================================================
+    # 5. INPUT TOPICS AND STALENESS
+    # =========================================================================
     # HH_260424: Inputs merged cell-wise (max). Order doesn't matter.
     #   lanelet:      lanelet centerline gradient (0=center, 35=in-lane, 99=off-lane)
     #   lidar/radar:  sensor obstacle costs (0=free, up to 95=obstacle)

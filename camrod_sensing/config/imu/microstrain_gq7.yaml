@@ -1,3 +1,4 @@
+# Layout: General/Connection -> Frame/TF -> GQ7 Filter/INS settings -> Publisher rates -> RTCM/NTRIP interface.
 microstrain_inertial_driver:
   ros__parameters:
 

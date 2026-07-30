@@ -13,8 +13,8 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>OpenCV</depend>
-  <depend>cv_bridge</depend>
   <depend>image_transport</depend>
+  <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>vision_msgs</depend>
   <depend>yolov9mit</depend>

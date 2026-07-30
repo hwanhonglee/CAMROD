@@ -447,6 +447,13 @@ tradeoff pending mounting/beam shielding:
 | Related params | `device_path`, `image_width`, `image_height`, `fps`, `exposure_time_us`, `jpeg_quality`, `camera_matrix`, `distortion_coefficients`, `intrinsics_source` |
 | Related topics | `/sensing/camera/econ_front/image_rect/compressed`, `/sensing/camera/econ_front/camera_info` |
 
+HH_260730 / TODOLIST 2: every front frame is checked at the capture, VPI, CUDA,
+and NvJPEG boundaries. Invalid dimensions/stride, CUDA/NvJPEG failures,
+zero/oversized payloads, and malformed SOI/SOF/SOS/EOI structure drop only the
+affected frame with a throttled reason. The front component constructs optional
+raw `sensor_msgs/Image` messages directly, so its process loads only OpenCV 4.8
+and does not mix the workspace OpenCV 4.5 `cv_bridge` ABI.
+
 **Rear camera (`camera_rear_publisher_node`, OpenCV + VIC-assisted pipeline)**
 
 | Field | Detail |
@@ -1031,6 +1038,9 @@ ros2 launch camrod_sensing camera.launch.py 2>&1 | grep "Camera opened"
 # Confirm the topic is publishing
 ros2 topic hz /sensing/camera/econ_front/image_rect/compressed
 # Expected: ~10 Hz (30 fps native, VPI+NvJPEG pipeline runs at publish rate)
+
+# Decode every physical payload and verify single-publisher/dimension ownership
+ros2 run camrod_bringup field_test_tool.sh camera-yolo 300
 ```
 
 ---

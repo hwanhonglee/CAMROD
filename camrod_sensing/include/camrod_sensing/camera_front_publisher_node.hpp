@@ -18,6 +18,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,9 @@ private:
   void publishThread();
   void loadCameraInfo();
   void initVpiRemap();
+  void initNvJpeg();
+  void cleanupNvJpeg();
+  bool encodeRectifiedJpeg();
 
   rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr rect_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr image_raw_pub_;
@@ -65,6 +69,7 @@ private:
   cv::Mat               u_plane_;
   cv::Mat               v_plane_;
   int                   jpeg_quality_{80};
+  std::size_t           max_jpeg_payload_size_{0U};
 
   sensor_msgs::msg::CompressedImage compressed_msg_;
 

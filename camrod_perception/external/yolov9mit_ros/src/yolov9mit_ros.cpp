@@ -1,19 +1,142 @@
+// Copyright 2026 hwanhonglee
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+
 #include "yolov9mit_ros/yolov9mit_ros.hpp"
 
+#include <cstring>
 #include <exception>
 #include <filesystem>
 #include <opencv2/opencv.hpp>
+#include <sensor_msgs/image_encodings.hpp>
+#include <stdexcept>
 #include <vision_msgs/msg/detection2_d.hpp>
 #include <vision_msgs/msg/object_hypothesis_with_pose.hpp>
 
 #include "yolov9mit/utils.hpp"
-#include "yolov9mit_ros/cv_bridge_include.hpp"
-
-// HJ_260529: cv_bridge CompressedImage support
-#include <cv_bridge/cv_bridge.h>
 
 namespace yolov9mit_ros
 {
+namespace
+{
+sensor_msgs::msg::Image::SharedPtr makeBgrImageMessage(
+    const cv::Mat & image,
+    const std_msgs::msg::Header & header)
+{
+    auto message = std::make_shared<sensor_msgs::msg::Image>();
+    message->header = header;
+    message->height = static_cast<uint32_t>(image.rows);
+    message->width = static_cast<uint32_t>(image.cols);
+    message->encoding = sensor_msgs::image_encodings::BGR8;
+    message->is_bigendian = false;
+    message->step = static_cast<uint32_t>(image.cols * image.elemSize());
+    message->data.resize(
+        static_cast<std::size_t>(message->step) *
+        static_cast<std::size_t>(message->height));
+    for (int row = 0; row < image.rows; ++row)
+    {
+        std::memcpy(
+            message->data.data() +
+            static_cast<std::size_t>(row) * message->step,
+            image.ptr(row),
+            message->step);
+    }
+    return message;
+}
+
+bool decodeRawImage(
+    const sensor_msgs::msg::Image & message,
+    cv::Mat & output,
+    std::string & error)
+{
+    int cv_type = 0;
+    int conversion = -1;
+    std::size_t bytes_per_pixel = 0U;
+    if (message.encoding == sensor_msgs::image_encodings::BGR8)
+    {
+        cv_type = CV_8UC3;
+        bytes_per_pixel = 3U;
+    }
+    else if (message.encoding == sensor_msgs::image_encodings::RGB8)
+    {
+        cv_type = CV_8UC3;
+        bytes_per_pixel = 3U;
+        conversion = cv::COLOR_RGB2BGR;
+    }
+    else if (message.encoding == sensor_msgs::image_encodings::MONO8)
+    {
+        cv_type = CV_8UC1;
+        bytes_per_pixel = 1U;
+        conversion = cv::COLOR_GRAY2BGR;
+    }
+    else if (message.encoding == sensor_msgs::image_encodings::BGRA8)
+    {
+        cv_type = CV_8UC4;
+        bytes_per_pixel = 4U;
+        conversion = cv::COLOR_BGRA2BGR;
+    }
+    else if (message.encoding == sensor_msgs::image_encodings::RGBA8)
+    {
+        cv_type = CV_8UC4;
+        bytes_per_pixel = 4U;
+        conversion = cv::COLOR_RGBA2BGR;
+    }
+    else
+    {
+        error = "unsupported encoding='" + message.encoding + "'";
+        return false;
+    }
+
+    const std::size_t minimum_step =
+        static_cast<std::size_t>(message.width) * bytes_per_pixel;
+    const std::size_t required_bytes =
+        static_cast<std::size_t>(message.step) *
+        static_cast<std::size_t>(message.height);
+    if (
+        message.width == 0U || message.height == 0U ||
+        message.step < minimum_step || message.data.size() < required_bytes)
+    {
+        error =
+            "invalid raw layout width=" + std::to_string(message.width) +
+            " height=" + std::to_string(message.height) +
+            " step=" + std::to_string(message.step) +
+            " bytes=" + std::to_string(message.data.size());
+        return false;
+    }
+
+    const cv::Mat view(
+        static_cast<int>(message.height),
+        static_cast<int>(message.width),
+        cv_type,
+        const_cast<unsigned char *>(message.data.data()),
+        static_cast<std::size_t>(message.step));
+    if (conversion < 0)
+    {
+        output = view.clone();
+    }
+    else
+    {
+        cv::cvtColor(view, output, conversion);
+    }
+    return !output.empty();
+}
+}  // namespace
 
 YOLOV9MIT_Node::YOLOV9MIT_Node(const rclcpp::NodeOptions &options) : Node("yolov9mit_ros", options)
 {
@@ -34,6 +157,15 @@ YOLOV9MIT_Node::YOLOV9MIT_Node(const rclcpp::NodeOptions &options) : Node("yolov
         this->declare_parameter("output_boundingbox_topic", "yolov9mit_ros/detections");
     this->imshow_ = this->declare_parameter("imshow", false);
     const auto throttle_fps = this->declare_parameter("throttle_fps", 0.0);
+    const auto max_compressed_payload_bytes = this->declare_parameter<int64_t>(
+        "max_compressed_payload_bytes",
+        static_cast<int64_t>(max_compressed_payload_bytes_));
+    if (max_compressed_payload_bytes <= 0)
+    {
+        throw std::invalid_argument("max_compressed_payload_bytes must be positive");
+    }
+    max_compressed_payload_bytes_ =
+        static_cast<std::size_t>(max_compressed_payload_bytes);
     if (throttle_fps > 0.0)
     {
         this->throttle_interval_ = std::chrono::duration<double>(1.0 / throttle_fps);
@@ -143,7 +275,10 @@ void YOLOV9MIT_Node::process_image(const cv::Mat & image, const std_msgs::msg::H
     {
         cv::Mat draw = image.clone();
         yolov9mit::utils::draw_objects(draw, objects, this->class_names_);
-        const auto pub_img_msg = cv_bridge::CvImage(header, "bgr8", draw).toImageMsg();
+        // HH_260730 / TODOLIST 2 - Construct the ROS image directly so this
+        // component does not pull the workspace OpenCV 4.5 cv_bridge into the
+        // same process as the TensorRT/OpenCV 4.8 detector.
+        const auto pub_img_msg = makeBgrImageMessage(draw, header);
         this->pub_image_.publish(pub_img_msg);
     }
 
@@ -168,7 +303,15 @@ void YOLOV9MIT_Node::image_callback(const sensor_msgs::msg::Image::ConstSharedPt
         if (now - last_inference_time_ < throttle_interval_) return;
         last_inference_time_ = now;
     }
-    const cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
+    cv::Mat image;
+    std::string error;
+    if (!decodeRawImage(*msg, image, error))
+    {
+        RCLCPP_ERROR_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "Dropping raw image: %s", error.c_str());
+        return;
+    }
     process_image(image, msg->header);
 }
 
@@ -186,6 +329,14 @@ void YOLOV9MIT_Node::compressed_image_callback(
         log_compressed_frame_error(msg, "input", "empty compressed payload");
         return;
     }
+    if (msg->data.size() > max_compressed_payload_bytes_)
+    {
+        log_compressed_frame_error(
+            msg, "input",
+            "payload exceeds max_compressed_payload_bytes=" +
+            std::to_string(max_compressed_payload_bytes_));
+        return;
+    }
 
     if (throttle_interval_.count() > 0.0)
     {
@@ -196,27 +347,28 @@ void YOLOV9MIT_Node::compressed_image_callback(
 
     try
     {
-        const auto converted = cv_bridge::toCvCopy(msg, "bgr8");
-        if (!converted || converted->image.empty())
+        // HH_260730 / TODOLIST 2 - Decode with the detector's one OpenCV ABI.
+        // cv_bridge linked a second OpenCV ABI into this component container.
+        const cv::Mat encoded(
+            1, static_cast<int>(msg->data.size()), CV_8UC1,
+            const_cast<unsigned char *>(msg->data.data()));
+        const cv::Mat decoded = cv::imdecode(encoded, cv::IMREAD_COLOR);
+        if (decoded.empty())
         {
             log_compressed_frame_error(
-                msg, "decode", "cv_bridge returned an empty image");
+                msg, "decode", "OpenCV returned an empty image");
             return;
         }
-        if (converted->image.type() != CV_8UC3)
+        if (decoded.type() != CV_8UC3)
         {
             log_compressed_frame_error(
                 msg, "decode",
-                "unexpected decoded type=" + std::to_string(converted->image.type()) +
+                "unexpected decoded type=" + std::to_string(decoded.type()) +
                 " (expected CV_8UC3)");
             return;
         }
 
-        process_image(converted->image, msg->header);
-    }
-    catch (const cv_bridge::Exception & e)
-    {
-        log_compressed_frame_error(msg, "cv_bridge", e.what());
+        process_image(decoded, msg->header);
     }
     catch (const cv::Exception & e)
     {

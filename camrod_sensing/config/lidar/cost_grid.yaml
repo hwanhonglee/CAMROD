@@ -1,23 +1,35 @@
+# LiDAR cost-grid parameters are grouped as:
+#   1) topics and frames, 2) grid geometry, 3) cost model,
+#   4) route lanelet filter, 5) runtime.
 /sensing/lidar/lidar_cost_grid:
   ros__parameters:
+    # =========================================================================
+    # 1. TOPICS AND FRAMES
+    # =========================================================================
     # HH_260723 - Raw/preprocessed LiDAR points do not directly
     # create cost. Keep this compatibility grid topic as the rasterizer for
     # camera+LiDAR perception results only; radar remains a separate input.
     input_topic: "/perception/obstacles"
     input_topics:
       - "/perception/obstacles"
+
     # HH_260723 - Set this explicit switch true and restart to add the two filtered
     # LiDAR clouds below without changing perception or radar cost inputs.
     raw_lidar_cost_enabled: false
     raw_lidar_input_topics:
       - "/sensing/lidar/points_filtered"
       - "/sensing/lidar/filtered_cloud"
+
     perception_marker_topics:
       - "/perception/camera_lidar/markers"
+
     output_topic: "/sensing/cost_grid/lidar"
     base_frame_id: "robot_base_link"
     output_frame_id: "map"
 
+    # =========================================================================
+    # 2. GRID GEOMETRY
+    # =========================================================================
     # Grid geometry
     # HH_260702 - Keep dynamic obstacles visible far enough ahead for route
     # replanning before cmd_vel hard-stop range. 18 m square at 0.10 m keeps
@@ -29,6 +41,9 @@
     origin_x: -9.0
     origin_y: -9.0
 
+    # =========================================================================
+    # 3. COST MODEL
+    # =========================================================================
     # Cost model
     free_value: 0
     unknown_value: -1
@@ -39,20 +54,26 @@
     cost_range_min_m: 0.4
     cost_range_max_m: 9.0
     obstacle_radius_m: 0.20
+
     # HH_260707 - Reject road-level fallback points; vehicle/body returns above
     # this height still become dynamic cost.
     cloud_min_z_m: -0.55
     cloud_max_z_m: 1.00
+
     perception_marker_cost: 90
     # HH_260707 - Keep camera/LiDAR object cost visible to planning without
     # restoring the oversized lane-wide marker disks seen during field tests.
     perception_marker_min_radius_m: 0.35
     perception_marker_max_radius_m: 0.75
     perception_marker_radius_scale: 0.35
+
     # HH_260630: Keep ego clearing close to the vehicle half-width so side/rear
     # LiDAR obstacles just outside the body are not erased before safety gating.
     ego_clear_radius_m: 0.55
 
+    # =========================================================================
+    # 4. ROUTE LANELET FILTER
+    # =========================================================================
     # HH_260720 - Keep dynamic cost only inside the active route lanelets plus
     # this metric margin. Fail open during startup and intentional off-route maneuvers.
     route_lanelet_filter_enable: true
@@ -62,6 +83,9 @@
     route_lanelet_mask_max_age_s: 2.5
     route_lanelet_filter_fail_open_when_robot_outside: true
 
+    # =========================================================================
+    # 5. RUNTIME
+    # =========================================================================
     # Runtime
     # HH_260702 - Keep LiDAR/perception objects alive through brief CPU-load
     # stalls so the grid does not flicker empty between 6 Hz filtered frames.

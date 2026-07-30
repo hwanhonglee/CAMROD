@@ -3,18 +3,25 @@
 /sensing/lidar/ground_segmentation:
   ros__parameters:
     robot_frame: "lidar_link"
+
+    # X/Y/Z bounds
     maxX:  3.0
     minX:  0.0
     maxY:  1.5
     minY: -1.5
     maxZ:  1.0
     minZ: -1.0
+
+    # Downsampling
     downsample: true
     # HH_260706 - Use a slightly denser voxel grid with coarser ground cells.
     # This keeps curb/obstacle shape while reducing per-cell RANSAC work.
     downsample_resolution: 0.07
+
     lidar_to_ground: -0.75
     transform_tolerance: 0.1
+
+    # Cell sizes and thresholds
     cellSizeX: 0.5
     cellSizeY: 0.5
     cellSizeZ: 1.0
@@ -23,6 +30,7 @@
     groundInlierThreshold: 0.05
     centroidSearchRadius: 1.0
     maxGroundHeightDeviation: 0.05
+
     use_imu_orientation: false
     show_benchmark: false
     # HH_260702 - Keep RViz-only raw/ground debug clouds off during field runs;
