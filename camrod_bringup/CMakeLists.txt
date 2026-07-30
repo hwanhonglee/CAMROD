@@ -14,8 +14,12 @@ find_package(rclcpp REQUIRED)
 # deterministic validation runs.
 install(
   PROGRAMS
+    # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.
+    scripts/camera_payload_probe.py
     scripts/fake_sensor_publisher.py
     scripts/field_test_tool.sh
+    # HH_260730 - Measure every real localization hand-off in one time window.
+    scripts/pose_latency_probe.py
     scripts/planning_scenario_leaderboard.py
     scripts/sim_validation_runner.py
     # HH_260623 - Removed sync_package_configs_to_bringup.sh from install; bringup
@@ -96,6 +100,30 @@ if(BUILD_TESTING)
   ament_add_pytest_test(
     test_sensor_dummy_launch_routing
     test/test_sensor_dummy_launch_routing.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260730 - Prevent the field helper from silently publishing incompatible
+  # gate messages or relying on a platform service that is not in this stack.
+  ament_add_pytest_test(
+    test_field_test_tool_contract
+    test/test_field_test_tool_contract.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260730 - Keep latency percentile/rate calculations deterministic without
+  # requiring a live ROS graph in unit tests.
+  ament_add_pytest_test(
+    test_pose_latency_probe
+    test/test_pose_latency_probe.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260730 - Manual goals use RotationShim around RPP while UI goals use
+  # RPP directly; lock their path-tracking parameters to one behavior.
+  ament_add_pytest_test(
+    test_nav2_controller_profile_sync
+    test/test_nav2_controller_profile_sync.py
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )

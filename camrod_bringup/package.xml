@@ -20,13 +20,19 @@
   <depend>ranger_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
-  <!-- avg_msgs is used across module interfaces at build/runtime. -->
+  <!-- HH_260730 - avg_msgs plus geometry/nav/sensor messages are also the
+       eight-stage production contract measured by pose_latency_probe.py. -->
   <depend>avg_msgs</depend>
   <!-- HH_260707: Optional front-camera/YOLO component container launch path. -->
   <exec_depend>rclcpp_components</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <!-- HH_260730 - field_test_tool.sh record-recovery invokes ros2 bag directly. -->
+  <exec_depend>ros2bag</exec_depend>
   <exec_depend>rosidl_runtime_py</exec_depend>
   <exec_depend>sensor_msgs_py</exec_depend>
+  <!-- HH_260730 / TODOLIST 2 - Field probe decodes NvJPEG output independently. -->
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
   <!-- Launch-time dependencies for fused localization and sensing pipeline. -->
   <exec_depend>camrod_sensor_kit</exec_depend>
   <exec_depend>camrod_localization</exec_depend>

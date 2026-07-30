@@ -1,5 +1,47 @@
 # Documentation Changelog
 
+<!-- HH_260730 - Record the v2.1.1 checkpoint and keep field PASS separate. -->
+## [v2.1.1-field-readiness] - 2026-07-30 (HH_260730)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| `README.md` | Promoted v2.1.1 and summarized localization/controller, recovery, UI/voice, CPU, and unchanged-radar scope |
+| `docs/V2_1_1_RELEASE_NOTES.md` | Added the exact release scope, configuration invariants, build/test/sim evidence, and remaining physical acceptance |
+| root `TODOLIST.txt` | Added the ordered 2026-07-31 field session, corrected the real EKF rate to 15 Hz, and distinguished implemented manual projection from its pending runtime acceptance |
+| `camrod_localization/README.md`, `camrod_bringup/docs/pose_latency_diagnosis.md` | Updated the production EKF/final-pose contract and screening rate from 10 Hz to 15 Hz while retaining the 1 Hz GNSS caveat |
+| `camrod_bringup/docs/post_v2_1_0_indoor_validation.md` | Recorded that manual projection is implemented, startup/ready smoke evidence passed, and manual/UI field sequences remain pending |
+
+Package and bringup configuration mirrors were byte-identical across 139
+package-owned pairs at release preparation. Radar exclusions and stop geometry
+were not changed for v2.1.1.
+
+---
+
+<!-- HH_260730 - Track the continued field-readiness work without rewriting v2.1.0. -->
+## [post-v2.1.0-field-readiness] - 2026-07-30 (HH_260730)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| `camrod_bringup/docs/field_test_runbook.md` | Added independent front-JPEG payload decoding, five-minute RViz/WebKit/window-off CPU comparison, explicit gate verification, rosbag metadata names, and storage preflight |
+| `camrod_bringup/README.md` | Documented the camera payload and concurrent runtime-profile acceptance commands |
+| `camrod_bringup/docs/post_v2_1_0_indoor_validation.md` | Recorded fresh production-entry sim evidence for manual/UI goal policy, active v1.0.3 costmap/planner behavior, the implemented-but-field-pending far-manual endpoint correction, selected-pose latency, planning CPU, and UI/voice state sequencing |
+| `camrod_bringup/docs/pose_latency_diagnosis.md` | Replaced the contaminated preliminary sample with the clean single-bringup before/after selector measurement and preserved the real dual-GNSS 1 Hz field caveat |
+| `camrod_localization/README.md` | Corrected selected-pose rates to real 15 Hz/sim 20 Hz and documented freshest-header callback-order selection |
+| `camrod_planning/README.md` | Documented the active stable-map LaneletRoute result, lethal clicked-cell diagnosis, retained manual yaw, implemented manual position projection with pending runtime acceptance, separate UI snap policy, and non-weakened footprint safety |
+| `camrod_ui/README.md`, `camrod_voice/README.md` | Defined ERROR/not-ready versus degraded WARN/DUMMY startup readiness and the common manual/UI mission-phase and audio sequence |
+| `camrod_map/README.md` | Documented the empty active profile, stable `lanelet2_maps.osm` runtime entrypoint, default semantic files, and current v1.0.3 audit snapshot |
+| root `TODOLIST.txt` | Replaced stale moved-map planning evidence with the active v1.0.3 costmap result, retained the implemented manual-safe-snap acceptance run and all physical acceptance work, and recorded goal/path/cmd_vel, selected-pose delay, CPU coalescing, and UI/voice evidence |
+
+This work preserves the user's corrected `robot_visualization.yaml`; no
+visualization geometry or marker parameter is changed by this documentation
+update.
+
+---
+
 <!-- HH_260729 - Track the post-tag route recovery and steering-lag remediation separately. -->
 ## [post-v2.1.0-route-recovery] - 2026-07-29 (HH_260729)
 

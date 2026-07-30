@@ -11,6 +11,7 @@ set -euo pipefail
 DEFAULT_HZ_SECONDS=5
 DEFAULT_WATCH_INTERVAL=1.0
 CAMERA_YOLO_MIN_SECONDS=12
+CAMERA_YOLO_ACCEPTANCE_SECONDS=300
 
 log() { echo "[field_test] $*"; }
 warn() { echo "[field_test] WARN: $*" >&2; }
@@ -35,6 +36,14 @@ Usage:
   field_test_tool.sh camera-yolo [seconds]
       Check the front-camera input, YOLO detections, and on-demand debug image rates.
 
+  field_test_tool.sh profile [seconds] [label]
+      Capture CPU/GPU/RAM and critical topic rates concurrently.
+      Run once each for RViz, WebKit-only, and UI-window-off comparisons.
+
+  field_test_tool.sh pose-latency [seconds] [output_json]
+      Measure the real GNSS/IMU/wheel -> EKF -> selected-pose chain concurrently.
+      Missing publishers, type mismatches, and invalid headers fail visibly.
+
   field_test_tool.sh watch [seconds]
       Print a compact live status loop for diagnostics, localization, planning, and gates.
 
@@ -43,10 +52,11 @@ Usage:
         field_test_tool.sh launch rviz:=true
 
   field_test_tool.sh stop-gates
-      Publish false to software engage/drive-enable gates and call /platform/set_enabled false.
+      Publish false with the native AvgBool contract and verify command output is disabled.
 
   field_test_tool.sh enable-gates --allow-motion
-      Open software engage/drive-enable gates. Requires explicit --allow-motion.
+      Open software engage/drive-enable gates with the native AvgBool contract.
+      Requires explicit --allow-motion.
 
 Environment:
   CAMROD_FIELD_LOG_ROOT  Override log root (default: $HOME/camrod_field_logs).
@@ -170,6 +180,17 @@ compare_tree_subset() {
     fi
   done < <(find "${bringup_dir}" -type f -print0 | sort -z)
 
+  # HH_260730 - Also reject package-only files. A one-way subset check could
+  # leave a package default unreviewed and absent from the deployed bringup.
+  while IFS= read -r -d '' src; do
+    rel="${src#${package_dir}/}"
+    dst="${bringup_dir}/${rel}"
+    if [[ ! -f "${dst}" ]]; then
+      echo "EXTRA package file: ${label}/${rel}"
+      status=1
+    fi
+  done < <(find "${package_dir}" -type f -print0 | sort -z)
+
   return "${status}"
 }
 
@@ -200,6 +221,17 @@ compare_install_subset() {
       status=1
     fi
   done < <(find "${source_dir}" -type f -print0 | sort -z)
+
+  # HH_260730 - Stale installed YAML is just as dangerous as a missing copy:
+  # launch may still discover it by path even after the source was removed.
+  while IFS= read -r -d '' src; do
+    rel="${src#${install_dir}/}"
+    dst="${source_dir}/${rel}"
+    if [[ ! -f "${dst}" ]]; then
+      echo "EXTRA installed file: ${label}/${rel}"
+      status=1
+    fi
+  done < <(find "${install_dir}" -type f -print0 | sort -z)
 
   return "${status}"
 }
@@ -265,18 +297,47 @@ critical_topics() {
 /planning/engage
 /planning/mission_engage
 /platform/drive_enable
+/control/planning_engaged
 /control/command_enabled
 /control/cmd_vel_safety_gate/status
+/goal_pose
+/ui/selected_destination
+/planning/mission_key
+/planning/goal_pose_snapped
+/planning/goal_pose_snapped_ros
+/planning/goal_source
+/planning/state_machine/mission_source
+/planning/navigate_to_pose/_action/status
+/planning/navigate_to_pose/_action/feedback
+/planning/global_path
 /planning/global_path_avg
 /planning/local_path
+/planning/tracking_error
+/planning/controller_selector_ros
+/planning/speed_limit
+/planning/lookahead_point
 /control/cmd_vel_raw
+/control/nav2_cmd_vel_ros
 /control/cmd_vel
 /control/cmd_vel_ros
 /platform/status
+/platform/status/odometry
 /localization/input/wheel_odometry
+/localization/input/wheel_odometry_ros
+/localization/primary/odometry_ros
+/localization/odometry_ros
 /planning/cost_grid/inflation
 /sensing/cost_grid/lidar
 /sensing/cost_grid/radar
+/sensing/radar/obstacle_evidence
+/sensing/radar/dummy_active
+/sensing/radar/front1/dummy_active
+/sensing/radar/front2/dummy_active
+/sensing/radar/left1/dummy_active
+/sensing/radar/left2/dummy_active
+/sensing/radar/right1/dummy_active
+/sensing/radar/right2/dummy_active
+/sensing/radar/rear/dummy_active
 /perception/obstacles/fused_obstacles
 /perception/obstacles
 /perception/camera/detections_2d
@@ -284,8 +345,21 @@ critical_topics() {
 /sensing/lidar/filtered_cloud
 /sensing/gnss/ntrip_client/rtcm
 /sensing/gnss/ublox_gps_node/navpvt
+/sensing/gnss/ublox_gps_node/fix
+/sensing/gnss/ublox_gps_node/fix_velocity
+/sensing/gnss/navheading
 /sensing/gnss/navrelposned
 /sensing/gnss/rxmrtcm
+/sensing/gnss/dummy_active
+/sensing/imu/data
+/sensing/imu/data_ros
+/sensing/imu/dummy_active
+/sensing/lidar/dummy_active
+/sensing/camera/econ_front/dummy_active
+/sensing/camera/econ_rear/dummy_active
+/platform/dummy_active
+/voice/voice_announcer/say
+/voice/voice_announcer/state
 /sensing/radar/front1/range
 /sensing/radar/front2/range
 /sensing/radar/left1/range
@@ -299,7 +373,34 @@ EOF
 rate_only_topics() {
   cat <<'EOF'
 /sensing/camera/econ_front/image_rect/compressed
+/sensing/camera/econ_front/camera_info
+/sensing/camera/econ_rear/image_raw
+/sensing/camera/econ_rear/image_raw/compressed
+/sensing/camera/econ_rear/camera_info
 /perception/camera/yolo_image
+EOF
+}
+
+# HH_260730 / TODOLIST 8 - These rates must be sampled concurrently with
+# process and Jetson telemetry; sequential `hz` samples cannot explain a CPU
+# spike at the same instant.
+profile_topics() {
+  cat <<'EOF'
+/planning/global_path
+/planning/global_path_avg
+/planning/local_path
+/planning/tracking_error
+/control/cmd_vel_raw
+/control/cmd_vel
+/control/cmd_vel_ros
+/planning/cost_grid/inflation
+/sensing/cost_grid/lidar
+/sensing/cost_grid/radar
+/sensing/lidar/points_filtered
+/sensing/camera/econ_front/image_rect/compressed
+/sensing/camera/econ_rear/image_raw
+/sensing/camera/econ_rear/image_raw/compressed
+/perception/camera/detections_2d
 EOF
 }
 
@@ -315,25 +416,59 @@ recovery_topics() {
 /planning/state_machine/state
 /planning/engage
 /planning/mission_engage
+/planning/mission_key
+/planning/state_machine/mission_source
 /planning/goal_pose_snapped
+/planning/goal_pose_snapped_ros
 /planning/goal_source
 /planning/navigate_to_pose/_action/status
+/planning/navigate_to_pose/_action/feedback
+/planning/global_path
 /planning/global_path_avg
 /planning/local_path
+/planning/tracking_error
+/planning/controller_selector_ros
+/planning/speed_limit
+/planning/lookahead_point
+/control/planning_engaged
 /control/command_enabled
 /control/cmd_vel_safety_gate/status
 /control/cmd_vel_raw
+/control/nav2_cmd_vel_ros
 /control/cmd_vel
 /control/cmd_vel_ros
 /platform/drive_enable
 /platform/status
+/platform/status/odometry
 /platform/status/wheel
+/odom
+/motion_state
 /actuator_state
+/sensing/gnss/ublox_gps_node/fix
+/sensing/gnss/ublox_gps_node/fix_velocity
+/sensing/gnss/navheading
+/sensing/gnss/navrelposned
+/sensing/gnss/pose_with_covariance_ros
+/localization/input/wheel_odometry_ros
+/localization/primary/odometry_ros
+/localization/odometry_ros
 /platform/robot/planning_boundary
 /map/cost_grid/lanelet
 /planning/cost_grid/inflation
 /sensing/cost_grid/lidar
 /sensing/cost_grid/radar
+/sensing/radar/obstacle_evidence
+/sensing/radar/front1/range
+/sensing/radar/front2/range
+/sensing/radar/left1/range
+/sensing/radar/left2/range
+/sensing/radar/right1/range
+/sensing/radar/right2/range
+/sensing/radar/rear/range
+/system/status
+/system/diagnostics_agg
+/localization/mode
+/ui/selected_destination
 EOF
 }
 
@@ -425,13 +560,41 @@ cmd_record_recovery() {
     ros2 param get /ranger_base_node steering_transition_full_speed_error_rad
     ros2 param get /ranger_base_node steering_transition_stop_error_rad
     ros2 param get /ranger_base_node steering_transition_min_velocity_scale
+    # HH_260730 - Capture the direct and manual-wrapper RPP profiles so a
+    # straight-line A/B can prove that both goal sources tracked identically.
+    ros2 param get /planning/controller_server controller_frequency
+    ros2 param get /planning/controller_server default_controller
+    ros2 param get /planning/controller_server RPP.desired_linear_vel
+    ros2 param get /planning/controller_server RPP.min_lookahead_dist
+    ros2 param get /planning/controller_server RPP.max_lookahead_dist
+    ros2 param get /planning/controller_server RPP.lookahead_time
+    ros2 param get /planning/controller_server RPP.use_velocity_scaled_lookahead_dist
+    ros2 param get /planning/controller_server RotationShim.desired_linear_vel
+    ros2 param get /planning/controller_server RotationShim.min_lookahead_dist
+    ros2 param get /planning/controller_server RotationShim.max_lookahead_dist
+    ros2 param get /planning/controller_server RotationShim.lookahead_time
+    ros2 param get /planning/controller_server RotationShim.use_velocity_scaled_lookahead_dist
   } >"${log_dir}/meta/recovery_parameters.txt" 2>&1 || true
   write_recovery_result_template "${log_dir}/FIELD_RESULT.txt"
 
   declare -A available_topics=()
   while IFS= read -r topic; do
     [[ -n "${topic}" ]] && available_topics["${topic}"]=1
-  done < <(ros2 topic list)
+  done < <(ros2 topic list --include-hidden-topics)
+
+  # HH_260730 - A non-empty constant request list does not prove bringup is
+  # alive. Refuse to start field evidence without the core safety owners.
+  local required_topic
+  for required_topic in \
+    /control/cmd_vel_safety_gate/status \
+    /control/command_enabled \
+    /localization/pose \
+    /map/cost_grid/lanelet \
+    /platform/status
+  do
+    [[ -n "${available_topics[${required_topic}]+present}" ]] ||
+      die "required recovery topic is not active: ${required_topic}"
+  done
 
   local topics=()
   local missing=()
@@ -447,7 +610,9 @@ cmd_record_recovery() {
   done < <(recovery_topics)
   [[ "${#topics[@]}" -gt 0 ]] || die "none of the recovery topics are available"
 
-  printf '%s\n' "${topics[@]}" >"${log_dir}/meta/recorded_topics.txt"
+  printf '%s\n' "${topics[@]}" >"${log_dir}/meta/requested_topics.txt"
+  printf '%s\n' "${!available_topics[@]}" |
+    sort >"${log_dir}/meta/available_at_start_topics.txt"
   printf '%s\n' "${missing[@]}" >"${log_dir}/meta/missing_topics.txt"
   if [[ "${#missing[@]}" -gt 0 ]]; then
     warn "some recovery topics are missing; inspect ${log_dir}/meta/missing_topics.txt"
@@ -456,7 +621,22 @@ cmd_record_recovery() {
   log "recording TODO 11-13 evidence to ${bag_dir}"
   log "keep this terminal open through the test; press Ctrl+C only after all runs"
   log "complete the PASS/FAIL form at ${log_dir}/FIELD_RESULT.txt"
-  ros2 bag record --output "${bag_dir}" "${topics[@]}"
+  set +e
+  ros2 bag record \
+    --include-hidden-topics \
+    --output "${bag_dir}" \
+    "${topics[@]}"
+  local record_rc=$?
+  set -e
+  if [[ "${record_rc}" -ne 0 && "${record_rc}" -ne 130 ]]; then
+    warn "rosbag exited with status ${record_rc}"
+  fi
+  if [[ -d "${bag_dir}" ]]; then
+    run_shell_to_log "${log_dir}/meta/bag_info.txt" ros2 bag info "${bag_dir}"
+    sed -n 's/.*Topic: \([^| ]*\).*/\1/p' \
+      "${log_dir}/meta/bag_info.txt" |
+      sort -u >"${log_dir}/meta/recorded_topics.txt"
+  fi
   log "recovery recording complete: ${log_dir}"
 }
 
@@ -526,14 +706,20 @@ cmd_hz() {
 
 cmd_camera_yolo() {
   source_ros
-  local seconds="${1:-${DEFAULT_HZ_SECONDS}}"
-  local topics=(
+  local seconds="${1:-${CAMERA_YOLO_ACCEPTANCE_SECONDS}}"
+  local rate_topics=(
     "/sensing/camera/econ_front/image_rect/compressed"
+    "/sensing/camera/econ_front/camera_info"
     "/perception/camera/detections_2d"
     "/perception/camera/yolo_image"
   )
+  local info_topics=(
+    "${rate_topics[@]}"
+    "/sensing/camera/econ_front/dummy_active"
+  )
   local topic pid
   local pids=()
+  local payload_probe_pid
 
   if [[ ! "${seconds}" =~ ^[0-9]+$ ]]; then
     die "camera-yolo seconds must be an integer"
@@ -547,15 +733,29 @@ cmd_camera_yolo() {
   echo "## nodes"
   ros2 node list | grep -E '/sensing/camera/econ_front/camera_front_publisher|/perception/yolov9mit' || true
 
-  for topic in "${topics[@]}"; do
+  for topic in "${info_topics[@]}"; do
     echo
     echo "## ${topic}"
-    ros2 topic info "${topic}" || true
+    ros2 topic info --verbose "${topic}" || true
   done
 
   echo
+  echo "## component native libraries"
+  while IFS= read -r pid; do
+    [[ -r "/proc/${pid}/maps" ]] || continue
+    echo "-- pid=${pid}"
+    awk '{print $6}' "/proc/${pid}/maps" 2>/dev/null |
+      grep -E '/(libopencv|libnvjpeg|libcuda)' |
+      sort -u || true
+  done < <(pgrep -f 'component_container|yolov9mit' || true)
+
+  echo
   echo "## simultaneous rate samples"
-  for topic in "${topics[@]}"; do
+  ros2 run camrod_bringup camera_payload_probe.py \
+    --duration "${seconds}" \
+    --min-rate-hz 5.0 &
+  payload_probe_pid="$!"
+  for topic in "${rate_topics[@]}"; do
     (
       timeout --signal=INT --kill-after=2 "${seconds}" \
         ros2 topic hz "${topic}" 2>/dev/null | sed "s#^#[${topic}] #"
@@ -566,35 +766,156 @@ cmd_camera_yolo() {
     wait "${pid}" || true
   done
 
+  if ! wait "${payload_probe_pid}"; then
+    die "front-camera payload validation failed"
+  fi
   log "YOLO debug images are subscriber-gated; camera-yolo creates the subscriber that enables them"
 }
 
-echo_once_short() {
+cmd_profile() {
+  source_ros
+  local seconds="${1:-300}"
+  local label="${2:-baseline}"
+  [[ "${seconds}" =~ ^[0-9]+$ ]] ||
+    die "profile seconds must be an integer"
+  (( seconds >= 10 )) ||
+    die "profile duration must be at least 10 seconds"
+  label="$(safe_name "${label}")"
+
+  local log_dir
+  log_dir="$(new_log_dir)"
+  mkdir -p "${log_dir}/hz" "${log_dir}/meta"
+  printf '%s\n' "${label}" >"${log_dir}/meta/profile_label.txt"
+  run_shell_to_log "${log_dir}/meta/date.txt" date --iso-8601=seconds
+  run_eval_to_log \
+    "${log_dir}/meta/git.txt" \
+    "cd '${SRC_ROOT}' && git status --short --branch && git log -1 --oneline"
+  run_eval_to_log \
+    "${log_dir}/meta/ps_before.txt" \
+    "ps -eo pid,ppid,pcpu,pmem,comm,args --sort=-pcpu | head -100"
+
+  local pids=()
+  local topic name pid
+  if command -v tegrastats >/dev/null 2>&1; then
+    timeout --signal=INT --kill-after=2 "${seconds}" \
+      tegrastats --interval 1000 >"${log_dir}/meta/tegrastats.txt" 2>&1 &
+    pids+=("$!")
+  else
+    warn "tegrastats is unavailable; GPU telemetry will be missing"
+  fi
+  timeout --signal=INT --kill-after=2 "${seconds}" \
+    top -b -d 1 -o %CPU >"${log_dir}/meta/top.txt" 2>&1 &
+  pids+=("$!")
+
+  while IFS= read -r topic; do
+    [[ -n "${topic}" ]] || continue
+    name="$(safe_name "${topic}")"
+    (
+      timeout --signal=INT --kill-after=2 "${seconds}" \
+        ros2 topic hz "${topic}" >"${log_dir}/hz/${name}.hz.txt" 2>&1
+    ) &
+    pids+=("$!")
+  done < <(profile_topics)
+
+  log "profiling '${label}' for ${seconds}s into ${log_dir}"
+  for pid in "${pids[@]}"; do
+    wait "${pid}" || true
+  done
+  run_eval_to_log \
+    "${log_dir}/meta/ps_after.txt" \
+    "ps -eo pid,ppid,pcpu,pmem,comm,args --sort=-pcpu | head -100"
+  run_shell_to_log "${log_dir}/meta/free.txt" free -h
+  run_shell_to_log "${log_dir}/meta/df.txt" df -h "${WS_ROOT}" "${HOME}"
+  log "profile complete: ${log_dir}"
+}
+
+cmd_pose_latency() {
+  source_ros
+  local seconds="${1:-60}"
+  local output_json="${2:-}"
+  local log_dir
+
+  [[ "${seconds}" =~ ^[0-9]+([.][0-9]+)?$ ]] ||
+    die "pose-latency seconds must be numeric"
+  awk -v value="${seconds}" 'BEGIN {exit !(value >= 2.0)}' ||
+    die "pose-latency duration must be at least 2 seconds"
+  [[ $# -le 2 ]] || die "pose-latency accepts only [seconds] [output_json]"
+
+  if [[ -z "${output_json}" ]]; then
+    log_dir="$(new_log_dir)"
+    output_json="${log_dir}/pose_latency.json"
+  fi
+  mkdir -p "$(dirname "${output_json}")"
+
+  log "measuring the complete localization chain for ${seconds}s"
+  ros2 run camrod_bringup pose_latency_probe.py \
+    --duration "${seconds}" \
+    --output-json "${output_json}"
+  log "pose latency report: ${output_json}"
+}
+
+collect_watch_sample() {
   local topic="$1"
-  local label="$2"
-  echo "-- ${label}: ${topic}"
-  timeout 2 ros2 topic echo --once "${topic}" 2>/dev/null | sed -n '1,12p' || echo "(no sample)"
+  local output_file="$2"
+  timeout 1.5 ros2 topic echo --once "${topic}" 2>/dev/null |
+    sed -n '1,32p' >"${output_file}" || true
+  [[ -s "${output_file}" ]] || printf '%s\n' "(no sample)" >"${output_file}"
 }
 
 cmd_watch() {
   source_ros
   local interval="${1:-${DEFAULT_WATCH_INTERVAL}}"
+  local watch_dir
+  watch_dir="$(mktemp -d /tmp/camrod_field_watch.XXXXXX)"
+  trap 'rm -rf -- "${watch_dir}"' EXIT
+  trap 'exit 130' INT TERM
+  local topics=(
+    "/system/status"
+    "/service/state"
+    "/localization/mode"
+    "/planning/state_machine/state"
+    "/planning/engage"
+    "/planning/mission_engage"
+    "/platform/drive_enable"
+    "/control/planning_engaged"
+    "/control/command_enabled"
+    "/control/cmd_vel_safety_gate/status"
+    "/platform/status"
+  )
+  local labels=(
+    "system"
+    "service_state"
+    "localization_mode"
+    "planning_state"
+    "manual_engage"
+    "mission_engage"
+    "platform_drive_enable"
+    "planning_engaged"
+    "control_command_enabled"
+    "control_gate_status"
+    "platform_status"
+  )
+  local i pid
+  local pids=()
   while true; do
+    pids=()
+    for i in "${!topics[@]}"; do
+      collect_watch_sample \
+        "${topics[${i}]}" "${watch_dir}/${i}.txt" &
+      pids+=("$!")
+    done
+    for pid in "${pids[@]}"; do
+      wait "${pid}" || true
+    done
+
     clear || true
     date --iso-8601=seconds
-    echo_once_short "/system/status" "system"
-    # HH_260724 - Show operator-visible service progress and gate reasons in the live terminal view.
-    echo_once_short "/service/state" "service_state"
-    echo_once_short "/localization/mode" "localization_mode"
-    echo_once_short "/planning/state_machine/state" "planning_state"
-    # HH_260724 - Manual ENGAGE and mission engage are separate command-admission latches.
-    echo_once_short "/planning/engage" "manual_engage"
-    echo_once_short "/planning/mission_engage" "mission_engage"
-    echo_once_short "/platform/drive_enable" "platform_drive_enable"
-    echo_once_short "/control/command_enabled" "control_command_enabled"
-    echo_once_short "/control/cmd_vel_safety_gate/status" "control_gate_status"
-    # HH_260720 - Inspect the unified generated CAN/BMS platform status.
-    echo_once_short "/platform/status" "platform_status"
+    # HH_260730 - Collect all safety topics concurrently. The old sequential
+    # two-second echo loop could display state that was almost 20 seconds old.
+    for i in "${!topics[@]}"; do
+      echo "-- ${labels[${i}]}: ${topics[${i}]}"
+      cat "${watch_dir}/${i}.txt"
+    done
     echo
     echo "-- top cpu"
     ps -eo pcpu,pmem,comm,args --sort=-pcpu | head -12
@@ -613,14 +934,89 @@ cmd_launch() {
   ros2 launch camrod_bringup bringup.launch.py sim:=false "$@" 2>&1 | tee "${log_dir}/bringup.log"
 }
 
+# HH_260730 - Field gate controls must use the same avg_msgs contract as the
+# UI and cmd_vel safety gate.  The old std_msgs publisher was type-incompatible
+# and could print a false success while leaving the real gate unchanged.
+require_gate_subscriber() {
+  local topic="$1"
+  local expected_type="avg_msgs/msg/AvgBool"
+  local actual_type info subscription_count
+
+  actual_type="$(timeout 3 ros2 topic type "${topic}" 2>/dev/null || true)"
+  if [[ "${actual_type}" != "${expected_type}" ]]; then
+    warn "${topic} type is '${actual_type:-missing}', expected ${expected_type}"
+    return 1
+  fi
+
+  info="$(timeout 3 ros2 topic info "${topic}" 2>/dev/null || true)"
+  subscription_count="$(
+    awk -F': *' '/^Subscription count:/ {print $2}' <<<"${info}" | tail -1
+  )"
+  if [[ ! "${subscription_count}" =~ ^[0-9]+$ ]]; then
+    warn "cannot determine subscriber count for ${topic}"
+    return 1
+  fi
+  if (( subscription_count == 0 )); then
+    warn "${topic} has no subscriber; refusing to report a gate change"
+    return 1
+  fi
+}
+
+publish_gate_bool() {
+  local topic="$1"
+  local value="$2"
+
+  require_gate_subscriber "${topic}" || return 1
+  timeout 5 ros2 topic pub --once \
+    "${topic}" avg_msgs/msg/AvgBool "{data: ${value}}" >/dev/null ||
+    {
+      warn "failed to publish ${value} to ${topic}"
+      return 1
+    }
+}
+
+verify_command_disabled() {
+  local command_sample planning_sample
+  command_sample="$(
+    timeout 4 ros2 topic echo --once /control/command_enabled 2>/dev/null || true
+  )"
+  planning_sample="$(
+    timeout 4 ros2 topic echo --once /control/planning_engaged 2>/dev/null || true
+  )"
+  if ! grep -Eq \
+    '^[[:space:]]*data:[[:space:]]*false[[:space:]]*$' \
+    <<<"${command_sample}"
+  then
+    warn "gate commands were sent but /control/command_enabled did not confirm false"
+    return 1
+  fi
+  if ! grep -Eq \
+    '^[[:space:]]*data:[[:space:]]*false[[:space:]]*$' \
+    <<<"${planning_sample}"
+  then
+    warn "gate commands were sent but /control/planning_engaged did not confirm false"
+    return 1
+  fi
+}
+
 cmd_stop_gates() {
   source_ros
   log "closing software engage and drive-enable gates"
-  ros2 topic pub --once /planning/engage std_msgs/msg/Bool "{data: false}" >/dev/null 2>&1 || true
-  ros2 topic pub --once /planning/mission_engage std_msgs/msg/Bool "{data: false}" >/dev/null 2>&1 || true
-  ros2 topic pub --once /platform/drive_enable std_msgs/msg/Bool "{data: false}" >/dev/null 2>&1 || true
-  timeout 3 ros2 service call /platform/set_enabled std_srvs/srv/SetBool "{data: false}" >/dev/null 2>&1 || true
-  log "software gates requested closed"
+  local failures=0
+  local topic
+  # HH_260730 - Attempt every close command even if one owner is absent. An
+  # early exit here could leave a later, still-live gate open.
+  for topic in \
+    /planning/engage \
+    /planning/mission_engage \
+    /platform/drive_enable
+  do
+    publish_gate_bool "${topic}" false || failures=1
+  done
+  verify_command_disabled || failures=1
+  (( failures == 0 )) ||
+    die "one or more gates could not be closed and verified; keep the physical e-stop engaged"
+  log "software gates closed and /control/command_enabled=false confirmed"
 }
 
 cmd_enable_gates() {
@@ -634,9 +1030,10 @@ cmd_enable_gates() {
   done
   [[ "${allow}" -eq 1 ]] || die "enable-gates requires --allow-motion"
   warn "opening software gates; physical supervision and e-stop are still required"
-  timeout 3 ros2 service call /platform/set_enabled std_srvs/srv/SetBool "{data: true}" >/dev/null 2>&1 || true
-  ros2 topic pub --once /platform/drive_enable std_msgs/msg/Bool "{data: true}" >/dev/null 2>&1 || true
-  ros2 topic pub --once /planning/engage std_msgs/msg/Bool "{data: true}" >/dev/null 2>&1 || true
+  publish_gate_bool /platform/drive_enable true ||
+    die "platform drive-enable gate was not opened"
+  publish_gate_bool /planning/engage true ||
+    die "manual planning gate was not opened"
   log "software gates requested open"
 }
 
@@ -652,6 +1049,8 @@ case "${cmd}" in
   record-recovery) cmd_record_recovery "$@" ;;
   hz) cmd_hz "$@" ;;
   camera-yolo) cmd_camera_yolo "$@" ;;
+  profile) cmd_profile "$@" ;;
+  pose-latency) cmd_pose_latency "$@" ;;
   watch) cmd_watch "$@" ;;
   launch) cmd_launch "$@" ;;
   stop-gates) cmd_stop_gates "$@" ;;

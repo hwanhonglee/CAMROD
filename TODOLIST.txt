@@ -1,12 +1,40 @@
-CAMROD v2.1.0 실차 확인 목록
-작성일: 2026-07-29 (Asia/Seoul)
+CAMROD v2.1.1 이후 실차 확인 목록
+작성일: 2026-07-29, v2.1.1 릴리스 갱신: 2026-07-30 (Asia/Seoul)
 
 범위
-- 이 파일에는 v2.1.0 코드/설정/문서 반영 후에도 실제 로봇에서 확인해야
+- 이 파일에는 v2.1.1 코드/설정/문서 반영 후에도 실제 로봇에서 확인해야
   하는 항목만 남긴다.
-- 사용자의 요청에 따라 이번 마무리에서는 실제 bringup, 센서 구동, engage,
-  주행 테스트를 실행하지 않는다.
+- 실제 하드웨어 센서/CAN과 차체 이동은 실외 통제 구역에서만 실행한다.
+- 2026-07-30에는 실제 배포 진입점인 `bringup.launch.py sim:=true`로
+  goal/path/cmd_vel, planner, localization 지연, CPU를 실내 검증했다.
 - 빌드, 단위 테스트, launch/config 정적 회귀 테스트는 릴리스 전에 실행한다.
+
+내일(2026-07-31) 우선순위
+<!-- HH_260730 - Keep the next physical session short and evidence-driven.
+     v2.1.1 contains software/config changes but no completed drive acceptance. -->
+1) 통제된 직선 구간에서 `field_test_tool.sh pose-latency 60`과
+   `record-recovery`를 먼저 켠 뒤, 좌/우 lateral offset 각 1회만 저속 주행한다.
+   EKF/final pose 15 Hz, command-to-wheel 지연, centerline 교차 횟수를 기록한다.
+2) 같은 구간에서 radar 전체 ON과 `enable_radar:=false`를 각각 10분 비교한다.
+   ON에서는 LEFT2/RIGHT2 실제 range와 gate stop을 함께 저장하고, OFF에서는
+   7채널 DUMMY, radar evidence active 0회, radar cost stop 0회를 확인한다.
+3) 전방/후방 카메라와 YOLO를 5분 실행해 단일 publisher, decode 성공,
+   detection 발행, container 생존을 확인한다.
+4) 수동 근거리/원거리와 UI 근거리/원거리 goal을 각각 1회 실행한다.
+   manual x/y projection, clicked yaw 보존, UI lane heading, path/cmd_vel,
+   최종 도착 판정을 같은 bag으로 확인한다.
+5) 실제 스피커와 WebKit에서 `초기화 -> 준비 완료 -> goal/path 준비 ->
+   주행 -> 안전 정지/도착` 순서를 수동/UI 각각 확인한다.
+6) 위 항목이 모두 끝난 뒤에만 RViz/WebKit/window-off CPU 5분 비교를 한다.
+   실차 증거 없이 radar 예외 범위, GNSS 공분산, footprint threshold,
+   controller gain을 현장에서 즉시 바꾸지 않는다.
+
+v2.1.1 릴리스 직전 확인
+- 6개 관련 패키지 build 완료, localization/planning/system/voice/bringup/UI
+  테스트 통과, package↔bringup config 139쌍 byte 동기화 완료.
+- production entry `bringup.launch.py sim:=true`에서 `SYSTEM OK`와
+  `system.startup -> system.ready` 실제 음성 이벤트를 확인하고 전체 종료했다.
+- 이 smoke test는 goal 주행이나 실차 센서/바퀴 합격을 의미하지 않는다.
 
 [P0] 1. radar 비활성화 상태의 cost 완전 차단
 - 실행:
@@ -76,8 +104,28 @@ CAMROD v2.1.0 실차 확인 목록
 
 [P1] 6. goal -> path -> cmd_vel -> 실주행 승인
 - 가까운 goal과 먼 goal을 각각 수동 RViz 및 UI에서 생성한다.
-- global path, local path, /control/cmd_vel_raw, /control/cmd_vel,
+- global path, local path, Nav2 원본 `/control/nav2_cmd_vel_ros`,
+  maneuver 원본 `/control/cmd_vel_raw`, 최종 `/control/cmd_vel`,
   platform drive enable, engage 상태를 한 타임라인으로 저장한다.
+- 실내 sim 반영 상태 (2026-07-30):
+  1) 현재 active map은 빈 `map_profile`로 여는 stable
+     `lanelet2_maps.osm`이며 `copy_park_v1.0.3` snapshot과 동일하다.
+  2) 수동 근거리 역방향 yaw goal은 22 pose/4.042 m global path와 nonzero
+     `/control/nav2_cmd_vel_ros`(max L1 1.0446), 최종
+     `/control/cmd_vel`(max L1 0.5223)을 만들었다.
+  3) UI 근거리는 입력 위치를 0.0943 m, yaw를 5.202 deg로 snap한 뒤
+     22 pose/4.042 m path와 nonzero Nav2/final cmd_vel을 만들었다.
+  4) 수동 원거리 baseline은 clicked pose를 action goal로 그대로 내보냈지만
+     LaneletRoute의 안전 endpoint가 1.07 m 떨어져 있어 도착 판정 불일치가
+     확인됐다. 안전한 manual position projection 코드는 반영됐지만 새
+     4-case runtime 검증은 아직 필요하며, 재검증 전에는 최종 수동 도착
+     동작을 PASS로 보지 않는다.
+  5) UI 원거리는 위치를 약 1.07 m, heading을 -71.137 deg로 snap했고
+     249 pose/49.083 m path와 nonzero Nav2/final cmd_vel을 만들었다.
+  6) 네 case 모두 software gate를 `ENABLED`로 열었을 때 명령 생성까지
+     확인했지만 sim platform에서 논리 gate만 연 검증이며 차체는 움직이지 않았다.
+  7) `/control/cmd_vel_raw`는 캠핑장 maneuver 입력이므로 일반 Nav2 경로
+     주행에서 0인 것이 정상이다. 기존 점검 문구의 raw topic 혼동을 바로잡았다.
 - 합격 기준:
   path와 cmd_vel이 지속 생성되고 장애물이 있는 동안은 latch 정지,
   제거 후 설정된 clear window 뒤에만 해제된다.
@@ -87,6 +135,32 @@ CAMROD v2.1.0 실차 확인 목록
 - UI goal에는 lanelet snap, 접근 방향, 운영 규칙이 적용되어야 한다.
 - 장거리 ABORT와 구불구불한 경로를 planner별로 재현하고 변경 전/후
   path length, curvature, abort reason을 비교한다.
+- 실내 sim 감사 결과 (2026-07-30):
+  <!-- HH_260730 - Replace stale v1.0.1/moved-map bottleneck evidence with
+       the active v1.0.3 stable-map measurement. -->
+  1) `lanelet2_maps.osm`의 명시적 start
+     `(-13.958, 43.540, 7.73 deg)`와 clicked goal
+     `(12.173, 20.458, 107.8 deg)`에 대해 NavFn, ThetaStar, SmacHybrid,
+     SmacLattice는 모두 0 pose ABORT였다. LaneletRoute는 약 19.6 ms에
+     249 pose/49.047 m 경로를 만들었다.
+  2) 2400x2400, 0.1 m raw global costmap에서 start는 cost 56,
+     traversable component 13247이었다. exact clicked goal은 cost 254로
+     주행 불가 cell이므로 같은 component에 포함되지 않았다. 현재 실패 원인은
+     이전 v1.0.1 맵의 0.860 m corridor cut이 아니라 이 off-corridor/lethal
+     exact goal이다.
+  3) LaneletRoute endpoint `(11.1604526307, 20.1120538289, 107.8 deg)`는
+     cost 186으로 start에서 도달 가능하다. 경로 총 회전량은 4.892 rad,
+     max path cost는 218이며 cost >=252 cell은 0개였다.
+  4) full footprint, padding, lethal/unknown cost 안전 규칙은 낮추지 않는다.
+     manual은 이 안전 endpoint와 action goal 위치를 일치시키면서 clicked yaw를
+     보존한다. 기존 baseline의 1.07 m 불일치에 대한 코드는 수정됐고
+     새 runtime 재측정이 대기 중이다.
+  5) UI는 별도 위치/heading 규칙을 유지한다. 같은 원거리 입력은 약 1.07 m
+     이동하고 heading -71.137 deg로 정규화돼 안전 endpoint를 사용했다.
+- 남은 실차 확인:
+  반영된 manual-safe-snap을 새 4-case로 검증한다. 이후 최종 기본값으로
+  가까운/먼 수동 goal과 UI goal을 각각 실차에서 재현하고 경로, 도착 yaw,
+  full-footprint 정지 위치를 rosbag으로 판정한다.
 
 [P1] 8. full bringup CPU 프로파일
 - 실제 goal/path/cmd_vel 계산 상태에서 5분 이상 측정한다.
@@ -96,6 +170,24 @@ CAMROD v2.1.0 실차 확인 목록
 - 합격 기준:
   가장 큰 부하 프로세스와 절감 전/후 수치를 명시하고 센서/안전 topic
   rate가 허용 범위 아래로 떨어지지 않아야 한다.
+- 실내 sim 측정/완화 (2026-07-30):
+  1) clean sim에서 `/planning/local_path`는 약 30.6~35.2 Hz, 평균
+     10.3 KB/약 155 pose였다. Python에서 한 path 역직렬화가 약 7.9 ms라
+     표시/감시 노드가 사용하지 않을 중간 frame까지 모두 해석했다.
+  2) 수정 전 누적 snapshot은 path_visualizer 19.7~21.3% core,
+     obstacle_replan_monitor 26.2~27.5% core였다.
+  3) latest-only raw depth-1 입력을 기존 2 Hz 표시/5 Hz 안전감시 주기에만
+     역직렬화하도록 바꿨다. 안전 threshold, lookahead, source path rate는
+     바꾸지 않았다. active path와 marker subscriber를 둔 20초 재측정에서
+     path_visualizer는 대략 9~11%, obstacle monitor는 19~20% core였고
+     marker 출력은 약 2.14 Hz였다.
+  4) 같은 창의 planner_server는 약 40~49% core로 여전히 가장 큰 ROS
+     planning 부하였다. 전체 시스템은 VS Code GPU/renderer가 각각
+     약 60% 이상 core를 사용해 개발 UI 영향도 컸다.
+  5) planning package의 coalescing/기하 동일성 테스트 48개가 모두 통과했다.
+- 남은 실차 확인:
+  카메라/YOLO/실센서를 포함한 5분 `bringup.launch.py`에서 RViz,
+  WebKit-only, UI-window-off 세 조건을 동일 goal/path/cmd_vel 상태로 비교한다.
 
 [P2] 9. voice 및 수동 engage 상태 시퀀스
 - 먼저 현재 voice 입력과 실제 발화 순서를 코드/rosbag으로 표로 만든다:
@@ -113,6 +205,29 @@ CAMROD v2.1.0 실차 확인 목록
 - 합격 기준:
   실제 이동 명령이나 유효 mission이 없는데 복귀/주행 음성이 먼저 나오지
   않고, 준비되지 않은 상태를 "준비 완료"라고 말하지 않는다.
+- 소프트웨어 반영 상태 (2026-07-30, 실차 발화 확인 대기):
+  1) UI와 voice에 공통 의미의 `INITIALIZING -> READY -> GOAL_RECEIVED ->
+     PATH_PREPARING -> DRIVING -> SAFETY_STOP -> ARRIVED` 흐름을 추가했다.
+  2) 준비 완료는 map/sensing/localization/planning/control/platform/system
+     존재 및 ERROR/시작/FAULT 여부, NORMAL localization,
+     map->robot_base_link TF, Nav2 action server, 정상 gate/platform,
+     canonical planning engage를 함께 확인한다. 의도적으로 비활성화한 센서의
+     DUMMY/WARN은 degraded health로 계속 표시하되 초기화에 영구 고정하지
+     않는다. 필수 graph 누락은 grace 중 STARTING, 이후 FAULT/ERROR로 막는다.
+  3) startup 첫 이벤트는 `system.startup`이며 모든 조건이 처음 충족된 뒤에만
+     `system.ready`를 1회 발행한다. `WAIT_DZ`만으로 drop-zone 복귀 음성을
+     내지 않으며 generic WARN을 장애물로 오인하지 않는다.
+  4) 유효 goal + engage + gate ENABLED 뒤에만 이동 음성을 내므로 engage만
+     눌렀을 때 수동 주행으로 표시하지 않는다. 수동/UI source는 같은 상태
+     어휘를 사용한다.
+  5) UI policy 6개와 voice policy 12개 회귀 테스트가 통과했다. WARN/DUMMY는
+     degraded-ready, ERROR와 INACTIVE/UNCONFIGURED는 not-ready임을 포함한다.
+  6) v2.1.1 릴리스 smoke test에서 실제 배포 진입점이 `SYSTEM OK`에 도달했고
+     스피커 요청은 `system.startup` 뒤 모든 준비 조건 충족 시
+     `system.ready` 순서로 나왔다. manual/UI 전체 발화는 실차 확인 대상이다.
+- 남은 실차 확인:
+  실제 스피커/WebKit에서 초기 센서 지연, 수동 goal, UI goal, obstacle hold,
+  도착, 취소/재engage 순서를 녹음하고 중복·역순·잘못된 문구가 없는지 판정한다.
 
 [P2] 10. GNSS/IMU 물리 포트 최종 확인
 - 이번 변경에는 GNSS/IMU 포트 YAML 변경이 없었다.
@@ -362,6 +477,14 @@ CAMROD v2.1.0 실차 확인 목록
   4) 아래 pose->controller->gate->platform 실측이 없으므로 lateral 위치 예측,
      부호반전 hysteresis, controller gain/ratio는 임의로 변경하지 않았다.
      좌/우 실차 수렴 기준까지 통과해야 최종 완료다.
+  5) 2026-07-30 clean sim에서 pose selector가 odometry-first callback 때
+     이전 pose를 한 주기 재발행하는 원인을 확인해 header-stamp 기준 최신
+     payload 선택으로 수정했다. selected pose age p50/p95는
+     55.9/63.9 ms에서 6.3/10.9 ms로 줄었고 출력은 20.0 Hz를 유지했다.
+     이 수정은 센서 Hz/controller gain/footprint guard를 바꾸지 않는다.
+  6) 실차 dual-GNSS는 launch overlay로 1 Hz, real EKF는 15 Hz다. GNSS만
+     1 Hz라고 final pose가 1 Hz인 것은 아니지만 절대 위치/heading 보정은
+     1초 간격이므로 야외에서 동적 횡오차와 함께 따로 판정해야 한다.
 - 실차에서 지금 할 일:
   1) map에서 충분히 넓고 직선인 lanelet을 선택한다. 중심선 기준 왼쪽과
      오른쪽의 작은 offset에서 각각 별도 run을 수행하되 yaw 오차는 작게 둔다.

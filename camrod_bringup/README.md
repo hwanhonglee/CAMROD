@@ -239,6 +239,14 @@ to system health, localization, planning state, manual/mission engage,
 platform drive-enable, command enable, and platform status. `snapshot` and `hz`
 include the same topics for post-run evidence.
 
+<!-- HH_260730 / TODOLIST 2,8 - Make payload integrity and GUI CPU comparisons repeatable. -->
+`field_test_tool.sh camera-yolo` now defaults to the full 300-second acceptance
+window and independently decodes every physical front-camera JPEG. It fails on
+empty/corrupt data, CameraInfo shape drift, dummy activity, or multiple image
+publishers even if the topic rate is non-zero. `field_test_tool.sh profile 300
+<label>` records Jetson/process telemetry and critical topic rates on the same
+clock for RViz+WebKit, WebKit-only, and window-off comparisons.
+
 <!-- HH_260729 / TODOLIST 11-13 - Preserve a dedicated real-robot acceptance timeline. -->
 `field_test_tool.sh record-recovery <log_dir>` records the lanelet route hold,
 Nav2 action result and retained goal, planning boundary and cost grids,
@@ -246,6 +254,11 @@ raw/final commands, Ranger actuator/wheel feedback, TF, and steering-transition
 `/rosout` logs until Ctrl+C. It also freezes active recovery parameters and
 creates `FIELD_RESULT.txt`; this post-fix bag is required before TODO 11-13 can
 be marked field-PASS.
+
+<!-- HH_260730 - Keep measured indoor evidence separate from pending field acceptance. -->
+The latest production-entry simulation measurements, planner/costmap audit,
+pose-latency result, CPU comparison, and UI/voice state contract are recorded
+in [post-v2.1.0 indoor validation](docs/post_v2_1_0_indoor_validation.md).
 
 <!-- HH_260721 - Record the operator/UI departure sequence validated in ordinary simulation. -->
 Selecting another campsite from `DROP_ZONE_WAIT` or charging state does not
