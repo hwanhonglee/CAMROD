@@ -1,8 +1,19 @@
 # Update map path/origin for lanelet2_maps.osm.
 # Parameters for planning path-focused lanelet cost grids
+# Layout per node: 1) map source and projection, 2) grid geometry,
+# 3) cost mode and lanelet masking, 4) path-lanelet matching,
+# 5) cost values and gradients, 6) window and input topics,
+# 7) path freshness and clearing, 8) rebuild triggers,
+# 9) raster thresholds and debug, 10) output and QoS.
 
+# =========================================================================
+# GLOBAL PATH COST GRID NODE
+# =========================================================================
 /planning/lanelet_cost_grid_global_path:
   ros__parameters:
+    # =========================================================================
+    # 1. MAP SOURCE AND PROJECTION
+    # =========================================================================
     # Prefer launch-level override from map_info.yaml/bringup.
     map_path: ""
     map_frame_id: "map"
@@ -11,6 +22,10 @@
     offset_alt: 0.0
     # Keep lanelet projector aligned with map loader/snapper nodes.
     projector_type: "local_cartesian"
+
+    # =========================================================================
+    # 2. GRID GEOMETRY
+    # =========================================================================
     # Align resolution with map lanelet grid to reduce raster/marker mismatch.
     resolution: 0.08
     # Bound helper grid window to reduce CPU spikes from full-map rebuild.
@@ -19,6 +34,10 @@
     centerline_half_width: 1.50
     free_value: 0
     lethal_value: 100
+
+    # =========================================================================
+    # 3. COST MODE AND LANELET MASKING
+    # =========================================================================
     # cost_mode options:
     #   "path"       : (recommended here) low on path strip, high outside path
     #   "lanelet"    : full lanelet polygon cost map
@@ -46,6 +65,10 @@
     path_lanelet_only: true
     # Clamp path strip cells to lanelet polygons to prevent boundary spill.
     path_clip_to_lanelet: true
+
+    # =========================================================================
+    # 4. PATH-LANELET MATCHING
+    # =========================================================================
     # Keep lanelet matching robust on sparse/curved path updates.
     # Tighten nearest-lanelet fallback so unrelated lanelets are not attached.
     # Tighten nearest-lanelet match distance to reduce boundary spill.
@@ -60,6 +83,10 @@
     # Keep sample density balanced for realtime updates.
     # Densify global route sampling to reduce sparse/cut strip cells.
     path_lanelet_sample_step: 0.05
+
+    # =========================================================================
+    # 5. COST VALUES AND GRADIENTS
+    # =========================================================================
     # Keep global-path layer non-lethal and planner-safe.
     # Values stay in a soft-cost range while preserving near/far contrast.
     # Keep global lanelet base in soft range so centerline
@@ -78,6 +105,10 @@
     # Slightly tighter range so high-cost segment becomes visible sooner.
     gradient_range: 35.0
     grid_yaw: 0.0
+
+    # =========================================================================
+    # 6. WINDOW AND INPUT TOPICS
+    # =========================================================================
     # HH_260527: window_mode options:
     #   robot_centered: window centered on current pose
     #   path_bbox: window centered on active path bounding box
@@ -92,6 +123,10 @@
     path_topic: "/planning/global_path"
     # Clear/rebuild against snapped goals only.
     goal_topic: "/planning/goal_pose_snapped"
+
+    # =========================================================================
+    # 7. PATH FRESHNESS AND CLEARING
+    # =========================================================================
     # Clear stale global-path cost immediately when the goal changes.
     goal_fallback_holdoff_s: 0.0
     # Avoid transient empty-route clears between sparse global-path updates.
@@ -114,6 +149,10 @@
     fresh_path_goal_match_tolerance_m: 4.0
     # Keep last valid global route cost grid until next global path arrives.
     stale_path_timeout_s: 0.0
+
+    # =========================================================================
+    # 8. REBUILD TRIGGERS
+    # =========================================================================
     # Rebuild global helper primarily on path updates.
     rebuild_on_pose: false
     rebuild_on_path: true
@@ -123,6 +162,10 @@
     # Keep publisher active through brief planner gaps.
     # When path is temporarily unavailable, publish lane-mask baseline instead of empty grid.
     allow_build_without_path: true
+
+    # =========================================================================
+    # 9. RASTER THRESHOLDS AND DEBUG
+    # =========================================================================
     # Split inside-cell thresholds:
     # - path strip: relaxed (reduce curve holes)
     # - boundary strip: strict (reduce outward bleed)
@@ -136,6 +179,10 @@
     debug_build_timing: true
     debug_coverage_stride: 2
     debug_coverage_min_value: 0
+
+    # =========================================================================
+    # 10. OUTPUT AND QOS
+    # =========================================================================
     # /planning/global_path publisher is VOLATILE.
     # Keep subscriber durability VOLATILE to avoid QoS mismatch/drop.
     path_qos_transient_local: false
@@ -147,8 +194,14 @@
     republish_period_s: 0.25
     output_topic: "/planning/cost_grid/global_path"
 
+# =========================================================================
+# LOCAL PATH COST GRID NODE
+# =========================================================================
 /planning/lanelet_cost_grid_local_path:
   ros__parameters:
+    # =========================================================================
+    # 1. MAP SOURCE AND PROJECTION
+    # =========================================================================
     # Prefer launch-level override from map_info.yaml/bringup.
     map_path: ""
     map_frame_id: "map"
@@ -157,6 +210,10 @@
     offset_alt: 0.0
     # Keep lanelet projector aligned with map loader/snapper nodes.
     projector_type: "local_cartesian"
+
+    # =========================================================================
+    # 2. GRID GEOMETRY
+    # =========================================================================
     # Align resolution with map lanelet grid to reduce raster/marker mismatch.
     resolution: 0.08
     # Local window size (cells). At 0.08m this is ~20.8m x ~20.8m.
@@ -166,6 +223,10 @@
     centerline_half_width: 1.50
     free_value: 0
     lethal_value: 100
+
+    # =========================================================================
+    # 3. COST MODE AND LANELET MASKING
+    # =========================================================================
     # cost_mode options:
     #   "path"       : (recommended here) low on path strip, high outside path
     #   "lanelet"    : full lanelet polygon cost map
@@ -193,6 +254,10 @@
     path_lanelet_only: true
     # Clamp path strip cells to lanelet polygons to prevent boundary spill.
     path_clip_to_lanelet: true
+
+    # =========================================================================
+    # 4. PATH-LANELET MATCHING
+    # =========================================================================
     # Keep lanelet matching robust on sparse/curved path updates.
     # Tighten nearest-lanelet fallback so remote lanelets are not attached.
     # Tighten nearest-lanelet match distance to reduce boundary spill.
@@ -201,6 +266,10 @@
     path_lanelet_allow_nearest_fallback: false
     # Keep sample density balanced for realtime updates.
     path_lanelet_sample_step: 0.06
+
+    # =========================================================================
+    # 5. COST VALUES AND GRADIENTS
+    # =========================================================================
     # Keep local-path layer in soft-cost range to avoid start-cell lockups.
     path_lane_base_value: 80
     # Enable pose-distance gradient so local cost changes in realtime.
@@ -217,6 +286,10 @@
     # Tighter range on local map to highlight near/far difference quickly.
     gradient_range: 20.0
     grid_yaw: 0.0
+
+    # =========================================================================
+    # 6. WINDOW AND INPUT TOPICS
+    # =========================================================================
     # HH_260527: window_mode options:
     #   robot_centered: window centered on current pose
     #   path_bbox: window centered on active path bounding box
@@ -232,6 +305,10 @@
     path_fallback_topic: ""
     # Clear/rebuild against snapped goals only.
     goal_topic: "/planning/goal_pose_snapped"
+
+    # =========================================================================
+    # 7. PATH FRESHNESS AND CLEARING
+    # =========================================================================
     # Clear stale local-path cost as soon as the local path is replaced.
     goal_fallback_holdoff_s: 0.0
     # Keep local-path cost stable across short extractor gaps.
@@ -246,6 +323,10 @@
     drop_stale_path_after_goal: false
     # Keep only short local hold to prevent flicker.
     stale_path_timeout_s: 0.6
+
+    # =========================================================================
+    # 8. REBUILD TRIGGERS
+    # =========================================================================
     # Rebuild local cost on pose motion + path updates.
     rebuild_on_pose: true
     rebuild_on_path: true
@@ -255,6 +336,10 @@
     rebuild_on_timer: false
     # Keep publisher active through short local-path gaps.
     allow_build_without_path: true
+
+    # =========================================================================
+    # 9. RASTER THRESHOLDS AND DEBUG
+    # =========================================================================
     # Split inside-cell thresholds:
     # - path strip: relaxed (reduce curve holes)
     # - boundary strip: strict (reduce outward bleed)
@@ -268,6 +353,10 @@
     debug_build_timing: true
     debug_coverage_stride: 2
     debug_coverage_min_value: 0
+
+    # =========================================================================
+    # 10. OUTPUT AND QOS
+    # =========================================================================
     path_qos_transient_local: false
     # HH_260618: Enable the primary publisher for this helper. Without this,
     # /planning/cost_grid/local_path has subscribers but no publisher.

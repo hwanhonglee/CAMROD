@@ -19,6 +19,7 @@ planner_server:
       cost_penalty: 6.0
       non_straight_penalty: 1.0
       retrospective_penalty: 0.0
+
       smoother:
         max_iterations: 2000
         w_data: 0.45

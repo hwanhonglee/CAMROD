@@ -54,6 +54,57 @@ struct LaneletMatch
   bool valid{false};
 };
 
+struct PathQualityMetrics
+{
+  double length_m{0.0};
+  double total_abs_turn_rad{0.0};
+  double mean_abs_curvature_inv_m{0.0};
+  double max_abs_curvature_inv_m{0.0};
+  std::size_t segment_count{0U};
+};
+
+PathQualityMetrics measurePathQuality(const nav_msgs::msg::Path & path)
+{
+  PathQualityMetrics metrics;
+  bool has_previous_segment = false;
+  double previous_dx = 0.0;
+  double previous_dy = 0.0;
+  double previous_length = 0.0;
+
+  for (std::size_t index = 1U; index < path.poses.size(); ++index) {
+    const auto & previous = path.poses[index - 1U].pose.position;
+    const auto & current = path.poses[index].pose.position;
+    const double dx = current.x - previous.x;
+    const double dy = current.y - previous.y;
+    const double segment_length = std::hypot(dx, dy);
+    if (segment_length < 1.0e-6) {
+      continue;
+    }
+
+    metrics.length_m += segment_length;
+    ++metrics.segment_count;
+    if (has_previous_segment) {
+      const double cross = previous_dx * dy - previous_dy * dx;
+      const double dot = previous_dx * dx + previous_dy * dy;
+      const double abs_turn = std::abs(std::atan2(cross, dot));
+      const double curvature_scale = 0.5 * (previous_length + segment_length);
+      metrics.total_abs_turn_rad += abs_turn;
+      metrics.max_abs_curvature_inv_m = std::max(
+        metrics.max_abs_curvature_inv_m, abs_turn / curvature_scale);
+    }
+
+    previous_dx = dx;
+    previous_dy = dy;
+    previous_length = segment_length;
+    has_previous_segment = true;
+  }
+  if (metrics.length_m > 1.0e-6) {
+    metrics.mean_abs_curvature_inv_m =
+      metrics.total_abs_turn_rad / metrics.length_m;
+  }
+  return metrics;
+}
+
 geometry_msgs::msg::Quaternion yawToQuaternion(const double yaw)
 {
   geometry_msgs::msg::Quaternion quaternion;
@@ -287,9 +338,19 @@ public:
     const auto snap_t1 = std::chrono::steady_clock::now();
 
     if (!start_match.valid) {
+      RCLCPP_ERROR(
+        node_->get_logger(),
+        "LaneletRoutePlanner reject: reason=start_snap_failed "
+        "start=(%.2f, %.2f) max_snap=%.2fm",
+        start.pose.position.x, start.pose.position.y, max_snap_distance_m_);
       throw nav2_core::PlannerException("LaneletRoutePlanner could not snap start to lanelet");
     }
     if (!goal_match.valid) {
+      RCLCPP_ERROR(
+        node_->get_logger(),
+        "LaneletRoutePlanner reject: reason=goal_snap_failed "
+        "goal=(%.2f, %.2f) max_snap=%.2fm",
+        goal.pose.position.x, goal.pose.position.y, max_snap_distance_m_);
       throw nav2_core::PlannerException("LaneletRoutePlanner could not snap goal to lanelet");
     }
 
@@ -328,6 +389,13 @@ public:
     }
     const auto route_t1 = std::chrono::steady_clock::now();
     if (route_lanelets.empty()) {
+      RCLCPP_ERROR(
+        node_->get_logger(),
+        "LaneletRoutePlanner reject: reason=no_lanelet_route "
+        "start_ll=%ld goal_ll=%ld lane_changes=%s",
+        static_cast<long>(start_match.lanelet.id()),
+        static_cast<long>(goal_match.lanelet.id()),
+        allow_lane_changes_ ? "true" : "false");
       throw nav2_core::PlannerException("LaneletRoutePlanner could not find lanelet route");
     }
     publishRouteLaneletIds(route_lanelets);
@@ -397,6 +465,13 @@ public:
     publishRouteTurnSegments(route_cumulative_s, turn_segments);
 
     if (path.poses.size() < 2U) {
+      RCLCPP_ERROR(
+        node_->get_logger(),
+        "LaneletRoutePlanner reject: reason=empty_route "
+        "start_ll=%ld goal_ll=%ld start_s=%.2f goal_s=%.2f",
+        static_cast<long>(start_match.lanelet.id()),
+        static_cast<long>(goal_match.lanelet.id()),
+        start_match.projection.arc_length, goal_match.projection.arc_length);
       throw nav2_core::PlannerException("LaneletRoutePlanner generated an empty route");
     }
 
@@ -427,11 +502,13 @@ public:
       std::chrono::duration<double, std::milli>(geometry_t1 - route_t1).count();
     const double total_ms =
       std::chrono::duration<double, std::milli>(plan_t1 - plan_t0).count();
+    const PathQualityMetrics quality = measurePathQuality(path);
     RCLCPP_INFO(
       node_->get_logger(),
       "LaneletRoutePlanner plan: start_ll=%ld goal_ll=%ld mode=%s reverse_source=%s "
       "heading_error=%.1fdeg "
-      "lanelets=%zu points=%zu "
+      "lanelets=%zu points=%zu length=%.2fm total_abs_turn=%.3frad "
+      "mean_abs_curvature=%.3f/m max_abs_curvature=%.3f/m "
       "timing snap=%.2fms route=%.2fms geometry=%.2fms total=%.2fms",
       static_cast<long>(start_match.lanelet.id()),
       static_cast<long>(goal_match.lanelet.id()),
@@ -441,6 +518,9 @@ public:
       "return_request" : "none"),
       start_heading_error_deg,
       route_lanelets.size(), path.poses.size(),
+      quality.length_m, quality.total_abs_turn_rad,
+      quality.mean_abs_curvature_inv_m,
+      quality.max_abs_curvature_inv_m,
       snap_ms, route_ms, geometry_ms, total_ms);
     return path;
   }

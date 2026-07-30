@@ -229,6 +229,54 @@ during forced process-group shutdown; those restarted processes emitted
 That shutdown-only behavior is outside this route-recovery change and is not
 being counted as a clean-shutdown validation.
 
+### 2026-07-30 indoor planning, latency, CPU, and state follow-up
+
+<!-- HH_260730 - Distinguish measured software progress from the physical
+     acceptance that remains deliberately open. -->
+
+A fresh isolated `bringup.launch.py sim:=true` run completed the software side
+of TODO 6-9 and part of the diagnosis for TODO 13:
+
+<!-- HH_260730 - Replace the stale v1.0.1/moved-map cause with the active
+     empty-profile v1.0.3 stable-map evidence. -->
+- the final run loaded the empty-profile `lanelet2_maps.osm`, byte-identical to
+  the `copy_park_v1.0.3` snapshot;
+- manual and UI near goals both generated 22-pose, approximately 4.042 m
+  global paths plus nonzero `/control/nav2_cmd_vel_ros` and final
+  `/control/cmd_vel`;
+- the regulated far UI goal applied its separate position/heading policy,
+  generated a 249-pose, 49.083 m route, and produced nonzero commands;
+- direct calls from `(-13.958, 43.540, 7.73 deg)` to the clicked goal
+  `(12.173, 20.458, 107.8 deg)` showed NavFn, ThetaStar, SmacHybrid, and
+  SmacLattice returning zero poses. The exact clicked cell had cost 254 and was
+  nontraversable, rather than being separated by the old v1.0.1 0.860 m
+  corridor cut;
+- LaneletRoute succeeded in approximately 19.6 ms with 249 poses/49.047 m and
+  a reachable cost-186 endpoint at
+  `(11.1604526307, 20.1120538289, 107.8 deg)`. The route accumulated 4.892 rad,
+  reached maximum cost 218, and used no cost >=252 cell;
+- the pre-safe-snap far manual baseline released the exact clicked action goal
+  even though the safe route endpoint was 1.07 m away. Manual position
+  projection must be rebuilt and the four cases rerun before final arrival
+  behavior is claimed; clicked yaw remains the manual orientation contract;
+- the localization selector's odometry-before-pose callback order was fixed,
+  reducing final-pose header age p50/p95 from 55.9/63.9 ms to 6.3/10.9 ms
+  while preserving 20 Hz sim output;
+- latest-only raw path/grid coalescing reduced the active
+  `path_visualizer` sample from about 20% to about 9--11% of one core and the
+  obstacle monitor from about 26--28% to about 19--20%, without reducing source
+  path, monitor, threshold, lookahead, or safety timing;
+- UI and voice now use one source-neutral sequence from initialization through
+  goal, path, driving, safety stop, and arrival. Required inputs, graph,
+  localization, TF, gate, and platform state remain strict; an intentional
+  sensor `DUMMY/WARN` is degraded-ready while `ERROR` and
+  startup/fault/inactive states remain blocking.
+
+The complete conditions, measurements, and limits are recorded in
+`camrod_bringup/docs/post_v2_1_0_indoor_validation.md`. No footprint padding,
+lanelet cost, unknown-cell, dynamic-obstacle, or command-gate rule was weakened
+to reach the off-corridor clicked cell.
+
 ### Evidence availability
 
 The pre-fix real-robot launch logs referenced by the v2.1.0 release record live
@@ -264,9 +312,11 @@ functional failure.
 ## Deliberately pending
 
 No real robot, CAN, camera, radar, LiDAR, GNSS, or IMU was started for this
-implementation. TODO items 1-10 therefore remain field work. Items 11 and 12
-have software coverage but still require the runbook's physical exit/reentry,
-opposite escape, first re-engage, and timing acceptance.
+implementation. Production-entry simulation now covers the software behavior
+described above, but TODO items 1-10 still retain their hardware/field
+acceptance. Items 11 and 12 have software coverage but still require the
+runbook's physical exit/reentry, opposite escape, first re-engage, and timing
+acceptance.
 
 For item 13, driver-layer lag mitigation is implemented. Controller-side
 lateral prediction, crossing hysteresis, gain/ratio changes, and command-delay

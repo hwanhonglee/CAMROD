@@ -1,5 +1,10 @@
 # Nav2 base profile: framework defaults and common node wiring.
+# Layout: 1) planner server, 2) controller server, 3) local costmap,
+#         4) global costmap, 5) BT navigator, 6) behavior server.
 
+# =========================================================================
+# 1. PLANNER SERVER
+# =========================================================================
 planner_server:
   ros__parameters:
     # HH_260527: use_sim_time options:
@@ -149,6 +154,9 @@ planner_server:
         do_refinement: true
       smooth_path: True
 
+# =========================================================================
+# 2. CONTROLLER SERVER
+# =========================================================================
 controller_server:
   ros__parameters:
     use_sim_time: False
@@ -161,6 +169,7 @@ controller_server:
     # Increase tolerance to avoid frequent FollowPath abort/recovery
     # loops during transient sensor/costmap jitter.
     failure_tolerance: 20.0
+
     # HH_260720 - Nav2 consumes the explicit nav_msgs boundary mirror.
     odom_topic: /localization/odometry_ros
     # Keep deadband thresholds permissive so low-speed commands are
@@ -168,8 +177,10 @@ controller_server:
     min_x_velocity_threshold: 0.0001
     min_y_velocity_threshold: 0.0001
     min_theta_velocity_threshold: 0.0001
+
     # Explicit speed-limit channel for planning namespace users.
     speed_limit_topic: /planning/speed_limit
+
     # Restore canonical Nav2 checker parameter names.
     # Nav2 controller server reads *_checker_* keys; validator keys are ignored.
     progress_checker_plugin: "progress_checker"
@@ -220,6 +231,7 @@ controller_server:
     DWB:
       plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: False
+
       min_vel_x: 0.0
       min_vel_y: 0.0
       max_vel_x: 1.4
@@ -228,15 +240,18 @@ controller_server:
       min_speed_xy: 0.0
       max_speed_xy: 1.4
       min_speed_theta: 0.0
+
       acc_lim_x: 1.5
       acc_lim_y: 0.0
       acc_lim_theta: 3.0
       decel_lim_x: -1.5
       decel_lim_y: 0.0
       decel_lim_theta: -3.0
+
       vx_samples: 20
       vy_samples: 1
       vtheta_samples: 24
+
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025
@@ -247,6 +262,7 @@ controller_server:
       trans_stopped_velocity: 0.10
       short_circuit_trajectory_evaluation: True
       stateful: True
+
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       # HH_260618: Keep DWB as a selectable fallback, but make obstacle cost
       # meaningful if used in narrow campground lanes.
@@ -271,6 +287,7 @@ controller_server:
       iteration_count: 1
       prune_distance: 2.0
       transform_tolerance: 0.2
+
       vx_max: 1.4
       vx_min: 0.0
       vy_max: 0.0
@@ -282,11 +299,14 @@ controller_server:
       ax_min: -1.5
       ay_max: 0.0
       az_max: 3.0
+
       temperature: 0.3
       gamma: 0.015
+
       motion_model: "DiffDrive"
       regenerate_noises: False
       visualize: False
+
       critics: [
         "ConstraintCritic",
         "CostCritic",
@@ -305,6 +325,7 @@ controller_server:
       PathFollowCritic.enabled: True
       PathAngleCritic.enabled: True
       PreferForwardCritic.enabled: True
+
       # HH_260618: Local avoidance tuning for long-duration campground operation.
       # CostCritic must dominate path-following when the reference path is blocked.
       CostCritic.cost_weight: 8.0
@@ -358,7 +379,34 @@ controller_server:
       max_angular_accel: 3.0
       simulate_ahead_time: 1.0
       rotate_to_goal_heading: True
+      # HH_260730: RotationShim creates a separate internal RPP instance under
+      # this namespace. Without explicit values it used the upstream 0.5 m/s
+      # and 0.6 m fixed-lookahead defaults, so manual goals ran at about
+      # 0.25 m/s after the final 0.5 gate scale and oscillated as steering lagged.
+      # Keep manual-goal tracking aligned with the field-tuned RPP profile.
+      desired_linear_vel: 1.4
+      lookahead_dist: 1.0
+      min_lookahead_dist: 0.9
+      max_lookahead_dist: 2.0
+      lookahead_time: 1.8
+      use_velocity_scaled_lookahead_dist: True
+      use_interpolation: True
+      allow_reversing: False
+      use_rotate_to_heading: False
+      min_approach_linear_velocity: 0.10
+      approach_velocity_scaling_dist: 0.6
+      use_collision_detection: True
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_regulated_linear_velocity_scaling: True
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.5
+      use_cost_regulated_linear_velocity_scaling: True
+      cost_scaling_dist: 0.6
+      cost_scaling_gain: 1.0
 
+# =========================================================================
+# 3. LOCAL COSTMAP
+# =========================================================================
 local_costmap:
   local_costmap:
     ros__parameters:
@@ -384,6 +432,9 @@ local_costmap:
         - combined_cost_layer
         - inflation_layer
 
+# =========================================================================
+# 4. GLOBAL COSTMAP
+# =========================================================================
 global_costmap:
   global_costmap:
     ros__parameters:
@@ -428,6 +479,9 @@ global_costmap:
         - radar_cost_layer
         - inflation_layer
 
+# =========================================================================
+# 5. BT NAVIGATOR
+# =========================================================================
 bt_navigator:
   ros__parameters:
     use_sim_time: False
@@ -450,6 +504,9 @@ bt_navigator:
     # Tolerate EKF/TF jitter observed during full bringup load.
     transform_tolerance: 0.5
 
+# =========================================================================
+# 6. BEHAVIOR SERVER
+# =========================================================================
 behavior_server:
   ros__parameters:
     use_sim_time: False

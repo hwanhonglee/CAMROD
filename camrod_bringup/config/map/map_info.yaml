@@ -1,15 +1,31 @@
+# This file is organized into numbered sections: map file, WGS84 origin,
+# UTM origin metadata, yaw offset, frames, and visualization.
+
 # Shared map reference parameters for map/localization/planning modules.
 # This file is the single source of truth for map path + origin offsets.
 /**:
   ros__parameters:
+    # =========================================================================
+    # 1. MAP FILE
+    # =========================================================================
     # Lanelet2 OSM path for the active camping-site (park) map.
     # Use an absolute path so bringup/module launches load the same file.
     # c_track backup: "/home/nvidia/camrod_ws/src/lanelet2_maps_(c_track_test_moved).osm" (map_profile: copy_c_track)
     # HH_260713 - OSM geometry (not the shared origin) was moved so B2 aligns
     # with the stationary GNSS mean measured inside B2 at 16:08 KST.
-    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps_(copy_park_moved).osm"
-    map_profile: "copy_park_moved"
+    # HH_260730 - Use the stable active-map entrypoint; versioned OSM copies are
+    # retained as audit snapshots and must not leave runtime configs stale.
+    map_path: "/home/nvidia/camrod_ws/src/lanelet2_maps.osm"
+    # HH_260730 - Clear the profile so nothing resolves to stale
+    # "(copy_park_moved)" variant files anymore: lanelet2_maps.osm and the
+    # default drop_zones.yaml/camping_sites.yaml (byte-identical to those
+    # variants today) are the only active map inputs, and area_export writes
+    # regenerated output to the defaults directly.
+    map_profile: ""
 
+    # =========================================================================
+    # 2. WGS84 ORIGIN
+    # =========================================================================
     # WGS84 origin used by LocalCartesian projectors.
     # Camping-site (park) map origin (from map_projector_info (copy_park).yaml).
     # c_track backup: 36.729291686 / 127.442957302 / 0.0
@@ -21,6 +37,9 @@
     #offset_lon: 128.092549 # 128.092549
     offset_alt: 0.0
 
+    # =========================================================================
+    # 3. UTM ORIGIN METADATA
+    # =========================================================================
     # Optional UTM-origin metadata for downstream tools that prefer metric origin fields.
     # EPSG:32652 coordinates of offset_lat/offset_lon. These are metadata for
     # the optional UTM input path; the active NavSatFix path uses LLH->ECEF->ENU.
@@ -28,23 +47,33 @@
     offset_utm_northing: 4077903.915218
     offset_utm_alt: 0.0
 
+    # =========================================================================
+    # 4. YAW OFFSET
+    # =========================================================================
     # Optional map yaw correction (degrees).
     # If enabled, lat/lon->xy conversion can be rotated by this offset.
     yaw_offset_deg: 0.0
     rotate_latlon_xy_by_yaw_offset: true
 
+    # =========================================================================
+    # 5. FRAMES
+    # =========================================================================
     # Canonical frame IDs shared by map/localization/planning.
     world_frame_id: "world"
     map_frame_id: "map"
     # HH_260623 - Flatten Lanelet2 marker altitude to the 2D planning ground plane so RViz overlays align with robot/path data.
     align_z_to_ground: true
 
+    # =========================================================================
+    # 6. VISUALIZATION
+    # =========================================================================
     # Lane-direction marker styling (RViz visualization only).
     dir_body_scale: 0.55
     dir_head_scale: 0.35
     dir_width_scale: 0.18
     # Number of centerline points skipped between arrow markers.
     dir_stride: 30
+
     # HH_260629: Publish a lightweight full-map overview immediately so RViz is
     # never blank; detailed centerline/direction markers are still delayed.
     progressive_visualization_enable: true
@@ -62,6 +91,7 @@
     # took ~54 s on full real-sensor bringup and starved planning startup.
     progressive_visualization_publish_detailed_full: false
     progressive_visualization_detailed_full_delay_s: 30.0
+
     # Keep direction/ID/semantic markers, but skip raw OSM point spheres by default.
     visualization_publish_raw_points: false
     debug_timing: true

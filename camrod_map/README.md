@@ -33,16 +33,22 @@ ros2 launch camrod_map area_export.launch.py \
 
 ### Map Profile Selection
 
-> HH_260716 - The default validation profile is `copy_park_moved`, backed by `lanelet2_maps_(copy_park_moved).osm` (map version 13). Its WGS84 origin is `36.8435737, 128.0925646`, with EPSG:32652 metadata `419093.912713, 4077903.915218`.
+> HH_260730 - The active config uses an empty profile with the stable runtime
+> entrypoint `lanelet2_maps.osm`, currently identical to the audit snapshot
+> `lanelet2_maps_(copy_park_v1.0.3).osm` (embedded map version 12). The default
+> semantic YAML files are byte-identical to the former `copy_park_moved`
+> variants. Its WGS84 origin is `36.8435737, 128.0925646`, with EPSG:32652
+> metadata `419093.912713, 4077903.915218`.
 
 `config/map_info.yaml` carries both the Lanelet2 OSM path and the WGS84/UTM origin. Bringup/planning launch files infer a normalized `map_profile` from either `map_profile` or the OSM filename suffix in parentheses. Profile-specific semantic YAML files are then selected automatically when present:
 
 | Profile input | OSM example | Semantic files selected |
 |---|---|---|
-| `map_profile: copy_park_moved` | `lanelet2_maps_(copy_park_moved).osm` | `drop_zones (copy_park_moved).yaml`, `camping_sites (copy_park_moved).yaml` |
+| empty (active) | `lanelet2_maps.osm` (versioned snapshot: `copy_park_v1.0.3`) | `drop_zones.yaml`, `camping_sites.yaml` |
+| `map_profile: copy_park_moved` (legacy explicit profile) | explicitly supplied versioned Park OSM | `drop_zones (copy_park_moved).yaml`, `camping_sites (copy_park_moved).yaml` |
 | `map_profile: copy_park` | `lanelet2_maps_(copy_park).osm` | `drop_zones (copy_park).yaml`, `camping_sites (copy_park).yaml` |
 | `map_profile: copy_c_track` | `lanelet2_maps_(copy_c_track).osm` | `drop_zones (copy_c_track).yaml`, `camping_sites (copy_c_track).yaml` |
-| empty / unknown | `lanelet2_maps.osm` | `drop_zones.yaml`, `camping_sites.yaml` |
+| unknown profile with no matching OSM | fallback `lanelet2_maps.osm` | profile-specific YAML when present, otherwise default YAML |
 
 This keeps the mechanism independent of the specific `.osm` file. A new map only needs a correct `map_info.yaml` origin and, if its site/drop-zone semantics differ, matching profile YAML files.
 

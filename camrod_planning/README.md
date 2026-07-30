@@ -11,7 +11,7 @@ reverse parking.
 | Node | Responsibility |
 |---|---|
 | `planning_state_machine` | Mission state, scenario state and maneuver handoffs |
-| `goal_snapper` | Source-aware manual passthrough or regulated lanelet goal conversion |
+| `goal_snapper` | Source-aware lane-center projection with manual/UI heading policies |
 | `centerline_snapper` | Localization-to-lanelet reference pose |
 | Nav2 servers | Global route planning, local control, behaviors and navigation actions |
 | `local_path_extractor` | Local segment extraction from the current global path |
@@ -22,7 +22,7 @@ reverse parking.
 | Direction | Topic | Purpose |
 |---|---|---|
 <!-- HH_260727 - Keep manual RViz and regulated UI policy boundaries explicit. -->
-| Input | `/goal_pose` | Manual RViz destination; preserves the requested pose and final yaw |
+| Input | `/goal_pose` | Manual RViz destination; projects position to a routable lane center and preserves final yaw |
 | Input | `/planning/site_goal_pose_ros` | UI/mission destination; snaps to a routable vehicle lanelet |
 | Input | `/planning/mission_key` | Semantic destination such as `camping_site_1` |
 | Input | `/service/state` | Control/parking phase handoff into mission state |
@@ -94,17 +94,36 @@ The two operator paths intentionally use different Nav2 policies:
 
 | Source | Position/orientation policy | Planner | Controller | Goal checker |
 |---|---|---|---|---|
-| RViz `/goal_pose` | Preserve clicked pose; project drive geometry to the legal lanelet and retain clicked final yaw | `LaneletRoute` | `RotationShim` | `manual_goal_checker` (0.25 m, 10 deg) |
+| RViz `/goal_pose` | Project clicked x/y to a reachable vehicle-lane centerline; preserve clicked final yaw | `LaneletRoute` | `RotationShim` | `manual_goal_checker` (0.25 m, 10 deg) |
 | UI `/planning/site_goal_pose_ros` | Snap to a vehicle-routable lanelet centerline and lane heading | configured lanelet planner | configured controller | `goal_checker` |
 
 The source is published before the resolved goal, with a 0.12 s selector
 settle interval. This prevents the first goal after a manual/regulated switch
 from using the previous policy. The default manual route follows the connected
 lanelet graph so long narrow-map goals remain smooth and publish the active
-route IDs used by sensor filtering. The route endpoint keeps the clicked yaw,
-so either arrow direction is valid at arrival. `nav2_manual_planner:=Smac2D`
-remains available for an explicit free-space diagnostic, but no manual mode
-bypasses costmaps, the robot footprint, or the final command safety gate.
+route IDs used by sensor filtering. Manual x/y is projected before the action
+goal is released, so the retained CAMROD goal, recovery logic, and LaneletRoute
+endpoint share one reachable position instead of retaining an unsafe clicked
+costmap cell. The manual checker retains its 0.25 m tolerance. The endpoint
+keeps the clicked yaw, so either arrow direction remains valid at arrival; UI
+goals additionally replace that yaw with lane heading.
+
+<!-- HH_260730 - Replace the superseded v1.0.1 corridor result with the active
+     v1.0.3 stable-map cost evidence. -->
+The active empty-profile `lanelet2_maps.osm` is the v1.0.3 snapshot. For start
+`(-13.958, 43.540, 7.73 deg)` and clicked goal
+`(12.173, 20.458, 107.8 deg)`, the exact clicked costmap cell was lethal
+(cost 254). NavFn, ThetaStar, SmacHybrid, and SmacLattice therefore returned
+zero poses. LaneletRoute instead generated 249 safe poses over 49.047 m in
+approximately 19.6 ms and ended at the reachable cost-186 position
+`(11.1604526307, 20.1120538289)`, retaining yaw 107.8 deg. Its maximum path
+cost was 218 and it used no cells at or above the lethal threshold of 252.
+
+The pre-safe-snap four-case baseline exposed a 1.07 m difference between the
+released far manual action goal and that reachable route endpoint. A fresh
+build and four-case run must confirm the position-projection contract above
+before manual arrival is considered validated. No manual mode bypasses
+costmaps, the robot footprint, or the final command safety gate.
 Manual goals also clear stale UI mission ownership and never start a
 campsite/drop-zone service maneuver on arrival.
 Camping-site auto-entry additionally requires an explicit regulated

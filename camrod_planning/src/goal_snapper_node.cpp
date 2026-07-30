@@ -135,17 +135,19 @@ class GoalSnapperNode : public rclcpp::Node
 public:
   // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
-  GoalSnapperNode()
+  explicit GoalSnapperNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   // HH_260112 Use short node name; namespace applies the module prefix.
-  : rclcpp::Node("goal_snapper")
+  : rclcpp::Node("goal_snapper", options)
   {
     // HH_260112 Snap RViz goal to nearest lanelet centerline.
     cfg_.map_path = declare_parameter<std::string>("map_path", "");
     cfg_.offset_lat = declare_parameter<double>("offset_lat", 0.0);
     cfg_.offset_lon = declare_parameter<double>("offset_lon", 0.0);
     cfg_.offset_alt = declare_parameter<double>("offset_alt", 0.0);
-    // Regulated mission/UI goals are snapped to a routable lanelet. RViz keeps
-    // the standard /goal_pose boundary as a separate manual, yaw-preserving input.
+    // Regulated mission/UI goals use lane heading. RViz keeps the standard
+    // /goal_pose boundary as a separate manual input whose position is projected
+    // to a vehicle-routable lane centerline while requested yaw remains unchanged.
     input_goal_topic_ = declare_parameter<std::string>(
       "input_goal_topic", "/planning/site_goal_pose_ros");
     manual_input_goal_topic_ = declare_parameter<std::string>(
@@ -330,7 +332,7 @@ public:
     } else if (!manual_input_goal_topic_.empty()) {
       RCLCPP_WARN(
         get_logger(),
-        "manual_input_goal_topic matches regulated input '%s'; manual passthrough disabled",
+        "manual_input_goal_topic matches regulated input '%s'; manual yaw policy disabled",
         input_goal_topic_.c_str());
     }
     if (!auxiliary_input_goal_topic_.empty() && auxiliary_input_goal_topic_ != input_goal_topic_) {
@@ -595,6 +597,10 @@ private:
       route_goal_recovery_.observeNavAborted();
       return;
     }
+    if (latest_status->status == action_msgs::msg::GoalStatus::STATUS_CANCELED) {
+      route_goal_recovery_.observeNavCanceled();
+      return;
+    }
     if (
       latest_status->status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED ||
       latest_status->status == action_msgs::msg::GoalStatus::STATUS_EXECUTING)
@@ -834,10 +840,10 @@ private:
     snapRosGoal(*msg, "regulated_ros");
   }
 
-  // HH_260727 - RViz's standard /goal_pose keeps the requested x/y/yaw at the
-  // input boundary. The default manual LaneletRoute planner projects the drive
-  // geometry onto a legal lanelet and preserves the requested final yaw; an
-  // explicitly selected grid planner can still consume the exact pose.
+  // HH_260730 - RViz's standard /goal_pose keeps the requested arrival yaw, but
+  // its position must match the routable lane-center endpoint sent to Nav2. Sending
+  // raw clicked x/y left retained-goal/recovery consumers on a cost-254 cell
+  // while LaneletRoute and Nav2 control ended at a different centerline point.
   void onManualGoalRos(const geometry_msgs::msg::PoseStamped::ConstSharedPtr msg)
   {
     const double px = msg->pose.position.x;
@@ -856,14 +862,21 @@ private:
       return;
     }
 
+    NearestResult nearest;
+    double snapped_z = 0.0;
+    if (!snapGoal(px, py, pz, nearest, snapped_z)) {
+      return;
+    }
+
     avg_msgs::msg::AvgPoseStamped out;
     out.header.stamp = msg->header.stamp;
     out.header.frame_id = msg->header.frame_id;
-    out.pose.position.x = px;
-    out.pose.position.y = py;
-    out.pose.position.z = pz;
+    out.pose.position.x = nearest.nearest_point.x();
+    out.pose.position.y = nearest.nearest_point.y();
+    out.pose.position.z = snapped_z;
     out.pose.orientation = orientation;
-    handleSnappedGoal(out, px, py, 0.0, "manual_ros", "manual");
+    handleSnappedGoal(
+      out, px, py, std::sqrt(nearest.sq_dist), "manual_ros", "manual");
   }
 
   void snapRosGoal(const geometry_msgs::msg::PoseStamped & msg, const char * source_label)
@@ -1673,6 +1686,7 @@ private:
   bool publish_planning_status_{false};
 };
 
+#ifndef CAMROD_PLANNING_GOAL_SNAPPER_NO_MAIN
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
@@ -1680,3 +1694,4 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
+#endif

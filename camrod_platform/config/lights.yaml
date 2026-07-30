@@ -19,6 +19,7 @@
     # ---- Output ----
     lights_command_topic: "/platform/lights/command"
 
+    # ---- Timing and thresholds ----
     # Turn indicator starts this far before a turn_direction lanelet window.
     turn_pre_distance_m: 12.0
     # Crab direction indication needs at least this much commanded lateral speed.
@@ -34,13 +35,18 @@
 
 /platform/mcu_serial_bridge:
   ros__parameters:
+    # ---- Topics ----
     lights_command_topic: "/platform/lights/command"
     lights_status_topic: "/platform/lights/status"
+
+    # ---- Serial port ----
     # HH_260727 - The field WS2815 controller is connected through FT232R
     # BG003YCF. Use its stable identity because ttyUSB indices are also shared
     # with GNSS and the Quectel modem and may change between boots.
     serial_port: "/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_BG003YCF-if00-port0"
     serial_baud: 115200
+
+    # ---- Timing ----
     # PC->MCU frame rate; MCU declares link loss after mcu_timeout_s without
     # frames (must match LINK_TIMEOUT_MS in the Arduino sketch).
     tx_rate_hz: 5.0

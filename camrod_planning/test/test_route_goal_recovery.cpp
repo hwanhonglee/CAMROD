@@ -61,4 +61,21 @@ TEST(RouteGoalRecovery, ActiveOrSucceededStatusClearsAbort)
   EXPECT_FALSE(recovery.ready(3.0));
 }
 
+TEST(RouteGoalRecovery, CanceledStatusSuppressesLaterReengage)
+{
+  RouteGoalRecoveryConfig config;
+  config.clear_delay_s = 0.0;
+  RouteGoalRecovery recovery(config);
+  recovery.resetForGoal();
+  recovery.observeRouteHold(true, false, 1.0);
+  recovery.observeNavAborted();
+
+  recovery.observeNavCanceled();
+  recovery.observeRouteHold(false, true, 2.0);
+
+  EXPECT_FALSE(recovery.routeHoldSeen());
+  EXPECT_FALSE(recovery.navAborted());
+  EXPECT_FALSE(recovery.ready(3.0));
+}
+
 }  // namespace camrod_planning

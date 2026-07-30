@@ -1,5 +1,9 @@
+# Layout: 1) body/kinematics, 2) ground offset + base pose, 3) IMU, 4) GNSS, 5) LiDAR, 6) camera, 7) radar mount poses.
 /**:
   ros__parameters:
+    # =========================================================================
+    # 1. ROBOT BODY AND KINEMATICS
+    # =========================================================================
     robot:
       wheelbase: 0.886          # Distance between front and rear axle centers [m].
       # HH_260623 - Body dimensions now match measured robot_base_link-relative envelope.
@@ -22,6 +26,9 @@
       encoder_resolution: 2048  # Encoder ticks per wheel revolution.
       drive_type: "ackermann" # Platform drive model identifier consumed by downstream logic.
 
+    # =========================================================================
+    # 2. GROUND OFFSET AND BASE POSE
+    # =========================================================================
     ground_z_offset: 0.0      # HH_260623 - 2D planning/RViz ground fallback; do not inject the old 5.3 m altitude offset.
 
     base_pose:
@@ -32,6 +39,9 @@
       pitch: 0.0              # Initial base pitch angle [deg].
       yaw: 0.0                # Initial base yaw angle [deg].
 
+    # =========================================================================
+    # 3. IMU MOUNT POSE
+    # =========================================================================
     imu:
       # HH_260623 - Updated measured pose relative to robot_base_link rear-wheel center.
       x: 1.131                # IMU mount X offset from sensor_kit_base_link [m].
@@ -42,6 +52,9 @@
       # HH_260413: Align IMU frame to robot_base_link heading (mount calibration).
       yaw: 0.0                # IMU mount yaw offset [deg].
 
+    # =========================================================================
+    # 4. GNSS ANTENNA MOUNT POSE
+    # =========================================================================
     gnss:
       x: 0.0                  # GNSS antenna X offset from sensor_kit_base_link [m].
       y: 0.0                  # GNSS antenna Y offset from sensor_kit_base_link [m].
@@ -50,6 +63,9 @@
       pitch: 0.0              # GNSS antenna pitch offset [deg].
       yaw: 0.0                # GNSS antenna yaw offset [deg].
 
+    # =========================================================================
+    # 5. LIDAR MOUNT POSE
+    # =========================================================================
     lidar:
       # HH_260623 - Updated measured pose relative to robot_base_link rear-wheel center.
       x: 1.20636              # LiDAR mount X offset from sensor_kit_base_link [m].
@@ -59,6 +75,9 @@
       pitch: 0.0              # LiDAR mount pitch offset [deg].
       yaw: 0.0                # LiDAR mount yaw offset [deg].
 
+    # =========================================================================
+    # 6. CAMERA MOUNT POSES (FRONT + REAR)
+    # =========================================================================
     # HH_260528: Dual econ camera mount poses (front + rear), mirroring radar nested structure.
     # Measured from sensor_kit_base_link (≡ robot_base_link).
     # Body → optical frame rotation is handled inside econ_camera_link xacro macro (RPY=-π/2,0,-π/2).
@@ -80,6 +99,9 @@
         pitch: 0.0            # Rear camera pitch offset [deg].
         yaw: 180.0            # Rear camera yaw offset [deg] — facing rear.
 
+    # =========================================================================
+    # 7. RADAR MOUNT POSES (7 CHANNELS)
+    # =========================================================================
     # HH_260623 - Canonical radar TF keys match camrod_sensing 7-channel radar frame_ids.
     # HH_260623 - Updated measured poses relative to robot_base_link rear-wheel center.
     radar:

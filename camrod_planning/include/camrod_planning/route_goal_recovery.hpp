@@ -68,6 +68,17 @@ public:
     nav_aborted_ = false;
   }
 
+  void observeNavCanceled()
+  {
+    // An operator cancellation is authoritative for the retained goal.  Do
+    // not let an earlier route hold/abort pair restart it after a later
+    // engage transition.  A newly published goal calls resetForGoal().
+    route_hold_seen_ = false;
+    nav_aborted_ = false;
+    gate_enabled_ = false;
+    clear_since_sec_.reset();
+  }
+
   bool ready(const double now_sec) const
   {
     if (!config_.enabled || !route_hold_seen_ || !nav_aborted_ || !gate_enabled_ ||

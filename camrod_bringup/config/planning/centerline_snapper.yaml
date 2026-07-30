@@ -1,21 +1,38 @@
+# Layout: 1) map source/origin, 2) topics, 3) search and covariance,
+# 4) heading filter, 5) Z handling, 6) update throttling.
 # 2026-01-30 Update map path/origin for lanelet2_maps.osm.
 # Default params for lanelet centerline snapping.
 /planning/centerline_snapper:
   ros__parameters:
+    # =========================================================================
+    # 1. MAP SOURCE AND ORIGIN
+    # =========================================================================
     # Launch passes resolved map_path; keep YAML default empty to avoid host-specific hardcoding.
     map_path: ""
     offset_lat: 36.8435737
     offset_lon: 128.0925646
     offset_alt: 0.0
+
+    # =========================================================================
+    # 2. TOPICS
+    # =========================================================================
     input_pose_topic: "/localization/pose"
     input_pose_cov_topic: "/localization/pose_with_covariance"
     output_pose_topic: "/planning/lanelet_pose"
     output_pose_cov_topic: "/planning/lanelet_pose_with_covariance"
+
+    # =========================================================================
+    # 3. SEARCH AND COVARIANCE
+    # =========================================================================
     # Expand search radius to handle map/pose offsets during sim.
     max_search_radius: 120.0
     longitudinal_stddev: 0.5
     lateral_stddev: 0.3
     yaw_stddev: 0.2
+
+    # =========================================================================
+    # 4. HEADING FILTER
+    # =========================================================================
     # HH_260629: Use localization yaw only while yaw covariance is healthy.
     # Invalid GNSS heading can seed bad yaw; then snapping falls back to nearest geometry.
     heading_filter_enable: true
@@ -24,6 +41,10 @@
     # HH_260721 - Do not trade more than this distance for heading alignment;
     # campsite retrace yaw is intentionally opposite on the same centerline.
     heading_filter_max_extra_distance_m: 2.0
+
+    # =========================================================================
+    # 5. Z HANDLING
+    # =========================================================================
     # HH_260527: centerline_z_mode options:
     #   input: keep input pose Z
     #   map: use lanelet centerline Z + map_z_offset
@@ -31,6 +52,10 @@
     # HH_260623 - Use the 2D planning plane so snapped pose markers stay attached to flattened Lanelet2 markers.
     centerline_z_mode: ground
     map_z_offset: 0.0
+
+    # =========================================================================
+    # 6. UPDATE THROTTLING
+    # =========================================================================
     # Throttle nearest-centerline projection for CPU stability.
     min_update_period_s: 0.05
     min_input_displacement_m: 0.05

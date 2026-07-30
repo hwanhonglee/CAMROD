@@ -8,12 +8,14 @@ scenario:
         y: -117.408
         z: -97.794
         yaw_deg: -0.41903
+
     - id: go_camping_site_1
       goal:
         x: -13.1858
         y: -93.0608
         z: -96.9358
         yaw_deg: -179.992
+
     - id: return_drop_zone
       goal:
         x: 16.8676

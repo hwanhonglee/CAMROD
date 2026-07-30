@@ -241,6 +241,7 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_lanelet_route_planner test/test_lanelet_route_planner.cpp)
   ament_target_dependencies(test_lanelet_route_planner
+    action_msgs
     avg_msgs
     camrod_map
     geometry_msgs
@@ -256,7 +257,11 @@ if(BUILD_TESTING)
     rclcpp_lifecycle
     std_msgs
   )
+  target_compile_definitions(
+    test_lanelet_route_planner PRIVATE CAMROD_PLANNING_GOAL_SNAPPER_NO_MAIN
+  )
   target_include_directories(test_lanelet_route_planner PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../camrod_map/include>
   )
 
@@ -264,6 +269,22 @@ if(BUILD_TESTING)
   # action server, or control gate.
   ament_add_gtest(test_route_goal_recovery test/test_route_goal_recovery.cpp)
   target_include_directories(test_route_goal_recovery PRIVATE include)
+
+  find_package(ament_cmake_test REQUIRED)
+  ament_add_test(
+    test_nav2_selector_policy
+    COMMAND
+      "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/test/test_nav2_selector_policy.py"
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO
+  )
+  ament_add_test(
+    test_planning_runtime_coalescing
+    COMMAND
+      "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/test/test_planning_runtime_coalescing.py"
+    GENERATE_RESULT_FOR_RETURN_CODE_ZERO
+  )
 endif()
 
 ament_package()

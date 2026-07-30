@@ -1,5 +1,11 @@
+# Ranger driver parameters are grouped into numbered sections:
+#   1) general driver settings, 2) steering transition,
+#   3) platform status and battery, 4) odometry input, 5) e-stop.
 /**:
   ros__parameters:
+    # =========================================================================
+    # 1. GENERAL DRIVER SETTINGS
+    # =========================================================================
     # HH_260410: Platform-owned default Ranger driver parameters.
     # bringup may override this file via platform/ranger_driver_file.
     use_sim_time: false                         # Uses ROS simulated time if true.
@@ -10,9 +16,14 @@
     simulated_robot: false                      # Enables internal simulation mode in ranger driver.
     publish_odom_tf: false                      # Publishes odom->base TF directly from ranger driver if true.
     update_rate: 50                             # Driver update and publish loop rate [Hz].
+
+    # =========================================================================
+    # 2. STEERING TRANSITION
+    # =========================================================================
     # HH_260727 - Runtime-adjustable wheel-direction slew limit. 0.5 rad/s turns 0→90 deg
     # in about 3.1 s and is exposed on the operator diagnostics UI.
     steering_transition_rate_radps: 0.5
+
     # HH_260729 - A rate-limited steering angle is delayed geometry. Hold
     # translation for large lag and restore full speed only near the new angle,
     # so an old wheel direction cannot carry the robot across the centerline.
@@ -21,18 +32,24 @@
     steering_transition_stop_error_rad: 0.35
     steering_transition_min_velocity_scale: 0.0
 
+    # =========================================================================
+    # 3. PLATFORM STATUS AND BATTERY
+    # =========================================================================
     publish_platform_status_topics: true        # Enables bridged platform status topic publication.
     status_odom_topic: "/platform/status/odometry"     # Normalized odometry status output topic.
     status_velocity_topic: "/platform/status/velocity" # Normalized velocity status output topic.
     status_wheel_topic: "/platform/status/wheel"       # Wheel-state status output topic.
+
     # HH_260617: BMS CAN 0x361 is published by ranger_base as /battery_state.
     # HH_260720 - The bridge stores BMS data in the canonical AvgPlatformStatus message.
     battery_state_topic: "/battery_state"              # Raw BatteryState from Ranger BMS CAN 0x361.
     charging_current_threshold_a: 0.3                  # Current above threshold means charging by default.
     charging_current_positive_is_charging: true        # Flip to false if measured BMS current is negative while charging.
     charging_min_consecutive_samples: 2                # Debounce BMS current spikes.
+
     status_frame_id: "robot_base_link"         # Frame id used in /platform/status header.
     actuator_state_topic: "/actuator_state"     # Actuator state topic from ranger_base (CAN 0x281/0x271).
+
     # HH_260428: Comprehensive aggregated DBC status topic (AvgPlatformStatus).
     # Aggregates all CAN fields: vehicle_state/control_mode/error_code/battery_voltage (0x211),
     # motion_mode (0x291), motor_rpm[8] (0x251-0x258), motor_speed[4] (0x281), motor_angle[4] (0x271).
@@ -40,6 +57,9 @@
     # Safety-critical state changes bypass this steady-state heartbeat limit.
     platform_status_publish_rate_hz: 10.0       # Aggregate status heartbeat rate [Hz].
 
+    # =========================================================================
+    # 4. ODOMETRY INPUT
+    # =========================================================================
     # HH_260428: Odom input for the platform bridge.
     # odom_topic_name  : primary source — ranger_base /odom (CAN 0x221/0x311/0x312).
     #                    ranger.launch.py hardcodes ranger_base output to /odom.
@@ -53,5 +73,8 @@
     # HH_260617: Use canonical `_s` suffix for duration parameters.
     odom_fallback_timeout_s: 1.0                # Seconds of primary silence before activating fallback.
 
+    # =========================================================================
+    # 5. E-STOP
+    # =========================================================================
     estop_on_exception_state: true              # Forces estop=true when driver exception state is detected.
     estop_on_error_code: false                  # Forces estop=true on non-zero driver error codes if enabled.

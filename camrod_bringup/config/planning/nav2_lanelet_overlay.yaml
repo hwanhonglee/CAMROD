@@ -1,5 +1,9 @@
 # Nav2 lanelet profile: map/costmap semantics and lanelet-specific planner tuning.
+# Layout: 1) planner server, 2) local costmap, 3) global costmap.
 
+# =========================================================================
+# 1. PLANNER SERVER
+# =========================================================================
 planner_server:
   ros__parameters:
     Smac2D:
@@ -18,6 +22,9 @@ planner_server:
         tolerance: 1.0e-8
         do_refinement: true
 
+# =========================================================================
+# 2. LOCAL COSTMAP
+# =========================================================================
 local_costmap:
   local_costmap:
     ros__parameters:
@@ -56,6 +63,9 @@ local_costmap:
         inflation_radius: 1.0
         cost_scaling_factor: 5.0
 
+# =========================================================================
+# 3. GLOBAL COSTMAP
+# =========================================================================
 global_costmap:
   global_costmap:
     ros__parameters:

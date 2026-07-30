@@ -3,7 +3,9 @@
 # of duplicating every field-tuned value as a launch argument.
 /**:
   ros__parameters:
+    # =========================================================================
     # Command topology
+    # =========================================================================
     input_topic: "/control/cmd_vel_raw"
     navigation_input_topic: "/control/nav2_cmd_vel_ros"
     output_topic: "/control/cmd_vel"
@@ -17,7 +19,9 @@
     status_topic: "/control/cmd_vel_safety_gate/status"
     platform_drive_enable_topic: "/platform/drive_enable"
 
+    # =========================================================================
     # Platform and charging interlocks
+    # =========================================================================
     require_platform_drive_enable: true
     platform_safety_source_mode: "platform_status"
     platform_status_topic: "/platform/status"
@@ -44,7 +48,9 @@
     allow_on_start: false
     publish_zero_when_blocked: true
 
+    # =========================================================================
     # Localization recovery hold
+    # =========================================================================
     enable_gnss_recovery_hold: true
     localization_mode_topic: "/localization/mode"
     gnss_recovery_hold_s: 2.0
@@ -53,7 +59,9 @@
     gnss_recovery_source_mode_min: 2
     gnss_recovery_target_mode: 0
 
+    # =========================================================================
     # Dynamic cost-grid stop
+    # =========================================================================
     enable_cost_stop: true
     cost_grid_topic: "/planning/cost_grid/inflation"
     pose_topic: "/localization/pose"
@@ -94,7 +102,9 @@
     front_dynamic_path_width_m: 1.27
     front_dynamic_path_max_start_distance_m: 1.5
 
+    # =========================================================================
     # Static lanelet guard
+    # =========================================================================
     lanelet_safety_enable: true
     lanelet_safety_grid_topic: "/map/cost_grid/lanelet"
     lanelet_safety_threshold: 85
@@ -144,14 +154,18 @@
     # into fresh route-clear evidence; valid runtime range is [0.05, 5.0] s.
     route_safety_recovery_pose_max_age_s: 0.5
 
+    # =========================================================================
     # Bounded maneuver exceptions keep live LiDAR and radar stops enabled.
+    # =========================================================================
     drop_zone_maneuver_controller_status_topic: "/control/drop_zone_maneuver_controller/status"
     drop_zone_maneuver_controller_static_bypass_phases: "EXIT_STRAIGHT,ALIGN_EXIT_YAW"
     camping_site_maneuver_controller_status_topic: "/control/camping_site_maneuver_controller/status"
     # HH_260721 - Bypass static lanelet cost during bounded entry-lanelet retrace alignment.
     camping_site_maneuver_controller_static_bypass_phases: "ALIGN_ENTRY_YAW,REVERSE_IN,CRAB_IN,ROTATE_180,ALIGN_RETRACE_YAW,REVERSE_OUT,CRAB_OUT"
 
+    # =========================================================================
     # Speed-dependent front corridor
+    # =========================================================================
     enable_speed_dependent_lookahead: true
     front_lookahead_min_m: 2.60
     front_lookahead_max_m: 3.5
@@ -159,7 +173,9 @@
     front_reaction_time_s: 0.20
     front_lookahead_margin_m: 0.45
 
+    # =========================================================================
     # Side, rear, crab, reverse, and rotation protection
+    # =========================================================================
     enable_side_rear_cost_stop: true
     enable_body_near_dynamic_stop: true
     # HH_260728 - Radar hits already carry a 0.30 m cost disk. A 0.60 m raw
@@ -188,7 +204,9 @@
     unavoidable_cluster_min_cells: 25
     unavoidable_cluster_min_ratio: 0.25
 
+    # =========================================================================
     # Optional yaw zone and normal route-heading guard
+    # =========================================================================
     enable_yaw_alignment_zone: false
     yaw_alignment_frame_id: "map"
     yaw_alignment_zones_file: ""
@@ -206,7 +224,9 @@
     route_heading_max_linear_x: 0.0
     route_heading_min_path_points: 2
 
+    # =========================================================================
     # Output shaping and stale-input behavior
+    # =========================================================================
     speed_scale: 1.0
     input_timeout_s: 0.35
     zero_publish_rate_hz: 10.0
