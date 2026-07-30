@@ -1,3 +1,4 @@
+# Map-frame keypoints for the planning state machine.
 keypoints:
   drop_zone:
     frame_id: "map"

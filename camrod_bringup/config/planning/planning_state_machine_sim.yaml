@@ -1,6 +1,14 @@
+# Layout: 1) input topics, 2) state and scenario outputs, 3) maneuver phase
+# override, 4) mission and return topics, 5) mission files and keys,
+# 6) startup and error behavior, 7) auto return and mission-key matching,
+# 8) goal arrival and handoff.
 /planning/planning_state_machine:
   ros__parameters:
     enabled: true
+
+    # =========================================================================
+    # 1. INPUT TOPICS
+    # =========================================================================
     # HH_260617: Sim planning/control tests should not enter ERROR_STOP because
     # hardware-oriented diagnostics are intentionally absent or stale. The normal
     # hardware profile still uses /system/diagnostics_agg.
@@ -21,11 +29,19 @@
     goal_source_topic: "/planning/goal_source"
     # HH_260727 - Route every generated mission goal through the regulated snapper.
     auto_goal_snapper_input_topic: "/planning/auto_goal_raw"
+
+    # =========================================================================
+    # 2. STATE AND SCENARIO OUTPUTS
+    # =========================================================================
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
 
     scenario_id_topic: "/planning/state_machine/scenario_id"
     scenario_command_topic: "/planning/state_machine/scenario_command"
+
+    # =========================================================================
+    # 3. MANEUVER PHASE OVERRIDE
+    # =========================================================================
     # HH_260720 - Sim exposes control and parking phases through the same
     # planning state contract as hardware bringup.
     enable_maneuver_phase_state_override: true
@@ -33,6 +49,10 @@
     maneuver_phase_state_topic: "/service/state"
     # HH_260720 - Maneuver phase transitions persist until an explicit mission or route change.
     maneuver_phase_override_timeout_s: 0.0
+
+    # =========================================================================
+    # 4. MISSION AND RETURN TOPICS
+    # =========================================================================
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     camping_site_recall_topic: "/planning/state_machine/camping_site_recall"
     mission_source_topic: "/planning/state_machine/mission_source"
@@ -52,15 +72,24 @@
     request_mission_service: "/planning/request_mission"
     status_stream_topic: "/status_stream"
 
+    # =========================================================================
+    # 5. MISSION FILES AND KEYS
+    # =========================================================================
     keypoints_yaml: ""
     camping_sites_yaml: ""
     startup_mission_key: "drop_zone"
     warn_mission_key: "garage"
 
+    # =========================================================================
+    # 6. STARTUP AND ERROR BEHAVIOR
+    # =========================================================================
     auto_startup_goal: false
     auto_warn_recovery_goal: false
     auto_estop_on_error: false
 
+    # =========================================================================
+    # 7. AUTO RETURN AND MISSION-KEY MATCHING
+    # =========================================================================
     enable_auto_return_on_site_goal: false
     site_mission_key_prefix: "camping_site_"
     goal_reached_dwell_s: 10.0
@@ -76,6 +105,9 @@
     pending_mission_key_overrides_goal_match: true
 
 
+    # =========================================================================
+    # 8. GOAL ARRIVAL AND HANDOFF
+    # =========================================================================
     min_goal_publish_interval_s: 1.0
     # HH_260623 - Sim state handoff follows robot_base_link-center arrival so
     # RViz validation matches the real Nav2 stop reference.

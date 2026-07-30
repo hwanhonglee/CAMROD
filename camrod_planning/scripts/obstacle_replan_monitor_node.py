@@ -15,6 +15,7 @@ from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.serialization import deserialize_message
 from rclpy.time import Time
 from std_msgs.msg import String as RosString
 
@@ -22,8 +23,18 @@ from std_msgs.msg import String as RosString
 @dataclass
 class GridRecord:
     topic: str
-    grid: AvgOccupancyGrid
     received_time: Time
+    serialized_grid: Optional[bytes]
+    grid: Optional[AvgOccupancyGrid] = None
+    transform_ready: bool = False
+    valid: bool = False
+    width: int = 0
+    height: int = 0
+    resolution: float = 0.0
+    origin_x: float = 0.0
+    origin_y: float = 0.0
+    inverse_cos: float = 1.0
+    inverse_sin: float = 0.0
 
 
 @dataclass
@@ -134,8 +145,10 @@ class ObstacleReplanMonitor(Node):
         self._ignore_unknown_cells = bool(
             self.declare_parameter("ignore_unknown_cells", True).value
         )
+        self._lateral_sample_offsets = tuple(self._lateral_offsets())
 
         self._latest_path: Optional[AvgPath] = None
+        self._latest_path_serialized: Optional[bytes] = None
         self._latest_goal: Optional[AvgPoseStamped] = None
         self._latest_pose: Optional[AvgPoseStamped] = None
         self._grids: Dict[str, GridRecord] = {}
@@ -160,18 +173,23 @@ class ObstacleReplanMonitor(Node):
         )
 
         # HH_260720 - Use generated CAMROD path, pose, grid, and status contracts.
-        self.create_subscription(AvgPath, self._path_topic, self._on_path, path_qos)
-        self.create_subscription(AvgPoseStamped, self._goal_topic, self._on_goal, 10)
-        self.create_subscription(AvgPoseStamped, self._pose_topic, self._on_pose, 10)
+        # The local-path extractor publishes on both pose updates and its timer.
+        # Keep the newest serialized path and decode it only at monitor cadence.
         self.create_subscription(
-            GoalStatusArray, self._navigate_status_topic, self._on_nav_status, 10
+            AvgPath, self._path_topic, self._on_path, path_qos, raw=True
+        )
+        self.create_subscription(AvgPoseStamped, self._goal_topic, self._on_goal, 1)
+        self.create_subscription(AvgPoseStamped, self._pose_topic, self._on_pose, 1)
+        self.create_subscription(
+            GoalStatusArray, self._navigate_status_topic, self._on_nav_status, 1
         )
         for topic in self._dynamic_grid_topics:
             self.create_subscription(
                 AvgOccupancyGrid,
                 topic,
                 lambda msg, topic_name=topic: self._on_grid(topic_name, msg),
-                10,
+                1,
+                raw=True,
             )
 
         self._planner_selector_pub = self.create_publisher(
@@ -183,7 +201,10 @@ class ObstacleReplanMonitor(Node):
         monitor_period = 1.0 / max(0.5, self._monitor_rate_hz)
         selector_period = 1.0 / max(1.0, self._selector_publish_hz)
         self.create_timer(monitor_period, self._on_monitor_timer)
-        self.create_timer(selector_period, self._on_selector_timer)
+        self._selector_timer = self.create_timer(
+            selector_period, self._on_selector_timer
+        )
+        self._selector_timer.cancel()
 
         self.get_logger().info(
             "obstacle_replan_monitor: "
@@ -194,8 +215,8 @@ class ObstacleReplanMonitor(Node):
             f"lookahead={self._lookahead_m:.1f}m hold={self._block_hold_s:.1f}s"
         )
 
-    def _on_path(self, msg: AvgPath) -> None:
-        self._latest_path = msg
+    def _on_path(self, msg: bytes) -> None:
+        self._latest_path_serialized = msg
 
     def _on_goal(self, msg: AvgPoseStamped) -> None:
         self._latest_goal = msg
@@ -206,8 +227,12 @@ class ObstacleReplanMonitor(Node):
     def _on_pose(self, msg: AvgPoseStamped) -> None:
         self._latest_pose = msg
 
-    def _on_grid(self, topic: str, msg: AvgOccupancyGrid) -> None:
-        self._grids[topic] = GridRecord(topic=topic, grid=msg, received_time=self.get_clock().now())
+    def _on_grid(self, topic: str, msg: bytes) -> None:
+        self._grids[topic] = GridRecord(
+            topic=topic,
+            received_time=self.get_clock().now(),
+            serialized_grid=msg,
+        )
 
     def _on_nav_status(self, msg: GoalStatusArray) -> None:
         active_states = {
@@ -228,7 +253,10 @@ class ObstacleReplanMonitor(Node):
             self._blocked_since = None
             self._publish_status("IDLE: no active snapped goal")
             return
-        if self._latest_path is None or self._latest_pose is None:
+        if (
+            self._latest_path is None
+            and self._latest_path_serialized is None
+        ) or self._latest_pose is None:
             self._blocked_since = None
             self._publish_status("IDLE: waiting for path/pose")
             return
@@ -287,6 +315,7 @@ class ObstacleReplanMonitor(Node):
         now_time = self.get_clock().now()
         if now_time > self._selector_override_until:
             self._selector_override_until = None
+            self._selector_timer.cancel()
             if self._restore_planner_id:
                 self._publish_planner_selector(self._restore_planner_id)
             return
@@ -325,6 +354,7 @@ class ObstacleReplanMonitor(Node):
 
         self._last_replan_time = now_time
         self._selector_override_until = now_time + Duration(seconds=max(0.2, self._selector_override_s))
+        self._selector_timer.reset()
         # HH_260702 - Publish the fallback selector before sending the action so
         # Nav2 PlannerSelector reads the opt-in fallback planner for this
         # preempted goal instead of the normal LaneletRoute latch.
@@ -391,10 +421,44 @@ class ObstacleReplanMonitor(Node):
         for record in self._grids.values():
             age_s = (now_time - record.received_time).nanoseconds / 1.0e9
             if age_s <= self._grid_max_age_s:
+                if record.grid is None and record.serialized_grid is not None:
+                    record.grid = deserialize_message(
+                        record.serialized_grid, AvgOccupancyGrid
+                    )
+                    record.serialized_grid = None
+                if not record.transform_ready:
+                    self._prepare_grid_record(record)
                 fresh.append(record)
         return fresh
 
+    def _prepare_grid_record(self, record: GridRecord) -> None:
+        record.transform_ready = True
+        grid = record.grid
+        if grid is None:
+            return
+        info = grid.info
+        record.width = int(info.width)
+        record.height = int(info.height)
+        record.resolution = float(info.resolution)
+        record.valid = (
+            record.width > 0
+            and record.height > 0
+            and record.resolution > 0.0
+        )
+        if not record.valid:
+            return
+        record.origin_x = info.origin.position.x
+        record.origin_y = info.origin.position.y
+        yaw = self._yaw_from_quaternion(info.origin.orientation)
+        record.inverse_cos = math.cos(-yaw)
+        record.inverse_sin = math.sin(-yaw)
+
     def _sample_dynamic_blockage(self) -> BlockageSample:
+        if self._latest_path_serialized is not None:
+            self._latest_path = deserialize_message(
+                self._latest_path_serialized, AvgPath
+            )
+            self._latest_path_serialized = None
         path = self._latest_path
         pose = self._latest_pose
         if path is None or pose is None or len(path.poses) < 2:
@@ -404,7 +468,7 @@ class ObstacleReplanMonitor(Node):
             return BlockageSample(False, 0, 0, -1, "", 0.0, 0.0)
 
         closest_index = self._closest_path_index(path, pose)
-        lateral_offsets = self._lateral_offsets()
+        lateral_offsets = self._lateral_sample_offsets
         total_count = 0
         blocked_count = 0
         max_cost = -1
@@ -487,7 +551,7 @@ class ObstacleReplanMonitor(Node):
         max_topic = ""
         blocked = False
         for record in grids:
-            cost = self._grid_cost_at(record.grid, point_x, point_y)
+            cost = self._grid_cost_at(record, point_x, point_y)
             if cost is None:
                 continue
             if cost > max_cost:
@@ -498,24 +562,25 @@ class ObstacleReplanMonitor(Node):
         return blocked, max_cost, max_topic
 
     def _grid_cost_at(
-        self, grid: AvgOccupancyGrid, point_x: float, point_y: float
+        self, record: GridRecord, point_x: float, point_y: float
     ) -> Optional[int]:
-        info = grid.info
-        if info.width == 0 or info.height == 0 or info.resolution <= 0.0:
+        grid = record.grid
+        if grid is None or not record.valid:
             return None
-        origin = info.origin
-        yaw = self._yaw_from_quaternion(origin.orientation)
-        dx = point_x - origin.position.x
-        dy = point_y - origin.position.y
-        cos_yaw = math.cos(-yaw)
-        sin_yaw = math.sin(-yaw)
-        local_x = cos_yaw * dx - sin_yaw * dy
-        local_y = sin_yaw * dx + cos_yaw * dy
-        cell_x = int(math.floor(local_x / info.resolution))
-        cell_y = int(math.floor(local_y / info.resolution))
-        if cell_x < 0 or cell_y < 0 or cell_x >= int(info.width) or cell_y >= int(info.height):
+        dx = point_x - record.origin_x
+        dy = point_y - record.origin_y
+        local_x = record.inverse_cos * dx - record.inverse_sin * dy
+        local_y = record.inverse_sin * dx + record.inverse_cos * dy
+        cell_x = int(math.floor(local_x / record.resolution))
+        cell_y = int(math.floor(local_y / record.resolution))
+        if (
+            cell_x < 0
+            or cell_y < 0
+            or cell_x >= record.width
+            or cell_y >= record.height
+        ):
             return None
-        index = cell_y * int(info.width) + cell_x
+        index = cell_y * record.width + cell_x
         if index < 0 or index >= len(grid.data):
             return None
         cost = int(grid.data[index])

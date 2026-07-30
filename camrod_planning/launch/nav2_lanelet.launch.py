@@ -265,9 +265,13 @@ def generate_launch_description():
     )
     nav2_manual_planner_arg = DeclareLaunchArgument(
         'nav2_manual_planner',
-        # HH_260727 - Default manual clicks to the lanelet graph. Smac2D remains
-        # an explicit diagnostic override, but its raster path can staircase and
-        # cannot publish the route IDs required by the radar/lidar route mask.
+        # HH_260730 / TODOLIST 7 - Fresh sim calls with the same 50.29 m
+        # start/goal produced zero poses from NavFn, ThetaStar, SmacHybrid, and
+        # SmacLattice; LaneletRoute returned 256 poses in 130 ms and retained
+        # the operator's 107.8 deg final yaw. Project manual x/y onto a routable
+        # lane centerline before routing on the connected graph, while keeping
+        # the clicked arrival orientation. UI goals additionally use lane yaw.
+        # Costmaps, full footprint, and the final gate still apply.
         default_value='LaneletRoute',
         description='Planner selector ID for manual RViz goals (default: LaneletRoute)',
     )

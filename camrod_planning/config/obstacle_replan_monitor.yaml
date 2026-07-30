@@ -1,6 +1,12 @@
+# Layout: 1) topics and actions, 2) planner preemption, 3) timing and corridor
+# sampling, 4) blockage thresholds and debounce, 5) selector and gating.
 /planning/obstacle_replan_monitor:
   ros__parameters:
     enabled: true
+
+    # =========================================================================
+    # 1. TOPICS AND ACTIONS
+    # =========================================================================
     # HH_260619 - Monitor only dynamic obstacle grids; lanelet/static costs are
     # handled by the route and safety gate and must not trigger false reroutes.
     dynamic_cost_grid_topics:
@@ -17,6 +23,9 @@
     planner_selector_topic: "/planning/planner_selector_ros"
     status_topic: "/planning/obstacle_replan/status"
 
+    # =========================================================================
+    # 2. PLANNER PREEMPTION
+    # =========================================================================
     # HH_260702 - Keep global route geometry stable during normal driving.
     # Dynamic-obstacle blockage is reported to status/gates; fallback Nav2
     # preemption is opt-in for controlled tests because it can create free-space
@@ -24,6 +33,10 @@
     preempt_enabled: false
     fallback_planner_id: "SmacLattice"
     restore_planner_id: "LaneletRoute"
+
+    # =========================================================================
+    # 3. TIMING AND CORRIDOR SAMPLING
+    # =========================================================================
     monitor_rate_hz: 5.0
     grid_max_age_s: 0.75
     lookahead_m: 8.0
@@ -31,6 +44,10 @@
     sample_step_m: 0.25
     corridor_half_width_m: 0.55
     lateral_step_m: 0.25
+
+    # =========================================================================
+    # 4. BLOCKAGE THRESHOLDS AND DEBOUNCE
+    # =========================================================================
     # HH_260630: Trigger dynamic replanning before the 85-cost hard-stop zone.
     obstacle_cost_threshold: 60
     # HH_260702 - Small far obstacles should be reported before the vehicle
@@ -41,6 +58,10 @@
     block_hold_s: 0.6
     clear_hold_s: 1.2
     replan_cooldown_s: 3.0
+
+    # =========================================================================
+    # 5. SELECTOR AND GATING
+    # =========================================================================
     selector_override_s: 3.0
     selector_publish_hz: 10.0
     require_navigation_active: true

@@ -1,6 +1,14 @@
+# Layout: 1) input topics, 2) state and scenario outputs, 3) maneuver phase
+# override, 4) mission and return topics, 5) mission files and keys,
+# 6) startup and error behavior, 7) auto return and mission-key matching,
+# 8) goal arrival and handoff.
 /planning/planning_state_machine:
   ros__parameters:
     enabled: true
+
+    # =========================================================================
+    # 1. INPUT TOPICS
+    # =========================================================================
     # Consume aggregated diagnostics for module health state.
     state_status_topic: "/system/diagnostics_agg"
     # HH_260720 - Consume the generated CAMROD lanelet pose and snapped goal.
@@ -16,18 +24,30 @@
     goal_source_topic: "/planning/goal_source"
     # HH_260727 - Route every generated mission goal through the regulated snapper.
     auto_goal_snapper_input_topic: "/planning/auto_goal_raw"
+
+    # =========================================================================
+    # 2. STATE AND SCENARIO OUTPUTS
+    # =========================================================================
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
     # HH_260528 Scenario contract for UI integration:
     # 0=WAIT_DROP_ZONE, 1=DELIVERY_TO_SITE, 2=RETURN_TO_DROP_ZONE, 3=RECALL_TO_SITE
     scenario_id_topic: "/planning/state_machine/scenario_id"
     scenario_command_topic: "/planning/state_machine/scenario_command"
+
+    # =========================================================================
+    # 3. MANEUVER PHASE OVERRIDE
+    # =========================================================================
     # HH_260720 - Validation profiles mirror maneuver phases into planning state.
     enable_maneuver_phase_state_override: true
     # HH_260721 - Consume operational progress independently from diagnostic health.
     maneuver_phase_state_topic: "/service/state"
     # HH_260720 - Maneuver phase transitions persist until an explicit mission or route change.
     maneuver_phase_override_timeout_s: 0.0
+
+    # =========================================================================
+    # 4. MISSION AND RETURN TOPICS
+    # =========================================================================
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     # Recall request published from a camping site.
     # msg.data = camping site name (e.g. "camping_site_3"); triggers return to return_mission_key.
@@ -49,6 +69,9 @@
     request_mission_service: "/planning/request_mission"
     status_stream_topic: "/status_stream"
 
+    # =========================================================================
+    # 5. MISSION FILES AND KEYS
+    # =========================================================================
     # Launch passes resolved keypoints/camping YAML paths; keep defaults empty
     # to avoid host-specific absolute path hardcoding.
     keypoints_yaml: ""
@@ -57,9 +80,16 @@
     startup_mission_key: "drop_zone"
     warn_mission_key: "garage"
 
+    # =========================================================================
+    # 6. STARTUP AND ERROR BEHAVIOR
+    # =========================================================================
     auto_startup_goal: true
     auto_warn_recovery_goal: true
     auto_estop_on_error: true
+
+    # =========================================================================
+    # 7. AUTO RETURN AND MISSION-KEY MATCHING
+    # =========================================================================
     # Fast validation profile for auto-return tests.
     # After reaching camping_site_*, wait briefly then return to drop_zone automatically.
     enable_auto_return_on_site_goal: true
@@ -78,6 +108,9 @@
     pending_mission_key_preserve_s: 5.0
     pending_mission_key_overrides_goal_match: true
 
+    # =========================================================================
+    # 8. GOAL ARRIVAL AND HANDOFF
+    # =========================================================================
     min_goal_publish_interval_s: 1.0
     # HH_260623 - Fast auto-return tests use the same center-based arrival
     # threshold as normal bringup to prevent early test-only success.

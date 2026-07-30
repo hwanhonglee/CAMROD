@@ -11,11 +11,15 @@ scenario:
       # HH_260617: Trigger via mission-key input so mission_source sequence
       # includes "mission_key:*" deterministically.
       mission_key: camping_site_1
+
+      # --- Goal pose ---
       goal:
         x: -13.1858
         y: -93.0608
         z: -96.9358
         yaw_deg: -179.992
+
+      # --- Expected sequences ---
       expect_mission_source_sequence:
         - "mission_key:camping_site_1"
         - "auto_return"

@@ -1,8 +1,15 @@
+# File layout: two maneuver-controller nodes (camping site, then drop zone);
+# each node's parameters are grouped into numbered sections:
+#   1) topics, 2) setup/geometry, 3) maneuver tuning, 4) timing and rates.
+#
 # HH_260721 - Keep this package config synchronized with the bringup control mirror.
 # HH_260720 - Non-Nav2 motion primitives and drop-zone alignment are owned by camrod_control.
 
 /control/camping_site_maneuver_controller:
   ros__parameters:
+    # =========================================================================
+    # 1. TOPICS
+    # =========================================================================
     cmd_vel_topic: "/control/cmd_vel_raw"
     pose_topic: "/localization/pose"
     # HH_260727 - Camping-site maneuvers consume regulated UI/mission goals only;
@@ -23,6 +30,9 @@
     # HH_260723 - Block entry into a campsite confirmed occupied by perception.
     campsite_occupancy_topic: "/perception/camping_sites/occupancy"
 
+    # =========================================================================
+    # 2. SITE ENTRY AND GOAL SELECTION
+    # =========================================================================
     enable_auto_start_from_planning_state: true
     site_mission_key_prefix: "camping_site_"
     use_goal_pair_for_lateral_offset: true
@@ -38,6 +48,9 @@
     goal_pair_max_age_s: 0.0
     default_lateral_direction: "left"
 
+    # =========================================================================
+    # 3. MANEUVER TUNING
+    # =========================================================================
     # HH_260720 - Preserve all field-tuned campsite control values during the package move.
     crab_speed_mps: 0.24
     entry_position_tolerance_m: 0.15
@@ -48,12 +61,14 @@
     reverse_return_progress_tolerance_m: 0.45
     reverse_return_lateral_tolerance_m: 0.40
     max_forward_residual_m: 0.8
+
     rotate_kp: 1.2
     max_angular_speed_radps: 0.35
     rotate_yaw_tolerance_deg: 4.0
     site_rotate_direction_policy: "site_index_lanelet_side"
     right_lanelet_site_indices: [1, 3, 5, 7, 9, 11]
     left_lanelet_site_indices: [2, 4, 6, 8, 10, 12, 13]
+
     reverse_entry_speed_mps: 0.16
     reverse_entry_yaw_kp: 1.0
     reverse_entry_lateral_kp: -0.25
@@ -63,12 +78,14 @@
     reverse_entry_auto_select_yaw_equivalent: true
     reverse_entry_lateral_tolerance_m: 0.35
     reverse_entry_debug_period_s: 1.0
+
     unload_wait_s: 5.0
     auto_return_after_unload_wait: false
     reset_wait_return_on_site_goal: true
     request_return_to_drop_zone_on_done: true
     # HH_260721 - Keep the single 180-degree site turn while crabbing back to the entry lanelet.
     align_retrace_yaw_before_crab_out: true
+
     cancel_nav2_on_site_phase: true
     nav2_cancel_period_s: 0.5
     nav2_cancel_action_topics:
@@ -76,6 +93,10 @@
       - /planning/navigate_to_pose/_action/cancel_goal
     return_request_retry_period_s: 1.0
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
+
+    # =========================================================================
+    # 4. TIMING AND RATES
+    # =========================================================================
     # HH_260721 - Keep pose freshness behavior visible in the package configuration.
     pose_timeout_s: 2.0
     control_rate_hz: 10.0
@@ -84,6 +105,9 @@
 
 /control/drop_zone_maneuver_controller:
   ros__parameters:
+    # =========================================================================
+    # 1. TOPICS
+    # =========================================================================
     command_topic: "/control/cmd_vel_raw"
     vehicle_pose_topic: "/localization/pose"
     # HH_260721 - Distinguish charger departure from ordinary drop-zone departure.
@@ -103,6 +127,9 @@
     # HH_260721 - Publish drop-zone departure/parking progress on the shared service topic.
     service_state_topic: "/service/state"
 
+    # =========================================================================
+    # 2. STATION AND ALIGNMENT SETUP
+    # =========================================================================
     drop_zones_yaml: ""
     drop_zone_id: "drop_zone"
     use_drop_zone_pose_as_station: true
@@ -116,6 +143,9 @@
     station_yaw_represents_reverse_axis: true
     automatically_select_reverse_approach_yaw: false
 
+    # =========================================================================
+    # 3. EXIT AND YAW-ALIGNMENT TUNING
+    # =========================================================================
     # HH_260720 - Preserve the previous drop-zone exit and yaw-alignment tuning.
     yaw_tolerance_deg: 5.0
     yaw_proportional_gain: 1.2
@@ -123,6 +153,10 @@
     exit_distance_m: 1.2
     exit_speed_mps: 0.16
     exit_timeout_s: 30.0
+
+    # =========================================================================
+    # 4. TIMING AND RATES
+    # =========================================================================
     pose_timeout_s: 2.0
     control_rate_hz: 10.0
     idle_rate_hz: 1.0

@@ -1,6 +1,14 @@
+# Layout: 1) input topics, 2) state and scenario outputs, 3) maneuver phase
+# override, 4) mission and return topics, 5) mission files and keys,
+# 6) startup and error behavior, 7) diagnostics ignore lists,
+# 8) auto return and mission-key matching, 9) goal arrival and handoff.
 /planning/planning_state_machine:
   ros__parameters:
     enabled: true
+
+    # =========================================================================
+    # 1. INPUT TOPICS
+    # =========================================================================
     state_status_topic: "/system/diagnostics_agg"
     # HH_260720 - Consume the generated CAMROD lanelet pose and snapped goal.
     pose_topic: "/planning/lanelet_pose"
@@ -20,6 +28,10 @@
     # HH_260727 - Every generated mission goal uses the regulated, source-aware
     # snap path; direct Nav2 publication could inherit a prior manual selector.
     auto_goal_snapper_input_topic: "/planning/auto_goal_raw"
+
+    # =========================================================================
+    # 2. STATE AND SCENARIO OUTPUTS
+    # =========================================================================
     state_topic: "/planning/state_machine/state"
     estop_topic: "/planning/state_machine/estop"
 
@@ -28,6 +40,10 @@
     scenario_id_topic: "/planning/state_machine/scenario_id"
     # HH_260617: UI/ops command topic. Send avg_msgs/PlanningScenario.
     scenario_command_topic: "/planning/state_machine/scenario_command"
+
+    # =========================================================================
+    # 3. MANEUVER PHASE OVERRIDE
+    # =========================================================================
     # HH_260720 - Mirror control and parking phase telemetry into
     # the central planning state output for UI/system consumers.
     enable_maneuver_phase_state_override: true
@@ -36,6 +52,9 @@
     # HH_260720 - Maneuver phase transitions persist until an explicit mission or route change.
     maneuver_phase_override_timeout_s: 0.0
 
+    # =========================================================================
+    # 4. MISSION AND RETURN TOPICS
+    # =========================================================================
     return_to_drop_zone_topic: "/planning/state_machine/return_to_drop_zone"
     # Recall request published from a camping site.
     # avg_msgs/PlanningRecallRequest.site_name = camping site name (e.g. "camping_site_3").
@@ -62,6 +81,9 @@
     request_mission_service: "/planning/request_mission"
     status_stream_topic: "/status_stream"
 
+    # =========================================================================
+    # 5. MISSION FILES AND KEYS
+    # =========================================================================
     # Launch resolves these to absolute paths at startup; keep empty here to
     # avoid host-specific path hardcoding in the package config.
     keypoints_yaml: ""
@@ -69,6 +91,9 @@
     startup_mission_key: "drop_zone"
     warn_mission_key: "garage"
 
+    # =========================================================================
+    # 6. STARTUP AND ERROR BEHAVIOR
+    # =========================================================================
     # HH_260616: Do not enqueue a Nav2 startup goal before the operator/UI chooses
     # a mission. The old startup goal kept NavigateToPose active and could swallow
     # the first UI camping-site request as a preemption race.
@@ -80,6 +105,10 @@
     # HH_260703 - Keep WARN diagnostics visible while still publishing the
     # GOAL_REACHED event that starts campsite/drop-zone parking handoff.
     allow_goal_reached_handoff_in_warn: true
+
+    # =========================================================================
+    # 7. DIAGNOSTICS IGNORE LISTS
+    # =========================================================================
     # HH_260625: Keep operator/system diagnostics visible without letting
     # non-motion-critical health checks force planning ERROR_STOP. Localization
     # mode, platform graph, and explicit mission/state errors still participate
@@ -125,6 +154,9 @@
       - "camera_checker:"
       - "radar_checker:"
 
+    # =========================================================================
+    # 8. AUTO RETURN AND MISSION-KEY MATCHING
+    # =========================================================================
     # When true: arriving at a camping_site_* key starts a dwell timer; after
     # goal_reached_dwell_s the robot auto-returns to return_mission_key.
     # When false: robot waits until an external return command arrives.
@@ -143,6 +175,9 @@
     pending_mission_key_preserve_s: 5.0
     pending_mission_key_overrides_goal_match: true
 
+    # =========================================================================
+    # 9. GOAL ARRIVAL AND HANDOFF
+    # =========================================================================
     # HH_260720 - Reaching the return pose hands ownership to drop-zone control;
     # charging completion is reported by the selected parking controller.
 

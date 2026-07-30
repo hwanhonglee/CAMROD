@@ -1,14 +1,25 @@
+# Layout: 1) map source/origin, 2) input/output topics, 3) snap search and
+# containment, 4) Z handling, 5) lanelet component and routing filters,
+# 6) cost-grid component filter, 7) sequential goal queue,
+# 8) goal reissue on pose jump, 9) goal reissue after route recovery.
 # 2026-01-30 Update map path/origin for lanelet2_maps.osm.
 # Default params for lanelet goal snapping.
 /planning/goal_snapper:
   ros__parameters:
+    # =========================================================================
+    # 1. MAP SOURCE AND ORIGIN
+    # =========================================================================
     # Launch passes resolved map_path; keep YAML default empty to avoid host-specific hardcoding.
     map_path: ""
     offset_lat: 36.8435737
     offset_lon: 128.0925646
     offset_alt: 0.0
-    # HH_260727 - UI/mission goals remain lanelet-regulated, while RViz's
-    # standard /goal_pose preserves the operator-selected x/y/yaw.
+
+    # =========================================================================
+    # 2. INPUT AND OUTPUT TOPICS
+    # =========================================================================
+    # HH_260730 - UI/mission goals use lane heading. Manual RViz goals use the
+    # same vehicle-routable lane-center projection but preserve the clicked yaw.
     input_goal_topic: "/planning/site_goal_pose_ros"
     manual_input_goal_topic: "/goal_pose"
     # HH_260623 - Private input for planning_state_machine auto return goals.
@@ -21,12 +32,20 @@
     output_goal_source_topic: "/planning/goal_source"
     # HH_260727 - Allow source-specific Nav2 selectors to settle before goal delivery.
     goal_source_settle_delay_s: 0.12
+
+    # =========================================================================
+    # 3. SNAP SEARCH AND CONTAINMENT
+    # =========================================================================
     # Restore practical search radius for multi-goal operation.
     # 30 m often rejects valid second goals (no new snapped goal => no replanning).
     max_search_radius: 120.0
     require_lanelet_containment: true
     # 2026-02-23: If clicked outside lanelet polygon, still snap to nearest lanelet centerline.
     fallback_uncontained: true
+
+    # =========================================================================
+    # 4. Z HANDLING
+    # =========================================================================
     # HH_260528 Z behavior:
     # use_map_z=true   -> lanelet projected Z + map_z_offset
     # flatten_to_ground=true -> overwrite to 2D planning ground Z(0) + map_z_offset
@@ -35,6 +54,9 @@
     flatten_to_ground: true
     map_z_offset: 0.0
 
+    # =========================================================================
+    # 5. LANELET COMPONENT AND ROUTING FILTERS
+    # =========================================================================
     # HH_260707: Avoid a duplicate Lanelet2 RoutingGraph build in goal_snapper.
     # The cost-grid component below remains the reachable-goal filter, while
     # LaneletRoutePlanner remains the authoritative route graph for planning.
@@ -52,6 +74,10 @@
     routing_participant: "vehicle:car"
     # HH_260727 - Do not snap regulated UI goals to crosswalk/non-vehicle lanelets.
     routable_lanelet_only: true
+
+    # =========================================================================
+    # 6. COST-GRID COMPONENT FILTER
+    # =========================================================================
     # HH_260617: Snap only to the same traversable OccupancyGrid component
     # as the current pose. This prevents Nav2 from receiving a lanelet-routing
     # goal that is disconnected in the actual costmap raster.
@@ -67,6 +93,9 @@
     cost_grid_topic: "/map/cost_grid/lanelet"
     cost_grid_block_threshold: 100
 
+    # =========================================================================
+    # 7. SEQUENTIAL GOAL QUEUE
+    # =========================================================================
     # HH_260618: RViz/UI goals are commands, not a waypoint queue. Publish the
     # latest snapped goal immediately so Nav2 preempts older active goals.
     # Enable this only for explicit waypoint smoke tests.
@@ -89,6 +118,9 @@
     # only after pose-distance arrival, to avoid BT topic-goal preemption.
     sequential_goal_require_nav2_terminal: true
 
+    # =========================================================================
+    # 8. GOAL REISSUE ON POSE JUMP
+    # =========================================================================
     # HH_260619 - When RViz/manual test pose is teleported while a goal is active,
     # reissue the same snapped goal once so Nav2 rebuilds its FollowPath context
     # from the new pose instead of rotating against the stale action path.
@@ -96,6 +128,9 @@
     pose_jump_reissue_distance_m: 1.5
     pose_jump_reissue_min_interval_s: 1.0
 
+    # =========================================================================
+    # 9. GOAL REISSUE AFTER ROUTE RECOVERY
+    # =========================================================================
     # HH_260729 - Reissue a retained goal only when its Nav2 action aborted
     # during an explicit route-safety hold and the gate later becomes enabled.
     reissue_active_goal_after_route_recovery: true

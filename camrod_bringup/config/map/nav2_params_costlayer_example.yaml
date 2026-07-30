@@ -14,6 +14,8 @@ local_costmap:
       width: 50.0
       # Local costmap height (meters).
       height: 50.0
+
+      # --- lanelet_cost_layer plugin parameters ---
       lanelet_cost_layer:
         # Plugin class exported by camrod_map.
         plugin: "camrod_map::cost_map::LaneletCostLayer"
@@ -24,6 +26,7 @@ local_costmap:
         # Cost value to write when source grid cell is unknown and write_unknown=true.
         unknown_value: 255
 
+# --- Global costmap ---
 global_costmap:
   global_costmap:
     ros__parameters:
@@ -39,6 +42,8 @@ global_costmap:
       width: 200.0
       # Global costmap height (meters).
       height: 200.0
+
+      # --- lanelet_cost_layer plugin parameters ---
       lanelet_cost_layer:
         # Plugin class exported by camrod_map.
         plugin: "camrod_map::cost_map::LaneletCostLayer"

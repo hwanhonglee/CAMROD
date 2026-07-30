@@ -8,6 +8,7 @@ import rclpy
 from avg_msgs.msg import AvgPath, AvgPoint
 from geometry_msgs.msg import Point
 from rclpy.node import Node
+from rclpy.serialization import deserialize_message
 from std_msgs.msg import ColorRGBA, Header
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -95,13 +96,22 @@ class PathVisualizerNode(Node):
         self.global_path: AvgPath | None = None
         self.local_path: AvgPath | None = None
         self.last_global_path_rx = None
+        self.pending_global_path: bytes | None = None
+        self.pending_global_path_rx = None
+        self.pending_local_path: bytes | None = None
         self.last_marker_array: MarkerArray | None = None
         self.last_marker_publish_time = None
         self.markers_dirty = True
         self.pub = self.create_publisher(MarkerArray, self.marker_topic, 1)
-        # HH_260720 - Subscribe to generated CAMROD paths without nav_msgs aliases.
-        self.create_subscription(AvgPath, self.global_path_topic, self._on_global_path, 10)
-        self.create_subscription(AvgPath, self.local_path_topic, self._on_local_path, 10)
+        # Path extraction publishes a fresh, object-heavy path on both its pose
+        # callback and timer. Keep only the newest serialized sample and decode
+        # it when the visualization rate limit permits a marker update.
+        self.create_subscription(
+            AvgPath, self.global_path_topic, self._on_global_path, 1, raw=True
+        )
+        self.create_subscription(
+            AvgPath, self.local_path_topic, self._on_local_path, 1, raw=True
+        )
         if self.republish_period_s > 0.0:
             self.create_timer(self.republish_period_s, self._republish)
 
@@ -110,15 +120,25 @@ class PathVisualizerNode(Node):
             f"local={self.local_path_topic} marker={self.marker_topic}"
         )
 
-    def _on_global_path(self, msg: AvgPath) -> None:
-        self.global_path = msg
-        self.last_global_path_rx = self.get_clock().now()
+    def _on_global_path(self, msg: bytes) -> None:
+        self.pending_global_path = msg
+        self.pending_global_path_rx = self.get_clock().now()
         self._publish()
 
-    def _on_local_path(self, msg: AvgPath) -> None:
-        self.local_path = msg
-        self._clear_stale_global_path_if_mismatched(msg)
+    def _on_local_path(self, msg: bytes) -> None:
+        self.pending_local_path = msg
         self._publish()
+
+    def _accept_pending_paths(self) -> None:
+        if self.pending_global_path is not None:
+            self.global_path = deserialize_message(self.pending_global_path, AvgPath)
+            self.last_global_path_rx = self.pending_global_path_rx
+            self.pending_global_path = None
+            self.pending_global_path_rx = None
+        if self.pending_local_path is not None:
+            self.local_path = deserialize_message(self.pending_local_path, AvgPath)
+            self.pending_local_path = None
+            self._clear_stale_global_path_if_mismatched(self.local_path)
 
     def _clear_stale_global_path_if_mismatched(self, local_path: AvgPath) -> None:
         # HH_260619 - Avoid showing an old global route together with the newest
@@ -164,10 +184,12 @@ class PathVisualizerNode(Node):
         ):
             return
 
+        self._accept_pending_paths()
         marker_array = MarkerArray()
         delete_all = Marker()
         delete_all.action = Marker.DELETEALL
         marker_array.markers.append(delete_all)
+        marker_stamp = now_time.to_msg()
 
         marker_id = 0
         if self.global_path is not None:
@@ -183,6 +205,7 @@ class PathVisualizerNode(Node):
                 arrow_spacing=self.global_arrow_spacing_m,
                 max_arrows=self.max_global_arrows,
                 z_offset=0.22,
+                stamp=marker_stamp,
             )
         if self.local_path is not None:
             self._append_path_markers(
@@ -197,6 +220,7 @@ class PathVisualizerNode(Node):
                 arrow_spacing=self.local_arrow_spacing_m,
                 max_arrows=self.max_local_arrows,
                 z_offset=0.32,
+                stamp=marker_stamp,
             )
         self.pub.publish(marker_array)
         self.last_marker_array = marker_array
@@ -209,7 +233,7 @@ class PathVisualizerNode(Node):
         if not self._has_marker_consumer():
             return
         if self.markers_dirty:
-            self._publish(force=True)
+            self._publish()
             return
         if self.last_marker_array is not None:
             now = self.get_clock().now().to_msg()
@@ -234,6 +258,7 @@ class PathVisualizerNode(Node):
         arrow_spacing: float,
         max_arrows: int,
         z_offset: float,
+        stamp,
     ) -> int:
         if len(path.poses) < 2:
             return marker_id
@@ -242,7 +267,7 @@ class PathVisualizerNode(Node):
         # trajectories remain readable in RViz even when cost layers overlap.
         line = Marker()
         line.header = _to_ros_header(path.header)
-        line.header.stamp = self.get_clock().now().to_msg()
+        line.header.stamp = stamp
         line.ns = namespace
         line.id = marker_id
         marker_id += 1
@@ -271,6 +296,7 @@ class PathVisualizerNode(Node):
             spacing=arrow_spacing,
             max_arrows=max_arrows,
             z_offset=z_offset + 0.04,
+            stamp=stamp,
         )
         marker_id = self._append_endpoint_spheres(
             marker_array,
@@ -279,6 +305,7 @@ class PathVisualizerNode(Node):
             namespace=namespace + "_endpoints",
             color=endpoint_color,
             z_offset=z_offset + 0.06,
+            stamp=stamp,
         )
         return marker_id
 
@@ -293,13 +320,16 @@ class PathVisualizerNode(Node):
         spacing: float,
         max_arrows: int,
         z_offset: float,
+        stamp,
     ) -> int:
         if spacing <= 0.0 or max_arrows <= 0:
             return marker_id
         distance_since_arrow = spacing
         arrows_added = 0
         poses = path.poses
-        for previous, current in zip(poses[:-1], poses[1:]):
+        for index in range(1, len(poses)):
+            previous = poses[index - 1]
+            current = poses[index]
             prev_pos = previous.pose.position
             curr_pos = current.pose.position
             dx = curr_pos.x - prev_pos.x
@@ -313,7 +343,7 @@ class PathVisualizerNode(Node):
             distance_since_arrow = 0.0
             arrow = Marker()
             arrow.header = _to_ros_header(path.header)
-            arrow.header.stamp = self.get_clock().now().to_msg()
+            arrow.header.stamp = stamp
             arrow.ns = namespace
             arrow.id = marker_id
             marker_id += 1
@@ -355,11 +385,12 @@ class PathVisualizerNode(Node):
         namespace: str,
         color: Color,
         z_offset: float,
+        stamp,
     ) -> int:
         for endpoint_name, pose in (("start", path.poses[0]), ("goal", path.poses[-1])):
             marker = Marker()
             marker.header = _to_ros_header(path.header)
-            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.header.stamp = stamp
             marker.ns = namespace + "_" + endpoint_name
             marker.id = marker_id
             marker_id += 1

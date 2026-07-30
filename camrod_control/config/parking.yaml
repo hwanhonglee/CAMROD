@@ -1,8 +1,15 @@
+# File layout: two parking-controller nodes (reverse, then AprilTag); each
+# node's parameters are grouped into numbered sections such as topics,
+# setup, maneuver tuning, and timing/rates.
+#
 # HH_260721 - Keep this package config synchronized with the bringup control mirror.
 # HH_260720 - Configure selectable final parking controllers owned by camrod_control.
 
 /parking/reverse_parking_controller:
   ros__parameters:
+    # =========================================================================
+    # 1. TOPICS
+    # =========================================================================
     command_topic: "/control/cmd_vel_raw"
     vehicle_pose_topic: "/localization/pose"
     # HH_260720 - Consume one platform status and one shared parking operation contract.
@@ -15,6 +22,9 @@
     # HH_260721 - Parking publishes operational progress separately from health diagnostics.
     service_state_topic: "/service/state"
 
+    # =========================================================================
+    # 2. STATION SETUP
+    # =========================================================================
     drop_zones_yaml: ""
     drop_zone_id: "drop_zone"
     use_drop_zone_pose_as_station: true
@@ -22,9 +32,13 @@
     station_y_m: 0.0
     station_yaw_deg: 0.0
 
+    # =========================================================================
+    # 3. REVERSE MANEUVER TUNING
+    # =========================================================================
     # HH_260720 - Match control's contract: map yaw is the reverse travel axis, not body front yaw.
     station_yaw_represents_reverse_axis: true
     automatically_select_reverse_approach_yaw: false
+
     start_yaw_tolerance_deg: 7.5
     reverse_speed_mps: 0.16
     heading_proportional_gain: 0.8
@@ -32,12 +46,21 @@
     maximum_angular_speed_radps: 0.22
     maximum_reverse_distance_m: 1.5
     reverse_timeout_s: 30.0
+
     require_station_on_reverse_axis: true
     station_axis_tolerance_m: 0.25
+
+    # =========================================================================
+    # 4. CHARGING COMPLETION
+    # =========================================================================
     stop_when_charging: true
     # HH_260721 - Complete reverse parking only after normalized CAN confirms charging.
     complete_without_charging: false
     charging_wait_timeout_s: 20.0
+
+    # =========================================================================
+    # 5. TIMING AND RATES
+    # =========================================================================
     pose_timeout_s: 2.0
     control_rate_hz: 10.0
     idle_rate_hz: 1.0
@@ -45,6 +68,9 @@
 
 /parking/apriltag_parking_controller:
   ros__parameters:
+    # =========================================================================
+    # 1. FRAMES AND TOPICS
+    # =========================================================================
     # HH_260720 - Port the Ranger AprilTag controller to canonical CAMROD interfaces.
     base_frame_id: "robot_base_link"
     command_topic: "/control/cmd_vel_raw"
@@ -58,28 +84,43 @@
     # HH_260721 - Parking publishes operational progress separately from health diagnostics.
     service_state_topic: "/service/state"
 
+    # =========================================================================
+    # 2. APPROACH AND INSERTION TUNING
+    # =========================================================================
     require_charging_for_completion: true
+
     heading_gain: 1.5
     lateral_to_heading_gain: 2.5
     maximum_angular_speed_radps: 1.0
     maximum_approach_angle_rad: 0.5
+
     reverse_approach_speed_mps: 0.2
     invert_angular_command_while_reversing: false
     final_insertion_speed_mps: 0.05
     slowdown_start_distance_m: 1.0
+
     final_heading_tolerance_rad: 0.10
     final_lateral_tolerance_m: 0.03
     final_insertion_start_distance_m: 0.55
     parked_distance_from_tag_m: 0.5
+
     tag_timeout_s: 0.5
     tag_wait_timeout_s: 10.0
     retry_forward_distance_m: 1.0
     maximum_retries: 5
+
+    # =========================================================================
+    # 3. POSE FILTERING AND RATES
+    # =========================================================================
     pose_filter_gain: 0.3
     control_rate_hz: 30.0
     status_rate_hz: 2.0
     axis_full_trust_distance_m: 0.3
     axis_minimum_trust_distance_m: 4.0
     axis_minimum_filter_weight: 0.05
+
+    # =========================================================================
+    # 4. VISUALIZATION AND FRAMES
+    # =========================================================================
     publish_visualization: true
     odometry_frame_id: "odom"

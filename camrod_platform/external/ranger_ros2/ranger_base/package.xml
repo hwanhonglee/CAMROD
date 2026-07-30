@@ -17,6 +17,8 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>tf2</depend>
+  <!-- HH_260730 - CMake links tf2_geometry_msgs for Ranger pose conversions. -->
+  <depend>tf2_geometry_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>ugv_sdk</depend>
   <depend>ranger_msgs</depend>

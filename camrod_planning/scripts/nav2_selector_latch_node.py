@@ -7,6 +7,34 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from std_msgs.msg import String
 
 
+# HH_260730 / TODOLIST 7 - A fresh 50.29 m sim audit returned zero poses from
+# every configured grid/kinematic planner but a valid 256-pose LaneletRoute in
+# 130 ms. LaneletRoute also preserves the operator's requested final yaw, so
+# manual arrival direction remains unrestricted without sacrificing long,
+# narrow-map connectivity or active-route sensor masks.
+DEFAULT_MANUAL_PLANNER_ID = "LaneletRoute"
+
+
+def resolve_goal_source(requested: str) -> tuple[str, bool]:
+    """Return the canonical source and whether the input was recognized."""
+    normalized = str(requested).strip().lower()
+    if normalized.startswith("manual"):
+        return ("manual", True)
+    if normalized.startswith("regulated"):
+        return ("regulated", True)
+    return ("regulated", False)
+
+
+def selector_ids_for_source(
+    source: str,
+    *,
+    regulated: tuple[str, str, str],
+    manual: tuple[str, str, str],
+) -> tuple[str, str, str]:
+    """Select planner, controller, and goal-checker IDs as one policy."""
+    return manual if source == "manual" else regulated
+
+
 class Nav2SelectorLatchNode(Node):
 
     # HH_260721 - Separate the class declaration from its first method for lint readability.
@@ -22,15 +50,16 @@ class Nav2SelectorLatchNode(Node):
         self._regulated_controller_id = str(
             self.declare_parameter("controller_id", "MPPI").value
         ).strip()
-        # HH_260727 - RViz/manual goals retain a yaw-aware arrival policy, but
-        # use the legal lanelet route by default. This avoids grid stair-steps,
-        # long-range Smac timeouts, and the active-route-mask dependency cycle.
-        # A grid planner remains selectable through the launch argument.
+        # HH_260730 / TODOLIST 7 - Both sources use the connected route by
+        # default and both receive a projected vehicle-lane position. Manual RViz
+        # goals retain requested final yaw; regulated UI goals use lane yaw.
         self._regulated_goal_checker_id = str(
             self.declare_parameter("regulated_goal_checker_id", "goal_checker").value
         ).strip()
         self._manual_planner_id = str(
-            self.declare_parameter("manual_planner_id", "LaneletRoute").value
+            self.declare_parameter(
+                "manual_planner_id", DEFAULT_MANUAL_PLANNER_ID
+            ).value
         ).strip()
         self._manual_controller_id = str(
             self.declare_parameter("manual_controller_id", "RotationShim").value
@@ -85,27 +114,32 @@ class Nav2SelectorLatchNode(Node):
 
     def _on_goal_source(self, msg: String) -> None:
         requested = str(msg.data).strip().lower()
-        if requested.startswith("manual"):
-            source = "manual"
-        elif requested.startswith("regulated"):
-            source = "regulated"
-        else:
+        source, recognized = resolve_goal_source(requested)
+        if not recognized:
             # HH_260727 - Fail closed to the lanelet-regulated policy for malformed sources.
             self.get_logger().warn(
                 f"unknown goal source '{requested}'; using regulated selectors"
             )
-            source = "regulated"
 
         changed = source != self._active_source
         self._active_source = source
-        if source == "manual":
-            self._active_planner_id = self._manual_planner_id
-            self._active_controller_id = self._manual_controller_id
-            self._active_goal_checker_id = self._manual_goal_checker_id
-        else:
-            self._active_planner_id = self._regulated_planner_id
-            self._active_controller_id = self._regulated_controller_id
-            self._active_goal_checker_id = self._regulated_goal_checker_id
+        (
+            self._active_planner_id,
+            self._active_controller_id,
+            self._active_goal_checker_id,
+        ) = selector_ids_for_source(
+            source,
+            regulated=(
+                self._regulated_planner_id,
+                self._regulated_controller_id,
+                self._regulated_goal_checker_id,
+            ),
+            manual=(
+                self._manual_planner_id,
+                self._manual_controller_id,
+                self._manual_goal_checker_id,
+            ),
+        )
 
         self._publish_once()
         if changed:

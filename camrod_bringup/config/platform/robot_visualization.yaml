@@ -1,9 +1,18 @@
+# Robot visualization parameters are grouped into numbered sections:
+#   1) frames and topics, 2) pose sources, 3) heading/TF/ground, 4) marker output.
 /platform/robot_visualization:
   ros__parameters:
+    # =========================================================================
+    # 1. FRAMES AND TOPICS
+    # =========================================================================
     map_frame_id: "map"                          # Global frame used to publish all robot markers.
     base_frame_id: "robot_base_link"             # Robot body frame visualized and optionally broadcast via TF.
     marker_topic: "/platform/robot/markers"      # MarkerArray output topic containing body/sensor/axes/ring markers.
     boundary_topic: "/platform/robot/planning_boundary"  # PolygonStamped output used as planning safety boundary.
+
+    # =========================================================================
+    # 2. POSE SOURCES
+    # =========================================================================
     # HH_260327: Follow localization pose as primary platform visualization anchor.
     localization_pose_topic: "/localization/pose"  # Primary pose source for robot marker alignment.
     # HH_260327: GNSS is fallback-only (used only if localization is stale/missing).
@@ -11,6 +20,10 @@
     pose_source_mode: "localization_with_gnss_fallback"  # localization_only | localization_with_gnss_fallback
     # HH_260408: Relax timeout to avoid frequent fallback toggling during short localization stalls.
     localization_pose_timeout_s: 3.0             # Maximum accepted localization age before GNSS fallback [s].
+
+    # =========================================================================
+    # 3. HEADING, TF, AND GROUND
+    # =========================================================================
     # HH_260412: Keep platform heading aligned directly with IMU/localization yaw.
     # Set offset to 0 so vehicle marker direction follows incoming pose orientation.
     heading_yaw_offset_deg: 0.0                  # [deg], negative=clockwise in ROS yaw convention.
@@ -19,6 +32,10 @@
     # HH_260623 - Ignore incoming localization/GNSS altitude for 2D RViz overlay alignment.
     pose_z_source: "ground"                      # ground | pose
     ground_z_offset: 0.0                         # Additional Z offset applied on top of estimated ground height [m].
+
+    # =========================================================================
+    # 4. MARKER OUTPUT
+    # =========================================================================
     # HH_260618: Robot markers/boundary are visualization/diagnostic outputs; 5 Hz is enough and reduces RViz load.
     publish_rate_hz: 5.0                         # Marker and boundary publish frequency [Hz].
     show_chassis_marker: false                   # Shows translucent robot body cube marker when true.

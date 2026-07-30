@@ -1,3 +1,6 @@
+# Layout: 1) goal and start inputs, 2) planner action and planner IDs,
+# 3) output, 4) NavigateToPose coordination, 5) duplicate goal filtering,
+# 6) replan timing and triggers, 7) distance and yaw thresholds.
 # 2026-03-03:
 # Global path policy:
 # - recompute only when a new snapped goal arrives
@@ -6,6 +9,10 @@
 /planning/goal_replanner:
   ros__parameters:
     enabled: true
+
+    # =========================================================================
+    # 1. GOAL AND START INPUTS
+    # =========================================================================
     # Consume snapped goal only.
     goal_topic: "/planning/goal_pose_snapped"
     # Primary selector (recommended):
@@ -22,25 +29,45 @@
     # HH_260527: Keep start anchored to lanelet snap (disable TF fallback).
     # This prevents occasional free-space diagonal plans when start_topic is stale.
     start_topic_fallback_to_tf: false
+
+    # =========================================================================
+    # 2. PLANNER ACTION AND PLANNER IDS
+    # =========================================================================
     action_name: "/planning/compute_path_to_pose"
     # HH_260629: Prefer connected Lanelet2 routes for replanner-only path
     # previews; use Smac2D only as a fallback when a lanelet route is unavailable.
     planner_id: "LaneletRoute"
     fallback_planner_id: "Smac2D"
     retry_with_fallback_planner: true
+
+    # =========================================================================
+    # 3. OUTPUT
+    # =========================================================================
     frame_id: "map"
     output_path_topic: "/planning/global_path"
     # Keep avg global path stream always available for
     # local/global path-cost-grid builders (avg_msgs::Path).
     publish_result_path: true
+
+    # =========================================================================
+    # 4. NAVIGATE-TO-POSE COORDINATION
+    # =========================================================================
     # Avoid ComputePath contention with NavigateToPose while BT is active.
     pause_when_navigate_active: true
     navigate_status_topic: "/planning/navigate_to_pose/_action/status"
     navigate_inactive_grace_s: 0.8
+
+    # =========================================================================
+    # 5. DUPLICATE GOAL FILTERING
+    # =========================================================================
     # Ignore repeated equivalent goal republishes from upstream relays.
     ignore_duplicate_goal_messages: true
     duplicate_goal_xy_epsilon_m: 0.05
     duplicate_goal_yaw_epsilon_deg: 4.0
+
+    # =========================================================================
+    # 6. REPLAN TIMING AND TRIGGERS
+    # =========================================================================
     min_request_interval_s: 0.25
     # Event-driven mode is more stable than periodic churn.
     replan_rate_hz: 0.0
@@ -56,6 +83,10 @@
     replan_on_start_change: false
     # After goal is reached, pause replanning until a new goal arrives.
     stop_replan_after_goal_reached: true
+
+    # =========================================================================
+    # 7. DISTANCE AND YAW THRESHOLDS
+    # =========================================================================
     # HH_260623 - Keep replanner-only tests aligned with center-based arrival.
     goal_reached_distance_m: 0.25
     start_replan_distance: 0.15

@@ -1,5 +1,9 @@
 # Nav2 behavior profile: BT and behavior-tree plugin libraries.
+# Layout: 1) BT navigator, 2) smoother server, 3) behavior server.
 
+# =========================================================================
+# 1. BT NAVIGATOR
+# =========================================================================
 bt_navigator:
   ros__parameters:
     # Keep BT transform helpers pinned to lanelet-snapped base frame.
@@ -61,6 +65,9 @@ bt_navigator:
       - nav2_drive_on_heading_bt_node
       - nav2_assisted_teleop_action_bt_node
 
+# =========================================================================
+# 2. SMOOTHER SERVER
+# =========================================================================
 # SimpleSmoother removes planner artifacts before FollowPath for every planner
 # selected by the BT, including LaneletRoute and grid fallbacks.
 # w_data + w_smooth must sum to < 1.0.
@@ -84,6 +91,9 @@ smoother_server:
       w_smooth: 0.25
       do_refinement: true
 
+# =========================================================================
+# 3. BEHAVIOR SERVER
+# =========================================================================
 behavior_server:
   ros__parameters:
     # Recovery behaviors use lanelet-snapped base frame.
