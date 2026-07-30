@@ -1,5 +1,11 @@
+# This file is organized as: 1) input topics, 2) output topics,
+# 3) labels, frames, and TF, 4) fallback switching and timing,
+# 5) status output.
 /**:
   ros__parameters:
+    # =========================================================================
+    # 1. INPUT TOPICS
+    # =========================================================================
     primary_pose_cov_topic: "/localization/primary/pose_with_covariance"
     primary_odom_topic: "/localization/primary/odometry"
 
@@ -10,6 +16,9 @@
 
     mode_topic: "/localization/mode"
 
+    # =========================================================================
+    # 2. OUTPUT TOPICS
+    # =========================================================================
     selected_pose_topic: "/localization/pose"
     # HH_260720 - Standard ROS mirrors are reserved for Nav2, RViz, and TF tooling.
     selected_pose_ros_topic: "/localization/pose_ros"
@@ -20,6 +29,9 @@
     selected_odom_ros_topic: "/localization/odometry_ros"
     selected_source_topic: "/localization/pose_source"
 
+    # =========================================================================
+    # 3. LABELS, FRAMES, AND TF
+    # =========================================================================
     primary_source_label: "primary_filter"
     fallback_source_label: "fallback_source"
 
@@ -29,6 +41,9 @@
     # Avoid dual-parent / conflicting TF publications from pose_selector.
     publish_selected_tf: false
 
+    # =========================================================================
+    # 4. FALLBACK SWITCHING AND TIMING
+    # =========================================================================
     # LocalizationMode: NORMAL=0, DEGRADED=1, DR_ONLY=2, INVALID=3
     # HH_260720 - Keep the active filter's DR_ONLY pose primary until mode is INVALID.
     fallback_on_mode_at_or_above: 3
@@ -37,5 +52,8 @@
     fallback_timeout_s: 0.5
     switch_hysteresis_s: 0.5
 
+    # =========================================================================
+    # 5. STATUS OUTPUT
+    # =========================================================================
     publish_localization_status: false
     localization_status_topic: "/localization/status"

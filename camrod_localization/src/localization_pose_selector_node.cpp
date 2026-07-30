@@ -22,6 +22,8 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 
+#include "camrod_localization/pose_selector_freshness.hpp"
+
 // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
 namespace
@@ -340,33 +342,68 @@ private:
     avg_msgs::msg::AvgPoseWithCovarianceStamped out_pose_cov;
     avg_msgs::msg::AvgOdometry out_odom;
     avg_msgs::msg::AvgPoseStamped out_pose;
+    bool has_pose_cov = false;
+    bool has_odom = false;
 
     if (selected_source_ == Source::kPrimary) {
       if (primary_has_pose_cov_) {
         out_pose_cov = primary_pose_cov_;
+        has_pose_cov = true;
       }
       if (primary_has_odom_) {
         out_odom = primary_odom_;
+        has_odom = true;
       }
     } else {
       if (fallback_has_pose_cov_) {
         out_pose_cov = fallback_pose_cov_;
+        has_pose_cov = true;
       }
       if (fallback_has_odom_) {
         out_odom = fallback_odom_;
+        has_odom = true;
       }
     }
 
-    if (isZeroStamp(out_pose_cov.header.stamp) && !isZeroStamp(out_odom.header.stamp)) {
+    const auto pose_stamp_ns = has_pose_cov ?
+      stampFromHeader(out_pose_cov.header).nanoseconds() : 0;
+    const auto odom_stamp_ns = has_odom ?
+      stampFromHeader(out_odom.header).nanoseconds() : 0;
+    const auto freshest_payload = camrod_localization::selectFreshestPosePayload(
+      has_pose_cov && !isZeroStamp(out_pose_cov.header.stamp),
+      pose_stamp_ns,
+      has_odom && !isZeroStamp(out_odom.header.stamp),
+      odom_stamp_ns);
+
+    // HH_260730 - The adapter publishes odometry before pose covariance.  On
+    // the odometry callback, the cached pose covariance is therefore one EKF
+    // cycle old.  Rebuild every selected pose output from the newest header
+    // stamp so callback ordering cannot add a full 20 Hz (about 50 ms) delay.
+    if (freshest_payload == camrod_localization::PosePayload::kOdometry) {
       out_pose_cov.header = out_odom.header;
       out_pose_cov.pose = out_odom.pose;
+      has_pose_cov = true;
     }
 
-    if (isZeroStamp(out_odom.header.stamp) && !isZeroStamp(out_pose_cov.header.stamp)) {
+    if (freshest_payload == camrod_localization::PosePayload::kPoseCovariance &&
+      (!has_odom || odom_stamp_ns < pose_stamp_ns))
+    {
+      const auto previous_twist = out_odom.twist;
       out_odom.header = out_pose_cov.header;
       out_odom.child_frame_id = base_frame_id_;
       out_odom.pose = out_pose_cov.pose;
-      out_odom.twist.covariance = makeUnknownTwistCov();
+      if (has_odom) {
+        out_odom.twist = previous_twist;
+      } else {
+        out_odom.twist.covariance = makeUnknownTwistCov();
+      }
+      has_odom = true;
+    }
+
+    if (!has_pose_cov || !has_odom ||
+      isZeroStamp(out_pose_cov.header.stamp) || isZeroStamp(out_odom.header.stamp))
+    {
+      return;
     }
 
     out_pose.header = out_pose_cov.header;
