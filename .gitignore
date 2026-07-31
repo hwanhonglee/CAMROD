@@ -22,6 +22,10 @@ __pycache__/
 *.db3.zstd
 *.mcap
 
+# HH_260731 - GitHub rejects individual Git blobs above 100 MB.
+# Keep the smaller field artifacts, but exclude this 105,274,106-byte archive.
+/util/flexcloud/glim_worak_v2.zip
+
 # virtual env
 .venv/
 venv/
