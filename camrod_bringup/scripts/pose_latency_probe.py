@@ -78,6 +78,11 @@ DEFAULT_TOPIC_CHAIN = (
     ),
 )
 
+# HH_260731 - Match the production GNSS adapter's heading-validity ceiling.
+# An orientation paired with the adapter's 1e6 rad^2 unavailable covariance is
+# only a placeholder and must not be reported as a measured yaw error.
+MAX_USABLE_YAW_VARIANCE_RAD2 = 100.0
+
 
 def nearest_rank_percentile(values, quantile):
     """Return the nearest-rank percentile, or None for an empty sequence."""
@@ -127,6 +132,237 @@ def summarize_samples(receive_times_s, stamp_ages_ms):
             "p95": nearest_rank_percentile(stamp_ages_ms, 0.95),
             "max": max(stamp_ages_ms) if stamp_ages_ms else None,
         },
+    }
+
+
+def normalize_angle(angle_rad):
+    """Normalize an angle to [-pi, pi]."""
+    return math.atan2(math.sin(angle_rad), math.cos(angle_rad))
+
+
+def summarize_scalar(values):
+    """Return compact scalar statistics while preserving missing data."""
+    return {
+        "p50": statistics.median(values) if values else None,
+        "p95": nearest_rank_percentile(values, 0.95),
+        "max": max(values) if values else None,
+    }
+
+
+def summarize_motion_samples(pose_samples, twist_samples):
+    """Summarize displacement, unwrapped yaw, and body velocity evidence."""
+    yaw_pose_samples = [
+        item for item in pose_samples
+        if item.get("yaw_valid", True)
+    ]
+    output = {
+        "pose_count": len(pose_samples),
+        "yaw_pose_count": len(yaw_pose_samples),
+        "twist_count": len(twist_samples),
+        "position_displacement_m": None,
+        "yaw_change_deg": None,
+        "yaw_span_deg": None,
+        "linear_x_abs_mps": summarize_scalar([]),
+        "linear_y_abs_mps": summarize_scalar([]),
+        "angular_z_abs_radps": summarize_scalar([]),
+        "crab_sample_count": 0,
+    }
+
+    if pose_samples:
+        first = pose_samples[0]
+        last = pose_samples[-1]
+        output["position_displacement_m"] = math.hypot(
+            last["x"] - first["x"],
+            last["y"] - first["y"],
+        )
+    if yaw_pose_samples:
+        first = yaw_pose_samples[0]
+        unwrapped = [first["yaw"]]
+        for previous, current in zip(
+            yaw_pose_samples,
+            yaw_pose_samples[1:],
+        ):
+            unwrapped.append(
+                unwrapped[-1]
+                + normalize_angle(current["yaw"] - previous["yaw"])
+            )
+        output["yaw_change_deg"] = math.degrees(
+            unwrapped[-1] - unwrapped[0]
+        )
+        output["yaw_span_deg"] = math.degrees(
+            max(unwrapped) - min(unwrapped)
+        )
+
+    if twist_samples:
+        linear_x_abs = [abs(item["linear_x"]) for item in twist_samples]
+        linear_y_abs = [abs(item["linear_y"]) for item in twist_samples]
+        angular_z_abs = [abs(item["angular_z"]) for item in twist_samples]
+        output["linear_x_abs_mps"] = summarize_scalar(linear_x_abs)
+        output["linear_y_abs_mps"] = summarize_scalar(linear_y_abs)
+        output["angular_z_abs_radps"] = summarize_scalar(angular_z_abs)
+        output["crab_sample_count"] = sum(
+            abs(item["linear_y"]) >= 0.05
+            and abs(item["linear_y"]) > abs(item["linear_x"])
+            for item in twist_samples
+        )
+    return output
+
+
+def compare_pose_samples(reference, target, max_stamp_delta_s=0.25):
+    """Pair pose streams by header stamp and summarize XY/yaw differences."""
+    position_errors = []
+    yaw_errors_deg = []
+    stamp_deltas_ms = []
+    if not reference or not target:
+        return {
+            "pair_count": 0,
+            "yaw_pair_count": 0,
+            "max_stamp_delta_s": max_stamp_delta_s,
+            "stamp_delta_ms": summarize_scalar([]),
+            "position_error_m": summarize_scalar([]),
+            "yaw_error_deg": summarize_scalar([]),
+        }
+
+    target_index = 0
+    for reference_sample in reference:
+        while (
+            target_index + 1 < len(target)
+            and abs(
+                target[target_index + 1]["stamp"]
+                - reference_sample["stamp"]
+            )
+            <= abs(
+                target[target_index]["stamp"]
+                - reference_sample["stamp"]
+            )
+        ):
+            target_index += 1
+        target_sample = target[target_index]
+        stamp_delta_s = abs(
+            target_sample["stamp"] - reference_sample["stamp"]
+        )
+        if stamp_delta_s > max_stamp_delta_s:
+            continue
+        stamp_deltas_ms.append(stamp_delta_s * 1000.0)
+        position_errors.append(
+            math.hypot(
+                target_sample["x"] - reference_sample["x"],
+                target_sample["y"] - reference_sample["y"],
+            )
+        )
+        if (
+            reference_sample.get("yaw_valid", True)
+            and target_sample.get("yaw_valid", True)
+        ):
+            yaw_errors_deg.append(
+                abs(
+                    math.degrees(
+                        normalize_angle(
+                            target_sample["yaw"] - reference_sample["yaw"]
+                        )
+                    )
+                )
+            )
+
+    return {
+        "pair_count": len(position_errors),
+        "yaw_pair_count": len(yaw_errors_deg),
+        "max_stamp_delta_s": max_stamp_delta_s,
+        "stamp_delta_ms": summarize_scalar(stamp_deltas_ms),
+        "position_error_m": summarize_scalar(position_errors),
+        "yaw_error_deg": summarize_scalar(yaw_errors_deg),
+    }
+
+
+def quaternion_yaw(quaternion):
+    """Return planar yaw from a ROS quaternion, or None if it is invalid."""
+    values = (
+        quaternion.x,
+        quaternion.y,
+        quaternion.z,
+        quaternion.w,
+    )
+    if not all(math.isfinite(value) for value in values):
+        return None
+    norm = math.sqrt(sum(value * value for value in values))
+    if norm <= 1.0e-9:
+        return None
+    x, y, z, w = (value / norm for value in values)
+    return math.atan2(
+        2.0 * (w * z + x * y),
+        1.0 - 2.0 * (y * y + z * z),
+    )
+
+
+def extract_pose_sample(
+    message,
+    stamp_s,
+    max_yaw_variance_rad2=MAX_USABLE_YAW_VARIANCE_RAD2,
+):
+    """Extract a common pose sample from stamped pose or odometry messages."""
+    pose_container = getattr(message, "pose", None)
+    if pose_container is None:
+        return None
+    yaw_covariance = None
+    yaw_valid = True
+    covariance = getattr(pose_container, "covariance", None)
+    if covariance is not None and len(covariance) > 35:
+        yaw_covariance = float(covariance[35])
+        yaw_valid = (
+            math.isfinite(yaw_covariance)
+            and yaw_covariance >= 0.0
+            and yaw_covariance <= max_yaw_variance_rad2
+        )
+
+    pose = getattr(pose_container, "pose", pose_container)
+    position = getattr(pose, "position", None)
+    orientation = getattr(pose, "orientation", None)
+    if position is None or orientation is None:
+        return None
+    yaw = quaternion_yaw(orientation)
+    if yaw is None or not all(
+        math.isfinite(value) for value in (position.x, position.y)
+    ):
+        return None
+    return {
+        "stamp": stamp_s,
+        "x": float(position.x),
+        "y": float(position.y),
+        "yaw": yaw,
+        "yaw_covariance_rad2": yaw_covariance,
+        "yaw_valid": yaw_valid,
+    }
+
+
+def extract_twist_sample(message, stamp_s):
+    """Extract body velocity from odometry or IMU messages."""
+    if hasattr(message, "angular_velocity"):
+        angular_z = message.angular_velocity.z
+        if not math.isfinite(angular_z):
+            return None
+        return {
+            "stamp": stamp_s,
+            "linear_x": 0.0,
+            "linear_y": 0.0,
+            "angular_z": float(angular_z),
+        }
+
+    twist = getattr(message, "twist", None)
+    if twist is None:
+        return None
+    twist = getattr(twist, "twist", twist)
+    linear = getattr(twist, "linear", None)
+    angular = getattr(twist, "angular", None)
+    if linear is None or angular is None:
+        return None
+    values = (linear.x, linear.y, angular.z)
+    if not all(math.isfinite(value) for value in values):
+        return None
+    return {
+        "stamp": stamp_s,
+        "linear_x": float(linear.x),
+        "linear_y": float(linear.y),
+        "angular_z": float(angular.z),
     }
 
 
@@ -185,6 +421,29 @@ def render_table(topic_results):
     )
 
 
+def render_pose_comparisons(comparisons):
+    """Render GNSS-to-filter XY/yaw comparisons."""
+    lines = [
+        "comparison              XY/yaw pairs  XY p50/p95/max m       "
+        "yaw p50/p95/max deg",
+        "----------------------  ------------  ---------------------  "
+        "---------------------",
+    ]
+    for item in comparisons:
+        position = item["position_error_m"]
+        yaw = item["yaw_error_deg"]
+        pair_counts = (
+            f"{item['pair_count']}/{item['yaw_pair_count']}"
+        )
+        lines.append(
+            f"{item['name'].ljust(22)}  "
+            f"{pair_counts.rjust(12)}  "
+            f"{'/'.join(_format_number(position[key], 3) for key in ('p50', 'p95', 'max')).ljust(21)}  "
+            f"{'/'.join(_format_number(yaw[key], 2) for key in ('p50', 'p95', 'max'))}"
+        )
+    return "\n".join(lines)
+
+
 class PoseLatencyProbe(Node):
     """Subscribe to the complete real localization chain concurrently."""
 
@@ -208,6 +467,8 @@ class PoseLatencyProbe(Node):
                 "stamp_ages_ms": [],
                 "header_error_count": 0,
                 "header_errors": [],
+                "pose_samples": [],
+                "twist_samples": [],
             }
             self._topic_subscriptions.append(
                 self.create_subscription(
@@ -254,6 +515,12 @@ class PoseLatencyProbe(Node):
 
             sample["receive_times_s"].append(receive_time_s)
             sample["stamp_ages_ms"].append(stamp_age_ms)
+            pose_sample = extract_pose_sample(message, stamp_s)
+            if pose_sample is not None:
+                sample["pose_samples"].append(pose_sample)
+            twist_sample = extract_twist_sample(message, stamp_s)
+            if twist_sample is not None:
+                sample["twist_samples"].append(twist_sample)
 
         return receive
 
@@ -284,6 +551,8 @@ class PoseLatencyProbe(Node):
             sample["stamp_ages_ms"].clear()
             sample["header_error_count"] = 0
             sample["header_errors"].clear()
+            sample["pose_samples"].clear()
+            sample["twist_samples"].clear()
 
     def measure(self, duration_s):
         start = time.monotonic()
@@ -311,6 +580,10 @@ class PoseLatencyProbe(Node):
             )
             result["header_error_count"] = sample["header_error_count"]
             result["header_errors"] = sample["header_errors"]
+            result["motion"] = summarize_motion_samples(
+                sample["pose_samples"],
+                sample["twist_samples"],
+            )
 
             topic_errors = []
             if not result["publisher_types"]:
@@ -334,6 +607,15 @@ class PoseLatencyProbe(Node):
             errors.extend(f"{name}: {error}" for error in topic_errors)
             topic_results.append(result)
 
+        pose_comparisons = []
+        for target_name in ("ekf_odom", "adapter_pose", "selected_pose"):
+            comparison = compare_pose_samples(
+                self.samples["gnss_pose"]["pose_samples"],
+                self.samples[target_name]["pose_samples"],
+            )
+            comparison["name"] = f"gnss->{target_name}"
+            pose_comparisons.append(comparison)
+
         return {
             "status": "ERROR" if errors else "OK",
             "requested_duration_s": requested_s,
@@ -341,6 +623,10 @@ class PoseLatencyProbe(Node):
             "generated_at_unix_s": time.time(),
             "errors": errors,
             "topics": topic_results,
+            # HH_260731 - The GNSS point is still the configured antenna point.
+            # A constant XY error can therefore indicate an uncalibrated antenna
+            # lever arm; changing EKF gain cannot correct that geometry.
+            "pose_comparisons": pose_comparisons,
         }
 
 
@@ -397,6 +683,7 @@ def main(argv=None):
         rclpy.shutdown()
 
     print(render_table(report["topics"]))
+    print("\n" + render_pose_comparisons(report["pose_comparisons"]))
     report_json = json.dumps(report, indent=2, ensure_ascii=False)
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
