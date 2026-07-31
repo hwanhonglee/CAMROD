@@ -1,5 +1,59 @@
 # Documentation Changelog
 
+<!-- HH_260731 - Record physical stationary acceptance and keep drive work open. -->
+## [post-v2.1.1-stationary-field-validation] - 2026-07-31 (HH_260731)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| `camrod_bringup/docs/v2_1_1_field_validation_20260731.md` | Added the physical no-motion radar, camera, GNSS/IMU, localization, voice, CPU, and two-boundary evidence with exact log paths |
+| root `DONE.txt` | Moved radar-OFF 10-minute and front-camera/YOLO 5-minute acceptance to FIELD-PASS and recorded all partial/failing measurements separately |
+| root `TODOLIST.txt` | Removed only passed TODO 1/2, retained original numbering, and narrowed the rear-camera, radar-ON, CPU, GNSS/IMU, voice, boundary, and localization work from measured evidence |
+| `camrod_bringup/docs/field_test_runbook.md` | Added executable-probe preflight, 600-second radar-OFF evidence, physical-channel verification, repeated dual-GNSS flags, low-overhead rear-camera measurement, and production-only CPU rules |
+
+No motion or engage was commanded. The physical body is
+`1.49160 × 1.07000 m`; the active Nav2/safety footprint is the same asymmetric
+body plus a 0.10 m margin on every side, or `1.69160 × 1.27000 m`.
+
+---
+
+<!-- HH_260731 - Record the indoor crab-yaw and projected lateral recovery audit. -->
+## [post-v2.1.1-crab-yaw-audit] - 2026-07-31 (HH_260731)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| `camrod_platform/README.md` | Documented deterministic four-quadrant parallel motion, feedback-mode odometry, non-zero covariance, and per-wheel actuator evidence |
+| `camrod_localization/README.md` | Assigned yaw rate to IMU rather than Ranger parallel odometry, documented the unmeasured GNSS lever arm, and corrected failure behavior |
+| `camrod_control/README.md` | Distinguished projected reverse/crab candidate authorization from automatic recovery command generation |
+| `camrod_bringup/docs/field_test_runbook.md` | Added header-matched GNSS-to-EKF/final XY/yaw and crab-yaw evidence, with covariance-valid yaw-pair filtering |
+| root `DONE.txt`, `TODOLIST.txt` | Recorded completed indoor code/diagnosis and full-bringup rate evidence separately from remaining physical crab, lever-arm, and automatic-recovery acceptance |
+
+No physical movement was performed for this checkpoint. Full-footprint cost,
+dynamic-obstacle, engage, ESTOP, CAN, charging, and cancel protections remain
+active.
+
+---
+
+<!-- HH_260730 - Separate resolved evidence from remaining field work. -->
+## [post-v2.1.1-checklist-split] - 2026-07-30 (HH_260730)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| root `DONE.txt` | Added a status-qualified ledger for completed implementation, diagnosis, unit/sim verification, measured results, and their original TODO numbers |
+| root `TODOLIST.txt` | Removed completed narratives and retained only unfinished physical execution, evidence, safety, and PASS criteria |
+| `README.md`, `docs/V2_1_1_RELEASE_NOTES.md` | Linked the two-file contract and preserved the explicit absence of a post-change full real-robot FIELD-PASS |
+
+An item moves out of `TODOLIST.txt` only when its recorded acceptance criteria
+pass. Partial passes are recorded in `DONE.txt` while the smaller unresolved
+condition remains in the live checklist.
+
+---
+
 <!-- HH_260730 - Record the v2.1.1 checkpoint and keep field PASS separate. -->
 ## [v2.1.1-field-readiness] - 2026-07-30 (HH_260730)
 

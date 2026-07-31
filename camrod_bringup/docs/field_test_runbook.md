@@ -14,6 +14,7 @@ git status --short --branch
 source /opt/ros/humble/setup.bash
 source /home/nvidia/camrod_ws/install/setup.bash
 ros2 run camrod_bringup field_test_tool.sh config
+test -x /home/nvidia/camrod_ws/src/camrod_bringup/scripts/camera_payload_probe.py
 # HH_260727 - Confirm both role-specific GNSS ports before real bringup.
 ls -l /dev/ttyACM0 \
   /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0
@@ -23,6 +24,9 @@ df -h /home/nvidia
 Expected:
 
 - `field_test_tool.sh config` prints `config sync OK`.
+- The camera payload probe is executable. A missing mode bit makes
+  `ros2 run ... camera_payload_probe.py` report `No executable found` even when
+  the source file exists.
 - Every paired bringup/package config must match, and the full config trees must
   match their `install/<package>/share/<package>/config` copies. A source-only
   `OK` is not sufficient after changing deployment YAML.
@@ -167,9 +171,23 @@ ros2 run camrod_bringup field_test_tool.sh pose-latency \
 The eight rows cover physical GNSS, generated GNSS pose, IMU, platform wheel
 odometry, normalized wheel input, EKF output, adapter output, and final selected
 pose. Each row reports receive rate, inter-arrival p50/p95/max, and
-`now - header.stamp` p50/p95/max. A missing publisher, graph type mismatch,
-invalid/zero/future header, no valid message, or only one valid message returns
-a non-zero exit code and is retained in the JSON `errors` list.
+`now - header.stamp` p50/p95/max. The JSON also stores unwrapped yaw change,
+yaw span, XY displacement, velocity percentiles, and crab sample count for each
+applicable stream. A second table pairs GNSS pose with EKF/adapter/selected pose
+by header stamp and reports XY and yaw error p50/p95/max. XY pairing remains
+available whenever the poses are valid. Yaw pairing is counted separately and
+uses only orientations whose covariance is finite and no greater than the
+production GNSS heading-validity ceiling (`100 rad²`). A GNSS placeholder such
+as `yaw=0`, covariance `1e6` is shown as zero yaw pairs (`-/-/-`), not as a
+localization yaw error.
+
+<!-- HH_260731 - GNSS NavSatFix represents the antenna point while the final
+pose represents robot_base_link. Until the antenna mount offset in
+robot_params.yaml is measured (it is currently 0/0/0), treat a stable XY
+difference as a possible lever-arm geometry issue, not an EKF-rate issue. -->
+A missing publisher, graph type mismatch, invalid/zero/future header, no valid
+message, or only one valid message returns a non-zero exit code and is retained
+in the JSON `errors` list.
 
 Run this probe once with RViz/WebKit/Brave and development builds stopped.
 Measure CPU over the same window with `field_test_tool.sh profile 60
@@ -223,6 +241,14 @@ process lists, memory/disk state, and the critical path/cost/camera rates over
 the same five-minute interval. Close unrelated build jobs and duplicate debug
 subscribers first; their CPU is not part of the robot runtime.
 
+<!-- HH_260731 - The profile itself is a deliberate diagnostic stress load. -->
+The profile starts multiple topic-rate subscribers, including large image
+streams. Label its result as a diagnostic stress profile. For the
+production-only comparison, close VS Code, Brave, Claude/Codex, duplicate
+`ros2 topic echo`/`hz`, and other debug subscribers before each run. Acceptance
+also requires zero SIGABRT/restart for required nodes; a lifecycle respawn does
+not turn a `controller_server` crash into a PASS.
+
 If a behavior is wrong, collect this immediately before changing parameters.
 The important questions are:
 
@@ -261,6 +287,13 @@ Acceptance requires:
 Do not enable `ublox_dual_warm_start_on_startup` during normal operation. Use
 it for one launch only after an explicit direct-rover/one-port diagnostic leaves
 the rover tracking the wrong reference, then restart with the default `false`.
+
+<!-- HH_260731 - A single good accuracy field does not prove carrier Fixed. -->
+Do not accept a single `--once` sample or centimeter-scale `hAcc` alone.
+Capture the flags distribution for at least 120 seconds immediately after a
+bringup restart. Final field acceptance requires NAV-PVT flags 131 and
+NAV-RELPOSNED flags 311 to remain fixed for 10 minutes without flags 11 or
+float fallback.
 
 ## 6. Gate Commands
 
@@ -352,6 +385,17 @@ Run these in order and take a `snapshot` after any failure.
      `clear`, and no radar source appears in a cmd_vel stop reason. A visible
      LEFT2 Range marker or DUMMY diagnostic is transport status, not an
      obstacle.
+   - Save the effective `sensor_enabled` array and startup log before calling a
+     radar-ON run a seven-channel test. One DUMMY channel means it is not a
+     seven-channel physical acceptance run.
+   - A return from a channel with a known nearby object is not a self echo merely
+     because it falls inside a fixed-return exclusion. Remove the object and
+     repeat, then place a test obstacle at the same distance to prove the
+     exclusion does not hide it.
+   - Radar-OFF acceptance requires one 600-second summary containing every
+     range count/value, channel/global dummy state, evidence clear/active count,
+     radar-grid high-cost cells, gate status, and `/rosout` radar cost-stop
+     count. Repeated DUMMY diagnostic text alone is insufficient.
 
 4. Perception-to-cost path
    - Put a vehicle/person in camera view.
@@ -365,6 +409,10 @@ Run these in order and take a `snapshot` after any failure.
    - Confirm `/dev/video1` rear raw image is near 10 Hz and the compressed
      monitoring stream is near 2 Hz. A low-rate warning must say `FPS low`;
      it must not be mislabeled as an encoding mismatch.
+   - Measure rear raw/compressed/camera_info together with a low-overhead
+     counter before decoding full payloads. If raw is already slow, separate
+     camera capture FPS, CPU scheduling, and JPEG compression cost before
+     changing the diagnostic threshold.
 
 5. Raw lanelet footprint boundary
    - Run once with `enable_radar:=false` in a verified clear route corridor.
