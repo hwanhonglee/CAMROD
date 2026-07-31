@@ -83,7 +83,7 @@ public:
     return true;
   }
 
-  bool permitsOppositeRecovery(const avg_msgs::msg::AvgTwist & command) const
+  bool permitsProjectedRecoveryCandidate(const avg_msgs::msg::AvgTwist & command) const
   {
     if (!active_ || !config_.allow_opposite_recovery_command) {
       return false;
@@ -95,12 +95,30 @@ public:
     const double trigger_norm = std::hypot(trigger_x, trigger_y);
     const double command_norm = std::hypot(command_x, command_y);
     const double minimum = std::max(0.0, config_.minimum_translation_mps);
-    if (trigger_norm <= minimum || command_norm <= minimum) {
+    if (command_norm <= minimum) {
       return false;
     }
+
+    // HH_260731 - A rotation-only lanelet violation has no translation vector
+    // to invert. Admit a translational candidate and let the projected complete
+    // footprint + dynamic-cost evaluation below decide whether it moves clear.
+    if (trigger_norm <= minimum) {
+      return true;
+    }
+
     const double cosine =
       (trigger_x * command_x + trigger_y * command_y) / (trigger_norm * command_norm);
-    return cosine <= std::clamp(config_.opposite_direction_cosine_max, -1.0, 0.0);
+    if (cosine <= std::clamp(config_.opposite_direction_cosine_max, -1.0, 0.0)) {
+      return true;
+    }
+
+    // HH_260731 - A forward command can touch a side boundary even though the
+    // safe escape is pure crab and therefore orthogonal to the trigger. Admit
+    // only the orthogonal candidate here; evaluateRouteRecoveryCommand() must
+    // still prove that the projected full footprint is clear. The candidate
+    // toward the contacted boundary remains blocked by that projection.
+    constexpr double kOrthogonalCosineTolerance = 1.0e-6;
+    return std::abs(cosine) <= kOrthogonalCosineTolerance;
   }
 
   void reset()

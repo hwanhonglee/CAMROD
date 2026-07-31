@@ -200,15 +200,19 @@ lanes. Maneuver/static-cost bypass phases skip only legacy center/corridor
 checks and never this full-footprint check. `robot_base_link` alone is no
 longer the boundary decision point.
 
-<!-- HH_260729 - Document bounded recovery without weakening ordinary footprint checks. -->
+<!-- HH_260731 - Document projected reverse/crab recovery candidates without
+     weakening ordinary footprint checks or implying automatic motion. -->
 When this full-footprint or directional lanelet check stops an active command,
 the gate enters `ROUTE_SAFETY_HOLD` and saves the original translation vector.
 The same direction remains blocked until fresh lanelet grid and pose evidence
 proves the saved full-footprint route clear for 1.0 s. Missing, stale, or
 frame-mismatched evidence fails closed; pose evidence older than 0.5 s is stale.
-A reverse/escape command is considered
-only when its translation cosine against the trigger is at most `-0.5`; zero,
-rotation, and changed lateral commands cannot redefine the trigger.
+A reverse candidate is considered when its translation cosine against the
+trigger is at most `-0.5`. A pure orthogonal crab candidate is also admitted so
+a side footprint contact caused during forward travel can move sideways rather
+than farther along the blocked route. A rotation-only trigger may likewise
+consider a translational candidate. Zero/rotation commands still cannot clear
+or redefine the hold.
 
 The escape exception is bounded to present map-boundary contact. At the default
 0.25 m probe distance, the projected complete footprint must be clear of cost
@@ -216,6 +220,12 @@ The escape exception is bounded to present map-boundary contact. At the default
 pass LiDAR, radar, merged-grid, retained dynamic-latch, engage, ESTOP, CAN,
 charging, battery, and command-timeout checks. Ordinary motion never uses this
 exception, and no lanelet threshold or footprint extent is reduced.
+
+The gate only authorizes a recovery candidate received from an upstream owner;
+it never invents a `cmd_vel`. Therefore the robot remains stopped after an
+ordinary Nav2 forward command hits a side boundary unless a maneuver/operator
+owner explicitly requests crab. Automatic side selection and distance-limited
+crab generation remain a separate field-safety item in `TODOLIST.txt`.
 
 <!-- HH_260729 - Record the runtime bounds that prevent recovery tuning from
      disabling freshness or extending the lanelet-contact exception. -->

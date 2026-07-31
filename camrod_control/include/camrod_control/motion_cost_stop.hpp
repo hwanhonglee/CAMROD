@@ -152,9 +152,10 @@ public:
     const avg_msgs::msg::AvgTwist & command,
     double now_sec,
     double pose_max_age_s);
-  // HH_260729 - A bounded opposite-direction escape may ignore only the
-  // footprint's present lanelet contact. It must put the complete footprint
-  // inside the lanelet after the probe distance and still pass dynamic costs.
+  // HH_260731 - A bounded reverse or orthogonal-crab recovery candidate may
+  // ignore only the footprint's present lanelet contact. It must put the
+  // complete footprint inside the lanelet after the probe distance and still
+  // pass fresh lanelet evidence, dynamic costs, and ordinary interlocks.
   MotionCostStopDecision evaluateRouteRecoveryCommand(
     const avg_msgs::msg::AvgTwist & command,
     double now_sec,
