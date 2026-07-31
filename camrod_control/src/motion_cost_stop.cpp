@@ -157,16 +157,22 @@ MotionCostStopDecision MotionCostStop::evaluate(
   }
 
   if (!translational(command)) {
-    // HH_260727 - A rotating asymmetric body can touch the raw map boundary even while
-    // robot_base_link stays clear, so evaluate the full footprint first.
-    const auto lanelet_decision = evaluateLanelet(command, now_sec);
-    if (lanelet_decision.blocked) {
-      return lanelet_decision;
+    const double motion_threshold = std::max(0.0, config_.min_translation_mps);
+    if (std::abs(command.angular.z) > motion_threshold) {
+      // HH_260727 - A rotating asymmetric body can touch the raw map boundary even while
+      // robot_base_link stays clear, so evaluate the full footprint first.
+      const auto lanelet_decision = evaluateLanelet(command, now_sec);
+      if (lanelet_decision.blocked) {
+        return lanelet_decision;
+      }
+      const auto rotation_decision = evaluateRotation(now_sec);
+      if (rotation_decision.blocked) {
+        return rotation_decision;
+      }
     }
-    const auto rotation_decision = evaluateRotation(now_sec);
-    if (rotation_decision.blocked) {
-      return rotation_decision;
-    }
+    // HH_260731 - A true zero command is stationary, not a rotation command.
+    // Do not create a new radar rotation latch while stopped. An already active
+    // latch was checked above and still remains fail-closed until fresh clear evidence.
     return evaluateLatch(now_sec);
   }
 
@@ -221,8 +227,10 @@ MotionCostStopDecision MotionCostStop::evaluateLaneletRecovery(
   {
     return {true, false, true, true, "lanelet_recovery_pose_stale"};
   }
-  if (!pose_->frame_id.empty() && !lanelet_grid_.grid.header.frame_id.empty() &&
-    pose_->frame_id != lanelet_grid_.grid.header.frame_id)
+  if (pose_->frame_id.empty() || lanelet_grid_.grid.header.frame_id.empty()) {
+    return {true, false, true, true, "lanelet_recovery_frame_missing"};
+  }
+  if (pose_->frame_id != lanelet_grid_.grid.header.frame_id)
   {
     return {true, false, true, true, "lanelet_recovery_frame_mismatch"};
   }
@@ -239,6 +247,21 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
     return {};
   }
 
+  // HH_260731 - Recovery motion is safety-critical and must never interpret a
+  // missing, stale, invalid, or frame-incompatible lanelet grid as projected
+  // clearance. The earlier route-hold probe already failed closed, but the
+  // command-specific projection previously skipped these checks.
+  if (!config_.lanelet_enabled || !lanelet_grid_.available ||
+    !validGrid(lanelet_grid_.grid))
+  {
+    return {true, false, true, true, "route_recovery_lanelet_grid_missing"};
+  }
+  if (config_.stale_timeout_s > 0.0 &&
+    std::max(0.0, now_sec - lanelet_grid_.receive_sec) > config_.stale_timeout_s)
+  {
+    return {true, false, true, true, "route_recovery_lanelet_grid_stale"};
+  }
+
   const double translation_norm = std::hypot(command.linear.x, command.linear.y);
   if (translation_norm <= std::max(0.0, config_.min_translation_mps)) {
     return {true, false, true, false, "route_recovery_translation_required"};
@@ -251,6 +274,13 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
     std::max(0.0, now_sec - pose_->observation_sec) > pose_max_age_s))
   {
     return {true, false, true, true, "route_recovery_pose_stale"};
+  }
+  if (pose_->frame_id.empty() || lanelet_grid_.grid.header.frame_id.empty()) {
+    return {true, false, true, true, "route_recovery_frame_missing"};
+  }
+  if (pose_->frame_id != lanelet_grid_.grid.header.frame_id)
+  {
+    return {true, false, true, true, "route_recovery_frame_mismatch"};
   }
 
   // HH_260729 - A dynamic-obstacle latch remains authoritative during route

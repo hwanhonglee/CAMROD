@@ -142,9 +142,11 @@
     route_safety_recovery_clear_required_s: 1.0
     # Runtime updates outside [0.1, 60.0] s are rejected.
     route_safety_recovery_log_interval_s: 1.0
-    # An opposite command is recovery motion, not proof that the original
-    # forward/lateral route is clear. Only current boundary contact is excepted:
-    # the projected complete footprint and all dynamic obstacle guards must pass.
+    # HH_260731 - Admit the saved trigger's opposite translation and a pure
+    # orthogonal crab candidate. This gate does not generate recovery motion.
+    # The projected complete footprint decides which crab side moves away from
+    # the boundary; current contact is the only exception and every dynamic
+    # obstacle/interlock remains active.
     route_safety_allow_opposite_recovery_command: true
     # Runtime updates must stay in [-1.0, 0.0].
     route_safety_opposite_direction_cosine_max: -0.5
@@ -153,7 +155,6 @@
     # A timer callback cannot turn a previously received localization sample
     # into fresh route-clear evidence; valid runtime range is [0.05, 5.0] s.
     route_safety_recovery_pose_max_age_s: 0.5
-
     # =========================================================================
     # Bounded maneuver exceptions keep live LiDAR and radar stops enabled.
     # =========================================================================

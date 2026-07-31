@@ -297,17 +297,33 @@ TEST(RouteSafetyRecovery, PreservesTriggerDirectionUntilContinuousClear)
   EXPECT_FALSE(recovery.active());
 }
 
-TEST(RouteSafetyRecovery, AllowsOnlyOppositeTranslationAsRecovery)
+TEST(RouteSafetyRecovery, AdmitsOppositeAndOrthogonalProjectedCandidates)
 {
   RouteSafetyRecovery recovery;
   const MotionCostStopDecision violation{
     true, false, true, false, "lanelet_front_cost"};
   ASSERT_TRUE(recovery.observeViolation(violation, command(0.3), 1.0));
 
-  EXPECT_TRUE(recovery.permitsOppositeRecovery(command(-0.1)));
-  EXPECT_FALSE(recovery.permitsOppositeRecovery(command(0.1)));
-  EXPECT_FALSE(recovery.permitsOppositeRecovery(command(0.0, 0.1)));
-  EXPECT_FALSE(recovery.permitsOppositeRecovery(command(0.0, 0.0, 0.2)));
+  EXPECT_TRUE(recovery.permitsProjectedRecoveryCandidate(command(-0.1)));
+  EXPECT_FALSE(recovery.permitsProjectedRecoveryCandidate(command(0.1)));
+  EXPECT_TRUE(recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.1)));
+  EXPECT_TRUE(recovery.permitsProjectedRecoveryCandidate(command(0.0, -0.1)));
+  EXPECT_FALSE(
+    recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.0, 0.2)));
+}
+
+TEST(RouteSafetyRecovery, RotationViolationAdmitsTranslationForProjectedCheck)
+{
+  RouteSafetyRecovery recovery;
+  const MotionCostStopDecision violation{
+    true, false, true, false, "lanelet_footprint_cost"};
+  ASSERT_TRUE(
+    recovery.observeViolation(violation, command(0.0, 0.0, 0.2), 1.0));
+
+  EXPECT_TRUE(recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.1)));
+  EXPECT_TRUE(recovery.permitsProjectedRecoveryCandidate(command(-0.1)));
+  EXPECT_FALSE(
+    recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.0, -0.2)));
 }
 
 TEST(MotionCostStop, RouteRecoveryProbeFailsClosedOnStaleLaneletEvidence)
@@ -373,6 +389,79 @@ TEST(MotionCostStop, OppositeRecoveryRequiresProjectedFullFootprintClear)
     std::string::npos);
 }
 
+TEST(MotionCostStop, CrabRecoveryMovesAwayFromSideBoundaryOnly)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_footprint_enabled = true;
+  config.lanelet_footprint_threshold = 100;
+  config.footprint_front_m = 0.2;
+  config.footprint_rear_m = 0.2;
+  config.footprint_left_m = 0.2;
+  config.footprint_right_m = 0.2;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.0, 0.15, 100}}), 1.0);
+
+  ASSERT_TRUE(cost_stop.evaluate(command(0.1), 1.0).blocked);
+  EXPECT_FALSE(
+    cost_stop.evaluateRouteRecoveryCommand(
+      command(0.0, -0.1), 1.1, 0.3, 0.5).blocked);
+  const auto toward_boundary =
+    cost_stop.evaluateRouteRecoveryCommand(
+    command(0.0, 0.1), 1.2, 0.3, 0.5);
+  EXPECT_TRUE(toward_boundary.blocked);
+  EXPECT_NE(
+    toward_boundary.reason.find("route_recovery_predicted_lanelet_footprint"),
+    std::string::npos);
+}
+
+TEST(MotionCostStop, RouteRecoveryCommandFailsClosedWithoutFreshLaneletGrid)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.stale_timeout_s = 1.0;
+  MotionCostStop cost_stop(config);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+
+  const auto missing =
+    cost_stop.evaluateRouteRecoveryCommand(command(0.0, -0.1), 1.0, 0.3, 0.5);
+  EXPECT_TRUE(missing.blocked);
+  EXPECT_EQ(missing.reason, "route_recovery_lanelet_grid_missing");
+
+  cost_stop.setLaneletGrid(makeGrid(), 1.0);
+  const auto stale =
+    cost_stop.evaluateRouteRecoveryCommand(command(0.0, -0.1), 2.1, 0.3, 2.0);
+  EXPECT_TRUE(stale.blocked);
+  EXPECT_EQ(stale.reason, "route_recovery_lanelet_grid_stale");
+}
+
+TEST(MotionCostStop, RouteRecoveryCommandFailsClosedWithoutMatchingFrames)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  MotionCostStop cost_stop(config);
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+
+  auto missing_frame_grid = makeGrid();
+  missing_frame_grid.header.frame_id.clear();
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+  cost_stop.setLaneletGrid(missing_frame_grid, 1.0);
+  const auto missing =
+    cost_stop.evaluateRouteRecoveryCommand(command(0.0, -0.1), 1.0, 0.3, 0.5);
+  EXPECT_TRUE(missing.blocked);
+  EXPECT_EQ(missing.reason, "route_recovery_frame_missing");
+
+  cost_stop.setLaneletGrid(makeGrid(), 1.0);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "odom", "test", 1.0});
+  const auto mismatch =
+    cost_stop.evaluateRouteRecoveryCommand(command(0.0, -0.1), 1.0, 0.3, 0.5);
+  EXPECT_TRUE(mismatch.blocked);
+  EXPECT_EQ(mismatch.reason, "route_recovery_frame_mismatch");
+}
+
 TEST(MotionCostStop, OppositeRecoveryStillStopsForDynamicObstacle)
 {
   auto config = baseCostConfig();
@@ -405,6 +494,24 @@ TEST(MotionCostStop, RotationStopsOnlyOnLiveDynamicSource)
   EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.0, 0.3), 0.0).blocked);
   cost_stop.setSourceGrid("lidar", makeGrid({{0.5, 0.0, 90}}), 0.1);
   EXPECT_TRUE(cost_stop.evaluate(command(0.0, 0.0, 0.3), 0.1).blocked);
+}
+
+TEST(MotionCostStop, StationaryCommandDoesNotCreateRotationLatch)
+{
+  auto config = baseCostConfig();
+  config.require_dynamic_source = true;
+  config.latch_enabled = true;
+  auto cost_stop = makeMotionCostStop(config);
+  const auto nearby_dynamic_obstacle = makeGrid({{0.05, 0.0, 95}});
+  cost_stop.setMergedGrid(nearby_dynamic_obstacle, 0.0);
+  cost_stop.setSourceGrid("radar", nearby_dynamic_obstacle, 0.0);
+
+  // HH_260731 - A zero cmd_vel must not be interpreted as an in-place turn.
+  // This used to create a persistent dynamic_rotation:radar latch while parked.
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.0, 0.0), 0.0).blocked);
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0, 0.0, 0.3), 0.1).blocked);
+  // Once real motion triggered the latch, stopping remains fail-closed.
+  EXPECT_TRUE(cost_stop.evaluate(command(0.0, 0.0, 0.0), 0.2).blocked);
 }
 
 TEST(MotionCostStop, LaneletRotationPolicyChecksCurrentCellWhenDisabled)

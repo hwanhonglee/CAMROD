@@ -778,7 +778,7 @@ private:
     if (route_safety_recovery_.active()) {
       refreshRouteSafetyRecovery(now_sec);
       if (route_safety_recovery_.active() &&
-        !route_safety_recovery_.permitsOppositeRecovery(command))
+        !route_safety_recovery_.permitsProjectedRecoveryCandidate(command))
       {
         publishZero();
         logRouteSafetyHold(now_sec);
@@ -815,7 +815,7 @@ private:
     }
 
     if (opposite_route_recovery &&
-      !route_safety_recovery_.permitsOppositeRecovery(command))
+      !route_safety_recovery_.permitsProjectedRecoveryCandidate(command))
     {
       publishZero();
       logRouteSafetyHold(now_sec);
@@ -872,7 +872,7 @@ private:
     RCLCPP_WARN(
       get_logger(),
       "cmd_vel route safety hold: trigger=%s latest=%s clear=%.2fs "
-      "opposite_recovery_only=true",
+      "projected_recovery_candidate_only=true",
       route_safety_recovery_.triggerReason().c_str(),
       route_safety_recovery_.latestReason().c_str(),
       route_safety_recovery_.clearElapsed(now_sec));
