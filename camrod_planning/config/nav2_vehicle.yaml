@@ -48,12 +48,13 @@ controller_server:
   ros__parameters:
     RPP:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      # HH_260513: Synced to bringup values (hardware-tested at C-track).
+      # HH_260731 - Conservative outdoor boundary-recovery profile shared by
+      # manual and UI goals. The final 0.5 gate scale limits 0.4 m/s to 0.20 m/s.
       # HH_260730: Only parameters consumed by the bundled RPP are listed here.
       # The former max/min linear and max angular keys were not read by this
       # plugin; desired_linear_vel and curvature regulation are authoritative.
-      desired_linear_vel: 1.4
-      max_angular_accel: 3.0
+      desired_linear_vel: 0.4
+      max_angular_accel: 0.8
       # HH_260513: Increased lookahead to suppress straight-line oscillation.
       # HH_260730: A steering-lag slowdown previously collapsed the scaled
       # lookahead to 0.5 m, which increased curvature and repeatedly reversed
@@ -63,7 +64,8 @@ controller_server:
       min_lookahead_dist: 0.9
       max_lookahead_dist: 2.0
       lookahead_time: 1.8
-      rotate_to_heading_angular_vel: 1.2
+      # Final default after the command gate: 0.20 rad/s.
+      rotate_to_heading_angular_vel: 0.4
       # Align controller TF tolerance with Nav2 server tolerance.
       transform_tolerance: 0.5
       # HH_260527: RPP toggle options (all boolean):
@@ -88,7 +90,8 @@ controller_server:
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: True
       regulated_linear_scaling_min_radius: 0.9
-      regulated_linear_scaling_min_speed: 0.5
+      # Final curve-regulated minimum after the gate: 0.10 m/s.
+      regulated_linear_scaling_min_speed: 0.2
       use_cost_regulated_linear_velocity_scaling: True
       cost_scaling_dist: 0.6
       cost_scaling_gain: 1.0
