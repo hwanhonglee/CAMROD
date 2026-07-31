@@ -20,9 +20,9 @@
     # =========================================================================
     # 2. STEERING TRANSITION
     # =========================================================================
-    # HH_260727 - Runtime-adjustable wheel-direction slew limit. 0.5 rad/s turns 0→90 deg
-    # in about 3.1 s and is exposed on the operator diagnostics UI.
-    steering_transition_rate_radps: 0.5
+    # HH_260731 - Conservative outdoor recovery default. 0.25 rad/s turns
+    # 0→90 deg in about 6.3 s; the diagnostics UI can still tune it at runtime.
+    steering_transition_rate_radps: 0.25
 
     # HH_260729 - A rate-limited steering angle is delayed geometry. Hold
     # translation for large lag and restore full speed only near the new angle,
@@ -31,6 +31,12 @@
     steering_transition_full_speed_error_rad: 0.05
     steering_transition_stop_error_rad: 0.35
     steering_transition_min_velocity_scale: 0.0
+
+    # HH_260731 - Wheel velocity is measured, not mathematically exact. Never
+    # publish zero covariance: robot_localization treats it as near-perfect and
+    # can suppress the IMU yaw-rate during crab transitions.
+    odom_linear_velocity_stddev_mps: 0.05
+    odom_angular_velocity_stddev_radps: 0.10
 
     # =========================================================================
     # 3. PLATFORM STATUS AND BATTERY

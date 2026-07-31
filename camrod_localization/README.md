@@ -310,9 +310,24 @@ stateDiagram-v2
 | Source | Fused Variables | Gating |
 |---|---|---|
 | GNSS pose mirror | x, y, z and yaw | Position rejection threshold 3.0; yaw threshold 1000.0 |
-| Wheel odometry mirror | vx, vy and yaw rate | No additional rejection threshold configured |
+| Wheel odometry mirror | vx and vy | Non-zero Ranger velocity covariance; wheel yaw rate is diagnostic-only |
 | IMU mirror | roll, pitch and angular velocity | Gravity removed; absolute IMU yaw disabled |
 | Lanelet centerline pose | none | Input remains configured but every variable is disabled |
+
+<!-- HH_260731 - Explain the production crab-yaw ownership and antenna geometry. -->
+In production, crab translation does not directly change EKF yaw. The EKF
+integrates the 100 Hz IMU yaw rate between roughly 1 Hz dual-GNSS absolute-yaw
+updates. Ranger wheel odometry contributes body `vx/vy` only, because its
+parallel kinematic model cannot reliably observe small physical yaw caused by
+wheel-angle mismatch or floor slip. `field_test_tool.sh pose-latency 60` now
+records unwrapped yaw change, crab samples, and header-matched GNSS-to-EKF/final
+XY/yaw differences.
+
+NavSatFix is still converted at the GNSS antenna point, while downstream
+consumers interpret the fused pose as `robot_base_link`. The configured GNSS
+mount in `robot_params.yaml` is currently the unmeasured `0/0/0` placeholder.
+A stable GNSS-to-final XY offset must therefore be checked against the measured
+antenna lever arm before changing EKF frequency, covariance, or map offsets.
 
 ---
 
@@ -342,7 +357,10 @@ stateDiagram-v2
 **Trigger:** `/sensing/imu/data` stops arriving for longer than `imu_timeout_s` (default 1.0 s).
 
 <!-- HH_260720 - Describe loss behavior for robot_localization EKF. -->
-**Internal logic:** The EKF loses its angular-velocity input. The monitor transitions to DEGRADED or INVALID depending on remaining sensor health; wheel odometry can still provide translational velocity and yaw rate.
+**Internal logic:** The EKF loses its only high-rate angular-velocity input.
+The monitor transitions to DEGRADED or INVALID depending on remaining sensor
+health; wheel odometry still provides translation but does not replace IMU yaw
+rate in the production filter.
 
 > ⚠️ **Warning** `/localization/mode` transitions to DEGRADED; TF output may become stale.
 
@@ -359,11 +377,14 @@ stateDiagram-v2
 **Trigger:** `/platform/status/odometry` stops arriving for longer than `wheel_primary_timeout_s` (default 0.7 s).
 
 <!-- HH_260720 - Keep wheel fallback behavior aligned with the EKF input adapter. -->
-**Internal logic:** The adapter switches to the fallback source `/rmp401/odom`. If the fallback also times out, the EKF continues with GNSS and IMU but loses wheel velocity and yaw-rate correction. The monitor transitions to DEGRADED.
+**Internal logic:** The adapter switches to the fallback source `/rmp401/odom`.
+If the fallback also times out, the EKF continues with GNSS and IMU but loses
+wheel translational velocity. The monitor transitions to DEGRADED.
 
-> ⚠️ **Warning** `/localization/mode` may move to DEGRADED; wheel-speed and yaw-rate updates cease.
+> ⚠️ **Warning** `/localization/mode` may move to DEGRADED; wheel translation updates cease.
 
-**Operator-visible symptom:** Heading drift increases, especially in DR_ONLY mode where wheel yaw-rate is the primary heading reference.
+**Operator-visible symptom:** Translational dead reckoning degrades. Heading
+still uses IMU yaw rate and GNSS absolute yaw while those streams are valid.
 
 > 🔧 **Debug hint** Related params: `wheel_primary_timeout_s`, `wheel_fallback_input_topic`, EKF `odom0_config`, `odom0_queue_size`
 

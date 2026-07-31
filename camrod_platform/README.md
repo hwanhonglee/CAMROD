@@ -94,14 +94,15 @@ Ranger driver command input is intentionally the only standard `Twist` boundary 
 <!-- HH_260727 - Document the field-adjustable longitudinal/lateral wheel transition. -->
 
 `ranger_base_node.steering_transition_rate_radps` limits the wheel-angle
-transition used by dual-Ackermann and parallel steering. The v2.0.8 default is
-`0.5 rad/s` (approximately 3.1 s for a 0-to-90-degree transition); accepted
-runtime values are `0.05` through `2.0 rad/s`.
+transition used by dual-Ackermann and parallel steering. The current
+conservative field default is `0.25 rad/s` (approximately 6.3 s for a
+0-to-90-degree transition); accepted runtime values are `0.05` through
+`2.0 rad/s`.
 
 It can be changed without restarting:
 
 ```bash
-ros2 param set /ranger_base_node steering_transition_rate_radps 0.4
+ros2 param set /ranger_base_node steering_transition_rate_radps 0.25
 ```
 
 The same value is available from the operator UI's platform-tuning slider and
@@ -125,6 +126,20 @@ ros2 param set /ranger_base_node steering_transition_full_speed_error_rad 0.05
 ros2 param set /ranger_base_node steering_transition_stop_error_rad 0.35
 ros2 param set /ranger_base_node steering_transition_min_velocity_scale 0.0
 ```
+
+<!-- HH_260731 - Record the real crab-yaw corrections at the Ranger boundary. -->
+Parallel XY commands now use `atan2` and an explicit signed-speed
+representation for all four quadrants. Pure left/right crab no longer depends
+on whether the preceding command was forward or reverse. Odometry uses the
+motion mode from the same CAN feedback snapshot, publishes measured parallel
+`angular_velocity`, and carries non-zero configurable velocity covariance
+(`0.05 m/s` linear, `0.10 rad/s` angular by default). The eight actuator states
+also expose each drive speed and steering angle instead of repeating
+speed-1/angle-5, so a single wheel that lags its crab angle is visible.
+
+The production localization EKF fuses Ranger `vx/vy/wz` with non-zero measured
+covariance alongside IMU `angular_velocity.z`; neither source is treated as
+mathematically exact. Dual-GNSS remains the absolute yaw correction.
 
 ## Indicator MCU serial servicing
 
