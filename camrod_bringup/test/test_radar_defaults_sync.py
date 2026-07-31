@@ -34,7 +34,8 @@ _SENSOR_NAMES = [
 
 _EXPECTED_DRIVER_ARRAYS = {
     "sensor_names": _SENSOR_NAMES,
-    "sensor_enabled": [True] * 7,
+    # HH_260731: Keep the operator-requested LEFT2/RIGHT2 field quarantine.
+    "sensor_enabled": [True, True, True, False, True, False, True],
     "hardware_angle_levels": [1] * 7,
     "hardware_range_levels": [2, 2, 2, 2, 2, 2, 1],
     "software_max_ranges_m": [1.50, 1.50, 0.80, 0.80, 0.80, 0.80, 0.50],
@@ -89,6 +90,7 @@ _EXPECTED_FIXED_RETURN_INTERVALS = [
     ("FRONT2", 0.097, 0.117),
     ("LEFT1", 0.182, 0.226),
     ("LEFT1", 0.234, 0.258),
+    ("LEFT2", 0.045, 0.068),
     ("LEFT2", 0.210, 0.280),
     ("RIGHT1", 0.055, 0.080),
     ("RIGHT1", 0.253, 0.277),
