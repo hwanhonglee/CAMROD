@@ -12,6 +12,7 @@
 #include <algorithm>
 
 #include "ranger_base/kinematics_model.hpp"
+#include "ranger_base/parallel_motion_policy.hpp"
 #include "ranger_base/steering_transition_policy.hpp"
 
 using namespace rclcpp;
@@ -86,6 +87,10 @@ void RangerROSMessenger::LoadParameters() {
     "steering_transition_stop_error_rad", 0.35);
   steering_transition_min_velocity_scale_ = node_->declare_parameter<double>(
     "steering_transition_min_velocity_scale", 0.0);
+  odom_linear_velocity_stddev_mps_ = node_->declare_parameter<double>(
+    "odom_linear_velocity_stddev_mps", 0.05);
+  odom_angular_velocity_stddev_radps_ = node_->declare_parameter<double>(
+    "odom_angular_velocity_stddev_radps", 0.10);
   steering_transition_full_speed_error_rad_ =
     std::max(0.0, steering_transition_full_speed_error_rad_);
   steering_transition_stop_error_rad_ = std::max(
@@ -93,20 +98,27 @@ void RangerROSMessenger::LoadParameters() {
     steering_transition_stop_error_rad_);
   steering_transition_min_velocity_scale_ = std::max(
     0.0, std::min(1.0, steering_transition_min_velocity_scale_));
+  odom_linear_velocity_stddev_mps_ =
+    std::max(1.0e-3, odom_linear_velocity_stddev_mps_);
+  odom_angular_velocity_stddev_radps_ =
+    std::max(1.0e-3, odom_angular_velocity_stddev_radps_);
 
   RCLCPP_INFO(node_->get_logger(),
       "Successfully loaded the following parameters: \n port_name: %s\n "
       "robot_model: %s\n odom_frame: %s\n base_frame: %s\n "
       "update_rate: %d\n odom_topic_name: %s\n "
       "publish_odom_tf: %d\n steering_transition_rate_radps: %.2f\n "
-      "steering_transition_velocity_scale: %d full=%.2f stop=%.2f min=%.2f\n",
+      "steering_transition_velocity_scale: %d full=%.2f stop=%.2f min=%.2f\n "
+      "odom_velocity_stddev: linear=%.3f angular=%.3f\n",
       port_name_.c_str(), robot_model_.c_str(), odom_frame_.c_str(),
       base_frame_.c_str(), update_rate_, odom_topic_name_.c_str(),
       publish_odom_tf_, steering_transition_rate_radps_,
       steering_transition_velocity_scale_enabled_,
       steering_transition_full_speed_error_rad_,
       steering_transition_stop_error_rad_,
-      steering_transition_min_velocity_scale_);
+      steering_transition_min_velocity_scale_,
+      odom_linear_velocity_stddev_mps_,
+      odom_angular_velocity_stddev_radps_);
 
   // load robot parameters
   if (robot_model_ == "ranger_mini_v1") {
@@ -214,6 +226,11 @@ void RangerROSMessenger::PublishStateToROS() {
   auto state = robot_->GetRobotState();
   auto actuator_state = robot_->GetActuatorState();
 
+  // HH_260731 - Use the mode reported by the same CAN snapshot for odometry.
+  // Previously this assignment happened after UpdateOdometry(), so every mode
+  // transition could be interpreted with an earlier/requested kinematic model.
+  motion_mode_ = state.motion_mode_state.motion_mode;
+
   // update odometry
   {
     double dt = (current_time_ - last_time_).seconds();
@@ -238,8 +255,6 @@ void RangerROSMessenger::PublishStateToROS() {
 
   // publish motion mode
   {
-    motion_mode_ = state.motion_mode_state.motion_mode;
-
     ranger_msgs::msg::MotionState motion_msg;
     motion_msg.header.stamp = current_time_;
     motion_msg.motion_mode = state.motion_mode_state.motion_mode;
@@ -262,23 +277,39 @@ void RangerROSMessenger::PublishStateToROS() {
 
     ranger_msgs::msg::ActuatorStateArray actuator_msg;
     actuator_msg.header.stamp = current_time_;
+    const double drive_speeds[4] = {
+      actuator_state.motor_speeds.speed_1,
+      actuator_state.motor_speeds.speed_2,
+      actuator_state.motor_speeds.speed_3,
+      actuator_state.motor_speeds.speed_4};
+    const double steering_angles[4] = {
+      actuator_state.motor_angles.angle_5,
+      actuator_state.motor_angles.angle_6,
+      actuator_state.motor_angles.angle_7,
+      actuator_state.motor_angles.angle_8};
     for (int i = 0; i < 8; i++) {
       ranger_msgs::msg::DriverState driver_state_msg;
       driver_state_msg.driver_voltage =
-          actuator_state.actuator_ls_state->driver_voltage;
+          actuator_state.actuator_ls_state[i].driver_voltage;
       driver_state_msg.driver_temperature =
-          actuator_state.actuator_ls_state->driver_temp;
+          actuator_state.actuator_ls_state[i].driver_temp;
       driver_state_msg.motor_temperature =
-          actuator_state.actuator_ls_state->motor_temp;
+          actuator_state.actuator_ls_state[i].motor_temp;
       driver_state_msg.driver_state =
-          actuator_state.actuator_ls_state->driver_state;
+          actuator_state.actuator_ls_state[i].driver_state;
 
       ranger_msgs::msg::MotorState motor_state_msg;
-      motor_state_msg.current = actuator_state.actuator_hs_state->current;
-      motor_state_msg.pulse_count = actuator_state.actuator_hs_state->pulse_count;
-      motor_state_msg.rpm = actuator_state.actuator_hs_state->rpm;
-      motor_state_msg.motor_angles = actuator_state.motor_angles.angle_5;
-      motor_state_msg.motor_speeds = actuator_state.motor_speeds.speed_1;
+      motor_state_msg.current = actuator_state.actuator_hs_state[i].current;
+      motor_state_msg.pulse_count = actuator_state.actuator_hs_state[i].pulse_count;
+      motor_state_msg.rpm = actuator_state.actuator_hs_state[i].rpm;
+      // HH_260731 - IDs 0..3 carry drive speed and IDs 4..7 carry steering
+      // angle. Publishing speed_1/angle_5 eight times hid the wheel that failed
+      // to reach its crab angle and made platform diagnostics misleading.
+      if (i < 4) {
+        motor_state_msg.motor_speeds = drive_speeds[i];
+      } else {
+        motor_state_msg.motor_angles = steering_angles[i - 4];
+      }
       
       ranger_msgs::msg::ActuatorState actuator_state_msg;
       actuator_state_msg.id = i;
@@ -348,7 +379,9 @@ void RangerROSMessenger::UpdateOdometry(double linear, double angular,
 
     position_x_ = x[0];
     position_y_ = x[1];
-    theta_ = x[2];
+    // HH_260731 - Preserve non-zero yaw feedback during imperfect crab motion.
+    // The old branch forced theta_dot=0 even when CAN reported rotation.
+    theta_ = x[2] + angular * dt;
   } else if (motion_mode_ == MotionState::MOTION_MODE_SPINNING) {
     SpinningModel::state_type x = {position_x_, position_y_, theta_};
     SpinningModel::control_type u;
@@ -376,6 +409,16 @@ void RangerROSMessenger::UpdateOdometry(double linear, double angular,
   odom_msg.pose.pose.position.y = position_y_;
   odom_msg.pose.pose.position.z = 0.0;
   odom_msg.pose.pose.orientation = odom_quat;
+  const double linear_variance =
+      odom_linear_velocity_stddev_mps_ * odom_linear_velocity_stddev_mps_;
+  const double angular_variance =
+      odom_angular_velocity_stddev_radps_ * odom_angular_velocity_stddev_radps_;
+  odom_msg.twist.covariance[0] = linear_variance;
+  odom_msg.twist.covariance[7] = linear_variance;
+  odom_msg.twist.covariance[14] = linear_variance;
+  odom_msg.twist.covariance[21] = angular_variance;
+  odom_msg.twist.covariance[28] = angular_variance;
+  odom_msg.twist.covariance[35] = angular_variance;
 
   if (motion_mode_ == MotionState::MOTION_MODE_DUAL_ACKERMAN) {
     odom_msg.twist.twist.linear.x = linear;
@@ -393,7 +436,9 @@ void RangerROSMessenger::UpdateOdometry(double linear, double angular,
     odom_msg.twist.twist.linear.x = linear * std::cos(phi);
     odom_msg.twist.twist.linear.y = linear * std::sin(phi);
 
-    odom_msg.twist.twist.angular.z = 0;
+    // HH_260731 - Publish the measured CAN yaw rate for diagnostics. The EKF
+    // intentionally uses IMU yaw-rate instead of this wheel-derived value.
+    odom_msg.twist.twist.angular.z = angular;
   } else if (motion_mode_ == MotionState::MOTION_MODE_SPINNING) {
     odom_msg.twist.twist.linear.x = 0;
     odom_msg.twist.twist.linear.y = 0;
@@ -428,27 +473,30 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
   // check for parking mode, only applicable to RangerMiniV2
   if (parking_mode_ && robot_type_ == RangerSubType::kRangerMiniV2) {
     return;
-  } else if (msg->linear.y != 0) {
+  }
+
+  uint8_t command_mode = MotionState::MOTION_MODE_DUAL_ACKERMAN;
+  if (msg->linear.y != 0) {
     if (msg->linear.x == 0.0 && robot_type_ == RangerSubType::kRangerMiniV1) {
-      motion_mode_ = MotionState::MOTION_MODE_SIDE_SLIP;
+      command_mode = MotionState::MOTION_MODE_SIDE_SLIP;
       robot_->SetMotionMode(MotionState::MOTION_MODE_SIDE_SLIP);
     } else {
-      motion_mode_ = MotionState::MOTION_MODE_PARALLEL;
+      command_mode = MotionState::MOTION_MODE_PARALLEL;
       robot_->SetMotionMode(MotionState::MOTION_MODE_PARALLEL);
     }
   } else {
     steer_cmd = CalculateSteeringAngle(*msg, radius);
     // Use minimum turn radius to switch between dual ackerman and spinning mode
     if (radius < robot_params_.min_turn_radius) {
-      motion_mode_ = MotionState::MOTION_MODE_SPINNING;
+      command_mode = MotionState::MOTION_MODE_SPINNING;
       robot_->SetMotionMode(MotionState::MOTION_MODE_SPINNING);
     } else {
-      motion_mode_ = MotionState::MOTION_MODE_DUAL_ACKERMAN;
+      command_mode = MotionState::MOTION_MODE_DUAL_ACKERMAN;
       robot_->SetMotionMode(MotionState::MOTION_MODE_DUAL_ACKERMAN);
     }
   }
   // send motion command to robot
-  switch (motion_mode_) {
+  switch (command_mode) {
     case MotionState::MOTION_MODE_DUAL_ACKERMAN: {
       if (steer_cmd > robot_params_.max_steer_angle_ackermann) {
         steer_cmd = robot_params_.max_steer_angle_ackermann;
@@ -475,33 +523,11 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
       break;
     }
     case MotionState::MOTION_MODE_PARALLEL: {
-      steer_cmd = atan(msg->linear.y / msg->linear.x);
-
-      static double last_nonzero_x = 1.0; 
-      
-      if (msg->linear.x != 0.0) {
-          last_nonzero_x = msg->linear.x; 
-      }
-
-      if (std::signbit(msg->linear.x))
-      {
-        steer_cmd = -steer_cmd;
-      }
-      
-      double vel = 1.0;
-      
-      if (msg->linear.x == 0.0 && msg->linear.y != 0.0) {
-          // std::cout << "MOTION_MODE_SIDE_SLIP" << std::endl;
-          
-          if (std::signbit(last_nonzero_x)) {
-              steer_cmd = -std::abs(steer_cmd); 
-          } else {
-              steer_cmd = std::abs(steer_cmd);
-          }
-          vel = msg->linear.y >= 0 ? 1.0 : -1.0;
-      } else {
-          vel = msg->linear.x >= 0 ? 1.0 : -1.0;
-      }
+      // HH_260731 - atan(y/x) plus last_nonzero_x produced the wrong vector in
+      // rear quadrants and made pure crab direction depend on command history.
+      const auto parallel = ResolveParallelMotionCommand(
+        msg->linear.x, msg->linear.y);
+      steer_cmd = parallel.steering_angle_rad;
       // HH_260729 - Resolve the final parallel-steering sign before limiting.
       // Limiting first allowed the later sign flip to bypass the configured
       // wheel-angle slew rate during longitudinal/lateral transitions.
@@ -520,8 +546,7 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
         steering_transition_stop_error_rad_,
         steering_transition_min_velocity_scale_);
       robot_->SetMotionCommand(
-        vel * sqrt(msg->linear.x * msg->linear.x + msg->linear.y * msg->linear.y) *
-        velocity_scale,
+        parallel.signed_speed * velocity_scale,
         steer_cmd);
       if (velocity_scale < 0.999) {
         RCLCPP_INFO_THROTTLE(

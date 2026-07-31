@@ -98,7 +98,9 @@
     # =========================================================================
     # 5. WHEEL ODOMETRY INPUT (odom0)
     # =========================================================================
-    # HH_260720 - One explicit standard wheel boundary provides vx, vy=0, and yaw rate.
+    # HH_260731 - Field rollback: fuse Ranger vx/vy/yaw-rate together with IMU.
+    # The driver now publishes measured, non-zero velocity covariance, so wheel
+    # yaw-rate assists DR without being treated as mathematically exact.
     odom0: /localization/input/wheel_odometry_ros
     odom0_config: [false, false, false,
                    false, false, false,

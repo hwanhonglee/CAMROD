@@ -110,7 +110,13 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   double steering_transition_full_speed_error_rad_;
   double steering_transition_stop_error_rad_;
   double steering_transition_min_velocity_scale_;
+  // HH_260731 - Never publish zero covariance for wheel velocity. A zero
+  // covariance is treated as near-perfect certainty by robot_localization.
+  double odom_linear_velocity_stddev_mps_;
+  double odom_angular_velocity_stddev_radps_;
 
+  // Feedback mode only. Command selection uses a callback-local value so a
+  // requested transition cannot make CAN feedback use the wrong kinematics.
   uint8_t motion_mode_ = 0;
   bool parking_mode_;
   bool steering_command_initialized_ = false;

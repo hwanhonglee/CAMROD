@@ -14,6 +14,17 @@ class EkfSensorInputTest(unittest.TestCase):
             with self.subTest(config_name=config_name):
                 self._assert_gnss_inputs(config_name)
 
+    def test_real_ranger_wheel_input_includes_measured_yaw_rate(self):
+        with (CONFIG_DIR / "ekf.yaml").open(encoding="utf-8") as stream:
+            parameters = yaml.safe_load(stream)["/**"]["ros__parameters"]
+
+        wheel_config = parameters["odom0_config"]
+        self.assertTrue(wheel_config[6])
+        self.assertTrue(wheel_config[7])
+        # HH_260731 - Field rollback: wheel yaw-rate assists IMU yaw-rate and
+        # carries non-zero driver covariance, so it is not fused as exact.
+        self.assertTrue(wheel_config[11])
+
     def _assert_gnss_inputs(self, config_name):
         with (CONFIG_DIR / config_name).open(encoding="utf-8") as stream:
             parameters = yaml.safe_load(stream)["/**"]["ros__parameters"]
