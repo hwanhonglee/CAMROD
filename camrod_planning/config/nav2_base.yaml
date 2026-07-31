@@ -375,16 +375,15 @@ controller_server:
       primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       angular_dist_threshold: 0.785
       forward_sampling_distance: 0.5
-      rotate_to_heading_angular_vel: 1.2
-      max_angular_accel: 3.0
+      # HH_260731 - Conservative heading transition for the outdoor recovery test.
+      # The final gate limits this to 0.20 rad/s.
+      rotate_to_heading_angular_vel: 0.4
+      max_angular_accel: 0.8
       simulate_ahead_time: 1.0
       rotate_to_goal_heading: True
-      # HH_260730: RotationShim creates a separate internal RPP instance under
-      # this namespace. Without explicit values it used the upstream 0.5 m/s
-      # and 0.6 m fixed-lookahead defaults, so manual goals ran at about
-      # 0.25 m/s after the final 0.5 gate scale and oscillated as steering lagged.
-      # Keep manual-goal tracking aligned with the field-tuned RPP profile.
-      desired_linear_vel: 1.4
+      # RotationShim owns a separate internal RPP; keep it identical to the
+      # regulated 0.4 m/s source (0.20 m/s after the final gate).
+      desired_linear_vel: 0.4
       lookahead_dist: 1.0
       min_lookahead_dist: 0.9
       max_lookahead_dist: 2.0
@@ -399,7 +398,7 @@ controller_server:
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: True
       regulated_linear_scaling_min_radius: 0.9
-      regulated_linear_scaling_min_speed: 0.5
+      regulated_linear_scaling_min_speed: 0.2
       use_cost_regulated_linear_velocity_scaling: True
       cost_scaling_dist: 0.6
       cost_scaling_gain: 1.0
