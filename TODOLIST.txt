@@ -1,533 +1,353 @@
-CAMROD v2.1.1 이후 실차 확인 목록
-작성일: 2026-07-29, v2.1.1 릴리스 갱신: 2026-07-30 (Asia/Seoul)
+CAMROD v2.1.1 이후 미완료 실차 확인 목록
+갱신일: 2026-07-31 (Asia/Seoul)
 
-범위
-- 이 파일에는 v2.1.1 코드/설정/문서 반영 후에도 실제 로봇에서 확인해야
-  하는 항목만 남긴다.
-- 실제 하드웨어 센서/CAN과 차체 이동은 실외 통제 구역에서만 실행한다.
-- 2026-07-30에는 실제 배포 진입점인 `bringup.launch.py sim:=true`로
-  goal/path/cmd_vel, planner, localization 지연, CPU를 실내 검증했다.
-- 빌드, 단위 테스트, launch/config 정적 회귀 테스트는 릴리스 전에 실행한다.
+# HH_260730 - 완료된 구현·원인 규명·단위/sim 검증은 DONE.txt로 분리했다.
+# 이 파일에는 아직 실제 로봇에서 실행하고 PASS/FAIL을 판정할 작업만 둔다.
+# HH_260731 - FIELD-PASS한 기존 TODO 1과 2는 DONE.txt로 이동했다.
+# 기존 번호는 DONE.txt와 field-test runbook 역참조를 위해 재번호화하지 않는다.
 
-내일(2026-07-31) 우선순위
-<!-- HH_260730 - Keep the next physical session short and evidence-driven.
-     v2.1.1 contains software/config changes but no completed drive acceptance. -->
-1) 통제된 직선 구간에서 `field_test_tool.sh pose-latency 60`과
-   `record-recovery`를 먼저 켠 뒤, 좌/우 lateral offset 각 1회만 저속 주행한다.
-   EKF/final pose 15 Hz, command-to-wheel 지연, centerline 교차 횟수를 기록한다.
-2) 같은 구간에서 radar 전체 ON과 `enable_radar:=false`를 각각 10분 비교한다.
-   ON에서는 LEFT2/RIGHT2 실제 range와 gate stop을 함께 저장하고, OFF에서는
-   7채널 DUMMY, radar evidence active 0회, radar cost stop 0회를 확인한다.
-3) 전방/후방 카메라와 YOLO를 5분 실행해 단일 publisher, decode 성공,
-   detection 발행, container 생존을 확인한다.
-4) 수동 근거리/원거리와 UI 근거리/원거리 goal을 각각 1회 실행한다.
-   manual x/y projection, clicked yaw 보존, UI lane heading, path/cmd_vel,
-   최종 도착 판정을 같은 bag으로 확인한다.
-5) 실제 스피커와 WebKit에서 `초기화 -> 준비 완료 -> goal/path 준비 ->
-   주행 -> 안전 정지/도착` 순서를 수동/UI 각각 확인한다.
-6) 위 항목이 모두 끝난 뒤에만 RViz/WebKit/window-off CPU 5분 비교를 한다.
-   실차 증거 없이 radar 예외 범위, GNSS 공분산, footprint threshold,
-   controller gain을 현장에서 즉시 바꾸지 않는다.
+문서 구분
+- 미완료 현장 시험과 합격 기준: TODOLIST.txt
+- 완료된 구현·진단·실내 검증과 수치: DONE.txt
+- 상세 실행 명령과 안전 절차:
+  camrod_bringup/docs/field_test_runbook.md
+- v2.1.1 변경 범위와 검증 한계: docs/V2_1_1_RELEASE_NOTES.md
+- v2.1.1은 software/config/sim 기준점이며 변경 후 전체 실차 주행
+  FIELD-PASS는 아직 없다.
 
-v2.1.1 릴리스 직전 확인
-- 6개 관련 패키지 build 완료, localization/planning/system/voice/bringup/UI
-  테스트 통과, package↔bringup config 139쌍 byte 동기화 완료.
-- production entry `bringup.launch.py sim:=true`에서 `SYSTEM OK`와
-  `system.startup -> system.ready` 실제 음성 이벤트를 확인하고 전체 종료했다.
-- 이 smoke test는 goal 주행이나 실차 센서/바퀴 합격을 의미하지 않는다.
+다음 실차 세션 우선순위
+1) 후방 카메라 raw가 10 Hz에 미달하는 원인과 CPU 포화 영향을 분리한다.
+2) bringup 재기동 뒤 dual-GNSS가 flags 131/311 Fixed를 재획득·유지하는지
+   확인하고 IMU startup의 port 0x13 오류 영향을 규명한다.
+3) REAR와 LEFT2 주변 물체를 완전히 치우고 LEFT2/RIGHT2까지 물리 채널을
+   활성화한 뒤 radar 7채널 clear-area 시험을 다시 수행한다.
+4) 개발용 VS Code/Brave와 다중 rate probe를 제외한 production CPU 기준을
+   RViz+WebKit, WebKit only, window off 순으로 비교한다.
+5) lanelet 내부에서 goal/planning, footprint, recovery, lateral/crab 주행을
+   recovery recorder와 함께 수행한다.
+6) 실제 스피커/WebKit에서 READY 이후 manual/UI 전체 상태 순서를 확인한다.
 
-[P0] 1. radar 비활성화 상태의 cost 완전 차단
-- 실행:
-  ros2 launch camrod_bringup bringup.launch.py enable_radar:=false
-- 확인:
-  1) sen0592_radar_node가 없어야 한다.
-  2) FRONT1/FRONT2/LEFT1/LEFT2/RIGHT1/RIGHT2/REAR가 모두 DUMMY DATA로
-     표시되어야 한다.
-  3) LEFT2는 0.801 m / max_range 0.800 m 형태의 no-target이어야 한다.
-  4) radar_cost_grid 로그가 7채널 dummy-state cost 차단을 표시해야 한다.
-  5) /sensing/radar/obstacle_evidence는 "clear"이어야 한다.
-  6) cmd_vel 정지 사유에 radar가 없어야 한다.
-- 합격 기준:
-  10분 동안 radar obstacle evidence active 및 radar 유래 cost stop 0회.
-
-[P0] 2. 전방 카메라 + YOLO component 실차 회귀
-- 배경:
-  기존 17:01/16:58 로그에서는 물리 전방 카메라와 손상된 1x1 dummy JPEG가
-  동시에 입력되어 YOLO compressed callback의 OpenCV 예외로 container가
-  SIGABRT(-6) 종료됐다.
-- 확인:
-  1) /dev/video0 물리 publisher는 정확히 1개여야 한다.
-  2) component 사용 중 front_camera dummy는 없어야 한다.
-  3) 전방 image_rect/compressed와 camera_info가 지속 발행되어야 한다.
-  4) /perception/camera/detections_2d가 발행되어야 한다.
-  5) 유효하지 않은 compressed frame을 별도로 주입해도 YOLO가 종료되지
-     않고 원인을 포함한 throttled WARN만 출력해야 한다.
-  6) component ProcMaps/ldd에서 OpenCV 4.8(/usr/local)과 4.5(system 또는
-     workspace vendor)가 동시에 로드되는 현재 ABI 혼재를 제거하거나
-     안전성을 입증한다. 물리 front NVJPEG 각 frame의 payload size와
-     decode 성공도 별도로 확인한다.
-- 합격 기준:
-  component container와 YOLO가 5분 이상 생존하고 SIGABRT/재시작 0회.
+공통 기록 및 안전 조건
+- 사람·차량·짐이 없는 통제된 평지에서 조작자와 물리 E-stop 담당자
+  2인으로 수행한다.
+- SOC, CAN, ESTOP, platform status, localization, map, LiDAR/radar 상태를
+  먼저 확인한다.
+- 시험을 위해 footprint/cost threshold를 낮추거나 raw cmd_vel을 직접
+  publish하지 않는다.
+- build/source/config 확인:
+  1) `<CAMROD_WS>/src/colcon_build.sh`
+  2) `source <CAMROD_WS>/install/setup.bash`
+  3) `ros2 run camrod_bringup field_test_tool.sh config`
+- 공통 터미널:
+  1) `ros2 run camrod_bringup field_test_tool.sh launch rviz:=true`
+  2) `ros2 run camrod_bringup field_test_tool.sh watch`
+  3) `ros2 run camrod_bringup field_test_tool.sh record-recovery <LOG_DIR>`
+- 각 시험 뒤 `<LOG_DIR>/FIELD_RESULT.txt`에 날짜, commit/tag, 환경,
+  측정값, PASS/FAIL과 bringup.log 경로를 기록한다.
+- 즉시 중단:
+  1) E-stop 또는 platform feedback가 비정상/stale.
+  2) 사람이 접근하거나 예상하지 않은 방향·속도로 이동.
+  3) command gate가 닫혔는데 허용되지 않은 nonzero 최종 cmd_vel이 지속.
+  4) 장애물 방향으로 route escape가 출력.
+  5) cost 100 접촉 뒤에도 위험 방향 명령이 차체로 전달.
 
 [P0] 3. 후방 카메라 실측 rate
 - 확인:
-  /dev/video1, /sensing/camera/econ_rear/image_raw,
-  /sensing/camera/econ_rear/image_raw/compressed, camera_info를 확인한다.
-- 합격 기준:
-  raw는 설정 10 Hz에 근접하고 compressed monitoring은 약 2 Hz.
-  낮은 FPS 경고는 "FPS low"로 나와야 하며 "Encoding mismatch"로
-  잘못 표시되면 안 된다.
+  `/dev/video1`, `/sensing/camera/econ_rear/image_raw`,
+  `/sensing/camera/econ_rear/image_raw/compressed`, camera_info의 publisher와
+  rate를 같은 시각으로 저장한다.
+- 합격:
+  raw가 설정 10 Hz에 근접하고 compressed monitoring은 약 2 Hz이며,
+  낮은 FPS가 `FPS low`로 진단되고 `Encoding mismatch`로 오진되지 않는다.
+- HH_260731 FIELD-FAIL:
+  low-overhead 120.827초 측정에서 raw 439 frame/3.633 Hz,
+  compressed 188 frame/1.556 Hz, camera_info 438 frame/3.625 Hz였다.
+  raw/compressed/info 최대 gap은 각각 0.717/1.263/0.721초였다.
+  실제 payload는 1920x1080 `bgr8`이고 compressed 크기는
+  284923~291016 byte여서 빈 frame 문제는 아니다.
+- 진단은 `FPS low`/`FPS critically low`로 올바르게 표시됐고
+  `Encoding mismatch` 오진은 없었다.
+- 남은 합격 조건:
+  개발 도구와 측정 subscriber 부하를 제거한 상태에서도 raw가 설정 10 Hz에
+  근접하도록 원인을 규명·수정하고 같은 low-overhead probe로 재측정한다.
+- 근거:
+  `/home/nvidia/camrod_field_logs/20260731_140639/rear_camera_low_overhead/summary.txt`
 
-[P0] 4. lanelet 전체 footprint 정지 원인 확인
-- 배경:
-  최신 17:01 radar-off 로그의 실제 정지는 radar가 아니라
-  lanelet_footprint_cost였고 17:04:21~17:06:03 사이 46회 발생했다.
-- 확인:
-  완전히 비어 있고 정상 route 내부인 위치에서 radar-off로 재현한다.
-  정지 순간의 localization pose, /platform/robot/planning_boundary,
-  /map/cost_grid/lanelet, map 원점/해상도/해당 cell을 함께 저장한다.
-- 합격 기준:
-  planning boundary 전체가 허용 corridor 안이면 주행 가능하고, 어느 한
-  점이라도 off-lane cost 100에 닿으면 계속 정지한다.
-- 주의:
-  좌표/맵 정렬 증거 없이 footprint guard나 threshold를 낮추지 않는다.
+[P0] 4. lanelet 전체 footprint 정지 판정
+- 실행:
+  비어 있고 정상 route 내부인 위치에서 radar-off로 주행한다.
+- 기록:
+  정지 순간 localization pose, `/platform/robot/planning_boundary`,
+  `/map/cost_grid/lanelet`, map 원점·해상도·접촉 cell과 gate reason.
+- 합격:
+  1) planning boundary 전체가 허용 corridor 안이면 주행한다.
+  2) boundary 어느 한 점이라도 off-lane cost 100에 닿으면 계속 정지한다.
+  3) 좌표·map 정렬 오류로 정상 corridor 안에서 거짓 정지하지 않는다.
+- 금지:
+  좌표 증거 없이 footprint guard 또는 threshold를 낮추지 않는다.
+- HH_260731 정지 상태 부분 확인:
+  현재 주차 위치는 lanelet 밖이었다. 실제 실행 파라미터에서 차체 경계는
+  `1.49160 x 1.07000 m`, planning margin은 사방 `0.10 m`, 최종 planning
+  boundary는 `1.69160 x 1.27000 m`로 Nav2와 safety gate에 동일하게
+  적용됐다.
+  base cell, planning boundary 4개 꼭짓점, 외곽선 54개 표본과 내부 33개
+  cell이 모두 cost 100이었다. 현재 위치를 off-lane으로 차단하는 정적 판정은
+  정상이나, 정상 route 내부 주행과 한쪽 접촉/지속 정지는 아직 미실시다.
+- 근거:
+  `/home/nvidia/camrod_field_logs/20260731_144047/boundary_live_params.txt`
+  `/home/nvidia/camrod_field_logs/20260731_144047/boundary_current_offlane_probe.txt`
 
-[P1] 5. radar 7채널 clear-area 및 장애물 분리 측정
+[P1] 5. radar 7채널 clear-area/장애물 분리
 - 모든 센서 주변을 완전히 비운 상태로 7채널을 동시에 15분 측정한다.
-- 기존 fixed_return_bands 안의 반복 chassis/floor return과 실제 장애물을
-  각 거리에서 분리해 기록한다.
-- LEFT2 0.365~0.382 m, RIGHT1 0.391~0.406 m, RIGHT2 0.362~0.369 m는
-  주변 장애물이 있던 환경의 값이므로 현재는 예외 처리하지 않는다.
-- 합격 기준:
-  새로운 exclusion은 완전한 clear-area에서 반복 재현된 좁은 대역만
-  검토하며, 동일 거리의 실제 장애물 가림 위험을 문서화한다.
+- 각 채널의 frame, mount 위치, raw range, accepted/rejected reason,
+  obstacle evidence와 gate stop을 저장한다.
+- 거리별 실제 시험 장애물을 한 채널씩 배치해 fixed-return band와
+  장애물 검출을 구분한다.
+- LEFT2 0.365~0.382 m, RIGHT1 0.391~0.406 m,
+  RIGHT2 0.362~0.369 m는 clutter 환경 값이므로 예외로 사용하지 않는다.
+- 합격:
+  새 exclusion은 완전한 clear-area에서 반복되는 좁은 대역만 후보로
+  삼고, 같은 거리의 실제 장애물을 가리는지 별도 검증한다.
+- HH_260731 PARTIAL:
+  이번 radar-ON 설정은
+  `sensor_enabled=[true,true,true,false,true,false,true]`여서
+  LEFT2와 RIGHT2가 DUMMY였다. 따라서 7채널 물리 시험이 아니다.
+- 사용자가 알린 대로 REAR와 LEFT2 주변에는 가까운 물체가 있었다.
+  LEFT2는 비활성이라 그 물체를 측정할 수 없었고, 물리 REAR는
+  0.096~0.107 m를 냈지만 기존 REAR fixed-return exclusion
+  0.090~0.190 m 안에 전부 들어가 cost에서 제거됐다.
+  이 값은 clear-area self echo로 확정할 수 없으며 실제 장애물 가림 위험을
+  별도로 재검증해야 한다.
+- 312.9초 raw DB 분석에서 FRONT1 0.132 m 3 frame,
+  RIGHT1 0.795~0.800 m 11 frame이 active evidence였다.
+  총 evidence 3127개 중 active 14개였고 대부분 1 frame transient였다.
+- 다음 시험 전제:
+  1) REAR와 LEFT2 주변 물체를 완전히 제거한다.
+  2) 실제 7채널 시험에서는 LEFT2/RIGHT2도 물리 활성화됐는지 startup
+     log로 확인한다.
+  3) 현재 fixed band 안과 밖에 시험 장애물을 따로 배치해 실제 장애물이
+     가려지지 않는지 확인한다.
+- 근거:
+  `/home/nvidia/camrod_field_logs/20260731_140639/radar_on/radar_on_bag/radar_on_bag_0.db3`
 
 [P1] 6. goal -> path -> cmd_vel -> 실주행 승인
-- 가까운 goal과 먼 goal을 각각 수동 RViz 및 UI에서 생성한다.
-- global path, local path, Nav2 원본 `/control/nav2_cmd_vel_ros`,
-  maneuver 원본 `/control/cmd_vel_raw`, 최종 `/control/cmd_vel`,
-  platform drive enable, engage 상태를 한 타임라인으로 저장한다.
-- 실내 sim 반영 상태 (2026-07-30):
-  1) 현재 active map은 빈 `map_profile`로 여는 stable
-     `lanelet2_maps.osm`이며 `copy_park_v1.0.3` snapshot과 동일하다.
-  2) 수동 근거리 역방향 yaw goal은 22 pose/4.042 m global path와 nonzero
-     `/control/nav2_cmd_vel_ros`(max L1 1.0446), 최종
-     `/control/cmd_vel`(max L1 0.5223)을 만들었다.
-  3) UI 근거리는 입력 위치를 0.0943 m, yaw를 5.202 deg로 snap한 뒤
-     22 pose/4.042 m path와 nonzero Nav2/final cmd_vel을 만들었다.
-  4) 수동 원거리 baseline은 clicked pose를 action goal로 그대로 내보냈지만
-     LaneletRoute의 안전 endpoint가 1.07 m 떨어져 있어 도착 판정 불일치가
-     확인됐다. 안전한 manual position projection 코드는 반영됐지만 새
-     4-case runtime 검증은 아직 필요하며, 재검증 전에는 최종 수동 도착
-     동작을 PASS로 보지 않는다.
-  5) UI 원거리는 위치를 약 1.07 m, heading을 -71.137 deg로 snap했고
-     249 pose/49.083 m path와 nonzero Nav2/final cmd_vel을 만들었다.
-  6) 네 case 모두 software gate를 `ENABLED`로 열었을 때 명령 생성까지
-     확인했지만 sim platform에서 논리 gate만 연 검증이며 차체는 움직이지 않았다.
-  7) `/control/cmd_vel_raw`는 캠핑장 maneuver 입력이므로 일반 Nav2 경로
-     주행에서 0인 것이 정상이다. 기존 점검 문구의 raw topic 혼동을 바로잡았다.
-- 합격 기준:
-  path와 cmd_vel이 지속 생성되고 장애물이 있는 동안은 latch 정지,
-  제거 후 설정된 clear window 뒤에만 해제된다.
+- 수동 RViz 근거리/원거리와 UI 근거리/원거리 goal을 각각 실행한다.
+- 같은 bag에 다음을 기록한다:
+  clicked/requested goal, snapped goal/source, global/local path,
+  `/control/nav2_cmd_vel_ros`, `/control/cmd_vel_raw`,
+  최종 `/control/cmd_vel`, engage/gate/platform status, arrival result.
+- 확인:
+  1) manual x/y는 도달 가능한 안전 endpoint를 사용하고 clicked yaw를
+     보존한다.
+  2) UI는 lane position/heading 운영 규칙을 사용한다.
+  3) 네 case 모두 path와 Nav2/final cmd_vel이 지속 생성된다.
+  4) 일반 Nav2 구간에서 campsite용 `/control/cmd_vel_raw`가 0인 것은
+     실패로 판정하지 않는다.
+  5) 장애물 동안 latch 정지하고 fresh clear window 뒤에만 해제된다.
+- 합격:
+  네 case 모두 새 runtime에서 경로 생성, 안전 gate, 실차 이동과 최종
+  도착 위치/yaw를 만족한다.
 
-[P1] 7. planning 경로 품질과 goal 정책
-- 수동 RViz goal은 어느 방향/위치에서도 planner 입력을 받아야 한다.
-- UI goal에는 lanelet snap, 접근 방향, 운영 규칙이 적용되어야 한다.
-- 장거리 ABORT와 구불구불한 경로를 planner별로 재현하고 변경 전/후
-  path length, curvature, abort reason을 비교한다.
-- 실내 sim 감사 결과 (2026-07-30):
-  <!-- HH_260730 - Replace stale v1.0.1/moved-map bottleneck evidence with
-       the active v1.0.3 stable-map measurement. -->
-  1) `lanelet2_maps.osm`의 명시적 start
-     `(-13.958, 43.540, 7.73 deg)`와 clicked goal
-     `(12.173, 20.458, 107.8 deg)`에 대해 NavFn, ThetaStar, SmacHybrid,
-     SmacLattice는 모두 0 pose ABORT였다. LaneletRoute는 약 19.6 ms에
-     249 pose/49.047 m 경로를 만들었다.
-  2) 2400x2400, 0.1 m raw global costmap에서 start는 cost 56,
-     traversable component 13247이었다. exact clicked goal은 cost 254로
-     주행 불가 cell이므로 같은 component에 포함되지 않았다. 현재 실패 원인은
-     이전 v1.0.1 맵의 0.860 m corridor cut이 아니라 이 off-corridor/lethal
-     exact goal이다.
-  3) LaneletRoute endpoint `(11.1604526307, 20.1120538289, 107.8 deg)`는
-     cost 186으로 start에서 도달 가능하다. 경로 총 회전량은 4.892 rad,
-     max path cost는 218이며 cost >=252 cell은 0개였다.
-  4) full footprint, padding, lethal/unknown cost 안전 규칙은 낮추지 않는다.
-     manual은 이 안전 endpoint와 action goal 위치를 일치시키면서 clicked yaw를
-     보존한다. 기존 baseline의 1.07 m 불일치에 대한 코드는 수정됐고
-     새 runtime 재측정이 대기 중이다.
-  5) UI는 별도 위치/heading 규칙을 유지한다. 같은 원거리 입력은 약 1.07 m
-     이동하고 heading -71.137 deg로 정규화돼 안전 endpoint를 사용했다.
-- 남은 실차 확인:
-  반영된 manual-safe-snap을 새 4-case로 검증한다. 이후 최종 기본값으로
-  가까운/먼 수동 goal과 UI goal을 각각 실차에서 재현하고 경로, 도착 yaw,
-  full-footprint 정지 위치를 rosbag으로 판정한다.
+[P1] 7. planning 경로 품질과 manual/UI goal 정책
+- 가까운/먼 goal에서 planner result, abort reason, path length,
+  max curvature, path cost와 full-footprint stop 위치를 비교한다.
+- 수동 goal은 방향과 관계없이 planner 입력을 받고 clicked yaw를
+  보존해야 한다.
+- UI goal에는 lanelet snap, 접근 방향과 운영 규칙이 적용되어야 한다.
+- exact clicked cell이 lethal/off-corridor이면 무조건 통과시키지 말고
+  도달 가능한 endpoint와 action goal이 일치해야 한다.
+- 합격:
+  1) 장거리 0-pose ABORT 또는 불필요한 구불구불 경로가 재발하지 않는다.
+  2) manual/UI 각각의 goal 정책과 도착 yaw가 의도대로 다르다.
+  3) full-footprint 안전 규칙을 낮추지 않고 모든 path cell이 안전하다.
 
 [P1] 8. full bringup CPU 프로파일
-- 실제 goal/path/cmd_vel 계산 상태에서 5분 이상 측정한다.
-- 프로세스별 CPU, 전체 CPU, GPU, RAM, cost-grid/topic rate, camera/YOLO
-  rate를 같은 시각으로 저장한다.
-- RViz, 경량 WebKit UI, UI window off를 각각 비교한다.
-- 합격 기준:
-  가장 큰 부하 프로세스와 절감 전/후 수치를 명시하고 센서/안전 topic
-  rate가 허용 범위 아래로 떨어지지 않아야 한다.
-- 실내 sim 측정/완화 (2026-07-30):
-  1) clean sim에서 `/planning/local_path`는 약 30.6~35.2 Hz, 평균
-     10.3 KB/약 155 pose였다. Python에서 한 path 역직렬화가 약 7.9 ms라
-     표시/감시 노드가 사용하지 않을 중간 frame까지 모두 해석했다.
-  2) 수정 전 누적 snapshot은 path_visualizer 19.7~21.3% core,
-     obstacle_replan_monitor 26.2~27.5% core였다.
-  3) latest-only raw depth-1 입력을 기존 2 Hz 표시/5 Hz 안전감시 주기에만
-     역직렬화하도록 바꿨다. 안전 threshold, lookahead, source path rate는
-     바꾸지 않았다. active path와 marker subscriber를 둔 20초 재측정에서
-     path_visualizer는 대략 9~11%, obstacle monitor는 19~20% core였고
-     marker 출력은 약 2.14 Hz였다.
-  4) 같은 창의 planner_server는 약 40~49% core로 여전히 가장 큰 ROS
-     planning 부하였다. 전체 시스템은 VS Code GPU/renderer가 각각
-     약 60% 이상 core를 사용해 개발 UI 영향도 컸다.
-  5) planning package의 coalescing/기하 동일성 테스트 48개가 모두 통과했다.
-- 남은 실차 확인:
-  카메라/YOLO/실센서를 포함한 5분 `bringup.launch.py`에서 RViz,
-  WebKit-only, UI-window-off 세 조건을 동일 goal/path/cmd_vel 상태로 비교한다.
+- 실제 goal/path/cmd_vel 계산 상태에서 아래 조건을 각각 5분 측정한다:
+  1) RViz + WebKit
+  2) WebKit only
+  3) local UI window off
+- 프로세스별/전체 CPU, GPU, RAM, cost-grid/topic rate, camera/YOLO rate를
+  같은 시각으로 저장한다.
+- 개발용 VS Code/중복 topic echo가 있으면 별도 표시하거나 종료 후
+  production runtime만 다시 측정한다.
+- 합격:
+  최대 부하 프로세스와 조건별 절감 수치를 명시하고 센서·안전 topic rate가
+  허용 범위 아래로 떨어지지 않는다.
+- HH_260731 PARTIAL/FAIL:
+  RViz+WebKit 정지 profile에서 8개 CPU core 평균 사용률은 99.26%였다.
+  GPU 평균 36.95%, RAM은 10.66/15.66 GB, CPU 평균 온도는 60.6도여서
+  병목은 메모리·열·GPU가 아니라 CPU다.
+- 8-core 전체 기준 주요 그룹은 planning/Nav2 13.96%,
+  독립 system diagnostics 13.56%, GNSS/IMU/LiDAR/Radar 13.15%,
+  RViz+WebKit+UI backend 5.67%였다.
+  profile용 15개 `ros2 topic hz`와 수집기는 약 7.73%를 추가했다.
+- 같은 구간의 front camera는 6.75 Hz, rear raw 2.92 Hz,
+  rear compressed 1.45 Hz, LiDAR filtered points 4.52 Hz로 저하됐다.
+  CPU 97%대에서 `controller_server`가 `pure virtual method called`,
+  exit -6 후 respawn한 기록도 있다.
+- 이 측정에는 VS Code, Claude/Codex, Brave와 다중 rate subscriber가
+  함께 있었고 실제 goal/global path도 없었다. production-only 세 조건
+  비교와 필수 node SIGABRT/restart 0회 확인이 남아 있다.
+- 근거:
+  `/home/nvidia/camrod_field_logs/20260731_142251`
+  `/home/nvidia/camrod_field_logs/20260731_140639/bringup.log`
 
-[P2] 9. voice 및 수동 engage 상태 시퀀스
-- 먼저 현재 voice 입력과 실제 발화 순서를 코드/rosbag으로 표로 만든다:
-  /service/state, /planning/nav_status, manual/mission engage, localization mode,
-  system/module health -> voice event -> 발화 문구.
-- "준비 완료"의 조건을 명시한다. 최소한 필요한 센서/TF/map/localization,
-  planning/action server, control gate, platform 상태가 준비되고 수동 또는 UI
-  goal을 안전하게 받을 수 있어야 한다.
-- 위 준비 조건 전에는 "drop-zone으로 복귀 중"이나 "preparing" 대신
-  "초기화 중"을 표시·발화한다. 준비 완료 후에만 1회 준비 완료를 알린다.
-- 수동 RViz goal + engage도 UI mission과 같은 상태 어휘와 순서
-  (goal 접수 -> 경로 준비 -> 주행 -> 장애물/경계 정지 -> 도착)를 사용한다.
-- 초기 부팅, 센서 지연, localization 재획득, manual goal, UI goal, 재engage
-  각각의 중복/역순/누락 발화를 회귀 테스트한다.
-- 합격 기준:
-  실제 이동 명령이나 유효 mission이 없는데 복귀/주행 음성이 먼저 나오지
-  않고, 준비되지 않은 상태를 "준비 완료"라고 말하지 않는다.
-- 소프트웨어 반영 상태 (2026-07-30, 실차 발화 확인 대기):
-  1) UI와 voice에 공통 의미의 `INITIALIZING -> READY -> GOAL_RECEIVED ->
-     PATH_PREPARING -> DRIVING -> SAFETY_STOP -> ARRIVED` 흐름을 추가했다.
-  2) 준비 완료는 map/sensing/localization/planning/control/platform/system
-     존재 및 ERROR/시작/FAULT 여부, NORMAL localization,
-     map->robot_base_link TF, Nav2 action server, 정상 gate/platform,
-     canonical planning engage를 함께 확인한다. 의도적으로 비활성화한 센서의
-     DUMMY/WARN은 degraded health로 계속 표시하되 초기화에 영구 고정하지
-     않는다. 필수 graph 누락은 grace 중 STARTING, 이후 FAULT/ERROR로 막는다.
-  3) startup 첫 이벤트는 `system.startup`이며 모든 조건이 처음 충족된 뒤에만
-     `system.ready`를 1회 발행한다. `WAIT_DZ`만으로 drop-zone 복귀 음성을
-     내지 않으며 generic WARN을 장애물로 오인하지 않는다.
-  4) 유효 goal + engage + gate ENABLED 뒤에만 이동 음성을 내므로 engage만
-     눌렀을 때 수동 주행으로 표시하지 않는다. 수동/UI source는 같은 상태
-     어휘를 사용한다.
-  5) UI policy 6개와 voice policy 12개 회귀 테스트가 통과했다. WARN/DUMMY는
-     degraded-ready, ERROR와 INACTIVE/UNCONFIGURED는 not-ready임을 포함한다.
-  6) v2.1.1 릴리스 smoke test에서 실제 배포 진입점이 `SYSTEM OK`에 도달했고
-     스피커 요청은 `system.startup` 뒤 모든 준비 조건 충족 시
-     `system.ready` 순서로 나왔다. manual/UI 전체 발화는 실차 확인 대상이다.
-- 남은 실차 확인:
-  실제 스피커/WebKit에서 초기 센서 지연, 수동 goal, UI goal, obstacle hold,
-  도착, 취소/재engage 순서를 녹음하고 중복·역순·잘못된 문구가 없는지 판정한다.
+[P2] 9. voice 및 manual/UI 상태 시퀀스
+- 실제 스피커와 WebKit에서 다음 시나리오를 각각 녹음·기록한다:
+  1) 초기 센서/TF/Nav2 지연 후 READY.
+  2) manual goal + engage.
+  3) UI mission goal + engage.
+  4) obstacle/lane boundary hold와 clear.
+  5) arrival, cancel, re-engage.
+- 기대 순서:
+  `INITIALIZING -> READY -> GOAL_RECEIVED -> PATH_PREPARING -> DRIVING
+  -> SAFETY_STOP -> ARRIVED`
+  (cancel/recovery는 실제 이벤트에 맞는 명시 상태 사용).
+- 합격:
+  준비 전 READY/복귀/주행 음성이 없고, 유효 goal 없이 DRIVING이 없으며,
+  manual/UI 모두 중복·역순·누락·잘못된 문구 없이 같은 상태 의미를 쓴다.
+- HH_260731 PARTIAL:
+  radar-off 재기동 240초 capture에서 voice request는 36.052초의
+  `system.startup` 1회뿐이었다. `system.ready`, drop-zone 복귀,
+  driving 음성의 조기·오발행은 없었다.
+- 다만 READY 조건에 도달하지 않았고 실제 스피커 청취, manual/UI goal,
+  obstacle hold, arrival/cancel 시퀀스는 수행하지 않았으므로 유지한다.
+- 근거:
+  `/home/nvidia/camrod_field_logs/20260731_radar_off/voice_state_startup_retry.txt`
+- HH_260731 17:44 FIELD-FAIL:
+  실외 bringup에서 goal/path와 `ROUTE_SAFETY_HOLD`까지 진행됐지만 UI/voice
+  상태가 계속 `INITIALIZING`에 머물렀다. LEFT2/RIGHT2의 의도적
+  DUMMY/WARN을 READY 차단 조건으로 잘못 해석하는지, 아니면 localization
+  NORMAL·map TF·Nav2 action server·platform mode·canonical engage 중 어떤
+  readiness 조건이 미충족인지 상태 토픽과 최초 차단 사유를 함께 기록한다.
+  DUMMY 센서 두 개만으로 INITIALIZING을 영구 유지해서는 안 된다.
 
-[P2] 10. GNSS/IMU 물리 포트 최종 확인
-- 이번 변경에는 GNSS/IMU 포트 YAML 변경이 없었다.
-- 실제 장착 상태에서 /dev/serial/by-id, /dev/ttyACM0, IMU device ownership,
-  baud, 단일 publisher를 다시 확인하고 field snapshot에 남긴다.
+[P1] 10. GNSS/IMU 재기동 안정성과 dual-GNSS Fixed 유지
+- HH_260731 부분 통과:
+  GNSS rover는 `/dev/ttyACM0`, MicroStrain IMU는 장치 by-id를 통해
+  `/dev/ttyACM1`, moving-base RTCM writer는 FTDI DN03DF8V by-id를 통해
+  `/dev/ttyUSB0`를 사용했다. GNSS와 IMU publisher는 각각 1개였다.
+- 남은 문제:
+  1) bringup 재기동 뒤 120.807초 동안 NAV-PVT는 flags 67이 121/121,
+     NAV-RELPOSNED는 flags 303이 111/121, flags 11이 10/121이었다.
+     RTCM은 6.490 Hz이고 hAcc는 14~19 mm였지만 carrier Fixed
+     flags 131/311에 도달하지 못했다.
+  2) IMU는 `set_baud=false`, 115200, 약 99.9 Hz로 정상 발행했지만 startup
+     log에 `Failed to set baudrate for port 0X13 / Error(3): Invalid
+     Parameter`가 1회 있었다. 지원하지 않는 내부/auxiliary port 설정인지
+     실제 설정 실패인지 규명해야 한다.
+- 합격:
+  bringup 재기동 뒤 NAV-PVT 131과 NAV-RELPOSNED 311을 재획득하고
+  10분 동안 flags 11/float 재발 없이 유지한다. NTRIP/RTCM owner는 각각
+  하나여야 하며 IMU startup 설정 ERROR의 영향도 명확히 판정한다.
+- 근거:
+  `/home/nvidia/camrod_field_logs/20260731_144047/gnss/quality_120s.txt`
+  `/home/nvidia/camrod_field_logs/20260731_144047/bringup.log`
 
-실차 TODO 11-13 공통 실행 절차
-- 기존 로그 사용 범위:
-  1) v2.1.0 문서가 참조한 Orin 실차 로그 두 건은 수정 전 원인 확인 자료다.
-     lanelet footprint 정지 46회와 camera/radar 상태는 확인할 수 있지만,
-     이번에 추가한 ROUTE_SAFETY_HOLD/goal recovery/steering scale은 포함하지 않는다.
-  2) 현재 개발 머신의 /tmp simulation 로그는 새 노드와 파라미터의 정상 기동
-     자료일 뿐 실제 경계 이탈이나 바퀴 조향 지연 합격 자료가 아니다.
-  3) 따라서 TODO 11-13 PASS에는 아래 record-recovery로 만든 수정 후 실차
-     rosbag과 FIELD_RESULT.txt가 반드시 필요하다. 기존 로그만으로 PASS 처리하지 않는다.
-- 각 작업이 의미하는 것:
-  1) build:
-     source 수정만 있고 install 바이너리가 이전 버전인 상태를 막는다. 실차는
-     source 파일이 아니라 install 아래의 실행 파일/설정을 사용한다.
-  2) config sync:
-     package 기본값, bringup 배포값, install 복사본 중 어떤 파일을 읽었는지에
-     따라 로봇 동작이 달라지는 문제를 막는다.
-  3) bringup.log:
-     노드 시작/종료, `ROUTE_SAFETY_HOLD`, Ranger target/limited/scale 같은
-     이벤트의 이유와 순서를 사람이 읽을 수 있게 보존한다.
-  4) watch:
-     시험 중 system/localization/planning/gate 상태를 즉시 보고 위험하거나
-     전제조건이 깨지면 rosbag 분석까지 기다리지 않고 중단하기 위한 화면이다.
-  5) record-recovery rosbag:
-     pose, goal, action status, footprint, cost grid, raw/final cmd_vel, 실제
-     wheel feedback을 같은 ROS 시간축에 저장한다. 어느 계층에서 지연되거나
-     명령이 차단됐는지를 나중에 수치로 판정할 수 있다.
-  6) 경계 접촉:
-     단순히 멈추는지만 보는 것이 아니라 최초 정지 원인과 진행 방향을 복구
-     완료까지 잃지 않는지 증명한다.
-  7) same/zero/rotation 차단:
-     Nav2가 정지 뒤 다른 모양의 명령을 내더라도 그 명령이 최초 위험 방향을
-     덮어써 거짓 clear를 만들지 못하는지 증명한다.
-  8) 후방 장애물 + opposite escape:
-     차선 경계에서 빠져나오는 특별 허용이 LiDAR/radar/ESTOP/CAN 보호까지
-     우회하지 않는지 증명한다.
-  9) 1.0초 continuous clear:
-     localization 또는 grid 한 프레임의 순간적인 흔들림만으로 로봇이 다시
-     출발하지 않는지 증명한다.
-  10) 동일 goal 재발행:
-      안전 위치로 복귀한 뒤 사용자가 campsite를 다시 고르지 않아도 기존
-      임무가 이어지는지, 동시에 무한 재시도가 없는지 증명한다.
-  11) operator cancel:
-      자동 복구보다 사람의 중지 의사가 항상 우선하는지 증명한다.
-  12) 왼쪽/오른쪽 정렬:
-      한쪽 부호에서만 우연히 성공하는 조향 계산이 아닌지 확인한다.
-  13) steering target/limited/scale:
-      상위 명령이 바뀌었지만 실제 바퀴가 이전 방향에 남은 동안 속도를 줄이는
-      TODO 13 완화가 실제 CAN 바퀴 응답에서도 작동하는지 증명한다.
-  14) snapshot + FIELD_RESULT:
-      실패 당시 전체 시스템 상태와 현장 조건을 남겨 다음 수정이 추측이 아닌
-      측정값에 근거하도록 한다.
-  15) commit/push:
-      구현·설정·절차를 동일 commit으로 재현할 수 있게 보존한다. commit/push
-      성공은 소프트웨어 배포 완료를 뜻하며 실차 PASS를 대신하지 않는다.
-- 안전 준비:
-  1) 사람/차량/짐이 없는 통제된 평지에서만 수행한다.
-  2) 조작자 외에 물리 E-stop을 잡은 안전 담당자 1명을 둔다.
-  3) SOC 35% 이상, 충전 분리, CAN/ESTOP/localization/map/LiDAR/radar 정상,
-     저속 수동 조작 가능 상태를 먼저 확인한다.
-  4) 실제 캠핑 이용객이 있는 구역이나 낭떠러지/연석 주변에서는 경계 접촉
-     테스트를 하지 않는다.
-  5) raw cmd_vel 직접 publish 또는 테스트를 위한 footprint/cost threshold
-     완화는 금지한다. UI나 현장에서 승인된 저속 수동 조작 경로만 사용한다.
-- 빌드/설정 확인:
-  1) `<CAMROD_WS>/src`에서 `./colcon_build.sh`를 실행한다.
-  2) `source <CAMROD_WS>/install/setup.bash`를 실행한다.
-  3) `ros2 run camrod_bringup field_test_tool.sh config`가
-     `config sync OK`인지 확인한다.
-- 터미널 구성:
-  1) 터미널 A:
-     `ros2 run camrod_bringup field_test_tool.sh launch rviz:=true`
-     출력된 bringup.log 경로를 기록한다.
-  2) 터미널 B:
-     `ros2 run camrod_bringup field_test_tool.sh watch`
-  3) 터미널 C:
-     `LOG_DIR=$HOME/camrod_field_logs/$(date +%Y%m%d_%H%M%S)_todo11_13`
-     `ros2 run camrod_bringup field_test_tool.sh record-recovery "$LOG_DIR"`
-     이 명령은 rosbag, git/config/활성 파라미터, 누락 토픽 목록,
-     FIELD_RESULT.txt를 한 디렉터리에 저장한다. 모든 시험이 끝난 뒤에만
-     Ctrl+C로 recorder를 종료한다.
-- 즉시 중단 조건:
-  1) 물리 E-stop이 듣지 않거나 `/platform/status`가 stale/error인 경우.
-  2) 사람이 접근하거나 예상하지 않은 방향/속도로 움직이는 경우.
-  3) `/control/command_enabled=false`인데 `/control/cmd_vel_ros`에 0이 아닌
-     명령이 지속되는 경우. 단, 아래 TODO 12의 검증된 opposite escape
-     구간은 `ROUTE_SAFETY_HOLD` 상태에서 의도적으로 허용될 수 있다.
-  4) LiDAR/radar 후방 장애물이 있는데 opposite escape가 출력되는 경우.
-  5) cost 100 접촉 뒤에도 같은 방향 명령이 차체로 전달되는 경우.
-- 종료:
-  1) `ros2 run camrod_bringup field_test_tool.sh stop-gates`
-  2) `ros2 run camrod_bringup field_test_tool.sh snapshot "$LOG_DIR/post"`
-  3) `$LOG_DIR/FIELD_RESULT.txt`의 모든 YES/NO, 시간, PASS/FAIL을 작성하고
-     bringup.log 경로를 연결한다.
+[P0] 11. lanelet 이탈 후 scenario 자동 회복
+- 실행:
+  1) 정상 lanelet 안에서 UI mission을 시작한다.
+  2) 통제된 경계에 최저속 접근해 footprint 한쪽만 cost 100에 닿게 한다.
+  3) `command_enabled=false`, 최종 cmd_vel 0,
+     `operating_state=ROUTE_SAFETY_HOLD`와 최초 trigger 방향을 확인한다.
+  4) 같은 방향/zero/rotation 입력이 hold와 최초 trigger를 지우지 않는지
+     확인한다.
+  5) TODO 12의 안전한 reverse 또는 boundary 반대쪽 crab 후보로 corridor
+     안에 복귀한다.
+  6) fresh pose/grid/full-footprint의 `route_clear_s`가 1.0초 연속 증가한
+     뒤에만 hold가 해제되는지 확인한다.
+  7) hold 중 Nav2가 ABORTED였다면 gate ENABLED 0.5초 뒤 같은 snapped
+     goal/source가 재발행되는지 확인한다. 같은 goal에서 최대 2회다.
+- 합격:
+  node restart나 mission 재선택 없이 동일 mission이 제한된 재계획으로
+  이어지고, 경계 접촉 또는 stale evidence 중에는 정지가 유지된다.
 
-[P0] 11. lanelet 밖으로 이탈 후 시나리오 자동 회복
-- 쉬운 설명:
-  로봇이 차선 경계를 밟으면 기존에는 브레이크만 잡고 "왜 멈췄는지"와
-  "어느 방향으로 가다가 멈췄는지"를 복구 과정이 끝날 때까지 보존하지
-  못했다. 이제 최초 진행 방향을 기억하고 ROUTE_SAFETY_HOLD를 표시한다.
-  로봇 전체가 다시 안전한 차선 안에 들어왔다는 최신 증거가 1초 동안
-  유지되어야 정지를 풀며, Nav2가 그 사이 ABORTED됐으면 원래 목적지를
-  최대 2회까지만 다시 요청한다.
-- 코드/설정/테스트 기록:
-  - 보존 상태 정책: camrod_control/include/camrod_control/route_safety_recovery.hpp
-  - lanelet 재확인: camrod_control/src/motion_cost_stop.cpp
-  - 상태/command_enabled: camrod_control/src/cmd_vel_safety_gate_node.cpp
-  - 동일 goal 재발행: camrod_planning/src/goal_snapper_node.cpp
-  - 설정: cmd_vel_safety_gate.yaml, goal_snapper.yaml의 package/bringup 양쪽
-  - 테스트: test_control_policies.cpp, test_route_goal_recovery.cpp
-- 소프트웨어 반영 상태 (2026-07-29, post-v2.1.0, 실차 판정 대기):
-  1) cmd_vel gate가 최초 lanelet 위반 방향/원인을 보존하고
-     /control/command_enabled=false,
-     /control/cmd_vel_safety_gate/status=ROUTE_SAFETY_HOLD를 발행한다.
-  2) 원래 진행 방향의 fresh lanelet grid/pose/full-footprint가 1.0초 동안
-     연속 clear일 때만 hold를 해제한다. stale/missing/frame mismatch는 clear로
-     인정하지 않는다.
-  3) Nav2가 이 hold 중 ABORTED인 경우에만 gate ENABLED 0.5초 후 동일 snapped
-     goal/source를 재발행한다. goal당 최대 2회이며 일반 planning 실패나
-     operator cancel은 자동 재시작하지 않는다.
-  4) 정책 단위 테스트와 패키지 빌드는 통과했다. 아래 실차 타임라인 및
-     제한시간 합격 기준은 아직 수행하지 않았으므로 이 항목은 완료가 아니다.
-- 실차에서 지금 할 일:
-  1) 정상 lanelet 안에서 UI campsite mission을 시작하고 goal/source와
-     정상 주행 상태를 recorder에 남긴다.
-  2) 통제된 경계에서 최저속으로 접근해 planning boundary 한쪽이 cost 100에
-     닿게 한다. 위치 오차를 인위적으로 바꾸거나 cost threshold를 낮추지 않는다.
-  3) 즉시 `/control/command_enabled=false`,
-     `operating_state=ROUTE_SAFETY_HOLD`, `/control/cmd_vel_ros=0`인지 확인한다.
-     status의 trigger reason과 최초 x/y 진행 방향을 FIELD_RESULT.txt에 적는다.
-  4) 차체를 경계 상태에 잠시 유지한다. 같은 방향/zero/rotation 입력으로
-     hold가 해제되거나 최초 trigger가 바뀌면 FAIL이다.
-  5) TODO 12 절차로 차체를 정상 corridor 안에 복귀시킨 뒤 status의
-     `route_clear_s`가 끊기지 않고 1.0초까지 증가하는지 확인한다.
-  6) Nav2가 hold 중 ABORTED였다면 gate가 ENABLED가 된 뒤 최소 0.5초 후
-     기존 `/planning/goal_pose_snapped`와 `/planning/goal_source`가 그대로
-     재발행되는지 확인한다. campsite 재선택이나 노드 재시작은 하지 않는다.
-  7) 같은 goal에서 자동 재발행이 2회를 넘으면 FAIL이다. ABORTED가
-     없었다면 재발행이 없어도 정상이며 FIELD_RESULT에 N/A로 적는다.
-- 재현:
-  진행 중인 UI mission에서 robot footprint가 lanelet 밖으로 나가 planning/
-  gate가 정지한 뒤, 로봇을 다시 유효 lanelet 내부로 이동시킨다.
-- 현재 문제:
-  lanelet 내부로 복귀해도 기존 ABORT/hold/state가 남아 시나리오 진행이
-  자동으로 회복되지 않는다.
-- 조사:
-  이탈 전후의 /service/state, Nav2 action status, global/local path,
-  replanner/obstacle monitor, manual/mission engage, command gate latch,
-  localization pose와 lanelet match를 같은 타임라인으로 저장한다.
-  어떤 state가 ABORT/WAIT/HOLD에 고정되는지 코드에서 owner를 찾는다.
-- 기대 동작:
-  footprint가 유효 corridor 안으로 돌아오고 pose/grid/path가 fresh하면
-  기존 mission goal을 잃지 않은 채 제한된 재계획을 요청하고 시나리오를
-  재개한다. 여전히 경계에 닿아 있으면 정지는 유지한다.
-- 합격 기준:
-  노드 재시작이나 mission 재선택 없이 lanelet 재진입 후 정해진 clear/
-  replan 시간 안에 동일 시나리오가 이어진다.
+[P0] 12. reverse/crab escape 후 재시작/re-engage
+- TODO 11의 ROUTE_SAFETY_HOLD 상태에서 수행한다.
+- 실행:
+  1) zero, 제자리 회전, 최초 진행 방향과 같은 방향을 요청하고 최종
+     cmd_vel이 모두 0인지 확인한다.
+  2) 후방 감지 범위에 시험 장애물을 놓고 opposite 명령이 LiDAR/radar/
+     dynamic latch로 차단되는지 확인한다.
+  3) 장애물을 치운 뒤 같은 opposite 명령을 요청한다. 0.25 m 예상 full
+     footprint가 lanelet 내부일 때만 저속 escape가 허용되어야 한다.
+  4) 전진 중 footprint의 왼쪽만 cost 100에 닿은 경우 pure right crab,
+     오른쪽만 닿은 경우 pure left crab을 각각 요청한다. 경계 반대쪽 후보만
+     projected full-footprint 검사를 통과하고 경계 쪽 후보는 0이어야 한다.
+  5) corridor 복귀 뒤 수동 입력을 0으로 하고 TODO 11의 continuous clear와
+     필요 시 bounded goal reissue를 확인한다.
+  6) auto reissue가 없으면 기존 goal을 다시 선택하지 않고 첫 explicit
+     re-engage 한 번으로 path/cmd_vel이 생성되는지 확인한다.
+  7) 별도 반복에서 hold 중 UI cancel 후 5초 동안 goal/path/nonzero
+     cmd_vel이 자동 재생성되지 않는지 확인한다.
+- 구현 경계:
+  gate는 받은 reverse/crab 후보를 검증할 뿐 스스로 cmd_vel을 만들지 않는다.
+  Nav2 forward stop 뒤 자동 crab을 요구한다면 별도 recovery owner가 접촉
+  방향, 최대 0.10 m/s, 이동거리/시간 상한, operator cancel을 소유하도록
+  구현하고 위 시험 전에 단위/sim 검증해야 한다.
+- HH_260731 17:44 FIELD-FAIL:
+  실제 planning boundary가 lanelet cost 100에 닿자
+  `trigger=lanelet_footprint_cost`, `projected_recovery_candidate_only=true`로
+  정지 상태는 정상 유지됐지만, upstream에서 reverse/crab 후보를 발행하는
+  주체가 없어 자동 crab은 전혀 생성되지 않았다. 다음 작업에서는 최종
+  command owner 한 곳에서만 경계 반대쪽을 계산하고, 유일하게 안전한
+  방향일 때만 저속 crab을 생성해야 한다. 양쪽 모두 clear/blocked이면
+  추측하지 말고 0을 유지하며, radar/LiDAR·fresh pose/grid·CAN mode·
+  engage/e-stop·최대 이동거리/시간·cancel 조건을 모두 통과해야 한다.
+- 합격:
+  projected full-footprint와 모든 obstacle/interlock을 통과한 reverse/crab
+  escape만 허용되고, corridor 복귀 후 첫 re-engage에서 stale latch/ABORT
+  없이 동일 mission의 path와 cmd_vel이 다시 생성된다.
 
-[P0] 12. 후진 복귀 후 재시작/재engage 회복
-- 쉬운 설명:
-  경계를 이미 밟은 상태에서는 "현재 차체가 경계에 있다"는 같은 검사에
-  후진도 막혀 안전한 곳으로 빠져나오지 못할 수 있었다. 이제 최초 진행
-  방향의 반대쪽으로 빠져나가는 명령만 복구 후보로 본다. 단순히 후진이면
-  허용하는 것이 아니라 0.25 m 뒤의 로봇 전체 모양이 차선 안인지, 뒤쪽에
-  LiDAR/radar 장애물이 없는지, ESTOP/CAN/충전 조건이 정상인지 모두 확인한
-  뒤에만 움직인다. 사용자가 취소하면 자동으로 다시 출발하지 않는다.
-- 코드/설정/테스트 기록:
-  - 반대 방향 판정: camrod_control/include/camrod_control/route_safety_recovery.hpp
-  - 예상 footprint/장애물 판정: camrod_control/src/motion_cost_stop.cpp
-  - 취소/재engage 처리: camrod_control/src/cmd_vel_safety_gate_node.cpp
-  - 복구 재발행 제한: camrod_planning/include/camrod_planning/route_goal_recovery.hpp
-  - 테스트: projected footprint clear/blocked, stale pose/grid, 후방 장애물,
-    cancel/일반 실패/재시도 상한
-- 소프트웨어 반영 상태 (2026-07-29, post-v2.1.0, 실차 판정 대기):
-  1) 저장된 위반 진행 벡터와 cosine <= -0.5인 반대 병진 명령만 escape
-     후보가 된다. zero/rotation/횡방향 변경 명령은 기존 위반 방향을
-     덮어쓰거나 hold를 clear하지 못한다.
-  2) 현재 footprint가 경계 cost에 닿아 있어도 0.25 m 뒤의 예측 full
-     footprint 전체가 정상 lanelet이어야 escape를 허용한다. LiDAR/radar/
-     merged obstacle, dynamic latch, stale grid, engage/CAN/ESTOP/charging
-     interlock은 그대로 적용된다.
-  3) 안전 corridor 복귀 뒤 첫 explicit re-engage 또는 자동 route recovery가
-     같은 mission goal을 사용하도록 bounded reissue 정책을 추가했다.
-  4) 예상 footprint clear/blocked 및 후방 dynamic obstacle 차단 회귀 테스트는
-     통과했다. 실제 차체의 첫 후진/재engage는 아직 합격 판정 전이다.
-- 실차에서 지금 할 일:
-  1) TODO 11의 ROUTE_SAFETY_HOLD 상태에서 승인된 수동 조작기로 zero,
-     제자리 회전, 최초 진행 방향과 같은 방향을 각각 요청한다. 최종
-     `/control/cmd_vel_ros`는 모두 0이어야 한다.
-  2) 차체가 정지한 상태에서 후방 감지 범위에 안전한 시험 장애물을 놓고
-     최초 진행 방향의 반대쪽 저속 이동을 요청한다. radar/LiDAR 또는
-     dynamic latch 사유와 함께 최종 명령이 0이면 PASS다. 장애물 방향으로
-     실제 차체를 움직여 시험하지 않는다.
-  3) 장애물을 치우고 센서 clear를 확인한 뒤 같은 opposite 명령을 요청한다.
-     0.25 m 예상 full footprint가 lanelet 안일 때만 저속 이동해야 한다.
-  4) 차체 전체가 정상 corridor 안에 들어오면 수동 입력을 0으로 만들고
-     TODO 11의 1.0초 continuous clear와 필요 시 동일-goal reissue를 확인한다.
-  5) 자동 reissue가 없었던 경우 기존 goal을 다시 선택하지 말고 첫 explicit
-     re-engage 한 번으로 global/local path와 cmd_vel이 생성되는지 확인한다.
-  6) 별도 반복에서 ROUTE_SAFETY_HOLD 중 UI 취소를 누른다. 5초 동안 goal,
-     path, nonzero cmd_vel이 자동 재생성되지 않아야 한다.
-- 재현:
-  전진 중 boundary/경로 문제로 정지한 뒤 수동으로 후진해 안전한 lanelet
-  내부로 복귀하고 동일 goal에서 다시 engage한다.
-- 현재 문제:
-  위치를 복구해도 이전 stop latch, Nav2 ABORT, route state 또는 engage
-  edge가 남아 다시 출발하지 못하거나 잘못된 시나리오 단계로 간다.
-- 조사:
-  후진 시작/종료 시 mission goal 보존 여부, gate의 저장된 trigger 방향,
-  clear evidence freshness, Nav2 cancel/result, replanner reset 조건,
-  manual/mission engage 상승 edge를 확인한다.
-- 기대 동작:
-  후진 중에도 실제 장애물/footprint 경계 보호는 유지한다. 안전 corridor
-  복귀 후에는 이전 정지 원인을 명시적으로 clear/revalidate하고, 동일
-  mission을 재계획하여 재engage할 수 있어야 한다.
-- 합격 기준:
-  안전 위치로 후진한 뒤 첫 재engage에서 stale latch/ABORT 없이 경로와
-  cmd_vel이 다시 생성된다.
+[P0] 13. 중심선 횡방향 정렬 overshoot/제어 지연
+- 충분히 넓은 직선 lanelet에서 yaw 오차는 작게 유지하고 중심선 좌측과
+  우측 작은 lateral offset에서 각각 별도 run을 수행한다.
+- `field_test_tool.sh pose-latency 60`과 recovery recorder를 함께 실행한다.
+- 기록:
+  GNSS/IMU/EKF/final pose stamp와 rate, centerline pose/yaw,
+  controller input/output, raw/Nav2/final cmd_vel, gate state,
+  `/actuator_state`, `/platform/status/wheel`, steering target/limited/scale.
+- HH_260731 - `pose-latency` JSON의 GNSS->EKF/final XY/yaw p50/p95/max,
+  각 pose의 unwrapped yaw change/span, wheel crab sample 수와 IMU/CAN
+  angular.z도 함께 보존한다.
+- 확인:
+  1) real EKF/final pose가 목표 15 Hz를 유지하는지 확인한다.
+  2) pose->controller->gate->wheel 구간별 지연을 분리한다.
+  3) target-limited 오차 0.35 rad 이상에서 scale 0,
+     0.05 rad 이하에서 scale 1, 중간에서 0~1 선형인지 확인한다.
+  4) 좌/우 모두 centerline을 반복 교차하지 않고 cost 100 접촉 전에
+     수렴하는지 측정한다.
+  5) GNSS 1 Hz 보정과 EKF/final pose 지연을 구분한다. GNSS rate만 임의로
+     올리지 않는다.
+  6) pure crab 구간에서 Ranger wheel yaw-rate는 EKF에 융합되지 않고,
+     IMU yaw-rate와 dual-GNSS yaw 보정 사이에서 final yaw가 허용 오차 안에
+     유지되는지 확인한다.
+  7) GNSS 안테나의 robot_base_link 기준 x/y/z를 실측한다. 현재
+     robot_params의 0/0/0 placeholder와 실제 lever arm이 다르면 그 기하를
+     먼저 반영한 뒤 GNSS position과 final base pose 차이를 재측정한다.
+- 실패 시 다음 변경 후보:
+  측정값을 근거로 lateral prediction, controller gain/ratio,
+  sign-change hysteresis, stale-command 처리 중 한 계층만 선택한다.
+- 금지:
+  footprint guard나 boundary cost를 약화해 통과시키지 않는다.
+- 합격:
+  좌/우 양쪽에서 제한 시간 내 진동 없이 수렴하고 planning boundary가
+  lanelet boundary cost에 닿지 않으며, command-to-wheel 지연이 기록된다.
+- HH_260731 정지 실차 PARTIAL:
+  60초 동안 GNSS/GNSS pose 1.00 Hz, IMU 95.37 Hz,
+  platform/wheel odometry 약 49.25 Hz, EKF/adapter/final은 각각
+  14.99 Hz였다. 따라서 final pose 출력 rate 자체는 목표 15 Hz를 만족했다.
+- selected pose header age p50/p95/max는 35.6/352.5/747.6 ms였고,
+  GNSS->final 위치 오차 p50/p95/max는 0.023/0.041/0.056 m,
+  yaw 오차는 0.26/0.74/1.15 deg였다. 정지 중 GNSS yaw span은 2.532 deg였다.
+- 이 측정은 CPU 포화 상태의 정지 측정이므로 주행 지연, crab yaw,
+  lateral overshoot 또는 antenna lever arm 합격을 의미하지 않는다.
+- 근거:
+  `/home/nvidia/camrod_field_logs/20260731_140639/pose_latency_stationary.json`
 
-[P0] 13. lanelet 중심선 횡방향 정렬 overshoot/제어 지연
-- 쉬운 설명:
-  상위 제어기가 "이제 반대쪽으로 조향"이라고 바꿔도 실제 Ranger 바퀴는
-  한 번에 돌아가지 못한다. 기존에는 바퀴가 아직 이전 방향인데도 이동
-  속도는 그대로 나가 중심선을 지나칠 수 있었다. 이제 목표 바퀴 각도와
-  실제로 제한되어 전달되는 바퀴 각도의 차이가 크면 이동 속도를 줄이고,
-  차이가 0.35 rad 이상이면 병진 속도를 0으로 만든다. 바퀴가 새 방향에
-  가까워지면 속도가 선형으로 복원된다.
-- 코드/설정/테스트 기록:
-  - 속도 비율 정책: steering_transition_policy.hpp
-  - Ackermann/parallel 적용 및 부호 처리: ranger_messenger.cpp
-  - 설정 전달: ranger_driver.yaml package/bringup, ranger.launch.py
-  - 테스트: 큰 조향 지연 정지, 중간 선형 비율, 기능 비활성 호환성
-  - 미수정: 실차 시간값이 필요한 lateral 예측, gain, hysteresis
-- 소프트웨어 반영 상태 (2026-07-29, 부분 완화, 실측/제어 보정 대기):
-  1) Ranger의 최종 parallel/Ackermann steering 부호를 먼저 확정한 뒤
-     0.5 rad/s rate limit을 적용하도록 순서를 고쳤다.
-  2) 목표-제한 steering 오차가 0.05 rad 이하면 100% 속도, 0.35 rad 이상이면
-     0%, 그 사이는 선형 scale을 적용한다. 바퀴가 이전 방향인 동안 새
-     병진 속도가 먼저 나가 중심선을 더 지나치는 현상을 줄이는 driver
-     계층 완화이며 unit test를 추가했다.
-  3) full-footprint cost 100 guard와 boundary threshold는 변경하지 않았다.
-  4) 아래 pose->controller->gate->platform 실측이 없으므로 lateral 위치 예측,
-     부호반전 hysteresis, controller gain/ratio는 임의로 변경하지 않았다.
-     좌/우 실차 수렴 기준까지 통과해야 최종 완료다.
-  5) 2026-07-30 clean sim에서 pose selector가 odometry-first callback 때
-     이전 pose를 한 주기 재발행하는 원인을 확인해 header-stamp 기준 최신
-     payload 선택으로 수정했다. selected pose age p50/p95는
-     55.9/63.9 ms에서 6.3/10.9 ms로 줄었고 출력은 20.0 Hz를 유지했다.
-     이 수정은 센서 Hz/controller gain/footprint guard를 바꾸지 않는다.
-  6) 실차 dual-GNSS는 launch overlay로 1 Hz, real EKF는 15 Hz다. GNSS만
-     1 Hz라고 final pose가 1 Hz인 것은 아니지만 절대 위치/heading 보정은
-     1초 간격이므로 야외에서 동적 횡오차와 함께 따로 판정해야 한다.
-- 실차에서 지금 할 일:
-  1) map에서 충분히 넓고 직선인 lanelet을 선택한다. 중심선 기준 왼쪽과
-     오른쪽의 작은 offset에서 각각 별도 run을 수행하되 yaw 오차는 작게 둔다.
-  2) recorder와 bringup.log가 실행 중인지 확인하고 저속 centerline 정렬을
-     시작한다. `/rosout`의 `steering transition limits velocity` 로그에는
-     mode, target, limited, scale이 함께 남아야 한다.
-  3) target-limited 조향 오차가 0.35 rad 이상인 샘플에서는 scale 0,
-     0.05 rad 이하에서는 scale 1인지 확인한다. 중간값은 0과 1 사이에서
-     선형으로 변해야 한다.
-  4) rosbag의 localization pose, raw/final cmd_vel, `/actuator_state`,
-     `/platform/status/wheel` stamp로 pose->controller->gate->wheel 구간별
-     지연을 계산해 FIELD_RESULT.txt에 적는다.
-  5) 왼쪽/오른쪽 시작 모두에서 중심선을 반복 교차하지 않고 cost 100에
-     닿지 않은 채 수렴해야 PASS다. 한쪽만 성공하면 전체 항목은 FAIL이다.
-  6) 실패해도 이번 현장에서 footprint threshold를 낮추지 않는다. 측정한
-     지연과 좌/우 오차를 근거로 다음 변경에서 lateral prediction, gain,
-     hysteresis 중 한 계층만 선택해 조정한다.
-- 재현:
-  robot yaw와 lanelet centerline yaw 차이는 매우 작고 lateral offset만
-  남은 상태에서 centerline 복귀 제어를 수행한다.
-- 현재 문제:
-  조금 전진하며 아주 작게 회전하면 충분하지만 pose->controller->gate->
-  platform 지연 때문에 중심선 도착 뒤에도 같은 방향 명령이 남는다.
-  오른쪽/왼쪽으로 중심선을 지나쳐 footprint가 lanelet boundary cost에
-  닿고 최종 정지한다.
-- 먼저 측정:
-  localization pose stamp, centerline pose/yaw, controller input/output,
-  /control/cmd_vel_raw, /control/cmd_vel, platform feedback를 한 시계로
-  기록해 전체 지연과 각 구간 지연을 분리한다. 좌/우 offset 부호, yaw
-  error, 속도, boundary까지 남은 거리도 함께 기록한다.
-- 코드 방향:
-  작은 yaw error + lateral-only 구간을 별도 상태로 다루고, 현재 오차뿐
-  아니라 지연 시간 뒤의 예측 lateral 위치로 감속/회전 종료를 결정한다.
-  centerline 교차 전 감속, 교차/부호 반전 hysteresis, 최대 횡방향 보정
-  속도/각속도와 UI 동적 ratio를 검토한다. 과거 명령을 즉시 무효화할
-  수 있도록 timestamp/stale command 처리도 확인한다.
-- 안전 조건:
-  해결을 위해 lanelet full-footprint guard를 약화하거나 boundary cost를
-  무시하지 않는다. 제어기가 guard에 닿기 전에 감속·정렬을 끝내야 한다.
-- 합격 기준:
-  좌/우 양쪽 시작에서 centerline을 반복 통과해 진동하지 않고, planning
-  boundary가 lanelet boundary cost에 닿지 않은 채 제한 시간 내 수렴한다.
-
-완료 처리
-- 각 항목은 날짜, 사용한 commit/tag, 로그 디렉터리, 측정값, PASS/FAIL을
-  이 파일 아래 또는 별도 field report에 남긴 뒤 완료 표시한다.
+완료 이동 규칙
+- 현장 항목이 PASS하면 날짜, commit/tag, log directory, 측정값과 합격
+  근거를 DONE.txt의 `실차 FIELD-PASS`에 추가한다.
+- 같은 변경에서 TODOLIST.txt의 해당 항목을 제거한다.
+- 일부 조건만 통과하면 통과한 조건만 DONE.txt에 기록하고 남은 조건은
+  더 작고 명확한 TODO로 유지한다.

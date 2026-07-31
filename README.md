@@ -108,10 +108,33 @@ bands are unchanged in v2.1.1; LEFT2/RIGHT2 require the recorded clear-area
 field comparison in `TODOLIST.txt`.
 
 No post-fix full real-robot drive acceptance was performed while packaging this
-source/configuration baseline. The remaining radar clear-area, camera-rate,
-lanelet-footprint, off-road/reverse recovery, lateral-control latency,
-goal/path/cmd_vel, CPU, planning, voice, OpenCV ABI, and port checks are tracked
-in [`TODOLIST.txt`](TODOLIST.txt).
+source/configuration baseline. Completed implementation, diagnosis, unit-test,
+and indoor/sim evidence is separated in [`DONE.txt`](DONE.txt). Only the
+remaining radar clear-area, camera-rate, lanelet-footprint, off-road/reverse
+recovery, lateral-control latency, goal/path/cmd_vel, CPU, planning, voice,
+OpenCV ABI, and port field checks remain in
+[`TODOLIST.txt`](TODOLIST.txt).
+
+<!-- HH_260731 - Summarize the post-tag indoor crab-yaw audit without changing
+     the immutable v2.1.1 release claim. -->
+The current post-v2.1.1 worktree also removes Ranger parallel-motion
+history/sign errors, stops the production EKF from treating wheel `wz=0` as a
+near-perfect crab-yaw measurement, publishes per-wheel steering evidence, and
+admits a projected pure-crab recovery candidate for side boundary contact.
+The gate does not synthesize recovery motion. GNSS antenna lever-arm
+calibration, real crab-yaw acceptance, and any automatic crab recovery owner
+remain explicit field work in `TODOLIST.txt`.
+
+<!-- HH_260731 - Link the first physical no-motion acceptance checkpoint. -->
+The 2026-07-31 physical stationary checkpoint passed the 600-second
+radar-disabled dummy/cost barrier and the 300-second physical front-camera/YOLO
+lifetime test. It also measured the active physical body
+(`1.49160 × 1.07000 m`) and its 0.10 m-per-side planning boundary
+(`1.69160 × 1.27000 m`). Rear-camera FPS, seven-channel physical radar
+separation, RTK Fixed stability, production-only CPU, and all driving tests
+remain open. See
+[the 2026-07-31 field validation](camrod_bringup/docs/v2_1_1_field_validation_20260731.md),
+[`DONE.txt`](DONE.txt), and [`TODOLIST.txt`](TODOLIST.txt).
 
 <!-- HH_260724 - Clarify operator-visible manual driving and stop/cancel state. -->
 Manual ENGAGE without a campsite selection is shown as `Manual driving` in the

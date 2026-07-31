@@ -87,8 +87,30 @@ first radar field task in `TODOLIST.txt`.
 
 ## Required field acceptance
 
-The ordered 2026-07-31 checklist is maintained in
-[`TODOLIST.txt`](../TODOLIST.txt). The release must not be treated as field
-accepted until radar ON/OFF, dual-camera/YOLO, manual/UI four-goal,
-left/right lateral convergence, voice/WebKit mission sequence, and
-production CPU comparisons have recorded PASS evidence.
+<!-- HH_260730 - Keep completed software/sim evidence out of the live field
+     checklist so an implemented item is not mistaken for an accepted drive. -->
+Completed implementation, diagnosis, unit-test, and indoor/sim evidence is
+maintained in [`DONE.txt`](../DONE.txt). The ordered 2026-07-31 checklist in
+[`TODOLIST.txt`](../TODOLIST.txt) now contains only unfinished physical
+acceptance. The release must not be treated as field accepted until radar
+ON/OFF, dual-camera/YOLO, manual/UI four-goal, left/right lateral convergence,
+voice/WebKit mission sequence, and production CPU comparisons have recorded
+PASS evidence.
+
+## Post-release stationary field evidence
+
+<!-- HH_260731 - Record individual physical acceptance without rewriting the
+     immutable release-time statement or claiming a driving acceptance. -->
+
+On 2026-07-31, an actual no-motion bringup completed two individual field
+acceptance items:
+
+- radar disabled for 600.063 seconds: seven exact dummy ranges, evidence
+  active 0, radar high-cost cell 0, radar cost-stop 0;
+- physical front camera and YOLO for 300 seconds: 2,750/2,750 JPEG decodes and
+  camera/YOLO restart 0.
+
+Rear-camera FPS, seven-physical-channel radar separation, dual-GNSS Fixed
+stability, production-only CPU, voice/manual/UI, boundary recovery, and
+lateral/crab driving remain open. Exact results and logs are in
+[`v2_1_1_field_validation_20260731.md`](../camrod_bringup/docs/v2_1_1_field_validation_20260731.md).
