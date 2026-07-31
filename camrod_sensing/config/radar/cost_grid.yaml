@@ -66,6 +66,10 @@
       - "FRONT2:0.097:0.117"
       - "LEFT1:0.182:0.226"
       - "LEFT1:0.234:0.258"
+      # HH_260731 - Outdoor all-physical audit: LEFT2 stayed at 0.051..0.062 m
+      # for 276 samples while the robot pose changed. Treat only this narrow
+      # near-face cluster as the field-approved chassis/self-return.
+      - "LEFT2:0.045:0.068"
       # HH_260729 - 15 s all-true audit measured the body-return tail at
       # 0.216..0.271 m. Keep the separate 0.629..0.637 m returns as obstacles.
       - "LEFT2:0.210:0.280"

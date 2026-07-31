@@ -42,10 +42,10 @@
     # =========================================================================
     # false disables exactly one channel: no port open; its range and _ros
     # topics publish max_range+0.001 m with dummy_active=true at the rate above.
-    # HH_260729 - Keep all seven physical channels enabled. The narrow,
-    # measured RIGHT1/REAR body-return intervals are handled explicitly in
-    # cost_grid.yaml so other distances on those sensors remain obstacles.
-    sensor_enabled: [true, true, true, true, true, true, true]
+    # HH_260731 - Field-test quarantine requested by the operator: LEFT2 and
+    # RIGHT2 publish explicit dummy heartbeats until their recurring returns
+    # can be separated from real obstacles. The other five channels stay live.
+    sensor_enabled: [true, true, true, false, true, false, true]
 
     software_min_range_m: 0.02
     software_default_max_range_m: 4.50
