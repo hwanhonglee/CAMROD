@@ -56,12 +56,12 @@ controller_server:
       desired_linear_vel: 0.4
       max_angular_accel: 0.8
       # HH_260513: Increased lookahead to suppress straight-line oscillation.
-      # HH_260730: A steering-lag slowdown previously collapsed the scaled
-      # lookahead to 0.5 m, which increased curvature and repeatedly reversed
-      # the target steering direction. Keep at least one wheelbase of preview
-      # and use a longer speed horizon while retaining the 2.0 m narrow-map cap.
-      lookahead_dist: 1.0
-      min_lookahead_dist: 0.9
+      # HH_260801 / TODOLIST 13: At the final 0.20 m/s limit, speed-scaled
+      # lookahead is clamped by this floor. Full-bringup straight/curve sweeps
+      # selected 1.1 m as the balance between 1.0 m tracking error and 1.2 m
+      # steering variation. Keep the 2.0 m cap and 15 Hz pose output unchanged.
+      lookahead_dist: 1.1
+      min_lookahead_dist: 1.1
       max_lookahead_dist: 2.0
       lookahead_time: 1.8
       # Final default after the command gate: 0.20 rad/s.

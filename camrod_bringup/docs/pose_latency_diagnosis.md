@@ -175,3 +175,32 @@ acceptance thresholds. A stationary test cannot validate the phase delay
 between lateral vehicle motion, GNSS correction, steering actuation, and
 lanelet-boundary contact; that requires a supervised low-speed field run with
 the same timestamps recorded in a rosbag.
+
+## Controller decision after the 2026-07-31 field sample
+
+The stationary field sample measured the real EKF, adapter, and final selected
+pose at `14.99 Hz`, so increasing localization publication rate is not the
+first correction. The selected-pose header-age p95 was `352.5 ms` under a
+CPU-saturated session, which remains a scheduling concern and requires a
+production-only profile, but it does not prove that pose cadence causes the
+lateral sine-wave motion.
+
+At the final field speed limit of `0.20 m/s`, velocity-scaled RPP computes only
+`0.20 * 1.8 = 0.36 m` before applying its minimum lookahead. The minimum is
+therefore the effective low-speed control parameter. HH_260801 synchronizes
+the UI mission RPP and the manual-engage RotationShim internal RPP at a
+`1.1 m` minimum preview. A full-bringup sweep used straight and S-curve
+FollowPath inputs with lateral offsets. `1.0 m` corrected fastest but used more
+steering variation, while `1.2 m` was smoother but retained more path error;
+`1.1 m` was selected as the balance. Boundary-stop trials are excluded from
+tracking scores. The `2.0 m` cap, controller frequency, pose rate, Ranger
+`0.25 rad/s` steering slew, gain, footprint, and cost thresholds remain
+unchanged.
+
+Record `/platform/steering_transition_state` with `/actuator_state` during both
+left- and right-offset runs. Repeated target-angle sign changes identify the
+path tracker; a stable target with delayed limited angle identifies the Ranger
+slew limiter; a stable limited angle with delayed actuator angles identifies
+the physical steering/CAN layer. Motion-mode changes reveal a separate
+Ackermann/spinning or parallel transition. Tune only the layer supported by
+that evidence.

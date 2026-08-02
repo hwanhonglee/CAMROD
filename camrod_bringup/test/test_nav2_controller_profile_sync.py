@@ -74,3 +74,13 @@ def test_rpp_profile_contains_only_effective_limit_names() -> None:
         "max_angular_vel",
     ):
         assert ignored_key not in rpp
+
+
+def test_low_speed_rpp_keeps_damped_preview_floor() -> None:
+    """The 0.20 m/s field limit must not collapse the swept 1.1 m preview."""
+    rpp = _parameters(PLANNING_CONFIG / "nav2_vehicle.yaml")["RPP"]
+
+    assert rpp["use_velocity_scaled_lookahead_dist"] is True
+    assert rpp["lookahead_dist"] == 1.1
+    assert rpp["min_lookahead_dist"] == 1.1
+    assert rpp["max_lookahead_dist"] >= rpp["min_lookahead_dist"]
