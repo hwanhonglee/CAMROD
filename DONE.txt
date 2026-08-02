@@ -1,6 +1,6 @@
 CAMROD 구현·검증 완료 기록
-기준 버전: v2.1.1
-정리일: 2026-07-31 (Asia/Seoul)
+작업 기준 버전: v2.1.2
+정리일: 2026-08-02 (Asia/Seoul)
 
 # HH_260730 - TODOLIST에는 아직 필요한 실차 판정만 남기고, 이미 끝난
 # 구현·원인 규명·정적/단위/sim 검증은 이 파일에서 원래 TODO 번호와 함께
@@ -14,17 +14,27 @@ CAMROD 구현·검증 완료 기록
 - FIELD-PASS: 실제 로봇에서 합격 기준과 시간 조건을 모두 통과했다.
 - 구현이 끝났어도 실차 판정이 남아 있으면 해당 시험은 TODOLIST.txt에
   계속 둔다.
-- v2.1.1 패키징 시점에는 변경 후 전체 실차 주행 FIELD-PASS가 없었다.
+- v2.1.2 패키징 시점에는 변경 후 전체 실차 주행 FIELD-PASS가 없었다.
 
 릴리스 기준점
-- branch/tag: develop / v2.1.1
-- 기준 commit: 09a7e1ca
+- branch/tag: develop / v2.1.2
+- 기존 v2.1.2 tag commit: 22f9b0cb
+- 갱신 tag: 이 문서와 세부 구현 commit을 포함하는 최종 release commit
 - 관련 세부 commit:
   - 3a724d9b feat(planning): harden goal recovery and path tracking
   - 76130763 feat(localization): reduce selected pose latency
   - 2ea6ccff fix(perception): contain invalid camera payloads
   - 990db0be feat(runtime): unify readiness voice and diagnostics
   - 09a7e1ca docs(release): prepare v2.1.1 field acceptance
+  - 51c71f0d fix(control): keep route recovery holds fail-closed
+  - 27951307 fix(platform): stabilize crab steering and yaw feedback
+  - 65a6a809 fix(planning): reduce field navigation speeds
+  - 2fc979f7 feat(diagnostics): extend pose and camera field probes
+  - 22f9b0cb chore(field): archive July 31 map and GNSS artifacts
+  - 1d64ff8b fix(sensing): isolate rear monitoring JPEG encoding
+  - b0e10814 feat(platform): publish steering transition evidence
+  - 1710aab7 test(control): verify lanelet body and margin stops
+  - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
 
 1. 릴리스 빌드·설정·기동 검증 [DONE-CODE, DONE-SIM]
 - 영향 패키지 6개(camrod_localization, camrod_planning, camrod_system,
@@ -310,6 +320,63 @@ CAMROD 구현·검증 완료 기록
   `lanelet_footprint_cost`와 `ROUTE_SAFETY_HOLD`가 발생해 전체 경계 정지는
   확인했다. 자동 crab 명령 생성과 INITIALIZING 지속은 TODOLIST 9/12에
   남겼다.
+
+16. HH_260801: TODO 3/13 코드 선행 보완 [DONE-CODE, FIELD-PENDING]
+- 후방 카메라의 CPU JPEG encode를 별도 worker로 이동해 monitoring
+  compressed 생성이 raw/camera_info 10 Hz 발행을 막지 않게 했다. Jetson
+  전용 카메라 build 조건, GStreamer/VIC pipeline과 topic 계약은 유지했다.
+- 실제 정지 로그에서 real EKF/adapter/final pose가 모두 14.99 Hz였으므로
+  localization 또는 dual-GNSS rate를 추가로 올리지 않았다. CPU 포화 때의
+  selected pose age p95 352.5 ms는 별도 production-only 부하 시험 대상으로
+  유지한다.
+- 최종 속도 0.20 m/s에서는 `speed * lookahead_time`이 기존 최소값보다
+  작아 lookahead time 변경만으로 효과가 없었다. UI 직접 RPP와 manual
+  RotationShim 내부 RPP의 최소 preview를 모두 1.1 m로 맞췄다. full
+  bringup 직선/S-curve sweep에서 1.0 m의 수렴성과 1.2 m의 작은 조향
+  변화량 사이 균형값으로 선택했다.
+- Ranger가 매 Twist마다 `/platform/steering_transition_state`를 발행한다.
+  target/limited steering, signed error, translation scale, command mode와
+  SDK 전달 속도를 rosbag에 남겨 `/actuator_state`의 실제 wheel angle과
+  비교할 수 있다.
+- gain, sign hysteresis, 0.25 rad/s steering slew, footprint/cost와 15 Hz
+  pose는 바꾸지 않았다. 좌/우 수렴, rear raw 10 Hz와 실제 wheel phase는
+  TODOLIST 3/13의 통제된 Jetson 실차 시험 전에는 FIELD-PASS가 아니다.
+
+17. HH_260801: lanelet 경계와 RPP full-bringup sweep [DONE-SIM, FIELD-PENDING]
+- 실제 safety gate에 planning boundary를 입력한 회귀 시험에서 cost 100이
+  실측 body 밖이지만 0.10 m planning margin 안에 있을 때 정지하고, margin을
+  제외한 실측 body edge가 cost 100에 닿아도 정지함을 각각 확인했다.
+- full bringup의 직선 FollowPath 12초 시험에서 0.8 m preview는 음측
+  `lanelet_footprint_cost`로 정지했다. 이는 RPP 실패가 아니라 planning
+  margin이 lanelet 밖으로 나가는 명령을 차단한 결과다.
+- 유효 직선 음측 시험의 tail error / angular variation은 1.0 m에서
+  18.05 mm / 0.11795, 1.1 m에서 28.03 mm / 0.09494, 1.2 m에서
+  40.78 mm / 0.07839였다. 세 값 모두 centerline 반복 교차는 0회였다.
+- 유효 S-curve 경계 비접촉 방향의 RMS error / angular variation은 1.0 m에서
+  42.02 mm / 0.10269, 1.1 m에서 49.85 mm / 0.09504, 1.2 m에서
+  58.62 mm / 0.08754였다. 정확도와 조향 변화의 중간값인 1.1 m를
+  software/sim 기본값으로 선택했다.
+- 경계 정지한 trial과 의도적으로 12초에 cancel한 action status는 tracking
+  점수에서 제외했다. 이 결과는 Jetson 실차 wheel phase와 좌/우 주행
+  FIELD-PASS를 대신하지 않는다.
+
+18. HH_260802: v2.1.2 갱신 빌드·테스트·동기화 [DONE-CODE]
+- ranger_msgs/ranger_base와 camrod_sensing/control/planning/platform/bringup
+  7개 영향 패키지가 빌드됐다. x86에서 제외되는 Jetson rear camera target은
+  동일 ROS/OpenCV 의존성의 격리 CMake target으로 별도 컴파일했다.
+- CAMROD 5개 패키지 test result는 330 tests, errors 0, failures 0,
+  skipped 8이었다. Ranger steering/parallel policy 5 tests도 통과했다.
+- 생성된 `ranger_msgs/msg/SteeringTransitionState` interface를 확인했고,
+  bringup 핵심 계약 pytest 13개와 field tool shell syntax가 통과했다.
+- source/package/bringup/install 전체 config 비교가 `config sync OK`였다.
+  두 Nav2 package/deployment mirror도 byte-identical이다.
+- vendor Ranger 전체 lint는 기능 시험과 별개로 기존 package.xml author 순서,
+  copyright header, upstream 전역 formatting 문제 때문에 실패한다. 이번
+  변경의 build와 기능 test는 통과했으며 해당 광범위 vendor 정리는 범위에
+  포함하지 않았다.
+- x86 격리 camera link는 workspace cv_bridge OpenCV 4.5와 `/usr/local`
+  OpenCV 4.14의 기존 ABI 경고를 출력했다. Jetson ARM build와 rear raw 10 Hz
+  실측은 TODOLIST 3의 FIELD-PENDING으로 유지한다.
 
 실차 FIELD-PASS
 - TODO 1 radar OFF dummy/cost barrier:
