@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rcl_interfaces REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
@@ -138,11 +139,12 @@ if(CAMROD_ENABLE_CAMERA_PUBLISHER)
       RUNTIME DESTINATION bin
     )
 
-    # HH_260528: Rear camera publisher — econ_camera_node (OpenCV + GStreamer, no GPU).
+    # HH_260528: Rear camera publisher - econ_camera_node (OpenCV + GStreamer, no GPU).
     # HH_260601: removed yaml-cpp dependency; calibration now loaded from ROS parameters.
     add_executable(camera_rear_publisher_node src/camera_rear_publisher_node.cpp)
     ament_target_dependencies(
       camera_rear_publisher_node
+      builtin_interfaces
       rclcpp
       sensor_msgs
       cv_bridge

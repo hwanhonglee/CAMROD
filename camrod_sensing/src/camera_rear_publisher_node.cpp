@@ -7,6 +7,8 @@
 //            (camera_matrix, distortion_coefficients, rectification_matrix, projection_matrix).
 //            Removed yaml-cpp and fstream dependencies.
 // HH_260630 - Rate-limit rear CPU JPEG publishing and avoid frame deep-copy handoff.
+// HH_260801 - Move monitoring JPEG encoding off the raw publication path so a
+//             slow CPU encode cannot reduce the AprilTag image_raw cadence.
 //
 // Publishes:
 //   ~/image_raw            (sensor_msgs/Image,           on demand)
@@ -22,6 +24,7 @@
 #include <thread>
 #include <vector>
 
+#include "builtin_interfaces/msg/time.hpp"
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/videoio.hpp>
@@ -93,6 +96,7 @@ public:
     running_ = true;
     capture_thread_ = std::thread(&CameraRearPublisherNode::capture_loop, this);
     publish_thread_ = std::thread(&CameraRearPublisherNode::publish_loop, this);
+    compressed_thread_ = std::thread(&CameraRearPublisherNode::compressed_loop, this);
 
     RCLCPP_INFO(get_logger(),
       "CameraRearPublisher ready  capture=%dx%d  publish=%dx%d  @%dfps  jpeg_q=%d  compressed_rate=%.2fHz  device=%s",
@@ -104,8 +108,10 @@ public:
   {
     running_ = false;
     cv_.notify_all();
+    compressed_cv_.notify_all();
     if (capture_thread_.joinable()) capture_thread_.join();
     if (publish_thread_.joinable())  publish_thread_.join();
+    if (compressed_thread_.joinable()) compressed_thread_.join();
     if (cap_.isOpened()) cap_.release();
   }
 
@@ -189,22 +195,21 @@ private:
         (publish_compressed_without_subscribers_ || compressed_has_subscribers);
       const bool compressed_due =
         compressed_enabled &&
-        (last_compressed_publish_ns_ == 0 ||
-         stamp_ns < last_compressed_publish_ns_ ||
-         stamp_ns - last_compressed_publish_ns_ >= compressed_period_ns_);
+        (last_compressed_schedule_ns_ == 0 ||
+         stamp_ns < last_compressed_schedule_ns_ ||
+         stamp_ns - last_compressed_schedule_ns_ >= compressed_period_ns_);
 
       if (compressed_due) {
-        std::vector<uchar> buf;
-        cv::imencode(".jpg", frame, buf,
-                     {cv::IMWRITE_JPEG_QUALITY, jpeg_quality_});
-
-        sensor_msgs::msg::CompressedImage comp;
-        comp.header.stamp    = stamp;
-        comp.header.frame_id = frame_id_;
-        comp.format          = "jpeg";
-        comp.data            = std::move(buf);
-        compressed_pub_->publish(std::move(comp));
-        last_compressed_publish_ns_ = stamp_ns;
+        {
+          std::lock_guard<std::mutex> lk(compressed_mutex_);
+          // cv::Mat is reference-counted. Keeping this immutable shallow copy
+          // transfers frame lifetime without another 1920x1080 BGR memcpy.
+          latest_compressed_frame_ = frame;
+          latest_compressed_stamp_ = stamp;
+          compressed_ready_ = true;
+          last_compressed_schedule_ns_ = stamp_ns;
+        }
+        compressed_cv_.notify_one();
       }
 
       // Raw image (only if someone subscribed — heavy ~1.5 MB, required by Isaac ROS AprilTag)
@@ -219,6 +224,48 @@ private:
       // CameraInfo
       camera_info_msg_.header.stamp = stamp;
       cinfo_pub_->publish(camera_info_msg_);
+    }
+  }
+
+  void compressed_loop()
+  {
+    while (running_ && rclcpp::ok()) {
+      cv::Mat frame;
+      builtin_interfaces::msg::Time stamp;
+      {
+        std::unique_lock<std::mutex> lk(compressed_mutex_);
+        compressed_cv_.wait(
+          lk, [this] { return compressed_ready_ || !running_; });
+        if (!running_) break;
+        frame = std::move(latest_compressed_frame_);
+        stamp = latest_compressed_stamp_;
+        compressed_ready_ = false;
+      }
+
+      std::vector<uchar> buffer;
+      try {
+        if (!cv::imencode(
+            ".jpg", frame, buffer,
+            {cv::IMWRITE_JPEG_QUALITY, jpeg_quality_}))
+        {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "Rear monitoring JPEG encoder returned no payload");
+          continue;
+        }
+      } catch (const cv::Exception & error) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Rear monitoring JPEG encode failed: %s", error.what());
+        continue;
+      }
+
+      sensor_msgs::msg::CompressedImage compressed;
+      compressed.header.stamp = stamp;
+      compressed.header.frame_id = frame_id_;
+      compressed.format = "jpeg";
+      compressed.data = std::move(buffer);
+      compressed_pub_->publish(std::move(compressed));
     }
   }
 
@@ -294,16 +341,22 @@ private:
   double compressed_publish_rate_hz_{10.0};
   bool publish_compressed_without_subscribers_{false};
   int64_t compressed_period_ns_{100000000};
-  int64_t last_compressed_publish_ns_{0};
+  int64_t last_compressed_schedule_ns_{0};
 
   cv::VideoCapture  cap_;
   cv::Mat           latest_frame_;
   std::mutex        frame_mutex_;
   std::condition_variable cv_;
   bool              frame_ready_{false};
+  cv::Mat           latest_compressed_frame_;
+  builtin_interfaces::msg::Time latest_compressed_stamp_;
+  std::mutex        compressed_mutex_;
+  std::condition_variable compressed_cv_;
+  bool              compressed_ready_{false};
   std::atomic<bool> running_{false};
   std::thread       capture_thread_;
   std::thread       publish_thread_;
+  std::thread       compressed_thread_;
 
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr            image_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CompressedImage>::SharedPtr  compressed_pub_;
