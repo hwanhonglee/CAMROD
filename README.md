@@ -14,7 +14,9 @@
 
 <!-- HH_260730 - Promote the measured field-readiness and state-contract release. -->
 
-Current release baseline: `v2.1.1` ([release notes](docs/V2_1_1_RELEASE_NOTES.md)).
+<!-- HH_260802 - Promote the synchronized boundary/RPP/field-evidence checkpoint. -->
+
+Current release baseline: `v2.1.2` ([release notes](docs/V2_1_2_RELEASE_NOTES.md)).
 
 CAMROD is a ROS 2 Humble autonomous mobile robot stack. Route planning, local
 vehicle maneuvers, reverse parking, and hardware command authorization are
@@ -115,15 +117,23 @@ recovery, lateral-control latency, goal/path/cmd_vel, CPU, planning, voice,
 OpenCV ABI, and port field checks remain in
 [`TODOLIST.txt`](TODOLIST.txt).
 
-<!-- HH_260731 - Summarize the post-tag indoor crab-yaw audit without changing
-     the immutable v2.1.1 release claim. -->
-The current post-v2.1.1 worktree also removes Ranger parallel-motion
+<!-- HH_260802 - Summarize the v2.1.2 control and measurement checkpoint. -->
+The v2.1.2 delta removes Ranger parallel-motion
 history/sign errors, stops the production EKF from treating wheel `wz=0` as a
 near-perfect crab-yaw measurement, publishes per-wheel steering evidence, and
 admits a projected pure-crab recovery candidate for side boundary contact.
 The gate does not synthesize recovery motion. GNSS antenna lever-arm
 calibration, real crab-yaw acceptance, and any automatic crab recovery owner
 remain explicit field work in `TODOLIST.txt`.
+
+It also moves rear monitoring JPEG encoding off the raw camera publication
+thread, publishes structured controller-to-wheel transition evidence, and
+synchronizes direct and manual RPP low-speed preview at `1.1 m`. Full-bringup
+straight/S-curve trials selected that value as a simulation balance between
+tracking error and steering variation; they did not reproduce the physical
+sine-wave motion, so real-wheel acceptance remains open. The complete planning
+boundary still permits soft cost 98 and stops at off-lane cost 100, including
+crab/reverse maneuver phases.
 
 <!-- HH_260731 - Link the first physical no-motion acceptance checkpoint. -->
 The 2026-07-31 physical stationary checkpoint passed the 600-second

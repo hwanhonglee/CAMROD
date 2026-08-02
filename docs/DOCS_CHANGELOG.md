@@ -1,5 +1,24 @@
 # Documentation Changelog
 
+<!-- HH_260802 - Record the explicitly requested v2.1.2 tag refresh. -->
+## [v2.1.2-rpp-boundary-evidence] - 2026-08-02 (HH_260802)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| `README.md`, `docs/V2_1_2_RELEASE_NOTES.md` | Promoted the refreshed v2.1.2 software/sim baseline and documented its tag history, scope, verification, and field limits |
+| root `DONE.txt`, `TODOLIST.txt` | Recorded the rear JPEG worker, structured Ranger transition evidence, full-footprint regressions, RPP sweep, and remaining Jetson/real-wheel acceptance |
+| `camrod_bringup/docs/pose_latency_diagnosis.md` | Distinguished the measured 15 Hz pose cadence from the unproven physical sine-wave cause and documented the 1.1 m simulation decision |
+| `camrod_bringup/docs/field_test_runbook.md` | Replaced throttled rosout evidence with timestamped target/limited/actuator steering comparison |
+
+The original `v2.1.2` tag pointed to `22f9b0cb`. At the operator's explicit
+request, the tag is republished on the final release commit containing this
+checkpoint. This remains a software/configuration/simulation baseline, not a
+completed real-robot driving acceptance.
+
+---
+
 <!-- HH_260731 - Record physical stationary acceptance and keep drive work open. -->
 ## [post-v2.1.1-stationary-field-validation] - 2026-07-31 (HH_260731)
 

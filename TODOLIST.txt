@@ -1,5 +1,5 @@
-CAMROD v2.1.1 이후 미완료 실차 확인 목록
-갱신일: 2026-07-31 (Asia/Seoul)
+CAMROD v2.1.2 이후 미완료 실차 확인 목록
+갱신일: 2026-08-02 (Asia/Seoul)
 
 # HH_260730 - 완료된 구현·원인 규명·단위/sim 검증은 DONE.txt로 분리했다.
 # 이 파일에는 아직 실제 로봇에서 실행하고 PASS/FAIL을 판정할 작업만 둔다.
@@ -11,8 +11,10 @@ CAMROD v2.1.1 이후 미완료 실차 확인 목록
 - 완료된 구현·진단·실내 검증과 수치: DONE.txt
 - 상세 실행 명령과 안전 절차:
   camrod_bringup/docs/field_test_runbook.md
-- v2.1.1 변경 범위와 검증 한계: docs/V2_1_1_RELEASE_NOTES.md
-- v2.1.1은 software/config/sim 기준점이며 변경 후 전체 실차 주행
+- v2.1.1 변경 범위: docs/V2_1_1_RELEASE_NOTES.md
+- v2.1.2 갱신 범위와 검증 한계: docs/V2_1_2_RELEASE_NOTES.md
+- 완료 구현·진단 결과: DONE.txt
+- v2.1.2는 software/config/sim 기준점이며 변경 후 전체 실차 주행
   FIELD-PASS는 아직 없다.
 
 다음 실차 세션 우선순위
@@ -67,6 +69,11 @@ CAMROD v2.1.1 이후 미완료 실차 확인 목록
   284923~291016 byte여서 빈 frame 문제는 아니다.
 - 진단은 `FPS low`/`FPS critically low`로 올바르게 표시됐고
   `Encoding mismatch` 오진은 없었다.
+- HH_260801 코드 보완:
+  monitoring용 CPU JPEG encode를 raw/camera_info publish thread와 분리했다.
+  느린 JPEG는 최신 frame 하나만 처리하며 raw 10 Hz 경로를 더 이상
+  기다리게 하지 않는다. 카메라 노드의 ARM/Jetson 전용 빌드 조건과
+  GStreamer/VIC 구성은 변경하지 않았다.
 - 남은 합격 조건:
   개발 도구와 측정 subscriber 부하를 제거한 상태에서도 raw가 설정 10 Hz에
   근접하도록 원인을 규명·수정하고 같은 low-overhead probe로 재측정한다.
@@ -221,6 +228,13 @@ CAMROD v2.1.1 이후 미완료 실차 확인 목록
   NORMAL·map TF·Nav2 action server·platform mode·canonical engage 중 어떤
   readiness 조건이 미충족인지 상태 토픽과 최초 차단 사유를 함께 기록한다.
   DUMMY 센서 두 개만으로 INITIALIZING을 영구 유지해서는 안 된다.
+- HH_260801 코드 재확인:
+  v2.1.2의 UI/voice readiness policy는 module level `ERROR` 이상만 차단하고
+  `WARN/DUMMY`는 degraded 표시만 한다. 두 policy의 DUMMY 허용 단위 테스트도
+  존재한다. 따라서 다음 실차에서는 source/build commit과 UI
+  `ready_message`, voice의 `voice readiness pending` 최초 사유를 먼저
+  저장한다. 다른 필수 조건이나 오래된 install이 원인인지 확인하기 전에
+  readiness 조건을 더 완화하지 않는다.
 
 [P1] 10. GNSS/IMU 재기동 안정성과 dual-GNSS Fixed 유지
 - HH_260731 부분 통과:
@@ -319,15 +333,26 @@ CAMROD v2.1.1 이후 미완료 실차 확인 목록
      수렴하는지 측정한다.
   5) GNSS 1 Hz 보정과 EKF/final pose 지연을 구분한다. GNSS rate만 임의로
      올리지 않는다.
-  6) pure crab 구간에서 Ranger wheel yaw-rate는 EKF에 융합되지 않고,
-     IMU yaw-rate와 dual-GNSS yaw 보정 사이에서 final yaw가 허용 오차 안에
-     유지되는지 확인한다.
+  6) pure crab 구간에서 비영 covariance의 Ranger wheel yaw-rate와 IMU
+     yaw-rate가 함께 EKF에 융합되고, dual-GNSS 절대 yaw 보정 사이에서
+     final yaw가 허용 오차 안에 유지되는지 확인한다.
   7) GNSS 안테나의 robot_base_link 기준 x/y/z를 실측한다. 현재
      robot_params의 0/0/0 placeholder와 실제 lever arm이 다르면 그 기하를
      먼저 반영한 뒤 GNSS position과 final base pose 차이를 재측정한다.
 - 실패 시 다음 변경 후보:
   측정값을 근거로 lateral prediction, controller gain/ratio,
   sign-change hysteresis, stale-command 처리 중 한 계층만 선택한다.
+- HH_260801 코드 보완:
+  UI mission의 직접 RPP와 manual engage의 RotationShim 내부 RPP 모두
+  저속 `lookahead_dist/min_lookahead_dist`를 1.1 m로 동기화했다. full
+  bringup의 직선/S-curve sweep에서 1.0 m의 빠른 수렴과 1.2 m의 작은 조향
+  변화량 사이 균형값으로 선택했다. 최종 0.20 m/s, 15 Hz pose, controller
+  gain, footprint/cost, Ranger 0.25 rad/s slew rate는 변경하지 않았다.
+  `/platform/steering_transition_state`에 command mode, 원본 Twist,
+  target/limited steering, signed steering error, translation scale과 SDK
+  전달 속도를 매 명령마다 발행하고 recovery bag에 포함했다. 실차에서는
+  이 topic과 `/actuator_state`를 같은 시각축으로 비교해 controller target
+  반전, driver rate limit, 실제 wheel lag를 구분한다.
 - 금지:
   footprint guard나 boundary cost를 약화해 통과시키지 않는다.
 - 합격:
