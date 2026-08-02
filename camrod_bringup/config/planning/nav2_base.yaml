@@ -384,8 +384,10 @@ controller_server:
       # RotationShim owns a separate internal RPP; keep it identical to the
       # regulated 0.4 m/s source (0.20 m/s after the final gate).
       desired_linear_vel: 0.4
-      lookahead_dist: 1.0
-      min_lookahead_dist: 0.9
+      # HH_260801 - Match the full-bringup-swept low-speed preview used by the
+      # direct RPP selected for UI missions.
+      lookahead_dist: 1.1
+      min_lookahead_dist: 1.1
       max_lookahead_dist: 2.0
       lookahead_time: 1.8
       use_velocity_scaled_lookahead_dist: True
