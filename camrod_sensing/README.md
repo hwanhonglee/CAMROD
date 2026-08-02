@@ -459,7 +459,7 @@ and does not mix the workspace OpenCV 4.5 `cv_bridge` ABI.
 | Field | Detail |
 |---|---|
 | Trigger | Continuous GStreamer capture; started when `enable_rear_camera: true` in `camrod_sensing_camera` |
-| Internal logic | Opens `/dev/video1` via OpenCV GStreamer. Captures the sensor at 30 Hz and uses `videorate` before VIC conversion to publish 10 Hz raw frames. `image_raw` is subscriber-gated; `image_raw/compressed` is CPU JPEG and rate-limited for monitoring. |
+| Internal logic | Opens `/dev/video1` via OpenCV GStreamer on the Jetson. Captures the sensor at 30 Hz and uses `videorate` before VIC conversion to publish 10 Hz raw frames. `image_raw` is subscriber-gated. HH_260801: rate-limited monitoring JPEG runs in a latest-frame CPU worker, so JPEG encoding cannot block raw/camera_info publication. The existing ARM-only camera build and GStreamer/VIC deployment path remain unchanged. |
 | Output effect | `/sensing/camera/econ_rear/image_raw` and `/sensing/camera/econ_rear/camera_info` at 10 Hz; `/sensing/camera/econ_rear/image_raw/compressed` at 2 Hz. |
 | Operator-visible symptom | AprilTag detection silent → check `/sensing/camera/econ_rear/image_raw` is live and `/dev/video1` exists. |
 | Related params | `device`, `width`, `height`, `fps`, `jpeg_quality`, `frame_id`, `camera_info_url` |
