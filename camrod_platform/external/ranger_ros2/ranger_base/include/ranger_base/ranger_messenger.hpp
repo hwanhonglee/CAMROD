@@ -39,6 +39,7 @@
 #include <ranger_msgs/msg/system_state.hpp>
 #include <ranger_msgs/msg/motion_state.hpp>
 #include <ranger_msgs/msg/actuator_state_array.hpp>
+#include <ranger_msgs/msg/steering_transition_state.hpp>
 
 #include "ranger_msgs/msg/actuator_state.hpp"
 #include "ranger_msgs/msg/driver_state.hpp"
@@ -75,6 +76,14 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   void PublishStateToROS();
   void PublishSimStateToROS(double linear, double angular);
   void TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr msg);
+  void PublishSteeringTransitionState(
+    const geometry_msgs::msg::Twist & msg,
+    uint8_t command_mode,
+    bool steering_angle_valid,
+    double target_steering_rad,
+    double limited_steering_rad,
+    double translation_scale,
+    double commanded_speed_mps);
   double LimitSteeringAngle(double target_angle);
   rcl_interfaces::msg::SetParametersResult OnParametersChanged(
     const std::vector<rclcpp::Parameter>& parameters);
@@ -128,6 +137,8 @@ class RangerROSMessenger : public std::enable_shared_from_this<RangerROSMessenge
   rclcpp::Publisher<ranger_msgs::msg::SystemState>::SharedPtr system_state_pub_;
   rclcpp::Publisher<ranger_msgs::msg::MotionState>::SharedPtr motion_state_pub_;
   rclcpp::Publisher<ranger_msgs::msg::ActuatorStateArray>::SharedPtr actuator_state_pub_;
+  rclcpp::Publisher<ranger_msgs::msg::SteeringTransitionState>::SharedPtr
+    steering_transition_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr battery_state_pub_;
 

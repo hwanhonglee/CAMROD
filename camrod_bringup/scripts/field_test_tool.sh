@@ -441,6 +441,7 @@ recovery_topics() {
 /platform/status
 /platform/status/odometry
 /platform/status/wheel
+/platform/steering_transition_state
 /odom
 /motion_state
 /actuator_state

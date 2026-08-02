@@ -105,7 +105,7 @@ The directory contains:
 
 - `route_recovery_bag`: route/action/goal, gate, full footprint, lanelet and
   obstacle grids, raw/final commands, platform/wheel/actuator feedback, TF, and
-  `/rosout` Ranger target/limited/scale logs;
+  structured `/platform/steering_transition_state` target/limited/scale data;
 - `meta/recovery_parameters.txt`: the actual gate, goal-recovery, and Ranger
   values used by the running nodes;
 - `meta/config_sync.txt`, `meta/git.txt`, requested, initially available,
@@ -455,8 +455,10 @@ Run these in order and take a `snapshot` after any failure.
 8. Steering transition and lateral overshoot
    - Start on both left and right of the centerline with small yaw error.
    - Record localization stamp, centerline error, raw/final cmd_vel, Ranger
-     target/limited steering logs, wheel feedback, and boundary distance on one
-     clock.
+     `/platform/steering_transition_state`, `/actuator_state`, wheel feedback,
+     and boundary distance on one clock. Use target sign changes to identify
+     controller oscillation, limited angle for driver slew, and actuator angle
+     for physical wheel lag.
    - During longitudinal-to-lateral and lateral-to-longitudinal changes, require
      translation scale 0 above 0.35 rad steering lag, linear recovery through
      the interval, and full speed only at or below 0.05 rad.
