@@ -600,6 +600,76 @@ TEST(MotionCostStop, PublishedPlanningBoundaryOverridesFallbackFootprint)
   EXPECT_TRUE(decision.lanelet_violation) << decision.reason;
 }
 
+TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_footprint_enabled = true;
+  config.lanelet_footprint_threshold = 100;
+  config.lanelet_current_allow_route_reentry = false;
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setMergedGrid(makeGrid(), 0.0);
+
+  constexpr double body_front = 1.20137;
+  constexpr double body_rear = 0.29023;
+  constexpr double body_left = 0.53505;
+  constexpr double body_right = 0.53495;
+  constexpr double planning_margin = 0.10;
+  auto margin_only_cost = makeGrid();
+  // Offset the 0.10 m raster so the measured 0.53505 m body edge and the
+  // 0.63505 m planning edge occupy adjacent cells instead of quantizing into
+  // the same one.
+  margin_only_cost.info.origin.position.y = -4.04;
+  const int margin_grid_x = static_cast<int>(
+    std::floor((0.0 - margin_only_cost.info.origin.position.x) /
+    margin_only_cost.info.resolution));
+  const int margin_grid_y = static_cast<int>(
+    std::floor((0.60 - margin_only_cost.info.origin.position.y) /
+    margin_only_cost.info.resolution));
+  margin_only_cost.data[
+    margin_grid_y * static_cast<int>(margin_only_cost.info.width) + margin_grid_x] = 100;
+  cost_stop.setLaneletGrid(margin_only_cost, 0.0);
+
+  // HH_260801 - The lethal cell is outside the measured body but inside the
+  // published planning boundary. This proves the 0.10 m margin stops motion
+  // before the chassis itself reaches the off-lane cell.
+  cost_stop.setFootprintPolygonWorld(
+    {{body_front, body_left}, {body_front, -body_right},
+      {-body_rear, -body_right}, {-body_rear, body_left}});
+  EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.2), 0.0).blocked);
+
+  cost_stop.setFootprintPolygonWorld(
+    {{body_front + planning_margin, body_left + planning_margin},
+      {body_front + planning_margin, -(body_right + planning_margin)},
+      {-(body_rear + planning_margin), -(body_right + planning_margin)},
+      {-(body_rear + planning_margin), body_left + planning_margin}});
+  const auto blocked = cost_stop.evaluate(command(0.0, 0.2), 0.1);
+  EXPECT_TRUE(blocked.lanelet_violation) << blocked.reason;
+  EXPECT_NE(blocked.reason.find("lanelet_footprint"), std::string::npos);
+}
+
+TEST(MotionCostStop, MeasuredBodyBoundaryStopsOnOffLaneCost)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.lanelet_footprint_enabled = true;
+  config.lanelet_footprint_threshold = 100;
+  config.lanelet_current_allow_route_reentry = false;
+  auto cost_stop = makeMotionCostStop(config);
+  cost_stop.setMergedGrid(makeGrid(), 0.0);
+
+  // HH_260801 - Isolate the measured chassis polygon from its planning margin.
+  // Use the deployed 0.25 m lanelet-grid resolution: cost 100 on the body edge
+  // must stop translation even when crab static-cost bypass is enabled.
+  cost_stop.setFootprintPolygonWorld(
+    {{1.20137, 0.53505}, {1.20137, -0.53495},
+      {-0.29023, -0.53495}, {-0.29023, 0.53505}});
+  cost_stop.setLaneletGrid(makeGrid({{0.0, 0.50, 100}}, 0.25), 0.0);
+  const auto blocked = cost_stop.evaluate(command(0.0, 0.2), 0.0);
+  EXPECT_TRUE(blocked.lanelet_violation) << blocked.reason;
+  EXPECT_NE(blocked.reason.find("lanelet_footprint"), std::string::npos);
+}
+
 TEST(MotionCostStop, RotationChecksFullLaneletFootprintEvenWhenCenterRotationIsAllowed)
 {
   auto config = baseCostConfig();
