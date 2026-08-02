@@ -202,6 +202,12 @@ void RangerROSMessenger::SetupSubscription() {
       node_->create_publisher<ranger_msgs::msg::MotionState>("/motion_state", 10);
   actuator_state_pub_ =
       node_->create_publisher<ranger_msgs::msg::ActuatorStateArray>("/actuator_state", 10);
+  // HH_260801 / TODOLIST 13 - Publish each controller-to-wheel transition as
+  // structured, timestamped data. Rosout throttling cannot preserve every
+  // target sign change or align it reliably with pose and CAN feedback.
+  steering_transition_state_pub_ =
+      node_->create_publisher<ranger_msgs::msg::SteeringTransitionState>(
+        "/platform/steering_transition_state", 10);
   odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>(odom_topic_name_, 10);
   battery_state_pub_ =
       node_->create_publisher<sensor_msgs::msg::BatteryState>("/battery_state", 10);
@@ -512,7 +518,11 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
         steering_transition_full_speed_error_rad_,
         steering_transition_stop_error_rad_,
         steering_transition_min_velocity_scale_);
-      robot_->SetMotionCommand(msg->linear.x * velocity_scale, steer_cmd);
+      const double commanded_speed_mps = msg->linear.x * velocity_scale;
+      robot_->SetMotionCommand(commanded_speed_mps, steer_cmd);
+      PublishSteeringTransitionState(
+        *msg, command_mode, true, target_steering_rad, steer_cmd,
+        velocity_scale, commanded_speed_mps);
       if (velocity_scale < 0.999) {
         RCLCPP_INFO_THROTTLE(
           node_->get_logger(), *node_->get_clock(), 1000,
@@ -545,9 +555,11 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
         steering_transition_full_speed_error_rad_,
         steering_transition_stop_error_rad_,
         steering_transition_min_velocity_scale_);
-      robot_->SetMotionCommand(
-        parallel.signed_speed * velocity_scale,
-        steer_cmd);
+      const double commanded_speed_mps = parallel.signed_speed * velocity_scale;
+      robot_->SetMotionCommand(commanded_speed_mps, steer_cmd);
+      PublishSteeringTransitionState(
+        *msg, command_mode, true, target_steering_rad, steer_cmd,
+        velocity_scale, commanded_speed_mps);
       if (velocity_scale < 0.999) {
         RCLCPP_INFO_THROTTLE(
           node_->get_logger(), *node_->get_clock(), 1000,
@@ -566,6 +578,8 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
         a_v = -robot_params_.max_angular_speed;
       }
       robot_->SetMotionCommand(0.0, 0.0, a_v);
+      PublishSteeringTransitionState(
+        *msg, command_mode, false, 0.0, 0.0, 1.0, 0.0);
       break;
     }
     case MotionState::MOTION_MODE_SIDE_SLIP: {
@@ -577,9 +591,37 @@ void RangerROSMessenger::TwistCmdCallback(geometry_msgs::msg::Twist::SharedPtr m
         l_v = -robot_params_.max_linear_speed;
       }
       robot_->SetMotionCommand(0.0, 0.0, l_v);
+      PublishSteeringTransitionState(
+        *msg, command_mode, false, 0.0, 0.0, 1.0, l_v);
       break;
     }
   }
+}
+
+void RangerROSMessenger::PublishSteeringTransitionState(
+  const geometry_msgs::msg::Twist & msg,
+  const uint8_t command_mode,
+  const bool steering_angle_valid,
+  const double target_steering_rad,
+  const double limited_steering_rad,
+  const double translation_scale,
+  const double commanded_speed_mps)
+{
+  ranger_msgs::msg::SteeringTransitionState state;
+  state.header.stamp = node_->get_clock()->now();
+  state.header.frame_id = base_frame_;
+  state.command_mode = command_mode;
+  state.steering_angle_valid = steering_angle_valid;
+  state.requested_linear_x_mps = msg.linear.x;
+  state.requested_linear_y_mps = msg.linear.y;
+  state.requested_angular_z_radps = msg.angular.z;
+  state.target_steering_rad = target_steering_rad;
+  state.limited_steering_rad = limited_steering_rad;
+  state.steering_error_rad =
+    steering_angle_valid ? target_steering_rad - limited_steering_rad : 0.0;
+  state.translation_scale = translation_scale;
+  state.commanded_speed_mps = commanded_speed_mps;
+  steering_transition_state_pub_->publish(state);
 }
 
 double RangerROSMessenger::LimitSteeringAngle(const double target_angle) {

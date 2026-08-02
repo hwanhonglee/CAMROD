@@ -127,6 +127,16 @@ ros2 param set /ranger_base_node steering_transition_stop_error_rad 0.35
 ros2 param set /ranger_base_node steering_transition_min_velocity_scale 0.0
 ```
 
+<!-- HH_260801 / TODOLIST 13 - Keep unthrottled controller-to-wheel evidence. -->
+Every incoming command also produces a timestamped
+`ranger_msgs/msg/SteeringTransitionState` on
+`/platform/steering_transition_state`. It records the selected motion mode,
+original Twist, target and rate-limited steering angles, signed steering
+error, translation scale, and signed speed sent to the Ranger SDK. Compare it
+with `/actuator_state` in the recovery bag to separate controller target
+reversals from driver slew limiting and physical wheel lag; `/rosout` remains
+operator feedback, not the measurement source.
+
 <!-- HH_260731 - Record the real crab-yaw corrections at the Ranger boundary. -->
 Parallel XY commands now use `atan2` and an explicit signed-speed
 representation for all four quadrants. Pure left/right crab no longer depends

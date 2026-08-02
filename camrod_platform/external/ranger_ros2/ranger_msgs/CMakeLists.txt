@@ -22,12 +22,13 @@ set(msg_file
 "msg/DriverState.msg"
 "msg/MotionState.msg"
 "msg/MotorState.msg"
+"msg/SteeringTransitionState.msg"
 "msg/SystemState.msg"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}
     ${msg_file}
-  DEPENDENCIES 
+  DEPENDENCIES
     builtin_interfaces std_msgs)
 
 if(BUILD_TESTING)
