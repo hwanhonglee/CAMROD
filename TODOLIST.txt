@@ -14,7 +14,7 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
 - v2.1.1 변경 범위: docs/V2_1_1_RELEASE_NOTES.md
 - v2.1.2 갱신 범위와 검증 한계: docs/V2_1_2_RELEASE_NOTES.md
 - 완료 구현·진단 결과: DONE.txt
-- 중앙 기준 프레임 전환표: docs/ROBOT_CENTER_LINK_MIGRATION.md
+- 중앙 기준 프레임 전환표: docs/V2_1_3_ROBOT_CENTER_MIGRATION.md
 - v2.1.2는 software/config/sim 기준점이며 변경 후 전체 실차 주행
   FIELD-PASS는 아직 없다.
 
@@ -25,7 +25,7 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
   단일 트리인지 확인한다. `robot_base_link`는 X -0.443 m의 고정 후륜 차축
   호환 프레임이어야 하며 EKF/Ranger가 별도로 발행하면 실패다.
 - `robot_center_link`에서 LiDAR/카메라/IMU/radar 각 TF를 조회해
-  `docs/ROBOT_CENTER_LINK_MIGRATION.md`의 변경 후 XYZ/RPY와 대조한다.
+  `docs/V2_1_3_ROBOT_CENTER_MIGRATION.md`의 변경 후 XYZ/RPY와 대조한다.
 - Nav2와 safety gate의 planning boundary가 전후 0.85837/0.83323 m,
   좌우 0.63505/0.63495 m인지 확인한다. 실제 차체 크기와 0.10 m margin은
   이전과 동일해야 한다.

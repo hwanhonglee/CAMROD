@@ -111,9 +111,9 @@ only when all of these conditions are simultaneously true:
 <!-- HH_260804 - Link the shared readiness frame and UI state evidence. -->
 Voice and both UIs now use the same `map -> robot_center_link` readiness target;
 the coordinate migration is documented in
-[the frame ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md), while service-state
+[the frame ledger](../docs/V2_1_3_ROBOT_CENTER_MIGRATION.md), while service-state
 and safety-overlay behavior is captured in
-[the UI/recovery report](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md).
+[the UI/recovery report](../docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md).
 
 During a mission, movement audio additionally waits for unified engage to be
 true and for the final command gate to report `ENABLED` (or

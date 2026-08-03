@@ -289,7 +289,7 @@ All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **de
 
 ### 📡 Sensor Mount Poses (relative to `sensor_kit_base_link` at `robot_center_link`)
 
-> HH_260803 - `sensor_kit_base_link` is fixed to `robot_center_link` with zero offset. Each X below is the previous rear-axle-relative X minus 0.443 m; Y/Z/RPY and every physical mount are unchanged. See [`../docs/ROBOT_CENTER_LINK_MIGRATION.md`](../docs/ROBOT_CENTER_LINK_MIGRATION.md) for the complete before/after table.
+> HH_260803 - `sensor_kit_base_link` is fixed to `robot_center_link` with zero offset. Each X below is the previous rear-axle-relative X minus 0.443 m; Y/Z/RPY and every physical mount are unchanged. See [`../docs/V2_1_3_ROBOT_CENTER_MIGRATION.md`](../docs/V2_1_3_ROBOT_CENTER_MIGRATION.md) for the complete before/after table.
 
 | Sensor | x (m) | y (m) | z (m) | roll (deg) | pitch (deg) | yaw (deg) |
 |---|---|---|---|---|---|---|

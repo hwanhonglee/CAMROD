@@ -59,7 +59,7 @@ after the gate's footprint, obstacle, engage, e-stop, CAN, charging, battery,
 freshness, and bounded-travel checks. Recovery intentionally holds yaw at zero
 until the route is clear; normal dual-Ackermann yaw resumes with RPP afterward.
 The center-frame boundary sweep and risk map are preserved in
-[the frame migration ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md).
+[the frame migration ledger](../docs/V2_1_3_ROBOT_CENTER_MIGRATION.md).
 
 ## Launch
 

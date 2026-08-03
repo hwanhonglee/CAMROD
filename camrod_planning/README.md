@@ -162,7 +162,7 @@ again controls yaw. Simulation confirmed that handoff, but lanelets
 754/2751/2720 contain a corridor narrower than the active
 1.69160 x 1.27000 m planning rectangle; that route needs map or operational
 route correction rather than extra crab or a reduced footprint.
-See [the recorded simulation](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md)
+See [the recorded simulation](../docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md)
 for route IDs, displacement, yaw, and retry evidence.
 
 ## Launch

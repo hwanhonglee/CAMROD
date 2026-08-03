@@ -209,7 +209,7 @@ same physical planning boundary changed only in X coordinates: front/rear
 `0.85837/0.83323 m` from the center. Left/right `0.63505/0.63495 m`, all
 boundary costs, margins, and stop behavior are unchanged. AprilTag
 longitudinal thresholds add 0.443 m to preserve the same physical charger stop
-points; see `docs/ROBOT_CENTER_LINK_MIGRATION.md`.
+points; see `docs/V2_1_3_ROBOT_CENTER_MIGRATION.md`.
 
 <!-- HH_260731 - Document projected reverse/crab recovery candidates without
      weakening ordinary footprint checks or implying automatic motion. -->
@@ -252,8 +252,8 @@ collision proof that is not available. Once 1.0 s of clear evidence releases
 the hold, the retained RPP goal resumes ordinary yaw control.
 
 The measured crab/reverse runs and production-owner animation are in
-[the automatic boundary recovery report](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md)
-and [recovery GIF](../docs/assets/20260803/automatic_route_recovery_20260803.gif).
+[the automatic boundary recovery report](../docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md)
+and [recovery GIF](../docs/assets/v2.1.3/boundary-recovery/automatic-owner-route-retry.gif).
 
 <!-- HH_260729 - Record the runtime bounds that prevent recovery tuning from
      disabling freshness or extending the lanelet-contact exception. -->

@@ -1,0 +1,70 @@
+{
+  "rear_axle_reference": {
+    "samples": 354,
+    "duration_to_first_hold_s": 24.405,
+    "first_hold_xy": [
+      3.0937,
+      45.3399
+    ],
+    "first_hold_yaw_deg": -1.377,
+    "route_progress_to_hold_m": 4.8853,
+    "cross_track_rms_m": 0.0588,
+    "cross_track_p95_m": 0.1215,
+    "cross_track_max_m": 0.1252,
+    "yaw_error_rms_deg": 2.901,
+    "yaw_error_p95_deg": 5.209,
+    "yaw_step_sign_reversals": 0
+  },
+  "axle_midpoint_reference": {
+    "samples": 409,
+    "duration_to_first_hold_s": 28.696,
+    "first_hold_xy": [
+      3.9273,
+      45.2452
+    ],
+    "first_hold_yaw_deg": -12.293,
+    "route_progress_to_hold_m": 5.7419,
+    "cross_track_rms_m": 0.0536,
+    "cross_track_p95_m": 0.1198,
+    "cross_track_max_m": 0.1253,
+    "yaw_error_rms_deg": 3.502,
+    "yaw_error_p95_deg": 7.137,
+    "yaw_step_sign_reversals": 0
+  },
+  "delta_center_minus_rear": {
+    "duration_to_first_hold_s": 4.291,
+    "route_progress_to_hold_m": 0.8566,
+    "cross_track_rms_m": -0.0052,
+    "cross_track_p95_m": -0.0017,
+    "cross_track_max_m": 0.0001,
+    "yaw_error_rms_deg": 0.601,
+    "yaw_error_p95_deg": 1.928,
+    "yaw_step_sign_reversals": 0
+  },
+  "common_route_segment": {
+    "rear_axle_reference": {
+      "samples": 354,
+      "cross_track_rms_m": 0.0588,
+      "cross_track_p95_m": 0.1215,
+      "yaw_error_rms_deg": 2.901,
+      "yaw_error_p95_deg": 5.209
+    },
+    "axle_midpoint_reference": {
+      "samples": 351,
+      "cross_track_rms_m": 0.0549,
+      "cross_track_p95_m": 0.1212,
+      "yaw_error_rms_deg": 2.713,
+      "yaw_error_p95_deg": 5.153
+    },
+    "route_station_range_m": [
+      0.4427,
+      5.328
+    ],
+    "delta_center_minus_rear": {
+      "cross_track_rms_m": -0.0039,
+      "cross_track_p95_m": -0.0003,
+      "yaw_error_rms_deg": -0.188,
+      "yaw_error_p95_deg": -0.056
+    }
+  }
+}

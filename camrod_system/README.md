@@ -46,7 +46,7 @@ are the previous rear-axle values minus 0.443 m; Y/Z/RPY are unchanged. GNSS
 remains `pose_verified=false` because `-0.443/0/0` is a converted placeholder,
 not a surveyed antenna lever arm.
 The complete coordinate table and remaining field checks are in the
-[`robot_center_link` migration ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md).
+[`robot_center_link` migration ledger](../docs/V2_1_3_ROBOT_CENTER_MIGRATION.md).
 
 The terminal summary lists every simultaneous non-OK checker rather than only
 the last worst item in a module. For example, FRONT1 and LEFT2 can appear as

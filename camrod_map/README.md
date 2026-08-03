@@ -13,8 +13,8 @@
 > 1.69160 x 1.27000 m planning rectangle. Automatic crab/reverse correctly
 > stops again there; the map corridor or allowed route must be corrected rather
 > than shrinking the measured footprint.
-> See the [simulation contact sheet](../docs/assets/20260803/automatic_route_recovery_contact_sheet_20260803.png)
-> and [measured report](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md).
+> See the [simulation contact sheet](../docs/assets/v2.1.3/boundary-recovery/automatic-owner-route-retry-contact-sheet.png)
+> and [measured report](../docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md).
 
 ---
 
