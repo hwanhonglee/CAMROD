@@ -11,6 +11,30 @@
 | **Upstream dependencies** | `camrod_sensing`, `camrod_platform`, `camrod_map` |
 | **Downstream consumers** | `camrod_planning`, `camrod_platform`, `camrod_system` |
 
+<!-- HH_260804 - Show what is added beyond raw GNSS and keep the measured sim
+timing claim separate from unmeasured field accuracy. -->
+## Pose Generation Evidence
+
+![Localization pose generation and timing](../docs/assets/module-guides/localization/pose-generation-and-timing.png)
+
+Raw GNSS supplies absolute position/covariance and valid dual-antenna heading.
+The field EKF adds IMU roll/pitch/angular rates and Ranger wheel `vx/vy`, predicts
+at 15 Hz on `robot_center_link`, converts EKF odometry to map-frame pose, and
+publishes the selected result. The sim profile runs at 20 Hz and additionally
+fuses its map-consistent fake IMU yaw.
+
+The committed 30-second stationary simulation measured 10.0 Hz sensor inputs,
+20.0 Hz EKF/selected-pose output, and 1.83 ms selected-pose header-age p95. This
+proves chain continuity, prediction cadence, and freshness only; noiseless
+stationary simulation does not prove better field position accuracy or reduced
+driving oscillation. See the
+[`pose-chain` JSON](../docs/evidence/module-guides/localization/pose-chain-sim-20260804.json)
+and [evidence rules](../docs/MODULE_VISUAL_GUIDE.md).
+
+```bash
+python3 camrod_bringup/scripts/render_module_readme_assets.py --module localization
+```
+
 ---
 
 ## 2. 🚀 Quick Start

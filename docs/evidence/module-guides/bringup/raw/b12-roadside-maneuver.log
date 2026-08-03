@@ -1,0 +1,31 @@
+[INFO] [1785778393.216738426] [control.camping_site_maneuver_controller]: loaded 26 campsite goal entries from /home/hong/camrod_ws/install/camrod_planning/share/camrod_planning/config/camping_sites.yaml
+[INFO] [1785778393.216948993] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller ready: cmd=/control/cmd_vel_raw pose=/localization/pose lanelet_pose=/planning/lanelet_pose auto_start=true entry_mode=crab adopt_topic=/control/camping_site_maneuver_controller/adopt cancel_nav2=true
+[INFO] [1785778511.206562981] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller IDLE: cancel=sim_validation
+[INFO] [1785778511.278110511] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller IDLE: cancel=sim_validation
+[INFO] [1785778511.327929825] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller IDLE: cancel=sim_validation
+[INFO] [1785778517.052501919] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller IDLE: cancel=sim_validation
+[INFO] [1785778517.105896786] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller IDLE: cancel=sim_validation
+[INFO] [1785778517.156273459] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller IDLE: cancel=sim_validation
+[INFO] [1785778517.878431818] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller IDLE: cancel=sim_validation
+[INFO] [1785778517.929319215] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller IDLE: cancel=sim_validation
+[INFO] [1785778517.998334504] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller IDLE: cancel=sim_validation
+[INFO] [1785778519.733970744] [control.camping_site_maneuver_controller]: restored site_goal from camping_sites_yaml: key=camping_site_12 x=12.79 y=22.52
+[INFO] [1785778519.734089938] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller CRAB_IN: start=planning_state:camping_site_12 offset=2.29m direction=+1 rotate=left_ccw_site_12 service_mode=roadside_stop source=goal_pair forward=0.00m timeout_speed_scale=0.40 duration=23.9s
+[INFO] [1785778519.819332758] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778521.919285261] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778523.919337831] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778526.019347972] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778528.019383940] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778530.119433756] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778532.119446425] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778534.219467462] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778536.419456607] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778538.419580693] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778540.519595470] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778542.519642376] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778544.519790216] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778546.619635432] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778548.719663261] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778550.819743305] [control.camping_site_maneuver_controller]: requested Nav2 cancel during CRAB_IN
+[INFO] [1785778551.719670800] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller ERROR: crab entry timeout before reaching site offset
+[INFO] [1785778664.075177800] [rclcpp]: signal_handler(SIGINT/SIGTERM)

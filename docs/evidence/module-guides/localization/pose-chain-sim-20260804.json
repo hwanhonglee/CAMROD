@@ -1,0 +1,458 @@
+{
+  "status": "OK",
+  "requested_duration_s": 30.0,
+  "measured_duration_s": 30.00034200400114,
+  "generated_at_unix_s": 1785778468.2564232,
+  "errors": [],
+  "topics": [
+    {
+      "name": "gnss_fix",
+      "topic": "/sensing/gnss/ublox_gps_node/fix",
+      "expected_type": "sensor_msgs/msg/NavSatFix",
+      "publisher_types": [
+        "sensor_msgs/msg/NavSatFix"
+      ],
+      "count": 300,
+      "rate_hz": 10.000015969980582,
+      "interarrival_ms": {
+        "p50": 99.99894816428423,
+        "p95": 100.14572716318071,
+        "max": 100.60911695472896
+      },
+      "header_age_ms": {
+        "p50": 0.518798828125,
+        "p95": 0.6337165832519531,
+        "max": 1.108407974243164
+      },
+      "header_error_count": 0,
+      "header_errors": [],
+      "motion": {
+        "pose_count": 0,
+        "yaw_pose_count": 0,
+        "twist_count": 0,
+        "position_displacement_m": null,
+        "yaw_change_deg": null,
+        "yaw_span_deg": null,
+        "linear_x_abs_mps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "linear_y_abs_mps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "angular_z_abs_radps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "crab_sample_count": 0
+      },
+      "errors": [],
+      "status": "OK"
+    },
+    {
+      "name": "gnss_pose",
+      "topic": "/sensing/gnss/pose_with_covariance_ros",
+      "expected_type": "geometry_msgs/msg/PoseWithCovarianceStamped",
+      "publisher_types": [
+        "geometry_msgs/msg/PoseWithCovarianceStamped"
+      ],
+      "count": 301,
+      "rate_hz": 10.000210312427209,
+      "interarrival_ms": {
+        "p50": 99.99970649369061,
+        "p95": 100.37776408717036,
+        "max": 102.1078429184854
+      },
+      "header_age_ms": {
+        "p50": 0.9412765502929688,
+        "p95": 1.3206005096435547,
+        "max": 3.0460357666015625
+      },
+      "header_error_count": 0,
+      "header_errors": [],
+      "motion": {
+        "pose_count": 301,
+        "yaw_pose_count": 0,
+        "twist_count": 0,
+        "position_displacement_m": 0.0,
+        "yaw_change_deg": null,
+        "yaw_span_deg": null,
+        "linear_x_abs_mps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "linear_y_abs_mps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "angular_z_abs_radps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "crab_sample_count": 0
+      },
+      "errors": [],
+      "status": "OK"
+    },
+    {
+      "name": "imu",
+      "topic": "/sensing/imu/data_ros",
+      "expected_type": "sensor_msgs/msg/Imu",
+      "publisher_types": [
+        "sensor_msgs/msg/Imu"
+      ],
+      "count": 301,
+      "rate_hz": 10.000206237565992,
+      "interarrival_ms": {
+        "p50": 100.00218055211008,
+        "p95": 100.25948286056519,
+        "max": 101.33585007861257
+      },
+      "header_age_ms": {
+        "p50": 1.081705093383789,
+        "p95": 1.2826919555664062,
+        "max": 2.449512481689453
+      },
+      "header_error_count": 0,
+      "header_errors": [],
+      "motion": {
+        "pose_count": 0,
+        "yaw_pose_count": 0,
+        "twist_count": 301,
+        "position_displacement_m": null,
+        "yaw_change_deg": null,
+        "yaw_span_deg": null,
+        "linear_x_abs_mps": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "linear_y_abs_mps": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "angular_z_abs_radps": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "crab_sample_count": 0
+      },
+      "errors": [],
+      "status": "OK"
+    },
+    {
+      "name": "platform_odom",
+      "topic": "/platform/status/odometry",
+      "expected_type": "avg_msgs/msg/AvgOdometry",
+      "publisher_types": [
+        "avg_msgs/msg/AvgOdometry"
+      ],
+      "count": 301,
+      "rate_hz": 10.0001431471049,
+      "interarrival_ms": {
+        "p50": 99.98825995717198,
+        "p95": 100.32870713621378,
+        "max": 102.34615299850702
+      },
+      "header_age_ms": {
+        "p50": 1.4998912811279297,
+        "p95": 1.7843246459960938,
+        "max": 3.873109817504883
+      },
+      "header_error_count": 0,
+      "header_errors": [],
+      "motion": {
+        "pose_count": 301,
+        "yaw_pose_count": 301,
+        "twist_count": 301,
+        "position_displacement_m": 0.0,
+        "yaw_change_deg": 0.0,
+        "yaw_span_deg": 0.0,
+        "linear_x_abs_mps": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "linear_y_abs_mps": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "angular_z_abs_radps": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "crab_sample_count": 0
+      },
+      "errors": [],
+      "status": "OK"
+    },
+    {
+      "name": "wheel_odom",
+      "topic": "/localization/input/wheel_odometry_ros",
+      "expected_type": "nav_msgs/msg/Odometry",
+      "publisher_types": [
+        "nav_msgs/msg/Odometry"
+      ],
+      "count": 300,
+      "rate_hz": 10.000153753551254,
+      "interarrival_ms": {
+        "p50": 99.988967878744,
+        "p95": 100.48783803358674,
+        "max": 102.3728558793664
+      },
+      "header_age_ms": {
+        "p50": 1.7981529235839844,
+        "p95": 2.3200511932373047,
+        "max": 4.313945770263672
+      },
+      "header_error_count": 0,
+      "header_errors": [],
+      "motion": {
+        "pose_count": 300,
+        "yaw_pose_count": 300,
+        "twist_count": 300,
+        "position_displacement_m": 0.0,
+        "yaw_change_deg": 0.0,
+        "yaw_span_deg": 0.0,
+        "linear_x_abs_mps": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "linear_y_abs_mps": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "angular_z_abs_radps": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "crab_sample_count": 0
+      },
+      "errors": [],
+      "status": "OK"
+    },
+    {
+      "name": "ekf_odom",
+      "topic": "/localization/primary/odometry_ros",
+      "expected_type": "nav_msgs/msg/Odometry",
+      "publisher_types": [
+        "nav_msgs/msg/Odometry"
+      ],
+      "count": 600,
+      "rate_hz": 20.00008939402658,
+      "interarrival_ms": {
+        "p50": 49.99268404208124,
+        "p95": 50.341414054855704,
+        "max": 52.074973937124014
+      },
+      "header_age_ms": {
+        "p50": 0.7282495498657227,
+        "p95": 1.0209083557128906,
+        "max": 2.8717517852783203
+      },
+      "header_error_count": 0,
+      "header_errors": [],
+      "motion": {
+        "pose_count": 600,
+        "yaw_pose_count": 600,
+        "twist_count": 600,
+        "position_displacement_m": 0.0,
+        "yaw_change_deg": 0.0,
+        "yaw_span_deg": 0.0,
+        "linear_x_abs_mps": {
+          "p50": 1.2587914974622979e-17,
+          "p95": 1.879954235610163e-17,
+          "max": 1.8805764500247627e-17
+        },
+        "linear_y_abs_mps": {
+          "p50": 8.22180806249668e-17,
+          "p95": 1.2278938072950534e-16,
+          "max": 1.2283002109409043e-16
+        },
+        "angular_z_abs_radps": {
+          "p50": 1.452860323362355e-25,
+          "p95": 1.4532199725926255e-25,
+          "max": 1.4609460712749641e-25
+        },
+        "crab_sample_count": 0
+      },
+      "errors": [],
+      "status": "OK"
+    },
+    {
+      "name": "adapter_pose",
+      "topic": "/localization/primary/pose_with_covariance",
+      "expected_type": "avg_msgs/msg/AvgPoseWithCovarianceStamped",
+      "publisher_types": [
+        "avg_msgs/msg/AvgPoseWithCovarianceStamped"
+      ],
+      "count": 600,
+      "rate_hz": 20.000062269322992,
+      "interarrival_ms": {
+        "p50": 50.00033904798329,
+        "p95": 50.411539152264595,
+        "max": 51.727229030802846
+      },
+      "header_age_ms": {
+        "p50": 1.2069940567016602,
+        "p95": 1.5811920166015625,
+        "max": 2.997159957885742
+      },
+      "header_error_count": 0,
+      "header_errors": [],
+      "motion": {
+        "pose_count": 600,
+        "yaw_pose_count": 600,
+        "twist_count": 0,
+        "position_displacement_m": 0.0,
+        "yaw_change_deg": 0.0,
+        "yaw_span_deg": 0.0,
+        "linear_x_abs_mps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "linear_y_abs_mps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "angular_z_abs_radps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "crab_sample_count": 0
+      },
+      "errors": [],
+      "status": "OK"
+    },
+    {
+      "name": "selected_pose",
+      "topic": "/localization/pose_ros",
+      "expected_type": "geometry_msgs/msg/PoseStamped",
+      "publisher_types": [
+        "geometry_msgs/msg/PoseStamped"
+      ],
+      "count": 600,
+      "rate_hz": 20.000054317429935,
+      "interarrival_ms": {
+        "p50": 49.9967320356518,
+        "p95": 50.47765397466719,
+        "max": 51.34491203352809
+      },
+      "header_age_ms": {
+        "p50": 1.3831853866577148,
+        "p95": 1.828908920288086,
+        "max": 3.0863285064697266
+      },
+      "header_error_count": 0,
+      "header_errors": [],
+      "motion": {
+        "pose_count": 600,
+        "yaw_pose_count": 600,
+        "twist_count": 0,
+        "position_displacement_m": 0.0,
+        "yaw_change_deg": 0.0,
+        "yaw_span_deg": 0.0,
+        "linear_x_abs_mps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "linear_y_abs_mps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "angular_z_abs_radps": {
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "crab_sample_count": 0
+      },
+      "errors": [],
+      "status": "OK"
+    }
+  ],
+  "pose_comparisons": [
+    {
+      "pair_count": 301,
+      "yaw_pair_count": 0,
+      "max_stamp_delta_s": 0.25,
+      "stamp_delta_ms": {
+        "p50": 24.611473083496094,
+        "p95": 24.648427963256836,
+        "max": 25.39348602294922
+      },
+      "position_error_m": {
+        "p50": 3.66205343881779e-14,
+        "p95": 3.66205343881779e-14,
+        "max": 3.66205343881779e-14
+      },
+      "yaw_error_deg": {
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "name": "gnss->ekf_odom"
+    },
+    {
+      "pair_count": 301,
+      "yaw_pair_count": 0,
+      "max_stamp_delta_s": 0.25,
+      "stamp_delta_ms": {
+        "p50": 24.611473083496094,
+        "p95": 24.648427963256836,
+        "max": 25.39348602294922
+      },
+      "position_error_m": {
+        "p50": 3.66205343881779e-14,
+        "p95": 3.66205343881779e-14,
+        "max": 3.66205343881779e-14
+      },
+      "yaw_error_deg": {
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "name": "gnss->adapter_pose"
+    },
+    {
+      "pair_count": 301,
+      "yaw_pair_count": 0,
+      "max_stamp_delta_s": 0.25,
+      "stamp_delta_ms": {
+        "p50": 24.611473083496094,
+        "p95": 24.648427963256836,
+        "max": 25.39348602294922
+      },
+      "position_error_m": {
+        "p50": 3.66205343881779e-14,
+        "p95": 3.66205343881779e-14,
+        "max": 3.66205343881779e-14
+      },
+      "yaw_error_deg": {
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "name": "gnss->selected_pose"
+    }
+  ]
+}

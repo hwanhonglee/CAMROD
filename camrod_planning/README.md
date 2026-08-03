@@ -6,6 +6,30 @@
 It does not own the final velocity safety gate, campsite local maneuvers, or
 reverse parking.
 
+<!-- HH_260804 - Make loaded Nav2 plugins and cross-package state ownership
+reviewable without presenting the expected lifecycle as runtime evidence. -->
+## Visual Runtime Guide
+
+![Nav2 servers and mission states](../docs/assets/module-guides/planning/nav2-servers-and-mission-states.png)
+
+The image is generated from the active Nav2 and bringup configuration. Full
+bringup selects `LaneletRoute + RPP`; the other listed planner/controller
+plugins remain loaded for selector and fallback use. `/planning/state` reports
+planner lifecycle, `/service/state` reports the operator-visible mission phase,
+and `/system/status` reports health severity.
+
+![Expected service-state progression](../docs/assets/module-guides/bringup/mission-lifecycle-contract.gif)
+
+This state GIF is a source-derived contract, not a successful drive recording.
+The current B6/B12 simulation reaches campsite entry but is then correctly held
+by the full-footprint lanelet gate; see the
+[measured bringup result](../docs/assets/module-guides/bringup/simulation-evidence-20260804.png)
+and [module visual guide](../docs/MODULE_VISUAL_GUIDE.md).
+
+```bash
+python3 camrod_bringup/scripts/render_module_readme_assets.py --module planning
+```
+
 ## Main Nodes
 
 | Node | Responsibility |
