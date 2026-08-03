@@ -559,10 +559,12 @@ def main():
     lanelet_map = lanelet2.io.load(str(args.map), LocalCartesianProjector(ORIGIN))
     points = route_points(lanelet_map)
     route_samples = analyze_route(map_geometry(lanelet_map), points)
-    analysis_path = args.output_dir / "robot_center_boundary_geometry_20260803.json"
-    contact_path = args.output_dir / "robot_center_boundary_contact_sheet_20260803.png"
-    risk_path = args.output_dir / "robot_center_boundary_risk_map_20260803.png"
-    gif_path = args.output_dir / "robot_center_boundary_recovery_20260803.gif"
+    # HH_260804 / v2.1.3 - Keep pre-owner evidence visibly distinct from the
+    # automatic recovery controller introduced after this manual probe run.
+    analysis_path = args.output_dir / "robot-center-route-samples.json"
+    contact_path = args.output_dir / "pre-owner-robot-center-contact-sheet.png"
+    risk_path = args.output_dir / "robot-center-narrow-route-risk-map.png"
+    gif_path = args.output_dir / "pre-owner-robot-center-recovery.gif"
     with analysis_path.open("w", encoding="utf-8") as stream:
         json.dump({"route_ids": ROUTE_IDS, "samples": route_samples}, stream, indent=2)
     render_contact_sheet(contact_path, run, lanelet_map, route_samples)

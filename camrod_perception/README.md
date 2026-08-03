@@ -29,7 +29,7 @@ the tag pose and `camrod_control` decides parking commands.
 > thresholds were shifted by 0.443 m so the physical charger stop points remain
 > unchanged after the frame migration.
 > Exact before/after coordinates are in the
-> [`robot_center_link` migration ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md).
+> [`robot_center_link` migration ledger](../docs/V2_1_3_ROBOT_CENTER_MIGRATION.md).
 
 > HH_260707 - `obstacle_fusion_node` is tuned for real-time freshness under all-on field load: `sync_queue_size: 8` limits stale message backlog, debug-image decode/draw/publish work is skipped when no subscriber exists, and debug image output is rate-limited to 2 Hz by default. The obstacle topics and message contracts are unchanged.
 

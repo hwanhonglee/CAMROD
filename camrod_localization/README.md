@@ -331,7 +331,7 @@ placeholder and is not a physical antenna measurement.
 A stable GNSS-to-final XY offset must therefore be checked against the measured
 antenna lever arm before changing EKF frequency, covariance, or map offsets.
 The complete TF ownership and sensor-coordinate conversion are recorded in
-[the `robot_center_link` migration ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md).
+[the `robot_center_link` migration ledger](../docs/V2_1_3_ROBOT_CENTER_MIGRATION.md).
 
 ---
 

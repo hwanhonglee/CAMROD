@@ -9,7 +9,7 @@ LiDAR, radar, inflation grids, and IMU launch metadata now use
 `robot_center_link` at the axle midpoint. Sensor X coordinates equal the old
 rear-axle values minus 0.443 m; physical mounts, Y/Z/RPY, obstacle envelopes,
 and cost thresholds did not change. See the
-[`robot_center_link` migration ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md).
+[`robot_center_link` migration ledger](../docs/V2_1_3_ROBOT_CENTER_MIGRATION.md).
 
 > 📌 **Hardware covered:** Vanjee LiDAR (Ethernet), DFRobot SEN0592 near-range radar ×7 (CH9344 USB serial: front1, front2, left1, left2, right1, right2, rear), ECON dual cameras — front (`camera_front_publisher_node`, GPU VPI+NvJPEG, `/dev/video0`) + rear (`camera_rear_publisher_node`, raw `image_raw` plus rate-limited CPU JPEG monitoring, `/dev/video1`), MicroStrain CV7-AHRS or GQ7 IMU (USB serial, selected via `imu_model`), u-blox SparkFun ZED-F9P (single antenna, current field device `/dev/ttyACM0`, `ublox_dual_antenna:=false`) or ArduSimple simpleRTK2B Heading (dual antenna, moving-baseline heading, `ublox_dual_antenna:=true`), NTRIP RTK correction stream (gnssdata.or.kr).
 

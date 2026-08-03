@@ -1,18 +1,20 @@
 # Documentation Changelog
 
-<!-- HH_260804 - Package complete visual-evidence and README synchronization. -->
-## [post-v2.1.2-docs-and-evidence] - 2026-08-04 (HH_260804)
+<!-- HH_260804 - Package the v2.1.3 release and normalize evidence ownership. -->
+## [v2.1.3-release-and-evidence-layout] - 2026-08-04 (HH_260804)
 
 ### Changed
 
 | Doc or asset | What changed |
 |-----|--------------|
 | root and all affected package `README.md` files | Synchronized the center-frame, bounded recovery, RPP, Guest UI, map-limit, parking-TF, diagnostics, and field-acceptance contracts across bringup, control, localization, map, perception, planning, platform, sensing, sensor kit, system, UI, and voice |
-| `docs/assets/20260803/*` | Added two recovery GIFs, four recovery/boundary PNGs, two Guest UI screenshots, and the highlighted stop-location PNG |
-| `docs/evidence/20260803/*` | Added center-frame geometry/recovery, automatic crab/reverse/route retry, and Guest ROS/WebSocket integration JSON evidence |
-| `docs/ROBOT_CENTER_LINK_MIGRATION.md` | Embedded the center-frame contact sheet and risk map and linked the GIF and source JSON |
-| `docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md` | Replaced host-local paths with tracked relative assets, embedded UI/recovery images, and linked all reproducible result JSON |
+| `docs/V2_1_3_RELEASE_NOTES.md` | Added release scope, safety invariants, verification, evidence layout, and remaining physical acceptance |
+| `docs/assets/v2.1.3/*` | Organized reference-frame, boundary-geometry, pre-owner/current recovery, and Guest UI visuals by purpose rather than timestamp |
+| `docs/evidence/v2.1.3/*` | Added the previously workspace-local A/B drive, 0/5/10 cm geometry sweeps, and manual recovery timelines beside current automatic-owner evidence |
+| `docs/V2_1_3_ROBOT_CENTER_MIGRATION.md` | Added A/B drive measurements, 0/5/10 cm geometry comparison, center-frame visuals, and source JSON links |
+| `docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md` | Separated manual pre-owner runs from automatic-owner runs and linked the normalized evidence tree |
 | `camrod_bringup` render tools | Installed both automatic-owner and earlier manual-candidate renderers and documented commands that regenerate the GIF/PNG evidence |
+| local workspace generated files | Preserved unique root comparison artifacts under `docs`, removed byte-identical root duplicates, and cleared ignored `src/build`, `src/log`, pytest, and Python caches |
 | root `TODOLIST.txt` | Advanced the review date while keeping all physical-motion acceptance explicitly pending |
 
 Package and bringup configuration mirrors were rechecked after documentation
@@ -28,7 +30,7 @@ or physical FIELD-PASS claim was changed by this documentation packaging.
 
 | Doc | What changed |
 |-----|--------------|
-| `docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md` | Added Guest-to-Robot UI integration results, production-owned crab/reverse policy, measured simulation runs, visual artifacts, and map limitations |
+| `docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md` | Added Guest-to-Robot UI integration results, production-owned crab/reverse policy, measured simulation runs, visual artifacts, and map limitations |
 | root `TODOLIST.txt` | Replaced the obsolete missing-owner note with the implemented bounded owner and retained real-robot acceptance separately |
 | `camrod_control/README.md` | Documented candidate selection, direction latch, speed/distance/time bounds, and the no-rotation contact invariant |
 | `camrod_ui/README.md` | Documented the shared backend contract, 35% Guest admission rule, and service-state/safety-overlay separation |
@@ -47,7 +49,7 @@ and all physical motion acceptance remains open in `TODOLIST.txt`.
 
 | Doc | What changed |
 |-----|--------------|
-| `docs/ROBOT_CENTER_LINK_MIGRATION.md` | Added the frame definition, exact sensor/body/footprint/parking before-and-after values, invariants, runtime consumers, and field acceptance |
+| `docs/V2_1_3_ROBOT_CENTER_MIGRATION.md` | Added the frame definition, exact sensor/body/footprint/parking before-and-after values, invariants, runtime consumers, and field acceptance |
 | root `README.md`, `TODOLIST.txt` | Added the canonical center-frame summary and retained GNSS/TF/drive work as explicit physical acceptance |
 | `camrod_sensor_kit/README.md` | Replaced the rear-axle frame tree and mount table with the axle-midpoint tree and converted coordinates |
 | `camrod_localization/README.md`, `camrod_control/README.md` | Synchronized EKF TF ownership, GNSS caveat, footprint values, and parking distance preservation |

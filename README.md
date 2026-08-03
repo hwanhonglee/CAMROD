@@ -16,7 +16,9 @@
 
 <!-- HH_260802 - Promote the synchronized boundary/RPP/field-evidence checkpoint. -->
 
-Current release baseline: `v2.1.2` ([release notes](docs/V2_1_2_RELEASE_NOTES.md)).
+<!-- HH_260804 - Promote the center-frame, automatic-recovery, and UI-parity release. -->
+
+Current release baseline: `v2.1.3` ([release notes](docs/V2_1_3_RELEASE_NOTES.md)).
 
 CAMROD is a ROS 2 Humble autonomous mobile robot stack. Route planning, local
 vehicle maneuvers, reverse parking, and hardware command authorization are
@@ -134,7 +136,7 @@ use the center frame. Sensor X values were converted with
 `new_x = old_x - 0.443 m`, while physical mounts, Y/Z/RPY, chassis dimensions,
 the 0.10 m planning margin, and safety thresholds remain unchanged. The full
 before/after ledger and field checks are in
-[`docs/ROBOT_CENTER_LINK_MIGRATION.md`](docs/ROBOT_CENTER_LINK_MIGRATION.md).
+  [`docs/V2_1_3_ROBOT_CENTER_MIGRATION.md`](docs/V2_1_3_ROBOT_CENTER_MIGRATION.md).
 
 It also moves rear monitoring JPEG encoding off the raw camera publication
 thread, publishes structured controller-to-wheel transition evidence, and
@@ -145,8 +147,8 @@ sine-wave motion, so real-wheel acceptance remains open. The complete planning
 boundary still permits soft cost 98 and stops at off-lane cost 100, including
 crab/reverse maneuver phases.
 
-<!-- HH_260804 - Summarize the post-v2.1.2 automatic recovery and UI parity delta. -->
-The current post-v2.1.2 work adds one bounded
+<!-- HH_260804 - Summarize the v2.1.3 automatic recovery and UI parity delta. -->
+The v2.1.3 release adds one bounded
 `route_safety_recovery_controller` as the automatic command owner. A unique
 safe lateral projection selects pure crab away from contact; when both lateral
 projections are blocked and reverse is clear, it selects reverse. Ambiguous,
@@ -160,9 +162,12 @@ service phase including `OPERATOR_STOPPED`, and overlays an actual command-gate
 route hold without replacing normal service progress with a generic warning.
 The implementation, measured simulation values, visual evidence, and remaining
 map/field limits are in
-[the 2026-08-03 recovery report](docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md).
+[the v2.1.3 recovery report](docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md).
 
-![Automatic boundary recovery policy](docs/assets/20260803/automatic_route_recovery_policy_20260803.png)
+![Automatic boundary recovery policy](docs/assets/v2.1.3/boundary-recovery/automatic-owner-policy.png)
+
+The complete visual and raw-data catalog is in the
+[v2.1.3 simulation evidence index](docs/assets/v2.1.3/README.md).
 
 <!-- HH_260731 - Link the first physical no-motion acceptance checkpoint. -->
 The 2026-07-31 physical stationary checkpoint passed the 600-second

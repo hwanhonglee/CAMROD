@@ -1,6 +1,6 @@
-# Guest UI and Automatic Boundary Recovery Simulation
+# CAMROD v2.1.3 UI and Boundary Recovery Validation
 
-Date: 2026-08-03 (Asia/Seoul)
+Release checkpoint: 2026-08-04 (Asia/Seoul)
 
 <!-- HH_260803 - Keep simulation evidence separate from real-robot acceptance. -->
 This report records software and simulation behavior after the
@@ -28,11 +28,11 @@ dispatch is rejected below 35% SOC. Generic diagnostic WARN remains health
 information and does not overwrite a normal service phase.
 
 Result JSON:
-[guest UI integration evidence](evidence/20260803/guest_ui_integration_20260803.json)
+[guest UI integration evidence](evidence/v2.1.3/ui/guest-mission-lifecycle.json)
 
-![Guest UI ready for campsite dispatch](assets/20260803/guest_ui_dispatch_ready_20260803.png)
+![Guest UI ready for campsite dispatch](assets/v2.1.3/ui/guest-mission-dispatch-ready.png)
 
-![Guest UI displaying a route safety hold](assets/20260803/guest_ui_route_safety_hold_20260803.png)
+![Guest UI displaying a route safety hold](assets/v2.1.3/ui/guest-route-safety-hold.png)
 
 ## Recovery Policy
 
@@ -60,6 +60,27 @@ boundary sweeps corners through cells that are not covered by the current
 translation-only projection. Allowing yaw at contact without swept-footprint
 proof would weaken the boundary guarantee.
 
+## Evidence Progression
+
+<!-- HH_260804 / v2.1.3 - Keep historical manual-candidate runs because they
+     explain what the gate proved before an automatic command owner existed. -->
+
+The release evidence is intentionally split by command ownership:
+
+| Stage | Reference and yaw | First hold | Retry distance | Meaning |
+|---|---|---:|---:|---|
+| pre-owner manual candidate | rear axle, fixed-yaw display | `(3.0825, 45.3403)` | 0.4719 m | gate admitted clear reverse/right-crab probes, but generated no recovery command |
+| pre-owner manual candidate | rear axle, route yaw | `(3.0937, 45.3399)` | 0.4520 m | normal drive yaw followed the curve; manual reverse released the hold |
+| pre-owner manual candidate | `robot_center_link` | `(3.9277, 45.2451)` | 0.5008 m | center reference progressed farther, then the same narrow curve stopped the retry |
+| current automatic owner | `robot_center_link` | scenario-dependent | bounded by 0.40 m | controller publishes only the gate-selected crab/reverse command |
+
+Historical visuals:
+[fixed-yaw manual probe](assets/v2.1.3/boundary-recovery/pre-owner-manual-no-yaw.gif),
+[yaw-aware manual probe](assets/v2.1.3/boundary-recovery/pre-owner-manual-yaw-aware.gif),
+and [center-reference manual probe](assets/v2.1.3/boundary-recovery/pre-owner-robot-center-recovery.gif).
+Their source timelines are stored beside the automatic results under
+`docs/evidence/v2.1.3/boundary-recovery/`.
+
 ## Measured Runs
 
 | Scenario | Automatic motion | Recovery result | Same-goal result |
@@ -68,11 +89,11 @@ proof would weaken the boundary guarantee.
 | stationary route contact | `REVERSE` | final linear.x -0.05 m/s, 0.0327 m before release | 0.0592 m and +0.4065 deg yaw, then next hold |
 | moving route contact | `REVERSE` selected | residual deceleration cleared the first hold before reverse output | 0.4726 m and -2.0008 deg yaw, then next hold |
 
-![Automatic recovery policy](assets/20260803/automatic_route_recovery_policy_20260803.png)
+![Automatic recovery policy](assets/v2.1.3/boundary-recovery/automatic-owner-policy.png)
 
-![Automatic recovery contact sheet](assets/20260803/automatic_route_recovery_contact_sheet_20260803.png)
+![Automatic recovery contact sheet](assets/v2.1.3/boundary-recovery/automatic-owner-route-retry-contact-sheet.png)
 
-[Open the automatic recovery GIF](assets/20260803/automatic_route_recovery_20260803.gif).
+[Open the automatic recovery GIF](assets/v2.1.3/boundary-recovery/automatic-owner-route-retry.gif).
 
 The route cases intentionally prove bounded retry and repeat stop. They do not
 prove mission completion: lanelets 754/2751/2720 include a corridor narrower
@@ -112,20 +133,15 @@ ros2 run camrod_bringup render_automatic_recovery_results.py \
 # Rebuild only the earlier manual-candidate center-frame comparison.
 ros2 run camrod_bringup render_boundary_recovery_results.py \
   --map <lanelet2_maps.osm> \
-  --run docs/evidence/20260803/robot_center_boundary_recovery_20260803.json \
+  --run docs/evidence/v2.1.3/boundary-recovery/pre-owner-robot-center-timeline.json \
   --output-dir /tmp/manual_boundary_visuals
 ```
 
-Generated evidence:
+Current automatic-owner source evidence:
 
-- [Guest UI dispatch PNG](assets/20260803/guest_ui_dispatch_ready_20260803.png)
-- [Guest UI safety-hold PNG](assets/20260803/guest_ui_route_safety_hold_20260803.png)
-- [Automatic recovery GIF](assets/20260803/automatic_route_recovery_20260803.gif)
-- [Recovery contact sheet PNG](assets/20260803/automatic_route_recovery_contact_sheet_20260803.png)
-- [Recovery policy PNG](assets/20260803/automatic_route_recovery_policy_20260803.png)
-- [One-sided crab JSON](evidence/20260803/automatic_crab_recovery_20260803.json)
-- [Stationary reverse JSON](evidence/20260803/automatic_static_reverse_recovery_20260803.json)
-- [Moving route retry JSON](evidence/20260803/automatic_route_recovery_20260803.json)
+- [One-sided crab JSON](evidence/v2.1.3/boundary-recovery/automatic-owner-one-sided-crab.json)
+- [Stationary reverse JSON](evidence/v2.1.3/boundary-recovery/automatic-owner-static-reverse-retry.json)
+- [Moving route retry JSON](evidence/v2.1.3/boundary-recovery/automatic-owner-route-retry.json)
 
 ## Remaining Field Work
 

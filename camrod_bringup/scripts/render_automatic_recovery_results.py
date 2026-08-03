@@ -517,9 +517,11 @@ def main():
     route = load(args.route)
     reverse = load(args.reverse)
     crab = load(args.crab)
-    contact = args.output_dir / "automatic_route_recovery_contact_sheet_20260803.png"
-    policy = args.output_dir / "automatic_route_recovery_policy_20260803.png"
-    gif = args.output_dir / "automatic_route_recovery_20260803.gif"
+    # HH_260804 / v2.1.3 - Names identify the command owner and artifact role;
+    # the release directory carries the version instead of every filename.
+    contact = args.output_dir / "automatic-owner-route-retry-contact-sheet.png"
+    policy = args.output_dir / "automatic-owner-policy.png"
+    gif = args.output_dir / "automatic-owner-route-retry.gif"
     render_contact_sheet(contact, lanelet_map, route, reverse, crab)
     render_policy(policy)
     render_gif(gif, lanelet_map, route, reverse, crab)

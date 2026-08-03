@@ -32,11 +32,11 @@ system diagnostic WARN no longer replaces a normal `MOVING_TO_SITE` or
 
 Guest dispatch and safety-hold screenshots, plus the ROS/WebSocket integration
 result, are preserved in
-[the UI and recovery report](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md).
+[the UI and recovery report](../docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md).
 
-![Guest UI dispatch ready](../docs/assets/20260803/guest_ui_dispatch_ready_20260803.png)
+![Guest UI dispatch ready](../docs/assets/v2.1.3/ui/guest-mission-dispatch-ready.png)
 
-![Guest UI route safety hold](../docs/assets/20260803/guest_ui_route_safety_hold_20260803.png)
+![Guest UI route safety hold](../docs/assets/v2.1.3/ui/guest-route-safety-hold.png)
 
 ---
 

@@ -265,7 +265,7 @@ and PNGs. `render_boundary_recovery_results.py` preserves the earlier
 manual-candidate center-frame geometry run as a separate comparison artifact;
 it must not be read as proof that the old gate generated motion automatically.
 Exact 2026-08-03 results, commands, and limitations are recorded in
-[`docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md`](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md).
+[`docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md`](../docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md).
 
 <!-- HH_260730 - Keep measured indoor evidence separate from pending field acceptance. -->
 The latest production-entry simulation measurements, planner/costmap audit,
