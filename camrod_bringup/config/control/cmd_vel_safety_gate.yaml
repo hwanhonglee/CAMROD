@@ -68,7 +68,7 @@
     odometry_topic: "/localization/fallback/odometry"
     pose_source_preference: "pose_topic"
     enable_pose_raw_fallback: false
-    robot_base_frame: "robot_base_link"
+    robot_base_frame: "robot_center_link"
     cost_stop_threshold: 85
     cost_stop_lookahead_m: 2.0
     cost_stop_width_m: 1.27
@@ -109,7 +109,7 @@
     lanelet_safety_grid_topic: "/map/cost_grid/lanelet"
     lanelet_safety_threshold: 85
     lanelet_safety_current_threshold: 85
-    # HH_260727 - Check the actual asymmetric planning boundary, not only robot_base_link.
+    # HH_260803 - Check the complete axle-midpoint planning boundary.
     lanelet_safety_footprint_enable: true
     # HH_260727 - 98 is the soft/rasterized lane edge; 100 is truly off-lane.
     # This preserves whole-body containment without immobilizing narrow mapped lanes.
@@ -117,8 +117,8 @@
     robot_planning_boundary_topic: "/platform/robot/planning_boundary"
     # Fallback dimensions match robot_params/Nav2 footprint if the boundary
     # publisher has not produced its transient-local polygon yet.
-    lanelet_safety_footprint_front_m: 1.30137
-    lanelet_safety_footprint_rear_m: 0.39023
+    lanelet_safety_footprint_front_m: 0.85837
+    lanelet_safety_footprint_rear_m: 0.83323
     lanelet_safety_footprint_left_m: 0.63505
     lanelet_safety_footprint_right_m: 0.63495
     lanelet_safety_lookahead_m: 1.0
@@ -155,6 +155,15 @@
     # A timer callback cannot turn a previously received localization sample
     # into fresh route-clear evidence; valid runtime range is [0.05, 5.0] s.
     route_safety_recovery_pose_max_age_s: 0.5
+    # HH_260803 / TODOLIST 12 - Publish one fully evaluated candidate for the
+    # separate bounded owner. Raw speed is capped at 0.10 m/s and still passes
+    # the gate again before reaching the platform.
+    route_safety_auto_recovery_candidate_enable: true
+    route_safety_auto_recovery_candidate_topic: "/control/route_safety_recovery/candidate"
+    route_safety_auto_recovery_speed_mps: 0.10
+    # HH_260803 - Lanelet raster is static/route-scoped and slower than the
+    # 1 s dynamic obstacle grid; pose freshness remains independently 0.5 s.
+    route_safety_lanelet_grid_max_age_s: 12.0
     # =========================================================================
     # Bounded maneuver exceptions keep live LiDAR and radar stops enabled.
     # =========================================================================

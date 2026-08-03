@@ -73,6 +73,21 @@ def generate_launch_description():
         default_value='8010',
         description='UI backend bind port',
     )
+    enable_ui_guest_arg = DeclareLaunchArgument(
+        'enable_ui_guest',
+        default_value='true',
+        description='Enable the WiFi guest UI alongside the Robot UI backend',
+    )
+    guest_host_arg = DeclareLaunchArgument(
+        'guest_host',
+        default_value='0.0.0.0',
+        description='Guest UI bind host',
+    )
+    guest_port_arg = DeclareLaunchArgument(
+        'guest_port',
+        default_value='8012',
+        description='Guest UI bind port',
+    )
     # HH_260727 - Show the local operator surface without requiring a full Brave session.
     enable_operator_ui_window_arg = DeclareLaunchArgument(
         'enable_operator_ui_window',
@@ -194,6 +209,7 @@ def generate_launch_description():
             'service_state_topic': '/service/state',
             'site_names': [f'B{i}' for i in range(1, 14)],
             'ui_destination_topic': '/ui/selected_destination',
+            'ui_camping_site_operation_request_topic': '/ui/camping_site_operation_request',
             'planning_engage_topic': LaunchConfiguration('planning_engage_topic'),
             'planning_mission_engage_topic': LaunchConfiguration('planning_mission_engage_topic'),
             'platform_drive_enable_topic': LaunchConfiguration('platform_drive_enable_topic'),
@@ -250,6 +266,30 @@ def generate_launch_description():
         }],
     )
 
+    # HH_260803 - Start Guest UI from the same launch so destination and return
+    # requests always have the Robot backend available as their scenario owner.
+    guest_ui = Node(
+        package='camrod_ui',
+        executable='ui_guest_node',
+        name='ui_guest',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('enable_ui_guest')),
+        parameters=[{
+            'host': LaunchConfiguration('guest_host'),
+            'port': LaunchConfiguration('guest_port'),
+            'service_state_topic': '/service/state',
+            'battery_topic': LaunchConfiguration('platform_status_topic'),
+            # HH_260803 - Guest and Robot surfaces show the same control hold.
+            'control_gate_status_topic': '/control/cmd_vel_safety_gate/status',
+            'ui_destination_topic': '/ui/selected_destination',
+            'ui_camping_site_operation_request_topic': '/ui/camping_site_operation_request',
+            'minimum_mission_dispatch_battery_percent': ParameterValue(
+                LaunchConfiguration('minimum_mission_dispatch_battery_percent'),
+                value_type=float,
+            ),
+        }],
+    )
+
     # HH_260727 - This is a non-ROS GTK process, so launch it directly instead
     # of using launch_ros Node (which would append unsupported --ros-args).
     operator_ui_window = TimerAction(
@@ -281,6 +321,9 @@ def generate_launch_description():
         enable_ui_backend_arg,
         ui_host_arg,
         ui_port_arg,
+        enable_ui_guest_arg,
+        guest_host_arg,
+        guest_port_arg,
         enable_operator_ui_window_arg,
         operator_ui_window_url_arg,
         operator_ui_window_width_arg,
@@ -302,5 +345,6 @@ def generate_launch_description():
         low_battery_return_after_current_mission_arg,
         low_battery_return_threshold_percent_arg,
         ui_backend,
+        guest_ui,
         operator_ui_window,
     ])

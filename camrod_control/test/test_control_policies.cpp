@@ -13,6 +13,7 @@
 #include "camrod_control/charging_mission_override.hpp"
 #include "camrod_control/cmd_vel_gate_policy.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
+#include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
 #include "gtest/gtest.h"
 
@@ -326,6 +327,78 @@ TEST(RouteSafetyRecovery, RotationViolationAdmitsTranslationForProjectedCheck)
     recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.0, -0.2)));
 }
 
+TEST(RouteRecoveryCandidate, SelectsOnlyUniqueClearCrabSide)
+{
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision blocked{
+    true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
+  const auto selected = selectRouteRecoveryCandidate(
+    command(0.3), 0.10, clear, blocked, clear);
+
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kCrabLeft);
+  EXPECT_NEAR(selected.command.linear.x, 0.0, 1.0e-9);
+  EXPECT_NEAR(selected.command.linear.y, 0.10, 1.0e-9);
+  EXPECT_NEAR(selected.command.angular.z, 0.0, 1.0e-9);
+}
+
+TEST(RouteRecoveryCandidate, FallsBackToReverseWhenBothCrabSidesAreBlocked)
+{
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision blocked{
+    true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
+  const auto selected = selectRouteRecoveryCandidate(
+    command(0.3), 0.10, blocked, blocked, clear);
+
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kReverse);
+  EXPECT_NEAR(selected.command.linear.x, -0.10, 1.0e-9);
+  EXPECT_NEAR(selected.command.linear.y, 0.0, 1.0e-9);
+}
+
+TEST(RouteRecoveryCandidate, StopsWhenLateralChoiceIsAmbiguousOrNothingIsClear)
+{
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision blocked{
+    true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
+
+  const auto ambiguous = selectRouteRecoveryCandidate(
+    command(0.3), 0.10, clear, clear, clear);
+  EXPECT_FALSE(ambiguous.available());
+  EXPECT_EQ(ambiguous.reason, "ambiguous_lateral_clear");
+
+  const auto none = selectRouteRecoveryCandidate(
+    command(0.3), 0.10, blocked, blocked, blocked);
+  EXPECT_FALSE(none.available());
+  EXPECT_EQ(none.reason, "no_projected_candidate_clear");
+}
+
+TEST(RouteRecoveryCandidate, KeepsInitialDirectionWhenBothSidesLaterBecomeClear)
+{
+  const MotionCostStopDecision clear{};
+  const auto selected = continueRouteRecoveryCandidate(
+    command(0.3), RouteRecoveryCandidateKind::kCrabLeft,
+    0.10, clear, clear, clear);
+
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kCrabLeft);
+  EXPECT_NEAR(selected.command.linear.y, 0.10, 1.0e-9);
+  EXPECT_EQ(selected.reason, "latched_candidate_still_clear");
+}
+
+TEST(RouteRecoveryCandidate, NeverSwitchesWhenLatchedDirectionBecomesBlocked)
+{
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision blocked{
+    true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
+  const auto selected = continueRouteRecoveryCandidate(
+    command(0.3), RouteRecoveryCandidateKind::kCrabLeft,
+    0.10, blocked, clear, clear);
+
+  EXPECT_FALSE(selected.available());
+  EXPECT_NE(selected.reason.find("latched_crab_left_blocked"), std::string::npos);
+}
+
 TEST(MotionCostStop, RouteRecoveryProbeFailsClosedOnStaleLaneletEvidence)
 {
   auto config = baseCostConfig();
@@ -345,6 +418,25 @@ TEST(MotionCostStop, RouteRecoveryProbeFailsClosedOnStaleLaneletEvidence)
   const auto stale = cost_stop.evaluateLaneletRecovery(command(0.2), 6.1, 2.0);
   EXPECT_TRUE(stale.blocked);
   EXPECT_EQ(stale.reason, "lanelet_recovery_grid_stale");
+}
+
+TEST(MotionCostStop, RouteRecoveryUsesIndependentLaneletGridAge)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  config.stale_timeout_s = 1.0;
+  config.lanelet_recovery_stale_timeout_s = 12.0;
+  MotionCostStop cost_stop(config);
+  cost_stop.setLaneletGrid(makeGrid(), 1.0);
+  cost_stop.setMergedGrid(makeGrid(), 11.0);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 11.0});
+
+  EXPECT_FALSE(cost_stop.evaluateLaneletRecovery(command(0.2), 11.0, 0.5).blocked);
+  EXPECT_FALSE(
+    cost_stop.evaluateRouteRecoveryCommand(command(-0.1), 11.0, 0.25, 0.5).blocked);
+  EXPECT_EQ(
+    cost_stop.evaluateLaneletRecovery(command(0.2), 13.1, 3.0).reason,
+    "lanelet_recovery_grid_stale");
 }
 
 TEST(MotionCostStop, RouteRecoveryProbeFailsClosedOnStalePoseEvidence)
@@ -539,7 +631,7 @@ TEST(MotionCostStop, LaneletRotationPolicyChecksCurrentCellWhenDisabled)
   EXPECT_TRUE(blocked.lanelet_violation) << blocked.reason;
 }
 
-TEST(MotionCostStop, LaneletFootprintBlocksWhenBaseLinkCellIsClear)
+TEST(MotionCostStop, LaneletFootprintBlocksWhenCenterLinkCellIsClear)
 {
   auto config = baseCostConfig();
   config.lanelet_enabled = true;
@@ -548,9 +640,9 @@ TEST(MotionCostStop, LaneletFootprintBlocksWhenBaseLinkCellIsClear)
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
 
-  // HH_260727 - robot_base_link at (0,0) is clear, but the configured front-right body
+  // HH_260803 - robot_center_link at (0,0) is clear, but the configured front-right body
   // boundary covers this raw lanelet cost cell.
-  const auto boundary_cost = makeGrid({{1.2, -0.55, 100}});
+  const auto boundary_cost = makeGrid({{0.75, -0.55, 100}});
   ASSERT_EQ(MotionCostStop::sampleGridCost(boundary_cost, 0.0, 0.0), 0);
   cost_stop.setLaneletGrid(boundary_cost, 0.0);
   const auto decision = cost_stop.evaluate(command(0.2), 0.0);
@@ -570,10 +662,10 @@ TEST(MotionCostStop, LaneletFootprintAllowsSoftBoundaryButBlocksOffLane)
 
   // HH_260727 - The map uses 98 as a narrow-lane planning penalty and 100 as
   // truly off-lane. The full footprint may touch 98 but must stop on 100.
-  cost_stop.setLaneletGrid(makeGrid({{1.2, -0.55, 98}}), 0.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.75, -0.55, 98}}), 0.0);
   EXPECT_FALSE(cost_stop.evaluate(command(0.2), 0.0).blocked);
 
-  cost_stop.setLaneletGrid(makeGrid({{1.2, -0.55, 100}}), 0.1);
+  cost_stop.setLaneletGrid(makeGrid({{0.75, -0.55, 100}}), 0.1);
   const auto blocked = cost_stop.evaluate(command(0.2), 0.1);
   EXPECT_TRUE(blocked.lanelet_violation) << blocked.reason;
   EXPECT_NE(blocked.reason.find("lanelet_footprint"), std::string::npos);
@@ -610,8 +702,9 @@ TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
 
-  constexpr double body_front = 1.20137;
-  constexpr double body_rear = 0.29023;
+  // HH_260803 - Same measured chassis as before, expressed from the axle midpoint.
+  constexpr double body_front = 0.75837;
+  constexpr double body_rear = 0.73323;
   constexpr double body_left = 0.53505;
   constexpr double body_right = 0.53495;
   constexpr double planning_margin = 0.10;
@@ -662,8 +755,8 @@ TEST(MotionCostStop, MeasuredBodyBoundaryStopsOnOffLaneCost)
   // Use the deployed 0.25 m lanelet-grid resolution: cost 100 on the body edge
   // must stop translation even when crab static-cost bypass is enabled.
   cost_stop.setFootprintPolygonWorld(
-    {{1.20137, 0.53505}, {1.20137, -0.53495},
-      {-0.29023, -0.53495}, {-0.29023, 0.53505}});
+    {{0.75837, 0.53505}, {0.75837, -0.53495},
+      {-0.73323, -0.53495}, {-0.73323, 0.53505}});
   cost_stop.setLaneletGrid(makeGrid({{0.0, 0.50, 100}}, 0.25), 0.0);
   const auto blocked = cost_stop.evaluate(command(0.0, 0.2), 0.0);
   EXPECT_TRUE(blocked.lanelet_violation) << blocked.reason;
@@ -679,7 +772,7 @@ TEST(MotionCostStop, RotationChecksFullLaneletFootprintEvenWhenCenterRotationIsA
   config.lanelet_current_allow_route_reentry = false;
   auto cost_stop = makeMotionCostStop(config);
   cost_stop.setMergedGrid(makeGrid(), 0.0);
-  cost_stop.setLaneletGrid(makeGrid({{1.2, 0.5, 100}}), 0.0);
+  cost_stop.setLaneletGrid(makeGrid({{0.75, 0.5, 100}}), 0.0);
 
   const auto decision = cost_stop.evaluate(command(0.0, 0.0, 0.3), 0.0);
   EXPECT_TRUE(decision.lanelet_violation) << decision.reason;
@@ -691,7 +784,7 @@ TEST(MotionCostStop, ConfiguredCampsiteBypassPhasesStillCheckLaneletFootprint)
   config.lanelet_enabled = true;
   config.lanelet_footprint_enabled = true;
   config.lanelet_current_allow_route_reentry = false;
-  const auto boundary_cost = makeGrid({{1.2, -0.55, 100}});
+  const auto boundary_cost = makeGrid({{0.75, -0.55, 100}});
 
   // HH_260727 - Every configured campsite exception skips only legacy static
   // checks; it can never permit the planning footprint to cross raw lanelet cost.
@@ -713,7 +806,7 @@ TEST(MotionCostStop, ConfiguredDropZoneBypassPhasesStillCheckLaneletFootprint)
   config.lanelet_enabled = true;
   config.lanelet_footprint_enabled = true;
   config.lanelet_current_allow_route_reentry = false;
-  const auto boundary_cost = makeGrid({{1.2, -0.55, 100}});
+  const auto boundary_cost = makeGrid({{0.75, -0.55, 100}});
 
   // HH_260727 - Forward drop-zone departure may bypass a legacy route corridor,
   // but the full occupied boundary remains mandatory.
@@ -737,7 +830,7 @@ TEST(MotionCostStop, PureLateralAndReverseStaticBypassStillCheckLaneletFootprint
   config.lanelet_current_allow_route_reentry = false;
   config.static_lateral_bypass = true;
   config.static_reverse_bypass = true;
-  const auto boundary_cost = makeGrid({{1.2, -0.55, 100}});
+  const auto boundary_cost = makeGrid({{0.75, -0.55, 100}});
 
   // HH_260727 - The merged-grid static bypass remains useful for crab/reverse
   // maneuvers, but it must not suppress the independent raw-lanelet footprint.

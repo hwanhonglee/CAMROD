@@ -26,7 +26,8 @@ int main()
   add(status, "component_id", "radar.left2");
   add(status, "sensor_location", "left_rear");
   add(status, "sensor_frame", "radar_left2_link");
-  add(status, "mount_xyz_m", "0.15966,0.41005,0.29013");
+  // HH_260803 - Use the center-frame LEFT2 mount in operator-detail coverage.
+  add(status, "mount_xyz_m", "-0.28334,0.41005,0.29013");
   add(status, "range_m", "0.223");
   add(status, "actual_hz", "5.1");
   add(status, "expected_hz", "8.0");

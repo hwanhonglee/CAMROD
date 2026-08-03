@@ -32,7 +32,7 @@ def _stamp():
 
 def test_dummy_payload_is_estop_non_can_and_faulted():
     message = PLATFORM_DUMMY.build_safe_system_state(
-        _stamp(), "robot_base_link"
+        _stamp(), "robot_center_link"
     )
 
     assert message.vehicle_state == message.VEHICLE_STATE_ESTOP
@@ -44,11 +44,11 @@ def test_dummy_payload_is_estop_non_can_and_faulted():
 
 def test_dummy_odometry_is_zero_with_unknown_covariance():
     message = PLATFORM_DUMMY.build_safe_odometry(
-        _stamp(), "odom", "robot_base_link"
+        _stamp(), "odom", "robot_center_link"
     )
 
     assert message.header.frame_id == "odom"
-    assert message.child_frame_id == "robot_base_link"
+    assert message.child_frame_id == "robot_center_link"
     assert message.pose.pose.orientation.w == 1.0
     assert message.twist.twist.linear.x == 0.0
     assert message.twist.twist.linear.y == 0.0
@@ -64,7 +64,7 @@ def test_dummy_odometry_is_zero_with_unknown_covariance():
 
 def test_dummy_actuators_are_stopped_and_explicitly_faulted():
     message = PLATFORM_DUMMY.build_safe_actuator_state(
-        _stamp(), "robot_base_link"
+        _stamp(), "robot_center_link"
     )
 
     assert [state.id for state in message.states] == list(range(8))
@@ -80,7 +80,7 @@ def test_dummy_actuators_are_stopped_and_explicitly_faulted():
 
 def test_dummy_battery_is_absent_and_unknown():
     message = PLATFORM_DUMMY.build_safe_battery_state(
-        _stamp(), "robot_base_link"
+        _stamp(), "robot_center_link"
     )
 
     assert message.present is False
@@ -97,10 +97,10 @@ def test_dummy_battery_is_absent_and_unknown():
 @pytest.mark.parametrize(
     ("rate", "odom_frame", "base_frame"),
     (
-        (0.9, "odom", "robot_base_link"),
-        (20.1, "odom", "robot_base_link"),
-        (math.nan, "odom", "robot_base_link"),
-        (5.0, "", "robot_base_link"),
+        (0.9, "odom", "robot_center_link"),
+        (20.1, "odom", "robot_center_link"),
+        (math.nan, "odom", "robot_center_link"),
+        (5.0, "", "robot_center_link"),
         (5.0, "odom", " "),
     ),
 )

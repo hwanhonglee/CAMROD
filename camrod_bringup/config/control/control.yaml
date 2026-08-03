@@ -161,3 +161,31 @@
     control_rate_hz: 10.0
     idle_rate_hz: 1.0
     status_rate_hz: 1.0
+
+/control/route_safety_recovery_controller:
+  ros__parameters:
+    # =========================================================================
+    # 1. TOPICS
+    # =========================================================================
+    gate_status_topic: "/control/cmd_vel_safety_gate/status"
+    candidate_topic: "/control/route_safety_recovery/candidate"
+    pose_topic: "/localization/pose"
+    command_topic: "/control/cmd_vel_raw"
+    status_topic: "/control/route_safety_recovery_controller/status"
+
+    # =========================================================================
+    # 2. BOUNDED AUTOMATIC ESCAPE
+    # =========================================================================
+    # HH_260803 / TODOLIST 12 - The safety gate has already checked the 0.25 m
+    # projected full footprint and dynamic sources. This owner adds execution
+    # limits and never generates angular.z while a boundary is in contact.
+    enabled: true
+    maximum_speed_mps: 0.10
+    maximum_distance_m: 0.40
+    # HH_260803 - The safety gate halves raw recovery speed to 0.05 m/s;
+    # allow enough time to reach the independent 0.40 m displacement limit.
+    maximum_duration_s: 10.0
+    pose_timeout_s: 0.5
+    candidate_timeout_s: 0.75
+    status_timeout_s: 1.0
+    control_rate_hz: 10.0

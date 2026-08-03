@@ -97,7 +97,7 @@ public:
     localization_status_topic_ = declare_parameter<std::string>(
       "localization_status_topic", "/localization/status");
 
-    base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_base_link");
+    base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_center_link");
     publish_selected_tf_ = declare_parameter<bool>("publish_selected_tf", true);
 
     primary_timeout_s_ = declare_parameter<double>("primary_timeout_s", 0.5);

@@ -28,7 +28,7 @@ public:
     output_topic_ = declare_parameter<std::string>(
         "output_topic", "/planning/cost_grid/inflation");
     base_frame_id_ =
-        declare_parameter<std::string>("base_frame_id", "robot_base_link");
+        declare_parameter<std::string>("base_frame_id", "robot_center_link");
     output_frame_id_ = declare_parameter<std::string>("output_frame_id", "map");
     resolution_ = declare_parameter<double>("resolution", 0.10);
     width_ = declare_parameter<int>("width", 120);

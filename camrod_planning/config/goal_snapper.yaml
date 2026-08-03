@@ -104,7 +104,7 @@
     # pending goal rather than following stale clicks in FIFO order.
     sequential_goal_queue_policy: "replace_pending"
     # HH_260623 - This latch also suppresses active-goal reissues; keep it
-    # center-based so a route is not considered reached before robot_base_link
+    # center-based so a route is not considered reached before robot_center_link
     # reaches the snapped goal.
     sequential_goal_reached_distance_m: 0.25
     sequential_goal_stop_hold_s: 0.5

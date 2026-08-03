@@ -72,6 +72,16 @@ ament_target_dependencies(drop_zone_maneuver_controller_node
 )
 target_link_libraries(drop_zone_maneuver_controller_node yaml-cpp)
 
+# HH_260803 / TODOLIST 12 - Keep bounded route recovery separate from the
+# final safety gate and from campsite/drop-zone maneuver ownership.
+add_executable(route_safety_recovery_controller_node
+  src/route_safety_recovery_controller_node.cpp
+)
+ament_target_dependencies(route_safety_recovery_controller_node
+  rclcpp
+  avg_msgs
+)
+
 # HH_260721 - Compile the complete campsite maneuver state machine natively.
 add_executable(camping_site_maneuver_controller_node
   src/camping_site_maneuver_controller_node.cpp
@@ -105,6 +115,7 @@ install(TARGETS
   cmd_vel_safety_gate_node
   drop_zone_maneuver_controller_node
   reverse_parking_controller_node
+  route_safety_recovery_controller_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

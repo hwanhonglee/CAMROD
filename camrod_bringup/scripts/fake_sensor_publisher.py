@@ -300,7 +300,7 @@ class FakeSensorPublisher(Node):
             self.declare_parameter("startup_hold_s", 4.0).value
         )
         self.frame_id = self.declare_parameter("frame_id", "map").value
-        self.base_frame_id = self.declare_parameter("base_frame_id", "robot_base_link").value
+        self.base_frame_id = self.declare_parameter("base_frame_id", "robot_center_link").value
         # Default keeps synthetic obstacle outside stop corridor.
         # Lower at runtime when validating cost-stop behavior.
         self.obstacle_offset = self.declare_parameter("obstacle_offset", 12.0).value

@@ -1,0 +1,20 @@
+{
+  "initial_battery": 80,
+  "initial_ready": true,
+  "site_count": 13,
+  "mission_key_observed": true,
+  "departure_state_observed": true,
+  "moving_state_observed": true,
+  "return_state_observed": true,
+  "return_operation_observed": true,
+  "safety_overlay": {
+    "safety_hold": true,
+    "control_gate_state": "ROUTE_SAFETY_HOLD",
+    "control_gate_message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=non_navigation_trigger"
+  },
+  "operator_stopped": {
+    "service_state": 16,
+    "service_state_name": "OPERATOR_STOPPED",
+    "phase": "stopped"
+  }
+}

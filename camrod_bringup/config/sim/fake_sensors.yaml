@@ -95,7 +95,7 @@
     # 6. FRAMES
     # =========================================================================
     frame_id: "map"
-    base_frame_id: "robot_base_link"
+    base_frame_id: "robot_center_link"
 
     # =========================================================================
     # 7. SYNTHETIC OBSTACLES

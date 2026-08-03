@@ -66,7 +66,7 @@ def generate_launch_description():
         DeclareLaunchArgument("vanjee_tf_roll",    default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_pitch",   default_value="0.0"),
         DeclareLaunchArgument("vanjee_tf_yaw",     default_value="0.0"),
-        DeclareLaunchArgument("vanjee_tf_parent",  default_value="robot_base_link"),
+        DeclareLaunchArgument("vanjee_tf_parent",  default_value="robot_center_link"),
         DeclareLaunchArgument("vanjee_tf_child",   default_value="vanjee_lidar"),
     ]
 

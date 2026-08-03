@@ -6,7 +6,7 @@
     # 1. FRAMES AND TOPICS
     # =========================================================================
     map_frame_id: "map"                          # Global frame used to publish all robot markers.
-    base_frame_id: "robot_base_link"             # Robot body frame visualized and optionally broadcast via TF.
+    base_frame_id: "robot_center_link"           # Axle-midpoint body frame used by localization and planning.
     marker_topic: "/platform/robot/markers"      # MarkerArray output topic containing body/sensor/axes/ring markers.
     boundary_topic: "/platform/robot/planning_boundary"  # PolygonStamped output used as planning safety boundary.
 

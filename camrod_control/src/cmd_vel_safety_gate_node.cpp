@@ -34,6 +34,7 @@
 #include "camrod_control/motion_geometry.hpp"
 #include "camrod_control/motion_cost_stop.hpp"
 #include "camrod_control/ros_message_conversion.hpp"
+#include "camrod_control/route_recovery_candidate.hpp"
 #include "camrod_control/route_safety_recovery.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "rcl_interfaces/msg/parameter_descriptor.hpp"
@@ -302,7 +303,7 @@ private:
     pose_source_preference_ = MotionCostStop::normalizeLabel(
       declare_parameter<std::string>("pose_source_preference", "odometry"));
     enable_pose_raw_fallback_ = declare_parameter<bool>("enable_pose_raw_fallback", false);
-    robot_base_frame_ = declare_parameter<std::string>("robot_base_frame", "robot_base_link");
+    robot_base_frame_ = declare_parameter<std::string>("robot_base_frame", "robot_center_link");
 
     motion_cost_stop_config_.enabled = declare_parameter<bool>("enable_cost_stop", true);
     motion_cost_stop_config_.cost_stop_threshold =
@@ -321,6 +322,8 @@ private:
       "cost_grid_stale_stop_enable", true);
     motion_cost_stop_config_.stale_timeout_s = declare_parameter<double>(
       "cost_grid_stale_timeout_s", 1.0);
+    motion_cost_stop_config_.lanelet_recovery_stale_timeout_s = declare_parameter<double>(
+      "route_safety_lanelet_grid_max_age_s", 12.0);
     cost_grid_stale_log_interval_s_ = declare_parameter<double>(
       "cost_grid_stale_log_interval_s", 1.0);
 
@@ -436,9 +439,9 @@ private:
     planning_boundary_topic_ = declare_parameter<std::string>(
       "robot_planning_boundary_topic", "/platform/robot/planning_boundary");
     motion_cost_stop_config_.footprint_front_m = declare_parameter<double>(
-      "lanelet_safety_footprint_front_m", 1.30137);
+      "lanelet_safety_footprint_front_m", 0.85837);
     motion_cost_stop_config_.footprint_rear_m = declare_parameter<double>(
-      "lanelet_safety_footprint_rear_m", 0.39023);
+      "lanelet_safety_footprint_rear_m", 0.83323);
     motion_cost_stop_config_.footprint_left_m = declare_parameter<double>(
       "lanelet_safety_footprint_left_m", 0.63505);
     motion_cost_stop_config_.footprint_right_m = declare_parameter<double>(
@@ -487,6 +490,19 @@ private:
       declare_parameter<double>("route_safety_recovery_pose_max_age_s", 0.5);
     route_safety_log_interval_s_ = declare_parameter<double>(
       "route_safety_recovery_log_interval_s", 1.0);
+    route_safety_auto_candidate_enabled_ = declare_parameter<bool>(
+      "route_safety_auto_recovery_candidate_enable", true);
+    route_safety_candidate_topic_ = declare_parameter<std::string>(
+      "route_safety_auto_recovery_candidate_topic",
+      "/control/route_safety_recovery/candidate");
+    route_safety_candidate_speed_mps_ = declare_parameter<double>(
+      "route_safety_auto_recovery_speed_mps", 0.10);
+    if (!std::isfinite(route_safety_candidate_speed_mps_) ||
+      route_safety_candidate_speed_mps_ < 0.02 || route_safety_candidate_speed_mps_ > 0.10)
+    {
+      throw std::runtime_error(
+              "route_safety_auto_recovery_speed_mps must be in [0.02, 0.10]");
+    }
     route_safety_recovery_config_.minimum_translation_mps =
       motion_cost_stop_config_.min_translation_mps;
     if (const auto error = routeRecoveryConfigError(
@@ -591,17 +607,19 @@ private:
     planning_engaged_publisher_ =
       create_publisher<avg_msgs::msg::AvgBool>(planning_engaged_topic_, state_qos);
     status_publisher_ = create_publisher<avg_msgs::msg::ModuleState>(status_topic_, state_qos);
+    route_safety_candidate_publisher_ = create_publisher<avg_msgs::msg::AvgTwist>(
+      route_safety_candidate_topic_, state_qos);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     command_subscription_ = create_subscription<avg_msgs::msg::AvgTwist>(
       input_topic_, 10, [this](const avg_msgs::msg::AvgTwist::SharedPtr message) {
-        onCommand(*message);
+        onCommand(*message, false);
       });
     navigation_command_subscription_ = create_subscription<geometry_msgs::msg::Twist>(
       navigation_input_topic_, 10, [this](const geometry_msgs::msg::Twist::SharedPtr message) {
-        onCommand(twistFromRos(*message));
+        onCommand(twistFromRos(*message), true);
       });
     manual_engage_subscription_ = create_subscription<avg_msgs::msg::AvgBool>(
       engage_topic_, 10, [this](const avg_msgs::msg::AvgBool::SharedPtr message) {
@@ -611,6 +629,8 @@ private:
           // display while the planning side retains the goal for a later,
           // explicit re-engage after the robot has been repositioned.
           route_safety_recovery_.reset();
+          latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+          route_safety_triggered_by_navigation_ = false;
         }
         onAuthorizationChanged("manual_engage");
       });
@@ -622,6 +642,8 @@ private:
         }
         if (!gate_policy_.planningEngaged()) {
           route_safety_recovery_.reset();
+          latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+          route_safety_triggered_by_navigation_ = false;
         }
         onAuthorizationChanged("mission_engage");
       });
@@ -764,7 +786,7 @@ private:
     }
   }
 
-  void onCommand(avg_msgs::msg::AvgTwist command)
+  void onCommand(avg_msgs::msg::AvgTwist command, const bool navigation_source)
   {
     const double now_sec = nowSec();
     bool opposite_route_recovery = false;
@@ -777,6 +799,15 @@ private:
     // the vehicle, but it passes the complete ordinary safety evaluation below.
     if (route_safety_recovery_.active()) {
       refreshRouteSafetyRecovery(now_sec);
+      // HH_260803 / TODOLIST 12 - While the bounded owner uses the raw command
+      // input, ignore the stopped Nav2 stream instead of alternating its zero
+      // output with a validated recovery command.
+      if (route_safety_recovery_.active() && navigation_source &&
+        route_safety_triggered_by_navigation_)
+      {
+        logRouteSafetyHold(now_sec);
+        return;
+      }
       if (route_safety_recovery_.active() &&
         !route_safety_recovery_.permitsProjectedRecoveryCandidate(command))
       {
@@ -828,6 +859,10 @@ private:
       motion_cost_stop_.evaluate(command, now_sec);
     const bool route_hold_started =
       route_safety_recovery_.observeViolation(cost_decision, command, now_sec);
+    if (route_hold_started) {
+      route_safety_triggered_by_navigation_ = navigation_source;
+      latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+    }
     updatePolicyCostState();
     if (cost_decision.blocked) {
       if (publish_zero_when_blocked_) {
@@ -855,6 +890,8 @@ private:
       route_safety_recovery_.triggerCommand(), now_sec,
       route_safety_recovery_.poseMaxAge());
     if (route_safety_recovery_.updateProbe(decision, now_sec)) {
+      route_safety_triggered_by_navigation_ = false;
+      latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
       RCLCPP_INFO(
         get_logger(),
         "route safety hold released after continuous fresh lanelet clear; "
@@ -1010,6 +1047,7 @@ private:
     const bool charging_motion_override_active = charging_mission_override_.isActive(now_sec);
     const auto reasons = currentBlockReasons(now_sec);
     const bool enabled = reasons.empty();
+    const auto recovery_candidate = publishRouteSafetyCandidate(now_sec);
 
     avg_msgs::msg::AvgBool state;
     state.data = enabled;
@@ -1042,9 +1080,59 @@ private:
       (reasons.empty() ? "none" : join(reasons, ",")) +
       " charging=" + std::string(charging_mission_override_.charging() ? "true" : "false") +
       " battery=" + batteryText() +
-      " route_clear_s=" + fixed(route_safety_recovery_.clearElapsed(now_sec), 2);
+      " route_clear_s=" + fixed(route_safety_recovery_.clearElapsed(now_sec), 2) +
+      " recovery_candidate=" + routeRecoveryCandidateName(recovery_candidate.kind) +
+      " recovery_reason=" + recovery_candidate.reason;
     status.operating_state = operating_state;
     status_publisher_->publish(status);
+  }
+
+  RouteRecoveryCandidate publishRouteSafetyCandidate(const double now_sec)
+  {
+    RouteRecoveryCandidate selected;
+    if (route_safety_auto_candidate_enabled_ && route_safety_recovery_.active() &&
+      route_safety_triggered_by_navigation_)
+    {
+      const auto & trigger = route_safety_recovery_.triggerCommand();
+      const auto left_command = routeRecoveryDirection(
+        trigger, RouteRecoveryCandidateKind::kCrabLeft,
+        route_safety_candidate_speed_mps_, motion_cost_stop_config_.min_translation_mps);
+      const auto right_command = routeRecoveryDirection(
+        trigger, RouteRecoveryCandidateKind::kCrabRight,
+        route_safety_candidate_speed_mps_, motion_cost_stop_config_.min_translation_mps);
+      const auto reverse_command = routeRecoveryDirection(
+        trigger, RouteRecoveryCandidateKind::kReverse,
+        route_safety_candidate_speed_mps_, motion_cost_stop_config_.min_translation_mps);
+      const auto evaluate = [this, now_sec](const avg_msgs::msg::AvgTwist & command) {
+          return motion_cost_stop_.evaluateRouteRecoveryCommand(
+            command, now_sec, route_safety_recovery_.oppositeRecoveryProbeDistance(),
+            route_safety_recovery_.poseMaxAge());
+        };
+      const auto left_decision = evaluate(left_command);
+      const auto right_decision = evaluate(right_command);
+      const auto reverse_decision = evaluate(reverse_command);
+      selected = continueRouteRecoveryCandidate(
+        trigger,
+        latched_route_recovery_candidate_,
+        route_safety_candidate_speed_mps_,
+        left_decision,
+        right_decision,
+        reverse_decision,
+        motion_cost_stop_config_.min_translation_mps);
+      if (latched_route_recovery_candidate_ == RouteRecoveryCandidateKind::kNone &&
+        selected.available())
+      {
+        // HH_260803 - Once a unique escape direction starts, keep that direction
+        // for this hold. Becoming clear on both sides is progress, not a reason
+        // to stop or switch; a newly blocked latched direction still fails closed.
+        latched_route_recovery_candidate_ = selected.kind;
+      }
+    } else {
+      selected.reason = route_safety_recovery_.active() ?
+        "non_navigation_trigger" : "route_hold_inactive";
+    }
+    route_safety_candidate_publisher_->publish(selected.command);
+    return selected;
   }
 
   std::string batteryText() const
@@ -1529,6 +1617,8 @@ private:
         motion_cost_stop_config_.stale_stop_enabled = parameter.as_bool();
       } else if (name == "cost_grid_stale_timeout_s") {
         motion_cost_stop_config_.stale_timeout_s = parameter.as_double();
+      } else if (name == "route_safety_lanelet_grid_max_age_s") {
+        motion_cost_stop_config_.lanelet_recovery_stale_timeout_s = parameter.as_double();
       } else if (name == "cost_stop_lookahead_m") {
         motion_cost_stop_config_.fixed_front_lookahead_m = parameter.as_double();
       } else if (name == "cost_stop_width_m") {
@@ -1725,6 +1815,7 @@ private:
   std::string state_topic_;
   std::string planning_engaged_topic_;
   std::string status_topic_;
+  std::string route_safety_candidate_topic_;
   std::string platform_drive_enable_topic_;
   std::string platform_status_topic_;
   std::string drop_zone_status_topic_;
@@ -1762,6 +1853,10 @@ private:
   bool enable_yaw_alignment_zone_{false};
   bool enable_route_heading_alignment_{true};
   bool route_heading_active_{false};
+  bool route_safety_auto_candidate_enabled_{true};
+  bool route_safety_triggered_by_navigation_{false};
+  RouteRecoveryCandidateKind latched_route_recovery_candidate_{
+    RouteRecoveryCandidateKind::kNone};
   bool command_input_stale_{false};
   bool yaw_zone_satisfied_{false};
   int route_heading_min_path_points_{2};
@@ -1773,6 +1868,7 @@ private:
   double cost_stop_latch_log_interval_s_{1.0};
   double cost_grid_stale_log_interval_s_{1.0};
   double route_safety_log_interval_s_{1.0};
+  double route_safety_candidate_speed_mps_{0.10};
   double radar_obstacle_evidence_max_age_s_{0.50};
   double route_heading_min_cmd_x_mps_{0.03};
   double route_heading_lateral_cmd_epsilon_mps_{0.02};
@@ -1814,6 +1910,7 @@ private:
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_handle_;
+  rclcpp::Publisher<avg_msgs::msg::AvgTwist>::SharedPtr route_safety_candidate_publisher_;
   rclcpp::TimerBase::SharedPtr state_timer_;
   rclcpp::TimerBase::SharedPtr command_timeout_timer_;
 

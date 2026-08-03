@@ -51,7 +51,7 @@ camrod_voice/
 | Subscribe | `/localization/mode` | `avg_msgs/AvgLocalizationMode` | Localization admission state |
 | Subscribe | `/control/cmd_vel_safety_gate/status` | `avg_msgs/ModuleState` | Final command-gate health and operating state |
 | Subscribe | `/control/planning_engaged` | `avg_msgs/AvgBool` | Unified manual-or-mission engage state |
-| Subscribe | `/tf`, `/tf_static` | TF | `map` to `robot_base_link` availability |
+| Subscribe | `/tf`, `/tf_static` | TF | `map` to `robot_center_link` availability |
 | Action check | `/planning/navigate_to_pose` | `nav2_msgs/NavigateToPose` | Goal action-server availability |
 
 ## Audio Keys
@@ -102,11 +102,18 @@ only when all of these conditions are simultaneously true:
    block readiness. The
    `/planning/navigate_to_pose` action server must also be discoverable.
 2. Planning has published an idle semantic state: `READY` or `WAIT_DZ`.
-3. `/localization/mode` is `NORMAL` and TF `map -> robot_base_link` is available.
+3. `/localization/mode` is `NORMAL` and TF `map -> robot_center_link` is available.
 4. The final command gate reports no `ERROR` and is `STANDBY` or `CHARGING`.
 5. `/platform/status` has been received with e-stop released and
    `error_code == 0`.
 6. `/control/planning_engaged` has been received and is false.
+
+<!-- HH_260804 - Link the shared readiness frame and UI state evidence. -->
+Voice and both UIs now use the same `map -> robot_center_link` readiness target;
+the coordinate migration is documented in
+[the frame ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md), while service-state
+and safety-overlay behavior is captured in
+[the UI/recovery report](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md).
 
 During a mission, movement audio additionally waits for unified engage to be
 true and for the final command gate to report `ENABLED` (or

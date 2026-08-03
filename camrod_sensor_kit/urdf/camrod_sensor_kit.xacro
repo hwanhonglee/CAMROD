@@ -4,8 +4,10 @@
   <!-- ========================================================= -->
   <!-- 1. Base link / sensor kit base link arguments             -->
   <!-- ========================================================= -->
+  <xacro:arg name="robot_center_link" default="robot_center_link"/>
   <xacro:arg name="robot_base_link" default="robot_base_link"/>
   <xacro:arg name="sensor_kit_base_link" default="sensor_kit_base_link"/>
+  <xacro:arg name="rear_axle_offset_x" default="0.443"/>
 
   <!-- ========================================================= -->
   <!-- 2. Simple robot body size (for visualization only)        -->
@@ -13,33 +15,33 @@
   <xacro:arg name="base_length" default="1.4"/>
   <xacro:arg name="base_width"  default="0.7"/>
   <xacro:arg name="base_height" default="1.2"/>
-  <!-- HH_260623 - Body box origin follows measured asymmetric robot_base_link extents. -->
-  <xacro:arg name="base_origin_xyz" default="0.455570 0.000050 0.394565"/>
+  <!-- HH_260803 - Body center is 0.01257 m ahead of the axle midpoint. -->
+  <xacro:arg name="base_origin_xyz" default="0.012570 0.000050 0.394565"/>
 
   <!-- ========================================================= -->
   <!-- 3. Existing sensor transform arguments                    -->
   <!--    xyz: meters                                            -->
   <!--    rpy: radians                                           -->
   <!-- ========================================================= -->
-  <xacro:arg name="imu_xyz" default="0.1 0.0 0.4"/>
+  <xacro:arg name="imu_xyz" default="0.688 0.0 0.756"/>
   <xacro:arg name="imu_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="gnss_xyz" default="0.2 0.0 1.0"/>
+  <xacro:arg name="gnss_xyz" default="-0.443 0.0 0.0"/>
   <xacro:arg name="gnss_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="lidar_xyz" default="1.20636 0.0 0.59538"/>
+  <xacro:arg name="lidar_xyz" default="0.76336 0.0 0.59538"/>
   <xacro:arg name="lidar_rpy" default="0.0 0.0 0.0"/>
 
   <!-- HH_260528: Dual econ camera arguments (front + rear).                    -->
   <!--   TF: sensor_kit_base_link → camera_front_link → camera_front (optical) -->
   <!--       sensor_kit_base_link → camera_rear_link  → camera_rear  (optical) -->
-  <!-- HH_260623 - Fallback defaults match measured robot_base_link-relative mounts. -->
-  <!--   front: x=1.20637 m, z=0.49568 m, yaw=0 (forward-facing)              -->
-  <!--   rear : x=-0.17633 m, z=0.30013 m, yaw=π (backward-facing)            -->
-  <xacro:arg name="camera_front_xyz" default="1.20637 0.0 0.49568"/>
+  <!-- HH_260803 - Fallbacks are robot_center_link-relative; mounts did not move. -->
+  <!--   front: x=0.76337 m, z=0.49568 m, yaw=0 (forward-facing)              -->
+  <!--   rear : x=-0.61933 m, z=0.30013 m, yaw=π (backward-facing)            -->
+  <xacro:arg name="camera_front_xyz" default="0.76337 0.0 0.49568"/>
   <xacro:arg name="camera_front_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="camera_rear_xyz"  default="-0.17633 0.0 0.30013"/>
+  <xacro:arg name="camera_rear_xyz"  default="-0.61933 0.0 0.30013"/>
   <xacro:arg name="camera_rear_rpy"  default="0.0 0.0 3.141593"/>
 
   <!-- ========================================================= -->
@@ -51,33 +53,35 @@
   <!--      rear   = 180 deg =  3.141593                         -->
   <!-- ========================================================= -->
   <!-- HH_260623 - Removed the old single-front radar frame; only front1/front2 exist. -->
-  <!-- HH_260623 - Fallback defaults match measured robot_base_link-relative mounts. -->
-  <xacro:arg name="radar_front1_xyz" default="1.07087 -0.11005 0.33378"/>
+  <!-- HH_260803 - Fallback defaults are expressed from robot_center_link. -->
+  <xacro:arg name="radar_front1_xyz" default="0.62787 -0.11005 0.33378"/>
   <xacro:arg name="radar_front1_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="radar_front2_xyz" default="1.07087 0.11005 0.33378"/>
+  <xacro:arg name="radar_front2_xyz" default="0.62787 0.11005 0.33378"/>
   <xacro:arg name="radar_front2_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="radar_left1_xyz"  default="0.73488 0.41005 0.29013"/>
+  <xacro:arg name="radar_left1_xyz"  default="0.29188 0.41005 0.29013"/>
   <xacro:arg name="radar_left1_rpy"  default="0.0 0.0 1.570796"/>
 
-  <xacro:arg name="radar_left2_xyz"  default="0.15966 0.41005 0.29013"/>
+  <xacro:arg name="radar_left2_xyz"  default="-0.28334 0.41005 0.29013"/>
   <xacro:arg name="radar_left2_rpy"  default="0.0 0.0 1.570796"/>
 
-  <xacro:arg name="radar_right1_xyz" default="0.73488 -0.41005 0.29013"/>
+  <xacro:arg name="radar_right1_xyz" default="0.29188 -0.41005 0.29013"/>
   <xacro:arg name="radar_right1_rpy" default="0.0 0.0 -1.570796"/>
 
-  <xacro:arg name="radar_right2_xyz" default="0.15966 -0.41005 0.29013"/>
+  <xacro:arg name="radar_right2_xyz" default="-0.28334 -0.41005 0.29013"/>
   <xacro:arg name="radar_right2_rpy" default="0.0 0.0 -1.570796"/>
 
-  <xacro:arg name="radar_rear_xyz"   default="-0.17433 0.0 0.33978"/>
+  <xacro:arg name="radar_rear_xyz"   default="-0.61733 0.0 0.33978"/>
   <xacro:arg name="radar_rear_rpy"   default="0.0 0.0 3.141593"/>
 
   <!-- ========================================================= -->
   <!-- 5. Local properties                                       -->
   <!-- ========================================================= -->
-  <xacro:property name="base_link_name" value="$(arg robot_base_link)"/>
+  <xacro:property name="center_link_name" value="$(arg robot_center_link)"/>
+  <xacro:property name="rear_base_link_name" value="$(arg robot_base_link)"/>
   <xacro:property name="sensor_kit_base_link_name" value="$(arg sensor_kit_base_link)"/>
+  <xacro:property name="rear_axle_offset_x_val" value="$(arg rear_axle_offset_x)"/>
   <xacro:property name="base_length_val" value="$(arg base_length)"/>
   <xacro:property name="base_width_val"  value="$(arg base_width)"/>
   <xacro:property name="base_height_val" value="$(arg base_height)"/>
@@ -169,9 +173,9 @@
   </xacro:macro>
 
   <!-- ========================================================= -->
-  <!-- 7. Robot base link                                        -->
+  <!-- 7. Robot center and legacy rear-axle base links           -->
   <!-- ========================================================= -->
-  <link name="${base_link_name}">
+  <link name="${center_link_name}">
     <visual>
       <origin xyz="${base_origin_xyz_val}" rpy="0 0 0"/>
       <geometry>
@@ -198,13 +202,21 @@
     </inertial>
   </link>
 
+  <!-- HH_260803 - Keep robot_base_link as an explicit rear-axle compatibility frame. -->
+  <link name="${rear_base_link_name}"/>
+  <joint name="${center_link_name}_to_${rear_base_link_name}" type="fixed">
+    <parent link="${center_link_name}"/>
+    <child link="${rear_base_link_name}"/>
+    <origin xyz="-${rear_axle_offset_x_val} 0 0" rpy="0 0 0"/>
+  </joint>
+
   <!-- ========================================================= -->
   <!-- 8. Sensor kit base link                                   -->
   <!-- ========================================================= -->
   <link name="${sensor_kit_base_link_name}"/>
 
-  <joint name="${base_link_name}_to_${sensor_kit_base_link_name}" type="fixed">
-    <parent link="${base_link_name}"/>
+  <joint name="${center_link_name}_to_${sensor_kit_base_link_name}" type="fixed">
+    <parent link="${center_link_name}"/>
     <child link="${sensor_kit_base_link_name}"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
   </joint>

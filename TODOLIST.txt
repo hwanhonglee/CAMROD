@@ -1,5 +1,5 @@
 CAMROD v2.1.2 이후 미완료 실차 확인 목록
-갱신일: 2026-08-02 (Asia/Seoul)
+갱신일: 2026-08-04 (Asia/Seoul)
 
 # HH_260730 - 완료된 구현·원인 규명·단위/sim 검증은 DONE.txt로 분리했다.
 # 이 파일에는 아직 실제 로봇에서 실행하고 PASS/FAIL을 판정할 작업만 둔다.
@@ -14,8 +14,26 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
 - v2.1.1 변경 범위: docs/V2_1_1_RELEASE_NOTES.md
 - v2.1.2 갱신 범위와 검증 한계: docs/V2_1_2_RELEASE_NOTES.md
 - 완료 구현·진단 결과: DONE.txt
+- 중앙 기준 프레임 전환표: docs/ROBOT_CENTER_LINK_MIGRATION.md
 - v2.1.2는 software/config/sim 기준점이며 변경 후 전체 실차 주행
   FIELD-PASS는 아직 없다.
+
+# HH_260803 - robot_center_link 코드/config 전환은 완료했지만 실차 TF와
+# GNSS lever arm은 아직 FIELD-PASS가 아니다.
+[P0] robot_center_link 전환 실차 확인
+- 정지 상태에서 `map -> odom -> robot_center_link -> robot_base_link` TF가
+  단일 트리인지 확인한다. `robot_base_link`는 X -0.443 m의 고정 후륜 차축
+  호환 프레임이어야 하며 EKF/Ranger가 별도로 발행하면 실패다.
+- `robot_center_link`에서 LiDAR/카메라/IMU/radar 각 TF를 조회해
+  `docs/ROBOT_CENTER_LINK_MIGRATION.md`의 변경 후 XYZ/RPY와 대조한다.
+- Nav2와 safety gate의 planning boundary가 전후 0.85837/0.83323 m,
+  좌우 0.63505/0.63495 m인지 확인한다. 실제 차체 크기와 0.10 m margin은
+  이전과 동일해야 한다.
+- 사람과 짐이 없는 통제 구역에서 직선, 좌우 offset, crab, 제자리 회전,
+  campsite 진입/복귀, reverse parking/AprilTag docking 순서로 재검증한다.
+- GNSS 안테나의 실제 XYZ를 `robot_center_link`에서 실측하기 전까지
+  현재 -0.443/0/0은 기존 후륜 기준 0/0/0 placeholder의 좌표 변환일 뿐,
+  antenna lever-arm FIELD-PASS로 판정하지 않는다.
 
 다음 실차 세션 우선순위
 1) 후방 카메라 raw가 10 Hz에 미달하는 원인과 CPU 포화 영향을 분리한다.
@@ -275,6 +293,13 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
 - 합격:
   node restart나 mission 재선택 없이 동일 mission이 제한된 재계획으로
   이어지고, 경계 접촉 또는 stale evidence 중에는 정지가 유지된다.
+- HH_260803 SIM-PARTIAL:
+  production recovery owner를 사용한 좁은 route 재현에서 첫 hold가 해제된
+  뒤 동일 FollowPath goal로 0.4726 m 진행하면서 yaw가 -2.0008 deg 변했고,
+  다음 위험 경계에서 다시 정지했다. node restart나 mission 재선택은 없었다.
+  다만 lanelet 754/2751/2720 구간은 1.69160 x 1.27000 m planning boundary가
+  통과하기에 좁아 mission 완료까지는 가지 못했다. 이 결과는 자동 재개와
+  재정지의 SIM 증거이며, 해당 지도 corridor 수정 및 실차 PASS를 대체하지 않는다.
 
 [P0] 12. reverse/crab escape 후 재시작/re-engage
 - TODO 11의 ROUTE_SAFETY_HOLD 상태에서 수행한다.
@@ -295,10 +320,15 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
   7) 별도 반복에서 hold 중 UI cancel 후 5초 동안 goal/path/nonzero
      cmd_vel이 자동 재생성되지 않는지 확인한다.
 - 구현 경계:
-  gate는 받은 reverse/crab 후보를 검증할 뿐 스스로 cmd_vel을 만들지 않는다.
-  Nav2 forward stop 뒤 자동 crab을 요구한다면 별도 recovery owner가 접촉
-  방향, 최대 0.10 m/s, 이동거리/시간 상한, operator cancel을 소유하도록
-  구현하고 위 시험 전에 단위/sim 검증해야 한다.
+  gate는 reverse/crab 후보의 full-footprint와 모든 interlock을 검증하고,
+  별도 `route_safety_recovery_controller`가 유일한 자동 명령 owner다. owner는
+  한쪽 lateral 후보만 clear이면 경계 반대쪽 pure crab, 양쪽 lateral이
+  blocked이고 reverse만 clear이면 reverse를 선택한다. 양쪽 lateral이 모두
+  clear이거나 모두 blocked이면 방향을 추측하지 않고 0을 유지한다.
+  원시 속도는 최대 0.10 m/s, 누적 이동은 0.40 m, 시간은 10초로 제한되며
+  operator cancel, stale pose/grid, engage/e-stop/CAN/charging/obstacle 실패 시
+  즉시 0을 발행한다. 접촉 중 angular.z는 항상 0이며 corridor가 clear된 뒤
+  RPP가 같은 goal을 재개할 때만 yaw 제어를 다시 수행한다.
 - HH_260731 17:44 FIELD-FAIL:
   실제 planning boundary가 lanelet cost 100에 닿자
   `trigger=lanelet_footprint_cost`, `projected_recovery_candidate_only=true`로
@@ -308,6 +338,18 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
   방향일 때만 저속 crab을 생성해야 한다. 양쪽 모두 clear/blocked이면
   추측하지 말고 0을 유지하며, radar/LiDAR·fresh pose/grid·CAN mode·
   engage/e-stop·최대 이동거리/시간·cancel 조건을 모두 통과해야 한다.
+- HH_260803 SIM-PASS / FIELD-PENDING:
+  1) 오른쪽 footprint만 cost 100에 닿는 lanelet 4677 재현에서
+     `CRAB_LEFT`가 선택됐고 yaw를 고정한 채 0.3375 m 이동 후 1.0초 clear
+     증거로 hold가 해제됐다. 최종 lateral cmd는 0.05 m/s였다.
+  2) 정지 상태 reverse 재현에서는 최종 linear.x -0.05 m/s가 실제 출력됐고
+     hold 해제 후 같은 path로 0.0592 m, yaw +0.4065 deg 진행한 뒤 다음
+     경계에서 다시 안전 정지했다.
+  3) 최초 선택 방향은 hold 동안 latch되어 raster cell 변화로 양쪽이 clear가
+     되어도 반대 방향으로 바뀌지 않는다. native policy 50개와 full bringup
+     시나리오로 검증했다.
+  4) 실차에서는 좌/우 crab, reverse 장애물, operator cancel, 거리/시간 상한,
+     wheel feedback을 `record-recovery` rosbag으로 확인해야 FIELD-PASS다.
 - 합격:
   projected full-footprint와 모든 obstacle/interlock을 통과한 reverse/crab
   escape만 허용되고, corridor 복귀 후 첫 re-engage에서 stale latch/ABORT
@@ -336,9 +378,10 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
   6) pure crab 구간에서 비영 covariance의 Ranger wheel yaw-rate와 IMU
      yaw-rate가 함께 EKF에 융합되고, dual-GNSS 절대 yaw 보정 사이에서
      final yaw가 허용 오차 안에 유지되는지 확인한다.
-  7) GNSS 안테나의 robot_base_link 기준 x/y/z를 실측한다. 현재
-     robot_params의 0/0/0 placeholder와 실제 lever arm이 다르면 그 기하를
-     먼저 반영한 뒤 GNSS position과 final base pose 차이를 재측정한다.
+  7) GNSS 안테나의 robot_center_link 기준 x/y/z를 실측한다. 현재
+     robot_params의 -0.443/0/0은 기존 후륜 기준 0/0/0 placeholder를
+     0.443 m 변환한 값일 뿐이다. 실제 lever arm을 먼저 반영한 뒤 GNSS
+     position과 final center pose 차이를 재측정한다.
 - 실패 시 다음 변경 후보:
   측정값을 근거로 lateral prediction, controller gain/ratio,
   sign-change hysteresis, stale-command 처리 중 한 계층만 선택한다.

@@ -127,7 +127,7 @@ class PlatformDummyPublisher(Node):
                 self.declare_parameter("publish_rate_hz", 5.0).value,
                 self.declare_parameter("odom_frame_id", "odom").value,
                 self.declare_parameter(
-                    "base_frame_id", "robot_base_link"
+                    "base_frame_id", "robot_center_link"
                 ).value,
             )
         )

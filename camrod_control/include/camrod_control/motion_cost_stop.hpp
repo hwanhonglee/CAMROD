@@ -39,6 +39,9 @@ struct MotionCostStopConfig
   double clear_required_s{2.0};
   bool stale_stop_enabled{true};
   double stale_timeout_s{1.0};
+  // HH_260803 - Static route raster updates are slower than dynamic obstacle
+  // grids; recovery keeps a separate age without weakening dynamic fail-close.
+  double lanelet_recovery_stale_timeout_s{0.0};
   bool require_dynamic_source{true};
   std::set<std::string> dynamic_source_labels{"lidar", "radar"};
   double source_max_age_s{1.0};
@@ -85,12 +88,14 @@ struct MotionCostStopConfig
   int lanelet_threshold{85};
   int lanelet_current_threshold{85};
   // HH_260727 - Check the complete configured planning footprint against raw
-  // lanelet cost, not only the robot_base_link cell. A separate lethal
+  // lanelet cost, not only the robot_center_link cell. A separate lethal
   // threshold lets narrow lanes retain their soft 98 boundary penalty.
   bool lanelet_footprint_enabled{true};
   int lanelet_footprint_threshold{100};
-  double footprint_front_m{1.30137};
-  double footprint_rear_m{0.39023};
+  // HH_260803 - Values are relative to the axle-midpoint robot_center_link.
+  // They preserve the previous rear-axle footprint after shifting x by 0.443 m.
+  double footprint_front_m{0.85837};
+  double footprint_rear_m{0.83323};
   double footprint_left_m{0.63505};
   double footprint_right_m{0.63495};
   double lanelet_lookahead_m{1.0};
@@ -307,7 +312,7 @@ private:
   TimedGrid lanelet_grid_;
   std::map<std::string, TimedGrid> source_grids_;
   std::optional<PlanarPose> pose_;
-  // HH_260727 - Stored in robot_base_link coordinates and transformed with the freshest
+  // HH_260727 - Stored in robot_center_link coordinates and transformed with the freshest
   // localization pose for every safety evaluation.
   std::vector<std::pair<double, double>> footprint_polygon_local_;
   std::optional<avg_msgs::msg::AvgPath> local_path_;

@@ -147,6 +147,24 @@ accepted/executing status clears the pending abort; an unrelated planning
 failure, a canceled action without route hold, or an operator stop cannot start
 this recovery by itself.
 
+<!-- HH_260804 - Record the center-frame RPP and bounded recovery handoff. -->
+Nav2, goal snapping, and replanning now use `robot_center_link`, the midpoint
+of the 0.886 m axle spacing. `robot_base_link` remains only a fixed rear-axle
+compatibility child and is not a second navigation origin. The synchronized
+RPP profile runs at 15 Hz with `desired_linear_vel: 0.4`, lookahead
+min/default/max `1.1/1.1/2.0 m`, `max_angular_accel: 0.8`, and no Nav2 reverse
+or rotate-to-heading behavior.
+
+Planning does not choose the boundary escape direction. During
+`ROUTE_SAFETY_HOLD`, control owns bounded crab/reverse motion. After 1.0 s of
+continuous clear evidence, planning resumes the exact retained goal and RPP
+again controls yaw. Simulation confirmed that handoff, but lanelets
+754/2751/2720 contain a corridor narrower than the active
+1.69160 x 1.27000 m planning rectangle; that route needs map or operational
+route correction rather than extra crab or a reduced footprint.
+See [the recorded simulation](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md)
+for route IDs, displacement, yaw, and retry evidence.
+
 ## Launch
 
 ```bash

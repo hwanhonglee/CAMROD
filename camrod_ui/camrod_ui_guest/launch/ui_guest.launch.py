@@ -35,6 +35,21 @@ def generate_launch_description():
         default_value='/ui/selected_destination',
         description='Topic to publish selected site destination (consumed by ui_backend_node)',
     )
+    operation_request_topic_arg = DeclareLaunchArgument(
+        'ui_camping_site_operation_request_topic',
+        default_value='/ui/camping_site_operation_request',
+        description='Backend-owned campsite operation request topic',
+    )
+    minimum_battery_arg = DeclareLaunchArgument(
+        'minimum_mission_dispatch_battery_percent',
+        default_value='35.0',
+        description='Minimum SOC percent displayed as ready for a guest mission',
+    )
+    control_gate_status_topic_arg = DeclareLaunchArgument(
+        'control_gate_status_topic',
+        default_value='/control/cmd_vel_safety_gate/status',
+        description='Shared command-gate state displayed by Robot and Guest UI',
+    )
     # Note: site_names is a string_array parameter — override via a params YAML file
     #       if the default B1~B13 list needs to change.
 
@@ -49,9 +64,19 @@ def generate_launch_description():
             'port': LaunchConfiguration('guest_port'),
             # HH_260721 - Use the same platform-neutral service lifecycle as the robot UI.
             'service_state_topic': '/service/state',
-            'battery_topic': '/battery_percentage',
+            # HH_260803 - Consume the same normalized [0, 1] platform SOC as Robot UI.
+            'battery_topic': '/platform/status',
+            'control_gate_status_topic': LaunchConfiguration(
+                'control_gate_status_topic'
+            ),
             'grace_period_s': LaunchConfiguration('grace_period_s'),
             'ui_destination_topic': LaunchConfiguration('ui_destination_topic'),
+            'ui_camping_site_operation_request_topic': LaunchConfiguration(
+                'ui_camping_site_operation_request_topic'
+            ),
+            'minimum_mission_dispatch_battery_percent': LaunchConfiguration(
+                'minimum_mission_dispatch_battery_percent'
+            ),
         }],
     )
 
@@ -61,5 +86,8 @@ def generate_launch_description():
         port_arg,
         grace_period_arg,
         ui_destination_topic_arg,
+        operation_request_topic_arg,
+        minimum_battery_arg,
+        control_gate_status_topic_arg,
         guest_node,
     ])

@@ -55,7 +55,7 @@ corridor/path/rotation probe, and fresh-grid evidence that triggered a dynamic
 obstacle stop. A stop-induced zero or changed-direction command can no longer
 clear that latch; release requires 2 seconds of fresh clear evidence followed
 by the configured 1-second hold. The final normal-forward raw side probe
-is 0.60 m from `robot_base_link`; crab/reverse retains 1.20 m. With the radar
+is 0.60 m from the canonical robot base frame; crab/reverse retains 1.20 m. With the radar
 grid's 0.30 m obstacle radius, a side hit near base-centred `|y|=1.0 m` stays
 clear during forward travel while a closer hit near `|y|=0.8 m` blocks.
 The disk diagnostic WARN threshold is 90% (ERROR remains 95%).
@@ -122,9 +122,19 @@ The v2.1.2 delta removes Ranger parallel-motion
 history/sign errors, stops the production EKF from treating wheel `wz=0` as a
 near-perfect crab-yaw measurement, publishes per-wheel steering evidence, and
 admits a projected pure-crab recovery candidate for side boundary contact.
-The gate does not synthesize recovery motion. GNSS antenna lever-arm
-calibration, real crab-yaw acceptance, and any automatic crab recovery owner
-remain explicit field work in `TODOLIST.txt`.
+The tagged gate did not synthesize recovery motion. GNSS antenna lever-arm and
+real crab-yaw acceptance remain explicit field work in `TODOLIST.txt`.
+
+<!-- HH_260803 - Record the axle-midpoint navigation/control frame migration. -->
+The runtime base is now `robot_center_link`, located at the midpoint of the
+0.886 m front/rear axle spacing. The previous `robot_base_link` remains a fixed
+rear-axle compatibility child at X `-0.443 m`; sensors, odometry, EKF, Nav2,
+cost grids, control, parking, diagnostics, UI/voice readiness, and simulation
+use the center frame. Sensor X values were converted with
+`new_x = old_x - 0.443 m`, while physical mounts, Y/Z/RPY, chassis dimensions,
+the 0.10 m planning margin, and safety thresholds remain unchanged. The full
+before/after ledger and field checks are in
+[`docs/ROBOT_CENTER_LINK_MIGRATION.md`](docs/ROBOT_CENTER_LINK_MIGRATION.md).
 
 It also moves rear monitoring JPEG encoding off the raw camera publication
 thread, publishes structured controller-to-wheel transition evidence, and
@@ -134,6 +144,25 @@ tracking error and steering variation; they did not reproduce the physical
 sine-wave motion, so real-wheel acceptance remains open. The complete planning
 boundary still permits soft cost 98 and stops at off-lane cost 100, including
 crab/reverse maneuver phases.
+
+<!-- HH_260804 - Summarize the post-v2.1.2 automatic recovery and UI parity delta. -->
+The current post-v2.1.2 work adds one bounded
+`route_safety_recovery_controller` as the automatic command owner. A unique
+safe lateral projection selects pure crab away from contact; when both lateral
+projections are blocked and reverse is clear, it selects reverse. Ambiguous,
+blocked, stale, canceled, or interlock-failing cases remain stopped. Recovery
+is limited to 0.10 m/s raw command, 0.40 m, and 10 seconds, with zero angular
+velocity until continuous route-clear evidence releases the retained RPP goal.
+
+Guest UI now shares the Robot UI backend's destination and return contract,
+normalizes platform SOC, enforces the 35% new-mission threshold, displays every
+service phase including `OPERATOR_STOPPED`, and overlays an actual command-gate
+route hold without replacing normal service progress with a generic warning.
+The implementation, measured simulation values, visual evidence, and remaining
+map/field limits are in
+[the 2026-08-03 recovery report](docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md).
+
+![Automatic boundary recovery policy](docs/assets/20260803/automatic_route_recovery_policy_20260803.png)
 
 <!-- HH_260731 - Link the first physical no-motion acceptance checkpoint. -->
 The 2026-07-31 physical stationary checkpoint passed the 600-second

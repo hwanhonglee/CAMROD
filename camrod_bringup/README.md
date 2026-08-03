@@ -162,7 +162,7 @@ reject drift between them.
 <!-- HH_260728 - Define the radar and straight/maneuver safety mirror contract. -->
 Radar cost defaults remain canonical under `camrod_sensing/config/radar/`,
 with a byte-identical bringup deployment mirror. The command-gate mirror keeps
-the normal-forward raw side probe at 0.60 m from `robot_base_link` and
+the normal-forward raw side probe at 0.60 m from the canonical robot base and
 crab/reverse checking at 1.20 m. Radar's 0.30 m obstacle radius leaves a
 base-centred side hit near `|y|=1.0 m` clear while a closer hit near
 `|y|=0.8 m` blocks forward motion. `field_test_tool.sh config` rejects drift
@@ -250,10 +250,22 @@ clock for RViz+WebKit, WebKit-only, and window-off comparisons.
 <!-- HH_260729 / TODOLIST 11-13 - Preserve a dedicated real-robot acceptance timeline. -->
 `field_test_tool.sh record-recovery <log_dir>` records the lanelet route hold,
 Nav2 action result and retained goal, planning boundary and cost grids,
-raw/final commands, Ranger actuator/wheel feedback, TF, and steering-transition
-`/rosout` logs until Ctrl+C. It also freezes active recovery parameters and
+validated recovery candidate/controller state, raw/final commands, Ranger
+actuator/wheel feedback, TF, and steering-transition `/rosout` logs until
+Ctrl+C. It also freezes active recovery parameters and
 creates `FIELD_RESULT.txt`; this post-fix bag is required before TODO 11-13 can
 be marked field-PASS.
+
+<!-- HH_260803 - Preserve the automatic recovery simulation and rendering entrypoints. -->
+`automatic_route_recovery_probe.py` drives the production gate/controller in
+`route_retry`, `static_reverse_retry`, or `one_sided_crab` mode and writes the
+complete pose, candidate, output, gate, and controller timeline as JSON.
+`render_automatic_recovery_results.py` converts those runs into the review GIF
+and PNGs. `render_boundary_recovery_results.py` preserves the earlier
+manual-candidate center-frame geometry run as a separate comparison artifact;
+it must not be read as proof that the old gate generated motion automatically.
+Exact 2026-08-03 results, commands, and limitations are recorded in
+[`docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md`](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md).
 
 <!-- HH_260730 - Keep measured indoor evidence separate from pending field acceptance. -->
 The latest production-entry simulation measurements, planner/costmap audit,

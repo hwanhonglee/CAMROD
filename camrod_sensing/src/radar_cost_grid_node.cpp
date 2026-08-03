@@ -57,7 +57,7 @@ public:
 
     output_topic_ = declare_startup(
       "output_topic", std::string{"/sensing/cost_grid/radar"});
-    base_frame_id_ = declare_startup("base_frame_id", std::string{"robot_base_link"});
+    base_frame_id_ = declare_startup("base_frame_id", std::string{"robot_center_link"});
     output_frame_id_ = declare_startup("output_frame_id", std::string{"map"});
     // HH_260729 - Numeric no-target ranges already sit above max_range. The
     // explicit dummy heartbeat is a second, independent barrier so disabled

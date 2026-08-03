@@ -4,7 +4,7 @@ local_costmap:
     ros__parameters:
       # Plugin order for local layered costmap.
       plugins: [obstacle_layer, inflation_layer, lanelet_cost_layer]
-      # Vehicle footprint polygon in robot_base_link frame (meters).
+      # Vehicle footprint polygon in robot_center_link frame (meters).
       footprint: [[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]
       # Radius fallback when footprint is not configured.
       robot_radius: 0.0
@@ -32,7 +32,7 @@ global_costmap:
     ros__parameters:
       # Plugin order for global layered costmap.
       plugins: [obstacle_layer, inflation_layer, lanelet_cost_layer]
-      # Vehicle footprint polygon in robot_base_link frame (meters).
+      # Vehicle footprint polygon in robot_center_link frame (meters).
       footprint: [[0.9, 0.4], [0.9, -0.4], [-0.9, -0.4], [-0.9, 0.4]]
       # Radius fallback when footprint is not configured.
       robot_radius: 0.0

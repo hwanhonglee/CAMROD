@@ -86,7 +86,7 @@ public:
       std::clamp(platform_status_publish_rate_hz_, 1.0, 50.0);
     // HH_260506: Frame id used by aggregated AvgPlatformStatus header.
     status_frame_id_      = declare_parameter<std::string>(
-      "status_frame_id", "robot_base_link");
+      "status_frame_id", "robot_center_link");
     estop_on_exception_    = declare_parameter<bool>("estop_on_exception_state", true);
     estop_on_error_code_   = declare_parameter<bool>("estop_on_error_code",      false);
 

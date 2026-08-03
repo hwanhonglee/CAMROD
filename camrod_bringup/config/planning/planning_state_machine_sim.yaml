@@ -109,7 +109,7 @@
     # 8. GOAL ARRIVAL AND HANDOFF
     # =========================================================================
     min_goal_publish_interval_s: 1.0
-    # HH_260623 - Sim state handoff follows robot_base_link-center arrival so
+    # HH_260803 - Sim state handoff follows robot_center_link arrival so
     # RViz validation matches the real Nav2 stop reference.
     # HH_260630: Sim initialpose/EKF settling can leave /planning/lanelet_pose_ros
     # about 0.30 m from a freshly snapped route goal even when the fake vehicle is

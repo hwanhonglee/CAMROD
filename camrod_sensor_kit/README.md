@@ -32,12 +32,13 @@ ros2 launch camrod_sensor_kit sensor_kit.launch.py \
 
 # Custom frame names
 ros2 launch camrod_sensor_kit sensor_kit.launch.py \
-  base_frame_id:=robot_base_link \
+  base_frame_id:=robot_center_link \
+  rear_axle_frame_id:=robot_base_link \
   sensor_kit_base_frame_id:=sensor_kit_base_link
 
 # Verify TF is live
 ros2 topic echo /tf_static --once
-ros2 run tf2_ros tf2_echo robot_base_link lidar_link
+ros2 run tf2_ros tf2_echo robot_center_link lidar_link
 ```
 
 ---
@@ -146,15 +147,16 @@ graph TD
     WORLD[🌐 world]:::system
     MAP[🗺️ map]:::localization
   end
-  subgraph ROBOT["robot_base_link — Nav2 footprint origin"]
-    BASE[🤖 robot_base_link\nfixed joints only]:::platform
+  subgraph ROBOT["robot_center_link — Nav2/control origin"]
+    BASE[🤖 robot_center_link\nfront/rear axle midpoint]:::platform
+    REAR[robot_base_link\nlegacy rear-axle frame]:::system
     subgraph SKIT["sensor_kit_base_link — sensor mount origin"]
       SKB[🔧 sensor_kit_base_link]:::system
-      IMU[📡 imu_link\n1.131, 0.0, 0.756]:::sensing
-      GNSS[📡 gnss_link\n0.0, 0.0, 0.0]:::sensing
-      LIDAR[📡 lidar_link\n1.20636, 0.0, 0.59538]:::sensing
-      CAMF[📡 camera_front_link\n1.20637, 0.0, 0.49568]:::sensing
-      CAMR[📡 camera_rear_link\n-0.17633, 0.0, 0.30013]:::sensing
+      IMU[📡 imu_link\n0.688, 0.0, 0.756]:::sensing
+      GNSS[📡 gnss_link\n-0.443, 0.0, 0.0 placeholder]:::sensing
+      LIDAR[📡 lidar_link\n0.76336, 0.0, 0.59538]:::sensing
+      CAMF[📡 camera_front_link\n0.76337, 0.0, 0.49568]:::sensing
+      CAMR[📡 camera_rear_link\n-0.61933, 0.0, 0.30013]:::sensing
       subgraph RADAR["Radar sensors (direct to sensor_kit_base_link)"]
         %% HH_260623 - Removed the old single-front radar frame; front1/front2 are canonical.
         RF1[📡 radar_front1_link]:::sensing
@@ -170,6 +172,7 @@ graph TD
 
   WORLD --> MAP
   MAP --> BASE
+  BASE -->|x = -0.443 m| REAR
   BASE --> SKB
   SKB --> IMU & GNSS & LIDAR & CAMF & CAMR
   SKB --> RF1 & RF2 & RL1 & RL2 & RR1 & RR2 & RR
@@ -180,7 +183,7 @@ graph TD
   classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
 ```
 
-> `world` and `map` are convention frames connected by the localization pipeline — not published by this package. `robot_base_link` is the physical footprint origin for Nav2 and collision checking.
+> `world` and `map` are convention frames connected by localization and are not published by this package. `robot_center_link` is the axle-midpoint navigation/control origin. `robot_base_link` remains a fixed child at the rear axle only for compatibility.
 
 ---
 
@@ -190,7 +193,7 @@ graph TD
 
 | Topic | Type | Consumer | Rate | Meaning |
 |---|---|---|---|---|
-| `/tf_static` | `tf2_msgs/TFMessage` | all packages doing sensor frame lookups | once at startup | Full static joint tree from `robot_base_link` to each sensor link |
+| `/tf_static` | `tf2_msgs/TFMessage` | all packages doing sensor frame lookups | once at startup | Static rear-axle compatibility and sensor tree from `robot_center_link` |
 | `/robot_description` | `std_msgs/String` | RViz, URDF consumers | once at startup | URDF XML string expanded from xacro |
 
 ### Library Interface
@@ -245,8 +248,9 @@ ros2 launch camrod_sensor_kit sensor_kit.launch.py [ARG:=VALUE ...]
 |---|---|---|
 | `params_file` | `config/robot_params.yaml` (from package share) | Robot geometry and sensor pose definitions |
 | `module_namespace` | `sensor_kit` | ROS 2 node namespace |
-| `base_frame_id` | `robot_base_link` | Parent robot body frame name |
-| `sensor_kit_base_frame_id` | `sensor_kit_base_link` | Sensor kit base frame under `robot_base_link` |
+| `base_frame_id` | `robot_center_link` | Canonical axle-midpoint robot frame |
+| `rear_axle_frame_id` | `robot_base_link` | Legacy rear-axle compatibility child frame |
+| `sensor_kit_base_frame_id` | `sensor_kit_base_link` | Sensor mount parent coincident with `robot_center_link` |
 | `map_frame_id` | `map` | Fixed world frame |
 
 ---
@@ -261,17 +265,18 @@ All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **de
 
 | YAML key | Default (YAML) | C++ default | Unit | Notes |
 |---|---|---|---|---|
-| `robot.wheelbase` | `0.5` | `1.10` | m | **TODO:verify** — YAML (0.5 m) differs from C++ default (1.10 m) |
+| `robot.wheelbase` | `0.886` | `0.886` | m | Measured front-to-rear axle-center distance |
+| `robot.center_offset_from_rear_axle` | `0.443` | `0.443` | m | `wheelbase / 2`; rear axle to `robot_center_link` |
 | `robot.track_width` | `1.07` | `1.07000` | m | HH_260623 - body lateral envelope until separate wheel-center track is measured |
-| `robot.length` | `1.49160` | `1.49160` | m | HH_260623 - measured body length from robot_base_link extents |
-| `robot.width` | `1.07000` | `1.07000` | m | HH_260623 - measured body width from robot_base_link extents |
+| `robot.length` | `1.49160` | `1.49160` | m | Measured body length; unchanged by the origin shift |
+| `robot.width` | `1.07000` | `1.07000` | m | Measured body width; unchanged by the origin shift |
 | `robot.height` | `1.09463` | `1.09463` | m | HH_260623 - measured full body height |
-| `robot.body_extents.front` | `1.20137` | `1.20137` | m | Forward body extent from `robot_base_link` |
-| `robot.body_extents.rear` | `0.29023` | `0.29023` | m | Rear body extent from `robot_base_link` |
-| `robot.body_extents.left` | `0.53505` | `0.53505` | m | Left body extent from `robot_base_link` |
-| `robot.body_extents.right` | `0.53495` | `0.53495` | m | Right body extent from `robot_base_link` |
-| `robot.body_extents.top_z` | `0.94188` | `0.94188` | m | Top body Z from `robot_base_link` |
-| `robot.body_extents.bottom_z` | `-0.15275` | `-0.15275` | m | Bottom body Z from `robot_base_link` |
+| `robot.body_extents.front` | `0.75837` | `0.75837` | m | Forward body extent from `robot_center_link`; old rear-axle value `1.20137` |
+| `robot.body_extents.rear` | `0.73323` | `0.73323` | m | Rear body extent from `robot_center_link`; old rear-axle value `0.29023` |
+| `robot.body_extents.left` | `0.53505` | `0.53505` | m | Left body extent from `robot_center_link` |
+| `robot.body_extents.right` | `0.53495` | `0.53495` | m | Right body extent from `robot_center_link` |
+| `robot.body_extents.top_z` | `0.94188` | `0.94188` | m | Top body Z from `robot_center_link` |
+| `robot.body_extents.bottom_z` | `-0.15275` | `-0.15275` | m | Bottom body Z from `robot_center_link` |
 | `robot.body_extents.planning_margin` | `0.10` | `0.10` | m | HH_260623 - safety margin added to Nav2/planning footprint |
 | `robot.wheel_radius` | `0.15275` | `0.15275` | m | HH_260623 - Measured wheel radius, 152.75 mm |
 | `robot.encoder_resolution` | `2048` | `2048` | ticks/rev | Encoder ticks per wheel revolution |
@@ -282,31 +287,33 @@ All sensor poses are relative to `sensor_kit_base_link`. YAML angles are in **de
 >
 > - `robot.track_width` currently mirrors the measured body width. Replace it with wheel-center track when the wheel-track measurement is available.
 
-### 📡 Sensor Mount Poses (relative to `sensor_kit_base_link`, fixed at `robot_base_link` origin)
+### 📡 Sensor Mount Poses (relative to `sensor_kit_base_link` at `robot_center_link`)
 
-> HH_260623 - `sensor_kit_base_link` is fixed to `robot_base_link` with zero offset, so the measured `robot_base_link`-relative sensor mounts are applied directly here.
+> HH_260803 - `sensor_kit_base_link` is fixed to `robot_center_link` with zero offset. Each X below is the previous rear-axle-relative X minus 0.443 m; Y/Z/RPY and every physical mount are unchanged. See [`../docs/ROBOT_CENTER_LINK_MIGRATION.md`](../docs/ROBOT_CENTER_LINK_MIGRATION.md) for the complete before/after table.
 
 | Sensor | x (m) | y (m) | z (m) | roll (deg) | pitch (deg) | yaw (deg) |
 |---|---|---|---|---|---|---|
-| `imu` | 1.131 | 0.0 | 0.756 | 0.0 | 0.0 | 0.0 |
-| `gnss` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| `lidar` | 1.20636 | 0.0 | 0.59538 | 0.0 | 0.0 | 0.0 |
-| `camera.front` | 1.20637 | 0.0 | 0.49568 | 0.0 | 0.0 | 0.0 |
-| `camera.rear` | -0.17633 | 0.0 | 0.30013 | 0.0 | 0.0 | 180.0 |
-| `radar.front1` | 1.07087 | -0.11005 | 0.33378 | 0.0 | 0.0 | 0.0 |
-| `radar.front2` | 1.07087 | 0.11005 | 0.33378 | 0.0 | 0.0 | 0.0 |
-| `radar.left1` | 0.73488 | 0.41005 | 0.29013 | 0.0 | 0.0 | 90.0 |
-| `radar.left2` | 0.15966 | 0.41005 | 0.29013 | 0.0 | 0.0 | 90.0 |
-| `radar.right1` | 0.73488 | -0.41005 | 0.29013 | 0.0 | 0.0 | -90.0 |
-| `radar.right2` | 0.15966 | -0.41005 | 0.29013 | 0.0 | 0.0 | -90.0 |
-| `radar.rear` | -0.17433 | 0.0 | 0.33978 | 0.0 | 0.0 | 180.0 |
+| `imu` | 0.688 | 0.0 | 0.756 | 0.0 | 0.0 | 0.0 |
+| `gnss` | -0.443 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| `lidar` | 0.76336 | 0.0 | 0.59538 | 0.0 | 0.0 | 0.0 |
+| `camera.front` | 0.76337 | 0.0 | 0.49568 | 0.0 | 0.0 | 0.0 |
+| `camera.rear` | -0.61933 | 0.0 | 0.30013 | 0.0 | 0.0 | 180.0 |
+| `radar.front1` | 0.62787 | -0.11005 | 0.33378 | 0.0 | 0.0 | 0.0 |
+| `radar.front2` | 0.62787 | 0.11005 | 0.33378 | 0.0 | 0.0 | 0.0 |
+| `radar.left1` | 0.29188 | 0.41005 | 0.29013 | 0.0 | 0.0 | 90.0 |
+| `radar.left2` | -0.28334 | 0.41005 | 0.29013 | 0.0 | 0.0 | 90.0 |
+| `radar.right1` | 0.29188 | -0.41005 | 0.29013 | 0.0 | 0.0 | -90.0 |
+| `radar.right2` | -0.28334 | -0.41005 | 0.29013 | 0.0 | 0.0 | -90.0 |
+| `radar.rear` | -0.61733 | 0.0 | 0.33978 | 0.0 | 0.0 | 180.0 |
+
+> The GNSS `-0.443/0/0` value is only the converted old placeholder. Measure the actual antenna lever arm from `robot_center_link` before physical acceptance.
 
 > HH_260623 - `radar.front1/front2` keep the sensing channel names. With the vehicle coordinate convention (+Y left), `front1` is currently placed at negative Y and `front2` at positive Y according to the measured wiring note.
 > HH_260702 - The current field harness crosses the LEFT/RIGHT serial branches, so the sensing YAML maps LEFT1/LEFT2 to CH9344 USB4/USB5 and RIGHT1/RIGHT2 to USB2/USB3 while the TF frames stay physically left/right in this table.
 
 ### `urdf/camrod_sensor_kit.xacro`
 
-Parameterized URDF: `robot_base_link` body box, `sensor_kit_base_link` joint, and one link+joint macro per sensor. All pose arguments (`{sensor}_xyz`, `{sensor}_rpy`) are injected by the launch file from the values above.
+Parameterized URDF: root `robot_center_link` body box, fixed rear-axle `robot_base_link` compatibility child, coincident `sensor_kit_base_link`, and one link+joint macro per sensor. All pose arguments (`{sensor}_xyz`, `{sensor}_rpy`) are injected by the launch file from the values above.
 
 ---
 
@@ -316,12 +323,15 @@ Parameterized URDF: `robot_base_link` body box, `sensor_kit_base_link` joint, an
 # Confirm /tf_static is published
 ros2 topic echo /tf_static --once | grep frame_id
 
-# Lookup each sensor frame from robot_base_link
+# Lookup each sensor frame from robot_center_link
 for frame in imu_link gnss_link lidar_link camera_front_link camera_rear_link \
   radar_front1_link radar_front2_link radar_left1_link radar_left2_link \
   radar_right1_link radar_right2_link radar_rear_link; do
-  ros2 run tf2_ros tf2_echo robot_base_link $frame
+  ros2 run tf2_ros tf2_echo robot_center_link $frame
 done
+
+# Confirm the retained rear-axle compatibility frame
+timeout 3 ros2 run tf2_ros tf2_echo robot_center_link robot_base_link -p 6
 
 # Inspect URDF in RViz
 ros2 run rviz2 rviz2

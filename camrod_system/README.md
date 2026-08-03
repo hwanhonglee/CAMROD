@@ -40,6 +40,14 @@ sensor statuses. These values survive STALE conversion and remain visible on
 from the already-merged radar cost grid remains source/region-level and is not
 mislabelled as one channel when several radar disks may overlap.
 
+<!-- HH_260803 - Keep operator metadata aligned with the canonical TF tree. -->
+All `mount_xyz_m` values are now relative to `robot_center_link`. Their X values
+are the previous rear-axle values minus 0.443 m; Y/Z/RPY are unchanged. GNSS
+remains `pose_verified=false` because `-0.443/0/0` is a converted placeholder,
+not a surveyed antenna lever arm.
+The complete coordinate table and remaining field checks are in the
+[`robot_center_link` migration ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md).
+
 The terminal summary lists every simultaneous non-OK checker rather than only
 the last worst item in a module. For example, FRONT1 and LEFT2 can appear as
 separate lines with `front_right` and `left_rear`, their TF frames, ranges, and

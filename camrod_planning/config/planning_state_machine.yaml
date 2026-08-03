@@ -182,7 +182,7 @@
     # charging completion is reported by the selected parking controller.
 
     min_goal_publish_interval_s: 1.0
-    # HH_260623 - State handoff follows robot_base_link-center arrival, not
+    # HH_260803 - State handoff follows robot_center_link arrival, not
     # the front-footprint early stop that occurred with the old 0.8 m latch.
     goal_reached_distance_m: 0.2
     # HH_260622 - GOAL_REACHED is a parking handoff signal, so require Nav2

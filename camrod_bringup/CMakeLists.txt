@@ -14,6 +14,11 @@ find_package(rclcpp REQUIRED)
 # deterministic validation runs.
 install(
   PROGRAMS
+    # HH_260803 / TODOLIST 12 - Reproduce production-owned boundary recovery.
+    scripts/automatic_route_recovery_probe.py
+    scripts/render_automatic_recovery_results.py
+    # HH_260804 - Keep the earlier manual-candidate geometry evidence reproducible.
+    scripts/render_boundary_recovery_results.py
     # HH_260730 / TODOLIST 2 - Decode physical NvJPEG output during field acceptance.
     scripts/camera_payload_probe.py
     scripts/fake_sensor_publisher.py
@@ -124,6 +129,14 @@ if(BUILD_TESTING)
   ament_add_pytest_test(
     test_nav2_controller_profile_sync
     test/test_nav2_controller_profile_sync.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260803 - Lock the axle-midpoint frame migration, sensor-coordinate
+  # conversion, physical footprint invariants, and deployment config mirrors.
+  ament_add_pytest_test(
+    test_robot_center_frame_contract
+    test/test_robot_center_frame_contract.py
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )

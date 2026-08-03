@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import threading
 import time
@@ -23,11 +24,45 @@ from typing import Optional
 import rclpy
 import uvicorn
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
-from avg_msgs.msg import AvgServiceState, AvgPlatformStatus, UiDestinationCommand
+from avg_msgs.msg import (
+    AvgPlatformStatus,
+    AvgServiceState,
+    ModuleState,
+    MotionOperation,
+    UiDestinationCommand,
+)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+
+
+def normalize_platform_battery_percent(value: float) -> int:
+    """Convert canonical AvgPlatformStatus SOC ratio to a display percent."""
+    if not math.isfinite(float(value)):
+        return -1
+    return max(0, min(100, int(round(float(value) * 100.0))))
+
+
+def guest_mission_dispatch_ready(state: int, battery: int, minimum: int) -> bool:
+    """Apply the Robot UI's stationary-state and SOC admission boundary."""
+    return state in {
+        int(AvgServiceState.DROP_ZONE_WAIT),
+        int(AvgServiceState.CHARGING),
+    } and battery >= minimum
+
+
+def guest_gate_safety_hold(operating_state: str, message: str = "") -> bool:
+    """Recognize the same command-gate hold states shown by the Robot UI."""
+    state = str(operating_state).strip().upper()
+    detail = str(message).strip().lower()
+    return (
+        state in {"SAFETY_HOLD", "ROUTE_SAFETY_HOLD"}
+        or "cost_stop_latched" in detail
+        or "cost_hold=" in detail
+        or "route_safety_hold=" in detail
+    )
 
 
 class UiGuestNode(Node):
@@ -44,11 +79,38 @@ class UiGuestNode(Node):
         self.battery_topic = str(
             self.declare_parameter("battery_topic", "/platform/status").value
         )
+        self.control_gate_status_topic = str(
+            self.declare_parameter(
+                "control_gate_status_topic",
+                "/control/cmd_vel_safety_gate/status",
+            ).value
+        )
         self.grace_period_s = int(self.declare_parameter("grace_period_s", 60).value)
+        self.minimum_mission_dispatch_battery_percent = max(
+            0,
+            min(
+                100,
+                int(
+                    round(
+                        float(
+                            self.declare_parameter(
+                                "minimum_mission_dispatch_battery_percent", 35.0
+                            ).value
+                        )
+                    )
+                ),
+            ),
+        )
 
         # HH_260721 - Use the same destination command contract as ui_backend_node.
         self.ui_destination_topic = str(
             self.declare_parameter("ui_destination_topic", "/ui/selected_destination").value
+        )
+        self.ui_camping_site_operation_request_topic = str(
+            self.declare_parameter(
+                "ui_camping_site_operation_request_topic",
+                "/ui/camping_site_operation_request",
+            ).value
         )
         self.site_names = [
             str(s)
@@ -60,6 +122,8 @@ class UiGuestNode(Node):
         self._lock = threading.Lock()
         self._service_state: int = AvgServiceState.DROP_ZONE_WAIT
         self._battery: int = -1
+        self._safety_hold: bool = False
+        self._control_gate_state: str = "UNKNOWN"
         # HH_260721 - Preserve the physical charging state when a destination is cleared.
         self._is_charging: bool = False
 
@@ -72,6 +136,12 @@ class UiGuestNode(Node):
         self._last_client_ip: Optional[str] = None
         self._grace_until: float = 0.0
 
+        state_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
         self.sub_service_state = self.create_subscription(
             AvgServiceState,
             self.service_state_topic,
@@ -90,16 +160,25 @@ class UiGuestNode(Node):
             self._on_destination_cleared,
             10,
         )
+        self.sub_control_gate_status = self.create_subscription(
+            ModuleState,
+            self.control_gate_status_topic,
+            self._on_control_gate_status,
+            state_qos,
+        )
 
         self.pub_service_state = self.create_publisher(
-            AvgServiceState,
-            self.service_state_topic,
-            10,
+            AvgServiceState, self.service_state_topic, 10
         )
         # (확장) 사이트 선택 → 목적지 토픽 publish (ui_backend_node가 goal_pose 처리)
         self.pub_destination = self.create_publisher(
             UiDestinationCommand,
             self.ui_destination_topic,
+            10,
+        )
+        self.pub_operation_request = self.create_publisher(
+            MotionOperation,
+            self.ui_camping_site_operation_request_topic,
             10,
         )
 
@@ -131,10 +210,18 @@ class UiGuestNode(Node):
             self._is_charging = bool(msg.is_charging)
         if not msg.battery_state_available:
             return
-        pct = max(0, min(100, int(round(msg.battery_percentage))))
+        # HH_260803 - AvgPlatformStatus carries SOC as a [0, 1] fraction. Match
+        # the Robot UI conversion so 0.80 is shown and gated as 80%, not 1%.
+        pct = normalize_platform_battery_percent(msg.battery_percentage)
+        if pct < 0:
+            return
         with self._lock:
             self._battery = pct
-        self._schedule_broadcast({"battery": pct})
+        self._schedule_broadcast({
+            "battery": pct,
+            "minimum_battery_percentage": self.minimum_mission_dispatch_battery_percent,
+            "mission_battery_ready": pct >= self.minimum_mission_dispatch_battery_percent,
+        })
 
     def _on_destination_cleared(self, msg: UiDestinationCommand) -> None:
         if msg.run:
@@ -155,6 +242,20 @@ class UiGuestNode(Node):
         self.get_logger().info(
             f"[guest] Destination cleared -> {self._state_name_of(state)}"
         )
+
+    def _on_control_gate_status(self, msg: ModuleState) -> None:
+        # HH_260803 - Safety hold is an overlay on the service lifecycle. A
+        # diagnostic WARN alone must not replace MOVING, ENTERING, or RETURNING.
+        gate_state = str(msg.operating_state).strip() or "UNKNOWN"
+        safety_hold = guest_gate_safety_hold(gate_state, msg.message)
+        with self._lock:
+            self._control_gate_state = gate_state
+            self._safety_hold = safety_hold
+        self._schedule_broadcast({
+            "safety_hold": safety_hold,
+            "control_gate_state": gate_state,
+            "control_gate_message": str(msg.message),
+        })
 
     # ── WebSocket broadcast ───────────────────────────────────────────────────
 
@@ -198,6 +299,7 @@ class UiGuestNode(Node):
             AvgServiceState.CHARGING: "charging",
             AvgServiceState.DEPARTING_CHARGER: "moving",
             AvgServiceState.DEPARTING_DROP_ZONE: "moving",
+            AvgServiceState.OPERATOR_STOPPED: "stopped",
         }.get(state, "unknown")
 
     def _state_name_of(self, state: int) -> str:
@@ -219,6 +321,7 @@ class UiGuestNode(Node):
             AvgServiceState.CHARGING: "CHARGING",
             AvgServiceState.DEPARTING_CHARGER: "DEPARTING_CHARGER",
             AvgServiceState.DEPARTING_DROP_ZONE: "DEPARTING_DROP_ZONE",
+            AvgServiceState.OPERATOR_STOPPED: "OPERATOR_STOPPED",
         }.get(state, f"UNKNOWN_{state}")
 
     def _publish_guest_recall(self) -> None:
@@ -244,15 +347,15 @@ class UiGuestNode(Node):
         )
 
     def _publish_usage_complete(self) -> None:
-        """(확장) 이용 완료 → 드롭존 복귀 상태 발행 (키오스크 usage_complete와 동일 신호)."""
-        msg = AvgServiceState()
-        msg.state = AvgServiceState.RETURNING_TO_DROP_ZONE
-        msg.state_name = "RETURNING_TO_DROP_ZONE"
-        # HH_260721 - Keep service descriptions English at the ROS boundary.
-        msg.description = "Usage complete; return to drop zone"
-        self.pub_service_state.publish(msg)
+        """Request the same backend-owned return sequence as the Robot UI."""
+        msg = MotionOperation()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.operation = MotionOperation.RETURN
+        msg.source = "guest:usage_complete"
+        self.pub_operation_request.publish(msg)
         self.get_logger().info(
-            f"[guest] usage_complete -> RETURNING_TO_DROP_ZONE -> {self.service_state_topic}"
+            "[guest] usage_complete -> RETURN request -> "
+            f"{self.ui_camping_site_operation_request_topic}"
         )
 
     # ── Path resolution ───────────────────────────────────────────────────────
@@ -310,11 +413,19 @@ class UiGuestNode(Node):
             with node._lock:
                 state = node._service_state
                 battery = node._battery
+                safety_hold = node._safety_hold
+                control_gate_state = node._control_gate_state
             await ws.send_json({
                 "service_state": state,
                 "service_state_name": node._state_name_of(state),
                 "phase": node._phase_of(state),
                 "battery": battery,
+                "minimum_battery_percentage": node.minimum_mission_dispatch_battery_percent,
+                "mission_battery_ready": (
+                    battery >= node.minimum_mission_dispatch_battery_percent
+                ),
+                "safety_hold": safety_hold,
+                "control_gate_state": control_gate_state,
                 "sites": node.site_names,
             })
 
@@ -332,14 +443,28 @@ class UiGuestNode(Node):
                         else:
                             with node._lock:
                                 current = node._service_state
+                                battery = node._battery
                             # HH_260721 - A charging robot remains available for campsite dispatch.
-                            if current in {
-                                AvgServiceState.DROP_ZONE_WAIT,
-                                AvgServiceState.CHARGING,
-                            }:
+                            if guest_mission_dispatch_ready(
+                                current,
+                                battery,
+                                node.minimum_mission_dispatch_battery_percent,
+                            ):
                                 node._publish_navigate(site)
                             else:
-                                await ws.send_json({"error": "robot_not_ready", "service_state": current})
+                                error = (
+                                    "battery_not_ready"
+                                    if battery < node.minimum_mission_dispatch_battery_percent
+                                    else "robot_not_ready"
+                                )
+                                await ws.send_json({
+                                    "error": error,
+                                    "service_state": current,
+                                    "battery": battery,
+                                    "minimum_battery_percentage": (
+                                        node.minimum_mission_dispatch_battery_percent
+                                    ),
+                                })
 
                     # 단순 호출 (드롭존으로) — 기존 동작 유지
                     elif action == "recall":

@@ -1,0 +1,1043 @@
+{
+  "route_lanelet_ids": [
+    754,
+    2751,
+    2720
+  ],
+  "automatic_recovery_motion": "REVERSE",
+  "first_hold": {
+    "x": 4.252306935082272,
+    "y": 45.0411941245029,
+    "yaw_rad": -0.2114007702091425
+  },
+  "recovery_start": {
+    "x": 4.291814702234317,
+    "y": 45.03151629454351,
+    "yaw_rad": -0.20803085921022202
+  },
+  "hold_release": {
+    "x": 4.282944566936669,
+    "y": 45.02990183494698,
+    "yaw_rad": -0.20860871730881136
+  },
+  "second_hold": {
+    "x": 4.340834195261339,
+    "y": 45.01735553793525,
+    "yaw_rad": -0.20151473830959654
+  },
+  "recovery_displacement_m": 0.0327,
+  "same_goal_retry_displacement_m": 0.0592,
+  "same_goal_retry_yaw_delta_deg": 0.4065,
+  "maximum_final_output_mps": 0.2,
+  "maximum_recovery_output_mps": 0.05,
+  "minimum_recovery_linear_x_mps": -0.05,
+  "maximum_recovery_abs_linear_y_mps": 0.0,
+  "mission_completed": false,
+  "timeline": [
+    {
+      "t": 0.064,
+      "event": "output",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 0.078,
+      "event": "pose",
+      "x": 3.931572782121343,
+      "y": 45.19828195804721,
+      "yaw_rad": -0.21816615649929091,
+      "yaw_deg": -12.499999999999984
+    },
+    {
+      "t": 0.09,
+      "event": "owner",
+      "state": "IDLE",
+      "message": "waiting_for_route_safety_hold"
+    },
+    {
+      "t": 0.131,
+      "event": "candidate",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 0.131,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 0.177,
+      "event": "pose",
+      "x": 3.93,
+      "y": 45.245,
+      "yaw_rad": -0.21816615649929139,
+      "yaw_deg": -12.50000000000001
+    },
+    {
+      "t": 0.278,
+      "event": "pose",
+      "x": 3.9315888045102736,
+      "y": 45.19780602776541,
+      "yaw_rad": -0.21816615649929091,
+      "yaw_deg": -12.499999999999984
+    },
+    {
+      "t": 0.327,
+      "event": "pose",
+      "x": 3.93,
+      "y": 45.245,
+      "yaw_rad": -0.21816615649929139,
+      "yaw_deg": -12.50000000000001
+    },
+    {
+      "t": 0.377,
+      "event": "pose",
+      "x": 3.93158338489811,
+      "y": 45.19796701234488,
+      "yaw_rad": -0.21816615649929091,
+      "yaw_deg": -12.499999999999984
+    },
+    {
+      "t": 0.577,
+      "event": "pose",
+      "x": 3.93,
+      "y": 45.245,
+      "yaw_rad": -0.21816615649929139,
+      "yaw_deg": -12.50000000000001
+    },
+    {
+      "t": 0.677,
+      "event": "pose",
+      "x": 3.931588783965126,
+      "y": 45.19780663804005,
+      "yaw_rad": -0.21816615649929091,
+      "yaw_deg": -12.499999999999984
+    },
+    {
+      "t": 0.727,
+      "event": "pose",
+      "x": 3.93,
+      "y": 45.245,
+      "yaw_rad": -0.21816615649929139,
+      "yaw_deg": -12.50000000000001
+    },
+    {
+      "t": 0.777,
+      "event": "pose",
+      "x": 3.931583359585315,
+      "y": 45.1979677642381,
+      "yaw_rad": -0.21816615649929091,
+      "yaw_deg": -12.499999999999984
+    },
+    {
+      "t": 0.829,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 0.83,
+      "event": "gate",
+      "state": "ENABLED",
+      "message": "state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 0.877,
+      "event": "pose",
+      "x": 3.932388460266343,
+      "y": 45.17405299124947,
+      "yaw_rad": -0.21816615649929091,
+      "yaw_deg": -12.499999999999984
+    },
+    {
+      "t": 0.927,
+      "event": "stage",
+      "name": "pose_reset"
+    },
+    {
+      "t": 0.977,
+      "event": "pose",
+      "x": 3.932879144687139,
+      "y": 45.15947766320804,
+      "yaw_rad": -0.21816615649929091,
+      "yaw_deg": -12.499999999999984
+    },
+    {
+      "t": 0.99,
+      "event": "stage",
+      "name": "follow_path_started"
+    },
+    {
+      "t": 1.011,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": -0.020444467643299564
+    },
+    {
+      "t": 1.011,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": -0.015500455869353336
+    },
+    {
+      "t": 1.077,
+      "event": "pose",
+      "x": 3.9484874076446927,
+      "y": 45.14620416475779,
+      "yaw_rad": -0.22025154365844643,
+      "yaw_deg": -12.619483882870371
+    },
+    {
+      "t": 1.128,
+      "event": "pose",
+      "x": 3.9584066363145602,
+      "y": 45.143983329111656,
+      "yaw_rad": -0.22102682113223393,
+      "yaw_deg": -12.66390401006996
+    },
+    {
+      "t": 1.174,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": -0.009474355217392759
+    },
+    {
+      "t": 1.178,
+      "event": "pose",
+      "x": 3.97009402305174,
+      "y": 45.134243502022336,
+      "yaw_rad": -0.2218014506661259,
+      "yaw_deg": -12.708287013048155
+    },
+    {
+      "t": 1.228,
+      "event": "pose",
+      "x": 3.980003198640969,
+      "y": 45.13200871939306,
+      "yaw_rad": -0.2225766591085523,
+      "yaw_deg": -12.752703185042098
+    },
+    {
+      "t": 1.278,
+      "event": "pose",
+      "x": 3.991213278918636,
+      "y": 45.12405785583676,
+      "yaw_rad": -0.222541427200198,
+      "yaw_deg": -12.750684545389207
+    },
+    {
+      "t": 1.327,
+      "event": "pose",
+      "x": 4.001111080231384,
+      "y": 45.12181786318893,
+      "yaw_rad": -0.22301510232255817,
+      "yaw_deg": -12.777824130760786
+    },
+    {
+      "t": 1.336,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": -0.006020362128951132
+    },
+    {
+      "t": 1.336,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": -0.005085022527166378
+    },
+    {
+      "t": 1.337,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": -0.0017035174289944804
+    },
+    {
+      "t": 1.377,
+      "event": "pose",
+      "x": 4.01198997646328,
+      "y": 45.115078188780814,
+      "yaw_rad": -0.22244327100779995,
+      "yaw_deg": -12.745060609831723
+    },
+    {
+      "t": 1.427,
+      "event": "pose",
+      "x": 4.021882595288767,
+      "y": 45.11284030415614,
+      "yaw_rad": -0.22252845617769879,
+      "yaw_deg": -12.749941360544032
+    },
+    {
+      "t": 1.477,
+      "event": "pose",
+      "x": 4.0325278437393,
+      "y": 45.106955213178374,
+      "yaw_rad": -0.22261359502742062,
+      "yaw_deg": -12.754819457305691
+    },
+    {
+      "t": 1.527,
+      "event": "pose",
+      "x": 4.042411900822984,
+      "y": 45.10471740651626,
+      "yaw_rad": -0.22269877852551723,
+      "yaw_deg": -12.759700112230787
+    },
+    {
+      "t": 1.551,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.0002477042522560388
+    },
+    {
+      "t": 1.552,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.0009312634282714936
+    },
+    {
+      "t": 1.552,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.0035160120668317435
+    },
+    {
+      "t": 1.577,
+      "event": "pose",
+      "x": 4.052894640668632,
+      "y": 45.099460979503704,
+      "yaw_rad": -0.2227839743758917,
+      "yaw_deg": -12.764581474889273
+    },
+    {
+      "t": 1.627,
+      "event": "pose",
+      "x": 4.062767730659398,
+      "y": 45.09722379821542,
+      "yaw_rad": -0.22286913672822628,
+      "yaw_deg": -12.76946091825145
+    },
+    {
+      "t": 1.678,
+      "event": "pose",
+      "x": 4.073121589482125,
+      "y": 45.092454238267145,
+      "yaw_rad": -0.22225204555249878,
+      "yaw_deg": -12.734104198307499
+    },
+    {
+      "t": 1.701,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.005206124148402761
+    },
+    {
+      "t": 1.701,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.005887945674137744
+    },
+    {
+      "t": 1.727,
+      "event": "pose",
+      "x": 4.08298996257048,
+      "y": 45.090223559057605,
+      "yaw_rad": -0.2220762297905856,
+      "yaw_deg": -12.724030697177998
+    },
+    {
+      "t": 1.777,
+      "event": "pose",
+      "x": 4.093247757912808,
+      "y": 45.085836226358914,
+      "yaw_rad": -0.22158135261222345,
+      "yaw_deg": -12.695676323480502
+    },
+    {
+      "t": 1.827,
+      "event": "pose",
+      "x": 4.103111317164382,
+      "y": 45.083613509345525,
+      "yaw_rad": -0.22128687309749748,
+      "yaw_deg": -12.678803890133644
+    },
+    {
+      "t": 1.877,
+      "event": "pose",
+      "x": 4.1133000363467005,
+      "y": 45.07953191588742,
+      "yaw_rad": -0.22099224796476993,
+      "yaw_deg": -12.661923113489873
+    },
+    {
+      "t": 1.889,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.0077427958061777645
+    },
+    {
+      "t": 1.89,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.008929285495095893
+    },
+    {
+      "t": 1.928,
+      "event": "pose",
+      "x": 4.123148283756556,
+      "y": 45.07731867570248,
+      "yaw_rad": -0.22069802368068236,
+      "yaw_deg": -12.645065303781397
+    },
+    {
+      "t": 1.977,
+      "event": "pose",
+      "x": 4.133266250734098,
+      "y": 45.07349668213875,
+      "yaw_rad": -0.21992259978544704,
+      "yaw_deg": -12.600636787250819
+    },
+    {
+      "t": 2.027,
+      "event": "pose",
+      "x": 4.143118844753895,
+      "y": 45.071293474640385,
+      "yaw_rad": -0.21944906262037953,
+      "yaw_deg": -12.573505106249861
+    },
+    {
+      "t": 2.05,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.011157269170318675
+    },
+    {
+      "t": 2.05,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.012051477509986622
+    },
+    {
+      "t": 2.077,
+      "event": "pose",
+      "x": 4.153190013880492,
+      "y": 45.06768482444631,
+      "yaw_rad": -0.21897603605822447,
+      "yaw_deg": -12.546402680640794
+    },
+    {
+      "t": 2.127,
+      "event": "pose",
+      "x": 4.1630387666259265,
+      "y": 45.06549221258732,
+      "yaw_rad": -0.21850243599545083,
+      "yaw_deg": -12.519267395866732
+    },
+    {
+      "t": 2.177,
+      "event": "pose",
+      "x": 4.173077909367536,
+      "y": 45.06206735768962,
+      "yaw_rad": -0.21768129976876427,
+      "yaw_deg": -12.472219755672295
+    },
+    {
+      "t": 2.224,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.012516425728190181
+    },
+    {
+      "t": 2.225,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.013909586134034566
+    },
+    {
+      "t": 2.225,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.014653417214963238
+    },
+    {
+      "t": 2.228,
+      "event": "pose",
+      "x": 4.182912404784065,
+      "y": 45.05989124163001,
+      "yaw_rad": -0.21707902728305942,
+      "yaw_deg": -12.437712084124554
+    },
+    {
+      "t": 2.277,
+      "event": "pose",
+      "x": 4.192924324550079,
+      "y": 45.05662742815266,
+      "yaw_rad": -0.2161260645173897,
+      "yaw_deg": -12.383111339618564
+    },
+    {
+      "t": 2.328,
+      "event": "pose",
+      "x": 4.202758161030065,
+      "y": 45.05446746718311,
+      "yaw_rad": -0.215393578559949,
+      "yaw_deg": -12.341142985704614
+    },
+    {
+      "t": 2.377,
+      "event": "pose",
+      "x": 4.212741182665176,
+      "y": 45.05134513848201,
+      "yaw_rad": -0.21466077278731133,
+      "yaw_deg": -12.299156307729652
+    },
+    {
+      "t": 2.386,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.016058550223042086
+    },
+    {
+      "t": 2.427,
+      "event": "pose",
+      "x": 4.222568918200859,
+      "y": 45.049201589883296,
+      "yaw_rad": -0.2139285272566509,
+      "yaw_deg": -12.257201729255492
+    },
+    {
+      "t": 2.478,
+      "event": "pose",
+      "x": 4.232535437059675,
+      "y": 45.046204635735165,
+      "yaw_rad": -0.2130063712754846,
+      "yaw_deg": -12.204366083481919
+    },
+    {
+      "t": 2.527,
+      "event": "pose",
+      "x": 4.242359863344361,
+      "y": 45.044078820856804,
+      "yaw_rad": -0.21220401121276525,
+      "yaw_deg": -12.158394238238246
+    },
+    {
+      "t": 2.543,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.016732663474077432
+    },
+    {
+      "t": 2.544,
+      "event": "output",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 2.545,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=reverse recovery_reason=lateral_blocked_reverse_clear"
+    },
+    {
+      "t": 2.545,
+      "event": "candidate",
+      "linear_x": -0.1,
+      "linear_y": -0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 2.546,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.547,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=latched_reverse_blocked:route_recovery_predicted_lanelet_footprint_cost"
+    },
+    {
+      "t": 2.547,
+      "event": "candidate",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 2.578,
+      "event": "pose",
+      "x": 4.252306935082272,
+      "y": 45.0411941245029,
+      "yaw_rad": -0.2114007702091425,
+      "yaw_deg": -12.11237191879881
+    },
+    {
+      "t": 2.578,
+      "event": "milestone",
+      "name": "first_hold",
+      "x": 4.252306935082272,
+      "y": 45.0411941245029,
+      "yaw_rad": -0.2114007702091425
+    },
+    {
+      "t": 2.59,
+      "event": "owner",
+      "state": "SAFETY_HOLD",
+      "message": "no_unambiguous_translation_candidate"
+    },
+    {
+      "t": 2.628,
+      "event": "pose",
+      "x": 4.262137734195963,
+      "y": 45.03908344802489,
+      "yaw_rad": -0.21059774416272603,
+      "yaw_deg": -12.066361915500071
+    },
+    {
+      "t": 2.678,
+      "event": "pose",
+      "x": 4.272065193706956,
+      "y": 45.0363012483378,
+      "yaw_rad": -0.2097043674599326,
+      "yaw_deg": -12.015175200914694
+    },
+    {
+      "t": 2.689,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.9s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=latched_reverse_blocked:route_recovery_predicted_lanelet_footprint_cost"
+    },
+    {
+      "t": 2.691,
+      "event": "candidate",
+      "linear_x": -0.1,
+      "linear_y": -0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 2.691,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.9s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.698,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.8s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.699,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.8s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.01 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.727,
+      "event": "pose",
+      "x": 4.281896809973085,
+      "y": 45.034207843039475,
+      "yaw_rad": -0.20886746520995025,
+      "yaw_deg": -11.967224234125702
+    },
+    {
+      "t": 2.777,
+      "event": "pose",
+      "x": 4.291814702234317,
+      "y": 45.03151629454351,
+      "yaw_rad": -0.20803085921022202,
+      "yaw_deg": -11.919290241225951
+    },
+    {
+      "t": 2.789,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.051025 elapsed=0.245941"
+    },
+    {
+      "t": 2.825,
+      "event": "milestone",
+      "name": "automatic_recovery_started",
+      "x": 4.291814702234317,
+      "y": 45.03151629454351,
+      "yaw_rad": -0.20803085921022202
+    },
+    {
+      "t": 2.825,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.7s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.14 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.828,
+      "event": "pose",
+      "x": 4.301637811202572,
+      "y": 45.02944189156808,
+      "yaw_rad": -0.2071946080599578,
+      "yaw_deg": -11.87137657970285
+    },
+    {
+      "t": 2.84,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.7s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.15 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.89,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.055277 elapsed=0.345970"
+    },
+    {
+      "t": 2.966,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.6s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.28 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.979,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.6s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.29 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.99,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.054321 elapsed=0.445990"
+    },
+    {
+      "t": 3.09,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.053482 elapsed=0.545972"
+    },
+    {
+      "t": 3.099,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.4s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.41 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.109,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.4s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.42 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.19,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.052743 elapsed=0.645978"
+    },
+    {
+      "t": 3.227,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.3s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.54 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.238,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.3s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.55 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.29,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.052093 elapsed=0.745984"
+    },
+    {
+      "t": 3.378,
+      "event": "pose",
+      "x": 4.291640665512087,
+      "y": 45.029052644521926,
+      "yaw_rad": -0.20860871730880695,
+      "yaw_deg": -11.952399071432323
+    },
+    {
+      "t": 3.39,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.051521 elapsed=0.845955"
+    },
+    {
+      "t": 3.392,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.2s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.70 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.395,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.1s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.70 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.396,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.1s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.71 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.49,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.051017 elapsed=0.945981"
+    },
+    {
+      "t": 3.537,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.85 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.548,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.85 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.549,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.86 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.59,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.050572 elapsed=1.045982"
+    },
+    {
+      "t": 3.671,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.98 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.671,
+      "event": "output",
+      "linear_x": -0.05,
+      "linear_y": -0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 3.678,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.99 recovery_candidate=reverse recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.69,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.050181 elapsed=1.145985"
+    },
+    {
+      "t": 3.79,
+      "event": "owner",
+      "state": "REVERSE",
+      "message": "distance=0.045819 elapsed=1.245967"
+    },
+    {
+      "t": 3.803,
+      "event": "gate",
+      "state": "ENABLED",
+      "message": "state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 3.803,
+      "event": "candidate",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 3.804,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.02131248411431531
+    },
+    {
+      "t": 3.805,
+      "event": "output",
+      "linear_x": -0.05,
+      "linear_y": -0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 3.806,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.021133301268792613
+    },
+    {
+      "t": 3.806,
+      "event": "output",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 3.864,
+      "event": "milestone",
+      "name": "hold_released",
+      "x": 4.282944566936669,
+      "y": 45.02990183494698,
+      "yaw_rad": -0.20860871730881136
+    },
+    {
+      "t": 3.89,
+      "event": "owner",
+      "state": "IDLE",
+      "message": "waiting_for_route_safety_hold"
+    },
+    {
+      "t": 3.927,
+      "event": "pose",
+      "x": 4.310156134619309,
+      "y": 45.023996985157666,
+      "yaw_rad": -0.20470888823427025,
+      "yaw_deg": -11.72895532463896
+    },
+    {
+      "t": 3.938,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.020965282567575055
+    },
+    {
+      "t": 3.977,
+      "event": "pose",
+      "x": 4.320455400410833,
+      "y": 45.02169642732754,
+      "yaw_rad": -0.2036380868748755,
+      "yaw_deg": -11.66760292604877
+    },
+    {
+      "t": 4.027,
+      "event": "pose",
+      "x": 4.330590609701575,
+      "y": 45.01960295338296,
+      "yaw_rad": -0.20257638482159912,
+      "yaw_deg": -11.60677187929566
+    },
+    {
+      "t": 4.075,
+      "event": "output",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 4.076,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 4.078,
+      "event": "pose",
+      "x": 4.340834195261339,
+      "y": 45.01735553793525,
+      "yaw_rad": -0.20151473830959654,
+      "yaw_deg": -11.545944014823126
+    },
+    {
+      "t": 4.078,
+      "event": "milestone",
+      "name": "second_hold",
+      "x": 4.340834195261339,
+      "y": 45.01735553793525,
+      "yaw_rad": -0.20151473830959654
+    },
+    {
+      "t": 4.09,
+      "event": "owner",
+      "state": "SAFETY_HOLD",
+      "message": "no_unambiguous_translation_candidate"
+    },
+    {
+      "t": 4.128,
+      "event": "pose",
+      "x": 4.35094497789125,
+      "y": 45.01528951525707,
+      "yaw_rad": -0.20045262514875709,
+      "yaw_deg": -11.485089413341727
+    },
+    {
+      "t": 4.209,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.9s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=no_projected_candidate_clear"
+    },
+    {
+      "t": 4.218,
+      "event": "gate",
+      "state": "SAFETY_HOLD",
+      "message": "state=SAFETY_HOLD reasons=engage=false(manual=false,mission=false),cost_hold=0.9s charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 4.218,
+      "event": "gate",
+      "state": "SAFETY_HOLD",
+      "message": "state=SAFETY_HOLD reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,cost_hold=0.9s charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 4.264,
+      "event": "gate",
+      "state": "SAFETY_HOLD",
+      "message": "state=SAFETY_HOLD reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,cost_hold=0.8s charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 4.29,
+      "event": "owner",
+      "state": "IDLE",
+      "message": "waiting_for_route_safety_hold"
+    },
+    {
+      "t": 4.331,
+      "event": "gate",
+      "state": "SAFETY_HOLD",
+      "message": "state=SAFETY_HOLD reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,cost_hold=0.7s charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 4.531,
+      "event": "gate",
+      "state": "SAFETY_HOLD",
+      "message": "state=SAFETY_HOLD reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,cost_hold=0.5s charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    }
+  ],
+  "scenario": "static_reverse_retry"
+}

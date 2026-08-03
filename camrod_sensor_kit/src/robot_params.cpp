@@ -18,7 +18,9 @@ RobotParams loadRobotParams(rclcpp::Node * node)
   params.length = node->declare_parameter<double>("robot.length", params.length);
   params.width = node->declare_parameter<double>("robot.width", params.width);
   params.height = node->declare_parameter<double>("robot.height", params.height);
-  // HH_260623 - Load measured asymmetric envelope used by URDF, RViz boundary, and planning safety.
+  params.center_offset_from_rear_axle = node->declare_parameter<double>(
+    "robot.center_offset_from_rear_axle", params.center_offset_from_rear_axle);
+  // HH_260803 - Load the robot_center_link-relative envelope used by URDF and safety.
   params.body_front_extent = node->declare_parameter<double>(
     "robot.body_extents.front", params.body_front_extent);
   params.body_rear_extent = node->declare_parameter<double>(

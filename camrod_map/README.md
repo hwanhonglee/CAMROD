@@ -6,6 +6,16 @@
 
 > 📌 **Single source of truth:** `config/map_info.yaml` — all other packages read their `map_path`, `offset_lat/lon/alt`, and frame IDs from this file via launch argument forwarding.
 
+> HH_260804 - Costmap footprints and examples are expressed from
+> `robot_center_link`, the axle midpoint. The physical body, 0.10 m safety
+> margin, cost 98 soft edge, and cost 100 off-lane stop threshold are unchanged.
+> Simulation identified lanelets 754/2751/2720 as too narrow for the active
+> 1.69160 x 1.27000 m planning rectangle. Automatic crab/reverse correctly
+> stops again there; the map corridor or allowed route must be corrected rather
+> than shrinking the measured footprint.
+> See the [simulation contact sheet](../docs/assets/20260803/automatic_route_recovery_contact_sheet_20260803.png)
+> and [measured report](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md).
+
 ---
 
 ## 2. 🚀 Quick Start

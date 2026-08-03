@@ -28,10 +28,12 @@ struct RobotParams
   double length{1.49160};
   double width{1.07000};
   double height{1.09463};
+  // HH_260803 - Front/rear axle midpoint is 0.443 m ahead of legacy rear-axle base.
+  double center_offset_from_rear_axle{0.443};
 
-  // HH_260623 - Measured asymmetric body extents relative to robot_base_link.
-  double body_front_extent{1.20137};
-  double body_rear_extent{0.29023};
+  // HH_260803 - Measured body extents expressed from robot_center_link.
+  double body_front_extent{0.75837};
+  double body_rear_extent{0.73323};
   double body_left_extent{0.53505};
   double body_right_extent{0.53495};
   double body_top_z{0.94188};

@@ -237,7 +237,7 @@ public:
       // HH_260720 - Standard wheel odometry exists only as the robot_localization boundary.
       "wheel_nav_output_topic", "/localization/input/wheel_odometry_ros");
     wheel_odom_frame_ = declare_parameter<std::string>("wheel_odom_frame_id", "odom");
-    wheel_base_frame_ = declare_parameter<std::string>("wheel_base_frame_id", "robot_base_link");
+    wheel_base_frame_ = declare_parameter<std::string>("wheel_base_frame_id", "robot_center_link");
     wheel_input_type_ = normalizeWheelInputType(
       // HH_260720 - Platform status odometry is a concrete generated AvgOdometry message.
       declare_parameter<std::string>("wheel_input_type", "avg_odom"));
@@ -755,7 +755,7 @@ private:
     if (odom.header.frame_id.empty()) {
       odom.header.frame_id = wheel_odom_frame_;
     }
-    // HH_260413: Normalize child frame to robot_base_link to avoid base_link TF duplication.
+    // HH_260803 - Normalize child frame to the axle-midpoint localization frame.
     odom.child_frame_id = wheel_base_frame_;
     wheel_odom_pub_->publish(odom);
     wheel_nav_odom_pub_->publish(toNavOdometry(odom));

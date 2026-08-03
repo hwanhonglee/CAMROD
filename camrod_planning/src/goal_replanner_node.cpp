@@ -34,12 +34,12 @@ public:
     start_topic_ = declare_parameter<std::string>("start_topic", "/planning/lanelet_pose");
     // HH_260522: Canonical start selector only.
     // Supported values:
-    // - robot_base_link
+    // - robot_center_link (robot_base_link remains a compatibility alias)
     // - lanelet_pose
     // - localization_pose
     // - start_topic
     const std::string selected_mode = declare_parameter<std::string>(
-      "planning_start_source", "robot_base_link");
+      "planning_start_source", "robot_center_link");
     start_topic_fallback_to_tf_ =
       declare_parameter<bool>("start_topic_fallback_to_tf", true);
 
@@ -58,7 +58,8 @@ public:
     } else if (
       selected_mode == "base_link_tf" || selected_mode == "tf_base_link" ||
       selected_mode == "robot_tf" || selected_mode == "tf" ||
-      selected_mode == "robot_base_link" || selected_mode == "start_from_tf")
+      selected_mode == "robot_center_link" || selected_mode == "robot_base_link" ||
+      selected_mode == "start_from_tf")
     {
       use_topic_start_pose_ = false;
     } else {
@@ -66,8 +67,8 @@ public:
       RCLCPP_WARN(
         get_logger(),
         "Unknown start mode '%s'. Use one of: "
-        "robot_base_link | lanelet_pose | localization_pose | start_topic. "
-        "Fallback to robot_base_link TF start.",
+        "robot_center_link | lanelet_pose | localization_pose | start_topic. "
+        "Fallback to robot_center_link TF start.",
         selected_mode.c_str());
     }
     action_name_ = declare_parameter<std::string>("action_name", "/planning/compute_path_to_pose");
@@ -181,7 +182,7 @@ public:
     if (!use_topic_start_pose_) {
       RCLCPP_INFO(
         get_logger(),
-        "start_mode=base_link_tf: ComputePathToPose uses map->robot_base_link as start");
+        "start_mode=base_link_tf: ComputePathToPose uses map->robot_center_link as start");
     } else {
       RCLCPP_INFO(
         get_logger(),
@@ -529,7 +530,7 @@ private:
     if (use_topic_start_pose_ && !has_start_ && start_topic_fallback_to_tf_) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 3000,
-        "start_topic has no message yet; fallback to TF start (map->robot_base_link)");
+        "start_topic has no message yet; fallback to TF start (map->robot_center_link)");
     }
     if (goal_msg.use_start) {
       // HH_260720 - Convert the generated start pose only for the Nav2 action request.
@@ -624,7 +625,7 @@ private:
           return;
         }
         // HH_260306-00:00 If explicit topic-start is rejected (often due lethal/unknown start cell),
-        // retry once using TF start (map->robot_base_link) for this goal.
+        // retry once using TF start (map->robot_center_link) for this goal.
         if (use_topic_start_pose_ && !last_request_used_tf_start_ &&
           !tf_start_fallback_used_for_goal_ && has_goal_)
         {
@@ -684,7 +685,7 @@ private:
     } else {
       RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "Replan request: start(tf:map->robot_base_link) -> goal(%.2f, %.2f), planner=%s",
+        "Replan request: start(tf:map->robot_center_link) -> goal(%.2f, %.2f), planner=%s",
         goal_msg.goal.pose.position.x, goal_msg.goal.pose.position.y,
         goal_msg.planner_id.c_str());
     }

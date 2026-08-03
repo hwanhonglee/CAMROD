@@ -7,7 +7,7 @@
     # 1. OUTPUT TOPIC AND FRAMES
     # =========================================================================
     output_topic: "/planning/cost_grid/inflation"
-    base_frame_id: "robot_base_link"
+    base_frame_id: "robot_center_link"
     output_frame_id: "map"
 
     # =========================================================================

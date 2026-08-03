@@ -26,7 +26,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument("map_frame_id",              default_value="map"),
-        DeclareLaunchArgument("base_frame_id",             default_value="robot_base_link"),
+        DeclareLaunchArgument("base_frame_id",             default_value="robot_center_link"),
+        DeclareLaunchArgument("rear_axle_frame_id",        default_value="robot_base_link"),
         DeclareLaunchArgument("sensor_kit_base_frame_id",  default_value="sensor_kit_base_link"),
         DeclareLaunchArgument("params_file",               default_value=pkg_share("camrod_sensor_kit", os.path.join("config", "robot_params.yaml"))),
         DeclareLaunchArgument("robot_visualization_param_file", default_value=plat(os.path.join("config", "robot_visualization.yaml"))),
@@ -83,7 +84,7 @@ def generate_launch_description():
              params_file=LaunchConfiguration("ranger_params_file")),
 
         _inc(plat(os.path.join("launch", "sensor_kit_bridge.launch.py")),
-             "base_frame_id", "sensor_kit_base_frame_id",
+             "base_frame_id", "rear_axle_frame_id", "sensor_kit_base_frame_id",
              "params_file", "sensor_kit_namespace",
              condition=IfCondition(LaunchConfiguration("sensor_kit_bridge_enable"))),
 
