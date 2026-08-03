@@ -115,7 +115,7 @@ public:
   {
     params_ = loadRobotParams(this);
     map_frame_id_ = declare_parameter<std::string>("map_frame_id", "map");
-    base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_base_link");
+    base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_center_link");
     // HH_260304-00:00 // Platform ownership uses /platform/robot/* topics by default.
     marker_topic_ = declare_parameter<std::string>("marker_topic", "/platform/robot/markers");
     boundary_topic_ = declare_parameter<std::string>(
@@ -286,7 +286,7 @@ private:
       makePoint(base_pose_.x, base_pose_.y, base_pose_.z);
     const std::string base_label_ns = group_robot_marker_namespaces_
       ? "robot/base"
-      : "robot_base_link";
+      : "robot_center_link";
     const std::string base_axes_ns = base_label_ns;
     const std::string body_ns = group_robot_marker_namespaces_
       ? "robot/chassis"
@@ -297,7 +297,7 @@ private:
     const std::string boundary_ns = group_robot_marker_namespaces_
       ? "robot/chassis"
       : "robot_planning_boundary";
-    // HH_260114 Reusable map->robot_base_link transform lambda shared by sensors/bounds/rings.
+    // HH_260803 - Reusable map->robot_center_link transform for sensors/bounds/rings.
     const auto transformLocal = [&](double x, double y, double z) {
       const tf2::Vector3 rotated = base_rot * tf2::Vector3(x, y, z);
       return makePoint(
@@ -341,7 +341,7 @@ private:
     map_label.text = map_frame_id_;
     markers.markers.emplace_back(map_label);
 
-    // HH_260623 - Vehicle body is asymmetric because robot_base_link is the rear-wheel center.
+    // HH_260803 - Body extents are measured from the front/rear axle midpoint.
     const double body_front = params_.body_front_extent * body_scale_factor_;
     const double body_rear = params_.body_rear_extent * body_scale_factor_;
     const double body_left = params_.body_left_extent * body_scale_factor_;

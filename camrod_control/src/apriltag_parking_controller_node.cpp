@@ -67,7 +67,7 @@ public:
   {
     // HH_260720 - Expose descriptive parking-controller parameters and canonical topics.
     // HH_260720 - Use canonical CAMROD frames and supervised raw-command interfaces.
-    base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_base_link");
+    base_frame_id_ = declare_parameter<std::string>("base_frame_id", "robot_center_link");
     cmd_vel_topic_ = declare_parameter<std::string>("command_topic", "/control/cmd_vel_raw");
     tag_pose_topic_ = declare_parameter<std::string>(
       "tag_pose_topic",
@@ -102,7 +102,7 @@ public:
     final_insertion_speed_mps_ =
       declare_parameter<double>("final_insertion_speed_mps", 0.05);
     slowdown_start_distance_m_ =
-      declare_parameter<double>("slowdown_start_distance_m", 1.0);
+      declare_parameter<double>("slowdown_start_distance_m", 1.443);
 
     // HH_260720 - Final insertion starts only inside the configured alignment tolerances.
     final_heading_tolerance_rad_ =
@@ -112,9 +112,9 @@ public:
 
     // HH_260720 - Distances are measured along the parking-tag normal axis.
     final_insertion_start_distance_m_ = declare_parameter<double>(
-      "final_insertion_start_distance_m", 0.55);
+      "final_insertion_start_distance_m", 0.993);
     parked_distance_from_tag_m_ = declare_parameter<double>(
-      "parked_distance_from_tag_m", 0.5);
+      "parked_distance_from_tag_m", 0.943);
     tag_timeout_s_ = declare_parameter<double>("tag_timeout_s", 0.5);
     tag_wait_timeout_s_ = declare_parameter<double>("tag_wait_timeout_s", 10.0);
     retry_forward_distance_m_ =
@@ -127,9 +127,9 @@ public:
 
     // HH_260720 - Weight the odometry-frame parking axis by observed tag distance.
     axis_full_trust_distance_m_ =
-      declare_parameter<double>("axis_full_trust_distance_m", 0.3);
+      declare_parameter<double>("axis_full_trust_distance_m", 0.743);
     axis_minimum_trust_distance_m_ =
-      declare_parameter<double>("axis_minimum_trust_distance_m", 4.0);
+      declare_parameter<double>("axis_minimum_trust_distance_m", 4.443);
     axis_minimum_filter_weight_ =
       declare_parameter<double>("axis_minimum_filter_weight", 0.05);
 

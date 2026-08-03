@@ -204,6 +204,9 @@ bringup:
   # 5. PLATFORM
   # =========================================================================
   platform:
+    # HH_260803 - Shared frame contract forwarded to every motion owner.
+    robot_center_frame_id: robot_center_link
+    rear_axle_frame_id: robot_base_link
     # By default, use internal config defaults declared by platform launch files.
     # HH_260506: Route sensor_kit TF geometry through bringup config so mount offsets
     # edited in camrod_bringup/config/sensor_kit/robot_params.yaml are applied.
@@ -234,6 +237,8 @@ bringup:
     # HH_260720 - Crab, zero-turn, drop-zone exit, and parking-yaw alignment live here.
     enable_camping_site_maneuver_controller: true
     enable_drop_zone_maneuver_controller: true
+    # HH_260803 / TODOLIST 12 - Execute only gate-approved bounded reverse/crab recovery.
+    enable_route_safety_recovery_controller: true
     param_file: __module_default__
 
     # HH_260720 - Navigation and maneuver commands enter camrod_control here.
@@ -282,9 +287,10 @@ bringup:
     cmd_vel_gate_cost_pose_topic: /localization/pose
     # HH_260527: Primary-only selector default; use selected localization odometry.
     cmd_vel_gate_cost_odometry_topic: /localization/odometry
+    cmd_vel_gate_robot_base_frame: robot_center_link
     # HH_260522: pose source preference options:
     #   odometry: prefer /localization/odometry candidate first
-    #   tf_robot_base: prefer TF(map<-robot_base_link) first
+    #   tf_robot_base: prefer TF(map<-robot_center_link) first
     #   pose_topic: prefer the configured cost pose topic first.
     # HH_260618: Prefer the configured real localization pose for safety checks.
     cmd_vel_gate_pose_source_preference: pose_topic
@@ -328,8 +334,8 @@ bringup:
     # HH_260727 - Permit soft boundary cost 98; stop the full footprint at off-lane 100.
     cmd_vel_gate_lanelet_safety_footprint_threshold: 100
     cmd_vel_gate_robot_planning_boundary_topic: /platform/robot/planning_boundary
-    cmd_vel_gate_lanelet_safety_footprint_front_m: 1.30137
-    cmd_vel_gate_lanelet_safety_footprint_rear_m: 0.39023
+    cmd_vel_gate_lanelet_safety_footprint_front_m: 0.85837
+    cmd_vel_gate_lanelet_safety_footprint_rear_m: 0.83323
     cmd_vel_gate_lanelet_safety_footprint_left_m: 0.63505
     cmd_vel_gate_lanelet_safety_footprint_right_m: 0.63495
     cmd_vel_gate_lanelet_safety_lookahead_m: 1.0
@@ -524,6 +530,10 @@ bringup:
     # HH_260706 - Bind operator UI to all interfaces for robot-IP access.
     api_ui_host: 0.0.0.0
     api_ui_port: 8010
+    # HH_260803 - Serve the guest workflow with the same scenario backend.
+    enable_guest_ui: true
+    guest_ui_host: 0.0.0.0
+    guest_ui_port: 8012
     # HH_260724 - Surface UI backend battery policy in the top-level bringup config.
     api_ui_require_battery_for_mission_dispatch: true
     api_ui_minimum_mission_dispatch_battery_percent: 35.0

@@ -130,6 +130,7 @@ camrod_control/
 | File | Responsibility |
 |---|---|
 | `src/cmd_vel_safety_gate_node.cpp` | Merges navigation and maneuver commands, applies engage/CAN/charging/localization/cost-stop conditions, and publishes the final CAMROD and Ranger boundary commands |
+| `src/route_safety_recovery_controller_node.cpp` | Owns bounded automatic reverse/crab commands during a route-safety hold and fails closed on stale evidence or limits |
 | `src/camping_site_maneuver_controller_node.cpp` | Loads each operational service pose/mode and runs reverse or crab entry, optional 180-degree turn, unload wait, same-trace exit, and return-request phases |
 | `src/drop_zone_maneuver_controller_node.cpp` | Exits the drop-zone station, aligns the body for the configured reverse axis, and starts the selected final-parking controller |
 | `src/reverse_parking_controller_node.cpp` | Performs yaw-corrected reverse parking and waits for normalized CAN charging confirmation |
@@ -138,6 +139,7 @@ camrod_control/
 | `include/camrod_control/cmd_vel_gate_policy.hpp` | Produces the authoritative command-block reason list from engage, e-stop, CAN, charging, battery, and hold state |
 | `include/camrod_control/charging_mission_override.hpp` | Opens a deduplicated, time-bounded charging stop override for an allowed campsite mission |
 | `include/camrod_control/motion_cost_stop.hpp` | Declares all-direction cost-stop configuration, decisions, grid inputs, corridor checks, and latch state |
+| `include/camrod_control/route_recovery_candidate.hpp` | Selects and continues the one unambiguous recovery direction without changing sides during a hold |
 | `include/camrod_control/reverse_parking_axis.hpp` | Converts between station reverse-axis yaw and robot body yaw and measures signed axis distance |
 | `include/camrod_control/drop_zone_station_pose.hpp` | Loads the selected drop-zone station position and reverse-axis yaw from semantic map YAML |
 | `include/camrod_control/motion_geometry.hpp` | Provides planar angle, relative-position, clamp, and yaw/quaternion operations |
@@ -181,7 +183,7 @@ active during configured static-cost maneuver exceptions.
 <!-- HH_260728 - Document the field-tuned straight-travel side guard separately
      from the deliberately wider maneuver envelope. -->
 Normal forward travel uses a 0.60 m raw side probe measured from
-`robot_base_link`, not an additional 0.60 m beyond the body edge. Radar then
+the canonical robot base frame, not an additional 0.60 m beyond the body edge. Radar then
 paints each return with `obstacle_radius_m: 0.30`; at the 0.10 m grid
 resolution, a base-centred side hit near `|y|=1.0 m` remains clear for forward
 travel while a closer hit near `|y|=0.8 m` overlaps the probe and blocks.
@@ -197,8 +199,17 @@ in-place rotation are blocked if any part of the body reaches cost 100
 (`lanelet_safety_footprint_threshold`) or an unknown/out-of-grid cell;
 the map's soft/rasterized boundary penalty 98 remains traversable on narrow
 lanes. Maneuver/static-cost bypass phases skip only legacy center/corridor
-checks and never this full-footprint check. `robot_base_link` alone is no
+checks and never this full-footprint check. `robot_center_link` alone is no
 longer the boundary decision point.
+
+<!-- HH_260803 - Synchronize control geometry with the axle-midpoint base. -->
+Control now consumes `robot_center_link` at the front/rear axle midpoint. The
+same physical planning boundary changed only in X coordinates: front/rear
+`1.30137/0.39023 m` from the old rear-axle frame became
+`0.85837/0.83323 m` from the center. Left/right `0.63505/0.63495 m`, all
+boundary costs, margins, and stop behavior are unchanged. AprilTag
+longitudinal thresholds add 0.443 m to preserve the same physical charger stop
+points; see `docs/ROBOT_CENTER_LINK_MIGRATION.md`.
 
 <!-- HH_260731 - Document projected reverse/crab recovery candidates without
      weakening ordinary footprint checks or implying automatic motion. -->
@@ -221,11 +232,28 @@ pass LiDAR, radar, merged-grid, retained dynamic-latch, engage, ESTOP, CAN,
 charging, battery, and command-timeout checks. Ordinary motion never uses this
 exception, and no lanelet threshold or footprint extent is reduced.
 
-The gate only authorizes a recovery candidate received from an upstream owner;
-it never invents a `cmd_vel`. Therefore the robot remains stopped after an
-ordinary Nav2 forward command hits a side boundary unless a maneuver/operator
-owner explicitly requests crab. Automatic side selection and distance-limited
-crab generation remain a separate field-safety item in `TODOLIST.txt`.
+<!-- HH_260803 - Document the production-owned automatic recovery policy. -->
+The gate publishes a single validated candidate on
+`/control/route_safety_recovery/candidate`; the separate
+`route_safety_recovery_controller` is the only automatic raw-command owner.
+Exactly one clear lateral candidate selects pure crab away from the contacted
+side. If both lateral candidates are blocked and reverse alone is clear, it
+selects reverse. Both lateral candidates clear is ambiguous and both blocked is
+unsafe, so either case remains stopped. The first unambiguous direction is
+latched for that hold and can never switch sides while the robot is moving.
+
+Recovery raw speed is limited to 0.10 m/s, accumulated travel to 0.40 m, and
+elapsed time to 10 s. The normal 0.5 gate output scale produces at most 0.05
+m/s at the platform command. Missing or stale gate, candidate, or pose input;
+operator cancel; any ordinary authorization failure; and the distance/time
+limit all force zero. Angular velocity is always zero during contact recovery:
+rotating the 1.69160 x 1.27000 m rectangle would require a swept-footprint
+collision proof that is not available. Once 1.0 s of clear evidence releases
+the hold, the retained RPP goal resumes ordinary yaw control.
+
+The measured crab/reverse runs and production-owner animation are in
+[the automatic boundary recovery report](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md)
+and [recovery GIF](../docs/assets/20260803/automatic_route_recovery_20260803.gif).
 
 <!-- HH_260729 - Record the runtime bounds that prevent recovery tuning from
      disabling freshness or extending the lanelet-contact exception. -->

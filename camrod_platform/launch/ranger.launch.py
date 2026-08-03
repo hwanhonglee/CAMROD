@@ -137,7 +137,7 @@ def _launch_setup(context, *args, **kwargs):
             'use_sim_time':    p.get('use_sim_time', False),
             'port_name':       p.get('port_name', 'can0'),
             'odom_frame':      p.get('odom_frame', 'odom'),
-            'base_frame':      p.get('base_frame', 'robot_base_link'),
+            'base_frame':      p.get('base_frame', 'robot_center_link'),
             'odom_topic_name': '/odom',          # HH_260428: hardcoded; not from params_file
             'simulated_robot': p.get('simulated_robot', False),
             'publish_odom_tf': p.get('publish_odom_tf', False),
@@ -191,7 +191,7 @@ def _launch_setup(context, *args, **kwargs):
                 'dummy_publish_rate_hz'
             ),
             'odom_frame_id': p.get('odom_frame', 'odom'),
-            'base_frame_id': p.get('base_frame', 'robot_base_link'),
+            'base_frame_id': p.get('base_frame', 'robot_center_link'),
         }],
     )
 

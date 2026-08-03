@@ -310,8 +310,8 @@ def generate_launch_description():
     origin_alt_arg = DeclareLaunchArgument('origin_alt', default_value=origin_alt_default)
     nav2_robot_base_frame_arg = DeclareLaunchArgument(
         'nav2_robot_base_frame',
-        # Keep Nav2 base frame aligned with platform/localization TF.
-        default_value='robot_base_link',
+        # HH_260803 - Track the front/rear axle midpoint for all Nav2 geometry.
+        default_value='robot_center_link',
         description='Robot base frame used by Nav2 costmaps/BT/behaviors',
     )
     module_namespace_arg = DeclareLaunchArgument(

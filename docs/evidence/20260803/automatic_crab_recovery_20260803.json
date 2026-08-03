@@ -1,0 +1,1328 @@
+{
+  "route_lanelet_ids": [
+    754,
+    2751,
+    2720
+  ],
+  "automatic_recovery_motion": "CRAB_LEFT",
+  "first_hold": {
+    "x": 96.67528981379664,
+    "y": -17.533624490476075,
+    "yaw_rad": -0.7667820114326585
+  },
+  "recovery_start": {
+    "x": 96.67528981379664,
+    "y": -17.533624490476075,
+    "yaw_rad": -0.7667820114326585
+  },
+  "hold_release": {
+    "x": 96.94062734661148,
+    "y": -17.325025154313035,
+    "yaw_rad": -0.7667820114326594
+  },
+  "second_hold": null,
+  "recovery_displacement_m": 0.3375,
+  "same_goal_retry_displacement_m": null,
+  "same_goal_retry_yaw_delta_deg": null,
+  "maximum_final_output_mps": 0.2,
+  "maximum_recovery_output_mps": 0.2,
+  "minimum_recovery_linear_x_mps": 0.0,
+  "maximum_recovery_abs_linear_y_mps": 0.05,
+  "mission_completed": false,
+  "timeline": [
+    {
+      "t": 0.045,
+      "event": "output",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 0.074,
+      "event": "pose",
+      "x": 96.67528981379664,
+      "y": -17.533624490476075,
+      "yaw_rad": -0.7667820114326585,
+      "yaw_deg": -43.933373061643366
+    },
+    {
+      "t": 0.085,
+      "event": "owner",
+      "state": "IDLE",
+      "message": "waiting_for_route_safety_hold"
+    },
+    {
+      "t": 0.228,
+      "event": "candidate",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 0.228,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=engage=false(manual=false,mission=false),platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 0.845,
+      "event": "gate",
+      "state": "STANDBY",
+      "message": "state=STANDBY reasons=platform_drive_enable=false charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 0.846,
+      "event": "gate",
+      "state": "ENABLED",
+      "message": "state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 0.965,
+      "event": "stage",
+      "name": "pose_reset"
+    },
+    {
+      "t": 1.021,
+      "event": "stage",
+      "name": "follow_path_started"
+    },
+    {
+      "t": 1.023,
+      "event": "candidate",
+      "linear_x": -0.0,
+      "linear_y": 0.1,
+      "angular_z": 0.0
+    },
+    {
+      "t": 1.023,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=unique_lateral_clear"
+    },
+    {
+      "t": 1.025,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 1.075,
+      "event": "milestone",
+      "name": "first_hold",
+      "x": 96.67528981379664,
+      "y": -17.533624490476075,
+      "yaw_rad": -0.7667820114326585
+    },
+    {
+      "t": 1.086,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=0.062335"
+    },
+    {
+      "t": 1.165,
+      "event": "milestone",
+      "name": "automatic_recovery_started",
+      "x": 96.67528981379664,
+      "y": -17.533624490476075,
+      "yaw_rad": -0.7667820114326585
+    },
+    {
+      "t": 1.184,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.8s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 1.185,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=0.162535"
+    },
+    {
+      "t": 1.285,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=0.262339"
+    },
+    {
+      "t": 1.346,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.7s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 1.385,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=0.362345"
+    },
+    {
+      "t": 1.485,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=0.462358"
+    },
+    {
+      "t": 1.496,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.5s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 1.585,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=0.562369"
+    },
+    {
+      "t": 1.659,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.4s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 1.685,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=0.662361"
+    },
+    {
+      "t": 1.785,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=0.762350"
+    },
+    {
+      "t": 1.796,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.2s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 1.885,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=0.862370"
+    },
+    {
+      "t": 1.944,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.1s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 1.985,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=0.962336"
+    },
+    {
+      "t": 2.08,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.081,
+      "event": "output",
+      "linear_x": -0.0,
+      "linear_y": 0.05,
+      "angular_z": 0.0
+    },
+    {
+      "t": 2.085,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.000000 elapsed=1.062272"
+    },
+    {
+      "t": 2.174,
+      "event": "pose",
+      "x": 96.72442507419696,
+      "y": -17.508599498224168,
+      "yaw_rad": -0.7667820114326576,
+      "yaw_deg": -43.933373061643316
+    },
+    {
+      "t": 2.185,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.055141 elapsed=1.162330"
+    },
+    {
+      "t": 2.229,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.01 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.274,
+      "event": "pose",
+      "x": 96.74863758929408,
+      "y": -17.495040092874255,
+      "yaw_rad": -0.7667820114329791,
+      "yaw_deg": -43.93337306166174
+    },
+    {
+      "t": 2.285,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.082877 elapsed=1.262339"
+    },
+    {
+      "t": 2.371,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.15 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.373,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 2.375,
+      "event": "pose",
+      "x": 96.7639287627948,
+      "y": -17.485763787681286,
+      "yaw_rad": -0.7667820114329045,
+      "yaw_deg": -43.93337306165746
+    },
+    {
+      "t": 2.385,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.100735 elapsed=1.362344"
+    },
+    {
+      "t": 2.474,
+      "event": "pose",
+      "x": 96.77508581253706,
+      "y": -17.47847306708395,
+      "yaw_rad": -0.7667820114328561,
+      "yaw_deg": -43.93337306165469
+    },
+    {
+      "t": 2.485,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.114022 elapsed=1.462339"
+    },
+    {
+      "t": 2.574,
+      "event": "pose",
+      "x": 96.783986455883,
+      "y": -17.47226649423991,
+      "yaw_rad": -0.7667820114328219,
+      "yaw_deg": -43.93337306165273
+    },
+    {
+      "t": 2.585,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.124819 elapsed=1.562374"
+    },
+    {
+      "t": 2.685,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.134107 elapsed=1.662338"
+    },
+    {
+      "t": 2.724,
+      "event": "pose",
+      "x": 96.79330679469386,
+      "y": -17.46486204021978,
+      "yaw_rad": -0.7667820114327971,
+      "yaw_deg": -43.93337306165131
+    },
+    {
+      "t": 2.785,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.142413 elapsed=1.762351"
+    },
+    {
+      "t": 2.874,
+      "event": "pose",
+      "x": 96.80415719822115,
+      "y": -17.456790427065325,
+      "yaw_rad": -0.7667820114327615,
+      "yaw_deg": -43.93337306164927
+    },
+    {
+      "t": 2.885,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.150034 elapsed=1.862344"
+    },
+    {
+      "t": 2.985,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.157165 elapsed=1.962377"
+    },
+    {
+      "t": 3.075,
+      "event": "pose",
+      "x": 96.81493317494021,
+      "y": -17.44776170076408,
+      "yaw_rad": -0.7667820114327375,
+      "yaw_deg": -43.9333730616479
+    },
+    {
+      "t": 3.085,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.163929 elapsed=2.062333"
+    },
+    {
+      "t": 3.185,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.170410 elapsed=2.162384"
+    },
+    {
+      "t": 3.274,
+      "event": "pose",
+      "x": 96.82463731656733,
+      "y": -17.439250784516457,
+      "yaw_rad": -0.7667820114327206,
+      "yaw_deg": -43.93337306164693
+    },
+    {
+      "t": 3.285,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.176667 elapsed=2.262407"
+    },
+    {
+      "t": 3.385,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.182743 elapsed=2.362386"
+    },
+    {
+      "t": 3.474,
+      "event": "pose",
+      "x": 96.8336561332584,
+      "y": -17.431071894478396,
+      "yaw_rad": -0.7667820114327083,
+      "yaw_deg": -43.93337306164622
+    },
+    {
+      "t": 3.485,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.188671 elapsed=2.462304"
+    },
+    {
+      "t": 3.585,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.194476 elapsed=2.562384"
+    },
+    {
+      "t": 3.674,
+      "event": "pose",
+      "x": 96.84220373893969,
+      "y": -17.42312149896157,
+      "yaw_rad": -0.7667820114326984,
+      "yaw_deg": -43.93337306164566
+    },
+    {
+      "t": 3.685,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.200178 elapsed=2.662384"
+    },
+    {
+      "t": 3.785,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.205790 elapsed=2.762385"
+    },
+    {
+      "t": 3.841,
+      "event": "output",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 3.842,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=2.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.874,
+      "event": "pose",
+      "x": 96.85041163008061,
+      "y": -17.415335081638883,
+      "yaw_rad": -0.7667820114326909,
+      "yaw_deg": -43.93337306164523
+    },
+    {
+      "t": 3.885,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.211329 elapsed=2.862384"
+    },
+    {
+      "t": 3.979,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=1.9s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 3.985,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.216800 elapsed=2.962296"
+    },
+    {
+      "t": 4.075,
+      "event": "pose",
+      "x": 96.8583621653858,
+      "y": -17.40767392691832,
+      "yaw_rad": -0.7667820114326851,
+      "yaw_deg": -43.93337306164489
+    },
+    {
+      "t": 4.085,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.222214 elapsed=3.062394"
+    },
+    {
+      "t": 4.101,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=1.7s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 4.185,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.223620 elapsed=3.162411"
+    },
+    {
+      "t": 4.228,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=1.6s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 4.286,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.223737 elapsed=3.262370"
+    },
+    {
+      "t": 4.353,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=1.5s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 4.385,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.223846 elapsed=3.362396"
+    },
+    {
+      "t": 4.473,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=1.4s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 4.485,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.223947 elapsed=3.462373"
+    },
+    {
+      "t": 4.585,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224042 elapsed=3.562369"
+    },
+    {
+      "t": 4.612,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=1.2s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 4.685,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224130 elapsed=3.662396"
+    },
+    {
+      "t": 4.738,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=1.1s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 4.785,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224211 elapsed=3.762377"
+    },
+    {
+      "t": 4.876,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=1.0s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 4.885,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224287 elapsed=3.862362"
+    },
+    {
+      "t": 4.985,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224358 elapsed=3.962416"
+    },
+    {
+      "t": 5.0,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=0.8s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 5.085,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224423 elapsed=4.062387"
+    },
+    {
+      "t": 5.139,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=0.7s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 5.185,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224484 elapsed=4.162401"
+    },
+    {
+      "t": 5.266,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=0.6s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 5.285,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224540 elapsed=4.262373"
+    },
+    {
+      "t": 5.374,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=0.5s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 5.385,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224592 elapsed=4.362370"
+    },
+    {
+      "t": 5.485,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224640 elapsed=4.462410"
+    },
+    {
+      "t": 5.496,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=0.3s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 5.585,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224685 elapsed=4.562441"
+    },
+    {
+      "t": 5.607,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=0.2s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 5.685,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224726 elapsed=4.662428"
+    },
+    {
+      "t": 5.731,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=gnss_recovery_hold=0.1s,route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 5.785,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224764 elapsed=4.762400"
+    },
+    {
+      "t": 5.855,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 5.855,
+      "event": "output",
+      "linear_x": -0.0,
+      "linear_y": 0.05,
+      "angular_z": 0.0
+    },
+    {
+      "t": 5.885,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.224799 elapsed=4.862412"
+    },
+    {
+      "t": 5.985,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.228800 elapsed=4.962447"
+    },
+    {
+      "t": 6.075,
+      "event": "pose",
+      "x": 96.86762109197441,
+      "y": -17.400300864119615,
+      "yaw_rad": -0.7667820114326616,
+      "yaw_deg": -43.93337306164354
+    },
+    {
+      "t": 6.085,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.234022 elapsed=5.062349"
+    },
+    {
+      "t": 6.185,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.239212 elapsed=5.162386"
+    },
+    {
+      "t": 6.275,
+      "event": "pose",
+      "x": 96.87497151744091,
+      "y": -17.392742796216055,
+      "yaw_rad": -0.766782011432661,
+      "yaw_deg": -43.933373061643515
+    },
+    {
+      "t": 6.285,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.244378 elapsed=5.262363"
+    },
+    {
+      "t": 6.385,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.249518 elapsed=5.362423"
+    },
+    {
+      "t": 6.474,
+      "event": "pose",
+      "x": 96.88224030688464,
+      "y": -17.385262096700444,
+      "yaw_rad": -0.7667820114326607,
+      "yaw_deg": -43.93337306164349
+    },
+    {
+      "t": 6.485,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.254637 elapsed=5.462452"
+    },
+    {
+      "t": 6.585,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.259738 elapsed=5.562470"
+    },
+    {
+      "t": 6.675,
+      "event": "pose",
+      "x": 96.88944526866366,
+      "y": -17.37784162651944,
+      "yaw_rad": -0.7667820114326603,
+      "yaw_deg": -43.93337306164347
+    },
+    {
+      "t": 6.685,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.264822 elapsed=5.662397"
+    },
+    {
+      "t": 6.785,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.269892 elapsed=5.762469"
+    },
+    {
+      "t": 6.875,
+      "event": "pose",
+      "x": 96.89659909331667,
+      "y": -17.37046931354787,
+      "yaw_rad": -0.7667820114326603,
+      "yaw_deg": -43.93337306164347
+    },
+    {
+      "t": 6.885,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.274950 elapsed=5.862452"
+    },
+    {
+      "t": 6.985,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.279995 elapsed=5.962445"
+    },
+    {
+      "t": 7.037,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.01 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.075,
+      "event": "pose",
+      "x": 96.90371046121349,
+      "y": -17.36313703773335,
+      "yaw_rad": -0.7667820114326603,
+      "yaw_deg": -43.93337306164347
+    },
+    {
+      "t": 7.085,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.285030 elapsed=6.062446"
+    },
+    {
+      "t": 7.121,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.09 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.125,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.10 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.185,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.290054 elapsed=6.162452"
+    },
+    {
+      "t": 7.232,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.20 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.234,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.21 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.248,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.22 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.274,
+      "event": "pose",
+      "x": 96.91078779846215,
+      "y": -17.355836793177748,
+      "yaw_rad": -0.7667820114326598,
+      "yaw_deg": -43.933373061643444
+    },
+    {
+      "t": 7.285,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.295072 elapsed=6.262451"
+    },
+    {
+      "t": 7.354,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.33 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.367,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.34 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.385,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.300085 elapsed=6.362442"
+    },
+    {
+      "t": 7.474,
+      "event": "pose",
+      "x": 96.91783931099943,
+      "y": -17.348560659385704,
+      "yaw_rad": -0.7667820114326598,
+      "yaw_deg": -43.933373061643444
+    },
+    {
+      "t": 7.475,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.45 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.485,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.305088 elapsed=6.462403"
+    },
+    {
+      "t": 7.487,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.46 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.583,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.56 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.585,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.310090 elapsed=6.562362"
+    },
+    {
+      "t": 7.597,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.57 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.674,
+      "event": "pose",
+      "x": 96.92486960049223,
+      "y": -17.341304353550928,
+      "yaw_rad": -0.7667820114326594,
+      "yaw_deg": -43.93337306164342
+    },
+    {
+      "t": 7.681,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.65 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.684,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.66 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.685,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.315083 elapsed=6.662356"
+    },
+    {
+      "t": 7.775,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.75 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.785,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.320075 elapsed=6.762373"
+    },
+    {
+      "t": 7.787,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.76 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.875,
+      "event": "pose",
+      "x": 96.93188278310156,
+      "y": -17.33406400003498,
+      "yaw_rad": -0.7667820114326594,
+      "yaw_deg": -43.93337306164342
+    },
+    {
+      "t": 7.885,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.86 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.885,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.325061 elapsed=6.862371"
+    },
+    {
+      "t": 7.897,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.87 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.982,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.95 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.983,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=route_safety_hold=lanelet_footprint_cost charging=false battery=unknown route_clear_s=0.96 recovery_candidate=crab_left recovery_reason=latched_candidate_still_clear"
+    },
+    {
+      "t": 7.985,
+      "event": "owner",
+      "state": "CRAB_LEFT",
+      "message": "distance=0.330045 elapsed=6.962414"
+    },
+    {
+      "t": 8.075,
+      "event": "pose",
+      "x": 96.93888235395887,
+      "y": -17.326836301705534,
+      "yaw_rad": -0.7667820114326594,
+      "yaw_deg": -43.93337306164342
+    },
+    {
+      "t": 8.076,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.029748933168741443
+    },
+    {
+      "t": 8.077,
+      "event": "gate",
+      "state": "ENABLED",
+      "message": "state=ENABLED reasons=none charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 8.077,
+      "event": "candidate",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 8.078,
+      "event": "output",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 8.085,
+      "event": "owner",
+      "state": "IDLE",
+      "message": "waiting_for_route_safety_hold"
+    },
+    {
+      "t": 8.165,
+      "event": "milestone",
+      "name": "hold_released",
+      "x": 96.94062734661148,
+      "y": -17.325025154313035,
+      "yaw_rad": -0.7667820114326594
+    },
+    {
+      "t": 8.173,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.028920959880224213
+    },
+    {
+      "t": 8.177,
+      "event": "pose",
+      "x": 96.9512685833849,
+      "y": -17.337377206048632,
+      "yaw_rad": -0.762779242469926,
+      "yaw_deg": -43.70403129371284
+    },
+    {
+      "t": 8.179,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.027326830398424047
+    },
+    {
+      "t": 8.224,
+      "event": "pose",
+      "x": 96.95880955182159,
+      "y": -17.344761562138295,
+      "yaw_rad": -0.7612936559079206,
+      "yaw_deg": -43.618913453608585
+    },
+    {
+      "t": 8.274,
+      "event": "pose",
+      "x": 96.96641347149495,
+      "y": -17.352191286363084,
+      "yaw_rad": -0.7601312272521921,
+      "yaw_deg": -43.55231119765027
+    },
+    {
+      "t": 8.325,
+      "event": "pose",
+      "x": 96.97394828022152,
+      "y": -17.359514343728573,
+      "yaw_rad": -0.758765632131281,
+      "yaw_deg": -43.47406836069841
+    },
+    {
+      "t": 8.374,
+      "event": "pose",
+      "x": 96.98153160482521,
+      "y": -17.366854738899715,
+      "yaw_rad": -0.7574510908536323,
+      "yaw_deg": -43.3987506934934
+    },
+    {
+      "t": 8.398,
+      "event": "output",
+      "linear_x": 0.2,
+      "linear_y": 0.0,
+      "angular_z": 0.025959375094354083
+    },
+    {
+      "t": 8.424,
+      "event": "pose",
+      "x": 96.98905987344686,
+      "y": -17.374117993198727,
+      "yaw_rad": -0.7561046916464176,
+      "yaw_deg": -43.32160770138024
+    },
+    {
+      "t": 8.474,
+      "event": "pose",
+      "x": 96.99662103192239,
+      "y": -17.381372777039168,
+      "yaw_rad": -0.7548895618883827,
+      "yaw_deg": -43.25198589468409
+    },
+    {
+      "t": 8.505,
+      "event": "output",
+      "linear_x": 0.0,
+      "linear_y": 0.0,
+      "angular_z": 0.0
+    },
+    {
+      "t": 8.505,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 8.515,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=1.0s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.01 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 8.524,
+      "event": "pose",
+      "x": 97.00414539611788,
+      "y": -17.388581795451298,
+      "yaw_rad": -0.7535915709619174,
+      "yaw_deg": -43.177616492751355
+    },
+    {
+      "t": 8.574,
+      "event": "pose",
+      "x": 97.01169455949399,
+      "y": -17.395763928434548,
+      "yaw_rad": -0.7522934954240136,
+      "yaw_deg": -43.10324224294029
+    },
+    {
+      "t": 8.585,
+      "event": "owner",
+      "state": "SAFETY_HOLD",
+      "message": "no_unambiguous_translation_candidate"
+    },
+    {
+      "t": 8.609,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.9s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.10 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 8.612,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.9s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.11 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 8.625,
+      "event": "pose",
+      "x": 97.01921448334237,
+      "y": -17.402919503223966,
+      "yaw_rad": -0.7509955732923338,
+      "yaw_deg": -43.028876782658415
+    },
+    {
+      "t": 8.704,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.8s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.20 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 8.714,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.8s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.21 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 8.812,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.7s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.31 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 8.825,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.7s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.32 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 8.912,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.6s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.41 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 8.926,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.6s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.42 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 9.01,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.5s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.50 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 9.012,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.5s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.51 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 9.118,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.5s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.52 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 9.118,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.4s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.61 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 9.123,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.4s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.62 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 9.135,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.4s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.63 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 9.225,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.3s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.72 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 9.232,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=cost_hold=0.3s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.73 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 9.238,
+      "event": "gate",
+      "state": "ROUTE_SAFETY_HOLD",
+      "message": "state=ROUTE_SAFETY_HOLD reasons=platform_drive_enable=false,cost_hold=0.3s,route_safety_hold=lanelet_front_cost charging=false battery=unknown route_clear_s=0.73 recovery_candidate=none recovery_reason=ambiguous_lateral_clear"
+    },
+    {
+      "t": 9.324,
+      "event": "gate",
+      "state": "SAFETY_HOLD",
+      "message": "state=SAFETY_HOLD reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,cost_hold=0.3s charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 9.359,
+      "event": "gate",
+      "state": "SAFETY_HOLD",
+      "message": "state=SAFETY_HOLD reasons=engage=false(manual=false,mission=false),platform_drive_enable=false,cost_hold=0.1s charging=false battery=unknown route_clear_s=0.00 recovery_candidate=none recovery_reason=route_hold_inactive"
+    },
+    {
+      "t": 9.385,
+      "event": "owner",
+      "state": "IDLE",
+      "message": "waiting_for_route_safety_hold"
+    }
+  ],
+  "scenario": "one_sided_crab"
+}

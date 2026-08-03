@@ -57,7 +57,7 @@ public:
     output_topic_ = declare_parameter<std::string>("output_topic",
                                                    "/sensing/cost_grid/lidar");
     base_frame_id_ =
-        declare_parameter<std::string>("base_frame_id", "robot_base_link");
+        declare_parameter<std::string>("base_frame_id", "robot_center_link");
     output_frame_id_ = declare_parameter<std::string>("output_frame_id", "map");
     // HH_260702 - Defaults match the field config: keep obstacles visible
     // far enough ahead for replanning before cmd_vel hard-stop range.

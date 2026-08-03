@@ -16,7 +16,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('module_namespace', default_value='platform'),
         DeclareLaunchArgument('map_frame_id', default_value='map'),
-        DeclareLaunchArgument('base_frame_id', default_value='robot_base_link'),
+        DeclareLaunchArgument('base_frame_id', default_value='robot_center_link'),
         DeclareLaunchArgument(
             'params_file',
             default_value=pkg_share('camrod_sensor_kit', os.path.join('config', 'robot_params.yaml')),

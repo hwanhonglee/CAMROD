@@ -24,7 +24,7 @@
       - "/perception/camera_lidar/markers"
 
     output_topic: "/sensing/cost_grid/lidar"
-    base_frame_id: "robot_base_link"
+    base_frame_id: "robot_center_link"
     output_frame_id: "map"
 
     # =========================================================================

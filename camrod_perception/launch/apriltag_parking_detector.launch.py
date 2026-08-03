@@ -2,7 +2,7 @@
 """Rectify the rear image and detect the configured AprilTag parking target.
 
 HH_260720 - image_proc owns raw-image rectification. The installed
-camrod_sensor_kit URDF owns robot_base_link-to-camera_rear TF.
+camrod_sensor_kit URDF owns robot_center_link-to-camera_rear TF.
 """
 
 import os

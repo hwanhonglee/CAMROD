@@ -47,7 +47,7 @@
     # ============================================================
 
     # Frame ID stamped into most published messages (e.g., sensor_msgs/Imu).
-    # Use a URDF static transform if your IMU is mounted offset from robot_base_link.
+    # Use the URDF static transform for the measured IMU offset from robot_center_link.
     frame_id: "imu_link"
 
     # Transform publishing mode:

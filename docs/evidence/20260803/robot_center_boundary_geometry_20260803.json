@@ -1,0 +1,587 @@
+{
+  "route_ids": [
+    754,
+    2751,
+    2720
+  ],
+  "samples": [
+    {
+      "xy": [
+        -0.8709,
+        45.0816
+      ],
+      "yaw_deg": 4.341,
+      "lane_width_m": 1.823,
+      "clearance_m": 0.2683,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        -0.6911,
+        45.0957
+      ],
+      "yaw_deg": 4.677,
+      "lane_width_m": 1.82,
+      "clearance_m": 0.2722,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        -0.5108,
+        45.111
+      ],
+      "yaw_deg": 4.843,
+      "lane_width_m": 1.822,
+      "clearance_m": 0.2746,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        -0.3304,
+        45.1263
+      ],
+      "yaw_deg": 4.843,
+      "lane_width_m": 1.823,
+      "clearance_m": 0.2746,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        -0.1501,
+        45.1416
+      ],
+      "yaw_deg": 4.962,
+      "lane_width_m": 1.825,
+      "clearance_m": 0.2734,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.0297,
+        45.1576
+      ],
+      "yaw_deg": 5.202,
+      "lane_width_m": 1.826,
+      "clearance_m": 0.2703,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.2091,
+        45.1743
+      ],
+      "yaw_deg": 5.322,
+      "lane_width_m": 1.828,
+      "clearance_m": 0.2672,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.3884,
+        45.191
+      ],
+      "yaw_deg": 5.322,
+      "lane_width_m": 1.829,
+      "clearance_m": 0.2611,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.5678,
+        45.2077
+      ],
+      "yaw_deg": 4.839,
+      "lane_width_m": 1.831,
+      "clearance_m": 0.2621,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.7471,
+        45.2213
+      ],
+      "yaw_deg": 3.871,
+      "lane_width_m": 1.831,
+      "clearance_m": 0.2627,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        0.9263,
+        45.232
+      ],
+      "yaw_deg": 3.386,
+      "lane_width_m": 1.829,
+      "clearance_m": 0.2619,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.1055,
+        45.2426
+      ],
+      "yaw_deg": 3.386,
+      "lane_width_m": 1.828,
+      "clearance_m": 0.2679,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.2847,
+        45.2532
+      ],
+      "yaw_deg": 3.496,
+      "lane_width_m": 1.827,
+      "clearance_m": 0.2713,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.4645,
+        45.2645
+      ],
+      "yaw_deg": 3.714,
+      "lane_width_m": 1.825,
+      "clearance_m": 0.2708,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.6449,
+        45.2765
+      ],
+      "yaw_deg": 3.823,
+      "lane_width_m": 1.824,
+      "clearance_m": 0.2648,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        1.8253,
+        45.2886
+      ],
+      "yaw_deg": 3.823,
+      "lane_width_m": 1.822,
+      "clearance_m": 0.2603,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.0057,
+        45.3007
+      ],
+      "yaw_deg": 3.472,
+      "lane_width_m": 1.821,
+      "clearance_m": 0.2611,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.1857,
+        45.3105
+      ],
+      "yaw_deg": 2.766,
+      "lane_width_m": 1.818,
+      "clearance_m": 0.2638,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.3653,
+        45.318
+      ],
+      "yaw_deg": 2.412,
+      "lane_width_m": 1.815,
+      "clearance_m": 0.2554,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.5449,
+        45.3256
+      ],
+      "yaw_deg": 2.412,
+      "lane_width_m": 1.812,
+      "clearance_m": 0.2522,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.7245,
+        45.3332
+      ],
+      "yaw_deg": 2.665,
+      "lane_width_m": 1.809,
+      "clearance_m": 0.2343,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        2.9043,
+        45.3423
+      ],
+      "yaw_deg": 3.171,
+      "lane_width_m": 1.806,
+      "clearance_m": 0.1739,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.0843,
+        45.3531
+      ],
+      "yaw_deg": 3.423,
+      "lane_width_m": 1.802,
+      "clearance_m": 0.1147,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.2643,
+        45.3639
+      ],
+      "yaw_deg": 3.423,
+      "lane_width_m": 1.799,
+      "clearance_m": 0.0581,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.4443,
+        45.3746
+      ],
+      "yaw_deg": -1.133,
+      "lane_width_m": 1.8,
+      "clearance_m": 0.0533,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.622,
+        45.3568
+      ],
+      "yaw_deg": -10.324,
+      "lane_width_m": 1.743,
+      "clearance_m": 0.1142,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.7973,
+        45.3103
+      ],
+      "yaw_deg": -14.842,
+      "lane_width_m": 1.701,
+      "clearance_m": 0.1218,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        3.9726,
+        45.2639
+      ],
+      "yaw_deg": -15.26,
+      "lane_width_m": 1.695,
+      "clearance_m": 0.0834,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        4.1428,
+        45.2161
+      ],
+      "yaw_deg": -16.128,
+      "lane_width_m": 1.701,
+      "clearance_m": 0.0541,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        4.308,
+        45.1669
+      ],
+      "yaw_deg": -16.579,
+      "lane_width_m": 1.696,
+      "clearance_m": 0.0234,
+      "classification": "safe",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        4.4732,
+        45.1177
+      ],
+      "yaw_deg": -23.081,
+      "lane_width_m": 1.65,
+      "clearance_m": -0.0304,
+      "classification": "adjustable",
+      "first_adjustment": [
+        -0.1,
+        12
+      ]
+    },
+    {
+      "xy": [
+        4.648,
+        45.022
+      ],
+      "yaw_deg": -28.7,
+      "lane_width_m": 1.617,
+      "clearance_m": -0.1854,
+      "classification": "adjustable",
+      "first_adjustment": [
+        -0.05,
+        20
+      ]
+    },
+    {
+      "xy": [
+        4.8228,
+        44.9263
+      ],
+      "yaw_deg": -22.437,
+      "lane_width_m": 1.539,
+      "clearance_m": -0.2451,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.0024,
+        44.8756
+      ],
+      "yaw_deg": -8.778,
+      "lane_width_m": 1.452,
+      "clearance_m": -0.1779,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.1869,
+        44.8701
+      ],
+      "yaw_deg": -1.73,
+      "lane_width_m": 1.397,
+      "clearance_m": -0.0956,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.3713,
+        44.8645
+      ],
+      "yaw_deg": -1.632,
+      "lane_width_m": 1.306,
+      "clearance_m": -0.1423,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.5511,
+        44.8597
+      ],
+      "yaw_deg": -1.43,
+      "lane_width_m": 1.307,
+      "clearance_m": -0.1865,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.7264,
+        44.8556
+      ],
+      "yaw_deg": 0.587,
+      "lane_width_m": 1.282,
+      "clearance_m": -0.2124,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        5.9013,
+        44.8633
+      ],
+      "yaw_deg": 4.416,
+      "lane_width_m": 1.259,
+      "clearance_m": -0.2505,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.0757,
+        44.8826
+      ],
+      "yaw_deg": 6.325,
+      "lane_width_m": 1.238,
+      "clearance_m": -0.2747,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.2502,
+        44.9019
+      ],
+      "yaw_deg": 6.325,
+      "lane_width_m": 1.222,
+      "clearance_m": -0.2908,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.4246,
+        44.9213
+      ],
+      "yaw_deg": 4.837,
+      "lane_width_m": 1.211,
+      "clearance_m": -0.3058,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.575,
+        44.9294
+      ],
+      "yaw_deg": 3.103,
+      "lane_width_m": 1.203,
+      "clearance_m": -0.3282,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.7255,
+        44.9376
+      ],
+      "yaw_deg": 2.404,
+      "lane_width_m": 1.195,
+      "clearance_m": -0.3444,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        6.8796,
+        44.9422
+      ],
+      "yaw_deg": 2.644,
+      "lane_width_m": 1.185,
+      "clearance_m": -0.3549,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.0334,
+        44.9518
+      ],
+      "yaw_deg": 4.489,
+      "lane_width_m": 1.175,
+      "clearance_m": -0.3593,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.1869,
+        44.9663
+      ],
+      "yaw_deg": 5.353,
+      "lane_width_m": 1.165,
+      "clearance_m": -0.3637,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.3405,
+        44.9806
+      ],
+      "yaw_deg": 7.076,
+      "lane_width_m": 1.18,
+      "clearance_m": -0.3632,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.4938,
+        45.0044
+      ],
+      "yaw_deg": 10.611,
+      "lane_width_m": 1.199,
+      "clearance_m": -0.3504,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.6466,
+        45.0379
+      ],
+      "yaw_deg": 11.923,
+      "lane_width_m": 1.209,
+      "clearance_m": -0.3298,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.821,
+        45.0735
+      ],
+      "yaw_deg": 11.542,
+      "lane_width_m": 1.215,
+      "clearance_m": -0.3066,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    },
+    {
+      "xy": [
+        7.9954,
+        45.1092
+      ],
+      "yaw_deg": 12.944,
+      "lane_width_m": 1.224,
+      "clearance_m": -0.2708,
+      "classification": "no_fit_found",
+      "first_adjustment": null
+    }
+  ]
+}

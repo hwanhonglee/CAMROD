@@ -72,7 +72,8 @@
     # 1. FRAMES AND TOPICS
     # =========================================================================
     # HH_260720 - Port the Ranger AprilTag controller to canonical CAMROD interfaces.
-    base_frame_id: "robot_base_link"
+    # HH_260803 - AprilTag errors are measured from the axle midpoint.
+    base_frame_id: "robot_center_link"
     command_topic: "/control/cmd_vel_raw"
     tag_pose_topic: "/perception/apriltag_parking_detector/tag_pose"
     odometry_topic: "/localization/odometry"
@@ -97,12 +98,14 @@
     reverse_approach_speed_mps: 0.2
     invert_angular_command_while_reversing: false
     final_insertion_speed_mps: 0.05
-    slowdown_start_distance_m: 1.0
+    # HH_260803 - Longitudinal thresholds add 0.443 m so the physical rear-axle
+    # stop points remain equivalent after moving the controller reference forward.
+    slowdown_start_distance_m: 1.443
 
     final_heading_tolerance_rad: 0.10
     final_lateral_tolerance_m: 0.03
-    final_insertion_start_distance_m: 0.55
-    parked_distance_from_tag_m: 0.5
+    final_insertion_start_distance_m: 0.993
+    parked_distance_from_tag_m: 0.943
 
     tag_timeout_s: 0.5
     tag_wait_timeout_s: 10.0
@@ -115,8 +118,8 @@
     pose_filter_gain: 0.3
     control_rate_hz: 30.0
     status_rate_hz: 2.0
-    axis_full_trust_distance_m: 0.3
-    axis_minimum_trust_distance_m: 4.0
+    axis_full_trust_distance_m: 0.743
+    axis_minimum_trust_distance_m: 4.443
     axis_minimum_filter_weight: 0.05
 
     # =========================================================================

@@ -62,13 +62,12 @@ topics:
   - name: "gnss_checker: /sensor/gnss/main"
     group: sensing/gnss
     timeout_s: 3.0
-    # HH_260728 - GNSS mount coordinates are still placeholders in robot_params;
-    # expose that uncertainty rather than presenting 0,0,0 as a surveyed pose.
+    # HH_260803 - This is the converted old rear-axle placeholder, not a survey.
     metadata:
       component_id: "gnss.main"
       location: "unverified"
       frame_id: "gnss_link"
-      mount_xyz_m: "0.00000,0.00000,0.00000"
+      mount_xyz_m: "-0.44300,0.00000,0.00000"
       mount_rpy_deg: "0.0,0.0,0.0"
       pose_verified: "false"
 
@@ -80,7 +79,7 @@ topics:
       component_id: "imu.main"
       location: "front_upper_center"
       frame_id: "imu_link"
-      mount_xyz_m: "1.13100,0.00000,0.75600"
+      mount_xyz_m: "0.68800,0.00000,0.75600"
       mount_rpy_deg: "0.0,0.0,0.0"
       pose_verified: "true"
 
@@ -92,7 +91,7 @@ topics:
       component_id: "lidar.main"
       location: "front_upper_center"
       frame_id: "lidar_link"
-      mount_xyz_m: "1.20636,0.00000,0.59538"
+      mount_xyz_m: "0.76336,0.00000,0.59538"
       mount_rpy_deg: "0.0,0.0,0.0"
       pose_verified: "true"
 
@@ -103,12 +102,12 @@ topics:
       component_id: "lidar.filtered"
       location: "front_upper_center"
       frame_id: "lidar_link"
-      mount_xyz_m: "1.20636,0.00000,0.59538"
+      mount_xyz_m: "0.76336,0.00000,0.59538"
       mount_rpy_deg: "0.0,0.0,0.0"
       pose_verified: "true"
 
   # ── Sensing: Radar (SEN0592 7채널) ────────────────────────────────────
-  # HH_260623 - Monitor FRONT1/FRONT2 separately for the latest dual-front radar layout.
+  # HH_260803 - All mount XYZ metadata is relative to robot_center_link.
   - name: "radar_checker: /sensor/radar/FRONT1"
     group: sensing/radar
     timeout_s: 3.0
@@ -116,7 +115,7 @@ topics:
       component_id: "radar.front1"
       location: "front_right"
       frame_id: "radar_front1_link"
-      mount_xyz_m: "1.07087,-0.11005,0.33378"
+      mount_xyz_m: "0.62787,-0.11005,0.33378"
       mount_rpy_deg: "0.0,0.0,0.0"
       pose_verified: "true"
 
@@ -127,7 +126,7 @@ topics:
       component_id: "radar.front2"
       location: "front_left"
       frame_id: "radar_front2_link"
-      mount_xyz_m: "1.07087,0.11005,0.33378"
+      mount_xyz_m: "0.62787,0.11005,0.33378"
       mount_rpy_deg: "0.0,0.0,0.0"
       pose_verified: "true"
 
@@ -138,7 +137,7 @@ topics:
       component_id: "radar.rear"
       location: "rear_center"
       frame_id: "radar_rear_link"
-      mount_xyz_m: "-0.17433,0.00000,0.33978"
+      mount_xyz_m: "-0.61733,0.00000,0.33978"
       mount_rpy_deg: "0.0,0.0,180.0"
       pose_verified: "true"
 
@@ -149,7 +148,7 @@ topics:
       component_id: "radar.left2"
       location: "left_rear"
       frame_id: "radar_left2_link"
-      mount_xyz_m: "0.15966,0.41005,0.29013"
+      mount_xyz_m: "-0.28334,0.41005,0.29013"
       mount_rpy_deg: "0.0,0.0,90.0"
       pose_verified: "true"
 
@@ -160,7 +159,7 @@ topics:
       component_id: "radar.left1"
       location: "left_front"
       frame_id: "radar_left1_link"
-      mount_xyz_m: "0.73488,0.41005,0.29013"
+      mount_xyz_m: "0.29188,0.41005,0.29013"
       mount_rpy_deg: "0.0,0.0,90.0"
       pose_verified: "true"
 
@@ -171,7 +170,7 @@ topics:
       component_id: "radar.right2"
       location: "right_rear"
       frame_id: "radar_right2_link"
-      mount_xyz_m: "0.15966,-0.41005,0.29013"
+      mount_xyz_m: "-0.28334,-0.41005,0.29013"
       mount_rpy_deg: "0.0,0.0,-90.0"
       pose_verified: "true"
 
@@ -182,7 +181,7 @@ topics:
       component_id: "radar.right1"
       location: "right_front"
       frame_id: "radar_right1_link"
-      mount_xyz_m: "0.73488,-0.41005,0.29013"
+      mount_xyz_m: "0.29188,-0.41005,0.29013"
       mount_rpy_deg: "0.0,0.0,-90.0"
       pose_verified: "true"
 
@@ -194,7 +193,7 @@ topics:
       component_id: "camera.econ_front"
       location: "front_center"
       frame_id: "camera_front_link"
-      mount_xyz_m: "1.20637,0.00000,0.49568"
+      mount_xyz_m: "0.76337,0.00000,0.49568"
       mount_rpy_deg: "0.0,0.0,0.0"
       pose_verified: "true"
 
@@ -205,7 +204,7 @@ topics:
       component_id: "camera.econ_rear"
       location: "rear_center"
       frame_id: "camera_rear_link"
-      mount_xyz_m: "-0.17633,0.00000,0.30013"
+      mount_xyz_m: "-0.61933,0.00000,0.30013"
       mount_rpy_deg: "0.0,0.0,180.0"
       pose_verified: "true"
 
@@ -216,7 +215,7 @@ topics:
     metadata:
       component_id: "wheel_odometry.main"
       location: "drive_wheels"
-      frame_id: "robot_base_link"
+      frame_id: "robot_center_link"
       pose_verified: "true"
 
   # ── Sensing/Planning: Cost Grid outputs ───────────────────────────────
@@ -250,7 +249,7 @@ topics:
     metadata:
       component_id: "velocity_converter"
       location: "virtual_wheel_imu_fusion"
-      frame_id: "robot_base_link"
+      frame_id: "robot_center_link"
       pose_verified: "true"
 
   # ── Localization: GNSS 입력 품질 ──────────────────────────────────────

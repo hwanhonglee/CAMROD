@@ -37,7 +37,8 @@
       - platform
       - system
     readiness_map_frame: "map"
-    readiness_base_frame: "robot_base_link"
+    # HH_260803 - Readiness follows the canonical axle-midpoint navigation frame.
+    readiness_base_frame: "robot_center_link"
     readiness_check_period_s: 0.5
 
     # NORMAL=0. DEGRADED/DR_ONLY/INVALID are not mission-ready.

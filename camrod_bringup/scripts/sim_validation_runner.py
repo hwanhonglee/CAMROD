@@ -451,7 +451,7 @@ class SimValidationRunner(Node):
             return
         msg = AvgPlatformStatus()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "robot_base_link"
+        msg.header.frame_id = "robot_center_link"
         msg.vehicle_state = 0
         msg.control_mode = 1
         msg.error_code = 0

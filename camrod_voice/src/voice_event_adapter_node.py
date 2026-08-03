@@ -62,7 +62,8 @@ class VoiceEventAdapterNode(Node):
             ['map', 'sensing', 'localization', 'planning',
              'control', 'platform', 'system'])
         self.declare_parameter('readiness_map_frame', 'map')
-        self.declare_parameter('readiness_base_frame', 'robot_base_link')
+        # HH_260803 - Voice readiness follows the axle-midpoint navigation frame.
+        self.declare_parameter('readiness_base_frame', 'robot_center_link')
         self.declare_parameter('readiness_check_period_s', 0.5)
         self.declare_parameter('max_ready_localization_mode', 0)
         self.declare_parameter('return_mission_key', 'drop_zone')

@@ -75,7 +75,7 @@ graph LR
   PLAT -->|"`/platform/status/odometry\n/rmp401/odom`"| LOC
   MAP -.->|"`Lanelet2 map\nmap_info.yaml`"| LOC
 
-  LOC ==>|"`/localization/pose\n/localization/mode\n/localization/drop_zone/match_ok\nTF map→odom→robot_base_link`"| PLAN
+  LOC ==>|"`/localization/pose\n/localization/mode\n/localization/drop_zone/match_ok\nTF map→odom→robot_center_link`"| PLAN
   LOC -->|"`/localization/pose\n/localization/mode`"| PPLAT
   LOC -->|"`/localization/mode\n/localization/drop_zone/match_ok\n/localization/confidence`"| SYS
 
@@ -135,7 +135,7 @@ graph TD
     EKF(robot_localization/ekf_filter)
     PRIMARYROS((/localization/primary/odometry_ros))
     PRIMARY((/localization/primary/*))
-    TF((TF: map→odom→robot_base_link))
+    TF((TF: map→odom→robot_center_link))
   end
 
   subgraph MAPHELP_SG ["🗺️ Map Helper"]
@@ -215,7 +215,7 @@ graph TD
 | Node | Key Inputs | Key Outputs | Notable Params |
 |---|---|---|---|
 | `localization_input_adapter_node` | `/sensing/gnss/ublox_gps_node/fix`, `/platform/status/odometry`, `/rmp401/odom`, `/localization/primary/odometry_ros` | generated GNSS/wheel topics and `/localization/primary/*` | `gnss_covariance_floor_xy`: 1e-6 m², `wheel_primary_timeout_s`: 0.7 s, `max_position_jump_m`: 8.0 m |
-| `robot_localization/ekf_filter` | `/sensing/imu/data_ros`, `/sensing/gnss/pose_with_covariance_ros`, `/localization/input/wheel_odometry_ros` | `/localization/primary/odometry_ros`, `odom→robot_base_link` TF | `frequency`: 15 Hz, `two_d_mode`: enabled, `world_frame`: odom, GNSS position/yaw enabled |
+| `robot_localization/ekf_filter` | `/sensing/imu/data_ros`, `/sensing/gnss/pose_with_covariance_ros`, `/localization/input/wheel_odometry_ros` | `/localization/primary/odometry_ros`, `odom→robot_center_link` TF | `frequency`: 15 Hz, `two_d_mode`: enabled, `world_frame`: odom, GNSS position/yaw enabled |
 | `localization_monitor_node` | `/sensing/gnss/pose_with_covariance`, `/sensing/imu/data`, `/localization/input/wheel_odometry` | `/localization/mode`, `/localization/state`, `/localization/confidence` | `filter_status_mode`: none, `gnss_timeout_s`: 4.0, `imu_timeout_s`: 1.0, `wheel_timeout_s`: 1.0 |
 | `localization_map_helper_node` | `/localization/pose`, `/localization/pose_with_covariance`, Lanelet2 map, `drop_zones.yaml` | `/localization/centerline_pose`, `/localization/drop_zone/initial_pose`, `/localization/drop_zone/match_ok` | `max_search_radius`: 30 m, `lateral_stddev`: 0.3, `match_radius`: 2.0 m, `stable_count`: 10 |
 | `localization_pose_selector_node` | `/localization/primary/pose_with_covariance`, `/localization/primary/odometry`, `/localization/fallback/*`, `/localization/mode` | `/localization/pose`, `/localization/pose_with_covariance`, `/localization/odometry` | Selects the freshest header-stamped pose payload regardless of pose/odometry callback order; `primary_timeout_s`: 0.5 s, `fallback_on_mode_at_or_above`: 3 (INVALID) |
@@ -262,7 +262,7 @@ measurement. Diagnostics still report the input explicitly as DUMMY/WARN.
 <!-- HH_260723 - Describe continuous cached snaps and input-relative diagnostics. -->
 | `/localization/centerline_pose` | `avg_msgs/AvgPoseWithCovarianceStamped` | diagnostics and optional planning tools | follows `/localization/pose` | Pose projected onto the nearest Lanelet2 centerline; a throttled search republishes the last valid snap with the current header |
 | `/localization/drop_zone/initial_pose` | `avg_msgs/AvgPoseWithCovarianceStamped` | CAMROD consumers | once | Drop-zone-matched generated initial pose |
-| TF `map→odom→robot_base_link` | `tf2_msgs/TFMessage` | all packages | configured filter rate | `map→odom` static transform plus authoritative EKF `odom→robot_base_link` transform |
+| TF `map→odom→robot_center_link` | `tf2_msgs/TFMessage` | all packages | configured filter rate | `map→odom` static transform plus authoritative EKF `odom→robot_center_link` transform; fixed child `robot_base_link` marks the rear axle |
 
 ---
 
@@ -324,10 +324,14 @@ records unwrapped yaw change, crab samples, and header-matched GNSS-to-EKF/final
 XY/yaw differences.
 
 NavSatFix is still converted at the GNSS antenna point, while downstream
-consumers interpret the fused pose as `robot_base_link`. The configured GNSS
-mount in `robot_params.yaml` is currently the unmeasured `0/0/0` placeholder.
+consumers interpret the fused pose as `robot_center_link`. The configured GNSS
+mount in `robot_params.yaml` is currently `-0.443/0/0` from
+`robot_center_link`, which is only the converted old rear-axle `0/0/0`
+placeholder and is not a physical antenna measurement.
 A stable GNSS-to-final XY offset must therefore be checked against the measured
 antenna lever arm before changing EKF frequency, covariance, or map offsets.
+The complete TF ownership and sensor-coordinate conversion are recorded in
+[the `robot_center_link` migration ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md).
 
 ---
 
@@ -368,7 +372,7 @@ rate in the production filter.
 
 > 🔧 **Debug hint** Related params: `imu_timeout_s`, EKF `sensor_timeout`, `imu0_config`, `imu0_queue_size`
 
-**Related topics:** `/sensing/imu/data`, `/localization/mode`, TF `map→odom→robot_base_link`
+**Related topics:** `/sensing/imu/data`, `/localization/mode`, TF `map→odom→robot_center_link`
 
 ---
 

@@ -520,6 +520,14 @@
   let selectedSite = null;
   let sites = [];
   let lastDestSite = null;  // remember destination while moving/arrived
+  // HH_260803 - Match Robot UI mission admission instead of enabling a site
+  // from service state alone while SOC is missing or below the 35% margin.
+  let missionBatteryReady = false;
+  let minimumBatteryPercentage = 35;
+  // HH_260803 - Control safety is an overlay; the service state remains the
+  // scenario source underneath it and resumes when the gate clears.
+  let safetyHold = false;
+  let controlGateState = 'UNKNOWN';
 
   /* ── WebSocket ── */
   function connect() {
@@ -548,6 +556,18 @@
         buildSiteGrid();
       }
       if (d.battery !== undefined) updateBattery(d.battery);
+      if (d.minimum_battery_percentage !== undefined) {
+        minimumBatteryPercentage = Number(d.minimum_battery_percentage);
+      }
+      if (d.mission_battery_ready !== undefined) {
+        missionBatteryReady = Boolean(d.mission_battery_ready);
+        updateUI();
+      }
+      if (d.safety_hold !== undefined) {
+        safetyHold = Boolean(d.safety_hold);
+        controlGateState = String(d.control_gate_state || 'UNKNOWN');
+        updateUI();
+      }
       if (d.service_state_name !== undefined) {
         currentServiceStateName = String(d.service_state_name || 'PREPARING');
       }
@@ -630,6 +650,7 @@
     CHARGING: 'Charging',
     DEPARTING_CHARGER: 'Departing charger',
     DEPARTING_DROP_ZONE: 'Departing drop zone',
+    OPERATOR_STOPPED: 'Stopped by operator',
   });
 
   function updateUI() {
@@ -649,13 +670,28 @@
 
     const phase = currentPhase;
 
+    if (safetyHold) {
+      dot.classList.add('si-busy');
+      phaseLbl.textContent = 'Safety stop';
+      stateLbl.textContent = 'The robot is stopped at a route boundary';
+      siteCard.style.display = 'none';
+      completeCard.style.display = 'none';
+      banner.classList.add('show', 'info-returning');
+      banner.textContent = 'Automatic bounded recovery is in progress. Please keep clear.';
+      return;
+    }
+
     if (phase === 'idle') {
       dot.classList.add('si-idle');
       phaseLbl.textContent = 'Waiting';
       stateLbl.textContent = 'Waiting at drop zone';
       siteCard.style.display = sites.length ? 'block' : 'none';
       completeCard.style.display = 'none';
-      setSiteGridEnabled(true);
+      setSiteGridEnabled(missionBatteryReady);
+      if (!missionBatteryReady) {
+        banner.classList.add('show', 'info-returning');
+        banner.textContent = 'Charge the robot to ' + minimumBatteryPercentage + '% before dispatch.';
+      }
       lastDestSite = null;
 
     } else if (phase === 'charging') {
@@ -664,7 +700,11 @@
       stateLbl.textContent = 'Charging at drop zone';
       siteCard.style.display = sites.length ? 'block' : 'none';
       completeCard.style.display = 'none';
-      setSiteGridEnabled(true);
+      setSiteGridEnabled(missionBatteryReady);
+      if (!missionBatteryReady) {
+        banner.classList.add('show', 'info-returning');
+        banner.textContent = 'Charging. Missions resume at ' + minimumBatteryPercentage + '%.';
+      }
       lastDestSite = null;
 
     } else if (phase === 'moving') {
@@ -715,6 +755,15 @@
       banner.classList.add('show', 'info-returning');
       banner.textContent = 'The robot is returning to the drop zone.';
 
+    } else if (phase === 'stopped') {
+      dot.classList.add('si-busy');
+      phaseLbl.textContent = 'Stopped by operator';
+      stateLbl.textContent = 'The current mission was cancelled';
+      siteCard.style.display = 'none';
+      completeCard.style.display = 'none';
+      banner.classList.add('show', 'info-returning');
+      banner.textContent = 'Select a new mission from the Robot UI.';
+
     } else {
       dot.classList.add('si-busy');
       phaseLbl.textContent = 'Processing';
@@ -762,7 +811,7 @@
 
   // HH_260721 - Charging is a dispatch-ready state because control owns charger departure.
   function isDispatchReady() {
-    return currentPhase === 'idle' || currentPhase === 'charging';
+    return missionBatteryReady && (currentPhase === 'idle' || currentPhase === 'charging');
   }
 
   /* ── Confirm dialog ── */

@@ -23,6 +23,7 @@ def generate_launch_description():
         DeclareLaunchArgument("parameter_file", default_value=default_parameter_file),
         DeclareLaunchArgument("enable_camping_site_maneuver_controller", default_value="true"),
         DeclareLaunchArgument("enable_drop_zone_maneuver_controller", default_value="true"),
+        DeclareLaunchArgument("enable_route_safety_recovery_controller", default_value="true"),
         DeclareLaunchArgument("command_topic", default_value="/control/cmd_vel_raw"),
         DeclareLaunchArgument("vehicle_pose_topic", default_value="/localization/pose"),
         DeclareLaunchArgument("drop_zones_yaml", default_value=""),
@@ -61,5 +62,22 @@ def generate_launch_description():
                 },
             ],
             condition=IfCondition(LaunchConfiguration("enable_drop_zone_maneuver_controller")),
+        ),
+        Node(
+            package="camrod_control",
+            executable="route_safety_recovery_controller_node",
+            namespace=LaunchConfiguration("control_namespace"),
+            name="route_safety_recovery_controller",
+            output="screen",
+            parameters=[
+                LaunchConfiguration("parameter_file"),
+                {
+                    "command_topic": LaunchConfiguration("command_topic"),
+                    "pose_topic": LaunchConfiguration("vehicle_pose_topic"),
+                },
+            ],
+            condition=IfCondition(
+                LaunchConfiguration("enable_route_safety_recovery_controller")
+            ),
         ),
     ])

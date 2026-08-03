@@ -56,7 +56,8 @@ def _launch_setup(context, *args, **kwargs):
   pkg_share = Path(get_package_share_directory("camrod_sensor_kit"))
   params_file = LaunchConfiguration("params_file").perform(context)
   module_namespace = LaunchConfiguration("module_namespace").perform(context)
-  base_frame = LaunchConfiguration("base_frame_id").perform(context)
+  center_frame = LaunchConfiguration("base_frame_id").perform(context)
+  rear_axle_frame = LaunchConfiguration("rear_axle_frame_id").perform(context)
   sensor_kit_base_frame = LaunchConfiguration("sensor_kit_base_frame_id").perform(context)
 
   params = _load_params(params_file)
@@ -97,8 +98,7 @@ def _launch_setup(context, *args, **kwargs):
   base_length = float(robot_cfg.get("length", 1.4))
   base_width = float(robot_cfg.get("width", 0.7))
   base_height = float(robot_cfg.get("height", 1.2))
-  # HH_260623 - Keep the visualization/collision body aligned to the measured
-  # asymmetric robot_base_link-relative envelope instead of assuming centered geometry.
+  # HH_260803 - Geometry and sensor poses are expressed from robot_center_link.
   body_extents = _nested_sensor_cfg(robot_cfg, ("body_extents",))
   body_front = float(body_extents.get("front", base_length * 0.5))
   body_rear = float(body_extents.get("rear", base_length * 0.5))
@@ -106,6 +106,7 @@ def _launch_setup(context, *args, **kwargs):
   body_right = float(body_extents.get("right", base_width * 0.5))
   body_top_z = float(body_extents.get("top_z", base_height))
   body_bottom_z = float(body_extents.get("bottom_z", 0.0))
+  rear_axle_offset_x = float(robot_cfg.get("center_offset_from_rear_axle", 0.443))
   base_origin_xyz = (
     f"{(body_front - body_rear) * 0.5:.6f} "
     f"{(body_left - body_right) * 0.5:.6f} "
@@ -116,10 +117,14 @@ def _launch_setup(context, *args, **kwargs):
   command_args = [
     "xacro ",
     xacro_file,
+    " robot_center_link:=",
+    center_frame,
     " robot_base_link:=",
-    base_frame,
+    rear_axle_frame,
     " sensor_kit_base_link:=",
     sensor_kit_base_frame,
+    " rear_axle_offset_x:=",
+    f"{rear_axle_offset_x}",
   ]
   # HH_260625: Missing YAML must not zero sensor TFs; leave xacro defaults intact.
   if robot_cfg:
@@ -181,13 +186,18 @@ def generate_launch_description():
     ),
     DeclareLaunchArgument(
       "base_frame_id",
+      default_value="robot_center_link",
+      description="Axle-midpoint root frame used for sensor kit URDF",
+    ),
+    DeclareLaunchArgument(
+      "rear_axle_frame_id",
       default_value="robot_base_link",
-      description="Base frame used for sensor kit URDF",
+      description="Legacy rear-axle compatibility frame under robot_center_link",
     ),
     DeclareLaunchArgument(
       "sensor_kit_base_frame_id",
       default_value="sensor_kit_base_link",
-      description="Sensor kit frame under robot_base_link",
+      description="Sensor kit frame coincident with robot_center_link",
     ),
     # HH_260527: Removed unused args (map_frame_id, enable_status).
     OpaqueFunction(function=_launch_setup),

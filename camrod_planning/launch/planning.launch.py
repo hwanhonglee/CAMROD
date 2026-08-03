@@ -224,7 +224,7 @@ def generate_launch_description():
             'planning_state_machine_camping_sites_yaml',
             default_value=planning_state_machine_camping_sites_default,
         ),
-        DeclareLaunchArgument('nav2_robot_base_frame', default_value='robot_base_link'),
+        DeclareLaunchArgument('nav2_robot_base_frame', default_value='robot_center_link'),
         DeclareLaunchArgument(
             'nav2_selected_planner',
             default_value='__auto__',

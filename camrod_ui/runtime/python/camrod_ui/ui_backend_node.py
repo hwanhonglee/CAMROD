@@ -173,6 +173,14 @@ class UiBackendNode(Node):
         self.service_state_topic = str(
             self.declare_parameter("service_state_topic", "/service/state").value
         )
+        # HH_260803 - Robot and guest frontends submit one semantic UI request;
+        # this backend remains the only owner of service-state and engage changes.
+        self.ui_camping_site_operation_request_topic = str(
+            self.declare_parameter(
+                "ui_camping_site_operation_request_topic",
+                "/ui/camping_site_operation_request",
+            ).value
+        )
         self.camping_site_maneuver_controller_operation_topic = str(
             # HH_260720 - UI commands the control-owned campsite maneuver directly.
             self.declare_parameter(
@@ -359,9 +367,10 @@ class UiBackendNode(Node):
         self.readiness_map_frame = str(
             self.declare_parameter("readiness_map_frame", "map").value
         )
+        # HH_260803 - UI readiness follows the axle-midpoint navigation frame.
         self.readiness_base_frame = str(
             self.declare_parameter(
-                "readiness_base_frame", "robot_base_link"
+                "readiness_base_frame", "robot_center_link"
             ).value
         )
         self.readiness_check_period_s = max(
@@ -408,6 +417,12 @@ class UiBackendNode(Node):
             UiDestinationCommand,
             self.ui_destination_topic,
             self._on_destination_command,
+            10,
+        )
+        self.sub_ui_camping_site_operation_request = self.create_subscription(
+            MotionOperation,
+            self.ui_camping_site_operation_request_topic,
+            self._on_ui_camping_site_operation_request,
             10,
         )
         self.sub_diagnostics_agg = self.create_subscription(
@@ -1444,6 +1459,26 @@ class UiBackendNode(Node):
             f"site maneuver return ({source}) -> {self.camping_site_maneuver_controller_operation_topic}"
         )
 
+    def _on_ui_camping_site_operation_request(self, msg: MotionOperation) -> None:
+        """Translate frontend intent into the shared operational state machine."""
+        source = str(msg.source).strip() or "ui_operation_request"
+        if int(msg.operation) != int(MotionOperation.RETURN):
+            self.get_logger().warn(
+                "unsupported UI campsite operation request: "
+                f"operation={int(msg.operation)} source={source}"
+            )
+            return
+        self._request_return_to_drop_zone(source=source)
+
+    def _request_return_to_drop_zone(self, source: str) -> None:
+        # HH_260803 - Publishing RETURNING_TO_DROP_ZONE is sufficient: the
+        # service-state callback below performs RETURN, manual-clear, and mission
+        # engage exactly once for robot UI, guest UI, and any future frontend.
+        self._publish_service_state(
+            AvgServiceState.RETURNING_TO_DROP_ZONE,
+            source=source,
+        )
+
     def _publish_camping_site_operation(self, operation: int, source: str) -> None:
         msg = MotionOperation()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -2226,15 +2261,7 @@ class UiBackendNode(Node):
                     # HH_260617: usage_complete is return-to-drop-zone state=3.
                     # Guest recall request is state=4 and is published by ui_guest_node.
                     if payload.get("usage_complete"):
-                        node._publish_service_state(AvgServiceState.RETURNING_TO_DROP_ZONE, source="ws:usage_complete")
-                        node._publish_camping_site_maneuver_controller_return(source="ws:usage_complete")
-                        node._publish_engage(
-                            False,
-                            source="ws:usage_complete:manual_clear",
-                            sync_drive_enable=False,
-                        )
-                        if node.publish_mission_engage_from_destination:
-                            node._publish_mission_engage(True, source="ws:usage_complete")
+                        node._request_return_to_drop_zone(source="ws:usage_complete")
                         with node._lock:
                             node._state.ws_site_states = {s: False for s in node.site_names}
                         await node._broadcast({"states": {s: False for s in node.site_names}})

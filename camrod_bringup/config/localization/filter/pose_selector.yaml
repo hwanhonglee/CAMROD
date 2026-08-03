@@ -35,7 +35,7 @@
     primary_source_label: "primary_filter"
     fallback_source_label: "fallback_source"
 
-    base_frame_id: "robot_base_link"
+    base_frame_id: "robot_center_link"
 
     # HH_260720 - Keep odom->base TF single-sourced from the active filter.
     # Avoid dual-parent / conflicting TF publications from pose_selector.

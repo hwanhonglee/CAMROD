@@ -21,6 +21,16 @@ obstacle representations and the controller-ready AprilTag parking pose.
 AprilTag detection is intentionally separated from motion: perception publishes
 the tag pose and `camrod_control` decides parking commands.
 
+> HH_260804 - The canonical robot parent is now `robot_center_link` at the axle
+> midpoint. `camrod_sensor_kit` owns the static tree from that frame through
+> `sensor_kit_base_link` to `lidar_link`, `camera_front`, and `camera_rear`;
+> `robot_base_link` is retained
+> only as the fixed rear-axle compatibility child. AprilTag controller distance
+> thresholds were shifted by 0.443 m so the physical charger stop points remain
+> unchanged after the frame migration.
+> Exact before/after coordinates are in the
+> [`robot_center_link` migration ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md).
+
 > HH_260707 - `obstacle_fusion_node` is tuned for real-time freshness under all-on field load: `sync_queue_size: 8` limits stale message backlog, debug-image decode/draw/publish work is skipped when no subscriber exists, and debug image output is rate-limited to 2 Hz by default. The obstacle topics and message contracts are unchanged.
 
 > HH_260716 - Full bringup normally loads the front camera and YOLO into `/camera_yolo_container`. `/perception/camera/detections_2d` is continuously published while inference runs, but `/perception/camera/yolo_image` is generated only when RViz or another subscriber is present. A silent annotated-image topic with zero subscribers is therefore expected, not a stopped YOLO node.
@@ -177,18 +187,21 @@ In **Mode B**, `obstacle_fusion_node` receives no `detections_2d` and publishes 
 %%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
 graph LR
   ODOM(odom)
-  BASE(base_link)
+  BASE(robot_center_link)
+  KIT(sensor_kit_base_link)
   LIDAR(lidar_link\n published by lidar_preprocessor / URDF)
   CAM(camera_front\n required static or continuous)
 
-  ODOM --> BASE --> LIDAR --> CAM
+  ODOM --> BASE --> KIT
+  KIT --> LIDAR
+  KIT --> CAM
 
   classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
   classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
   classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
 
   class ODOM,BASE localization
-  class LIDAR sensing
+  class KIT,LIDAR sensing
   class CAM perception
 ```
 
@@ -198,9 +211,11 @@ graph LR
 
 ```
 odom
-  └── base_link
-        └── lidar_link          ← published by lidar_preprocessor / URDF
-              └── camera_front  ← required for projection; must be static or published continuously
+  └── robot_center_link
+        └── sensor_kit_base_link
+              ├── lidar_link
+              └── camera_front_link
+                    └── camera_front  ← optical frame
 ```
 
 ### Vanjee 750C Axis Convention
@@ -243,7 +258,7 @@ Default `extrinsic_z = -0.075` (camera is 7.5 cm below LiDAR). Adjust in `percep
 | `/sensing/camera/econ_front/image_rect/compressed` | `sensor_msgs/CompressedImage` | Yes (fusion) | camrod_sensing front camera | 10 Hz | Rectified colour image used for image-space point overlay and fusion |
 | `/perception/camera/detections_2d` | `vision_msgs/Detection2DArray` | No | `yolov9mit_ros` (external) | up to 5 Hz | Semantic 2D boxes from YOLOv9; an empty array is a healthy no-object frame |
 | `/perception/lidar/bboxes` | `visualization_msgs/MarkerArray` | No | `obstacle_lidar_node` (self) | ~10 Hz | Euclidean cluster AABB markers used for cluster-centroid fusion |
-| TF `lidar_link → camera_front` | TF2 | Yes (fusion) | robot URDF / static TF | static | Extrinsic transform for projection; supplemented by `extrinsic_z` param |
+| TF `robot_center_link → sensor_kit_base_link → {lidar_link, camera_front}` | TF2 | Yes (system placement) | `camrod_sensor_kit` URDF | static | Places LiDAR and camera data consistently for RViz, Nav2, and downstream TF consumers; fusion projection itself uses its calibrated fixed matrix plus `extrinsic_z` |
 
 ### Outputs
 
@@ -307,7 +322,8 @@ ros2 launch camrod_perception perception.launch.py \
 **Prerequisites:**
 - `camrod_sensing` lidar pipeline must be publishing `/sensing/lidar/points_filtered`
 - For camera fusion: `camrod_sensing` camera pipeline must publish `/sensing/camera/processed/image` and `/sensing/camera/processed/camera_info`
-- TF `lidar_link → camera_optical_frame` must be broadcasting
+- The `camrod_sensor_kit` URDF must broadcast the sibling sensor paths from
+  `robot_center_link` to both `lidar_link` and `camera_front`
 
 ---
 
@@ -433,7 +449,8 @@ ros2 topic hz /perception/lidar/bboxes
 > ⚠️ **Symptoms** — `/perception/lidar/bboxes` markers appear correct in count but are laterally or longitudinally offset from real obstacles in RViz.
 
 1. The ROI filter uses the raw Vanjee 750 sensor frame (X forward, Y left). Confirm the LiDAR is physically mounted with the sensor X-axis pointing forward
-2. Check the static TF between `lidar_link` and `base_link` in the URDF/static TF publisher — an incorrect mount orientation shifts all clusters
+2. Check the static TF path `robot_center_link → sensor_kit_base_link → lidar_link`
+   in the sensor-kit URDF; an incorrect mount orientation shifts all clusters
 3. If only the Z height is wrong, adjust `z_min` / `z_max` to exclude ground reflections
 
 ---

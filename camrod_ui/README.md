@@ -13,6 +13,31 @@ On the ROS side it bridges operator intent to planning topics without making any
 > **Non-goals:** Makes no autonomy decisions — only proxies operator intent. Does not plan paths, monitor localization, or enforce safety constraints. WebSocket is for real-time UI push only; it does not replace the REST API.
 > HH_260720 - Operator engage controls arm the platform drive-enable latch with the planning engage topic. Campsite return publishes a typed operation to `/control/camping_site_maneuver_controller/operation`; final motion authorization remains in the control gate.
 
+<!-- HH_260803 - Keep the guest and robot surfaces on one backend-owned mission contract. -->
+`ui.launch.py` starts the Robot backend on port 8010 and the Guest UI on port
+8012 by default. Both surfaces publish the same `/ui/selected_destination`
+contract. Guest `usage_complete` publishes a typed request on
+`/ui/camping_site_operation_request`; the Robot backend remains the single
+owner that changes service state, engages the return mission, and sends the
+controller `MotionOperation.RETURN`. This prevents the two browser surfaces
+from issuing different return sequences.
+
+The Guest UI accepts a campsite only from `DROP_ZONE_WAIT` or `CHARGING` and
+only with normalized battery SOC at or above 35%. It displays the same
+`/service/state` lifecycle as the Robot UI, including departure, site entry,
+waiting, return, parking, charging, and `OPERATOR_STOPPED`. A command-gate
+`ROUTE_SAFETY_HOLD` is shown as a safety overlay on that lifecycle. A generic
+system diagnostic WARN no longer replaces a normal `MOVING_TO_SITE` or
+`SITE_ENTRY` state.
+
+Guest dispatch and safety-hold screenshots, plus the ROS/WebSocket integration
+result, are preserved in
+[the UI and recovery report](../docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md).
+
+![Guest UI dispatch ready](../docs/assets/20260803/guest_ui_dispatch_ready_20260803.png)
+
+![Guest UI route safety hold](../docs/assets/20260803/guest_ui_route_safety_hold_20260803.png)
+
 ---
 
 ## 🚀 Quick Start
@@ -460,7 +485,7 @@ The UI enters `WAITING_FOR_READY` when `engaged=true` but a readiness
 prerequisite is missing, starting, faulted, or in `ERROR`. An ordinary `WARN`
 is shown as degraded system health without forcing this state. Inspect
 `ready_message` from `GET /ui/state`, then
-check `/system/status`, `/localization/mode`, `map→robot_base_link` TF,
+check `/system/status`, `/localization/mode`, `map→robot_center_link` TF,
 `/control/cmd_vel_safety_gate/status`, `/control/planning_engaged`, and the
 `/planning/navigate_to_pose` action server named by that message.
 

@@ -639,6 +639,18 @@ def generate_launch_description():
         # Stagger module includes to reduce startup CPU/memory spikes.
         ('module_launch_gap_s', cfg_get(launch_cfg, 'runtime/module_launch_gap_s', 1.0), 'Gap (seconds) between module launch includes'),
 
+        # HH_260803 - Canonical axle-midpoint frame plus retained rear-axle alias.
+        (
+            'robot_center_frame_id',
+            cfg_get(launch_cfg, 'platform/robot_center_frame_id', 'robot_center_link'),
+            'Axle-midpoint frame used by localization, planning, and control',
+        ),
+        (
+            'rear_axle_frame_id',
+            cfg_get(launch_cfg, 'platform/rear_axle_frame_id', 'robot_base_link'),
+            'Legacy rear-axle compatibility frame',
+        ),
+
         # HH_260721 - robot_localization EKF is the only supported localization backend.
         ('wheel_bridge_enable', cfg_get(launch_cfg, 'localization/wheel_bridge_enable', True), 'Enable wheel bridge'),
         # Bringup-level wheel source wiring for unified wheel bridge.
@@ -835,6 +847,11 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'control/cmd_vel_gate_cost_odometry_topic', '/localization/odometry'),
             'Odometry topic for cost-stop pose source',
         ),
+        (
+            'control_cmd_vel_gate_robot_base_frame',
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_robot_base_frame', 'robot_center_link'),
+            'Axle-midpoint frame used by command safety geometry',
+        ),
         # HH_260618: Default to real localization pose for safety/cmd_vel gates.
         (
             'control_cmd_vel_gate_pose_source_preference',
@@ -974,12 +991,12 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_front_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 1.30137),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 0.85837),
             'Fallback planning footprint front extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_rear_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.39023),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.83323),
             'Fallback planning footprint rear extent (m)',
         ),
         (
@@ -1393,6 +1410,21 @@ def generate_launch_description():
             cfg_get(launch_cfg, 'system/api_ui_port', 8010),
             'API UI backend bind port',
         ),
+        (
+            'enable_guest_ui',
+            cfg_get(launch_cfg, 'system/enable_guest_ui', True),
+            'Enable the WiFi guest UI server',
+        ),
+        (
+            'guest_ui_host',
+            cfg_get(launch_cfg, 'system/guest_ui_host', '0.0.0.0'),
+            'Guest UI bind host',
+        ),
+        (
+            'guest_ui_port',
+            cfg_get(launch_cfg, 'system/guest_ui_port', 8012),
+            'Guest UI bind port',
+        ),
         # HH_260724 - Keep UI mission-admission thresholds visible in bringup config.
         (
             'api_ui_require_battery_for_mission_dispatch',
@@ -1530,6 +1562,7 @@ def generate_launch_description():
         ('enable_parking', cfg_get(launch_cfg, 'parking/enable_parking', True), 'Enable final parking control'),
         ('enable_camping_site_maneuver_controller', cfg_get(launch_cfg, 'control/enable_camping_site_maneuver_controller', True), 'Enable campsite crab/rotate control node'),
         ('enable_drop_zone_maneuver_controller', cfg_get(launch_cfg, 'control/enable_drop_zone_maneuver_controller', True), 'Enable drop-zone exit/yaw control node'),
+        ('enable_route_safety_recovery_controller', cfg_get(launch_cfg, 'control/enable_route_safety_recovery_controller', True), 'Enable bounded route-safety reverse/crab owner'),
         ('control_param_file', control_param_default, 'Control maneuver parameter YAML path'),
         # HH_260720 - Keep CAN/charging gate settings under the owning control module.
         ('control_cmd_vel_gate_status_topic', cfg_get(launch_cfg, 'control/cmd_vel_gate_status_topic', '/control/cmd_vel_safety_gate/status'), 'Control safety-gate status topic'),
@@ -1686,6 +1719,8 @@ def generate_launch_description():
         # HH_260720 - Use the platform-specific launch argument to prevent nested namespace leaks.
         'platform_namespace': lc['platform_namespace'],
         'sensor_kit_namespace': lc['sensor_kit_namespace'],
+        'base_frame_id': lc['robot_center_frame_id'],
+        'rear_axle_frame_id': lc['rear_axle_frame_id'],
         'platform_type': sim_switch(
             lc['sim'], 'rmp401', lc['platform_type']
         ),
@@ -1727,6 +1762,7 @@ def generate_launch_description():
     fake_sensors_args = {
         'bringup_namespace': lc['bringup_namespace'],
         'sensing_namespace': lc['sensing_namespace'],
+        'base_frame_id': lc['robot_center_frame_id'],
         'fake_enable_cost_grids': 'false',
         # HH_260721 - Disable raw CAN/BMS simulation when the validator owns /platform/status.
         'publish_simulated_platform_status': PythonExpression([
@@ -1941,6 +1977,7 @@ def generate_launch_description():
         # HH_260720 - Keep Nav2 standard Twist on the explicit ROS boundary.
         'navigation_cmd_vel_topic': lc['control_navigation_cmd_vel_ros_topic'],
         'module_namespace': lc['planning_namespace'],
+        'nav2_robot_base_frame': lc['robot_center_frame_id'],
         # HH_260528: Keep selector IDs as raw values (not file-path overrides).
         'nav2_selected_planner': lc['planning_nav2_selected_planner'],
         'nav2_selected_controller': lc['planning_nav2_selected_controller'],
@@ -2034,6 +2071,7 @@ def generate_launch_description():
         'control_namespace': lc['control_namespace'],
         'enable_camping_site_maneuver_controller': lc['enable_camping_site_maneuver_controller'],
         'enable_drop_zone_maneuver_controller': lc['enable_drop_zone_maneuver_controller'],
+        'enable_route_safety_recovery_controller': lc['enable_route_safety_recovery_controller'],
         'command_topic': lc['control_cmd_vel_raw_topic'],
         'vehicle_pose_topic': '/localization/pose',
         'drop_zones_yaml': lc['planning_state_machine_keypoints_yaml'],
@@ -2061,6 +2099,9 @@ def generate_launch_description():
         'enable_ui_backend': lc['enable_api_ui'],
         'ui_host': lc['api_ui_host'],
         'ui_port': lc['api_ui_port'],
+        'enable_ui_guest': lc['enable_guest_ui'],
+        'guest_host': lc['guest_ui_host'],
+        'guest_port': lc['guest_ui_port'],
         # HH_260724 - Pass the bringup-level SOC policy to camrod_ui.launch.py.
         'require_battery_for_mission_dispatch': lc['api_ui_require_battery_for_mission_dispatch'],
         'minimum_mission_dispatch_battery_percent': lc['api_ui_minimum_mission_dispatch_battery_percent'],

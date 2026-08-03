@@ -8,7 +8,7 @@
     # 1. ROS I/O AND FRAMES
     # =========================================================================
     output_topic: "/sensing/cost_grid/radar"
-    base_frame_id: "robot_base_link"
+    base_frame_id: "robot_center_link"
     output_frame_id: "map"
 
     # HH_260729 - Fresh global or per-channel dummy markers hard-disable cost

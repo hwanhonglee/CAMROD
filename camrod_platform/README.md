@@ -43,6 +43,24 @@ The bridge derives status from Ranger system-state and BMS feedback. A charging
 state does not itself initiate motion; `camrod_control/cmd_vel_safety_gate`
 decides whether a bounded campsite departure request may move the robot.
 
+<!-- HH_260804 - Document the axle-midpoint platform contract. -->
+## Canonical Robot Frame
+
+Ranger odometry, normalized platform status, dummy feedback, and platform
+visualization now use `robot_center_link` at the front/rear axle midpoint.
+`robot_base_link` remains a static child 0.443 m behind it for legacy consumers.
+The physical 1.49160 x 1.07000 m body and 0.10 m-per-side planning margin are
+unchanged; only frame-relative X coordinates changed. The visualization and
+control gate publish/check the same 1.69160 x 1.27000 m planning boundary.
+
+The production boundary-recovery controller may request pure crab or reverse,
+but every command still reaches Ranger only through `/control/cmd_vel_ros`
+after the gate's footprint, obstacle, engage, e-stop, CAN, charging, battery,
+freshness, and bounded-travel checks. Recovery intentionally holds yaw at zero
+until the route is clear; normal dual-Ackermann yaw resumes with RPP afterward.
+The center-frame boundary sweep and risk map are preserved in
+[the frame migration ledger](../docs/ROBOT_CENTER_LINK_MIGRATION.md).
+
 ## Launch
 
 <!-- HH_260721 - Document the real-hardware CAN prerequisite separately from simulation. -->

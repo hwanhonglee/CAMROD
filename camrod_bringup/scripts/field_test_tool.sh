@@ -433,6 +433,8 @@ recovery_topics() {
 /control/planning_engaged
 /control/command_enabled
 /control/cmd_vel_safety_gate/status
+/control/route_safety_recovery/candidate
+/control/route_safety_recovery_controller/status
 /control/cmd_vel_raw
 /control/nav2_cmd_vel_ros
 /control/cmd_vel

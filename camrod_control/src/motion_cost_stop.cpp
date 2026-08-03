@@ -160,7 +160,7 @@ MotionCostStopDecision MotionCostStop::evaluate(
     const double motion_threshold = std::max(0.0, config_.min_translation_mps);
     if (std::abs(command.angular.z) > motion_threshold) {
       // HH_260727 - A rotating asymmetric body can touch the raw map boundary even while
-      // robot_base_link stays clear, so evaluate the full footprint first.
+      // robot_center_link stays clear, so evaluate the full footprint first.
       const auto lanelet_decision = evaluateLanelet(command, now_sec);
       if (lanelet_decision.blocked) {
         return lanelet_decision;
@@ -213,8 +213,10 @@ MotionCostStopDecision MotionCostStop::evaluateLaneletRecovery(
   if (!lanelet_grid_.available || !validGrid(lanelet_grid_.grid)) {
     return {true, false, true, true, "lanelet_recovery_grid_missing"};
   }
-  if (config_.stale_timeout_s > 0.0 &&
-    std::max(0.0, now_sec - lanelet_grid_.receive_sec) > config_.stale_timeout_s)
+  const double lanelet_timeout_s = config_.lanelet_recovery_stale_timeout_s > 0.0 ?
+    config_.lanelet_recovery_stale_timeout_s : config_.stale_timeout_s;
+  if (lanelet_timeout_s > 0.0 &&
+    std::max(0.0, now_sec - lanelet_grid_.receive_sec) > lanelet_timeout_s)
   {
     return {true, false, true, true, "lanelet_recovery_grid_stale"};
   }
@@ -256,8 +258,10 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
   {
     return {true, false, true, true, "route_recovery_lanelet_grid_missing"};
   }
-  if (config_.stale_timeout_s > 0.0 &&
-    std::max(0.0, now_sec - lanelet_grid_.receive_sec) > config_.stale_timeout_s)
+  const double lanelet_timeout_s = config_.lanelet_recovery_stale_timeout_s > 0.0 ?
+    config_.lanelet_recovery_stale_timeout_s : config_.stale_timeout_s;
+  if (lanelet_timeout_s > 0.0 &&
+    std::max(0.0, now_sec - lanelet_grid_.receive_sec) > lanelet_timeout_s)
   {
     return {true, false, true, true, "route_recovery_lanelet_grid_stale"};
   }

@@ -207,7 +207,7 @@ controller_server:
 
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      # HH_260623 - Use robot_base_link center as the arrival reference. A
+      # HH_260803 - Use the axle-midpoint robot_center_link as the arrival reference. A
       # wide 0.8 m tolerance made Nav2 succeed when only the front footprint
       # reached the marker, before the robot center reached the goal pose.
       # HH_260720 - A 0.3 m tolerance is sufficient for the lanelet snap handoff;
@@ -416,7 +416,7 @@ local_costmap:
       # sensitivity in controller loop and improve FollowPath stability.
       global_frame: odom
       # Keep Nav2 base frame aligned with platform/localization TF.
-      robot_base_frame: robot_base_link
+      robot_base_frame: robot_center_link
       # HH_260618: Lower local costmap load; merged inflation grid now runs at 6 Hz.
       update_frequency: 5.0
       publish_frequency: 2.0
@@ -442,7 +442,7 @@ global_costmap:
       use_sim_time: False
       global_frame: map
       # Keep Nav2 base frame aligned with platform/localization TF.
-      robot_base_frame: robot_base_link
+      robot_base_frame: robot_center_link
       # HH_260618: Lower global rolling-costmap load; replans still update on BT/planner events.
       update_frequency: 1.0
       publish_frequency: 0.5
@@ -488,7 +488,7 @@ bt_navigator:
     use_sim_time: False
     global_frame: map
     # Keep BT transform helpers aligned with lanelet-snapped base frame.
-    robot_base_frame: robot_base_link
+    robot_base_frame: robot_center_link
     # HH_260720 - Nav2 consumes the explicit nav_msgs boundary mirror.
     odom_topic: /localization/odometry_ros
     # HH_260619 - Plan from the lanelet-snapped pose so the published global/local
@@ -514,6 +514,6 @@ behavior_server:
     global_frame: map
     local_frame: odom
     # Keep recovery behaviors aligned with lanelet-snapped base frame.
-    robot_base_frame: robot_base_link
+    robot_base_frame: robot_center_link
     # Match Nav2 TF tolerance across BT/recovery nodes.
     transform_tolerance: 0.5

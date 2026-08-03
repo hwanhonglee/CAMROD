@@ -181,10 +181,10 @@ production GNSS heading-validity ceiling (`100 rad²`). A GNSS placeholder such
 as `yaw=0`, covariance `1e6` is shown as zero yaw pairs (`-/-/-`), not as a
 localization yaw error.
 
-<!-- HH_260731 - GNSS NavSatFix represents the antenna point while the final
-pose represents robot_base_link. Until the antenna mount offset in
-robot_params.yaml is measured (it is currently 0/0/0), treat a stable XY
-difference as a possible lever-arm geometry issue, not an EKF-rate issue. -->
+<!-- HH_260803 - GNSS NavSatFix represents the antenna point while the final
+pose represents robot_center_link. The current -0.443/0/0 mount is only the
+converted old rear-axle 0/0/0 placeholder. Until the antenna mount is measured,
+treat a stable XY difference as a possible lever-arm issue, not an EKF-rate issue. -->
 A missing publisher, graph type mismatch, invalid/zero/future header, no valid
 message, or only one valid message returns a non-zero exit code and is retained
 in the JSON `errors` list.
@@ -365,7 +365,7 @@ Run these in order and take a `snapshot` after any failure.
      `frame`, mount pose, and live range/rate values. A STALE transition must
      retain the same identity fields.
    - During normal forward travel, the raw side-near probe extends 0.60 m from
-     `robot_base_link`; it is not an extra clearance measured from the body
+     the canonical robot base frame; it is not an extra clearance measured from the body
      edge. Crab/reverse maneuver checking remains 1.20 m.
    <!-- HH_260728 - Include radar cost inflation in the straight-side regression. -->
    - With `obstacle_radius_m: 0.30` and the 0.10 m radar grid, confirm a

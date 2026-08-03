@@ -96,4 +96,5 @@
     wheel_output_topic: "/localization/input/wheel_odometry"
     wheel_nav_output_topic: "/localization/input/wheel_odometry_ros"
     wheel_odom_frame_id: "odom"
-    wheel_base_frame_id: "robot_base_link"
+    # HH_260803 - Normalize hardware and fallback wheel odometry to axle midpoint.
+    wheel_base_frame_id: "robot_center_link"

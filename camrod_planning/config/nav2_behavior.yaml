@@ -8,7 +8,7 @@ bt_navigator:
   ros__parameters:
     # Keep BT transform helpers pinned to lanelet-snapped base frame.
     global_frame: map
-    robot_base_frame: robot_base_link
+    robot_base_frame: robot_center_link
     # Tolerate EKF/TF jitter during full bringup runtime.
     transform_tolerance: 0.5
     # Stabilize repeated goal updates by relaxing BT server/service
@@ -76,9 +76,9 @@ bt_navigator:
 smoother_server:
   ros__parameters:
     # HH_260629: Nav2 smoother defaults to base_link for collision checks unless
-    # these are explicit; CAMROD publishes robot_base_link.
+    # these are explicit; CAMROD publishes robot_center_link.
     global_frame: map
-    robot_base_frame: robot_base_link
+    robot_base_frame: robot_center_link
     transform_tolerance: 0.5
     smoother_plugins: ["SimpleSmoother"]
     SimpleSmoother:
@@ -99,6 +99,6 @@ behavior_server:
     # Recovery behaviors use lanelet-snapped base frame.
     global_frame: map
     local_frame: odom
-    robot_base_frame: robot_base_link
+    robot_base_frame: robot_center_link
     # Keep recovery transforms aligned with relaxed BT tolerance.
     transform_tolerance: 0.5

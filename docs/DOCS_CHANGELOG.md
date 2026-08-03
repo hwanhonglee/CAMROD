@@ -1,5 +1,64 @@
 # Documentation Changelog
 
+<!-- HH_260804 - Package complete visual-evidence and README synchronization. -->
+## [post-v2.1.2-docs-and-evidence] - 2026-08-04 (HH_260804)
+
+### Changed
+
+| Doc or asset | What changed |
+|-----|--------------|
+| root and all affected package `README.md` files | Synchronized the center-frame, bounded recovery, RPP, Guest UI, map-limit, parking-TF, diagnostics, and field-acceptance contracts across bringup, control, localization, map, perception, planning, platform, sensing, sensor kit, system, UI, and voice |
+| `docs/assets/20260803/*` | Added two recovery GIFs, four recovery/boundary PNGs, two Guest UI screenshots, and the highlighted stop-location PNG |
+| `docs/evidence/20260803/*` | Added center-frame geometry/recovery, automatic crab/reverse/route retry, and Guest ROS/WebSocket integration JSON evidence |
+| `docs/ROBOT_CENTER_LINK_MIGRATION.md` | Embedded the center-frame contact sheet and risk map and linked the GIF and source JSON |
+| `docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md` | Replaced host-local paths with tracked relative assets, embedded UI/recovery images, and linked all reproducible result JSON |
+| `camrod_bringup` render tools | Installed both automatic-owner and earlier manual-candidate renderers and documented commands that regenerate the GIF/PNG evidence |
+| root `TODOLIST.txt` | Advanced the review date while keeping all physical-motion acceptance explicitly pending |
+
+Package and bringup configuration mirrors were rechecked after documentation
+refresh. No Jetson-specific runtime value, measured body size, safety margin,
+or physical FIELD-PASS claim was changed by this documentation packaging.
+
+---
+
+<!-- HH_260803 - Record Guest UI parity and automatic boundary recovery evidence. -->
+## [guest-ui-automatic-boundary-recovery] - 2026-08-03 (HH_260803)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| `docs/AUTOMATIC_BOUNDARY_RECOVERY_SIM_20260803.md` | Added Guest-to-Robot UI integration results, production-owned crab/reverse policy, measured simulation runs, visual artifacts, and map limitations |
+| root `TODOLIST.txt` | Replaced the obsolete missing-owner note with the implemented bounded owner and retained real-robot acceptance separately |
+| `camrod_control/README.md` | Documented candidate selection, direction latch, speed/distance/time bounds, and the no-rotation contact invariant |
+| `camrod_ui/README.md` | Documented the shared backend contract, 35% Guest admission rule, and service-state/safety-overlay separation |
+| `camrod_bringup/README.md`, `field_test_tool.sh` | Added simulation replay entrypoints and recovery candidate/controller topics to field rosbag evidence |
+
+The Guest command/state contract and automatic recovery were validated in
+simulation only. Narrow lanelets 754/2751/2720 still require map/corridor work,
+and all physical motion acceptance remains open in `TODOLIST.txt`.
+
+---
+
+<!-- HH_260803 - Record the complete axle-midpoint frame migration. -->
+## [robot-center-link-migration] - 2026-08-03 (HH_260803)
+
+### Changed
+
+| Doc | What changed |
+|-----|--------------|
+| `docs/ROBOT_CENTER_LINK_MIGRATION.md` | Added the frame definition, exact sensor/body/footprint/parking before-and-after values, invariants, runtime consumers, and field acceptance |
+| root `README.md`, `TODOLIST.txt` | Added the canonical center-frame summary and retained GNSS/TF/drive work as explicit physical acceptance |
+| `camrod_sensor_kit/README.md` | Replaced the rear-axle frame tree and mount table with the axle-midpoint tree and converted coordinates |
+| `camrod_localization/README.md`, `camrod_control/README.md` | Synchronized EKF TF ownership, GNSS caveat, footprint values, and parking distance preservation |
+| `camrod_bringup/docs/field_test_runbook.md` | Updated pose and boundary evidence instructions to the center-frame contract |
+
+No physical sensor mount, body dimension, planning margin, map, or safety
+threshold changed. Only frame ownership and frame-dependent coordinates changed;
+GNSS antenna lever-arm measurement remains pending on the real robot.
+
+---
+
 <!-- HH_260802 - Record the explicitly requested v2.1.2 tag refresh. -->
 ## [v2.1.2-rpp-boundary-evidence] - 2026-08-02 (HH_260802)
 

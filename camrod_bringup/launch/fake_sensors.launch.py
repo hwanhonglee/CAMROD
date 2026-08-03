@@ -149,7 +149,7 @@ def generate_launch_description():
     )
     base_frame_arg = DeclareLaunchArgument(
         'base_frame_id',
-        default_value='robot_base_link',
+        default_value='robot_center_link',
         description='Vehicle base frame id',
     )
     obstacle_offset_arg = DeclareLaunchArgument(
