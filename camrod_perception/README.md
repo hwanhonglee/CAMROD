@@ -21,6 +21,25 @@ obstacle representations and the controller-ready AprilTag parking pose.
 AprilTag detection is intentionally separated from motion: perception publishes
 the tag pose and `camrod_control` decides parking commands.
 
+<!-- HH_260804 - Document every perception path while keeping Jetson-only
+camera inference and calibration claims explicitly pending. -->
+## Visual Pipeline And Evidence Boundary
+
+![Perception pipelines](../docs/assets/module-guides/perception/yolo-lidar-and-parking-pipelines.png)
+
+Simulation currently exercises the LiDAR-only clustering/output path. The
+physical Jetson path adds front-camera TensorRT YOLOv9-MIT, Detection2D,
+camera-bbox LiDAR fusion, semantic tent occupancy, and rear-camera AprilTag
+parking. The diagram reads those nodes/topics/thresholds from active package
+configuration, but it is not a detector-accuracy result. No synthetic bounding
+box is presented as real YOLO output; camera lifetime, fusion alignment,
+Detection3D labels, and AprilTag pose still require field captures described in
+the [module visual guide](../docs/MODULE_VISUAL_GUIDE.md).
+
+```bash
+python3 camrod_bringup/scripts/render_module_readme_assets.py --module perception
+```
+
 > HH_260804 - The canonical robot parent is now `robot_center_link` at the axle
 > midpoint. `camrod_sensor_kit` owns the static tree from that frame through
 > `sensor_kit_base_link` to `lidar_link`, `camera_front`, and `camera_rear`;

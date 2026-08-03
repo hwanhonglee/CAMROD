@@ -53,6 +53,9 @@
   <test_depend>ament_cmake_pytest</test_depend>
   <!-- HH_260729 - Radar/GNSS default synchronization tests parse YAML. -->
   <test_depend>python3-yaml</test_depend>
+  <!-- HH_260804 - Rebuild and inspect package-level PNG/GIF documentation. -->
+  <test_depend>python3-matplotlib</test_depend>
+  <test_depend>python3-pil</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

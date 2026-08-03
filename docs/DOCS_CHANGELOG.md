@@ -1,5 +1,26 @@
 # Documentation Changelog
 
+<!-- HH_260804 - Add reproducible package-level visual guides without changing
+the already-published v2.1.3 runtime baseline. -->
+## [post-v2.1.3-module-visual-guides] - 2026-08-04 (HH_260804)
+
+### Changed
+
+| Doc or asset | What changed |
+|-----|--------------|
+| `camrod_bringup/README.md` | Paired the expected full mission contract/GIF with the measured B6/B12 fail-closed campsite result |
+| localization, planning, perception, and sensing READMEs | Added package-specific input/algorithm/output visuals and explicit simulation/field evidence limits |
+| `docs/MODULE_VISUAL_GUIDE.md` | Added evidence classes, module interpretation, regeneration, and Jetson capture commands |
+| `docs/assets/module-guides/*` | Added seven generated PNGs and one 10-frame contract GIF |
+| `docs/evidence/module-guides/*` | Preserved the 30-second pose-chain measurement, full-bringup campsite verdict, and six source ROS node logs with checked line references |
+| `render_module_readme_assets.py` and regression test | Made all module visuals reproducible from current YAML/messages and committed evidence |
+
+This documentation checkpoint changes no runtime algorithm, package/bringup
+configuration value, robot geometry, or safety threshold. The failed campsite
+entry remains visible pending surveyed `service_access` polygons.
+
+---
+
 <!-- HH_260804 - Package the v2.1.3 release and normalize evidence ownership. -->
 ## [v2.1.3-release-and-evidence-layout] - 2026-08-04 (HH_260804)
 

@@ -169,6 +169,12 @@ map/field limits are in
 The complete visual and raw-data catalog is in the
 [v2.1.3 simulation evidence index](docs/assets/v2.1.3/README.md).
 
+<!-- HH_260804 - Index the cross-package input/algorithm/output visuals and
+their source/simulation/field evidence classifications. -->
+Package-level architecture, measured pose timing, sensor processing, YOLO and
+AprilTag boundaries, Nav2 plugin/state ownership, and the latest full-bringup
+verdict are indexed in the [module visual guide](docs/MODULE_VISUAL_GUIDE.md).
+
 <!-- HH_260731 - Link the first physical no-motion acceptance checkpoint. -->
 The 2026-07-31 physical stationary checkpoint passed the 600-second
 radar-disabled dummy/cost barrier and the 300-second physical front-camera/YOLO

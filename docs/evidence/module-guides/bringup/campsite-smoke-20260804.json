@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "d7d6a195c",
+  "recorded_at": "2026-08-04",
+  "environment": {
+    "mode": "ROS 2 simulation",
+    "parking_method": "reverse",
+    "rviz": false,
+    "sim_platform_status_enable": true
+  },
+  "stack_startup": {
+    "runtime_node_count": 81,
+    "system_ok_observed": true,
+    "system_ok_evidence": [
+      "docs/evidence/module-guides/bringup/raw/b12-roadside-system.log:62",
+      "docs/evidence/module-guides/bringup/raw/b6-turnaround-system.log:57"
+    ]
+  },
+  "cases": [
+    {
+      "mission_key": "camping_site_6",
+      "service_mode": "turnaround",
+      "maneuver": "CRAB_IN",
+      "command": {"linear_x_mps": 0.0, "linear_y_mps": -0.24, "angular_z_radps": 0.0},
+      "events": [
+        {
+          "stamp": 1785779136.818844604,
+          "event": "CRAB_IN started",
+          "source": "docs/evidence/module-guides/bringup/raw/b6-turnaround-maneuver.log:13"
+        },
+        {
+          "stamp": 1785779138.830290305,
+          "event": "route safety hold",
+          "reason": "lanelet_footprint_cost",
+          "source": "docs/evidence/module-guides/bringup/raw/b6-turnaround-safety-gate.log:49"
+        },
+        {
+          "stamp": 1785779165.929887022,
+          "event": "crab entry timeout",
+          "source": "docs/evidence/module-guides/bringup/raw/b6-turnaround-maneuver.log:28"
+        }
+      ],
+      "verdict": "FAIL"
+    },
+    {
+      "mission_key": "camping_site_12",
+      "service_mode": "roadside_stop",
+      "maneuver": "CRAB_IN",
+      "command": {"linear_x_mps": 0.0, "linear_y_mps": 0.24, "angular_z_radps": 0.0},
+      "events": [
+        {
+          "stamp": 1785778519.734089938,
+          "event": "CRAB_IN started",
+          "source": "docs/evidence/module-guides/bringup/raw/b12-roadside-maneuver.log:13"
+        },
+        {
+          "stamp": 1785778521.219273892,
+          "event": "route safety hold",
+          "reason": "lanelet_footprint_cost",
+          "source": "docs/evidence/module-guides/bringup/raw/b12-roadside-safety-gate.log:43"
+        },
+        {
+          "stamp": 1785778551.7196708,
+          "event": "crab entry timeout",
+          "source": "docs/evidence/module-guides/bringup/raw/b12-roadside-maneuver.log:30"
+        }
+      ],
+      "verdict": "FAIL"
+    }
+  ],
+  "rejected_experiment": {
+    "change": "Rasterize existing camping_site and drop_zone Areas as traversable in the secondary grid",
+    "result": "Rejected and reverted because the B6 access gap still produced lethal footprint samples",
+    "b6_pose": {"x_m": 17.5546, "y_m": 4.1657, "yaw_deg": -67.285},
+    "sampled_costs": {"center": 11, "front_left": 100, "front_right": 100, "rear_right": 0, "rear_left": 100}
+  },
+  "conclusion": {
+    "full_round_trip_demonstrated": false,
+    "safety_policy_changed": false,
+    "reason": "The map has campsite Areas but no surveyed service-access polygon joining the road lanelet to each maneuver area. Existing Areas alone do not make the complete 1.6916 x 1.2700 m safety footprint legal through the transition.",
+    "required_next_evidence": "Survey and author service_access polygons, then rerun the same B6 and B12 smoke scenarios without reducing the 0.10 m planning margin or bypassing complete-footprint checks."
+  }
+}

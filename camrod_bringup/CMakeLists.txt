@@ -140,6 +140,14 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260804 - Package diagrams must remain regenerable from the active
+  # configuration and explicitly classified simulation evidence.
+  ament_add_pytest_test(
+    test_module_readme_assets
+    test/test_module_readme_assets.py
+    TIMEOUT 90
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
 endif()
 
 ament_package()

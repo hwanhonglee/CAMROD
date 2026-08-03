@@ -4,6 +4,30 @@
 
 `camrod_sensing` acquires raw data from all physical sensors (LiDAR, radar, camera, IMU, GNSS), preprocesses the streams, and produces the filtered topics and obstacle cost grids consumed by localization, perception, and planning. It also fuses the map lanelet cost grid with real-time sensor grids into a single inflation grid for the Nav2 local costmap.
 
+<!-- HH_260804 - Add one source-derived matrix for every sensor path and keep
+the synthetic ground-filter illustration clearly distinct from field data. -->
+## Visual Sensor Results
+
+![Sensor processing and cost fusion](../docs/assets/module-guides/sensing/sensor-processing-and-cost-fusion.png)
+
+The matrix follows each physical input through its package-owned processing,
+canonical output, and downstream consumer. It includes Vanjee LiDAR, seven
+SEN0592 radars, both econ cameras, dual F9P GNSS, IMU, Ranger wheel feedback,
+and the final lanelet/LiDAR/radar/path cost merge.
+
+![Ground segmentation schematic](../docs/assets/module-guides/sensing/ground-segmentation-schematic.png)
+
+The ground-filter image is a deterministic **algorithm schematic**, not a
+captured point cloud. It visualizes the configured 0.07 m voxel, 0.50 x 0.50 m
+ground cells, 20 degree slope threshold, and 0.05 m inlier threshold. Hardware
+signal quality and real ground/obstacle separation remain field-evidence items;
+capture commands and evidence rules are in the
+[module visual guide](../docs/MODULE_VISUAL_GUIDE.md).
+
+```bash
+python3 camrod_bringup/scripts/render_module_readme_assets.py --module sensing
+```
+
 <!-- HH_260804 - Keep sensing geometry aligned with the canonical center frame. -->
 LiDAR, radar, inflation grids, and IMU launch metadata now use
 `robot_center_link` at the axle midpoint. Sensor X coordinates equal the old

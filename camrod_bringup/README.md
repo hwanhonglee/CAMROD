@@ -5,6 +5,37 @@
 `camrod_bringup` starts the CAMROD stack in dependency order and provides the
 field/simulation configuration tree.
 
+<!-- HH_260804 - Pair the intended full-stack lifecycle with the latest measured
+simulation verdict so an architecture animation cannot be mistaken for a PASS. -->
+## Visual Scenario Evidence
+
+![Full-stack mission contract](../docs/assets/module-guides/bringup/full-stack-mission-contract.png)
+
+The following GIF animates the expected service-state order. It is generated
+from the state contract and is **not** a recording of a completed simulation:
+
+![Expected mission lifecycle](../docs/assets/module-guides/bringup/mission-lifecycle-contract.gif)
+
+The latest measured full-bringup verdict is kept beside that contract:
+
+![Full-bringup simulation evidence](../docs/assets/module-guides/bringup/simulation-evidence-20260804.png)
+
+On baseline `d7d6a195c` (`v2.1.3`), 81 ROS nodes reached `[SYSTEM] OK` and the
+30-second pose chain passed. B6 and B12 did not complete the round trip: both
+entered `CRAB_IN`, stopped on `lanelet_footprint_cost`, and timed out. The
+missing input is surveyed `service_access` geometry between the road lanelet
+and maneuver Area. The failed runs are retained in
+[`campsite-smoke-20260804.json`](../docs/evidence/module-guides/bringup/campsite-smoke-20260804.json);
+the six source ROS logs are indexed under
+[`bringup/raw`](../docs/evidence/module-guides/bringup/raw/README.md). The
+safety margin and full-footprint gate remain unchanged. Evidence labels,
+regeneration, and Jetson capture steps are in the
+[module visual guide](../docs/MODULE_VISUAL_GUIDE.md).
+
+```bash
+python3 camrod_bringup/scripts/render_module_readme_assets.py --module bringup
+```
+
 <!-- HH_260729 - Document frozen parent-scope camera ownership. -->
 Every included module runs in its own launch-configuration scope. When
 `camera_yolo_container.launch.py` owns the front camera, sensing receives a
