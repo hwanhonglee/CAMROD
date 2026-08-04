@@ -2,9 +2,11 @@
 """Render automatic reverse/crab recovery runs recorded by the probe."""
 
 import argparse
+import hashlib
 import json
 import math
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import lanelet2
 import matplotlib.animation as animation
@@ -18,14 +20,63 @@ from matplotlib.patches import FancyArrowPatch, Polygon as PolygonPatch
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
 ROUTE_IDS = (754, 2751, 2720)
 CRAB_LANELET_ID = 4677
+# HH_260805 - Preserve the map-v14 evidence geometry: 0.10 m longitudinal and
+# 0.05 m lateral margins. Current runtime geometry is sourced by the main renderer.
 FRONT, REAR = 0.85837, 0.83323
-LEFT, RIGHT = 0.63505, 0.63495
+LEFT, RIGHT = 0.58505, 0.58495
 FPS = 8
 
 
 def load(path):
     with path.open("r", encoding="utf-8") as stream:
         return json.load(stream)
+
+
+def map_version(map_path):
+    meta = ET.parse(map_path).getroot().find("MetaInfo")
+    return int(meta.attrib["map_version"]) if meta is not None else None
+
+
+def evidence_map_version(runs, fallback, fallback_sha256=None):
+    versions = {
+        run.get("map", {}).get("map_version")
+        for run in runs
+        if run.get("map", {}).get("map_version") is not None
+    }
+    if len(versions) > 1:
+        raise ValueError(f"input evidence uses multiple map versions: {sorted(versions)}")
+    evidence_version = next(iter(versions), fallback)
+    if evidence_version != fallback:
+        raise ValueError(
+            f"evidence map v{evidence_version} does not match OSM map v{fallback}"
+        )
+    hashes = {
+        run.get("map", {}).get("sha256")
+        for run in runs
+        if run.get("map", {}).get("sha256")
+    }
+    if len(hashes) > 1:
+        raise ValueError("input evidence uses multiple OSM map hashes")
+    if hashes and fallback_sha256 and next(iter(hashes)) != fallback_sha256:
+        raise ValueError("evidence OSM hash does not match the selected map")
+    return evidence_version
+
+
+def retry_latched(run):
+    if "rapid_recontact_latched" in run:
+        return bool(run["rapid_recontact_latched"])
+    return any(
+        event.get("event") == "gate"
+        and any(
+            marker in event.get("message", "")
+            for marker in (
+                "route_safety_retry_latched",
+                "rapid_recontact_latched",
+                "rapid route recontact latched",
+            )
+        )
+        for event in run.get("timeline", [])
+    )
 
 
 def lane_polygon(lanelet):
@@ -159,7 +210,7 @@ def trajectory(run, start_name, end_name):
     return times[mask], xs[mask], ys[mask], yaws[mask]
 
 
-def render_contact_sheet(output, lanelet_map, route, reverse, crab):
+def render_contact_sheet(output, lanelet_map, route, reverse, crab, version):
     fig = plt.figure(figsize=(16, 9), facecolor="#f4f6f7")
     grid = fig.add_gridspec(2, 3, width_ratios=(1.2, 1.2, 0.85), hspace=0.27, wspace=0.22)
     axes = [fig.add_subplot(grid[row, col]) for row in range(2) for col in range(2)]
@@ -275,32 +326,53 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab):
         "#c62828",
         0.80,
     )
+    retry_distance = route["same_goal_retry_displacement_m"]
+    retry_yaw = route["same_goal_retry_yaw_delta_deg"]
+    recontact_s = route.get("rapid_recontact_after_release_s")
     axes[3].set_title(
-        "4. Same goal resumes: 0.473 m, yaw -2.00 deg, stops again",
+        f"4. Retry: {retry_distance:.3f} m, yaw {retry_yaw:+.2f} deg, "
+        f"{'latched' if retry_latched(route) else 'held'}",
         loc="left",
         fontsize=11,
         fontweight="bold",
     )
 
-    panel.text(0.0, 0.98, "Automatic recovery result", fontsize=15, fontweight="bold", va="top")
+    panel.text(
+        0.0,
+        0.98,
+        f"Map v{version} recovery result",
+        fontsize=15,
+        fontweight="bold",
+        va="top",
+    )
     summary = [
-        ("Owner", "production control node"),
+        ("Map source", f"v{version}"),
         ("One-side contact", "CRAB_LEFT"),
-        ("Crab final speed", "0.05 m/s"),
         ("Crab displacement", f"{crab['recovery_displacement_m']:.3f} m"),
         ("Both sides blocked", "REVERSE"),
-        ("Reverse final speed", "-0.05 m/s"),
-        ("Retry yaw change", f"{route['same_goal_retry_yaw_delta_deg']:+.2f} deg"),
-        ("Narrow-route finish", "NO: map corridor too narrow"),
+        ("Reverse displacement", f"{reverse['recovery_displacement_m']:.3f} m"),
+        ("Retry displacement", f"{retry_distance:.3f} m"),
+        ("Retry yaw change", f"{retry_yaw:+.2f} deg"),
+        (
+            "Rapid recontact",
+            f"{recontact_s:.3f} s / LATCHED"
+            if recontact_s is not None and retry_latched(route)
+            else "not latched",
+        ),
+        ("Route finish", "NO: fail-closed"),
     ]
     y = 0.90
     for label, value in summary:
         panel.text(0.0, y, label, fontsize=9.2, color="#58656c")
         panel.text(
-            0.48, y, value, fontsize=9.6, fontweight="bold",
-            color="#b3261e" if value.startswith("NO") else "#1f5135",
+            0.58, y, value, fontsize=9.6, fontweight="bold",
+            color=(
+                "#b3261e"
+                if value.startswith("NO") or value == "not latched"
+                else "#1f5135"
+            ),
         )
-        y -= 0.052
+        y -= 0.045
     panel.text(0.0, y - 0.01, "Verified parameters", fontsize=13, fontweight="bold")
     y -= 0.075
     for line in (
@@ -308,9 +380,7 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab):
         "0.4 m/s x gate 0.5 = 0.2 m/s",
         "recovery raw 0.10 x gate 0.5",
         "maximum distance 0.40 m",
-        "maximum duration 10.0 s",
         "clear evidence 1.0 s",
-        "pose age 0.5 s | lanelet age 12 s",
         "angular.z = 0 during boundary contact",
     ):
         panel.text(0.0, y, line, fontsize=9.2, color="#37474f")
@@ -318,14 +388,16 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab):
     panel.text(
         0.0,
         0.02,
-        "Safety rule\nA unique direction is latched for one hold.\nIf that direction blocks, output becomes zero.\nYaw resumes only after the footprint is clear.",
+        "Safety rule\nOne automatic route release is allowed.\n"
+        "Rapid same-route recontact latches the hold.\n"
+        "Output remains zero until stop/replan/re-engage.",
         fontsize=9.4,
         color="#263238",
         va="bottom",
         bbox={"boxstyle": "round,pad=0.55", "facecolor": "#edf4ef", "edgecolor": "#8aab94"},
     )
     fig.suptitle(
-        "CAMROD automatic boundary recovery - full bringup simulation 2026-08-03",
+        f"CAMROD map v{version} automatic boundary recovery - full bringup simulation",
         fontsize=18,
         fontweight="bold",
         y=0.985,
@@ -400,7 +472,7 @@ def render_policy(output):
     plt.close(fig)
 
 
-def render_gif(output, lanelet_map, route, reverse, crab):
+def render_gif(output, lanelet_map, route, reverse, crab, version):
     reverse_start = milestone(reverse, "first_hold")["t"]
     reverse_end = milestone(reverse, "second_hold")["t"]
     crab_start = milestone(crab, "first_hold")["t"]
@@ -448,14 +520,18 @@ def render_gif(output, lanelet_map, route, reverse, crab):
         )
 
     reverse_release = milestone(reverse, "hold_released")["t"]
+    reverse_second_hold = milestone(reverse, "second_hold")["t"]
     crab_release = milestone(crab, "hold_released")["t"]
 
     def update(frame):
         display_time = frame / FPS
-        reverse_actual = reverse_start + min(1.0, display_time / duration) * (
+        # HH_260804 - Complete motion in 75% of the animation and retain a
+        # final dwell so reviewers can read the fail-closed retry-latch state.
+        progress = min(1.0, display_time / (duration * 0.75))
+        reverse_actual = reverse_start + progress * (
             reverse_end - reverse_start
         )
-        crab_actual = crab_start + min(1.0, display_time / duration) * (
+        crab_actual = crab_start + progress * (
             crab_end - crab_start
         )
         for index, values in enumerate(
@@ -475,9 +551,15 @@ def render_gif(output, lanelet_map, route, reverse, crab):
             if actual < release:
                 label = "AUTO REVERSE  -0.05 m/s" if index == 0 else "AUTO CRAB LEFT  0.05 m/s"
                 color = "#16864b"
-            elif index == 0:
+            elif index == 0 and actual < reverse_second_hold:
                 label = "RPP RESUMED  yaw changes"
                 color = "#6b3fb5"
+            elif index == 0 and retry_latched(reverse):
+                label = "RAPID RETRY LATCHED  output zero"
+                color = "#b3261e"
+            elif index == 0:
+                label = "SECOND ROUTE HOLD"
+                color = "#b3261e"
             else:
                 label = "HOLD RELEASED  yaw held"
                 color = "#1769aa"
@@ -487,7 +569,7 @@ def render_gif(output, lanelet_map, route, reverse, crab):
         return trails + robots + statuses
 
     fig.suptitle(
-        "CAMROD production-owned boundary recovery",
+        f"CAMROD map v{version} production-owned boundary recovery",
         fontsize=18,
         fontweight="bold",
     )
@@ -510,6 +592,11 @@ def main():
     parser.add_argument("--reverse", required=True, type=Path)
     parser.add_argument("--crab", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument(
+        "--artifact-prefix",
+        default="",
+        help="optional output filename prefix; omitted preserves legacy names",
+    )
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -517,14 +604,23 @@ def main():
     route = load(args.route)
     reverse = load(args.reverse)
     crab = load(args.crab)
-    # HH_260804 / v2.1.3 - Names identify the command owner and artifact role;
-    # the release directory carries the version instead of every filename.
-    contact = args.output_dir / "automatic-owner-route-retry-contact-sheet.png"
-    policy = args.output_dir / "automatic-owner-policy.png"
-    gif = args.output_dir / "automatic-owner-route-retry.gif"
-    render_contact_sheet(contact, lanelet_map, route, reverse, crab)
+    version = evidence_map_version(
+        (route, reverse, crab),
+        map_version(args.map),
+        hashlib.sha256(args.map.read_bytes()).hexdigest(),
+    )
+    if args.artifact_prefix:
+        contact = args.output_dir / f"{args.artifact_prefix}-contact-sheet.png"
+        policy = args.output_dir / f"{args.artifact_prefix}-policy.png"
+        gif = args.output_dir / f"{args.artifact_prefix}.gif"
+    else:
+        # Keep the established documentation paths stable for existing runs.
+        contact = args.output_dir / "automatic-owner-route-retry-contact-sheet.png"
+        policy = args.output_dir / "automatic-owner-policy.png"
+        gif = args.output_dir / "automatic-owner-route-retry.gif"
+    render_contact_sheet(contact, lanelet_map, route, reverse, crab, version)
     render_policy(policy)
-    render_gif(gif, lanelet_map, route, reverse, crab)
+    render_gif(gif, lanelet_map, route, reverse, crab, version)
     for path in (contact, policy, gif):
         print(path)
 

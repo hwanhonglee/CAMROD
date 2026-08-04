@@ -45,6 +45,12 @@ RUNTIME_CAPTURE_REPORT = (
     / "bringup"
     / "runtime-visual-capture-20260804.json"
 )
+MAP_V14_RECOVERY_ROOT = (
+    SRC_ROOT / "docs" / "evidence" / "v2.1.3" / "map-v14-boundary-recovery"
+)
+MAP_V14_RECOVERY_SHA256 = (
+    "2f69deed24ae47e6762a7653e29e5574438a1ec4b9144b8a3b0a01165f404dbe"
+)
 RUNTIME_CAPTURE_ASSETS = (
     "bringup/runtime-full-stack-b6-20260804.png",
     "common/runtime-interface-terminal-20260804.png",
@@ -61,6 +67,7 @@ RUNTIME_CAPTURE_ASSETS = (
     "system/runtime-health-terminal-20260804.png",
     "voice/runtime-event-terminal-20260804.png",
 )
+ROBOT_UI_KEYPAD_CAPTURE = "ui/robot-ui-site-verification-keypad.png"
 
 CAMROD_READMES = (
     SRC_ROOT / "README.md",
@@ -81,6 +88,7 @@ CAMROD_READMES = (
 )
 
 VISUAL_DOCS = CAMROD_READMES + (
+    SRC_ROOT / "docs" / "FOR_MERGE_INTEGRATION_20260804.md",
     SRC_ROOT / "docs" / "MODULE_VISUAL_GUIDE.md",
     SRC_ROOT / "docs" / "V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md",
     SRC_ROOT / "docs" / "V2_1_3_ROBOT_CENTER_MIGRATION.md",
@@ -91,6 +99,9 @@ MODULE_OWNED_RELEASE_ASSETS = (
     "control/automatic-owner-route-retry-contact-sheet.png",
     "control/automatic-owner-route-retry.gif",
     "control/first-route-boundary-stop-location.png",
+    "control/map-v14-boundary-recovery-contact-sheet.png",
+    "control/map-v14-boundary-recovery-policy.png",
+    "control/map-v14-boundary-recovery.gif",
     "control/pre-owner-manual-no-yaw.gif",
     "control/pre-owner-manual-yaw-aware.gif",
     "control/pre-owner-robot-center-contact-sheet.png",
@@ -122,6 +133,7 @@ README_RUNTIME_ASSETS = {
     ),
     SRC_ROOT / "camrod_system" / "README.md": (RUNTIME_CAPTURE_ASSETS[12],),
     SRC_ROOT / "camrod_ui" / "README.md": (
+        ROBOT_UI_KEYPAD_CAPTURE,
         "ui/guest-mission-dispatch-ready.png",
         "ui/guest-route-safety-hold.png",
     ),
@@ -175,6 +187,34 @@ def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
             assert image.width >= 2000
             assert image.height >= 1000
             assert image.format == "PNG"
+
+    # HH_260805 - Package architecture visuals share layout semantics but use
+    # distinct paired accents so the module identity is visible at a glance.
+    themed_architectures = (
+        "bringup/full-stack-mission-contract.png",
+        "common/interface-contract-and-dependencies.png",
+        "control/command-safety-and-recovery.png",
+        "localization/pose-generation-and-timing.png",
+        "map/lanelet-map-and-cost-grids.png",
+        "perception/yolo-lidar-and-parking-pipelines.png",
+        "planning/nav2-servers-and-mission-states.png",
+        "platform/ranger-command-and-status.png",
+        "sensing/sensor-processing-and-cost-fusion.png",
+        "sensor-kit/reference-frame-before-after.png",
+        "system/diagnostic-severity-and-surfaces.png",
+        "ui/robot-and-guest-mission-state.png",
+        "voice/voice-events-and-priority.png",
+    )
+    header_pairs = []
+    for relative_path in themed_architectures:
+        with Image.open(tmp_path / relative_path).convert("RGB") as image:
+            pair = (
+                image.getpixel((image.width // 4, 5)),
+                image.getpixel((image.width * 7 // 8, 5)),
+            )
+            assert pair[0] != pair[1]
+            header_pairs.append(pair)
+    assert len({pair[0] for pair in header_pairs}) == len(header_pairs)
 
     with Image.open(
         tmp_path / "bringup" / "mission-lifecycle-contract.gif"
@@ -284,7 +324,7 @@ def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
     asset_root = SRC_ROOT / "docs" / "assets" / "module-guides"
     image_pattern = re.compile(r"!\[[^]]*\]\(([^)]+)\)")
 
-    for relative_path in RUNTIME_CAPTURE_ASSETS:
+    for relative_path in RUNTIME_CAPTURE_ASSETS + (ROBOT_UI_KEYPAD_CAPTURE,):
         with Image.open(asset_root / relative_path) as visual:
             assert visual.width >= 1200
             assert visual.height >= 700
@@ -299,8 +339,44 @@ def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
             assert (asset_root / relative_path).resolve() in linked_assets
 
     all_visuals = tuple(asset_root.rglob("*"))
-    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 39
-    assert sum(path.suffix.lower() == ".gif" for path in all_visuals) == 6
+    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 42
+    assert sum(path.suffix.lower() == ".gif" for path in all_visuals) == 7
+
+
+def test_map_v14_recovery_evidence_is_historical_and_fails_closed() -> None:
+    """Recovery visuals must stay bound to their historical v14 map input."""
+    runs = {
+        name: json.loads((MAP_V14_RECOVERY_ROOT / filename).read_text())
+        for name, filename in {
+            "route": "route-retry.json",
+            "reverse": "static-reverse-retry.json",
+            "crab": "one-sided-crab.json",
+        }.items()
+    }
+
+    for run in runs.values():
+        assert run["map"]["map_version"] == 14
+        assert run["map"]["sha256"] == MAP_V14_RECOVERY_SHA256
+        assert run["mission_completed"] is False
+        assert run["final_output"] == {
+            "linear_x": 0.0,
+            "linear_y": 0.0,
+            "angular_z": 0.0,
+        }
+
+    assert runs["route"]["route_lanelet_ids"] == [754, 2751, 2720]
+    assert runs["route"]["automatic_recovery_motion"] == "REVERSE"
+    assert runs["route"]["rapid_recontact_latched"] is True
+    assert 0.0 < runs["route"]["rapid_recontact_after_release_s"] <= 5.0
+
+    assert runs["reverse"]["automatic_recovery_motion"] == "REVERSE"
+    assert runs["reverse"]["rapid_recontact_latched"] is True
+    assert runs["reverse"]["recovery_displacement_m"] <= 0.40
+
+    assert runs["crab"]["route_lanelet_ids"] == [4677]
+    assert runs["crab"]["automatic_recovery_motion"] == "CRAB_LEFT"
+    assert runs["crab"]["rapid_recontact_latched"] is False
+    assert runs["crab"]["maximum_recovery_abs_linear_y_mps"] <= 0.05
 
 
 def test_runtime_capture_metadata_is_complete_and_not_field_evidence() -> None:
@@ -354,30 +430,35 @@ def test_bringup_docs_reference_only_existing_launch_entrypoint() -> None:
     assert (SRC_ROOT / "camrod_bringup" / "launch" / "bringup.launch.py").is_file()
 
 
-def test_bringup_evidence_references_committed_raw_log_lines() -> None:
-    """Every summarized runtime event must resolve to preserved raw evidence."""
+def test_bringup_evidence_is_self_contained_after_raw_log_pruning() -> None:
+    """Normalized events must retain provenance after duplicate logs are pruned."""
     report = json.loads(BRINGUP_EVIDENCE.read_text(encoding="utf-8"))
-    references = [
-        (reference, "[SYSTEM] OK")
-        for reference in report["stack_startup"]["system_ok_evidence"]
-    ]
-    event_markers = {
-        "CRAB_IN started": " CRAB_IN:",
-        "route safety hold": "route safety hold activated",
-        "crab entry timeout": "crab entry timeout",
+
+    retention = report["raw_source_retention"]
+    assert retention["committed"] is False
+    assert retention["removed_at"] == "2026-08-05"
+    assert "normalized" in retention["reason"]
+
+    system_records = report["stack_startup"]["system_ok_evidence"]
+    assert len(system_records) == 2
+    assert all("[SYSTEM] OK" in record for record in system_records)
+    assert all("original line" in record for record in system_records)
+
+    expected_events = {
+        "CRAB_IN started",
+        "route safety hold",
+        "crab entry timeout",
     }
     for case in report["cases"]:
-        references.extend(
-            (event["source"], event_markers[event["event"]])
-            for event in case["events"]
+        assert {event["event"] for event in case["events"]} == expected_events
+        for event in case["events"]:
+            assert isinstance(event["stamp"], float)
+            assert "original line" in event["source"]
+            assert ".log" not in event["source"]
+        hold = next(
+            event for event in case["events"] if event["event"] == "route safety hold"
         )
-
-    for reference, marker in references:
-        relative_path, line_number_text = reference.rsplit(":", 1)
-        lines = (SRC_ROOT / relative_path).read_text(encoding="utf-8").splitlines()
-        line_number = int(line_number_text)
-        assert 1 <= line_number <= len(lines)
-        assert marker in lines[line_number - 1]
+        assert hold["reason"] == "lanelet_footprint_cost"
 
 
 def test_field_summary_matches_report_and_marks_raw_logs_external() -> None:

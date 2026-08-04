@@ -33,8 +33,8 @@ recovery candidates, and published an all-zero final command.
 | New campsite mission | `SOC >= 35%` | Departure admitted |
 | Critical battery | `SOC <= 20%` | Hard command stop |
 | Command timeout | `0.35 s` | Stale command becomes zero |
-| Planning footprint | front/rear `0.85837/0.83323 m` | Axle-midpoint X extents |
-| Planning footprint | left/right `0.63505/0.63495 m` | Y extents including `0.10 m` margin |
+| Planning footprint | front/rear `0.80837/0.78323 m` | X extents including `0.05 m` margin |
+| Planning footprint | left/right `0.58505/0.58495 m` | Y extents including `0.05 m` margin |
 | Full-footprint stop | cost `100` or unknown | `ROUTE_SAFETY_HOLD` |
 | Soft lane edge | cost `98` | Traversable planning bias, not the hard body stop |
 | Dynamic cost stop | threshold `85` | LiDAR/radar/merged hazard hold |
@@ -51,7 +51,7 @@ recovery candidates, and published an all-zero final command.
 |---|---|
 | `cmd_vel_safety_gate` | Final engage, platform, battery, localization, timeout, obstacle, and lanelet authorization |
 | `route_safety_recovery_controller` | Executes one latched crab/reverse candidate within speed/distance/time limits |
-| `camping_site_maneuver_controller` | Site entry, turnaround/roadside behavior, unload wait, explicit return, and exit |
+| `camping_site_maneuver_controller` | Site entry, arrival turnaround, unload wait, explicit return, and exit |
 | `drop_zone_maneuver_controller` | Charger/drop-zone exit, route yaw alignment, and parking handoff |
 | `reverse_parking_controller` | Yaw-aware reverse travel and charging wait |
 | `apriltag_parking_controller` | Rear-camera tag approach, insertion, retry, and charging completion |
@@ -73,8 +73,8 @@ localization, or battery hold.
 
 | Site mode | Phase order |
 |---|---|
-| Turnaround | `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT` |
-| Roadside stop | `CRAB_IN -> UNLOAD_WAIT -> WAIT_RETURN -> CRAB_OUT -> ALIGN_RETURN_ROUTE_YAW` |
+| Active B1-B13 turnaround | `CRAB_IN -> ROTATE_180 -> UNLOAD_WAIT -> WAIT_RETURN -> ALIGN_RETRACE_YAW -> CRAB_OUT` |
+| Optional roadside policy | Supported by the controller but not selected by the active campsite configuration |
 | Drop-zone departure | `EXIT_STRAIGHT -> ALIGN_EXIT_YAW -> route release` |
 | Return parking | route arrival -> body alignment -> selected parking controller |
 
@@ -108,6 +108,12 @@ surface while the internal controller remains `PARKED`.
 
 ![Automatic boundary recovery](../docs/assets/module-guides/control/automatic-owner-route-retry.gif)
 
+| Map-v14 measured rerun | Active recovery decision policy |
+|---|---|
+| ![Map v14 recovery contact sheet](../docs/assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png) | ![Recovery policy](../docs/assets/module-guides/control/map-v14-boundary-recovery-policy.png) |
+
+![Map-v14 reverse, retry latch, and crab recovery](../docs/assets/module-guides/control/map-v14-boundary-recovery.gif)
+
 | Simulation case | Measured result | Verdict |
 |---|---:|---|
 | One lateral side clear | Crab displacement `0.3375 m`; output `<= 0.05 m/s` | Hold released; mission not complete |
@@ -115,6 +121,8 @@ surface while the internal controller remains `PARKED`.
 | Same-goal RPP retry | `0.4726 m`, yaw `-2.0008 deg` | Normal yaw resumed after release |
 | Later map boundary | Second hold observed | Map corridor remains limiting |
 | Live B6 retry containment | map v14 `0.276 s` (v13 `0.267/0.372 s`); final Twist all zero | Retry loop stopped; operator action required |
+| Map-v14 route probe | reverse `0.0703 m`, retry `0.0661 m` / yaw `-0.1235 deg`, recontact `0.366 s` | Retry latched; final Twist all zero |
+| Map-v14 static/crab probes | reverse `0.0721 m`; crab-left `0.3321 m` | Both bounded motions released the first hold |
 
 During contact escape, yaw stays fixed. After the gate has fresh clear evidence
 for 1 second, the retained RPP route resumes and ordinary yaw control returns.

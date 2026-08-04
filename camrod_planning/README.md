@@ -30,16 +30,20 @@ unsurveyed service-access boundary.
 |---|---|
 | Full-bringup planner | `LaneletRoute` |
 | Full-bringup controller | `RPP` |
-| Planner plugins loaded | `LaneletRoute`, `Smac2D`, `NavFn`, `ThetaStar`, `SmacHybrid`, `SmacLattice` |
-| Controller plugins loaded | `RPP`, `DWB`, `MPPI`, `Graceful`, `RotationShim` |
+| Production planner plugins loaded | `LaneletRoute`, `SmacLattice` |
+| Implemented but dormant planners | `Smac2D`, `NavFn`, `ThetaStar`, `SmacHybrid` |
+| Production controller plugins loaded | `RPP`, `RotationShim` |
+| Implemented but dormant controllers | `DWB`, `MPPI`, `Graceful` |
 | Controller frequency | `15 Hz` |
 | RPP desired speed | `0.4 m/s` |
 | RPP lookahead | `1.1..2.0 m` |
 | RPP reverse / rotate-to-heading | disabled / disabled |
-| Obstacle fallback | `SmacLattice`, then restore `LaneletRoute` |
+| Obstacle fallback | `SmacLattice` only on a proven `>= 2.50 m` lane, then restore `LaneletRoute` |
 
-Loaded plugins are available options; the selector values above identify the
-ordinary full-bringup path.
+Normal missions construct only policy-reachable planner/controller instances.
+Definitions for every implementation remain in `nav2_base.yaml`; the
+development-only `nav2_{planner,controller}_profiles/all.yaml` files load every
+option when comparison work is needed.
 
 ## Route Flow
 
@@ -59,6 +63,27 @@ UI mission key + site goal
 | `/sensing/cost_grid/lidar` | Dynamic LiDAR obstacles |
 | `/sensing/cost_grid/radar` | Near-field radar obstacles |
 | `/planning/cost_grid/inflation` | Merged planning/safety cost |
+
+## Dynamic Obstacle Replanning
+
+| Requirement | Active value |
+|---|---:|
+| Dynamic blockage persistence before replan | `>= 20.0 s` |
+| Lanelet grid freshness | `<= 2.5 s` |
+| Contiguous lane width | `>= 2.50 m` |
+| Clearance from path reference | `>= 0.60 m` on each side |
+| Fallback / restore | `SmacLattice / LaneletRoute` |
+
+LiDAR/radar blockage still reports status and reaches the control safety gate
+immediately on every lane. The monitor preempts Nav2 only after the blockage
+persists for 20 seconds and when the current path, goal,
+pose, and fresh lanelet grid are available and the measured cross-section
+passes all width checks. Missing/stale geometry, an outside-lane center, or a
+narrow corridor publishes `BLOCKED_REPLAN_DENIED`; it keeps `LaneletRoute` and
+stops fail-closed instead of requesting an insufficiently bounded detour. The
+fallback remains constrained by the global lanelet cost layer, Smac footprint
+checks, and the final control gate; the width test alone is not a traffic-rule
+or lane-direction proof.
 
 ## State Surfaces
 
@@ -93,7 +118,8 @@ in explicit `OPERATOR_STOPPED` state.
 | Nav2 server/plugin topology | Source-derived and test-covered |
 | RPP center-frame route A/B | Common segment cross-track RMS improved `0.0588 -> 0.0549 m` |
 | Oscillation in compared run | `0` yaw-step sign reversals in both A/B runs |
-| Map-v14 B6 route | Stops at boundary near `(4.3688, 45.0583)` and latches after one rapid retry |
+| Historical map-v14 B6 route | Stops at boundary near `(4.3688, 45.0583)` and latches after one rapid retry |
+| Active map-v15 source | Synchronized OSM pair; 55 lanelets/14 areas; LaneletRoute tests pass |
 | Full campsite round trip | Not demonstrated; map boundary still blocks campsite entry |
 
 The A/B run supports the current `1.1 m` RPP lookahead and center-frame choice
@@ -120,6 +146,11 @@ ros2 action info /planning/navigate_to_pose
 | Config | Purpose |
 |---|---|
 | `config/nav2_base.yaml` | Servers, plugins, costmaps, RPP, and fallback controllers |
+| `config/nav2_planner_profiles/production.yaml` | Loads only normal and reachable fallback planners |
+| `config/nav2_planner_profiles/all.yaml` | Opt-in six-planner development profile |
+| `config/nav2_controller_profiles/production.yaml` | Loads mission `RPP` and manual-goal `RotationShim` only |
+| `config/nav2_controller_profiles/all.yaml` | Opt-in five-controller development profile |
+| `config/obstacle_replan_monitor.yaml` | Dynamic blockage and wide-lane preemption policy |
 | `config/camping_sites.yaml` | Site mission keys, service modes, and goal poses |
 | `config/planning_state_machine.yaml` | Mission and ownership transitions |
 | `config/goal_snapper.yaml` | Lanelet-aware goal release policy |

@@ -25,8 +25,10 @@ from shapely.ops import unary_union
 
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
 ROUTE_IDS = (754, 2751, 2720)
+# HH_260805 - Preserve the map-v14 evidence geometry: 0.10 m longitudinal and
+# 0.05 m lateral margins. Current runtime geometry is sourced by the main renderer.
 FRONT, REAR = 0.85837, 0.83323
-LEFT, RIGHT = 0.63505, 0.63495
+LEFT, RIGHT = 0.58505, 0.58495
 LEGACY_REAR_AXLE_X = -0.443
 FPS = 8
 

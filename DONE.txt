@@ -1,6 +1,6 @@
 CAMROD 구현·검증 완료 기록
-작업 기준 버전: v2.1.3
-정리일: 2026-08-04 (Asia/Seoul)
+작업 기준 버전: v2.1.4
+정리일: 2026-08-05 (Asia/Seoul)
 
 # HH_260730 - TODOLIST에는 아직 필요한 실차 판정만 남기고, 이미 끝난
 # 구현·원인 규명·정적/단위/sim 검증은 이 파일에서 원래 TODO 번호와 함께
@@ -17,11 +17,15 @@ CAMROD 구현·검증 완료 기록
 - v2.1.2 패키징 시점에는 변경 후 전체 실차 주행 FIELD-PASS가 없었다.
 - v2.1.3의 center-frame, 자동 recovery, rapid-recontact latch, UI stop은
   CODE/SIM까지 완료됐으며 변경 후 전체 실차 주행 FIELD-PASS는 아직 없다.
+- v2.1.4의 map v15 동기화, 5 cm 사방 planning boundary, WebKit 운영 창,
+  planner fallback 및 system composition도 CODE/SIM 기준이며 Jetson/실차
+  FIELD-PASS로 해석하지 않는다.
 
 릴리스 기준점
-- branch/tag: develop / v2.1.2
-- 기존 v2.1.2 tag commit: 22f9b0cb
-- 갱신 tag: 이 문서와 세부 구현 commit을 포함하는 최종 release commit
+- branch/tag: develop / v2.1.4
+- 이전 v2.1.3 tag commit: a05c0bca1
+- v2.1.4 tag: 이 문서, 코드, 설정, 테스트 및 생성 자산을 포함하는 최종
+  release commit을 가리킨다.
 - 관련 세부 commit:
   - 3a724d9b feat(planning): harden goal recovery and path tracking
   - 76130763 feat(localization): reduce selected pose latency
@@ -414,6 +418,61 @@ CAMROD 구현·검증 완료 기록
   2690, 2744, 754, 2751의 경계 LineString 10개를 재형상화했다. v13 대비 기존
   node 38개 이동, 33개 추가, 3개 제거이며 active/copy OSM은 byte-identical이다.
   full stack은 55 lanelet/14 Area를 정상 로드했지만 B6 완주는 아직 실패했다.
+
+20. HH_260805: v2.1.4 운영 기준 동기화 [DONE-CODE, DONE-SIM, FIELD-PENDING]
+- 사용자가 갱신한 두 OSM 파일을 `map_version=15`로 byte 단위 동기화했다.
+  지도 형상은 사용자 소유 변경으로 보존했으며, 기존 map-v14 재현 결과는
+  당시 SHA와 수치를 가진 역사 증거로 분리했다. map v15 B6/B12 실차 완주는
+  아직 증명하지 않았다.
+- 실측 body `1.49160 x 1.07000 m`와 hard cost-100 정지는 그대로 두고,
+  정적 planning boundary만 사방 0.05 m인 `1.59160 x 1.17000 m`로
+  동기화했다. sensor-kit, Nav2, platform 표시, safety gate, bringup mirror,
+  C++ 기본값이 같은 전후좌우 extents를 사용한다. map-v15 58-pose 기하 sweep은
+  조정 불가 sample 0개였지만 동적 주행이나 실차 safety PASS는 아니다.
+- campsite turnaround는 crab 진입 직후 site 안에서 180도 zero-turn을 끝낸
+  다음 하역/RETURN 요청을 기다린다. 복귀 요청 뒤 lanelet 밖으로 나가서
+  회전하는 순서로 바뀌지 않도록 package와 bringup config 계약 시험을
+  추가했다.
+- 정상 운영 planner는 `LaneletRoute`, 넓은 lane의 지속 장애물 fallback은
+  `SmacLattice`만 로드한다. 나머지 네 planner 구현은 `all.yaml` opt-in으로
+  보존했다. 안전 gate의 장애물 정지는 즉시 유지하며, planner preemption만
+  연속 `20.0 s` 차단 뒤 실행한다. fresh grid, 폭 2.50 m 이상, 좌우 0.60 m
+  이상 clearance가 없으면 fallback하지 않는다.
+- 정상 운영 controller는 mission `RPP`와 manual clicked-yaw용
+  `RotationShim(RPP)`만 생성한다. `DWB`, `MPPI`, `Graceful` 구현과 parameter는
+  삭제하지 않고 `nav2_controller_profiles/all.yaml` opt-in으로 보존했다.
+- 24개 system checker를 hardware/sensing, localization, autonomy 세 component
+  container로 묶었다. 각 standalone executable은 유지해 현장 격리 진단이
+  가능하고, aggregate/status process는 별도 failure boundary로 남겼다.
+  multithreaded container 종료 중 Cyclone DDS unload 경합이 autonomy 또는
+  localization process에서 임의 `-11`을 만들던 core stack을 확인해 category별
+  single serialized executor로 바꿨다. isolated 5회에서 120 component load와
+  15 clean container exit, 87-node full sim에서 세 container clean exit를 확인했다.
+- EngageAwareProgressChecker가 parent lifecycle node를 소유하지 않게 하고
+  parameter/subscription callback과 progress plugin을 cleanup에서 해제했다.
+  전체 Ctrl+C에서 기존 `controller_server -11`이 clean exit로 바뀌었다.
+- Robot UI의 B-site 확인 keypad, Guest dispatch/return, stop/cancel 전파와
+  WebSocket 직렬화를 통합했다. 기본 로컬 창은 WebKit으로 고정하고 backend
+  readiness, static cache, smooth touch scrolling, 항상-on GPU compositing
+  policy를 적용했다. 미사용 WebGL만 끄며 Chromium/auto는 명시적 진단
+  선택으로 유지한다. 실제 Jetson GPU/CPU/FPS 결과는 TODOLIST 8에 남겼다.
+- Robot/Guest uvicorn은 ROS entity 파괴 전에 종료 요청과 thread join을
+  수행한다. Ctrl+C에서 launch의 정상 child shutdown과 `pkill` 후처리가
+  경쟁하지 않도록 `clean_on_shutdown` 기본값은 false로 두고, 다음 실행 전
+  `clean_before_launch` 정리는 그대로 유지했다.
+- package별 architecture 그림은 같은 의미의 safety red는 공유하되 서로
+  다른 2색 palette를 사용하도록 renderer와 회귀 시험을 갱신했다. 각 package
+  README에는 source-derived 그림과 실제 sim/browser 화면을 구분해 연결했다.
+  `docs/evidence` JSON/log는 PNG/GIF 재생성 provenance이므로 참조되는 자료는
+  보존했고, 중복 raw 로그와 사용되지 않는 timeline만 제거했다.
+- 레이더 fixed-return exclusion은 추가하지 않았다. 현재 관찰값은 self-return과
+  주변 물체를 분리하지 못하므로 7채널 clear-area 실차 시험 뒤에만 변경한다.
+- release 대상 CAMROD 8개 package와 bundled nav2_controller build/test가
+  통과했다. 생성된 xUnit 합계는 380 tests, errors 0, failures 0, skipped 24다.
+  camrod_ui setuptools 경로는 pytest case를 수집하지 않으므로 직접 실행한
+  UI contract pytest 27건도 전부 통과했고 React production build도 성공했다.
+- 상세 변경, exact 값, 테스트 범위와 남은 현장 판정은
+  `docs/V2_1_4_RELEASE_NOTES.md`에 기록했다.
 
 실차 FIELD-PASS
 - TODO 1 radar OFF dummy/cost barrier:

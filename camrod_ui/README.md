@@ -1,10 +1,10 @@
 # camrod_ui
 
-<!-- HH_260804 - Summarize Robot/Guest parity, battery policy, state layers,
-browser evidence, API, and deployment risk with visual tables. -->
+<!-- HH_260804 - Record the selectively merged kiosk, transport, and arrival
+fixes while retaining the current mission/stop behavior. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
-bridge, diagnostics display, and lightweight local window.
+bridge, diagnostics display, and managed local kiosk.
 
 ![Robot and Guest mission/state contract](../docs/assets/module-guides/ui/robot-and-guest-mission-state.png)
 
@@ -28,6 +28,8 @@ bridge, diagnostics display, and lightweight local window.
 | Low-battery current-mission latch | `< 35%` |
 | Hard stop authority | control gate at `<= 20%`, not the UI |
 | Guest disconnect lock grace | `60 s` |
+| Guest heartbeat / stale close | `10 s` / `45 s` |
+| Local operator window | fullscreen WebKit kiosk by default; Chromium/auto optional |
 
 ## Destination Dispatch
 
@@ -58,8 +60,12 @@ while users may be unloading.
 Manual engage uses the same command-gate state and therefore displays driving
 even when no campsite destination was selected. Operator stop publishes
 `OPERATOR_STOPPED`; a previous planning warning is not the operation label.
+The active campsite ID is retained separately from the transient destination
+ack, so arrival notifications still identify the selected site after departure.
 
 ## Actual Browser Runtime
+
+![Robot UI site verification keypad](../docs/assets/module-guides/ui/robot-ui-site-verification-keypad.png)
 
 | Mission-ready dispatch | Route safety overlay |
 |---|---|
@@ -75,9 +81,15 @@ running ROS backend, not generated UI mockups.
 | Return | Return state and `MotionOperation.RETURN` observed |
 | Safety | `ROUTE_SAFETY_HOLD` overlay observed |
 | Cancel | `POST /ui/stop` HTTP 200; all local owners and Nav2 canceled; state `16 OPERATOR_STOPPED` observed |
+| Robot site verification | `B6` virtual-key input at 1920x1080 and lowercase physical-key normalization at 1280x800; both produced the same destination frame |
+| Robot UI negative paths | Wrong `B5` sends nothing, correction sends `B6`, cancel sends nothing, Guest return exits idle, and diagnostic keypad login remains valid |
+| Current production bundle | At 1280x800, destination screen appeared in 1.1 ms and the 40-key verification keypad in 17.6 ms; queued same-frame `B`+`6` remained `B6`, cancel sent zero frames, and confirmation sent one frame |
+| Current WebKit startup smoke | WebKitGTK 2.50.4 waited for backend readiness, loaded on the first render attempt, and shut down cleanly |
+| Historical renderer sample | Before static status cues and the current startup path, forced WebKit was near 97% of one workstation CPU; the later Chromium sample was 0.5% combined |
 
 This validates browser/backend/ROS integration. It is not a physical mission or
-collision-safety test.
+collision-safety test. The WebKit smoke check proves startup behavior, not
+Jetson CPU usage; a production Jetson profile is still required.
 
 ## Key ROS Interfaces
 
@@ -107,9 +119,17 @@ collision-safety test.
 | `POST /ui/stop` | Operator stop |
 | `WS /ws` | Real-time state updates |
 
+Guest frames use one serialized writer. ROS publish work runs outside the
+uvicorn event loop, and three missed 15-second receive windows release a stale
+single-client slot. The browser heartbeat keeps a healthy idle session active.
+
 ## Build And Run
 
 ```bash
+cd ~/camrod_ws/src/camrod_ui/camrod_ui_robot/assets/frontend
+npm ci
+npm run build
+
 cd ~/camrod_ws
 colcon build --packages-select camrod_ui --symlink-install
 source install/setup.bash
@@ -119,8 +139,21 @@ curl http://127.0.0.1:8010/ui/health
 curl http://127.0.0.1:8010/ui/state
 ```
 
-The React frontend is built by the package build path. Set
-`enable_operator_ui_window:=false` on headless hosts.
+`setup.py` installs the generated React `build/` tree; it does not run npm.
+Regenerate that tree before colcon whenever frontend sources or public assets
+change. Set `enable_operator_ui_window:=false` on headless hosts, or use
+`operator_ui_window_fullscreen:=false` for a resizable maintenance window.
+WebKit waits for the backend on a background readiness probe before its first
+page load, retains the static React cache, uses always-on GPU compositing and
+smooth touch scrolling, and disables only the unused WebGL context. This avoids
+the repeated error-page reload path without changing the frontend or ROS API.
+The policy requests acceleration from WebKitGTK; Jetson GPU utilization and
+frame pacing remain a field measurement rather than a software-only claim.
+
+Use `operator_ui_window_engine:=chromium` for an explicit Chromium-family kiosk
+or `operator_ui_window_engine:=auto` to prefer Chromium and fall back to WebKit.
+The optional launcher searches Chromium, Chrome, and Brave-compatible names;
+`CAMROD_UI_BROWSER` overrides that executable selection only.
 
 ## Network Boundary
 

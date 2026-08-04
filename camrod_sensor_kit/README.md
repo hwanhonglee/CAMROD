@@ -43,8 +43,8 @@ navigation/control reference.
 | Rear axle to center | `0.443 m` |
 | Measured body | `1.49160 x 1.07000 x 1.09463 m` |
 | Body extents from center | front `0.75837`, rear `0.73323`, left `0.53505`, right `0.53495 m` |
-| Planning margin | `0.10 m` each side |
-| Planning rectangle | `1.69160 x 1.27000 m` |
+| Planning margin | front/rear/left/right `0.05 m` |
+| Planning rectangle | `1.59160 x 1.17000 m` |
 | Wheel radius | `0.15275 m` |
 
 ## Physical Side View

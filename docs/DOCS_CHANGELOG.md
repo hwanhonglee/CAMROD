@@ -1,5 +1,138 @@
 # Documentation Changelog
 
+<!-- HH_260805 - Close the v2.1.4 source, configuration, visual, and field-limit
+record without converting workstation checks into Jetson acceptance. -->
+## [v2.1.4-release-sync] - 2026-08-05 (HH_260805)
+
+### Changed
+
+| Area | Released behavior and documentation basis |
+|---|---|
+| Runtime baseline | Updated root, package, TODO/DONE, field runbook, and release references to the synchronized v2.1.4 source/config baseline |
+| Obstacle policy | Documented immediate safety stop separately from the `20.0 s` persistent-block requirement for width-gated SmacLattice preemption |
+| Nav2 controller loading | Production constructs only `RPP` and manual-goal `RotationShim`; DWB/MPPI/Graceful remain in an opt-in development profile |
+| Operator window | Documented WebKit static caching, smooth touch scrolling, always-on hardware-acceleration request, and disabled unused WebGL; retained Jetson GPU/CPU/FPS as field-pending |
+| Shutdown ownership | Recorded orderly Robot/Guest uvicorn thread teardown, progress-plugin callback ownership cleanup, serialized checker executors, and disabled the default post-shutdown `pkill` pass that raced normal ROS launch cleanup |
+| Footprint/map | Recorded the unchanged measured body, four-sided 5 cm planning envelope, user-authored map v15, and the limit of the offline geometry sweep |
+| Package visuals | Regenerated source-derived architecture assets with a distinct paired palette per module and added a regression check for palette identity |
+| Evidence ownership | Kept normalized JSON/log provenance consumed by renderers and tests; removed only redundant raw logs and unused timeline inputs |
+| Radar | Explicitly made no new fixed-return exclusion because current clutter observations cannot separate self-return from real obstacles |
+
+See [`V2_1_4_RELEASE_NOTES.md`](V2_1_4_RELEASE_NOTES.md) for exact active
+values, verification, and remaining physical acceptance work.
+
+### Validation
+
+- The eight selected CAMROD packages and bundled `nav2_controller` built and
+  completed 380 emitted xUnit cases with 0 errors, 0 failures, and 24 skips.
+- Direct `camrod_ui` pytest execution passed all 27 contract tests, and the
+  optimized React production build compiled and synchronized successfully.
+
+---
+
+<!-- HH_260805 - Synchronize the current static planning envelope to the
+four-sided 0.05 m clearance requested after map-v15 visual review. -->
+## [four-sided-five-centimeter-planning-envelope] - 2026-08-05 (HH_260805)
+
+### Changed
+
+| Area | Operational change and basis |
+|---|---|
+| Measured body | Kept the surveyed `1.49160 x 1.07000 m` body and its hard cost-100 stop contract unchanged |
+| Static planning envelope | Reduced only front/rear clearance from `0.10 m` to `0.05 m`; left/right remain `0.05 m`, yielding `1.59160 x 1.17000 m` and center-frame extents `0.80837/0.78323/0.58505/0.58495 m` |
+| Runtime synchronization | Applied the same polygon to sensor-kit geometry, Nav2 local/global costmaps, platform RViz boundary, command safety gate, package defaults, and bringup mirrors |
+| Dynamic obstacle safety | Kept LiDAR/radar forward, rear, and side dynamic corridors unchanged; those conservative moving-obstacle windows are independent of the static lanelet footprint |
+| Historical evidence | Kept v2.1.3 and map-v14 renderer dimensions at their recorded values and labelled them historical rather than silently regenerating old results |
+
+### Validation Scope
+
+An offline map-v15 geometry sweep sampled 58 poses on lanelets
+`754/2751/2720`, with bounded lateral (`+/-0.4 m`) and yaw (`+/-20 deg`)
+adjustment. Center-pose failures were `7` with the prior asymmetric envelope
+and `6` with the current four-sided 5 cm envelope; both had `0` samples without
+a tested adjustment. Five affected ROS packages built successfully and their
+combined 152 tests passed. This proves configuration consistency and geometric
+fit within the sampled search only, not dynamic completion or real-robot
+safety. No lanelet map file was modified.
+
+---
+
+<!-- HH_260805 - Record the WebKit deployment default, bounded obstacle
+fallback, and diagnostic-checker composition without claiming Jetson results. -->
+## [webkit-wide-lane-replan-system-composition] - 2026-08-05 (HH_260805)
+
+### Changed
+
+| Area | Operational change and basis |
+|---|---|
+| Robot operator window | Made WebKit the explicit deployment default; added backend-readiness probing before first load and document/page caching, enabled smooth touch scrolling, requested always-on acceleration, and disabled only unused WebGL; retained explicit Chromium and Chromium-first `auto` modes |
+| Nav2 planner loading | Production now constructs only `LaneletRoute` and reachable fallback `SmacLattice`; `Smac2D`, `NavFn`, `ThetaStar`, and `SmacHybrid` implementations remain configured and can be loaded through the opt-in `all.yaml` profile |
+| Dynamic obstacle fallback | Kept immediate obstacle safety stopping and enabled planner preemption only after `20.0 s` persistent blockage when a fresh lanelet grid proves at least `2.50 m` contiguous mapped width and `0.60 m` clearance on each side; missing, stale, outside-map, and narrow cases retain LaneletRoute and fail closed |
+| System diagnostics | Composed 24 low-rate checkers into hardware/sensing `11`, localization `6`, and autonomy `7` serialized containers; retained all standalone checker executables and isolated aggregate/status tools |
+| Map contracts | Updated active-map validation and package references to the user-authored synchronized `map_version=15`; preserved map-v14 runtime evidence against its own recorded SHA instead of comparing it to the current map |
+| Package and bringup docs | Synchronized the active WebKit, planner-profile, obstacle-width, system-container, and map-revision behavior across module READMEs and central defaults |
+
+### Validation
+
+- WebKitGTK 2.50.4 loaded the live backend on its first render attempt and shut
+  down cleanly on the amd64 workstation.
+- An isolated Nav2 launch exposed exactly `LaneletRoute` and `SmacLattice` in
+  `planner_server.planner_plugins`; all launch processes shut down cleanly.
+- Five isolated system launch cycles loaded all 24 components each time and
+  produced 15 clean category-container exits. The final 87-node full-stack run
+  reached `[SYSTEM] OK` and cleanly stopped all three containers, both UI
+  servers, and the controller server. The observed `~82 MiB` process sample is
+  not a Jetson benchmark.
+- Synthetic wide/narrow grid tests, planner-profile synchronization tests,
+  active map-v15 structure tests, and historical map-v14 evidence checks pass.
+
+---
+
+<!-- HH_260805 - Remove completed merge inputs and redundant raw evidence before
+the next user-authored lanelet map revision. -->
+## [workspace-cleanup-before-next-map] - 2026-08-05 (HH_260805)
+
+### Removed
+
+| Item | Reason |
+|---|---|
+| `for_merge/` | The 607 MB comparison snapshot had been fully integrated and validated |
+| `/tmp/*camrod*` | Removed about 1.2 GB of temporary browser profiles, test logs, captures, and generated scratch files without touching other system temporary files |
+| Six B6/B12 raw node logs | Their outcomes already exist in normalized campsite evidence and module-guide figures |
+| Two pre-owner manual recovery timelines | Their comparison GIFs and summarized results remain; no current document or renderer consumed the raw JSON |
+
+All referenced module-guide PNG/GIF assets, normalized JSON, the concise runtime
+excerpt, and map-v14 versioned recovery evidence remain available. No lanelet
+map file was changed during this cleanup. The evidence contract test now checks
+the self-contained normalized provenance instead of requiring deleted raw logs.
+
+---
+
+<!-- HH_260804 - Record selective for_merge integration and bind regenerated
+recovery visuals to the exact user-provided map revision. -->
+## [post-v2.1.3-for-merge-and-map-v14-rerun] - 2026-08-04 (HH_260804)
+
+### Changed
+
+| Code, config, doc, or asset | What changed |
+|-----|--------------|
+| `for_merge` integration | Compared the duplicate bringup/UI trees file-by-file and selected newer kiosk, WebSocket, arrival-site, endpoint, icon, return-screen, and site-verification behavior; a second semantic audit corrected the initially missed Robot UI keypad hunks |
+| Robot operator window | Kept fullscreen launch/config wiring, replaced the high-CPU forced WebKit path with portable Chromium auto-selection and an isolated kiosk profile, retained WebKit as fallback, and verified clean process shutdown |
+| Guest WebSocket | Serialized outgoing frames, removed awaits under the thread lock, moved ROS work off the uvicorn event loop, added 10-second heartbeat/45-second stale close, and guaranteed slot cleanup |
+| Robot backend/frontend | Preserved the active campsite through destination acknowledgement, made simple REST handlers nonblocking to the event loop, installed the updated facility/trail PNG assets, and restored the `B<N>` verification keypad plus Guest-return idle-screen exit |
+| Robot keypad layout/test | Added uppercase virtual/physical input handling, function-based updates that retain queued touch keys, 1280x800-safe sizing, a 1920x1080 browser capture, 24 UI contract tests, and wrong/correct/cancel/Guest-return/admin-login browser checks |
+| Robot UI render load | Replaced continuously repainting SVG range rings and moving/return text pulses with static status cues; the current Chromium browser/GPU/renderer sample fell from 15.8% to 0.5% combined while retaining one-second clock display |
+| recovery probe/renderer | Records map version/hash, exact scenario lanelets, retry timing/latch, final output, and generates measured rather than hard-coded v14 PNG/GIF labels |
+| map-v14 evidence | Added three full-bringup JSON timelines, two PNGs, and one GIF; route recontacted in 0.366 s and latched, static reverse moved 0.0721 m, crab-left moved 0.3321 m, and every final command was zero |
+| local merge snapshot | Used `for_merge/COLCON_IGNORE` during review; the temporary snapshot was removed after integration on 2026-08-05 |
+| [`FOR_MERGE_INTEGRATION_20260804.md`](FOR_MERGE_INTEGRATION_20260804.md) | Preserved the comparison counts, selected changes, retained current behavior, exclusions, and validation basis |
+
+The v14 route remains fail-closed and no real-robot safety or completion claim
+is inferred. UI production build and package tests passed on the workstation;
+the changes do not retune Jetson controller, localization, or sensor values.
+
+---
+
 <!-- HH_260804 - Close the observed clear/release/recontact loop, repair the
 operator-stop service call, and attach actual runtime screens to every module. -->
 ## [v2.1.3-runtime-captures-and-retry-latch] - 2026-08-04 (HH_260804)
