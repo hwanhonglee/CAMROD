@@ -84,6 +84,14 @@ std::optional<std::string> routeRecoveryConfigError(
   {
     return "route_safety_recovery_clear_required_s must be in [0.1, 30.0]";
   }
+  if (config.max_automatic_releases < 0 || config.max_automatic_releases > 10) {
+    return "route_safety_recovery_max_auto_releases must be in [0, 10]";
+  }
+  if (!std::isfinite(config.rapid_recontact_window_s) ||
+    config.rapid_recontact_window_s < 0.5 || config.rapid_recontact_window_s > 60.0)
+  {
+    return "route_safety_recovery_recontact_window_s must be in [0.5, 60.0]";
+  }
   if (!std::isfinite(config.opposite_direction_cosine_max) ||
     config.opposite_direction_cosine_max < -1.0 ||
     config.opposite_direction_cosine_max > 0.0)
@@ -480,6 +488,10 @@ private:
       "route_safety_recovery_enable", true);
     route_safety_recovery_config_.clear_required_s = declare_parameter<double>(
       "route_safety_recovery_clear_required_s", 1.0);
+    route_safety_recovery_config_.max_automatic_releases = declare_parameter<int>(
+      "route_safety_recovery_max_auto_releases", 1);
+    route_safety_recovery_config_.rapid_recontact_window_s = declare_parameter<double>(
+      "route_safety_recovery_recontact_window_s", 5.0);
     route_safety_recovery_config_.allow_opposite_recovery_command = declare_parameter<bool>(
       "route_safety_allow_opposite_recovery_command", true);
     route_safety_recovery_config_.opposite_direction_cosine_max = declare_parameter<double>(
@@ -631,6 +643,7 @@ private:
           route_safety_recovery_.reset();
           latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
           route_safety_triggered_by_navigation_ = false;
+          route_safety_retry_latched_logged_ = false;
         }
         onAuthorizationChanged("manual_engage");
       });
@@ -644,6 +657,7 @@ private:
           route_safety_recovery_.reset();
           latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
           route_safety_triggered_by_navigation_ = false;
+          route_safety_retry_latched_logged_ = false;
         }
         onAuthorizationChanged("mission_engage");
       });
@@ -862,6 +876,14 @@ private:
     if (route_hold_started) {
       route_safety_triggered_by_navigation_ = navigation_source;
       latched_route_recovery_candidate_ = RouteRecoveryCandidateKind::kNone;
+      if (route_safety_recovery_.automaticReleaseBlocked()) {
+        route_safety_retry_latched_logged_ = true;
+        RCLCPP_ERROR(
+          get_logger(),
+          "rapid route recontact latched after %d automatic release(s); "
+          "operator stop/replan required",
+          route_safety_recovery_.automaticReleasesInWindow());
+      }
     }
     updatePolicyCostState();
     if (cost_decision.blocked) {
@@ -897,6 +919,13 @@ private:
         "route safety hold released after continuous fresh lanelet clear; "
         "same mission direction may resume");
       last_route_safety_log_sec_ = -1.0e9;
+    } else if (route_safety_recovery_.automaticReleaseBlocked() &&
+      !route_safety_retry_latched_logged_)
+    {
+      route_safety_retry_latched_logged_ = true;
+      RCLCPP_ERROR(
+        get_logger(),
+        "rapid route recontact remains latched; operator stop/replan required");
     }
   }
 
@@ -909,10 +938,11 @@ private:
     RCLCPP_WARN(
       get_logger(),
       "cmd_vel route safety hold: trigger=%s latest=%s clear=%.2fs "
-      "projected_recovery_candidate_only=true",
+      "projected_recovery_candidate_only=true auto_release_blocked=%s",
       route_safety_recovery_.triggerReason().c_str(),
       route_safety_recovery_.latestReason().c_str(),
-      route_safety_recovery_.clearElapsed(now_sec));
+      route_safety_recovery_.clearElapsed(now_sec),
+      route_safety_recovery_.automaticReleaseBlocked() ? "true" : "false");
   }
 
   void onMissionRequest(const avg_msgs::msg::PlanningMissionKey::SharedPtr message)
@@ -1026,7 +1056,9 @@ private:
       now_sec, charging_mission_override_.charging(),
       charging_mission_override_.isActive(now_sec));
     if (route_safety_recovery_.active()) {
-      reasons.push_back("route_safety_hold=" + route_safety_recovery_.triggerReason());
+      const std::string label = route_safety_recovery_.automaticReleaseBlocked() ?
+        "route_safety_retry_latched=" : "route_safety_hold=";
+      reasons.push_back(label + route_safety_recovery_.triggerReason());
     }
     return reasons;
   }
@@ -1091,7 +1123,8 @@ private:
   {
     RouteRecoveryCandidate selected;
     if (route_safety_auto_candidate_enabled_ && route_safety_recovery_.active() &&
-      route_safety_triggered_by_navigation_)
+      route_safety_triggered_by_navigation_ &&
+      !route_safety_recovery_.automaticReleaseBlocked())
     {
       const auto & trigger = route_safety_recovery_.triggerCommand();
       const auto left_command = routeRecoveryDirection(
@@ -1128,8 +1161,9 @@ private:
         latched_route_recovery_candidate_ = selected.kind;
       }
     } else {
-      selected.reason = route_safety_recovery_.active() ?
-        "non_navigation_trigger" : "route_hold_inactive";
+      selected.reason = route_safety_recovery_.automaticReleaseBlocked() ?
+        "rapid_recontact_latched" :
+        route_safety_recovery_.active() ? "non_navigation_trigger" : "route_hold_inactive";
     }
     route_safety_candidate_publisher_->publish(selected.command);
     return selected;
@@ -1573,6 +1607,10 @@ private:
       const std::string & name = parameter.get_name();
       if (name == "route_safety_recovery_clear_required_s") {
         route_candidate.clear_required_s = parameter.as_double();
+      } else if (name == "route_safety_recovery_max_auto_releases") {
+        route_candidate.max_automatic_releases = parameter.as_int();
+      } else if (name == "route_safety_recovery_recontact_window_s") {
+        route_candidate.rapid_recontact_window_s = parameter.as_double();
       } else if (name == "route_safety_opposite_direction_cosine_max") {
         route_candidate.opposite_direction_cosine_max = parameter.as_double();
       } else if (name == "route_safety_opposite_recovery_probe_distance_m") {
@@ -1662,6 +1700,10 @@ private:
         route_safety_recovery_config_.enabled = parameter.as_bool();
       } else if (name == "route_safety_recovery_clear_required_s") {
         route_safety_recovery_config_.clear_required_s = parameter.as_double();
+      } else if (name == "route_safety_recovery_max_auto_releases") {
+        route_safety_recovery_config_.max_automatic_releases = parameter.as_int();
+      } else if (name == "route_safety_recovery_recontact_window_s") {
+        route_safety_recovery_config_.rapid_recontact_window_s = parameter.as_double();
       } else if (name == "route_safety_allow_opposite_recovery_command") {
         route_safety_recovery_config_.allow_opposite_recovery_command = parameter.as_bool();
       } else if (name == "route_safety_opposite_direction_cosine_max") {
@@ -1857,6 +1899,7 @@ private:
   bool route_safety_triggered_by_navigation_{false};
   RouteRecoveryCandidateKind latched_route_recovery_candidate_{
     RouteRecoveryCandidateKind::kNone};
+  bool route_safety_retry_latched_logged_{false};
   bool command_input_stale_{false};
   bool yaw_zone_satisfied_{false};
   int route_heading_min_path_points_{2};

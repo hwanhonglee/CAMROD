@@ -313,6 +313,55 @@ TEST(RouteSafetyRecovery, AdmitsOppositeAndOrthogonalProjectedCandidates)
     recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.0, 0.2)));
 }
 
+TEST(RouteSafetyRecovery, LatchesRapidRecontactAfterConfiguredAutomaticRelease)
+{
+  RouteSafetyRecoveryConfig config;
+  config.clear_required_s = 0.1;
+  config.max_automatic_releases = 1;
+  config.rapid_recontact_window_s = 5.0;
+  RouteSafetyRecovery recovery(config);
+  const MotionCostStopDecision violation{
+    true, false, true, false, "lanelet_footprint_cost"};
+  const MotionCostStopDecision clear{};
+
+  ASSERT_TRUE(recovery.observeViolation(violation, command(0.3), 1.0));
+  EXPECT_FALSE(recovery.updateProbe(clear, 1.0));
+  EXPECT_TRUE(recovery.updateProbe(clear, 1.2));
+  EXPECT_FALSE(recovery.active());
+  EXPECT_EQ(recovery.automaticReleasesInWindow(), 1);
+
+  ASSERT_TRUE(recovery.observeViolation(violation, command(0.3), 2.0));
+  EXPECT_TRUE(recovery.automaticReleaseBlocked());
+  EXPECT_FALSE(recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.1)));
+  EXPECT_FALSE(recovery.updateProbe(clear, 2.0));
+  EXPECT_FALSE(recovery.updateProbe(clear, 3.0));
+  EXPECT_TRUE(recovery.active());
+
+  recovery.reset();
+  EXPECT_FALSE(recovery.automaticReleaseBlocked());
+  EXPECT_EQ(recovery.automaticReleasesInWindow(), 0);
+}
+
+TEST(RouteSafetyRecovery, AllowsAutomaticRecoveryAgainAfterRecontactWindow)
+{
+  RouteSafetyRecoveryConfig config;
+  config.clear_required_s = 0.1;
+  config.max_automatic_releases = 1;
+  config.rapid_recontact_window_s = 5.0;
+  RouteSafetyRecovery recovery(config);
+  const MotionCostStopDecision violation{
+    true, false, true, false, "lanelet_footprint_cost"};
+  const MotionCostStopDecision clear{};
+
+  ASSERT_TRUE(recovery.observeViolation(violation, command(0.3), 1.0));
+  EXPECT_FALSE(recovery.updateProbe(clear, 1.0));
+  EXPECT_TRUE(recovery.updateProbe(clear, 1.2));
+
+  ASSERT_TRUE(recovery.observeViolation(violation, command(0.3), 7.0));
+  EXPECT_FALSE(recovery.automaticReleaseBlocked());
+  EXPECT_TRUE(recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.1)));
+}
+
 TEST(RouteSafetyRecovery, RotationViolationAdmitsTranslationForProjectedCheck)
 {
   RouteSafetyRecovery recovery;
