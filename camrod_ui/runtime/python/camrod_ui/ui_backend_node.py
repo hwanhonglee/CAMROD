@@ -1537,7 +1537,10 @@ class UiBackendNode(Node):
         for topic, client in zip(self.nav2_cancel_action_topics, self.nav2_cancel_clients):
             if not client.service_is_ready():
                 continue
-            client.async_send_request(request)
+            # HH_260804 - rclpy service clients expose call_async(); using the
+            # rclcpp-style async_send_request() made /ui/stop return HTTP 500
+            # before it could cancel Nav2 or publish the stopped service state.
+            client.call_async(request)
             sent_topics.append(topic)
         self._publish_camping_site_operation(
             MotionOperation.CANCEL, source=f"{source}:operator_stop"

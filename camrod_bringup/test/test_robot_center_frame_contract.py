@@ -106,6 +106,25 @@ def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     assert gate["lanelet_safety_footprint_right_m"] == pytest.approx(0.63495)
 
 
+def test_route_safety_retry_policy_is_identical_in_package_and_bringup() -> None:
+    """The deployed gate must retain the package-owned retry containment."""
+    package_path = (
+        SRC_ROOT / "camrod_control" / "config" / "cmd_vel_safety_gate.yaml"
+    )
+    bringup_path = (
+        SRC_ROOT
+        / "camrod_bringup"
+        / "config"
+        / "control"
+        / "cmd_vel_safety_gate.yaml"
+    )
+
+    assert package_path.read_bytes() == bringup_path.read_bytes()
+    parameters = _yaml(package_path)["/**"]["ros__parameters"]
+    assert parameters["route_safety_recovery_max_auto_releases"] == 1
+    assert parameters["route_safety_recovery_recontact_window_s"] == pytest.approx(5.0)
+
+
 def test_apriltag_longitudinal_thresholds_preserve_rear_axle_stop_points() -> None:
     """Moving the measured base forward must not move the physical dock stop."""
     parking = _yaml(

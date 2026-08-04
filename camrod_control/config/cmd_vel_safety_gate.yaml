@@ -140,6 +140,10 @@
     route_safety_recovery_enable: true
     # Runtime updates outside [0.1, 30.0] s are rejected.
     route_safety_recovery_clear_required_s: 1.0
+    # HH_260804 - Permit one automatic clear/release. If the same route is
+    # contacted again within 5 s, latch safely instead of crab/release looping.
+    route_safety_recovery_max_auto_releases: 1
+    route_safety_recovery_recontact_window_s: 5.0
     # Runtime updates outside [0.1, 60.0] s are rejected.
     route_safety_recovery_log_interval_s: 1.0
     # HH_260731 - Admit the saved trigger's opposite translation and a pure
