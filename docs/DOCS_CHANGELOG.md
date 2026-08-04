@@ -9,9 +9,9 @@ the already-published v2.1.3 runtime baseline. -->
 | Doc or asset | What changed |
 |-----|--------------|
 | `camrod_bringup/README.md` | Paired the expected full mission contract/GIF with the measured B6/B12 fail-closed campsite result |
-| localization, planning, perception, and sensing READMEs | Added package-specific input/algorithm/output visuals and explicit simulation/field evidence limits |
+| sensor kit, localization, planning, perception, and sensing READMEs | Added package-specific frame/input/algorithm/output visuals and explicit source/simulation/field evidence limits |
 | `docs/MODULE_VISUAL_GUIDE.md` | Added evidence classes, module interpretation, regeneration, and Jetson capture commands |
-| `docs/assets/module-guides/*` | Added seven generated PNGs and one 10-frame contract GIF |
+| `docs/assets/module-guides/*` | Added nine generated PNGs and one 10-frame contract GIF, including the dual center/rear-axle TF layout and complete sensor-coordinate ledger |
 | `docs/evidence/module-guides/*` | Preserved the 30-second pose-chain measurement, full-bringup campsite verdict, and six source ROS node logs with checked line references |
 | `render_module_readme_assets.py` and regression test | Made all module visuals reproducible from current YAML/messages and committed evidence |
 

@@ -23,6 +23,7 @@ ROS topics, diagnostics, controller state, and safety gates.
 |---|---|---|---|
 | `camrod_bringup` | `full-stack-mission-contract.png`, `mission-lifecycle-contract.gif` | Launch/state/battery/parking contracts | Expected full scenario only; the GIF is not runtime footage |
 | `camrod_bringup` | `simulation-evidence-20260804.png` | `campsite-smoke-20260804.json` | Stack startup and pose chain pass; B6/B12 round trips fail closed during campsite entry |
+| `camrod_sensor_kit` | `tf-and-sensor-mount-layout.png`, `rear-axle-to-center-ledger.png` | Canonical `robot_params.yaml` geometry | Static TF and exact coordinate conversion are documented; GNSS lever-arm calibration remains pending |
 | `camrod_localization` | `pose-generation-and-timing.png` | EKF YAML plus 30-second pose probe JSON | Sim input/output cadence and freshness pass; field accuracy remains pending |
 | `camrod_planning` | `nav2-servers-and-mission-states.png` | Nav2 config, bringup selectors, and state contracts | Configured route/control ownership is documented; it does not override the campsite failure |
 | `camrod_perception` | `yolo-lidar-and-parking-pipelines.png` | Perception and AprilTag YAML | Source topology only; physical YOLO/fusion/AprilTag evidence is pending |
@@ -49,6 +50,21 @@ insufficient, so that experiment was reverted. The 0.10 m planning margin and
 complete-footprint gate were not weakened. The normalized report points to the
 six committed raw ROS logs in
 [`docs/evidence/module-guides/bringup/raw`](evidence/module-guides/bringup/raw/README.md).
+
+### Sensor Kit
+
+The sensor-kit layout distinguishes the two frames that intentionally coexist.
+`robot_center_link` is the axle-midpoint navigation, control, body, and sensor
+coordinate origin. The legacy `robot_base_link` is not another physical body;
+it is a fixed rear-axle compatibility child at `x=-0.443 m`.
+`sensor_kit_base_link` is coincident with the robot center and owns the fixed
+IMU, GNSS, LiDAR, camera, and seven radar transforms.
+
+The conversion ledger reconstructs each previous rear-axle X value and compares
+it with the current center-frame value. Every row has an exact `-0.443 m`
+change; Y, Z, orientation, measured body dimensions, and physical mounts are
+invariant. The GNSS coordinate is explicitly marked as a converted placeholder,
+not as a completed antenna lever-arm calibration.
 
 ### Localization
 
@@ -106,12 +122,13 @@ subset:
 
 ```bash
 python3 camrod_bringup/scripts/render_module_readme_assets.py --module sensing
+python3 camrod_bringup/scripts/render_module_readme_assets.py --module sensor-kit
 python3 camrod_bringup/scripts/render_module_readme_assets.py \
   --module planning --module localization
 ```
 
 The renderer writes only under `docs/assets/module-guides/`. Its regression test
-renders to a temporary directory and checks all seven PNG dimensions plus the
+renders to a temporary directory and checks all nine PNG dimensions plus the
 10-frame GIF:
 
 ```bash

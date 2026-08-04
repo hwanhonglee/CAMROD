@@ -15,6 +15,33 @@
 
 ---
 
+<!-- HH_260804 - Make the dual center/rear-axle frame contract and every sensor
+coordinate conversion reviewable from the canonical package YAML. -->
+## Frame And Mount Visuals
+
+![Sensor-kit TF and mount layout](../docs/assets/module-guides/sensor-kit/tf-and-sensor-mount-layout.png)
+
+`robot_center_link` is the current body, Nav2, and control origin at the midpoint
+between the two axles. `robot_base_link` remains a fixed compatibility child at
+the rear axle, `x=-0.443 m`. `sensor_kit_base_link` is coincident with
+`robot_center_link`, so every sensor pose in `robot_params.yaml` is expressed
+from the robot center. The physical body and sensor mounts did not move.
+
+![Rear-axle to center coordinate ledger](../docs/assets/module-guides/sensor-kit/rear-axle-to-center-ledger.png)
+
+The ledger applies `current_x = previous_x - 0.443 m` to every mount while
+keeping Y, Z, and orientation unchanged. The GNSS entry is still the converted
+legacy placeholder; its real antenna lever arm remains a physical measurement
+item and must not be treated as calibrated evidence.
+
+Regenerate both source-derived images after changing the canonical geometry:
+
+```bash
+python3 camrod_bringup/scripts/render_module_readme_assets.py --module sensor-kit
+```
+
+---
+
 ## 🚀 Quick Start
 
 ```bash
