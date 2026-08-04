@@ -1,5 +1,29 @@
 # Documentation Changelog
 
+<!-- HH_260804 - Replace long package narratives with scan-first visual,
+value, performance, and evidence tables without changing runtime behavior. -->
+## [post-v2.1.3-all-package-visual-readmes] - 2026-08-04 (HH_260804)
+
+### Changed
+
+| Doc or asset | What changed |
+|-----|--------------|
+| root and 14 CAMROD package READMEs | Standardized the first-screen order as uses/function/output, active values, measured result, evidence limit, run command, and source links; removed repeated release prose and Mermaid diagrams |
+| `camrod_common/avg_msgs` | Replaced the handwritten 86-row-style catalog/dependency narrative with a generated 86-message, 2-service, 12-dependent inventory and operational families |
+| control, map, platform, system, UI, and voice READMEs | Added source-derived package diagrams; control and UI diagrams also consume committed simulation/browser evidence |
+| sensing, perception, localization, planning, sensor-kit, and bringup READMEs | Retained existing visuals but converted long descriptions into compact numerical and validation tables |
+| `docs/assets/module-guides/*` | Expanded the main renderer from ten to 18 PNGs, retained its 10-frame GIF, added an explicitly raw-external physical report, and moved seven release PNGs plus five release GIFs under their owning modules |
+| `docs/evidence/module-guides/bringup/field-stationary-20260731.json` | Normalized existing radar, camera, GNSS/IMU, localization, and Jetson resource values while preserving `raw_files_committed=false` and external raw roots |
+| `docs/MODULE_VISUAL_GUIDE.md` | Indexed every package, separated configuration from performance, retained boundary/yaw recovery comparisons, and listed missing physical evidence |
+| visual renderer and test | Added package-target generation for `common`, `control`, `map`, `platform`, `system`, `ui`, and `voice`; full regeneration now checks every asset |
+
+No runtime algorithm, package/bringup configuration, map, sensor mount, robot
+geometry, safety threshold, or released `v2.1.3` tag changed. Values shown as
+performance come only from committed evidence; all remaining hardware results
+are labelled `FIELD PENDING`.
+
+---
+
 <!-- HH_260804 - Replace the crowded sensor-kit layout with a direct 4WS
 rear-axle-versus-center comparison and compact value tables. -->
 ## [post-v2.1.3-sensor-kit-reference-cleanup] - 2026-08-04 (HH_260804)
@@ -47,7 +71,7 @@ entry remains visible pending surveyed `service_access` polygons.
 |-----|--------------|
 | root and all affected package `README.md` files | Synchronized the center-frame, bounded recovery, RPP, Guest UI, map-limit, parking-TF, diagnostics, and field-acceptance contracts across bringup, control, localization, map, perception, planning, platform, sensing, sensor kit, system, UI, and voice |
 | `docs/V2_1_3_RELEASE_NOTES.md` | Added release scope, safety invariants, verification, evidence layout, and remaining physical acceptance |
-| `docs/assets/v2.1.3/*` | Organized reference-frame, boundary-geometry, pre-owner/current recovery, and Guest UI visuals by purpose rather than timestamp |
+| `docs/assets/module-guides/{sensor-kit,planning,control,ui}` | Organized reference-frame, boundary-geometry, pre-owner/current recovery, and Guest UI visuals by owning module rather than release folder |
 | `docs/evidence/v2.1.3/*` | Added the previously workspace-local A/B drive, 0/5/10 cm geometry sweeps, and manual recovery timelines beside current automatic-owner evidence |
 | `docs/V2_1_3_ROBOT_CENTER_MIGRATION.md` | Added A/B drive measurements, 0/5/10 cm geometry comparison, center-frame visuals, and source JSON links |
 | `docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md` | Separated manual pre-owner runs from automatic-owner runs and linked the normalized evidence tree |

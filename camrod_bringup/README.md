@@ -1,323 +1,113 @@
 # camrod_bringup
 
-<!-- HH_260720 - Describe the current control and parking launch topology. -->
+<!-- HH_260804 - Keep the launch package readable by pairing the intended
+contract with the latest measured verdict and compact launch tables. -->
 
-`camrod_bringup` starts the CAMROD stack in dependency order and provides the
-field/simulation configuration tree.
-
-<!-- HH_260804 - Pair the intended full-stack lifecycle with the latest measured
-simulation verdict so an architecture animation cannot be mistaken for a PASS. -->
-## Visual Scenario Evidence
+Dependency-ordered full-stack launch, canonical configuration mirrors,
+simulation profiles, and validation tools.
 
 ![Full-stack mission contract](../docs/assets/module-guides/bringup/full-stack-mission-contract.png)
 
-The following GIF animates the expected service-state order. It is generated
-from the state contract and is **not** a recording of a completed simulation:
+## At A Glance
+
+| Uses | Function | Outputs |
+|---|---|---|
+| ROS 2 launch, package-owned YAML, bringup mirrors | Starts platform through UI in dependency order | One complete ROS graph with selected hardware/simulation profile |
+| Fake sensor/platform publishers | Exercises message, state, planner, control, and UI contracts | Deterministic simulation topics and normalized platform feedback |
+| Probe and field-test scripts | Captures timing, payload, recovery, and mission evidence | JSON, rosbag, logs, PNG/GIF derived reports |
+
+## Expected And Measured
+
+The animation is a **contract**, not a runtime recording.
 
 ![Expected mission lifecycle](../docs/assets/module-guides/bringup/mission-lifecycle-contract.gif)
 
-The latest measured full-bringup verdict is kept beside that contract:
+The latest full-bringup runtime result is shown separately.
 
 ![Full-bringup simulation evidence](../docs/assets/module-guides/bringup/simulation-evidence-20260804.png)
 
-On baseline `d7d6a195c` (`v2.1.3`), 81 ROS nodes reached `[SYSTEM] OK` and the
-30-second pose chain passed. B6 and B12 did not complete the round trip: both
-entered `CRAB_IN`, stopped on `lanelet_footprint_cost`, and timed out. The
-missing input is surveyed `service_access` geometry between the road lanelet
-and maneuver Area. The failed runs are retained in
-[`campsite-smoke-20260804.json`](../docs/evidence/module-guides/bringup/campsite-smoke-20260804.json);
-the six source ROS logs are indexed under
-[`bringup/raw`](../docs/evidence/module-guides/bringup/raw/README.md). The
-safety margin and full-footprint gate remain unchanged. Evidence labels,
-regeneration, and Jetson capture steps are in the
-[module visual guide](../docs/MODULE_VISUAL_GUIDE.md).
+| Check | Result | Measured value |
+|---|---|---:|
+| Stack startup | PASS | 81 nodes; `[SYSTEM] OK` |
+| Pose chain | PASS | 30 s probe; 20 Hz selected pose |
+| B6 turnaround | FAIL CLOSED | `CRAB_IN -> lanelet_footprint_cost -> timeout` |
+| B12 roadside stop | FAIL CLOSED | `CRAB_IN -> lanelet_footprint_cost -> timeout` |
+| Complete round trip | NOT DEMONSTRATED | Return, parking, and charging were not reached |
+
+The failed cases retain the `0.10 m` planning margin and complete-footprint
+gate. Surveyed `service_access` geometry is required; the safety footprint must
+not be reduced to make the smoke test pass.
+
+## Physical Stationary Report
+
+![Physical stationary field report](../docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
+
+The 2026-07-31 report records real hardware with physical E-stop held and no
+motion. Its referenced raw files remain on the Jetson and were not committed;
+the image therefore labels this as a field report, not self-contained raw
+evidence.
+
+## Launches
+
+| Launch | Purpose | Default profile |
+|---|---|---|
+| `bringup.launch.py` | Physical Jetson/Ranger stack | Hardware drivers enabled by launch defaults |
+| `bringup_sim.launch.py` | Full deterministic simulation | Fake sensors and raw Ranger/BMS boundaries |
+| `bringup_minimal.launch.py` | Reduced diagnostics/debug graph | Explicit module selection |
+| `rviz.launch.py` | CAMROD visualization | Shared RViz config |
 
 ```bash
-python3 camrod_bringup/scripts/render_module_readme_assets.py --module bringup
+source ~/camrod_ws/install/setup.bash
+
+ros2 launch camrod_bringup bringup_sim.launch.py
+ros2 launch camrod_bringup bringup.launch.py
 ```
 
-<!-- HH_260729 - Document frozen parent-scope camera ownership. -->
-Every included module runs in its own launch-configuration scope. When
-`camera_yolo_container.launch.py` owns the front camera, sensing receives a
-local `enable_front_camera=false` plus `front_camera_source_external=true`.
-Bringup resolves that ownership once under the distinct parent key
-`camera_yolo_container_active_resolved` before any child arguments are applied.
-The child's local false therefore cannot be fed back into the ownership
-expression, cannot start a duplicate front-camera dummy, and cannot leak into
-perception to disable camera-LiDAR fusion.
+## Startup Order
 
-## Launch Order
+| Order | Package group | Required before next group |
+|---:|---|---|
+| 1 | platform, sensor kit | Robot frame and platform contracts |
+| 2 | map | Lanelet map and static planning grid |
+| 3 | sensing, perception | Sensor streams, dynamic costs, detections |
+| 4 | localization | Selected `robot_center_link` pose |
+| 5 | planning | Nav2 lifecycle and route servers |
+| 6 | control | Final gate, maneuver, recovery, and parking owner |
+| 7 | system, UI, voice | Health and operator surfaces |
 
-```text
-platform -> sensor_kit -> map -> sensing -> perception -> localization
-         -> planning -> control gate/maneuvers -> selected control parking node -> system -> UI
-```
+## Canonical Configuration
 
-Control starts after planning because it consumes Nav2 commands and mission
-state. The selected parking controller is also owned by `camrod_control` and
-starts after the maneuver controllers publish the parking operation handoff.
-
-## Common Launches
-
-Simulation:
-
-```bash
-ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=false parking_method:=reverse
-```
-
-Real hardware:
-
-```bash
-ros2 launch camrod_bringup bringup.launch.py sim:=false parking_method:=reverse
-```
-
-`parking_method` accepts only `reverse` or `apriltag`. Exactly one parking node
-is launched and checked by `camrod_system`.
-
-### Deliberately disabled hardware
-
-<!-- HH_260729 - One shared policy covers hardware acquisition flags without
-turning processing/safety switches into fake-success publishers. -->
-
-`sensing.publish_sensor_dummies_when_disabled: true` keeps canonical low-rate
-schemas available when a physical camera, GNSS, IMU, LiDAR, radar, or Ranger CAN
-input is set false. Every replacement publishes a fresh `dummy_active` marker,
-so diagnostics show its exact sensor/location as **DUMMY DATA / WARN**, never
-hardware-OK. GNSS is `NO_FIX`, LiDAR is an empty cloud, and radar is no-target
-with both a group marker and one marker per replaced channel. A single
-`sensor_enabled[i]: false` opens no radar port and publishes only that channel's
-2 Hz no-target/marker heartbeat; enabled radar channels never publish a dummy
-marker. HH_260729 - the radar cost grid also subscribes to the group and
-per-channel markers and suppresses cost painting while they are fresh, in
-addition to rejecting the numeric no-target value. Ranger feedback is forced
-non-drivable/ESTOP.
-
-Top-level `sim:=true` forces these auxiliary publishers off because the
-simulation publisher already owns the same topics. Cost-grid, planning,
-control, UI, and other processing switches never receive fake-success outputs.
-
-<!-- HH_260722 - Document the hardware-verified dual-GNSS defaults used by full bringup. -->
-## Dual-GNSS Field Default
-
-Real-hardware bringup now uses the same correction route as standalone sensing:
-
-```text
-NTRIP -> moving_base_rtcm_writer -> FTDI DN03DF8V Lite moving base
-      -> UART/XBee corrected moving-base RTCM -> /dev/ttyACM0 heading rover
-      -> NAV-PVT + NAV-RELPOSNED
-```
-
-`/dev/ttyACM0` is the POWER+GPS heading-rover output. The stable path
-`/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0`
-is the POWER+XBEE input to the Lite moving base regardless of its changing
-`/dev/ttyUSB*` assignment.
-With both present, the ordinary real-hardware command above needs no GNSS
-overrides.
-
-The selected `gnss_param_file` is now the single source for both physical
-ports. The package and bringup copies use the same node-specific keys:
-
-| Config key / launch default | Value |
+| Path | Scope |
 |---|---|
-| `ublox_dual_antenna` | `true` |
-| `ublox_dual_forward_ntrip_to_rover` | `false` |
-| `ublox_dual_warm_start_on_startup` | `false` |
-| `/**/ublox_gps_node.device` | `/dev/ttyACM0` |
-| `/**/moving_base_rtcm_writer.device` | `/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DN03DF8V-if00-port0` |
-| `/**/moving_base_rtcm_writer.baud` | `115200` |
+| `config/bringup/launch_defaults.yaml` | Feature selection and package parameter-file routing |
+| `config/{package}/` | Synchronized deployment mirrors of package-owned YAML |
+| `config/simulation/` | Fake sensor/platform inputs and simulation-only values |
+| `config/system/diagnostics/{default,sim}/` | Field and simulation checker profiles |
 
-The optional `ublox_dual_base_rtcm_device` and
-`ublox_dual_base_rtcm_baud` launch arguments default to `__config__`; use them
-only for an explicit temporary override.
+Package-owned configuration remains the design source. Bringup mirrors are
+deployment copies and are covered by synchronization tests.
 
-Verify the live ownership and solutions without printing NTRIP credentials:
+## Validation Tools
 
-```bash
-ros2 node list | grep moving_base_rtcm_writer
-ros2 topic info /sensing/gnss/ntrip_client/rtcm -v
-ros2 topic echo /sensing/gnss/ublox_gps_node/navpvt --once
-ros2 topic echo /sensing/gnss/navrelposned --once
-```
-
-The NTRIP topic must have one publisher and one subscriber (the base writer).
-Absolute RTK requires NAV-PVT `(flags & 0xC0) == 0x80`; heading additionally
-requires RELPOSNED moving-baseline, valid-position, valid-heading, and fixed
-flags (the verified receiver normally reports decimal `311`).
-Detailed wiring, A/B results, and recovery behavior are documented in
-[camrod_sensing/README.md](../camrod_sensing/README.md); use the
-[field test runbook](docs/field_test_runbook.md) for the operator checklist.
-
-## Relevant Configuration
-
-| Path | Purpose |
+| Tool | Measures |
 |---|---|
-| `config/bringup/launch_defaults.yaml` | Module enable flags and launch defaults |
-| `config/sensing/gnss/zed_f9p_rover.yaml` | Deployment mirror of rover device, RTCM isolation, rate, and publish settings |
-| `config/sensing/gnss/ntrip_client.yaml` | Deployment mirror of the active NTRIP caster and retry settings |
-| `config/sensing/radar/cost_grid.yaml` | Deployment mirror of named fixed-return bands, explicit dummy-state cost barrier, and supervised startup calibration |
-| `config/system/diagnostics/{default,sim}/aggregator/diagnostics_config.yaml` | Deployment mirrors of per-sensor component, location, TF frame, and mount-pose metadata |
-| `config/control/cmd_vel_safety_gate.yaml` | Bringup mirror of command authorization and motion-safety policy |
-| `config/planning/goal_snapper.yaml` | Bringup mirror of source-aware goal release and bounded route-recovery reissue |
-| `config/control/control.yaml` | Bringup mirror of campsite/drop-zone maneuver tuning |
-| `config/control/parking.yaml` | Bringup mirror of reverse and AprilTag parking tuning |
-| `config/perception/apriltag_parking_detector.yaml` | Bringup mirror for the implemented AprilTag parking detector; inactive when reverse parking is selected |
-| `config/perception/perception_params.yaml` | Bringup mirror for camera-LiDAR fusion, YOLO throttling, and campsite occupancy |
-| `config/sensing/lidar/cost_grid.yaml` | Bringup mirror for perception-only dynamic cost and the `raw_lidar_cost_enabled` recovery switch |
-| `config/system/diagnostics/*/localization/localization_lanelet_checker.yaml` | Lanelet output diagnostics evaluated against the live upstream localization pose rate |
-| `config/control/yaw_alignment_zones.yaml` | Optional command-gate yaw zones |
-| `config/planning/` | Nav2 and mission-state configuration |
-| `config/map/drop_zones.yaml` | Drop-zone station position and reverse-axis yaw |
-| `config/platform/ranger_driver.yaml` | Ranger CAN/SDK bridge |
-| `config/system/system_checker*.yaml` | Runtime graph manifests |
-
-<!-- HH_260721 - Define the package-to-bringup control configuration mirror contract. -->
-Package-owned defaults remain canonical under `camrod_control/config/`. The
-four files under `camrod_bringup/config/control/` are byte-identical deployment
-mirrors; bringup additionally supplies resolved map/config paths.
-
-<!-- HH_260729 - Keep route recovery and platform steering mitigation identical in deployment. -->
-The active post-v2.1.0 recovery settings are byte-mirrored between
-`camrod_control/config/cmd_vel_safety_gate.yaml` and bringup, between
-`camrod_planning/config/goal_snapper.yaml` and bringup, and between
-`camrod_platform/config/ranger_driver.yaml` and bringup. The runtime transition
-is visible on `/control/command_enabled`,
-`/control/cmd_vel_safety_gate/status`, and the Nav2 action status topic; no UI
-service-state value is used as safety authority.
-
-<!-- HH_260722 - Define the sensing-to-bringup GNSS configuration mirror contract. -->
-GNSS parameter defaults remain canonical under `camrod_sensing/config/gnss/`.
-The two files under `camrod_bringup/config/sensing/gnss/` are byte-identical
-deployment mirrors; `field_test_tool.sh config` and the bringup regression test
-reject drift between them.
-
-<!-- HH_260728 - Define the radar and straight/maneuver safety mirror contract. -->
-Radar cost defaults remain canonical under `camrod_sensing/config/radar/`,
-with a byte-identical bringup deployment mirror. The command-gate mirror keeps
-the normal-forward raw side probe at 0.60 m from the canonical robot base and
-crab/reverse checking at 1.20 m. Radar's 0.30 m obstacle radius leaves a
-base-centred side hit near `|y|=1.0 m` clear while a closer hit near
-`|y|=0.8 m` blocks forward motion. `field_test_tool.sh config` rejects drift
-before a field launch.
-
-<!-- HH_260721 - Record the active profile's semantic mirror contract. -->
-For `copy_park_moved`, the generic and explicit profile drop-zone/campsite YAML
-files are byte-identical across package and bringup trees. B12/B13 carry the
-shared `roadside_stop` service pose; all other campsite entries retain the
-normal turnaround default.
-
-## Simulation Validation
-
-The validation runner checks sensor rates, directional gate stops, Nav2
-replanning, and the complete campsite/charging round trip. The validated release
-uses `parking_method:=reverse`; AprilTag nodes are not exercised.
-
-<!-- HH_260721 - Explain ordinary simulation charging without the dedicated validator. -->
-For normal `sim:=true` runs, `fake_sensor_publisher` publishes deterministic
-`/battery_state` and `/system_state` feedback. `ranger_platform_bridge` remains
-the only `/platform/status` publisher, so reverse parking reaches
-`WAIT_FOR_CHARGING` and then `PARKED` without a CAN device.
-
-<!-- HH_260721 - Document both sides of the simulated platform-status contract. -->
-Start bringup with the gate subscribed to the runner's simulated Ranger/BMS
-status before running the charging-recall scenario:
+| `pose_latency_probe.py` | Topic rate, age, and pose-chain continuity |
+| `camera_payload_probe.py` | Physical payload decode, dimensions, and rate |
+| `sim_validation_runner.py` | Mission/state scenarios and assertions |
+| `field_test_tool.sh snapshot` | Nodes, topics, parameters, diagnostics, and platform state |
+| `field_test_tool.sh record-recovery` | Boundary hold, candidate, owner command, and pose timeline |
+| `render_module_readme_assets.py` | Reproducible source/evidence diagrams |
 
 ```bash
-ros2 launch camrod_bringup bringup.launch.py \
-  sim:=true rviz:=false parking_method:=reverse \
-  sim_platform_status_enable:=true
+python3 camrod_bringup/scripts/render_module_readme_assets.py
+pytest -q camrod_bringup/test/test_module_readme_assets.py
 ```
 
-```bash
-ros2 run camrod_bringup sim_validation_runner.py --ros-args \
-  -p quick:=true \
-  -p run_gate_matrix:=false \
-  -p skip_manual_goal:=true \
-  -p run_camping:=true \
-  -p camping_mission_key:=camping_site_12 \
-  -p camping_wait_drop_zone:=true \
-  -p camping_timeout_s:=600.0 \
-  -p simulate_platform_status:=true \
-  -p run_low_battery_finish_then_return:=true \
-  -p run_charging_recall:=true \
-  -p charging_recall_via_ui:=true \
-  -p run_charging_recall_battery_gate:=true \
-  -p charging_recall_mission_key:=camping_site_12 \
-  -p report_file:=/tmp/camrod_v207_b12_battery_policy.json
-```
+## Evidence
 
-<!-- HH_260721 - Validate either normal turnaround or constrained roadside phase contracts. -->
-The full camping check requires the service-mode-specific campsite phases, return navigation,
-drop-zone yaw alignment, `REVERSE_APPROACH`, `WAIT_FOR_CHARGING`, `PARKED`, and
-the charging recall transition through `DEPARTING_CHARGER` to a new site route.
-<!-- HH_260721 - Keep the documented recall check on the same UI path used in operation. -->
-With `charging_recall_via_ui:=true`, the validator publishes
-`UiDestinationCommand` and requires `EXIT_STRAIGHT`, `ALIGN_EXIT_YAW`, and the
-public `DEPARTING_CHARGER` service state before the new route is released.
-With `run_low_battery_finish_then_return:=true`, it drops the simulated SOC
-during the active campsite mission and requires the UI backend to finish the
-site phase, wait at `WAITING_FOR_RETURN_REQUEST` without moving, then continue
-to drop-zone charging only after the validator sends the same `RETURN`
-operation as the user return button.
-With `run_charging_recall_battery_gate:=true`, it first drops the simulated
-platform SOC to `charging_recall_low_battery_percentage` (default `0.34`) and
-requires that the UI/gate do not emit charger departure or released motion. It
-then restores the normal fake SOC and validates the ordinary charging recall.
-
-<!-- HH_260724 - Include operational service and gate states in terminal field status. -->
-For terminal-side operation, `camrod_bringup/scripts/field_test_tool.sh watch`
-prints `/service/state` and `/control/cmd_vel_safety_gate/status` in addition
-to system health, localization, planning state, manual/mission engage,
-platform drive-enable, command enable, and platform status. `snapshot` and `hz`
-include the same topics for post-run evidence.
-
-<!-- HH_260730 / TODOLIST 2,8 - Make payload integrity and GUI CPU comparisons repeatable. -->
-`field_test_tool.sh camera-yolo` now defaults to the full 300-second acceptance
-window and independently decodes every physical front-camera JPEG. It fails on
-empty/corrupt data, CameraInfo shape drift, dummy activity, or multiple image
-publishers even if the topic rate is non-zero. `field_test_tool.sh profile 300
-<label>` records Jetson/process telemetry and critical topic rates on the same
-clock for RViz+WebKit, WebKit-only, and window-off comparisons.
-
-<!-- HH_260729 / TODOLIST 11-13 - Preserve a dedicated real-robot acceptance timeline. -->
-`field_test_tool.sh record-recovery <log_dir>` records the lanelet route hold,
-Nav2 action result and retained goal, planning boundary and cost grids,
-validated recovery candidate/controller state, raw/final commands, Ranger
-actuator/wheel feedback, TF, and steering-transition `/rosout` logs until
-Ctrl+C. It also freezes active recovery parameters and
-creates `FIELD_RESULT.txt`; this post-fix bag is required before TODO 11-13 can
-be marked field-PASS.
-
-<!-- HH_260803 - Preserve the automatic recovery simulation and rendering entrypoints. -->
-`automatic_route_recovery_probe.py` drives the production gate/controller in
-`route_retry`, `static_reverse_retry`, or `one_sided_crab` mode and writes the
-complete pose, candidate, output, gate, and controller timeline as JSON.
-`render_automatic_recovery_results.py` converts those runs into the review GIF
-and PNGs. `render_boundary_recovery_results.py` preserves the earlier
-manual-candidate center-frame geometry run as a separate comparison artifact;
-it must not be read as proof that the old gate generated motion automatically.
-Exact 2026-08-03 results, commands, and limitations are recorded in
-[`docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md`](../docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md).
-
-<!-- HH_260730 - Keep measured indoor evidence separate from pending field acceptance. -->
-The latest production-entry simulation measurements, planner/costmap audit,
-pose-latency result, CPU comparison, and UI/voice state contract are recorded
-in [post-v2.1.0 indoor validation](docs/post_v2_1_0_indoor_validation.md).
-
-<!-- HH_260721 - Record the operator/UI departure sequence validated in ordinary simulation. -->
-Selecting another campsite from `DROP_ZONE_WAIT` or charging state does not
-publish `/planning/site_goal_pose_ros` immediately. The UI sends a drop-zone `EXIT` operation and
-releases the pending goal only after `EXIT_STRAIGHT`, `ALIGN_EXIT_YAW`, and
-`/control/drop_zone/exit_complete=true`.
-
-Directional gate and replan validation:
-
-```bash
-ros2 run camrod_bringup sim_validation_runner.py --ros-args \
-  -p quick:=true \
-  -p run_gate_matrix:=true \
-  -p skip_manual_goal:=true \
-  -p run_obstacle_replan:=true \
-  -p run_camping:=false \
-  -p simulate_platform_status:=true \
-  -p report_file:=/tmp/camrod_v207_obstacle_gate.json
-```
+| Type | Location |
+|---|---|
+| Normalized module evidence | `docs/evidence/module-guides/` |
+| Preserved raw bringup logs | `docs/evidence/module-guides/bringup/raw/` |
+| Released v2.1.3 evidence | `docs/evidence/v2.1.3/` |
+| Interpretation and capture rules | [`docs/MODULE_VISUAL_GUIDE.md`](../docs/MODULE_VISUAL_GUIDE.md) |

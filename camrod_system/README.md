@@ -1,139 +1,129 @@
 # camrod_system
 
-<!-- HH_260720 - Align diagnostics documentation with control and selectable parking nodes. -->
+<!-- HH_260804 - Present health aggregation, timing, thresholds, and lifecycle
+separation visually instead of as a long diagnostics narrative. -->
 
-`camrod_system` observes runtime graph health and aggregates diagnostics. It
-does not produce vehicle commands.
+Graph readiness, dedicated sensor/planning/platform/hardware diagnostics,
+metadata-preserving aggregation, and operator health summaries.
 
-## Components
+![Diagnostic severity and surfaces](../docs/assets/module-guides/system/diagnostic-severity-and-surfaces.png)
 
-| Component | Responsibility |
+## At A Glance
+
+| Uses | Function | Main outputs |
+|---|---|---|
+| Required node/topic/type/publisher manifests | Detects incomplete runtime graph | Graph diagnostics by module |
+| Dedicated checkers | Evaluates freshness, rate, covariance, status, and resources | `/system/diagnostics` |
+| Diagnostics aggregator and system summary | Groups all current faults with component metadata | `/system/diagnostics_agg`, `/system/status`, terminal `[SYSTEM]` |
+
+This package observes health. It never generates vehicle motion commands.
+
+## Three Separate State Surfaces
+
+| Surface | Values | Purpose |
+|---|---|---|
+| Service lifecycle | moving, entering, waiting, returning, parking, charging, stopped | What the robot is doing |
+| Command gate | standby, enabled, charging, route safety hold, blocked | Whether motion output is authorized |
+| System health | `OK`, `WARN`, `ERROR` | Whether modules and data are healthy |
+
+`SITE_ENTRY`, `WAITING_FOR_RETURN_REQUEST`, `WAITING_FOR_CHARGING`,
+`CHARGING`, and `OPERATOR_STOPPED` are normal service states, not warnings.
+
+## Severity Rules
+
+| Level | Meaning | Recovery behavior |
+|---|---|---|
+| `OK` | Required source is present and healthy | Remains OK while fresh |
+| `WARN` | Recoverable degradation or intentional dummy hardware | Clears when the checker reports fresh OK |
+| `ERROR` | Fault, missing required update, or expired startup requirement | Clears only after valid recovery evidence |
+
+ROS diagnostic `STALE` is normalized to `ERROR` while retaining the original
+source/detail. The UI and terminal summary reflect new checker results; they do
+not intentionally latch an old warning after cancel or recovery.
+
+## Active Timing And Thresholds
+
+| Item | Value |
+|---|---:|
+| Graph check period | `1.0 s` |
+| Graph startup grace | `30.0 s` |
+| System-summary startup grace | `10.0 s` |
+| Aggregator publish rate | `1 Hz` |
+| Aggregator default timeout | `5.0 s` |
+| CPU WARN / ERROR | `92 / 100%` |
+| Memory WARN / ERROR | `75 / 90%` |
+| Disk WARN / ERROR | `90 / 95%` |
+| CPU temperature WARN / ERROR | `75 / 90 C` |
+| GPU utilization WARN / ERROR | `85 / 95%` |
+
+These are alert thresholds, not measured Jetson utilization.
+
+## Reported Jetson Stationary Profile
+
+![Physical stationary field report](../docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
+
+| Five-minute metric | Result |
+|---|---:|
+| 8-core CPU average | `99.26%` |
+| GPU average | `36.95%` |
+| RAM | `10.66 / 15.66 GB` |
+| CPU temperature average | `60.6 C` |
+
+The observed bottleneck was CPU, not GPU, RAM, or temperature. The profile also
+included measurement processes and desktop tools; raw logs remain on the
+Jetson. It is a diagnostic report, not a production driving benchmark.
+
+## Expected Planning Handoffs
+
+| Service phase | Nav2 abort/cancel interpretation |
 |---|---|
-| `system_checker` | Required node/topic/type/publisher manifest checks |
-| `system_diagnostic` | Module-state summary and missing-update/error reporting |
-| diagnostics checkers | Sensor, localization, planning, platform and hardware health |
-| diagnostics aggregator | Stable grouped diagnostics output |
+| `MOVING_TO_SITE` or route travel | Unexpected abort remains WARN/ERROR |
+| `SITE_ENTRY`, unload/wait, return maneuver, parking | Local controller owns motion; expected Nav2 cancel is suppressed |
+| `OPERATOR_STOPPED` | Operator cancellation is explicit state, not a stale planning warning |
 
-<!-- HH_260721 - Document health severity separately from normal runtime operation. -->
-Diagnostic health uses `OK`, `WARN`, and `ERROR`. `WARN` means a recoverable
-degraded condition that can become a failure if it persists. A ROS diagnostic
-`STALE` input or a checker update timeout is normalized to `ERROR`, with the
-stale source retained in the detail message. Normal preparation, standby,
-waiting, driving, maneuvering, and parking remain `OK` and are reported through
-`ModuleState.operating_state` or `AvgServiceState` on `/service/state`.
-<!-- HH_260721 - Give normal wait and charging phases explicit service examples. -->
-Examples include `WAITING_FOR_RETURN_REQUEST`, `WAITING_FOR_CHARGING`,
-`CHARGING`, `DEPARTING_CHARGER`, `DEPARTING_DROP_ZONE`, and
-`OPERATOR_STOPPED`; these are lifecycle states, not `WARN` or `ERROR`
-conditions.
-Required modules may report `STARTING + OK` during the configured 10-second
-startup grace; no first diagnostic after that grace becomes `FAULT + ERROR`.
+A single `ABORTED` result may be WARN when genuinely unexpected. The checker
+uses current service context and recent status; a successful/cancelled terminal
+transition can restore health.
 
-<!-- HH_260728 - Preserve physical sensor identity through aggregation. -->
-## Sensor Fault Location Detail
+## Required Runtime Groups
 
-The diagnostics registry now attaches `component_id`, `sensor_location`,
-`sensor_frame`, `mount_xyz_m`, `mount_rpy_deg`, and `pose_verified` to physical
-sensor statuses. These values survive STALE conversion and remain visible on
-`/system/diagnostics_agg`, in UI diagnostic detail, and in the terminal
-`[SYSTEM]` summary. They describe sensor-health diagnostics; an obstacle stop
-from the already-merged radar cost grid remains source/region-level and is not
-mislabelled as one channel when several radar disks may overlap.
-
-<!-- HH_260803 - Keep operator metadata aligned with the canonical TF tree. -->
-All `mount_xyz_m` values are now relative to `robot_center_link`. Their X values
-are the previous rear-axle values minus 0.443 m; Y/Z/RPY are unchanged. GNSS
-remains `pose_verified=false` because `-0.443/0/0` is a converted placeholder,
-not a surveyed antenna lever arm.
-The complete coordinate table and remaining field checks are in the
-[`robot_center_link` migration ledger](../docs/V2_1_3_ROBOT_CENTER_MIGRATION.md).
-
-The terminal summary lists every simultaneous non-OK checker rather than only
-the last worst item in a module. For example, FRONT1 and LEFT2 can appear as
-separate lines with `front_right` and `left_rear`, their TF frames, ranges, and
-actual/expected rates. Output uses one global 24-detail-line cap across ERROR
-and WARN. Live measurement changes are shown in the five-second periodic report
-but cannot bypass that throttle; changed fault membership or severity still
-reports immediately. This also prevents changing CPU percentages or sensor
-rates in message text from recreating one-Hz multi-line log spam. Mount
-coordinates come from the sensor-kit robot parameters. The GNSS mount is
-deliberately reported as `unverified` with `pose_verified=false` because its
-current `0,0,0` configuration has not been surveyed.
-
-<!-- HH_260728 - Document the field storage warning policy. -->
-Hardware storage diagnostics report WARN at 90% filesystem use and ERROR at
-95%. Normal operation in the 80% range therefore remains visible in the
-diagnostic values without elevating the complete system summary.
-
-<!-- HH_260729 - Describe disabled-hardware health without fake OK status. -->
-## Disabled-Hardware Dummy Diagnostics
-
-GNSS, IMU, LiDAR, front/rear camera, radar, Ranger velocity, and wheel
-checkers subscribe to a reliable transient-local `dummy_active` marker beside
-their normal data. A fresh positive marker changes an otherwise healthy
-transport heartbeat to `DUMMY DATA / WARN (physical hardware disabled)` and
-preserves the same component, location, frame, mount pose, and topic fields
-used for a physical failure. A false, missing, or older-than-one-second marker
-restores ordinary missing/stale/error evaluation immediately.
-
-Radar has both `/sensing/radar/dummy_active` and one marker per channel, so a
-globally disabled stack and a single `sensor_enabled[i]: false` port are
-distinguished without hiding the sensor identity. Dummy data never satisfies
-hardware-OK. The localization GNSS checker and velocity converter checkers use
-the same rule for downstream placeholder messages.
-
-HH_260729 - Camera diagnostics preserve the highest-priority failing reason.
-A low-rate stream therefore remains `FPS low`/`FPS critically low` when
-resolution and encoding match; a later successful encoding check can no longer
-rename that warning to `Encoding mismatch`.
-
-<!-- HH_260724 - Site entry hands motion ownership from Nav2 to the campsite maneuver controller. -->
-During campsite entry and unload phases, Nav2 cancel/abort status is expected
-because `camrod_control` owns the local maneuver. `planning_nav_status_checker`
-subscribes to `/service/state` and suppresses repeated ABORTED health warnings
-while the service state is `SITE_ENTRY`, `UNLOAD_WAIT`,
-`WAITING_FOR_RETURN_REQUEST`, return/parking maneuver states, or
-`OPERATOR_STOPPED`. A planning abort during `MOVING_TO_SITE` is still reported
-as WARN/ERROR.
-
-## Control And Parking Manifests
-
-The control manifest requires these intuitive runtime nodes:
-
-- `/control/cmd_vel_safety_gate`
-- `/control/camping_site_maneuver_controller`
-- `/control/drop_zone_maneuver_controller`
-
-The `final_parking` alternative group accepts exactly one of:
-
-- `/parking/reverse_parking_controller`
-- `/parking/apriltag_parking`
-
-This allows parking implementation selection without mixing crab/zero-turn
-health into the parking category.
-
-## Key Topics
-
-| Topic | Purpose |
+| Group | Requirement |
 |---|---|
-| `/system/diagnostics` | Source diagnostics |
-| `/system/diagnostics_agg` | Filtered diagnostics with component/location/frame/mount metadata |
-| `/system/status` | Aggregated system state |
-| `/control/cmd_vel_safety_gate/status` | Command policy state |
-| `/control/camping_site_maneuver_controller/status` | Campsite local maneuver state |
-| `/control/drop_zone_maneuver_controller/status` | Drop-zone local maneuver state |
-| `/parking/reverse_parking_controller/status` | Reverse parking state |
-| `/parking/apriltag_parking/status` | AprilTag parking state when selected |
+| map, sensing, localization, perception, planning, control, platform | Required nodes and generated topic contracts |
+| final parking | Exactly one healthy reverse or AprilTag controller |
+| UI | Backend graph contract when enabled |
 
-Configuration is in `config/system_checker.yaml`,
-`config/system_checker_sim.yaml`, and `config/diagnostics/`.
+Disabled physical hardware publishes a fresh `dummy_active` marker. Its checker
+reports `DUMMY DATA / WARN`, never false `OK`. Global and per-channel radar
+markers preserve which source is intentionally absent.
 
-<!-- HH_260721 - Explain event-driven map diagnostics and method-selected parking discovery. -->
-`/map/cost_grid/lanelet` is event-driven by pose/path changes, so its checker
-does not enforce a minimum publish frequency. It still reports a missing first
-grid, stale data after 12 seconds, and excessive unknown cells.
-<!-- HH_260721 - Dynamic groups now accept their first real OK result. -->
-The `final_parking` category starts as a neutral dynamic group and becomes OK
-when exactly one reverse or AprilTag implementation is healthy. It no longer
-remains in WARN because of its discovery seed. A real parking failure is
-reported separately as `parking: phase=ERROR ...`.
+## Fault Metadata
+
+Physical sensor diagnostics preserve:
+
+| Field | Example use |
+|---|---|
+| `component_id` and location | Distinguish FRONT1 from LEFT2 |
+| frame and mount XYZ/RPY | Locate the source on the robot |
+| `pose_verified` | Mark the GNSS lever arm as unverified |
+| live range/rate/status | Show the actual failing measurement |
+
+Mount coordinates are relative to `robot_center_link`. The GNSS
+`-0.443/0/0` entry is a converted placeholder and remains unverified.
+
+## Run And Validate
+
+```bash
+ros2 launch camrod_system system.launch.py
+
+ros2 topic echo /system/status
+ros2 topic echo /system/diagnostics_agg
+ros2 topic echo /control/cmd_vel_safety_gate/status
+```
+
+| Config | Purpose |
+|---|---|
+| `config/system_checker.yaml` | Field graph manifest |
+| `config/system_checker_sim.yaml` | Simulation graph manifest |
+| `config/diagnostics/default/` | Field checker and aggregator values |
+| `config/diagnostics/sim/` | Simulation-specific checker profile |
