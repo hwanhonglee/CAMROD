@@ -23,9 +23,11 @@ ROS topics, diagnostics, controller state, and safety gates.
 |---|---|---|---|
 | `camrod_bringup` | `full-stack-mission-contract.png`, `mission-lifecycle-contract.gif` | Launch/state/battery/parking contracts | Expected full scenario only; the GIF is not runtime footage |
 | `camrod_bringup` | `simulation-evidence-20260804.png` | `campsite-smoke-20260804.json` | Stack startup and pose chain pass; B6/B12 round trips fail closed during campsite entry |
-| `camrod_sensor_kit` | `reference-frame-before-after.png`, `sensor-x-before-after.png` | Canonical geometry plus committed A/B simulation summary | Rear-axle and axle-midpoint values are compared directly; GNSS lever-arm calibration remains pending |
+| `camrod_sensor_kit` | `reference-frame-before-after.png`, `sensor-mount-side-view.png`, `sensor-x-before-after.png` | Canonical geometry plus committed A/B simulation summary | Rear-axle and axle-midpoint values are compared directly; GNSS lever-arm calibration remains pending |
 | `camrod_localization` | `pose-generation-and-timing.png` | EKF YAML plus 30-second pose probe JSON | Sim input/output cadence and freshness pass; field accuracy remains pending |
 | `camrod_planning` | `nav2-servers-and-mission-states.png` | Nav2 config, bringup selectors, and state contracts | Configured route/control ownership is documented; it does not override the campsite failure |
+| `camrod_control` | `first-route-boundary-stop-location.png`, `robot-center-narrow-route-risk-map.png` | Full-footprint route sweeps | Shows where the deployed planning rectangle first contacts the mapped boundary |
+| `camrod_control` | manual/current contact sheets and `automatic-owner-route-retry.gif` | Committed recovery timelines | Current owner performs bounded crab/reverse; yaw remains zero during contact escape and resumes with RPP after release |
 | `camrod_perception` | `yolo-lidar-and-parking-pipelines.png` | Perception and AprilTag YAML | Source topology only; physical YOLO/fusion/AprilTag evidence is pending |
 | `camrod_sensing` | `sensor-processing-and-cost-fusion.png` | Sensor/cost-grid YAML | Source topology only; hardware quality remains pending |
 | `camrod_sensing` | `ground-segmentation-schematic.png` | Ground-filter thresholds plus seeded synthetic points | Algorithm illustration only, explicitly not a field point cloud |
@@ -86,6 +88,32 @@ Full bringup selects `LaneletRoute + RPP`; manual RViz goals use
 `/service/state`, and health-only `/system/status`, then shows handoffs from
 Nav2 to campsite maneuver, return routing, parking, and charging feedback.
 
+### Control: Boundary Contact And Recovery
+
+| First deployed-footprint stop | Narrow-route risk map |
+|---|---|
+| ![First full-footprint boundary stop](assets/v2.1.3/boundary-geometry/first-route-boundary-stop-location.png) | ![Robot-center route risk map](assets/v2.1.3/boundary-geometry/robot-center-narrow-route-risk-map.png) |
+
+| Earlier manual gate probe | Current automatic command owner |
+|---|---|
+| ![Manual center-frame probe](assets/v2.1.3/boundary-recovery/pre-owner-robot-center-contact-sheet.png) | ![Automatic recovery milestones](assets/v2.1.3/boundary-recovery/automatic-owner-route-retry-contact-sheet.png) |
+
+![Current automatic boundary recovery](assets/v2.1.3/boundary-recovery/automatic-owner-route-retry.gif)
+
+| Contact result | Command |
+|---|---|
+| One lateral side clear | crab away from contact |
+| Both lateral sides blocked, reverse clear | reverse |
+| Ambiguous or no safe candidate | remain stopped |
+| Route clear for 1.0 s | release hold; retained RPP resumes normal yaw |
+
+Contact escape is translation-only: raw speed is at most `0.10 m/s`, travel
+`0.40 m`, time `10 s`, and angular velocity remains zero. The earlier contact
+sheet is a manually injected gate probe; only the right-hand sheet and GIF use
+the current `route_safety_recovery_controller`. All are simulation evidence.
+Raw timelines and reproduction commands are in the
+[boundary recovery validation](V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md).
+
 ### Perception
 
 Simulation exercises the LiDAR-only path: filtered nonground points enter
@@ -124,7 +152,7 @@ python3 camrod_bringup/scripts/render_module_readme_assets.py \
 ```
 
 The renderer writes only under `docs/assets/module-guides/`. Its regression test
-renders to a temporary directory and checks all nine PNG dimensions plus the
+renders to a temporary directory and checks all ten PNG dimensions plus the
 10-frame GIF:
 
 ```bash

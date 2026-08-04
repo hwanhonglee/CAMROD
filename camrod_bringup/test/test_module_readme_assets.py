@@ -60,6 +60,7 @@ def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
         "sensing/sensor-processing-and-cost-fusion.png",
         "sensing/ground-segmentation-schematic.png",
         "sensor-kit/reference-frame-before-after.png",
+        "sensor-kit/sensor-mount-side-view.png",
         "sensor-kit/sensor-x-before-after.png",
     )
     for relative_path in expected_pngs:
@@ -134,6 +135,7 @@ def test_renderer_can_target_sensor_kit_without_runtime_evidence(
     )
     assert generated == [
         "sensor-kit/reference-frame-before-after.png",
+        "sensor-kit/sensor-mount-side-view.png",
         "sensor-kit/sensor-x-before-after.png",
     ]
 
