@@ -1,5 +1,21 @@
 # Documentation Changelog
 
+<!-- HH_260804 - Replace the crowded sensor-kit layout with a direct 4WS
+rear-axle-versus-center comparison and compact value tables. -->
+## [post-v2.1.3-sensor-kit-reference-cleanup] - 2026-08-04 (HH_260804)
+
+### Changed
+
+| Doc or asset | What changed |
+|-----|--------------|
+| `camrod_sensor_kit/README.md` | Consolidated four repetitive architecture sections into one runtime contract and shortened the frame-migration summary |
+| sensor-kit module visuals | Replaced the dense TF/mount plots with a two-panel rear-axle/axle-midpoint comparison and a three-column sensor-X table |
+| sensor-kit visual renderer/test | Added the committed A/B simulation metrics and retained deterministic package-only generation coverage |
+
+No runtime frame, geometry, sensor pose, controller, or safety value changed.
+
+---
+
 <!-- HH_260804 - Add reproducible package-level visual guides without changing
 the already-published v2.1.3 runtime baseline. -->
 ## [post-v2.1.3-module-visual-guides] - 2026-08-04 (HH_260804)
@@ -11,7 +27,7 @@ the already-published v2.1.3 runtime baseline. -->
 | `camrod_bringup/README.md` | Paired the expected full mission contract/GIF with the measured B6/B12 fail-closed campsite result |
 | sensor kit, localization, planning, perception, and sensing READMEs | Added package-specific frame/input/algorithm/output visuals and explicit source/simulation/field evidence limits |
 | `docs/MODULE_VISUAL_GUIDE.md` | Added evidence classes, module interpretation, regeneration, and Jetson capture commands |
-| `docs/assets/module-guides/*` | Added nine generated PNGs and one 10-frame contract GIF, including the dual center/rear-axle TF layout and complete sensor-coordinate ledger |
+| `docs/assets/module-guides/*` | Added nine generated PNGs and one 10-frame contract GIF, including the rear-axle/center comparison and sensor-coordinate table |
 | `docs/evidence/module-guides/*` | Preserved the 30-second pose-chain measurement, full-bringup campsite verdict, and six source ROS node logs with checked line references |
 | `render_module_readme_assets.py` and regression test | Made all module visuals reproducible from current YAML/messages and committed evidence |
 
