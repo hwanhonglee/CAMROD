@@ -4,7 +4,7 @@
 and keep the route-retry containment separate from physical acceptance. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
-zero-turn Ranger platform. Current runtime baseline: **`v2.1.3`**.
+zero-turn Ranger platform. Current runtime baseline: **`v2.1.4`**.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/full-stack-mission-contract.png)
 
@@ -30,10 +30,14 @@ paths. This is not a generated diagram or a real-robot field claim.
 |---|---:|---|
 | Navigation frame | `robot_center_link` | Axle midpoint used by localization, planning, control, and platform |
 | Measured body | `1.49160 x 1.07000 m` | Physical length x width |
-| Planning boundary | `1.69160 x 1.27000 m` | Measured body plus `0.10 m` on each side |
+| Planning boundary | `1.59160 x 1.17000 m` | Body plus `0.05 m` on every side |
 | New mission SOC | `>= 35%` | New campsite departure is admitted |
 | Hard safety stop | `<= 20%` | Final command output is stopped |
 | Planner/controller | `LaneletRoute + RPP` | Full-bringup default |
+| Planner load set | `LaneletRoute + SmacLattice` | Fallback constructs only for a width-gated obstacle replan |
+| Controller load set | `RPP + RotationShim` | Mission tracking plus manual clicked-yaw handling |
+| Obstacle fallback hold | `20.0 s` | Safety stop is immediate; only planner preemption waits |
+| Active Lanelet map | `map_version=15` | User-authored synchronized OSM pair |
 | RPP preview | `1.1 m` | Current stable minimum lookahead |
 | Recovery limit | `0.10 m/s`, `0.40 m`, `10 s` | Raw speed, travel, and duration; contact yaw command is zero |
 | Rapid retry guard | `1 release`, `5 s` | A same-route recontact latches zero output until stop/replan |
@@ -46,10 +50,11 @@ runtime evidence separately.
 
 | Check | Result | Scope |
 |---|---|---|
-| Full stack startup | **PASS** | 81 ROS nodes reached `[SYSTEM] OK` in simulation |
+| Release build/tests | **PASS** | 9 selected ROS packages: 380 xUnit cases, 0 errors/failures; 27 direct UI pytest cases and the React production build passed |
+| Full stack startup/shutdown | **PASS** | 87 ROS nodes reached `[SYSTEM] OK`; controller, UIs, and all checker containers exited cleanly |
 | Localization pose chain | **PASS** | 10 Hz inputs produced 20 Hz selected pose; header-age p95 `1.83 ms` |
 | Reference-frame A/B | **PASS for compared segment** | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` |
-| Automatic boundary recovery | **SIM-PASS containment** | One release; map v14 recontacted in 0.276 s (v13: 0.267/0.372 s), then latched with final command zero |
+| Automatic boundary recovery | **SIM-PASS containment, historical** | One release; map v14 recontacted in 0.276 s (v13: 0.267/0.372 s), then latched with final command zero |
 | Guest/Robot UI contract | **PASS** | Dispatch, lifecycle, return, safety overlay, and operator stop observed |
 | Physical radar disabled | **FIELD-PASS** | `600.063 s`; 5,976 clear grids; zero active/high-cost/stop evidence |
 | Physical front camera/YOLO lifetime | **FIELD-PASS** | `300 s`; 2,750/2,750 JPEG decode; `9.167 Hz`; zero crash/restart |
@@ -129,6 +134,7 @@ from a workstation-only simulation result.
 | Document | Purpose |
 |---|---|
 | [Module Visual Guide](docs/MODULE_VISUAL_GUIDE.md) | Evidence classes, asset sources, regeneration, and interpretation |
+| [v2.1.4 release notes](docs/V2_1_4_RELEASE_NOTES.md) | Current runtime changes, exact values, validation, and field limits |
 | [v2.1.3 release notes](docs/V2_1_3_RELEASE_NOTES.md) | Released runtime scope and verification |
 | [Robot-center migration](docs/V2_1_3_ROBOT_CENTER_MIGRATION.md) | Exact before/after geometry and A/B results |
 | [Boundary recovery validation](docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md) | Crab/reverse timelines, GIFs, and limitations |

@@ -30,7 +30,7 @@ reference.
 | Item | Value |
 |---|---|
 | Runtime map | `/home/nvidia/camrod_ws/src/lanelet2_maps.osm` |
-| Active source revision | `map_version=14` (user-provided geometry revision) |
+| Active source revision | `map_version=15` (user-provided geometry revision) |
 | Loaded primitives | 55 lanelets, 14 areas, 1,031 points, 179 lines |
 | Projector | `local_cartesian` |
 | WGS84 origin | `36.8435737, 128.0925646, 0.0` |
@@ -61,10 +61,16 @@ override it, but must not rewrite the production path solely for local use.
 
 ![Robot-center narrow-route risk](../docs/assets/module-guides/planning/robot-center-narrow-route-risk-map.png)
 
-The map-v14 B6 run still contacts the mapped boundary at approximately
+![Map-v14 measured boundary recovery](../docs/assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png)
+
+The historical map-v14 B6 run contacted the mapped boundary at approximately
 `(4.3688, 45.0583)`. Existing campsite Areas do not provide surveyed
 road-to-service `service_access` geometry. This is a map-data limitation; the
-`0.10 m` safety margin and hard footprint threshold remain unchanged.
+active planning envelope uses a `0.05 m` margin on every body side, and the
+hard footprint threshold remains unchanged.
+The repeatable three-case run is bound to OSM SHA-256
+`2f69deed24ae47e6762a7653e29e5574438a1ec4b9144b8a3b0a01165f404dbe`.
+It is retained as v14 evidence and is not presented as a map-v15 rerun.
 
 ## Nodes And Products
 

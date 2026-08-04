@@ -35,6 +35,99 @@ RED_BG = "#fdeceb"
 GRAY_BG = "#e8edef"
 WHITE = "#ffffff"
 
+# HH_260805 - Give each package a distinct, paired color identity while
+# retaining shared safety red and evidence semantics across the document set.
+DEFAULT_THEME = {
+    "bg": BG,
+    "ink": INK,
+    "muted": MUTED,
+    "surface": WHITE,
+    "edge": "#9aaab2",
+    "primary": BLUE,
+    "primary_bg": BLUE_BG,
+    "secondary": GREEN,
+    "secondary_bg": GREEN_BG,
+    "accent": AMBER,
+    "accent_bg": AMBER_BG,
+}
+MODULE_THEMES = {
+    "bringup": (
+        "#1f6f54", "#e4f3eb", "#d97706", "#fff1d6", "#2b6cb0", "#e7f0fb", "#f5f8f4"
+    ),
+    "common": (
+        "#0b7285", "#e3f6f8", "#4954a1", "#eceefa", "#b55d12", "#fff0df", "#f4f8f9"
+    ),
+    "control": (
+        "#a93226", "#f9e9e7", "#00796b", "#e2f3ef", "#b7791f", "#fff2d8", "#f8f5f4"
+    ),
+    "localization": (
+        "#0b6e99", "#e1f1f7", "#3f7d44", "#e8f3e7", "#c46d17", "#fff0df", "#f4f8f9"
+    ),
+    "map": (
+        "#4f772d", "#eaf3df", "#16817a", "#e1f3f1", "#b36b00", "#fff1d9", "#f5f8f3"
+    ),
+    "perception": (
+        "#a23b72", "#f8e8f1", "#087f8c", "#e1f3f5", "#d97706", "#fff1d6", "#f8f5f7"
+    ),
+    "planning": (
+        "#275dad", "#e7eef9", "#00897b", "#e1f4f1", "#d56a00", "#fff0dc", "#f4f7fa"
+    ),
+    "platform": (
+        "#37474f", "#e8edef", "#0e7490", "#e1f1f5", "#c88a00", "#fff3d7", "#f5f7f7"
+    ),
+    "sensing": (
+        "#007c91", "#e0f2f5", "#2f855a", "#e6f3eb", "#c05621", "#fcecdf", "#f4f8f8"
+    ),
+    "sensor-kit": (
+        "#2b6e4f", "#e4f2e9", "#2468a2", "#e5eff8", "#a56a00", "#fff1d8", "#f5f8f6"
+    ),
+    "system": (
+        "#9a5b00", "#fff0d8", "#2f6f8f", "#e4f0f5", "#8c3d62", "#f6e7ee", "#f8f6f3"
+    ),
+    "ui": (
+        "#206a44", "#e4f1e8", "#2878b5", "#e5f0f8", "#c56c15", "#fff0df", "#f5f8f6"
+    ),
+    "voice": (
+        "#126e75", "#e1f1f2", "#a44569", "#f6e7ed", "#b8790c", "#fff2d9", "#f6f8f7"
+    ),
+}
+
+
+def module_theme(module: str | None) -> dict:
+    """Return one complete semantic palette for a package visual."""
+    theme = dict(DEFAULT_THEME)
+    if module in MODULE_THEMES:
+        (
+            theme["primary"],
+            theme["primary_bg"],
+            theme["secondary"],
+            theme["secondary_bg"],
+            theme["accent"],
+            theme["accent_bg"],
+            theme["bg"],
+        ) = MODULE_THEMES[module]
+    return theme
+
+
+def themed_color(axis, color: str) -> str:
+    """Resolve shared semantic colors through the current package palette."""
+    theme = getattr(axis, "_camrod_theme", DEFAULT_THEME)
+    semantic = {
+        BG: "bg",
+        INK: "ink",
+        MUTED: "muted",
+        WHITE: "surface",
+        "#9aaab2": "edge",
+        "#71828b": "edge",
+        BLUE: "primary",
+        BLUE_BG: "primary_bg",
+        GREEN: "secondary",
+        GREEN_BG: "secondary_bg",
+        AMBER: "accent",
+        AMBER_BG: "accent_bg",
+    }
+    return theme.get(semantic.get(color, ""), color)
+
 
 def load_yaml(path: Path) -> dict:
     """Load one YAML source file."""
@@ -51,15 +144,21 @@ def ros_params(path: Path, node_name: str) -> dict:
     return load_yaml(path)[node_name]["ros__parameters"]
 
 
-def setup_figure(title: str, subtitle: str, size=(16, 9)):
-    """Create a consistent documentation canvas."""
-    figure = plt.figure(figsize=size, facecolor=BG)
+def setup_figure(title: str, subtitle: str, size=(16, 9), module: str | None = None):
+    """Create a package-themed documentation canvas."""
+    theme = module_theme(module)
+    figure = plt.figure(figsize=size, facecolor=theme["bg"])
+    figure._camrod_theme = theme
     axis = figure.add_axes((0, 0, 1, 1))
+    axis._camrod_theme = theme
     axis.set_xlim(0, 1)
     axis.set_ylim(0, 1)
     axis.axis("off")
-    figure.text(0.045, 0.95, title, color=INK, fontsize=22, fontweight="bold", va="top")
-    figure.text(0.045, 0.905, subtitle, color=MUTED, fontsize=10.5, va="top")
+    # Two-color header rails make package families recognizable at a glance.
+    axis.add_patch(Rectangle((0.0, 0.986), 0.76, 0.014, color=theme["primary"], zorder=10))
+    axis.add_patch(Rectangle((0.76, 0.986), 0.24, 0.014, color=theme["secondary"], zorder=10))
+    figure.text(0.045, 0.95, title, color=theme["ink"], fontsize=22, fontweight="bold", va="top")
+    figure.text(0.045, 0.905, subtitle, color=theme["muted"], fontsize=10.5, va="top")
     return figure, axis
 
 
@@ -79,6 +178,10 @@ def draw_box(
     body_size=8.4,
 ):
     """Draw one fixed-size architecture or state box."""
+    face = themed_color(axis, face)
+    edge = themed_color(axis, edge)
+    title_color = themed_color(axis, title_color)
+    body_color = themed_color(axis, MUTED)
     patch = FancyBboxPatch(
         (x, y),
         width,
@@ -105,7 +208,7 @@ def draw_box(
             x + 0.012,
             y + height - 0.052,
             "\n".join(lines),
-            color=MUTED,
+            color=body_color,
             fontsize=body_size,
             linespacing=1.28,
             va="top",
@@ -116,6 +219,7 @@ def draw_box(
 
 def draw_arrow(axis, start, end, color="#71828b", width=1.5, style="-|>"):
     """Draw a stable connector between boxes."""
+    color = themed_color(axis, color)
     arrow = FancyArrowPatch(
         start,
         end,
@@ -133,12 +237,14 @@ def draw_arrow(axis, start, end, color="#71828b", width=1.5, style="-|>"):
 
 def section_label(axis, x, y, text, color=BLUE):
     """Add a compact section label."""
+    color = themed_color(axis, color)
     axis.text(x, y, text.upper(), color=color, fontsize=8.5, fontweight="bold", va="bottom")
 
 
 def footer(figure, text: str):
     """Add source/evidence classification to the canvas."""
-    figure.text(0.045, 0.028, text, color=MUTED, fontsize=8.3, va="bottom")
+    theme = getattr(figure, "_camrod_theme", DEFAULT_THEME)
+    figure.text(0.045, 0.028, text, color=theme["muted"], fontsize=8.3, va="bottom")
 
 
 def save_figure(figure, path: Path):
@@ -167,6 +273,7 @@ def render_bringup_contract(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "CAMROD full bringup and mission contract",
         "Launch ownership, service lifecycle, battery admission, parking, and charge feedback",
+        module="bringup",
     )
 
     section_label(axis, 0.045, 0.85, "Dependency-ordered startup")
@@ -327,6 +434,7 @@ def render_lifecycle_gif(states: list[str], descriptions: dict, output: Path):
             "Expected service-state progression",
             "CONTRACT ANIMATION - not runtime recording",
             size=(12, 4.8),
+            module="bringup",
         )
         for index, state in enumerate(states):
             row = index // 5
@@ -371,7 +479,9 @@ def render_bringup_evidence(repo_root: Path, report_path: Path, output_root: Pat
     report = load_json(report_path)
     figure, axis = setup_figure(
         "Full bringup simulation evidence - 2026-08-04",
-        f"Baseline {report['baseline_commit']} | reverse parking | safety policy unchanged",
+        f"Historical baseline {report['baseline_commit']} | reverse parking | "
+        "current policy documented separately",
+        module="bringup",
     )
 
     section_label(axis, 0.045, 0.84, "Validated prerequisites")
@@ -484,7 +594,7 @@ def render_bringup_evidence(repo_root: Path, report_path: Path, output_root: Pat
         (
             "Survey explicit service_access polygons",
             "Join each road lanelet to its maneuver Area",
-            "Rerun B6 + B12 with 0.10 m margin and full-footprint gate",
+            "Rerun B6 + B12 with current 0.05 m all-side margin",
         ),
         face=GRAY_BG,
         edge="#72848d",
@@ -513,6 +623,7 @@ def render_field_stationary_report(report_path: Path, output_root: Path):
     figure, axis = setup_figure(
         "Physical stationary field report - 2026-07-31",
         "Robot hardware connected; physical E-stop held; no motion commanded; raw files remain on the Jetson and are not committed",
+        module="bringup",
     )
     section_label(axis, 0.045, 0.84, "Completed stationary checks")
     draw_box(
@@ -645,6 +756,7 @@ def render_localization(repo_root: Path, report_path: Path, output_root: Path):
     figure, axis = setup_figure(
         "Localization pose generation and measured timing",
         "GNSS absolute position + dual-GNSS heading + IMU + wheel velocity -> EKF prediction -> selected robot pose",
+        module="localization",
     )
     section_label(axis, 0.045, 0.84, "Pose generation chain")
     inputs = [
@@ -742,6 +854,26 @@ def render_planning(repo_root: Path, output_root: Path):
     nav2 = load_yaml(repo_root / "camrod_planning" / "config" / "nav2_base.yaml")
     planner = nav2["planner_server"]["ros__parameters"]
     controller = nav2["controller_server"]["ros__parameters"]
+    production_planners = load_yaml(
+        repo_root
+        / "camrod_planning"
+        / "config"
+        / "nav2_planner_profiles"
+        / "production.yaml"
+    )["planner_server"]["ros__parameters"]["planner_plugins"]
+    # HH_260805 - Render the instantiated production load set, not every
+    # controller definition retained in the base development configuration.
+    production_controllers = load_yaml(
+        repo_root
+        / "camrod_planning"
+        / "config"
+        / "nav2_controller_profiles"
+        / "production.yaml"
+    )["controller_server"]["ros__parameters"]["controller_plugins"]
+    obstacle = ros_params(
+        repo_root / "camrod_planning" / "config" / "obstacle_replan_monitor.yaml",
+        "/planning/obstacle_replan_monitor",
+    )
     defaults = load_yaml(
         repo_root / "camrod_bringup" / "config" / "bringup" / "launch_defaults.yaml"
     )
@@ -750,14 +882,33 @@ def render_planning(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "Planning runtime: Nav2 servers, selectors, and mission states",
         "Default full bringup selects LaneletRoute + RPP; grid and sampling plugins remain fallback/selectable",
+        module="planning",
     )
     section_label(axis, 0.045, 0.84, "Route-to-command execution")
     chain = [
         (0.045, "UI / RViz goal", ("mission key + site goal", "manual goals remain visible"), BLUE),
         (0.225, "Goal snapper", ("lanelet component", "source-aware release"), BLUE),
-        (0.405, "Planner server", tuple(planner["planner_plugins"]), GREEN),
+        (
+            0.405,
+            "Planner server",
+            tuple(f"loaded: {name}" for name in production_planners)
+            + (
+                "opt-in profile: "
+                f"{len(planner['planner_plugins']) - len(production_planners)} more",
+            ),
+            GREEN,
+        ),
         (0.625, "BT + smoother", ("PlannerSelector", "ControllerSelector", "recovery behaviors"), BLUE),
-        (0.805, "Controller server", tuple(controller["controller_plugins"]), GREEN),
+        (
+            0.805,
+            "Controller server",
+            tuple(f"loaded: {name}" for name in production_controllers)
+            + (
+                "opt-in profile: "
+                f"{len(controller['controller_plugins']) - len(production_controllers)} more",
+            ),
+            GREEN,
+        ),
     ]
     widths = [0.15, 0.15, 0.19, 0.15, 0.15]
     for index, ((x, title, lines, color), width) in enumerate(zip(chain, widths)):
@@ -790,7 +941,7 @@ def render_planning(repo_root: Path, output_root: Path):
         (
             f"full bringup: {planning_defaults['nav2_selected_planner']} + {planning_defaults['nav2_selected_controller']}",
             "manual RViz goal: LaneletRoute + RotationShim(RPP)",
-            "obstacle fallback: SmacLattice; restore LaneletRoute",
+            f"obstacle >= {obstacle['block_hold_s']:.0f} s: SmacLattice; restore LaneletRoute",
         ),
         face=GRAY_BG,
         edge="#72848d",
@@ -859,7 +1010,11 @@ def render_planning(repo_root: Path, output_root: Path):
         edge="#9aaab2",
         body_size=8.0,
     )
-    footer(figure, "SOURCE-DERIVED: camrod_planning/config/nav2_base.yaml, bringup launch defaults, planning/UI state contracts.")
+    footer(
+        figure,
+        "SOURCE-DERIVED: Nav2 base + production planner/controller profiles, "
+        "bringup defaults, and planning/UI state contracts.",
+    )
     save_figure(figure, output_root / "planning" / "nav2-servers-and-mission-states.png")
 
 
@@ -878,6 +1033,7 @@ def render_perception(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "Perception pipelines and observable outputs",
         "Simulation uses LiDAR-only mode; camera, TensorRT YOLO, fusion, and AprilTag evidence must be captured on Jetson",
+        module="perception",
     )
     section_label(axis, 0.045, 0.84, "Camera + LiDAR field mode")
     field_boxes = [
@@ -1006,13 +1162,14 @@ def draw_reference_vehicle(axis, robot: dict, rear_axle_origin: bool) -> None:
     midpoint = offset if rear_axle_origin else 0.0
     front_axle = wheelbase if rear_axle_origin else offset
     reference_x = rear_axle if rear_axle_origin else midpoint
-    margin = extents["planning_margin"]
+    longitudinal_margin = extents["planning_margin"]
+    lateral_margin = extents.get("planning_lateral_margin", longitudinal_margin)
 
     axis.add_patch(
         Rectangle(
-            (body_rear - margin, -extents["right"] - margin),
-            body_front - body_rear + 2 * margin,
-            extents["left"] + extents["right"] + 2 * margin,
+            (body_rear - longitudinal_margin, -extents["right"] - lateral_margin),
+            body_front - body_rear + 2 * longitudinal_margin,
+            extents["left"] + extents["right"] + 2 * lateral_margin,
             fill=False,
             edgecolor=RED,
             linewidth=1.3,
@@ -1110,14 +1267,17 @@ def draw_reference_vehicle(axis, robot: dict, rear_axle_origin: bool) -> None:
     )
     axis.annotate(
         "+X forward",
-        xy=(body_front + margin + 0.12, 0.0),
-        xytext=(body_front + margin - 0.15, 0.0),
+        xy=(body_front + longitudinal_margin + 0.12, 0.0),
+        xytext=(body_front + longitudinal_margin - 0.15, 0.0),
         arrowprops={"arrowstyle": "-|>", "color": INK},
         fontsize=7.0,
         color=INK,
         va="center",
     )
-    axis.set_xlim(body_rear - margin - 0.20, body_front + margin + 0.22)
+    axis.set_xlim(
+        body_rear - longitudinal_margin - 0.20,
+        body_front + longitudinal_margin + 0.22,
+    )
     axis.set_ylim(-0.82, 0.82)
     axis.set_aspect("equal", adjustable="box")
     axis.set_xticks([])
@@ -1150,6 +1310,7 @@ def render_sensor_kit(repo_root: Path, output_root: Path):
         "Reference frame: rear axle to axle midpoint",
         "Same 4WS robot | Dual-Ackermann, crab, and zero-turn use one central reference",
         size=(16, 9),
+        module="sensor-kit",
     )
     canvas.text(
         0.5,
@@ -1249,7 +1410,10 @@ def render_sensor_kit(repo_root: Path, output_root: Path):
     )
     footer(
         figure,
-        "MEASURED SIM + SOURCE CONFIG. Same chassis, mounts, wheelbase, and 0.10 m safety margin; both A/B runs later held at the narrow mapped boundary.",
+        "SOURCE CONFIG: current "
+        f"{extents['planning_margin']:.2f} m longitudinal / "
+        f"{extents['planning_lateral_margin']:.2f} m lateral margin. "
+        "SIM A/B: historical v2.1.3 0.10 m all-side margin; both held at the narrow boundary.",
     )
     save_figure(
         figure,
@@ -1277,6 +1441,7 @@ def render_sensor_x_before_after(
         "Sensor X coordinates: before and current",
         "Physical mounts unchanged | metres | Y, Z, roll, pitch, and yaw unchanged",
         size=(14, 8),
+        module="sensor-kit",
     )
     axis.text(
         0.5,
@@ -1342,6 +1507,7 @@ def render_sensor_mount_side_view(
         "Physical sensor mount side view",
         "One physical layout | bottom: current center X | top: previous rear-axle X",
         size=(14, 8),
+        module="sensor-kit",
     )
     plot = figure.add_axes((0.08, 0.15, 0.84, 0.64), facecolor=WHITE)
     plot.add_patch(
@@ -1554,6 +1720,7 @@ def render_sensing(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "Sensing pipelines: raw devices to planning cost",
         "Each row shows physical input, processing ownership, canonical output, and downstream consumer",
+        module="sensing",
     )
     rows = [
         (
@@ -1646,6 +1813,7 @@ def render_sensing(repo_root: Path, output_root: Path):
 
 def render_ground_segmentation_schematic(params: dict, output: Path):
     """Render a clearly labeled algorithm schematic from active thresholds."""
+    theme = module_theme("sensing")
     rng = np.random.default_rng(260804)
     x_ground = np.linspace(0.0, 5.0, 260)
     z_ground = 0.025 * x_ground + rng.normal(0.0, 0.018, x_ground.size)
@@ -1654,10 +1822,40 @@ def render_ground_segmentation_schematic(params: dict, output: Path):
     x_low = rng.uniform(3.4, 4.1, 35)
     z_low = 0.025 * x_low + rng.uniform(0.06, 0.13, 35)
 
-    figure = plt.figure(figsize=(14, 7), facecolor=BG)
-    figure.text(0.055, 0.94, "LiDAR ground segmentation", fontsize=21, fontweight="bold", color=INK, va="top")
+    figure = plt.figure(figsize=(14, 7), facecolor=theme["bg"])
+    figure._camrod_theme = theme
+    figure.add_artist(
+        Rectangle(
+            (0.0, 0.986),
+            0.76,
+            0.014,
+            color=theme["primary"],
+            transform=figure.transFigure,
+        )
+    )
+    figure.add_artist(
+        Rectangle(
+            (0.76, 0.986),
+            0.24,
+            0.014,
+            color=theme["secondary"],
+            transform=figure.transFigure,
+        )
+    )
+    figure.text(
+        0.055,
+        0.94,
+        "LiDAR ground segmentation",
+        fontsize=21,
+        fontweight="bold",
+        color=theme["ink"],
+        va="top",
+    )
     figure.text(0.055, 0.885, "ALGORITHM SCHEMATIC - deterministic synthetic points, not a field point-cloud capture", fontsize=10, color=RED, va="top")
-    axes = [figure.add_axes((0.07, 0.18, 0.4, 0.6)), figure.add_axes((0.54, 0.18, 0.4, 0.6))]
+    axes = [
+        figure.add_axes((0.07, 0.18, 0.4, 0.6), facecolor=theme["surface"]),
+        figure.add_axes((0.54, 0.18, 0.4, 0.6), facecolor=theme["surface"]),
+    ]
     for axis in axes:
         axis.set_xlim(0, 5)
         axis.set_ylim(-0.1, 1.3)
@@ -1666,12 +1864,26 @@ def render_ground_segmentation_schematic(params: dict, output: Path):
         axis.grid(alpha=0.2)
     axes[0].scatter(x_ground, z_ground, s=9, color="#7f8c93", alpha=0.65, label="ground candidates")
     axes[0].scatter(x_obstacle, z_obstacle, s=13, color=RED, alpha=0.8, label="obstacle points")
-    axes[0].scatter(x_low, z_low, s=12, color=AMBER, alpha=0.75, label="near-ground returns")
+    axes[0].scatter(
+        x_low,
+        z_low,
+        s=12,
+        color=theme["accent"],
+        alpha=0.75,
+        label="near-ground returns",
+    )
     axes[0].set_title("Input after ROI + voxel downsample", loc="left", fontsize=11, fontweight="bold")
     axes[0].legend(loc="upper left", fontsize=8)
     retained = z_low - 0.025 * x_low > params["groundInlierThreshold"]
-    axes[1].scatter(x_obstacle, z_obstacle, s=13, color=GREEN, alpha=0.85, label="retained nonground")
-    axes[1].scatter(x_low[retained], z_low[retained], s=12, color=GREEN, alpha=0.75)
+    axes[1].scatter(
+        x_obstacle,
+        z_obstacle,
+        s=13,
+        color=theme["secondary"],
+        alpha=0.85,
+        label="retained nonground",
+    )
+    axes[1].scatter(x_low[retained], z_low[retained], s=12, color=theme["secondary"], alpha=0.75)
     axes[1].scatter(x_ground[::5], z_ground[::5], s=8, color="#b9c3c8", alpha=0.35, label="removed ground (reference)")
     axes[1].set_title("Filtered nonground output", loc="left", fontsize=11, fontweight="bold")
     axes[1].legend(loc="upper left", fontsize=8)
@@ -1684,7 +1896,7 @@ def render_ground_segmentation_schematic(params: dict, output: Path):
         f"slope <= {params['slopeThresholdDegrees']:.0f} deg | "
         f"inlier {params['groundInlierThreshold']:.2f} m",
         ha="center",
-        color=MUTED,
+        color=theme["muted"],
         fontsize=9,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -1708,6 +1920,7 @@ def render_common(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "Shared interface contract",
         "avg_msgs is the generated ROS 2 boundary shared by CAMROD runtime packages",
+        module="common",
     )
     section_label(axis, 0.045, 0.84, "Interface inventory")
     draw_box(
@@ -1832,6 +2045,7 @@ def render_control(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "Control command safety and boundary recovery",
         "Every navigation or maneuver command passes one final authorization and complete-footprint gate",
+        module="control",
     )
     section_label(axis, 0.045, 0.84, "Command path")
     chain = [
@@ -1960,6 +2174,7 @@ def render_map(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "Lanelet map and cost-grid products",
         "One map/origin source feeds visualization, route masks, planning cost, and semantic service areas",
+        module="map",
     )
     section_label(axis, 0.045, 0.84, "Map processing")
     chain = [
@@ -2080,6 +2295,7 @@ def render_platform(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "Ranger command and normalized platform status",
         "The platform package owns the hardware boundary; planning and UI consume stable CAMROD contracts",
+        module="platform",
     )
     section_label(axis, 0.045, 0.84, "Command and feedback")
     draw_box(axis, 0.045, 0.65, 0.2, 0.15, "Final Twist", ("/control/cmd_vel_ros", "robot_center_link"), face=BLUE_BG, edge=BLUE, title_color=BLUE)
@@ -2169,6 +2385,7 @@ def render_system(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "Diagnostic aggregation and operator severity",
         "Health, mission lifecycle, and command authorization remain three separate state surfaces",
+        module="system",
     )
     section_label(axis, 0.045, 0.84, "Health pipeline")
     chain = [
@@ -2231,6 +2448,7 @@ def render_ui(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "Robot UI and Guest UI mission/state contract",
         "Both surfaces share one backend mission contract while exposing role-appropriate controls",
+        module="ui",
     )
     section_label(axis, 0.045, 0.84, "Shared command path")
     draw_box(axis, 0.045, 0.65, 0.20, 0.15, "Robot UI :8010", ("manual engage / stop", "destination + diagnostics"), face=BLUE_BG, edge=BLUE, title_color=BLUE)
@@ -2292,6 +2510,7 @@ def render_voice(repo_root: Path, output_root: Path):
     figure, axis = setup_figure(
         "Voice event mapping and priority queue",
         "Runtime state changes become typed AudioRequest keys and pre-recorded WAV playback",
+        module="voice",
     )
     section_label(axis, 0.045, 0.84, "Event-to-audio path")
     chain = [

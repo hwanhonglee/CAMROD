@@ -88,9 +88,16 @@ robot, measure antenna X/Y/Z from `robot_center_link`, update both
 
 ## Body And Safety Boundary
 
-The physical body remains 1.49160 x 1.07000 m. The planning margin remains
-0.10 m on every side, so the planning boundary remains
-1.69160 x 1.27000 m.
+> **Operational follow-up, 2026-08-05:** the current post-v2.1.3 runtime keeps
+> the measured `1.49160 x 1.07000 m` body unchanged and uses a `0.05 m`
+> planning margin on every side. Current extents are front `0.80837`, rear
+> `0.78323`, left `0.58505`, and right `0.58495 m`, producing a
+> `1.59160 x 1.17000 m` polygon. The v2.1.3 values and evidence below remain
+> historical and were not regenerated under the newer footprint.
+
+At the v2.1.3 release checkpoint, the physical body was
+1.49160 x 1.07000 m and the planning margin was 0.10 m on every side, so the
+planning boundary was 1.69160 x 1.27000 m.
 
 | Boundary | Rear-axle values, old | Axle-midpoint values, new | Invariant |
 |---|---:|---:|---:|
@@ -119,9 +126,9 @@ narrow route valid, without changing the deployed runtime configuration.
 | body plus 0.05 m per side, 1.5916 x 1.1700 m | 20 | 11 |
 | deployed planning boundary, 1.6916 x 1.2700 m | 26 | 20 |
 
-The 0.05 m margin improves geometric feasibility but still leaves 11 sampled
-poses unresolved. It is therefore diagnostic evidence, not a basis for
-weakening the deployed 0.10 m safety margin. Source files:
+In that v2.1.3 sweep, the 0.05 m margin improved geometric feasibility but
+still left 11 sampled poses unresolved. It was diagnostic evidence rather than
+a field acceptance result. Source files:
 [physical body](evidence/v2.1.3/boundary-geometry/physical-body-envelope-sweep.json),
 [0.05 m margin](evidence/v2.1.3/boundary-geometry/five-centimeter-margin-sweep.json),
 and [planning footprint](evidence/v2.1.3/boundary-geometry/planning-footprint-envelope-sweep.json).
@@ -189,7 +196,7 @@ cross-package frame contract.
 ## Simulation Visual Evidence
 
 The following tracked artifacts use the same 1.69160 x 1.27000 m planning
-boundary and `robot_center_link` geometry as the runtime configuration.
+boundary and `robot_center_link` geometry as the v2.1.3 runtime configuration.
 
 ![Center-frame boundary contact sheet](assets/module-guides/control/pre-owner-robot-center-contact-sheet.png)
 

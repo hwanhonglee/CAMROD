@@ -219,15 +219,15 @@ Use one settled bringup per configuration and keep the same goal/path/cmd_vel
 state. Do not compare a planning-idle run with an active-planning run.
 
 ```bash
-# A: RViz + lightweight WebKit window
+# A: RViz + managed Chromium kiosk
 ros2 run camrod_bringup field_test_tool.sh launch \
   rviz:=true enable_operator_ui_window:=true
-ros2 run camrod_bringup field_test_tool.sh profile 300 rviz_webkit
+ros2 run camrod_bringup field_test_tool.sh profile 300 rviz_chromium
 
-# B: WebKit window only
+# B: Chromium kiosk only
 ros2 run camrod_bringup field_test_tool.sh launch \
   rviz:=false enable_operator_ui_window:=true
-ros2 run camrod_bringup field_test_tool.sh profile 300 webkit_only
+ros2 run camrod_bringup field_test_tool.sh profile 300 chromium_only
 
 # C: no local visualization window; HTTP UI backend remains available
 ros2 run camrod_bringup field_test_tool.sh launch \

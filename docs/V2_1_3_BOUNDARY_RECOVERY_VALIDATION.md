@@ -94,6 +94,27 @@ Their source timelines are stored beside the automatic results under
 | moving route contact | `REVERSE` selected | residual deceleration cleared the first hold before reverse output | 0.4726 m and -2.0008 deg yaw, then next hold |
 | full bringup B6 rapid recontact | first release allowed once | map v14: 0.276 s; v13: 0.372/0.267 s | retry latched; recovery candidate blocked; final Twist zero |
 
+### Map-v14 repeatable probe rerun
+
+<!-- HH_260804 - These values come from a fresh three-scenario full-stack run,
+not from the earlier B6 browser capture or hard-coded renderer labels. -->
+
+| Scenario | First recovery | After release | Final state |
+|---|---:|---:|---|
+| lanelets `754/2751/2720`, moving | reverse `0.0703 m` | `0.0661 m`, yaw `-0.1235 deg`, recontact `0.366 s` | retry latched; Twist zero |
+| lanelets `754/2751/2720`, static contact | reverse `0.0721 m` | recontact `0.362 s` | retry latched; Twist zero |
+| lanelet `4677`, one side clear | crab-left `0.3321 m` at max `0.05 m/s` | no retry requested | hold released; final Twist zero |
+
+![Map-v14 automatic recovery rerun](assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png)
+
+![Map-v14 recovery policy](assets/module-guides/control/map-v14-boundary-recovery-policy.png)
+
+[Open the map-v14 reverse/retry/crab GIF](assets/module-guides/control/map-v14-boundary-recovery.gif).
+
+Each JSON embeds `map_version=14` and OSM SHA-256
+`2f69deed24ae47e6762a7653e29e5574438a1ec4b9144b8a3b0a01165f404dbe`.
+This rerun confirms bounded escape and retry containment, not route completion.
+
 ![Automatic recovery policy](assets/module-guides/control/automatic-owner-policy.png)
 
 ![Automatic recovery contact sheet](assets/module-guides/control/automatic-owner-route-retry-contact-sheet.png)
@@ -150,7 +171,8 @@ ros2 run camrod_bringup render_automatic_recovery_results.py \
   --route /tmp/automatic_route.json \
   --reverse /tmp/automatic_reverse.json \
   --crab /tmp/automatic_crab.json \
-  --output-dir docs/assets/module-guides/control
+  --output-dir docs/assets/module-guides/control \
+  --artifact-prefix map-v14-boundary-recovery
 
 # Rebuild only the earlier manual-candidate center-frame comparison.
 ros2 run camrod_bringup render_boundary_recovery_results.py \
@@ -168,6 +190,7 @@ Current automatic-owner source evidence:
 - [Moving route retry JSON](evidence/v2.1.3/boundary-recovery/automatic-owner-route-retry.json)
 - [Full-stack retry-latch metadata](evidence/module-guides/bringup/runtime-visual-capture-20260804.json)
 - [Full-stack concise raw excerpt](evidence/module-guides/bringup/raw/runtime-visual-capture-20260804.log)
+- [Map-v14 three-scenario rerun](evidence/v2.1.3/map-v14-boundary-recovery/)
 
 ## Remaining Field Work
 

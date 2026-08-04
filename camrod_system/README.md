@@ -27,6 +27,28 @@ are separate surfaces.
 
 This package observes health. It never generates vehicle motion commands.
 
+## Runtime Composition
+
+| Container | Checker nodes | Count |
+|---|---|---:|
+| `hardware_sensing_checker_container` | host/GPU/network, GNSS, IMU, LiDAR, radar, cameras, wheel odometry, sensing grids, velocity conversion | 11 |
+| `localization_checker_container` | GNSS, mode, pose, initialization, source, lanelet localization | 6 |
+| `autonomy_checker_container` | map, perception, planning lifecycle/costmap/Nav status/path/state | 7 |
+
+Production uses one serialized executor per category, replacing 24 low-rate
+checker processes with three process boundaries. Serialization prevents an
+executor/DDS unload race during simultaneous shutdown. Every checker is still
+built as a standalone executable for field isolation with
+`use_checker_components:=false`.
+
+The main diagnostics aggregator, graph checker, terminal/system-state node, and
+tools aggregator remain separate. A fault in one of those policy/aggregation
+layers therefore does not take all checker categories down with it. The
+optional Ranger checker also remains standalone. No further `camrod_system`
+grouping is planned without Jetson profiling that identifies a measurable
+benefit; combining unrelated high-rate runtime packages would increase the
+failure blast radius.
+
 ## Three Separate State Surfaces
 
 | Surface | Values | Purpose |
@@ -124,11 +146,19 @@ Mount coordinates are relative to `robot_center_link`. The GNSS
 
 ```bash
 ros2 launch camrod_system system.launch.py
+ros2 launch camrod_system system.launch.py use_checker_components:=false
 
 ros2 topic echo /system/status
 ros2 topic echo /system/diagnostics_agg
 ros2 topic echo /control/cmd_vel_safety_gate/status
 ```
+
+Five isolated composition cycles each loaded all `11 + 6 + 7 = 24` checker
+components under `/system` and produced 15 clean container exits in total. A
+subsequent 87-node full-stack run reached `[SYSTEM] OK` and all three containers
+again stopped cleanly. The containers plus their main aggregator sampled about
+`82 MiB` RSS on this amd64 workstation; this is a topology/shutdown check, not
+a Jetson performance benchmark.
 
 | Config | Purpose |
 |---|---|

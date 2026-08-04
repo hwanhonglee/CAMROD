@@ -21,6 +21,17 @@ come from ROS topics, controller state, diagnostics, and safety gates.
 Configured grid size, target rate, threshold, or timeout is **not** measured
 performance. Every package README keeps those columns separate.
 
+<!-- HH_260805 - Keep semantic safety colors stable while making package
+families visually distinguishable and retaining reproducible provenance. -->
+Architecture figures use a distinct paired palette for each package family;
+safety red remains common so a stop/failure keeps the same meaning. These
+colors are presentation only and do not encode ROS severity or runtime state.
+
+`docs/assets/module-guides/` contains derived PNG/GIF output. Referenced files
+under `docs/evidence/` contain the JSON or concise log provenance needed to
+reproduce and audit measured labels, so they are not duplicates of the images.
+Unreferenced raw logs are intentionally excluded from source control.
+
 ## Asset Index
 
 | Package | Generated visual | Evidence/value source | Current verdict |
@@ -29,7 +40,7 @@ performance. Every package README keeps those columns separate.
 | `camrod_bringup` | `simulation-evidence-20260804.png` | Full-bringup JSON + raw logs | 81-node startup and pose chain pass; B6/B12 round trip fails closed |
 | `camrod_bringup` | `field-stationary-report-20260731.png` | Normalized JSON + physical test report | Radar-off/front-camera lifetime pass; rear rate/RTK/CPU limits visible; raw files external |
 | `camrod_common/avg_msgs` | `interface-contract-and-dependencies.png` | Message/service files and manifests | 86 messages, 2 services, 12 direct package dependents |
-| `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + pre-owner/current automatic-owner JSON | Bounded crab/reverse and RPP retry observed; mission incomplete |
+| `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + pre-owner/current/map-v14 automatic-owner JSON | Bounded crab/reverse and retry latch observed; mission incomplete |
 | `camrod_localization` | `pose-generation-and-timing.png` | EKF YAML + 30-second probe | 10 Hz inputs -> 20 Hz selected pose; field accuracy pending |
 | `camrod_map` | `lanelet-map-and-cost-grids.png` | Map/grid YAML | Route/planning grid values match source; service access missing |
 | `camrod_perception` | `yolo-lidar-and-parking-pipelines.png` | Perception/AprilTag YAML | LiDAR sim path available; physical YOLO/fusion/tag pending |
@@ -40,13 +51,13 @@ performance. Every package README keeps those columns separate.
 | `camrod_sensor_kit` | `reference-frame-before-after.png`, `rear-axle-vs-robot-center-drive.gif` | Geometry YAML + A/B JSON | Compared center-frame route metrics pass; narrow boundary remains |
 | `camrod_sensor_kit` | `sensor-mount-side-view.png`, `sensor-x-before-after.png` | Geometry YAML | Physical side view and exact coordinate conversion |
 | `camrod_system` | `diagnostic-severity-and-surfaces.png` | Manifests, aggregator, hardware thresholds | Health policy documented; utilization is not measured |
-| `camrod_ui` | `robot-and-guest-mission-state.png`, Guest dispatch/hold screenshots | UI policy + browser/ROS JSON | Dispatch, return, hold, and operator stop observed |
+| `camrod_ui` | `robot-and-guest-mission-state.png`, Robot keypad and Guest dispatch/hold screenshots | UI policy + browser/ROS JSON | Dispatch, verification, return, hold, and operator stop observed |
 | `camrod_voice` | `voice-events-and-priority.png` | Voice adapter YAML/policy | Queue/readiness policy documented; acoustic performance pending |
 
 All files are under `docs/assets/module-guides/`. The main package renderer
-creates **18 PNGs and one 10-frame GIF**. Release-evidence renderers add seven
-PNGs and five GIFs. Fourteen manually captured live screens bring the checked-in
-total to **39 PNGs and six GIFs**.
+creates **18 PNGs and one 10-frame GIF**. Release-evidence renderers add nine
+PNGs and six GIFs. Fifteen manually captured live screens bring the checked-in
+total to **42 PNGs and seven GIFs**.
 
 ## Actual Runtime Screen Index
 
@@ -63,7 +74,7 @@ total to **39 PNGs and six GIFs**.
 | `camrod_sensing` | `sensing/runtime-lidar-radar-costs-20260804.png` | Filtered LiDAR, radar sectors, dynamic costs |
 | `camrod_sensor_kit` | `sensor-kit/runtime-sensor-tf-20260804.png` | Loaded camera/GNSS/IMU/LiDAR/radar TF geometry |
 | `camrod_system` | `system/runtime-health-terminal-20260804.png` | `SystemStatus`, UI state, live graph count |
-| `camrod_ui` | `ui/guest-mission-dispatch-ready.png`, `guest-route-safety-hold.png` | Browser mission dispatch and safety overlay |
+| `camrod_ui` | `ui/robot-ui-site-verification-keypad.png`, `guest-mission-dispatch-ready.png`, `guest-route-safety-hold.png` | Robot site verification, Guest mission dispatch, and safety overlay |
 | `camrod_voice` | `voice/runtime-event-terminal-20260804.png` | Live `system.startup` request and adapter graph |
 
 Capture metadata, exact launch command, event times, operator stop result, and
@@ -80,7 +91,8 @@ the concise raw excerpt are in
 | Control | One-sided automatic crab | `0.3375 m`; output `<= 0.05 m/s` | Mission did not complete |
 | Control | Same-goal RPP retry | `0.4726 m`, yaw `-2.0008 deg` | A second boundary hold occurred |
 | Control | Rapid retry containment | Map v14 recontact `0.276 s` (v13 `0.267/0.372 s`); one release; final Twist zero | Physical wheel response pending |
-| UI | Browser/backend/ROS lifecycle | Mission, return, safety hold, and state 16 observed | No physical movement |
+| Control | Repeatable map-v14 probes | route recontact `0.366 s`; static reverse `0.0721 m`; crab-left `0.3321 m`; final Twist zero | Route remains fail-closed |
+| UI | Browser/backend/ROS lifecycle | Mission, return, safety hold, state 16, and B6 keypad verification observed | No physical movement |
 | Sensing/perception | Physical stationary report | Radar-off `600.063 s`; front camera `9.167 Hz` and `2750/2750` decode | Raw logs external; no accuracy or motion claim |
 | Sensing | Rear camera field report | Raw `3.633 Hz` vs `10 Hz` target | Rate failed |
 | Localization/system | Physical stationary report | Final pose `14.99 Hz`; CPU `99.26%` | Header-age p95 `352.5 ms`; CPU saturated |
@@ -97,6 +109,12 @@ the concise raw excerpt are in
 
 ![Automatic route recovery](assets/module-guides/control/automatic-owner-route-retry.gif)
 
+| Fresh map-v14 measured result | Decision policy used by the gate |
+|---|---|
+| ![Map-v14 recovery](assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png) | ![Map-v14 recovery policy](assets/module-guides/control/map-v14-boundary-recovery-policy.png) |
+
+![Map-v14 recovery animation](assets/module-guides/control/map-v14-boundary-recovery.gif)
+
 | Live RViz contact | Live gate status and zero output |
 |---|---|
 | ![Live boundary retry latch](assets/module-guides/control/runtime-boundary-retry-latch-20260804.png) | ![Live retry latch terminal](assets/module-guides/control/runtime-retry-latch-terminal-20260804.png) |
@@ -108,6 +126,12 @@ the concise raw excerpt are in
 | Both lateral candidates clear or no candidate clear | Remain stopped |
 | Fresh saved route clear for `1.0 s` | Release hold; retained RPP resumes yaw |
 | Same route recontacts within `5.0 s` after one release | Latch hold, publish zero, require operator stop/replan |
+
+Dynamic-obstacle handling is a separate contract. The command safety gate
+stops immediately on valid obstacle evidence. A planner change from
+`LaneletRoute` to `SmacLattice` requires the blockage to persist for `20.0 s`
+and requires fresh map evidence proving at least `2.50 m` contiguous width and
+`0.60 m` clearance on both sides. The timeout never delays the safety stop.
 
 Contact recovery is translation-only: raw speed `<= 0.10 m/s`, travel
 `<= 0.40 m`, duration `<= 10 s`, angular command zero. Rotation resumes only
@@ -185,5 +209,5 @@ camrod_bringup/scripts/field_test_tool.sh record-recovery
 
 Preserve raw log/bag/JSON first, then derive PNG/GIF with the command, baseline
 commit, duration, and pass criteria. Until surveyed service access permits the
-full `1.69160 x 1.27000 m` planning rectangle, the contract animation must stay
+full `1.59160 x 1.17000 m` planning rectangle, the contract animation must stay
 paired with the red `ROUND TRIP: NOT DEMONSTRATED` image.

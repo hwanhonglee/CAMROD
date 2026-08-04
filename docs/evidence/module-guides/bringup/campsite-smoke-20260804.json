@@ -8,12 +8,17 @@
     "rviz": false,
     "sim_platform_status_enable": true
   },
+  "raw_source_retention": {
+    "committed": false,
+    "removed_at": "2026-08-05",
+    "reason": "Repeated node logs were pruned after timestamps, commands, events, and verdicts were normalized into this record."
+  },
   "stack_startup": {
     "runtime_node_count": 81,
     "system_ok_observed": true,
     "system_ok_evidence": [
-      "docs/evidence/module-guides/bringup/raw/b12-roadside-system.log:62",
-      "docs/evidence/module-guides/bringup/raw/b6-turnaround-system.log:57"
+      "B12 system diagnostic capture: [SYSTEM] OK at original line 62",
+      "B6 system diagnostic capture: [SYSTEM] OK at original line 57"
     ]
   },
   "cases": [
@@ -26,18 +31,18 @@
         {
           "stamp": 1785779136.818844604,
           "event": "CRAB_IN started",
-          "source": "docs/evidence/module-guides/bringup/raw/b6-turnaround-maneuver.log:13"
+          "source": "B6 maneuver capture, original line 13"
         },
         {
           "stamp": 1785779138.830290305,
           "event": "route safety hold",
           "reason": "lanelet_footprint_cost",
-          "source": "docs/evidence/module-guides/bringup/raw/b6-turnaround-safety-gate.log:49"
+          "source": "B6 safety-gate capture, original line 49"
         },
         {
           "stamp": 1785779165.929887022,
           "event": "crab entry timeout",
-          "source": "docs/evidence/module-guides/bringup/raw/b6-turnaround-maneuver.log:28"
+          "source": "B6 maneuver capture, original line 28"
         }
       ],
       "verdict": "FAIL"
@@ -51,18 +56,18 @@
         {
           "stamp": 1785778519.734089938,
           "event": "CRAB_IN started",
-          "source": "docs/evidence/module-guides/bringup/raw/b12-roadside-maneuver.log:13"
+          "source": "B12 maneuver capture, original line 13"
         },
         {
           "stamp": 1785778521.219273892,
           "event": "route safety hold",
           "reason": "lanelet_footprint_cost",
-          "source": "docs/evidence/module-guides/bringup/raw/b12-roadside-safety-gate.log:43"
+          "source": "B12 safety-gate capture, original line 43"
         },
         {
           "stamp": 1785778551.7196708,
           "event": "crab entry timeout",
-          "source": "docs/evidence/module-guides/bringup/raw/b12-roadside-maneuver.log:30"
+          "source": "B12 maneuver capture, original line 30"
         }
       ],
       "verdict": "FAIL"
