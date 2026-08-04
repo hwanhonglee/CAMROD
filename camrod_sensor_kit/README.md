@@ -15,26 +15,19 @@
 
 ---
 
-<!-- HH_260804 - Make the dual center/rear-axle frame contract and every sensor
-coordinate conversion reviewable from the canonical package YAML. -->
-## Frame And Mount Visuals
+<!-- HH_260804 - Show the 4WS reference migration as a compact before/after
+comparison; keep the exact sensor conversion in a separate table. -->
+## Reference Frame Change
 
-![Sensor-kit TF and mount layout](../docs/assets/module-guides/sensor-kit/tf-and-sensor-mount-layout.png)
+![Rear-axle and axle-midpoint reference comparison](../docs/assets/module-guides/sensor-kit/reference-frame-before-after.png)
 
-`robot_center_link` is the current body, Nav2, and control origin at the midpoint
-between the two axles. `robot_base_link` remains a fixed compatibility child at
-the rear axle, `x=-0.443 m`. `sensor_kit_base_link` is coincident with
-`robot_center_link`, so every sensor pose in `robot_params.yaml` is expressed
-from the robot center. The physical body and sensor mounts did not move.
+![Sensor X before and current](../docs/assets/module-guides/sensor-kit/sensor-x-before-after.png)
 
-![Rear-axle to center coordinate ledger](../docs/assets/module-guides/sensor-kit/rear-axle-to-center-ledger.png)
-
-The ledger applies `current_x = previous_x - 0.443 m` to every mount while
-keeping Y, Z, and orientation unchanged. The GNSS entry is still the converted
-legacy placeholder; its real antenna lever arm remains a physical measurement
-item and must not be treated as calibrated evidence.
-
-Regenerate both source-derived images after changing the canonical geometry:
+- Before: `robot_base_link` at the rear axle.
+- Current: `robot_center_link` at the axle midpoint for Dual-Ackermann, crab,
+  and zero-turn; legacy `robot_base_link` remains at `x=-0.443 m`.
+- Unchanged: physical chassis, sensor mounts, wheelbase, and safety margin.
+- Pending: the GNSS antenna lever arm is still not physically measured.
 
 ```bash
 python3 camrod_bringup/scripts/render_module_readme_assets.py --module sensor-kit
@@ -70,198 +63,35 @@ ros2 run tf2_ros tf2_echo robot_center_link lidar_link
 
 ---
 
-## 🗺️ System Position
+## Runtime Contract
 
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#EEF2FF', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#6366F1', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
-graph LR
-  YAML[(robot_params.yaml)]:::config --> SKIT
-
-  subgraph SKIT_BOX["🔧 camrod_sensor_kit"]
-    SKIT[sensor_kit\nfoundation]:::system
-  end
-
-  SKIT -.->|/tf_static| PLAT([🤖 camrod_platform]):::platform
-  SKIT -.->|/tf_static| SENS([🎯 camrod_sensing]):::sensing
-  SKIT -.->|/tf_static| LOC([📍 camrod_localization]):::localization
-  SKIT -.->|/tf_static| PLAN([🧭 camrod_planning]):::planning
-  SKIT -.->|/tf_static| PARK([parking controllers]):::parking
-  SKIT -.->|loadRobotParams| PLAT
-  SKIT -.->|loadRobotParams| SENS
-
-  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
-  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
-  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
-  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
-  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
-  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
-```
-
-> Dashed arrows = dependency (TF lookup or compile-time `loadRobotParams`). All consumers require this package to be running at startup.
-
----
-
-## ⚙️ Execution Modes
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F1F5F9', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#64748B', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
-flowchart TD
-  START([Launch sensor_kit?]):::system
-
-  START --> Q1{Launched by\nparent bringup?}:::system
-  Q1 -->|No — standalone| SA["`**Standalone Mode**
-  ros2 launch camrod_sensor_kit
-    sensor_kit.launch.py
-  namespace: sensor_kit`"]:::system
-  Q1 -->|Yes — included| SB["`**Platform Mode**
-  Included by camrod_bringup /
-    camrod_platform launch
-  namespace: may be overridden`"]:::platform
-
-  SA --> OUT([robot_state_publisher\npublishes /tf_static\n+ /robot_description]):::system
-  SB --> OUT
-
-  classDef system   fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
-  classDef platform fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-```
-
-| Mode | How launched | What runs |
+| Source | Owner | Output |
 |---|---|---|
-| **Standalone** | `ros2 launch camrod_sensor_kit sensor_kit.launch.py` | `robot_state_publisher` only under namespace `sensor_kit` |
-| **Inside platform launch** | Included by `camrod_bringup` / `camrod_platform` | Same `robot_state_publisher`; namespace may be overridden by the parent launch |
+| `config/robot_params.yaml` + xacro | `sensor_kit.launch.py` | `robot_description` |
+| `robot_description` | `robot_state_publisher` | latched `/tf_static` |
+| `robot_params.yaml` | `camrod_sensor_kit_lib` | `RobotParams` geometry snapshot |
 
----
-
-## 🏗️ Runtime Architecture
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F1F5F9', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#64748B', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
-graph TD
-  YAML[(robot_params.yaml)]:::config  --> LAUNCH
-  XACRO[(camrod_sensor_kit.xacro)]:::config --> LAUNCH
-
-  subgraph LAUNCH_BOX["sensor_kit.launch.py"]
-    LAUNCH[🛠️ launch\nprocessing]:::system
-  end
-
-  LAUNCH -->|xacro expansion| DESC[📦 robot_description\nstring]:::system
-  DESC --> RSP(robot_state_publisher):::system
-  RSP --> TFSTATIC((/tf_static)):::topic
-  RSP --> URDESC((/robot_description)):::topic
-
-  YAML -. loadRobotParams .-> LIB[📦 camrod_sensor_kit_lib]:::system
-  LIB -. RobotParams struct .-> PLAT([🤖 camrod_platform nodes]):::platform
-  LIB -. RobotParams struct .-> SENS([🎯 camrod_sensing nodes]):::sensing
-
-  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
-  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
-  classDef config       fill:#FFFBEB,stroke:#D97706,stroke-width:1.5px,color:#92400E;
-  classDef topic        fill:#F8FAFC,stroke:#94A3B8,stroke-width:1px,color:#475569,font-style:italic;
+```text
+map -> odom -> robot_center_link
+                 |-> robot_base_link       x = -0.443 m
+                 `-> sensor_kit_base_link  x =  0.000 m
+                       `-> fixed sensor frames
 ```
 
-The launch file reads `robot_params.yaml` at launch time, converts all degree-based pose fields to radians, then calls `xacro` to produce the robot description string. The URDF string is passed directly as a parameter to `robot_state_publisher`, which publishes all static joint transforms in a single `/tf_static` message.
+- `map -> odom` is owned by localization, not this package.
+- All sensor joints are fixed; this package publishes no dynamic TF.
+- Run one `robot_state_publisher` instance, either standalone or from bringup.
 
----
-
-## 🌳 URDF Frame Tree
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F1F5F9', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#64748B', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
-graph TD
-  subgraph CONV["Convention frames (not published by this package)"]
-    WORLD[🌐 world]:::system
-    MAP[🗺️ map]:::localization
-  end
-  subgraph ROBOT["robot_center_link — Nav2/control origin"]
-    BASE[🤖 robot_center_link\nfront/rear axle midpoint]:::platform
-    REAR[robot_base_link\nlegacy rear-axle frame]:::system
-    subgraph SKIT["sensor_kit_base_link — sensor mount origin"]
-      SKB[🔧 sensor_kit_base_link]:::system
-      IMU[📡 imu_link\n0.688, 0.0, 0.756]:::sensing
-      GNSS[📡 gnss_link\n-0.443, 0.0, 0.0 placeholder]:::sensing
-      LIDAR[📡 lidar_link\n0.76336, 0.0, 0.59538]:::sensing
-      CAMF[📡 camera_front_link\n0.76337, 0.0, 0.49568]:::sensing
-      CAMR[📡 camera_rear_link\n-0.61933, 0.0, 0.30013]:::sensing
-      subgraph RADAR["Radar sensors (direct to sensor_kit_base_link)"]
-        %% HH_260623 - Removed the old single-front radar frame; front1/front2 are canonical.
-        RF1[📡 radar_front1_link]:::sensing
-        RF2[📡 radar_front2_link]:::sensing
-        RL1[📡 radar_left1_link]:::sensing
-        RL2[📡 radar_left2_link]:::sensing
-        RR1[📡 radar_right1_link]:::sensing
-        RR2[📡 radar_right2_link]:::sensing
-        RR[📡 radar_rear_link]:::sensing
-      end
-    end
-  end
-
-  WORLD --> MAP
-  MAP --> BASE
-  BASE -->|x = -0.443 m| REAR
-  BASE --> SKB
-  SKB --> IMU & GNSS & LIDAR & CAMF & CAMR
-  SKB --> RF1 & RF2 & RL1 & RL2 & RR1 & RR2 & RR
-
-  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
-  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
-  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
-```
-
-> `world` and `map` are convention frames connected by localization and are not published by this package. `robot_center_link` is the axle-midpoint navigation/control origin. `robot_base_link` remains a fixed child at the rear axle only for compatibility.
-
----
-
-## 📡 Interface Contract
-
-### Outputs
-
-| Topic | Type | Consumer | Rate | Meaning |
-|---|---|---|---|---|
-| `/tf_static` | `tf2_msgs/TFMessage` | all packages doing sensor frame lookups | once at startup | Static rear-axle compatibility and sensor tree from `robot_center_link` |
-| `/robot_description` | `std_msgs/String` | RViz, URDF consumers | once at startup | URDF XML string expanded from xacro |
-
-### Library Interface
+### RobotParams API
 
 ```cpp
-// In any downstream CMakeLists.txt:
 find_package(camrod_sensor_kit REQUIRED)
-ament_target_dependencies(your_node camrod_sensor_kit)
-
-// In C++ source:
 #include "camrod_sensor_kit/robot_params.hpp"
+
 camrod::RobotParams params = camrod::loadRobotParams(node);
 ```
 
-`loadRobotParams(node)` declares ROS parameters on `node` and returns a populated `RobotParams` snapshot. The node must be passed the `robot_params.yaml` config file at launch.
-
----
-
-## 🔑 Key Behaviors
-
-### Static TF Publication
-
-| Attribute | Detail |
-|---|---|
-| Trigger | `robot_state_publisher` startup |
-| Internal logic | xacro expansion produces URDF; RSP reads `robot_description` param and latches all fixed joint transforms |
-| Output effect | `/tf_static` latched once; all packages that call `tf2::lookupTransform` for sensor frames can resolve immediately |
-| Operator-visible symptom | TF lookup errors in any downstream package after a fresh start indicate this package did not start correctly |
-| Related params | `params_file`, `base_frame_id`, `sensor_kit_base_frame_id` |
-| Related topics | `/tf_static`, `/robot_description` |
-
-### RobotParams Load
-
-| Attribute | Detail |
-|---|---|
-| Trigger | Downstream C++ node calls `camrod::loadRobotParams(node)` at construction |
-| Internal logic | Calls `node->declare_parameter()` for each field; YAML degree values are converted to radians internally |
-| Output effect | Returns a `RobotParams` struct used for footprint polygon, wheelbase, and sensor offset calculations |
-| Operator-visible symptom | If `robot_params.yaml` is not loaded (missing params_file), default C++ struct values are silently used |
-| Related params | All fields under `robot.*`, `imu.*`, `gnss.*`, `lidar.*`, `camera.front.*`, `camera.rear.*`, `radar.*` |
-| Related topics | None |
+Downstream nodes must receive the same `robot_params.yaml` at startup.
 
 ---
 
@@ -410,12 +240,3 @@ If both `camrod_sensor_kit` standalone and a parent bringup launch start `robot_
 - [`../camrod_sensing/README.md`](../camrod_sensing/README.md) — consumes `/tf_static` for all sensor frame lookups
 - [`../camrod_control/README.md`](../camrod_control/README.md) - parking controllers consume `/tf_static` for geometry
 - [`../PARAMETER_NAMING_STANDARD.md`](../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
-
-## 2026-06-17 Runtime Update
-
-> HH_260617: Sensor-kit TF remains shared geometry for planning, platform, localization, sensing, and parking consumers.
-
-<!-- HH_260720 - Document the control-owned maneuver frame convention. -->
-`camrod_control` uses the shared base frame convention: `AvgTwist.linear.y > 0`
-means body-left crab motion, and drop-zone alignment compares
-`/localization/pose` with the configured map-frame station yaw.

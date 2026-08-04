@@ -59,8 +59,8 @@ def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
         "perception/yolo-lidar-and-parking-pipelines.png",
         "sensing/sensor-processing-and-cost-fusion.png",
         "sensing/ground-segmentation-schematic.png",
-        "sensor-kit/tf-and-sensor-mount-layout.png",
-        "sensor-kit/rear-axle-to-center-ledger.png",
+        "sensor-kit/reference-frame-before-after.png",
+        "sensor-kit/sensor-x-before-after.png",
     )
     for relative_path in expected_pngs:
         with Image.open(tmp_path / relative_path) as image:
@@ -133,8 +133,8 @@ def test_renderer_can_target_sensor_kit_without_runtime_evidence(
         if path.is_file()
     )
     assert generated == [
-        "sensor-kit/rear-axle-to-center-ledger.png",
-        "sensor-kit/tf-and-sensor-mount-layout.png",
+        "sensor-kit/reference-frame-before-after.png",
+        "sensor-kit/sensor-x-before-after.png",
     ]
 
 

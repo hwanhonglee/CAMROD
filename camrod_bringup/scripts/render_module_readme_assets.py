@@ -830,445 +830,347 @@ def render_perception(repo_root: Path, output_root: Path):
     save_figure(figure, output_root / "perception" / "yolo-lidar-and-parking-pipelines.png")
 
 
-# HH_260804 - Keep the center-frame migration inspectable without suggesting
-# that any physical sensor was moved. Both images are generated from the one
-# package-owned geometry source used by xacro and RobotParams consumers.
+# HH_260804 - Compare the former rear-axle origin with the current axle-midpoint
+# origin used consistently by Dual-Ackermann, crab, and zero-turn consumers.
+# The diagrams read canonical YAML/evidence and never imply a physical remount.
 def sensor_kit_mounts(params: dict) -> list[dict]:
-    """Return every configured mount as a flat plotting/ledger sequence."""
+    """Return every configured sensor mount in README display order."""
     mounts = [
-        {"name": "IMU", "short": "IMU", "category": "IMU", **params["imu"]},
-        {"name": "GNSS*", "short": "GNSS", "category": "GNSS", **params["gnss"]},
-        {"name": "LiDAR", "short": "LiDAR", "category": "LiDAR", **params["lidar"]},
-        {
-            "name": "Camera front",
-            "short": "Cam F",
-            "category": "Camera",
-            **params["camera"]["front"],
-        },
-        {
-            "name": "Camera rear",
-            "short": "Cam R",
-            "category": "Camera",
-            **params["camera"]["rear"],
-        },
+        {"name": "IMU", **params["imu"]},
+        {"name": "GNSS*", **params["gnss"]},
+        {"name": "LiDAR", **params["lidar"]},
+        {"name": "Camera front", **params["camera"]["front"]},
+        {"name": "Camera rear", **params["camera"]["rear"]},
     ]
-    radar_labels = {
-        "front1": "RF1",
-        "front2": "RF2",
-        "left1": "RL1",
-        "left2": "RL2",
-        "right1": "RR1",
-        "right2": "RR2",
-        "rear": "RRear",
+    radar_names = {
+        "front1": "Radar front 1",
+        "front2": "Radar front 2",
+        "left1": "Radar left 1",
+        "left2": "Radar left 2",
+        "right1": "Radar right 1",
+        "right2": "Radar right 2",
+        "rear": "Radar rear",
     }
     mounts.extend(
-        {
-            "name": f"Radar {key}",
-            "short": radar_labels[key],
-            "category": "Radar",
-            **pose,
-        }
+        {"name": radar_names[key], **pose}
         for key, pose in params["radar"].items()
     )
     return mounts
 
 
-def render_sensor_kit(repo_root: Path, output_root: Path):
-    """Render the static TF contract and measured mount-coordinate conversion."""
-    params = ros_params(
-        repo_root / "camrod_sensor_kit" / "config" / "robot_params.yaml", "/**"
-    )
-    robot = params["robot"]
+def draw_reference_vehicle(axis, robot: dict, rear_axle_origin: bool) -> None:
+    """Draw the same 4WS chassis in one of the two coordinate systems."""
     extents = robot["body_extents"]
     offset = robot["center_offset_from_rear_axle"]
-    mounts = sensor_kit_mounts(params)
-    colors = {
-        "IMU": GREEN,
-        "GNSS": AMBER,
-        "LiDAR": BLUE,
-        "Camera": "#7251b5",
-        "Radar": RED,
-    }
-    markers = {"IMU": "D", "GNSS": "P", "LiDAR": "o", "Camera": "s", "Radar": "^"}
+    wheelbase = robot["wheelbase"]
+    coordinate_shift = offset if rear_axle_origin else 0.0
 
-    figure, canvas = setup_figure(
-        "Sensor kit frames and physical mount layout",
-        "Current robot_center_link geometry, legacy rear-axle compatibility, and fixed sensor transforms",
-        size=(16, 10),
-    )
-    section_label(canvas, 0.045, 0.845, "Static TF ownership")
-    draw_box(
-        canvas,
-        0.045,
-        0.73,
-        0.19,
-        0.09,
-        "robot_center_link",
-        ("Nav2/control + body origin", "front/rear axle midpoint"),
-        face=GREEN_BG,
-        edge=GREEN,
-        title_color=GREEN,
-        body_size=7.2,
-    )
-    draw_box(
-        canvas,
-        0.335,
-        0.73,
-        0.20,
-        0.09,
-        "sensor_kit_base_link",
-        ("fixed, coincident child", "xyz = (0, 0, 0)"),
-        face=BLUE_BG,
-        edge=BLUE,
-        title_color=BLUE,
-        body_size=7.2,
-    )
-    draw_box(
-        canvas,
-        0.64,
-        0.73,
-        0.315,
-        0.09,
-        "Fixed sensor children",
-        ("IMU + GNSS + LiDAR + cameras + 7 radars", "camera links also own optical-frame children"),
-        face=WHITE,
-        edge="#899aa3",
-        body_size=7.2,
-    )
-    draw_box(
-        canvas,
-        0.335,
-        0.625,
-        0.20,
-        0.07,
-        "robot_base_link",
-        (f"legacy rear axle | x = -{offset:.3f} m",),
-        face=AMBER_BG,
-        edge=AMBER,
-        title_color=AMBER,
-        body_size=7.2,
-    )
-    draw_arrow(canvas, (0.235, 0.775), (0.335, 0.775), color=GREEN)
-    draw_arrow(canvas, (0.535, 0.775), (0.64, 0.775), color=BLUE)
-    draw_arrow(canvas, (0.235, 0.755), (0.335, 0.66), color=AMBER)
-
-    top = figure.add_axes((0.055, 0.10, 0.43, 0.46), facecolor=WHITE)
-    side = figure.add_axes((0.535, 0.10, 0.41, 0.46), facecolor=WHITE)
-    for plot in (top, side):
-        plot.grid(alpha=0.18)
-        plot.tick_params(labelsize=7, colors=MUTED)
-        for spine in plot.spines.values():
-            spine.set_color("#b8c4ca")
-
+    body_rear = -extents["rear"] + coordinate_shift
+    body_front = extents["front"] + coordinate_shift
+    rear_axle = 0.0 if rear_axle_origin else -offset
+    midpoint = offset if rear_axle_origin else 0.0
+    front_axle = wheelbase if rear_axle_origin else offset
+    reference_x = rear_axle if rear_axle_origin else midpoint
     margin = extents["planning_margin"]
-    top.add_patch(
+
+    axis.add_patch(
         Rectangle(
-            (-extents["rear"] - margin, -extents["right"] - margin),
-            extents["front"] + extents["rear"] + 2 * margin,
+            (body_rear - margin, -extents["right"] - margin),
+            body_front - body_rear + 2 * margin,
             extents["left"] + extents["right"] + 2 * margin,
             fill=False,
             edgecolor=RED,
             linewidth=1.3,
             linestyle="--",
-            label=f"planning boundary (+{margin:.2f} m/side)",
         )
     )
-    top.add_patch(
+    axis.add_patch(
         Rectangle(
-            (-extents["rear"], -extents["right"]),
-            extents["front"] + extents["rear"],
+            (body_rear, -extents["right"]),
+            body_front - body_rear,
             extents["left"] + extents["right"],
             facecolor=GRAY_BG,
             edgecolor=INK,
-            linewidth=1.4,
-            alpha=0.75,
-            label="physical body",
+            linewidth=1.5,
         )
     )
-    for axle_x, axle_name in ((-offset, "rear axle"), (offset, "front axle")):
-        top.plot(
-            [axle_x, axle_x],
-            [-extents["right"], extents["left"]],
-            color="#75858d",
-            linewidth=1.1,
-            linestyle=":" if axle_x > 0 else "-.",
-        )
-        top.text(axle_x, -0.73, axle_name, ha="center", fontsize=6.8, color=MUTED)
-    top.scatter([0.0], [0.0], color=GREEN, marker="x", s=65, linewidth=2.0, zorder=8)
-    top.scatter([-offset], [0.0], color=AMBER, marker="x", s=65, linewidth=2.0, zorder=8)
-    top.text(0.02, -0.055, "robot center", fontsize=7, color=GREEN, fontweight="bold")
-    # Centerline sensors share nearly identical top-view coordinates. Use one
-    # callout per physical stack so labels do not imply artificial separation.
-    label_offsets = {
-        "RF1": (0.02, -0.10),
-        "RF2": (0.02, 0.07),
-        "RL1": (0.02, 0.055),
-        "RL2": (-0.03, 0.055),
-        "RR1": (0.02, -0.10),
-        "RR2": (-0.03, -0.10),
-        "RRear": (-0.02, 0.07),
-    }
-    legend_seen = set()
-    for mount in mounts:
-        category = mount["category"]
-        label = category if category not in legend_seen else None
-        legend_seen.add(category)
-        top.scatter(
-            [mount["x"]],
-            [mount["y"]],
-            s=37,
-            marker=markers[category],
-            color=colors[category],
-            edgecolors=WHITE,
-            linewidth=0.6,
-            zorder=6,
-            label=label,
-        )
-        if category == "Radar":
-            dx, dy = label_offsets[mount["short"]]
-            top.text(
-                mount["x"] + dx,
-                mount["y"] + dy,
-                mount["short"],
-                fontsize=6.4,
-                color=colors[category],
-                ha="right" if dx < 0 else "left",
-                fontweight="bold",
-            )
-        if category in ("Camera", "Radar"):
-            yaw = np.deg2rad(mount["yaw"])
-            top.arrow(
-                mount["x"],
-                mount["y"],
-                0.11 * np.cos(yaw),
-                0.11 * np.sin(yaw),
-                width=0.004,
-                head_width=0.035,
-                color=colors[category],
-                length_includes_head=True,
+
+    # Both panels show the same symmetric 4WS pose; only the origin changes.
+    wheel_y = max(extents["left"], extents["right"]) + 0.015
+    for axle_x, yaw_deg in ((rear_axle, -16.0), (front_axle, 16.0)):
+        yaw = np.deg2rad(yaw_deg)
+        dx = 0.10 * np.cos(yaw)
+        dy = 0.10 * np.sin(yaw)
+        for side in (-1.0, 1.0):
+            axis.plot(
+                [axle_x - dx, axle_x + dx],
+                [side * wheel_y - dy, side * wheel_y + dy],
+                color=BLUE,
+                linewidth=5.0,
+                solid_capstyle="round",
                 zorder=5,
             )
-    callouts = (
-        (
-            (params["gnss"]["x"], params["gnss"]["y"]),
-            (-0.93, 0.18),
-            "GNSS* placeholder\n+ rear-axle origin",
-            AMBER,
-        ),
-        (
-            (params["camera"]["rear"]["x"], params["camera"]["rear"]["y"]),
-            (-0.94, -0.24),
-            "rear camera\n+ rear radar",
-            "#7251b5",
-        ),
-        (
-            (params["lidar"]["x"], params["lidar"]["y"]),
-            (0.43, 0.27),
-            "IMU + LiDAR + front camera\n(centerline mounts)",
-            BLUE,
-        ),
-    )
-    for point, label_position, label, color in callouts:
-        top.annotate(
-            label,
-            xy=point,
-            xytext=label_position,
-            arrowprops={"arrowstyle": "-", "color": color, "linewidth": 0.8},
-            fontsize=6.4,
-            color=color,
-            fontweight="bold",
-            ha="left",
-        )
-    top.annotate(
-        "FRONT +X",
-        xy=(0.96, 0.0),
-        xytext=(0.73, 0.0),
-        arrowprops={"arrowstyle": "-|>", "color": INK},
-        color=INK,
-        fontsize=7.5,
-        fontweight="bold",
-        va="center",
-    )
-    top.set_xlim(-1.0, 1.05)
-    top.set_ylim(-0.82, 0.82)
-    top.set_aspect("equal", adjustable="box")
-    top.set_xlabel("x forward [m]", fontsize=8)
-    top.set_ylabel("y left [m]", fontsize=8)
-    top.set_title("Top view: body, safety boundary, and mount yaw", loc="left", fontsize=10, fontweight="bold", color=INK)
-    top.legend(loc="upper left", ncol=2, fontsize=6.5, framealpha=0.92)
 
-    side.add_patch(
-        Rectangle(
-            (-extents["rear"], extents["bottom_z"]),
-            extents["front"] + extents["rear"],
-            extents["top_z"] - extents["bottom_z"],
-            facecolor=GRAY_BG,
-            edgecolor=INK,
-            linewidth=1.4,
-            alpha=0.75,
-        )
+    axis.axvline(rear_axle, color="#83939b", linestyle="-.", linewidth=1.0)
+    axis.axvline(front_axle, color="#83939b", linestyle="-.", linewidth=1.0)
+    axis.scatter(
+        [reference_x],
+        [0.0],
+        marker="x",
+        s=110,
+        linewidth=3.0,
+        color=AMBER if rear_axle_origin else GREEN,
+        zorder=7,
     )
-    for axle_x in (-offset, offset):
-        side.axvline(axle_x, color="#75858d", linewidth=1.0, linestyle="-.")
-    side.scatter([0.0], [0.0], color=GREEN, marker="x", s=65, linewidth=2.0, zorder=8)
-    side.scatter([-offset], [0.0], color=AMBER, marker="x", s=65, linewidth=2.0, zorder=8)
-    side.text(0.015, -0.08, "robot center", fontsize=7, color=GREEN, fontweight="bold")
-    side.text(-offset - 0.015, -0.08, "rear axle", fontsize=7, color=AMBER, ha="right", fontweight="bold")
-    for mount in mounts:
-        side.scatter(
-            [mount["x"]],
-            [mount["z"]],
-            s=38,
-            marker=markers[mount["category"]],
-            color=colors[mount["category"]],
-            edgecolors=WHITE,
-            linewidth=0.6,
+    if rear_axle_origin:
+        axis.scatter(
+            [midpoint],
+            [0.0],
+            marker="o",
+            s=50,
+            facecolors=WHITE,
+            edgecolors=GREEN,
+            linewidth=1.5,
             zorder=6,
         )
-    side_labels = (
-        (params["imu"]["x"], params["imu"]["z"], "IMU", GREEN, -0.10, 0.07),
-        (params["gnss"]["x"], params["gnss"]["z"], "GNSS*", AMBER, -0.05, 0.07),
-        (params["lidar"]["x"], params["lidar"]["z"], "LiDAR", BLUE, 0.03, 0.08),
-        (params["camera"]["front"]["x"], params["camera"]["front"]["z"], "front camera", "#7251b5", 0.03, 0.03),
-        (params["camera"]["rear"]["x"], params["camera"]["rear"]["z"], "rear camera", "#7251b5", -0.03, -0.09),
-        (params["radar"]["front1"]["x"], params["radar"]["front1"]["z"], "front radars x2", RED, -0.06, -0.04),
-        (params["radar"]["left1"]["x"], params["radar"]["left1"]["z"], "side radar pair 1", RED, 0.01, -0.10),
-        (params["radar"]["left2"]["x"], params["radar"]["left2"]["z"], "side radar pair 2", RED, -0.01, 0.07),
-        (params["radar"]["rear"]["x"], params["radar"]["rear"]["z"], "rear radar", RED, -0.03, 0.07),
-    )
-    for x, z, label, color, dx, dz in side_labels:
-        side.text(
-            x + dx,
-            z + dz,
-            label,
-            fontsize=6.5,
-            color=color,
-            ha="right" if dx < 0 else "left",
-            fontweight="bold",
+    else:
+        axis.scatter(
+            [rear_axle],
+            [0.0],
+            marker="o",
+            s=50,
+            facecolors=WHITE,
+            edgecolors=AMBER,
+            linewidth=1.5,
+            zorder=6,
         )
-    side.annotate(
-        "FRONT +X",
-        xy=(0.96, 1.01),
-        xytext=(0.70, 1.01),
-        arrowprops={"arrowstyle": "-|>", "color": INK},
-        color=INK,
-        fontsize=7.5,
+
+    labels = (
+        ("Rear", rear_axle),
+        ("Center", midpoint),
+        ("Front", front_axle),
+    )
+    for name, x_value in labels:
+        axis.text(
+            x_value,
+            -0.70,
+            f"{name}\nx={x_value:+.3f}",
+            ha="center",
+            va="top",
+            fontsize=7.0,
+            color=MUTED,
+            fontweight="bold" if x_value == reference_x else "normal",
+        )
+
+    reference_name = "robot_base_link" if rear_axle_origin else "robot_center_link"
+    axis.text(
+        reference_x,
+        0.66,
+        f"{reference_name}\nX origin",
+        ha="center",
+        va="bottom",
+        fontsize=8.0,
+        color=AMBER if rear_axle_origin else GREEN,
         fontweight="bold",
+    )
+    axis.annotate(
+        "+X forward",
+        xy=(body_front + margin + 0.12, 0.0),
+        xytext=(body_front + margin - 0.15, 0.0),
+        arrowprops={"arrowstyle": "-|>", "color": INK},
+        fontsize=7.0,
+        color=INK,
         va="center",
     )
-    side.set_xlim(-1.0, 1.05)
-    side.set_ylim(-0.24, 1.10)
-    side.set_xlabel("x forward [m]", fontsize=8)
-    side.set_ylabel("z up [m]", fontsize=8)
-    side.set_title("Side view: unchanged physical mount positions", loc="left", fontsize=10, fontweight="bold", color=INK)
-    footer(
-        figure,
-        "SOURCE-DERIVED from camrod_sensor_kit/config/robot_params.yaml. GNSS* is the retained rear-axle placeholder; the physical antenna lever arm remains FIELD PENDING.",
-    )
-    save_figure(
-        figure, output_root / "sensor-kit" / "tf-and-sensor-mount-layout.png"
-    )
-
-    render_sensor_kit_conversion_ledger(
-        robot, mounts, output_root / "sensor-kit" / "rear-axle-to-center-ledger.png"
-    )
+    axis.set_xlim(body_rear - margin - 0.20, body_front + margin + 0.22)
+    axis.set_ylim(-0.82, 0.82)
+    axis.set_aspect("equal", adjustable="box")
+    axis.set_xticks([])
+    axis.set_yticks([])
+    for spine in axis.spines.values():
+        spine.set_color("#aebbc1")
 
 
-def render_sensor_kit_conversion_ledger(robot: dict, mounts: list[dict], output: Path):
-    """Render exact old/new X coordinates while preserving physical invariants."""
-    offset = robot["center_offset_from_rear_axle"]
+def render_sensor_kit(repo_root: Path, output_root: Path):
+    """Render a concise before/after frame comparison and sensor-X ledger."""
+    params = ros_params(
+        repo_root / "camrod_sensor_kit" / "config" / "robot_params.yaml", "/**"
+    )
+    evidence = load_json(
+        repo_root
+        / "docs"
+        / "evidence"
+        / "v2.1.3"
+        / "reference-frame"
+        / "rear-axle-vs-robot-center-summary.json"
+    )
+    robot = params["robot"]
     extents = robot["body_extents"]
-    figure, axis = setup_figure(
-        "Rear-axle to robot-center coordinate ledger",
-        "Same physical robot and sensor mounts; only the coordinate origin changed",
-        size=(16, 10),
+    offset = robot["center_offset_from_rear_axle"]
+    common = evidence["common_route_segment"]
+    rear_result = evidence["rear_axle_reference"]
+    center_result = evidence["axle_midpoint_reference"]
+
+    figure, canvas = setup_figure(
+        "Reference frame: rear axle to axle midpoint",
+        "Same 4WS robot | Dual-Ackermann, crab, and zero-turn use one central reference",
+        size=(16, 9),
     )
-    draw_box(
-        axis,
-        0.045,
-        0.72,
-        0.25,
-        0.13,
-        "Previous reference",
-        (
-            "robot_base_link at rear axle",
-            f"body x: {-extents['rear'] + offset:+.5f} to {extents['front'] + offset:+.5f} m",
-        ),
-        face=AMBER_BG,
-        edge=AMBER,
-        title_color=AMBER,
-        body_size=8.5,
-    )
-    draw_box(
-        axis,
-        0.375,
-        0.72,
-        0.25,
-        0.13,
-        "Coordinate conversion",
-        (
-            f"current_x = previous_x - {offset:.3f} m",
-            "y, z, roll, pitch, yaw unchanged",
-        ),
-        face=BLUE_BG,
-        edge=BLUE,
-        title_color=BLUE,
-        body_size=8.5,
-    )
-    draw_box(
-        axis,
-        0.705,
-        0.72,
-        0.25,
-        0.13,
-        "Current reference",
-        (
-            "robot_center_link at axle midpoint",
-            f"body x: {-extents['rear']:+.5f} to {extents['front']:+.5f} m",
-        ),
-        face=GREEN_BG,
-        edge=GREEN,
-        title_color=GREEN,
-        body_size=8.5,
-    )
-    draw_arrow(axis, (0.295, 0.785), (0.375, 0.785), color=BLUE)
-    draw_arrow(axis, (0.625, 0.785), (0.705, 0.785), color=BLUE)
-    axis.text(
+    canvas.text(
         0.5,
-        0.675,
-        f"Invariant body: {robot['length']:.5f} x {robot['width']:.5f} m  |  "
-        f"wheelbase {robot['wheelbase']:.3f} m  |  planning margin {extents['planning_margin']:.2f} m per side",
+        0.855,
+        f"X(center) = X(rear axle) - {offset:.3f} m",
         ha="center",
-        fontsize=9.5,
-        color=INK,
+        va="center",
+        fontsize=12,
+        color=BLUE,
         fontweight="bold",
     )
 
-    columns = ("Mount", "Previous rear-axle x [m]", "Current center x [m]", "Delta x [m]", "Current y [m]", "Current z [m]")
-    rows = []
-    for mount in mounts:
-        rows.append(
-            (
-                mount["name"],
-                f"{mount['x'] + offset:+.5f}",
-                f"{mount['x']:+.5f}",
-                f"{-offset:+.3f}",
-                f"{mount['y']:+.5f}",
-                f"{mount['z']:+.5f}",
-            )
-        )
-    table_axis = figure.add_axes((0.045, 0.085, 0.91, 0.53))
+    previous = figure.add_axes((0.055, 0.40, 0.41, 0.40), facecolor=WHITE)
+    current = figure.add_axes((0.535, 0.40, 0.41, 0.40), facecolor=WHITE)
+    draw_reference_vehicle(previous, robot, rear_axle_origin=True)
+    draw_reference_vehicle(current, robot, rear_axle_origin=False)
+    previous.set_title(
+        "BEFORE  |  rear-axle origin",
+        loc="left",
+        fontsize=12,
+        color=AMBER,
+        fontweight="bold",
+    )
+    current.set_title(
+        "CURRENT  |  axle-midpoint origin",
+        loc="left",
+        fontsize=12,
+        color=GREEN,
+        fontweight="bold",
+    )
+
+    table_axis = figure.add_axes((0.055, 0.105, 0.89, 0.20))
     table_axis.axis("off")
+    rows = (
+        ("Runtime origin", "robot_base_link @ rear axle", "robot_center_link @ axle midpoint"),
+        (
+            "Axle X [m]",
+            f"rear 0 | center +{offset:.3f} | front +{robot['wheelbase']:.3f}",
+            f"rear -{offset:.3f} | center 0 | front +{offset:.3f}",
+        ),
+        (
+            "Body front / rear [m]",
+            f"{extents['front'] + offset:.5f} / {extents['rear'] - offset:.5f}",
+            f"{extents['front']:.5f} / {extents['rear']:.5f}",
+        ),
+        (
+            "Planning front / rear [m]",
+            f"{extents['front'] + offset + extents['planning_margin']:.5f} / "
+            f"{extents['rear'] - offset + extents['planning_margin']:.5f}",
+            f"{extents['front'] + extents['planning_margin']:.5f} / "
+            f"{extents['rear'] + extents['planning_margin']:.5f}",
+        ),
+        (
+            "Sensor XYZ reference",
+            "rear-axle origin",
+            "sensor_kit_base_link @ center",
+        ),
+    )
     table = table_axis.table(
         cellText=rows,
-        colLabels=columns,
+        colLabels=("Value", "Before", "Current"),
         cellLoc="center",
         colLoc="center",
         loc="center",
-        colWidths=(0.18, 0.20, 0.19, 0.13, 0.15, 0.15),
+        colWidths=(0.24, 0.38, 0.38),
     )
     table.auto_set_font_size(False)
-    table.set_fontsize(8.0)
+    table.set_fontsize(8.2)
+    table.scale(1.0, 1.32)
+    for (row, column), cell in table.get_celld().items():
+        cell.set_edgecolor("#b4c0c6")
+        cell.set_linewidth(0.7)
+        if row == 0:
+            cell.set_facecolor(INK)
+            cell.set_text_props(color=WHITE, fontweight="bold")
+        elif column == 0:
+            cell.set_facecolor(GRAY_BG)
+            cell.set_text_props(color=INK, fontweight="bold", ha="left")
+        else:
+            cell.set_facecolor(WHITE if row % 2 else "#f1f5f6")
+
+    figure.text(
+        0.5,
+        0.345,
+        "SIM A/B  |  "
+        f"cross-track RMS {common['rear_axle_reference']['cross_track_rms_m']:.4f} -> "
+        f"{common['axle_midpoint_reference']['cross_track_rms_m']:.4f} m  |  "
+        f"yaw RMS {common['rear_axle_reference']['yaw_error_rms_deg']:.3f} -> "
+        f"{common['axle_midpoint_reference']['yaw_error_rms_deg']:.3f} deg  |  "
+        f"progress to hold {rear_result['route_progress_to_hold_m']:.3f} -> "
+        f"{center_result['route_progress_to_hold_m']:.3f} m",
+        ha="center",
+        va="center",
+        fontsize=8.5,
+        color=BLUE,
+        fontweight="bold",
+    )
+    footer(
+        figure,
+        "MEASURED SIM + SOURCE CONFIG. Same chassis, mounts, wheelbase, and 0.10 m safety margin; both A/B runs later held at the narrow mapped boundary.",
+    )
+    save_figure(
+        figure,
+        output_root / "sensor-kit" / "reference-frame-before-after.png",
+    )
+
+    render_sensor_x_before_after(
+        offset,
+        sensor_kit_mounts(params),
+        output_root / "sensor-kit" / "sensor-x-before-after.png",
+    )
+
+
+def render_sensor_x_before_after(
+    offset: float, mounts: list[dict], output: Path
+) -> None:
+    """Render only the X values changed by the frame migration."""
+    figure, axis = setup_figure(
+        "Sensor X coordinates: before and current",
+        "Physical mounts unchanged | metres | Y, Z, roll, pitch, and yaw unchanged",
+        size=(14, 8),
+    )
+    axis.text(
+        0.5,
+        0.835,
+        f"current X = previous X - {offset:.3f}",
+        ha="center",
+        va="center",
+        fontsize=12,
+        color=BLUE,
+        fontweight="bold",
+    )
+    rows = [
+        (
+            mount["name"],
+            f"{mount['x'] + offset:+.5f}",
+            f"{mount['x']:+.5f}",
+        )
+        for mount in mounts
+    ]
+    table_axis = figure.add_axes((0.10, 0.10, 0.80, 0.66))
+    table_axis.axis("off")
+    table = table_axis.table(
+        cellText=rows,
+        colLabels=(
+            "Sensor",
+            "Before: rear-axle X [m]",
+            "Current: center X [m]",
+        ),
+        cellLoc="center",
+        colLoc="center",
+        loc="center",
+        colWidths=(0.36, 0.32, 0.32),
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(9.0)
     table.scale(1.0, 1.42)
     for (row, column), cell in table.get_celld().items():
         cell.set_edgecolor("#aebbc1")
@@ -1276,15 +1178,14 @@ def render_sensor_kit_conversion_ledger(robot: dict, mounts: list[dict], output:
         if row == 0:
             cell.set_facecolor(INK)
             cell.set_text_props(color=WHITE, fontweight="bold")
-        elif row % 2:
-            cell.set_facecolor(WHITE)
+        elif column == 0:
+            cell.set_text_props(ha="left", color=INK, fontweight="bold")
+            cell.set_facecolor(GRAY_BG if row % 2 else WHITE)
         else:
-            cell.set_facecolor("#edf2f4")
-        if column == 0 and row > 0:
-            cell.set_text_props(ha="left", fontweight="bold", color=INK)
+            cell.set_facecolor(WHITE if row % 2 else "#edf2f4")
     footer(
         figure,
-        "SOURCE-DERIVED. Delta is exactly -0.443 m for every X coordinate; physical mounts did not move. GNSS* remains a placeholder until the antenna lever arm is measured on the robot.",
+        "GNSS* is the converted legacy placeholder, not a measured antenna lever arm. Every listed X changed by exactly -0.443 m.",
     )
     save_figure(figure, output)
 
