@@ -21,6 +21,8 @@ comparison; keep the exact sensor conversion in a separate table. -->
 
 ![Rear-axle and axle-midpoint reference comparison](../docs/assets/module-guides/sensor-kit/reference-frame-before-after.png)
 
+![Physical sensor mount side view](../docs/assets/module-guides/sensor-kit/sensor-mount-side-view.png)
+
 ![Sensor X before and current](../docs/assets/module-guides/sensor-kit/sensor-x-before-after.png)
 
 - Before: `robot_base_link` at the rear axle.

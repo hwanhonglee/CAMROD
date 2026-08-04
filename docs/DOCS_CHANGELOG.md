@@ -9,8 +9,9 @@ rear-axle-versus-center comparison and compact value tables. -->
 | Doc or asset | What changed |
 |-----|--------------|
 | `camrod_sensor_kit/README.md` | Consolidated four repetitive architecture sections into one runtime contract and shortened the frame-migration summary |
-| sensor-kit module visuals | Replaced the dense TF/mount plots with a two-panel rear-axle/axle-midpoint comparison and a three-column sensor-X table |
+| sensor-kit module visuals | Replaced the dense TF/mount plot with a two-panel reference comparison, restored the useful physical side view as its own image, and retained a three-column sensor-X table |
 | sensor-kit visual renderer/test | Added the committed A/B simulation metrics and retained deterministic package-only generation coverage |
+| `docs/MODULE_VISUAL_GUIDE.md` | Added the first boundary-contact location, manual/current contact-sheet comparison, automatic crab/reverse GIF, yaw-release rule, and evidence ownership distinction |
 
 No runtime frame, geometry, sensor pose, controller, or safety value changed.
 
@@ -27,7 +28,7 @@ the already-published v2.1.3 runtime baseline. -->
 | `camrod_bringup/README.md` | Paired the expected full mission contract/GIF with the measured B6/B12 fail-closed campsite result |
 | sensor kit, localization, planning, perception, and sensing READMEs | Added package-specific frame/input/algorithm/output visuals and explicit source/simulation/field evidence limits |
 | `docs/MODULE_VISUAL_GUIDE.md` | Added evidence classes, module interpretation, regeneration, and Jetson capture commands |
-| `docs/assets/module-guides/*` | Added nine generated PNGs and one 10-frame contract GIF, including the rear-axle/center comparison and sensor-coordinate table |
+| `docs/assets/module-guides/*` | Added ten generated PNGs and one 10-frame contract GIF, including the rear-axle/center comparison, sensor side view, and sensor-coordinate table |
 | `docs/evidence/module-guides/*` | Preserved the 30-second pose-chain measurement, full-bringup campsite verdict, and six source ROS node logs with checked line references |
 | `render_module_readme_assets.py` and regression test | Made all module visuals reproducible from current YAML/messages and committed evidence |
 

@@ -1121,9 +1121,15 @@ def render_sensor_kit(repo_root: Path, output_root: Path):
         output_root / "sensor-kit" / "reference-frame-before-after.png",
     )
 
+    mounts = sensor_kit_mounts(params)
+    render_sensor_mount_side_view(
+        params,
+        mounts,
+        output_root / "sensor-kit" / "sensor-mount-side-view.png",
+    )
     render_sensor_x_before_after(
         offset,
-        sensor_kit_mounts(params),
+        mounts,
         output_root / "sensor-kit" / "sensor-x-before-after.png",
     )
 
@@ -1186,6 +1192,207 @@ def render_sensor_x_before_after(
     footer(
         figure,
         "GNSS* is the converted legacy placeholder, not a measured antenna lever arm. Every listed X changed by exactly -0.443 m.",
+    )
+    save_figure(figure, output)
+
+
+def render_sensor_mount_side_view(
+    params: dict, mounts: list[dict], output: Path
+) -> None:
+    """Render physical sensor heights with current and former X scales."""
+    robot = params["robot"]
+    extents = robot["body_extents"]
+    offset = robot["center_offset_from_rear_axle"]
+    figure, _ = setup_figure(
+        "Physical sensor mount side view",
+        "One physical layout | bottom: current center X | top: previous rear-axle X",
+        size=(14, 8),
+    )
+    plot = figure.add_axes((0.08, 0.15, 0.84, 0.64), facecolor=WHITE)
+    plot.add_patch(
+        Rectangle(
+            (-extents["rear"], extents["bottom_z"]),
+            extents["front"] + extents["rear"],
+            extents["top_z"] - extents["bottom_z"],
+            facecolor=GRAY_BG,
+            edgecolor=INK,
+            linewidth=1.5,
+        )
+    )
+    for axle_x in (-offset, offset):
+        plot.axvline(axle_x, color="#7f9098", linewidth=1.0, linestyle="-.")
+
+    styles = {
+        "IMU": (GREEN, "D"),
+        "GNSS": (AMBER, "P"),
+        "LiDAR": (BLUE, "o"),
+        "Camera": ("#7251b5", "s"),
+        "Radar": (RED, "^"),
+    }
+
+    def category(name: str) -> str:
+        if name.startswith("Radar"):
+            return "Radar"
+        if name.startswith("Camera"):
+            return "Camera"
+        if name.startswith("GNSS"):
+            return "GNSS"
+        return name
+
+    legend_seen = set()
+    for mount in mounts:
+        group = category(mount["name"])
+        color, marker = styles[group]
+        label = group if group not in legend_seen else None
+        legend_seen.add(group)
+        plot.scatter(
+            [mount["x"]],
+            [mount["z"]],
+            s=52,
+            marker=marker,
+            color=color,
+            edgecolors=WHITE,
+            linewidth=0.7,
+            label=label,
+            zorder=6,
+        )
+
+    plot.scatter(
+        [0.0], [0.0], marker="x", s=90, linewidth=2.5, color=GREEN, zorder=7
+    )
+    plot.scatter(
+        [-offset],
+        [0.0],
+        marker="x",
+        s=90,
+        linewidth=2.5,
+        color=AMBER,
+        zorder=7,
+    )
+    plot.text(
+        0.02,
+        -0.09,
+        "robot center",
+        fontsize=7.5,
+        color=GREEN,
+        fontweight="bold",
+    )
+    plot.text(
+        -offset - 0.02,
+        -0.09,
+        "rear axle",
+        fontsize=7.5,
+        color=AMBER,
+        fontweight="bold",
+        ha="right",
+    )
+
+    labels = (
+        (params["imu"]["x"], params["imu"]["z"], "IMU", GREEN, -0.10, 0.07),
+        (
+            params["gnss"]["x"],
+            params["gnss"]["z"],
+            "GNSS*",
+            AMBER,
+            -0.05,
+            0.07,
+        ),
+        (
+            params["lidar"]["x"],
+            params["lidar"]["z"],
+            "LiDAR",
+            BLUE,
+            0.03,
+            0.08,
+        ),
+        (
+            params["camera"]["front"]["x"],
+            params["camera"]["front"]["z"],
+            "front camera",
+            "#7251b5",
+            0.03,
+            0.03,
+        ),
+        (
+            params["camera"]["rear"]["x"],
+            params["camera"]["rear"]["z"],
+            "rear camera",
+            "#7251b5",
+            -0.03,
+            -0.09,
+        ),
+        (
+            params["radar"]["front1"]["x"],
+            params["radar"]["front1"]["z"],
+            "front radar x2",
+            RED,
+            -0.05,
+            -0.05,
+        ),
+        (
+            params["radar"]["left1"]["x"],
+            params["radar"]["left1"]["z"],
+            "side radar pair 1",
+            RED,
+            0.01,
+            -0.10,
+        ),
+        (
+            params["radar"]["left2"]["x"],
+            params["radar"]["left2"]["z"],
+            "side radar pair 2",
+            RED,
+            -0.01,
+            0.07,
+        ),
+        (
+            params["radar"]["rear"]["x"],
+            params["radar"]["rear"]["z"],
+            "rear radar",
+            RED,
+            -0.03,
+            0.07,
+        ),
+    )
+    for x, z, label, color, dx, dz in labels:
+        plot.text(
+            x + dx,
+            z + dz,
+            label,
+            fontsize=7.0,
+            color=color,
+            fontweight="bold",
+            ha="right" if dx < 0 else "left",
+        )
+
+    plot.annotate(
+        "+X FRONT",
+        xy=(0.94, 1.01),
+        xytext=(0.70, 1.01),
+        arrowprops={"arrowstyle": "-|>", "color": INK},
+        color=INK,
+        fontsize=8.0,
+        fontweight="bold",
+        va="center",
+    )
+    plot.set_xlim(-0.95, 1.00)
+    plot.set_ylim(-0.23, 1.10)
+    plot.set_xlabel("Current robot-center X [m]", fontsize=9)
+    plot.set_ylabel("Z up [m]", fontsize=9)
+    plot.grid(alpha=0.18)
+    plot.tick_params(labelsize=8, colors=MUTED)
+    for spine in plot.spines.values():
+        spine.set_color("#aebbc1")
+    previous_axis = plot.secondary_xaxis(
+        "top",
+        functions=(lambda x: x + offset, lambda x: x - offset),
+    )
+    previous_axis.set_xlabel("Previous rear-axle X [m]", fontsize=9)
+    previous_axis.tick_params(labelsize=8, colors=MUTED)
+    plot.legend(loc="upper left", ncol=5, fontsize=7.0, framealpha=0.92)
+    footer(
+        figure,
+        "SOURCE CONFIG. Physical heights and mounts are unchanged; the two X scales differ by 0.443 m. GNSS* remains an unmeasured placeholder.",
     )
     save_figure(figure, output)
 
