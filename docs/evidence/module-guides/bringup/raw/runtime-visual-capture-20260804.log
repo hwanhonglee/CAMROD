@@ -1,0 +1,42 @@
+# CAMROD full-stack simulation runtime excerpt
+# Recorded: 2026-08-04 Asia/Seoul
+# Command: ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=false
+# RViz capture: attached separately to the same graph with the installed
+# camrod_map/rviz/camrod_operator.rviz profile.
+# Source baseline: e4ea7c084 plus the route retry/UI stop worktree changes documented
+# by runtime-visual-capture-20260804.json.
+# Map: user-provided lanelet2_maps.osm revision 14, commit 95304cfb0.
+
+[lanelet2_map_node-6] [INFO] [1785833217.158377239] [Lanelet2MapLoader]: Loaded Lanelet2 map: /home/hong/camrod_ws/src/lanelet2_maps.osm (origin: 36.84357370, 128.09256460, 0.00)
+[lanelet2_map_node-6] Lanelets: 55, Areas: 14, Points: 1031, Lines: 179
+[system_diagnostic_node-67] [INFO] [1785833247.665597938] [system.system_diagnostic]: [SYSTEM] OK
+[ui_backend_node-69] [INFO] [1785833253.808003844] [ui_backend]: destination command (http_ui_destination) -> /ui/selected_destination: site=B6, run=true
+[ui_backend_node-69] [INFO] [1785833253.813124442] [ui_backend]: mission key (http_ui_destination) -> /planning/mission_key: camping_site_6
+[bt_navigator-26] [INFO] [1785833253.937316127] [planning.bt_navigator]: Begin navigating from current location (-13.86, 43.42) to (17.53, 4.18)
+
+# Revision 14 capture: contact pose=(4.3687675425, 45.0582880219). The same
+# boundary recontacted 0.275737362 s after release. No second automatic release
+# occurred; /control/cmd_vel_ros remained all zero until operator stop.
+[cmd_vel_safety_gate_node-36] [WARN] [1785833345.726368220] [control.cmd_vel_safety_gate]: route safety hold activated: reason=lanelet_footprint_cost trigger=(x=0.400,y=0.000,wz=-0.023)
+[cmd_vel_safety_gate_node-36] [INFO] [1785833348.450419117] [control.cmd_vel_safety_gate]: route safety hold released after continuous fresh lanelet clear; same mission direction may resume
+[cmd_vel_safety_gate_node-36] [ERROR] [1785833348.726156479] [control.cmd_vel_safety_gate]: rapid route recontact latched after 1 automatic release(s); operator stop/replan required
+[cmd_vel_safety_gate_node-36] [WARN] [1785833348.792627284] [control.cmd_vel_safety_gate]: cmd_vel route safety hold: trigger=lanelet_footprint_cost latest=lanelet_footprint_cost clear=0.00s projected_recovery_candidate_only=true auto_release_blocked=true
+
+$ ros2 topic echo --once /control/cmd_vel_ros
+linear: {x: 0.0, y: 0.0, z: 0.0}
+angular: {x: 0.0, y: 0.0, z: 0.0}
+
+$ curl -X POST http://127.0.0.1:8010/ui/stop
+{"success":true,"message":"stop command published"}
+HTTP 200
+
+[camping_site_maneuver_controller_node-37] [INFO] [1785833639.653157893] [control.camping_site_maneuver_controller]: camping_site_maneuver_controller IDLE: cancel=http_stop:operator_stop
+[drop_zone_maneuver_controller_node-38] [INFO] [1785833639.653616950] [control.drop_zone_maneuver_controller]: drop_zone_maneuver_controller IDLE: cancel=http_stop:operator_stop
+[reverse_parking_controller_node-40] [INFO] [1785833639.655769678] [parking.reverse_parking_controller]: reverse_parking_controller IDLE: cancel=http_stop:operator_stop
+[ui_backend_node-69] [INFO] [1785833639.656115149] [ui_backend]: Nav2 cancel requested (http_stop): /planning/follow_path/_action/cancel_goal, /planning/navigate_to_pose/_action/cancel_goal
+[cmd_vel_safety_gate_node-36] [INFO] [1785833639.659040086] [control.cmd_vel_safety_gate]: cmd_vel STANDBY: engage=false(manual=false,mission=false), platform_drive_enable=false
+[ui_backend_node-69] [INFO] [1785833639.661633473] [ui_backend]: Service state received: OPERATOR_STOPPED(16) (Stopped by operator)
+[bt_navigator-26] [INFO] [1785833639.698395159] [planning.bt_navigator]: Goal canceled
+
+# Historical comparison only: map revision 13 recontacted after 0.372417173 s
+# and 0.266786558 s in two preceding runs; both were contained by the same latch.

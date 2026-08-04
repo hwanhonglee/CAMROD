@@ -1,12 +1,20 @@
 # CAMROD
 
-<!-- HH_260804 - Replace the chronological release narrative with a concise,
-evidence-labelled system guide. Runtime behavior remains v2.1.3. -->
+<!-- HH_260804 - Pair the concise source guide with real sim runtime captures
+and keep the route-retry containment separate from physical acceptance. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
 zero-turn Ranger platform. Current runtime baseline: **`v2.1.3`**.
 
 ![Full-stack mission contract](docs/assets/module-guides/bringup/full-stack-mission-contract.png)
+
+## Actual Simulation Runtime
+
+![Live full-stack B6 runtime](docs/assets/module-guides/bringup/runtime-full-stack-b6-20260804.png)
+
+`SIM RUNTIME CAPTURE`: live `sim:=true rviz:=true` B6 graph showing the
+lanelet map, robot, sensing layers, localization, and global/local planning
+paths. This is not a generated diagram or a real-robot field claim.
 
 ## At A Glance
 
@@ -28,6 +36,7 @@ zero-turn Ranger platform. Current runtime baseline: **`v2.1.3`**.
 | Planner/controller | `LaneletRoute + RPP` | Full-bringup default |
 | RPP preview | `1.1 m` | Current stable minimum lookahead |
 | Recovery limit | `0.10 m/s`, `0.40 m`, `10 s` | Raw speed, travel, and duration; contact yaw command is zero |
+| Rapid retry guard | `1 release`, `5 s` | A same-route recontact latches zero output until stop/replan |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
 
 Configured values are not performance measurements. Package tables below mark
@@ -40,7 +49,7 @@ runtime evidence separately.
 | Full stack startup | **PASS** | 81 ROS nodes reached `[SYSTEM] OK` in simulation |
 | Localization pose chain | **PASS** | 10 Hz inputs produced 20 Hz selected pose; header-age p95 `1.83 ms` |
 | Reference-frame A/B | **PASS for compared segment** | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` |
-| Automatic boundary recovery | **PARTIAL** | Crab/reverse release and RPP retry observed; later boundary hold remains |
+| Automatic boundary recovery | **SIM-PASS containment** | One release; map v14 recontacted in 0.276 s (v13: 0.267/0.372 s), then latched with final command zero |
 | Guest/Robot UI contract | **PASS** | Dispatch, lifecycle, return, safety overlay, and operator stop observed |
 | Physical radar disabled | **FIELD-PASS** | `600.063 s`; 5,976 clear grids; zero active/high-cost/stop evidence |
 | Physical front camera/YOLO lifetime | **FIELD-PASS** | `300 s`; 2,750/2,750 JPEG decode; `9.167 Hz`; zero crash/restart |
@@ -105,8 +114,8 @@ rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
 source install/setup.bash
 
-# Simulation
-ros2 launch camrod_bringup bringup_sim.launch.py
+# Simulation with the operator RViz profile
+ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
 
 # Field profile on the configured Jetson/Ranger host
 ros2 launch camrod_bringup bringup.launch.py
@@ -123,5 +132,6 @@ from a workstation-only simulation result.
 | [v2.1.3 release notes](docs/V2_1_3_RELEASE_NOTES.md) | Released runtime scope and verification |
 | [Robot-center migration](docs/V2_1_3_ROBOT_CENTER_MIGRATION.md) | Exact before/after geometry and A/B results |
 | [Boundary recovery validation](docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md) | Crab/reverse timelines, GIFs, and limitations |
+| [Runtime capture evidence](docs/evidence/module-guides/bringup/runtime-visual-capture-20260804.json) | Live screens, retry timestamps, zero output, and operator-stop result |
 | [Documentation changelog](docs/DOCS_CHANGELOG.md) | Post-release documentation-only updates |
 | [`TODOLIST.txt`](TODOLIST.txt) | Remaining physical acceptance work |

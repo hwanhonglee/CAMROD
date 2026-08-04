@@ -8,6 +8,14 @@ announcements.
 
 ![Voice event and priority](../docs/assets/module-guides/voice/voice-events-and-priority.png)
 
+## Actual Simulation Runtime
+
+![Live voice event adapter](../docs/assets/module-guides/voice/runtime-event-terminal-20260804.png)
+
+`SIM RUNTIME CAPTURE`: a live adapter emitted `system.startup` as an
+`avg_msgs/AudioRequest`, and ROS graph inspection shows its real subscriptions
+and output topic. Speaker playback and outdoor audibility remain field-pending.
+
 ## At A Glance
 
 | Uses | Function | Main outputs |

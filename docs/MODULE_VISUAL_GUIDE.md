@@ -1,7 +1,7 @@
 # CAMROD Module Visual Guide
 
-<!-- HH_260804 - Index every CAMROD-owned package visual and separate source
-configuration, measured simulation evidence, and pending field performance. -->
+<!-- HH_260804 - Index generated diagrams and actual runtime screens separately,
+including the rapid-recontact latch evidence and its field-claim boundary. -->
 
 This guide explains what each README image proves. Runtime decisions still
 come from ROS topics, controller state, diagnostics, and safety gates.
@@ -13,6 +13,7 @@ come from ROS topics, controller state, diagnostics, and safety gates.
 | `SOURCE-DERIVED` | Checked-in YAML, messages, launch defaults, and code constants | Topology and displayed values match the repository |
 | `SOURCE INVENTORY` | Files and package manifests | Interface/file/dependency counts match source |
 | `MEASURED SIM` | Committed JSON or raw ROS logs from a running simulation | Listed rates, events, displacement, and state changes were observed in that run |
+| `SIM RUNTIME CAPTURE` | RViz, ROS CLI, or browser connected to a live `sim:=true` graph | The displayed topics/layers/states existed in that run; no physical performance claim |
 | `FIELD REPORT / RAW LOG EXTERNAL` | Committed normalized summary backed by a report that references Jetson-only raw paths | Listed stationary values were reported; the repository cannot independently replay the raw capture |
 | `ALGORITHM SCHEMATIC` | Seeded synthetic data + active thresholds | Processing concept is reproducible; the points are not sensor evidence |
 | `FIELD PENDING` | No matching physical capture | No physical accuracy, throughput, latency, or safety PASS is claimed |
@@ -44,7 +45,30 @@ performance. Every package README keeps those columns separate.
 
 All files are under `docs/assets/module-guides/`. The main package renderer
 creates **18 PNGs and one 10-frame GIF**. Release-evidence renderers add seven
-PNGs and five GIFs, for a checked-in total of **25 PNGs and six GIFs**.
+PNGs and five GIFs. Fourteen manually captured live screens bring the checked-in
+total to **39 PNGs and six GIFs**.
+
+## Actual Runtime Screen Index
+
+| Package | Live screen | Observed runtime content |
+|---|---|---|
+| root / `camrod_bringup` | `bringup/runtime-full-stack-b6-20260804.png` | B6 lanelet route, vehicle, sensing, localization, planning |
+| `camrod_common`, `avg_msgs` | `common/runtime-interface-terminal-20260804.png` | Live topic type, generated `SystemStatus`, graph endpoints |
+| `camrod_control` | `control/runtime-boundary-retry-latch-20260804.png`, `runtime-retry-latch-terminal-20260804.png` | Footprint contact, retry latch, all-zero final command |
+| `camrod_localization` | `localization/runtime-pose-tf-20260804.png` | Selected poses, GNSS, center/base TF chain |
+| `camrod_map` | `map/runtime-lanelet-map-20260804.png` | Published lanelet geometry and robot pose |
+| `camrod_perception` | `perception/runtime-obstacle-bboxes-20260804.png` | Fused obstacle points and boxes |
+| `camrod_planning` | `planning/runtime-b6-global-local-path-20260804.png` | B6 goal, global path, local path |
+| `camrod_platform` | `platform/runtime-robot-geometry-20260804.png`, `runtime-status-terminal-20260804.png` | Robot boundary/frame and normalized simulated Ranger/BMS status |
+| `camrod_sensing` | `sensing/runtime-lidar-radar-costs-20260804.png` | Filtered LiDAR, radar sectors, dynamic costs |
+| `camrod_sensor_kit` | `sensor-kit/runtime-sensor-tf-20260804.png` | Loaded camera/GNSS/IMU/LiDAR/radar TF geometry |
+| `camrod_system` | `system/runtime-health-terminal-20260804.png` | `SystemStatus`, UI state, live graph count |
+| `camrod_ui` | `ui/guest-mission-dispatch-ready.png`, `guest-route-safety-hold.png` | Browser mission dispatch and safety overlay |
+| `camrod_voice` | `voice/runtime-event-terminal-20260804.png` | Live `system.startup` request and adapter graph |
+
+Capture metadata, exact launch command, event times, operator stop result, and
+the concise raw excerpt are in
+[`runtime-visual-capture-20260804.json`](evidence/module-guides/bringup/runtime-visual-capture-20260804.json).
 
 ## Key Measured Results
 
@@ -55,6 +79,7 @@ PNGs and five GIFs, for a checked-in total of **25 PNGs and six GIFs**.
 | Sensor kit/planning | Common route A/B | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` | One simulated route segment |
 | Control | One-sided automatic crab | `0.3375 m`; output `<= 0.05 m/s` | Mission did not complete |
 | Control | Same-goal RPP retry | `0.4726 m`, yaw `-2.0008 deg` | A second boundary hold occurred |
+| Control | Rapid retry containment | Map v14 recontact `0.276 s` (v13 `0.267/0.372 s`); one release; final Twist zero | Physical wheel response pending |
 | UI | Browser/backend/ROS lifecycle | Mission, return, safety hold, and state 16 observed | No physical movement |
 | Sensing/perception | Physical stationary report | Radar-off `600.063 s`; front camera `9.167 Hz` and `2750/2750` decode | Raw logs external; no accuracy or motion claim |
 | Sensing | Rear camera field report | Raw `3.633 Hz` vs `10 Hz` target | Rate failed |
@@ -72,12 +97,17 @@ PNGs and five GIFs, for a checked-in total of **25 PNGs and six GIFs**.
 
 ![Automatic route recovery](assets/module-guides/control/automatic-owner-route-retry.gif)
 
+| Live RViz contact | Live gate status and zero output |
+|---|---|
+| ![Live boundary retry latch](assets/module-guides/control/runtime-boundary-retry-latch-20260804.png) | ![Live retry latch terminal](assets/module-guides/control/runtime-retry-latch-terminal-20260804.png) |
+
 | Contact geometry | Allowed action |
 |---|---|
 | Exactly one lateral candidate clear | Pure crab away from contact |
 | Both lateral candidates blocked and reverse clear | Reverse |
 | Both lateral candidates clear or no candidate clear | Remain stopped |
 | Fresh saved route clear for `1.0 s` | Release hold; retained RPP resumes yaw |
+| Same route recontacts within `5.0 s` after one release | Latch hold, publish zero, require operator stop/replan |
 
 Contact recovery is translation-only: raw speed `<= 0.10 m/s`, travel
 `<= 0.40 m`, duration `<= 10 s`, angular command zero. Rotation resumes only
@@ -127,8 +157,10 @@ dimensions plus the 10 GIF frames:
 pytest -q camrod_bringup/test/test_module_readme_assets.py
 ```
 
-The renderer writes only `docs/assets/module-guides/`. It never mutates runtime
-configuration or evidence.
+The renderer recreates source-derived diagrams only. `SIM RUNTIME CAPTURE`
+files are intentionally not synthesized by it; repeat them from the exact
+bringup command and record the matching metadata/raw log. Neither process
+mutates runtime configuration.
 
 ## Field Evidence To Add
 

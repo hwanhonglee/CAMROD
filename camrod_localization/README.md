@@ -8,6 +8,14 @@ canonical `robot_center_link` pose and localization-health state.
 
 ![Localization pose generation](../docs/assets/module-guides/localization/pose-generation-and-timing.png)
 
+## Actual Simulation Runtime
+
+![Live pose and TF runtime](../docs/assets/module-guides/localization/runtime-pose-tf-20260804.png)
+
+`SIM RUNTIME CAPTURE`: the running RViz graph overlays selected localization
+poses, GNSS, and the `map -> odom -> robot_center_link -> robot_base_link` TF
+chain. It does not measure physical GNSS accuracy.
+
 ## At A Glance
 
 | Uses | Function | Main outputs |

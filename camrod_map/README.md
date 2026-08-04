@@ -8,6 +8,14 @@ planning cost grids, and RViz visualization.
 
 ![Lanelet map and cost grids](../docs/assets/module-guides/map/lanelet-map-and-cost-grids.png)
 
+## Actual Simulation Runtime
+
+![Live lanelet map](../docs/assets/module-guides/map/runtime-lanelet-map-20260804.png)
+
+`SIM RUNTIME CAPTURE`: the actual `/map/markers` lanelet geometry and live robot
+pose in RViz. The source-derived diagram below remains the numerical grid
+reference.
+
 ## At A Glance
 
 | Uses | Function | Main outputs |
@@ -22,6 +30,8 @@ planning cost grids, and RViz visualization.
 | Item | Value |
 |---|---|
 | Runtime map | `/home/nvidia/camrod_ws/src/lanelet2_maps.osm` |
+| Active source revision | `map_version=14` (user-provided geometry revision) |
+| Loaded primitives | 55 lanelets, 14 areas, 1,031 points, 179 lines |
 | Projector | `local_cartesian` |
 | WGS84 origin | `36.8435737, 128.0925646, 0.0` |
 | Map yaw offset | `0.0 deg` |
@@ -51,8 +61,8 @@ override it, but must not rewrite the production path solely for local use.
 
 ![Robot-center narrow-route risk](../docs/assets/module-guides/planning/robot-center-narrow-route-risk-map.png)
 
-The current B6/B12 smoke run reaches campsite entry but the complete footprint
-contacts the mapped boundary. Existing campsite Areas do not provide surveyed
+The map-v14 B6 run still contacts the mapped boundary at approximately
+`(4.3688, 45.0583)`. Existing campsite Areas do not provide surveyed
 road-to-service `service_access` geometry. This is a map-data limitation; the
 `0.10 m` safety margin and hard footprint threshold remain unchanged.
 

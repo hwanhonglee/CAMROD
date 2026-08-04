@@ -8,6 +8,15 @@ metadata-preserving aggregation, and operator health summaries.
 
 ![Diagnostic severity and surfaces](../docs/assets/module-guides/system/diagnostic-severity-and-surfaces.png)
 
+## Actual Simulation Runtime
+
+![Live system health and service state](../docs/assets/module-guides/system/runtime-health-terminal-20260804.png)
+
+`SIM RUNTIME CAPTURE`: live `SystemStatus` reported healthy while the service
+state remained `MOVING_TO_SITE` and motion readiness was blocked by the control
+hold. This demonstrates that health, service phase, and motion authorization
+are separate surfaces.
+
 ## At A Glance
 
 | Uses | Function | Main outputs |

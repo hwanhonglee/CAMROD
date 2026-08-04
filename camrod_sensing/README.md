@@ -8,6 +8,14 @@ near-field cost grids, and robot-centered cost fusion.
 
 ![Sensor processing and cost fusion](../docs/assets/module-guides/sensing/sensor-processing-and-cost-fusion.png)
 
+## Actual Simulation Runtime
+
+![Live LiDAR, radar, and cost layers](../docs/assets/module-guides/sensing/runtime-lidar-radar-costs-20260804.png)
+
+`SIM RUNTIME CAPTURE`: actual filtered LiDAR, radar range sectors, and dynamic
+LiDAR/radar cost layers from the running graph. It verifies wiring and display,
+not physical sensor accuracy or field rate.
+
 ## At A Glance
 
 | Sensor/source | Processing | Main output / consumer |

@@ -2,7 +2,8 @@
 
 Release checkpoint: 2026-08-04 (Asia/Seoul)
 
-<!-- HH_260803 - Keep simulation evidence separate from real-robot acceptance. -->
+<!-- HH_260804 - Keep simulation evidence separate from real-robot acceptance
+and record the one-release rapid-recontact containment added after live review. -->
 This report records software and simulation behavior after the
 `robot_center_link` migration. It is not a real-robot driving acceptance.
 
@@ -54,6 +55,9 @@ lanelet contact -> cmd_vel_safety_gate candidate
   and 1.0 s continuous clear evidence.
 - Recovery angular velocity is zero. After release, the retained RPP path
   resumes and controls yaw normally.
+- At most one automatic release is allowed. If the same route contacts again
+  within 5.0 seconds, the hold and zero output remain latched until operator
+  stop/replan/re-engage.
 
 The no-rotation rule is deliberate. A rotating 1.69160 x 1.27000 m planning
 boundary sweeps corners through cells that are not covered by the current
@@ -88,6 +92,7 @@ Their source timelines are stored beside the automatic results under
 | one-sided right contact | `CRAB_LEFT` | 0.3375 m, final lateral 0.05 m/s, yaw held | hold released after 1.0 s clear evidence |
 | stationary route contact | `REVERSE` | final linear.x -0.05 m/s, 0.0327 m before release | 0.0592 m and +0.4065 deg yaw, then next hold |
 | moving route contact | `REVERSE` selected | residual deceleration cleared the first hold before reverse output | 0.4726 m and -2.0008 deg yaw, then next hold |
+| full bringup B6 rapid recontact | first release allowed once | map v14: 0.276 s; v13: 0.372/0.267 s | retry latched; recovery candidate blocked; final Twist zero |
 
 ![Automatic recovery policy](assets/module-guides/control/automatic-owner-policy.png)
 
@@ -95,18 +100,35 @@ Their source timelines are stored beside the automatic results under
 
 [Open the automatic recovery GIF](assets/module-guides/control/automatic-owner-route-retry.gif).
 
-The route cases intentionally prove bounded retry and repeat stop. They do not
-prove mission completion: lanelets 754/2751/2720 include a corridor narrower
+| Actual RViz contact | Actual gate state and command |
+|---|---|
+| ![B6 boundary retry latch](assets/module-guides/control/runtime-boundary-retry-latch-20260804.png) | ![Retry latch and zero Twist](assets/module-guides/control/runtime-retry-latch-terminal-20260804.png) |
+
+These `SIM RUNTIME CAPTURE` screens answer the apparent repetition in RViz:
+before the guard, clear/release/recontact could continue repeatedly. The current
+runtime releases once, then holds the second rapid contact without another
+automatic release. `POST /ui/stop` returned HTTP 200 and moved the gate to
+`STANDBY` with service state `OPERATOR_STOPPED`.
+
+The committed runtime screens use the user-provided map revision 14. That run
+loaded 55 lanelets and reached the boundary near `(4.3688, 45.0583)` before the
+0.276-second rapid recontact was latched. The geometry revision therefore does
+not yet demonstrate a complete B6 route.
+
+The route cases intentionally prove bounded retry and fail-closed containment.
+They do not prove mission completion: lanelets 754/2751/2720 include a corridor narrower
 than the active planning rectangle. More crab or reducing the measured
 footprint would not make that map valid. The lanelet geometry or operational
 route must be corrected before that route can pass end to end.
 
 ## Reproduction
 
-Start ordinary simulation without UI windows, then run each probe with the
-installed semantic map path:
+Start ordinary simulation, then run each probe with the installed semantic map
+path. Add `rviz:=true` when reproducing the committed live screens:
 
 ```bash
+ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
+
 ros2 run camrod_bringup automatic_route_recovery_probe.py \
   --map <lanelet2_maps.osm> \
   --scenario one_sided_crab \
@@ -144,10 +166,13 @@ Current automatic-owner source evidence:
 - [One-sided crab JSON](evidence/v2.1.3/boundary-recovery/automatic-owner-one-sided-crab.json)
 - [Stationary reverse JSON](evidence/v2.1.3/boundary-recovery/automatic-owner-static-reverse-retry.json)
 - [Moving route retry JSON](evidence/v2.1.3/boundary-recovery/automatic-owner-route-retry.json)
+- [Full-stack retry-latch metadata](evidence/module-guides/bringup/runtime-visual-capture-20260804.json)
+- [Full-stack concise raw excerpt](evidence/module-guides/bringup/raw/runtime-visual-capture-20260804.log)
 
 ## Remaining Field Work
 
 Run `field_test_tool.sh record-recovery <log_dir>` on the Jetson before moving.
 Verify left and right contact separately, rear obstacle blocking, operator
-cancel, distance/time bounds, actual wheel directions, and final command zero.
+cancel, distance/time bounds, actual wheel directions, final command zero, and
+that no second automatic release occurs during the 5-second recontact window.
 Do not mark TODO 11 or 12 FIELD-PASS from these simulation files alone.

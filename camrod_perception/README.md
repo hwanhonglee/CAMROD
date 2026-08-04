@@ -8,6 +8,14 @@ occupancy, and rear-camera AprilTag parking perception.
 
 ![Perception pipelines](../docs/assets/module-guides/perception/yolo-lidar-and-parking-pipelines.png)
 
+## Actual Simulation Runtime
+
+![Live obstacle perception](../docs/assets/module-guides/perception/runtime-obstacle-bboxes-20260804.png)
+
+`SIM RUNTIME CAPTURE`: actual fused obstacle points and bounding boxes over the
+filtered LiDAR stream. Simulation exercises the LiDAR path; it does not claim
+physical YOLO, camera-LiDAR calibration, or AprilTag accuracy.
+
 ## At A Glance
 
 | Pipeline | Uses | Main output |

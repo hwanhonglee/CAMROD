@@ -1,12 +1,20 @@
 # camrod_bringup
 
-<!-- HH_260804 - Keep the launch package readable by pairing the intended
-contract with the latest measured verdict and compact launch tables. -->
+<!-- HH_260804 - Pair the expected contract with an actual full-stack screen,
+the retry-loop containment result, and only launch files that exist. -->
 
 Dependency-ordered full-stack launch, canonical configuration mirrors,
 simulation profiles, and validation tools.
 
 ![Full-stack mission contract](../docs/assets/module-guides/bringup/full-stack-mission-contract.png)
+
+## Actual Simulation Runtime
+
+![Live full-stack B6 runtime](../docs/assets/module-guides/bringup/runtime-full-stack-b6-20260804.png)
+
+`SIM RUNTIME CAPTURE`: actual RViz output from
+`bringup.launch.py sim:=true rviz:=true`, not the contract renderer and not a
+physical drive. The orange path is the dispatched B6 route.
 
 ## At A Glance
 
@@ -32,6 +40,8 @@ The latest full-bringup runtime result is shown separately.
 | Pose chain | PASS | 30 s probe; 20 Hz selected pose |
 | B6 turnaround | FAIL CLOSED | `CRAB_IN -> lanelet_footprint_cost -> timeout` |
 | B12 roadside stop | FAIL CLOSED | `CRAB_IN -> lanelet_footprint_cost -> timeout` |
+| Rapid route recontact | PASS, FAIL CLOSED | One release; map v14 recontacted in 0.276 s (v13: 0.267/0.372 s), then latched with zero output |
+| Operator stop | PASS | `POST /ui/stop` returned HTTP 200; local owners and Nav2 canceled; state 16 published |
 | Complete round trip | NOT DEMONSTRATED | Return, parking, and charging were not reached |
 
 The failed cases retain the `0.10 m` planning margin and complete-footprint
@@ -51,15 +61,14 @@ evidence.
 
 | Launch | Purpose | Default profile |
 |---|---|---|
-| `bringup.launch.py` | Physical Jetson/Ranger stack | Hardware drivers enabled by launch defaults |
-| `bringup_sim.launch.py` | Full deterministic simulation | Fake sensors and raw Ranger/BMS boundaries |
-| `bringup_minimal.launch.py` | Reduced diagnostics/debug graph | Explicit module selection |
-| `rviz.launch.py` | CAMROD visualization | Shared RViz config |
+| `bringup.launch.py` | Physical Jetson/Ranger stack | Hardware drivers enabled by defaults |
+| `bringup.launch.py sim:=true` | Full deterministic simulation | Fake sensors and raw Ranger/BMS boundaries |
+| `bringup.launch.py sim:=true rviz:=true` | Simulation plus operator visualization | Shared CAMROD RViz config |
 
 ```bash
 source ~/camrod_ws/install/setup.bash
 
-ros2 launch camrod_bringup bringup_sim.launch.py
+ros2 launch camrod_bringup bringup.launch.py sim:=true rviz:=true
 ros2 launch camrod_bringup bringup.launch.py
 ```
 
@@ -109,5 +118,6 @@ pytest -q camrod_bringup/test/test_module_readme_assets.py
 |---|---|
 | Normalized module evidence | `docs/evidence/module-guides/` |
 | Preserved raw bringup logs | `docs/evidence/module-guides/bringup/raw/` |
+| Live runtime screen metadata | [`runtime-visual-capture-20260804.json`](../docs/evidence/module-guides/bringup/runtime-visual-capture-20260804.json) |
 | Released v2.1.3 evidence | `docs/evidence/v2.1.3/` |
 | Interpretation and capture rules | [`docs/MODULE_VISUAL_GUIDE.md`](../docs/MODULE_VISUAL_GUIDE.md) |
