@@ -1,5 +1,28 @@
 # Documentation Changelog
 
+<!-- HH_260804 - Close the observed clear/release/recontact loop, repair the
+operator-stop service call, and attach actual runtime screens to every module. -->
+## [v2.1.3-runtime-captures-and-retry-latch] - 2026-08-04 (HH_260804)
+
+### Changed
+
+| Code, config, doc, or asset | What changed |
+|-----|--------------|
+| `camrod_control` route recovery policy | Allows one automatic route release, then latches a same-route recontact within 5 seconds; blocks further candidates/releases and keeps final output zero until stop/replan/re-engage |
+| control and bringup `cmd_vel_safety_gate.yaml` | Added synchronized `route_safety_recovery_max_auto_releases: 1` and `route_safety_recovery_recontact_window_s: 5.0` deployment values |
+| `camrod_ui` backend | Replaced invalid rclcpp-style `async_send_request()` with rclpy `call_async()` so `POST /ui/stop` cancels Nav2 and reaches `OPERATOR_STOPPED` instead of HTTP 500 |
+| package READMEs and `MODULE_VISUAL_GUIDE.md` | Added 14 actual RViz/ROS CLI runtime screens, explicitly labelled simulation rather than generated or physical evidence |
+| user-provided Lanelet2 map revision 14 | Preserved both byte-identical OSM files; ten boundary LineStrings were reshaped without changing relation IDs; full bringup loaded 55 lanelets/14 areas but B6 still contacted the boundary near `(4.3688, 45.0583)` |
+| bringup runtime evidence | Preserved launch command, B6 dispatch, map-v14 0.276-second recontact (plus v13 history), retry latch, zero Twist, HTTP 200 stop, controller/Nav2 cancellation, and state 16 in JSON plus a concise raw excerpt |
+| launch documentation | Removed nonexistent `bringup_sim.launch.py`, `bringup_minimal.launch.py`, and `rviz.launch.py` examples; documented the real `bringup.launch.py sim:=true rviz:=true` entrypoint |
+| tests | Added policy coverage for rapid recontact and delayed retry, UI stop client coverage, runtime image/metadata checks, launch-document regression checks, and map-v14 synchronization/structure checks |
+
+The retry-latch and UI-stop results are full-stack simulation evidence. The B6
+route still fails closed at missing surveyed service-access geometry, and no
+real wheel, sensor, charger, or speaker FIELD-PASS is inferred.
+
+---
+
 <!-- HH_260804 - Replace long package narratives with scan-first visual,
 value, performance, and evidence tables without changing runtime behavior. -->
 ## [post-v2.1.3-all-package-visual-readmes] - 2026-08-04 (HH_260804)

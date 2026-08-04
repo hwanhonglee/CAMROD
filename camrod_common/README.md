@@ -8,6 +8,14 @@ Shared ROS 2 interface workspace. Runtime interfaces are implemented by the
 
 ![Shared interface contract](../docs/assets/module-guides/common/interface-contract-and-dependencies.png)
 
+## Actual Simulation Runtime
+
+![Live generated interface contract](../docs/assets/module-guides/common/runtime-interface-terminal-20260804.png)
+
+`SIM RUNTIME CAPTURE`: the live `/system/status` topic resolves to
+`avg_msgs/msg/SystemStatus`; the same screen shows its generated fields and
+publisher/subscriber graph.
+
 ## At A Glance
 
 | Uses | Function | Output |

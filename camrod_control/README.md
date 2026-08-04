@@ -1,12 +1,22 @@
 # camrod_control
 
-<!-- HH_260804 - Consolidate command ownership, safety thresholds, parking
-states, and measured recovery into a scan-first package guide. -->
+<!-- HH_260804 - Add the live boundary/latch screen and record the bounded
+automatic-release budget without weakening the complete-footprint gate. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
 
 ![Control command safety and recovery](../docs/assets/module-guides/control/command-safety-and-recovery.png)
+
+## Actual Simulation Runtime
+
+| Boundary and route in RViz | Gate state, zero output, and event times |
+|---|---|
+| ![Live boundary retry latch](../docs/assets/module-guides/control/runtime-boundary-retry-latch-20260804.png) | ![Live gate retry latch](../docs/assets/module-guides/control/runtime-retry-latch-terminal-20260804.png) |
+
+`SIM RUNTIME CAPTURE`: with map v14, after one automatic release the same B6
+boundary was recontacted in `0.276 s`; the gate latched `ROUTE_SAFETY_HOLD`, stopped issuing
+recovery candidates, and published an all-zero final command.
 
 ## At A Glance
 
@@ -29,6 +39,8 @@ maneuvers, parking, and bounded map-boundary recovery.
 | Soft lane edge | cost `98` | Traversable planning bias, not the hard body stop |
 | Dynamic cost stop | threshold `85` | LiDAR/radar/merged hazard hold |
 | Route-clear proof | `1.0 s` | Releases retained route hold |
+| Automatic release budget | `1` | Allows one bounded Nav2 resume attempt |
+| Rapid recontact window | `5.0 s` | Same-route recontact latches until operator stop/replan |
 | Recovery proof probe | `0.25 m` | Projected complete footprint must be clear |
 | Recovery owner | `0.10 m/s`, `0.40 m`, `10 s` | Maximum raw speed, travel, duration |
 | Contact recovery yaw | `0 rad/s` | No swept-footprint rotation is attempted |
@@ -102,10 +114,14 @@ surface while the internal controller remains `PARKED`.
 | Both sides blocked, reverse selected | Release displacement `0.0327 m` in static case | Bounded reverse works |
 | Same-goal RPP retry | `0.4726 m`, yaw `-2.0008 deg` | Normal yaw resumed after release |
 | Later map boundary | Second hold observed | Map corridor remains limiting |
+| Live B6 retry containment | map v14 `0.276 s` (v13 `0.267/0.372 s`); final Twist all zero | Retry loop stopped; operator action required |
 
 During contact escape, yaw stays fixed. After the gate has fresh clear evidence
 for 1 second, the retained RPP route resumes and ordinary yaw control returns.
-This behavior is simulation-validated only; physical recovery remains pending.
+Only one automatic release is permitted. If the same boundary is contacted
+again within 5 seconds, crab/reverse candidates and further release are blocked
+until stop/replan/re-engage resets the retry budget. This behavior is
+simulation-validated only; physical recovery remains pending.
 
 ## Configuration
 

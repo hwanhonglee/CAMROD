@@ -8,6 +8,16 @@ visualization, planning-boundary publication, and light control.
 
 ![Ranger command and status](../docs/assets/module-guides/platform/ranger-command-and-status.png)
 
+## Actual Simulation Runtime
+
+| Robot geometry in RViz | Normalized `/platform/status` |
+|---|---|
+| ![Live robot geometry](../docs/assets/module-guides/platform/runtime-robot-geometry-20260804.png) | ![Live platform status](../docs/assets/module-guides/platform/runtime-status-terminal-20260804.png) |
+
+`SIM RUNTIME CAPTURE`: the live marker/boundary frame and simulated raw
+Ranger/BMS bridge output. CAN latency and real steering response remain field
+measurements.
+
 ## At A Glance
 
 | Uses | Function | Main outputs |

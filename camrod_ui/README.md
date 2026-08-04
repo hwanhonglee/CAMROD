@@ -59,11 +59,14 @@ Manual engage uses the same command-gate state and therefore displays driving
 even when no campsite destination was selected. Operator stop publishes
 `OPERATOR_STOPPED`; a previous planning warning is not the operation label.
 
-## Browser Evidence
+## Actual Browser Runtime
 
 | Mission-ready dispatch | Route safety overlay |
 |---|---|
 | ![Guest dispatch ready](../docs/assets/module-guides/ui/guest-mission-dispatch-ready.png) | ![Guest safety hold](../docs/assets/module-guides/ui/guest-route-safety-hold.png) |
+
+`SIM BROWSER CAPTURE`: these are rendered Guest UI screens connected to the
+running ROS backend, not generated UI mockups.
 
 | Integration check | Result |
 |---|---|
@@ -71,7 +74,7 @@ even when no campsite destination was selected. Operator stop publishes
 | Destination | Mission key and departure/moving state observed |
 | Return | Return state and `MotionOperation.RETURN` observed |
 | Safety | `ROUTE_SAFETY_HOLD` overlay observed |
-| Cancel | State `16 OPERATOR_STOPPED` observed |
+| Cancel | `POST /ui/stop` HTTP 200; all local owners and Nav2 canceled; state `16 OPERATOR_STOPPED` observed |
 
 This validates browser/backend/ROS integration. It is not a physical mission or
 collision-safety test.

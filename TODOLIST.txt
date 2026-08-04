@@ -1,4 +1,4 @@
-CAMROD v2.1.2 이후 미완료 실차 확인 목록
+CAMROD v2.1.3 이후 미완료 실차 확인 목록
 갱신일: 2026-08-04 (Asia/Seoul)
 
 # HH_260730 - 완료된 구현·원인 규명·단위/sim 검증은 DONE.txt로 분리했다.
@@ -13,9 +13,10 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
   camrod_bringup/docs/field_test_runbook.md
 - v2.1.1 변경 범위: docs/V2_1_1_RELEASE_NOTES.md
 - v2.1.2 갱신 범위와 검증 한계: docs/V2_1_2_RELEASE_NOTES.md
+- v2.1.3 중앙 프레임·경계 회복·UI 범위: docs/V2_1_3_RELEASE_NOTES.md
 - 완료 구현·진단 결과: DONE.txt
 - 중앙 기준 프레임 전환표: docs/V2_1_3_ROBOT_CENTER_MIGRATION.md
-- v2.1.2는 software/config/sim 기준점이며 변경 후 전체 실차 주행
+- v2.1.3은 software/config/sim 기준점이며 변경 후 전체 실차 주행
   FIELD-PASS는 아직 없다.
 
 # HH_260803 - robot_center_link 코드/config 전환은 완료했지만 실차 TF와
@@ -290,6 +291,10 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
      뒤에만 hold가 해제되는지 확인한다.
   7) hold 중 Nav2가 ABORTED였다면 gate ENABLED 0.5초 뒤 같은 snapped
      goal/source가 재발행되는지 확인한다. 같은 goal에서 최대 2회다.
+     이 planning 재발행 상한과 별개로 gate 자동 release는 1회만 허용된다.
+  8) 첫 release 뒤 5초 안에 같은 경계가 재접촉되면
+     `route_safety_retry_latched`가 되고, 추가 recovery candidate/release와
+     nonzero 최종 cmd_vel이 나오지 않는지 확인한다.
 - 합격:
   node restart나 mission 재선택 없이 동일 mission이 제한된 재계획으로
   이어지고, 경계 접촉 또는 stale evidence 중에는 정지가 유지된다.
@@ -300,6 +305,15 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
   다만 lanelet 754/2751/2720 구간은 1.69160 x 1.27000 m planning boundary가
   통과하기에 좁아 mission 완료까지는 가지 못했다. 이 결과는 자동 재개와
   재정지의 SIM 증거이며, 해당 지도 corridor 수정 및 실차 PASS를 대체하지 않는다.
+- HH_260804 SIM-PASS(반복 방지) / FIELD-PENDING:
+  실제 `bringup.launch.py sim:=true rviz:=true` B6 실행에서 첫 clear/release
+  뒤 같은 경계가 map v13에서는 0.372초 및 재현 run 0.267초, 사용자가 갱신한
+  map v14에서는 `(4.3688, 45.0583)` 부근에서 0.276초 만에 다시 닿았다. 자동 release
+  budget 1회를 소진한 두 번째 contact는 `route_safety_retry_latched`로 고정됐고,
+  recovery candidate와 추가 release 없이 최종 `/control/cmd_vel_ros`가 전 축
+  0으로 유지됐다. 즉 화면에서 보이던 clear/release/recontact 반복은 코드와
+  full-stack sim에서 차단했다. v14도 B6 완주 증거는 아니며, 실제 바퀴·경계에서는 동일 5초 조건과 정지
+  거리를 다시 측정해야 한다.
 
 [P0] 12. reverse/crab escape 후 재시작/re-engage
 - TODO 11의 ROUTE_SAFETY_HOLD 상태에서 수행한다.
@@ -319,6 +333,9 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
      re-engage 한 번으로 path/cmd_vel이 생성되는지 확인한다.
   7) 별도 반복에서 hold 중 UI cancel 후 5초 동안 goal/path/nonzero
      cmd_vel이 자동 재생성되지 않는지 확인한다.
+  8) rapid-recontact latch 뒤 operator stop/replan/re-engage를 한 번 수행해
+     release budget이 새 임무에만 초기화되고 이전 경로가 저절로 재개되지
+     않는지 확인한다.
 - 구현 경계:
   gate는 reverse/crab 후보의 full-footprint와 모든 interlock을 검증하고,
   별도 `route_safety_recovery_controller`가 유일한 자동 명령 owner다. owner는
@@ -350,6 +367,13 @@ CAMROD v2.1.2 이후 미완료 실차 확인 목록
      시나리오로 검증했다.
   4) 실차에서는 좌/우 crab, reverse 장애물, operator cancel, 거리/시간 상한,
      wheel feedback을 `record-recovery` rosbag으로 확인해야 FIELD-PASS다.
+- HH_260804 SIM-PASS(operator stop) / FIELD-PENDING:
+  rapid-recontact latch 상태에서 `POST /ui/stop`은 HTTP 200을 반환했다.
+  campsite/drop-zone/reverse-parking owner가 모두 CANCEL/IDLE로 전환되고 Nav2
+  FollowPath/NavigateToPose cancel, gate `STANDBY`, service state
+  `OPERATOR_STOPPED(16)`, 최종 zero command를 확인했다. 기존 HTTP 500 원인은
+  rclpy client에 존재하지 않는 `async_send_request()` 호출이었고
+  `call_async()`로 수정했다. 실차에서는 같은 순서와 5초 무재개를 확인한다.
 - 합격:
   projected full-footprint와 모든 obstacle/interlock을 통과한 reverse/crab
   escape만 허용되고, corridor 복귀 후 첫 re-engage에서 stale latch/ABORT

@@ -37,6 +37,30 @@ FIELD_REPORT = (
     / "bringup"
     / "field-stationary-20260731.json"
 )
+RUNTIME_CAPTURE_REPORT = (
+    SRC_ROOT
+    / "docs"
+    / "evidence"
+    / "module-guides"
+    / "bringup"
+    / "runtime-visual-capture-20260804.json"
+)
+RUNTIME_CAPTURE_ASSETS = (
+    "bringup/runtime-full-stack-b6-20260804.png",
+    "common/runtime-interface-terminal-20260804.png",
+    "control/runtime-boundary-retry-latch-20260804.png",
+    "control/runtime-retry-latch-terminal-20260804.png",
+    "localization/runtime-pose-tf-20260804.png",
+    "map/runtime-lanelet-map-20260804.png",
+    "perception/runtime-obstacle-bboxes-20260804.png",
+    "planning/runtime-b6-global-local-path-20260804.png",
+    "platform/runtime-robot-geometry-20260804.png",
+    "platform/runtime-status-terminal-20260804.png",
+    "sensing/runtime-lidar-radar-costs-20260804.png",
+    "sensor-kit/runtime-sensor-tf-20260804.png",
+    "system/runtime-health-terminal-20260804.png",
+    "voice/runtime-event-terminal-20260804.png",
+)
 
 CAMROD_READMES = (
     SRC_ROOT / "README.md",
@@ -76,6 +100,33 @@ MODULE_OWNED_RELEASE_ASSETS = (
     "ui/guest-mission-dispatch-ready.png",
     "ui/guest-route-safety-hold.png",
 )
+
+README_RUNTIME_ASSETS = {
+    SRC_ROOT / "README.md": (RUNTIME_CAPTURE_ASSETS[0],),
+    SRC_ROOT / "camrod_bringup" / "README.md": (RUNTIME_CAPTURE_ASSETS[0],),
+    SRC_ROOT / "camrod_common" / "README.md": (RUNTIME_CAPTURE_ASSETS[1],),
+    SRC_ROOT / "camrod_common" / "avg_msgs" / "README.md": (
+        RUNTIME_CAPTURE_ASSETS[1],
+    ),
+    SRC_ROOT / "camrod_control" / "README.md": RUNTIME_CAPTURE_ASSETS[2:4],
+    SRC_ROOT / "camrod_localization" / "README.md": (
+        RUNTIME_CAPTURE_ASSETS[4],
+    ),
+    SRC_ROOT / "camrod_map" / "README.md": (RUNTIME_CAPTURE_ASSETS[5],),
+    SRC_ROOT / "camrod_perception" / "README.md": (RUNTIME_CAPTURE_ASSETS[6],),
+    SRC_ROOT / "camrod_planning" / "README.md": (RUNTIME_CAPTURE_ASSETS[7],),
+    SRC_ROOT / "camrod_platform" / "README.md": RUNTIME_CAPTURE_ASSETS[8:10],
+    SRC_ROOT / "camrod_sensing" / "README.md": (RUNTIME_CAPTURE_ASSETS[10],),
+    SRC_ROOT / "camrod_sensor_kit" / "README.md": (
+        RUNTIME_CAPTURE_ASSETS[11],
+    ),
+    SRC_ROOT / "camrod_system" / "README.md": (RUNTIME_CAPTURE_ASSETS[12],),
+    SRC_ROOT / "camrod_ui" / "README.md": (
+        "ui/guest-mission-dispatch-ready.png",
+        "ui/guest-route-safety-hold.png",
+    ),
+    SRC_ROOT / "camrod_voice" / "README.md": (RUNTIME_CAPTURE_ASSETS[13],),
+}
 
 
 def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
@@ -226,6 +277,81 @@ def test_release_visuals_are_decodable_and_owned_by_modules() -> None:
                 assert visual.n_frames > 1
 
     assert not (SRC_ROOT / "docs" / "assets" / "v2.1.3").exists()
+
+
+def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
+    """Every CAMROD README must expose its actual runtime surface."""
+    asset_root = SRC_ROOT / "docs" / "assets" / "module-guides"
+    image_pattern = re.compile(r"!\[[^]]*\]\(([^)]+)\)")
+
+    for relative_path in RUNTIME_CAPTURE_ASSETS:
+        with Image.open(asset_root / relative_path) as visual:
+            assert visual.width >= 1200
+            assert visual.height >= 700
+            assert visual.format == "PNG"
+
+    for readme, expected_assets in README_RUNTIME_ASSETS.items():
+        linked_assets = {
+            (readme.parent / target).resolve()
+            for target in image_pattern.findall(readme.read_text(encoding="utf-8"))
+        }
+        for relative_path in expected_assets:
+            assert (asset_root / relative_path).resolve() in linked_assets
+
+    all_visuals = tuple(asset_root.rglob("*"))
+    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 39
+    assert sum(path.suffix.lower() == ".gif" for path in all_visuals) == 6
+
+
+def test_runtime_capture_metadata_is_complete_and_not_field_evidence() -> None:
+    """Live screens must retain traceability and an explicit evidence limit."""
+    report = json.loads(RUNTIME_CAPTURE_REPORT.read_text(encoding="utf-8"))
+    files = tuple(
+        item["file"].split("docs/assets/module-guides/", 1)[1]
+        for item in report["screenshots"]
+    )
+
+    assert report["environment"]["field_claim"] is False
+    assert report["environment"]["map_version"] == 14
+    assert report["environment"]["launch_command"].endswith(
+        "bringup.launch.py sim:=true rviz:=false"
+    )
+    assert report["environment"]["rviz_capture_mode"].startswith(
+        "separately attached"
+    )
+    assert sorted(files) == sorted(RUNTIME_CAPTURE_ASSETS)
+    assert report["route_retry_containment"]["max_automatic_releases"] == 1
+    assert report["route_retry_containment"]["rapid_recontact_window_s"] == 5.0
+    assert (
+        report["route_retry_containment"]["map_v14_recontact_after_release_s"]
+        == 0.275737362
+    )
+    assert report["operator_stop"]["http_status"] == 200
+
+    raw_excerpt = SRC_ROOT / report["raw_excerpt"]
+    raw_text = raw_excerpt.read_text(encoding="utf-8")
+    assert "rapid route recontact latched after 1 automatic release" in raw_text
+    assert "user-provided lanelet2_maps.osm revision 14" in raw_text
+    assert "linear: {x: 0.0, y: 0.0, z: 0.0}" in raw_text
+    assert "HTTP 200" in raw_text
+    assert "OPERATOR_STOPPED(16)" in raw_text
+
+
+def test_bringup_docs_reference_only_existing_launch_entrypoint() -> None:
+    """Documentation must not reintroduce launch files absent from the package."""
+    text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (SRC_ROOT / "README.md", SRC_ROOT / "camrod_bringup" / "README.md")
+    )
+    for nonexistent in (
+        "bringup_sim.launch.py",
+        "bringup_minimal.launch.py",
+        "rviz.launch.py",
+    ):
+        assert nonexistent not in text
+
+    assert "bringup.launch.py sim:=true rviz:=true" in text
+    assert (SRC_ROOT / "camrod_bringup" / "launch" / "bringup.launch.py").is_file()
 
 
 def test_bringup_evidence_references_committed_raw_log_lines() -> None:

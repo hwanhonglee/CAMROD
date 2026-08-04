@@ -8,6 +8,14 @@ planners/controllers, and semantic mission state.
 
 ![Planning runtime](../docs/assets/module-guides/planning/nav2-servers-and-mission-states.png)
 
+## Actual Simulation Runtime
+
+![Live B6 global and local paths](../docs/assets/module-guides/planning/runtime-b6-global-local-path-20260804.png)
+
+`SIM RUNTIME CAPTURE`: live B6 goal, LaneletRoute global path, local path, and
+robot pose. The route is generated correctly but later fails closed at the
+unsurveyed service-access boundary.
+
 ## At A Glance
 
 | Uses | Function | Main outputs |
@@ -85,7 +93,8 @@ in explicit `OPERATOR_STOPPED` state.
 | Nav2 server/plugin topology | Source-derived and test-covered |
 | RPP center-frame route A/B | Common segment cross-track RMS improved `0.0588 -> 0.0549 m` |
 | Oscillation in compared run | `0` yaw-step sign reversals in both A/B runs |
-| Full campsite round trip | Not demonstrated; map boundary blocks B6/B12 entry |
+| Map-v14 B6 route | Stops at boundary near `(4.3688, 45.0583)` and latches after one rapid retry |
+| Full campsite round trip | Not demonstrated; map boundary still blocks campsite entry |
 
 The A/B run supports the current `1.1 m` RPP lookahead and center-frame choice
 for the compared route. It does not prove every lane width or physical vehicle

@@ -148,6 +148,14 @@ if(BUILD_TESTING)
     TIMEOUT 90
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260804 - Preserve the user-provided map-v14 source and its named backup
+  # as one release input, and tie the runtime evidence to that exact revision.
+  ament_add_pytest_test(
+    test_lanelet_map_revision_sync
+    test/test_lanelet_map_revision_sync.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
 endif()
 
 ament_package()

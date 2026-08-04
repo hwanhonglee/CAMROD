@@ -8,6 +8,13 @@ library shared by localization, planning, control, platform, and diagnostics.
 
 ![Reference frame before and after](../docs/assets/module-guides/sensor-kit/reference-frame-before-after.png)
 
+## Actual Simulation Runtime
+
+![Live sensor TF geometry](../docs/assets/module-guides/sensor-kit/runtime-sensor-tf-20260804.png)
+
+`SIM RUNTIME CAPTURE`: the actual 3D `robot_center_link`, sensor-kit, camera,
+GNSS, IMU, LiDAR, and seven-radar TF graph loaded from the current xacro.
+
 ## At A Glance
 
 | Uses | Function | Main outputs |
