@@ -11,6 +11,14 @@ adjustment, planner/runtime resource work, and package visual documentation.
 It is a source, configuration, unit-test, and workstation-simulation baseline.
 It is not a new full-route or Jetson field acceptance result.
 
+## Commit Structure
+
+| Commit | Scope |
+|---|---|
+| `7d22eb944` | Runtime, synchronized configuration, map v15, WebKit UI, Nav2 policy, and diagnostic composition |
+| `1b6ee1603` | Safety, map, campsite, Nav2, system, and Robot/Guest UI regression contracts |
+| `47323dc58` | Package guides, release records, reproducible renderers, PNG/GIF assets, and evidence cleanup |
+
 ## Active Values
 
 | Contract | v2.1.4 value | Operational meaning |
