@@ -1,0 +1,7 @@
+# HH_260805 - Production loads only planners reachable by an active policy.
+# LaneletRoute owns normal missions; SmacLattice is the width-gated dynamic
+# obstacle fallback. Other implemented planners remain in nav2_base.yaml and
+# can be loaded with nav2_planner_profiles/all.yaml for development.
+planner_server:
+  ros__parameters:
+    planner_plugins: ["LaneletRoute", "SmacLattice"]

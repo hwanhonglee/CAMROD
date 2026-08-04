@@ -76,8 +76,8 @@ struct GnssState
 class GnssCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  GnssCheckerNode()
-  : robot_diagnostics_base::BaseChecker("gnss_checker", "gnss_checker")
+  explicit GnssCheckerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : robot_diagnostics_base::BaseChecker("gnss_checker", "gnss_checker", options)
   {
     base_init();
   }
@@ -289,12 +289,5 @@ private:
   std::vector<std::shared_ptr<GnssState>> gnss_list_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<GnssCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(GnssCheckerNode)

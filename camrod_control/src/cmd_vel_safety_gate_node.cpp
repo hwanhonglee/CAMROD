@@ -446,14 +446,16 @@ private:
       "lanelet_safety_footprint_threshold", 100);
     planning_boundary_topic_ = declare_parameter<std::string>(
       "robot_planning_boundary_topic", "/platform/robot/planning_boundary");
+    // HH_260805 - Match the four-sided 5 cm planning envelope published by
+    // sensor-kit and Nav2 while retaining the smaller measured-body hard stop.
     motion_cost_stop_config_.footprint_front_m = declare_parameter<double>(
-      "lanelet_safety_footprint_front_m", 0.85837);
+      "lanelet_safety_footprint_front_m", 0.80837);
     motion_cost_stop_config_.footprint_rear_m = declare_parameter<double>(
-      "lanelet_safety_footprint_rear_m", 0.83323);
+      "lanelet_safety_footprint_rear_m", 0.78323);
     motion_cost_stop_config_.footprint_left_m = declare_parameter<double>(
-      "lanelet_safety_footprint_left_m", 0.63505);
+      "lanelet_safety_footprint_left_m", 0.58505);
     motion_cost_stop_config_.footprint_right_m = declare_parameter<double>(
-      "lanelet_safety_footprint_right_m", 0.63495);
+      "lanelet_safety_footprint_right_m", 0.58495);
     motion_cost_stop_config_.lanelet_lookahead_m = declare_parameter<double>(
       "lanelet_safety_lookahead_m", 1.0);
     motion_cost_stop_config_.lanelet_width_m = declare_parameter<double>(

@@ -130,7 +130,14 @@ class UiGuestNode(Node):
         # Single-client WebSocket exclusive lock.
         self._guest_ws: Optional[WebSocket] = None
         self._guest_ws_lock = threading.Lock()
+        # HJ_260804 - ROS callbacks and request responses can schedule writes
+        # concurrently. Serialize frames on the uvicorn event loop so one
+        # connection never receives overlapping send_json() calls.
+        self._guest_ws_send_lock = asyncio.Lock()
         self._main_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._uvicorn_server: Optional[uvicorn.Server] = None
+        self._server_thread: Optional[threading.Thread] = None
+        self._server_stop_requested = threading.Event()
 
         # Grace period: hold lock briefly after disconnect so same user can reconnect.
         self._last_client_ip: Optional[str] = None
@@ -188,6 +195,37 @@ class UiGuestNode(Node):
             f"ui_guest ready: host={self.host} port={self.port} "
             f"destination_topic={self.ui_destination_topic}"
         )
+
+    def destroy_node(self) -> bool:
+        # HH_260805 - Drain the Guest HTTP/WebSocket server before ROS entities
+        # disappear so shutdown cannot race an in-flight transport callback.
+        self._stop_fastapi_server()
+        return super().destroy_node()
+
+    def _stop_fastapi_server(self, join_timeout_s: float = 3.0) -> None:
+        self._server_stop_requested.set()
+        server = self._uvicorn_server
+        if server is not None:
+            server.should_exit = True
+
+        loop = self._main_loop
+        if loop is not None and loop.is_running():
+            try:
+                loop.call_soon_threadsafe(lambda: None)
+            except RuntimeError:
+                pass
+
+        thread = self._server_thread
+        if (
+            thread is not None
+            and thread is not threading.current_thread()
+            and thread.is_alive()
+        ):
+            thread.join(timeout=max(0.0, float(join_timeout_s)))
+            if thread.is_alive():
+                self.get_logger().warn(
+                    "guest ui fastapi thread did not stop before timeout"
+                )
 
     # ── ROS2 callbacks ────────────────────────────────────────────────────────
 
@@ -271,11 +309,46 @@ class UiGuestNode(Node):
         if ws is None:
             return
         try:
-            await ws.send_json(payload)
+            await self._send_guest_payload(ws, payload)
         except Exception:
             with self._guest_ws_lock:
                 if self._guest_ws is ws:
                     self._guest_ws = None
+
+    async def _send_guest_payload(self, ws: WebSocket, payload: dict) -> None:
+        """Write one complete JSON frame without overlapping another sender."""
+        async with self._guest_ws_send_lock:
+            await ws.send_json(payload)
+
+    def _claim_guest_connection(
+        self,
+        ws: WebSocket,
+        client_ip: str,
+        now_s: Optional[float] = None,
+    ) -> Optional[int]:
+        """Claim the single guest slot without awaiting under a thread lock."""
+        now = time.time() if now_s is None else float(now_s)
+        with self._guest_ws_lock:
+            if self._guest_ws is not None:
+                return 0
+            if now < self._grace_until and client_ip != self._last_client_ip:
+                return max(1, math.ceil(self._grace_until - now))
+            self._guest_ws = ws
+            self._last_client_ip = client_ip
+            self._grace_until = 0.0
+        return None
+
+    def _release_guest_connection(
+        self,
+        ws: WebSocket,
+        now_s: Optional[float] = None,
+    ) -> None:
+        """Release only the connection that currently owns the guest slot."""
+        now = time.time() if now_s is None else float(now_s)
+        with self._guest_ws_lock:
+            if self._guest_ws is ws:
+                self._guest_ws = None
+                self._grace_until = now + self.grace_period_s
 
     # ── ROS2 publish ─────────────────────────────────────────────────────────
 
@@ -392,72 +465,106 @@ class UiGuestNode(Node):
             await ws.accept()
             client_ip = ws.client.host
 
-            with node._guest_ws_lock:
-                if node._guest_ws is not None:
-                    await ws.send_json({"locked": True, "grace_remaining": 0})
+            # HJ_260804 - The claim is fully synchronous. Never suspend the
+            # asyncio server while holding a threading.Lock, or simultaneous
+            # refresh attempts can deadlock the only uvicorn event-loop thread.
+            reject_grace_remaining = node._claim_guest_connection(ws, client_ip)
+            if reject_grace_remaining is not None:
+                try:
+                    await node._send_guest_payload(ws, {
+                        "locked": True,
+                        "grace_remaining": reject_grace_remaining,
+                    })
                     await ws.close(1008)
-                    return
-
-                now = time.time()
-                if now < node._grace_until and client_ip != node._last_client_ip:
-                    remaining = int(node._grace_until - now)
-                    await ws.send_json({"locked": True, "grace_remaining": remaining})
-                    await ws.close(1008)
-                    return
-
-                node._guest_ws = ws
-                node._last_client_ip = client_ip
-                node._grace_until = 0.0
-
-            # Send initial state — phase + 사이트 목록 동봉
-            with node._lock:
-                state = node._service_state
-                battery = node._battery
-                safety_hold = node._safety_hold
-                control_gate_state = node._control_gate_state
-            await ws.send_json({
-                "service_state": state,
-                "service_state_name": node._state_name_of(state),
-                "phase": node._phase_of(state),
-                "battery": battery,
-                "minimum_battery_percentage": node.minimum_mission_dispatch_battery_percent,
-                "mission_battery_ready": (
-                    battery >= node.minimum_mission_dispatch_battery_percent
-                ),
-                "safety_hold": safety_hold,
-                "control_gate_state": control_gate_state,
-                "sites": node.site_names,
-            })
+                except Exception:
+                    pass
+                return
 
             try:
+                # Registration and this initial send share one finally block;
+                # an aborted first frame cannot leave the guest slot occupied.
+                with node._lock:
+                    state = node._service_state
+                    battery = node._battery
+                    safety_hold = node._safety_hold
+                    control_gate_state = node._control_gate_state
+                await node._send_guest_payload(ws, {
+                    "service_state": state,
+                    "service_state_name": node._state_name_of(state),
+                    "phase": node._phase_of(state),
+                    "battery": battery,
+                    "minimum_battery_percentage": (
+                        node.minimum_mission_dispatch_battery_percent
+                    ),
+                    "mission_battery_ready": (
+                        battery >= node.minimum_mission_dispatch_battery_percent
+                    ),
+                    "safety_hold": safety_hold,
+                    "control_gate_state": control_gate_state,
+                    "sites": node.site_names,
+                })
+
+                idle_cycles = 0
                 while True:
-                    raw = await ws.receive_text()
+                    try:
+                        raw = await asyncio.wait_for(ws.receive_text(), timeout=15.0)
+                    except asyncio.TimeoutError:
+                        # The frontend sends an application heartbeat every
+                        # 10 s. Three missed intervals identify a stale slot.
+                        idle_cycles += 1
+                        if idle_cycles >= 3:
+                            node.get_logger().warn(
+                                "[guest] idle timeout (45s); closing stale connection"
+                            )
+                            try:
+                                await ws.close(1000)
+                            except Exception:
+                                pass
+                            break
+                        continue
+                    idle_cycles = 0
                     payload = json.loads(raw)
                     action = payload.get("action")
+
+                    if action == "heartbeat":
+                        continue
 
                     # (확장) 사이트 선택 호출 (경우 B): B1~B13 중 선택 → 해당 사이트로 이동
                     if action == "navigate":
                         site = str(payload.get("site", "")).strip()
                         if site not in node.site_names:
-                            await ws.send_json({"error": "invalid_site", "site": site})
+                            await node._send_guest_payload(
+                                ws, {"error": "invalid_site", "site": site}
+                            )
                         else:
-                            with node._lock:
-                                current = node._service_state
-                                battery = node._battery
-                            # HH_260721 - A charging robot remains available for campsite dispatch.
-                            if guest_mission_dispatch_ready(
+                            # Keep ROS lock contention and publish work off the
+                            # single uvicorn event-loop thread.
+                            def _dispatch_navigate() -> tuple[int, int]:
+                                with node._lock:
+                                    current = node._service_state
+                                    battery = node._battery
+                                if guest_mission_dispatch_ready(
+                                    current,
+                                    battery,
+                                    node.minimum_mission_dispatch_battery_percent,
+                                ):
+                                    node._publish_navigate(site)
+                                return current, battery
+
+                            current, battery = await asyncio.to_thread(
+                                _dispatch_navigate
+                            )
+                            if not guest_mission_dispatch_ready(
                                 current,
                                 battery,
                                 node.minimum_mission_dispatch_battery_percent,
                             ):
-                                node._publish_navigate(site)
-                            else:
                                 error = (
                                     "battery_not_ready"
                                     if battery < node.minimum_mission_dispatch_battery_percent
                                     else "robot_not_ready"
                                 )
-                                await ws.send_json({
+                                await node._send_guest_payload(ws, {
                                     "error": error,
                                     "service_state": current,
                                     "battery": battery,
@@ -468,28 +575,38 @@ class UiGuestNode(Node):
 
                     # 단순 호출 (드롭존으로) — 기존 동작 유지
                     elif action == "recall":
-                        with node._lock:
-                            current = node._service_state
-                        if current in {
+                        def _dispatch_recall() -> int:
+                            with node._lock:
+                                current = node._service_state
+                            if current in {
+                                AvgServiceState.DROP_ZONE_WAIT,
+                                AvgServiceState.CHARGING,
+                            }:
+                                node._publish_guest_recall()
+                            return current
+
+                        current = await asyncio.to_thread(_dispatch_recall)
+                        if current not in {
                             AvgServiceState.DROP_ZONE_WAIT,
                             AvgServiceState.CHARGING,
                         }:
-                            node._publish_guest_recall()
-                        else:
-                            await ws.send_json({"error": "robot_not_ready", "service_state": current})
+                            await node._send_guest_payload(ws, {
+                                "error": "robot_not_ready",
+                                "service_state": current,
+                            })
 
                     # (확장) 이용 완료 → 드롭존 복귀
                     elif action == "usage_complete":
-                        node._publish_usage_complete()
+                        await asyncio.to_thread(node._publish_usage_complete)
 
             except WebSocketDisconnect:
                 pass
+            except Exception as exc:
+                # Always reach slot cleanup, including an aborted initial send
+                # or a frame write racing a browser disconnect.
+                node.get_logger().warn(f"[guest] connection handler error: {exc}")
             finally:
-                with node._guest_ws_lock:
-                    if node._guest_ws is ws:
-                        node._guest_ws = None
-                        node._grace_until = time.time() + node.grace_period_s
-                        # _last_client_ip 유지 → 같은 IP는 유예 기간 내 즉시 재접속 가능
+                node._release_guest_connection(ws)
 
         html_path = node._resolve_guest_html()
 
@@ -512,6 +629,7 @@ class UiGuestNode(Node):
 
         def _run() -> None:
             loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             node._main_loop = loop
             config = uvicorn.Config(
                 app,
@@ -521,13 +639,25 @@ class UiGuestNode(Node):
                 loop="asyncio",
             )
             server = uvicorn.Server(config)
+            node._uvicorn_server = server
+            if node._server_stop_requested.is_set():
+                server.should_exit = True
             node.get_logger().info(
                 f"guest ui fastapi listening: http://{node.host}:{node.port}"
             )
-            loop.run_until_complete(server.serve())
+            try:
+                loop.run_until_complete(server.serve())
+            finally:
+                node._uvicorn_server = None
+                node._main_loop = None
+                loop.close()
 
-        thread = threading.Thread(target=_run, name="camrod_ui_guest_fastapi", daemon=True)
-        thread.start()
+        self._server_thread = threading.Thread(
+            target=_run,
+            name="camrod_ui_guest_fastapi",
+            daemon=True,
+        )
+        self._server_thread.start()
 
 
 def main() -> None:

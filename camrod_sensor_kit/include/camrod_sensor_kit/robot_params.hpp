@@ -38,7 +38,9 @@ struct RobotParams
   double body_right_extent{0.53495};
   double body_top_z{0.94188};
   double body_bottom_z{-0.15275};
-  double planning_margin{0.10};
+  double planning_margin{0.05};
+  // HH_260805 - Lateral clearance is independent so width can change without shortening the robot.
+  double planning_lateral_margin{0.05};
 
   // HH_260623 - Default wheel radius updated from measured 152.75 mm.
   double wheel_radius{0.15275};

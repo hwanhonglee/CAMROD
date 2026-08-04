@@ -76,9 +76,10 @@ struct LaneletState
 class LocalizationLaneletCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  LocalizationLaneletCheckerNode()
+  explicit LocalizationLaneletCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : robot_diagnostics_base::BaseChecker(
-      "localization_lanelet_checker", "localization_lanelet_checker")
+      "localization_lanelet_checker", "localization_lanelet_checker", options)
   {
     base_init();
   }
@@ -279,12 +280,5 @@ private:
   LaneletState state_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<LocalizationLaneletCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(LocalizationLaneletCheckerNode)

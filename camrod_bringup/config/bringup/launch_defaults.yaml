@@ -7,8 +7,9 @@ bringup:
   # =========================================================================
   runtime:
     clean_before_launch: true
-    # Run one more cleanup pass on Ctrl+C shutdown to prevent duplicate nodes.
-    clean_on_shutdown: true
+    # HH_260805 - Let launch stop its own children without a concurrent pkill pass.
+    # clean_before_launch still clears stale processes before the next run.
+    clean_on_shutdown: false
     sim: false
     # HH_260721 - Enable only when a validator publishes fresh normalized platform status.
     sim_platform_status_enable: false
@@ -72,10 +73,9 @@ bringup:
     # already publishes /planning/global_path; duplicate publishers make RViz path
     # visualization flicker and can feed stale paths to downstream cost grids.
     enable_goal_replanner: false
-    # HH_260629: Dynamic-obstacle monitoring is separate from goal_replanner.
-    # HH_260702: Keep it enabled for BLOCKED status, but keep fallback
-    # NavigateToPose preemption disabled in obstacle_replan_monitor.yaml so
-    # /planning/global_path remains lanelet-route stable during normal driving.
+    # HH_260805 - Dynamic-obstacle monitoring is separate from goal_replanner.
+    # Its fallback preemption is enabled only after the lanelet-grid width gate
+    # proves at least 2.50 m of fresh contiguous drivable corridor.
     enable_obstacle_replan_monitor: true
     # HH_260625: Let lifecycle_manager autostart own STARTUP unless localization
     # readiness gating is explicitly enabled. Running the retry node alongside
@@ -115,6 +115,11 @@ bringup:
     # (example: disabled.yaml, navfn_rpp.yaml, smac2d_rpp.yaml, smachybrid_rpp.yaml, ...).
     # "__module_default__" resolves to camrod_planning/config/nav2_combo_profiles/disabled.yaml.
     nav2_combo_param_file: __module_default__
+    # HH_260805 - Construct only the normal LaneletRoute planner and the
+    # width-gated SmacLattice fallback. Use `all.yaml` only for planner studies.
+    nav2_planner_plugins_param_file: planning/nav2_planner_profiles/production.yaml
+    # HH_260805 - Construct only mission RPP and manual-goal RotationShim in production.
+    nav2_controller_plugins_param_file: planning/nav2_controller_profiles/production.yaml
     # HH_260528: Selector IDs for PlannerSelector/ControllerSelector.
     # "__auto__" infers planner/controller from nav2_combo_param_file name.
     # Examples:
@@ -334,10 +339,11 @@ bringup:
     # HH_260727 - Permit soft boundary cost 98; stop the full footprint at off-lane 100.
     cmd_vel_gate_lanelet_safety_footprint_threshold: 100
     cmd_vel_gate_robot_planning_boundary_topic: /platform/robot/planning_boundary
-    cmd_vel_gate_lanelet_safety_footprint_front_m: 0.85837
-    cmd_vel_gate_lanelet_safety_footprint_rear_m: 0.83323
-    cmd_vel_gate_lanelet_safety_footprint_left_m: 0.63505
-    cmd_vel_gate_lanelet_safety_footprint_right_m: 0.63495
+    # HH_260805 - 0.05 m planning clearance around the unchanged measured body.
+    cmd_vel_gate_lanelet_safety_footprint_front_m: 0.80837
+    cmd_vel_gate_lanelet_safety_footprint_rear_m: 0.78323
+    cmd_vel_gate_lanelet_safety_footprint_left_m: 0.58505
+    cmd_vel_gate_lanelet_safety_footprint_right_m: 0.58495
     cmd_vel_gate_lanelet_safety_lookahead_m: 1.0
     cmd_vel_gate_lanelet_safety_width_m: 0.8
     cmd_vel_gate_lanelet_safety_stop_on_unknown: true
@@ -516,6 +522,12 @@ bringup:
     # HH_260522: diagnostics profile choices are directory names under:
     #   camrod_bringup/config/system/diagnostics/<profile_name>/
     enable_module_validators: true
+    # HH_260805 - Share executors across checker categories on Jetson. The
+    # three-container boundary is final; aggregate/status nodes stay isolated.
+    use_checker_components: true
+    # HH_260805 - One serialized executor per category avoids Cyclone DDS
+    # library-unload races observed during simultaneous full-stack shutdown.
+    checker_component_threads: 1
     diagnostics_profile: default
     # HH_260630 - __module_default__ selects camrod_system/config/system_checker.yaml
     # in hardware mode and system_checker_sim.yaml when sim:=true.
@@ -540,12 +552,17 @@ bringup:
     api_ui_low_battery_return_after_current_mission: true
     api_ui_low_battery_return_threshold_percent: 35.0
 
-    # HH_260727 - Open the local GTK/WebKit operator surface by default.
+    # HH_260805 - Use the lightweight embedded WebKit operator surface by
+    # default. Chromium remains an explicit maintenance/debug option.
     # Disable for headless bringup or when rendering the UI on another device.
     enable_operator_ui_window: true
+    operator_ui_window_engine: webkit
     operator_ui_window_url: http://127.0.0.1:8010
     operator_ui_window_width: 1280
     operator_ui_window_height: 800
+    # HJ_260804 - The on-robot display runs as a borderless kiosk. Headless
+    # deployment still uses enable_operator_ui_window=false.
+    operator_ui_window_fullscreen: true
 
   # =========================================================================
   # 10. NAMESPACES

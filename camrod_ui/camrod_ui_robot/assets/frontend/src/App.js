@@ -175,6 +175,31 @@ function RuntimeStatus({ systemHealth, missionPhase, batteryPolicy }) {
   );
 }
 
+// HH_260804 - Keep one-second clock updates local so the rest of the operator
+// screen does not re-render whenever only the displayed time has changed.
+function LiveClock() {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const dateStr = currentTime.toLocaleDateString('ko-KR', {
+    year: 'numeric', month: 'long', day: 'numeric', weekday: 'short'
+  });
+  const timeStr = currentTime.toLocaleTimeString('ko-KR', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  });
+
+  return (
+    <div className="wh-right">
+      <span className="wh-date">{dateStr}</span>
+      <span className="wh-time">{timeStr}</span>
+    </div>
+  );
+}
+
 // ── 탐방로 공통 이미지 캐러셀 컴포넌트 ──────────────────────────────────────
 function TrailCarousel({ title, images }) {
   const [open, setOpen] = useState(false);
@@ -727,32 +752,11 @@ const SIDE_BUTTONS = [
     id: 'facility',
     label: '시설 안내',
     icon: (
-      <svg viewBox="0 0 100 100" fill="none">
-        <defs>
-          <linearGradient id="facilityBg" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#4ab0f5"/>
-            <stop offset="100%" stopColor="#1565c0"/>
-          </linearGradient>
-          <clipPath id="facilityCircle">
-            <circle cx="50" cy="50" r="47"/>
-          </clipPath>
-        </defs>
-        <g clipPath="url(#facilityCircle)">
-          <circle cx="50" cy="50" r="47" fill="url(#facilityBg)"/>
-          {/* Head */}
-          <circle cx="50" cy="22" r="7" fill="white"/>
-          {/* Body */}
-          <path d="M34 57 L34 37 Q50 22 66 37 L66 57 Z" fill="white"/>
-          {/* Desk top surface */}
-          <rect x="15" y="55" width="70" height="8" rx="3" fill="white"/>
-          {/* Desk front panel */}
-          <rect x="19" y="63" width="62" height="23" rx="4" fill="white" opacity="0.92"/>
-          {/* "i" dot */}
-          <circle cx="50" cy="69" r="2.5" fill="url(#facilityBg)"/>
-          {/* "i" bar */}
-          <rect x="47.5" y="73" width="5" height="9" rx="2" fill="url(#facilityBg)"/>
-        </g>
-      </svg>
+      <img
+        src={`${process.env.PUBLIC_URL}/information_nobg.png`}
+        alt="시설 안내"
+        className="waiting-grid-btn-icon-img"
+      />
     ),
     title: '시설 안내',
     content: <FacilityContent />,
@@ -761,51 +765,11 @@ const SIDE_BUTTONS = [
     id: 'routes',
     label: '탐방로',
     icon: (
-      <svg viewBox="0 0 100 100" fill="none">
-        <defs>
-          <radialGradient id="compassBezel" cx="35%" cy="35%" r="65%">
-            <stop offset="0%" stopColor="#dde6ea"/>
-            <stop offset="100%" stopColor="#a4b4bc"/>
-          </radialGradient>
-        </defs>
-        {/* Ping ripple outer */}
-        <circle cx="50" cy="50" r="6" fill="none" stroke="#ef4444" strokeWidth="1.8">
-          <animate attributeName="r" values="6;50;6" dur="2.2s" repeatCount="indefinite"/>
-          <animate attributeName="opacity" values="0.7;0;0.7" dur="2.2s" repeatCount="indefinite"/>
-        </circle>
-        {/* Ping ripple inner */}
-        <circle cx="50" cy="50" r="6" fill="none" stroke="#ef4444" strokeWidth="2">
-          <animate attributeName="r" values="6;34;6" dur="2.2s" begin="0.7s" repeatCount="indefinite"/>
-          <animate attributeName="opacity" values="0.5;0;0.5" dur="2.2s" begin="0.7s" repeatCount="indefinite"/>
-        </circle>
-        {/* Bezel depth shadow */}
-        <circle cx="52" cy="53" r="44" fill="#8a9aa4" opacity="0.65"/>
-        {/* Outer bezel */}
-        <circle cx="50" cy="50" r="44" fill="url(#compassBezel)"/>
-        {/* Bezel inner groove */}
-        <circle cx="50" cy="50" r="39" fill="none" stroke="#b0bec8" strokeWidth="1"/>
-        {/* Blue face */}
-        <circle cx="50" cy="50" r="38" fill="#4ab4e6"/>
-        {/* Needle shadow */}
-        <g transform="rotate(35, 50, 50)">
-          <polygon points="50,14 58,52 50,58 42,52" fill="#0a1a2a" opacity="0.18"/>
-        </g>
-        {/* Compass needle (rotated ~35° → NE direction) */}
-        <g transform="rotate(35, 50, 50)">
-          {/* North (red) */}
-          <polygon points="50,14 55,50 50,56 45,50" fill="#e53935"/>
-          {/* North shadow edge */}
-          <polygon points="50,14 55,50 50,56" fill="#b71c1c" opacity="0.3"/>
-          {/* South (white/light) */}
-          <polygon points="50,86 55,50 50,44 45,50" fill="#eceff1"/>
-          {/* South shadow edge */}
-          <polygon points="50,86 45,50 50,44" fill="#90a4ae" opacity="0.45"/>
-        </g>
-        {/* Center pivot */}
-        <circle cx="50" cy="50" r="7" fill="#8a9aa4"/>
-        <circle cx="50" cy="50" r="5" fill="#b8c8d0"/>
-        <circle cx="48.5" cy="48.5" r="1.8" fill="rgba(255,255,255,0.65)"/>
-      </svg>
+      <img
+        src={`${process.env.PUBLIC_URL}/hiking_trail_nobg.png`}
+        alt="탐방로"
+        className="waiting-grid-btn-icon-img"
+      />
     ),
     title: '탐방로 안내',
     content: (
@@ -1008,7 +972,6 @@ function App() {
   const [showArrivalComplete, setShowArrivalComplete] = useState(false); // 이용 완료 팝업
   const [isReturning, setIsReturning] = useState(false);                 // Drop Zone 복귀 중
   const [activeModal, setActiveModal] = useState(null);           // 현재 열린 모달 ID
-  const [currentTime, setCurrentTime] = useState(new Date());    // 실시간 날짜/시간
   const [showLoginModal, setShowLoginModal] = useState(false);   // 설정 로그인 모달
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
@@ -1048,16 +1011,23 @@ function App() {
 
   // ── 가상 키보드 입력 처리 ───────────────────────────────────────────────────
   const handleVirtualKey = (key) => {
-    const setter = activeField === 'id' ? setLoginId : setLoginPw;
-    const current = activeField === 'id' ? loginId : loginPw;
-    if (key === '⌫') {
-      setter(current.slice(0, -1));
-    } else if (key === '⇧') {
+    const setter = activeField === 'id' ? setLoginId
+      : activeField === 'pw' ? setLoginPw
+      : setMoveVerifyInput;
+    if (key === '⇧') {
       setKbCaps(prev => !prev);
-    } else if (key === 'SPACE') {
-      setter(current + ' ');
     } else {
-      setter(current + (kbCaps ? key.toUpperCase() : key));
+      // HJ_260804 - Site verification codes are case-insensitive at the API
+      // boundary. Functional updates also retain every queued touchscreen key.
+      const forceUpper = activeField === 'moveVerify' || kbCaps;
+      setter(current => {
+        if (key === '⌫') return current.slice(0, -1);
+        if (key === 'SPACE') return current + ' ';
+        return current + (forceUpper ? key.toUpperCase() : key);
+      });
+    }
+    if (activeField === 'moveVerify') {
+      setMoveVerifyError(false);
     }
   };
 
@@ -1099,12 +1069,6 @@ function App() {
     }
     setDiagPressProgress(0);
   };
-
-  // ── 1초마다 시간 갱신 ────────────────────────────────────────────────────
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // 하나라도 ON인지 확인
   const anyOn = Object.values(states).some(v => v);
@@ -1180,6 +1144,14 @@ function App() {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
   }, [anyOn, manualDriveActive, showWaiting, isReturning]);
+
+  // HJ_260804 - A Guest UI mission can start while the Robot UI is on its idle
+  // screen. Expose the return status as soon as that mission starts returning.
+  useEffect(() => {
+    if (isReturning && showWaiting) {
+      setShowWaiting(false);
+    }
+  }, [isReturning, showWaiting]);
 
   // ── 인터넷 신호 강도 감지 (navigator.connection + online/offline) ─────
   useEffect(() => {
@@ -1473,9 +1445,6 @@ function App() {
   };
 
   // ── JSX 렌더링 ─────────────────────────────────────────────────────────
-  // ── 공통 시간 문자열 (대기/컨트롤 화면 공유) ──────────────────────────────
-  const dateStr = currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
-  const timeStr = currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const currentBatteryPolicy = batteryPolicyStatus(batteryPct, batteryReturnState);
   // 대기 화면: 모든 토글 OFF 상태일 때 표시, 클릭/터치 시 토글 화면으로 전환
   if (showWaiting) {
@@ -1539,10 +1508,7 @@ function App() {
                   {batteryPct === null ? '–%' : `${batteryPct}%`}
                 </span>
               </div>
-              <div className="wh-right">
-                <span className="wh-date">{dateStr}</span>
-                <span className="wh-time">{timeStr}</span>
-              </div>
+              <LiveClock />
             </div>
           </div>
         </div>
@@ -1749,10 +1715,7 @@ function App() {
                 {batteryPct === null ? '–%' : `${batteryPct}%`}
               </span>
             </div>
-            <div className="wh-right">
-              <span className="wh-date">{dateStr}</span>
-              <span className="wh-time">{timeStr}</span>
-            </div>
+            <LiveClock />
           </div>
         </div>
       </div>
@@ -1941,6 +1904,7 @@ function App() {
                   setShowMoveConfirm(false);
                   setMoveVerifyInput('');
                   setMoveVerifyError(false);
+                  setActiveField('moveVerify');
                   setShowMoveVerify(true);
                 }}
               >
@@ -1977,10 +1941,32 @@ function App() {
             <input
               className={`move-verify-input${moveVerifyError ? ' error' : ''}`}
               value={moveVerifyInput}
-              onChange={e => { setMoveVerifyInput(e.target.value); setMoveVerifyError(false); }}
+              onChange={e => { setMoveVerifyInput(e.target.value.toUpperCase()); setMoveVerifyError(false); }}
+              onFocus={() => setActiveField('moveVerify')}
               placeholder={`예: ${selectedSite}`}
               autoFocus
             />
+
+            {/* ── 가상 키보드 (사이트명 확인) ── */}
+            <div className="vkb-wrap move-verify-keyboard">
+              {KB_ROWS.map((row, ri) => (
+                <div key={ri} className="vkb-row">
+                  {row.map(key => (
+                    <button
+                      type="button"
+                      key={key + ri}
+                      className={`vkb-key${key === '⌫' ? ' vkb-wide' : ''}${key === '⇧' ? ' vkb-wide' + (kbCaps ? ' vkb-caps-on' : '') : ''}`}
+                      onClick={() => handleVirtualKey(key)}
+                    >
+                      {key === '⇧' ? (kbCaps ? '⇧ ON' : '⇧') : key === '⌫' ? key : key.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              ))}
+              <div className="vkb-row">
+                <button type="button" className="vkb-key vkb-space" onClick={() => handleVirtualKey('SPACE')}>SPACE</button>
+              </div>
+            </div>
             <div className="move-confirm-btns">
               <button
                 className="move-confirm-no"

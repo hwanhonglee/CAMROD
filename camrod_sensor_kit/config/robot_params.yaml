@@ -22,8 +22,9 @@
         right: 0.53495        # Unchanged lateral extent from robot_center_link [m].
         top_z: 0.94188        # Unchanged top Z from robot_center_link [m].
         bottom_z: -0.15275    # Unchanged bottom Z from robot_center_link [m].
-        # HH_260623 - Extra clearance used by Nav2 footprint and planning safety gates.
-        planning_margin: 0.10 # Added to each measured body side for planning [m].
+        # HH_260805 - Keep one 0.05 m planning clearance around all four body sides.
+        planning_margin: 0.05          # Front/rear planning clearance [m].
+        planning_lateral_margin: 0.05  # Left/right planning clearance [m].
       # HH_260623 - Updated from measured wheel radius 152.75 mm.
       wheel_radius: 0.15275   # Effective rolling radius used by kinematic helpers [m].
       encoder_resolution: 2048  # Encoder ticks per wheel revolution.

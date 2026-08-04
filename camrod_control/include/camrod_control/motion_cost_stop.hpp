@@ -92,12 +92,12 @@ struct MotionCostStopConfig
   // threshold lets narrow lanes retain their soft 98 boundary penalty.
   bool lanelet_footprint_enabled{true};
   int lanelet_footprint_threshold{100};
-  // HH_260803 - Values are relative to the axle-midpoint robot_center_link.
-  // They preserve the previous rear-axle footprint after shifting x by 0.443 m.
-  double footprint_front_m{0.85837};
-  double footprint_rear_m{0.83323};
-  double footprint_left_m{0.63505};
-  double footprint_right_m{0.63495};
+  // HH_260805 - Values are relative to robot_center_link. The measured body is
+  // unchanged; fallback clearance is 0.05 m on all four sides.
+  double footprint_front_m{0.80837};
+  double footprint_rear_m{0.78323};
+  double footprint_left_m{0.58505};
+  double footprint_right_m{0.58495};
   double lanelet_lookahead_m{1.0};
   double lanelet_width_m{0.8};
   bool lanelet_stop_on_unknown{true};

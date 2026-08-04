@@ -15,7 +15,7 @@
 #   body_rear:       0.73323 m  (0.29023 + 0.443)
 #   body_left:       0.53505 m
 #   body_right:      0.53495 m
-#   planning_margin: 0.10 m each side
+#   planning_margin: 0.05 m on every body side
 #
 #   --- Inertia / Mass ---
 #   mass:            100.0 kg   vehicle dry weight (rated payload 150 kg, IP55)
@@ -104,8 +104,8 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      # HH_260803 - Same measured body/margin, recentered on the axle midpoint.
-      footprint: "[[0.85837, 0.63505], [0.85837, -0.63495], [-0.83323, -0.63495], [-0.83323, 0.63505]]"
+      # HH_260805 - Center-based body with a 0.05 m margin on all four sides.
+      footprint: "[[0.80837, 0.58505], [0.80837, -0.58495], [-0.78323, -0.58495], [-0.78323, 0.58505]]"
       robot_radius: 0.0
 
 # =========================================================================
@@ -114,6 +114,6 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      # HH_260803 - Same measured body/margin, recentered on the axle midpoint.
-      footprint: "[[0.85837, 0.63505], [0.85837, -0.63495], [-0.83323, -0.63495], [-0.83323, 0.63505]]"
+      # HH_260805 - Center-based body with a 0.05 m margin on all four sides.
+      footprint: "[[0.80837, 0.58505], [0.80837, -0.58495], [-0.78323, -0.58495], [-0.78323, 0.58505]]"
       robot_radius: 0.0

@@ -11,6 +11,7 @@
   <!-- HH_260326: integrated diagnostics nodes now build directly in camrod_system. -->
   <depend>avg_msgs</depend>
   <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
   <depend>diagnostic_msgs</depend>
   <depend>diagnostic_updater</depend>
   <depend>map_msgs</depend>

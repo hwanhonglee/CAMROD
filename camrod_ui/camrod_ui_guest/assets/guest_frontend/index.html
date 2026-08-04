@@ -513,6 +513,7 @@
   let isLocked = false;
   let isGrace  = false;
   let graceTimer = null;
+  let heartbeatTimer = null;
   let currentPhase = 'unknown';
   let currentState = -1;
   // HH_260721 - Preserve the exact shared service state instead of reducing it to a generic phase.
@@ -532,15 +533,26 @@
   /* ── WebSocket ── */
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    ws = new WebSocket(proto + '://' + location.host + '/ws');
+    const socket = new WebSocket(proto + '://' + location.host + '/ws');
+    ws = socket;
 
-    ws.onopen = () => setConn(true);
+    socket.onopen = () => {
+      setConn(true);
+      clearInterval(heartbeatTimer);
+      // HJ_260804 - Pair the backend's 45 s stale-slot timeout with a small
+      // application heartbeat; a healthy but otherwise idle screen stays up.
+      heartbeatTimer = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ action: 'heartbeat' }));
+        }
+      }, 10000);
+    };
 
-    ws.onmessage = (e) => {
+    socket.onmessage = (e) => {
       const d = JSON.parse(e.data);
 
       if (d.locked) {
-        ws.close();
+        socket.close();
         if (d.grace_remaining > 0) {
           isGrace = true;
           startGrace(d.grace_remaining);
@@ -581,12 +593,15 @@
       }
     };
 
-    ws.onclose = () => {
+    socket.onclose = () => {
+      if (ws === socket) ws = null;
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
       setConn(false);
       if (!isLocked && !isGrace) setTimeout(connect, 3000);
     };
 
-    ws.onerror = () => ws.close();
+    socket.onerror = () => socket.close();
   }
 
   function startGrace(seconds) {

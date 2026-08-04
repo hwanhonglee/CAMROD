@@ -41,6 +41,7 @@
     show_chassis_marker: false                   # Shows translucent robot body cube marker when true.
     group_robot_marker_namespaces: true          # Groups base/chassis markers under shared robot/* namespaces.
     body_scale_factor: 1.0                       # Uniform scale multiplier for body footprint visuals.
-    # HH_260623 - Match measured body_extents.planning_margin so RViz boundary equals planning footprint.
-    planning_boundary_margin: 0.10               # Extra margin added around measured body footprint [m].
+    # HH_260805 - Match the four-sided 0.05 m planning footprint contract.
+    planning_boundary_margin: 0.05               # Front/rear margin beyond measured body [m].
+    planning_boundary_lateral_margin: 0.05       # Left/right margin beyond measured body [m].
     range_ring_radii: [2.0, 4.0, 6.0, 8.0]       # Concentric debug rings around base frame [m].

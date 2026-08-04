@@ -228,7 +228,8 @@ camping_sites:
     y: 21.3498
     z: 0
     yaw_deg: -69.3089
-    service_mode: "roadside_stop"
+    # HH_260805 - Turn inside the site immediately after crab entry, before waiting for RETURN.
+    service_mode: "turnaround"
     service_x: 12.7921
     service_y: 22.52
     service_z: 0
@@ -253,7 +254,8 @@ camping_sites:
     y: 28.2433
     z: 0
     yaw_deg: 110.877
-    service_mode: "roadside_stop"
+    # HH_260805 - Turn inside the site immediately after crab entry, before waiting for RETURN.
+    service_mode: "turnaround"
     service_x: 12.7921
     service_y: 22.52
     service_z: 0

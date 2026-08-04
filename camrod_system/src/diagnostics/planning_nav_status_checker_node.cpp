@@ -78,9 +78,10 @@ struct NavStatusState
 class PlanningNavStatusCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  PlanningNavStatusCheckerNode()
+  explicit PlanningNavStatusCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : robot_diagnostics_base::BaseChecker(
-      "planning_nav_status_checker", "planning_nav_status_checker")
+      "planning_nav_status_checker", "planning_nav_status_checker", options)
   {
     base_init();
   }
@@ -375,10 +376,5 @@ private:
   NavStatusState state_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<PlanningNavStatusCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(PlanningNavStatusCheckerNode)

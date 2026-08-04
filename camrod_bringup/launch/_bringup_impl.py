@@ -64,6 +64,12 @@ OVERRIDE_SPECS = {
         'nav2_lanelet_param_file': ('planning/nav2_lanelet_param_file',),
         'nav2_behavior_param_file': ('planning/nav2_behavior_param_file',),
         'nav2_combo_param_file': ('planning/nav2_combo_param_file',),
+        'nav2_planner_plugins_param_file': (
+            'planning/nav2_planner_plugins_param_file',
+        ),
+        'nav2_controller_plugins_param_file': (
+            'planning/nav2_controller_plugins_param_file',
+        ),
         'local_path_extractor_param_file': ('planning/local_path_extractor_param_file',),
         'path_cost_grids_param_file': ('planning/path_cost_grids_param_file',),
         'goal_snapper_param_file': ('planning/goal_snapper_param_file',),
@@ -626,8 +632,9 @@ def generate_launch_description():
         ('config_root', config_root_default, 'Root directory for bringup YAML configs'),
         ('launch_defaults_file', launch_defaults_file_default, 'Top-level launch defaults YAML file'),
         ('clean_before_launch', cfg_get(launch_cfg, 'runtime/clean_before_launch', True), 'Kill stale processes first'),
-        # Ensure stale duplicate processes are also cleaned on Ctrl+C shutdown.
-        ('clean_on_shutdown', cfg_get(launch_cfg, 'runtime/clean_on_shutdown', True), 'Kill stale processes on bringup shutdown'),
+        # HH_260805 - Normal launch shutdown owns live children. An optional
+        # post-pass remains available, but running both paths races components.
+        ('clean_on_shutdown', cfg_get(launch_cfg, 'runtime/clean_on_shutdown', False), 'Run an optional stale-process cleanup after bringup shutdown'),
         ('sim', cfg_get(launch_cfg, 'runtime/sim', True), 'Simulation mode'),
         # HH_260721 - Let charging tests opt into the hardware gate contract in simulation.
         (
@@ -991,22 +998,22 @@ def generate_launch_description():
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_front_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 0.85837),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_front_m', 0.80837),
             'Fallback planning footprint front extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_rear_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.83323),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_rear_m', 0.78323),
             'Fallback planning footprint rear extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_left_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_left_m', 0.63505),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_left_m', 0.58505),
             'Fallback planning footprint left extent (m)',
         ),
         (
             'control_cmd_vel_gate_lanelet_safety_footprint_right_m',
-            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_right_m', 0.63495),
+            cfg_get(launch_cfg, 'control/cmd_vel_gate_lanelet_safety_footprint_right_m', 0.58495),
             'Fallback planning footprint right extent (m)',
         ),
         (
@@ -1376,6 +1383,16 @@ def generate_launch_description():
             'Enable module validators',
         ),
         (
+            'use_checker_components',
+            cfg_get(launch_cfg, 'system/use_checker_components', True),
+            'Compose system checkers into three category containers',
+        ),
+        (
+            'checker_component_threads',
+            cfg_get(launch_cfg, 'system/checker_component_threads', 1),
+            'Compatibility value; system checker containers use serialized executors',
+        ),
+        (
             'diagnostics_profile',
             cfg_get(launch_cfg, 'system/diagnostics_profile', 'default'),
             'Diagnostics config profile name',
@@ -1450,7 +1467,7 @@ def generate_launch_description():
         (
             'enable_operator_ui_window',
             cfg_get(launch_cfg, 'system/enable_operator_ui_window', True),
-            'Open the local GTK/WebKit operator UI window',
+            'Open the local managed operator UI browser window',
         ),
         (
             'operator_ui_window_url',
@@ -1462,6 +1479,11 @@ def generate_launch_description():
             'URL loaded by the local operator UI window',
         ),
         (
+            'operator_ui_window_engine',
+            cfg_get(launch_cfg, 'system/operator_ui_window_engine', 'webkit'),
+            'Operator UI renderer: webkit, chromium, or auto',
+        ),
+        (
             'operator_ui_window_width',
             cfg_get(launch_cfg, 'system/operator_ui_window_width', 1280),
             'Initial local operator UI window width in pixels',
@@ -1470,6 +1492,11 @@ def generate_launch_description():
             'operator_ui_window_height',
             cfg_get(launch_cfg, 'system/operator_ui_window_height', 800),
             'Initial local operator UI window height in pixels',
+        ),
+        (
+            'operator_ui_window_fullscreen',
+            cfg_get(launch_cfg, 'system/operator_ui_window_fullscreen', True),
+            'Open the local operator UI window fullscreen',
         ),
 
         (
@@ -1987,6 +2014,16 @@ def generate_launch_description():
     set_if_not_empty(planning_args, 'nav2_lanelet_param_file', planning_overrides['nav2_lanelet_param_file'])
     set_if_not_empty(planning_args, 'nav2_behavior_param_file', planning_overrides['nav2_behavior_param_file'])
     set_if_not_empty(planning_args, 'nav2_combo_param_file', planning_overrides['nav2_combo_param_file'])
+    set_if_not_empty(
+        planning_args,
+        'nav2_planner_plugins_param_file',
+        planning_overrides['nav2_planner_plugins_param_file'],
+    )
+    set_if_not_empty(
+        planning_args,
+        'nav2_controller_plugins_param_file',
+        planning_overrides['nav2_controller_plugins_param_file'],
+    )
     set_if_not_empty(planning_args, 'path_cost_grids_param_file', planning_overrides['path_cost_grids_param_file'])
     set_if_not_empty(planning_args, 'goal_snapper_param_file', planning_overrides['goal_snapper_param_file'])
     set_if_not_empty(planning_args, 'centerline_snapper_param_file', planning_overrides['centerline_snapper_param_file'])
@@ -2054,6 +2091,8 @@ def generate_launch_description():
 
     system_args = {
         'enable_checkers': lc['enable_module_validators'],
+        'use_checker_components': lc['use_checker_components'],
+        'checker_component_threads': lc['checker_component_threads'],
         # HH_260617: sim defaults to the diagnostics/sim profile so hardware-only
         # checks do not block planning/control validation.
         'config_profile': diagnostics_profile_runtime,
@@ -2109,9 +2148,11 @@ def generate_launch_description():
         'low_battery_return_threshold_percent': lc['api_ui_low_battery_return_threshold_percent'],
         # HH_260727 - Keep headless opt-out and window geometry explicit at top level.
         'enable_operator_ui_window': lc['enable_operator_ui_window'],
+        'operator_ui_window_engine': lc['operator_ui_window_engine'],
         'operator_ui_window_url': lc['operator_ui_window_url'],
         'operator_ui_window_width': lc['operator_ui_window_width'],
         'operator_ui_window_height': lc['operator_ui_window_height'],
+        'operator_ui_window_fullscreen': lc['operator_ui_window_fullscreen'],
         # Share bringup camping-sites YAML with UI backend so
         # /ui/selected_destination can dispatch exact goal_pose coordinates.
         'camping_sites_yaml': lc['planning_state_machine_camping_sites_yaml'],

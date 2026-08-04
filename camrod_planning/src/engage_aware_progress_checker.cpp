@@ -18,32 +18,41 @@ namespace camrod_planning
 class EngageAwareProgressChecker : public nav2_core::ProgressChecker
 {
 public:
+  ~EngageAwareProgressChecker() override
+  {
+    // HH_260805 - Detach callbacks while the parent lifecycle node is still
+    // valid; delayed destruction after rcl shutdown can race node teardown.
+    dyn_params_handler_.reset();
+    engaged_sub_.reset();
+  }
+
   void initialize(
     const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
     const std::string & plugin_name) override
   {
     plugin_name_ = plugin_name;
-    node_ = parent.lock();
-    if (!node_) {
+    auto node = parent.lock();
+    if (!node) {
       throw std::runtime_error("EngageAwareProgressChecker failed to lock lifecycle node");
     }
 
-    clock_ = node_->get_clock();
-    declare_if_missing(plugin_name_ + ".required_movement_radius", 0.03);
-    declare_if_missing(plugin_name_ + ".movement_time_allowance", 120.0);
+    clock_ = node->get_clock();
+    declare_if_missing(node, plugin_name_ + ".required_movement_radius", 0.03);
+    declare_if_missing(node, plugin_name_ + ".movement_time_allowance", 120.0);
     // HH_260720 - Pause progress checks from the control gate's effective command state.
-    declare_if_missing(plugin_name_ + ".engaged_topic", std::string("/control/command_enabled"));
-    declare_if_missing(plugin_name_ + ".default_engaged", false);
+    declare_if_missing(
+      node, plugin_name_ + ".engaged_topic", std::string("/control/command_enabled"));
+    declare_if_missing(node, plugin_name_ + ".default_engaged", false);
 
-    node_->get_parameter(plugin_name_ + ".required_movement_radius", required_movement_radius_);
+    node->get_parameter(plugin_name_ + ".required_movement_radius", required_movement_radius_);
     double movement_time_allowance_s = 120.0;
-    node_->get_parameter(plugin_name_ + ".movement_time_allowance", movement_time_allowance_s);
+    node->get_parameter(plugin_name_ + ".movement_time_allowance", movement_time_allowance_s);
     movement_time_allowance_ = rclcpp::Duration::from_seconds(movement_time_allowance_s);
-    node_->get_parameter(plugin_name_ + ".engaged_topic", engaged_topic_);
-    node_->get_parameter(plugin_name_ + ".default_engaged", engaged_);
+    node->get_parameter(plugin_name_ + ".engaged_topic", engaged_topic_);
+    node->get_parameter(plugin_name_ + ".default_engaged", engaged_);
 
     // HH_260720 - Reset Nav2 progress timing from the generated effective command state.
-    engaged_sub_ = node_->create_subscription<avg_msgs::msg::AvgBool>(
+    engaged_sub_ = node->create_subscription<avg_msgs::msg::AvgBool>(
       engaged_topic_, rclcpp::QoS(1).transient_local().reliable(),
       [this](const avg_msgs::msg::AvgBool::ConstSharedPtr msg) {
         engaged_ = msg->data;
@@ -52,7 +61,7 @@ public:
         }
       });
 
-    dyn_params_handler_ = node_->add_on_set_parameters_callback(
+    dyn_params_handler_ = node->add_on_set_parameters_callback(
       [this](const std::vector<rclcpp::Parameter> & parameters) {
         return on_parameters(parameters);
       });
@@ -86,10 +95,13 @@ private:
   };
 
   template<typename ParameterT>
-  void declare_if_missing(const std::string & name, const ParameterT & value)
+  void declare_if_missing(
+    const rclcpp_lifecycle::LifecycleNode::SharedPtr & node,
+    const std::string & name,
+    const ParameterT & value)
   {
-    if (!node_->has_parameter(name)) {
-      node_->declare_parameter(name, value);
+    if (!node->has_parameter(name)) {
+      node->declare_parameter(name, value);
     }
   }
 
@@ -134,7 +146,6 @@ private:
     return result;
   }
 
-  rclcpp_lifecycle::LifecycleNode::SharedPtr node_;
   rclcpp::Clock::SharedPtr clock_;
   rclcpp::Subscription<avg_msgs::msg::AvgBool>::SharedPtr engaged_sub_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;

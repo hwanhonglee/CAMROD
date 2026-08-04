@@ -196,6 +196,12 @@ def generate_launch_description():
     default_combo_param = os.path.join(
         pkg_share, 'config', 'nav2_combo_profiles', 'disabled.yaml'
     )
+    default_planner_plugins_param = os.path.join(
+        pkg_share, 'config', 'nav2_planner_profiles', 'production.yaml'
+    )
+    default_controller_plugins_param = os.path.join(
+        pkg_share, 'config', 'nav2_controller_profiles', 'production.yaml'
+    )
     default_path_cost_grids_param = os.path.join(pkg_share, 'config', 'path_cost_grids.yaml')
     # HH_260626: Default BT uses PlannerSelector; selector default is LaneletRoute.
     # _grid.xml remains available for runtime override via nav2_bt_xml_nav_to_pose launch arg.
@@ -245,6 +251,22 @@ def generate_launch_description():
         'nav2_combo_param_file',
         default_value=default_combo_param,
         description='Optional planner/controller combo override profile',
+    )
+    nav2_planner_plugins_param_arg = DeclareLaunchArgument(
+        'nav2_planner_plugins_param_file',
+        default_value=default_planner_plugins_param,
+        description=(
+            'Planner loading profile; production loads LaneletRoute and the '
+            'width-gated SmacLattice fallback only'
+        ),
+    )
+    nav2_controller_plugins_param_arg = DeclareLaunchArgument(
+        'nav2_controller_plugins_param_file',
+        default_value=default_controller_plugins_param,
+        description=(
+            'Controller loading profile; production loads mission RPP and the '
+            'manual-goal RotationShim only'
+        ),
     )
     nav2_selected_planner_arg = DeclareLaunchArgument(
         'nav2_selected_planner',
@@ -350,6 +372,12 @@ def generate_launch_description():
     nav2_lanelet_param_file = LaunchConfiguration('nav2_lanelet_param_file')
     nav2_behavior_param_file = LaunchConfiguration('nav2_behavior_param_file')
     nav2_combo_param_file = LaunchConfiguration('nav2_combo_param_file')
+    nav2_planner_plugins_param_file = LaunchConfiguration(
+        'nav2_planner_plugins_param_file'
+    )
+    nav2_controller_plugins_param_file = LaunchConfiguration(
+        'nav2_controller_plugins_param_file'
+    )
     enable_path_cost_grids = LaunchConfiguration('enable_path_cost_grids')
     path_cost_grids_param_file = LaunchConfiguration('path_cost_grids_param_file')
     map_path = LaunchConfiguration('map_path')
@@ -408,6 +436,18 @@ def generate_launch_description():
         root_key='planning',
         # HH_260720 - Keep optional SmacLattice combo profiles portable as well.
         param_rewrites={'lattice_filepath': default_lattice_filepath},
+        convert_types=True,
+    )
+    nav2_planner_plugins_params = RewrittenYaml(
+        source_file=nav2_planner_plugins_param_file,
+        root_key='planning',
+        param_rewrites={},
+        convert_types=True,
+    )
+    nav2_controller_plugins_params = RewrittenYaml(
+        source_file=nav2_controller_plugins_param_file,
+        root_key='planning',
+        param_rewrites={},
         convert_types=True,
     )
 
@@ -475,6 +515,10 @@ def generate_launch_description():
         nav2_lanelet_params,
         nav2_behavior_params,
         nav2_combo_params,
+        # HH_260805 - Apply the load-set last so dormant plugin definitions stay
+        # available in base YAML without constructing their runtime instances.
+        nav2_planner_plugins_params,
+        nav2_controller_plugins_params,
         force_base_link_overrides,
     ]
 
@@ -665,6 +709,8 @@ def generate_launch_description():
         nav2_lanelet_param_arg,
         nav2_behavior_param_arg,
         nav2_combo_param_arg,
+        nav2_planner_plugins_param_arg,
+        nav2_controller_plugins_param_arg,
         nav2_selected_planner_arg,
         nav2_selected_controller_arg,
         nav2_regulated_goal_checker_arg,

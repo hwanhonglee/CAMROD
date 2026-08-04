@@ -22,17 +22,27 @@
     # HH_260720 - Explicit std_msgs boundary consumed by the Nav2 selector plugin.
     planner_selector_topic: "/planning/planner_selector_ros"
     status_topic: "/planning/obstacle_replan/status"
+    # Static all-lane grid used only to prove that a fallback has enough width.
+    lanelet_grid_topic: "/map/cost_grid/lanelet"
 
     # =========================================================================
     # 2. PLANNER PREEMPTION
     # =========================================================================
-    # HH_260702 - Keep global route geometry stable during normal driving.
-    # Dynamic-obstacle blockage is reported to status/gates; fallback Nav2
-    # preemption is opt-in for controlled tests because it can create free-space
-    # global paths that cross adjacent/opposite lanes.
-    preempt_enabled: false
+    # HH_260805 - Permit dynamic-obstacle fallback only after the fail-closed
+    # lane-width gate below proves a wide mapped drivable cross-section. Narrow
+    # lanes keep LaneletRoute and let the control safety gate stop the robot.
+    preempt_enabled: true
     fallback_planner_id: "SmacLattice"
     restore_planner_id: "LaneletRoute"
+    wide_lane_replan_enabled: true
+    lanelet_grid_max_age_s: 2.5
+    lanelet_blocked_cost_threshold: 100
+    # Deployed planning envelope is 1.170 m wide. Requiring 2.50 m leaves at
+    # least one additional body-width corridor plus raster/centering allowance;
+    # Smac and the control gate still perform their own footprint checks.
+    minimum_replan_lane_width_m: 2.50
+    minimum_side_clearance_m: 0.60
+    lane_width_max_search_m: 6.0
 
     # =========================================================================
     # 3. TIMING AND CORRIDOR SAMPLING
@@ -50,12 +60,12 @@
     # =========================================================================
     # HH_260630: Trigger dynamic replanning before the 85-cost hard-stop zone.
     obstacle_cost_threshold: 60
-    # HH_260702 - Small far obstacles should be reported before the vehicle
-    # reaches hard-stop distance. Debounce with hold/cooldown instead of
-    # requiring a large occupied ratio inside the corridor.
+    # HH_260805 - Report obstacles immediately, but preempt LaneletRoute only
+    # after 20 s of persistent blockage. The control safety gate still stops
+    # immediately and independently at its dynamic-obstacle thresholds.
     min_blocked_samples: 3
     blocked_sample_ratio: 0.025
-    block_hold_s: 0.6
+    block_hold_s: 20.0
     clear_hold_s: 1.2
     replan_cooldown_s: 3.0
 

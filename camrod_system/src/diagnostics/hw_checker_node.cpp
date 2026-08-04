@@ -251,8 +251,8 @@ static std::optional<double> read_cpu_temp(const std::string & sys_base)
 class HwCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  HwCheckerNode()
-  : robot_diagnostics_base::BaseChecker("hw_checker", "hw_checker")
+  explicit HwCheckerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : robot_diagnostics_base::BaseChecker("hw_checker", "hw_checker", options)
   {
     base_init();  // declare/load parameters → setup tasks
 
@@ -544,13 +544,5 @@ private:
   std::optional<CpuTimes> prev_cpu_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<HwCheckerNode>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(HwCheckerNode)

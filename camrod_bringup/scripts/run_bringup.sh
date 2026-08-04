@@ -17,4 +17,5 @@ echo "[run_bringup] Starting bringup.launch.py $*"
 ros2 launch camrod_bringup bringup.launch.py "$@"
 
 # Terminal closes automatically when ros2 launch exits (Ctrl+C or crash).
-# clean_on_shutdown:true in launch_defaults.yaml handles node cleanup before exit.
+# HH_260805 - ROS launch performs graceful child shutdown; clean_before_launch
+# clears any stale process left by an abnormal termination before the next run.

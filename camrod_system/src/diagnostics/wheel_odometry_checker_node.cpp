@@ -92,8 +92,10 @@ static bool has_nan6(double a, double b, double c, double d, double e, double f)
 class WheelOdometryCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  WheelOdometryCheckerNode()
-  : robot_diagnostics_base::BaseChecker("wheel_odometry_checker", "wheel_odometry_checker")
+  explicit WheelOdometryCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : robot_diagnostics_base::BaseChecker(
+      "wheel_odometry_checker", "wheel_odometry_checker", options)
   {
     base_init();
   }
@@ -327,12 +329,5 @@ private:
   std::vector<std::shared_ptr<WheelState>> wheel_list_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<WheelOdometryCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(WheelOdometryCheckerNode)

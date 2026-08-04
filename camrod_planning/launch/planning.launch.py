@@ -205,6 +205,8 @@ def generate_launch_description():
             'navigation_cmd_vel_topic', default_value='/control/nav2_cmd_vel_ros'
         ),
 
+        # HH_260805 - Production defaults load only the route planner and the
+        # policy-reachable wide-lane lattice fallback profile.
         *[DeclareLaunchArgument(k, default_value=pkg_share('camrod_planning', os.path.join('config', v)))
           for k, v in {
               'nav2_base_param_file':              'nav2_base.yaml',
@@ -212,6 +214,7 @@ def generate_launch_description():
               'nav2_lanelet_param_file':           'nav2_lanelet_overlay.yaml',
               'nav2_behavior_param_file':          'nav2_behavior.yaml',
               'nav2_combo_param_file':             'nav2_combo_profiles/disabled.yaml',
+              'nav2_planner_plugins_param_file':   'nav2_planner_profiles/production.yaml',
               'local_path_extractor_param_file':   'local_path_extractor.yaml',
               'path_cost_grids_param_file':        'path_cost_grids.yaml',
               'goal_snapper_param_file':           'goal_snapper.yaml',
@@ -252,6 +255,7 @@ def generate_launch_description():
                     'nav2_lanelet_param_file',
                     'nav2_behavior_param_file',
                     'nav2_combo_param_file',
+                    'nav2_planner_plugins_param_file',
                     'enable_path_cost_grids',
                     'path_cost_grids_param_file',
                     'map_path',

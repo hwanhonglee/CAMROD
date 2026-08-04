@@ -82,8 +82,8 @@ struct LidarState
 class LidarCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  LidarCheckerNode()
-  : robot_diagnostics_base::BaseChecker("lidar_checker", "lidar_checker")
+  explicit LidarCheckerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : robot_diagnostics_base::BaseChecker("lidar_checker", "lidar_checker", options)
   {
     base_init();
   }
@@ -342,12 +342,5 @@ private:
   std::vector<std::shared_ptr<LidarState>> lidars_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<LidarCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(LidarCheckerNode)

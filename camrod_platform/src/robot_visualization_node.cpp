@@ -153,9 +153,12 @@ public:
     // the localization rate, ignoring the configured visualization rate.
     marker_publish_period_s_ = publish_rate_hz > 0.0 ? 1.0 / publish_rate_hz : 1.0;
     body_scale_factor_ = declare_parameter<double>("body_scale_factor", 1.0);
-    // HH_260623 - Default visualization boundary margin follows measured robot_params planning margin.
+    // HH_260805 - Keep longitudinal and lateral clearance independent so a width
+    // adjustment cannot silently alter front/rear collision geometry.
     planning_boundary_margin_ = declare_parameter<double>(
       "planning_boundary_margin", params_.planning_margin);
+    planning_boundary_lateral_margin_ = declare_parameter<double>(
+      "planning_boundary_lateral_margin", params_.planning_lateral_margin);
     ground_z_offset_ = declare_parameter<double>("ground_z_offset", 0.0);
     range_ring_radii_ = declare_parameter<std::vector<double>>(
       "range_ring_radii", std::vector<double>{2.0, 4.0, 6.0, 8.0});
@@ -425,8 +428,8 @@ private:
     boundary_marker.pose.orientation = base_orientation;
     const double boundary_front = body_front + planning_boundary_margin_;
     const double boundary_rear = body_rear + planning_boundary_margin_;
-    const double boundary_left = body_left + planning_boundary_margin_;
-    const double boundary_right = body_right + planning_boundary_margin_;
+    const double boundary_left = body_left + planning_boundary_lateral_margin_;
+    const double boundary_right = body_right + planning_boundary_lateral_margin_;
     std::vector<geometry_msgs::msg::Point> boundary_local_points{
       makePoint(boundary_front, boundary_left, 0.0),
       makePoint(boundary_front, -boundary_right, 0.0),
@@ -715,7 +718,8 @@ private:
 
   RobotParams params_;
   PoseRPY base_pose_;
-  double planning_boundary_margin_{0.10};  // HH_260623 - Default to measured body_extents planning margin.
+  double planning_boundary_margin_{0.05};
+  double planning_boundary_lateral_margin_{0.05};  // HH_260805 - Per-side width clearance.
   double body_scale_factor_{1.0};
   double ground_z_offset_{0.0};
   std::string ground_z_source_{"lanelet_map"};

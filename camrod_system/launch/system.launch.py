@@ -5,7 +5,8 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, LogInfo, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node, PushRosNamespace, SetRemap
+from launch_ros.actions import ComposableNodeContainer, Node, PushRosNamespace, SetRemap
+from launch_ros.descriptions import ComposableNode
 import yaml
 
 
@@ -37,6 +38,39 @@ CHECKER_NODE_SPECS = (
     # HH_260617: PlanningState semantic health is checked as part of system readiness.
     ("planning", "planning_state_checker_node", "planning_state_checker", "planning_state_checker.yaml"),
 )
+
+CHECKER_COMPONENT_PLUGINS = {
+    "hw_checker": "HwCheckerNode",
+    "gpu_checker": "GpuCheckerNode",
+    "network_checker": "NetworkCheckerNode",
+    "gnss_checker": "GnssCheckerNode",
+    "imu_checker": "ImuCheckerNode",
+    "lidar_checker": "LidarCheckerNode",
+    "radar_checker": "RadarCheckerNode",
+    "camera_checker": "CameraCheckerNode",
+    "wheel_odometry_checker": "WheelOdometryCheckerNode",
+    "cost_grid_checker": "CostGridCheckerNode",
+    "velocity_converter_checker": "VelocityConverterCheckerNode",
+    "localization_gnss_checker": "LocalizationGnssCheckerNode",
+    "localization_mode_checker": "LocalizationModeCheckerNode",
+    "localization_pose_checker": "LocalizationPoseCheckerNode",
+    "localization_init_checker": "LocalizationInitCheckerNode",
+    "localization_source_checker": "LocalizationSourceCheckerNode",
+    "localization_lanelet_checker": "LocalizationLaneletCheckerNode",
+    "map_cost_grid_checker": "MapCostGridCheckerNode",
+    "perception_obstacle_checker": "PerceptionObstacleCheckerNode",
+    "planning_lifecycle_checker": "PlanningLifecycleCheckerNode",
+    "planning_costmap_checker": "PlanningCostmapCheckerNode",
+    "planning_nav_status_checker": "PlanningNavStatusCheckerNode",
+    "planning_path_checker": "PlanningPathCheckerNode",
+    "planning_state_checker": "camrod_system::PlanningStateChecker",
+}
+
+CHECKER_COMPONENT_GROUPS = {
+    "hardware_sensing": {"hw", "sensing"},
+    "localization": {"localization"},
+    "autonomy": {"map", "perception", "planning"},
+}
 
 
 def pkg_share(pkg: str, rel: str) -> str:
@@ -118,7 +152,68 @@ def _checker_node(
     )
 
 
-def _build_checker_nodes(config_dir: str, default_dir: str) -> list:
+def _checker_component(
+    config_dir: str,
+    default_dir: str,
+    module_namespace: str,
+    category: str,
+    _executable: str,
+    name: str,
+    param_file: str,
+) -> ComposableNode:
+    namespace = f"/{module_namespace.strip('/')}" if module_namespace.strip('/') else "/"
+    return ComposableNode(
+        package="camrod_system",
+        plugin=CHECKER_COMPONENT_PLUGINS[name],
+        name=name,
+        namespace=namespace,
+        parameters=[_checker_parameters(
+            config_dir, default_dir, category, name, param_file
+        )],
+        remappings=[
+            ("/diagnostics", "diagnostics"),
+            ("/diagnostics_agg", "diagnostics_agg"),
+        ],
+    )
+
+
+def _checker_containers(
+    config_dir: str,
+    default_dir: str,
+    module_namespace: str,
+    _thread_count: int,
+) -> list:
+    containers = []
+    for group_name, categories in CHECKER_COMPONENT_GROUPS.items():
+        components = [
+            _checker_component(
+                config_dir, default_dir, module_namespace, *spec
+            )
+            for spec in CHECKER_NODE_SPECS
+            if spec[0] in categories
+        ]
+        containers.append(
+            ComposableNodeContainer(
+                package="rclcpp_components",
+                # HH_260805 - Serialize low-rate checker callbacks so executor
+                # workers are gone before Cyclone DDS unloads at process exit.
+                executable="component_container",
+                name=f"{group_name}_checker_container",
+                namespace="",
+                output="log",
+                composable_node_descriptions=components,
+            )
+        )
+    return containers
+
+
+def _build_checker_nodes(
+    config_dir: str,
+    default_dir: str,
+    module_namespace: str,
+    use_components: bool,
+    component_threads: int,
+) -> list:
     nodes = [
         # Main diagnostics aggregator used by the system health state machine.
         Node(
@@ -133,7 +228,20 @@ def _build_checker_nodes(config_dir: str, default_dir: str) -> list:
             }],
         ),
     ]
-    nodes.extend(_checker_node(config_dir, default_dir, *spec) for spec in CHECKER_NODE_SPECS)
+    if use_components:
+        # HH_260805 - Three process boundaries retain category fault isolation
+        # while replacing one executor/process per checker on the Jetson.
+        nodes.extend(_checker_containers(
+            config_dir,
+            default_dir,
+            module_namespace,
+            component_threads,
+        ))
+    else:
+        nodes.extend(
+            _checker_node(config_dir, default_dir, *spec)
+            for spec in CHECKER_NODE_SPECS
+        )
     return nodes
 
 
@@ -143,6 +251,16 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
     module_namespace = LaunchConfiguration("module_namespace").perform(context)
     config_profile = LaunchConfiguration("config_profile").perform(context)
     enable_checkers = _as_bool(LaunchConfiguration("enable_checkers").perform(context))
+    use_checker_components = _as_bool(
+        LaunchConfiguration("use_checker_components").perform(context)
+    )
+    try:
+        checker_component_threads = max(
+            1,
+            int(LaunchConfiguration("checker_component_threads").perform(context)),
+        )
+    except ValueError:
+        checker_component_threads = 2
     enable_platform = _as_bool(LaunchConfiguration("enable_platform").perform(context))
     diagnostics_config_root = LaunchConfiguration("diagnostics_config_root").perform(context)
 
@@ -163,7 +281,13 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
             )
         ]
 
-    diagnostics_nodes = _build_checker_nodes(config_dir, default_dir)
+    diagnostics_nodes = _build_checker_nodes(
+        config_dir,
+        default_dir,
+        module_namespace,
+        use_checker_components,
+        checker_component_threads,
+    )
 
     ranger_checker_exec = os.path.join(
         pkg_prefix, "lib", "camrod_system", "ranger_platform_checker_node"
@@ -219,6 +343,19 @@ def generate_launch_description():
             description='Root directory containing diagnostics/<profile> checker YAML files',
         ),
         DeclareLaunchArgument('enable_checkers', default_value='true'),
+        DeclareLaunchArgument(
+            'use_checker_components',
+            default_value='true',
+            description='Compose 24 diagnostic checkers into three category containers',
+        ),
+        DeclareLaunchArgument(
+            'checker_component_threads',
+            default_value='1',
+            description=(
+                'Compatibility setting; production checker containers use one '
+                'serialized executor for deterministic DDS shutdown'
+            ),
+        ),
         DeclareLaunchArgument('enable_platform', default_value='false'),
         # system_checker + system_diagnostic + diagnostics_aggregator (tools channel)
         DeclareLaunchArgument('enable_system_tools', default_value='true'),

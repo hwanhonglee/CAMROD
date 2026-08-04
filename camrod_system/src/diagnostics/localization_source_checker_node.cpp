@@ -43,9 +43,10 @@ struct SourceState
 class LocalizationSourceCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  LocalizationSourceCheckerNode()
+  explicit LocalizationSourceCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : robot_diagnostics_base::BaseChecker(
-      "localization_source_checker", "localization_source_checker")
+      "localization_source_checker", "localization_source_checker", options)
   {
     base_init();
   }
@@ -256,12 +257,5 @@ private:
   SourceState state_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<LocalizationSourceCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(LocalizationSourceCheckerNode)

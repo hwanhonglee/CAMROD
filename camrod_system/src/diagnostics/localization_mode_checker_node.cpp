@@ -81,9 +81,10 @@ struct ModeState
 class LocalizationModeCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  LocalizationModeCheckerNode()
+  explicit LocalizationModeCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : robot_diagnostics_base::BaseChecker(
-      "localization_mode_checker", "localization_mode_checker")
+      "localization_mode_checker", "localization_mode_checker", options)
   {
     base_init();
   }
@@ -298,12 +299,5 @@ private:
   ModeState state_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<LocalizationModeCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(LocalizationModeCheckerNode)
