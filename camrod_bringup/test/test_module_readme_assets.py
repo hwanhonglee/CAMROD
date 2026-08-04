@@ -59,6 +59,8 @@ def test_renderer_recreates_every_documented_asset(tmp_path: Path) -> None:
         "perception/yolo-lidar-and-parking-pipelines.png",
         "sensing/sensor-processing-and-cost-fusion.png",
         "sensing/ground-segmentation-schematic.png",
+        "sensor-kit/tf-and-sensor-mount-layout.png",
+        "sensor-kit/rear-axle-to-center-ledger.png",
     )
     for relative_path in expected_pngs:
         with Image.open(tmp_path / relative_path) as image:
@@ -101,6 +103,38 @@ def test_renderer_can_target_one_package(tmp_path: Path) -> None:
     assert generated == [
         "sensing/ground-segmentation-schematic.png",
         "sensing/sensor-processing-and-cost-fusion.png",
+    ]
+
+
+def test_renderer_can_target_sensor_kit_without_runtime_evidence(
+    tmp_path: Path,
+) -> None:
+    """Sensor-kit diagrams need only its package-owned geometry source."""
+    subprocess.run(
+        [
+            sys.executable,
+            str(RENDERER),
+            "--repo-root",
+            str(SRC_ROOT),
+            "--output-root",
+            str(tmp_path),
+            "--module",
+            "sensor-kit",
+        ],
+        cwd=SRC_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    generated = sorted(
+        path.relative_to(tmp_path).as_posix()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    )
+    assert generated == [
+        "sensor-kit/rear-axle-to-center-ledger.png",
+        "sensor-kit/tf-and-sensor-mount-layout.png",
     ]
 
 
