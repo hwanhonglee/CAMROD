@@ -67,6 +67,25 @@ def test_center_offset_is_half_wheelbase_and_preserves_body_length() -> None:
     assert (
         robot["body_extents"]["front"] + robot["body_extents"]["rear"]
     ) == pytest.approx(robot["length"])
+    assert (
+        robot["body_extents"]["left"] + robot["body_extents"]["right"]
+    ) == pytest.approx(robot["width"])
+
+
+def test_planning_margin_is_five_centimeters_on_every_side() -> None:
+    """The planning envelope adds 5 cm without changing the measured body."""
+    extents = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["robot"]["body_extents"]
+
+    assert extents["planning_margin"] == pytest.approx(0.05)
+    assert extents["planning_lateral_margin"] == pytest.approx(0.05)
+    assert extents["front"] + extents["planning_margin"] == pytest.approx(0.80837)
+    assert extents["rear"] + extents["planning_margin"] == pytest.approx(0.78323)
+    assert extents["left"] + extents["planning_lateral_margin"] == pytest.approx(
+        0.58505
+    )
+    assert extents["right"] + extents["planning_lateral_margin"] == pytest.approx(
+        0.58495
+    )
 
 
 @pytest.mark.parametrize("keys,legacy_x", LEGACY_SENSOR_X_M.items())
@@ -83,10 +102,10 @@ def test_sensor_x_shift_preserves_physical_mount(
 def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     """Planning and final command authorization must use one occupied boundary."""
     expected = [
-        [0.85837, 0.63505],
-        [0.85837, -0.63495],
-        [-0.83323, -0.63495],
-        [-0.83323, 0.63505],
+        [0.80837, 0.58505],
+        [0.80837, -0.58495],
+        [-0.78323, -0.58495],
+        [-0.78323, 0.58505],
     ]
     nav2 = _yaml(
         SRC_ROOT / "camrod_planning" / "config" / "nav2_vehicle.yaml"
@@ -100,10 +119,27 @@ def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
     assert ast.literal_eval(local_costmap["footprint"]) == expected
     assert ast.literal_eval(global_costmap["footprint"]) == expected
     assert gate["robot_base_frame"] == "robot_center_link"
-    assert gate["lanelet_safety_footprint_front_m"] == pytest.approx(0.85837)
-    assert gate["lanelet_safety_footprint_rear_m"] == pytest.approx(0.83323)
-    assert gate["lanelet_safety_footprint_left_m"] == pytest.approx(0.63505)
-    assert gate["lanelet_safety_footprint_right_m"] == pytest.approx(0.63495)
+    assert gate["lanelet_safety_footprint_front_m"] == pytest.approx(0.80837)
+    assert gate["lanelet_safety_footprint_rear_m"] == pytest.approx(0.78323)
+    assert gate["lanelet_safety_footprint_left_m"] == pytest.approx(0.58505)
+    assert gate["lanelet_safety_footprint_right_m"] == pytest.approx(0.58495)
+
+
+def test_visual_boundary_uses_five_centimeter_margins() -> None:
+    """RViz and the published gate polygon must match the four-sided margin contract."""
+    package_path = SRC_ROOT / "camrod_platform" / "config" / "robot_visualization.yaml"
+    bringup_path = (
+        SRC_ROOT
+        / "camrod_bringup"
+        / "config"
+        / "platform"
+        / "robot_visualization.yaml"
+    )
+
+    assert package_path.read_bytes() == bringup_path.read_bytes()
+    parameters = _yaml(package_path)["/platform/robot_visualization"]["ros__parameters"]
+    assert parameters["planning_boundary_margin"] == pytest.approx(0.05)
+    assert parameters["planning_boundary_lateral_margin"] == pytest.approx(0.05)
 
 
 def test_route_safety_retry_policy_is_identical_in_package_and_bringup() -> None:

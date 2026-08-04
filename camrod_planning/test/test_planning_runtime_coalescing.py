@@ -11,6 +11,7 @@ from unittest import mock
 from avg_msgs.msg import AvgOccupancyGrid, AvgPath, AvgPoseStamped
 import rclpy
 from rclpy.serialization import deserialize_message, serialize_message
+from rclpy.duration import Duration
 from rclpy.time import Time
 
 
@@ -48,6 +49,23 @@ def _grid(*, yaw=0.0):
     message.info.origin.orientation.z = math.sin(0.5 * yaw)
     message.info.origin.orientation.w = math.cos(0.5 * yaw)
     message.data = [0, 1, 2, 3, 4, -1, 6, 7, 8, 9, 10, 11]
+    return message
+
+
+def _lane_grid(*, half_width):
+    message = AvgOccupancyGrid()
+    message.header.frame_id = "map"
+    message.info.width = 80
+    message.info.height = 80
+    message.info.resolution = 0.1
+    message.info.origin.position.x = -4.0
+    message.info.origin.position.y = -4.0
+    message.info.origin.orientation.w = 1.0
+    message.data = []
+    for row in range(message.info.height):
+        y = message.info.origin.position.y + (row + 0.5) * message.info.resolution
+        cost = 70 if abs(y) < half_width else 100
+        message.data.extend([cost] * message.info.width)
     return message
 
 
@@ -138,7 +156,7 @@ class PlanningRuntimeCoalescingTest(unittest.TestCase):
                 if subscription.msg_type is AvgOccupancyGrid
             ]
             self.assertEqual(len(path_subscriptions), 1)
-            self.assertEqual(len(grid_subscriptions), 2)
+            self.assertEqual(len(grid_subscriptions), 3)
             self.assertTrue(path_subscriptions[0].raw)
             self.assertTrue(all(subscription.raw for subscription in grid_subscriptions))
             self.assertTrue(
@@ -164,6 +182,71 @@ class PlanningRuntimeCoalescingTest(unittest.TestCase):
                 self.assertEqual(decode.call_count, 1)
                 self.assertEqual(node._latest_path.header.frame_id, "latest")
                 self.assertIsNone(node._latest_path_serialized)
+        finally:
+            node.destroy_node()
+
+    def test_obstacle_fallback_is_allowed_only_on_a_wide_lane(self):
+        node = OBSTACLE_MONITOR.ObstacleReplanMonitor()
+        try:
+            node._minimum_replan_lane_width_m = 2.5
+            node._minimum_side_clearance_m = 0.6
+            node._lanelet_blocked_cost_threshold = 100
+
+            wide_record = OBSTACLE_MONITOR.GridRecord(
+                topic="/map/cost_grid/lanelet",
+                received_time=node.get_clock().now(),
+                serialized_grid=None,
+                grid=_lane_grid(half_width=1.5),
+            )
+            node._prepare_grid_record(wide_record)
+            wide = node._measure_lane_width(wide_record, 0.0, 0.0, 0.0)
+            self.assertTrue(wide.allowed)
+            self.assertGreaterEqual(wide.total_width_m, 2.5)
+
+            narrow_record = OBSTACLE_MONITOR.GridRecord(
+                topic="/map/cost_grid/lanelet",
+                received_time=node.get_clock().now(),
+                serialized_grid=None,
+                grid=_lane_grid(half_width=1.0),
+            )
+            node._prepare_grid_record(narrow_record)
+            narrow = node._measure_lane_width(narrow_record, 0.0, 0.0, 0.0)
+            self.assertFalse(narrow.allowed)
+            self.assertEqual(narrow.reason, "lane_too_narrow")
+        finally:
+            node.destroy_node()
+
+    def test_obstacle_fallback_waits_for_twenty_seconds_of_blockage(self):
+        """Persistent replan timing must not weaken the separate command gate."""
+        node = OBSTACLE_MONITOR.ObstacleReplanMonitor()
+        try:
+            self.assertEqual(node._block_hold_s, 20.0)
+            node._require_navigation_active = False
+            node._require_goal = False
+            node._latest_path = _path("map")
+            node._latest_pose = AvgPoseStamped()
+            blockage = OBSTACLE_MONITOR.BlockageSample(
+                blocked=True,
+                blocked_count=3,
+                total_count=10,
+                max_cost=85,
+                source_topic="/sensing/cost_grid/lidar",
+                point_x=1.0,
+                point_y=0.0,
+            )
+
+            with mock.patch.object(
+                node, "_sample_dynamic_blockage", return_value=blockage
+            ), mock.patch.object(node, "_publish_status"), mock.patch.object(
+                node, "_maybe_trigger_fallback_replan"
+            ) as trigger:
+                node._blocked_since = node.get_clock().now() - Duration(seconds=19.5)
+                node._on_monitor_timer()
+                trigger.assert_not_called()
+
+                node._blocked_since = node.get_clock().now() - Duration(seconds=20.1)
+                node._on_monitor_timer()
+                trigger.assert_called_once()
         finally:
             node.destroy_node()
 
