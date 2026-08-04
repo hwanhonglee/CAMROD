@@ -1,0 +1,9 @@
+# Development profile retaining every implemented Nav2 controller option.
+controller_server:
+  ros__parameters:
+    controller_plugins:
+      - "RPP"
+      - "DWB"
+      - "MPPI"
+      - "Graceful"
+      - "RotationShim"

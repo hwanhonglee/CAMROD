@@ -1,0 +1,6 @@
+# HH_260805 - Production constructs only controllers reachable by active policy.
+# RPP owns UI missions; RotationShim wraps RPP for manual clicked-yaw goals.
+# Other implemented controllers remain available through the opt-in all profile.
+controller_server:
+  ros__parameters:
+    controller_plugins: ["RPP", "RotationShim"]

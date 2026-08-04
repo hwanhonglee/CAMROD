@@ -95,8 +95,8 @@ static bool has_nan(double x, double y, double z)
 class ImuCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  ImuCheckerNode()
-  : robot_diagnostics_base::BaseChecker("imu_checker", "imu_checker")
+  explicit ImuCheckerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : robot_diagnostics_base::BaseChecker("imu_checker", "imu_checker", options)
   {
     base_init();
   }
@@ -345,12 +345,5 @@ private:
   std::vector<std::shared_ptr<ImuState>> imu_list_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<ImuCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(ImuCheckerNode)

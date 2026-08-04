@@ -400,6 +400,10 @@ class UiBackendNode(Node):
         self._latest_service_state: Optional[int] = None
         self._pending_site_after_drop_zone_exit: Optional[tuple[str, str, str]] = None
         self._drop_zone_exit_active = False
+        # HJ_260804 - Destination state may be cleared by a departure ack
+        # before campsite arrival. Preserve the active mission site so the
+        # Robot and Guest UIs still receive the matching arrival notification.
+        self._active_mission_site: str = ""
         self._low_battery_return_pending = False
         self._low_battery_return_started = False
         self._low_battery_return_wait_notified = False
@@ -411,6 +415,9 @@ class UiBackendNode(Node):
         self._ws_clients: Set[WebSocket] = set()
         self._ws_clients_lock = threading.Lock()
         self._main_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._uvicorn_server: Optional[uvicorn.Server] = None
+        self._server_thread: Optional[threading.Thread] = None
+        self._server_stop_requested = threading.Event()
 
         # Subscriptions.
         self.sub_destination = self.create_subscription(
@@ -570,7 +577,6 @@ class UiBackendNode(Node):
         self._readiness_timer = self.create_timer(
             self.readiness_check_period_s, self._on_readiness_timer
         )
-        self._server_thread: Optional[threading.Thread] = None
         if self.enable_http_server:
             self._start_fastapi_server()
 
@@ -671,7 +677,35 @@ class UiBackendNode(Node):
         return keypoints
 
     def destroy_node(self) -> bool:
+        # HH_260805 - Stop the HTTP event loop before ROS destroys callbacks and
+        # publishers that in-flight FastAPI/WebSocket handlers may still access.
+        self._stop_fastapi_server()
         return super().destroy_node()
+
+    def _stop_fastapi_server(self, join_timeout_s: float = 3.0) -> None:
+        self._server_stop_requested.set()
+        server = self._uvicorn_server
+        if server is not None:
+            server.should_exit = True
+
+        loop = self._main_loop
+        if loop is not None and loop.is_running():
+            try:
+                loop.call_soon_threadsafe(lambda: None)
+            except RuntimeError:
+                pass
+
+        thread = self._server_thread
+        if (
+            thread is not None
+            and thread is not threading.current_thread()
+            and thread.is_alive()
+        ):
+            thread.join(timeout=max(0.0, float(join_timeout_s)))
+            if thread.is_alive():
+                self.get_logger().warn(
+                    "ui backend fastapi thread did not stop before timeout"
+                )
 
     def _compute_operation_mode(self, engaged: bool, ready: bool) -> str:
         if engaged and ready:
@@ -1281,7 +1315,10 @@ class UiBackendNode(Node):
         }
         if state in arrival_states:
             with self._lock:
-                site = self._state.destination.get("site", "")
+                site = (
+                    self._state.destination.get("site", "")
+                    or self._active_mission_site
+                )
             if site:
                 self._notify_site_arrival(site, state, source=f"service_state:{state}")
             if self.publish_mission_engage_from_destination:
@@ -1569,6 +1606,7 @@ class UiBackendNode(Node):
             self._publish_mission_engage(False, source=source)
         self._publish_engage(False, source=source)
         with self._lock:
+            self._active_mission_site = ""
             self._state.ws_site_states = {s: False for s in self.site_names}
             self._state.destination = {"site": "", "run": False}
         self._publish_service_state(
@@ -1778,6 +1816,8 @@ class UiBackendNode(Node):
 
         already_arrived, mission_key, distance_m, match_reason = self._site_arrival_match(site)
         if already_arrived:
+            with self._lock:
+                self._active_mission_site = site
             # HH_260701 - If the robot was manually driven into a campsite,
             # selecting that site in the UI should adopt the parked state instead
             # of dispatching a fresh Nav2 goal back through the lanelet route.
@@ -1825,6 +1865,11 @@ class UiBackendNode(Node):
                 "battery_percentage": battery_block["battery_percentage"],
                 "minimum_battery_percentage": battery_block["minimum_battery_percentage"],
             }
+
+        # HJ_260804 - Only accepted/adopted destinations become the fallback
+        # arrival identity. A battery-rejected request must not replace it.
+        with self._lock:
+            self._active_mission_site = site
 
         # HH_260730 - Record accepted UI intent before engage so regulated and
         # manual goals expose the same goal-received -> path-preparing order.
@@ -2283,7 +2328,7 @@ class UiBackendNode(Node):
         # ── REST API endpoints ────────────────────────────────────────────────
 
         @app.get("/ui/state")
-        async def get_state() -> JSONResponse:
+        def get_state() -> JSONResponse:
             return JSONResponse(node._snapshot())
 
         @app.get("/ui/health")
@@ -2291,7 +2336,7 @@ class UiBackendNode(Node):
             return JSONResponse({"ok": True, "node": node.get_name()})
 
         @app.get("/ui/destination")
-        async def get_destination() -> JSONResponse:
+        def get_destination() -> JSONResponse:
             snap = node._snapshot()
             return JSONResponse({
                 "destination": snap.get("destination", {"site": "", "run": False}),
@@ -2299,12 +2344,12 @@ class UiBackendNode(Node):
             })
 
         @app.get("/ui/diagnostics")
-        async def get_diagnostics() -> JSONResponse:
+        def get_diagnostics() -> JSONResponse:
             snap = node._snapshot()
             return JSONResponse({"status": snap.get("diagnostics", [])})
 
         @app.get("/api/diagnostics")
-        async def get_api_diagnostics() -> JSONResponse:
+        def get_api_diagnostics() -> JSONResponse:
             with node._lock:
                 diags = list(node._state.diagnostics)
             return JSONResponse({"status": diags})
@@ -2325,35 +2370,35 @@ class UiBackendNode(Node):
             return JSONResponse(result, status_code=status)
 
         @app.post("/ui/engage")
-        async def post_engage(value: str = "false") -> JSONResponse:
+        def post_engage(value: str = "false") -> JSONResponse:
             enabled = value.lower() in {"1", "true", "yes", "on"}
             result = node.set_engage(enabled)
             return JSONResponse(result, status_code=200 if result.get("success") else 503)
 
         @app.post("/ui/headlight")
-        async def post_headlight(value: str = "false") -> JSONResponse:
+        def post_headlight(value: str = "false") -> JSONResponse:
             enabled = value.lower() in {"1", "true", "yes", "on"}
             result = node.set_headlight(enabled)
             return JSONResponse(result, status_code=200 if result.get("success") else 503)
 
         @app.post("/ui/operation_mode")
-        async def post_operation_mode(auto: str = "false") -> JSONResponse:
+        def post_operation_mode(auto: str = "false") -> JSONResponse:
             enabled = auto.lower() in {"1", "true", "yes", "on"}
             result = node.set_operation_mode(enabled)
             return JSONResponse(result, status_code=200 if result.get("success") else 503)
 
         @app.post("/ui/auto")
-        async def post_auto() -> JSONResponse:
+        def post_auto() -> JSONResponse:
             result = node.set_auto()
             return JSONResponse(result, status_code=200 if result.get("success") else 503)
 
         @app.post("/ui/stop")
-        async def post_stop() -> JSONResponse:
+        def post_stop() -> JSONResponse:
             result = node.set_stop()
             return JSONResponse(result, status_code=200 if result.get("success") else 503)
 
         @app.post("/ui/destination")
-        async def post_destination(site: str = "", run: str = "false") -> JSONResponse:
+        def post_destination(site: str = "", run: str = "false") -> JSONResponse:
             run_bool = run.lower() in {"1", "true", "yes", "on"}
             result = node.set_destination(site=site, run=run_bool)
             return JSONResponse(result, status_code=200 if result.get("success") else 400)
@@ -2384,6 +2429,7 @@ class UiBackendNode(Node):
 
         def _run() -> None:
             loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             node._main_loop = loop
             config = uvicorn.Config(
                 app,
@@ -2393,8 +2439,16 @@ class UiBackendNode(Node):
                 loop="asyncio",
             )
             server = uvicorn.Server(config)
+            node._uvicorn_server = server
+            if node._server_stop_requested.is_set():
+                server.should_exit = True
             node.get_logger().info(f"ui backend fastapi listening: http://{node.host}:{node.port}")
-            loop.run_until_complete(server.serve())
+            try:
+                loop.run_until_complete(server.serve())
+            finally:
+                node._uvicorn_server = None
+                node._main_loop = None
+                loop.close()
 
         self._server_thread = threading.Thread(target=_run, name="camrod_ui_fastapi", daemon=True)
         self._server_thread.start()

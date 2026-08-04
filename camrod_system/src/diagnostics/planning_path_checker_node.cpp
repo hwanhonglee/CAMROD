@@ -75,9 +75,10 @@ struct PathSource
 class PlanningPathCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  PlanningPathCheckerNode()
+  explicit PlanningPathCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : robot_diagnostics_base::BaseChecker(
-      "planning_path_checker", "planning_path_checker")
+      "planning_path_checker", "planning_path_checker", options)
   {
     base_init();
   }
@@ -249,12 +250,5 @@ private:
   rclcpp::Subscription<action_msgs::msg::GoalStatusArray>::SharedPtr      nav_sub_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<PlanningPathCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(PlanningPathCheckerNode)

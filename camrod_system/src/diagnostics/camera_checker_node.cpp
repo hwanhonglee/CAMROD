@@ -67,8 +67,8 @@ struct CameraState
 class CameraCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  CameraCheckerNode()
-  : robot_diagnostics_base::BaseChecker("camera_checker", "camera_checker")
+  explicit CameraCheckerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : robot_diagnostics_base::BaseChecker("camera_checker", "camera_checker", options)
   {
     base_init();
   }
@@ -321,10 +321,5 @@ private:
   std::vector<std::shared_ptr<CameraState>> cameras_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<CameraCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(CameraCheckerNode)

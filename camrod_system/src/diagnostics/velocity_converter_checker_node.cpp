@@ -55,9 +55,10 @@ using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 class VelocityConverterCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  VelocityConverterCheckerNode()
+  explicit VelocityConverterCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : robot_diagnostics_base::BaseChecker(
-      "velocity_converter_checker", "velocity_converter_checker")
+      "velocity_converter_checker", "velocity_converter_checker", options)
   {
     base_init();
   }
@@ -329,12 +330,5 @@ private:
   camrod_system::DummySourceMonitor imu_dummy_monitor_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<VelocityConverterCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(VelocityConverterCheckerNode)

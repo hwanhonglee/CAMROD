@@ -64,10 +64,13 @@ public:
   // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
   using TaskFn  = std::function<void(diagnostic_updater::DiagnosticStatusWrapper &)>;
 
+  // HH_260805 - Accept NodeOptions so the same checker class can run as a
+  // standalone process or inside a production component container.
   explicit BaseChecker(
     const std::string & node_name,
-    const std::string & hardware_id = "none")
-  : rclcpp::Node(node_name), hardware_id_(hardware_id)
+    const std::string & hardware_id = "none",
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : rclcpp::Node(node_name, options), hardware_id_(hardware_id)
   {
     // ⚠️ C++ 제약: 기본 클래스 생성자에서 순수 가상 함수(setup_tasks_)를 호출하면
     //    vtable 이 파생 클래스로 완성되기 전이므로 링커 오류가 발생한다.

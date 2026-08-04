@@ -69,9 +69,10 @@ struct InitState
 class LocalizationInitCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  LocalizationInitCheckerNode()
+  explicit LocalizationInitCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : robot_diagnostics_base::BaseChecker(
-      "localization_init_checker", "localization_init_checker"),
+      "localization_init_checker", "localization_init_checker", options),
     node_start_time_(rclcpp::Clock(RCL_ROS_TIME).now())
   {
     base_init();
@@ -268,12 +269,5 @@ private:
   InitState    state_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<LocalizationInitCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(LocalizationInitCheckerNode)

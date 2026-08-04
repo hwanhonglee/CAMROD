@@ -146,8 +146,8 @@ static std::vector<GpuInfo> query_gpus(const std::string & nvidia_smi)
 class GpuCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  GpuCheckerNode()
-  : robot_diagnostics_base::BaseChecker("gpu_checker", "gpu_checker")
+  explicit GpuCheckerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : robot_diagnostics_base::BaseChecker("gpu_checker", "gpu_checker", options)
   {
     base_init();  // declare/load parameters → setup tasks
 
@@ -346,13 +346,5 @@ private:
   std::chrono::steady_clock::time_point       cache_time_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<GpuCheckerNode>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(GpuCheckerNode)

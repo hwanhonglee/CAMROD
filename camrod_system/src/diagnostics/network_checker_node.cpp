@@ -147,8 +147,8 @@ static std::string read_sysfs_string(const std::string & path)
 class NetworkCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  NetworkCheckerNode()
-  : robot_diagnostics_base::BaseChecker("network_checker", "network_checker")
+  explicit NetworkCheckerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : robot_diagnostics_base::BaseChecker("network_checker", "network_checker", options)
   {
     base_init();
 
@@ -339,13 +339,5 @@ private:
   NetDevStats prev_stats_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<NetworkCheckerNode>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(NetworkCheckerNode)

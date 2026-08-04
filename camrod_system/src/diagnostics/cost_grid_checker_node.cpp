@@ -21,8 +21,8 @@ using StatusWrapper    = diagnostic_updater::DiagnosticStatusWrapper;
 class CostGridCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  CostGridCheckerNode()
-  : robot_diagnostics_base::BaseChecker("cost_grid_checker", "cost_grid_checker")
+  explicit CostGridCheckerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : robot_diagnostics_base::BaseChecker("cost_grid_checker", "cost_grid_checker", options)
   {
     base_init();
   }
@@ -244,10 +244,5 @@ private:
   std::vector<std::shared_ptr<GridState>> grids_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<CostGridCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(CostGridCheckerNode)

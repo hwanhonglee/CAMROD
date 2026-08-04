@@ -8,7 +8,7 @@ from ament_index_python.packages import (
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, TimerAction
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -88,26 +88,36 @@ def generate_launch_description():
         default_value='8012',
         description='Guest UI bind port',
     )
-    # HH_260727 - Show the local operator surface without requiring a full Brave session.
+    # HH_260805 - Show the local operator surface in a lightweight WebKit process.
     enable_operator_ui_window_arg = DeclareLaunchArgument(
         'enable_operator_ui_window',
         default_value='true',
-        description='Open the local operator UI in a lightweight GTK/WebKit window',
+        description='Open the local operator UI in a managed kiosk window',
+    )
+    operator_ui_window_engine_arg = DeclareLaunchArgument(
+        'operator_ui_window_engine',
+        default_value='webkit',
+        description='Operator UI renderer: webkit (default), chromium, or auto',
     )
     operator_ui_window_url_arg = DeclareLaunchArgument(
         'operator_ui_window_url',
         default_value='http://127.0.0.1:8010',
-        description='URL loaded by the lightweight operator UI window',
+        description='URL loaded by the managed operator UI window',
     )
     operator_ui_window_width_arg = DeclareLaunchArgument(
         'operator_ui_window_width',
         default_value='1280',
-        description='Initial lightweight operator UI window width in pixels',
+        description='Initial operator UI window width in pixels',
     )
     operator_ui_window_height_arg = DeclareLaunchArgument(
         'operator_ui_window_height',
         default_value='800',
-        description='Initial lightweight operator UI window height in pixels',
+        description='Initial operator UI window height in pixels',
+    )
+    operator_ui_window_fullscreen_arg = DeclareLaunchArgument(
+        'operator_ui_window_fullscreen',
+        default_value='true',
+        description='Open the managed operator UI window fullscreen',
     )
     frontend_dir_arg = DeclareLaunchArgument(
         'frontend_dir',
@@ -290,8 +300,8 @@ def generate_launch_description():
         }],
     )
 
-    # HH_260727 - This is a non-ROS GTK process, so launch it directly instead
-    # of using launch_ros Node (which would append unsupported --ros-args).
+    # HH_260727 - This is a non-ROS browser process, so launch it directly
+    # instead of using launch_ros Node (which would append unsupported --ros-args).
     operator_ui_window = TimerAction(
         period=1.0,
         actions=[
@@ -309,6 +319,13 @@ def generate_launch_description():
                     LaunchConfiguration('operator_ui_window_width'),
                     '--height',
                     LaunchConfiguration('operator_ui_window_height'),
+                    '--engine',
+                    LaunchConfiguration('operator_ui_window_engine'),
+                    PythonExpression([
+                        "'--fullscreen' if '",
+                        LaunchConfiguration('operator_ui_window_fullscreen'),
+                        "' == 'true' else '--no-fullscreen'",
+                    ]),
                 ],
                 name='camrod_ui_window',
                 output='screen',
@@ -325,9 +342,11 @@ def generate_launch_description():
         guest_host_arg,
         guest_port_arg,
         enable_operator_ui_window_arg,
+        operator_ui_window_engine_arg,
         operator_ui_window_url_arg,
         operator_ui_window_width_arg,
         operator_ui_window_height_arg,
+        operator_ui_window_fullscreen_arg,
         frontend_dir_arg,
         camping_sites_yaml_arg,
         planning_engage_topic_arg,

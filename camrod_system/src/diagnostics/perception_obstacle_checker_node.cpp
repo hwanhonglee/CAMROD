@@ -90,9 +90,10 @@ struct ObstacleSource
 class PerceptionObstacleCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  PerceptionObstacleCheckerNode()
+  explicit PerceptionObstacleCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : robot_diagnostics_base::BaseChecker(
-      "perception_obstacle_checker", "perception_obstacle_checker")
+      "perception_obstacle_checker", "perception_obstacle_checker", options)
   {
     base_init();
   }
@@ -270,12 +271,5 @@ private:
   std::vector<std::shared_ptr<ObstacleSource>> sources_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<PerceptionObstacleCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(PerceptionObstacleCheckerNode)

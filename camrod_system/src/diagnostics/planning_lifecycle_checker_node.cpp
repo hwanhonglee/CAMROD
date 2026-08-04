@@ -62,9 +62,10 @@ struct LifecycleNodeState
 class PlanningLifecycleCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  PlanningLifecycleCheckerNode()
+  explicit PlanningLifecycleCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : robot_diagnostics_base::BaseChecker(
-      "planning_lifecycle_checker", "planning_lifecycle_checker")
+      "planning_lifecycle_checker", "planning_lifecycle_checker", options)
   {
     base_init();
   }
@@ -218,12 +219,5 @@ private:
   rclcpp::TimerBase::SharedPtr                     poll_timer_;
 };
 
-// ── main ──────────────────────────────────────────────────────────────────
-
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<PlanningLifecycleCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(PlanningLifecycleCheckerNode)

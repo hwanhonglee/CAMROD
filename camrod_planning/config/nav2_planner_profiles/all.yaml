@@ -1,0 +1,10 @@
+# Development profile retaining every implemented Nav2 planner option.
+planner_server:
+  ros__parameters:
+    planner_plugins:
+      - "LaneletRoute"
+      - "Smac2D"
+      - "NavFn"
+      - "ThetaStar"
+      - "SmacHybrid"
+      - "SmacLattice"

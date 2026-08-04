@@ -317,7 +317,6 @@ body {
   font-size: 1.3rem;
   font-weight: 800;
   color: #2d6e40;
-  animation: pulse-text 1.5s ease-in-out infinite;
 }
 
 .preview-arrived {
@@ -330,12 +329,6 @@ body {
   font-size: 1.3rem;
   font-weight: 800;
   color: #1565c0;
-  animation: pulse-text 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse-text {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
 }
 
 /* ── 대기 화면 ───────────────────────────────────────────────────────────── */
@@ -540,6 +533,13 @@ body {
   height: 100%;
   max-width: 100%;
   aspect-ratio: 1 / 1;
+}
+
+.waiting-grid-btn-icon-img {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
 }
 
 
@@ -761,13 +761,19 @@ body {
 .move-verify-box {
   background: #fff;
   border-radius: 20px;
-  padding: 2.4rem 3rem;
+  /* HJ_260804 - Keep the keypad and confirmation buttons reachable in the
+     1280x800 windowed operator layout as well as on the fullscreen display. */
+  width: min(94vw, 996px);
+  min-width: 0;
+  max-height: 94vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: clamp(1rem, 2.2vh, 2.4rem) clamp(1rem, 3vw, 3rem);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.2rem;
+  gap: clamp(0.5rem, 1.5vh, 1.2rem);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-  min-width: 380px;
   animation: slideUp 0.2s ease;
 }
 
@@ -802,7 +808,7 @@ body {
   border-radius: 12px;
   outline: none;
   transition: border-color 0.15s;
-  letter-spacing: 0.05em;
+  letter-spacing: 0;
 }
 .move-verify-input:focus { border-color: #2d6e40; }
 .move-verify-input.error { border-color: #e53935; background: #fff5f5; }
@@ -1898,6 +1904,25 @@ h1 {
   gap: 0.4rem;
   margin-top: 0.8rem;
   user-select: none;
+}
+
+.move-verify-keyboard {
+  width: 100%;
+  margin-top: 0;
+  gap: clamp(0.2rem, 0.55vh, 0.4rem);
+}
+
+.move-verify-keyboard .vkb-key {
+  min-width: clamp(28px, 5.4vw, 72px);
+  height: clamp(34px, 5.2vh, 56px);
+}
+
+.move-verify-keyboard .vkb-wide {
+  min-width: clamp(42px, 7vw, 96px);
+}
+
+.move-verify-keyboard .vkb-space {
+  min-width: clamp(160px, 40vw, 420px);
 }
 
 .vkb-field-tabs {

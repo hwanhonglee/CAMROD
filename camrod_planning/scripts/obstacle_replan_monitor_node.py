@@ -48,6 +48,15 @@ class BlockageSample:
     point_y: float
 
 
+@dataclass
+class LaneWidthSample:
+    allowed: bool
+    total_width_m: float
+    left_clearance_m: float
+    right_clearance_m: float
+    reason: str
+
+
 class ObstacleReplanMonitor(Node):
     """Monitors dynamic obstacle grids and optionally preempts Nav2."""
 
@@ -84,6 +93,11 @@ class ObstacleReplanMonitor(Node):
         self._status_topic = str(
             self.declare_parameter("status_topic", "/planning/obstacle_replan/status").value
         ).strip()
+        self._lanelet_grid_topic = str(
+            self.declare_parameter(
+                "lanelet_grid_topic", "/map/cost_grid/lanelet"
+            ).value
+        ).strip()
 
         self._dynamic_grid_topics = [
             str(topic).strip()
@@ -101,6 +115,27 @@ class ObstacleReplanMonitor(Node):
         # obstacle blockage is reported for diagnostics/gates, while explicit
         # fallback preemption is opt-in for controlled experiments.
         self._preempt_enabled = bool(self.declare_parameter("preempt_enabled", False).value)
+        # HH_260805 - Free-space fallback is permitted only where the current
+        # lanelet grid proves enough lateral room. Missing/stale geometry denies
+        # preemption and leaves the existing safety stop in authority.
+        self._wide_lane_replan_enabled = bool(
+            self.declare_parameter("wide_lane_replan_enabled", True).value
+        )
+        self._lanelet_grid_max_age_s = float(
+            self.declare_parameter("lanelet_grid_max_age_s", 2.5).value
+        )
+        self._lanelet_blocked_cost_threshold = int(
+            self.declare_parameter("lanelet_blocked_cost_threshold", 100).value
+        )
+        self._minimum_replan_lane_width_m = float(
+            self.declare_parameter("minimum_replan_lane_width_m", 2.5).value
+        )
+        self._minimum_side_clearance_m = float(
+            self.declare_parameter("minimum_side_clearance_m", 0.60).value
+        )
+        self._lane_width_max_search_m = float(
+            self.declare_parameter("lane_width_max_search_m", 6.0).value
+        )
         self._restore_planner_id = str(
             self.declare_parameter("restore_planner_id", "LaneletRoute").value
         ).strip()
@@ -124,7 +159,9 @@ class ObstacleReplanMonitor(Node):
         self._blocked_sample_ratio = float(
             self.declare_parameter("blocked_sample_ratio", 0.08).value
         )
-        self._block_hold_s = float(self.declare_parameter("block_hold_s", 2.0).value)
+        # HH_260805 - Require a sustained blockage before planner preemption;
+        # command-level obstacle stopping remains owned by cmd_vel_safety_gate.
+        self._block_hold_s = float(self.declare_parameter("block_hold_s", 20.0).value)
         # HH_260619 - Dynamic grids can alternate between empty frames and an
         # obstacle frame on the same topic in sim/test. Keep the blockage latched
         # briefly so a single empty grid cannot break the persistent-block timer.
@@ -152,6 +189,7 @@ class ObstacleReplanMonitor(Node):
         self._latest_goal: Optional[AvgPoseStamped] = None
         self._latest_pose: Optional[AvgPoseStamped] = None
         self._grids: Dict[str, GridRecord] = {}
+        self._lanelet_grid: Optional[GridRecord] = None
         self._navigation_active = False
         self._blocked_since: Optional[Time] = None
         self._last_blocked_sample_time: Optional[Time] = None
@@ -191,6 +229,19 @@ class ObstacleReplanMonitor(Node):
                 1,
                 raw=True,
             )
+        lanelet_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.create_subscription(
+            AvgOccupancyGrid,
+            self._lanelet_grid_topic,
+            self._on_lanelet_grid,
+            lanelet_qos,
+            raw=True,
+        )
 
         self._planner_selector_pub = self.create_publisher(
             RosString, self._planner_selector_topic, selector_qos
@@ -212,6 +263,7 @@ class ObstacleReplanMonitor(Node):
             f"grids={','.join(self._dynamic_grid_topics)} "
             f"fallback={self._fallback_planner_id} "
             f"preempt={str(self._preempt_enabled).lower()} "
+            f"wide_lane_min={self._minimum_replan_lane_width_m:.2f}m "
             f"lookahead={self._lookahead_m:.1f}m hold={self._block_hold_s:.1f}s"
         )
 
@@ -230,6 +282,13 @@ class ObstacleReplanMonitor(Node):
     def _on_grid(self, topic: str, msg: bytes) -> None:
         self._grids[topic] = GridRecord(
             topic=topic,
+            received_time=self.get_clock().now(),
+            serialized_grid=msg,
+        )
+
+    def _on_lanelet_grid(self, msg: bytes) -> None:
+        self._lanelet_grid = GridRecord(
+            topic=self._lanelet_grid_topic,
             received_time=self.get_clock().now(),
             serialized_grid=msg,
         )
@@ -339,9 +398,21 @@ class ObstacleReplanMonitor(Node):
             cooldown = (now_time - self._last_replan_time).nanoseconds / 1.0e9
             if cooldown < self._replan_cooldown_s:
                 return
-        self._trigger_fallback_replan(blockage)
+        lane_width = self._lane_width_for_blockage(blockage)
+        if not lane_width.allowed:
+            self._publish_status(
+                "BLOCKED_REPLAN_DENIED: "
+                f"reason={lane_width.reason} "
+                f"width={lane_width.total_width_m:.2f}m "
+                f"left={lane_width.left_clearance_m:.2f}m "
+                f"right={lane_width.right_clearance_m:.2f}m"
+            )
+            return
+        self._trigger_fallback_replan(blockage, lane_width)
 
-    def _trigger_fallback_replan(self, blockage: BlockageSample) -> None:
+    def _trigger_fallback_replan(
+        self, blockage: BlockageSample, lane_width: LaneWidthSample
+    ) -> None:
         if self._latest_goal is None:
             return
         now_time = self.get_clock().now()
@@ -371,6 +442,7 @@ class ObstacleReplanMonitor(Node):
             "obstacle_replan_monitor: persistent dynamic blockage "
             f"at ({blockage.point_x:.2f}, {blockage.point_y:.2f}) "
             f"source={blockage.source_topic} cost={blockage.max_cost}; "
+            f"lane_width={lane_width.total_width_m:.2f}m; "
             f"preempting with planner={self._fallback_planner_id}"
         )
 
@@ -430,6 +502,126 @@ class ObstacleReplanMonitor(Node):
                     self._prepare_grid_record(record)
                 fresh.append(record)
         return fresh
+
+    def _fresh_lanelet_grid(self) -> Optional[GridRecord]:
+        record = self._lanelet_grid
+        if record is None:
+            return None
+        age_s = (self.get_clock().now() - record.received_time).nanoseconds / 1.0e9
+        if age_s > self._lanelet_grid_max_age_s:
+            return None
+        if record.grid is None and record.serialized_grid is not None:
+            record.grid = deserialize_message(
+                record.serialized_grid, AvgOccupancyGrid
+            )
+            record.serialized_grid = None
+        if not record.transform_ready:
+            self._prepare_grid_record(record)
+        return record if record.valid else None
+
+    def _lane_width_for_blockage(
+        self, blockage: BlockageSample
+    ) -> LaneWidthSample:
+        if not self._wide_lane_replan_enabled:
+            return LaneWidthSample(True, 0.0, 0.0, 0.0, "gate_disabled")
+        record = self._fresh_lanelet_grid()
+        if record is None:
+            return LaneWidthSample(False, 0.0, 0.0, 0.0, "lanelet_grid_unavailable")
+        path = self._latest_path
+        if path is None or len(path.poses) < 2:
+            return LaneWidthSample(False, 0.0, 0.0, 0.0, "path_unavailable")
+        reference = self._nearest_path_reference(
+            path, blockage.point_x, blockage.point_y
+        )
+        if reference is None:
+            return LaneWidthSample(False, 0.0, 0.0, 0.0, "path_heading_unavailable")
+        center_x, center_y, yaw = reference
+        return self._measure_lane_width(record, center_x, center_y, yaw)
+
+    def _measure_lane_width(
+        self,
+        record: GridRecord,
+        center_x: float,
+        center_y: float,
+        path_yaw: float,
+    ) -> LaneWidthSample:
+        """Measure the contiguous non-lethal lane width normal to the path."""
+        center_cost = self._grid_cost_at(record, center_x, center_y)
+        if center_cost is None:
+            return LaneWidthSample(False, 0.0, 0.0, 0.0, "center_unknown")
+        if center_cost >= self._lanelet_blocked_cost_threshold:
+            return LaneWidthSample(False, 0.0, 0.0, 0.0, "center_outside_lane")
+
+        normal_x = -math.sin(path_yaw)
+        normal_y = math.cos(path_yaw)
+        left = self._scan_lane_clearance(
+            record, center_x, center_y, normal_x, normal_y
+        )
+        right = self._scan_lane_clearance(
+            record, center_x, center_y, -normal_x, -normal_y
+        )
+        total = left + right
+        allowed = (
+            total >= self._minimum_replan_lane_width_m
+            and left >= self._minimum_side_clearance_m
+            and right >= self._minimum_side_clearance_m
+        )
+        reason = "wide_lane" if allowed else "lane_too_narrow"
+        return LaneWidthSample(allowed, total, left, right, reason)
+
+    def _scan_lane_clearance(
+        self,
+        record: GridRecord,
+        center_x: float,
+        center_y: float,
+        direction_x: float,
+        direction_y: float,
+    ) -> float:
+        # Half-cell sampling avoids skipping a lethal raster cell while keeping
+        # this 5 Hz check bounded on the 0.25 m deployed lanelet grid.
+        step_m = min(0.10, max(0.025, 0.5 * record.resolution))
+        max_search_m = max(step_m, self._lane_width_max_search_m)
+        distance_m = step_m
+        while distance_m <= max_search_m + 1.0e-9:
+            cost = self._grid_cost_at(
+                record,
+                center_x + direction_x * distance_m,
+                center_y + direction_y * distance_m,
+            )
+            if cost is None or cost >= self._lanelet_blocked_cost_threshold:
+                return max(0.0, distance_m - 0.5 * step_m)
+            distance_m += step_m
+        return max_search_m
+
+    @staticmethod
+    def _nearest_path_reference(
+        path: AvgPath, point_x: float, point_y: float
+    ) -> Optional[Tuple[float, float, float]]:
+        best_reference: Optional[Tuple[float, float, float]] = None
+        best_distance_sq = float("inf")
+        for start_pose, end_pose in zip(path.poses, path.poses[1:]):
+            start = start_pose.pose.position
+            end = end_pose.pose.position
+            dx = end.x - start.x
+            dy = end.y - start.y
+            length_sq = dx * dx + dy * dy
+            if length_sq < 1.0e-12:
+                continue
+            ratio = ((point_x - start.x) * dx + (point_y - start.y) * dy) / length_sq
+            ratio = min(1.0, max(0.0, ratio))
+            reference_x = start.x + ratio * dx
+            reference_y = start.y + ratio * dy
+            distance_sq = (
+                (point_x - reference_x) ** 2 + (point_y - reference_y) ** 2
+            )
+            if distance_sq < best_distance_sq:
+                best_distance_sq = distance_sq
+                best_reference = (
+                    reference_x,
+                    reference_y,
+                    math.atan2(dy, dx),
+                )
+        return best_reference
 
     def _prepare_grid_record(self, record: GridRecord) -> None:
         record.transform_ready = True

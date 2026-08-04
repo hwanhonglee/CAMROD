@@ -18,8 +18,9 @@ namespace camrod_system
 class PlanningStateChecker : public BaseChecker
 {
 public:
-  PlanningStateChecker()
-  : BaseChecker("planning_state_checker", "planning")
+  explicit PlanningStateChecker(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : BaseChecker("planning_state_checker", "planning", options)
   {
     base_init();
   }
@@ -109,11 +110,5 @@ private:
 
 }  // namespace camrod_system
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<camrod_system::PlanningStateChecker>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(camrod_system::PlanningStateChecker)

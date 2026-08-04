@@ -47,9 +47,10 @@ struct CostmapState
 class PlanningCostmapCheckerNode : public robot_diagnostics_base::BaseChecker
 {
 public:
-  PlanningCostmapCheckerNode()
+  explicit PlanningCostmapCheckerNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : robot_diagnostics_base::BaseChecker(
-      "planning_costmap_checker", "planning_costmap_checker")
+      "planning_costmap_checker", "planning_costmap_checker", options)
   {
     base_init();
   }
@@ -264,10 +265,5 @@ private:
   CostmapState local_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<PlanningCostmapCheckerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_CHECKER_ENTRYPOINT(PlanningCostmapCheckerNode)

@@ -281,6 +281,9 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   controllers_.clear();
 
   goal_checkers_.clear();
+  // HH_260805 - Destroy callback-owning progress plugins during lifecycle
+  // cleanup, before rcl context shutdown and the controller-server destructor.
+  progress_checker_.reset();
 
   costmap_ros_->cleanup();
 

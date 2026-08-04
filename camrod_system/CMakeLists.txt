@@ -8,6 +8,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 # HH_260326: system package unifies robot_diagnostics checkers into camrod_system.
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(diagnostic_updater REQUIRED)
 find_package(map_msgs REQUIRED)
@@ -88,6 +89,96 @@ camrod_system_add_checker(planning_nav_status_checker_node src/diagnostics/plann
 camrod_system_add_checker(planning_path_checker_node src/diagnostics/planning_path_checker_node.cpp)
 # HH_260617: Validate semantic planning state before parking/control progression.
 camrod_system_add_checker(planning_state_checker_node src/diagnostics/planning_state_checker_node.cpp)
+
+# HH_260805 - Production composition keeps each diagnostic implementation and
+# its standalone executable, but shares one executor per failure-isolation
+# category. This replaces 24 checker processes with three containers.
+function(camrod_system_add_checker_component_library target)
+  add_library(${target} SHARED ${ARGN})
+  target_compile_features(${target} PUBLIC cxx_std_17)
+  target_compile_definitions(${target} PRIVATE CAMROD_SYSTEM_COMPONENT_BUILD)
+  ament_target_dependencies(
+    ${target}
+    ${CAMROD_SYSTEM_COMMON_DEPS}
+    rclcpp_components
+  )
+  install(
+    TARGETS ${target}
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
+  )
+endfunction()
+
+camrod_system_add_checker_component_library(
+  camrod_system_hardware_sensing_checkers
+  src/diagnostics/hw_checker_node.cpp
+  src/diagnostics/gpu_checker_node.cpp
+  src/diagnostics/network_checker_node.cpp
+  src/diagnostics/gnss_checker_node.cpp
+  src/diagnostics/imu_checker_node.cpp
+  src/diagnostics/lidar_checker_node.cpp
+  src/diagnostics/radar_checker_node.cpp
+  src/diagnostics/camera_checker_node.cpp
+  src/diagnostics/wheel_odometry_checker_node.cpp
+  src/diagnostics/cost_grid_checker_node.cpp
+  src/diagnostics/velocity_converter_checker_node.cpp
+)
+target_link_libraries(camrod_system_hardware_sensing_checkers stdc++fs)
+rclcpp_components_register_nodes(
+  camrod_system_hardware_sensing_checkers
+  "HwCheckerNode"
+  "GpuCheckerNode"
+  "NetworkCheckerNode"
+  "GnssCheckerNode"
+  "ImuCheckerNode"
+  "LidarCheckerNode"
+  "RadarCheckerNode"
+  "CameraCheckerNode"
+  "WheelOdometryCheckerNode"
+  "CostGridCheckerNode"
+  "VelocityConverterCheckerNode"
+)
+
+camrod_system_add_checker_component_library(
+  camrod_system_localization_checkers
+  src/diagnostics/localization_gnss_checker_node.cpp
+  src/diagnostics/localization_mode_checker_node.cpp
+  src/diagnostics/localization_pose_checker_node.cpp
+  src/diagnostics/localization_init_checker_node.cpp
+  src/diagnostics/localization_source_checker_node.cpp
+  src/diagnostics/localization_lanelet_checker_node.cpp
+)
+rclcpp_components_register_nodes(
+  camrod_system_localization_checkers
+  "LocalizationGnssCheckerNode"
+  "LocalizationModeCheckerNode"
+  "LocalizationPoseCheckerNode"
+  "LocalizationInitCheckerNode"
+  "LocalizationSourceCheckerNode"
+  "LocalizationLaneletCheckerNode"
+)
+
+camrod_system_add_checker_component_library(
+  camrod_system_autonomy_checkers
+  src/diagnostics/map_cost_grid_checker_node.cpp
+  src/diagnostics/perception_obstacle_checker_node.cpp
+  src/diagnostics/planning_lifecycle_checker_node.cpp
+  src/diagnostics/planning_costmap_checker_node.cpp
+  src/diagnostics/planning_nav_status_checker_node.cpp
+  src/diagnostics/planning_path_checker_node.cpp
+  src/diagnostics/planning_state_checker_node.cpp
+)
+rclcpp_components_register_nodes(
+  camrod_system_autonomy_checkers
+  "MapCostGridCheckerNode"
+  "PerceptionObstacleCheckerNode"
+  "PlanningLifecycleCheckerNode"
+  "PlanningCostmapCheckerNode"
+  "PlanningNavStatusCheckerNode"
+  "PlanningPathCheckerNode"
+  "camrod_system::PlanningStateChecker"
+)
 
 # HH_260727: Exercise Nav2 goal UUID/state abort deduplication without starting
 # the full navigation stack.
@@ -228,6 +319,10 @@ endif()
 install(
   DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
+  # HH_260805 - Source-tree imports in contract tests may create Python cache;
+  # deployment must install maintained launch sources only.
+  PATTERN "__pycache__" EXCLUDE
+  PATTERN "*.pyc" EXCLUDE
 )
 
 install(
