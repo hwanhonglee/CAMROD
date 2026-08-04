@@ -756,11 +756,11 @@ TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
   constexpr double body_rear = 0.73323;
   constexpr double body_left = 0.53505;
   constexpr double body_right = 0.53495;
-  constexpr double planning_margin = 0.10;
+  constexpr double longitudinal_margin = 0.05;
+  constexpr double lateral_margin = 0.05;
   auto margin_only_cost = makeGrid();
   // Offset the 0.10 m raster so the measured 0.53505 m body edge and the
-  // 0.63505 m planning edge occupy adjacent cells instead of quantizing into
-  // the same one.
+  // 0.58505 m planning edge occupy adjacent cells.
   margin_only_cost.info.origin.position.y = -4.04;
   const int margin_grid_x = static_cast<int>(
     std::floor((0.0 - margin_only_cost.info.origin.position.x) /
@@ -773,7 +773,7 @@ TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
   cost_stop.setLaneletGrid(margin_only_cost, 0.0);
 
   // HH_260801 - The lethal cell is outside the measured body but inside the
-  // published planning boundary. This proves the 0.10 m margin stops motion
+  // published planning boundary. This proves the 0.05 m lateral margin stops motion
   // before the chassis itself reaches the off-lane cell.
   cost_stop.setFootprintPolygonWorld(
     {{body_front, body_left}, {body_front, -body_right},
@@ -781,10 +781,10 @@ TEST(MotionCostStop, PlanningMarginStopsBeforeMeasuredBodyTouchesOffLane)
   EXPECT_FALSE(cost_stop.evaluate(command(0.0, 0.2), 0.0).blocked);
 
   cost_stop.setFootprintPolygonWorld(
-    {{body_front + planning_margin, body_left + planning_margin},
-      {body_front + planning_margin, -(body_right + planning_margin)},
-      {-(body_rear + planning_margin), -(body_right + planning_margin)},
-      {-(body_rear + planning_margin), body_left + planning_margin}});
+    {{body_front + longitudinal_margin, body_left + lateral_margin},
+      {body_front + longitudinal_margin, -(body_right + lateral_margin)},
+      {-(body_rear + longitudinal_margin), -(body_right + lateral_margin)},
+      {-(body_rear + longitudinal_margin), body_left + lateral_margin}});
   const auto blocked = cost_stop.evaluate(command(0.0, 0.2), 0.1);
   EXPECT_TRUE(blocked.lanelet_violation) << blocked.reason;
   EXPECT_NE(blocked.reason.find("lanelet_footprint"), std::string::npos);

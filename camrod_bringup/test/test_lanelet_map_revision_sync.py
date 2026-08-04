@@ -1,4 +1,4 @@
-"""Lock the synchronized Lanelet2 map revision used by v2.1.3 evidence."""
+"""Validate the active map separately from historical runtime evidence."""
 
 import json
 from pathlib import Path
@@ -25,14 +25,14 @@ def _tags(element: ET.Element) -> dict[str, str]:
     }
 
 
-def test_active_and_named_park_maps_are_revision_14_and_synchronized() -> None:
+def test_active_and_named_park_maps_are_revision_15_and_synchronized() -> None:
     """Deployment must not silently use a stale copy of the user map edit."""
     assert ACTIVE_MAP.read_bytes() == PARK_MAP_COPY.read_bytes()
 
     root = ET.parse(ACTIVE_MAP).getroot()
     metadata = root.find("MetaInfo")
     assert metadata is not None
-    assert metadata.attrib["map_version"] == "14"
+    assert metadata.attrib["map_version"] == "15"
 
     relations = [_tags(relation) for relation in root.findall("relation")]
     assert sum(tags.get("type") == "lanelet" for tags in relations) == 55
@@ -40,8 +40,8 @@ def test_active_and_named_park_maps_are_revision_14_and_synchronized() -> None:
     assert len(root.findall("node")) == 1031
 
 
-def test_runtime_capture_identifies_map_revision_14() -> None:
-    """Committed screenshots and timing data must name their map input."""
+def test_historical_runtime_capture_identifies_map_revision_14() -> None:
+    """Historical screenshots and timing data must retain their map input."""
     report = json.loads(RUNTIME_REPORT.read_text(encoding="utf-8"))
     environment = report["environment"]
     containment = report["route_retry_containment"]

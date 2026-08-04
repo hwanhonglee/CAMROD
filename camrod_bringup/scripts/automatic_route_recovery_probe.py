@@ -2,10 +2,13 @@
 """Record an end-to-end automatic route-boundary recovery simulation."""
 
 import argparse
+from datetime import datetime, timezone
+import hashlib
 import json
 import math
 import time
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import lanelet2
 import rclpy
@@ -21,6 +24,17 @@ from rclpy.node import Node
 
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
 ROUTE_IDS = (754, 2751, 2720)
+
+
+def map_metadata(map_path):
+    """Return source identity recorded with every simulation result."""
+    root = ET.parse(map_path).getroot()
+    meta = root.find("MetaInfo")
+    return {
+        "source_file": map_path.name,
+        "map_version": int(meta.attrib["map_version"]) if meta is not None else None,
+        "sha256": hashlib.sha256(map_path.read_bytes()).hexdigest(),
+    }
 
 
 def quaternion_z_w(yaw):
@@ -98,10 +112,11 @@ def load_one_sided_crab_route(map_path):
 class AutomaticRecoveryProbe(Node):
     """Drive one fixed route and observe the production recovery owner."""
 
-    def __init__(self, path_points, initial_pose=None):
+    def __init__(self, path_points, initial_pose=None, lanelet_ids=ROUTE_IDS):
         super().__init__("automatic_route_recovery_probe")
         self.path_points = path_points
         self.initial_pose = initial_pose
+        self.lanelet_ids = tuple(lanelet_ids)
         self.started = time.monotonic()
         self.latest_pose = None
         self.latest_gate = None
@@ -397,8 +412,22 @@ class AutomaticRecoveryProbe(Node):
             retry_yaw_delta = math.degrees(
                 angular_delta(release["yaw_rad"], second_hold["yaw_rad"])
             )
+        release_time = milestone_time(self.timeline, "hold_released")
+        retry_latched = second_hold is not None and any(
+            event.get("event") == "gate"
+            and event.get("t", 0.0) >= release_time
+            and any(
+                marker in event.get("message", "")
+                for marker in (
+                    "route_safety_retry_latched",
+                    "rapid_recontact_latched",
+                    "rapid route recontact latched",
+                )
+            )
+            for event in self.timeline
+        )
         return {
-            "route_lanelet_ids": list(ROUTE_IDS),
+            "route_lanelet_ids": list(self.lanelet_ids),
             "automatic_recovery_motion": recovery_motion,
             "first_hold": first_hold,
             "recovery_start": recovery_start,
@@ -411,6 +440,16 @@ class AutomaticRecoveryProbe(Node):
             "same_goal_retry_yaw_delta_deg": (
                 round(retry_yaw_delta, 4) if retry_yaw_delta is not None else None
             ),
+            "rapid_recontact_after_release_s": (
+                round(
+                    milestone_time(self.timeline, "second_hold")
+                    - release_time,
+                    4,
+                )
+                if second_hold is not None
+                else None
+            ),
+            "rapid_recontact_latched": retry_latched,
             "maximum_final_output_mps": round(self.max_output_mps, 4),
             "maximum_recovery_output_mps": round(
                 self.max_recovery_output_mps, 4
@@ -421,9 +460,22 @@ class AutomaticRecoveryProbe(Node):
             "maximum_recovery_abs_linear_y_mps": round(
                 self.maximum_recovery_abs_linear_y, 4
             ),
+            "final_output": {
+                "linear_x": self.latest_output.linear.x,
+                "linear_y": self.latest_output.linear.y,
+                "angular_z": self.latest_output.angular.z,
+            },
             "mission_completed": False,
             "timeline": self.timeline,
         }
+
+
+def milestone_time(timeline, name):
+    return next(
+        event["t"]
+        for event in timeline
+        if event.get("event") == "milestone" and event.get("name") == name
+    )
 
 
 def main():
@@ -448,10 +500,19 @@ def main():
             initial_pose = (3.93, 45.245, math.radians(-12.5))
     else:
         path_points, initial_pose = load_one_sided_crab_route(args.map)
-    node = AutomaticRecoveryProbe(path_points, initial_pose=initial_pose)
+    lanelet_ids = ROUTE_IDS if args.scenario != "one_sided_crab" else (4677,)
+    node = AutomaticRecoveryProbe(
+        path_points,
+        initial_pose=initial_pose,
+        lanelet_ids=lanelet_ids,
+    )
     try:
         result = node.run(observe_retry=args.scenario != "one_sided_crab")
         result["scenario"] = args.scenario
+        # HH_260804 - Bind evidence to the exact user-provided map revision;
+        # regenerated images must not silently reuse an older map result.
+        result["map"] = map_metadata(args.map)
+        result["captured_at_utc"] = datetime.now(timezone.utc).isoformat()
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("w", encoding="utf-8") as stream:
             json.dump(result, stream, indent=2)

@@ -140,6 +140,14 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260805 - All active campsite configs rotate at arrival before waiting
+  # for the explicit return command, including the former B12/B13 exception.
+  ament_add_pytest_test(
+    test_camping_site_turnaround_contract
+    test/test_camping_site_turnaround_contract.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
   # HH_260804 - Package diagrams must remain regenerable from the active
   # configuration and explicitly classified simulation evidence.
   ament_add_pytest_test(
@@ -148,11 +156,19 @@ if(BUILD_TESTING)
     TIMEOUT 90
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
-  # HH_260804 - Preserve the user-provided map-v14 source and its named backup
-  # as one release input, and tie the runtime evidence to that exact revision.
+  # HH_260805 - Validate the active synchronized map-v15 pair independently
+  # from the preserved historical map-v14 runtime evidence.
   ament_add_pytest_test(
     test_lanelet_map_revision_sync
     test/test_lanelet_map_revision_sync.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
+  # HH_260805 - Keep all 24 low-rate system checkers in the intended 11/6/7
+  # component groups while preserving their standalone debug executables.
+  ament_add_pytest_test(
+    test_system_checker_composition
+    test/test_system_checker_composition.py
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
