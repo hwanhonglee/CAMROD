@@ -53,7 +53,7 @@ segment, center reference reduced cross-track RMS from 0.0588 m to 0.0549 m
 and yaw-error RMS from 2.901 deg to 2.713 deg. It progressed 0.8566 m farther
 before the first route-boundary hold.
 
-![Rear-axle versus robot-center drive](assets/v2.1.3/reference-frame/rear-axle-vs-robot-center-drive.gif)
+![Rear-axle versus robot-center drive](assets/module-guides/sensor-kit/rear-axle-vs-robot-center-drive.gif)
 
 The [comparison summary](evidence/v2.1.3/reference-frame/rear-axle-vs-robot-center-summary.json)
 and [center-reference timeline](evidence/v2.1.3/reference-frame/robot-center-drive-timeline.json)
@@ -191,13 +191,13 @@ cross-package frame contract.
 The following tracked artifacts use the same 1.69160 x 1.27000 m planning
 boundary and `robot_center_link` geometry as the runtime configuration.
 
-![Center-frame boundary contact sheet](assets/v2.1.3/boundary-recovery/pre-owner-robot-center-contact-sheet.png)
+![Center-frame boundary contact sheet](assets/module-guides/control/pre-owner-robot-center-contact-sheet.png)
 
-![Center-frame route risk map](assets/v2.1.3/boundary-geometry/robot-center-narrow-route-risk-map.png)
+![Center-frame route risk map](assets/module-guides/planning/robot-center-narrow-route-risk-map.png)
 
-[Open the pre-owner center-frame boundary recovery GIF](assets/v2.1.3/boundary-recovery/pre-owner-robot-center-recovery.gif).
+[Open the pre-owner center-frame boundary recovery GIF](assets/module-guides/control/pre-owner-robot-center-recovery.gif).
 The highlighted original stop location is available as
-[a separate PNG](assets/v2.1.3/boundary-geometry/first-route-boundary-stop-location.png).
+[a separate PNG](assets/module-guides/control/first-route-boundary-stop-location.png).
 
 The source measurements are preserved as
 [geometry JSON](evidence/v2.1.3/boundary-geometry/robot-center-route-samples.json)

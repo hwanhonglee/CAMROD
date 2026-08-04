@@ -79,13 +79,14 @@ in [`V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md`](V2_1_3_BOUNDARY_RECOVERY_VALIDATIO
 
 ## Evidence layout
 
-v2.1.3 moves release evidence out of the workspace root into predictable paths:
+v2.1.3 keeps numeric evidence versioned while visual results are owned by the
+module that explains them:
 
 ```text
-docs/assets/v2.1.3/
-  reference-frame/    # rear axle versus robot center GIF
-  boundary-geometry/  # stop location and narrow-route risk PNGs
-  boundary-recovery/  # pre-owner and automatic-owner GIF/PNG results
+docs/assets/module-guides/
+  sensor-kit/         # rear axle versus robot center GIF
+  planning/           # route-footprint risk PNG
+  control/            # boundary stop and pre/current recovery GIF/PNGs
   ui/                 # Guest UI state screenshots
 
 docs/evidence/v2.1.3/

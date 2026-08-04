@@ -1,0 +1,66 @@
+{
+  "date": "2026-07-31",
+  "baseline_commit": "09a7e1ca",
+  "source_report": "camrod_bringup/docs/v2_1_1_field_validation_20260731.md",
+  "raw_files_committed": false,
+  "motion_engaged": false,
+  "physical_estop_held": true,
+  "radar_disabled": {
+    "duration_s": 600.063,
+    "messages_per_channel": 5986,
+    "grid_messages": 5976,
+    "clear_evidence": 6000,
+    "active_evidence": 0,
+    "high_cost_cells": 0,
+    "cost_stop_events": 0,
+    "verdict": "FIELD-PASS"
+  },
+  "front_camera_yolo": {
+    "duration_s": 300.0,
+    "frames": 2750,
+    "rate_hz": 9.167,
+    "decode_success": 2750,
+    "decode_failure": 0,
+    "detection_rate_hz": 3.275,
+    "crash_or_restart_count": 0,
+    "verdict": "FIELD-PASS lifetime"
+  },
+  "rear_camera": {
+    "duration_s": 120.827,
+    "raw_frames": 439,
+    "raw_rate_hz": 3.633,
+    "raw_max_gap_s": 0.717,
+    "compressed_rate_hz": 1.556,
+    "target_raw_rate_hz": 10.0,
+    "verdict": "FIELD-FAIL rate"
+  },
+  "gnss_imu": {
+    "duration_s": 120.807,
+    "nav_pvt_rate_hz": 1.002,
+    "rtk_fixed_samples": 0,
+    "imu_rate_hz": 99.9,
+    "verdict": "PARTIAL"
+  },
+  "localization": {
+    "duration_s": 60.0,
+    "final_pose_rate_hz": 14.99,
+    "selected_pose_age_p95_ms": 352.5,
+    "gnss_to_final_xy_p95_m": 0.041,
+    "gnss_to_final_yaw_p95_deg": 0.74,
+    "verdict": "RATE PASS / latency under CPU saturation"
+  },
+  "resource_profile": {
+    "duration_s": 300.0,
+    "cpu_average_percent": 99.26,
+    "gpu_average_percent": 36.95,
+    "ram_used_gb": 10.66,
+    "ram_total_gb": 15.66,
+    "cpu_temperature_c": 60.6,
+    "verdict": "CPU SATURATED"
+  },
+  "external_raw_roots": [
+    "/home/nvidia/camrod_field_logs/20260731_140639",
+    "/home/nvidia/camrod_field_logs/20260731_142251",
+    "/home/nvidia/camrod_field_logs/20260731_144047"
+  ]
+}

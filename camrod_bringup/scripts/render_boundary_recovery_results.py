@@ -552,8 +552,26 @@ def main():
     parser.add_argument("--run", required=True, type=Path)
     parser.add_argument("--map", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument(
+        "--planning-output-dir",
+        type=Path,
+        help=(
+            "directory for the planning-owned route risk map; defaults to "
+            "--output-dir for backward compatibility"
+        ),
+    )
+    parser.add_argument(
+        "--analysis-output",
+        type=Path,
+        help=(
+            "route-sample JSON path; defaults to a file under --output-dir "
+            "for backward compatibility"
+        ),
+    )
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    planning_output_dir = args.planning_output_dir or args.output_dir
+    planning_output_dir.mkdir(parents=True, exist_ok=True)
     with args.run.open("r", encoding="utf-8") as stream:
         run = json.load(stream)
     lanelet_map = lanelet2.io.load(str(args.map), LocalCartesianProjector(ORIGIN))
@@ -561,9 +579,15 @@ def main():
     route_samples = analyze_route(map_geometry(lanelet_map), points)
     # HH_260804 / v2.1.3 - Keep pre-owner evidence visibly distinct from the
     # automatic recovery controller introduced after this manual probe run.
-    analysis_path = args.output_dir / "robot-center-route-samples.json"
+    analysis_path = (
+        args.analysis_output
+        or args.output_dir / "robot-center-route-samples.json"
+    )
+    analysis_path.parent.mkdir(parents=True, exist_ok=True)
     contact_path = args.output_dir / "pre-owner-robot-center-contact-sheet.png"
-    risk_path = args.output_dir / "robot-center-narrow-route-risk-map.png"
+    # The risk map documents route feasibility, so current documentation keeps
+    # it with planning while contact/recovery frames remain control-owned.
+    risk_path = planning_output_dir / "robot-center-narrow-route-risk-map.png"
     gif_path = args.output_dir / "pre-owner-robot-center-recovery.gif"
     with analysis_path.open("w", encoding="utf-8") as stream:
         json.dump({"route_ids": ROUTE_IDS, "samples": route_samples}, stream, indent=2)

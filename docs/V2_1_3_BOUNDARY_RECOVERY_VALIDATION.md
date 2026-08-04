@@ -30,9 +30,9 @@ information and does not overwrite a normal service phase.
 Result JSON:
 [guest UI integration evidence](evidence/v2.1.3/ui/guest-mission-lifecycle.json)
 
-![Guest UI ready for campsite dispatch](assets/v2.1.3/ui/guest-mission-dispatch-ready.png)
+![Guest UI ready for campsite dispatch](assets/module-guides/ui/guest-mission-dispatch-ready.png)
 
-![Guest UI displaying a route safety hold](assets/v2.1.3/ui/guest-route-safety-hold.png)
+![Guest UI displaying a route safety hold](assets/module-guides/ui/guest-route-safety-hold.png)
 
 ## Recovery Policy
 
@@ -75,9 +75,9 @@ The release evidence is intentionally split by command ownership:
 | current automatic owner | `robot_center_link` | scenario-dependent | bounded by 0.40 m | controller publishes only the gate-selected crab/reverse command |
 
 Historical visuals:
-[fixed-yaw manual probe](assets/v2.1.3/boundary-recovery/pre-owner-manual-no-yaw.gif),
-[yaw-aware manual probe](assets/v2.1.3/boundary-recovery/pre-owner-manual-yaw-aware.gif),
-and [center-reference manual probe](assets/v2.1.3/boundary-recovery/pre-owner-robot-center-recovery.gif).
+[fixed-yaw manual probe](assets/module-guides/control/pre-owner-manual-no-yaw.gif),
+[yaw-aware manual probe](assets/module-guides/control/pre-owner-manual-yaw-aware.gif),
+and [center-reference manual probe](assets/module-guides/control/pre-owner-robot-center-recovery.gif).
 Their source timelines are stored beside the automatic results under
 `docs/evidence/v2.1.3/boundary-recovery/`.
 
@@ -89,11 +89,11 @@ Their source timelines are stored beside the automatic results under
 | stationary route contact | `REVERSE` | final linear.x -0.05 m/s, 0.0327 m before release | 0.0592 m and +0.4065 deg yaw, then next hold |
 | moving route contact | `REVERSE` selected | residual deceleration cleared the first hold before reverse output | 0.4726 m and -2.0008 deg yaw, then next hold |
 
-![Automatic recovery policy](assets/v2.1.3/boundary-recovery/automatic-owner-policy.png)
+![Automatic recovery policy](assets/module-guides/control/automatic-owner-policy.png)
 
-![Automatic recovery contact sheet](assets/v2.1.3/boundary-recovery/automatic-owner-route-retry-contact-sheet.png)
+![Automatic recovery contact sheet](assets/module-guides/control/automatic-owner-route-retry-contact-sheet.png)
 
-[Open the automatic recovery GIF](assets/v2.1.3/boundary-recovery/automatic-owner-route-retry.gif).
+[Open the automatic recovery GIF](assets/module-guides/control/automatic-owner-route-retry.gif).
 
 The route cases intentionally prove bounded retry and repeat stop. They do not
 prove mission completion: lanelets 754/2751/2720 include a corridor narrower
@@ -128,13 +128,15 @@ ros2 run camrod_bringup render_automatic_recovery_results.py \
   --route /tmp/automatic_route.json \
   --reverse /tmp/automatic_reverse.json \
   --crab /tmp/automatic_crab.json \
-  --output-dir /tmp/automatic_recovery_visuals
+  --output-dir docs/assets/module-guides/control
 
 # Rebuild only the earlier manual-candidate center-frame comparison.
 ros2 run camrod_bringup render_boundary_recovery_results.py \
   --map <lanelet2_maps.osm> \
   --run docs/evidence/v2.1.3/boundary-recovery/pre-owner-robot-center-timeline.json \
-  --output-dir /tmp/manual_boundary_visuals
+  --output-dir docs/assets/module-guides/control \
+  --planning-output-dir docs/assets/module-guides/planning \
+  --analysis-output docs/evidence/v2.1.3/boundary-geometry/robot-center-route-samples.json
 ```
 
 Current automatic-owner source evidence:

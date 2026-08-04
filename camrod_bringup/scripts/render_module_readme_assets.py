@@ -500,6 +500,141 @@ def render_bringup_evidence(repo_root: Path, report_path: Path, output_root: Pat
     save_figure(figure, output_root / "bringup" / "simulation-evidence-20260804.png")
 
 
+def render_field_stationary_report(report_path: Path, output_root: Path):
+    """Render the preserved field report without implying committed raw logs."""
+    report = load_json(report_path)
+    radar = report["radar_disabled"]
+    front = report["front_camera_yolo"]
+    rear = report["rear_camera"]
+    gnss = report["gnss_imu"]
+    localization = report["localization"]
+    resource = report["resource_profile"]
+
+    figure, axis = setup_figure(
+        "Physical stationary field report - 2026-07-31",
+        "Robot hardware connected; physical E-stop held; no motion commanded; raw files remain on the Jetson and are not committed",
+    )
+    section_label(axis, 0.045, 0.84, "Completed stationary checks")
+    draw_box(
+        axis,
+        0.045,
+        0.60,
+        0.28,
+        0.20,
+        "RADAR DISABLED: PASS",
+        (
+            f"{radar['duration_s']:.3f} s / {radar['messages_per_channel']} messages per channel",
+            f"{radar['grid_messages']} grids; active evidence {radar['active_evidence']}",
+            f"cost>=85 cells {radar['high_cost_cells']}; stop events {radar['cost_stop_events']}",
+        ),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
+    draw_box(
+        axis,
+        0.36,
+        0.60,
+        0.28,
+        0.20,
+        "FRONT CAMERA + YOLO: PASS",
+        (
+            f"{front['duration_s']:.0f} s / {front['frames']} frames / {front['rate_hz']:.3f} Hz",
+            f"JPEG decode {front['decode_success']}/{front['frames']}; failures {front['decode_failure']}",
+            f"detections {front['detection_rate_hz']:.3f} Hz; crash/restart {front['crash_or_restart_count']}",
+        ),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
+    draw_box(
+        axis,
+        0.675,
+        0.60,
+        0.28,
+        0.20,
+        "REAR CAMERA RATE: FAIL",
+        (
+            f"{rear['duration_s']:.3f} s / raw {rear['raw_rate_hz']:.3f} Hz",
+            f"target {rear['target_raw_rate_hz']:.0f} Hz / max gap {rear['raw_max_gap_s']:.3f} s",
+            f"monitoring JPEG {rear['compressed_rate_hz']:.3f} Hz",
+        ),
+        face=RED_BG,
+        edge=RED,
+        title_color=RED,
+    )
+
+    section_label(axis, 0.045, 0.53, "Partial measurements and bottleneck")
+    draw_box(
+        axis,
+        0.045,
+        0.28,
+        0.28,
+        0.20,
+        "GNSS + IMU: PARTIAL",
+        (
+            f"{gnss['duration_s']:.3f} s / NAV-PVT {gnss['nav_pvt_rate_hz']:.3f} Hz",
+            f"RTK Fixed samples {gnss['rtk_fixed_samples']}",
+            f"IMU {gnss['imu_rate_hz']:.1f} Hz",
+        ),
+        face=AMBER_BG,
+        edge=AMBER,
+        title_color=AMBER,
+    )
+    draw_box(
+        axis,
+        0.36,
+        0.28,
+        0.28,
+        0.20,
+        "LOCALIZATION: RATE PASS",
+        (
+            f"{localization['duration_s']:.0f} s / final {localization['final_pose_rate_hz']:.2f} Hz",
+            f"selected-pose age p95 {localization['selected_pose_age_p95_ms']:.1f} ms",
+            f"GNSS-final p95 {localization['gnss_to_final_xy_p95_m']:.3f} m / {localization['gnss_to_final_yaw_p95_deg']:.2f} deg",
+        ),
+        face=AMBER_BG,
+        edge=AMBER,
+        title_color=AMBER,
+    )
+    draw_box(
+        axis,
+        0.675,
+        0.28,
+        0.28,
+        0.20,
+        "JETSON CPU: SATURATED",
+        (
+            f"{resource['duration_s']:.0f} s / CPU {resource['cpu_average_percent']:.2f}%",
+            f"GPU {resource['gpu_average_percent']:.2f}% / RAM {resource['ram_used_gb']:.2f}/{resource['ram_total_gb']:.2f} GB",
+            f"CPU temperature {resource['cpu_temperature_c']:.1f} C",
+        ),
+        face=RED_BG,
+        edge=RED,
+        title_color=RED,
+    )
+    draw_box(
+        axis,
+        0.045,
+        0.075,
+        0.91,
+        0.12,
+        "Evidence boundary",
+        (
+            f"Normalized from {report['source_report']} at baseline {report['baseline_commit']}; raw_files_committed={str(report['raw_files_committed']).lower()}.",
+            "Pass labels apply only to stationary transport/lifetime checks. No driving, boundary recovery, steering, or detection-accuracy PASS was performed.",
+        ),
+        face=GRAY_BG,
+        edge="#72848d",
+        body_size=7.8,
+    )
+    footer(figure, "FIELD REPORT / RAW LOG EXTERNAL. Re-run and commit raw evidence before release-grade physical performance claims.")
+    save_figure(
+        figure,
+        output_root / "bringup" / "field-stationary-report-20260731.png",
+    )
+
+
 def render_localization(repo_root: Path, report_path: Path, output_root: Path):
     """Render pose generation inputs and measured sim output timing."""
     report = load_json(report_path)
@@ -1557,6 +1692,665 @@ def render_ground_segmentation_schematic(params: dict, output: Path):
     plt.close(figure)
 
 
+# HH_260804 - Give every CAMROD-owned package a compact, reproducible README
+# visual. Values are read from package sources or committed evidence so a
+# configured threshold is never presented as measured runtime performance.
+def render_common(repo_root: Path, output_root: Path):
+    """Render the shared-interface inventory and dependency boundary."""
+    interface_root = repo_root / "camrod_common" / "avg_msgs"
+    messages = sorted((interface_root / "msg").glob("*.msg"))
+    services = sorted((interface_root / "srv").glob("*.srv"))
+    dependents = []
+    for package_xml in sorted(repo_root.glob("camrod_*/package.xml")):
+        if "avg_msgs" in package_xml.read_text(encoding="utf-8"):
+            dependents.append(package_xml.parent.name)
+
+    figure, axis = setup_figure(
+        "Shared interface contract",
+        "avg_msgs is the generated ROS 2 boundary shared by CAMROD runtime packages",
+    )
+    section_label(axis, 0.045, 0.84, "Interface inventory")
+    draw_box(
+        axis,
+        0.045,
+        0.64,
+        0.25,
+        0.16,
+        f"{len(messages)} messages",
+        ("geometry + sensor payloads", "mission, service, and health state", "module bundle messages"),
+        face=BLUE_BG,
+        edge=BLUE,
+        title_color=BLUE,
+    )
+    draw_box(
+        axis,
+        0.325,
+        0.64,
+        0.25,
+        0.16,
+        f"{len(services)} services",
+        tuple(path.stem for path in services),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
+    draw_box(
+        axis,
+        0.605,
+        0.64,
+        0.35,
+        0.16,
+        f"{len(dependents)} dependent packages",
+        tuple(dependents[:6]) + (("+ remaining CAMROD packages",) if len(dependents) > 6 else ()),
+        face=GRAY_BG,
+        edge="#72848d",
+        body_size=7.2,
+    )
+
+    section_label(axis, 0.045, 0.57, "Ownership boundary")
+    stages = [
+        (0.045, "Package source", ("msg/*.msg", "srv/*.srv"), BLUE),
+        (0.29, "rosidl generator", ("C / C++ / Python", "typesupport"), AMBER),
+        (0.535, "CAMROD nodes", ("publish + subscribe", "typed state and payloads"), GREEN),
+        (0.78, "UI / logs / tests", ("same numeric enums", "contract inspection"), BLUE),
+    ]
+    for index, (x, title, lines, color) in enumerate(stages):
+        draw_box(
+            axis,
+            x,
+            0.37,
+            0.175,
+            0.145,
+            title,
+            lines,
+            face=BLUE_BG if color == BLUE else AMBER_BG if color == AMBER else GREEN_BG,
+            edge=color,
+            title_color=color,
+            body_size=7.4,
+        )
+        if index:
+            draw_arrow(axis, (x - 0.065, 0.442), (x - 0.005, 0.442))
+
+    draw_box(
+        axis,
+        0.045,
+        0.12,
+        0.44,
+        0.16,
+        "What this package guarantees",
+        (
+            "one checked-in definition per generated interface",
+            "build-order contract before dependent packages",
+            "enum constants shared by backend, UI, and diagnostics",
+        ),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
+    draw_box(
+        axis,
+        0.515,
+        0.12,
+        0.44,
+        0.16,
+        "Performance statement",
+        (
+            "No runtime throughput or latency is measured here.",
+            "Message/service counts are source inventory, not performance.",
+            "Transport performance must be measured per publisher path.",
+        ),
+        face=AMBER_BG,
+        edge=AMBER,
+        title_color=AMBER,
+    )
+    footer(
+        figure,
+        "SOURCE INVENTORY: camrod_common/avg_msgs/msg, srv, package.xml, and dependent package manifests.",
+    )
+    save_figure(figure, output_root / "common" / "interface-contract-and-dependencies.png")
+
+
+def render_control(repo_root: Path, output_root: Path):
+    """Render command authorization, footprint safety, and measured recovery."""
+    gate = ros_params(
+        repo_root / "camrod_control" / "config" / "cmd_vel_safety_gate.yaml",
+        "/**",
+    )
+    recovery = ros_params(
+        repo_root / "camrod_control" / "config" / "control.yaml",
+        "/control/route_safety_recovery_controller",
+    )
+    crab = load_json(
+        repo_root
+        / "docs/evidence/v2.1.3/boundary-recovery/automatic-owner-one-sided-crab.json"
+    )
+    retry = load_json(
+        repo_root
+        / "docs/evidence/v2.1.3/boundary-recovery/automatic-owner-route-retry.json"
+    )
+
+    figure, axis = setup_figure(
+        "Control command safety and boundary recovery",
+        "Every navigation or maneuver command passes one final authorization and complete-footprint gate",
+    )
+    section_label(axis, 0.045, 0.84, "Command path")
+    chain = [
+        (0.045, "Command owners", ("Nav2 + site/drop-zone", "parking + recovery"), BLUE),
+        (0.285, "Safety gate", ("engage / CAN / SOC", "localization / cost"), AMBER),
+        (0.525, "Generated command", ("/control/cmd_vel", "/control/cmd_vel_ros"), GREEN),
+        (0.765, "Ranger platform", ("Dual-Ackermann", "crab / zero-turn"), BLUE),
+    ]
+    for index, (x, title, lines, color) in enumerate(chain):
+        draw_box(
+            axis,
+            x,
+            0.67,
+            0.19,
+            0.13,
+            title,
+            lines,
+            face=BLUE_BG if color == BLUE else AMBER_BG if color == AMBER else GREEN_BG,
+            edge=color,
+            title_color=color,
+            body_size=7.2,
+        )
+        if index:
+            draw_arrow(axis, (x - 0.05, 0.735), (x - 0.005, 0.735))
+
+    section_label(axis, 0.045, 0.61, "Active safety values")
+    draw_box(
+        axis,
+        0.045,
+        0.40,
+        0.28,
+        0.17,
+        "Mission and hard stop",
+        (
+            f"new mission >= {gate['minimum_mission_departure_battery_percentage'] * 100:.0f}% SOC",
+            f"hard stop <= {gate['critical_battery_percentage'] * 100:.0f}% SOC",
+            f"input timeout {gate['input_timeout_s']:.2f} s",
+        ),
+        face=AMBER_BG,
+        edge=AMBER,
+        title_color=AMBER,
+    )
+    draw_box(
+        axis,
+        0.36,
+        0.40,
+        0.28,
+        0.17,
+        "Complete footprint",
+        (
+            f"front/rear {gate['lanelet_safety_footprint_front_m']:.3f}/{gate['lanelet_safety_footprint_rear_m']:.3f} m",
+            f"left/right {gate['lanelet_safety_footprint_left_m']:.3f}/{gate['lanelet_safety_footprint_right_m']:.3f} m",
+            f"cost {gate['lanelet_safety_footprint_threshold']} or unknown -> hold",
+        ),
+        face=RED_BG,
+        edge=RED,
+        title_color=RED,
+        body_size=7.5,
+    )
+    draw_box(
+        axis,
+        0.675,
+        0.40,
+        0.28,
+        0.17,
+        "Bounded recovery owner",
+        (
+            f"raw <= {recovery['maximum_speed_mps']:.2f} m/s; travel <= {recovery['maximum_distance_m']:.2f} m",
+            f"duration <= {recovery['maximum_duration_s']:.0f} s; yaw command = 0",
+            f"clear proof {gate['route_safety_recovery_clear_required_s']:.1f} s",
+        ),
+        face=BLUE_BG,
+        edge=BLUE,
+        title_color=BLUE,
+        body_size=7.3,
+    )
+
+    section_label(axis, 0.045, 0.34, "Measured simulation evidence")
+    draw_box(
+        axis,
+        0.045,
+        0.13,
+        0.43,
+        0.17,
+        "One side clear -> crab",
+        (
+            f"recovery displacement {crab['recovery_displacement_m']:.4f} m",
+            f"platform lateral output <= {crab['maximum_recovery_abs_linear_y_mps']:.2f} m/s",
+            "route hold released; mission completion not demonstrated",
+        ),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
+    draw_box(
+        axis,
+        0.525,
+        0.13,
+        0.43,
+        0.17,
+        "Both sides blocked -> retry path",
+        (
+            f"release displacement {retry['recovery_displacement_m']:.4f} m",
+            f"RPP retry {retry['same_goal_retry_displacement_m']:.4f} m / {retry['same_goal_retry_yaw_delta_deg']:+.4f} deg",
+            "second mapped boundary hold occurred; mission not complete",
+        ),
+        face=AMBER_BG,
+        edge=AMBER,
+        title_color=AMBER,
+    )
+    footer(
+        figure,
+        "SOURCE CONFIG + MEASURED SIM. Real-robot boundary recovery and full campsite completion remain pending.",
+    )
+    save_figure(figure, output_root / "control" / "command-safety-and-recovery.png")
+
+
+def render_map(repo_root: Path, output_root: Path):
+    """Render the Lanelet map, semantic areas, and dual-grid outputs."""
+    map_info = ros_params(repo_root / "camrod_map/config/map_info.yaml", "/**")
+    grid = ros_params(
+        repo_root / "camrod_map/config/lanelet_cost_grid.yaml",
+        "/map/lanelet_boundary_cost_grid",
+    )
+
+    figure, axis = setup_figure(
+        "Lanelet map and cost-grid products",
+        "One map/origin source feeds visualization, route masks, planning cost, and semantic service areas",
+    )
+    section_label(axis, 0.045, 0.84, "Map processing")
+    chain = [
+        (0.045, "Lanelet2 OSM", (Path(map_info["map_path"]).name, "LocalCartesian origin"), BLUE),
+        (0.275, "Map provider", ("lanelets + centerlines", "world -> map"), GREEN),
+        (0.505, "Cost-grid builder", ("route mask", "all-lane planning base"), AMBER),
+        (0.735, "Consumers", ("Nav2 + goal snapper", "sensing filter + RViz"), BLUE),
+    ]
+    for index, (x, title, lines, color) in enumerate(chain):
+        draw_box(
+            axis,
+            x,
+            0.66,
+            0.20,
+            0.14,
+            title,
+            lines,
+            face=BLUE_BG if color == BLUE else GREEN_BG if color == GREEN else AMBER_BG,
+            edge=color,
+            title_color=color,
+            body_size=7.1,
+        )
+        if index:
+            draw_arrow(axis, (x - 0.03, 0.73), (x - 0.005, 0.73))
+
+    section_label(axis, 0.045, 0.60, "Active products and values")
+    draw_box(
+        axis,
+        0.045,
+        0.38,
+        0.28,
+        0.18,
+        "Active-route mask",
+        (
+            f"{grid['width']} x {grid['height']} @ {grid['resolution']:.2f} m",
+            f"mode {grid['cost_mode']} / outside {grid['outside_value']}",
+            "rebuild on route path, not every pose",
+        ),
+        face=BLUE_BG,
+        edge=BLUE,
+        title_color=BLUE,
+    )
+    draw_box(
+        axis,
+        0.36,
+        0.38,
+        0.28,
+        0.18,
+        "Nav2 planning base",
+        (
+            f"{grid['secondary.width']} x {grid['secondary.height']} @ {grid['secondary.resolution']:.2f} m",
+            f"centerline half-width {grid['secondary.centerline_half_width']:.2f} m",
+            f"edge/off-lane {grid['secondary.lanelet_boundary_value']}/{grid['secondary.outside_value']}",
+        ),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
+    draw_box(
+        axis,
+        0.675,
+        0.38,
+        0.28,
+        0.18,
+        "Map reference",
+        (
+            f"origin {map_info['offset_lat']:.7f}, {map_info['offset_lon']:.7f}",
+            f"yaw offset {map_info['yaw_offset_deg']:.1f} deg",
+            f"visual radius {map_info['progressive_visualization_radius_m']:.0f} m",
+        ),
+        face=GRAY_BG,
+        edge="#72848d",
+    )
+
+    draw_box(
+        axis,
+        0.045,
+        0.13,
+        0.43,
+        0.17,
+        "Boundary semantics",
+        (
+            "planning edge cost 98 remains traversable",
+            "outside cost 100 is a complete-footprint stop",
+            "lane_change=yes can open configured crossings",
+        ),
+        face=RED_BG,
+        edge=RED,
+        title_color=RED,
+    )
+    draw_box(
+        axis,
+        0.525,
+        0.13,
+        0.43,
+        0.17,
+        "Current evidence limit",
+        (
+            "Grid topology and values are source-configured.",
+            "B6/B12 service-access geometry is not surveyed.",
+            "Current full-mission smoke therefore fails closed.",
+        ),
+        face=AMBER_BG,
+        edge=AMBER,
+        title_color=AMBER,
+    )
+    footer(figure, "SOURCE-DERIVED + KNOWN SIM LIMIT. Grid dimensions are configuration, not build-time performance.")
+    save_figure(figure, output_root / "map" / "lanelet-map-and-cost-grids.png")
+
+
+def render_platform(repo_root: Path, output_root: Path):
+    """Render Ranger command adaptation and normalized status feedback."""
+    params = ros_params(repo_root / "camrod_platform/config/ranger_driver.yaml", "/**")
+    visual = ros_params(
+        repo_root / "camrod_platform/config/robot_visualization.yaml",
+        "/platform/robot_visualization",
+    )
+    figure, axis = setup_figure(
+        "Ranger command and normalized platform status",
+        "The platform package owns the hardware boundary; planning and UI consume stable CAMROD contracts",
+    )
+    section_label(axis, 0.045, 0.84, "Command and feedback")
+    draw_box(axis, 0.045, 0.65, 0.2, 0.15, "Final Twist", ("/control/cmd_vel_ros", "robot_center_link"), face=BLUE_BG, edge=BLUE, title_color=BLUE)
+    draw_arrow(axis, (0.248, 0.725), (0.295, 0.725))
+    draw_box(axis, 0.305, 0.65, 0.25, 0.15, "Ranger driver", ("CAN can0 / Dual-Ackermann", f"update loop {params['update_rate']} Hz"), face=GREEN_BG, edge=GREEN, title_color=GREEN)
+    draw_arrow(axis, (0.558, 0.725), (0.605, 0.725))
+    draw_box(axis, 0.615, 0.65, 0.34, 0.15, "Normalized feedback", ("odom + wheel/actuator + BMS", "/platform/status @ <= 10 Hz"), face=BLUE_BG, edge=BLUE, title_color=BLUE)
+
+    section_label(axis, 0.045, 0.59, "Active transition and status values")
+    draw_box(
+        axis,
+        0.045,
+        0.36,
+        0.28,
+        0.19,
+        "Steering transition",
+        (
+            f"rate {params['steering_transition_rate_radps']:.2f} rad/s",
+            f"full speed <= {params['steering_transition_full_speed_error_rad']:.2f} rad error",
+            f"translation stopped >= {params['steering_transition_stop_error_rad']:.2f} rad",
+        ),
+        face=AMBER_BG,
+        edge=AMBER,
+        title_color=AMBER,
+    )
+    draw_box(
+        axis,
+        0.36,
+        0.36,
+        0.28,
+        0.19,
+        "Battery / charging",
+        (
+            f"charge current > {params['charging_current_threshold_a']:.1f} A",
+            f"debounce {params['charging_min_consecutive_samples']} samples",
+            f"status heartbeat {params['platform_status_publish_rate_hz']:.0f} Hz",
+        ),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
+    draw_box(
+        axis,
+        0.675,
+        0.36,
+        0.28,
+        0.19,
+        "Pose and visualization",
+        (
+            f"base/status frame {params['base_frame']}",
+            f"marker + boundary {visual['publish_rate_hz']:.0f} Hz",
+            f"localization fallback {visual['localization_pose_timeout_s']:.1f} s",
+        ),
+        face=BLUE_BG,
+        edge=BLUE,
+        title_color=BLUE,
+        body_size=7.2,
+    )
+    draw_box(
+        axis,
+        0.045,
+        0.12,
+        0.91,
+        0.15,
+        "Evidence boundary",
+        (
+            "Rates and thresholds above are active configuration. The driver is intended for Jetson + Ranger CAN; this workstation must not retune that hardware profile.",
+            "No CAN bus latency, steering settling time, battery-current sign, or physical wheel-angle accuracy is claimed without a robot log.",
+        ),
+        face=GRAY_BG,
+        edge="#72848d",
+        body_size=7.8,
+    )
+    footer(figure, "SOURCE-DERIVED; PHYSICAL RANGER PERFORMANCE PENDING. Simulation verifies interfaces, not CAN or actuator timing.")
+    save_figure(figure, output_root / "platform" / "ranger-command-and-status.png")
+
+
+def render_system(repo_root: Path, output_root: Path):
+    """Render graph checks, diagnostic aggregation, and severity semantics."""
+    checker = ros_params(repo_root / "camrod_system/config/system_checker.yaml", "/system/system_checker")
+    aggregator = load_yaml(
+        repo_root / "camrod_system/config/diagnostics/default/aggregator/diagnostics_config.yaml"
+    )
+    hardware = load_yaml(
+        repo_root / "camrod_system/config/diagnostics/default/hw/hw_gpu_checker.yaml"
+    )["hw_checker"]["ros__parameters"]
+    figure, axis = setup_figure(
+        "Diagnostic aggregation and operator severity",
+        "Health, mission lifecycle, and command authorization remain three separate state surfaces",
+    )
+    section_label(axis, 0.045, 0.84, "Health pipeline")
+    chain = [
+        (0.045, "Graph manifest", (f"{len(checker['required_modules'])} required modules", "node/topic/type/publisher"), BLUE),
+        (0.285, "Dedicated checkers", ("sensor + planning", "hardware + platform"), BLUE),
+        (0.525, "Aggregator", (f"{aggregator['global']['publish_rate_hz']:.0f} Hz grouped stream", "source metadata retained"), GREEN),
+        (0.765, "Operator surfaces", ("/system/status", "terminal + Robot UI"), GREEN),
+    ]
+    for index, (x, title, lines, color) in enumerate(chain):
+        draw_box(axis, x, 0.66, 0.19, 0.14, title, lines, face=BLUE_BG if color == BLUE else GREEN_BG, edge=color, title_color=color, body_size=7.1)
+        if index:
+            draw_arrow(axis, (x - 0.05, 0.73), (x - 0.005, 0.73))
+
+    section_label(axis, 0.045, 0.60, "Severity and timing")
+    draw_box(axis, 0.045, 0.39, 0.28, 0.17, "OK", ("required data fresh", "normal mission states stay OK", "waiting/charging are not faults"), face=GREEN_BG, edge=GREEN, title_color=GREEN)
+    draw_box(axis, 0.36, 0.39, 0.28, 0.17, "WARN", ("recoverable degradation", "dummy hardware is visible WARN", "single Nav abort may be WARN"), face=AMBER_BG, edge=AMBER, title_color=AMBER)
+    draw_box(axis, 0.675, 0.39, 0.28, 0.17, "ERROR", ("fault or required update missing", "ROS STALE normalizes to ERROR", "severity clears on fresh recovery"), face=RED_BG, edge=RED, title_color=RED)
+
+    draw_box(
+        axis,
+        0.045,
+        0.13,
+        0.43,
+        0.17,
+        "Active timing",
+        (
+            f"graph check {checker['check_period_s']:.0f} Hz / grace {checker['startup_grace_s']:.0f} s",
+            f"aggregator default timeout {aggregator['global']['timeout_s']:.0f} s",
+            "system summary startup grace 10 s",
+        ),
+        face=BLUE_BG,
+        edge=BLUE,
+        title_color=BLUE,
+    )
+    draw_box(
+        axis,
+        0.525,
+        0.13,
+        0.43,
+        0.17,
+        "Selected hardware thresholds",
+        (
+            f"CPU WARN/ERROR {hardware['cpu']['warn_threshold']:.0f}/{hardware['cpu']['error_threshold']:.0f}%",
+            f"memory {hardware['memory']['warn_threshold']:.0f}/{hardware['memory']['error_threshold']:.0f}%",
+            f"disk {hardware['disk']['warn_threshold']:.0f}/{hardware['disk']['error_threshold']:.0f}%",
+        ),
+        face=GRAY_BG,
+        edge="#72848d",
+    )
+    footer(figure, "SOURCE-DERIVED. Thresholds describe alert policy; they are not measured Jetson utilization.")
+    save_figure(figure, output_root / "system" / "diagnostic-severity-and-surfaces.png")
+
+
+def render_ui(repo_root: Path, output_root: Path):
+    """Render Robot/Guest UI parity and the committed lifecycle probe."""
+    evidence = load_json(repo_root / "docs/evidence/v2.1.3/ui/guest-mission-lifecycle.json")
+    service_states = parse_message_constants(
+        repo_root / "camrod_common/avg_msgs/msg/AvgServiceState.msg"
+    )
+    figure, axis = setup_figure(
+        "Robot UI and Guest UI mission/state contract",
+        "Both surfaces share one backend mission contract while exposing role-appropriate controls",
+    )
+    section_label(axis, 0.045, 0.84, "Shared command path")
+    draw_box(axis, 0.045, 0.65, 0.20, 0.15, "Robot UI :8010", ("manual engage / stop", "destination + diagnostics"), face=BLUE_BG, edge=BLUE, title_color=BLUE)
+    draw_box(axis, 0.29, 0.65, 0.20, 0.15, "Guest UI :8012", ("destination / return", "shared safety overlay"), face=GREEN_BG, edge=GREEN, title_color=GREEN)
+    draw_arrow(axis, (0.248, 0.725), (0.555, 0.725))
+    draw_arrow(axis, (0.493, 0.725), (0.555, 0.725))
+    draw_box(axis, 0.565, 0.65, 0.19, 0.15, "ROS backend", ("mission key + goal", "engage + operation"), face=AMBER_BG, edge=AMBER, title_color=AMBER)
+    draw_arrow(axis, (0.758, 0.725), (0.805, 0.725))
+    draw_box(axis, 0.815, 0.65, 0.14, 0.15, "Robot stack", ("planning/control", "/service/state"), face=GRAY_BG, edge="#72848d", title_size=9.2)
+
+    section_label(axis, 0.045, 0.60, "Operator-visible rules")
+    draw_box(axis, 0.045, 0.38, 0.28, 0.18, "Mission admission", ("new site >= 35% SOC", "unknown battery blocks dispatch", "below threshold: finish current site"), face=AMBER_BG, edge=AMBER, title_color=AMBER)
+    draw_box(axis, 0.36, 0.38, 0.28, 0.18, "Three status layers", (f"service lifecycle: {len(service_states)} states", "gate: enabled / safety hold", "health: OK / WARN / ERROR"), face=BLUE_BG, edge=BLUE, title_color=BLUE)
+    draw_box(axis, 0.675, 0.38, 0.28, 0.18, "Manual control", ("manual engage shows driving", "operator stop -> OPERATOR_STOPPED", "cancelled warning can recover"), face=GREEN_BG, edge=GREEN, title_color=GREEN)
+
+    section_label(axis, 0.045, 0.32, "Committed browser + ROS integration evidence")
+    draw_box(
+        axis,
+        0.045,
+        0.12,
+        0.43,
+        0.16,
+        "Mission lifecycle",
+        (
+            f"battery {evidence['initial_battery']}% / {evidence['site_count']} sites",
+            "mission key, departure, moving, and return observed",
+            "return MotionOperation observed",
+        ),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
+    draw_box(
+        axis,
+        0.525,
+        0.12,
+        0.43,
+        0.16,
+        "Safety and stop overlay",
+        (
+            f"gate {evidence['safety_overlay']['control_gate_state']} observed",
+            f"operator stop -> {evidence['operator_stopped']['service_state_name']}",
+            "browser contract passed; physical drive not claimed",
+        ),
+        face=AMBER_BG,
+        edge=AMBER,
+        title_color=AMBER,
+    )
+    footer(figure, "MEASURED UI/ROS INTEGRATION EVIDENCE + SOURCE POLICY. This is not a physical mission PASS.")
+    save_figure(figure, output_root / "ui" / "robot-and-guest-mission-state.png")
+
+
+def render_voice(repo_root: Path, output_root: Path):
+    """Render voice-event sources, priority policy, and readiness contract."""
+    params = ros_params(
+        repo_root / "camrod_voice/config/voice_event_adapter.yaml",
+        "/voice/voice_event_adapter",
+    )
+    figure, axis = setup_figure(
+        "Voice event mapping and priority queue",
+        "Runtime state changes become typed AudioRequest keys and pre-recorded WAV playback",
+    )
+    section_label(axis, 0.045, 0.84, "Event-to-audio path")
+    chain = [
+        (0.045, "Runtime inputs", ("platform + system", "localization + gate + Nav2"), BLUE),
+        (0.285, "Event policy", ("edge-triggered mapping", "readiness + mission context"), GREEN),
+        (0.525, "AudioRequest", ("category.file_name", "priority + interrupt"), AMBER),
+        (0.765, "Announcer", ("priority queue", "WAV -> ALSA/PulseAudio"), BLUE),
+    ]
+    for index, (x, title, lines, color) in enumerate(chain):
+        draw_box(axis, x, 0.65, 0.19, 0.15, title, lines, face=BLUE_BG if color == BLUE else GREEN_BG if color == GREEN else AMBER_BG, edge=color, title_color=color, body_size=7.1)
+        if index:
+            draw_arrow(axis, (x - 0.05, 0.725), (x - 0.005, 0.725))
+
+    section_label(axis, 0.045, 0.59, "Active policy")
+    priorities = [
+        (0.045, "0 INFO", "ordinary cue", GRAY_BG, "#72848d"),
+        (0.275, "1 NOTICE", "mission / charging", BLUE_BG, BLUE),
+        (0.505, "2 WARNING", "obstacle / battery critical", AMBER_BG, AMBER),
+        (0.735, "3 CRITICAL", "ESTOP; may interrupt", RED_BG, RED),
+    ]
+    for x, title, line, face, color in priorities:
+        draw_box(axis, x, 0.43, 0.20, 0.11, title, (line,), face=face, edge=color, title_color=color, title_size=9.0, body_size=7.2)
+
+    draw_box(
+        axis,
+        0.045,
+        0.17,
+        0.43,
+        0.17,
+        "Readiness and battery",
+        (
+            f"startup delay {params['startup_delay_s']:.1f} s",
+            f"ready check every {params['readiness_check_period_s']:.1f} s / {len(params['readiness_required_modules'])} modules",
+            f"battery low <= {params['battery_low_threshold'] * 100:.0f}%; critical <= {params['battery_critical_threshold'] * 100:.0f}%",
+        ),
+        face=GREEN_BG,
+        edge=GREEN,
+        title_color=GREEN,
+    )
+    draw_box(
+        axis,
+        0.525,
+        0.17,
+        0.43,
+        0.17,
+        "Performance statement",
+        (
+            "Queue policy is source-tested; audio assets are deterministic.",
+            "Speaker loudness, Bluetooth delay, and audibility are field pending.",
+            "No acoustic latency number is claimed from this workstation.",
+        ),
+        face=AMBER_BG,
+        edge=AMBER,
+        title_color=AMBER,
+    )
+    footer(figure, "SOURCE-DERIVED POLICY; PHYSICAL AUDIO PERFORMANCE PENDING.")
+    save_figure(figure, output_root / "voice" / "voice-events-and-priority.png")
+
+
 def main():
     """Render every module guide from configs and committed evidence."""
     default_root = Path(__file__).resolve().parents[2]
@@ -1565,16 +2359,24 @@ def main():
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--localization-report", type=Path)
     parser.add_argument("--bringup-report", type=Path)
+    parser.add_argument("--field-report", type=Path)
     parser.add_argument(
         "--module",
         action="append",
         choices=(
             "bringup",
+            "common",
+            "control",
             "localization",
+            "map",
             "planning",
             "perception",
+            "platform",
             "sensing",
             "sensor-kit",
+            "system",
+            "ui",
+            "voice",
         ),
         help="render only this package (repeatable; default: render every package)",
     )
@@ -1590,31 +2392,58 @@ def main():
         args.bringup_report
         or repo_root / "docs" / "evidence" / "module-guides" / "bringup" / "campsite-smoke-20260804.json"
     ).resolve()
+    field_report = (
+        args.field_report
+        or repo_root
+        / "docs/evidence/module-guides/bringup/field-stationary-20260731.json"
+    ).resolve()
 
     selected_modules = set(
         args.module
         or (
             "bringup",
+            "common",
+            "control",
             "localization",
+            "map",
             "planning",
             "perception",
+            "platform",
             "sensing",
             "sensor-kit",
+            "system",
+            "ui",
+            "voice",
         )
     )
     if "bringup" in selected_modules:
         render_bringup_contract(repo_root, output_root)
         render_bringup_evidence(repo_root, bringup_report, output_root)
+        render_field_stationary_report(field_report, output_root)
+    if "common" in selected_modules:
+        render_common(repo_root, output_root)
+    if "control" in selected_modules:
+        render_control(repo_root, output_root)
     if "localization" in selected_modules:
         render_localization(repo_root, localization_report, output_root)
+    if "map" in selected_modules:
+        render_map(repo_root, output_root)
     if "planning" in selected_modules:
         render_planning(repo_root, output_root)
     if "perception" in selected_modules:
         render_perception(repo_root, output_root)
+    if "platform" in selected_modules:
+        render_platform(repo_root, output_root)
     if "sensing" in selected_modules:
         render_sensing(repo_root, output_root)
     if "sensor-kit" in selected_modules:
         render_sensor_kit(repo_root, output_root)
+    if "system" in selected_modules:
+        render_system(repo_root, output_root)
+    if "ui" in selected_modules:
+        render_ui(repo_root, output_root)
+    if "voice" in selected_modules:
+        render_voice(repo_root, output_root)
     print(f"Rendered module README assets under {output_root}")
 
 

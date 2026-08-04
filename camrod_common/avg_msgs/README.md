@@ -1,357 +1,71 @@
-# 📨 avg_msgs — Shared ROS 2 interfaces
+# avg_msgs
 
-**avg_msgs** — Shared ROS 2 message, service, and action definitions for all CAMROD packages.
+<!-- HH_260804 - Present the interface catalog by operational family instead
+of repeating every generated type and dependency diagram. -->
 
----
+Generated ROS 2 messages and services shared by the CAMROD runtime.
 
-## 📋 Summary
+![Shared interface contract](../../docs/assets/module-guides/common/interface-contract-and-dependencies.png)
 
-`avg_msgs` is an interface-only package. It defines the message (`.msg`) and service (`.srv`) types shared across the entire CAMROD monorepo. It has no executable node, no launch file, and no runtime behavior. Its sole purpose is to provide stable, versioned interface types that all `camrod_*` packages depend on at build time and link against at runtime.
+## At A Glance
 
-> **Non-goals:** No executable node, no topics of its own, no launch file. Does not implement any business logic.
-
----
-
-## 🚀 Quick Start
-
-```bash
-# Build (must be built before any dependent package)
-cd ~/camrod_ws
-colcon build --packages-select avg_msgs
-source install/setup.bash
-
-# Verify a message type is available
-ros2 interface show avg_msgs/msg/ModuleState
-ros2 interface show avg_msgs/msg/PlanningState
-ros2 interface show avg_msgs/srv/RequestGoalByKey
-```
-
-**C++ dependency:**
-```cmake
-# In CMakeLists.txt of a dependent package
-find_package(avg_msgs REQUIRED)
-ament_target_dependencies(your_target avg_msgs)
-```
-
-**Python dependency** (`package.xml`):
-```xml
-<depend>avg_msgs</depend>
-```
-
-**C++ include:**
-```cpp
-#include "avg_msgs/msg/module_state.hpp"
-#include "avg_msgs/msg/avg_localization_msgs.hpp"
-#include "avg_msgs/srv/request_goal_by_key.hpp"
-```
-
----
-
-## 🗺️ System Position
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F0FDFA', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#14B8A6', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
-graph TD
-  subgraph CENTER["📨 avg_msgs — passive interface hub"]
-    AVG[(avg_msgs\ninterface package)]:::iface
-  end
-
-  AVG -. msg/srv types .-> MAP([🗺️ camrod_map]):::mapping
-  AVG -. msg/srv types .-> SENSING([🎯 camrod_sensing]):::sensing
-  AVG -. msg/srv types .-> LOC([📍 camrod_localization]):::localization
-  AVG -. msg/srv types .-> PLAN([🧭 camrod_planning]):::planning
-  AVG -. msg/srv types .-> PLAT([🤖 camrod_platform]):::platform
-  AVG -. msg/srv types .-> PER([👁️ camrod_perception]):::perception
-  AVG -. msg/srv types .-> SYS([🩺 camrod_system]):::system
-  AVG -. msg/srv types .-> UI([🖥️ camrod_ui]):::ui
-  AVG -. msg/srv types .-> SKIT([🔧 camrod_sensor_kit]):::system
-  AVG -. msg/srv types .-> PARK([camrod_control parking]):::parking
-
-  classDef iface        fill:#F0FDFA,stroke:#14B8A6,stroke-width:1.5px,color:#115E59;
-  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
-  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
-  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
-  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
-  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
-  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
-  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
-  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
-```
-
-> Dashed arrows = compile-time / install-time dependency only. No runtime data flows from or to `avg_msgs`.
-
----
-
-## 🔗 Who Depends on avg_msgs
-
-```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'fontFamily': 'ui-sans-serif, system-ui, sans-serif', 'fontSize': '14px', 'primaryColor': '#F0FDFA', 'primaryTextColor': '#0F172A', 'primaryBorderColor': '#14B8A6', 'lineColor': '#475569'}, 'flowchart': {'curve': 'basis', 'htmlLabels': true, 'padding': 12}}}%%
-graph LR
-  SKIT([🔧 camrod_sensor_kit]):::system       -.-> AVG
-  MAP([🗺️ camrod_map]):::mapping              -.-> AVG
-  SENS([🎯 camrod_sensing]):::sensing         -.-> AVG
-  LOC([📍 camrod_localization]):::localization -.-> AVG
-  PER([👁️ camrod_perception]):::perception   -.-> AVG
-  PLAN([🧭 camrod_planning]):::planning       -.-> AVG
-  PLAT([🤖 camrod_platform]):::platform       -.-> AVG
-  SYS([🩺 camrod_system]):::system            -.-> AVG
-  UI([🖥️ camrod_ui]):::ui                    -.-> AVG
-  PARK([camrod_control parking]):::parking        -.-> AVG
-
-  AVG[(avg_msgs)]:::iface
-
-  classDef iface        fill:#F0FDFA,stroke:#14B8A6,stroke-width:2px,color:#115E59;
-  classDef sensing      fill:#ECFEFF,stroke:#06B6D4,stroke-width:1.5px,color:#0E7490;
-  classDef localization fill:#ECFDF5,stroke:#10B981,stroke-width:1.5px,color:#047857;
-  classDef mapping      fill:#FEF3C7,stroke:#F59E0B,stroke-width:1.5px,color:#B45309;
-  classDef perception   fill:#FCE7F3,stroke:#EC4899,stroke-width:1.5px,color:#9D174D;
-  classDef planning     fill:#EEF2FF,stroke:#6366F1,stroke-width:1.5px,color:#4338CA;
-  classDef platform     fill:#FEE2E2,stroke:#EF4444,stroke-width:1.5px,color:#B91C1C;
-  classDef parking      fill:#F5F3FF,stroke:#8B5CF6,stroke-width:1.5px,color:#6D28D9;
-  classDef system       fill:#F1F5F9,stroke:#64748B,stroke-width:1.5px,color:#334155;
-  classDef ui           fill:#FFF7ED,stroke:#F97316,stroke-width:1.5px,color:#C2410C;
-```
-
----
-
-## 📋 Interface Versioning Policy
-
-> ⚠️ **Breaking change policy:** Renaming or removing any field in an existing `.msg`, changing a field type, or modifying a service request/response schema is a **breaking change**. Notify all CAMROD package maintainers via the project issue tracker before merging. Breaking changes to `avg_msgs` require a coordinated rebuild of the full workspace (`colcon build`).
-
-| Change type | Classification | Required action |
+| Uses | Function | Consumers |
 |---|---|---|
-| Add a new field to an existing `.msg` | Non-breaking (ROS 2 IDL adds padding) | Bump minor version in `package.xml`; re-build all consumers |
-| **Rename or remove a field** | **Breaking** | Change message name or create a new message; update all producers and consumers before merging |
-| Add a new `.msg` or `.srv` file | Non-breaking | No consumer changes required |
-| **Change a field type** | **Breaking** | Same as rename |
-| **Change a service request/response schema** | **Breaking** | Create a new service name |
+| `rosidl_default_generators` | Builds typed sensor, geometry, mission, health, and UI contracts | All CAMROD runtime packages |
+| Numeric message constants | Defines stable cross-language state IDs | Planning, control, system, UI, and voice |
+| ROS-compatible boundary types | Keeps generated CAMROD messages separate from hardware/Nav2 ROS boundaries | Adapters and bridge nodes |
 
----
+## Inventory
 
-## 📨 Message Catalog
+| Family | Representative interfaces | Purpose |
+|---|---|---|
+| Geometry | `AvgPose*`, `AvgTwist*`, `AvgOdometry`, `AvgPath` | Internal pose, motion, and route payloads |
+| Sensors | `AvgImu`, `AvgNavSatFix`, `AvgRange`, `AvgPointCloud2`, `AvgImage` | Normalized sensing contracts |
+| Perception | `AvgDetection2D*`, `AvgBoundingBox2D`, `CampsiteOccupancy` | Detection and campsite occupancy |
+| Planning/control | `PlanningState`, `PlanningMissionKey`, `MotionOperation`, `RouteLaneletIds` | Mission, route, and operation commands |
+| Service/UI | `AvgServiceState`, `UiDestinationCommand`, `PlanningRecallRequest` | User-visible lifecycle and dispatch |
+| Platform/system | `AvgPlatformStatus`, `ModuleState`, `SystemStatus` | CAN/BMS state and diagnostics |
+| Voice | `AudioRequest`, `VoiceState` | Event key, priority, and playback state |
+| Services | `RequestGoalByKey`, `RequestMotionOperation` | Typed request/response boundaries |
 
-📨 = message type &nbsp;&nbsp; 📞 = service type
+Source inventory: **86 messages, 2 services**. Use `ros2 interface list` for
+the complete generated catalog rather than maintaining a second handwritten
+86-row list.
 
-### 📨 Messages (`msg/`)
+## Key State Contracts
 
-| Name | Kind | Fields summary | Producer | Consumers |
-|---|---|---|---|---|
-| 📨 `ModuleState` | msg | `stamp`, `module_name`, `level` (OK=0/WARN=1/ERROR=2), `message`, `missing_nodes[]`, `missing_topics[]`, `missing_lifecycle_nodes[]` | camrod_system checkers | camrod_system aggregator, camrod_ui |
-| 📨 `SystemStatus` | msg | `stamp`, `system_ok`, `message`, `ModuleState[] modules` | camrod_system | camrod_ui, camrod_bringup |
-| 📨 `AvgBringupMsgs` | msg | `stamp`, `ModuleState state`, runtime flags including reserved `use_eskf`, map_path, origin lat/lon/alt, per-module `*_ready` booleans | camrod_bringup | all packages monitoring bringup state |
-| 📨 `AvgSystemMsgs` | msg | `stamp`, `ModuleState state`, `SystemStatus system_status`, `active_modules[]`, `status_count` | camrod_system | camrod_ui, camrod_bringup |
-| 📨 `AvgSensingMsgs` | msg | `stamp`, `ModuleState state`, sub-messages: `AvgSensingLidar`, `AvgSensingCamera`, `AvgSensingImu`, `AvgSensingGnss`, `AvgSensingRadar` | camrod_sensing | camrod_platform, camrod_bringup |
-| 📨 `AvgSensingLidar` | msg | `PointCloud2 points_filtered`, `OccupancyGrid near_cost_grid` | camrod_sensing | camrod_platform |
-| 📨 `AvgSensingCamera` | msg | `Image image`, `CameraInfo camera_info` | camrod_sensing | camrod_perception |
-| 📨 `AvgSensingImu` | msg | `Imu imu_data`, `TwistWithCovarianceStamped platform_twist_cov` | camrod_sensing | camrod_localization |
-| 📨 `AvgSensingGnss` | msg | `NavSatFix navsatfix`, `PoseWithCovarianceStamped pose_with_covariance` | camrod_sensing | camrod_localization |
-| 📨 `AvgSensingRadar` | msg | `Range front1/front2/right1/right2/left1/left2/rear`, `OccupancyGrid near_cost_grid` | camrod_sensing | camrod_platform, camrod_map |
-| 📨 `AvgLocalizationMsgs` | msg | `stamp`, `ModuleState state`, pose/odom/twist/mode/status fields, GNSS and wheel update flags and innovation norms | camrod_localization | camrod_platform, camrod_planning, camrod_bringup |
-| 📨 `AvgLocalizationMode` | msg | `value` (NORMAL=0/DEGRADED=1/DR_ONLY=2/INVALID=3), `label` | camrod_localization | camrod_system, camrod_planning |
-| 📨 `AvgLocalizationStatus` | msg | `header`, `AvgLocalizationMode mode`, `confidence`, `gnss_ok/imu_ok/wheel_ok`, innovation norms | camrod_localization | camrod_system |
-| 📨 `AvgLocalizationStatusStream` | msg | `header`, gnss/wheel innovation norms and update accepted flags, `covariance_trace` | camrod_localization | camrod_system |
-| 📨 `AvgGnssPose` | msg | `header`, `Pose pose` (map frame), `float64[36] covariance`, `fix_type`, `num_satellites`, `hdop`, `vdop` | camrod_sensing | camrod_localization |
-| 📨 `AvgMapMsgs` | msg | `stamp`, `ModuleState state`, lanelet/planning cost grids, lanelet/lidar/radar/inflation marker arrays | camrod_map | camrod_planning, camrod_platform, camrod_bringup |
-| 📨 `AvgPerceptionMsgs` | msg | `stamp`, `ModuleState state`, `PointCloud2 obstacles`, `CameraInfo`, `Detection2DArray detections` | camrod_perception | camrod_planning, camrod_system |
-<!-- HH_260723 - Document the semantic occupied-campsite interface. -->
-| 📨 `CampsiteOccupancy` | msg | `header`, `occupied_mission_keys[]`, `source` | camrod_perception | camrod_control, camrod_ui |
-| 📨 `AvgPlanningMsgs` | msg | `stamp`, `ModuleState state`, goal/lanelet poses, nav action status, global/local paths, costmaps, path cost markers | camrod_planning | camrod_platform, camrod_bringup |
-| 📨 `PlanningMissionKey` | msg | `header`, `mission_key`, `source`, `publish_route_goal` | camrod_ui, camrod_planning | camrod_planning, camrod_ui, logging |
-| 📨 `PlanningRecallRequest` | msg | `header`, `site_name`, `source` | camrod_ui / external recall clients | camrod_planning |
-| 📨 `PlanningScenario` | msg | `header`, scenario constants, `scenario_id`, `label`, `source`; HH_260621 adds campsite entry/recall/loading/parking phase constants | camrod_planning / UI commands | camrod_planning, camrod_ui |
-| 📨 `PlanningState` | msg | `header`, state constants, `state`, `label`, scenario, active mission/source, estop/request flags | camrod_planning | camrod_system, camrod_ui, camrod_voice |
-| 📨 `UiDestinationCommand` | msg | `header`, `site`, `run`, `mission_key`, `source` | camrod_ui | camrod_ui, planning dispatch path |
-| 📨 `AvgPlatformMsgs` | msg | `stamp`, `ModuleState state`, `AvgRobotInfo`, robot markers, planning boundary, localization pose | camrod_platform | camrod_bringup |
-| 📨 `AvgPlatformStatus` | msg | `stamp`, `header`, `ModuleState state`, odometry, velocity/wheel twist, estop, vehicle_state, control_mode, error_code, battery_voltage, motor RPM/speed/angle arrays | camrod_platform | camrod_system |
-| 📨 `AvgSensorKitMsgs` | msg | `stamp`, `ModuleState state`, frame IDs, `tf_static_ready/tf_ready`, child frame lists | camrod_sensor_kit | camrod_system, camrod_bringup |
-| 📨 `AvgRobotInfo` | msg | `AvgRobotSpecifications`, plus `AvgSensorPose` for imu/gnss/lidar/camera | camrod_sensor_kit, camrod_platform | camrod_platform, camrod_bringup |
-| 📨 `AvgRobotSpecifications` | msg | `wheelbase`, `track_width`, `length`, `width`, `height`, `wheel_radius`, `encoder_resolution`, `drive_type` | camrod_sensor_kit | camrod_platform |
-| 📨 `AvgSensorPose` | msg | `x`, `y`, `z`, `roll`, `pitch`, `yaw` (float64) | camrod_sensor_kit | camrod_platform, camrod_sensing |
-| 📨 `AvgTrackingError` | msg | `stamp`, `frame_id`; local and global `lateral_deviation`, `heading_error`, `distance_to_path` (with valid flags); active path source and active deviations | camrod_planning | camrod_platform, monitoring tools |
-<!-- HH_260720 - Document the single AprilTag parking pose contract. -->
-| 📨 `AvgAprilTagPose` | msg | tag id, validity, age, and target pose | camrod_perception | camrod_control |
-<!-- HH_260721 - Document service progress independently from diagnostic health. -->
-| 📨 `AvgServiceState` | msg | service lifecycle from preparation and driving through site wait, parking, charging, and charger departure | camrod_control, camrod_ui | camrod_planning, camrod_system, camrod_ui |
+| Interface | Key values |
+|---|---|
+| `AvgServiceState` | Drop-zone wait/departure, site travel/entry/wait, return, parking, charging, operator stop |
+| `PlanningState` | Planner lifecycle including running, goal reached, recovery, error, and operator stop |
+| `ModuleState` | `OK`, `WARN`, `ERROR` plus operating-state detail |
+| `AudioRequest` | key, priority `0..3`, and interrupt flag |
 
-### 📞 Services (`srv/`)
+Mission state, planner state, command-gate state, and system health are separate
+interfaces. A normal service phase such as `SITE_ENTRY` or `CHARGING` is not a
+diagnostic warning.
 
-| Name | Kind | Request fields | Response fields | Producer (server) | Consumers (client) |
-|---|---|---|---|---|---|
-| `RequestGoalByKey` | srv | `string key` | `bool accepted`, `string message`, `AvgPoseStamped goal_pose` | camrod_planning | camrod_ui, camrod_control |
+## Versioning Rules
 
----
+| Change | Rule |
+|---|---|
+| Add field or constant | Update all publishers, consumers, tests, and docs in one change |
+| Rename/remove field | Treat as a breaking interface change |
+| Add enum value | Append without renumbering released values |
+| ROS boundary conversion | Perform explicitly in the owning adapter; do not reinterpret raw bytes |
 
-## 🔢 Dependency Matrix
-
-| Interface | sensor_kit | map | sensing | localization | perception | planning | control | platform | system | ui |
-|---|---|---|---|---|---|---|---|---|---|---|
-| `ModuleState` | P | P | P | P | P | P | P | P+C | C | P |
-| `SystemStatus` | — | — | — | — | — | — | — | P | C | — |
-| `AvgBringupMsgs` | — | — | — | — | — | — | — | — | — | — |
-| `AvgSystemMsgs` | — | — | — | — | — | — | — | P | C | — |
-| `AvgSensingMsgs` | — | — | P | C | — | — | C | C | — | — |
-| `AvgLocalizationMsgs` | — | — | — | P | — | C | C | C | — | — |
-| `AvgLocalizationMode` | — | — | — | P | — | C | — | C | — | — |
-| `AvgLocalizationStatus` | — | — | — | P | — | — | — | C | — | — |
-| `AvgLocalizationStatusStream` | — | — | — | P | — | — | — | C | — | — |
-| `AvgGnssPose` | — | — | P | C | — | — | — | — | — | — |
-| `AvgMapMsgs` | — | P | — | — | — | C | C | C | — | — |
-| `AvgPerceptionMsgs` | — | — | — | — | P | C | — | C | — | — |
-| `AvgPlanningMsgs` | — | — | — | — | — | P | C | C | — | — |
-| `PlanningMissionKey` | — | — | — | — | — | P+C | — | — | P+C | — |
-| `PlanningRecallRequest` | — | — | — | — | — | C | — | — | P | — |
-| `PlanningScenario` | — | — | — | — | — | P+C | — | — | C | — |
-| `PlanningState` | — | — | — | — | — | P | — | C | C | — |
-| `UiDestinationCommand` | — | — | — | — | — | — | — | — | P+C | — |
-| `AvgPlatformMsgs` | — | — | — | — | — | — | P | C | — | — |
-| `AvgPlatformStatus` | — | — | — | — | — | — | P | C | — | — |
-| `AvgSensorKitMsgs` | P | — | — | — | — | — | — | C | — | — |
-| `AvgRobotInfo` | P | — | — | — | — | — | C | — | — | — |
-| `AvgRobotSpecifications` | P | — | — | — | — | — | C | — | — | — |
-| `AvgSensorPose` | P | — | C | — | — | — | C | — | — | — |
-| `AvgTrackingError` | — | — | — | — | — | P | C | — | — | — |
-| `AvgAprilTagPose` | — | — | — | — | P | — | — | C | — | — |
-| `RequestGoalByKey` (srv) | — | — | — | — | — | P | — | — | C | C |
-
-> Legend: **P** = producer (publisher / server), **C** = consumer (subscriber / client), **P+C** = both, **—** = not used.
-
----
-
-## 🏗️ Build
+## Build And Validate
 
 ```bash
-# Build avg_msgs first (or let colcon resolve the order automatically)
 cd ~/camrod_ws
-colcon build --packages-select avg_msgs
+colcon build --packages-select avg_msgs --symlink-install
 source install/setup.bash
 
-# Build all packages that depend on avg_msgs
-colcon build --packages-up-to camrod_sensing camrod_planning
-source install/setup.bash
+ros2 interface list | rg '^avg_msgs/'
+ros2 interface show avg_msgs/msg/AvgPlatformStatus
+ros2 interface show avg_msgs/msg/AvgServiceState
+ros2 interface show avg_msgs/srv/RequestMotionOperation
 ```
 
-**CMakeLists.txt snippet for a dependent package:**
-```cmake
-find_package(avg_msgs REQUIRED)
-
-add_executable(my_node src/my_node.cpp)
-ament_target_dependencies(my_node rclcpp avg_msgs)
-```
-
-**package.xml for a dependent package:**
-```xml
-<depend>avg_msgs</depend>
-```
-
----
-
-## 🔍 Validation
-
-```bash
-# List all available avg_msgs interfaces
-ros2 interface list | grep avg_msgs
-
-# Inspect a specific message definition
-ros2 interface show avg_msgs/msg/ModuleState
-ros2 interface show avg_msgs/msg/AvgLocalizationMsgs
-ros2 interface show avg_msgs/srv/RequestGoalByKey
-
-# Confirm the package is sourced
-ros2 pkg list | grep avg_msgs
-```
-
----
-
-## 🩺 Troubleshooting
-
-<details>
-<summary><strong>Symbol not found at build (avg_msgs/msg/foo.hpp: No such file or directory)</strong></summary>
-
-`avg_msgs` was not built or not sourced. Run:
-```bash
-colcon build --packages-select avg_msgs
-source install/setup.bash
-```
-Confirm `find_package(avg_msgs REQUIRED)` is in the dependent package's `CMakeLists.txt`.
-
-</details>
-
-<details>
-<summary><strong>Python import fails (ModuleNotFoundError: No module named 'avg_msgs')</strong></summary>
-
-Same root cause as above. Run `colcon build --packages-select avg_msgs` and re-source.
-
-Verify: `python3 -c "from avg_msgs.msg import ModuleState; print('ok')"`.
-
-</details>
-
-<details>
-<summary><strong>ABI mismatch after editing .msg</strong></summary>
-
-Editing a `.msg` file invalidates all compiled binaries that use it. Run a full rebuild:
-```bash
-colcon build
-# or at minimum:
-colcon build --packages-up-to <affected_package>
-```
-Clean build artifacts if the mismatch persists: `rm -rf build/avg_msgs install/avg_msgs`.
-
-If a node crashes with `rcutils_logging` type errors or `rmw` deserialization failures, stale binaries are the likely cause.
-
-</details>
-
----
-
-## 🔗 Related Docs
-
-- [`../../README.md`](../../README.md) — Top-level CAMROD workspace overview
-- [`../../camrod_sensor_kit/README.md`](../../camrod_sensor_kit/README.md)
-- [`../../camrod_sensing/README.md`](../../camrod_sensing/README.md)
-- [`../../camrod_localization/README.md`](../../camrod_localization/README.md)
-- [`../../camrod_perception/README.md`](../../camrod_perception/README.md)
-- [`../../camrod_map/README.md`](../../camrod_map/README.md)
-- [`../../camrod_planning/README.md`](../../camrod_planning/README.md)
-- [`../../camrod_platform/README.md`](../../camrod_platform/README.md)
-- [`../../camrod_system/README.md`](../../camrod_system/README.md)
-- [`../../camrod_ui/README.md`](../../camrod_ui/README.md)
-- [`../../camrod_control/README.md`](../../camrod_control/README.md)
-- [`../../PARAMETER_NAMING_STANDARD.md`](../../PARAMETER_NAMING_STANDARD.md) — canonical parameter naming conventions
-
-## 2026-06-17 Runtime Update
-
-> HH_260617: Planning and parking integration use small semantic messages instead of one large module snapshot message for command/state paths.
-
-| Interface | Current use |
-|---|---|
-| `PlanningState` | `/planning/state_machine/state`, consumed by `camrod_control`, UI, voice, diagnostics |
-| `PlanningScenario` | `/planning/state_machine/scenario_id` and scenario command path |
-| `PlanningMissionKey` | `/planning/mission_key` semantic destination command |
-| `PlanningRecallRequest` | `/planning/state_machine/camping_site_recall` guest/site recall flow |
-| `ModuleState` | `/parking/*/status`, `/system/status.modules`, module validators |
-| `SystemStatus` / `AvgSystemMsgs` | `/system/status`, `/system/msgs` full-stack health snapshots |
-
-## 2026-06-21 Runtime Update
-
-> HH_260621: Reservation-aware UI and recall flows use explicit service/scenario constants so UI, planning, and diagnostics can distinguish delivery entry from road-only guest recall.
-
-<!-- HH_260721 - Service lifecycle is operational state, separate from module health. -->
-
-| Interface | Added contract |
-|---|---|
-| `AvgServiceState` | Existing values remain stable; `WAITING_FOR_RETURN_REQUEST`, `WAITING_FOR_CHARGING`, `CHARGING`, `DEPARTING_CHARGER`, and `DEPARTING_DROP_ZONE` expose normal wait and departure progress without misusing health severity |
-| `PlanningScenario` | `SITE_ENTRY`, `UNLOAD_WAIT`, `RECALL_TO_SITE_ROAD`, `GUEST_LOADING_WAIT`, `RETURN_WITH_CARGO`, `DROP_ZONE_PARKING` |
-| `PlanningRecallRequest` | `ui_guest_node` now publishes this message directly to `/planning/state_machine/camping_site_recall` so recall can target `<site>_road` instead of the campsite centroid |
-
-## 2026-07-02 Runtime Update
-
-> HH_260702: Do not create new alias message paths for CAMROD-internal state.
-
-The v1.16 baseline keeps `avg_msgs` as the stable source of truth for system diagnostics, planning state, UI destination commands, parking phases, and platform summaries. When a package still needs standard ROS data types for external interoperability, wrap only the module-level state in `avg_msgs` and leave raw sensor/geometry payloads in their standard ROS message types.
-
-Before changing an existing `.msg` or `.srv`, rebuild and smoke-test dependent packages:
-
-```bash
-./colcon_build.sh --packages-select avg_msgs camrod_system camrod_planning camrod_ui
-ros2 interface show avg_msgs/msg/PlanningState
-```
+Interface counts and dependency links are source inventory, not a latency or
+throughput benchmark.
