@@ -1700,6 +1700,9 @@ def render_sensor_mount_side_view(
 
 def render_sensing(repo_root: Path, output_root: Path):
     """Render sensor-specific processing and final cost-grid fusion."""
+    sensing_defaults = load_yaml(
+        repo_root / "camrod_bringup" / "config" / "bringup" / "launch_defaults.yaml"
+    )["bringup"]["sensing"]
     lidar = ros_params(
         repo_root / "camrod_sensing" / "config" / "lidar" / "ground_seg_params.yaml",
         "/sensing/lidar/ground_segmentation",
@@ -1726,9 +1729,9 @@ def render_sensing(repo_root: Path, output_root: Path):
         (
             "LiDAR",
             "Vanjee 750C points_raw",
-            f"ROI + {lidar['downsample_resolution']:.2f} m voxel\nDFKI ground segmentation",
+            f"intra-process container\nROI + {lidar['downsample_resolution']:.2f} m voxel + ground filter",
             "/sensing/lidar/points_filtered",
-            f"perception -> lidar grid\n{lidar_cost['width']}x{lidar_cost['height']} @ {lidar_cost['resolution']:.2f} m",
+            f"perception + optional grid (default {'ON' if sensing_defaults['enable_lidar_cost_grid'] else 'OFF'})\n{lidar_cost['width']}x{lidar_cost['height']} @ {lidar_cost['resolution']:.2f} m",
             GREEN,
         ),
         (
@@ -1806,7 +1809,7 @@ def render_sensing(repo_root: Path, output_root: Path):
         title_color=GREEN,
         body_size=7.5,
     )
-    footer(figure, "SOURCE-DERIVED. Hardware signal quality and detection correctness require field logs; topic existence alone is insufficient.")
+    footer(figure, "SOURCE-DERIVED. LiDAR preprocessing and ground segmentation are composed; the LiDAR rasterizer is default OFF. Hardware quality still requires field logs.")
     save_figure(figure, output_root / "sensing" / "sensor-processing-and-cost-fusion.png")
     render_ground_segmentation_schematic(lidar, output_root / "sensing" / "ground-segmentation-schematic.png")
 
@@ -2113,9 +2116,9 @@ def render_control(repo_root: Path, output_root: Path):
         0.17,
         "Bounded recovery owner",
         (
-            f"raw <= {recovery['maximum_speed_mps']:.2f} m/s; travel <= {recovery['maximum_distance_m']:.2f} m",
-            f"duration <= {recovery['maximum_duration_s']:.0f} s; yaw command = 0",
-            f"clear proof {gate['route_safety_recovery_clear_required_s']:.1f} s",
+            f"raw <= {recovery['maximum_speed_mps']:.2f} m/s; yaw <= {recovery['maximum_angular_speed_radps']:.2f} rad/s",
+            f"travel <= {recovery['maximum_distance_m']:.2f} m; yaw <= {recovery['maximum_yaw_change_deg']:.0f} deg",
+            f"reverse -> safe yaw/crab; clear proof {gate['route_safety_recovery_clear_required_s']:.1f} s",
         ),
         face=BLUE_BG,
         edge=BLUE,
@@ -2123,7 +2126,7 @@ def render_control(repo_root: Path, output_root: Path):
         body_size=7.3,
     )
 
-    section_label(axis, 0.045, 0.34, "Measured simulation evidence")
+    section_label(axis, 0.045, 0.34, "Historical v2.1.3 simulation evidence")
     draw_box(
         axis,
         0.045,
@@ -2158,7 +2161,7 @@ def render_control(repo_root: Path, output_root: Path):
     )
     footer(
         figure,
-        "SOURCE CONFIG + MEASURED SIM. Real-robot boundary recovery and full campsite completion remain pending.",
+        "CURRENT CONFIG + MEASURED SIM. Map-v15 staged yaw/crab runtime evidence is published separately; real-robot acceptance remains pending.",
     )
     save_figure(figure, output_root / "control" / "command-safety-and-recovery.png")
 

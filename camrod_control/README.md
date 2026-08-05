@@ -1,7 +1,7 @@
 # camrod_control
 
-<!-- HH_260804 - Add the live boundary/latch screen and record the bounded
-automatic-release budget without weakening the complete-footprint gate. -->
+<!-- HH_260805 - Document adaptive reverse/yaw/crab recovery while preserving
+the measured-body stop and historical translation-only evidence labels. -->
 
 Native C++ motion owners for the final command gate, campsite/drop-zone local
 maneuvers, parking, and bounded map-boundary recovery.
@@ -42,15 +42,15 @@ recovery candidates, and published an all-zero final command.
 | Automatic release budget | `1` | Allows one bounded Nav2 resume attempt |
 | Rapid recontact window | `5.0 s` | Same-route recontact latches until operator stop/replan |
 | Recovery proof probe | `0.25 m` | Projected complete footprint must be clear |
-| Recovery owner | `0.10 m/s`, `0.40 m`, `10 s` | Maximum raw speed, travel, duration |
-| Contact recovery yaw | `0 rad/s` | No swept-footprint rotation is attempted |
+| Recovery owner | `0.10 m/s`, `0.40 m`, `10 s` | Maximum raw speed, total travel, duration |
+| Contact recovery yaw | `0.10 rad/s`, `12 deg` | Bounded reverse-yaw only after projected full-footprint proof |
 
 ## Runtime Owners
 
 | Node | Responsibility |
 |---|---|
 | `cmd_vel_safety_gate` | Final engage, platform, battery, localization, timeout, obstacle, and lanelet authorization |
-| `route_safety_recovery_controller` | Executes one latched crab/reverse candidate within speed/distance/time limits |
+| `route_safety_recovery_controller` | Executes projected crab/reverse/reverse-yaw stages within one shared speed/distance/yaw/time budget |
 | `camping_site_maneuver_controller` | Site entry, arrival turnaround, unload wait, explicit return, and exit |
 | `drop_zone_maneuver_controller` | Charger/drop-zone exit, route yaw alignment, and parking handoff |
 | `reverse_parking_controller` | Yaw-aware reverse travel and charging wait |
@@ -108,7 +108,13 @@ surface while the internal controller remains `PARKED`.
 
 ![Automatic boundary recovery](../docs/assets/module-guides/control/automatic-owner-route-retry.gif)
 
-| Map-v14 measured rerun | Active recovery decision policy |
+| Current map-v15 staged recovery | Current decision policy |
+|---|---|
+| ![Map v15 recovery contact sheet](../docs/assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png) | ![Map v15 recovery policy](../docs/assets/module-guides/control/map-v15-boundary-recovery-policy.png) |
+
+![Map-v15 reverse-yaw, retry latch, and crab recovery](../docs/assets/module-guides/control/map-v15-boundary-recovery.gif)
+
+| Historical map-v14 measured rerun | Historical translation-only decision policy |
 |---|---|
 | ![Map v14 recovery contact sheet](../docs/assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png) | ![Recovery policy](../docs/assets/module-guides/control/map-v14-boundary-recovery-policy.png) |
 
@@ -123,13 +129,27 @@ surface while the internal controller remains `PARKED`.
 | Live B6 retry containment | map v14 `0.276 s` (v13 `0.267/0.372 s`); final Twist all zero | Retry loop stopped; operator action required |
 | Map-v14 route probe | reverse `0.0703 m`, retry `0.0661 m` / yaw `-0.1235 deg`, recontact `0.366 s` | Retry latched; final Twist all zero |
 | Map-v14 static/crab probes | reverse `0.0721 m`; crab-left `0.3321 m` | Both bounded motions released the first hold |
+| Map-v15 route probe | `REVERSE_YAW_RIGHT`, recovery `0.0582 m`, max yaw `0.05 rad/s`, recontact `0.335 s` | Retry latched; final Twist all zero |
+| Map-v15 static probe | `REVERSE_YAW_RIGHT`, recovery `0.0405 m`, max yaw `0.05 rad/s`, recontact `0.400 s` | Retry latched; final Twist all zero |
+| Map-v15 one-side probe | `CRAB_LEFT`, `0.3378 m`, max lateral `0.05 m/s` | First hold released without recontact; mission incomplete |
 
-During contact escape, yaw stays fixed. After the gate has fresh clear evidence
-for 1 second, the retained RPP route resumes and ordinary yaw control returns.
-Only one automatic release is permitted. If the same boundary is contacted
-again within 5 seconds, crab/reverse candidates and further release are blocked
-until stop/replan/re-engage resets the retry budget. This behavior is
-simulation-validated only; physical recovery remains pending.
+The map-v14 PNG/GIF remains historical translation-only evidence. The map-v15
+PNG/GIF is a current full-simulation dynamic run of the active selector, which reevaluates all
+five projected commands on every hold update: left/right crab, straight
+reverse, and left/right reverse-yaw. A unique safe crab moves away from the
+contact. Otherwise straight reverse creates room; it may transition to the
+unique safe yaw arc, or to the original RPP turn sign when both arcs are clear.
+Each stage must keep the complete projected footprint, fresh lanelet grid/pose,
+and dynamic obstacle checks clear. A blocked active crab can use straight
+reverse to reposition, then be reevaluated.
+
+After a maximum `12 deg` heading correction, the owner removes angular velocity
+and continues only a separately checked reverse translation. The total
+`0.40 m`/`10 s` budget is not reset during a stage transition. Only one route
+release is permitted; same-route recontact within 5 seconds latches zero output
+until stop/replan/re-engage. The staged selector and swept projection are unit
+validated and exercised dynamically on map v15. Both route retry cases remained
+fail-closed rather than completing a mission; physical recovery remains pending.
 
 ## Configuration
 
@@ -153,4 +173,5 @@ ros2 topic echo /control/route_safety_recovery_controller/status
 ```
 
 Detailed timelines and reproduction commands are in the
-[boundary recovery validation](../docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md).
+[boundary recovery validation](../docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md)
+and the [map-v15 evidence directory](../docs/evidence/v2.1.4/map-v15-boundary-recovery/).

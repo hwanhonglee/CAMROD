@@ -40,13 +40,13 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_bringup` | `simulation-evidence-20260804.png` | Full-bringup JSON + raw logs | 81-node startup and pose chain pass; B6/B12 round trip fails closed |
 | `camrod_bringup` | `field-stationary-report-20260731.png` | Normalized JSON + physical test report | Radar-off/front-camera lifetime pass; rear rate/RTK/CPU limits visible; raw files external |
 | `camrod_common/avg_msgs` | `interface-contract-and-dependencies.png` | Message/service files and manifests | 86 messages, 2 services, 12 direct package dependents |
-| `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + pre-owner/current/map-v14 automatic-owner JSON | Bounded crab/reverse and retry latch observed; mission incomplete |
+| `camrod_control` | `command-safety-and-recovery.png`, boundary stop/recovery PNGs and GIFs | Gate/recovery YAML + historical map-v14 and current map-v15 automatic-owner JSON | Bounded crab/reverse-yaw and retry latch observed; mission incomplete |
 | `camrod_localization` | `pose-generation-and-timing.png` | EKF YAML + 30-second probe | 10 Hz inputs -> 20 Hz selected pose; field accuracy pending |
 | `camrod_map` | `lanelet-map-and-cost-grids.png` | Map/grid YAML | Route/planning grid values match source; service access missing |
 | `camrod_perception` | `yolo-lidar-and-parking-pipelines.png` | Perception/AprilTag YAML | LiDAR sim path available; physical YOLO/fusion/tag pending |
 | `camrod_planning` | `nav2-servers-and-mission-states.png`, `robot-center-narrow-route-risk-map.png` | Nav2 config, state contracts, and footprint sweep | Active topology documented; narrow corridor remains invalid |
 | `camrod_platform` | `ranger-command-and-status.png` | Ranger/visualization YAML | Hardware boundary documented; CAN/actuator timing pending |
-| `camrod_sensing` | `sensor-processing-and-cost-fusion.png` | Sensor/grid YAML | Source topology and target values only |
+| `camrod_sensing` | `sensor-processing-and-cost-fusion.png` | Sensor/grid YAML + bringup toggles | Composed LiDAR path shown; LiDAR grid is default OFF |
 | `camrod_sensing` | `ground-segmentation-schematic.png` | Ground-filter YAML + seeded points | Algorithm schematic, not a point-cloud capture |
 | `camrod_sensor_kit` | `reference-frame-before-after.png`, `rear-axle-vs-robot-center-drive.gif` | Geometry YAML + A/B JSON | Compared center-frame route metrics pass; narrow boundary remains |
 | `camrod_sensor_kit` | `sensor-mount-side-view.png`, `sensor-x-before-after.png` | Geometry YAML | Physical side view and exact coordinate conversion |
@@ -55,9 +55,9 @@ Unreferenced raw logs are intentionally excluded from source control.
 | `camrod_voice` | `voice-events-and-priority.png` | Voice adapter YAML/policy | Queue/readiness policy documented; acoustic performance pending |
 
 All files are under `docs/assets/module-guides/`. The main package renderer
-creates **18 PNGs and one 10-frame GIF**. Release-evidence renderers add nine
-PNGs and six GIFs. Fifteen manually captured live screens bring the checked-in
-total to **42 PNGs and seven GIFs**.
+creates **18 PNGs and one 10-frame GIF**. Release-evidence renderers add eleven
+PNGs and seven GIFs. Fifteen manually captured live screens bring the checked-in
+total to **44 PNGs and eight GIFs**.
 
 ## Actual Runtime Screen Index
 
@@ -85,13 +85,15 @@ the concise raw excerpt are in
 
 | Module | Measurement | Result | Limit |
 |---|---|---|---|
-| Bringup | Full graph | 81 nodes and `[SYSTEM] OK` | B6/B12 local entry still blocked |
+| Bringup | Full graph | 79 steady-state nodes and `[SYSTEM] OK` | B6/B12 local entry still blocked |
 | Localization | 30-second stationary probe | Selected pose `20.000 Hz`, age p95 `1.83 ms` | No field ground truth or motion disturbance |
 | Sensor kit/planning | Common route A/B | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` | One simulated route segment |
 | Control | One-sided automatic crab | `0.3375 m`; output `<= 0.05 m/s` | Mission did not complete |
 | Control | Same-goal RPP retry | `0.4726 m`, yaw `-2.0008 deg` | A second boundary hold occurred |
 | Control | Rapid retry containment | Map v14 recontact `0.276 s` (v13 `0.267/0.372 s`); one release; final Twist zero | Physical wheel response pending |
 | Control | Repeatable map-v14 probes | route recontact `0.366 s`; static reverse `0.0721 m`; crab-left `0.3321 m`; final Twist zero | Route remains fail-closed |
+| Control | Current map-v15 route/static probes | `REVERSE_YAW_RIGHT`; max `0.05 rad/s`; recontact `0.335/0.400 s`; final Twist zero | Retry contained; route remains fail-closed |
+| Control | Current map-v15 one-side probe | `CRAB_LEFT`; `0.3378 m`; max lateral `0.05 m/s` | Hold released; mission incomplete |
 | UI | Browser/backend/ROS lifecycle | Mission, return, safety hold, state 16, and B6 keypad verification observed | No physical movement |
 | Sensing/perception | Physical stationary report | Radar-off `600.063 s`; front camera `9.167 Hz` and `2750/2750` decode | Raw logs external; no accuracy or motion claim |
 | Sensing | Rear camera field report | Raw `3.633 Hz` vs `10 Hz` target | Rate failed |
@@ -109,7 +111,13 @@ the concise raw excerpt are in
 
 ![Automatic route recovery](assets/module-guides/control/automatic-owner-route-retry.gif)
 
-| Fresh map-v14 measured result | Decision policy used by the gate |
+| Current map-v15 measured result | Current staged decision policy |
+|---|---|
+| ![Map-v15 recovery](assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png) | ![Map-v15 recovery policy](assets/module-guides/control/map-v15-boundary-recovery-policy.png) |
+
+![Map-v15 recovery animation](assets/module-guides/control/map-v15-boundary-recovery.gif)
+
+| Historical map-v14 measured result | Historical translation-only policy |
 |---|---|
 | ![Map-v14 recovery](assets/module-guides/control/map-v14-boundary-recovery-contact-sheet.png) | ![Map-v14 recovery policy](assets/module-guides/control/map-v14-boundary-recovery-policy.png) |
 
@@ -122,8 +130,11 @@ the concise raw excerpt are in
 | Contact geometry | Allowed action |
 |---|---|
 | Exactly one lateral candidate clear | Pure crab away from contact |
-| Both lateral candidates blocked and reverse clear | Reverse |
-| Both lateral candidates clear or no candidate clear | Remain stopped |
+| Lateral candidates blocked and reverse clear | Reverse to create room |
+| Reverse active; one yaw arc clear | Switch to that projected reverse-yaw arc |
+| Both yaw arcs clear and RPP requests a turn | Use the RPP turn sign at `<= 0.10 rad/s` |
+| Active crab becomes blocked | Reposition with projected straight reverse, then reevaluate |
+| No projected candidate clear | Remain stopped |
 | Fresh saved route clear for `1.0 s` | Release hold; retained RPP resumes yaw |
 | Same route recontacts within `5.0 s` after one release | Latch hold, publish zero, require operator stop/replan |
 
@@ -133,9 +144,14 @@ stops immediately on valid obstacle evidence. A planner change from
 and requires fresh map evidence proving at least `2.50 m` contiguous width and
 `0.60 m` clearance on both sides. The timeout never delays the safety stop.
 
-Contact recovery is translation-only: raw speed `<= 0.10 m/s`, travel
-`<= 0.40 m`, duration `<= 10 s`, angular command zero. Rotation resumes only
-after route release because a swept-footprint contact proof is not implemented.
+Active contact recovery permits only a projected reverse-yaw correction:
+translation `<= 0.10 m/s`, yaw rate `<= 0.10 rad/s`, yaw change `<= 12 deg`,
+total travel `<= 0.40 m`, and total duration `<= 10 s`. Every transition is
+checked with constant-twist swept endpoint geometry, fresh pose/lanelet data,
+the full planning footprint, and dynamic obstacles. The map-v14 PNG/GIF
+predates this staged policy and remains historical. The map-v15 PNG/GIF
+exercises the current owner dynamically, but both retry routes still ended in
+the fail-closed latch. Physical validation remains pending.
 
 ## Mission State Interpretation
 

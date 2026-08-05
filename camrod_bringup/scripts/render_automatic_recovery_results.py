@@ -20,8 +20,8 @@ from matplotlib.patches import FancyArrowPatch, Polygon as PolygonPatch
 ORIGIN = Origin(36.8435737, 128.0925646, 0.0)
 ROUTE_IDS = (754, 2751, 2720)
 CRAB_LANELET_ID = 4677
-# HH_260805 - Preserve the map-v14 evidence geometry: 0.10 m longitudinal and
-# 0.05 m lateral margins. Current runtime geometry is sourced by the main renderer.
+# HH_260805 - These are the historical map-v14 extents. main() switches only
+# map v15+ output to the current four-sided 0.05 m planning margin.
 FRONT, REAR = 0.85837, 0.83323
 LEFT, RIGHT = 0.58505, 0.58495
 FPS = 8
@@ -262,6 +262,7 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab, version):
         "#16864b",
         0.78,
     )
+    reverse_motion = reverse.get("automatic_recovery_motion", "REVERSE")
     arrow_body(
         axes[1],
         (reverse_hold["x"], reverse_hold["y"]),
@@ -269,10 +270,10 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab, version):
         -0.72,
         0.0,
         "#16864b",
-        "AUTO REVERSE",
+        "AUTO " + reverse_motion.replace("_", " "),
     )
     axes[1].set_title(
-        "2. Both crab sides blocked: reverse -0.05 m/s",
+        f"2. Both crab sides blocked: {reverse_motion}, -0.05 m/s",
         loc="left",
         fontsize=11,
         fontweight="bold",
@@ -349,7 +350,7 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab, version):
         ("Map source", f"v{version}"),
         ("One-side contact", "CRAB_LEFT"),
         ("Crab displacement", f"{crab['recovery_displacement_m']:.3f} m"),
-        ("Both sides blocked", "REVERSE"),
+        ("Both sides blocked", reverse_motion),
         ("Reverse displacement", f"{reverse['recovery_displacement_m']:.3f} m"),
         ("Retry displacement", f"{retry_distance:.3f} m"),
         ("Retry yaw change", f"{retry_yaw:+.2f} deg"),
@@ -381,7 +382,8 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab, version):
         "recovery raw 0.10 x gate 0.5",
         "maximum distance 0.40 m",
         "clear evidence 1.0 s",
-        "angular.z = 0 during boundary contact",
+        "reverse-yaw configured <= 0.10 rad/s",
+        f"reverse-yaw observed <= {max(route.get('maximum_recovery_abs_angular_z_radps', 0.0), reverse.get('maximum_recovery_abs_angular_z_radps', 0.0)):.2f} rad/s",
     ):
         panel.text(0.0, y, line, fontsize=9.2, color="#37474f")
         y -= 0.041
@@ -406,23 +408,34 @@ def render_contact_sheet(output, lanelet_map, route, reverse, crab, version):
     plt.close(fig)
 
 
-def render_policy(output):
+def render_policy(output, version):
     fig, ax = plt.subplots(figsize=(13, 7.2), facecolor="#f4f6f7")
     ax.axis("off")
-    columns = ["Projected left", "Projected right", "Projected reverse", "Action"]
-    rows = [
-        ["CLEAR", "BLOCKED", "any", "CRAB_LEFT"],
-        ["BLOCKED", "CLEAR", "any", "CRAB_RIGHT"],
-        ["BLOCKED", "BLOCKED", "CLEAR", "REVERSE"],
-        ["CLEAR", "CLEAR", "any", "STOP: ambiguous"],
-        ["BLOCKED", "BLOCKED", "BLOCKED", "STOP: no safe candidate"],
-    ]
+    if version >= 15:
+        columns = ["Current evidence", "New projected evidence", "Action"]
+        rows = [
+            ["one crab side uniquely clear", "full swept footprint clear", "CRAB away"],
+            ["both crab sides blocked", "straight reverse clear", "REVERSE"],
+            ["active reverse", "one reverse-yaw arc clear", "REVERSE_YAW"],
+            ["both yaw arcs clear", "RPP turn sign available", "use RPP sign"],
+            ["active stage blocked", "straight reverse clear", "REPOSITION"],
+            ["no candidate clear", "or evidence stale", "STOP"],
+        ]
+    else:
+        columns = ["Projected left", "Projected right", "Projected reverse", "Action"]
+        rows = [
+            ["CLEAR", "BLOCKED", "any", "CRAB_LEFT"],
+            ["BLOCKED", "CLEAR", "any", "CRAB_RIGHT"],
+            ["BLOCKED", "BLOCKED", "CLEAR", "REVERSE"],
+            ["CLEAR", "CLEAR", "any", "STOP: ambiguous"],
+            ["BLOCKED", "BLOCKED", "BLOCKED", "STOP: no safe candidate"],
+        ]
     table = ax.table(
         cellText=rows,
         colLabels=columns,
         cellLoc="center",
         colLoc="center",
-        bbox=[0.03, 0.31, 0.94, 0.55],
+        bbox=[0.03, 0.29, 0.94, 0.57],
     )
     table.auto_set_font_size(False)
     table.set_fontsize(11)
@@ -443,28 +456,36 @@ def render_policy(output):
     ax.text(
         0.03,
         0.90,
-        "Every candidate uses the projected complete 1.6916 x 1.2700 m footprint and live obstacle interlocks.",
+        f"Every candidate uses the projected complete {FRONT + REAR:.4f} x {LEFT + RIGHT:.4f} m footprint and live obstacle interlocks.",
         fontsize=11,
         color="#455a64",
     )
     ax.text(
         0.03,
         0.22,
-        "Direction lock",
+        "Stage transition",
         fontsize=13,
         fontweight="bold",
     )
     ax.text(
         0.03,
         0.16,
-        "The first unique candidate remains fixed until hold release. A later block stops motion; it never switches direction.",
+        (
+            "Every update reprojects crab, reverse, and reverse-yaw. A stage changes only to a newly proven safe candidate."
+            if version >= 15 else
+            "The first unique candidate remains fixed until hold release. A later block stops motion; it never switches direction."
+        ),
         fontsize=10.5,
         color="#37474f",
     )
     ax.text(
         0.03,
         0.08,
-        "Rotation during contact: disabled. RPP steering resumes after 1.0 s of fresh full-footprint clearance.",
+        (
+            "Reverse-yaw is bounded to 0.10 rad/s and 12 deg. RPP resumes after 1.0 s of fresh full-footprint clearance."
+            if version >= 15 else
+            "Rotation during contact: disabled. RPP steering resumes after 1.0 s of fresh full-footprint clearance."
+        ),
         fontsize=10.5,
         color="#37474f",
     )
@@ -549,7 +570,11 @@ def render_gif(output, lanelet_map, route, reverse, crab, version):
             robots[index].set_xy(footprint(x, y, yaw))
             release = reverse_release if index == 0 else crab_release
             if actual < release:
-                label = "AUTO REVERSE  -0.05 m/s" if index == 0 else "AUTO CRAB LEFT  0.05 m/s"
+                label = (
+                    "AUTO " + reverse.get("automatic_recovery_motion", "REVERSE").replace("_", " ") +
+                    "  -0.05 m/s"
+                    if index == 0 else "AUTO CRAB LEFT  0.05 m/s"
+                )
                 color = "#16864b"
             elif index == 0 and actual < reverse_second_hold:
                 label = "RPP RESUMED  yaw changes"
@@ -586,6 +611,7 @@ def render_gif(output, lanelet_map, route, reverse, crab, version):
 
 
 def main():
+    global FRONT, REAR
     parser = argparse.ArgumentParser()
     parser.add_argument("--map", required=True, type=Path)
     parser.add_argument("--route", required=True, type=Path)
@@ -609,6 +635,9 @@ def main():
         map_version(args.map),
         hashlib.sha256(args.map.read_bytes()).hexdigest(),
     )
+    if version >= 15:
+        # HH_260805 - Current body extents plus 0.05 m on every side.
+        FRONT, REAR = 0.80837, 0.78323
     if args.artifact_prefix:
         contact = args.output_dir / f"{args.artifact_prefix}-contact-sheet.png"
         policy = args.output_dir / f"{args.artifact_prefix}-policy.png"
@@ -619,7 +648,7 @@ def main():
         policy = args.output_dir / "automatic-owner-policy.png"
         gif = args.output_dir / "automatic-owner-route-retry.gif"
     render_contact_sheet(contact, lanelet_map, route, reverse, crab, version)
-    render_policy(policy)
+    render_policy(policy, version)
     render_gif(gif, lanelet_map, route, reverse, crab, version)
     for path in (contact, policy, gif):
         print(path)

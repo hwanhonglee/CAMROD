@@ -1,7 +1,7 @@
 # camrod_system
 
-<!-- HH_260804 - Present health aggregation, timing, thresholds, and lifecycle
-separation visually instead of as a long diagnostics narrative. -->
+<!-- HH_260805 - Keep diagnostics aligned with the default-off optional LiDAR
+cost-grid while retaining physical LiDAR stream health coverage. -->
 
 Graph readiness, dedicated sensor/planning/platform/hardware diagnostics,
 metadata-preserving aggregation, and operator health summaries.
@@ -29,25 +29,38 @@ This package observes health. It never generates vehicle motion commands.
 
 ## Runtime Composition
 
-| Container | Checker nodes | Count |
-|---|---|---:|
-| `hardware_sensing_checker_container` | host/GPU/network, GNSS, IMU, LiDAR, radar, cameras, wheel odometry, sensing grids, velocity conversion | 11 |
-| `localization_checker_container` | GNSS, mode, pose, initialization, source, lanelet localization | 6 |
-| `autonomy_checker_container` | map, perception, planning lifecycle/costmap/Nav status/path/state | 7 |
+| Mode | Runtime boundary | Status |
+|---|---|---|
+| Production default | 24 standalone checker processes | Stable full-stack startup and Ctrl+C shutdown |
+| Bench option | hardware/sensing `11` and autonomy `7` in serialized containers; localization `6` standalone | `use_checker_components:=true`; not field-qualified |
 
-Production uses one serialized executor per category, replacing 24 low-rate
-checker processes with three process boundaries. Serialization prevents an
-executor/DDS unload race during simultaneous shutdown. Every checker is still
-built as a standalone executable for field isolation with
-`use_checker_components:=false`.
+<!-- HH_260805 - Repeated complete-graph testing supersedes the earlier
+three-container success claim. Keep code available without making it default. -->
+All 24 checkers still have component registrations, but production sets
+`use_checker_components:=false`. Isolated component launches could stop cleanly;
+repeated full-stack shutdowns intermittently returned `-11` from localization
+and autonomy component processes, and `component_container_isolated` could hang
+during Humble context destruction. Standalone checker processes did not
+reproduce those failures.
 
 The main diagnostics aggregator, graph checker, terminal/system-state node, and
 tools aggregator remain separate. A fault in one of those policy/aggregation
-layers therefore does not take all checker categories down with it. The
+layers therefore does not take the individual checker processes down with it. The
 optional Ranger checker also remains standalone. No further `camrod_system`
 grouping is planned without Jetson profiling that identifies a measurable
 benefit; combining unrelated high-rate runtime packages would increase the
 failure blast radius.
+
+## Optional LiDAR Grid
+
+| Launch value | Loaded graph | Diagnostic contract |
+|---|---|---|
+| `enable_lidar_cost_grid:=false` (default) | No `/sensing/lidar/lidar_cost_grid`; no `/sensing/cost_grid/lidar` publisher required | Cost-grid checker monitors radar + inflation; graph checker removes only the optional LiDAR grid node/topic |
+| `enable_lidar_cost_grid:=true` | LiDAR rasterizer component is loaded | Cost-grid checker and graph checker both require its node/topic |
+
+The LiDAR hardware, raw/filtered cloud, and LiDAR checker remain required by
+their selected real/dummy profile. This toggle suppresses only the unused
+rasterizer, so it cannot hide a missing physical LiDAR stream.
 
 ## Three Separate State Surfaces
 
@@ -146,19 +159,19 @@ Mount coordinates are relative to `robot_center_link`. The GNSS
 
 ```bash
 ros2 launch camrod_system system.launch.py
-ros2 launch camrod_system system.launch.py use_checker_components:=false
+ros2 launch camrod_system system.launch.py use_checker_components:=true
+ros2 launch camrod_system system.launch.py enable_lidar_cost_grid:=true
 
 ros2 topic echo /system/status
 ros2 topic echo /system/diagnostics_agg
 ros2 topic echo /control/cmd_vel_safety_gate/status
 ```
 
-Five isolated composition cycles each loaded all `11 + 6 + 7 = 24` checker
-components under `/system` and produced 15 clean container exits in total. A
-subsequent 87-node full-stack run reached `[SYSTEM] OK` and all three containers
-again stopped cleanly. The containers plus their main aggregator sampled about
-`82 MiB` RSS on this amd64 workstation; this is a topology/shutdown check, not
-a Jetson performance benchmark.
+The final default-off LiDAR-grid full-stack run exposed 79 steady-state ROS nodes, monitored
+only radar and inflation in `cost_grid_checker`, excluded only the optional
+LiDAR node/topic from graph readiness, reached `[SYSTEM] OK`, and cleanly stopped
+all 24 checker processes. Component and DDS-SHM modes remain bench experiments,
+not Jetson performance or reliability claims.
 
 | Config | Purpose |
 |---|---|
