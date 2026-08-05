@@ -1,5 +1,6 @@
 """Validate the active map separately from historical runtime evidence."""
 
+import hashlib
 import json
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -16,6 +17,9 @@ RUNTIME_REPORT = (
     / "bringup"
     / "runtime-visual-capture-20260804.json"
 )
+ACTIVE_MAP_SHA256 = (
+    "d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f"
+)
 
 
 def _tags(element: ET.Element) -> dict[str, str]:
@@ -27,9 +31,11 @@ def _tags(element: ET.Element) -> dict[str, str]:
 
 def test_active_and_named_park_maps_are_revision_15_and_synchronized() -> None:
     """Deployment must not silently use a stale copy of the user map edit."""
-    # HH_260805 - v1.0.4 remains historical; the user-authored v1.0.5 copy is
-    # the synchronization reference for the currently deployed map-v15 file.
+    # HH_260805 - Keep this user-authored pair unchanged for the current site.
+    # A different field must receive a new revision instead of silently
+    # replacing this deployed geometry under the same test contract.
     assert ACTIVE_MAP.read_bytes() == PARK_MAP_COPY.read_bytes()
+    assert hashlib.sha256(ACTIVE_MAP.read_bytes()).hexdigest() == ACTIVE_MAP_SHA256
 
     root = ET.parse(ACTIVE_MAP).getroot()
     metadata = root.find("MetaInfo")
@@ -39,7 +45,7 @@ def test_active_and_named_park_maps_are_revision_15_and_synchronized() -> None:
     relations = [_tags(relation) for relation in root.findall("relation")]
     assert sum(tags.get("type") == "lanelet" for tags in relations) == 55
     assert sum(tags.get("type") == "multipolygon" for tags in relations) == 14
-    assert len(root.findall("node")) == 1031
+    assert len(root.findall("node")) == 1658
 
 
 def test_historical_runtime_capture_identifies_map_revision_14() -> None:
