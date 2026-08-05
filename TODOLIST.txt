@@ -14,7 +14,7 @@ CAMROD v2.1.4 이후 미완료 실차 확인 목록
 - v2.1.1 변경 범위: docs/V2_1_1_RELEASE_NOTES.md
 - v2.1.2 갱신 범위와 검증 한계: docs/V2_1_2_RELEASE_NOTES.md
 - v2.1.3 중앙 프레임·경계 회복·UI 범위: docs/V2_1_3_RELEASE_NOTES.md
-- v2.1.4 운영 설정·map v15·WebKit·planner 범위: docs/V2_1_4_RELEASE_NOTES.md
+- v2.1.4 운영 설정·map v15·Chromium·transport 범위: docs/V2_1_4_RELEASE_NOTES.md
 - 완료 구현·진단 결과: DONE.txt
 - 중앙 기준 프레임 전환표: docs/V2_1_3_ROBOT_CENTER_MIGRATION.md
 - v2.1.4는 software/config/sim 기준점이며 변경 후 전체 실차 주행
@@ -44,10 +44,10 @@ CAMROD v2.1.4 이후 미완료 실차 확인 목록
 3) REAR와 LEFT2 주변 물체를 완전히 치우고 LEFT2/RIGHT2까지 물리 채널을
    활성화한 뒤 radar 7채널 clear-area 시험을 다시 수행한다.
 4) 개발용 VS Code/Brave와 다중 rate probe를 제외한 production CPU 기준을
-   RViz+WebKit, WebKit only, window off 순으로 비교한다.
+   RViz+Chromium, Chromium only, WebKit fallback, window off 순으로 비교한다.
 5) lanelet 내부에서 goal/planning, footprint, recovery, lateral/crab 주행을
    recovery recorder와 함께 수행한다.
-6) 실제 스피커/WebKit에서 READY 이후 manual/UI 전체 상태 순서를 확인한다.
+6) 실제 스피커/Chromium에서 READY 이후 manual/UI 전체 상태 순서를 확인한다.
 
 공통 기록 및 안전 조건
 - 사람·차량·짐이 없는 통제된 평지에서 조작자와 물리 E-stop 담당자
@@ -60,6 +60,12 @@ CAMROD v2.1.4 이후 미완료 실차 확인 목록
   1) `<CAMROD_WS>/src/colcon_build.sh`
   2) `source <CAMROD_WS>/install/setup.bash`
   3) `ros2 run camrod_bringup field_test_tool.sh config`
+- HH_260805 운영 기본 확인:
+  `enable_lidar_cost_grid=false`, `use_checker_components=false`,
+  `enable_dds_shared_memory=false`로 시작한다. 이 상태에서 LiDAR grid
+  publisher가 없어도 sensing/system이 ERROR가 아니어야 한다. optional
+  LiDAR grid, checker component, DDS-SHM은 각각 별도 bench 시험에서만 켜고
+  운영 주행과 결과를 섞지 않는다.
 - 공통 터미널:
   1) `ros2 run camrod_bringup field_test_tool.sh launch rviz:=true`
   2) `ros2 run camrod_bringup field_test_tool.sh watch`
@@ -203,9 +209,10 @@ CAMROD v2.1.4 이후 미완료 실차 확인 목록
 
 [P1] 8. full bringup CPU 프로파일
 - 실제 goal/path/cmd_vel 계산 상태에서 아래 조건을 각각 5분 측정한다:
-  1) RViz + WebKit
-  2) WebKit only
-  3) local UI window off
+  1) RViz + Chromium
+  2) Chromium only
+  3) WebKit fallback only
+  4) local UI window off
 - 프로세스별/전체 CPU, GPU, RAM, cost-grid/topic rate, camera/YOLO rate를
   같은 시각으로 저장한다.
 - 개발용 VS Code/중복 topic echo가 있으면 별도 표시하거나 종료 후
@@ -213,10 +220,11 @@ CAMROD v2.1.4 이후 미완료 실차 확인 목록
 - 합격:
   최대 부하 프로세스와 조건별 절감 수치를 명시하고 센서·안전 topic rate가
   허용 범위 아래로 떨어지지 않는다.
-- HH_260805 - v2.1.4 WebKit은 static cache, smooth touch scrolling,
-  `HardwareAccelerationPolicy.ALWAYS`를 사용하고 미사용 WebGL만 끈다.
-  세 조건 모두에서 WebKit renderer/GPU process, `tegrastats`, 화면 FPS와
-  first-load 시간을 함께 기록해 실제 GPU 합성과 CPU 절감을 판정한다.
+- HH_260805 - v2.1.4 기본 Chromium은 GPU rasterization/zero-copy compositor,
+  isolated profile과 background throttling 해제를 사용한다. WebKit fallback은
+  static cache, smooth touch scrolling, `HardwareAccelerationPolicy.ALWAYS`를
+  유지한다. 네 조건에서 renderer/GPU process, `tegrastats`, 화면 FPS와
+  first-load 시간을 기록해 실제 Jetson 부하를 비교한다.
 - HH_260731 PARTIAL/FAIL:
   RViz+WebKit 정지 profile에서 8개 CPU core 평균 사용률은 99.26%였다.
   GPU 평균 36.95%, RAM은 10.66/15.66 GB, CPU 평균 온도는 60.6도여서
@@ -345,25 +353,29 @@ CAMROD v2.1.4 이후 미완료 실차 확인 목록
   4) 전진 중 footprint의 왼쪽만 cost 100에 닿은 경우 pure right crab,
      오른쪽만 닿은 경우 pure left crab을 각각 요청한다. 경계 반대쪽 후보만
      projected full-footprint 검사를 통과하고 경계 쪽 후보는 0이어야 한다.
-  5) corridor 복귀 뒤 수동 입력을 0으로 하고 TODO 11의 continuous clear와
+  5) 양쪽 crab이 막힌 재현에서는 먼저 straight reverse가 나오고, 공간이
+     생기면 안전한 crab 또는 원 RPP 회전 부호의 reverse-yaw로 전환되는지
+     확인한다. yaw rate는 0.10 rad/s 이하, 누적 yaw는 12 deg 이하여야 한다.
+  6) corridor 복귀 뒤 수동 입력을 0으로 하고 TODO 11의 continuous clear와
      필요 시 bounded goal reissue를 확인한다.
-  6) auto reissue가 없으면 기존 goal을 다시 선택하지 않고 첫 explicit
+  7) auto reissue가 없으면 기존 goal을 다시 선택하지 않고 첫 explicit
      re-engage 한 번으로 path/cmd_vel이 생성되는지 확인한다.
-  7) 별도 반복에서 hold 중 UI cancel 후 5초 동안 goal/path/nonzero
+  8) 별도 반복에서 hold 중 UI cancel 후 5초 동안 goal/path/nonzero
      cmd_vel이 자동 재생성되지 않는지 확인한다.
-  8) rapid-recontact latch 뒤 operator stop/replan/re-engage를 한 번 수행해
+  9) rapid-recontact latch 뒤 operator stop/replan/re-engage를 한 번 수행해
      release budget이 새 임무에만 초기화되고 이전 경로가 저절로 재개되지
      않는지 확인한다.
 - 구현 경계:
-  gate는 reverse/crab 후보의 full-footprint와 모든 interlock을 검증하고,
+  gate는 reverse/crab/reverse-yaw 후보의 full-footprint와 모든 interlock을 검증하고,
   별도 `route_safety_recovery_controller`가 유일한 자동 명령 owner다. owner는
-  한쪽 lateral 후보만 clear이면 경계 반대쪽 pure crab, 양쪽 lateral이
-  blocked이고 reverse만 clear이면 reverse를 선택한다. 양쪽 lateral이 모두
-  clear이거나 모두 blocked이면 방향을 추측하지 않고 0을 유지한다.
-  원시 속도는 최대 0.10 m/s, 누적 이동은 0.40 m, 시간은 10초로 제한되며
+  한쪽 lateral 후보만 clear이면 경계 반대쪽 pure crab, 아니면 straight
+  reverse로 공간을 만든다. 이후 유일하게 안전한 crab/yaw 방향 또는 양쪽
+  yaw가 모두 안전할 때 원 RPP 회전 부호로 단계 전환한다.
+  원시 속도/각속도는 최대 0.10 m/s/0.10 rad/s, 누적 yaw는 12 deg,
+  이동은 0.40 m, 시간은 10초로 제한되며
   operator cancel, stale pose/grid, engage/e-stop/CAN/charging/obstacle 실패 시
-  즉시 0을 발행한다. 접촉 중 angular.z는 항상 0이며 corridor가 clear된 뒤
-  RPP가 같은 goal을 재개할 때만 yaw 제어를 다시 수행한다.
+  즉시 0을 발행한다. 모든 단계 전환은 새 constant-twist projected
+  full-footprint 검사를 통과해야 한다.
 - HH_260731 17:44 FIELD-FAIL:
   실제 planning boundary가 lanelet cost 100에 닿자
   `trigger=lanelet_footprint_cost`, `projected_recovery_candidate_only=true`로
@@ -393,7 +405,8 @@ CAMROD v2.1.4 이후 미완료 실차 확인 목록
   rclpy client에 존재하지 않는 `async_send_request()` 호출이었고
   `call_async()`로 수정했다. 실차에서는 같은 순서와 5초 무재개를 확인한다.
 - 합격:
-  projected full-footprint와 모든 obstacle/interlock을 통과한 reverse/crab
+  projected full-footprint와 모든 obstacle/interlock을 통과한
+  reverse/crab/reverse-yaw
   escape만 허용되고, corridor 복귀 후 첫 re-engage에서 stale latch/ABORT
   없이 동일 mission의 path와 cmd_vel이 다시 생성된다.
 

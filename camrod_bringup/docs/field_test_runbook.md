@@ -189,7 +189,7 @@ A missing publisher, graph type mismatch, invalid/zero/future header, no valid
 message, or only one valid message returns a non-zero exit code and is retained
 in the JSON `errors` list.
 
-Run this probe once with RViz/WebKit/Brave and development builds stopped.
+Run this probe once with RViz/Chromium/Brave and development builds stopped.
 Measure CPU over the same window with `field_test_tool.sh profile 60
 pose_latency_baseline`. Interpret the chain using
 `pose_latency_diagnosis.md`; do not raise the dual-GNSS 1 Hz runtime rate based
@@ -233,6 +233,12 @@ ros2 run camrod_bringup field_test_tool.sh profile 300 chromium_only
 ros2 run camrod_bringup field_test_tool.sh launch \
   rviz:=false enable_operator_ui_window:=false
 ros2 run camrod_bringup field_test_tool.sh profile 300 windows_off
+
+# D: explicit WebKit fallback
+ros2 run camrod_bringup field_test_tool.sh launch \
+  rviz:=false enable_operator_ui_window:=true \
+  operator_ui_window_engine:=webkit
+ros2 run camrod_bringup field_test_tool.sh profile 300 webkit_fallback
 ```
 
 Stop the previous bringup completely before starting the next configuration.
@@ -473,8 +479,10 @@ Change only one layer at a time:
 
 - Wrong path shape: check route planner, goal snapper, replan monitor, planner selector.
 - Path is good but robot stops: check inflation grid freshness and cmd_vel gate source.
-- Perception sees object but cost does not: check perception marker/object input age,
-  radius limits, and LiDAR cost-grid subscriptions.
+- Perception sees object but cost does not: first check
+  `enable_lidar_cost_grid`. It is intentionally false by default; when enabled,
+  then check perception marker/object input age, radius limits, component load,
+  and `/sensing/cost_grid/lidar` subscriptions.
 - Radar side mismatch: check radar launch order, TF link, and radar cost-grid inputs.
 - GNSS recovery holds: check `/localization/mode`, GNSS topic freshness, covariance,
   and internet/NTRIP status before changing offsets.
@@ -483,6 +491,9 @@ Change only one layer at a time:
   >= 0.8 Hz, jump <= 1.0 m, and age <= 4.0 s. A live `/fix` alone is not enough.
 - High CPU: take `snapshot` first, then compare after changing component container,
   DDS/QoS, marker rate, or debug image settings.
+- HH_260805 - Keep `enable_dds_shared_memory:=false` for full field bringup on
+  ROS 2 Humble. The opt-in iceoryx profile is limited to bounded bench graphs;
+  full CAMROD startup reproduced static publisher/history-capacity aborts.
 - High CPU with many debug terminals: close duplicate `ros2 topic echo`/`hz`
   processes before evaluating YOLO, cost-grid, or planning rates.
 

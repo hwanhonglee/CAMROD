@@ -1,7 +1,7 @@
 # camrod_sensing
 
-<!-- HH_260804 - Replace the 1,100-line sensor narrative with a sensor matrix,
-active numerical values, evidence labels, and direct config/run references. -->
+<!-- HH_260805 - Document composed sensor transport and keep the LiDAR
+cost-grid optional in launch, graph readiness, and diagnostics. -->
 
 Physical sensor acquisition, preprocessing, disabled-hardware dummy contracts,
 near-field cost grids, and robot-centered cost fusion.
@@ -20,7 +20,7 @@ not physical sensor accuracy or field rate.
 
 | Sensor/source | Processing | Main output / consumer |
 |---|---|---|
-| Vanjee 750C LiDAR | ROI, voxel downsample, DFKI ground segmentation | Filtered cloud and LiDAR cost grid -> perception/control |
+| Vanjee 750C LiDAR | Intra-process ROI, voxel downsample, DFKI ground segmentation | Filtered cloud -> perception; optional LiDAR grid -> control |
 | SEN0592 x7 | Serial polling, fixed-return filter, map projection | Range topics and radar cost grid -> control |
 | Front econ camera | VPI rectification + NvJPEG | Compressed image + CameraInfo -> YOLO/fusion |
 | Rear econ camera | GStreamer/OpenCV raw + monitoring JPEG | Raw image + CameraInfo -> AprilTag parking |
@@ -33,13 +33,32 @@ not physical sensor accuracy or field rate.
 
 | Grid | Geometry | Configured rate | Obstacle radius / role |
 |---|---|---:|---|
-| LiDAR | `180 x 180 @ 0.10 m` | `10 Hz` | `0.20 m` |
+| LiDAR, optional | `180 x 180 @ 0.10 m` | `10 Hz` when enabled | `0.20 m`; production default `OFF` |
 | Radar | `120 x 120 @ 0.10 m` | `10 Hz` | `0.30 m` |
 | Inflation/fusion | `180 x 180 @ 0.10 m` | `6 Hz` | Merges lanelet, LiDAR, radar, and path |
 
 LiDAR and radar costs are clipped to active-route lanelets plus a `0.35 m`
 margin. Missing or stale route-mask data fails open for obstacle pass-through;
 the downstream safety gate still evaluates current source freshness and costs.
+
+`enable_lidar_cost_grid:=false` is the production default. The filtered LiDAR
+cloud and perception remain active, while `/sensing/lidar/lidar_cost_grid` and
+`/sensing/cost_grid/lidar` are removed from graph-readiness and cost-grid
+diagnostics. Setting the flag to `true` loads that component and restores both
+checks; no source code rebuild is required.
+
+## Runtime Transport
+
+| Boundary | Active implementation | Reason |
+|---|---|---|
+| Front camera -> YOLO | Existing camera/YOLO component container, intra-process message ownership | Avoids an extra serialized image copy |
+| LiDAR preprocessor -> ground segmentation | `lidar_processing_container`, intra-process `unique_ptr` publication | Keeps large clouds in one process |
+| Ground segmentation -> optional LiDAR grid | Same container only when `enable_lidar_cost_grid:=true`; DDS transport preserves transient-local output | Humble cannot combine intra-process publication with the grid's latched QoS |
+| Remaining process boundaries | Host RMW by default; CycloneDDS/iceoryx bench opt-in | Full-graph SHM is guarded OFF on Humble due static endpoint/history limits |
+
+The Vanjee vendor driver remains a separate process because it is not a CAMROD
+component. `use_lidar_processing_container:=false` retains standalone
+executables for fault isolation.
 
 ## LiDAR Ground Filter
 
@@ -109,7 +128,7 @@ open.
 | Disabled source | Published placeholder | Diagnostic result |
 |---|---|---|
 | GNSS | `NO_FIX` | `DUMMY DATA / WARN` |
-| LiDAR | Valid empty clouds/grids | `DUMMY DATA / WARN` |
+| LiDAR | Valid empty clouds; optional grid only when enabled | `DUMMY DATA / WARN` for the hardware source |
 | Radar channel | No-target range + channel marker | `DUMMY DATA / WARN` |
 | Camera | 1x1 black image/JPEG + CameraInfo | `DUMMY DATA / WARN` |
 | IMU/Ranger velocity | Stationary typed message | `DUMMY DATA / WARN` |
@@ -123,7 +142,7 @@ sensor publisher already owns the same schemas.
 | Topic | Purpose |
 |---|---|
 | `/sensing/lidar/points_filtered` | Nonground cloud for perception |
-| `/sensing/cost_grid/lidar` | LiDAR obstacle cost |
+| `/sensing/cost_grid/lidar` | Optional LiDAR obstacle cost; absent by default |
 | `/sensing/cost_grid/radar` | Seven-channel near-field cost |
 | `/planning/cost_grid/inflation` | Merged robot-centered cost |
 | `/sensing/gnss/ublox_gps_node/fix` | Absolute GNSS position/status |
@@ -137,6 +156,8 @@ sensor publisher already owns the same schemas.
 ```bash
 ros2 launch camrod_sensing sensing.launch.py
 ros2 launch camrod_sensing lidar.launch.py
+ros2 launch camrod_sensing lidar.launch.py enable_lidar_cost_grid:=true
+ros2 launch camrod_sensing lidar.launch.py use_lidar_processing_container:=false
 ros2 launch camrod_sensing radar.launch.py
 ros2 launch camrod_sensing camera.launch.py
 ros2 launch camrod_sensing gnss.launch.py

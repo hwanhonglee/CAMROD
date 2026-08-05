@@ -13,6 +13,12 @@ SRC_ROOT = Path(__file__).resolve().parents[2]
 RENDERER = (
     SRC_ROOT / "camrod_bringup" / "scripts" / "render_module_readme_assets.py"
 )
+AUTOMATIC_RECOVERY_RENDERER = (
+    SRC_ROOT
+    / "camrod_bringup"
+    / "scripts"
+    / "render_automatic_recovery_results.py"
+)
 LOCALIZATION_EVIDENCE = (
     SRC_ROOT
     / "docs"
@@ -50,6 +56,12 @@ MAP_V14_RECOVERY_ROOT = (
 )
 MAP_V14_RECOVERY_SHA256 = (
     "2f69deed24ae47e6762a7653e29e5574438a1ec4b9144b8a3b0a01165f404dbe"
+)
+MAP_V15_RECOVERY_ROOT = (
+    SRC_ROOT / "docs" / "evidence" / "v2.1.4" / "map-v15-boundary-recovery"
+)
+MAP_V15_RECOVERY_SHA256 = (
+    "e0b50f09c61fbd5429e528c2b3d8d2799a0dab9f83bb79b06dd0da0403efe36d"
 )
 RUNTIME_CAPTURE_ASSETS = (
     "bringup/runtime-full-stack-b6-20260804.png",
@@ -102,6 +114,9 @@ MODULE_OWNED_RELEASE_ASSETS = (
     "control/map-v14-boundary-recovery-contact-sheet.png",
     "control/map-v14-boundary-recovery-policy.png",
     "control/map-v14-boundary-recovery.gif",
+    "control/map-v15-boundary-recovery-contact-sheet.png",
+    "control/map-v15-boundary-recovery-policy.png",
+    "control/map-v15-boundary-recovery.gif",
     "control/pre-owner-manual-no-yaw.gif",
     "control/pre-owner-manual-yaw-aware.gif",
     "control/pre-owner-robot-center-contact-sheet.png",
@@ -319,6 +334,42 @@ def test_release_visuals_are_decodable_and_owned_by_modules() -> None:
     assert not (SRC_ROOT / "docs" / "assets" / "v2.1.3").exists()
 
 
+def test_map_v15_recovery_visuals_are_reproducible(tmp_path: Path) -> None:
+    """The staged current-map PNG/GIF set must regenerate from committed JSON."""
+    subprocess.run(
+        [
+            sys.executable,
+            str(AUTOMATIC_RECOVERY_RENDERER),
+            "--map",
+            str(SRC_ROOT / "lanelet2_maps.osm"),
+            "--route",
+            str(MAP_V15_RECOVERY_ROOT / "route-retry.json"),
+            "--reverse",
+            str(MAP_V15_RECOVERY_ROOT / "static-reverse-retry.json"),
+            "--crab",
+            str(MAP_V15_RECOVERY_ROOT / "one-sided-crab.json"),
+            "--artifact-prefix",
+            "map-v15-boundary-recovery",
+            "--output-dir",
+            str(tmp_path),
+        ],
+        cwd=SRC_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    for filename in (
+        "map-v15-boundary-recovery-contact-sheet.png",
+        "map-v15-boundary-recovery-policy.png",
+        "map-v15-boundary-recovery.gif",
+    ):
+        with Image.open(tmp_path / filename) as visual:
+            assert visual.width >= 500
+            assert visual.height >= 300
+            assert visual.format == ("GIF" if filename.endswith(".gif") else "PNG")
+
+
 def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
     """Every CAMROD README must expose its actual runtime surface."""
     asset_root = SRC_ROOT / "docs" / "assets" / "module-guides"
@@ -339,8 +390,8 @@ def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
             assert (asset_root / relative_path).resolve() in linked_assets
 
     all_visuals = tuple(asset_root.rglob("*"))
-    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 42
-    assert sum(path.suffix.lower() == ".gif" for path in all_visuals) == 7
+    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 44
+    assert sum(path.suffix.lower() == ".gif" for path in all_visuals) == 8
 
 
 def test_map_v14_recovery_evidence_is_historical_and_fails_closed() -> None:
@@ -377,6 +428,43 @@ def test_map_v14_recovery_evidence_is_historical_and_fails_closed() -> None:
     assert runs["crab"]["automatic_recovery_motion"] == "CRAB_LEFT"
     assert runs["crab"]["rapid_recontact_latched"] is False
     assert runs["crab"]["maximum_recovery_abs_linear_y_mps"] <= 0.05
+
+
+def test_map_v15_recovery_evidence_exercises_staged_yaw_and_crab() -> None:
+    """Current-map visuals must be backed by the adaptive runtime owner."""
+    runs = {
+        name: json.loads((MAP_V15_RECOVERY_ROOT / filename).read_text())
+        for name, filename in {
+            "route": "route-retry.json",
+            "reverse": "static-reverse-retry.json",
+            "crab": "one-sided-crab.json",
+        }.items()
+    }
+
+    for run in runs.values():
+        assert run["map"]["map_version"] == 15
+        assert run["map"]["sha256"] == MAP_V15_RECOVERY_SHA256
+        assert run["mission_completed"] is False
+        assert run["final_output"] == {
+            "linear_x": 0.0,
+            "linear_y": 0.0,
+            "angular_z": 0.0,
+        }
+        assert run["maximum_recovery_output_mps"] <= 0.05
+        assert run["maximum_recovery_abs_angular_z_radps"] <= 0.05
+
+    assert runs["route"]["automatic_recovery_motion"] == "REVERSE_YAW_RIGHT"
+    assert runs["route"]["rapid_recontact_latched"] is True
+    assert 0.0 < runs["route"]["rapid_recontact_after_release_s"] <= 5.0
+    assert runs["route"]["recovery_displacement_m"] <= 0.40
+
+    assert runs["reverse"]["automatic_recovery_motion"] == "REVERSE_YAW_RIGHT"
+    assert runs["reverse"]["rapid_recontact_latched"] is True
+    assert runs["reverse"]["recovery_displacement_m"] <= 0.40
+
+    assert runs["crab"]["automatic_recovery_motion"] == "CRAB_LEFT"
+    assert runs["crab"]["maximum_recovery_abs_linear_y_mps"] <= 0.05
+    assert runs["crab"]["rapid_recontact_latched"] is False
 
 
 def test_runtime_capture_metadata_is_complete_and_not_field_evidence() -> None:

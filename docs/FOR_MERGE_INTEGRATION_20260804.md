@@ -4,14 +4,13 @@
 
 ## 2026-08-05 Operational Follow-up
 
-The imported browser selector is retained, but robot deployment now selects
-`operator_ui_window_engine=webkit` by default. WebKit waits for backend
-readiness before its first load, caches the static bundle, enables smooth touch
-scrolling, requests always-on hardware acceleration, and disables only unused
-WebGL. Chromium, Chrome, and Brave support remains available only through
-`chromium` or `auto` mode. The older CPU comparison below is historical and has
-not been repeated on Jetson; acceleration policy alone is not a Jetson GPU-use
-measurement.
+The imported browser selector is retained. The initial integration checkpoint
+selected `operator_ui_window_engine=webkit`, but the final v2.1.4 runtime now
+selects `chromium` for touch/IME compatibility and keeps WebKit as an explicit
+fallback. Backend readiness and static-bundle caching apply to both paths;
+WebKit keeps smooth touch scrolling and its acceleration request. The older CPU
+comparison below is historical and has not been repeated on Jetson; browser
+flags alone are not a Jetson GPU-use measurement.
 
 The active user-authored map is now revision 15. All map-v14 JSON, PNG, GIF, and
 timing results in this document remain immutable historical evidence and are no

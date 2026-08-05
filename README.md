@@ -1,7 +1,7 @@
 # CAMROD
 
-<!-- HH_260804 - Pair the concise source guide with real sim runtime captures
-and keep the route-retry containment separate from physical acceptance. -->
+<!-- HH_260805 - Synchronize the optional LiDAR grid, composed transport, and
+staged boundary-recovery contracts without upgrading historical evidence. -->
 
 ROS 2 Humble autonomous delivery robot stack for a Dual-Ackermann, crab, and
 zero-turn Ranger platform. Current runtime baseline: **`v2.1.4`**.
@@ -37,11 +37,15 @@ paths. This is not a generated diagram or a real-robot field claim.
 | Planner load set | `LaneletRoute + SmacLattice` | Fallback constructs only for a width-gated obstacle replan |
 | Controller load set | `RPP + RotationShim` | Mission tracking plus manual clicked-yaw handling |
 | Obstacle fallback hold | `20.0 s` | Safety stop is immediate; only planner preemption waits |
-| Active Lanelet map | `map_version=15` | User-authored synchronized OSM pair |
+| Active Lanelet map | `map_version=15`, park `v1.0.5` | User-authored active OSM and current named copy are byte-identical |
 | RPP preview | `1.1 m` | Current stable minimum lookahead |
-| Recovery limit | `0.10 m/s`, `0.40 m`, `10 s` | Raw speed, travel, and duration; contact yaw command is zero |
+| Recovery limit | `0.10 m/s`, `0.10 rad/s`, `12 deg`, `0.40 m`, `10 s` | Projected staged crab/reverse/reverse-yaw envelope |
 | Rapid retry guard | `1 release`, `5 s` | A same-route recontact latches zero output until stop/replan |
 | Parking methods | `reverse`, `apriltag` | Exactly one final parking controller is selected |
+| LiDAR cost grid | default `OFF` | Optional component and its diagnostics activate together only when requested |
+| Operator renderer | Chromium | GPU-enabled kiosk default; WebKit remains an explicit fallback |
+| ROS transport | component intra-process; CycloneDDS/iceoryx opt-in | Hot-path ownership moves inside containers; global SHM stays OFF on Humble because its static endpoint limits abort the full graph |
+| System checker topology | `24` standalone checkers | Component libraries remain bench-only after intermittent Humble full-stack shutdown crashes |
 
 Configured values are not performance measurements. Package tables below mark
 runtime evidence separately.
@@ -50,11 +54,11 @@ runtime evidence separately.
 
 | Check | Result | Scope |
 |---|---|---|
-| Release build/tests | **PASS** | 9 selected ROS packages: 380 xUnit cases, 0 errors/failures; 27 direct UI pytest cases and the React production build passed |
-| Full stack startup/shutdown | **PASS** | 87 ROS nodes reached `[SYSTEM] OK`; controller, UIs, and all checker containers exited cleanly |
+| Release build/tests | **PASS** | Baseline 9-package run: 380 xUnit cases; final changed-scope rerun: 328/328 xUnit plus 27/27 UI pytest; React production build passed |
+| Full stack startup/shutdown | **PASS** | 79 steady-state ROS nodes reached `[SYSTEM] OK`; all 24 standalone checkers, controller, and both UI servers exited cleanly |
 | Localization pose chain | **PASS** | 10 Hz inputs produced 20 Hz selected pose; header-age p95 `1.83 ms` |
 | Reference-frame A/B | **PASS for compared segment** | Cross-track RMS `0.0588 -> 0.0549 m`; yaw RMS `2.901 -> 2.713 deg` |
-| Automatic boundary recovery | **SIM-PASS containment, historical** | One release; map v14 recontacted in 0.276 s (v13: 0.267/0.372 s), then latched with final command zero |
+| Automatic boundary recovery | **CURRENT SIM PASS, FAIL CLOSED** | Map v15 selected `REVERSE_YAW_RIGHT` at `0.05 rad/s` and `CRAB_LEFT`; rapid route recontact latched with final zero output |
 | Guest/Robot UI contract | **PASS** | Dispatch, lifecycle, return, safety overlay, and operator stop observed |
 | Physical radar disabled | **FIELD-PASS** | `600.063 s`; 5,976 clear grids; zero active/high-cost/stop evidence |
 | Physical front camera/YOLO lifetime | **FIELD-PASS** | `300 s`; 2,750/2,750 JPEG decode; `9.167 Hz`; zero crash/restart |
@@ -65,6 +69,8 @@ runtime evidence separately.
 ![Measured full-bringup result](docs/assets/module-guides/bringup/simulation-evidence-20260804.png)
 
 ![Physical stationary field report](docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
+
+![Map v15 staged boundary recovery](docs/assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png)
 
 ## Packages
 

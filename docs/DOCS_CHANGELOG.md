@@ -1,5 +1,41 @@
 # Documentation Changelog
 
+<!-- HH_260805 - Record the final transport, optional-grid, and adaptive
+boundary-recovery delta before recreating the v2.1.4 tag. -->
+## [v2.1.4-transport-and-recovery-final] - 2026-08-05 (HH_260805)
+
+### Changed
+
+| Area | Final behavior and basis |
+|---|---|
+| Operator renderer | Changed the production local-window default from WebKit to Chromium; retained explicit WebKit and Chromium-first `auto` fallback modes |
+| ROS intra-process | Composed LiDAR preprocessing and ground segmentation, retained the camera/YOLO container, and moved large publisher ownership where supported |
+| DDS shared memory | Added a bringup-owned RouDi process and central CycloneDDS/iceoryx profile, then guarded it default-OFF after full-graph Humble port/history exhaustion |
+| Optional LiDAR rasterizer | Set `enable_lidar_cost_grid=false` by default; the component, graph node/topic requirements, and cost-grid checker entry now activate together |
+| Boundary recovery | Replaced the permanently latched first direction with projected staged reverse, reverse-yaw, and crab transitions; retained full-footprint, freshness, dynamic-obstacle, distance, time, yaw, and retry-latch limits |
+| Active map copy | Validated the user-authored active map against `lanelet2_maps_(copy_park_v1.0.5).osm`; preserved `v1.0.4` as historical input |
+| System checker runtime | Retained all component registrations for bench use but restored 24 standalone checkers as the production default after intermittent full-stack Humble component exits |
+| Package guides | Updated bringup, sensing, system, UI, control, root, release, TODO/DONE, and generated architecture assets; historical map-v14 and current map-v15 evidence are separated |
+
+### Validation
+
+- All modified C++ packages compiled on the amd64 simulation workstation.
+- Runtime contract tests cover Chromium defaults, component/intra-process
+  registration, shared-memory profiles, and LiDAR grid OFF/ON diagnostics.
+- RouDi loaded the checked-in pool and two isolated ROS processes exchanged a
+  message. Full bringup reproduced iceoryx endpoint/history exhaustion, so the
+  runtime contract now requires explicit opt-in.
+- Current staged recovery is policy/geometry unit tested and dynamically rerun
+  on map v15. Reverse-yaw, crab, rapid-recontact latch, and final zero output
+  passed; route completion and real-robot response remain field-pending.
+- The final changed-package rerun emitted 328 fresh CMake/xUnit cases with zero
+  errors, failures, or skips; direct UI pytest passed 27/27 and the React
+  production build synchronized successfully. Isolated LiDAR OFF/ON launches
+  confirmed no rasterizer process when disabled and one transient-local grid
+  publisher when enabled.
+
+---
+
 <!-- HH_260805 - Close the v2.1.4 source, configuration, visual, and field-limit
 record without converting workstation checks into Jetson acceptance. -->
 ## [v2.1.4-release-sync] - 2026-08-05 (HH_260805)
@@ -68,7 +104,7 @@ fallback, and diagnostic-checker composition without claiming Jetson results. --
 | Robot operator window | Made WebKit the explicit deployment default; added backend-readiness probing before first load and document/page caching, enabled smooth touch scrolling, requested always-on acceleration, and disabled only unused WebGL; retained explicit Chromium and Chromium-first `auto` modes |
 | Nav2 planner loading | Production now constructs only `LaneletRoute` and reachable fallback `SmacLattice`; `Smac2D`, `NavFn`, `ThetaStar`, and `SmacHybrid` implementations remain configured and can be loaded through the opt-in `all.yaml` profile |
 | Dynamic obstacle fallback | Kept immediate obstacle safety stopping and enabled planner preemption only after `20.0 s` persistent blockage when a fresh lanelet grid proves at least `2.50 m` contiguous mapped width and `0.60 m` clearance on each side; missing, stale, outside-map, and narrow cases retain LaneletRoute and fail closed |
-| System diagnostics | Composed 24 low-rate checkers into hardware/sensing `11`, localization `6`, and autonomy `7` serialized containers; retained all standalone checker executables and isolated aggregate/status tools |
+| System diagnostics | Added component libraries for the 24 low-rate checkers and retained standalone executables; subsequent full-stack stress testing superseded this initial container-default plan |
 | Map contracts | Updated active-map validation and package references to the user-authored synchronized `map_version=15`; preserved map-v14 runtime evidence against its own recorded SHA instead of comparing it to the current map |
 | Package and bringup docs | Synchronized the active WebKit, planner-profile, obstacle-width, system-container, and map-revision behavior across module READMEs and central defaults |
 
@@ -78,11 +114,10 @@ fallback, and diagnostic-checker composition without claiming Jetson results. --
   down cleanly on the amd64 workstation.
 - An isolated Nav2 launch exposed exactly `LaneletRoute` and `SmacLattice` in
   `planner_server.planner_plugins`; all launch processes shut down cleanly.
-- Five isolated system launch cycles loaded all 24 components each time and
-  produced 15 clean category-container exits. The final 87-node full-stack run
-  reached `[SYSTEM] OK` and cleanly stopped all three containers, both UI
-  servers, and the controller server. The observed `~82 MiB` process sample is
-  not a Jetson benchmark.
+- Isolated system component cycles loaded all 24 plugins and could stop cleanly.
+  Later repeated full-stack shutdowns reproduced intermittent component exits,
+  so the final production default was restored to standalone checkers; the
+  component topology and `~82 MiB` sample remain bench-only observations.
 - Synthetic wide/narrow grid tests, planner-profile synchronization tests,
   active map-v15 structure tests, and historical map-v14 evidence checks pass.
 

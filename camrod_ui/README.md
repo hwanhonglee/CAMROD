@@ -1,7 +1,7 @@
 # camrod_ui
 
-<!-- HH_260804 - Record the selectively merged kiosk, transport, and arrival
-fixes while retaining the current mission/stop behavior. -->
+<!-- HH_260805 - Make the documented renderer match the Chromium production
+default while retaining the tested WebKit maintenance path. -->
 
 Robot operator UI, Guest campsite UI, HTTP/WebSocket backends, ROS mission
 bridge, diagnostics display, and managed local kiosk.
@@ -29,7 +29,7 @@ bridge, diagnostics display, and managed local kiosk.
 | Hard stop authority | control gate at `<= 20%`, not the UI |
 | Guest disconnect lock grace | `60 s` |
 | Guest heartbeat / stale close | `10 s` / `45 s` |
-| Local operator window | fullscreen WebKit kiosk by default; Chromium/auto optional |
+| Local operator window | fullscreen Chromium kiosk by default; WebKit explicit fallback |
 
 ## Destination Dispatch
 
@@ -84,12 +84,13 @@ running ROS backend, not generated UI mockups.
 | Robot site verification | `B6` virtual-key input at 1920x1080 and lowercase physical-key normalization at 1280x800; both produced the same destination frame |
 | Robot UI negative paths | Wrong `B5` sends nothing, correction sends `B6`, cancel sends nothing, Guest return exits idle, and diagnostic keypad login remains valid |
 | Current production bundle | At 1280x800, destination screen appeared in 1.1 ms and the 40-key verification keypad in 17.6 ms; queued same-frame `B`+`6` remained `B6`, cancel sent zero frames, and confirmation sent one frame |
-| Current WebKit startup smoke | WebKitGTK 2.50.4 waited for backend readiness, loaded on the first render attempt, and shut down cleanly |
-| Historical renderer sample | Before static status cues and the current startup path, forced WebKit was near 97% of one workstation CPU; the later Chromium sample was 0.5% combined |
+| WebKit fallback smoke | WebKitGTK 2.50.4 waited for backend readiness, loaded on the first render attempt, and shut down cleanly |
+| Historical renderer sample | Before static status cues, forced WebKit was near 97% of one workstation CPU; a later Chromium sample was 0.5% combined |
+| Current Chromium launch contract | Private kiosk profile, GPU rasterization, zero-copy compositor, backend readiness wait, and process-group shutdown are unit-tested |
 
 This validates browser/backend/ROS integration. It is not a physical mission or
-collision-safety test. The WebKit smoke check proves startup behavior, not
-Jetson CPU usage; a production Jetson profile is still required.
+collision-safety test. Neither historical renderer sample proves current
+Jetson CPU/GPU use; a production Jetson profile is still required.
 
 ## Key ROS Interfaces
 
@@ -143,17 +144,16 @@ curl http://127.0.0.1:8010/ui/state
 Regenerate that tree before colcon whenever frontend sources or public assets
 change. Set `enable_operator_ui_window:=false` on headless hosts, or use
 `operator_ui_window_fullscreen:=false` for a resizable maintenance window.
-WebKit waits for the backend on a background readiness probe before its first
-page load, retains the static React cache, uses always-on GPU compositing and
-smooth touch scrolling, and disables only the unused WebGL context. This avoids
-the repeated error-page reload path without changing the frontend or ROS API.
-The policy requests acceleration from WebKitGTK; Jetson GPU utilization and
-frame pacing remain a field measurement rather than a software-only claim.
+Chromium is selected explicitly by default and uses an isolated kiosk profile,
+GPU rasterization, zero-copy compositor, and disabled background throttling.
+The launcher waits for the backend before opening the first page.
 
-Use `operator_ui_window_engine:=chromium` for an explicit Chromium-family kiosk
-or `operator_ui_window_engine:=auto` to prefer Chromium and fall back to WebKit.
-The optional launcher searches Chromium, Chrome, and Brave-compatible names;
-`CAMROD_UI_BROWSER` overrides that executable selection only.
+Use `operator_ui_window_engine:=webkit` for the GTK/WebKit fallback. WebKit
+retains readiness probing, static React caching, smooth touch scrolling, and
+its acceleration request. `auto` tries Chromium first and then WebKit; the
+launcher searches Chromium, Chrome, and Brave-compatible names, while
+`CAMROD_UI_BROWSER` overrides only that executable selection. Actual Jetson
+renderer utilization and frame pacing remain field measurements.
 
 ## Network Boundary
 
