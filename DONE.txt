@@ -17,8 +17,8 @@ CAMROD 구현·검증 완료 기록
 - v2.1.2 패키징 시점에는 변경 후 전체 실차 주행 FIELD-PASS가 없었다.
 - v2.1.3의 center-frame, 자동 recovery, rapid-recontact latch, UI stop은
   CODE/SIM까지 완료됐으며 변경 후 전체 실차 주행 FIELD-PASS는 아직 없다.
-- v2.1.4의 map v15 동기화, 5 cm 사방 planning boundary, WebKit 운영 창,
-  planner fallback 및 system composition도 CODE/SIM 기준이며 Jetson/실차
+- v2.1.4의 map v15 동기화, 5 cm 사방 planning boundary, Chromium 운영 창,
+  transport, planner fallback 및 optional component 구현도 CODE/SIM 기준이며 Jetson/실차
   FIELD-PASS로 해석하지 않는다.
 
 릴리스 기준점
@@ -41,6 +41,28 @@ CAMROD 구현·검증 완료 기록
   - b0e10814 feat(platform): publish steering transition evidence
   - 1710aab7 test(control): verify lanelet body and margin stops
   - aa3068e0 tune(planning): set low-speed RPP preview to 1.1m
+
+0. v2.1.4 최종 optional runtime·경계 복구 확인 [DONE-CODE, DONE-SIM]
+- HH_260805 - LiDAR cost-grid는 운영 기본 `false`다. 실제 full sim에서
+  `/sensing/lidar/lidar_cost_grid` 노드는 없고 `/sensing/cost_grid/lidar`
+  publisher는 0개였으며, cost checker는 radar와 inflation만 감시했다.
+  system graph에서 해당 optional node/topic만 제외한 상태로
+  `/system/status.system_ok=true`를 확인했다.
+- 같은 launch를 `enable_lidar_cost_grid:=true`로 실행하면
+  `LidarCostGridNode` 하나가 `lidar_processing_container`에 적재되고
+  transient-local publisher 1개가 생겼다. 즉 코드와 component는 유지하되
+  사용하지 않을 때 진단 ERROR를 만들지 않는다.
+- 시스템 checker component 등록은 24개 모두 유지했지만, 반복 full-stack
+  종료에서 localization과 autonomy component process의 간헐적 `-11`과
+  isolated-container 종료 hang을 재현했다. 운영 기본은 검증된 24개
+  standalone checker이고 `use_checker_components:=true`는 bench 전용이다.
+- map v15 동적 recovery에서 route/static case는 `REVERSE_YAW_RIGHT`, 최대
+  `0.05 rad/s`, 이동 `0.0582/0.0405 m`였고 재접촉 `0.335/0.400 s` 뒤
+  latch됐다. one-side case는 `CRAB_LEFT`로 `0.3378 m` 이동했고 모든 최종
+  command는 zero였다. 이는 fail-closed sim 증거이며 실차 완료가 아니다.
+- 최종 기본 full sim은 steady-state 79 ROS node에서 `[SYSTEM] OK`에 도달했고 Robot/Guest
+  HTTP 200 응답은 약 7/6 ms였다. Ctrl+C에서 24 checker와 UI/Nav2/control
+  process가 모두 clean exit했다.
 
 1. 릴리스 빌드·설정·기동 검증 [DONE-CODE, DONE-SIM]
 - 영향 패키지 6개(camrod_localization, camrod_planning, camrod_system,
@@ -441,21 +463,19 @@ CAMROD 구현·검증 완료 기록
 - 정상 운영 controller는 mission `RPP`와 manual clicked-yaw용
   `RotationShim(RPP)`만 생성한다. `DWB`, `MPPI`, `Graceful` 구현과 parameter는
   삭제하지 않고 `nav2_controller_profiles/all.yaml` opt-in으로 보존했다.
-- 24개 system checker를 hardware/sensing, localization, autonomy 세 component
-  container로 묶었다. 각 standalone executable은 유지해 현장 격리 진단이
-  가능하고, aggregate/status process는 별도 failure boundary로 남겼다.
-  multithreaded container 종료 중 Cyclone DDS unload 경합이 autonomy 또는
-  localization process에서 임의 `-11`을 만들던 core stack을 확인해 category별
-  single serialized executor로 바꿨다. isolated 5회에서 120 component load와
-  15 clean container exit, 87-node full sim에서 세 container clean exit를 확인했다.
+- 24개 system checker의 component 등록과 standalone executable을 모두
+  구현했다. 초기 isolated 시험은 clean했지만 반복 full graph 종료에서
+  localization과 autonomy component process의 간헐적 `-11`, isolated
+  container 종료 hang이 추가 재현됐다. 최종 운영 기본은 24 standalone이며
+  component mode는 bench opt-in으로만 보존했다.
 - EngageAwareProgressChecker가 parent lifecycle node를 소유하지 않게 하고
   parameter/subscription callback과 progress plugin을 cleanup에서 해제했다.
   전체 Ctrl+C에서 기존 `controller_server -11`이 clean exit로 바뀌었다.
 - Robot UI의 B-site 확인 keypad, Guest dispatch/return, stop/cancel 전파와
-  WebSocket 직렬화를 통합했다. 기본 로컬 창은 WebKit으로 고정하고 backend
-  readiness, static cache, smooth touch scrolling, 항상-on GPU compositing
-  policy를 적용했다. 미사용 WebGL만 끄며 Chromium/auto는 명시적 진단
-  선택으로 유지한다. 실제 Jetson GPU/CPU/FPS 결과는 TODOLIST 8에 남겼다.
+  WebSocket 직렬화를 통합했다. 이 중간 checkpoint에서는 WebKit을 기본으로
+  검증했으나 아래 21번 최종 delta에서 Chromium 기본으로 대체했다. backend
+  readiness, static cache, smooth touch scrolling 및 WebKit fallback은 유지한다.
+  실제 Jetson GPU/CPU/FPS 결과는 TODOLIST 8에 남겼다.
 - Robot/Guest uvicorn은 ROS entity 파괴 전에 종료 요청과 thread join을
   수행한다. Ctrl+C에서 launch의 정상 child shutdown과 `pkill` 후처리가
   경쟁하지 않도록 `clean_on_shutdown` 기본값은 false로 두고, 다음 실행 전
@@ -474,6 +494,40 @@ CAMROD 구현·검증 완료 기록
 - 상세 변경, exact 값, 테스트 범위와 남은 현장 판정은
   `docs/V2_1_4_RELEASE_NOTES.md`에 기록했다.
 
+21. HH_260805: transport, optional LiDAR grid, 단계형 경계 회복
+    [DONE-CODE, DONE-SIM-SMOKE, FIELD-PENDING]
+- 운영 UI 기본 엔진을 Chromium으로 변경하고 WebKit/auto를 fallback으로
+  유지했다. Chromium은 isolated profile, GPU rasterization, zero-copy
+  compositor, background throttling 해제 플래그를 사용한다.
+- camera/YOLO 기존 container에 더해 LiDAR preprocessor와 ground
+  segmentation을 intra-process component container로 구성했다. LiDAR
+  cost-grid는 `enable_lidar_cost_grid=false`가 기본이며 true일 때만 같은
+  container에 load된다. cost-grid의 transient-local output은 Humble
+  제약 때문에 intra-process가 아니라 DDS transport를 유지한다.
+- LiDAR grid가 off이면 `/sensing/lidar/lidar_cost_grid`와
+  `/sensing/cost_grid/lidar`만 system graph/checker 요구에서 빠진다. LiDAR
+  hardware와 raw/filtered cloud 진단은 유지된다.
+- `enable_dds_shared_memory=true`이면 CycloneDDS/iceoryx RouDi를 먼저
+  시작한다. 212.6 MB pool과 별도 process 2개 교환은 통과했지만, full
+  graph는 Humble iceoryx 2.0.5 port/history 한도를 넘어서 node abort가
+  재현됐다. 따라서 운영 기본값은 false이고 bench opt-in만 유지한다.
+- 경계 회복은 최초 reverse를 끝까지 고정하지 않고 매 update마다 crab
+  좌/우, reverse, reverse-yaw 좌/우를 projected full-footprint로 검사한다.
+  reverse 후 유일한 안전 crab/yaw 또는 양쪽 yaw가 안전할 때 원 RPP turn
+  sign으로 전환한다. 0.10 m/s, 0.10 rad/s, 12 deg, 0.40 m, 10 s 및 1회
+  release/5초 recontact latch 제한은 모든 단계에 공통이다.
+- 해당 코드는 amd64에서 build 및 정책/투영/launch 계약 시험을 통과했다.
+  map v15 동적 시험은 reverse-yaw/crab/latch와 final zero를 확인했으나
+  route 완주는 fail-closed였다. Jetson 사용량과 실제 wheel crab/yaw는
+  TODOLIST 8/11/12의 FIELD-PASS로 남아 있다.
+- 최종 재빌드는 변경된 CAMROD 5개 package와 별도 external base의
+  `ground_segmentation_ros2`를 통과했다. fresh xUnit은 control 60, sensing 97,
+  system 5, bringup 166으로 합계 328건 모두 통과했고, UI 직접 pytest 27건과
+  React production build도 통과했다. LiDAR OFF launch는 process 없이 정상
+  종료했고, ON launch는 `/lidar/lidar_cost_grid` component 1개와
+  `/sensing/cost_grid/lidar` transient-local publisher 1개만 생성한 뒤 clean
+  exit했다.
+
 실차 FIELD-PASS
 - TODO 1 radar OFF dummy/cost barrier:
   2026-07-31, 600.063초, 7채널 exact dummy, evidence active 0,
@@ -485,8 +539,10 @@ CAMROD 구현·검증 완료 기록
   log:
   `/home/nvidia/camrod_field_logs/20260731_140639/camera_yolo_300s_retry.log`
 - 시험 당시 HEAD는 `09a7e1ca` 기반 dirty working tree였다.
-- v2.1.4 완료 이력은 runtime/config `7d22eb944`, regression tests
-  `1b6ee1603`, release docs/assets `47323dc58` 순서로 분리했다. 이 세 commit과
+- v2.1.4 초기 이력은 runtime/config `7d22eb944`, regression tests
+  `1b6ee1603`, release docs/assets `47323dc58` 순서로 분리했다. 최종 delta는
+  user map v15 `dd4658b52`, staged recovery `b91e7818e`, optional runtime
+  `337d2706a`, map-v15 evidence/docs `49a8a96bd` 순서다. 이 일곱 commit과
   이전 미반영 v2.1.3 이력은 최종 `develop` 및 annotated `v2.1.4`에 포함한다.
 
 상세 근거 문서
