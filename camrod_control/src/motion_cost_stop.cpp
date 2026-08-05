@@ -270,6 +270,12 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
   if (translation_norm <= std::max(0.0, config_.min_translation_mps)) {
     return {true, false, true, false, "route_recovery_translation_required"};
   }
+  // HH_260805 - Route recovery may add only a small reverse-yaw correction.
+  // Larger angular commands remain outside this bounded safety exception.
+  constexpr double kMaximumRecoveryAngularRateRadps = 0.15;
+  if (std::abs(command.angular.z) > kMaximumRecoveryAngularRateRadps) {
+    return {true, false, true, false, "route_recovery_angular_rate_exceeded"};
+  }
   if (!pose_.has_value()) {
     return {true, false, true, true, "route_recovery_pose_missing"};
   }
@@ -306,18 +312,33 @@ MotionCostStopDecision MotionCostStop::evaluateRouteRecoveryCommand(
     }
   }
 
-  // Project only a short translation in the commanded body-frame direction.
+  // Project a short body-frame twist, including the bounded reverse-yaw arc.
   // The current footprint may already touch cost 100, but the projected full
   // footprint must be clear; a command parallel to or deeper into the boundary
   // therefore remains blocked.
   const PlanarPose current_pose = *pose_;
   const double distance = std::max(0.05, probe_distance_m);
-  const double body_x = command.linear.x / translation_norm;
-  const double body_y = command.linear.y / translation_norm;
+  const double duration_s = distance / translation_norm;
+  const double yaw_delta = command.angular.z * duration_s;
+  double body_x = distance * command.linear.x / translation_norm;
+  double body_y = distance * command.linear.y / translation_norm;
+  if (std::abs(command.angular.z) > 1.0e-6) {
+    // Exact planar constant-twist integration prevents a yawed corner from
+    // being evaluated as if the robot had translated without rotating.
+    body_x =
+      (command.linear.x * std::sin(yaw_delta) +
+      command.linear.y * (std::cos(yaw_delta) - 1.0)) /
+      command.angular.z;
+    body_y =
+      (command.linear.x * (1.0 - std::cos(yaw_delta)) +
+      command.linear.y * std::sin(yaw_delta)) /
+      command.angular.z;
+  }
   const double cosine = std::cos(current_pose.yaw);
   const double sine = std::sin(current_pose.yaw);
-  pose_->x += distance * (cosine * body_x - sine * body_y);
-  pose_->y += distance * (sine * body_x + cosine * body_y);
+  pose_->x += cosine * body_x - sine * body_y;
+  pose_->y += sine * body_x + cosine * body_y;
+  pose_->yaw += yaw_delta;
   const auto projected_lanelet_decision = evaluateLanelet(command, now_sec, false);
   *pose_ = current_pose;
   if (projected_lanelet_decision.blocked) {

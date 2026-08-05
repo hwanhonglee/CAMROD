@@ -176,11 +176,12 @@
     # =========================================================================
     # 2. BOUNDED AUTOMATIC ESCAPE
     # =========================================================================
-    # HH_260803 / TODOLIST 12 - The safety gate has already checked the 0.25 m
-    # projected full footprint and dynamic sources. This owner adds execution
-    # limits and never generates angular.z while a boundary is in contact.
+    # HH_260805 / TODOLIST 12 - The safety gate checks every 0.25 m projected
+    # full-footprint crab/reverse/reverse-yaw stage and all dynamic sources.
     enabled: true
     maximum_speed_mps: 0.10
+    maximum_angular_speed_radps: 0.10
+    maximum_yaw_change_deg: 12.0
     maximum_distance_m: 0.40
     # HH_260803 - The safety gate halves raw recovery speed to 0.05 m/s;
     # allow enough time to reach the independent 0.40 m displacement limit.

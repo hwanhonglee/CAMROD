@@ -511,11 +511,20 @@ private:
       "/control/route_safety_recovery/candidate");
     route_safety_candidate_speed_mps_ = declare_parameter<double>(
       "route_safety_auto_recovery_speed_mps", 0.10);
+    route_safety_candidate_yaw_rate_radps_ = declare_parameter<double>(
+      "route_safety_auto_recovery_yaw_rate_radps", 0.10);
     if (!std::isfinite(route_safety_candidate_speed_mps_) ||
       route_safety_candidate_speed_mps_ < 0.02 || route_safety_candidate_speed_mps_ > 0.10)
     {
       throw std::runtime_error(
               "route_safety_auto_recovery_speed_mps must be in [0.02, 0.10]");
+    }
+    if (!std::isfinite(route_safety_candidate_yaw_rate_radps_) ||
+      route_safety_candidate_yaw_rate_radps_ < 0.02 ||
+      route_safety_candidate_yaw_rate_radps_ > 0.15)
+    {
+      throw std::runtime_error(
+              "route_safety_auto_recovery_yaw_rate_radps must be in [0.02, 0.15]");
     }
     route_safety_recovery_config_.minimum_translation_mps =
       motion_cost_stop_config_.min_translation_mps;
@@ -1138,6 +1147,14 @@ private:
       const auto reverse_command = routeRecoveryDirection(
         trigger, RouteRecoveryCandidateKind::kReverse,
         route_safety_candidate_speed_mps_, motion_cost_stop_config_.min_translation_mps);
+      const auto reverse_yaw_left_command = routeRecoveryDirection(
+        trigger, RouteRecoveryCandidateKind::kReverseYawLeft,
+        route_safety_candidate_speed_mps_, motion_cost_stop_config_.min_translation_mps,
+        route_safety_candidate_yaw_rate_radps_);
+      const auto reverse_yaw_right_command = routeRecoveryDirection(
+        trigger, RouteRecoveryCandidateKind::kReverseYawRight,
+        route_safety_candidate_speed_mps_, motion_cost_stop_config_.min_translation_mps,
+        route_safety_candidate_yaw_rate_radps_);
       const auto evaluate = [this, now_sec](const avg_msgs::msg::AvgTwist & command) {
           return motion_cost_stop_.evaluateRouteRecoveryCommand(
             command, now_sec, route_safety_recovery_.oppositeRecoveryProbeDistance(),
@@ -1146,20 +1163,23 @@ private:
       const auto left_decision = evaluate(left_command);
       const auto right_decision = evaluate(right_command);
       const auto reverse_decision = evaluate(reverse_command);
-      selected = continueRouteRecoveryCandidate(
+      const auto reverse_yaw_left_decision = evaluate(reverse_yaw_left_command);
+      const auto reverse_yaw_right_decision = evaluate(reverse_yaw_right_command);
+      selected = continueAdaptiveRouteRecoveryCandidate(
         trigger,
         latched_route_recovery_candidate_,
         route_safety_candidate_speed_mps_,
-        left_decision,
-        right_decision,
-        reverse_decision,
+        route_safety_candidate_yaw_rate_radps_,
+        RouteRecoveryCandidateDecisions{
+          left_decision,
+          right_decision,
+          reverse_decision,
+          reverse_yaw_left_decision,
+          reverse_yaw_right_decision},
         motion_cost_stop_config_.min_translation_mps);
-      if (latched_route_recovery_candidate_ == RouteRecoveryCandidateKind::kNone &&
-        selected.available())
-      {
-        // HH_260803 - Once a unique escape direction starts, keep that direction
-        // for this hold. Becoming clear on both sides is progress, not a reason
-        // to stop or switch; a newly blocked latched direction still fails closed.
+      if (selected.available()) {
+        // HH_260805 - Retain the active stage but permit only a newly projected
+        // safe crab/reverse-yaw transition; total execution limits stay global.
         latched_route_recovery_candidate_ = selected.kind;
       }
     } else {
@@ -1605,6 +1625,7 @@ private:
     // cannot partly mutate the active safety policy before being rejected.
     auto route_candidate = route_safety_recovery_config_;
     double route_log_interval_candidate = route_safety_log_interval_s_;
+    double route_yaw_rate_candidate = route_safety_candidate_yaw_rate_radps_;
     for (const auto & parameter : parameters) {
       const std::string & name = parameter.get_name();
       if (name == "route_safety_recovery_clear_required_s") {
@@ -1621,6 +1642,8 @@ private:
         route_candidate.pose_max_age_s = parameter.as_double();
       } else if (name == "route_safety_recovery_log_interval_s") {
         route_log_interval_candidate = parameter.as_double();
+      } else if (name == "route_safety_auto_recovery_yaw_rate_radps") {
+        route_yaw_rate_candidate = parameter.as_double();
       }
     }
     if (const auto error = routeRecoveryConfigError(
@@ -1629,6 +1652,15 @@ private:
       rcl_interfaces::msg::SetParametersResult result;
       result.successful = false;
       result.reason = *error;
+      return result;
+    }
+    if (!std::isfinite(route_yaw_rate_candidate) ||
+      route_yaw_rate_candidate < 0.02 || route_yaw_rate_candidate > 0.15)
+    {
+      rcl_interfaces::msg::SetParametersResult result;
+      result.successful = false;
+      result.reason =
+        "route_safety_auto_recovery_yaw_rate_radps must be in [0.02, 0.15]";
       return result;
     }
 
@@ -1716,6 +1748,8 @@ private:
         route_safety_recovery_config_.pose_max_age_s = parameter.as_double();
       } else if (name == "route_safety_recovery_log_interval_s") {
         route_safety_log_interval_s_ = parameter.as_double();
+      } else if (name == "route_safety_auto_recovery_yaw_rate_radps") {
+        route_safety_candidate_yaw_rate_radps_ = parameter.as_double();
       } else if (name == "enable_speed_dependent_lookahead") {
         motion_cost_stop_config_.use_speed_dependent_lookahead = parameter.as_bool();
       } else if (name == "front_lookahead_min_m") {
@@ -1914,6 +1948,7 @@ private:
   double cost_grid_stale_log_interval_s_{1.0};
   double route_safety_log_interval_s_{1.0};
   double route_safety_candidate_speed_mps_{0.10};
+  double route_safety_candidate_yaw_rate_radps_{0.10};
   double radar_obstacle_evidence_max_age_s_{0.50};
   double route_heading_min_cmd_x_mps_{0.03};
   double route_heading_lateral_cmd_epsilon_mps_{0.02};
