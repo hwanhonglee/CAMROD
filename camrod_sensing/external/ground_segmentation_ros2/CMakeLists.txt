@@ -15,6 +15,7 @@ find_package(PCL REQUIRED COMPONENTS
 )
 find_package(nanoflann REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(pcl_conversions REQUIRED)
@@ -27,6 +28,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 set(dependencies
   geometry_msgs
   rclcpp
+  rclcpp_components
   sensor_msgs
   std_msgs
   std_srvs
@@ -38,26 +40,36 @@ set(dependencies
   message_filters
 )
 
-add_executable(ground_segmentation_ros2_node src/ground_segmentation_ros2_node.cpp)
+add_library(ground_segmentation_ros2_component SHARED src/ground_segmentation_ros2_node.cpp)
 
 # HH_260721 - Keep the header-only ground-segmentation core inside this ROS 2
 # package so the retired standalone package cannot re-enter the build graph.
-target_include_directories(ground_segmentation_ros2_node PUBLIC
+target_include_directories(ground_segmentation_ros2_component PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${pcl_conversions_INCLUDE_DIRS}
 )
 
-ament_target_dependencies(ground_segmentation_ros2_node
+ament_target_dependencies(ground_segmentation_ros2_component
   ${dependencies}
 )
 
-target_link_libraries(ground_segmentation_ros2_node
+target_link_libraries(ground_segmentation_ros2_component
   ${PCL_LIBRARIES}
   nanoflann::nanoflann
 )
 
-install(TARGETS ground_segmentation_ros2_node
-  DESTINATION lib/${PROJECT_NAME})
+rclcpp_components_register_node(
+  ground_segmentation_ros2_component
+  PLUGIN "GroundSegmentationNode"
+  EXECUTABLE ground_segmentation_ros2_node
+)
+
+install(
+  TARGETS ground_segmentation_ros2_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
 
 install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME})

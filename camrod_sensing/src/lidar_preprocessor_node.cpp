@@ -1,4 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <visualization_msgs/msg/marker.hpp>
@@ -20,10 +21,12 @@
  * HJ_260623: Reduce raw points before ground_segmentation_ros2 to lower
  * ground_seg/perception load.
  */
+namespace camrod::sensing {
+
 class LidarPreprocessorNode : public rclcpp::Node {
 public:
-  LidarPreprocessorNode()
-      : Node("lidar_preprocessor"),
+  explicit LidarPreprocessorNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+      : Node("lidar_preprocessor", options),
         filtered_(std::make_shared<pcl::PointCloud<pcl::PointXYZI>>()),
         downsampled_(std::make_shared<pcl::PointCloud<pcl::PointXYZI>>()) {
     this->declare_parameter<std::string>("input_topic", "vanjee/points_raw");
@@ -150,10 +153,12 @@ private:
     voxel_filter_.setInputCloud(filtered_);
     voxel_filter_.filter(*downsampled_);
 
-    sensor_msgs::msg::PointCloud2 out_msg;
-    pcl::toROSMsg(*downsampled_, out_msg);
-    out_msg.header = msg->header;
-    pub_->publish(out_msg);
+    // HH_260805 - Publish ownership into the LiDAR component container so the
+    // preprocessor-to-segmentation PointCloud2 does not require a second copy.
+    auto out_msg = std::make_unique<sensor_msgs::msg::PointCloud2>();
+    pcl::toROSMsg(*downsampled_, *out_msg);
+    out_msg->header = msg->header;
+    pub_->publish(std::move(out_msg));
 
     RCLCPP_DEBUG(this->get_logger(), "filtered: %zu -> voxel: %zu",
                  filtered_->size(), downsampled_->size());
@@ -206,9 +211,6 @@ private:
   pcl::PointCloud<pcl::PointXYZI>::Ptr downsampled_;
 };
 
-int main(int argc, char **argv) {
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<LidarPreprocessorNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+}  // namespace camrod::sensing
+
+RCLCPP_COMPONENTS_REGISTER_NODE(camrod::sensing::LidarPreprocessorNode)

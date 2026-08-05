@@ -18,6 +18,7 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <avg_msgs/point_cloud2_iterator.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <tf2/LinearMath/Transform.h>
 #include <tf2/exceptions.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -33,7 +34,8 @@ public:
   // HH_260721 - Use explicit ROS interface types at publisher, subscriber, and diagnostic boundaries.
 
   // Implements `LidarCostGridNode` behavior.
-  LidarCostGridNode() : Node("lidar_cost_grid") {
+  explicit LidarCostGridNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+      : Node("lidar_cost_grid", options) {
     // HH_260421: Use filtered lidar points as default cost-grid input.
     input_topic_ = declare_parameter<std::string>(
         "input_topic", "/sensing/lidar/points_filtered");
@@ -856,10 +858,4 @@ private:
 
 } // namespace camrod::sensing
 
-int main(int argc, char **argv) {
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<camrod::sensing::LidarCostGridNode>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(camrod::sensing::LidarCostGridNode)

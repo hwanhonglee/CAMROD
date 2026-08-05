@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# HH_260805 - Lightweight WebKit operator window with an explicit Chromium option.
+# HH_260805 - Use Chromium as the production kiosk while retaining WebKit fallback.
 """Open the CAMROD operator web UI in a managed local kiosk window."""
 
 from __future__ import annotations
@@ -71,8 +71,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--engine",
         choices=("auto", "chromium", "webkit"),
-        default="webkit",
-        help="rendering engine (default: webkit; auto prefers Chromium)",
+        default="chromium",
+        help="rendering engine (default: chromium; auto falls back to WebKit)",
     )
     return parser
 
@@ -110,6 +110,12 @@ def _build_chromium_command(
         "--disable-pinch",
         "--overscroll-history-navigation=0",
         "--password-store=basic",
+        # HH_260805 - Keep Chromium on the Jetson GPU path without bypassing
+        # its driver blocklist or disabling the software safety fallback.
+        "--enable-gpu-rasterization",
+        "--enable-zero-copy",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
     ]
     if args.fullscreen:
         command.extend(("--kiosk", args.url))

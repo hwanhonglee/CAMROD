@@ -16,6 +16,14 @@ bringup:
     rviz: true
     # Stagger module startup to reduce bringup burst load.
     module_launch_gap_s: 1.0
+    # HH_260805 - Keep global CycloneDDS/iceoryx opt-in on Humble. The full
+    # CAMROD graph exceeds iceoryx 2.0.5 static port/history limits and can
+    # abort nodes; component hot paths still use ROS intra-process by default.
+    enable_dds_shared_memory: false
+    dds_shared_memory_cyclonedds_config: middleware/cyclonedds_shm.xml
+    dds_shared_memory_roudi_config: middleware/iceoryx_roudi.toml
+    dds_shared_memory_roudi_executable: /opt/ros/humble/bin/iox-roudi
+    dds_shared_memory_roudi_log_level: warning
 
   # =========================================================================
   # 2. LOCALIZATION
@@ -166,7 +174,13 @@ bringup:
     radar_log_status: false
     # HH_260723 - Keep the compatibility rasterizer alive, but consume only
     # /perception/obstacles. Raw/preprocessed LiDAR cost is temporarily disabled.
-    enable_lidar_cost_grid: true
+    # HH_260805 - The LiDAR cost-grid is optional in production; perception,
+    # radar, and inflation remain active without this compatibility rasterizer.
+    enable_lidar_cost_grid: false
+    # HH_260805 - Preprocess and ground-segment LiDAR through intra-process
+    # ownership in one container. The optional transient-local grid component
+    # shares that process but retains DDS transport for Humble compatibility.
+    use_lidar_processing_container: true
     enable_inflation_cost_grid: true
     enable_lidar_driver: true
     enable_imu: true
@@ -522,11 +536,12 @@ bringup:
     # HH_260522: diagnostics profile choices are directory names under:
     #   camrod_bringup/config/system/diagnostics/<profile_name>/
     enable_module_validators: true
-    # HH_260805 - Share executors across checker categories on Jetson. The
-    # three-container boundary is final; aggregate/status nodes stay isolated.
-    use_checker_components: true
-    # HH_260805 - One serialized executor per category avoids Cyclone DDS
-    # library-unload races observed during simultaneous full-stack shutdown.
+    # HH_260805 - Keep checker composition bench-only. Repeated full-stack
+    # shutdowns reproduced intermittent -11 exits from both localization and
+    # autonomy component libraries on Humble; standalone checkers stayed clean.
+    use_checker_components: false
+    # HH_260805 - One serialized executor per composed category; retained as a
+    # compatibility key for future executor-profile experiments.
     checker_component_threads: 1
     diagnostics_profile: default
     # HH_260630 - __module_default__ selects camrod_system/config/system_checker.yaml
@@ -552,11 +567,11 @@ bringup:
     api_ui_low_battery_return_after_current_mission: true
     api_ui_low_battery_return_threshold_percent: 35.0
 
-    # HH_260805 - Use the lightweight embedded WebKit operator surface by
-    # default. Chromium remains an explicit maintenance/debug option.
+    # HH_260805 - Use Chromium by default for touch/IME support and GPU-backed
+    # rendering. WebKit remains an explicit low-overhead fallback.
     # Disable for headless bringup or when rendering the UI on another device.
     enable_operator_ui_window: true
-    operator_ui_window_engine: webkit
+    operator_ui_window_engine: chromium
     operator_ui_window_url: http://127.0.0.1:8010
     operator_ui_window_width: 1280
     operator_ui_window_height: 800

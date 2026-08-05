@@ -3,10 +3,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
 
 def generate_launch_description():
     sensing_share = get_package_share_directory("camrod_sensing")
@@ -18,6 +16,7 @@ def generate_launch_description():
     ground_seg_param_file    = LaunchConfiguration("ground_seg_param_file")
     enable_lidar_driver      = LaunchConfiguration("enable_lidar_driver")
     enable_lidar_cost_grid   = LaunchConfiguration("enable_lidar_cost_grid")
+    use_lidar_processing_container = LaunchConfiguration("use_lidar_processing_container")
     vanjee_config_path       = LaunchConfiguration("vanjee_config_path")
     enable_vanjee_static_tf  = LaunchConfiguration("enable_vanjee_static_tf")
     module_namespace         = LaunchConfiguration("module_namespace")
@@ -41,7 +40,9 @@ def generate_launch_description():
             default_value=os.path.join(sensing_share, "config", "lidar", "vanjee", "config.yaml"),
         ),
         DeclareLaunchArgument("enable_lidar_driver",      default_value="true"),
-        DeclareLaunchArgument("enable_lidar_cost_grid",   default_value="true"),
+        DeclareLaunchArgument("enable_lidar_cost_grid",   default_value="false"),
+        # HH_260805 - Keep cost-grid enable independent inside the LiDAR container.
+        DeclareLaunchArgument("use_lidar_processing_container", default_value="true"),
         DeclareLaunchArgument("enable_vanjee_static_tf",  default_value="false"),
         DeclareLaunchArgument("module_namespace",         default_value="lidar"),
         DeclareLaunchArgument("vanjee_driver_namespace",  default_value="vanjee"),
@@ -54,6 +55,9 @@ def generate_launch_description():
             launch_arguments={
                 "ground_seg_param_file":    ground_seg_param_file,
                 "enable_lidar_driver":      enable_lidar_driver,
+                "enable_lidar_cost_grid":   enable_lidar_cost_grid,
+                "use_lidar_processing_container": use_lidar_processing_container,
+                "lidar_cost_grid_param_file": lidar_cost_grid_param_file,
                 "vanjee_config_path":       vanjee_config_path,
                 "enable_vanjee_static_tf":  enable_vanjee_static_tf,
                 "module_namespace":         module_namespace,
@@ -62,15 +66,5 @@ def generate_launch_description():
                 "preprocessor_output_topic": preprocessor_output_topic,
                 "lidar_filtered_topic":     lidar_filtered_topic,
             }.items(),
-        ),
-
-        Node(
-            package="camrod_sensing",
-            executable="lidar_cost_grid_node",
-            name="lidar_cost_grid",
-            namespace=module_namespace,
-            output="screen",
-            parameters=[lidar_cost_grid_param_file],
-            condition=IfCondition(enable_lidar_cost_grid),
         ),
     ])

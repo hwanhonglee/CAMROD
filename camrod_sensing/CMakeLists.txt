@@ -36,17 +36,18 @@ endif()
 # ------------------------------------------------------------------------------
 # LiDAR preprocessor
 # ------------------------------------------------------------------------------
-add_executable(lidar_preprocessor_node src/lidar_preprocessor_node.cpp)
+add_library(lidar_preprocessor_component SHARED src/lidar_preprocessor_node.cpp)
 ament_target_dependencies(
-  lidar_preprocessor_node
+  lidar_preprocessor_component
   rclcpp
+  rclcpp_components
   avg_msgs
   pcl_conversions
 )
-target_include_directories(lidar_preprocessor_node PRIVATE ${PCL_INCLUDE_DIRS})
-target_include_directories(lidar_preprocessor_node PRIVATE ${EIGEN3_INCLUDE_DIRS})
+target_include_directories(lidar_preprocessor_component PRIVATE ${PCL_INCLUDE_DIRS})
+target_include_directories(lidar_preprocessor_component PRIVATE ${EIGEN3_INCLUDE_DIRS})
 target_link_libraries(
-  lidar_preprocessor_node
+  lidar_preprocessor_component
   ${PCL_LIBRARIES}
   pcl_common
   pcl_filters
@@ -54,6 +55,17 @@ target_link_libraries(
   pcl_segmentation
   pcl_search
   pcl_kdtree
+)
+rclcpp_components_register_node(
+  lidar_preprocessor_component
+  PLUGIN "camrod::sensing::LidarPreprocessorNode"
+  EXECUTABLE lidar_preprocessor_node
+)
+install(
+  TARGETS lidar_preprocessor_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 # ------------------------------------------------------------------------------
@@ -204,16 +216,28 @@ ament_target_dependencies(
 # ------------------------------------------------------------------------------
 # LiDAR cost grid
 # ------------------------------------------------------------------------------
-add_executable(lidar_cost_grid_node src/lidar_cost_grid_node.cpp)
-target_include_directories(lidar_cost_grid_node PRIVATE include)
+add_library(lidar_cost_grid_component SHARED src/lidar_cost_grid_node.cpp)
+target_include_directories(lidar_cost_grid_component PRIVATE include)
 ament_target_dependencies(
-  lidar_cost_grid_node
+  lidar_cost_grid_component
   rclcpp
+  rclcpp_components
   avg_msgs
   visualization_msgs
   tf2
   tf2_ros
   tf2_geometry_msgs
+)
+rclcpp_components_register_node(
+  lidar_cost_grid_component
+  PLUGIN "camrod::sensing::LidarCostGridNode"
+  EXECUTABLE lidar_cost_grid_node
+)
+install(
+  TARGETS lidar_cost_grid_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 # ------------------------------------------------------------------------------

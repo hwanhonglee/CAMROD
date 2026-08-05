@@ -93,7 +93,6 @@ def generate_launch_description():
 
     default_config_file       = os.path.join(pkg_dir, 'config', 'camera', 'camera_params.yaml')
     default_launch_config     = os.path.join(pkg_dir, 'config', 'camera', 'camera_launch_config.yaml')
-    cyclonedds_config         = os.path.join(pkg_dir, 'config', 'camera', 'cyclonedds.xml')
 
     # HH_260720 - Standalone launch defaults to /sensing/camera for YOLO, obstacle
     # fusion, AprilTag parking, and diagnostics. sensing.launch.py overrides this
@@ -135,8 +134,8 @@ def generate_launch_description():
 
         OpaqueFunction(function=_resolve_camera_enables),
 
-        # HJ_260529: iox-roudi removed — CycloneDDS SharedMemory is disabled and
-        # camera_front_publisher_node does not use iceoryx APIs directly.
+        # HH_260805 - Inherit the bringup-managed CycloneDDS/RouDi environment.
+        # Standalone camera launch therefore keeps the host's normal DDS profile.
 
         # ── Front camera node ───────────────────────────────────────────────────
         # FQN: /sensing/camera/econ_front/camera_front_publisher
@@ -155,7 +154,6 @@ def generate_launch_description():
                 ('~/image_raw',             'image_raw'),
                 ('~/camera_info',           'camera_info'),
             ],
-            additional_env={'CYCLONEDDS_URI': cyclonedds_config},
         ),
 
         # ── Rear camera node ────────────────────────────────────────────────────

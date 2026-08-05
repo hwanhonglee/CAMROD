@@ -4,7 +4,7 @@ from ament_index_python.packages import get_package_prefix, get_package_share_di
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, GroupAction, LogInfo, OpaqueFunction
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import ComposableNodeContainer, Node, PushRosNamespace, SetRemap
 from launch_ros.descriptions import ComposableNode
 import yaml
@@ -68,7 +68,6 @@ CHECKER_COMPONENT_PLUGINS = {
 
 CHECKER_COMPONENT_GROUPS = {
     "hardware_sensing": {"hw", "sensing"},
-    "localization": {"localization"},
     "autonomy": {"map", "perception", "planning"},
 }
 
@@ -108,6 +107,7 @@ def _checker_parameters(
     category: str,
     node_name: str,
     param_file: str,
+    enable_lidar_cost_grid: bool,
 ) -> dict:
     # HH_260630 - Checker nodes run under /system, while profiles may be keyed by
     # basename or absolute node name. Flatten parameters directly so namespace
@@ -132,7 +132,14 @@ def _checker_parameters(
     ros_params = node_section.get("ros__parameters", {})
     if not isinstance(ros_params, dict):
         return {}
-    return _flatten_ros_parameters(ros_params)
+    parameters = _flatten_ros_parameters(ros_params)
+    if node_name == "cost_grid_checker" and not enable_lidar_cost_grid:
+        # HH_260805 - An intentionally unloaded optional LiDAR rasterizer must
+        # not emit a missing-topic diagnostic; radar and inflation stay checked.
+        parameters["grid_names"] = [
+            name for name in parameters.get("grid_names", []) if name != "lidar"
+        ]
+    return parameters
 
 
 def _checker_node(
@@ -142,13 +149,17 @@ def _checker_node(
     executable: str,
     name: str,
     param_file: str,
+    enable_lidar_cost_grid: bool,
 ) -> Node:
     return Node(
         package="camrod_system",
         executable=executable,
         name=name,
         output="log",
-        parameters=[_checker_parameters(config_dir, default_dir, category, name, param_file)],
+        parameters=[_checker_parameters(
+            config_dir, default_dir, category, name, param_file,
+            enable_lidar_cost_grid,
+        )],
     )
 
 
@@ -160,6 +171,7 @@ def _checker_component(
     _executable: str,
     name: str,
     param_file: str,
+    enable_lidar_cost_grid: bool,
 ) -> ComposableNode:
     namespace = f"/{module_namespace.strip('/')}" if module_namespace.strip('/') else "/"
     return ComposableNode(
@@ -168,7 +180,8 @@ def _checker_component(
         name=name,
         namespace=namespace,
         parameters=[_checker_parameters(
-            config_dir, default_dir, category, name, param_file
+            config_dir, default_dir, category, name, param_file,
+            enable_lidar_cost_grid,
         )],
         remappings=[
             ("/diagnostics", "diagnostics"),
@@ -182,12 +195,14 @@ def _checker_containers(
     default_dir: str,
     module_namespace: str,
     _thread_count: int,
+    enable_lidar_cost_grid: bool,
 ) -> list:
     containers = []
     for group_name, categories in CHECKER_COMPONENT_GROUPS.items():
         components = [
             _checker_component(
-                config_dir, default_dir, module_namespace, *spec
+                config_dir, default_dir, module_namespace, *spec,
+                enable_lidar_cost_grid
             )
             for spec in CHECKER_NODE_SPECS
             if spec[0] in categories
@@ -195,8 +210,10 @@ def _checker_containers(
         containers.append(
             ComposableNodeContainer(
                 package="rclcpp_components",
-                # HH_260805 - Serialize low-rate checker callbacks so executor
-                # workers are gone before Cyclone DDS unloads at process exit.
+                # HH_260805 - Hardware/sensing and autonomy checkers are
+                # verified with the stock serialized container. Localization
+                # remains standalone because its Humble component library can
+                # segfault after all nodes have cleanly unloaded at shutdown.
                 executable="component_container",
                 name=f"{group_name}_checker_container",
                 namespace="",
@@ -213,6 +230,7 @@ def _build_checker_nodes(
     module_namespace: str,
     use_components: bool,
     component_threads: int,
+    enable_lidar_cost_grid: bool,
 ) -> list:
     nodes = [
         # Main diagnostics aggregator used by the system health state machine.
@@ -229,17 +247,29 @@ def _build_checker_nodes(
         ),
     ]
     if use_components:
-        # HH_260805 - Three process boundaries retain category fault isolation
-        # while replacing one executor/process per checker on the Jetson.
+        # HH_260805 - Two verified containers plus six standalone localization
+        # checkers reduce 24 processes to eight without accepting the reproduced
+        # Humble localization plugin-unload crash.
         nodes.extend(_checker_containers(
             config_dir,
             default_dir,
             module_namespace,
             component_threads,
+            enable_lidar_cost_grid,
         ))
+        composed_categories = set().union(*CHECKER_COMPONENT_GROUPS.values())
+        nodes.extend(
+            _checker_node(
+                config_dir, default_dir, *spec, enable_lidar_cost_grid
+            )
+            for spec in CHECKER_NODE_SPECS
+            if spec[0] not in composed_categories
+        )
     else:
         nodes.extend(
-            _checker_node(config_dir, default_dir, *spec)
+            _checker_node(
+                config_dir, default_dir, *spec, enable_lidar_cost_grid
+            )
             for spec in CHECKER_NODE_SPECS
         )
     return nodes
@@ -262,6 +292,9 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
     except ValueError:
         checker_component_threads = 2
     enable_platform = _as_bool(LaunchConfiguration("enable_platform").perform(context))
+    enable_lidar_cost_grid = _as_bool(
+        LaunchConfiguration("enable_lidar_cost_grid").perform(context)
+    )
     diagnostics_config_root = LaunchConfiguration("diagnostics_config_root").perform(context)
 
     # HH_260630 - Standalone system.launch.py uses camrod_system configs by
@@ -287,6 +320,7 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
         module_namespace,
         use_checker_components,
         checker_component_threads,
+        enable_lidar_cost_grid,
     )
 
     ranger_checker_exec = os.path.join(
@@ -301,7 +335,8 @@ def _build_diagnostics_inline(context, *_args, **_kwargs):
                 output="log",
                 parameters=[_checker_parameters(
                     config_dir, default_dir, "platform",
-                    "ranger_platform_checker", "ranger_platform_checker.yaml"
+                    "ranger_platform_checker", "ranger_platform_checker.yaml",
+                    enable_lidar_cost_grid,
                 )],
             )
         )
@@ -345,18 +380,25 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_checkers', default_value='true'),
         DeclareLaunchArgument(
             'use_checker_components',
-            default_value='true',
-            description='Compose 24 diagnostic checkers into three category containers',
+            default_value='false',
+            description=(
+                'Bench-only checker composition; standalone is the stable '
+                'Humble production default'
+            ),
         ),
         DeclareLaunchArgument(
             'checker_component_threads',
             default_value='1',
             description=(
-                'Compatibility setting; production checker containers use one '
-                'serialized executor for deterministic DDS shutdown'
+                'Compatibility setting for bench-only serialized checker containers'
             ),
         ),
         DeclareLaunchArgument('enable_platform', default_value='false'),
+        DeclareLaunchArgument(
+            'enable_lidar_cost_grid',
+            default_value='false',
+            description='Require and diagnose the optional LiDAR cost-grid component',
+        ),
         # system_checker + system_diagnostic + diagnostics_aggregator (tools channel)
         DeclareLaunchArgument('enable_system_tools', default_value='true'),
         DeclareLaunchArgument(
@@ -367,6 +409,24 @@ def generate_launch_description():
             'system_checker_disabled_modules',
             default_value='',
             description='Comma-separated module names excluded from system_checker graph readiness for debug',
+        ),
+        DeclareLaunchArgument(
+            'system_checker_disabled_nodes',
+            default_value=PythonExpression([
+                "'' if str('", LaunchConfiguration('enable_lidar_cost_grid'),
+                "').lower() in ('1','true','yes','on') else ",
+                "'/sensing/lidar/lidar_cost_grid'",
+            ]),
+            description='Comma-separated optional graph nodes excluded from readiness',
+        ),
+        DeclareLaunchArgument(
+            'system_checker_disabled_topics',
+            default_value=PythonExpression([
+                "'' if str('", LaunchConfiguration('enable_lidar_cost_grid'),
+                "').lower() in ('1','true','yes','on') else ",
+                "'/sensing/cost_grid/lidar'",
+            ]),
+            description='Comma-separated optional graph topics excluded from readiness',
         ),
 
         # HH_260527: Main diagnostics stack is fully inline
@@ -390,6 +450,8 @@ def generate_launch_description():
                             # HH_260618: Keep a debug-only exclusion hook, while
                             # normal bringup requires exactly one final-parking graph.
                             'disabled_modules_csv': LaunchConfiguration('system_checker_disabled_modules'),
+                            'disabled_nodes_csv': LaunchConfiguration('system_checker_disabled_nodes'),
+                            'disabled_topics_csv': LaunchConfiguration('system_checker_disabled_topics'),
                         },
                     ],
                 ),

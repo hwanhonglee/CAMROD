@@ -1,0 +1,38 @@
+# HH_260805 - Shared-memory pools cover control messages, compressed images,
+# point clouds, and the 1920x1080 BGR8 upper bound without per-frame allocation.
+[general]
+version = 1
+
+[[segment]]
+
+[[segment.mempool]]
+size = 128
+count = 4096
+
+[[segment.mempool]]
+size = 1024
+count = 2048
+
+[[segment.mempool]]
+size = 16384
+count = 512
+
+[[segment.mempool]]
+size = 131072
+count = 128
+
+[[segment.mempool]]
+size = 524288
+count = 64
+
+[[segment.mempool]]
+size = 1048576
+count = 32
+
+[[segment.mempool]]
+size = 4194304
+count = 12
+
+[[segment.mempool]]
+size = 8388608
+count = 8

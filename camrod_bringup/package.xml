@@ -26,6 +26,10 @@
   <!-- HH_260707: Optional front-camera/YOLO component container launch path. -->
   <exec_depend>rclcpp_components</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <!-- HH_260805 - Full bringup owns the CycloneDDS/iceoryx transport profile
+       and starts RouDi before ROS component containers. -->
+  <exec_depend>rmw_cyclonedds_cpp</exec_depend>
+  <exec_depend>iceoryx_posh</exec_depend>
   <!-- HH_260730 - field_test_tool.sh record-recovery invokes ros2 bag directly. -->
   <exec_depend>ros2bag</exec_depend>
   <exec_depend>rosidl_runtime_py</exec_depend>
