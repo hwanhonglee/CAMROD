@@ -88,7 +88,7 @@ def generate_launch_description():
         default_value='8012',
         description='Guest UI bind port',
     )
-    # HH_260805 - Show the local operator surface in a lightweight WebKit process.
+    # HH_260805 - Use the Chromium kiosk for touch/IME compatibility; WebKit remains selectable.
     enable_operator_ui_window_arg = DeclareLaunchArgument(
         'enable_operator_ui_window',
         default_value='true',
@@ -96,8 +96,8 @@ def generate_launch_description():
     )
     operator_ui_window_engine_arg = DeclareLaunchArgument(
         'operator_ui_window_engine',
-        default_value='webkit',
-        description='Operator UI renderer: webkit (default), chromium, or auto',
+        default_value='chromium',
+        description='Operator UI renderer: chromium (default), webkit, or auto',
     )
     operator_ui_window_url_arg = DeclareLaunchArgument(
         'operator_ui_window_url',

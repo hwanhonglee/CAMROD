@@ -141,7 +141,9 @@ def generate_launch_description():
         # enable this only for bench debugging so the field console stays concise.
         DeclareLaunchArgument("radar_log_status",            default_value="false"),
         DeclareLaunchArgument("enable_lidar_driver",         default_value="true"),
-        DeclareLaunchArgument("enable_lidar_cost_grid",      default_value="true"),
+        DeclareLaunchArgument("enable_lidar_cost_grid",      default_value="false"),
+        # HH_260805 - Compose LiDAR preprocessing while retaining an independent cost-grid toggle.
+        DeclareLaunchArgument("use_lidar_processing_container", default_value="true"),
         DeclareLaunchArgument("enable_inflation_cost_grid",  default_value="true"),
         DeclareLaunchArgument("enable_vanjee_static_tf",     default_value="false"),
         ## HJ_260528
@@ -346,7 +348,8 @@ def generate_launch_description():
             _inc(lidar_launch,
                  "ground_seg_param_file",
                  "lidar_cost_grid_param_file", "vanjee_config_path",
-                 "enable_lidar_driver", "enable_lidar_cost_grid", "enable_vanjee_static_tf",
+                 "enable_lidar_driver", "enable_lidar_cost_grid",
+                 "use_lidar_processing_container", "enable_vanjee_static_tf",
                  module_namespace="lidar",
                  vanjee_driver_namespace="vanjee",
                  preprocessor_input_topic="vanjee/points_raw",

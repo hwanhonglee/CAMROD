@@ -1,0 +1,15 @@
+<CycloneDDS>
+  <Domain>
+    <!-- HH_260805 - Bench-only profile: bringup launches RouDi when explicitly enabled. -->
+    <Tracing>
+      <Verbosity>severe</Verbosity>
+    </Tracing>
+    <SharedMemory>
+      <Enable>true</Enable>
+      <LogLevel>warn</LogLevel>
+    </SharedMemory>
+    <!-- HH_260805 - Leave UDP socket sizes at host defaults. A forced minimum
+         can prevent DDS startup when Jetson or workstation wmem_max is lower;
+         non-loanable variable-size messages still retain normal UDP fallback. -->
+  </Domain>
+</CycloneDDS>

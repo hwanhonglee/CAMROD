@@ -90,9 +90,9 @@ camrod_system_add_checker(planning_path_checker_node src/diagnostics/planning_pa
 # HH_260617: Validate semantic planning state before parking/control progression.
 camrod_system_add_checker(planning_state_checker_node src/diagnostics/planning_state_checker_node.cpp)
 
-# HH_260805 - Production composition keeps each diagnostic implementation and
-# its standalone executable, but shares one executor per failure-isolation
-# category. This replaces 24 checker processes with three containers.
+# HH_260805 - Keep component libraries and standalone executables for every
+# checker. Humble full-stack shutdown tests make standalone executables the
+# production default; these libraries retain an explicit bench/future option.
 function(camrod_system_add_checker_component_library target)
   add_library(${target} SHARED ${ARGN})
   target_compile_features(${target} PUBLIC cxx_std_17)

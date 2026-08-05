@@ -1,5 +1,6 @@
 #define PCL_NO_PRECOMPILE
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp_components/register_node_macro.hpp"
 #include <ground_detection_types.hpp>
 #include <ground_detection.hpp>
 #include <pointcloud_processor.hpp>
@@ -49,9 +50,10 @@ void checkSubscriptionConnection(
     }
 }
 
-class GroundSegmentatioNode : public rclcpp::Node {
+class GroundSegmentationNode : public rclcpp::Node {
 public:
-    GroundSegmentatioNode(rclcpp::NodeOptions options) : Node("ground_segmentation",options) {
+    explicit GroundSegmentationNode(const rclcpp::NodeOptions & options)
+        : Node("ground_segmentation", componentOptions(options)) {
         publisher_obstacle_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/obstacle_points", 10);
         // HH_260702 - Raw/ground clouds are RViz/debug outputs. Keep the
         // driving obstacle cloud always on, but avoid two extra PointCloud2
@@ -76,11 +78,11 @@ public:
             checkSubscriptionConnection(pc_sub_ptr, "Pointcloud2", this->get_logger());
  
             sync = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(50), *subscriber_synced_pointcloud, *subscriber_synced_imu);
-            sync->registerCallback(std::bind(&GroundSegmentatioNode::syncedCallback, this, std::placeholders::_1, std::placeholders::_2));
+            sync->registerCallback(std::bind(&GroundSegmentationNode::syncedCallback, this, std::placeholders::_1, std::placeholders::_2));
         }
         else {
             subscriber_pointcloud = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-                "/ground_segmentation/input_pointcloud", 10, std::bind(&GroundSegmentatioNode::callback, this, std::placeholders::_1));
+                "/ground_segmentation/input_pointcloud", 10, std::bind(&GroundSegmentationNode::callback, this, std::placeholders::_1));
             checkSubscriptionConnection(subscriber_pointcloud, "Pointcloud2", this->get_logger());
         }
 
@@ -114,6 +116,14 @@ public:
     }
 
 private:
+
+    static rclcpp::NodeOptions componentOptions(rclcpp::NodeOptions options) {
+        // HH_260805 - Preserve the upstream undeclared-parameter behavior when
+        // this wrapper is loaded by a component manager instead of main().
+        options.allow_undeclared_parameters(true);
+        options.automatically_declare_parameters_from_overrides(true);
+        return options;
+    }
 
     std::string robot_frame;
     double lidar_to_ground,transform_tolerance;
@@ -153,7 +163,7 @@ private:
     }
 
     void segmentation(const sensor_msgs::msg::PointCloud2::ConstSharedPtr &pointcloud_msg, const sensor_msgs::msg::Imu::ConstSharedPtr &imu_msg = nullptr){
-        sensor_msgs::msg::PointCloud2::SharedPtr obstacle_points = std::make_shared<sensor_msgs::msg::PointCloud2>();
+        auto obstacle_points = std::make_unique<sensor_msgs::msg::PointCloud2>();
 
         // Convert the ROS 2 PointCloud2 message to a PCL PointCloud
         typename pcl::PointCloud<PointType> input_cloud;
@@ -279,11 +289,11 @@ private:
         final_ground_points->is_dense = true;  
 
         pcl::toROSMsg(*final_non_ground_points, *obstacle_points);
-        sensor_msgs::msg::PointCloud2::SharedPtr raw_points;
-        sensor_msgs::msg::PointCloud2::SharedPtr ground_points;
+        std::unique_ptr<sensor_msgs::msg::PointCloud2> raw_points;
+        std::unique_ptr<sensor_msgs::msg::PointCloud2> ground_points;
         if (publish_debug_clouds) {
-            raw_points = std::make_shared<sensor_msgs::msg::PointCloud2>();
-            ground_points = std::make_shared<sensor_msgs::msg::PointCloud2>();
+            raw_points = std::make_unique<sensor_msgs::msg::PointCloud2>();
+            ground_points = std::make_unique<sensor_msgs::msg::PointCloud2>();
             pcl::toROSMsg(*filtered_cloud_ptr, *raw_points);
             pcl::toROSMsg(*final_ground_points, *ground_points);
         }
@@ -301,10 +311,11 @@ private:
         }
 
         // Publish the message
-        publisher_obstacle_points->publish(*obstacle_points);
+        // HH_260805 - Transfer PointCloud2 ownership to intra-process consumers.
+        publisher_obstacle_points->publish(std::move(obstacle_points));
         if (publish_debug_clouds) {
-            publisher_ground_points->publish(*ground_points);
-            publisher_raw_points->publish(*raw_points);
+            publisher_ground_points->publish(std::move(ground_points));
+            publisher_raw_points->publish(std::move(raw_points));
         }
 
         final_ground_points->clear();
@@ -312,12 +323,4 @@ private:
     }
 };
 
-int main(int argc, char** argv) {
-    rclcpp::init(argc, argv);
-    rclcpp::NodeOptions options;
-    options.allow_undeclared_parameters(true);
-    options.automatically_declare_parameters_from_overrides(true);
-    rclcpp::spin(std::make_shared<GroundSegmentatioNode>(options));
-    rclcpp::shutdown();
-    return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(GroundSegmentationNode)

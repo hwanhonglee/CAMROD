@@ -147,9 +147,9 @@ class OperatorWindowTest(unittest.TestCase):
         self.assertTrue(_build_parser().parse_args([]).fullscreen)
         self.assertFalse(_build_parser().parse_args(["--no-fullscreen"]).fullscreen)
 
-    def test_webkit_engine_is_default_with_explicit_chromium_option(self) -> None:
+    def test_chromium_engine_is_default_with_explicit_webkit_fallback(self) -> None:
         parser = _build_parser()
-        self.assertEqual(parser.parse_args([]).engine, "webkit")
+        self.assertEqual(parser.parse_args([]).engine, "chromium")
         self.assertEqual(parser.parse_args(["--engine", "webkit"]).engine, "webkit")
         self.assertEqual(
             parser.parse_args(["--engine", "chromium"]).engine,
@@ -186,6 +186,8 @@ class OperatorWindowTest(unittest.TestCase):
         self.assertIn("--kiosk", command)
         self.assertEqual(command[-1], "http://127.0.0.1:8010")
         self.assertNotIn("--disable-gpu", command)
+        self.assertIn("--enable-gpu-rasterization", command)
+        self.assertIn("--enable-zero-copy", command)
 
         windowed = _build_parser().parse_args(["--no-fullscreen"])
         windowed_command = _build_chromium_command(
@@ -208,7 +210,7 @@ class OperatorWindowTest(unittest.TestCase):
         )
         system = defaults["bringup"]["system"]
         self.assertTrue(system["operator_ui_window_fullscreen"])
-        self.assertEqual(system["operator_ui_window_engine"], "webkit")
+        self.assertEqual(system["operator_ui_window_engine"], "chromium")
 
         launch_text = (
             src_root

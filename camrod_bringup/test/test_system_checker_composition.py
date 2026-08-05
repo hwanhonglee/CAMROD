@@ -1,4 +1,4 @@
-"""Lock the production system-checker composition boundary."""
+"""Lock the stable production default and bench checker composition boundary."""
 
 import importlib.util
 from pathlib import Path
@@ -24,8 +24,8 @@ def _load_system_launch():
     return module
 
 
-def test_every_checker_is_composed_once_in_the_expected_group() -> None:
-    """A missing or duplicated checker would make health coverage ambiguous."""
+def test_every_checker_has_one_verified_runtime_boundary() -> None:
+    """Composition fallback must not remove or duplicate health coverage."""
     launch = _load_system_launch()
     specs = launch.CHECKER_NODE_SPECS
 
@@ -39,9 +39,21 @@ def test_every_checker_is_composed_once_in_the_expected_group() -> None:
     }
     assert grouped_counts == {
         "hardware_sensing": 11,
-        "localization": 6,
         "autonomy": 7,
     }
+    composed_categories = set().union(*launch.CHECKER_COMPONENT_GROUPS.values())
+    standalone = [spec[2] for spec in specs if spec[0] not in composed_categories]
+    # HH_260805 - This is the reduced bench topology. Production keeps all 24
+    # checkers standalone because other composed groups also failed repeated
+    # full-stack shutdown tests on Humble.
+    assert standalone == [
+        "localization_gnss_checker",
+        "localization_mode_checker",
+        "localization_pose_checker",
+        "localization_init_checker",
+        "localization_source_checker",
+        "localization_lanelet_checker",
+    ]
 
 
 def test_composed_checkers_keep_standalone_entrypoints() -> None:
@@ -57,11 +69,13 @@ def test_composed_checkers_keep_standalone_entrypoints() -> None:
         )
 
 
-def test_bringup_enables_and_forwards_checker_composition() -> None:
-    """Central deployment defaults must reach camrod_system launch arguments."""
+def test_bringup_guards_and_forwards_checker_composition() -> None:
+    """Composition stays available without becoming the unstable default."""
     defaults = yaml.safe_load(BRINGUP_DEFAULTS.read_text(encoding="utf-8"))
     system = defaults["bringup"]["system"]
-    assert system["use_checker_components"] is True
+    # HH_260805 - Full-stack Humble shutdown tests reproduced intermittent
+    # component-library -11 exits; all standalone checker exits were clean.
+    assert system["use_checker_components"] is False
     assert system["checker_component_threads"] == 1
 
     source = BRINGUP_IMPL.read_text(encoding="utf-8")

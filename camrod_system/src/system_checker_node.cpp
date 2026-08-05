@@ -56,6 +56,14 @@ public:
     declare_parameter<std::vector<std::string>>(
       "disabled_modules", std::vector<std::string>{});
     declare_parameter<std::string>("disabled_modules_csv", "");
+    // HH_260805 - Optional node/topic producers can be removed from graph
+    // readiness without disabling their entire owning module.
+    declare_parameter<std::vector<std::string>>(
+      "disabled_nodes", std::vector<std::string>{});
+    declare_parameter<std::vector<std::string>>(
+      "disabled_topics", std::vector<std::string>{});
+    declare_parameter<std::string>("disabled_nodes_csv", "");
+    declare_parameter<std::string>("disabled_topics_csv", "");
     std::set<std::string> disabled_modules;
     const auto disabled_modules_param = get_parameter("disabled_modules").as_string_array();
     for (const auto & name : disabled_modules_param) {
@@ -69,6 +77,12 @@ public:
         disabled_modules.insert(trimmed);
       }
     }
+    const auto disabled_nodes = load_disabled_graph_names(
+      get_parameter("disabled_nodes").as_string_array(),
+      get_parameter("disabled_nodes_csv").as_string());
+    const auto disabled_topics = load_disabled_graph_names(
+      get_parameter("disabled_topics").as_string_array(),
+      get_parameter("disabled_topics_csv").as_string());
     const auto required_modules = get_parameter("required_modules").as_string_array();
     for (const auto & module_name : required_modules) {
       if (module_name.empty()) {
@@ -77,7 +91,9 @@ public:
       if (disabled_modules.count(module_name) > 0) {
         continue;
       }
-      required_module_specs_.push_back(load_module_spec(module_name));
+      auto module = load_module_spec(module_name);
+      filter_disabled_graph(module, disabled_nodes, disabled_topics);
+      required_module_specs_.push_back(std::move(module));
     }
 
     // HH_260630 - Some capabilities have multiple valid implementations.
@@ -106,7 +122,9 @@ public:
         if (alternative_name.empty() || disabled_modules.count(alternative_name) > 0) {
           continue;
         }
-        group.alternatives.push_back(load_module_spec(alternative_name));
+        auto alternative = load_module_spec(alternative_name);
+        filter_disabled_graph(alternative, disabled_nodes, disabled_topics);
+        group.alternatives.push_back(std::move(alternative));
       }
       required_alternative_group_specs_.push_back(group);
     }
@@ -159,6 +177,26 @@ private:
     }
     const auto end = text.find_last_not_of(" \t\r\n");
     return text.substr(begin, end - begin + 1);
+  }
+
+  static std::set<std::string> load_disabled_graph_names(
+    const std::vector<std::string> & values,
+    const std::string & csv)
+  {
+    std::set<std::string> names;
+    const auto add_name = [&names](const std::string & raw) {
+        const auto value = trim(raw);
+        if (!value.empty()) {
+          names.insert(normalize_name(value));
+        }
+      };
+    for (const auto & value : values) {
+      add_name(value);
+    }
+    for (const auto & value : split(csv, ',')) {
+      add_name(value);
+    }
+    return names;
   }
 
   // HH_260630 - Topic spec format is "topic|type|min_publishers".
@@ -225,6 +263,27 @@ private:
     module.required_nodes = normalize_names(get_parameter(node_param).as_string_array());
     module.required_topics = parse_topic_specs(get_parameter(topic_param).as_string_array());
     return module;
+  }
+
+  static void filter_disabled_graph(
+    RequiredModuleSpec & module,
+    const std::set<std::string> & disabled_nodes,
+    const std::set<std::string> & disabled_topics)
+  {
+    module.required_nodes.erase(
+      std::remove_if(
+        module.required_nodes.begin(), module.required_nodes.end(),
+        [&disabled_nodes](const std::string & name) {
+          return disabled_nodes.count(name) > 0;
+        }),
+      module.required_nodes.end());
+    module.required_topics.erase(
+      std::remove_if(
+        module.required_topics.begin(), module.required_topics.end(),
+        [&disabled_topics](const RequiredTopicSpec & topic) {
+          return disabled_topics.count(topic.name) > 0;
+        }),
+      module.required_topics.end());
   }
 
   // Builds one diagnostic status for either node-missing or topic-missing checks.

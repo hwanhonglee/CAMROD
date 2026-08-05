@@ -172,6 +172,14 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
   )
+  # HH_260805 - Keep Chromium, ROS intra-process composition, managed DDS SHM,
+  # and the default-off LiDAR cost-grid diagnostic contract synchronized.
+  ament_add_pytest_test(
+    test_runtime_transport_contract
+    test/test_runtime_transport_contract.py
+    TIMEOUT 30
+    ENV "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1"
+  )
 endif()
 
 ament_package()

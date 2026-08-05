@@ -646,7 +646,14 @@ void CameraFrontPublisherNode::publishThread()
         continue;
       }
 
-      rect_pub_->publish(compressed_msg_);
+      // HH_260805 - Move the encoded payload into a unique message so the
+      // camera+YOLO component container can hand it over intra-process without
+      // another JPEG-vector copy. The reusable encoder buffer is resized next frame.
+      auto rect_message = std::make_unique<sensor_msgs::msg::CompressedImage>();
+      rect_message->header = compressed_msg_.header;
+      rect_message->format = compressed_msg_.format;
+      rect_message->data.swap(compressed_msg_.data);
+      rect_pub_->publish(std::move(rect_message));
     } else if (image_raw_pub_->get_subscription_count() > 0) {
       // VPI pipeline not ready (no calibration / V4L2 fallback): publish unrectified BGR
       cv::Mat bgr;

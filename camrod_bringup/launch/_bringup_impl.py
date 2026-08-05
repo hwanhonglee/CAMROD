@@ -22,6 +22,7 @@ from launch.actions import (
     LogInfo,
     OpaqueFunction,
     RegisterEventHandler,
+    SetEnvironmentVariable,
     SetLaunchConfiguration,
     TimerAction,
 )
@@ -645,6 +646,49 @@ def generate_launch_description():
         ('rviz', cfg_get(launch_cfg, 'runtime/rviz', True), 'Enable RViz'),
         # Stagger module includes to reduce startup CPU/memory spikes.
         ('module_launch_gap_s', cfg_get(launch_cfg, 'runtime/module_launch_gap_s', 1.0), 'Gap (seconds) between module launch includes'),
+        # HH_260805 - Keep global CycloneDDS/iceoryx explicitly opt-in. Humble's
+        # static iceoryx endpoint limits are too small for the complete graph.
+        (
+            'enable_dds_shared_memory',
+            cfg_get(launch_cfg, 'runtime/enable_dds_shared_memory', False),
+            'Enable experimental managed CycloneDDS inter-process shared memory',
+        ),
+        (
+            'dds_shared_memory_cyclonedds_config',
+            bringup_cfg(cfg_get(
+                launch_cfg,
+                'runtime/dds_shared_memory_cyclonedds_config',
+                'middleware/cyclonedds_shm.xml',
+            )),
+            'CycloneDDS shared-memory XML profile',
+        ),
+        (
+            'dds_shared_memory_roudi_config',
+            bringup_cfg(cfg_get(
+                launch_cfg,
+                'runtime/dds_shared_memory_roudi_config',
+                'middleware/iceoryx_roudi.toml',
+            )),
+            'iceoryx RouDi memory-pool configuration',
+        ),
+        (
+            'dds_shared_memory_roudi_executable',
+            cfg_get(
+                launch_cfg,
+                'runtime/dds_shared_memory_roudi_executable',
+                '/opt/ros/humble/bin/iox-roudi',
+            ),
+            'iceoryx RouDi executable',
+        ),
+        (
+            'dds_shared_memory_roudi_log_level',
+            cfg_get(
+                launch_cfg,
+                'runtime/dds_shared_memory_roudi_log_level',
+                'warning',
+            ),
+            'iceoryx RouDi log level',
+        ),
 
         # HH_260803 - Canonical axle-midpoint frame plus retained rear-axle alias.
         (
@@ -1384,8 +1428,8 @@ def generate_launch_description():
         ),
         (
             'use_checker_components',
-            cfg_get(launch_cfg, 'system/use_checker_components', True),
-            'Compose system checkers into three category containers',
+            cfg_get(launch_cfg, 'system/use_checker_components', False),
+            'Compose verified system checkers; keep localization standalone',
         ),
         (
             'checker_component_threads',
@@ -1480,8 +1524,8 @@ def generate_launch_description():
         ),
         (
             'operator_ui_window_engine',
-            cfg_get(launch_cfg, 'system/operator_ui_window_engine', 'webkit'),
-            'Operator UI renderer: webkit, chromium, or auto',
+            cfg_get(launch_cfg, 'system/operator_ui_window_engine', 'chromium'),
+            'Operator UI renderer: chromium, webkit, or auto',
         ),
         (
             'operator_ui_window_width',
@@ -1522,7 +1566,12 @@ def generate_launch_description():
         ('enable_front_camera', cfg_get(launch_cfg, 'sensing/enable_front_camera', True), 'Enable front econ camera node'),
         ('enable_rear_camera',  cfg_get(launch_cfg, 'sensing/enable_rear_camera',  True), 'Enable rear econ camera node'),
         ('enable_radar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_radar_cost_grid', True), 'Enable radar cost-grid'),
-        ('enable_lidar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_lidar_cost_grid', True), 'Enable lidar cost-grid'),
+        ('enable_lidar_cost_grid', cfg_get(launch_cfg, 'sensing/enable_lidar_cost_grid', False), 'Enable optional lidar cost-grid'),
+        (
+            'use_lidar_processing_container',
+            cfg_get(launch_cfg, 'sensing/use_lidar_processing_container', True),
+            'Compose LiDAR preprocessing, segmentation, and optional cost-grid nodes',
+        ),
         ('enable_inflation_cost_grid', cfg_get(launch_cfg, 'sensing/enable_inflation_cost_grid', True), 'Enable inflation cost-grid (lanelet+lidar+radar+global_path merger)'),
         ('enable_lidar_driver', cfg_get(launch_cfg, 'sensing/enable_lidar_driver', False), 'Enable lidar driver'),
         ('enable_imu',      cfg_get(launch_cfg, 'sensing/enable_imu',      True),  'Enable physical IMU driver (converter remains available for dummy input)'),
@@ -1881,6 +1930,7 @@ def generate_launch_description():
         'radar_log_status': lc['radar_log_status'],
         'enable_radar_cost_grid': lc['enable_radar_cost_grid'],
         'enable_lidar_cost_grid': lc['enable_lidar_cost_grid'],
+        'use_lidar_processing_container': lc['use_lidar_processing_container'],
         'enable_inflation_cost_grid': lc['enable_inflation_cost_grid'],
         'enable_lidar_driver': sim_switch(lc['sim'], 'false', lc['enable_lidar_driver']),
         'enable_imu':      sim_switch(lc['sim'], 'false', lc['enable_imu']),
@@ -2102,6 +2152,9 @@ def generate_launch_description():
         # HH_260630 - Use synchronized bringup/system diagnostics when present.
         'diagnostics_config_root': _system_diagnostics_config_root,
         'enable_platform': lc['enable_platform_checker'],
+        # HH_260805 - Diagnostics remove the optional LiDAR grid contract when
+        # the component is not loaded, instead of reporting a false system error.
+        'enable_lidar_cost_grid': lc['enable_lidar_cost_grid'],
         'module_namespace': lc['system_namespace'],
     }
 
@@ -2262,7 +2315,18 @@ def generate_launch_description():
     ]
     launch_stack = GroupAction([*staged_modules, rviz_node])
     delayed_stack = TimerAction(period=1.0, actions=[launch_stack])
-    start_stack_actions = [delayed_stack]
+    # HH_260805 - Start RouDi before the one-second module delay. The global
+    # environment applies to every subsequently spawned ROS process.
+    roudi_process = ExecuteProcess(
+        cmd=[
+            lc['dds_shared_memory_roudi_executable'],
+            '--config-file', lc['dds_shared_memory_roudi_config'],
+            '--log-level', lc['dds_shared_memory_roudi_log_level'],
+        ],
+        output='screen',
+        condition=IfCondition(lc['enable_dds_shared_memory']),
+    )
+    start_stack_actions = [roudi_process, delayed_stack]
 
     start_after_cleanup = RegisterEventHandler(
         OnProcessExit(
@@ -2286,6 +2350,16 @@ def generate_launch_description():
 
     return LaunchDescription([
         *args,
+        SetEnvironmentVariable(
+            'RMW_IMPLEMENTATION',
+            'rmw_cyclonedds_cpp',
+            condition=IfCondition(lc['enable_dds_shared_memory']),
+        ),
+        SetEnvironmentVariable(
+            'CYCLONEDDS_URI',
+            lc['dds_shared_memory_cyclonedds_config'],
+            condition=IfCondition(lc['enable_dds_shared_memory']),
+        ),
         resolve_camera_yolo_container_active,
         clean_action,
         start_after_cleanup,

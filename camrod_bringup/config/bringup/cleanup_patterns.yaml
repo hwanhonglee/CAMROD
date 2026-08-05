@@ -14,10 +14,16 @@ patterns:
   # [orchestrator]
   # Kill stale previous bringup launch parent process first.
   - ros2 launch camrod_bringup bringup.launch.py
+  # HH_260805 - A new bringup instance owns exactly one shared-memory daemon.
+  - iox-roudi
 
   # [platform]
   - robot_state_publisher
   - robot_visualization_node
+  # HH_260805 - Match executables too: these nodes do not always receive an
+  # explicit __node remap and can outlive an interrupted launch parent.
+  - ranger_platform_bridge_node
+  - light_controller_node
   - __node:=ranger_platform_bridge
   - __node:=sensor_kit_status
   - __node:=platform_status
@@ -53,6 +59,7 @@ patterns:
   - __node:=moving_base_rtcm_writer
   - radar_cost_grid_node
   - lidar_cost_grid_node
+  - inflation_cost_grid_node
   - __node:=sensing_status
 
   # [perception]
@@ -75,6 +82,12 @@ patterns:
   - goal_snapper_node
   - goal_replanner_node
   - local_path_extractor_node
+  - smoother_server
+  - __node:=nav2_selector_latch
+  - __node:=path_tracking_error
+  - __node:=planning_progress
+  - __node:=path_visualizer
+  - __node:=obstacle_replan_monitor
   - __node:=nav2_lifecycle_startup_retry
   - compute_path_bridge_node
   - __node:=planning_state_machine
@@ -92,6 +105,7 @@ patterns:
   - __node:=cmd_vel_safety_gate
   - __node:=camping_site_maneuver_controller
   - __node:=drop_zone_maneuver_controller
+  - __node:=route_safety_recovery_controller
 
   # [parking]
   # HH_260720 - Exactly one selectable reverse-parking implementation runs.
@@ -100,6 +114,12 @@ patterns:
   - __node:=apriltag_parking_detector
 
   # [system]
+  # HH_260805 - One suffix safely covers every standalone diagnostic checker,
+  # including system_checker_node, after an abnormal parent termination.
+  - _checker_node
+  - aggregator_node
+  - diagnostics_aggregator_node
+  - system_diagnostic_node
   - __node:=map_validator
   - __node:=sensing_validator
   - __node:=localization_validator
@@ -124,6 +144,7 @@ patterns:
   # Without these patterns, stale api nodes can keep TCP port 8010 bound.
   - __node:=plugin_api_bridge
   - __node:=ui_backend
+  - __node:=ui_guest
   - plugin_api_bridge_node
   - ui_backend_node
 
