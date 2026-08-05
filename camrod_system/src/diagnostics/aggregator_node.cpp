@@ -54,8 +54,9 @@ struct TopicConfig {
 class DiagnosticsAggregator : public rclcpp::Node
 {
 public:
-  DiagnosticsAggregator()
-  : rclcpp::Node("diagnostics_agg")
+  explicit DiagnosticsAggregator(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : rclcpp::Node("diagnostics_agg", options)
   {
     declare_parameter("config_file", std::string(""));
     // HH_260408: Keep aggregated status in topic by default, without periodic console spam.
@@ -297,11 +298,5 @@ private:
 
 // ── main ──────────────────────────────────────────────────────────────────
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<DiagnosticsAggregator>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_NODE_ENTRYPOINT(DiagnosticsAggregator)

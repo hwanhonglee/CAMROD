@@ -93,6 +93,13 @@ class _FakeBackend:
 
 
 class UiBackendStopTest(unittest.TestCase):
+    def test_both_ui_nodes_accept_external_shutdown_as_clean_exit(self) -> None:
+        runtime_dir = Path(__file__).resolve().parents[1] / "runtime" / "python" / "camrod_ui"
+        for filename in ("ui_backend_node.py", "ui_guest_node.py"):
+            source = (runtime_dir / filename).read_text(encoding="utf-8")
+            self.assertIn("from rclpy.executors import ExternalShutdownException", source)
+            self.assertIn("except (KeyboardInterrupt, ExternalShutdownException):", source)
+
     def test_http_server_is_stopped_before_node_destruction(self) -> None:
         server = SimpleNamespace(should_exit=False)
         loop = _FakeLoop()

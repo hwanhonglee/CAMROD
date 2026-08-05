@@ -104,7 +104,7 @@ PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
 
   // Setup the global costmap
   costmap_ros_ = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
-    "global_costmap", std::string{get_namespace()}, "global_costmap");
+    "global_costmap", std::string{get_namespace()}, "global_costmap", get_node_options());
 }
 
 PlannerServer::~PlannerServer()
@@ -331,7 +331,8 @@ bool PlannerServer::waitForCostmap()
   rclcpp::Rate r(100);
   const auto t0 = now();
   while (!costmap_ros_->isCurrent()) {
-    if (!rclcpp::ok()) {
+    // HH_260805 - Planner components may run on a container-owned context.
+    if (!rclcpp::ok(get_node_base_interface()->get_context())) {
       return false;
     }
     if (costmap_wait_timeout_sec_ > 0.0) {

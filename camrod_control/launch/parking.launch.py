@@ -18,10 +18,18 @@ def generate_launch_description():
     default_parameter_file = package_path(
         "camrod_control", os.path.join("config", "parking.yaml")
     )
+    default_apriltag_parameter_file = package_path(
+        "camrod_perception",
+        os.path.join("config", "apriltag_parking_detector.yaml"),
+    )
 
     return LaunchDescription([
         DeclareLaunchArgument("parking_namespace", default_value="parking"),
         DeclareLaunchArgument("parameter_file", default_value=default_parameter_file),
+        DeclareLaunchArgument(
+            "apriltag_parameter_file",
+            default_value=default_apriltag_parameter_file,
+        ),
         DeclareLaunchArgument("parking_method", default_value="reverse"),
         DeclareLaunchArgument("command_topic", default_value="/control/cmd_vel_raw"),
         DeclareLaunchArgument("vehicle_pose_topic", default_value="/localization/pose"),
@@ -34,6 +42,9 @@ def generate_launch_description():
                 "camrod_perception",
                 os.path.join("launch", "apriltag_parking_detector.launch.py"),
             )),
+            launch_arguments={
+                "parameter_file": LaunchConfiguration("apriltag_parameter_file"),
+            }.items(),
             condition=IfCondition(PythonExpression([
                 "'", LaunchConfiguration("parking_method"),
                 "'.strip().lower() == 'apriltag' and '",

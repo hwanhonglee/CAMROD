@@ -1,0 +1,13 @@
+<CycloneDDS>
+  <Domain>
+    <!-- HH_260805 - Scoped to the physical LiDAR driver and processing process. -->
+    <Tracing>
+      <Verbosity>severe</Verbosity>
+    </Tracing>
+    <SharedMemory>
+      <Enable>true</Enable>
+      <LogLevel>warn</LogLevel>
+    </SharedMemory>
+    <!-- HH_260805 - Keep host socket defaults for variable-size DDS fallback. -->
+  </Domain>
+</CycloneDDS>

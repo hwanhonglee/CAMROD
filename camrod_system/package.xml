@@ -24,6 +24,8 @@
   <depend>unique_identifier_msgs</depend>
   <depend>vision_msgs</depend>
   <depend>yaml_cpp_vendor</depend>
+  <!-- HH_260805 - Scoped containers own RMW/DDS teardown ordering. -->
+  <exec_depend>camrod_runtime</exec_depend>
   <exec_depend>std_srvs</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>

@@ -122,7 +122,12 @@ public:
       options,
       callback_group_);
     if (spin_thread_) {
-      executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+      // HH_260805 - Internal action callbacks share the owning component's
+      // explicit ROS context instead of assuming a global default context.
+      rclcpp::ExecutorOptions executor_options;
+      executor_options.context = node_base_interface_->get_context();
+      executor_ =
+        std::make_shared<rclcpp::executors::SingleThreadedExecutor>(executor_options);
       executor_->add_callback_group(callback_group_, node_base_interface_);
       executor_thread_ = std::make_unique<nav2_util::NodeThread>(executor_);
     }
@@ -211,7 +216,11 @@ public:
    */
   void work()
   {
-    while (rclcpp::ok() && !stop_execution_ && is_active(current_handle_)) {
+    // HH_260805 - Do not consult the unused global context when this action
+    // server belongs to a dynamically loaded component.
+    while (rclcpp::ok(node_base_interface_->get_context()) &&
+      !stop_execution_ && is_active(current_handle_))
+    {
       debug_msg("Executing the goal...");
       try {
         execute_callback_();

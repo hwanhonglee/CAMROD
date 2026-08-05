@@ -41,11 +41,15 @@ def _resolve_camera_enable(context, *args, **kwargs):
     requested_raw = context.perform_substitution(LaunchConfiguration("enable_camera"))
     front_raw = context.perform_substitution(LaunchConfiguration("enable_front_camera"))
     rear_raw = context.perform_substitution(LaunchConfiguration("enable_rear_camera"))
+    rear_external_raw = context.perform_substitution(
+        LaunchConfiguration("rear_camera_source_external", default="false")
+    )
     device_path = context.perform_substitution(LaunchConfiguration("camera_device_path")).strip()
 
     requested = _truthy(requested_raw)
     front_requested = _truthy(front_raw)
     rear_requested = _truthy(rear_raw)
+    rear_external = _truthy(rear_external_raw)
     has_device = bool(device_path) and os.path.exists(device_path)
     front_executable = _camera_executable_exists("camera_front_publisher_node")
     rear_executable = _camera_executable_exists("camera_rear_publisher_node")
@@ -55,7 +59,10 @@ def _resolve_camera_enable(context, *args, **kwargs):
     # path is usable, the other channel must receive an explicit dummy instead
     # of being silently treated as enabled by the aggregate OR condition.
     front_effective = requested and front_requested and has_device and front_executable
-    rear_effective = requested and rear_requested and has_device and rear_executable
+    rear_effective = (
+        requested and rear_requested and not rear_external and has_device
+        and rear_executable
+    )
     effective = front_effective or rear_effective
     missing_requested_executable = (
         (front_requested and not front_executable) or
@@ -136,6 +143,9 @@ def generate_launch_description():
         # The composable camera+YOLO container may own the real front camera
         # outside this scoped sensing include; suppress a duplicate front dummy.
         DeclareLaunchArgument("front_camera_source_external", default_value="false"),
+        # HH_260805 - The AprilTag component container may own the physical rear
+        # camera outside this sensing scope; suppress both duplicate capture and dummy.
+        DeclareLaunchArgument("rear_camera_source_external", default_value="false"),
         DeclareLaunchArgument("enable_radar_cost_grid",      default_value="true"),
         # HH_260702 - Keep per-radar range details on topics/checkers by default;
         # enable this only for bench debugging so the field console stays concise.
@@ -144,6 +154,15 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_lidar_cost_grid",      default_value="false"),
         # HH_260805 - Compose LiDAR preprocessing while retaining an independent cost-grid toggle.
         DeclareLaunchArgument("use_lidar_processing_container", default_value="true"),
+        # HH_260805 - Forward the opt-in LiDAR-only DDS-SHM profile without
+        # changing the environment of camera, GNSS, IMU, or radar processes.
+        DeclareLaunchArgument("enable_dds_shared_memory", default_value="false"),
+        DeclareLaunchArgument(
+            "dds_shared_memory_cyclonedds_config",
+            default_value=os.path.join(
+                sensing_share, "config", "middleware", "cyclonedds_lidar_shm.xml"
+            ),
+        ),
         DeclareLaunchArgument("enable_inflation_cost_grid",  default_value="true"),
         DeclareLaunchArgument("enable_vanjee_static_tf",     default_value="false"),
         ## HJ_260528
@@ -276,6 +295,10 @@ def generate_launch_description():
                             "str('", LaunchConfiguration(
                                 "publish_sensor_dummies_when_disabled"
                             ), "').lower() in ('1','true','yes','on') and not ",
+                            "str('", LaunchConfiguration(
+                                "rear_camera_source_external", default="false"
+                            ),
+                            "').lower() in ('1','true','yes','on') and not ",
                             "str('", LaunchConfiguration("enable_rear_camera_effective"),
                             "').lower() in ('1','true','yes','on')",
                         ]),
@@ -296,8 +319,12 @@ def generate_launch_description():
                     "').lower() in ('1','true','yes','on') and not str('",
                     LaunchConfiguration("enable_front_camera_effective"),
                     "').lower() in ('1','true','yes','on')) or ",
-                    "not str('", LaunchConfiguration("enable_rear_camera_effective"),
-                    "').lower() in ('1','true','yes','on'))",
+                    "(not str('", LaunchConfiguration(
+                        "rear_camera_source_external", default="false"
+                    ),
+                    "').lower() in ('1','true','yes','on') and not str('",
+                    LaunchConfiguration("enable_rear_camera_effective"),
+                    "').lower() in ('1','true','yes','on')))",
                 ])),
             ),
 
@@ -350,6 +377,8 @@ def generate_launch_description():
                  "lidar_cost_grid_param_file", "vanjee_config_path",
                  "enable_lidar_driver", "enable_lidar_cost_grid",
                  "use_lidar_processing_container", "enable_vanjee_static_tf",
+                 "enable_dds_shared_memory",
+                 "dds_shared_memory_cyclonedds_config",
                  module_namespace="lidar",
                  vanjee_driver_namespace="vanjee",
                  preprocessor_input_topic="vanjee/points_raw",

@@ -25,6 +25,10 @@ def generate_launch_description():
     preprocessor_output_topic = LaunchConfiguration("preprocessor_output_topic")
     lidar_filtered_topic     = LaunchConfiguration("lidar_filtered_topic")
     lidar_cost_grid_param_file = LaunchConfiguration("lidar_cost_grid_param_file")
+    enable_dds_shared_memory = LaunchConfiguration("enable_dds_shared_memory")
+    dds_shared_memory_cyclonedds_config = LaunchConfiguration(
+        "dds_shared_memory_cyclonedds_config"
+    )
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -43,6 +47,13 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_lidar_cost_grid",   default_value="false"),
         # HH_260805 - Keep cost-grid enable independent inside the LiDAR container.
         DeclareLaunchArgument("use_lidar_processing_container", default_value="true"),
+        DeclareLaunchArgument("enable_dds_shared_memory", default_value="false"),
+        DeclareLaunchArgument(
+            "dds_shared_memory_cyclonedds_config",
+            default_value=os.path.join(
+                sensing_share, "config", "middleware", "cyclonedds_lidar_shm.xml"
+            ),
+        ),
         DeclareLaunchArgument("enable_vanjee_static_tf",  default_value="false"),
         DeclareLaunchArgument("module_namespace",         default_value="lidar"),
         DeclareLaunchArgument("vanjee_driver_namespace",  default_value="vanjee"),
@@ -57,6 +68,10 @@ def generate_launch_description():
                 "enable_lidar_driver":      enable_lidar_driver,
                 "enable_lidar_cost_grid":   enable_lidar_cost_grid,
                 "use_lidar_processing_container": use_lidar_processing_container,
+                "enable_dds_shared_memory": enable_dds_shared_memory,
+                "dds_shared_memory_cyclonedds_config": (
+                    dds_shared_memory_cyclonedds_config
+                ),
                 "lidar_cost_grid_param_file": lidar_cost_grid_param_file,
                 "vanjee_config_path":       vanjee_config_path,
                 "enable_vanjee_static_tf":  enable_vanjee_static_tf,

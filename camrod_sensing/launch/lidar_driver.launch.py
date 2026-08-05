@@ -4,7 +4,13 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction
+from launch.actions import (
+    DeclareLaunchArgument,
+    GroupAction,
+    LogInfo,
+    OpaqueFunction,
+    SetEnvironmentVariable,
+)
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import ComposableNodeContainer, Node
@@ -120,8 +126,10 @@ def _build_lidar_processing_container(context, *args, **kwargs):
         return []
     return [
         ComposableNodeContainer(
-            package="rclcpp_components",
-            executable="component_container_mt",
+            # HH_260805 - Finalize the scoped DDS context before unloading the
+            # processing components, including the optional iceoryx transport.
+            package="camrod_runtime",
+            executable="scoped_component_container_mt",
             name="lidar_processing_container",
             namespace=LaunchConfiguration("module_namespace"),
             output="screen",
@@ -139,6 +147,9 @@ def generate_launch_description():
         sensing_share, "config", "lidar", "cost_grid.yaml"
     )
     default_vanjee_config, has_vanjee_driver_pkg = _resolve_vanjee_config_and_presence()
+    default_cyclonedds_config = os.path.join(
+        sensing_share, "config", "middleware", "cyclonedds_lidar_shm.xml"
+    )
     enable_driver_default = "true" if has_vanjee_driver_pkg else "false"
 
     declare_args = [
@@ -148,6 +159,11 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_lidar_driver", default_value=enable_driver_default),
         DeclareLaunchArgument("enable_lidar_cost_grid", default_value="false"),
         DeclareLaunchArgument("use_lidar_processing_container", default_value="true"),
+        DeclareLaunchArgument("enable_dds_shared_memory", default_value="false"),
+        DeclareLaunchArgument(
+            "dds_shared_memory_cyclonedds_config",
+            default_value=default_cyclonedds_config,
+        ),
         DeclareLaunchArgument("enable_vanjee_static_tf", default_value="false"),
         DeclareLaunchArgument("module_namespace", default_value="lidar"),
         DeclareLaunchArgument("vanjee_driver_namespace", default_value="vanjee"),
@@ -270,9 +286,23 @@ def generate_launch_description():
         ),
     ]
 
-    return LaunchDescription(
-        declare_args
-        + [OpaqueFunction(function=_build_lidar_processing_container)]
-        + standalone_nodes
-        + optional_driver_actions
-    )
+    # HH_260805 - GroupAction restores the parent environment after this launch
+    # scope. Only the Vanjee driver and LiDAR processing process opt into
+    # CycloneDDS/iceoryx; the rest of CAMROD keeps its configured host RMW.
+    lidar_runtime = GroupAction([
+        SetEnvironmentVariable(
+            "RMW_IMPLEMENTATION",
+            "rmw_cyclonedds_cpp",
+            condition=IfCondition(LaunchConfiguration("enable_dds_shared_memory")),
+        ),
+        SetEnvironmentVariable(
+            "CYCLONEDDS_URI",
+            LaunchConfiguration("dds_shared_memory_cyclonedds_config"),
+            condition=IfCondition(LaunchConfiguration("enable_dds_shared_memory")),
+        ),
+        OpaqueFunction(function=_build_lidar_processing_container),
+        *standalone_nodes,
+        *optional_driver_actions,
+    ])
+
+    return LaunchDescription(declare_args + [lidar_runtime])

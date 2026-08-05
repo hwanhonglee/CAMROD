@@ -3,10 +3,11 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, OpaqueFunction
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import ComposableNodeContainer, Node
+from launch_ros.descriptions import ComposableNode
 from nav2_common.launch import RewrittenYaml
 from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 import os
@@ -353,6 +354,14 @@ def generate_launch_description():
         default_value='true',
         description='Nav2 lifecycle_manager autostart flag',
     )
+    use_nav2_container_arg = DeclareLaunchArgument(
+        'use_nav2_container',
+        default_value='true',
+        description=(
+            'Compose vendored planner/controller in the scoped multi-threaded '
+            'runtime; vendor Nav2 servers stay standalone'
+        ),
+    )
     nav2_bt_xml_nav_to_pose_arg = DeclareLaunchArgument(
         'nav2_bt_xml_nav_to_pose',
         default_value=default_nav_to_pose_bt_xml,
@@ -388,9 +397,17 @@ def generate_launch_description():
     module_namespace = LaunchConfiguration('module_namespace')
     navigation_cmd_vel_topic = LaunchConfiguration('navigation_cmd_vel_topic')
     nav2_autostart = LaunchConfiguration('nav2_autostart')
+    use_nav2_container = LaunchConfiguration('use_nav2_container')
     nav2_bt_xml_nav_to_pose = LaunchConfiguration('nav2_bt_xml_nav_to_pose')
     nav2_bt_xml_nav_through_poses = LaunchConfiguration('nav2_bt_xml_nav_through_poses')
     selector_latch = OpaqueFunction(function=build_nav2_selector_latch_node)
+    # HH_260805 - Rewrite every matching YAML leaf before loading either an
+    # executable or a component. Nav2 creates costmap child nodes internally;
+    # relying only on a final node-scoped dict lets those children fall back to
+    # base_link under component loading instead of using robot_center_link.
+    nav2_frame_rewrites = {
+        'robot_base_frame': nav2_robot_base_frame,
+    }
     # 2026-02-25: Apply Nav2 params in deterministic overlay order:
     # base -> vehicle -> lanelet -> behavior.
     nav2_base_params = RewrittenYaml(
@@ -400,6 +417,7 @@ def generate_launch_description():
         # LaneletRoute planner plugin. RewrittenYaml rewrites parameter leaves;
         # a raw nested dict in Node(parameters=...) is not a node-scoped YAML.
         param_rewrites={
+            **nav2_frame_rewrites,
             'map_path': map_path,
             'offset_lat': origin_lat,
             'offset_lon': origin_lon,
@@ -412,19 +430,20 @@ def generate_launch_description():
     nav2_vehicle_params = RewrittenYaml(
         source_file=nav2_vehicle_param_file,
         root_key='planning',
-        param_rewrites={},
+        param_rewrites=nav2_frame_rewrites,
         convert_types=True,
     )
     nav2_lanelet_params = RewrittenYaml(
         source_file=nav2_lanelet_param_file,
         root_key='planning',
-        param_rewrites={},
+        param_rewrites=nav2_frame_rewrites,
         convert_types=True,
     )
     nav2_behavior_params = RewrittenYaml(
         source_file=nav2_behavior_param_file,
         root_key='planning',
         param_rewrites={
+            **nav2_frame_rewrites,
             # HH_260421: Replace host-specific absolute BT XML paths from YAML.
             'default_nav_to_pose_bt_xml': nav2_bt_xml_nav_to_pose,
             'default_nav_through_poses_bt_xml': nav2_bt_xml_nav_through_poses,
@@ -435,19 +454,22 @@ def generate_launch_description():
         source_file=nav2_combo_param_file,
         root_key='planning',
         # HH_260720 - Keep optional SmacLattice combo profiles portable as well.
-        param_rewrites={'lattice_filepath': default_lattice_filepath},
+        param_rewrites={
+            **nav2_frame_rewrites,
+            'lattice_filepath': default_lattice_filepath,
+        },
         convert_types=True,
     )
     nav2_planner_plugins_params = RewrittenYaml(
         source_file=nav2_planner_plugins_param_file,
         root_key='planning',
-        param_rewrites={},
+        param_rewrites=nav2_frame_rewrites,
         convert_types=True,
     )
     nav2_controller_plugins_params = RewrittenYaml(
         source_file=nav2_controller_plugins_param_file,
         root_key='planning',
-        param_rewrites={},
+        param_rewrites=nav2_frame_rewrites,
         convert_types=True,
     )
 
@@ -534,6 +556,7 @@ def generate_launch_description():
         name='planner_server',
         namespace=module_namespace,
         output='screen',
+        condition=UnlessCondition(use_nav2_container),
         # HH_260702 - Nav2 lifecycle_manager can reconnect to respawned
         # lifecycle nodes, but launch must first recreate the crashed process.
         respawn=True,
@@ -551,6 +574,7 @@ def generate_launch_description():
         name='controller_server',
         namespace=module_namespace,
         output='screen',
+        condition=UnlessCondition(use_nav2_container),
         # HH_260702 - Keep the controller process alive after transient Nav2 crashes.
         respawn=True,
         respawn_delay=2.0,
@@ -574,6 +598,8 @@ def generate_launch_description():
             name='behavior_server',
             namespace=module_namespace,
             output='screen',
+            # HH_260805 - Keep vendor recovery servers in independent process
+            # fault domains; only maintained planner/controller code composes.
             # HH_260702 - Recovery behaviors are lifecycle-managed and may be
             # reconnected by lifecycle_manager after launch respawns the process.
             respawn=True,
@@ -604,6 +630,7 @@ def generate_launch_description():
             name='smoother_server',
             namespace=module_namespace,
             output='screen',
+            # HH_260805 - Keep the system smoother on its normal global context.
             # HH_260702 - SmoothPath is in the BT path; respawn keeps planner
             # recovery from staying broken after a one-off smoother crash.
             respawn=True,
@@ -626,6 +653,8 @@ def generate_launch_description():
         name='bt_navigator',
         namespace=module_namespace,
         output='screen',
+        # HH_260805 - BT plugins include vendor-owned private executors and
+        # remain standalone while planner/controller share a scoped context.
         # HH_260702 - Keep the action server available if BT navigator exits.
         respawn=True,
         respawn_delay=2.0,
@@ -669,6 +698,8 @@ def generate_launch_description():
         name='lifecycle_manager_planning',
         namespace=module_namespace,
         output='screen',
+        # HH_260805 - Keep lifecycle orchestration independent from the core
+        # container so it can recover either planner/controller component.
         # HH_260702 - If the manager itself exits, bring it back so it can
         # reconnect respawned Nav2 lifecycle nodes instead of leaving checker
         # missing-node warnings as the only recovery signal.
@@ -688,6 +719,59 @@ def generate_launch_description():
         }],
         remappings=[
         ],
+    )
+
+    # HH_260805 - Compose the two CAMROD-maintained Nav2 core servers. Vendor
+    # smoother, behavior, BT, and lifecycle processes keep independent contexts
+    # because their private Humble executors assume a global ROS context.
+    # HH_260805 - Nav2 costmaps and route publishers use transient-local QoS.
+    # ROS 2 Humble rejects those publishers when intra-process is enabled, so
+    # Nav2 shares a process/executor but intentionally retains DDS delivery.
+    intra_process = [{'use_intra_process_comms': False}]
+    nav2_components = [
+        ComposableNode(
+            package='nav2_planner',
+            plugin='nav2_planner::PlannerServer',
+            name='planner_server',
+            namespace=module_namespace,
+            parameters=nav2_param_chain,
+            remappings=[('plan', '/planning/global_path')],
+            extra_arguments=intra_process,
+        ),
+        ComposableNode(
+            package='nav2_controller',
+            plugin='nav2_controller::ControllerServer',
+            name='controller_server',
+            namespace=module_namespace,
+            parameters=nav2_param_chain,
+            remappings=[
+                ('cmd_vel', navigation_cmd_vel_topic),
+                ('received_global_plan', '/planning/local_path_controller'),
+                ('transformed_global_plan', '/planning/local_path_dwb'),
+            ],
+            extra_arguments=intra_process,
+        ),
+    ]
+    nav2_container = ComposableNodeContainer(
+        condition=IfCondition(use_nav2_container),
+        # HH_260805 - Join Nav2 lifecycle pre-shutdown callbacks before the
+        # component manager and DDS context are destroyed.
+        package='camrod_runtime',
+        executable='scoped_component_container_mt',
+        name='nav2_container',
+        # HH_260805 - BT navigator creates private client nodes from the
+        # process namespace instead of inheriting the parent component. Keep
+        # the container in /planning so relative Nav2 actions resolve there.
+        namespace=module_namespace,
+        output='screen',
+        respawn=True,
+        respawn_delay=2.0,
+        # HH_260805 - PlannerServer and ControllerServer construct their
+        # costmaps as child nodes that parse the container process ROS args.
+        # Supplying params only in each LoadNode request leaves those children
+        # on Nav2 defaults (notably base_link and a 5 m costmap).
+        parameters=nav2_param_chain,
+        composable_node_descriptions=nav2_components,
     )
 
     path_cost_grids = IncludeLaunchDescription(
@@ -728,6 +812,7 @@ def generate_launch_description():
         module_namespace_arg,
         navigation_cmd_vel_topic_arg,
         nav2_autostart_arg,
+        use_nav2_container_arg,
         nav2_bt_xml_nav_to_pose_arg,
         nav2_bt_xml_nav_through_poses_arg,
 
@@ -738,5 +823,6 @@ def generate_launch_description():
         behavior_server,
         bt_navigator,
         lifecycle_mgr,
+        nav2_container,
         path_cost_grids,
     ])

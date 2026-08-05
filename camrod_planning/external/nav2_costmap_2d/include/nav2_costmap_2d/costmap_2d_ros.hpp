@@ -98,6 +98,15 @@ public:
     const std::string & local_namespace);
 
   /**
+   * @brief Constructor for an embedded costmap sharing its parent ROS context.
+   */
+  Costmap2DROS(
+    const std::string & name,
+    const std::string & parent_namespace,
+    const std::string & local_namespace,
+    const rclcpp::NodeOptions & parent_options);
+
+  /**
    * @brief A destructor
    */
   ~Costmap2DROS();

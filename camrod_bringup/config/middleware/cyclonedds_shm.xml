@@ -1,6 +1,6 @@
 <CycloneDDS>
   <Domain>
-    <!-- HH_260805 - Bench-only profile: bringup launches RouDi when explicitly enabled. -->
+    <!-- HH_260805 - LiDAR-only profile: bringup launches RouDi when explicitly enabled. -->
     <Tracing>
       <Verbosity>severe</Verbosity>
     </Tracing>

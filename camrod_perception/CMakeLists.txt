@@ -8,6 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -86,12 +87,15 @@ ament_target_dependencies(campsite_occupancy_node
 )
 target_link_libraries(campsite_occupancy_node yaml-cpp)
 
-# HH_260720 - Build the rear-camera AprilTag detector used only by AprilTag parking.
-add_executable(apriltag_parking_detector_node src/apriltag_parking_detector_node.cpp)
-ament_target_dependencies(apriltag_parking_detector_node
+# HH_260805 - Build the parking detector once as a component and preserve its
+# generated standalone executable for isolated field debugging.
+add_library(apriltag_parking_detector_component SHARED
+  src/apriltag_parking_detector_node.cpp)
+ament_target_dependencies(apriltag_parking_detector_component
   # HH_260720 - Link the generated AprilTag parking pose and conversion helpers.
   avg_msgs
   rclcpp
+  rclcpp_components
   sensor_msgs
   geometry_msgs
   std_msgs
@@ -99,10 +103,21 @@ ament_target_dependencies(apriltag_parking_detector_node
   tf2_ros
   cv_bridge
 )
-target_include_directories(apriltag_parking_detector_node PRIVATE ${OpenCV_INCLUDE_DIRS})
-target_link_libraries(apriltag_parking_detector_node
+target_include_directories(apriltag_parking_detector_component PRIVATE ${OpenCV_INCLUDE_DIRS})
+target_link_libraries(apriltag_parking_detector_component
   apriltag::apriltag
   ${OpenCV_LIBS}
+)
+rclcpp_components_register_node(
+  apriltag_parking_detector_component
+  PLUGIN "camrod::perception::AprilTagParkingDetectorNode"
+  EXECUTABLE apriltag_parking_detector_node
+)
+install(
+  TARGETS apriltag_parking_detector_component
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 install(TARGETS

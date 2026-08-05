@@ -12,6 +12,8 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
+  <!-- HH_260805 - Compose rear-camera parking perception without changing its standalone CLI. -->
+  <depend>rclcpp_components</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
@@ -37,7 +39,6 @@
   <depend>yaml-cpp</depend>
   <!-- HH_260720 - Preserve the original external rectification pipeline. -->
   <exec_depend>image_proc</exec_depend>
-  <exec_depend>rclcpp_components</exec_depend>
 
   <!-- HJ_260529: optional YOLO packages — declared so packages-up-to pulls them in automatically -->
   <exec_depend>yolov9mit</exec_depend>

@@ -191,6 +191,9 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_tracking_error', default_value='true'),
         DeclareLaunchArgument('enable_path_visualization', default_value='true'),
         DeclareLaunchArgument('enable_obstacle_replan_monitor', default_value='false'),
+        # HH_260805 - The scoped container owns and finalizes its ROS context;
+        # standalone mode remains available as a field-isolation fallback.
+        DeclareLaunchArgument('use_nav2_container', default_value='true'),
 
         DeclareLaunchArgument('centerline_input_pose_topic', default_value='/localization/pose'),
         DeclareLaunchArgument('local_path_pose_topic', default_value='/localization/pose'),
@@ -215,6 +218,7 @@ def generate_launch_description():
               'nav2_behavior_param_file':          'nav2_behavior.yaml',
               'nav2_combo_param_file':             'nav2_combo_profiles/disabled.yaml',
               'nav2_planner_plugins_param_file':   'nav2_planner_profiles/production.yaml',
+              'nav2_controller_plugins_param_file': 'nav2_controller_profiles/production.yaml',
               'local_path_extractor_param_file':   'local_path_extractor.yaml',
               'path_cost_grids_param_file':        'path_cost_grids.yaml',
               'goal_snapper_param_file':           'goal_snapper.yaml',
@@ -256,6 +260,7 @@ def generate_launch_description():
                     'nav2_behavior_param_file',
                     'nav2_combo_param_file',
                     'nav2_planner_plugins_param_file',
+                    'nav2_controller_plugins_param_file',
                     'enable_path_cost_grids',
                     'path_cost_grids_param_file',
                     'map_path',
@@ -265,6 +270,7 @@ def generate_launch_description():
                     'nav2_robot_base_frame',
                     'nav2_selected_planner',
                     'nav2_selected_controller',
+                    'use_nav2_container',
                     'module_namespace',
                     'navigation_cmd_vel_topic',
                 ),

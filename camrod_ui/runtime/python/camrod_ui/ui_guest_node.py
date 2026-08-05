@@ -34,6 +34,7 @@ from avg_msgs.msg import (
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
@@ -665,7 +666,9 @@ def main() -> None:
     node = UiGuestNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    # HH_260805 - Treat launch-driven context shutdown like terminal SIGINT so
+    # Guest UI teardown does not intermittently report a process failure.
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()

@@ -85,6 +85,7 @@ def _dummy_selection(**overrides):
         "enable_imu": "true",
         "enable_lidar_driver": "true",
         "front_camera_source_external": "false",
+        "rear_camera_source_external": "false",
         "enable_front_camera_effective": "true",
         "enable_rear_camera_effective": "true",
     }
@@ -177,6 +178,23 @@ def test_external_component_front_camera_never_gets_duplicate_dummy():
     assert groups == ("rear_camera",)
 
 
+def test_external_component_rear_camera_never_gets_duplicate_dummy():
+    active, groups, _ = _dummy_selection(
+        rear_camera_source_external=True,
+        enable_rear_camera_effective=False,
+    )
+    assert active is False
+    assert groups == ()
+
+    active, groups, _ = _dummy_selection(
+        rear_camera_source_external=True,
+        enable_rear_camera_effective=False,
+        enable_front_camera_effective=False,
+    )
+    assert active is True
+    assert groups == ("front_camera",)
+
+
 @pytest.mark.parametrize("truthy", ("1", "true", "True", "yes", "on"))
 def test_truthy_real_flags_never_select_a_duplicate_dummy(truthy):
     active, groups, _ = _dummy_selection(
@@ -209,6 +227,7 @@ def _resolve_camera(
     device_exists,
     front_executable,
     rear_executable,
+    rear_external=False,
 ):
     camera_device = "/virtual/econ-camera"
     real_exists = SENSING_LAUNCH.os.path.exists
@@ -236,6 +255,7 @@ def _resolve_camera(
         "enable_camera": "true" if enable_camera else "false",
         "enable_front_camera": "true" if enable_front else "false",
         "enable_rear_camera": "true" if enable_rear else "false",
+        "rear_camera_source_external": "true" if rear_external else "false",
         "camera_device_path": camera_device,
     })
     for action in SENSING_LAUNCH._resolve_camera_enable(context):

@@ -43,6 +43,7 @@ from nav2_msgs.action import NavigateToPose
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import GetParameters, SetParameters
 from rclpy.action import ActionClient
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
@@ -2459,7 +2460,9 @@ def main() -> None:
     node = UiBackendNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    # HH_260805 - rclpy may report launch-driven SIGINT as either exception;
+    # both are normal shutdown paths and must leave launch with exit code 0.
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()

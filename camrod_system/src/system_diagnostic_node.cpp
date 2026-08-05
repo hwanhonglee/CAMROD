@@ -33,8 +33,9 @@ struct ModuleSnapshot
 class SystemDiagnosticNode : public rclcpp::Node
 {
 public:
-  SystemDiagnosticNode()
-  : Node("system_diagnostic")
+  explicit SystemDiagnosticNode(
+    const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("system_diagnostic", options)
   {
     diagnostic_topic_ = declare_parameter<std::string>("diagnostic_topic", "/diagnostics");
     publish_period_s_ = declare_parameter<double>("publish_period_s", 0.5);
@@ -756,11 +757,5 @@ private:
 
 }  // namespace camrod_system
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<camrod_system::SystemDiagnosticNode>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_NODE_ENTRYPOINT(camrod_system::SystemDiagnosticNode)

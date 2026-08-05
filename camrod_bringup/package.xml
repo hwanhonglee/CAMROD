@@ -26,8 +26,10 @@
   <!-- HH_260707: Optional front-camera/YOLO component container launch path. -->
   <exec_depend>rclcpp_components</exec_depend>
   <exec_depend>launch_ros</exec_depend>
-  <!-- HH_260805 - Full bringup owns the CycloneDDS/iceoryx transport profile
-       and starts RouDi before ROS component containers. -->
+  <!-- HH_260805 - Rear parking composition directly loads image_proc::RectifyNode. -->
+  <exec_depend>image_proc</exec_depend>
+  <!-- HH_260805 - Full bringup owns the opt-in physical-LiDAR
+       CycloneDDS/iceoryx profile and starts RouDi only for that group. -->
   <exec_depend>rmw_cyclonedds_cpp</exec_depend>
   <exec_depend>iceoryx_posh</exec_depend>
   <!-- HH_260730 - field_test_tool.sh record-recovery invokes ros2 bag directly. -->
@@ -39,6 +41,7 @@
   <exec_depend>python3-opencv</exec_depend>
   <!-- Launch-time dependencies for fused localization and sensing pipeline. -->
   <exec_depend>camrod_sensor_kit</exec_depend>
+  <exec_depend>camrod_runtime</exec_depend>
   <exec_depend>camrod_localization</exec_depend>
   <exec_depend>camrod_map</exec_depend>
   <exec_depend>camrod_perception</exec_depend>

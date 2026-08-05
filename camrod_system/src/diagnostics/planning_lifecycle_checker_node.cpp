@@ -52,8 +52,10 @@ struct LifecycleNodeState
   // 캐시된 상태 (mutex 보호)
   std::mutex  mtx;
   bool        has_response{false};
+  bool        request_pending{false};
   uint8_t     state_id{lifecycle_msgs::msg::State::PRIMARY_STATE_UNKNOWN};
   std::string state_label{"UNKNOWN"};
+  rclcpp::Time last_request_time{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_response_time{0, 0, RCL_ROS_TIME};
 };
 
@@ -68,6 +70,21 @@ public:
       "planning_lifecycle_checker", "planning_lifecycle_checker", options)
   {
     base_init();
+  }
+
+  ~PlanningLifecycleCheckerNode() override
+  {
+    // HH_260805 - Stop new polls and release unanswered service callbacks before
+    // a component library unloads. This prevents callbacks from retaining state
+    // across Humble component-container shutdown.
+    if (poll_timer_) {
+      poll_timer_->cancel();
+    }
+    for (auto & node : nodes_) {
+      if (node->client) {
+        node->client->prune_pending_requests();
+      }
+    }
   }
 
 protected:
@@ -124,16 +141,63 @@ private:
         continue;
       }
 
+      const auto request_time = get_clock()->now();
+      bool prune_timed_out_request = false;
+      {
+        std::lock_guard<std::mutex> lock(node->mtx);
+        if (node->request_pending) {
+          const double request_age =
+            (request_time - node->last_request_time).seconds();
+          if (request_age <= stale_timeout_) {
+            // HH_260805 - Keep one outstanding request per lifecycle service.
+            // A missing server must not grow the client's callback map forever.
+            continue;
+          }
+          node->request_pending = false;
+          prune_timed_out_request = true;
+        }
+      }
+      if (prune_timed_out_request) {
+        node->client->prune_pending_requests();
+      }
+
       auto req = std::make_shared<lifecycle_msgs::srv::GetState::Request>();
-      node->client->async_send_request(req,
-        [this, node](rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedFuture future) {
-          auto response = future.get();
-          std::lock_guard<std::mutex> lock(node->mtx);
-          node->state_id        = response->current_state.id;
-          node->state_label     = response->current_state.label;
-          node->has_response    = true;
-          node->last_response_time = this->now();
-        });
+      {
+        std::lock_guard<std::mutex> lock(node->mtx);
+        node->request_pending = true;
+        node->last_request_time = request_time;
+      }
+
+      // HH_260805 - Capture only weak state plus the shared clock. The rclcpp
+      // client owns pending callbacks, so capturing `this` or a strong `node`
+      // creates an unload-time lifetime cycle in a component container.
+      const std::weak_ptr<LifecycleNodeState> weak_node(node);
+      const auto clock = get_clock();
+      try {
+        node->client->async_send_request(req,
+          [weak_node, clock](
+            rclcpp::Client<lifecycle_msgs::srv::GetState>::SharedFuture future)
+          {
+            const auto state = weak_node.lock();
+            if (!state) {
+              return;
+            }
+            std::lock_guard<std::mutex> lock(state->mtx);
+            state->request_pending = false;
+            try {
+              const auto response = future.get();
+              state->state_id = response->current_state.id;
+              state->state_label = response->current_state.label;
+              state->has_response = true;
+              state->last_response_time = clock->now();
+            } catch (const std::exception &) {
+              // The next bounded poll retries a transient service failure.
+            }
+          });
+      } catch (const std::exception &) {
+        std::lock_guard<std::mutex> lock(node->mtx);
+        node->request_pending = false;
+      }
     }
   }
 

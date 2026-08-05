@@ -16,9 +16,9 @@ bringup:
     rviz: true
     # Stagger module startup to reduce bringup burst load.
     module_launch_gap_s: 1.0
-    # HH_260805 - Keep global CycloneDDS/iceoryx opt-in on Humble. The full
-    # CAMROD graph exceeds iceoryx 2.0.5 static port/history limits and can
-    # abort nodes; component hot paths still use ROS intra-process by default.
+    # HH_260805 - Keep physical-LiDAR CycloneDDS/iceoryx opt-in on Humble. The
+    # full graph exceeds iceoryx 2.0.5 static port/history limits, so other
+    # processes retain host DDS and component hot paths use intra-process.
     enable_dds_shared_memory: false
     dds_shared_memory_cyclonedds_config: middleware/cyclonedds_shm.xml
     dds_shared_memory_roudi_config: middleware/iceoryx_roudi.toml
@@ -73,6 +73,10 @@ bringup:
     # ---- Planning core toggles ----
     # HH_260604: Allow GNSS/localization-only bringup tests without requiring Nav2 runtime packages.
     enable_planning: true
+    # HH_260805 - Compose the vendored planner/controller in the scoped runtime;
+    # vendor servers with private executors remain standalone. Three final
+    # full-sim trials reached SYSTEM OK and all six containers exited cleanly.
+    use_nav2_container: true
     # HH_260625: Path-cost grids are RViz/guide helpers, not required for Nav2
     # route generation. Keep them off in full bringup to avoid extra OSM loads
     # and raster rebuilds during startup; enable explicitly for cost-grid debug.
@@ -520,6 +524,9 @@ bringup:
     # HH_260707: Default to the front-camera->YOLO component path after real
     # bringup smoke tests confirmed unchanged public topics and lower DDS load.
     use_camera_yolo_container: true
+    # HH_260805 - Active only for physical rear-camera AprilTag parking.
+    use_rear_camera_apriltag_container: true
+    apriltag_param_file: perception/apriltag_parking_detector.yaml
     # HH_260522: unified perception pipeline selector.
     #   auto: camera if available, fallback to lidar_only
     #   lidar_only: disable camera branches
@@ -536,12 +543,15 @@ bringup:
     # HH_260522: diagnostics profile choices are directory names under:
     #   camrod_bringup/config/system/diagnostics/<profile_name>/
     enable_module_validators: true
-    # HH_260805 - Keep checker composition bench-only. Repeated full-stack
-    # shutdowns reproduced intermittent -11 exits from both localization and
-    # autonomy component libraries on Humble; standalone checkers stayed clean.
-    use_checker_components: false
-    # HH_260805 - One serialized executor per composed category; retained as a
-    # compatibility key for future executor-profile experiments.
+    # HH_260805 - Keep the filtered diagnostic chain in one serialized
+    # component process; standalone executables remain selectable for field debug.
+    use_system_tools_container: true
+    # HH_260805 - Compose each checker fault domain in its own serialized scoped
+    # container. Standalone checker executables remain selectable for field debug.
+    use_checker_components: true
+    checker_component_groups: hardware_sensing,localization,autonomy_topics,planning_lifecycle
+    # HH_260805 - Retained as a compatibility key; checker containers serialize
+    # callbacks to keep teardown deterministic.
     checker_component_threads: 1
     diagnostics_profile: default
     # HH_260630 - __module_default__ selects camrod_system/config/system_checker.yaml

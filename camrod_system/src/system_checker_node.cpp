@@ -41,8 +41,8 @@ struct RequiredAlternativeGroupSpec
 class SystemCheckerNode : public rclcpp::Node
 {
 public:
-  SystemCheckerNode()
-  : Node("system_checker")
+  explicit SystemCheckerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("system_checker", options)
   {
     check_period_s_ = declare_parameter<double>("check_period_s", 1.0);
 
@@ -616,11 +616,5 @@ private:
 
 }  // namespace camrod_system
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  auto node = std::make_shared<camrod_system::SystemCheckerNode>();
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+#include "camrod_system/checker_entrypoint.hpp"
+CAMROD_SYSTEM_NODE_ENTRYPOINT(camrod_system::SystemCheckerNode)
