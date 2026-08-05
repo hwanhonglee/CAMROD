@@ -1,0 +1,369 @@
+{
+  "schema": "camrod.runtime_topology_ab.v1",
+  "recorded_at": "2026-08-05T17:29:15+09:00",
+  "superseded_shutdown_verdict_by": "amd64-scoped-container-shutdown-20260805.json",
+  "scope": "Workstation evidence only; not Jetson or physical-sensor acceptance",
+  "source": {
+    "baseline_commit": "f83975d5e",
+    "working_tree": "v2.1.5 release candidate runtime-topology follow-up",
+    "map_sha256": "d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f"
+  },
+  "host": {
+    "architecture": "x86_64/amd64",
+    "cpu": "Intel Core i5-12400F",
+    "logical_cpus": 12,
+    "memory_gib": 31,
+    "ros_distribution": "Humble"
+  },
+  "method": {
+    "cpu_unit": "aggregate process-tree CPU where one logical CPU equals 100 percent",
+    "memory": "RSS plus proportional-set-size from /proc/<pid>/smaps_rollup",
+    "controlled_stop_definition": "top-level launch exit 0, no forced kill, no -11/segfault, and zero live descendants; expected Python SIGINT -2 log entries are not relabeled as per-node clean exits",
+    "system_samples_per_run": 15,
+    "system_sample_period_s": 1.0,
+    "system_warmup_after_system_ok_s": 3.0,
+    "system_runs_per_topology": 3,
+    "system_common_args": [
+      "sim:=true",
+      "rviz:=false",
+      "enable_operator_ui_window:=false",
+      "enable_dds_shared_memory:=false",
+      "enable_lidar_cost_grid:=false",
+      "use_checker_components:=false"
+    ],
+    "lidar_input": {
+      "type": "synthetic sensor_msgs/PointCloud2",
+      "points_per_message": 60000,
+      "payload_mib": 0.916,
+      "target_hz": 10.0,
+      "runs_per_topology": 2
+    },
+    "discarded_run": "ROS_DOMAIN_ID=233 was excluded because CycloneDDS calculated port 65650 outside the UDP range; this was a benchmark setup error, not a topology result"
+  },
+  "system_core": {
+    "before": "four standalone aggregate/status processes",
+    "after": "four nodes in one serialized system_core_container",
+    "standalone_runs": [
+      {
+        "domain": 230,
+        "startup_to_system_ok_s": 26.239,
+        "ros_nodes": 79,
+        "processes": 69.0,
+        "cpu_percent_one_core": 87.418,
+        "rss_mib": 2539.432,
+        "pss_mib": 1633.446,
+        "shutdown_s": 2.677,
+        "clean_shutdown": true
+      },
+      {
+        "domain": 232,
+        "startup_to_system_ok_s": 26.045,
+        "ros_nodes": 79,
+        "processes": 69.0,
+        "cpu_percent_one_core": 86.747,
+        "rss_mib": 2534.900,
+        "pss_mib": 1627.665,
+        "shutdown_s": 2.632,
+        "clean_shutdown": true
+      },
+      {
+        "domain": 81,
+        "startup_to_system_ok_s": 27.243,
+        "ros_nodes": 79,
+        "processes": 69.133,
+        "cpu_percent_one_core": 89.090,
+        "rss_mib": 2542.441,
+        "pss_mib": 1636.696,
+        "shutdown_s": 2.528,
+        "clean_shutdown": true
+      }
+    ],
+    "container_runs": [
+      {
+        "domain": 231,
+        "startup_to_system_ok_s": 31.647,
+        "ros_nodes": 81,
+        "processes": 66.0,
+        "cpu_percent_one_core": 86.146,
+        "rss_mib": 2498.411,
+        "pss_mib": 1615.275,
+        "shutdown_s": 2.432,
+        "clean_shutdown": true
+      },
+      {
+        "domain": 80,
+        "startup_to_system_ok_s": 24.434,
+        "ros_nodes": 81,
+        "processes": 66.133,
+        "cpu_percent_one_core": 82.774,
+        "rss_mib": 2500.503,
+        "pss_mib": 1616.205,
+        "shutdown_s": 2.629,
+        "clean_shutdown": true
+      },
+      {
+        "domain": 82,
+        "startup_to_system_ok_s": 24.635,
+        "ros_nodes": 81,
+        "processes": 66.133,
+        "cpu_percent_one_core": 86.778,
+        "rss_mib": 2489.638,
+        "pss_mib": 1607.245,
+        "shutdown_s": 2.575,
+        "clean_shutdown": true
+      }
+    ],
+    "mean": {
+      "standalone": {
+        "startup_to_system_ok_s": 26.509,
+        "processes": 69.044,
+        "cpu_percent_one_core": 87.752,
+        "rss_mib": 2538.924,
+        "pss_mib": 1632.602,
+        "shutdown_s": 2.612
+      },
+      "container": {
+        "startup_to_system_ok_s": 26.905,
+        "processes": 66.089,
+        "cpu_percent_one_core": 85.233,
+        "rss_mib": 2496.184,
+        "pss_mib": 1612.908,
+        "shutdown_s": 2.545
+      },
+      "container_minus_standalone": {
+        "startup_to_system_ok_s": 0.396,
+        "processes": -2.956,
+        "cpu_percentage_points_one_core": -2.519,
+        "rss_mib": -42.740,
+        "pss_mib": -19.694,
+        "shutdown_s": -0.067
+      },
+      "relative_percent": {
+        "startup_to_system_ok": 1.5,
+        "processes": -4.3,
+        "cpu": -2.9,
+        "rss": -1.7,
+        "pss": -1.2,
+        "shutdown": -2.6
+      }
+    },
+    "verdict": "KEEP DEFAULT ON: 3/3 runs reached SYSTEM OK; the system-core container finished cleanly and the top-level launch exited 0 without force, segfault, or live descendants",
+    "node_count_note": "The container profile adds component-manager ROS graph nodes; public checker/status behavior is unchanged"
+  },
+  "lidar_processing": {
+    "before": "standalone preprocessor and ground-segmentation executables",
+    "after": "intra-process lidar_processing_container; vendor driver remains separate",
+    "standalone_runs": [
+      {
+        "published_received": "187/187",
+        "output_hz": 10.007,
+        "processes": 4.0,
+        "cpu_percent_one_core": 8.479,
+        "rss_mib": 125.402,
+        "pss_mib": 84.902,
+        "clean_shutdown": true
+      },
+      {
+        "published_received": "137/137",
+        "output_hz": 10.003,
+        "processes": 4.0,
+        "cpu_percent_one_core": 8.248,
+        "rss_mib": 124.277,
+        "pss_mib": 84.590,
+        "clean_shutdown": true
+      }
+    ],
+    "container_runs": [
+      {
+        "published_received": "187/187",
+        "output_hz": 10.002,
+        "processes": 3.0,
+        "cpu_percent_one_core": 6.954,
+        "rss_mib": 163.917,
+        "pss_mib": 128.545,
+        "clean_shutdown": true
+      },
+      {
+        "published_received": "137/137",
+        "output_hz": 10.002,
+        "processes": 3.0,
+        "cpu_percent_one_core": 6.853,
+        "rss_mib": 164.296,
+        "pss_mib": 128.968,
+        "clean_shutdown": true
+      }
+    ],
+    "mean": {
+      "standalone": {
+        "output_hz": 10.005,
+        "processes": 4.0,
+        "cpu_percent_one_core": 8.364,
+        "rss_mib": 124.840,
+        "pss_mib": 84.746
+      },
+      "container": {
+        "output_hz": 10.002,
+        "processes": 3.0,
+        "cpu_percent_one_core": 6.904,
+        "rss_mib": 164.106,
+        "pss_mib": 128.757
+      },
+      "relative_percent": {
+        "output_hz": 0.0,
+        "processes": -25.0,
+        "cpu": -17.5,
+        "rss": 31.5,
+        "pss": 51.9
+      }
+    },
+    "verdict": "KEEP DEFAULT ON FOR CPU SAVING; output held 10 Hz with no sample loss, but isolated-loader PSS increased 44.0 MiB and requires Jetson confirmation"
+  },
+  "operator_window": {
+    "method": "Full simulation with system-core container, RViz/DDS-SHM/LiDAR-grid off; only operator_ui_window_engine changed; three 15-second runs per renderer",
+    "chromium_runs": [
+      {
+        "domain": 83,
+        "startup_to_system_ok_s": 26.041,
+        "ros_nodes": 81,
+        "processes": 80.400,
+        "cpu_percent_one_core": 90.822,
+        "rss_mib": 3913.409,
+        "pss_mib": 2252.284,
+        "host_gpu_utilization_percent": 22.667,
+        "host_gpu_memory_mib": 1289.533,
+        "controlled_shutdown": true
+      },
+      {
+        "domain": 85,
+        "startup_to_system_ok_s": 25.037,
+        "ros_nodes": 83,
+        "processes": 80.467,
+        "cpu_percent_one_core": 88.142,
+        "rss_mib": 3917.505,
+        "pss_mib": 2249.323,
+        "host_gpu_utilization_percent": 26.200,
+        "host_gpu_memory_mib": 1336.467,
+        "controlled_shutdown": true
+      },
+      {
+        "domain": 87,
+        "startup_to_system_ok_s": 25.234,
+        "ros_nodes": 83,
+        "processes": 80.333,
+        "cpu_percent_one_core": 93.316,
+        "rss_mib": 3929.450,
+        "pss_mib": 2258.829,
+        "host_gpu_utilization_percent": 32.133,
+        "host_gpu_memory_mib": 1423.400,
+        "controlled_shutdown": true
+      }
+    ],
+    "webkit_runs": [
+      {
+        "domain": 84,
+        "startup_to_system_ok_s": 29.040,
+        "ros_nodes": 81,
+        "processes": 69.067,
+        "cpu_percent_one_core": 87.545,
+        "rss_mib": 3001.857,
+        "pss_mib": 1923.681,
+        "host_gpu_utilization_percent": 40.067,
+        "host_gpu_memory_mib": 1238.000,
+        "controlled_shutdown": true
+      },
+      {
+        "domain": 86,
+        "startup_to_system_ok_s": 25.036,
+        "ros_nodes": 83,
+        "processes": 69.000,
+        "cpu_percent_one_core": 89.835,
+        "rss_mib": 2990.641,
+        "pss_mib": 1912.768,
+        "host_gpu_utilization_percent": 34.533,
+        "host_gpu_memory_mib": 1244.667,
+        "controlled_shutdown": true
+      },
+      {
+        "domain": 88,
+        "startup_to_system_ok_s": 26.236,
+        "ros_nodes": 83,
+        "processes": 69.133,
+        "cpu_percent_one_core": 90.593,
+        "rss_mib": 3022.977,
+        "pss_mib": 1942.173,
+        "host_gpu_utilization_percent": 36.533,
+        "host_gpu_memory_mib": 1238.667,
+        "controlled_shutdown": true
+      }
+    ],
+    "mean": {
+      "chromium": {
+        "startup_to_system_ok_s": 25.437,
+        "processes": 80.400,
+        "cpu_percent_one_core": 90.760,
+        "rss_mib": 3920.121,
+        "pss_mib": 2253.479,
+        "host_gpu_utilization_percent": 27.000,
+        "host_gpu_memory_mib": 1349.800
+      },
+      "webkit": {
+        "startup_to_system_ok_s": 26.771,
+        "processes": 69.067,
+        "cpu_percent_one_core": 89.324,
+        "rss_mib": 3005.158,
+        "pss_mib": 1926.207,
+        "host_gpu_utilization_percent": 37.044,
+        "host_gpu_memory_mib": 1240.445
+      },
+      "chromium_minus_webkit": {
+        "startup_to_system_ok_s": -1.333,
+        "processes": 11.333,
+        "cpu_percentage_points_one_core": 1.436,
+        "rss_mib": 914.963,
+        "pss_mib": 327.271,
+        "host_gpu_utilization_percentage_points": -10.044,
+        "host_gpu_memory_mib": 109.355
+      }
+    },
+    "gpu_caveat": "nvidia-smi values cover the entire RTX 3060 desktop and personal browser workload, not only the managed CAMROD window; do not use them to select the Jetson renderer",
+    "verdict": "On this workstation WebKit is materially lighter. The Chromium runs reached full-stack SYSTEM OK 1.33 s sooner on average, but that is not a browser first-paint/load metric. Keep the explicitly selected Chromium default until the controlled Jetson renderer A/B, with WebKit available as fallback"
+  },
+  "rejected_or_unmeasurable": {
+    "all_checker_composition": {
+      "runs_per_topology": 3,
+      "standalone_mean": {
+        "processes": 69.0,
+        "cpu_percent_one_core": 88.360,
+        "rss_mib": 2530.428,
+        "pss_mib": 1627.564,
+        "startup_to_system_ok_s": 25.24
+      },
+      "container_mean": {
+        "processes": 53.0,
+        "cpu_percent_one_core": 80.726,
+        "rss_mib": 2206.919,
+        "pss_mib": 1471.080,
+        "startup_to_system_ok_s": 24.70
+      },
+      "clean_shutdowns": "2/3",
+      "failure": "autonomy checker container exited -11 in one run",
+      "verdict": "PRE-FIX REJECTED despite lower CPU/PSS; shutdown/default verdict is superseded by amd64-scoped-container-shutdown-20260805.json"
+    },
+    "nav2_composition": {
+      "managed_nodes_active_and_system_ok": "3/3",
+      "clean_shutdowns": "0/3",
+      "failures": "two -11 exits and one forced -9 after shutdown hang",
+      "verdict": "PRE-FIX REJECTED; shutdown/default verdict is superseded by the scoped planner/controller result in amd64-scoped-container-shutdown-20260805.json"
+    },
+    "dds_shared_memory": {
+      "isolated_exchange": "passed",
+      "full_graph": "failed after Humble iceoryx endpoint/history capacity exhaustion",
+      "verdict": "REJECTED for production full graph; default remains off"
+    },
+    "front_and_rear_physical_camera": {
+      "amd64_measurement": "not available",
+      "reason": "production capture components and NVIDIA decode path are ARM64/Jetson-only",
+      "verdict": "measure physical rate, latency, GPU, CPU, and restart behavior on Jetson"
+    }
+  }
+}

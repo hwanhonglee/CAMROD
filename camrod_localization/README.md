@@ -30,6 +30,7 @@ chain. It does not measure physical GNSS accuracy.
 |---|---:|---:|
 | EKF frequency | `15 Hz` | `20 Hz` |
 | Base frame | `robot_center_link` | `robot_center_link` |
+| GNSS position reference | `robot_center_link` assumption | Same |
 | Mode | 2D | 2D |
 | TF | EKF publishes `odom -> robot_center_link` | Same |
 | Prediction | `predict_to_current_time: true` | Same |
@@ -59,9 +60,12 @@ chain. It does not measure physical GNSS accuracy.
 | EKF odometry | `20.000 Hz` | `1.02 ms` |
 | Selected pose | `20.000 Hz` | `1.83 ms` |
 
-The 30-second stationary run proves topic continuity and prediction cadence.
-It does **not** prove field position accuracy, multipath rejection, vibration
-performance, GNSS antenna lever arm, or reduced driving oscillation.
+The input adapter converts NavSatFix directly to a map pose and does not apply
+a physical antenna lever arm. v2.1.5 therefore aligns `gnss_link` with
+`robot_center_link` as the explicit temporary assumption. The 30-second
+stationary run proves topic continuity and prediction cadence; it does **not**
+prove field position accuracy, multipath rejection, vibration performance,
+the dual-antenna lever arm, or reduced driving oscillation.
 
 ## Reported Physical Stationary Performance
 

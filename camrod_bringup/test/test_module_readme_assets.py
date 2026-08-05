@@ -1,5 +1,6 @@
 """Keep source-derived package visuals reproducible and reviewable."""
 
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -80,6 +81,7 @@ RUNTIME_CAPTURE_ASSETS = (
     "voice/runtime-event-terminal-20260804.png",
 )
 ROBOT_UI_KEYPAD_CAPTURE = "ui/robot-ui-site-verification-keypad.png"
+AMD64_TOPOLOGY_CAPTURE = "system/runtime-topology-amd64-ab-20260805.png"
 
 CAMROD_READMES = (
     SRC_ROOT / "README.md",
@@ -104,6 +106,7 @@ VISUAL_DOCS = CAMROD_READMES + (
     SRC_ROOT / "docs" / "MODULE_VISUAL_GUIDE.md",
     SRC_ROOT / "docs" / "V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md",
     SRC_ROOT / "docs" / "V2_1_3_ROBOT_CENTER_MIGRATION.md",
+    SRC_ROOT / "docs" / "V2_1_5_RELEASE_NOTES.md",
 )
 
 MODULE_OWNED_RELEASE_ASSETS = (
@@ -146,7 +149,10 @@ README_RUNTIME_ASSETS = {
     SRC_ROOT / "camrod_sensor_kit" / "README.md": (
         RUNTIME_CAPTURE_ASSETS[11],
     ),
-    SRC_ROOT / "camrod_system" / "README.md": (RUNTIME_CAPTURE_ASSETS[12],),
+    SRC_ROOT / "camrod_system" / "README.md": (
+        RUNTIME_CAPTURE_ASSETS[12],
+        AMD64_TOPOLOGY_CAPTURE,
+    ),
     SRC_ROOT / "camrod_ui" / "README.md": (
         ROBOT_UI_KEYPAD_CAPTURE,
         "ui/guest-mission-dispatch-ready.png",
@@ -334,14 +340,21 @@ def test_release_visuals_are_decodable_and_owned_by_modules() -> None:
     assert not (SRC_ROOT / "docs" / "assets" / "v2.1.3").exists()
 
 
-def test_map_v15_recovery_visuals_are_reproducible(tmp_path: Path) -> None:
-    """The staged current-map PNG/GIF set must regenerate from committed JSON."""
-    subprocess.run(
+def test_map_v15_release_recovery_visuals_are_hash_guarded(tmp_path: Path) -> None:
+    """Released recovery evidence must reject the later deployed map geometry."""
+    # HH_260805 - The user kept a newer map-v15 geometry for current operation.
+    # Preserve the old recovery run as release evidence and prove the renderer
+    # refuses to relabel it as a measurement on the newer OSM.
+    active_map = SRC_ROOT / "lanelet2_maps.osm"
+    active_sha256 = hashlib.sha256(active_map.read_bytes()).hexdigest()
+    assert active_sha256 != MAP_V15_RECOVERY_SHA256
+
+    result = subprocess.run(
         [
             sys.executable,
             str(AUTOMATIC_RECOVERY_RENDERER),
             "--map",
-            str(SRC_ROOT / "lanelet2_maps.osm"),
+            str(active_map),
             "--route",
             str(MAP_V15_RECOVERY_ROOT / "route-retry.json"),
             "--reverse",
@@ -354,20 +367,12 @@ def test_map_v15_recovery_visuals_are_reproducible(tmp_path: Path) -> None:
             str(tmp_path),
         ],
         cwd=SRC_ROOT,
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
-
-    for filename in (
-        "map-v15-boundary-recovery-contact-sheet.png",
-        "map-v15-boundary-recovery-policy.png",
-        "map-v15-boundary-recovery.gif",
-    ):
-        with Image.open(tmp_path / filename) as visual:
-            assert visual.width >= 500
-            assert visual.height >= 300
-            assert visual.format == ("GIF" if filename.endswith(".gif") else "PNG")
+    assert result.returncode != 0
+    assert "evidence OSM hash does not match the selected map" in result.stderr
 
 
 def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
@@ -375,7 +380,10 @@ def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
     asset_root = SRC_ROOT / "docs" / "assets" / "module-guides"
     image_pattern = re.compile(r"!\[[^]]*\]\(([^)]+)\)")
 
-    for relative_path in RUNTIME_CAPTURE_ASSETS + (ROBOT_UI_KEYPAD_CAPTURE,):
+    for relative_path in RUNTIME_CAPTURE_ASSETS + (
+        ROBOT_UI_KEYPAD_CAPTURE,
+        AMD64_TOPOLOGY_CAPTURE,
+    ):
         with Image.open(asset_root / relative_path) as visual:
             assert visual.width >= 1200
             assert visual.height >= 700
@@ -390,7 +398,7 @@ def test_runtime_captures_are_decodable_and_linked_by_each_package() -> None:
             assert (asset_root / relative_path).resolve() in linked_assets
 
     all_visuals = tuple(asset_root.rglob("*"))
-    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 44
+    assert sum(path.suffix.lower() == ".png" for path in all_visuals) == 45
     assert sum(path.suffix.lower() == ".gif" for path in all_visuals) == 8
 
 
@@ -430,8 +438,8 @@ def test_map_v14_recovery_evidence_is_historical_and_fails_closed() -> None:
     assert runs["crab"]["maximum_recovery_abs_linear_y_mps"] <= 0.05
 
 
-def test_map_v15_recovery_evidence_exercises_staged_yaw_and_crab() -> None:
-    """Current-map visuals must be backed by the adaptive runtime owner."""
+def test_map_v15_release_evidence_exercises_staged_yaw_and_crab() -> None:
+    """Released map-v15 visuals must retain their adaptive runtime evidence."""
     runs = {
         name: json.loads((MAP_V15_RECOVERY_ROOT / filename).read_text())
         for name, filename in {

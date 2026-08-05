@@ -124,6 +124,28 @@ Guest frames use one serialized writer. ROS publish work runs outside the
 uvicorn event loop, and three missed 15-second receive windows release a stale
 single-client slot. The browser heartbeat keeps a healthy idle session active.
 
+## Measured amd64 Renderer A/B
+
+`MEASURED WORKSTATION`: three headless-RViz full-sim runs per renderer on an
+Intel i5-12400F/RTX 3060 desktop, with 15 one-second steady-state samples per
+run. Only `operator_ui_window_engine` changed.
+
+| Mean | WebKit | Chromium | Chromium - WebKit |
+|---|---:|---:|---:|
+| Processes | `69.1` | `80.4` | `+11.3` |
+| CPU, one-core basis | `89.3%` | `90.8%` | `+1.44 points` |
+| PSS | `1926.2 MiB` | `2253.5 MiB` | `+327.3 MiB` |
+| Startup to `[SYSTEM] OK` | `26.77 s` | `25.44 s` | `-1.33 s` |
+| Controlled stop / no descendants | `3/3` | `3/3` | equal |
+
+On this workstation WebKit is clearly lighter. Chromium's full stack reached
+`[SYSTEM] OK` sooner on average, but this is not a browser first-paint/load
+measurement. Host GPU utilization is not used because `nvidia-smi` also
+included the desktop and personal browser. The selected Chromium default is
+unchanged; the Jetson
+same-scene frame-pacing/GPU/rate comparison remains TODO 8/14. Exact runs are
+in [`amd64-container-ab-20260805.json`](../docs/evidence/v2.1.5/runtime-topology/amd64-container-ab-20260805.json).
+
 ## Build And Run
 
 ```bash

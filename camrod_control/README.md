@@ -108,7 +108,7 @@ surface while the internal controller remains `PARKED`.
 
 ![Automatic boundary recovery](../docs/assets/module-guides/control/automatic-owner-route-retry.gif)
 
-| Current map-v15 staged recovery | Current decision policy |
+| v2.1.4 release-map staged recovery | Current decision policy |
 |---|---|
 | ![Map v15 recovery contact sheet](../docs/assets/module-guides/control/map-v15-boundary-recovery-contact-sheet.png) | ![Map v15 recovery policy](../docs/assets/module-guides/control/map-v15-boundary-recovery-policy.png) |
 
@@ -134,8 +134,9 @@ surface while the internal controller remains `PARKED`.
 | Map-v15 one-side probe | `CRAB_LEFT`, `0.3378 m`, max lateral `0.05 m/s` | First hold released without recontact; mission incomplete |
 
 The map-v14 PNG/GIF remains historical translation-only evidence. The map-v15
-PNG/GIF is a current full-simulation dynamic run of the active selector, which reevaluates all
-five projected commands on every hold update: left/right crab, straight
+PNG/GIF is a v2.1.4 release-map full-simulation run of the active selector; its
+OSM SHA is `e0b50f...e36d`, not the current-site map SHA `d7b730...213f`. It
+reevaluates all five projected commands on every hold update: left/right crab, straight
 reverse, and left/right reverse-yaw. A unique safe crab moves away from the
 contact. Otherwise straight reverse creates room; it may transition to the
 unique safe yaw arc, or to the original RPP turn sign when both arcs are clear.
@@ -148,8 +149,9 @@ and continues only a separately checked reverse translation. The total
 `0.40 m`/`10 s` budget is not reset during a stage transition. Only one route
 release is permitted; same-route recontact within 5 seconds latches zero output
 until stop/replan/re-engage. The staged selector and swept projection are unit
-validated and exercised dynamically on map v15. Both route retry cases remained
-fail-closed rather than completing a mission; physical recovery remains pending.
+validated and were exercised dynamically on the release map-v15 geometry. Both
+route retry cases remained fail-closed rather than completing a mission;
+physical recovery remains pending.
 
 ## Configuration
 
@@ -174,4 +176,4 @@ ros2 topic echo /control/route_safety_recovery_controller/status
 
 Detailed timelines and reproduction commands are in the
 [boundary recovery validation](../docs/V2_1_3_BOUNDARY_RECOVERY_VALIDATION.md)
-and the [map-v15 evidence directory](../docs/evidence/v2.1.4/map-v15-boundary-recovery/).
+and the [v2.1.4 release-map evidence directory](../docs/evidence/v2.1.4/map-v15-boundary-recovery/).

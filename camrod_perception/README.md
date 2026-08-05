@@ -1,7 +1,7 @@
 # camrod_perception
 
-<!-- HH_260804 - Separate configured pipelines from measured evidence and
-replace repeated architecture/troubleshooting prose with compact tables. -->
+<!-- HH_260805 - Keep perception ownership and component boundaries explicit,
+including the physical rear-camera parking chain. -->
 
 LiDAR obstacle clustering, front-camera TensorRT YOLO fusion, campsite
 occupancy, and rear-camera AprilTag parking perception.
@@ -57,6 +57,19 @@ AprilTag parking.
 
 ![Physical stationary field report](../docs/assets/module-guides/bringup/field-stationary-report-20260731.png)
 
+## Runtime Composition
+
+| Pipeline | Production ownership | Debug fallback |
+|---|---|---|
+| Front camera + YOLO | Existing intra-process camera/YOLO container | Separate package launches |
+| Rear AprilTag parking | Rear capture, `image_proc` rectification, and `apriltag_parking_detector` share a bringup-owned container | `use_rear_camera_apriltag_container:=false` |
+| LiDAR clustering/fusion | Perception processes consume the filtered cloud over the normal RMW boundary | Individual package launches |
+
+The rear container is active only for physical `parking_method:=apriltag` runs.
+Node names, image topics, tag pose, and TF outputs match the standalone path, so
+parking control does not depend on process topology. ARM64 camera throughput and
+physical tag-pose equivalence remain explicit Jetson checks in `TODOLIST.txt`.
+
 ## Nodes
 
 | Node | Responsibility |
@@ -85,6 +98,7 @@ AprilTag parking.
 ros2 launch camrod_perception perception.launch.py
 ros2 launch camrod_perception perception.launch.py enable_yolo:=false
 ros2 launch camrod_perception apriltag_parking_detector.launch.py
+ros2 launch camrod_bringup rear_camera_apriltag_container.launch.py enable_container:=true
 
 ros2 topic hz /perception/lidar/bboxes
 ros2 topic echo /perception/camera/detections_2d

@@ -86,6 +86,15 @@ not a physical antenna measurement. Before claiming lever-arm accuracy on the
 robot, measure antenna X/Y/Z from `robot_center_link`, update both
 `robot_params.yaml` copies, and repeat GNSS-to-final-pose validation.
 
+> **v2.1.5 operational override, 2026-08-05:** `gnss_link` now uses
+> `(0.00000, 0.00000, 0.00000)` relative to `robot_center_link`. The
+> localization input adapter already treated NavSatFix as the center pose and
+> had no lever-arm correction, so retaining the converted `-0.443 m` TF made
+> visualization/diagnostics disagree with the estimator assumption. The new
+> zero value resolves that software-contract mismatch only. It remains
+> `pose_verified=false` until both dual-GNSS antenna mounts and the receiver's
+> reported position reference are physically surveyed.
+
 ## Body And Safety Boundary
 
 > **Operational follow-up, 2026-08-05:** the current post-v2.1.3 runtime keeps
