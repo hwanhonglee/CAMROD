@@ -62,12 +62,12 @@ topics:
   - name: "gnss_checker: /sensor/gnss/main"
     group: sensing/gnss
     timeout_s: 3.0
-    # HH_260803 - This is the converted old rear-axle placeholder, not a survey.
+    # HH_260805 - Temporary robot-center assumption, not a measured lever arm.
     metadata:
       component_id: "gnss.main"
-      location: "unverified"
+      location: "robot_center_assumed"
       frame_id: "gnss_link"
-      mount_xyz_m: "-0.44300,0.00000,0.00000"
+      mount_xyz_m: "0.00000,0.00000,0.00000"
       mount_rpy_deg: "0.0,0.0,0.0"
       pose_verified: "false"
 

@@ -20,7 +20,6 @@ CENTER_OFFSET_M = 0.443
 # frame migration. Keeping the source values here makes every conversion auditable.
 LEGACY_SENSOR_X_M = {
     ("imu",): 1.131,
-    ("gnss",): 0.0,
     ("lidar",): 1.20636,
     ("camera", "front"): 1.20637,
     ("camera", "rear"): -0.17633,
@@ -97,6 +96,15 @@ def test_sensor_x_shift_preserves_physical_mount(
     pose = _nested(parameters, keys)
 
     assert pose["x"] == pytest.approx(legacy_x - CENTER_OFFSET_M)
+
+
+def test_gnss_solution_uses_unverified_robot_center_assumption() -> None:
+    """GNSS is centered intentionally until a physical lever arm is surveyed."""
+    gnss = _wildcard_parameters(PACKAGE_SENSOR_CONFIG)["gnss"]
+
+    assert gnss["x"] == pytest.approx(0.0)
+    assert gnss["y"] == pytest.approx(0.0)
+    assert gnss["z"] == pytest.approx(0.0)
 
 
 def test_nav2_and_gate_share_center_based_planning_footprint() -> None:
@@ -229,6 +237,7 @@ def test_urdf_has_one_center_root_and_a_rear_axle_compatibility_child() -> None:
 
     assert '<xacro:arg name="robot_center_link" default="robot_center_link"/>' in xacro
     assert '<xacro:arg name="robot_base_link" default="robot_base_link"/>' in xacro
+    assert '<xacro:arg name="gnss_xyz" default="0.0 0.0 0.0"/>' in xacro
     assert '<parent link="${center_link_name}"/>' in xacro
     assert '<child link="${rear_base_link_name}"/>' in xacro
     assert 'xyz="-${rear_axle_offset_x_val} 0 0"' in xacro
@@ -252,7 +261,7 @@ def test_diagnostic_mount_metadata_uses_center_coordinates(profile: str) -> None
         if "metadata" in topic and "component_id" in topic["metadata"]
     }
     expected = {
-        "gnss.main": "-0.44300,0.00000,0.00000",
+        "gnss.main": "0.00000,0.00000,0.00000",
         "imu.main": "0.68800,0.00000,0.75600",
         "lidar.main": "0.76336,0.00000,0.59538",
         "lidar.filtered": "0.76336,0.00000,0.59538",
@@ -269,3 +278,11 @@ def test_diagnostic_mount_metadata_uses_center_coordinates(profile: str) -> None
 
     for component, xyz in expected.items():
         assert actual[component] == xyz
+
+    gnss_metadata = next(
+        topic["metadata"]
+        for topic in config["topics"]
+        if topic.get("metadata", {}).get("component_id") == "gnss.main"
+    )
+    assert gnss_metadata["location"] == "robot_center_assumed"
+    assert gnss_metadata["pose_verified"] == "false"

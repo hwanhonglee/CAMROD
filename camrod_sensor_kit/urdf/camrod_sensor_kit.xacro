@@ -26,7 +26,8 @@
   <xacro:arg name="imu_xyz" default="0.688 0.0 0.756"/>
   <xacro:arg name="imu_rpy" default="0.0 0.0 0.0"/>
 
-  <xacro:arg name="gnss_xyz" default="-0.443 0.0 0.0"/>
+  <!-- HH_260805 - Missing YAML keeps the unverified GNSS solution at robot center. -->
+  <xacro:arg name="gnss_xyz" default="0.0 0.0 0.0"/>
   <xacro:arg name="gnss_rpy" default="0.0 0.0 0.0"/>
 
   <xacro:arg name="lidar_xyz" default="0.76336 0.0 0.59538"/>
