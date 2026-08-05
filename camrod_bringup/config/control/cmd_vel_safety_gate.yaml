@@ -166,6 +166,9 @@
     route_safety_auto_recovery_candidate_enable: true
     route_safety_auto_recovery_candidate_topic: "/control/route_safety_recovery/candidate"
     route_safety_auto_recovery_speed_mps: 0.10
+    # HH_260805 - Permit only a projected reverse-yaw stage after straight
+    # reverse or before a unique safe crab direction becomes available.
+    route_safety_auto_recovery_yaw_rate_radps: 0.10
     # HH_260803 - Lanelet raster is static/route-scoped and slower than the
     # 1 s dynamic obstacle grid; pose freshness remains independently 0.5 s.
     route_safety_lanelet_grid_max_age_s: 12.0

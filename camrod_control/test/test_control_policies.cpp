@@ -376,13 +376,14 @@ TEST(RouteSafetyRecovery, RotationViolationAdmitsTranslationForProjectedCheck)
     recovery.permitsProjectedRecoveryCandidate(command(0.0, 0.0, -0.2)));
 }
 
-TEST(RouteRecoveryCandidate, SelectsOnlyUniqueClearCrabSide)
+TEST(RouteRecoveryCandidate, SelectsUniqueClearCrabSide)
 {
   const MotionCostStopDecision clear{};
   const MotionCostStopDecision blocked{
     true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
-  const auto selected = selectRouteRecoveryCandidate(
-    command(0.3), 0.10, clear, blocked, clear);
+  const auto selected = continueAdaptiveRouteRecoveryCandidate(
+    command(0.3), RouteRecoveryCandidateKind::kNone, 0.10, 0.10,
+    {clear, blocked, clear, blocked, blocked});
 
   ASSERT_TRUE(selected.available());
   EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kCrabLeft);
@@ -396,8 +397,9 @@ TEST(RouteRecoveryCandidate, FallsBackToReverseWhenBothCrabSidesAreBlocked)
   const MotionCostStopDecision clear{};
   const MotionCostStopDecision blocked{
     true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
-  const auto selected = selectRouteRecoveryCandidate(
-    command(0.3), 0.10, blocked, blocked, clear);
+  const auto selected = continueAdaptiveRouteRecoveryCandidate(
+    command(0.3), RouteRecoveryCandidateKind::kNone, 0.10, 0.10,
+    {blocked, blocked, clear, blocked, blocked});
 
   ASSERT_TRUE(selected.available());
   EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kReverse);
@@ -405,47 +407,90 @@ TEST(RouteRecoveryCandidate, FallsBackToReverseWhenBothCrabSidesAreBlocked)
   EXPECT_NEAR(selected.command.linear.y, 0.0, 1.0e-9);
 }
 
-TEST(RouteRecoveryCandidate, StopsWhenLateralChoiceIsAmbiguousOrNothingIsClear)
+TEST(RouteRecoveryCandidate, StopsWhenNoProjectedStageIsClear)
 {
-  const MotionCostStopDecision clear{};
   const MotionCostStopDecision blocked{
     true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
 
-  const auto ambiguous = selectRouteRecoveryCandidate(
-    command(0.3), 0.10, clear, clear, clear);
-  EXPECT_FALSE(ambiguous.available());
-  EXPECT_EQ(ambiguous.reason, "ambiguous_lateral_clear");
-
-  const auto none = selectRouteRecoveryCandidate(
-    command(0.3), 0.10, blocked, blocked, blocked);
+  const auto none = continueAdaptiveRouteRecoveryCandidate(
+    command(0.3), RouteRecoveryCandidateKind::kNone, 0.10, 0.10,
+    {blocked, blocked, blocked, blocked, blocked});
   EXPECT_FALSE(none.available());
   EXPECT_EQ(none.reason, "no_projected_candidate_clear");
 }
 
-TEST(RouteRecoveryCandidate, KeepsInitialDirectionWhenBothSidesLaterBecomeClear)
-{
-  const MotionCostStopDecision clear{};
-  const auto selected = continueRouteRecoveryCandidate(
-    command(0.3), RouteRecoveryCandidateKind::kCrabLeft,
-    0.10, clear, clear, clear);
-
-  ASSERT_TRUE(selected.available());
-  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kCrabLeft);
-  EXPECT_NEAR(selected.command.linear.y, 0.10, 1.0e-9);
-  EXPECT_EQ(selected.reason, "latched_candidate_still_clear");
-}
-
-TEST(RouteRecoveryCandidate, NeverSwitchesWhenLatchedDirectionBecomesBlocked)
+TEST(RouteRecoveryCandidate, SwitchesFromReverseToUniqueClearCrab)
 {
   const MotionCostStopDecision clear{};
   const MotionCostStopDecision blocked{
     true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
-  const auto selected = continueRouteRecoveryCandidate(
-    command(0.3), RouteRecoveryCandidateKind::kCrabLeft,
-    0.10, blocked, clear, clear);
+  const auto selected = continueAdaptiveRouteRecoveryCandidate(
+    command(0.3), RouteRecoveryCandidateKind::kReverse, 0.10, 0.10,
+    {blocked, clear, clear, blocked, blocked});
 
-  EXPECT_FALSE(selected.available());
-  EXPECT_NE(selected.reason.find("latched_crab_left_blocked"), std::string::npos);
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kCrabRight);
+  EXPECT_NEAR(selected.command.linear.y, -0.10, 1.0e-9);
+  EXPECT_EQ(selected.reason, "stage_switch_to_unique_lateral");
+}
+
+TEST(RouteRecoveryCandidate, SwitchesFromReverseToUniqueProjectedYaw)
+{
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision blocked{
+    true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
+  const auto selected = continueAdaptiveRouteRecoveryCandidate(
+    command(0.3), RouteRecoveryCandidateKind::kReverse, 0.10, 0.10,
+    {blocked, blocked, clear, blocked, clear});
+
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kReverseYawRight);
+  EXPECT_NEAR(selected.command.linear.x, -0.10, 1.0e-9);
+  EXPECT_NEAR(selected.command.angular.z, -0.10, 1.0e-9);
+  EXPECT_EQ(selected.reason, "stage_switch_to_unique_reverse_yaw");
+}
+
+TEST(RouteRecoveryCandidate, UsesRppTurnSignWhenBothProjectedYawArcsAreClear)
+{
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision blocked{
+    true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
+  const auto selected = continueAdaptiveRouteRecoveryCandidate(
+    command(0.3, 0.0, -0.2), RouteRecoveryCandidateKind::kReverse,
+    0.10, 0.10, {blocked, blocked, clear, clear, clear});
+
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kReverseYawRight);
+  EXPECT_NEAR(selected.command.linear.x, -0.10, 1.0e-9);
+  EXPECT_NEAR(selected.command.angular.z, -0.10, 1.0e-9);
+}
+
+TEST(RouteRecoveryCandidate, KeepsStraightReverseWithoutYawPreference)
+{
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision blocked{
+    true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
+  const auto selected = continueAdaptiveRouteRecoveryCandidate(
+    command(0.3), RouteRecoveryCandidateKind::kReverse,
+    0.10, 0.10, {blocked, blocked, clear, clear, clear});
+
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kReverse);
+  EXPECT_NEAR(selected.command.angular.z, 0.0, 1.0e-9);
+}
+
+TEST(RouteRecoveryCandidate, RepositionsWhenActiveCrabBecomesBlocked)
+{
+  const MotionCostStopDecision clear{};
+  const MotionCostStopDecision blocked{
+    true, false, true, false, "route_recovery_predicted_lanelet_footprint_cost"};
+  const auto selected = continueAdaptiveRouteRecoveryCandidate(
+    command(0.3), RouteRecoveryCandidateKind::kCrabLeft, 0.10, 0.10,
+    {blocked, blocked, clear, blocked, blocked});
+
+  ASSERT_TRUE(selected.available());
+  EXPECT_EQ(selected.kind, RouteRecoveryCandidateKind::kReverse);
+  EXPECT_EQ(selected.reason, "active_stage_blocked_reverse_reposition");
 }
 
 TEST(MotionCostStop, RouteRecoveryProbeFailsClosedOnStaleLaneletEvidence)
@@ -486,6 +531,24 @@ TEST(MotionCostStop, RouteRecoveryUsesIndependentLaneletGridAge)
   EXPECT_EQ(
     cost_stop.evaluateLaneletRecovery(command(0.2), 13.1, 3.0).reason,
     "lanelet_recovery_grid_stale");
+}
+
+TEST(MotionCostStop, RouteRecoveryBoundsReverseYawRate)
+{
+  auto config = baseCostConfig();
+  config.lanelet_enabled = true;
+  MotionCostStop cost_stop(config);
+  cost_stop.setLaneletGrid(makeGrid(), 1.0);
+  cost_stop.setMergedGrid(makeGrid(), 1.0);
+  cost_stop.setPose(PlanarPose{0.0, 0.0, 0.0, "map", "test", 1.0});
+
+  EXPECT_FALSE(
+    cost_stop.evaluateRouteRecoveryCommand(
+      command(-0.1, 0.0, 0.10), 1.0, 0.25, 0.5).blocked);
+  const auto excessive = cost_stop.evaluateRouteRecoveryCommand(
+    command(-0.1, 0.0, 0.16), 1.0, 0.25, 0.5);
+  EXPECT_TRUE(excessive.blocked);
+  EXPECT_EQ(excessive.reason, "route_recovery_angular_rate_exceeded");
 }
 
 TEST(MotionCostStop, RouteRecoveryProbeFailsClosedOnStalePoseEvidence)

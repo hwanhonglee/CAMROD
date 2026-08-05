@@ -1,5 +1,5 @@
-// HH_260803 / TODOLIST 12 - Execute only the safety gate's bounded and
-// unambiguous reverse/crab recommendation; Nav2 retains mission ownership.
+// HH_260805 / TODOLIST 12 - Execute only the safety gate's projected staged
+// crab/reverse/yaw recommendation; Nav2 retains mission ownership.
 
 #include <algorithm>
 #include <chrono>
@@ -34,6 +34,11 @@ public:
       "status_topic", "/control/route_safety_recovery_controller/status");
     maximum_speed_mps_ = std::clamp(
       declare_parameter<double>("maximum_speed_mps", 0.10), 0.02, 0.10);
+    maximum_angular_speed_radps_ = std::clamp(
+      declare_parameter<double>("maximum_angular_speed_radps", 0.10), 0.02, 0.15);
+    maximum_yaw_change_rad_ = std::clamp(
+      declare_parameter<double>("maximum_yaw_change_deg", 12.0), 2.0, 20.0) *
+      M_PI / 180.0;
     maximum_distance_m_ = std::clamp(
       declare_parameter<double>("maximum_distance_m", 0.40), 0.05, 1.0);
     maximum_duration_s_ = std::clamp(
@@ -74,11 +79,14 @@ private:
     if (hold && !hold_active_) {
       hold_start_time_ = now();
       start_pose_ = poseFresh() ? latest_pose_ : std::nullopt;
+      start_yaw_ = start_pose_.has_value() ?
+        std::optional<double>(poseYaw(*start_pose_)) : std::nullopt;
       limit_reached_ = false;
       RCLCPP_WARN(get_logger(), "bounded route recovery armed");
     } else if (!hold && hold_active_) {
       publishZero();
       start_pose_.reset();
+      start_yaw_.reset();
       limit_reached_ = false;
       RCLCPP_INFO(get_logger(), "bounded route recovery released to Nav2");
     }
@@ -103,6 +111,7 @@ private:
     last_pose_time_ = now();
     if (hold_active_ && !start_pose_.has_value()) {
       start_pose_ = latest_pose_;
+      start_yaw_ = poseYaw(*message);
     }
   }
 
@@ -120,6 +129,23 @@ private:
     return std::hypot(
       latest_pose_->pose.position.x - start_pose_->pose.position.x,
       latest_pose_->pose.position.y - start_pose_->pose.position.y);
+  }
+
+  static double poseYaw(const avg_msgs::msg::AvgPoseStamped & pose)
+  {
+    const auto & q = pose.pose.orientation;
+    return std::atan2(
+      2.0 * (q.w * q.z + q.x * q.y),
+      1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+  }
+
+  double yawDisplacement() const
+  {
+    if (!latest_pose_.has_value() || !start_yaw_.has_value()) {
+      return 0.0;
+    }
+    const double delta = poseYaw(*latest_pose_) - *start_yaw_;
+    return std::abs(std::atan2(std::sin(delta), std::cos(delta)));
   }
 
   void tick()
@@ -154,22 +180,32 @@ private:
     }
 
     const double norm = std::hypot(candidate_.linear.x, candidate_.linear.y);
-    if (norm < 0.02 || std::abs(candidate_.angular.z) > 1.0e-6) {
+    if (norm < 0.02 || std::abs(candidate_.angular.z) > 0.15) {
       publishZero();
-      publishStatus("SAFETY_HOLD", "no_unambiguous_translation_candidate");
+      publishStatus("SAFETY_HOLD", "candidate_outside_bounded_twist");
       return;
     }
     avg_msgs::msg::AvgTwist command = candidate_;
     const double scale = std::min(1.0, maximum_speed_mps_ / norm);
     command.linear.x *= scale;
     command.linear.y *= scale;
-    command.angular.z = 0.0;
+    command.angular.z = std::clamp(
+      command.angular.z, -maximum_angular_speed_radps_, maximum_angular_speed_radps_);
+    // HH_260805 - After a small heading correction, continue only the reverse
+    // translation. The safety gate evaluates that modified command again.
+    if (yawDisplacement() >= maximum_yaw_change_rad_) {
+      command.angular.z = 0.0;
+    }
     command_publisher_->publish(command);
     const std::string motion = std::abs(command.linear.y) > std::abs(command.linear.x) ?
-      (command.linear.y > 0.0 ? "CRAB_LEFT" : "CRAB_RIGHT") : "REVERSE";
+      (command.linear.y > 0.0 ? "CRAB_LEFT" : "CRAB_RIGHT") :
+      command.angular.z > 1.0e-6 ? "REVERSE_YAW_LEFT" :
+      command.angular.z < -1.0e-6 ? "REVERSE_YAW_RIGHT" : "REVERSE";
     publishStatus(
       motion,
-      "distance=" + std::to_string(distance) + " elapsed=" + std::to_string(elapsed));
+      "distance=" + std::to_string(distance) +
+      " yaw_deg=" + std::to_string(yawDisplacement() * 180.0 / M_PI) +
+      " elapsed=" + std::to_string(elapsed));
   }
 
   void publishZero()
@@ -192,6 +228,8 @@ private:
   bool hold_active_{false};
   bool limit_reached_{false};
   double maximum_speed_mps_{0.10};
+  double maximum_angular_speed_radps_{0.10};
+  double maximum_yaw_change_rad_{12.0 * M_PI / 180.0};
   double maximum_distance_m_{0.40};
   double maximum_duration_s_{10.0};
   double pose_timeout_s_{0.5};
@@ -206,6 +244,7 @@ private:
   avg_msgs::msg::AvgTwist candidate_;
   std::optional<avg_msgs::msg::AvgPoseStamped> latest_pose_;
   std::optional<avg_msgs::msg::AvgPoseStamped> start_pose_;
+  std::optional<double> start_yaw_;
   rclcpp::Time last_gate_status_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_candidate_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_pose_time_{0, 0, RCL_ROS_TIME};

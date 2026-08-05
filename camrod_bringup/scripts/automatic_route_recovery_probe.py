@@ -133,6 +133,7 @@ class AutomaticRecoveryProbe(Node):
         self.max_recovery_output_mps = 0.0
         self.minimum_recovery_linear_x = 0.0
         self.maximum_recovery_abs_linear_y = 0.0
+        self.maximum_recovery_abs_angular_z = 0.0
 
         self.initial_pose_publisher = self.create_publisher(
             PoseWithCovarianceStamped, "/initialpose", 10
@@ -243,6 +244,9 @@ class AutomaticRecoveryProbe(Node):
             )
             self.maximum_recovery_abs_linear_y = max(
                 self.maximum_recovery_abs_linear_y, abs(message.linear.y)
+            )
+            self.maximum_recovery_abs_angular_z = max(
+                self.maximum_recovery_abs_angular_z, abs(message.angular.z)
             )
         signature = (
             round(message.linear.x, 3),
@@ -371,7 +375,16 @@ class AutomaticRecoveryProbe(Node):
         return bool(
             self.latest_owner
             and self.latest_owner.operating_state
-            in {"CRAB_LEFT", "CRAB_RIGHT", "REVERSE"}
+            # HH_260805 - A projected reverse-yaw arc is an active recovery
+            # stage, not a stationary hold. Accept it and record its bounded
+            # angular command so map-v15 runs can prove yaw actually changed.
+            in {
+                "CRAB_LEFT",
+                "CRAB_RIGHT",
+                "REVERSE",
+                "REVERSE_YAW_LEFT",
+                "REVERSE_YAW_RIGHT",
+            }
         )
 
     def run(self, observe_retry=True):
@@ -459,6 +472,9 @@ class AutomaticRecoveryProbe(Node):
             ),
             "maximum_recovery_abs_linear_y_mps": round(
                 self.maximum_recovery_abs_linear_y, 4
+            ),
+            "maximum_recovery_abs_angular_z_radps": round(
+                self.maximum_recovery_abs_angular_z, 4
             ),
             "final_output": {
                 "linear_x": self.latest_output.linear.x,
