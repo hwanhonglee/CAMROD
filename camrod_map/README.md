@@ -1,7 +1,7 @@
 # camrod_map
 
-<!-- HH_260804 - Summarize the map source, dual-grid values, semantic products,
-and known route limitation without duplicating every launch parameter. -->
+<!-- HH_260805 - Record the current-site map fingerprint while separating
+older hash-bound recovery evidence from the active deployment geometry. -->
 
 Lanelet2 map loading, WGS84 projection, semantic-area export, route masks,
 planning cost grids, and RViz visualization.
@@ -31,7 +31,8 @@ reference.
 |---|---|
 | Runtime map | `/home/nvidia/camrod_ws/src/lanelet2_maps.osm` |
 | Active source revision | `map_version=15` (user-provided geometry revision) |
-| Loaded primitives | 55 lanelets, 14 areas, 1,031 points, 179 lines |
+| Active SHA-256 | `d7b7307eb66175f8963aa638af6b48cf6007169db6f35a89ac21a8c79bab213f` |
+| Loaded primitives | 55 lanelets, 14 areas, 1,658 nodes, 236 ways |
 | Projector | `local_cartesian` |
 | WGS84 origin | `36.8435737, 128.0925646, 0.0` |
 | Map yaw offset | `0.0 deg` |
@@ -40,6 +41,14 @@ reference.
 
 The absolute map path is a Jetson deployment path. Workstation testing may
 override it, but must not rewrite the production path solely for local use.
+`lanelet2_maps_(copy_park_v1.0.5).osm` is byte-identical to the active file.
+This pair remains unchanged at the current site; a different field requires a
+new survey and map revision.
+
+The SHA value is a file fingerprint, not a read-only lock and not a map edit.
+The regression test fails when geometry changes unexpectedly. After an
+intentional survey/edit, synchronize the two OSM files and update the expected
+revision, primitive counts, and SHA in the same reviewed change.
 
 ## Cost Grids
 
@@ -71,6 +80,10 @@ hard footprint threshold remains unchanged.
 The repeatable three-case run is bound to OSM SHA-256
 `2f69deed24ae47e6762a7653e29e5574438a1ec4b9144b8a3b0a01165f404dbe`.
 It is retained as v14 evidence and is not presented as a map-v15 rerun.
+The v2.1.4 map-v15 recovery media are likewise bound to release SHA
+`e0b50f09c61fbd5429e528c2b3d8d2799a0dab9f83bb79b06dd0da0403efe36d`.
+They demonstrate the staged controller on that release map, not a run on the
+current active SHA shown above.
 
 ## Nodes And Products
 
